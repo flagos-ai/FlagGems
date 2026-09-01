@@ -50,6 +50,22 @@ cdist_backward:
 randperm:
   <<: *single_dim_shapes
 
+exponential:
+  shapes:
+    - [64, 64]
+    - [10000, 1]
+    - [100, 1, 100]
+    - [10000, 256]
+    - [100, 256, 100]
+    - [4096, 4096]
+    - [64, 512, 512]
+    - [268435456]
+    - [10000, 65536]
+    - [100, 65536, 100]
+    - [1024, 1024, 1024]
+    - [1073741824]
+  shape_desc: "input shape"
+
 svd:
   shapes:
     - [4096, 2, 2]
@@ -273,6 +289,24 @@ BlasBenchmark:
     - [16, 2048, 2048, 2048]
     - [16, 4096, 4096, 4096]
   shape_desc: "B, M, N, K"   # shapes are defined as (B, M, N, K)
+
+addmm_vector_bias:
+  shapes:
+    - [1, 64, 256, 184]
+    - [1, 128, 512, 512]
+    - [1, 256, 256, 1024]
+    - [1, 512, 1024, 1024]
+    - [1, 1024, 512, 1536]
+  shape_desc: "B, M, N, K"
+
+addmm_out_vector_bias:
+  shapes:
+    - [1, 64, 256, 184]
+    - [1, 128, 512, 512]
+    - [1, 256, 256, 1024]
+    - [1, 512, 1024, 1024]
+    - [1, 1024, 512, 1536]
+  shape_desc: "B, M, N, K"
 
 grouped_mm:
   shapes:
