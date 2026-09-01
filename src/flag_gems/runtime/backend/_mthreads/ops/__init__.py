@@ -35,6 +35,7 @@ from .div import (
 from .dropout import dropout, dropout_backward
 from .erfinv import erfinv
 from .erfinv_ import erfinv_
+from .feature_dropout import feature_dropout_
 from .flip import flip
 from .fmod_ import fmod_, fmod_scalar_, fmod_tensor_
 from .gather import gather, gather_backward
@@ -45,6 +46,7 @@ from .index_copy_ import index_copy, index_copy_
 from .index_put import _index_put_impl_, index_put, index_put_
 from .index_select import index_select
 from .linalg_cholesky import linalg_cholesky
+from .linear import linear
 from .log import log
 from .log10 import log10, log10_, log10_out
 from .log_normal_ import log_normal_
@@ -66,7 +68,7 @@ from .normal import normal_
 from .one_hot import one_hot
 from .ones import ones
 from .ones_like import ones_like
-from .pad import constant_pad_nd
+from .pad import constant_pad_nd, pad
 from .permute_copy import permute_copy
 from .prod import prod, prod_dim
 from .rand import rand
@@ -115,6 +117,7 @@ __all__ = [
     "dropout_backward",
     "erfinv",
     "erfinv_",
+    "feature_dropout_",
     "flip",
     "fmod_",
     "fmod_scalar_",
@@ -132,6 +135,7 @@ __all__ = [
     "_index_put_impl_",
     "index_select",
     "linalg_cholesky",
+    "linear",
     "log",
     "log10",
     "log10_",
@@ -163,6 +167,7 @@ __all__ = [
     "ones",
     "ones_like",
     "constant_pad_nd",
+    "pad",
     "permute_copy",
     "prod",
     "prod_dim",
@@ -202,8 +207,8 @@ __all__ = [
 
 
 if get_device_capability(current_device())[0] >= 3:
-    from .addmm import addmm, addmm_dtype, addmm_dtype_out  # noqa: F401
-    from .baddbmm import baddbmm  # noqa: F401
+    from .addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out  # noqa: F401
+    from .baddbmm import baddbmm, baddbmm_out  # noqa: F401
     from .bmm import bmm  # noqa: F401
     from .gelu import gelu  # noqa: F401
     from .mm import mm  # noqa: F401
@@ -214,7 +219,9 @@ if get_device_capability(current_device())[0] >= 3:
             "addmm",
             "addmm_dtype",
             "addmm_dtype_out",
+            "addmm_out",
             "baddbmm",
+            "baddbmm_out",
             "bmm",
             "gelu",
             "mm",

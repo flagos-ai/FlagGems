@@ -222,16 +222,16 @@ def bitonic_sortbykey_kernel(
 def radix_type_convert(k):
     ik = k.to(tl.int64)
     if tl.constexpr(k.dtype == tl.int8):
-        mask = (ik >> 7) & 0x1
+        mask = ((ik >> 7) & 0x1) != 0
         o = tl.where(mask, ik & 0x7F, ik | 0x80)
     elif tl.constexpr(k.dtype == tl.int16):
-        mask = (ik >> 15) & 0x1
+        mask = ((ik >> 15) & 0x1) != 0
         o = tl.where(mask, ik & 0x7FFF, ik | 0x8000)
     elif tl.constexpr(k.dtype == tl.int32):
-        mask = (ik >> 31) & 0x1
+        mask = ((ik >> 31) & 0x1) != 0
         o = tl.where(mask, ik & 0x7FFFFFFF, ik | 0x80000000)
     elif tl.constexpr(k.dtype == tl.int64):
-        mask = (ik >> 63) & 0x1
+        mask = ((ik >> 63) & 0x1) != 0
         o = tl.where(mask, ik & 0x7FFFFFFFFFFFFFFF, ik | 0x8000000000000000)
     else:
         o = k
@@ -265,7 +265,7 @@ def digit_hist_kernel(
         blk_bin_start = bin_segid * bins_segment
         for s in range(bins_segment):
             bin_id = s + blk_bin_start
-            digit_mask = tl.where(key_digit == bin_id and key_mask, 1, 0)
+            digit_mask = tl.where((key_digit == bin_id) & key_mask, 1, 0)
             digit_sum = tl.sum(digit_mask)
             # +1 for exclusive
             bin_offset = p * (bins + 1) * grid0 + (bin_id + 1) * grid0 + pid0
