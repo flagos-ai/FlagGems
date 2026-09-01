@@ -88,8 +88,7 @@ def test_linalg_polar_dispatcher():
 
     inp = torch.randn((8, 4), dtype=torch.float32, device=flag_gems.device)
     ref_inp = utils.to_reference(inp, False)
-    with flag_gems.use_gems():
-        result_U, result_H = torch.ops.aten.linalg_polar.default(inp)
+    result_U, result_H = flag_gems.linalg_polar(inp)
 
     _assert_polar_properties(ref_inp, result_U, result_H)
 
