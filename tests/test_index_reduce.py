@@ -67,8 +67,9 @@ def test_index_reduce_(shape, dim, dtype, index_dtype, reduce, include_self):
     ref_index = utils.to_reference(index)
     ref_inp.index_reduce_(dim, ref_index, ref_source, reduce, include_self=include_self)
 
-    with flag_gems.use_gems():
-        res = inp.index_reduce_(dim, index, source, reduce, include_self=include_self)
+    res = flag_gems.index_reduce_(
+        inp, dim, index, source, reduce, include_self=include_self
+    )
 
     assert res is inp
     utils.gems_assert_close(inp, ref_inp, dtype=dtype, reduce_dim=source_shape[dim])
@@ -88,8 +89,7 @@ def test_index_reduce_noncontiguous(reduce):
     ref_index = utils.to_reference(index)
     ref_inp.index_reduce_(dim, ref_index, ref_source, reduce, include_self=False)
 
-    with flag_gems.use_gems():
-        inp.index_reduce_(dim, index, source, reduce, include_self=False)
+    flag_gems.index_reduce_(inp, dim, index, source, reduce, include_self=False)
 
     utils.gems_assert_close(inp, ref_inp, dtype=dtype, reduce_dim=source.size(dim))
 
@@ -108,8 +108,7 @@ def test_index_reduce_duplicate_index_short_source(reduce, include_self):
     ref_index = utils.to_reference(index)
     ref_inp.index_reduce_(1, ref_index, ref_source, reduce, include_self=include_self)
 
-    with flag_gems.use_gems():
-        inp.index_reduce_(1, index, source, reduce, include_self=include_self)
+    flag_gems.index_reduce_(inp, 1, index, source, reduce, include_self=include_self)
 
     utils.gems_assert_close(inp, ref_inp, dtype=dtype, reduce_dim=source.size(1))
 
@@ -127,8 +126,7 @@ def test_index_reduce_empty_index(include_self):
     ref_index = utils.to_reference(index)
     ref_inp.index_reduce_(1, ref_index, ref_source, "mean", include_self=include_self)
 
-    with flag_gems.use_gems():
-        inp.index_reduce_(1, index, source, "mean", include_self=include_self)
+    flag_gems.index_reduce_(inp, 1, index, source, "mean", include_self=include_self)
 
     utils.gems_assert_close(inp, ref_inp, dtype=dtype, reduce_dim=1)
 
@@ -154,10 +152,9 @@ def test_index_reduce(shape, dim, dtype, index_dtype, reduce, include_self):
         dim, ref_index, ref_source, reduce, include_self=include_self
     )
 
-    with flag_gems.use_gems():
-        res_out = inp.index_reduce(
-            dim, index, source, reduce, include_self=include_self
-        )
+    res_out = flag_gems.index_reduce(
+        inp, dim, index, source, reduce, include_self=include_self
+    )
 
     utils.gems_assert_close(res_out, ref_out, dtype=dtype, reduce_dim=source_shape[dim])
     utils.gems_assert_close(inp, ref_inp, dtype=dtype)
@@ -180,8 +177,7 @@ def test_index_reduce_noncontiguous_out_of_place(reduce):
         reduce,
         include_self=False,
     )
-    with flag_gems.use_gems():
-        result = torch.index_reduce(inp, 1, index, source, reduce, include_self=False)
+    result = flag_gems.index_reduce(inp, 1, index, source, reduce, include_self=False)
 
     assert result.is_contiguous()
     utils.gems_assert_close(result, ref_out, dtype=dtype, reduce_dim=source.size(1))
@@ -211,16 +207,15 @@ def test_index_reduce_out(reduce, include_self):
         include_self=include_self,
         out=ref_out,
     )
-    with flag_gems.use_gems():
-        result = torch.index_reduce(
-            inp,
-            1,
-            index,
-            source,
-            reduce,
-            include_self=include_self,
-            out=out,
-        )
+    result = flag_gems.index_reduce_out(
+        inp,
+        1,
+        index,
+        source,
+        reduce,
+        include_self=include_self,
+        out=out,
+    )
 
     assert result is out
     assert out.shape == inp.shape
@@ -243,8 +238,7 @@ def test_index_reduce_out_aliases_input():
         "mean",
         out=ref_inp,
     )
-    with flag_gems.use_gems():
-        result = torch.index_reduce(inp, 1, index, source, "mean", out=inp)
+    result = flag_gems.index_reduce_out(inp, 1, index, source, "mean", out=inp)
 
     assert result is inp
     utils.gems_assert_close(inp, ref_inp, dtype=dtype, reduce_dim=source.size(1))
@@ -267,10 +261,9 @@ def test_index_reduce_empty_index_out_of_place(include_self):
         "mean",
         include_self=include_self,
     )
-    with flag_gems.use_gems():
-        result = torch.index_reduce(
-            inp, 1, index, source, "mean", include_self=include_self
-        )
+    result = flag_gems.index_reduce(
+        inp, 1, index, source, "mean", include_self=include_self
+    )
 
     assert result is not inp
     utils.gems_assert_close(result, ref_out, dtype=dtype)
@@ -283,8 +276,5 @@ def test_index_reduce_invalid_reduce():
     source = torch.ones((2, 1), device=flag_gems.device)
     index = torch.zeros((1,), dtype=torch.int64, device=flag_gems.device)
 
-    with (
-        flag_gems.use_gems(),
-        pytest.raises(AssertionError, match="Unsupported reduce"),
-    ):
-        torch.index_reduce(inp, 1, index, source, "sum")
+    with pytest.raises(AssertionError, match="Unsupported reduce"):
+        flag_gems.index_reduce(inp, 1, index, source, "sum")
