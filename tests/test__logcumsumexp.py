@@ -14,6 +14,7 @@
 
 import pytest
 import torch
+from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
@@ -25,8 +26,23 @@ LOGCUMSUMEXP_SHAPES = (
     else utils.REDUCTION_SHAPES + [(2637,), (16, 1025, 255)]
 )
 
+# ``_logcumsumexp`` / ``_logcumsumexp_out`` start with an underscore, and
+# ``pytest.mark`` refuses to generate a marker via attribute access for such
+# names. Register them directly on the MarkGenerator so
+# ``@pytest.mark._logcumsumexp`` and ``-m _logcumsumexp`` both work.
+setattr(
+    pytest.mark,
+    "_logcumsumexp",
+    MarkDecorator(Mark("_logcumsumexp", (), {}, _ispytest=True), _ispytest=True),
+)
+setattr(
+    pytest.mark,
+    "_logcumsumexp_out",
+    MarkDecorator(Mark("_logcumsumexp_out", (), {}, _ispytest=True), _ispytest=True),
+)
 
-@pytest.mark.underscore_logcumsumexp
+
+@pytest.mark._logcumsumexp
 @pytest.mark.parametrize("shape", LOGCUMSUMEXP_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test__logcumsumexp(shape, dtype):
@@ -44,7 +60,7 @@ def test__logcumsumexp(shape, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=shape[dim])
 
 
-@pytest.mark.underscore_logcumsumexp_out
+@pytest.mark._logcumsumexp_out
 @pytest.mark.parametrize("shape", LOGCUMSUMEXP_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test__logcumsumexp_out(shape, dtype):
