@@ -88,9 +88,9 @@ def addmm_activation_kernel(
             other=0.0,
         )
         if IS_FP64:
-            a = a.to(tl.float32)
-            b = b.to(tl.float32)
-        accumulator += tl.dot(a, b, allow_tf32=False)
+            accumulator += tl.dot(a, b, allow_tf32=False)
+        else:
+            accumulator += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
         a_ptrs += BLOCK_SIZE_K * stride_ak
         b_ptrs += BLOCK_SIZE_K * stride_bk
 
