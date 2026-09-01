@@ -47,10 +47,9 @@ def test_upsample_nearest_exact3d_backward(input_size, output_size, scales, dtyp
         ref = torch.ops.aten._upsample_nearest_exact3d_backward.default(
             utils.to_reference(grad_output), output_size, input_size, *scales
         )
-    with flag_gems.use_gems():
-        result = torch.ops.aten._upsample_nearest_exact3d_backward.default(
-            grad_output, output_size, input_size, *scales
-        )
+    result = flag_gems._upsample_nearest_exact3d_backward(
+        grad_output, output_size, input_size, *scales
+    )
 
     utils.gems_assert_close(result, ref, dtype)
 
@@ -69,10 +68,9 @@ def test_upsample_nearest_exact3d_backward_uint8():
     ref = torch.ops.aten._upsample_nearest_exact3d_backward.default(
         grad_output, output_size, input_size
     )
-    with flag_gems.use_gems():
-        result = torch.ops.aten._upsample_nearest_exact3d_backward.default(
-            grad_output, output_size, input_size
-        )
+    result = flag_gems._upsample_nearest_exact3d_backward(
+        grad_output, output_size, input_size
+    )
     assert torch.equal(result, ref)
 
 
@@ -88,10 +86,9 @@ def test_upsample_nearest_exact3d_backward_noncontiguous(dtype):
     ref = torch.ops.aten._upsample_nearest_exact3d_backward.default(
         utils.to_reference(grad_output), output_size, input_size
     )
-    with flag_gems.use_gems():
-        result = torch.ops.aten._upsample_nearest_exact3d_backward.default(
-            grad_output, output_size, input_size
-        )
+    result = flag_gems._upsample_nearest_exact3d_backward(
+        grad_output, output_size, input_size
+    )
     utils.gems_assert_close(result, ref, dtype)
 
 
@@ -118,16 +115,15 @@ def test_upsample_nearest_exact3d_backward_grad_input(noncontiguous):
         # The native out overload resizes an empty destination in place.
         grad_input = torch.empty(0, dtype=torch.float32, device=flag_gems.device)
 
-    with flag_gems.use_gems():
-        result = torch.ops.aten._upsample_nearest_exact3d_backward.grad_input(
-            grad_output,
-            output_size,
-            input_size,
-            None,
-            None,
-            None,
-            grad_input=grad_input,
-        )
+    result = flag_gems._upsample_nearest_exact3d_backward_grad_input(
+        grad_output,
+        output_size,
+        input_size,
+        None,
+        None,
+        None,
+        grad_input=grad_input,
+    )
 
     assert result is grad_input
     assert tuple(result.shape) == input_size
