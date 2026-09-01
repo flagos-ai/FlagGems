@@ -419,6 +419,7 @@ from flag_gems.ops.fractional_max_pool2d import (
     fractional_max_pool2d,
     fractional_max_pool2d_backward,
 )
+from flag_gems.ops.fractional_max_pool3d import fractional_max_pool3d_backward
 from flag_gems.ops.frexp import frexp
 from flag_gems.ops.full import full
 from flag_gems.ops.full_like import full_like
@@ -1371,6 +1372,7 @@ __all__ = [
     "frac_",
     "fractional_max_pool2d",
     "fractional_max_pool2d_backward",
+    "fractional_max_pool3d_backward",
     "frexp",
     "full",
     "full_like",
