@@ -1,5 +1,6 @@
 import pytest
 import torch
+from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
@@ -11,8 +12,23 @@ DTYPES = utils.FLOAT_DTYPES
 # Core shapes exercised by SHAPES (mirrors worktree CI branch).
 SHAPES = utils.REDUCTION_SHAPES + [(1, 8192), (32, 50257)]
 
+# ``_aminmax`` / ``_aminmax_out`` start with an underscore, and ``pytest.mark``
+# refuses to generate a marker via attribute access for such names. Register
+# them directly on the MarkGenerator so ``@pytest.mark._aminmax`` and
+# ``-m _aminmax`` both work.
+setattr(
+    pytest.mark,
+    "_aminmax",
+    MarkDecorator(Mark("_aminmax", (), {}, _ispytest=True), _ispytest=True),
+)
+setattr(
+    pytest.mark,
+    "_aminmax_out",
+    MarkDecorator(Mark("_aminmax_out", (), {}, _ispytest=True), _ispytest=True),
+)
 
-@pytest.mark.underscore_aminmax
+
+@pytest.mark._aminmax
 @pytest.mark.parametrize("shape", SHAPES)
 @pytest.mark.parametrize("dtype", DTYPES)
 def test__aminmax(shape, dtype):
@@ -26,7 +42,7 @@ def test__aminmax(shape, dtype):
     utils.gems_assert_equal(res_max, ref_max)
 
 
-@pytest.mark.underscore_aminmax
+@pytest.mark._aminmax
 @pytest.mark.parametrize("shape", SHAPES)
 @pytest.mark.parametrize("dtype", DTYPES)
 def test__aminmax_zero(shape, dtype):
@@ -40,7 +56,7 @@ def test__aminmax_zero(shape, dtype):
     utils.gems_assert_equal(res_max, ref_max)
 
 
-@pytest.mark.underscore_aminmax
+@pytest.mark._aminmax
 @pytest.mark.parametrize("shape", SHAPES)
 @pytest.mark.parametrize("dtype", DTYPES)
 def test__aminmax_inf(shape, dtype):
@@ -58,7 +74,7 @@ def test__aminmax_inf(shape, dtype):
     utils.gems_assert_equal(res_max, ref_max, equal_nan=True)
 
 
-@pytest.mark.underscore_aminmax
+@pytest.mark._aminmax
 @pytest.mark.parametrize("shape", SHAPES)
 def test__aminmax_int(shape):
     inp = torch.randint(-100, 100, shape, dtype=torch.int32, device=flag_gems.device)
@@ -71,7 +87,7 @@ def test__aminmax_int(shape):
     utils.gems_assert_equal(res_max, ref_max)
 
 
-@pytest.mark.underscore_aminmax
+@pytest.mark._aminmax
 def test__aminmax_scalar():
     inp = torch.randn((), dtype=torch.float32, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
@@ -83,7 +99,7 @@ def test__aminmax_scalar():
     utils.gems_assert_equal(res_max, ref_max)
 
 
-@pytest.mark.underscore_aminmax_out
+@pytest.mark._aminmax_out
 @pytest.mark.parametrize("shape", SHAPES)
 @pytest.mark.parametrize("dtype", DTYPES)
 def test__aminmax_out(shape, dtype):
