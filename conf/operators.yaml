@@ -3392,6 +3392,19 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '1.0'
+  - id: fused_moving_avg_obs_fake_quant
+    description: |
+      Fused moving-average observer with fake-quantize for QAT; performs min/max reduction, EMA running stats update, scale/zero_point calculation, and fake quantization in a single Triton kernel launch.
+    for:
+      - fused_moving_avg_obs_fake_quant
+    labels:
+      - aten
+      - quantization
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: native_dropout_backward
     description: The backward case of `dropout()`.
     for:

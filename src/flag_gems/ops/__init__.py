@@ -423,6 +423,9 @@ from flag_gems.ops.frexp import frexp
 from flag_gems.ops.full import full
 from flag_gems.ops.full_like import full_like
 from flag_gems.ops.functional_assert_async import _functional_assert_async
+from flag_gems.ops.fused_moving_avg_obs_fake_quant import (
+    fused_moving_avg_obs_fake_quant,
+)
 from flag_gems.ops.gather import gather, gather_backward
 from flag_gems.ops.gather_block_quantized import gather_block_quantized
 from flag_gems.ops.gcd import gcd, gcd_out
@@ -1374,6 +1377,7 @@ __all__ = [
     "frexp",
     "full",
     "full_like",
+    "fused_moving_avg_obs_fake_quant",
     "gather",
     "gather_backward",
     "gather_block_quantized",

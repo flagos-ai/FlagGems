@@ -606,6 +606,7 @@ _FULL_CONFIG = (
     ("frexp", frexp),
     ("full", full),
     ("full_like", full_like),
+    ("fused_moving_avg_obs_fake_quant", fused_moving_avg_obs_fake_quant),
     ("gather", gather),
     ("gather_backward", gather_backward),
     ("gcd", gcd),
