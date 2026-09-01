@@ -60,6 +60,70 @@ mm_general_tma:
      stride_am: default
      stride_bk: default
      dtype: default
+mm_tma_transposed_direct:
+  - config:
+    include_default_configs: true
+    param_map:
+      META:
+        BLOCK_M: block_m
+        BLOCK_N: block_n
+        BLOCK_K: block_k
+        N_MAJOR: n_major
+      num_stages: stages
+      num_warps: warps
+    block_m:
+      - 8
+      - 16
+      - 32
+    block_n:
+      - 64
+      - 128
+      - 256
+    block_k:
+      - 64
+      - 128
+      - 256
+    n_major:
+      - true
+    stages:
+      - 2
+      - 3
+    warps:
+      - 4
+  - strategy:
+     M: default
+     N: default
+     K: default
+     stride_bk: default
+mm_warp_specialized_tma:
+  - config:
+    param_map:
+      META:
+        BLOCK_M: block_m
+        BLOCK_N: block_n
+        BLOCK_K: block_k
+      num_stages: stages
+      num_warps: warps
+    block_m:
+      - 128
+    block_n:
+      - 128
+      - 256
+    block_k:
+      - 32
+      - 64
+      - 128
+    stages:
+      - 2
+      - 4
+      - 8
+    warps:
+      - 4
+  - strategy:
+     M: default
+     N: default
+     K: default
+     stride_bk: default
 mm_splitk:
   - config:
     param_map:
@@ -110,6 +174,7 @@ gemv:
       num_stages: stages
       num_warps: warps
     block_m:
+      - 1
       - 8
       - 16
       - 32
