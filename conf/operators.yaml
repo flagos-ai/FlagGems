@@ -3844,19 +3844,6 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '1.0'
-- id: dropout_backward
-  description: 'The backward case of `dropout()`.
-
-    '
-  for:
-  - native_dropout_backward
-  labels:
-  - aten
-  - nn.functional
-  kind:
-  - NeuralNetwork
-  stages:
-  - stable: '3.0'
 - id: dswiglu
   description: 'Swish-Gated Linear Unit, a variant of GLU with the Swish activation
     function.
@@ -14753,24 +14740,6 @@ ops:
   - __xor__
   - __xor__.Tensor
   - __xor__.Scalar
-  labels:
-  - aten
-  - pointwise
-  - KernelGen
-  kind:
-  - Math
-  stages:
-  - alpha: '5.4'
-- id: xor__
-  description: 'Computes the bitwise XOR of input tensors or a tensor and a scalar.
-
-    '
-  for:
-  - __xor__
-  - __xor__.Tensor
-  - __xor__.Scalar
-  - __ixor__.Tensor
-  - __ixor__.Scalar
   labels:
   - aten
   - pointwise
