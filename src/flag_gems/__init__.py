@@ -349,6 +349,7 @@ _FULL_CONFIG = (
     ("argmax", argmax),
     ("argmin", argmin),
     ("argsort", argsort),
+    ("argwhere", argwhere),
     ("as_strided_copy", as_strided_copy),
     ("as_strided_copy.out", as_strided_copy_out),
     ("as_strided_scatter", as_strided_scatter),
