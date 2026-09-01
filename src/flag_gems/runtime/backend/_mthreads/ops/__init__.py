@@ -22,7 +22,9 @@ from .argmin import argmin
 from .batch_norm import batch_norm, batch_norm_backward
 from .bucketize import bucketize
 from .celu import celu
+from .channel_shuffle import channel_shuffle
 from .conv2d import conv2d
+from .conv_transpose1d import conv_transpose1d, conv_transpose1d_output_size
 from .div import (
     div_mode,
     div_mode_,
@@ -35,6 +37,7 @@ from .div import (
 from .dropout import dropout, dropout_backward
 from .erfinv import erfinv
 from .erfinv_ import erfinv_
+from .feature_dropout import feature_dropout_
 from .flip import flip
 from .fmod_ import fmod_, fmod_scalar_, fmod_tensor_
 from .gather import gather, gather_backward
@@ -45,6 +48,7 @@ from .index_copy_ import index_copy, index_copy_
 from .index_put import _index_put_impl_, index_put, index_put_
 from .index_select import index_select
 from .linalg_cholesky import linalg_cholesky
+from .linear import linear
 from .log import log
 from .log10 import log10, log10_, log10_out
 from .log_normal_ import log_normal_
@@ -66,7 +70,7 @@ from .normal import normal_
 from .one_hot import one_hot
 from .ones import ones
 from .ones_like import ones_like
-from .pad import constant_pad_nd
+from .pad import constant_pad_nd, pad
 from .permute_copy import permute_copy
 from .prod import prod, prod_dim
 from .rand import rand
@@ -90,6 +94,7 @@ from .special_gammainc import special_gammainc
 from .tile import tile
 from .trunc import trunc, trunc_
 from .unique import _unique2
+from .upsample_linear1d_backward import upsample_linear1d_backward
 from .w8a8_block_fp8_matmul import w8a8_block_fp8_matmul
 from .zeros import zero_, zeros
 from .zeros_like import zeros_like
@@ -110,11 +115,15 @@ __all__ = [
     "bucketize",
     "celu",
     # "celu_",
+    "channel_shuffle",
     "conv2d",
+    "conv_transpose1d",
+    "conv_transpose1d_output_size",
     "dropout",
     "dropout_backward",
     "erfinv",
     "erfinv_",
+    "feature_dropout_",
     "flip",
     "fmod_",
     "fmod_scalar_",
@@ -132,6 +141,7 @@ __all__ = [
     "_index_put_impl_",
     "index_select",
     "linalg_cholesky",
+    "linear",
     "log",
     "log10",
     "log10_",
@@ -163,6 +173,7 @@ __all__ = [
     "ones",
     "ones_like",
     "constant_pad_nd",
+    "pad",
     "permute_copy",
     "prod",
     "prod_dim",
@@ -194,6 +205,7 @@ __all__ = [
     "_unique2",
     "trunc",
     "trunc_",
+    "upsample_linear1d_backward",
     "w8a8_block_fp8_matmul",
     "zero_",
     "zeros",

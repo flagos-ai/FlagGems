@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .addmm import addmm
+from .addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out
 from .all import all, all_dim, all_dims
 from .amax import amax
 from .angle import angle
@@ -41,6 +41,7 @@ from .diag_embed import diag_embed
 from .diagonal import diagonal_backward
 from .dot import dot
 from .embedding import embedding
+from .exponential import exponential
 from .exponential_ import exponential_
 from .fill import fill_scalar, fill_scalar_, fill_tensor, fill_tensor_
 from .flip import flip
@@ -125,6 +126,9 @@ __all__ = [
     "_unique2",
     "_upsample_bicubic2d_aa",
     "addmm",
+    "addmm_dtype",
+    "addmm_dtype_out",
+    "addmm_out",
     "all",
     "all_dim",
     "all_dims",
@@ -152,6 +156,7 @@ __all__ = [
     "diagonal_backward",
     "dot",
     "embedding",
+    "exponential",
     "exponential_",
     "fill_scalar",
     "fill_scalar_",
