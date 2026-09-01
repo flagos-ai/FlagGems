@@ -22,7 +22,9 @@ from .argmin import argmin
 from .batch_norm import batch_norm, batch_norm_backward
 from .bucketize import bucketize
 from .celu import celu
+from .channel_shuffle import channel_shuffle
 from .conv2d import conv2d
+from .conv_transpose1d import conv_transpose1d, conv_transpose1d_output_size
 from .div import (
     div_mode,
     div_mode_,
@@ -92,6 +94,7 @@ from .special_gammainc import special_gammainc
 from .tile import tile
 from .trunc import trunc, trunc_
 from .unique import _unique2
+from .upsample_linear1d_backward import upsample_linear1d_backward
 from .w8a8_block_fp8_matmul import w8a8_block_fp8_matmul
 from .zeros import zero_, zeros
 from .zeros_like import zeros_like
@@ -112,7 +115,10 @@ __all__ = [
     "bucketize",
     "celu",
     # "celu_",
+    "channel_shuffle",
     "conv2d",
+    "conv_transpose1d",
+    "conv_transpose1d_output_size",
     "dropout",
     "dropout_backward",
     "erfinv",
@@ -199,6 +205,7 @@ __all__ = [
     "_unique2",
     "trunc",
     "trunc_",
+    "upsample_linear1d_backward",
     "w8a8_block_fp8_matmul",
     "zero_",
     "zeros",
