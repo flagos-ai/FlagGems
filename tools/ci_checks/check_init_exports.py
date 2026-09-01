@@ -167,6 +167,10 @@ def main():
         for err in all_errors:
             print(f"::error file={INIT_FILE}::{err}")
             print(f"  • {err}")
+        print("\n💡 To fix sorting issues, run:")
+        print("   python tools/ci_checks/sort_exports.py --fix")
+        print("   git add src/flag_gems/__init__.py")
+        print("   git commit -m 'fix: sort __all__ exports'")
         sys.exit(1)
     else:
         print("✅ All checks passed.")
