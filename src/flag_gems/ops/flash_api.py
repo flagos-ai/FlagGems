@@ -26,6 +26,7 @@ from flag_gems.ops.flash_kernel import (
     flash_fwd_kernel,
     flash_fwd_splitkv_combine_kernel,
     flash_fwd_splitkv_kernel,
+    flash_varlen_fwd_fa3_kernel,
     flash_varlen_fwd_kernel,
 )
 from flag_gems.runtime import torch_device_fn
@@ -943,6 +944,249 @@ def mha_varlan_fwd_opt(
         # unused = torch.empty((), dtype=torch.int64, device=q_device)
         unused = None
     return out, q, k, v, lse, philox_args, unused, p
+
+
+def _is_hopper():
+    return torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 9
+
+
+def _should_pack_gqa_kernel(varlen_q, seqlen_q, qhead_per_khead, block_m):
+    """Mirror hopper/heuristics.h::should_pack_gqa."""
+    if varlen_q:
+        return True
+
+    def _round_up(a, b):
+        return (a + b - 1) // b * b
+
+    nopack_eff = float(seqlen_q) / float(_round_up(seqlen_q, block_m))
+    pack_eff = float(seqlen_q * qhead_per_khead) / float(
+        _round_up(seqlen_q * qhead_per_khead, block_m)
+    )
+    return nopack_eff < 0.9 * pack_eff
+
+
+def _get_pack_gqa_fa3(
+    num_heads,
+    num_heads_k,
+    max_seqlen_q,
+    block_m,
+    *,
+    is_paged,
+):
+    """Kernel-side packGQA policy for flash_varlen_fwd_fa3_kernel."""
+    if num_heads == num_heads_k:
+        return False
+    if is_paged:
+        return True
+    qhead_per_khead = num_heads // num_heads_k
+    return _should_pack_gqa_kernel(True, max_seqlen_q, qhead_per_khead, block_m)
+
+
+def mha_varlan_fwd_fa3(
+    q,
+    k,
+    v,
+    out,
+    cu_seqlens_q,
+    cu_seqlens_k,
+    seqused_k,
+    leftpad_k,
+    page_table,
+    max_seqlen_q,
+    max_seqlen_k,
+    softmax_scale,
+    is_causal,
+    window_size_left,
+    window_size_right,
+    softcap,
+    return_softmax,
+    gen,
+    q_descale=None,
+    k_descale=None,
+    v_descale=None,
+):
+    """FA3-style varlen forward on Hopper."""
+    CHECK_DEVICE(q), CHECK_DEVICE(k), CHECK_DEVICE(v)
+    assert _is_hopper(), "FA3 varlen requires Hopper GPU (sm_90+)"
+    q_device = q.device
+    q_dtype = q.dtype
+    assert q_dtype in (
+        torch.float16,
+        torch.bfloat16,
+    ), "FlashAttention FA3 only supports fp16 and bf16"
+    assert q_dtype == k.dtype and q_dtype == v.dtype
+    assert q.stride(-1) == 1 and k.stride(-1) == 1 and v.stride(-1) == 1
+    assert cu_seqlens_q.dtype == torch.int32 and cu_seqlens_q.is_contiguous()
+    assert leftpad_k is None, "leftpad_k is not supported."
+
+    is_paged = page_table is not None
+    if not is_paged:
+        page_table = torch.empty((0, 0), device=q_device, dtype=torch.int32)
+
+    total_q, num_heads, head_size = q.size()
+    num_heads_k = k.size(2) if is_paged else k.size(1)
+    batch_size = cu_seqlens_q.numel() - 1
+    block_size = k.size(1) if is_paged else 1
+    num_pages = k.size(0) if is_paged else 0
+    k_batch_size = num_pages
+    page_table_batch_stride = page_table.stride(0)
+
+    assert k.size() == v.size()
+    assert cu_seqlens_q.size() == (batch_size + 1,)
+
+    if out is not None:
+        assert out.stride(-1) == 1 and out.dtype == q.dtype
+        assert out.size() == (total_q, num_heads, head_size)
+
+    if seqused_k is not None:
+        assert seqused_k.is_contiguous()
+        assert seqused_k.size() == (batch_size,)
+
+    if max_seqlen_q == 1:
+        is_causal = False
+    if is_causal:
+        window_size_right = 0
+    if window_size_left >= max_seqlen_k:
+        window_size_left = -1
+    if window_size_right >= max_seqlen_k:
+        window_size_right = -1
+    is_local = window_size_left >= 0
+
+    assert softcap == 0.0, "softcap is not supported in FA3"
+    assert not is_local, "sliding window is not supported in FA3"
+    assert (
+        q_descale is None and k_descale is None and v_descale is None
+    ), "FP8 descale is not supported in FA3"
+    if is_paged:
+        assert seqused_k is not None, "paged FA3 varlen requires seqused_k"
+    else:
+        assert cu_seqlens_k is not None, "non-paged FA3 varlen requires cu_seqlens_k"
+
+    q_batch_stride = 0
+    k_batch_stride = 0
+    v_batch_stride = 0
+    o_batch_stride = 0
+    total_q = q.size(0)
+
+    assert head_size <= 256, "head dimension at most 256"
+    assert head_size % 8 == 0
+
+    round_multiple = lambda x, m: (x + m - 1) // m * m
+    head_size_rounded = round_multiple(head_size, 32) if head_size <= 192 else 256
+    seqlen_q_rounded = round_multiple(max_seqlen_q, 128)
+    seqlen_k_rounded = round_multiple(max_seqlen_k, 32)
+
+    M_LOG2E = 1.4426950408889634074
+    is_softcap = False
+    adjusted_softcap = 0.0
+    adjusted_scale_softmax = softmax_scale
+    adjusted_scale_softmax_log2e = softmax_scale * M_LOG2E
+
+    with torch_device_fn.device(q_device):
+        if out is None:
+            out = torch.empty_like(q, dtype=v.dtype)
+
+        lse = torch.empty((num_heads, total_q), dtype=torch.float, device=q_device)
+
+        params = fwd_params(
+            q,
+            k,
+            v,
+            out,
+            None,
+            lse,
+            q.stride(-3),
+            k.stride(-3),
+            v.stride(-3),
+            q.stride(-2),
+            k.stride(-2),
+            v.stride(-2),
+            out.stride(-3),
+            out.stride(-2),
+            q_batch_stride,
+            k_batch_stride,
+            v_batch_stride,
+            o_batch_stride,
+            cu_seqlens_q is not None,
+            cu_seqlens_q,
+            cu_seqlens_k is not None,
+            cu_seqlens_k,
+            seqused_k is not None,
+            seqused_k,
+            batch_size,
+            k_batch_size,
+            num_heads,
+            num_heads_k,
+            num_heads // num_heads_k,
+            max_seqlen_q,
+            max_seqlen_k,
+            seqlen_q_rounded,
+            seqlen_k_rounded,
+            head_size,
+            head_size_rounded,
+            is_softcap,
+            adjusted_softcap,
+            adjusted_scale_softmax,
+            adjusted_scale_softmax_log2e,
+            False,
+            1.0,
+            1.0,
+            255,
+            torch.empty((2,), dtype=torch.int64, device=q_device),
+            False,
+            is_causal,
+            is_local,
+            window_size_left,
+            window_size_right,
+            False,
+            is_paged,
+            False,
+            None,
+            0,
+            total_q,
+            page_table,
+            page_table_batch_stride,
+            block_size,
+            k.stride(0) if is_paged else 0,
+        )
+
+        args_tuple = tuple(getattr(params, slot) for slot in params.__slots__)
+
+        h_hk_ratio = num_heads // num_heads_k
+
+        def grid(meta):
+            block_m = meta["BLOCK_M"]
+            pack_gqa = _get_pack_gqa_fa3(
+                num_heads,
+                num_heads_k,
+                max_seqlen_q,
+                block_m,
+                is_paged=is_paged,
+            )
+            if pack_gqa:
+                return (
+                    triton.cdiv(max_seqlen_q * h_hk_ratio, block_m),
+                    batch_size,
+                    num_heads_k,
+                )
+            return (
+                triton.cdiv(max_seqlen_q, block_m),
+                batch_size,
+                num_heads,
+            )
+
+        def _alloc_fn(size: int, align: int, _stream):
+            return torch.empty(size, dtype=torch.int8, device=q_device)
+
+        triton.set_allocator(_alloc_fn)
+        flash_varlen_fwd_fa3_kernel[grid](
+            *args_tuple,
+            qk_descale=1.0,
+            v_descale=1.0,
+        )
+
+        unused = None
+    return out, q, k, v, lse, None, unused, None
 
 
 def mha_fwd(
