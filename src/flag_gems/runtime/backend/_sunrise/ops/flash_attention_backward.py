@@ -1,9 +1,12 @@
+import logging
 import math
 from typing import Optional, Tuple
 
 import torch
 import triton
 import triton.language as tl
+
+logger = logging.getLogger(__name__)
 
 
 def _parse_rng_state(rng_state: torch.Tensor) -> Tuple[int, int]:
@@ -1279,6 +1282,7 @@ def flash_attention_backward(
     window_size_left=None,
     window_size_right=None,
 ):
+    logger.debug("GEMS_SUNRISE FLASH_ATTENTION_BACKWARD")
     is_dropout = dropout_p > 0.0
     rng_tuple = _parse_rng_state(rng_state) if is_dropout else None
     wl = -1 if window_size_left is None else int(window_size_left)
@@ -1323,6 +1327,7 @@ def scaled_dot_product_flash_attention_backward(
     *,
     scale=None,
 ):
+    logger.debug("GEMS_SUNRISE SCALED_DOT_PRODUCT_FLASH_ATTENTION_BACKWARD")
     is_dropout = dropout_p > 0.0
     rng_tuple = _parse_philox(philox_seed, philox_offset) if is_dropout else None
     use_varlen = (cum_seq_q is not None) and (cum_seq_k is not None)
@@ -1366,6 +1371,7 @@ def scaled_dot_product_cudnn_attention_backward(
     scale=None,
     bias_requires_grad=False,
 ):
+    logger.debug("GEMS_SUNRISE SCALED_DOT_PRODUCT_CUDNN_ATTENTION_BACKWARD")
     grad_out_bshd = grad_out.permute(0, 2, 1, 3).contiguous()
     query_bshd = query.permute(0, 2, 1, 3).contiguous()
     key_bshd = key.permute(0, 2, 1, 3).contiguous()
@@ -1426,6 +1432,7 @@ def efficient_attention_backward(
     window_size=None,
     shared_storage_dqdkdv=False,
 ):
+    logger.debug("GEMS_SUNRISE EFFICIENT_ATTENTION_BACKWARD")
     if custom_mask_type == 0:
         is_causal, wl, wr = False, -1, -1
     elif custom_mask_type == 1:
@@ -1482,6 +1489,7 @@ def scaled_dot_product_efficient_attention_backward(
     *,
     scale=None,
 ):
+    logger.debug("GEMS_SUNRISE SCALED_DOT_PRODUCT_EFFICIENT_ATTENTION_BACKWARD")
     need_dq, need_dk, need_dv, need_dbias = grad_input_mask
 
     grad_out_bshd = grad_out_.permute(0, 2, 1, 3).contiguous()

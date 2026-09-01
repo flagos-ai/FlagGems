@@ -51,7 +51,7 @@ backends:
     python: "3.12"
     cmake_backend: CUDA
     triton: triton==3.6.0
-    flagtree: flagtree==0.6.0
+    flagtree: flagtree==0.6.1
     env:
       PATH: /usr/local/cuda/bin:$PATH
       LD_LIBRARY_PATH: /usr/local/cuda/lib64:$LD_LIBRARY_PATH
@@ -64,7 +64,7 @@ backends:
     python: "3.12"
     cmake_backend: CUDA
     triton: triton==3.6.0
-    flagtree: flagtree==0.6.0
+    flagtree: flagtree==0.6.1
     env:
       PATH: /usr/local/cuda/bin:$PATH
       LD_LIBRARY_PATH: /usr/local/cuda/lib64:$LD_LIBRARY_PATH
@@ -83,24 +83,29 @@ backends:
     deps:
       - torch==2.9.0+cpu
       - torch-npu==2.9.0
+      - decorator==5.1.1
+      - attrs==24.2.0
+      - psutil==6.0.0
 
   ascend-cann900:
     python: "3.11"
     cmake_backend: NPU
     triton: triton==3.5.0
-    flagtree: flagtree==0.6.0+ascend3.5
-    env_source:
-      - /usr/local/Ascend/cann/set_env.sh
     triton_post_install:
       - triton_ascend==3.2.1
+    flagtree: flagtree==0.6.1+ascend3.5
+    env_source:
+      - /usr/local/Ascend/cann/set_env.sh
     deps:
       - torch==2.10.0+cpu
       - torch-npu==2.10.0
 
-  cambricon:
+  cambricon-neuware443:
     python: "3.10"
+    cmake_backend: MLU
     triton: triton==3.2.0+mlu1.7.2
     env:
+      NEUWARE_HOME: /usr/local/neuware
       PATH: /usr/local/neuware/bin:$PATH
       LD_LIBRARY_PATH: /usr/local/neuware/lib64:$LD_LIBRARY_PATH
     deps:
@@ -108,21 +113,68 @@ backends:
       - torch==2.7.1+cpu
       - torch-mlu==1.29.2+torch2.7.1
       - torch-mlu-ops==1.8.0+torch2.7.1
+      - numpy==2.2.6
 
-  enflame:
+  cambricon-neuware472:
+    python: "3.12"
+    cmake_backend: MLU
+    triton: triton==3.4.0+mlu2.1.1
+    env:
+      NEUWARE_HOME: /usr/local/neuware
+      PATH: /usr/local/neuware/bin:$PATH
+      LD_LIBRARY_PATH: /usr/local/neuware/lib64:$LD_LIBRARY_PATH
+    deps:
+      - "numpy==2.2.6"
+      - "pandas==3.0.5"
+      - "torch==2.11.0+cpu"
+      - "torch-mlu==1.33.1+torch2.11.0"
+      - "torch-mlu-ops==1.12.1+torch2.11.0"
+
+  enflame-tops1910:
     python: "3.12"
     cmake_backend: GCU
-    triton: triton-gcu==3.6.0+1.0.20260521.cc.1.9.10
+    triton: triton==3.6.0
     flagtree: flagtree==0.6.0+enflame3.6
+    triton_post_install:
+      - triton-gcu==3.6.0+1.0.20260521.cc.1.9.10
     env:
       LD_LIBRARY_PATH: /opt/OpenCloudOS/gcc-toolset-14/root/usr/lib64:$LD_LIBRARY_PATH
+      TORCH_GCU_ENABLE_INT64_AND_UINT64: "1"
+      ENABLE_I64_CHECK: "0"
     deps:
       - pyefml==1.9.10
       - torch==2.10.0+cpu
       - torchaudio==2.10.0+cpu
       - torchvision==0.25.0+cpu
       - torch-gcu==2.10.0+3.7.20260408
-      - flash-attn==2.7.2+torch.2.9.1.gcu.3.4.20260323
+      - flash-attn==2.7.2+torch.2.10.0.gcu.3.4.20260506
+
+  enflame-tops1106:
+    python: "3.12"
+    cmake_backend: GCU
+    triton: triton==3.6.0
+    flagtree: flagtree==0.6.1+enflame3.6
+    triton_post_install:
+      - triton-gcu==3.6.0+1.0.20260722
+    # This version of flagtree doesn't work yet
+    # flagtree: flagtree==0.6.0+enflame.git657f543d
+    env:
+      LD_LIBRARY_PATH: /opt/OpenCloudOS/gcc-toolset-14/root/usr/lib64:$LD_LIBRARY_PATH
+      TORCH_GCU_ENABLE_INT64_AND_UINT64: "1"
+      ENABLE_I64_CHECK: "0"
+      TORCHGCU_INDUCTOR_ENABLE: "1"
+    deps:
+      - enflame-modelopt==3.6.20260615+torch.2.11.0
+      - numpy==2.3.5
+      - pyefml==1.10.6
+      - torch==2.11.0+cpu
+      - torchaudio==2.11.0+cpu
+      - torchvision==0.26.0+cpu
+      - torch-gcu==2.11.0+3.8.20260713
+      - torchcodec==3.8.20260624+torch.2.11.0
+      - flash-attn==2.7.2+torch.2.11.0.gcu.3.8.20260706
+      - tops-extension==3.6.20260529+torch.2.11.0
+      - topstx==1.10.6
 
   hygon:
     python: "3.10"
@@ -134,7 +186,7 @@ backends:
       - torch==2.9.0+das.opt1.dtk2604
 
   iluvatar:
-    python: "3.10"
+    python: "3.12"
     cmake_backend: IX
     triton: triton==3.1.0+corex.4.4.0
     # flagtree==0.5.1+iluvatar3.1 — plugin loading bug in venv, disabled for now
@@ -142,10 +194,12 @@ backends:
       COREX_ROOT: /usr/local/corex
       PATH: $COREX_ROOT/bin:$PATH
       LD_LIBRARY_PATH: $COREX_ROOT/lib:$LD_LIBRARY_PATH
+      CPATH: /usr/local/cuda-10.2/include
     deps:
       - torch==2.7.1+corex.4.4.0
       - torchaudio==2.7.1+corex.4.4.0
       - torchvision==0.22.1+corex.4.4.0
+      - numpy<2
 
   kunlunxin:
     python: "3.10"
@@ -172,18 +226,40 @@ backends:
       - xformers==0.0.29+1e7a8ec.d20260114
       - xmlir==1.0.0.1
 
-  metax:
+  metax-maca3720:
     python: "3.12"
     triton: triton==3.0.0+metax3.7.2.0
     flagtree: flagtree==3.1.0+metax3.7.2.0
     env:
       MACA_PATH: /opt/maca
-      LD_LIBRARY_PATH: $MACA_PATH/lib:$MACA_PATH/mxgpu_llvm/lib:$LD_LIBRARY_PATH
+      PATH: /opt/maca/mxgpu_llvm/bin:/opt/maca/bin:${PATH}
+      LD_LIBRARY_PATH: /opt/maca/lib:/opt/maca/mxgpu_llvm/lib:$LD_LIBRARY_PATH
     deps:
       - torch==2.8.0+metax3.7.2.0
       - torchaudio==2.4.1+metax3.7.2.0
       - torchvision==0.15.1+metax3.7.2.0
       - flash_attn==2.6.3+metax3.7.2.0torch2.8
+      - numpy==2.3.5
+
+  metax-maca3810:
+    python: "3.12"
+    triton: triton==3.6.0+metax3.8.1.0
+    flagtree: flagtree==0.6.1+metax3.6
+    env:
+      MACA_PATH: /opt/maca
+      PATH: /opt/maca/mxgpu_llvm/bin:/opt/maca/bin:${PATH}
+      LD_LIBRARY_PATH: /opt/maca/lib:/opt/maca/mxgpu_llvm/lib:$LD_LIBRARY_PATH
+    deps:
+      - apex==0.1+metax3.8.1.0
+      - flash_attn==2.6.3+metax3.8.1.0torch2.10
+      - flashinfer==0.2.6+metax3.8.1.0torch2.10
+      - flash_linear_attention==0.5.0+metax3.8.1.0torch2.10
+      - flash_mla==1.0.1+metax3.8.1.0torch2.10
+      - numpy==2.3.5
+      - torch==2.10.0+metax3.8.1.0
+      - torchcodec==0.6.0+metax3.8.1.0
+      - torchaudio==2.4.1+metax3.8.1.0
+      - torchvision==0.25.0+metax3.8.1.0
 
   mthreads-musa436:
     python: "3.10"
@@ -221,8 +297,8 @@ backends:
 
   sunrise:
     python: "3.10"
-    triton: triton==3.4.0.6+gite4f6d6e4
-    # flagtree==0.4.0+sunrise3.4 — requires GLIBC_2.39, unavailable on current system
+    triton: triton==3.6.0.1+git0a5cfb35
+    # flagtree==0.6.0+sunrise3.6 — requires GLIBC_2.39, unavailable on current runner
     env:
       LD_LIBRARY_PATH: /usr/local/tangrt/targets/linux-x86_64/lib:$LD_LIBRARY_PATH
     deps:

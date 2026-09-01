@@ -253,23 +253,23 @@ def generate_pad_kernel(
 
         if rank > 0:
             # shape for inputs
-            shape_args = ", ".join(f"x_shape{j}: int" for j in range(rank))
+            shape_args = ", ".join(f"x_shape{j}" for j in range(rank))
             code.writeline(f"{shape_args}, # shape for x")
 
             # shape for inputs
-            stride_args = ", ".join(f"in_strides{j}: int" for j in range(rank))
+            stride_args = ", ".join(f"in_strides{j}" for j in range(rank))
             code.writeline(f"{stride_args}, # stride for x")
 
             # shape for inputs
-            stride_args = ", ".join(f"out_strides{j}: int" for j in range(rank))
+            stride_args = ", ".join(f"out_strides{j}" for j in range(rank))
             code.writeline(f"{stride_args}, # stride for out")
 
             # shape for inputs
-            stride_args = ", ".join(f"valid_dim{j}_start: int" for j in range(rank))
+            stride_args = ", ".join(f"valid_dim{j}_start" for j in range(rank))
             code.writeline(f"{stride_args}, # valid dim start")
 
             # shape for inputs
-            stride_args = ", ".join(f"valid_dim{j}_end: int" for j in range(rank))
+            stride_args = ", ".join(f"valid_dim{j}_end" for j in range(rank))
             code.writeline(f"{stride_args}, # valid dim end")
 
             for i in range(rank):

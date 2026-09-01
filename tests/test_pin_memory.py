@@ -35,8 +35,7 @@ def test_pin_memory(shape, dtype):
     ref_out = torch.ops.aten.pin_memory(ref_inp)
 
     # FlagGems implementation
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.pin_memory(inp)
+    res_out = flag_gems.pin_memory(inp)
 
     # Verify the output is pinned
     assert res_out.is_pinned()
