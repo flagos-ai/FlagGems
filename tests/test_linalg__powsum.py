@@ -56,8 +56,7 @@ def test_linalg__powsum(shape, dim, ord, keepdim, dtype):
     ref_inp = utils.to_reference(inp, upcast=True)
     ref = torch.ops.aten.linalg__powsum.default(ref_inp, ord, dim, keepdim)
 
-    with flag_gems.use_gems():
-        result = torch.ops.aten.linalg__powsum.default(inp, ord, dim, keepdim)
+    result = flag_gems.linalg__powsum(inp, ord, dim, keepdim)
 
     utils.gems_assert_close(
         result,
@@ -89,10 +88,7 @@ def test_linalg__powsum_integer_input_with_float_dtype():
         ref_inp, 2, None, False, dtype=torch.float32
     )
 
-    with flag_gems.use_gems():
-        result = torch.ops.aten.linalg__powsum.default(
-            inp, 2, None, False, dtype=torch.float32
-        )
+    result = flag_gems.linalg__powsum(inp, 2, None, False, dtype=torch.float32)
 
     utils.gems_assert_equal(result, ref)
 
@@ -118,10 +114,7 @@ def test_linalg__powsum_complex(input_dtype, requested_dtype):
         ref_inp, 3, [1], True, dtype=requested_dtype
     )
 
-    with flag_gems.use_gems():
-        result = torch.ops.aten.linalg__powsum.default(
-            inp, 3, [1], True, dtype=requested_dtype
-        )
+    result = flag_gems.linalg__powsum(inp, 3, [1], True, dtype=requested_dtype)
 
     utils.gems_assert_close(result, ref, dtype=ref.dtype, reduce_dim=7)
 
@@ -133,8 +126,7 @@ def test_linalg__powsum_empty(keepdim):
     ref_inp = utils.to_reference(inp)
     ref = torch.ops.aten.linalg__powsum.default(ref_inp, -1, [1], keepdim)
 
-    with flag_gems.use_gems():
-        result = torch.ops.aten.linalg__powsum.default(inp, -1, [1], keepdim)
+    result = flag_gems.linalg__powsum(inp, -1, [1], keepdim)
 
     utils.gems_assert_equal(result, ref)
 
@@ -145,8 +137,7 @@ def test_linalg__powsum_noncontiguous():
     ref_inp = utils.to_reference(inp)
     ref = torch.ops.aten.linalg__powsum.default(ref_inp, 3, [0, 2], False)
 
-    with flag_gems.use_gems():
-        result = torch.ops.aten.linalg__powsum.default(inp, 3, [0, 2], False)
+    result = flag_gems.linalg__powsum(inp, 3, [0, 2], False)
 
     utils.gems_assert_close(result, ref, dtype=inp.dtype, reduce_dim=63)
 
@@ -158,8 +149,7 @@ def test_linalg__powsum_scalar(dim):
     ref_inp = utils.to_reference(inp)
     ref = torch.ops.aten.linalg__powsum.default(ref_inp, 2, dim, True)
 
-    with flag_gems.use_gems():
-        result = torch.ops.aten.linalg__powsum.default(inp, 2, dim, True)
+    result = flag_gems.linalg__powsum(inp, 2, dim, True)
 
     utils.gems_assert_equal(result, ref)
 
@@ -174,8 +164,7 @@ def test_linalg__powsum_special_values(ord):
     ref_inp = utils.to_reference(inp)
     ref = torch.ops.aten.linalg__powsum.default(ref_inp, ord)
 
-    with flag_gems.use_gems():
-        result = torch.ops.aten.linalg__powsum.default(inp, ord)
+    result = flag_gems.linalg__powsum(inp, ord)
 
     utils.gems_assert_equal(result, ref, equal_nan=True)
 
@@ -185,5 +174,5 @@ def test_linalg__powsum_special_values(ord):
 def test_linalg__powsum_invalid_dim(dim):
     inp = torch.randn((2, 3, 4), device=flag_gems.device)
 
-    with flag_gems.use_gems(), pytest.raises((IndexError, RuntimeError)):
-        torch.ops.aten.linalg__powsum.default(inp, 2, dim)
+    with pytest.raises((IndexError, RuntimeError)):
+        flag_gems.linalg__powsum(inp, 2, dim)
