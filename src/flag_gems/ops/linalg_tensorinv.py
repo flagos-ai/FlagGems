@@ -224,7 +224,7 @@ def _tensorinv_blocked_kernel(
         tl.debug_barrier()
 
 
-def linalg_tensorinv(A, ind=2):
+def linalg_tensorinv(A, ind=2, *, out=None):
     """Compute the multiplicative inverse of tensordot.
 
     Args:
@@ -290,9 +290,13 @@ def linalg_tensorinv(A, ind=2):
             )
 
     result = inverse.reshape(output_shape).to(A.dtype)
+    if out is not None:
+        out.copy_(result)
+        return out
     return result
 
 
-def linalg_tensorinv_(A, ind=2):
-    """In-place version (not supported for this operation, just forward to non-inplace)"""
-    return linalg_tensorinv(A, ind)
+def linalg_tensorinv_out(A, ind=2, *, out=None):
+    """Out-of-place variant of linalg_tensorinv: computes the tensor inverse
+    and writes the result into the provided ``out`` tensor."""
+    return linalg_tensorinv(A, ind=ind, out=out)

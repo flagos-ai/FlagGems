@@ -749,6 +749,7 @@ _FULL_CONFIG = (
     ("linalg_solve_triangular.out", linalg_solve_triangular_out),
     ("linalg_svd", linalg_svd),
     ("linalg_tensorinv", linalg_tensorinv),
+    ("linalg_tensorinv.out", linalg_tensorinv_out),
     ("linalg_vecdot", linalg_vecdot),
     ("linalg_vecdot.out", linalg_vecdot_out),
     ("linalg_vector_norm", vector_norm),

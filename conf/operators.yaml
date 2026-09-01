@@ -6397,20 +6397,6 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
-  - id: linalg_cholesky
-    description: |-
-      Computes the Cholesky decomposition of a symmetric positive-definite matrix A
-      or for batches of symmetric positive-definite matrices.
-    for:
-      - linalg_cholesky
-    labels:
-      - aten
-      - KernelGen
-    kind:
-      - LinearAlg
-      - BLAS
-    stages:
-      - alpha: '5.4'
   - id: linalg_householder_product
     description: Compute the matrix product of Householder matrices from QR decomposition.
     for:
@@ -6433,15 +6419,18 @@ ops:
       - LinearAlg
     stages:
       - alpha: '5.4'
-  - id: linalg_tensorinv
-    description: Triton kernel implementation for linalg_tensorinv.
+  - id: linalg_cholesky
+    description: |-
+      Computes the Cholesky decomposition of a symmetric positive-definite matrix A
+      or for batches of symmetric positive-definite matrices.
     for:
-      - linalg_tensorinv
+      - linalg_cholesky
     labels:
       - aten
       - KernelGen
     kind:
-      - Math
+      - LinearAlg
+      - BLAS
     stages:
       - alpha: '5.4'
   - id: cholesky_solve
@@ -6724,6 +6713,30 @@ ops:
     description: Computes the singular values of a matrix.
     for:
       - linalg_svdvals
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: linalg_tensorinv
+    description: Triton kernel implementation for linalg_tensorinv.
+    for:
+      - linalg_tensorinv
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: linalg_tensorinv_out
+    description: |-
+      Out-of-place variant of linalg_tensorinv: computes the tensor inverse
+      and writes the result into the provided out tensor.
+    for:
+      - linalg_tensorinv.out
     labels:
       - aten
       - KernelGen
