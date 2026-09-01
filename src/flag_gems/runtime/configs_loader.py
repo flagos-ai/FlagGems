@@ -199,6 +199,52 @@ class TunedConfigLoader(object):
                 for w in ranges["w"]
             ]
 
+        if op_name == "mm_tma_transposed_direct":
+            shared_mem_limit = 220 * 1024
+            return [
+                triton.Config(
+                    {
+                        "BLOCK_M": block_m,
+                        "BLOCK_N": block_n,
+                        "BLOCK_K": block_k,
+                        "N_MAJOR": n_major,
+                    },
+                    num_stages=s,
+                    num_warps=w,
+                    pre_hook=pre_hook,
+                )
+                for block_m in ranges["BLOCK_M"]
+                for block_n in ranges["BLOCK_N"]
+                for block_k in ranges["BLOCK_K"]
+                for n_major in ranges["N_MAJOR"]
+                for s in ranges["s"]
+                for w in ranges["w"]
+                if (block_m * block_k + block_k * block_n) * 2 * s + 1024
+                <= shared_mem_limit
+            ]
+
+        if op_name == "mm_warp_specialized_tma":
+            shared_mem_limit = 220 * 1024
+            return [
+                triton.Config(
+                    {
+                        "BLOCK_M": block_m,
+                        "BLOCK_N": block_n,
+                        "BLOCK_K": block_k,
+                    },
+                    num_stages=s,
+                    num_warps=w,
+                    pre_hook=pre_hook,
+                )
+                for block_m in ranges["BLOCK_M"]
+                for block_n in ranges["BLOCK_N"]
+                for block_k in ranges["BLOCK_K"]
+                for s in ranges["s"]
+                for w in ranges["w"]
+                if (block_m * block_k + block_k * block_n) * 2 * s + 8192
+                <= shared_mem_limit
+            ]
+
         if op_name == "mm":
             has_pipeline = "PIPELINE" in ranges
             has_scenario = "SCENARIO" in ranges
@@ -458,6 +504,8 @@ class TunedConfigLoader(object):
             ]
 
         if op_name == "mm_splitk":
+            has_pipeline = "PIPELINE" in ranges
+            pipelines = ranges.get("PIPELINE", [None])
             return [
                 triton.Config(
                     {
@@ -465,7 +513,7 @@ class TunedConfigLoader(object):
                         "BLOCK_N": block_n,
                         "BLOCK_K": block_k,
                         "SPLIT_K": split_k,
-                        "pipeline": pipeline,
+                        **({"pipeline": pipeline} if has_pipeline else {}),
                     },
                     num_stages=s,
                     num_warps=w,
@@ -475,7 +523,7 @@ class TunedConfigLoader(object):
                 for block_n in ranges["BLOCK_N"]
                 for block_k in ranges["BLOCK_K"]
                 for split_k in ranges["SPLIT_K"]
-                for pipeline in ranges["PIPELINE"]
+                for pipeline in pipelines
                 for s in ranges["s"]
                 for w in ranges["w"]
             ]
@@ -595,6 +643,12 @@ class TunedConfigLoader(object):
                 "mm_sqmma", yaml_op_name="mm_general_tma"
             ),
             "mm_general_tma": self._build_single_expand_spec("mm_general_tma"),
+            "mm_tma_transposed_direct": self._build_single_expand_spec(
+                "mm_tma_transposed_direct"
+            ),
+            "mm_warp_specialized_tma": self._build_single_expand_spec(
+                "mm_warp_specialized_tma"
+            ),
             "mv": self._build_single_expand_spec(
                 "mv", expand_yaml_path=self._get_expand_config_path("mv")
             ),
@@ -804,6 +858,9 @@ class TunedConfigLoader(object):
             return {
                 "ranges": ranges,
                 "strategy": strategy,
+                "include_default_configs": bool(
+                    gen_config.get("include_default_configs", False)
+                ),
             }
         except Exception:
             return -1
@@ -813,7 +870,32 @@ class TunedConfigLoader(object):
         if expand_config == -1:
             return []
         ranges = expand_config["ranges"]
-        return self._build_configs_by_op(op_name, ranges, pre_hook=pre_hook)
+        configs = self._build_configs_by_op(op_name, ranges, pre_hook=pre_hook)
+        if not expand_config["include_default_configs"]:
+            return configs
+
+        def config_key(config):
+            return (
+                tuple(
+                    sorted((key, repr(value)) for key, value in config.kwargs.items())
+                ),
+                getattr(config, "num_warps", None),
+                getattr(config, "num_ctas", None),
+                getattr(config, "num_stages", None),
+                getattr(config, "maxnreg", None),
+                repr(getattr(config, "ir_override", None)),
+            )
+
+        seen = {config_key(config) for config in configs}
+        for default_config in self.get_tuned_config(op_name):
+            key = config_key(default_config)
+            if key in seen:
+                continue
+            config = copy.deepcopy(default_config)
+            config.pre_hook = pre_hook
+            configs.append(config)
+            seen.add(key)
+        return configs
 
     def get_tuned_config(self, op_name):
         if op_name in self.loaded_triton_config:
