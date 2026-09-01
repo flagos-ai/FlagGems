@@ -22,17 +22,25 @@ import flag_gems
 from . import accuracy_utils as utils
 
 # LU decomposition requires high precision; float16/bfloat16 lack mantissa bits for pivoting
-SOLVE_DTYPES = [torch.float32, torch.float64]
+SOLVE_DTYPES = [torch.float32]
+if flag_gems.runtime.device.support_fp64:
+    SOLVE_DTYPES.append(torch.float64)
 
 # Test shapes: (n, nrhs) - cover small to medium matrices for correctness
 SOLVE_SHAPES = [(4, 4), (8, 8), (16, 16), (32, 32)]
 
 
-def _make_solve_inputs(n, k, dtype, device):
+def _make_solve_inputs(shape, k, dtype, device):
     """Create well-conditioned A and random B for solve test."""
-    A = torch.randn(n, n, dtype=dtype, device=device)
-    A = A @ A.mT + torch.eye(n, dtype=dtype, device=device) * n
-    B = torch.randn(n, k, dtype=dtype, device=device)
+    n = shape[-1]
+    A = torch.randn(*shape, dtype=dtype, device=device)
+    eye = torch.eye(n, dtype=dtype, device=device)
+    batch_dims = [1] * (A.ndim - 2)
+    if batch_dims:
+        eye = eye.view(*batch_dims, n, n)
+    A = A @ A.mT + eye * n
+    B_shape = shape[:-1] + (k,)
+    B = torch.randn(*B_shape, dtype=dtype, device=device)
     return A, B
 
 
@@ -41,7 +49,7 @@ def _make_solve_inputs(n, k, dtype, device):
 @pytest.mark.parametrize("dtype", SOLVE_DTYPES)
 def test_linalg_solve(shape, dtype):
     n, k = shape
-    A, B = _make_solve_inputs(n, k, dtype, "cuda")
+    A, B = _make_solve_inputs((n, n), k, dtype, flag_gems.device)
 
     ref_A = utils.to_reference(A)
     ref_B = utils.to_reference(B)
@@ -53,15 +61,13 @@ def test_linalg_solve(shape, dtype):
 
 
 @pytest.mark.linalg_solve
-@pytest.mark.parametrize("shape", SOLVE_SHAPES)
+@pytest.mark.parametrize("batch_shape", [(1,), (3,), (4,), (2, 4)])
+@pytest.mark.parametrize("n", [4, 8, 16])
+@pytest.mark.parametrize("k", [1, 4])
 @pytest.mark.parametrize("dtype", SOLVE_DTYPES)
-def test_linalg_solve_batched(shape, dtype):
-    n, k = shape
-    batch = 4
-    A = torch.randn(batch, n, n, dtype=dtype, device="cuda")
-    eye = torch.eye(n, dtype=dtype, device="cuda").unsqueeze(0).expand(batch, n, n)
-    A = A @ A.mT + eye * n
-    B = torch.randn(batch, n, k, dtype=dtype, device="cuda")
+def test_linalg_solve_batched(batch_shape, n, k, dtype):
+    shape_A = batch_shape + (n, n)
+    A, B = _make_solve_inputs(shape_A, k, dtype, flag_gems.device)
 
     ref_A = utils.to_reference(A)
     ref_B = utils.to_reference(B)
