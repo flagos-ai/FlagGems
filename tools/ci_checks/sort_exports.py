@@ -35,7 +35,6 @@ import argparse
 import re
 import sys
 from pathlib import Path
-from typing import Optional
 
 try:
     import yaml
@@ -95,16 +94,18 @@ def sort_python_all(file_path: Path, fix: bool = False, dry_run: bool = False) -
                 break
         return False
 
-    # Detect indent and quote style from first item
+    # Detect indent and quote style from existing items
     lines = content.strip().split("\n")
-    if lines and lines[0].strip():
-        first_line = lines[0]
-        indent = len(first_line) - len(first_line.lstrip())
-        quote = '"' if '"' in first_line else "'"
-    else:
-        # Default formatting
-        indent = 4
-        quote = '"'
+    quote = '"'
+    indent = 4  # default
+    for line in lines:
+        stripped = line.strip()
+        if stripped:
+            # Use lines with leading whitespace for indent detection
+            if line != line.lstrip():
+                indent = len(line) - len(line.lstrip())
+            quote = '"' if '"' in stripped else "'"
+            break
 
     indent_str = " " * indent
 
@@ -217,7 +218,7 @@ def sort_operators_yaml(
             break
 
     if ops_start is None:
-        print(f"Error: Cannot parse dumped YAML", file=sys.stderr)
+        print("Error: Cannot parse dumped YAML", file=sys.stderr)
         return False
 
     ops_body = "\n".join(yaml_lines[ops_start:])

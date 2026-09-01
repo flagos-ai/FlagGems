@@ -121,7 +121,7 @@ CI 跑 `check_init_exports.py` 和 `check_operators_yaml.py`：
   ```
   ❌ src/flag_gems/ops/__init__.py: __all__ is not sorted by casefold
      Position 0: got '_nested_sum_backward', expected '__ilshift__'
-  
+
   💡 To fix sorting issues, run:
      python tools/ci_checks/sort_exports.py --fix
      git add src/flag_gems/ops/__init__.py
