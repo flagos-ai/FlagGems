@@ -35,6 +35,7 @@ LDS, so the RDNA4 candidates would be a poor fit for them.
 """
 
 ARCH_MAP = {
+    "gfx942": "cdna3",
     "gfx1200": "rdna4",
     "gfx1201": "rdna4",
 }
