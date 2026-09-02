@@ -131,6 +131,27 @@ def check_config_duplicates(keys: list[tuple[str, int]]) -> list[str]:
     return errors
 
 
+def check_config_sorted(keys: list[tuple[str, int]]) -> list[str]:
+    """Check _FULL_CONFIG entries are sorted by key (casefold).
+
+    Reports each out-of-order entry (where key < previous key).
+    """
+    errors = []
+    if len(keys) < 2:
+        return errors
+
+    for i in range(1, len(keys)):
+        prev_key, _ = keys[i - 1]
+        cur_key, cur_line = keys[i]
+        if cur_key.casefold() < prev_key.casefold():
+            errors.append(
+                f"_FULL_CONFIG is not sorted: '{cur_key}' (line {cur_line}) "
+                f"should come before '{prev_key}'"
+            )
+
+    return errors
+
+
 def main():
     if not INIT_FILE.exists():
         print(f"::error::Cannot find {INIT_FILE}", file=sys.stderr)
@@ -159,6 +180,7 @@ def main():
     if config_keys:
         print(f"  _FULL_CONFIG has {len(config_keys)} entries")
         all_errors.extend(check_config_duplicates(config_keys))
+        all_errors.extend(check_config_sorted(config_keys))
     else:
         print("  _FULL_CONFIG not found or empty (skipping registry checks)")
 
