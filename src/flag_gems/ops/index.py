@@ -188,7 +188,9 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.newline()
     code.writeline("from flag_gems.utils import libentry, libtuner")
     code.writeline("from flag_gems import runtime")
-    code.writeline("from flag_gems.utils.shape_utils import volume")
+    code.writeline(
+        "from flag_gems.utils.shape_utils import can_use_int32_index, volume"
+    )
     code.writeline("from flag_gems.utils import triton_lang_extension as ext")
 
     code.newline()
@@ -259,6 +261,11 @@ def generate_index_kernel(
             code.writeline(
                 f"cur_index{i} = tl.load(indices{i}_ptr + {' + '.join(comp)}, mask=mask0, other=0)"
             )
+        # cur_index * input_stride exceeds int32 when the tensor's element
+        # range does (issue #4153); promote to int64 before offset math.
+        code.newline()
+        for i in range(indices_len):
+            code.writeline(f"cur_index{i} = cur_index{i}.to(tl.int64)")
         code.newline()
         index_mask = [
             f"(cur_index{i} >= 0) & (cur_index{i} < input_shape{i})"
@@ -446,6 +453,7 @@ def generate_index_linearized_kernel(
             "N,",
             "BLOCK_SIZE0: tl.constexpr,",
             "BLOCK_SIZE1: tl.constexpr,",
+            "INT32_OFFSET: tl.constexpr,",
         ]
         code.writelines(args)
     code.writeline("):")
@@ -454,6 +462,14 @@ def generate_index_linearized_kernel(
         code.writeline("pid_p = tl.program_id(axis=0)")
         code.writeline("pid_m = tl.program_id(axis=1)")
         code.writeline("pid_n = tl.program_id(axis=2)")
+        # Element offsets can exceed int32 for tensors with more than
+        # INT32_MAX elements (issue #4153); promote program ids so every
+        # downstream offset computation runs in int64 when required.
+        code.writeline("if not INT32_OFFSET:")
+        with code.indent():
+            code.writeline("pid_p = pid_p.to(tl.int64)")
+            code.writeline("pid_m = pid_m.to(tl.int64)")
+            code.writeline("pid_n = pid_n.to(tl.int64)")
         code.newline()
 
         code.writeline(
@@ -469,6 +485,11 @@ def generate_index_linearized_kernel(
             code.writeline(
                 f"raw{i} = tl.load(indices{i}_ptr + index_offsets, mask=index_mask, other=0)"
             )
+            # raw + dim and idx * stride overflow int32 for large element
+            # ranges; promote before any arithmetic when int64 is required.
+            code.writeline("if not INT32_OFFSET:")
+            with code.indent():
+                code.writeline(f"raw{i} = raw{i}.to(tl.int64)")
             code.writeline(f"idx{i} = tl.where(raw{i} < 0, raw{i} + {dim}, raw{i})")
         code.newline()
 
@@ -516,6 +537,11 @@ def generate_index_linearized_wrapper(
 ):
     prefix_size = _volume(inp_shape[:start_dim])
     suffix_size = _volume(inp_shape[start_dim + indices_len :])
+    # raw + dim stays below 2**31 only for indexed dims < 2**30.
+    int32_dims_ok = all(
+        2 * int(dim) <= 2**31 - 1
+        for dim in inp_shape[start_dim : start_dim + indices_len]
+    )
 
     code.writeline(f"def {wrapper_name}(input, start_dim, indices, out):")
     with code.indent():
@@ -531,12 +557,24 @@ def generate_index_linearized_wrapper(
             code.writeline("triton.cdiv(N, meta['BLOCK_SIZE1']),")
         code.writeline(")")
         code.newline()
+        # int32 offsets are safe only when every provable bound stays
+        # within int32: element ranges of input, indices and out.
+        if int32_dims_ok:
+            code.writeline(
+                "int32_offset = can_use_int32_index(input) "
+                "and all(can_use_int32_index(i) for i in indices) "
+                "and can_use_int32_index(out)"
+            )
+        else:
+            code.writeline("int32_offset = False")
+        code.newline()
         code.writeline(f"{kernel_name}[grid](")
         with code.indent():
             args = ["input,"]
             args += [f"indices[{i}]," for i in range(indices_len)]
             args += ["out,", "M,", "N,"]
             code.writelines(args)
+            code.writeline("INT32_OFFSET=int32_offset,")
         code.writeline(")")
         code.writeline("return input")
     code.newline()

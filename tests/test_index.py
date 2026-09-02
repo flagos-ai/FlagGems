@@ -322,3 +322,37 @@ def test_index_error_too_many_indices(dtype):
 
     with pytest.raises(IndexError, match="too many indices"):
         flag_gems.index(inp, indices)
+
+
+@pytest.mark.index
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_index_int32_offset_overflow():
+    """Regression for issue #4153: int64 offsets for large element ranges.
+
+    A (2**28 + 1, 8) int8 tensor holds 2**31 + 8 elements, so the int32
+    index value 2**28 produces element offsets >= 2**31. These used to
+    overflow int32 arithmetic in the generated kernels and caused
+    out-of-bounds reads ("illegal memory access").
+    """
+    free_bytes, _ = torch.cuda.mem_get_info(flag_gems.device)
+    if free_bytes < 3 * 2**30:
+        pytest.skip("not enough free device memory for the int32-offset case")
+
+    rows = 2**28 + 1
+    inp = torch.zeros((rows, 8), dtype=torch.int8, device=flag_gems.device)
+    idx = torch.tensor([2**28], dtype=torch.int32, device=flag_gems.device)
+
+    ref_inp = utils.to_reference(inp)
+    ref_idx = utils.to_reference(idx)
+
+    # Contiguous input takes the linearized adjacent-index kernel.
+    ref_out = torch.ops.aten.index(ref_inp, [ref_idx])
+    out = flag_gems.index(inp, [idx])
+    utils.gems_assert_close(out, ref_out, torch.int8)
+
+    # Transposed view takes the generic (code-generated) kernel.
+    ref_out_t = torch.ops.aten.index(ref_inp.t(), [None, ref_idx])
+    out_t = flag_gems.index(inp.t(), [None, idx])
+    utils.gems_assert_close(out_t, ref_out_t, torch.int8)
