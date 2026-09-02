@@ -122,6 +122,7 @@ _FULL_CONFIG = (
     ("_cummin_helper", _cummin_helper),
     ("_conv_depthwise2d", _conv_depthwise2d),
     ("_convert_weight_to_int4pack", _convert_weight_to_int4pack),
+    ("_cslt_sparse_mm", _cslt_sparse_mm, _cslt_sparse_mm_enabled),
     ("_convolution_double_backward", _convolution_double_backward),
     ("_convolution_mode", _convolution_mode),
     ("_cudnn_attention_forward", cudnn_attention_forward),
