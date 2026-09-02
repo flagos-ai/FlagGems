@@ -15,6 +15,8 @@
 import torch
 import triton.language as tl
 
+from flag_gems.utils.triton_version_utils import has_triton_tle
+
 
 def get_triton_dtype(dtype):
     dtype_map = {
@@ -23,3 +25,25 @@ def get_triton_dtype(dtype):
         torch.float32: tl.float32,
     }
     return dtype_map.get(dtype, None)
+
+
+def tle_interfaces_available() -> bool:
+    if not has_triton_tle(3, 6, 0):
+        return False
+
+    try:
+        import triton.experimental.tle.language as _tle  # noqa: F401
+    except ImportError:
+        return False
+
+    required = [
+        ("gpu", _tle),
+        ("pipe", _tle),
+        ("wgmma", _tle.gpu),
+        ("wgmma_wait", _tle.gpu),
+        ("copy", _tle.gpu),
+        ("alloc", _tle.gpu),
+        ("smem", _tle.gpu),
+        ("warp_specialize", _tle.gpu),
+    ]
+    return all(hasattr(obj, name) for name, obj in required)
