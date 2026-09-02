@@ -15,10 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
 import flag_gems.testing as fg_testing
-from flag_gems.fused.stage_deepseek_v4_mega_moe_inputs import (
-    stage_deepseek_v4_mega_moe_inputs,
-)
 
 
 def _supports_fp8e4nv():
@@ -89,6 +87,7 @@ def _make_inputs(num_tokens, hidden_size, top_k):
     return hidden_states, topk_weights, topk_ids
 
 
+@pytest.mark.stage_deepseek_v4_mega_moe_inputs
 @pytest.mark.parametrize("num_tokens, hidden_size, top_k", [(1, 128, 1), (7, 256, 8)])
 @pytest.mark.skipif(
     not _supports_fp8e4nv(), reason="requires cuda with fp8e4nv support"
@@ -104,7 +103,7 @@ def test_stage_deepseek_v4_mega_moe_inputs_accuracy(num_tokens, hidden_size, top
     topk_idx_out = torch.empty_like(ref_topk_idx)
     topk_weights_out = torch.empty_like(ref_topk_weights)
 
-    stage_deepseek_v4_mega_moe_inputs(
+    flag_gems.stage_deepseek_v4_mega_moe_inputs(
         hidden_states,
         topk_weights,
         topk_ids,
@@ -123,6 +122,7 @@ def test_stage_deepseek_v4_mega_moe_inputs_accuracy(num_tokens, hidden_size, top
     )
 
 
+@pytest.mark.stage_deepseek_v4_mega_moe_inputs
 @pytest.mark.skipif(
     not _supports_fp8e4nv(), reason="requires cuda with fp8e4nv support"
 )
@@ -135,7 +135,7 @@ def test_stage_deepseek_v4_mega_moe_inputs_rejects_bad_hidden_size():
     topk_weights_out = torch.empty((1, 1), device="cuda", dtype=torch.float32)
 
     with pytest.raises(ValueError, match="multiple of 128"):
-        stage_deepseek_v4_mega_moe_inputs(
+        flag_gems.stage_deepseek_v4_mega_moe_inputs(
             bad_hidden_states,
             topk_weights,
             topk_ids,
