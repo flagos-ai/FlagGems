@@ -632,12 +632,12 @@ def test_fused_recurrent_gated_delta_rule_w8a16_fp8_accuracy(
             v,
             g,
             beta,
-            state_fp8,
-            state_scale,
-            _FP8_K**-0.5,
-            cu_seqlens,
-            state_indices,
-            True,
+            scale=_FP8_K**-0.5,
+            state_fp8=state_fp8,
+            state_scale=state_scale,
+            cu_seqlens=cu_seqlens,
+            ssm_state_indices=state_indices,
+            use_qk_l2norm_in_kernel=True,
             max_sequence_length=1,
         )
     )
@@ -678,12 +678,12 @@ def test_fused_recurrent_gated_delta_rule_w8a16_fp8_repeated_updates():
                 v,
                 g,
                 beta,
-                state_fp8,
-                state_scale,
-                _FP8_K**-0.5,
-                cu_seqlens,
-                state_indices,
-                True,
+                scale=_FP8_K**-0.5,
+                state_fp8=state_fp8,
+                state_scale=state_scale,
+                cu_seqlens=cu_seqlens,
+                ssm_state_indices=state_indices,
+                use_qk_l2norm_in_kernel=True,
                 max_sequence_length=1,
             )
         )
@@ -729,9 +729,10 @@ def test_fused_recurrent_gated_delta_rule_w8a16_fp8_nonpacked_accuracy():
             v,
             g,
             beta,
-            state_fp8,
-            state_scale,
-            _FP8_K**-0.5,
+            scale=_FP8_K**-0.5,
+            state_fp8=state_fp8,
+            state_scale=state_scale,
+            use_qk_l2norm_in_kernel=True,
         )
     )
     actual_state = flag_gems.dequantize_gdn_state_fp8(state_fp8, state_scale)
@@ -798,12 +799,12 @@ def test_fused_recurrent_gated_delta_rule_w8a16_fp8_prefill_accuracy(
             v,
             g,
             beta,
-            state_fp8,
-            state_scale,
-            _FP8_K**-0.5,
-            cu_seqlens,
-            state_indices,
-            True,
+            scale=_FP8_K**-0.5,
+            state_fp8=state_fp8,
+            state_scale=state_scale,
+            cu_seqlens=cu_seqlens,
+            ssm_state_indices=state_indices,
+            use_qk_l2norm_in_kernel=True,
         )
     )
     actual_state = flag_gems.dequantize_gdn_state_fp8(state_fp8, state_scale)
@@ -862,12 +863,12 @@ def test_fused_recurrent_gated_delta_rule_w8a16_fp8_chunk_prefill_accuracy():
             v,
             g,
             beta,
-            state_fp8,
-            state_scale,
-            _FP8_K**-0.5,
-            cu_seqlens,
-            state_indices,
-            True,
+            scale=_FP8_K**-0.5,
+            state_fp8=state_fp8,
+            state_scale=state_scale,
+            cu_seqlens=cu_seqlens,
+            ssm_state_indices=state_indices,
+            use_qk_l2norm_in_kernel=True,
         )
     )
     actual_state = flag_gems.dequantize_gdn_state_fp8(state_fp8, state_scale)
@@ -897,12 +898,12 @@ def test_fused_recurrent_gated_delta_rule_w8a16_fp8_chunk_prefill_accuracy():
         v,
         g,
         beta,
-        state_fp8,
-        state_scale,
-        _FP8_K**-0.5,
-        decode_cu_seqlens,
-        state_indices,
-        True,
+        scale=_FP8_K**-0.5,
+        state_fp8=state_fp8,
+        state_scale=state_scale,
+        cu_seqlens=decode_cu_seqlens,
+        ssm_state_indices=state_indices,
+        use_qk_l2norm_in_kernel=True,
         max_sequence_length=1,
     )
     decode_error = (actual.float() - expected.float()).abs()

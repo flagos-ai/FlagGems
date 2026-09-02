@@ -438,12 +438,12 @@ def _w8a16_fp8_wrapper(
         v,
         g,
         beta,
-        state_fp8,
-        state_scale,
-        scale,
-        cu_seqlens,
-        state_indices,
-        True,
+        scale=scale,
+        state_fp8=state_fp8,
+        state_scale=state_scale,
+        cu_seqlens=cu_seqlens,
+        ssm_state_indices=state_indices,
+        use_qk_l2norm_in_kernel=True,
         max_sequence_length=(1 if q.shape[1] == state_indices.numel() else None),
     )
 

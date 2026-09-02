@@ -25,7 +25,6 @@ from flag_gems.utils import libentry
 
 _STATE_BLOCK_V = 32
 _FP8_E4M3_MAX = tl.constexpr(448.0)
-_TRITON_ALLOCATOR_DEVICE = None
 
 
 @triton.jit
@@ -1087,17 +1086,15 @@ def dequantize_gdn_state_fp8(
     return state
 
 
-def _install_triton_allocator(device: torch.device) -> None:
-    global _TRITON_ALLOCATOR_DEVICE
-    device_key = (device.type, device.index)
-    if _TRITON_ALLOCATOR_DEVICE == device_key or not hasattr(triton, "set_allocator"):
+def _set_tma_descriptor_allocator(device: torch.device) -> None:
+    """Register Triton's runtime workspace allocator for TMA descriptors."""
+    if not hasattr(triton, "set_allocator"):
         return
 
     def _alloc(size: int, _alignment: int, _stream: int | None):
         return torch.empty((size,), dtype=torch.uint8, device=device)
 
     triton.set_allocator(_alloc)
-    _TRITON_ALLOCATOR_DEVICE = device_key
 
 
 def _tensor_offsets_fit_int32(tensor: torch.Tensor) -> bool:
@@ -1120,21 +1117,21 @@ def _chunk_prefill_gated_delta_rule_w8a16_fp8(
     state_scale: torch.Tensor,
     scale: float,
     cu_seqlens: torch.Tensor | None,
-    state_indices: torch.Tensor | None,
+    ssm_state_indices: torch.Tensor | None,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     B, T, H, K = q.shape
     HV, V = v.shape[2:]
     N = B if cu_seqlens is None else cu_seqlens.numel() - 1
     BK = triton.next_power_of_2(K)
     BV = min(_STATE_BLOCK_V, triton.next_power_of_2(V))
-    use_state_indices = state_indices is not None
+    use_state_indices = ssm_state_indices is not None
 
     initial_state = torch.empty((N, HV, K, V), device=q.device, dtype=q.dtype)
     _dequantize_indexed_gdn_state_fp8_kernel[(triton.cdiv(V, BV), N * HV)](
         state_fp8,
         state_scale,
         initial_state,
-        state_indices,
+        ssm_state_indices,
         stride_state_s=state_fp8.stride(0),
         stride_state_h=state_fp8.stride(1),
         stride_state_k=state_fp8.stride(2),
@@ -1176,7 +1173,7 @@ def _chunk_prefill_gated_delta_rule_w8a16_fp8(
         num_stages=1,
     )
 
-    _install_triton_allocator(q.device)
+    _set_tma_descriptor_allocator(q.device)
     _, output, _, final_state, _, _, _ = chunk_gated_delta_rule_fwd(
         q=q_normalized,
         k=k_normalized,
@@ -1192,7 +1189,7 @@ def _chunk_prefill_gated_delta_rule_w8a16_fp8(
         final_state,
         state_fp8,
         state_scale,
-        state_indices,
+        ssm_state_indices,
         stride_state_s=state_fp8.stride(0),
         stride_state_h=state_fp8.stride(1),
         stride_state_k=state_fp8.stride(2),
@@ -1232,12 +1229,13 @@ def fused_recurrent_gated_delta_rule_w8a16_fp8(
     v: torch.Tensor,
     g: torch.Tensor,
     beta: torch.Tensor,
+    scale: float,
     state_fp8: torch.Tensor,
     state_scale: torch.Tensor,
-    scale: float,
     cu_seqlens: torch.Tensor | None = None,
-    state_indices: torch.Tensor | None = None,
-    use_qk_l2norm_in_kernel: bool = True,
+    ssm_state_indices: torch.Tensor | None = None,
+    use_qk_l2norm_in_kernel: bool = False,
+    *,
     max_sequence_length: int | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Run recurrent GDN with dynamically scaled FP8 state.
@@ -1247,8 +1245,11 @@ def fused_recurrent_gated_delta_rule_w8a16_fp8(
     ``[N, T, H, K]``. Recurrent products select FP32 for sequence processing
     and small decode grids, while large decode grids use the BF16/FP16
     activation dtype. Reductions and the recurrent accumulator remain FP32.
-    ``state_fp8`` and its per-V-channel ``state_scale`` are updated in-place
-    after each sequence. Packed decode callers may pass
+    This is the dynamically quantized state specialization of
+    ``fused_recurrent_gated_delta_rule_fwd``. ``initial_state`` is represented
+    by ``state_fp8`` and its per-V-channel ``state_scale``; both tensors are
+    always updated in-place and returned with the output. Speculative decoding
+    through ``num_accepted_tokens`` is not supported. Packed decode callers may pass
     ``max_sequence_length=1`` to select the single-token fast path without
     synchronizing ``cu_seqlens`` back to CPU.
     """
@@ -1280,8 +1281,8 @@ def fused_recurrent_gated_delta_rule_w8a16_fp8(
         or state_scale.shape != (state_fp8.shape[0], HV, V)
     ):
         raise ValueError("state_scale must be contiguous FP32 with shape [S, HV, V]")
-    if state_indices is not None and state_indices.numel() != N:
-        raise ValueError("state_indices must contain one index per sequence")
+    if ssm_state_indices is not None and ssm_state_indices.numel() != N:
+        raise ValueError("ssm_state_indices must contain one index per sequence")
 
     single_token_per_sequence = max_sequence_length == 1 if use_packed_input else T == 1
     if use_packed_input:
@@ -1308,7 +1309,7 @@ def fused_recurrent_gated_delta_rule_w8a16_fp8(
             state_scale,
             scale,
             cu_seqlens,
-            state_indices,
+            ssm_state_indices,
         )
 
     o = torch.empty(B, T, HV, V, device=q.device, dtype=q.dtype)
@@ -1323,7 +1324,7 @@ def fused_recurrent_gated_delta_rule_w8a16_fp8(
         "state_fp8": state_fp8,
         "state_scale": state_scale,
         "cu_seqlens": cu_seqlens,
-        "state_indices": state_indices,
+        "state_indices": ssm_state_indices,
         "scale": scale,
         "stride_q_b": q.stride(0),
         "stride_q_t": q.stride(1),
@@ -1360,7 +1361,7 @@ def fused_recurrent_gated_delta_rule_w8a16_fp8(
         "V": V,
         "BK": BK,
         "USE_PACKED_INPUT": use_packed_input,
-        "USE_STATE_INDICES": state_indices is not None,
+        "USE_STATE_INDICES": ssm_state_indices is not None,
         "USE_QK_L2NORM": use_qk_l2norm_in_kernel,
     }
 
@@ -1428,7 +1429,7 @@ def fused_recurrent_gated_delta_rule_w8a16_fp8(
     )
     if use_tma_load:
         tma_grid = (num_v_tiles, HV, N) if use_3d_decode_grid else (num_v_tiles, N * HV)
-        _install_triton_allocator(q.device)
+        _set_tma_descriptor_allocator(q.device)
         _fused_recurrent_gated_delta_rule_w8a16_fp8_kernel[tma_grid](
             **kernel_args,
             S=state_fp8.shape[0],
