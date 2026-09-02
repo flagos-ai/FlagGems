@@ -7407,6 +7407,30 @@ ops:
   - LinearAlg
   stages:
   - alpha: '5.4'
+- id: linalg_multi_dot
+  description: Efficiently multiplies a chain of two or more matrices using the optimal
+    multiplication order.
+  for:
+  - linalg_multi_dot
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.4'
+- id: linalg_multi_dot_out
+  description: Writes the optimally ordered product of a matrix chain to a provided
+    output tensor.
+  for:
+  - linalg_multi_dot.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.4'
 - id: linalg_slogdet
   description: 'Computes the sign and natural logarithm of the absolute value of the
     determinant of a square matrix using LU decomposition with partial pivoting.
