@@ -55,3 +55,23 @@ def test_special_erfinv_out(shape, dtype):
         act_out = torch.ops.aten.special_erfinv.out(x, out=out_act)
     utils.gems_assert_close(act_out, ref_out, dtype)
     utils.gems_assert_close(out_act, out_ref, dtype)
+
+
+@pytest.mark.special_erfinv_
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_special_erfinv_(shape, dtype):
+    # special_erfinv_ has no aten overlay, so call the flag_gems entrypoint
+    # directly and compare against the out-of-place aten special_erfinv.
+    x = torch.empty(shape, dtype=dtype, device=flag_gems.device).uniform_(-0.9, 0.9)
+    ref_x = utils.to_reference(x.clone())
+    if dtype in (torch.float16, torch.bfloat16):
+        ref_out = torch.ops.aten.special_erfinv(ref_x.float()).to(dtype)
+    else:
+        ref_out = torch.ops.aten.special_erfinv(ref_x)
+
+    act_x = x.clone()
+    res_out = flag_gems.special_erfinv_(act_x)
+
+    assert res_out is act_x
+    utils.gems_assert_close(act_x, ref_out, dtype)
