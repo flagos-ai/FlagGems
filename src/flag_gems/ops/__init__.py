@@ -342,6 +342,7 @@ from flag_gems.ops.div import (
 from flag_gems.ops.divide import divide
 from flag_gems.ops.dot import dot
 from flag_gems.ops.dropout import dropout, dropout_backward
+from flag_gems.ops.dropout_ import dropout_
 from flag_gems.ops.elu import elu, elu_, elu_backward
 from flag_gems.ops.embedding import embedding, embedding_backward
 from flag_gems.ops.embedding_dense_backward import embedding_dense_backward
@@ -1279,6 +1280,7 @@ __all__ = [
     "divide",
     "dot",
     "dropout",
+    "dropout_",
     "dropout_backward",
     "efficient_attention_backward",
     "elu",

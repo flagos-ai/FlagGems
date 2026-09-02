@@ -3831,6 +3831,17 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '1.0'
+- id: dropout_
+  description: The in-place version of dropout (`aten::dropout_`).
+  for:
+  - dropout_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: dswiglu
   description: 'Swish-Gated Linear Unit, a variant of GLU with the Swish activation
     function.
