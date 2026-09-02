@@ -10,13 +10,11 @@ import triton
 import triton.language as tl
 
 from flag_gems import runtime
-from flag_gems.ops.mm_streamk import streamk_mm
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as tle
-from flag_gems.utils.device_info import get_device_capability, get_sm_count
+from flag_gems.utils.device_info import get_device_capability
 from flag_gems.utils.libentry import LibTuner
-from flag_gems.utils.triton_version_utils import HAS_TLE, HAS_TLE_DEVICE_MESH
 
 from .mm import mm as _bf16_mm
 from .mm import mm_out as _bf16_mm_out
@@ -45,21 +43,21 @@ _BLOCK_FP8_B_CACHE: "OrderedDict[tuple, tuple[torch.Tensor, torch.Tensor, int]]"
     OrderedDict()
 )
 
-# When True (default), `mm()` will auto-populate _FP8_A_PREFETCH_CACHE on first
+# When True (default), `mm_w8a8_fp8()` auto-populates _FP8_A_PREFETCH_CACHE on first
 # miss using (data_ptr, shape, stride, dtype, ...) as key, mirroring the
 # existing _FP8_B_CACHE behavior. This eliminates the per-call `a.to(fp8)`
 # launch + cuTensorMapEncodeTiled overhead exposed by nsys when the same A
 # tensor is reused across calls (typical for benchmarks / inference).
 # Disable via FLAGGEMS_FP8_AUTO_CACHE_A=0 if you mutate A in-place between
-# mm() calls without reallocating.
+# mm_w8a8_fp8() calls without reallocating.
 _FP8_AUTO_CACHE_A = os.environ.get("FLAGGEMS_FP8_AUTO_CACHE_A", "1") != "0"
 # Opt-in benchmark / inference cache mode: reuse fp8 tensors by logical shape
 # instead of allocation identity. Keep this off by default for mutation safety.
 _FP8_CACHE_A_BY_SHAPE = os.environ.get("FLAGGEMS_FP8_CACHE_A_BY_SHAPE", "0") != "0"
 _FP8_CACHE_B_BY_SHAPE = os.environ.get("FLAGGEMS_FP8_CACHE_B_BY_SHAPE", "0") != "0"
 
-# When True, hot-path mm() only reuses A fp8 from _FP8_A_PREFETCH_CACHE (via
-# prequantize_and_register_a_fp8). Callers should register A once before the
+# When True, the hot path only reuses A fp8 from _FP8_A_PREFETCH_CACHE (via
+# prequantize_and_register_mm_w8a8_fp8_a). Callers should register A once before the
 # inference / benchmark timed loop so repeated mm_w8a8_fp8() avoids a.to(fp8) launches.
 _MM_PREQUANTIZE_A = os.environ.get("FLAGGEMS_MM_PREQUANTIZE_FP8", "0") != "0"
 _MM_FP8_OUTPUT_DTYPE = os.environ.get("FLAGGEMS_MM_W8A8_OUTPUT_DTYPE", "bf16").lower()
@@ -97,8 +95,8 @@ _MM_TMA_DEFAULT_STRATEGY = [
 _mm_expand_use_default_tune: dict[tuple, bool] = {}
 
 
-@LibTuner.register_strategy("mm_w8a8_tma_m")
-def _mm_tma_m_strategy(m: int) -> int:
+@LibTuner.register_strategy("mm_w8a8_fp8_tma_m")
+def _mm_w8a8_fp8_tma_m_strategy(m: int) -> int:
     """Use exact M for small decode batches; align32 for larger M to limit DB size."""
     if m <= 64:
         return m
@@ -155,7 +153,7 @@ def _is_capturing_stream() -> bool:
         return False
 
 
-def _mm_cuda_graph_effective(M: int, N: int, K: int) -> bool:
+def _mm_w8a8_fp8_cuda_graph_effective(M: int, N: int, K: int) -> bool:
     """Whether to capture/replay a CUDA graph for this matmul shape.
 
     5.10 host-overhead optimization #4: CUDA Graph replay amortises Python /
@@ -176,15 +174,15 @@ def _mm_cuda_graph_effective(M: int, N: int, K: int) -> bool:
     return True
 
 
-def _mm_cuda_graph_warmup_iters() -> int:
+def _mm_w8a8_fp8_cuda_graph_warmup_iters() -> int:
     return max(1, int(os.environ.get("FLAG_GEMS_MM_CUDA_GRAPH_WARMUP", "3")))
 
 
-def _mm_cuda_graph_cache_max() -> int:
+def _mm_w8a8_fp8_cuda_graph_cache_max() -> int:
     return max(4, int(os.environ.get("FLAG_GEMS_MM_CUDA_GRAPH_CACHE_MAX", "512")))
 
 
-def _mm_cuda_graph_key(
+def _mm_w8a8_fp8_cuda_graph_key(
     scenario: str, a: torch.Tensor, b: torch.Tensor, c: torch.Tensor
 ) -> tuple:
     return (
@@ -203,7 +201,7 @@ def _mm_cuda_graph_key(
     )
 
 
-def _mm_staging_output(
+def _mm_w8a8_fp8_staging_output(
     M: int, N: int, device: torch.device, dtype: torch.dtype
 ) -> torch.Tensor:
     key = (M, N, str(device), dtype)
@@ -214,7 +212,7 @@ def _mm_staging_output(
     return out
 
 
-def _mm_cuda_graph_run(
+def _mm_w8a8_fp8_cuda_graph_run(
     scenario: str,
     a: torch.Tensor,
     b: torch.Tensor,
@@ -229,7 +227,7 @@ def _mm_cuda_graph_run(
         run_kernel()
         return c
 
-    key = _mm_cuda_graph_key(scenario, a, b, c)
+    key = _mm_w8a8_fp8_cuda_graph_key(scenario, a, b, c)
     if key in _mm_cuda_graph_disabled_keys:
         run_kernel()
         return c
@@ -239,7 +237,7 @@ def _mm_cuda_graph_run(
         entry.graph.replay()
         return c
 
-    warmup = _mm_cuda_graph_warmup_iters()
+    warmup = _mm_w8a8_fp8_cuda_graph_warmup_iters()
     for _ in range(warmup):
         run_kernel()
     try:
@@ -253,7 +251,7 @@ def _mm_cuda_graph_run(
         return c
     _mm_cuda_graph_cache[key] = _MmCudaGraphEntry(graph=graph)
     _mm_cuda_graph_cache.move_to_end(key)
-    while len(_mm_cuda_graph_cache) > _mm_cuda_graph_cache_max():
+    while len(_mm_cuda_graph_cache) > _mm_w8a8_fp8_cuda_graph_cache_max():
         _mm_cuda_graph_cache.popitem(last=False)
     return c
 
@@ -280,30 +278,7 @@ def _estimate_tma_shared_memory_bytes(block_m, block_n, block_k, num_stages):
     return tile_bytes * num_stages + _SHARED_MEM_SAFETY_MARGIN_BYTES
 
 
-if HAS_TLE_DEVICE_MESH:
-    import triton.experimental.tle.language as tle_exp
-
-    BLOCK_CLUSTER_MESH = tle_exp.device_mesh({"block_cluster": [("cluster_x", 2)]})
-    TLE_CLUSTER_SIZE = 2
-    TLE_REMOTE_BM = 64
-    TLE_REMOTE_BN = 256
-    TLE_REMOTE_BK = 64
-    TLE_REMOTE_NUM_WARPS = 8
-    TLE_REMOTE_NUM_STAGES = 2
-    TLE_REMOTE_A_SLOTS = 2
-else:
-    tle_exp = None
-    BLOCK_CLUSTER_MESH = None
-    TLE_CLUSTER_SIZE = 2
-    TLE_REMOTE_BM = 64
-    TLE_REMOTE_BN = 256
-    TLE_REMOTE_BK = 64
-    TLE_REMOTE_NUM_WARPS = 8
-    TLE_REMOTE_NUM_STAGES = 2
-    TLE_REMOTE_A_SLOTS = 2
-
-
-def _mm_autotune_meta(named_args, **kwargs) -> dict:
+def _mm_w8a8_fp8_autotune_meta(named_args, **kwargs) -> dict:
     meta = kwargs.get("meta") or {}
     return {
         "M": int(meta.get("M", named_args.get("M", 0))),
@@ -312,7 +287,7 @@ def _mm_autotune_meta(named_args, **kwargs) -> dict:
     }
 
 
-def _mm_target_grid_blocks() -> int:
+def _mm_w8a8_fp8_target_grid_blocks() -> int:
     device_idx = _current_device_index()
     if device_idx < 0:
         return 78
@@ -328,12 +303,8 @@ def _mm_target_grid_blocks() -> int:
     return sm_count
 
 
-def _mm_grid_blocks(M: int, N: int, block_m: int, block_n: int) -> int:
+def _mm_w8a8_fp8_grid_blocks(M: int, N: int, block_m: int, block_n: int) -> int:
     return math.ceil(M / block_m) * math.ceil(N / block_n)
-
-
-def _gemv_grid_blocks(M: int, block_m: int) -> int:
-    return math.ceil(M / block_m)
 
 
 def _tma_config_shared_memory_ok(
@@ -356,7 +327,7 @@ def _tma_config_is_ncu_dominated_bad(
     block_n = cfg.kwargs["BLOCK_N"]
     block_k = cfg.kwargs["BLOCK_K"]
     stages = cfg.num_stages
-    grid = _mm_grid_blocks(M, N, block_m, block_n)
+    grid = _mm_w8a8_fp8_grid_blocks(M, N, block_m, block_n)
     smem = _estimate_tma_shared_memory_bytes(block_m, block_n, block_k, stages)
 
     # NCU: 233KB smem + stages>=4 -> achieved occ ~6%.
@@ -379,7 +350,7 @@ def _tma_config_is_ncu_dominated_bad(
     return False
 
 
-def _prefer_mm_tma_shape_configs(
+def _prefer_mm_w8a8_fp8_tma_shape_configs(
     configs, M: int, N: int, K: int, sm_target: int
 ) -> list:
     """Prefer lightweight TMA configs for launch-bound skinny decode shapes."""
@@ -399,7 +370,7 @@ def _prefer_mm_tma_shape_configs(
         preferred = []
         for cfg in configs:
             block_m, block_n, block_k, stages, warps = fields(cfg)
-            grid = _mm_grid_blocks(M, N, block_m, block_n)
+            grid = _mm_w8a8_fp8_grid_blocks(M, N, block_m, block_n)
             if (
                 block_m <= 32
                 and block_n in (128, 256)
@@ -415,13 +386,13 @@ def _prefer_mm_tma_shape_configs(
     return []
 
 
-def _prune_mm_tma_autotune_configs(configs, named_args, **kwargs):
-    """NCU-guided soft prune for mm_kernel_general_host_tma."""
-    meta = _mm_autotune_meta(named_args, **kwargs)
+def _prune_mm_w8a8_fp8_tma_autotune_configs(configs, named_args, **kwargs):
+    """NCU-guided soft prune for mm_w8a8_fp8_kernel_general_host_tma."""
+    meta = _mm_w8a8_fp8_autotune_meta(named_args, **kwargs)
     M = int(meta["M"])
     N = int(meta["N"])
     K = int(meta["K"])
-    sm_target = _mm_target_grid_blocks()
+    sm_target = _mm_w8a8_fp8_target_grid_blocks()
     shared_mem_limit = _get_shared_memory_limit_bytes()
 
     shared_ok = [
@@ -430,7 +401,9 @@ def _prune_mm_tma_autotune_configs(configs, named_args, **kwargs):
     if not (K == 7168 and N == 64):
         shared_ok = [cfg for cfg in shared_ok if cfg.kwargs["BLOCK_M"] >= 16]
     if _MM_PREFER_SHAPE_CONFIG and os.environ.get("USE_FLAGTUNE") != "1":
-        shape_preferred = _prefer_mm_tma_shape_configs(shared_ok, M, N, K, sm_target)
+        shape_preferred = _prefer_mm_w8a8_fp8_tma_shape_configs(
+            shared_ok, M, N, K, sm_target
+        )
         if shape_preferred:
             return shape_preferred
 
@@ -447,7 +420,7 @@ def _prune_mm_tma_autotune_configs(configs, named_args, **kwargs):
 
 def _prune_gemv_autotune_configs(configs, named_args, **kwargs):
     """Drop gemv configs NCU showed as launch-bound (BLOCK_M=256, 8 warps)."""
-    meta = _mm_autotune_meta(named_args, **kwargs)
+    meta = _mm_w8a8_fp8_autotune_meta(named_args, **kwargs)
     M = int(meta["M"])
 
     pruned = [
@@ -471,10 +444,10 @@ def _prune_gemv_autotune_configs(configs, named_args, **kwargs):
 
 def _prune_skinny_autotune_configs(configs, named_args, **kwargs):
     """Prefer lightweight tiles with enough N-side grid for skinny decode GEMMs."""
-    meta = _mm_autotune_meta(named_args, **kwargs)
+    meta = _mm_w8a8_fp8_autotune_meta(named_args, **kwargs)
     M = int(meta["M"])
     N = int(meta["N"])
-    sm_target = _mm_target_grid_blocks()
+    sm_target = _mm_w8a8_fp8_target_grid_blocks()
 
     pruned = []
     for cfg in configs:
@@ -484,7 +457,7 @@ def _prune_skinny_autotune_configs(configs, named_args, **kwargs):
             continue
         if cfg.num_warps > 4 or cfg.num_stages > 3:
             continue
-        grid = _mm_grid_blocks(M, N, block_m, block_n)
+        grid = _mm_w8a8_fp8_grid_blocks(M, N, block_m, block_n)
         if grid < max(32, sm_target // 2) and block_n < 128:
             continue
         pruned.append(cfg)
@@ -493,7 +466,7 @@ def _prune_skinny_autotune_configs(configs, named_args, **kwargs):
     return list(configs)
 
 
-def matmul_skinny_get_configs():
+def _mm_w8a8_fp8_skinny_get_configs():
     return [
         triton.Config(
             {"BLOCK_M": BM, "BLOCK_N": BN, "BLOCK_K": BK},
@@ -554,7 +527,7 @@ def prev_multiple_of(a, b):
     return tl.cdiv(a, b) * b - b
 
 
-def matmul_tma_set_block_size_hook(nargs, reset_only=False):
+def _mm_w8a8_fp8_tma_set_block_size_hook(nargs, reset_only=False):
     if reset_only:
         return
     BLOCK_M = nargs["BLOCK_M"]
@@ -583,7 +556,7 @@ def matmul_tma_set_block_size_hook(nargs, reset_only=False):
     rep=10,
 )
 @triton.jit
-def mm_kernel_general(
+def mm_w8a8_fp8_kernel_general(
     A,
     B,
     C,
@@ -706,7 +679,7 @@ def mm_kernel_general(
         tl.store(offsets, acc, mask=mask)
 
 
-def matmul_get_configs(pre_hook=matmul_tma_set_block_size_hook):
+def _mm_w8a8_fp8_get_configs(pre_hook=_mm_w8a8_fp8_tma_set_block_size_hook):
     configs = [
         triton.Config(
             {"BLOCK_M": BM, "BLOCK_N": BN, "BLOCK_K": BK},
@@ -745,28 +718,30 @@ def matmul_get_configs(pre_hook=matmul_tma_set_block_size_hook):
     return filtered_configs
 
 
-def _mm_host_tma_tuner_kwargs():
+def _mm_w8a8_fp8_host_tma_tuner_kwargs():
     return dict(
         key=["M", "N", "K", "stride_am", "stride_bk", "dtype"],
         warmup=10,
         rep=20,
-        prune_configs_by={"early_config_prune": _prune_mm_tma_autotune_configs},
+        prune_configs_by={
+            "early_config_prune": _prune_mm_w8a8_fp8_tma_autotune_configs
+        },
     )
 
 
-def _wrap_mm_host_tma_kernel(configs, strategy):
+def _wrap_mm_w8a8_fp8_host_tma_kernel(configs, strategy):
     return libentry()(
         libtuner(
             configs=configs,
             strategy=strategy,
-            pre_hook=matmul_tma_set_block_size_hook,
-            **_mm_host_tma_tuner_kwargs(),
-        )(mm_kernel_general_host_tma_jit)
+            pre_hook=_mm_w8a8_fp8_tma_set_block_size_hook,
+            **_mm_w8a8_fp8_host_tma_tuner_kwargs(),
+        )(mm_w8a8_fp8_kernel_general_host_tma_jit)
     )
 
 
 @triton.jit
-def mm_kernel_general_host_tma_jit(
+def mm_w8a8_fp8_kernel_general_host_tma_jit(
     a_desc,
     b_desc,
     c_desc,
@@ -831,12 +806,12 @@ def mm_kernel_general_host_tma_jit(
     c_desc.store([offset_am, offset_bn], c)
 
 
-_MM_HOST_TMA_CONFIGS = matmul_get_configs()
-mm_kernel_general_host_tma = _wrap_mm_host_tma_kernel(
+_MM_HOST_TMA_CONFIGS = _mm_w8a8_fp8_get_configs()
+mm_w8a8_fp8_kernel_general_host_tma = _wrap_mm_w8a8_fp8_host_tma_kernel(
     (
         runtime.ops_get_configs(
-            "mm_w8a8_general_tma",
-            pre_hook=matmul_tma_set_block_size_hook,
+            "mm_w8a8_fp8_general_tma",
+            pre_hook=_mm_w8a8_fp8_tma_set_block_size_hook,
             yaml_path=EXPAND_CONFIG_FILENAME,
         )
         if os.environ.get("USE_FLAGTUNE") == "1"
@@ -844,19 +819,19 @@ mm_kernel_general_host_tma = _wrap_mm_host_tma_kernel(
     ),
     (
         runtime.get_expand_config(
-            "mm_w8a8_general_tma", yaml_path=EXPAND_CONFIG_FILENAME
+            "mm_w8a8_fp8_general_tma", yaml_path=EXPAND_CONFIG_FILENAME
         )["strategy"]
         if os.environ.get("USE_FLAGTUNE") == "1"
         else _MM_TMA_DEFAULT_STRATEGY
     ),
 )
-mm_kernel_general_host_tma_default_tune = _wrap_mm_host_tma_kernel(
+mm_w8a8_fp8_kernel_general_host_tma_default_tune = _wrap_mm_w8a8_fp8_host_tma_kernel(
     _MM_HOST_TMA_CONFIGS,
     _MM_TMA_DEFAULT_STRATEGY,
 )
 
 
-def _sync_mm_host_tma_descriptor_block_shapes(args, kwargs):
+def _sync_mm_w8a8_fp8_host_tma_descriptor_block_shapes(args, kwargs):
     if len(args) < 3:
         return
     block_m = kwargs.get("BLOCK_M")
@@ -876,31 +851,33 @@ def _sync_mm_host_tma_descriptor_block_shapes(args, kwargs):
     c_desc.block_shape = [block_m, block_n]
 
 
-def _install_mm_host_tma_descriptor_block_shape_guard(tma_kernel):
+def _install_mm_w8a8_fp8_host_tma_descriptor_block_shape_guard(tma_kernel):
     jit_fn = tma_kernel.fn.fn
-    if getattr(jit_fn, "_flag_gems_mm_tma_block_shape_guard", False):
+    if getattr(jit_fn, "_flag_gems_mm_w8a8_fp8_tma_block_shape_guard", False):
         return
 
     original_run = jit_fn.run
 
     def run_with_descriptor_block_shapes(*args, **kwargs):
-        _sync_mm_host_tma_descriptor_block_shapes(args, kwargs)
+        _sync_mm_w8a8_fp8_host_tma_descriptor_block_shapes(args, kwargs)
         return original_run(*args, **kwargs)
 
     jit_fn.run = run_with_descriptor_block_shapes
-    jit_fn._flag_gems_mm_tma_block_shape_guard = True
+    jit_fn._flag_gems_mm_w8a8_fp8_tma_block_shape_guard = True
 
 
-_install_mm_host_tma_descriptor_block_shape_guard(mm_kernel_general_host_tma)
-_install_mm_host_tma_descriptor_block_shape_guard(
-    mm_kernel_general_host_tma_default_tune
+_install_mm_w8a8_fp8_host_tma_descriptor_block_shape_guard(
+    mm_w8a8_fp8_kernel_general_host_tma
+)
+_install_mm_w8a8_fp8_host_tma_descriptor_block_shape_guard(
+    mm_w8a8_fp8_kernel_general_host_tma_default_tune
 )
 
 
-def _block_scaled_tma_configs(pre_hook):
+def _mm_w8a8_fp8_block_scaled_tma_configs(pre_hook):
     if os.environ.get("USE_FLAGTUNE") == "1":
         return runtime.ops_get_configs(
-            "mm_w8a8_block_scaled",
+            "mm_w8a8_fp8_block_scaled",
             pre_hook=pre_hook,
             yaml_path=EXPAND_CONFIG_FILENAME,
         )
@@ -923,7 +900,7 @@ def _block_scaled_tma_configs(pre_hook):
     ]
 
 
-def _block_scaled_splitk_tma_hook(nargs, reset_only=False):
+def _mm_w8a8_fp8_block_scaled_splitk_tma_hook(nargs, reset_only=False):
     if reset_only:
         return
     block_m = nargs["BLOCK_M"]
@@ -933,10 +910,10 @@ def _block_scaled_splitk_tma_hook(nargs, reset_only=False):
     nargs["b_desc"].block_shape = [block_n, block_k]
 
 
-def _block_scaled_splitk_tma_configs(pre_hook):
+def _mm_w8a8_fp8_block_scaled_splitk_tma_configs(pre_hook):
     if os.environ.get("USE_FLAGTUNE") == "1":
         return runtime.ops_get_configs(
-            "mm_w8a8_block_scaled_splitk",
+            "mm_w8a8_fp8_block_scaled_splitk",
             pre_hook=pre_hook,
             yaml_path=EXPAND_CONFIG_FILENAME,
         )
@@ -958,10 +935,10 @@ def _block_scaled_splitk_tma_configs(pre_hook):
     ]
 
 
-def _prune_block_scaled_tma_configs(configs, named_args, **kwargs):
-    meta = _mm_autotune_meta(named_args, **kwargs)
+def _prune_mm_w8a8_fp8_block_scaled_tma_configs(configs, named_args, **kwargs):
+    meta = _mm_w8a8_fp8_autotune_meta(named_args, **kwargs)
     n = int(meta["N"])
-    configs = _prune_mm_tma_autotune_configs(configs, named_args, **kwargs)
+    configs = _prune_mm_w8a8_fp8_tma_autotune_configs(configs, named_args, **kwargs)
     block_n = 128 if n >= 128 else (64 if n >= 64 else 32)
     native_tiles = [
         cfg
@@ -974,8 +951,8 @@ def _prune_block_scaled_tma_configs(configs, named_args, **kwargs):
     return native_tiles or configs
 
 
-def _prune_block_scaled_splitk_tma_configs(configs, named_args, **kwargs):
-    meta = _mm_autotune_meta(named_args, **kwargs)
+def _prune_mm_w8a8_fp8_block_scaled_splitk_tma_configs(configs, named_args, **kwargs):
+    meta = _mm_w8a8_fp8_autotune_meta(named_args, **kwargs)
     n = int(meta["N"])
     block_n = 64 if n >= 64 else 32
     native_tiles = [
@@ -991,22 +968,24 @@ def _prune_block_scaled_splitk_tma_configs(configs, named_args, **kwargs):
 
 @libentry()
 @libtuner(
-    configs=_block_scaled_tma_configs(matmul_tma_set_block_size_hook),
+    configs=_mm_w8a8_fp8_block_scaled_tma_configs(_mm_w8a8_fp8_tma_set_block_size_hook),
     key=["M", "N", "K", "stride_am", "stride_bk"],
     strategy=(
         runtime.get_expand_config(
-            "mm_w8a8_block_scaled", yaml_path=EXPAND_CONFIG_FILENAME
+            "mm_w8a8_fp8_block_scaled", yaml_path=EXPAND_CONFIG_FILENAME
         )["strategy"]
         if os.environ.get("USE_FLAGTUNE") == "1"
         else ["align32", "align32", "align32", "align32", "align32"]
     ),
     warmup=5,
     rep=10,
-    pre_hook=matmul_tma_set_block_size_hook,
-    prune_configs_by={"early_config_prune": _prune_block_scaled_tma_configs},
+    pre_hook=_mm_w8a8_fp8_tma_set_block_size_hook,
+    prune_configs_by={
+        "early_config_prune": _prune_mm_w8a8_fp8_block_scaled_tma_configs
+    },
 )
 @triton.jit
-def mm_w8a8_block_scaled_kernel_tma_native_v2(
+def mm_w8a8_fp8_block_scaled_kernel_tma_native_v2(
     a_desc,
     b_desc,
     c_desc,
@@ -1065,22 +1044,26 @@ def mm_w8a8_block_scaled_kernel_tma_native_v2(
 
 @libentry()
 @libtuner(
-    configs=_block_scaled_splitk_tma_configs(_block_scaled_splitk_tma_hook),
+    configs=_mm_w8a8_fp8_block_scaled_splitk_tma_configs(
+        _mm_w8a8_fp8_block_scaled_splitk_tma_hook
+    ),
     key=["M", "N", "K", "stride_am", "stride_bk"],
     strategy=(
         runtime.get_expand_config(
-            "mm_w8a8_block_scaled_splitk", yaml_path=EXPAND_CONFIG_FILENAME
+            "mm_w8a8_fp8_block_scaled_splitk", yaml_path=EXPAND_CONFIG_FILENAME
         )["strategy"]
         if os.environ.get("USE_FLAGTUNE") == "1"
         else ["align32", "align32", "align32", "align32", "align32"]
     ),
     warmup=5,
     rep=10,
-    pre_hook=_block_scaled_splitk_tma_hook,
-    prune_configs_by={"early_config_prune": _prune_block_scaled_splitk_tma_configs},
+    pre_hook=_mm_w8a8_fp8_block_scaled_splitk_tma_hook,
+    prune_configs_by={
+        "early_config_prune": _prune_mm_w8a8_fp8_block_scaled_splitk_tma_configs
+    },
 )
 @triton.jit
-def mm_w8a8_block_scaled_kernel_splitk_tma_native_v2(
+def mm_w8a8_fp8_block_scaled_kernel_splitk_tma_native_v2(
     a_desc,
     b_desc,
     C,
@@ -1133,12 +1116,7 @@ def mm_w8a8_block_scaled_kernel_splitk_tma_native_v2(
     tl.atomic_add(c_ptrs, acc.to(C.dtype.element_ty), mask=mask)
 
 
-_install_mm_host_tma_descriptor_block_shape_guard(
-    mm_w8a8_block_scaled_kernel_tma_native_v2
-)
-
-
-def _mm_host_tma_autotune_key(
+def _mm_w8a8_fp8_host_tma_autotune_key(
     M: int, N: int, K: int, stride_am: int, stride_bk: int, dtype_str: str
 ) -> tuple:
     return (M, N, K, stride_am, stride_bk, dtype_str)
@@ -1165,7 +1143,7 @@ def _median_kernel_latency_ms(run_kernel: Callable[[], None], rep: int = 10) -> 
     return float(timings[len(timings) // 2])
 
 
-def _pick_mm_host_tma_kernel(
+def _pick_mm_w8a8_fp8_host_tma_kernel(
     M: int,
     N: int,
     K: int,
@@ -1176,31 +1154,31 @@ def _pick_mm_host_tma_kernel(
 ):
     """Expand pretune: pick default tune space when it beats expand on N=256/1024."""
     if os.environ.get("USE_FLAGTUNE") != "1":
-        return mm_kernel_general_host_tma
+        return mm_w8a8_fp8_kernel_general_host_tma
 
     # Measured Qwen pockets where the expand TMA space picks much slower
     # configs than the default tune space. Keep them on the default path while
     # still allowing targeted expand search for N=256/1024 below.
     if N == 64 or N >= 8192 or K in (512, 4096):
-        return mm_kernel_general_host_tma_default_tune
+        return mm_w8a8_fp8_kernel_general_host_tma_default_tune
 
     if not _MM_EXPAND_PICK_DEFAULT_N256_N1024 or N not in _MM_EXPAND_NARROW_N:
-        return mm_kernel_general_host_tma
+        return mm_w8a8_fp8_kernel_general_host_tma
 
-    key = _mm_host_tma_autotune_key(M, N, K, stride_am, stride_bk, dtype_str)
+    key = _mm_w8a8_fp8_host_tma_autotune_key(M, N, K, stride_am, stride_bk, dtype_str)
     cached = _mm_expand_use_default_tune.get(key)
     if cached is not None:
         return (
-            mm_kernel_general_host_tma_default_tune
+            mm_w8a8_fp8_kernel_general_host_tma_default_tune
             if cached
-            else mm_kernel_general_host_tma
+            else mm_w8a8_fp8_kernel_general_host_tma
         )
 
     t_default = _median_kernel_latency_ms(
-        lambda: run_kernel_for(mm_kernel_general_host_tma_default_tune)
+        lambda: run_kernel_for(mm_w8a8_fp8_kernel_general_host_tma_default_tune)
     )
     t_expand = _median_kernel_latency_ms(
-        lambda: run_kernel_for(mm_kernel_general_host_tma)
+        lambda: run_kernel_for(mm_w8a8_fp8_kernel_general_host_tma)
     )
     use_default = t_expand > t_default
     _mm_expand_use_default_tune[key] = use_default
@@ -1213,13 +1191,13 @@ def _pick_mm_host_tma_kernel(
         t_expand,
     )
     return (
-        mm_kernel_general_host_tma_default_tune
+        mm_w8a8_fp8_kernel_general_host_tma_default_tune
         if use_default
-        else mm_kernel_general_host_tma
+        else mm_w8a8_fp8_kernel_general_host_tma
     )
 
 
-def _fp8_mm_output_dtype(input_dtype: torch.dtype) -> torch.dtype:
+def _mm_w8a8_fp8_output_dtype(input_dtype: torch.dtype) -> torch.dtype:
     if _MM_FP8_OUTPUT_DTYPE in ("bf16", "bfloat16"):
         return torch.bfloat16
     if _MM_FP8_OUTPUT_DTYPE in ("fp8", "float8"):
@@ -1237,14 +1215,14 @@ def get_higher_dtype(a, b):
         if a in _FP8_DTYPES:
             # FP8 inputs keep fp32 accumulation in kernel; output dtype is
             # selected outside the kernel for benchmark/inference tradeoffs.
-            return _fp8_mm_output_dtype(a)
+            return _mm_w8a8_fp8_output_dtype(a)
         return a
 
     assert a in _ordered_datatypes
     assert b in _ordered_datatypes
 
     if a in _FP8_DTYPES and b in _FP8_DTYPES:
-        return _fp8_mm_output_dtype(a)
+        return _mm_w8a8_fp8_output_dtype(a)
 
     for d in _ordered_datatypes:
         if a is d:
@@ -1253,7 +1231,7 @@ def get_higher_dtype(a, b):
             return a
 
 
-def general_mm(a, b, c, M, N, K):
+def _mm_w8a8_fp8_general(a, b, c, M, N, K):
     # TODO: Remove this debug message
     logger.debug(
         "GEMS_NVIDIA MM_HOPPER, [mm scenario]: general, [shape info]: "
@@ -1295,7 +1273,7 @@ def general_mm(a, b, c, M, N, K):
                 TensorDescriptor, b, b_t.shape, b_t.stride(), dummy_block, "b_col"
             )
         # Graph replay keeps `c` storage stable -> safe to cache c_desc too.
-        if _mm_cuda_graph_effective(M, N, K):
+        if _mm_w8a8_fp8_cuda_graph_effective(M, N, K):
             c_desc = _get_or_make_tensor_descriptor(
                 TensorDescriptor, c, c.shape, c.stride(), dummy_block, "c_row"
             )
@@ -1313,7 +1291,7 @@ def general_mm(a, b, c, M, N, K):
             }
             if not (
                 os.environ.get("USE_FLAGTUNE") == "1"
-                and tma_kernel is mm_kernel_general_host_tma
+                and tma_kernel is mm_w8a8_fp8_kernel_general_host_tma
             ):
                 meta["GROUP_M"] = 8
             try:
@@ -1352,7 +1330,7 @@ def general_mm(a, b, c, M, N, K):
                     **meta_with_group,
                 )
 
-        tma_kernel = _pick_mm_host_tma_kernel(
+        tma_kernel = _pick_mm_w8a8_fp8_host_tma_kernel(
             M,
             N,
             K,
@@ -1372,7 +1350,7 @@ def general_mm(a, b, c, M, N, K):
         triton.set_allocator(alloc_fn)
 
         with torch_device_fn.device(a.device):
-            mm_kernel_general[grid](
+            mm_w8a8_fp8_kernel_general[grid](
                 a,
                 b,
                 c,
@@ -1394,7 +1372,7 @@ def general_mm(a, b, c, M, N, K):
 @libtuner(
     configs=(
         runtime.ops_get_configs(
-            "mm_w8a8_gemv", pre_hook=None, yaml_path=EXPAND_CONFIG_FILENAME
+            "mm_w8a8_fp8_gemv", pre_hook=None, yaml_path=EXPAND_CONFIG_FILENAME
         )
         if os.environ.get("USE_FLAGTUNE") == "1"
         else [
@@ -1405,7 +1383,7 @@ def general_mm(a, b, c, M, N, K):
     ),
     key=["M", "K", "stride_am", "stride_bk"],
     strategy=(
-        runtime.get_expand_config("mm_w8a8_gemv", yaml_path=EXPAND_CONFIG_FILENAME)[
+        runtime.get_expand_config("mm_w8a8_fp8_gemv", yaml_path=EXPAND_CONFIG_FILENAME)[
             "strategy"
         ]
         if os.environ.get("USE_FLAGTUNE") == "1"
@@ -1416,7 +1394,7 @@ def general_mm(a, b, c, M, N, K):
     prune_configs_by={"early_config_prune": _prune_gemv_autotune_configs},
 )
 @triton.jit
-def gemv_kernel(
+def mm_w8a8_fp8_gemv_kernel(
     A,
     B,
     C,
@@ -1464,7 +1442,7 @@ def gemv_kernel(
     tl.store(c_ptrs, acc, mask=row_mask)
 
 
-def gemv_mm(a, b, c, M, K):
+def _mm_w8a8_fp8_gemv(a, b, c, M, K):
     """Optimized matrix-vector multiplication for N=1 case"""
     logger.debug(
         "GEMS_NVIDIA MM_HOPPER, [mm scenario]: gemv (N=1), [shape info]: [%s, %s, 1](M, K, N)",
@@ -1475,7 +1453,7 @@ def gemv_mm(a, b, c, M, K):
     grid = lambda META: (triton.cdiv(M, META["BLOCK_M"]),)
 
     with torch_device_fn.device(a.device):
-        gemv_kernel[grid](
+        mm_w8a8_fp8_gemv_kernel[grid](
             a,
             b,
             c,
@@ -1492,25 +1470,25 @@ def gemv_mm(a, b, c, M, K):
 @libtuner(
     configs=(
         runtime.ops_get_configs(
-            "mm_w8a8_skinny", pre_hook=None, yaml_path=EXPAND_CONFIG_FILENAME
+            "mm_w8a8_fp8_skinny", pre_hook=None, yaml_path=EXPAND_CONFIG_FILENAME
         )
         if os.environ.get("USE_FLAGTUNE") == "1"
-        else matmul_skinny_get_configs()
+        else _mm_w8a8_fp8_skinny_get_configs()
     ),
     key=["M", "N", "K", "stride_am", "stride_bk"],
     strategy=(
-        runtime.get_expand_config("mm_w8a8_skinny", yaml_path=EXPAND_CONFIG_FILENAME)[
-            "strategy"
-        ]
+        runtime.get_expand_config(
+            "mm_w8a8_fp8_skinny", yaml_path=EXPAND_CONFIG_FILENAME
+        )["strategy"]
         if os.environ.get("USE_FLAGTUNE") == "1"
-        else ["mm_w8a8_tma_m", "align32", "align32", "align32", "default"]
+        else ["mm_w8a8_fp8_tma_m", "align32", "align32", "align32", "default"]
     ),
     warmup=10,
     rep=20,
     prune_configs_by={"early_config_prune": _prune_skinny_autotune_configs},
 )
 @triton.jit
-def mm_kernel_skinny(
+def mm_w8a8_fp8_kernel_skinny(
     A,
     B,
     C,
@@ -1571,7 +1549,7 @@ def mm_kernel_skinny(
     tl.store(offsets, acc.to(C.dtype.element_ty), mask=mask)
 
 
-def skinny_mm(a, b, c, M, N, K):
+def _mm_w8a8_fp8_skinny(a, b, c, M, N, K):
     logger.debug(
         "GEMS MM-hopper, [mm scenario]: skinny (M<= %s, N>= %s), "
         "[shape info]: [%s, %s, %s](M, N, K)",
@@ -1585,7 +1563,7 @@ def skinny_mm(a, b, c, M, N, K):
         triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
     )
     with torch_device_fn.device(a.device):
-        mm_kernel_skinny[grid](
+        mm_w8a8_fp8_kernel_skinny[grid](
             a,
             b,
             c,
@@ -1603,7 +1581,7 @@ def skinny_mm(a, b, c, M, N, K):
     return c
 
 
-def skinny_scenario(a, b, M, N, K):
+def _mm_w8a8_fp8_skinny_scenario(a, b, M, N, K):
     """Route launch-bound decode lm_head shapes to the skinny kernel."""
     if not _MM_SKINNY_GEMM_ENABLED:
         return False
@@ -1632,22 +1610,6 @@ def skinny_scenario(a, b, M, N, K):
     )
 
 
-def streamk_scenario(a, b, M, N, K):
-    # TODO: this my change sometime according to the realbenchmark result
-    # Currently, the best configuration for streamk has only been tested on A100(capability[0] == 8).
-    # The optimal settings for other devices need to be determined through real testing.
-    capability = get_device_capability()
-    return (
-        capability[0] == 8
-        and a.dtype in [torch.float16, torch.bfloat16]
-        and b.dtype in [torch.float16, torch.bfloat16]
-        and a.is_contiguous()
-        and b.is_contiguous()
-        and K > M * 5
-        and K > N * 5
-    )
-
-
 @libentry()
 @libtuner(
     configs=runtime.get_tuned_config("mm_splitk"),
@@ -1657,12 +1619,12 @@ def streamk_scenario(a, b, M, N, K):
     warmup=5,
     rep=10,
     flagtune_op_name="mm_w8a8_fp8",
-    flagtune_expand_op_name="mm_w8a8_splitk",
+    flagtune_expand_op_name="mm_w8a8_fp8_splitk",
     flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
     flagtune_pre_hook=None,
 )
 @triton.jit
-def mm_kernel_splitk(
+def mm_w8a8_fp8_kernel_splitk(
     A,
     B,
     C,
@@ -1721,7 +1683,7 @@ def mm_kernel_splitk(
     tl.atomic_add(c_ptrs, acc, mask=mask)
 
 
-def splitk_mm(a, b, c, M, N, K, op_name="mm"):
+def _mm_w8a8_fp8_splitk(a, b, c, M, N, K, op_name="mm"):
     logger.debug(
         "GEMS_NVIDIA MM_HOPPER, [op]: %s, [mm scenario]: splitk, [shape info]: [-, %s, %s, %s](batch, M, N, K)",
         op_name,
@@ -1734,7 +1696,7 @@ def splitk_mm(a, b, c, M, N, K, op_name="mm"):
         META["SPLIT_K"],
     )
     with torch_device_fn.device(a.device):
-        mm_kernel_splitk[grid](
+        mm_w8a8_fp8_kernel_splitk[grid](
             a,
             b,
             c,
@@ -1751,216 +1713,7 @@ def splitk_mm(a, b, c, M, N, K, op_name="mm"):
     return c
 
 
-def _get_block_scaled_placeholder_configs(pre_hook=None):
-    return [
-        triton.Config(
-            {
-                "BLOCK_M": 64,
-                "BLOCK_N": 64,
-                "BLOCK_K": 128,
-                "GROUP_M": 32,
-            },
-            num_stages=3,
-            num_warps=4,
-            pre_hook=pre_hook,
-        )
-    ]
-
-
-def _get_block_scaled_fixed_meta(M: int, N: int, K: int, group_n: int, group_k: int):
-    del K
-    block_m = 16 if M <= 16 else 64
-    block_n = 64 if N <= 256 else min(128, max(32, group_n))
-    return {
-        "BLOCK_M": block_m,
-        "BLOCK_N": block_n,
-        "BLOCK_K": group_k,
-        "GROUP_M": 32,
-        "num_warps": 4,
-        "num_stages": 2,
-    }
-
-
-@libentry()
-@libtuner(
-    configs=_get_block_scaled_placeholder_configs(pre_hook=None),
-    key=["M", "N", "K", "stride_am", "stride_bk"],
-    strategy=["align32", "align32", "align32", "align32", "align32"],
-    warmup=5,
-    rep=5,
-    flagtune_op_name="mm_w8a8_fp8",
-    flagtune_expand_op_name="mm_w8a8_block_scaled",
-    flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
-    flagtune_pre_hook=None,
-)
-@triton.jit
-def mm_w8a8_block_scaled_kernel_general(
-    A,
-    B,
-    C,
-    As,
-    Bs,
-    M,
-    N,
-    K,
-    group_n,
-    group_k,
-    stride_am,
-    stride_ak,
-    stride_bk,
-    stride_bn,
-    stride_cm,
-    stride_cn,
-    stride_As_m,
-    stride_As_k,
-    stride_Bs_k,
-    stride_Bs_n,
-    BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-    BLOCK_K: tl.constexpr,
-    GROUP_M: tl.constexpr,
-    SINGLE_K_BLOCK: tl.constexpr,
-):
-    pid = tl.program_id(axis=0)
-    num_pid_m = tl.cdiv(M, BLOCK_M)
-    num_pid_n = tl.cdiv(N, BLOCK_N)
-    num_pid_in_group = GROUP_M * num_pid_n
-    group_id = pid // num_pid_in_group
-    first_pid_m = group_id * GROUP_M
-    group_size_m = min(num_pid_m - first_pid_m, GROUP_M)
-    pid_m = first_pid_m + (pid % group_size_m)
-    pid_n = (pid % num_pid_in_group) // group_size_m
-
-    offs_am = (pid_m * BLOCK_M + tl.arange(0, BLOCK_M)) % M
-    offs_bn = (pid_n * BLOCK_N + tl.arange(0, BLOCK_N)) % N
-    offs_k = tl.arange(0, BLOCK_K)
-    a_ptrs = A + (offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak)
-    b_ptrs = B + (offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn)
-
-    As_ptrs = As + offs_am * stride_As_m
-    offs_bsn = offs_bn // group_n
-    Bs_ptrs = Bs + offs_bsn * stride_Bs_n
-
-    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
-    if SINGLE_K_BLOCK:
-        # The whole reduction uses one quantization group. Keep the K path as
-        # pure FP8 dot accumulation and apply the two FP32 scales only once.
-        a_s = tl.load(As_ptrs)
-        b_s = tl.load(Bs_ptrs)
-        a = tl.load(a_ptrs, mask=offs_k[None, :] < K, other=0.0)
-        b = tl.load(b_ptrs, mask=offs_k[:, None] < K, other=0.0)
-        acc += tl.dot(a, b, out_dtype=tl.float32)
-        acc *= a_s[:, None] * b_s[None, :]
-    else:
-        for k in range(0, tl.cdiv(K, BLOCK_K)):
-            a = tl.load(a_ptrs, mask=offs_k[None, :] < K - k * BLOCK_K, other=0.0)
-            b = tl.load(b_ptrs, mask=offs_k[:, None] < K - k * BLOCK_K, other=0.0)
-            offs_ks = (k * BLOCK_K) // group_k
-            a_s = tl.load(As_ptrs + offs_ks * stride_As_k)
-            b_s = tl.load(Bs_ptrs + offs_ks * stride_Bs_k)
-            acc += tl.dot(a, b, out_dtype=tl.float32) * a_s[:, None] * b_s[None, :]
-            a_ptrs += BLOCK_K * stride_ak
-            b_ptrs += BLOCK_K * stride_bk
-
-    c = acc.to(C.dtype.element_ty)
-    offs_cm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    offs_cn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-    c_ptrs = C + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :]
-    c_mask = (offs_cm[:, None] < M) & (offs_cn[None, :] < N)
-    tl.store(c_ptrs, c, mask=c_mask)
-
-
-@libentry()
-@libtuner(
-    configs=_get_block_scaled_placeholder_configs(pre_hook=None),
-    key=["M", "N", "K", "stride_am", "stride_bk"],
-    strategy=["align32", "align32", "align32", "align32", "align32"],
-    warmup=5,
-    rep=5,
-    flagtune_op_name="mm_w8a8_fp8",
-    flagtune_expand_op_name="mm_w8a8_block_scaled_splitk",
-    flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
-    flagtune_pre_hook=None,
-)
-@triton.jit
-def mm_w8a8_block_scaled_kernel_splitk(
-    A,
-    B,
-    C,
-    As,
-    Bs,
-    M,
-    N,
-    K,
-    group_n,
-    group_k,
-    stride_am,
-    stride_ak,
-    stride_bk,
-    stride_bn,
-    stride_cm,
-    stride_cn,
-    stride_As_m,
-    stride_As_k,
-    stride_Bs_k,
-    stride_Bs_n,
-    BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-    BLOCK_K: tl.constexpr,
-    SPLIT_K: tl.constexpr,
-):
-    pid = tl.program_id(0)
-    pid_k = tl.program_id(1)
-
-    grid_n = tl.cdiv(N, BLOCK_N)
-    pid_m = pid // grid_n
-    pid_n = pid % grid_n
-
-    offset_am = pid_m * BLOCK_M
-    offset_bn = pid_n * BLOCK_N
-    offs_am = offset_am + tl.arange(0, BLOCK_M)
-    offs_bn = offset_bn + tl.arange(0, BLOCK_N)
-
-    total_k_iters = tl.cdiv(K, BLOCK_K)
-    k_per_split = tl.cdiv(total_k_iters, SPLIT_K)
-    k_start = pid_k * k_per_split
-    k_end = min((pid_k + 1) * k_per_split, total_k_iters)
-
-    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
-    for k in range(k_start, k_end):
-        offset_k = k * BLOCK_K
-        offs_k = offset_k + tl.arange(0, BLOCK_K)
-        a = tl.load(
-            A + offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak,
-            mask=(offs_am[:, None] < M) & (offs_k[None, :] < K),
-            other=0.0,
-        )
-        b = tl.load(
-            B + offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn,
-            mask=(offs_k[:, None] < K) & (offs_bn[None, :] < N),
-            other=0.0,
-        )
-        offs_ks = offset_k // group_k
-        a_s = tl.load(
-            As + offs_am * stride_As_m + offs_ks * stride_As_k,
-            mask=offs_am < M,
-            other=0.0,
-        )
-        b_s = tl.load(
-            Bs + offs_ks * stride_Bs_k + (offs_bn // group_n) * stride_Bs_n,
-            mask=offs_bn < N,
-            other=0.0,
-        )
-        acc += tl.dot(a, b, out_dtype=tl.float32) * a_s[:, None] * b_s[None, :]
-
-    offs_cm = offset_am + tl.arange(0, BLOCK_M)
-    offs_cn = offset_bn + tl.arange(0, BLOCK_N)
-    c_ptrs = C + offs_cm[:, None] * stride_cm + offs_cn[None, :] * stride_cn
-    mask = (offs_cm < M)[:, None] & (offs_cn < N)[None, :]
-    tl.atomic_add(c_ptrs, acc.to(C.dtype.element_ty), mask=mask)
-
-
-def _single_k_tma_size(k: int) -> int:
+def _mm_w8a8_fp8_single_k_tma_size(k: int) -> int:
     if k <= 32:
         return 32
     if k <= 64:
@@ -1968,7 +1721,7 @@ def _single_k_tma_size(k: int) -> int:
     return 128
 
 
-def _block_scaled_tma_mm(a, b, c, a_s, b_s, M, N, K, group_n, group_k):
+def _mm_w8a8_fp8_block_scaled_tma(a, b, c, a_s, b_s, M, N, K, group_n, group_k):
     from triton.tools.tensor_descriptor import TensorDescriptor
 
     block_m = 64
@@ -1978,7 +1731,7 @@ def _block_scaled_tma_mm(a, b, c, a_s, b_s, M, N, K, group_n, group_k):
         block_n = 64
     else:
         block_n = 128
-    block_k = _single_k_tma_size(K) if K < 128 else 128
+    block_k = _mm_w8a8_fp8_single_k_tma_size(K) if K < 128 else 128
     num_stages = 3 if K > 128 and 2048 < N < 65536 and M <= 512 else 2
     a_desc = _get_or_make_tensor_descriptor(
         TensorDescriptor,
@@ -2006,7 +1759,7 @@ def _block_scaled_tma_mm(a, b, c, a_s, b_s, M, N, K, group_n, group_k):
         "block_c_row",
     )
     grid = (triton.cdiv(M, block_m) * triton.cdiv(N, block_n),)
-    mm_w8a8_block_scaled_kernel_tma_native_v2.fn.fn[grid](
+    mm_w8a8_fp8_block_scaled_kernel_tma_native_v2.fn.fn[grid](
         a_desc,
         b_desc,
         c_desc,
@@ -2036,7 +1789,7 @@ def _block_scaled_tma_mm(a, b, c, a_s, b_s, M, N, K, group_n, group_k):
     return c
 
 
-def _block_scaled_splitk_tma_mm(a, b, c, a_s, b_s, M, N, K, group_n, group_k):
+def _mm_w8a8_fp8_block_scaled_splitk_tma(a, b, c, a_s, b_s, M, N, K, group_n, group_k):
     from triton.tools.tensor_descriptor import TensorDescriptor
 
     dummy_block = [1, 1]
@@ -2051,7 +1804,7 @@ def _block_scaled_splitk_tma_mm(a, b, c, a_s, b_s, M, N, K, group_n, group_k):
         meta["SPLIT_K"],
     )
     c.zero_()
-    mm_w8a8_block_scaled_kernel_splitk_tma_native_v2[grid](
+    mm_w8a8_fp8_block_scaled_kernel_splitk_tma_native_v2[grid](
         a_desc,
         b_desc,
         c,
@@ -2074,409 +1827,27 @@ def _block_scaled_splitk_tma_mm(a, b, c, a_s, b_s, M, N, K, group_n, group_k):
     return c
 
 
-def block_scaled_mm(a, b, c, a_s, b_s, M, N, K, group_n, group_k):
+def _mm_w8a8_fp8_block_scaled(a, b, c, a_s, b_s, M, N, K, group_n, group_k):
     logger.debug(
-        "GEMS_NVIDIA MM_W8A8_HOPPER, [mm scenario]: block_scaled, "
+        "GEMS_NVIDIA MM_W8A8_FP8_HOPPER, [mm scenario]: block_scaled, "
         "[shape info]: [-, %s, %s, %s](batch, M, N, K)",
         M,
         N,
         K,
     )
-    use_flagtune = runtime.flagtune_enabled("mm_w8a8_fp8")
-
     if hasattr(
         triton.tools.tensor_descriptor, "TensorDescriptor"
     ) and is_tma_compatible(a, b, N, K):
         with torch_device_fn.device(a.device):
             if M < 2048 and N < 2048 and K >= 4096 and c.dtype not in _FP8_DTYPES:
-                return _block_scaled_splitk_tma_mm(
+                return _mm_w8a8_fp8_block_scaled_splitk_tma(
                     a, b, c, a_s, b_s, M, N, K, group_n, group_k
                 )
-            return _block_scaled_tma_mm(a, b, c, a_s, b_s, M, N, K, group_n, group_k)
+            return _mm_w8a8_fp8_block_scaled_tma(
+                a, b, c, a_s, b_s, M, N, K, group_n, group_k
+            )
 
     raise RuntimeError("Hopper mm_w8a8_fp8 path requires TMA tensor descriptors")
-
-    if M < 2048 and N < 2048 and K >= 4096 and c.dtype not in _FP8_DTYPES:
-        if use_flagtune:
-            splitk_grid = lambda META: (
-                triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
-                META["SPLIT_K"],
-            )
-            c.zero_()
-            with torch_device_fn.device(a.device):
-                mm_w8a8_block_scaled_kernel_splitk[splitk_grid](
-                    a,
-                    b,
-                    c,
-                    a_s,
-                    b_s,
-                    M,
-                    N,
-                    K,
-                    group_n,
-                    group_k,
-                    a.stride(0),
-                    a.stride(1),
-                    b.stride(1),
-                    b.stride(0),
-                    c.stride(0),
-                    c.stride(1),
-                    a_s.stride(0),
-                    a_s.stride(1),
-                    b_s.stride(1),
-                    b_s.stride(0),
-                )
-        else:
-            splitk_block_k = group_k
-            splitk_block_m = 16 if M <= 16 else 64
-            splitk_block_n = 64 if N > 256 else 32
-            grid_m = triton.cdiv(M, splitk_block_m)
-            grid_n = triton.cdiv(N, splitk_block_n)
-            grid_mn = grid_m * grid_n
-            total_k_iters = triton.cdiv(K, splitk_block_k)
-            sm_count = torch.cuda.get_device_properties(a.device).multi_processor_count
-            split_k = min(total_k_iters, max(4, 2 * sm_count // max(grid_mn, 1)))
-            splitk_grid = (grid_mn, split_k)
-            c.zero_()
-            with torch_device_fn.device(a.device):
-                mm_w8a8_block_scaled_kernel_splitk.fn.fn[splitk_grid](
-                    a,
-                    b,
-                    c,
-                    a_s,
-                    b_s,
-                    M,
-                    N,
-                    K,
-                    group_n,
-                    group_k,
-                    a.stride(0),
-                    a.stride(1),
-                    b.stride(1),
-                    b.stride(0),
-                    c.stride(0),
-                    c.stride(1),
-                    a_s.stride(0),
-                    a_s.stride(1),
-                    b_s.stride(1),
-                    b_s.stride(0),
-                    BLOCK_M=splitk_block_m,
-                    BLOCK_N=splitk_block_n,
-                    BLOCK_K=splitk_block_k,
-                    SPLIT_K=split_k,
-                    num_warps=4,
-                    num_stages=2,
-                )
-        return c
-
-    grid = lambda meta: (
-        triton.cdiv(M, meta["BLOCK_M"]) * triton.cdiv(N, meta["BLOCK_N"]),
-    )
-    fixed_meta = (
-        None
-        if use_flagtune
-        else _get_block_scaled_fixed_meta(M, N, K, group_n, group_k)
-    )
-    if use_flagtune:
-        launch = lambda: mm_w8a8_block_scaled_kernel_general[grid](
-            a,
-            b,
-            c,
-            a_s,
-            b_s,
-            M,
-            N,
-            K,
-            group_n,
-            group_k,
-            a.stride(0),
-            a.stride(1),
-            b.stride(1),
-            b.stride(0),
-            c.stride(0),
-            c.stride(1),
-            a_s.stride(0),
-            a_s.stride(1),
-            b_s.stride(1),
-            b_s.stride(0),
-            # The block-scaled expand space currently fixes BLOCK_K to group_k.
-            # Preserve the single-block fast path while tuning the other metas.
-            SINGLE_K_BLOCK=K == group_k,
-        )
-    else:
-        launch = lambda: mm_w8a8_block_scaled_kernel_general.fn.fn[grid](
-            a,
-            b,
-            c,
-            a_s,
-            b_s,
-            M,
-            N,
-            K,
-            group_n,
-            group_k,
-            a.stride(0),
-            a.stride(1),
-            b.stride(1),
-            b.stride(0),
-            c.stride(0),
-            c.stride(1),
-            a_s.stride(0),
-            a_s.stride(1),
-            b_s.stride(1),
-            b_s.stride(0),
-            SINGLE_K_BLOCK=K == fixed_meta["BLOCK_K"] and K == group_k,
-            **fixed_meta,
-        )
-
-    with torch_device_fn.device(a.device):
-        launch()
-    return c
-
-
-if HAS_TLE:
-
-    @triton.jit
-    def _cluster_remote_gemm_kernel(
-        a_ptr,
-        b_ptr,
-        c_ptr,
-        M,
-        N,
-        K,
-        stride_am,
-        stride_ak,
-        stride_bk,
-        stride_bn,
-        stride_cm,
-        stride_cn,
-        mesh: tl.constexpr,
-        BM: tl.constexpr,
-        BN: tl.constexpr,
-        BK: tl.constexpr,
-        DOT_K: tl.constexpr,
-        CLUSTER_SIZE: tl.constexpr,
-        USE_MASK: tl.constexpr,
-        A_SLOTS: tl.constexpr,
-        USE_NV_MMA_SMEM_LAYOUT: tl.constexpr,
-    ):
-        pid = tl.program_id(0)
-        cluster_rank = tle_exp.shard_id(mesh, "cluster_x")
-        cluster_id = pid // CLUSTER_SIZE
-
-        num_pid_n = tl.cdiv(N, BN)
-        num_pid_n_group = tl.cdiv(num_pid_n, CLUSTER_SIZE)
-        pid_m = cluster_id // num_pid_n_group
-        pid_ng = cluster_id % num_pid_n_group
-        pid_n = pid_ng * CLUSTER_SIZE + cluster_rank
-
-        offs_m = pid_m * BM + tl.arange(0, BM)
-        offs_n = pid_n * BN + tl.arange(0, BN)
-        offs_k = tl.arange(0, BK)
-        a_row_base = offs_m - pid_m * BM
-        a_rows_full = tl.broadcast_to(a_row_base[:, None], (BM, BK))
-        a_cols_full = tl.broadcast_to(tl.arange(0, BK)[None, :], (BM, BK))
-        a_rows_t = tl.broadcast_to(a_row_base[None, :], (DOT_K, BM))
-        a_buf = tle_exp.gpu.alloc(
-            [A_SLOTS, BM, BK],
-            dtype=tl.float16,
-            layout=None,
-            scope=tle_exp.gpu.smem,
-            nv_mma_shared_layout=USE_NV_MMA_SMEM_LAYOUT,
-        )
-        a_buf_remote = tle_exp.remote(a_buf, 0, scope=mesh)
-
-        acc = tl.zeros((BM, BN), dtype=tl.float32)
-        slot0 = 0
-        slot0_full = tl.zeros((BM, BK), dtype=tl.int32) + slot0
-        if cluster_rank == 0:
-            a_ptrs = a_ptr + offs_m[:, None] * stride_am + offs_k[None, :] * stride_ak
-            if USE_MASK:
-                a_mask_tile = (offs_m[:, None] < M) & (offs_k[None, :] < K)
-                a_tile = tl.load(a_ptrs, mask=a_mask_tile, other=0.0)
-            else:
-                a_tile = tl.load(a_ptrs)
-            a_local_ptr_tile = tle_exp.gpu.local_ptr(
-                a_buf, (slot0_full, a_rows_full, a_cols_full)
-            )
-            if USE_MASK:
-                tl.store(a_local_ptr_tile, a_tile, mask=a_mask_tile)
-            else:
-                tl.store(a_local_ptr_tile, a_tile)
-
-        tle_exp.distributed_barrier(mesh)
-
-        for k0 in range(0, K, BK):
-            iter_idx = k0 // BK
-            slot = iter_idx % A_SLOTS
-
-            for ks in range(0, BK, DOT_K):
-                k_local = ks + tl.arange(0, DOT_K)
-                a_cols_t = tl.broadcast_to(k_local[:, None], (DOT_K, BM))
-                slot_dot_t = tl.zeros((DOT_K, BM), dtype=tl.int32) + slot
-                a_ptr_remote = tle_exp.gpu.local_ptr(
-                    a_buf_remote, (slot_dot_t, a_rows_t, a_cols_t)
-                )
-                if USE_MASK:
-                    a_mask_t = ((k0 + k_local)[:, None] < K) & (offs_m[None, :] < M)
-                    a = tl.trans(tl.load(a_ptr_remote, mask=a_mask_t, other=0.0))
-                else:
-                    a = tl.trans(tl.load(a_ptr_remote))
-
-                b_ptrs = (
-                    b_ptr
-                    + (k0 + k_local)[:, None] * stride_bk
-                    + offs_n[None, :] * stride_bn
-                )
-                if USE_MASK:
-                    b_mask = ((k0 + k_local)[:, None] < K) & (offs_n[None, :] < N)
-                    b = tl.load(b_ptrs, mask=b_mask, other=0.0)
-                else:
-                    b = tl.load(b_ptrs)
-                acc = tl.dot(a, b, acc)
-
-            if A_SLOTS == 1:
-                tle_exp.distributed_barrier(mesh)
-
-            next_k0 = k0 + BK
-            has_next = next_k0 < K
-            next_iter = iter_idx + 1
-            next_slot = next_iter % A_SLOTS
-            next_slot_full = tl.zeros((BM, BK), dtype=tl.int32) + next_slot
-            if has_next and cluster_rank == 0:
-                a_ptrs = (
-                    a_ptr
-                    + offs_m[:, None] * stride_am
-                    + (next_k0 + offs_k)[None, :] * stride_ak
-                )
-                if USE_MASK:
-                    a_mask_tile = (offs_m[:, None] < M) & (
-                        (next_k0 + offs_k)[None, :] < K
-                    )
-                    a_tile = tl.load(a_ptrs, mask=a_mask_tile, other=0.0)
-                else:
-                    a_tile = tl.load(a_ptrs)
-                a_local_ptr_tile = tle_exp.gpu.local_ptr(
-                    a_buf, (next_slot_full, a_rows_full, a_cols_full)
-                )
-                if USE_MASK:
-                    tl.store(a_local_ptr_tile, a_tile, mask=a_mask_tile)
-                else:
-                    tl.store(a_local_ptr_tile, a_tile)
-
-            tle_exp.distributed_barrier(mesh)
-
-        c_ptrs = c_ptr + offs_m[:, None] * stride_cm + offs_n[None, :] * stride_cn
-        if USE_MASK:
-            c_mask = (offs_m[:, None] < M) & (offs_n[None, :] < N)
-            tl.store(c_ptrs, acc.to(c_ptr.dtype.element_ty), mask=c_mask)
-        else:
-            tl.store(c_ptrs, acc.to(c_ptr.dtype.element_ty))
-
-
-def _select_remote_dot_k(bk: int) -> int:
-    if bk % 16 == 0:
-        return 16
-    raise ValueError(f"BK must be divisible by 16 for remote dot path, got BK={bk}")
-
-
-def _grid_cluster_remote(
-    M: int,
-    N: int,
-    BM: int,
-    BN: int,
-    cluster_size: int = TLE_CLUSTER_SIZE,
-) -> tuple:
-    num_pid_n = triton.cdiv(N, BN)
-    num_pid_n_group = triton.cdiv(num_pid_n, cluster_size)
-    return (triton.cdiv(M, BM) * num_pid_n_group,)
-
-
-def _run_cluster_remote(
-    a: torch.Tensor,
-    b: torch.Tensor,
-    c: torch.Tensor,
-    bm: int,
-    bn: int,
-    bk: int,
-    num_warps: int,
-    num_stages: int,
-) -> None:
-    M, K = a.shape
-    N = b.shape[1]
-    dot_k = _select_remote_dot_k(bk)
-    use_mask = (M % bm != 0) or (N % bn != 0) or (K % bk != 0)
-    a_slots = TLE_REMOTE_A_SLOTS
-    use_nv_mma_smem_layout = (bk == 32) or (bk == 64 and num_stages <= 2)
-    _cluster_remote_gemm_kernel[_grid_cluster_remote(M, N, bm, bn)](
-        a,
-        b,
-        c,
-        M,
-        N,
-        K,
-        a.stride(0),
-        a.stride(1),
-        b.stride(0),
-        b.stride(1),
-        c.stride(0),
-        c.stride(1),
-        mesh=BLOCK_CLUSTER_MESH,
-        BM=bm,
-        BN=bn,
-        BK=bk,
-        DOT_K=dot_k,
-        CLUSTER_SIZE=TLE_CLUSTER_SIZE,
-        USE_MASK=use_mask,
-        A_SLOTS=a_slots,
-        USE_NV_MMA_SMEM_LAYOUT=use_nv_mma_smem_layout,
-        num_ctas=1,
-        num_warps=num_warps,
-        num_stages=num_stages,
-    )
-
-
-def cluster_remote_mm_scenario(a, b, c, M, N, K):
-    capability = get_device_capability()
-    return (
-        HAS_TLE
-        and BLOCK_CLUSTER_MESH is not None
-        and capability[0] >= 9
-        and a.is_cuda
-        and b.is_cuda
-        and c.is_cuda
-        and a.dtype == torch.float16
-        and b.dtype == torch.float16
-        and c.dtype == torch.float16
-        and a.is_contiguous()
-        and b.is_contiguous()
-        and M >= TLE_REMOTE_BM
-        and N >= TLE_REMOTE_BN
-        and K >= TLE_REMOTE_BK
-    )
-
-
-def cluster_remote_mm(a, b, c, M, N, K):
-    logger.debug(
-        "GEMS_NVIDIA M=%s N=%s K=%s a_col_major=%s b_col_major=%s",
-        M,
-        N,
-        K,
-        a.stride(0) == 1,
-        b.stride(0) == 1,
-    )
-    with torch_device_fn.device(a.device):
-        _run_cluster_remote(
-            a,
-            b,
-            c,
-            TLE_REMOTE_BM,
-            TLE_REMOTE_BN,
-            TLE_REMOTE_BK,
-            TLE_REMOTE_NUM_WARPS,
-            TLE_REMOTE_NUM_STAGES,
-        )
-    return c
 
 
 def _is_fp8_dtype(dtype: torch.dtype) -> bool:
@@ -2489,19 +1860,6 @@ def _default_fp8_dtype() -> torch.dtype:
     if hasattr(torch, "float8_e5m2"):
         return torch.float8_e5m2
     raise RuntimeError("Current torch build does not support float8 dtypes.")
-
-
-def _prequantize_fp8_once(
-    a: torch.Tensor,
-    b: torch.Tensor,
-    fp8_dtype: Optional[torch.dtype] = None,
-) -> tuple[torch.Tensor, torch.Tensor]:
-    target_dtype = fp8_dtype or _default_fp8_dtype()
-    if not _is_fp8_dtype(target_dtype):
-        raise ValueError(f"fp8_dtype must be one of {_FP8_DTYPES}, got {target_dtype}.")
-    a_q = a if a.dtype == target_dtype else a.to(target_dtype)
-    b_q = b if b.dtype == target_dtype else b.to(target_dtype)
-    return a_q, b_q
 
 
 def _make_fp8_cache_key(
@@ -2535,7 +1893,7 @@ def _get_cached_b_fp8(b: torch.Tensor, target_dtype: torch.dtype) -> torch.Tenso
     return b_q
 
 
-def clear_mm_caches() -> None:
+def clear_mm_w8a8_fp8_caches() -> None:
     """Drop all FP8 / TensorDescriptor caches.
 
     Useful for memory-constrained workflows or to force re-quantization after
@@ -2555,7 +1913,7 @@ def clear_mm_caches() -> None:
     _shared_memory_limit_cache.clear()
 
 
-def get_mm_cache_stats() -> dict:
+def get_mm_w8a8_fp8_cache_stats() -> dict:
     """Return current cache occupancy for diagnostics."""
     return {
         "a_fp8": len(_FP8_A_PREFETCH_CACHE),
@@ -2572,12 +1930,12 @@ def get_mm_cache_stats() -> dict:
         "fp8_cache_max_entries": _FP8_CACHE_MAX_ENTRIES,
         "td_cache_max_entries": _TD_CACHE_MAX_ENTRIES,
         "cuda_graph_disabled": len(_mm_cuda_graph_disabled_keys),
-        "cuda_graph_cache_max_entries": _mm_cuda_graph_cache_max(),
+        "cuda_graph_cache_max_entries": _mm_w8a8_fp8_cuda_graph_cache_max(),
     }
 
 
-def register_prequantized_a_fp8(a: torch.Tensor, a_fp8: torch.Tensor) -> None:
-    """Register externally pre-quantized A for later mm/mm_out reuse."""
+def register_mm_w8a8_fp8_prequantized_a(a: torch.Tensor, a_fp8: torch.Tensor) -> None:
+    """Register externally pre-quantized A for later W8A8 FP8 reuse."""
     if not _is_fp8_dtype(a_fp8.dtype):
         raise ValueError("a_fp8 must be fp8 tensor.")
     key = _make_fp8_cache_key(a, a_fp8.dtype, by_shape=_FP8_CACHE_A_BY_SHAPE)
@@ -2587,22 +1945,22 @@ def register_prequantized_a_fp8(a: torch.Tensor, a_fp8: torch.Tensor) -> None:
         _FP8_A_PREFETCH_CACHE.popitem(last=False)
 
 
-def prequantize_and_register_a_fp8(
+def prequantize_and_register_mm_w8a8_fp8_a(
     a: torch.Tensor, fp8_dtype: Optional[torch.dtype] = None
 ) -> torch.Tensor:
-    """Pre-quantize A once and register for mm/mm_out hot-path reuse."""
-    a_fp8 = prequantize_a_fp8(a, fp8_dtype=fp8_dtype)
-    register_prequantized_a_fp8(a, a_fp8)
+    """Pre-quantize A once and register for the W8A8 FP8 hot path."""
+    a_fp8 = prequantize_mm_w8a8_fp8_a(a, fp8_dtype=fp8_dtype)
+    register_mm_w8a8_fp8_prequantized_a(a, a_fp8)
     return a_fp8
 
 
-def prequantize_mm_inputs_for_inference(
+def prequantize_mm_w8a8_fp8_inputs_for_inference(
     a: torch.Tensor,
     b: torch.Tensor,
     fp8_dtype: Optional[torch.dtype] = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Pre-quantize activation A and warm weight B fp8 cache outside mm hot path."""
-    a_fp8 = prequantize_and_register_a_fp8(a, fp8_dtype=fp8_dtype)
+    a_fp8 = prequantize_and_register_mm_w8a8_fp8_a(a, fp8_dtype=fp8_dtype)
     target_dtype = fp8_dtype or _default_fp8_dtype()
     b_fp8 = _get_cached_b_fp8(b, target_dtype)
     return a_fp8, b_fp8
@@ -2627,7 +1985,7 @@ def _get_or_cache_a_fp8(a: torch.Tensor, target_dtype: torch.dtype) -> torch.Ten
     mutate A in place between mm calls.
 
     When FLAGGEMS_MM_PREQUANTIZE_FP8=1, callers should invoke
-    `prequantize_and_register_a_fp8(a)` (or `prequantize_mm_inputs_for_inference`)
+    `prequantize_and_register_mm_w8a8_fp8_a(a)` (or `prequantize_mm_w8a8_fp8_inputs_for_inference`)
     before the timed loop so repeated mm_w8a8_fp8() hits the prefetch cache and skips
     the `_to_copy` kernel.
     """
@@ -2639,7 +1997,7 @@ def _get_or_cache_a_fp8(a: torch.Tensor, target_dtype: torch.dtype) -> torch.Ten
         return cached
 
     if _MM_PREQUANTIZE_A:
-        return prequantize_and_register_a_fp8(a, target_dtype)
+        return prequantize_and_register_mm_w8a8_fp8_a(a, target_dtype)
 
     if not _FP8_AUTO_CACHE_A:
         return a.to(target_dtype)
@@ -2683,7 +2041,7 @@ def _get_or_make_tensor_descriptor(
 
     Each construction triggers one `cuTensorMapEncodeTiled` driver call which
     nsys shows is the second largest CPU API contributor. The block_shape gets
-    overwritten by `matmul_tma_set_block_size_hook` per launch, so caching the
+    overwritten by `_mm_w8a8_fp8_tma_set_block_size_hook` per launch, so caching the
     object is safe even when autotune picks different BLOCK_M/N/K.
     """
     if not _TD_CACHE_ENABLED:
@@ -2700,7 +2058,7 @@ def _get_or_make_tensor_descriptor(
     return desc
 
 
-def prequantize_a_fp8(
+def prequantize_mm_w8a8_fp8_a(
     a: torch.Tensor, fp8_dtype: Optional[torch.dtype] = None
 ) -> torch.Tensor:
     """Pre-quantize activation A once outside mm hot path."""
@@ -2710,29 +2068,7 @@ def prequantize_a_fp8(
     return a if a.dtype == target_dtype else a.to(target_dtype)
 
 
-def mm_fp8fp8_prequant(
-    a: torch.Tensor,
-    b: torch.Tensor,
-    fp8_dtype: Optional[torch.dtype] = None,
-) -> torch.Tensor:
-    """Pre-quantize A/B once to fp8, then run fp8xfp8 matmul."""
-    a_q, b_q = _prequantize_fp8_once(a, b, fp8_dtype=fp8_dtype)
-    return mm_w8a8_fp8(a_q, b_q)
-
-
-def mm_out_fp8fp8_prequant(
-    a: torch.Tensor,
-    b: torch.Tensor,
-    *,
-    out: torch.Tensor,
-    fp8_dtype: Optional[torch.dtype] = None,
-) -> torch.Tensor:
-    """Pre-quantize A/B once to fp8, then run fp8xfp8 matmul_out."""
-    a_q, b_q = _prequantize_fp8_once(a, b, fp8_dtype=fp8_dtype)
-    return mm_w8a8_fp8_out(a_q, b_q, out=out)
-
-
-def _quantize_mm_inputs(
+def _quantize_mm_w8a8_fp8_inputs(
     a: torch.Tensor, b: torch.Tensor
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """FP8 hot-path: auto-cache A/B (see 5.10 doc optimization #1)."""
@@ -2743,88 +2079,7 @@ def _quantize_mm_inputs(
     return a, b
 
 
-@triton.jit
-def _quantize_b_block_fp8_kernel(
-    B,
-    BQ,
-    BS,
-    K,
-    N,
-    stride_bk,
-    stride_bn,
-    stride_bq_n,
-    stride_bq_k,
-    stride_bs_n,
-    stride_bs_k,
-    eps,
-    fp8_min,
-    fp8_max,
-    BLOCK_N: tl.constexpr,
-    BLOCK_K: tl.constexpr,
-):
-    pid_n = tl.program_id(0)
-    pid_k = tl.program_id(1)
-    offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-    offs_k = pid_k * BLOCK_K + tl.arange(0, BLOCK_K)
-    mask = (offs_k[:, None] < K) & (offs_n[None, :] < N)
-    b = tl.load(
-        B + offs_k[:, None] * stride_bk + offs_n[None, :] * stride_bn,
-        mask=mask,
-        other=0.0,
-    ).to(tl.float32)
-
-    amax_by_n = tl.max(tl.abs(b), axis=0)
-    amax = tl.maximum(tl.max(amax_by_n, axis=0), eps)
-    scale = amax / fp8_max
-    b_q = tl.clamp(b / scale, fp8_min, fp8_max).to(BQ.dtype.element_ty)
-    b_q_t = tl.trans(b_q)
-    tl.store(
-        BQ + offs_n[:, None] * stride_bq_n + offs_k[None, :] * stride_bq_k,
-        b_q_t,
-        mask=(offs_n[:, None] < N) & (offs_k[None, :] < K),
-    )
-    tl.store(BS + pid_n * stride_bs_n + pid_k * stride_bs_k, scale)
-
-
-def _quantize_b_block_fp8(
-    b: torch.Tensor,
-    target_dtype: torch.dtype,
-    group_n: int,
-    group_k: int,
-) -> tuple[torch.Tensor, torch.Tensor]:
-    K, N = b.shape
-    b_q = torch.empty((N, K), device=b.device, dtype=target_dtype)
-    b_s = torch.empty(
-        (triton.cdiv(N, group_n), triton.cdiv(K, group_k)),
-        device=b.device,
-        dtype=torch.float32,
-    )
-    finfo = torch.finfo(target_dtype)
-    grid = (triton.cdiv(N, group_n), triton.cdiv(K, group_k))
-    _quantize_b_block_fp8_kernel[grid](
-        b,
-        b_q,
-        b_s,
-        K,
-        N,
-        b.stride(0),
-        b.stride(1),
-        b_q.stride(0),
-        b_q.stride(1),
-        b_s.stride(0),
-        b_s.stride(1),
-        1e-10,
-        finfo.min,
-        finfo.max,
-        BLOCK_N=group_n,
-        BLOCK_K=group_k,
-        num_warps=8,
-        num_stages=1,
-    )
-    return b_q, b_s
-
-
-def _should_use_block_scaled_mm(
+def _should_use_mm_w8a8_fp8_block_scaled(
     a: torch.Tensor, b: torch.Tensor, M: int, N: int, K: int
 ) -> bool:
     del M
@@ -2841,7 +2096,9 @@ def _get_cached_block_a_fp8(
     a: torch.Tensor, target_dtype: torch.dtype, group_k: int
 ) -> tuple[torch.Tensor, torch.Tensor]:
     del group_k
-    padded_k = _single_k_tma_size(a.shape[1]) if a.shape[1] < 128 else a.shape[1]
+    padded_k = (
+        _mm_w8a8_fp8_single_k_tma_size(a.shape[1]) if a.shape[1] < 128 else a.shape[1]
+    )
     key = ("row_scaled_a", padded_k) + _make_fp8_cache_key(
         a, target_dtype, by_shape=_FP8_CACHE_A_BY_SHAPE
     )
@@ -2871,7 +2128,9 @@ def _get_cached_block_b_fp8(
     b: torch.Tensor, target_dtype: torch.dtype, group_n: int, group_k: int
 ) -> tuple[torch.Tensor, torch.Tensor, int]:
     del group_n, group_k
-    padded_k = _single_k_tma_size(b.shape[0]) if b.shape[0] < 128 else b.shape[0]
+    padded_k = (
+        _mm_w8a8_fp8_single_k_tma_size(b.shape[0]) if b.shape[0] < 128 else b.shape[0]
+    )
     key = ("column_scaled_b", padded_k) + _make_fp8_cache_key(
         b, target_dtype, by_shape=_FP8_CACHE_B_BY_SHAPE
     )
@@ -2901,7 +2160,7 @@ def _get_cached_block_b_fp8(
     return cached
 
 
-def _quantize_block_scaled_mm_inputs(
+def _quantize_mm_w8a8_fp8_block_scaled_inputs(
     a: torch.Tensor, b: torch.Tensor
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, int, int]:
     target_dtype = _default_fp8_dtype()
@@ -2912,7 +2171,7 @@ def _quantize_block_scaled_mm_inputs(
     return a_q, b_q, a_s, b_s, group_n, group_k
 
 
-def _dispatch_block_scaled_mm(
+def _dispatch_mm_w8a8_fp8_block_scaled(
     a: torch.Tensor,
     b: torch.Tensor,
     c: torch.Tensor,
@@ -2924,9 +2183,11 @@ def _dispatch_block_scaled_mm(
     group_n: int,
     group_k: int,
 ) -> torch.Tensor:
-    run = lambda: block_scaled_mm(a, b, c, a_s, b_s, M, N, K, group_n, group_k)
-    if _mm_cuda_graph_effective(M, N, K):
-        return _mm_cuda_graph_run("block_scaled", a, b, c, run)
+    run = lambda: _mm_w8a8_fp8_block_scaled(
+        a, b, c, a_s, b_s, M, N, K, group_n, group_k
+    )
+    if _mm_w8a8_fp8_cuda_graph_effective(M, N, K):
+        return _mm_w8a8_fp8_cuda_graph_run("block_scaled", a, b, c, run)
     return run()
 
 
@@ -3035,7 +2296,7 @@ _MM_BF16_TRITON_FALLBACK_SHAPES = frozenset(
 )
 
 
-def _should_fallback_bf16_mm_by_rule(M: int, N: int, K: int) -> bool:
+def _should_mm_w8a8_fp8_fallback_bf16_by_rule(M: int, N: int, K: int) -> bool:
     if not _MM_BF16_TRITON_FALLBACK_GENERALIZE:
         return False
 
@@ -3069,7 +2330,7 @@ def _should_fallback_bf16_mm_by_rule(M: int, N: int, K: int) -> bool:
     return False
 
 
-def _should_fallback_bf16_mm(
+def _should_mm_w8a8_fp8_fallback_bf16(
     a: torch.Tensor, b: torch.Tensor, M: int, N: int, K: int
 ) -> bool:
     if not _MM_BF16_TRITON_FALLBACK:
@@ -3082,32 +2343,37 @@ def _should_fallback_bf16_mm(
         M,
         N,
         K,
-    ) in _MM_BF16_TRITON_FALLBACK_SHAPES or _should_fallback_bf16_mm_by_rule(M, N, K)
+    ) in _MM_BF16_TRITON_FALLBACK_SHAPES or _should_mm_w8a8_fp8_fallback_bf16_by_rule(
+        M, N, K
+    )
 
 
-def _bf16_triton_mm(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+def _mm_w8a8_fp8_bf16_triton(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     return _bf16_mm(a, b)
 
 
-def _bf16_triton_mm_out(
+def _mm_w8a8_fp8_bf16_triton_out(
     a: torch.Tensor, b: torch.Tensor, out: torch.Tensor
 ) -> torch.Tensor:
     return _bf16_mm_out(a, b, out=out)
 
 
-def _mm_reuse_output_enabled() -> bool:
+def _mm_w8a8_fp8_reuse_output_enabled() -> bool:
     return os.environ.get("FLAGGEMS_MM_W8A8_REUSE_OUTPUT", "1") != "0"
 
 
-def _mm_allocate_output(
+def _mm_w8a8_fp8_allocate_output(
     M: int, N: int, K: int, device: torch.device, dtype: torch.dtype
 ) -> torch.Tensor:
-    if _mm_cuda_graph_effective(M, N, K) or _mm_reuse_output_enabled():
-        return _mm_staging_output(M, N, device, dtype)
+    if (
+        _mm_w8a8_fp8_cuda_graph_effective(M, N, K)
+        or _mm_w8a8_fp8_reuse_output_enabled()
+    ):
+        return _mm_w8a8_fp8_staging_output(M, N, device, dtype)
     return torch.empty((M, N), device=device, dtype=dtype)
 
 
-def _dispatch_mm(
+def _dispatch_mm_w8a8_fp8(
     a: torch.Tensor,
     b: torch.Tensor,
     c: torch.Tensor,
@@ -3115,31 +2381,22 @@ def _dispatch_mm(
     N: int,
     K: int,
 ) -> torch.Tensor:
-    use_graph = _mm_cuda_graph_effective(M, N, K)
+    use_graph = _mm_w8a8_fp8_cuda_graph_effective(M, N, K)
     if N == 1:
         scenario = "gemv"
-        run = lambda: gemv_mm(a, b, c, M, K)
-    elif skinny_scenario(a, b, M, N, K):
+        run = lambda: _mm_w8a8_fp8_gemv(a, b, c, M, K)
+    elif _mm_w8a8_fp8_skinny_scenario(a, b, M, N, K):
         scenario = "skinny"
-        run = lambda: skinny_mm(a, b, c, M, N, K)
-    elif (
-        HAS_TLE
-        and BLOCK_CLUSTER_MESH is not None
-        and cluster_remote_mm_scenario(a, b, c, M, N, K)
-    ):
-        return cluster_remote_mm(a, b, c, M, N, K)
-    elif streamk_scenario(a, b, M, N, K):
-        # Optimization #3: query SM count only on the stream-k path.
-        return streamk_mm(a, b, c, M, N, K, sm_count=get_sm_count())
+        run = lambda: _mm_w8a8_fp8_skinny(a, b, c, M, N, K)
     elif M < 2048 and N < 2048 and K >= 4096:
         c.zero_()
-        return splitk_mm(a, b, c, M, N, K)
+        return _mm_w8a8_fp8_splitk(a, b, c, M, N, K)
     else:
         scenario = "general"
-        run = lambda: general_mm(a, b, c, M, N, K)
+        run = lambda: _mm_w8a8_fp8_general(a, b, c, M, N, K)
 
     if use_graph:
-        return _mm_cuda_graph_run(scenario, a, b, c, run)
+        return _mm_w8a8_fp8_cuda_graph_run(scenario, a, b, c, run)
     return run()
 
 
@@ -3154,20 +2411,22 @@ def mm_w8a8_fp8(a, b, *, out_dtype: Optional[torch.dtype] = None):
     assert a.shape[1] == b.shape[0], "incompatible dimensions"
     M, K = a.shape
     _, N = b.shape
-    if _should_fallback_bf16_mm(a, b, M, N, K):
-        return _bf16_triton_mm(a, b)
-    if _should_use_block_scaled_mm(a, b, M, N, K):
-        a_q, b_q, a_s, b_s, group_n, group_k = _quantize_block_scaled_mm_inputs(a, b)
-        c_dtype = out_dtype or _fp8_mm_output_dtype(a_q.dtype)
-        c = _mm_allocate_output(M, N, K, device, c_dtype)
-        return _dispatch_block_scaled_mm(
+    if _should_mm_w8a8_fp8_fallback_bf16(a, b, M, N, K):
+        return _mm_w8a8_fp8_bf16_triton(a, b)
+    if _should_use_mm_w8a8_fp8_block_scaled(a, b, M, N, K):
+        a_q, b_q, a_s, b_s, group_n, group_k = (
+            _quantize_mm_w8a8_fp8_block_scaled_inputs(a, b)
+        )
+        c_dtype = out_dtype or _mm_w8a8_fp8_output_dtype(a_q.dtype)
+        c = _mm_w8a8_fp8_allocate_output(M, N, K, device, c_dtype)
+        return _dispatch_mm_w8a8_fp8_block_scaled(
             a_q, b_q, c, a_s, b_s, M, N, K, group_n, group_k
         )
-    a, b = _quantize_mm_inputs(a, b)
+    a, b = _quantize_mm_w8a8_fp8_inputs(a, b)
 
     c_dtype = out_dtype or get_higher_dtype(a.dtype, b.dtype)
-    c = _mm_allocate_output(M, N, K, device, c_dtype)
-    return _dispatch_mm(a, b, c, M, N, K)
+    c = _mm_w8a8_fp8_allocate_output(M, N, K, device, c_dtype)
+    return _dispatch_mm_w8a8_fp8(a, b, c, M, N, K)
 
 
 def mm_w8a8_fp8_out(a, b, *, out):
@@ -3180,13 +2439,15 @@ def mm_w8a8_fp8_out(a, b, *, out):
     assert a.shape[1] == b.shape[0], "incompatible dimensions"
     M, K = a.shape
     _, N = b.shape
-    if _should_fallback_bf16_mm(a, b, M, N, K):
-        return _bf16_triton_mm_out(a, b, out)
-    if _should_use_block_scaled_mm(a, b, M, N, K):
-        a_q, b_q, a_s, b_s, group_n, group_k = _quantize_block_scaled_mm_inputs(a, b)
-        return _dispatch_block_scaled_mm(
+    if _should_mm_w8a8_fp8_fallback_bf16(a, b, M, N, K):
+        return _mm_w8a8_fp8_bf16_triton_out(a, b, out)
+    if _should_use_mm_w8a8_fp8_block_scaled(a, b, M, N, K):
+        a_q, b_q, a_s, b_s, group_n, group_k = (
+            _quantize_mm_w8a8_fp8_block_scaled_inputs(a, b)
+        )
+        return _dispatch_mm_w8a8_fp8_block_scaled(
             a_q, b_q, out, a_s, b_s, M, N, K, group_n, group_k
         )
-    a, b = _quantize_mm_inputs(a, b)
+    a, b = _quantize_mm_w8a8_fp8_inputs(a, b)
 
-    return _dispatch_mm(a, b, out, M, N, K)
+    return _dispatch_mm_w8a8_fp8(a, b, out, M, N, K)
