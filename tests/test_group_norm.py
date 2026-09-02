@@ -91,6 +91,10 @@ def test_native_group_norm(shape, num_groups, dtype, affine, caplog):
         (1, 64, 32, 32, 16),
         (1, 64, 32, 32, 32),
         (1, 64, 32, 32, 64),
+        # group sizes that are not a power of two
+        (1, 48, 32, 32, 16),  # group_size = 3
+        (4, 24, 16, 16, 4),  # group_size = 6
+        (2, 60, 8, 8, 12),  # group_size = 5
     ],
 )
 @pytest.mark.parametrize("wb_none", [False, True])
@@ -136,6 +140,10 @@ def test_group_norm(N, C, H, W, num_groups, dtype, wb_none):
         (1, 64, 32, 32, 16),
         (1, 64, 32, 32, 32),
         (1, 64, 32, 32, 64),
+        # group sizes that are not a power of two
+        (1, 48, 32, 32, 16),  # group_size = 3
+        (4, 24, 16, 16, 4),  # group_size = 6
+        (2, 60, 8, 8, 12),  # group_size = 5
     ],
 )
 @pytest.mark.parametrize("wb_none", [False, True])
