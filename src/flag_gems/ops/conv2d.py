@@ -105,6 +105,7 @@ def conv2d_forward_kernel(
     BLOCK_NI_HO_WO: tl.constexpr,
     BLOCK_CI: tl.constexpr,
     BLOCK_CO: tl.constexpr,
+    ACCUM_DTYPE: tl.constexpr,
 ):
     pid_ni_ho_wo = tl.program_id(0)
     pid_co = tl.program_id(1)
@@ -129,7 +130,7 @@ def conv2d_forward_kernel(
         + weight_n_stride * pid_group * out_per_group_c
     )[None, :]
 
-    accum = tl.zeros((BLOCK_NI_HO_WO, BLOCK_CO), dtype=tl.float32)
+    accum = tl.zeros((BLOCK_NI_HO_WO, BLOCK_CO), dtype=ACCUM_DTYPE)
     BLOCK_CI_COUNT = (weight_c + BLOCK_CI - 1) // BLOCK_CI
     for hwc in range(weight_height * weight_width * BLOCK_CI_COUNT):
         c = (hwc % BLOCK_CI_COUNT) * BLOCK_CI
@@ -180,7 +181,7 @@ def conv2d_forward_kernel(
         None, :
     ]
     mask_bias = (output_c_offset < out_per_group_c)[None, :]
-    bias = tl.load(bias_pointer, mask_bias).to(tl.float32)
+    bias = tl.load(bias_pointer, mask_bias).to(ACCUM_DTYPE)
     accum += bias
     output_pointer += (
         (output_n_stride * in_n_point_value)[:, None]
@@ -252,6 +253,7 @@ def conv2d_backward_kernel_weight(
     BLOCK_NO: tl.constexpr,
     BLOCK_CI_HK_WK: tl.constexpr,
     BLOCK_CO: tl.constexpr,
+    ACCUM_DTYPE: tl.constexpr,
 ):
     # load out_grad n (groups out_c)  ho wo
     # load weight (groups out_c) ci h w
@@ -290,7 +292,7 @@ def conv2d_backward_kernel_weight(
     )[None, :]
 
     # calculate the values of the input based on the width and height of the output by looping
-    accum = tl.zeros((BLOCK_CI_HK_WK, BLOCK_CO), dtype=tl.float32)
+    accum = tl.zeros((BLOCK_CI_HK_WK, BLOCK_CO), dtype=ACCUM_DTYPE)
     for h in range(0, out_height):
         for w in range(0, out_width):
             for n in range(0, in_n, BLOCK_NO):
@@ -424,6 +426,11 @@ class Conv2d(torch.autograd.Function):
             dtype=output_dtype,
         )
 
+        # tl.dot accumulates in fp32 for fp16/bf16/fp32 inputs but must use fp64
+        # for fp64 inputs, otherwise Triton rejects the loop-carried accum
+        # (issue #2345: "has initial type fp32 but is re-assigned to fp64").
+        accum_dtype = tl.float64 if output_dtype == torch.float64 else tl.float32
+
         # BLOCK_NI_HO_WO along the in_n, out_height, and out_width dimensions,
         # BLOCK_CO along the out_c,
         # one group per cat
@@ -461,6 +468,7 @@ class Conv2d(torch.autograd.Function):
             dilation_height,
             dilation_width,
             groups=groups,
+            ACCUM_DTYPE=accum_dtype,
         )
 
         # Save ORIGINAL (unpadded) tensors for backward
@@ -495,6 +503,7 @@ class Conv2d(torch.autograd.Function):
 
         device = ctx.device
         groups = ctx.groups
+        accum_dtype = tl.float64 if out_grad.dtype == torch.float64 else tl.float32
 
         stride_height, stride_width = ctx.stride
         dilation_height, dilation_width = ctx.dilation
@@ -545,7 +554,7 @@ class Conv2d(torch.autograd.Function):
             weight_c * groups,
             input_height,
             input_width,
-            dtype=torch.float32,
+            dtype=out_grad.dtype,
             device=device,
         )
 
@@ -606,6 +615,7 @@ class Conv2d(torch.autograd.Function):
             dilation_height,
             dilation_width,
             groups=groups,
+            ACCUM_DTYPE=accum_dtype,
         )
 
         weight_back = torch.zeros(
@@ -646,6 +656,7 @@ class Conv2d(torch.autograd.Function):
             padding_width,
             dilation_height,
             dilation_width,
+            ACCUM_DTYPE=accum_dtype,
         )
         if bias is not None:
             bias_grad = out_grad.sum(dim=(0, 2, 3))
