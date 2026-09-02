@@ -508,6 +508,7 @@ def flash_fwd_kernel(
     page_table_ptr,
     page_table_batch_stride: tl.constexpr,
     block_size: tl.constexpr,
+    k_page_stride: tl.constexpr,
     # kernel params
     IS_EVEN_MN: tl.constexpr,
     PRE_LOAD_V: tl.constexpr,
@@ -1064,6 +1065,7 @@ def flash_fwd_splitkv_kernel(
     page_table_ptr,
     page_table_batch_stride: tl.constexpr,
     block_size: tl.constexpr,
+    k_page_stride: tl.constexpr,
     # kernel params
     IS_EVEN_MN: tl.constexpr,
     PRE_LOAD_V: tl.constexpr,
@@ -1448,11 +1450,13 @@ def flash_fwd_splitkv_combine_kernel(
 
 
 @triton.jit
-def virtual_to_cache(
+def virtual_to_cache_offset(
     virtual_index,
     max_virtual_index,
     page_table_ptr,
     block_size,
+    k_row_stride,
+    k_page_stride,
     boundary_check: tl.constexpr = False,
 ):
     # virtual_index is the kv sequence index in the current batch element
@@ -1465,10 +1469,10 @@ def virtual_to_cache(
             page_table_ptr + virtual_page_index,
             mask=virtual_index < max_virtual_index,
             other=0,
-        ).to(tl.int32)
+        ).to(tl.int64)
     else:
-        page_block_index = tl.load(page_table_ptr + virtual_page_index).to(tl.int32)
-    return page_block_index * block_size + page_offset
+        page_block_index = tl.load(page_table_ptr + virtual_page_index).to(tl.int64)
+    return page_block_index * k_page_stride + page_offset * k_row_stride
 
 
 @triton.jit
@@ -1481,14 +1485,21 @@ def load_from_kvcache(
     block_size,
     d: tl.constexpr,
     k_row_stride,
+    k_page_stride,
     BLOCK_K: tl.constexpr,
     boundary_check: tl.constexpr = False,
 ):
-    kvcache_idx = virtual_to_cache(
-        virtual_index, max_virtual_index, page_table_ptr, block_size, boundary_check
+    cache_offset = virtual_to_cache_offset(
+        virtual_index,
+        max_virtual_index,
+        page_table_ptr,
+        block_size,
+        k_row_stride,
+        k_page_stride,
+        boundary_check,
     )
-    k_offset = tl.arange(0, BLOCK_K)[:, None] + kvcache_idx[None, :] * k_row_stride
-    v_offset = tl.arange(0, BLOCK_K)[None, :] + kvcache_idx[:, None] * k_row_stride
+    k_offset = tl.arange(0, BLOCK_K)[:, None] + cache_offset[None, :]
+    v_offset = tl.arange(0, BLOCK_K)[None, :] + cache_offset[:, None]
     if d == BLOCK_K:
         bK_mask = virtual_index[None, :] < max_virtual_index[None, :]
         bV_mask = virtual_index[:, None] < max_virtual_index[:, None]
@@ -1601,6 +1612,7 @@ def flash_varlen_fwd_kernel(
     page_table_ptr,
     page_table_batch_stride: tl.constexpr,
     block_size: tl.constexpr,
+    k_page_stride,
     # kernel params
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
@@ -1733,6 +1745,7 @@ def flash_varlen_fwd_kernel(
                 block_size,
                 d,
                 k_row_stride,
+                k_page_stride,
                 BLOCK_K=BLOCK_K,
                 boundary_check=True,
             )
@@ -1851,6 +1864,7 @@ def flash_varlen_fwd_kernel(
                 block_size,
                 d,
                 k_row_stride,
+                k_page_stride,
                 BLOCK_K=BLOCK_K,
             )
         else:
@@ -2138,6 +2152,7 @@ class fwd_params:
         "page_table_ptr",
         "page_table_batch_stride",
         "block_size",
+        "k_page_stride",
     )
 
     def __init__(
@@ -2220,6 +2235,7 @@ class fwd_params:
         page_table_ptr,
         page_table_batch_stride,
         block_size,
+        k_page_stride,
     ):
         self.q_ptr = q_ptr
         self.k_ptr = k_ptr
@@ -2299,6 +2315,7 @@ class fwd_params:
         self.page_table_ptr = page_table_ptr
         self.page_table_batch_stride = page_table_batch_stride
         self.block_size = block_size
+        self.k_page_stride = k_page_stride
 
     def args(self):
         return tuple(getattr(self, k) for k in self.__slots__)
@@ -2318,6 +2335,7 @@ def _get_varlen_fwd_config(
     total_q,
     batch_size,
     num_heads,
+    max_seqlen_q,
 ):
     total_rows = total_q * num_heads
     num_sms = torch_device_fn.get_device_properties(
@@ -2372,6 +2390,20 @@ def _get_varlen_fwd_config(
                 "num_stages": 1,
             }
         )
+        # Small ragged queries benefit from more CTAs and lower register use.
+        # Uniform packed batches take the dense fast path before this dispatch.
+        use_small_q_config = (head_size == 64 and max_seqlen_q <= 64) or (
+            head_size == 128 and max_seqlen_q <= 1024
+        )
+        if use_small_q_config:
+            cfg_params.update(
+                {
+                    "BLOCK_M": 64,
+                    "BLOCK_N": 64,
+                    "num_warps": 4,
+                    "num_stages": 1,
+                }
+            )
 
     return cfg_params
 
@@ -2435,6 +2467,7 @@ def mha_varlan_fwd(
     total_q, num_heads, head_size = q.size()
     num_heads_k = k.size(2) if is_paged else k.size(1)
     batch_size = cu_seqlens_q.numel() - 1
+    assert batch_size > 0, "batch_size must be positive"
     block_size = k.size(1) if is_paged else 1
     num_pages = k.size(0) if is_paged else 0
     k_batch_size = num_pages
@@ -2694,6 +2727,7 @@ def mha_varlan_fwd(
             page_table,  # page_table_ptr,
             page_table_batch_stride,  # page_table_batch_stride,
             block_size,  # block_size,
+            k.stride(0) if is_paged else 0,  # k_page_stride,
         )
 
         if flag_gems.vendor_name == "iluvatar":
@@ -2703,12 +2737,6 @@ def mha_varlan_fwd(
         # Enable two-way split-D for non-paged D128 varlen attention. The
         # paged-cache loader continues to load the full D dimension.
         use_varlen_split_d = head_size == 128 and not is_paged
-        grid = lambda args: (
-            triton.cdiv(max_seqlen_q, args["BLOCK_M"]),
-            batch_size,
-            num_heads * (2 if use_varlen_split_d else 1),
-        )
-        kernel = flash_varlen_fwd_kernel[grid]
         args = tuple(getattr(params, k) for k in params.__slots__)
 
         cfg_params = _get_varlen_fwd_config(
@@ -2725,7 +2753,15 @@ def mha_varlan_fwd(
             total_q,
             batch_size,
             num_heads,
+            max_seqlen_q,
         )
+        num_d_splits = 2 if use_varlen_split_d else 1
+        grid = (
+            triton.cdiv(max_seqlen_q, cfg_params["BLOCK_M"]),
+            batch_size,
+            num_heads * num_d_splits,
+        )
+        kernel = flash_varlen_fwd_kernel[grid]
 
         logger.debug("Running flash_varlen_fwd_kernel with config: %s", cfg_params)
         kernel(*args, **cfg_params)
@@ -2806,6 +2842,7 @@ def mha_varlan_fwd_opt(
     total_q, num_heads, head_size = q.size()
     num_heads_k = k.size(2) if is_paged else k.size(1)
     batch_size = cu_seqlens_q.numel() - 1
+    assert batch_size > 0, "batch_size must be positive"
     block_size = k.size(1) if is_paged else 1
     num_pages = k.size(0) if is_paged else 0
     k_batch_size = num_pages
@@ -3070,6 +3107,7 @@ def mha_varlan_fwd_opt(
             page_table,  # page_table_ptr,
             page_table_batch_stride,  # page_table_batch_stride,
             block_size,  # block_size,
+            k.stride(0) if is_paged else 0,  # k_page_stride,
         )
 
         if flag_gems.vendor_name == "iluvatar":
@@ -3079,12 +3117,6 @@ def mha_varlan_fwd_opt(
         # Enable two-way split-D for non-paged D128 varlen attention. The
         # paged-cache loader continues to load the full D dimension.
         use_varlen_split_d = head_size == 128 and not is_paged
-        grid = lambda args: (
-            triton.cdiv(max_seqlen_q, args["BLOCK_M"]),
-            batch_size,
-            num_heads * (2 if use_varlen_split_d else 1),
-        )
-        kernel = flash_varlen_fwd_kernel[grid]
         args = tuple(getattr(params, k) for k in params.__slots__)
 
         cfg_params = _get_varlen_fwd_config(
@@ -3101,7 +3133,15 @@ def mha_varlan_fwd_opt(
             total_q,
             batch_size,
             num_heads,
+            max_seqlen_q,
         )
+        num_d_splits = 2 if use_varlen_split_d else 1
+        grid = (
+            triton.cdiv(max_seqlen_q, cfg_params["BLOCK_M"]),
+            batch_size,
+            num_heads * num_d_splits,
+        )
+        kernel = flash_varlen_fwd_kernel[grid]
 
         logger.debug("Running flash_varlen_fwd_kernel with config: %s", cfg_params)
         kernel(*args, **cfg_params)
@@ -3504,6 +3544,7 @@ def mha_fwd(
             None,  # page_table_ptr,
             0,  # page_table_batch_stride,
             0,  # block_size,
+            0,  # k_page_stride,
         )
 
         # Move TxD to last dims for correct stride in Triton tt.load
@@ -3531,6 +3572,79 @@ def mha_fwd(
         unused = torch.empty((), dtype=torch.int64, device=q_device)
 
     return out, q, k, v, lse, philox_args, unused, p
+
+
+def flash_attention_forward_w8a8_fp8(
+    query,
+    key,
+    value,
+    cumulative_sequence_length_q,
+    cumulative_sequence_length_k,
+    max_q,
+    max_k,
+    dropout_p,
+    is_causal,
+    return_debug_mask,
+    *,
+    scale=None,
+    softcap=0.0,
+    window_size_left=None,
+    window_size_right=None,
+    seqused_k=None,
+    alibi_slopes=None,
+    disable_splitkv=False,
+    out=None,
+    q_descale=None,
+    k_descale=None,
+    v_descale=None,
+):
+    """Compute dense FlashAttention-2 with block-wise FP8 Q/K/V.
+
+    The base arguments and return values match ``flash_attention_forward``.
+    The W8A8 extension accepts an optional FP16/BF16 output and Q/K/V descales
+    normalized to ``[batch, heads, ceil(sequence_length / 128)]``. When ``out``
+    is omitted, the output is allocated in BF16.
+    """
+    logger.debug("GEMS FLASH_ATTENTION_FORWARD_W8A8_FP8")
+    assert (
+        cumulative_sequence_length_q is None and cumulative_sequence_length_k is None
+    ), "varlen input must use flash_attn_varlen_func_w8a8_fp8"
+
+    head_dim_q, head_dim_k = query.shape[-1], key.shape[-1]
+    head_dim_v = value.shape[-1]
+    assert head_dim_q == head_dim_k and head_dim_k == head_dim_v
+
+    query, key, value = [
+        tensor.contiguous() if tensor.stride(-1) != 1 else tensor
+        for tensor in (query, key, value)
+    ]
+    if out is None:
+        out = torch.empty_like(query, dtype=torch.bfloat16)
+
+    softmax_scale = scale or 1.0 / math.sqrt(head_dim_q)
+    real_window_size_left = -1 if window_size_left is None else window_size_left
+    real_window_size_right = -1 if window_size_right is None else window_size_right
+
+    result = mha_fwd(
+        query,
+        key,
+        value,
+        out,
+        alibi_slopes,
+        dropout_p,
+        softmax_scale,
+        is_causal,
+        real_window_size_left,
+        real_window_size_right,
+        softcap,
+        return_debug_mask,
+        disable_splitkv=disable_splitkv,
+        q_descale=q_descale,
+        k_descale=k_descale,
+        v_descale=v_descale,
+        fp8_p_max=float(torch.finfo(query.dtype).max),
+    )
+    return result[0], result[4], result[5], result[6], result[7]
 
 
 def flash_attn_varlen_func_w8a8_fp8(
@@ -3615,7 +3729,6 @@ def flash_attn_varlen_func_w8a8_fp8(
         real_window_size = (window_size[0], window_size[1])
 
     q, k, v = [x.contiguous() if x.stride(-1) != 1 else x for x in (q, k, v)]
-    dummy_cu_seqlens_k = torch.empty_like(cu_seqlens_q)
     max_seqlen_q = (
         max_seqlen_q.item() if hasattr(max_seqlen_q, "item") else max_seqlen_q
     )
@@ -3623,13 +3736,65 @@ def flash_attn_varlen_func_w8a8_fp8(
         max_seqlen_k.item() if hasattr(max_seqlen_k, "item") else max_seqlen_k
     )
 
+    batch_size = cu_seqlens_q.numel() - 1
+    assert batch_size > 0, "batch_size must be positive"
+    uniform_nonpaged = (
+        block_table is None
+        and cu_seqlens_k is not None
+        and seqused_k is None
+        and dropout_p == 0.0
+        and q.is_contiguous()
+        and k.is_contiguous()
+        and v.is_contiguous()
+        and (out is None or out.is_contiguous())
+        and q.shape[0] == batch_size * max_seqlen_q
+        and k.shape[0] == batch_size * max_seqlen_k
+    )
+    if uniform_nonpaged:
+        # Uniform packed batches are dense tensors without padding. Reuse the
+        # tuned dense kernels, including their even-tile and split-KV paths.
+        q_dense = q.view(batch_size, max_seqlen_q, q.shape[1], q.shape[2])
+        k_dense = k.view(batch_size, max_seqlen_k, k.shape[1], k.shape[2])
+        v_dense = v.view(batch_size, max_seqlen_k, v.shape[1], v.shape[2])
+        out_dense = (
+            None
+            if out is None
+            else out.view(batch_size, max_seqlen_q, out.shape[1], out.shape[2])
+        )
+        dense_result = mha_fwd(
+            q_dense,
+            k_dense,
+            v_dense,
+            out_dense,
+            alibi_slopes,
+            dropout_p,
+            softmax_scale,
+            causal,
+            real_window_size[0],
+            real_window_size[1],
+            softcap,
+            False,
+            q_descale=q_descale,
+            k_descale=k_descale,
+            v_descale=v_descale,
+            fp8_p_max=float(torch.finfo(q.dtype).max),
+        )
+        packed_out = dense_result[0].view(q.shape)
+        if return_softmax_lse:
+            packed_lse = dense_result[4].permute(1, 0, 2).reshape(q.shape[1], -1)
+            return packed_out, packed_lse
+        return packed_out
+
+    cu_seqlens_k_arg = (
+        torch.empty_like(cu_seqlens_q) if cu_seqlens_k is None else cu_seqlens_k
+    )
     result = mha_varlan_fwd(
         q,
         k,
         v,
         out,
         cu_seqlens_q,
-        dummy_cu_seqlens_k if cu_seqlens_k is None else cu_seqlens_k,
+        cu_seqlens_k_arg,
         seqused_k,
         None,
         block_table,

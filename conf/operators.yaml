@@ -4651,6 +4651,20 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '3.0'
+- id: flash_attention_forward_w8a8_fp8
+  description: |
+    Computes dense FlashAttention-2 forward with block-wise FP8 E4M3 query,
+    key, and value tensors, per-block descales, and FP16/BF16 output.
+  for:
+  - None
+  labels:
+  - NoCPU
+  - Attention
+  - Quantization
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: flash_attn_varlen_func
   description: 'Compute attention for sequences of variable lengths within a single
     batch.
@@ -4669,6 +4683,20 @@ ops:
   stages:
   - stable: '3.1'
   cpp: '4.0'
+- id: flash_attn_varlen_func_w8a8_fp8
+  description: |
+    Computes FlashAttention-2 forward with block-wise FP8 E4M3 query, key,
+    and value tensors, per-block descales, and FP16/BF16 output.
+  for:
+  - None
+  labels:
+  - NoCPU
+  - Attention
+  - Quantization
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: flash_attn_varlen_opt_func
   description: A variant of `flash_attn_varlen_func` that has `lse` as an optional
     parameter.

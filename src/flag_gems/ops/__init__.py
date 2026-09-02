@@ -393,6 +393,7 @@ from flag_gems.ops.flash_attention_backward import (
     scaled_dot_product_flash_attention_backward,
 )
 from flag_gems.ops.flash_attn_varlen_func_w8a8_fp8 import (
+    flash_attention_forward_w8a8_fp8,
     flash_attn_varlen_func_w8a8_fp8,
 )
 from flag_gems.ops.flatten import flatten
@@ -1342,6 +1343,7 @@ __all__ = [
     "fix_",
     "flash_attention_backward",
     "flash_attention_forward",
+    "flash_attention_forward_w8a8_fp8",
     "flash_attn_varlen_func",
     "flash_attn_varlen_func_w8a8_fp8",
     "flash_attn_varlen_opt_func",
