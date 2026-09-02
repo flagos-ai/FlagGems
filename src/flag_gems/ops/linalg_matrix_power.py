@@ -1,4 +1,5 @@
 import logging
+import math
 
 import torch
 import triton
@@ -36,6 +37,31 @@ _METAX_FP64_DOT_FIX = flag_gems.runtime.device.vendor_name == "metax"
 # so the pipeline must drop to 2 stages there.  (MetaX additionally needs
 # 1 stage + a wider K_SLICE for its fp64-MLA quirks, handled in _trsm_solve_2d.)
 _SMALL_SMEM = flag_gems.runtime.device.vendor_name in ("hygon", "amd", "metax")
+
+# thead (PPU / T-Head Zhenwu 真武): the grid-level spin-barrier kernels
+# (_grid_sync_kernel below, and the barrier-based parallel LU for large-M
+# inverses) hang on this platform — the first fused multi-CTA launch never
+# returns.  The fused Tier-3 path (65 <= M <= 256) is therefore disabled on
+# thead and falls through to the host-side binary-exponentiation loop below
+# (one barrier-free flag_gems mm/bmm launch per exponent bit).  Every other
+# backend keeps the fused kernel.
+_GRID_SYNC_FUSED = flag_gems.runtime.device.vendor_name != "thead"
+
+# thead additionally has a nondeterministic fp64 tl.dot: once operand
+# magnitudes leave the O(1) range the same kernel call sporadically returns
+# garbage (empirically ~1/8 of the time at (32,32) fp64, and roughly half the
+# runs at (256,256); all positive-power tests stay at O(1) magnitudes and pass
+# deterministically).  Negative powers therefore run in df64 (pure fp32
+# arithmetic, deterministic) on thead.  The df64 in-register chain covers
+# M <= 64; larger M would need the barrier-based parallel LU, which deadlocks
+# there, so negative powers on larger matrices are rejected in the entry
+# point.  A df64 (fp32 pair) value overflows fp32 past ~3.4e38, so when |n|
+# is large enough that (A^-1)^|n| would leave fp32 range the power's input
+# pair is pre-scaled by an exact power of two and the fp64-recombined result
+# scaled back (_df64_power_scale) — every intermediate of the chain then
+# stays in fp32 range for any |n| the fp64 result itself can represent.
+_THEAD = flag_gems.runtime.device.vendor_name == "thead"
+_DF64_MAX_M = 64
 
 
 @triton.jit
@@ -151,9 +177,10 @@ def _df64_dot(ah, al, bh, bl):
     return ch, cl
 
 
-_DF64_MANUAL_MAX: tl.constexpr = (
-    32  # error-free df64 matmul below this M; tl.dot above.
-)
+# error-free df64 matmul below this M; tl.dot above.  Instantiated via
+# tl.constexpr(...) — plain ``x: tl.constexpr`` module globals are rejected by
+# triton 3.5 (thead's compiler) when read from a @jit kernel.
+_DF64_MANUAL_MAX = tl.constexpr(32)
 
 
 @triton.jit
@@ -190,14 +217,28 @@ def _single_tile_kernel_df64(
     A_h_ptr,
     A_l_ptr,
     out_ptr,
+    lo_out_ptr,
     M,
     n,
     batch_stride,
     BLOCK: tl.constexpr,
+    STORE_LO: tl.constexpr = False,
+    SCALE: tl.constexpr = 1.0,
 ):
-    """Binary exponentiation with df64 accumulation (no-fp64 backend).  One
-    program per batch element; M <= BLOCK, one error-free df64 matmul per step.
-    """
+    """Binary exponentiation with df64 accumulation (no-fp64 / thead backend).
+    One program per batch element; M <= BLOCK, one error-free df64 matmul per
+    step.  Stores the fp32 hi part to ``out_ptr``; when STORE_LO is set also
+    stores the lo part to ``lo_out_ptr`` (thead recombines hi+lo into fp64).
+    ``SCALE`` multiplies the input pair on load — an exact power of two the
+    thead entry uses to keep the chain inside fp32 range for large |n|."""
+    pid = tl.program_id(0)
+    offs_m = tl.arange(0, BLOCK)
+    offs_n = tl.arange(0, BLOCK)
+    mask = (offs_m[:, None] < M) & (offs_n[None, :] < M)
+
+    a_h_base = A_h_ptr + pid * batch_stride
+    a_l_base = A_l_ptr + pid * batch_stride
+    out_base = out_ptr + pid * batch_stride
     pid = tl.program_id(0)
     offs_m = tl.arange(0, BLOCK)
     offs_n = tl.arange(0, BLOCK)
@@ -209,6 +250,8 @@ def _single_tile_kernel_df64(
 
     zh = tl.load(a_h_base + offs_m[:, None] * M + offs_n[None, :], mask=mask, other=0.0)
     zl = tl.load(a_l_base + offs_m[:, None] * M + offs_n[None, :], mask=mask, other=0.0)
+    zh = zh * SCALE
+    zl = zl * SCALE
     rh = zh
     rl = zl
     has_result = False
@@ -239,46 +282,87 @@ def _single_tile_kernel_df64(
     # A power can overflow fp32 for large |n| on a cond-N matrix (e.g. a cond-80
     # A^-31 reaches ~1e59).  The TwoSum/TwoProd renormalisation in the manual
     # df64 ops turns inf operands into NaN; the correct fp32 value there is inf
-    # (the fp32-cast reference is inf too), so map NaN -> inf.  The tl.dot path
-    # already propagates signed inf.
-    rh = tl.where(rh != rh, float("inf"), rh)
+    # (the fp32-cast reference is inf too), so map NaN -> inf (lo zeroed so a
+    # host-side fp64 recombine of hi+lo stays inf).  The tl.dot path already
+    # propagates signed inf.
+    bad = rh != rh
+    rh = tl.where(bad, float("inf"), rh)
+    rl = tl.where(bad, 0.0, rl)
     tl.store(out_base + offs_m[:, None] * M + offs_n[None, :], rh, mask=mask)
+    if STORE_LO:
+        tl.store(
+            lo_out_ptr + pid * batch_stride + offs_m[:, None] * M + offs_n[None, :],
+            rl,
+            mask=mask,
+        )
 
 
-def _matrix_power_df64(A_h, A_l, n, M, shape, out=None):
-    """df64 matrix power (no-fp64 backend): A = (A_h, A_l) df64 pair, result
-    is the fp32 hi part.  Only the single-tile path (M <= 64) is supported.
-    """
+def _matrix_power_df64_pair(A_h, A_l, n, M, shape, scale=1.0):
+    """df64 matrix power returning the full (hi, lo) fp32 pair of A^n, where
+    A = (A_h, A_l) is the df64 input pair.  Only the single-tile path
+    (M <= 64) is supported.  thead recombines ``hi.double() + lo.double()``
+    into an fp64 result; the no-fp64 backends keep the hi part only."""
     if len(shape) > 2:
         A_h = A_h.reshape(-1, M, M)
         A_l = A_l.reshape(-1, M, M)
         batch_size = A_h.shape[0]
         out_flat = torch.empty(batch_size, M, M, dtype=torch.float32, device=A_h.device)
+        lo_flat = torch.empty(batch_size, M, M, dtype=torch.float32, device=A_h.device)
         batch_stride = M * M
     else:
         A_h = A_h.unsqueeze(0)
         A_l = A_l.unsqueeze(0)
         batch_size = 1
         out_flat = torch.empty(1, M, M, dtype=torch.float32, device=A_h.device)
+        lo_flat = torch.empty(1, M, M, dtype=torch.float32, device=A_h.device)
         batch_stride = M * M
     BLOCK = max(triton.next_power_of_2(M), 16)
     _single_tile_kernel_df64[(batch_size,)](
         A_h,
         A_l,
         out_flat,
+        lo_flat,
         M,
         n,
         batch_stride,
         BLOCK=BLOCK,
+        STORE_LO=True,
+        SCALE=scale,
     )
     if len(shape) > 2:
-        result = out_flat.reshape(shape)
-    else:
-        result = out_flat.squeeze(0)
+        return out_flat.reshape(shape), lo_flat.reshape(shape)
+    return out_flat.squeeze(0), lo_flat.squeeze(0)
+
+
+def _matrix_power_df64(A_h, A_l, n, M, shape, out=None):
+    """df64 matrix power (no-fp64 backend): A = (A_h, A_l) df64 pair, result
+    is the fp32 hi part.  Only the single-tile path (M <= 64) is supported.
+    """
+    hi, _lo = _matrix_power_df64_pair(A_h, A_l, n, M, shape)
     if out is not None:
-        out.copy_(result)
+        out.copy_(hi)
         return out
-    return result
+    return hi
+
+
+def _df64_power_scale(Xh, k):
+    """Smallest exact power-of-two input scale s (0 when none is needed) such
+    that the df64 binary-exponentiation chain of (Xh, Xl)^k stays in fp32
+    normal range.
+
+    Every intermediate of binary exponentiation is bounded by
+    sigma_max(X)^k: each multiply combines powers a + b <= k and each squaring
+    stays at or below the highest power of two <= k, so entry values never
+    exceed sigma_max(X)^k, and the fp32 accumulation sums stay below
+    64 * sigma_max(X)^k — the 116-bit target leaves headroom for both.  From
+    sigma_max(X) <= sqrt(||X||_1 * ||X||_inf) <= max(||X||_1, ||X||_inf), the
+    row/column sums of the fp32 hi part bound sigma_max (the lo part is
+    < 2^-24 of the hi part, inside the margin)."""
+    m = Xh.shape[-1]
+    Xc = Xh.detach().reshape(-1, m, m).to(device="cpu").double()
+    a = Xc.abs()
+    r = max(a.sum(dim=-1).amax().item(), a.sum(dim=-2).amax().item(), 1e-30)
+    return max(0, math.ceil(math.log2(r) - 116.0 / k))
 
 
 # ===========================================================================
@@ -695,6 +779,7 @@ def _lu_factor_kernel(
 @triton.jit
 def _lu_factor_kernel_df64(
     A,
+    A_L,
     LU,
     LU_L,
     PIVOTS,
@@ -709,8 +794,11 @@ def _lu_factor_kernel_df64(
 ):
     """In-register LU factorization with partial pivoting using df64
     (double-single) arithmetic — for backends without fp64.  The working
-    matrix is a (hi, lo) fp32 pair; the rank-1 elimination updates accumulate
-    in df64 (~48-bit mantissa) so the LU factors reach fp32-standard precision.
+    matrix is a (hi, lo) fp32 pair loaded from ``A`` / ``A_L`` (fp64 inputs are
+    split into the pair before the call so the factorization is df64-accurate
+    for the true fp64 input; fp32 inputs pass zeros as the low part); the
+    rank-1 elimination updates accumulate in df64 (~48-bit mantissa) so the LU
+    factors reach fp32-standard precision.
     """
     pid = tl.program_id(0)
     rows = tl.arange(0, BLOCK_M)
@@ -719,8 +807,9 @@ def _lu_factor_kernel_df64(
     offsets = pid * M * N + rows[:, None] * N + cols[None, :]
     mask = (rows[:, None] < M) & (cols[None, :] < N)
     a = tl.load(A + offsets, mask=mask, other=0.0)
+    al = tl.load(A_L + offsets, mask=mask, other=0.0)
     work_h = a
-    work_l = tl.zeros_like(a)
+    work_l = al
     perm = tl.arange(0, BLOCK_M)
     info_val = 0
 
@@ -890,7 +979,7 @@ def _two_I_minus(T):
     return out
 
 
-def _lu_factor_ex_local(A, use_df64=False):
+def _lu_factor_ex_local(A, use_df64=False, A_l=None):
     """LU factorization returning (LU, LU_L, pivots, info, perm) for
     matrix_power's inverse.  ``perm`` is the row-permutation index (computed on
     GPU by the kernel, so the solve needs no device→host copy); ``LU_L`` is the
@@ -910,6 +999,9 @@ def _lu_factor_ex_local(A, use_df64=False):
         # negative-power path upcasts fp32 to fp64), so the inverse needs no
         # Newton refinement.  Pivots are 0-based IPIV -> 1-based for the perm
         # conversion.
+        # NB: thead never reaches this branch — its negative powers are routed
+        # to df64 (M <= 64) or rejected (M > 64) in the entry point, because
+        # this barrier-based LU deadlocks there (see _GRID_SYNC_FUSED).
         LU, pivots, info = _lu_factor_parallel(A)
         return LU, None, pivots, info, _pivots_to_perm_gpu(pivots + 1, m)
     input_contiguous = A.contiguous()
@@ -924,8 +1016,11 @@ def _lu_factor_ex_local(A, use_df64=False):
     with torch_device_fn.device(A.device):
         if use_df64:
             lu_l = torch.empty_like(input_contiguous)
+            if A_l is None:
+                A_l = torch.zeros_like(input_contiguous)
             _lu_factor_kernel_df64[(batch,)](
                 input_contiguous,
+                A_l,
                 lu,
                 lu_l,
                 pivots,
@@ -1066,6 +1161,98 @@ def _metax_fp64_mm(A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
         G=BLOCK_M // 16,
         num_warps=4,
         num_stages=1,
+    )
+    return C.reshape(A.shape[:-2] + (M, N))
+
+
+@triton.jit
+def _thead_fp64_mm16_kernel(
+    A,
+    B,
+    C,
+    M,
+    N,
+    K,
+    stride_ab,
+    stride_am,
+    stride_ak,
+    stride_bb,
+    stride_bk,
+    stride_bn,
+    stride_cb,
+    stride_cm,
+    stride_cn,
+):
+    """Tiled fp64 C = A @ B whose every tl.dot is capped at a (32,32,32) tile
+    (4 warps) — thead's fp64 tl.dot with wider tiles or more warps
+    sporadically returns garbage once operand magnitudes grow (see the _THEAD
+    note; 4-warp dots up to (64,64,64) were bitwise-deterministic in the
+    envelope probe).  The thead M > 64 negative-power chain routes every fp64
+    matmul through this kernel.  Grid: (output-tiles, batch)."""
+    pid = tl.program_id(0)
+    pid_b = tl.program_id(1)
+    grid_n = tl.cdiv(N, 32)
+    pid_m = pid // grid_n
+    pid_n = pid % grid_n
+
+    rm = pid_m * 32 + tl.arange(0, 32)
+    rn = pid_n * 32 + tl.arange(0, 32)
+    rk = tl.arange(0, 32)
+
+    a_base = A + pid_b * stride_ab
+    b_base = B + pid_b * stride_bb
+    c_base = C + pid_b * stride_cb
+
+    acc = tl.zeros((32, 32), dtype=tl.float64)
+    for k0 in tl.range(0, K, 32):
+        kr = k0 + rk
+        a = tl.load(
+            a_base + rm[:, None] * stride_am + kr[None, :] * stride_ak,
+            mask=(rm[:, None] < M) & (kr[None, :] < K),
+            other=0.0,
+        )
+        b = tl.load(
+            b_base + kr[:, None] * stride_bk + rn[None, :] * stride_bn,
+            mask=(kr[:, None] < K) & (rn[None, :] < N),
+            other=0.0,
+        )
+        acc += tl.dot(a.to(tl.float64), b.to(tl.float64), allow_tf32=False)
+    cmask = (rm[:, None] < M) & (rn[None, :] < N)
+    tl.store(
+        c_base + rm[:, None] * stride_cm + rn[None, :] * stride_cn,
+        acc.to(C.dtype.element_ty),
+        mask=cmask,
+    )
+
+
+def _thead_fp64_mm16(A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
+    """fp64 matmul for the thead large-M deterministic path — every tl.dot is
+    a (16,16,16) fp64 tile (see ``_thead_fp64_mm16_kernel``)."""
+    *_, M, K = A.shape
+    *_, K2, N = B.shape
+    assert K == K2
+    A2 = A.reshape(-1, M, K)
+    B2 = B.reshape(-1, K, N)
+    batch = A2.shape[0]
+    C = torch.empty(batch, M, N, dtype=A.dtype, device=A.device)
+    grid = (triton.cdiv(M, 32) * triton.cdiv(N, 32), batch)
+    _thead_fp64_mm16_kernel[grid](
+        A2,
+        B2,
+        C,
+        M,
+        N,
+        K,
+        A2.stride(0),
+        A2.stride(1),
+        A2.stride(2),
+        B2.stride(0),
+        B2.stride(1),
+        B2.stride(2),
+        C.stride(0),
+        C.stride(1),
+        C.stride(2),
+        num_warps=4,
     )
     return C.reshape(A.shape[:-2] + (M, N))
 
@@ -1356,6 +1543,7 @@ def _trsm_kernel(
     USE_FP64: tl.constexpr,
     FIX_FP64: tl.constexpr = False,
     G_BM: tl.constexpr = 1,
+    D16: tl.constexpr = False,
 ):
     """Blocked triangular solve A X = B in place (B <- X), one program per
     K_SLICE-column group of the RHS.
@@ -1384,6 +1572,12 @@ def _trsm_kernel(
     rr = tl.arange(0, BM)
 
     for block_idx in range(num_blocks):
+        if D16:
+            # Cross-thread dependency through global memory inside this CTA
+            # (the previous block's update stores are read by this block's
+            # solve loads); fence each block iteration (see
+            # _thead_lu_panel_serial for the same race without the barrier).
+            tl.debug_barrier()
         bk = block_idx if not UPPER else num_blocks - 1 - block_idx
         blk_start = bk * BLOCK_SIZE
         blk_end = tl.minimum(blk_start + BLOCK_SIZE, N)
@@ -1403,47 +1597,105 @@ def _trsm_kernel(
                 mask=a_cols < blk_sz,
             )
 
-        # The block's X stays in REGISTERS across the serial row chain: each row
-        # solves against the register tile and writes it back in place, so the
-        # per-row step needs no global reload of the whole block.  The solve
-        # value is still stored to B (the update phase and the next block read
-        # it), but the register tile is the source for the next row's dot.
-        x_all = tl.load(
-            B_ptr + (blk_start + xr) * stride_b_k + col_offs[None, :],
-            mask=(xr < blk_sz) & col_mask[None, :],
-            other=0.0,
-        ).to(A_ptr.dtype.element_ty)
-        for r_idx in range(blk_sz):
-            row = blk_end - 1 - r_idx if UPPER else blk_start + r_idx
-            row_rel = row - blk_start
+        if D16:
+            # thead: the register-chain variant below races on this platform
+            # (its cross-thread register dependency relies on the tl.sum sync
+            # only — empirically nondeterministic here), so the D16 mode
+            # re-reads each already-solved row from global memory and fences
+            # every row with a debug_barrier — the same fenced pattern as
+            # _thead_lu_panel_serial.
+            for r_idx in range(blk_sz):
+                row = blk_end - 1 - r_idx if UPPER else blk_start + r_idx
+                row_rel = row - blk_start
 
-            # Row of A restricted to the block's triangle.
-            a_row = tl.load(
-                A_ptr + row * stride_a_n + blk_start + a_cols,
-                mask=a_cols < blk_sz,
+                # Row of A restricted to the block's triangle.
+                a_row = tl.load(
+                    A_ptr + row * stride_a_n + blk_start + a_cols,
+                    mask=a_cols < blk_sz,
+                    other=0.0,
+                )
+                if UPPER:
+                    a_row = tl.where(a_cols > row_rel, a_row, 0.0)
+                else:
+                    a_row = tl.where(a_cols < row_rel, a_row, 0.0)
+
+                # Already-solved block rows from global memory (unsolved rows
+                # are masked out by a_row).
+                xs = tl.load(
+                    B_ptr + (blk_start + xr) * stride_b_k + col_offs[None, :],
+                    mask=(xr < blk_sz) & col_mask[None, :],
+                    other=0.0,
+                ).to(A_ptr.dtype.element_ty)
+                x_sum = tl.sum(a_row[:, None] * xs, axis=0)
+
+                x_vals = (
+                    tl.load(
+                        B_ptr + row * stride_b_k + col_offs,
+                        mask=col_mask,
+                        other=0.0,
+                    )
+                    - x_sum
+                )
+                if not UNIT:
+                    inv_d = tl.load(INV_ptr + pid * BLOCK_SIZE + row_rel)
+                    x_vals *= inv_d
+                tl.store(B_ptr + row * stride_b_k + col_offs, x_vals, mask=col_mask)
+                # fence this row's store before the next row's xs reload.
+                tl.debug_barrier()
+        else:
+            # The block's X stays in REGISTERS across the serial row chain: each
+            # row solves against the register tile and writes it back in place,
+            # so the per-row step needs no global reload of the whole block.
+            # The solve value is still stored to B (the update phase and the
+            # next block read it), but the register tile is the source for the
+            # next row's dot.
+            x_all = tl.load(
+                B_ptr + (blk_start + xr) * stride_b_k + col_offs[None, :],
+                mask=(xr < blk_sz) & col_mask[None, :],
                 other=0.0,
-            )
-            if UPPER:
-                a_row = tl.where(a_cols > row_rel, a_row, 0.0)
-            else:
-                a_row = tl.where(a_cols < row_rel, a_row, 0.0)
+            ).to(A_ptr.dtype.element_ty)
+            for r_idx in range(blk_sz):
+                row = blk_end - 1 - r_idx if UPPER else blk_start + r_idx
+                row_rel = row - blk_start
 
-            # Dot against the register tile; the a_row mask selects the already
-            # solved rows.  The cross-thread reduction synchronises within the
-            # program, so no debug_barrier is needed between rows.
-            x_sum = tl.sum(a_row[:, None] * x_all, axis=0)
+                # Row of A restricted to the block's triangle.
+                a_row = tl.load(
+                    A_ptr + row * stride_a_n + blk_start + a_cols,
+                    mask=a_cols < blk_sz,
+                    other=0.0,
+                )
+                if UPPER:
+                    a_row = tl.where(a_cols > row_rel, a_row, 0.0)
+                else:
+                    a_row = tl.where(a_cols < row_rel, a_row, 0.0)
 
-            x_vals = (
-                tl.load(B_ptr + row * stride_b_k + col_offs, mask=col_mask, other=0.0)
-                - x_sum
-            )
-            if not UNIT:
-                inv_d = tl.load(INV_ptr + pid * BLOCK_SIZE + row_rel)
-                x_vals *= inv_d
-            x_all = tl.where(
-                (xr == row_rel) & col_mask[None, :], x_vals[None, :], x_all
-            )
-            tl.store(B_ptr + row * stride_b_k + col_offs, x_vals, mask=col_mask)
+                # Dot against the register tile; the a_row mask selects the
+                # already solved rows.  The cross-thread reduction synchronises
+                # within the program, so no debug_barrier is needed between
+                # rows.
+                x_sum = tl.sum(a_row[:, None] * x_all, axis=0)
+
+                x_vals = (
+                    tl.load(
+                        B_ptr + row * stride_b_k + col_offs,
+                        mask=col_mask,
+                        other=0.0,
+                    )
+                    - x_sum
+                )
+                if not UNIT:
+                    inv_d = tl.load(INV_ptr + pid * BLOCK_SIZE + row_rel)
+                    x_vals *= inv_d
+                x_all = tl.where(
+                    (xr == row_rel) & col_mask[None, :], x_vals[None, :], x_all
+                )
+                tl.store(B_ptr + row * stride_b_k + col_offs, x_vals, mask=col_mask)
+
+        if D16:
+            # fence the serial chain's stores before the D16 update re-reads
+            # the solved rows from B across threads (see
+            # _thead_lu_panel_serial for the same race without the barrier).
+            tl.debug_barrier()
 
         # ═══ Update: B[rest, kslice] -= A[rest, blk] @ X[blk, kslice] ═══
         need_update = tl.where(UPPER, bk > 0, blk_end < N)
@@ -1452,48 +1704,97 @@ def _trsm_kernel(
             rem_s = tl.where(UPPER, 0, blk_end)
             bound = tl.where(UPPER, blk_start, N)
 
-            # Reuse the register tile (x_all) as the X panel.
-            for m_start in range(0, M_REM, BM):
-                rm = rem_s + m_start + rr
-                mask_m = rm < bound
-                a_sub = tl.load(
-                    A_ptr + rm[:, None] * stride_a_n + (blk_start + a_cols)[None, :],
-                    mask=mask_m[:, None] & (a_cols[None, :] < blk_sz),
-                    other=0.0,
-                )
-                if K_SLICE < 8:
-                    acc = tl.sum(a_sub[:, :, None] * x_all[None, :, :], axis=1)
-                elif USE_FP64:
-                    # fp64 accumulation for the update gemm (fp32 operands kept
-                    # in fp32 storage, accumulate in fp64 for accuracy) —
-                    # fp64-capable backends.  On MetaX the fp64 MMA scrambles
-                    # its output rows, so the result is un-scrambled before the
-                    # store (see _metax_fix_fp64_rows).
-                    acc = tl.dot(
-                        a_sub.to(tl.float64), x_all.to(tl.float64), allow_tf32=False
+            if D16:
+                # thead: keep every fp64 dot at (16,16,16) — wider fp64 dots
+                # nondeterministically return garbage on this platform (see
+                # the _THEAD note).  The solved block's X panel was stored to
+                # B above and is re-read here in 16-row x 16-col chunks.
+                rr16 = tl.arange(0, 16)
+                # fence the serial chain's stores before the cross-thread
+                # x16 reloads.
+                tl.debug_barrier()
+                for m_start in range(0, M_REM, 16):
+                    rm = rem_s + m_start + rr16
+                    mask_m = rm < bound
+                    b_base = B_ptr + rm[:, None] * stride_b_k + col_offs[None, :]
+                    b_curr = tl.load(
+                        b_base,
+                        mask=mask_m[:, None] & col_mask[None, :],
+                        other=0.0,
+                    ).to(tl.float64)
+                    for kc in range(0, blk_sz, 16):
+                        kr = blk_start + kc + rr16
+                        km = kr < blk_end
+                        a16 = tl.load(
+                            A_ptr + rm[:, None] * stride_a_n + kr[None, :],
+                            mask=mask_m[:, None] & km[None, :],
+                            other=0.0,
+                        ).to(tl.float64)
+                        x16 = tl.load(
+                            B_ptr + kr[:, None] * stride_b_k + col_offs[None, :],
+                            mask=km[:, None] & col_mask[None, :],
+                            other=0.0,
+                        ).to(tl.float64)
+                        b_curr -= tl.dot(a16, x16, allow_tf32=False)
+                    tl.store(
+                        b_base,
+                        b_curr.to(B_ptr.dtype.element_ty),
+                        mask=mask_m[:, None] & col_mask[None, :],
                     )
-                    if FIX_FP64:
-                        acc = _metax_fix_fp64_rows(acc, BM, K_SLICE, G_BM)
-                    acc = acc.to(A_ptr.dtype.element_ty)
-                else:
-                    # Backends without an fp64 compute path (iluvatar): its
-                    # tl.dot also rejects non-batch dims < 16 (K_SLICE=8 here),
-                    # so accumulate the update gemm elementwise in fp32.
-                    acc = tl.sum(a_sub[:, :, None] * x_all[None, :, :], axis=1)
-                b_base = B_ptr + rm[:, None] * stride_b_k + col_offs[None, :]
-                b_curr = tl.load(
-                    b_base, mask=mask_m[:, None] & col_mask[None, :], other=0.0
-                )
-                b_curr = b_curr.to(acc.dtype) - acc
-                tl.store(b_base, b_curr, mask=mask_m[:, None] & col_mask[None, :])
+            else:
+                # Reuse the register tile (x_all) as the X panel.
+                for m_start in range(0, M_REM, BM):
+                    rm = rem_s + m_start + rr
+                    mask_m = rm < bound
+                    a_sub = tl.load(
+                        A_ptr
+                        + rm[:, None] * stride_a_n
+                        + (blk_start + a_cols)[None, :],
+                        mask=mask_m[:, None] & (a_cols[None, :] < blk_sz),
+                        other=0.0,
+                    )
+                    if K_SLICE < 8:
+                        acc = tl.sum(a_sub[:, :, None] * x_all[None, :, :], axis=1)
+                    elif USE_FP64:
+                        # fp64 accumulation for the update gemm (fp32 operands
+                        # kept in fp32 storage, accumulate in fp64 for
+                        # accuracy) — fp64-capable backends.  On MetaX the
+                        # fp64 MMA scrambles its output rows, so the result is
+                        # un-scrambled before the store (see
+                        # _metax_fix_fp64_rows).
+                        acc = tl.dot(
+                            a_sub.to(tl.float64),
+                            x_all.to(tl.float64),
+                            allow_tf32=False,
+                        )
+                        if FIX_FP64:
+                            acc = _metax_fix_fp64_rows(acc, BM, K_SLICE, G_BM)
+                        acc = acc.to(A_ptr.dtype.element_ty)
+                    else:
+                        # Backends without an fp64 compute path (iluvatar): its
+                        # tl.dot also rejects non-batch dims < 16 (K_SLICE=8
+                        # here), so accumulate the update gemm elementwise in
+                        # fp32.
+                        acc = tl.sum(a_sub[:, :, None] * x_all[None, :, :], axis=1)
+                    b_base = B_ptr + rm[:, None] * stride_b_k + col_offs[None, :]
+                    b_curr = tl.load(
+                        b_base, mask=mask_m[:, None] & col_mask[None, :], other=0.0
+                    )
+                    b_curr = b_curr.to(acc.dtype) - acc
+                    tl.store(b_base, b_curr, mask=mask_m[:, None] & col_mask[None, :])
 
 
-def _trsm_solve_2d(A_tri, B, upper: bool, unitriangular: bool):
+def _trsm_solve_2d(A_tri, B, upper: bool, unitriangular: bool, d16: bool = False):
     """Solve a 2-D triangular system A_tri X = B in place, with ``_trsm_kernel``.
 
     Self-contained in this operator (no dependency on the shared triangular-solve
     op, whose persistent N>512 path also reuses one barrier counter across its
     batch loop and races on batched inputs).
+
+    ``d16`` (thead large-M path): every fp64 update dot is restricted to a
+    (16,16,16) tile — the only fp64-dot shape that stays deterministic on
+    thead once operand magnitudes grow — so the solve runs with 16-row update
+    sub-tiles and a 16-column K_SLICE.
     """
     n = A_tri.shape[0]
     k = B.shape[1]
@@ -1504,12 +1805,15 @@ def _trsm_solve_2d(A_tri, B, upper: bool, unitriangular: bool):
     # alike.  Everywhere else the narrower slice keeps the iluvatar elementwise
     # fallback small and the fp64 dot legal (NVIDIA handles N = 8 fine).
     fix_fp64 = _METAX_FP64_DOT_FIX
-    K_SLICE = 16 if fix_fp64 else 8
+    K_SLICE = 16 if (fix_fp64 or d16) else 8
+    BM = 16 if d16 else 128
     # Software-pipeline depth for the update gemm.  num_stages is a pipelining
     # hint only — it never changes the math — but it decides whether the kernel
     # fits the per-block shared memory: at the 3-stage default the fp64-stored
     # factor path needs ~73.7 KB, over the 64 KB limit on small-smem backends.
-    if fix_fp64:
+    if d16:
+        num_stages = 2
+    elif fix_fp64:
         num_stages = 1
     elif _SMALL_SMEM:
         num_stages = 2
@@ -1533,12 +1837,13 @@ def _trsm_solve_2d(A_tri, B, upper: bool, unitriangular: bool):
         B.stride(0),
         32,
         K_SLICE,
-        128,
+        BM,
         upper,
         unit_flag,
         _ACCUMULATE_FP64,
         fix_fp64,
         8,  # G_BM = BM // 16 = 128 // 16
+        D16=d16,
         num_warps=4,
         # fp64 dot operands are staged through shared memory (8 bytes/element).
         # On 64 KB-shared-memory backends the pipeline depth must drop below
@@ -2028,7 +2333,280 @@ def _lu_factor_parallel(A):
     return LU.reshape(A.shape), pivots, info
 
 
-def _inverse(A: torch.Tensor, use_df64=False) -> torch.Tensor:
+@triton.jit
+def _thead_lu_update16_par(
+    LU_ptr,
+    K0: tl.constexpr,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    PANEL: tl.constexpr,
+):
+    """A[K0+PANEL:M, K0+PANEL:N] -= L @ U for the thead large-M LU — the
+    trailing update of _lu_trailing_update_par with fp64 tl.dots capped at
+    (32,32,32) tiles (thead's fp64 dots with wider tiles / more warps
+    sporadically return garbage once magnitudes grow; 4-warp dots up to
+    (64,64,64) were bitwise-deterministic in the envelope probe).  Grid:
+    (row-tiles, col-tiles, batch)."""
+    pid_m = tl.program_id(0)
+    pid_n = tl.program_id(1)
+    pid_b = tl.program_id(2)
+    rows = K0 + PANEL + pid_m * 32 + tl.arange(0, 32)
+    cols = K0 + PANEL + pid_n * 32 + tl.arange(0, 32)
+    kr32 = tl.arange(0, 32)
+    base = pid_b * M * N
+    tile_offs = base + rows[:, None] * N + cols[None, :]
+    tile_mask = (rows[:, None] < M) & (cols[None, :] < N)
+    tile = tl.load(LU_ptr + tile_offs, mask=tile_mask, other=0.0).to(
+        LU_ptr.dtype.element_ty
+    )
+    acc = tl.zeros((32, 32), dtype=tl.float64)
+    for kb in range(0, PANEL, 32):
+        kr = K0 + kb + kr32
+        k_mask = kr < K0 + PANEL
+        l32 = tl.load(
+            LU_ptr + base + rows[:, None] * N + kr[None, :],
+            mask=(rows[:, None] < M) & k_mask[None, :],
+            other=0.0,
+        )
+        u32 = tl.load(
+            LU_ptr + base + kr[:, None] * N + cols[None, :],
+            mask=k_mask[:, None] & (cols[None, :] < N),
+            other=0.0,
+        )
+        acc += tl.dot(l32.to(tl.float64), u32.to(tl.float64), allow_tf32=False)
+    tl.store(
+        LU_ptr + tile_offs,
+        (tile - acc.to(LU_ptr.dtype.element_ty)),
+        mask=tile_mask,
+    )
+
+
+@triton.jit
+def _thead_lu_panel_serial(
+    LU_ptr,
+    pivots_ptr,
+    info_ptr,
+    K0: tl.constexpr,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    PANEL: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    COL_BLOCK: tl.constexpr,
+    ROW_TILE: tl.constexpr,
+):
+    """Barrier-free panel LU factorization for thead (one program per matrix;
+    the R-group barrier kernel _lu_panel_par deadlocks there).  Serial
+    right-looking elimination over the PANEL columns of [K0, M) x [K0, K0+PANEL):
+    per column — pivot search over the column vector in registers, physical row
+    swap over the panel columns, scale the below-diagonal entries, then the
+    rank-1 update over ROW_TILE-row chunks (register-bounded).  All scalars /
+    reductions stay inside one CTA, so no grid barrier is needed and the result
+    is deterministic.  Stores 0-based IPIV pivots."""
+    pid = tl.program_id(0)
+    base = pid * M * N
+    allr = tl.arange(0, BLOCK_M)
+    allc = tl.arange(0, COL_BLOCK)
+    rt = tl.arange(0, ROW_TILE)
+    info_val = 0
+    for jj in tl.range(0, PANEL):
+        j = K0 + jj
+        # 1. current column j (rows >= j) — pivot search in registers.
+        col = tl.load(
+            LU_ptr + base + (j + allr) * N + j, mask=(j + allr) < M, other=0.0
+        )
+        ac = tl.where((j + allr) < M, tl.abs(col), -1.0)
+        pmax = tl.max(ac, axis=0)
+        p = j + tl.min(tl.where(ac == pmax, allr, BLOCK_M), axis=0)
+        pivot = tl.load(LU_ptr + base + p * N + j)
+        if pmax != pmax or pmax == 0.0:
+            if info_val == 0:
+                info_val = j + 1
+        tl.store(pivots_ptr + pid * M + j, p)
+        # 2. swap rows j and p over the panel columns.
+        if p != j:
+            rj = tl.load(
+                LU_ptr + base + j * N + K0 + allc, mask=allc < PANEL, other=0.0
+            )
+            rp = tl.load(
+                LU_ptr + base + p * N + K0 + allc, mask=allc < PANEL, other=0.0
+            )
+            tl.store(LU_ptr + base + j * N + K0 + allc, rp, mask=allc < PANEL)
+            tl.store(LU_ptr + base + p * N + K0 + allc, rj, mask=allc < PANEL)
+        # Cross-thread dependency through global memory inside this CTA: rows
+        # written by one thread are read by others in the next step, so each
+        # store phase must be fenced before the dependent loads (same pattern
+        # as the chained in-place swaps in _lu_apply_left_par /
+        # _lu_swap_right_solve_par — without the barrier Triton may reorder
+        # the loads ahead of the stores and the factorization races).
+        tl.debug_barrier()
+        # 3. scale the below-diagonal entries of column j.
+        s = tl.load(
+            LU_ptr + base + (j + 1 + allr) * N + j,
+            mask=(j + 1 + allr) < M,
+            other=0.0,
+        )
+        s = s / pivot
+        tl.store(
+            LU_ptr + base + (j + 1 + allr) * N + j,
+            s,
+            mask=(j + 1 + allr) < M,
+        )
+        tl.debug_barrier()
+        # 4. rank-1 update rows (j, M) x cols (jj+1, PANEL), in row chunks.
+        if jj + 1 < PANEL:
+            ux = tl.load(
+                LU_ptr + base + j * N + (K0 + jj + 1 + allc),
+                mask=(jj + 1 + allc) < PANEL,
+                other=0.0,
+            )
+            for r0 in tl.range(j + 1, M, ROW_TILE):
+                rows_r = r0 + rt
+                rmask = rows_r < M
+                sc = tl.load(
+                    LU_ptr + base + rows_r * N + j, mask=rmask, other=0.0
+                )
+                xmask = (jj + 1 + allc) < PANEL
+                blk = tl.load(
+                    LU_ptr + base + rows_r[:, None] * N + (K0 + jj + 1 + allc)[None, :],
+                    mask=rmask[:, None] & xmask[None, :],
+                    other=0.0,
+                )
+                blk = blk - sc[:, None] * ux[None, :]
+                tl.store(
+                    LU_ptr + base + rows_r[:, None] * N + (K0 + jj + 1 + allc)[None, :],
+                    blk,
+                    mask=rmask[:, None] & xmask[None, :],
+                )
+        # fence this column's stores before the next column's pivot search
+        tl.debug_barrier()
+    tl.store(info_ptr + pid, info_val)
+
+
+def _thead_lu_factor(A):
+    """Blocked LU for thead (M > 64), fully barrier-free and deterministic:
+    the panel factorization is a single CTA per matrix (_thead_lu_panel_serial —
+    the R-group barrier kernel deadlocks on thead), the row swaps / solve and
+    the trailing update are launch-ordered kernels whose fp64 tl.dots are
+    capped at (32,32,32) 4-warp tiles (the shape envelope thead's fp64 dot
+    stays deterministic in once magnitudes grow — see the probe evidence in
+    the _thead_fp64_mm16_kernel note).  Returns (LU, pivots, info) with
+    0-based IPIV pivots."""
+    A = A.contiguous()
+    M = A.shape[-1]
+    N = A.shape[-1]
+    batch = A.numel() // (M * N)
+    LU = A.reshape(batch, M, N).clone()
+    pivots = torch.empty(batch, M, dtype=torch.int32, device=A.device)
+    info = torch.zeros(batch, dtype=torch.int32, device=A.device)
+
+    for k0 in range(0, N, _LU_PAR_PANEL):
+        p = min(_LU_PAR_PANEL, N - k0)
+        col_block = triton.next_power_of_2(p)
+        _thead_lu_panel_serial[(batch,)](
+            LU,
+            pivots,
+            info,
+            k0,
+            M,
+            N,
+            p,
+            triton.next_power_of_2(M),
+            col_block,
+            _LU_PAR_TILE_M // 2,
+            num_warps=8,
+        )
+        if k0 > 0:
+            _lu_apply_left_par[(triton.cdiv(k0, _LU_PAR_TILE_N), batch)](
+                LU,
+                pivots,
+                k0,
+                M,
+                N,
+                p,
+                _LU_PAR_TILE_N,
+                num_warps=4,
+            )
+        trailing_n = N - k0 - p
+        if trailing_n > 0:
+            _lu_swap_right_solve_par[
+                (triton.cdiv(trailing_n, _LU_PAR_TILE_N), batch)
+            ](
+                LU,
+                pivots,
+                k0,
+                M,
+                N,
+                p,
+                col_block,
+                _LU_PAR_TILE_N,
+                num_warps=4,
+            )
+            _thead_lu_update16_par[
+                (
+                    triton.cdiv(trailing_n, 32),
+                    triton.cdiv(trailing_n, 32),
+                    batch,
+                )
+            ](LU, k0, M, N, p, num_warps=4)
+    return LU.reshape(A.shape), pivots, info
+
+
+def _thead_inverse_large(A):
+    """A^-1 for M > 64 on thead, deterministic: parallel LU whose only fp64
+    tl.dots are (16,16,16) tiles (_thead_lu_factor), then the scalar
+    forward/backward substitution solve (no tl.dot at all).  fp64 storage
+    throughout — no fp64 dot ever exceeds the tile shape that is reliable on
+    this platform."""
+    m = A.shape[-1]
+    A3 = A.reshape(-1, m, m)
+    batch = A3.shape[0]
+    LU, pivots, info = _thead_lu_factor(A3)
+    if torch.any(info != 0):
+        raise RuntimeError(
+            "linalg_matrix_power: the input matrix is singular (LU factorization "
+            "encountered a zero pivot)"
+        )
+    # 0-based IPIV -> 1-based -> row-permutation index, then solve with the
+    # row-permuted identity: A = P L U, so L U X = P solves A X = I.
+    perm = _pivots_to_perm_gpu(pivots + 1, m)  # (batch, m), int64
+    eye = torch.eye(m, dtype=A.dtype, device=A.device)
+    if batch == 1:
+        pb = eye[perm[0]].reshape(1, m, m)
+    else:
+        pb = torch.gather(
+            eye.expand(batch, m, m).contiguous(),
+            1,
+            perm.unsqueeze(-1).expand(batch, m, m),
+        )
+    # Blocked triangular solve in place, mirroring the shared lu_solve flow
+    # (unit-lower L forward, then upper U backward) with _trsm_kernel's D16
+    # mode — every fp64 tl.dot stays a (16,16,16) tile, the only fp64-dot
+    # shape that is deterministic on thead once magnitudes grow.  (The legacy
+    # scalar substitution kernels ran one serial O(M^2) loop per RHS column,
+    # ~50x slower at M=1024.)
+    X = pb.clone()
+    for b in range(batch):
+        _trsm_solve_2d(LU[b], X[b], upper=False, unitriangular=True, d16=True)
+        _trsm_solve_2d(LU[b], X[b], upper=True, unitriangular=False, d16=True)
+    return X.reshape(A.shape)
+
+
+def _thead_fp64_power_large(X, k, shape):
+    """X^k for M > 64 on thead, deterministic: host binary exponentiation
+    whose matmuls are the (16,16,16)-tile _thead_fp64_mm16."""
+    m = X.shape[-1]
+    X2 = X.reshape(-1, m, m)
+    res = None
+    while k > 0:
+        if k & 1:
+            res = X2 if res is None else _thead_fp64_mm16(res, X2)
+        k >>= 1
+        if k > 0:
+            X2 = _thead_fp64_mm16(X2, X2)
+    return res.reshape(shape)
+
+
+def _inverse(A: torch.Tensor, use_df64=False, A_l=None) -> torch.Tensor:
     """A⁻¹ entirely on flag_gems Triton kernels: LU factorization + solve.
 
     flag_gems has no linalg_inv op, and torch.linalg.inv under use_gems would
@@ -2037,7 +2615,7 @@ def _inverse(A: torch.Tensor, use_df64=False) -> torch.Tensor:
     tiled TRSM op in ``linalg_lu_solve`` below.  ``use_df64`` selects the df64
     (double-single) kernels for no-fp64 backends.
     """
-    LU, LU_L, pivots, info, perm = _lu_factor_ex_local(A, use_df64)
+    LU, LU_L, pivots, info, perm = _lu_factor_ex_local(A, use_df64, A_l)
     if info is not None and torch.any(info != 0):
         raise RuntimeError(
             "linalg_matrix_power: the input matrix is singular (LU factorization "
@@ -2133,8 +2711,70 @@ def linalg_matrix_power(
     upcast = False
     # On backends without fp64 (e.g. ascend, iluvatar) the fp64 path is
     # unavailable, so f32 negatives use the df64 (double-single) kernels:
-    # df64 inverse (hi/lo) + df64 binary-exponentiation power.
-    use_df64 = (not flag_gems.runtime.device.support_fp64) and A.dtype == torch.float32
+    # df64 inverse (hi/lo) + df64 binary-exponentiation power.  thead (PPU) is
+    # fp64-capable but its fp64 tl.dot nondeterministically returns garbage
+    # once operand magnitudes grow (see the _THEAD note), so its negative
+    # powers run in df64 too — fp64 inputs are split into an fp32 (hi, lo)
+    # pair first and the df64 result is recombined into fp64.
+    use_df64 = A.dtype == torch.float32 and (
+        not flag_gems.runtime.device.support_fp64 or _THEAD
+    )
+    if n < 0 and _THEAD:
+        # thead negative powers are fully deterministic by construction:
+        # pure-fp32 df64 arithmetic for M <= 64 (in-register kernels), and an
+        # fp64 chain whose every tl.dot is a (16,16,16) tile for larger M —
+        # the platform's fp64 dot sporadically returns garbage with wider
+        # tiles once operand magnitudes grow (see the _THEAD note).
+        if m > _DF64_MAX_M:
+            # M > 64: the in-register df64 kernels stop at 64, so run the
+            # whole chain in fp64 through _thead_inverse_large /
+            # _thead_fp64_mm16 (16-tile dots only).  fp32 inputs ride the same
+            # fp64 chain and the result is cast back — the cast reproduces the
+            # fp32-cast reference exactly, including +/-inf past fp32 range.
+            A64 = A if A.dtype == torch.float64 else A.double()
+            X = _thead_inverse_large(A64)
+            hi = _thead_fp64_power_large(X, -n, shape)
+            if A.dtype == torch.float32:
+                hi = hi.float()
+            if out is not None:
+                out.copy_(hi)
+                return out
+            return hi
+        if A.dtype == torch.float64:
+            # Split into an fp32 (hi, lo) pair on the CPU — IEEE fp64 keeps the
+            # split error-free — and invert the *pair* in df64: inverting the
+            # hi part alone leaves the inverse wrong by ~cond(A)*2^-24 (~1e-6
+            # on the cond-80 tests, over the fp64 rtol).
+            A_cpu = A.detach().cpu().double()
+            Ah = A_cpu.float()
+            Al = (A_cpu - Ah.double()).float()
+            Ah = Ah.to(device=A.device)
+            Al = Al.to(device=A.device)
+        else:
+            # fp32 inputs are exact as the df64 pair's hi part (low part 0).
+            Ah = A.contiguous()
+            Al = None
+        Xh, Xl = _inverse(Ah, use_df64=True, A_l=Al)
+        k = -n
+        # A df64 pair overflows fp32 once (A^-1)^k leaves ~3.4e38 (the
+        # cond-80 inputs do that past |n| ~ 19).  Pre-scale the power's input
+        # pair by an exact power of two so every binary-exponentiation
+        # intermediate stays in fp32 range — possible for any k whose result
+        # fp64 itself can represent — then recombine in fp64 and scale back
+        # (both steps exact: powers of two).  fp32 results are cast from the
+        # fp64 recombine, which also keeps the correct +/-inf sign past fp32
+        # range (the fp32-cast reference is +/-inf there too).
+        s = _df64_power_scale(Xh, k)
+        hi, lo = _matrix_power_df64_pair(Xh, Xl, k, m, shape, scale=2.0**-s)
+        res = hi.double() + lo.double()  # deterministic fp64 recombine
+        if s:
+            res = res * torch.pow(torch.tensor(2.0, dtype=torch.float64), k * s)
+        if A.dtype == torch.float32:
+            res = res.float()
+        if out is not None:
+            out.copy_(res)
+            return out
+        return res
     if n < 0 and use_df64:
         inv = _inverse(A, use_df64=True)
         if isinstance(inv, tuple):
@@ -2232,8 +2872,10 @@ def linalg_matrix_power(
             G=BLOCK // 16,
         )
 
-    elif A.device.type == flag_gems.device and m <= 256:
+    elif _GRID_SYNC_FUSED and A.device.type == flag_gems.device and m <= 256:
         # Tier 3: grid-level sync fused (65 <= M <= 256).
+        # Disabled on thead (_GRID_SYNC_FUSED): its grid spin-barrier deadlocks,
+        # so 65 <= M <= 256 falls through to the barrier-free host path below.
         TILES = triton.cdiv(m, TILE)
         # Fresh buffers per call: the kernel's Step 0 fully overwrites every
         # scratch slot it reads, and the round-based barrier logic works from a
@@ -2258,8 +2900,10 @@ def linalg_matrix_power(
         )
 
     else:
-        # M > 256: host-side binary exponentiation with the flag_gems Triton
-        # matmul kernels (mm for 2D, bmm for batched), one launch per step.
+        # M > 256 — and, on thead, 65 <= M <= 256 (its grid-sync Tier 3 is
+        # disabled, see _GRID_SYNC_FUSED): host-side binary exponentiation with
+        # the flag_gems Triton matmul kernels (mm for 2D, bmm for batched), one
+        # launch per step.
         is_batched = batch_size > 1
         z = A_flat if is_batched else A_flat.squeeze(0)
         result = None

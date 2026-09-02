@@ -191,3 +191,27 @@ def test_invalid_shape_rejected(shape):
     )
     with flag_gems.use_gems(), pytest.raises(RuntimeError):
         torch.ops.aten.linalg_matrix_power(A, 2)
+
+
+@pytest.mark.linalg_matrix_power
+@pytest.mark.parametrize("shape", [(256, 256), (1024, 1024)])
+@pytest.mark.parametrize("n", [-2, -8, -31])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_thead_large_negative_power(shape, n, dtype):
+    """thead negative powers on large matrices: M <= 64 uses the in-register
+    df64 kernels; past that the whole chain runs in fp64 with every tl.dot
+    restricted to (16,16,16) tiles, because thead's fp64 dot with wider tiles
+    nondeterministically returns garbage once magnitudes grow.  Other
+    backends cover large negative powers elsewhere (the shared rows top out
+    at M = 32), so this stays thead-only."""
+    if flag_gems.vendor_name != "thead":
+        pytest.skip("thead-only large negative-power coverage")
+    A = _make_input(shape, dtype, n)
+    # CPU fp64 golden, downcast by gems_assert_close to the input dtype (fp32
+    # rows overflow to +/-inf past fp32 range and match the fp32-cast ref).
+    ref = torch.linalg.matrix_power(A.cpu().double(), n)
+    with flag_gems.use_gems():
+        res = flag_gems.linalg_matrix_power(A, n)
+    if ref.device != res.device:
+        res = res.to(ref.device)
+    utils.gems_assert_close(res, ref, dtype, atol=_TOL[dtype])
