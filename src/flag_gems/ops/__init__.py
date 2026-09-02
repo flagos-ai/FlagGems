@@ -342,6 +342,7 @@ from flag_gems.ops.div import (
 from flag_gems.ops.divide import divide
 from flag_gems.ops.dot import dot
 from flag_gems.ops.dropout import dropout, dropout_backward
+from flag_gems.ops.dsplit import dsplit
 from flag_gems.ops.elu import elu, elu_, elu_backward
 from flag_gems.ops.embedding import embedding, embedding_backward
 from flag_gems.ops.embedding_dense_backward import embedding_dense_backward
@@ -775,6 +776,7 @@ from flag_gems.ops.silu import silu, silu_, silu_backward
 from flag_gems.ops.sin import sin, sin_
 from flag_gems.ops.sinc import sinc, sinc_
 from flag_gems.ops.sinh import sinh, sinh_
+from flag_gems.ops.slice import slice
 from flag_gems.ops.slice_backward import slice_backward
 from flag_gems.ops.slice_scatter import slice_scatter
 from flag_gems.ops.smooth_l1_loss import (
@@ -1281,6 +1283,7 @@ __all__ = [
     "dot",
     "dropout",
     "dropout_backward",
+    "dsplit",
     "efficient_attention_backward",
     "elu",
     "elu_",
@@ -1801,6 +1804,7 @@ __all__ = [
     "sinc_",
     "sinh",
     "sinh_",
+    "slice",
     "slice_backward",
     "slice_scatter",
     "smooth_l1_loss",
