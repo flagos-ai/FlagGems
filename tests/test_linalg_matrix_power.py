@@ -129,8 +129,12 @@ def _make_input(shape, dtype, n):
 def test_common(shape, n, dtype):
     A = _make_input(shape, dtype, n)
     # Negative powers: torch CPU fp64 golden (more accurate than GPU cuSOLVER).
+    # Cast to CPU *before* the fp64 upcast: the no-fp64 backends (iluvatar,
+    # etc.) silently zero fp64 tensors created on the device (CoreX has no
+    # fp32→fp64 conversion kernel), so an on-device .double() would feed a
+    # zero matrix to the CPU inverse.
     ref = (
-        torch.linalg.matrix_power(A.double().cpu(), n)
+        torch.linalg.matrix_power(A.cpu().double(), n)
         if n < 0
         else torch.linalg.matrix_power(utils.to_reference(A), n)
     )
@@ -152,8 +156,10 @@ def test_common(shape, n, dtype):
 def test_large(shape, n, dtype):
     A = _make_input(shape, dtype, n)
     # Negative powers: torch CPU fp64 golden (more accurate than GPU cuSOLVER).
+    # Cast on CPU first — see test_common (on-device fp64 casts zero out on
+    # no-fp64 backends like iluvatar).
     ref = (
-        torch.linalg.matrix_power(A.double().cpu(), n)
+        torch.linalg.matrix_power(A.cpu().double(), n)
         if n < 0
         else torch.linalg.matrix_power(utils.to_reference(A), n)
     )

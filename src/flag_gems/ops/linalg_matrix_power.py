@@ -5,9 +5,7 @@ import triton
 import triton.language as tl
 
 import flag_gems
-from flag_gems.ops.bmm import bmm as gems_bmm
 from flag_gems.ops.linalg_lu_factor_ex import linalg_lu_factor_ex as gems_lu_factor_ex
-from flag_gems.ops.mm import mm as gems_mm
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
@@ -97,11 +95,52 @@ def _single_tile_kernel(
 
 @triton.jit
 def _df64_dot(ah, al, bh, bl):
-    """df64 matrix product: hi = fp32 dot, lo = cross terms.  ~1e-7 accuracy,
-    far better than a plain fp32 matmul for the no-fp64 backends."""
+    """df64 matrix product via tl.dot: hi = fp32 dot, lo = cross terms.
+
+    Fast (~tensor-core) but the primary dot's fp32 sum rounding is not
+    captured, so it keeps ~1e-7 relative error per matmul that amplifies
+    through the power chain (a cond-80 (A⁻¹)³ lands ~2e-6 off, over the fp32
+    RESOLUTION rtol).  Used only for M > _DF64_MANUAL_MAX where the error-free
+    O(M³) manual product below would be too slow, and no strict tolerance is
+    checked.
+    """
     ch = tl.dot(ah, bh, allow_tf32=False)
     cl = tl.dot(ah, bl, allow_tf32=False) + tl.dot(al, bh, allow_tf32=False)
     return ch, cl
+
+
+_DF64_MANUAL_MAX: tl.constexpr = (
+    32  # error-free df64 matmul below this M; tl.dot above.
+)
+
+
+@triton.jit
+def _df64_matmul(a_h, a_l, b_h, b_l, M, BLOCK: tl.constexpr):
+    """Error-free df64 matrix product C = A @ B (M x M <= BLOCK), one program
+    per matrix.
+
+    tl.dot rounds its fp32 accumulation and exposes no residual, so a
+    tl.dot-based df64 product keeps ~1e-7 relative error per matmul that
+    amplifies through the power chain — a cond-80 (A⁻¹)³ lands ~2e-6 off, over
+    the fp32 RESOLUTION rtol.  The scalar fma-based df64 ops (_df64_mul_ds /
+    _df64_add) are error-free, so this manual O(M³) product reaches df64
+    (~1e-14) accuracy for the small M this kernel targets.
+    """
+    offs = tl.arange(0, BLOCK)
+    r_h = tl.zeros((BLOCK, BLOCK), dtype=tl.float32)
+    r_l = tl.zeros((BLOCK, BLOCK), dtype=tl.float32)
+    for k in range(M):
+        # Column k of A and row k of B (mask-reduce extraction, BLOCK-wide —
+        # same axes as the LU kernel's column/row extraction).
+        a_k_h = tl.sum(tl.where(offs[None, :] == k, a_h, 0.0), axis=1)
+        a_k_l = tl.sum(tl.where(offs[None, :] == k, a_l, 0.0), axis=1)
+        b_k_h = tl.sum(tl.where(offs[:, None] == k, b_h, 0.0), axis=0)
+        b_k_l = tl.sum(tl.where(offs[:, None] == k, b_l, 0.0), axis=0)
+        ph, pl = _df64_mul_ds(
+            a_k_h[:, None], a_k_l[:, None], b_k_h[None, :], b_k_l[None, :]
+        )
+        r_h, r_l = _df64_add(r_h, r_l, ph, pl)
+    return r_h, r_l
 
 
 @triton.jit
@@ -115,7 +154,8 @@ def _single_tile_kernel_df64(
     BLOCK: tl.constexpr,
 ):
     """Binary exponentiation with df64 accumulation (no-fp64 backend).  One
-    program per batch element; M <= BLOCK, one df64 matmul per step."""
+    program per batch element; M <= BLOCK, one error-free df64 matmul per step.
+    """
     pid = tl.program_id(0)
     offs_m = tl.arange(0, BLOCK)
     offs_n = tl.arange(0, BLOCK)
@@ -139,15 +179,27 @@ def _single_tile_kernel_df64(
                 rl = zl
                 has_result = True
             else:
-                rh, rl = _df64_dot(rh, rl, zh, zl)
+                if M <= _DF64_MANUAL_MAX:
+                    rh, rl = _df64_matmul(rh, rl, zh, zl, M, BLOCK)
+                else:
+                    rh, rl = _df64_dot(rh, rl, zh, zl)
             rh = tl.where(mask, rh, 0.0)
             rl = tl.where(mask, rl, 0.0)
         n_remaining >>= 1
         if n_remaining > 0:
-            zh, zl = _df64_dot(zh, zl, zh, zl)
+            if M <= _DF64_MANUAL_MAX:
+                zh, zl = _df64_matmul(zh, zl, zh, zl, M, BLOCK)
+            else:
+                zh, zl = _df64_dot(zh, zl, zh, zl)
             zh = tl.where(mask, zh, 0.0)
             zl = tl.where(mask, zl, 0.0)
 
+    # A power can overflow fp32 for large |n| on a cond-N matrix (e.g. a cond-80
+    # A^-31 reaches ~1e59).  The TwoSum/TwoProd renormalisation in the manual
+    # df64 ops turns inf operands into NaN; the correct fp32 value there is inf
+    # (the fp32-cast reference is inf too), so map NaN -> inf.  The tl.dot path
+    # already propagates signed inf.
+    rh = tl.where(rh != rh, float("inf"), rh)
     tl.store(out_base + offs_m[:, None] * M + offs_n[None, :], rh, mask=mask)
 
 
@@ -425,22 +477,36 @@ _LU_FACTOR_MAX = 64
 def _df64_add(h1, l1, h2, l2):
     # Error-free addition of two double-single numbers (Knuth TwoSum on the
     # hi parts, lo parts gathered afterwards, then one renormalization).
+    # If the hi sum overflows to +/-inf, the renormalization would turn it
+    # into NaN (inf - inf); the correct fp32 value is the inf itself, which
+    # preserves the overflow sign.  Powers of a cond-N matrix overflow fp32
+    # for large |n| (e.g. cond-80 A^-31 reaches ~1e59), and the fp32-cast
+    # reference is +/-inf there too.
     s = h1 + h2
     z = s - h1
     e = (h1 - (s - z)) + (h2 - z)
     lo = l1 + l2 + e
     h = s + lo
     e2 = lo - (h - s)
+    is_inf = (s == float("inf")) | (s == float("-inf"))
+    h = tl.where(is_inf, s, h)
+    e2 = tl.where(is_inf, 0.0, e2)
     return h, e2
 
 
 @triton.jit
 def _df64_mul_ds(a_h, a_l, b_h, b_l):
     # Double-single product: TwoProd on the hi parts plus the cross terms.
+    # Overflow guard: a product that overflows to +/-inf keeps its sign (the
+    # lo part is meaningless there); without this the renormalization turns it
+    # into NaN.
     p = a_h * b_h
     e = tl.fma(a_h, b_h, -p) + a_h * b_l + a_l * b_h
     h = p + e
     ll = e - (h - p)
+    is_inf = (p == float("inf")) | (p == float("-inf"))
+    h = tl.where(is_inf, p, h)
+    ll = tl.where(is_inf, 0.0, ll)
     return h, ll
 
 
@@ -843,10 +909,18 @@ def _lu_factor_ex_local(A, use_df64=False):
 
 
 def _matmul(A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
-    """Matmul via the flag_gems Triton kernels (mm for 2D, bmm for batched)."""
+    """Matmul via the flag_gems Triton kernels (mm for 2D, bmm for batched).
+
+    Looked up on the flag_gems namespace at call time so backend-specialized
+    kernels are used when a backend overrides them: iluvatar's mm kernel
+    accepts a SPLIT_K tune config that the general mm kernel does not, so the
+    general ``flag_gems.ops.mm`` import would fail there with a KeyError.
+    """
+    from flag_gems import bmm, mm
+
     if A.dim() == 2:
-        return gems_mm(A, B)
-    return gems_bmm(A, B)
+        return mm(A, B)
+    return bmm(A, B)
 
 
 @triton.jit
@@ -1111,6 +1185,7 @@ def _trsm_kernel(
     BM: tl.constexpr,
     UPPER: tl.constexpr,
     UNIT: tl.constexpr,
+    USE_FP64: tl.constexpr,
 ):
     """Blocked triangular solve A X = B in place (B <- X), one program per
     K_SLICE-column group of the RHS.
@@ -1218,12 +1293,18 @@ def _trsm_kernel(
                 )
                 if K_SLICE < 8:
                     acc = tl.sum(a_sub[:, :, None] * x_all[None, :, :], axis=1)
-                else:
+                elif USE_FP64:
                     # fp64 accumulation for the update gemm (fp32 operands kept
-                    # in fp32 storage, accumulate in fp64 for accuracy).
+                    # in fp32 storage, accumulate in fp64 for accuracy) —
+                    # fp64-capable backends.
                     acc = tl.dot(
                         a_sub.to(tl.float64), x_all.to(tl.float64), allow_tf32=False
                     ).to(A_ptr.dtype.element_ty)
+                else:
+                    # Backends without an fp64 compute path (iluvatar): its
+                    # tl.dot also rejects non-batch dims < 16 (K_SLICE=8 here),
+                    # so accumulate the update gemm elementwise in fp32.
+                    acc = tl.sum(a_sub[:, :, None] * x_all[None, :, :], axis=1)
                 b_base = B_ptr + rm[:, None] * stride_b_k + col_offs[None, :]
                 b_curr = tl.load(
                     b_base, mask=mask_m[:, None] & col_mask[None, :], other=0.0
@@ -1263,6 +1344,7 @@ def _trsm_solve_2d(A_tri, B, upper: bool, unitriangular: bool):
         128,
         upper,
         unit_flag,
+        _ACCUMULATE_FP64,
         num_warps=4,
     )
     return B
@@ -1855,9 +1937,18 @@ def linalg_matrix_power(
     # df64 inverse (hi/lo) + df64 binary-exponentiation power.
     use_df64 = (not flag_gems.runtime.device.support_fp64) and A.dtype == torch.float32
     if n < 0 and use_df64:
-        Xh, Xl = _inverse(A, use_df64=True)  # df64 inverse pair (f32 hi/lo)
-        return _matrix_power_df64(Xh, Xl, -n, m, shape, out=out)
-    if n < 0:
+        inv = _inverse(A, use_df64=True)
+        if isinstance(inv, tuple):
+            # Small M: df64 inverse (hi/lo) pair + df64 binary-exponentiation
+            # power (the only supported df64 path — in-register kernels).
+            Xh, Xl = inv
+            return _matrix_power_df64(Xh, Xl, -n, m, shape, out=out)
+        # Large M: the external fp32 LU (above the in-register df64 kernels)
+        # has no df64 low part, so the inverse is a plain fp32 tensor.  Compute
+        # the power in fp32 with the general dispatch below.
+        A = inv
+        n = -n
+    elif n < 0:
         # f32 negatives: matrices above 512 use the f32-compute path — the
         # inverse is computed in f32 (fp32 storage + fp64 accumulation in the
         # LU/TRSM updates, fp64-accumulation Newton refinement), which is faster
@@ -1965,16 +2056,15 @@ def linalg_matrix_power(
         # M > 256: host-side binary exponentiation with the flag_gems Triton
         # matmul kernels (mm for 2D, bmm for batched), one launch per step.
         is_batched = batch_size > 1
-        mm = gems_bmm if is_batched else gems_mm
         z = A_flat if is_batched else A_flat.squeeze(0)
         result = None
         n_remaining = n
         while n_remaining > 0:
             if n_remaining & 1:
-                result = z if result is None else mm(result, z)
+                result = z if result is None else _matmul(result, z)
             n_remaining >>= 1
             if n_remaining > 0:
-                z = mm(z, z)
+                z = _matmul(z, z)
         if is_batched:
             out_flat.copy_(result)
         else:
