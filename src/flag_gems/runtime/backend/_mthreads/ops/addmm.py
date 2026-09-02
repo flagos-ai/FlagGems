@@ -20,7 +20,6 @@ import triton
 import triton.language as tl
 from triton.tools.tensor_descriptor import TensorDescriptor
 
-from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import broadcastable_to, libentry, libtuner
 from flag_gems.utils import triton_lang_extension as ext
@@ -47,15 +46,48 @@ def is_sqmma_compatible(a, b, N, K):
         and a.dtype in (torch.float16, torch.bfloat16)
         and is_supported_sqmma_layout(a)
         and is_supported_sqmma_layout(b)
+        and a.shape[0] > 0
+        and N > 0
+        and K > 0
         and N % 8 == 0
         and K % 8 == 0
     )
 
 
+def _prepare_bias(bias, out):
+    # Keep vector/scalar bias compact; broadcast strides cover other valid shapes.
+    bias_is_vector = bias.ndim == 1 and bias.shape[0] == out.shape[1]
+    bias_is_scalar = not bias_is_vector and bias.numel() == 1
+    if bias_is_vector:
+        return bias, 0, bias.stride(0), True, False
+    if bias_is_scalar:
+        return bias, 0, 0, False, True
+    bias = bias.broadcast_to(out.shape)
+    return bias, bias.stride(0), bias.stride(1), False, False
+
+
 @libentry()
 @libtuner(
-    configs=runtime.get_tuned_config("addmm"),
+    configs=[
+        triton.Config(
+            {"BLOCK_SIZE_M": 128, "BLOCK_SIZE_N": 128, "BLOCK_SIZE_K": 16},
+            num_stages=1,
+            num_warps=8,
+        ),
+        triton.Config(
+            {"BLOCK_SIZE_M": 256, "BLOCK_SIZE_N": 128, "BLOCK_SIZE_K": 16},
+            num_stages=1,
+            num_warps=16,
+        ),
+        triton.Config(
+            {"BLOCK_SIZE_M": 128, "BLOCK_SIZE_N": 128, "BLOCK_SIZE_K": 32},
+            num_stages=1,
+            num_warps=4,
+        ),
+    ],
     key=["M", "N", "K"],
+    warmup=5,
+    rep=5,
 )
 @triton.jit(do_not_specialize=["alpha", "beta"])
 def addmm_kernel(
@@ -79,16 +111,17 @@ def addmm_kernel(
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_N: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
+    BIAS_IS_VECTOR: tl.constexpr,
+    BIAS_IS_SCALAR: tl.constexpr,
     IS_FP64: tl.constexpr = False,
 ):
     pid_m = ext.program_id(0)
     pid_n = ext.program_id(1)
-
-    offs_am = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
-    offs_bn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
+    offs_m = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
+    offs_n = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
     offs_k = tl.arange(0, BLOCK_SIZE_K)
-    a_ptrs = a_ptr + (offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak)
-    b_ptrs = b_ptr + (offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn)
+    a_ptrs = a_ptr + offs_m[:, None] * stride_am + offs_k[None, :] * stride_ak
+    b_ptrs = b_ptr + offs_k[:, None] * stride_bk + offs_n[None, :] * stride_bn
 
     if IS_FP64:
         accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float64)
@@ -97,12 +130,12 @@ def addmm_kernel(
     for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
         a = tl.load(
             a_ptrs,
-            mask=(offs_am[:, None] < M) & (offs_k[None, :] < K - k * BLOCK_SIZE_K),
+            mask=(offs_m[:, None] < M) & (offs_k[None, :] < K - k * BLOCK_SIZE_K),
             other=0.0,
         )
         b = tl.load(
             b_ptrs,
-            mask=(offs_k[:, None] < K - k * BLOCK_SIZE_K) & (offs_bn[None, :] < N),
+            mask=(offs_k[:, None] < K - k * BLOCK_SIZE_K) & (offs_n[None, :] < N),
             other=0.0,
         )
         if IS_FP64:
@@ -116,15 +149,24 @@ def addmm_kernel(
     offs_cn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
     c_ptrs = c_ptr + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :]
     c_mask = (offs_cm[:, None] < M) & (offs_cn[None, :] < N)
-    i_ptrs = i_ptr + stride_im * offs_cm[:, None] + stride_in * offs_cn[None, :]
-    bias = tl.load(i_ptrs, mask=c_mask, other=0.0)
+    if BIAS_IS_VECTOR:
+        bias = tl.load(
+            i_ptr + stride_in * offs_cn,
+            mask=offs_cn < N,
+            other=0.0,
+        )[None, :]
+    elif BIAS_IS_SCALAR:
+        bias = tl.load(i_ptr)
+    else:
+        i_ptrs = i_ptr + stride_im * offs_cm[:, None] + stride_in * offs_cn[None, :]
+        bias = tl.load(i_ptrs, mask=c_mask, other=0.0)
 
     accumulator = accumulator * alpha + bias * beta
-    c = accumulator.to(bias.dtype)
+    c = accumulator.to(c_ptr.dtype.element_ty)
     tl.store(c_ptrs, c, mask=c_mask)
 
 
-def addmm_fma(bias, mat1, mat2, *, beta=1, alpha=1):
+def addmm_fma(bias, mat1, mat2, *, beta=1, alpha=1, out=None):
     logger.debug("GEMS_MTHREADS ADDMM_FMA")
     assert mat1.shape[1] == mat2.shape[0], "Incompatible dimensions"
     assert broadcastable_to(
@@ -133,10 +175,31 @@ def addmm_fma(bias, mat1, mat2, *, beta=1, alpha=1):
     M, K = mat1.shape
     _, N = mat2.shape
 
-    mat1 = mat1.contiguous()
-    mat2 = mat2.contiguous()
-    out = torch.empty((M, N), device=mat1.device, dtype=mat1.dtype)
-    bias = bias.broadcast_to(out.shape).contiguous()
+    if mat1.stride(0) > 1 and mat1.stride(1) > 1:
+        mat1 = mat1.contiguous()
+    mat2_k_contiguous = mat2.stride(0) == 1 and mat2.stride(1) > 1
+    # Direct K-contiguous loads win for small M. With more than eight 128-row
+    # tiles, a coalesced copy is amortized across enough reuse of the B matrix.
+    if (mat2_k_contiguous and M > 8 * 128) or (
+        mat2.stride(0) > 1 and mat2.stride(1) > 1
+    ):
+        mat2 = mat2.contiguous()
+    if out is None:
+        out = torch.empty((M, N), device=mat1.device, dtype=mat1.dtype)
+    else:
+        assert out.shape == (M, N), "Incompatible output shape"
+    bias_is_vector = bias.ndim == 1 and bias.shape[0] == N
+    bias_is_scalar = not bias_is_vector and bias.numel() == 1
+    if bias_is_vector:
+        bias_stride_m = 0
+        bias_stride_n = bias.stride(0)
+    elif bias_is_scalar:
+        bias_stride_m = 0
+        bias_stride_n = 0
+    else:
+        bias = bias.broadcast_to(out.shape).contiguous()
+        bias_stride_m = bias.stride(0)
+        bias_stride_n = bias.stride(1)
 
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_SIZE_M"]),
@@ -157,10 +220,12 @@ def addmm_fma(bias, mat1, mat2, *, beta=1, alpha=1):
             mat1.stride(1),
             mat2.stride(0),
             mat2.stride(1),
-            bias.stride(0),
-            bias.stride(1),
+            bias_stride_m,
+            bias_stride_n,
             out.stride(0),
             out.stride(1),
+            BIAS_IS_VECTOR=bias_is_vector,
+            BIAS_IS_SCALAR=bias_is_scalar,
             IS_FP64=mat1.dtype == torch.float64,
         )
     return out
@@ -169,7 +234,6 @@ def addmm_fma(bias, mat1, mat2, *, beta=1, alpha=1):
 def addmm_sqmma_descriptor_pre_hook(nargs):
     nargs["a_desc"].block_shape = [nargs["BLOCK_SIZE_M"], nargs["BLOCK_SIZE_K"]]
     nargs["b_desc"].block_shape = [nargs["BLOCK_SIZE_K"], nargs["BLOCK_SIZE_N"]]
-    nargs["bias_desc"].block_shape = [nargs["BLOCK_SIZE_M"], nargs["BLOCK_SIZE_N"]]
     nargs["c_desc"].block_shape = [nargs["BLOCK_SIZE_M"], nargs["BLOCK_SIZE_N"]]
 
 
@@ -177,11 +241,23 @@ def addmm_sqmma_descriptor_pre_hook(nargs):
 @libtuner(
     configs=[
         triton.Config(
+            {"BLOCK_SIZE_M": 128, "BLOCK_SIZE_N": 128, "BLOCK_SIZE_K": 32},
+            num_stages=3,
+            num_warps=4,
+            pre_hook=addmm_sqmma_descriptor_pre_hook,
+        ),
+        triton.Config(
+            {"BLOCK_SIZE_M": 128, "BLOCK_SIZE_N": 128, "BLOCK_SIZE_K": 64},
+            num_stages=3,
+            num_warps=4,
+            pre_hook=addmm_sqmma_descriptor_pre_hook,
+        ),
+        triton.Config(
             {"BLOCK_SIZE_M": 128, "BLOCK_SIZE_N": 128, "BLOCK_SIZE_K": 64},
             num_stages=1,
             num_warps=4,
             pre_hook=addmm_sqmma_descriptor_pre_hook,
-        )
+        ),
     ],
     key=["M", "N", "K"],
     strategy=["default", "default", "default"],
@@ -196,17 +272,21 @@ def addmm_sqmma_descriptor_pre_hook(nargs):
 def addmm_sqmma_kernel(
     a_desc,
     b_desc,
-    bias_desc,
+    bias_ptr,
     c_desc,
     M,
     N,
     K,
     alpha,
     beta,
+    stride_im,
+    stride_in,
     DTYPE: tl.constexpr,
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_N: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
+    BIAS_IS_VECTOR: tl.constexpr,
+    BIAS_IS_SCALAR: tl.constexpr,
 ):
     pid = tl.program_id(axis=0)
     num_pid_m = tl.cdiv(M, BLOCK_SIZE_M)
@@ -222,12 +302,26 @@ def addmm_sqmma_kernel(
         b = tl.load_tensor_descriptor(b_desc, [offs_k, offs_bn])
         accumulator = tl.dot(a, b, acc=accumulator)
         offs_k += BLOCK_SIZE_K
-    bias = tl.load_tensor_descriptor(bias_desc, [offs_am, offs_bn])
+
+    offs_m = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
+    offs_n = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
+    mask = (offs_m[:, None] < M) & (offs_n[None, :] < N)
+    if BIAS_IS_VECTOR:
+        bias = tl.load(
+            bias_ptr + offs_n * stride_in,
+            mask=offs_n < N,
+            other=0.0,
+        )[None, :]
+    elif BIAS_IS_SCALAR:
+        bias = tl.load(bias_ptr)
+    else:
+        bias_ptrs = bias_ptr + offs_m[:, None] * stride_im + offs_n[None, :] * stride_in
+        bias = tl.load(bias_ptrs, mask=mask, other=0.0)
     result = (alpha * accumulator + beta * bias).to(c_desc.dtype)
     tl.store_tensor_descriptor(c_desc, [offs_am, offs_bn], result)
 
 
-def addmm_sqmma(mat1, mat2, bias, elem_type, alpha, beta, M, N, K):
+def addmm_sqmma(mat1, mat2, bias, elem_type, alpha, beta, M, N, K, out=None):
     logger.debug("GEMS_MTHREADS ADDMM_SQMMA")
     device = mat1.device
     assert broadcastable_to(
@@ -241,12 +335,16 @@ def addmm_sqmma(mat1, mat2, bias, elem_type, alpha, beta, M, N, K):
     b_type = mat2.dtype
     assert a_type == b_type, "Mat A and Mat B should have the same dtype"
     c_type = a_type
-    C = torch.empty((M, N), dtype=c_type, device=device)
-    bias = bias.broadcast_to(C.shape).contiguous()
+    if out is None:
+        out = torch.empty((M, N), dtype=c_type, device=device)
+    else:
+        assert out.shape == (M, N), "Incompatible output shape"
+    bias, stride_im, stride_in, bias_is_vector, bias_is_scalar = _prepare_bias(
+        bias, out
+    )
     desc_a = TensorDescriptor.from_tensor(mat1, [1, 1])
     desc_b = TensorDescriptor.from_tensor(mat2, [1, 1])
-    desc_bias = TensorDescriptor.from_tensor(bias, [1, 1])
-    desc_c = TensorDescriptor.from_tensor(C, [1, 1])
+    desc_c = TensorDescriptor.from_tensor(out, [1, 1])
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]),
         1,
@@ -255,24 +353,38 @@ def addmm_sqmma(mat1, mat2, bias, elem_type, alpha, beta, M, N, K):
     addmm_sqmma_kernel[grid](
         desc_a,
         desc_b,
-        desc_bias,
+        bias,
         desc_c,
         M,
         N,
         K,
         alpha,
         beta,
+        stride_im,
+        stride_in,
         str(a_type).split(".")[-1],
+        BIAS_IS_VECTOR=bias_is_vector,
+        BIAS_IS_SCALAR=bias_is_scalar,
     )
-    return C
+    return out
 
 
-def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
+def _addmm_impl(bias, mat1, mat2, out, beta, alpha):
+    assert mat1.shape[1] == mat2.shape[0], "Incompatible dimensions"
+    assert broadcastable_to(
+        bias.shape, (mat1.shape[0], mat2.shape[1])
+    ), "Incompatible input shape"
     a_dtype = mat1.dtype
     M, K = mat1.shape
     _, N = mat2.shape
+    if out is not None:
+        assert out.shape == (M, N), "Incompatible output shape"
 
-    if is_sqmma_compatible(mat1, mat2, N, K):
+    if (
+        is_sqmma_compatible(mat1, mat2, N, K)
+        and bias.dtype == a_dtype
+        and (out is None or out.is_contiguous())
+    ):
         return addmm_sqmma(
             mat1,
             mat2,
@@ -283,9 +395,19 @@ def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
             M,
             N,
             K,
+            out=out,
         )
-    else:
-        return addmm_fma(bias, mat1, mat2, alpha=alpha, beta=beta)
+    return addmm_fma(bias, mat1, mat2, alpha=alpha, beta=beta, out=out)
+
+
+def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
+    logger.debug("GEMS_MTHREADS ADDMM")
+    return _addmm_impl(bias, mat1, mat2, None, beta, alpha)
+
+
+def addmm_out(bias, mat1, mat2, *, beta=1, alpha=1, out=None):
+    logger.debug("GEMS_MTHREADS ADDMM_OUT")
+    return _addmm_impl(bias, mat1, mat2, out, beta, alpha)
 
 
 def addmm_dtype(bias, mat1, mat2, out_dtype, *, beta=1, alpha=1):
@@ -325,8 +447,13 @@ def addmm_dtype_out(bias, mat1, mat2, out_dtype, *, beta=1, alpha=1, out):
     _, N = mat2.shape
     a_dtype = mat1.dtype
 
-    if is_sqmma_compatible(mat1, mat2, N, K):
-        result = addmm_sqmma(
+    # Keep dtype promotion on FMA so FP32 output has no low-precision intermediate.
+    if (
+        out_dtype == mat1.dtype
+        and out.is_contiguous()
+        and is_sqmma_compatible(mat1, mat2, N, K)
+    ):
+        return addmm_sqmma(
             mat1,
             mat2,
             bias_c,
@@ -336,8 +463,6 @@ def addmm_dtype_out(bias, mat1, mat2, out_dtype, *, beta=1, alpha=1, out):
             M,
             N,
             K,
+            out=out,
         )
-    else:
-        result = addmm_fma(bias_c, mat1, mat2, alpha=alpha, beta=beta)
-    out.copy_(result)
-    return out
+    return addmm_fma(bias_c, mat1, mat2, alpha=alpha, beta=beta, out=out)

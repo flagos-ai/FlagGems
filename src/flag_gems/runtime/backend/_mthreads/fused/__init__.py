@@ -13,9 +13,13 @@
 # limitations under the License.
 
 from .cross_entropy_loss import cross_entropy_loss
+from .matmul_bias_activation import matmul_bias_activation
+from .matmuladd import matmuladd
 from .sparse_attention import sparse_attn_triton
 
 __all__ = [
     "cross_entropy_loss",
+    "matmul_bias_activation",
     "sparse_attn_triton",
+    "matmuladd",
 ]
