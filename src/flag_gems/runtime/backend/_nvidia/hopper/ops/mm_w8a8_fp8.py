@@ -1683,7 +1683,7 @@ def mm_w8a8_fp8_kernel_splitk(
     tl.atomic_add(c_ptrs, acc, mask=mask)
 
 
-def _mm_w8a8_fp8_splitk(a, b, c, M, N, K, op_name="mm"):
+def _mm_w8a8_fp8_splitk(a, b, c, M, N, K, op_name="mm_w8a8_fp8"):
     logger.debug(
         "GEMS_NVIDIA MM_HOPPER, [op]: %s, [mm scenario]: splitk, [shape info]: [-, %s, %s, %s](batch, M, N, K)",
         op_name,
