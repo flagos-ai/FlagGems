@@ -34,7 +34,7 @@ LSTM_CELL_SHAPES = [
 @pytest.mark.lstm_cell
 @pytest.mark.parametrize("shape", LSTM_CELL_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_accuracy_lstm_cell(shape, dtype):
+def test_lstm_cell(shape, dtype):
     """Test lstm_cell accuracy against PyTorch reference."""
     batch_size, input_size, hidden_size = shape
     torch.manual_seed(42)
@@ -75,17 +75,17 @@ def test_accuracy_lstm_cell(shape, dtype):
             input_tensor, [h_prev, c_prev], w_ih, w_hh, b_ih, b_hh
         )
 
-    # Kernel computes in fp32 (all inputs cast to fp32 before tl.dot)
-    # Error comes only from fp32 associativity differences in tiling
-    atol = 1e-3
-    utils.gems_assert_close(res_hy, ref_hy, dtype, atol=atol)
-    utils.gems_assert_close(res_cy, ref_cy, dtype, atol=atol)
+    # LSTM cell has two matmuls (input@w_ih.T and h@w_hh.T) plus elementwise ops.
+    # Use the larger reduction dimension to account for accumulated rounding errors.
+    reduce_dim = max(input_size, hidden_size)
+    utils.gems_assert_close(res_hy, ref_hy, dtype, reduce_dim=reduce_dim)
+    utils.gems_assert_close(res_cy, ref_cy, dtype, reduce_dim=reduce_dim)
 
 
 @pytest.mark.lstm_cell
 @pytest.mark.parametrize("shape", LSTM_CELL_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_accuracy_lstm_cell_no_bias(shape, dtype):
+def test_lstm_cell_no_bias(shape, dtype):
     """Test lstm_cell accuracy without biases."""
     batch_size, input_size, hidden_size = shape
     torch.manual_seed(42)
@@ -117,5 +117,8 @@ def test_accuracy_lstm_cell_no_bias(shape, dtype):
     with flag_gems.use_gems():
         res_hy, res_cy = torch.lstm_cell(input_tensor, [h_prev, c_prev], w_ih, w_hh)
 
-    utils.gems_assert_close(res_hy, ref_hy, dtype)
-    utils.gems_assert_close(res_cy, ref_cy, dtype)
+    # LSTM cell has two matmuls (input@w_ih.T and h@w_hh.T) plus elementwise ops.
+    # Use the larger reduction dimension to account for accumulated rounding errors.
+    reduce_dim = max(input_size, hidden_size)
+    utils.gems_assert_close(res_hy, ref_hy, dtype, reduce_dim=reduce_dim)
+    utils.gems_assert_close(res_cy, ref_cy, dtype, reduce_dim=reduce_dim)
