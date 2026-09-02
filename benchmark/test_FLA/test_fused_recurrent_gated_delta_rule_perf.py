@@ -201,6 +201,9 @@ class FusedRecurrentGatedDeltaRuleW8A16FP8Benchmark(Benchmark):
         (128,),
         (256,),
         (512,),
+        (1024,),
+        (2048,),
+        (4096,),
     ]
     DEFAULT_SHAPE_DESC = "num_sequences"
 
@@ -271,6 +274,15 @@ class FusedRecurrentGatedDeltaRuleW8A16FP8Benchmark(Benchmark):
             state_indices,
             state_indices,
         )
+
+
+class FusedRecurrentGatedDeltaRuleW8A16FP8LargeNBenchmark(
+    FusedRecurrentGatedDeltaRuleW8A16FP8Benchmark
+):
+    # The BF16 kernel uses a 2D grid whose second dimension overflows at these
+    # shapes. Keep a latency-only regression for the FP8 3D-grid/TMA path.
+    DEFAULT_METRICS = ["latency"]
+    DEFAULT_SHAPES = [(8192,), (16384,)]
 
 
 class FusedRecurrentGatedDeltaRuleW8A16FP8PrefillBenchmark(
@@ -450,6 +462,18 @@ def _w8a16_fp8_available():
 def test_perf_fused_recurrent_gated_delta_rule_w8a16_fp8():
     torch.manual_seed(0)
     bench = FusedRecurrentGatedDeltaRuleW8A16FP8Benchmark(
+        op_name="fused_recurrent_gated_delta_rule",
+        torch_op=_bf16_decode_wrapper,
+    )
+    bench.set_gems(_w8a16_fp8_wrapper)
+    bench.run()
+
+
+@pytest.mark.skipif(not _w8a16_fp8_available(), reason="FP8 GDN requires SM90 or newer")
+@pytest.mark.fused_recurrent_gated_delta_rule
+def test_perf_fused_recurrent_gated_delta_rule_w8a16_fp8_large_n():
+    torch.manual_seed(0)
+    bench = FusedRecurrentGatedDeltaRuleW8A16FP8LargeNBenchmark(
         op_name="fused_recurrent_gated_delta_rule",
         torch_op=_bf16_decode_wrapper,
     )

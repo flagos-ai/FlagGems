@@ -20,6 +20,7 @@ import triton.language as tl
 
 from flag_gems.fused.FLA.chunk import chunk_gated_delta_rule_fwd
 from flag_gems.fused.FLA.triton_ops_helper import exp
+from flag_gems.fused.FLA.utils import is_tma_supported
 from flag_gems.utils import libentry
 
 _STATE_BLOCK_V = 32
@@ -188,19 +189,17 @@ def _gdn_step(
         residual *= beta_value.to(tl.float32)
         update_product = k_low.to(tl.float32)[:, None] * residual[None, :]
     else:
-        residual = (
-            residual.to(ACTIVATION_TYPE) * beta_value.to(ACTIVATION_TYPE)
-        ).to(tl.float32)
-        update_product = (
-            k_low[:, None] * residual.to(ACTIVATION_TYPE)[None, :]
-        ).to(tl.float32)
+        residual = (residual.to(ACTIVATION_TYPE) * beta_value.to(ACTIVATION_TYPE)).to(
+            tl.float32
+        )
+        update_product = (k_low[:, None] * residual.to(ACTIVATION_TYPE)[None, :]).to(
+            tl.float32
+        )
     state_acc += update_product
     if FP32_STATE_PRODUCTS:
         output_product = state_acc * q_low.to(tl.float32)[:, None]
     else:
-        output_product = (state_acc.to(ACTIVATION_TYPE) * q_low[:, None]).to(
-            tl.float32
-        )
+        output_product = (state_acc.to(ACTIVATION_TYPE) * q_low[:, None]).to(tl.float32)
     output = tl.sum(output_product, axis=0)
     return state_acc, output
 
@@ -213,11 +212,19 @@ def _quantize_gdn_state_fp8_kernel(
     state_scale,
     K: tl.constexpr,
     V: tl.constexpr,
+    HV: tl.constexpr,
     BK: tl.constexpr,
     BV: tl.constexpr,
+    USE_3D_GRID: tl.constexpr,
+    USE_INT64_OFFSETS: tl.constexpr,
 ):
     i_v = tl.program_id(0)
-    i_sh = tl.program_id(1)
+    if USE_3D_GRID:
+        i_sh = tl.program_id(2) * HV + tl.program_id(1)
+    else:
+        i_sh = tl.program_id(1)
+    if USE_INT64_OFFSETS:
+        i_sh = i_sh.to(tl.int64)
 
     o_k = tl.arange(0, BK)
     o_v = i_v * BV + tl.arange(0, BV)
@@ -247,11 +254,19 @@ def _dequantize_gdn_state_fp8_kernel(
     state,
     K: tl.constexpr,
     V: tl.constexpr,
+    HV: tl.constexpr,
     BK: tl.constexpr,
     BV: tl.constexpr,
+    USE_3D_GRID: tl.constexpr,
+    USE_INT64_OFFSETS: tl.constexpr,
 ):
     i_v = tl.program_id(0)
-    i_sh = tl.program_id(1)
+    if USE_3D_GRID:
+        i_sh = tl.program_id(2) * HV + tl.program_id(1)
+    else:
+        i_sh = tl.program_id(1)
+    if USE_INT64_OFFSETS:
+        i_sh = i_sh.to(tl.int64)
 
     o_k = tl.arange(0, BK)
     o_v = i_v * BV + tl.arange(0, BV)
@@ -395,9 +410,105 @@ def _quantize_indexed_gdn_state_fp8_kernel(
     )
 
 
+@triton.jit
+def _gdn_decode_value_tile(
+    v,
+    o,
+    state_fp8,
+    state_scale,
+    q_low,
+    k_low,
+    decay,
+    beta_value,
+    i_b,
+    i_t,
+    i_hv,
+    i_v,
+    state_index,
+    stride_v_b: tl.constexpr,
+    stride_v_t: tl.constexpr,
+    stride_v_h: tl.constexpr,
+    stride_v_v: tl.constexpr,
+    stride_o_b: tl.constexpr,
+    stride_o_t: tl.constexpr,
+    stride_o_h: tl.constexpr,
+    stride_o_v: tl.constexpr,
+    stride_state_s: tl.constexpr,
+    stride_state_h: tl.constexpr,
+    stride_state_k: tl.constexpr,
+    stride_state_v: tl.constexpr,
+    stride_scale_s: tl.constexpr,
+    stride_scale_h: tl.constexpr,
+    stride_scale_v: tl.constexpr,
+    K: tl.constexpr,
+    V: tl.constexpr,
+    BK: tl.constexpr,
+    BV: tl.constexpr,
+    LOW_PRECISION_AMAX: tl.constexpr,
+    FP32_STATE_PRODUCTS: tl.constexpr,
+    FP32_UPDATE_PRODUCTS: tl.constexpr,
+):
+    o_k = tl.arange(0, BK)
+    o_v = i_v * BV + tl.arange(0, BV)
+    mask_k = o_k < K
+    mask_v = o_v < V
+    mask_state = mask_k[:, None] & mask_v[None, :]
+
+    state_offsets = (
+        state_index * stride_state_s
+        + i_hv * stride_state_h
+        + o_k[:, None] * stride_state_k
+        + o_v[None, :] * stride_state_v
+    )
+    scale_offsets = (
+        state_index * stride_scale_s + i_hv * stride_scale_h + o_v * stride_scale_v
+    )
+    state_acc = _load_dynamic_fp8_state(
+        state_fp8,
+        state_scale,
+        state_offsets,
+        scale_offsets,
+        mask_state,
+        mask_v,
+        ACTIVATION_TYPE=v.dtype.element_ty,
+    )
+    v_offsets = (
+        i_b * stride_v_b + i_t * stride_v_t + i_hv * stride_v_h + o_v * stride_v_v
+    )
+    v_values = tl.load(v + v_offsets, mask=mask_v, other=0.0)
+    state_acc, output = _gdn_step(
+        state_acc,
+        q_low,
+        k_low,
+        v_values,
+        decay,
+        beta_value,
+        ACTIVATION_TYPE=v.dtype.element_ty,
+        FP32_STATE_PRODUCTS=FP32_STATE_PRODUCTS,
+        FP32_UPDATE_PRODUCTS=FP32_UPDATE_PRODUCTS,
+    )
+
+    output_offsets = (
+        i_b * stride_o_b + i_t * stride_o_t + i_hv * stride_o_h + o_v * stride_o_v
+    )
+    tl.store(o + output_offsets, output.to(o.dtype.element_ty), mask=mask_v)
+    _store_dynamic_fp8_state(
+        state_acc,
+        state_fp8,
+        state_scale,
+        state_offsets,
+        scale_offsets,
+        mask_state,
+        mask_v,
+        ACTIVATION_TYPE=v.dtype.element_ty,
+        STREAM_STATE_STORE=False,
+        LOW_PRECISION_AMAX=LOW_PRECISION_AMAX,
+    )
+
+
 @libentry()
 @triton.jit
-def _fused_recurrent_gated_delta_rule_w8a16_fp8_kernel(
+def _fused_recurrent_gated_delta_rule_grouped_w8a16_fp8_kernel(
     q,
     k,
     v,
@@ -454,8 +565,159 @@ def _fused_recurrent_gated_delta_rule_w8a16_fp8_kernel(
 ):
     i_v = tl.program_id(0)
     i_nh = tl.program_id(1)
-    i_n = i_nh // HV
-    i_hv = i_nh % HV
+    i_n = i_nh // H
+    i_h = i_nh % H
+
+    if USE_PACKED_INPUT:
+        i_b = 0
+        if N >= 128:
+            i_t = tl.load(cu_seqlens + i_n).to(tl.int32)
+        else:
+            i_t = tl.load(cu_seqlens + i_n).to(tl.int64)
+    else:
+        i_b = i_n
+        i_t = 0
+
+    if USE_STATE_INDICES:
+        if N >= 128:
+            state_index = tl.load(state_indices + i_n).to(tl.int32)
+        else:
+            state_index = tl.load(state_indices + i_n).to(tl.int64)
+        if state_index < 0:
+            return
+    else:
+        state_index = i_n
+
+    o_k = tl.arange(0, BK)
+    mask_k = o_k < K
+    q_offsets = (
+        i_b * stride_q_b + i_t * stride_q_t + i_h * stride_q_h + o_k * stride_q_k
+    )
+    k_offsets = (
+        i_b * stride_k_b + i_t * stride_k_t + i_h * stride_k_h + o_k * stride_k_k
+    )
+    q_low, k_low = _prepare_qk(
+        tl.load(q + q_offsets, mask=mask_k, other=0.0),
+        tl.load(k + k_offsets, mask=mask_k, other=0.0),
+        scale,
+        ACTIVATION_TYPE=q.dtype.element_ty,
+        USE_QK_L2NORM=USE_QK_L2NORM,
+    )
+
+    GROUP_SIZE: tl.constexpr = HV // H
+    for group_offset in tl.static_range(0, GROUP_SIZE):
+        i_hv = i_h * GROUP_SIZE + group_offset
+        g_offset = i_b * stride_g_b + i_t * stride_g_t + i_hv * stride_g_h
+        beta_offset = i_b * stride_beta_b + i_t * stride_beta_t + i_hv * stride_beta_h
+        _gdn_decode_value_tile(
+            v,
+            o,
+            state_fp8,
+            state_scale,
+            q_low,
+            k_low,
+            exp(tl.load(g + g_offset).to(tl.float32)),
+            tl.load(beta + beta_offset),
+            i_b,
+            i_t,
+            i_hv,
+            i_v,
+            state_index,
+            stride_v_b,
+            stride_v_t,
+            stride_v_h,
+            stride_v_v,
+            stride_o_b,
+            stride_o_t,
+            stride_o_h,
+            stride_o_v,
+            stride_state_s,
+            stride_state_h,
+            stride_state_k,
+            stride_state_v,
+            stride_scale_s,
+            stride_scale_h,
+            stride_scale_v,
+            K,
+            V,
+            BK,
+            BV,
+            LOW_PRECISION_AMAX,
+            FP32_STATE_PRODUCTS,
+            FP32_UPDATE_PRODUCTS,
+        )
+
+
+@libentry()
+@triton.jit
+def _fused_recurrent_gated_delta_rule_w8a16_fp8_kernel(
+    q,
+    k,
+    v,
+    g,
+    beta,
+    o,
+    state_fp8,
+    state_scale,
+    cu_seqlens,
+    state_indices,
+    scale,
+    stride_q_b: tl.constexpr,
+    stride_q_t: tl.constexpr,
+    stride_q_h: tl.constexpr,
+    stride_q_k: tl.constexpr,
+    stride_k_b: tl.constexpr,
+    stride_k_t: tl.constexpr,
+    stride_k_h: tl.constexpr,
+    stride_k_k: tl.constexpr,
+    stride_v_b: tl.constexpr,
+    stride_v_t: tl.constexpr,
+    stride_v_h: tl.constexpr,
+    stride_v_v: tl.constexpr,
+    stride_g_b: tl.constexpr,
+    stride_g_t: tl.constexpr,
+    stride_g_h: tl.constexpr,
+    stride_beta_b: tl.constexpr,
+    stride_beta_t: tl.constexpr,
+    stride_beta_h: tl.constexpr,
+    stride_o_b: tl.constexpr,
+    stride_o_t: tl.constexpr,
+    stride_o_h: tl.constexpr,
+    stride_o_v: tl.constexpr,
+    stride_state_s: tl.constexpr,
+    stride_state_h: tl.constexpr,
+    stride_state_k: tl.constexpr,
+    stride_state_v: tl.constexpr,
+    stride_scale_s: tl.constexpr,
+    stride_scale_h: tl.constexpr,
+    stride_scale_v: tl.constexpr,
+    H: tl.constexpr,
+    HV: tl.constexpr,
+    S: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    V: tl.constexpr,
+    BK: tl.constexpr,
+    BV: tl.constexpr,
+    USE_PACKED_INPUT: tl.constexpr,
+    USE_STATE_INDICES: tl.constexpr,
+    USE_QK_L2NORM: tl.constexpr,
+    USE_3D_GRID: tl.constexpr,
+    USE_TMA_LOAD: tl.constexpr,
+    USE_INT64_STATE_OFFSETS: tl.constexpr,
+    LOW_PRECISION_AMAX: tl.constexpr,
+    FP32_STATE_PRODUCTS: tl.constexpr,
+    FP32_UPDATE_PRODUCTS: tl.constexpr,
+):
+    i_v = tl.program_id(0)
+    if USE_3D_GRID:
+        i_hv = tl.program_id(1)
+        i_n = tl.program_id(2)
+        i_nh = i_n * HV + i_hv
+    else:
+        i_nh = tl.program_id(1)
+        i_n = i_nh // HV
+        i_hv = i_nh % HV
     i_h = i_hv // (HV // H)
 
     if USE_PACKED_INPUT:
@@ -484,8 +746,12 @@ def _fused_recurrent_gated_delta_rule_w8a16_fp8_kernel(
     mask_v = o_v < V
     mask_state = mask_k[:, None] & mask_v[None, :]
 
+    if USE_INT64_STATE_OFFSETS:
+        state_index_for_offset = state_index.to(tl.int64)
+    else:
+        state_index_for_offset = state_index
     state_offsets = (
-        state_index * stride_state_s
+        state_index_for_offset * stride_state_s
         + i_hv * stride_state_h
         + o_k[:, None] * stride_state_k
         + o_v[None, :] * stride_state_v
@@ -493,15 +759,32 @@ def _fused_recurrent_gated_delta_rule_w8a16_fp8_kernel(
     scale_offsets = (
         state_index * stride_scale_s + i_hv * stride_scale_h + o_v * stride_scale_v
     )
-    b_h = _load_dynamic_fp8_state(
-        state_fp8,
-        state_scale,
-        state_offsets,
-        scale_offsets,
-        mask_state,
-        mask_v,
-        ACTIVATION_TYPE=q.dtype.element_ty,
-    )
+    if USE_TMA_LOAD:
+        state_descriptor = tl.make_tensor_descriptor(
+            state_fp8,
+            shape=[S * HV, K, V],
+            strides=[stride_state_h, stride_state_k, stride_state_v],
+            block_shape=[1, BK, BV],
+        )
+        state_row = (state_index * HV + i_hv).to(tl.int32)
+        state_values = state_descriptor.load([state_row, 0, i_v * BV])
+        state_values = tl.reshape(state_values, (BK, BV))
+        channel_scale = tl.load(state_scale + scale_offsets, mask=mask_v, other=0.0).to(
+            q.dtype.element_ty
+        )
+        b_h = (state_values.to(q.dtype.element_ty) * channel_scale[None, :]).to(
+            tl.float32
+        )
+    else:
+        b_h = _load_dynamic_fp8_state(
+            state_fp8,
+            state_scale,
+            state_offsets,
+            scale_offsets,
+            mask_state,
+            mask_v,
+            ACTIVATION_TYPE=q.dtype.element_ty,
+        )
 
     q_offsets = (
         i_b * stride_q_b + i_t * stride_q_t + i_h * stride_q_h + o_k * stride_q_k
@@ -742,14 +1025,23 @@ def quantize_gdn_state_fp8(
     S, HV, K, V = state.shape
     state_fp8 = torch.empty(state.shape, device=state.device, dtype=torch.float8_e4m3fn)
     state_scale = torch.empty((S, HV, V), device=state.device, dtype=torch.float32)
-    _quantize_gdn_state_fp8_kernel[(triton.cdiv(V, _STATE_BLOCK_V), S * HV)](
+    use_3d_grid = S * HV > 65535
+    grid = (
+        (triton.cdiv(V, _STATE_BLOCK_V), HV, S)
+        if use_3d_grid
+        else (triton.cdiv(V, _STATE_BLOCK_V), S * HV)
+    )
+    _quantize_gdn_state_fp8_kernel[grid](
         state,
         state_fp8,
         state_scale,
         K=K,
         V=V,
+        HV=HV,
         BK=triton.next_power_of_2(K),
         BV=_STATE_BLOCK_V,
+        USE_3D_GRID=use_3d_grid,
+        USE_INT64_OFFSETS=state.numel() >= 2**31,
         num_warps=4,
         num_stages=1,
     )
@@ -772,19 +1064,23 @@ def dequantize_gdn_state_fp8(
     ):
         raise ValueError("state_scale must be contiguous FP32 with shape [S, HV, V]")
     state = torch.empty(state_fp8.shape, device=state_fp8.device, dtype=output_dtype)
-    _dequantize_gdn_state_fp8_kernel[
-        (
-            triton.cdiv(V, _STATE_BLOCK_V),
-            S * HV,
-        )
-    ](
+    use_3d_grid = S * HV > 65535
+    grid = (
+        (triton.cdiv(V, _STATE_BLOCK_V), HV, S)
+        if use_3d_grid
+        else (triton.cdiv(V, _STATE_BLOCK_V), S * HV)
+    )
+    _dequantize_gdn_state_fp8_kernel[grid](
         state_fp8,
         state_scale,
         state,
         K=K,
         V=V,
+        HV=HV,
         BK=triton.next_power_of_2(K),
         BV=_STATE_BLOCK_V,
+        USE_3D_GRID=use_3d_grid,
+        USE_INT64_OFFSETS=state_fp8.numel() >= 2**31,
         num_warps=4,
         num_stages=1,
     )
@@ -802,6 +1098,16 @@ def _install_triton_allocator(device: torch.device) -> None:
 
     triton.set_allocator(_alloc)
     _TRITON_ALLOCATOR_DEVICE = device_key
+
+
+def _tensor_offsets_fit_int32(tensor: torch.Tensor) -> bool:
+    return (
+        all(stride >= 0 for stride in tensor.stride())
+        and sum(
+            (size - 1) * stride for size, stride in zip(tensor.shape, tensor.stride())
+        )
+        < 2**31
+    )
 
 
 def _chunk_prefill_gated_delta_rule_w8a16_fp8(
@@ -1091,42 +1397,84 @@ def fused_recurrent_gated_delta_rule_w8a16_fp8(
         elif N == 2:
             block_v = 16
 
-    if N >= 128:
-        # INT32 offsets reduce address instructions in large decode grids. Keep
-        # the general sequence kernel as an overflow-safe INT64 fallback.
-        tensors_with_kernel_offsets = (q, k, v, g, beta, o, state_fp8, state_scale)
-        int32_offsets_safe = all(
-            all(stride >= 0 for stride in tensor.stride())
-            and sum(
-                (size - 1) * stride
-                for size, stride in zip(tensor.shape, tensor.stride())
-            )
-            < 2**31
-            for tensor in tensors_with_kernel_offsets
+    use_fp32_products = N < 128 and N != 2
+    use_3d_decode_grid = N * HV > 65535
+    num_v_tiles = triton.cdiv(V, block_v)
+    use_grouped_decode = (
+        K == 128 and V == 128 and HV == 2 * H and N * HV * num_v_tiles == 1024
+    )
+    if use_grouped_decode:
+        _fused_recurrent_gated_delta_rule_grouped_w8a16_fp8_kernel[
+            (num_v_tiles, N * H)
+        ](
+            **kernel_args,
+            BV=block_v,
+            LOW_PRECISION_AMAX=N >= 128,
+            FP32_STATE_PRODUCTS=use_fp32_products,
+            FP32_UPDATE_PRODUCTS=use_fp32_products,
+            N=N,
+            num_warps=1,
+            num_stages=1,
         )
-        if not int32_offsets_safe:
-            _fused_recurrent_gated_delta_rule_sequence_w8a16_fp8_kernel[
-                (triton.cdiv(V, block_v), N * HV)
-            ](
-                **kernel_args,
-                T=T,
-                BV=block_v,
-                LOW_PRECISION_AMAX=True,
-                FP32_STATE_PRODUCTS=False,
-                FP32_UPDATE_PRODUCTS=False,
-                num_warps=1,
-                num_stages=2,
-            )
-            return o, state_fp8, state_scale
+        return o, state_fp8, state_scale
 
-    _fused_recurrent_gated_delta_rule_w8a16_fp8_kernel[
-        (triton.cdiv(V, block_v), N * HV)
-    ](
+    state_offsets_safe = N < 128 or _tensor_offsets_fit_int32(state_fp8)
+    other_offsets_safe = N < 128 or all(
+        _tensor_offsets_fit_int32(tensor)
+        for tensor in (q, k, v, g, beta, o, state_scale)
+    )
+    use_tma_load = (
+        N >= 1024 and K == 128 and V == 128 and other_offsets_safe and is_tma_supported
+    )
+    if use_tma_load:
+        tma_grid = (num_v_tiles, HV, N) if use_3d_decode_grid else (num_v_tiles, N * HV)
+        _install_triton_allocator(q.device)
+        _fused_recurrent_gated_delta_rule_w8a16_fp8_kernel[tma_grid](
+            **kernel_args,
+            S=state_fp8.shape[0],
+            BV=block_v,
+            USE_3D_GRID=use_3d_decode_grid,
+            USE_TMA_LOAD=True,
+            USE_INT64_STATE_OFFSETS=not state_offsets_safe,
+            LOW_PRECISION_AMAX=N >= 128,
+            FP32_STATE_PRODUCTS=use_fp32_products,
+            FP32_UPDATE_PRODUCTS=use_fp32_products,
+            N=N,
+            num_warps=1,
+            num_stages=1,
+        )
+        return o, state_fp8, state_scale
+
+    if not other_offsets_safe:
+        _fused_recurrent_gated_delta_rule_sequence_w8a16_fp8_kernel[
+            (num_v_tiles, N * HV)
+        ](
+            **kernel_args,
+            T=T,
+            BV=block_v,
+            LOW_PRECISION_AMAX=True,
+            FP32_STATE_PRODUCTS=False,
+            FP32_UPDATE_PRODUCTS=False,
+            num_warps=1,
+            num_stages=2,
+        )
+        return o, state_fp8, state_scale
+
+    decode_grid = (
+        (triton.cdiv(V, block_v), HV, N)
+        if use_3d_decode_grid
+        else (triton.cdiv(V, block_v), N * HV)
+    )
+    _fused_recurrent_gated_delta_rule_w8a16_fp8_kernel[decode_grid](
         **kernel_args,
+        S=state_fp8.shape[0],
         BV=block_v,
+        USE_3D_GRID=use_3d_decode_grid,
+        USE_TMA_LOAD=False,
+        USE_INT64_STATE_OFFSETS=not state_offsets_safe,
         LOW_PRECISION_AMAX=N >= 128,
-        FP32_STATE_PRODUCTS=N < 128 and N != 2,
-        FP32_UPDATE_PRODUCTS=N < 128 and N != 2,
+        FP32_STATE_PRODUCTS=use_fp32_products,
+        FP32_UPDATE_PRODUCTS=use_fp32_products,
         N=N,
         num_warps=1,
         num_stages=1,
