@@ -337,6 +337,24 @@ class SQLPersistantModel(PersistantModel):
                 session.add(ConfigCls(**key_dict, **config))
                 session.commit()
 
+    def delete_config(
+        self, name: str, keys: Sequence[Union[bool, int, float, str]]
+    ) -> None:
+        # Detect if this table uses blob mode
+        use_blob_mode = len(keys) > self.key_count_limit
+        key_dict: Dict[str, Union[bool, int, float, str]] = (
+            SQLPersistantModel.get_key_dict(keys, use_blob_mode)
+        )
+        ConfigCls: Optional[Type[Base]] = self.get_sql_model(name, key_dict)
+        if ConfigCls is None:
+            return
+        with RollbackSession(self.engine) as session:
+            obj: Optional[Base] = session.get(ConfigCls, key_dict)
+            if obj is None:
+                return
+            session.delete(obj)
+            session.commit()
+
     def put_benchmark(
         self,
         name: str,

@@ -232,6 +232,9 @@ class ConfigCache(Cache):
     ) -> None:
         return self.model.put_config(self.table_name, key, config)
 
+    def __delitem__(self, key: Tuple[Union[int, float, str], ...]) -> None:
+        self.model.delete_config(self.table_name, key)
+
 
 class BenchmarkCache(Cache):
     def __init__(
@@ -978,114 +981,145 @@ class LibTuner(triton.runtime.Autotuner):
         # so please make sure the orders of `arg_names` and `args` match.
         self.nargs = dict(zip(self.arg_names, args))
         used_cached_result = True
-        if len(self.configs) > 1 or bypass_config_cache:
-            all_args = {**self.nargs, **kwargs}
-            _args = {k: v for k, v in all_args.items() if k in self.arg_names}
-            config_key = self.get_key(_args)
-            benchmark_key = self.get_benchmark_key(_args)
-            if bypass_config_cache or config_key not in self.cache:
-                cache: BenchmarkCache = libcache[
-                    self.benchmark_table_name, benchmark_key
-                ]
-                # prune configs
-                used_cached_result = False
-                pruned_configs = self.prune_configs(kwargs)
-                bench_start = time.time()
+        retune_from_scratch = False
+        while True:
+            config_from_cache = False
+            if len(self.configs) > 1 or bypass_config_cache:
+                all_args = {**self.nargs, **kwargs}
+                _args = {k: v for k, v in all_args.items() if k in self.arg_names}
+                config_key = self.get_key(_args)
+                benchmark_key = self.get_benchmark_key(_args)
+                if bypass_config_cache or config_key not in self.cache:
+                    cache: BenchmarkCache = libcache[
+                        self.benchmark_table_name, benchmark_key
+                    ]
+                    # prune configs
+                    used_cached_result = False
+                    pruned_configs = self.prune_configs(kwargs)
+                    bench_start = time.time()
 
-                def bench(config: triton.Config) -> List[float]:
-                    ret = cache.get(config)
-                    if ret is None:
-                        try:
-                            ret = self._bench(*args, config=config, **kwargs)
-                        except RuntimeError as e:
-                            # A config whose COMPILE raises a plain RuntimeError
-                            # is outside triton's autotuner catch list
-                            # (OutOfResources / CompileTimeAssertionFailure /
-                            # PTXASError) and would kill the whole process. Some
-                            # backend compilers do this — e.g. cambricon MLU
-                            # AutoTileForTritonPass raises "PassManager::run
-                            # failed" on a tensor.expand_shape it cannot tile.
-                            # Treat such a config as a non-candidate (inf) so
-                            # tuning continues and a working config is selected.
-                            print(f"[libentry] config {config} failed to compile: {e}")
-                            ret = (float("inf"), float("inf"), float("inf"))
-                        # Some Triton backends (e.g. tsingmicro with
-                        # use_cuda_graph=True) return a scalar float from
-                        # _bench instead of the standard (p50, p20, p80) tuple.
-                        # Normalize to a 3-element tuple for compatibility with
-                        # SQLPersistantModel.put_benchmark and other consumers.
-                        if isinstance(ret, (int, float)):
-                            ret = (ret, ret, ret)
-                        if ret and all(math.isfinite(float(value)) for value in ret):
-                            self.benchmark_success_count += 1
-                        cache[config] = tuple(ret)
+                    def bench(config: triton.Config) -> List[float]:
+                        ret = cache.get(config)
+                        if ret is None or retune_from_scratch:
+                            try:
+                                ret = self._bench(*args, config=config, **kwargs)
+                            except RuntimeError as e:
+                                # A config whose COMPILE raises a plain RuntimeError
+                                # is outside triton's autotuner catch list
+                                # (OutOfResources / CompileTimeAssertionFailure /
+                                # PTXASError) and would kill the whole process. Some
+                                # backend compilers do this — e.g. cambricon MLU
+                                # AutoTileForTritonPass raises "PassManager::run
+                                # failed" on a tensor.expand_shape it cannot tile.
+                                # Treat such a config as a non-candidate (inf) so
+                                # tuning continues and a working config is selected.
+                                print(
+                                    f"[libentry] config {config} failed to compile: {e}"
+                                )
+                                ret = (float("inf"), float("inf"), float("inf"))
+                            # Some Triton backends (e.g. tsingmicro with
+                            # use_cuda_graph=True) return a scalar float from
+                            # _bench instead of the standard (p50, p20, p80) tuple.
+                            # Normalize to a 3-element tuple for compatibility with
+                            # SQLPersistantModel.put_benchmark and other consumers.
+                            if isinstance(ret, (int, float)):
+                                ret = (ret, ret, ret)
+                            if ret and all(
+                                math.isfinite(float(value)) for value in ret
+                            ):
+                                self.benchmark_success_count += 1
+                            cache[config] = tuple(ret)
+                        else:
+                            self.benchmark_cache_hit_count += 1
+                        return list(ret)
+
+                    if exhaustive_collection:
+                        best_config, timings = LibTuner.get("default").policy(
+                            self,
+                            bench,
+                            pruned_configs,
+                            args,
+                            kwargs,
+                        )
                     else:
-                        self.benchmark_cache_hit_count += 1
-                    return list(ret)
-
-                if exhaustive_collection:
-                    best_config, timings = LibTuner.get("default").policy(
-                        self,
-                        bench,
-                        pruned_configs,
-                        args,
-                        kwargs,
-                    )
+                        best_config, timings = self.policy(
+                            bench,
+                            pruned_configs,
+                            args,
+                            kwargs,
+                        )
+                    bench_end = time.time()
+                    self.bench_time = bench_end - bench_start
+                    if not bypass_config_cache:
+                        self.cache[config_key] = best_config
+                        config = self.cache[config_key]
+                    else:
+                        config = best_config
+                    full_nargs = {
+                        **self.nargs,
+                        **kwargs,
+                        **config.all_kwargs(),
+                    }
+                    self.pre_hook(full_nargs, reset_only=True)
+                    self.configs_timings = timings
                 else:
-                    best_config, timings = self.policy(
-                        bench,
-                        pruned_configs,
-                        args,
-                        kwargs,
-                    )
-                bench_end = time.time()
-                self.bench_time = bench_end - bench_start
-                if not bypass_config_cache:
-                    self.cache[config_key] = best_config
                     config = self.cache[config_key]
-                else:
-                    config = best_config
-                full_nargs = {
-                    **self.nargs,
+                    config_from_cache = True
+                if config.pre_hook is None:
+                    cached_kwargs = config.all_kwargs()
+                    for original_config in self.configs:
+                        if original_config.all_kwargs() == cached_kwargs:
+                            # Use the original config which has the pre_hook
+                            config = original_config
+                            break
+            else:
+                config = self.configs[0]
+            self.best_config = config
+            if (
+                os.getenv("TRITON_PRINT_AUTOTUNING", None) == "1"
+                and not used_cached_result
+            ):
+                print(
+                    f"Triton autotuning for function {self.base_fn.__name__} finished after "
+                    f"{self.bench_time:.2f}s; config key: {config_key}, "
+                    f"benchmark key: {benchmark_key}, "
+                    f"best config selected: {self.best_config};"
+                )
+            full_nargs = {**self.nargs, **kwargs, **config.all_kwargs()}
+            if (
+                hasattr(self, "shared_config_pre_hook")
+                and self.shared_config_pre_hook is not None
+            ):
+                self.shared_config_pre_hook(full_nargs)
+            elif config.pre_hook is not None:
+                config.pre_hook(full_nargs)
+            try:
+                ret = self.fn.run(
+                    *args,
                     **kwargs,
                     **config.all_kwargs(),
-                }
-                self.pre_hook(full_nargs, reset_only=True)
-                self.configs_timings = timings
-            else:
-                config = self.cache[config_key]
-            if config.pre_hook is None:
-                cached_kwargs = config.all_kwargs()
-                for original_config in self.configs:
-                    if original_config.all_kwargs() == cached_kwargs:
-                        # Use the original config which has the pre_hook
-                        config = original_config
-                        break
-        else:
-            config = self.configs[0]
-        self.best_config = config
-        if os.getenv("TRITON_PRINT_AUTOTUNING", None) == "1" and not used_cached_result:
-            print(
-                f"Triton autotuning for function {self.base_fn.__name__} finished after "
-                f"{self.bench_time:.2f}s; config key: {config_key}, "
-                f"benchmark key: {benchmark_key}, "
-                f"best config selected: {self.best_config};"
-            )
-        full_nargs = {**self.nargs, **kwargs, **config.all_kwargs()}
-        if (
-            hasattr(self, "shared_config_pre_hook")
-            and self.shared_config_pre_hook is not None
-        ):
-            self.shared_config_pre_hook(full_nargs)
-        elif config.pre_hook is not None:
-            config.pre_hook(full_nargs)
-        ret = self.fn.run(
-            *args,
-            **kwargs,
-            **config.all_kwargs(),
-        )
-        self.nargs = None
-        return ret
+                )
+            except RuntimeError as e:
+                if not config_from_cache:
+                    raise
+                # The cached best-config is poisoned: it was likely tuned in a
+                # different environment that shares this ConfigCache table (e.g.
+                # another compiler whose triton major/minor version matches ours)
+                # and no longer compiles here. Drop the entry and re-tune from
+                # scratch, ignoring stale cached latencies, instead of crashing
+                # the process. bench() treats compile failures as non-candidates
+                # (inf), so fresh tuning selects a working config. A config just
+                # selected by fresh tuning does not reach this branch, so the
+                # retry is bounded to a single pass.
+                print(
+                    f"[libentry] cached config {config} failed to compile: {e}; "
+                    "discarding config cache entry and retuning from scratch"
+                )
+                del self.cache[config_key]
+                retune_from_scratch = True
+                continue
+            self.nargs = None
+            return ret
 
 
 # ---- FlagTune Proposer Integration ----
