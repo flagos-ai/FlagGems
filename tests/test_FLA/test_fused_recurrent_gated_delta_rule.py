@@ -564,6 +564,50 @@ def _run_w8a16_fp8_sequence_reference(
     return output, final_state
 
 
+def _run_w8a16_fp8_speculative_reference(
+    q,
+    k,
+    v,
+    g,
+    beta,
+    state,
+    cu_seqlens,
+    state_indices,
+    num_accepted_tokens,
+):
+    q_float = q.float()
+    k_float = k.float()
+    q_float *= torch.rsqrt((q_float * q_float).sum(dim=-1, keepdim=True) + 1e-6)
+    k_float *= torch.rsqrt((k_float * k_float).sum(dim=-1, keepdim=True) + 1e-6)
+    q_float *= _FP8_K**-0.5
+    heads_per_qk = _FP8_HV // _FP8_H
+    q_float = q_float.repeat_interleave(heads_per_qk, dim=2)
+    k_float = k_float.repeat_interleave(heads_per_qk, dim=2)
+
+    output = torch.empty_like(v)
+    final_state = state.float().clone()
+    for sequence_id in range(cu_seqlens.numel() - 1):
+        begin = int(cu_seqlens[sequence_id].item())
+        end = int(cu_seqlens[sequence_id + 1].item())
+        accepted_offset = int(num_accepted_tokens[sequence_id].item()) - 1
+        initial_state_id = int(state_indices[sequence_id, accepted_offset].item())
+        state_tile = final_state[initial_state_id].clone()
+        for token_offset, token_id in enumerate(range(begin, end)):
+            state_tile *= torch.exp(g[0, token_id].float()[:, None, None])
+            prediction = torch.einsum("hk,hkv->hv", k_float[0, token_id], state_tile)
+            residual = (v[0, token_id].float() - prediction) * beta[
+                0, token_id
+            ].float()[:, None]
+            state_tile += k_float[0, token_id, :, :, None] * residual[:, None, :]
+            output[0, token_id] = torch.einsum(
+                "hk,hkv->hv", q_float[0, token_id], state_tile
+            ).to(output.dtype)
+            output_state_id = int(state_indices[sequence_id, token_offset].item())
+            if output_state_id >= 0:
+                final_state[output_state_id] = state_tile
+    return output, final_state
+
+
 @requires_w8a16_fp8_gdn
 @pytest.mark.fused_recurrent_gated_delta_rule
 def test_gdn_state_fp8_round_trip():
@@ -645,6 +689,96 @@ def test_fused_recurrent_gated_delta_rule_w8a16_fp8_accuracy(
 
     torch.testing.assert_close(actual.float(), expected.float(), atol=2e-3, rtol=5e-2)
     torch.testing.assert_close(actual_state, state_ref.float(), atol=2e-2, rtol=2.5e-1)
+
+
+@requires_w8a16_fp8_gdn
+@pytest.mark.fused_recurrent_gated_delta_rule
+@pytest.mark.parametrize(
+    "num_sequences, sequence_length",
+    [(4, 1), (32, 1), (3, 3)],
+)
+def test_fused_recurrent_gated_delta_rule_w8a16_fp8_speculative_decode(
+    num_sequences,
+    sequence_length,
+):
+    torch.manual_seed(11 + num_sequences)
+    total_tokens = num_sequences * sequence_length
+    q, k, v, g, beta = _make_w8a16_fp8_sequence_inputs(1, total_tokens, torch.bfloat16)
+    cu_seqlens = torch.arange(
+        0,
+        total_tokens + 1,
+        sequence_length,
+        device=flag_gems.device,
+        dtype=torch.long,
+    )
+    num_candidate_slots = max(3, sequence_length)
+    num_states = num_sequences * num_candidate_slots
+    state_indices = torch.randperm(num_states, device=flag_gems.device).view(
+        num_sequences, num_candidate_slots
+    )
+    num_accepted_tokens = (
+        torch.arange(num_sequences, device=flag_gems.device, dtype=torch.long)
+        % num_candidate_slots
+        + 1
+    )
+    state_amplitude = torch.linspace(
+        0.5,
+        1.5,
+        num_states,
+        device=flag_gems.device,
+        dtype=torch.float32,
+    ).view(num_states, 1, 1, 1)
+    initial_state = (
+        0.02
+        * state_amplitude
+        * torch.randn(
+            num_states,
+            _FP8_HV,
+            _FP8_K,
+            _FP8_V,
+            device=flag_gems.device,
+            dtype=torch.float32,
+        )
+    ).to(torch.bfloat16)
+    state_fp8, state_scale = flag_gems.quantize_gdn_state_fp8(
+        initial_state.contiguous()
+    )
+    state_ref = flag_gems.dequantize_gdn_state_fp8(
+        state_fp8, state_scale, output_dtype=torch.bfloat16
+    )
+    expected, expected_state = _run_w8a16_fp8_speculative_reference(
+        q,
+        k,
+        v,
+        g,
+        beta,
+        state_ref,
+        cu_seqlens,
+        state_indices,
+        num_accepted_tokens,
+    )
+
+    actual, state_fp8, state_scale = (
+        flag_gems.fused_recurrent_gated_delta_rule_w8a16_fp8(
+            q,
+            k,
+            v,
+            g,
+            beta,
+            scale=_FP8_K**-0.5,
+            state_fp8=state_fp8,
+            state_scale=state_scale,
+            cu_seqlens=cu_seqlens,
+            ssm_state_indices=state_indices,
+            num_accepted_tokens=num_accepted_tokens,
+            use_qk_l2norm_in_kernel=True,
+            max_sequence_length=sequence_length,
+        )
+    )
+    actual_state = flag_gems.dequantize_gdn_state_fp8(state_fp8, state_scale)
+
+    torch.testing.assert_close(actual.float(), expected.float(), atol=3e-2, rtol=0.2)
+    torch.testing.assert_close(actual_state, expected_state, atol=4e-2, rtol=0.3)
 
 
 @requires_w8a16_fp8_gdn

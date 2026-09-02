@@ -423,7 +423,9 @@ def _gdn_decode_value_tile(
     i_t,
     i_hv,
     i_v,
-    state_index,
+    initial_state_index,
+    output_state_index,
+    output_state_valid,
     stride_v_b: tl.constexpr,
     stride_v_t: tl.constexpr,
     stride_v_h: tl.constexpr,
@@ -453,20 +455,22 @@ def _gdn_decode_value_tile(
     mask_v = o_v < V
     mask_state = mask_k[:, None] & mask_v[None, :]
 
-    state_offsets = (
-        state_index * stride_state_s
+    initial_state_offsets = (
+        initial_state_index * stride_state_s
         + i_hv * stride_state_h
         + o_k[:, None] * stride_state_k
         + o_v[None, :] * stride_state_v
     )
-    scale_offsets = (
-        state_index * stride_scale_s + i_hv * stride_scale_h + o_v * stride_scale_v
+    initial_scale_offsets = (
+        initial_state_index * stride_scale_s
+        + i_hv * stride_scale_h
+        + o_v * stride_scale_v
     )
     state_acc = _load_dynamic_fp8_state(
         state_fp8,
         state_scale,
-        state_offsets,
-        scale_offsets,
+        initial_state_offsets,
+        initial_scale_offsets,
         mask_state,
         mask_v,
         ACTIVATION_TYPE=v.dtype.element_ty,
@@ -491,14 +495,26 @@ def _gdn_decode_value_tile(
         i_b * stride_o_b + i_t * stride_o_t + i_hv * stride_o_h + o_v * stride_o_v
     )
     tl.store(o + output_offsets, output.to(o.dtype.element_ty), mask=mask_v)
+    safe_output_state_index = tl.where(output_state_valid, output_state_index, 0)
+    output_state_offsets = (
+        safe_output_state_index * stride_state_s
+        + i_hv * stride_state_h
+        + o_k[:, None] * stride_state_k
+        + o_v[None, :] * stride_state_v
+    )
+    output_scale_offsets = (
+        safe_output_state_index * stride_scale_s
+        + i_hv * stride_scale_h
+        + o_v * stride_scale_v
+    )
     _store_dynamic_fp8_state(
         state_acc,
         state_fp8,
         state_scale,
-        state_offsets,
-        scale_offsets,
-        mask_state,
-        mask_v,
+        output_state_offsets,
+        output_scale_offsets,
+        mask_state & output_state_valid,
+        mask_v & output_state_valid,
         ACTIVATION_TYPE=v.dtype.element_ty,
         STREAM_STATE_STORE=False,
         LOW_PRECISION_AMAX=LOW_PRECISION_AMAX,
@@ -518,6 +534,7 @@ def _fused_recurrent_gated_delta_rule_grouped_w8a16_fp8_kernel(
     state_scale,
     cu_seqlens,
     state_indices,
+    num_accepted_tokens,
     scale,
     stride_q_b: tl.constexpr,
     stride_q_t: tl.constexpr,
@@ -548,6 +565,8 @@ def _fused_recurrent_gated_delta_rule_grouped_w8a16_fp8_kernel(
     stride_scale_s: tl.constexpr,
     stride_scale_h: tl.constexpr,
     stride_scale_v: tl.constexpr,
+    stride_indices_seq: tl.constexpr,
+    stride_indices_tok: tl.constexpr,
     H: tl.constexpr,
     HV: tl.constexpr,
     N: tl.constexpr,
@@ -557,6 +576,7 @@ def _fused_recurrent_gated_delta_rule_grouped_w8a16_fp8_kernel(
     BV: tl.constexpr,
     USE_PACKED_INPUT: tl.constexpr,
     USE_STATE_INDICES: tl.constexpr,
+    USE_SPEC_DECODING: tl.constexpr,
     USE_QK_L2NORM: tl.constexpr,
     LOW_PRECISION_AMAX: tl.constexpr,
     FP32_STATE_PRODUCTS: tl.constexpr,
@@ -578,14 +598,46 @@ def _fused_recurrent_gated_delta_rule_grouped_w8a16_fp8_kernel(
         i_t = 0
 
     if USE_STATE_INDICES:
+        output_index_offset = i_n * stride_indices_seq
         if N >= 128:
-            state_index = tl.load(state_indices + i_n).to(tl.int32)
+            output_state_index = tl.load(state_indices + output_index_offset).to(
+                tl.int32
+            )
+            if USE_SPEC_DECODING:
+                initial_token_offset = (
+                    tl.load(num_accepted_tokens + i_n).to(tl.int64) - 1
+                )
+                initial_index_offset = (
+                    i_n * stride_indices_seq + initial_token_offset * stride_indices_tok
+                )
+                initial_state_index = tl.load(state_indices + initial_index_offset).to(
+                    tl.int32
+                )
+            else:
+                initial_state_index = output_state_index
         else:
-            state_index = tl.load(state_indices + i_n).to(tl.int64)
-        if state_index < 0:
+            output_state_index = tl.load(state_indices + output_index_offset).to(
+                tl.int64
+            )
+            if USE_SPEC_DECODING:
+                initial_token_offset = (
+                    tl.load(num_accepted_tokens + i_n).to(tl.int64) - 1
+                )
+                initial_index_offset = (
+                    i_n * stride_indices_seq + initial_token_offset * stride_indices_tok
+                )
+                initial_state_index = tl.load(state_indices + initial_index_offset).to(
+                    tl.int64
+                )
+            else:
+                initial_state_index = output_state_index
+        if initial_state_index < 0:
             return
+        output_state_valid = output_state_index >= 0
     else:
-        state_index = i_n
+        initial_state_index = i_n
+        output_state_index = i_n
+        output_state_valid = True
 
     o_k = tl.arange(0, BK)
     mask_k = o_k < K
@@ -621,7 +673,9 @@ def _fused_recurrent_gated_delta_rule_grouped_w8a16_fp8_kernel(
             i_t,
             i_hv,
             i_v,
-            state_index,
+            initial_state_index,
+            output_state_index,
+            output_state_valid,
             stride_v_b,
             stride_v_t,
             stride_v_h,
@@ -660,6 +714,7 @@ def _fused_recurrent_gated_delta_rule_w8a16_fp8_kernel(
     state_scale,
     cu_seqlens,
     state_indices,
+    num_accepted_tokens,
     scale,
     stride_q_b: tl.constexpr,
     stride_q_t: tl.constexpr,
@@ -690,6 +745,8 @@ def _fused_recurrent_gated_delta_rule_w8a16_fp8_kernel(
     stride_scale_s: tl.constexpr,
     stride_scale_h: tl.constexpr,
     stride_scale_v: tl.constexpr,
+    stride_indices_seq: tl.constexpr,
+    stride_indices_tok: tl.constexpr,
     H: tl.constexpr,
     HV: tl.constexpr,
     S: tl.constexpr,
@@ -700,6 +757,7 @@ def _fused_recurrent_gated_delta_rule_w8a16_fp8_kernel(
     BV: tl.constexpr,
     USE_PACKED_INPUT: tl.constexpr,
     USE_STATE_INDICES: tl.constexpr,
+    USE_SPEC_DECODING: tl.constexpr,
     USE_QK_L2NORM: tl.constexpr,
     USE_3D_GRID: tl.constexpr,
     USE_TMA_LOAD: tl.constexpr,
@@ -730,14 +788,46 @@ def _fused_recurrent_gated_delta_rule_w8a16_fp8_kernel(
         i_t = 0
 
     if USE_STATE_INDICES:
+        output_index_offset = i_n * stride_indices_seq
         if N >= 128:
-            state_index = tl.load(state_indices + i_n).to(tl.int32)
+            output_state_index = tl.load(state_indices + output_index_offset).to(
+                tl.int32
+            )
+            if USE_SPEC_DECODING:
+                initial_token_offset = (
+                    tl.load(num_accepted_tokens + i_n).to(tl.int64) - 1
+                )
+                initial_index_offset = (
+                    i_n * stride_indices_seq + initial_token_offset * stride_indices_tok
+                )
+                initial_state_index = tl.load(state_indices + initial_index_offset).to(
+                    tl.int32
+                )
+            else:
+                initial_state_index = output_state_index
         else:
-            state_index = tl.load(state_indices + i_n).to(tl.int64)
-        if state_index < 0:
+            output_state_index = tl.load(state_indices + output_index_offset).to(
+                tl.int64
+            )
+            if USE_SPEC_DECODING:
+                initial_token_offset = (
+                    tl.load(num_accepted_tokens + i_n).to(tl.int64) - 1
+                )
+                initial_index_offset = (
+                    i_n * stride_indices_seq + initial_token_offset * stride_indices_tok
+                )
+                initial_state_index = tl.load(state_indices + initial_index_offset).to(
+                    tl.int64
+                )
+            else:
+                initial_state_index = output_state_index
+        if initial_state_index < 0:
             return
+        output_state_valid = output_state_index >= 0
     else:
-        state_index = i_n
+        initial_state_index = i_n
+        output_state_index = i_n
+        output_state_valid = True
 
     o_k = tl.arange(0, BK)
     o_v = i_v * BV + tl.arange(0, BV)
@@ -746,17 +836,35 @@ def _fused_recurrent_gated_delta_rule_w8a16_fp8_kernel(
     mask_state = mask_k[:, None] & mask_v[None, :]
 
     if USE_INT64_STATE_OFFSETS:
-        state_index_for_offset = state_index.to(tl.int64)
+        initial_state_index_for_offset = initial_state_index.to(tl.int64)
     else:
-        state_index_for_offset = state_index
-    state_offsets = (
-        state_index_for_offset * stride_state_s
+        initial_state_index_for_offset = initial_state_index
+    initial_state_offsets = (
+        initial_state_index_for_offset * stride_state_s
         + i_hv * stride_state_h
         + o_k[:, None] * stride_state_k
         + o_v[None, :] * stride_state_v
     )
-    scale_offsets = (
-        state_index * stride_scale_s + i_hv * stride_scale_h + o_v * stride_scale_v
+    initial_scale_offsets = (
+        initial_state_index * stride_scale_s
+        + i_hv * stride_scale_h
+        + o_v * stride_scale_v
+    )
+    safe_output_state_index = tl.where(output_state_valid, output_state_index, 0)
+    if USE_INT64_STATE_OFFSETS:
+        output_state_index_for_offset = safe_output_state_index.to(tl.int64)
+    else:
+        output_state_index_for_offset = safe_output_state_index
+    output_state_offsets = (
+        output_state_index_for_offset * stride_state_s
+        + i_hv * stride_state_h
+        + o_k[:, None] * stride_state_k
+        + o_v[None, :] * stride_state_v
+    )
+    output_scale_offsets = (
+        safe_output_state_index * stride_scale_s
+        + i_hv * stride_scale_h
+        + o_v * stride_scale_v
     )
     if USE_TMA_LOAD:
         state_descriptor = tl.make_tensor_descriptor(
@@ -765,12 +873,12 @@ def _fused_recurrent_gated_delta_rule_w8a16_fp8_kernel(
             strides=[stride_state_h, stride_state_k, stride_state_v],
             block_shape=[1, BK, BV],
         )
-        state_row = (state_index * HV + i_hv).to(tl.int32)
+        state_row = (initial_state_index * HV + i_hv).to(tl.int32)
         state_values = state_descriptor.load([state_row, 0, i_v * BV])
         state_values = tl.reshape(state_values, (BK, BV))
-        channel_scale = tl.load(state_scale + scale_offsets, mask=mask_v, other=0.0).to(
-            q.dtype.element_ty
-        )
+        channel_scale = tl.load(
+            state_scale + initial_scale_offsets, mask=mask_v, other=0.0
+        ).to(q.dtype.element_ty)
         b_h = (state_values.to(q.dtype.element_ty) * channel_scale[None, :]).to(
             tl.float32
         )
@@ -778,8 +886,8 @@ def _fused_recurrent_gated_delta_rule_w8a16_fp8_kernel(
         b_h = _load_dynamic_fp8_state(
             state_fp8,
             state_scale,
-            state_offsets,
-            scale_offsets,
+            initial_state_offsets,
+            initial_scale_offsets,
             mask_state,
             mask_v,
             ACTIVATION_TYPE=q.dtype.element_ty,
@@ -829,10 +937,10 @@ def _fused_recurrent_gated_delta_rule_w8a16_fp8_kernel(
         b_h,
         state_fp8,
         state_scale,
-        state_offsets,
-        scale_offsets,
-        mask_state,
-        mask_v,
+        output_state_offsets,
+        output_scale_offsets,
+        mask_state & output_state_valid,
+        mask_v & output_state_valid,
         ACTIVATION_TYPE=q.dtype.element_ty,
         STREAM_STATE_STORE=False,
         LOW_PRECISION_AMAX=LOW_PRECISION_AMAX,
@@ -852,6 +960,7 @@ def _fused_recurrent_gated_delta_rule_sequence_w8a16_fp8_kernel(
     state_scale,
     cu_seqlens,
     state_indices,
+    num_accepted_tokens,
     scale,
     T: tl.int64,
     stride_q_b: tl.constexpr,
@@ -883,6 +992,8 @@ def _fused_recurrent_gated_delta_rule_sequence_w8a16_fp8_kernel(
     stride_scale_s: tl.constexpr,
     stride_scale_h: tl.constexpr,
     stride_scale_v: tl.constexpr,
+    stride_indices_seq: tl.constexpr,
+    stride_indices_tok: tl.constexpr,
     H: tl.constexpr,
     HV: tl.constexpr,
     K: tl.constexpr,
@@ -891,6 +1002,8 @@ def _fused_recurrent_gated_delta_rule_sequence_w8a16_fp8_kernel(
     BV: tl.constexpr,
     USE_PACKED_INPUT: tl.constexpr,
     USE_STATE_INDICES: tl.constexpr,
+    USE_PER_TOKEN_STATE_INDICES: tl.constexpr,
+    USE_SPEC_DECODING: tl.constexpr,
     USE_QK_L2NORM: tl.constexpr,
     LOW_PRECISION_AMAX: tl.constexpr,
     FP32_STATE_PRODUCTS: tl.constexpr,
@@ -916,31 +1029,40 @@ def _fused_recurrent_gated_delta_rule_sequence_w8a16_fp8_kernel(
         return
 
     if USE_STATE_INDICES:
-        state_index = tl.load(state_indices + i_n).to(tl.int64)
-        if state_index < 0:
+        initial_token_offset = 0
+        if USE_SPEC_DECODING:
+            initial_token_offset = tl.load(num_accepted_tokens + i_n).to(tl.int64) - 1
+        initial_state_index = tl.load(
+            state_indices
+            + i_n * stride_indices_seq
+            + initial_token_offset * stride_indices_tok
+        ).to(tl.int64)
+        if initial_state_index < 0:
             return
     else:
-        state_index = i_n
+        initial_state_index = i_n
 
     o_k = tl.arange(0, BK)
     o_v = i_v * BV + tl.arange(0, BV)
     mask_k = o_k < K
     mask_v = o_v < V
     mask_state = mask_k[:, None] & mask_v[None, :]
-    state_offsets = (
-        state_index * stride_state_s
+    initial_state_offsets = (
+        initial_state_index * stride_state_s
         + i_hv * stride_state_h
         + o_k[:, None] * stride_state_k
         + o_v[None, :] * stride_state_v
     )
-    scale_offsets = (
-        state_index * stride_scale_s + i_hv * stride_scale_h + o_v * stride_scale_v
+    initial_scale_offsets = (
+        initial_state_index * stride_scale_s
+        + i_hv * stride_scale_h
+        + o_v * stride_scale_v
     )
     state_acc = _load_dynamic_fp8_state(
         state_fp8,
         state_scale,
-        state_offsets,
-        scale_offsets,
+        initial_state_offsets,
+        initial_scale_offsets,
         mask_state,
         mask_v,
         ACTIVATION_TYPE=q.dtype.element_ty,
@@ -994,18 +1116,53 @@ def _fused_recurrent_gated_delta_rule_sequence_w8a16_fp8_kernel(
         )
         tl.store(o + output_offsets, output.to(o.dtype.element_ty), mask=mask_v)
 
-    _store_dynamic_fp8_state(
-        state_acc,
-        state_fp8,
-        state_scale,
-        state_offsets,
-        scale_offsets,
-        mask_state,
-        mask_v,
-        ACTIVATION_TYPE=q.dtype.element_ty,
-        STREAM_STATE_STORE=False,
-        LOW_PRECISION_AMAX=LOW_PRECISION_AMAX,
-    )
+        if USE_PER_TOKEN_STATE_INDICES:
+            output_state_index = tl.load(
+                state_indices
+                + i_n * stride_indices_seq
+                + token_offset * stride_indices_tok
+            ).to(tl.int64)
+            output_state_valid = output_state_index >= 0
+            safe_output_state_index = tl.where(
+                output_state_valid, output_state_index, 0
+            )
+            output_state_offsets = (
+                safe_output_state_index * stride_state_s
+                + i_hv * stride_state_h
+                + o_k[:, None] * stride_state_k
+                + o_v[None, :] * stride_state_v
+            )
+            output_scale_offsets = (
+                safe_output_state_index * stride_scale_s
+                + i_hv * stride_scale_h
+                + o_v * stride_scale_v
+            )
+            _store_dynamic_fp8_state(
+                state_acc,
+                state_fp8,
+                state_scale,
+                output_state_offsets,
+                output_scale_offsets,
+                mask_state & output_state_valid,
+                mask_v & output_state_valid,
+                ACTIVATION_TYPE=q.dtype.element_ty,
+                STREAM_STATE_STORE=False,
+                LOW_PRECISION_AMAX=LOW_PRECISION_AMAX,
+            )
+
+    if not USE_PER_TOKEN_STATE_INDICES:
+        _store_dynamic_fp8_state(
+            state_acc,
+            state_fp8,
+            state_scale,
+            initial_state_offsets,
+            initial_scale_offsets,
+            mask_state,
+            mask_v,
+            ACTIVATION_TYPE=q.dtype.element_ty,
+            STREAM_STATE_STORE=False,
+            LOW_PRECISION_AMAX=LOW_PRECISION_AMAX,
+        )
 
 
 def quantize_gdn_state_fp8(
@@ -1234,6 +1391,7 @@ def fused_recurrent_gated_delta_rule_w8a16_fp8(
     state_scale: torch.Tensor,
     cu_seqlens: torch.Tensor | None = None,
     ssm_state_indices: torch.Tensor | None = None,
+    num_accepted_tokens: torch.Tensor | None = None,
     use_qk_l2norm_in_kernel: bool = False,
     *,
     max_sequence_length: int | None = None,
@@ -1248,8 +1406,10 @@ def fused_recurrent_gated_delta_rule_w8a16_fp8(
     This is the dynamically quantized state specialization of
     ``fused_recurrent_gated_delta_rule_fwd``. ``initial_state`` is represented
     by ``state_fp8`` and its per-V-channel ``state_scale``; both tensors are
-    always updated in-place and returned with the output. Speculative decoding
-    through ``num_accepted_tokens`` is not supported. Packed decode callers may pass
+    always updated in-place and returned with the output. During speculative
+    decoding, ``num_accepted_tokens`` selects the initial state slot for each
+    sequence, and each candidate token writes both its FP8 state and scale to
+    the matching slot in ``ssm_state_indices``. Packed decode callers may pass
     ``max_sequence_length=1`` to select the single-token fast path without
     synchronizing ``cu_seqlens`` back to CPU.
     """
@@ -1281,8 +1441,43 @@ def fused_recurrent_gated_delta_rule_w8a16_fp8(
         or state_scale.shape != (state_fp8.shape[0], HV, V)
     ):
         raise ValueError("state_scale must be contiguous FP32 with shape [S, HV, V]")
-    if ssm_state_indices is not None and ssm_state_indices.numel() != N:
-        raise ValueError("ssm_state_indices must contain one index per sequence")
+    if ssm_state_indices is None:
+        stride_indices_seq, stride_indices_tok = 1, 1
+        use_per_token_state_indices = False
+    else:
+        if ssm_state_indices.device != q.device or ssm_state_indices.dtype not in (
+            torch.int32,
+            torch.int64,
+        ):
+            raise ValueError("ssm_state_indices must be an integer tensor on q.device")
+        if ssm_state_indices.ndim == 1:
+            if ssm_state_indices.shape[0] != N:
+                raise ValueError("ssm_state_indices must contain one row per sequence")
+            stride_indices_seq = ssm_state_indices.stride(0)
+            stride_indices_tok = 0
+            use_per_token_state_indices = False
+        elif ssm_state_indices.ndim == 2:
+            if ssm_state_indices.shape[0] != N:
+                raise ValueError("ssm_state_indices must contain one row per sequence")
+            stride_indices_seq, stride_indices_tok = ssm_state_indices.stride()
+            use_per_token_state_indices = True
+        else:
+            raise ValueError("ssm_state_indices must be a 1D or 2D tensor")
+    if num_accepted_tokens is not None:
+        if ssm_state_indices is None or ssm_state_indices.ndim != 2:
+            raise ValueError(
+                "num_accepted_tokens requires 2D per-token ssm_state_indices"
+            )
+        if (
+            num_accepted_tokens.device != q.device
+            or num_accepted_tokens.dtype not in (torch.int32, torch.int64)
+            or not num_accepted_tokens.is_contiguous()
+            or num_accepted_tokens.shape != (N,)
+        ):
+            raise ValueError(
+                "num_accepted_tokens must be a contiguous integer tensor "
+                "with shape [N] on q.device"
+            )
 
     single_token_per_sequence = max_sequence_length == 1 if use_packed_input else T == 1
     if use_packed_input:
@@ -1293,6 +1488,8 @@ def fused_recurrent_gated_delta_rule_w8a16_fp8(
         average_sequence_length = T
     use_chunk_prefill = (
         not single_token_per_sequence
+        and not use_per_token_state_indices
+        and num_accepted_tokens is None
         and use_qk_l2norm_in_kernel
         and K == 128
         and V == 128
@@ -1325,6 +1522,7 @@ def fused_recurrent_gated_delta_rule_w8a16_fp8(
         "state_scale": state_scale,
         "cu_seqlens": cu_seqlens,
         "state_indices": ssm_state_indices,
+        "num_accepted_tokens": num_accepted_tokens,
         "scale": scale,
         "stride_q_b": q.stride(0),
         "stride_q_t": q.stride(1),
@@ -1355,6 +1553,8 @@ def fused_recurrent_gated_delta_rule_w8a16_fp8(
         "stride_scale_s": state_scale.stride(0),
         "stride_scale_h": state_scale.stride(1),
         "stride_scale_v": state_scale.stride(2),
+        "stride_indices_seq": stride_indices_seq,
+        "stride_indices_tok": stride_indices_tok,
         "H": H,
         "HV": HV,
         "K": K,
@@ -1362,6 +1562,7 @@ def fused_recurrent_gated_delta_rule_w8a16_fp8(
         "BK": BK,
         "USE_PACKED_INPUT": use_packed_input,
         "USE_STATE_INDICES": ssm_state_indices is not None,
+        "USE_SPEC_DECODING": num_accepted_tokens is not None,
         "USE_QK_L2NORM": use_qk_l2norm_in_kernel,
     }
 
@@ -1380,6 +1581,7 @@ def fused_recurrent_gated_delta_rule_w8a16_fp8(
             **kernel_args,
             T=T,
             BV=block_v,
+            USE_PER_TOKEN_STATE_INDICES=use_per_token_state_indices,
             LOW_PRECISION_AMAX=False,
             FP32_STATE_PRODUCTS=True,
             FP32_UPDATE_PRODUCTS=not (
@@ -1453,6 +1655,7 @@ def fused_recurrent_gated_delta_rule_w8a16_fp8(
             **kernel_args,
             T=T,
             BV=block_v,
+            USE_PER_TOKEN_STATE_INDICES=use_per_token_state_indices,
             LOW_PRECISION_AMAX=True,
             FP32_STATE_PRODUCTS=False,
             FP32_UPDATE_PRODUCTS=False,
