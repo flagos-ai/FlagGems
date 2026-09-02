@@ -36,14 +36,14 @@ LINALG_COND_RTOL = 0.15
 def _make_moderate_cond_matrix(shape, dtype, device):
     """Generate a matrix with moderate, bounded condition number.
 
-    Uses diagonally dominant construction to ensure condition number stays
+    Adds a large diagonal to ensure the condition number stays
     in a predictable range, avoiding flaky test failures from ill-conditioned
     random matrices where GPU/CPU inverse differences get amplified.
     """
     n = shape[-1]
     batch_shape = shape[:-2]
     A = torch.randn(shape, dtype=dtype, device=device)
-    # Add n*I to make diagonally dominant — bounds cond number to ~O(n)
+    # Add n*I to keep condition number bounded at ~O(n)
     eye = torch.eye(n, dtype=dtype, device=device)
     for _ in batch_shape:
         eye = eye.unsqueeze(0)
@@ -65,9 +65,7 @@ def test_linalg_cond(shape, dtype):
         res_out = torch.linalg.cond(A)
 
     # Use relative comparison for condition numbers
-    torch.testing.assert_close(
-        res_out.cpu(), ref_out.cpu(), rtol=LINALG_COND_RTOL, atol=1.0
-    )
+    utils.gems_assert_close(res_out, ref_out, dtype, atol=1.0)
 
 
 @pytest.mark.linalg_cond
@@ -84,9 +82,7 @@ def test_linalg_cond_with_p(shape, dtype, p):
         res_out = torch.linalg.cond(A, p=p)
 
     # Use relative comparison for condition numbers
-    torch.testing.assert_close(
-        res_out.cpu(), ref_out.cpu(), rtol=LINALG_COND_RTOL, atol=1.0
-    )
+    utils.gems_assert_close(res_out, ref_out, dtype, atol=1.0)
 
 
 @pytest.mark.linalg_cond
@@ -108,6 +104,4 @@ def test_linalg_cond_svd(shape, dtype, p):
         res_out = torch.linalg.cond(A, p=p)
 
     # Use relative comparison for condition numbers
-    torch.testing.assert_close(
-        res_out.cpu(), ref_out.cpu(), rtol=LINALG_COND_RTOL, atol=1.0
-    )
+    utils.gems_assert_close(res_out, ref_out, dtype, atol=1.0)
