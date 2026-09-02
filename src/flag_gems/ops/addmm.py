@@ -110,19 +110,23 @@ def addmm_kernel(
             b_ptrs += BLOCK_SIZE_K * stride_bk
 
     mask = (offs_m < M)[:, None] & (offs_n < N)[None, :]
-    if BIAS_IS_VECTOR:
-        bias = tl.load(
-            i_ptr + offs_n * stride_in,
-            mask=offs_n < N,
-            other=0.0,
-        )[None, :]
-    elif BIAS_IS_SCALAR:
-        bias = tl.load(i_ptr)
+    # PyTorch ignores bias, including NaN and Inf values, when beta is zero.
+    if beta == 0:
+        result = accumulator * alpha
     else:
-        i_ptrs = i_ptr + offs_m[:, None] * stride_im + offs_n[None, :] * stride_in
-        bias = tl.load(i_ptrs, mask=mask, other=0.0)
+        if BIAS_IS_VECTOR:
+            bias = tl.load(
+                i_ptr + offs_n * stride_in,
+                mask=offs_n < N,
+                other=0.0,
+            )[None, :]
+        elif BIAS_IS_SCALAR:
+            bias = tl.load(i_ptr)
+        else:
+            i_ptrs = i_ptr + offs_m[:, None] * stride_im + offs_n[None, :] * stride_in
+            bias = tl.load(i_ptrs, mask=mask, other=0.0)
+        result = accumulator * alpha + bias.to(accumulator.dtype) * beta
 
-    result = accumulator * alpha + bias.to(accumulator.dtype) * beta
     c_ptrs = c_ptr + offs_m[:, None] * stride_cm + offs_n[None, :] * stride_cn
     tl.store(c_ptrs, result.to(c_ptr.dtype.element_ty), mask=mask)
 
@@ -249,6 +253,6 @@ def addmm_dtype_out(bias, mat1, mat2, out_dtype, *, beta=1, alpha=1, out):
     if bias.dtype != out_dtype and bias.dtype != mat1.dtype:
         raise RuntimeError("self dtype must match either out_dtype or mat1 dtype")
 
-    # Write directly to the requested dtype instead of using an input-dtype temporary.
-    bias_c = bias.to(out_dtype)
+    # beta=0 must not read bias; otherwise cast it directly to the output dtype.
+    bias_c = bias if beta == 0 else bias.to(out_dtype)
     return addmm_out(bias_c, mat1, mat2, beta=beta, alpha=alpha, out=out)
