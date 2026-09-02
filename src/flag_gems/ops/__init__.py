@@ -534,6 +534,7 @@ from flag_gems.ops.linalg_lu_factor_ex import (
     linalg_lu_factor_ex,
     linalg_lu_factor_ex_out,
 )
+from flag_gems.ops.linalg_matrix_exp import linalg_matrix_exp, linalg_matrix_exp_out
 from flag_gems.ops.linalg_matrix_norm import linalg_matrix_norm
 from flag_gems.ops.linalg_matrix_rank import (
     linalg_matrix_rank,
@@ -1539,6 +1540,8 @@ __all__ = [
     "linalg_lu_factor_ex_out",
     "linalg_lu_factor_out",
     "linalg_lu_out",
+    "linalg_matrix_exp",
+    "linalg_matrix_exp_out",
     "linalg_matrix_norm",
     "linalg_matrix_rank",
     "linalg_matrix_rank_out",
