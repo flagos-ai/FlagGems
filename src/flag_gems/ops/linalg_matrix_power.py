@@ -23,6 +23,29 @@ logger = logging.getLogger(__name__)
 # is assigned, so referencing it here would be a circular import.
 _ACCUMULATE_FP64 = flag_gems.runtime.device.vendor_name != "iluvatar"
 
+# MetaX's fp64 MMA (maca_mma v2) cannot lower tl.dot with any dimension < 16,
+# and scrambles the rows of its fp64 output tile by a fixed 4x4 transpose
+# within every 16-row group.  See _metax_fix_fp64_rows.  No other backend is
+# affected; on NVIDIA the fp64 dot path is untouched.
+_METAX_FP64_DOT_FIX = flag_gems.runtime.device.vendor_name == "metax"
+
+
+@triton.jit
+def _metax_fix_fp64_rows(z, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr, G: tl.constexpr):
+    """Undo the MetaX fp64 MMA row permutation.
+
+    MetaX's fp64 dot writes its output tile with rows scrambled by a 4x4
+    transpose inside every 16-row group (out[i] = z[4*(i%4) + i//4 + 16*(i//16)]).
+    The reshape/trans round-trip un-scrambles the rows and forces the MMA
+    result into a blocked layout, so it can be stored or fed into the next dot.
+    Only invoked when FIX_FP64 is set (MetaX + fp64); other backends never
+    enable it.
+    """
+    z = tl.reshape(z, (G, 4, 4, BLOCK_N))
+    z = tl.trans(z, (0, 2, 1, 3))
+    z = tl.reshape(z, (BLOCK_M, BLOCK_N))
+    return z
+
 # ---------------------------------------------------------------------------
 # Threshold: matrices up to this size use the fused Triton kernel.
 # M=64 uses BLOCK=64 with a single tl.dot call per matmul — slightly
@@ -54,6 +77,8 @@ def _single_tile_kernel(
     n,
     batch_stride,
     BLOCK: tl.constexpr,
+    FIX_FP64: tl.constexpr = False,
+    G: tl.constexpr = 1,
 ):
     """One program per batch element.  M <= BLOCK, one tl.dot per matmul."""
     pid = tl.program_id(0)
@@ -83,11 +108,17 @@ def _single_tile_kernel(
                 has_result = True
             else:
                 result = tl.dot(result, z, allow_tf32=False)
-            result = tl.where(mask, result, 0.0)
+                if FIX_FP64:
+                    result = _metax_fix_fp64_rows(result, BLOCK, BLOCK, G)
+            if not FIX_FP64:
+                result = tl.where(mask, result, 0.0)
         n_remaining >>= 1
         if n_remaining > 0:
             z = tl.dot(z, z, allow_tf32=False)
-            z = tl.where(mask, z, 0.0)
+            if FIX_FP64:
+                z = _metax_fix_fp64_rows(z, BLOCK, BLOCK, G)
+            if not FIX_FP64:
+                z = tl.where(mask, z, 0.0)
 
     result = result.to(a.dtype)
     tl.store(out_base + offs_m[:, None] * M + offs_n[None, :], result, mask=mask)
@@ -258,6 +289,8 @@ def _grid_sync_kernel(
     batch_stride,
     TILE_BLOCK: tl.constexpr,
     TILES: tl.constexpr,
+    FIX_FP64: tl.constexpr = False,
+    G: tl.constexpr = 1,
 ):
     """Single-kernel binary exponentiation with grid-level sync.
 
@@ -363,6 +396,8 @@ def _grid_sync_kernel(
                     mask,
                     TILE_BLOCK,
                     TILES,
+                    FIX_FP64,
+                    G,
                 )
                 r_buf = dst_r
         n_remaining >>= 1
@@ -381,6 +416,8 @@ def _grid_sync_kernel(
                 mask,
                 TILE_BLOCK,
                 TILES,
+                FIX_FP64,
+                G,
             )
             z_buf = dst_z
 
@@ -418,6 +455,8 @@ def _compute_tiled_matmul(
     mask_c,
     TILE_BLOCK: tl.constexpr,
     TILES: tl.constexpr,
+    FIX_FP64: tl.constexpr = False,
+    G: tl.constexpr = 1,
 ):
     """Compute one tile of C = A @ B, storing result to C_base."""
     acc_dtype = A_base.type.element_ty
@@ -439,6 +478,11 @@ def _compute_tiled_matmul(
             other=0.0,
         )
         acc += tl.dot(a_tile.to(acc_dtype), b_tile.to(acc_dtype), allow_tf32=False)
+    if FIX_FP64:
+        # acc has been accumulated in the MetaX fp64 MMA layout; converting it
+        # to blocked (which also un-scrambles its rows) must happen before the
+        # mask is applied, otherwise the mask would corrupt it in MMA layout.
+        acc = _metax_fix_fp64_rows(acc, TILE_BLOCK, TILE_BLOCK, G)
     acc = tl.where(mask_c, acc, 0.0)
     tl.store(C_base + rm[:, None] * M + rn[None, :], acc, mask=mask_c)
 
@@ -908,6 +952,113 @@ def _lu_factor_ex_local(A, use_df64=False):
 # ===========================================================================
 
 
+@triton.jit
+def _metax_fp64_mm_kernel(
+    A,
+    B,
+    C,
+    M,
+    N,
+    K,
+    stride_ab,
+    stride_am,
+    stride_ak,
+    stride_bb,
+    stride_bk,
+    stride_bn,
+    stride_cb,
+    stride_cm,
+    stride_cn,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    G: tl.constexpr,
+):
+    """Tiled fp64 C = A @ B for MetaX, grid (tiles, batch).
+
+    The MetaX backend's own mm kernels cannot lower fp64 tl.dot (their
+    accumulator is hardwired to fp32, and its fp64 MMA cannot run with any
+    dimension < 16), so the M > 256 host binary-exponentiation path uses this
+    self-contained kernel instead.  Each program computes one BLOCK_M x BLOCK_N
+    output tile; the fp64 dot result's rows are un-scrambled with
+    ``_metax_fix_fp64_rows`` before the store.
+    """
+    pid = tl.program_id(0)
+    pid_b = tl.program_id(1)
+    grid_n = tl.cdiv(N, BLOCK_N)
+    pid_m = pid // grid_n
+    pid_n = pid % grid_n
+
+    rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    rk = tl.arange(0, BLOCK_K)
+
+    a_base = A + pid_b * stride_ab
+    b_base = B + pid_b * stride_bb
+    c_base = C + pid_b * stride_cb
+
+    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float64)
+    for k0 in range(0, tl.cdiv(K, BLOCK_K)):
+        kr = k0 * BLOCK_K + rk
+        a = tl.load(
+            a_base + rm[:, None] * stride_am + kr[None, :] * stride_ak,
+            mask=(rm[:, None] < M) & (kr[None, :] < K),
+            other=0.0,
+        )
+        b = tl.load(
+            b_base + kr[:, None] * stride_bk + rn[None, :] * stride_bn,
+            mask=(kr[:, None] < K) & (rn[None, :] < N),
+            other=0.0,
+        )
+        acc += tl.dot(a.to(tl.float64), b.to(tl.float64), allow_tf32=False)
+    acc = _metax_fix_fp64_rows(acc, BLOCK_M, BLOCK_N, G)
+    cmask = (rm[:, None] < M) & (rn[None, :] < N)
+    tl.store(
+        c_base + rm[:, None] * stride_cm + rn[None, :] * stride_cn,
+        acc.to(C.dtype.element_ty),
+        mask=cmask,
+    )
+
+
+def _metax_fp64_mm(A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
+    """fp64 matmul for MetaX (self-contained, see ``_metax_fp64_mm_kernel``)."""
+    *_, M, K = A.shape
+    *_, K2, N = B.shape
+    assert K == K2
+    A2 = A.reshape(-1, M, K)
+    B2 = B.reshape(-1, K, N)
+    batch = A2.shape[0]
+    C = torch.empty(batch, M, N, dtype=A.dtype, device=A.device)
+    # fp64 tiles are 8 bytes/element; 64x32 + 32x64 per K-step keeps shared
+    # memory under the MetaX 64KB limit with a single pipeline stage.
+    BLOCK_M, BLOCK_N, BLOCK_K = 64, 64, 32
+    grid = (triton.cdiv(M, BLOCK_M) * triton.cdiv(N, BLOCK_N), batch)
+    _metax_fp64_mm_kernel[grid](
+        A2,
+        B2,
+        C,
+        M,
+        N,
+        K,
+        A2.stride(0),
+        A2.stride(1),
+        A2.stride(2),
+        B2.stride(0),
+        B2.stride(1),
+        B2.stride(2),
+        C.stride(0),
+        C.stride(1),
+        C.stride(2),
+        BLOCK_M=BLOCK_M,
+        BLOCK_N=BLOCK_N,
+        BLOCK_K=BLOCK_K,
+        G=BLOCK_M // 16,
+        num_warps=4,
+        num_stages=1,
+    )
+    return C.reshape(A.shape[:-2] + (M, N))
+
+
 def _matmul(A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
     """Matmul via the flag_gems Triton kernels (mm for 2D, bmm for batched).
 
@@ -915,9 +1066,15 @@ def _matmul(A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
     kernels are used when a backend overrides them: iluvatar's mm kernel
     accepts a SPLIT_K tune config that the general mm kernel does not, so the
     general ``flag_gems.ops.mm`` import would fail there with a KeyError.
+
+    On MetaX the backend mm kernels cannot lower fp64 tl.dot at all (fp32-only
+    accumulator, and the fp64 MMA needs every dimension >= 16), so fp64 matmuls
+    use the self-contained tiled kernel above.
     """
     from flag_gems import bmm, mm
 
+    if _METAX_FP64_DOT_FIX and A.dtype == torch.float64:
+        return _metax_fp64_mm(A, B)
     if A.dim() == 2:
         return mm(A, B)
     return bmm(A, B)
@@ -1186,6 +1343,8 @@ def _trsm_kernel(
     UPPER: tl.constexpr,
     UNIT: tl.constexpr,
     USE_FP64: tl.constexpr,
+    FIX_FP64: tl.constexpr = False,
+    G_BM: tl.constexpr = 1,
 ):
     """Blocked triangular solve A X = B in place (B <- X), one program per
     K_SLICE-column group of the RHS.
@@ -1296,10 +1455,15 @@ def _trsm_kernel(
                 elif USE_FP64:
                     # fp64 accumulation for the update gemm (fp32 operands kept
                     # in fp32 storage, accumulate in fp64 for accuracy) —
-                    # fp64-capable backends.
+                    # fp64-capable backends.  On MetaX the fp64 MMA scrambles
+                    # its output rows, so the result is un-scrambled before the
+                    # store (see _metax_fix_fp64_rows).
                     acc = tl.dot(
                         a_sub.to(tl.float64), x_all.to(tl.float64), allow_tf32=False
-                    ).to(A_ptr.dtype.element_ty)
+                    )
+                    if FIX_FP64:
+                        acc = _metax_fix_fp64_rows(acc, BM, K_SLICE, G_BM)
+                    acc = acc.to(A_ptr.dtype.element_ty)
                 else:
                     # Backends without an fp64 compute path (iluvatar): its
                     # tl.dot also rejects non-batch dims < 16 (K_SLICE=8 here),
@@ -1322,7 +1486,14 @@ def _trsm_solve_2d(A_tri, B, upper: bool, unitriangular: bool):
     """
     n = A_tri.shape[0]
     k = B.shape[1]
-    K_SLICE = 8
+    # The update gemm runs in fp64 (USE_FP64 is always true off-iluvatar), so on
+    # MetaX it always hits the fp64 dot path.  That backend cannot lower the
+    # fp64 dot with N < 16 and scrambles its output rows, so it uses a wider
+    # K_SLICE and un-scrambles the result — for fp32- and fp64-stored factors
+    # alike.  Everywhere else the narrower slice keeps the iluvatar elementwise
+    # fallback small and the fp64 dot legal (NVIDIA handles N = 8 fine).
+    fix_fp64 = _METAX_FP64_DOT_FIX
+    K_SLICE = 16 if fix_fp64 else 8
     num_kslices = (k + K_SLICE - 1) // K_SLICE
     if unitriangular:
         # INV_ptr is only dereferenced when UNIT is false — pass B as a dummy.
@@ -1345,7 +1516,14 @@ def _trsm_solve_2d(A_tri, B, upper: bool, unitriangular: bool):
         upper,
         unit_flag,
         _ACCUMULATE_FP64,
+        fix_fp64,
+        8,  # G_BM = BM // 16 = 128 // 16
         num_warps=4,
+        # fp64 MMA operands are staged through shared memory (8 bytes/element);
+        # a single pipeline stage keeps the 128x32 fp64 update tile under the
+        # MetaX 64KB shared-memory limit.  Other backends keep the default
+        # pipelining.
+        num_stages=1 if fix_fp64 else 3,
     )
     return B
 
@@ -2012,6 +2190,8 @@ def linalg_matrix_power(
             n,
             batch_stride,
             BLOCK=BLOCK,
+            FIX_FP64=_METAX_FP64_DOT_FIX and A.dtype == torch.float64,
+            G=BLOCK // 16,
         )
 
     elif m <= TILED_MAX and A.device.type == flag_gems.device:
@@ -2027,6 +2207,8 @@ def linalg_matrix_power(
             n,
             batch_stride,
             BLOCK=BLOCK,
+            FIX_FP64=_METAX_FP64_DOT_FIX and A.dtype == torch.float64,
+            G=BLOCK // 16,
         )
 
     elif A.device.type == flag_gems.device and m <= 256:
@@ -2050,6 +2232,8 @@ def linalg_matrix_power(
             batch_stride,
             TILE_BLOCK=TILE,
             TILES=TILES,
+            FIX_FP64=_METAX_FP64_DOT_FIX and A.dtype == torch.float64,
+            G=TILE // 16,
         )
 
     else:
