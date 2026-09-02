@@ -11772,6 +11772,24 @@ ops:
       - Tensor
     stages:
       - beta: '5.4'
+  - id: unique_dim_consecutive
+    description: Triton kernel implementation for unique_dim_consecutive.
+    for:
+      - unique_dim_consecutive
+    labels:
+      - aten
+      - KernelGen
+    stages:
+      - beta: '5.4'
+  - id: unique_dim_consecutive.out
+    description: A variant of unique_dim_consecutive() that writes the result into the out tensors.
+    for:
+      - unique_dim_consecutive.out
+    labels:
+      - aten
+      - KernelGen
+    stages:
+      - beta: '5.4'
   - id: unpack_seq_triton
     description: Unpack a packed sequence tensor back to its original variable-length form.
     for:
