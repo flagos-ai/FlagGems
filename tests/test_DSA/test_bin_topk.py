@@ -180,9 +180,6 @@ def test_bucket_sort_topk(starts_list, ends_list):
     assert_set_similar(actual_indices, ref_indices, dtype)
 
 
-@pytest.mark.skip(
-    "#2352: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
-)
 @pytest.mark.bucket_sort_topk
 @pytest.mark.parametrize("batch_size", [1, 4, 16])
 @pytest.mark.parametrize("seq_len", [256, 1024, 8192])
@@ -215,9 +212,6 @@ def test_bucket_sort_topk_forward(
     assert_set_similar(your_indices, ref_indices, dtype)
 
 
-@pytest.mark.skip(
-    "#2352: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
-)
 @pytest.mark.bucket_sort_topk
 @pytest.mark.parametrize(
     "config",
@@ -250,9 +244,6 @@ def test_bucket_sort_topk_edge_cases(config):
     assert_set_similar(your_indices, ref_indices, dtype)
 
 
-@pytest.mark.skip(
-    "#2352: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
-)
 @pytest.mark.bucket_sort_topk
 @pytest.mark.parametrize(
     "config",
@@ -288,9 +279,6 @@ def test_bucket_sort_topk_large_scale(config):
     assert_set_similar(your_indices, ref_indices, dtype)
 
 
-@pytest.mark.skip(
-    "#2352: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
-)
 @pytest.mark.bucket_sort_topk
 def test_bucket_sort_topk_variable_length():
     """Test variable length sequence processing"""
@@ -319,9 +307,6 @@ def test_bucket_sort_topk_variable_length():
     assert_set_similar(your_indices, ref_indices, dtype)
 
 
-@pytest.mark.skip(
-    "#2352: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
-)
 @pytest.mark.bucket_sort_topk
 def test_bucket_sort_topk_correctness():
     """Correctness test - using your original test logic"""
