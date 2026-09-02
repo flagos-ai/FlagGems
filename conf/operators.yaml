@@ -3237,6 +3237,17 @@ ops:
   - Quantization
   stages:
   - beta: '5.3'
+- id: cross
+  description: Computes the cross product of two 3-dimensional vectors along a dimension
+    of size 3.
+  for:
+  - cross
+  labels:
+  - aten
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.4'
 - id: cross_entropy_loss
   description: Computes the cross entropy loss between input logits and target.
   for:
@@ -3249,6 +3260,16 @@ ops:
   stages:
   - stable: '2.0'
   - removed: '3.0'
+- id: cross_out
+  description: A variant of `cross` that allows the output to be assigned to `out`.
+  for:
+  - cross.out
+  labels:
+  - aten
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.4'
 - id: cudnn_attention_forward
   description: 'Forward kernel for cuDNN attention, computing scaled dot-product
 
