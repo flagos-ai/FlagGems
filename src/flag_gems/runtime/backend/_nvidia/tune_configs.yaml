@@ -1462,6 +1462,27 @@ vstack:
       - 1024
       - 2048
       - 4096
+triplet_margin_loss:
+  - gen: true
+    param_map:
+      META: {BLOCK_M: block_m, BLOCK_D: block_d}
+      num_warps: 4
+    block_m: [16, 32]
+    block_d: [1]
+  - gen: true
+    param_map:
+      META: {BLOCK_M: block_m, BLOCK_D: block_d}
+      num_warps: warps
+    block_m: [4, 8]
+    block_d: [128, 256]
+    warps: [4, 8]
+  - gen: true
+    param_map:
+      META: {BLOCK_M: block_m, BLOCK_D: block_d}
+      num_warps: 8
+    block_m: [1, 4, 8]
+    block_d: [1024, 4096]
+
 triu:
   - gen: true
     param_map:
