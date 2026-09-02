@@ -29,9 +29,19 @@ _ACCUMULATE_FP64 = flag_gems.runtime.device.vendor_name != "iluvatar"
 # affected; on NVIDIA the fp64 dot path is untouched.
 _METAX_FP64_DOT_FIX = flag_gems.runtime.device.vendor_name == "metax"
 
+# HIP-family (hygon, amd) and metax expose only 64 KB of shared memory per
+# block, while NVIDIA allows ~99-227 KB.  For fp64-stored LU factors the TRSM
+# update gemm stages its fp64 dot operands through shared memory, which needs
+# ~73.7 KB at the 3-stage default — over the 64 KB limit on those backends —
+# so the pipeline must drop to 2 stages there.  (MetaX additionally needs
+# 1 stage + a wider K_SLICE for its fp64-MLA quirks, handled in _trsm_solve_2d.)
+_SMALL_SMEM = flag_gems.runtime.device.vendor_name in ("hygon", "amd", "metax")
+
 
 @triton.jit
-def _metax_fix_fp64_rows(z, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr, G: tl.constexpr):
+def _metax_fix_fp64_rows(
+    z, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr, G: tl.constexpr
+):
     """Undo the MetaX fp64 MMA row permutation.
 
     MetaX's fp64 dot writes its output tile with rows scrambled by a 4x4
@@ -45,6 +55,7 @@ def _metax_fix_fp64_rows(z, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr, G: tl.
     z = tl.trans(z, (0, 2, 1, 3))
     z = tl.reshape(z, (BLOCK_M, BLOCK_N))
     return z
+
 
 # ---------------------------------------------------------------------------
 # Threshold: matrices up to this size use the fused Triton kernel.
@@ -1494,6 +1505,16 @@ def _trsm_solve_2d(A_tri, B, upper: bool, unitriangular: bool):
     # fallback small and the fp64 dot legal (NVIDIA handles N = 8 fine).
     fix_fp64 = _METAX_FP64_DOT_FIX
     K_SLICE = 16 if fix_fp64 else 8
+    # Software-pipeline depth for the update gemm.  num_stages is a pipelining
+    # hint only — it never changes the math — but it decides whether the kernel
+    # fits the per-block shared memory: at the 3-stage default the fp64-stored
+    # factor path needs ~73.7 KB, over the 64 KB limit on small-smem backends.
+    if fix_fp64:
+        num_stages = 1
+    elif _SMALL_SMEM:
+        num_stages = 2
+    else:
+        num_stages = 3
     num_kslices = (k + K_SLICE - 1) // K_SLICE
     if unitriangular:
         # INV_ptr is only dereferenced when UNIT is false — pass B as a dummy.
@@ -1519,11 +1540,11 @@ def _trsm_solve_2d(A_tri, B, upper: bool, unitriangular: bool):
         fix_fp64,
         8,  # G_BM = BM // 16 = 128 // 16
         num_warps=4,
-        # fp64 MMA operands are staged through shared memory (8 bytes/element);
-        # a single pipeline stage keeps the 128x32 fp64 update tile under the
-        # MetaX 64KB shared-memory limit.  Other backends keep the default
-        # pipelining.
-        num_stages=1 if fix_fp64 else 3,
+        # fp64 dot operands are staged through shared memory (8 bytes/element).
+        # On 64 KB-shared-memory backends the pipeline depth must drop below
+        # the 3-stage default so the 128x32 fp64 update tile fits (see the
+        # num_stages computation above); NVIDIA keeps the full pipeline.
+        num_stages=num_stages,
     )
     return B
 
