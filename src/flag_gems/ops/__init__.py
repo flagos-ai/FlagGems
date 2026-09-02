@@ -698,6 +698,7 @@ from flag_gems.ops.randint_like import randint_like
 from flag_gems.ops.randn import randn
 from flag_gems.ops.randn_like import randn_like
 from flag_gems.ops.randperm import randperm
+from flag_gems.ops.random_ import random_, random_from
 from flag_gems.ops.range import range
 from flag_gems.ops.reciprocal import reciprocal, reciprocal_
 from flag_gems.ops.reflection_pad1d import reflection_pad1d, reflection_pad1d_out
@@ -1698,6 +1699,8 @@ __all__ = [
     "randint_like",
     "randn",
     "randn_like",
+    "random_",
+    "random_from",
     "randperm",
     "range",
     "reciprocal",
