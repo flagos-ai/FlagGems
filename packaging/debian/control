@@ -40,7 +40,7 @@ Depends: python3:any,
          ${misc:Depends},
          python3-numpy,
          python3-yaml,
-         python3-sqlalchemy,
+         python3-sqlalchemy (>= 1.4.31),
          python3-packaging
 # python3-torch is intentionally NOT declared. The distro 'python3-torch'
 # is CPU-only and unsuitable for GPU workloads; users install matching

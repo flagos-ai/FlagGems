@@ -5,7 +5,7 @@
 # flag-gems-cpp-* wheels and are deferred to Phase 2).
 
 Name:           python3-flag-gems
-Version:        5.3.0
+Version:        5.3.5
 Release:        1%{?dist}
 Summary:        FlagGems — GPU operator library for FlagOS (Phase 1, Python-only)
 
@@ -40,7 +40,7 @@ BuildRequires:  python3-setuptools_scm >= 8
 # Hand-written distro deps (versions left open — distro newer is fine):
 Requires:       python3-numpy
 Requires:       python3-pyyaml
-Requires:       python3-sqlalchemy
+Requires:       python3-sqlalchemy >= 1.4.31
 Requires:       python3-packaging
 
 # Triton runtime dep — any FlagTree backend satisfies this (libblas3
@@ -91,8 +91,19 @@ PYTHONDONTWRITEBYTECODE=1 PYTHONSAFEPATH=1 \
 %files -f %{pyproject_files}
 %license LICENSE
 %{_bindir}/flaggems-setup
+# New in 5.3.5: the FlagTune training CLI and the top-level bootstrap module
+# (kept outside the flag_gems package so it imports before torch/triton are
+# installed); neither lands in %%{pyproject_files}.
+%{_bindir}/flaggems-flagtune-train
+%{python3_sitelib}/flaggems_setup.py
+%{python3_sitelib}/__pycache__/flaggems_setup.*.pyc
 
 %changelog
+* Thu Sep 03 2026 FlagOS Contributors <contact@flagos.io> - 5.3.5-1
+- Update to 5.3.5 (exact v5.3.5 tag base)
+- Carry pending upstream fixes: eight missing subpackage __init__.py files
+  (pull 4939) and SQLAlchemy 1.4 compatibility (pull 5683)
+
 * Mon Jul 20 2026 FlagOS Contributors <contact@flagos.io> - 5.3.0-1
 - Update to 5.3.0; follow upstream switch to the setuptools build backend
   (noarch wheel, drop scikit-build/pybind11/cmake/ninja build deps).

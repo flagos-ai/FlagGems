@@ -47,7 +47,7 @@ COPY benchmark /src/benchmark
 
 # setuptools-scm cannot see .git inside the build context; pin the
 # version explicitly (keep in sync with packaging/debian/changelog).
-ARG FLAGGEMS_VERSION=5.3.0
+ARG FLAGGEMS_VERSION=5.3.5
 
 RUN cd /src && \
     SETUPTOOLS_SCM_PRETEND_VERSION=${FLAGGEMS_VERSION} \

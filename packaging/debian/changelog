@@ -1,3 +1,13 @@
+flag-gems (5.3.5-1) unstable; urgency=medium
+
+  * New upstream release 5.3.5 (packaging now based on the exact v5.3.5 tag).
+  * Carry two upstream fixes pending merge, dropped once upstream lands them:
+    missing __init__.py in eight imported subpackages (flagos-ai/FlagGems
+    pull 4939) and SQLAlchemy 1.4 compatibility for the SQL persistent model
+    (pull 5683), required for the distro python3-sqlalchemy 1.4.x.
+
+ -- FlagOS Contributors <contact@flagos.io>  Thu, 03 Sep 2026 08:00:00 +0000
+
 flag-gems (5.3.0-1) unstable; urgency=medium
 
   * New upstream release 5.3.0.
