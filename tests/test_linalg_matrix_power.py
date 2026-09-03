@@ -5,6 +5,11 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+if flag_gems.runtime.device.support_fp64:
+    DTYPES_ALL = [torch.float32, torch.float64]
+else:
+    DTYPES_ALL = [torch.float32]
+
 # ---------------------------------------------------------------------------
 # Part 1 — common native-pytorch shapes/exponents.
 # ---------------------------------------------------------------------------
@@ -15,10 +20,6 @@ if flag_gems.vendor_name == "ascend":
 else:
     N_VALUES = [0, 1, 2, 3, 5, 8, -1, -2, -3]
 
-if flag_gems.runtime.device.support_fp64:
-    DTYPES_ALL = [torch.float32, torch.float64]
-else:
-    DTYPES_ALL = [torch.float32]
 
 # ---------------------------------------------------------------------------
 # Part 2 — large shapes / large exponents.
@@ -51,6 +52,7 @@ LARGE_CASES = [
         for n in (2, 8, 31, 32)
     ],
 ]
+
 # negative powers on larger matrices
 if flag_gems.vendor_name != "ascend":
     LARGE_CASES += [
@@ -59,8 +61,7 @@ if flag_gems.vendor_name != "ascend":
 
 DTYPES_LARGE = DTYPES_ALL
 
-# atol only — rtol is the framework default RESOLUTION[dtype].  The op's
-# fp64/df64 accumulation for negative powers meets the standard rtol too.
+
 _TOL = {
     torch.float32: 1e-5,
     torch.float64: 1e-15,
@@ -142,8 +143,7 @@ def test_common(shape, n, dtype):
         if n < 0
         else torch.linalg.matrix_power(utils.to_reference(A), n)
     )
-    with flag_gems.use_gems():
-        res = flag_gems.linalg_matrix_power(A, n)
+    res = flag_gems.linalg_matrix_power(A, n)
     # gems_assert_close uses rtol = RESOLUTION[dtype] — the op's fp64/df64
     # accumulation meets it for negative powers too.  Match devices first
     # (--ref cpu / CPU golden puts ref on CPU).
@@ -167,8 +167,7 @@ def test_large(shape, n, dtype):
         if n < 0
         else torch.linalg.matrix_power(utils.to_reference(A), n)
     )
-    with flag_gems.use_gems():
-        res = flag_gems.linalg_matrix_power(A, n)
+    res = flag_gems.linalg_matrix_power(A, n)
     if ref.device != res.device:
         res = res.to(ref.device)
     utils.gems_assert_close(res, ref, dtype, atol=_TOL[dtype])
@@ -181,8 +180,7 @@ def test_out_parameter(n, dtype):
     A = _make_input((4, 4), dtype, n)
     out = torch.empty_like(A)
     ref = torch.linalg.matrix_power(utils.to_reference(A), n)
-    with flag_gems.use_gems():
-        res = flag_gems.linalg_matrix_power(A, n, out=out)
+    res = flag_gems.linalg_matrix_power(A, n, out=out)
     assert res is out, "out= must return the same tensor object"
     utils.gems_assert_close(out, ref, dtype, atol=_TOL[dtype])
 
@@ -193,7 +191,7 @@ def test_invalid_shape_rejected(shape):
     A = torch.randn(
         *shape, generator=_gen_for(shape, 2, torch.float32), device=flag_gems.device
     )
-    with flag_gems.use_gems(), pytest.raises(RuntimeError):
+    with pytest.raises(RuntimeError):
         torch.ops.aten.linalg_matrix_power(A, 2)
 
 
@@ -214,8 +212,7 @@ def test_thead_large_negative_power(shape, n, dtype):
     # CPU fp64 golden, downcast by gems_assert_close to the input dtype (fp32
     # rows overflow to +/-inf past fp32 range and match the fp32-cast ref).
     ref = torch.linalg.matrix_power(A.cpu().double(), n)
-    with flag_gems.use_gems():
-        res = flag_gems.linalg_matrix_power(A, n)
+    res = flag_gems.linalg_matrix_power(A, n)
     if ref.device != res.device:
         res = res.to(ref.device)
     utils.gems_assert_close(res, ref, dtype, atol=_TOL[dtype])

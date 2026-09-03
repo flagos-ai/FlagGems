@@ -1,5 +1,6 @@
 import logging
 import math
+from dataclasses import dataclass
 
 import torch
 import triton
@@ -12,55 +13,92 @@ from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
+# ===========================================================================
+# Platform policy — one table, one resolved profile (_PLATFORM).
+#
+# This operator runs the same Triton kernels on every CUDA-family backend
+# (nvidia, hygon, amd, iluvatar, metax, thead).  All per-vendor deviations
+# are listed in the table below and reach the kernels exclusively as
+# tl.constexpr launch arguments (never as module reads inside @triton.jit —
+# thead's compiler rejects those).  Every quirk is explained here once;
+# kernels only point back to this section.
+#
+# Row fields (one boolean each):
+#   accumulate_fp64  LU / triangular-solve substitution sums accumulate in
+#                    fp64 (fp32 inputs benefit most from the fp64 rank-1
+#                    updates of the inverse chain).  iluvatar (CoreX) has no
+#                    fp64 compute path, so it accumulates in fp32.
+#   metax_fp64_dot_fix  MetaX's fp64 MMA (maca_mma v2) cannot lower tl.dot
+#                    with any dimension < 16, and scrambles the rows of its
+#                    fp64 output tile by a fixed 4x4 transpose inside every
+#                    16-row group — _metax_fix_fp64_rows undoes it.  No other
+#                    backend is affected; on NVIDIA the fp64 dot path is
+#                    untouched.
+#   small_smem       The HIP family (hygon, amd) and metax expose only 64 KB
+#                    of shared memory per block (NVIDIA allows ~99-227 KB).
+#                    The fp64-stored TRSM update gemm stages its dot operands
+#                    through shared memory (~73.7 KB at the 3-stage default,
+#                    over the 64 KB limit), so the pipeline drops to 2 stages
+#                    there.  MetaX additionally needs 1 stage and a wider
+#                    K_SLICE for its fp64-MLA quirks (see _trsm_solve_2d).
+#   grid_sync_fused  The grid spin-barrier kernels (_grid_sync_kernel and the
+#                    barrier-based parallel LU for large-M inverses) hang on
+#                    thead (PPU / T-Head Zhenwu 真武) — the first fused
+#                    multi-CTA launch never returns — so the fused Tier-3 path
+#                    (65 <= M <= 256) falls through to the host-side
+#                    binary-exponentiation loop there (one barrier-free
+#                    mm/bmm launch per exponent bit).  Every other backend
+#                    keeps the fused kernel.
+#   thead            thead also has a nondeterministic fp64 tl.dot: once
+#                    operand magnitudes leave the O(1) range, the same kernel
+#                    call sporadically returns garbage (empirically ~1/8 of
+#                    the time at (32,32) fp64, ~half the runs at (256,256);
+#                    all positive-power tests stay at O(1) magnitudes and pass
+#                    deterministically).  Its negative powers therefore run in
+#                    df64 (pure fp32 arithmetic, M <= _DF64_MAX_M) or in an
+#                    fp64 chain whose every tl.dot is a (16,16,16) tile for
+#                    larger M — see the thead routes in the entry point.
+#
+# NB: resolve from runtime.device.vendor_name (== flag_gems.vendor_name),
+# never flag_gems.vendor_name directly — the ops package is imported before
+# that attribute is assigned, so referencing it here would be a circular
+# import.  support_fp64 stays a runtime capability read from
+# flag_gems.runtime.device.support_fp64 at call time.
 # ---------------------------------------------------------------------------
-# fp64 accumulation policy
-# ---------------------------------------------------------------------------
-# iluvatar (CoreX) has no fp64 compute path, so the LU-factorization and
-# triangular-substitution kernels must accumulate in fp32 there.  On every
-# other backend they keep fp64 accumulation (fp32 inputs benefit most from
-# the fp64 substitution sums / rank-1 updates in the inverse chain).
-# NB: use runtime.device.vendor_name (== flag_gems.vendor_name) rather than
-# flag_gems.vendor_name — the ops package is imported before that attribute
-# is assigned, so referencing it here would be a circular import.
-_ACCUMULATE_FP64 = flag_gems.runtime.device.vendor_name != "iluvatar"
 
-# MetaX's fp64 MMA (maca_mma v2) cannot lower tl.dot with any dimension < 16,
-# and scrambles the rows of its fp64 output tile by a fixed 4x4 transpose
-# within every 16-row group.  See _metax_fix_fp64_rows.  No other backend is
-# affected; on NVIDIA the fp64 dot path is untouched.
-_METAX_FP64_DOT_FIX = flag_gems.runtime.device.vendor_name == "metax"
 
-# HIP-family (hygon, amd) and metax expose only 64 KB of shared memory per
-# block, while NVIDIA allows ~99-227 KB.  For fp64-stored LU factors the TRSM
-# update gemm stages its fp64 dot operands through shared memory, which needs
-# ~73.7 KB at the 3-stage default — over the 64 KB limit on those backends —
-# so the pipeline must drop to 2 stages there.  (MetaX additionally needs
-# 1 stage + a wider K_SLICE for its fp64-MLA quirks, handled in _trsm_solve_2d.)
-_SMALL_SMEM = flag_gems.runtime.device.vendor_name in ("hygon", "amd", "metax")
+@dataclass(frozen=True)
+class _PlatformProfile:
+    accumulate_fp64: bool
+    metax_fp64_dot_fix: bool
+    small_smem: bool
+    grid_sync_fused: bool
+    thead: bool
 
-# thead (PPU / T-Head Zhenwu 真武): the grid-level spin-barrier kernels
-# (_grid_sync_kernel below, and the barrier-based parallel LU for large-M
-# inverses) hang on this platform — the first fused multi-CTA launch never
-# returns.  The fused Tier-3 path (65 <= M <= 256) is therefore disabled on
-# thead and falls through to the host-side binary-exponentiation loop below
-# (one barrier-free flag_gems mm/bmm launch per exponent bit).  Every other
-# backend keeps the fused kernel.
-_GRID_SYNC_FUSED = flag_gems.runtime.device.vendor_name != "thead"
 
-# thead additionally has a nondeterministic fp64 tl.dot: once operand
-# magnitudes leave the O(1) range the same kernel call sporadically returns
-# garbage (empirically ~1/8 of the time at (32,32) fp64, and roughly half the
-# runs at (256,256); all positive-power tests stay at O(1) magnitudes and pass
-# deterministically).  Negative powers therefore run in df64 (pure fp32
-# arithmetic, deterministic) on thead.  The df64 in-register chain covers
-# M <= 64; larger M would need the barrier-based parallel LU, which deadlocks
-# there, so negative powers on larger matrices are rejected in the entry
-# point.  A df64 (fp32 pair) value overflows fp32 past ~3.4e38, so when |n|
-# is large enough that (A^-1)^|n| would leave fp32 range the power's input
-# pair is pre-scaled by an exact power of two and the fp64-recombined result
-# scaled back (_df64_power_scale) — every intermediate of the chain then
-# stays in fp32 range for any |n| the fp64 result itself can represent.
-_THEAD = flag_gems.runtime.device.vendor_name == "thead"
+# (acc64, metax, smem64k, gridsync, thead) — per-vendor rows.
+_VENDOR_POLICIES = {
+    "nvidia": (True, False, False, True, False),
+    "hygon": (True, False, True, True, False),
+    "amd": (True, False, True, True, False),
+    "iluvatar": (False, False, False, True, False),
+    "metax": (True, True, True, True, False),
+    "thead": (True, False, False, False, True),
+}
+# Vendors not listed (unknowns / aliases) keep the historical defaults — only
+# iluvatar and thead ever deviated from them.
+_DEFAULT_POLICY = (True, False, False, True, False)
+
+
+def _resolve_policy(vendor_name):
+    """Platform profile for a vendor string.  Pure function of the vendor
+    (unit-testable against the legacy per-vendor flag expressions)."""
+    return _PlatformProfile(*_VENDOR_POLICIES.get(vendor_name, _DEFAULT_POLICY))
+
+
+_PLATFORM = _resolve_policy(flag_gems.runtime.device.vendor_name)
+# df64 in-register chain limit: thead/no-fp64 backends' negative powers above
+# this M take the fp64 16-tile route instead (see the policy table).
 _DF64_MAX_M = 64
 
 
@@ -93,7 +131,9 @@ TRITON_THRESHOLD = 64  # max M for any Triton path (single-tile or tiled)
 
 
 # ===========================================================================
-# Kernel 1  — Single-tile fused  (M <= SINGLE_TILE_THRESHOLD)
+# Kernel 1 — single-tile fused power (one tl.dot per matmul step).
+# Used for M <= 32 (and 33 <= M <= 64 in fp64); see the dispatch thresholds
+# below.  FIX_FP64/G only activate on metax (policy table).
 # ===========================================================================
 
 
@@ -159,6 +199,12 @@ def _single_tile_kernel(
 
     result = result.to(a.dtype)
     tl.store(out_base + offs_m[:, None] * M + offs_n[None, :], result, mask=mask)
+
+
+# ---------------------------------------------------------------------------
+# df64 (double-single) arithmetic — an fp32 (hi, lo) pair with ~48-bit
+# mantissa.  Used by the no-fp64 backends and thead routes (policy table).
+# ---------------------------------------------------------------------------
 
 
 @triton.jit
@@ -231,14 +277,6 @@ def _single_tile_kernel_df64(
     stores the lo part to ``lo_out_ptr`` (thead recombines hi+lo into fp64).
     ``SCALE`` multiplies the input pair on load — an exact power of two the
     thead entry uses to keep the chain inside fp32 range for large |n|."""
-    pid = tl.program_id(0)
-    offs_m = tl.arange(0, BLOCK)
-    offs_n = tl.arange(0, BLOCK)
-    mask = (offs_m[:, None] < M) & (offs_n[None, :] < M)
-
-    a_h_base = A_h_ptr + pid * batch_stride
-    a_l_base = A_l_ptr + pid * batch_stride
-    out_base = out_ptr + pid * batch_stride
     pid = tl.program_id(0)
     offs_m = tl.arange(0, BLOCK)
     offs_n = tl.arange(0, BLOCK)
@@ -1001,7 +1039,8 @@ def _lu_factor_ex_local(A, use_df64=False, A_l=None):
         # conversion.
         # NB: thead never reaches this branch — its negative powers are routed
         # to df64 (M <= 64) or rejected (M > 64) in the entry point, because
-        # this barrier-based LU deadlocks there (see _GRID_SYNC_FUSED).
+        # this barrier-based LU deadlocks there (grid_sync_fused is off on
+        # thead — see the platform-policy table).
         LU, pivots, info = _lu_factor_parallel(A)
         return LU, None, pivots, info, _pivots_to_perm_gpu(pivots + 1, m)
     input_contiguous = A.contiguous()
@@ -1047,7 +1086,7 @@ def _lu_factor_ex_local(A, use_df64=False, A_l=None):
             block_m,
             triton.next_power_of_2(n),
             True,
-            _ACCUMULATE_FP64,
+            _PLATFORM.accumulate_fp64,
             num_warps=4,
         )
     return lu, None, pivots, info, perm
@@ -1185,8 +1224,8 @@ def _thead_fp64_mm16_kernel(
 ):
     """Tiled fp64 C = A @ B whose every tl.dot is capped at a (32,32,32) tile
     (4 warps) — thead's fp64 tl.dot with wider tiles or more warps
-    sporadically returns garbage once operand magnitudes grow (see the _THEAD
-    note; 4-warp dots up to (64,64,64) were bitwise-deterministic in the
+    sporadically returns garbage once operand magnitudes grow (see the thead
+    policy row; 4-warp dots up to (64,64,64) were bitwise-deterministic in the
     envelope probe).  The thead M > 64 negative-power chain routes every fp64
     matmul through this kernel.  Grid: (output-tiles, batch)."""
     pid = tl.program_id(0)
@@ -1271,11 +1310,19 @@ def _matmul(A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
     """
     from flag_gems import bmm, mm
 
-    if _METAX_FP64_DOT_FIX and A.dtype == torch.float64:
+    if _PLATFORM.metax_fp64_dot_fix and A.dtype == torch.float64:
         return _metax_fp64_mm(A, B)
     if A.dim() == 2:
         return mm(A, B)
     return bmm(A, B)
+
+
+# ===========================================================================
+# Triangular solves.  The scalar substitution kernels below are the legacy
+# (batch, n)-grid row loops kept for the df64 route (linalg_lu_solve); the
+# fast path for every other backend is the blocked _trsm_kernel that follows
+# (see its header for the per-block phase helpers).
+# ===========================================================================
 
 
 @triton.jit
@@ -1525,6 +1572,276 @@ def backward_substitution_kernel_df64(
         tl.store(X2p + i * stride_xn + col_idx * stride_xk, xl.to(Xp.dtype.element_ty))
 
 
+# ===========================================================================
+# Blocked TRSM (_trsm_kernel): one program per K_SLICE-column group of the
+# RHS, BLOCK_SIZE-row diagonal blocks solved by serial substitution followed
+# by a tl.dot update of the remaining rows.  The per-block phases exist in
+# two variants — the register chain (default) and the fenced (16,16,16)-tile
+# chain for thead (D16) — implemented as the four @triton.jit helpers above;
+# triton inlines helpers before codegen, so each variant compiles exactly as
+# if its statements were written inline at the call site.
+# ===========================================================================
+
+
+@triton.jit
+def _trsm_solve_d16(
+    A_ptr,
+    B_ptr,
+    INV_ptr,
+    pid,
+    stride_a_n,
+    stride_b_k,
+    blk_start,
+    blk_end,
+    blk_sz,
+    a_cols,
+    xr,
+    col_offs,
+    col_mask,
+    BLOCK_SIZE: tl.constexpr,
+    UPPER: tl.constexpr,
+    UNIT: tl.constexpr,
+):
+    """D16 solve variant of _trsm_kernel's diagonal-block phase (thead only,
+    see the platform-policy table): each already-solved row is re-read from
+    global memory and every step is fenced with a debug_barrier — the same
+    fenced pattern as _thead_lu_panel_serial."""
+    # thead: the register-chain variant below races on this platform
+    # (its cross-thread register dependency relies on the tl.sum sync
+    # only — empirically nondeterministic here), so the D16 mode
+    # re-reads each already-solved row from global memory and fences
+    # every row with a debug_barrier — the same fenced pattern as
+    # _thead_lu_panel_serial.
+    for r_idx in range(blk_sz):
+        row = blk_end - 1 - r_idx if UPPER else blk_start + r_idx
+        row_rel = row - blk_start
+
+        # Row of A restricted to the block's triangle.
+        a_row = tl.load(
+            A_ptr + row * stride_a_n + blk_start + a_cols,
+            mask=a_cols < blk_sz,
+            other=0.0,
+        )
+        if UPPER:
+            a_row = tl.where(a_cols > row_rel, a_row, 0.0)
+        else:
+            a_row = tl.where(a_cols < row_rel, a_row, 0.0)
+
+        # Already-solved block rows from global memory (unsolved rows
+        # are masked out by a_row).
+        xs = tl.load(
+            B_ptr + (blk_start + xr) * stride_b_k + col_offs[None, :],
+            mask=(xr < blk_sz) & col_mask[None, :],
+            other=0.0,
+        ).to(A_ptr.dtype.element_ty)
+        x_sum = tl.sum(a_row[:, None] * xs, axis=0)
+
+        x_vals = (
+            tl.load(
+                B_ptr + row * stride_b_k + col_offs,
+                mask=col_mask,
+                other=0.0,
+            )
+            - x_sum
+        )
+        if not UNIT:
+            inv_d = tl.load(INV_ptr + pid * BLOCK_SIZE + row_rel)
+            x_vals *= inv_d
+        tl.store(B_ptr + row * stride_b_k + col_offs, x_vals, mask=col_mask)
+        # fence this row's store before the next row's xs reload.
+        tl.debug_barrier()
+
+
+@triton.jit
+def _trsm_solve_register(
+    A_ptr,
+    B_ptr,
+    INV_ptr,
+    pid,
+    stride_a_n,
+    stride_b_k,
+    blk_start,
+    blk_end,
+    blk_sz,
+    a_cols,
+    xr,
+    col_offs,
+    col_mask,
+    BLOCK_SIZE: tl.constexpr,
+    UPPER: tl.constexpr,
+    UNIT: tl.constexpr,
+):
+    """Register-chain solve variant of _trsm_kernel's diagonal-block phase:
+    the block's X stays in registers (x_all) across the serial row chain and
+    is returned for the update phase."""
+    # The block's X stays in REGISTERS across the serial row chain: each
+    # row solves against the register tile and writes it back in place,
+    # so the per-row step needs no global reload of the whole block.
+    # The solve value is still stored to B (the update phase and the
+    # next block read it), but the register tile is the source for the
+    # next row's dot.
+    x_all = tl.load(
+        B_ptr + (blk_start + xr) * stride_b_k + col_offs[None, :],
+        mask=(xr < blk_sz) & col_mask[None, :],
+        other=0.0,
+    ).to(A_ptr.dtype.element_ty)
+    for r_idx in range(blk_sz):
+        row = blk_end - 1 - r_idx if UPPER else blk_start + r_idx
+        row_rel = row - blk_start
+
+        # Row of A restricted to the block's triangle.
+        a_row = tl.load(
+            A_ptr + row * stride_a_n + blk_start + a_cols,
+            mask=a_cols < blk_sz,
+            other=0.0,
+        )
+        if UPPER:
+            a_row = tl.where(a_cols > row_rel, a_row, 0.0)
+        else:
+            a_row = tl.where(a_cols < row_rel, a_row, 0.0)
+
+        # Dot against the register tile; the a_row mask selects the
+        # already solved rows.  The cross-thread reduction synchronises
+        # within the program, so no debug_barrier is needed between
+        # rows.
+        x_sum = tl.sum(a_row[:, None] * x_all, axis=0)
+
+        x_vals = (
+            tl.load(
+                B_ptr + row * stride_b_k + col_offs,
+                mask=col_mask,
+                other=0.0,
+            )
+            - x_sum
+        )
+        if not UNIT:
+            inv_d = tl.load(INV_ptr + pid * BLOCK_SIZE + row_rel)
+            x_vals *= inv_d
+        x_all = tl.where((xr == row_rel) & col_mask[None, :], x_vals[None, :], x_all)
+        tl.store(B_ptr + row * stride_b_k + col_offs, x_vals, mask=col_mask)
+    return x_all
+
+
+@triton.jit
+def _trsm_update_d16(
+    A_ptr,
+    B_ptr,
+    stride_a_n,
+    stride_b_k,
+    blk_start,
+    blk_end,
+    blk_sz,
+    M_REM,
+    rem_s,
+    bound,
+    col_offs,
+    col_mask,
+):
+    """D16 update variant of _trsm_kernel (thead only): every fp64 dot is
+    capped at a (16,16,16) tile — wider fp64 dots nondeterministically return
+    garbage on this platform (see the thead policy row)."""
+    # thead: keep every fp64 dot at (16,16,16) — wider fp64 dots
+    # nondeterministically return garbage on this platform (see
+    # the thead policy row).  The solved block's X panel was stored to
+    # B above and is re-read here in 16-row x 16-col chunks.
+    rr16 = tl.arange(0, 16)
+    # fence the serial chain's stores before the cross-thread
+    # x16 reloads.
+    tl.debug_barrier()
+    for m_start in range(0, M_REM, 16):
+        rm = rem_s + m_start + rr16
+        mask_m = rm < bound
+        b_base = B_ptr + rm[:, None] * stride_b_k + col_offs[None, :]
+        b_curr = tl.load(
+            b_base,
+            mask=mask_m[:, None] & col_mask[None, :],
+            other=0.0,
+        ).to(tl.float64)
+        for kc in range(0, blk_sz, 16):
+            kr = blk_start + kc + rr16
+            km = kr < blk_end
+            a16 = tl.load(
+                A_ptr + rm[:, None] * stride_a_n + kr[None, :],
+                mask=mask_m[:, None] & km[None, :],
+                other=0.0,
+            ).to(tl.float64)
+            x16 = tl.load(
+                B_ptr + kr[:, None] * stride_b_k + col_offs[None, :],
+                mask=km[:, None] & col_mask[None, :],
+                other=0.0,
+            ).to(tl.float64)
+            b_curr -= tl.dot(a16, x16, allow_tf32=False)
+        tl.store(
+            b_base,
+            b_curr.to(B_ptr.dtype.element_ty),
+            mask=mask_m[:, None] & col_mask[None, :],
+        )
+
+
+@triton.jit
+def _trsm_update_register(
+    A_ptr,
+    B_ptr,
+    stride_a_n,
+    stride_b_k,
+    blk_start,
+    blk_end,
+    blk_sz,
+    M_REM,
+    rem_s,
+    bound,
+    x_all,
+    a_cols,
+    rr,
+    col_offs,
+    col_mask,
+    BM: tl.constexpr,
+    K_SLICE: tl.constexpr,
+    USE_FP64: tl.constexpr,
+    FIX_FP64: tl.constexpr,
+    G_BM: tl.constexpr,
+):
+    """Update phase of _trsm_kernel (non-D16): reuses the register tile
+    x_all as the X panel and accumulates the gemm per the backend policy
+    (fp64 dot, metax row fix, or iluvatar elementwise fp32)."""
+    # Reuse the register tile (x_all) as the X panel.
+    for m_start in range(0, M_REM, BM):
+        rm = rem_s + m_start + rr
+        mask_m = rm < bound
+        a_sub = tl.load(
+            A_ptr + rm[:, None] * stride_a_n + (blk_start + a_cols)[None, :],
+            mask=mask_m[:, None] & (a_cols[None, :] < blk_sz),
+            other=0.0,
+        )
+        if K_SLICE < 8:
+            acc = tl.sum(a_sub[:, :, None] * x_all[None, :, :], axis=1)
+        elif USE_FP64:
+            # fp64 accumulation for the update gemm (fp32 operands
+            # kept in fp32 storage, accumulate in fp64 for
+            # accuracy) — fp64-capable backends.  On MetaX the
+            # fp64 MMA scrambles its output rows, so the result is
+            # un-scrambled before the store (see
+            # _metax_fix_fp64_rows).
+            acc = tl.dot(
+                a_sub.to(tl.float64),
+                x_all.to(tl.float64),
+                allow_tf32=False,
+            )
+            if FIX_FP64:
+                acc = _metax_fix_fp64_rows(acc, BM, K_SLICE, G_BM)
+            acc = acc.to(A_ptr.dtype.element_ty)
+        else:
+            # Backends without an fp64 compute path (iluvatar): its
+            # tl.dot also rejects non-batch dims < 16 (K_SLICE=8
+            # here), so accumulate the update gemm elementwise in
+            # fp32.
+            acc = tl.sum(a_sub[:, :, None] * x_all[None, :, :], axis=1)
+        b_base = B_ptr + rm[:, None] * stride_b_k + col_offs[None, :]
+        b_curr = tl.load(b_base, mask=mask_m[:, None] & col_mask[None, :], other=0.0)
+        b_curr = b_curr.to(acc.dtype) - acc
+        tl.store(b_base, b_curr, mask=mask_m[:, None] & col_mask[None, :])
+
+
 @libentry()
 @triton.jit
 def _trsm_kernel(
@@ -1551,10 +1868,12 @@ def _trsm_kernel(
     Rows are processed in BLOCK_SIZE blocks.  The diagonal block is solved by
     serial forward/backward substitution (row-by-row, parallel across the
     K_SLICE columns), then the remaining rows are updated with a tl.dot gemm —
-    the whole kernel is barrier-free because every data dependency is within a
-    single program.  This replaces the (batch, n)-grid scalar substitution
-    kernels, whose one-program-per-column serial O(n^2) loop was the dominant
-    cost of the negative-power path (~77 ms per solve at n=1024 vs ~1 ms here).
+    every data dependency stays within a single program, so the kernel is
+    barrier-free apart from the D16 (thead) variant's cross-thread fences in
+    the per-block helpers above.  This replaces the (batch, n)-grid scalar
+    substitution kernels, whose one-program-per-column serial O(n^2) loop was
+    the dominant cost of the negative-power path (~77 ms per solve at n=1024
+    vs ~1 ms here).
     """
     pid = tl.program_id(0)
     col_start = pid * K_SLICE
@@ -1597,99 +1916,46 @@ def _trsm_kernel(
                 mask=a_cols < blk_sz,
             )
 
+        # Serial solve of the diagonal block — two variants of the same
+        # substitution, selected by D16 (thead, see the policy table).
         if D16:
-            # thead: the register-chain variant below races on this platform
-            # (its cross-thread register dependency relies on the tl.sum sync
-            # only — empirically nondeterministic here), so the D16 mode
-            # re-reads each already-solved row from global memory and fences
-            # every row with a debug_barrier — the same fenced pattern as
-            # _thead_lu_panel_serial.
-            for r_idx in range(blk_sz):
-                row = blk_end - 1 - r_idx if UPPER else blk_start + r_idx
-                row_rel = row - blk_start
-
-                # Row of A restricted to the block's triangle.
-                a_row = tl.load(
-                    A_ptr + row * stride_a_n + blk_start + a_cols,
-                    mask=a_cols < blk_sz,
-                    other=0.0,
-                )
-                if UPPER:
-                    a_row = tl.where(a_cols > row_rel, a_row, 0.0)
-                else:
-                    a_row = tl.where(a_cols < row_rel, a_row, 0.0)
-
-                # Already-solved block rows from global memory (unsolved rows
-                # are masked out by a_row).
-                xs = tl.load(
-                    B_ptr + (blk_start + xr) * stride_b_k + col_offs[None, :],
-                    mask=(xr < blk_sz) & col_mask[None, :],
-                    other=0.0,
-                ).to(A_ptr.dtype.element_ty)
-                x_sum = tl.sum(a_row[:, None] * xs, axis=0)
-
-                x_vals = (
-                    tl.load(
-                        B_ptr + row * stride_b_k + col_offs,
-                        mask=col_mask,
-                        other=0.0,
-                    )
-                    - x_sum
-                )
-                if not UNIT:
-                    inv_d = tl.load(INV_ptr + pid * BLOCK_SIZE + row_rel)
-                    x_vals *= inv_d
-                tl.store(B_ptr + row * stride_b_k + col_offs, x_vals, mask=col_mask)
-                # fence this row's store before the next row's xs reload.
-                tl.debug_barrier()
+            _trsm_solve_d16(
+                A_ptr,
+                B_ptr,
+                INV_ptr,
+                pid,
+                stride_a_n,
+                stride_b_k,
+                blk_start,
+                blk_end,
+                blk_sz,
+                a_cols,
+                xr,
+                col_offs,
+                col_mask,
+                BLOCK_SIZE,
+                UPPER,
+                UNIT,
+            )
         else:
-            # The block's X stays in REGISTERS across the serial row chain: each
-            # row solves against the register tile and writes it back in place,
-            # so the per-row step needs no global reload of the whole block.
-            # The solve value is still stored to B (the update phase and the
-            # next block read it), but the register tile is the source for the
-            # next row's dot.
-            x_all = tl.load(
-                B_ptr + (blk_start + xr) * stride_b_k + col_offs[None, :],
-                mask=(xr < blk_sz) & col_mask[None, :],
-                other=0.0,
-            ).to(A_ptr.dtype.element_ty)
-            for r_idx in range(blk_sz):
-                row = blk_end - 1 - r_idx if UPPER else blk_start + r_idx
-                row_rel = row - blk_start
-
-                # Row of A restricted to the block's triangle.
-                a_row = tl.load(
-                    A_ptr + row * stride_a_n + blk_start + a_cols,
-                    mask=a_cols < blk_sz,
-                    other=0.0,
-                )
-                if UPPER:
-                    a_row = tl.where(a_cols > row_rel, a_row, 0.0)
-                else:
-                    a_row = tl.where(a_cols < row_rel, a_row, 0.0)
-
-                # Dot against the register tile; the a_row mask selects the
-                # already solved rows.  The cross-thread reduction synchronises
-                # within the program, so no debug_barrier is needed between
-                # rows.
-                x_sum = tl.sum(a_row[:, None] * x_all, axis=0)
-
-                x_vals = (
-                    tl.load(
-                        B_ptr + row * stride_b_k + col_offs,
-                        mask=col_mask,
-                        other=0.0,
-                    )
-                    - x_sum
-                )
-                if not UNIT:
-                    inv_d = tl.load(INV_ptr + pid * BLOCK_SIZE + row_rel)
-                    x_vals *= inv_d
-                x_all = tl.where(
-                    (xr == row_rel) & col_mask[None, :], x_vals[None, :], x_all
-                )
-                tl.store(B_ptr + row * stride_b_k + col_offs, x_vals, mask=col_mask)
+            x_all = _trsm_solve_register(
+                A_ptr,
+                B_ptr,
+                INV_ptr,
+                pid,
+                stride_a_n,
+                stride_b_k,
+                blk_start,
+                blk_end,
+                blk_sz,
+                a_cols,
+                xr,
+                col_offs,
+                col_mask,
+                BLOCK_SIZE,
+                UPPER,
+                UNIT,
+            )
 
         if D16:
             # fence the serial chain's stores before the D16 update re-reads
@@ -1703,85 +1969,44 @@ def _trsm_kernel(
             M_REM = tl.where(UPPER, blk_start, N - blk_end)
             rem_s = tl.where(UPPER, 0, blk_end)
             bound = tl.where(UPPER, blk_start, N)
-
             if D16:
-                # thead: keep every fp64 dot at (16,16,16) — wider fp64 dots
-                # nondeterministically return garbage on this platform (see
-                # the _THEAD note).  The solved block's X panel was stored to
-                # B above and is re-read here in 16-row x 16-col chunks.
-                rr16 = tl.arange(0, 16)
-                # fence the serial chain's stores before the cross-thread
-                # x16 reloads.
-                tl.debug_barrier()
-                for m_start in range(0, M_REM, 16):
-                    rm = rem_s + m_start + rr16
-                    mask_m = rm < bound
-                    b_base = B_ptr + rm[:, None] * stride_b_k + col_offs[None, :]
-                    b_curr = tl.load(
-                        b_base,
-                        mask=mask_m[:, None] & col_mask[None, :],
-                        other=0.0,
-                    ).to(tl.float64)
-                    for kc in range(0, blk_sz, 16):
-                        kr = blk_start + kc + rr16
-                        km = kr < blk_end
-                        a16 = tl.load(
-                            A_ptr + rm[:, None] * stride_a_n + kr[None, :],
-                            mask=mask_m[:, None] & km[None, :],
-                            other=0.0,
-                        ).to(tl.float64)
-                        x16 = tl.load(
-                            B_ptr + kr[:, None] * stride_b_k + col_offs[None, :],
-                            mask=km[:, None] & col_mask[None, :],
-                            other=0.0,
-                        ).to(tl.float64)
-                        b_curr -= tl.dot(a16, x16, allow_tf32=False)
-                    tl.store(
-                        b_base,
-                        b_curr.to(B_ptr.dtype.element_ty),
-                        mask=mask_m[:, None] & col_mask[None, :],
-                    )
+                _trsm_update_d16(
+                    A_ptr,
+                    B_ptr,
+                    stride_a_n,
+                    stride_b_k,
+                    blk_start,
+                    blk_end,
+                    blk_sz,
+                    M_REM,
+                    rem_s,
+                    bound,
+                    col_offs,
+                    col_mask,
+                )
             else:
-                # Reuse the register tile (x_all) as the X panel.
-                for m_start in range(0, M_REM, BM):
-                    rm = rem_s + m_start + rr
-                    mask_m = rm < bound
-                    a_sub = tl.load(
-                        A_ptr
-                        + rm[:, None] * stride_a_n
-                        + (blk_start + a_cols)[None, :],
-                        mask=mask_m[:, None] & (a_cols[None, :] < blk_sz),
-                        other=0.0,
-                    )
-                    if K_SLICE < 8:
-                        acc = tl.sum(a_sub[:, :, None] * x_all[None, :, :], axis=1)
-                    elif USE_FP64:
-                        # fp64 accumulation for the update gemm (fp32 operands
-                        # kept in fp32 storage, accumulate in fp64 for
-                        # accuracy) — fp64-capable backends.  On MetaX the
-                        # fp64 MMA scrambles its output rows, so the result is
-                        # un-scrambled before the store (see
-                        # _metax_fix_fp64_rows).
-                        acc = tl.dot(
-                            a_sub.to(tl.float64),
-                            x_all.to(tl.float64),
-                            allow_tf32=False,
-                        )
-                        if FIX_FP64:
-                            acc = _metax_fix_fp64_rows(acc, BM, K_SLICE, G_BM)
-                        acc = acc.to(A_ptr.dtype.element_ty)
-                    else:
-                        # Backends without an fp64 compute path (iluvatar): its
-                        # tl.dot also rejects non-batch dims < 16 (K_SLICE=8
-                        # here), so accumulate the update gemm elementwise in
-                        # fp32.
-                        acc = tl.sum(a_sub[:, :, None] * x_all[None, :, :], axis=1)
-                    b_base = B_ptr + rm[:, None] * stride_b_k + col_offs[None, :]
-                    b_curr = tl.load(
-                        b_base, mask=mask_m[:, None] & col_mask[None, :], other=0.0
-                    )
-                    b_curr = b_curr.to(acc.dtype) - acc
-                    tl.store(b_base, b_curr, mask=mask_m[:, None] & col_mask[None, :])
+                _trsm_update_register(
+                    A_ptr,
+                    B_ptr,
+                    stride_a_n,
+                    stride_b_k,
+                    blk_start,
+                    blk_end,
+                    blk_sz,
+                    M_REM,
+                    rem_s,
+                    bound,
+                    x_all,
+                    a_cols,
+                    rr,
+                    col_offs,
+                    col_mask,
+                    BM,
+                    K_SLICE,
+                    USE_FP64,
+                    FIX_FP64,
+                    G_BM,
+                )
 
 
 def _trsm_solve_2d(A_tri, B, upper: bool, unitriangular: bool, d16: bool = False):
@@ -1804,7 +2029,7 @@ def _trsm_solve_2d(A_tri, B, upper: bool, unitriangular: bool, d16: bool = False
     # K_SLICE and un-scrambles the result — for fp32- and fp64-stored factors
     # alike.  Everywhere else the narrower slice keeps the iluvatar elementwise
     # fallback small and the fp64 dot legal (NVIDIA handles N = 8 fine).
-    fix_fp64 = _METAX_FP64_DOT_FIX
+    fix_fp64 = _PLATFORM.metax_fp64_dot_fix
     K_SLICE = 16 if (fix_fp64 or d16) else 8
     BM = 16 if d16 else 128
     # Software-pipeline depth for the update gemm.  num_stages is a pipelining
@@ -1815,7 +2040,7 @@ def _trsm_solve_2d(A_tri, B, upper: bool, unitriangular: bool, d16: bool = False
         num_stages = 2
     elif fix_fp64:
         num_stages = 1
-    elif _SMALL_SMEM:
+    elif _PLATFORM.small_smem:
         num_stages = 2
     else:
         num_stages = 3
@@ -1840,7 +2065,7 @@ def _trsm_solve_2d(A_tri, B, upper: bool, unitriangular: bool, d16: bool = False
         BM,
         upper,
         unit_flag,
-        _ACCUMULATE_FP64,
+        _PLATFORM.accumulate_fp64,
         fix_fp64,
         8,  # G_BM = BM // 16 = 128 // 16
         D16=d16,
@@ -1854,7 +2079,14 @@ def _trsm_solve_2d(A_tri, B, upper: bool, unitriangular: bool, d16: bool = False
     return B
 
 
-# @LibEntry("linalg_lu_solve")
+# ===========================================================================
+# Solve / inverse assembly (host): LU factors + row permutation -> solve
+# (linalg_lu_solve), fp64-accumulation Newton refinement of f32 inverses
+# (_newton_refine), and the inverse entry point (_inverse, below the
+# large-M LU section it dispatches to).
+# ===========================================================================
+
+
 def linalg_lu_solve(
     LU, perm, B, left=True, adjoint=False, out=None, LU_L=None, use_df64=False
 ):
@@ -2333,6 +2565,14 @@ def _lu_factor_parallel(A):
     return LU.reshape(A.shape), pivots, info
 
 
+# ---------------------------------------------------------------------------
+# thead (PPU) large-M variants: the grid-barrier parallel LU above deadlocks
+# and wide fp64 tl.dots are nondeterministic on thead (policy table), so its
+# M > 64 factorization / solves / powers use barrier-free kernels whose every
+# fp64 dot is capped at a (16,16,16) tile.  These run only on thead.
+# ---------------------------------------------------------------------------
+
+
 @triton.jit
 def _thead_lu_update16_par(
     LU_ptr,
@@ -2709,18 +2949,18 @@ def linalg_matrix_power(
     # unavailable, so f32 negatives use the df64 (double-single) kernels:
     # df64 inverse (hi/lo) + df64 binary-exponentiation power.  thead (PPU) is
     # fp64-capable but its fp64 tl.dot nondeterministically returns garbage
-    # once operand magnitudes grow (see the _THEAD note), so its negative
+    # once operand magnitudes grow (see the thead policy row), so its negative
     # powers run in df64 too — fp64 inputs are split into an fp32 (hi, lo)
     # pair first and the df64 result is recombined into fp64.
     use_df64 = A.dtype == torch.float32 and (
-        not flag_gems.runtime.device.support_fp64 or _THEAD
+        not flag_gems.runtime.device.support_fp64 or _PLATFORM.thead
     )
-    if n < 0 and _THEAD:
+    if n < 0 and _PLATFORM.thead:
         # thead negative powers are fully deterministic by construction:
         # pure-fp32 df64 arithmetic for M <= 64 (in-register kernels), and an
         # fp64 chain whose every tl.dot is a (16,16,16) tile for larger M —
         # the platform's fp64 dot sporadically returns garbage with wider
-        # tiles once operand magnitudes grow (see the _THEAD note).
+        # tiles once operand magnitudes grow (see the thead policy row).
         if m > _DF64_MAX_M:
             # M > 64: the in-register df64 kernels stop at 64, so run the
             # whole chain in fp64 through _thead_inverse_large /
@@ -2847,7 +3087,7 @@ def linalg_matrix_power(
             n,
             batch_stride,
             BLOCK=BLOCK,
-            FIX_FP64=_METAX_FP64_DOT_FIX and A.dtype == torch.float64,
+            FIX_FP64=_PLATFORM.metax_fp64_dot_fix and A.dtype == torch.float64,
             G=BLOCK // 16,
         )
 
@@ -2864,14 +3104,14 @@ def linalg_matrix_power(
             n,
             batch_stride,
             BLOCK=BLOCK,
-            FIX_FP64=_METAX_FP64_DOT_FIX and A.dtype == torch.float64,
+            FIX_FP64=_PLATFORM.metax_fp64_dot_fix and A.dtype == torch.float64,
             G=BLOCK // 16,
         )
 
-    elif _GRID_SYNC_FUSED and A.device.type == flag_gems.device and m <= 256:
+    elif _PLATFORM.grid_sync_fused and A.device.type == flag_gems.device and m <= 256:
         # Tier 3: grid-level sync fused (65 <= M <= 256).
-        # Disabled on thead (_GRID_SYNC_FUSED): its grid spin-barrier deadlocks,
-        # so 65 <= M <= 256 falls through to the barrier-free host path below.
+        # Disabled on thead (grid_sync_fused policy): its grid spin-barrier
+        # deadlocks, so 65 <= M <= 256 falls through to the host path below.
         TILES = triton.cdiv(m, TILE)
         # Fresh buffers per call: the kernel's Step 0 fully overwrites every
         # scratch slot it reads, and the round-based barrier logic works from a
@@ -2891,15 +3131,15 @@ def linalg_matrix_power(
             batch_stride,
             TILE_BLOCK=TILE,
             TILES=TILES,
-            FIX_FP64=_METAX_FP64_DOT_FIX and A.dtype == torch.float64,
+            FIX_FP64=_PLATFORM.metax_fp64_dot_fix and A.dtype == torch.float64,
             G=TILE // 16,
         )
 
     else:
         # M > 256 — and, on thead, 65 <= M <= 256 (its grid-sync Tier 3 is
-        # disabled, see _GRID_SYNC_FUSED): host-side binary exponentiation with
-        # the flag_gems Triton matmul kernels (mm for 2D, bmm for batched), one
-        # launch per step.
+        # disabled by the grid_sync_fused policy): host-side binary
+        # exponentiation with the flag_gems Triton matmul kernels (mm for 2D,
+        # bmm for batched), one launch per step.
         is_batched = batch_size > 1
         z = A_flat if is_batched else A_flat.squeeze(0)
         result = None
