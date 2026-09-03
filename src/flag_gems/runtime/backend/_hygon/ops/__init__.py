@@ -63,6 +63,7 @@ from .isin import isin
 from .lcm import lcm, lcm_
 from .linalg_ldl_factor import ldl_factor
 from .linalg_matrix_norm import linalg_matrix_norm
+from .linalg_matrix_power import linalg_matrix_power, linalg_matrix_power_out
 from .linalg_solve_triangular import (
     linalg_solve_triangular,
     linalg_solve_triangular_out,
@@ -171,6 +172,8 @@ __all__ = [
     "lcm_",
     "ldl_factor",
     "linalg_matrix_norm",
+    "linalg_matrix_power",
+    "linalg_matrix_power_out",
     "linalg_solve_triangular",
     "linalg_solve_triangular_out",
     "log_normal_",
