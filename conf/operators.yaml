@@ -11173,6 +11173,17 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.3'
+- id: sample_dirichlet
+  description: Draws samples from a Dirichlet distribution parameterized by alpha.
+  for:
+  - _sample_dirichlet
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: scalar_tensor
   description: 'Creates a 0-dimensional (scalar) tensor from a Python numeric value.
 
