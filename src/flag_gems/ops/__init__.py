@@ -590,6 +590,7 @@ from flag_gems.ops.max_pool2d_with_indices import (
     max_pool2d_with_indices,
     max_pool2d_with_indices_backward,
 )
+from flag_gems.ops.max_pool3d import max_pool3d
 from flag_gems.ops.max_pool3d_with_indices import (
     max_pool3d_backward,
     max_pool3d_with_indices,
@@ -1583,6 +1584,7 @@ __all__ = [
     "max_pool2d_backward",
     "max_pool2d_with_indices",
     "max_pool2d_with_indices_backward",
+    "max_pool3d",
     "max_pool3d_backward",
     "max_pool3d_with_indices",
     "max_pool3d_with_indices_backward",

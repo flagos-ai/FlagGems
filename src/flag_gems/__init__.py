@@ -813,6 +813,7 @@ _FULL_CONFIG = (
     ("max_pool2d_backward", max_pool2d_backward),
     ("max_pool2d_with_indices", max_pool2d_with_indices),
     ("max_pool2d_with_indices_backward", max_pool2d_with_indices_backward),
+    ("max_pool3d", max_pool3d),
     ("max_pool3d_with_indices", max_pool3d_with_indices),
     ("max_pool3d_with_indices_backward", max_pool3d_with_indices_backward),
     ("max_unpool2d", max_unpool2d),
