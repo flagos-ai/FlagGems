@@ -30,16 +30,6 @@ CUMPROD_INPLACE_DTYPES = (
     consts.FLOAT_DTYPES + consts.INT_DTYPES + consts.EXTRA_INT_DTYPES
 )
 
-CUMPROD_DTYPES = (
-    consts.FLOAT_DTYPES
-    + consts.BOOL_DTYPES
-    + consts.INT_DTYPES
-    + consts.EXTRA_INT_DTYPES
-)
-CUMPROD_INPLACE_DTYPES = (
-    consts.FLOAT_DTYPES + consts.INT_DTYPES + consts.EXTRA_INT_DTYPES
-)
-
 
 def _make_input(shape, dtype, device):
     if dtype in consts.FLOAT_DTYPES:
@@ -58,6 +48,10 @@ def input_fn(shape, dtype, device):
     yield inp, 1
 
 
+# Ascend does not provide a stable native torch.cumprod(bool) baseline, while
+# bool cumprod is equivalent to uint8 cumprod for 0/1 values. Keep this adapter
+# limited to the benchmark baseline so the benchmark still compares against the
+# vendor native implementation instead of the FlagGems wrapper.
 def torch_cumprod(inp, dim):
     if flag_gems.vendor_name == "ascend" and inp.dtype is torch.bool:
         return torch.cumprod(inp.to(torch.uint8), dim)
@@ -65,7 +59,7 @@ def torch_cumprod(inp, dim):
 
 
 @pytest.mark.cumprod
-def test_cumprod_perf():
+def test_cumprod():
     bench = base.GenericBenchmark2DOnly(
         op_name="cumprod",
         input_fn=input_fn,
@@ -77,7 +71,7 @@ def test_cumprod_perf():
 
 
 @pytest.mark.cumprod_
-def test_cumprod_inplace_perf():
+def test_cumprod_():
     bench = base.GenericBenchmark2DOnly(
         op_name="cumprod_",
         input_fn=input_fn,
