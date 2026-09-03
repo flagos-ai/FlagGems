@@ -165,16 +165,6 @@ _FULL_CONFIG = (
     ("_jagged_to_padded_dense_forward", _jagged_to_padded_dense_forward),
     ("_linalg_eigvals", _linalg_eigvals),
     ("_list_to_tensor", _list_to_tensor),
-    (
-        "_upsample_lanczos2d_aa_backward",
-        _upsample_lanczos2d_aa_backward,
-        lambda: hasattr(torch.ops.aten, "_upsample_lanczos2d_aa_backward"),
-    ),
-    (
-        "_upsample_lanczos2d_aa_backward.grad_input",
-        _upsample_lanczos2d_aa_backward_out,
-        lambda: hasattr(torch.ops.aten, "_upsample_lanczos2d_aa_backward"),
-    ),
     ("_log_softmax", log_softmax),
     ("_log_softmax.out", log_softmax_out),
     ("_log_softmax_backward_data", log_softmax_backward),
@@ -268,6 +258,16 @@ _FULL_CONFIG = (
     ("_upsample_lanczos2d_aa", _upsample_lanczos2d_aa),
     ("_upsample_lanczos2d_aa.out", _upsample_lanczos2d_aa_out),
     ("_upsample_lanczos2d_aa.vec", _upsample_lanczos2d_aa_vec),
+    (
+        "_upsample_lanczos2d_aa_backward",
+        _upsample_lanczos2d_aa_backward,
+        lambda: hasattr(torch.ops.aten, "_upsample_lanczos2d_aa_backward"),
+    ),
+    (
+        "_upsample_lanczos2d_aa_backward.grad_input",
+        _upsample_lanczos2d_aa_backward_out,
+        lambda: hasattr(torch.ops.aten, "_upsample_lanczos2d_aa_backward"),
+    ),
     ("_upsample_nearest_exact1d", _upsample_nearest_exact1d),
     ("_upsample_nearest_exact1d_backward", _upsample_nearest_exact1d_backward),
     (
