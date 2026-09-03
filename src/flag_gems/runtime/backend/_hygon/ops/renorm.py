@@ -1,17 +1,3 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import logging
 
 import torch
@@ -27,16 +13,21 @@ logger = logging.getLogger(__name__)
 
 @libentry()
 @triton.jit
-def renorm_kernel_norms_hygon(
+def renorm_fused_kernel(
     X,
-    norms_out,
-    M,
-    N,
+    Y,
+    num_slices,
+    outer_size,
+    inner_size,
     p_val,
+    maxnorm,
+    stride_slice,
+    stride_outer,
     BLOCK_SIZE: tl.constexpr,
 ):
-    """Hygon-optimized kernel to compute p-norms."""
     pid = tle.program_id(0)
+    if pid >= num_slices:
+        return
 
     if tl.constexpr(X.dtype.element_ty == tl.float16) or tl.constexpr(
         X.dtype.element_ty == tl.bfloat16
@@ -45,180 +36,130 @@ def renorm_kernel_norms_hygon(
     else:
         cdtype = X.dtype.element_ty
 
-    row_offset = pid * N
-    x_ptr_row = X + row_offset
-    norm_ptr = norms_out + pid
+    base = X + pid * stride_slice
+    out_base = Y + pid * stride_slice
+    offs = tl.arange(0, BLOCK_SIZE)
 
-    _sum = tl.zeros([BLOCK_SIZE], dtype=cdtype)
+    acc = tl.zeros([BLOCK_SIZE], dtype=cdtype)
 
-    for off in range(0, N, BLOCK_SIZE):
-        cols = off + tl.arange(0, BLOCK_SIZE)
-        mask = cols < N
-        x_vals = tl.load(x_ptr_row + cols, mask=mask, other=0.0).to(cdtype)
-        abs_vals = tl.abs(x_vals)
-        if p_val == 2.0:
-            powered = x_vals * x_vals
-        else:
-            powered = tl_extra_shim.pow(abs_vals, p_val)
-        _sum += powered
+    for o in range(outer_size):
+        block_base = base + o * stride_outer
+        for off in range(0, inner_size, BLOCK_SIZE):
+            cols = off + offs
+            mask = cols < inner_size
+            x_vals = tl.load(block_base + cols, mask=mask, other=0.0).to(cdtype)
+            if p_val == 2.0:
+                powered = x_vals * x_vals
+            else:
+                powered = tl_extra_shim.pow(tl.abs(x_vals), p_val)
+            acc += powered
 
-    sum_val = tl.sum(_sum)
+    sum_val = tl.sum(acc)
     if p_val == 2.0:
         norm = tl_extra_shim.sqrt(sum_val)
     else:
         norm = tl_extra_shim.pow(sum_val, 1.0 / p_val)
 
-    tl.store(norm_ptr, norm)
+    eps = 1e-12
+    scale = maxnorm / tl.maximum(norm, eps)
+    scale = tl.minimum(scale, 1.0)
 
-
-@libentry()
-@triton.jit
-def renorm_kernel_scale_hygon(
-    X,
-    norms_in,
-    Y,
-    M,
-    N,
-    p_val,
-    maxnorm,
-    BLOCK_SIZE: tl.constexpr,
-):
-    """Hygon-optimized kernel to apply scaling."""
-    pid = tle.program_id(0)
-
-    if tl.constexpr(X.dtype.element_ty == tl.float16) or tl.constexpr(
-        X.dtype.element_ty == tl.bfloat16
-    ):
-        cdtype = tl.float32
-    else:
-        cdtype = X.dtype.element_ty
-
-    row_offset = pid * N
-    x_ptr_row = X + row_offset
-    y_ptr_row = Y + row_offset
-    norm = tl.load(norms_in + pid)
-
-    if norm <= maxnorm:
-        for off in range(0, N, BLOCK_SIZE):
-            cols = off + tl.arange(0, BLOCK_SIZE)
-            mask = cols < N
-            x_vals = tl.load(x_ptr_row + cols, mask=mask, other=0.0)
-            tl.store(y_ptr_row + cols, x_vals, mask=mask)
-    else:
-        scale = maxnorm / norm
-        for off in range(0, N, BLOCK_SIZE):
-            cols = off + tl.arange(0, BLOCK_SIZE)
-            mask = cols < N
-            x_vals = tl.load(x_ptr_row + cols, mask=mask, other=0.0).to(cdtype)
+    for o in range(outer_size):
+        block_base = base + o * stride_outer
+        out_block_base = out_base + o * stride_outer
+        for off in range(0, inner_size, BLOCK_SIZE):
+            cols = off + offs
+            mask = cols < inner_size
+            x_vals = tl.load(block_base + cols, mask=mask, other=0.0).to(cdtype)
             y_vals = x_vals * scale
-            tl.store(y_ptr_row + cols, y_vals.to(X.dtype.element_ty), mask=mask)
+            tl.store(out_block_base + cols, y_vals.to(X.dtype.element_ty), mask=mask)
+
+
+def _compute_block_size(inner_size):
+    return min(triton.next_power_of_2(inner_size), 128)
 
 
 def renorm(input, p, dim, maxnorm):
-    logger.debug("GEMS_HYGON RENORM")
+    logger.debug("GEMS RENORM")
 
     if dim < 0:
         dim = input.ndim + dim
 
-    # Handle dim 0 case efficiently with single-kernel-per-row approach
-    if dim == 0:
-        M = input.shape[0]
-        N = input.numel() // M
+    if input.is_contiguous():
+        num_slices = input.shape[dim]
+        outer_size = input.shape[:dim].numel() if dim > 0 else 1
+        inner_size = input.shape[dim + 1 :].numel() if dim < input.ndim - 1 else 1
 
-        input = input.contiguous()
-        norms = torch.empty((M,), dtype=torch.float32, device=input.device)
-
-        # Hygon-optimized block size: use 256 for better occupancy
-        BLOCK = min(triton.next_power_of_2(N), 256)
-        grid = (M,)
-
-        with torch_device_fn.device(input.device):
-            renorm_kernel_norms_hygon[grid](
-                input,
-                norms,
-                M,
-                N,
-                p,
-                BLOCK_SIZE=BLOCK,
-            )
+        stride_slice = input.stride(dim)
+        stride_outer = input.stride(dim - 1) if dim > 0 else 0
 
         output = torch.empty_like(input)
+        BLOCK = _compute_block_size(inner_size)
+        grid = (num_slices,)
 
         with torch_device_fn.device(input.device):
-            renorm_kernel_scale_hygon[grid](
+            renorm_fused_kernel[grid](
                 input,
-                norms,
                 output,
-                M,
-                N,
+                num_slices,
+                outer_size,
+                inner_size,
                 p,
                 maxnorm,
+                stride_slice,
+                stride_outer,
                 BLOCK_SIZE=BLOCK,
             )
-
         return output
     else:
-        # For non-zero dim, use permute to make dim=0
         ndim = input.ndim
         perm = list(range(ndim))
         perm.remove(dim)
         perm.insert(0, dim)
         inv_perm = [perm.index(i) for i in range(ndim)]
-
-        x_perm = input.permute(perm)
+        x_perm = input.permute(perm).contiguous()
         result = renorm(x_perm, p, 0, maxnorm)
         return result.permute(inv_perm)
 
 
 def renorm_(input, p, dim, maxnorm):
-    logger.debug("GEMS_HYGON RENORM_")
+    logger.debug("GEMS RENORM_")
 
     if dim < 0:
         dim = input.ndim + dim
 
-    if dim == 0:
-        M = input.shape[0]
-        N = input.numel() // M
+    if input.is_contiguous():
+        num_slices = input.shape[dim]
+        outer_size = input.shape[:dim].numel() if dim > 0 else 1
+        inner_size = input.shape[dim + 1 :].numel() if dim < input.ndim - 1 else 1
 
-        input = input.contiguous()
-        norms = torch.empty((M,), dtype=torch.float32, device=input.device)
+        stride_slice = input.stride(dim)
+        stride_outer = input.stride(dim - 1) if dim > 0 else 0
 
-        # Hygon-optimized block size
-        BLOCK = min(triton.next_power_of_2(N), 256)
-        grid = (M,)
-
-        with torch_device_fn.device(input.device):
-            renorm_kernel_norms_hygon[grid](
-                input,
-                norms,
-                M,
-                N,
-                p,
-                BLOCK_SIZE=BLOCK,
-            )
+        BLOCK = _compute_block_size(inner_size)
+        grid = (num_slices,)
 
         with torch_device_fn.device(input.device):
-            renorm_kernel_scale_hygon[grid](
+            renorm_fused_kernel[grid](
                 input,
-                norms,
                 input,
-                M,
-                N,
+                num_slices,
+                outer_size,
+                inner_size,
                 p,
                 maxnorm,
+                stride_slice,
+                stride_outer,
                 BLOCK_SIZE=BLOCK,
             )
-
         return input
     else:
-        # For non-zero dim, use permute to make dim=0
         ndim = input.ndim
         perm = list(range(ndim))
         perm.remove(dim)
         perm.insert(0, dim)
         inv_perm = [perm.index(i) for i in range(ndim)]
-
-        x_perm = input.permute(perm)
-        result = renorm_(x_perm, p, 0, maxnorm)
-        input.copy_(result.permute(inv_perm))
+        x_perm = input.permute(perm).contiguous()
+        renorm_(x_perm, p, 0, maxnorm)
+        input.copy_(x_perm.permute(inv_perm))
         return input
