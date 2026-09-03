@@ -8339,6 +8339,17 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: matrix_power
+  description: Triton kernel implementation for matrix_power.
+  for:
+  - matrix_power
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - stable: '1.0'
 - id: max
   description: Returns the maximum value of all elements in the `input` tensor.
   for:
