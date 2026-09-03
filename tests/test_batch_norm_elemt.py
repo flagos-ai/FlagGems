@@ -36,7 +36,7 @@ from . import accuracy_utils as utils
     ],
 )
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_accuracy_batch_norm_elemt(shape, dtype):
+def test_batch_norm_elemt(shape, dtype):
     C = shape[1]
     inp = torch.randn(size=shape, dtype=dtype, device=flag_gems.device)
     weight = torch.randn(size=(C,), dtype=dtype, device=flag_gems.device)

@@ -21,6 +21,7 @@ from . import base, consts
 
 
 class BatchNormElemtBenchmark(base.GenericBenchmark):
+    # Shapes cover 3D/4D tensors with varying channel and spatial dimensions
     DEFAULT_SHAPES = [
         (16, 16, 64),
         (16, 16, 1024),
