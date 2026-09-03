@@ -14320,6 +14320,18 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '5.0'
+- id: upsample_nearest1d_backward
+  description: Triton kernel implementation for upsample_nearest1d_backward.
+  for:
+  - upsample_nearest1d_backward
+  labels:
+  - aten
+  - KernelGen
+  - Reduction
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: upsample_nearest2d
   description: 'Upsamples the `input`, using nearest neighbours'' pixel values. The
     input has to be 4 dimensional.
