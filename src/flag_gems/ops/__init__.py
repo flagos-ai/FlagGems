@@ -345,6 +345,7 @@ from flag_gems.ops.dropout import dropout, dropout_backward
 from flag_gems.ops.dsplit import dsplit
 from flag_gems.ops.elu import elu, elu_, elu_backward
 from flag_gems.ops.embedding import embedding, embedding_backward
+from flag_gems.ops.embedding_bag import embedding_bag
 from flag_gems.ops.embedding_dense_backward import embedding_dense_backward
 from flag_gems.ops.empty import empty
 from flag_gems.ops.empty_permuted import empty_permuted
@@ -1291,6 +1292,7 @@ __all__ = [
     "elu_backward",
     "embedding",
     "embedding_backward",
+    "embedding_bag",
     "embedding_dense_backward",
     "empty",
     "empty_permuted",
