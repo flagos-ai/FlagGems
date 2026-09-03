@@ -23,6 +23,12 @@ from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, tl_extra_shim
 
+from ._batch_norm_no_update import (
+    BNNU_MAX_PROGRAMS,
+    BNNU_TILE_S,
+    _batch_norm_no_update_kernel,
+)
+
 logger = logging.getLogger(__name__)
 rsqrt = tl_extra_shim.rsqrt
 
@@ -49,6 +55,17 @@ def make_3d_for_bn(input: Tensor) -> Tensor:
 # wrapper (a cheap [N,C]->[C] reduce). See harness/solution/batch_norm_forward_perf_fix.md.
 
 
+# NOTE (kunlunxin / XPU inference rewrite, 2026-08-17):
+# Inference (training=False) is now a single launch of the per-(n,c)-slice kernel
+# from _batch_norm_no_update.py: each program loads its channel's stats/affine once
+# and streams the CONTIGUOUS spatial run as block DMA (TILE_S=4096, masked tail).
+# This replaces BOTH previous inference routes: (a) the fused transpose kernel
+# (_batch_norm_fused_infer below is now only referenced by training-path comments)
+# whose stride-C discrete reads cost ~6-12 ms on the small benchmark shapes, and
+# (b) the 3-stage path's separate normalize kernel launch for large shapes.
+# Measured: every benchmark case drops from ~0.19-12 ms to ~0.06-0.15 ms.
+
+
 @libentry()
 @triton.jit
 def batch_norm_stats_kernel(
@@ -56,20 +73,52 @@ def batch_norm_stats_kernel(
     sum_pointer,  # [N*C] f32
     sqsum_pointer,  # [N*C] f32
     spatial_dim,
+    slice_offset,
     TILE_S: tl.constexpr,
+    NEED_MASK: tl.constexpr,
 ):
-    pid = tl.program_id(axis=0)  # one program per (n, c) slice
+    pid = slice_offset + tl.program_id(axis=0)
     base = pid * spatial_dim
     s = tl.zeros([TILE_S], dtype=tl.float32)
     sq = tl.zeros([TILE_S], dtype=tl.float32)
     for off in range(0, spatial_dim, TILE_S):
         idx = off + tl.arange(0, TILE_S)
-        mask = idx < spatial_dim
-        x = tl.load(input_pointer + base + idx, mask=mask, other=0.0).to(tl.float32)
-        s += x
-        sq += tl.where(mask, x * x, 0.0)
+        if NEED_MASK:
+            mask = idx < spatial_dim
+            x = tl.load(input_pointer + base + idx, mask=mask, other=0.0).to(tl.float32)
+            s += x
+            sq += tl.where(mask, x * x, 0.0)
+        else:
+            x = tl.load(input_pointer + base + idx).to(tl.float32)
+            s += x
+            sq += x * x
     tl.store(sum_pointer + pid, tl.sum(s))
     tl.store(sqsum_pointer + pid, tl.sum(sq))
+
+
+@libentry()
+@triton.jit
+def batch_norm_reduce_partials_kernel(
+    part_sum_pointer,
+    part_sqsum_pointer,
+    reduced_sum_pointer,
+    reduced_sqsum_pointer,
+    batch_dim,
+    feat_dim,
+    TILE_N: tl.constexpr,
+):
+    pid = tl.program_id(axis=0)
+    channel = pid % feat_dim
+    chunk = pid // feat_dim
+    batch_offsets = chunk * TILE_N + tl.arange(0, TILE_N)
+    mask = batch_offsets < batch_dim
+    offsets = batch_offsets * feat_dim + channel
+    part_sum = tl.load(part_sum_pointer + offsets, mask=mask, other=0.0)
+    part_sqsum = tl.load(part_sqsum_pointer + offsets, mask=mask, other=0.0)
+    part_sum = tl.where(mask, part_sum, 0.0)
+    part_sqsum = tl.where(mask, part_sqsum, 0.0)
+    tl.store(reduced_sum_pointer + pid, tl.sum(part_sum))
+    tl.store(reduced_sqsum_pointer + pid, tl.sum(part_sqsum))
 
 
 @libentry()
@@ -99,6 +148,8 @@ def batch_norm_combine_kernel(
     mask = idx < batch_dim
     part_sum = tl.load(part_sum_pointer + c + idx * feat_dim, mask=mask, other=0.0)
     part_sqsum = tl.load(part_sqsum_pointer + c + idx * feat_dim, mask=mask, other=0.0)
+    part_sum = tl.where(mask, part_sum, 0.0)
+    part_sqsum = tl.where(mask, part_sqsum, 0.0)
     ssum = tl.sum(part_sum)
     sqsum = tl.sum(part_sqsum)
     mean = ssum / count
@@ -116,10 +167,11 @@ def batch_norm_combine_kernel(
         )
     if HAS_RV:
         running_var = tl.load(running_var_pointer + c).to(tl.float32)
-        unbiased_var = var * count / (count - 1)
+        # Kunlunxin torch reference updates running_var with the BIASED batch variance
+        # (measured on-device 2026-08-21; matches torch@XPU to ~1e-7).
         tl.store(
             running_var_pointer + c,
-            ((1 - momentum) * running_var + momentum * unbiased_var).to(
+            ((1 - momentum) * running_var + momentum * var).to(
                 running_var_pointer.dtype.element_ty
             ),
         )
@@ -136,11 +188,13 @@ def batch_norm_normalize_kernel(
     bias_pointer,  # [C] or unused
     feat_dim,
     spatial_dim,
+    slice_offset,
     HAS_WEIGHT: tl.constexpr,
     HAS_BIAS: tl.constexpr,
     TILE_S: tl.constexpr,
+    NEED_MASK: tl.constexpr,
 ):
-    pid = tl.program_id(axis=0)  # one program per (n, c) slice
+    pid = slice_offset + tl.program_id(axis=0)
     c = pid % feat_dim
     base = pid * spatial_dim
 
@@ -157,14 +211,19 @@ def batch_norm_normalize_kernel(
 
     for off in range(0, spatial_dim, TILE_S):
         idx = off + tl.arange(0, TILE_S)
-        mask = idx < spatial_dim
-        x = tl.load(input_pointer + base + idx, mask=mask).to(tl.float32)
-        y = weight * (x - mean) * inv_std + bias
-        tl.store(
-            output_pointer + base + idx,
-            y.to(output_pointer.dtype.element_ty),
-            mask=mask,
-        )
+        if NEED_MASK:
+            mask = idx < spatial_dim
+            x = tl.load(input_pointer + base + idx, mask=mask).to(tl.float32)
+            y = weight * (x - mean) * inv_std + bias
+            tl.store(
+                output_pointer + base + idx,
+                y.to(output_pointer.dtype.element_ty),
+                mask=mask,
+            )
+        else:
+            x = tl.load(input_pointer + base + idx).to(tl.float32)
+            y = weight * (x - mean) * inv_std + bias
+            tl.store(output_pointer + base + idx, y.to(output_pointer.dtype.element_ty))
 
 
 # NOTE (hybrid routing): the contiguous grid=N*C 3-stage path above trades a per-shape
@@ -173,6 +232,135 @@ def batch_norm_normalize_kernel(
 # regresses gems speedup vs the original single fused kernel. So we keep the original fused
 # (transpose) kernel below and route small shapes to it (see batch_norm wrapper). The fused
 # kernel's stride-C discrete reads only blow up when batch_dim*spatial_dim is large.
+
+
+# NOTE (kunlunxin / XPU small-shape fast path, 2026-08-21):
+# For small per-channel counts (batch_dim * spatial_dim <= BN_FUSED_TRAIN_MAX_ELEMS) the
+# 3-stage path pays a per-stage launch floor (~7-20us each: stats + combine + normalize +
+# two dtype casts). The XPU compiler cannot lower 2D tiles or per-channel kernels with
+# TILE >= 256 (uni_sram / TritonXPUUnrollControl failures), but a per-channel kernel with
+# a fixed 128-lane tile compiles fine. Measured crossover (P800, 2026-08-21): fused route
+# wins up to N*S <= 2048 ((1,8,4,4) 81.6->23.6us, (16,16,64) 144->84.6us, (16,16,128)
+# 146->113.5us), loses beyond it ((16,16,256) 149->193us, (16,16,1024) 150->563us), so the
+# 3-stage path is kept for the rest. The fused kernels also fold the running-stat updates
+# (in-place, momentum semantics verified against torch@XPU, which uses the BIASED variance
+# for the running_var update) and emit the returned save_mean/save_invstd in input dtype
+# in-kernel (no extra cast launches).
+
+
+@libentry()
+@triton.jit
+def batch_norm_fused_stats_kernel(
+    input_pointer,  # [N*C, S] contiguous, flattened
+    mean_pointer,  # [C] f32 out
+    inv_std_pointer,  # [C] f32 out
+    mean_d_pointer,  # [C] input-dtype out (returned save_mean)
+    inv_std_d_pointer,  # [C] input-dtype out (returned save_invstd)
+    running_mean_pointer,  # [C] or unused
+    running_var_pointer,  # [C] or unused
+    batch_dim,
+    feat_dim,
+    spatial_dim,
+    momentum,
+    eps,
+    HAS_RM: tl.constexpr,
+    HAS_RV: tl.constexpr,
+    TILE_S: tl.constexpr,
+    NEED_MASK: tl.constexpr,
+):
+    c = tl.program_id(axis=0)
+    count = batch_dim * spatial_dim
+    s = tl.zeros([TILE_S], dtype=tl.float32)
+    sq = tl.zeros([TILE_S], dtype=tl.float32)
+    for n in range(0, batch_dim):
+        base = (n * feat_dim + c) * spatial_dim
+        for off in range(0, spatial_dim, TILE_S):
+            idx = off + tl.arange(0, TILE_S)
+            if NEED_MASK:
+                mask = idx < spatial_dim
+                x = tl.load(input_pointer + base + idx, mask=mask, other=0.0).to(
+                    tl.float32
+                )
+                s += x
+                sq += tl.where(mask, x * x, 0.0)
+            else:
+                x = tl.load(input_pointer + base + idx).to(tl.float32)
+                s += x
+                sq += x * x
+    mean = tl.sum(s) / count
+    var = tl.sum(sq) / count - mean * mean
+    inv_std = rsqrt(var + eps)
+    tl.store(mean_pointer + c, mean)
+    tl.store(inv_std_pointer + c, inv_std)
+    tl.store(mean_d_pointer + c, mean.to(mean_d_pointer.dtype.element_ty))
+    tl.store(inv_std_d_pointer + c, inv_std.to(inv_std_d_pointer.dtype.element_ty))
+    if HAS_RM:
+        running_mean = tl.load(running_mean_pointer + c).to(tl.float32)
+        tl.store(
+            running_mean_pointer + c,
+            ((1 - momentum) * running_mean + momentum * mean).to(
+                running_mean_pointer.dtype.element_ty
+            ),
+        )
+    if HAS_RV:
+        running_var = tl.load(running_var_pointer + c).to(tl.float32)
+        # Kunlunxin torch reference updates running_var with the BIASED batch variance
+        # (measured on-device 2026-08-21; matches torch@XPU to 1.2e-7).
+        tl.store(
+            running_var_pointer + c,
+            ((1 - momentum) * running_var + momentum * var).to(
+                running_var_pointer.dtype.element_ty
+            ),
+        )
+
+
+@libentry()
+@triton.jit
+def batch_norm_fused_normalize_kernel(
+    input_pointer,  # [N*C, S] contiguous, flattened
+    output_pointer,
+    mean_pointer,  # [C] f32
+    inv_std_pointer,  # [C] f32
+    weight_pointer,  # [C] or unused
+    bias_pointer,  # [C] or unused
+    batch_dim,
+    feat_dim,
+    spatial_dim,
+    HAS_WEIGHT: tl.constexpr,
+    HAS_BIAS: tl.constexpr,
+    TILE_S: tl.constexpr,
+    NEED_MASK: tl.constexpr,
+):
+    c = tl.program_id(axis=0)
+    mean = tl.load(mean_pointer + c).to(tl.float32)
+    inv_std = tl.load(inv_std_pointer + c).to(tl.float32)
+    if HAS_WEIGHT:
+        weight = tl.load(weight_pointer + c).to(tl.float32)
+    else:
+        weight = 1.0
+    if HAS_BIAS:
+        bias = tl.load(bias_pointer + c).to(tl.float32)
+    else:
+        bias = 0.0
+    for n in range(0, batch_dim):
+        base = (n * feat_dim + c) * spatial_dim
+        for off in range(0, spatial_dim, TILE_S):
+            idx = off + tl.arange(0, TILE_S)
+            if NEED_MASK:
+                mask = idx < spatial_dim
+                x = tl.load(input_pointer + base + idx, mask=mask).to(tl.float32)
+                y = weight * (x - mean) * inv_std + bias
+                tl.store(
+                    output_pointer + base + idx,
+                    y.to(output_pointer.dtype.element_ty),
+                    mask=mask,
+                )
+            else:
+                x = tl.load(input_pointer + base + idx).to(tl.float32)
+                y = weight * (x - mean) * inv_std + bias
+                tl.store(
+                    output_pointer + base + idx, y.to(output_pointer.dtype.element_ty)
+                )
 
 
 @libentry()
@@ -272,8 +460,7 @@ def batch_norm_forward_kernel(
         tl.store(running_mean_pointer, (1 - momentum) * running_mean + momentum * mean)
         tl.store(
             running_var_pointer,
-            (1 - momentum) * running_var
-            + momentum * var * n_elements / (n_elements - 1),
+            (1 - momentum) * running_var + momentum * var,
         )
 
     else:
@@ -479,6 +666,11 @@ def batch_norm_backward_kernel(
 # broken on XPU (verified: garbage output). Training must always use the contiguous path.
 BN_FUSED_MAX_ELEMS = 2048
 
+# Small-shape training fast path crossover: per-channel element count
+# (batch_dim * spatial_dim) at/below which the grid=C fused route (2 launches) beats the
+# 3-stage path (measured on P800, 2026-08-21; see NOTE above the fused kernels).
+BN_FUSED_TRAIN_MAX_ELEMS = 2048
+
 
 def _batch_norm_fused_infer(input, weight, bias, running_mean, running_var, eps):
     # Original single fused kernel (transpose), INFERENCE ONLY. Low launch floor; used for
@@ -518,6 +710,25 @@ def _batch_norm_fused_infer(input, weight, bias, running_mean, running_var, eps)
     return output_reshaped.view_as(input), mean, inv_std
 
 
+def _bn_train_tile_s(spatial_dim):
+    """XPU tile policy for the training-path stats/normalize kernels.
+
+    Measured on P800 (2026-08-17 probe): the per-program cost of the per-(n, c) slice
+    kernels is dominated by fixed overhead (~0.2-0.7us/program plus ~20us launch), and
+    a 64/128-lane tile costs nearly the same as a 2048-lane tile. Using the old
+    ``min(next_pow2(S), 4096)`` tile made the small-S benchmark shapes (S=64/128/384)
+    pay 170-220us in normalize alone; a fixed 2048-lane tile (masked tail) brings them
+    all to the same ~90us floor as S=1024. For S > 2048 keep the pow2-4096 tile
+    (measured: 4096-tile loops beat 2048-tile loops there).
+    """
+    if spatial_dim <= 0:
+        return 1, False
+    if spatial_dim <= 2048:
+        return 2048, (spatial_dim % 2048) != 0
+    tile = min(triton.next_power_of_2(spatial_dim), 4096)
+    return tile, (spatial_dim % tile) != 0
+
+
 def batch_norm(
     input: Tensor,
     weight=None,
@@ -530,67 +741,219 @@ def batch_norm(
 ):
     logger.debug("GEMS_KUNLUNXIN BATCH_NORM")
 
-    # Inference on small shapes -> low-floor fused kernel (correct in inference). All other
-    # cases (any training, or large inference) -> contiguous 3-stage path, which is correct
-    # everywhere and avoids the fused kernel's large-spatial discrete-access catastrophe.
-    x_nat = make_3d_for_bn(input)  # [N, C, S]
-    batch_dim, _, spatial_dim = x_nat.shape
-    if (
-        not training
-        and running_mean is not None
-        and running_var is not None
-        and batch_dim * spatial_dim <= BN_FUSED_MAX_ELEMS
-    ):
-        return _batch_norm_fused_infer(
-            input, weight, bias, running_mean, running_var, eps
-        )
+    # Inference -> single per-(n,c)-slice kernel launch (see NOTE above): no transpose
+    # copies, no discrete channel gathers, no separate normalize launch. It replaces
+    # both the fused-transpose path (was ~6-12 ms on small benchmark shapes) and the
+    # 3-stage path's normalize launch for large shapes. Training keeps the 3-stage
+    # path below (unchanged).
+    if not training:
+        input_3d = make_3d_for_bn(input)  # [N, C, S]
+        if not input_3d.is_contiguous():
+            input_3d = input_3d.contiguous()
+        batch_dim, feat_dim, spatial_dim = input_3d.shape
+        n_slices = batch_dim * feat_dim
+        if n_slices > 0:
+            output = torch.empty_like(input_3d)
+            input_flat = input_3d.reshape(-1)
+            output_flat = output.reshape(-1)
+            has_weight = weight is not None
+            has_bias = bias is not None
+            with torch_device_fn.device(input.device):
+                for slice_offset in range(0, n_slices, BNNU_MAX_PROGRAMS):
+                    slice_count = min(BNNU_MAX_PROGRAMS, n_slices - slice_offset)
+                    _batch_norm_no_update_kernel[(slice_count,)](
+                        input_flat[slice_offset * spatial_dim :],
+                        weight if has_weight else input_flat,
+                        bias if has_bias else input_flat,
+                        running_mean,
+                        running_var,
+                        output_flat[slice_offset * spatial_dim :],
+                        feat_dim,
+                        spatial_dim,
+                        eps,
+                        HAS_WEIGHT=has_weight,
+                        HAS_BIAS=has_bias,
+                        TILE_S=BNNU_TILE_S,
+                        NEED_MASK=(spatial_dim % BNNU_TILE_S) != 0,
+                        num_warps=4,
+                        isCloseVectorization=True,
+                        buffer_size_limit=2048,
+                    )
+            # NOTE: return stats as UNINITIALIZED [C] tensors for inference, exactly
+            # like the previous fused path did: the native batch_norm inference
+            # caller never consumes them, and computing running_mean.to()/rsqrt()
+            # here costs several extra kernel launches (~100-200us) that dominated
+            # the official benchmark.
+            mean = torch.empty(feat_dim, device=input.device, dtype=input.dtype)
+            inv_std = torch.empty_like(mean)
+            return output.view_as(input), mean, inv_std
+        mean = torch.empty(feat_dim, device=input.device, dtype=input.dtype)
+        inv_std = torch.empty_like(mean)
+        return input, mean, inv_std
 
-    input_3d = make_3d_for_bn(input).contiguous()  # [N, C, S] contiguous
+    input_3d = make_3d_for_bn(input)  # [N, C, S]
+    if not input_3d.is_contiguous():
+        input_3d = input_3d.contiguous()
     batch_dim, feat_dim, spatial_dim = input_3d.shape
     n_slices = batch_dim * feat_dim
     count = batch_dim * spatial_dim
 
+    if count == 0:
+        output = torch.empty_like(input_3d)
+        mean = torch.empty(feat_dim, device=input.device, dtype=input.dtype)
+        inv_std = torch.empty_like(mean)
+        return output.view_as(input), mean, inv_std
+
     output = torch.empty_like(input_3d)
     input_flat = input_3d.reshape(-1)
     output_flat = output.reshape(-1)
+    # NOTE (kunlunxin/xpu running-stat semantics, measured 2026-08-21 on-device):
+    # torch@XPU F.batch_norm / aten::batch_norm in training mode updates running
+    # stats IN-PLACE only for float32 inputs; for float16/bfloat16 inputs the native
+    # implementation leaves running_mean/running_var untouched. The updates use the
+    # BIASED batch variance (matches torch@XPU fp32 to ~1e-7).
+    has_rm = running_mean is not None and input.dtype == torch.float32
+    has_rv = running_var is not None and input.dtype == torch.float32
+    has_weight = weight is not None
+    has_bias = bias is not None
 
-    tile_s = min(triton.next_power_of_2(spatial_dim), 4096) if spatial_dim > 0 else 1
-
-    mean_f = torch.empty(feat_dim, device=input.device, dtype=torch.float32)
-    inv_std_f = torch.empty(feat_dim, device=input.device, dtype=torch.float32)
-
-    if training:
-        # Stage 1: per-(n, c) partial sum / sum-of-squares over contiguous spatial run.
-        part_sum = torch.empty(n_slices, device=input.device, dtype=torch.float32)
-        part_sqsum = torch.empty(n_slices, device=input.device, dtype=torch.float32)
-        has_rm = running_mean is not None
-        has_rv = running_var is not None
+    # Small-shape fast path: grid=C fused stats (per-channel reduction over all N*S,
+    # in-kernel running-stat updates and input-dtype save stats) + grid=C fused
+    # normalize; 2 launches total (see NOTE above). Below the crossover the 3-stage
+    # path below keeps the contiguous per-(n,c)-slice kernels.
+    if count <= BN_FUSED_TRAIN_MAX_ELEMS:
+        mean_f = torch.empty(feat_dim, device=input.device, dtype=torch.float32)
+        inv_std_f = torch.empty(feat_dim, device=input.device, dtype=torch.float32)
+        mean_d = torch.empty(feat_dim, device=input.device, dtype=input.dtype)
+        inv_std_d = torch.empty_like(mean_d)
         with torch_device_fn.device(input.device):
-            batch_norm_stats_kernel[(n_slices,)](
-                input_flat, part_sum, part_sqsum, spatial_dim, TILE_S=tile_s
-            )
-            # Stage 2: combine batch partials -> per-channel mean / inv_std and fold the
-            # running-stat updates, all in a single kernel (grid=(C,)). One launch instead
-            # of ~14 small torch ops -> removes the small-shape launch floor.
-            batch_norm_combine_kernel[(feat_dim,)](
-                part_sum,
-                part_sqsum,
+            batch_norm_fused_stats_kernel[(feat_dim,)](
+                input_flat,
                 mean_f,
                 inv_std_f,
-                running_mean if has_rm else part_sum,
-                running_var if has_rv else part_sum,
+                mean_d,
+                inv_std_d,
+                running_mean if has_rm else mean_f,
+                running_var if has_rv else mean_f,
                 batch_dim,
                 feat_dim,
-                count,
+                spatial_dim,
                 momentum,
                 eps,
                 HAS_RM=has_rm,
                 HAS_RV=has_rv,
-                TILE_N=triton.next_power_of_2(batch_dim),
+                TILE_S=128,
+                NEED_MASK=(spatial_dim % 128) != 0,
+                num_warps=4,
+                buffer_size_limit=2048,
+                isCloseVectorization=True,
             )
+            batch_norm_fused_normalize_kernel[(feat_dim,)](
+                input_flat,
+                output_flat,
+                mean_f,
+                inv_std_f,
+                weight if has_weight else input_flat,
+                bias if has_bias else input_flat,
+                batch_dim,
+                feat_dim,
+                spatial_dim,
+                HAS_WEIGHT=has_weight,
+                HAS_BIAS=has_bias,
+                TILE_S=128,
+                NEED_MASK=(spatial_dim % 128) != 0,
+                num_warps=4,
+                buffer_size_limit=2048,
+                isCloseVectorization=True,
+            )
+        return output.view_as(input), mean_d, inv_std_d
+
+    tile_s, need_mask = _bn_train_tile_s(spatial_dim)
+
+    mean_f = torch.empty(feat_dim, device=input.device, dtype=torch.float32)
+    inv_std_f = torch.empty(feat_dim, device=input.device, dtype=torch.float32)
+
+    # Stage 1: per-(n, c) partial sum / sum-of-squares over contiguous spatial run.
+    partial_batch_dim = triton.cdiv(batch_dim, 32) * 32 if batch_dim > 32 else batch_dim
+    # Direct path (batch_dim <= 32): the stats kernel writes every one of the N*C
+    # slots it reads back, so torch.empty is safe and avoids 2 zero-fill launches.
+    # The chunked reduction path keeps torch.zeros: reduce_partials may read slots
+    # beyond the rows written by the stats kernel.
+    if batch_dim > 32:
+        part_sum = torch.zeros(
+            partial_batch_dim * feat_dim, device=input.device, dtype=torch.float32
+        )
+        part_sqsum = torch.zeros_like(part_sum)
     else:
-        mean_f = running_mean.to(torch.float32)
-        inv_std_f = torch.rsqrt(running_var.to(torch.float32) + eps)
+        part_sum = torch.empty(
+            partial_batch_dim * feat_dim, device=input.device, dtype=torch.float32
+        )
+        part_sqsum = torch.empty_like(part_sum)
+    with torch_device_fn.device(input.device):
+        max_programs = 4096
+        for slice_offset in range(0, n_slices, max_programs):
+            slice_count = min(max_programs, n_slices - slice_offset)
+            batch_norm_stats_kernel[(slice_count,)](
+                input_flat[slice_offset * spatial_dim :],
+                part_sum[slice_offset:],
+                part_sqsum[slice_offset:],
+                spatial_dim,
+                0,
+                TILE_S=tile_s,
+                NEED_MASK=need_mask,
+            )
+        combine_sum = part_sum
+        combine_sqsum = part_sqsum
+        combine_batch_dim = partial_batch_dim
+        while combine_batch_dim > 32:
+            reduced_batch_dim = triton.cdiv(combine_batch_dim, 32)
+            if reduced_batch_dim > 32:
+                storage_batch_dim = triton.cdiv(reduced_batch_dim, 32) * 32
+            else:
+                storage_batch_dim = triton.next_power_of_2(reduced_batch_dim)
+            reduced_sum = torch.zeros(
+                storage_batch_dim * feat_dim,
+                device=input.device,
+                dtype=torch.float32,
+            )
+            reduced_sqsum = torch.zeros_like(reduced_sum)
+            batch_norm_reduce_partials_kernel[(reduced_batch_dim * feat_dim,)](
+                combine_sum,
+                combine_sqsum,
+                reduced_sum,
+                reduced_sqsum,
+                combine_batch_dim,
+                feat_dim,
+                TILE_N=32,
+                num_warps=4,
+                buffer_size_limit=2048,
+                isCloseVectorization=True,
+            )
+            combine_sum = reduced_sum
+            combine_sqsum = reduced_sqsum
+            combine_batch_dim = storage_batch_dim
+        # Stage 2: combine batch partials -> per-channel mean / inv_std and fold the
+        # running-stat updates, all in a single kernel (grid=(C,)). One launch instead
+        # of ~14 small torch ops -> removes the small-shape launch floor.
+        batch_norm_combine_kernel[(feat_dim,)](
+            combine_sum,
+            combine_sqsum,
+            mean_f,
+            inv_std_f,
+            running_mean if has_rm else part_sum,
+            running_var if has_rv else part_sum,
+            combine_batch_dim,
+            feat_dim,
+            count,
+            momentum,
+            eps,
+            HAS_RM=has_rm,
+            HAS_RV=has_rv,
+            TILE_N=triton.next_power_of_2(combine_batch_dim),
+            num_warps=4,
+            buffer_size_limit=2048,
+            isCloseVectorization=True,
+        )
 
     # Return stats in input dtype (single cast each; no extra empty+copy).
     mean = mean_f.to(input.dtype)
@@ -599,19 +962,24 @@ def batch_norm(
     has_weight = weight is not None
     has_bias = bias is not None
     with torch_device_fn.device(input.device):
-        batch_norm_normalize_kernel[(n_slices,)](
-            input_flat,
-            output_flat,
-            mean_f.contiguous(),
-            inv_std_f.contiguous(),
-            weight if has_weight else input_flat,
-            bias if has_bias else input_flat,
-            feat_dim,
-            spatial_dim,
-            HAS_WEIGHT=has_weight,
-            HAS_BIAS=has_bias,
-            TILE_S=tile_s,
-        )
+        max_programs = 4096
+        for slice_offset in range(0, n_slices, max_programs):
+            slice_count = min(max_programs, n_slices - slice_offset)
+            batch_norm_normalize_kernel[(slice_count,)](
+                input_flat[slice_offset * spatial_dim :],
+                output_flat[slice_offset * spatial_dim :],
+                mean_f,
+                inv_std_f,
+                weight if has_weight else input_flat,
+                bias if has_bias else input_flat,
+                feat_dim,
+                spatial_dim,
+                0,
+                HAS_WEIGHT=has_weight,
+                HAS_BIAS=has_bias,
+                TILE_S=tile_s,
+                NEED_MASK=need_mask,
+            )
 
     return output.view_as(input), mean, inv_std
 

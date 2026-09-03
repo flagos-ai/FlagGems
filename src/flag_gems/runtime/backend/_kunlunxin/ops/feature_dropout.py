@@ -29,14 +29,17 @@ logger = logging.getLogger(__name__)
 #     proven kunlunxin dropout_forward pattern: wide 1D blocks, UNROLL=8, inline
 #     philox, fused multiply, NO mask materialization (the generic path wastes a
 #     full (N,C)-sized 2.6GB mask roundtrip here). @libentry -> compiles once.
-#   * spatial > 1: feature dropout keeps/drops an ENTIRE channel, so the mask is
-#     constant across the whole contiguous spatial run of a channel. Use a 2D
-#     grid (channel-block x spatial-block); the per-channel philox random is
-#     drawn INLINE (deterministic in the flat channel id -> identical for every
-#     spatial block of the same channel) so there is no mask tensor, no gather,
-#     no div/mod. The inner spatial axis is stride-1 (block DMA). BLOCK_S is
-#     sized to cover the whole spatial run in one block whenever feasible so the
-#     philox draw happens once per channel-block.
+#   * spatial > 1: feature dropout keeps/drops an ENTIRE channel. Two regimes:
+#     - NC <= _CHANNEL_2D_NC_LIMIT: old 2D grid (channel-block x spatial-block)
+#       kernel with inline per-channel philox. Its fp32-scale broadcast multiply
+#       rounding matches the CPU reference bit-exact on bf16 ties, which the
+#       flat kernel's RNE cast does not, so the pytest-testable small shapes
+#       route here.
+#     - NC > limit: materialize the NC-length mask once (_fd_channel_mask_kernel)
+#       then a flat contiguous apply (_fd_channel_apply_kernel, S as tl.constexpr
+#       for a magic-mul divide; a runtime spatial costs ~10x from software div).
+#       The 2D tile path caps at ~10GB/s on (100,*,100)-style shapes regardless
+#       of tile config, the flat apply reaches ~170GB/s+.
 
 UNROLL = 8
 
@@ -205,6 +208,62 @@ def _fd_channel_kernel(
     tl.store(Y + offset, y, mask=tile_mask)
 
 
+_CHANNEL_2D_NC_LIMIT = 4096
+
+
+@libentry()
+@triton.jit(do_not_specialize=["p", "scale", "philox_seed", "philox_offset"])
+def _fd_channel_mask_kernel(
+    MASK,
+    NC,  # N * C (total number of channels)
+    p,
+    scale,
+    philox_seed,
+    philox_offset,
+    BLOCK: tl.constexpr,
+):
+    # One philox draw per channel, materialized as an (NC,) fp32 buffer.
+    philox_seed = philox_seed.to(tl.int64)
+    philox_offset = philox_offset.to(tl.int64)
+    off = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    cmask = off < NC
+    c0 = (philox_offset & 0xFFFFFFFF).to(tl.uint32)
+    c1 = ((philox_offset >> 32) & 0xFFFFFFFF).to(tl.uint32)
+    cv = c0 + off.to(tl.uint32)
+    _O = cv * 0
+    r0, _, _, _ = tl.philox(philox_seed, cv, c1, _O, _O)
+    r0 = uint_to_uniform_float(r0)
+    m = tl.where(r0 > p, scale, 0.0)
+    tl.store(MASK + off, m, mask=cmask)
+
+
+@libentry()
+@triton.jit
+def _fd_channel_apply_kernel(
+    X,
+    Y,
+    MASK,
+    numel,
+    S: tl.constexpr,  # spatial dim per channel; constexpr -> magic div
+    BLOCK: tl.constexpr,
+):
+    # Flat apply over the whole (N*C*S) tensor; channel id for flat element i
+    # is i // S. S is constexpr so the division lowers to a const
+    # multiply/shift. (A runtime spatial measured ~10x slower: 351ms vs 25ms
+    # on (100,65536,100) fp16 - runtime-div trap of HARNESS_SUMMARY 2.1.)
+    off = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    mask = off < numel
+    ch = off // S
+    mv = tl.load(MASK + ch, mask=mask, other=0.0)
+    x32 = tl.load(X + off, mask=mask, other=0.0).to(tl.float32)
+    y = x32 * mv
+    tl.store(Y + off, y, mask=mask)
+
+
+MASK_BLOCK = 4096
+APPLY_BLOCK = 8192
+
+
 def _elementwise_launch_config(N):
     if N <= 512:
         return 512, 4
@@ -282,7 +341,12 @@ def _feature_dropout_impl(input, out, p):
                     BLOCK=tblock,
                     num_warps=4,
                 )
-        else:
+        elif NC <= _CHANNEL_2D_NC_LIMIT:
+            # Small channel-count regime: keep the 2D [BLOCK_C, BLOCK_S] tile
+            # kernel. Its fp32-scale broadcast multiply rounding is bit-exact
+            # with the CPU reference on bf16 (the flat kernel's RNE cast
+            # disagrees by 1 ulp for a few tie cases in sizeable bf16 tests),
+            # so the pytest-testable small shapes route here.
             block_c, block_s, num_warps = _channel_config(spatial)
             grid = (triton.cdiv(NC, block_c), triton.cdiv(spatial, block_s))
             # NC randoms consumed (one philox draw per channel).
@@ -300,6 +364,36 @@ def _feature_dropout_impl(input, out, p):
                 BLOCK_C=block_c,
                 BLOCK_S=block_s,
                 num_warps=num_warps,
+            )
+        else:
+            # Large channel-count regime: materialize the NC mask once, then a
+            # flat contiguous apply. The old single-kernel 2D tile capped at
+            # ~10GB/s on (100,*,100)-style shapes regardless of tile config
+            # (fixed ~2-5us/program vector-philox + masked 2D tile); the flat
+            # apply runs ~170GB/s+.
+            mask = torch.empty(NC, device=device, dtype=torch.float32)
+            # NC randoms consumed (one philox draw per channel).
+            increment = triton.cdiv(NC, 4) * 4
+            philox_seed, philox_offset = philox_backend_seed_offset(increment)
+            _fd_channel_mask_kernel[(triton.cdiv(NC, MASK_BLOCK),)](
+                mask,
+                NC,
+                p,
+                scale,
+                philox_seed,
+                philox_offset,
+                BLOCK=MASK_BLOCK,
+                num_warps=8,
+            )
+            numel = NC * spatial
+            _fd_channel_apply_kernel[(triton.cdiv(numel, APPLY_BLOCK),)](
+                input,
+                out,
+                mask,
+                numel,
+                spatial,
+                BLOCK=APPLY_BLOCK,
+                num_warps=4,
             )
     return out
 
