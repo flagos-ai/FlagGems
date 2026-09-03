@@ -61,6 +61,7 @@ from .isin import isin
 from .lcm import lcm, lcm_
 from .linalg_ldl_factor import ldl_factor
 from .linalg_matrix_norm import linalg_matrix_norm
+from .linalg_matrix_power import linalg_matrix_power
 from .log_normal_ import log_normal_
 from .masked_scatter_backward import masked_scatter_backward
 from .matmul_bf16 import matmul_bf16
@@ -165,6 +166,7 @@ __all__ = [
     "lcm",
     "lcm_",
     "linalg_matrix_norm",
+    "linalg_matrix_power",
     "log_normal_",
     "masked_scatter_backward",
     "matmul_bf16",
