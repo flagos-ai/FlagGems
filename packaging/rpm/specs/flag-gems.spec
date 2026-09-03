@@ -91,10 +91,10 @@ PYTHONDONTWRITEBYTECODE=1 PYTHONSAFEPATH=1 \
 %files -f %{pyproject_files}
 %license LICENSE
 %{_bindir}/flaggems-setup
-# New in 5.3.5: the FlagTune training CLI and the top-level bootstrap module
-# (kept outside the flag_gems package so it imports before torch/triton are
-# installed); neither lands in %%{pyproject_files}.
-%{_bindir}/flaggems-flagtune-train
+# New in 5.3.5: the FlagTune CLIs (train/compare/pretune) and the top-level
+# bootstrap module (kept outside the flag_gems package so it imports before
+# torch/triton are installed); none of them land in %%{pyproject_files}.
+%{_bindir}/flaggems-flagtune-*
 %{python3_sitelib}/flaggems_setup.py
 %{python3_sitelib}/__pycache__/flaggems_setup.*.pyc
 
