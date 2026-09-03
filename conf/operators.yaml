@@ -6044,6 +6044,25 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: hardtanh
+  description: 'An activation function that clips input values to lie within a fixed
+    range
+
+    [min_val, max_val], leaving values inside the range unchanged.
+
+    '
+  for:
+  - hardtanh
+  labels:
+  - aten
+  - pointwise
+  - nn.functional
+  - Activation
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: hardtanh_
   description: 'An activation function that clips input values to lie within a fixed
     range
@@ -6078,6 +6097,23 @@ ops:
   - KernelGen
   kind:
   - Math
+  stages:
+  - alpha: '5.4'
+- id: hardtanh_out
+  description: 'A variant of `hardtanh` that supports an output tensor to receive
+    the result.
+
+    '
+  for:
+  - hardtanh.out
+  labels:
+  - aten
+  - pointwise
+  - nn.functional
+  - Activation
+  - KernelGen
+  kind:
+  - NeuralNetwork
   stages:
   - alpha: '5.4'
 - id: has_compatible_shallow_copy_type

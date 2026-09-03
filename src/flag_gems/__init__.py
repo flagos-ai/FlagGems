@@ -642,6 +642,8 @@ _FULL_CONFIG = (
     ("hardswish.out", hardswish_out),
     ("hardswish_", hardswish_),
     ("hardswish_backward", hardswish_backward),
+    ("hardtanh", hardtanh),
+    ("hardtanh.out", hardtanh_out),
     ("hardtanh_", hardtanh_),
     ("hardtanh_backward", hardtanh_backward),
     ("heaviside", heaviside),

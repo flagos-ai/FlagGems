@@ -460,6 +460,7 @@ from flag_gems.ops.hardsigmoid_backward import hardsigmoid_backward
 from flag_gems.ops.hardswish import hardswish, hardswish_out
 from flag_gems.ops.hardswish_ import hardswish_
 from flag_gems.ops.hardswish_backward import hardswish_backward
+from flag_gems.ops.hardtanh import hardtanh, hardtanh_out
 from flag_gems.ops.hardtanh_ import hardtanh_
 from flag_gems.ops.hardtanh_backward import hardtanh_backward
 from flag_gems.ops.heaviside import heaviside
@@ -1423,8 +1424,10 @@ __all__ = [
     "hardswish_",
     "hardswish_backward",
     "hardswish_out",
+    "hardtanh",
     "hardtanh_",
     "hardtanh_backward",
+    "hardtanh_out",
     "heaviside",
     "heaviside_",
     "histc",
