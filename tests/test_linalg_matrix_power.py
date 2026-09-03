@@ -28,7 +28,7 @@ LARGE_CASES = [
     *[
         (s, n)
         for s in ((16, 16), (32, 32), (64, 64), (128, 128), (256, 256))
-        for n in (4, 5, 8, 10, 32)
+        for n in (4, 5, 8, 10, 31, 32)
     ],
     # large batched — moderate exponents
     *[
@@ -40,11 +40,15 @@ LARGE_CASES = [
     *[(s, n) for s in ((16, 16), (32, 32)) for n in (15, 16, 31)],
     *[((32, 32), n) for n in (0, 2, 3, 8, 16, 32, 64)],
     # batched matrices
-    *[(s, n) for s in ((8, 2, 2), (16, 64, 64), (2, 1024, 1024)) for n in (2, 8, 31)],
+    *[
+        (s, n)
+        for s in ((8, 2, 2), (16, 64, 64), (2, 1024, 1024))
+        for n in (2, 8, 31, 32)
+    ],
     *[
         (s, n)
         for s in ((2, 2), (8, 8), (64, 64), (256, 256), (1024, 1024))
-        for n in (2, 8, 31)
+        for n in (2, 8, 31, 32)
     ],
 ]
 # negative powers on larger matrices

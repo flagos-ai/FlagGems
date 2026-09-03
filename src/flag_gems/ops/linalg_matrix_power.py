@@ -2462,9 +2462,7 @@ def _thead_lu_panel_serial(
             for r0 in tl.range(j + 1, M, ROW_TILE):
                 rows_r = r0 + rt
                 rmask = rows_r < M
-                sc = tl.load(
-                    LU_ptr + base + rows_r * N + j, mask=rmask, other=0.0
-                )
+                sc = tl.load(LU_ptr + base + rows_r * N + j, mask=rmask, other=0.0)
                 xmask = (jj + 1 + allc) < PANEL
                 blk = tl.load(
                     LU_ptr + base + rows_r[:, None] * N + (K0 + jj + 1 + allc)[None, :],
@@ -2528,9 +2526,7 @@ def _thead_lu_factor(A):
             )
         trailing_n = N - k0 - p
         if trailing_n > 0:
-            _lu_swap_right_solve_par[
-                (triton.cdiv(trailing_n, _LU_PAR_TILE_N), batch)
-            ](
+            _lu_swap_right_solve_par[(triton.cdiv(trailing_n, _LU_PAR_TILE_N), batch)](
                 LU,
                 pivots,
                 k0,
