@@ -11,7 +11,7 @@ def test_exponential_outplace():
     bench = base.GenericBenchmark(
         op_name="exponential",
         input_fn=utils.unary_input_fn,
-        torch_op=torch.Tensor.exponential_,
+        torch_op=torch.ops.aten.exponential,
         gems_op=flag_gems.exponential,
         dtypes=consts.FLOAT_DTYPES,
     )

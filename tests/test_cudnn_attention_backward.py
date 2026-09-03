@@ -193,29 +193,28 @@ def test_cudnn_attention_backward(
     ref_dK = ref_dK_bhsd.permute(0, 2, 1, 3).contiguous()
     ref_dV = ref_dV_bhsd.permute(0, 2, 1, 3).contiguous()
 
-    with flag_gems.use_gems():
-        (
-            dQ_bhsd,
-            dK_bhsd,
-            dV_bhsd,
-        ) = torch.ops.aten._cudnn_attention_backward(
-            dOut_bhsd,
-            Q_bhsd,
-            K_bhsd,
-            V_bhsd,
-            out_bhsd,
-            lse,
-            philox_seed,
-            philox_offset,
-            attn_bias,
-            None,
-            None,
-            q_seq_len,
-            kv_seq_len,
-            0.0,
-            is_causal,
-            scale=scale,
-        )
+    (
+        dQ_bhsd,
+        dK_bhsd,
+        dV_bhsd,
+    ) = flag_gems.ops.cudnn_attention_backward(
+        dOut_bhsd,
+        Q_bhsd,
+        K_bhsd,
+        V_bhsd,
+        out_bhsd,
+        lse,
+        philox_seed,
+        philox_offset,
+        attn_bias,
+        None,
+        None,
+        q_seq_len,
+        kv_seq_len,
+        0.0,
+        is_causal,
+        scale=scale,
+    )
 
     dQ = dQ_bhsd.permute(0, 2, 1, 3).contiguous()
     dK = dK_bhsd.permute(0, 2, 1, 3).contiguous()
@@ -276,25 +275,24 @@ def test_cudnn_attention_backward_dropout_pos_rejected(dtype):
     dOut_bhsd = dOut.permute(0, 2, 1, 3).contiguous()
 
     with pytest.raises(NotImplementedError):
-        with flag_gems.use_gems():
-            torch.ops.aten._cudnn_attention_backward(
-                dOut_bhsd,
-                Q_bhsd,
-                K_bhsd,
-                V_bhsd,
-                out_bhsd,
-                lse,
-                philox_seed,
-                philox_offset,
-                None,
-                None,
-                None,
-                q_seq_len,
-                kv_seq_len,
-                0.1,
-                False,
-                scale=scale,
-            )
+        flag_gems.ops.cudnn_attention_backward(
+            dOut_bhsd,
+            Q_bhsd,
+            K_bhsd,
+            V_bhsd,
+            out_bhsd,
+            lse,
+            philox_seed,
+            philox_offset,
+            None,
+            None,
+            None,
+            q_seq_len,
+            kv_seq_len,
+            0.1,
+            False,
+            scale=scale,
+        )
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required")
@@ -345,25 +343,24 @@ def test_cudnn_attention_backward_dropout_neg_degrades_to_zero(dtype):
     dOut_bhsd = dOut.permute(0, 2, 1, 3).contiguous()
 
     def _gems_backward(dropout_p):
-        with flag_gems.use_gems():
-            dQ, dK, dV = torch.ops.aten._cudnn_attention_backward(
-                dOut_bhsd,
-                Q_bhsd,
-                K_bhsd,
-                V_bhsd,
-                out_bhsd,
-                lse,
-                philox_seed,
-                philox_offset,
-                None,
-                None,
-                None,
-                q_seq_len,
-                kv_seq_len,
-                dropout_p,
-                False,
-                scale=scale,
-            )
+        dQ, dK, dV = flag_gems.ops.cudnn_attention_backward(
+            dOut_bhsd,
+            Q_bhsd,
+            K_bhsd,
+            V_bhsd,
+            out_bhsd,
+            lse,
+            philox_seed,
+            philox_offset,
+            None,
+            None,
+            None,
+            q_seq_len,
+            kv_seq_len,
+            dropout_p,
+            False,
+            scale=scale,
+        )
         return (
             dQ.permute(0, 2, 1, 3).contiguous(),
             dK.permute(0, 2, 1, 3).contiguous(),
