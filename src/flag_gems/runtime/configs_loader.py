@@ -335,13 +335,15 @@ class TunedConfigLoader(object):
             ]
 
         if op_name == "mm_splitk_two_step":
+            has_pipeline = "PIPELINE" in ranges
+            pipelines = ranges.get("PIPELINE", [None])
             return [
                 triton.Config(
                     {
                         "BLOCK_M": block_m,
                         "BLOCK_N": block_n,
                         "BLOCK_K": block_k,
-                        "pipeline": pipeline,
+                        **({"pipeline": pipeline} if has_pipeline else {}),
                     },
                     num_stages=s,
                     num_warps=w,
@@ -350,7 +352,7 @@ class TunedConfigLoader(object):
                 for block_m in ranges["BLOCK_M"]
                 for block_n in ranges["BLOCK_N"]
                 for block_k in ranges["BLOCK_K"]
-                for pipeline in ranges["PIPELINE"]
+                for pipeline in pipelines
                 for s in ranges["s"]
                 for w in ranges["w"]
             ]
