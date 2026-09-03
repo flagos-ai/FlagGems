@@ -750,6 +750,7 @@ _FULL_CONFIG = (
     ("linalg_svdvals", linalg_svdvals),
     ("linalg_vecdot", linalg_vecdot),
     ("linalg_vecdot.out", linalg_vecdot_out),
+    ("linalg_matrix_power", linalg_matrix_power),
     ("linalg_vector_norm", vector_norm),
     ("linear", linear),
     ("linear_backward", linear_backward),
