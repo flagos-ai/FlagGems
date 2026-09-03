@@ -17,10 +17,59 @@ import torch
 import triton
 
 import flag_gems
+from flag_gems.ops.group_gemm_w8a8_fp8 import _int32_addressing_is_safe
 
 from . import accuracy_utils as utils
 
 FP8_DTYPE = getattr(torch, "float8_e4m3fn", None)
+FP8_DTYPES = tuple(
+    dtype
+    for dtype in (
+        getattr(torch, "float8_e4m3fn", None),
+        getattr(torch, "float8_e5m2", None),
+    )
+    if dtype is not None
+)
+
+
+def test_group_gemm_w8a8_fp8_int32_address_boundaries():
+    int32_max = torch.iinfo(torch.int32).max
+    common = {
+        "m": 2,
+        "n": 1,
+        "k": 1,
+        "num_groups": 1,
+        "block_m": 1,
+        "block_n": 1,
+        "block_k": 1,
+        "scale_block_m": 1,
+        "scale_block_n": 1,
+        "a_scale_per_row": False,
+        "a_strides": (int32_max, 1),
+        "b_strides": (1, 1, 1),
+        "a_scale_strides": (1, 1),
+        "b_scale_strides": (1, 1, 1),
+        "out_strides": (1, 1),
+        "offs_stride": 1,
+    }
+
+    assert _int32_addressing_is_safe(**common)
+    assert not _int32_addressing_is_safe(**{**common, "a_strides": (int32_max + 1, 1)})
+    assert not _int32_addressing_is_safe(
+        **{
+            **common,
+            "num_groups": 2,
+            "b_strides": (int32_max + 1, 1, 1),
+        }
+    )
+    assert not _int32_addressing_is_safe(
+        **{
+            **common,
+            "m": 1,
+            "block_m": 16,
+            "a_strides": (int32_max // 15 + 1, 1),
+        }
+    )
 
 
 def _cuda_fp8_available():
@@ -130,6 +179,10 @@ def _reference(A, B, A_scale, B_scale, offs, block_size, per_row):
         ([33, 17], 192, 256, (128, 128, 128), False, False, False),
         ([65, 80], 96, 256, (128, 128, 128), False, True, False),
         ([1, 2], 48, 80, (32, 32, 32), False, False, True),
+        ([4] * 64, 256, 128, (128, 128, 128), False, True, False),
+        ([256] + [0] * 63, 192, 128, (128, 128, 128), True, True, False),
+        ([193] + [1] * 63, 192, 128, (128, 128, 128), False, False, False),
+        ([33] * 16, 130, 129, (128, 128, 128), False, True, False),
     ],
 )
 def test_group_gemm_w8a8_fp8(sizes, N, K, block_size, per_row, k_major, strided):
@@ -144,14 +197,14 @@ def test_group_gemm_w8a8_fp8(sizes, N, K, block_size, per_row, k_major, strided)
     A_fp8, A_scale = _quantize_a(A, block_m, block_k, per_row)
     B_fp8, B_scale = _quantize_b(B_nk, block_n, block_k, k_major)
     if strided:
-        A_storage = torch.empty((M, K * 2), dtype=A_fp8.dtype, device=A_fp8.device)
-        A_storage[:, ::2] = A_fp8
-        A_fp8 = A_storage[:, ::2]
+        A_storage = torch.empty((M, K * 2 + 1), dtype=A_fp8.dtype, device=A_fp8.device)
+        A_storage[:, 1::2] = A_fp8
+        A_fp8 = A_storage[:, 1::2]
         B_storage = torch.empty(
-            (len(sizes), K, N * 2), dtype=B_fp8.dtype, device=B_fp8.device
+            (len(sizes), K, N * 2 + 1), dtype=B_fp8.dtype, device=B_fp8.device
         )
-        B_storage[:, :, ::2] = B_fp8
-        B_fp8 = B_storage[:, :, ::2]
+        B_storage[:, :, 1::2] = B_fp8
+        B_fp8 = B_storage[:, :, 1::2]
     offs = torch.tensor(
         [sum(sizes[: g + 1]) for g in range(len(sizes))],
         dtype=torch.int32,
@@ -159,10 +212,10 @@ def test_group_gemm_w8a8_fp8(sizes, N, K, block_size, per_row, k_major, strided)
     )
     if strided:
         offs_storage = torch.empty(
-            (offs.numel() * 2,), dtype=offs.dtype, device=offs.device
+            (offs.numel() * 2 + 1,), dtype=offs.dtype, device=offs.device
         )
-        offs_storage[::2] = offs
-        offs = offs_storage[::2]
+        offs_storage[1::2] = offs
+        offs = offs_storage[1::2]
 
     ref = _reference(A_fp8, B_fp8, A_scale, B_scale, offs, block_size, per_row)
     result = flag_gems.group_gemm_w8a8_fp8(
@@ -173,8 +226,19 @@ def test_group_gemm_w8a8_fp8(sizes, N, K, block_size, per_row, k_major, strided)
         offs,
         block_size=block_size,
     )
+    cached_result = torch.empty_like(result)
+    flag_gems.group_gemm_w8a8_fp8(
+        A_fp8,
+        B_fp8,
+        A_scale,
+        B_scale,
+        offs,
+        block_size=block_size,
+        out=cached_result,
+    )
     ref = ref.cpu() if utils.TO_CPU else ref
     utils.gems_assert_close(result, ref, torch.bfloat16, reduce_dim=K)
+    utils.gems_assert_close(cached_result, ref, torch.bfloat16, reduce_dim=K)
 
 
 @pytest.mark.group_gemm_w8a8_fp8
@@ -198,3 +262,44 @@ def test_group_gemm_w8a8_fp8_rejects_small_block_k():
             offs,
             block_size=(16, 16, 16),
         )
+
+
+@pytest.mark.group_gemm_w8a8_fp8
+@pytest.mark.skipif(
+    not _cuda_fp8_available(),
+    reason="group GEMM W8A8 FP8 requires CUDA SM90+ FP8 support",
+)
+@pytest.mark.parametrize("fp8_dtype", FP8_DTYPES)
+@pytest.mark.parametrize("out_dtype", [torch.bfloat16, torch.float16, torch.float32])
+def test_group_gemm_w8a8_fp8_dtypes(fp8_dtype, out_dtype):
+    torch.manual_seed(1)
+    sizes = [4, 3]
+    M, N, K = sum(sizes), 32, 32
+    A = (torch.randn((M, K), dtype=torch.bfloat16, device=flag_gems.device) * 0.1).to(
+        fp8_dtype
+    )
+    B = (
+        torch.randn(
+            (len(sizes), N, K),
+            dtype=torch.bfloat16,
+            device=flag_gems.device,
+        )
+        * 0.1
+    ).to(fp8_dtype)
+    B = B.transpose(-1, -2)
+    A_scale = torch.ones((1, 1), dtype=torch.float32, device=flag_gems.device)
+    B_scale = torch.ones(
+        (len(sizes), 1, 1), dtype=torch.float32, device=flag_gems.device
+    )
+    offs = torch.tensor([4, 7], dtype=torch.int32, device=flag_gems.device)
+    ref = torch.cat((A[:4].float().mm(B[0].float()), A[4:].float().mm(B[1].float())))
+    result = flag_gems.group_gemm_w8a8_fp8(
+        A,
+        B,
+        A_scale,
+        B_scale,
+        offs,
+        block_size=(32, 32, 32),
+        out_dtype=out_dtype,
+    )
+    torch.testing.assert_close(result.float(), ref, atol=2e-2, rtol=2e-2)
