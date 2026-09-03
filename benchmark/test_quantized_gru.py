@@ -102,12 +102,13 @@ def torch_gru_baseline(
 
 
 @pytest.mark.quantized_gru
-def test_perf_quantized_gru():
+def test_quantized_gru():
     bench = QuantizedGruBenchmark(
         input_fn=quantized_gru_input_fn,
         op_name="quantized_gru",
         # Use aten::gru (cuDNN) as baseline since quantized_gru has no CUDA impl
         torch_op=torch_gru_baseline,
+        # Only float32/float16: quantized GRU dequantizes weights to these dtypes
         dtypes=[torch.float32, torch.float16],
     )
     bench.run()

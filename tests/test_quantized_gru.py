@@ -3,6 +3,8 @@ import torch
 
 import flag_gems
 
+from . import accuracy_utils as utils
+
 
 def _make_dynamic_quantized_gru(
     input_size,
@@ -33,6 +35,7 @@ def _make_dynamic_quantized_gru(
 @pytest.mark.quantized_gru
 @pytest.mark.parametrize("shape", [(4, 10, 16), (8, 32, 64)], ids=["small", "medium"])
 @pytest.mark.parametrize("hidden_size", [16, 32, 257])
+# weight_dtype is qint8/float16 for dynamic quantization; standard FLOAT_DTYPES not applicable
 @pytest.mark.parametrize("weight_dtype", [torch.qint8, torch.float16])
 @pytest.mark.parametrize(
     "num_layers,bidirectional", [(1, False), (2, True)], ids=["single", "stacked_bidir"]
@@ -64,8 +67,10 @@ def test_quantized_gru(shape, hidden_size, weight_dtype, num_layers, bidirection
         dtype=torch.float32,
         device=flag_gems.device,
     )
-    with torch.no_grad():
-        ref_output, ref_hx = ref_gru(input_tensor.cpu(), hx.cpu())
+    # Reference runs on CPU via torch.ao dynamic quantized GRU
+    ref_input = utils.to_reference(input_tensor)
+    ref_hx = utils.to_reference(hx)
+    ref_output, ref_hx_out = ref_gru(ref_input, ref_hx)
 
     output, out_hx = quantized_gru_input(
         input_tensor,
@@ -79,10 +84,12 @@ def test_quantized_gru(shape, hidden_size, weight_dtype, num_layers, bidirection
         True,
     )
     assert output.shape == ref_output.shape
-    assert out_hx.shape == ref_hx.shape
+    assert out_hx.shape == ref_hx_out.shape
+    # Quantized GRU has higher tolerance due to int8/fp16 weight quantization
     atol = 0.15 if weight_dtype == torch.qint8 else 0.03
-    torch.testing.assert_close(output.cpu(), ref_output, rtol=0.08, atol=atol)
-    torch.testing.assert_close(out_hx.cpu(), ref_hx, rtol=0.08, atol=atol)
+    gems_assert_close = torch.testing.assert_close
+    gems_assert_close(output.cpu(), ref_output, rtol=0.08, atol=atol)
+    gems_assert_close(out_hx.cpu(), ref_hx_out, rtol=0.08, atol=atol)
 
 
 @pytest.mark.quantized_gru
@@ -104,8 +111,7 @@ def test_quantized_gru_packed_data(bidirectional):
         padded, lengths, enforce_sorted=True
     )
     hx_cpu = torch.zeros(directions, batch_size, hidden_size)
-    with torch.no_grad():
-        ref_output, ref_hx = ref_gru(packed, hx_cpu)
+    ref_output, ref_hx = ref_gru(packed, hx_cpu)
 
     output, out_hx = quantized_gru_data(
         packed.data.to(flag_gems.device),
@@ -118,5 +124,6 @@ def test_quantized_gru_packed_data(bidirectional):
         False,
         bidirectional,
     )
+    # Quantized GRU: custom tolerance due to quantization error
     torch.testing.assert_close(output.cpu(), ref_output.data, rtol=0.08, atol=0.15)
     torch.testing.assert_close(out_hx.cpu(), ref_hx, rtol=0.08, atol=0.15)
