@@ -63,12 +63,21 @@ def test_log_softmax_out():
 )
 def test_log_softmax_backward_data():
     def log_softmax_backward_data_input_fn(shape, dtype, device):
+        # dim=-1 (last dim) => K=1, exercises the inner backward kernel.
         inp = torch.randn(shape, dtype=dtype, device=device)
         output = torch.nn.functional.log_softmax(inp, dim=-1)
         grad_output = torch.randn_like(output)
         yield grad_output, output, -1, dtype
 
-    bench = base.GenericBenchmark2DOnly(
+        # dim=1 on a >2D shape => reduction dim is non-last => K>1,
+        # exercises the non-inner backward kernel.
+        if len(shape) > 2:
+            inp = torch.randn(shape, dtype=dtype, device=device)
+            output = torch.nn.functional.log_softmax(inp, dim=1)
+            grad_output = torch.randn_like(output)
+            yield grad_output, output, 1, dtype
+
+    bench = base.GenericBenchmarkExcluse1D(
         op_name="log_softmax_backward_data",
         input_fn=log_softmax_backward_data_input_fn,
         torch_op=torch.ops.aten._log_softmax_backward_data,
@@ -78,11 +87,21 @@ def test_log_softmax_backward_data():
 
 
 def log_softmax_backward_data_out_input_fn(shape, dtype, device):
+    # dim=-1 (last dim) => K=1, exercises the inner backward kernel.
     inp = torch.randn(shape, dtype=dtype, device=device)
     log_sm = torch.nn.functional.log_softmax(inp, dim=-1)
     grad_output = torch.randn_like(log_sm)
     out = torch.empty_like(grad_output)
     yield grad_output, log_sm, -1, dtype, {"out": out}
+
+    # dim=1 on a >2D shape => reduction dim is non-last => K>1,
+    # exercises the non-inner backward kernel.
+    if len(shape) > 2:
+        inp = torch.randn(shape, dtype=dtype, device=device)
+        log_sm = torch.nn.functional.log_softmax(inp, dim=1)
+        grad_output = torch.randn_like(log_sm)
+        out = torch.empty_like(grad_output)
+        yield grad_output, log_sm, 1, dtype, {"out": out}
 
 
 @pytest.mark.log_softmax_backward_data_out
@@ -90,7 +109,7 @@ def log_softmax_backward_data_out_input_fn(shape, dtype, device):
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_log_softmax_backward_data_out():
-    bench = base.GenericBenchmark2DOnly(
+    bench = base.GenericBenchmarkExcluse1D(
         op_name="log_softmax_backward_data_out",
         input_fn=log_softmax_backward_data_out_input_fn,
         torch_op=torch._log_softmax_backward_data,
