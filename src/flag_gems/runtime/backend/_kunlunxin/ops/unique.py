@@ -1314,7 +1314,9 @@ def sorted_indices_unique_flat(
             # print(f"tile_sum.shape = {tile_sum.shape}")
             # print(f'tile_sum.cpu() = {tile_sum.cpu()}')
             next_multiple = ((num_tasks // 2048) + 1) * 2048
-            cumsum_out = torch.zeros(next_multiple)
+            cumsum_out = torch.zeros(
+                next_multiple, dtype=torch.int64, device=sorted_data.device
+            )
             os.environ["TRITONXPU_OTHER_SIM"] = "1"
             os.environ["TRITONXPU_STORE_MASK_SIM"] = "1"
             os.environ["TRITONXPU_INTERLEAVE"] = "0"
@@ -1548,7 +1550,22 @@ def _unique2(
     #   (unique values); inverse via cumsum + scatter_. Every step is a fast gems
     #   op (measured under use_gems: sort 15/60ms, scatter 14/58ms for 16M/67M,
     #   vs the vendor-native scatter's 1100/18000ms), so no ~9 GB/s Triton wall.
-    flat = in0.ravel()
+    # ATen's sorted flag is accepted for schema compatibility. XPU unique always
+    # emits the sorted order, matching the backend's existing contract.
+    #
+    # 2026-08-22 NOTE(kunlunxin): the intermediate "dedicated" path
+    # (radix_sort_low_mem -> sorted_indices_unique_flat, committed in
+    # 173744521) was never runtime-verified on XPU and is now known broken:
+    # (1) its radix chain trips cumsum_row_kernel's unparenthesised
+    # "is_int64() or is_uint64() or is_fp64()" BoolOp chain, which the current
+    # flagtree triton AST visitor rejects at compile time (fixed separately in
+    # cumsum.py); (2) even with that fixed, radix corrupts the scatter stage at
+    # N >= ~33.5M (grid_n >= ~65534, shared-chain defect archived under sort /
+    # isin) which the unique2 shape (16,128,64,1280) = 168M hits. Reverted to
+    # the primitive chain below, which was fully verified 40/40 (incl. 168M
+    # return_counts=True) on 2026-07-16 and passes on the fixed radix chain.
+    _ = sorted
+    flat = in0.contiguous().view(-1)
     N = flat.numel()
 
     if N == 0:

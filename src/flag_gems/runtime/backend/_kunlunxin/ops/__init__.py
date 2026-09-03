@@ -331,7 +331,43 @@ from .xlogy import (
 from .zero import zero, zero_, zero_out
 from .zeros import zeros
 from .zeros_like import zeros_like
-
+from ._unsafe_masked_index_put_accumulate import _unsafe_masked_index_put_accumulate
+from .argsort import argsort
+from .as_strided_scatter import as_strided_scatter
+from .unfold_copy import unfold_copy
+from .bucketize import bucketize
+from .cumsum_ import cumsum_
+from .diagonal_copy import diagonal_copy
+from .histc import histc
+from .index_copy_ import index_copy_
+from .index_put_impl import _index_put_impl_
+from .index_reduce import index_reduce_
+from .index_select_backward import index_select_backward
+from .kthvalue import kthvalue
+from .masked_scatter_backward import masked_scatter_backward
+from .median import median, median_dim, median_dim_values, median_out
+from .mode import mode
+from .nonzero_static import nonzero_static, nonzero_static_out
+from .roll import roll
+from .scatter_reduce import scatter_reduce, scatter_reduce_, scatter_reduce_out
+from .searchsorted import (
+    searchsorted,
+    searchsorted_out,
+    searchsorted_scalar,
+    searchsorted_scalar_out,
+)
+from .segment_reduce import (
+    _segment_reduce_backward,
+    _segment_reduce_backward_out,
+    segment_reduce,
+    segment_reduce_out,
+)
+from .select_backward import select_backward
+from .split_with_sizes_copy import split_with_sizes_copy
+from .squeeze_copy import squeeze_copy
+from .unbind_copy import unbind_copy
+from .unique_consecutive import unique_consecutive
+from .unique_dim import unique_dim
 __all__ = [
     "_functional_sym_constrain_range",
     "_functional_sym_constrain_range_for_size",
@@ -781,4 +817,38 @@ __all__ = [
     "zero_out",
     "zeros",
     "zeros_like",
+    "_unsafe_masked_index_put_accumulate",
+    "unique_consecutive",
+    "unique_dim",
+    "argsort",
+    "as_strided_scatter",
+    "unfold_copy",
+    "bucketize",
+    "cumsum_",
+    "diagonal_copy",
+    "histc",
+    "index_copy_",
+    "_index_put_impl_",
+    "index_reduce_",
+    "index_select_backward",
+    "kthvalue",
+    "masked_scatter_backward",
+    "median",
+    "median_dim",
+    "median_dim_values",
+    "median_out",
+    "mode",
+    "roll",
+    "scatter_reduce",
+    "scatter_reduce_",
+    "scatter_reduce_out",
+    "searchsorted",
+    "searchsorted_out",
+    "searchsorted_scalar",
+    "searchsorted_scalar_out",
+    "_segment_reduce_backward",
+    "_segment_reduce_backward_out",
+    "segment_reduce",
+    "segment_reduce_out",
+    "select_backward",
 ]
