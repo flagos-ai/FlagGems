@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import inspect
 import math
 
 import numpy as np
@@ -20,6 +21,10 @@ import torch
 import triton
 
 import flag_gems
+from flag_gems.ops import flash_attention_forward_w8a8_fp8 as w8a8_dense
+from flag_gems.ops import flash_attn_varlen_func_w8a8_fp8 as w8a8_varlen
+from flag_gems.ops.attention import flash_attention_forward as fa2_dense
+from flag_gems.ops.attention import flash_attn_varlen_func as fa2_varlen
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import random_utils
 
@@ -75,6 +80,17 @@ else:
     SWA_HEAD_SIZES = [128, 192]
     SWA_WINDOW_SIZES = [(256, 0), (128, 128)]
 DROPOUT_CONFIGS = [(1, 1, 1024, 1024)]
+
+if cfg.QUICK_MODE:
+    W8A8_CONFIGS = [(1, 16, 512, 512)]
+else:
+    W8A8_CONFIGS = [
+        (1, 16, 17, 1030),
+        (1, 16, 512, 512),
+        (2, 16, 1024, 1024),
+        (4, 16, 2048, 2048),
+        (8, 32, 512, 512),
+    ]
 
 
 def make_input(
@@ -762,3 +778,693 @@ def test_flash_fwd_dropout(
     if vendor_name == "cambricon":
         dropout_ratio = dropout_ratio.item()
     np.testing.assert_allclose(dropout_ratio, dropout_p, rtol=5e-2)
+
+
+def _supports_hopper_fp8() -> bool:
+    return torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 9
+
+
+def _get_fp8_dtype():
+    dtype = getattr(torch, "float8_e4m3fn", None)
+    if dtype is None:
+        pytest.skip("torch.float8_e4m3fn is not available")
+    return dtype
+
+
+def _hadamard_matrix(dim, device):
+    assert dim > 0 and dim & (dim - 1) == 0, "head_size must be a power of two"
+    h = torch.tensor([[1.0]], device=device)
+    while h.shape[0] < dim:
+        h = torch.cat(
+            (
+                torch.cat((h, h), dim=1),
+                torch.cat((h, -h), dim=1),
+            ),
+            dim=0,
+        )
+    return h / math.sqrt(dim)
+
+
+def _apply_incoherent_qk(x):
+    h = _hadamard_matrix(x.shape[-1], x.device).to(torch.float32)
+    return torch.matmul(x.float(), h).to(x.dtype)
+
+
+def _quantize_dense_per_block_fp8(x, fp8_dtype, block_size=128):
+    batch, seq_len, num_head, _ = x.shape
+    fp8_max = float(torch.finfo(fp8_dtype).max)
+    nblocks = triton.cdiv(seq_len, block_size)
+
+    out = torch.empty_like(x, dtype=fp8_dtype)
+    descale = torch.empty(
+        (batch, num_head, nblocks),
+        device=x.device,
+        dtype=torch.float32,
+    )
+
+    for block_idx in range(nblocks):
+        lo = block_idx * block_size
+        hi = min(seq_len, lo + block_size)
+        tile = x[:, lo:hi].float()
+        scale = (tile.abs().amax(dim=(1, 3)) / fp8_max).clamp_min(
+            torch.finfo(torch.float32).tiny
+        )
+        out[:, lo:hi] = torch.clamp(
+            tile / scale[:, None, :, None],
+            -fp8_max,
+            fp8_max,
+        ).to(fp8_dtype)
+        descale[:, :, block_idx] = scale
+
+    return out.contiguous(), descale.contiguous()
+
+
+def _dequantize_dense_per_block_fp8(x, descale, dtype, block_size=128):
+    seq_len = x.shape[1]
+    out = torch.empty_like(x, dtype=dtype)
+    for block_idx in range(triton.cdiv(seq_len, block_size)):
+        lo = block_idx * block_size
+        hi = min(seq_len, lo + block_size)
+        out[:, lo:hi] = (
+            x[:, lo:hi].float() * descale[:, :, block_idx][:, None, :, None]
+        ).to(dtype)
+    return out.contiguous()
+
+
+def _quantize_dense_qkv_w8a8(q, k, v):
+    fp8_dtype = _get_fp8_dtype()
+    q_fp8, q_descale = _quantize_dense_per_block_fp8(_apply_incoherent_qk(q), fp8_dtype)
+    k_fp8, k_descale = _quantize_dense_per_block_fp8(_apply_incoherent_qk(k), fp8_dtype)
+    v_fp8, v_descale = _quantize_dense_per_block_fp8(v, fp8_dtype)
+    return q_fp8, k_fp8, v_fp8, q_descale, k_descale, v_descale
+
+
+def gems_flash_attention_forward_w8a8_fp8(q, k, v, scale, is_causal):
+    (
+        q_fp8,
+        k_fp8,
+        v_fp8,
+        q_descale,
+        k_descale,
+        v_descale,
+    ) = _quantize_dense_qkv_w8a8(q, k, v)
+
+    out = torch.empty_like(q)
+    result = w8a8_dense(
+        q_fp8,
+        k_fp8,
+        v_fp8,
+        None,
+        None,
+        q.shape[1],
+        k.shape[1],
+        0.0,
+        is_causal,
+        False,
+        scale=scale,
+        out=out,
+        q_descale=q_descale,
+        k_descale=k_descale,
+        v_descale=v_descale,
+    )
+    reference_inputs = (
+        _dequantize_dense_per_block_fp8(q_fp8, q_descale, q.dtype),
+        _dequantize_dense_per_block_fp8(k_fp8, k_descale, k.dtype),
+        _dequantize_dense_per_block_fp8(v_fp8, v_descale, v.dtype),
+    )
+    return result[0], reference_inputs
+
+
+def _cu_seqlens_from_lengths(lengths, device):
+    lengths_tensor = torch.tensor(lengths, dtype=torch.int32, device=device)
+    return torch.cat(
+        (
+            torch.zeros(1, dtype=torch.int32, device=device),
+            lengths_tensor.cumsum(0, dtype=torch.int32),
+        )
+    )
+
+
+def _pack_dense_by_lengths(x, lengths):
+    return torch.cat(
+        [x[batch_idx, :seq_len] for batch_idx, seq_len in enumerate(lengths)],
+        dim=0,
+    ).contiguous()
+
+
+def _quantize_varlen_per_block_fp8(x, lengths, fp8_dtype, block_size=128):
+    num_head = x.shape[1]
+    fp8_max = float(torch.finfo(fp8_dtype).max)
+    nblocks = triton.cdiv(max(lengths), block_size)
+
+    out = torch.empty_like(x, dtype=fp8_dtype)
+    descale = torch.empty(
+        (len(lengths), num_head, nblocks),
+        device=x.device,
+        dtype=torch.float32,
+    )
+
+    token_offset = 0
+    for batch_idx, seq_len in enumerate(lengths):
+        for block_idx in range(triton.cdiv(seq_len, block_size)):
+            lo = token_offset + block_idx * block_size
+            hi = token_offset + min(seq_len, (block_idx + 1) * block_size)
+            tile = x[lo:hi].float()
+            scale = (tile.abs().amax(dim=(0, 2)) / fp8_max).clamp_min(
+                torch.finfo(torch.float32).tiny
+            )
+            out[lo:hi] = torch.clamp(
+                tile / scale[None, :, None],
+                -fp8_max,
+                fp8_max,
+            ).to(fp8_dtype)
+            descale[batch_idx, :, block_idx] = scale
+        token_offset += seq_len
+
+    return out.contiguous(), descale.contiguous()
+
+
+def _dequantize_varlen_per_block_fp8(x, lengths, descale, dtype, block_size=128):
+    out = torch.empty_like(x, dtype=dtype)
+    token_offset = 0
+    for batch_idx, seq_len in enumerate(lengths):
+        for block_idx in range(triton.cdiv(seq_len, block_size)):
+            lo = token_offset + block_idx * block_size
+            hi = token_offset + min(seq_len, (block_idx + 1) * block_size)
+            out[lo:hi] = (
+                x[lo:hi].float() * descale[batch_idx, :, block_idx][None, :, None]
+            ).to(dtype)
+        token_offset += seq_len
+    return out.contiguous()
+
+
+def _quantize_qkv_w8a8(q, k, v, q_lengths, kv_lengths):
+    fp8_dtype = _get_fp8_dtype()
+    q_fp8, q_descale = _quantize_varlen_per_block_fp8(
+        _apply_incoherent_qk(q), q_lengths, fp8_dtype
+    )
+    k_fp8, k_descale = _quantize_varlen_per_block_fp8(
+        _apply_incoherent_qk(k), kv_lengths, fp8_dtype
+    )
+    v_fp8, v_descale = _quantize_varlen_per_block_fp8(v, kv_lengths, fp8_dtype)
+    return (
+        q_fp8,
+        k_fp8,
+        v_fp8,
+        q_descale,
+        k_descale,
+        v_descale,
+    )
+
+
+def gems_flash_attn_varlen_func_w8a8_fp8(
+    q, k, v, q_lengths, kv_lengths, scale, is_causal
+):
+    (
+        q_fp8,
+        k_fp8,
+        v_fp8,
+        q_descale,
+        k_descale,
+        v_descale,
+    ) = _quantize_qkv_w8a8(q, k, v, q_lengths, kv_lengths)
+
+    cu_seqlens_q = _cu_seqlens_from_lengths(q_lengths, q.device)
+    cu_seqlens_k = _cu_seqlens_from_lengths(kv_lengths, q.device)
+    out = torch.empty_like(q)
+    result = w8a8_varlen(
+        q_fp8,
+        k_fp8,
+        v_fp8,
+        max(q_lengths),
+        cu_seqlens_q,
+        max(kv_lengths),
+        cu_seqlens_k,
+        softmax_scale=scale,
+        causal=is_causal,
+        out=out,
+        q_descale=q_descale,
+        k_descale=k_descale,
+        v_descale=v_descale,
+    )
+    reference_inputs = (
+        _dequantize_varlen_per_block_fp8(q_fp8, q_lengths, q_descale, q.dtype),
+        _dequantize_varlen_per_block_fp8(k_fp8, kv_lengths, k_descale, k.dtype),
+        _dequantize_varlen_per_block_fp8(v_fp8, kv_lengths, v_descale, v.dtype),
+    )
+    return result, reference_inputs, cu_seqlens_q, cu_seqlens_k
+
+
+def _torch_varlen_reference(q, k, v, cu_seqlens_q, cu_seqlens_k, scale, is_causal):
+    outputs = []
+    batch = cu_seqlens_q.numel() - 1
+    for batch_idx in range(batch):
+        q_lo = cu_seqlens_q[batch_idx].item()
+        q_hi = cu_seqlens_q[batch_idx + 1].item()
+        k_lo = cu_seqlens_k[batch_idx].item()
+        k_hi = cu_seqlens_k[batch_idx + 1].item()
+        seq_out, _, _, _, _ = torch_flash_fwd(
+            q[q_lo:q_hi].transpose(0, 1).unsqueeze(0),
+            k[k_lo:k_hi].transpose(0, 1).unsqueeze(0),
+            v[k_lo:k_hi].transpose(0, 1).unsqueeze(0),
+            scale,
+            is_causal,
+        )
+        outputs.append(seq_out.squeeze(0))
+    return torch.cat(outputs, dim=0)
+
+
+def _assert_w8a8_attention_close(actual, expected):
+    actual_f = actual.float()
+    expected_f = expected.float()
+    diff = actual_f - expected_f
+
+    mse = torch.mean(diff * diff)
+    rel_mse = mse / torch.mean(expected_f * expected_f).clamp_min(
+        torch.finfo(torch.float32).tiny
+    )
+    cosine = torch.nn.functional.cosine_similarity(
+        actual_f.flatten(), expected_f.flatten(), dim=0
+    )
+
+    assert mse.item() < 1.0e-4, f"mse={mse.item():.6e}"
+    assert rel_mse.item() < 2.0e-2, f"rel_mse={rel_mse.item():.6e}"
+    assert cosine.item() > 0.99, f"cosine={cosine.item():.6f}"
+
+
+@pytest.mark.flash_attention_forward_w8a8_fp8
+def test_flash_attention_forward_w8a8_fp8_signature():
+    base_params = tuple(inspect.signature(fa2_dense).parameters.values())
+    w8a8_params = tuple(inspect.signature(w8a8_dense).parameters.values())
+
+    assert w8a8_params[: len(base_params)] == base_params
+    assert tuple(param.name for param in w8a8_params[len(base_params) :]) == (
+        "out",
+        "q_descale",
+        "k_descale",
+        "v_descale",
+    )
+
+
+@pytest.mark.flash_attention_forward_w8a8_fp8
+@pytest.mark.skipif(cfg.TO_CPU, reason="Unsupported in CPU mode")
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
+@pytest.mark.skipif(flag_gems.vendor_name != "nvidia", reason="NVIDIA-only path")
+@pytest.mark.skipif(
+    not _supports_hopper_fp8(), reason="Requires NVIDIA Hopper or newer"
+)
+@pytest.mark.skipif(
+    getattr(torch, "float8_e4m3fn", None) is None,
+    reason="FP8 is not available",
+)
+@pytest.mark.parametrize(
+    ["batch", "num_head", "q_seq_len", "kv_seq_len"],
+    W8A8_CONFIGS,
+)
+@pytest.mark.parametrize("head_size", [64, 128])
+@pytest.mark.parametrize("is_causal", [False, True])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test_flash_attention_forward_w8a8_fp8(
+    batch,
+    num_head,
+    q_seq_len,
+    kv_seq_len,
+    head_size,
+    is_causal,
+    dtype,
+):
+    device = torch_device_fn.current_device()
+    q, k, v = make_input(
+        batch,
+        num_head,
+        num_head,
+        q_seq_len,
+        kv_seq_len,
+        head_size,
+        dtype,
+        device,
+    )
+    q, k, v = [tensor.transpose(1, 2).contiguous() for tensor in (q, k, v)]
+    scale = 1.0 / math.sqrt(head_size)
+
+    gems_out, (ref_q, ref_k, ref_v) = gems_flash_attention_forward_w8a8_fp8(
+        q, k, v, scale, is_causal
+    )
+    torch_out, _, _, _, _ = torch_flash_fwd(
+        ref_q.transpose(1, 2),
+        ref_k.transpose(1, 2),
+        ref_v.transpose(1, 2),
+        scale,
+        is_causal,
+    )
+
+    _assert_w8a8_attention_close(gems_out, torch_out)
+
+
+@pytest.mark.flash_attn_varlen_func_w8a8_fp8
+def test_flash_attn_varlen_func_w8a8_fp8_signature():
+    assert inspect.signature(w8a8_varlen) == inspect.signature(fa2_varlen)
+
+
+@pytest.mark.flash_attn_varlen_func_w8a8_fp8
+@pytest.mark.skipif(cfg.TO_CPU, reason="Unsupported in CPU mode")
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
+@pytest.mark.skipif(flag_gems.vendor_name != "nvidia", reason="NVIDIA-only path")
+@pytest.mark.skipif(
+    not _supports_hopper_fp8(), reason="Requires NVIDIA Hopper or newer"
+)
+@pytest.mark.skipif(
+    getattr(torch, "float8_e4m3fn", None) is None,
+    reason="FP8 is not available",
+)
+def test_flash_attn_varlen_func_w8a8_fp8_uniform_lse():
+    device = torch_device_fn.current_device()
+    dtype = torch.bfloat16
+    batch, num_head, q_len, kv_len, head_size = 2, 4, 129, 257, 64
+    q, k, v = make_input(
+        batch,
+        num_head,
+        num_head,
+        q_len,
+        kv_len,
+        head_size,
+        dtype,
+        device,
+    )
+    q, k, v = [tensor.transpose(1, 2).contiguous() for tensor in (q, k, v)]
+    (
+        q_fp8,
+        k_fp8,
+        v_fp8,
+        q_descale,
+        k_descale,
+        v_descale,
+    ) = _quantize_dense_qkv_w8a8(q, k, v)
+    scale = 1.0 / math.sqrt(head_size)
+    cu_seqlens_q = torch.arange(
+        0, (batch + 1) * q_len, q_len, dtype=torch.int32, device=device
+    )
+    cu_seqlens_k = torch.arange(
+        0, (batch + 1) * kv_len, kv_len, dtype=torch.int32, device=device
+    )
+    out = torch.empty((batch * q_len, num_head, head_size), dtype=dtype, device=device)
+    gems_out, gems_lse = w8a8_varlen(
+        q_fp8.view(-1, num_head, head_size),
+        k_fp8.view(-1, num_head, head_size),
+        v_fp8.view(-1, num_head, head_size),
+        q_len,
+        cu_seqlens_q,
+        kv_len,
+        cu_seqlens_k,
+        softmax_scale=scale,
+        return_softmax_lse=True,
+        out=out,
+        q_descale=q_descale,
+        k_descale=k_descale,
+        v_descale=v_descale,
+    )
+    ref_q = _dequantize_dense_per_block_fp8(q_fp8, q_descale, dtype)
+    ref_k = _dequantize_dense_per_block_fp8(k_fp8, k_descale, dtype)
+    ref_v = _dequantize_dense_per_block_fp8(v_fp8, v_descale, dtype)
+    torch_out, torch_lse, _, _, _ = torch_flash_fwd(
+        ref_q.transpose(1, 2),
+        ref_k.transpose(1, 2),
+        ref_v.transpose(1, 2),
+        scale,
+        False,
+    )
+    _assert_w8a8_attention_close(gems_out, torch_out.view_as(gems_out))
+    expected_lse = torch_lse.permute(1, 0, 2).reshape(num_head, -1)
+    torch.testing.assert_close(gems_lse, expected_lse, rtol=1.0e-2, atol=5.0e-2)
+
+
+@pytest.mark.flash_attn_varlen_func_w8a8_fp8
+@pytest.mark.skipif(cfg.TO_CPU, reason="Unsupported in CPU mode")
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
+@pytest.mark.skipif(flag_gems.vendor_name != "nvidia", reason="NVIDIA-only path")
+@pytest.mark.skipif(
+    not _supports_hopper_fp8(), reason="Requires NVIDIA Hopper or newer"
+)
+@pytest.mark.skipif(
+    getattr(torch, "float8_e4m3fn", None) is None,
+    reason="FP8 is not available",
+)
+@pytest.mark.parametrize(
+    ["batch", "num_head", "q_seq_len", "kv_seq_len"],
+    W8A8_CONFIGS,
+)
+@pytest.mark.parametrize("head_size", [64, 128])
+@pytest.mark.parametrize("is_causal", [False, True])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test_flash_attn_varlen_func_w8a8_fp8(
+    batch,
+    num_head,
+    q_seq_len,
+    kv_seq_len,
+    head_size,
+    is_causal,
+    dtype,
+):
+    device = torch_device_fn.current_device()
+    q, k, v = make_input(
+        batch,
+        num_head,
+        num_head,
+        q_seq_len,
+        kv_seq_len,
+        head_size,
+        dtype,
+        device,
+    )
+    scale = 1.0 / math.sqrt(head_size)
+    q_lengths = [q_seq_len] * batch
+    kv_lengths = [kv_seq_len] * batch
+    q = _pack_dense_by_lengths(q.transpose(1, 2), q_lengths)
+    k = _pack_dense_by_lengths(k.transpose(1, 2), kv_lengths)
+    v = _pack_dense_by_lengths(v.transpose(1, 2), kv_lengths)
+
+    (
+        gems_out,
+        (ref_q, ref_k, ref_v),
+        cu_seqlens_q,
+        cu_seqlens_k,
+    ) = gems_flash_attn_varlen_func_w8a8_fp8(
+        q,
+        k,
+        v,
+        q_lengths,
+        kv_lengths,
+        scale,
+        is_causal,
+    )
+    torch_out = _torch_varlen_reference(
+        ref_q,
+        ref_k,
+        ref_v,
+        cu_seqlens_q,
+        cu_seqlens_k,
+        scale,
+        is_causal,
+    )
+
+    _assert_w8a8_attention_close(gems_out, torch_out)
+
+
+@pytest.mark.flash_attn_varlen_func_w8a8_fp8
+@pytest.mark.skipif(cfg.TO_CPU, reason="Unsupported in CPU mode")
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
+@pytest.mark.skipif(flag_gems.vendor_name != "nvidia", reason="NVIDIA-only path")
+@pytest.mark.skipif(
+    not _supports_hopper_fp8(), reason="Requires NVIDIA Hopper or newer"
+)
+@pytest.mark.skipif(
+    getattr(torch, "float8_e4m3fn", None) is None,
+    reason="FP8 is not available",
+)
+@pytest.mark.parametrize(
+    ["head_size", "dtype", "is_causal", "q_lengths", "kv_lengths"],
+    [
+        (64, torch.float16, False, [17, 129], [33, 257]),
+        (128, torch.bfloat16, True, [33, 257], [17, 129]),
+        (64, torch.float16, False, [128, 257], [257, 129]),
+    ],
+)
+def test_flash_attn_varlen_func_w8a8_fp8_ragged(
+    head_size, dtype, is_causal, q_lengths, kv_lengths
+):
+    device = torch_device_fn.current_device()
+    num_head = 8
+    q, k, v = make_input(
+        len(q_lengths),
+        num_head,
+        num_head,
+        max(q_lengths),
+        max(kv_lengths),
+        head_size,
+        dtype,
+        device,
+    )
+    q = _pack_dense_by_lengths(q.transpose(1, 2), q_lengths)
+    k = _pack_dense_by_lengths(k.transpose(1, 2), kv_lengths)
+    v = _pack_dense_by_lengths(v.transpose(1, 2), kv_lengths)
+    scale = 1.0 / math.sqrt(head_size)
+
+    (
+        gems_out,
+        (ref_q, ref_k, ref_v),
+        cu_seqlens_q,
+        cu_seqlens_k,
+    ) = gems_flash_attn_varlen_func_w8a8_fp8(
+        q,
+        k,
+        v,
+        q_lengths,
+        kv_lengths,
+        scale,
+        is_causal,
+    )
+    torch_out = _torch_varlen_reference(
+        ref_q,
+        ref_k,
+        ref_v,
+        cu_seqlens_q,
+        cu_seqlens_k,
+        scale,
+        is_causal,
+    )
+
+    _assert_w8a8_attention_close(gems_out, torch_out)
+
+
+@pytest.mark.flash_attn_varlen_func_w8a8_fp8
+@pytest.mark.skipif(cfg.TO_CPU, reason="Unsupported in CPU mode")
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
+@pytest.mark.skipif(flag_gems.vendor_name != "nvidia", reason="NVIDIA-only path")
+@pytest.mark.skipif(
+    not _supports_hopper_fp8(), reason="Requires NVIDIA Hopper or newer"
+)
+@pytest.mark.skipif(
+    getattr(torch, "float8_e4m3fn", None) is None,
+    reason="FP8 is not available",
+)
+@pytest.mark.parametrize("head_size", [64, 128])
+def test_flash_attn_varlen_func_w8a8_fp8_paged_cache(head_size):
+    device = torch_device_fn.current_device()
+    dtype = torch.bfloat16
+    num_head = 8
+    q_lengths = [33, 17]
+    kv_lengths = [129, 65]
+    block_size = 64
+    q, k, v = make_input(
+        len(q_lengths),
+        num_head,
+        num_head,
+        max(q_lengths),
+        max(kv_lengths),
+        head_size,
+        dtype,
+        device,
+    )
+    q = _pack_dense_by_lengths(q.transpose(1, 2), q_lengths)
+    k = _pack_dense_by_lengths(k.transpose(1, 2), kv_lengths)
+    v = _pack_dense_by_lengths(v.transpose(1, 2), kv_lengths)
+    (
+        q_fp8,
+        k_fp8,
+        v_fp8,
+        q_descale,
+        k_descale,
+        v_descale,
+    ) = _quantize_qkv_w8a8(q, k, v, q_lengths, kv_lengths)
+
+    page_table = torch.tensor([[5, 1, 7], [3, 6, 0]], dtype=torch.int32, device=device)
+    num_pages = 8
+
+    def to_paged_cache(packed):
+        cache = torch.zeros(
+            (num_pages, block_size, num_head, head_size),
+            dtype=packed.dtype,
+            device=device,
+        )
+        token_offset = 0
+        for batch_idx, seq_len in enumerate(kv_lengths):
+            for logical_page in range(triton.cdiv(seq_len, block_size)):
+                lo = token_offset + logical_page * block_size
+                page_tokens = min(block_size, seq_len - logical_page * block_size)
+                physical_page = page_table[batch_idx, logical_page].item()
+                cache[physical_page, :page_tokens] = packed[lo : lo + page_tokens]
+            token_offset += seq_len
+        return cache
+
+    k_cache = to_paged_cache(k_fp8)
+    v_cache = to_paged_cache(v_fp8)
+    cu_seqlens_q = _cu_seqlens_from_lengths(q_lengths, device)
+    seqused_k = torch.tensor(kv_lengths, dtype=torch.int32, device=device)
+    out = torch.empty_like(q)
+    scale = 1.0 / math.sqrt(head_size)
+    gems_out = w8a8_varlen(
+        q_fp8,
+        k_cache,
+        v_cache,
+        max(q_lengths),
+        cu_seqlens_q,
+        max(kv_lengths),
+        seqused_k=seqused_k,
+        softmax_scale=scale,
+        block_table=page_table,
+        out=out,
+        q_descale=q_descale,
+        k_descale=k_descale,
+        v_descale=v_descale,
+    )
+    ref_q = _dequantize_varlen_per_block_fp8(q_fp8, q_lengths, q_descale, dtype)
+    ref_k = _dequantize_varlen_per_block_fp8(k_fp8, kv_lengths, k_descale, dtype)
+    ref_v = _dequantize_varlen_per_block_fp8(v_fp8, kv_lengths, v_descale, dtype)
+    cu_seqlens_k = _cu_seqlens_from_lengths(kv_lengths, device)
+    torch_out = _torch_varlen_reference(
+        ref_q,
+        ref_k,
+        ref_v,
+        cu_seqlens_q,
+        cu_seqlens_k,
+        scale,
+        False,
+    )
+
+    _assert_w8a8_attention_close(gems_out, torch_out)
+
+
+@pytest.mark.flash_attn_varlen_func_w8a8_fp8
+@pytest.mark.skipif(cfg.TO_CPU, reason="Unsupported in CPU mode")
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
+@pytest.mark.skipif(flag_gems.vendor_name != "nvidia", reason="NVIDIA-only path")
+@pytest.mark.skipif(
+    not _supports_hopper_fp8(), reason="Requires NVIDIA Hopper or newer"
+)
+@pytest.mark.skipif(
+    getattr(torch, "float8_e4m3fn", None) is None,
+    reason="FP8 is not available",
+)
+def test_flash_attn_varlen_func_w8a8_fp8_rejects_gqa():
+    device = torch_device_fn.current_device()
+    fp8_dtype = _get_fp8_dtype()
+    q = torch.empty((128, 4, 64), dtype=fp8_dtype, device=device)
+    k = torch.empty((128, 2, 64), dtype=fp8_dtype, device=device)
+    v = torch.empty_like(k)
+    q_descale = torch.ones((1, 4, 1), dtype=torch.float32, device=device)
+    kv_descale = torch.ones((1, 2, 1), dtype=torch.float32, device=device)
+    cu_seqlens = torch.tensor([0, 128], dtype=torch.int32, device=device)
+
+    with pytest.raises(NotImplementedError, match="GQA is not supported"):
+        w8a8_varlen(
+            q,
+            k,
+            v,
+            128,
+            cu_seqlens,
+            128,
+            cu_seqlens,
+            q_descale=q_descale,
+            k_descale=kv_descale,
+            v_descale=kv_descale,
+        )
