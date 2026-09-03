@@ -904,6 +904,7 @@ _FULL_CONFIG = (
     ("normal_", normal_),
     ("not_equal.Scalar", not_equal_scalar),
     ("not_equal.Tensor", not_equal),
+    ("nuclear_norm", nuclear_norm),
     ("one_hot", one_hot),
     ("ones", ones),
     ("ones_like", ones_like),

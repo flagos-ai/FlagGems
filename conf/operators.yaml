@@ -9705,6 +9705,19 @@ ops:
   - Logic
   stages:
   - alpha: '5.4'
+- id: nuclear_norm
+  description: 'Computes the nuclear norm (sum of singular values) of a matrix.
+
+    '
+  for:
+  - nuclear_norm
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: one_hot
   description: 'Takes LongTensor with index values of shape `(*)` and returns a tensor
     of shape `(*, num_classes)`
