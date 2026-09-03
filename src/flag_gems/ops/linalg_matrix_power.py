@@ -122,12 +122,13 @@ def _metax_fix_fp64_rows(
 
 
 # ---------------------------------------------------------------------------
-# Threshold: matrices up to this size use the fused Triton kernel.
+# Threshold: matrices up to this size use the fused single-tile kernel.
 # M=64 uses BLOCK=64 with a single tl.dot call per matmul — slightly
 # slower than cuBLAS for 64×64 (speedup ~0.7x) but still far better than
-# the multi-launch fallback (~0.06x).  Above this we fall back to torch.mm.
+# the host-loop fallback (~0.06x).  Above this the dispatch goes to the
+# grid-sync kernel / host loop below, whose matmuls are flag_gems mm/bmm.
 # ---------------------------------------------------------------------------
-TRITON_THRESHOLD = 64  # max M for any Triton path (single-tile or tiled)
+TRITON_THRESHOLD = 64  # max M for the single-tile fused path
 
 
 # ===========================================================================
@@ -338,8 +339,8 @@ def _single_tile_kernel_df64(
 def _matrix_power_df64_pair(A_h, A_l, n, M, shape, scale=1.0):
     """df64 matrix power returning the full (hi, lo) fp32 pair of A^n, where
     A = (A_h, A_l) is the df64 input pair.  Only the single-tile path
-    (M <= 64) is supported.  thead recombines ``hi.double() + lo.double()``
-    into an fp64 result; the no-fp64 backends keep the hi part only."""
+    (M <= 64) is supported.  thead recombines the pair into its fp64 result
+    with _df64_recombine; the no-fp64 backends keep the hi part only."""
     if len(shape) > 2:
         A_h = A_h.reshape(-1, M, M)
         A_l = A_l.reshape(-1, M, M)
@@ -396,11 +397,101 @@ def _df64_power_scale(Xh, k):
     sigma_max(X) <= sqrt(||X||_1 * ||X||_inf) <= max(||X||_1, ||X||_inf), the
     row/column sums of the fp32 hi part bound sigma_max (the lo part is
     < 2^-24 of the hi part, inside the margin)."""
+    # Pure-python row/column abs-sums over a host copy of the (small) hi
+    # part — no torch reduction operators (see the host-function rules).
     m = Xh.shape[-1]
-    Xc = Xh.detach().reshape(-1, m, m).to(device="cpu").double()
-    a = Xc.abs()
-    r = max(a.sum(dim=-1).amax().item(), a.sum(dim=-2).amax().item(), 1e-30)
+    mats = Xh.detach().reshape(-1, m, m).to(device="cpu").tolist()
+    r = 1e-30
+    for mat in mats:
+        for i in range(m):
+            row = mat[i]
+            rs = 0.0
+            cs = 0.0
+            for j in range(m):
+                rs += abs(row[j])
+                cs += abs(mat[j][i])
+            if rs > r:
+                r = rs
+            if cs > r:
+                r = cs
     return max(0, math.ceil(math.log2(r) - 116.0 / k))
+
+
+@triton.jit
+def _split_fp64_pair_kernel(A_ptr, H_ptr, L_ptr, total, BLOCK: tl.constexpr):
+    """Split an fp64 tensor into an error-free fp32 (hi, lo) pair:
+    h = fp32(a), l = a - fp64(h).  The subtraction is exact (h is a 24-bit
+    fp64 value within 2^-24 of a), so the split matches the former host-side
+    CPU arithmetic bit for bit."""
+    pid = tl.program_id(0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < total
+    a = tl.load(A_ptr + offs, mask=mask, other=0.0).to(tl.float64)
+    h = a.to(tl.float32)
+    ll = (a - h.to(tl.float64)).to(tl.float32)
+    tl.store(H_ptr + offs, h, mask=mask)
+    tl.store(L_ptr + offs, ll, mask=mask)
+
+
+def _split_fp64_pair(A):
+    """(hi, lo) fp32 pair of fp64 tensor A (hi = fp32(A), lo carries the
+    residual) via the kernel above — the thead df64 route feeds this pair to
+    the df64 inverse."""
+    flat = A.contiguous().reshape(-1)
+    hi = torch.empty_like(flat, dtype=torch.float32)
+    lo = torch.empty_like(flat, dtype=torch.float32)
+    total = flat.numel()
+    if total:
+        _split_fp64_pair_kernel[(triton.cdiv(total, 1024),)](
+            flat, hi, lo, total, BLOCK=1024
+        )
+    return hi.reshape(A.shape), lo.reshape(A.shape)
+
+
+@triton.jit
+def _df64_recombine_kernel(
+    H_ptr, L_ptr, O_ptr, total, SCALE, STORE_F32: tl.constexpr, BLOCK: tl.constexpr
+):
+    """out = (hi + lo) * SCALE, all in fp64, storing fp64 or fp32.
+
+    Replaces the former torch add / mul / pow on the thead df64 route.
+    SCALE is an exact power of two (inf once past fp64 range), so the fp64
+    recombine and scale-back are both exact; the optional fp32 store is the
+    single final cast of the old host code."""
+    pid = tl.program_id(0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < total
+    h = tl.load(H_ptr + offs, mask=mask, other=0.0).to(tl.float64)
+    ll = tl.load(L_ptr + offs, mask=mask, other=0.0).to(tl.float64)
+    v = (h + ll) * SCALE
+    if STORE_F32:
+        v = v.to(tl.float32)
+    tl.store(O_ptr + offs, v, mask=mask)
+
+
+def _df64_recombine(hi, lo, shape, dtype, exp):
+    """fp64 recombine of the df64 pair (hi, lo) with an exact power-of-two
+    scale-back 2**exp (exp == 0 scales by 1).  Result dtype is fp64, or fp32
+    when ``dtype`` is fp32 (the old host code cast after the recombine)."""
+    hflat = hi.reshape(-1)
+    lflat = lo.reshape(-1)
+    out = torch.empty(hflat.shape, dtype=dtype, device=hi.device)
+    try:
+        scale = math.ldexp(1.0, exp)
+    except OverflowError:
+        scale = float("inf")
+    total = hflat.numel()
+    if total:
+        _df64_recombine_kernel[(triton.cdiv(total, 1024),)](
+            hflat,
+            lflat,
+            out,
+            total,
+            scale,
+            STORE_F32=dtype == torch.float32,
+            BLOCK=1024,
+        )
+    return out.reshape(shape)
 
 
 # ===========================================================================
@@ -2797,7 +2888,7 @@ def _thead_inverse_large(A):
     A3 = A.reshape(-1, m, m)
     batch = A3.shape[0]
     LU, pivots, info = _thead_lu_factor(A3)
-    if torch.any(info != 0):
+    if _info_has_error(info):
         raise RuntimeError(
             "linalg_matrix_power: the input matrix is singular (LU factorization "
             "encountered a zero pivot)"
@@ -2842,6 +2933,35 @@ def _thead_fp64_power_large(X, k, shape):
     return res.reshape(shape)
 
 
+@triton.jit
+def _info_has_error_kernel(info_ptr, flag_ptr, total, BLOCK: tl.constexpr):
+    """Add 1 to ``flag`` when any of this program's INFO entries is nonzero —
+    a custom reduction replacing ``torch.any(info != 0)`` (which would call
+    torch eq/any operators)."""
+    pid = tl.program_id(0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < total
+    v = tl.load(info_ptr + offs, mask=mask, other=0)
+    bad = tl.sum(tl.where(mask & (v != 0), 1, 0))
+    if bad > 0:
+        tl.atomic_max(flag_ptr, 1)
+
+
+def _info_has_error(info):
+    """True when any LU INFO entry is nonzero (singular / failed
+    factorization diagnostic).  The flag is written by the kernel above and
+    read back with a single scalar copy."""
+    total = info.numel()
+    if total == 0:
+        return False
+    flag = torch.zeros(1, dtype=torch.int32, device=info.device)
+    BLOCK = 1024
+    _info_has_error_kernel[(triton.cdiv(total, BLOCK),)](
+        info.reshape(-1), flag, total, BLOCK=BLOCK
+    )
+    return flag.item() != 0
+
+
 def _inverse(A: torch.Tensor, use_df64=False, A_l=None) -> torch.Tensor:
     """A⁻¹ entirely on flag_gems Triton kernels: LU factorization + solve.
 
@@ -2852,7 +2972,7 @@ def _inverse(A: torch.Tensor, use_df64=False, A_l=None) -> torch.Tensor:
     (double-single) kernels for no-fp64 backends.
     """
     LU, LU_L, pivots, info, perm = _lu_factor_ex_local(A, use_df64, A_l)
-    if info is not None and torch.any(info != 0):
+    if info is not None and _info_has_error(info):
         raise RuntimeError(
             "linalg_matrix_power: the input matrix is singular (LU factorization "
             "encountered a zero pivot)"
@@ -2977,15 +3097,12 @@ def linalg_matrix_power(
                 return out
             return hi
         if A.dtype == torch.float64:
-            # Split into an fp32 (hi, lo) pair on the CPU — IEEE fp64 keeps the
-            # split error-free — and invert the *pair* in df64: inverting the
-            # hi part alone leaves the inverse wrong by ~cond(A)*2^-24 (~1e-6
-            # on the cond-80 tests, over the fp64 rtol).
-            A_cpu = A.detach().cpu().double()
-            Ah = A_cpu.float()
-            Al = (A_cpu - Ah.double()).float()
-            Ah = Ah.to(device=A.device)
-            Al = Al.to(device=A.device)
+            # Split into an fp32 (hi, lo) pair (_split_fp64_pair keeps the
+            # split error-free: h = fp32(a), l = a - fp64(h) is exact) and
+            # invert the *pair* in df64: inverting the hi part alone leaves
+            # the inverse wrong by ~cond(A)*2^-24 (~1e-6 on the cond-80
+            # tests, over the fp64 rtol).
+            Ah, Al = _split_fp64_pair(A)
         else:
             # fp32 inputs are exact as the df64 pair's hi part (low part 0).
             Ah = A.contiguous()
@@ -3002,11 +3119,10 @@ def linalg_matrix_power(
         # range (the fp32-cast reference is +/-inf there too).
         s = _df64_power_scale(Xh, k)
         hi, lo = _matrix_power_df64_pair(Xh, Xl, k, m, shape, scale=2.0**-s)
-        res = hi.double() + lo.double()  # deterministic fp64 recombine
-        if s:
-            res = res * torch.pow(torch.tensor(2.0, dtype=torch.float64), k * s)
-        if A.dtype == torch.float32:
-            res = res.float()
+        # fp64 recombine (hi + lo) with the exact power-of-two scale-back
+        # 2**(k*s), cast to fp32 for fp32 inputs — one custom kernel instead
+        # of torch add/mul/pow (see the host-function rules).
+        res = _df64_recombine(hi, lo, shape, A.dtype, k * s)
         if out is not None:
             out.copy_(res)
             return out
