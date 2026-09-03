@@ -346,6 +346,7 @@ from flag_gems.ops.dsplit import dsplit
 from flag_gems.ops.elu import elu, elu_, elu_backward
 from flag_gems.ops.embedding import embedding, embedding_backward
 from flag_gems.ops.embedding_dense_backward import embedding_dense_backward
+from flag_gems.ops.embedding_sparse_backward import embedding_sparse_backward
 from flag_gems.ops.empty import empty
 from flag_gems.ops.empty_permuted import empty_permuted
 from flag_gems.ops.eq import eq, eq_scalar, equal
@@ -1292,6 +1293,7 @@ __all__ = [
     "embedding",
     "embedding_backward",
     "embedding_dense_backward",
+    "embedding_sparse_backward",
     "empty",
     "empty_permuted",
     "eq",
