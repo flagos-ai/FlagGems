@@ -655,6 +655,7 @@ from flag_gems.ops.nonzero import nonzero
 from flag_gems.ops.nonzero_numpy import nonzero_numpy
 from flag_gems.ops.nonzero_static import nonzero_static, nonzero_static_out
 from flag_gems.ops.norm import norm, norm_scalar, norm_scalaropt_dim
+from flag_gems.ops.norm_except_dim import norm_except_dim
 from flag_gems.ops.normal import (
     normal_,
     normal_float_tensor,
@@ -1655,6 +1656,7 @@ __all__ = [
     "nonzero_static",
     "nonzero_static_out",
     "norm",
+    "norm_except_dim",
     "norm_scalar",
     "norm_scalaropt_dim",
     "normal_",
