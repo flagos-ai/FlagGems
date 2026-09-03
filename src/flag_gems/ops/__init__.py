@@ -342,6 +342,7 @@ from flag_gems.ops.div import (
 from flag_gems.ops.divide import divide
 from flag_gems.ops.dot import dot
 from flag_gems.ops.dropout import dropout, dropout_backward
+from flag_gems.ops.dsplit import dsplit
 from flag_gems.ops.elu import elu, elu_, elu_backward
 from flag_gems.ops.embedding import embedding, embedding_backward
 from flag_gems.ops.embedding_dense_backward import embedding_dense_backward
@@ -530,6 +531,7 @@ from flag_gems.ops.linalg_matrix_sqrth import (
     linalg_matrix_sqrth,
     linalg_matrix_sqrth_out,
 )
+from flag_gems.ops.linalg_norm import linalg_norm
 from flag_gems.ops.linalg_slogdet import linalg_slogdet
 from flag_gems.ops.linalg_solve_triangular import (
     linalg_solve_triangular,
@@ -775,6 +777,7 @@ from flag_gems.ops.silu import silu, silu_, silu_backward
 from flag_gems.ops.sin import sin, sin_
 from flag_gems.ops.sinc import sinc, sinc_
 from flag_gems.ops.sinh import sinh, sinh_
+from flag_gems.ops.slice import slice
 from flag_gems.ops.slice_backward import slice_backward
 from flag_gems.ops.slice_scatter import slice_scatter
 from flag_gems.ops.smooth_l1_loss import (
@@ -905,6 +908,7 @@ from flag_gems.ops.unique import _unique2
 from flag_gems.ops.unique_consecutive import unique_consecutive
 from flag_gems.ops.unique_dim import unique_dim
 from flag_gems.ops.unsafe_chunk import unsafe_chunk
+from flag_gems.ops.unsafe_index import unsafe_index
 from flag_gems.ops.unsafe_split_with_sizes import unsafe_split_with_sizes
 from flag_gems.ops.unsqueeze import unsqueeze, unsqueeze_
 from flag_gems.ops.upsample_bicubic2d import upsample_bicubic2d
@@ -1281,6 +1285,7 @@ __all__ = [
     "dot",
     "dropout",
     "dropout_backward",
+    "dsplit",
     "efficient_attention_backward",
     "elu",
     "elu_",
@@ -1510,6 +1515,7 @@ __all__ = [
     "linalg_matrix_norm",
     "linalg_matrix_sqrth",
     "linalg_matrix_sqrth_out",
+    "linalg_norm",
     "linalg_slogdet",
     "linalg_solve_triangular",
     "linalg_solve_triangular_out",
@@ -1801,6 +1807,7 @@ __all__ = [
     "sinc_",
     "sinh",
     "sinh_",
+    "slice",
     "slice_backward",
     "slice_scatter",
     "smooth_l1_loss",
@@ -1941,6 +1948,7 @@ __all__ = [
     "unique_consecutive",
     "unique_dim",
     "unsafe_chunk",
+    "unsafe_index",
     "unsafe_split_with_sizes",
     "unsqueeze",
     "unsqueeze_",
