@@ -3249,6 +3249,18 @@ ops:
   stages:
   - stable: '2.0'
   - removed: '3.0'
+- id: ctc_loss
+  description: Connectionist Temporal Classification loss for sequence-to-sequence models.
+  for:
+    - ctc_loss.IntList
+    - ctc_loss.Tensor
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - NeuralNetwork
+  stages:
+    - alpha: '5.4'
 - id: cudnn_attention_forward
   description: 'Forward kernel for cuDNN attention, computing scaled dot-product
 
@@ -3831,6 +3843,22 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '1.0'
+- id: dsplit
+  description: |
+    Split a tensor along the third axis (depth-wise). Pure layout operation returning zero-copy views.
+  for:
+    - dsplit.int
+    - dsplit.array
+  marks:
+    - dsplit
+  labels:
+    - aten
+    - KernelGen
+    - skip_precision_check
+  kind:
+    - Tensor
+  stages:
+    - alpha: '5.4'
 - id: dswiglu
   description: 'Swish-Gated Linear Unit, a variant of GLU with the Swish activation
     function.
@@ -7407,6 +7435,20 @@ ops:
   - LinearAlg
   stages:
   - alpha: '5.4'
+- id: linalg_norm
+  description: |
+    Computes a vector or matrix norm, mirroring torch.linalg.norm dispatch.
+    The vector branch (ord=None/2/1/0/p/±inf, dim as int or 1-tuple or None)
+    reuses linalg_vector_norm; the matrix branch (ord='fro'/'nuc'/±1/±2/±inf,
+    dim as 2-tuple) reuses linalg_matrix_norm.
+  for:
+    - linalg_norm
+  labels:
+    - aten
+  kind:
+    - LinearAlg
+  stages:
+    - beta: '5.4'
 - id: linalg_slogdet
   description: 'Computes the sign and natural logarithm of the absolute value of the
     determinant of a square matrix using LU decomposition with partial pivoting.
@@ -12007,6 +12049,19 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '2.0'
+- id: slice
+  description: |
+    Slices the input tensor along the specified dimension.
+    Returns a view of the original tensor with the given dimension sliced from start to end.
+  for:
+    - slice.Tensor
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Tensor
+  stages:
+    - alpha: '5.4'
 - id: slice_backward
   description: 'An automatic differentiation (autograd) function that computes the
     gradient of a tensor slicing operation
@@ -14024,6 +14079,22 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: unsafe_index
+  description: 'Indexes `input` along each dimension with the given indices, matching
+
+    `aten._unsafe_index`. Unlike the safe `index` operator, it performs no
+
+    bounds checking and rejects `bool` / `int8` masks.
+
+    '
+  for:
+  - _unsafe_index
+  labels:
+  - aten
+  kind:
+  - Reduction
+  stages:
+  - beta: '5.4'
 - id: unsafe_masked_index
   description: Gathers elements from self at given indices where mask is True, filling
     unmasked positions with a scalar value.
