@@ -21,7 +21,6 @@ import triton
 import flag_gems
 from flag_gems.ops import flash_attention_forward_w8a8_fp8 as w8a8_dense
 from flag_gems.ops import flash_attn_varlen_func_w8a8_fp8 as w8a8_varlen
-from flag_gems.ops.attention import flash_attn_varlen_func as fa2_varlen
 
 from . import base, utils
 
@@ -588,7 +587,7 @@ def _quantize_qkv_w8a8(q, k, v, q_seq_lens, kv_seq_lens):
     )
 
 
-def baseline_flash_attn_varlen_func_w8a8_fp8(
+def torch_flash_attn_varlen_func_w8a8_fp8(
     q,
     k,
     v,
@@ -604,21 +603,21 @@ def baseline_flash_attn_varlen_func_w8a8_fp8(
     cu_seqlens_k,
     scale,
     is_causal,
-    baseline_out,
     w8a8_out,
 ):
-    return fa2_varlen(
+    return torch.ops.aten._flash_attention_forward(
         q,
         k,
         v,
-        max_seqlen_q,
         cu_seqlens_q,
-        max_seqlen_k,
         cu_seqlens_k,
-        softmax_scale=scale,
-        causal=is_causal,
-        out=baseline_out,
-    )
+        max_seqlen_q,
+        max_seqlen_k,
+        0.0,
+        is_causal,
+        False,
+        scale=scale,
+    )[0]
 
 
 def gems_flash_attn_varlen_func_w8a8_fp8(
@@ -637,7 +636,6 @@ def gems_flash_attn_varlen_func_w8a8_fp8(
     cu_seqlens_k,
     scale,
     is_causal,
-    baseline_out,
     w8a8_out,
 ):
     return w8a8_varlen(
@@ -753,8 +751,8 @@ def flash_attn_varlen_func_w8a8_fp8_input_fn(config, dtype, device):
     ) = _quantize_qkv_w8a8(q, k, v, q_seq_lens, kv_seq_lens)
     cu_seqlens_q = _make_cu_seqlens(q_seq_lens, device)
     cu_seqlens_k = _make_cu_seqlens(kv_seq_lens, device)
-    baseline_out = torch.empty_like(q)
     w8a8_out = torch.empty_like(q)
+    torch.cuda.synchronize()
 
     yield (
         q,
@@ -772,7 +770,6 @@ def flash_attn_varlen_func_w8a8_fp8_input_fn(config, dtype, device):
         cu_seqlens_k,
         scale,
         is_causal,
-        baseline_out,
         w8a8_out,
     )
 
@@ -793,7 +790,7 @@ def test_flash_attn_varlen_func_w8a8_fp8():
     bench = FlashAttnVarlenFuncW8A8FP8Benchmark(
         op_name="flash_attn_varlen_func_w8a8_fp8",
         input_fn=flash_attn_varlen_func_w8a8_fp8_input_fn,
-        torch_op=baseline_flash_attn_varlen_func_w8a8_fp8,
+        torch_op=torch_flash_attn_varlen_func_w8a8_fp8,
         dtypes=[torch.float16, torch.bfloat16],
     )
     bench.set_gems(gems_flash_attn_varlen_func_w8a8_fp8)
