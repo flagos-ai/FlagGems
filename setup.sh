@@ -80,7 +80,8 @@ fi
 
 # ── Install Python via uv ────────────────────────────────────
 printf "Installing Python ${PYTHON_VERSION} ..."
-uv python install "${PYTHON_VERSION}" --python-preference only-managed -q || fail
+UV_PYTHON_INSTALL_MIRROR="https://mirror.nju.edu.cn/github-release/astral-sh/python-build-standalone" \
+    uv python install "${PYTHON_VERSION}" --python-preference only-managed -q || fail
 ok
 
 # ── Create virtual environment ────────────────────────────────
