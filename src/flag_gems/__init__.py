@@ -646,6 +646,7 @@ _FULL_CONFIG = (
     ("hardtanh_backward", hardtanh_backward),
     ("heaviside", heaviside),
     ("heaviside_", heaviside_),
+    ("hinge_embedding_loss", hinge_embedding_loss),
     ("histc", histc),
     ("hsplit.array", hsplit),
     ("hsplit.int", hsplit),
