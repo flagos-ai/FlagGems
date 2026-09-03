@@ -12274,6 +12274,21 @@ ops:
   - NeuralNetwork
   stages:
   - beta: '5.3'
+- id: sparse_coo_tensor_with_dims_and_tensors
+  description: 'Constructs a sparse tensor in COO(rdinate) format with the given sparse
+
+    and dense dimensions for the given indices and values.
+
+    '
+  for:
+  - _sparse_coo_tensor_with_dims_and_tensors
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: sparse_mla_fwd_interface
   description: 'A generic interface for sparse MLA (Multi-head Latent Attention) for
     DeepSeek v3/v3.2.

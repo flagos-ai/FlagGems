@@ -234,6 +234,10 @@ _FULL_CONFIG = (
     ("_softmax.out", softmax_out),
     ("_softmax_backward_data", softmax_backward),
     ("_softmax_backward_data.out", softmax_backward_out),
+    (
+        "_sparse_coo_tensor_with_dims_and_tensors",
+        _sparse_coo_tensor_with_dims_and_tensors,
+    ),
     ("_sparse_semi_structured_mm", _sparse_semi_structured_mm),
     (
         "_thnn_differentiable_gru_cell_backward",
