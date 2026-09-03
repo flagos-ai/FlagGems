@@ -8318,6 +8318,17 @@ ops:
   - Tensor
   stages:
   - stable: '2.1'
+- id: matmul_backward
+  description: Computes the gradients of `matmul` with respect to its input matrices.
+  for:
+  - matmul_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: matmul_bias_activation
   description: Fused matrix multiplication with bias addition and ReLU activation.
   for:
