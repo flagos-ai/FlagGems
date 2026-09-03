@@ -166,10 +166,7 @@ jobs:
   # --- CI Report: push results to Feishu Bitable ---
   report-to-feishu:
     runs-on: ubuntu-latest
-    # Repository secrets are unavailable to pull_request workflows from forks.
-    if: >-
-      always() &&
-      github.event.pull_request.head.repo.full_name == github.repository
+    if: always()
     needs:
       - derive-changed-operators
       - check-operators-yaml
