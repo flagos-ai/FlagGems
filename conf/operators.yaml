@@ -7174,6 +7174,24 @@ ops:
   - BLAS
   stages:
   - alpha: '5.4'
+- id: linalg_cholesky_ex
+  description: 'Computes the Cholesky decomposition of a symmetric positive-definite
+    matrix,
+
+    returning the lower/upper triangular factor together with an info tensor
+
+    indicating whether the decomposition succeeded for each matrix in the batch.
+
+    '
+  for:
+  - linalg_cholesky_ex
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.4'
 - id: linalg_cross
   description: Computes the cross product of two 3-dimensional vectors along a specified
     dimension.
