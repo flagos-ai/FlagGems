@@ -736,6 +736,7 @@ _FULL_CONFIG = (
     ("linalg_lu_factor_ex", linalg_lu_factor_ex),
     ("linalg_lu_factor_ex.out", linalg_lu_factor_ex_out),
     ("linalg_matrix_norm", linalg_matrix_norm),
+    ("linalg_matrix_power", linalg_matrix_power),
     ("linalg_matrix_rank", linalg_matrix_rank_tol),
     ("linalg_matrix_rank.atol_rtol_float", linalg_matrix_rank),
     ("linalg_matrix_rank.atol_rtol_float_out", linalg_matrix_rank_out),
