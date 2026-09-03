@@ -1,0 +1,55 @@
+name: Build RPM Packages
+
+on:
+  push:
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [master]
+    paths:
+      - 'packaging/rpm/**'
+      - 'src/**'
+      - 'include/**'
+      - 'lib/**'
+      - 'cmake/**'
+      - 'conf/**'
+      - 'CMakeLists.txt'
+      - 'pyproject.toml'
+      - 'tools/setup_nvidia.sh'
+      - '.github/workflows/build-rpm.yml'
+  workflow_dispatch:
+
+jobs:
+  build-rpm:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build .rpm
+        run: bash packaging/rpm/build-flag-gems-rpm.sh
+
+      # Installing cleanly is not the same as working: a bare `Requires:` can
+      # resolve to a too-old distro version, and a subpackage missing an
+      # __init__.py is dropped by find_packages() without any build error.
+      # Both only surface at import time, long after `rpm -q` says installed.
+      - name: Smoke test installed package
+        run: |
+          docker run --rm -v "$PWD:/work" -w /work fedora:43 bash -euc '
+            dnf install -y -q python3 >/dev/null
+            dnf install -y -q ./rpm-packages/*.noarch.rpm
+            python3 packaging/verify-installed-package.py
+          '
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flag-gems-amd64-rpm-packages
+          path: rpm-packages/*.rpm
+          retention-days: 7

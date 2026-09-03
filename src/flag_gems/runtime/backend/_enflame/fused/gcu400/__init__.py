@@ -11,27 +11,3 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-.venv
-
-# VCS
-.git/
-.gitignore
-
-# Python build artifacts
-*.egg-info/
-__pycache__/
-*.py[cod]
-*.so
-build/
-dist/
-.eggs/
-
-# Packaging outputs (avoid re-bundling previous build products)
-debian-packages/
-rpm-packages/
-
-# Editor / OS
-.vscode/
-.idea/
-.DS_Store
