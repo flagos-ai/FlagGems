@@ -9819,6 +9819,19 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '2.1'
+- id: pad_packed_sequence
+  description: |
+    Pads a packed variable-length sequence back into a dense tensor, the
+    inverse of packing a padded batch.
+  for:
+  - _pad_packed_sequence
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: pairwise_distance
   description: 'Computes the pairwise distance between input vectors, or between columns
     of input matrices.

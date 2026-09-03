@@ -188,6 +188,7 @@ _FULL_CONFIG = (
     ),
     ("_nested_sum_backward", _nested_sum_backward),
     ("_nested_view_from_buffer_copy", _nested_view_from_buffer_copy),
+    ("_pad_packed_sequence", _pad_packed_sequence),
     ("_pdist_backward", _pdist_backward),
     ("_pdist_forward", _pdist_forward),
     ("_prelu_kernel", _prelu_kernel),
