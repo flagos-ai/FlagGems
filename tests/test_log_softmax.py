@@ -83,7 +83,9 @@ def test_accuracy_log_softmax_out(shape, dtype, dim):
 @pytest.mark.log_softmax_backward_data
 @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-@pytest.mark.parametrize("dim", DIM_LIST)
+@pytest.mark.parametrize(
+    "dim", [0, 1] if flag_gems.vendor_name == "cambricon" else [1, -2]
+)
 def test_log_softmax_backward_data(shape, dtype, dim):
     if flag_gems.vendor_name == "sunrise" and shape == (200, 40999, 3):
         pytest.skip("Issue #3836: Skip for big shape, '--ref cpu' too slow.")
@@ -111,7 +113,9 @@ def test_log_softmax_backward_data(shape, dtype, dim):
 @pytest.mark.log_softmax_backward_data_out
 @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-@pytest.mark.parametrize("dim", [0, 1] if flag_gems.vendor_name == "cambricon" else [1])
+@pytest.mark.parametrize(
+    "dim", [0, 1] if flag_gems.vendor_name == "cambricon" else [1, -2]
+)
 def test_accuracy_log_softmax_backward_out(shape, dtype, dim):
     if flag_gems.vendor_name == "sunrise" and shape == (200, 40999, 3):
         pytest.skip("Issue #3836: Skip for big shape, '--ref cpu' too slow.")
