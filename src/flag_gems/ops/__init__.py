@@ -531,6 +531,7 @@ from flag_gems.ops.linalg_matrix_sqrth import (
     linalg_matrix_sqrth,
     linalg_matrix_sqrth_out,
 )
+from flag_gems.ops.linalg_norm import linalg_norm
 from flag_gems.ops.linalg_slogdet import linalg_slogdet
 from flag_gems.ops.linalg_solve_triangular import (
     linalg_solve_triangular,
@@ -907,6 +908,7 @@ from flag_gems.ops.unique import _unique2
 from flag_gems.ops.unique_consecutive import unique_consecutive
 from flag_gems.ops.unique_dim import unique_dim
 from flag_gems.ops.unsafe_chunk import unsafe_chunk
+from flag_gems.ops.unsafe_index import unsafe_index
 from flag_gems.ops.unsafe_split_with_sizes import unsafe_split_with_sizes
 from flag_gems.ops.unsqueeze import unsqueeze, unsqueeze_
 from flag_gems.ops.upsample_bicubic2d import upsample_bicubic2d
@@ -1513,6 +1515,7 @@ __all__ = [
     "linalg_matrix_norm",
     "linalg_matrix_sqrth",
     "linalg_matrix_sqrth_out",
+    "linalg_norm",
     "linalg_slogdet",
     "linalg_solve_triangular",
     "linalg_solve_triangular_out",
@@ -1946,6 +1949,7 @@ __all__ = [
     "unique_consecutive",
     "unique_dim",
     "unsafe_chunk",
+    "unsafe_index",
     "unsafe_split_with_sizes",
     "unsqueeze",
     "unsqueeze_",
