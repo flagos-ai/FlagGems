@@ -8339,6 +8339,17 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: matrix_exp_backward
+  description: Triton kernel implementation for matrix_exp_backward.
+  for:
+  - matrix_exp_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: max
   description: Returns the maximum value of all elements in the `input` tensor.
   for:

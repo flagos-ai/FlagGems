@@ -584,6 +584,7 @@ from flag_gems.ops.masked_fill import masked_fill, masked_fill_
 from flag_gems.ops.masked_scatter import masked_scatter, masked_scatter_
 from flag_gems.ops.masked_scatter_backward import masked_scatter_backward
 from flag_gems.ops.masked_select import masked_select
+from flag_gems.ops.matrix_exp_backward import matrix_exp_backward
 from flag_gems.ops.max import max, max_dim
 from flag_gems.ops.max_pool2d_with_indices import (
     max_pool2d_backward,
@@ -1578,6 +1579,7 @@ __all__ = [
     "masked_scatter_",
     "masked_scatter_backward",
     "masked_select",
+    "matrix_exp_backward",
     "max",
     "max_dim",
     "max_pool2d_backward",
