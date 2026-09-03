@@ -12,4 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-__all__ = []
+from .linalg_matrix_power import linalg_matrix_power
+
+__all__ = ["linalg_matrix_power"]

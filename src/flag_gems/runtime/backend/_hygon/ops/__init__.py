@@ -59,6 +59,7 @@ from .index_select_backward import index_select_backward
 from .isin import isin
 from .lcm import lcm, lcm_
 from .linalg_matrix_norm import linalg_matrix_norm
+from .linalg_matrix_power import linalg_matrix_power
 from .log_normal_ import log_normal_
 from .masked_scatter_backward import masked_scatter_backward
 from .matmul_bf16 import matmul_bf16
@@ -111,17 +112,17 @@ from .weight_norm import (
 )
 
 __all__ = [
+    "SUPPORTED_FP8_DTYPE",
+    "ScaleDotProductAttention",
     "_unique2",
     "adaptive_max_pool3d_backward",
+    "any",
+    "any_dim",
+    "any_dims",
     "avg_pool3d_backward",
     "broadcast_tensors",
     "broadcast_to",
     "conj_physical",
-    "ScaleDotProductAttention",
-    "SUPPORTED_FP8_DTYPE",
-    "any",
-    "any_dim",
-    "any_dims",
     "cudnn_convolution",
     "diff",
     "div_mode",
@@ -151,6 +152,7 @@ __all__ = [
     "lcm",
     "lcm_",
     "linalg_matrix_norm",
+    "linalg_matrix_power",
     "log_normal_",
     "masked_scatter_backward",
     "matmul_bf16",
@@ -160,9 +162,9 @@ __all__ = [
     "max_unpool2d",
     "median_dim",
     "median_dim_values",
+    "mm",
     "mul",
     "mul_",
-    "mm",
     "nansum",
     "nansum_out",
     "nll_loss_backward",
