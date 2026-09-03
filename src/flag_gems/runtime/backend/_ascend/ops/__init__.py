@@ -41,6 +41,7 @@ from .diag_embed import diag_embed
 from .diagonal import diagonal_backward
 from .dot import dot
 from .embedding import embedding
+from .exponential import exponential
 from .exponential_ import exponential_
 from .fill import fill_scalar, fill_scalar_, fill_tensor, fill_tensor_
 from .flip import flip
@@ -155,6 +156,7 @@ __all__ = [
     "diagonal_backward",
     "dot",
     "embedding",
+    "exponential",
     "exponential_",
     "fill_scalar",
     "fill_scalar_",
