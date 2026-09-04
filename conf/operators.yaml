@@ -14458,6 +14458,17 @@ ops:
   - Reduction
   stages:
   - alpha: '5.4'
+- id: vander
+  description: Generates a Vandermonde matrix from a 1-D input tensor.
+  for:
+  - vander
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: var
   description: Calculates the variance over all dimensions.
   for:
