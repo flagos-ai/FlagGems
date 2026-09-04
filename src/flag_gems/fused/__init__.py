@@ -40,6 +40,9 @@ from flag_gems.fused.DSA.sparse_mla import triton_sparse_mla_fwd_interface
 from flag_gems.fused.FLA import (
     chunk_gated_delta_rule_fwd,
     fused_recurrent_gated_delta_rule_fwd,
+    fused_recurrent_kda,
+    fused_recurrent_kda_decode,
+    fused_recurrent_kda_fwd,
 )
 from flag_gems.fused.flash_mla import flash_mla
 from flag_gems.fused.flash_mla_with_kvcache import flash_mla_with_kvcache
@@ -152,6 +155,9 @@ __all__ = [
     "fused_inv_rope_fp8_quant",
     "fused_q_kv_rmsnorm",
     "fused_recurrent_gated_delta_rule_fwd",
+    "fused_recurrent_kda",
+    "fused_recurrent_kda_decode",
+    "fused_recurrent_kda_fwd",
     "geglu",
     "gelu_and_mul",
     "grouped_topk",
