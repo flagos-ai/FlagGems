@@ -36,6 +36,34 @@ from flag_gems.utils.shape_utils import (
 from flag_gems.utils.tensor_wrapper import StridedBuffer
 from flag_gems.utils.type_utils import ELEMENTWISE_TYPE_PROMOTION_KIND, type_promotion
 
+# --------------------- XPU 1D tile width guard ------------------------
+# ``gen_task_partition_1d`` derives the tile width from a hardcoded 12 cluster
+# grid as ``next_power_of_2(ceil(numel / 12))``, with no upper bound.  One lane
+# count on that ladder is a known TritonXPU hazard: the ``aten::flip``
+# investigation recorded a masked, reversed unit-stride gather raising
+# ``KL_XID_KERNEL_EXCEPTION`` / ``error code= 700`` 6 times out of 6 at exactly
+# ``tile_size == 32768``, while 4096 / 8192 / 16384 / 65536 / 131072 lanes were
+# clean in every mask x dtype x direction combination, and the same 32768 lane
+# kernel with the mask removed was clean 6/6.  The fault envelope is therefore
+# non-monotonic in tile width and is attributed to a mis-lowering of masked
+# memory access at that one lane count, not to out-of-range addressing (the
+# over-allocated-output sentinel measured ``oob_written == 0`` over 24
+# configurations, so the masked store is honoured).
+#
+# Because the tile width is ``next_power_of_2(ceil(numel / 12))``, every shape
+# with ``196608 < numel <= 393216`` lands on 32768.  That band is reachable by
+# every operator built on this codegen, so the guard belongs here rather than in
+# each operator.
+#
+# Scope of what was verified on this machine (XPU 1, 2026-08-31): the guard is
+# preventive.  The 32768 lane fault did NOT reproduce here -- see the archive
+# under harness/results/functional/pointwise_dynamic_bad_tile_xpu1_20260831/.
+# 16384 is used as the replacement because it is on the verified-clean list and
+# is the nearest safe width, so the cost is bounded at 2x the program count for
+# in-band shapes only.
+_BAD_TILE_SIZE_1D = 32768
+_BAD_TILE_SIZE_1D_FALLBACK = 16384
+
 
 # ------------------ Operation Description ---------------------------
 def _type_name(type) -> str:
@@ -897,6 +925,23 @@ class WrapperGenerator:
             code.writeline(
                 "tile_size = triton.next_power_of_2(triton.cdiv(num_tasks, num_tiles)) # XPU BLOCK_NUM"
             )
+            # Never emit the one lane count the backend is known to mis-lower for
+            # masked memory access; see _BAD_TILE_SIZE_1D at the top of this file.
+            # Only this width is narrowed -- an unconditional cap would cost up to
+            # 6.5x on the large shapes that legitimately want a wide tile.
+            #
+            # num_ctas is raised alongside so that tiles_per_cta stays 1 and the
+            # kernel keeps its monolithic (one_tile_per_cta) branch.  Leaving
+            # num_ctas at 12 and letting the grid-stride-loop branch cover the two
+            # tiles per cluster measures 0.51-0.99 ms against 0.0073-0.0084 ms for
+            # the monolithic form on the in-band shapes (448/511/512/576 square
+            # fp32 and rank-1 393216), i.e. a 65x-130x regression, so that variant
+            # is not usable.  The replacement grid is at most 24 programs and stays
+            # far below max_grid_size[0].
+            code.writeline(f"if tile_size == {_BAD_TILE_SIZE_1D}: # XPU BAD TILE")
+            code.writeline(f"    tile_size = {_BAD_TILE_SIZE_1D_FALLBACK}")
+            code.writeline("    num_tiles = triton.cdiv(num_tasks, tile_size)")
+            code.writeline("    num_ctas = num_tiles")
 
             # code.writeline("element_size = get_element_size(in0.dtype)")
             # code.writeline(
