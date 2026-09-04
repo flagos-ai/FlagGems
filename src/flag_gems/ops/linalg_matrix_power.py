@@ -497,9 +497,7 @@ def _grid_sync_kernel(
                     M,
                     rm,
                     rn,
-                    offs_m,
                     offs_k,
-                    offs_n,
                     mask,
                     TILE_BLOCK,
                     TILES,
@@ -515,9 +513,7 @@ def _grid_sync_kernel(
                 M,
                 rm,
                 rn,
-                offs_m,
                 offs_k,
-                offs_n,
                 mask,
                 TILE_BLOCK,
                 TILES,
@@ -552,9 +548,7 @@ def _compute_tiled_matmul(
     M,
     rm,
     rn,
-    offs_m,
     offs_k,
-    offs_n,
     mask_c,
     TILE_BLOCK: tl.constexpr,
     TILES: tl.constexpr,
@@ -922,15 +916,18 @@ def _ipiv_to_perm_kernel(pivots_ptr, perm_ptr, n, BLOCK: tl.constexpr):
     device->host copy.
     """
     pid = tl.program_id(0)
-    base = pid * n
+    # Pivots are laid out (bs, n); the perm buffer is (bs, BLOCK) — the two
+    # per-program base offsets coincide only when n is a power of two.
+    pbase = pid * n
+    obase = pid * BLOCK
     rows = tl.arange(0, BLOCK)
-    tl.store(perm_ptr + base + rows, rows, mask=rows < n)
+    tl.store(perm_ptr + obase + rows, rows, mask=rows < n)
     for i in range(n):
-        p = tl.load(pivots_ptr + base + i).to(tl.int32) - 1
-        vi = tl.load(perm_ptr + base + i)
-        vp = tl.load(perm_ptr + base + p)
-        tl.store(perm_ptr + base + i, vp)
-        tl.store(perm_ptr + base + p, vi)
+        p = tl.load(pivots_ptr + pbase + i).to(tl.int32) - 1
+        vi = tl.load(perm_ptr + obase + i)
+        vp = tl.load(perm_ptr + obase + p)
+        tl.store(perm_ptr + obase + i, vp)
+        tl.store(perm_ptr + obase + p, vi)
 
 
 def _pivots_to_perm_gpu(pivots, n):
@@ -1085,7 +1082,6 @@ def forward_substitution_kernel_df64(
     Y_ptr,
     Y_l_ptr,
     n,
-    k,
     stride_lb,
     stride_ln,
     stride_lk,
@@ -1098,7 +1094,6 @@ def forward_substitution_kernel_df64(
     stride_yb,
     stride_yn,
     stride_yk,
-    BLOCK_SIZE: tl.constexpr,
 ):
     """Forward substitution L y = b with df64 accumulation (no-fp64 backend).
     L is the (hi, lo) df64 factor pair from the LU kernel; writes the df64
@@ -1138,7 +1133,6 @@ def backward_substitution_kernel_df64(
     X_ptr,
     X_l_ptr,
     n,
-    k,
     stride_ub,
     stride_un,
     stride_uk,
@@ -1151,7 +1145,6 @@ def backward_substitution_kernel_df64(
     stride_xb,
     stride_xn,
     stride_xk,
-    BLOCK_SIZE: tl.constexpr,
 ):
     """Backward substitution U x = y with df64 accumulation (no-fp64 backend).
     U, Y are the (hi, lo) df64 pairs; writes the df64 solution (X hi/lo)."""
@@ -1272,7 +1265,6 @@ def _trsm_update_register(
     stride_a_n,
     stride_b_k,
     blk_start,
-    blk_end,
     blk_sz,
     M_REM,
     rem_s,
@@ -1283,7 +1275,6 @@ def _trsm_update_register(
     col_offs,
     col_mask,
     BM: tl.constexpr,
-    K_SLICE: tl.constexpr,
 ):
     """Update phase of _trsm_kernel: reuses the register tile x_all as the
     X panel and accumulates the update gemm in fp64 (fp32 operands kept in
@@ -1405,7 +1396,6 @@ def _trsm_kernel(
                 stride_a_n,
                 stride_b_k,
                 blk_start,
-                blk_end,
                 blk_sz,
                 M_REM,
                 rem_s,
@@ -1416,7 +1406,6 @@ def _trsm_kernel(
                 col_offs,
                 col_mask,
                 BM,
-                K_SLICE,
             )
 
 
@@ -1470,9 +1459,7 @@ def _trsm_solve_2d(A_tri, B, upper: bool, unitriangular: bool):
 # ===========================================================================
 
 
-def linalg_lu_solve(
-    LU, perm, B, left=True, adjoint=False, out=None, LU_L=None, use_df64=False
-):
+def linalg_lu_solve(LU, perm, B, out=None, LU_L=None, use_df64=False):
     n = LU.shape[-1]
     k = B.shape[-1] if B.dim() > 1 else 1
     # The substitution / TRSM kernels read the PACKED LU directly (forward uses
@@ -1523,7 +1510,6 @@ def linalg_lu_solve(
             Y,
             Y_l,
             n,
-            k,
             _batch_stride(LU),
             LU.stride(-2),
             LU.stride(-1),
@@ -1536,7 +1522,6 @@ def linalg_lu_solve(
             _batch_stride(Y),
             Y.stride(-2),
             Y.stride(-1),
-            BLOCK_SIZE=128,
         )
         backward_substitution_kernel_df64[(batch, n)](
             LU,
@@ -1546,7 +1531,6 @@ def linalg_lu_solve(
             X,
             X_l,
             n,
-            k,
             _batch_stride(LU),
             LU.stride(-2),
             LU.stride(-1),
@@ -1559,7 +1543,6 @@ def linalg_lu_solve(
             _batch_stride(X),
             X.stride(-2),
             X.stride(-1),
-            BLOCK_SIZE=128,
         )
         return X, X_l
     else:
@@ -1995,9 +1978,7 @@ def _inverse(A: torch.Tensor, use_df64=False, A_l=None) -> torch.Tensor:
     eye = torch.eye(A.shape[-1], dtype=A.dtype, device=A.device)
     if A.ndim > 2:
         eye = eye.expand(A.shape[:-2] + (A.shape[-1], A.shape[-1])).contiguous()
-    res = linalg_lu_solve(
-        LU, perm, eye, left=True, adjoint=False, LU_L=LU_L, use_df64=use_df64
-    )
+    res = linalg_lu_solve(LU, perm, eye, LU_L=LU_L, use_df64=use_df64)
     if use_df64:
         return res  # (X, X_l) df64 pair
     # f32 inputs compute the inverse in f32 (fp32 storage + fp64 accumulation in
@@ -2096,8 +2077,16 @@ def linalg_matrix_power(
             A = A.double()
 
     # ---- n == 2, 3: fast paths for large M ----
+    # mm/bmm kernels take at most 3-D inputs, so flatten deeper batch dims
+    # (e.g. (b1, b2, M, M)) and reshape the result back to the input shape.
+    if A.dim() > 3:
+        fast_A = A.reshape(-1, m, m)
+    else:
+        fast_A = A
     if n == 2 and m > TRITON_THRESHOLD:
-        r = _matmul(A, A)
+        r = _matmul(fast_A, fast_A)
+        if A.dim() > 3:
+            r = r.reshape(shape)
         if upcast:
             r = r.float()
         if out is not None:
@@ -2105,7 +2094,9 @@ def linalg_matrix_power(
             return out
         return r
     if n == 3 and m > TRITON_THRESHOLD:
-        r = _matmul(_matmul(A, A), A)
+        r = _matmul(_matmul(fast_A, fast_A), fast_A)
+        if A.dim() > 3:
+            r = r.reshape(shape)
         if upcast:
             r = r.float()
         if out is not None:

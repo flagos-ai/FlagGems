@@ -801,7 +801,7 @@ def linalg_matrix_power(A, n, *, out=None):
     """thead dispatch: negative powers via df64 / 16-tile fp64 routes (see
     the module docstring); positive powers follow the generic NV dispatch
     minus the grid-sync Tier 3."""
-    _generic.logger.debug("GEMS LINALG_MATRIX_POWER (thead)")
+    _generic.logger.debug("GEMS_THEAD LINALG_MATRIX_POWER (thead)")
 
     # ---- validation (identical to the generic entry) ----
     shape = A.shape
