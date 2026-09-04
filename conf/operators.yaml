@@ -3018,6 +3018,20 @@ ops:
   - Convolution
   stages:
   - alpha: '5.3'
+- id: conv_transpose3d
+  description: 'Applies a 3D transposed convolution operator over an input volume
+    composed of several input planes.
+
+    '
+  for:
+  - conv_transpose3d
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: convert_weight_to_int4pack
   description: Converts a weight tensor to int4 packed format.
   for:
