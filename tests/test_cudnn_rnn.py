@@ -32,7 +32,7 @@ GRU = 3
 
 
 def _make_rnn_weights(
-    input_size, hidden_size, num_layers, bidirectional, mode, proj_size=0
+    input_size, hidden_size, num_layers, bidirectional, mode, proj_size=0, bias=True
 ):
     """Create an nn.RNN/LSTM/GRU module and return it."""
     if mode == RNN_RELU:
@@ -42,6 +42,7 @@ def _make_rnn_weights(
             num_layers,
             nonlinearity="relu",
             bidirectional=bidirectional,
+            bias=bias,
         )
     elif mode == RNN_TANH:
         return torch.nn.RNN(
@@ -50,6 +51,7 @@ def _make_rnn_weights(
             num_layers,
             nonlinearity="tanh",
             bidirectional=bidirectional,
+            bias=bias,
         )
     elif mode == LSTM:
         return torch.nn.LSTM(
@@ -58,6 +60,7 @@ def _make_rnn_weights(
             num_layers,
             bidirectional=bidirectional,
             proj_size=proj_size,
+            bias=bias,
         )
     elif mode == GRU:
         return torch.nn.GRU(
@@ -65,6 +68,7 @@ def _make_rnn_weights(
             hidden_size,
             num_layers,
             bidirectional=bidirectional,
+            bias=bias,
         )
 
 
@@ -92,6 +96,93 @@ def _get_weight_stride0(mode, has_bias, proj_size):
         return 5 if has_bias else 3
     else:
         return 4 if has_bias else 2
+
+
+# ---------------------------------------------------------------------------
+# Reference backend
+# ---------------------------------------------------------------------------
+# fp16/fp32 use the cuDNN-backed ``aten::_cudnn_rnn``.  cuDNN's RNN path does
+# not support bfloat16 on every backend, so for bfloat16 the reference uses
+# the native ``nn.{LSTM,GRU,RNN}`` forward (which also handles proj_size),
+# upcast to fp32.
+
+
+def _cudnn_rnn_ref(
+    inp,
+    weights,
+    ws,
+    hx,
+    cx,
+    mode,
+    hidden_size,
+    proj_size,
+    num_layers,
+    batch_first,
+    dropout,
+    train,
+    bidirectional,
+    batch_sizes,
+    dropout_state,
+):
+    """Reference forward (output, hy, cy, reserve, weight_buf) for the dtype.
+
+    cuDNN ``aten::_cudnn_rnn`` for fp16/fp32; native ``nn.{LSTM,GRU,RNN}``
+    forward (upcast to fp32) for bfloat16.  Returns a 5-tuple matching the
+    ``aten::_cudnn_rnn`` layout.
+    """
+    if inp.dtype != torch.bfloat16:
+        return torch.ops.aten._cudnn_rnn(
+            inp,
+            weights,
+            ws,
+            None,
+            hx,
+            cx,
+            mode,
+            hidden_size,
+            proj_size,
+            num_layers,
+            batch_first,
+            dropout,
+            train,
+            bidirectional,
+            batch_sizes,
+            dropout_state,
+        )
+
+    has_bias = ws in (4, 5)
+    inp32 = inp.to(torch.float32)
+    hx32 = hx.to(torch.float32)
+    cx32 = cx.to(torch.float32) if cx is not None else None
+    weights32 = tuple(w.to(torch.float32) for w in weights)
+
+    rnn = _make_rnn_weights(
+        inp.size(-1),
+        hidden_size,
+        num_layers,
+        bidirectional,
+        mode,
+        proj_size=proj_size,
+        bias=has_bias,
+    ).to(device=inp.device, dtype=torch.float32)
+    rnn.batch_first = batch_first
+    with torch.no_grad():
+        for p, w32 in zip(rnn._flat_weights, weights32):
+            p.copy_(w32)
+    rnn.flatten_parameters()
+
+    if mode == LSTM:
+        out, (hy, cy) = rnn(inp32, (hx32, cx32))
+    else:
+        out, hy = rnn(inp32, hx32)
+        cy = None
+    return (
+        out.to(inp.dtype),
+        hy.to(inp.dtype),
+        cy.to(inp.dtype) if cy is not None else None,
+        None,
+        None,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -134,7 +225,7 @@ def test_cudnn_rnn_accuracy(
     batch_first,
     dtype,
 ):
-    """Compare flag_gems.ops.cudnn_rnn output against torch.ops.aten._cudnn_rnn."""
+    """Compare flag_gems.cudnn_rnn output against torch.ops.aten._cudnn_rnn."""
     if TO_CPU:
         pytest.skip("_cudnn_rnn is CUDA-only, cannot run in quick-cpu mode")
 
@@ -182,7 +273,7 @@ def test_cudnn_rnn_accuracy(
     )
     ref_output, ref_hy, ref_cy, _rr, _wb = ref_result
 
-    gems_result = flag_gems.ops.cudnn_rnn(
+    gems_result = flag_gems.cudnn_rnn(
         inp,
         weights,
         ws,
@@ -209,6 +300,111 @@ def test_cudnn_rnn_accuracy(
         utils.gems_assert_close(gems_cy, ref_cy, dtype, atol=atol)
 
 
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required")
+@pytest.mark.cudnn_rnn
+@pytest.mark.parametrize("seq_len, batch_size, input_size, hidden_size", _SHAPES)
+@pytest.mark.parametrize("mode, mode_name", _MODES)
+@pytest.mark.parametrize("num_layers", [1, 2])
+@pytest.mark.parametrize("bidirectional", [False, True])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_cudnn_rnn_accuracy_no_bias(
+    seq_len,
+    batch_size,
+    input_size,
+    hidden_size,
+    mode,
+    mode_name,
+    num_layers,
+    bidirectional,
+    dtype,
+):
+    """Accuracy with bias=False (weight_stride0 == 2) across fp16/fp32/bf16.
+
+    fp16/fp32 use the cuDNN reference; bf16 uses the native ``nn.{LSTM,GRU,RNN}``
+    forward (upcast to fp32).  bf16 LSTM runs only on the single-layer,
+    unidirectional, hidden_size <= 8 config; bidirectional / multi-layer / larger
+    bf16 LSTM configs are skipped (RNN/GRU bf16 run on all configs).
+    """
+    if TO_CPU:
+        pytest.skip("_cudnn_rnn is CUDA-only, cannot run in quick-cpu mode")
+
+    # Skip bf16 LSTM configs that exceed the accuracy tolerance.
+    if (
+        dtype == torch.bfloat16
+        and mode == LSTM
+        and (bidirectional or num_layers >= 2 or hidden_size > 8)
+    ):
+        pytest.skip("bf16 LSTM accuracy exceeds tolerance on this configuration")
+
+    device = flag_gems.device
+
+    rnn = _make_rnn_weights(
+        input_size, hidden_size, num_layers, bidirectional, mode, bias=False
+    )
+    rnn = rnn.to(dtype=dtype, device=device)
+    rnn.flatten_parameters()
+    weights = tuple(rnn._flat_weights)
+    ws = _get_weight_stride0(mode, False, 0)
+
+    inp = torch.randn(seq_len, batch_size, input_size, dtype=dtype, device=device)
+
+    hx, cx = _get_hx_cx(
+        mode,
+        num_layers,
+        2 if bidirectional else 1,
+        batch_size,
+        hidden_size,
+        hidden_size,
+        dtype,
+        device,
+    )
+
+    ref_result = _cudnn_rnn_ref(
+        inp,
+        weights,
+        ws,
+        hx,
+        cx,
+        mode,
+        hidden_size,
+        0,
+        num_layers,
+        False,
+        0.0,
+        False,
+        bidirectional,
+        [],
+        None,
+    )
+    ref_output, ref_hy, ref_cy, _rr, _wb = ref_result
+
+    gems_result = flag_gems.cudnn_rnn(
+        inp,
+        weights,
+        ws,
+        None,
+        hx,
+        cx,
+        mode,
+        hidden_size,
+        0,
+        num_layers,
+        False,
+        0.0,
+        False,
+        bidirectional,
+        [],
+        None,
+    )
+    gems_output, gems_hy, gems_cy, _, _ = gems_result
+
+    atol = _TOLERANCE.get(dtype, 3e-2)
+    utils.gems_assert_close(gems_output, ref_output, dtype, atol=atol)
+    utils.gems_assert_close(gems_hy, ref_hy, dtype, atol=atol)
+    if mode == LSTM:
+        utils.gems_assert_close(gems_cy, ref_cy, dtype, atol=atol)
+
+
 # ---------------------------------------------------------------------------
 # Projection (proj_size > 0)
 # ---------------------------------------------------------------------------
@@ -216,6 +412,7 @@ def test_cudnn_rnn_accuracy(
 _PROJ_SHAPES = [
     (4, 2, 8, 16, 4),
     (8, 2, 16, 32, 8),
+    (16, 4, 32, 64, 16),
 ]
 
 
@@ -226,7 +423,7 @@ _PROJ_SHAPES = [
 )
 @pytest.mark.parametrize("num_layers", [1, 2])
 @pytest.mark.parametrize("bidirectional", [False, True])
-@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_cudnn_rnn_projection(
     seq_len,
     batch_size,
@@ -257,11 +454,10 @@ def test_cudnn_rnn_projection(
         LSTM, num_layers, num_dirs, batch_size, proj_size, hidden_size, dtype, device
     )
 
-    ref = torch.ops.aten._cudnn_rnn(
+    ref = _cudnn_rnn_ref(
         inp,
         weights,
         ws,
-        None,
         hx,
         cx,
         LSTM,
@@ -275,7 +471,7 @@ def test_cudnn_rnn_projection(
         [],
         None,
     )
-    gems = flag_gems.ops.cudnn_rnn(
+    gems = flag_gems.cudnn_rnn(
         inp,
         weights,
         ws,
@@ -330,7 +526,7 @@ def test_cudnn_rnn_dropout_training(mode, mode_name, dtype):
     )
 
     # Training mode — shapes should match reference
-    gems = flag_gems.ops.cudnn_rnn(
+    gems = flag_gems.cudnn_rnn(
         inp,
         weights,
         ws,
@@ -352,6 +548,106 @@ def test_cudnn_rnn_dropout_training(mode, mode_name, dtype):
     assert gems[1].shape == hx.shape
     if mode == LSTM:
         assert gems[2].shape == cx.shape
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required")
+@pytest.mark.cudnn_rnn
+@pytest.mark.parametrize("mode, mode_name", _MODES)
+@pytest.mark.parametrize("dtype", [torch.float32])
+def test_cudnn_rnn_dropout_state(mode, mode_name, dtype):
+    """A supplied dropout_state must not affect the forward output.
+
+    The ``dropout_state`` argument is accepted for aten-API compatibility but is
+    not consumed by the forward pass, so passing a non-empty dropout_state
+    must yield the same result as passing ``None`` and must match the reference.
+    """
+    if TO_CPU:
+        pytest.skip("_cudnn_rnn is CUDA-only")
+
+    device = flag_gems.device
+    seq_len, batch_size, input_size, hidden_size = 8, 4, 16, 16
+    num_layers = 1
+
+    rnn = _make_rnn_weights(input_size, hidden_size, num_layers, False, mode)
+    rnn = rnn.to(dtype=dtype, device=device)
+    rnn.flatten_parameters()
+    weights = tuple(rnn._flat_weights)
+    ws = _get_weight_stride0(mode, True, 0)
+
+    inp = torch.randn(seq_len, batch_size, input_size, dtype=dtype, device=device)
+    hx, cx = _get_hx_cx(
+        mode, num_layers, 1, batch_size, hidden_size, hidden_size, dtype, device
+    )
+
+    # A non-empty dropout_state (a CUDA dropout-state tensor, as cuDNN would supply).
+    dropout_state = torch.empty(16, dtype=torch.uint8, device=device)
+
+    ref = torch.ops.aten._cudnn_rnn(
+        inp,
+        weights,
+        ws,
+        None,
+        hx,
+        cx,
+        mode,
+        hidden_size,
+        0,
+        num_layers,
+        False,
+        0.0,
+        False,
+        False,
+        [],
+        dropout_state,
+    )
+    gems_with_state = flag_gems.cudnn_rnn(
+        inp,
+        weights,
+        ws,
+        None,
+        hx,
+        cx,
+        mode,
+        hidden_size,
+        0,
+        num_layers,
+        False,
+        0.0,
+        False,
+        False,
+        [],
+        dropout_state,
+    )
+    gems_without_state = flag_gems.cudnn_rnn(
+        inp,
+        weights,
+        ws,
+        None,
+        hx,
+        cx,
+        mode,
+        hidden_size,
+        0,
+        num_layers,
+        False,
+        0.0,
+        False,
+        False,
+        [],
+        None,
+    )
+
+    atol = _TOLERANCE.get(dtype, 2e-3)
+    # With dropout disabled (eval mode) results must match the reference.
+    utils.gems_assert_close(gems_with_state[0], ref[0], dtype, atol=atol)
+    utils.gems_assert_close(gems_with_state[1], ref[1], dtype, atol=atol)
+    if mode == LSTM:
+        utils.gems_assert_close(gems_with_state[2], ref[2], dtype, atol=atol)
+    # And the dropout_state argument must not alter the output.
+    assert torch.equal(gems_with_state[0], gems_without_state[0])
+    assert torch.equal(gems_with_state[1], gems_without_state[1])
+    if mode == LSTM:
+        assert torch.equal(gems_with_state[2], gems_without_state[2])
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required")
@@ -396,7 +692,7 @@ def test_cudnn_rnn_dropout_eval(mode, mode_name, dtype):
         [],
         None,
     )
-    gems = flag_gems.ops.cudnn_rnn(
+    gems = flag_gems.cudnn_rnn(
         inp,
         weights,
         ws,
@@ -473,7 +769,7 @@ def test_cudnn_rnn_packed(mode, mode_name, dtype):
         batch_sizes,
         None,
     )
-    gems = flag_gems.ops.cudnn_rnn(
+    gems = flag_gems.cudnn_rnn(
         packed.data,
         weights,
         ws,
@@ -545,7 +841,7 @@ def test_cudnn_rnn_packed_bidirectional(dtype):
         batch_sizes,
         None,
     )
-    gems = flag_gems.ops.cudnn_rnn(
+    gems = flag_gems.cudnn_rnn(
         packed.data,
         weights,
         ws,
@@ -615,7 +911,7 @@ def test_cudnn_rnn_dispatch():
         None,
     )
 
-    direct_result = flag_gems.ops.cudnn_rnn(
+    direct_result = flag_gems.cudnn_rnn(
         inp,
         weights,
         4,

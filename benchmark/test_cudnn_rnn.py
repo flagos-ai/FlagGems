@@ -132,82 +132,6 @@ def cudnn_rnn_input_fn(config, dtype, device):
     )
 
 
-def _cudnn_rnn_aten(
-    input,
-    weight,
-    weight_stride0,
-    weight_buf,
-    hx,
-    cx,
-    mode,
-    hidden_size,
-    proj_size,
-    num_layers,
-    batch_first,
-    dropout,
-    train,
-    bidirectional,
-    batch_sizes,
-    dropout_state,
-):
-    return torch.ops.aten._cudnn_rnn(
-        input,
-        weight,
-        weight_stride0,
-        weight_buf,
-        hx,
-        cx,
-        mode,
-        hidden_size,
-        proj_size,
-        num_layers,
-        batch_first,
-        dropout,
-        train,
-        bidirectional,
-        batch_sizes,
-        dropout_state,
-    )
-
-
-def _cudnn_rnn_gems(
-    input,
-    weight,
-    weight_stride0,
-    weight_buf,
-    hx,
-    cx,
-    mode,
-    hidden_size,
-    proj_size,
-    num_layers,
-    batch_first,
-    dropout,
-    train,
-    bidirectional,
-    batch_sizes,
-    dropout_state,
-):
-    return flag_gems.ops.cudnn_rnn(
-        input,
-        weight,
-        weight_stride0,
-        weight_buf,
-        hx,
-        cx,
-        mode,
-        hidden_size,
-        proj_size,
-        num_layers,
-        batch_first,
-        dropout,
-        train,
-        bidirectional,
-        batch_sizes,
-        dropout_state,
-    )
-
-
 class CudnnRnnBenchmark(base.GenericBenchmark):
     """Benchmark for aten::_cudnn_rnn."""
 
@@ -256,8 +180,8 @@ def test_cudnn_rnn_benchmark():
     bench = CudnnRnnBenchmark(
         input_fn=cudnn_rnn_input_fn,
         op_name="cudnn_rnn",
-        torch_op=_cudnn_rnn_aten,
-        gems_op=_cudnn_rnn_gems,
+        torch_op=torch.ops.aten._cudnn_rnn,
+        gems_op=flag_gems.cudnn_rnn,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
