@@ -13746,6 +13746,20 @@ ops:
   - MoE
   stages:
   - beta: '5.3'
+- id: topk_w8a16_fp8
+  description: 'Returns the k largest (or smallest) elements of a group-wise FP8 E5M2
+    tensor along the last dimension, dequantizing with per-group scales.
+
+    '
+  for:
+  - None
+  labels:
+  - NoCPU
+  - Quantization
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: trace
   description: Returns the sum of the elements of the diagonal of the input 2-D matrix.
   for:
