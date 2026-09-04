@@ -1284,6 +1284,11 @@ def _patch_missing_symbols(module, names):
     for name in names:
         if hasattr(module, name):
             continue
+        # Some CPU libdevice implementations expose rint but omit nearbyint.
+        # FlagGems only needs their shared round-to-nearest-even value semantics.
+        if name == "nearbyint" and hasattr(module, "rint"):
+            setattr(module, name, module.rint)
+            continue
         # Prefer the pure-triton fallback over borrowing from another backend's
         # libdevice.  This loop only runs for symbols the vendor's own libdevice
         # lacks, so a candidate match necessarily comes from a *foreign* module
@@ -1332,6 +1337,7 @@ tl_extra_shim = _patch_missing_symbols(
         "lgamma",
         "log",
         "log2",
+        "nearbyint",
         "nextafter",
         "normcdfinv",
         "pow",
