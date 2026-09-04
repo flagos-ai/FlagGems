@@ -9296,6 +9296,20 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: nested_view_from_jagged_copy
+  description: |
+    Constructs a jagged-layout nested tensor from a flat buffer split into
+    batch elements according to offsets/lengths metadata, owning a fresh copy
+    of the buffer.
+  for:
+    - _nested_view_from_jagged_copy
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Tensor
+  stages:
+    - alpha: '5.4'
 - id: new_full
   description: 'Returns a Tensor of size `size` filled with `fill_value`.
 
