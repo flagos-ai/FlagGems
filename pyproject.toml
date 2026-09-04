@@ -77,6 +77,9 @@ dependencies = [
 ascend-cann850 = [
     "torch==2.9.0+cpu",
     "torch-npu==2.9.0",
+    "decorator==5.1.1",
+    "attrs==24.2.0",
+    "psutil==6.0.0",
 ]
 
 ascend-cann900 = [
@@ -273,7 +276,7 @@ flaggems-flagtune-compare = "flag_gems.flagtune.cli.compare:main"
 
 [tool.setuptools_scm]
 write_to = "src/flag_gems/_version.py"
-version_scheme = "no-guess-dev"
+version_scheme = "only-version"
 
 [tool.uv]
 

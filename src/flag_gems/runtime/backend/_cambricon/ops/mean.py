@@ -93,7 +93,7 @@ def mean_dim_kernel(X, Mean, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr)
         for off in range(0, N, BLOCK_N):
             cols = off + tl.arange(0, BLOCK_N)[None, :]
             col_mask = cols < N
-            mask = row_mask and col_mask
+            mask = row_mask & col_mask
 
             a = tl.load(X_ptr + cols, mask, other=0.0).to(tl.float32)
             _mean += a
