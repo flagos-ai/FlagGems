@@ -9907,6 +9907,17 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: pinverse
+  description: Computes the pseudoinverse of a matrix.
+  for:
+  - pinverse
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.4'
 - id: pixel_shuffle
   description: Rearranges elements in a tensor to a new tensor of different shape.
   for:
