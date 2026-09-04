@@ -3318,7 +3318,7 @@ ops:
   kind:
   - NeuralNetwork
   stages:
-  - beta: '5.5'
+  - alpha: '5.4'
 - id: cudnn_rnn_backward
   description: 'Backward pass of a single-layer unidirectional cuDNN LSTM. Reimplements
     the
