@@ -77,13 +77,14 @@ def _maybe_move_to_cpu(res, ref):
     return res, ref
 
 
-def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4, rtol=None):
     if dtype is None:
         dtype = torch.float32
     assert res.dtype == dtype
     ref = ref.to(dtype)
     res, ref = _maybe_move_to_cpu(res, ref)
-    rtol = RESOLUTION[dtype]
+    if rtol is None:
+        rtol = RESOLUTION[dtype]
     torch.testing.assert_close(
         res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
     )
