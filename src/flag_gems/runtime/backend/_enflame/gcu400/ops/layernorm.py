@@ -272,7 +272,7 @@ def layer_norm_backward_kernel(
     for off in range(0, N, BLOCK_COL_SIZE):
         cols = off + tl.arange(0, BLOCK_COL_SIZE)
         col_mask = cols[None, :] < N
-        mask = row_mask and col_mask
+        mask = row_mask & col_mask
         dy = tl.load(dY + cols[None, :], mask).to(tl.float32)
         x = tl.load(X + cols[None, :], mask).to(tl.float32)
         x = tl.where(mask, x - mean, 0.0)
@@ -291,7 +291,7 @@ def layer_norm_backward_kernel(
     for off in range(0, N, BLOCK_COL_SIZE):
         cols = off + tl.arange(0, BLOCK_COL_SIZE)
         col_mask = cols[None, :] < N
-        mask = row_mask and col_mask
+        mask = row_mask & col_mask
         dy = tl.load(dY + cols[None, :], mask).to(tl.float32)
         x = tl.load(X + cols[None, :], mask).to(tl.float32)
         if W is None:
@@ -332,7 +332,7 @@ def weight_bias_backward_kernel(
     for off in range(0, M, BLOCK_ROW_SIZE):
         rows = off + tl.arange(0, BLOCK_ROW_SIZE)[:, None]
         row_mask = rows < M
-        mask = row_mask and col_mask[None, :]
+        mask = row_mask & col_mask[None, :]
         dy = tl.load(dY + rows * N, mask).to(tl.float32)
         x = tl.load(X + rows * N, mask).to(tl.float32)
         mean = tl.load(Mean + rows, mask=rows < M).to(tl.float32)
@@ -349,7 +349,7 @@ def weight_bias_backward_kernel(
 
 
 def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
-    logger.debug("GEMS LAYERNORM FORWARD")
+    logger.debug("GEMS_ENFLAME LAYERNORM FORWARD")
 
     MAX_GRID_X = 65535
 
@@ -427,7 +427,7 @@ def layer_norm_backward(
     bias=None,
     output_mask=None,
 ):
-    logger.debug("GEMS LAYERNORM BACKWARD")
+    logger.debug("GEMS_ENFLAME LAYERNORM BACKWARD")
 
     grad_out = grad_out.contiguous()
     input = input.contiguous()

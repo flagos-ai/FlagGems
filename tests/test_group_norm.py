@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import math
+
 import pytest
 import torch
 
@@ -24,6 +26,58 @@ if cfg.QUICK_MODE:
     FLOAT_DTYPES = [torch.float32]
 else:
     FLOAT_DTYPES = utils.FLOAT_DTYPES
+
+
+@pytest.mark.native_group_norm
+# Cover one-, two-, and three-dimensional spatial normalization inputs.
+@pytest.mark.parametrize(
+    "shape, num_groups",
+    [((2, 4, 8), 2), ((2, 4, 4, 4), 2), ((2, 4, 2, 2, 2), 2)],
+)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("affine", [True, False])
+def test_native_group_norm(shape, num_groups, dtype, affine, caplog):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    channel_count = shape[1]
+    weight = (
+        torch.randn(channel_count, dtype=dtype, device=flag_gems.device)
+        if affine
+        else None
+    )
+    bias = torch.randn_like(weight) if affine else None
+    batch_count = shape[0]
+    spatial_size = math.prod(shape[2:])
+    eps = 1e-5
+
+    ref_result = torch.ops.aten.native_group_norm.default(
+        utils.to_reference(inp, True),
+        utils.to_reference(weight, True),
+        utils.to_reference(bias, True),
+        batch_count,
+        channel_count,
+        spatial_size,
+        num_groups,
+        eps,
+    )
+
+    with caplog.at_level("DEBUG", logger="flag_gems.ops.native_group_norm"):
+        with flag_gems.use_gems():
+            result = torch.ops.aten.native_group_norm.default(
+                inp,
+                weight,
+                bias,
+                batch_count,
+                channel_count,
+                spatial_size,
+                num_groups,
+                eps,
+            )
+
+    assert "GEMS NATIVE_GROUP_NORM" in caplog.text
+    assert len(result) == len(ref_result) == 3
+    reduce_dim = (channel_count // num_groups) * spatial_size
+    for actual, expected in zip(result, ref_result):
+        utils.gems_assert_close(actual, expected, dtype, reduce_dim=reduce_dim)
 
 
 @pytest.mark.group_norm

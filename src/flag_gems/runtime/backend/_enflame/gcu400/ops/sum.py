@@ -38,7 +38,7 @@ def sum_global_kernel_1(
     BLOCK_SIZE: tl.constexpr,
     num_stages: tl.constexpr = 1,
 ):
-    if tl.constexpr(X.dtype.element_ty == tl.float16) or tl.constexpr(
+    if tl.constexpr(X.dtype.element_ty == tl.float16) | tl.constexpr(
         X.dtype.element_ty == tl.bfloat16
     ):
         cdtype = tl.float32
@@ -59,7 +59,7 @@ def sum_global_kernel_1(
 @libentry()
 @triton.jit(do_not_specialize=["M"])
 def sum_single_kernel(X, Out, M, BLOCK_SIZE: tl.constexpr):
-    if tl.constexpr(X.dtype.element_ty == tl.float16) or tl.constexpr(
+    if tl.constexpr(X.dtype.element_ty == tl.float16) | tl.constexpr(
         X.dtype.element_ty == tl.bfloat16
     ):
         cdtype = tl.float32
@@ -76,7 +76,7 @@ def sum_single_kernel(X, Out, M, BLOCK_SIZE: tl.constexpr):
 @libentry()
 @triton.jit(do_not_specialize=["MID_SIZE"])
 def sum_global_kernel_2(Mid, Out, MID_SIZE, BLOCK_MID: tl.constexpr):
-    if tl.constexpr(Mid.dtype.element_ty == tl.float16) or tl.constexpr(
+    if tl.constexpr(Mid.dtype.element_ty == tl.float16) | tl.constexpr(
         Mid.dtype.element_ty == tl.bfloat16
     ):
         cdtype = tl.float32
@@ -101,7 +101,7 @@ def sum_dim_kernel(
     BLOCK_N: tl.constexpr,
     num_stages: tl.constexpr = 1,
 ):
-    if tl.constexpr(X.dtype.element_ty == tl.float16) or tl.constexpr(
+    if tl.constexpr(X.dtype.element_ty == tl.float16) | tl.constexpr(
         X.dtype.element_ty == tl.bfloat16
     ):
         cdtype = tl.float32

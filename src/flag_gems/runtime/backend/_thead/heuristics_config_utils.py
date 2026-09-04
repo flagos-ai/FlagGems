@@ -262,6 +262,11 @@ def upsample_nearest2d_SAME_W(args):
     return args["OW"] == args["IW"]
 
 
+def upsample_nearest2d_USE_INT32_IDX(args):
+    """Use INT32 indexing when the total element count fits in INT32"""
+    return args["N"] * args["C"] * args["OH"] * args["OW"] <= (2**31 - 1)
+
+
 def mm_heur_even_k(args):
     """Check if K dimension is even for mm operation"""
     return args["K"] % (args["BLOCK_K"] * args["SPLIT_K"]) == 0
@@ -344,6 +349,7 @@ HEURISTICS_CONFIGS = {
     "upsample_nearest2d": {
         "SAME_H": upsample_nearest2d_SAME_H,
         "SAME_W": upsample_nearest2d_SAME_W,
+        "USE_INT32_IDX": upsample_nearest2d_USE_INT32_IDX,
     },
     "mm": {
         "EVEN_K": mm_heur_even_k,
