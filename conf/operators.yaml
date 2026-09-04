@@ -13343,6 +13343,17 @@ ops:
   stages:
   - stable: '3.0'
   cpp: '4.0'
+- id: sum_to_size
+  description: Triton kernel implementation for sum_to_size.
+  for:
+  - sum_to_size
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: swiglu
   description: Swish-Gated Linear Unit, a variant of GLU with the Swish activation
     function.
