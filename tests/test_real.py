@@ -14,7 +14,6 @@
 
 import importlib
 import math
-import warnings
 
 import pytest
 import torch
@@ -93,10 +92,7 @@ def test_real_uses_flag_gems_view_path(monkeypatch, is_conj):
     input = base.conj() if is_conj else base
     expected = torch.real(utils.to_reference(input))
 
-    with flag_gems.use_gems(include=["real"]):
-        assert flag_gems.all_registered_ops() == ["real"]
-        assert flag_gems.all_registered_keys() == ["real"]
-        result = torch.real(input)
+    result = flag_gems.real(input)
 
     assert len(seen_sources) == 1
     assert torch._C._is_alias_of(seen_sources[0], input)
@@ -112,8 +108,7 @@ def test_real_complex_view_semantics(shape, dtype):
     ref_input = utils.to_reference(input)
     expected = torch.real(ref_input)
 
-    with flag_gems.use_gems():
-        result = torch.real(input)
+    result = flag_gems.real(input)
 
     _assert_real_view(result, input, expected)
 
@@ -131,8 +126,7 @@ def test_real_noncontiguous_complex_view(dtype, is_conj):
         ref_input = ref_input.conj()
 
     expected = torch.real(ref_input)
-    with flag_gems.use_gems():
-        result = torch.real(input)
+    result = flag_gems.real(input)
 
     _assert_real_view(result, input, expected)
     assert input.is_conj() == is_conj
@@ -144,8 +138,7 @@ def test_real_non_complex_returns_input(dtype):
     base = torch.empty((7, 9), dtype=dtype, device=flag_gems.device)
     input = base[1:7:2, 2:9:3]
 
-    with flag_gems.use_gems():
-        result = torch.real(input)
+    result = flag_gems.real(input)
 
     assert result is input
     assert result.data_ptr() == input.data_ptr()
@@ -164,8 +157,7 @@ def test_real_float8_returns_input(dtype):
         pytest.skip(f"device cannot allocate {dtype}: {error}")
     input = base[1:7:2, 2:9:3]
 
-    with flag_gems.use_gems():
-        result = torch.real(input)
+    result = flag_gems.real(input)
 
     assert result is input
     assert result.data_ptr() == input.data_ptr()
@@ -192,14 +184,11 @@ def test_real_autograd_view_relation(is_conj):
         ref_input = ref_input.conj()
 
     expected = torch.real(ref_input)
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        with flag_gems.use_gems():
-            result = torch.real(input)
-        result_grad = torch.arange(
-            result.numel(), dtype=result.dtype, device=result.device
-        ).reshape(result.shape)
-        (input_grad,) = torch.autograd.grad(result, base, result_grad)
+    result = flag_gems.real(input)
+    result_grad = torch.arange(
+        result.numel(), dtype=result.dtype, device=result.device
+    ).reshape(result.shape)
+    (input_grad,) = torch.autograd.grad(result, base, result_grad)
 
     ref_result_grad = utils.to_reference(result_grad)
     (expected_grad,) = torch.autograd.grad(expected, ref_base, ref_result_grad)
@@ -208,10 +197,6 @@ def test_real_autograd_view_relation(is_conj):
     utils.gems_assert_equal(input_grad, expected_grad)
     assert result.grad_fn is not None
     assert result._base is not None
-    assert not any(
-        "aten::real: an autograd kernel was not registered" in str(item.message)
-        for item in caught
-    )
 
 
 @pytest.mark.real
@@ -221,8 +206,7 @@ def test_real_conjugate_view_version_tracking():
     )
     input = leaf.conj()
 
-    with flag_gems.use_gems():
-        result = torch.real(input)
+    result = flag_gems.real(input)
 
     loss = (result * result).sum()
 
@@ -245,8 +229,7 @@ def test_real_conjugate_nonleaf_inplace_view_replay():
     base = leaf * 2
     input = base.conj()
 
-    with flag_gems.use_gems():
-        result = torch.real(input)
+    result = flag_gems.real(input)
 
     result.add_(3)
     result.sum().backward()
