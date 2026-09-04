@@ -9296,6 +9296,20 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: nested_view_from_jagged
+  description: |
+    Constructs a jagged-layout nested tensor from a flat values buffer and an
+    offsets tensor. This is a pure view operation that wraps the values buffer
+    without copying any data.
+  for:
+    - _nested_view_from_jagged
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Tensor
+  stages:
+    - alpha: '5.4'
 - id: new_full
   description: 'Returns a Tensor of size `size` filled with `fill_value`.
 
