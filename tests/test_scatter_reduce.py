@@ -168,10 +168,7 @@ def test_scatter_reduce(shape, dim, dtype, reduce, include_self):
     ref_out = torch.ops.aten.scatter_reduce.two(
         ref_inp, dim, ref_index, ref_src, reduce, **kwargs
     )
-    with flag_gems.use_gems():
-        result = torch.ops.aten.scatter_reduce.two(
-            inp, dim, index, src, reduce, **kwargs
-        )
+    result = flag_gems.scatter_reduce(inp, dim, index, src, reduce, **kwargs)
 
     assert result.data_ptr() != inp.data_ptr()
     _assert_scatter_reduce_close(result, ref_out, dtype, dim, src, reduce)
@@ -192,10 +189,7 @@ def test_scatter_reduce_(shape, dim, dtype, reduce, include_self):
     ref_out = torch.ops.aten.scatter_reduce_.two(
         ref_inp, dim, ref_index, ref_src, reduce, **kwargs
     )
-    with flag_gems.use_gems():
-        result = torch.ops.aten.scatter_reduce_.two(
-            inp, dim, index, src, reduce, **kwargs
-        )
+    result = flag_gems.scatter_reduce_(inp, dim, index, src, reduce, **kwargs)
 
     assert result.data_ptr() == inp.data_ptr()
     _assert_scatter_reduce_close(result, ref_out, dtype, dim, src, reduce)
@@ -218,10 +212,9 @@ def test_scatter_reduce_out(shape, dim, dtype, reduce, include_self):
     ref_result = torch.ops.aten.scatter_reduce.two_out(
         ref_inp, dim, ref_index, ref_src, reduce, out=ref_out, **kwargs
     )
-    with flag_gems.use_gems():
-        result = torch.ops.aten.scatter_reduce.two_out(
-            inp, dim, index, src, reduce, out=result_out, **kwargs
-        )
+    result = flag_gems.scatter_reduce_out(
+        inp, dim, index, src, reduce, out=result_out, **kwargs
+    )
 
     assert result.data_ptr() == result_out.data_ptr()
     assert ref_result.data_ptr() == ref_out.data_ptr()
@@ -243,10 +236,7 @@ def test_scatter_reduce_high_dim(shape, dim, reduce, include_self):
     ref_out = torch.ops.aten.scatter_reduce.two(
         ref_inp, dim, ref_index, ref_src, reduce, **kwargs
     )
-    with flag_gems.use_gems():
-        result = torch.ops.aten.scatter_reduce.two(
-            inp, dim, index, src, reduce, **kwargs
-        )
+    result = flag_gems.scatter_reduce(inp, dim, index, src, reduce, **kwargs)
 
     assert result.data_ptr() != inp.data_ptr()
     _assert_scatter_reduce_close(result, ref_out, dtype, dim, src, reduce)
@@ -267,10 +257,7 @@ def test_scatter_reduce__high_dim(shape, dim, reduce, include_self):
     ref_out = torch.ops.aten.scatter_reduce_.two(
         ref_inp, dim, ref_index, ref_src, reduce, **kwargs
     )
-    with flag_gems.use_gems():
-        result = torch.ops.aten.scatter_reduce_.two(
-            inp, dim, index, src, reduce, **kwargs
-        )
+    result = flag_gems.scatter_reduce_(inp, dim, index, src, reduce, **kwargs)
 
     assert result.data_ptr() == inp.data_ptr()
     _assert_scatter_reduce_close(result, ref_out, dtype, dim, src, reduce)
@@ -293,10 +280,9 @@ def test_scatter_reduce_out_high_dim(shape, dim, reduce, include_self):
     ref_result = torch.ops.aten.scatter_reduce.two_out(
         ref_inp, dim, ref_index, ref_src, reduce, out=ref_out, **kwargs
     )
-    with flag_gems.use_gems():
-        result = torch.ops.aten.scatter_reduce.two_out(
-            inp, dim, index, src, reduce, out=result_out, **kwargs
-        )
+    result = flag_gems.scatter_reduce_out(
+        inp, dim, index, src, reduce, out=result_out, **kwargs
+    )
 
     assert result.data_ptr() == result_out.data_ptr()
     assert ref_result.data_ptr() == ref_out.data_ptr()
@@ -327,15 +313,14 @@ def test_scatter_reduce_high_dim_active_prefix(
         reduce,
         **kwargs,
     )
-    with flag_gems.use_gems():
-        result = torch.ops.aten.scatter_reduce.two(
-            inp,
-            dim,
-            index,
-            src,
-            reduce,
-            **kwargs,
-        )
+    result = flag_gems.scatter_reduce(
+        inp,
+        dim,
+        index,
+        src,
+        reduce,
+        **kwargs,
+    )
 
     assert result.data_ptr() != inp.data_ptr()
     _assert_scatter_reduce_close(result, ref_out, dtype, dim, src, reduce)
@@ -365,15 +350,14 @@ def test_scatter_reduce__high_dim_active_prefix(
         reduce,
         **kwargs,
     )
-    with flag_gems.use_gems():
-        result = torch.ops.aten.scatter_reduce_.two(
-            inp,
-            dim,
-            index,
-            src,
-            reduce,
-            **kwargs,
-        )
+    result = flag_gems.scatter_reduce_(
+        inp,
+        dim,
+        index,
+        src,
+        reduce,
+        **kwargs,
+    )
 
     assert result.data_ptr() == inp.data_ptr()
     _assert_scatter_reduce_close(result, ref_out, dtype, dim, src, reduce)
@@ -406,16 +390,15 @@ def test_scatter_reduce_out_high_dim_active_prefix(
         out=ref_out,
         **kwargs,
     )
-    with flag_gems.use_gems():
-        result = torch.ops.aten.scatter_reduce.two_out(
-            inp,
-            dim,
-            index,
-            src,
-            reduce,
-            out=result_out,
-            **kwargs,
-        )
+    result = flag_gems.scatter_reduce_out(
+        inp,
+        dim,
+        index,
+        src,
+        reduce,
+        out=result_out,
+        **kwargs,
+    )
 
     assert result.data_ptr() == result_out.data_ptr()
     assert ref_result.data_ptr() == ref_out.data_ptr()
@@ -437,8 +420,7 @@ def test_scatter_reduce_5d_canonical_gate(monkeypatch, reduce):
     ref_out = torch.ops.aten.scatter_reduce.two(
         ref_inp, dim, ref_index, ref_src, reduce
     )
-    with flag_gems.use_gems():
-        result = torch.ops.aten.scatter_reduce.two(inp, dim, index, src, reduce)
+    result = flag_gems.scatter_reduce(inp, dim, index, src, reduce)
 
     _assert_scatter_reduce_close(result, ref_out, dtype, dim, src, reduce)
 
@@ -473,10 +455,9 @@ def test_scatter_reduce_empty(shape, dim, include_self, reduce):
         ref_inp, dim, ref_index, ref_src, reduce, include_self=include_self
     )
 
-    with flag_gems.use_gems():
-        result = torch.ops.aten.scatter_reduce.two(
-            inp, dim, index, src, reduce, include_self=include_self
-        )
+    result = flag_gems.scatter_reduce(
+        inp, dim, index, src, reduce, include_self=include_self
+    )
 
     assert result is not inp
     if inp.numel() != 0:
@@ -498,10 +479,9 @@ def test_scatter_reduce__empty(shape, dim, include_self, reduce):
         ref_inp, dim, ref_index, ref_src, reduce, include_self=include_self
     )
 
-    with flag_gems.use_gems():
-        result = torch.ops.aten.scatter_reduce_.two(
-            inp, dim, index, src, reduce, include_self=include_self
-        )
+    result = flag_gems.scatter_reduce_(
+        inp, dim, index, src, reduce, include_self=include_self
+    )
 
     assert result.data_ptr() == inp.data_ptr()
     utils.gems_assert_close(result, ref_out, dtype)
@@ -529,16 +509,15 @@ def test_scatter_reduce_out_empty(shape, dim, include_self, reduce):
         out=ref_out,
     )
 
-    with flag_gems.use_gems():
-        result = torch.ops.aten.scatter_reduce.two_out(
-            inp,
-            dim,
-            index,
-            src,
-            reduce,
-            include_self=include_self,
-            out=result_out,
-        )
+    result = flag_gems.scatter_reduce_out(
+        inp,
+        dim,
+        index,
+        src,
+        reduce,
+        include_self=include_self,
+        out=result_out,
+    )
 
     assert result.data_ptr() == result_out.data_ptr()
     utils.gems_assert_close(result, ref_result, dtype)
@@ -561,8 +540,7 @@ def test_scatter_reduce_noncontiguous(reduce):
     ref_inp, ref_index, ref_src = _reference_inputs(inp, index, src)
     ref_out = torch.ops.aten.scatter_reduce.two(ref_inp, -1, ref_index, ref_src, reduce)
 
-    with flag_gems.use_gems():
-        result = torch.ops.aten.scatter_reduce.two(inp, -1, index, src, reduce)
+    result = flag_gems.scatter_reduce(inp, -1, index, src, reduce)
 
     _assert_scatter_reduce_close(result, ref_out, dtype, -1, src, reduce)
 
@@ -581,8 +559,7 @@ def test_scatter_reduce_high_contention(reduce):
     ref_inp, ref_index, ref_src = _reference_inputs(inp, index, src)
     ref_out = torch.ops.aten.scatter_reduce.two(ref_inp, 0, ref_index, ref_src, reduce)
 
-    with flag_gems.use_gems():
-        result = torch.ops.aten.scatter_reduce.two(inp, 0, index, src, reduce)
+    result = flag_gems.scatter_reduce(inp, 0, index, src, reduce)
 
     _assert_scatter_reduce_close(result, ref_out, dtype, 0, src, reduce)
 
@@ -598,8 +575,7 @@ def test_scatter_reduce_nan():
     ref_inp, ref_index, ref_src = _reference_inputs(inp, index, src)
     ref_out = torch.ops.aten.scatter_reduce.two(ref_inp, 0, ref_index, ref_src, "sum")
 
-    with flag_gems.use_gems():
-        result = torch.ops.aten.scatter_reduce.two(inp, 0, index, src, "sum")
+    result = flag_gems.scatter_reduce(inp, 0, index, src, "sum")
 
     utils.gems_assert_close(result, ref_out, dtype, equal_nan=True)
 
@@ -628,8 +604,7 @@ def test_scatter_reduce_prod_nan():
         "prod",
     )
 
-    with flag_gems.use_gems():
-        result = torch.ops.aten.scatter_reduce.two(inp, -1, index, src, "prod")
+    result = flag_gems.scatter_reduce(inp, -1, index, src, "prod")
 
     utils.gems_assert_close(result, ref_out, dtype, equal_nan=True)
     assert (
@@ -644,11 +619,8 @@ def test_scatter_reduce_invalid_reduce():
     """Validate the error contract of aten::scatter_reduce.two for an invalid reduction."""
     inp, index, src = _make_test_data((8,), 0, torch.float32, "sum")
 
-    with flag_gems.use_gems():
-        with pytest.raises(
-            (AssertionError, RuntimeError), match="[Uu]nsupported|reduce"
-        ):
-            torch.ops.aten.scatter_reduce.two(inp, 0, index, src, "invalid")
+    with pytest.raises((AssertionError, RuntimeError), match="[Uu]nsupported|reduce"):
+        flag_gems.scatter_reduce(inp, 0, index, src, "invalid")
 
 
 @pytest.mark.scatter_reduce_two
@@ -657,9 +629,8 @@ def test_scatter_reduce_invalid_dim():
     """Validate the error contract of aten::scatter_reduce.two for an invalid dimension."""
     inp, index, src = _make_test_data((8,), 0, torch.float32, "sum")
 
-    with flag_gems.use_gems():
-        with pytest.raises(IndexError, match="Dimension out of range"):
-            torch.ops.aten.scatter_reduce.two(inp, 1, index, src, "sum")
+    with pytest.raises(IndexError, match="Dimension out of range"):
+        flag_gems.scatter_reduce(inp, 1, index, src, "sum")
 
 
 @pytest.mark.scatter_reduce_two_out
@@ -669,6 +640,5 @@ def test_scatter_reduce_out_dtype_mismatch():
     inp, index, src = _make_test_data((8,), 0, torch.float32, "sum")
     out = torch.empty_like(inp, dtype=torch.float16)
 
-    with flag_gems.use_gems():
-        with pytest.raises(RuntimeError, match="Expected out tensor to have dtype"):
-            torch.ops.aten.scatter_reduce.two_out(inp, 0, index, src, "sum", out=out)
+    with pytest.raises(RuntimeError, match="Expected out tensor to have dtype"):
+        flag_gems.scatter_reduce_out(inp, 0, index, src, "sum", out=out)
