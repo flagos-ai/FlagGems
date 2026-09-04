@@ -25,6 +25,12 @@ from . import accuracy_utils as utils
 # special.hermite_polynomial_h reference only supports float32 and float64
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_special_hermite_polynomial_h(shape, dtype):
+    if (
+        dtype == torch.float64
+        and flag_gems.vendor_name == "kunlunxin"
+        and not utils.fp64_is_supported
+    ):
+        pytest.skip("kunlunxin does not support float64")
     # Test with tensor n in [0, 9]
     if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
         pytest.skip("Issue #5253: Not supported")
@@ -34,8 +40,7 @@ def test_special_hermite_polynomial_h(shape, dtype):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.special.hermite_polynomial_h(ref_inp, utils.to_reference(n, True))
-    with flag_gems.use_gems():
-        res_out = torch.special.hermite_polynomial_h(inp, n)
+    res_out = flag_gems.special_hermite_polynomial_h(inp, n)
 
     # Hermite polynomials use float32 intermediates, so per-dtype tolerances
     # are needed to account for accumulated floating-point errors.
@@ -50,6 +55,12 @@ def test_special_hermite_polynomial_h(shape, dtype):
 # special.hermite_polynomial_h reference only supports float32 and float64
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_special_hermite_polynomial_h_scalar(shape, dtype):
+    if (
+        dtype == torch.float64
+        and flag_gems.vendor_name == "kunlunxin"
+        and not utils.fp64_is_supported
+    ):
+        pytest.skip("kunlunxin does not support float64")
     # Test with scalar n = 9 (largest supported degree)
     if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
         pytest.skip("Issue #5253: Not supported")
@@ -59,8 +70,7 @@ def test_special_hermite_polynomial_h_scalar(shape, dtype):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.special.hermite_polynomial_h(ref_inp, n)
-    with flag_gems.use_gems():
-        res_out = torch.special.hermite_polynomial_h(inp, n)
+    res_out = flag_gems.special_hermite_polynomial_h(inp, n)
 
     # n=9 produces the largest Hermite polynomial values; relax tolerance.
     if dtype == torch.float32:
@@ -72,22 +82,26 @@ def test_special_hermite_polynomial_h_scalar(shape, dtype):
 @pytest.mark.special_hermite_polynomial_h
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_special_hermite_polynomial_h_out_of_range(dtype):
+    if (
+        dtype == torch.float64
+        and flag_gems.vendor_name == "kunlunxin"
+        and not utils.fp64_is_supported
+    ):
+        pytest.skip("kunlunxin does not support float64")
     # Verify that n >= 10 or n < 0 raises ValueError
     if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
         pytest.skip("Issue #5253: Not supported")
     inp = torch.randn(4, 4, dtype=dtype, device=flag_gems.device)
 
-    with flag_gems.use_gems():
-        with pytest.raises(ValueError, match="only supports n"):
-            torch.special.hermite_polynomial_h(inp, 10)
-        with pytest.raises(ValueError, match="only supports n"):
-            torch.special.hermite_polynomial_h(inp, -1)
+    with pytest.raises(ValueError, match="only supports n"):
+        flag_gems.special_hermite_polynomial_h(inp, 10)
+    with pytest.raises(ValueError, match="only supports n"):
+        flag_gems.special_hermite_polynomial_h(inp, -1)
 
     # Verify that tensor n with values >= 10 raises ValueError
-    with flag_gems.use_gems():
-        with pytest.raises(ValueError, match="only supports n"):
-            n_bad = torch.tensor(10, dtype=torch.int32, device=flag_gems.device)
-            torch.special.hermite_polynomial_h(inp, n_bad)
-        with pytest.raises(ValueError, match="only supports n"):
-            n_bad = torch.tensor(-1, dtype=torch.int32, device=flag_gems.device)
-            torch.special.hermite_polynomial_h(inp, n_bad)
+    with pytest.raises(ValueError, match="only supports n"):
+        n_bad = torch.tensor(10, dtype=torch.int32, device=flag_gems.device)
+        flag_gems.special_hermite_polynomial_h(inp, n_bad)
+    with pytest.raises(ValueError, match="only supports n"):
+        n_bad = torch.tensor(-1, dtype=torch.int32, device=flag_gems.device)
+        flag_gems.special_hermite_polynomial_h(inp, n_bad)

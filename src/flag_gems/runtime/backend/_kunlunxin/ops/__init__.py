@@ -172,6 +172,7 @@ from .leaky_relu import leaky_relu, leaky_relu_, leaky_relu_out
 from .lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
 from .less_equal import less_equal, less_equal_scalar
 from .lift_fresh_copy import lift_fresh_copy
+from .linalg_ldl_solve import linalg_ldl_solve
 from .linspace import linspace
 from .log import log
 from .log1p import log1p, log1p_
@@ -210,6 +211,7 @@ from .neg import neg, neg_
 from .negative import negative
 from .new_full import new_full
 from .new_ones import new_ones
+from .nextafter import nextafter, nextafter_
 from .nllloss import (
     nll_loss2d_backward,
     nll_loss2d_forward,
@@ -288,6 +290,7 @@ from .softmax import softmax, softmax_backward
 from .softplus import softplus
 from .softshrink import softshrink, softshrink_out
 from .sort import sort, sort_stable
+from .special_hermite_polynomial_h import special_hermite_polynomial_h
 from .special_log_softmax import special_log_softmax
 from .special_logsumexp import special_logsumexp
 from .sqrt import sqrt, sqrt_
@@ -344,6 +347,7 @@ __all__ = [
     "soft_margin_loss",
     "soft_margin_loss_out",
     "soft_margin_loss_backward",
+    "special_hermite_polynomial_h",
     "special_log_softmax",
     "special_logsumexp",
     "softshrink",
@@ -555,6 +559,7 @@ __all__ = [
     "less_equal",
     "less_equal_scalar",
     "lift_fresh_copy",
+    "linalg_ldl_solve",
     "linspace",
     "log",
     "log1p",
@@ -617,6 +622,8 @@ __all__ = [
     "neg",
     "neg_",
     "negative",
+    "nextafter",
+    "nextafter_",
     "not_equal",
     "not_equal_scalar",
     "nll_loss_backward",
