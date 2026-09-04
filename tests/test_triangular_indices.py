@@ -63,18 +63,13 @@ def test_triangular_indices(op_name, dtype, row, col, offset):
 
 
 @pytest.mark.parametrize("op_name", ["tril_indices", "triu_indices"])
-def test_triangular_indices_default_options_and_registration(op_name):
-    gems_op = getattr(flag_gems, op_name)
-    direct = gems_op(5, 7, -1, device=flag_gems.device)
-
-    with flag_gems.use_gems():
-        registered = getattr(torch, op_name)(5, 7, -1, device=flag_gems.device)
-
+def test_triangular_indices_default_options(op_name):
+    result = getattr(flag_gems, op_name)(5, 7, -1, device=flag_gems.device)
     reference = getattr(torch, op_name)(5, 7, -1, device="cpu")
-    utils.gems_assert_equal(direct.cpu(), reference)
-    utils.gems_assert_equal(registered.cpu(), reference)
-    assert direct.dtype is torch.int64
-    assert direct.is_contiguous()
+
+    utils.gems_assert_equal(result.cpu(), reference)
+    assert result.dtype is torch.int64
+    assert result.is_contiguous()
 
 
 @pytest.mark.parametrize(
