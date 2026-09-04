@@ -8819,6 +8819,28 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: msort
+  description: Sorts each column of the input tensor in ascending order.
+  for:
+  - msort
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: msort_out
+  description: Writes the column-wise sorted values into the provided output tensor.
+  for:
+  - msort.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: mul
   description: Multiplies `input` by `other`.
   for:
