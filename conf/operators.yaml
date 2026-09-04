@@ -1659,6 +1659,8 @@ ops:
   - _batch_norm_with_update
   labels:
   - KernelGen
+  kind:
+  - NeuralNetwork
   stages:
   - alpha: '5.4'
 - id: batch_norm_with_update_functional
