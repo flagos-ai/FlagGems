@@ -4486,6 +4486,22 @@ ops:
   - Quantization
   stages:
   - alpha: '5.4'
+- id: feature_alpha_dropout
+  description: 'Applies alpha dropout independently to each feature map, preserving
+    the self-normalizing
+
+    properties of SELU activations.
+
+    '
+  for:
+  - feature_alpha_dropout
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: feature_dropout
   description: 'Applies feature dropout to the `input` tensor. Randomly zeroes out
     entire channels of the `input` tensor with probability `p`.

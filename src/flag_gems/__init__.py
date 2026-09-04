@@ -559,6 +559,7 @@ _FULL_CONFIG = (
         "fake_quantize_per_tensor_affine.tensor_qparams",
         fake_quantize_per_tensor_affine,
     ),
+    ("feature_alpha_dropout", feature_alpha_dropout),
     ("feature_dropout", feature_dropout),
     ("feature_dropout_", feature_dropout_),
     ("fill.Scalar", fill_scalar),
