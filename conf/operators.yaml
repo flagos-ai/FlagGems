@@ -6878,6 +6878,18 @@ ops:
   - Pointwise
   stages:
   - alpha: '5.4'
+- id: ldexp_
+  description: In-place version of `ldexp`.
+  for:
+  - ldexp_
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: le
   description: Computes that `input` is less than or equal to `other` element-wise.
   for:
