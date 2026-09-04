@@ -13944,6 +13944,20 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: underscore_sobol_engine_draw
+  description: 'Generates quasi-random Sobol sequence points. XOR-based algorithm
+    using Gray code for low-discrepancy sampling.
+
+    '
+  for:
+  - _sobol_engine_draw
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Distribution
+  stages:
+  - alpha: '5.4'
 - id: unflatten
   description: Expand a single dimension into multiple dimensions (inverse of flatten).
   for:
