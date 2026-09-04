@@ -239,6 +239,8 @@ _FULL_CONFIG = (
         "_thnn_differentiable_gru_cell_backward",
         _thnn_differentiable_gru_cell_backward,
     ),
+    ("_thnn_fused_gru_cell", _thnn_fused_gru_cell),
+    ("_thnn_fused_gru_cell.out", _thnn_fused_gru_cell_out),
     ("_thnn_fused_lstm_cell", _thnn_fused_lstm_cell),
     ("_thnn_fused_lstm_cell_backward_impl", _thnn_fused_lstm_cell_backward_impl),
     (
