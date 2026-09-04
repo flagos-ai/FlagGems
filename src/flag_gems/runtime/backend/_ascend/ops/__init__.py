@@ -112,6 +112,7 @@ from .stack import stack
 from .threshold import threshold, threshold_backward
 from .triu import triu
 from .unique import _unique2
+from .unsafe_index import unsafe_index
 from .upsample_bicubic2d_aa import _upsample_bicubic2d_aa
 from .upsample_linear1d_backward import upsample_linear1d_backward
 from .upsample_nearest2d import upsample_nearest2d
@@ -260,6 +261,7 @@ __all__ = [
     "threshold",
     "threshold_backward",
     "triu",
+    "unsafe_index",
     "upsample_linear1d_backward",
     "upsample_nearest2d",
     "var_mean",
