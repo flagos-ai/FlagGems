@@ -45,7 +45,7 @@ def check_required_fields(ops: list[dict]) -> list[str]:
     """Check that all entries have required fields."""
     errors = []
     for i, op in enumerate(ops):
-        op_id = op.get("id", f"<entry #{i+1}>")
+        op_id = op.get("id", f"<entry #{i + 1}>")
         missing = REQUIRED_FIELDS - set(op.keys())
         if missing:
             errors.append(
@@ -54,7 +54,7 @@ def check_required_fields(ops: list[dict]) -> list[str]:
         # Validate field types
         if "id" in op:
             if not isinstance(op["id"], str) or not op["id"].strip():
-                errors.append(f"Entry #{i+1}: 'id' must be a non-empty string")
+                errors.append(f"Entry #{i + 1}: 'id' must be a non-empty string")
         if "labels" in op:
             if not isinstance(op["labels"], list) or len(op["labels"]) == 0:
                 errors.append(f"Operator '{op_id}': 'labels' must be a non-empty list")
@@ -74,7 +74,7 @@ def check_duplicate_ids(ops: list[dict]) -> list[str]:
             continue
         if op_id in seen:
             errors.append(
-                f"Duplicate id '{op_id}': appears at entry #{seen[op_id]+1} and #{i+1}"
+                f"Duplicate id '{op_id}': appears at entry #{seen[op_id] + 1} and #{i + 1}"
             )
         else:
             seen[op_id] = i
@@ -99,7 +99,7 @@ def check_sort_order(ops: list[dict]) -> list[str]:
         for i in range(first_mismatch, min(first_mismatch + 5, len(ids))):
             if ids[i] != sorted_ids[i]:
                 mismatches.append(
-                    f"  position {i+1}: got '{ids[i]}', expected '{sorted_ids[i]}'"
+                    f"  position {i + 1}: got '{ids[i]}', expected '{sorted_ids[i]}'"
                 )
         errors.append(
             "operators.yaml is not sorted by id.casefold(). First mismatches:\n"
@@ -115,6 +115,11 @@ def main():
         help="JSON list of operator IDs to check (incremental mode). "
         "If not provided, only duplicate-id check runs globally.",
         default="",
+    )
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        help="Check all operators (for pre-commit use)",
     )
     args = parser.parse_args()
 
@@ -154,14 +159,23 @@ def main():
         print("Checking required fields for all operators...")
         all_errors.extend(check_required_fields(ops))
 
-    # Sort order check disabled until existing data is fixed
-    # all_errors.extend(check_sort_order(ops))
+    # Enable sort order check
+    sort_errors = check_sort_order(ops)
+    all_errors.extend(sort_errors)
 
     if all_errors:
         print(f"\n❌ Found {len(all_errors)} issue(s):\n")
         for err in all_errors:
             print(f"::error::{err}")
             print(f"  • {err}")
+
+        # If there are sort errors, show fix command
+        if sort_errors:
+            print("\n💡 To fix sorting issues, run:")
+            print("   python tools/ci_checks/sort_exports.py --fix")
+            print("   git add conf/operators.yaml")
+            print("   git commit -m 'fix: sort operators.yaml'")
+
         sys.exit(1)
     else:
         print("✅ All checks passed.")

@@ -69,7 +69,7 @@ def _igammac_input_out(shape, dtype, device):
 def test_igammac():
     bench = IgammacBenchmark(
         op_name="igammac",
-        torch_op=torch.special.gammaincc,
+        torch_op=torch.igammac,
         gems_op=flag_gems.igammac,
         input_fn=_igammac_input,
         dtypes=_IGAMMAC_DTYPES,
@@ -82,7 +82,7 @@ def test_igammac_out():
     bench = IgammacBenchmark(
         op_name="igammac_out",
         input_fn=_igammac_input_out,
-        torch_op=torch.ops.aten.special_gammaincc.out,
+        torch_op=torch.ops.aten.igammac.out,
         gems_op=flag_gems.igammac_out,
         dtypes=_IGAMMAC_DTYPES,
     )
