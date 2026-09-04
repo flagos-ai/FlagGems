@@ -2990,6 +2990,18 @@ ops:
   stages:
   - beta: '2.2'
   - stable: '5.3'
+- id: conv_tbc
+  description: Applies a 1D convolution over an input with time-batch-channel (T,
+    B, C) layout.
+  for:
+  - conv_tbc
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: conv_transpose1d
   description: 'Applies a 1D transposed convolution operator over an input image composed
     of several input planes.
