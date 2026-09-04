@@ -12,6 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import importlib
+
+from ..utils.pointwise_dynamic import ModuleGenerator
 from ._native_batch_norm_legit_functional import _native_batch_norm_legit_functional
 from .adaptive_max_pool3d_backward import run
 from .addmm import addmm, addmm_out
@@ -31,6 +34,10 @@ from .histc import histc
 from .index_select_backward import index_select_backward
 from .linalg_cholesky import linalg_cholesky
 from .linalg_matrix_norm import linalg_matrix_norm
+from .linalg_solve_triangular import (
+    linalg_solve_triangular,
+    linalg_solve_triangular_out,
+)
 from .linear import linear
 from .log_normal_ import log_normal_
 from .matmul_bf16 import matmul_bf16
@@ -65,6 +72,9 @@ from .special_shifted_chebyshev_polynomial_w import (
 from .tile import tile
 from .var import var, var_correction, var_dim
 
+_pointwise_dynamic = importlib.import_module("flag_gems.utils.pointwise_dynamic")
+_pointwise_dynamic.ModuleGenerator = ModuleGenerator
+
 __all__ = [
     "_conv_depthwise2d",
     "_native_batch_norm_legit_functional",
@@ -87,6 +97,8 @@ __all__ = [
     "index_select_backward",
     "linalg_cholesky",
     "linalg_matrix_norm",
+    "linalg_solve_triangular",
+    "linalg_solve_triangular_out",
     "linear",
     "log_normal_",
     "matmul_bf16",
