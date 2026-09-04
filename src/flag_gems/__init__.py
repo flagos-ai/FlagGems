@@ -907,6 +907,8 @@ _FULL_CONFIG = (
     ("one_hot", one_hot),
     ("ones", ones),
     ("ones_like", ones_like),
+    ("orgqr", orgqr),
+    ("orgqr.out", orgqr_out),
     ("ormqr", ormqr),
     ("pad", pad),
     ("pairwise_distance", pairwise_distance),
