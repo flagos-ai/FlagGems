@@ -554,6 +554,10 @@ _FULL_CONFIG = (
         "fake_quantize_per_channel_affine_cachemask.out",
         fake_quantize_per_channel_affine_cachemask_out,
     ),
+    (
+        "fake_quantize_per_channel_affine_cachemask_backward",
+        fake_quantize_per_channel_affine_cachemask_backward,
+    ),
     ("fake_quantize_per_tensor_affine", fake_quantize_per_tensor_affine),
     (
         "fake_quantize_per_tensor_affine.tensor_qparams",
