@@ -96,7 +96,13 @@ from .tile import tile
 from .trunc import trunc, trunc_
 from .unique import _unique2
 from .upsample_linear1d_backward import upsample_linear1d_backward
-from .w8a8_block_fp8_matmul import w8a8_block_fp8_matmul
+try:
+    from triton.tools.tensor_descriptor import TensorDescriptor as _TensorDescriptor
+except ModuleNotFoundError:
+    _has_tensor_descriptor = False
+else:
+    _has_tensor_descriptor = True
+    from .w8a8_block_fp8_matmul import w8a8_block_fp8_matmul
 from .zeros import zero_, zeros
 from .zeros_like import zeros_like
 
@@ -214,26 +220,40 @@ __all__ = [
     "zeros_like",
 ]
 
+if not _has_tensor_descriptor:
+    __all__.remove("w8a8_block_fp8_matmul")
+
 
 if get_device_capability(current_device())[0] >= 3:
-    from .addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out  # noqa: F401
-    from .baddbmm import baddbmm, baddbmm_out  # noqa: F401
-    from .bmm import bmm  # noqa: F401
     from .gelu import gelu  # noqa: F401
-    from .mm import mm  # noqa: F401
     from .tanh import tanh  # noqa: F401
+
+    if _has_tensor_descriptor:
+        from .addmm import (  # noqa: F401
+            addmm,
+            addmm_dtype,
+            addmm_dtype_out,
+            addmm_out,
+        )
+        from .baddbmm import baddbmm, baddbmm_out  # noqa: F401
+        from .bmm import bmm  # noqa: F401
+        from .mm import mm  # noqa: F401
+        __all__.extend(
+            [
+                "addmm",
+                "addmm_dtype",
+                "addmm_dtype_out",
+                "addmm_out",
+                "baddbmm",
+                "baddbmm_out",
+                "bmm",
+                "mm",
+            ]
+        )
 
     __all__.extend(
         [
-            "addmm",
-            "addmm_dtype",
-            "addmm_dtype_out",
-            "addmm_out",
-            "baddbmm",
-            "baddbmm_out",
-            "bmm",
             "gelu",
-            "mm",
             "tanh",
         ]
     )

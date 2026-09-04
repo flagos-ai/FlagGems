@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import importlib
+
 import pytest
 import torch
 
@@ -89,3 +91,37 @@ def test_sort_stable(batch_size, hiddensize, descending, dtype, dim):
 
     utils.gems_assert_close(res_value, ref_value, dtype)
     utils.gems_assert_equal(res_index, ref_index)
+
+
+@pytest.mark.sort
+@pytest.mark.parametrize("batch_size", [1, 32])
+def test_sort_mthreads_sampling_vocab(batch_size):
+    """Regression for the MiniCPM5 large-vocabulary sampling sort."""
+    if flag_gems.vendor_name != "mthreads":
+        pytest.skip("MThreads scheduling regression")
+
+    torch.manual_seed(20260903)
+    y = torch.randn(
+        (batch_size, 130560), dtype=torch.float32, device=flag_gems.device
+    )
+    ref_y = utils.to_reference(y)
+    ref_value, ref_index = torch.sort(
+        ref_y, dim=-1, stable=True, descending=True
+    )
+
+    with flag_gems.use_gems():
+        res_value, res_index = torch.sort(
+            y, dim=-1, stable=True, descending=True
+        )
+
+        # SGLang_FL's default.flagos backend may call the generic module
+        # directly instead of the vendor-specialized top-level registration.
+        generic_sort = importlib.import_module("flag_gems.ops.sort")
+        generic_value, generic_index = generic_sort.sort_stable(
+            y, stable=True, dim=-1, descending=True
+        )
+
+    utils.gems_assert_close(res_value, ref_value, torch.float32)
+    utils.gems_assert_equal(res_index, ref_index)
+    utils.gems_assert_close(generic_value, ref_value, torch.float32)
+    utils.gems_assert_equal(generic_index, ref_index)
