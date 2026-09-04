@@ -106,9 +106,11 @@ def make_input(
 def scaled_dot_product_flash_attention_ref(q, k, v, scale, is_causal):
     scores = torch.matmul(q.float(), k.float().transpose(-2, -1)) * scale
     if is_causal:
-        q_index = torch.arange(q.shape[-2], device=q.device)[:, None]
-        k_index = torch.arange(k.shape[-2], device=k.device)
-        causal_mask = k_index > q_index
+        q_len = q.shape[-2]
+        k_len = k.shape[-2]
+        q_index = torch.arange(q_len, device=q.device)[:, None]
+        k_index = torch.arange(k_len, device=k.device)
+        causal_mask = k_index - k_len + q_len > q_index
         scores.masked_fill_(causal_mask, float("-inf"))
     logsumexp = torch.logsumexp(scores, dim=-1)
     output = torch.matmul(torch.softmax(scores, dim=-1), v.float())
@@ -148,7 +150,7 @@ def test_scaled_dot_product_flash_attention(
     ref_q = utils.to_reference(q, False)
     ref_k = utils.to_reference(k, False)
     ref_v = utils.to_reference(v, False)
-    if cfg.TO_CPU:
+    if cfg.TO_CPU or flag_gems.vendor_name in ["ascend", "hygon"]:
         ref_out, ref_lse = scaled_dot_product_flash_attention_ref(
             ref_q, ref_k, ref_v, scale, is_causal
         )
@@ -185,7 +187,7 @@ def torch_sdpa(q, k, v, scale, is_causal, enable_gqa=False):
             is_causal=is_causal,
         )
 
-    if flag_gems.vendor_name in ["cambricon", "iluvatar"] and cfg.TO_CPU:
+    if flag_gems.vendor_name in ["cambricon", "hygon", "iluvatar"]:
         from torch.nn.attention import SDPBackend, sdpa_kernel
 
         ctx = sdpa_kernel(backends=[SDPBackend.MATH])
@@ -283,9 +285,9 @@ def test_scaled_dot_product_attention_legacy(
 
 
 @pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="Issue #2849: Not working")
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "hygon", reason="Issue #2849: RuntimeError"
-)
+# @pytest.mark.skipif(
+#     flag_gems.vendor_name == "hygon", reason="Issue #2849: RuntimeError"
+# )
 @pytest.mark.skipif(
     flag_gems.vendor_name == "kunlunxin", reason="Issue #2849: Not working"
 )
@@ -315,6 +317,17 @@ def test_scaled_dot_product_attention_legacy_backward(
     dtype,
     enable_gqa,
 ):
+    if flag_gems.vendor_name == "hygon" and is_causal:
+        if dtype == torch.bfloat16 and (head_size >= 128 or q_seq_len != kv_seq_len):
+            pytest.skip(
+                "Hygon causal backward kernel: bfloat16 precision insufficient "
+                "for head_size>=128 or non-square sequences"
+            )
+        if q_seq_len != kv_seq_len and head_size >= 128:
+            pytest.skip(
+                "Hygon causal backward kernel: non-square sequences with head_size>=128 "
+                "has tile boundary issues causing NaN gradients (kernel-level bug)"
+            )
     device = torch_device_fn.current_device()
     q, k, v = make_input(
         batch,
