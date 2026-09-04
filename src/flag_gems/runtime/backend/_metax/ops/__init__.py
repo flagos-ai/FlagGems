@@ -1,5 +1,6 @@
 from ._make_dep_token import _make_dep_token
 from ._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
+from ._sparse_semi_structured_linear import _sparse_semi_structured_linear
 from ._thnn_fused_lstm_cell_backward_impl import _thnn_fused_lstm_cell_backward_impl
 from .adaptive_max_pool3d_backward import adaptive_max_pool3d_backward
 from .addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out
@@ -82,6 +83,7 @@ __all__ = [
     "_conv_depthwise2d",
     "_make_dep_token",
     "_nested_view_from_buffer_copy",
+    "_sparse_semi_structured_linear",
     "_thnn_fused_lstm_cell_backward_impl",
     "_unique2",
     "adaptive_max_pool3d_backward",

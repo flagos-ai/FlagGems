@@ -12319,6 +12319,21 @@ ops:
   - BLAS
   stages:
   - alpha: '5.4'
+- id: sparse_semi_structured_linear
+  description: 'Performs a semi-structured (2:4) sparse linear transformation
+
+    with optional bias and activation.
+
+    '
+  for:
+  - _sparse_semi_structured_linear
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.4'
 - id: sparse_semi_structured_mm
   description: 'Performs a sparse semi-structured matrix multiplication of a dense
     matrix with a 2:4 sparsity pattern against a dense matrix.
