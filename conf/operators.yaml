@@ -12104,6 +12104,19 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.3'
+- id: sobol_engine_ff_
+  description: Fast-forward Sobol quasi-random number generator state by n steps using
+    Gray code.
+  for:
+  - _sobol_engine_ff_
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: soft_margin_loss
   description: Compute the soft margin loss.
   for:
