@@ -132,6 +132,7 @@ _FULL_CONFIG = (
         "_embedding_bag_per_sample_weights_backward",
         _embedding_bag_per_sample_weights_backward,
     ),
+    ("_embedding_bag_sparse_backward", _embedding_bag_sparse_backward),
     ("_euclidean_dist", _euclidean_dist),
     (
         "_fake_quantize_learnable_per_tensor_affine",
