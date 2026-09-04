@@ -13773,6 +13773,24 @@ ops:
   - Tensor
   stages:
   - alpha: '5.1'
+- id: trapz
+  description: 'Computes the trapezoidal rule along a dimension using constant spacing dx.
+
+    Integrates the input tensor along the specified dimension using the
+
+    trapezoidal rule with uniform spacing.
+
+    '
+  for:
+  - trapezoid.dx
+  - trapz.dx
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.1'
 - id: tril
   description: 'Returns the lower triangular part of an input matrix (or a batch of
     matrices) and
