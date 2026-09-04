@@ -120,7 +120,7 @@ def upsample_linear1d(
         scale_val = real_scale
         bias_val = 0.5 * real_scale - 0.5
 
-    BLOCK_SIZE = 8192
+    BLOCK_SIZE = 1024
     total = NC * W_out
     grid = (triton.cdiv(total, BLOCK_SIZE),)
 

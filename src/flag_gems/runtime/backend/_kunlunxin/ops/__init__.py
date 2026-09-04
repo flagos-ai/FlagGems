@@ -18,16 +18,25 @@ from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
 from ._is_all_true import _is_all_true
+from ._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
+from ._scaled_dot_product_fused_attention_overrideable import (
+    _scaled_dot_product_fused_attention_overrideable,
+)
 from ._thnn_fused_lstm_cell_backward_impl import _thnn_fused_lstm_cell_backward_impl
+from ._upsample_bilinear2d_aa import _upsample_bilinear2d_aa  # noqa: F401
+from ._upsample_nearest_exact2d_backward import _upsample_nearest_exact2d_backward
 from .abs import abs, abs_
 from .absolute import absolute
 from .acos import acos
+from .adaptive_avg_pool2d import adaptive_avg_pool2d
+from .adaptive_max_pool2d import adaptive_max_pool2d
 from .add import add, add_
 from .addcdiv import addcdiv, addcdiv_, addcdiv_out
 from .addcmul import addcmul, addcmul_out
 from .addmm import addmm, addmm_out
 from .addmv import addmv, addmv_out
 from .addr import addr
+from .affine_grid_generator import affine_grid_generator  # noqa: F401
 from .alias_copy import alias_copy, alias_copy_out
 from .all import all, all_dim, all_dims
 from .amax import amax
@@ -54,6 +63,8 @@ from .attention import (
     scaled_dot_product_attention_forward,
 )
 from .avg_pool2d import avg_pool2d, avg_pool2d_backward
+from .avg_pool3d import avg_pool3d
+from .avg_pool3d_backward import avg_pool3d_backward
 from .baddbmm import baddbmm
 from .batch_norm import batch_norm, batch_norm_backward
 from .bernoulli_ import bernoulli_
@@ -90,12 +101,15 @@ from .clamp import (
     clamp_tensor_,
 )
 from .clip import clip, clip_
+from .col2im import col2im
 from .concatenate import concatenate
 from .contiguous import contiguous
 from .conv1d import conv1d
 from .conv2d import conv2d
 from .conv3d import conv3d
 from .conv_depthwise2d import _conv_depthwise2d
+from .conv_transpose1d import conv_transpose1d
+from .conv_transpose2d import conv_transpose2d
 from .copy import copy, copy_
 from .copysign import copysign, copysign_out
 from .cos import cos, cos_
@@ -143,6 +157,7 @@ from .fill import (
 )
 from .flip import flip
 from .floor import floor, floor_, floor_out
+from .fractional_max_pool2d import fractional_max_pool2d, fractional_max_pool2d_backward
 from .full import full
 from .full_like import full_like
 from .gather import gather, gather_backward
@@ -151,11 +166,14 @@ from .gelu import gelu, gelu_, gelu_backward
 from .get_scheduler_metadata import get_scheduler_metadata
 from .glu import glu, glu_backward
 from .greater import greater, greater_out, greater_scalar, greater_scalar_out
+from .grid_sample import grid_sample
+from .grid_sampler_3d_backward import grid_sampler_3d_backward
 from .groupnorm import group_norm, group_norm_backward
 from .gt import gt, gt_scalar
 from .hadamard_transform import hadamard_transform
 from .hardsigmoid import hardsigmoid, hardsigmoid_out
 from .hstack import hstack
+from .im2col import im2col
 from .index import index
 from .index_add import index_add, index_add_
 from .index_put import index_put, index_put_
@@ -191,7 +209,14 @@ from .masked_select import masked_select
 from .matmul_bf16 import matmul_bf16
 from .matmul_int8 import matmul_int8
 from .max import max, max_dim
-from .max_pool2d_with_indices import max_pool2d_backward, max_pool2d_with_indices
+from .max_pool2d_with_indices import (
+    max_pool2d_backward,
+    max_pool2d_with_indices,
+    max_pool2d_with_indices_backward,
+)
+from .max_pool3d_backward import max_pool3d_with_indices_backward
+from .max_pool3d_with_indices import max_pool3d_backward, max_pool3d_with_indices
+from .max_unpool3d import max_unpool3d  # noqa: F401
 from .maximum import maximum
 from .mean import mean, mean_dim
 from .min import min, min_dim
@@ -251,7 +276,11 @@ from .randn_like import randn_like
 from .randperm import randperm
 from .reciprocal import reciprocal, reciprocal_
 from .reflection_pad1d import reflection_pad1d, reflection_pad1d_out
+from .reflection_pad1d_backward import reflection_pad1d_backward
 from .reflection_pad2d import reflection_pad2d, reflection_pad2d_out
+from .reflection_pad2d_backward import reflection_pad2d_backward
+from .reflection_pad3d import reflection_pad3d, reflection_pad3d_out
+from .reflection_pad3d_backward import reflection_pad3d_backward
 from .relu import relu, relu_
 from .repeat import repeat
 from .repeat_interleave import (
@@ -259,6 +288,14 @@ from .repeat_interleave import (
     repeat_interleave_self_tensor,
     repeat_interleave_tensor,
 )
+from .replication_pad1d import replication_pad1d, replication_pad1d_out
+from .replication_pad2d import replication_pad2d, replication_pad2d_out
+from .replication_pad2d_backward import (
+    replication_pad2d_backward,
+    replication_pad2d_backward_grad_input,
+)
+from .replication_pad3d import replication_pad3d  # noqa: F401
+from .replication_pad3d_backward import replication_pad3d_backward  # noqa: F401
 from .resize import resize, resize_
 from .resolve_conj import resolve_conj
 from .resolve_neg import resolve_neg
@@ -309,9 +346,12 @@ from .trunc import trunc, trunc_
 from .uniform import uniform_
 from .unique import _unique2
 from .upsample_bicubic2d_aa import _upsample_bicubic2d_aa
+from .upsample_bicubic2d_aa_backward import _upsample_bicubic2d_aa_backward
 from .upsample_linear1d import upsample_linear1d
+from .upsample_linear1d_backward import upsample_linear1d_backward
 from .upsample_nearest1d import upsample_nearest1d
 from .upsample_nearest2d import upsample_nearest2d
+from .upsample_nearest3d import upsample_nearest3d
 from .upsample_trilinear3d import upsample_trilinear3d
 from .var_mean import var_mean
 from .vdot import vdot
@@ -781,4 +821,37 @@ __all__ = [
     "zero_out",
     "zeros",
     "zeros_like",
+    "_nested_view_from_buffer_copy",
+    "_scaled_dot_product_fused_attention_overrideable",
+    "_upsample_nearest_exact2d_backward",
+    "_upsample_bicubic2d_aa_backward",
+    "adaptive_avg_pool2d",
+    "adaptive_max_pool2d",
+    "avg_pool3d",
+    "avg_pool3d_backward",
+    "col2im",
+    "conv_transpose1d",
+    "conv_transpose2d",
+    "fractional_max_pool2d",
+    "fractional_max_pool2d_backward",
+    "grid_sample",
+    "grid_sampler_3d_backward",
+    "im2col",
+    "max_pool2d_with_indices_backward",
+    "max_pool3d_with_indices",
+    "max_pool3d_backward",
+    "max_pool3d_with_indices_backward",
+    "reflection_pad1d_backward",
+    "reflection_pad2d_backward",
+    "reflection_pad3d",
+    "reflection_pad3d_out",
+    "reflection_pad3d_backward",
+    "replication_pad1d",
+    "replication_pad1d_out",
+    "replication_pad2d",
+    "replication_pad2d_out",
+    "replication_pad2d_backward",
+    "replication_pad2d_backward_grad_input",
+    "upsample_linear1d_backward",
+    "upsample_nearest3d",
 ]
