@@ -14,6 +14,7 @@
 
 import logging
 import math
+import os
 
 import torch
 import triton
@@ -33,6 +34,9 @@ from flag_gems.utils.random_utils import philox_backend_seed_offset
 
 logger = logging.getLogger(__name__)
 _debug = False
+
+# 设为 "1" 可关闭 Hopper gluon FA3 快速路径,强制回退到原生 Triton kernel。
+_DISABLE_GLUON = os.environ.get("FLAG_GEMS_DISABLE_GLUON_FA", "0") == "1"
 
 
 def CHECK_DEVICE(x):
@@ -963,6 +967,45 @@ def mha_fwd(
     CHECK_DEVICE(q), CHECK_DEVICE(k), CHECK_DEVICE(v)
     q_dtype = q.dtype
     q_device = q.device
+
+    # Hopper (SM 9.x) fast path: gluon FA3 warp-specialization.
+    # Kernel constraints: head_size<=64, seqlen multiple of 128, bf16, no dropout/alibi/
+    # softcap/sliding-window. Falls back to native Triton kernel otherwise.
+    if not _DISABLE_GLUON and hasattr(torch.cuda, "get_device_capability"):
+        _bsz, _sq, _nh, _hd = q.size()
+        _sk = k.size(1)
+        major, _minor = torch.cuda.get_device_capability(q_device)
+        # SM 9.0: H100, SM 9.2: GH200
+        use_gluon = (
+            major == 9
+            and q_dtype == torch.bfloat16
+            and p_dropout == 0.0
+            and alibi_slopes is None
+            and softcap == 0.0
+            and window_size_left < 0
+            and window_size_right in (0, -1)
+            and _hd <= 64
+            and _sq % 128 == 0
+            and _sk % 128 == 0
+        )
+        if use_gluon:
+            from flag_gems.ops.gluon_flash_wrapper import gluon_flash_attn
+
+            # Causal detection: entry may pass is_causal bool directly, or use
+            # window_size_right==0 to express causality (native logic does this
+            # conversion later).
+            gluon_causal = bool(is_causal) or window_size_right == 0
+            out_gluon, lse_gluon = gluon_flash_attn(
+                q, k, v, causal=gluon_causal, softmax_scale=softmax_scale
+            )
+            if out is None:
+                out = torch.empty_like(out_gluon)
+            out.copy_(out_gluon)
+            # Match native mha_fwd's 8-tuple return signature.
+            # No dropout, so philox params are empty; no softmax debug mask returned.
+            philox_args = torch.empty((2,), dtype=torch.int64, device=q_device)
+            return out, q, k, v, lse_gluon, philox_args, None, None
+
     assert q_dtype in (
         torch.float16,
         torch.bfloat16,
