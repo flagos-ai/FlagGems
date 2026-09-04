@@ -12092,18 +12092,21 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.3'
-- id: smooth_l1_loss_backward
-  description: Compute the gradient of smooth L1 loss with respect to the input tensor.
-  for:
-  - smooth_l1_loss_backward
-  labels:
-  - aten
-  - pointwise
-  - nn.functional
-  kind:
-  - NeuralNetwork
-  stages:
-  - alpha: '5.3'
+  - id: sobol_engine_initialize_state_
+    description: |
+      Initializes Sobol quasi-random number generator state with direction numbers.
+      This is a low-level operation that fills a (dimension, 30) state tensor with
+      pre-computed Sobol direction numbers used for generating low-discrepancy sequences.
+    for:
+      - _sobol_engine_initialize_state_
+    labels:
+      - aten
+      - pointwise
+      - random
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
 - id: soft_margin_loss
   description: Compute the soft margin loss.
   for:
