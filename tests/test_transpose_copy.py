@@ -93,8 +93,7 @@ def test_accuracy_transpose_copy(shape, dim0, dim1, dtype):
     ref_input = utils.to_reference(input)
     reference = torch.ops.aten.transpose_copy.int(ref_input, dim0, dim1)
 
-    with flag_gems.use_gems():
-        result = torch.ops.aten.transpose_copy.int(input, dim0, dim1)
+    result = flag_gems.transpose_copy(input, dim0, dim1)
 
     _assert_copy_layout(result, reference, input)
 
@@ -106,8 +105,7 @@ def test_accuracy_transpose_copy_scalar(dim0, dim1):
     ref_input = utils.to_reference(input)
     reference = torch.ops.aten.transpose_copy.int(ref_input, dim0, dim1)
 
-    with flag_gems.use_gems():
-        result = torch.ops.aten.transpose_copy.int(input, dim0, dim1)
+    result = flag_gems.transpose_copy(input, dim0, dim1)
 
     _assert_copy_layout(result, reference, input)
 
@@ -120,8 +118,7 @@ def test_accuracy_transpose_copy_non_contiguous(dtype):
     ref_input = utils.to_reference(input)
     reference = torch.ops.aten.transpose_copy.int(ref_input, 0, -1)
 
-    with flag_gems.use_gems():
-        result = torch.ops.aten.transpose_copy.int(input, 0, -1)
+    result = flag_gems.transpose_copy(input, 0, -1)
 
     assert not input.is_contiguous()
     _assert_copy_layout(result, reference, input)
@@ -133,8 +130,7 @@ def test_accuracy_transpose_copy_same_dim_does_not_alias():
     ref_input = utils.to_reference(input)
     reference = torch.ops.aten.transpose_copy.int(ref_input, 1, 1)
 
-    with flag_gems.use_gems():
-        result = torch.ops.aten.transpose_copy.int(input, 1, 1)
+    result = flag_gems.transpose_copy(input, 1, 1)
 
     _assert_copy_layout(result, reference, input)
     assert result.data_ptr() != input.data_ptr()
@@ -153,11 +149,8 @@ def test_accuracy_transpose_copy_same_dim_does_not_alias():
 def test_transpose_copy_invalid_dims(shape, dim0, dim1):
     input = _make_input(shape, torch.float32, flag_gems.device)
 
-    with (
-        flag_gems.use_gems(),
-        pytest.raises(IndexError, match="Dimension out of range"),
-    ):
-        torch.ops.aten.transpose_copy.int(input, dim0, dim1)
+    with pytest.raises(IndexError, match="Dimension out of range"):
+        flag_gems.transpose_copy(input, dim0, dim1)
 
 
 @pytest.mark.transpose_copy
@@ -173,7 +166,6 @@ def test_accuracy_transpose_copy_float8(dtype):
     ref_input = utils.to_reference(input)
     reference = torch.ops.aten.transpose_copy.int(ref_input, 0, 1)
 
-    with flag_gems.use_gems():
-        result = torch.ops.aten.transpose_copy.int(input, 0, 1)
+    result = flag_gems.transpose_copy(input, 0, 1)
 
     _assert_copy_layout(result.view(torch.uint8), reference.view(torch.uint8), input)
