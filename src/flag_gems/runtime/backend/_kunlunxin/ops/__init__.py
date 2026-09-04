@@ -18,6 +18,7 @@ from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
 from ._is_all_true import _is_all_true
+from ._linalg_eigvals import _linalg_eigvals
 from ._thnn_fused_lstm_cell_backward_impl import _thnn_fused_lstm_cell_backward_impl
 from .abs import abs, abs_
 from .absolute import absolute
@@ -25,7 +26,8 @@ from .acos import acos
 from .add import add, add_
 from .addcdiv import addcdiv, addcdiv_, addcdiv_out
 from .addcmul import addcmul, addcmul_out
-from .addmm import addmm, addmm_out
+from .addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out  # noqa: F401
+from .addmm_ import addmm_
 from .addmv import addmv, addmv_out
 from .addr import addr
 from .alias_copy import alias_copy, alias_copy_out
@@ -54,7 +56,7 @@ from .attention import (
     scaled_dot_product_attention_forward,
 )
 from .avg_pool2d import avg_pool2d, avg_pool2d_backward
-from .baddbmm import baddbmm
+from .baddbmm import baddbmm, baddbmm_, baddbmm_out
 from .batch_norm import batch_norm, batch_norm_backward
 from .bernoulli_ import bernoulli_
 from .bitwise_and import (
@@ -79,6 +81,8 @@ from .broadcast_to import broadcast_to
 from .cat import cat, cat_out
 from .ceil import ceil, ceil_, ceil_out
 from .celu import celu, celu_
+from .cholesky_inverse import cholesky_inverse
+from .cholesky_solve import cholesky_solve, cholesky_solve_out
 from .clamp import (
     clamp,
     clamp_,
@@ -172,6 +176,22 @@ from .leaky_relu import leaky_relu, leaky_relu_, leaky_relu_out
 from .lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
 from .less_equal import less_equal, less_equal_scalar
 from .lift_fresh_copy import lift_fresh_copy
+from .linalg_cholesky import linalg_cholesky
+from .linalg_cross import linalg_cross, linalg_cross_out
+from .linalg_det import linalg_det, linalg_det_out
+from .linalg_householder_product import linalg_householder_product
+from .linalg_ldl_factor import ldl_factor
+from .linalg_ldl_factor_ex import ldl_factor_ex
+from .linalg_lstsq import linalg_lstsq
+from .linalg_lu_factor import linalg_lu_factor, linalg_lu_factor_out
+from .linalg_lu_factor_ex import linalg_lu_factor_ex, linalg_lu_factor_ex_out
+from .linalg_matrix_norm import linalg_matrix_norm
+from .linalg_slogdet import linalg_slogdet
+from .linalg_solve_triangular import (
+    linalg_solve_triangular,
+    linalg_solve_triangular_out,
+)
+from .linear_backward import linear_backward
 from .linspace import linspace
 from .log import log
 from .log1p import log1p, log1p_
@@ -185,6 +205,7 @@ from .logical_xor import logical_xor, logical_xor_
 from .logspace import logspace
 from .logsumexp import logsumexp
 from .lt import lt, lt_, lt_scalar, lt_scalar_
+from .lu_unpack import lu_unpack, lu_unpack_out
 from .masked_fill import masked_fill, masked_fill_
 from .masked_scatter import masked_scatter, masked_scatter_
 from .masked_select import masked_select
@@ -202,6 +223,8 @@ from .mul import mul, mul_
 from .multinomial import multinomial
 from .multiply_ import multiply_
 from .mv import mv, mv_cluster
+from .mvlgamma import mvlgamma
+from .mvlgamma_ import mvlgamma_
 from .nan_to_num import nan_to_num
 from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .narrow_copy import narrow_copy
@@ -218,6 +241,7 @@ from .nllloss import (
 )
 from .nonzero import nonzero
 from .nonzero_numpy import nonzero_numpy
+from .norm import norm, norm_scalar, norm_scalaropt_dim
 from .normal import (
     normal_,
     normal_float_tensor,
@@ -227,6 +251,7 @@ from .normal import (
 from .not_equal import not_equal, not_equal_scalar
 from .ones import ones
 from .ones_like import ones_like
+from .ormqr import ormqr
 from .pad import constant_pad_nd, pad
 from .per_token_group_quant_fp8 import SUPPORTED_FP8_DTYPE, per_token_group_quant_fp8
 from .permute_copy import permute_copy
@@ -253,6 +278,7 @@ from .reciprocal import reciprocal, reciprocal_
 from .reflection_pad1d import reflection_pad1d, reflection_pad1d_out
 from .reflection_pad2d import reflection_pad2d, reflection_pad2d_out
 from .relu import relu, relu_
+from .renorm import renorm, renorm_
 from .repeat import repeat
 from .repeat_interleave import (
     repeat_interleave_self_int,
@@ -781,4 +807,39 @@ __all__ = [
     "zero_out",
     "zeros",
     "zeros_like",
+    "addmm_",
+    "baddbmm_",
+    "baddbmm_out",
+    "cholesky_inverse",
+    "cholesky_solve",
+    "cholesky_solve_out",
+    "linalg_cholesky",
+    "linalg_cross",
+    "linalg_cross_out",
+    "mvlgamma",
+    "mvlgamma_",
+    "_linalg_eigvals",
+    "linalg_det",
+    "linalg_det_out",
+    "linalg_householder_product",
+    "ldl_factor",
+    "ldl_factor_ex",
+    "linalg_lstsq",
+    "linalg_lu_factor",
+    "linalg_lu_factor_out",
+    "linalg_lu_factor_ex",
+    "linalg_lu_factor_ex_out",
+    "linalg_matrix_norm",
+    "linalg_slogdet",
+    "linalg_solve_triangular",
+    "linalg_solve_triangular_out",
+    "linear_backward",
+    "lu_unpack",
+    "lu_unpack_out",
+    "ormqr",
+    "norm",
+    "norm_scalar",
+    "norm_scalaropt_dim",
+    "renorm",
+    "renorm_",
 ]
