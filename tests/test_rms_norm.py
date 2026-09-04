@@ -17,7 +17,6 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.ops.rms_norm_w8a16_fp8 import rms_norm_w8a16_fp8
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
@@ -34,6 +33,9 @@ FP8_GROUP_SIZE = 128
 def _cuda_fp8_e4m3fn_available():
     if FP8_DTYPE is None or not torch.cuda.is_available():
         return False
+    # PPU can store / cast e4m3fn even though it reports sm_80.
+    if flag_gems.vendor_name == "thead":
+        return True
     major, _ = torch.cuda.get_device_capability()
     return major >= 9
 
@@ -116,7 +118,7 @@ def test_rms_norm(shape, dtype):
 )
 @pytest.mark.skipif(
     not _cuda_fp8_e4m3fn_available(),
-    reason="RMSNorm W8A16 FP8 requires CUDA sm90+ float8_e4m3fn support",
+    reason="RMSNorm W8A16 FP8 requires CUDA float8_e4m3fn support",
 )
 def test_rms_norm_w8a16_fp8(shape):
     dtype = torch.bfloat16
@@ -141,7 +143,7 @@ def test_rms_norm_w8a16_fp8(shape):
     ref_inp = utils.to_reference(inp)
     ref_weight = utils.to_reference(dequant_weight)
     ref_out = torch.nn.functional.rms_norm(ref_inp, (n,), ref_weight, eps=eps)
-    res_out = rms_norm_w8a16_fp8(
+    res_out = flag_gems.rms_norm_w8a16_fp8(
         inp,
         (n,),
         weight_fp8,

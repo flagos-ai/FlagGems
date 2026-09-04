@@ -15,7 +15,7 @@
 import pytest
 import torch
 
-from flag_gems.ops.rms_norm_w8a16_fp8 import rms_norm_w8a16_fp8
+import flag_gems
 
 from . import base
 
@@ -43,6 +43,8 @@ FP8_DTYPE = torch.float8_e4m3fn if hasattr(torch, "float8_e4m3fn") else None
 def _cuda_fp8_e4m3fn_available():
     if FP8_DTYPE is None or not torch.cuda.is_available():
         return False
+    if flag_gems.vendor_name == "thead":
+        return True
     major, _ = torch.cuda.get_device_capability()
     return major >= 9
 
@@ -69,7 +71,7 @@ def _torch_rms_norm_w8a16(x, normalized_shape, weight_fp8, weight_scale, weight_
 
 
 def _gems_rms_norm_w8a16(x, normalized_shape, weight_fp8, weight_scale, weight_ref):
-    return rms_norm_w8a16_fp8(x, normalized_shape, weight_fp8, weight_scale)
+    return flag_gems.rms_norm_w8a16_fp8(x, normalized_shape, weight_fp8, weight_scale)
 
 
 class RmsNormFp8Benchmark(base.Benchmark):
@@ -103,7 +105,7 @@ class RmsNormFp8W8A16Benchmark(RmsNormFp8Benchmark):
 @pytest.mark.rms_norm_w8a16_fp8
 @pytest.mark.skipif(
     not _cuda_fp8_e4m3fn_available(),
-    reason="RMSNorm FP8-W8A16 benchmark requires CUDA sm90+ float8_e4m3fn support",
+    reason="RMSNorm FP8-W8A16 benchmark requires CUDA float8_e4m3fn support",
 )
 def test_rms_norm_w8a16_fp8():
     bench = RmsNormFp8W8A16Benchmark(
