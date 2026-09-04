@@ -316,6 +316,7 @@ from flag_gems.ops.ctc_loss import ctc_loss
 from flag_gems.ops.cudnn_attention_forward import cudnn_attention_forward
 from flag_gems.ops.cudnn_batch_norm_backward import cudnn_batch_norm_backward
 from flag_gems.ops.cudnn_convolution import cudnn_convolution
+from flag_gems.ops.cudnn_convolution_transpose import cudnn_convolution_transpose
 from flag_gems.ops.cudnn_rnn_backward import cudnn_rnn_backward
 from flag_gems.ops.cummax import cummax, cummaxmin_backward
 from flag_gems.ops.cummin import cummin
@@ -1256,6 +1257,7 @@ __all__ = [
     "cudnn_attention_forward",
     "cudnn_batch_norm_backward",
     "cudnn_convolution",
+    "cudnn_convolution_transpose",
     "cudnn_rnn_backward",
     "cummax",
     "cummaxmin_backward",
