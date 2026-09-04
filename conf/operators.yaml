@@ -13756,6 +13756,18 @@ ops:
   - Reduction
   stages:
   - stable: '4.0'
+- id: trace_backward
+  description: 'Gradient of trace: scatters the incoming gradient onto the main diagonal
+    of a zero matrix of the given size.'
+  for:
+  - trace_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: transpose
   description: 'Returns a view of the original tensor with its two dimensions swapped.
 
