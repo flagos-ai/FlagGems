@@ -30,6 +30,9 @@ TRAIN_PATH = (
     / "cli"
     / "train.py"
 )
+MUL_CONFIG_PATH = (
+    TRAIN_PATH.parents[1] / "contracts" / "configs" / "mul_flagtune_configs.yaml"
+)
 
 
 def load_path(path, name):
@@ -434,6 +437,70 @@ def test_collection_rows_are_flattened_to_streaming_training_jsonl(tmp_path):
     assert "source_shape_key" not in row
     assert row["inputs"]["stride_am"] == 128
     assert row["config"] == {"BLOCK_M": 16}
+
+
+def test_mul_collection_rows_reuse_derived_variant_inputs(tmp_path):
+    """Feed mul's derived dimensions directly into the generic training row."""
+    mod = load_path(TRAIN_PATH, "flag_gems_flagtune_train_mul_rows")
+    from flag_gems.flagtune.contracts.operator import load_operator_benchmark_spec
+
+    variant = load_operator_benchmark_spec(MUL_CONFIG_PATH).operator_info.get_variant(
+        "scalar"
+    )
+    data_path = tmp_path / "mul-data.jsonl"
+    failure_path = tmp_path / "mul-failures.jsonl"
+    result = {
+        "status": "ok",
+        "source_index": 0,
+        "Count": 3,
+        "kind": "scalar",
+        "lhs_shape": [18],
+        "rhs_shape": [],
+        "n_elements": 18,
+        "has_rhs": 0,
+        "platform_key": "nvidia-h20",
+        "gpu": "0",
+        "gpu_name": "NVIDIA H20-3e",
+        "gpu_metadata": {
+            "backend": "cuda",
+            "vendor": "NVIDIA",
+            "device_name": "NVIDIA H20-3e",
+            "architecture": "sm90",
+            "platform_key": "nvidia-h20",
+        },
+        "input_dtypes": ["bfloat16"],
+        "output_dtypes": ["bfloat16"],
+        "dtype_key": "bf16-bf16",
+        "config_timings": [
+            {
+                "config": {
+                    "BLOCK_SIZE": 128,
+                    "num_warps": 4,
+                    "num_stages": 3,
+                },
+                "latency_ms": 0.1,
+                "status": "ok",
+            }
+        ],
+    }
+
+    counts = mod._append_collection_rows(
+        data_path,
+        failure_path,
+        [result],
+        variant,
+        ["kind", "lhs_shape", "rhs_shape"],
+        1,
+    )
+
+    row = json.loads(data_path.read_text())
+    assert counts == (1, 1, 0)
+    assert row["ranking_group"] == {
+        "operator_id": "flaggems/mul",
+        "variant": "scalar",
+        "dimensions": {"n_elements": 18, "has_rhs": 0},
+        "model_dtype_key": "bf16-bf16",
+    }
 
 
 def test_collection_failure_uses_workload_not_model_input_dimensions(tmp_path):

@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Compile safe, data-driven operator planning and benchmark configuration.
 
 The model-facing ``variants`` section is compiled by FlagTree.  The FlagGems
@@ -18,6 +32,7 @@ from __future__ import annotations
 import hashlib
 import os
 from dataclasses import dataclass
+from numbers import Number
 from pathlib import Path
 from typing import Any, Mapping, Optional, Sequence
 
@@ -45,10 +60,137 @@ class OperatorConfigError(RuntimeError):
 
 
 _MISSING = object()
-_FIELD_KEYS = {"type", "required", "default", "min", "max", "aliases", "role"}
+_FIELD_KEYS = {
+    "type",
+    "required",
+    "default",
+    "min",
+    "max",
+    "choices",
+    "aliases",
+    "role",
+}
 _TENSOR_KEYS = {"factory", "shape", "dtype"}
 _FACTORIES = {"randn", "zeros", "ones", "empty"}
 _PUBLIC_OPERATOR_OVERRIDES: dict[str, str] = {}
+
+
+def _shape_tuple(value: Any, location: str = "shape") -> tuple[int, ...]:
+    """Normalize a tensor shape to a tuple of positive integer dimensions."""
+    if value is None:
+        return ()
+    if not isinstance(value, (list, tuple)):
+        raise OperatorConfigError(f"{location} must be a list of positive integers")
+    result = []
+    for index, dimension in enumerate(value):
+        if isinstance(dimension, bool):
+            raise OperatorConfigError(f"{location}[{index}] must be a positive integer")
+        try:
+            converted = int(dimension)
+        except (TypeError, ValueError) as exc:
+            raise OperatorConfigError(
+                f"{location}[{index}] must be a positive integer"
+            ) from exc
+        if converted <= 0 or (
+            isinstance(dimension, float) and not dimension.is_integer()
+        ):
+            raise OperatorConfigError(f"{location}[{index}] must be a positive integer")
+        result.append(converted)
+    return tuple(result)
+
+
+def _matches_field_type(value: Any, type_name: str) -> bool:
+    """Return whether a positional value can occupy one declared field type."""
+    if type_name == "shape":
+        return value is None or isinstance(value, (list, tuple))
+    if type_name == "str":
+        return isinstance(value, str) and bool(value)
+    if type_name == "int":
+        if isinstance(value, bool):
+            return False
+        try:
+            int(value)
+        except (TypeError, ValueError):
+            return False
+        return not isinstance(value, float) or value.is_integer()
+    return False
+
+
+def _normalize_field_value(value: Any, type_name: str, location: str) -> Any:
+    """Normalize one supported shape-field value without applying constraints."""
+    if type_name == "int":
+        if isinstance(value, bool):
+            raise OperatorConfigError(f"{location} must be an integer, got boolean")
+        try:
+            converted = int(value)
+        except (TypeError, ValueError) as exc:
+            raise OperatorConfigError(
+                f"{location} must be an integer: {value!r}"
+            ) from exc
+        if isinstance(value, float) and not value.is_integer():
+            raise OperatorConfigError(f"{location} must be an integer: {value!r}")
+        return converted
+    if type_name == "str":
+        if not isinstance(value, str) or not value:
+            raise OperatorConfigError(f"{location} must be a non-empty string")
+        return value
+    if type_name == "shape":
+        return _shape_tuple(value, location)
+    raise OperatorConfigError(f"unsupported field type {type_name!r}")
+
+
+def _broadcast_shape(lhs: Any, rhs: Any) -> tuple[int, ...]:
+    """Return the broadcast result for two normalized tensor shapes."""
+    left = _shape_tuple(lhs)
+    right = _shape_tuple(rhs)
+    result = []
+    for index in range(1, max(len(left), len(right)) + 1):
+        left_dim = left[-index] if index <= len(left) else 1
+        right_dim = right[-index] if index <= len(right) else 1
+        if left_dim != right_dim and left_dim != 1 and right_dim != 1:
+            raise OperatorConfigError(
+                f"tensor shapes {left!r} and {right!r} are not broadcastable"
+            )
+        result.append(max(left_dim, right_dim))
+    return tuple(reversed(result))
+
+
+def _shape_numel(shape: Any) -> int:
+    """Return the element count for a normalized shape, including scalars."""
+    result = 1
+    for dimension in _shape_tuple(shape):
+        result *= dimension
+    return result
+
+
+def _broadcast_numel(lhs: Any, rhs: Any) -> int:
+    """Return the element count of the broadcast result shape."""
+    return _shape_numel(_broadcast_shape(lhs, rhs))
+
+
+def _broadcast_last_dim(lhs: Any, rhs: Any) -> int:
+    """Return the last broadcast dimension, or one for a scalar result."""
+    shape = _broadcast_shape(lhs, rhs)
+    return shape[-1] if shape else 1
+
+
+def _broadcast_rank(lhs: Any, rhs: Any) -> int:
+    """Return the rank of the broadcast result shape."""
+    return len(_broadcast_shape(lhs, rhs))
+
+
+def _shape_equal(lhs: Any, rhs: Any) -> int:
+    """Return one when two normalized tensor shapes are identical."""
+    return int(_shape_tuple(lhs) == _shape_tuple(rhs))
+
+
+_SHAPE_OPERATIONS = {
+    "broadcast_numel": _broadcast_numel,
+    "broadcast_last_dim": _broadcast_last_dim,
+    "broadcast_rank": _broadcast_rank,
+    "shape_equal": _shape_equal,
+    "nonempty": lambda value: int(bool(value)),
+}
 
 
 def _mapping(value: Any, location: str) -> Mapping[str, Any]:
@@ -98,7 +240,9 @@ class ShapeFieldSpec:
     Instances are compiled from ``pretune.shape.fields``.  ``default``,
     ``minimum``, and ``maximum`` may hold the private ``_MISSING`` sentinel so
     an explicit YAML null remains distinguishable from an omitted property.
-    Only integer fields are currently supported.
+    Integer, string, and tensor-shape fields are supported. Tensor shapes are
+    normalized to tuples of positive dimensions; an explicit null represents a
+    scalar shape.
     """
 
     name: str
@@ -107,6 +251,7 @@ class ShapeFieldSpec:
     default: Any
     minimum: Any
     maximum: Any
+    choices: tuple[Any, ...]
     aliases: tuple[str, ...]
     role: Optional[str]
 
@@ -119,7 +264,8 @@ class ShapeFieldSpec:
             location: Fully qualified row/field path used in diagnostics.
 
         Returns:
-            A normalized integer satisfying the configured inclusive bounds.
+            A normalized value satisfying the configured type, bounds, and
+            optional finite choice set.
 
         Raises:
             OperatorConfigError: If the type is unsupported, conversion is
@@ -129,26 +275,14 @@ class ShapeFieldSpec:
             Integral floats and integer-like strings are accepted for input
             compatibility.  Non-integral floats are rejected explicitly.
         """
-        if self.type_name == "int":
-            if isinstance(value, bool):
-                raise OperatorConfigError(f"{location} must be an integer, got boolean")
-            try:
-                converted = int(value)
-            except (TypeError, ValueError) as exc:
-                raise OperatorConfigError(
-                    f"{location} must be an integer: {value!r}"
-                ) from exc
-            if isinstance(value, float) and not value.is_integer():
-                raise OperatorConfigError(f"{location} must be an integer: {value!r}")
-        else:
-            raise OperatorConfigError(f"unsupported field type {self.type_name!r}")
+        converted = _normalize_field_value(value, self.type_name, location)
         minimum = (
-            evaluate_compiled(self.minimum, context, {})
+            evaluate_compiled(self.minimum, context, _SHAPE_OPERATIONS)
             if self.minimum is not _MISSING
             else _MISSING
         )
         maximum = (
-            evaluate_compiled(self.maximum, context, {})
+            evaluate_compiled(self.maximum, context, _SHAPE_OPERATIONS)
             if self.maximum is not _MISSING
             else _MISSING
         )
@@ -159,6 +293,10 @@ class ShapeFieldSpec:
         if maximum is not _MISSING and converted > maximum:
             raise OperatorConfigError(
                 f"{location}={converted} is above maximum {maximum}"
+            )
+        if self.choices and converted not in self.choices:
+            raise OperatorConfigError(
+                f"{location}={converted!r} must be one of {list(self.choices)!r}"
             )
         return converted
 
@@ -214,18 +352,17 @@ class ShapeSchema:
             location: Row label used to produce actionable validation errors.
 
         Returns:
-            ``(identity_values, count)``. ``identity_values`` contains exactly
-            the declared identity fields in schema order; ``count`` is the
-            optional normalized frequency field and is excluded from identity.
+            ``(runtime_values, count)``. ``runtime_values`` contains declared
+            identity fields plus derived auxiliary fields in schema order;
+            ``count`` is excluded.
 
         Raises:
             OperatorConfigError: If an input is unknown or duplicated, a
             required field is absent, or field normalization fails.
 
         Notes:
-            Non-identity auxiliary fields may be validated to support defaults
-            and count extraction, but they are intentionally omitted from the
-            returned identity mapping.
+            Non-identity auxiliary fields supply model inputs and dispatch data.
+            Reporting explicitly projects the declared identity fields.
         """
         canonical: dict[str, Any] = {}
         for raw_name, value in raw_values.items():
@@ -242,7 +379,7 @@ class ShapeSchema:
             if name in canonical:
                 value = canonical[name]
             elif field.default is not _MISSING:
-                value = evaluate_compiled(field.default, normalized, {})
+                value = evaluate_compiled(field.default, normalized, _SHAPE_OPERATIONS)
             elif field.required:
                 raise OperatorConfigError(
                     f"{location} is missing required field {name!r}"
@@ -251,9 +388,15 @@ class ShapeSchema:
                 continue
             normalized[name] = field.normalize(value, normalized, f"{location}.{name}")
 
-        identity = {name: normalized[name] for name in self.identity}
+        # Preserve derived auxiliary values for variant dispatch and runtime
+        # model inputs. Reporting still projects only ``identity`` fields.
+        runtime_values = {
+            name: value
+            for name, value in normalized.items()
+            if name != self.count_field
+        }
         count = normalized.get(self.count_field) if self.count_field else None
-        return identity, count
+        return runtime_values, count
 
     def build_records(self, shape_config: Any) -> list[ShapeRecord]:
         """Convert a parsed generic shape table into validated records.
@@ -278,8 +421,27 @@ class ShapeSchema:
         spec = self.canonicalize_fields(shape_config.shape_spec)
         records = []
         for index, row in enumerate(shape_config.rows):
+            positional = list(row)
+            row_fields = list(spec)
+            raw_values: dict[str, Any] = {}
+            if (
+                self.count_field in row_fields
+                and len(positional) < len(row_fields)
+                and positional
+            ):
+                count_index = row_fields.index(self.count_field)
+                if count_index != len(row_fields) - 1:
+                    raise OperatorConfigError(
+                        "the count field must be last when rows omit optional values"
+                    )
+                candidate_index = len(positional) - 1
+                candidate_field = self.fields[row_fields[candidate_index]]
+                if not _matches_field_type(positional[-1], candidate_field.type_name):
+                    raw_values[self.count_field] = positional.pop()
+                    row_fields.pop()
+            raw_values.update(dict(zip(row_fields, positional)))
             values, count = self.normalize_values(
-                dict(zip(spec, row)), f"{shape_config.operator_name}.shapes[{index}]"
+                raw_values, f"{shape_config.operator_name}.shapes[{index}]"
             )
             records.append(ShapeRecord(index, None, values, count))
         return records
@@ -289,17 +451,18 @@ class ShapeSchema:
 class TensorSpec:
     """Describe one safely constructible benchmark tensor.
 
-    ``factory`` is restricted to a fixed torch-factory allowlist; every shape
-    dimension is either a positive integer literal or a declared identity field.
-    Device placement is deliberately absent from this configuration contract:
-    the registered :class:`DeviceRuntime` owns it.  The executor accepts only
-    ``dtype='runtime'`` so the caller's ordered dtype identity remains
-    authoritative.
+    ``factory`` is restricted to a fixed torch-factory allowlist. A shape is
+    either a list of positive literals/declared fields or one declared
+    tensor-shape field. Device placement is deliberately absent from this
+    configuration contract: the registered :class:`DeviceRuntime` owns it. The
+    executor accepts only ``dtype='runtime'`` so the caller's ordered dtype
+    identity remains authoritative.
     """
 
     name: str
     factory: str
     shape: tuple[CompiledExpression, ...]
+    shape_ref: Optional[SymbolRef]
     dtype: str
 
 
@@ -307,13 +470,35 @@ class TensorSpec:
 class BenchmarkSpec:
     """Describe tensor construction and a public FlagGems invocation.
 
-    ``tensors`` defines trusted, allowlisted construction recipes. ``args`` is
-    the ordered list of tensor names passed positionally to the public operator.
-    Keyword arguments and YAML-provided callable paths are intentionally absent.
+    ``tensors`` defines trusted construction recipes, while ``scalars`` contains
+    numeric literals. ``args`` is either one shared positional reference list or
+    a complete variant-to-reference mapping. Keyword arguments and
+    YAML-provided callable paths are intentionally absent.
     """
 
     tensors: tuple[TensorSpec, ...]
-    args: tuple[SymbolRef, ...]
+    scalars: Mapping[str, Number]
+    args: tuple[SymbolRef, ...] | Mapping[str, tuple[SymbolRef, ...]]
+
+    def args_for(self, variant: str) -> tuple[SymbolRef, ...]:
+        """Return the invocation arguments shared by or selected for a variant."""
+        if isinstance(self.args, Mapping):
+            return self.args[variant]
+        return self.args
+
+    @property
+    def tensor_names(self) -> tuple[str, ...]:
+        """Return tensor recipe names in dtype-assignment order."""
+        return tuple(tensor.name for tensor in self.tensors)
+
+    def input_tensor_names_for(self, variant: str) -> tuple[str, ...]:
+        """Return only tensor arguments used by one public invocation."""
+        tensor_names = set(self.tensor_names)
+        return tuple(
+            reference.name
+            for reference in self.args_for(variant)
+            if reference.name in tensor_names
+        )
 
 
 @dataclass(frozen=True)
@@ -417,7 +602,7 @@ def _parse_shape(raw: Any, location: str) -> ShapeSchema:
 
     Raises:
         OperatorConfigError: If keys, names, field definitions, aliases, roles,
-        or identity declarations violate the version-2 schema.
+        or identity declarations violate the schema.
 
     Implementation:
         The parser rejects unknown keys before constructing immutable field
@@ -444,15 +629,23 @@ def _parse_shape(raw: Any, location: str) -> ShapeSchema:
                 f"{location}.fields.{name} has unknown keys: {sorted(unknown)}"
             )
         type_name = str(field.get("type", "int"))
+        if type_name not in {"int", "str", "shape"}:
+            raise OperatorConfigError(
+                f"{location}.fields.{name}.type must be 'int', 'str', or 'shape'"
+            )
+        if type_name != "int" and ("min" in field or "max" in field):
+            raise OperatorConfigError(
+                f"{location}.fields.{name} min/max require type=int"
+            )
         required = bool(field.get("required", "default" not in field))
         try:
             default = (
                 compile_expression(
                     field["default"],
                     symbols=available_fields,
-                    operations={},
+                    operations=_SHAPE_OPERATIONS,
                     location=f"{location}.fields.{name}.default",
-                    allow_calls=False,
+                    allow_calls=True,
                 )
                 if "default" in field
                 else _MISSING
@@ -461,9 +654,9 @@ def _parse_shape(raw: Any, location: str) -> ShapeSchema:
                 compile_expression(
                     field["min"],
                     symbols=available_fields,
-                    operations={},
+                    operations=_SHAPE_OPERATIONS,
                     location=f"{location}.fields.{name}.min",
-                    allow_calls=False,
+                    allow_calls=True,
                 )
                 if "min" in field
                 else _MISSING
@@ -472,15 +665,33 @@ def _parse_shape(raw: Any, location: str) -> ShapeSchema:
                 compile_expression(
                     field["max"],
                     symbols=available_fields,
-                    operations={},
+                    operations=_SHAPE_OPERATIONS,
                     location=f"{location}.fields.{name}.max",
-                    allow_calls=False,
+                    allow_calls=True,
                 )
                 if "max" in field
                 else _MISSING
             )
         except SafeExpressionError as exc:
             raise OperatorConfigError(str(exc)) from exc
+        raw_choices = field.get("choices", [])
+        if not isinstance(raw_choices, list):
+            raise OperatorConfigError(
+                f"{location}.fields.{name}.choices must be a list"
+            )
+        choices = []
+        for choice_index, choice in enumerate(raw_choices):
+            choices.append(
+                _normalize_field_value(
+                    choice,
+                    type_name,
+                    f"{location}.fields.{name}.choices[{choice_index}]",
+                )
+            )
+        if len(set(choices)) != len(choices):
+            raise OperatorConfigError(
+                f"{location}.fields.{name}.choices must be unique"
+            )
         raw_aliases = field.get("aliases", [])
         if not isinstance(raw_aliases, list) or not all(
             isinstance(item, str) and item for item in raw_aliases
@@ -502,6 +713,7 @@ def _parse_shape(raw: Any, location: str) -> ShapeSchema:
             default,
             minimum,
             maximum,
+            tuple(choices),
             tuple(raw_aliases),
             role,
         )
@@ -536,7 +748,12 @@ def _parse_shape(raw: Any, location: str) -> ShapeSchema:
     return ShapeSchema(fields, identity, count_field, aliases)
 
 
-def _parse_benchmark(raw: Any, shape: ShapeSchema, location: str) -> BenchmarkSpec:
+def _parse_benchmark(
+    raw: Any,
+    shape: ShapeSchema,
+    variants: Sequence[str],
+    location: str,
+) -> BenchmarkSpec:
     """Compile allowlisted tensor recipes and a public invocation contract.
 
     Args:
@@ -558,7 +775,7 @@ def _parse_benchmark(raw: Any, shape: ShapeSchema, location: str) -> BenchmarkSp
         callables, keyword expressions, or code to evaluate.
     """
     root = _mapping(raw, location)
-    unknown = set(root) - {"tensors", "invoke"}
+    unknown = set(root) - {"tensors", "scalars", "invoke"}
     if unknown:
         raise OperatorConfigError(f"{location} has unknown keys: {sorted(unknown)}")
     raw_tensors = _mapping(root.get("tensors"), f"{location}.tensors")
@@ -577,38 +794,73 @@ def _parse_benchmark(raw: Any, shape: ShapeSchema, location: str) -> BenchmarkSp
                 f"{location}.tensors.{name}.factory must be one of {sorted(_FACTORIES)}"
             )
         raw_dims = tensor.get("shape")
-        if not isinstance(raw_dims, list) or not raw_dims:
-            raise OperatorConfigError(f"{location}.tensors.{name}.shape must be a list")
         dims = []
-        for index, dim in enumerate(raw_dims):
-            if isinstance(dim, bool):
+        shape_ref = None
+        if isinstance(raw_dims, str):
+            field = shape.fields.get(raw_dims)
+            if field is None or field.type_name != "shape":
                 raise OperatorConfigError(
-                    f"{location}.tensors.{name}.shape dimensions must not be boolean"
-                )
-            if isinstance(dim, int) and dim <= 0:
-                raise OperatorConfigError(
-                    f"{location}.tensors.{name}.shape dimensions must be positive"
+                    f"{location}.tensors.{name}.shape must reference a shape field"
                 )
             try:
-                dims.append(
-                    compile_expression(
-                        dim,
-                        symbols=set(shape.identity),
-                        operations={},
-                        location=f"{location}.tensors.{name}.shape[{index}]",
-                        allow_calls=False,
-                    )
+                shape_ref = compile_reference(
+                    raw_dims,
+                    symbols=set(shape.fields),
+                    location=f"{location}.tensors.{name}.shape",
                 )
             except SafeExpressionError as exc:
                 raise OperatorConfigError(str(exc)) from exc
+        elif isinstance(raw_dims, list) and raw_dims:
+            for index, dim in enumerate(raw_dims):
+                if isinstance(dim, bool):
+                    raise OperatorConfigError(
+                        f"{location}.tensors.{name}.shape dimensions must not be boolean"
+                    )
+                if isinstance(dim, int) and dim <= 0:
+                    raise OperatorConfigError(
+                        f"{location}.tensors.{name}.shape dimensions must be positive"
+                    )
+                try:
+                    dims.append(
+                        compile_expression(
+                            dim,
+                            symbols=set(shape.fields),
+                            operations={},
+                            location=f"{location}.tensors.{name}.shape[{index}]",
+                            allow_calls=False,
+                        )
+                    )
+                except SafeExpressionError as exc:
+                    raise OperatorConfigError(str(exc)) from exc
+        else:
+            raise OperatorConfigError(
+                f"{location}.tensors.{name}.shape must be a non-empty list "
+                "or a shape-field reference"
+            )
         dtype = str(tensor.get("dtype", "runtime"))
         if dtype != "runtime":
             raise OperatorConfigError(
                 f"{location}.tensors.{name} supports only dtype=runtime"
             )
-        tensors.append(TensorSpec(name, factory, tuple(dims), dtype))
+        tensors.append(TensorSpec(name, factory, tuple(dims), shape_ref, dtype))
     if not tensors:
         raise OperatorConfigError(f"{location}.tensors must not be empty")
+
+    raw_scalars = root.get("scalars", {})
+    scalars = _mapping(raw_scalars, f"{location}.scalars")
+    normalized_scalars: dict[str, Number] = {}
+    tensor_names = {tensor.name for tensor in tensors}
+    for raw_name, value in scalars.items():
+        name = _name(raw_name, f"{location}.scalars key")
+        if name in tensor_names:
+            raise OperatorConfigError(
+                f"{location} duplicates benchmark input name {name!r}"
+            )
+        if isinstance(value, complex) or not isinstance(value, Number):
+            raise OperatorConfigError(
+                f"{location}.scalars.{name} must be a real numeric literal"
+            )
+        normalized_scalars[name] = value
 
     invoke = _mapping(root.get("invoke"), f"{location}.invoke")
     unknown = set(invoke) - {"kind", "args"}
@@ -619,23 +871,37 @@ def _parse_benchmark(raw: Any, shape: ShapeSchema, location: str) -> BenchmarkSp
     if invoke.get("kind") != "flag_gems_public":
         raise OperatorConfigError(f"{location}.invoke.kind must be 'flag_gems_public'")
     args = invoke.get("args")
-    tensor_names = {tensor.name for tensor in tensors}
-    if not isinstance(args, list) or not args:
-        raise OperatorConfigError(
-            f"{location}.invoke.args must reference declared tensors"
-        )
-    try:
-        compiled_args = tuple(
-            compile_reference(
-                item,
-                symbols=tensor_names,
-                location=f"{location}.invoke.args[{index}]",
+    input_names = tensor_names | set(normalized_scalars)
+
+    def compile_args(raw_args: Any, args_location: str) -> tuple[SymbolRef, ...]:
+        if not isinstance(raw_args, list) or not raw_args:
+            raise OperatorConfigError(
+                f"{args_location} must reference declared tensors or scalars"
             )
-            for index, item in enumerate(args)
-        )
-    except SafeExpressionError as exc:
-        raise OperatorConfigError(str(exc)) from exc
-    return BenchmarkSpec(tuple(tensors), compiled_args)
+        try:
+            return tuple(
+                compile_reference(
+                    item,
+                    symbols=input_names,
+                    location=f"{args_location}[{index}]",
+                )
+                for index, item in enumerate(raw_args)
+            )
+        except SafeExpressionError as exc:
+            raise OperatorConfigError(str(exc)) from exc
+
+    if isinstance(args, Mapping):
+        if set(args) != set(variants):
+            raise OperatorConfigError(
+                f"{location}.invoke.args must list every variant exactly once"
+            )
+        compiled_args: tuple[SymbolRef, ...] | Mapping[str, tuple[SymbolRef, ...]] = {
+            variant: compile_args(args[variant], f"{location}.invoke.args.{variant}")
+            for variant in variants
+        }
+    else:
+        compiled_args = compile_args(args, f"{location}.invoke.args")
+    return BenchmarkSpec(tuple(tensors), normalized_scalars, compiled_args)
 
 
 def load_operator_benchmark_spec(path: str | Path) -> OperatorBenchmarkSpec:
@@ -662,9 +928,9 @@ def load_operator_benchmark_spec(path: str | Path) -> OperatorBenchmarkSpec:
         to detect planner/worker configuration drift.
 
     Limitations:
-        Only schema version 3, ``first_match`` dispatch, integer shape fields,
-        allowlisted torch factories, CUDA runtime dtype, and positional public
-        FlagGems calls are currently supported.
+        Only schema version 3, ``first_match`` dispatch, allowlisted shape-field
+        types and tensor factories, runtime dtype, and positional public
+        FlagGems calls are supported.
     """
     try:
         import yaml
@@ -717,7 +983,10 @@ def load_operator_benchmark_spec(path: str | Path) -> OperatorBenchmarkSpec:
             "config.pretune.dispatch.order must list every variant exactly once"
         )
     benchmark = _parse_benchmark(
-        pretune.get("benchmark"), shape, "config.pretune.benchmark"
+        pretune.get("benchmark"),
+        shape,
+        tuple(operator_info.variants),
+        "config.pretune.benchmark",
     )
     return OperatorBenchmarkSpec(
         config_path,

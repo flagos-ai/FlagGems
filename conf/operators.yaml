@@ -5814,6 +5814,28 @@ ops:
   - MoE
   stages:
   - stable: '5.0'
+- id: gru
+  description: Gated recurrent unit (GRU). At each time step, computes a new hidden state
+    from the input and the previous hidden state using a reset gate and an update gate,
+    across one or more layers and optionally bidirectionally.
+  for:
+  - gru.input
+  labels:
+  - aten
+  kind:
+  - NeuralNetwork
+  stages:
+  - beta: '5.4'
+- id: gru_data
+  description: Gated recurrent unit (GRU) over packed-sequence data.
+  for:
+  - gru.data
+  labels:
+  - aten
+  kind:
+  - NeuralNetwork
+  stages:
+  - beta: '5.4'
 - id: gt
   description: Computes that `input` is greater than `other` element-wise.
   for:
@@ -7411,6 +7433,87 @@ ops:
   - LinearAlg
   stages:
   - alpha: '5.4'
+- id: linalg_matrix_rank
+  description: |
+    Computes the numerical rank of a matrix or a batch of matrices.
+  for:
+  - linalg_matrix_rank
+  labels:
+  - aten
+  kind:
+  - LinearAlg
+  stages:
+  - beta: '5.4'
+- id: linalg_matrix_rank_atol_rtol_float
+  description: Computes numerical matrix rank using optional scalar absolute and relative tolerances.
+  for:
+  - linalg_matrix_rank.atol_rtol_float
+  labels:
+  - aten
+  kind:
+  - LinearAlg
+  stages:
+  - beta: '5.4'
+- id: linalg_matrix_rank_atol_rtol_float_out
+  description: Computes numerical matrix rank using scalar tolerances and an output tensor.
+  for:
+  - linalg_matrix_rank.atol_rtol_float_out
+  labels:
+  - aten
+  kind:
+  - LinearAlg
+  stages:
+  - beta: '5.4'
+- id: linalg_matrix_rank_atol_rtol_tensor
+  description: Computes numerical matrix rank using optional tensor absolute and relative tolerances.
+  for:
+  - linalg_matrix_rank.atol_rtol_tensor
+  labels:
+  - aten
+  kind:
+  - LinearAlg
+  stages:
+  - beta: '5.4'
+- id: linalg_matrix_rank_atol_rtol_tensor_out
+  description: Computes numerical matrix rank using tensor tolerances and an output tensor.
+  for:
+  - linalg_matrix_rank.atol_rtol_tensor_out
+  labels:
+  - aten
+  kind:
+  - LinearAlg
+  stages:
+  - beta: '5.4'
+- id: linalg_matrix_rank_out
+  description: Computes numerical matrix rank using a scalar tolerance and an output tensor.
+  for:
+  - linalg_matrix_rank.out
+  labels:
+  - aten
+  kind:
+  - LinearAlg
+  stages:
+  - beta: '5.4'
+- id: linalg_matrix_rank_out_tol_tensor
+  description: Computes numerical matrix rank using a tensor tolerance and an output tensor.
+  for:
+  - linalg_matrix_rank.out_tol_tensor
+  labels:
+  - aten
+  kind:
+  - LinearAlg
+  stages:
+  - beta: '5.4'
+- id: linalg_matrix_rank_tol_tensor
+  description: Computes numerical matrix rank using a positional tensor tolerance.
+  for:
+  - linalg_matrix_rank.tol_tensor
+  labels:
+  - aten
+  kind:
+  - LinearAlg
+  stages:
+  - beta: '5.4'
 - id: linalg_matrix_sqrth
   description: Computes the principal square root of a symmetric or Hermitian positive-definite
     matrix.
