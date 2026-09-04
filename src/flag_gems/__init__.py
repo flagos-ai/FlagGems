@@ -612,6 +612,8 @@ _FULL_CONFIG = (
     ("gcd_", gcd_),
     ("ge.Scalar", ge_scalar),
     ("ge.Tensor", ge),
+    ("ge_.Scalar", ge_),
+    ("ge_.Tensor", ge_),
     ("gelu", gelu),
     ("gelu_", gelu_),
     ("gelu_backward", gelu_backward),
