@@ -496,6 +496,7 @@ from flag_gems.ops.kron import kron
 from flag_gems.ops.kthvalue import kthvalue
 from flag_gems.ops.layernorm import layer_norm, layer_norm_backward
 from flag_gems.ops.lcm import lcm, lcm_
+from flag_gems.ops.ldexp import ldexp, ldexp_out
 from flag_gems.ops.ldl_factor_ex import ldl_factor_ex
 from flag_gems.ops.le import le, le_scalar
 from flag_gems.ops.le_ import le_, le_scalar_
@@ -1470,6 +1471,8 @@ __all__ = [
     "layer_norm_backward",
     "lcm",
     "lcm_",
+    "ldexp",
+    "ldexp_out",
     "ldl_factor",
     "ldl_factor_ex",
     "le",
