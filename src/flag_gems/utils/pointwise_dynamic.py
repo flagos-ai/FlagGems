@@ -16,7 +16,7 @@ import importlib
 import os
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import Callable, Iterable, List, Mapping, Optional, Sequence, Tuple
+from typing import Any, Callable, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 import torch
 import triton
@@ -549,7 +549,7 @@ class KernelGenerator:
             )
 
     def gen_body_gsl_with_bptr(self, code):
-        code.writeline("num_ctas = ext.num_programs(0)")
+        code.writeline("num_ctas = num_programs(0)")
         code.writeline("for j in range(0, tiles_per_cta):")
         with code.indent():
             code.writeline("tile_id = pid + j * num_ctas")
@@ -625,7 +625,7 @@ class KernelGenerator:
             )
 
     def gen_body_gsl_without_bptr(self, code):
-        code.writeline("num_ctas = ext.num_programs(0)")
+        code.writeline("num_ctas = num_programs(0)")
         code.writeline("for j in range(0, tiles_per_cta):")
         with code.indent():
             code.writeline("tile_id = pid + j * num_ctas")
@@ -644,7 +644,7 @@ class KernelGenerator:
             return code
 
         with code.indent():
-            code.writeline("pid = ext.program_id(0)")
+            code.writeline("pid = program_id(0)")
             self.gen_num_tiles(code)
             # monolitic kernel: one_tile_per_cta, it may requires a very large grid to compute
             code.writeline("if one_tile_per_cta: # monolitic kernel style")
@@ -670,7 +670,7 @@ class KernelGenerator:
             return code
 
         with code.indent():
-            code.writeline("pid = ext.program_id(0)")
+            code.writeline("pid = program_id(0)")
             self.gen_num_tiles(code)
             # monolitic kernel: one_tile_per_cta, it may requires a very large grid to compute
             code.writeline("if one_tile_per_cta: # monolitic kernel style")
@@ -744,7 +744,7 @@ class KernelGenerator:
             )
 
     def gen_body_gsl_1d_tile(self, code):
-        code.writeline("num_ctas = ext.num_programs(0)")
+        code.writeline("num_ctas = num_programs(0)")
         code.writeline("for j in range(0, tiles_per_cta):")
         with code.indent():
             code.writeline("tile_id = pid + j * num_ctas")
@@ -763,7 +763,7 @@ class KernelGenerator:
             return code
 
         with code.indent():
-            code.writeline("pid = ext.program_id(0)")
+            code.writeline("pid = program_id(0)")
             # code.writeline("num_ctas = te.num_programs(0)")
             # monolitic kernel: one_tile_per_cta, it may requires a very large grid to compute
             code.writeline("if one_tile_per_cta: # monolitic kernel style")
@@ -1188,7 +1188,9 @@ class ModuleGenerator:
         code.writeline(")")
         code.writeline("from flag_gems.utils.tensor_wrapper import StridedBuffer")
         code.writeline("from flag_gems.utils.libentry import libentry")
-        code.writeline("from flag_gems.utils import triton_lang_extension as ext")
+        code.writeline(
+            "from flag_gems.utils.triton_lang_extension import num_programs, program_id"
+        )
         code.writeline("from flag_gems.runtime import torch_device_fn")
 
         # Generate extra imports and local JIT deps of the scalar function
@@ -1227,6 +1229,37 @@ class KernelInfo:
     kernel_name: str
     wrapper_name: str
     ndim: int
+
+
+@dataclass(frozen=True)
+class PointwiseKernelMaterialization:
+    """Immutable handle to one generated pointwise kernel family.
+
+    ``PointwiseDynamicFunction.instantiate`` historically returned only the
+    generated Python launcher.  PT2 integration also needs the generated
+    tensor-level kernel, but reconstructing it from ``wrapper.__globals__``
+    would make compiler integration depend on a code-generation detail.  This
+    record is the supported bridge: materialization remains Python control
+    plane work, while the saved ``jit_function`` can be passed to
+    ``torch.library.wrap_triton`` after the Dynamo boundary.
+
+    The record snapshots every code-generation/launch-policy field that can
+    affect the generated ABI.  It deliberately contains no Tensor, data
+    pointer, output allocation, shape value, or launch grid.
+    """
+
+    cache_key: str
+    ndim: int
+    wrapper: Callable
+    entry: Any
+    jit_function: JITFunction
+    kernel_info: KernelInfo
+    runtime_chain: Tuple[str, ...]
+    max_tile_size: int
+    max_grid_size: Tuple[int, int, int]
+    max_num_warps_per_cta: int
+    prefer_block_pointer: bool
+    prefer_1d_tile: bool
 
 
 class ComplexMode(Enum):
@@ -1271,6 +1304,10 @@ class PointwiseDynamicFunction:
         self.overloads: Mapping[str, Callable] = {}
         # cached kernel info for C++ integration
         self._kernel_info_cache: Mapping[str, KernelInfo] = {}
+        # compiler-facing generated kernel handles.  These are populated by
+        # the same instantiate() call as ``overloads``; PT2 never codegens a
+        # second mathematical kernel.
+        self._materialization_cache: Mapping[str, PointwiseKernelMaterialization] = {}
 
         # complex dispatch support
         self.complex_strategy = ComplexStrategy()
@@ -1702,17 +1739,67 @@ class PointwiseDynamicFunction:
         m.__dict__[self._scalar_fn.__name__] = self._scalar_fn
 
         overload = getattr(m, wrapper_name)
+        entry = getattr(m, kernel_name)
         self.overloads[key] = overload
 
         # Cache kernel info for C++ integration
-        self._kernel_info_cache[key] = KernelInfo(
+        kernel_info = KernelInfo(
             file_path=file_path,
             kernel_name=kernel_name,
             wrapper_name=wrapper_name,
             ndim=ndim,
         )
+        self._kernel_info_cache[key] = kernel_info
+
+        # LibEntry intentionally exposes the innermost generated JITFunction.
+        # Preserve the whole wrapper chain in ``entry`` for eager execution and
+        # diagnostics; only the raw generated function crosses wrap_triton.
+        jit_function = getattr(entry, "jit_function", None)
+        if not isinstance(jit_function, JITFunction):
+            raise RuntimeError(
+                f"Generated pointwise entry {kernel_name!r} did not expose a "
+                "Triton JITFunction"
+            )
+        runtime_chain = []
+        runtime_fn = entry
+        seen = set()
+        while runtime_fn is not None and id(runtime_fn) not in seen:
+            seen.add(id(runtime_fn))
+            runtime_chain.append(type(runtime_fn).__name__)
+            if isinstance(runtime_fn, JITFunction):
+                break
+            runtime_fn = getattr(runtime_fn, "fn", None)
+
+        self._materialization_cache[key] = PointwiseKernelMaterialization(
+            cache_key=key,
+            ndim=ndim,
+            wrapper=overload,
+            entry=entry,
+            jit_function=jit_function,
+            kernel_info=kernel_info,
+            runtime_chain=tuple(runtime_chain),
+            max_tile_size=self.config.max_tile_size,
+            max_grid_size=tuple(self.config.max_grid_size),
+            max_num_warps_per_cta=self.config.max_num_warps_per_cta,
+            prefer_block_pointer=self.config.prefer_block_pointer,
+            prefer_1d_tile=self.config.prefer_1d_tile,
+        )
 
         return overload
+
+    def materialize(self, ndim: int) -> PointwiseKernelMaterialization:
+        """Generate once and return the compiler-facing structural handle.
+
+        This method is safe to call during backend registration or warmup.  It
+        must not be called from a Dynamo-traced function because it writes and
+        imports generated Python.  Runtime shape values are intentionally not
+        accepted, so different token counts reuse the same materialization.
+        """
+
+        key = f"{ndim}_{self.config.prefer_block_pointer}"
+        if key not in self._materialization_cache:
+            self.instantiate(ndim)
+        return self._materialization_cache[key]
 
     def get_kernel_info(self, ndim: int) -> KernelInfo:
         """Get kernel information for a given ndim.
