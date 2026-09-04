@@ -559,6 +559,10 @@ _FULL_CONFIG = (
         "fake_quantize_per_tensor_affine.tensor_qparams",
         fake_quantize_per_tensor_affine,
     ),
+    (
+        "fake_quantize_per_tensor_affine_cachemask_backward",
+        fake_quantize_per_tensor_affine_cachemask_backward,
+    ),
     ("feature_dropout", feature_dropout),
     ("feature_dropout_", feature_dropout_),
     ("fill.Scalar", fill_scalar),
