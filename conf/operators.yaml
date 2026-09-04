@@ -13367,6 +13367,23 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: sym_size
+  description: 'Returns the size of the input tensor as a list of integers.
+
+    This is a metadata operation with no computation and is used for
+
+    torch.compile symbolic tracing.
+
+    '
+  for:
+  - sym_size
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: sym_storage_offset
   description: Returns the storage offset of the input tensor as an integer. Used
     for torch.compile symbolic tracing.
