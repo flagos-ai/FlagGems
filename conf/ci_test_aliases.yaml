@@ -44,3 +44,5 @@ arctan: test_atan
 # Operators tested in combined files or with different naming
 batch_norm_backward: test_batch_norm
 batch_norm_impl_index: test_batch_norm
+tril_indices: test_triangular_indices
+triu_indices: test_triangular_indices

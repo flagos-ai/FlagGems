@@ -891,6 +891,7 @@ from flag_gems.ops.to import to_copy
 from flag_gems.ops.topk import topk
 from flag_gems.ops.trace import trace
 from flag_gems.ops.transpose import transpose
+from flag_gems.ops.triangular_indices import tril_indices, triu_indices
 from flag_gems.ops.tril import tril, tril_, tril_out
 from flag_gems.ops.triu import triu, triu_
 from flag_gems.ops.true_divide import true_divide, true_divide_tensor
@@ -1926,9 +1927,11 @@ __all__ = [
     "transpose",
     "tril",
     "tril_",
+    "tril_indices",
     "tril_out",
     "triu",
     "triu_",
+    "triu_indices",
     "true_divide",
     "true_divide_",
     "true_divide_out",

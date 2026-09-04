@@ -3250,17 +3250,18 @@ ops:
   - stable: '2.0'
   - removed: '3.0'
 - id: ctc_loss
-  description: Connectionist Temporal Classification loss for sequence-to-sequence models.
+  description: Connectionist Temporal Classification loss for sequence-to-sequence
+    models.
   for:
-    - ctc_loss.IntList
-    - ctc_loss.Tensor
+  - ctc_loss.IntList
+  - ctc_loss.Tensor
   labels:
-    - aten
-    - KernelGen
+  - aten
+  - KernelGen
   kind:
-    - NeuralNetwork
+  - NeuralNetwork
   stages:
-    - alpha: '5.4'
+  - alpha: '5.4'
 - id: cudnn_attention_forward
   description: 'Forward kernel for cuDNN attention, computing scaled dot-product
 
@@ -3844,21 +3845,23 @@ ops:
   stages:
   - stable: '1.0'
 - id: dsplit
-  description: |
-    Split a tensor along the third axis (depth-wise). Pure layout operation returning zero-copy views.
+  description: 'Split a tensor along the third axis (depth-wise). Pure layout operation
+    returning zero-copy views.
+
+    '
   for:
-    - dsplit.int
-    - dsplit.array
+  - dsplit.int
+  - dsplit.array
   marks:
-    - dsplit
+  - dsplit
   labels:
-    - aten
-    - KernelGen
-    - skip_precision_check
+  - aten
+  - KernelGen
+  - skip_precision_check
   kind:
-    - Tensor
+  - Tensor
   stages:
-    - alpha: '5.4'
+  - alpha: '5.4'
 - id: dswiglu
   description: 'Swish-Gated Linear Unit, a variant of GLU with the Swish activation
     function.
@@ -7436,19 +7439,23 @@ ops:
   stages:
   - alpha: '5.4'
 - id: linalg_norm
-  description: |
-    Computes a vector or matrix norm, mirroring torch.linalg.norm dispatch.
+  description: 'Computes a vector or matrix norm, mirroring torch.linalg.norm dispatch.
+
     The vector branch (ord=None/2/1/0/p/±inf, dim as int or 1-tuple or None)
-    reuses linalg_vector_norm; the matrix branch (ord='fro'/'nuc'/±1/±2/±inf,
+
+    reuses linalg_vector_norm; the matrix branch (ord=''fro''/''nuc''/±1/±2/±inf,
+
     dim as 2-tuple) reuses linalg_matrix_norm.
+
+    '
   for:
-    - linalg_norm
+  - linalg_norm
   labels:
-    - aten
+  - aten
   kind:
-    - LinearAlg
+  - LinearAlg
   stages:
-    - beta: '5.4'
+  - beta: '5.4'
 - id: linalg_slogdet
   description: 'Computes the sign and natural logarithm of the absolute value of the
     determinant of a square matrix using LU decomposition with partial pivoting.
@@ -12039,18 +12046,21 @@ ops:
   stages:
   - stable: '2.0'
 - id: slice
-  description: |
-    Slices the input tensor along the specified dimension.
-    Returns a view of the original tensor with the given dimension sliced from start to end.
+  description: 'Slices the input tensor along the specified dimension.
+
+    Returns a view of the original tensor with the given dimension sliced from start
+    to end.
+
+    '
   for:
-    - slice.Tensor
+  - slice.Tensor
   labels:
-    - aten
-    - KernelGen
+  - aten
+  - KernelGen
   kind:
-    - Tensor
+  - Tensor
   stages:
-    - alpha: '5.4'
+  - alpha: '5.4'
 - id: slice_backward
   description: 'An automatic differentiation (autograd) function that computes the
     gradient of a tensor slicing operation
@@ -13802,6 +13812,17 @@ ops:
   - BLAS
   stages:
   - beta: '5.3'
+- id: tril_indices
+  description: Returns the row and column coordinates of the lower-triangular part
+    of a `row` by `col` matrix in row-major order.
+  for:
+  - tril_indices
+  labels:
+  - aten
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: tril_out
   description: 'A variant of `tril()` that explicitly assigns the output to the `out`
     parameter.
@@ -13852,6 +13873,17 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '5.0'
+- id: triu_indices
+  description: Returns the row and column coordinates of the upper-triangular part
+    of a `row` by `col` matrix in row-major order.
+  for:
+  - triu_indices
+  labels:
+  - aten
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: true_divide
   description: Performs element-wise true division between two tensors.
   for:
