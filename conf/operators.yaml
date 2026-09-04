@@ -7391,6 +7391,17 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: linalg_matmul
+  description: Triton kernel implementation for linalg_matmul.
+  for:
+  - linalg.matmul
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.4'
 - id: linalg_matrix_norm
   description: 'Computes the matrix norm over the given dimensions.
 
