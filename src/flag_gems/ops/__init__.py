@@ -62,6 +62,7 @@ from flag_gems.ops._euclidean_dist import _euclidean_dist
 from flag_gems.ops._fake_quantize_learnable_per_tensor_affine import (
     _fake_quantize_learnable_per_tensor_affine,
 )
+from flag_gems.ops._fill_mem_eff_dropout_mask_ import _fill_mem_eff_dropout_mask_
 from flag_gems.ops._flash_attention_forward import _flash_attention_forward
 from flag_gems.ops._functional_sym_constrain_range import (
     _functional_sym_constrain_range,
@@ -996,6 +997,7 @@ __all__ = [
     "_embedding_bag_per_sample_weights_backward",
     "_euclidean_dist",
     "_fake_quantize_learnable_per_tensor_affine",
+    "_fill_mem_eff_dropout_mask_",
     "_flash_attention_forward",
     "_functional_assert_async",
     "_functional_sym_constrain_range",
