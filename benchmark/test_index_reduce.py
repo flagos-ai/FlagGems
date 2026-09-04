@@ -16,17 +16,19 @@ import pytest
 import torch
 
 import flag_gems
+from flag_gems.utils import shape_utils
 
-from . import base, consts, utils
+from . import base, consts
 
 
 class IndexReduceBenchmark(base.Benchmark):
     DEFAULT_SHAPES = [(1024, 1024), (4096, 256), (64, 512, 256)]
     DEFAULT_SHAPE_DESC = "(B), M, N"
 
-    def __init__(self, *args, reduce, **kwargs):
+    def __init__(self, *args, reduce, use_out=False, **kwargs):
         super().__init__(*args, **kwargs)
         self.reduce = reduce
+        self.use_out = use_out
 
     def set_more_metrics(self):
         return ["gbps"]
@@ -38,7 +40,9 @@ class IndexReduceBenchmark(base.Benchmark):
         inp = args[0]
         index = args[2]
         source = args[3]
-        io_amount = sum(utils.size_in_bytes(item) for item in [inp, index, source, inp])
+        io_amount = sum(
+            shape_utils.size_in_bytes(item) for item in [inp, index, source, inp]
+        )
         return io_amount * 1e-9 / (latency * 1e-3)
 
     def get_input_iter(self, dtype):
@@ -55,7 +59,10 @@ class IndexReduceBenchmark(base.Benchmark):
             else:
                 source = torch.randn(source_shape, dtype=dtype, device=self.device)
 
-            yield inp, dim, index, source, {"reduce": self.reduce}
+            kwargs = {"reduce": self.reduce}
+            if self.use_out:
+                kwargs["out"] = torch.empty_like(inp)
+            yield inp, dim, index, source, kwargs
 
 
 def _run_index_reduce_benchmark(reduce):
@@ -64,6 +71,18 @@ def _run_index_reduce_benchmark(reduce):
         torch_op=torch.Tensor.index_reduce_,
         dtypes=consts.FLOAT_DTYPES,
         reduce=reduce,
+    )
+    bench.run()
+
+
+def _run_index_reduce_functional_benchmark(reduce, use_out=False):
+    suffix = "_out" if use_out else ""
+    bench = IndexReduceBenchmark(
+        op_name=f"index_reduce{suffix}",
+        torch_op=(torch.ops.aten.index_reduce.out if use_out else torch.index_reduce),
+        dtypes=consts.FLOAT_DTYPES,
+        reduce=reduce,
+        use_out=use_out,
     )
     bench.run()
 
@@ -98,3 +117,21 @@ def test_index_reduce_amax():
 )
 def test_index_reduce_amin():
     _run_index_reduce_benchmark("amin")
+
+
+@pytest.mark.index_reduce
+@pytest.mark.parametrize("reduce", ["prod", "mean", "amax", "amin"])
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_index_reduce(reduce):
+    _run_index_reduce_functional_benchmark(reduce)
+
+
+@pytest.mark.index_reduce_out
+@pytest.mark.parametrize("reduce", ["prod", "mean", "amax", "amin"])
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_index_reduce_out(reduce):
+    _run_index_reduce_functional_benchmark(reduce, use_out=True)

@@ -6540,6 +6540,22 @@ ops:
   - Tensor
   stages:
   - beta: '5.3'
+- id: index_reduce
+  description: 'Returns a new tensor after accumulating `source` into `input` at the
+    indices
+
+    specified by `index`, using `prod`, `mean`, `amax`, or `amin` reduction.
+
+    '
+  for:
+  - index_reduce
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: index_reduce_
   description: 'Accumulates the elements of `source` into `input` at the indices specified
 
@@ -6555,6 +6571,20 @@ ops:
   - Tensor
   stages:
   - beta: '5.4'
+- id: index_reduce_out
+  description: 'An out variant of `index_reduce` that writes the reduced values to
+    `out`.
+
+    '
+  for:
+  - index_reduce.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: index_select
   description: 'Returns a new tensor which indexes the `input` tensor along dimension
     `dim`

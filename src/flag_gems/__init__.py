@@ -673,6 +673,8 @@ _FULL_CONFIG = (
     ("index_fill_.int_Tensor", index_fill_),
     ("index_put", index_put),
     ("index_put_", index_put_),
+    ("index_reduce", index_reduce),
+    ("index_reduce.out", index_reduce_out),
     ("index_reduce_", index_reduce_),
     ("index_select", index_select),
     ("index_select_backward", index_select_backward),
