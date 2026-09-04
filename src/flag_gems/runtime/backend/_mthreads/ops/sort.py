@@ -17,12 +17,108 @@ import logging
 import torch
 import triton
 import triton.language as tl
+import triton.language.core as core
 
-from flag_gems.ops.topk import _get_finfo_val, _get_iinfo_val, argsort
+from flag_gems.config import use_c_extension
+from flag_gems.ops.topk import _get_finfo_val, _get_iinfo_val, _log2, zeros_like
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
+
+
+@triton.jit
+def _stable_compare_and_swap(x, ids, flip, i: core.constexpr, n_dims: core.constexpr):
+    """Bitonic compare/swap with original-index tie breaking.
+
+    `argsort`'s generic comparator swaps equal keys on descending phases,
+    which is valid for top-k but violates torch.sort(stable=True).  This local
+    variant always orders equal keys by their original index.
+    """
+    n_outer: core.constexpr = x.numel >> n_dims
+    shape: core.constexpr = [n_outer * 2**i, 2, 2 ** (n_dims - i - 1)]
+    y = core.reshape(x, shape)
+    y_idx = core.reshape(ids, shape)
+    lane = core.arange(0, 2)[None, :, None]
+
+    y_left = core.where(lane == 0, y, 0)
+    y_right = core.where(lane == 1, y, 0)
+    left = core.reshape(
+        core.broadcast_to(tl.sum(y_left, 1)[:, None, :], shape), x.shape
+    ).to(x.dtype)
+    right = core.reshape(
+        core.broadcast_to(tl.sum(y_right, 1)[:, None, :], shape), x.shape
+    ).to(x.dtype)
+
+    idx_left = core.where(lane == 0, y_idx, 0)
+    idx_right = core.where(lane == 1, y_idx, 0)
+    left_idx = core.reshape(
+        core.broadcast_to(tl.sum(idx_left, 1)[:, None, :], shape), ids.shape
+    ).to(ids.dtype)
+    right_idx = core.reshape(
+        core.broadcast_to(tl.sum(idx_right, 1)[:, None, :], shape), ids.shape
+    ).to(ids.dtype)
+
+    swap_ascending = (left > right) | ((left == right) & (left_idx > right_idx))
+    swap_descending = (left < right) | ((left == right) & (left_idx < right_idx))
+    swap = core.where(flip != 0, swap_descending, swap_ascending)
+
+    if core.constexpr(x.dtype.primitive_bitwidth) == 8:
+        value_type = core.int8
+    elif core.constexpr(x.dtype.primitive_bitwidth) == 16:
+        value_type = core.int16
+    elif core.constexpr(x.dtype.primitive_bitwidth) == 32:
+        value_type = core.int32
+    elif core.constexpr(x.dtype.primitive_bitwidth) == 64:
+        value_type = core.int64
+    else:
+        raise ValueError("Unsupported dtype")
+    value = x.to(value_type, bitcast=True)
+    value_left = left.to(value_type, bitcast=True)
+    value_right = right.to(value_type, bitcast=True)
+    result = value ^ core.where(swap, value_left ^ value_right, zeros_like(value))
+
+    if core.constexpr(ids.dtype.primitive_bitwidth) == 32:
+        index_type = core.int32
+    elif core.constexpr(ids.dtype.primitive_bitwidth) == 64:
+        index_type = core.int64
+    else:
+        raise ValueError("Unsupported index dtype")
+    index = ids.to(index_type, bitcast=True)
+    index_left = left_idx.to(index_type, bitcast=True)
+    index_right = right_idx.to(index_type, bitcast=True)
+    result_idx = index ^ core.where(swap, index_left ^ index_right, zeros_like(index))
+    return result.to(x.dtype, bitcast=True), result_idx.to(ids.dtype, bitcast=True)
+
+
+@triton.jit
+def _stable_bitonic_merge(
+    x, ids, stage: core.constexpr, order: core.constexpr, n_dims: core.constexpr
+):
+    if order == 2:
+        shape: core.constexpr = [
+            (x.numel >> n_dims) * 2 ** (n_dims - 1 - stage),
+            2,
+            2**stage,
+        ]
+        flip = core.reshape(
+            core.broadcast_to(core.arange(0, 2)[None, :, None], shape), x.shape
+        )
+    else:
+        flip = order
+    for i in core.static_range(stage):
+        x, ids = _stable_compare_and_swap(x, ids, flip, i + (n_dims - stage), n_dims)
+    return x, ids
+
+
+@triton.jit
+def stable_argsort(x, ids, dim: tl.constexpr, descending: tl.constexpr):
+    n_dims: core.constexpr = _log2(x.shape[dim])
+    for stage in core.static_range(1, n_dims + 1):
+        x, ids = _stable_bitonic_merge(
+            x, ids, stage, 2 if stage < n_dims else descending, n_dims
+        )
+    return x, ids
 
 
 def unwrap_if_constexpr(o):
@@ -134,31 +230,30 @@ def compute_global_hist_kernel(
 
     for p in range(0, num_passes):  # parallel
         bit_offset = p * num_bits_per_pass
-        for r_start in range(0, r, TILE_R):  # parallel
-            bin_indices = r_start + tl.arange(0, TILE_R)
-            acc = tl.zeros((TILE_R, TILE_N), dtype=tl.int64)
-            for n_start in range(cta_n_start, cta_n_end, TILE_N):  # sequantial
-                n_offsets = n_start + tl.arange(0, TILE_N)  # (TILE_N, )
-                mask = n_offsets < cta_n_end
-                arr = tl.load(arr_ptr + pid_m * n + n_offsets, mask=mask)
-                arr = convert_to_uint_preverse_order(arr, descending)
-                key = (arr >> bit_offset) & bfe_mask  # (TILE_N, )
-                matches = tl.where(
-                    mask, (bin_indices[:, None] == key), False
-                )  # (TILE_R, TILE_N)
-                acc += matches
-            local_sum = tl.sum(acc, axis=1)
-            tl.atomic_add(
-                out_ptr + pid_m * num_passes * r + p * r + bin_indices,
-                local_sum,
-                sem="relaxed",
-            )
+        bin_indices = tl.arange(0, r)
+        acc = tl.zeros((r,), dtype=tl.int32)
+        for n_start in range(cta_n_start, cta_n_end, TILE_N):  # sequential
+            n_offsets = n_start + tl.arange(0, TILE_N)
+            mask = n_offsets < cta_n_end
+            arr = tl.load(arr_ptr + pid_m * n + n_offsets, mask=mask)
+            arr = convert_to_uint_preverse_order(arr, descending)
+            # The C++ JIT ABI passes bit_offset as int64 while Python's launch
+            # specializes it as int32.  Keep the histogram input explicitly
+            # i32 so both launchers lower to the MUSA histogram primitive.
+            key = ((arr >> bit_offset) & bfe_mask).to(tl.int32)
+            key = tl.where(mask, key, 0)
+            acc += tl.histogram(key, r, mask=mask).to(tl.int32)
+        tl.atomic_add(
+            out_ptr + pid_m * num_passes * r + p * r + bin_indices,
+            acc,
+            sem="relaxed",
+        )
 
 
 @triton.jit
 def sweep(
     arr_ptr,
-    associate_arr_ptr,  # inputs: (key & value)
+    associate_arr_ptr,  # inputs: (key & value); always a valid workspace ptr
     out_ptr,
     associate_out_ptr,  # outputs: (key & value)
     excumsum_bins_ptr,
@@ -173,6 +268,7 @@ def sweep(
     TILE_R: tl.constexpr,
     k_bits: tl.constexpr,
     descending: tl.constexpr,
+    synthesize_indices: tl.constexpr,
 ):
     # r: num_bins = 2 ** k_bits
     # OUT_N: grid_n = cdiv(N, )
@@ -207,7 +303,12 @@ def sweep(
     arr = tl.load(arr_ptr + pid_m * N + n_offsets, mask=mask)
     arr_u = convert_to_uint_preverse_order(arr, descending)
     key = (arr_u >> bit_offset) & bfe_mask  # (TILE_N, )
-    if associate_arr_ptr is not None:
+    if synthesize_indices:
+        # The first stable radix pass starts from original row offsets.  Do
+        # not materialize arange().broadcast_to(...).contiguous(), and do not
+        # read the dummy index workspace passed by the C++ JIT ABI.
+        associate_arr = n_offsets
+    else:
         associate_arr = tl.load(associate_arr_ptr + pid_m * N + n_offsets, mask=mask)
 
     # since triton can only use scalar as condition, loop by bin_index
@@ -253,14 +354,169 @@ def sweep(
 
         # scatter
         tl.store(out_ptr + pid_m * N + pos, arr, mask=matches)
-        if associate_arr_ptr is not None:
-            tl.store(associate_out_ptr + pid_m * N + pos, associate_arr, mask=matches)
+        tl.store(associate_out_ptr + pid_m * N + pos, associate_arr, mask=matches)
+
+
+# Hierarchical 4-bit path: materialize the per-tile histogram, scan compact
+# metadata between kernels, then scatter from the resulting tile prefixes.
+@triton.jit
+def compute_tile_hist_kernel(
+    arr_ptr,
+    tile_hist_ptr,
+    pass_id,
+    bit_offset,
+    m,
+    N,
+    OUT_N,
+    TILE_N: tl.constexpr,
+    k_bits: tl.constexpr,
+    descending: tl.constexpr,
+):
+    pid_m = tl.program_id(0)
+    pid_n = tl.program_id(1)
+    r: tl.constexpr = 2**k_bits
+    bfe_mask: tl.constexpr = (1 << k_bits) - 1
+    n_offsets = pid_n * TILE_N + tl.arange(0, TILE_N)
+    mask = n_offsets < N
+    arr = tl.load(arr_ptr + pid_m * N + n_offsets, mask=mask)
+    key = (convert_to_uint_preverse_order(arr, descending) >> bit_offset) & bfe_mask
+    key = tl.where(mask, key, 0).to(tl.int32)
+    counts = tl.histogram(key, r, mask=mask).to(tl.int32)
+    bins = tl.arange(0, r)
+    tl.store(tile_hist_ptr + (pid_m * OUT_N + pid_n) * r + bins, counts)
+
+
+@triton.jit
+def sweep_hierarchical_scatter(
+    arr_ptr,
+    associate_arr_ptr,
+    out_ptr,
+    associate_out_ptr,
+    excumsum_bins_ptr,
+    tile_prefix_ptr,
+    n_passes,
+    pass_id,
+    bit_offset,
+    m,
+    N,
+    OUT_N,
+    TILE_N: tl.constexpr,
+    k_bits: tl.constexpr,
+    descending: tl.constexpr,
+    synthesize_indices: tl.constexpr,
+):
+    pid_m = tl.program_id(0)
+    pid_n = tl.program_id(1)
+    r: tl.constexpr = 2**k_bits
+    bfe_mask: tl.constexpr = (1 << k_bits) - 1
+    n_offsets = pid_n * TILE_N + tl.arange(0, TILE_N)
+    mask = n_offsets < N
+    arr = tl.load(arr_ptr + pid_m * N + n_offsets, mask=mask)
+    key = (convert_to_uint_preverse_order(arr, descending) >> bit_offset) & bfe_mask
+    if synthesize_indices:
+        associate_arr = n_offsets
+    else:
+        associate_arr = tl.load(associate_arr_ptr + pid_m * N + n_offsets, mask=mask)
+
+    # One program owns every bin for a tile.  arr/key/index remain live once;
+    # only the per-bin predicate and local scan are recomputed.
+    for bin_index in range(0, r):
+        matches = tl.where(mask, key == bin_index, False)
+        local_exclusive = tl.cumsum(matches.to(tl.uint32), axis=0) - matches
+        tile_prefix = tl.load(tile_prefix_ptr + (pid_m * OUT_N + pid_n) * r + bin_index)
+        global_bin_base = tl.load(
+            excumsum_bins_ptr + pid_m * (n_passes * r) + pass_id * r + bin_index
+        )
+        pos = global_bin_base + tile_prefix + local_exclusive
+        tl.store(out_ptr + pid_m * N + pos, arr, mask=matches)
+        tl.store(associate_out_ptr + pid_m * N + pos, associate_arr, mask=matches)
+
+
+def radix_sort_hierarchical(arr, k_bits=4, descending=False):
+    """Hierarchical stable radix path with no lookback/status dependency."""
+    n = arr.shape[-1]
+    m = arr.numel() // n
+    dtype = arr.dtype
+    num_bits = 1 if dtype == torch.bool else arr.itemsize * 8
+    num_bins = 2**k_bits
+    n_passes = triton.cdiv(num_bits, k_bits)
+    tile_n = 2048
+    grid_n = triton.cdiv(n, tile_n)
+    with torch_device_fn.device(arr.device):
+        global_hist = torch.zeros(
+            (m, n_passes, num_bins), device=arr.device, dtype=torch.int32
+        )
+        compute_global_hist_kernel[(m * triton.cdiv(n, 1024 * 8),)](
+            arr, global_hist, n_passes, m, n, 8, 1024, 16, k_bits, descending
+        )
+        ex_cumsum_bins = (torch.cumsum(global_hist, -1) - global_hist).to(torch.int32)
+        arr_in = arr
+        arr_out = torch.empty_like(arr)
+        arr_scratch = torch.empty_like(arr)
+        idx_in = torch.empty_like(arr, dtype=torch.int64)
+        idx_out = torch.empty_like(arr, dtype=torch.int64)
+        tile_hist = torch.empty(
+            (m, grid_n, num_bins), device=arr.device, dtype=torch.int32
+        )
+        for i in range(n_passes):
+            compute_tile_hist_kernel[(m, grid_n)](
+                arr_in,
+                tile_hist,
+                i,
+                i * k_bits,
+                m,
+                n,
+                grid_n,
+                tile_n,
+                k_bits,
+                descending,
+            )
+            # int32 is sufficient: every tile prefix is bounded by N < 2**30.
+            tile_prefix = (
+                torch.cumsum(tile_hist, 1, dtype=torch.int32) - tile_hist
+            ).contiguous()
+            sweep_hierarchical_scatter[(m, grid_n)](
+                arr_in,
+                idx_in,
+                arr_out,
+                idx_out,
+                ex_cumsum_bins,
+                tile_prefix,
+                n_passes,
+                i,
+                i * k_bits,
+                m,
+                n,
+                grid_n,
+                tile_n,
+                k_bits,
+                descending,
+                i == 0,
+            )
+            if i == 0:
+                arr_in, arr_out = arr_out, arr_scratch
+            else:
+                arr_in, arr_out = arr_out, arr_in
+            idx_in, idx_out = idx_out, idx_in
+    return arr_in, idx_in
 
 
 def radix_sort(arr, k_bits=8, descending=False):
     n = arr.shape[-1]
     m = arr.numel() // n
     assert n < (1 << 30), "we have not implemented 2**30 per launch"
+    # Long rows or many-row workloads suffer from decoupled-lookback spin.
+    # Use the measured hierarchical path only where its extra metadata
+    # launches amortize (4-bit radix, at least two tiles, and either a large
+    # row count or enough tiles per row).
+    if (
+        arr.device.type == "musa"
+        and k_bits == 4
+        and arr.dtype != torch.bool
+        and ((n + 2047) // 2048 >= 2)
+        and (m >= 1024 or ((n + 2047) // 2048 >= 4 and m >= 64))
+    ):
+        return radix_sort_hierarchical(arr, k_bits, descending)
     dtype = arr.dtype
     num_bits = 1 if dtype == torch.bool else (arr.itemsize * 8)
 
@@ -294,15 +550,24 @@ def radix_sort(arr, k_bits=8, descending=False):
         ex_cumsum_bins = torch.cumsum(global_hist, -1) - global_hist
         ex_cumsum_bins = ex_cumsum_bins.to(torch.int32)
 
-        # sort
-        arr_in = torch.clone(arr)
-        indices_in = (
-            torch.arange(0, n, dtype=torch.int64, device=arr_in.device)
-            .broadcast_to(arr.shape)
-            .contiguous()
-        )
+        # Pass zero reads the user tensor directly and writes workspace A;
+        # later passes ping-pong A/B, so the input is never used as output.
+        arr_in = arr
         arr_out = torch.empty_like(arr)
-        indices_out = torch.empty_like(indices_in)
+        arr_scratch = torch.empty_like(arr)
+        # N is bounded below 2**30.  The compact payload wins on many short
+        # rows; retain the measured int64 path for fewer, longer rows.
+        use_compact_indices = m >= 512 and n <= 2048
+        index_dtype = torch.int32 if use_compact_indices else torch.int64
+        indices_out = torch.empty_like(arr, dtype=index_dtype)
+        indices_scratch = torch.empty_like(arr, dtype=index_dtype)
+        # The first pass never reads this pointer (synthesize_indices=True),
+        # but keeping it valid gives Python and C++ JIT launchers an identical
+        # physical ABI.
+        indices_in = indices_out
+        final_indices = (
+            torch.empty_like(arr, dtype=torch.int64) if use_compact_indices else None
+        )
 
         TILE_R = 8
         grid_r = triton.cdiv(num_bins, TILE_R)
@@ -317,11 +582,16 @@ def radix_sort(arr, k_bits=8, descending=False):
         for i in range(0, n_passes):
             bit_offset = i * k_bits
             status.zero_()
+            pass_indices_out = (
+                final_indices
+                if use_compact_indices and i == n_passes - 1
+                else indices_out
+            )
             sweep[grid_for_sweep](
                 arr_in,
                 indices_in,
                 arr_out,
-                indices_out,
+                pass_indices_out,
                 ex_cumsum_bins,
                 status,
                 n_passes,
@@ -334,12 +604,19 @@ def radix_sort(arr, k_bits=8, descending=False):
                 TILE_R,
                 k_bits,
                 descending,
+                i == 0,
             )
             # print(f"< sorted last {bit_offset + k_bits:>2d} bits: {arr_out}")
-            arr_in, arr_out = arr_out, arr_in
-            indices_in, indices_out = indices_out, indices_in
+            if i == 0:
+                arr_in, arr_out = arr_out, arr_scratch
+                indices_in, indices_out = indices_out, indices_scratch
+            elif i < n_passes - 1:
+                arr_in, arr_out = arr_out, arr_in
+                indices_in, indices_out = indices_out, indices_in
+            else:
+                arr_in, arr_out = arr_out, arr_in
 
-    return arr_in, indices_in
+    return arr_in, final_indices if use_compact_indices else indices_out
 
 
 @libentry()
@@ -368,22 +645,39 @@ def sort_kernel(
         in_val = tl.load(in_ptr, mask=mask, other=mask_val)
 
     index_val = tl.arange(0, BLOCK_SIZE)
+    # Bitonic's descending phases must reverse the complete comparison key.
+    # Encode the user-visible ascending tie-break in the payload so the final
+    # full reverse still returns equal values in original-index order.
+    if DESCENDING:
+        index_val = BLOCK_SIZE - 1 - index_val
 
-    sorted_in_val, sorted_index_val = argsort(
+    sorted_in_val, sorted_index_val = stable_argsort(
         in_val, index_val, 0, descending=DESCENDING
     )
     tl.store(out_ptr, sorted_in_val, mask=mask)
+    if DESCENDING:
+        sorted_index_val = BLOCK_SIZE - 1 - sorted_index_val
     tl.store(out_index_ptr, sorted_index_val, mask=mask)
 
 
 def sort(inp, dim=-1, descending=False):
     # We only implement stable radix sort here
     logger.debug("GEMS_MTHREADS SORT")
+    if use_c_extension:
+        # The native extension exposes the production MUSA implementation in
+        # the flag_gems namespace.  Route the backend override through it when
+        # installed; the pure-Python path remains the fallback for source
+        # checkouts and non-C++ builds.
+        return torch.ops.flag_gems.sort(inp, dim, descending)
     return sort_stable(inp, stable=False, dim=dim, descending=descending)
 
 
 def sort_stable(inp, *, stable, dim=-1, descending=False):
     logger.debug("GEMS_MTHREADS SORT_STABLE")
+    if use_c_extension:
+        return torch.ops.flag_gems.sort.stable(
+            inp, stable=stable, dim=dim, descending=descending
+        )
     # We only implement stable radix sort here
     _ = stable
     sort_elem_cnt = inp.shape[dim]
@@ -398,6 +692,34 @@ def sort_stable(inp, *, stable, dim=-1, descending=False):
         inp = inp.contiguous()
 
     dtype = inp.dtype
+    # The OneSweep path has a fixed multi-kernel setup cost.  Keep this first
+    # local path integer-only until floating-point NaN ordering has its own
+    # validation and comparator implementation.
+    local_limit = 512 if dtype == torch.int64 else 1024
+    if (
+        dtype != torch.bool
+        and not dtype.is_floating_point
+        and sort_elem_cnt <= local_limit
+    ):
+        block_size = triton.next_power_of_2(sort_elem_cnt)
+        m = inp.numel() // sort_elem_cnt
+        out = torch.empty_like(inp)
+        out_index = torch.empty_like(inp, dtype=torch.int64)
+        sort_kernel[(m,)](
+            inp,
+            out,
+            out_index,
+            sort_elem_cnt,
+            block_size,
+            descending,
+            False,
+            num_warps=4,
+        )
+        if dim != inp.ndim - 1:
+            out = torch.movedim(out, -1, dim)
+            out_index = torch.movedim(out_index, -1, dim)
+        return out, out_index
+
     num_bits_per_pass = 1 if dtype == torch.bool else 4
     out, out_index = radix_sort(inp, num_bits_per_pass, descending)
 
