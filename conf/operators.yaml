@@ -7159,6 +7159,23 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: linalg__powsum
+  description: 'Computes the sum of the absolute input values raised to `ord` over
+    the
+
+    requested dimensions, without applying the final norm root.
+
+    '
+  for:
+  - linalg__powsum
+  labels:
+  - aten
+  - KernelGen
+  - Reduction
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.4'
 - id: linalg_cholesky
   description: 'Computes the Cholesky decomposition of a symmetric positive-definite
     matrix A
