@@ -14,15 +14,66 @@
 
 import logging
 
+import torch
 import triton
 import triton.language as tl
 
 from flag_gems import runtime
+from flag_gems.ops.index_add import _validate_index_add_args
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
+
+_INDEX_OUT_OF_BOUNDS_MESSAGE = "0 <= index < self.size(dim)"
+
+
+def _read_index_bounds(index):
+    return index.min().item(), index.max().item()
+
+
+def _resolve_index_for_kernel(index):
+    # A contiguous lazy-negative tensor still exposes the un-negated storage
+    # to a pointer-based Triton kernel. Materialize only that exceptional case.
+    # Calling resolve_neg() from inside use_gems() re-enters FlagGems' Python
+    # override and can negate the logical value twice. Toggle the metadata bit
+    # off first, then explicitly negate the ordinary physical view.
+    if index.is_neg():
+        return torch.neg(torch._neg_view(index))
+    return index
+
+
+def _assert_index_in_bounds(index, upper_bound):
+    if index.numel() == 0:
+        return
+    idx_min, idx_max = _read_index_bounds(index)
+    if idx_min < 0 or idx_max >= upper_bound:
+        raise AssertionError(_INDEX_OUT_OF_BOUNDS_MESSAGE)
+
+
+def _volume(shape):
+    value = 1
+    for item in shape:
+        value *= int(item)
+    return value
+
+
+def _can_use_contiguous_suffix_path(inp, dim, index, src):
+    return (
+        src.numel() > 0
+        and inp.ndim == src.ndim
+        and 0 <= dim < inp.ndim
+        and index.ndim == 1
+        and index.dtype in (torch.int32, torch.int64)
+        and inp.dtype == src.dtype
+        and inp.dtype in (torch.float16, torch.float32)
+        and index.numel() == src.size(dim)
+        and inp.is_contiguous()
+        and src.is_contiguous()
+        and all(inp.size(i) == src.size(i) for i in range(inp.ndim) if i != dim)
+        and _volume(src.shape[dim + 1 :]) > 1
+    )
 
 
 @libentry()
@@ -81,6 +132,62 @@ def index_add_kernel(
     tl.atomic_add(out_ptr + inp_off, alpha * cur_src, mask=block_mask)
 
 
+@libentry()
+@triton.jit
+def _index_add_contiguous_suffix_kernel(
+    out,
+    index,
+    src,
+    row_count,
+    index_len,
+    out_dim,
+    suffix_size,
+    alpha,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    rows = ext.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    cols = ext.program_id(1) * BLOCK_N + tl.arange(0, BLOCK_N)[None, :]
+    row_mask = rows < row_count
+    mask = row_mask & (cols < suffix_size)
+    edge = rows % index_len
+    prefix = rows // index_len
+    receiver = tl.load(index + edge, mask=row_mask, other=0).to(tl.int64)
+    src_offsets = rows * suffix_size + cols
+    out_offsets = (prefix * out_dim + receiver) * suffix_size + cols
+    values = tl.load(src + src_offsets, mask=mask, other=0.0)
+    tl.atomic_add(out + out_offsets, values * alpha, mask=mask)
+
+
+def _contiguous_suffix_config(suffix_size):
+    block_n = min(512, triton.next_power_of_2(suffix_size))
+    return 4, block_n
+
+
+def _run_contiguous_suffix_path(out, dim, index, src, alpha):
+    suffix_size = _volume(src.shape[dim + 1 :])
+    row_count = _volume(src.shape[:dim]) * index.numel()
+    block_m, block_n = _contiguous_suffix_config(suffix_size)
+    grid = (
+        triton.cdiv(row_count, block_m),
+        triton.cdiv(suffix_size, block_n),
+    )
+    with torch_device_fn.device(out.device):
+        _index_add_contiguous_suffix_kernel[grid](
+            out,
+            index,
+            src,
+            row_count,
+            index.numel(),
+            out.size(dim),
+            suffix_size,
+            alpha,
+            BLOCK_M=block_m,
+            BLOCK_N=block_n,
+        )
+    return out
+
+
 def index_add(inp, dim, index, src, alpha=1):
     """
     Optimized index_add for mthreads backend.
@@ -94,24 +201,30 @@ def index_add(inp, dim, index, src, alpha=1):
     """
     logger.debug("GEMS_MTHREADS INDEX_ADD")
 
-    # Make inputs contiguous
+    dim = _validate_index_add_args(inp, dim, index, src)
+    if src.numel() == 0:
+        return inp.clone(memory_format=torch.contiguous_format)
+
+    use_contiguous_suffix_path = _can_use_contiguous_suffix_path(
+        inp, dim, index, src
+    ) and not torch._C._is_alias_of(inp, src)
+
+    # Make inputs contiguous. resolve_neg() is a no-op for normal indices.
     inp = inp.contiguous()
-    index = index.contiguous()
+    index = _resolve_index_for_kernel(index).contiguous()
     src = src.contiguous()
 
-    # Normalize dimension
-    dim = dim % inp.ndim
     inp_len = inp.size(dim)
     N = index.numel()
     M = src.numel() // N
 
-    # Bounds check: the common op (src/flag_gems/ops/index_add.py) performs this
-    # inside the Triton kernel. Other backends (kunlunxin, ascend, cambricon) do
-    # it in Python instead, which we follow here.
+    # Reject invalid receivers before a pointer kernel can observe them.
     # Use min/max to avoid allocating full-size boolean tensors.
-    idx_min = index.min().item()
-    idx_max = index.max().item()
-    assert idx_min >= 0 and idx_max < inp_len, "0 <= index < self.size(dim)"
+    _assert_index_in_bounds(index, inp_len)
+
+    if use_contiguous_suffix_path:
+        out = inp.clone()
+        return _run_contiguous_suffix_path(out, dim, index, src, alpha)
 
     # Move target dim to last position for coalesced memory access
     final_dim = inp.ndim - 1
@@ -146,23 +259,38 @@ def index_add_(inp, dim, index, src, alpha=1):
     """
     logger.debug("GEMS_MTHREADS INDEX_ADD_")
 
-    # Make index and src contiguous
-    index = index.contiguous()
+    dim = _validate_index_add_args(inp, dim, index, src)
+    if src is inp or index is inp:
+        raise RuntimeError(
+            "input overlaps with source or index; clone the overlapping tensor "
+            "before calling index_add_"
+        )
+    if src.numel() == 0:
+        return inp
+    if torch._C._is_alias_of(inp, src) or torch._C._is_alias_of(inp, index):
+        raise RuntimeError(
+            "input overlaps with source or index; clone the overlapping tensor "
+            "before calling index_add_"
+        )
+
+    use_contiguous_suffix_path = _can_use_contiguous_suffix_path(
+        inp, dim, index, src
+    ) and not torch._C._is_alias_of(inp, src)
+
+    # Make index and src contiguous. resolve_neg() is a no-op normally.
+    index = _resolve_index_for_kernel(index).contiguous()
     src = src.contiguous()
 
-    # Normalize dimension
-    dim = dim % inp.ndim
     inp_len = inp.size(dim)
     N = index.numel()
     M = src.numel() // N
 
-    # Bounds check: the common op (src/flag_gems/ops/index_add.py) performs this
-    # inside the Triton kernel. Other backends (kunlunxin, ascend, cambricon) do
-    # it in Python instead, which we follow here.
+    # Reject invalid receivers before a pointer kernel can observe them.
     # Use min/max to avoid allocating full-size boolean tensors.
-    idx_min = index.min().item()
-    idx_max = index.max().item()
-    assert idx_min >= 0 and idx_max < inp_len, "0 <= index < self.size(dim)"
+    _assert_index_in_bounds(index, inp_len)
+
+    if use_contiguous_suffix_path:
+        return _run_contiguous_suffix_path(inp, dim, index, src, alpha)
 
     # Move target dim to last position
     final_dim = inp.ndim - 1

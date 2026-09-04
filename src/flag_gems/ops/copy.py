@@ -27,12 +27,19 @@ _FALLBACK_KEYSET = torch._C.DispatchKeySet(
 )
 
 _FLOAT8_E8M0FNU = getattr(torch, "float8_e8m0fnu", None)
+_MATH_BIT_TRITON_DTYPES = (torch.float32, torch.int32, torch.int64)
 
 
 @pointwise_dynamic(is_tensor=[True], promotion_methods=[(0, "DEFAULT")])
 @triton.jit
 def _copy_kernel(src):
     return src
+
+
+@pointwise_dynamic(is_tensor=[True], promotion_methods=[(0, "DEFAULT")])
+@triton.jit
+def _copy_neg_kernel(src):
+    return -src
 
 
 def _can_use_triton(dst: torch.Tensor, src: torch.Tensor) -> bool:
@@ -42,6 +49,13 @@ def _can_use_triton(dst: torch.Tensor, src: torch.Tensor) -> bool:
         return False
     if dst.is_quantized or src.is_quantized:
         return False
+    if dst.is_neg() or src.is_neg():
+        if dst.dtype != src.dtype or dst.dtype not in _MATH_BIT_TRITON_DTYPES:
+            # Math-bit ordering for mixed-dtype copy is backend-sensitive, and
+            # unary negation lowering varies for narrow and unsigned dtypes.
+            # The proven float32/int32/int64 path below covers NegativeFallback
+            # clone materialization; keep other cases on the existing fallback.
+            return False
     if src.is_complex() or dst.is_complex():
         # Preserve PyTorch's behaviour of warning when casting complex to real
         # by forcing the redispatch path, which issues the warning internally.
@@ -135,8 +149,19 @@ def copy_(dst: torch.Tensor, src: torch.Tensor, non_blocking: bool = False):
             f"The broadcast shape {broadcast_shape} does not match destination shape {tuple(dst.shape)}"
         )
 
-    expanded_src = _expand_like(src, dst.shape)
+    # Negative is a lazy metadata bit: pointer-based kernels see the physical
+    # storage rather than the tensor's logical values.  Toggle the bit off on
+    # temporary views, then negate the copied storage exactly when the source
+    # and destination bits differ.  Besides preserving copy_ semantics, this
+    # lets PyTorch's Negative fallback materialize inputs through clone()
+    # without re-entering a platform-native copy redispatch.
+    src_is_neg = src.is_neg()
+    dst_is_neg = dst.is_neg()
+    physical_src = torch._neg_view(src) if src_is_neg else src
+    physical_dst = torch._neg_view(dst) if dst_is_neg else dst
+    expanded_src = _expand_like(physical_src, physical_dst.shape)
 
-    overload = _copy_kernel.instantiate(expanded_src.ndim)
-    overload(expanded_src, out0=dst)
+    kernel = _copy_neg_kernel if src_is_neg != dst_is_neg else _copy_kernel
+    overload = kernel.instantiate(expanded_src.ndim)
+    overload(expanded_src, out0=physical_dst)
     return dst
