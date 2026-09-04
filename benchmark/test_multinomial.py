@@ -29,8 +29,8 @@ def _input_fn(shape, dtype, device):
     # roughly proportional to  batch * n_samples * n_categories * sizeof(float)
     # with a large constant factor (~8x observed).  Keep the product under a
     # safe budget to avoid OOM on a 60 GiB NPU.
-    MEM_BUDGET = 8 * (1024 ** 3)  # 8 GiB budget (conservative)
-    BYTES_PER_ELEM = 4 * 8        # float32 * ~8x overhead factor
+    MEM_BUDGET = 8 * (1024**3)  # 8 GiB budget (conservative)
+    BYTES_PER_ELEM = 4 * 8  # float32 * ~8x overhead factor
     max_samples = MEM_BUDGET // max(batch * n_categories * BYTES_PER_ELEM, 1)
     n_samples = min(n_categories, max_samples)
     n_samples = max(n_samples, 1)  # at least 1 sample
@@ -48,12 +48,12 @@ def test_multinomial_with_replacement():
     # The generic Benchmark shapes from core_shapes.yaml include
     # 1-D / 3-D shapes and entries > 2^24 that are unsuitable.
     _MULTINOMIAL_SHAPES = [
-        (1, 1000),       # small single distribution
-        (1, 10000),      # medium single distribution
-        (100, 1000),     # small batch
-        (1000, 1000),    # balanced batch
-        (10000, 256),    # large batch, narrow categories
-        (1000, 4096),    # medium batch, wide categories
+        (1, 1000),  # small single distribution
+        (1, 10000),  # medium single distribution
+        (100, 1000),  # small batch
+        (1000, 1000),  # balanced batch
+        (10000, 256),  # large batch, narrow categories
+        (1000, 4096),  # medium batch, wide categories
     ]
 
     class MultinomialBenchmark(base.GenericBenchmark):
