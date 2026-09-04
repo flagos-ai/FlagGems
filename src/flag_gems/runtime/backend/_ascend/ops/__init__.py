@@ -100,6 +100,7 @@ from .replication_pad2d_backward import (
 )
 from .resolve_neg import resolve_neg
 from .rms_norm import rms_norm
+from .rnn_tanh import rnn_tanh, rnn_tanh_data
 from .scatter import scatter, scatter_
 from .scatter_add_ import scatter_add_
 from .select_backward import select_backward
@@ -239,6 +240,8 @@ __all__ = [
     "replication_pad2d_backward_grad_input",
     "resolve_neg",
     "rms_norm",
+    "rnn_tanh",
+    "rnn_tanh_data",
     "scatter",
     "scatter_",
     "scatter_add_",

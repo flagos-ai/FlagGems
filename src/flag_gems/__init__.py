@@ -982,6 +982,8 @@ _FULL_CONFIG = (
     ("resolve_neg", resolve_neg),
     ("rms_norm", rms_norm),
     ("rnn_relu", rnn_relu),
+    ("rnn_tanh.data", rnn_tanh_data),
+    ("rnn_tanh.input", rnn_tanh),
     ("roll", roll),
     ("rot90", rot90),
     ("round", round),
