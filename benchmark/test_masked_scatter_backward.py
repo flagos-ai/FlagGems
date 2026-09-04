@@ -19,6 +19,7 @@ import flag_gems
 from flag_gems.utils import shape_utils
 
 from . import base, consts, utils
+from .conftest import Config
 
 # ---------------------------------------------------------------------------
 # Shapes are chosen to evenly cover the three performance regimes of the
@@ -92,10 +93,14 @@ def test_masked_scatter_backward():
     bench = TensorSelectBackwardBenchmark(
         op_name="masked_scatter_backward",
         torch_op=torch.ops.aten.masked_scatter_backward,
+        gems_op=flag_gems.masked_scatter_backward,
         input_fn=_input_fn,
         dtypes=consts.FLOAT_DTYPES,
         get_gbps=_get_gbps,
     )
     # Override default shapes with hand-picked coverage
     bench.shapes = CORE_SHAPES
+    # The timing of multi-kernel implementation using the do_bench_npu interface is inaccurate.
+    if flag_gems.vendor_name == "ascend":
+        Config.mode = consts.BenchMode.OPERATOR
     bench.run()
