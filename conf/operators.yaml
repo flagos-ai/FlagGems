@@ -8318,6 +8318,21 @@ ops:
   - Tensor
   stages:
   - stable: '2.1'
+- id: masked_select_backward
+  description: 'Backward of `masked_select` with respect to `input`. Scatters the compact
+
+    gradient into a zero tensor at the True mask positions after broadcasting
+
+    `input` and `mask` to a common shape.'
+  for:
+  - masked_select_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: matmul_bias_activation
   description: Fused matrix multiplication with bias addition and ReLU activation.
   for:
