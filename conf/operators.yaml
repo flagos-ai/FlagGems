@@ -7895,6 +7895,18 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: logdet
+  description: Computes the logarithm of the determinant of a square matrix or batch
+    of square matrices.
+  for:
+  - logdet
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.4'
 - id: logical_and
   description: 'Computes the element-wise logical AND of the given `input` tensors.
 
