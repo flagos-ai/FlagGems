@@ -13433,6 +13433,39 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: take_along_dim
+  description: 'Selects values from `input` at the 1-dimensional `indices` along the
+
+    given `dim`. Reduces to a broadcasted gather; if `dim` is None the input
+
+    is treated as flattened to 1-D.
+
+    '
+  for:
+  - take_along_dim
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
+- id: take_along_dim_out
+  description: 'Out-variant of take_along_dim that writes the gathered result into
+    the
+
+    `out` tensor, resizing it if needed.
+
+    '
+  for:
+  - take_along_dim.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: take_out
   description: 'Out-variant of take. Writes the gathered elements into the `out` tensor,
 

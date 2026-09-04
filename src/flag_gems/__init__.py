@@ -1134,6 +1134,8 @@ _FULL_CONFIG = (
     ("t_copy.out", t_copy_out),
     ("take", take),
     ("take.out", take_out),
+    ("take_along_dim", take_along_dim),
+    ("take_along_dim.out", take_along_dim_out),
     ("tan", tan),
     ("tan_", tan_),
     ("tanh", tanh),

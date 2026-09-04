@@ -28,8 +28,7 @@ def test_special_i1e(shape, dtype, caplog):
     ref_inp = utils.to_reference(inp, True)
     ref_out = torch.special.i1e(ref_inp)
     with caplog.at_level("DEBUG", logger="flag_gems.ops.special_i1e"):
-        with flag_gems.use_gems():
-            res_out = torch.special.i1e(inp)
+        res_out = flag_gems.special_i1e(inp)
     assert "GEMS SPECIAL_I1E" in caplog.text
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -46,8 +45,7 @@ def test_special_i1e_out(shape, dtype, caplog):
 
     out = torch.empty_like(inp)
     with caplog.at_level("DEBUG", logger="flag_gems.ops.special_i1e"):
-        with flag_gems.use_gems():
-            res_out = torch.ops.aten.special_i1e.out(inp, out=out)
+        res_out = flag_gems.special_i1e_out(inp, out=out)
 
     assert "GEMS SPECIAL_I1E_OUT" in caplog.text
     assert res_out is out
