@@ -33,6 +33,7 @@ from .hadamard_transform import hadamard_transform
 from .histc import histc
 from .index_select_backward import index_select_backward
 from .linalg_cholesky import linalg_cholesky
+from .linalg_lstsq import linalg_lstsq
 from .linalg_matrix_norm import linalg_matrix_norm
 from .linalg_solve_triangular import (
     linalg_solve_triangular,
@@ -96,6 +97,7 @@ __all__ = [
     "histc",
     "index_select_backward",
     "linalg_cholesky",
+    "linalg_lstsq",
     "linalg_matrix_norm",
     "linalg_solve_triangular",
     "linalg_solve_triangular_out",
