@@ -916,6 +916,7 @@ _FULL_CONFIG = (
     ("pixel_unshuffle", pixel_unshuffle),
     ("pixel_unshuffle.out", pixel_unshuffle_out),
     ("poisson", poisson),
+    ("poisson_nll_loss", poisson_nll_loss),
     ("polar", polar),
     ("polygamma", polygamma),
     ("polygamma.out", polygamma_out),
