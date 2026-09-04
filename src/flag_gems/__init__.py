@@ -273,6 +273,10 @@ _FULL_CONFIG = (
     ),
     ("_weight_int8pack_mm", weight_int8pack_mm),
     ("_weight_norm", _weight_norm),
+    (
+        "_weight_norm_differentiable_backward",
+        _weight_norm_differentiable_backward,
+    ),
     ("_weight_norm_interface", weight_norm_interface),
     ("_weight_norm_interface_backward", weight_norm_interface_backward),
     ("abs", abs),
