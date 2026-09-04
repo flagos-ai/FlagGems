@@ -14352,6 +14352,17 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '5.0'
+- id: upsample_nearest3d_backward
+  description: Triton kernel implementation for upsample_nearest3d_backward.
+  for:
+  - upsample_nearest3d_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: upsample_nearest_exact1d
   description: 'Increases the length of a 1D tensor using nearest-neighbor interpolation,
 
