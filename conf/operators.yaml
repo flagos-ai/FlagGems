@@ -9261,6 +9261,20 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: nested_from_padded_and_nested_example
+  description: |
+    Removes padding from a dense tensor to build a legacy nested tensor,
+    using the component sizes of an example nested tensor to determine the
+    boundaries of each un-padded component.
+  for:
+    - _nested_from_padded_and_nested_example
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Tensor
+  stages:
+    - alpha: '5.4'
 - id: nested_sum_backward
   description: 'Triton kernel implementation for `_nested_sum_backward`, the backward
     of
