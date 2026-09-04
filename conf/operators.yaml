@@ -13570,6 +13570,28 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: thnn_fused_gru_cell_backward
+  description: Computes gradients for a fused GRU cell.
+  for:
+  - _thnn_fused_gru_cell_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
+- id: thnn_fused_gru_cell_backward_out
+  description: Writes fused GRU cell gradients to caller-provided tensors.
+  for:
+  - _thnn_fused_gru_cell_backward.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: thnn_fused_lstm_cell
   description: Fused LSTM cell computation with optional input and hidden biases.
   for:
