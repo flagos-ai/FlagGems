@@ -58,8 +58,7 @@ def test_cauchy_accuracy(shape, dtype, median, sigma):
     x = torch.empty(shape, dtype=dtype, device=flag_gems.device)
     ref_x = utils.to_reference(x)
 
-    with flag_gems.use_gems():
-        x.cauchy_(median=median, sigma=sigma)
+    flag_gems.cauchy_(x, median=median, sigma=sigma)
 
     ref_x.cauchy_(median=median, sigma=sigma)
 
@@ -134,8 +133,7 @@ def test_cauchy_out_accuracy(shape, dtype, median, sigma):
     x = torch.empty(shape, dtype=dtype, device=flag_gems.device)
     ref_x = utils.to_reference(x)
 
-    with flag_gems.use_gems():
-        result = torch.ops.aten.cauchy(x, median=median, sigma=sigma)
+    result = flag_gems.cauchy(x, median=median, sigma=sigma)
 
     ref_result = torch.ops.aten.cauchy(ref_x, median=median, sigma=sigma)
 
@@ -194,14 +192,12 @@ def test_cauchy_reproducibility(shape, dtype):
     torch.manual_seed(12345)
     x1 = torch.empty(shape, dtype=dtype, device=flag_gems.device)
 
-    with flag_gems.use_gems():
-        x1.cauchy_(median=0.0, sigma=1.0)
+    flag_gems.cauchy_(x1, median=0.0, sigma=1.0)
 
     torch.manual_seed(12345)
     x2 = torch.empty(shape, dtype=dtype, device=flag_gems.device)
 
-    with flag_gems.use_gems():
-        x2.cauchy_(median=0.0, sigma=1.0)
+    flag_gems.cauchy_(x2, median=0.0, sigma=1.0)
 
     # With the same seed, results should be identical
     utils.gems_assert_equal(x1, utils.to_reference(x2))
@@ -219,8 +215,7 @@ def test_cauchy_large_tensors(shape, dtype):
     torch.manual_seed(42)
     x = torch.empty(shape, dtype=dtype, device=flag_gems.device)
 
-    with flag_gems.use_gems():
-        x.cauchy_(median=0.0, sigma=1.0)
+    flag_gems.cauchy_(x, median=0.0, sigma=1.0)
 
     # Check median is reasonable
     x_np = x.cpu().numpy().flatten()
