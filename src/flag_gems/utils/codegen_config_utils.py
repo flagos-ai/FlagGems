@@ -197,7 +197,18 @@ def get_codegen_config():
     return CODEGEN_COFIGS.get(device.vendor)
 
 
-def get_heuristics_for_num_warps(tile_size):
+def get_heuristics_for_num_warps_fn():
+    """Resolve the active backend's immutable pointwise warp policy.
+
+    Pointwise PT2 plans call this once while materializing outside Dynamo, then
+    retain the returned function as structural launch policy.  Runtime tile
+    buckets may remain symbolic without re-running backend dispatch in a graph.
+    """
+
     if device.vendor not in HEURISTICS_CONFIG:
-        return HEURISTICS_CONFIG.get(vendors.NVIDIA)(tile_size)
-    return HEURISTICS_CONFIG.get(device.vendor)(tile_size)
+        return HEURISTICS_CONFIG.get(vendors.NVIDIA)
+    return HEURISTICS_CONFIG.get(device.vendor)
+
+
+def get_heuristics_for_num_warps(tile_size):
+    return get_heuristics_for_num_warps_fn()(tile_size)

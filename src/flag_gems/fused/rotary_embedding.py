@@ -21,7 +21,7 @@ import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as ext
+from flag_gems.utils.triton_lang_extension import program_id
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +59,7 @@ def apply_rotary_pos_emb_kernel(
     ROTARY_INTERLEAVED: tl.constexpr,
     MAX_POSITION_EMBEDDINGS: tl.constexpr,
 ):
-    s_id = ext.program_id(0)
+    s_id = program_id(0)
 
     if pos_ptr is None:
         pos_id = s_id % seq_len
@@ -140,7 +140,7 @@ def apply_rotary_pos_emb_inplace_kernel(
     ROTARY_INTERLEAVED: tl.constexpr,
     MAX_POSITION_EMBEDDINGS: tl.constexpr,
 ):
-    s_id = ext.program_id(0)
+    s_id = program_id(0)
 
     if pos_ptr is None:
         pos_id = s_id % seq_len
