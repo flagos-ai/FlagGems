@@ -7244,6 +7244,22 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: linalg_inv
+  description: 'Computes the inverse of a square invertible matrix A, or for batches
+    of
+
+    square invertible matrices.
+
+    '
+  for:
+  - linalg_inv
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.4'
 - id: linalg_ldl_factor
   description: 'Computes the compact LDL factorization of a Hermitian or symmetric
     matrix.
