@@ -2,7 +2,7 @@ from ._make_dep_token import _make_dep_token
 from ._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
 from ._thnn_fused_lstm_cell_backward_impl import _thnn_fused_lstm_cell_backward_impl
 from .adaptive_max_pool3d_backward import adaptive_max_pool3d_backward
-from .addmm import addmm
+from .addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out
 from .alpha_dropout import alpha_dropout
 from .amax import amax
 from .arange import arange, arange_start
@@ -13,7 +13,6 @@ from .broadcast_to import broadcast_to
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
 from .conv_depthwise2d import _conv_depthwise2d
 from .conv_transpose1d import conv_transpose1d, conv_transpose1d_output_size
-from .dist import dist
 from .exponential_ import exponential_
 from .full import full
 from .full_like import full_like
@@ -27,6 +26,10 @@ from .isin import isin
 from .kthvalue import kthvalue
 from .layernorm import layer_norm, layer_norm_backward
 from .lgamma_ import lgamma, lgamma_
+from .linalg_solve_triangular import (
+    linalg_solve_triangular,
+    linalg_solve_triangular_out,
+)
 from .linalg_svdvals import linalg_svdvals
 from .log_sigmoid_forward import log_sigmoid_forward
 from .log_softmax import log_softmax, log_softmax_backward
@@ -82,6 +85,9 @@ __all__ = [
     "_unique2",
     "adaptive_max_pool3d_backward",
     "addmm",
+    "addmm_dtype",
+    "addmm_dtype_out",
+    "addmm_out",
     "alpha_dropout",
     "amax",
     "arange",
@@ -95,7 +101,6 @@ __all__ = [
     "cholesky_solve_out",
     "conv_transpose1d",
     "conv_transpose1d_output_size",
-    "dist",
     "exponential_",
     "full",
     "full_like",
@@ -112,6 +117,8 @@ __all__ = [
     "layer_norm_backward",
     "lgamma",
     "lgamma_",
+    "linalg_solve_triangular",
+    "linalg_solve_triangular_out",
     "linalg_svdvals",
     "log_sigmoid_forward",
     "log_softmax",
