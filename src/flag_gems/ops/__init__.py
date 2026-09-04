@@ -374,6 +374,7 @@ from flag_gems.ops.fake_quantize_per_tensor_affine import (
 )
 from flag_gems.ops.feature_dropout import feature_dropout, feature_dropout_
 from flag_gems.ops.fft import fft
+from flag_gems.ops.fft_irfftn import fft_irfftn
 from flag_gems.ops.fill import (
     fill_scalar,
     fill_scalar_,
@@ -1328,6 +1329,7 @@ __all__ = [
     "feature_dropout",
     "feature_dropout_",
     "fft",
+    "fft_irfftn",
     "fill_diagonal_",
     "fill_scalar",
     "fill_scalar_",
