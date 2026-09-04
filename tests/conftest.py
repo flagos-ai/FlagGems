@@ -51,6 +51,13 @@ TIMESTAMP = datetime.now().strftime("%Y%m%d_%H%M%S")
 REPORT_FILE = "accuracy_result.json"
 
 
+@pytest.fixture(scope="session", autouse=True)
+def enable_flag_gems():
+    """Enable FlagGems operator registration for all tests in this session."""
+    flag_gems.enable()
+    yield
+
+
 def pytest_addoption(parser):
     parser.addoption(
         "--ref",
