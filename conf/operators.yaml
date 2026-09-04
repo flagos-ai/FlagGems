@@ -10015,6 +10015,16 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: post_layer_norm_residual
+  description: Fuses LayerNorm followed by a residual addition.
+  for:
+  - None
+  labels:
+  - fused
+  kind:
+  - NeuralNetwork
+  stages:
+  - beta: '5.4'
 - id: pow_scalar
   description: 'Takes the power of each element in `input` with `exponent` and returns
     a tensor with the result.
