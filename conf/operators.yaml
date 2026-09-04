@@ -12774,6 +12774,24 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: special_laguerre_polynomial_l
+  description: |
+    Computes the Laguerre polynomial :math:`L_n(x)` element-wise for tensor
+    and scalar x/n overloads, including destination-passing variants.
+  for:
+    - special_laguerre_polynomial_l
+    - special_laguerre_polynomial_l.out
+    - special_laguerre_polynomial_l.x_scalar
+    - special_laguerre_polynomial_l.x_scalar_out
+    - special_laguerre_polynomial_l.n_scalar
+    - special_laguerre_polynomial_l.n_scalar_out
+  labels:
+    - aten
+    - pointwise
+  kind:
+    - Math
+  stages:
+    - alpha: '5.4'
 - id: special_legendre_polynomial_p
   description: 'Computes the Legendre polynomial P_n(x) of degree n for each element
     in the input tensor,

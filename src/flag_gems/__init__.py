@@ -1085,6 +1085,18 @@ _FULL_CONFIG = (
     ("special_i1.out", special_i1_out),
     ("special_i1e", special_i1e),
     ("special_i1e.out", special_i1e_out),
+    ("special_laguerre_polynomial_l", special_laguerre_polynomial_l),
+    ("special_laguerre_polynomial_l.n_scalar", special_laguerre_polynomial_l),
+    (
+        "special_laguerre_polynomial_l.n_scalar_out",
+        special_laguerre_polynomial_l_out,
+    ),
+    ("special_laguerre_polynomial_l.out", special_laguerre_polynomial_l_out),
+    ("special_laguerre_polynomial_l.x_scalar", special_laguerre_polynomial_l),
+    (
+        "special_laguerre_polynomial_l.x_scalar_out",
+        special_laguerre_polynomial_l_out,
+    ),
     ("special_legendre_polynomial_p", special_legendre_polynomial_p),
     ("special_log1p", special_log1p),
     ("special_log1p.out", special_log1p_out),
