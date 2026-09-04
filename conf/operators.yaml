@@ -3458,6 +3458,18 @@ ops:
   - Reduction
   stages:
   - stable: '3.0'
+- id: cumulative_trapezoid
+  description: Cumulatively integrate y using the composite trapezoidal rule with
+    uniform spacing dx along the given dimension.
+  for:
+  - cumulative_trapezoid.dx
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Reduction
+  stages:
+  - alpha: '5.4'
 - id: cutlass_scaled_mm
   for:
   - cutlass_scaled_mm_sm_90
