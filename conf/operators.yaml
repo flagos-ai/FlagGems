@@ -10338,6 +10338,18 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: real
+  description: |
+    Returns the real component of a complex tensor as a zero-copy view. For
+    non-complex tensors, returns the input tensor unchanged.
+  for:
+    - real
+  labels:
+    - aten
+  kind:
+    - Tensor
+  stages:
+    - alpha: '5.4'
 - id: reciprocal
   description: Returns a new tensor with the reciprocal of the elements of `input`.
   for:
