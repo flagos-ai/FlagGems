@@ -17,7 +17,6 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.ops.rms_norm_w8a16_fp8 import rms_norm_w8a16_fp8
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
@@ -36,6 +35,24 @@ def _cuda_fp8_e4m3fn_available():
         return False
     major, _ = torch.cuda.get_device_capability()
     return major >= 9
+
+
+def _w8a16_available():
+    return flag_gems.vendor_name == "ascend" or _cuda_fp8_e4m3fn_available()
+
+
+def _quantize_int8_weight(weight, group_size=FP8_GROUP_SIZE):
+    grouped_weight = weight.float().reshape(-1, group_size)
+    scale = (grouped_weight.abs().amax(dim=-1, keepdim=True) / 127).clamp(min=1e-8)
+    weight_q = (
+        (grouped_weight / scale)
+        .round()
+        .clamp(-128, 127)
+        .to(torch.int8)
+        .reshape_as(weight)
+        .contiguous()
+    )
+    return weight_q, scale.squeeze(-1).to(weight.dtype).contiguous()
 
 
 def _quantize_fp8_weight(weight, group_size=FP8_GROUP_SIZE):
@@ -115,8 +132,8 @@ def test_rms_norm(shape, dtype):
     ],
 )
 @pytest.mark.skipif(
-    not _cuda_fp8_e4m3fn_available(),
-    reason="RMSNorm W8A16 FP8 requires CUDA sm90+ float8_e4m3fn support",
+    not _w8a16_available(),
+    reason="RMSNorm W8A16 requires Ascend or CUDA sm90+ float8_e4m3fn",
 )
 def test_rms_norm_w8a16_fp8(shape):
     dtype = torch.bfloat16
@@ -127,7 +144,12 @@ def test_rms_norm_w8a16_fp8(shape):
 
     inp = torch.tensor(np_inp, dtype=dtype, device=flag_gems.device)
     weight = torch.tensor(np_weight, dtype=dtype, device=flag_gems.device)
-    weight_fp8, weight_scale = _quantize_fp8_weight(weight)
+    quantize = (
+        _quantize_int8_weight
+        if flag_gems.vendor_name == "ascend"
+        else _quantize_fp8_weight
+    )
+    weight_fp8, weight_scale = quantize(weight)
     dequant_weight = (
         (
             weight_fp8.float().reshape(-1, FP8_GROUP_SIZE)
@@ -141,7 +163,7 @@ def test_rms_norm_w8a16_fp8(shape):
     ref_inp = utils.to_reference(inp)
     ref_weight = utils.to_reference(dequant_weight)
     ref_out = torch.nn.functional.rms_norm(ref_inp, (n,), ref_weight, eps=eps)
-    res_out = rms_norm_w8a16_fp8(
+    res_out = flag_gems.rms_norm_w8a16_fp8(
         inp,
         (n,),
         weight_fp8,
