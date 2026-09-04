@@ -13198,6 +13198,30 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: sspaddmm
+  description: Triton kernel implementation for sspaddmm.
+  for:
+  - sspaddmm
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: sspaddmm_out
+  description: 'A variant of sspaddmm() that writes the result into the out tensor.
+
+    '
+  for:
+  - sspaddmm.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: stack
   description: Concatenates a sequence of tensors along a new dimension.
   for:

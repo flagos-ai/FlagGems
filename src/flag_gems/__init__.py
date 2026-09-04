@@ -69,6 +69,7 @@ current_work_registrar = None
 AUTOGRAD_DISPATCH_KEY = torch._C.DispatchKey.Autograd.name
 CONJUGATE_DISPATCH_KEY = torch._C.DispatchKey.Conjugate.name
 SPARSE_CSR_DISPATCH_KEY = "SparseCsr" + backend_info.dispatch_key
+SPARSE_DISPATCH_KEY = "Sparse" + backend_info.dispatch_key
 
 
 def torch_ge(v):
@@ -1116,6 +1117,8 @@ _FULL_CONFIG = (
     ("square.out", square_out),
     ("square_", square_),
     ("squeeze_copy", squeeze_copy),
+    ("sspaddmm", sspaddmm, None, (SPARSE_DISPATCH_KEY,)),
+    ("sspaddmm.out", sspaddmm_out, None, (SPARSE_DISPATCH_KEY,)),
     ("stack", stack),
     ("std.correction", std),
     ("sub.Tensor", sub),
