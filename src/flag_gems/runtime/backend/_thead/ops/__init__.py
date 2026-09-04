@@ -30,6 +30,7 @@ from .linalg_svdvals import linalg_svdvals
 from .linear_backward import linear_backward
 from .log_normal_ import log_normal_, log_normal_heur_block, log_normal_heur_num_warps
 from .log_sigmoid_backward import log_sigmoid_backward, log_sigmoid_backward_out
+from .mm_w8a8_fp8 import mm_w8a8_fp8, mm_w8a8_fp8_out
 from .nll_loss_backward import nll_loss_backward
 from .nonzero_numpy import nonzero_numpy
 from .reflection_pad3d_backward import reflection_pad3d_backward
@@ -80,6 +81,8 @@ __all__ = [
     "log_sigmoid_backward",
     "log_sigmoid_backward_out",
     "make_3d_for_bn",
+    "mm_w8a8_fp8",
+    "mm_w8a8_fp8_out",
     "nll_loss_backward",
     "nonzero_numpy",
     "reflection_pad3d_backward",

@@ -617,6 +617,7 @@ from flag_gems.ops.mish import mish, mish_
 from flag_gems.ops.mish_backward import mish_backward
 from flag_gems.ops.mkldnn_rnn_layer import mkldnn_rnn_layer
 from flag_gems.ops.mm import mm, mm_out, router_gemm
+from flag_gems.ops.mm_w8a8_fp8 import mm_w8a8_fp8, mm_w8a8_fp8_out
 from flag_gems.ops.mode import mode
 from flag_gems.ops.mse_loss import mse_loss
 from flag_gems.ops.mse_loss_backward import mse_loss_backward
@@ -1619,6 +1620,8 @@ __all__ = [
     "mkldnn_rnn_layer",
     "mm",
     "mm_out",
+    "mm_w8a8_fp8",
+    "mm_w8a8_fp8_out",
     "mode",
     "mse_loss",
     "mse_loss_backward",

@@ -86,6 +86,114 @@ def test_mm(M, N, K, dtype, b_column_major):
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K, atol=_mm_atol_base())
 
 
+def _cuda_hopper_w8a8_fp8_available():
+    tensor_descriptor = getattr(
+        getattr(triton, "tools", None), "tensor_descriptor", None
+    )
+    fn = getattr(flag_gems, "mm_w8a8_fp8", None)
+    return (
+        fn is not None
+        and getattr(fn, "__module__", "") != "flag_gems.ops.mm_w8a8_fp8"
+        and flag_gems.device == "cuda"
+        and torch.cuda.is_available()
+        and torch.cuda.get_device_capability()[0] >= 9
+        and hasattr(torch, "float8_e4m3fn")
+        and hasattr(tensor_descriptor, "TensorDescriptor")
+    )
+
+
+def _thead_w8a8_fp8_available():
+    return (
+        getattr(flag_gems, "vendor_name", None) == "thead"
+        and hasattr(torch, "float8_e4m3fn")
+        and hasattr(flag_gems, "mm_w8a8_fp8")
+    )
+
+
+def _mm_w8a8_fp8_available():
+    return _thead_w8a8_fp8_available() or _cuda_hopper_w8a8_fp8_available()
+
+
+def _mm_w8a8_fp8_reference(a, b):
+    fp8_dtype = torch.float8_e4m3fn
+    fp8_info = torch.finfo(fp8_dtype)
+
+    a_fp32 = a.float()
+    a_scale = a_fp32.abs().amax(dim=1).clamp_min(1e-10) / fp8_info.max
+    a_fp8 = (a_fp32 / a_scale[:, None]).clamp(fp8_info.min, fp8_info.max).to(fp8_dtype)
+
+    b_fp32 = b.float()
+    b_scale = b_fp32.abs().amax(dim=0).clamp_min(1e-10) / fp8_info.max
+    b_fp8 = (b_fp32 / b_scale[None, :]).clamp(fp8_info.min, fp8_info.max).to(fp8_dtype)
+
+    return torch.mm(a_fp8.float(), b_fp8.float()) * a_scale[:, None] * b_scale[None, :]
+
+
+def _mm_w8a8_int8_reference(a, b):
+    a_fp32 = a.float()
+    a_scale = a_fp32.abs().amax(dim=1).clamp_min(1e-8) / 127.0
+    a_q = torch.round(a_fp32 / a_scale[:, None]).clamp(-127, 127)
+
+    b_fp32 = b.float()
+    b_scale = b_fp32.abs().amax(dim=0).clamp_min(1e-8) / 127.0
+    b_q = torch.round(b_fp32 / b_scale[None, :]).clamp(-127, 127)
+
+    return (a_q @ b_q) * a_scale[:, None] * b_scale[None, :]
+
+
+@pytest.mark.mm_w8a8_fp8
+@pytest.mark.parametrize(
+    "M, N, K",
+    [
+        (1, 16, 16),
+        (16, 1, 128),
+        (256, 1, 2048),
+        (2, 32, 32),
+        (8, 64, 64),
+        (16, 128, 64),
+        (32, 128, 128),
+        (64, 256, 128),
+        (128, 256, 256),
+        (192, 512, 512),
+        (256, 768, 1024),
+        (512, 1024, 1024),
+        # Qwen3.5-35B-A3B-p32768d1024 families from FlagGems#3821
+        (16, 1, 2048),
+        (16, 64, 2048),
+        (16, 256, 2048),
+        (16, 1024, 2048),
+        (16, 2048, 512),
+        (16, 2048, 4096),
+        (16, 9216, 2048),
+        (16, 12288, 2048),
+        (1, 248320, 2048),
+    ],
+)
+@pytest.mark.skipif(
+    not _mm_w8a8_fp8_available(),
+    reason="mm_w8a8_fp8 requires THead/PPU or CUDA Hopper FP8 TMA support",
+)
+def test_mm_w8a8_fp8(M, N, K):
+    dtype = torch.bfloat16
+    torch.manual_seed(0)
+
+    mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
+    mat2 = torch.randn((K, N), dtype=dtype, device=flag_gems.device)
+    reference = (
+        _mm_w8a8_int8_reference
+        if flag_gems.vendor_name == "thead"
+        else _mm_w8a8_fp8_reference
+    )
+    ref_out = utils.to_reference(reference(mat1, mat2), True)
+
+    res_out = flag_gems.mm_w8a8_fp8(mat1, mat2, out_dtype=dtype)
+    out = torch.empty((M, N), dtype=dtype, device=flag_gems.device)
+    res_out_reused = flag_gems.mm_w8a8_fp8_out(mat1, mat2, out=out)
+
+    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
+    utils.gems_assert_close(res_out_reused, ref_out, dtype, reduce_dim=K)
+
+
 @pytest.mark.mm
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_mm_broadcast_stride_zero(dtype):
