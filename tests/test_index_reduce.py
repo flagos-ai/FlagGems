@@ -67,8 +67,9 @@ def test_index_reduce_(shape, dim, dtype, index_dtype, reduce, include_self):
     ref_index = utils.to_reference(index)
     ref_inp.index_reduce_(dim, ref_index, ref_source, reduce, include_self=include_self)
 
-    with flag_gems.use_gems():
-        res = inp.index_reduce_(dim, index, source, reduce, include_self=include_self)
+    res = flag_gems.index_reduce_(
+        inp, dim, index, source, reduce, include_self=include_self
+    )
 
     assert res is inp
     utils.gems_assert_close(inp, ref_inp, dtype=dtype, reduce_dim=source_shape[dim])
@@ -88,8 +89,7 @@ def test_index_reduce_noncontiguous(reduce):
     ref_index = utils.to_reference(index)
     ref_inp.index_reduce_(dim, ref_index, ref_source, reduce, include_self=False)
 
-    with flag_gems.use_gems():
-        inp.index_reduce_(dim, index, source, reduce, include_self=False)
+    flag_gems.index_reduce_(inp, dim, index, source, reduce, include_self=False)
 
     utils.gems_assert_close(inp, ref_inp, dtype=dtype, reduce_dim=source.size(dim))
 
@@ -108,8 +108,7 @@ def test_index_reduce_duplicate_index_short_source(reduce, include_self):
     ref_index = utils.to_reference(index)
     ref_inp.index_reduce_(1, ref_index, ref_source, reduce, include_self=include_self)
 
-    with flag_gems.use_gems():
-        inp.index_reduce_(1, index, source, reduce, include_self=include_self)
+    flag_gems.index_reduce_(inp, 1, index, source, reduce, include_self=include_self)
 
     utils.gems_assert_close(inp, ref_inp, dtype=dtype, reduce_dim=source.size(1))
 
@@ -128,8 +127,7 @@ def test_index_reduce_unique_index(reduce, include_self):
     ref_index = utils.to_reference(index)
     ref_inp.index_reduce_(1, ref_index, ref_source, reduce, include_self=include_self)
 
-    with flag_gems.use_gems():
-        inp.index_reduce_(1, index, source, reduce, include_self=include_self)
+    flag_gems.index_reduce_(inp, 1, index, source, reduce, include_self=include_self)
 
     utils.gems_assert_close(inp, ref_inp, dtype=dtype, reduce_dim=source.size(1))
 
@@ -147,7 +145,6 @@ def test_index_reduce_empty_index(include_self):
     ref_index = utils.to_reference(index)
     ref_inp.index_reduce_(1, ref_index, ref_source, "mean", include_self=include_self)
 
-    with flag_gems.use_gems():
-        inp.index_reduce_(1, index, source, "mean", include_self=include_self)
+    flag_gems.index_reduce_(inp, 1, index, source, "mean", include_self=include_self)
 
     utils.gems_assert_close(inp, ref_inp, dtype=dtype, reduce_dim=1)
