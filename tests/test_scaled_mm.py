@@ -37,7 +37,11 @@ else:
 
 
 def _float8_dtypes():
-    if flag_gems.device != "cuda" or not torch.cuda.is_available():
+    if (
+        flag_gems.vendor_name != "nvidia"
+        or flag_gems.device != "cuda"
+        or not torch.cuda.is_available()
+    ):
         return []
     major, minor = torch.cuda.get_device_capability()
     if major * 10 + minor < 89:
