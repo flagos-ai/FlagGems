@@ -27,6 +27,7 @@ from .isin import isin
 from .kthvalue import kthvalue
 from .layernorm import layer_norm, layer_norm_backward
 from .lgamma_ import lgamma, lgamma_
+from .linalg_matrix_power import linalg_matrix_power
 from .linalg_solve_triangular import (
     linalg_solve_triangular,
     linalg_solve_triangular_out,
@@ -119,6 +120,7 @@ __all__ = [
     "layer_norm_backward",
     "lgamma",
     "lgamma_",
+    "linalg_matrix_power",
     "linalg_solve_triangular",
     "linalg_solve_triangular_out",
     "linalg_svdvals",
