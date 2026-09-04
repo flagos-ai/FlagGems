@@ -275,6 +275,11 @@ _FULL_CONFIG = (
     ("_weight_norm", _weight_norm),
     ("_weight_norm_interface", weight_norm_interface),
     ("_weight_norm_interface_backward", weight_norm_interface_backward),
+    ("_wrapped_linear_prepack", _wrapped_linear_prepack),
+    (
+        "_wrapped_quantized_linear_prepacked",
+        _wrapped_quantized_linear_prepacked,
+    ),
     ("abs", abs),
     ("abs_", abs_),
     ("absolute", absolute),

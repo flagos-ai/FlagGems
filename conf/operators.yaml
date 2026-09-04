@@ -14691,6 +14691,29 @@ ops:
   stages:
   - alpha: '2.1'
   - stable: '2.2'
+- id: wrapped_linear_prepack
+  description: Quantizes and packs a linear weight and bias for the paired wrapped
+    quantized linear operator.
+  for:
+  - _wrapped_linear_prepack
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Quantization
+  stages:
+  - alpha: '5.4'
+- id: wrapped_quantized_linear_prepacked
+  description: Applies a quantized linear operation using a weight produced by wrapped_linear_prepack.
+  for:
+  - _wrapped_quantized_linear_prepacked
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Quantization
+  stages:
+  - alpha: '5.4'
 - id: xlogy
   description: Computes `input * log(other)` element-wise, returning zero where `input`
     is zero (following PyTorch's `xlogy` semantics).
