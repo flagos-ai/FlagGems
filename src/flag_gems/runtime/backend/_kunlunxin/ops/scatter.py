@@ -58,13 +58,50 @@ def generate_scatter_kernel(
     with code.indent():
         code.writeline(
             'return triton.next_power_of_2(triton.cdiv(triton.cdiv(args["N"], 12), 4))'
-        )  # LOOP = 4
+        )  # UNROLL = 4
     code.newline()
     code.newline()
 
-    code.writeline("def loop_count(args):")
+    # Number of linear index elements owned by one program.
+    #
+    # tl.atomic_add on this backend silently drops updates when the same output
+    # address is touched by more than one program (2 contending programs are
+    # already enough to lose).  Duplicate index values can only alias inside one
+    # "slice" of prod(index.shape[dim:]) consecutive linear elements, so for the
+    # reducing variants the per-program span is forced to a whole multiple of
+    # that slice; every possible address conflict then stays program-local.
+    # Plain scatter (tl.store, no reduction) has unspecified semantics for
+    # duplicate indices, so it keeps the original partitioning.
+    code.writeline("def heur_span(args):")
     with code.indent():
-        code.writeline("return 4")
+        code.writeline("span = heur_block(args) * 4")
+        code.writeline('if args["LINE_LOCAL"]:')
+        with code.indent():
+            code.writeline('slice_n = args["SLICE"]')
+            code.writeline("if slice_n >= span:")
+            with code.indent():
+                code.writeline("span = slice_n")
+            code.writeline("else:")
+            with code.indent():
+                code.writeline("span = slice_n * (span // slice_n)")
+        code.writeline("return span")
+    code.newline()
+    code.newline()
+
+    code.writeline("def heur_loop(args):")
+    with code.indent():
+        code.writeline("return triton.cdiv(heur_span(args), heur_block(args))")
+    code.newline()
+    code.newline()
+
+    # When SPAN is a whole multiple of BLOCK the LOOP tiles cover the program's
+    # range exactly, so the plain `offsets < N` mask is already enough and the
+    # generated code stays byte-for-byte as fast as before.  Only the ragged case
+    # needs the extra upper bound, which costs a scalar min plus a mask the
+    # backend cannot fold into a block DMA.
+    code.writeline("def heur_exact(args):")
+    with code.indent():
+        code.writeline("return heur_span(args) % heur_block(args) == 0")
     code.newline()
     code.newline()
 
@@ -75,7 +112,9 @@ def generate_scatter_kernel(
         code.writeline("{")
         with code.indent():
             code.writeline('"BLOCK": heur_block,')
-            code.writeline('"LOOP": loop_count,')
+            code.writeline('"SPAN": heur_span,')
+            code.writeline('"LOOP": heur_loop,')
+            code.writeline('"EXACT_SPAN": heur_exact,')
         code.writeline("}")
     code.writeline(")")
     inp_stride_vars = ",".join(f"'inp_stride_{i}'" for i in range(rank))
@@ -83,7 +122,8 @@ def generate_scatter_kernel(
     src_stride_vars = ",".join(f"'src_stride_{i}'" for i in range(rank))
     shape_vars = ",".join(f"'shape_{i}'" for i in range(rank))
     code.writeline(
-        f"@triton.jit(do_not_specialize=['N','stride_dim','inp_size_dim',"
+        f"@triton.jit(do_not_specialize=['N',"
+        f"'stride_dim','inp_size_dim',"
         f"{inp_stride_vars},{index_stride_vars},{src_stride_vars},{shape_vars}])"
     )
 
@@ -110,11 +150,17 @@ def generate_scatter_kernel(
             code.writeline("inp_size_dim,")
             code.writeline("stride_dim,")
             code.writeline("N,")
+            code.writeline("SLICE,")
             # reduce options
             code.writeline("IS_ADD: tl.constexpr,")
             code.writeline("IS_MUL: tl.constexpr,")
+            # filled in by the heuristics above, must stay after every
+            # positionally passed argument
+            code.writeline("SPAN: tl.constexpr,")
             code.writeline("BLOCK: tl.constexpr,")
             code.writeline("LOOP: tl.constexpr,")
+            code.writeline("EXACT_SPAN: tl.constexpr,")
+            code.writeline("LINE_LOCAL: tl.constexpr,")
             code.writeline("INT32_OFFSET: tl.constexpr,")
             code.writeline("DENSE_SRC_IDX: tl.constexpr")
 
@@ -126,84 +172,118 @@ def generate_scatter_kernel(
         code.writeline("if not INT32_OFFSET:")
         with code.indent():
             code.writeline("pid = pid.to(tl.int64)")
-        code.writeline("offsets = pid * LOOP * BLOCK + tl.arange(0, BLOCK)")
+        # Program pid owns exactly the linear range [base, base + SPAN).  The
+        # `< base + SPAN` half of the mask is what keeps two programs from ever
+        # touching the same element when SPAN is not a multiple of BLOCK.
+        code.writeline("base = pid * SPAN")
+        code.writeline("if not EXACT_SPAN:")
+        with code.indent():
+            code.writeline("limit = tl.minimum(base + SPAN, N)")
+        # These are loop invariant and MUST be narrowed here rather than inside
+        # the tile loop: the tile loop is a real (non-unrolled) loop now, and
+        # re-assigning an argument inside it makes it loop-carried with a type
+        # that changes between the first and later iterations.
+
+        # Keep `offsets` loop carried (as before) instead of rebuilding it from
+        # `loop_iter` each iteration: re-materialising tl.arange(0, BLOCK) inside
+        # every unrolled body costs ~7x at BLOCK=2048 on this backend.
+        code.writeline("offsets = base + tl.arange(0, BLOCK)")
 
         #   1. Calculate inp_offsets and idx_offsets
         code.writeline("for loop_iter in tl.static_range(LOOP):")
         with code.indent():
-            code.writeline("mask = offsets < N")
-            code.writeline("cur_idx = offsets")
-            code.writeline("if INT32_OFFSET:")
-            with code.indent():
-                code.writeline("inp_offsets = tl.zeros((BLOCK, ), dtype=tl.int32)")
-            code.writeline("else:")
-            with code.indent():
-                code.writeline("inp_offsets = tl.zeros((BLOCK, ), dtype=tl.int64)")
-            # Fast path: when src/index are contiguous over index.shape, the
-            # linear iteration offset IS the element offset. Using it directly
-            # keeps the src/index gm2lm contiguous (block DMA) instead of the
-            # modulo-based address math that forces discrete/scalar transfers.
-            code.writeline("if DENSE_SRC_IDX:")
-            with code.indent():
-                code.writeline("idx_offsets = offsets")
-                code.writeline("src_offsets = offsets")
-            code.writeline("else:")
-            with code.indent():
-                code.writeline("if INT32_OFFSET:")
+            if True:
+                code.writeline("if EXACT_SPAN:")
                 with code.indent():
-                    code.writeline("idx_offsets = tl.zeros((BLOCK, ), dtype=tl.int32)")
-                    code.writeline("src_offsets = tl.zeros((BLOCK, ), dtype=tl.int32)")
+                    code.writeline("mask = offsets < N")
                 code.writeline("else:")
                 with code.indent():
-                    code.writeline("idx_offsets = tl.zeros((BLOCK, ), dtype=tl.int64)")
-                    code.writeline("src_offsets = tl.zeros((BLOCK, ), dtype=tl.int64)")
-            for i in range(rank)[::-1]:
+                    code.writeline("mask = offsets < limit")
+                code.writeline("cur_idx = offsets")
                 code.writeline("if INT32_OFFSET:")
                 with code.indent():
-                    code.writeline(f"shape_{i} = shape_{i}.to(tl.int32)")
-                    code.writeline(f"inp_stride_{i} = inp_stride_{i}.to(tl.int32)")
-                    code.writeline(f"index_stride_{i} = index_stride_{i}.to(tl.int32)")
-                    code.writeline(f"src_stride_{i} = src_stride_{i}.to(tl.int32)")
-                code.writeline(f"mod = cur_idx % shape_{i}")
-                code.writeline(f"inp_offsets += mod * inp_stride_{i}")
-                code.writeline("if not DENSE_SRC_IDX:")
+                    code.writeline("inp_offsets = tl.zeros((BLOCK, ), dtype=tl.int32)")
+                code.writeline("else:")
                 with code.indent():
-                    code.writeline(f"idx_offsets += mod * index_stride_{i}")
-                    code.writeline(f"src_offsets += mod * src_stride_{i}")
-                if i != 0:
-                    code.writeline(f"cur_idx = cur_idx // shape_{i}")
+                    code.writeline("inp_offsets = tl.zeros((BLOCK, ), dtype=tl.int64)")
+                # Fast path: when src/index are contiguous over index.shape, the
+                # linear iteration offset IS the element offset. Using it
+                # directly keeps the src/index gm2lm contiguous (block DMA)
+                # instead of the modulo-based address math that forces
+                # discrete/scalar transfers.
+                code.writeline("if DENSE_SRC_IDX:")
+                with code.indent():
+                    code.writeline("idx_offsets = offsets")
+                    code.writeline("src_offsets = offsets")
+                code.writeline("else:")
+                with code.indent():
+                    code.writeline("if INT32_OFFSET:")
+                    with code.indent():
+                        code.writeline(
+                            "idx_offsets = tl.zeros((BLOCK, ), dtype=tl.int32)"
+                        )
+                        code.writeline(
+                            "src_offsets = tl.zeros((BLOCK, ), dtype=tl.int32)"
+                        )
+                    code.writeline("else:")
+                    with code.indent():
+                        code.writeline(
+                            "idx_offsets = tl.zeros((BLOCK, ), dtype=tl.int64)"
+                        )
+                        code.writeline(
+                            "src_offsets = tl.zeros((BLOCK, ), dtype=tl.int64)"
+                        )
+                for i in range(rank)[::-1]:
+                    code.writeline("if INT32_OFFSET:")
+                    with code.indent():
+                        code.writeline(f"shape_{i} = shape_{i}.to(tl.int32)")
+                        code.writeline(f"inp_stride_{i} = inp_stride_{i}.to(tl.int32)")
+                        code.writeline(
+                            f"index_stride_{i} = index_stride_{i}.to(tl.int32)"
+                        )
+                        code.writeline(f"src_stride_{i} = src_stride_{i}.to(tl.int32)")
+                    code.writeline(f"mod = cur_idx % shape_{i}")
+                    code.writeline(f"inp_offsets += mod * inp_stride_{i}")
+                    code.writeline("if not DENSE_SRC_IDX:")
+                    with code.indent():
+                        code.writeline(f"idx_offsets += mod * index_stride_{i}")
+                        code.writeline(f"src_offsets += mod * src_stride_{i}")
+                    if i != 0:
+                        code.writeline(f"cur_idx = cur_idx // shape_{i}")
 
-            #   2. Use offsets to scatter
-            code.writeline(
-                "cur_src = tl.load(src_strided + src_offsets, mask=mask, other=0)"
-            )
-            code.writeline(
-                "cur_index = tl.load(index + idx_offsets, mask=mask, other=0)"
-            )
-            code.writeline("if INT32_OFFSET:")
-            with code.indent():
-                code.writeline("cur_index = cur_index.to(tl.int32)")
-                code.writeline("stride_dim = stride_dim.to(tl.int32)")
-
-            code.writeline("dim_offsets = cur_index * stride_dim")
-            code.writeline("inp_offsets += dim_offsets")
-            code.newline()
-            code.writeline("if IS_ADD: ")
-            with code.indent():
+                #   2. Use offsets to scatter
                 code.writeline(
-                    "tl.atomic_add(out + inp_offsets, cur_src, mask=mask, sem='relaxed')"
+                    "cur_src = tl.load(src_strided + src_offsets, mask=mask, other=0)"
                 )
-            code.writeline("elif IS_MUL: ")
-            with code.indent():
                 code.writeline(
-                    "tl.atomic_mul(out + inp_offsets, cur_src, mask=mask, sem='relaxed')"
+                    "cur_index = tl.load(index + idx_offsets, mask=mask, other=0)"
                 )
+                code.writeline("if INT32_OFFSET:")
+                with code.indent():
+                    code.writeline("cur_index = cur_index.to(tl.int32)")
+                    code.writeline("stride_dim = stride_dim.to(tl.int32)")
 
-            code.writeline("else: ")
-            with code.indent():
-                code.writeline("tl.store(out + inp_offsets, cur_src, mask=mask)")
+                code.writeline("dim_offsets = cur_index * stride_dim")
+                code.writeline("inp_offsets += dim_offsets")
+                code.newline()
+                code.writeline("if IS_ADD: ")
+                with code.indent():
+                    code.writeline(
+                        "tl.atomic_add(out + inp_offsets, cur_src, mask=mask,"
+                        " sem='relaxed')"
+                    )
+                code.writeline("elif IS_MUL: ")
+                with code.indent():
+                    code.writeline(
+                        "tl.atomic_mul(out + inp_offsets, cur_src, mask=mask,"
+                        " sem='relaxed')"
+                    )
 
-            code.writeline("offsets += BLOCK")
+                code.writeline("else: ")
+                with code.indent():
+                    code.writeline("tl.store(out + inp_offsets, cur_src, mask=mask)")
+
+                code.writeline("offsets += BLOCK")
 
     code.newline()
     code.newline()
@@ -218,6 +298,7 @@ def parameter_for_wrapper() -> str:
     parameters.append("index")
     parameters.append("inp")
     parameters.append("out")
+    parameters.append("dim")
     parameters.append("dim_size")
     parameters.append("dim_stride")
     parameters.append("N")
@@ -262,10 +343,18 @@ def generate_destination_passing_wrapper(
             "dense_src_idx = list(src_strides) == _cont and list(index_strides) == _cont"
         )
 
+        # Duplicate index values can only collide inside one slice of
+        # prod(index.shape[dim:]) consecutive linear elements.
+        code.writeline("SLICE = 1")
+        code.writeline("for _i in range(dim, len(index_shapes)):")
+        with code.indent():
+            code.writeline("SLICE *= index_shapes[_i]")
+        code.writeline("line_local = bool(IS_ADD or IS_MUL)")
+
         # kernel launch
         code.writeline("grid = lambda meta: (")
         with code.indent():
-            code.writeline('triton.cdiv(N, meta["BLOCK"] * meta["LOOP"]), ')
+            code.writeline('triton.cdiv(N, meta["SPAN"]), ')
         code.writeline(")")
 
         kernel_launch: str = f"{kernel_name}[grid]("
@@ -289,9 +378,11 @@ def generate_destination_passing_wrapper(
                 code.writeline("inp_size_dim,")
                 code.writeline("stride_dim,")
                 code.writeline("N,")
+                code.writeline("SLICE,")
                 # reduce options
                 code.writeline("IS_ADD,")
                 code.writeline("IS_MUL,")
+                code.writeline("LINE_LOCAL=line_local,")
                 code.writeline("INT32_OFFSET=int32_offset,")
                 code.writeline("DENSE_SRC_IDX=dense_src_idx,")
                 # code.writeline("buffer_size_limit=512,")
@@ -390,6 +481,7 @@ def scatter(inp, dim, index, src, reduce=None):
         index,
         inp_restrided,
         out,
+        dim,
         dim_size,
         dim_stride,
         N,
@@ -428,6 +520,7 @@ def scatter_(inp, dim, index, src, reduce=None):
         index,
         inp_restrided,
         out,
+        dim,
         dim_size,
         dim_stride,
         N,

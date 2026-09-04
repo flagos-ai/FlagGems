@@ -72,10 +72,14 @@ def add_base_max_kernel(
         partial_max_indices_ptrs = partial_max_indices + pid - 1
         last_part_max_index_via_max = tl.load(partial_max_indices_ptrs)
 
-        final_vals = tl.maximum(out_vals, last_part_max_via_max)
-        final_indices = tl.where(
-            out_vals >= last_part_max_via_max, out_indices, last_part_max_index_via_max
-        )
+        # NaN-aware selection (tl.maximum is fmax-like here: it would let a
+        # number "undo" a previous NaN, and `>=` is False on NaN); matches
+        # torch.cummax: NaN wins, and on equal values the later index wins.
+        last_is_nan = last_part_max_via_max != last_part_max_via_max
+        cur_is_nan = out_vals != out_vals
+        use_cur = cur_is_nan | (~last_is_nan & (out_vals >= last_part_max_via_max))
+        final_vals = tl.where(use_cur, out_vals, last_part_max_via_max)
+        final_indices = tl.where(use_cur, out_indices, last_part_max_index_via_max)
         tl.store(out_ptrs, final_vals.to(out_vals.dtype), mask=mask)
         tl.store(out_indices_ptrs, final_indices, mask=mask)
 
@@ -288,10 +292,12 @@ def add_base_max_abc_kernel(
         partial_max_index_ptrs = partial_max_indices + last_part_offset
         last_part_max_index_via_max = tl.load(partial_max_index_ptrs)
 
-        final_vals = tl.maximum(out_vals, last_part_max_via_max)
-        final_indices = tl.where(
-            out_vals >= last_part_max_via_max, out_indices, last_part_max_index_via_max
-        )
+        # NaN-aware selection; same semantics as add_base_max_kernel.
+        last_is_nan = last_part_max_via_max != last_part_max_via_max
+        cur_is_nan = out_vals != out_vals
+        use_cur = cur_is_nan | (~last_is_nan & (out_vals >= last_part_max_via_max))
+        final_vals = tl.where(use_cur, out_vals, last_part_max_via_max)
+        final_indices = tl.where(use_cur, out_indices, last_part_max_index_via_max)
         tl.store(out_ptrs, final_vals.to(out_vals.dtype), mask=mask)
         tl.store(out_indices_ptrs, final_indices, mask=mask)
 
@@ -462,6 +468,14 @@ def cummax(
 ) -> torch.return_types.cummax:
     logger.debug("GEMS_KUNLUNXIN CUMMAX")
     assert dim >= -input.ndim and dim < input.ndim, "Invalid dim"
+    # Empty tensors: torch returns empty (values, indices) without touching any
+    # kernel; without this guard, numel() // M // N divides by zero (N==0 or
+    # M==0) and 0-element buffers would be accessed out of bounds.
+    if input.numel() == 0:
+        return (
+            torch.empty_like(input),
+            torch.empty_like(input, dtype=torch.int64),
+        )
     shape = input.shape
     dim = dim % input.ndim
     M = 1
@@ -471,10 +485,7 @@ def cummax(
     input = input.contiguous()
     K = input.numel() // M // N
 
-    dtype = input.dtype
-    if dtype is torch.bool:
-        dtype = torch.int64
-    out = torch.empty_like(input, dtype=dtype)
+    out = torch.empty_like(input)
     out_indices = torch.empty_like(input, dtype=torch.int64)
 
     compute_dtype = out.dtype
@@ -483,8 +494,11 @@ def cummax(
 
     if M == 1 and K == 1:
         scan_then_fan_col(input, out, out_indices, N, compute_dtype)
-    elif M * K <= 16:
-        scan_then_fan(input, out, out_indices, M, N, K, compute_dtype)
     else:
+        # XPU: scan_then_fan (the 3D-abc multi-partial path) returns wrong
+        # values/indices for B > 4096 with C > 1 (deterministic partial/carve
+        # corruption, see harness/solution/functional/cummax_xpu4_20260902.md);
+        # the per-row loop kernel below is the validated path on this backend
+        # (exact vs CPU fp64 oracle for large B and all dtypes).
         scan_then_fan_loop(input, out, out_indices, M, N, K, compute_dtype)
     return out, out_indices
