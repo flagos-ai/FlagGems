@@ -36,7 +36,6 @@ from pathlib import Path
 TESTS_DIR = Path("tests")
 
 
-
 def find_use_gems_calls(filepath: Path) -> list[tuple[int, str]]:
     """Find use_gems() calls in a Python file using AST.
 
@@ -104,10 +103,7 @@ def main():
             changed = json.loads(args.changed_files)
         except json.JSONDecodeError:
             changed = [f.strip() for f in args.changed_files.split(",") if f.strip()]
-        test_files = [
-            Path(f) for f in changed
-            if re.match(r"tests/test_.+\.py$", f)
-        ]
+        test_files = [Path(f) for f in changed if re.match(r"tests/test_.+\.py$", f)]
     elif args.operators:
         try:
             requested_ops = json.loads(args.operators)
@@ -115,11 +111,11 @@ def main():
             requested_ops = [
                 op.strip() for op in args.operators.split(",") if op.strip()
             ]
-        test_files = [
-            TESTS_DIR / f"test_{op_id}.py" for op_id in requested_ops
-        ]
+        test_files = [TESTS_DIR / f"test_{op_id}.py" for op_id in requested_ops]
     else:
-        print("No operators or files specified. Use --operators, --changed-files, or --all.")
+        print(
+            "No operators or files specified. Use --operators, --changed-files, or --all."
+        )
         sys.exit(0)
 
     # Filter to files that actually exist
