@@ -39,6 +39,18 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: _linalg_eigh
+  description: Computes the eigenvalues and eigenvectors of a symmetric or Hermitian
+    matrix.
+  for:
+  - _linalg_eigh
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: _reshape_alias
   description: 'Creates a view of the input tensor with the given size and stride,
 
@@ -7218,6 +7230,20 @@ ops:
   - linalg.det.out
   labels:
   - aten
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.4'
+- id: linalg_eigh
+  description: 'Computes the eigenvalue decomposition of a symmetric (or Hermitian)
+    matrix or a batch of matrices.
+
+    '
+  for:
+  - linalg_eigh
+  labels:
+  - aten
+  - KernelGen
   kind:
   - LinearAlg
   stages:
