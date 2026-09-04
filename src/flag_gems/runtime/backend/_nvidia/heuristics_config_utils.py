@@ -539,7 +539,7 @@ HEURISTICS_CONFIGS = {
         "BLOCK_M": lambda args: 16,
         "BLOCK_N": lambda args: 64,
         "num_warps": lambda args: 4,
-        "num_stages": lambda args: 3,
+        "num_stages": lambda args: 2,
     },
     "elementwise_generic": {
         "BLOCK_SIZE": simple_elementwise_blocksize_heur,
