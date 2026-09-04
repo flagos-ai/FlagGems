@@ -236,17 +236,16 @@ def test_scaled_grouped_mm(case_name, dtype, use_bias):
     bias = _make_bias(case_name, mat_b, groups, use_bias, target_dtype)
 
     ref = _reference(mat_a, mat_b, scale_a, scale_b, offs, bias, target_dtype)
-    with flag_gems.use_gems():
-        res = torch._scaled_grouped_mm(
-            mat_a,
-            mat_b,
-            scale_a,
-            scale_b,
-            offs=offs,
-            bias=bias,
-            out_dtype=out_dtype,
-            use_fast_accum=True,
-        )
+    res = flag_gems.scaled_grouped_mm(
+        mat_a,
+        mat_b,
+        scale_a,
+        scale_b,
+        offs=offs,
+        bias=bias,
+        out_dtype=out_dtype,
+        use_fast_accum=True,
+    )
 
     ref = ref if utils.TO_CPU else ref.to(flag_gems.device)
 
