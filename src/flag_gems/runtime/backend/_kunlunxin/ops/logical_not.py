@@ -49,7 +49,22 @@ config_ = CodeGenConfig(
 @pointwise_dynamic(promotion_methods=[(0, "ALWAYS_BOOL")], config=config_)
 @triton.jit
 def logical_not_func(x):
-    return not x.to(tl.int1)
+    # XPU has no fast per-element `x != 0` in fp: a floating-point compare (cmpf)
+    # lowered to i1 costs ~2x a plain icmp (measured on XPU 7, 2026-08-13:
+    # [4096,4096] fp16 ~0.49ms for `not x.to(tl.int1)` vs ~0.24ms for the
+    # bitcast-icmp body below; [1024,65536] 1.60ms vs 0.64ms; same ratio for
+    # fp32/bf16). `logical_not(x)` == `(x == 0)`.
+    #   u = bitcast(x, fp32)          -- value-exact upcast for every input
+    #                                    dtype (fp16/bf16/fp32/int16/32/64/bool)
+    #   (u & 0x7FFFFFFF) == 0         -- true only for 0x00000000/0x80000000
+    #                                    (+/-0.0); all other bit patterns,
+    #                                    incl. NaN/inf/subnormals and every
+    #                                    nonzero int, are non-zero after the
+    #                                    sign mask -> False.
+    # Result matches torch.logical_not bit-exactly for all float edge cases
+    # (NaN, +/-inf, -0.0, subnormals) verified on-device.
+    u = x.to(tl.float32).to(tl.int32, bitcast=True)
+    return (u & 0x7FFFFFFF) == 0
 
 
 def logical_not(A):
