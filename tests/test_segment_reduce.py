@@ -20,8 +20,6 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import conftest as cfg
 
-# Temporary marker to trigger CI; it will be removed in the final change.
-
 FLOAT_DTYPES = [torch.float32] if cfg.QUICK_MODE else utils.ALL_FLOAT_DTYPES
 REDUCTIONS = ("sum", "mean", "max", "min", "prod")
 INITIALS = (None, 0.5)
@@ -62,8 +60,7 @@ def _assert_segment_reduce(shape, kwargs, reduce, dtype, initial):
     ref_kwargs = _to_reference_kwargs(kwargs)
 
     ref_out = torch.segment_reduce(ref_data, reduce, **ref_kwargs, initial=initial)
-    with flag_gems.use_gems():
-        res_out = torch.segment_reduce(data, reduce, **kwargs, initial=initial)
+    res_out = flag_gems.segment_reduce(data, reduce, **kwargs, initial=initial)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
@@ -83,13 +80,12 @@ def _assert_segment_reduce_out(shape, kwargs, reduce, dtype):
         **ref_kwargs,
         out=ref_out,
     )
-    with flag_gems.use_gems():
-        res_result = torch.ops.aten.segment_reduce.out(
-            data,
-            reduce,
-            **kwargs,
-            out=out,
-        )
+    res_result = flag_gems.segment_reduce_out(
+        data,
+        reduce,
+        **kwargs,
+        out=out,
+    )
 
     assert res_result.data_ptr() == out.data_ptr()
     utils.gems_assert_close(res_result, ref_result, dtype, equal_nan=True)
@@ -101,8 +97,7 @@ def _assert_segment_reduce_backward_out(shape, kwargs, reduce, dtype):
     ref_kwargs = _to_reference_kwargs(kwargs)
 
     ref_output = torch.segment_reduce(ref_data, reduce, **ref_kwargs)
-    with flag_gems.use_gems():
-        output = torch.segment_reduce(data, reduce, **kwargs)
+    output = flag_gems.segment_reduce(data, reduce, **kwargs)
 
     grad = _make_data(tuple(output.shape), dtype)
     ref_grad = utils.to_reference(grad)
@@ -117,15 +112,14 @@ def _assert_segment_reduce_backward_out(shape, kwargs, reduce, dtype):
         **ref_kwargs,
         out=ref_out,
     )
-    with flag_gems.use_gems():
-        res_result = torch.ops.aten._segment_reduce_backward.out(
-            grad,
-            output,
-            data,
-            reduce,
-            **kwargs,
-            out=out,
-        )
+    res_result = flag_gems._segment_reduce_backward_out(
+        grad,
+        output,
+        data,
+        reduce,
+        **kwargs,
+        out=out,
+    )
 
     assert res_result.data_ptr() == out.data_ptr()
     utils.gems_assert_close(res_result, ref_result, dtype, equal_nan=True)
@@ -173,14 +167,19 @@ def test_segment_reduce_backward_lengths(shape, axis, lengths, reduce, dtype, in
     ref_kwargs = _to_reference_kwargs(kwargs)
 
     ref_out = torch.segment_reduce(ref_data, reduce, **ref_kwargs, initial=initial)
-    with flag_gems.use_gems():
-        res_out = torch.segment_reduce(data, reduce, **kwargs, initial=initial)
+    res_out = flag_gems.segment_reduce(data, reduce, **kwargs, initial=initial)
 
     grad = _make_data(tuple(res_out.shape), dtype)
     ref_grad = utils.to_reference(grad)
     (ref_grad_input,) = torch.autograd.grad(ref_out, ref_data, ref_grad)
-    with flag_gems.use_gems():
-        (res_grad_input,) = torch.autograd.grad(res_out, data, grad)
+    res_grad_input = flag_gems._segment_reduce_backward(
+        grad,
+        res_out,
+        data,
+        reduce,
+        **kwargs,
+        initial=initial,
+    )
 
     utils.gems_assert_close(res_grad_input, ref_grad_input, dtype, equal_nan=True)
 
@@ -247,8 +246,7 @@ def test_segment_reduce_backward_offsets(shape, axis, offsets, reduce, dtype):
     ref_data = utils.to_reference(data)
     ref_kwargs = _to_reference_kwargs(kwargs)
 
-    with flag_gems.use_gems():
-        output = torch.segment_reduce(data, reduce, **kwargs)
+    output = flag_gems.segment_reduce(data, reduce, **kwargs)
     ref_output = torch.segment_reduce(ref_data, reduce, **ref_kwargs)
     grad = _make_data(tuple(output.shape), dtype)
     ref_grad = utils.to_reference(grad)
@@ -260,14 +258,13 @@ def test_segment_reduce_backward_offsets(shape, axis, offsets, reduce, dtype):
         reduce,
         **ref_kwargs,
     )
-    with flag_gems.use_gems():
-        res_grad_input = torch.ops.aten._segment_reduce_backward(
-            grad,
-            output,
-            data,
-            reduce,
-            **kwargs,
-        )
+    res_grad_input = flag_gems._segment_reduce_backward(
+        grad,
+        output,
+        data,
+        reduce,
+        **kwargs,
+    )
 
     utils.gems_assert_close(res_grad_input, ref_grad_input, dtype, equal_nan=True)
 
@@ -277,5 +274,4 @@ def test_segment_reduce_indices_unsupported():
     data = torch.arange(4, dtype=torch.float32, device=flag_gems.device)
     indices = torch.tensor([0, 0, 1, 1], dtype=torch.int64, device=flag_gems.device)
     with pytest.raises(RuntimeError, match="indices based reduction is not supported"):
-        with flag_gems.use_gems():
-            torch.segment_reduce(data, "sum", indices=indices)
+        flag_gems.segment_reduce(data, "sum", indices=indices)
