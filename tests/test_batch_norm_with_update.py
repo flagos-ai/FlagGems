@@ -14,23 +14,11 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
+from flag_gems.ops._batch_norm_with_update import _batch_norm_with_update as gems_bn
 
 from . import accuracy_utils as utils
-
-# ``_batch_norm_with_update`` starts with an underscore, and ``pytest.mark``
-# refuses to generate a marker via attribute access for such names. Register it
-# directly on the MarkGenerator so ``@pytest.mark._batch_norm_with_update`` and
-# ``-m _batch_norm_with_update`` both work.
-setattr(
-    pytest.mark,
-    "_batch_norm_with_update",
-    MarkDecorator(
-        Mark("_batch_norm_with_update", (), {}, _ispytest=True), _ispytest=True
-    ),
-)
 
 
 @pytest.mark.batch_norm_with_update
@@ -46,7 +34,7 @@ setattr(
 )
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("affine", [True, False])
-def test__batch_norm_with_update(shape, dtype, affine):
+def test_batch_norm_with_update(shape, dtype, affine):
     C = shape[1]
     inp = torch.randn(size=shape, dtype=dtype, device=flag_gems.device)
     weight = (
@@ -88,21 +76,20 @@ def test__batch_norm_with_update(shape, dtype, affine):
 
     res_running_mean = running_mean.clone()
     res_running_var = running_var.clone()
-    with flag_gems.use_gems():
-        (
-            res_out,
-            res_save_mean,
-            res_save_invstd,
-            res_reserve,
-        ) = torch.ops.aten._batch_norm_with_update(
-            inp,
-            weight,
-            bias,
-            res_running_mean,
-            res_running_var,
-            momentum,
-            eps,
-        )
+    (
+        res_out,
+        res_save_mean,
+        res_save_invstd,
+        res_reserve,
+    ) = gems_bn(
+        inp,
+        weight,
+        bias,
+        res_running_mean,
+        res_running_var,
+        momentum,
+        eps,
+    )
 
     utils.gems_assert_close(res_out, ref_out, dtype)
     utils.gems_assert_close(res_running_mean, ref_running_mean, dtype)
