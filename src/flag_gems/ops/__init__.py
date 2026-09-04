@@ -114,6 +114,9 @@ from flag_gems.ops._safe_softmax import _safe_softmax
 from flag_gems.ops._scaled_dot_product_attention_math import (
     _scaled_dot_product_attention_math,
 )
+from flag_gems.ops._scaled_dot_product_attention_math_for_mps import (
+    _scaled_dot_product_attention_math_for_mps,
+)
 from flag_gems.ops._scaled_dot_product_cudnn_attention import (
     _scaled_dot_product_cudnn_attention,
 )
@@ -1031,6 +1034,7 @@ __all__ = [
     "_resize_output_",
     "_safe_softmax",
     "_scaled_dot_product_attention_math",
+    "_scaled_dot_product_attention_math_for_mps",
     "_scaled_dot_product_cudnn_attention",
     "_scaled_dot_product_efficient_attention",
     "_scaled_dot_product_flash_attention",

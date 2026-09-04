@@ -200,6 +200,14 @@ _FULL_CONFIG = (
         "_scaled_dot_product_attention_math",
         _scaled_dot_product_attention_math,
     ),
+    (
+        "_scaled_dot_product_attention_math",
+        _scaled_dot_product_attention_math,
+    ),
+    (
+        "_scaled_dot_product_attention_math_for_mps",
+        _scaled_dot_product_attention_math_for_mps,
+    ),
     ("_scaled_dot_product_cudnn_attention", _scaled_dot_product_cudnn_attention),
     (
         "_scaled_dot_product_cudnn_attention_backward",
