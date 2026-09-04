@@ -9279,6 +9279,20 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: nested_tensor_from_mask
+  description: |
+    Builds a nested tensor from a padded dense tensor of shape (N, L, D) and a
+    boolean padding mask of shape (N, L), using the mask to determine the ragged
+    length of each component.
+  for:
+    - _nested_tensor_from_mask
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Tensor
+  stages:
+    - alpha: '5.4'
 - id: nested_view_from_buffer_copy
   description: 'Creates a nested tensor from a flat buffer using component sizes,
     strides,
