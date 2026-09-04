@@ -9261,6 +9261,20 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: nested_select_backward
+  description: |
+    Triton kernel implementation for the backward of nested tensor `select`
+    along the batch dimension. Scatters the gradient of the selected
+    component into a zero buffer with the same nested structure as the input.
+  for:
+    - _nested_select_backward
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Tensor
+  stages:
+    - alpha: '5.4'
 - id: nested_sum_backward
   description: 'Triton kernel implementation for `_nested_sum_backward`, the backward
     of
