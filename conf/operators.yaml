@@ -3261,6 +3261,23 @@ ops:
     - NeuralNetwork
   stages:
     - alpha: '5.4'
+- id: cudnn_attention_backward
+  description: 'Backward kernel for cuDNN attention, computing gradients of query,
+
+    key, and value from the cuDNN attention forward pass.  Uses a BHSD-native
+    two-kernel design that eliminates the BHSD-BSHD permute+contiguous overhead.
+
+    '
+  for:
+  - _cudnn_attention_backward
+  labels:
+  - aten
+  - NoCPU
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - beta: '5.5'
 - id: cudnn_attention_forward
   description: 'Forward kernel for cuDNN attention, computing scaled dot-product
 
