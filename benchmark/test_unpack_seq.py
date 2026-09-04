@@ -153,3 +153,47 @@ def test_unpack_seq_fp8():
     )
     bench.set_gems(unpack_seq_triton)
     bench.run()
+
+
+# =============================================================================
+# Custom Benchmark class — unpack_seq (INT8)
+# =============================================================================
+
+
+class UnpackSeqINT8Benchmark(base.Benchmark):
+    def __init__(self, op_name, torch_op, dtypes):
+        super().__init__(op_name=op_name, torch_op=torch_op, dtypes=dtypes)
+
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = UNPACK_BENCH_SHAPES
+
+    def get_input_iter(self, cur_dtype):
+        del cur_dtype
+        for config in self.shapes:
+            yield from self._int8_input_fn(config)
+
+    def _int8_input_fn(self, config):
+        N, D, B, lengths_list = config
+        Lmax = max(lengths_list)
+        device = flag_gems.device
+        lengths = torch.tensor(lengths_list, dtype=torch.int32, device=device)
+        # unpack_seq_triton has no dtype-specific padding branch (pure
+        # load/store copy), so the padding region's contents don't matter
+        # for this benchmark -- only the valid-token copy is measured.
+        packed = torch.randint(-128, 128, (B, Lmax, D), dtype=torch.int8, device=device)
+        yield packed, lengths
+
+
+@pytest.mark.unpack_seq_triton
+@pytest.mark.skipif(
+    not HAS_VLLM,
+    reason="requires vLLM to be installed for reference comparison",
+)
+def test_unpack_seq_int8():
+    bench = UnpackSeqINT8Benchmark(
+        op_name="unpack_seq_triton",
+        torch_op=vllm_unpack_seq,
+        dtypes=[torch.int8],
+    )
+    bench.set_gems(unpack_seq_triton)
+    bench.run()
