@@ -44,18 +44,9 @@ def sgn_kernel_(x_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
     tl.store(x_ptr + offsets, res, mask=mask)
 
 
-def sgn_(*args, **kwargs):
+def sgn_(self):
     logger.debug("GEMS SGN_")
-    x = None
-    if len(args) == 1 and isinstance(args[0], torch.Tensor):
-        x = args[0]
-    elif "input" in kwargs and isinstance(kwargs["input"], torch.Tensor):
-        x = kwargs["input"]
-    elif "self" in kwargs and isinstance(kwargs["self"], torch.Tensor):
-        x = kwargs["self"]
-
-    if x is None:
-        raise TypeError("sgn_ expects a single Tensor argument")
+    x = self
 
     unsupported = (not x.is_contiguous()) or x.is_complex()
     supported_dtypes = {

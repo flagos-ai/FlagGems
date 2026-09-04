@@ -53,16 +53,9 @@ def prelu_kernel(
     tl.store(out_ptr + offsets, y, mask=mask)
 
 
-def prelu(*args, **kwargs):
+def prelu(self, weight):
     logger.debug("GEMS PRELU")
-    # Extract inputs
-    if len(args) >= 2:
-        x, weight = args[0], args[1]
-    else:
-        x = kwargs.get("input", kwargs.get("self"))
-        weight = kwargs.get("weight")
-    if x is None or weight is None:
-        raise ValueError("prelu expects (input, weight) as arguments.")
+    x = self
 
     if x.device.type != flag_gems.device or weight.device.type != flag_gems.device:
         raise AssertionError(f"Tensors must be {flag_gems.device} tensors.")

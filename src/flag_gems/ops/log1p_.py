@@ -39,21 +39,9 @@ def log1p_kernel_(x_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
     tl.store(x_ptr + offsets, y_cast, mask=mask)
 
 
-def log1p_(*args, **kwargs):
+def log1p_(self):
     logger.debug("GEMS LOG1P_")
-    x = None
-    if len(args) > 0:
-        x = args[0]
-    else:
-        x = kwargs.get("input", None)
-
-    if x is None:
-        raise ValueError(
-            "log1p_ expects a tensor as the first argument or keyword 'input'."
-        )
-
-    if not isinstance(x, torch.Tensor):
-        raise TypeError("log1p_ expects a torch.Tensor as input.")
+    x = self
 
     if not x.is_contiguous():
         return torch.ops.aten.log1p_(x)

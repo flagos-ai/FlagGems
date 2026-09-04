@@ -185,61 +185,6 @@ def _launch_upsample_nearest_exact3d_kernel(input, out, output_size=None, scale=
     return out
 
 
-def _extract_io_and_params(args, kwargs, expect_out=False):
-    # Extract input tensor
-    in_t = kwargs.get("input", None)
-    if in_t is None:
-        in_t = kwargs.get("self", None)
-    if in_t is None and len(args) > 0 and isinstance(args[0], torch.Tensor):
-        in_t = args[0]
-        args = args[1:]
-    if in_t is None or not isinstance(in_t, torch.Tensor):
-        raise ValueError("Input tensor not found for _upsample_nearest_exact3d.")
-
-    # Extract output_size / scales from kwargs or remaining args
-    output_size = kwargs.get(
-        "output_size", kwargs.get("size", kwargs.get("output_size_list", None))
-    )
-    scales = kwargs.get(
-        "scale_factor",
-        kwargs.get("scales", kwargs.get("scale_factors", kwargs.get("scale", None))),
-    )
-
-    # If positional arguments contain size and/or scales
-    # Try to interpret next positional as output_size if present and not a tensor
-    pos = 0
-    if (
-        output_size is None
-        and pos < len(args)
-        and not isinstance(args[pos], torch.Tensor)
-    ):
-        output_size = args[pos]
-        pos += 1
-    if scales is None and pos < len(args) and not isinstance(args[pos], torch.Tensor):
-        scales = args[pos]
-        pos += 1
-
-    out_t = None
-    if expect_out:
-        out_t = kwargs.get("out", None)
-        if out_t is None:
-            # find last tensor among remaining args as out
-            for a in reversed(args):
-                if isinstance(a, torch.Tensor):
-                    out_t = a
-                    break
-        if out_t is None:
-            raise ValueError(
-                "Output tensor 'out' not found for _upsample_nearest_exact3d_out."
-            )
-
-    # Normalize 3D size and scale
-    out_dhw = _parse_size_3d(output_size)
-    scale_dhw = _parse_scale_3d(scales)
-
-    return in_t, out_t, out_dhw, scale_dhw
-
-
 def _prepare_out_tensor(in_t, out_dhw, scale_dhw, dtype=None, device=None):
     N, C, ID, IH, IW = in_t.shape
     OD, OH, OW = _compute_out_size(ID, IH, IW, out_dhw, scale_dhw)
@@ -252,49 +197,48 @@ def _prepare_out_tensor(in_t, out_dhw, scale_dhw, dtype=None, device=None):
     return torch.empty((N, C, OD, OH, OW), dtype=dtype, device=device)
 
 
-def _upsample_nearest_exact3d(*args, **kwargs):
+def _upsample_nearest_exact3d(input, output_size, scale_factors=None):
     logger.debug("GEMS _UPSAMPLE_NEAREST_EXACT3D")
-    in_t, _, out_dhw, scale_dhw = _extract_io_and_params(args, kwargs, expect_out=False)
-    out_t = _prepare_out_tensor(in_t, out_dhw, scale_dhw)
+    out_dhw = _parse_size_3d(output_size)
+    scale_dhw = _parse_scale_3d(scale_factors)
+    out_t = _prepare_out_tensor(input, out_dhw, scale_dhw)
     if out_t.numel() == 0:
         return out_t
     return _launch_upsample_nearest_exact3d_kernel(
-        in_t, out_t, output_size=out_dhw, scale=scale_dhw
+        input, out_t, output_size=out_dhw, scale=scale_dhw
     )
 
 
-def _upsample_nearest_exact3d_out(*args, **kwargs):
+def _upsample_nearest_exact3d_out(input, output_size, scale_factors=None, *, out):
     logger.debug("GEMS _UPSAMPLE_NEAREST_EXACT3D_OUT")
-    in_t, out_t, out_dhw, scale_dhw = _extract_io_and_params(
-        args, kwargs, expect_out=True
-    )
-    if out_t.ndim != 5:
+    out_dhw = _parse_size_3d(output_size)
+    scale_dhw = _parse_scale_3d(scale_factors)
+    if out.ndim != 5:
         raise ValueError(
-            f"Out tensor must be 5D (N, C, D, H, W); got shape {tuple(out_t.shape)}"
+            f"Out tensor must be 5D (N, C, D, H, W); got shape {tuple(out.shape)}"
         )
-    # Validate that out_t has the correct computed dimensions if parameters are provided
     expected_dhw = _compute_out_size(
-        in_t.shape[-3], in_t.shape[-2], in_t.shape[-1], out_dhw, scale_dhw
+        input.shape[-3], input.shape[-2], input.shape[-1], out_dhw, scale_dhw
     )
-    if out_t.shape[-3:] != expected_dhw:
+    if out.shape[-3:] != expected_dhw:
         raise ValueError(
-            f"Provided out tensor has shape {tuple(out_t.shape)} "
-            f"but expected {(in_t.shape[0], in_t.shape[1]) + expected_dhw}."
+            f"Provided out tensor has shape {tuple(out.shape)} "
+            f"but expected {(input.shape[0], input.shape[1]) + expected_dhw}."
         )
-    if out_t.numel() == 0:
-        return out_t
+    if out.numel() == 0:
+        return out
     return _launch_upsample_nearest_exact3d_kernel(
-        in_t, out_t, output_size=out_dhw, scale=scale_dhw
+        input, out, output_size=out_dhw, scale=scale_dhw
     )
 
 
-def _upsample_nearest_exact3d_vec(*args, **kwargs):
+def _upsample_nearest_exact3d_vec(input, output_size=None, scale_factors=None):
     logger.debug("GEMS _UPSAMPLE_NEAREST_EXACT3D_VEC")
-    # Treat vec the same as base variant, allowing list-like output_size/scales
-    in_t, _, out_dhw, scale_dhw = _extract_io_and_params(args, kwargs, expect_out=False)
-    out_t = _prepare_out_tensor(in_t, out_dhw, scale_dhw)
+    out_dhw = _parse_size_3d(output_size)
+    scale_dhw = _parse_scale_3d(scale_factors)
+    out_t = _prepare_out_tensor(input, out_dhw, scale_dhw)
     if out_t.numel() == 0:
         return out_t
     return _launch_upsample_nearest_exact3d_kernel(
-        in_t, out_t, output_size=out_dhw, scale=scale_dhw
+        input, out_t, output_size=out_dhw, scale=scale_dhw
     )
