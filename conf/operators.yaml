@@ -3339,6 +3339,21 @@ ops:
   - Math
   stages:
   - stable: '3.0'
+- id: cummax_helper
+  description: |
+    Triton kernel implementation for `_cummax_helper`, the out-of-place helper used
+    by `aten::cummax` / `aten::cummax.out`. It writes the cumulative maximum of
+    elements of `input` along `dim` into the pre-allocated `values` tensor and the
+    index location of each maximum value into the pre-allocated `indices` tensor.
+  for:
+    - _cummax_helper
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Math
+  stages:
+    - alpha: '5.4'
 - id: cummaxmin_backward
   description: 'Backward pass shared by `cummax` and `cummin`. Scatter-adds the output
     gradient back to the

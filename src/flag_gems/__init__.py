@@ -124,6 +124,7 @@ _FULL_CONFIG = (
     ("_convolution_mode", _convolution_mode),
     ("_cudnn_attention_forward", cudnn_attention_forward),
     ("_cudnn_rnn_backward", cudnn_rnn_backward),
+    ("_cummax_helper", _cummax_helper),
     ("_cummin_helper", _cummin_helper),
     ("_dyn_quant_pack_4bit_weight", _dyn_quant_pack_4bit_weight),
     ("_efficient_attention_backward", efficient_attention_backward),
