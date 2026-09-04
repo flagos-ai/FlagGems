@@ -11173,6 +11173,17 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.3'
+- id: saturate_weight_to_fp16
+  description: Clamps weights to the representable fp16 range before casting to fp16.
+  for:
+  - _saturate_weight_to_fp16
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: scalar_tensor
   description: 'Creates a 0-dimensional (scalar) tensor from a Python numeric value.
 

@@ -196,6 +196,7 @@ _FULL_CONFIG = (
     ("_resize_output", _resize_output),
     ("_resize_output_", _resize_output_),
     ("_safe_softmax", _safe_softmax),
+    ("_saturate_weight_to_fp16", _saturate_weight_to_fp16),
     (
         "_scaled_dot_product_attention_math",
         _scaled_dot_product_attention_math,

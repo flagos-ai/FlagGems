@@ -111,6 +111,7 @@ from flag_gems.ops._reshape_alias import _reshape_alias
 from flag_gems.ops._resize_output import _resize_output
 from flag_gems.ops._resize_output_ import _resize_output_
 from flag_gems.ops._safe_softmax import _safe_softmax
+from flag_gems.ops._saturate_weight_to_fp16 import _saturate_weight_to_fp16
 from flag_gems.ops._scaled_dot_product_attention_math import (
     _scaled_dot_product_attention_math,
 )
@@ -1030,6 +1031,7 @@ __all__ = [
     "_resize_output",
     "_resize_output_",
     "_safe_softmax",
+    "_saturate_weight_to_fp16",
     "_scaled_dot_product_attention_math",
     "_scaled_dot_product_cudnn_attention",
     "_scaled_dot_product_efficient_attention",
