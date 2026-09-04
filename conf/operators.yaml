@@ -7701,6 +7701,17 @@ ops:
   - Math
   stages:
   - beta: '5.3'
+- id: log_normal
+  description: Returns a new tensor with log-normal samples parameterized by mean and standard deviation.
+  for:
+  - log_normal
+  labels:
+  - aten
+  - skip_precision_check
+  kind:
+  - Distribution
+  stages:
+  - beta: '5.4'
 - id: log_normal_
   description: Fills the tensor with log-normal samples parameterized by mean and
     standard deviation, in-place.

@@ -767,6 +767,7 @@ _FULL_CONFIG = (
     ("log2", log2),
     ("log2_", log2_),
     ("log_", log_),
+    ("log_normal", log_normal),
     ("log_normal_", log_normal_),
     ("log_sigmoid", log_sigmoid),
     ("log_sigmoid_backward", log_sigmoid_backward),
