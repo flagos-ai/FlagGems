@@ -452,6 +452,8 @@ _FULL_CONFIG = (
     ("conv3d.padding", conv3d),
     ("conv_transpose1d", conv_transpose1d),
     ("conv_transpose2d", conv_transpose2d),
+    ("convolution_overrideable", convolution_overrideable),
+    ("convolution_overrideable.out", convolution_overrideable_out),
     (
         "copy_",
         copy_,
