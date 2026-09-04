@@ -129,8 +129,16 @@ def test_unique_dim_int(shape, dim, dtype, pattern, return_inverse, return_count
     )
 
     utils.gems_assert_equal(res_out, ref_out)
-    utils.gems_assert_equal(res_inv, ref_inv)
-    utils.gems_assert_equal(res_counts, ref_counts)
+
+    if return_inverse:
+        utils.gems_assert_equal(res_inv, ref_inv)
+    else:
+        assert res_inv.numel() == 0
+
+    if return_counts:
+        utils.gems_assert_equal(res_counts, ref_counts)
+    else:
+        assert res_counts.numel() == 0
 
 
 @pytest.mark.unique_dim
