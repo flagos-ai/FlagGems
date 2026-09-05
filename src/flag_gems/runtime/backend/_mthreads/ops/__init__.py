@@ -76,6 +76,7 @@ from .permute_copy import permute_copy
 from .prod import prod, prod_dim
 from .rand import rand
 from .rand_like import rand_like
+from .quantile import quantile
 from .randn import randn
 from .randn_like import randn_like
 from .randperm import randperm
@@ -179,6 +180,7 @@ __all__ = [
     "permute_copy",
     "prod",
     "prod_dim",
+    "quantile",
     "rand",
     "rand_like",
     "randn",
