@@ -10279,6 +10279,32 @@ ops:
   - Tensor
   stages:
   - stable: '2.2'
+- id: quantize_per_channel
+  description: |
+    Triton kernel implementation for quantize_per_channel. Quantizes a float
+    tensor per channel with the given scales and zero_points along the
+    specified axis, producing a per-channel affine quantized tensor.
+  for:
+  - quantize_per_channel
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: quantize_per_channel_out
+  description: |
+    A variant of quantize_per_channel() that writes the result into the out tensor.
+  for:
+  - quantize_per_channel.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: quantized_lstm
   description: Applies a multi-layer quantized LSTM over an input sequence. Takes
     the input sequence, initial hidden and cell states, and per-layer quantized weights,

@@ -939,6 +939,8 @@ _FULL_CONFIG = (
     ("prod", prod),
     ("prod.dim_int", prod_dim),
     ("quantile", quantile),
+    ("quantize_per_channel", quantize_per_channel),
+    ("quantize_per_channel.out", quantize_per_channel_out),
     ("quantized_lstm.input", quantized_lstm),
     ("rad2deg", rad2deg),
     ("rad2deg_", rad2deg_),
