@@ -9281,6 +9281,20 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: native_multi_head_attention
+  description: >
+    Triton kernel implementation of the native multi-head attention forward
+    pass, including the fused qkv projection, scaled dot-product attention and
+    output projection.
+  for:
+    - _native_multi_head_attention
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - NeuralNetwork
+  stages:
+    - alpha: '5.4'
 - id: ne
   description: Computes that `input` is not equal to `other` element-wise.
   for:
