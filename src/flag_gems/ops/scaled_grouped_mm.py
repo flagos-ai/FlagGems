@@ -18,6 +18,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils.device_info import get_sm_count
@@ -30,6 +31,10 @@ BIAS_GROUPED = 2
 
 
 def get_autotune_config():
+    configs = runtime.get_tuned_config("scaled_grouped_mm")
+    if configs:
+        return configs
+
     return [
         triton.Config(
             {"BLOCK_M": 64, "BLOCK_N": 64, "BLOCK_K": 64},
