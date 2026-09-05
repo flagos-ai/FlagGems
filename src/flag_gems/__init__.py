@@ -69,6 +69,10 @@ current_work_registrar = None
 AUTOGRAD_DISPATCH_KEY = torch._C.DispatchKey.Autograd.name
 CONJUGATE_DISPATCH_KEY = torch._C.DispatchKey.Conjugate.name
 SPARSE_CSR_DISPATCH_KEY = "SparseCsr" + backend_info.dispatch_key
+# Sparse CSR ops that are column-compressed (CSC/BSC) tensors, which dispatch
+# under SparseCsr* rather than the dense CUDA key, so the kernel must also be
+# registered there.
+SPARSE_CSR_CUDA_DISPATCH_KEY = torch._C.DispatchKey.SparseCsrCUDA.name
 
 
 def torch_ge(v):
@@ -997,6 +1001,13 @@ _FULL_CONFIG = (
     ("round", round),
     ("round.out", round_out),
     ("round_", round_),
+    ("row_indices_copy", row_indices_copy, None, (SPARSE_CSR_CUDA_DISPATCH_KEY,)),
+    (
+        "row_indices_copy.out",
+        row_indices_copy_out,
+        None,
+        (SPARSE_CSR_CUDA_DISPATCH_KEY,),
+    ),
     ("rrelu_with_noise_backward", rrelu_with_noise_backward),
     ("rrelu_with_noise_functional", rrelu_with_noise_functional),
     ("rsqrt", rsqrt),

@@ -11126,6 +11126,29 @@ ops:
   - Math
   stages:
   - beta: '5.3'
+- id: row_indices_copy
+  description: Returns the row indices of a column-compressed (CSC or BSC) sparse tensor as a contiguous strided tensor.
+  for:
+  - row_indices_copy
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: row_indices_copy_out
+  description: |
+    A variant of row_indices_copy() that writes the result into the out tensor.
+  for:
+  - row_indices_copy.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: rrelu_with_noise_backward
   description: 'Computes the gradient of the Randomized Leaky ReLU (RReLU) activation
     function with respect to
