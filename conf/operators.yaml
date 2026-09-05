@@ -12169,6 +12169,32 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '5.0'
+- id: slice_copy
+  description: |
+    Performs the same operation as `torch.slice`, but all output tensors are freshly
+    created instead of aliasing the input. Returns a new tensor containing the
+    selected slice of `self` along the given dimension.
+  for:
+  - slice_copy.Tensor
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
+- id: slice_copy_out
+  description: |
+    A variant of `slice_copy()` that assigns the output to an `out` tensor.
+  for:
+  - slice_copy.Tensor_out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: slice_scatter
   description: 'Embeds the values of the `src` tensor into `input` at the given dimension.
 
