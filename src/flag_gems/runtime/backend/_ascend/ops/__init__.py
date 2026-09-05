@@ -82,6 +82,7 @@ from .nonzero_static import nonzero_static, nonzero_static_out
 from .ones import ones
 from .ones_like import ones_like
 from .outer import outer
+from .pad_sequence import pad_sequence
 from .pairwise_distance import pairwise_distance
 from .polar import polar
 from .polygamma import polygamma_
@@ -225,6 +226,7 @@ __all__ = [
     "ones",
     "ones_like",
     "outer",
+	"pad_sequence",
     "pairwise_distance",
     "polar",
     "polygamma_",
