@@ -5450,6 +5450,17 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: fused_sgd_
+  description: The in-place version of `fused_sgd()`.
+  for:
+  - _fused_sgd_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: gather
   description: Gathers values along an axis specified by `dim`.
   for:
