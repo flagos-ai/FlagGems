@@ -89,6 +89,9 @@ def mul_kernel(
     rep=5,
     flagtune_op_name="mul",
     flagtune_expand_op_name="mul",
+    flagtune_op_id="flaggems/mul",
+    flagtune_variant="scalar",
+    policy="flagtune",
 )
 @triton.jit
 def mul_scalar_kernel(
@@ -116,6 +119,9 @@ def mul_scalar_kernel(
     rep=5,
     flagtune_op_name="mul",
     flagtune_expand_op_name="mul_broadcast_2d",
+    flagtune_op_id="flaggems/mul",
+    flagtune_variant="broadcast_2d",
+    policy="flagtune",
 )
 @triton.jit
 def mul_broadcast_2d_kernel(
