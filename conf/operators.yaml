@@ -10268,6 +10268,32 @@ ops:
   - stable: '2.0'
   labels:
   - aten
+- id: put
+  description: |
+    Copies the elements of `source` into `self` at the flattened (row-major)
+    positions given by `index`. When `accumulate` is `True`, the values are
+    added to the existing elements of `self` instead of overwriting them.
+  for:
+  - put
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
+- id: put_out
+  description: |
+    A variant of `put()` that writes the result into the `out` tensor.
+  for:
+  - put.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: quantile
   description: Computes the q-th quantiles of each row of the `input` tensor along
     the dimension `dim`.

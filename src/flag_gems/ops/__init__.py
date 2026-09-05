@@ -696,6 +696,7 @@ from flag_gems.ops.pow import (
 )
 from flag_gems.ops.prelu import prelu
 from flag_gems.ops.prod import prod, prod_dim
+from flag_gems.ops.put import put, put_out
 from flag_gems.ops.quantile import quantile
 from flag_gems.ops.quantized_lstm import quantized_lstm
 from flag_gems.ops.rad2deg import rad2deg, rad2deg_
@@ -1704,6 +1705,8 @@ __all__ = [
     "prelu",
     "prod",
     "prod_dim",
+    "put",
+    "put_out",
     "quantile",
     "quantized_lstm",
     "rad2deg",
