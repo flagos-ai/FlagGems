@@ -6207,6 +6207,36 @@ ops:
   - Math
   stages:
   - alpha: '5.3'
+- id: histogramdd_bin_edges
+  description: 'Computes the equal-width bin edges for each dimension of a multi-dimensional
+    histogram, given the number of bins (and an optional explicit range). The edges
+    are derived from the per-dimension min/max of the input when no range is supplied,
+    matching ``torch._histogramdd_bin_edges``.
+
+    '
+  for:
+  - _histogramdd_bin_edges
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: histogramdd_bin_edges_out
+  description: 'A variant of ``_histogramdd_bin_edges`` that writes the computed bin
+    edges into the provided ``out`` tensor list.
+
+    '
+  for:
+  - _histogramdd_bin_edges.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: hsplit
   description: 'Split a tensor into multiple sub-tensors horizontally (column-wise).
 

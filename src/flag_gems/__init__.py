@@ -160,6 +160,8 @@ _FULL_CONFIG = (
         None,
         (AUTOGRAD_DISPATCH_KEY,),
     ),
+    ("_histogramdd_bin_edges", _histogramdd_bin_edges),
+    ("_histogramdd_bin_edges.out", _histogramdd_bin_edges_out),
     ("_index_put_impl_", _index_put_impl_),
     ("_is_all_true", _is_all_true),
     ("_jagged_to_padded_dense_forward", _jagged_to_padded_dense_forward),
