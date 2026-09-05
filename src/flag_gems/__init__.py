@@ -169,6 +169,8 @@ _FULL_CONFIG = (
     ("_log_softmax.out", log_softmax_out),
     ("_log_softmax_backward_data", log_softmax_backward),
     ("_log_softmax_backward_data.out", log_softmax_backward_out),
+    ("_logcumsumexp", _logcumsumexp),
+    ("_logcumsumexp.out", _logcumsumexp_out),
     ("_make_dep_token", _make_dep_token),
     ("_masked_scale", _masked_scale),
     ("_native_batch_norm_legit", _native_batch_norm_legit),

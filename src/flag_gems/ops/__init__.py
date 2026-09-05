@@ -87,6 +87,7 @@ from flag_gems.ops._jagged_to_padded_dense_forward import (
 )
 from flag_gems.ops._linalg_eigvals import _linalg_eigvals
 from flag_gems.ops._list_to_tensor import _list_to_tensor
+from flag_gems.ops._logcumsumexp import _logcumsumexp, _logcumsumexp_out
 from flag_gems.ops._make_dep_token import _make_dep_token
 from flag_gems.ops._masked_scale import _masked_scale
 from flag_gems.ops._native_batch_norm_legit import (
@@ -1019,6 +1020,8 @@ __all__ = [
     "_jagged_to_padded_dense_forward",
     "_linalg_eigvals",
     "_list_to_tensor",
+    "_logcumsumexp",
+    "_logcumsumexp_out",
     "_make_dep_token",
     "_masked_scale",
     "_native_batch_norm_legit",
