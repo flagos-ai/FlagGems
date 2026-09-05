@@ -6551,7 +6551,7 @@ ops:
   - Tensor
   stages:
   - stable: '3.0'
-- id: index_put_impl
+- id: index_put_impl_
   description: An internal C++ function that handles the heavy lifting for placing
     values into a tensor at specific indices.
   for:
