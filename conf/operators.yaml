@@ -11126,6 +11126,17 @@ ops:
   - Math
   stages:
   - beta: '5.3'
+- id: row_indices
+  description: Returns the row indices of a column-compressed (CSC or BSC) sparse tensor.
+  for:
+  - row_indices
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: rrelu_with_noise_backward
   description: 'Computes the gradient of the Randomized Leaky ReLU (RReLU) activation
     function with respect to
