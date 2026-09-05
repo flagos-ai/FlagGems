@@ -26,6 +26,7 @@ from .celu import celu
 from .channel_shuffle import channel_shuffle
 from .conv2d import conv2d
 from .conv_transpose1d import conv_transpose1d, conv_transpose1d_output_size
+from .conv_transpose2d import conv_transpose2d
 from .div import (
     div_mode,
     div_mode_,
@@ -119,6 +120,7 @@ __all__ = [
     # "celu_",
     "channel_shuffle",
     "conv2d",
+    "conv_transpose2d",
     "conv_transpose1d",
     "conv_transpose1d_output_size",
     "dropout",
