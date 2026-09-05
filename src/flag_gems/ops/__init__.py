@@ -697,6 +697,10 @@ from flag_gems.ops.pow import (
 from flag_gems.ops.prelu import prelu
 from flag_gems.ops.prod import prod, prod_dim
 from flag_gems.ops.quantile import quantile
+from flag_gems.ops.quantize_per_tensor_dynamic import (
+    quantize_per_tensor_dynamic,
+    quantize_per_tensor_dynamic_out,
+)
 from flag_gems.ops.quantized_lstm import quantized_lstm
 from flag_gems.ops.rad2deg import rad2deg, rad2deg_
 from flag_gems.ops.rand import rand
@@ -1705,6 +1709,8 @@ __all__ = [
     "prod",
     "prod_dim",
     "quantile",
+    "quantize_per_tensor_dynamic",
+    "quantize_per_tensor_dynamic_out",
     "quantized_lstm",
     "rad2deg",
     "rad2deg_",

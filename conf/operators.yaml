@@ -10279,6 +10279,33 @@ ops:
   - Tensor
   stages:
   - stable: '2.2'
+- id: quantize_per_tensor_dynamic
+  description: |
+    Converts a float tensor to a quantized tensor with scale and
+    zero_point calculated dynamically based on the input, matching
+    torch.quantize_per_tensor_dynamic semantics.
+  for:
+  - quantize_per_tensor_dynamic
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: quantize_per_tensor_dynamic_out
+  description: |
+    Out variant of quantize_per_tensor_dynamic that writes the result
+    into the provided output tensor.
+  for:
+  - quantize_per_tensor_dynamic.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: quantized_lstm
   description: Applies a multi-layer quantized LSTM over an input sequence. Takes
     the input sequence, initial hidden and cell states, and per-layer quantized weights,
