@@ -19,6 +19,13 @@ import flag_gems
 
 from . import base, consts
 
+# Ascend's native cauchy path uses the unsupported aten::cauchy_ operator and
+# falls back to CPU, so it cannot provide a valid device performance baseline.
+pytestmark = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Native cauchy falls back to CPU on Ascend",
+)
+
 
 def input_fn(shape, cur_dtype, device):
     self = torch.empty(shape, dtype=cur_dtype, device=device)
