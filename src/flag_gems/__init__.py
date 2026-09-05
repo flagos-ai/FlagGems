@@ -118,6 +118,8 @@ _FULL_CONFIG = (
     ("_conj", _conj),
     ("_conj_copy", _conj_copy),
     ("_conj_copy.out", _conj_copy_out),
+    ("_conj_physical", _conj_physical),
+    ("_conj_physical.out", _conj_physical_out),
     ("_conv_depthwise2d", _conv_depthwise2d),
     ("_convert_weight_to_int4pack", _convert_weight_to_int4pack),
     ("_convolution_double_backward", _convolution_double_backward),

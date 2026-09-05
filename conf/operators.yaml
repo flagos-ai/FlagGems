@@ -27,6 +27,34 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.1'
+- id: _conj_physical
+  description: 'Computes the element-wise conjugate of the given `input` tensor as
+    a physical (non-view) tensor. For non-complex dtypes the input is returned unchanged.
+
+    '
+  for:
+  - _conj_physical
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: _conj_physical_out
+  description: 'A variant of `_conj_physical()` that writes the result into the `out`
+    tensor.
+
+    '
+  for:
+  - _conj_physical.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: _flash_attention_forward
   description: Run the canonical FlashAttention forward operator.
   for:
@@ -3250,17 +3278,18 @@ ops:
   - stable: '2.0'
   - removed: '3.0'
 - id: ctc_loss
-  description: Connectionist Temporal Classification loss for sequence-to-sequence models.
+  description: Connectionist Temporal Classification loss for sequence-to-sequence
+    models.
   for:
-    - ctc_loss.IntList
-    - ctc_loss.Tensor
+  - ctc_loss.IntList
+  - ctc_loss.Tensor
   labels:
-    - aten
-    - KernelGen
+  - aten
+  - KernelGen
   kind:
-    - NeuralNetwork
+  - NeuralNetwork
   stages:
-    - alpha: '5.4'
+  - alpha: '5.4'
 - id: cudnn_attention_forward
   description: 'Forward kernel for cuDNN attention, computing scaled dot-product
 
@@ -3844,21 +3873,23 @@ ops:
   stages:
   - stable: '1.0'
 - id: dsplit
-  description: |
-    Split a tensor along the third axis (depth-wise). Pure layout operation returning zero-copy views.
+  description: 'Split a tensor along the third axis (depth-wise). Pure layout operation
+    returning zero-copy views.
+
+    '
   for:
-    - dsplit.int
-    - dsplit.array
+  - dsplit.int
+  - dsplit.array
   marks:
-    - dsplit
+  - dsplit
   labels:
-    - aten
-    - KernelGen
-    - skip_precision_check
+  - aten
+  - KernelGen
+  - skip_precision_check
   kind:
-    - Tensor
+  - Tensor
   stages:
-    - alpha: '5.4'
+  - alpha: '5.4'
 - id: dswiglu
   description: 'Swish-Gated Linear Unit, a variant of GLU with the Swish activation
     function.
@@ -12142,18 +12173,21 @@ ops:
   stages:
   - stable: '2.0'
 - id: slice
-  description: |
-    Slices the input tensor along the specified dimension.
-    Returns a view of the original tensor with the given dimension sliced from start to end.
+  description: 'Slices the input tensor along the specified dimension.
+
+    Returns a view of the original tensor with the given dimension sliced from start
+    to end.
+
+    '
   for:
-    - slice.Tensor
+  - slice.Tensor
   labels:
-    - aten
-    - KernelGen
+  - aten
+  - KernelGen
   kind:
-    - Tensor
+  - Tensor
   stages:
-    - alpha: '5.4'
+  - alpha: '5.4'
 - id: slice_backward
   description: 'An automatic differentiation (autograd) function that computes the
     gradient of a tensor slicing operation
