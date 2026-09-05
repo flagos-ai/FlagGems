@@ -15,6 +15,7 @@
 import triton
 
 if triton.__version__ >= "3.4":
+    from .attention import flash_attn_varlen_func  # noqa: F401
     from .fill import (  # noqa: F401
         fill_scalar,
         fill_scalar_,

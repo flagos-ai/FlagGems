@@ -1,0 +1,331 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Exact Qwen3.6 cases recovered from the FlagOSTune shape captures.
+flash_attn_varlen_func:
+  shape_desc: name, query_lens_rle, kv_lens_rle, num_query_heads, num_kv_heads, head_dim,
+    causal, paged, block_size, num_blocks, block_table_width, kv_layout, num_splits
+  shapes:
+  - - flagostune_paged_b1_q1036_k1036_h16_kv2_d256_bs32_nb73920_bt2310_split0
+    - [[1036, 1]]
+    - [[1036, 1]]
+    - 16
+    - 2
+    - 256
+    - true
+    - true
+    - 32
+    - 73920
+    - 2310
+    - NHD
+    - 0
+  - - flagostune_dense_b1_q65536_k65536_h16_kv16_d72_split0
+    - [[65536, 1]]
+    - [[65536, 1]]
+    - 16
+    - 16
+    - 72
+    - false
+    - false
+    - null
+    - null
+    - null
+    - NHD
+    - 0
+  - - flagostune_paged_b1_q1_k1_h16_kv2_d256_bs32_nb73920_bt2310_split32
+    - [[1, 1]]
+    - [[1, 1]]
+    - 16
+    - 2
+    - 256
+    - true
+    - true
+    - 32
+    - 73920
+    - 2310
+    - NHD
+    - 32
+  - - flagostune_paged_b1_q1_k73728_h16_kv2_d256_bs32_nb73920_bt2310_split32
+    - [[1, 1]]
+    - [[73728, 1]]
+    - 16
+    - 2
+    - 256
+    - true
+    - true
+    - 32
+    - 73920
+    - 2310
+    - NHD
+    - 32
+  - - flagostune_paged_b1_q1035_k1035_h16_kv2_d256_bs32_nb73920_bt2310_split0
+    - [[1035, 1]]
+    - [[1035, 1]]
+    - 16
+    - 2
+    - 256
+    - true
+    - true
+    - 32
+    - 73920
+    - 2310
+    - NHD
+    - 0
+  - - flagostune_paged_b1_q1036_k1036_h4_kv1_d256_bs16_nb605550_bt4620_split0
+    - [[1036, 1]]
+    - [[1036, 1]]
+    - 4
+    - 1
+    - 256
+    - true
+    - true
+    - 16
+    - 605550
+    - 4620
+    - NHD
+    - 0
+  - - flagostune_dense_b1_q65536_k65536_h4_kv4_d72_split0
+    - [[65536, 1]]
+    - [[65536, 1]]
+    - 4
+    - 4
+    - 72
+    - false
+    - false
+    - null
+    - null
+    - null
+    - NHD
+    - 0
+  - - flagostune_paged_b1_q1_k1_h4_kv1_d256_bs16_nb605550_bt4620_split32
+    - [[1, 1]]
+    - [[1, 1]]
+    - 4
+    - 1
+    - 256
+    - true
+    - true
+    - 16
+    - 605550
+    - 4620
+    - NHD
+    - 32
+  - - flagostune_paged_b1_q1_k73728_h4_kv1_d256_bs16_nb605550_bt4620_split32
+    - [[1, 1]]
+    - [[73728, 1]]
+    - 4
+    - 1
+    - 256
+    - true
+    - true
+    - 16
+    - 605550
+    - 4620
+    - NHD
+    - 32
+  - - flagostune_paged_b1_q1035_k1035_h4_kv1_d256_bs16_nb605550_bt4620_split0
+    - [[1035, 1]]
+    - [[1035, 1]]
+    - 4
+    - 1
+    - 256
+    - true
+    - true
+    - 16
+    - 605550
+    - 4620
+    - NHD
+    - 0
+  - - flagostune_paged_b1_q4108_k4108_h16_kv2_d256_bs32_nb73920_bt2310_split0
+    - [[4108, 1]]
+    - [[4108, 1]]
+    - 16
+    - 2
+    - 256
+    - true
+    - true
+    - 32
+    - 73920
+    - 2310
+    - NHD
+    - 0
+  - - flagostune_paged_b1_q4107_k4107_h16_kv2_d256_bs32_nb73920_bt2310_split0
+    - [[4107, 1]]
+    - [[4107, 1]]
+    - 16
+    - 2
+    - 256
+    - true
+    - true
+    - 32
+    - 73920
+    - 2310
+    - NHD
+    - 0
+  - - flagostune_paged_b1_q4108_k4108_h4_kv1_d256_bs16_nb605550_bt4620_split0
+    - [[4108, 1]]
+    - [[4108, 1]]
+    - 4
+    - 1
+    - 256
+    - true
+    - true
+    - 16
+    - 605550
+    - 4620
+    - NHD
+    - 0
+  - - flagostune_paged_b1_q4107_k4107_h4_kv1_d256_bs16_nb605550_bt4620_split0
+    - [[4107, 1]]
+    - [[4107, 1]]
+    - 4
+    - 1
+    - 256
+    - true
+    - true
+    - 16
+    - 605550
+    - 4620
+    - NHD
+    - 0
+  - - flagostune_paged_b1_q16384_k16384_h16_kv2_d256_bs32_nb73920_bt2310_split0
+    - [[16384, 1]]
+    - [[16384, 1]]
+    - 16
+    - 2
+    - 256
+    - true
+    - true
+    - 32
+    - 73920
+    - 2310
+    - NHD
+    - 0
+  - - flagostune_paged_b1_q16384_k32768_h16_kv2_d256_bs32_nb73920_bt2310_split0
+    - [[16384, 1]]
+    - [[32768, 1]]
+    - 16
+    - 2
+    - 256
+    - true
+    - true
+    - 32
+    - 73920
+    - 2310
+    - NHD
+    - 0
+  - - flagostune_paged_b1_q16384_k16384_h4_kv1_d256_bs16_nb605550_bt4620_split0
+    - [[16384, 1]]
+    - [[16384, 1]]
+    - 4
+    - 1
+    - 256
+    - true
+    - true
+    - 16
+    - 605550
+    - 4620
+    - NHD
+    - 0
+  - - flagostune_paged_b1_q16384_k32768_h4_kv1_d256_bs16_nb605550_bt4620_split0
+    - [[16384, 1]]
+    - [[32768, 1]]
+    - 4
+    - 1
+    - 256
+    - true
+    - true
+    - 16
+    - 605550
+    - 4620
+    - NHD
+    - 0
+  - - flagostune_paged_b1_q12_k32780_h4_kv1_d256_bs16_nb605550_bt4620_split32
+    - [[12, 1]]
+    - [[32780, 1]]
+    - 4
+    - 1
+    - 256
+    - true
+    - true
+    - 16
+    - 605550
+    - 4620
+    - NHD
+    - 32
+  - - flagostune_paged_b1_q11_k32779_h4_kv1_d256_bs16_nb605550_bt4620_split32
+    - [[11, 1]]
+    - [[32779, 1]]
+    - 4
+    - 1
+    - 256
+    - true
+    - true
+    - 16
+    - 605550
+    - 4620
+    - NHD
+    - 32
+  - - flagostune_paged_b1_q16384_k49152_h16_kv2_d256_bs32_nb73920_bt2310_split0
+    - [[16384, 1]]
+    - [[49152, 1]]
+    - 16
+    - 2
+    - 256
+    - true
+    - true
+    - 32
+    - 73920
+    - 2310
+    - NHD
+    - 0
+  - - flagostune_paged_b1_q16384_k65536_h16_kv2_d256_bs32_nb73920_bt2310_split0
+    - [[16384, 1]]
+    - [[65536, 1]]
+    - 16
+    - 2
+    - 256
+    - true
+    - true
+    - 32
+    - 73920
+    - 2310
+    - NHD
+    - 0
+  - - flagostune_paged_b1_q16384_k49152_h4_kv1_d256_bs16_nb605550_bt4620_split0
+    - [[16384, 1]]
+    - [[49152, 1]]
+    - 4
+    - 1
+    - 256
+    - true
+    - true
+    - 16
+    - 605550
+    - 4620
+    - NHD
+    - 0
+  - - flagostune_paged_b1_q16384_k65536_h4_kv1_d256_bs16_nb605550_bt4620_split0
+    - [[16384, 1]]
+    - [[65536, 1]]
+    - 4
+    - 1
+    - 256
+    - true
+    - true
+    - 16
+    - 605550
+    - 4620
+    - NHD
+    - 0
