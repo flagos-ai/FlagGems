@@ -786,6 +786,7 @@ from flag_gems.ops.sinh import sinh, sinh_
 from flag_gems.ops.slice import slice
 from flag_gems.ops.slice_backward import slice_backward
 from flag_gems.ops.slice_scatter import slice_scatter
+from flag_gems.ops.slogdet import slogdet
 from flag_gems.ops.smooth_l1_loss import (
     smooth_l1_loss,
     smooth_l1_loss_backward,
@@ -1821,6 +1822,7 @@ __all__ = [
     "slice",
     "slice_backward",
     "slice_scatter",
+    "slogdet",
     "smooth_l1_loss",
     "smooth_l1_loss_backward",
     "smooth_l1_loss_out",
