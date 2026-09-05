@@ -148,6 +148,7 @@ _FULL_CONFIG = (
         "_functional_sym_constrain_range_for_size",
         _functional_sym_constrain_range_for_size,
     ),
+    ("_fused_adagrad_", _fused_adagrad_),
     ("_fused_adam", _fused_adam),
     ("_fused_adam_", _fused_adam_),
     ("_fused_moving_avg_obs_fq_helper", _fused_moving_avg_obs_fq_helper),
