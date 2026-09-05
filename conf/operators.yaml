@@ -10292,6 +10292,17 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: quantized_rnn_relu_cell
+  description: Triton kernel implementation for quantized_rnn_relu_cell.
+  for:
+  - quantized_rnn_relu_cell
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: rad2deg
   description: 'Converts each element from angles in radians to degrees.
 
