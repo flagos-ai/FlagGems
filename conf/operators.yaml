@@ -10279,6 +10279,33 @@ ops:
   - Tensor
   stages:
   - stable: '2.2'
+- id: quantize_per_tensor
+  description: |
+    Quantizes a float32 tensor to a quantized tensor (torch.quint8 / qint8 / qint32)
+    with the given scale and zero point, using round-half-to-even rounding and
+    clamping to the representable integer range.
+  for:
+  - quantize_per_tensor
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: quantize_per_tensor_out
+  description: |
+    A variant of `quantize_per_tensor()` that writes the result into the `out`
+    quantized tensor. Computed with the same Triton kernel as the base variant.
+  for:
+  - quantize_per_tensor.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: quantized_lstm
   description: Applies a multi-layer quantized LSTM over an input sequence. Takes
     the input sequence, initial hidden and cell states, and per-layer quantized weights,
