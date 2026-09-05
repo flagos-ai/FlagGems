@@ -244,23 +244,48 @@ template <typename TensorContainer>
 inline std::pair<at::ScalarType, at::ScalarType> compute_promoted_dtype(
     const TensorContainer& inputs,
     const std::vector<double>& scalar_args,
+    const std::vector<at::ScalarType>& scalar_dtypes,
     const std::vector<bool>& is_tensor_mask,
     const PromotionRule& rule) {
+  // Python floating scalars are weak: preserve a floating/complex tensor dtype,
+  // and promote integral/bool tensors to the default floating dtype instead of
+  // forcing every scalar operation to float64.
+  at::ScalarType tensor_common = at::ScalarType::Undefined;
+  int tensor_idx = 0;
+  for (size_t idx = 0; idx < is_tensor_mask.size(); ++idx) {
+    if (!is_tensor_mask[idx]) continue;
+    auto dtype = inputs[tensor_idx++].scalar_type();
+    tensor_common = tensor_common == at::ScalarType::Undefined
+        ? dtype
+        : at::promote_types(tensor_common, dtype);
+  }
+
   // Collect ScalarTypes directly — no tensor allocation needed
   at::ScalarType common_dtype = at::ScalarType::Undefined;
   bool first = true;
-
   for (int idx : rule.arg_indices) {
     at::ScalarType this_dtype;
     if (is_tensor_mask[idx]) {
-      int tensor_idx = 0;
+      int input_idx = 0;
       for (int k = 0; k < idx; ++k) {
-        if (is_tensor_mask[k]) tensor_idx++;
+        if (is_tensor_mask[k]) input_idx++;
       }
-      this_dtype = inputs[tensor_idx].scalar_type();
+      this_dtype = inputs[input_idx].scalar_type();
     } else {
-      // Python scalars default to float64 (double)
-      this_dtype = at::kDouble;
+      int scalar_arg_idx = 0;
+      for (int k = 0; k < idx; ++k) {
+        if (!is_tensor_mask[k]) scalar_arg_idx++;
+      }
+      this_dtype = scalar_arg_idx < static_cast<int>(scalar_dtypes.size())
+          ? scalar_dtypes[scalar_arg_idx]
+          : at::kDouble;
+      if (this_dtype == at::kDouble) {
+        if (c10::isFloatingType(tensor_common) || c10::isComplexType(tensor_common)) {
+          this_dtype = tensor_common;
+        } else if (tensor_common != at::ScalarType::Undefined) {
+          this_dtype = at::kFloat;
+        }
+      }
     }
 
     if (first) {
@@ -353,6 +378,7 @@ inline at::Tensor make_strided_view(const at::Tensor& base,
 inline at::Tensor dispatch_pointwise_impl(const std::unordered_map<int, KernelInfo>& op_registry,
                                           const std::vector<at::Tensor>& inputs_orig,
                                           const std::vector<double>& scalar_args,
+                                          const std::vector<at::ScalarType>& scalar_dtypes,
                                           const std::vector<bool>& is_tensor_mask,
                                           const std::vector<c10::optional<at::Tensor>>& pre_outputs) {
   // =========================================================================
@@ -455,7 +481,23 @@ inline at::Tensor dispatch_pointwise_impl(const std::unordered_map<int, KernelIn
   // Lookup kernel by effective rank — direct map lookup, no string hash
   auto rank_it = op_registry.find(ndim);
   if (rank_it == op_registry.end()) {
-    throw std::runtime_error("No kernel for rank " + std::to_string(ndim));
+    if (ndim > pointwise_dynamic::MAX_RANK) {
+      TORCH_CHECK(false,
+                  "FlagGems C++ pointwise dispatch: effective input rank ",
+                  ndim,
+                  " exceeds MAX_RANK (",
+                  pointwise_dynamic::MAX_RANK,
+                  "). The C++ path pre-generates kernels for ranks 0..",
+                  pointwise_dynamic::MAX_RANK,
+                  ". Ensure the input is contiguous/dense for the rank-1 fast path, "
+                  "or reshape it to a supported rank.");
+    }
+    TORCH_CHECK(false,
+                "FlagGems C++ pointwise dispatch: no generated kernel for effective rank ",
+                ndim,
+                " (configured MAX_RANK is ",
+                pointwise_dynamic::MAX_RANK,
+                "). The generated registry is missing an in-range rank entry.");
   }
   const KernelInfo* info = &rank_it->second;
 
@@ -479,7 +521,7 @@ inline at::Tensor dispatch_pointwise_impl(const std::unordered_map<int, KernelIn
   for (int out_idx : outputs_that_need_allocation) {
     if (out_idx < static_cast<int>(info->promotion_rules.size())) {
       auto [comp_dtype, result_dtype] =
-          compute_promoted_dtype(inputs, scalar_args, tensor_mask, info->promotion_rules[out_idx]);
+          compute_promoted_dtype(inputs, scalar_args, scalar_dtypes, tensor_mask, info->promotion_rules[out_idx]);
       alloc_dtypes.push_back(result_dtype);
     } else {
       alloc_dtypes.push_back(inputs[0].scalar_type());
@@ -704,6 +746,7 @@ inline at::Tensor dispatch_pointwise_impl(const std::unordered_map<int, KernelIn
 inline at::Tensor dispatch_pointwise(const std::string& op_name,
                                      const std::vector<at::Tensor>& inputs_orig,
                                      const std::vector<double>& scalar_args = {},
+                                     const std::vector<at::ScalarType>& scalar_dtypes = {},
                                      const std::vector<bool>& is_tensor_mask = {},
                                      const std::vector<c10::optional<at::Tensor>>& pre_outputs = {}) {
   // Resolve op registry — the KERNEL_REGISTRY is a compile-time constant map,
@@ -712,7 +755,8 @@ inline at::Tensor dispatch_pointwise(const std::string& op_name,
   if (op_it == KERNEL_REGISTRY.end()) {
     throw std::runtime_error("Unknown op: " + op_name);
   }
-  return dispatch_pointwise_impl(op_it->second, inputs_orig, scalar_args, is_tensor_mask, pre_outputs);
+  return dispatch_pointwise_impl(
+      op_it->second, inputs_orig, scalar_args, scalar_dtypes, is_tensor_mask, pre_outputs);
 }
 
 // Convenience overload: dispatch with a single pre-allocated output tensor
@@ -720,9 +764,11 @@ inline at::Tensor dispatch_pointwise_out(const std::string& op_name,
                                          const std::vector<at::Tensor>& inputs,
                                          at::Tensor& out,
                                          const std::vector<double>& scalar_args = {},
+                                         const std::vector<at::ScalarType>& scalar_dtypes = {},
                                          const std::vector<bool>& is_tensor_mask = {}) {
   std::vector<c10::optional<at::Tensor>> pre_outputs = {out};
-  return dispatch_pointwise(op_name, inputs, scalar_args, is_tensor_mask, pre_outputs);
+  return dispatch_pointwise(
+      op_name, inputs, scalar_args, scalar_dtypes, is_tensor_mask, pre_outputs);
 }
 
 }  // namespace pointwise_dynamic
