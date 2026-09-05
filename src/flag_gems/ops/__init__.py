@@ -698,6 +698,7 @@ from flag_gems.ops.prelu import prelu
 from flag_gems.ops.prod import prod, prod_dim
 from flag_gems.ops.quantile import quantile
 from flag_gems.ops.quantized_lstm import quantized_lstm
+from flag_gems.ops.quantized_lstm_cell import quantized_lstm_cell
 from flag_gems.ops.rad2deg import rad2deg, rad2deg_
 from flag_gems.ops.rand import rand
 from flag_gems.ops.rand_like import rand_like
@@ -1706,6 +1707,7 @@ __all__ = [
     "prod_dim",
     "quantile",
     "quantized_lstm",
+    "quantized_lstm_cell",
     "rad2deg",
     "rad2deg_",
     "rand",
