@@ -9382,6 +9382,20 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: nested_tensor_softmax_with_shape
+  description: |
+    Computes softmax over the last dimension of nested-tensor attention scores,
+    deriving the per-batch sequence length from the query tensor's nested shape
+    and masking the out-of-range entries to zero.
+  for:
+    - _nested_tensor_softmax_with_shape
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Tensor
+  stages:
+    - alpha: '5.4'
 - id: nested_view_from_buffer_copy
   description: 'Creates a nested tensor from a flat buffer using component sizes,
     strides,
