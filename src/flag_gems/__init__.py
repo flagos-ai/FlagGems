@@ -939,6 +939,7 @@ _FULL_CONFIG = (
     ("prod", prod),
     ("prod.dim_int", prod_dim),
     ("quantile", quantile),
+    ("quantized_gru_cell", quantized_gru_cell),
     ("quantized_lstm.input", quantized_lstm),
     ("rad2deg", rad2deg),
     ("rad2deg_", rad2deg_),
