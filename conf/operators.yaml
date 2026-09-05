@@ -5450,6 +5450,23 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: fused_sdp_choice
+  description: 'Selects the scaled-dot-product-attention backend PyTorch would dispatch to
+    for the given query/key/value parameters and returns its `SDPBackend`
+    integer value (0=Math, 1=Flash, 2=Efficient, 3=cuDNN). Mirrors
+    `aten::_fused_sdp_choice` / `select_sdp_backend` and grounds the choice in
+    a device-side Triton probe of the inputs'' last-dimension contiguity.
+
+    '
+  for:
+  - _fused_sdp_choice
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: gather
   description: Gathers values along an axis specified by `dim`.
   for:
