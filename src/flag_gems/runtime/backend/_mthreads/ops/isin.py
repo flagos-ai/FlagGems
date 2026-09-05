@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import math
+import numbers
 
 import torch
 import triton
@@ -22,8 +23,116 @@ from flag_gems.ops.all import reduce_all
 from flag_gems.ops.any import reduce_any
 from flag_gems.ops.unique import _unique2
 from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import pointwise_dynamic
 from flag_gems.utils import triton_lang_extension as ext
 from flag_gems.utils.libentry import libentry
+
+
+# A scalar test set has no set-operation work to do: isin(x, scalar) is an
+# elementwise equality (or inequality for invert=True).  Keep the scalar as a
+# kernel argument so the generated pointwise kernel performs exactly one input
+# load, one compare, and one bool store.  In particular, do not use the common
+# eq implementation here: it casts integer operands to fp32 and therefore
+# loses equality for values above 2**24.
+@pointwise_dynamic(
+    is_tensor=[True, False],
+    promotion_methods=[(0, 1, "ALWAYS_BOOL")],
+)
+@triton.jit
+def isin_scalar_eq_func(x, y):
+    return x == y
+
+
+@pointwise_dynamic(
+    is_tensor=[True, False],
+    promotion_methods=[(0, 1, "ALWAYS_BOOL")],
+)
+@triton.jit
+def isin_scalar_ne_func(x, y):
+    return x != y
+
+
+@pointwise_dynamic(
+    is_tensor=[True, False],
+    promotion_methods=[(0, 1, "ALWAYS_BOOL")],
+)
+@triton.jit
+def isin_scalar_eq_float_func(x, y):
+    return x.to(tl.float32) == y.to(tl.float32)
+
+
+@pointwise_dynamic(
+    is_tensor=[True, False],
+    promotion_methods=[(0, 1, "ALWAYS_BOOL")],
+)
+@triton.jit
+def isin_scalar_ne_float_func(x, y):
+    return x.to(tl.float32) != y.to(tl.float32)
+
+
+def _normalize_integer_scalar(value, dtype):
+    """Match MUSA aten's Python-int scalar conversion without a device copy."""
+    if not isinstance(value, numbers.Integral) or isinstance(value, bool):
+        return value
+    value = int(value)
+    if dtype not in (
+        torch.uint8,
+        torch.int8,
+        torch.int16,
+        torch.int32,
+        torch.int64,
+    ):
+        return value
+    if value < -(1 << 63) or value >= (1 << 64):
+        raise OverflowError("Python int is out of range for an integral tensor")
+    # MUSA aten promotes Python integers to its int32 scalar representation
+    # for sub-int64 tensors. int64 elements retain an int64 scalar so large
+    # integers remain exact. This mirrors the native Tensor_Scalar overload.
+    bits = 64 if dtype == torch.int64 else 32
+    narrowed = value & ((1 << bits) - 1)
+    if narrowed >= (1 << (bits - 1)):
+        narrowed -= 1 << bits
+    return narrowed
+
+
+@libentry()
+@triton.jit(do_not_specialize=["scalar"])
+def isin_scalar_1d_kernel(
+    in_ptr: tl.tensor,
+    out_ptr: tl.tensor,
+    numel: int,
+    scalar,
+    BLOCK_SIZE: tl.constexpr,
+    invert: tl.constexpr,
+    IS_FLOAT: tl.constexpr,
+):
+    """Contiguous streaming kernel: one input load, compare, and bool store."""
+    pid = ext.program_id(0)
+    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < numel
+    values = tl.load(in_ptr + offsets, mask=mask, other=0)
+    values = values.to(tl.float32) if IS_FLOAT else values
+    result = values != scalar if invert else values == scalar
+    tl.store(out_ptr + offsets, result, mask=mask)
+
+
+def _isin_scalar_contiguous(in0, scalar, invert):
+    numel = in0.numel()
+    out = torch.empty_like(in0, dtype=torch.bool)
+    block_size = 1024
+    grid = (triton.cdiv(numel, block_size),)
+    with torch_device_fn.device(in0.device.index):
+        isin_scalar_1d_kernel[grid](
+            in0,
+            out,
+            numel,
+            scalar,
+            BLOCK_SIZE=block_size,
+            invert=invert,
+            IS_FLOAT=in0.is_floating_point(),
+            num_warps=4,
+        )
+    return out
 
 
 def launch_arg(BLOCK_M, BLOCK_N, N, num_warps):
@@ -258,7 +367,50 @@ def isin_by_search(
     return out.view_as(in0)
 
 
-def isin(
+def isin_tensor_scalar(
+    in0,
+    in1,
+    *,
+    assume_unique: bool = False,
+    invert: bool = False,
+) -> torch.Tensor:
+    # Preserve Python scalars as scalars all the way to the pointwise kernel.
+    # The previous implementation first materialized a one-element device
+    # tensor, then routed through comparison/search (including reduction or
+    # sort/binary-search machinery).  assume_unique is irrelevant for a
+    # singleton set.
+    if torch.is_tensor(in0) and (in0.dtype == torch.bool or isinstance(in1, bool)):
+        raise RuntimeError("Unsupported input type encountered for isin(): Bool")
+    if (
+        torch.is_tensor(in0)
+        and not in0.is_complex()
+        and in0.dtype != torch.bool
+        and isinstance(in1, numbers.Real)
+    ):
+        if in0.numel() == 0:
+            return torch.zeros_like(in0, dtype=torch.bool)
+        in1 = _normalize_integer_scalar(in1, in0.dtype)
+        # The 1-D kernel uses Triton's native index type; keep very large
+        # tensors on the stride-aware generator, which can disable block
+        # pointers when a 32-bit index would overflow.
+        if (
+            in0.is_contiguous()
+            and in0.numel() <= torch.iinfo(torch.int32).max
+            and (in0.is_floating_point() or isinstance(in1, numbers.Integral))
+        ):
+            return _isin_scalar_contiguous(in0, in1, invert)
+        if invert:
+            if in0.is_floating_point():
+                return isin_scalar_ne_float_func(in0, in1)
+            return isin_scalar_ne_func(in0, in1)
+        if in0.is_floating_point():
+            return isin_scalar_eq_float_func(in0, in1)
+        return isin_scalar_eq_func(in0, in1)
+
+    return _isin_mthreads_original(in0, in1, assume_unique=assume_unique, invert=invert)
+
+
+def _isin_mthreads_original(
     in0,
     in1,
     *,
@@ -279,3 +431,15 @@ def isin(
         return isin_by_search(in0, in1, invert, unique_in0=False, unique_in1=False)
     else:
         return isin_by_search(in0, in1, invert, unique_in0=False, unique_in1=True)
+
+
+def isin(
+    in0,
+    in1,
+    *,
+    assume_unique: bool = False,
+    invert: bool = False,
+) -> torch.Tensor:
+    if torch.is_tensor(in0) and not torch.is_tensor(in1):
+        return isin_tensor_scalar(in0, in1, assume_unique=assume_unique, invert=invert)
+    return _isin_mthreads_original(in0, in1, assume_unique=assume_unique, invert=invert)
