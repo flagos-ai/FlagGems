@@ -10292,6 +10292,29 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: quantized_max_pool3d
+  description: Applies 3D max pooling over a per-tensor quantized quint8 tensor.
+  for:
+  - quantized_max_pool3d
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
+- id: quantized_max_pool3d_out
+  description: |
+    A variant of quantized_max_pool3d() that writes the result into the out tensor.
+  for:
+  - quantized_max_pool3d.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: rad2deg
   description: 'Converts each element from angles in radians to degrees.
 

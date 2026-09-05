@@ -68,6 +68,7 @@ registrar = GeneralOpRegistrar
 current_work_registrar = None
 AUTOGRAD_DISPATCH_KEY = torch._C.DispatchKey.Autograd.name
 CONJUGATE_DISPATCH_KEY = torch._C.DispatchKey.Conjugate.name
+QUANTIZED_CUDA_DISPATCH_KEY = torch._C.DispatchKey.QuantizedCUDA.name
 SPARSE_CSR_DISPATCH_KEY = "SparseCsr" + backend_info.dispatch_key
 
 
@@ -940,6 +941,18 @@ _FULL_CONFIG = (
     ("prod.dim_int", prod_dim),
     ("quantile", quantile),
     ("quantized_lstm.input", quantized_lstm),
+    (
+        "quantized_max_pool3d",
+        quantized_max_pool3d,
+        None,
+        (QUANTIZED_CUDA_DISPATCH_KEY,),
+    ),
+    (
+        "quantized_max_pool3d.out",
+        quantized_max_pool3d_out,
+        None,
+        (QUANTIZED_CUDA_DISPATCH_KEY,),
+    ),
     ("rad2deg", rad2deg),
     ("rad2deg_", rad2deg_),
     ("rand", rand),
