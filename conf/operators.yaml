@@ -11126,6 +11126,30 @@ ops:
   - Math
   stages:
   - beta: '5.3'
+- id: row_stack
+  description: |
+    Stack tensors in sequence vertically (row wise). Alias of vstack.
+  for:
+  - row_stack
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
+- id: row_stack_out
+  description: |
+    A variant of row_stack() that writes the result into the out tensor.
+  for:
+  - row_stack.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: rrelu_with_noise_backward
   description: 'Computes the gradient of the Randomized Leaky ReLU (RReLU) activation
     function with respect to
