@@ -10279,6 +10279,29 @@ ops:
   - Tensor
   stages:
   - stable: '2.2'
+- id: quantized_batch_norm
+  description: Applies batch normalization on a 4D (NCHW) quantized tensor.
+  for:
+  - quantized_batch_norm
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
+- id: quantized_batch_norm_out
+  description: |
+    A variant of quantized_batch_norm() that writes the result into the out tensor.
+  for:
+  - quantized_batch_norm.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: quantized_lstm
   description: Applies a multi-layer quantized LSTM over an input sequence. Takes
     the input sequence, initial hidden and cell states, and per-layer quantized weights,
