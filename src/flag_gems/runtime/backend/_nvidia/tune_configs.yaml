@@ -3175,3 +3175,28 @@ index_adjacent:
   - META:
       BLOCK_SIZE0: 4
       BLOCK_SIZE1: 512
+quantized_max_pool1d:
+  - META:
+      BLOCK_L: 64
+    num_warps: 2
+    num_stages: 4
+  - META:
+      BLOCK_L: 128
+    num_warps: 4
+    num_stages: 4
+  - META:
+      BLOCK_L: 256
+    num_warps: 4
+    num_stages: 3
+  - META:
+      BLOCK_L: 256
+    num_warps: 8
+    num_stages: 3
+  - META:
+      BLOCK_L: 512
+    num_warps: 8
+    num_stages: 2
+  - META:
+      BLOCK_L: 1024
+    num_warps: 8
+    num_stages: 2
