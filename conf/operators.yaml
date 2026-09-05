@@ -8272,6 +8272,21 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: lu_with_info
+  description: |
+    Computes a compact LU factorization with partial pivoting of a matrix,
+    returning the packed LU matrix, the 1-indexed pivots and an info tensor
+    that reports the first singular diagonal of U (0 on success). This is the
+    deprecated `torch._lu_with_info` interface mirrored on `linalg.lu_factor_ex`.
+  for:
+  - _lu_with_info
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.4'
 - id: make_dep_token
   description: 'Creates a scalar tensor as a dependency token for TorchScript tracing
 
