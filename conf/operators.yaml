@@ -56,6 +56,18 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: _sobol_engine_scramble_
+  description: 'Scrambles Sobol quasi-random number generator state using Owen scrambling.
+    Performs in-place matrix multiplication in GF(2) (binary field) for each dimension. '
+  for:
+  - _sobol_engine_scramble_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - RandomSampling
+  stages:
+  - alpha: '5.5'
 - id: _weight_norm
   description: 'Reparameterizes a module''s weight tensor by decoupling its magnitude
     (g)
