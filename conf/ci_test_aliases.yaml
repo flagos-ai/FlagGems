@@ -29,6 +29,7 @@ atan2_out: test_atan2
 alias_copy_out: test_alias_copy
 as_strided_copy_out: test_as_strided_copy
 baddbmm_out: test_baddbmm
+segment_reduce_out: test_segment_reduce
 
 # Compound / alternative names
 arange_start_step: test_arange
@@ -44,3 +45,5 @@ arctan: test_atan
 # Operators tested in combined files or with different naming
 batch_norm_backward: test_batch_norm
 batch_norm_impl_index: test_batch_norm
+segment_reduce_backward: test_segment_reduce
+segment_reduce_backward_out: test_segment_reduce
