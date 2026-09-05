@@ -29,6 +29,7 @@ atan2_out: test_atan2
 alias_copy_out: test_alias_copy
 as_strided_copy_out: test_as_strided_copy
 baddbmm_out: test_baddbmm
+scatter_reduce_two_out: test_scatter_reduce
 
 # Compound / alternative names
 arange_start_step: test_arange
@@ -40,6 +41,8 @@ any_dims: test_any
 and_scalar: test_bitwise_and
 and_tensor: test_bitwise_and
 arctan: test_atan
+scatter_reduce_two: test_scatter_reduce
+scatter_reduce_two_: test_scatter_reduce
 
 # Operators tested in combined files or with different naming
 batch_norm_backward: test_batch_norm
