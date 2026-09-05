@@ -10292,6 +10292,32 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: quantized_max_pool2d
+  description: |
+    Triton kernel implementation for quantized_max_pool2d. Applies 2D max pooling
+    over a quantized input tensor by pooling the underlying integer
+    representation.
+  for:
+  - quantized_max_pool2d
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
+- id: quantized_max_pool2d_out
+  description: |
+    A variant of quantized_max_pool2d() that writes the result into the out tensor.
+  for:
+  - quantized_max_pool2d.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: rad2deg
   description: 'Converts each element from angles in radians to degrees.
 
