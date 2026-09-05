@@ -78,6 +78,7 @@ from flag_gems.ops._fused_rms_norm import (
     _fused_rms_norm_backward,
     _fused_rms_norm_forward,
 )
+from flag_gems.ops._gather_sparse_backward import _gather_sparse_backward
 from flag_gems.ops._has_compatible_shallow_copy_type import (
     _has_compatible_shallow_copy_type,
 )
@@ -1013,6 +1014,7 @@ __all__ = [
     "_fused_rms_norm",
     "_fused_rms_norm_backward",
     "_fused_rms_norm_forward",
+    "_gather_sparse_backward",
     "_has_compatible_shallow_copy_type",
     "_index_put_impl_",
     "_is_all_true",
