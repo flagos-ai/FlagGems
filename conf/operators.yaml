@@ -10268,6 +10268,17 @@ ops:
   - stable: '2.0'
   labels:
   - aten
+- id: put_
+  description: The in-place version of `put()`.
+  for:
+  - put_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: quantile
   description: Computes the q-th quantiles of each row of the `input` tensor along
     the dimension `dim`.
