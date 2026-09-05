@@ -12183,6 +12183,23 @@ ops:
   - Tensor
   stages:
   - stable: '2.2'
+- id: smm
+  description: |
+    Performs a matrix multiplication of the sparse (COO) matrix `self` with the
+    dense matrix `mat` using a fused Triton kernel. The sparse operand is
+    materialized to dense, the product is computed with `tl.dot`, and the COO
+    output (indices + values) is written directly to match `torch.smm`
+    semantics: every row that appears in the sparse input contributes all
+    output columns.
+  for:
+  - smm
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: smooth_l1_loss
   description: Compute the smooth L1 loss between input and target tensors.
   for:
