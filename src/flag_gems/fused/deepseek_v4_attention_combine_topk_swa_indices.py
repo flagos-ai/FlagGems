@@ -76,6 +76,8 @@ def _combine_topk_swa_indices_kernel(
     PADDED_COMBINED_TOPK: tl.constexpr,
     RETURN_PAIR_METADATA: tl.constexpr,
     ASSUME_ORDERED_TOPK: tl.constexpr,
+    quad_metadata_ptr=None,
+    RETURN_QUAD_METADATA: tl.constexpr = False,
 ):
     batch_idx = tl.program_id(0)
     worker_idx = tl.program_id(1)
@@ -202,6 +204,51 @@ def _combine_topk_swa_indices_kernel(
                 )
                 tl.store(pair_metadata_ptr + token_idx // 2, encoded_metadata)
 
+                if RETURN_QUAD_METADATA:
+                    if token_idx % 4 == 0:
+                        # Certify all three prefix boundaries while the source
+                        # indices are available.  The four queries must belong
+                        # to this request, whose SWA addresses are contiguous.
+                        have_quad = (
+                            (token_idx + 3 < query_end)
+                            & (COMPRESS_RATIO == 4)
+                            & (WINDOW_SIZE > 0)
+                            & (swa_len > 0)
+                            # The ordered hint suppresses pair descriptors
+                            # outside the complete-candidate region. Quads
+                            # need both pair descriptors to retain counts.
+                            & (
+                                (not ASSUME_ORDERED_TOPK)
+                                | ((pos + 4) // COMPRESS_RATIO <= TOP_K)
+                            )
+                        )
+                        third_topk_len = tl.minimum((pos + 3) // COMPRESS_RATIO, TOP_K)
+                        row1 = tl.load(
+                            topk_ptr + (token_idx + 1) * topk_stride + offs,
+                            mask=have_quad & (offs < next_topk_len),
+                            other=-1,
+                        )
+                        row2 = tl.load(
+                            topk_ptr + (token_idx + 2) * topk_stride + offs,
+                            mask=have_quad & (offs < third_topk_len),
+                            other=-1,
+                        )
+                        row3 = tl.load(
+                            topk_ptr + (token_idx + 3) * topk_stride + offs,
+                            mask=have_quad & (offs < third_topk_len),
+                            other=-1,
+                        )
+                        mismatches = (
+                            ((topk_vals != row1) & (offs < topk_len))
+                            | ((row1 != row2) & (offs < next_topk_len))
+                            | ((row2 != row3) & (offs < third_topk_len))
+                        )
+                        quad_matches = tl.sum(mismatches.to(tl.int32), axis=0) == 0
+                        tl.store(
+                            quad_metadata_ptr + token_idx // 4,
+                            (have_quad & quad_matches).to(tl.int32),
+                        )
+
         tl.store(
             combined_ptr + token_idx * combined_stride + offs,
             topk_vals + M * batch_idx,
@@ -230,13 +277,26 @@ def combine_topk_swa_indices(
     *,
     return_pair_metadata: bool = False,
     assume_ordered_topk: bool = False,
+    return_quad_metadata: bool = False,
 ) -> (
-    Tuple[torch.Tensor, torch.Tensor] | Tuple[torch.Tensor, torch.Tensor, torch.Tensor]
+    Tuple[torch.Tensor, torch.Tensor]
+    | Tuple[torch.Tensor, torch.Tensor, torch.Tensor]
+    | Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]
 ):
+    """Combine compressed and window IDs, optionally certifying shared prefixes.
+
+    Quad flags require pair metadata and describe four rows of the same
+    request. Every compressed-prefix boundary is compared exactly, including
+    when assume_ordered_topk is enabled for the existing pair path.
+    """
     if type(return_pair_metadata) is not bool:
         raise TypeError("return_pair_metadata must be a bool")
     if type(assume_ordered_topk) is not bool:
         raise TypeError("assume_ordered_topk must be a bool")
+    if type(return_quad_metadata) is not bool:
+        raise TypeError("return_quad_metadata must be a bool")
+    if return_quad_metadata and not return_pair_metadata:
+        raise ValueError("return_quad_metadata requires return_pair_metadata=True")
     if assume_ordered_topk and not return_pair_metadata:
         raise ValueError("assume_ordered_topk requires return_pair_metadata=True")
 
@@ -285,12 +345,26 @@ def combine_topk_swa_indices(
         pair_metadata = None
         # Specialized away when RETURN_PAIR_METADATA is false.
         pair_metadata_ptr = combined
+    quad_metadata = (
+        torch.empty(
+            ((num_tokens + 3) // 4,),
+            device=topk_indices.device,
+            dtype=torch.int32,
+        )
+        if return_quad_metadata
+        else None
+    )
     if num_tokens == 0:
+        if quad_metadata is not None:
+            return combined, lens, pair_metadata, quad_metadata
         if pair_metadata is not None:
             return combined, lens, pair_metadata
         return combined, lens
     with torch_device_fn.device(topk_indices.device):
-        _combine_topk_swa_indices_kernel[(num_reqs, 128)](
+        # Quad comparisons increase each worker's live state. More workers
+        # avoid serializing many rows behind each comparison in prefill.
+        workers = (1024 if num_reqs == 1 else 512) if return_quad_metadata else 128
+        _combine_topk_swa_indices_kernel[(num_reqs, workers)](
             combined,
             combined.stride(0),
             lens,
@@ -311,7 +385,11 @@ def combine_topk_swa_indices(
             PADDED_COMBINED_TOPK=_next_power_of_2_or_1(combined_topk),
             RETURN_PAIR_METADATA=return_pair_metadata,
             ASSUME_ORDERED_TOPK=assume_ordered_topk,
+            quad_metadata_ptr=quad_metadata,
+            RETURN_QUAD_METADATA=return_quad_metadata,
         )
+    if quad_metadata is not None:
+        return combined, lens, pair_metadata, quad_metadata
     if pair_metadata is not None:
         return combined, lens, pair_metadata
     return combined, lens

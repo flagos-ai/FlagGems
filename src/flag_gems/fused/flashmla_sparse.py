@@ -490,10 +490,11 @@ def triton_flash_mla_sparse_fwd_hq4_pair_work_items(
     SINGLE_CACHE_CA: tl.constexpr,
     BK: tl.constexpr,
     BH: tl.constexpr,
+    work_id_override=None,
 ):
     """Select an N=8 pair or an N=4 single path from producer metadata."""
 
-    work_id = tl.program_id(0)
+    work_id = tl.program_id(0) if work_id_override is None else work_id_override
     pair_id = work_id // 2
     slot = work_id % 2
     first_row = (pair_id * 2).to(tl.int64)
@@ -593,6 +594,216 @@ def triton_flash_mla_sparse_fwd_hq4_pair_work_items(
                 BK,
                 BH,
             )
+
+
+@triton.jit
+def _flash_mla_sparse_hq4_quad(
+    q,
+    kv,
+    indices,
+    sink,
+    lens,
+    pairs,
+    out,
+    row,
+    stride_qh,
+    stride_qm,
+    stride_kv,
+    stride_i,
+    stride_oh,
+    stride_om,
+    SKV,
+    SCALE: tl.constexpr,
+    W: tl.constexpr,
+    SINK: tl.constexpr,
+    BK: tl.constexpr,
+):
+    """Reuse one KV union for four queries certified by the index producer."""
+    m0 = tl.load(pairs + row // 2)
+    m1 = tl.load(pairs + row // 2 + 1)
+    p0 = m0 >> 3
+    p1 = p0 + (((m0 & 7) == 3) | ((m0 & 7) == 4)).to(tl.int32)
+    p2 = m1 >> 3
+    p3 = p2 + (((m1 & 7) == 3) | ((m1 & 7) == 4)).to(tl.int32)
+    s0 = tl.load(lens + row) - p0
+    union_len = p3 + s0 + 3
+    swa_base = tl.load(indices + row * stride_i + p0)
+    col = tl.arange(0, 16)
+    qid = col // 4
+    head = col % 4
+    plen = tl.where(qid == 0, p0, tl.where(qid == 1, p1, tl.where(qid == 2, p2, p3)))
+    wstart = tl.maximum(0, s0 + qid - W)
+    wend = s0 + qid
+    # Four 128-wide fragments keep the MMA operands below the register and
+    # shared-memory footprint of two 256-wide fragments at N=16.
+    d = tl.arange(0, 128)
+    t = tl.arange(0, BK)
+    qp = q + (row + qid[:, None]) * stride_qm + head[:, None] * stride_qh + d[None, :]
+    q0 = tl.load(qp)
+    q1 = tl.load(qp + 128)
+    q2 = tl.load(qp + 256)
+    q3 = tl.load(qp + 384)
+    maximum = tl.full((16,), float("-inf"), tl.float32)
+    total = tl.zeros((16,), tl.float32)
+    acc0 = tl.zeros((128, 16), tl.float32)
+    acc1 = tl.zeros((128, 16), tl.float32)
+    acc2 = tl.zeros((128, 16), tl.float32)
+    acc3 = tl.zeros((128, 16), tl.float32)
+    for block in range(tl.cdiv(union_len, BK)):
+        pos = block * BK + t
+        cid = tl.load(indices + (row + 3) * stride_i + pos, mask=pos < p3, other=0)
+        kid = tl.where(pos < p3, cid, swa_base + pos - p3)
+        valid = (pos < union_len) & (kid >= 0) & (kid < SKV)
+        kid = tl.where(valid, kid, 0)
+        kp = kv + d[:, None] + kid[None, :] * stride_kv
+        k0 = tl.load(kp, cache_modifier=".cg")
+        k1 = tl.load(kp + 128, cache_modifier=".cg")
+        k2 = tl.load(kp + 256, cache_modifier=".cg")
+        k3 = tl.load(kp + 384, cache_modifier=".cg")
+        scores = tl.dot(k0.trans(), q0.trans(), out_dtype=tl.float32)
+        scores = tl.dot(k1.trans(), q1.trans(), scores, out_dtype=tl.float32)
+        scores = tl.dot(k2.trans(), q2.trans(), scores, out_dtype=tl.float32)
+        scores = tl.dot(k3.trans(), q3.trans(), scores, out_dtype=tl.float32) * SCALE
+        attend = (pos[:, None] < plen[None, :]) | (
+            (pos[:, None] >= p3 + wstart[None, :]) & (pos[:, None] < p3 + wend[None, :])
+        )
+        scores = tl.where(valid[:, None] & attend, scores, float("-inf"))
+        updated = tl.maximum(maximum, tl.max(scores, 0))
+        safe = tl.where(updated == float("-inf"), 0.0, updated)
+        weights = tl.exp(scores - safe[None, :])
+        alpha = tl.exp(maximum - safe)
+        total = total * alpha + tl.sum(weights, 0)
+        w = weights.to(tl.bfloat16)
+        acc0 = tl.dot(k0, w, acc0 * alpha[None, :], out_dtype=tl.float32)
+        acc1 = tl.dot(k1, w, acc1 * alpha[None, :], out_dtype=tl.float32)
+        acc2 = tl.dot(k2, w, acc2 * alpha[None, :], out_dtype=tl.float32)
+        acc3 = tl.dot(k3, w, acc3 * alpha[None, :], out_dtype=tl.float32)
+        maximum = updated
+    valid = maximum != float("-inf")
+    if SINK:
+        sink_value = tl.load(sink + head)
+        denom = total + tl.exp(sink_value - maximum)
+    else:
+        denom = total
+    denom = tl.where(valid, denom, 1.0)
+    factor = 1.0 / denom
+    o0 = tl.where(valid[None, :], acc0 * factor[None, :], 0.0)
+    o1 = tl.where(valid[None, :], acc1 * factor[None, :], 0.0)
+    o2 = tl.where(valid[None, :], acc2 * factor[None, :], 0.0)
+    o3 = tl.where(valid[None, :], acc3 * factor[None, :], 0.0)
+    op = out + (row + qid[:, None]) * stride_om + head[:, None] * stride_oh + d[None, :]
+    tl.store(op, o0.trans().to(tl.bfloat16))
+    tl.store(op + 128, o1.trans().to(tl.bfloat16))
+    tl.store(op + 256, o2.trans().to(tl.bfloat16))
+    tl.store(op + 384, o3.trans().to(tl.bfloat16))
+
+
+@triton.jit
+def triton_flash_mla_sparse_fwd_hq4_quad(
+    q,
+    kv,
+    indices,
+    sink,
+    lens,
+    pairs,
+    quad_metadata,
+    out,
+    stride_qh,
+    stride_qm,
+    stride_kv,
+    stride_i,
+    stride_oh,
+    stride_om,
+    SQ,
+    SKV,
+    SCALE: tl.constexpr,
+    W: tl.constexpr,
+    SINK: tl.constexpr,
+    BK: tl.constexpr,
+):
+    group = tl.program_id(0)
+    row = (group * 4).to(tl.int64)
+    enabled = tl.load(quad_metadata + group)
+    if (enabled == 1) & (row + 3 < SQ):
+        _flash_mla_sparse_hq4_quad(
+            q,
+            kv,
+            indices,
+            sink,
+            lens,
+            pairs,
+            out,
+            row,
+            stride_qh,
+            stride_qm,
+            stride_kv,
+            stride_i,
+            stride_oh,
+            stride_om,
+            SKV,
+            SCALE,
+            W,
+            SINK,
+            BK,
+        )
+
+
+@triton.jit
+def triton_flash_mla_sparse_fwd_hq4_quad_fallback(
+    q,
+    kv,
+    indices,
+    sink,
+    lens,
+    pairs,
+    quad_metadata,
+    out,
+    stride_qh,
+    stride_qm,
+    stride_kv,
+    stride_i,
+    stride_oh,
+    stride_om,
+    SQ,
+    SKV,
+    SCALE: tl.constexpr,
+    TOPK: tl.constexpr,
+    W: tl.constexpr,
+    SINK: tl.constexpr,
+    BK: tl.constexpr,
+):
+    group = tl.program_id(0)
+    enabled = tl.load(quad_metadata + group)
+    if (enabled != 1) | (group * 4 + 3 >= SQ):
+        for slot in range(4):
+            work_id = group * 4 + slot
+            if work_id < SQ:
+                triton_flash_mla_sparse_fwd_hq4_pair_work_items(
+                    q,
+                    kv,
+                    indices,
+                    sink,
+                    lens,
+                    pairs,
+                    out,
+                    stride_qh,
+                    stride_qm,
+                    stride_kv,
+                    stride_i,
+                    stride_oh,
+                    stride_om,
+                    SQ,
+                    SKV,
+                    SCALE,
+                    TOPK,
+                    W,
+                    SINK,
+                    not SINK,
+                    SINK,
+                    BK,
+                    4,
+                    work_id_override=work_id,
+                )
 
 
 @triton.autotune(
@@ -792,6 +1003,8 @@ def flash_mla_sparse_fwd(
     *,
     pair_metadata: Optional[torch.Tensor] = None,
     pair_window_size: int = 0,
+    quad_metadata: Optional[torch.Tensor] = None,
+    max_kv_length: Optional[int] = None,
 ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[torch.Tensor]]:
     """
     Sparse attention prefill kernel
@@ -821,6 +1034,14 @@ def flash_mla_sparse_fwd(
             path. Descriptors must come from the same indices and topk_length
             tensors and must not be reused after either tensor is changed.
         pair_window_size: sliding-window width used to create pair_metadata.
+        quad_metadata: optional int32 flags emitted together with pair_metadata
+            by combine_topk_swa_indices(return_quad_metadata=True). Each flag
+            certifies four adjacent queries from one request with exactly
+            matching compressed prefixes and a contiguous sliding window.
+            It must describe the same unmodified indices and topk_length.
+        max_kv_length: optional CPU length hint including compressed and SWA
+            entries. It only selects a quad launch configuration; attention
+            masks and loop bounds always come from the device lengths.
 
     Returns:
         (output, max_logits, lse). max_logits and lse are None when
@@ -835,6 +1056,11 @@ def flash_mla_sparse_fwd(
         raise TypeError("return_stats must be a bool")
     if type(pair_window_size) is not int:
         raise TypeError("pair_window_size must be an int")
+    if max_kv_length is not None:
+        if type(max_kv_length) is not int:
+            raise TypeError("max_kv_length must be an int or None")
+        if max_kv_length < 0:
+            raise ValueError("max_kv_length must be non-negative")
     if pair_metadata is None:
         if pair_window_size != 0:
             raise ValueError("pair_window_size requires pair_metadata")
@@ -875,6 +1101,15 @@ def flash_mla_sparse_fwd(
         assert pair_metadata.dtype == torch.int32
         assert pair_metadata.device == q.device
         assert pair_metadata.shape == (triton.cdiv(SQ, 2),), "pair_metadata error shape"
+    if quad_metadata is not None:
+        if not isinstance(quad_metadata, torch.Tensor):
+            raise TypeError("quad_metadata must be a torch.Tensor or None")
+        if pair_metadata is None:
+            raise ValueError("quad_metadata requires pair_metadata")
+        assert quad_metadata.is_contiguous()
+        assert quad_metadata.dtype == torch.int32
+        assert quad_metadata.device == q.device
+        assert quad_metadata.shape == (triton.cdiv(SQ, 4),), "quad_metadata error shape"
 
     # check from FlashMLA
     assert HKV == 1, "h_kv is expected to be 1"
@@ -917,6 +1152,52 @@ def flash_mla_sparse_fwd(
         and not return_stats
         and SQ >= 2
     ):
+        if quad_metadata is not None and SQ >= 4:
+            # Keeping fallback in a separate launch avoids forcing the
+            # four-query kernel to reserve the pair kernel's register layout.
+            # Flags come from the same producer launch as indices and lengths.
+            common = (
+                q,
+                kv,
+                indices,
+                attn_sink,
+                topk_length,
+                pair_metadata,
+                quad_metadata,
+                output,
+                q.stride(1),
+                q.stride(0),
+                kv.stride(0),
+                indices.stride(0),
+                output.stride(1),
+                output.stride(0),
+                SQ,
+                SKV,
+                sm_scale,
+            )
+            block_k = (
+                64
+                if SQ <= 2048 and max_kv_length is not None and max_kv_length > 512
+                else 32
+            )
+            triton_flash_mla_sparse_fwd_hq4_quad[(triton.cdiv(SQ, 4),)](
+                *common,
+                pair_window_size,
+                attn_sink is not None,
+                BK=block_k,
+                num_warps=4,
+                num_stages=3,
+            )
+            triton_flash_mla_sparse_fwd_hq4_quad_fallback[(triton.cdiv(SQ, 4),)](
+                *common,
+                TOPK,
+                pair_window_size,
+                attn_sink is not None,
+                BK=64,
+                num_warps=4,
+                num_stages=3,
+            )
+            return output, max_logits, lse
         pair_cache_ca = attn_sink is None
         single_cache_ca = attn_sink is not None
         triton_flash_mla_sparse_fwd_hq4_pair_work_items[(SQ,)](

@@ -64,6 +64,7 @@ def vllm_flash_mla_sparse_fwd_with_head_padding(
     *,
     pair_metadata=None,
     pair_window_size=0,
+    quad_metadata=None,
     return_stats=True,
 ):
     """Run the reference through its legacy minimum-head padding path.
@@ -72,9 +73,8 @@ def vllm_flash_mla_sparse_fwd_with_head_padding(
     at its logical head count lets the benchmark compare the full legacy path
     (pad, reference call, and output slice) with a direct low-head call.
     """
-    # For pair-work-item cases, compare against the same low-head kernel with
-    # pairing disabled.  The vLLM reference requires padding to 64 heads,
-    # which would measure a different workload instead of the optimization.
+    # Quad cases measure incremental improvement over the existing pair
+    # kernel. Pair cases retain their original unpaired low-head reference.
     if pair_metadata is not None:
         return flag_gems.flash_mla_sparse_fwd(
             q,
@@ -85,8 +85,8 @@ def vllm_flash_mla_sparse_fwd_with_head_padding(
             attn_sink,
             topk_length,
             return_stats=return_stats,
-            pair_metadata=None,
-            pair_window_size=0,
+            pair_metadata=pair_metadata if quad_metadata is not None else None,
+            pair_window_size=pair_window_size if quad_metadata is not None else 0,
         )
 
     # Pair metadata is a FlagGems execution strategy and must not leak into
@@ -148,6 +148,7 @@ class TestParam:
     compressed_pool_size: int = 0
     kv_workspace_regions: int = 0
     use_pair_work_items: bool = False
+    use_quad_work_items: bool = False
     pair_window_size: int = 0
     compressed_topk: int = 0
     sm_scale: float = 0.5
@@ -202,12 +203,14 @@ class FlashmlaSparseBenchmark(base.Benchmark):
                     compressed_pool_size=_PAIR_COMPRESSED_POOL_SIZE,
                     kv_workspace_regions=_PAIR_WORKSPACE_REQUESTS,
                     use_pair_work_items=True,
+                    use_quad_work_items=use_quad_work_items,
                     pair_window_size=_PAIR_WINDOW_SIZE,
                     compressed_topk=2048,
                     sm_scale=512**-0.5,
                 )
                 for s_q in [1024, 2048, 4096]
                 for have_attn_sink in [False, True]
+                for use_quad_work_items in [False, True]
             ]
             + [
                 # Each query owns a disjoint 1280-token KV region.  The top-k
@@ -532,6 +535,18 @@ class FlashmlaSparseBenchmark(base.Benchmark):
             kwargs["pair_metadata"] = pair_metadata
             kwargs["pair_window_size"] = pair_window_size
             kwargs["return_stats"] = False
+            if param.use_quad_work_items:
+                # This input generator uses identical compressed prefixes
+                # within each request and contiguous window IDs. A quad is
+                # valid exactly when all four rows stay in that request.
+                first = torch.arange(0, s_q, 4, dtype=torch.int64, device=device)
+                kwargs["quad_metadata"] = (
+                    ((first + 3) < s_q)
+                    & (
+                        first // queries_per_kv_region
+                        == (first + 3) // queries_per_kv_region
+                    )
+                ).to(torch.int32)
         yield (
             q,
             kv,

@@ -686,3 +686,87 @@ def test_combine_topk_swa_indices_rejects_non_bool_assume_ordered_topk(
 def test_combine_topk_swa_indices_ordered_hint_requires_metadata():
     with pytest.raises(ValueError):
         combine_topk_swa_indices(*_minimal_combine_inputs(), assume_ordered_topk=True)
+
+
+@pytest.mark.combine_topk_swa_indices
+@pytest.mark.parametrize("bad_value", [None, 0, 1, "true"])
+def test_combine_topk_swa_indices_rejects_non_bool_quad_metadata(bad_value):
+    with pytest.raises(TypeError, match="return_quad_metadata"):
+        combine_topk_swa_indices(
+            *_minimal_combine_inputs(), return_quad_metadata=bad_value
+        )
+
+
+@pytest.mark.combine_topk_swa_indices
+def test_combine_topk_swa_indices_quad_requires_pairs():
+    with pytest.raises(ValueError, match="requires return_pair_metadata"):
+        combine_topk_swa_indices(*_minimal_combine_inputs(), return_quad_metadata=True)
+
+
+@pytest.mark.combine_topk_swa_indices
+def test_combine_topk_swa_indices_quad_empty_return_contract():
+    args = list(_minimal_combine_inputs())
+    args[0] = torch.empty((0, 1), dtype=torch.int32)
+    args[1] = torch.tensor([0], dtype=torch.int32)
+    args[2] = torch.empty(0, dtype=torch.int32)
+    args[3] = torch.empty(0, dtype=torch.int32)
+    result = combine_topk_swa_indices(
+        *args, return_pair_metadata=True, return_quad_metadata=True
+    )
+    assert len(result) == 4
+    assert result[3].shape == (0,) and result[3].dtype == torch.int32
+
+
+@pytest.mark.combine_topk_swa_indices
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="requires CUDA")
+@pytest.mark.parametrize("boundary", [1, 2, 3])
+@pytest.mark.parametrize("assume_ordered", [False, True])
+def test_combine_topk_swa_indices_quad_checks_every_prefix(boundary, assume_ordered):
+    topk = torch.arange(32, dtype=torch.int32, device="cuda").repeat(8, 1)
+    args = (
+        topk,
+        torch.tensor([0, 8], dtype=torch.int32, device="cuda"),
+        torch.tensor([40], dtype=torch.int32, device="cuda"),
+        torch.tensor([15], dtype=torch.int32, device="cuda"),
+        8,
+        4,
+        32,
+        128,
+        32,
+    )
+    topk[boundary:4, 0] = 19
+    _, _, _, quads = combine_topk_swa_indices(
+        *args,
+        return_pair_metadata=True,
+        return_quad_metadata=True,
+        assume_ordered_topk=assume_ordered,
+    )
+    # The ordered hint must never bypass the quad prefix comparison.
+    assert quads.tolist() == [0, 1]
+
+
+@pytest.mark.combine_topk_swa_indices
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="requires CUDA")
+@pytest.mark.parametrize("assume_ordered", [False, True])
+def test_combine_topk_swa_indices_quad_cannot_use_suppressed_pairs(assume_ordered):
+    topk = torch.arange(4, dtype=torch.int32, device="cuda").repeat(8, 1)
+    args = (
+        topk,
+        torch.tensor([0, 8], dtype=torch.int32, device="cuda"),
+        torch.tensor([40], dtype=torch.int32, device="cuda"),
+        torch.tensor([15], dtype=torch.int32, device="cuda"),
+        8,
+        4,
+        4,
+        128,
+        32,
+    )
+    _, _, pairs, quads = combine_topk_swa_indices(
+        *args,
+        return_pair_metadata=True,
+        return_quad_metadata=True,
+        assume_ordered_topk=assume_ordered,
+    )
+    assert quads.tolist() == ([0, 0] if assume_ordered else [1, 1])
+    if assume_ordered:
+        assert torch.count_nonzero(pairs) == 0
