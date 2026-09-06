@@ -22,20 +22,30 @@ from . import base, consts, utils
 
 @pytest.mark.mish
 def test_mish():
+    # bf16 is excluded: vendor native torch.ops.aten.mish (xdnn_pytorch_wrapper
+    # mish.cpp:34) reports [NOT IMPLEMENTED] for kbfloat16 on XPU, so the
+    # benchmark's latency_base (native reference) has no bf16 baseline.
+    # bf16 correctness is covered by tests/test_mish.py --ref cpu.
+    # Same pattern as benchmark/test_cosh.py / test_addbmm.py.
     bench = base.UnaryPointwiseBenchmark(
         op_name="mish",
         torch_op=torch.ops.aten.mish,
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=[torch.float16, torch.float32],
     )
     bench.run()
 
 
 @pytest.mark.mish_
 def test_mish_inplace():
+    # bf16 is excluded: vendor native torch.ops.aten.mish_ (xdnn_pytorch_wrapper
+    # mish.cpp:34) reports [NOT IMPLEMENTED] for kbfloat16 on XPU, so the
+    # benchmark's latency_base (native reference) has no bf16 baseline.
+    # bf16 correctness is covered by tests/test_mish.py --ref cpu.
+    # Same pattern as benchmark/test_cosh.py / test_addbmm.py.
     bench = base.UnaryPointwiseBenchmark(
         op_name="mish_",
         torch_op=torch.ops.aten.mish_,
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=[torch.float16, torch.float32],
         is_inplace=True,
     )
     bench.run()

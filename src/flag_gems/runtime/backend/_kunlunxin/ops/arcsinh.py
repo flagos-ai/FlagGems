@@ -27,7 +27,17 @@ config_ = CodeGenConfig(
 def arcsinh_func(x):
     x32 = x.to(tl.float32)
     ax = tl.abs(x32)
-    y = tl.log(ax + tl.sqrt(ax * ax + 1.0))
+    # Stable form (see asinh_ for the full derivation): for |x| > 1.84e19 the
+    # x*x term overflows float32 and log(ax + sqrt(ax*ax+1)) silently returns
+    # inf; the asymptotically equal 2*ax branch fixes it.  The single tl.log
+    # sits outside the tl.where (a min/max-blend rewrite measured 5x worse:
+    # XPU pointwise is ALU-bound).
+    r = tl.where(
+        ax > 1e16,
+        ax + ax,
+        ax + tl.sqrt(ax * ax + 1.0),
+    )
+    y = tl.log(r)
     return tl.where(x32 < 0.0, -y, y).to(x.dtype)
 
 

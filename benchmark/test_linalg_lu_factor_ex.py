@@ -17,7 +17,12 @@ else:
     _TEST_DTYPES = [torch.float32]
 
 # pivot=False is only supported on CUDA
-if DEVICE == "cuda":
+if VENDOR == "kunlunxin":
+    # Reference-side pivot=False falls back to a CPU implementation that
+    # raises "LU without pivoting is not implemented on the CPU" on the
+    # Kunlunxin torch build; only pivot=True is measurable.
+    _PIVOT_VALUES = [True]
+elif DEVICE == "cuda":
     _PIVOT_VALUES = [True, False]
 else:
     _PIVOT_VALUES = [True]
@@ -250,8 +255,10 @@ class LinalgLuFactorExOutBenchmark(base.Benchmark):
         for inp_shape in self.shapes:
             inp_shape = tuple(inp_shape)
             for pivot in _PIVOT_VALUES:
-                if pivot and VENDOR != "ascend":
+                if pivot and VENDOR not in ("ascend", "kunlunxin"):
                     # out variant for pivot=True already covered by main benchmark
+                    # (for kunlunxin _PIVOT_VALUES == [True], skipping pivot=True
+                    # would yield an empty benchmark and crash consts.__str__)
                     continue
                 k = min(inp_shape[-2], inp_shape[-1])
                 batch_shape = inp_shape[:-2]

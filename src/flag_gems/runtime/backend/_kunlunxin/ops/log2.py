@@ -30,10 +30,10 @@ config_ = CodeGenConfig(
     32,
     True,
     prefer_1d_tile=True,
-    buffer_size_limit=4096,
+    buffer_size_limit=8192,
     isCloseVectorization=True,
     kunlunAutoGrid=True,
-    unroll_num=8,
+    unroll_num=16,
 )
 
 

@@ -17,7 +17,12 @@ else:
     _TEST_DTYPES = [torch.float32]
 
 # pivot=False is only supported on CUDA
-if DEVICE == "cuda":
+if VENDOR == "kunlunxin":
+    # Reference-side pivot=False falls back to a CPU implementation that
+    # raises "LU without pivoting is not implemented on the CPU" on the
+    # Kunlunxin torch build; only pivot=True is measurable.
+    _PIVOT_VALUES = [True]
+elif DEVICE == "cuda":
     _PIVOT_VALUES = [True, False]
 else:
     _PIVOT_VALUES = [True]

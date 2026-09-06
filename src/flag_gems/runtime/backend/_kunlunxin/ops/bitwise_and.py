@@ -95,12 +95,20 @@ def bitwise_and_scalar_tensor(A, B):
     # kernel then runs at the full int32 load/store bandwidth.
     # Restricted to contiguous inputs with a full int32-aligned byte count;
     # anything else (non-contiguous, tail bytes, 0-dim/empty, int32/int64)
-    # falls back to the generic scalar kernel.
-    if B.dtype in (torch.bool, torch.int16) and B.is_contiguous():
+    # falls back to the generic scalar kernel. The bool lane is only packed
+    # for Python-*bool* scalars: torch's `bitwise_and(int, bool_tensor)`
+    # type-promotes to int64, which the boolean mask cannot reproduce.
+    if (
+        B.dtype in (torch.bool, torch.int16)
+        and B.is_contiguous()
+        and isinstance(A, (int, bool))
+    ):
         nbytes = B.numel() * B.element_size()
         if nbytes > 0 and nbytes % 4 == 0:
             scalar = int(A)
             if B.dtype == torch.bool:
+                if type(A) is not bool:
+                    return bitwise_and_func_scalar(B, A)
                 # torch bool conversion of a scalar = low bit (verified:
                 # 2->False, 3->True, 5->True, -2->False on reference).
                 mask = 0x01010101 if (scalar & 1) else 0

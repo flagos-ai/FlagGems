@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -56,7 +58,12 @@ def test_xlogy_out():
 
 def xlogy_tensor_scalar_input_fn(shape, dtype, device):
     inp = torch.randn(shape, dtype=dtype, device=device)
-    yield inp, 3.5
+    # Reference proxy: the torch_xmlir reference kernel for xlogy.Scalar_Other
+    # crashes with [INVALID PARAMETER] (CUDANativeFunctions.cpp:16268, NON_BUG
+    # reference-side limitation), so the reference is timed through the
+    # numerically identical xlogy.Tensor 0D broadcast instead.  The gems side
+    # is explicitly bound to the real Scalar_Other vendor kernel below.
+    yield inp, torch.tensor(3.5, dtype=dtype, device=device)
 
 
 @pytest.mark.xlogy_tensor_scalar
@@ -66,6 +73,7 @@ def test_xlogy_tensor_scalar():
         torch_op=torch.xlogy,
         input_fn=xlogy_tensor_scalar_input_fn,
         dtypes=consts.FLOAT_DTYPES,
+        gems_op=flag_gems.xlogy_tensor_scalar,
     )
     bench.run()
 
@@ -73,7 +81,10 @@ def test_xlogy_tensor_scalar():
 def xlogy_tensor_scalar_out_input_fn(shape, dtype, device):
     inp = torch.randn(shape, dtype=dtype, device=device)
     out = torch.empty(shape, dtype=dtype, device=device)
-    yield inp, 3.5, {"out": out}
+    # Reference proxy (see xlogy_tensor_scalar_input_fn): xlogy.OutTensor 0D
+    # broadcast; OutScalar_Other reference crashes.  Measured op is the real
+    # OutScalar_Other vendor kernel.
+    yield inp, torch.tensor(3.5, dtype=dtype, device=device), {"out": out}
 
 
 @pytest.mark.xlogy_tensor_scalar_out
@@ -83,6 +94,7 @@ def test_xlogy_tensor_scalar_out():
         torch_op=torch.xlogy,
         input_fn=xlogy_tensor_scalar_out_input_fn,
         dtypes=consts.FLOAT_DTYPES,
+        gems_op=flag_gems.xlogy_tensor_scalar_out,
     )
     bench.run()
 
@@ -90,7 +102,10 @@ def test_xlogy_tensor_scalar_out():
 def xlogy_scalar_tensor_input_fn(shape, dtype, device):
     # keep ``other`` positive so ``log`` stays finite
     inp = torch.rand(shape, dtype=dtype, device=device) * 5.0 + 0.01
-    yield 2.0, inp
+    # Reference proxy (see xlogy_tensor_scalar_input_fn): xlogy.Tensor 0D
+    # broadcast; Scalar_Self reference crashes.  Measured op is the real
+    # Scalar_Self vendor kernel.
+    yield torch.tensor(2.0, dtype=dtype, device=device), inp
 
 
 @pytest.mark.xlogy_scalar_tensor
@@ -100,6 +115,7 @@ def test_xlogy_scalar_tensor():
         torch_op=torch.xlogy,
         input_fn=xlogy_scalar_tensor_input_fn,
         dtypes=consts.FLOAT_DTYPES,
+        gems_op=flag_gems.xlogy_scalar_tensor,
     )
     bench.run()
 
@@ -107,7 +123,10 @@ def test_xlogy_scalar_tensor():
 def xlogy_scalar_tensor_out_input_fn(shape, dtype, device):
     inp = torch.rand(shape, dtype=dtype, device=device) * 5.0 + 0.01
     out = torch.empty(shape, dtype=dtype, device=device)
-    yield 2.0, inp, {"out": out}
+    # Reference proxy (see xlogy_tensor_scalar_input_fn): xlogy.OutTensor 0D
+    # broadcast; OutScalar_Self reference crashes.  Measured op is the real
+    # OutScalar_Self vendor kernel.
+    yield torch.tensor(2.0, dtype=dtype, device=device), inp, {"out": out}
 
 
 @pytest.mark.xlogy_scalar_tensor_out
@@ -117,5 +136,6 @@ def test_xlogy_scalar_tensor_out():
         torch_op=torch.xlogy,
         input_fn=xlogy_scalar_tensor_out_input_fn,
         dtypes=consts.FLOAT_DTYPES,
+        gems_op=flag_gems.xlogy_scalar_tensor_out,
     )
     bench.run()

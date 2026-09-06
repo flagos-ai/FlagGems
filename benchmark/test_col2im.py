@@ -17,7 +17,7 @@ import torch
 
 import flag_gems
 
-from . import base, consts
+from . import base
 
 
 class Col2ImBenchmark(base.Benchmark):
@@ -75,9 +75,14 @@ class Col2ImBenchmark(base.Benchmark):
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_col2im():
+    # bf16 excluded: the XMLIR native reference (latency_base) has no bf16
+    # col2im kernel (`[NOT IMPLEMENTED]: kbfloat16 is unsupported in
+    # xdnn_pytorch_wrapper`, col2im.cpp:54), which would fail the whole
+    # benchmark before any data is emitted.  bf16 correctness is still
+    # covered by tests/test_col2im.py --ref cpu.
     bench = Col2ImBenchmark(
         op_name="col2im",
         torch_op=torch.ops.aten.col2im,
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=[torch.float16, torch.float32],
     )
     bench.run()

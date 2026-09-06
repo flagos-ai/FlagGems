@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts, utils
 
 
@@ -76,10 +78,16 @@ def test_bitwise_and_scalar_():
     bench.run()
 
 
+# NOTE (kunlunxin/XPU): the native torch `bitwise_and.Scalar_Tensor` overload is
+# broken on XPU (device check error for `torch.bitwise_and(py_int, xpu_tensor)`),
+# so the reference side feeds a 0-D tensor of the same dtype/device (dispatches
+# to the working `bitwise_and.Tensor`), while the gems side explicitly calls
+# `flag_gems.bitwise_and_scalar_tensor` (Scalar_Tensor API). See
+# harness/solution/performance/analysis/bitwise_and_scalar_tensor_benchmark_fix.md.
 def scalar_tensor_input_fn(shape, cur_dtype, device):
     scalar = 0x96 if cur_dtype != torch.bool else True
     inp = base.generate_tensor_input(shape, cur_dtype, device)
-    yield scalar, inp
+    yield torch.tensor(scalar, dtype=cur_dtype, device=device), inp
 
 
 @pytest.mark.bitwise_and_scalar_tensor
@@ -87,6 +95,9 @@ def test_bitwise_and_scalar_tensor():
     bench = base.GenericBenchmark(
         op_name="bitwise_and_scalar_tensor",
         torch_op=torch.bitwise_and,
+        gems_op=lambda a, b: flag_gems.bitwise_and_scalar_tensor(
+            bool(a) if a.dtype == torch.bool else int(a), b
+        ),
         input_fn=scalar_tensor_input_fn,
         dtypes=consts.INT_DTYPES + consts.BOOL_DTYPES,
     )

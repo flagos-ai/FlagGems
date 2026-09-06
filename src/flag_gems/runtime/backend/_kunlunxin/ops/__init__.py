@@ -34,19 +34,23 @@ from ._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
 from ._pdist_backward import _pdist_backward
 from ._pdist_forward import _pdist_forward, pdist
 from ._prelu_kernel import _prelu_kernel  # noqa: F401
+from ._prelu_kernel_backward import _prelu_kernel_backward  # noqa: F401
 from ._scaled_dot_product_fused_attention_overrideable import (
     _scaled_dot_product_fused_attention_overrideable,
 )
 from ._thnn_fused_lstm_cell_backward_impl import _thnn_fused_lstm_cell_backward_impl
+from ._masked_scale import _masked_scale  # noqa: F401
 from ._unsafe_masked_index_put_accumulate import _unsafe_masked_index_put_accumulate
 from ._upsample_bilinear2d_aa import _upsample_bilinear2d_aa  # noqa: F401
 from ._upsample_nearest_exact2d_backward import _upsample_nearest_exact2d_backward
 from .abs import abs, abs_
 from .absolute import absolute, absolute_
 from .acos import acos, acos_
+from .acosh import acosh, acosh_  # noqa: F401
 from .adaptive_avg_pool2d import adaptive_avg_pool2d
 from .adaptive_max_pool2d import adaptive_max_pool2d
 from .add import add, add_
+from .addbmm import addbmm, addbmm_  # noqa: F401
 from .addcdiv import addcdiv, addcdiv_, addcdiv_out
 from .addcmul import addcmul, addcmul_, addcmul_out
 from .addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out  # noqa: F401
@@ -75,6 +79,7 @@ from .argsort import argsort
 from .as_strided_copy import as_strided_copy, as_strided_copy_out
 from .as_strided_scatter import as_strided_scatter
 from .asin import asin, asin_
+from .asinh_ import asinh_  # noqa: F401
 from .assert_async import _assert_async
 from .atan import atan, atan_
 from .atan2 import atan2, atan2_, atan2_out
@@ -141,6 +146,7 @@ from .cholesky_solve import cholesky_solve, cholesky_solve_out
 from .chunk import chunk
 from .chunk_cat import chunk_cat  # noqa: F401
 from .chunk_cat import chunk_cat as _chunk_cat
+from .conj_physical_ import conj_physical_  # noqa: F401
 from .clamp import (
     clamp,
     clamp_,
@@ -248,6 +254,8 @@ from .groupnorm import group_norm, group_norm_backward
 from .gt import gt, gt_scalar, gt_scalar_, gt_tensor_
 from .hadamard_transform import hadamard_transform
 from .hardsigmoid import hardsigmoid, hardsigmoid_out
+from .hardswish_ import hardswish_  # noqa: F401
+from .hardtanh_backward import hardtanh_backward  # noqa: F401
 from .heaviside_ import heaviside_  # noqa: F401
 from .histc import histc
 from .hstack import hstack
@@ -259,6 +267,7 @@ from .im2col import im2col
 from .index import index
 from .index_add import index_add, index_add_
 from .index_copy_ import index_copy_
+from .index_fill import index_fill, index_fill_  # noqa: F401
 from .index_put import index_put, index_put_
 from .index_put_impl import _index_put_impl_
 from .index_reduce import index_reduce_
@@ -347,6 +356,7 @@ from .median import median, median_dim, median_dim_values, median_out
 from .min import min, min_dim
 from .minimum import minimum
 from .miopen_batch_norm_backward import miopen_batch_norm_backward
+from .mish import mish, mish_
 from .mish_backward import mish_backward
 from .mm import mm, mm_out
 from .mode import mode
@@ -489,6 +499,7 @@ from .signbit import signbit, signbit_out
 from .silu import silu, silu_, silu_backward
 from .sin import sin, sin_
 from .sinc import sinc, sinc_, special_sinc
+from .sinh import sinh, sinh_  # noqa: F401
 from .slice import slice
 from .slice_backward import slice_backward
 from .slice_scatter import slice_scatter
@@ -629,6 +640,8 @@ __all__ = [
     "acos",
     "add",
     "add_",
+    "addbmm",
+    "addbmm_",
     "addcdiv",
     "addcdiv_",
     "addcdiv_out",
@@ -1158,6 +1171,8 @@ __all__ = [
     "native_layer_norm",
     "leaky_relu_backward",
     "margin_ranking_loss",
+    "mish",
+    "mish_",
     "mish_backward",
     "miopen_batch_norm_backward",
     "moe_sum",

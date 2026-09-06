@@ -15,7 +15,7 @@
 import pytest
 import torch
 
-from . import base, consts
+from . import base
 
 IM2COL_SHAPES_4D = [(1, 3, 16, 16), (1, 3, 32, 32), (2, 16, 64, 64), (4, 32, 128, 128)]
 IM2COL_CONFIGS = [
@@ -45,9 +45,14 @@ class Im2colBenchmark(base.Benchmark):
 
 @pytest.mark.im2col
 def test_im2col():
+    # bf16 excluded: the XMLIR native reference (latency_base) has no bf16
+    # im2col kernel (`[NOT IMPLEMENTED]: kbfloat16 is unsupported in
+    # xdnn_pytorch_wrapper`, im2col.cpp:71), which would fail the whole
+    # benchmark before any data is emitted.  bf16 correctness is still
+    # covered by tests/test_im2col.py --ref cpu.
     bench = Im2colBenchmark(
         op_name="im2col",
         torch_op=torch.ops.aten.im2col,
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=[torch.float16, torch.float32],
     )
     bench.run()

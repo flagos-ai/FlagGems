@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 # Shapes for prelu_kernel_backward benchmark
@@ -23,6 +25,19 @@ PRELU_KERNEL_BACKWARD_SHAPES = [
     (1024, 1024),  # 2D
     (16, 7, 57, 32, 29),  # 5D
 ]
+
+
+def _prelu_kernel_backward_ref(grad_output, x, weight):
+    # Device-side expression of aten::_prelu_kernel_backward semantics.
+    # The XPU native reference (torch.ops.aten._prelu_kernel_backward) has a
+    # vendor ndim==1 assertion and fails with [INVALID PARAMETER] for all
+    # multi-dimensional inputs (see
+    # harness/solution/performance/analysis/prelu_kernel_backward_benchmark_fix.md),
+    # so the benchmark reference uses torch.where, which is bitwise equal to
+    # the CPU ATen result for this matrix (verified maxdiff = 0.0).
+    grad_input = torch.where(x > 0, grad_output, grad_output * weight)
+    grad_weight = torch.where(x < 0, grad_output * x, torch.zeros_like(x))
+    return grad_input, grad_weight
 
 
 class PReluKernelBackwardBenchmark(base.Benchmark):
@@ -41,7 +56,8 @@ class PReluKernelBackwardBenchmark(base.Benchmark):
 def test_prelu_kernel_backward():
     bench = PReluKernelBackwardBenchmark(
         op_name="prelu_kernel_backward",
-        torch_op=torch.ops.aten._prelu_kernel_backward,
+        torch_op=_prelu_kernel_backward_ref,
+        gems_op=flag_gems._prelu_kernel_backward,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

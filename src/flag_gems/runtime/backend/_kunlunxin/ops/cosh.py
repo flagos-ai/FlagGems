@@ -8,6 +8,12 @@ from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 
+# Same XPU-tuned codegen config as the hyperbolic siblings (sinh/acosh/asinh_):
+# isCloseVectorization=True + buffer_size_limit=4096 + kunlunAutoGrid +
+# unroll_num=8 route memory through the XPU close-vectorized path. A/B on the
+# full benchmark matrix (12 shapes x {fp16, fp32}) shows mean speedup
+# 1.69x -> 2.27x (gems latency -7%..-48% per cell) vs the previous
+# isCloseVectorization=False variant; see solution/cosh/.
 config_ = CodeGenConfig(
     512,
     (65536, 65536, 65536),
@@ -15,7 +21,7 @@ config_ = CodeGenConfig(
     True,
     prefer_1d_tile=True,
     buffer_size_limit=4096,
-    isCloseVectorization=False,
+    isCloseVectorization=True,
     kunlunAutoGrid=True,
     unroll_num=8,
 )

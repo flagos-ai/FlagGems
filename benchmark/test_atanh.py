@@ -17,7 +17,7 @@ import torch
 
 import flag_gems
 
-from . import base, consts
+from . import base
 
 
 @pytest.mark.atanh
@@ -25,9 +25,14 @@ from . import base, consts
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_atanh():
+    # bf16 is excluded: vendor native torch.atanh (xdnn_pytorch_wrapper
+    # atanh.cpp:32) reports [NOT IMPLEMENTED] for kbfloat16 on XPU, so the
+    # benchmark's latency_base (native reference) has no bf16 baseline.
+    # bf16 correctness is covered by tests/test_atanh.py --ref cpu.
+    # Same pattern as benchmark/test_sinh.py / test_mish.py / test_cosh.py.
     bench = base.UnaryPointwiseBenchmark(
         op_name="atanh",
         torch_op=torch.atanh,
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=[torch.float16, torch.float32],
     )
     bench.run()

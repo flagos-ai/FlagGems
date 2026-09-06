@@ -48,6 +48,11 @@ def test_weight_norm_interface():
         op_name="weight_norm_interface",
         input_fn=weight_norm_input_fn,
         torch_op=torch._weight_norm,
+        # NOTE: the XPU reference (xdnn_pytorch_wrapper `_weight_norm_interface`)
+        # rejects fp16 with "scalar type of norm: kfloat32 is unsupported"
+        # ([NOT IMPLEMENTED] error code 4), while fp32/bf16 work natively.
+        # Original: dtypes=consts.FLOAT_DTYPES,
+        dtypes=[torch.float32, torch.bfloat16],
     )
     bench.set_gems(flag_gems.weight_norm)
 

@@ -39,6 +39,11 @@ def test_hardtanh_backward():
         input_fn=hardtanh_backward_input_fn,
         op_name="hardtanh_backward",
         torch_op=torch.ops.aten.hardtanh_backward,
-        dtypes=consts.FLOAT_DTYPES,
+        # XPU native bf16 reference is not implemented
+        # (xdnn_pytorch_wrapper/hardtanh_backward.cpp:37, replicated without use_gems),
+        # so no bf16 reference baseline can be produced; gems bf16 correctness is
+        # covered by tests/test_hardtanh_backward.py --ref cpu (54/54).
+        # Restored from 2026-09-04 archive (lost in cherry-pick 1190d1ca2).
+        dtypes=[d for d in consts.FLOAT_DTYPES if d != torch.bfloat16],
     )
     bench.run()

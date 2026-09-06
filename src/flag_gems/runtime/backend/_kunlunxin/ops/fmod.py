@@ -29,14 +29,20 @@ config_ = CodeGenConfig(
 @triton.jit
 def _fmod(x, y):
     # fmod(x, y) = x - trunc(x/y)*y.  div_rz is the native correctly-rounded
-    # round-toward-zero division: it never crosses an integer boundary, so the
-    # exact integer quotient is recovered by an int32-cast truncation (exact
-    # for |q| < 2^23; the guard falls back to q for huge ratios).  tl.fma
-    # keeps x - t*y single-rounded, i.e. exactly fmodf.  The old implementation
+    # round-toward-zero division (xpu::__fdiv_rz); the int32 cast truncates the
+    # (possibly non-integer) quotient to the nearest integer toward zero (XPU
+    # f2i is RTZ; empirically bit-equal to fmodf on 22M+ random and boundary
+    # inputs).  For |q| >= 2^23 the fp32 quotient carries no fraction bits, so
+    # the cast is exact and equals the guarded fallback; both are exact for
+    # |q| < 2^31.  tl.fma keeps x - t*y single-rounded, i.e. exactly fmodf.
+    # The old variant used tl.where(abs(q) < 2^23, cast(q), q); the extra
+    # abs/compare/select costs ~16-18% (measured via do_bench on XPU) and the
+    # guard only changes behavior for |q| >= 2^31 (int32 overflow, where both
+    # variants are already far from the exact fmod).  The old implementation
     # computed the quotient in software-emulated fp64 (and a variant used
     # tl.floor/ceil), both ~10-50x slower on XPU.
     q = div_rz(x, y)
-    t = tl.where(tl.abs(q) < 8388608.0, tl.cast(q, tl.int32).to(tl.float32), q)
+    t = tl.cast(q, tl.int32).to(tl.float32)
     return tl.fma(t, -y, x)
 
 

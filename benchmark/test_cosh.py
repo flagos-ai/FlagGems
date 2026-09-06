@@ -15,23 +15,33 @@
 import pytest
 import torch
 
-from . import base, consts
+from . import base
 
 
 @pytest.mark.cosh
 def test_cosh():
+    # bf16 is excluded: vendor native torch.cosh (xdnn_pytorch_wrapper
+    # cosh.cpp:30) reports [NOT IMPLEMENTED] for kbfloat16 on XPU, so the
+    # benchmark's latency_base (native reference) has no bf16 baseline.
+    # bf16 correctness is covered by tests/test_cosh.py --ref cpu.
+    # Same pattern as benchmark/test_sinh.py / test_mish.py.
     bench = base.UnaryPointwiseBenchmark(
-        op_name="cosh", torch_op=torch.cosh, dtypes=consts.FLOAT_DTYPES
+        op_name="cosh", torch_op=torch.cosh, dtypes=[torch.float16, torch.float32]
     )
     bench.run()
 
 
 @pytest.mark.cosh_
 def test_cosh_inplace():
+    # bf16 is excluded: vendor native torch.cosh_ (xdnn_pytorch_wrapper
+    # cosh.cpp:30) reports [NOT IMPLEMENTED] for kbfloat16 on XPU, so the
+    # benchmark's latency_base (native reference) has no bf16 baseline.
+    # bf16 correctness is covered by tests/test_cosh.py --ref cpu.
+    # Same pattern as benchmark/test_sinh.py / test_mish.py.
     bench = base.UnaryPointwiseBenchmark(
         op_name="cosh_",
         torch_op=torch.cosh_,
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=[torch.float16, torch.float32],
         is_inplace=True,
     )
     bench.run()
@@ -39,9 +49,14 @@ def test_cosh_inplace():
 
 @pytest.mark.cosh_out
 def test_cosh_out():
+    # bf16 is excluded: vendor native torch.cosh (xdnn_pytorch_wrapper
+    # cosh.cpp:30) reports [NOT IMPLEMENTED] for kbfloat16 on XPU, so the
+    # benchmark's latency_base (native reference) has no bf16 baseline.
+    # bf16 correctness is covered by tests/test_cosh.py --ref cpu.
+    # Same pattern as benchmark/test_sinh.py / test_mish.py.
     bench = base.UnaryPointwiseOutBenchmark(
         op_name="cosh_out",
         torch_op=torch.cosh,
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=[torch.float16, torch.float32],
     )
     bench.run()

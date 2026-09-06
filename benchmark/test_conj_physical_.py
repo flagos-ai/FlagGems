@@ -62,6 +62,13 @@ def test_conj_physical_():
 
         Config.mode = consts.BenchMode.OPERATOR
         dtypes = consts.FLOAT_DTYPES + consts.INT_DTYPES
+    elif flag_gems.vendor_name == "kunlunxin":
+        # Kunlunxin XPU: native torch has no complex64 conj_physical_ kernel
+        # (XDNN shim: `CUDA error: invalid device function`), so no complex
+        # reference baseline can be produced. Exclude complex dtypes from the
+        # baseline comparison; gems complex correctness is covered by
+        # tests/test_conj_physical_.py with a hand-built reference.
+        dtypes = consts.FLOAT_DTYPES + consts.INT_DTYPES
     else:
         dtypes = consts.FLOAT_DTYPES + consts.INT_DTYPES + consts.COMPLEX_DTYPES
 
