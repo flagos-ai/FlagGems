@@ -3032,6 +3032,9 @@ def fused_experts_impl(
                 intermediate_cache2.view(top_k_num, activation_out_dim),
                 intermediate_cache3.view(top_k_num, K),
                 out_hidden_states[begin_chunk_idx:end_chunk_idx],
+                # H20 singleton routes use a SIMT reduction instead of 15
+                # padded MMA rows; other Hopper devices retain the old plan.
+                use_singleton_gemv=_is_h20(),
             )
             continue
 

@@ -990,6 +990,25 @@ def test_fused_moe_ep_m1_naive_route_matches_compact_and_graph(monkeypatch):
 def test_fused_moe_ep_m1_i2048_local_rank_alias_dynamic_graph(monkeypatch):
     """Exercise the strict production kernel, including dynamic route safety."""
     fused_moe = importlib.import_module("flag_gems.fused.fused_moe")
+
+    def assert_route_equivalent(reference, candidate, route_ids, expert_map):
+        mapping = expert_map.tolist()
+        local_count = sum(
+            0 <= route < len(mapping) and 0 <= mapping[route] < 18
+            for route in route_ids.reshape(-1).tolist()
+        )
+        if local_count != 1:
+            # The dense MMA and empty-route paths retain bitwise parity.
+            torch.testing.assert_close(reference, candidate, rtol=0, atol=0)
+        else:
+            # Singleton SIMT uses a different FP32 reduction tree while retaining
+            # every BF16 materialization boundary. Serving-shape tests also check
+            # this path against an independent full-precision reference.
+            torch.testing.assert_close(reference, candidate, rtol=0.01, atol=0.002)
+            norm = torch.linalg.vector_norm(reference.float()).clamp_min(1e-12)
+            error = torch.linalg.vector_norm(reference.float() - candidate.float())
+            assert error / norm < 0.003
+
     torch.manual_seed(20260824)
     device = flag_gems.device
     dtype = torch.bfloat16
@@ -1115,7 +1134,7 @@ def test_fused_moe_ep_m1_i2048_local_rank_alias_dynamic_graph(monkeypatch):
                 )
                 reference = run(route_ids, expert_map, reference_workspaces).clone()
             candidate = run(route_ids, expert_map, candidate_workspaces).clone()
-            assert torch.equal(reference, candidate), (ids_dtype, map_dtype)
+            assert_route_equivalent(reference, candidate, route_ids, expert_map)
 
     # Capture both policies once with int64 routing, then mutate IDs, map and
     # weights in place. One graph must remain correct for every replay.
@@ -1179,7 +1198,7 @@ def test_fused_moe_ep_m1_i2048_local_rank_alias_dynamic_graph(monkeypatch):
         reference_graph.replay()
         candidate_graph.replay()
         torch_device_fn.synchronize()
-        assert torch.equal(reference_output, candidate_output)
+        assert_route_equivalent(reference_output, candidate_output, ids, expert_map)
 
     ids.copy_(dynamic_routes[1])
     expert_map[shard_begin + 7] = local_e  # invalid mapped local expert
@@ -1187,7 +1206,7 @@ def test_fused_moe_ep_m1_i2048_local_rank_alias_dynamic_graph(monkeypatch):
     reference_graph.replay()
     candidate_graph.replay()
     torch_device_fn.synchronize()
-    assert torch.equal(reference_output, candidate_output)
+    assert_route_equivalent(reference_output, candidate_output, ids, expert_map)
 
     # Both FP32 and BF16 router weights are supported. Other weight/bias
     # contracts must not enter the specialization.
@@ -1213,7 +1232,7 @@ def test_fused_moe_ep_m1_i2048_local_rank_alias_dynamic_graph(monkeypatch):
         weights=topk_weights.to(dtype),
     ).clone()
     assert launcher_calls == calls_before_bf16 + 1
-    assert torch.equal(bf16_reference, bf16_candidate)
+    assert_route_equivalent(bf16_reference, bf16_candidate, ids, expert_map)
 
     calls_before_fallback = launcher_calls
     fallback_workspaces = make_workspaces()
@@ -1740,6 +1759,103 @@ def test_fused_moe_ep_matches_reference(monkeypatch):
     assert not torch.allclose(reference, unclamped_reference, rtol=1e-2, atol=1e-2)
     torch.testing.assert_close(result, reference, rtol=1e-1, atol=1e-2)
     torch.testing.assert_close(aliased_result, reference, rtol=1e-1, atol=1e-2)
+
+
+@pytest.mark.fused_experts_impl
+@pytest.mark.parametrize(
+    "num_tokens,intermediate_size",
+    [(1, 2048), (32, 2048), (64, 1280), (96, 2048), (128, 2048)],
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "nvidia"
+    or not torch.cuda.is_available()
+    or torch.cuda.get_device_capability() != (9, 0),
+    reason="serving decode specialization requires NVIDIA SM90",
+)
+def test_fused_moe_ep_decode_serving_shapes(num_tokens, intermediate_size):
+    """Exercise the real selector, caller workspaces, FP32 routes and graph updates."""
+    torch.manual_seed(20260906 + num_tokens)
+    m, h, i, local_e, global_e, topk = num_tokens, 4096, intermediate_size, 18, 288, 8
+    kwargs = {"device": flag_gems.device, "dtype": torch.bfloat16}
+    hidden = 4 * torch.randn((m, h), **kwargs)
+    w1 = torch.randn((local_e, 2 * i, h), **kwargs) * h**-0.5
+    w2 = torch.randn((local_e, h, i), **kwargs) * i**-0.5
+    topk_weights = torch.rand((m, topk), device=flag_gems.device, dtype=torch.float32)
+    topk_weights /= topk_weights.sum(-1, keepdim=True)
+    # A nonzero EP rank and reversed local mapping prevent rank-zero assumptions.
+    shard_start = 7 * local_e
+    expert_map = torch.full((global_e,), -1, device=flag_gems.device, dtype=torch.int64)
+    expert_map[shard_start : shard_start + local_e] = torch.arange(
+        local_e - 1, -1, -1, device=flag_gems.device, dtype=torch.int64
+    )
+    topk_ids = (
+        torch.rand((m, global_e), device=flag_gems.device).topk(topk, dim=-1).indices
+    )
+    topk_ids[:, 0] = shard_start
+    # Invalid 64-bit IDs must be checked before any narrowing/map lookup.
+    topk_ids[:, 5] = -(2**40)
+    topk_ids[:, 6] = 2**40
+    topk_ids[:, 7] = -1
+    cache13 = torch.empty(m * topk * max(2 * i, h), **kwargs)
+    cache2 = torch.empty(m * topk * i, **kwargs)
+    output = cache2[: m * h].view(m, h)
+
+    def run():
+        return flag_gems.fused_experts_impl(
+            hidden,
+            w1,
+            w2,
+            topk_weights,
+            topk_ids,
+            global_num_experts=global_e,
+            expert_map=expert_map,
+            gemm1_clamp_limit=10.0,
+            output=output,
+            intermediate_cache13=cache13,
+            intermediate_cache2=cache2,
+        )
+
+    actual = run().clone()
+    reference = torch_fused_moe_ep_reference(
+        hidden, w1, w2, topk_weights, topk_ids, expert_map, clamp_limit=10.0
+    )
+    torch.testing.assert_close(actual, reference, rtol=0.03, atol=0.03)
+    relative_l2 = torch.linalg.vector_norm(
+        actual.float() - reference.float()
+    ) / torch.linalg.vector_norm(reference.float())
+    assert relative_l2 < 0.004
+    stream = torch.cuda.Stream()
+    stream.wait_stream(torch.cuda.current_stream())
+    with torch.cuda.stream(stream):
+        for _ in range(3):
+            run()
+    torch.cuda.current_stream().wait_stream(stream)
+    torch.cuda.synchronize()
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):
+        assert run() is output
+    graph.replay()
+    torch.cuda.synchronize()
+    torch.testing.assert_close(output, actual, rtol=0, atol=0)
+
+    # Reuse the captured addresses while all routes move off this EP rank.
+    expert_map.fill_(-1)
+    graph.replay()
+    torch.cuda.synchronize()
+    assert torch.count_nonzero(output).item() == 0
+
+    # The same graph must then observe new map, route IDs, and FP32 weights.
+    expert_map[:local_e] = torch.arange(
+        local_e, device=flag_gems.device, dtype=torch.int64
+    )
+    topk_ids.copy_(
+        torch.arange(topk, device=flag_gems.device, dtype=torch.int64).expand(m, -1)
+    )
+    topk_weights.mul_(0.5)
+    expected = run().clone()
+    graph.replay()
+    torch.cuda.synchronize()
+    torch.testing.assert_close(output, expected, rtol=0, atol=0)
 
 
 @pytest.mark.fused_experts_impl
