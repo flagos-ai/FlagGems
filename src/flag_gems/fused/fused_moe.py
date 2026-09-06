@@ -24,14 +24,13 @@ import triton
 import triton.language as tl
 import yaml
 
-from flag_gems.fused.fused_moe_ep_m1 import (
-    fused_moe_ep_m1_i2048_local_rank,
-)
+from flag_gems.fused.fused_moe_ep_m1 import fused_moe_ep_m1_i2048_local_rank
 from flag_gems.fused.moe_align_block_size import (
     moe_align_block_size,
     moe_align_block_size_ep_route_block,
 )
 from flag_gems.fused.moe_sum import moe_sum, moe_sum_ep
+from flag_gems.ops.fill import fill_scalar_
 from flag_gems.runtime import device, torch_device_fn
 from flag_gems.utils import pointwise_dynamic
 
@@ -3084,6 +3083,7 @@ def fused_experts_impl(
                 expert_map,
                 ignore_invalid_experts=ep_gemm1_config is not None,
                 local_num_experts=E,
+                allow_tle=False,
             )
         else:
             expert_ids = curr_topk_ids.view(-1)
@@ -3162,7 +3162,7 @@ def fused_experts_impl(
             tokens_in_chunk,
         )
         if expert_map is not None and not use_ep_sum:
-            intermediate_cache3.zero_()
+            fill_scalar_(intermediate_cache3, 0)
 
         # 5. Select the GEMM2 output buffer/reduction path
         use_direct_sum = (
@@ -3180,7 +3180,7 @@ def fused_experts_impl(
             gemm2_output = out_hidden_states[begin_chunk_idx:end_chunk_idx].view(
                 tokens_in_chunk, 1, K
             )
-            gemm2_output.zero_()
+            fill_scalar_(gemm2_output, 0)
         else:
             gemm2_output = intermediate_cache3
 

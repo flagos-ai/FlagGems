@@ -1772,8 +1772,17 @@ def test_fused_moe_ep_matches_reference(monkeypatch):
     or torch.cuda.get_device_capability() != (9, 0),
     reason="serving decode specialization requires NVIDIA SM90",
 )
-def test_fused_moe_ep_decode_serving_shapes(num_tokens, intermediate_size):
+def test_fused_moe_ep_decode_serving_shapes(monkeypatch, num_tokens, intermediate_size):
     """Exercise the real selector, caller workspaces, FP32 routes and graph updates."""
+    fused_moe = importlib.import_module("flag_gems.fused.fused_moe")
+    align = importlib.import_module("flag_gems.fused.moe_align_block_size")
+
+    def reject_generic_initialization(*args, **kwargs):
+        raise AssertionError("Decode must not add generic initialization launches")
+
+    monkeypatch.setattr(fused_moe, "fill_scalar_", reject_generic_initialization)
+    monkeypatch.setattr(align, "_moe_align_zero_counts_kernel", None)
+    monkeypatch.setattr(align, "_moe_align_remap_experts_kernel", None)
     torch.manual_seed(20260906 + num_tokens)
     m, h, i, local_e, global_e, topk = num_tokens, 4096, intermediate_size, 18, 288, 8
     kwargs = {"device": flag_gems.device, "dtype": torch.bfloat16}

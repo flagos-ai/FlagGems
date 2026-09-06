@@ -537,6 +537,40 @@ def moe_align_block_size_stage4(
     tl.store(sorted_token_ids_ptr + rank_post_pad, offset, mask=mask)
 
 
+@triton.jit
+def _moe_align_zero_counts_kernel(
+    cumsum_ptr,
+    tokens_cnts_ptr,
+    NUM_EXPERTS: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    tl.store(cumsum_ptr + offsets, 0, offsets < NUM_EXPERTS + 1)
+    tl.store(tokens_cnts_ptr + offsets, 0, offsets < (NUM_EXPERTS + 1) * NUM_EXPERTS)
+
+
+@triton.jit
+def _moe_align_remap_experts_kernel(
+    expert_ids_ptr,
+    expert_map_ptr,
+    mapped_expert_ids_ptr,
+    NUM_BLOCKS: tl.constexpr,
+    NUM_EXPERTS: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < NUM_BLOCKS
+    expert = tl.load(expert_ids_ptr + offsets, mask, other=0)
+    # Match expert_map[expert_ids], including the unused -1 padding entries.
+    expert = tl.where(expert < 0, expert + NUM_EXPERTS, expert)
+    mapped = tl.load(
+        expert_map_ptr + expert,
+        mask & (expert >= 0) & (expert < NUM_EXPERTS),
+        other=-1,
+    )
+    tl.store(mapped_expert_ids_ptr + offsets, mapped, mask)
+
+
 def moe_align_block_size_triton(
     topk_ids: torch.Tensor,
     num_experts: int,
@@ -544,6 +578,8 @@ def moe_align_block_size_triton(
     sorted_token_ids: torch.Tensor,
     expert_ids: torch.Tensor,
     num_tokens_post_pad: torch.Tensor,
+    *,
+    allow_tle: bool = True,
 ) -> None:
     logger.debug("GEMS MOE ALIGN BLOCK SIZE")
     numel = topk_ids.numel()
@@ -557,7 +593,7 @@ def moe_align_block_size_triton(
     block_size_expert = triton.next_power_of_2(ceil_div(numel_expert_ids, num_experts))
     block_expert_tle = triton.next_power_of_2(num_experts)
 
-    if HAS_TLE and topk_ids.is_cuda and block_expert_tle <= 1024:
+    if allow_tle and HAS_TLE and topk_ids.is_cuda and block_expert_tle <= 1024:
         block_tokens_taf, _ = _pick_tle_atomic_fused_launch_params(numel, num_experts)
         experts_per_shard = ceil_div(num_experts, TLE_CLUSTER_SIZE)
         num_tokens = topk_ids.shape[0] if topk_ids.ndim > 1 else numel
@@ -640,10 +676,17 @@ def moe_align_block_size_triton(
 
     # The tensor needs to be padded before calculating IDs,
     # to prevent out-of-bounds address access.
-    cumsum = torch.zeros((num_experts + 1,), dtype=torch.int32, device=topk_ids.device)
-    tokens_cnts = torch.zeros(
+    allocate_counts = torch.zeros if allow_tle else torch.empty
+    cumsum = allocate_counts(
+        (num_experts + 1,), dtype=torch.int32, device=topk_ids.device
+    )
+    tokens_cnts = allocate_counts(
         (num_experts + 1, num_experts), dtype=torch.int32, device=topk_ids.device
     )
+    if not allow_tle:
+        _moe_align_zero_counts_kernel[(triton.cdiv(tokens_cnts.numel(), 1024),)](
+            cumsum, tokens_cnts, num_experts, BLOCK_SIZE=1024
+        )
     num_experts_next_power_of_2 = triton.next_power_of_2(num_experts)
 
     moe_align_block_size_stage1[grid](
@@ -1282,7 +1325,13 @@ def moe_align_block_size(
     ignore_invalid_experts: bool = False,
     *,
     local_num_experts: Optional[int] = None,
+    allow_tle: bool = True,
 ) -> "tuple[torch.Tensor, torch.Tensor, torch.Tensor]":
+    """Align routes, optionally requiring standard Triton for every GPU step.
+
+    ``allow_tle=False`` also keeps fallback count initialization and EP remapping
+    in Triton. The default preserves the existing standalone dispatch policy.
+    """
     if block_size <= 0:
         raise ValueError(f"block_size must be positive, got {block_size}")
     if num_experts <= 0:
@@ -1327,7 +1376,8 @@ def moe_align_block_size(
         # 10.12 us for TLE cluster and 26.71 us for TLE cooperative atomic.
         # Keep this override exact; other TLE workloads remain unmodified.
         and (
-            not HAS_TLE
+            not allow_tle
+            or not HAS_TLE
             or (
                 num_routes == COMPACT_ALIGN_TLE_OVERRIDE_ROUTES
                 and num_experts == COMPACT_ALIGN_TLE_OVERRIDE_EXPERTS
@@ -1366,9 +1416,24 @@ def moe_align_block_size(
         sorted_ids,
         expert_ids,
         num_tokens_post_pad,
+        allow_tle=allow_tle,
     )
 
     if expert_map is not None:
-        expert_ids = expert_map[expert_ids]
+        if allow_tle:
+            expert_ids = expert_map[expert_ids]
+        else:
+            mapped_expert_ids = torch.empty(
+                expert_ids.shape, dtype=expert_map.dtype, device=expert_map.device
+            )
+            _moe_align_remap_experts_kernel[(triton.cdiv(max_num_m_blocks, 256),)](
+                expert_ids,
+                expert_map,
+                mapped_expert_ids,
+                max_num_m_blocks,
+                num_experts,
+                BLOCK_SIZE=256,
+            )
+            expert_ids = mapped_expert_ids
 
     return sorted_ids, expert_ids, num_tokens_post_pad
