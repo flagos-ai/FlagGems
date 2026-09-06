@@ -12,9 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""GPU-worker execution adapters for FlagGems FlagTune workflows.
+from types import SimpleNamespace
 
-Runtime code converts validated workload descriptions into tensors and calls
-trusted public operators.  Scheduling, process ownership, and SQLite merging
-are deliberately kept in :mod:`flag_gems.flagtune.collection`.
-"""
+from flag_gems.utils import triton_lang_helper
+
+
+def test_patch_missing_nearbyint_uses_rint():
+    rint = object()
+    module = SimpleNamespace(rint=rint)
+
+    patched = triton_lang_helper._patch_missing_symbols(module, ("nearbyint",))
+
+    assert patched.nearbyint is rint
