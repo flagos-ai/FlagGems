@@ -445,6 +445,7 @@ from flag_gems.ops.grid_sample import grid_sample
 from flag_gems.ops.grid_sampler_3d_backward import grid_sampler_3d_backward
 from flag_gems.ops.group_gemm import group_mm
 from flag_gems.ops.groupnorm import group_norm, group_norm_backward
+from flag_gems.ops.gru import gru, gru_data
 from flag_gems.ops.gt import gt, gt_scalar, gt_scalar_, gt_tensor_
 from flag_gems.ops.hadamard_transform import (
     hadamard_transform,
@@ -527,6 +528,12 @@ from flag_gems.ops.linalg_lu_factor_ex import (
     linalg_lu_factor_ex_out,
 )
 from flag_gems.ops.linalg_matrix_norm import linalg_matrix_norm
+from flag_gems.ops.linalg_matrix_rank import (
+    linalg_matrix_rank,
+    linalg_matrix_rank_out,
+    linalg_matrix_rank_tol,
+    linalg_matrix_rank_tol_out,
+)
 from flag_gems.ops.linalg_matrix_sqrth import (
     linalg_matrix_sqrth,
     linalg_matrix_sqrth_out,
@@ -1404,6 +1411,8 @@ __all__ = [
     "group_mm",
     "group_norm",
     "group_norm_backward",
+    "gru",
+    "gru_data",
     "gt",
     "gt_scalar",
     "gt_scalar_",
@@ -1512,6 +1521,10 @@ __all__ = [
     "linalg_lu_factor_out",
     "linalg_lu_out",
     "linalg_matrix_norm",
+    "linalg_matrix_rank",
+    "linalg_matrix_rank_out",
+    "linalg_matrix_rank_tol",
+    "linalg_matrix_rank_tol_out",
     "linalg_matrix_sqrth",
     "linalg_matrix_sqrth_out",
     "linalg_norm",
