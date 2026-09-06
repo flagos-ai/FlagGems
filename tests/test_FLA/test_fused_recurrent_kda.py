@@ -526,3 +526,66 @@ def test_fused_recurrent_kda_prefetch_dynamic_metadata(vector_beta):
         assert torch.count_nonzero(out[:, 94:]).item() == 0
         assert torch.equal(state[0], initial[0])
         assert torch.all(storage[..., 128:] == 11.75)
+
+
+@pytest.mark.parametrize("metadata_dtype", [torch.int32, torch.int64])
+@torch.inference_mode()
+def test_fused_recurrent_kda_empty_sequence_invalid_slot_metadata(metadata_dtype):
+    q, k, v, gate, beta, initial, slots = _build_inputs(96)
+    slots = slots.to(metadata_dtype)
+    state = initial.clone()
+    cu = torch.arange(97, device=q.device, dtype=metadata_dtype)
+    storage = torch.full((1, 96, 4, 135), 11.75, device=q.device, dtype=v.dtype)
+    out = storage[..., :128]
+
+    def run():
+        result, updated = flag_gems.fused_recurrent_kda_decode(
+            q, k, v, gate, beta, state, slots, cu_seqlens=cu, out=out
+        )
+        assert result.data_ptr() == out.data_ptr()
+        assert updated.data_ptr() == state.data_ptr()
+
+    for _ in range(3):
+        run()
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):
+        run()
+    for empty in ((0, 48, 95), (1, 47, 94), (0, 48, 95)):
+        lengths = torch.ones(96, dtype=metadata_dtype)
+        lengths[list(empty)] = 0
+        offsets = torch.cat((torch.zeros(1, dtype=metadata_dtype), lengths.cumsum(0)))
+        indices = torch.arange(1, 97, dtype=metadata_dtype)
+        # Empty sequences have readable metadata but must never dereference
+        # these deliberately out-of-cache state slots.
+        indices[list(empty)] = initial.shape[0] + 1024
+        active = torch.nonzero(lengths).flatten()
+        indices[active[0]] = 0
+        indices[active[1]] = -7
+        cu.copy_(offsets)
+        slots.copy_(indices)
+        q.copy_(torch.randn_like(q))
+        v.copy_(torch.randn_like(v))
+        state.copy_(initial)
+        expected_out, expected_state = _reference_decode(
+            q[:, :93].cpu(),
+            k[:, :93].cpu(),
+            v[:, :93].cpu(),
+            gate[:, :93].cpu(),
+            beta[:, :93].cpu(),
+            initial.cpu(),
+            indices[active],
+            128**-0.5,
+        )
+        graph.replay()
+        assert torch.isfinite(out).all()
+        assert torch.isfinite(state).all()
+        _assert_accuracy(
+            out[:, :93].cpu(), expected_out, max_error=3.2e-2, relative_rmse=5e-3
+        )
+        _assert_accuracy(
+            state.cpu(), expected_state, max_error=1e-4, relative_rmse=1e-4
+        )
+        assert torch.count_nonzero(out[:, :2]).item() == 0
+        assert torch.count_nonzero(out[:, 93:]).item() == 0
+        assert torch.equal(state[0], initial[0])
+        assert torch.all(storage[..., 128:] == 11.75)

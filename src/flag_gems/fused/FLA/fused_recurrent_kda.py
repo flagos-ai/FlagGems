@@ -86,6 +86,10 @@ def fused_recurrent_kda_decode_kernel(
     o_k = tl.arange(0, BK)
     mask_k = o_k < K
 
+    # Host validation guarantees an index for every sequence, including empty
+    # ones. Overlap this metadata read with cu reads, but defer all state access.
+    state_idx = tl.load(state_indices + i_n * stride_state_indices).to(tl.int64)
+
     if USE_CU_SEQLENS:
         bos = tl.load(cu_seqlens + i_n * stride_cu_seqlens).to(tl.int64)
         eos = tl.load(cu_seqlens + (i_n + 1) * stride_cu_seqlens).to(tl.int64)
@@ -109,8 +113,6 @@ def fused_recurrent_kda_decode_kernel(
         i_token = bos
     else:
         i_token = i_n
-
-    state_idx = tl.load(state_indices + i_n * stride_state_indices).to(tl.int64)
 
     # Serving reserves slot zero for graph padding. It must never be read or
     # written, and the corresponding output is defined as zero.
