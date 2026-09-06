@@ -822,6 +822,146 @@ def test_flash_mla_sparse_grouped_metadata_graph_and_padded_output(have_attn_sin
 
 
 @pytest.mark.flash_mla_sparse_fwd
+@pytest.mark.parametrize("request_lengths", [(5, 8, 16), (515, 516)])
+@pytest.mark.parametrize("have_attn_sink", [False, True])
+def test_flash_mla_sparse_quad_graph_switches_work_item_dispatch(
+    request_lengths, have_attn_sink
+):
+    from flag_gems.fused.deepseek_v4_attention_combine_topk_swa_indices import (
+        combine_topk_swa_indices,
+    )
+
+    torch.manual_seed(1847)
+    tokens = sum(request_lengths)
+    starts = [0]
+    for length in request_lengths:
+        starts.append(starts[-1] + length)
+    topk_cpu = torch.full((tokens, 2048), -1, dtype=torch.int32)
+    request_ids = torch.empty(tokens, dtype=torch.int32)
+    for request, (start, end) in enumerate(zip(starts, starts[1:])):
+        request_ids[start:end] = request
+        for row in range(start, end):
+            length = (4096 + row - start + 1) // 4
+            topk_cpu[row, :length] = torch.arange(length, dtype=torch.int32)
+    source = topk_cpu.to("cuda")
+    args = (
+        source,
+        torch.tensor(starts, dtype=torch.int32, device="cuda"),
+        torch.tensor(
+            [4096 + length for length in request_lengths],
+            dtype=torch.int32,
+            device="cuda",
+        ),
+        torch.tensor(
+            [127 + length for length in request_lengths],
+            dtype=torch.int32,
+            device="cuda",
+        ),
+        128,
+        4,
+        2048,
+        4096,
+        2048,
+    )
+    q = torch.randn((tokens, 4, 512), device="cuda", dtype=torch.bfloat16) * 0.1
+    kv = (
+        torch.randn((len(request_lengths) * 4096, 1, 512), device="cuda", dtype=q.dtype)
+        * 0.1
+    )
+    sink = _pair_metadata_sink(have_attn_sink)
+    storage = torch.full((tokens, 64, 512), 11.75, device="cuda", dtype=q.dtype)
+    reference_storage = torch.full_like(storage, 11.75)
+    out, reference_out = storage[:, :4], reference_storage[:, :4]
+    assert out.stride() == (32768, 512, 1)
+    eligible = torch.tensor(
+        [
+            row + 3 < tokens and request_ids[row] == request_ids[row + 3]
+            for row in range(0, tokens, 4)
+        ],
+        dtype=torch.bool,
+    )
+    # Request boundaries and the odd tail must never become certified quads.
+    assert eligible.any() and (~eligible).any()
+
+    def run():
+        fields = combine_topk_swa_indices(
+            *args, return_pair_metadata=True, return_quad_metadata=True
+        )
+        indices, lengths, pairs, quads = fields
+        flag_gems.flash_mla_sparse_fwd(
+            q,
+            kv,
+            indices[:, None],
+            512**-0.5,
+            attn_sink=sink,
+            topk_length=lengths,
+            out=out,
+            return_stats=False,
+            pair_metadata=pairs,
+            pair_window_size=128,
+            quad_metadata=quads,
+            max_kv_length=1408,
+        )
+        return fields
+
+    for _ in range(3):
+        run()
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):
+        retained = [run() for _ in range(4)]
+    pointers = [tensor.data_ptr() for fields in retained for tensor in fields]
+    assert len(pointers) == len(set(pointers))
+    for mode in ("shared", "fallback", "mixed", "shared"):
+        changed = topk_cpu.clone()
+        expected_quads = eligible.clone()
+        for row in range(tokens):
+            # Swapping two valid candidates keeps every row's legal set intact.
+            # Mixed groups retain both pair prefixes while breaking only their
+            # boundary, exercising pair work-items as well as single fallback.
+            swap = (mode == "fallback" and row % 2 == 1) or (
+                mode == "mixed" and (row // 4) % 2 == 1 and row % 4 >= 2
+            )
+            if swap:
+                changed[row, 0], changed[row, 1] = (
+                    topk_cpu[row, 1],
+                    topk_cpu[row, 0],
+                )
+        if mode == "fallback":
+            expected_quads.zero_()
+        elif mode == "mixed":
+            expected_quads[1::2] = False
+        source.copy_(changed)
+        q.copy_(torch.randn_like(q) * 0.1)
+        kv.copy_(torch.randn_like(kv) * 0.1)
+        graph.replay()
+        expected = combine_topk_swa_indices(*args, return_pair_metadata=True)
+        for fields in retained:
+            for actual, gold in zip(fields[:3], expected):
+                torch.testing.assert_close(actual, gold, atol=0, rtol=0)
+            assert torch.equal(fields[3].cpu().bool(), expected_quads)
+        indices, lengths, pairs = expected
+        flag_gems.flash_mla_sparse_fwd(
+            q,
+            kv,
+            indices[:, None],
+            512**-0.5,
+            attn_sink=sink,
+            topk_length=lengths,
+            out=reference_out,
+            return_stats=False,
+            pair_metadata=pairs,
+            pair_window_size=128,
+        )
+        torch.testing.assert_close(
+            out, reference_out, atol=8e-4, rtol=3.01 / 128, equal_nan=False
+        )
+        assert torch.isfinite(out).all()
+        assert torch.all(storage[:, 4:] == 11.75)
+        assert torch.all(reference_storage[:, 4:] == 11.75)
+        assert torch.equal(source.cpu(), changed)
+
+
+@pytest.mark.flash_mla_sparse_fwd
 def test_flash_mla_sparse_quad_metadata_parameter_validation():
     q, kv, args, (indices, lengths, pairs, quads) = _make_quad_metadata_case()
     kwargs = dict(

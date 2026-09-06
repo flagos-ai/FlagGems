@@ -772,38 +772,36 @@ def triton_flash_mla_sparse_fwd_hq4_quad_fallback(
     SINK: tl.constexpr,
     BK: tl.constexpr,
 ):
-    group = tl.program_id(0)
+    work_id = tl.program_id(0)
+    group = work_id // 4
     enabled = tl.load(quad_metadata + group)
     if (enabled != 1) | (group * 4 + 3 >= SQ):
-        for slot in range(4):
-            work_id = group * 4 + slot
-            if work_id < SQ:
-                triton_flash_mla_sparse_fwd_hq4_pair_work_items(
-                    q,
-                    kv,
-                    indices,
-                    sink,
-                    lens,
-                    pairs,
-                    out,
-                    stride_qh,
-                    stride_qm,
-                    stride_kv,
-                    stride_i,
-                    stride_oh,
-                    stride_om,
-                    SQ,
-                    SKV,
-                    SCALE,
-                    TOPK,
-                    W,
-                    SINK,
-                    not SINK,
-                    SINK,
-                    BK,
-                    4,
-                    work_id_override=work_id,
-                )
+        triton_flash_mla_sparse_fwd_hq4_pair_work_items(
+            q,
+            kv,
+            indices,
+            sink,
+            lens,
+            pairs,
+            out,
+            stride_qh,
+            stride_qm,
+            stride_kv,
+            stride_i,
+            stride_oh,
+            stride_om,
+            SQ,
+            SKV,
+            SCALE,
+            TOPK,
+            W,
+            SINK,
+            not SINK,
+            SINK,
+            BK,
+            4,
+            work_id_override=work_id,
+        )
 
 
 @triton.autotune(
@@ -1188,7 +1186,7 @@ def flash_mla_sparse_fwd(
                 num_warps=4,
                 num_stages=3,
             )
-            triton_flash_mla_sparse_fwd_hq4_quad_fallback[(triton.cdiv(SQ, 4),)](
+            triton_flash_mla_sparse_fwd_hq4_quad_fallback[(SQ,)](
                 *common,
                 TOPK,
                 pair_window_size,
