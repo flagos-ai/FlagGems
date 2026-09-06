@@ -35,6 +35,20 @@ def _reject_tle(*args, **kwargs):
     raise AssertionError("TLE dispatch must not be selected")
 
 
+@pytest.mark.fused_experts_impl
+@pytest.mark.parametrize("numel", [0, 1, 4095, 4096, 4097])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32])
+def test_fused_moe_triton_fill_contiguous_prefix(numel, dtype):
+    module = importlib.import_module("flag_gems.fused.fused_moe")
+    backing = torch.full((numel + 18,), 7, device=flag_gems.device, dtype=dtype)
+    output = backing[7 : 7 + numel]
+    with _AllocationAndViewsOnly():
+        module._zero_fused_moe_buffer(output)
+    assert torch.count_nonzero(output).item() == 0
+    assert (backing[:7] == 7).all()
+    assert (backing[7 + numel :] == 7).all()
+
+
 @pytest.mark.moe_align_block_size
 @pytest.mark.parametrize("num_experts", [32, 288])
 @pytest.mark.parametrize("map_dtype", [torch.int32, torch.int64])
@@ -187,17 +201,16 @@ def test_fused_moe_direct_sum_uses_triton_fill(monkeypatch):
     align = importlib.import_module("flag_gems.fused.moe_align_block_size")
     monkeypatch.setattr(align, "HAS_TLE", True)
     monkeypatch.setattr(align, "_pick_tle_atomic_fused_launch_params", _reject_tle)
-    fill = module.fill_scalar_
+    fill = module._zero_fused_moe_buffer
     calls = 0
 
-    def checked_fill(tensor, value):
+    def checked_fill(tensor):
         nonlocal calls
         calls += 1
         assert tensor.shape == (4096, 1, 128)
-        assert value == 0
-        return fill(tensor, value)
+        return fill(tensor)
 
-    monkeypatch.setattr(module, "fill_scalar_", checked_fill)
+    monkeypatch.setattr(module, "_zero_fused_moe_buffer", checked_fill)
     torch.manual_seed(20260906)
     kw = {"device": flag_gems.device, "dtype": torch.bfloat16}
     hidden = torch.randn((4096, 128), **kw)

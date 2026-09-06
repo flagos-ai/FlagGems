@@ -1780,7 +1780,9 @@ def test_fused_moe_ep_decode_serving_shapes(monkeypatch, num_tokens, intermediat
     def reject_generic_initialization(*args, **kwargs):
         raise AssertionError("Decode must not add generic initialization launches")
 
-    monkeypatch.setattr(fused_moe, "fill_scalar_", reject_generic_initialization)
+    monkeypatch.setattr(
+        fused_moe, "_zero_fused_moe_buffer", reject_generic_initialization
+    )
     monkeypatch.setattr(align, "_moe_align_zero_counts_kernel", None)
     monkeypatch.setattr(align, "_moe_align_remap_experts_kernel", None)
     torch.manual_seed(20260906 + num_tokens)

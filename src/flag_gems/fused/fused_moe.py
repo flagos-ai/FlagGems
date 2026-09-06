@@ -30,7 +30,6 @@ from flag_gems.fused.moe_align_block_size import (
     moe_align_block_size_ep_route_block,
 )
 from flag_gems.fused.moe_sum import moe_sum, moe_sum_ep
-from flag_gems.ops.fill import fill_scalar_
 from flag_gems.runtime import device, torch_device_fn
 from flag_gems.utils import pointwise_dynamic
 
@@ -2541,6 +2540,26 @@ def dispatch_fused_moe_kernel(
         )
 
 
+@triton.jit
+def _zero_fused_moe_buffer_kernel(
+    output_ptr,
+    NUMEL: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    offsets = tl.program_id(0).to(tl.int64) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    tl.store(output_ptr + offsets, 0, offsets < NUMEL)
+
+
+def _zero_fused_moe_buffer(output: torch.Tensor) -> None:
+    # Workspaces and output slices are contiguous by the public API contract.
+    # Avoid generic pointwise fill's tiny Hopper tiles for large MoE buffers.
+    assert output.is_contiguous()
+    if output.numel():
+        _zero_fused_moe_buffer_kernel[(triton.cdiv(output.numel(), 4096),)](
+            output, output.numel(), BLOCK_SIZE=4096, num_warps=4
+        )
+
+
 def _prepare_fused_moe_workspace(
     workspace: torch.Tensor | None,
     *,
@@ -3162,7 +3181,7 @@ def fused_experts_impl(
             tokens_in_chunk,
         )
         if expert_map is not None and not use_ep_sum:
-            fill_scalar_(intermediate_cache3, 0)
+            _zero_fused_moe_buffer(intermediate_cache3)
 
         # 5. Select the GEMM2 output buffer/reduction path
         use_direct_sum = (
@@ -3180,7 +3199,7 @@ def fused_experts_impl(
             gemm2_output = out_hidden_states[begin_chunk_idx:end_chunk_idx].view(
                 tokens_in_chunk, 1, K
             )
-            fill_scalar_(gemm2_output, 0)
+            _zero_fused_moe_buffer(gemm2_output)
         else:
             gemm2_output = intermediate_cache3
 
