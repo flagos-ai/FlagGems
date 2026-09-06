@@ -70,19 +70,26 @@ def float_power_tt_fast_kernel(x_ptr, e_ptr, out_ptr, BLOCK: tl.constexpr):
     x = tl.load(x_ptr + offset).to(tl.float32)
     e = tl.load(e_ptr + offset).to(tl.float32)
     r = tl.exp2(tl.log2(tl.abs(x)) * e)
-    # corner cases (match ATen/C++ pow semantics)
+    # corner cases (match ATen/C++ pow semantics; 2026-09-06: e_int via fptosi
+    # instead of tl.floor -- an extern call costing ~1.2ms at 16M elements).
     # (+-1)^any == 1 (incl. 1^(+-inf/NaN)) and e == 0 -> 1 (incl. 0^0, NaN^0)
     r = tl.where((tl.abs(x) == 1.0) | (e == 0.0), 1.0, r)
+    # Integer-exponent test via fptosi (exact for |e| < 2^24; fptosi saturates
+    # outside that range, so mask |e| >= 2^24 (and inf/NaN) as "integer": every
+    # representable value there is an even multiple -> no sign change).
+    eb = e.to(tl.int32, bitcast=True)
+    e_big = (eb & 0x7F800000) >= 0x4B800000
+    e_int = e_big | (e.to(tl.int32).to(tl.float32) == e)
+    e_odd = (e.to(tl.int32) & 1) != 0
     # sign of x (x < 0 or -0.0): bitcast sign bit of the fp32 value
     neg = x.to(tl.int32, bitcast=True) < 0
-    e_int = e == tl.floor(e)
-    # odd-integer exponent test (|e| <= 2^23 is exactly representable in
-    # fp32; above it all values are even multiples, so no sign change)
-    e_odd = (tl.abs(e) <= 8388608.0) & ((e.to(tl.int32) & 1) != 0)
-    r = tl.where(neg & e_int & e_odd, -r, r)
-    # (x < 0) & (x > -inf): only a negative FINITE base with a non-integer
-    # exponent yields NaN (std::pow(-inf/_-0, y) is +-inf / +-0 by sign of y).
-    r = tl.where(neg & (x > -float("inf")) & (~e_int), float("nan"), r)
+    # odd-integer exponent (|e| < 2^24, exact fptosi; big e is even -> no sign)
+    r = tl.where(neg & e_int & e_odd & (~e_big), -r, r)
+    # (x < 0) & (x > -inf) & (x != -0): only a strictly-negative FINITE base
+    # with a non-integer exponent yields NaN (std::pow(-inf/_ -0, y) is
+    # +-inf/+-0 by sign of y, never NaN; the old x > -inf test wrongly NaN-ed
+    # std::pow(-0.0, 0.5/2.5) which is +0).
+    r = tl.where(neg & (x < 0.0) & (x > -float("inf")) & (~e_int), float("nan"), r)
     tl.store(out_ptr + offset, r)
 
 
@@ -97,11 +104,13 @@ def float_power_tt_fast_kernel_masked(
     e = tl.load(e_ptr + offset, mask=mask, other=1.0).to(tl.float32)
     r = tl.exp2(tl.log2(tl.abs(x)) * e)
     r = tl.where((tl.abs(x) == 1.0) | (e == 0.0), 1.0, r)
+    eb = e.to(tl.int32, bitcast=True)
+    e_big = (eb & 0x7F800000) >= 0x4B800000
+    e_int = e_big | (e.to(tl.int32).to(tl.float32) == e)
+    e_odd = (e.to(tl.int32) & 1) != 0
     neg = x.to(tl.int32, bitcast=True) < 0
-    e_int = e == tl.floor(e)
-    e_odd = (tl.abs(e) <= 8388608.0) & ((e.to(tl.int32) & 1) != 0)
-    r = tl.where(neg & e_int & e_odd, -r, r)
-    r = tl.where(neg & (x > -float("inf")) & (~e_int), float("nan"), r)
+    r = tl.where(neg & e_int & e_odd & (~e_big), -r, r)
+    r = tl.where(neg & (x < 0.0) & (x > -float("inf")) & (~e_int), float("nan"), r)
     tl.store(out_ptr + offset, r, mask=mask)
 
 

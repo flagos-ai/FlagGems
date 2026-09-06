@@ -224,6 +224,16 @@ from .fill import (
     fill_tensor_out,
 )
 from .flip import flip
+from .float_power_ import (
+    float_power_scalar_tensor,
+    float_power_scalar_tensor_out,
+    float_power_tensor_scalar,
+    float_power_tensor_scalar_,
+    float_power_tensor_scalar_out,
+    float_power_tensor_tensor,
+    float_power_tensor_tensor_,
+    float_power_tensor_tensor_out,
+)
 from .floor import floor, floor_, floor_out
 from .fmax import fmax, fmax_out
 from .fmin import fmin, fmin_out
