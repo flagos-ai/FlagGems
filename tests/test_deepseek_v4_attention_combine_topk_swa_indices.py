@@ -770,3 +770,69 @@ def test_combine_topk_swa_indices_quad_cannot_use_suppressed_pairs(assume_ordere
     assert quads.tolist() == ([0, 0] if assume_ordered else [1, 1])
     if assume_ordered:
         assert torch.count_nonzero(pairs) == 0
+
+
+@pytest.mark.combine_topk_swa_indices
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="requires CUDA")
+@pytest.mark.parametrize("request_lengths", [[1024], [5, 0, 9, 1013], [1023]])
+@pytest.mark.parametrize("assume_ordered", [False, True])
+@pytest.mark.parametrize("boundary", [1, 2, 3])
+def test_combine_topk_swa_indices_grouped_exact_metadata(
+    request_lengths, assume_ordered, boundary
+):
+    """Cover grouped dispatch, tails, request boundaries and its generic fallback."""
+    torch.manual_seed(711)
+    tokens = sum(request_lengths)
+    # Unsorted shared prefixes ensure that the strict path cannot assume arange.
+    source = torch.randperm(2048, dtype=torch.int32).repeat(tokens, 1)
+    source[64 + boundary : 68, 0] = -1
+    offsets = [0]
+    for length in request_lengths:
+        offsets.append(offsets[-1] + length)
+    contexts = [4096] if len(request_lengths) == 1 else [0, 0, 127, 8192]
+    args = (
+        source.cuda(),
+        torch.tensor([x + 7 for x in offsets], dtype=torch.int32, device="cuda"),
+        torch.tensor(
+            [x + y for x, y in zip(request_lengths, contexts)],
+            dtype=torch.int32,
+            device="cuda",
+        ),
+        torch.tensor(
+            [x + min(y, 127) for x, y in zip(request_lengths, contexts)],
+            dtype=torch.int32,
+            device="cuda",
+        ),
+        128,
+        4,
+        2048,
+        34944,
+        2048,
+    )
+    actual = combine_topk_swa_indices(
+        *args,
+        return_pair_metadata=True,
+        return_quad_metadata=True,
+        assume_ordered_topk=assume_ordered,
+    )
+    expected = _reference_combine_with_pair_metadata(
+        *args, assume_ordered_topk=assume_ordered
+    )
+    for value, reference in zip(actual[:3], expected):
+        torch.testing.assert_close(value.cpu(), reference, atol=0, rtol=0)
+    quad_reference = torch.zeros((tokens + 3) // 4, dtype=torch.int32)
+    for request, context in enumerate(contexts):
+        start, end = offsets[request : request + 2]
+        for row in range((start + 3) // 4 * 4, end - 3, 4):
+            pos = context + row - start
+            if assume_ordered and (pos + 4) // 4 > 2048:
+                continue
+            matches = True
+            for adjacent in range(3):
+                prefix_length = min((pos + adjacent + 1) // 4, 2048)
+                matches &= torch.equal(
+                    source[row + adjacent, :prefix_length],
+                    source[row + adjacent + 1, :prefix_length],
+                )
+            quad_reference[row // 4] = int(matches)
+    torch.testing.assert_close(actual[3].cpu(), quad_reference, atol=0, rtol=0)

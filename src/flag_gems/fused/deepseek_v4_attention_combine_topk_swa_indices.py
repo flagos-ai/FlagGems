@@ -264,6 +264,206 @@ def _combine_topk_swa_indices_kernel(
         tl.store(lens_ptr + token_idx, topk_len + swa_len)
 
 
+@triton.jit
+def _store_combined_quad_row(
+    combined_ptr,
+    lens_ptr,
+    row,
+    owned,
+    values,
+    topk_len,
+    swa_len,
+    pos,
+    request_offset,
+    gather_start,
+    N,
+    TOP_K: tl.constexpr,
+    WINDOW_SIZE: tl.constexpr,
+):
+    # Fixed disjoint spans cover compressed IDs, SWA IDs and all -1 padding.
+    # TOP_K is also the source row width; the final window span cannot contain
+    # compressed IDs. This avoids a separate wide, masked padding store.
+    width: tl.constexpr = TOP_K + WINDOW_SIZE
+    cols = tl.arange(0, TOP_K)
+    valid_len = topk_len + swa_len
+    sliding = request_offset + N + cols - topk_len + pos - swa_len + 1 - gather_start
+    first = tl.where(
+        cols < topk_len,
+        values + request_offset,
+        tl.where(cols < valid_len, sliding, -1),
+    )
+    tl.store(combined_ptr + row * width + cols, first, mask=owned)
+    end_cols = TOP_K + tl.arange(0, WINDOW_SIZE)
+    last = tl.where(
+        end_cols < valid_len,
+        request_offset + N + end_cols - topk_len + pos - swa_len + 1 - gather_start,
+        -1,
+    )
+    tl.store(combined_ptr + row * width + end_cols, last, mask=owned)
+    tl.store(lens_ptr + row, valid_len, mask=owned)
+
+
+@triton.jit
+def _encode_quad_pair(match, l0, l1, s0, s1, WINDOW_SIZE: tl.constexpr):
+    grows = l1 == l0 + 1
+    prefix = match & (l0 + s0 > 0) & (s0 < WINDOW_SIZE)
+    shifted = match & (s0 == WINDOW_SIZE) & (s1 == WINDOW_SIZE)
+    mode = tl.where(
+        prefix, tl.where(grows, 3, 1), tl.where(shifted, tl.where(grows, 4, 2), 0)
+    )
+    return tl.where(mode != 0, (l0 << 3) | mode, 0)
+
+
+@triton.jit
+def _combine_topk_swa_indices_quad_kernel(
+    topk_ptr,
+    query_start_loc_ptr,
+    seq_lens_ptr,
+    gather_lens_ptr,
+    combined_ptr,
+    lens_ptr,
+    pair_metadata_ptr,
+    quad_metadata_ptr,
+    M,
+    N,
+    TOP_K: tl.constexpr,
+    WINDOW_SIZE: tl.constexpr,
+):
+    # Specialization for compression ratio 4. Reuse four source rows for both
+    # pair descriptors and all three strict quad-prefix comparisons.
+    req = tl.program_id(0)
+    worker = tl.program_id(1)
+    workers = tl.num_programs(1)
+    base = tl.load(query_start_loc_ptr)
+    qs = tl.load(query_start_loc_ptr + req) - base
+    qe = tl.load(query_start_loc_ptr + req + 1) - base
+    seq = tl.load(seq_lens_ptr + req)
+    gathered = tl.load(gather_lens_ptr + req)
+    start_pos = seq - (qe - qs)
+    gather_start = seq - gathered
+    offsets = tl.arange(0, TOP_K)
+    for group in range(qs // 4 + worker, tl.cdiv(qe, 4), workers):
+        r0 = group * 4
+        r1 = r0 + 1
+        r2 = r0 + 2
+        r3 = r0 + 3
+        # A group may cross a request boundary. Only the owning request writes
+        # each row, pair and quad; descriptors never certify cross-request reuse.
+        ok0 = (r0 >= qs) & (r0 < qe)
+        ok1 = (r1 >= qs) & (r1 < qe)
+        ok2 = (r2 >= qs) & (r2 < qe)
+        ok3 = (r3 >= qs) & (r3 < qe)
+        p0 = start_pos + r0 - qs
+        p1 = p0 + 1
+        p2 = p0 + 2
+        p3 = p0 + 3
+        l0 = tl.minimum((p0 + 1) // 4, TOP_K)
+        l1 = tl.minimum((p1 + 1) // 4, TOP_K)
+        l2 = tl.minimum((p2 + 1) // 4, TOP_K)
+        l3 = tl.minimum((p3 + 1) // 4, TOP_K)
+        s0 = tl.minimum(p0 + 1, WINDOW_SIZE)
+        s1 = tl.minimum(p1 + 1, WINDOW_SIZE)
+        s2 = tl.minimum(p2 + 1, WINDOW_SIZE)
+        s3 = tl.minimum(p3 + 1, WINDOW_SIZE)
+        v0 = tl.load(
+            topk_ptr + r0 * TOP_K + offsets,
+            mask=ok0 & (offsets < l0),
+            other=-1,
+        )
+        v1 = tl.load(
+            topk_ptr + r1 * TOP_K + offsets,
+            mask=ok1 & (offsets < l1),
+            other=-1,
+        )
+        v2 = tl.load(
+            topk_ptr + r2 * TOP_K + offsets,
+            mask=ok2 & (offsets < l2),
+            other=-1,
+        )
+        v3 = tl.load(
+            topk_ptr + r3 * TOP_K + offsets,
+            mask=ok3 & (offsets < l3),
+            other=-1,
+        )
+        eq01 = tl.sum(((v0 != v1) & (offsets < l0)).to(tl.int32), 0) == 0
+        eq12 = tl.sum(((v1 != v2) & (offsets < l1)).to(tl.int32), 0) == 0
+        eq23 = tl.sum(((v2 != v3) & (offsets < l2)).to(tl.int32), 0) == 0
+        match01 = ok0 & ok1 & ((l1 == l0) | (l1 == l0 + 1)) & eq01
+        match23 = ok2 & ok3 & ((l3 == l2) | (l3 == l2 + 1)) & eq23
+        tl.store(
+            pair_metadata_ptr + group * 2,
+            _encode_quad_pair(match01, l0, l1, s0, s1, WINDOW_SIZE),
+            mask=ok0,
+        )
+        tl.store(
+            pair_metadata_ptr + group * 2 + 1,
+            _encode_quad_pair(match23, l2, l3, s2, s3, WINDOW_SIZE),
+            mask=ok2,
+        )
+        quad = ok0 & ok1 & ok2 & ok3 & (s0 > 0) & eq01 & eq12 & eq23
+        tl.store(quad_metadata_ptr + group, quad.to(tl.int32), mask=ok0)
+        _store_combined_quad_row(
+            combined_ptr,
+            lens_ptr,
+            r0,
+            ok0,
+            v0,
+            l0,
+            s0,
+            p0,
+            req * M,
+            gather_start,
+            N,
+            TOP_K,
+            WINDOW_SIZE,
+        )
+        _store_combined_quad_row(
+            combined_ptr,
+            lens_ptr,
+            r1,
+            ok1,
+            v1,
+            l1,
+            s1,
+            p1,
+            req * M,
+            gather_start,
+            N,
+            TOP_K,
+            WINDOW_SIZE,
+        )
+        _store_combined_quad_row(
+            combined_ptr,
+            lens_ptr,
+            r2,
+            ok2,
+            v2,
+            l2,
+            s2,
+            p2,
+            req * M,
+            gather_start,
+            N,
+            TOP_K,
+            WINDOW_SIZE,
+        )
+        _store_combined_quad_row(
+            combined_ptr,
+            lens_ptr,
+            r3,
+            ok3,
+            v3,
+            l3,
+            s3,
+            p3,
+            req * M,
+            gather_start,
+            N,
+            TOP_K,
+            WINDOW_SIZE,
+        )
+
+
 def combine_topk_swa_indices(
     topk_indices: torch.Tensor,
     query_start_loc: torch.Tensor,
@@ -361,6 +561,30 @@ def combine_topk_swa_indices(
             return combined, lens, pair_metadata
         return combined, lens
     with torch_device_fn.device(topk_indices.device):
+        if (
+            return_quad_metadata
+            and not assume_ordered_topk
+            and compress_ratio == 4
+            and window_size == 128
+            and topk == topk_indices.shape[1] == 2048
+            and num_tokens >= 1024
+        ):
+            _combine_topk_swa_indices_quad_kernel[(num_reqs, 256)](
+                topk_indices,
+                query_start_loc,
+                seq_lens,
+                gather_lens,
+                combined,
+                lens,
+                pair_metadata,
+                quad_metadata,
+                M,
+                N,
+                TOP_K=topk,
+                WINDOW_SIZE=window_size,
+                num_warps=4,
+            )
+            return combined, lens, pair_metadata, quad_metadata
         # Quad comparisons increase each worker's live state. More workers
         # avoid serializing many rows behind each comparison in prefill.
         workers = (1024 if num_reqs == 1 else 512) if return_quad_metadata else 128

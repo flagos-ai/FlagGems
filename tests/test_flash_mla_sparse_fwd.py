@@ -736,6 +736,92 @@ def test_flash_mla_sparse_quad_cuda_graph_recomputes_metadata():
 
 
 @pytest.mark.flash_mla_sparse_fwd
+@pytest.mark.parametrize("have_attn_sink", [False, True])
+def test_flash_mla_sparse_grouped_metadata_graph_and_padded_output(have_attn_sink):
+    from flag_gems.fused.deepseek_v4_attention_combine_topk_swa_indices import (
+        combine_topk_swa_indices,
+    )
+
+    torch.manual_seed(712)
+    tokens = 1024
+    topk = torch.arange(2048, device="cuda", dtype=torch.int32).repeat(tokens, 1)
+    args = (
+        topk,
+        torch.tensor([0, tokens], device="cuda", dtype=torch.int32),
+        torch.tensor([4096 + tokens], device="cuda", dtype=torch.int32),
+        torch.tensor([127 + tokens], device="cuda", dtype=torch.int32),
+        128,
+        4,
+        2048,
+        4096,
+        2048,
+    )
+    q = torch.randn((tokens, 4, 512), device="cuda", dtype=torch.bfloat16) * 0.1
+    kv = torch.randn((4096, 1, 512), device="cuda", dtype=q.dtype) * 0.1
+    sink = _pair_metadata_sink(have_attn_sink)
+    storage = torch.full((tokens, 64, 512), 11.75, device="cuda", dtype=q.dtype)
+    reference_storage = torch.full_like(storage, 11.75)
+    out = storage[:, :4]
+    reference_out = reference_storage[:, :4]
+
+    def run():
+        metadata = combine_topk_swa_indices(
+            *args, return_pair_metadata=True, return_quad_metadata=True
+        )
+        indices, lengths, pairs, quads = metadata
+        flag_gems.flash_mla_sparse_fwd(
+            q,
+            kv,
+            indices[:, None],
+            512**-0.5,
+            attn_sink=sink,
+            topk_length=lengths,
+            out=out,
+            return_stats=False,
+            pair_metadata=pairs,
+            pair_window_size=128,
+            quad_metadata=quads,
+            max_kv_length=1408,
+        )
+        return metadata
+
+    for _ in range(3):
+        run()
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):
+        actual = run()
+    for changed in (False, True, False):
+        topk[18:20, 0] = 3 if changed else 0
+        q.copy_(torch.randn_like(q) * 0.1)
+        graph.replay()
+        # Pair-only dispatch retains the generic producer and consumer path.
+        expected = combine_topk_swa_indices(*args, return_pair_metadata=True)
+        for a, b in zip(actual[:3], expected):
+            torch.testing.assert_close(a, b, atol=0, rtol=0)
+        assert actual[3][4].item() == int(not changed)
+        assert actual[2][8].item() & 7 and actual[2][9].item() & 7
+        indices, lengths, pairs = expected
+        flag_gems.flash_mla_sparse_fwd(
+            q,
+            kv,
+            indices[:, None],
+            512**-0.5,
+            attn_sink=sink,
+            topk_length=lengths,
+            out=reference_out,
+            return_stats=False,
+            pair_metadata=pairs,
+            pair_window_size=128,
+        )
+        torch.testing.assert_close(
+            out, reference_out, atol=8e-4, rtol=3.01 / 128, equal_nan=False
+        )
+        assert torch.isfinite(out).all()
+        assert torch.all(storage[:, 4:] == 11.75)
+        assert torch.all(reference_storage[:, 4:] == 11.75)
+
+
+@pytest.mark.flash_mla_sparse_fwd
 def test_flash_mla_sparse_quad_metadata_parameter_validation():
     q, kv, args, (indices, lengths, pairs, quads) = _make_quad_metadata_case()
     kwargs = dict(
