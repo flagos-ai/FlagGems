@@ -269,7 +269,7 @@ def multi_batch_index_select_kernel(
 
         input_output_mask = (
             batch_mask[:, None, None]
-            and (index_mask[:, None] and c_mask[None, :])[None, :, :]
+            & (index_mask[:, None] & c_mask[None, :])[None, :, :]
         )
 
         index_cur = tl.load(index + index_offsets, mask=index_mask, other=0)

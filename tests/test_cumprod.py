@@ -56,6 +56,9 @@ else:
 
 DTYPES = FLOAT_DTYPES + INT_DTYPES
 CUMPROD_DTYPES = DTYPES + BOOL_DTYPES
+LOW_PRECISION_MULTITILE_DTYPES = [
+    dtype for dtype in (torch.float16, torch.bfloat16) if dtype in FLOAT_DTYPES
+]
 CUMPROD_DTYPE_CASES = [
     (torch.int8, torch.int32),
     (torch.uint8, torch.int64),
@@ -115,6 +118,19 @@ def test_cumprod_dtype(input_dtype, output_dtype):
     utils.gems_assert_close(res_out, ref_out, output_dtype, reduce_dim=17)
 
 
+@pytest.mark.cumprod
+@pytest.mark.parametrize("dtype", LOW_PRECISION_MULTITILE_DTYPES)
+def test_cumprod_low_precision_multitile(dtype):
+    inp = _make_input((2, 4097, 3), dtype)
+    ref_inp = _reference_input(inp)
+
+    ref_out = torch.cumprod(ref_inp, dim=1)
+    with flag_gems.use_gems():
+        res_out = torch.cumprod(inp, dim=1)
+
+    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=inp.shape[1])
+
+
 @pytest.mark.cumprod_
 @pytest.mark.parametrize("shape_dim", CUMPROD_SHAPE_DIMS)
 @pytest.mark.parametrize("dtype", DTYPES)
@@ -129,6 +145,33 @@ def test_cumprod_inplace(shape_dim, dtype):
 
     assert res_out.data_ptr() == inp.data_ptr()
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=shape[dim])
+
+
+@pytest.mark.cumprod_
+def test_cumprod_inplace_long_row_int16():
+    inp = _make_input((2, 65536), torch.int16)
+    ref_inp = _reference_input(inp)
+    ref_out = torch.cumprod(ref_inp, dim=1).to(inp.dtype)
+
+    with flag_gems.use_gems():
+        res_out = inp.cumprod_(1)
+
+    assert res_out.data_ptr() == inp.data_ptr()
+    utils.gems_assert_close(res_out, ref_out, inp.dtype, reduce_dim=inp.shape[1])
+
+
+@pytest.mark.cumprod_
+@pytest.mark.parametrize("dtype", LOW_PRECISION_MULTITILE_DTYPES)
+def test_cumprod_inplace_low_precision_multitile(dtype):
+    inp = _make_input((2, 4097, 3), dtype)
+    ref_inp = _reference_input(inp)
+    ref_out = torch.cumprod(ref_inp, dim=1).to(inp.dtype)
+
+    with flag_gems.use_gems():
+        res_out = inp.cumprod_(1)
+
+    assert res_out.data_ptr() == inp.data_ptr()
+    utils.gems_assert_close(res_out, ref_out, inp.dtype, reduce_dim=inp.shape[1])
 
 
 @pytest.mark.cumprod_

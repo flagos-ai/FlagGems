@@ -32,3 +32,23 @@ def test_special_i1e(shape, dtype, caplog):
             res_out = torch.special.i1e(inp)
     assert "GEMS SPECIAL_I1E" in caplog.text
     utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.special_i1e_out
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_special_i1e_out(shape, dtype, caplog):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp, True)
+
+    ref_out = torch.empty_like(ref_inp)
+    torch.ops.aten.special_i1e.out(ref_inp, out=ref_out)
+
+    out = torch.empty_like(inp)
+    with caplog.at_level("DEBUG", logger="flag_gems.ops.special_i1e"):
+        with flag_gems.use_gems():
+            res_out = torch.ops.aten.special_i1e.out(inp, out=out)
+
+    assert "GEMS SPECIAL_I1E_OUT" in caplog.text
+    assert res_out is out
+    utils.gems_assert_close(res_out, ref_out, dtype)

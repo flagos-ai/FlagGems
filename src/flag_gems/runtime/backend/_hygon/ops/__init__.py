@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from .adaptive_max_pool3d_backward import adaptive_max_pool3d_backward
+from .addr import addr
 from .any import any, any_dim, any_dims
 from .attention import (
     ScaleDotProductAttention,
@@ -51,13 +52,14 @@ from .fill import (
     fill_tensor_,
     fill_tensor_out,
 )
-from .gelu import gelu, gelu_
+from .gelu import gelu, gelu_, gelu_backward
 from .hadamard_transform import hadamard_transform
 from .index_add import index_add, index_add_
 from .index_copy_ import index_copy, index_copy_
 from .index_select_backward import index_select_backward
 from .isin import isin
 from .lcm import lcm, lcm_
+from .linalg_ldl_factor import ldl_factor
 from .linalg_matrix_norm import linalg_matrix_norm
 from .log_normal_ import log_normal_
 from .masked_scatter_backward import masked_scatter_backward
@@ -90,6 +92,13 @@ from .replication_pad2d_backward import (
     replication_pad2d_backward,
     replication_pad2d_backward_grad_input,
 )
+from .scatter import scatter, scatter_
+from .searchsorted import (
+    searchsorted,
+    searchsorted_out,
+    searchsorted_scalar,
+    searchsorted_scalar_out,
+)
 from .silu import silu, silu_, silu_backward
 from .softplus_backward import softplus_backward
 from .sort import sort, sort_stable
@@ -101,6 +110,8 @@ from .special_chebyshev_polynomial_w import (
 from .split_with_sizes_copy import split_with_sizes_copy
 from .tile import tile
 from .unique import _unique2
+from .unique_dim import unique_dim
+from .unsqueeze import unsqueeze, unsqueeze_
 from .upsample_nearest2d import upsample_nearest2d
 from .weight_norm import (
     weight_norm,
@@ -119,6 +130,7 @@ __all__ = [
     "conj_physical",
     "ScaleDotProductAttention",
     "SUPPORTED_FP8_DTYPE",
+    "addr",
     "any",
     "any_dim",
     "any_dims",
@@ -140,6 +152,7 @@ __all__ = [
     "floor_divide_",
     "gelu",
     "gelu_",
+    "gelu_backward",
     "hadamard_transform",
     "heur_block_n",
     "index_add",
@@ -148,6 +161,7 @@ __all__ = [
     "index_copy_",
     "index_select_backward",
     "isin",
+    "ldl_factor",
     "lcm",
     "lcm_",
     "linalg_matrix_norm",
@@ -185,6 +199,12 @@ __all__ = [
     "scaled_dot_product_attention",
     "scaled_dot_product_attention_backward",
     "scaled_dot_product_attention_forward",
+    "scatter",
+    "scatter_",
+    "searchsorted",
+    "searchsorted_out",
+    "searchsorted_scalar",
+    "searchsorted_scalar_out",
     "silu",
     "silu_",
     "silu_backward",
@@ -201,7 +221,10 @@ __all__ = [
     "true_divide_out",
     "trunc_divide",
     "trunc_divide_",
+    "unique_dim",
     "upsample_nearest2d",
+    "unsqueeze",
+    "unsqueeze_",
     "weight_norm",
     "weight_norm_except_dim",
     "weight_norm_except_dim_backward",

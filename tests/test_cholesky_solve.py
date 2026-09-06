@@ -141,7 +141,7 @@ def _make_cholesky_solve_broadcast_inputs(A_shape, rhs_shape, dtype, upper=False
 
 def _make_conditioned_inputs(shape, dtype):
     *batch_dims, n, nrhs = shape
-    build_on_cpu = _use_cpu_complex_path(dtype)
+    build_on_cpu = IS_ASCEND or _use_cpu_complex_path(dtype)
     setup_device = "cpu" if build_on_cpu else flag_gems.device
     is_single_precision = dtype in (torch.float32, torch.complex64)
     real_dtype = torch.float32 if is_single_precision else torch.float64
@@ -336,6 +336,9 @@ def test_cholesky_solve_small_gather_single_rhs(shape, dtype, upper):
 def test_cholesky_solve_ascend_batched_small_lower_single_rhs(batch_size):
     dtype = torch.float32
     A, factor, rhs = _make_cholesky_solve_inputs((batch_size, 16, 1), dtype)
+    # Explicitly create a non-contiguous lower-factor view. The layout returned
+    # by torch.linalg.cholesky is backend and version dependent.
+    factor = factor.mT.contiguous().mT
 
     assert not factor.is_contiguous()
     assert factor.mT.is_contiguous()
