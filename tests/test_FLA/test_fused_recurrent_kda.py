@@ -370,3 +370,72 @@ def test_fused_recurrent_kda_fwd_rejects_prefill_metadata():
             ssm_state_indices=state_indices,
             use_qk_l2norm_in_kernel=True,
         )
+
+
+@torch.inference_mode()
+def test_fused_recurrent_kda_wrapper_preserves_caller_output():
+    q, k, v, gate, beta, state, slots = _build_inputs(32)
+    expected, expected_state = _reference_decode(
+        q, k, v, gate, beta, state, slots, q.shape[-1] ** -0.5
+    )
+    out = torch.empty_like(v)
+    actual, updated = flag_gems.fused_recurrent_kda(
+        q, k, v, gate, beta, initial_state=state, ssm_state_indices=slots, out=out
+    )
+    assert actual is out and updated is state
+    _assert_accuracy(actual, expected, max_error=3.2e-2, relative_rmse=5e-3)
+    _assert_accuracy(state, expected_state, max_error=1e-4, relative_rmse=1e-4)
+
+
+def test_fused_recurrent_kda_wrapper_rejects_speculative_metadata():
+    q, k, v, gate, beta, state, slots = _build_inputs(2)
+    with pytest.raises(ValueError, match="Speculative decode"):
+        flag_gems.fused_recurrent_kda(
+            q,
+            k,
+            v,
+            gate,
+            beta,
+            initial_state=state,
+            ssm_state_indices=slots,
+            num_accepted_tokens=slots,
+        )
+
+
+@torch.inference_mode()
+def test_equal_sequence_count_does_not_override_device_offsets():
+    q, k, v, gate, beta, state, slots = _build_inputs(3)
+    # The middle sequence is empty while the last has two tokens. Merely
+    # comparing the shape would incorrectly update all three state slots.
+    cu = torch.tensor([0, 1, 1, 3], device=q.device, dtype=torch.int32)
+    initial = state.clone()
+    out = torch.full_like(v, 17.0)
+    flag_gems.fused_recurrent_kda_decode(
+        q, k, v, gate, beta, state, slots, cu_seqlens=cu, out=out
+    )
+    assert torch.equal(state[2:], initial[2:])
+    assert torch.equal(out[:, 1:], torch.full_like(out[:, 1:], 17.0))
+
+
+@torch.inference_mode()
+def test_graph_padding_with_a_middle_empty_sequence():
+    q, k, v, gate, beta, state, _ = _build_inputs(3)
+    cu = torch.tensor([0, 1, 1, 2], device=q.device, dtype=torch.int32)
+    slots = torch.tensor([1, 0, 2], device=q.device, dtype=torch.int32)
+    expected, expected_state = _reference_decode(
+        q[:, :2],
+        k[:, :2],
+        v[:, :2],
+        gate[:, :2],
+        beta[:, :2],
+        state,
+        torch.tensor([1, 2], device=q.device, dtype=torch.int32),
+        128**-0.5,
+    )
+    out = torch.full_like(v, 17.0)
+    actual, _ = flag_gems.fused_recurrent_kda_decode(
+        q, k, v, gate, beta, state, slots, cu_seqlens=cu, out=out
+    )
+    _assert_accuracy(actual[:, :2], expected, max_error=3.2e-2, relative_rmse=5e-3)
+    _assert_accuracy(state, expected_state, max_error=1e-4, relative_rmse=1e-4)
+    assert torch.count_nonzero(actual[:, 2:]).item() == 0

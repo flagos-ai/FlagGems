@@ -75,6 +75,7 @@ def fused_recurrent_kda_decode_kernel(
     HAS_BIAS: tl.constexpr,
     USE_LOWER_BOUND: tl.constexpr,
     USE_CU_SEQLENS: tl.constexpr,
+    TOKEN_COUNT: tl.constexpr = 0,
 ):
     """Update a V-first state cache for one token from every active sequence."""
     i_v_group, i_nh = tl.program_id(0), tl.program_id(1)
@@ -88,8 +89,17 @@ def fused_recurrent_kda_decode_kernel(
         bos = tl.load(cu_seqlens + i_n * stride_cu_seqlens).to(tl.int64)
         eos = tl.load(cu_seqlens + (i_n + 1) * stride_cu_seqlens).to(tl.int64)
         sequence_length = eos - bos
+        # A graph may reserve trailing rows in addition to packed output.
+        # Assign zeroing by the sequence program's index, independently of
+        # where empty sequences occur in the packed sequence metadata.
+        num_sequences = tl.num_programs(1) // HV
+        packed_tokens = tl.load(cu_seqlens + num_sequences * stride_cu_seqlens)
+        if i_n >= packed_tokens and i_n < TOKEN_COUNT:
+            for i_tile in tl.range(0, GROUP_V, loop_unroll_factor=1):
+                o_v = (i_v_group * GROUP_V + i_tile) * BV + tl.arange(0, BV)
+                p_o = o + i_n * stride_o_token + i_hv * stride_o_head + o_v
+                tl.store(p_o, 0.0, mask=o_v < V)
         if sequence_length == 0:
-            # Empty sequences are CUDA Graph padding and have no packed output.
             return
         if sequence_length != 1:
             # This kernel is deliberately limited to recurrent decode.  Avoid
@@ -402,9 +412,11 @@ def fused_recurrent_kda_decode(
             1,
             2,
         )
-    # The common path uses one token for every sequence. Its offsets are known
-    # from tensor shapes, so avoid two metadata loads and a dynamic branch.
-    use_cu_offsets = cu_seqlens is not None and num_sequences != q.shape[1]
+    # Equal sequence/token counts do not prove that each sequence has one
+    # token: a two-token sequence plus an empty sequence has the same shape.
+    # Honor explicit device metadata; callers with implicit one-token offsets
+    # can omit cu_seqlens to avoid these loads.
+    use_cu_offsets = cu_seqlens is not None
     grid = (triton.cdiv(V, BV * group_v), num_sequences * HV)
     fused_recurrent_kda_decode_kernel[grid](
         q=q,
@@ -455,6 +467,7 @@ def fused_recurrent_kda_decode(
         HAS_BIAS=dt_bias is not None,
         USE_LOWER_BOUND=lower_bound is not None,
         USE_CU_SEQLENS=use_cu_offsets,
+        TOKEN_COUNT=q.shape[1],
         num_warps=num_warps,
         num_stages=num_stages,
     )
@@ -474,6 +487,8 @@ def fused_recurrent_kda_fwd(
     ssm_state_indices: torch.Tensor | None = None,
     num_accepted_tokens: torch.Tensor | None = None,
     use_qk_l2norm_in_kernel: bool = False,
+    *,
+    out: torch.Tensor | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """vLLM-compatible entry for preprocessed one-token serving decode.
 
@@ -498,6 +513,7 @@ def fused_recurrent_kda_fwd(
         scale=scale,
         cu_seqlens=cu_seqlens,
         use_qk_l2norm_in_kernel=use_qk_l2norm_in_kernel,
+        out=out,
     )
 
 
@@ -537,5 +553,7 @@ def fused_recurrent_kda(
         inplace_final_state=inplace_final_state,
         cu_seqlens=cu_seqlens,
         ssm_state_indices=ssm_state_indices,
+        num_accepted_tokens=kwargs.get("num_accepted_tokens"),
         use_qk_l2norm_in_kernel=use_qk_l2norm_in_kernel,
+        out=kwargs.get("out"),
     )
