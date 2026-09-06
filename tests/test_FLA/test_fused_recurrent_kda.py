@@ -439,3 +439,90 @@ def test_graph_padding_with_a_middle_empty_sequence():
     _assert_accuracy(actual[:, :2], expected, max_error=3.2e-2, relative_rmse=5e-3)
     _assert_accuracy(state, expected_state, max_error=1e-4, relative_rmse=1e-4)
     assert torch.count_nonzero(actual[:, 2:]).item() == 0
+
+
+@pytest.mark.parametrize(
+    "N,expected_prefetch", [(64, False), (65, True), (96, True), (128, False)]
+)
+def test_fused_recurrent_kda_prefetch_dispatch(monkeypatch, N, expected_prefetch):
+    import importlib
+
+    module = importlib.import_module("flag_gems.fused.FLA.fused_recurrent_kda")
+    kernel = module.fused_recurrent_kda_decode_kernel
+    launches = []
+
+    class RecordingKernel:
+        def __getitem__(self, grid):
+            def launch(**kwargs):
+                launches.append(kwargs["PREFETCH_STATE"])
+                return kernel[grid](**kwargs)
+
+            return launch
+
+    monkeypatch.setattr(module, "fused_recurrent_kda_decode_kernel", RecordingKernel())
+    q, k, v, gate, beta, state, slots = _build_inputs(N)
+    flag_gems.fused_recurrent_kda_decode(q, k, v, gate, beta, state, slots)
+    assert launches == [expected_prefetch]
+
+
+@pytest.mark.parametrize("vector_beta", [False, True])
+@torch.inference_mode()
+def test_fused_recurrent_kda_prefetch_dynamic_metadata(vector_beta):
+    q, k, v, gate, beta, initial, slots = _build_inputs(96)
+    if vector_beta:
+        beta = torch.rand(1, 96, 4, 128, device=q.device)
+    # Exercise GQA sharing and vector beta on the prefetched state path.
+    q = q[:, :, :2].contiguous()
+    k = k[:, :, :2].contiguous()
+    state = initial.clone()
+    cu = torch.arange(97, device=q.device, dtype=torch.int32)
+    storage = torch.full((1, 96, 4, 135), 11.75, device=q.device, dtype=v.dtype)
+    out = storage[..., :128]
+
+    def run():
+        result, updated = flag_gems.fused_recurrent_kda_decode(
+            q, k, v, gate, beta, state, slots, cu_seqlens=cu, out=out
+        )
+        assert result.data_ptr() == out.data_ptr()
+        assert updated.data_ptr() == state.data_ptr()
+
+    for _ in range(3):
+        run()
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):
+        run()
+    for empty in ((15, 47), (1, 95), (31, 63)):
+        lengths = torch.ones(96, dtype=torch.int32)
+        lengths[list(empty)] = 0
+        offsets = torch.cat(
+            (torch.zeros(1, dtype=torch.int32), lengths.cumsum(0).int())
+        )
+        indices = torch.arange(1, 97, dtype=torch.int32)
+        indices[list(empty)] = 0
+        cu.copy_(offsets)
+        slots.copy_(indices)
+        q.copy_(torch.randn_like(q))
+        v.copy_(torch.randn_like(v))
+        state.copy_(initial)
+        expected_out, expected_state = _reference_decode(
+            q[:, :94].cpu(),
+            k[:, :94].cpu(),
+            v[:, :94].cpu(),
+            gate[:, :94].cpu(),
+            beta[:, :94].cpu(),
+            initial.cpu(),
+            indices[lengths.bool()],
+            128**-0.5,
+        )
+        graph.replay()
+        assert torch.isfinite(out).all()
+        assert torch.isfinite(state).all()
+        _assert_accuracy(
+            out[:, :94].cpu(), expected_out, max_error=3.2e-2, relative_rmse=5e-3
+        )
+        _assert_accuracy(
+            state.cpu(), expected_state, max_error=1e-4, relative_rmse=1e-4
+        )
+        assert torch.count_nonzero(out[:, 94:]).item() == 0
+        assert torch.equal(state[0], initial[0])
+        assert torch.all(storage[..., 128:] == 11.75)

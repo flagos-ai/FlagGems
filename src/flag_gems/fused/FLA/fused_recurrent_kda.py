@@ -76,6 +76,7 @@ def fused_recurrent_kda_decode_kernel(
     USE_LOWER_BOUND: tl.constexpr,
     USE_CU_SEQLENS: tl.constexpr,
     TOKEN_COUNT: tl.constexpr = 0,
+    PREFETCH_STATE: tl.constexpr = False,
 ):
     """Update a V-first state cache for one token from every active sequence."""
     i_v_group, i_nh = tl.program_id(0), tl.program_id(1)
@@ -120,6 +121,28 @@ def fused_recurrent_kda_decode_kernel(
             p_o = o + i_token * stride_o_token + i_hv * stride_o_head + o_v
             tl.store(p_o, tl.zeros([BV], dtype=tl.float32), mask=mask_v)
         return
+
+    # Keep two future state tiles in registers so global loads can overlap the
+    # serial per-tile updates. State rows are disjoint within this V group.
+    if PREFETCH_STATE:
+        first_v = i_v_group * GROUP_V * BV + tl.arange(0, BV)
+        first_ptr = (
+            state
+            + state_idx * stride_state_token
+            + i_hv * stride_state_head
+            + first_v[:, None] * stride_state_value
+            + o_k[None, :] * stride_state_key
+        )
+        pending_state = tl.load(
+            first_ptr,
+            mask=(first_v[:, None] < V) & mask_k[None, :],
+            other=0.0,
+        ).to(tl.float32)
+        pending_state_second = tl.load(
+            first_ptr + BV * stride_state_value,
+            mask=(GROUP_V > 1) & (first_v[:, None] + BV < V) & mask_k[None, :],
+            other=0.0,
+        ).to(tl.float32)
 
     p_q = q + i_token * stride_q_token + i_h * stride_q_head + o_k
     p_k = k + i_token * stride_k_token + i_h * stride_k_head + o_k
@@ -176,11 +199,22 @@ def fused_recurrent_kda_decode_kernel(
             + o_v[:, None] * stride_state_value
             + o_k[None, :] * stride_state_key
         )
-        b_state = tl.load(
-            p_state,
-            mask=mask_state,
-            other=0.0,
-        ).to(tl.float32)
+        if PREFETCH_STATE:
+            b_state = pending_state
+            next_v = o_v + 2 * BV
+            next_state = tl.load(
+                p_state + 2 * BV * stride_state_value,
+                mask=(i_tile + 2 < GROUP_V) & (next_v[:, None] < V) & mask_k[None, :],
+                other=0.0,
+            ).to(tl.float32)
+            pending_state = pending_state_second
+            pending_state_second = next_state
+        else:
+            b_state = tl.load(
+                p_state,
+                mask=mask_state,
+                other=0.0,
+            ).to(tl.float32)
         p_v = v + i_token * stride_v_token + i_hv * stride_v_head + o_v
         b_v = tl.load(p_v, mask=mask_v, other=0.0, eviction_policy="evict_first").to(
             tl.float32
@@ -468,6 +502,15 @@ def fused_recurrent_kda_decode(
         USE_LOWER_BOUND=lower_bound is not None,
         USE_CU_SEQLENS=use_cu_offsets,
         TOKEN_COUNT=q.shape[1],
+        # The extra live tiles help this batch range. Larger grids lose a
+        # resident wave to register pressure and retain the serial-load path.
+        PREFETCH_STATE=(
+            K == 128
+            and V == 128
+            and BV == 4
+            and group_v == 8
+            and num_sequences * HV <= 384
+        ),
         num_warps=num_warps,
         num_stages=num_stages,
     )
