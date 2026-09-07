@@ -47,3 +47,39 @@ def test_alias_copy_out(shape, dtype):
 
     assert res_out is out
     utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.alias_copy_out
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_alias_copy_out_non_contiguous(dtype):
+    # Non-contiguous input views must be copied correctly into the out tensor
+    # (issue #4897 regression coverage).
+    base = torch.randn(6, 8, dtype=dtype, device=flag_gems.device)
+    inp = base.t()  # [8, 6] transposed view, not contiguous
+    ref_inp = utils.to_reference(inp)
+    ref_out = torch.empty_like(ref_inp)
+    out = torch.empty_like(inp)
+
+    torch.ops.aten.alias_copy(ref_inp, out=ref_out)
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.alias_copy(inp, out=out)
+
+    assert res_out is out
+    utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.alias_copy_out
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_alias_copy_out_empty(dtype):
+    # Empty inputs must be handled without launching the kernel.
+    inp = torch.empty(0, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp)
+    ref_out = torch.empty_like(ref_inp)
+    out = torch.empty_like(inp)
+
+    torch.ops.aten.alias_copy(ref_inp, out=ref_out)
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.alias_copy(inp, out=out)
+
+    assert res_out is out
+    utils.gems_assert_equal(res_out, ref_out)
