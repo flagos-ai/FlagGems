@@ -52,18 +52,17 @@ jobs:
             quay.io/pypa/manylinux_2_28_x86_64)
           echo "CONTAINER=$container" >> $GITHUB_ENV
 
-      - name: Install build tools inside container
+      - name: Build wheels for all supported Python versions
         run: |
           docker exec -t $CONTAINER bash -c "
             set -e
-            /opt/python/cp38-cp38/bin/python -m pip install --upgrade pip setuptools wheel build
-          "
-
-      - name: Build wheel for Python 3.8
-        run: |
-          docker exec -t $CONTAINER bash -c "
-            set -e
-            /opt/python/cp38-cp38/bin/python -m build --wheel --outdir /wheelhouse
+            for py in cp310-cp310 cp311-cp311 cp312-cp312 cp313-cp313; do
+              if [ -d /opt/python/\$py ]; then
+                /opt/python/\$py/bin/python -m pip install --upgrade pip setuptools wheel build
+                /opt/python/\$py/bin/python -m build --wheel --outdir /wheelhouse
+              fi
+            done
+            ls -1 /wheelhouse
           "
 
       - name: Upload wheel as artifact

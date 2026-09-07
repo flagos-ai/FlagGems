@@ -98,6 +98,40 @@ jobs:
             };
             core.setOutput('matrix', JSON.stringify(matrix));
 
+  # Build/verify the package wheel on each supported Python version.
+  # Note: `import flag_gems` is intentionally not run here — it requires
+  # triton with an active GPU driver, which is not available on ubuntu-latest.
+  python-matrix:
+    name: python-matrix (${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10', '3.11', '3.12', '3.13']
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Build wheel
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip wheel . --no-deps -w wheelhouse
+
+      - name: Verify wheel
+        run: |
+          python - <<'EOF'
+          import glob, zipfile
+          wheel = glob.glob('wheelhouse/*.whl')[0]
+          names = zipfile.ZipFile(wheel).namelist()
+          assert any(n.startswith('flag_gems/') for n in names), names[:5]
+          print('OK:', wheel)
+          EOF
+
   build-doc:
     needs: preprocess
     if: (contains(needs.preprocess.outputs.labels, 'documentation') &&
