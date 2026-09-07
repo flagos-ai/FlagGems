@@ -1,4 +1,19 @@
 #!/usr/bin/env python3
+
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Command-line orchestration for offline FlagGems Pretune runs.
 
 The command validates a combined FlagTree/FlagGems operator YAML, selects
@@ -20,8 +35,9 @@ Environment variables:
   * ``FLAGGEMS_DB_URL`` is the inherited database URL when ``--database`` is
     absent; ``FLAGGEMS_CACHE_DIR`` chooses the default SQLite cache directory.
   * Backend visibility variables such as ``CUDA_VISIBLE_DEVICES``,
-    ``ROCR_VISIBLE_DEVICES``, and ``HIP_VISIBLE_DEVICES`` limit visible device
-    tokens and are captured in the run manifest.
+    ``ROCR_VISIBLE_DEVICES``, ``HIP_VISIBLE_DEVICES``, and
+    ``MACA_VISIBLE_DEVICES`` limit visible device tokens and are captured in
+    the run manifest.
   * ``USE_FLAGTUNE`` selects FlagGems' Default or FlagTune routing, while
     ``FLAGTUNE_INCLUDE`` selects individual operators for capability-based tuning.
   * ``USE_FLAGTUNE_COST_MODEL``, ``FLAGTUNE_DISABLE_OPS``,
@@ -110,6 +126,8 @@ STRATEGY_ENV_NAMES = (
     "CUDA_VISIBLE_DEVICES",
     "ROCR_VISIBLE_DEVICES",
     "HIP_VISIBLE_DEVICES",
+    "MACA_VISIBLE_DEVICES",
+    "MUSA_VISIBLE_DEVICES",
 )
 
 
