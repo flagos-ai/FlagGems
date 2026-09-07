@@ -12,9 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""GPU-worker execution adapters for FlagGems FlagTune workflows.
+"""Public quantized-linear APIs with backend-specific implementations."""
 
-Runtime code converts validated workload descriptions into tensors and calls
-trusted public operators.  Scheduling, process ownership, and SQLite merging
-are deliberately kept in :mod:`flag_gems.flagtune.collection`.
-"""
+from flag_gems.runtime.backend._arm.quantized_linear import (
+    pack_rhs_qsi4c128p,
+    w4a8_g128_linear,
+)
+
+__all__ = ["pack_rhs_qsi4c128p", "w4a8_g128_linear"]
