@@ -1,0 +1,82 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: cla-check
+
+on:
+  workflow_call:
+
+permissions:
+  statuses: read
+
+jobs:
+  check:
+    name: Check CLA status
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify the CLA has been signed
+        id: verify
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3  # v9.0.0
+        with:
+          script: |
+            // Only gate pull requests. Pushes to master and manual runs are trusted.
+            if (context.eventName !== 'pull_request') {
+              core.info('Not a pull request; skipping the CLA gate.');
+              return;
+            }
+
+            const sha = context.payload.pull_request && context.payload.pull_request.head.sha;
+            if (!sha) {
+              core.setFailed('Could not determine the pull request head commit.');
+              return;
+            }
+
+            // cla-assistant reports the signature state as a commit status named
+            // `license/cla` on the pull request head commit.
+            const CLA_STATUS_CONTEXT = 'license/cla';
+
+            // cla-assistant sets the status asynchronously after the PR is opened,
+            // so poll briefly to avoid a false "status not found" on the first run.
+            const deadline = Date.now() + 90_000;
+            let claStatus;
+            while (Date.now() < deadline) {
+              const { data: statuses } = await github.rest.repos.listCommitStatusesForRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: sha,
+              });
+              claStatus = statuses.find((s) => s.context === CLA_STATUS_CONTEXT);
+              if (claStatus) {
+                break;
+              }
+              await new Promise((resolve) => setTimeout(resolve, 5_000));
+            }
+
+            if (!claStatus) {
+              core.setFailed(
+                `No '${CLA_STATUS_CONTEXT}' status found for ${sha}. ` +
+                  'Please sign the CLA so that cla-assistant can set the status.'
+              );
+              return;
+            }
+
+            if (claStatus.state !== 'success') {
+              core.setFailed(
+                `The CLA is not signed (status '${claStatus.state}'). ` +
+                  'Please sign the CLA to run CI.'
+              );
+              return;
+            }
+
+            core.info('The CLA has been signed.');

@@ -14,6 +14,10 @@
 
 name: linter
 
+permissions:
+  contents: read
+  statuses: read
+
 on:
   push:
     branches:
@@ -28,7 +32,11 @@ on:
       - synchronize
 
 jobs:
+  cla:
+    uses: ./.github/workflows/cla-check.yaml
+
   code-style:
+    needs: cla
     permissions:
       contents: read
     concurrency:
