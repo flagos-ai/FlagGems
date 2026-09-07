@@ -24,6 +24,52 @@ import flag_gems
 logger = logging.getLogger(__name__)
 
 
+def _resolve_weight_broadcast(x, weight):
+    """Resolve how a broadcast ``weight`` maps onto the flat offsets of ``x``.
+
+    ``_prelu_kernel_backward`` is an elementwise op: ``weight`` is broadcast against
+    ``x`` using the standard rules rather than being tied to a fixed axis. Autograd
+    reaches it through ``aten::prelu``, which reshapes the per-channel weight to
+    ``(1, C, 1, ...)`` before calling in, while a direct call may pass a plain 1-D
+    tensor, which right-aligns onto the last axis instead.
+
+    Returns ``(weight, S, C)`` so the kernel can gather with ``(offset // S) % C``.
+    """
+    if weight.numel() == 1:
+        return weight, 1, 1
+
+    ndim = x.dim()
+    if weight.dim() > ndim:
+        raise AssertionError(
+            f"Weight shape {tuple(weight.shape)} is not broadcastable to input "
+            f"shape {tuple(x.shape)}: weight has more dimensions than the input."
+        )
+
+    # Right-align the weight shape against the input shape, as broadcasting does.
+    aligned = (1,) * (ndim - weight.dim()) + tuple(weight.shape)
+    for axis, (w_size, x_size) in enumerate(zip(aligned, x.shape)):
+        if w_size != 1 and w_size != x_size:
+            raise AssertionError(
+                f"Weight shape {tuple(weight.shape)} is not broadcastable to input "
+                f"shape {tuple(x.shape)}: size {w_size} vs {x_size} at axis {axis}."
+            )
+
+    varying = [axis for axis, w_size in enumerate(aligned) if w_size != 1]
+    if len(varying) == 1:
+        axis = varying[0]
+        C = x.shape[axis]
+        S = 1
+        for size in x.shape[axis + 1 :]:
+            S *= size
+        # Guard against div/mod by zero; empty inputs return before the kernel runs.
+        return weight, max(int(S), 1), max(int(C), 1)
+
+    # Weight varies along several axes, so no single (S, C) pair describes it.
+    # Materialize the broadcast and let the kernel index it with the flat offset.
+    weight = weight.broadcast_to(x.shape).contiguous()
+    return weight, 1, max(x.numel(), 1)
+
+
 @triton.jit
 def _prelu_kernel_backward_kernel(
     grad_output_ptr,
@@ -32,6 +78,7 @@ def _prelu_kernel_backward_kernel(
     grad_input_ptr,
     grad_weight_ptr,
     n_elements,
+    S,
     C,
     BLOCK_SIZE: tl.constexpr,
 ):
@@ -43,11 +90,11 @@ def _prelu_kernel_backward_kernel(
     grad_output = tl.load(grad_output_ptr + offsets, mask=mask)
     x = tl.load(x_ptr + offsets, mask=mask)
 
-    # Weight index is based on the last dimension
-    # For 1D input: c = offset % C
-    # For 2D input (M, N): c = offset % N (column index)
-    # For 3D input (M, N, P): c = offset % P (last dimension index)
-    c = offsets % C
+    # `weight` is broadcast against `x`, so the axis it varies along depends on its
+    # shape, not on a fixed dimension. The host resolves that axis and passes it as
+    # the pair (S, C): C is the axis length and S the product of the axes after it.
+    # A scalar weight uses S = C = 1, which makes every lane read weight[0].
+    c = (offsets // S) % C
     weight = tl.load(weight_ptr + c, mask=mask)
 
     # grad_input = grad_output if x > 0 else grad_output * weight
@@ -92,9 +139,12 @@ def _prelu_kernel_backward(*args, **kwargs):
     if grad_output.dtype != x.dtype:
         grad_output = grad_output.to(dtype=x.dtype)
 
-    # Ensure contiguous
-    grad_output = grad_output.contiguous()
-    x = x.contiguous()
+    # The op follows TensorIterator semantics, so the outputs take the broadcast shape
+    # of all three inputs -- which may even outrank x when weight has more dimensions.
+    # Materializing the broadcast keeps the kernel a flat, contiguous elementwise pass.
+    broadcast_shape = torch.broadcast_shapes(x.shape, weight.shape, grad_output.shape)
+    x = x.broadcast_to(broadcast_shape).contiguous()
+    grad_output = grad_output.broadcast_to(broadcast_shape).contiguous()
     weight = weight.contiguous()
 
     grad_input = torch.empty_like(x)
@@ -104,23 +154,8 @@ def _prelu_kernel_backward(*args, **kwargs):
     if n_elements == 0:
         return grad_input, grad_weight
 
-    # Determine C (last dimension size)
-    ndim = x.dim()
-    if weight.numel() == 1:
-        # Scalar weight - broadcast to all elements
-        C = 1
-    else:
-        if ndim == 0:
-            raise AssertionError("Non-scalar weight provided for a 0-dim input.")
-        # Weight should match the last dimension
-        C = x.shape[-1]
-        if weight.numel() != C:
-            raise AssertionError(
-                f"Weight numel ({weight.numel()}) must equal last dimension size ({C})."
-            )
-
-    # Make sure C is at least 1 to avoid div/mod by zero in kernel math
-    C = max(int(C), 1)
+    # Resolve which axis of x the broadcast weight varies along
+    weight, S, C = _resolve_weight_broadcast(x, weight)
 
     # BLOCK_SIZE of 1024 balances occupancy and parallelism for typical element-wise backward kernels
     BLOCK_SIZE = 1024
@@ -133,6 +168,7 @@ def _prelu_kernel_backward(*args, **kwargs):
         grad_input,
         grad_weight,
         n_elements,
+        S,
         C,
         BLOCK_SIZE=BLOCK_SIZE,
     )
