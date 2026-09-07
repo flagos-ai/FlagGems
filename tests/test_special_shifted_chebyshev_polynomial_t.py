@@ -22,7 +22,7 @@ from . import conftest as cfg
 
 # shifted_chebyshev_polynomial_t has no eager Half/BFloat16 CUDA kernel, so the
 # supported set is the float32/float64 subset of utils.FLOAT_DTYPES.
-if cfg.QUICK_MODE:
+if cfg.QUICK_MODE or not utils.fp64_is_supported:
     FLOAT_DTYPES = [torch.float32]
 else:
     FLOAT_DTYPES = [

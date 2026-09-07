@@ -12,7 +12,7 @@ from .conftest import QUICK_MODE
 
 # ILUVATAR (CoreX) has no fp64 compute path; Ascend NPU BiSheng compiler
 # rejects tl.float64 operations.  Skip fp64 tests on both backends.
-if flag_gems.vendor_name in ("iluvatar", "ascend"):
+if flag_gems.vendor_name in ("iluvatar", "ascend", "kunlunxin"):
     DTYPES = [torch.float32] if QUICK_MODE else utils.FLOAT_DTYPES
 else:
     DTYPES = [torch.float32] if QUICK_MODE else (utils.FLOAT_DTYPES + [torch.float64])
@@ -318,6 +318,7 @@ def test_dtype_param(ord):
     out_dtype = (
         torch.float32
         if flag_gems.vendor_name in ("ascend", "iluvatar")
+        or not utils.fp64_is_supported
         else torch.float64
     )
     ref = _compute_ref(A, ord, dtype=out_dtype)

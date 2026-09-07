@@ -72,8 +72,8 @@ def test_special_log1p_nan_inf():
 
 
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "enflame",
-    reason="enflame does not support fp64",
+    not flag_gems.runtime.device.support_fp64 or flag_gems.vendor_name == "enflame",
+    reason="fp64 is not supported",
 )
 @pytest.mark.special_log1p
 def test_special_log1p_small_values():

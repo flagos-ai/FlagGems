@@ -19,11 +19,13 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+_TEST_DTYPES = [torch.float32] + ([torch.float64] if utils.fp64_is_supported else [])
+
 
 @pytest.mark.linalg_ldl_factor
 @pytest.mark.parametrize("shape", [(4, 4), (8, 8), (16, 16), (32, 32)])
 # torch.linalg.ldl_factor on CUDA supports float32/float64 for this path.
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("dtype", _TEST_DTYPES)
 @pytest.mark.parametrize("hermitian", [False, True])
 def test_linalg_ldl_factor(shape, dtype, hermitian):
     # Create a symmetric positive definite matrix

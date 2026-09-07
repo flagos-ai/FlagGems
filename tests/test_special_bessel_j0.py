@@ -5,8 +5,10 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-# torch.special.bessel_j0 supports float32 and float64
-FLOAT_DTYPES = [torch.float32, torch.float64]
+# torch.special.bessel_j0 supports float32 and float64.
+FLOAT_DTYPES = [torch.float32] + (
+    [torch.float64] if utils.fp64_is_supported else []
+)
 
 # Pointwise shapes covering small, medium, and batched 2D tensors
 POINTWISE_SHAPES = [(128,), (512, 256), (2, 128, 128)]
