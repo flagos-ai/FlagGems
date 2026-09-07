@@ -6657,6 +6657,27 @@ ops:
   - stable: '2.2'
   - removed: '3.0'
   - beta: '5.3'
+- id: int_mm
+  description: Performs matrix multiplication of two two-dimensional int8 tensors
+    and returns a contiguous int32 tensor.
+  for:
+  - _int_mm
+  labels:
+  - aten
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.4'
+- id: int_mm_out
+  description: A variant of `_int_mm` that writes the int32 result into `out`.
+  for:
+  - _int_mm.out
+  labels:
+  - aten
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.4'
 - id: irshift
   description: Triton kernel implementation for __irshift__.
   for:

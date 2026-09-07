@@ -57,6 +57,7 @@ from .hadamard_transform import hadamard_transform
 from .index_add import index_add, index_add_
 from .index_copy_ import index_copy, index_copy_
 from .index_select_backward import index_select_backward
+from .int_mm import int_mm, int_mm_out
 from .isin import isin
 from .lcm import lcm, lcm_
 from .linalg_ldl_factor import ldl_factor
@@ -160,6 +161,8 @@ __all__ = [
     "index_copy",
     "index_copy_",
     "index_select_backward",
+    "int_mm",
+    "int_mm_out",
     "isin",
     "ldl_factor",
     "lcm",

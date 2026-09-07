@@ -281,6 +281,13 @@ median_dim:
     - [[8, 64, 384, 64], 2, false]
   shape_desc: "input shape or [input shape, dim, keepdim]"
 
+IntMMBenchmark:
+  shapes:
+    - [32, 256, 256]
+    - [64, 1024, 1024]
+    - [256, 2048, 2048]
+  shape_desc: "M, N, K"
+
 BlasBenchmark:
   shapes:
     - [2, 384, 384, 384]
