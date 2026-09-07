@@ -97,11 +97,15 @@ def nll_loss_backward_kernel(
 
     tgt = tl.load(tgt_ptr + offsets_n, mask=mask_n, other=0)
     ignore_mask = not (tgt == ignore_index) and mask_n
+    # On an ignored row tgt holds ignore_index itself, which is allowed to be outside
+    # [0, C) -- torch's own default is -100. Keep that value out of every address we
+    # build, so an ignored row can never point at another row's cell.
+    safe_tgt = tl.where(ignore_mask, tgt, 0)
 
     if wgt_ptr is None:
         wgt_tgt = ignore_mask.to(tl.float32)
     else:
-        wgt_tgt = tl.load(wgt_ptr + tgt, mask=ignore_mask, other=0).to(tl.float32)
+        wgt_tgt = tl.load(wgt_ptr + safe_tgt, mask=ignore_mask, other=0).to(tl.float32)
 
     if reduction == 0:
         out_grad_ptrs = out_grad_ptr + offsets_n
@@ -114,8 +118,9 @@ def nll_loss_backward_kernel(
         total_w = 1
 
     inp_grad = tl.where(ignore_mask, -1 * out_grad * wgt_tgt / total_w, 0)
-    inp_grad_ptrs = inp_grad_ptr + offsets_n * C + tgt
-    tl.store(inp_grad_ptrs, inp_grad, mask=mask_n)
+    inp_grad_ptrs = inp_grad_ptr + offsets_n * C + safe_tgt
+    # grad_input is zero-initialised, so an ignored row needs no store at all.
+    tl.store(inp_grad_ptrs, inp_grad, mask=ignore_mask)
 
 
 @libentry()
@@ -200,11 +205,15 @@ def nll_loss2d_backward_kernel(
     tgt_ptrs = tgt_ptr + offset_n * D + offset_d
     tgt = tl.load(tgt_ptrs, mask=mask_block, other=0)
     ignore_mask = not (tgt == ignore_index) and mask_block
+    # On an ignored pixel tgt holds ignore_index itself, which is allowed to be outside
+    # [0, C) -- torch's own default is -100. Keep that value out of every address we
+    # build, so an ignored pixel can never point at another sample's cell.
+    safe_tgt = tl.where(ignore_mask, tgt, 0)
 
     if wgt_ptr is None:
         wgt_tgt = ignore_mask.to(tl.float32)
     else:
-        wgt_tgt = tl.load(wgt_ptr + tgt, mask=ignore_mask, other=0).to(tl.float32)
+        wgt_tgt = tl.load(wgt_ptr + safe_tgt, mask=ignore_mask, other=0).to(tl.float32)
 
     if reduction == 0:
         out_grad_ptrs = out_grad_ptr + offset_n * D + offset_d
@@ -217,8 +226,9 @@ def nll_loss2d_backward_kernel(
     else:
         total_w = 1
     inp_grad = tl.where(ignore_mask, -1 * out_grad * wgt_tgt / total_w, 0)
-    inp_grad_ptrs = inp_grad_ptr + offset_n * C * D + tgt * D + offset_d
-    tl.store(inp_grad_ptrs, inp_grad, mask=mask_block)
+    inp_grad_ptrs = inp_grad_ptr + offset_n * C * D + safe_tgt * D + offset_d
+    # grad_input is zero-initialised, so an ignored pixel needs no store at all.
+    tl.store(inp_grad_ptrs, inp_grad, mask=ignore_mask)
 
 
 # Negative Log Likelihood Loss (NLLLoss)
