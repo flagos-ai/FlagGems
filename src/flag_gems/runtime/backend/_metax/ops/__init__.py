@@ -13,7 +13,6 @@ from .broadcast_to import broadcast_to
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
 from .conv_depthwise2d import _conv_depthwise2d
 from .conv_transpose1d import conv_transpose1d, conv_transpose1d_output_size
-from .dist import dist
 from .exponential_ import exponential_
 from .full import full
 from .full_like import full_like
@@ -102,7 +101,6 @@ __all__ = [
     "cholesky_solve_out",
     "conv_transpose1d",
     "conv_transpose1d_output_size",
-    "dist",
     "exponential_",
     "full",
     "full_like",

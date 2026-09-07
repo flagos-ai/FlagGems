@@ -117,10 +117,7 @@ def test_multilabel_margin_loss_forward(shape, pattern, dtype, reduction):
     target = _make_target(shape, pattern, flag_gems.device)
     ref_loss, ref_mask = _reference(input, target, reduction)
 
-    with flag_gems.use_gems():
-        loss, is_target = torch.ops.aten.multilabel_margin_loss_forward(
-            input, target, reduction
-        )
+    loss, is_target = flag_gems.multilabel_margin_loss_forward(input, target, reduction)
 
     n_classes = shape[-1] if shape else 1
     n_rows = shape[0] if len(shape) == 2 else 1
@@ -142,10 +139,7 @@ def test_multilabel_margin_loss_forward_empty_batch(reduction):
     input = torch.empty((0, 11), dtype=torch.float32, device=flag_gems.device)
     target = torch.empty((0, 11), dtype=torch.int64, device=flag_gems.device)
 
-    with flag_gems.use_gems():
-        loss, is_target = torch.ops.aten.multilabel_margin_loss_forward(
-            input, target, reduction
-        )
+    loss, is_target = flag_gems.multilabel_margin_loss_forward(input, target, reduction)
 
     assert is_target.shape == input.shape
     assert is_target.dtype == input.dtype
@@ -174,10 +168,7 @@ def test_multilabel_margin_loss_forward_noncontiguous():
     assert not target.is_contiguous()
     ref_loss, ref_mask = _reference(input, target, 0)
 
-    with flag_gems.use_gems():
-        loss, is_target = torch.ops.aten.multilabel_margin_loss_forward(
-            input, target, 0
-        )
+    loss, is_target = flag_gems.multilabel_margin_loss_forward(input, target, 0)
 
     utils.gems_assert_close(loss, ref_loss, torch.float32, reduce_dim=shape[1])
     utils.gems_assert_equal(is_target, ref_mask)
@@ -193,10 +184,7 @@ def test_multilabel_margin_loss_forward_nan_and_inf():
     target = torch.tensor([0, 1, -1, 2, 3], dtype=torch.int64, device=flag_gems.device)
     ref_loss, ref_mask = _reference(input, target, 0)
 
-    with flag_gems.use_gems():
-        loss, is_target = torch.ops.aten.multilabel_margin_loss_forward(
-            input, target, 0
-        )
+    loss, is_target = flag_gems.multilabel_margin_loss_forward(input, target, 0)
 
     utils.gems_assert_close(
         loss, ref_loss, torch.float32, equal_nan=True, reduce_dim=input.numel()
@@ -215,10 +203,7 @@ def test_multilabel_margin_loss_forward_large_class_watchdog_path():
     target[:, 128] = -1
     ref_loss, ref_mask = _reference(input, target, 2)
 
-    with flag_gems.use_gems():
-        loss, is_target = torch.ops.aten.multilabel_margin_loss_forward(
-            input, target, 2
-        )
+    loss, is_target = flag_gems.multilabel_margin_loss_forward(input, target, 2)
 
     utils.gems_assert_close(loss, ref_loss, torch.float32, reduce_dim=shape[1])
     utils.gems_assert_equal(is_target, ref_mask)
@@ -232,10 +217,7 @@ def test_multilabel_margin_loss_forward_large_class_full_target():
         shape
     )
 
-    with flag_gems.use_gems():
-        loss, is_target = torch.ops.aten.multilabel_margin_loss_forward(
-            input, target, 2
-        )
+    loss, is_target = flag_gems.multilabel_margin_loss_forward(input, target, 2)
 
     assert loss.shape == ()
     assert loss.item() == 0.0
@@ -258,10 +240,7 @@ def test_multilabel_margin_loss_forward_large_class_duplicate(shape, reduction):
     target[:, stop] = -1
     ref_loss, ref_mask = _reference(input, target, reduction)
 
-    with flag_gems.use_gems():
-        loss, is_target = torch.ops.aten.multilabel_margin_loss_forward(
-            input, target, reduction
-        )
+    loss, is_target = flag_gems.multilabel_margin_loss_forward(input, target, reduction)
 
     utils.gems_assert_close(
         loss,
@@ -288,10 +267,7 @@ def test_multilabel_margin_loss_forward_large_class_duplicate_tail(dtype, reduct
     target[:, stop] = -1
     ref_loss, ref_mask = _reference(input, target, reduction)
 
-    with flag_gems.use_gems():
-        loss, is_target = torch.ops.aten.multilabel_margin_loss_forward(
-            input, target, reduction
-        )
+    loss, is_target = flag_gems.multilabel_margin_loss_forward(input, target, reduction)
 
     utils.gems_assert_close(
         loss,
@@ -312,10 +288,7 @@ def test_multilabel_margin_loss_forward_large_class_empty_prefix(reduction):
     )
     target[:, 0] = -1
 
-    with flag_gems.use_gems():
-        loss, is_target = torch.ops.aten.multilabel_margin_loss_forward(
-            input, target, reduction
-        )
+    loss, is_target = flag_gems.multilabel_margin_loss_forward(input, target, reduction)
 
     utils.gems_assert_equal(loss, utils.to_reference(torch.zeros_like(loss)))
     utils.gems_assert_equal(is_target, utils.to_reference(torch.zeros_like(input)))
@@ -336,10 +309,7 @@ def test_multilabel_margin_loss_forward_large_class_bucket_boundaries(reduction)
     target[2, 17] = -1
     ref_loss, ref_mask = _reference(input, target, reduction)
 
-    with flag_gems.use_gems():
-        loss, is_target = torch.ops.aten.multilabel_margin_loss_forward(
-            input, target, reduction
-        )
+    loss, is_target = flag_gems.multilabel_margin_loss_forward(input, target, reduction)
 
     utils.gems_assert_close(
         loss,
@@ -363,10 +333,7 @@ def test_multilabel_margin_loss_forward_many_rows_target_length_reduce():
         target[row, row % 18] = -1
     ref_loss, ref_mask = _reference(input, target, 0)
 
-    with flag_gems.use_gems():
-        loss, is_target = torch.ops.aten.multilabel_margin_loss_forward(
-            input, target, 0
-        )
+    loss, is_target = flag_gems.multilabel_margin_loss_forward(input, target, 0)
 
     utils.gems_assert_close(
         loss,
@@ -392,8 +359,8 @@ def test_multilabel_margin_loss_forward_invalid_target_values_raise(target_value
     input = torch.randn((4,), dtype=torch.float32, device=flag_gems.device)
     target = torch.tensor(target_values, dtype=torch.int64, device=flag_gems.device)
 
-    with flag_gems.use_gems(), pytest.raises(RuntimeError, match="target values"):
-        torch.ops.aten.multilabel_margin_loss_forward(input, target, 1)
+    with pytest.raises(RuntimeError, match="target values"):
+        flag_gems.multilabel_margin_loss_forward(input, target, 1)
 
 
 @pytest.mark.multilabel_margin_loss_forward
@@ -409,8 +376,8 @@ def test_multilabel_margin_loss_forward_invalid_after_distant_sentinel_raises(
     target[:, 0] = -1
     target[:, invalid_position] = -2
 
-    with flag_gems.use_gems(), pytest.raises(RuntimeError, match="target values"):
-        torch.ops.aten.multilabel_margin_loss_forward(input, target, 1)
+    with pytest.raises(RuntimeError, match="target values"):
+        flag_gems.multilabel_margin_loss_forward(input, target, 1)
 
 
 @pytest.mark.multilabel_margin_loss_forward
@@ -428,8 +395,8 @@ def test_multilabel_margin_loss_forward_invalid_target_metadata_raises(
     input = torch.randn(input_shape, dtype=torch.float32, device=flag_gems.device)
     target = torch.zeros(target_shape, dtype=target_dtype, device=flag_gems.device)
 
-    with flag_gems.use_gems(), pytest.raises(RuntimeError):
-        torch.ops.aten.multilabel_margin_loss_forward(input, target, 1)
+    with pytest.raises(RuntimeError):
+        flag_gems.multilabel_margin_loss_forward(input, target, 1)
 
 
 @pytest.mark.multilabel_margin_loss_forward
@@ -438,5 +405,5 @@ def test_multilabel_margin_loss_forward_invalid_input_shape_raises(shape):
     input = torch.randn(shape, dtype=torch.float32, device=flag_gems.device)
     target = torch.zeros(shape, dtype=torch.int64, device=flag_gems.device)
 
-    with flag_gems.use_gems(), pytest.raises(RuntimeError):
-        torch.ops.aten.multilabel_margin_loss_forward(input, target, 1)
+    with pytest.raises(RuntimeError):
+        flag_gems.multilabel_margin_loss_forward(input, target, 1)
