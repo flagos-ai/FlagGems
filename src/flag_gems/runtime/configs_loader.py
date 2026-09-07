@@ -245,7 +245,7 @@ class TunedConfigLoader(object):
                 <= shared_mem_limit
             ]
 
-        if op_name == "mm":
+        if op_name in ("mm", "mm_w8a8_fp8_skinny"):
             has_pipeline = "PIPELINE" in ranges
             has_scenario = "SCENARIO" in ranges
             pipelines = ranges.get("PIPELINE", [None])
@@ -320,7 +320,7 @@ class TunedConfigLoader(object):
                 for w in ranges["w"]
             ]
 
-        if op_name in ("gemv", "gemv_k_parallel"):
+        if op_name in ("gemv", "gemv_k_parallel", "mm_w8a8_fp8_gemv"):
             return [
                 triton.Config(
                     {"BLOCK_M": block_m, "BLOCK_K": block_k},
@@ -335,13 +335,15 @@ class TunedConfigLoader(object):
             ]
 
         if op_name == "mm_splitk_two_step":
+            has_pipeline = "PIPELINE" in ranges
+            pipelines = ranges.get("PIPELINE", [None])
             return [
                 triton.Config(
                     {
                         "BLOCK_M": block_m,
                         "BLOCK_N": block_n,
                         "BLOCK_K": block_k,
-                        "pipeline": pipeline,
+                        **({"pipeline": pipeline} if has_pipeline else {}),
                     },
                     num_stages=s,
                     num_warps=w,
@@ -350,7 +352,7 @@ class TunedConfigLoader(object):
                 for block_m in ranges["BLOCK_M"]
                 for block_n in ranges["BLOCK_N"]
                 for block_k in ranges["BLOCK_K"]
-                for pipeline in ranges["PIPELINE"]
+                for pipeline in pipelines
                 for s in ranges["s"]
                 for w in ranges["w"]
             ]
@@ -424,7 +426,11 @@ class TunedConfigLoader(object):
                 if block * tpp <= 1024
             ]
 
-        if op_name in ("w8a8_block_fp8_general", "w8a8_block_fp8_bmm_general"):
+        if op_name in (
+            "w8a8_block_fp8_general",
+            "w8a8_block_fp8_bmm_general",
+            "mm_w8a8_fp8_block_scaled",
+        ):
             return [
                 triton.Config(
                     {
@@ -445,7 +451,7 @@ class TunedConfigLoader(object):
                 for w in ranges["w"]
             ]
 
-        if op_name == "w8a8_block_fp8_general_tma":
+        if op_name in ("w8a8_block_fp8_general_tma", "mm_w8a8_fp8_general_tma"):
             group_m_values = ranges.get("GROUP_M", [None])
             return [
                 triton.Config(
@@ -482,7 +488,11 @@ class TunedConfigLoader(object):
                 for w in ranges["w"]
             ]
 
-        if op_name in ("w8a8_block_fp8_general_splitk", "w8a8_block_fp8_bmm_splitk"):
+        if op_name in (
+            "w8a8_block_fp8_general_splitk",
+            "w8a8_block_fp8_bmm_splitk",
+            "mm_w8a8_fp8_block_scaled_splitk",
+        ):
             return [
                 triton.Config(
                     {
@@ -503,7 +513,7 @@ class TunedConfigLoader(object):
                 for w in ranges["w"]
             ]
 
-        if op_name == "mm_splitk":
+        if op_name in ("mm_splitk", "mm_w8a8_fp8_splitk"):
             has_pipeline = "PIPELINE" in ranges
             pipelines = ranges.get("PIPELINE", [None])
             return [
@@ -686,6 +696,18 @@ class TunedConfigLoader(object):
                 ),
             ),
             "mm_splitk": self._build_single_expand_spec("mm_splitk"),
+            "mm_w8a8_fp8_general_tma": self._build_single_expand_spec(
+                "mm_w8a8_fp8_general_tma"
+            ),
+            "mm_w8a8_fp8_splitk": self._build_single_expand_spec("mm_w8a8_fp8_splitk"),
+            "mm_w8a8_fp8_block_scaled": self._build_single_expand_spec(
+                "mm_w8a8_fp8_block_scaled"
+            ),
+            "mm_w8a8_fp8_block_scaled_splitk": self._build_single_expand_spec(
+                "mm_w8a8_fp8_block_scaled_splitk"
+            ),
+            "mm_w8a8_fp8_gemv": self._build_single_expand_spec("mm_w8a8_fp8_gemv"),
+            "mm_w8a8_fp8_skinny": self._build_single_expand_spec("mm_w8a8_fp8_skinny"),
             "sparse_attention": self._build_single_expand_spec("sparse_attention"),
             "compute_global_topk_indices_and_lens": self._build_single_expand_spec(
                 "compute_global_topk_indices_and_lens",

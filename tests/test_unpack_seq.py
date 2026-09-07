@@ -232,3 +232,22 @@ def test_pack_unpack_fp8_roundtrip():
             rtol=1e-3,
             atol=1e-3,
         )
+
+
+@pytest.mark.unpack_seq_triton
+@pytest.mark.parametrize(
+    "N, H, D, lengths_list",
+    [(6, 8, 4, [3, 3]), (10, 4, 8, [2, 4, 4]), (15, 8, 16, [7, 5, 3])],
+)
+def test_pack_unpack_int8_roundtrip(N, H, D, lengths_list):
+    """INT8 is not formally supported for pack_seq_triton's padding path,
+    but unpack_seq_triton never constructs padding at all -- it only
+    copies valid tokens back out -- so it should round-trip exactly
+    regardless of that gap."""
+    lengths = torch.tensor(lengths_list, dtype=torch.int32, device=flag_gems.device)
+    x = torch.randint(-128, 128, (N, H, D), dtype=torch.int8, device=flag_gems.device)
+    packed = _ref_pack_seq(x, lengths_list, pad_value=0)
+    unpacked = unpack_seq_triton(packed, lengths)
+    assert unpacked.shape == x.shape
+    assert unpacked.dtype == torch.int8
+    assert torch.equal(unpacked, x)
