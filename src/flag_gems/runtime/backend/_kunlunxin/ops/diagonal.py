@@ -65,6 +65,19 @@ def diag_bwd_scatter_kernel(
 # side into a dense run while the (L2-resident) gradient gather stays small.
 # This removes the per-row program launch chain that dominates when `rows` is
 # huge (e.g. 65536 CTAs for a [100, 65536, 100] diagonal -> ~8ms on XPU).
+#
+# NOTE (XPU): this kernel MUST NOT use a boundary mask on the discrete load
+# `grad_ptr + rows*D + pid_col`.  A masked load of a data-dependent (strided)
+# address is miscompiled by the XPU triton backend into an 8-lane group
+# broadcast (all lanes of a group read the group's first lane address), which
+# silently shifts the written values by whole rows.  Probe-verified
+# 2026-09-06: BLOCK_R in {128..4096} and dropping `other=` do NOT fix it; only
+# removing the mask from the discrete LOAD does.  Fix: start each block at
+# `base = min(pid_row*BLOCK_R, ROWS - BLOCK_R)` so every lane's row is
+# in-bounds, and issue fully unmasked loads/stores.  Dispatch guarantees
+# BLOCK_R <= ROWS, so `ROWS - BLOCK_R >= 0`; if ROWS % BLOCK_R != 0 the last
+# block overlaps the previous one and re-issues identical values (benign
+# same-value duplicate writes, all in-band).
 @triton.jit
 def diag_bwd_scatter_col_kernel(
     grad_ptr,
@@ -77,12 +90,12 @@ def diag_bwd_scatter_col_kernel(
 ):
     pid_col = tl.program_id(0)
     pid_row = tl.program_id(1)
-    rows = pid_row * BLOCK_R + tl.arange(0, BLOCK_R)
-    rmask = rows < ROWS
-    row_off = tl.load(row_out_ptr + rows, mask=rmask, other=0)
+    base = tl.minimum(pid_row * BLOCK_R, ROWS - BLOCK_R)
+    rows = base + tl.arange(0, BLOCK_R)
+    row_off = tl.load(row_out_ptr + rows)
     col_off = tl.load(col_tab_ptr + pid_col)
-    val = tl.load(grad_ptr + rows * D + pid_col, mask=rmask, other=0.0)
-    tl.store(out_ptr + row_off + col_off, val, mask=rmask)
+    val = tl.load(grad_ptr + rows * D + pid_col)
+    tl.store(out_ptr + row_off + col_off, val)
 
 
 def _prewarm(device):
@@ -94,7 +107,10 @@ def _prewarm(device):
     try:
         for block, d in ((256, 256), (512, 512)):
             for dt in (torch.float16, torch.float32, torch.bfloat16):
-                grad = torch.randn(2, d, dtype=dt, device=device)
+                # The (2, d, 3) view is (2, 3): only 3 diagonal columns exist.
+                # D must be 3 (not d) or the masked store would write up to
+                # 7d-4 > 6d-1 (d-3 elements OOB); grad matches the 3 columns.
+                grad = torch.randn(2, 3, dtype=dt, device=device)
                 out = torch.empty_strided(
                     (2, d, 3), (d * 3, 3, 1), dtype=dt, device=device
                 )
@@ -107,16 +123,20 @@ def _prewarm(device):
                     v,
                     col_tab,
                     row_tab,
-                    d,
+                    3,
                     BLOCK=block,
                 )
-        for block in (256, 512, 1024, 4096):
+        for block in (256, 512, 1024, 2048, 4096):
             for dt in (torch.float16, torch.float32, torch.bfloat16):
-                # (2, block, 3) -> diagonal view (2, 3): compiles the
-                # column-major kernel with BLOCK_R lanes.
-                grad = torch.randn(2, 3, dtype=dt, device=device)
+                # (block, 3, 3) -> diagonal view (block, 3) with rows == block:
+                # compiles the column-major kernel with BLOCK_R lanes while
+                # keeping the kernel's BLOCK_R <= ROWS contract (the kernel's
+                # base-clamp requires ROWS - BLOCK_R >= 0).  The view is
+                # (block, 3) with stride (9, 4), so the unmasked store
+                # `9*r + 4*c` peaks at 9*block-1 == out.numel()-1 (in bounds).
+                grad = torch.randn(block, 3, dtype=dt, device=device)
                 out = torch.empty_strided(
-                    (2, block, 3), (block * 3, 3, 1), dtype=dt, device=device
+                    (block, 3, 3), (9, 3, 1), dtype=dt, device=device
                 )
                 out.zero_()
                 v = torch.diagonal(out, 0, 1, 2)
@@ -128,7 +148,7 @@ def _prewarm(device):
                     col_tab,
                     row_tab,
                     3,
-                    2,
+                    block,
                     BLOCK_R=block,
                 )
     except Exception:  # prewarm is best-effort
@@ -175,12 +195,13 @@ def diagonal_backward(grad_output, input_sizes, offset, dim1, dim2):
             # per row.  For [100, 65536, 100] (65536 rows) the per-row variant
             # pays 65536 CTA launches; the column-major variant covers the
             # same band with 16 CTAs per column.
-            if rows >= 4096:
-                block_r = 4096
-            elif rows >= 1024:
-                block_r = 1024
-            else:
-                block_r = 512
+            # BLOCK_R must not exceed `rows` (the kernel's base-clamp uses
+            # `ROWS - BLOCK_R`) and is capped at 4096 to bound the tile;
+            # the largest power of two <= rows is used so blocks tile the
+            # rows exactly when rows is a power of two.
+            block_r = 256
+            while block_r * 2 <= rows and block_r * 2 <= 4096:
+                block_r *= 2
             col_tab = _col_table(diag.stride(-1), D, device_)
             row_out_tab = _row_table(diag)
             diag_bwd_scatter_col_kernel[(D, triton.cdiv(rows, block_r))](

@@ -334,6 +334,7 @@ from .log10 import log10, log10_, log10_out  # noqa: F401
 from .log_ import log_  # noqa: F401
 from .log_sigmoid import log_sigmoid
 from .log_sigmoid_backward import log_sigmoid_backward, log_sigmoid_backward_out
+from .logit_backward import logit_backward
 from .log_sigmoid_forward import log_sigmoid_forward
 from .log_softmax import (
     log_softmax,

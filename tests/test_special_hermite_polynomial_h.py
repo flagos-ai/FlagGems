@@ -19,11 +19,18 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+# torch.special.hermite_polynomial_h supports float32 and float64.
+# When the device does not support float64 (e.g. kunlunxin: a float64
+# device tensor is silently created as float32), test fp32 only; see
+# test_special_bessel_y0.py for the same pattern.
+FLOAT_DTYPES = [torch.float32] + (
+    [torch.float64] if utils.fp64_is_supported else []
+)
+
 
 @pytest.mark.special_hermite_polynomial_h
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
-# special.hermite_polynomial_h reference only supports float32 and float64
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_special_hermite_polynomial_h(shape, dtype):
     # Test with tensor n in [0, 9]
     if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
@@ -45,8 +52,7 @@ def test_special_hermite_polynomial_h(shape, dtype):
 
 @pytest.mark.special_hermite_polynomial_h
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
-# special.hermite_polynomial_h reference only supports float32 and float64
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_special_hermite_polynomial_h_scalar(shape, dtype):
     # Test with scalar n = 9 (largest supported degree)
     if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
@@ -66,7 +72,7 @@ def test_special_hermite_polynomial_h_scalar(shape, dtype):
 
 
 @pytest.mark.special_hermite_polynomial_h
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_special_hermite_polynomial_h_out_of_range(dtype):
     # Verify that n >= 10 or n < 0 raises ValueError
     if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:

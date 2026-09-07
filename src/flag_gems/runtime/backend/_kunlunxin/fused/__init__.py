@@ -14,6 +14,10 @@
 
 from .add_rms_norm import add_rms_norm
 from .beam_search_score import beam_search_score, beam_search_score_
+# bf16_paged_mqa_logits vendor kernel (XPU): the generic fused kernel crashes
+# ConvertTritonSDNNToLLVM (any elementwise max/select on the MMA result);
+# self-installs the direct-import entrypoint.
+from .bf16_paged_mqa_logits import bf16_paged_mqa_logits
 from .bincount import bincount
 from .concat_and_cache_mla import concat_and_cache_mla
 from .cross_entropy_loss import cross_entropy_loss
@@ -63,6 +67,7 @@ __all__ = [
     "apply_rotary_pos_emb",
     "beam_search_score",
     "beam_search_score_",
+    "bf16_paged_mqa_logits",
     "skip_layer_norm",
     "fused_add_rms_norm",
     "add_rms_norm",
