@@ -60,60 +60,67 @@ def rot90_kernel_2d(
     m_minus_1 = M - 1
     n_minus_1 = N - 1
 
+    # Product of the dims after the rotation plane [D2 * D3 * ...] (1 for 2D input)
+    trailing = n_elements // (M * N)
+
     if k_norm == 0:
         # Identity case - output same shape as input [M, N, ...]
         stride_0 = n_elements // M
         out_dim0 = offsets // stride_0
         remainder = offsets % stride_0
-        out_dim1 = remainder % N
+        out_dim1 = remainder // trailing
+        trailing_offset = remainder % trailing
 
         in_dim0 = out_dim0
         in_dim1 = out_dim1
 
         stride_0_in = n_elements // M
-        in_offset = in_dim0 * stride_0_in + in_dim1 * (stride_0_in // N)
+        in_offset = in_dim0 * stride_0_in + in_dim1 * trailing + trailing_offset
 
     elif k_norm == 1:
         # 90° clockwise - output shape [N, M, ...]
         stride_0 = n_elements // N
         out_dim0 = offsets // stride_0
         remainder = offsets % stride_0
-        out_dim1 = remainder % M
+        out_dim1 = remainder // trailing
+        trailing_offset = remainder % trailing
 
         # out[i,j] = in[j, N-1-i] where i=out_dim0, j=out_dim1
         in_dim0 = out_dim1
         in_dim1 = n_minus_1 - out_dim0
 
         stride_0_in = n_elements // M
-        in_offset = in_dim0 * stride_0_in + in_dim1 * (stride_0_in // N)
+        in_offset = in_dim0 * stride_0_in + in_dim1 * trailing + trailing_offset
 
     elif k_norm == 2:
         # 180° - output same shape as input [M, N, ...]
         stride_0 = n_elements // M
         out_dim0 = offsets // stride_0
         remainder = offsets % stride_0
-        out_dim1 = remainder % N
+        out_dim1 = remainder // trailing
+        trailing_offset = remainder % trailing
 
         # out[i,j] = in[M-1-i, N-1-j]
         in_dim0 = m_minus_1 - out_dim0
         in_dim1 = n_minus_1 - out_dim1
 
         stride_0_in = n_elements // M
-        in_offset = in_dim0 * stride_0_in + in_dim1 * (stride_0_in // N)
+        in_offset = in_dim0 * stride_0_in + in_dim1 * trailing + trailing_offset
 
     else:  # k_norm == 3
         # 270° clockwise - output shape [N, M, ...]
         stride_0 = n_elements // N
         out_dim0 = offsets // stride_0
         remainder = offsets % stride_0
-        out_dim1 = remainder % M
+        out_dim1 = remainder // trailing
+        trailing_offset = remainder % trailing
 
         # out[i,j] = in[M-1-j, i]
         in_dim0 = m_minus_1 - out_dim1
         in_dim1 = out_dim0
 
         stride_0_in = n_elements // M
-        in_offset = in_dim0 * stride_0_in + in_dim1 * (stride_0_in // N)
+        in_offset = in_dim0 * stride_0_in + in_dim1 * trailing + trailing_offset
 
     x = tl.load(in_ptr + in_offset, mask=mask)
     tl.store(out_ptr + offsets, x, mask=mask)
