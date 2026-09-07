@@ -5,7 +5,7 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
+from flag_gems import config, runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
@@ -47,6 +47,7 @@ def addbmm_kernel(
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_N: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
+    ALLOW_TF32: tl.constexpr,
     IS_FP64: tl.constexpr = False,
 ):
     """Triton kernel for addbmm: out = beta * bias + alpha * sum_b(batch1[b] @ batch2[b])"""
@@ -84,7 +85,7 @@ def addbmm_kernel(
                 a = a.to(tl.float32)
                 b_tile = b_tile.to(tl.float32)
 
-            acc += tl.dot(a, b_tile, allow_tf32=False)
+            acc += tl.dot(a, b_tile, allow_tf32=ALLOW_TF32)
 
             a_ptrs += BLOCK_SIZE_K * stride_b1_k
             b_ptrs += BLOCK_SIZE_K * stride_b2_k
@@ -149,6 +150,7 @@ def addbmm(bias, batch1, batch2, beta=1.0, alpha=1.0):
             batch2.stride(2),
             out.stride(0),
             out.stride(1),
+            ALLOW_TF32=config.ALLOW_TF32,
             IS_FP64=bias.dtype == torch.float64,
         )
 
