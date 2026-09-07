@@ -43,14 +43,14 @@ def test_erfc_(shape, dtype):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_x = utils.to_reference(x)
     if dtype in (torch.float16, torch.bfloat16):
-        pytest.skip(
-            "Triton kernel out0=x incorrect for low-precision inplace; "
-            "non-inplace special_erfc covers kernel correctness — "
-            "https://github.com/flagos-ai/FlagGems/issues/4076"
-        )
+        # Compute the reference in fp32 and cast back, mirroring the
+        # non-inplace erfc tests. The inplace kernel writes through
+        # out0=x and is bitwise-identical to the non-inplace one, so
+        # low-precision dtypes are covered here too (issue #4076).
+        ref_out = torch.ops.aten.erfc_(ref_x.float()).to(dtype)
     else:
         ref_out = torch.ops.aten.erfc_(ref_x)
     with flag_gems.use_gems():
         act_out = torch.ops.aten.erfc_(x)
     utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
-    utils.gems_assert_close(x, ref_x, dtype, equal_nan=True)
+    utils.gems_assert_close(x, ref_out, dtype, equal_nan=True)
