@@ -32,7 +32,12 @@ def _compute_broadcast_shape(tensors):
     for i in range(max_ndim):
         dim_size = 1
         for shape in padded_shapes:
-            dim_size = max(dim_size, shape[i])
+            s = shape[i]
+            if s == 0:
+                # A zero-sized dimension broadcasts to zero
+                dim_size = 0
+                break
+            dim_size = max(dim_size, s)
         broadcast_shape.append(dim_size)
 
     return tuple(broadcast_shape)

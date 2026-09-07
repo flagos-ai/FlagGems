@@ -1869,7 +1869,7 @@ class LibEntry(triton.KernelInterface):
         self._specialize_set = frozenset(self.specialize_indices)
         self._do_not_specialize_set = frozenset(self.do_not_specialize_indices)
         self._jit_params = tuple(self.jit_function.params)
-        self._keep_const_in_kargs = major_version == 3 and 3 <= minor_version <= 6
+        self._keep_const_in_kargs = major_version == 3 and minor_version >= 3
         # `k_args` is keyed by `_param_names` for positional arguments and by
         # `_jit_params[i].name` for the rest, so its insertion order only equals
         # signature order when the two agree.  Checked once here instead of

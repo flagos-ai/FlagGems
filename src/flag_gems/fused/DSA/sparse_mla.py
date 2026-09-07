@@ -327,6 +327,11 @@ def triton_sparse_mla_fwd_interface(
     if sm_scale is None:
         sm_scale = DT**-0.5
     BH = max(16, min(64, triton.next_power_of_2(G)))
+    # Cap BH to avoid shared memory overflow when DP is large.
+    # The kernel needs [BH, DP] + [DP, BK] + [BH, BK] in shared memory;
+    # when DP >= 512 the 64×512 tiles exceed the SM limit on some GPUs.
+    if DP >= 512:
+        BH = min(BH, 16)
     NH = triton.cdiv(G, BH)
     BK = 32
     output = torch.zeros((B, SQ, H, D), device=q.device, dtype=q.dtype)

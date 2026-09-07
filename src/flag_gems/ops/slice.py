@@ -193,6 +193,18 @@ def slice_kernel_4d(
 
 def slice(input_tensor, dim=0, start=None, end=None, step=1):
     logger.debug("GEMS SLICE")
+    # Normalize negative indices
+    input_shape = list(input_tensor.shape)
+    ndim = len(input_shape)
+
+    if start is None:
+        start = 0
+    if end is None:
+        end = input_shape[dim]
+    if step is None:
+        step = 1
+
+    # Handle negative indices
     # ``aten::slice.Tensor`` is a view operation: the returned tensor shares
     # storage with the input.  The result is built as a zero-copy view via
     # ``torch.as_strided`` rather than an allocated copy.
@@ -232,6 +244,17 @@ def slice(input_tensor, dim=0, start=None, end=None, step=1):
     start = max(0, min(start, dim_size))
     end = max(0, min(end, dim_size))
 
+    # Compute output shape
+    slice_size = max(0, (end - start + step - 1) // step)
+
+    # Return a view using as_strided to preserve mutation semantics
+    new_size = list(input_tensor.shape)
+    new_size[dim] = slice_size
+    new_stride = list(input_tensor.stride())
+    storage_offset = input_tensor.storage_offset() + start * new_stride[dim]
+    new_stride[dim] = new_stride[dim] * step
+
+    return torch.as_strided(input_tensor, new_size, new_stride, storage_offset)
     # Slice length for a positive step.
     slice_len = max(0, (end - start + step - 1) // step)
 

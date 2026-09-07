@@ -545,7 +545,7 @@ class KernelGenerator:
                 f"out{i}_ptr, ({shape}), ({strides}), ({offsets}), ({tile_sizes}), order=({order}))"
             )
             code.writeline(
-                f"tl.store(out{i}_bptr, out{i}.to(out{i}_bptr.type.element_ty), boundary_check=({order}))"
+                f"tl.store(out{i}_bptr, out{i}.to(out{i}_ptr.type.element_ty), boundary_check=({order}))"
             )
 
     def gen_body_gsl_with_bptr(self, code):
@@ -592,8 +592,9 @@ class KernelGenerator:
                 for j in range(ndim)
             )
             offset_combine = " + ".join(offsets)
+            code.writeline(f"in{i}_offset = {offset_combine}")
             code.writeline(
-                f"in{i} = tl.load(in{i}_ptr + {offset_combine}, mask=mask).to(in{i}_ptr.type.element_ty)"
+                f"in{i} = tl.load(in{i}_ptr + in{i}_offset, mask=mask).to(in{i}_ptr.type.element_ty)"
             )
 
         code.newline()
@@ -620,8 +621,9 @@ class KernelGenerator:
                 for j in range(ndim)
             )
             offset_combine = " + ".join(offsets)
+            code.writeline(f"out{i}_offset = {offset_combine}")
             code.writeline(
-                f"in{i} = tl.store(out{i}_ptr + {offset_combine}, out{i}, mask=mask)"
+                f"tl.store(out{i}_ptr + out{i}_offset, out{i}.to(out{i}_ptr.type.element_ty), mask=mask)"
             )
 
     def gen_body_gsl_without_bptr(self, code):
@@ -714,8 +716,9 @@ class KernelGenerator:
         for i in range(schema.num_input_tensors()):
             offsets = tuple(f"i{j} * in{i}_stride{j}" for j in range(ndim))
             offset_combine = " + ".join(offsets)
+            code.writeline(f"in{i}_offset = {offset_combine}")
             code.writeline(
-                f"in{i} = tl.load(in{i}_ptr + {offset_combine}, mask=mask).to(in{i}_ptr.type.element_ty)"
+                f"in{i} = tl.load(in{i}_ptr + in{i}_offset, mask=mask).to(in{i}_ptr.type.element_ty)"
             )
 
         code.newline()
@@ -739,8 +742,9 @@ class KernelGenerator:
         for i in range(schema.num_output_tensors()):
             offsets = tuple(f"i{j} * out{i}_stride{j}" for j in range(ndim))
             offset_combine = " + ".join(offsets)
+            code.writeline(f"out{i}_offset = {offset_combine}")
             code.writeline(
-                f"in{i} = tl.store(out{i}_ptr + {offset_combine}, out{i}, mask=mask)"
+                f"tl.store(out{i}_ptr + out{i}_offset, out{i}.to(out{i}_ptr.type.element_ty), mask=mask)"
             )
 
     def gen_body_gsl_1d_tile(self, code):
@@ -1189,7 +1193,9 @@ class ModuleGenerator:
         code.writeline("from flag_gems.utils.tensor_wrapper import StridedBuffer")
         code.writeline("from flag_gems.utils.libentry import libentry")
         code.writeline("from flag_gems.utils import triton_lang_extension as ext")
+        code.writeline("from flag_gems.utils import tl_extra_shim")
         code.writeline("from flag_gems.runtime import torch_device_fn")
+        code.writeline("exp = tl_extra_shim.exp  # For kernels that use exp")
 
         # Generate extra imports and local JIT deps of the scalar function
         jit_dep_imports, local_jit_sources = self._collect_jit_deps(self.scalar_fn)
