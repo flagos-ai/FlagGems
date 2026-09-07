@@ -25,6 +25,7 @@ from typing import Generator
 
 import pytest
 import torch
+import triton
 import yaml
 
 import flag_gems
@@ -83,6 +84,14 @@ torch_device_object = flag_gems.runtime.backend.gen_torch_device_object()
 DEEPGEMM_N_MULTIPLE = 64
 DEEPGEMM_K_MULTIPLE = 128
 
+
+@pytest.fixture(autouse=True)
+def _disable_implicit_flagtune(monkeypatch):
+    """Avoid remote tuning-model downloads unless tuning was requested."""
+    if "USE_FLAGTUNE" not in os.environ:
+        monkeypatch.setenv("USE_FLAGTUNE", "0")
+
+
 MUL_DEFAULT_SHAPES = [
     ("broadcast", (1, 1), (1, 2048)),
     ("broadcast", (32, 1), (32, 2048)),
@@ -114,6 +123,25 @@ class BlasBenchmark(Benchmark):
         self.input_fn = input_fn
 
     def get_input_iter(self, cur_dtype) -> Generator:
+        if self.op_name == "mm" and Config.mm_layout is not None:
+            layouts = {
+                "nn": (False,),
+                "nt": (True,),
+                "both": (False, True),
+            }[Config.mm_layout]
+            for b_column_major in layouts:
+                for b, m, n, k in self.shapes:
+                    yield from self.input_fn(
+                        b,
+                        m,
+                        n,
+                        k,
+                        cur_dtype,
+                        self.device,
+                        b_column_major,
+                    )
+            return
+
         for b, m, n, k in self.shapes:
             yield from self.input_fn(b, m, n, k, cur_dtype, self.device, False)
 
@@ -136,7 +164,7 @@ class BlasBenchmark(Benchmark):
         total_flops = 0
         # shape(m,k)(k,n)
         # total_flops mxnx2k
-        if self.op_name == "mm":
+        if self.op_name in ("mm", "mm_w8a8_fp8"):
             total_flops = args[0].shape[0] * args[0].shape[1] * args[1].shape[1] * 2
         # shape(m,n)(n,p)
         # total_flops mxpx(2n+1)
@@ -550,11 +578,26 @@ def _parallel_device_count():
 
 
 def _parallel_visible_devices_env():
+    if flag_gems.vendor_name == "metax":
+        return "MACA_VISIBLE_DEVICES"
     env_name_map = {
         "cuda": "CUDA_VISIBLE_DEVICES",
         "musa": "MUSA_VISIBLE_DEVICES",
     }
     return env_name_map.get(flag_gems.device)
+
+
+def _parallel_device_ids():
+    visible_devices_env = _parallel_visible_devices_env()
+    if visible_devices_env:
+        configured_devices = os.environ.get(visible_devices_env, "")
+        if configured_devices:
+            return [
+                device.strip()
+                for device in configured_devices.split(",")
+                if device.strip()
+            ]
+    return [str(device) for device in range(_parallel_device_count())]
 
 
 def _parallel_device_label():
@@ -645,6 +688,11 @@ class ParallelBenchmarkMixin:
             else:
                 if self.op_name == "zero_":
                     with flag_gems.use_gems():
+                        metric.latency = self.get_latency(
+                            self.torch_op, *args, **kwargs
+                        )
+                elif self.op_name in ("mm", "mm_out"):
+                    with flag_gems.use_gems(include=[self.op_name]):
                         metric.latency = self.get_latency(
                             self.torch_op, *args, **kwargs
                         )
@@ -740,6 +788,7 @@ class ParallelBenchmarkMixin:
 
             if self.op_name in {
                 "mm",
+                "mm_w8a8_fp8",
                 "addmm",
                 "bmm",
                 "baddbmm",
@@ -760,6 +809,7 @@ class ParallelBenchmarkMixin:
 
                 if self.op_name in {
                     "mm",
+                    "mm_w8a8_fp8",
                     "bmm",
                     "w8a8_block_fp8_matmul",
                     "router_gemm",
@@ -862,6 +912,8 @@ class ParallelBenchmarkMixin:
         if Config.user_desired_metrics:
             for metric in Config.user_desired_metrics:
                 cmd.extend(["--metrics", metric])
+        if Config.mm_layout is not None:
+            cmd.extend(["--mm-layout", Config.mm_layout])
 
         env = os.environ.copy()
         visible_devices_env = _parallel_visible_devices_env()
@@ -870,6 +922,11 @@ class ParallelBenchmarkMixin:
                 f"--parallel is not supported on device type '{flag_gems.device}'."
             )
         env[visible_devices_env] = str(gpu_id)
+        if flag_gems.vendor_name == "metax":
+            # mcPytorch prefers MACA_VISIBLE_DEVICES while vLLM-MetaX and some
+            # helper processes use CUDA_VISIBLE_DEVICES. Keep both consistent.
+            env["MACA_VISIBLE_DEVICES"] = str(gpu_id)
+            env["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
         env[PARALLEL_WORKER_ENV] = "1"
         env[PARALLEL_RESULT_FILE_ENV] = tmp_result_path
 
@@ -899,7 +956,8 @@ class ParallelBenchmarkMixin:
             return self._run_inputs(self.get_input_iter(dtype))
         if not _parallel_device_is_available():
             pytest.skip(f"--parallel N requires {_parallel_device_label()}.")
-        available_gpus = _parallel_device_count()
+        device_ids = _parallel_device_ids()
+        available_gpus = min(_parallel_device_count(), len(device_ids))
         if available_gpus < required_gpus:
             pytest.skip(
                 "--parallel requires at least "
@@ -920,7 +978,7 @@ class ParallelBenchmarkMixin:
         merged_metrics = []
         future_to_chunk = {}
         with concurrent.futures.ThreadPoolExecutor(max_workers=len(shape_chunks)) as ex:
-            for gpu_id, shape_chunk in enumerate(shape_chunks):
+            for gpu_id, shape_chunk in zip(device_ids, shape_chunks):
                 future = ex.submit(
                     self._run_parallel_worker_subprocess,
                     node_id=node_id,
@@ -1003,9 +1061,78 @@ class ParallelBenchmarkMixin:
 
 class ParallelBlasBenchmark(ParallelBenchmarkMixin, BlasBenchmark):
     def get_parallel_metric_group_size(self, shape):
+        if self.op_name == "mm" and Config.mm_layout is not None:
+            return 2 if Config.mm_layout == "both" else 1
         if Config.bench_level == BenchLevel.COMPREHENSIVE:
             return 2
         return 1
+
+
+_MM_W8A8_FP8_OUT_CACHE = {}
+_MM_W8A8_FP8_OUT_CACHE_MAX_ENTRIES = int(
+    os.environ.get("FLAGGEMS_BENCH_MM_W8A8_OUT_CACHE_MAX", "8")
+)
+
+
+def _mm_w8a8_fp8_output_dtype(a):
+    output_dtype = os.environ.get("FLAGGEMS_MM_W8A8_OUTPUT_DTYPE", "bf16").lower()
+    if output_dtype in ("bf16", "bfloat16"):
+        return torch.bfloat16
+    if output_dtype in ("fp8", "float8"):
+        fp8_e4m3 = getattr(torch, "float8_e4m3fn", None)
+        fp8_e5m2 = getattr(torch, "float8_e5m2", None)
+        if a.dtype in (fp8_e4m3, fp8_e5m2):
+            return a.dtype
+        if fp8_e4m3 is not None:
+            return fp8_e4m3
+    return torch.bfloat16
+
+
+def _mm_w8a8_fp8_out_cached(a, b):
+    out_dtype = _mm_w8a8_fp8_output_dtype(a)
+    device_index = a.device.index if a.device.index is not None else -1
+    key = (device_index, a.shape[0], b.shape[1], out_dtype)
+    out = _MM_W8A8_FP8_OUT_CACHE.get(key)
+    if out is None or out.device != a.device:
+        out = torch.empty((a.shape[0], b.shape[1]), device=a.device, dtype=out_dtype)
+        _MM_W8A8_FP8_OUT_CACHE[key] = out
+        while len(_MM_W8A8_FP8_OUT_CACHE) > _MM_W8A8_FP8_OUT_CACHE_MAX_ENTRIES:
+            _MM_W8A8_FP8_OUT_CACHE.pop(next(iter(_MM_W8A8_FP8_OUT_CACHE)))
+    else:
+        _MM_W8A8_FP8_OUT_CACHE.pop(key)
+        _MM_W8A8_FP8_OUT_CACHE[key] = out
+    return flag_gems.mm_w8a8_fp8_out(a, b, out=out)
+
+
+class ParallelMmW8A8Fp8Benchmark(ParallelBlasBenchmark):
+    SHAPE_CONFIG_KEYS = ("mm",)
+
+    def get_latency(self, op, *args, **kwargs):
+        if op is not self.torch_op:
+            # Populate prequantization, descriptor, output, and autotune caches
+            # before CUDA Graph capture so replay measures the FP8 GEMM only.
+            for _ in range(2):
+                op(*args, **kwargs)
+            torch.cuda.synchronize()
+        return triton.testing.do_bench_cudagraph(
+            lambda: op(*args, **kwargs),
+            rep=Config.repetition,
+            return_mode="median",
+        )
+
+    def set_shapes(self, shape_file_path=None):
+        super().set_shapes(shape_file_path)
+        if not shape_file_path or not os.path.isfile(shape_file_path):
+            return
+        with open(shape_file_path, "r", encoding="utf-8") as shape_file:
+            yaml_config = yaml.safe_load(shape_file) or {}
+        if "mm" not in yaml_config:
+            return
+        self.shapes = [
+            tuple(shape)
+            for shape in yaml_config["mm"].get("shapes", self.DEFAULT_SHAPES)
+        ]
+        self.shape_desc = yaml_config["mm"].get("shape_desc", self.shape_desc)
 
 
 class ParallelBaddbmmBenchmark(ParallelBenchmarkMixin, BaddbmmBenchmark):
@@ -1420,6 +1547,13 @@ class ParallelSparseAttentionBenchmark(ParallelBenchmarkMixin, Benchmark):
             marks=pytest.mark.mm,
         ),
         pytest.param(
+            "mm_w8a8_fp8",
+            torch.Tensor.mm,
+            mm_input_fn,
+            ParallelMmW8A8Fp8Benchmark,
+            marks=pytest.mark.mm_w8a8_fp8,
+        ),
+        pytest.param(
             "baddbmm",
             torch.baddbmm,
             baddbmm_input_fn,
@@ -1435,6 +1569,10 @@ def test_blas_benchmark(op_name, torch_op, input_fn, bench_cls):
         torch_op=torch_op,
         dtypes=FLOAT_DTYPES,
     )
+    if op_name == "mm_w8a8_fp8":
+        if not hasattr(flag_gems, "mm_w8a8_fp8_out"):
+            pytest.skip("mm_w8a8_fp8 benchmark requires the Hopper W8A8 backend")
+        bench.set_gems(_mm_w8a8_fp8_out_cached)
     bench.run()
 
 

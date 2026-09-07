@@ -79,8 +79,7 @@ def _run_case(dense_cpu, offsets_cpu, offset_dtype, total_L):
     ]
     expected = _reference(dense_cpu, offsets_cpu)
 
-    with flag_gems.use_gems():
-        actual = torch.ops.aten._padded_dense_to_jagged_forward(dense, offsets, total_L)
+    actual = flag_gems._padded_dense_to_jagged_forward(dense, offsets, total_L)
 
     assert actual.device == dense.device
     assert actual.dtype == dense.dtype
@@ -173,8 +172,7 @@ def test_padded_dense_to_jagged_forward_float64_preserves_bits():
     offsets = [torch.tensor(offsets_cpu[0], device=flag_gems.device)]
     expected = _reference(dense_cpu, offsets_cpu)
 
-    with flag_gems.use_gems():
-        actual = torch.ops.aten._padded_dense_to_jagged_forward(dense, offsets, 3)
+    actual = flag_gems._padded_dense_to_jagged_forward(dense, offsets, 3)
 
     assert torch.equal(actual.cpu().view(torch.int64), expected.view(torch.int64))
 
@@ -196,8 +194,7 @@ def test_padded_dense_to_jagged_forward_float16_preserves_bits(
     offsets = [torch.tensor([0, 2, 3], dtype=offset_dtype, device=flag_gems.device)]
     expected_bits = torch.cat((bit_patterns[0, :2], bit_patterns[1, :1]))
 
-    with flag_gems.use_gems():
-        actual = torch.ops.aten._padded_dense_to_jagged_forward(dense, offsets, 3)
+    actual = flag_gems._padded_dense_to_jagged_forward(dense, offsets, 3)
 
     assert torch.equal(actual.cpu().view(torch.int16), expected_bits)
 
@@ -260,18 +257,15 @@ def _invalid_inputs(case):
 def test_padded_dense_to_jagged_forward_validation(case, match):
     dense, offsets, total_L = _invalid_inputs(case)
     with pytest.raises((RuntimeError, TypeError), match=match):
-        with flag_gems.use_gems():
-            torch.ops.aten._padded_dense_to_jagged_forward(dense, offsets, total_L)
+        flag_gems._padded_dense_to_jagged_forward(dense, offsets, total_L)
 
 
 @pytest.mark.padded_dense_to_jagged_forward
 def test_padded_dense_to_jagged_forward_revalidates_mutated_offsets():
     dense, offsets, total_L = _invalid_inputs("total_L")
     total_L = 4
-    with flag_gems.use_gems():
-        torch.ops.aten._padded_dense_to_jagged_forward(dense, offsets, total_L)
+    flag_gems._padded_dense_to_jagged_forward(dense, offsets, total_L)
 
     offsets[0][1] = -1
     with pytest.raises(RuntimeError, match="nondecreasing"):
-        with flag_gems.use_gems():
-            torch.ops.aten._padded_dense_to_jagged_forward(dense, offsets, total_L)
+        flag_gems._padded_dense_to_jagged_forward(dense, offsets, total_L)
