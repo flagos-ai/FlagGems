@@ -274,6 +274,7 @@ from .scaled_softmax import scaled_softmax_backward, scaled_softmax_forward
 from .scatter import scatter, scatter_
 from .scatter_add_ import scatter_add_
 from .select_scatter import select_scatter
+from .special_erfinv import special_erfinv, special_erfinv_out
 from .selu import selu, selu_
 from .sgn_ import sgn_
 from .sigmoid import sigmoid, sigmoid_, sigmoid_backward
