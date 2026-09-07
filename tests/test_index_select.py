@@ -53,3 +53,18 @@ def test_index_select(shape, dim, dtype):
         res_out = torch.index_select(inp, dim, index)
 
     utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend", reason="Ascend-specific regression test"
+)
+@pytest.mark.index_select
+def test_index_select_scalar_index():
+    inp = torch.arange(6, device=flag_gems.device).reshape(2, 3)
+    index = torch.tensor(1, dtype=torch.int64, device=flag_gems.device)
+
+    ref_out = torch.index_select(inp.cpu(), 1, index.cpu())
+    with flag_gems.use_gems():
+        res_out = torch.index_select(inp, 1, index)
+
+    utils.gems_assert_equal(res_out.cpu(), ref_out)
