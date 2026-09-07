@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Prepare and execute data-driven FlagTune workloads on GPU workers.
 
 The parent process uses :func:`prepare_benchmark_case` to normalize arbitrary
@@ -478,13 +492,14 @@ class BenchmarkWorker:
         return configs
 
     def _make_tensors(
-        self, values: Mapping[str, Any], dtypes: Sequence[Any]
+        self, values: Mapping[str, Any], dtypes: Sequence[Any], variant: str
     ) -> dict[str, Any]:
-        """Construct benchmark tensors from compiled allowlisted recipes.
+        """Construct the tensors used by one variant's benchmark invocation.
 
         Args:
             values: Canonical ordered shape identity mapping.
-            dtype: Runtime torch dtype selected by the CLI/benchmark API.
+            dtypes: Runtime torch dtypes assigned in tensor-recipe order.
+            variant: Resolved variant selecting the public invocation arguments.
 
         Returns:
             Mapping from YAML tensor names to newly allocated device tensors.
@@ -498,22 +513,25 @@ class BenchmarkWorker:
             Tensors are regenerated for every shape and are not seeded.  This is
             suitable for performance tuning, not numerical-correctness testing.
         """
-        if len(dtypes) != len(self.spec.benchmark.args):
+        if len(dtypes) != len(self.spec.benchmark.tensors):
             raise BenchmarkExecutionError(
-                "ordered input dtypes must match benchmark.invoke.args"
+                "ordered input dtypes must match benchmark tensor recipes"
             )
         dtype_by_tensor = {
-            reference.name: dtype
-            for reference, dtype in zip(self.spec.benchmark.args, dtypes)
+            tensor.name: dtype
+            for tensor, dtype in zip(self.spec.benchmark.tensors, dtypes)
         }
+        active_tensor_names = set(self.spec.benchmark.input_tensor_names_for(variant))
         tensors = {}
         for tensor in self.spec.benchmark.tensors:
-            shape = tuple(
-                int(evaluate_compiled(dim, values, {})) for dim in tensor.shape
-            )
-            if tensor.name not in dtype_by_tensor:
-                raise BenchmarkExecutionError(
-                    f"tensor {tensor.name!r} has no dtype because it is not an invoke arg"
+            if tensor.name not in active_tensor_names:
+                continue
+            if tensor.shape_ref is not None:
+                raw_shape = evaluate_compiled(tensor.shape_ref, values, {})
+                shape = tuple(int(dimension) for dimension in raw_shape)
+            else:
+                shape = tuple(
+                    int(evaluate_compiled(dim, values, {})) for dim in tensor.shape
                 )
             tensors[tensor.name] = self.device_runtime.make_tensor(
                 tensor.factory,
@@ -522,11 +540,12 @@ class BenchmarkWorker:
             )
         return tensors
 
-    def _invoke(self, tensors: Mapping[str, Any]) -> Any:
+    def _invoke(self, tensors: Mapping[str, Any], variant: str) -> Any:
         """Invoke the configured public operator with positional tensor inputs.
 
         Args:
             tensors: Tensor mapping returned by :meth:`_make_tensors`.
+            variant: Resolved variant selecting its declared argument sequence.
 
         Returns:
             The public FlagGems callable's result without post-processing.
@@ -536,8 +555,12 @@ class BenchmarkWorker:
             order.  Keyword arguments and YAML-selected callables are unsupported
             by design.
         """
+        inputs = {**self.spec.benchmark.scalars, **tensors}
         return self.operator(
-            *(tensors[reference.name] for reference in self.spec.benchmark.args)
+            *(
+                inputs[reference.name]
+                for reference in self.spec.benchmark.args_for(variant)
+            )
         )
 
     def _output_dtypes(self, value: Any) -> list[str]:
@@ -646,6 +669,126 @@ class BenchmarkWorker:
 
         return tuple(statistics.median(values) for values in zip(*trial_quantiles))
 
+    def measure_configs(
+        self,
+        payload: Mapping[str, Any],
+        *,
+        dtype_names: Sequence[str],
+        config_records: Mapping[str, Mapping[str, Any]],
+        warmup: int,
+        iterations: int,
+        trials: int,
+        benchmark_mode: str,
+        benchmark_retries: int,
+    ) -> dict[str, list[tuple[float, float, float]]]:
+        """Measure several explicit configs for one shape, interleaved in place.
+
+        Args:
+            payload: Prepared task mapping from
+                :func:`prepare_benchmark_case`.
+            dtype_names: Ordered benchmark tensor-recipe dtype names.
+            config_records: Ordered label-to-config mapping. Labels are opaque
+                caller identifiers such as ``'baseline'`` and ``'ours'``; values
+                are flattened config records accepted by :meth:`_make_configs`.
+            warmup: Triton warmup duration in milliseconds for every trial.
+            iterations: Triton repetition duration in milliseconds per trial.
+            trials: Positive number of measurements taken for each config.
+            benchmark_mode: Architecture-neutral ``event`` or ``replay`` mode.
+            benchmark_retries: Replay samples sharing each trial's budget.
+
+        Returns:
+            Mapping from each input label to ``trials`` finite ``(p20, p50,
+            p80)`` millisecond tuples in measurement order. The caller owns all
+            summarization; nothing is reduced, ranked, or compared here.
+
+        Raises:
+            BenchmarkExecutionError: If the payload no longer matches the loaded
+            operator config, the request is empty, a duration or trial count is
+            invalid, or a config produces incomplete quantiles.
+
+        Implementation:
+            Every config is measured through :meth:`LibTuner.benchmark_config`,
+            which bypasses ConfigCache and BenchmarkCache, so repeated trials
+            are genuinely independent instead of replaying one stored sample.
+            That API needs the low-level argument context captured by
+            ``LibTuner.run``; this method obtains it by scoping the tuner to a
+            single config, which takes ``run``'s no-policy branch and selects
+            that config without tuning or touching either cache. The label order
+            is reversed on every odd trial so drift across the measurement
+            window cannot systematically favour whichever side is measured
+            first.
+
+        Limitations:
+            This measures fixed-config kernel device time for one shape on the
+            calling process's device. It deliberately does not spread work over
+            workers: interleaving all labels in one process is what removes the
+            between-process error term, and it is not preserved if the labels
+            are measured by different processes or at different times.
+        """
+        if payload.get("config_sha256") != self.spec.source_sha256:
+            raise BenchmarkExecutionError(
+                "operator config changed after task preparation"
+            )
+        if not config_records:
+            raise BenchmarkExecutionError(
+                "measure_configs requires at least one config"
+            )
+        if warmup < 0:
+            raise BenchmarkExecutionError("warmup must be non-negative")
+        if iterations <= 0:
+            raise BenchmarkExecutionError("iterations must be positive")
+        if trials <= 0:
+            raise BenchmarkExecutionError("trials must be positive")
+
+        values = dict(payload["values"])
+        variant = str(payload["variant"])
+        recipe_dtypes = [normalize_dtype_name(name) for name in dtype_names]
+        torch_dtypes = [self.device_runtime.dtype(name) for name in recipe_dtypes]
+        kernel, tuner = self._find_tuner(variant)
+        identity = (self.spec.op_id, variant)
+        if identity not in self.base_states:
+            tuner.apply_flagtune()
+            self.base_states[identity] = (list(tuner.configs), list(tuner.strategy))
+        base_configs, base_strategy = self.base_states[identity]
+
+        labels = list(config_records)
+        configs = dict(
+            zip(
+                labels,
+                self._make_configs([config_records[label] for label in labels], tuner),
+            )
+        )
+        tensors = self._make_tensors(values, torch_dtypes, variant)
+
+        from flag_gems.utils.libentry import clear_libentry_dispatch_cache
+
+        clear_libentry_dispatch_cache(kernel)
+        tuner._set_configs_and_strategy([configs[labels[0]]], base_strategy)
+        try:
+            self._invoke(tensors, variant)
+            self.device_runtime.synchronize()
+        finally:
+            tuner._set_configs_and_strategy(base_configs, base_strategy)
+            clear_libentry_dispatch_cache(kernel)
+
+        samples: dict[str, list[tuple[float, float, float]]] = {
+            label: [] for label in labels
+        }
+        for trial in range(trials):
+            order = labels if trial % 2 == 0 else list(reversed(labels))
+            for label in order:
+                config = configs[label]
+                raw = tuner.benchmark_config(
+                    config,
+                    warmup=warmup,
+                    rep=iterations,
+                    benchmark_mode=benchmark_mode,
+                    benchmark_retries=benchmark_retries,
+                    quantiles=(0.5, 0.2, 0.8),
+                )
+                samples[label].append(self._single_config_quantiles({config: raw}))
+        return samples
+
     def benchmark(
         self,
         payload: Mapping[str, Any],
@@ -721,8 +864,13 @@ class BenchmarkWorker:
             )
         values = dict(payload["values"])
         variant = str(payload["variant"])
-        input_dtypes = [normalize_dtype_name(name) for name in dtype_names]
-        torch_dtypes = [self.device_runtime.dtype(name) for name in input_dtypes]
+        recipe_dtypes = [normalize_dtype_name(name) for name in dtype_names]
+        torch_dtypes = [self.device_runtime.dtype(name) for name in recipe_dtypes]
+        dtype_by_tensor = dict(zip(self.spec.benchmark.tensor_names, recipe_dtypes))
+        input_dtypes = [
+            dtype_by_tensor[name]
+            for name in self.spec.benchmark.input_tensor_names_for(variant)
+        ]
         kernel, tuner = self._find_tuner(variant)
         identity = (self.spec.op_id, variant)
         if identity not in self.base_states:
@@ -751,7 +899,7 @@ class BenchmarkWorker:
         for attr in ("bench_time", "configs_timings", "best_config"):
             tuner.__dict__.pop(attr, None)
 
-        tensors = self._make_tensors(values, torch_dtypes)
+        tensors = self._make_tensors(values, torch_dtypes, variant)
         self.device_runtime.synchronize()
         first_start = time.perf_counter()
         progress_interval = _progress_interval()
@@ -808,7 +956,7 @@ class BenchmarkWorker:
             tuner.do_bench = configured_do_bench
             try:
                 with tuner.use_run_mode(selected_run_mode):
-                    output = self._invoke(tensors)
+                    output = self._invoke(tensors, variant)
             finally:
                 tuner.do_bench = protocol_benchmark
         self.device_runtime.synchronize()
@@ -948,6 +1096,13 @@ class BenchmarkWorker:
             The subprocess loop calls it only when batch fail-fast is disabled.
         """
         values = dict(payload["values"])
+        variant = str(payload["variant"])
+        recipe_dtypes = [normalize_dtype_name(name) for name in dtype_names]
+        dtype_by_tensor = dict(zip(self.spec.benchmark.tensor_names, recipe_dtypes))
+        input_dtypes = [
+            dtype_by_tensor[name]
+            for name in self.spec.benchmark.input_tensor_names_for(variant)
+        ]
         shape = [values[name] for name in self.spec.shape.identity]
         configs = payload.get("configs")
         device_name = self.device_runtime.descriptor.device_name
@@ -962,7 +1117,7 @@ class BenchmarkWorker:
             "shape_key": ",".join(str(value) for value in shape),
             **values,
             "Count": payload.get("count"),
-            "input_dtypes": [normalize_dtype_name(name) for name in dtype_names],
+            "input_dtypes": input_dtypes,
             "output_dtypes": [],
             "dtype_key": None,
             "gpu": gpu_token,
