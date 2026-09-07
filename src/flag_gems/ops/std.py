@@ -26,6 +26,19 @@ logger = logging.getLogger(__name__)
 
 
 @triton.jit
+def welford_combine(mean_x, count_x, M_x, mean_y, count_y, M_y):
+    # Numerically stable parallel-Welford (Chan) merge: the M2 update uses the
+    # difference of means, so it does not lose precision when the data mean is
+    # far from zero.
+    count = count_x + count_y
+    _count = tl.maximum(count, 1.0)
+    delta = mean_y - mean_x
+    mean = mean_x + delta * count_y / _count
+    M = M_x + M_y + delta * delta * count_x * count_y / _count
+    return mean, count, M
+
+
+@triton.jit
 def _std_map_kernel(X, Tmp_sum, Tmp_sum_sq, N, BLOCK_N: tl.constexpr):
     pid = tl.program_id(0)
     offset = pid * BLOCK_N + tl.arange(0, BLOCK_N)
@@ -127,41 +140,41 @@ def _std_dim_kernel_inner(
     ONE_TILE_PER_CTA: tl.constexpr,
 ):
     pid_m = tl.program_id(0)
+    row = X + pid_m * N
 
-    # Pass 1: compute mean
     if ONE_TILE_PER_CTA:
+        # The whole row fits in one tile: load once, reuse for mean and M2.
         n_offsets = tl.arange(0, TILE_N)
         mask = n_offsets < N
-        x = tl.load(X + pid_m * N + n_offsets, mask=mask, other=0.0).to(tl.float32)
+        x = tl.load(row + n_offsets, mask=mask, other=0.0).to(tl.float32)
         mean = tl.sum(x, axis=0) / N
-    else:
-        sum_acc = tl.zeros((TILE_N,), dtype=tl.float32)
-        for start_n in range(0, N, TILE_N):
-            n_offsets = start_n + tl.arange(0, TILE_N)
-            mask = n_offsets < N
-            x = tl.load(X + pid_m * N + n_offsets, mask=mask, other=0.0).to(tl.float32)
-            sum_acc += x
-        mean = tl.sum(sum_acc, axis=0) / N
-
-    # Pass 2: compute sum of squared deviations
-    if ONE_TILE_PER_CTA:
-        n_offsets = tl.arange(0, TILE_N)
-        mask = n_offsets < N
-        x = tl.load(X + pid_m * N + n_offsets, mask=mask, other=0.0).to(tl.float32)
         diff = x - mean
-        sq_sum = tl.sum(tl.where(mask, diff * diff, 0.0), axis=0)
+        m2 = tl.sum(tl.where(mask, diff * diff, 0.0), axis=0)
     else:
-        sq_acc = tl.zeros((TILE_N,), dtype=tl.float32)
+        # Single-read Welford. The old code read the whole row twice (once for
+        # the mean, once for the squared deviations), doubling global-memory
+        # traffic, which dominated the runtime on large rows. Here each lane
+        # streams a running (count, mean, M2) over its own elements with no
+        # cross-lane reduction inside the loop, and the lanes are merged once at
+        # the end with a numerically stable Chan combine.
+        count_acc = tl.zeros((TILE_N,), dtype=tl.float32)
+        mean_acc = tl.zeros((TILE_N,), dtype=tl.float32)
+        m2_acc = tl.zeros((TILE_N,), dtype=tl.float32)
         for start_n in range(0, N, TILE_N):
             n_offsets = start_n + tl.arange(0, TILE_N)
             mask = n_offsets < N
-            x = tl.load(X + pid_m * N + n_offsets, mask=mask, other=0.0).to(tl.float32)
-            diff = x - mean
-            sq_acc += tl.where(mask, diff * diff, 0.0)
-        sq_sum = tl.sum(sq_acc, axis=0)
+            x = tl.load(row + n_offsets, mask=mask, other=0.0).to(tl.float32)
+            new_count = count_acc + mask.to(tl.float32)
+            delta = x - mean_acc
+            mean_acc += tl.where(mask, delta / tl.maximum(new_count, 1.0), 0.0)
+            m2_acc += tl.where(mask, delta * (x - mean_acc), 0.0)
+            count_acc = new_count
+        _mean, _count, m2 = tl.reduce(
+            (mean_acc, count_acc, m2_acc), axis=0, combine_fn=welford_combine
+        )
 
     denom = N - correction
-    var = sq_sum / tl.maximum(denom, 1e-12)
+    var = m2 / tl.maximum(denom, 1e-12)
     std_dev = tl.sqrt(tl.maximum(var, 0.0))
     tl.store(Out + pid_m, std_dev.to(Out.dtype.element_ty), mask=pid_m < M)
 
@@ -184,44 +197,42 @@ def _std_dim_kernel_non_inner(
     pid_k = tl.program_id(1)
     k_offsets = pid_k * TILE_K + tl.arange(0, TILE_K)[None, :]
 
-    # Pass 1: compute mean
     if ONE_TILE_PER_CTA:
+        # The whole reduced dim fits in one tile: load once, reuse for mean/M2.
         n_offsets = tl.arange(0, TILE_N)[:, None]
         mask = (n_offsets < N) & (k_offsets < K)
         offsets = pid_m * N * K + n_offsets * K + k_offsets
         x = tl.load(X + offsets, mask=mask, other=0.0).to(tl.float32)
         mean = tl.sum(x, axis=0, keep_dims=True) / N
-    else:
-        sum_acc = tl.zeros((TILE_N, TILE_K), dtype=tl.float32)
-        for start_n in range(0, N, TILE_N):
-            n_offsets = start_n + tl.arange(0, TILE_N)[:, None]
-            mask = (n_offsets < N) & (k_offsets < K)
-            offsets = pid_m * N * K + n_offsets * K + k_offsets
-            x = tl.load(X + offsets, mask=mask, other=0.0).to(tl.float32)
-            sum_acc += x
-        mean = tl.sum(sum_acc, axis=0, keep_dims=True) / N
-
-    # Pass 2: compute sum of squared deviations
-    if ONE_TILE_PER_CTA:
-        n_offsets = tl.arange(0, TILE_N)[:, None]
-        mask = (n_offsets < N) & (k_offsets < K)
-        offsets = pid_m * N * K + n_offsets * K + k_offsets
-        x = tl.load(X + offsets, mask=mask, other=0.0).to(tl.float32)
         diff = x - mean
-        sq_sum = tl.sum(tl.where(mask, diff * diff, 0.0), axis=0, keep_dims=True)
+        m2 = tl.sum(tl.where(mask, diff * diff, 0.0), axis=0, keep_dims=True)
     else:
-        sq_acc = tl.zeros((TILE_N, TILE_K), dtype=tl.float32)
+        # Single-read Welford (see the inner kernel). Each (n_lane, k) slot
+        # streams a running (count, mean, M2) with no cross-lane reduction in
+        # the loop; the n lanes are merged once at the end with the stable Chan
+        # combine.
+        count_acc = tl.zeros((TILE_N, TILE_K), dtype=tl.float32)
+        mean_acc = tl.zeros((TILE_N, TILE_K), dtype=tl.float32)
+        m2_acc = tl.zeros((TILE_N, TILE_K), dtype=tl.float32)
         for start_n in range(0, N, TILE_N):
             n_offsets = start_n + tl.arange(0, TILE_N)[:, None]
             mask = (n_offsets < N) & (k_offsets < K)
             offsets = pid_m * N * K + n_offsets * K + k_offsets
             x = tl.load(X + offsets, mask=mask, other=0.0).to(tl.float32)
-            diff = x - mean
-            sq_acc += tl.where(mask, diff * diff, 0.0)
-        sq_sum = tl.sum(sq_acc, axis=0, keep_dims=True)
+            new_count = count_acc + mask.to(tl.float32)
+            delta = x - mean_acc
+            mean_acc += tl.where(mask, delta / tl.maximum(new_count, 1.0), 0.0)
+            m2_acc += tl.where(mask, delta * (x - mean_acc), 0.0)
+            count_acc = new_count
+        _mean, _count, m2 = tl.reduce(
+            (mean_acc, count_acc, m2_acc),
+            axis=0,
+            combine_fn=welford_combine,
+            keep_dims=True,
+        )
 
     denom = N - correction
-    var = sq_sum / tl.maximum(denom, 1e-12)
+    var = m2 / tl.maximum(denom, 1e-12)
     std_dev = tl.sqrt(tl.maximum(var, 0.0))
     out_offsets = pid_m * K + k_offsets
     tl.store(Out + out_offsets, std_dev.to(Out.dtype.element_ty), mask=k_offsets < K)
