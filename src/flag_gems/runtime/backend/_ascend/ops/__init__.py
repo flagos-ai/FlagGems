@@ -110,6 +110,7 @@ from .sort import sort
 from .sparse_sampled_addmm import sparse_sampled_addmm, sparse_sampled_addmm_out
 from .stack import stack
 from .threshold import threshold, threshold_backward
+from .topk_w8a16_fp8 import topk_w8a16_fp8
 from .triu import triu
 from .unique import _unique2
 from .upsample_bicubic2d_aa import _upsample_bicubic2d_aa
@@ -259,6 +260,7 @@ __all__ = [
     "stack",
     "threshold",
     "threshold_backward",
+    "topk_w8a16_fp8",
     "triu",
     "upsample_linear1d_backward",
     "upsample_nearest2d",
