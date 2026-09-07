@@ -87,3 +87,23 @@ def test_min_dim(shape, dim, keepdim, dtype):
 
     utils.gems_assert_equal(res_out_index, ref_out_index)
     utils.gems_assert_equal(res_out_value, ref_out_value)
+
+
+@pytest.mark.min
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_min_full_reduction_noncontiguous(dtype):
+    # The flattened reduction kernel addresses the input linearly, so for a view
+    # whose storage still holds the discarded columns it read those elements
+    # instead. The values outside the view would change the result.
+    base = torch.full((4, 6), -100.0, dtype=dtype, device=flag_gems.device)
+    base[:, :3] = torch.arange(1, 13, dtype=dtype, device=flag_gems.device).reshape(
+        4, 3
+    )
+    inp = base[:, :3]
+    ref_inp = utils.to_reference(inp)
+
+    ref_out = torch.min(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.min(inp)
+
+    utils.gems_assert_equal(res_out, ref_out)

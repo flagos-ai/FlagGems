@@ -90,3 +90,22 @@ def test_prod_dim_multi_tile(shape, dim, keepdim):
         res_out = torch.prod(inp, dim=dim, keepdim=keepdim)
 
     utils.gems_assert_close(res_out, ref_out, torch.float32)
+
+
+@pytest.mark.prod
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_prod_full_reduction_noncontiguous(dtype):
+    # The flattened reduction kernel addresses the input linearly, so for a view
+    # whose storage still holds the discarded columns it read those elements
+    # instead. The zeros outside the view would drive the product to 0.
+    base = torch.zeros((4, 6), dtype=dtype, device=flag_gems.device)
+    base[:, :3] = 1.0
+    base[0, 0] = 2.0
+    inp = base[:, :3]
+    ref_inp = utils.to_reference(inp, True)
+
+    ref_out = torch.prod(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.prod(inp)
+
+    utils.gems_assert_close(res_out, ref_out, dtype)

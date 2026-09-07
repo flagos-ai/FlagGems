@@ -16,6 +16,7 @@ import pytest
 import torch
 
 import flag_gems
+from flag_gems.runtime import torch_device_fn
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
@@ -60,10 +61,52 @@ def test_argmax(shape, dim, keepdim, dtype):
     else:
         inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
-    ref_inp = utils.to_reference(inp)
+    use_cpu_ref = flag_gems.vendor_name == "ascend" and dim is None and keepdim
+    ref_inp = inp.cpu() if use_cpu_ref else utils.to_reference(inp)
 
     ref_out = torch.argmax(ref_inp, dim=dim, keepdim=keepdim)
+    if use_cpu_ref and not cfg.TO_CPU:
+        ref_out = ref_out.to(inp.device)
     with flag_gems.use_gems():
         res_out = torch.argmax(inp, dim=dim, keepdim=keepdim)
 
     utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.argmax
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_argmax_full_reduction_noncontiguous(dtype):
+    # The flattened reduction kernel addresses the input linearly, so for a view
+    # whose storage still holds the discarded columns it read those elements
+    # instead. The values outside the view would change the result.
+    base = torch.full((4, 6), 100.0, dtype=dtype, device=flag_gems.device)
+    base[:, :3] = torch.arange(1, 13, dtype=dtype, device=flag_gems.device).reshape(
+        4, 3
+    )
+    inp = base[:, :3]
+    ref_inp = utils.to_reference(inp)
+
+    ref_out = torch.argmax(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.argmax(inp)
+
+    utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.argmax
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend", reason="Ascend-specific regression test"
+)
+def test_argmax_large_flattened_block_size():
+    # block_size was derived from sqrt(numel) with no upper bound. For an input
+    # this large it went past what the device handles on the flattened path, and
+    # the returned index pointed at an element that was not the maximum.
+    for seed in (0, 2, 3, 9):
+        torch_device_fn.manual_seed_all(seed)
+        inp = torch.randn((200, 2560, 3), dtype=torch.bfloat16, device=flag_gems.device)
+        ref_out = torch.argmax(inp.cpu())
+
+        with flag_gems.use_gems():
+            res_out = torch.argmax(inp)
+
+        torch.testing.assert_close(res_out.cpu(), ref_out, atol=0, rtol=0)
