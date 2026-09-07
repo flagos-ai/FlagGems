@@ -202,18 +202,27 @@ def _int_floordiv(x, y):
     # Triton floordiv equates to
     #     (x - np.fmod(x, y)) / y
     # whereas Pytorch floordiv is
-    #     (x - np.remainder(x, y)) y
+    #     (x - np.remainder(x, y)) / y
     # The results show a one off difference when
     #     C1) x and y have opposite signs
     # and C2) x is not multiples of y.
-    # Apart from the above, there's an erroneous case x // 0 returns -1
-    # whereas in Pytorch x // 0 returns -1 if x >=0 and -2 if x < 0
-    # but this special case is coalesced into the c1 and c2 check so
-    # there's extra handling.
-    r = x % y
+    # Division by zero: PyTorch returns 0 for integer // 0, but Triton
+    # returns -1 for // and x for %, so we must handle it explicitly.
+    #
+    # Widen narrow integer types (int8/int16) to int32 to avoid intermediate
+    # overflow in the modulo and division operations on Triton 3.8+.
+    orig_dtype = x.dtype
+    x = x.to(tl.int32)
+    y = y.to(tl.int32)
+    is_zero = y == 0
+    # Use 1 as a safe divisor to avoid undefined behaviour in % and //
+    safe_y = tl.where(is_zero, 1, y)
+    r = x % safe_y
     c1 = r != 0
-    c2 = (x < 0) ^ (y < 0)
-    return tl.where(c1 & c2, x // y - 1, x // y)
+    c2 = (x < 0) ^ (safe_y < 0)
+    result = tl.where(c1 & c2, x // safe_y - 1, x // safe_y)
+    result = tl.where(is_zero, 0, result)
+    return result.to(orig_dtype)
 
 
 # TO be consistent with python, numpy and torch, we have to implement it in the

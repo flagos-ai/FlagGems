@@ -93,6 +93,10 @@ class CodeGenConfig:
     def __post_init__(self):
         if self.prefer_1d_tile:
             self.prefer_block_pointer = False
+        # Triton >= 3.8 deprecated make_block_ptr; disable block pointers
+        triton_version = tuple(int(x) for x in triton.__version__.split("."))
+        if triton_version >= (3, 8, 0):
+            self.prefer_block_pointer = False
 
 
 CODEGEN_COFIGS = {

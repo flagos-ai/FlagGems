@@ -117,8 +117,9 @@ def generate_index_put_kernel(
         code.writeline("mask0 = offset0 < M")
         for i in range(indices_len):
             comp = [f"indices_idx{j} * indices{i}_stride{j}" for j in range(index_rank)]
+            code.writeline(f"indices{i}_offset = {' + '.join(comp)}")
             code.writeline(
-                f"cur_index{i} = tl.load(indices{i}_ptr + {' + '.join(comp)}, mask=mask0, other=0)"
+                f"cur_index{i} = tl.load(indices{i}_ptr + indices{i}_offset, mask=mask0, other=0)"
             )
         code.newline()
         index_mask = [
@@ -141,15 +142,18 @@ def generate_index_put_kernel(
         ]
         code.writeline(f"values_offset = {' + '.join(comp)}")
         code.newline()
-        code.writeline("cur_value = tl.load(values_ptr + values_offset, mask=mask)")
+        code.writeline("values_ptr_offset = values_ptr + values_offset")
+        code.writeline("cur_value = tl.load(values_ptr_offset, mask=mask)")
         code.writeline("if IS_ACCUMULATE:")
         with code.indent():
+            code.writeline("input_ptr_offset = input_ptr + input_offset")
             code.writeline(
-                "tl.atomic_add(input_ptr + input_offset, cur_value, mask=mask)"
+                "tl.atomic_add(input_ptr_offset, cur_value, mask=mask)"
             )
         code.writeline("else:")
         with code.indent():
-            code.writeline("tl.store(input_ptr + input_offset, cur_value, mask=mask)")
+            code.writeline("input_ptr_offset = input_ptr + input_offset")
+            code.writeline("tl.store(input_ptr_offset, cur_value, mask=mask)")
 
     code.newline()
     code.newline()

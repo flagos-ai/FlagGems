@@ -192,15 +192,8 @@ def slice_kernel_4d(
     tl.store(output_ptr + output_offset, data, mask=mask)
 
 
-def slice(input_tensor, dim, start, end, step):
+def slice(input_tensor, dim=0, start=None, end=None, step=1):
     logger.debug("GEMS SLICE")
-    # slice is a pure memory-movement op; reject only bool/complex which the
-    # kernels' element-wise load/store path does not handle.
-    assert input_tensor.dtype not in (
-        torch.bool,
-        torch.complex64,
-        torch.complex128,
-    ), f"slice: unsupported dtype {input_tensor.dtype}"
     # Normalize negative indices
     input_shape = list(input_tensor.shape)
     ndim = len(input_shape)
@@ -223,127 +216,13 @@ def slice(input_tensor, dim, start, end, step):
     end = max(0, min(end, input_shape[dim]))
 
     # Compute output shape
-    output_shape = input_shape.copy()
     slice_size = max(0, (end - start + step - 1) // step)
-    output_shape[dim] = slice_size
 
-    # Allocate output
-    output = torch.empty(
-        output_shape, dtype=input_tensor.dtype, device=input_tensor.device
-    )
+    # Return a view using as_strided to preserve mutation semantics
+    new_size = list(input_tensor.shape)
+    new_size[dim] = slice_size
+    new_stride = list(input_tensor.stride())
+    storage_offset = input_tensor.storage_offset() + start * new_stride[dim]
+    new_stride[dim] = new_stride[dim] * step
 
-    n_elements = output.numel()
-    if n_elements == 0:
-        return output
-
-    # For contiguous inputs, use a memcpy-style approach with view + contiguous
-    # This leverages PyTorch's optimized memory copy primitives
-    if input_tensor.is_contiguous() and step == 1:
-        # Build slice tuple
-        slices = [builtins.slice(None)] * ndim
-        slices[dim] = builtins.slice(start, end, step)
-
-        # Create view and copy to contiguous output
-        view = input_tensor[tuple(slices)]
-        output.copy_(view)
-        return output
-
-    # Fast path: contiguous slice with step=1 on innermost dimension
-    if step == 1 and dim == ndim - 1:
-        # 1024 balances occupancy and register pressure for coalesced memory access
-        BLOCK_SIZE = 1024
-        grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
-
-        # Compute the starting offset in the input tensor
-        input_offset = start
-        for i in range(ndim - 1):
-            input_offset *= input_shape[i]
-
-        slice_kernel_contiguous[grid](
-            input_tensor,
-            output,
-            input_offset * input_tensor.stride(ndim - 1),
-            n_elements,
-            BLOCK_SIZE=BLOCK_SIZE,
-        )
-        return output
-
-    # Multi-dimensional grid approach with larger block size
-    BLOCK_SIZE = 1024
-    input_strides = list(input_tensor.stride())
-
-    if ndim == 2:
-        grid = (output_shape[0], triton.cdiv(output_shape[1], BLOCK_SIZE))
-        slice_kernel_2d[grid](
-            input_tensor,
-            output,
-            dim,
-            start,
-            step,
-            input_strides[0],
-            input_strides[1],
-            output_shape[0],
-            output_shape[1],
-            BLOCK_SIZE=BLOCK_SIZE,
-        )
-    elif ndim == 3:
-        grid = (
-            output_shape[0],
-            output_shape[1],
-            triton.cdiv(output_shape[2], BLOCK_SIZE),
-        )
-        slice_kernel_3d[grid](
-            input_tensor,
-            output,
-            dim,
-            start,
-            step,
-            input_strides[0],
-            input_strides[1],
-            input_strides[2],
-            output_shape[1],
-            output_shape[2],
-            BLOCK_SIZE=BLOCK_SIZE,
-        )
-    elif ndim == 4:
-        grid = (
-            output_shape[0] * output_shape[1],
-            output_shape[2],
-            triton.cdiv(output_shape[3], BLOCK_SIZE),
-        )
-        slice_kernel_4d[grid](
-            input_tensor,
-            output,
-            dim,
-            start,
-            step,
-            input_strides[0],
-            input_strides[1],
-            input_strides[2],
-            input_strides[3],
-            output_shape[0],
-            output_shape[1],
-            output_shape[2],
-            output_shape[3],
-            BLOCK_SIZE=BLOCK_SIZE,
-        )
-    elif ndim == 1:
-        # 1D strided slice (step may be != 1)
-        grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
-        slice_kernel_1d[grid](
-            input_tensor,
-            output,
-            start,
-            step,
-            input_strides[0],
-            n_elements,
-            BLOCK_SIZE=BLOCK_SIZE,
-        )
-    else:
-        # Fallback for 5D+: flatten to a generic strided copy per output element
-        # using PyTorch indexing (correctness first for rare high-rank cases).
-        slices = [builtins.slice(None)] * ndim
-        slices[dim] = builtins.slice(start, end, step)
-        output.copy_(input_tensor[tuple(slices)])
-
-    return output
+    return torch.as_strided(input_tensor, new_size, new_stride, storage_offset)

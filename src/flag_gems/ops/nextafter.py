@@ -92,11 +92,14 @@ def nextafter_func(input, other):
         neg_zero_up = ~is_positive & is_going_up & (x_int == 0x8000)
         is_zero_cross = pos_zero_down | neg_zero_up
 
-        result_int = tl.where(
-            is_nan | is_equal,
-            x_int,  # return input bits as-is (NaN or self)
-            tl.where(is_zero_cross, x_int + cross_const, x_int + normal_inc),
-        )
+        # Compute the result first
+        result_int = tl.where(is_zero_cross, x_int + cross_const, x_int + normal_inc)
+        result_int = tl.where(is_equal, x_int, result_int)
+
+        # NaN bit pattern: exp=all 1s, mantissa has at least one 1
+        # Cast to ensure it's uint16
+        nan_bits = (uint_zero | exp_mask | 0x0001).to(tl.uint16)
+        result_int = tl.where(is_nan, nan_bits, result_int)
 
         return result_int.to(input.dtype, bitcast=True)
     else:

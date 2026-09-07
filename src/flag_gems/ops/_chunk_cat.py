@@ -289,6 +289,7 @@ def _chunk_cat_impl(
     tensors: List[torch.Tensor], dim: int, num_chunks: int
 ) -> torch.Tensor:
     """Implementation of _chunk_cat with multiple tensor support."""
+    logger.debug(f"_chunk_cat_impl called with {len(tensors)} tensors, dim={dim}, num_chunks={num_chunks}")
     if len(tensors) == 0:
         raise ValueError("_chunk_cat(): expected a non-empty list of Tensors")
 
@@ -304,7 +305,10 @@ def _chunk_cat_impl(
         )
 
     if len(tensors) == 1:
+        logger.debug("Single tensor path")
         return _chunk_cat_triton(tensors[0], dim, num_chunks)
+
+    logger.debug("Multi-tensor path")
 
     # Multiple tensors case
     # NOTE: The multi-tensor path uses PyTorch ops (chunk, cat, stack) rather than a
