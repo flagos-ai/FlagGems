@@ -15,8 +15,6 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base, consts
 
 
@@ -51,7 +49,7 @@ class NestedViewFromBufferBenchmark(base.Benchmark):
 def test_nested_view_from_buffer_benchmark(dtype):
     bench = NestedViewFromBufferBenchmark(
         op_name="nested_view_from_buffer",
-        torch_op=flag_gems._nested_view_from_buffer,
+        torch_op=torch._nested_view_from_buffer,
         dtypes=[dtype],
     )
     bench.run()
