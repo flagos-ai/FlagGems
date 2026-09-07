@@ -255,6 +255,123 @@ def sweep(
             tl.store(associate_out_ptr + pid_m * N + pos, associate_arr, mask=matches)
 
 
+@triton.jit
+def compute_tile_hist(
+    arr_ptr,
+    tile_prefix_ptr,
+    bit_offset,
+    m,
+    N,
+    OUT_N,
+    TILE_N: tl.constexpr,
+    TILE_R: tl.constexpr,
+    k_bits: tl.constexpr,
+    descending: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    pid_m = pid % m
+    pid_n = pid // m
+    pid_r = tl.program_id(1)
+
+    r: tl.constexpr = 2**k_bits
+    bfe_mask: tl.constexpr = (1 << k_bits) - 1
+    cta_r_start = pid_r * TILE_R
+    cta_r_end = tl.minimum(cta_r_start + TILE_R, r)
+
+    n_offsets = pid_n * TILE_N + tl.arange(0, TILE_N)
+    mask = n_offsets < N
+    arr = tl.load(arr_ptr + pid_m * N + n_offsets, mask=mask)
+    arr_u = convert_to_uint_preverse_order(arr, descending)
+    key = (arr_u >> bit_offset) & bfe_mask
+
+    for bin_index in range(cta_r_start, cta_r_end):
+        matches = tl.where(mask, key == bin_index, False)
+        local_sum = tl.sum(matches.to(tl.uint32), axis=0)
+        status_offset = pid_m * (r * OUT_N) + bin_index * OUT_N + pid_n
+        tl.store(tile_prefix_ptr + status_offset, local_sum)
+
+
+@triton.jit
+def exclusive_scan_tile_hist(
+    tile_prefix_ptr,
+    m,
+    OUT_N,
+    TILE_R: tl.constexpr,
+    k_bits: tl.constexpr,
+):
+    pid_m = tl.program_id(0)
+    pid_r = tl.program_id(1)
+    r: tl.constexpr = 2**k_bits
+    cta_r_start = pid_r * TILE_R
+    cta_r_end = tl.minimum(cta_r_start + TILE_R, r)
+
+    for bin_index in range(cta_r_start, cta_r_end):
+        exclusive_prefix = tl.zeros((), dtype=tl.uint32)
+        for pid_n in range(0, OUT_N):
+            status_offset = pid_m * (r * OUT_N) + bin_index * OUT_N + pid_n
+            local_sum = tl.load(tile_prefix_ptr + status_offset).to(tl.uint32)
+            tl.store(tile_prefix_ptr + status_offset, exclusive_prefix)
+            exclusive_prefix += local_sum
+
+
+@triton.jit
+def scatter_with_tile_prefix(
+    arr_ptr,
+    associate_arr_ptr,
+    out_ptr,
+    associate_out_ptr,
+    excumsum_bins_ptr,
+    tile_prefix_ptr,
+    n_passes,
+    pass_id,
+    bit_offset,
+    m,
+    N,
+    OUT_N,
+    TILE_N: tl.constexpr,
+    TILE_R: tl.constexpr,
+    k_bits: tl.constexpr,
+    descending: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    pid_m = pid % m
+    pid_n = pid // m
+    pid_r = tl.program_id(1)
+
+    r: tl.constexpr = 2**k_bits
+    bfe_mask: tl.constexpr = (1 << k_bits) - 1
+    cta_r_start = pid_r * TILE_R
+    cta_r_end = tl.minimum(cta_r_start + TILE_R, r)
+
+    n_offsets = pid_n * TILE_N + tl.arange(0, TILE_N)
+    mask = n_offsets < N
+    arr = tl.load(arr_ptr + pid_m * N + n_offsets, mask=mask)
+    arr_u = convert_to_uint_preverse_order(arr, descending)
+    key = (arr_u >> bit_offset) & bfe_mask
+    if associate_arr_ptr is not None:
+        associate_arr = tl.load(associate_arr_ptr + pid_m * N + n_offsets, mask=mask)
+
+    for bin_index in range(cta_r_start, cta_r_end):
+        matches = tl.where(mask, key == bin_index, False)
+        local_ex_cumsum = (
+            tl.cumsum(matches.to(tl.uint32), axis=0) - matches
+        )
+        status_offset = pid_m * (r * OUT_N) + bin_index * OUT_N + pid_n
+        exclusive_prefix = tl.load(tile_prefix_ptr + status_offset).to(tl.uint32)
+        ex_cumsum_bins = tl.load(
+            excumsum_bins_ptr + pid_m * (n_passes * r) + pass_id * r + bin_index
+        )
+        pos = ex_cumsum_bins + exclusive_prefix + local_ex_cumsum
+
+        tl.store(out_ptr + pid_m * N + pos, arr, mask=matches)
+        if associate_arr_ptr is not None:
+            tl.store(
+                associate_out_ptr + pid_m * N + pos,
+                associate_arr,
+                mask=matches,
+            )
+
+
 def radix_sort(arr, k_bits=8, descending=False):
     n = arr.shape[-1]
     m = arr.numel() // n
@@ -308,31 +425,74 @@ def radix_sort(arr, k_bits=8, descending=False):
         grid_n = triton.cdiv(n, TILE_N)
         grid_for_sweep = (m * grid_n, grid_r)
 
+        # Avoid the cross-CTA scheduling dependency in decoupled lookback for
+        # large rows.  Later resident CTAs must not spin while an earlier CTA
+        # is still waiting to be scheduled.
+        use_phased_sweep = grid_n > 32
         status = torch.empty(
-            (m, num_bins, grid_n), device=arr.device, dtype=torch.uint32
+            (m, num_bins, grid_n), device=arr.device, dtype=torch.int32
         )
 
         for i in range(0, n_passes):
             bit_offset = i * k_bits
-            status.zero_()
-            sweep[grid_for_sweep](
-                arr_in,
-                indices_in,
-                arr_out,
-                indices_out,
-                ex_cumsum_bins,
-                status,
-                n_passes,
-                i,
-                bit_offset,
-                m,
-                n,
-                grid_n,
-                TILE_N,
-                TILE_R,
-                k_bits,
-                descending,
-            )
+            if use_phased_sweep:
+                compute_tile_hist[grid_for_sweep](
+                    arr_in,
+                    status,
+                    bit_offset,
+                    m,
+                    n,
+                    grid_n,
+                    TILE_N,
+                    TILE_R,
+                    k_bits,
+                    descending,
+                )
+                exclusive_scan_tile_hist[(m, grid_r)](
+                    status,
+                    m,
+                    grid_n,
+                    TILE_R,
+                    k_bits,
+                )
+                scatter_with_tile_prefix[grid_for_sweep](
+                    arr_in,
+                    indices_in,
+                    arr_out,
+                    indices_out,
+                    ex_cumsum_bins,
+                    status,
+                    n_passes,
+                    i,
+                    bit_offset,
+                    m,
+                    n,
+                    grid_n,
+                    TILE_N,
+                    TILE_R,
+                    k_bits,
+                    descending,
+                )
+            else:
+                status.zero_()
+                sweep[grid_for_sweep](
+                    arr_in,
+                    indices_in,
+                    arr_out,
+                    indices_out,
+                    ex_cumsum_bins,
+                    status,
+                    n_passes,
+                    i,
+                    bit_offset,
+                    m,
+                    n,
+                    grid_n,
+                    TILE_N,
+                    TILE_R,
+                    k_bits,
+                    descending,
+                )
             # print(f"< sorted last {bit_offset + k_bits:>2d} bits: {arr_out}")
             arr_in, arr_out = arr_out, arr_in
             indices_in, indices_out = indices_out, indices_in
