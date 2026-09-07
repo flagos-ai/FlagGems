@@ -2206,3 +2206,26 @@ def linalg_matrix_power(
             out.copy_(out_flat)
         return out
     return out_flat
+
+
+def _resolve_linalg_matrix_power_out_args(out):
+    if out is None:
+        raise TypeError(
+            "linalg_matrix_power(): out must be provided for the out variant"
+        )
+    return out
+
+
+def linalg_matrix_power_out(
+    A: torch.Tensor, n: int, *, out: torch.Tensor | None = None
+) -> torch.Tensor:
+    """Out variant of :func:`linalg_matrix_power` (aten ``linalg_matrix_power.out``).
+
+    ``linalg_matrix_power`` already writes into ``out`` in place and returns it,
+    so this resolves the required ``out`` tensor and delegates — kept as a
+    separate entry point so the ``*.out`` dispatcher key routes through flag_gems
+    rather than falling back to torch's native (compute) implementation.
+    """
+    logger.debug("GEMS LINALG_MATRIX_POWER.OUT")
+    out_resolved = _resolve_linalg_matrix_power_out_args(out)
+    return linalg_matrix_power(A, n, out=out_resolved)

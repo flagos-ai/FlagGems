@@ -978,3 +978,25 @@ def linalg_matrix_power(A, n, *, out=None):
             out.copy_(out_flat)
         return out
     return out_flat
+
+
+def _resolve_linalg_matrix_power_out_args(out):
+    if out is None:
+        raise TypeError(
+            "linalg_matrix_power(): out must be provided for the out variant"
+        )
+    return out
+
+
+def linalg_matrix_power_out(A, n, *, out=None):
+    """Out variant (aten ``linalg_matrix_power.out``) for the thead backend.
+
+    ``linalg_matrix_power`` above already writes into ``out`` in place and
+    returns it, so this resolves the required ``out`` tensor and delegates.  A
+    thead-specific entry is needed so the ``*.out`` dispatcher key routes
+    through this thead override — the generic NV entry uses grid spin-barrier
+    kernels and the barrier-based parallel LU, which hang on thead.
+    """
+    _generic.logger.debug("GEMS_THEAD LINALG_MATRIX_POWER.OUT (thead)")
+    out_resolved = _resolve_linalg_matrix_power_out_args(out)
+    return linalg_matrix_power(A, n, out=out_resolved)

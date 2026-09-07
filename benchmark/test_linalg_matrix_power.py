@@ -33,6 +33,20 @@ def matrix_power_input_fn(shape, dtype, device):
             yield torch.randn(shape, dtype=dtype, device=device), n
 
 
+def matrix_power_out_input_fn(shape, dtype, device):
+    """Yield (input, n, {out}) — the out tensor is pre-allocated and reused.
+
+    Both the torch and flag_gems out overloads write into the caller-provided
+    ``out`` tensor, so the same allocation is passed to each, isolating the
+    kernel cost from the allocation.
+    """
+    for s, n in BENCH_CASES:
+        if s == shape:
+            A = torch.randn(shape, dtype=dtype, device=device)
+            out = torch.empty(shape, dtype=dtype, device=device)
+            yield A, n, {"out": out}
+
+
 class MatrixPowerBenchmark(base.GenericBenchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = list(dict.fromkeys(s for s, _ in BENCH_CASES))
@@ -45,5 +59,17 @@ def test_linalg_matrix_power():
         torch_op=torch.ops.aten.linalg_matrix_power,
         input_fn=matrix_power_input_fn,
         dtypes=DTYPES_ALL,
+    )
+    bench.run()
+
+
+@pytest.mark.linalg_matrix_power_out
+def test_linalg_matrix_power_out():
+    bench = MatrixPowerBenchmark(
+        op_name="linalg_matrix_power_out",
+        torch_op=torch.linalg.matrix_power,
+        input_fn=matrix_power_out_input_fn,
+        dtypes=DTYPES_ALL,
+        gems_op=flag_gems.linalg_matrix_power_out,
     )
     bench.run()
