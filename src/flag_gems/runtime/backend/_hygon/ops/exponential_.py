@@ -19,6 +19,7 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libtuner
 from flag_gems.utils.random_utils import (
     philox_backend_seed_offset,
     uint_to_uniform_float,
@@ -52,7 +53,7 @@ def safe_fast_log(x):
 
 
 # ===== Kernel with constexpr switch =====
-@triton.autotune(
+@libtuner(
     configs=[
         triton.Config({"BLOCK": 64}, num_warps=2, num_stages=2),
         triton.Config({"BLOCK": 128}, num_warps=2, num_stages=2),
