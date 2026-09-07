@@ -1827,6 +1827,113 @@ def _mm_w8a8_fp8_block_scaled_splitk_tma(a, b, c, a_s, b_s, M, N, K, group_n, gr
     return c
 
 
+@triton.jit
+def mm_w8a8_fp8_block_scaled_kernel_load(
+    A,
+    B,
+    C,
+    As,
+    Bs,
+    M,
+    N,
+    K,
+    stride_am,
+    stride_ak,
+    stride_bn,
+    stride_bk,
+    stride_cm,
+    stride_cn,
+    stride_as,
+    stride_bs,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    SPLIT_K: tl.constexpr,
+    GROUP_M: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    grid_m = tl.cdiv(M, BLOCK_M)
+    grid_n = tl.cdiv(N, BLOCK_N)
+    group = pid // (GROUP_M * grid_n)
+    first_m = group * GROUP_M
+    group_m = tl.minimum(grid_m - first_m, GROUP_M)
+    pm = first_m + pid % group_m
+    pn = (pid % (GROUP_M * grid_n)) // group_m
+    rm = pm * BLOCK_M + tl.arange(0, BLOCK_M)
+    rn = pn * BLOCK_N + tl.arange(0, BLOCK_N)
+    rk = tl.arange(0, BLOCK_K)
+    iterations = tl.cdiv(K, BLOCK_K)
+    per_split = tl.cdiv(iterations, SPLIT_K)
+    start = tl.program_id(1) * per_split
+    end = tl.minimum(start + per_split, iterations)
+    acc = tl.zeros((BLOCK_M, BLOCK_N), tl.float32)
+    for block in range(start, end):
+        kk = block * BLOCK_K + rk
+        a = tl.load(
+            A + rm[:, None] * stride_am + kk[None, :] * stride_ak,
+            (rm[:, None] < M) & (kk[None, :] < K),
+            0.0,
+        )
+        b = tl.load(
+            B + rn[None, :] * stride_bn + kk[:, None] * stride_bk,
+            (rn[None, :] < N) & (kk[:, None] < K),
+            0.0,
+        )
+        acc = tl.dot(a, b, acc=acc, allow_tf32=False)
+    sa = tl.load(As + rm * stride_as, rm < M, 0)
+    sb = tl.load(Bs + rn * stride_bs, rn < N, 0)
+    acc *= sa[:, None] * sb[None, :]
+    out = C + rm[:, None] * stride_cm + rn[None, :] * stride_cn
+    mask = (rm[:, None] < M) & (rn[None, :] < N)
+    if SPLIT_K == 1:
+        tl.store(out, acc.to(C.dtype.element_ty), mask)
+    else:
+        tl.atomic_add(out, acc.to(C.dtype.element_ty), mask, sem="relaxed")
+
+
+def _mm_w8a8_fp8_block_scaled_load(a, b, c, a_s, b_s, M, N, K, group_n, group_k):
+    # Quantization supplies row/column scales and B stored as [N, K].
+    block_m = 64
+    block_n = 32 if N <= 2048 else 64
+    block_k, stages = (128, 4) if N > 8192 else (256, 3)
+    if K < 256:
+        block_k = _mm_w8a8_fp8_single_k_tma_size(K)
+    split_k = 1
+    if N < 2048 and K >= 4096 and c.dtype not in _FP8_DTYPES:
+        block_n, block_k, stages = 64, 128, 3
+        tiles = triton.cdiv(M, block_m) * triton.cdiv(N, block_n)
+        sm_count = torch.cuda.get_device_properties(a.device).multi_processor_count
+        split_k = min(triton.cdiv(K, block_k), max(4, sm_count // tiles))
+        c.zero_()
+    grid = (triton.cdiv(M, block_m) * triton.cdiv(N, block_n), split_k)
+    mm_w8a8_fp8_block_scaled_kernel_load[grid](
+        a,
+        b,
+        c,
+        a_s,
+        b_s,
+        M,
+        N,
+        K,
+        a.stride(0),
+        a.stride(1),
+        b.stride(0),
+        b.stride(1),
+        c.stride(0),
+        c.stride(1),
+        a_s.stride(0),
+        b_s.stride(0),
+        BLOCK_M=block_m,
+        BLOCK_N=block_n,
+        BLOCK_K=block_k,
+        SPLIT_K=split_k,
+        GROUP_M=32,
+        num_warps=4,
+        num_stages=stages,
+    )
+    return c
+
+
 def _mm_w8a8_fp8_block_scaled(a, b, c, a_s, b_s, M, N, K, group_n, group_k):
     logger.debug(
         "GEMS_NVIDIA MM_W8A8_FP8_HOPPER, [mm scenario]: block_scaled, "
@@ -1835,6 +1942,12 @@ def _mm_w8a8_fp8_block_scaled(a, b, c, a_s, b_s, M, N, K, group_n, group_k):
         N,
         K,
     )
+    # Narrow small-M tiles benefit from pointer loads; wide N stays on TMA.
+    if M <= 128 and N <= 2048 and K <= 7168 and group_k >= K and group_n >= N:
+        with torch_device_fn.device(a.device):
+            return _mm_w8a8_fp8_block_scaled_load(
+                a, b, c, a_s, b_s, M, N, K, group_n, group_k
+            )
     if hasattr(
         triton.tools.tensor_descriptor, "TensorDescriptor"
     ) and is_tma_compatible(a, b, N, K):
