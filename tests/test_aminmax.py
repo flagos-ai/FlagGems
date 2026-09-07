@@ -69,3 +69,30 @@ def test_accuracy_aminmax_no_dim(shape, dtype):
 
     utils.gems_assert_equal(res_min, ref_min)
     utils.gems_assert_equal(res_max, ref_max)
+
+
+@pytest.mark.aminmax
+@pytest.mark.parametrize(
+    "shape, dim",
+    [
+        ((4, 8, 4096), 1),  # non-inner, multi-N-tile
+        ((4, 4096, 8), 1),  # non-inner, multi-N-tile with small K
+        ((8, 4096), 1),  # inner, multi-N-tile
+        ((4096, 8), 0),  # non-inner, large M
+        ((4096, 4096), 0),  # non-inner, multi-N-tile and multi-K-tile
+    ],
+)
+@pytest.mark.parametrize("keepdim", [True, False])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_aminmax_dim_multi_tile(shape, dim, keepdim, dtype):
+    # Larger shapes that exercise the multi-tile reduction loops in the inner
+    # and non-inner kernels, which the small default shapes do not reach.
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp)
+
+    ref_min, ref_max = torch.aminmax(ref_inp, dim=dim, keepdim=keepdim)
+    with flag_gems.use_gems():
+        res_min, res_max = torch.aminmax(inp, dim=dim, keepdim=keepdim)
+
+    utils.gems_assert_equal(res_min, ref_min)
+    utils.gems_assert_equal(res_max, ref_max)
