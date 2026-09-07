@@ -14,6 +14,7 @@
 
 import logging
 import math
+from functools import reduce
 
 import torch
 import triton
@@ -67,6 +68,81 @@ def all_kernel_dim(
         _all = _all and (a != 0)
     all = tl.reduce(_all, axis=1, combine_fn=reduce_all)
     tl.store(out, all[:, None], row_mask)
+
+
+@libentry()
+@triton.heuristics(runtime.get_heuristic_config("softmax_non_inner"))
+@triton.jit
+def all_dim_kernel_non_inner(
+    output_ptr,
+    input_ptr,
+    M,
+    N,
+    K,
+    TILE_N: tl.constexpr,
+    TILE_K: tl.constexpr,
+    ONE_TILE_PER_CTA: tl.constexpr,
+):
+    # Boolean AND over the reduced dim is the elementwise minimum of 0/1 values,
+    # whose identity is 1. This mirrors amax's structure with maximum -> minimum.
+    pid_m = ext.program_id(0)
+    pid_k = ext.program_id(1)
+    k_offsets = pid_k * TILE_K + tl.arange(0, TILE_K)[None, :]
+
+    if ONE_TILE_PER_CTA:
+        n_offsets = tl.arange(0, TILE_N)[:, None]
+        inp_offset = pid_m * N * K + n_offsets * K + k_offsets
+        mask = (n_offsets < N) & (k_offsets < K)
+        inp = (tl.load(input_ptr + inp_offset, mask=mask, other=1) != 0).to(tl.int32)
+        out = tl.min(inp, axis=0, keep_dims=True)
+        out_offset = pid_m * K + k_offsets
+        tl.store(output_ptr + out_offset, out != 0, mask=k_offsets < K)
+    else:
+        acc = tl.full([TILE_N, TILE_K], value=1, dtype=tl.int32)
+        for start_n in range(0, N, TILE_N):
+            n_offsets = start_n + tl.arange(0, TILE_N)[:, None]
+            inp_offsets = pid_m * N * K + n_offsets * K + k_offsets
+            mask = (n_offsets < N) & (k_offsets < K)
+            inp = (tl.load(input_ptr + inp_offsets, mask=mask, other=1) != 0).to(
+                tl.int32
+            )
+            acc = tl.minimum(acc, inp)
+        out = tl.min(acc, axis=0, keep_dims=True)
+        out_offset = pid_m * K + k_offsets
+        tl.store(output_ptr + out_offset, out != 0, mask=k_offsets < K)
+
+
+@libentry()
+@triton.heuristics(runtime.get_heuristic_config("softmax_inner"))
+@triton.jit
+def all_dim_kernel_inner(
+    output_ptr,
+    input_ptr,
+    M,
+    N,
+    TILE_N: tl.constexpr,
+    ONE_TILE_PER_CTA: tl.constexpr,
+):
+    pid_m = ext.program_id(0)
+    if ONE_TILE_PER_CTA:
+        n_offsets = tl.arange(0, TILE_N)
+        inp_offset = pid_m * N + n_offsets
+        mask = n_offsets < N
+        inp = (tl.load(input_ptr + inp_offset, mask=mask, other=1) != 0).to(tl.int32)
+        out = tl.min(inp, axis=0)
+        tl.store(output_ptr + pid_m, out != 0)
+    else:
+        acc = tl.full([TILE_N], value=1, dtype=tl.int32)
+        for start_n in range(0, N, TILE_N):
+            n_offsets = start_n + tl.arange(0, TILE_N)
+            inp_offsets = pid_m * N + n_offsets
+            mask = n_offsets < N
+            inp = (tl.load(input_ptr + inp_offsets, mask=mask, other=1) != 0).to(
+                tl.int32
+            )
+            acc = tl.minimum(acc, inp)
+        out = tl.min(acc, axis=0)
+        tl.store(output_ptr + pid_m, out != 0)
 
 
 @libentry()
@@ -126,20 +202,33 @@ def all_dim(inp, dim=None, keepdim=False):
     else:
         assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
         dim = dim % inp.ndim
-        inp = dim_compress(inp, dim)
+
+        # Single-dim reduction: split into (M, N, K) and reduce over N with a
+        # strided kernel, avoiding the dim_compress copy. K == 1 means the
+        # reduced dim is innermost (contiguous); K > 1 means it is a middle or
+        # outer dim, where the copy used to dominate the runtime.
         N = shape[dim]
+        M = reduce(lambda x, y: x * y, shape[:dim], 1)
+        K = reduce(lambda x, y: x * y, shape[dim + 1 :], 1)
         shape[dim] = 1
-        M = inp.numel() // N
-
-        # Cast to bool to avoid float16/bfloat16 comparison issues in kernel
-        if inp.dtype != torch.bool:
-            inp = inp.bool()
-
         out = torch.empty(shape, dtype=torch.bool, device=inp.device)
-
-        grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
+        if M * N * K == 0:
+            # An empty reduction dim reduces to the AND identity (True), and an
+            # empty spectator dim gives an empty output. Both match torch, and
+            # torch.empty is already filled for the empty-output case.
+            if N == 0 and M * K > 0:
+                out.fill_(True)
+            if not keepdim:
+                out = out.squeeze(dim=dim)
+            return out
+        inp = inp.contiguous()
         with torch_device_fn.device(inp.device):
-            all_kernel_dim[grid](inp, out, M, N)
+            if K == 1:
+                grid = (M, 1, 1)
+                all_dim_kernel_inner[grid](out, inp, M, N)
+            else:
+                grid = lambda meta: (M, triton.cdiv(K, meta["TILE_K"]), 1)
+                all_dim_kernel_non_inner[grid](out, inp, M, N, K)
         if not keepdim:
             out = out.squeeze(dim=dim)
     return out
