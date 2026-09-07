@@ -203,6 +203,9 @@ def test_linalg_solve_triangular_out(n, k, upper, dtype):
 @pytest.mark.parametrize("n", [16, 64, 128, 256])
 @pytest.mark.parametrize("k", [1, 8])
 @pytest.mark.parametrize("upper", [False, True])
+@pytest.mark.skipif(
+    not flag_gems.runtime.device.support_fp64, reason="fp64 is not supported."
+)
 def test_residual_f64(n, k, upper):
     """Residual check (float64 for precision)"""
     dtype = torch.float64
