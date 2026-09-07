@@ -153,7 +153,7 @@ def test_common(shape, n, dtype):
     # (--ref cpu / CPU golden puts ref on CPU).
     if ref.device != res.device:
         res = res.to(ref.device)
-    utils.gems_assert_close(res, ref, dtype, atol=_TOL[dtype])
+    utils.gems_assert_close(res, ref, dtype)
 
 
 @pytest.mark.linalg_matrix_power
@@ -174,7 +174,7 @@ def test_large(shape, n, dtype):
     res = flag_gems.linalg_matrix_power(A, n)
     if ref.device != res.device:
         res = res.to(ref.device)
-    utils.gems_assert_close(res, ref, dtype, atol=_TOL[dtype])
+    utils.gems_assert_close(res, ref, dtype)
 
 
 @pytest.mark.linalg_matrix_power
@@ -186,7 +186,7 @@ def test_out_parameter(n, dtype):
     ref = torch.linalg.matrix_power(utils.to_reference(A), n)
     res = flag_gems.linalg_matrix_power(A, n, out=out)
     assert res is out, "out= must return the same tensor object"
-    utils.gems_assert_close(out, ref, dtype, atol=_TOL[dtype])
+    utils.gems_assert_close(out, ref, dtype)
 
 
 @pytest.mark.linalg_matrix_power
