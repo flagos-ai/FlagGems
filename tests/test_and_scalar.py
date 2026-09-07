@@ -40,9 +40,9 @@ def test_and_scalar(shape, dtype, caplog):
     ref_inp1 = utils.to_reference(inp1)
 
     ref_out = torch.ops.aten.__and__.Scalar(ref_inp1, inp2)
-    with caplog.at_level("DEBUG", logger="flag_gems.ops.bitwise_and"):
+    with caplog.at_level("DEBUG", logger="flag_gems.ops.and_scalar"):
         with flag_gems.use_gems():
             res_out = torch.ops.aten.__and__.Scalar(inp1, inp2)
 
-    assert "GEMS BITWISE AND SCALAR" in caplog.text
+    assert "GEMS AND SCALAR" in caplog.text
     utils.gems_assert_equal(res_out, ref_out)
