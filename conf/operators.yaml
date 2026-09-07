@@ -3029,6 +3029,35 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: convolution_backward_overrideable
+  description: 'Computes the gradients of a convolution with respect to the input,
+
+    weight, and bias, returning (grad_input, grad_weight, grad_bias).
+
+    '
+  for:
+  - convolution_backward_overrideable
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Convolution
+  stages:
+  - alpha: '5.4'
+- id: convolution_backward_overrideable_out
+  description: 'A variant of convolution_backward_overrideable() that writes the result
+    into the out tensors.
+
+    '
+  for:
+  - convolution_backward_overrideable.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Convolution
+  stages:
+  - alpha: '5.4'
 - id: convolution_double_backward
   description: 'Second-order backward of a convolution, supporting both 1D (3-D operands
 
