@@ -48,6 +48,7 @@ from .pow import (
 )
 from .quantile import quantile
 from .scatter import scatter
+from .silu import silu
 from .sort import sort
 from .sub import sub
 from .topk import topk
@@ -86,6 +87,7 @@ __all__ = [
     "remainder_",
     "scaled_dot_product_attention",
     "scatter",
+    "silu",
     "sort",
     "sub",
     "topk",
