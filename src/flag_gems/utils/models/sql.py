@@ -37,8 +37,17 @@ from typing_extensions import override
 from .model import PersistantModel
 from .session import RollbackSession
 
+# SQLAlchemy 2.0 introduced DeclarativeBase and mapped_column; LTS
+# distributions (e.g. Ubuntu 22.04/24.04) still ship SQLAlchemy 1.4, so fall
+# back to the legacy declarative API when they are unavailable.
+_SQLALCHEMY_2 = hasattr(sqlalchemy.orm, "DeclarativeBase")
 
-class Base(sqlalchemy.orm.DeclarativeBase): ...
+if _SQLALCHEMY_2:
+
+    class Base(sqlalchemy.orm.DeclarativeBase): ...
+
+else:
+    Base = sqlalchemy.orm.declarative_base()
 
 
 class SQLPersistantModel(PersistantModel):
@@ -84,55 +93,57 @@ class SQLPersistantModel(PersistantModel):
     ) -> Type[Base]:
         key_count = len(keys)
 
+        # Version-agnostic column specs: name -> (python type, SQL type, is_pk).
+        # Rendered below either as SQLAlchemy 2.0 mapped_column() entries with
+        # annotations, or as legacy 1.4 Column() declarations.
+        specs: Dict[str, Tuple[type, Any, bool]] = {}
+
         if key_count > SQLPersistantModel.key_count_limit:
             # Blob mode: hash + blob
-            annotations: Dict[str, type] = {
-                "key_hash": sqlalchemy.orm.Mapped[str],
-                "key_blob": sqlalchemy.orm.Mapped[str],  # Store as string
-            }
-            cols: Dict[str, sqlalchemy.orm.MappedColumn] = {
-                "key_hash": sqlalchemy.orm.mapped_column(
-                    sqlalchemy.String(64), primary_key=True
-                ),
-                "key_blob": sqlalchemy.orm.mapped_column(
-                    sqlalchemy.Text, primary_key=False
-                ),
-            }
+            specs["key_hash"] = (str, sqlalchemy.String(64), True)
+            specs["key_blob"] = (str, sqlalchemy.Text, False)
             for k, v in chain(keys.items(), values.items()):
-                if k in ["key_hash", "key_blob"]:
+                if k in ("key_hash", "key_blob"):
                     continue
-                val_type = v if isinstance(v, type) else type(v)
-                cols[k] = sqlalchemy.orm.mapped_column(
+                specs[k] = (
+                    v if isinstance(v, type) else type(v),
                     SQLPersistantModel._get_column_type(v),
-                    primary_key=True if k in keys.keys() else False,
+                    k in keys.keys(),
                 )
-                annotations[k] = sqlalchemy.orm.Mapped[val_type]
         else:
             # Column mode: individual key columns
+            for k, v in chain(keys.items(), values.items()):
+                specs[k] = (
+                    v if isinstance(v, type) else type(v),
+                    SQLPersistantModel._get_column_type(v),
+                    k in keys.keys(),
+                )
+
+        if _SQLALCHEMY_2:
             annotations: Dict[str, type] = {
-                k: sqlalchemy.orm.Mapped[v if isinstance(v, type) else type(v)]
-                for k, v in chain(keys.items(), values.items())
+                k: sqlalchemy.orm.Mapped[py_type]
+                for k, (py_type, _, _) in specs.items()
             }
             cols: Dict[str, sqlalchemy.orm.MappedColumn] = {
-                k: sqlalchemy.orm.mapped_column(
-                    SQLPersistantModel._get_column_type(v), primary_key=True
-                )
-                for k, v in keys.items()
-            } | {
-                k: sqlalchemy.orm.mapped_column(
-                    SQLPersistantModel._get_column_type(v), primary_key=False
-                )
-                for k, v in values.items()
+                k: sqlalchemy.orm.mapped_column(sql_type, primary_key=is_pk)
+                for k, (_, sql_type, is_pk) in specs.items()
+            }
+            members: Dict[str, Any] = {"__annotations__": annotations, **cols}
+        else:
+            # SQLAlchemy 1.4 has no annotation-driven mapping; declare the
+            # columns explicitly from the python types instead.
+            members = {
+                k: sqlalchemy.Column(sql_type, primary_key=is_pk)
+                for k, (_, sql_type, is_pk) in specs.items()
             }
 
         ModelCls: Type[Base] = type(
             name,
             (Base,),
             {
-                "__annotations__": annotations,
                 "__tablename__": name,
                 "__table_args__": {"extend_existing": True},
-                **cols,
+                **members,
             },
         )
         return ModelCls
