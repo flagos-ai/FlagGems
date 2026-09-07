@@ -302,7 +302,9 @@ def v_norm_kernel(X, Out, M, N, ord, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexp
         mask = row_mask & col_mask
 
         a = tl.load(X + cols, mask, other=0.0).to(acc_dtype)
-        _sum += pow(tl.abs(a), ord)
+        # Masked lanes load as 0.0; for negative orders pow(0, ord) is +inf
+        # and would corrupt the reduction (issue #4600), so exclude them.
+        _sum += tl.where(mask, pow(tl.abs(a), ord), 0.0)
     sum = tl.sum(_sum, axis=1)
     out = pow(sum, 1 / ord)[:, None]
     tl.store(Out, out, row_mask)
@@ -323,7 +325,9 @@ def l1_norm_kernel_1(X, Mid, ord, M, BLOCK_SIZE: tl.constexpr):
     else:
         acc_dtype = tl.float32
     x = tl.load(X, mask=mask, other=0.0).to(acc_dtype)
-    mid = tl.sum(pow(tl.abs(x), ord))
+    # Masked lanes load as 0.0; for negative orders pow(0, ord) is +inf
+    # and would corrupt the reduction (issue #4600), so exclude them.
+    mid = tl.sum(tl.where(mask, pow(tl.abs(x), ord), 0.0))
     tl.store(Mid, mid)
 
 
