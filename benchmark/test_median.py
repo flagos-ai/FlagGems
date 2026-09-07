@@ -70,3 +70,85 @@ def test_median_dim():
         dtypes=consts.FLOAT_DTYPES + consts.INT_DTYPES,
     )
     bench.run()
+
+
+class MedianFlatBenchmark(base.GenericBenchmark):
+    """Median-family benchmark that reduces the whole tensor (no dim)."""
+
+    def set_shapes(self, shape_file_path=None):
+        # Whole-tensor median reduction width is capped by the flag_gems
+        # median kernels (fp32/fp16/bf16 key-select limit 16384, int-select
+        # limit 16384), so keep numel <= 16384.
+        self.shapes = [
+            (64,),
+            (256,),
+            (1024,),
+            (4096,),
+            (16384,),
+        ]
+        self.shape_desc = "input shape"
+
+
+class MedianDimBenchmark(base.GenericBenchmark):
+    """Median-family benchmark that reduces over the last dimension."""
+
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = [
+            (64, 64),
+            (256, 256),
+            (1024, 1024),
+            (256, 4096),
+        ]
+        self.shape_desc = "M, N"
+
+
+def _median_out_input_fn(shape, dtype, device):
+    inp = utils.generate_tensor_input(shape, dtype, device)
+    out = torch.empty((), dtype=dtype, device=device)
+    yield inp, {"out": out}
+
+
+def _median_dim_input_fn(shape, dtype, device):
+    inp = utils.generate_tensor_input(shape, dtype, device)
+    yield inp, {"dim": -1}
+
+
+def _median_dim_values_input_fn(shape, dtype, device):
+    inp = utils.generate_tensor_input(shape, dtype, device)
+    out_shape = tuple(shape[:-1])
+    out_values = torch.empty(out_shape, dtype=dtype, device=device)
+    out_indices = torch.empty(out_shape, dtype=torch.long, device=device)
+    yield inp, {"dim": -1, "out": (out_values, out_indices)}
+
+
+@pytest.mark.median_out
+def test_perf_median_out():
+    bench = MedianFlatBenchmark(
+        input_fn=_median_out_input_fn,
+        op_name="median_out",
+        torch_op=torch.ops.aten.median.out,
+        dtypes=consts.FLOAT_DTYPES + consts.INT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.median_dim
+def test_perf_median_dim():
+    bench = MedianDimBenchmark(
+        input_fn=_median_dim_input_fn,
+        op_name="median_dim",
+        torch_op=torch.median,
+        dtypes=consts.FLOAT_DTYPES + consts.INT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.median_dim_values
+def test_perf_median_dim_values():
+    bench = MedianDimBenchmark(
+        input_fn=_median_dim_values_input_fn,
+        op_name="median_dim_values",
+        torch_op=torch.median,
+        dtypes=consts.FLOAT_DTYPES + consts.INT_DTYPES,
+    )
+    bench.run()

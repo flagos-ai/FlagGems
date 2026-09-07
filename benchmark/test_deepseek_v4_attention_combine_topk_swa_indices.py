@@ -92,6 +92,7 @@ class CombineTopkSwaIndicesBenchmark(base.Benchmark):
             )
 
 
+@pytest.mark.combine_topk_swa_indices
 @pytest.mark.skipif(
     (not torch.cuda.is_available()) or (not _HAS_VLLM_COMBINE_TOPK_SWA_INDICES),
     reason="requires cuda and vllm deepseek_v4_ops.combine_topk_swa_indices",

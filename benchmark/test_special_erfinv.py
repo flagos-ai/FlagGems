@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -34,5 +36,23 @@ def test_special_erfinv_out():
         op_name="special_erfinv_out",
         torch_op=torch.ops.aten.special_erfinv,
         dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+def _erfinv_input_fn(shape, dtype, device):
+    x = torch.empty(shape, dtype=dtype, device=device).uniform_(-0.9, 0.9)
+    yield x,
+
+
+@pytest.mark.special_erfinv_
+def test_special_erfinv_():
+    bench = base.GenericBenchmark(
+        op_name="special_erfinv_",
+        input_fn=_erfinv_input_fn,
+        torch_op=torch.ops.aten.erfinv_,
+        gems_op=flag_gems.ops.special_erfinv_,
+        dtypes=consts.FLOAT_DTYPES,
+        is_inplace=True,
     )
     bench.run()

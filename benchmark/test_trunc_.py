@@ -44,3 +44,16 @@ def test_trunc_():
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
+
+
+@pytest.mark.trunc
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_trunc_out_of_place():
+    bench = base.UnaryPointwiseBenchmark(
+        op_name="trunc",
+        torch_op=torch.trunc,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
