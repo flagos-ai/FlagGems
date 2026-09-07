@@ -545,7 +545,13 @@ class KernelGenerator:
                 f"out{i}_ptr, ({shape}), ({strides}), ({offsets}), ({tile_sizes}), order=({order}))"
             )
             code.writeline(
-                f"tl.store(out{i}_bptr, out{i}.to(out{i}_bptr.type.element_ty), boundary_check=({order}))"
+                # Use the original pointer's element dtype, not the block
+                # pointer's. In Triton >= 3.2 a block pointer's ``.type`` is a
+                # ``_aggregate_type`` that has no ``element_ty`` attribute, so
+                # ``out{i}_bptr.type.element_ty`` raises AttributeError during
+                # codegen. This mirrors the load path above, which already uses
+                # ``in{i}_ptr.type.element_ty`` for the same reason.
+                f"tl.store(out{i}_bptr, out{i}.to(out{i}_ptr.type.element_ty), boundary_check=({order}))"
             )
 
     def gen_body_gsl_with_bptr(self, code):
