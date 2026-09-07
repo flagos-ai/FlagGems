@@ -39,10 +39,42 @@ def test_argmin(shape, dim, keepdim, dtype):
     else:
         inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
-    ref_inp = utils.to_reference(inp)
+    use_cpu_ref = flag_gems.vendor_name == "ascend" and dim is None and keepdim
+    ref_inp = inp.cpu() if use_cpu_ref else utils.to_reference(inp)
     ref_out = torch.argmin(ref_inp, dim=dim, keepdim=keepdim)
+    if use_cpu_ref and not cfg.TO_CPU:
+        ref_out = ref_out.to(inp.device)
 
     with flag_gems.use_gems():
         res_out = torch.argmin(inp, dim=dim, keepdim=keepdim)
 
     utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.argmin
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend", reason="regression test for Ascend"
+)
+def test_argmin_large_flattened_index():
+    inp = torch.ones((200, 2560, 3), dtype=torch.float32, device=flag_gems.device)
+    inp.flatten()[1024 * 1200] = -1
+    ref_out = torch.argmin(inp.cpu())
+
+    with flag_gems.use_gems():
+        res_out = torch.argmin(inp)
+
+    torch.testing.assert_close(res_out.cpu(), ref_out, atol=0, rtol=0)
+
+
+@pytest.mark.argmin
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend", reason="regression test for Ascend"
+)
+def test_argmin_flattened_nan_index():
+    inp = torch.tensor([3.0, float("nan"), -5.0, float("nan")], device=flag_gems.device)
+    ref_out = torch.argmin(inp.cpu())
+
+    with flag_gems.use_gems():
+        res_out = torch.argmin(inp)
+
+    torch.testing.assert_close(res_out.cpu(), ref_out, atol=0, rtol=0)
