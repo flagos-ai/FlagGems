@@ -12,11 +12,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from functools import lru_cache
 from typing import Optional, Tuple
 
 import torch
 import triton
 import triton.language as tl
+
+
+@lru_cache(maxsize=None)
+def _use_quad_gather_pipeline(device: torch.device) -> bool:
+    # Resource/performance validation covers this compiler/device (215040 B),
+    # not an installation requirement. Other versions keep the original BK64.
+    if device.type != "cuda" or device.index is None or triton.__version__ != "3.7.1":
+        return False
+    props = torch.cuda.get_device_properties(device)
+    return (
+        getattr(props, "name", None) == "NVIDIA H20"
+        and getattr(props, "major", None) == 9
+        and getattr(props, "minor", None) == 0
+        and getattr(props, "shared_memory_per_block_optin", 0) >= 215040
+    )
 
 
 def _prune_flash_mla_sparse_configs(configs, named_args, **kwargs):
@@ -617,6 +633,7 @@ def _flash_mla_sparse_hq4_quad(
     W: tl.constexpr,
     SINK: tl.constexpr,
     BK: tl.constexpr,
+    GATHER_PIPELINE: tl.constexpr = False,
 ):
     """Reuse one KV union for four queries certified by the index producer."""
     m0 = tl.load(pairs + row // 2)
@@ -649,12 +666,24 @@ def _flash_mla_sparse_hq4_quad(
     acc1 = tl.zeros((128, 16), tl.float32)
     acc2 = tl.zeros((128, 16), tl.float32)
     acc3 = tl.zeros((128, 16), tl.float32)
-    for block in range(tl.cdiv(union_len, BK)):
-        pos = block * BK + t
-        cid = tl.load(indices + (row + 3) * stride_i + pos, mask=pos < p3, other=0)
+    if GATHER_PIPELINE:
+        # Carry only integer addresses, leaving FP32 online-softmax unchanged.
+        pos = t
+        cid = tl.load(
+            indices + (row + 3) * stride_i + pos,
+            mask=(pos < p3) & (union_len > 0),
+            other=0,
+        )
         kid = tl.where(pos < p3, cid, swa_base + pos - p3)
         valid = (pos < union_len) & (kid >= 0) & (kid < SKV)
         kid = tl.where(valid, kid, 0)
+    for block in range(tl.cdiv(union_len, BK)):
+        pos = block * BK + t
+        if not GATHER_PIPELINE:
+            cid = tl.load(indices + (row + 3) * stride_i + pos, mask=pos < p3, other=0)
+            kid = tl.where(pos < p3, cid, swa_base + pos - p3)
+            valid = (pos < union_len) & (kid >= 0) & (kid < SKV)
+            kid = tl.where(valid, kid, 0)
         kp = kv + d[:, None] + kid[None, :] * stride_kv
         k0 = tl.load(kp, cache_modifier=".cg")
         k1 = tl.load(kp + 128, cache_modifier=".cg")
@@ -668,6 +697,18 @@ def _flash_mla_sparse_hq4_quad(
             (pos[:, None] >= p3 + wstart[None, :]) & (pos[:, None] < p3 + wend[None, :])
         )
         scores = tl.where(valid[:, None] & attend, scores, float("-inf"))
+        if GATHER_PIPELINE:
+            # Decode the next gather before this block's max/exp/PV work.
+            next_pos = (block + 1) * BK + t
+            has_next = block + 1 < tl.cdiv(union_len, BK)
+            next_cid = tl.load(
+                indices + (row + 3) * stride_i + next_pos,
+                mask=(next_pos < p3) & has_next,
+                other=0,
+            )
+            next_kid = tl.where(next_pos < p3, next_cid, swa_base + next_pos - p3)
+            next_valid = (next_pos < union_len) & (next_kid >= 0) & (next_kid < SKV)
+            next_kid = tl.where(next_valid, next_kid, 0)
         updated = tl.maximum(maximum, tl.max(scores, 0))
         safe = tl.where(updated == float("-inf"), 0.0, updated)
         weights = tl.exp(scores - safe[None, :])
@@ -679,6 +720,9 @@ def _flash_mla_sparse_hq4_quad(
         acc2 = tl.dot(k2, w, acc2 * alpha[None, :], out_dtype=tl.float32)
         acc3 = tl.dot(k3, w, acc3 * alpha[None, :], out_dtype=tl.float32)
         maximum = updated
+        if GATHER_PIPELINE:
+            kid = next_kid
+            valid = next_valid
     valid = maximum != float("-inf")
     if SINK:
         sink_value = tl.load(sink + head)
@@ -720,6 +764,7 @@ def triton_flash_mla_sparse_fwd_hq4_quad(
     W: tl.constexpr,
     SINK: tl.constexpr,
     BK: tl.constexpr,
+    GATHER_PIPELINE: tl.constexpr = False,
 ):
     group = tl.program_id(0)
     row = (group * 4).to(tl.int64)
@@ -745,6 +790,7 @@ def triton_flash_mla_sparse_fwd_hq4_quad(
             W,
             SINK,
             BK,
+            GATHER_PIPELINE,
         )
 
 
@@ -1183,6 +1229,7 @@ def flash_mla_sparse_fwd(
                 pair_window_size,
                 attn_sink is not None,
                 BK=block_k,
+                GATHER_PIPELINE=block_k == 64 and _use_quad_gather_pipeline(q.device),
                 num_warps=4,
                 num_stages=3,
             )

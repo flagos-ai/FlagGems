@@ -13,7 +13,9 @@
 # limitations under the License.
 
 import dataclasses
+import importlib
 import random
+from types import SimpleNamespace
 from typing import List, Optional, Tuple
 
 import pytest
@@ -992,6 +994,224 @@ def test_flash_mla_sparse_quad_metadata_parameter_validation():
         flag_gems.flash_mla_sparse_fwd(
             q, kv, indices[:, None], 1.0, max_kv_length=-1, **kwargs
         )
+
+
+@pytest.mark.flash_mla_sparse_fwd
+@pytest.mark.parametrize("block_k", [32, 64])
+@pytest.mark.parametrize("next_block", [False, True])
+@pytest.mark.parametrize("score_delta", [80, 90, 100])
+def test_flash_mla_sparse_quad_softmax_preserves_subnormal_contributions(
+    block_k, next_block, score_delta
+):
+    from flag_gems.fused.deepseek_v4_attention_combine_topk_swa_indices import (
+        combine_topk_swa_indices,
+    )
+
+    source = torch.arange(2048, dtype=torch.int32, device=flag_gems.device).repeat(4, 1)
+    indices, lengths, pairs, quads = combine_topk_swa_indices(
+        source,
+        torch.tensor([0, 4], dtype=torch.int32, device=flag_gems.device),
+        torch.tensor([1028], dtype=torch.int32, device=flag_gems.device),
+        torch.tensor([131], dtype=torch.int32, device=flag_gems.device),
+        128,
+        4,
+        2048,
+        4096,
+        2048,
+        return_pair_metadata=True,
+        return_quad_metadata=True,
+    )
+    assert quads.tolist() == [1]
+    q = torch.zeros((4, 4, 512), dtype=torch.bfloat16, device=flag_gems.device)
+    kv = torch.zeros((4096, 1, 512), dtype=torch.bfloat16, device=flag_gems.device)
+    q[:, :, 0] = 32
+    kv[indices[0, :block_k].long(), 0, 1] = float(2**120)
+    peak_id = int(indices[0, block_k if next_block else 0].item())
+    kv[peak_id, 0, 0] = score_delta / (32 * 512**-0.5)
+    kv[peak_id, 0, 1] = 0
+    sink = torch.zeros(4, dtype=torch.float32, device=flag_gems.device)
+
+    # CPU FP64 avoids both GPU GEMM FTZ and process-global denormal settings.
+    # Inputs are converted after BF16 rounding, and every valid index is used.
+    q_ref, kv_ref = q.cpu().double(), kv.cpu().double()
+    ids_ref, lengths_ref = indices.cpu(), lengths.cpu()
+    expected = torch.empty((4, 4, 512), dtype=torch.float64)
+    for row in range(4):
+        values = kv_ref[ids_ref[row, : int(lengths_ref[row])].long(), 0]
+        scores = (q_ref[row, :, None, :] * values[None, :, :]).sum(-1) * 512**-0.5
+        maximum = scores.max(-1).values
+        weights = torch.exp(scores - maximum[:, None])
+        denominator = weights.sum(-1) + torch.exp(-maximum)
+        expected[row] = (weights[:, :, None] * values[None, :, :]).sum(1) / denominator[
+            :, None
+        ]
+    assert torch.isfinite(expected).all()
+    if score_delta == 90:
+        assert (expected[:, :, 1] > 0.02).all()
+
+    storage = torch.full(
+        (4, 64, 512), 11.75, dtype=torch.bfloat16, device=flag_gems.device
+    )
+    output = storage[:, :4]
+    actual, _, _ = flag_gems.flash_mla_sparse_fwd(
+        q,
+        kv,
+        indices[:, None],
+        512**-0.5,
+        attn_sink=sink,
+        topk_length=lengths,
+        out=output,
+        return_stats=False,
+        pair_metadata=pairs,
+        pair_window_size=128,
+        quad_metadata=quads,
+        max_kv_length=1408 if block_k == 64 else None,
+    )
+    assert actual.data_ptr() == output.data_ptr()
+    assert torch.isfinite(actual).all()
+    torch.testing.assert_close(
+        actual.cpu().float(),
+        expected.float(),
+        atol=1e-2,
+        rtol=3.01 / 128,
+    )
+    assert torch.all(storage[:, 4:] == 11.75)
+
+
+@pytest.mark.flash_mla_sparse_fwd
+@pytest.mark.parametrize(
+    "updates,missing,expected",
+    [
+        ({}, None, True),
+        ({"shared_memory_per_block_optin": 215039}, None, False),
+        ({"shared_memory_per_block_optin": 215040}, None, True),
+        ({"name": "NVIDIA H100"}, None, False),
+        ({"major": 8}, None, False),
+        ({"minor": 1}, None, False),
+        ({}, "shared_memory_per_block_optin", False),
+        ({}, "name", False),
+        ({}, "major", False),
+        ({}, "minor", False),
+    ],
+)
+def test_flash_mla_sparse_quad_pipeline_resource_gate(
+    monkeypatch, updates, missing, expected
+):
+    module = importlib.import_module("flag_gems.fused.flashmla_sparse")
+    properties = dict(
+        name="NVIDIA H20", major=9, minor=0, shared_memory_per_block_optin=232448
+    )
+    properties.update(updates)
+    if missing:
+        del properties[missing]
+    monkeypatch.setattr(module.triton, "__version__", "3.7.1")
+    monkeypatch.setattr(
+        torch.cuda,
+        "get_device_properties",
+        lambda device: SimpleNamespace(**properties),
+    )
+    gate = module._use_quad_gather_pipeline
+    gate.cache_clear()
+    try:
+        assert gate(torch.device("cuda", 0)) is expected
+    finally:
+        gate.cache_clear()
+
+
+@pytest.mark.flash_mla_sparse_fwd
+@pytest.mark.parametrize("version", ["3.7.0", "3.8.0", "3.7.1.dev0"])
+def test_flash_mla_sparse_quad_pipeline_other_compilers(monkeypatch, version):
+    module = importlib.import_module("flag_gems.fused.flashmla_sparse")
+    monkeypatch.setattr(module.triton, "__version__", version)
+
+    def unexpected_query(device):
+        pytest.fail("An unsupported compiler must retain the original schedule")
+
+    monkeypatch.setattr(torch.cuda, "get_device_properties", unexpected_query)
+    gate = module._use_quad_gather_pipeline
+    gate.cache_clear()
+    try:
+        assert gate(torch.device("cuda", 0)) is False
+    finally:
+        gate.cache_clear()
+
+
+@pytest.mark.flash_mla_sparse_fwd
+def test_flash_mla_sparse_quad_pipeline_device_cache(monkeypatch):
+    module = importlib.import_module("flag_gems.fused.flashmla_sparse")
+    monkeypatch.setattr(module.triton, "__version__", "3.7.1")
+    queries = []
+
+    def properties(device):
+        queries.append(device)
+        return SimpleNamespace(
+            name="NVIDIA H20",
+            major=9,
+            minor=0,
+            shared_memory_per_block_optin=232448 if device.index == 0 else 163840,
+        )
+
+    monkeypatch.setattr(torch.cuda, "get_device_properties", properties)
+    gate = module._use_quad_gather_pipeline
+    gate.cache_clear()
+    try:
+        assert gate(torch.device("cpu")) is False
+        assert gate(torch.device("cuda")) is False  # No implicit current-device key.
+        assert not queries
+        for _ in range(3):
+            assert gate(torch.device("cuda", 0)) is True
+            assert gate(torch.device("cuda", 1)) is False
+        assert queries == [torch.device("cuda", 0), torch.device("cuda", 1)]
+    finally:
+        gate.cache_clear()
+
+
+@pytest.mark.flash_mla_sparse_fwd
+@pytest.mark.parametrize("have_attn_sink", [False, True])
+def test_flash_mla_sparse_quad_pipeline_fresh_capture(have_attn_sink):
+    module = importlib.import_module("flag_gems.fused.flashmla_sparse")
+    q, kv, args, fields = _make_quad_metadata_case()
+    indices, lengths, pairs, quads = fields
+    sink = _pair_metadata_sink(have_attn_sink)
+    reference, _, _ = _pair_metadata_reference(q, kv, indices[:, None], lengths, sink)
+    storage = torch.full((29, 64, 512), 11.75, device=q.device, dtype=q.dtype)
+
+    def run(hint):
+        return flag_gems.flash_mla_sparse_fwd(
+            q,
+            kv,
+            indices[:, None],
+            512**-0.5,
+            attn_sink=sink,
+            topk_length=lengths,
+            out=storage[:, :4],
+            return_stats=False,
+            pair_metadata=pairs,
+            pair_window_size=args[4],
+            quad_metadata=quads,
+            max_kv_length=hint,
+        )
+
+    gate = module._use_quad_gather_pipeline
+    gate.cache_clear()
+    run(None)
+    assert gate.cache_info().misses == 0  # BK32 must not query hardware.
+    run(1024)  # Compile kernels outside capture.
+    torch.cuda.synchronize()
+    gate.cache_clear()  # First resource query happens inside this capture.
+    try:
+        graph = torch.cuda.CUDAGraph()
+        with torch.cuda.graph(graph):
+            result = run(1024)
+        assert gate.cache_info().misses == 1
+        for _ in range(4):
+            graph.replay()
+        torch.cuda.synchronize()
+        assert torch.isfinite(result[0]).all()
+        torch.testing.assert_close(result[0], reference, atol=8e-4, rtol=3.01 / 128)
+        assert torch.all(storage[:, 4:] == 11.75)
+    finally:
+        gate.cache_clear()
 
 
 def _make_host_validation_inputs():
