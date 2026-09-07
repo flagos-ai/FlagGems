@@ -127,24 +127,40 @@ def _make_input(shape, dtype, n):
     return stacked.reshape(shape)
 
 
+def _matrix_power_golden(A, n):
+    """Reference result for linalg.matrix_power.
+
+    Default: native torch.linalg.matrix_power on the reference device (CPU under
+    --ref cpu, the op device otherwise), upcast to fp64 via
+    ``utils.to_reference(A, upcast=True)`` so fp32 inputs are validated against a
+    high-precision result.
+
+    Two backends fall back to torch's CPU fp64 golden instead:
+      * thead — torch's on-device fp64 matrix_power has a precision defect, so a
+        device-side fp64 reference is unreliable even for fp64 inputs;
+      * devices without fp64 (``support_fp64 == False``) — the device can't
+        compute an accurate fp64 reference, and an on-device fp32→fp64 cast can
+        silently produce zeros.
+    ``A.cpu().double()`` moves to CPU *before* the upcast so the golden is always
+    computed on the CPU (which always supports fp64).
+    """
+    if flag_gems.vendor_name == "thead" or not flag_gems.runtime.device.support_fp64:
+        ref = torch.linalg.matrix_power(A.cpu().double(), n)
+        # gems_assert_close compares on the op device in the default mode, on CPU
+        # in --ref cpu mode.
+        if not utils.TO_CPU:
+            ref = ref.to(A.device)
+        return ref
+    return torch.linalg.matrix_power(utils.to_reference(A, upcast=True), n)
+
+
 @pytest.mark.linalg_matrix_power
 @pytest.mark.parametrize("shape", SHAPES_2D + SHAPES_BATCH)
 @pytest.mark.parametrize("n", N_VALUES)
 @pytest.mark.parametrize("dtype", DTYPES_ALL)
 def test_common(shape, n, dtype):
     A = _make_input(shape, dtype, n)
-    # Negative powers: torch CPU fp64 golden (more accurate than GPU cuSOLVER).
-    # Cast to CPU *before* the fp64 upcast: the no-fp64 backends (iluvatar,
-    # etc.) silently zero fp64 tensors created on the device (CoreX has no
-    # fp32→fp64 conversion kernel), so an on-device .double() would feed a
-    # zero matrix to the CPU inverse.
-    ref = (
-        torch.linalg.matrix_power(A.cpu().double(), n)
-        if n < 0
-        else torch.linalg.matrix_power(utils.to_reference(A), n)
-    )
-    if not utils.TO_CPU:
-        ref = ref.to(A.device)
+    ref = _matrix_power_golden(A, n)
     res = flag_gems.linalg_matrix_power(A, n)
     utils.gems_assert_close(res, ref, dtype)
 
@@ -156,16 +172,7 @@ def test_common(shape, n, dtype):
 @pytest.mark.parametrize("dtype", DTYPES_LARGE)
 def test_large(shape, n, dtype):
     A = _make_input(shape, dtype, n)
-    # Negative powers: torch CPU fp64 golden (more accurate than GPU cuSOLVER).
-    # Cast on CPU first — see test_common (on-device fp64 casts zero out on
-    # no-fp64 backends like iluvatar).
-    ref = (
-        torch.linalg.matrix_power(A.cpu().double(), n)
-        if n < 0
-        else torch.linalg.matrix_power(utils.to_reference(A), n)
-    )
-    if not utils.TO_CPU:
-        ref = ref.to(A.device)
+    ref = _matrix_power_golden(A, n)
     res = flag_gems.linalg_matrix_power(A, n)
     utils.gems_assert_close(res, ref, dtype)
 
@@ -176,7 +183,7 @@ def test_large(shape, n, dtype):
 def test_out_parameter(n, dtype):
     A = _make_input((4, 4), dtype, n)
     out = torch.empty_like(A)
-    ref = torch.linalg.matrix_power(utils.to_reference(A), n)
+    ref = _matrix_power_golden(A, n)
     res = flag_gems.linalg_matrix_power(A, n, out=out)
     assert res is out, "out= must return the same tensor object"
     utils.gems_assert_close(out, ref, dtype)
