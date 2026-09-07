@@ -75,6 +75,16 @@ def torch_ge(v):
     return version.parse(torch.__version__) >= version.parse(v)
 
 
+def torch_has_aten_overload(operator, overload):
+    """Return whether this backend's PyTorch build exposes an ATen overload."""
+    try:
+        packet = getattr(torch.ops.aten, operator)
+        getattr(packet, overload)
+    except (AttributeError, RuntimeError):
+        return False
+    return True
+
+
 _FULL_CONFIG = (
     ("__and__.Scalar", bitwise_and_scalar),
     ("__and__.Tensor", bitwise_and_tensor),
@@ -1130,6 +1140,36 @@ _FULL_CONFIG = (
     ("squeeze_copy", squeeze_copy),
     ("stack", stack),
     ("std.correction", std),
+    (
+        "std_mean",
+        std_mean,
+        lambda: torch_has_aten_overload("std_mean", "default"),
+    ),
+    (
+        "std_mean.correction",
+        std_mean_correction,
+        lambda: torch_has_aten_overload("std_mean", "correction"),
+    ),
+    (
+        "std_mean.correction_names",
+        std_mean_correction_names,
+        lambda: torch_has_aten_overload("std_mean", "correction_names"),
+    ),
+    (
+        "std_mean.correction_out",
+        std_mean_correction_out,
+        lambda: torch_has_aten_overload("std_mean", "correction_out"),
+    ),
+    (
+        "std_mean.dim",
+        std_mean_dim,
+        lambda: torch_has_aten_overload("std_mean", "dim"),
+    ),
+    (
+        "std_mean.names_dim",
+        std_mean_names_dim,
+        lambda: torch_has_aten_overload("std_mean", "names_dim"),
+    ),
     ("sub.Tensor", sub),
     ("sub_.Tensor", sub_),
     ("subtract.Tensor", subtract),

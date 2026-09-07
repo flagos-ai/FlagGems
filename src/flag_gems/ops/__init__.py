@@ -879,6 +879,14 @@ from flag_gems.ops.square import square, square_, square_out
 from flag_gems.ops.squeeze_copy import squeeze_copy
 from flag_gems.ops.stack import stack
 from flag_gems.ops.std import std
+from flag_gems.ops.std_mean import (
+    std_mean,
+    std_mean_correction,
+    std_mean_correction_names,
+    std_mean_correction_out,
+    std_mean_dim,
+    std_mean_names_dim,
+)
 from flag_gems.ops.sub import sub, sub_
 from flag_gems.ops.subtract_ import subtract, subtract_
 from flag_gems.ops.sum import sum, sum_dim, sum_dim_out, sum_out
@@ -1906,6 +1914,12 @@ __all__ = [
     "squeeze_copy",
     "stack",
     "std",
+    "std_mean",
+    "std_mean_correction",
+    "std_mean_correction_names",
+    "std_mean_correction_out",
+    "std_mean_dim",
+    "std_mean_names_dim",
     "sub",
     "sub_",
     "subtract",

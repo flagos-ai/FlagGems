@@ -13369,6 +13369,84 @@ ops:
   - Reduction
   stages:
   - stable: '4.0'
+- id: std_mean
+  description: Calculates the standard deviation and mean over all input elements.
+  for:
+  - std_mean
+  labels:
+  - aten
+  - Reduction
+  kind:
+  - Reduction
+  stages:
+  - alpha: '5.4'
+- id: std_mean_correction
+  description: 'Calculates the standard deviation and mean over selected dimensions,
+    using an optional degrees-of-freedom correction.
+
+    '
+  for:
+  - std_mean.correction
+  labels:
+  - aten
+  - Reduction
+  kind:
+  - Reduction
+  stages:
+  - alpha: '5.4'
+- id: std_mean_correction_names
+  description: 'Named-dimension variant of `std_mean` with an optional degrees-of-freedom
+    correction.
+
+    '
+  for:
+  - std_mean.correction_names
+  labels:
+  - aten
+  - Reduction
+  kind:
+  - Reduction
+  stages:
+  - alpha: '5.4'
+- id: std_mean_correction_out
+  description: Out-tensor variant of `std_mean` with a degrees-of-freedom correction.
+  for:
+  - std_mean.correction_out
+  labels:
+  - aten
+  - Reduction
+  kind:
+  - Reduction
+  stages:
+  - alpha: '5.4'
+- id: std_mean_dim
+  description: 'Calculates the standard deviation and mean over selected dimensions,
+    using the legacy `unbiased` argument.
+
+    '
+  for:
+  - std_mean.dim
+  labels:
+  - aten
+  - Reduction
+  kind:
+  - Reduction
+  stages:
+  - alpha: '5.4'
+- id: std_mean_names_dim
+  description: 'Named-dimension variant of `std_mean` using the legacy `unbiased`
+    argument.
+
+    '
+  for:
+  - std_mean.names_dim
+  labels:
+  - aten
+  - Reduction
+  kind:
+  - Reduction
+  stages:
+  - alpha: '5.4'
 - id: sub
   description: Subtracts `other`, scaled by `alpha`, from the `input` tensor.
   for:

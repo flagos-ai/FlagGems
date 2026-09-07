@@ -44,3 +44,8 @@ arctan: test_atan
 # Operators tested in combined files or with different naming
 batch_norm_backward: test_batch_norm
 batch_norm_impl_index: test_batch_norm
+std_mean_correction: test_std_mean
+std_mean_correction_names: test_std_mean
+std_mean_correction_out: test_std_mean
+std_mean_dim: test_std_mean
+std_mean_names_dim: test_std_mean
