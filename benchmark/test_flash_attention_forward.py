@@ -587,7 +587,7 @@ def _quantize_qkv_w8a8(q, k, v, q_seq_lens, kv_seq_lens):
     )
 
 
-def torch_flash_attn_varlen_func_w8a8_fp8(
+def baseline_flash_attn_varlen_func_w8a8_fp8(
     q,
     k,
     v,
@@ -605,19 +605,20 @@ def torch_flash_attn_varlen_func_w8a8_fp8(
     is_causal,
     w8a8_out,
 ):
-    return torch.ops.aten._flash_attention_forward(
+    # Compare against the FP16/BF16 FlagGems varlen implementation.
+    # Quantization is prepared by input_fn and excluded from both timings.
+    return flag_gems.flash_attn_varlen_func(
         q,
         k,
         v,
-        cu_seqlens_q,
-        cu_seqlens_k,
         max_seqlen_q,
+        cu_seqlens_q,
         max_seqlen_k,
-        0.0,
-        is_causal,
-        False,
-        scale=scale,
-    )[0]
+        cu_seqlens_k,
+        softmax_scale=scale,
+        causal=is_causal,
+        out=w8a8_out,
+    )
 
 
 def gems_flash_attn_varlen_func_w8a8_fp8(
@@ -790,7 +791,7 @@ def test_flash_attn_varlen_func_w8a8_fp8():
     bench = FlashAttnVarlenFuncW8A8FP8Benchmark(
         op_name="flash_attn_varlen_func_w8a8_fp8",
         input_fn=flash_attn_varlen_func_w8a8_fp8_input_fn,
-        torch_op=torch_flash_attn_varlen_func_w8a8_fp8,
+        torch_op=baseline_flash_attn_varlen_func_w8a8_fp8,
         dtypes=[torch.float16, torch.bfloat16],
     )
     bench.set_gems(gems_flash_attn_varlen_func_w8a8_fp8)
