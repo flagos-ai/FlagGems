@@ -168,6 +168,27 @@ def test_top_k_per_row_decode_partial_seqlen(vocab_size, top_k, seq_len):
 
 
 @pytest.mark.top_k_per_row_decode
+def test_top_k_per_row_decode_medium_vocab_many_rows_split_correctness():
+    """Covers the 4-block medium-vocab split/merge path."""
+    torch.manual_seed(789)
+    batch_size = 64
+    vocab_size = 129280
+    top_k = 512
+    ref_fn = _vllm_top_k_per_row_decode if HAS_VLLM else _torch_topk_ref
+
+    logits, next_n, seq_lens, indices, num_rows, s0, s1, k = _make_inputs(
+        batch_size, vocab_size, top_k
+    )
+    logits_ref = logits.clone()
+    indices_ref = torch.zeros_like(indices)
+
+    top_k_per_row_decode(logits, next_n, seq_lens, indices, num_rows, s0, s1, k)
+    ref_fn(logits_ref, next_n, seq_lens, indices_ref, num_rows, s0, s1, k)
+
+    assert check_topk_values_match(logits, indices, indices_ref, top_k)
+
+
+@pytest.mark.top_k_per_row_decode
 def test_topk_greater_than_row_len():
     torch.manual_seed(456)
     batch_size = 1
