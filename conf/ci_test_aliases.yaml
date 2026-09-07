@@ -37,8 +37,8 @@ all_dim: test_all
 all_dims: test_all
 any_dim: test_any
 any_dims: test_any
-and_scalar: test_bitwise_and
-and_tensor: test_bitwise_and
+and_scalar: test_bitwise_and_scalar
+and_tensor: test_bitwise_and_tensor
 arctan: test_atan
 
 # Operators tested in combined files or with different naming
