@@ -163,12 +163,14 @@ if HAS_TLE:
 
         # Process rows sequentially so halo/a/b/result registers can be
         # reused instead of materializing a multi-row tile.
-        for row_offset in tle.range(
+        # `tle.range` is the TLE `gpu.range` extension and is not supported by
+        # the MThreads backend. The loop itself only needs standard Triton
+        # range semantics here; `reorder=True` is an optional optimization.
+        for row_offset in tl.range(
             0,
             ROWS_PER_PROGRAM,
             num_stages=LOOP_STAGES,
             loop_unroll_factor=LOOP_UNROLL,
-            reorder=True,
         ):
             row = row_start + row_offset
             row_mask = row < N
