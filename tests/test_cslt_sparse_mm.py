@@ -24,7 +24,7 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.ops._cslt_sparse_mm import _cslt_sparse_mm, _cslt_sparse_mm_enabled
+from flag_gems.ops._cslt_sparse_mm import _cslt_sparse_mm_enabled
 
 from . import accuracy_utils as utils
 
@@ -83,7 +83,7 @@ def test_accuracy_cslt_sparse_mm(shape, dtype):
     ref_compressed_A = utils.to_reference(compressed_A)
     ref_B = utils.to_reference(B)
     ref_out = torch._cslt_sparse_mm(ref_compressed_A, ref_B)
-    res_out = _cslt_sparse_mm(compressed_A, B)
+    res_out = flag_gems._cslt_sparse_mm(compressed_A, B)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -103,7 +103,7 @@ def test_accuracy_cslt_sparse_mm_with_alpha(shape, dtype):
     ref_B = utils.to_reference(B)
     ref_alpha = utils.to_reference(alpha)
     ref_out = torch._cslt_sparse_mm(ref_compressed_A, ref_B, alpha=ref_alpha)
-    res_out = _cslt_sparse_mm(compressed_A, B, alpha=alpha)
+    res_out = flag_gems._cslt_sparse_mm(compressed_A, B, alpha=alpha)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -121,7 +121,7 @@ def test_accuracy_cslt_sparse_mm_transpose(shape, dtype):
     ref_compressed_A = utils.to_reference(compressed_A)
     ref_B = utils.to_reference(B)
     ref_out = torch._cslt_sparse_mm(ref_compressed_A, ref_B, transpose_result=True)
-    res_out = _cslt_sparse_mm(compressed_A, B, transpose_result=True)
+    res_out = flag_gems._cslt_sparse_mm(compressed_A, B, transpose_result=True)
 
     assert res_out.shape == ref_out.shape
     utils.gems_assert_close(res_out, ref_out, dtype)

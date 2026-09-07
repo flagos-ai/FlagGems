@@ -12,6 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import importlib
+
+from ..utils.pointwise_dynamic import ModuleGenerator
 from ._native_batch_norm_legit_functional import _native_batch_norm_legit_functional
 from .adaptive_max_pool3d_backward import run
 from .addmm import addmm, addmm_out
@@ -68,6 +71,9 @@ from .special_shifted_chebyshev_polynomial_w import (
 )
 from .tile import tile
 from .var import var, var_correction, var_dim
+
+_pointwise_dynamic = importlib.import_module("flag_gems.utils.pointwise_dynamic")
+_pointwise_dynamic.ModuleGenerator = ModuleGenerator
 
 __all__ = [
     "_conv_depthwise2d",
