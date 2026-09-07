@@ -1295,6 +1295,16 @@ def test_flash_attn_varlen_func_w8a8_fp8(
         (64, torch.float16, False, [17, 129], [33, 257]),
         (128, torch.bfloat16, True, [33, 257], [17, 129]),
         (64, torch.float16, False, [128, 257], [257, 129]),
+        # Exercise both sides of the Hopper causal tile-size boundary.
+        (64, torch.float16, True, [129, 512], [65, 777]),
+        (64, torch.bfloat16, True, [129, 513], [65, 777]),
+        (64, torch.float16, True, [32, 128, 512, 4096], [1, 17, 129, 8192]),
+        (64, torch.bfloat16, True, [32, 128, 512, 4096], [1, 17, 129, 8192]),
+        # Cover the pipelined split-D path and its dispatch boundary.
+        (128, torch.float16, False, [129, 1024], [257, 1537]),
+        (128, torch.bfloat16, False, [129, 1025], [257, 1537]),
+        (128, torch.float16, False, [129, 4096], [257, 8192]),
+        (128, torch.bfloat16, False, [129, 4096], [257, 8192]),
     ],
 )
 def test_flash_attn_varlen_func_w8a8_fp8_ragged(

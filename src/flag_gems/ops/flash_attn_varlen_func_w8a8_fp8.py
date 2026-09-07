@@ -1871,7 +1871,10 @@ def flash_varlen_fwd_kernel(
         n_block -= 1
 
     for n_block in tl.range(
-        n_block_max - n_masking_steps - 1, n_block_min - 1, step=-1
+        n_block_max - n_masking_steps - 1,
+        n_block_min - 1,
+        step=-1,
+        num_stages=1 if is_paged else num_stages,
     ):
         col_idx = n_block * BLOCK_N + tl.arange(0, BLOCK_N)
         if is_paged:
@@ -2426,6 +2429,18 @@ def _get_varlen_fwd_config(
                     "num_stages": 1,
                 }
             )
+
+        # Match the CTA footprint to the causal query length. Short queries
+        # need more CTAs; long queries amortize masking over wider KV tiles.
+        if head_size == 64 and is_causal:
+            if max_seqlen_q <= 512:
+                cfg_params.update(BLOCK_M=64, BLOCK_N=64, num_warps=4)
+            else:
+                cfg_params.update(BLOCK_N=128, num_warps=4, num_stages=3)
+        elif head_size == 128 and not is_causal and max_seqlen_q > 1024:
+            # Pipeline the unmasked KV loop while retaining split-D to keep
+            # the FP32 accumulator's register footprint bounded.
+            cfg_params["num_stages"] = 3
 
     return cfg_params
 
