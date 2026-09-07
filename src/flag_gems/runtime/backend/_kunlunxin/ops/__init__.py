@@ -74,6 +74,7 @@ from .bitwise_or import (
     bitwise_or_tensor_,
 )
 from .bitwise_right_shift import bitwise_right_shift
+from .block_diag import block_diag
 from .bmm import bmm, bmm_out
 from .broadcast_to import broadcast_to
 from .cat import cat, cat_out
