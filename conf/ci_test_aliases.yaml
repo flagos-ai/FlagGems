@@ -44,3 +44,7 @@ arctan: test_atan
 # Operators tested in combined files or with different naming
 batch_norm_backward: test_batch_norm
 batch_norm_impl_index: test_batch_norm
+
+# Leading-underscore aten ops: id gets an ``underscore`` prefix (Rule 2),
+# but the test file keeps the aten name (tests/test__linalg_det.py).
+underscore_linalg_det: test__linalg_det
