@@ -1869,7 +1869,7 @@ class LibEntry(triton.KernelInterface):
         self._specialize_set = frozenset(self.specialize_indices)
         self._do_not_specialize_set = frozenset(self.do_not_specialize_indices)
         self._jit_params = tuple(self.jit_function.params)
-        self._keep_const_in_kargs = major_version == 3 and 3 <= minor_version <= 6
+        self._keep_const_in_kargs = major_version == 3 and minor_version >= 3
         # `k_args` is keyed by `_param_names` for positional arguments and by
         # `_jit_params[i].name` for the rest, so its insertion order only equals
         # signature order when the two agree.  Checked once here instead of
@@ -1986,7 +1986,6 @@ class LibEntry(triton.KernelInterface):
                 k_args[param_names[i]] = arg
                 dns_key.append(_dns_arg(hashable_arg))
             else:
-                if major_version == 3 and minor_version >= 3:
                 if keep_const_in_kargs:
                     k_args[param_names[i]] = arg
                 const_args.append(hashable_arg)
@@ -2003,9 +2002,6 @@ class LibEntry(triton.KernelInterface):
                 dtype_values.append(val)
             hashable_val = _descriptor_cache_key(val, descriptor_types)
             if p.is_constexpr:
-                const_args.append(val)
-                if major_version == 3 and minor_version >= 3:
-                    k_args[p.name] = val
                 const_args.append(hashable_val)
                 if keep_const_in_kargs:
                     k_args[name] = val
@@ -2118,21 +2114,6 @@ class LibEntry(triton.KernelInterface):
             for pre_hook, hook_kwargs in launch_pre_hooks:
                 pre_hook({**hook_nargs, **hook_kwargs})
 
-        if major_version == 3 and minor_version >= 3:
-            all_args = []
-            missing_keys = []
-            for key in list(self.signature.parameters.keys()):
-                if key in k_args:
-                    all_args.append(k_args[key])
-                elif key in tune_constexprs:
-                    all_args.append(tune_constexprs[key])
-                elif key in heur_constexprs:
-                    all_args.append(heur_constexprs[key])
-                elif key in constexprs:
-                    all_args.append(constexprs[key])
-                else:
-                    missing_keys.append(key)
-                if len(missing_keys):
         if keep_const_in_kargs:
             # `k_args` is filled in signature order, so when it covers every
             # parameter its values already are the launch argument list.
