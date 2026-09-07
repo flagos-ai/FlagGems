@@ -17,33 +17,36 @@
 The generic implementation pins one program per batch element and walks the
 whole matrix with scalar loads/stores in triply nested loops (O(N^3) scalar
 ops in a single program), which is unusable on TritonXPU (baseline speedup
-~0.005x at N=64, ~0.0002x at N=128). This override implements a
-block-structured algorithm that stays within what the TritonXPU backend can
-lower:
+~0.005x at N=64, ~0.0002x at N=128). This override computes the inverse with
+a vectorized masked serial forward substitution plus a tiled tl.dot product,
+which is what the TritonXPU backend can lower correctly:
 
   - no tl.gather: tt.gather is explicitly illegal on this backend;
   - tl.dot lowers correctly and is exact fp32 with input_precision="ieee"
     (probe at N=32..256, maxdiff <= 1.2e-5 vs fp64 reference);
   - serial per-row walks are vectorized across columns with vector width <=
-    CBLK=128 lanes (PAD=256 vector loops fail to lower in
-    TritonXPUUnrollControl/uni_sram, reproduced at N=192/256);
+    CBLK=64 lanes (128-wide unmasked vectors miscompile, and PAD=256 vector
+    loops fail to lower in TritonXPUUnrollControl/uni_sram, reproduced at
+    N=192/256);
   - 2D row/col masks INSIDE tl.dot operand loads blow the same
-    uni_sram/UnrollControl pass (probed), so the blocked path is gated on
-    N % 64 == 0 and runs fully mask-free inside the dot loops.
+    uni_sram/UnrollControl pass (probed), so the dot-based product only runs
+    for N % 64 == 0 shapes and stays fully mask-free; other shapes use the
+    serial product kernel.
 
 Algorithm (lower triangular factor L; an upper factor is first transposed
 with a native transposed copy so the pipeline always runs on a lower one):
 
-  X = L^{-1}, computed block-column-wise with block size 64:
-    1) diagonal blocks X_rr via a serial vectorized triangular inverse, one
-       program per (batch element, block);
-    2) off-diagonal blocks
-       X_ir = -X_ii @ ( sum_{k=r..i-1} L[i,k] @ X[k,r] )
-       with tl.dot; all reads/writes of column block r happen inside
-       program (batch, r), so no grid sync is needed;
-    3) Out = X^T X as a tiled tl.dot over a native transposed copy of X
-       (full symmetric output; no mirrored stores needed).
-  other shapes: serial vectorized path (same numerics, no dot).
+  X = L^{-1} via a masked serial vectorized triangular inverse (one program
+  per (batch element, column band), forward substitution row by row);
+  Out = X^T X as a tiled tl.dot over a native transposed copy of X
+  (full symmetric output; no mirrored stores needed).
+
+Accuracy: the masked serial inverse is accurate to ~5e-9 vs an fp64
+reference at every size (verified N=32..256, batched and upper variants).
+An earlier blocked variant (unmasked 64x64 diagonal blocks plus a tiled
+tl.dot off-diagonal sweep) is NOT usable on this backend: it produced wrong
+off-diagonal blocks (~3.5e-3 at N=128) from a broken tl.dot accumulate, so
+only the two kernels below are kept.
 
 dtype: only float32/float64 are legal per ATen; on the Kunlunxin xpu
 backend fp64 inputs never reach the kernels (torch.linalg.cholesky
@@ -148,86 +151,6 @@ def _ci_mm_serial_kernel(
 
 
 @triton.jit
-def _ci_diag_block_kernel(
-    A_ptr,
-    X_ptr,
-    N: tl.constexpr,
-    BS: tl.constexpr,
-):
-    """Diagonal blocks X_rr = (L_rr)^{-1} for all r, serial vectorized walk.
-
-    Grid = (batch, NB); no masks (N % BS == 0 guaranteed by the wrapper).
-    """
-    b = tl.program_id(0)
-    rb = tl.program_id(1)
-    base = b * N * N
-    r0 = rb * BS
-    js = tl.arange(0, BS)
-    dtype = A_ptr.dtype.element_ty
-
-    for i in range(BS):
-        diag = tl.load(A_ptr + base + (r0 + i) * N + (r0 + i))
-        inv_d = 1.0 / diag
-        acc = tl.zeros((BS,), dtype=dtype)
-        for k in range(i):
-            f = tl.load(A_ptr + base + (r0 + i) * N + (r0 + k))
-            pk = tl.load(X_ptr + base + (r0 + k) * N + (r0 + js))
-            acc += f * pk
-        val = tl.where(js == i, inv_d, tl.where(js < i, -acc * inv_d, 0.0))
-        tl.store(X_ptr + base + (r0 + i) * N + (r0 + js), val)
-
-
-@triton.jit
-def _ci_offdiag_block_kernel(
-    A_ptr,
-    X_ptr,
-    N: tl.constexpr,
-    NB: tl.constexpr,
-    BS: tl.constexpr,
-    TK: tl.constexpr,
-):
-    """Off-diagonal block columns. Grid = (batch, NB). No masks (N % BS == 0).
-
-    Program (b, r) sweeps i = r+1..NB-1:  X_ir = -X_ii @ (sum_{k=r..i-1} L_ik @ X_kr).
-    All elements of column block r are read/written by this program, so the
-    serial i-sweep needs no grid sync.
-    """
-    b = tl.program_id(0)
-    r = tl.program_id(1)
-    base = b * N * N
-    r0 = r * BS
-    rows = tl.arange(0, BS)
-    cols = tl.arange(0, BS)
-    dtype = A_ptr.dtype.element_ty
-
-    x_ii = tl.load(X_ptr + base + (r0 + rows)[:, None] * N + (r0 + cols)[None, :])
-
-    for i in range(r + 1, NB):
-        i0 = i * BS
-        K = i0 - r0
-        acc = tl.zeros((BS, BS), dtype=dtype)
-        for k in range(0, K, TK):
-            kk = k + tl.arange(0, TK)
-            kmask = kk < K
-            a = tl.load(
-                A_ptr + base + (i0 + rows)[:, None] * N + (r0 + kk)[None, :],
-                mask=kmask[None, :],
-                other=0.0,
-            )
-            x = tl.load(
-                X_ptr + base + (r0 + kk)[:, None] * N + (r0 + cols)[None, :],
-                mask=kmask[:, None],
-                other=0.0,
-            )
-            acc = tl.dot(a, x, acc, input_precision="ieee")
-        s = tl.dot(x_ii, acc, input_precision="ieee")
-        tl.store(
-            X_ptr + base + (i0 + rows)[:, None] * N + (r0 + cols)[None, :],
-            -s,
-        )
-
-
-@triton.jit
 def _ci_mm_dot_kernel(
     AT_ptr,
     A_ptr,
@@ -289,30 +212,32 @@ def _run_serial(A):
 
 
 def _run_blocked(A):
-    """Blocked path: diag blocks + off-diag dot sweeps + dot mm (N % 64 == 0)."""
+    """Blocked path (N % 64 == 0): vectorized masked serial inverse of the
+    full matrix + tiled-dot symmetric product.
+
+    NOTE: the original blocked implementation (diagonal 64x64 blocks via the
+    unmasked ``_ci_diag_block_kernel`` plus ``_ci_offdiag_block_kernel`` for
+    the off-diagonal block columns) is numerically wrong on TritonXPU: the
+    off-diagonal blocks come out with ~3.5e-3 abs error at N=128 (exact
+    sub-diagonal zeros from the unmasked diag kernel, plus a wrong
+    ``tl.dot`` accumulate in the offdiag sweep), which propagates to
+    ~2.4e-4 on the final product. The masked serial inverse below is accurate
+    to ~5e-9 at every size (verified N=32..256, batch and upper variants);
+    it is O(N^3) scalar work per band but stays within what the backend
+    lowers correctly."""
     batch_size = A.shape[0]
     n = A.shape[1]
     batch_stride = n * n if batch_size > 1 else 0
-    NB = n // _BS
 
     X = torch.zeros_like(A)
-
-    _ci_diag_block_kernel[(batch_size, NB)](
+    _ci_tri_serial_kernel[(batch_size, n // _BS)](
         A,
         X,
         n,
         _BS,
-        num_warps=1,
-        num_stages=1,
-    )
-
-    _ci_offdiag_block_kernel[(batch_size, NB)](
-        A,
-        X,
-        n,
-        NB,
-        _BS,
-        _BS,
+        batch_stride,
+        A.stride(1),
+        A.stride(2),
         num_warps=4,
         num_stages=1,
     )

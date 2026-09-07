@@ -9,6 +9,8 @@ from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
+_BLOCK_SIZE = 64
+
 
 @libentry()
 @triton.jit
@@ -23,28 +25,36 @@ def _index_reduce_kernel(
     REDUCE: tl.constexpr,
     INCLUDE_SELF: tl.constexpr,
 ):
-    output_offset = tl.program_id(0)
-    inner_offset = output_offset % inner_size
-    output_dim_offset = (output_offset // inner_size) % output_dim_size
-    outer_offset = output_offset // (output_dim_size * inner_size)
-    self_value = tl.load(inp + output_offset).to(tl.float32)
+    BLOCK: tl.constexpr = 64
+    pid = tl.program_id(0)
+    nblocks = tl.cdiv(output_dim_size * inner_size, BLOCK)
+    outer = pid // nblocks
+    block_id = pid - outer * nblocks
+    offs = block_id * BLOCK + tl.arange(0, BLOCK)
+    within = offs < output_dim_size * inner_size
+    output_dim_offset = offs // inner_size
+    inner_offset = offs % inner_size
+    base = outer * output_dim_size * inner_size
+
+    self_value = tl.load(inp + base + offs, mask=within, other=0.0).to(tl.float32)
 
     if REDUCE == 0:
-        accumulator = self_value if INCLUDE_SELF else 1.0
+        accumulator = self_value if INCLUDE_SELF else tl.full((BLOCK,), 1.0, dtype=tl.float32)
     elif REDUCE == 1:
-        accumulator = self_value if INCLUDE_SELF else 0.0
+        accumulator = self_value if INCLUDE_SELF else tl.zeros((BLOCK,), dtype=tl.float32)
     elif REDUCE == 2:
-        accumulator = self_value if INCLUDE_SELF else -float("inf")
+        accumulator = self_value if INCLUDE_SELF else tl.full((BLOCK,), float("-inf"), dtype=tl.float32)
     else:
-        accumulator = self_value if INCLUDE_SELF else float("inf")
-    count = 1 if INCLUDE_SELF else 0
+        accumulator = self_value if INCLUDE_SELF else tl.full((BLOCK,), float("inf"), dtype=tl.float32)
+    count = tl.full((BLOCK,), 1 if INCLUDE_SELF else 0, dtype=tl.int32)
 
-    for source_dim_offset in tl.static_range(0, SOURCE_DIM_SIZE):
-        selected = tl.load(index + source_dim_offset) == output_dim_offset
+    for source_dim_offset in tl.range(0, SOURCE_DIM_SIZE):
+        selected = tl.load(index + source_dim_offset).to(tl.int64) == output_dim_offset
+        selected = selected & within
         source_offset = (
-            outer_offset * SOURCE_DIM_SIZE + source_dim_offset
+            outer * SOURCE_DIM_SIZE + source_dim_offset
         ) * inner_size + inner_offset
-        value = tl.load(source + source_offset).to(tl.float32)
+        value = tl.load(source + source_offset, mask=within, other=0.0).to(tl.float32)
         if REDUCE == 0:
             accumulator = tl.where(selected, accumulator * value, accumulator)
         elif REDUCE == 1:
@@ -60,10 +70,10 @@ def _index_reduce_kernel(
         count += selected.to(tl.int32)
 
     if REDUCE == 1:
-        accumulator /= count
+        accumulator = accumulator / tl.maximum(count, 1).to(tl.float32)
     if not INCLUDE_SELF:
         accumulator = tl.where(count == 0, self_value, accumulator)
-    tl.store(output + output_offset, accumulator)
+    tl.store(output + base + offs, accumulator, mask=within)
 
 
 _REDUCTIONS = {"prod": 0, "mean": 1, "amax": 2, "amin": 3}
@@ -97,8 +107,10 @@ def index_reduce_(inp, dim, index, source, reduce, *, include_self=True):
     index = index.contiguous()
     result = input_contiguous.clone()
     inner_size = math.prod(inp.shape[dim + 1 :])
+    nblocks = math.ceil(inp.shape[dim] * inner_size / _BLOCK_SIZE)
+    outer_size = math.prod(inp.shape[:dim])
     with torch_device_fn.device(inp.device):
-        _index_reduce_kernel[(result.numel(),)](
+        _index_reduce_kernel[(outer_size * nblocks,)](
             input_contiguous,
             index,
             source,

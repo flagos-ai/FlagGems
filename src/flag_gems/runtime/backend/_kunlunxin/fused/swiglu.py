@@ -150,6 +150,26 @@ def swiglu(input_tensor: torch.Tensor, quantizer: Optional[Any] = None) -> torch
 __all__ = ["swiglu", "dswiglu"]
 
 
+@triton.jit
+def _rne_f16(x):
+    """RNE-round an f32 value to fp16 precision, returned as f32.
+
+    The value is exactly representable in fp16 (13 dropped mantissa bits), so
+    any subsequent f32->f16 conversion is exact regardless of rounding mode.
+    """
+    bits = x.to(tl.uint32, bitcast=True)
+    r = bits + 0x0FFF + ((bits >> 13) & 1)
+    return (r & 0xFFFFE000).to(tl.float32, bitcast=True)
+
+
+@triton.jit
+def _rne_bf16(x):
+    """RNE-round an f32 value to bf16 precision, returned as f32."""
+    bits = x.to(tl.uint32, bitcast=True)
+    r = bits + 0x7FFF + ((bits >> 16) & 1)
+    return (r & 0xFFFF0000).to(tl.float32, bitcast=True)
+
+
 @libentry()
 @triton.jit
 def dswiglu_kernel(
@@ -193,23 +213,64 @@ def dswiglu_kernel(
     )
     mask = (offs_m[:, None] < M) & (offs_n[None, :] < N)
     if NEED_MASK:
-        grad_out = tl.load(grad_output_ptr, mask=mask, other=0.0).to(tl.float32)
-        block_a = tl.load(input_ptr_a, mask=mask, other=0.0).to(tl.float32)
-        block_b = tl.load(input_ptr_b, mask=mask, other=0.0).to(tl.float32)
-        sig = tl.sigmoid(block_a)
-        silu_a = block_a * sig
-        d_silu_a = sig + block_a * sig * (1.0 - sig)
-        tl.store(grad_input_ptr_a, grad_out * d_silu_a * block_b, mask=mask)
-        tl.store(grad_input_ptr_b, grad_out * silu_a, mask=mask)
+        grad_out = tl.load(grad_output_ptr, mask=mask, other=0.0)
+        block_a = tl.load(input_ptr_a, mask=mask, other=0.0)
+        block_b = tl.load(input_ptr_b, mask=mask, other=0.0)
     else:
-        grad_out = tl.load(grad_output_ptr).to(tl.float32)
-        block_a = tl.load(input_ptr_a).to(tl.float32)
-        block_b = tl.load(input_ptr_b).to(tl.float32)
-        sig = tl.sigmoid(block_a)
-        silu_a = block_a * sig
-        d_silu_a = sig + block_a * sig * (1.0 - sig)
-        tl.store(grad_input_ptr_a, grad_out * d_silu_a * block_b)
-        tl.store(grad_input_ptr_b, grad_out * silu_a)
+        grad_out = tl.load(grad_output_ptr)
+        block_a = tl.load(input_ptr_a)
+        block_b = tl.load(input_ptr_b)
+
+    # Numeric contract: the transformer_engine dswiglu reference as computed
+    # by this backend's torch ops
+    # (swish_grad = sig*(1 + x1*(1-sig)); dx1 = (g*x2)*swish_grad;
+    #  dx2 = g*(x1*sig), sig = sigmoid(x1)) evaluates the whole expression in
+    # the STORAGE dtype: RNE after every op, no fp-math promotion, and no FMA
+    # contraction (`1 + a*(1-sig)` even lands on a store-dtype tie point where
+    # FMA and rounded-add differ; see harness/solution/dswiglu/README.md).
+    # f16/bf16 round after every op through integer bit manipulation
+    # (provably RNE, immune to fma fusion since the fp ops are all exact in
+    # f32: products of two 11-bit/8-bit significands fit in 24 bits, and
+    # 1 +/- storage value is exact or rounds to 1.0 like the reference).
+    af = block_a.to(tl.float32)
+    bf = block_b.to(tl.float32)
+    gf = grad_out.to(tl.float32)
+    if block_a.dtype == tl.float32:
+        sig = tl.sigmoid(af)
+        t_one_minus_sig = 1.0 - sig
+        t_prod = af * t_one_minus_sig
+        t_swish = 1.0 + t_prod
+        d_silu_a = sig * t_swish
+        silu_a = af * sig
+        t_grad_mul = gf * bf
+        grad_a = t_grad_mul * d_silu_a
+        grad_b = gf * silu_a
+    elif block_a.dtype == tl.bfloat16:
+        sig = _rne_bf16(tl.sigmoid(af))
+        t_one_minus_sig = _rne_bf16(1.0 - sig)
+        t_prod = _rne_bf16(af * t_one_minus_sig)
+        t_swish = _rne_bf16(1.0 + t_prod)
+        d_silu_a = _rne_bf16(sig * t_swish)
+        silu_a = _rne_bf16(af * sig)
+        t_grad_mul = _rne_bf16(gf * bf)
+        grad_a = _rne_bf16(t_grad_mul * d_silu_a)
+        grad_b = _rne_bf16(gf * silu_a)
+    else:  # float16
+        sig = _rne_f16(tl.sigmoid(af))
+        t_one_minus_sig = _rne_f16(1.0 - sig)
+        t_prod = _rne_f16(af * t_one_minus_sig)
+        t_swish = _rne_f16(1.0 + t_prod)
+        d_silu_a = _rne_f16(sig * t_swish)
+        silu_a = _rne_f16(af * sig)
+        t_grad_mul = _rne_f16(gf * bf)
+        grad_a = _rne_f16(t_grad_mul * d_silu_a)
+        grad_b = _rne_f16(gf * silu_a)
+    if NEED_MASK:
+        tl.store(grad_input_ptr_a, grad_a, mask=mask)
+        tl.store(grad_input_ptr_b, grad_b, mask=mask)
+    else:
+        tl.store(grad_input_ptr_a, grad_a)
+        tl.store(grad_input_ptr_b, grad_b)
 
 
 def _pick_dswiglu_config(dtype, M, N):

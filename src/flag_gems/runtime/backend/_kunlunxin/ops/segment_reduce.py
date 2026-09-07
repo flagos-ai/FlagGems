@@ -130,10 +130,14 @@ def _validate_lengths(data, lengths, axis, unsafe):
     _check_index_tensor(data, lengths, "lengths", axis)
     if unsafe:
         return
-    lengths_detached = lengths.detach()
-    if torch.any(lengths_detached < 0).item():
+    # Validate on a CPU copy: the device-side shape checks below (e.g.
+    # lengths.sum(dim=-1)) would dispatch to the Gems overrides while
+    # running under flag_gems.use_gems(), and Gems sum reduces int64
+    # on XPU with an illegal memory access (error=700).
+    lengths_cpu = lengths.detach().to("cpu")
+    if torch.any(lengths_cpu < 0).item():
         raise RuntimeError("lengths contains negative value!")
-    valid_lengths = torch.all(lengths_detached.sum(dim=-1) == data.size(axis)).item()
+    valid_lengths = torch.all(lengths_cpu.sum(dim=-1) == data.size(axis)).item()
     if not valid_lengths:
         raise RuntimeError(
             "segment_reduce(): Expected all rows of lengths along axis to sum to "
@@ -1011,7 +1015,9 @@ def _segment_reduce_backward_element_kernel(
         include = in_segment & (segment_offsets != axis_idx)
         included = tl.where(include, value, 1.0)
         product = tl.reduce(included, axis=0, combine_fn=_multiply)
-        result = tl.where(valid_segment, grad_value * product, 0.0)
+        result = tl.where(
+            valid_segment, grad_value * product * INITIAL_PROD_VALUE, 0.0
+        )
 
     tl.store(grad_input + pid, result)
 
@@ -1104,11 +1110,23 @@ def segment_reduce(
     segment_count = output_shape[axis]
     inner_size = _prod(data_contig.shape[axis + 1 :])
     data_size_axis = data_contig.shape[axis]
+    segment_lengths = offsets_contig[..., 1:] - offsets_contig[..., :-1]
+    if segment_lengths.numel() > 0:
+        max_segment_length = int(segment_lengths.max().item())
+    else:
+        max_segment_length = 0
     block_size = min(
         _get_block_size(data.device), triton.next_power_of_2(max(data_size_axis, 32))
     )
     has_initial, initial_value = _make_initial(reduce, initial)
     grid = (output.numel(),)
+    # Bound the unroll by the largest *segment* instead of the whole axis:
+    # the kernel body is statically unrolled and TritonXPU (arch=3) faults
+    # with an illegal memory access on roughly 56+ unrolled 1024-wide
+    # blocks.  Every block beyond cdiv(segment_length, BLOCK_SIZE) is
+    # masked off by `block_active` anyway, so this is exactly correct and
+    # also much faster for the common short-segment case.
+    max_blocks = triton.cdiv(max(max_segment_length, 1), block_size)
 
     with torch_device_fn.device(data.device):
         _segment_reduce_forward_kernel[grid](
@@ -1125,7 +1143,7 @@ def segment_reduce(
             reduce == "prod",
             has_initial,
             initial_value,
-            MAX_BLOCKS=triton.cdiv(data_size_axis, block_size),
+            MAX_BLOCKS=max_blocks,
             BLOCK_SIZE=block_size,
         )
     return output
@@ -1269,7 +1287,11 @@ def _segment_reduce_backward(
                 False,
                 False,
                 initial_prod_value,
-                MAX_BLOCKS=triton.cdiv(data_size_axis, block_size),
+                # Bound the unroll by the largest *segment* (not the whole
+                # axis): the kernel body is statically unrolled and
+                # TritonXPU (arch=3) faults on ~56+ unrolled 1024-wide
+                # blocks, and all blocks beyond the segment are masked off.
+                MAX_BLOCKS=triton.cdiv(max(max_segment_length, 1), block_size),
                 BLOCK_SIZE=block_size,
             )
     return grad_input

@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import functools
 import logging
 import math
 
@@ -23,7 +22,7 @@ from torch._prims_common import is_boolean_dtype, is_integer_dtype
 
 from flag_gems.runtime import device as runtime_device
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import get_device_properties, libentry
+from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
@@ -34,18 +33,6 @@ _FALLBACK_KEYSET = torch._C.DispatchKeySet(
 DEFAULT_BLOCK_SIZE = 1024
 CUDA_SMALL_SCAN_LIMIT = 1024 * 4
 ASCEND_SCAN_LIMIT = 1024
-DEFAULT_NUM_SMS = 40
-
-
-@functools.lru_cache
-def get_num_sms(idx: int) -> int:
-    return get_device_properties(idx).multi_processor_count or DEFAULT_NUM_SMS
-
-
-def _get_device_index(torch_device):
-    if torch_device.index is not None:
-        return torch_device.index
-    return torch_device_fn.current_device()
 
 
 @tl.constexpr
@@ -271,6 +258,51 @@ def cumprod_wrapper(inp, dim, dtype=None, out=None):
     return out
 
 
+_TL_SCAN_DTYPES = {
+    torch.float32: tl.float32,
+    torch.float64: tl.float64,
+    torch.int64: tl.int64,
+    torch.int32: tl.int32,
+}
+
+
+@libentry()
+@triton.jit(do_not_specialize=["N"])
+def cumprod_row_scan_chunk_kernel(
+    inp_ptr,
+    out_ptr,
+    N,
+    ACC_DTYPE: tl.constexpr,
+    BN: tl.constexpr,
+    NEED_TAIL: tl.constexpr,
+):
+    """Per-row chunked online product scan (K == 1, N > 16384).
+
+    One program per row; BN-wide chunks chained inside the program by a
+    BN-wide carry vector (carry starts at the product identity 1). The scan
+    must live inside a loop that tiles the scan axis: this is the only
+    tl.cumprod pattern this XPU backend lowers correctly (a standalone scan is
+    mis-lowered / rejected with an XDNN dtype error)."""
+    pid = tl.program_id(0)
+    row_offset = pid * N
+    carry = tl.full([BN], value=1, dtype=ACC_DTYPE)
+    for start in range(0, N, BN):
+        n_offsets = start + tl.arange(0, BN)
+        if NEED_TAIL:
+            mask = n_offsets < N
+            x = tl.load(inp_ptr + row_offset + n_offsets, mask=mask, other=1).to(
+                ACC_DTYPE
+            )
+        else:
+            x = tl.load(inp_ptr + row_offset + n_offsets).to(ACC_DTYPE)
+        r = tl.cumprod(x, axis=0) * carry
+        carry *= tl.reduce(x, axis=0, combine_fn=reduce_mul)
+        if NEED_TAIL:
+            tl.store(out_ptr + row_offset + n_offsets, r, mask=mask)
+        else:
+            tl.store(out_ptr + row_offset + n_offsets, r)
+
+
 def reduce_then_scan_row(x, out, M, N, compute_dtype):
     persistent_limit = (
         ASCEND_SCAN_LIMIT if runtime_device.vendor_name == "ascend" else 16384
@@ -283,68 +315,32 @@ def reduce_then_scan_row(x, out, M, N, compute_dtype):
         )
         return out
 
-    TILE_SIZE = min(_scan_block_size(N), triton.next_power_of_2(N))
-    num_warps = 8 if TILE_SIZE > 2048 else 4
-    num_tiles = triton.cdiv(N, TILE_SIZE)
-    max_ctas = get_num_sms(_get_device_index(x.device)) * 4
-    num_ctas = min(num_tiles, max_ctas)
-    ROOT_SCAN_TILE_SIZE = triton.next_power_of_2(num_ctas)
-    tiles_per_cta = triton.cdiv(num_tiles, num_ctas)
-
-    block_products = torch.empty((M, num_ctas), dtype=compute_dtype, device=x.device)
-    block_inclusive_prefix = torch.empty_like(block_products)
-
-    reduce_then_scan_block_product_kernel_row[(M, num_ctas, 1, 1)](
-        x, block_products, N, tiles_per_cta, TILE_SIZE, num_warps=num_warps
-    )
-    reduce_then_scan_root_scan_kernel_row[(M, 1, 1)](
-        block_products,
-        block_inclusive_prefix,
-        num_ctas,
-        ROOT_SCAN_TILE_SIZE,
-        num_warps=num_warps,
-    )
-    reduce_then_scan_block_scan_kernel_row[(M, num_ctas, 1)](
-        x,
-        block_inclusive_prefix,
-        out,
-        N,
-        num_ctas,
-        tiles_per_cta,
-        TILE_SIZE,
-        num_warps=num_warps,
-    )
-    return out
-
-
-@triton.jit
-def reduce_then_scan_block_product_kernel_row(
-    in_ptr,
-    block_product_ptr,
-    N,
-    tiles_per_cta,
-    TILE_SIZE: tl.constexpr,
-):
-    pid_n = tl.program_id(1).to(tl.int64)
-    pid_m = tl.program_id(0).to(tl.int64)
-    num_programs_n = tl.num_programs(1)
-    block_offset = pid_n * (tiles_per_cta * TILE_SIZE)
-    block_end = min(block_offset + tiles_per_cta * TILE_SIZE, N)
-
-    acc_dtype: tl.constexpr = get_prod_accum_type(block_product_ptr.type.element_ty)
-    acc = tl.full((TILE_SIZE,), value=1, dtype=acc_dtype)
-    for start in range(block_offset, block_end, TILE_SIZE):
-        offsets = start + tl.arange(0, TILE_SIZE)
-        x = tl.load(in_ptr + pid_m * N + offsets, mask=offsets < N, other=1).to(
-            acc_dtype
+    # N > persistent_limit: per-row chunked online scan. The scan runs in
+    # ACC_DTYPE and the result is packed back into `out` (which may be a
+    # narrower dtype, e.g. in-place cumprod_ on int16) by a torch-level
+    # convert + copy; XPU rejects stores whose value type is wider than the
+    # pointer type (XDNN "data type not matched").
+    acc_tl = _TL_SCAN_DTYPES.get(compute_dtype, tl.float32)
+    BN = 32768 if compute_dtype == torch.float32 else 16384
+    need_tail = 1 if N % BN else 0
+    scan_out = torch.empty((M, N), dtype=compute_dtype, device=x.device)
+    grid = (M,)
+    with torch_device_fn.device(x.device):
+        cumprod_row_scan_chunk_kernel[grid](
+            x,
+            scan_out,
+            N,
+            ACC_DTYPE=acc_tl,
+            BN=BN,
+            NEED_TAIL=need_tail,
+            num_warps=8,
+            buffer_size_limit=2048,
         )
-        acc *= x
-    block_product = tl.reduce(acc, axis=0, combine_fn=reduce_mul)
-    tl.store(
-        block_product_ptr + pid_m * num_programs_n + pid_n,
-        block_product,
-        cache_modifier=".cg",
-    )
+    if scan_out.dtype == out.dtype:
+        torch.ops.aten._copy_from(scan_out, out, False)
+    else:
+        torch.ops.aten._copy_from(scan_out.to(out.dtype), out, False)
+    return out
 
 
 @triton.jit
@@ -356,38 +352,6 @@ def reduce_then_scan_root_scan_kernel_row(in_ptr, out_ptr, N, TILE_SIZE: tl.cons
     x = tl.load(in_ptr + pid * N + offsets, mask=mask, other=1).to(acc_dtype)
     out = tl.cumprod(x, 0)
     tl.store(out_ptr + pid * N + offsets, out, mask=mask)
-
-
-@triton.jit
-def reduce_then_scan_block_scan_kernel_row(
-    in_ptr,
-    previous_product_ptr,
-    out_ptr,
-    N,
-    num_tiles_n,
-    tiles_per_cta,
-    TILE_SIZE: tl.constexpr,
-):
-    pid_m = tl.program_id(0).to(tl.int64)
-    pid_n = tl.program_id(1).to(tl.int64)
-    block_offset = pid_n * (tiles_per_cta * TILE_SIZE)
-    block_end = min(block_offset + tiles_per_cta * TILE_SIZE, N)
-    acc_dtype: tl.constexpr = get_prod_accum_type(out_ptr.type.element_ty)
-
-    prefix = tl.load(
-        previous_product_ptr + pid_m * num_tiles_n + pid_n - 1,
-        mask=pid_n > 0,
-        other=1,
-    ).to(acc_dtype)
-    for start in range(block_offset, block_end, TILE_SIZE):
-        offsets = start + tl.arange(0, TILE_SIZE)
-        mask = offsets < N
-        x = tl.load(in_ptr + pid_m * N + offsets, mask=mask, other=1).to(acc_dtype)
-        tile_scan = prefix * tl.cumprod(x, 0)
-        prefix *= tl.reduce(x, axis=0, combine_fn=reduce_mul)
-        tl.store(
-            out_ptr + pid_m * N + offsets, tile_scan, mask=mask, cache_modifier=".cg"
-        )
 
 
 def cumprod(inp, dim, *, dtype=None):

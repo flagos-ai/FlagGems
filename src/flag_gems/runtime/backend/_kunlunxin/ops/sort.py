@@ -1080,7 +1080,17 @@ def sort_stable(inp, *, stable, dim=-1, descending=False):
     if dim < 0:
         dim = dim + inp.ndim
     if dim != inp.ndim - 1:
-        inp = torch.movedim(inp, dim, -1).contiguous()
+        # NOTE(kunlunxin): the vendor strided `copy_` (copy_slice pointwise
+        # kernel, _kunlunxin/ops/copy.py) raises a device kernel exception
+        # (kl3ChannelCheckErrors status=700, illegal memory access) for some
+        # transposed 2-byte shapes, e.g. .t().contiguous() of (4, 65536)
+        # fp16/bf16 → (65536, 4).  Materialise the movedim view with one
+        # native strided copy instead (gems never overrides `_copy_from`, so
+        # this reaches the vendor's native copy engine — same workaround as
+        # renorm.py::_native_transposed_copy).
+        view = torch.movedim(inp, dim, -1)
+        inp = torch.empty(view.shape, device=inp.device, dtype=inp.dtype)
+        torch.ops.aten._copy_from(view, inp, False)
     else:
         inp = inp.contiguous()
 

@@ -54,6 +54,7 @@ from .silu_and_mul_with_clamp import (
 )
 from .skip_layernorm import skip_layer_norm
 from .sparse_attention import sparse_attn_triton
+from .sparse_mla import triton_sparse_mla_fwd_interface
 from .swiglu import dswiglu, swiglu
 from .topk_softmax import topk_softmax
 from .weight_norm import weight_norm
@@ -89,6 +90,7 @@ __all__ = [
     "reglu",
     "matmul_bias_activation",
     "sparse_attn_triton",
+    "triton_sparse_mla_fwd_interface",
     "swiglu",
     "dswiglu",
     "bincount",

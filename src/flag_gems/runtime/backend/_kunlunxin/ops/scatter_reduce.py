@@ -278,18 +278,25 @@ def _scatter_reduce_2d_kernel(
         if INCLUDE_SELF:
             reduced += self_value
     elif REDUCE == 1:
-        reduced = 1.0
-        for offset in tl.static_range(BLOCK):
-            valid_offset = valid_base & (offset < dim_size)
-            index_value = tl.load(
-                index + index_base + offset * index_stride, mask=valid_offset, other=-1
-            )
-            value = tl.load(
-                src + src_base + offset * src_stride, mask=valid_offset, other=1.0
-            ).to(tl.float32)
-            reduced *= tl.where(valid_offset & (index_value == destination), value, 1.0)
-        if INCLUDE_SELF:
-            reduced *= self_value
+        # Runtime while loop instead of tl.static_range(BLOCK): static_range
+        # fully unrolls BLOCK (>= 128 for prod on (64,64)/(256,256) shapes),
+        # the XPU backend ELF stack overflows and buffer_size_limit halving
+        # gives up at 16 -> "Failed to tune buffer size.". Isomorphic to the
+        # verified _scatter_reduce_prod_3d_kernel.
+        product = self_value if INCLUDE_SELF else 1.0
+        selected_count = 0
+        if valid_base:
+            offset = 0
+            while offset < dim_size:
+                index_value = tl.load(index + index_base + offset * index_stride)
+                value = tl.load(src + src_base + offset * src_stride).to(tl.float32)
+                matched = index_value == destination
+                product = tl.where(matched, product * value, product)
+                selected_count += matched.to(tl.int32)
+                offset += 1
+        if not INCLUDE_SELF:
+            product = tl.where(selected_count == 0, self_value, product)
+        reduced = product
     elif REDUCE == 2:
         reduced = tl.sum(tl.where(selected, values, 0.0), axis=0)
         count = selected_count

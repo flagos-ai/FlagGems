@@ -531,14 +531,18 @@ def linalg_ldl_solve(LD, pivots, B, *, hermitian=False):
                 )
             return X.reshape(B.shape)
 
-        LD_work = torch.view_as_real(LD.reshape(batch, n, n).contiguous())
+        # NOTE(Kunlunxin): .contiguous()/.clone() on a complex tensor dispatch
+        # to the vendor copy_, which rejects complex dtypes
+        # (NotImplementedError: copy_ for complex tensors is not supported).
+        # Convert to the real view first (float) so the copy goes through the
+        # float path of vendor copy_, which is supported.
+        LD_work = torch.view_as_real(LD).reshape(batch, n, n, 2).contiguous()
         piv_work = pivots.reshape(batch, n).contiguous()
-        X = B.reshape(batch, n, nrhs).clone()
-        X_work = torch.view_as_real(X)
+        X = torch.view_as_real(B).reshape(batch, n, nrhs, 2).contiguous()
         for col_start in range(0, nrhs, 64):
-            X_block = X_work[:, :, col_start : col_start + 64]
+            X_block = X[:, :, col_start : col_start + 64]
             block_width = min(triton.next_power_of_2(X_block.shape[-2]), 64)
-            linalg_ldl_solve_complex_kernel[grid](
+            linalg_ldl_solve_complex_kernel[(batch, 1)](
                 LD_work,
                 piv_work,
                 X_block,
@@ -554,9 +558,8 @@ def linalg_ldl_solve(LD, pivots, B, *, hermitian=False):
                 X_block.stride(2),
                 HERM=hermitian,
                 BLOCK_NRH=block_width,
-                NUM_RHS_BLOCKS=1,
                 num_warps=4,
                 isCloseVectorization=True,
                 buffer_size_limit=2048,
             )
-        return X.reshape(B.shape)
+        return torch.view_as_complex(X).reshape(B.shape)

@@ -178,10 +178,14 @@ def _pd_piece_sum(
             acc, _pd_mode_reduce(tl.abs(a - b + eps), p_scalar, MODE), MODE
         )
     if NSCALAR > 0:
-        for j in tl.static_range(NSCALAR):
-            a = tl.load(x1_ptr + base + NP * S + j).to(tl.float32)
-            b = tl.load(x2_ptr + base + NP * S + j).to(tl.float32)
-            diff = tl.abs(a - b + eps)
+        # Plain `range` (not static_range): a non-unrolled scf.for keeps the
+        # live set small. A static_range loop with a long remainder (e.g. the
+        # D % 4096 lane tail of a 10M-D row, NSCALAR=128) pushes the ELF stack
+        # over the hardware budget ("Failed to tune buffer size.").
+        for j in range(NSCALAR):
+            av = tl.load(x1_ptr + base + NP * S + j).to(tl.float32)
+            bv = tl.load(x2_ptr + base + NP * S + j).to(tl.float32)
+            diff = tl.abs(av - bv + eps)
             if MODE == 0:
                 part = diff * diff
             elif MODE == 2:
@@ -231,6 +235,11 @@ def _pd_small_kernel(
 # row is processed exactly as in _pd_small_kernel; rows are independent so the
 # loads pipeline across the ROWS iterations.
 _ROWS = 8
+# Route to _pd_small_multi_kernel only in the launch-bound regime: many
+# independent small-D rows (e.g. (10000, 1) / (10000, 256)).
+_MULTI_MIN_N = 1024
+# Flat elementwise block for the D == 1 path (_pd_d1_kernel).
+_D1_BLOCK = 1024
 
 
 @libentry()
@@ -284,11 +293,12 @@ def _pd_d1_kernel(
     a = tl.load(x1_ptr + safe).to(tl.float32)
     b = tl.load(x2_ptr + safe).to(tl.float32)
     d = tl.abs(a - b + eps)
-    if MODE == 2:  # p == 0: nonzero count of a 1-element row.  Compare the
-        # raw elements (== |a - b| != 0, exact in fp32: bf16/fp16 convert
-        # losslessly) instead of `d` (which folds eps in and disagrees with
-        # the reference when a - b == -eps exactly).
-        d = (a != b).to(tl.float32)
+    if MODE == 2:  # p == 0: nonzero count of a 1-element row.  Count the
+        # reference condition |a - b + eps| != 0 exactly (a - b != -eps, which
+        # also covers the a == b tie case: |eps| != 0).  d is computed in fp32
+        # after an exact fp16/bf16 -> fp32 conversion, so the comparison is
+        # exact for those dtypes.
+        d = (d != 0).to(tl.float32)
     tl.store(out_ptr + off, d, mask=off < N)
 
 
@@ -465,21 +475,53 @@ def pairwise_distance(x1, x2, p=2.0, eps=1e-6, keepdim=False):
     p_scalar = float(p) if mode == 5 else 1.0
 
     with torch_device_fn.device(x1.device):
-        if D <= _BLOCK_D:
-            PS, PNP, PNSC = _piece_args(D)
-            _pd_small_kernel[(N,)](
+        if D == 1:
+            # Single-lane rows: one flat elementwise pass (grid N // _D1_BLOCK)
+            # instead of N per-row reduction programs (row-serial latency,
+            # measured ~90x slower for this shape class).
+            _pd_d1_kernel[(triton.cdiv(N, _D1_BLOCK),)](
                 x1,
                 x2,
                 out,
                 N,
-                D,
                 eps,
-                p_scalar,
                 MODE=mode,
-                S=PS,
-                NP=PNP,
-                NSCALAR=PNSC,
+                BLOCK=_D1_BLOCK,
             )
+        elif D <= _BLOCK_D:
+            PS, PNP, PNSC = _piece_args(D)
+            if N >= _MULTI_MIN_N:
+                # Launch-bound regime (many small-D rows): _ROWS independent
+                # rows per program cut the program count by _ROWS (see
+                # _pd_small_multi_kernel).
+                _pd_small_multi_kernel[(triton.cdiv(N, _ROWS),)](
+                    x1,
+                    x2,
+                    out,
+                    N,
+                    D,
+                    eps,
+                    p_scalar,
+                    MODE=mode,
+                    S=PS,
+                    NP=PNP,
+                    NSCALAR=PNSC,
+                    ROWS=_ROWS,
+                )
+            else:
+                _pd_small_kernel[(N,)](
+                    x1,
+                    x2,
+                    out,
+                    N,
+                    D,
+                    eps,
+                    p_scalar,
+                    MODE=mode,
+                    S=PS,
+                    NP=PNP,
+                    NSCALAR=PNSC,
+                )
         else:
             # All modes use 4096-lane chunks when D >= 4096 (halves the chunk
             # program count vs 2048 and is numerically safe: tl.sum is complete
@@ -504,9 +546,10 @@ def pairwise_distance(x1, x2, p=2.0, eps=1e-6, keepdim=False):
             if stride > _MID_BLOCK:
                 stride = triton.cdiv(P, _MID_BLOCK) * _MID_BLOCK
             mid = torch.full((N * stride,), pad, device=x1.device, dtype=torch.float32)
-            # max/min reductions are exact at any width: use 4096-lane chunks
-            # to halve the program count for the p=inf/-inf paths.
-            chunk_block = 4096 if mode in (3, 4) else _BLOCK_D
+            # NOTE: chunk_block must be the one used to derive MID/T/P above (a
+            # later re-assignment to a different width used to silently drop the
+            # last MID*(4096-BLOCK) lanes of every row, halving sum-mode results
+            # for D >= 4096).
             _pd_chunk_kernel[(N, MID)](
                 x1,
                 x2,

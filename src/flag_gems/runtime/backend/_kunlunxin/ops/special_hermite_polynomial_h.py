@@ -15,37 +15,28 @@ logger = logging.getLogger(__name__)
 
 
 @triton.jit
-def _hermite_hn(x, n_int):
-    xf = x.to(tl.float32)
-    h0 = 1.0
-    h1 = 2.0 * xf
-    x2 = xf * xf
-    h2 = 4.0 * x2 - 2.0
-    x3 = x2 * xf
-    h3 = 8.0 * x3 - 12.0 * xf
-    x4 = x2 * x2
-    h4 = 16.0 * x4 - 48.0 * x2 + 12.0
-    x5 = x4 * xf
-    h5 = 32.0 * x5 - 160.0 * x3 + 120.0 * xf
-    x6 = x3 * x3
-    h6 = 64.0 * x6 - 480.0 * x4 + 720.0 * x2 - 120.0
-    x7 = x6 * xf
-    h7 = 128.0 * x7 - 1344.0 * x5 + 3360.0 * x3 - 1680.0 * xf
-    x8 = x4 * x4
-    h8 = 256.0 * x8 - 3584.0 * x6 + 13440.0 * x4 - 13440.0 * x2 + 1680.0
-    x9 = x8 * xf
-    h9 = 512.0 * x9 - 9216.0 * x7 + 48384.0 * x5 - 80640.0 * x3 + 30240.0 * xf
-
-    result = h0
-    result = tl.where(n_int == 1, h1, result)
-    result = tl.where(n_int == 2, h2, result)
-    result = tl.where(n_int == 3, h3, result)
-    result = tl.where(n_int == 4, h4, result)
-    result = tl.where(n_int == 5, h5, result)
-    result = tl.where(n_int == 6, h6, result)
-    result = tl.where(n_int == 7, h7, result)
-    result = tl.where(n_int == 8, h8, result)
-    result = tl.where(n_int == 9, h9, result)
+def _hermite_hn(x, n):
+    # Physicist's Hermite polynomial recurrence, identical to ATen's
+    # hermite_polynomial_h_forward:
+    #   H_0(x) = 1, H_1(x) = 2x,
+    #   H_{k+1}(x) = 2x * H_k(x) - 2k * H_{k-1}(x)
+    # Evaluated in the input precision (no float32 upcast) so the result dtype
+    # matches x. `tl.fma` mirrors the FMA contraction of ATen's compiled loop
+    # `r = (x + x) * q - k * p`, which is essential in float32: for n >= 5 the
+    # recurrence is ill-conditioned (terms ~100x the result), so any deviation
+    # from ATen's exact rounding is amplified to ~1e-5 relative and exceeds the
+    # 1.3e-6 rtol. This also reproduces the closed form exactly (H_2..H_9) at
+    # ~1/6 of the FLOPs.
+    # n is the degree (int32 tensor lowered per-lane, or an int scalar).
+    two_x = x + x
+    h_km1 = 1.0  # H_0(x)
+    h_k = two_x  # H_1(x)
+    result = tl.where(n == 0, h_km1, h_k)
+    for k in tl.static_range(1, 9):
+        h_kp1 = tl.fma(two_x, h_k, (-2.0 * k) * h_km1)
+        h_km1 = h_k
+        h_k = h_kp1
+        result = tl.where(n == (k + 1), h_k, result)
     return result
 
 

@@ -417,7 +417,7 @@ def _qr_sweep(W, NCP, MP, NP, nsteps, batch, dt, dev, keep_reflectors):
         if keep_reflectors:
             _vsave_kernel[(batch,)](V, BETA, VS, BETAS, j, NP, MP=MP)
         _wvec_kernel[(batch, nb)](W, S, ALPHA, BETA, WV, j, c0, NCP=NCP, MP=MP, BC=BC)
-        _upd_kernel[(batch, nb)](W, WV, V, c0, NCP=NCP, MP=MP, BC=BC)
+        _upd_kernel[(batch, nb, nr)](W, WV, V, c0, r0, NCP=NCP, MP=MP, BC=BC, BN=bn)
     return DIAG, RMAX, VS, BETAS
 
 

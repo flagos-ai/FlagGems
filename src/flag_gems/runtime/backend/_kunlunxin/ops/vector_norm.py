@@ -267,6 +267,31 @@ def min_norm_kernel_2(
 
 
 @libentry()
+@triton.jit
+def min_norm_rows_kernel(X, Out, M, N, buffer_size_limit: tl.constexpr):
+    """Partial-dim -inf norm: one program per row of the (M, N) row-major
+    compressed input.  The generic 2D min_norm_kernel (tl.min over a
+    [BLOCK_M, BLOCK_N] tile, axis=1) is silently mis-lowered by TritonXPU on
+    this backend: on (600, 40999) every one of the 1025 probed rows was wrong
+    and (3, 8199800) returned 0, while tl.sum/tl.max on the identical tile were
+    exact.  So the row is reduced with 1024-wide UNMASKED 1D loads (chunks are
+    exact multiples; every lane is in-bounds), an axis-free tl.min -- the same
+    1D min that the flat min_norm_kernel_1 path uses -- and a dynamic scalar
+    tail for the remainder.  All loads are exact multiples of the row so the
+    pointer stays affine (X + row * N + off + arange)."""
+    row = ext.program_id(0).to(tl.int64)
+    rmin = tl.full((), value=float("inf"), dtype=tl.float32)
+    full = (N // 1024) * 1024
+    for off in tl.range(0, full, 1024):
+        v = tl.load(X + row * N + off + tl.arange(0, 1024)).to(tl.float32)
+        rmin = tl.minimum(rmin, tl.min(tl.abs(v)))
+    for off in tl.range(0, N - full):
+        v = tl.load(X + row * N + full + off).to(tl.float32)
+        rmin = tl.minimum(rmin, tl.abs(v))
+    tl.store(Out + row, rmin, mask=row < M)
+
+
+@libentry()
 # @triton.autotune(configs=runtime.get_tuned_config("vector_norm"), key=["M", "N"])
 @triton.heuristics(
     {
@@ -460,13 +485,25 @@ def l1_norm_rows_tail_kernel(
     N,
     MID_SIZE: tl.constexpr,
     TAIL_OFFSET: tl.constexpr,
-    TAIL_SIZE: tl.constexpr,
+    TAIL_N,
     buffer_size_limit: tl.constexpr,
 ):
+    # TAIL_N is a runtime value (can be up to 1023): a static full unroll of
+    # that many scalar loads overflows the XPU ELF stack ("Failed to tune
+    # buffer size"), so accumulate in 8-wide dynamic chunks plus a <= 7-lane
+    # dynamic scalar tail, the compilable two-loop shape of _l2_flat_tail_kernel.
     row = ext.program_id(0).to(tl.int64)
     total = 0.0
-    for offset in tl.static_range(TAIL_SIZE):
-        value = tl.load(X + row * N + TAIL_OFFSET + offset).to(tl.float32)
+    full_size = (TAIL_N // 8) * 8
+    for offset in tl.range(0, full_size, 8):
+        value = tl.load(
+            X + row * N + TAIL_OFFSET + offset + tl.arange(0, 8)
+        ).to(tl.float32)
+        total += tl.sum(tl.abs(value))
+    for offset in tl.range(0, TAIL_N - full_size):
+        value = tl.load(
+            X + row * N + TAIL_OFFSET + full_size + offset
+        ).to(tl.float32)
         total += tl.abs(value)
     tl.store(Mid + row * MID_SIZE + MID_SIZE - 1, total, mask=row < M)
 
@@ -503,13 +540,24 @@ def l1_norm_rows_reduce_tail_kernel(
     MID_SIZE: tl.constexpr,
     NEXT_SIZE: tl.constexpr,
     TAIL_OFFSET: tl.constexpr,
-    TAIL_SIZE: tl.constexpr,
+    TAIL_N,
     buffer_size_limit: tl.constexpr,
 ):
+    # See l1_norm_rows_tail_kernel: runtime TAIL_N (up to 1023) must use the
+    # dynamic 8-wide-chunk + scalar-tail two-loop shape, not a static unroll.
     row = ext.program_id(0).to(tl.int64)
     total = 0.0
-    for offset in tl.static_range(TAIL_SIZE):
-        total += tl.load(Mid + row * MID_SIZE + TAIL_OFFSET + offset).to(tl.float32)
+    full_size = (TAIL_N // 8) * 8
+    for offset in tl.range(0, full_size, 8):
+        total += tl.sum(
+            tl.load(
+                Mid + row * MID_SIZE + TAIL_OFFSET + offset + tl.arange(0, 8)
+            ).to(tl.float32)
+        )
+    for offset in tl.range(0, TAIL_N - full_size):
+        total += tl.load(
+            Mid + row * MID_SIZE + TAIL_OFFSET + full_size + offset
+        ).to(tl.float32)
     tl.store(Next + row * NEXT_SIZE + NEXT_SIZE - 1, total, mask=row < M)
 
 
@@ -1170,7 +1218,11 @@ def vector_norm(x, ord=2, dim=None, keepdim=False, dtype=None):
             elif ord == float("inf"):
                 max_norm_kernel[grid](x, out, M, N)
             elif ord == -float("inf"):
-                min_norm_kernel[grid](x, out, M, N)
+                # min_norm_kernel's 2D tile (tl.min over axis=1) is silently
+                # mis-lowered by TritonXPU for partial reductions; the
+                # one-row-per-program min_norm_rows_kernel is exact on every
+                # measured shape.
+                min_norm_rows_kernel[(M,)](x, out, M, N, buffer_size_limit=2048)
             elif ord == 0:
                 l0_norm_kernel[grid](x, out, M, N)
             elif ord == 1 and N > 1024:

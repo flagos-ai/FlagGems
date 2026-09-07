@@ -47,16 +47,20 @@ inter-block ordering comes from launch boundaries instead of a device barrier.
 
 Everything else follows the backend's measured constraints:
 
-* **No masked stores and no ``other=``-derived store masks.**  A masked
-  discrete store is not honoured on this backend (the whole tile is written)
-  and a *compound* mask on a discrete store additionally writes the wrong
-  payload.  Instead every store is fully unmasked and inactive lanes are
-  redirected, by address, into a scratch tail that is appended to the output
-  allocation (``tl.where(active, pos, SCRATCH + lane)``).  Addresses are unique
-  inside a program, so no address is written twice.
+* **One discrete store per program, everywhere.**  A masked discrete store is
+  not honoured on this backend (the whole tile is written) and a *compound*
+  mask on a discrete store additionally writes the wrong payload.  So every
+  store is fully unmasked and inactive lanes are redirected, by address, into
+  a scratch tail that is appended to the output allocation
+  (``tl.where(active, pos, SCRATCH + lane)``).  Addresses are unique inside a
+  program, so no address is written twice.  A program that issues a *second*
+  discrete store loses writes on this backend (measured: the ``[count, numel)``
+  zero fill silently dropped 1-152 lanes, deterministic per input), so no
+  kernel in this file has more than one store and the zero padding is always
+  a host-side ``torch.zeros`` (device memset).
 * **The compaction store is the only discrete access.**  It is irreducible for
   a stream compaction; reads stay stride-1 block DMA and the zero padding of
-  the ``[count, numel)`` tail is a contiguous unmasked store.
+  the ``[count, numel)`` tail is a host-side device memset.
 * **Shape scalars are ``tl.constexpr``.**  ``N``/``NUMEL``/``SCRATCH`` are
   compile-time constants so no runtime i32 scalar enters an address expression
   (measured 15-30x cliff elsewhere) and the tail mask folds away completely
@@ -100,15 +104,23 @@ def _msb_single_kernel(
     mask_ptr,
     out_ptr,
     N: tl.constexpr,
-    NUMEL: tl.constexpr,
     SCRATCH: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
-    """One-launch compaction for ``max(N, NUMEL) <= BLOCK``.
+    """Single-launch compaction for ``max(N, NUMEL) <= BLOCK``.
 
-    Two unmasked stores with provably disjoint address sets:
-    ``[0, count)`` receives the compacted gradient, ``[count, NUMEL)`` receives
-    zeros, and every lane that owns neither is parked in the scratch tail.
+    The host pre-zeroes ``out[0, NUMEL)`` (``torch.zeros``); this kernel then
+    issues exactly one unmasked discrete store: active lanes receive the
+    compacted gradient at ``pos``, *all* inactive lanes are parked in the
+    scratch tail (``SCRATCH + lane``) so the store stays unmasked.  Addresses
+    are unique inside the program, so no address is written twice.
+
+    A single-store body is mandatory: a program that issues two discrete
+    stores loses writes on this backend.  In measurement the second store
+    (the ``[count, NUMEL)`` zero fill, whether ``tl.where``-addressed or a
+    tile-wide ``tl.zeros``) silently dropped 1-152 lanes, ``OutOfResources``-
+    free and deterministic per input.  Hence the pad is produced by the
+    host-side device memset instead of a second triton store.
     """
     lane = tl.arange(0, BLOCK)
     valid = lane < N
@@ -118,31 +130,24 @@ def _msb_single_kernel(
     active = valid & (m != 0)
     ones = tl.where(active, 1, 0)
     pos = tl.cumsum(ones, axis=0) - 1
-    total = tl.sum(ones, axis=0)
 
     tgt = tl.where(active, pos, SCRATCH + lane)
     tl.store(out_ptr + tgt, g)
 
-    pad = (lane >= total) & (lane < NUMEL)
-    ztgt = tl.where(pad, lane, SCRATCH + BLOCK + lane)
-    tl.store(out_ptr + ztgt, tl.zeros([BLOCK], dtype=tl.float32))
-
 
 @libentry()
 @triton.jit
-def _msb_count_zero_kernel(
+def _msb_count_kernel(
     mask_ptr,
     counts_ptr,
-    out_ptr,
     N: tl.constexpr,
-    NUMEL: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
-    """Phase 1: per-block popcount of the mask + contiguous zero fill of ``out``.
+    """Phase 1: per-block popcount of the mask.
 
-    Both halves are guarded by uniform (program-wide) predicates only, so the
-    zero fill stays a stride-1 block DMA.  ``out`` is over-allocated to a whole
-    number of tiles, hence the store needs no mask.
+    One scalar store per program; the output is pre-zeroed by the host
+    (``torch.zeros``) so no tile store is needed here --
+    cf. ``_msb_single_kernel`` on the two-store loss.
     """
     pid = tl.program_id(0)
     offs = pid * BLOCK + tl.arange(0, BLOCK)
@@ -153,9 +158,6 @@ def _msb_count_zero_kernel(
         tl.store(counts_ptr + pid, tl.sum(ones, axis=0))
     else:
         tl.store(counts_ptr + pid, 0)
-
-    if pid * BLOCK < NUMEL:
-        tl.store(out_ptr + offs, tl.zeros([BLOCK], dtype=tl.float32))
 
 
 @libentry()
@@ -255,13 +257,16 @@ def masked_scatter_backward(grad_output, mask, sizes):
     with torch_device_fn.device(device):
         if max(n, numel) <= _SP_MAX:
             block = max(64, triton.next_power_of_2(max(n, numel)))
-            out = torch.empty(numel + 2 * block, dtype=dtype, device=device)
+            # ``torch.zeros``: the zero padding must not come from a second
+            # triton store in the same program (see the module docstring), so
+            # the host pre-zeroes with a device memset and the kernel below
+            # issues its single store.
+            out = torch.zeros(numel + block, dtype=dtype, device=device)
             _msb_single_kernel[(1,)](
                 grad_flat,
                 mask_flat,
                 out,
                 N=n,
-                NUMEL=numel,
                 SCRATCH=numel,
                 BLOCK=block,
             )
@@ -282,12 +287,12 @@ def masked_scatter_backward(grad_output, mask, sizes):
         # numel < count <= n) the mask tiles.  The parking area itself needs one
         # slot per input element -- see _msb_write_kernel.
         scratch = max(n_out_blocks, n_mask_blocks) * block
-        out = torch.empty(scratch + n_mask_blocks * block, dtype=dtype, device=device)
+        out = torch.zeros(scratch + n_mask_blocks * block, dtype=dtype, device=device)
         counts = torch.empty(np_blocks, dtype=torch.int32, device=device)
         offsets = torch.empty(np_blocks, dtype=torch.int32, device=device)
 
-        _msb_count_zero_kernel[(np_blocks,)](
-            mask_flat, counts, out, N=n, NUMEL=numel, BLOCK=block
+        _msb_count_kernel[(np_blocks,)](
+            mask_flat, counts, N=n, BLOCK=block
         )
         _msb_scan_kernel[(1,)](counts, offsets, NP=np_blocks)
         _msb_write_kernel[(n_mask_blocks,)](

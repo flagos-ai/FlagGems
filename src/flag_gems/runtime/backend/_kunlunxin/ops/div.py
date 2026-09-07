@@ -133,9 +133,95 @@ def true_div_func_u16(x, y):
     return x / y
 
 
+@pointwise_dynamic(
+    is_tensor=[True, True, True, True],
+    num_outputs=2,
+    promotion_methods=[(0, 1, 2, 3, "INT_TO_FLOAT"), (0, 1, 2, 3, "INT_TO_FLOAT")],
+    config=config_,
+)
+@triton.jit
+def true_div_complex_kernel(ar, ai, br, bi):
+    # Smith's method complex division: divide by the larger-magnitude component
+    # so the ratio is bounded by 1 (avoids overflow and keeps the error at a
+    # couple of ulp), matching torch's own complex division algorithm.
+    abs_br = tl.abs(br)
+    abs_bi = tl.abs(bi)
+    use_br = abs_br >= abs_bi
+
+    # When |br| >= |bi|: ratio = bi/br, denom = br + bi*ratio
+    ratio1 = tl.where(br == 0, 0.0, bi / br)
+    denom1 = br + bi * ratio1
+    real1 = (ar + ai * ratio1) / denom1
+    imag1 = (ai - ar * ratio1) / denom1
+
+    # When |bi| > |br|: ratio = br/bi, denom = bi + br*ratio
+    ratio2 = tl.where(bi == 0, 0.0, br / bi)
+    denom2 = bi + br * ratio2
+    real2 = (ar * ratio2 + ai) / denom2
+    imag2 = (ai * ratio2 - ar) / denom2
+
+    real = tl.where(use_br, real1, real2)
+    imag = tl.where(use_br, imag1, imag2)
+    return real, imag
+
+
+def _complex_real_parts(z, upcast):
+    zr = torch.view_as_real(z)
+    if upcast:
+        zr = zr.to(torch.float32)
+    return zr[..., 0].contiguous(), zr[..., 1].contiguous()
+
+
+def _true_divide_complex_tensors(A, B):
+    """Tensor/tensor complex division for XPU.
+
+    Triton (3.6.0) has no complex entries in the pointer-dtype
+    canonicalization table, so complex inputs cannot be passed to the real
+    pointwise kernels directly. Split the interleaved real/imag lanes, divide
+    with the real kernels, and reassemble. complex32 (fp16 components) is
+    upcast to fp32 for the division and rounded once back to fp16 so the
+    result matches the correctly-rounded CPU reference.
+    """
+    A_is_complex = A.is_complex()
+    B_is_complex = B.is_complex()
+    if A_is_complex and B_is_complex:
+        upcast = A.dtype == torch.complex32
+        ar, ai = _complex_real_parts(A, upcast)
+        br, bi = _complex_real_parts(B, upcast)
+        real, imag = true_div_complex_kernel(ar, ai, br, bi)
+        if upcast:
+            real, imag = real.to(torch.float16), imag.to(torch.float16)
+        return torch.view_as_complex(torch.stack((real, imag), dim=-1))
+    elif A_is_complex:
+        # (a+bi) / c: divide both lanes by the real tensor (broadcast)
+        upcast = A.dtype == torch.complex32
+        Ar = torch.view_as_real(A)
+        if upcast:
+            Ar = Ar.to(torch.float32)
+            Br = B.unsqueeze(-1).to(torch.float32)
+        else:
+            Br = B.unsqueeze(-1)
+        out = true_div_func(Ar, Br)
+        if upcast:
+            out = out.to(torch.float16)
+        return torch.view_as_complex(out.contiguous())
+    else:
+        # a / (c+di) == (a+0i) / (c+di)
+        upcast = B.dtype == torch.complex32
+        br, bi = _complex_real_parts(B, upcast)
+        ar = A.unsqueeze(-1).to(br.dtype)
+        ai = torch.zeros_like(br)
+        real, imag = true_div_complex_kernel(ar, ai, br, bi)
+        if upcast:
+            real, imag = real.to(torch.float16), imag.to(torch.float16)
+        return torch.view_as_complex(torch.stack((real, imag), dim=-1))
+
+
 def true_divide(A, B):
     logger.debug("GEMS_KUNLUNXIN TRUE_DIVIDE")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
+        if A.is_complex() or B.is_complex():
+            return _true_divide_complex_tensors(A, B)
         if (
             A.dtype in (torch.float16, torch.float32)
             and A.numel() >= DIV_TENSOR_U16_MIN_NUMEL
