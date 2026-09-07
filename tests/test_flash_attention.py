@@ -851,8 +851,8 @@ def _dequantize_dense_per_block_fp8(x, descale, dtype, block_size=128):
     return out.contiguous()
 
 
-def _quantize_dense_qkv_w8a8(q, k, v):
-    fp8_dtype = _get_fp8_dtype()
+def _quantize_dense_qkv_w8a8(q, k, v, fp8_dtype=None):
+    fp8_dtype = _get_fp8_dtype() if fp8_dtype is None else fp8_dtype
     q_fp8, q_descale = _quantize_dense_per_block_fp8(_apply_incoherent_qk(q), fp8_dtype)
     k_fp8, k_descale = _quantize_dense_per_block_fp8(_apply_incoherent_qk(k), fp8_dtype)
     v_fp8, v_descale = _quantize_dense_per_block_fp8(v, fp8_dtype)
@@ -978,7 +978,7 @@ def _quantize_qkv_w8a8(q, k, v, q_lengths, kv_lengths):
 
 
 def gems_flash_attn_varlen_func_w8a8_fp8(
-    q, k, v, q_lengths, kv_lengths, scale, is_causal
+    q, k, v, q_lengths, kv_lengths, scale, is_causal, return_softmax_lse=False
 ):
     (
         q_fp8,
@@ -1003,6 +1003,7 @@ def gems_flash_attn_varlen_func_w8a8_fp8(
         softmax_scale=scale,
         causal=is_causal,
         out=out,
+        return_softmax_lse=return_softmax_lse,
         q_descale=q_descale,
         k_descale=k_descale,
         v_descale=v_descale,
@@ -1137,10 +1138,16 @@ def test_flash_attn_varlen_func_w8a8_fp8_signature():
     getattr(torch, "float8_e4m3fn", None) is None,
     reason="FP8 is not available",
 )
-def test_flash_attn_varlen_func_w8a8_fp8_uniform_lse():
+@pytest.mark.parametrize("head_size", [64, 128])
+@pytest.mark.parametrize("is_causal", [False, True])
+@pytest.mark.parametrize("q_len,kv_len", [(129, 257), (17, 8192), (1024, 8192)])
+@pytest.mark.parametrize("fp8_dtype", [torch.float8_e4m3fn, torch.float8_e5m2])
+def test_flash_attn_varlen_func_w8a8_fp8_uniform_lse(
+    head_size, is_causal, q_len, kv_len, fp8_dtype
+):
     device = torch_device_fn.current_device()
     dtype = torch.bfloat16
-    batch, num_head, q_len, kv_len, head_size = 2, 4, 129, 257, 64
+    batch, num_head = 2, 4
     q, k, v = make_input(
         batch,
         num_head,
@@ -1159,7 +1166,7 @@ def test_flash_attn_varlen_func_w8a8_fp8_uniform_lse():
         q_descale,
         k_descale,
         v_descale,
-    ) = _quantize_dense_qkv_w8a8(q, k, v)
+    ) = _quantize_dense_qkv_w8a8(q, k, v, fp8_dtype)
     scale = 1.0 / math.sqrt(head_size)
     cu_seqlens_q = torch.arange(
         0, (batch + 1) * q_len, q_len, dtype=torch.int32, device=device
@@ -1178,6 +1185,7 @@ def test_flash_attn_varlen_func_w8a8_fp8_uniform_lse():
         cu_seqlens_k,
         softmax_scale=scale,
         return_softmax_lse=True,
+        causal=is_causal,
         out=out,
         q_descale=q_descale,
         k_descale=k_descale,
@@ -1191,7 +1199,7 @@ def test_flash_attn_varlen_func_w8a8_fp8_uniform_lse():
         ref_k.transpose(1, 2),
         ref_v.transpose(1, 2),
         scale,
-        False,
+        is_causal,
     )
     _assert_w8a8_attention_close(gems_out, torch_out.view_as(gems_out))
     expected_lse = torch_lse.permute(1, 0, 2).reshape(num_head, -1)
@@ -1310,7 +1318,7 @@ def test_flash_attn_varlen_func_w8a8_fp8_ragged(
     scale = 1.0 / math.sqrt(head_size)
 
     (
-        gems_out,
+        (gems_out, gems_lse),
         (ref_q, ref_k, ref_v),
         cu_seqlens_q,
         cu_seqlens_k,
@@ -1322,6 +1330,7 @@ def test_flash_attn_varlen_func_w8a8_fp8_ragged(
         kv_lengths,
         scale,
         is_causal,
+        return_softmax_lse=True,
     )
     torch_out = _torch_varlen_reference(
         ref_q,
@@ -1334,6 +1343,33 @@ def test_flash_attn_varlen_func_w8a8_fp8_ragged(
     )
 
     _assert_w8a8_attention_close(gems_out, torch_out)
+    _, expected_lse, _, _, _ = torch.ops.aten._flash_attention_forward(
+        ref_q,
+        ref_k,
+        ref_v,
+        cu_seqlens_q,
+        cu_seqlens_k,
+        max(q_lengths),
+        max(kv_lengths),
+        0.0,
+        is_causal,
+        False,
+        scale=scale,
+    )
+    # Fully masked queries have implementation-specific LSE sentinels.
+    valid_rows = torch.cat(
+        [
+            (
+                torch.arange(q_len, device=device) >= max(0, q_len - kv_len)
+                if is_causal
+                else torch.ones(q_len, device=device, dtype=torch.bool)
+            )
+            for q_len, kv_len in zip(q_lengths, kv_lengths)
+        ]
+    )
+    torch.testing.assert_close(
+        gems_lse[:, valid_rows], expected_lse[:, valid_rows], rtol=1.0e-2, atol=5.0e-2
+    )
 
 
 @pytest.mark.flash_attn_varlen_func_w8a8_fp8

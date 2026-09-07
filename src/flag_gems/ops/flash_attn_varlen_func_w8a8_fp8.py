@@ -207,6 +207,7 @@ def softmax_rescale(
     row_sum,
     softmax_scale_log2e: tl.constexpr,
     is_border: tl.constexpr,
+    fp8_p_max: tl.constexpr,
     # is_init: tl.constexpr
 ):
     prev_max = row_max
@@ -221,7 +222,13 @@ def softmax_rescale(
     row_sum *= p_scale
     O_acc *= p_scale[:, None]
 
-    max_scaled = tl.where(row_max == float("-inf"), 0, row_max * softmax_scale_log2e)
+    # Scale E4M3 probabilities by 256 in the exponent domain.
+    p_log2_scale: tl.constexpr = 8.0 if fp8_p_max == 448.0 else 0.0
+    max_scaled = tl.where(
+        row_max == float("-inf"),
+        0,
+        row_max * softmax_scale_log2e - p_log2_scale,
+    )
     P = tl.math.exp2(S * softmax_scale_log2e - max_scaled[:, None])
     row_sum = row_sum + tl.sum(P, 1)
     return O_acc, P, row_max, row_sum
@@ -276,10 +283,16 @@ def fa3_load_dense_descales(
 def fa3_fp8_pv_dot(
     P, V, acc, v_descale, fp8_p_max: tl.constexpr, fp8_dtype: tl.constexpr
 ):
-    p_descale = 1.0 / fp8_p_max
-    P_fp8 = (P * fp8_p_max).to(fp8_dtype)
-    pv = tl.dot(P_fp8, V, out_dtype=tl.float32)
-    return acc + pv * (p_descale * v_descale)
+    if fp8_p_max == 448.0:
+        # The scaled row sum cancels the factor of 256 during normalization.
+        P_fp8 = P.to(fp8_dtype)
+        pv = tl.dot(P_fp8, V, out_dtype=tl.float32)
+        return acc + pv * v_descale
+    else:
+        p_descale = 1.0 / fp8_p_max
+        P_fp8 = (P * fp8_p_max).to(fp8_dtype)
+        pv = tl.dot(P_fp8, V, out_dtype=tl.float32)
+        return acc + pv * (p_descale * v_descale)
 
 
 @triton.jit
@@ -710,13 +723,14 @@ def flash_fwd_kernel(
                 rowsum_,
                 softmax_scale_log2e=scale_softmax_log2,
                 is_border=(is_causal or is_local),
+                fp8_p_max=fp8_p_max,
             )
             # W8A8 FA3 change: keep P in fp32 until after dropout/masking, then
             # dynamically quantize it for the FP8 PV tensor-core matmul.
 
             if is_dropout:
                 if return_softmax:
-                    P_drop = P
+                    P_drop = P * (1.0 / 256.0 if fp8_p_max == 448.0 else 1.0)
 
                     P_drop = apply_dropout(
                         P_drop,
@@ -853,13 +867,14 @@ def flash_fwd_kernel(
             rowsum_,
             softmax_scale_log2e=scale_softmax_log2,
             is_border=is_local,
+            fp8_p_max=fp8_p_max,
         )
         # W8A8 FA3 change: P is quantized at the PV call site so dropout sees
         # the high-precision softmax probabilities.
 
         if is_dropout:
             if return_softmax:
-                P_drop = P
+                P_drop = P * (1.0 / 256.0 if fp8_p_max == 448.0 else 1.0)
                 P_drop = apply_dropout(
                     P_drop,
                     row_start,
@@ -916,12 +931,13 @@ def flash_fwd_kernel(
         acc_ = fa3_fp8_pv_dot(P, V, acc_, v_descale, fp8_p_max, v_ptr.type.element_ty)
 
     # LSE
-    # Note, rowsum = exp(-rowmax) * exp(lse), therefore rowmax + log(rowsum) cancels
-    # the effect of rowmax and outputs lse only.
+    # Undo the E4M3 probability scale for LSE only. Output normalization uses
+    # the scaled row sum to cancel the matching scale in the PV accumulator.
     lse = tl.where(
         rowsum_ == 0 | (rowsum_ != rowsum_),
         float("inf"),
-        rowmax_ * scale_softmax + tl.log(rowsum_),
+        rowmax_ * scale_softmax
+        + tl.log(rowsum_ * (1.0 / 256.0 if fp8_p_max == 448.0 else 1.0)),
     )
     inv_sum = tl.where(rowsum_ == 0 | (rowsum_ != rowsum_), 1.0, 1.0 / rowsum_)
 
@@ -1210,6 +1226,7 @@ def flash_fwd_splitkv_kernel(
                 rowsum_,
                 softmax_scale_log2e=scale_softmax_log2,
                 is_border=False,
+                fp8_p_max=fp8_p_max,
             )
 
             if not PRE_LOAD_V:
@@ -1313,6 +1330,7 @@ def flash_fwd_splitkv_kernel(
                 rowsum_,
                 softmax_scale_log2e=scale_softmax_log2,
                 is_border=(is_causal or is_local),
+                fp8_p_max=fp8_p_max,
             )
 
             if not PRE_LOAD_V:
@@ -1338,7 +1356,8 @@ def flash_fwd_splitkv_kernel(
     lse = tl.where(
         rowsum_ == 0 | (rowsum_ != rowsum_),
         float("-inf"),
-        rowmax_ * scale_softmax + tl.log(rowsum_),
+        rowmax_ * scale_softmax
+        + tl.log(rowsum_ * (1.0 / 256.0 if fp8_p_max == 448.0 else 1.0)),
     )
     inv_sum = tl.where(rowsum_ == 0 | (rowsum_ != rowsum_), 1.0, 1.0 / rowsum_)
 
@@ -1827,6 +1846,7 @@ def flash_varlen_fwd_kernel(
             rowsum_,
             softmax_scale_log2e=scale_softmax_log2,
             is_border=True,
+            fp8_p_max=fp8_p_max,
         )
         if is_dropout:
             P = apply_dropout(
@@ -1945,6 +1965,7 @@ def flash_varlen_fwd_kernel(
             rowsum_,
             softmax_scale_log2e=scale_softmax_log2,
             is_border=is_local,
+            fp8_p_max=fp8_p_max,
         )
         if is_dropout:
             P = apply_dropout(
@@ -1970,7 +1991,8 @@ def flash_varlen_fwd_kernel(
     lse = tl.where(
         rowsum_ == 0 | (rowsum_ != rowsum_),
         float("inf"),
-        rowmax_ * scale_softmax + tl.log(rowsum_),
+        rowmax_ * scale_softmax
+        + tl.log(rowsum_ * (1.0 / 256.0 if fp8_p_max == 448.0 else 1.0)),
     )
     inv_sum = tl.where(rowsum_ == 0 | (rowsum_ != rowsum_), 1.0, 1.0 / rowsum_)
 
