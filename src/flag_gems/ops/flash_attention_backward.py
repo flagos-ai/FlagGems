@@ -1359,6 +1359,15 @@ def scaled_dot_product_flash_attention_backward(
     is_dropout = dropout_p > 0.0
     rng_tuple = _parse_philox(philox_seed, philox_offset) if is_dropout else None
     use_varlen = (cum_seq_q is not None) and (cum_seq_k is not None)
+    if not use_varlen:
+        # ATen dense inputs arrive in [B, H, S, D] while the fused kernels below
+        # expect [B, S, H, D]; permute on the way in and back out again, exactly
+        # like the scaled_dot_product_cudnn_attention_backward wrapper.
+        grad_out = grad_out.permute(0, 2, 1, 3).contiguous()
+        query = query.permute(0, 2, 1, 3).contiguous()
+        key = key.permute(0, 2, 1, 3).contiguous()
+        value = value.permute(0, 2, 1, 3).contiguous()
+        out = out.permute(0, 2, 1, 3).contiguous()
     dQ, dK, dV, _ = flash_attn_backward(
         grad_out,
         query,
@@ -1376,6 +1385,10 @@ def scaled_dot_product_flash_attention_backward(
         is_causal=is_causal,
         softmax_scale=scale,
     )
+    if not use_varlen:
+        dQ = dQ.permute(0, 2, 1, 3).contiguous()
+        dK = dK.permute(0, 2, 1, 3).contiguous()
+        dV = dV.permute(0, 2, 1, 3).contiguous()
     return dQ, dK, dV
 
 
