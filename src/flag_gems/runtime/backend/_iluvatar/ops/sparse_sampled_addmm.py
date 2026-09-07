@@ -36,7 +36,8 @@ _SAMPLED_ADDMM_DTYPES = {
 )
 @triton.heuristics(
     {
-        "EVEN_K": lambda args: args["K"] % args["BLOCK_K"] == 0,
+        "BLOCK_K_PAD": lambda args: max(args["BLOCK_K"], 16),
+        "EVEN_K": lambda args: args["K"] % max(args["BLOCK_K"], 16) == 0,
     }
 )
 @triton.jit
@@ -61,6 +62,7 @@ def _sddmm_bmm_kernel(
     BLOCK_N: tl.constexpr,
     BLOCK_K: tl.constexpr,
     SPLIT_K: tl.constexpr,
+    BLOCK_K_PAD: tl.constexpr,
     EVEN_K: tl.constexpr,
 ):
     """Batched dense GEMM tile -> workspace, following _iluvatar/ops/mm.py."""
@@ -75,7 +77,7 @@ def _sddmm_bmm_kernel(
 
     ram = tl.max_contiguous(tl.multiple_of(rm % M, BLOCK_M), BLOCK_M)
     rbn = tl.max_contiguous(tl.multiple_of(rn % N, BLOCK_N), BLOCK_N)
-    rk = tl.arange(0, BLOCK_K)
+    rk = tl.arange(0, BLOCK_K_PAD)
 
     b64 = b.to(tl.int64)
     A = A + b64 * stride_ab + ram[:, None] * stride_am + rk[None, :] * stride_ak
@@ -83,25 +85,25 @@ def _sddmm_bmm_kernel(
 
     acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
     if EVEN_K:
-        for k in range(0, tl.cdiv(K, BLOCK_K)):
+        for k in range(0, tl.cdiv(K, BLOCK_K_PAD)):
             a = tl.load(A)
             b_val = tl.load(B)
             acc += tl.dot(
                 a, b_val, out_dtype=tl.float32, input_precision=input_precision
             )
-            A += BLOCK_K * stride_ak
-            B += BLOCK_K * stride_bk
+            A += BLOCK_K_PAD * stride_ak
+            B += BLOCK_K_PAD * stride_bk
     else:
-        loop_num = tl.cdiv(K, BLOCK_K) - 1
+        loop_num = tl.cdiv(K, BLOCK_K_PAD) - 1
         for k in range(0, loop_num):
             a = tl.load(A)
             b_val = tl.load(B)
             acc += tl.dot(
                 a, b_val, out_dtype=tl.float32, input_precision=input_precision
             )
-            A += BLOCK_K * stride_ak
-            B += BLOCK_K * stride_bk
-        k_remaining = K - loop_num * BLOCK_K
+            A += BLOCK_K_PAD * stride_ak
+            B += BLOCK_K_PAD * stride_bk
+        k_remaining = K - loop_num * BLOCK_K_PAD
         a = tl.load(A, mask=rk[None, :] < k_remaining, other=0.0)
         b_val = tl.load(B, mask=rk[:, None] < k_remaining, other=0.0)
         acc += tl.dot(a, b_val, out_dtype=tl.float32, input_precision=input_precision)
@@ -238,6 +240,7 @@ def _sparse_sampled_addmm_impl(input, mat1, mat2, *, beta=1.0, alpha=1.0, out=No
 
     mat1_f = mat1.contiguous().reshape(B, M, K)
     mat2_f = mat2.contiguous().reshape(B, K, N)
+
     val_f = out.values().reshape(B * nnz_per_batch)
     crow_2d = out.crow_indices().reshape(B, M + 1).contiguous()
     col_2d = out.col_indices().reshape(B, nnz_per_batch).contiguous()

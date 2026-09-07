@@ -293,6 +293,16 @@ jobs:
         timeout-minutes: 15
         continue-on-error: true
         run: |
+          # get backend name from matrix
+          BACKEND_NAME="${{ matrix.name }}"
+          echo "[Publish results] Uploading results archive to op-monitor server for backend: ${BACKEND_NAME}"
+          echo "[Publish results] Archive path: ${ARCHIVE}"
+          echo "[Publish results] Test date: ${DATE}"
+          # Check if the archive file exists before attempting to upload
+          if [ ! -f "${ARCHIVE}" ]; then
+            echo "[Publish results] ERROR: Archive file not found: ${ARCHIVE}"
+            exit 1
+          fi
           # Upload the results archive to the op-monitor server.
           curl -X POST "${{ secrets.OPMON_URL }}api/upload/archive" \
             -H "Authorization: Bearer ${{ secrets.OPMON_UPLOAD_KEY }}" \
@@ -417,6 +427,16 @@ jobs:
         timeout-minutes: 15
         continue-on-error: true
         run: |
+          # get backend name from matrix
+          BACKEND_NAME="${{ matrix.name }}"
+          echo "[Publish results] Uploading results archive to op-monitor server for backend: ${BACKEND_NAME}"
+          echo "[Publish results] Archive path: ${ARCHIVE}"
+          echo "[Publish results] Test date: ${DATE}"
+          # Check if the archive file exists before attempting to upload
+          if [ ! -f "${ARCHIVE}" ]; then
+            echo "[Publish results] ERROR: Archive file not found: ${ARCHIVE}"
+            exit 1
+          fi
           # Upload the results archive to the op-monitor server.
           curl -X POST "${{ secrets.OPMON_URL }}api/upload/archive" \
             -H "Authorization: Bearer ${{ secrets.OPMON_UPLOAD_KEY }}" \

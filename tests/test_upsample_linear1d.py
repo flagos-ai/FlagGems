@@ -75,12 +75,11 @@ def test_upsample_linear1d_boundaries(dtype, case):
         align_corners=align_corners,
     ).to(dtype)
 
-    with flag_gems.use_gems():
-        res_out = torch._C._nn.upsample_linear1d(
-            input_tensor,
-            output_size=output_size,
-            align_corners=align_corners,
-        )
+    res_out = flag_gems.upsample_linear1d(
+        input_tensor,
+        output_size=output_size,
+        align_corners=align_corners,
+    )
     if special_cfg == "nan":
         assert torch.isnan(res_out).all(), "Output should be all NaN"
         assert torch.isnan(ref_out).all(), "Reference should be all NaN"
@@ -118,12 +117,11 @@ def test_upsample_linear1d(dtype, shape, scale, align_corners):
         align_corners=align_corners,
     ).to(dtype)
 
-    with flag_gems.use_gems():
-        res_out = torch._C._nn.upsample_linear1d(
-            input,
-            output_size=output_size,
-            align_corners=align_corners,
-        )
+    res_out = flag_gems.upsample_linear1d(
+        input,
+        output_size=output_size,
+        align_corners=align_corners,
+    )
 
     gems_assert_close(res_out, ref_out, dtype)
 
@@ -142,7 +140,12 @@ def normalize_1d_shape(shape):
     return (n, shape[-2], shape[-1])
 
 
-def upsample_linear1d_backward_call(grad, input_size, align_corners):
+def upsample_linear1d_backward_call(
+    grad,
+    input_size,
+    align_corners,
+    op=torch.ops.aten.upsample_linear1d_backward,
+):
     orig_shape = tuple(input_size)
     shape_3d = normalize_1d_shape(orig_shape)
 
@@ -150,7 +153,7 @@ def upsample_linear1d_backward_call(grad, input_size, align_corners):
 
     grad_3d = grad.reshape(*shape_3d[:-1], out_w)
 
-    out = torch.ops.aten.upsample_linear1d_backward(
+    out = op(
         grad_3d,
         [out_w],
         list(shape_3d),
@@ -232,12 +235,12 @@ def test_upsample_linear1d_backward(
         align_corners,
     )
 
-    with flag_gems.use_gems():
-        res_out = upsample_linear1d_backward_call(
-            res_grad,
-            shape,
-            align_corners,
-        )
+    res_out = upsample_linear1d_backward_call(
+        res_grad,
+        shape,
+        align_corners,
+        op=flag_gems.upsample_linear1d_backward,
+    )
 
     assert res_out.shape == tuple(shape)
     assert res_out.dtype == res_grad.dtype
@@ -279,7 +282,11 @@ def test_upsample_linear1d_backward_bfloat16_cancellation():
     if not utils.TO_CPU:
         ref_out = ref_out.to(grad.device)
 
-    with flag_gems.use_gems():
-        res_out = upsample_linear1d_backward_call(grad, shape, align_corners=False)
+    res_out = upsample_linear1d_backward_call(
+        grad,
+        shape,
+        align_corners=False,
+        op=flag_gems.upsample_linear1d_backward,
+    )
 
     gems_assert_close(res_out, ref_out, dtype, atol=2e-2)

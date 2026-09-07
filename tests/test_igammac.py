@@ -37,10 +37,10 @@ def test_igammac(shape, dtype):
 
     ref_x = utils.to_reference(x, True)
     ref_y = utils.to_reference(y, True)
-    ref_out = torch.special.gammaincc(ref_x, ref_y)
+    ref_out = torch.igammac(ref_x, ref_y)
 
     with flag_gems.use_gems():
-        res_out = torch.special.gammaincc(x, y)
+        res_out = torch.igammac(x, y)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -55,11 +55,11 @@ def test_igammac_out(shape, dtype):
     ref_x = utils.to_reference(x, True)
     ref_y = utils.to_reference(y, True)
     ref_out_buf = torch.empty(shape, dtype=ref_x.dtype, device=ref_x.device)
-    ref_out = torch.ops.aten.special_gammaincc.out(ref_x, ref_y, out=ref_out_buf)
+    ref_out = torch.ops.aten.igammac.out(ref_x, ref_y, out=ref_out_buf)
 
     res_out_buf = torch.empty(shape, dtype=dtype, device=flag_gems.device)
     with flag_gems.use_gems():
-        res_out = torch.ops.aten.special_gammaincc.out(x, y, out=res_out_buf)
+        res_out = torch.ops.aten.igammac.out(x, y, out=res_out_buf)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -75,10 +75,10 @@ def test_igammac_boundary_x_zero(dtype):
 
     ref_a = utils.to_reference(a_vals, True)
     ref_x = utils.to_reference(x_vals, True)
-    ref_out = torch.special.gammaincc(ref_a, ref_x)
+    ref_out = torch.igammac(ref_a, ref_x)
 
     with flag_gems.use_gems():
-        res = torch.special.gammaincc(a_vals, x_vals)
+        res = torch.igammac(a_vals, x_vals)
 
     utils.gems_assert_close(res, ref_out, dtype)
 
@@ -92,10 +92,10 @@ def test_igammac_boundary_a_one(dtype):
 
     ref_a = utils.to_reference(a, True)
     ref_x = utils.to_reference(x, True)
-    ref_out = torch.special.gammaincc(ref_a, ref_x)
+    ref_out = torch.igammac(ref_a, ref_x)
 
     with flag_gems.use_gems():
-        res = torch.special.gammaincc(a, x)
+        res = torch.igammac(a, x)
 
     utils.gems_assert_close(res, ref_out, dtype, atol=1e-5)
 
@@ -109,10 +109,10 @@ def test_igammac_boundary_large_x(dtype):
 
     ref_a = utils.to_reference(a, True)
     ref_x = utils.to_reference(x, True)
-    ref_out = torch.special.gammaincc(ref_a, ref_x)
+    ref_out = torch.igammac(ref_a, ref_x)
 
     with flag_gems.use_gems():
-        res = torch.special.gammaincc(a, x)
+        res = torch.igammac(a, x)
 
     utils.gems_assert_close(res, ref_out, dtype)
 
@@ -133,9 +133,9 @@ def test_igammac_extreme_asym(dtype, a_val, x_val):
     x_t = torch.tensor([x_val], dtype=dtype, device=flag_gems.device)
     ref_a = utils.to_reference(a_t, True)
     ref_x = utils.to_reference(x_t, True)
-    ref = torch.special.gammaincc(ref_a, ref_x)
+    ref = torch.igammac(ref_a, ref_x)
     with flag_gems.use_gems():
-        res = torch.special.gammaincc(a_t, x_t)
+        res = torch.igammac(a_t, x_t)
     utils.gems_assert_close(res, ref, dtype, atol=1e-5)
 
 
@@ -159,9 +159,9 @@ def test_igammac_extreme_asym_large(dtype, a_val, x_val):
     x_t = torch.tensor([x_val], dtype=dtype, device=flag_gems.device)
     ref_a = utils.to_reference(a_t, True)
     ref_x = utils.to_reference(x_t, True)
-    ref = torch.special.gammaincc(ref_a, ref_x)
+    ref = torch.igammac(ref_a, ref_x)
     with flag_gems.use_gems():
-        res = torch.special.gammaincc(a_t, x_t)
+        res = torch.igammac(a_t, x_t)
     utils.gems_assert_close(res, ref, dtype, atol=1e-5)
 
 
@@ -189,9 +189,9 @@ def test_igammac_inf_nan(dtype, a_val, x_val):
     x_t = torch.tensor([x_val], dtype=dtype, device=flag_gems.device)
     ref_a = utils.to_reference(a_t, True)
     ref_x = utils.to_reference(x_t, True)
-    ref = torch.special.gammaincc(ref_a, ref_x)
+    ref = torch.igammac(ref_a, ref_x)
     with flag_gems.use_gems():
-        res = torch.special.gammaincc(a_t, x_t)
+        res = torch.igammac(a_t, x_t)
     res_v = float("nan") if torch.isnan(res) else res.item()
     ref_v = float("nan") if torch.isnan(ref) else ref.item()
     both_nan = math.isnan(res_v) and math.isnan(ref_v)
@@ -220,9 +220,9 @@ def test_igammac_extreme_ratios(dtype, a_val, x_val):
     x_t = torch.tensor([x_val], dtype=dtype, device=flag_gems.device)
     ref_a = utils.to_reference(a_t, True)
     ref_x = utils.to_reference(x_t, True)
-    ref = torch.special.gammaincc(ref_a, ref_x)
+    ref = torch.igammac(ref_a, ref_x)
     with flag_gems.use_gems():
-        res = torch.special.gammaincc(a_t, x_t)
+        res = torch.igammac(a_t, x_t)
     utils.gems_assert_close(res, ref, dtype, atol=1e-5)
 
 
@@ -245,9 +245,9 @@ def test_igammac_large_a_small_x(dtype, a_val, x_val):
     x_t = torch.tensor([x_val], dtype=dtype, device=flag_gems.device)
     ref_a = utils.to_reference(a_t, True)
     ref_x = utils.to_reference(x_t, True)
-    ref = torch.special.gammaincc(ref_a, ref_x)
+    ref = torch.igammac(ref_a, ref_x)
     with flag_gems.use_gems():
-        res = torch.special.gammaincc(a_t, x_t)
+        res = torch.igammac(a_t, x_t)
     utils.gems_assert_close(res, ref, dtype, atol=1e-5)
 
 
@@ -267,9 +267,9 @@ def test_igammac_series_cf_boundary(dtype, a_val, x_val):
     x_t = torch.tensor([x_val], dtype=dtype, device=flag_gems.device)
     ref_a = utils.to_reference(a_t, True)
     ref_x = utils.to_reference(x_t, True)
-    ref = torch.special.gammaincc(ref_a, ref_x)
+    ref = torch.igammac(ref_a, ref_x)
     with flag_gems.use_gems():
-        res = torch.special.gammaincc(a_t, x_t)
+        res = torch.igammac(a_t, x_t)
     utils.gems_assert_close(res, ref, dtype, atol=1e-5)
 
 
@@ -302,9 +302,9 @@ def test_igammac_asym_threshold(dtype, a_val, x_val):
     x_t = torch.tensor([x_val], dtype=dtype, device=flag_gems.device)
     ref_a = utils.to_reference(a_t, True)
     ref_x = utils.to_reference(x_t, True)
-    ref = torch.special.gammaincc(ref_a, ref_x)
+    ref = torch.igammac(ref_a, ref_x)
     with flag_gems.use_gems():
-        res = torch.special.gammaincc(a_t, x_t)
+        res = torch.igammac(a_t, x_t)
     utils.gems_assert_close(res, ref, dtype, atol=1e-5)
 
 
@@ -331,9 +331,9 @@ def test_igammac_large_a_moderate_x(dtype, a_val, x_val):
     x_t = torch.tensor([x_val], dtype=dtype, device=flag_gems.device)
     ref_a = utils.to_reference(a_t, True)
     ref_x = utils.to_reference(x_t, True)
-    ref = torch.special.gammaincc(ref_a, ref_x)
+    ref = torch.igammac(ref_a, ref_x)
     with flag_gems.use_gems():
-        res = torch.special.gammaincc(a_t, x_t)
+        res = torch.igammac(a_t, x_t)
     utils.gems_assert_close(res, ref, dtype, atol=1e-5)
 
 
@@ -353,7 +353,7 @@ def test_igammac_log_uniform(dtype):
     )
     ref_a = utils.to_reference(a, True)
     ref_x = utils.to_reference(x, True)
-    ref = torch.special.gammaincc(ref_a, ref_x)
+    ref = torch.igammac(ref_a, ref_x)
     with flag_gems.use_gems():
-        res = torch.special.gammaincc(a, x)
+        res = torch.igammac(a, x)
     utils.gems_assert_close(res, ref, dtype, atol=1e-5)

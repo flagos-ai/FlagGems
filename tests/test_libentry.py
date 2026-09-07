@@ -18,6 +18,7 @@ import multiprocessing
 import os
 import signal
 import sqlite3
+import sys
 import threading
 import time
 from contextlib import contextmanager
@@ -48,6 +49,24 @@ requires_flagtree_flagtune = pytest.mark.skipif(
     not HAS_FLAGTREE_FLAGTUNE,
     reason="test requires the optional FlagTree FlagTune package",
 )
+
+
+@pytest.fixture(autouse=True)
+def assume_flagtune_platform_package_is_available(monkeypatch):
+    """Keep mode-routing unit tests independent of model I/O and GPU probing."""
+    monkeypatch.setattr(
+        flagtune_runtime_mod,
+        "_platform_cost_model_available",
+        lambda: True,
+    )
+
+
+def test_libentry_uses_platform_appropriate_lock():
+    if sys.platform == "darwin":
+        expected_lock_type = type(threading.Lock())
+    else:
+        expected_lock_type = type(multiprocessing.Lock())
+    assert type(softmax_kernel_inner.lock) is expected_lock_type
 
 
 # not_raises is copied from https://gist.github.com/oisinmulvihill/45c14271fad7794a4a52516ecb784e69
@@ -142,6 +161,132 @@ def test_tuning_mode_environment_matrix(
     assert mode.value == expected
 
 
+@pytest.mark.parametrize(
+    ("use_flagtune", "use_cost_model", "expected"),
+    [
+        (None, None, "default"),
+        (None, "0", "default"),
+        (None, "1", "default"),
+        ("0", None, "default"),
+        ("0", "0", "default"),
+        ("0", "1", "default"),
+        ("1", None, "expanded"),
+        ("1", "0", "expanded"),
+        ("1", "1", "expanded"),
+    ],
+)
+def test_missing_platform_package_uses_unadapted_tuning_routes(
+    monkeypatch,
+    use_flagtune,
+    use_cost_model,
+    expected,
+):
+    """Ignore the Cost Model switch when the active platform has no package."""
+    monkeypatch.setattr(flagtune_runtime_mod, "_include_ops", None)
+    monkeypatch.delenv("FLAGTUNE_INCLUDE", raising=False)
+    monkeypatch.setattr(
+        flagtune_runtime_mod,
+        "_platform_cost_model_available",
+        lambda: False,
+    )
+    if use_flagtune is None:
+        monkeypatch.delenv("USE_FLAGTUNE", raising=False)
+    else:
+        monkeypatch.setenv("USE_FLAGTUNE", use_flagtune)
+    if use_cost_model is None:
+        monkeypatch.delenv("USE_FLAGTUNE_COST_MODEL", raising=False)
+    else:
+        monkeypatch.setenv("USE_FLAGTUNE_COST_MODEL", use_cost_model)
+
+    mode = flagtune_runtime_mod.resolve_tuning_mode("mm", supports_cost_model=True)
+
+    assert mode.value == expected
+
+
+def test_missing_platform_package_honors_operator_include(monkeypatch):
+    """Select Expanded for an explicitly included op after Cost Model fallback."""
+    monkeypatch.setattr(flagtune_runtime_mod, "_include_ops", None)
+    monkeypatch.delenv("USE_FLAGTUNE", raising=False)
+    monkeypatch.delenv("USE_FLAGTUNE_COST_MODEL", raising=False)
+    monkeypatch.setenv("FLAGTUNE_INCLUDE", "mm")
+    monkeypatch.setattr(
+        flagtune_runtime_mod,
+        "_platform_cost_model_available",
+        lambda: False,
+    )
+
+    assert (
+        flagtune_runtime_mod.resolve_tuning_mode("mm", supports_cost_model=True)
+        is flagtune_runtime_mod.TuningMode.EXPANDED
+    )
+
+
+def test_expanded_request_does_not_probe_platform_package(monkeypatch):
+    """An explicit Expanded route must not require model discovery."""
+    monkeypatch.setattr(flagtune_runtime_mod, "_include_ops", None)
+    monkeypatch.delenv("FLAGTUNE_INCLUDE", raising=False)
+    monkeypatch.setenv("USE_FLAGTUNE", "1")
+    monkeypatch.setenv("USE_FLAGTUNE_COST_MODEL", "0")
+
+    def fail_if_called():
+        raise AssertionError("Expanded mode must not resolve a model package")
+
+    monkeypatch.setattr(
+        flagtune_runtime_mod,
+        "_platform_cost_model_available",
+        fail_if_called,
+    )
+
+    assert (
+        flagtune_runtime_mod.resolve_tuning_mode("mm", supports_cost_model=True)
+        is flagtune_runtime_mod.TuningMode.EXPANDED
+    )
+
+
+def test_missing_platform_package_ignores_invalid_cost_model_setting(monkeypatch):
+    """An unadapted platform follows normal routing without parsing Cost Model."""
+    monkeypatch.setattr(flagtune_runtime_mod, "_include_ops", None)
+    monkeypatch.delenv("FLAGTUNE_INCLUDE", raising=False)
+    monkeypatch.delenv("USE_FLAGTUNE", raising=False)
+    monkeypatch.setenv("USE_FLAGTUNE_COST_MODEL", "true")
+    monkeypatch.setattr(
+        flagtune_runtime_mod,
+        "_platform_cost_model_available",
+        lambda: False,
+    )
+
+    assert (
+        flagtune_runtime_mod.resolve_tuning_mode("mm", supports_cost_model=True)
+        is flagtune_runtime_mod.TuningMode.DEFAULT
+    )
+
+    monkeypatch.setenv("USE_FLAGTUNE", "1")
+    assert (
+        flagtune_runtime_mod.resolve_tuning_mode("mm", supports_cost_model=True)
+        is flagtune_runtime_mod.TuningMode.EXPANDED
+    )
+
+
+def test_disabled_flagtune_does_not_probe_platform_package(monkeypatch):
+    """Keep explicit Default mode free of device, model, and network access."""
+    monkeypatch.setenv("USE_FLAGTUNE", "0")
+    monkeypatch.delenv("USE_FLAGTUNE_COST_MODEL", raising=False)
+
+    def fail_if_called():
+        raise AssertionError("disabled FlagTune must not resolve a model package")
+
+    monkeypatch.setattr(
+        flagtune_runtime_mod,
+        "_platform_cost_model_available",
+        fail_if_called,
+    )
+
+    assert (
+        flagtune_runtime_mod.resolve_tuning_mode("mm", supports_cost_model=True)
+        is flagtune_runtime_mod.TuningMode.DEFAULT
+    )
+
+
 def test_adapted_tuning_mode_prefers_cost_model_when_both_enabled(monkeypatch):
     """Treat both enabled switches as an explicit Cost Model request."""
     monkeypatch.setenv("USE_FLAGTUNE", "1")
@@ -181,6 +326,7 @@ def test_adapted_libtuner_switches_default_expanded_and_cost_model(monkeypatch):
         _flagtune_default_strategy = "default_strategy"
         _flagtune_mode = flagtune_runtime_mod.TuningMode.DEFAULT
         _flagtune_warned = False
+        _flagtune_configs_for_mode = LibTuner._flagtune_configs_for_mode
 
         def _set_configs_and_strategy(self, configs, strategy, *, mode=None):
             self.configs = configs
@@ -224,6 +370,62 @@ def test_adapted_libtuner_switches_default_expanded_and_cost_model(monkeypatch):
     assert tuner.configs is default_configs
 
 
+def test_libtuner_falls_back_when_platform_package_is_missing(monkeypatch):
+    """Route an adapted tuner through unadapted configs without a package."""
+    default_configs = [object()]
+    expanded_configs = [object(), object()]
+
+    class FakeTuner:
+        __name__ = "mm"
+        _flagtune_op_name = "mm"
+        _flagtune_expand_op_name = "mm_general_tma"
+        _flagtune_op_id = "flaggems/mm"
+        _flagtune_variant = "general_tma"
+        _flagtune_yaml_path = None
+        _flagtune_pre_hook = None
+        _flagtune_default_configs = default_configs
+        _flagtune_default_strategy = "default_strategy"
+        _flagtune_mode = flagtune_runtime_mod.TuningMode.COST_MODEL
+        _flagtune_warned = False
+        _flagtune_configs_for_mode = LibTuner._flagtune_configs_for_mode
+
+        def _set_configs_and_strategy(self, configs, strategy, *, mode=None):
+            self.configs = configs
+            self.strategy = strategy
+            self._flagtune_mode = flagtune_runtime_mod.TuningMode(mode)
+
+    monkeypatch.setattr(libentry_mod, "_HAS_FLAGTREE_FLAGTUNE", True)
+    monkeypatch.setattr(
+        flagtune_runtime_mod,
+        "_platform_cost_model_available",
+        lambda: False,
+    )
+    monkeypatch.setattr(flagtune_runtime_mod, "_include_ops", None)
+    monkeypatch.delenv("FLAGTUNE_INCLUDE", raising=False)
+    monkeypatch.delenv("USE_FLAGTUNE", raising=False)
+    monkeypatch.delenv("USE_FLAGTUNE_COST_MODEL", raising=False)
+    monkeypatch.setattr(
+        libentry_mod.runtime,
+        "get_expand_config",
+        lambda *_args, **_kwargs: {"strategy": "expanded_strategy"},
+    )
+    monkeypatch.setattr(
+        libentry_mod.runtime,
+        "ops_get_configs",
+        lambda *_args, **_kwargs: expanded_configs,
+    )
+    tuner = FakeTuner()
+
+    assert LibTuner.apply_flagtune(tuner) is True
+    assert tuner._flagtune_mode is flagtune_runtime_mod.TuningMode.DEFAULT
+    assert tuner.configs is default_configs
+
+    monkeypatch.setenv("USE_FLAGTUNE", "1")
+    assert LibTuner.apply_flagtune(tuner) is True
+    assert tuner._flagtune_mode is flagtune_runtime_mod.TuningMode.EXPANDED
+    assert tuner.configs is expanded_configs
+
+
 @pytest.mark.parametrize(
     ("use_flagtune", "use_cost_model", "expected_mode", "use_expanded_configs"),
     [
@@ -260,6 +462,7 @@ def test_official_triton_libtuner_uses_unadapted_routes(
         _flagtune_mode = flagtune_runtime_mod.TuningMode.DEFAULT
         _flagtune_warned = False
         configs = default_configs
+        _flagtune_configs_for_mode = LibTuner._flagtune_configs_for_mode
 
         def _set_configs_and_strategy(self, configs, strategy, *, mode=None):
             self.configs = configs
@@ -496,6 +699,139 @@ def test_threadsafety():
     for i in range(100):
         with not_raises(Exception):
             run_two_threads()
+
+
+DESCRIPTOR_KEY = ("TensorDescriptor", (2, 3), (3, 1), (1, 3), "zero")
+
+
+class ResolvedDescriptor:
+    """Stands in for the descriptor class resolved from the active Triton."""
+
+    shape = (2, 3)
+    strides = (3, 1)
+    block_shape = (1, 3)
+    padding = "zero"
+
+
+def test_descriptor_cache_key_uses_resolved_type(monkeypatch):
+    """Resolved Triton descriptor types use the structural cache key."""
+
+    class TensorDescriptor:
+        shape = (9,)
+
+    monkeypatch.setattr(
+        libentry_mod,
+        "_resolve_tensor_types",
+        lambda: (None, (ResolvedDescriptor,)),
+    )
+
+    resolved = ResolvedDescriptor()
+    same_name = TensorDescriptor()
+
+    assert libentry_mod._descriptor_cache_key(resolved) == DESCRIPTOR_KEY
+    assert libentry_mod._descriptor_cache_key(same_name) is same_name
+
+
+def test_hygon_tensor_spec_distinguishes_unresolved_from_absent(monkeypatch):
+    """Resolve the hygon hook once, and cache "there is none" as an answer."""
+    probes = []
+
+    class CountingDevice:
+        @property
+        def vendor_name(self):
+            probes.append(1)
+            return "nvidia"
+
+    monkeypatch.setattr(libentry_mod, "_HYGON_TENSOR_SPEC", libentry_mod._UNSET)
+    monkeypatch.setattr(libentry_mod, "device", CountingDevice())
+
+    assert libentry_mod._hygon_tensor_spec() is None
+    # `None` is a resolved answer, not the "unresolved" marker, so the vendor
+    # probe must not run again on the next launch.
+    assert libentry_mod._HYGON_TENSOR_SPEC is None
+    assert libentry_mod._hygon_tensor_spec() is None
+    assert len(probes) == 1
+
+
+def test_make_spec_arg_without_vendor_hook(monkeypatch):
+    """Tensor-like arguments key on dtype and pointer alignment."""
+    monkeypatch.setattr(libentry_mod, "_hygon_tensor_spec", lambda: None)
+    spec_arg = libentry_mod._make_spec_arg(16)
+
+    aligned = SimpleNamespace(dtype="f32", data_ptr=lambda: 32)
+    misaligned = SimpleNamespace(dtype="f32", data_ptr=lambda: 33)
+
+    assert spec_arg(aligned) == ("f32", True)
+    assert spec_arg(misaligned) == ("f32", False)
+    assert spec_arg(7) == (int, 7)
+
+
+def test_make_spec_arg_with_vendor_hook(monkeypatch):
+    """A resolved vendor hook adds a third component for tensor arguments."""
+    monkeypatch.setattr(libentry_mod, "_hygon_tensor_spec", lambda: lambda arg: "hcu")
+    spec_arg = libentry_mod._make_spec_arg(16)
+
+    assert spec_arg(SimpleNamespace(dtype="f32", data_ptr=lambda: 32)) == (
+        "f32",
+        True,
+        "hcu",
+    )
+    assert spec_arg(7) == (int, 7)
+
+
+def test_libentry_key_normalizes_descriptor_arguments(monkeypatch):
+    """Normalize descriptors before composing the public LibEntry key."""
+    monkeypatch.setattr(
+        libentry_mod,
+        "_resolve_tensor_types",
+        lambda: (None, (ResolvedDescriptor,)),
+    )
+
+    descriptor = ResolvedDescriptor()
+    entry = SimpleNamespace(
+        _spec_arg=lambda value: ("spec", value),
+        divisibility=16,
+    )
+
+    assert libentry_mod.LibEntry.key(
+        entry,
+        (descriptor,),
+        (7,),
+        (descriptor,),
+    ) == (("spec", DESCRIPTOR_KEY), "i32", DESCRIPTOR_KEY)
+
+
+def test_libentry_key_orders_specialization_then_dns_then_constexpr():
+    """Pin the concatenation order `run` reproduces inline on the hot path."""
+    entry = SimpleNamespace(
+        _spec_arg=lambda value: ("spec", value),
+        divisibility=16,
+    )
+
+    assert libentry_mod.LibEntry.key(entry, ("a",), (7,), ("const", 3)) == (
+        ("spec", "a"),
+        "i32",
+        "const",
+        3,
+    )
+
+
+def test_dns_arg_buckets_integers_by_triton_width(monkeypatch):
+    """Reproduce Triton's integer bucketing for do-not-specialize arguments."""
+    monkeypatch.setattr(
+        libentry_mod,
+        "_resolve_tensor_types",
+        lambda: (None, (ResolvedDescriptor,)),
+    )
+
+    assert libentry_mod._dns_arg(0) == "i32"
+    assert libentry_mod._dns_arg(2**31 - 1) == "i32"
+    assert libentry_mod._dns_arg(2**31) == "i64"
+    assert libentry_mod._dns_arg(2**63) == "u64"
+    assert libentry_mod._dns_arg(SimpleNamespace(dtype="f16", data_ptr=lambda: 0)) == (
+        "f16"
+    )
+    assert libentry_mod._dns_arg("text") is str
 
 
 def test_hash_generation():
@@ -1346,7 +1682,17 @@ def test_adapted_config_cache_namespace_separates_tuning_modes():
     )
 
 
-def test_benchmark_config_reuses_kernel_context_and_bypasses_caches(monkeypatch):
+@pytest.mark.parametrize(
+    ("benchmark_result", "expected_result"),
+    [
+        ([1.0, 0.8, 1.2], [1.0, 0.8, 1.2]),
+        (1.0, [1.0, 1.0, 1.0]),
+        (1, [1, 1, 1]),
+    ],
+)
+def test_benchmark_config_reuses_kernel_context_and_bypasses_caches(
+    monkeypatch, benchmark_result, expected_result
+):
     """Benchmark one fixed config with explicit durations and no policy/cache call."""
     config = triton.Config({"BLOCK": 16})
     observed = {}
@@ -1371,7 +1717,7 @@ def test_benchmark_config_reuses_kernel_context_and_bypasses_caches(monkeypatch)
         def benchmark(kernel_call, quantiles):
             observed["quantiles"] = quantiles
             observed["launch"] = kernel_call()
-            return [1.0, 0.8, 1.2]
+            return benchmark_result
 
         return SimpleNamespace(protocol=protocol, benchmark=benchmark)
 
@@ -1429,7 +1775,7 @@ def test_benchmark_config_reuses_kernel_context_and_bypasses_caches(monkeypatch)
         quantiles=(0.2, 0.5, 0.8),
     )
 
-    assert result == [1.0, 0.8, 1.2]
+    assert result == expected_result
     assert observed == {
         "args": ("descriptor",),
         "config": config,
@@ -1505,6 +1851,46 @@ def test_hopper_mm_config_compiles_without_runtime_registration():
         mm_ops.mm_kernel_splitk.fn._flagtune_op_id,
         mm_ops.mm_kernel_splitk.fn._flagtune_variant,
     ) == ("flaggems/mm", "splitk")
+
+
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "nvidia" or not HAS_FLAGTREE_FLAGTUNE,
+    reason="The Cost Model binding requires NVIDIA and the optional FlagTree package.",
+)
+def test_mul_config_compiles_and_binds_runtime_kernels():
+    """Bind data-driven mul variants to the scalar and 2D broadcast tuners."""
+    from flag_gems.flagtune.contracts import operator as operator_config_mod
+
+    spec = operator_config_mod.load_operator_benchmark_spec(
+        os.path.join(
+            os.path.dirname(operator_config_mod.__file__),
+            "configs",
+            "mul_flagtune_configs.yaml",
+        )
+    )
+    operator = spec.operator_info
+    expected = {
+        "broadcast_2d": ({"n_elements": 4096, "n_cols": 2048}, 280, 12),
+        "scalar": ({"n_elements": 18}, 280, 9),
+    }
+    assert set(operator.variants) == set(expected)
+
+    public_operator = operator_config_mod.resolve_public_operator(
+        flag_gems, operator.op_id
+    )
+    expected_kernels = {
+        "broadcast_2d": "mul_broadcast_2d_kernel",
+        "scalar": "mul_scalar_kernel",
+    }
+    for variant_name, (shape, config_count, feature_count) in expected.items():
+        variant = operator.get_variant(variant_name)
+        assert variant.matches(shape)
+        assert sum(1 for _ in variant.iter_configs()) == config_count
+        assert len(variant.feature_names) == feature_count
+        _, tuner = libentry_mod.find_flagtune_benchmark_target(
+            public_operator, operator.op_id, variant_name
+        )
+        assert tuner.fn.__name__ == expected_kernels[variant_name]
 
 
 @pytest.mark.skipif(

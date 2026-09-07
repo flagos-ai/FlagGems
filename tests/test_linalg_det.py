@@ -87,6 +87,13 @@ def _ref_det(A):
     prev = torch.get_num_threads()
     torch.set_num_threads(min(prev, 64))
     try:
+        batch = math.prod(A.shape[:-2])
+        if A.dim() > 2 and batch > 0 and A.shape[-1] > 0:
+            n = A.shape[-1]
+            flat = A.reshape(batch, n, n)
+            return torch.stack([torch.linalg.det(a) for a in flat]).reshape(
+                A.shape[:-2]
+            )
         return torch.linalg.det(A)
     finally:
         torch.set_num_threads(prev)

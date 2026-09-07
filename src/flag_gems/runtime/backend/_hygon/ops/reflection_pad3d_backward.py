@@ -1,17 +1,3 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import logging
 
 import torch
@@ -19,9 +5,143 @@ import triton
 import triton.language as tl
 
 from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger(__name__)
+
+
+@triton.jit
+def _load_grad_output(
+    grad_ptr,
+    grad_base,
+    d_out,
+    h_out,
+    w_out,
+    mask,
+    H_OUT: tl.constexpr,
+    W_OUT: tl.constexpr,
+):
+    offsets = grad_base + (d_out * H_OUT + h_out) * W_OUT + w_out
+    return tl.load(grad_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+
+
+@triton.jit
+def _sum_width_positions(
+    grad_ptr,
+    grad_base,
+    d_out,
+    h_out,
+    w_idx,
+    mask,
+    H_OUT: tl.constexpr,
+    W_OUT: tl.constexpr,
+    W_IN: tl.constexpr,
+    PAD_W0: tl.constexpr,
+    PAD_W1: tl.constexpr,
+):
+    acc = _load_grad_output(
+        grad_ptr,
+        grad_base,
+        d_out,
+        h_out,
+        w_idx + PAD_W0,
+        mask,
+        H_OUT,
+        W_OUT,
+    )
+
+    if PAD_W0 > 0:
+        left_mask = mask & (w_idx > 0) & (w_idx <= PAD_W0)
+        acc += _load_grad_output(
+            grad_ptr,
+            grad_base,
+            d_out,
+            h_out,
+            PAD_W0 - w_idx,
+            left_mask,
+            H_OUT,
+            W_OUT,
+        )
+
+    if PAD_W1 > 0:
+        right_mask = mask & (w_idx < W_IN - 1) & (w_idx >= W_IN - PAD_W1 - 1)
+        acc += _load_grad_output(
+            grad_ptr,
+            grad_base,
+            d_out,
+            h_out,
+            PAD_W0 + 2 * (W_IN - 1) - w_idx,
+            right_mask,
+            H_OUT,
+            W_OUT,
+        )
+
+    return acc
+
+
+@triton.jit
+def _sum_height_positions(
+    grad_ptr,
+    grad_base,
+    d_out,
+    h_idx,
+    w_idx,
+    mask,
+    H_OUT: tl.constexpr,
+    W_OUT: tl.constexpr,
+    H_IN: tl.constexpr,
+    W_IN: tl.constexpr,
+    PAD_H0: tl.constexpr,
+    PAD_H1: tl.constexpr,
+    PAD_W0: tl.constexpr,
+    PAD_W1: tl.constexpr,
+):
+    acc = _sum_width_positions(
+        grad_ptr,
+        grad_base,
+        d_out,
+        h_idx + PAD_H0,
+        w_idx,
+        mask,
+        H_OUT,
+        W_OUT,
+        W_IN,
+        PAD_W0,
+        PAD_W1,
+    )
+
+    if PAD_H0 > 0:
+        top_mask = mask & (h_idx > 0) & (h_idx <= PAD_H0)
+        acc += _sum_width_positions(
+            grad_ptr,
+            grad_base,
+            d_out,
+            PAD_H0 - h_idx,
+            w_idx,
+            top_mask,
+            H_OUT,
+            W_OUT,
+            W_IN,
+            PAD_W0,
+            PAD_W1,
+        )
+
+    if PAD_H1 > 0:
+        bottom_mask = mask & (h_idx < H_IN - 1) & (h_idx >= H_IN - PAD_H1 - 1)
+        acc += _sum_width_positions(
+            grad_ptr,
+            grad_base,
+            d_out,
+            PAD_H0 + 2 * (H_IN - 1) - h_idx,
+            w_idx,
+            bottom_mask,
+            H_OUT,
+            W_OUT,
+            W_IN,
+            PAD_W0,
+            PAD_W1,
+        )
+
+    return acc
 
 
 @libentry()
@@ -29,22 +149,19 @@ logger = logging.getLogger(__name__)
 def reflection_pad3d_backward_kernel(
     grad_ptr,
     out_ptr,
-    N,
-    C,
-    D_in,
-    H_in,
-    W_in,
-    D_out,
-    H_out,
-    W_out,
-    pad_d0,
-    pad_h0,
-    pad_w0,
-    stride_grad_n,
-    stride_grad_c,
-    stride_grad_d,
-    stride_grad_h,
-    stride_grad_w,
+    C: tl.constexpr,
+    D_IN: tl.constexpr,
+    H_IN: tl.constexpr,
+    W_IN: tl.constexpr,
+    D_OUT: tl.constexpr,
+    H_OUT: tl.constexpr,
+    W_OUT: tl.constexpr,
+    PAD_D0: tl.constexpr,
+    PAD_D1: tl.constexpr,
+    PAD_H0: tl.constexpr,
+    PAD_H1: tl.constexpr,
+    PAD_W0: tl.constexpr,
+    PAD_W1: tl.constexpr,
     stride_out_n,
     stride_out_c,
     stride_out_d,
@@ -52,127 +169,123 @@ def reflection_pad3d_backward_kernel(
     stride_out_w,
     BLOCK_DHW: tl.constexpr,
 ):
-    # Parallelize over the input (grad_input) space so that every element is
-    # written exactly once. This avoids the atomic_add scatter used by the
-    # generic implementation and lets bfloat16 accumulate in float32 and store
-    # directly, without a separate float32 buffer + cast pass.
-    pid_bc = tle.program_id(1)
-    pid_dhw = tle.program_id(0)
+    pid_dhw = tl.program_id(0)
+    pid_nc = tl.program_id(1)
+    pid_n = pid_nc // C
+    pid_c = pid_nc - pid_n * C
 
-    pid_n = pid_bc % N
-    pid_c = pid_bc // N
+    in_offsets = pid_dhw * BLOCK_DHW + tl.arange(0, BLOCK_DHW)
+    mask = in_offsets < D_IN * H_IN * W_IN
 
-    dhw_start = pid_dhw * BLOCK_DHW
-    dhw_offs = dhw_start + tl.arange(0, BLOCK_DHW)
-    in_mask = dhw_offs < D_in * H_in * W_in
+    hw_in = H_IN * W_IN
+    d_idx = in_offsets // hw_in
+    rem = in_offsets - d_idx * hw_in
+    h_idx = rem // W_IN
+    w_idx = rem - h_idx * W_IN
 
-    # Decode 3D coordinates of the input position.
-    d_in = dhw_offs // (H_in * W_in)
-    h_in = (dhw_offs // W_in) % H_in
-    w_in = dhw_offs % W_in
+    grad_base = pid_nc * D_OUT * H_OUT * W_OUT
 
-    # For each input coordinate there are up to three grad_output positions that
-    # reflect onto it (guaranteed when pad < dim size, which the tests enforce):
-    #   - direct  : o = i + pad0
-    #   - left    : o = pad0 - i           (valid for 1 <= i <= pad0)
-    #   - right   : o = pad0 + 2*(L-1) - i (valid for L-1-pad1 <= i <= L-2)
+    acc = _sum_height_positions(
+        grad_ptr,
+        grad_base,
+        d_idx + PAD_D0,
+        h_idx,
+        w_idx,
+        mask,
+        H_OUT,
+        W_OUT,
+        H_IN,
+        W_IN,
+        PAD_H0,
+        PAD_H1,
+        PAD_W0,
+        PAD_W1,
+    )
 
-    # Depth candidates
-    d_c0 = d_in + pad_d0
-    d_m0 = in_mask
-    d_c1 = pad_d0 - d_in
-    d_m1 = in_mask & (d_in >= 1) & (d_in <= pad_d0)
-    d_c2 = pad_d0 + 2 * (D_in - 1) - d_in
-    d_m2 = in_mask & (d_c2 >= pad_d0 + D_in) & (d_c2 < D_out)
+    if PAD_D0 > 0:
+        front_mask = mask & (d_idx > 0) & (d_idx <= PAD_D0)
+        acc += _sum_height_positions(
+            grad_ptr,
+            grad_base,
+            PAD_D0 - d_idx,
+            h_idx,
+            w_idx,
+            front_mask,
+            H_OUT,
+            W_OUT,
+            H_IN,
+            W_IN,
+            PAD_H0,
+            PAD_H1,
+            PAD_W0,
+            PAD_W1,
+        )
 
-    # Height candidates
-    h_c0 = h_in + pad_h0
-    h_m0 = in_mask
-    h_c1 = pad_h0 - h_in
-    h_m1 = in_mask & (h_in >= 1) & (h_in <= pad_h0)
-    h_c2 = pad_h0 + 2 * (H_in - 1) - h_in
-    h_m2 = in_mask & (h_c2 >= pad_h0 + H_in) & (h_c2 < H_out)
+    if PAD_D1 > 0:
+        back_mask = mask & (d_idx < D_IN - 1) & (d_idx >= D_IN - PAD_D1 - 1)
+        acc += _sum_height_positions(
+            grad_ptr,
+            grad_base,
+            PAD_D0 + 2 * (D_IN - 1) - d_idx,
+            h_idx,
+            w_idx,
+            back_mask,
+            H_OUT,
+            W_OUT,
+            H_IN,
+            W_IN,
+            PAD_H0,
+            PAD_H1,
+            PAD_W0,
+            PAD_W1,
+        )
 
-    # Width candidates
-    w_c0 = w_in + pad_w0
-    w_m0 = in_mask
-    w_c1 = pad_w0 - w_in
-    w_m1 = in_mask & (w_in >= 1) & (w_in <= pad_w0)
-    w_c2 = pad_w0 + 2 * (W_in - 1) - w_in
-    w_m2 = in_mask & (w_c2 >= pad_w0 + W_in) & (w_c2 < W_out)
-
-    grad_base = pid_n * stride_grad_n + pid_c * stride_grad_c
-    acc = tl.zeros((BLOCK_DHW,), dtype=tl.float32)
-
-    for di in tl.static_range(3):
-        if di == 0:
-            d_c, d_m = d_c0, d_m0
-        elif di == 1:
-            d_c, d_m = d_c1, d_m1
-        else:
-            d_c, d_m = d_c2, d_m2
-        for hi in tl.static_range(3):
-            if hi == 0:
-                h_c, h_m = h_c0, h_m0
-            elif hi == 1:
-                h_c, h_m = h_c1, h_m1
-            else:
-                h_c, h_m = h_c2, h_m2
-            for wi in tl.static_range(3):
-                if wi == 0:
-                    w_c, w_m = w_c0, w_m0
-                elif wi == 1:
-                    w_c, w_m = w_c1, w_m1
-                else:
-                    w_c, w_m = w_c2, w_m2
-                m = d_m & h_m & w_m
-                grad_offs = (
-                    grad_base
-                    + d_c * stride_grad_d
-                    + h_c * stride_grad_h
-                    + w_c * stride_grad_w
-                )
-                val = tl.load(grad_ptr + grad_offs, mask=m, other=0.0).to(tl.float32)
-                acc += val
-
-    out_offs = (
+    out_offsets = (
         pid_n * stride_out_n
         + pid_c * stride_out_c
-        + d_in * stride_out_d
-        + h_in * stride_out_h
-        + w_in * stride_out_w
+        + d_idx * stride_out_d
+        + h_idx * stride_out_h
+        + w_idx * stride_out_w
     )
-    tl.store(out_ptr + out_offs, acc, mask=in_mask)
+    tl.store(out_ptr + out_offsets, acc, mask=mask)
 
 
-def reflection_pad3d_backward(grad_output, self, padding):
-    """Compute gradient of reflection_pad3d forward pass.
-
-    Args:
-        grad_output: Gradient of the loss with respect to the output of reflection_pad3d.
-                    Shape: (N, C, D + pad_d0 + pad_d1, H + pad_h0 + pad_h1, W + pad_w0 + pad_w1)
-        self: Original input tensor before padding. Shape: (N, C, D, H, W)
-        padding: Tuple of 6 ints (pad_d0, pad_d1, pad_h0, pad_h1, pad_w0, pad_w1)
-
-    Returns:
-        Gradient with respect to self. Shape: (N, C, D, H, W)
-    """
-    logger.debug("GEMS_HYGON REFLECTION_PAD3D_BACKWARD")
-
+def _check_padding(padding, d_in, h_in, w_in):
     if isinstance(padding, int):
         pad_d0 = pad_d1 = pad_h0 = pad_h1 = pad_w0 = pad_w1 = padding
     else:
+        if len(padding) != 6:
+            raise ValueError("padding must contain 6 integers")
         pad_d0, pad_d1, pad_h0, pad_h1, pad_w0, pad_w1 = padding
+
+    pads = (pad_d0, pad_d1, pad_h0, pad_h1, pad_w0, pad_w1)
+    if any(pad < 0 for pad in pads):
+        raise ValueError("reflection_pad3d does not support negative padding")
+    if pad_d0 >= d_in or pad_d1 >= d_in:
+        raise ValueError("depth padding size must be less than input depth")
+    if pad_h0 >= h_in or pad_h1 >= h_in:
+        raise ValueError("height padding size must be less than input height")
+    if pad_w0 >= w_in or pad_w1 >= w_in:
+        raise ValueError("width padding size must be less than input width")
+
+    return pads
+
+
+def reflection_pad3d_backward(grad_output, self, padding):
+    """Compute gradient of reflection_pad3d forward pass."""
+    logger.debug("GEMS REFLECTION_PAD3D_BACKWARD")
 
     if self.dim() != 5:
         raise ValueError("input must be a 5D tensor")
 
     N, C, D_in, H_in, W_in = self.shape
-    D_out, H_out, W_out = (
-        D_in + pad_d0 + pad_d1,
-        H_in + pad_h0 + pad_h1,
-        W_in + pad_w0 + pad_w1,
+    pad_d0, pad_d1, pad_h0, pad_h1, pad_w0, pad_w1 = _check_padding(
+        padding, D_in, H_in, W_in
     )
+
+    D_out = D_in + pad_d0 + pad_d1
+    H_out = H_in + pad_h0 + pad_h1
+    W_out = W_in + pad_w0 + pad_w1
 
     expected_grad_shape = (N, C, D_out, H_out, W_out)
     if tuple(grad_output.shape) != expected_grad_shape:
@@ -180,7 +293,6 @@ def reflection_pad3d_backward(grad_output, self, padding):
             f"grad_output has shape {tuple(grad_output.shape)}, expected {expected_grad_shape}"
         )
 
-    # Handle empty padding case - just copy.
     if (
         pad_d0 == 0
         and pad_d1 == 0
@@ -189,39 +301,41 @@ def reflection_pad3d_backward(grad_output, self, padding):
         and pad_w0 == 0
         and pad_w1 == 0
     ):
-        return grad_output.clone()
+        return torch.empty_like(self).copy_(grad_output)
+
+    if N == 0 or C == 0:
+        return torch.empty_like(self)
 
     grad_output = grad_output.contiguous()
+    out = torch.empty_like(self)
+    stride_out_n, stride_out_c, stride_out_d, stride_out_h, stride_out_w = out.stride()
 
-    # Output is written exactly once per element, so we can allocate directly in
-    # the input dtype (float32 accumulation happens inside the kernel).
-    out = torch.zeros_like(self)
-
-    # Parallelize over the input space: each program writes BLOCK_DHW input
-    # elements for a given (n, c) slice.
     BLOCK_DHW = 256
-    grid = (
-        triton.cdiv(D_in * H_in * W_in, BLOCK_DHW),
-        N * C,
-    )
+    grid = (triton.cdiv(D_in * H_in * W_in, BLOCK_DHW), N * C)
 
     reflection_pad3d_backward_kernel[grid](
         grad_output,
         out,
-        N,
-        C,
-        D_in,
-        H_in,
-        W_in,
-        D_out,
-        H_out,
-        W_out,
-        pad_d0,
-        pad_h0,
-        pad_w0,
-        *grad_output.stride(),
-        *out.stride(),
+        C=C,
+        D_IN=D_in,
+        H_IN=H_in,
+        W_IN=W_in,
+        D_OUT=D_out,
+        H_OUT=H_out,
+        W_OUT=W_out,
+        PAD_D0=pad_d0,
+        PAD_D1=pad_d1,
+        PAD_H0=pad_h0,
+        PAD_H1=pad_h1,
+        PAD_W0=pad_w0,
+        PAD_W1=pad_w1,
+        stride_out_n=stride_out_n,
+        stride_out_c=stride_out_c,
+        stride_out_d=stride_out_d,
+        stride_out_h=stride_out_h,
+        stride_out_w=stride_out_w,
         BLOCK_DHW=BLOCK_DHW,
+        num_warps=4,
     )
 
     return out

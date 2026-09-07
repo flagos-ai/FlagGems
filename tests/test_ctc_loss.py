@@ -225,14 +225,13 @@ def _call_ctc_loss(
             **kwargs,
         )
     if path == "registered":
-        with flag_gems.use_gems(include=["ctc_loss"]):
-            return F.ctc_loss(
-                log_probs,
-                targets,
-                input_lengths,
-                target_lengths,
-                **kwargs,
-            )
+        return flag_gems.ctc_loss(
+            log_probs,
+            targets,
+            input_lengths,
+            target_lengths,
+            **kwargs,
+        )
     raise ValueError(f"unknown CTC call path: {path}")
 
 
@@ -371,14 +370,13 @@ def test_ctc_loss_registered_intlist_forward():
         target_lengths_list,
         reduction="sum",
     )
-    with flag_gems.use_gems(include=["ctc_loss"]):
-        res_out = F.ctc_loss(
-            log_probs,
-            targets,
-            input_lengths,
-            target_lengths_list,
-            reduction="sum",
-        )
+    res_out = flag_gems.ctc_loss(
+        log_probs,
+        targets,
+        input_lengths,
+        target_lengths_list,
+        reduction="sum",
+    )
 
     utils.gems_assert_close(res_out, ref_out, torch.float32, reduce_dim=t_steps)
 
@@ -403,14 +401,13 @@ def test_ctc_loss_registered_intlist_backward():
         target_lengths_list,
         reduction="mean",
     )
-    with flag_gems.use_gems(include=["ctc_loss"]):
-        res_out = F.ctc_loss(
-            log_probs,
-            targets,
-            input_lengths,
-            target_lengths_list,
-            reduction="mean",
-        )
+    res_out = flag_gems.ctc_loss(
+        log_probs,
+        targets,
+        input_lengths,
+        target_lengths_list,
+        reduction="mean",
+    )
 
     out_grad = torch.ones_like(res_out)
     (ref_grad,) = torch.autograd.grad(
@@ -441,14 +438,13 @@ def test_ctc_loss_registered_tensor_backward():
         utils.to_reference(target_lengths),
         reduction="mean",
     )
-    with flag_gems.use_gems(include=["ctc_loss"]):
-        res_out = F.ctc_loss(
-            log_probs,
-            targets,
-            input_lengths,
-            target_lengths,
-            reduction="mean",
-        )
+    res_out = flag_gems.ctc_loss(
+        log_probs,
+        targets,
+        input_lengths,
+        target_lengths,
+        reduction="mean",
+    )
 
     out_grad = torch.ones_like(res_out)
     (ref_grad,) = torch.autograd.grad(
