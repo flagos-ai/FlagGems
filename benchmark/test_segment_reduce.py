@@ -65,8 +65,7 @@ class SegmentReduceBenchmark(base.Benchmark):
                     "unsafe": True,
                 }
                 if self.is_segment_backward or self.use_backward_out:
-                    with flag_gems.use_gems():
-                        output = torch.segment_reduce(data, reduce, **kwargs)
+                    output = flag_gems.segment_reduce(data, reduce, **kwargs)
                     grad = torch.randn_like(output)
                     backward_kwargs = {
                         "lengths": lengths,
