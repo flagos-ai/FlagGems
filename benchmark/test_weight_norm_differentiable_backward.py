@@ -48,5 +48,5 @@ def test_weight_norm_differentiable_backward_benchmark():
         torch_op=torch.ops.aten._weight_norm_differentiable_backward,
         dtypes=consts.FLOAT_DTYPES,
     )
-    bench.set_gems(flag_gems._weight_norm_differentiable_backward)
+    bench.set_gems(flag_gems.weight_norm_differentiable_backward)
     bench.run()

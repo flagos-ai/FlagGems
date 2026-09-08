@@ -162,7 +162,7 @@ from flag_gems.ops._weight_int4pack_mm_with_scales_and_zeros import (
 )
 from flag_gems.ops._weight_norm import _weight_norm
 from flag_gems.ops._weight_norm_differentiable_backward import (
-    _weight_norm_differentiable_backward,
+    weight_norm_differentiable_backward,
 )
 from flag_gems.ops.abs import abs, abs_
 from flag_gems.ops.absolute import absolute, absolute_
@@ -1092,7 +1092,6 @@ __all__ = [
     "_upsample_nearest_exact3d",
     "_weight_int4pack_mm_with_scales_and_zeros",
     "_weight_norm",
-    "_weight_norm_differentiable_backward",
     "abs",
     "abs_",
     "absolute",
@@ -2022,6 +2021,7 @@ __all__ = [
     "vstack",
     "w8a8_block_fp8_matmul",
     "weight_int8pack_mm",
+    "weight_norm_differentiable_backward",
     "weight_norm_interface",
     "weight_norm_interface_backward",
     "where_scalar_other",
