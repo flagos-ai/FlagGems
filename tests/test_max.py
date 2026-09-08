@@ -32,6 +32,15 @@ else:
 NAN_FLOAT_DTYPES = [torch.float32] if cfg.QUICK_MODE else utils.ALL_FLOAT_DTYPES
 
 
+def _to_reference(inp):
+    """Run max references on CPU to avoid vendor-native semantic gaps."""
+    return inp.detach().cpu()
+
+
+def _assert_equal(res, ref, equal_nan=False):
+    utils.gems_assert_equal(res.detach().cpu(), ref, equal_nan=equal_nan)
+
+
 @pytest.mark.max
 @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + utils.ALL_INT_DTYPES)
@@ -42,13 +51,12 @@ def test_max(shape, dtype):
         inp = torch.randint(-10000, 10000, shape, dtype=dtype, device="cpu").to(
             flag_gems.device
         )
-    ref_inp = utils.to_reference(inp)
+    ref_inp = _to_reference(inp)
 
     ref_out = torch.max(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.max(inp)
+    res_out = flag_gems.max(inp)
 
-    utils.gems_assert_equal(res_out, ref_out)
+    _assert_equal(res_out, ref_out)
 
 
 @pytest.mark.max
@@ -58,13 +66,12 @@ def test_max_all_neg_inf(shape, dtype):
     inp = torch.full(
         shape, fill_value=float("-inf"), dtype=dtype, device=flag_gems.device
     )
-    ref_inp = utils.to_reference(inp)
+    ref_inp = _to_reference(inp)
 
     ref_out = torch.max(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.max(inp)
+    res_out = flag_gems.max(inp)
 
-    utils.gems_assert_equal(res_out, ref_out, equal_nan=True)
+    _assert_equal(res_out, ref_out, equal_nan=True)
 
 
 @pytest.mark.max
@@ -84,13 +91,12 @@ def test_max_with_nan(dtype, nan_case):
         inp.fill_(float("nan"))
     else:
         inp[nan_indices[nan_case]] = float("nan")
-    ref_inp = utils.to_reference(inp)
+    ref_inp = _to_reference(inp)
 
     ref_out = torch.max(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.max(inp)
+    res_out = flag_gems.max(inp)
 
-    utils.gems_assert_equal(res_out, ref_out, equal_nan=True)
+    _assert_equal(res_out, ref_out, equal_nan=True)
 
 
 @pytest.mark.max
@@ -106,13 +112,12 @@ def test_max_with_nan_large_input(width):
     # Cover vendor-specific multi-CTA, grid-stride, and large-input kernels.
     inp = torch.zeros(width, dtype=torch.float32, device=flag_gems.device)
     inp[-1] = float("nan")
-    ref_inp = utils.to_reference(inp)
+    ref_inp = _to_reference(inp)
 
     ref_out = torch.max(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.max(inp)
+    res_out = flag_gems.max(inp)
 
-    utils.gems_assert_equal(res_out, ref_out, equal_nan=True)
+    _assert_equal(res_out, ref_out, equal_nan=True)
 
 
 @pytest.mark.max
@@ -122,13 +127,12 @@ def test_max_int(shape, dtype):
     inp = torch.randint(-1000, 1000, shape, dtype=dtype, device="cpu").to(
         flag_gems.device
     )
-    ref_inp = utils.to_reference(inp)
+    ref_inp = _to_reference(inp)
 
     ref_out = torch.max(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.max(inp)
+    res_out = flag_gems.max(inp)
 
-    utils.gems_assert_equal(res_out, ref_out)
+    _assert_equal(res_out, ref_out)
 
 
 @pytest.mark.max
@@ -143,13 +147,12 @@ def test_max_uncontiguous(shape, dtype):
         inp = torch.randint(-10000, 10000, shape, dtype=dtype, device="cpu")[
             ::2, ::2
         ].to(flag_gems.device)
-    ref_inp = utils.to_reference(inp)
+    ref_inp = _to_reference(inp)
 
     ref_out = torch.max(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.max(inp)
+    res_out = flag_gems.max(inp)
 
-    utils.gems_assert_equal(res_out, ref_out)
+    _assert_equal(res_out, ref_out)
 
 
 # Issue #2831: failed at (200, 40999, 3), while successed at this shape in mean_dim
@@ -165,14 +168,13 @@ def test_max_dim(shape, dim, keepdim, dtype):
         inp = torch.randint(-10000, 10000, shape, dtype=dtype, device="cpu").to(
             flag_gems.device
         )
-    ref_inp = utils.to_reference(inp)
+    ref_inp = _to_reference(inp)
 
     ref_out_value, ref_out_index = torch.max(ref_inp, dim=dim, keepdim=keepdim)
-    with flag_gems.use_gems():
-        res_out_value, res_out_index = torch.max(inp, dim=dim, keepdim=keepdim)
+    res_out_value, res_out_index = flag_gems.max_dim(inp, dim=dim, keepdim=keepdim)
 
-    utils.gems_assert_equal(res_out_index, ref_out_index)
-    utils.gems_assert_equal(res_out_value, ref_out_value)
+    _assert_equal(res_out_index, ref_out_index)
+    _assert_equal(res_out_value, ref_out_value)
 
 
 @pytest.mark.max_dim
@@ -199,14 +201,13 @@ def test_max_dim_with_nan(dtype, keepdim, dim):
     base[3, [17, width // 2, width - 1]] = float("nan")
     base[4].fill_(float("nan"))
     inp = base.reshape(2, 3, width).movedim(-1, dim).contiguous()
-    ref_inp = utils.to_reference(inp)
+    ref_inp = _to_reference(inp)
 
     ref_out = torch.max(ref_inp, dim=dim, keepdim=keepdim)
-    with flag_gems.use_gems():
-        res_out = torch.max(inp, dim=dim, keepdim=keepdim)
+    res_out = flag_gems.max_dim(inp, dim=dim, keepdim=keepdim)
 
-    utils.gems_assert_equal(res_out.indices, ref_out.indices)
-    utils.gems_assert_equal(res_out.values, ref_out.values, equal_nan=True)
+    _assert_equal(res_out.indices, ref_out.indices)
+    _assert_equal(res_out.values, ref_out.values, equal_nan=True)
 
 
 @pytest.mark.max_dim
@@ -229,14 +230,13 @@ def test_max_dim_with_nan_small(dtype, width):
             dtype=dtype,
             device=flag_gems.device,
         )
-    ref_inp = utils.to_reference(inp)
+    ref_inp = _to_reference(inp)
 
     ref_out = torch.max(ref_inp, dim=1)
-    with flag_gems.use_gems():
-        res_out = torch.max(inp, dim=1)
+    res_out = flag_gems.max_dim(inp, dim=1)
 
-    utils.gems_assert_equal(res_out.indices, ref_out.indices)
-    utils.gems_assert_equal(res_out.values, ref_out.values, equal_nan=True)
+    _assert_equal(res_out.indices, ref_out.indices)
+    _assert_equal(res_out.values, ref_out.values, equal_nan=True)
 
 
 @pytest.mark.max_dim
@@ -253,12 +253,11 @@ def test_max_dim_big_shape(shape, dim, keepdim, dtype):
         inp = torch.randint(-10000, 10000, shape, dtype=dtype, device="cpu").to(
             flag_gems.device
         )
-    ref_inp = utils.to_reference(inp)
+    ref_inp = _to_reference(inp)
 
     ref_out_value, ref_out_index = torch.max(ref_inp, dim=dim, keepdim=keepdim)
 
-    with flag_gems.use_gems():
-        res_out_value, res_out_index = torch.max(inp, dim=dim, keepdim=keepdim)
+    res_out_value, res_out_index = flag_gems.max_dim(inp, dim=dim, keepdim=keepdim)
 
-    utils.gems_assert_equal(res_out_index, ref_out_index)
-    utils.gems_assert_equal(res_out_value, ref_out_value)
+    _assert_equal(res_out_index, ref_out_index)
+    _assert_equal(res_out_value, ref_out_value)
