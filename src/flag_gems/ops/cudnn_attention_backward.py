@@ -19,6 +19,7 @@ from typing import Optional
 
 import torch
 import triton
+import triton.language as tl
 
 from flag_gems.ops.flash_attention_backward import (
     _flash_attn_bwd_dkv,
@@ -31,6 +32,421 @@ from flag_gems.ops.flash_attention_backward import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+_CUDNN_DQ_CONFIGS = [
+    triton.Config({"BLOCK_M": 64, "BLOCK_N": 64}, num_warps=4, num_stages=2),
+    triton.Config({"BLOCK_M": 64, "BLOCK_N": 128}, num_warps=4, num_stages=2),
+    triton.Config({"BLOCK_M": 128, "BLOCK_N": 64}, num_warps=4, num_stages=2),
+    triton.Config({"BLOCK_M": 64, "BLOCK_N": 64}, num_warps=8, num_stages=3),
+]
+
+_CUDNN_DKV_CONFIGS = [
+    triton.Config({"BLOCK_M": 64, "BLOCK_N": 64}, num_warps=4, num_stages=2),
+    triton.Config({"BLOCK_M": 64, "BLOCK_N": 128}, num_warps=4, num_stages=2),
+    triton.Config({"BLOCK_M": 128, "BLOCK_N": 64}, num_warps=4, num_stages=2),
+    triton.Config({"BLOCK_M": 64, "BLOCK_N": 64}, num_warps=8, num_stages=2),
+]
+
+
+@triton.autotune(
+    configs=_CUDNN_DQ_CONFIGS,
+    key=["seqlen_q", "seqlen_k", "HEAD_DIM_QK", "HEAD_DIM_V"],
+)
+@triton.jit
+def _cudnn_attn_bwd_dq_dual_dim(
+    Q,
+    K,
+    V,
+    dOut,
+    Out,
+    L,
+    D,
+    dQ,
+    AttnBias,
+    alibi_slopes,
+    sm_scale,
+    group_size,
+    window_size_left,
+    window_size_right,
+    stride_qb,
+    stride_qm,
+    stride_qh,
+    stride_qd,
+    stride_kb,
+    stride_km,
+    stride_kh,
+    stride_kd,
+    stride_vb,
+    stride_vm,
+    stride_vh,
+    stride_vd,
+    stride_ob,
+    stride_om,
+    stride_oh,
+    stride_od,
+    stride_lb,
+    stride_lh,
+    stride_db,
+    stride_dh,
+    stride_bb,
+    stride_bh,
+    stride_bm,
+    stride_bn,
+    seqlen_q,
+    seqlen_k,
+    dim_qk,
+    dim_v,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    HEAD_DIM_QK: tl.constexpr,
+    HEAD_DIM_V: tl.constexpr,
+    IS_CAUSAL: tl.constexpr,
+    HAS_WINDOW: tl.constexpr,
+    HAS_ALIBI: tl.constexpr,
+    HAS_BIAS: tl.constexpr,
+):
+    start_m = tl.program_id(0)
+    batch_idx = tl.program_id(1)
+    head_q_idx = tl.program_id(2)
+    head_k_idx = head_q_idx // group_size
+
+    offs_m = start_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    offs_n = tl.arange(0, BLOCK_N)
+    offs_dk = tl.arange(0, HEAD_DIM_QK)
+    offs_dv = tl.arange(0, HEAD_DIM_V)
+    mask_m = offs_m < seqlen_q
+    mask_dk = offs_dk < dim_qk
+    mask_dv = offs_dv < dim_v
+
+    q_base = batch_idx * stride_qb + head_q_idx * stride_qh
+    o_base = batch_idx * stride_ob + head_q_idx * stride_oh
+
+    q = tl.load(
+        Q + q_base + offs_m[:, None] * stride_qm + offs_dk[None, :] * stride_qd,
+        mask=mask_m[:, None] & mask_dk[None, :],
+        other=0.0,
+    )
+    do = tl.load(
+        dOut + o_base + offs_m[:, None] * stride_om + offs_dv[None, :] * stride_od,
+        mask=mask_m[:, None] & mask_dv[None, :],
+        other=0.0,
+    )
+    o = tl.load(
+        Out + o_base + offs_m[:, None] * stride_om + offs_dv[None, :] * stride_od,
+        mask=mask_m[:, None] & mask_dv[None, :],
+        other=0.0,
+    ).to(tl.float32)
+    Di = tl.sum(o * do.to(tl.float32), axis=1)
+
+    tl.store(
+        D + batch_idx * stride_db + head_q_idx * stride_dh + offs_m,
+        Di,
+        mask=mask_m,
+    )
+
+    Li = tl.load(
+        L + batch_idx * stride_lb + head_q_idx * stride_lh + offs_m,
+        mask=mask_m,
+        other=0.0,
+    )
+
+    start_n_min = 0
+    start_n_max = tl.cdiv(seqlen_k, BLOCK_N)
+    if HAS_WINDOW:
+        start_n_min = tl.maximum(
+            start_n_min,
+            (start_m * BLOCK_M - window_size_left) // BLOCK_N,
+        )
+        start_n_max = tl.minimum(
+            start_n_max,
+            ((start_m + 1) * BLOCK_M - 1 + window_size_right + BLOCK_N) // BLOCK_N,
+        )
+    if IS_CAUSAL:
+        start_n_max = tl.minimum(
+            start_n_max,
+            ((start_m + 1) * BLOCK_M - 1 + BLOCK_N) // BLOCK_N,
+        )
+
+    dq = tl.zeros([BLOCK_M, HEAD_DIM_QK], dtype=tl.float32)
+
+    if HAS_ALIBI:
+        alibi_slope = tl.load(alibi_slopes + head_q_idx)
+
+    k_base = batch_idx * stride_kb + head_k_idx * stride_kh
+    v_base = batch_idx * stride_vb + head_k_idx * stride_vh
+
+    for start_n in range(start_n_min, start_n_max):
+        offs_n_c = start_n * BLOCK_N + offs_n
+        mask_n = offs_n_c < seqlen_k
+
+        k = tl.load(
+            K + k_base + offs_n_c[:, None] * stride_km + offs_dk[None, :] * stride_kd,
+            mask=mask_n[:, None] & mask_dk[None, :],
+            other=0.0,
+        )
+        v = tl.load(
+            V + v_base + offs_n_c[:, None] * stride_vm + offs_dv[None, :] * stride_vd,
+            mask=mask_n[:, None] & mask_dv[None, :],
+            other=0.0,
+        )
+
+        s = tl.dot(q, tl.trans(k)) * sm_scale
+
+        if HAS_BIAS:
+            bb = batch_idx * stride_bb + head_q_idx * stride_bh
+            bias_block = tl.load(
+                AttnBias
+                + bb
+                + offs_m[:, None] * stride_bm
+                + offs_n_c[None, :] * stride_bn,
+                mask=mask_m[:, None] & mask_n[None, :],
+                other=0.0,
+            )
+            s = s + bias_block.to(tl.float32)
+
+        dist = offs_m[:, None] - offs_n_c[None, :]
+        mask_s = mask_m[:, None] & mask_n[None, :]
+        if IS_CAUSAL:
+            mask_s = mask_s & (dist >= 0)
+        if HAS_WINDOW:
+            mask_s = mask_s & (dist <= window_size_left) & (dist >= -window_size_right)
+        if HAS_ALIBI:
+            s = s - alibi_slope * tl.abs(dist).to(tl.float32)
+
+        s = tl.where(mask_s, s.to(tl.float32), float("-inf"))
+        p = tl.exp(s - Li[:, None])
+        dp = tl.dot(do, tl.trans(v)).to(tl.float32)
+
+        ds = p * (dp - Di[:, None]) * sm_scale
+        dq = dq + tl.dot(ds.to(q.dtype), k)
+
+    tl.store(
+        dQ + q_base + offs_m[:, None] * stride_qm + offs_dk[None, :] * stride_qd,
+        dq.to(q.dtype),
+        mask=mask_m[:, None] & mask_dk[None, :],
+    )
+
+
+@triton.autotune(
+    configs=_CUDNN_DKV_CONFIGS,
+    key=["seqlen_q", "seqlen_k", "HEAD_DIM_QK", "HEAD_DIM_V"],
+)
+@triton.jit
+def _cudnn_attn_bwd_dkv_dual_dim(
+    Q,
+    K,
+    V,
+    dOut,
+    L,
+    D,
+    dK,
+    dV,
+    AttnBias,
+    alibi_slopes,
+    sm_scale,
+    group_size,
+    window_size_left,
+    window_size_right,
+    stride_qb,
+    stride_qm,
+    stride_qh,
+    stride_qd,
+    stride_kb,
+    stride_km,
+    stride_kh,
+    stride_kd,
+    stride_vb,
+    stride_vm,
+    stride_vh,
+    stride_vd,
+    stride_ob,
+    stride_om,
+    stride_oh,
+    stride_od,
+    stride_lb,
+    stride_lh,
+    stride_bb,
+    stride_bh,
+    stride_bm,
+    stride_bn,
+    seqlen_q,
+    seqlen_k,
+    dim_qk,
+    dim_v,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    HEAD_DIM_QK: tl.constexpr,
+    HEAD_DIM_V: tl.constexpr,
+    IS_CAUSAL: tl.constexpr,
+    HAS_WINDOW: tl.constexpr,
+    HAS_ALIBI: tl.constexpr,
+    HAS_BIAS: tl.constexpr,
+):
+    start_n = tl.program_id(0)
+    batch_idx = tl.program_id(1)
+    head_k_idx = tl.program_id(2)
+
+    offs_n = start_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    offs_m = tl.arange(0, BLOCK_M)
+    offs_dk = tl.arange(0, HEAD_DIM_QK)
+    offs_dv = tl.arange(0, HEAD_DIM_V)
+    mask_n = offs_n < seqlen_k
+    mask_dk = offs_dk < dim_qk
+    mask_dv = offs_dv < dim_v
+
+    k_base = batch_idx * stride_kb + head_k_idx * stride_kh
+    v_base = batch_idx * stride_vb + head_k_idx * stride_vh
+
+    if IS_CAUSAL:
+        if start_n * BLOCK_N >= seqlen_q:
+            dk_zero = tl.zeros([BLOCK_N, HEAD_DIM_QK], dtype=tl.float32)
+            dv_zero = tl.zeros([BLOCK_N, HEAD_DIM_V], dtype=tl.float32)
+            k_tmp = tl.load(
+                K + k_base + offs_n[:, None] * stride_km + offs_dk[None, :] * stride_kd,
+                mask=mask_n[:, None] & mask_dk[None, :],
+                other=0.0,
+            )
+            v_tmp = tl.load(
+                V + v_base + offs_n[:, None] * stride_vm + offs_dv[None, :] * stride_vd,
+                mask=mask_n[:, None] & mask_dv[None, :],
+                other=0.0,
+            )
+            tl.store(
+                dK
+                + k_base
+                + offs_n[:, None] * stride_km
+                + offs_dk[None, :] * stride_kd,
+                dk_zero.to(k_tmp.dtype),
+                mask=mask_n[:, None] & mask_dk[None, :],
+            )
+            tl.store(
+                dV
+                + v_base
+                + offs_n[:, None] * stride_vm
+                + offs_dv[None, :] * stride_vd,
+                dv_zero.to(v_tmp.dtype),
+                mask=mask_n[:, None] & mask_dv[None, :],
+            )
+            return
+
+    k = tl.load(
+        K + k_base + offs_n[:, None] * stride_km + offs_dk[None, :] * stride_kd,
+        mask=mask_n[:, None] & mask_dk[None, :],
+        other=0.0,
+    )
+    v = tl.load(
+        V + v_base + offs_n[:, None] * stride_vm + offs_dv[None, :] * stride_vd,
+        mask=mask_n[:, None] & mask_dv[None, :],
+        other=0.0,
+    )
+
+    dk = tl.zeros([BLOCK_N, HEAD_DIM_QK], dtype=tl.float32)
+    dv = tl.zeros([BLOCK_N, HEAD_DIM_V], dtype=tl.float32)
+
+    num_tiles_m = tl.cdiv(seqlen_q, BLOCK_M)
+    global_m_min = 0
+    global_m_max = num_tiles_m
+
+    if HAS_WINDOW:
+        global_m_max = tl.minimum(
+            global_m_max,
+            ((start_n + 1) * BLOCK_N - 1 + window_size_left + BLOCK_M) // BLOCK_M,
+        )
+        global_m_min = tl.maximum(
+            global_m_min,
+            (start_n * BLOCK_N - window_size_right) // BLOCK_M,
+        )
+
+    if IS_CAUSAL:
+        global_m_min = tl.maximum(global_m_min, (start_n * BLOCK_N) // BLOCK_M)
+
+    valid_tiles_m = global_m_max - global_m_min
+    if valid_tiles_m <= 0:
+        tl.store(
+            dK + k_base + offs_n[:, None] * stride_km + offs_dk[None, :] * stride_kd,
+            dk.to(k.dtype),
+            mask=mask_n[:, None] & mask_dk[None, :],
+        )
+        tl.store(
+            dV + v_base + offs_n[:, None] * stride_vm + offs_dv[None, :] * stride_vd,
+            dv.to(v.dtype),
+            mask=mask_n[:, None] & mask_dv[None, :],
+        )
+        return
+
+    total_iters = group_size * valid_tiles_m
+
+    for linear in range(total_iters):
+        gq_offset = linear // valid_tiles_m
+        tile_m = global_m_min + linear % valid_tiles_m
+        head_q_idx = head_k_idx * group_size + gq_offset
+
+        q_base = batch_idx * stride_qb + head_q_idx * stride_qh
+        o_base = batch_idx * stride_ob + head_q_idx * stride_oh
+        ld_base = batch_idx * stride_lb + head_q_idx * stride_lh
+
+        offs_m_c = tile_m * BLOCK_M + offs_m
+        mask_m = offs_m_c < seqlen_q
+
+        q = tl.load(
+            Q + q_base + offs_m_c[:, None] * stride_qm + offs_dk[None, :] * stride_qd,
+            mask=mask_m[:, None] & mask_dk[None, :],
+            other=0.0,
+        )
+        do = tl.load(
+            dOut
+            + o_base
+            + offs_m_c[:, None] * stride_om
+            + offs_dv[None, :] * stride_od,
+            mask=mask_m[:, None] & mask_dv[None, :],
+            other=0.0,
+        )
+        Li = tl.load(L + ld_base + offs_m_c, mask=mask_m, other=0.0)
+        Di = tl.load(D + ld_base + offs_m_c, mask=mask_m, other=0.0)
+
+        s = tl.dot(q, tl.trans(k)) * sm_scale
+
+        if HAS_BIAS:
+            bb = batch_idx * stride_bb + head_q_idx * stride_bh
+            bias_block = tl.load(
+                AttnBias
+                + bb
+                + offs_m_c[:, None] * stride_bm
+                + offs_n[None, :] * stride_bn,
+                mask=mask_m[:, None] & mask_n[None, :],
+                other=0.0,
+            )
+            s = s + bias_block.to(tl.float32)
+
+        dist = offs_m_c[:, None] - offs_n[None, :]
+        mask_s = mask_m[:, None] & mask_n[None, :]
+        if IS_CAUSAL:
+            mask_s = mask_s & (dist >= 0)
+        if HAS_WINDOW:
+            mask_s = mask_s & (dist <= window_size_left) & (dist >= -window_size_right)
+        if HAS_ALIBI:
+            alibi_slope = tl.load(alibi_slopes + head_q_idx)
+            s = s - alibi_slope * tl.abs(dist).to(tl.float32)
+
+        s = tl.where(mask_s, s.to(tl.float32), float("-inf"))
+        p = tl.exp(s - Li[:, None])
+        dp = tl.dot(do, tl.trans(v)).to(tl.float32)
+
+        ds = p * (dp - Di[:, None]) * sm_scale
+        dk = dk + tl.dot(tl.trans(ds.to(q.dtype)), q)
+        dv = dv + tl.dot(tl.trans(p.to(q.dtype)), do)
+
+    tl.store(
+        dK + k_base + offs_n[:, None] * stride_km + offs_dk[None, :] * stride_kd,
+        dk.to(k.dtype),
+        mask=mask_n[:, None] & mask_dk[None, :],
+    )
+    tl.store(
+        dV + v_base + offs_n[:, None] * stride_vm + offs_dv[None, :] * stride_vd,
+        dv.to(v.dtype),
+        mask=mask_n[:, None] & mask_dv[None, :],
+    )
 
 
 def _normalize_attn_bias(attn_bias, batch, num_heads, seq_len_q, seq_len_k):
@@ -48,6 +464,10 @@ def _normalize_attn_bias(attn_bias, batch, num_heads, seq_len_q, seq_len_k):
             f"attn_bias must be 2D, 3D, or 4D; got {attn_bias.ndim}D tensor"
         )
     return attn_bias.expand(batch, num_heads, seq_len_q, seq_len_k)
+
+
+def _next_pow2(n: int) -> int:
+    return triton.next_power_of_2(n)
 
 
 def _flash_attn_backward_bhsd(
@@ -96,11 +516,6 @@ def _flash_attn_backward_bhsd(
 
     if H_q % H_k != 0:
         raise ValueError(f"H_q ({H_q}) must be a multiple of H_k ({H_k})")
-    if V.shape[-1] != Head_Dim:
-        raise NotImplementedError(
-            "cudnn_attention_backward: value head dim "
-            f"({V.shape[-1]}) != q/k head dim ({Head_Dim}) is not yet supported"
-        )
     if softmax_scale is not None:
         scale = softmax_scale
     else:
@@ -394,6 +809,183 @@ def _flash_attn_backward_bhsd(
     return dQ, dK, dV, dBias
 
 
+def _flash_attn_backward_bhsd_dual_dim(
+    dOut,
+    Q,
+    K,
+    V,
+    Out,
+    L,
+    is_causal=False,
+    window_size_left=-1,
+    window_size_right=-1,
+    alibi_slopes=None,
+    softmax_scale=None,
+    attn_bias=None,
+):
+    """Dense no-dropout backward with independent q/k and value head dims.
+
+    Mirrors the dense branch of ``_flash_attn_backward_bhsd`` but passes
+    separate ``HEAD_DIM_QK`` and ``HEAD_DIM_V`` constexprs to kernels that
+    use distinct offsets for the q/k dim and the value dim. Head dims that
+    are not powers of two are handled by padding the constexpr to the next
+    power of two and masking the tail inside the kernels.
+    """
+    Batch, H_q, SeqLen_q, Head_Dim_qk = Q.shape
+    _, H_k, SeqLen_k, _ = K.shape
+    Head_Dim_v = V.shape[-1]
+
+    if H_q % H_k != 0:
+        raise ValueError(f"H_q ({H_q}) must be a multiple of H_k ({H_k})")
+    if softmax_scale is not None:
+        scale = softmax_scale
+    else:
+        scale = 1.0 / math.sqrt(Head_Dim_qk)
+    group_size = H_q // H_k
+
+    _inf_val = SeqLen_q + SeqLen_k + 1
+    wl = _inf_val if window_size_left < 0 else window_size_left
+    wr = _inf_val if window_size_right < 0 else window_size_right
+    has_window = (wl < SeqLen_q) or (wr < SeqLen_k)
+    has_alibi = alibi_slopes is not None
+    alibi_ptr = alibi_slopes if has_alibi else Q
+    has_bias = attn_bias is not None
+
+    Q = Q.contiguous()
+    K = K.contiguous()
+    V = V.contiguous()
+    Out = Out.contiguous()
+    dOut = dOut.contiguous()
+    L = L.contiguous()
+    if has_bias:
+        attn_bias = _normalize_attn_bias(
+            attn_bias, Batch, H_q, SeqLen_q, SeqLen_k
+        ).contiguous()
+
+    bias_ptr = attn_bias if has_bias else Q
+    dQ = torch.empty_like(Q)
+    dK = torch.empty_like(K)
+    dV = torch.empty_like(V)
+    sb_b, sb_h, sb_m, sb_n = _get_bias_strides_dense(attn_bias if has_bias else None)
+
+    D = torch.empty_like(L)
+
+    head_dim_qk = _next_pow2(Head_Dim_qk)
+    head_dim_v = _next_pow2(Head_Dim_v)
+
+    grid_dq = lambda META: (
+        triton.cdiv(SeqLen_q, META["BLOCK_M"]),
+        Batch,
+        H_q,
+    )
+    _cudnn_attn_bwd_dq_dual_dim[grid_dq](
+        Q,
+        K,
+        V,
+        dOut,
+        Out,
+        L,
+        D,
+        dQ,
+        bias_ptr,
+        alibi_ptr,
+        scale,
+        group_size,
+        wl,
+        wr,
+        Q.stride(0),
+        Q.stride(2),
+        Q.stride(1),
+        Q.stride(3),
+        K.stride(0),
+        K.stride(2),
+        K.stride(1),
+        K.stride(3),
+        V.stride(0),
+        V.stride(2),
+        V.stride(1),
+        V.stride(3),
+        Out.stride(0),
+        Out.stride(2),
+        Out.stride(1),
+        Out.stride(3),
+        L.stride(0),
+        L.stride(1),
+        D.stride(0),
+        D.stride(1),
+        sb_b,
+        sb_h,
+        sb_m,
+        sb_n,
+        SeqLen_q,
+        SeqLen_k,
+        Head_Dim_qk,
+        Head_Dim_v,
+        HEAD_DIM_QK=head_dim_qk,
+        HEAD_DIM_V=head_dim_v,
+        IS_CAUSAL=is_causal,
+        HAS_WINDOW=has_window,
+        HAS_ALIBI=has_alibi,
+        HAS_BIAS=has_bias,
+    )
+
+    grid_dkv = lambda META: (
+        triton.cdiv(SeqLen_k, META["BLOCK_N"]),
+        Batch,
+        H_k,
+    )
+    _cudnn_attn_bwd_dkv_dual_dim[grid_dkv](
+        Q,
+        K,
+        V,
+        dOut,
+        L,
+        D,
+        dK,
+        dV,
+        bias_ptr,
+        alibi_ptr,
+        scale,
+        group_size,
+        wl,
+        wr,
+        Q.stride(0),
+        Q.stride(2),
+        Q.stride(1),
+        Q.stride(3),
+        K.stride(0),
+        K.stride(2),
+        K.stride(1),
+        K.stride(3),
+        V.stride(0),
+        V.stride(2),
+        V.stride(1),
+        V.stride(3),
+        Out.stride(0),
+        Out.stride(2),
+        Out.stride(1),
+        Out.stride(3),
+        L.stride(0),
+        L.stride(1),
+        sb_b,
+        sb_h,
+        sb_m,
+        sb_n,
+        SeqLen_q,
+        SeqLen_k,
+        Head_Dim_qk,
+        Head_Dim_v,
+        HEAD_DIM_QK=head_dim_qk,
+        HEAD_DIM_V=head_dim_v,
+        IS_CAUSAL=is_causal,
+        HAS_WINDOW=has_window,
+        HAS_ALIBI=has_alibi,
+        HAS_BIAS=has_bias,
+    )
+
+    return dQ, dK, dV
+
+
 def cudnn_attention_backward(
     grad_out,
     query,
@@ -440,6 +1032,22 @@ def cudnn_attention_backward(
     is_dropout = dropout_p > 0.0
     rng_tuple = _parse_philox(philox_seed, philox_offset) if is_dropout else None
     use_varlen = (cum_seq_q is not None) and (cum_seq_k is not None)
+
+    if not use_varlen and value.shape[-1] != query.shape[-1]:
+        # The shared flash backward kernels use a single HEAD_DIM constexpr
+        # for q/k and value; route to the dual-dim dense kernels here.
+        dQ, dK, dV = _flash_attn_backward_bhsd_dual_dim(
+            grad_out,
+            query,
+            key,
+            value,
+            out,
+            lse,
+            is_causal=is_causal,
+            softmax_scale=scale,
+            attn_bias=attn_bias,
+        )
+        return dQ, dK, dV
 
     dQ, dK, dV, _ = _flash_attn_backward_bhsd(
         grad_out,

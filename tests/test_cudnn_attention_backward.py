@@ -415,8 +415,9 @@ def test_cudnn_attention_backward_dropout_neg_degrades_to_zero(dtype):
 def test_cudnn_attention_backward_scale(dtype, softmax_scale):
     """scale=None, a non-default scale, and scale=0.0 must all match ATen.
 
-    scale=0.0 is distinct from scale=None: it zeroes the score gradients
-    (dQ == 0).
+    The forward always runs with the default scale so out and lse are
+    finite; only the backward varies its scale. With scale=0.0 the score
+    gradients are zeroed (dQ == 0), which is distinct from scale=None.
     """
     if TO_CPU:
         pytest.skip(
@@ -450,7 +451,7 @@ def test_cudnn_attention_backward_scale(dtype, softmax_scale):
         V,
         attn_bias=None,
         is_causal=False,
-        softmax_scale=scale,
+        softmax_scale=float(1.0 / math.sqrt(head_size)),
     )
 
     Q_bhsd = Q.permute(0, 2, 1, 3).contiguous()
@@ -576,9 +577,7 @@ def test_cudnn_attention_backward_attn_bias_shapes(dtype, bias_shape):
     else:  # 4d_bxh
         bias_shape_t = (batch, num_head, q_seq_len, kv_seq_len)
 
-    attn_bias = (
-        torch.randn(*bias_shape_t, dtype=dtype, device=flag_gems.device) * 0.1
-    )
+    attn_bias = torch.randn(*bias_shape_t, dtype=dtype, device=flag_gems.device) * 0.1
 
     out, lse, philox_seed, philox_offset = cudnn_attn_forward_native(
         Q,
@@ -659,16 +658,22 @@ def test_cudnn_attention_backward_attn_bias_shapes(dtype, bias_shape):
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required")
 @pytest.mark.cudnn_attention_backward
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
-def test_cudnn_attention_backward_value_head_dim_mismatch_rejected(dtype):
-    """value head dim != q/k head dim is not supported and must raise
-    NotImplementedError."""
+@pytest.mark.parametrize(
+    "head_size, value_head_size",
+    [(64, 96), (128, 96), (64, 32), (96, 128), (64, 64)],
+)
+def test_cudnn_attention_backward_value_head_dim(dtype, head_size, value_head_size):
+    """value head dim != q/k head dim must produce correct gradients.
+
+    Differing value head dims take the dual-dim kernels; the matching
+    (64, 64) case exercises the shared-kernel fallback route.
+    """
     if TO_CPU:
         pytest.skip(
             "_cudnn_attention_backward is CUDA-only, cannot run in quick-cpu mode"
         )
 
-    batch, num_head, q_seq_len, kv_seq_len, head_size = 1, 2, 64, 64, 64
-    value_head_size = 96
+    batch, num_head, q_seq_len, kv_seq_len = 1, 2, 128, 128
     scale = float(1.0 / math.sqrt(head_size))
 
     Q, K, V = make_qkv(
@@ -712,22 +717,62 @@ def test_cudnn_attention_backward_value_head_dim_mismatch_rejected(dtype):
     out_bhsd = out.permute(0, 2, 1, 3).contiguous()
     dOut_bhsd = dOut.permute(0, 2, 1, 3).contiguous()
 
-    with pytest.raises(NotImplementedError):
-        flag_gems.cudnn_attention_backward(
-            dOut_bhsd,
-            Q_bhsd,
-            K_bhsd,
-            V_bhsd,
-            out_bhsd,
-            lse,
-            philox_seed,
-            philox_offset,
-            None,
-            None,
-            None,
-            q_seq_len,
-            kv_seq_len,
-            0.0,
-            False,
-            scale=scale,
-        )
+    ref_dOut_bhsd = utils.to_reference(dOut_bhsd)
+    ref_Q_bhsd = utils.to_reference(Q_bhsd)
+    ref_K_bhsd = utils.to_reference(K_bhsd)
+    ref_V_bhsd = utils.to_reference(V_bhsd)
+    ref_out_bhsd = utils.to_reference(out_bhsd)
+    ref_lse = utils.to_reference(lse)
+
+    (
+        ref_dQ_bhsd,
+        ref_dK_bhsd,
+        ref_dV_bhsd,
+    ) = torch.ops.aten._cudnn_attention_backward(
+        ref_dOut_bhsd,
+        ref_Q_bhsd,
+        ref_K_bhsd,
+        ref_V_bhsd,
+        ref_out_bhsd,
+        ref_lse,
+        philox_seed,
+        philox_offset,
+        None,
+        None,
+        None,
+        q_seq_len,
+        kv_seq_len,
+        0.0,
+        False,
+        scale=scale,
+    )
+    ref_dQ = ref_dQ_bhsd.permute(0, 2, 1, 3).contiguous()
+    ref_dK = ref_dK_bhsd.permute(0, 2, 1, 3).contiguous()
+    ref_dV = ref_dV_bhsd.permute(0, 2, 1, 3).contiguous()
+
+    dQ_bhsd, dK_bhsd, dV_bhsd = flag_gems.cudnn_attention_backward(
+        dOut_bhsd,
+        Q_bhsd,
+        K_bhsd,
+        V_bhsd,
+        out_bhsd,
+        lse,
+        philox_seed,
+        philox_offset,
+        None,
+        None,
+        None,
+        q_seq_len,
+        kv_seq_len,
+        0.0,
+        False,
+        scale=scale,
+    )
+
+    dQ = dQ_bhsd.permute(0, 2, 1, 3).contiguous()
+    dK = dK_bhsd.permute(0, 2, 1, 3).contiguous()
+    dV = dV_bhsd.permute(0, 2, 1, 3).contiguous()
+
+    utils.gems_assert_close(dQ, ref_dQ, dtype, equal_nan=True)
+    utils.gems_assert_close(dK, ref_dK, dtype, equal_nan=True)
+    utils.gems_assert_close(dV, ref_dV, dtype, equal_nan=True)
