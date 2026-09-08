@@ -100,7 +100,7 @@ def gen_indices_for_index_put(input_shape, indices_shape, accumulate, is_bool):
 
 
 # Tests for _index_put_impl_
-@pytest.mark.index_put_impl
+@pytest.mark.index_put_impl_
 @pytest.mark.parametrize(
     "input_shape, indices_shape, values_shape, is_bool", INDEX_PUT_SHAPE_ACC_FALSE
 )
@@ -129,13 +129,12 @@ def test__index_put_impl__acc_false(
     ref_indices = [utils.to_reference(index) for index in indices]
     ref_values = utils.to_reference(values)
     torch._index_put_impl_(ref_inp, ref_indices, ref_values, accumulate, unsafe=False)
-    with flag_gems.use_gems():
-        torch._index_put_impl_(inp, indices, values, accumulate, unsafe=False)
+    flag_gems._index_put_impl_(inp, indices, values, accumulate, unsafe=False)
 
     utils.gems_assert_close(inp, ref_inp, dtype)
 
 
-@pytest.mark.index_put_impl
+@pytest.mark.index_put_impl_
 @pytest.mark.parametrize(
     "input_shape, indices_shape, values_shape, is_bool", INDEX_PUT_SHAPE_ACC_TRUE
 )
@@ -166,13 +165,12 @@ def test__index_put_impl__acc_true(
     ref_indices = [utils.to_reference(index) for index in indices]
     ref_values = utils.to_reference(values, upcast=True)
     torch._index_put_impl_(ref_inp, ref_indices, ref_values, accumulate, unsafe=False)
-    with flag_gems.use_gems():
-        torch._index_put_impl_(inp, indices, values, accumulate, unsafe=False)
+    flag_gems._index_put_impl_(inp, indices, values, accumulate, unsafe=False)
 
     utils.gems_assert_close(inp, ref_inp, dtype)
 
 
-@pytest.mark.index_put_impl
+@pytest.mark.index_put_impl_
 @pytest.mark.parametrize("dtype", [torch.float32])
 @pytest.mark.parametrize("unsafe", [True, False])
 def test__index_put_impl__unsafe_param(dtype, unsafe):
@@ -188,13 +186,12 @@ def test__index_put_impl__unsafe_param(dtype, unsafe):
     torch._index_put_impl_(
         ref_inp, ref_indices, ref_values, accumulate=False, unsafe=unsafe
     )
-    with flag_gems.use_gems():
-        torch._index_put_impl_(inp, indices, values, accumulate=False, unsafe=unsafe)
+    flag_gems._index_put_impl_(inp, indices, values, accumulate=False, unsafe=unsafe)
 
     utils.gems_assert_close(inp, ref_inp, dtype)
 
 
-@pytest.mark.index_put_impl
+@pytest.mark.index_put_impl_
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test__index_put_impl__error_all_none(dtype):
     """Test error handling: all None indices for _index_put_impl_"""
@@ -203,7 +200,5 @@ def test__index_put_impl__error_all_none(dtype):
     indices = [None, None]
     values = torch.randn((32, 64), dtype=dtype, device=flag_gems.device)
 
-    # PyTorch validates indices before dispatch, so TypeError is raised
-    with pytest.raises(TypeError):
-        with flag_gems.use_gems():
-            torch._index_put_impl_(inp, indices, values, accumulate=False, unsafe=False)
+    with pytest.raises(ValueError):
+        flag_gems._index_put_impl_(inp, indices, values, accumulate=False, unsafe=False)
