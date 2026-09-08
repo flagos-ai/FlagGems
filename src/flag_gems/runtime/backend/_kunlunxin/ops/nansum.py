@@ -196,7 +196,8 @@ def _nansum_global(inp, out_dtype):
     M = inp.numel()
     out = torch.empty((), dtype=out_dtype, device=inp.device)
     if M == 0:
-        return out
+        # torch.nansum(empty) == 0; torch.empty gives uninitialized memory.
+        return out.zero_()
 
     if M <= _BLOCK_1D:
         # Single masked 8192-lane tile: one launch, exact.
@@ -225,9 +226,19 @@ def _nansum_global(inp, out_dtype):
         if tail:
             tail_buf = torch.zeros(chunk, dtype=cd, device=inp.device)
             flat = inp.reshape(-1)
-            torch.ops.aten._copy_from(flat[full * chunk :], tail_buf[:tail], False)
+            # `x[a:b]` slices dispatch to the 5-arg slice.Tensor with 4
+            # positional args inside use_gems() -> TypeError; use narrow
+            # (pure as_strided view) instead. See harness README.
+            torch.ops.aten._copy_from(
+                torch.narrow(flat, 0, full * chunk, tail),
+                torch.narrow(tail_buf, 0, 0, tail),
+                False,
+            )
             nansum_chunk_kernel[(1, 1, 1)](
-                tail_buf, partial[full:], chunk, buffer_size_limit=2048
+                tail_buf,
+                torch.narrow(partial, 0, full, nb - full),
+                chunk,
+                buffer_size_limit=2048,
             )
         if nb == 1:
             torch.ops.aten._copy_from(partial, out, False)
@@ -242,7 +253,7 @@ def _nansum_global(inp, out_dtype):
         else:
             if nb != _CHUNK:
                 big = torch.zeros(_CHUNK, dtype=cd, device=inp.device)
-                torch.ops.aten._copy_from(partial, big[:nb], False)
+                torch.ops.aten._copy_from(partial, torch.narrow(big, 0, 0, nb), False)
                 partial = big
             nansum_chunk_kernel[(1, 1, 1)](partial, out, _CHUNK, buffer_size_limit=2048)
     return out
@@ -279,12 +290,46 @@ def nansum(inp, dim=None, keepdim=False, *, dtype=None):
 
     if dim is None or dim == []:
         res = _nansum_global(inp, out_dtype)
-        if dim == [] and keepdim:
+        if keepdim:
             res = res.reshape([1] * inp.ndim)
         return res
 
     dims = [dim] if isinstance(dim, int) else list(dim)
+    if not dims:
+        # dim=() is a full (global) reduction, same as dim=[] (torch.nansum).
+        res = _nansum_global(inp, out_dtype)
+        if keepdim:
+            res = res.reshape([1] * inp.ndim)
+        return res
+    if inp.ndim == 0:
+        # 0-dim tensor: only dims 0/-1 are in range, and both reduce the
+        # single element (equivalent to the global reduction); torch prints
+        # [-1, 0] as the expected range for a scalar.
+        for d in dims:
+            if d not in (0, -1):
+                raise IndexError(
+                    f"Dimension out of range (expected to be in range of "
+                    f"[-1, 0], but got {d})"
+                )
+        if len(dims) > 1:
+            raise RuntimeError("dim 0 appears multiple times in the list of dims")
+        res = _nansum_global(inp, out_dtype)
+        if keepdim:
+            res = res.reshape([1] * inp.ndim)
+        return res
+    for d in dims:
+        if d < -inp.ndim or d >= inp.ndim:
+            raise IndexError(
+                f"Dimension out of range (expected to be in range of "
+                f"[{-inp.ndim}, {inp.ndim - 1}], but got {d})"
+            )
+    # Normalize before the duplicate check: torch wraps (negativizes) the dims
+    # first and detects duplicates on the normalized values, so e.g. (0, -1)
+    # on a 1-D input raises "dim 0 appears multiple times in the list of dims".
     dims = [d % inp.ndim for d in dims]
+    if len(set(dims)) != len(dims):
+        dup = next(d for d in dims if dims.count(d) > 1)
+        raise RuntimeError(f"dim {dup} appears multiple times in the list of dims")
 
     if inp.numel() == 0:
         shape = list(inp.shape)
