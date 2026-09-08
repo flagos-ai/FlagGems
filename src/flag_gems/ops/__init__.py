@@ -320,6 +320,7 @@ from flag_gems.ops.ctc_loss import ctc_loss
 from flag_gems.ops.cudnn_attention_forward import cudnn_attention_forward
 from flag_gems.ops.cudnn_batch_norm_backward import cudnn_batch_norm_backward
 from flag_gems.ops.cudnn_convolution import cudnn_convolution
+from flag_gems.ops.cudnn_convolution_transpose import cudnn_convolution_transpose
 from flag_gems.ops.cudnn_rnn_backward import cudnn_rnn_backward
 from flag_gems.ops.cummax import cummax, cummaxmin_backward
 from flag_gems.ops.cummin import cummin
@@ -535,6 +536,10 @@ from flag_gems.ops.linalg_lu_factor_ex import (
     linalg_lu_factor_ex_out,
 )
 from flag_gems.ops.linalg_matrix_norm import linalg_matrix_norm
+from flag_gems.ops.linalg_matrix_power import (
+    linalg_matrix_power,
+    linalg_matrix_power_out,
+)
 from flag_gems.ops.linalg_matrix_rank import (
     linalg_matrix_rank,
     linalg_matrix_rank_out,
@@ -546,6 +551,7 @@ from flag_gems.ops.linalg_matrix_sqrth import (
     linalg_matrix_sqrth_out,
 )
 from flag_gems.ops.linalg_norm import linalg_norm
+from flag_gems.ops.linalg_qr import linalg_qr, linalg_qr_out
 from flag_gems.ops.linalg_slogdet import linalg_slogdet
 from flag_gems.ops.linalg_solve_triangular import (
     linalg_solve_triangular,
@@ -563,6 +569,7 @@ from flag_gems.ops.log1p_ import log1p_
 from flag_gems.ops.log2 import log2, log2_
 from flag_gems.ops.log10 import log10, log10_, log10_out
 from flag_gems.ops.log_ import log_
+from flag_gems.ops.log_normal import log_normal
 from flag_gems.ops.log_normal_ import log_normal_
 from flag_gems.ops.log_sigmoid import log_sigmoid
 from flag_gems.ops.log_sigmoid_backward import (
@@ -908,6 +915,7 @@ from flag_gems.ops.threshold_ import threshold_
 from flag_gems.ops.tile import tile
 from flag_gems.ops.to import to_copy
 from flag_gems.ops.topk import topk
+from flag_gems.ops.topk_w8a16_fp8 import topk_w8a16_fp8
 from flag_gems.ops.trace import trace
 from flag_gems.ops.transpose import transpose
 from flag_gems.ops.tril import tril, tril_, tril_out
@@ -1277,6 +1285,7 @@ __all__ = [
     "cudnn_attention_forward",
     "cudnn_batch_norm_backward",
     "cudnn_convolution",
+    "cudnn_convolution_transpose",
     "cudnn_rnn_backward",
     "cummax",
     "cummaxmin_backward",
@@ -1538,6 +1547,8 @@ __all__ = [
     "linalg_lu_factor_out",
     "linalg_lu_out",
     "linalg_matrix_norm",
+    "linalg_matrix_power",
+    "linalg_matrix_power_out",
     "linalg_matrix_rank",
     "linalg_matrix_rank_out",
     "linalg_matrix_rank_tol",
@@ -1545,6 +1556,8 @@ __all__ = [
     "linalg_matrix_sqrth",
     "linalg_matrix_sqrth_out",
     "linalg_norm",
+    "linalg_qr",
+    "linalg_qr_out",
     "linalg_slogdet",
     "linalg_solve_triangular",
     "linalg_solve_triangular_out",
@@ -1565,6 +1578,7 @@ __all__ = [
     "log2",
     "log2_",
     "log_",
+    "log_normal",
     "log_normal_",
     "log_sigmoid",
     "log_sigmoid_backward",
@@ -1955,6 +1969,7 @@ __all__ = [
     "tile",
     "to_copy",
     "topk",
+    "topk_w8a16_fp8",
     "trace",
     "transpose",
     "tril",
