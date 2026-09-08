@@ -266,12 +266,10 @@ _FULL_CONFIG = (
     (
         "_upsample_lanczos2d_aa_backward",
         _upsample_lanczos2d_aa_backward,
-        lambda: hasattr(torch.ops.aten, "_upsample_lanczos2d_aa_backward"),
     ),
     (
         "_upsample_lanczos2d_aa_backward.grad_input",
         _upsample_lanczos2d_aa_backward_out,
-        lambda: hasattr(torch.ops.aten, "_upsample_lanczos2d_aa_backward"),
     ),
     ("_upsample_nearest_exact1d", _upsample_nearest_exact1d),
     ("_upsample_nearest_exact1d_backward", _upsample_nearest_exact1d_backward),
