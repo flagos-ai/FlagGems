@@ -12,37 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-mul:
-  - config:
-    param_map:
-      META:
-        BLOCK_SIZE: block_size
-      num_stages: stages
-      num_warps: warps
-    block_size:
-      - 128
-      - 256
-      - 512
-      - 1024
-      - 2048
-      - 4096
-      - 8192
-    stages:
-      - 1
-      - 2
-      - 3
-      - 4
-      - 5
-      - 6
-      - 7
-      - 8
-    warps:
-      - 1
-      - 2
-      - 4
-      - 8
-      - 16
-  - strategy:
-      n_elements: align32
-      n_cols: default
-      dtype: default
+"""Public ``topk_w8a16_fp8`` entry.
+
+The THead / PPU implementation lives in
+``flag_gems.runtime.backend._thead.ops.topk_w8a16_fp8`` and is installed over
+this stub by ``SpecOpRegistrar``. Other vendors should add their own backend
+instead of putting a PPU TLE kernel in the generic tree.
+"""
+
+
+def topk_w8a16_fp8(*args, **kwargs):
+    raise NotImplementedError(
+        "topk_w8a16_fp8 is implemented for the THead/PPU backend; "
+        "import flag_gems.topk_w8a16_fp8 after the vendor registrar has run"
+    )
