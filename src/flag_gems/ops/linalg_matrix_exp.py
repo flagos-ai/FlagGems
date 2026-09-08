@@ -6,6 +6,7 @@ import triton
 import triton.language as tl
 
 from flag_gems.ops.exp import exp
+from flag_gems.runtime import device as runtime_device
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
@@ -406,7 +407,7 @@ def _linalg_matrix_exp_impl(A):
     device = A.device
     coeff = _get_t18_coeff(dtype, device)
 
-    if n <= _MATRIX_EXP_SMALL_N_MAX:
+    if n <= _MATRIX_EXP_SMALL_N_MAX and runtime_device.vendor_name != "metax":
         out = torch.empty(batch_count, n, n, dtype=dtype, device=device)
         with torch_device_fn.device(device):
             _matrix_exp_small_kernel[(batch_count,)](

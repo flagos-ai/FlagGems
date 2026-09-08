@@ -183,7 +183,7 @@ def test_linalg_matrix_exp_batch_consistency(shape, dtype):
     res_batch = flag_gems.linalg_matrix_exp(A)
     for i in range(3):
         res_single = flag_gems.linalg_matrix_exp(A[i])
-        utils.gems_assert_equal(res_batch[i], res_single)
+        utils.gems_assert_equal(res_batch[i], utils.to_reference(res_single))
 
 
 @pytest.mark.linalg_matrix_exp

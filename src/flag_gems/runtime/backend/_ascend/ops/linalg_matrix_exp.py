@@ -25,12 +25,12 @@ _ASCEND_DUMMY_BATCH = 40
 
 
 def linalg_matrix_exp(A):
-    logger.debug("GEMS LINALG_MATRIX_EXP")
+    logger.debug("GEMS_ASCEND LINALG_MATRIX_EXP")
     return _linalg_matrix_exp_impl(A)
 
 
 def linalg_matrix_exp_out(A, *, out=None):
-    logger.debug("GEMS LINALG_MATRIX_EXP_OUT")
+    logger.debug("GEMS_ASCEND LINALG_MATRIX_EXP_OUT")
     if out is None:
         raise TypeError("linalg_matrix_exp(): out must be provided for out variant")
     if out.dtype != A.dtype:
