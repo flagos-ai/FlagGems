@@ -14,16 +14,16 @@
 
 import logging
 
+import torch
 import triton
 import triton.language as tl
 from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 
-from flag_gems.utils import tl_extra_shim
+from flag_gems.utils import libentry
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
-div_rn = tl_extra_shim.div_rn
 
 config_ = CodeGenConfig(
     512,
@@ -45,20 +45,30 @@ def silu_forward(x):
     return y
 
 
-# silu_backward_kernel was config-less: on XPU a bare pointwise_dynamic
-# recompiles per shape (tile<512>) and never unrolls -> large shapes stall at
-# ~0.32 gems speedup. Reuse silu_forward's tuned config_ (vec CLOSE + unroll8):
-# a swept comparison showed all unroll8 variants land at ~0.55ms for
-# [4096,4096] fp16 (vs 0.80ms config-less, ~1.45x) with bit-identical output;
-# vec OPEN spiked to 28.9ms on fp32 [1024,65536] so keep isCloseVectorization.
-@pointwise_dynamic(promotion_methods=[(0, "DEFAULT")], config=config_)
-@triton.jit
-def silu_backward_kernel(x, dy):
-    dy_fp32 = dy.to(tl.float32)
-    x_fp32 = x.to(tl.float32)
-    sigma = div_rn(1.0, 1.0 + tl.exp(-x_fp32))
-    dx = dy_fp32 * sigma * (1.0 + x_fp32 * (1.0 - sigma))
-    return dx
+# silu_backward uses a dedicated bounded-tile kernel on XPU. The previous
+# pointwise_dynamic implementation (tile = next_pow2(numel/12), up to 2M-wide
+# per CTA) combined with `div_rn` (IEEE round-to-nearest division, ~2.9x slower
+# than plain `/` on XPU) and `isCloseVectorization/unroll_num` left large shapes
+# at ~0.51 gems speedup. This custom kernel uses a bounded BLOCK (<= 65536,
+# more CTAs for the compute-heavy exp), plain division (within torch tolerance),
+# and `buffer_size_limit=4096` with vectorization open: measured [4096,4096]
+# fp16 speedup 0.51 -> ~1.02, fp32 0.51 -> ~0.92, bf16 0.63 -> ~0.79.
+_SILU_BW_MAX_BLOCK = 65536
+
+
+@libentry()
+@triton.jit(do_not_specialize=["n_elements"])
+def silu_backward_kernel_xpu(
+    x_ptr, dy_ptr, out_ptr, n_elements, BLOCK: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    tid = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = tid < n_elements
+    x = tl.load(x_ptr + tid, mask=mask).to(tl.float32)
+    dy = tl.load(dy_ptr + tid, mask=mask).to(tl.float32)
+    sigma = 1.0 / (1.0 + tl.exp(-x))
+    dx = dy * sigma * (1.0 + x * (1.0 - sigma))
+    tl.store(out_ptr + tid, dx.to(x_ptr.type.element_ty), mask=mask)
 
 
 def silu(self):
@@ -69,7 +79,26 @@ def silu(self):
 
 def silu_backward(grad_output, self):
     logger.debug("GEMS_KUNLUNXIN SILU_BACKWARD")
-    grad_input = silu_backward_kernel(self, grad_output)
+    x = self if self.is_contiguous() else self.contiguous()
+    dy = grad_output if grad_output.is_contiguous() else grad_output.contiguous()
+    grad_input = torch.empty_like(x)
+    n_elements = x.numel()
+    if n_elements > 0:
+        block = min(triton.next_power_of_2(n_elements), _SILU_BW_MAX_BLOCK)
+        grid = (triton.cdiv(n_elements, block), 1, 1)
+        silu_backward_kernel_xpu[grid](
+            x,
+            dy,
+            grad_input,
+            n_elements,
+            BLOCK=block,
+            num_warps=16,
+            buffer_size_limit=4096,
+        )
+    if grad_input.shape != self.shape or grad_input.stride() != self.stride():
+        grad_input = grad_input.reshape(self.shape).as_strided(
+            self.size(), self.stride()
+        )
     return grad_input
 
 
