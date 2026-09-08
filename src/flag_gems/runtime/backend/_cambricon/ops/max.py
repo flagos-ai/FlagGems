@@ -39,7 +39,11 @@ def max_kernel_float_once(
 ):
     offset = tl.arange(0, M)
     inp_val = tl.load(inp + offset)
+    nan_mask = inp_val != inp_val
+    has_nan = tl.max(nan_mask.to(tl.int32), 0) != 0
+    inp_val = tl.where(nan_mask, -float("inf"), inp_val)
     max_val = tl.max(inp_val, 0)
+    max_val = tl.where(has_nan, float("nan"), max_val)
     tl.store(out, max_val)
 
 
@@ -58,7 +62,12 @@ def max_kernel_float_once(
 @libentry()
 @triton.jit
 def max_kernel_float(
-    inp, out, M, BLOCK_SIZE: tl.constexpr, ONE_TILE_PER_CTA: tl.constexpr
+    inp,
+    out,
+    nan_flag,
+    M,
+    BLOCK_SIZE: tl.constexpr,
+    ONE_TILE_PER_CTA: tl.constexpr,
 ):
     pid = tl.program_id(0)
     block_start = pid * BLOCK_SIZE
@@ -68,19 +77,36 @@ def max_kernel_float(
         offset = block_start + tl.arange(0, BLOCK_SIZE)
         mask = offset < M
         inp_val = tl.load(inp + offset, mask=mask, other=-float("inf"))
+        nan_mask = mask & (inp_val != inp_val)
+        has_nan = tl.max(nan_mask.to(tl.int32), 0)
+        inp_val = tl.where(nan_mask, -float("inf"), inp_val)
         (res,) = tl.max(inp_val, 0, return_indices=True)
         tl.atomic_max(out, res)
     else:
         num_jobs = tl.num_programs(axis=0)
         step = num_jobs * BLOCK_SIZE
         _tmp = tl.full([BLOCK_SIZE], value=-float("inf"), dtype=inp.dtype.element_ty)
+        nan_mask_acc = tl.zeros([BLOCK_SIZE], dtype=tl.int1)
         for off in range(block_start, M, step):
             offset = off + tl.arange(0, BLOCK_SIZE)
             mask = offset < M
             inp_val = tl.load(inp + offset, mask=mask, other=-float("inf"))
+            nan_mask = mask & (inp_val != inp_val)
+            nan_mask_acc |= nan_mask
+            inp_val = tl.where(nan_mask, -float("inf"), inp_val)
             _tmp = tl.where((inp_val > _tmp), inp_val, _tmp)
+        has_nan = tl.max(nan_mask_acc.to(tl.int32), 0)
         (res,) = tl.max(_tmp, 0, return_indices=True)
         tl.atomic_max(out, res)
+    tl.atomic_or(nan_flag, has_nan)
+
+
+@libentry()
+@triton.jit
+def max_kernel_float_finalize(out, nan_flag):
+    value = tl.load(out)
+    has_nan = tl.load(nan_flag) != 0
+    tl.store(out, tl.where(has_nan, float("nan"), value))
 
 
 @libtuner(
@@ -207,6 +233,8 @@ def max_kernel(
     result_value = tl.full([BLOCK_M], value=-float("inf"), dtype=tl.float32)
     result_index = tl.zeros([BLOCK_M], dtype=tl.int64)
     min_value = get_dtype_min(inp.type.element_ty)
+    if inp.type.element_ty.is_floating():
+        result_has_nan = tl.zeros([BLOCK_M], dtype=tl.int1)
     for i in range(0, N, BLOCK_N):
         n_offset = i + tl.arange(0, BLOCK_N)
         offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
@@ -214,10 +242,30 @@ def max_kernel(
         mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
         inp_ptrs = inp + offset
         inp_vals = tl.load(inp_ptrs, mask=mask, other=min_value)
-        max_value, max_index = tl.max(inp_vals, axis=1, return_indices=True)
-        update_mask = max_value > result_value
-        result_value = tl.where(update_mask, max_value, result_value)
-        result_index = tl.where(update_mask, i + max_index, result_index)
+        if inp.type.element_ty.is_floating():
+            nan_mask = mask & (inp_vals != inp_vals)
+            nan_i32 = nan_mask.to(tl.int32)
+            has_nan = tl.max(nan_i32, axis=1) != 0
+            first_nan = tl.argmax(nan_i32, axis=1)
+            inp_vals = tl.where(nan_mask, min_value, inp_vals)
+        max_value, max_index = tl.max(
+            inp_vals,
+            axis=1,
+            return_indices=True,
+            return_indices_tie_break_left=True,
+        )
+        if inp.type.element_ty.is_floating():
+            update_nan = has_nan & ~result_has_nan
+            update_max = ~has_nan & ~result_has_nan & (max_value > result_value)
+            result_value = tl.where(update_max, max_value, result_value)
+            result_index = tl.where(update_max, i + max_index, result_index)
+            result_value = tl.where(update_nan, float("nan"), result_value)
+            result_index = tl.where(update_nan, i + first_nan, result_index)
+            result_has_nan |= has_nan
+        else:
+            update_mask = max_value > result_value
+            result_value = tl.where(update_mask, max_value, result_value)
+            result_index = tl.where(update_mask, i + max_index, result_index)
     mask1 = m_offset < M
     offset_index = m_offset * K + pid_k
     out_value_ptrs = out_value + offset_index
@@ -243,7 +291,9 @@ def max(inp):
                 max_kernel_float_once[(1, 1, 1)](inp, out, M)
             else:
                 out = torch.full([], float("-inf"), dtype=torch.float32, device=device)
-                max_kernel_float[grid](inp, out, M)
+                nan_flag = torch.zeros([], dtype=torch.int32, device=device)
+                max_kernel_float[grid](inp, out, nan_flag, M)
+                max_kernel_float_finalize[(1, 1, 1)](out, nan_flag)
         elif dtype == torch.int64:
             mid = torch.empty([mid_size], dtype=dtype, device=device)
             out = torch.empty([], dtype=dtype, device=device)

@@ -43,7 +43,13 @@ def max_kernel_1(
     mask = offset < M
     min_value = get_dtype_min(inp.type.element_ty)
     inp_val = tl.load(inp_ptrs, mask=mask, other=min_value)
+    if inp.type.element_ty.is_floating():
+        nan_mask = mask & (inp_val != inp_val)
+        has_nan = tl.max(nan_mask.to(tl.int32), axis=0) != 0
+        inp_val = tl.where(nan_mask, min_value, inp_val)
     max_val = tl.max(inp_val)
+    if inp.type.element_ty.is_floating():
+        max_val = tl.where(has_nan, float("nan"), max_val)
     mid_ptr = mid + pid
     tl.store(mid_ptr, max_val)
 
@@ -56,7 +62,13 @@ def max_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
     mask = offset < mid_size
     min_value = get_dtype_min(mid.type.element_ty)
     mid_val = tl.load(mid_ptrs, mask=mask, other=min_value)
+    if mid.type.element_ty.is_floating():
+        nan_mask = mask & (mid_val != mid_val)
+        has_nan = tl.max(nan_mask.to(tl.int32), axis=0) != 0
+        mid_val = tl.where(nan_mask, min_value, mid_val)
     max_val = tl.max(mid_val)
+    if mid.type.element_ty.is_floating():
+        max_val = tl.where(has_nan, float("nan"), max_val)
     tl.store(out, max_val)
 
 
@@ -93,6 +105,8 @@ def max_kernel(
     min_value = get_dtype_min(dtype)
     result_value = tl.full([BLOCK_M], value=min_value, dtype=acc_type)
     result_index = tl.zeros([BLOCK_M], dtype=tl.int64)
+    if dtype.is_floating():
+        result_has_nan = tl.zeros([BLOCK_M], dtype=tl.int1)
     for i in range(0, N, BLOCK_N):
         n_offset = i + tl.arange(0, BLOCK_N)
         offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
@@ -102,10 +116,30 @@ def max_kernel(
         inp_vals = tl.load(inp_ptrs, mask=mask, other=min_value)
         if dtype is tl.int64:
             inp_vals = tl.where(mask, inp_vals, min_value)
-        max_value, max_index = tl.max(inp_vals, axis=1, return_indices=True)
-        update_mask = max_value > result_value
-        result_value = tl.where(update_mask, max_value, result_value)
-        result_index = tl.where(update_mask, i + max_index, result_index)
+        if dtype.is_floating():
+            nan_mask = mask & (inp_vals != inp_vals)
+            nan_i32 = nan_mask.to(tl.int32)
+            has_nan = tl.max(nan_i32, axis=1) != 0
+            first_nan = tl.argmax(nan_i32, axis=1)
+            inp_vals = tl.where(nan_mask, min_value, inp_vals)
+        max_value, max_index = tl.max(
+            inp_vals,
+            axis=1,
+            return_indices=True,
+            return_indices_tie_break_left=True,
+        )
+        if dtype.is_floating():
+            update_nan = has_nan & ~result_has_nan
+            update_max = ~has_nan & ~result_has_nan & (max_value > result_value)
+            result_value = tl.where(update_max, max_value, result_value)
+            result_index = tl.where(update_max, i + max_index, result_index)
+            result_value = tl.where(update_nan, float("nan"), result_value)
+            result_index = tl.where(update_nan, i + first_nan, result_index)
+            result_has_nan |= has_nan
+        else:
+            update_mask = max_value > result_value
+            result_value = tl.where(update_mask, max_value, result_value)
+            result_index = tl.where(update_mask, i + max_index, result_index)
     mask1 = m_offset < M
     offset_index = m_offset * K + pid_k
     out_value_ptrs = out_value + offset_index

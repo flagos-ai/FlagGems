@@ -80,7 +80,11 @@ def max_kernel_1(
     mask = offset < M
     min_value = get_dtype_min(inp.type.element_ty)
     vals = tl.load(inp + offset, mask=mask, other=min_value, cache_modifier=".cg")
-    tl.store(mid + pid, tl.max(vals))
+    max_val = tl.max(vals)
+    if inp.type.element_ty.is_floating():
+        has_nan = tl.max((mask & (vals != vals)).to(tl.int32), axis=0) != 0
+        max_val = tl.where(has_nan, float("nan"), max_val)
+    tl.store(mid + pid, max_val)
 
 
 @libentry()
@@ -90,7 +94,11 @@ def max_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
     mask = offset < mid_size
     min_value = get_dtype_min(mid.type.element_ty)
     vals = tl.load(mid + offset, mask=mask, other=min_value)
-    tl.store(out, tl.max(vals))
+    max_val = tl.max(vals)
+    if mid.type.element_ty.is_floating():
+        has_nan = tl.max((mask & (vals != vals)).to(tl.int32), axis=0) != 0
+        max_val = tl.where(has_nan, float("nan"), max_val)
+    tl.store(out, max_val)
 
 
 @libentry()
@@ -126,6 +134,12 @@ def max_kernel_small(
         return_indices=True,
         return_indices_tie_break_left=True,
     )
+    if dtype.is_floating():
+        nan_i32 = (col_mask & (vals != vals)).to(tl.int32)
+        has_nan = tl.max(nan_i32, axis=0) != 0
+        first_nan = tl.argmax(nan_i32, axis=0)
+        row_max = tl.where(has_nan, float("nan"), row_max)
+        row_argmax = tl.where(has_nan, first_nan, row_argmax)
     tl.store(out_value + row, row_max, mask=row_mask)
     tl.store(out_index + row, row_argmax.to(tl.int32), mask=row_mask)
 
@@ -165,6 +179,8 @@ def max_kernel(
     min_value = get_dtype_min(dtype)
     max_values = tl.full([BLOCK_M], dtype=acc_type, value=min_value)
     argmax_values = tl.full([BLOCK_M], dtype=tl.int32, value=0)
+    if dtype.is_floating():
+        result_has_nan = tl.zeros([BLOCK_M], dtype=tl.int1)
 
     for start_n in range(0, N, BLOCK_N):
         n_offset = start_n + tl.arange(0, BLOCK_N)
@@ -181,6 +197,21 @@ def max_kernel(
         )
         local_argmax = local_argmax.to(tl.int32)
         update = local_max > max_values
+        if dtype.is_floating():
+            nan_i32 = (mask & (inp_vals != inp_vals)).to(tl.int32)
+            has_nan = tl.max(nan_i32, axis=1) != 0
+            first_nan = tl.argmax(nan_i32, axis=1).to(tl.int32)
+
+            # Chunks are processed from left to right. Once a row has seen a
+            # NaN, keep its first NaN index and prevent later chunks from
+            # replacing either the value or the index.
+            take_nan = has_nan & ~result_has_nan
+            update &= ~has_nan & ~result_has_nan
+            max_values = tl.where(take_nan, float("nan"), max_values)
+            argmax_values = tl.where(
+                take_nan, (start_n + first_nan).to(tl.int32), argmax_values
+            )
+            result_has_nan |= has_nan
         max_values = tl.where(update, local_max, max_values)
         argmax_values = tl.where(
             update, (start_n + local_argmax).to(tl.int32), argmax_values
