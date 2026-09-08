@@ -104,3 +104,46 @@ def test_slice_negative_indices(shape, dtype):
     res_out = flag_gems.slice(inp, dim, -size, -1, 1)
 
     utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.slice
+@pytest.mark.parametrize(
+    "layout", ["contiguous", "transpose", "offset", "stepped", "empty"]
+)
+@pytest.mark.parametrize(
+    "dim,start,end,step",
+    [
+        (0, 0, 2, 1),
+        (1, 1, 5, 2),
+        (0, -3, -1, 1),
+        (1, 3, 1, 1),
+        (0, 0, 0, 1),
+        (1, None, None, 1),
+    ],
+)
+def test_bool_slice_view(layout, dim, start, end, step):
+    base = (torch.arange(48, device=flag_gems.device).reshape(6, 8) % 2).bool()
+    if layout == "contiguous":
+        inp = base
+    elif layout == "transpose":
+        inp = base.t()
+    elif layout == "offset":
+        inp = base[1:, 1:]
+    elif layout == "stepped":
+        inp = base[:, ::2]
+    else:
+        inp = base[:0]
+
+    expected = torch.ops.aten.slice.Tensor(inp, dim, start, end, step)
+    with flag_gems.use_gems():
+        actual = torch.ops.aten.slice.Tensor(inp, dim, start, end, step)
+
+    assert actual.dtype == torch.bool
+    assert torch.equal(actual, expected)
+    assert actual.shape == expected.shape
+    assert actual.stride() == expected.stride()
+    assert actual.storage_offset() == expected.storage_offset()
+    assert actual.untyped_storage().data_ptr() == inp.untyped_storage().data_ptr()
+    if actual.numel():
+        actual.logical_not_()
+        assert torch.equal(actual, expected)
