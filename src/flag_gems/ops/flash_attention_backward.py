@@ -1059,6 +1059,15 @@ def flash_attn_backward(
     dbias_ptr = dBias if do_bias_grad else Q
 
     if is_varlen:
+        # Convention: varlen forward emits softmax_lse as [num_heads, total_q]
+        # (matching the flash_attn library and mirroring the dense branch's
+        # [batch, num_heads, seqlen_q] layout). The varlen dq/dkv kernels below,
+        # however, index L as [total_q, num_heads] (L + m_phys * H_q + head).
+        # Transpose here so the kernels see their expected layout while callers
+        # keep passing the standard [num_heads, total_q] lse.
+        if L.shape[0] == H_q and L.shape[-1] == Total_Q:
+            L = L.transpose(0, 1).contiguous()
+
         D = torch.empty(Total_Q, H_q, device=Q.device, dtype=torch.float32)
 
         sb_m, sb_h, sb_n = _get_bias_strides_varlen(attn_bias if has_bias else None)
