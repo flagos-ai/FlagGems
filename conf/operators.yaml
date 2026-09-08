@@ -6564,7 +6564,7 @@ ops:
   - Tensor
   stages:
   - stable: '3.0'
-- id: index_put_impl
+- id: index_put_impl_
   description: An internal C++ function that handles the heavy lifting for placing
     values into a tensor at specific indices.
   for:
@@ -7255,6 +7255,21 @@ ops:
   - aten
   kind:
   - LinearAlg
+  stages:
+  - alpha: '5.4'
+- id: linalg_eig
+  description: 'Computes the eigenvalue decomposition of a general square matrix, returning
+
+    the complex eigenvalues and eigenvectors. Also supports batches of matrices.
+
+    '
+  for:
+  - linalg_eig
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
   stages:
   - alpha: '5.4'
 - id: linalg_eigvals
