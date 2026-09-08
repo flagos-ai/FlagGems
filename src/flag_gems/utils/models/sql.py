@@ -241,7 +241,7 @@ class SQLPersistantModel(PersistantModel):
                     if "database is locked" in err_msg:
                         if attempt < max_retries - 1:
                             # Exponential backoff
-                            delay = base_delay * (2 ** attempt)
+                            delay = base_delay * (2**attempt)
                             time.sleep(delay)
                             # After sleeping, check if table was created by another process
                             ModelCls_retry = SQLPersistantModel.build_sql_model_by_db(
