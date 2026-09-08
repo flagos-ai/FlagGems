@@ -92,6 +92,22 @@ def index_select_heur_block_n(args):
     return max(m, 16)
 
 
+def log_normal_heur_block(args):
+    if args["N"] <= 512:
+        return 512
+    else:
+        return 1024
+
+
+def log_normal_heur_num_warps(args):
+    if args["N"] <= 512:
+        return 4
+    elif args["N"] <= 1024:
+        return 8
+    else:
+        return 16
+
+
 def rand_heur_block(args):
     if args["N"] <= 512:
         return 2048
@@ -239,6 +255,19 @@ def mm_heur_even_k(args):
     return args["K"] % (args["BLOCK_K"] * args["SPLIT_K"]) == 0
 
 
+def post_layer_norm_residual_heur_tile_n(args):
+    return triton.next_power_of_2(args["N"])
+
+
+def post_layer_norm_residual_heur_tile_m(args):
+    tile_n = triton.next_power_of_2(args["N"])
+    # Eight resident rows are beneficial through 1K columns on Ascend.
+    if tile_n <= 1024:
+        return 8
+    # Keep larger tiles within the one-pass kernel's original element budget.
+    return max(1, min(8, 4096 // tile_n))
+
+
 HEURISTICS_CONFIGS = {
     "argmax": {
         "BLOCK_M": argmax_heur_block_m,
@@ -274,6 +303,10 @@ HEURISTICS_CONFIGS = {
         "BLOCK_M": index_select_heur_block_m,
         "BLOCK_N": index_select_heur_block_n,
     },
+    "log_normal": {
+        "BLOCK": log_normal_heur_block,
+        "num_warps": log_normal_heur_num_warps,
+    },
     "mm": {
         "EVEN_K": mm_heur_even_k,
     },
@@ -303,6 +336,10 @@ HEURISTICS_CONFIGS = {
     "softmax_backward_inner": {
         "TILE_M": softmax_heur_tile_m,
         "ONE_TILE_PER_CTA": softmax_heur_one_tile_per_cta,
+    },
+    "post_layer_norm_residual": {
+        "TILE_M": post_layer_norm_residual_heur_tile_m,
+        "TILE_N": post_layer_norm_residual_heur_tile_n,
     },
     "uniform": {
         "BLOCK": uniform_heur_block,
