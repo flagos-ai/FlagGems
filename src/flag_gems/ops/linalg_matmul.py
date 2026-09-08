@@ -16,18 +16,65 @@ def linalg_matmul(input, other):
     - If both inputs are 2D, performs regular matrix multiplication: (M, K) @ (K, N) -> (M, N)
     - If both inputs are 3D (batched), performs batched matrix multiplication:
       (B, M, K) @ (B, K, N) -> (B, M, N)
+    - Batch dims are broadcast against each other, and 1D inputs are folded
+      into the product per torch.matmul semantics.
 
-    This is an alias for torch.matmul.
+    This is an alias for torch.linalg.matmul.
     """
     logger.debug("GEMS LINALG_MATMUL")
 
+    # matmul is only defined for floating point and complex dtypes; reject
+    # integral inputs with an error matching the ATen CUDA backend instead of
+    # letting them fail inside the Triton kernel with a compilation error.
+    if not input.is_floating_point() and not input.is_complex():
+        raise NotImplementedError(
+            f"linalg_matmul not implemented for '{input.dtype}' on this device"
+        )
+    if not other.is_floating_point() and not other.is_complex():
+        raise NotImplementedError(
+            f"linalg_matmul not implemented for '{other.dtype}' on this device"
+        )
+
+    # Fold 1D inputs into 2D per torch.matmul semantics:
+    # (K,) @ (K, N) -> (N,) and (M, K) @ (K,) -> (M,), (K,) @ (K,) -> scalar
+    fold_first = input.dim() == 1
+    fold_last = other.dim() == 1
+    if fold_first:
+        input = input.unsqueeze(0)
+    if fold_last:
+        other = other.unsqueeze(1)
+
     # Handle 2D case: (M, K) @ (K, N) -> (M, N)
     if input.dim() == 2 and other.dim() == 2:
-        return mm(input, other)
+        out = mm(input, other)
+        if fold_first and fold_last:
+            return out.reshape(())
+        if fold_first:
+            return out[0]
+        if fold_last:
+            return out[:, 0]
+        return out
 
-    # Handle 3D case (batched): (B, M, K) @ (B, K, N) -> (B, M, N)
-    if input.dim() == 3 and other.dim() == 3:
-        return bmm(input, other)
-
-    # Fallback to torch.matmul for other cases (1D vectors, broadcasting, etc.)
-    return torch.matmul(input, other)
+    # Handle batched cases: broadcast the batch dims, then run a single bmm
+    # over the flattened batch. expand produces stride-0 views which the
+    # bmm kernel handles natively.
+    assert input.dim() >= 2 and other.dim() >= 2, "incompatible dimensions"
+    bshape = torch.broadcast_shapes(input.shape[:-2], other.shape[:-2])
+    M, K = input.shape[-2], input.shape[-1]
+    N = other.shape[-1]
+    assert K == other.shape[-2], "incompatible dimensions"
+    a = input.expand(bshape + (M, K))
+    b = other.expand(bshape + (K, N))
+    nbatch = 1
+    for s in bshape:
+        nbatch *= s
+    if nbatch == 0:
+        # empty batch: no kernel launch (grid of 0 is invalid), just an empty output
+        return torch.empty(bshape + (M, N), dtype=input.dtype, device=input.device)
+    out = bmm(a.reshape(nbatch, M, K), b.reshape(nbatch, K, N))
+    out = out.reshape(bshape + (M, N))
+    if fold_first:
+        out = out.squeeze(-2)
+    if fold_last:
+        out = out.squeeze(-1)
+    return out
