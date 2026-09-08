@@ -67,6 +67,7 @@ from .linalg_lu_factor import linalg_lu_factor, linalg_lu_factor_out
 from .linalg_lu_factor_ex import linalg_lu_factor_ex, linalg_lu_factor_ex_out
 from .linalg_qr import linalg_qr, linalg_qr_out
 from .linspace import linspace
+from .log_normal import log_normal
 from .log_sigmoid_backward import log_sigmoid_backward, log_sigmoid_backward_out
 from .log_softmax import log_softmax, log_softmax_backward, log_softmax_out
 from .masked_fill import masked_fill, masked_fill_
@@ -202,6 +203,7 @@ __all__ = [
     "linalg_qr",
     "linalg_qr_out",
     "linspace",
+    "log_normal",
     "log_sigmoid_backward",
     "log_sigmoid_backward_out",
     "log_softmax",
