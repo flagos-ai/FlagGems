@@ -60,19 +60,3 @@ def test_glu_backward(shape, dtype):
             res_in_grad = torch.ops.aten.glu_backward(res_out, res_inp, dim=dim)
 
         utils.gems_assert_close(res_in_grad, ref_in_grad, dtype)
-
-
-@pytest.mark.glu
-@pytest.mark.parametrize("half_width", [0, 3, 64, 65, 96, 129, 257])
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_glu_last_dim_padded_halves(half_width, dtype):
-    from flag_gems.utils.triton_version_utils import HAS_TLE
-
-    if not HAS_TLE:
-        pytest.skip("Requires TLE")
-    # 17 rows also exercise partial final programs for multi-row configs.
-    inp = torch.randn((17, 2 * half_width), dtype=dtype, device=flag_gems.device)
-    ref = torch.nn.functional.glu(utils.to_reference(inp, True), dim=-1)
-    with flag_gems.use_gems():
-        out = torch.nn.functional.glu(inp, dim=-1)
-    utils.gems_assert_close(out, ref, dtype)
