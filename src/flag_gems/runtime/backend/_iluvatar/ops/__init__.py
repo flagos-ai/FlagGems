@@ -34,6 +34,7 @@ from .histc import histc
 from .index_select_backward import index_select_backward
 from .linalg_cholesky import linalg_cholesky
 from .linalg_matrix_norm import linalg_matrix_norm
+from .linalg_qr import linalg_qr, linalg_qr_out
 from .linalg_solve_triangular import (
     linalg_solve_triangular,
     linalg_solve_triangular_out,
@@ -97,6 +98,8 @@ __all__ = [
     "index_select_backward",
     "linalg_cholesky",
     "linalg_matrix_norm",
+    "linalg_qr",
+    "linalg_qr_out",
     "linalg_solve_triangular",
     "linalg_solve_triangular_out",
     "linear",
