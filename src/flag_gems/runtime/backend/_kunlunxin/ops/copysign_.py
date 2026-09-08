@@ -22,24 +22,19 @@ from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
-# Integer views keep every memory access same-width as the fp operand so we can
-# do pure sign-bit manipulation without fp32 promotion. The generic
-# pointwise_dynamic path promotes bf16/f16 inputs to fp32 and crashes in
-# TritonXPUDtypeConvert ("cannot bitcast size 32 to 16"); a bf16 branch that
-# bitcasts through fp32 also overflows int32 with `1 << 31` as a sign mask.
-# Integer views avoid both. This mirrors the proven copysign_ (in-place) fix.
 _INT_VIEW = {2: torch.int16, 4: torch.int32, 8: torch.int64}
 
 
 @libentry()
 @triton.jit(do_not_specialize=["num_tasks"])
-def _copysign_kernel(
-    A, B, OUT, num_tasks, TILE: tl.constexpr, TILES_PER_CTA: tl.constexpr, ONE_TILE: tl.constexpr
+def _copysign_inplace_kernel(
+    A, B, num_tasks, TILE: tl.constexpr, TILES_PER_CTA: tl.constexpr, ONE_TILE: tl.constexpr
 ):
     # Operates on integer views of the operands (see wrapper): pure sign-bit
-    # manipulation, out = (|a| bits) | (sign bit of b). A fixed small CTA count
-    # with large contiguous tiles keeps the kernel memory-bound instead of
-    # launch-bound (the pointwise_dynamic wrapper launched 32768 tiny CTAs).
+    # manipulation, out = (|a| bits) | (sign bit of b). The generic pointwise
+    # path promotes bf16/f16 inputs to fp32 and crashes in
+    # TritonXPUDtypeConvert ("cannot bitcast size 32 to 16"); integer views
+    # keep every access same-width and also avoid the fp abs/where cost.
     ity = A.type.element_ty
     num_bits: tl.constexpr = ity.primitive_bitwidth
     # signed-safe constants: the sign-bit-only value is -(1<<(w-1));
@@ -54,7 +49,7 @@ def _copysign_kernel(
         a_bits = tl.load(A + tid, mask=mask)
         b_bits = tl.load(B + tid, mask=mask)
         out_bits = (a_bits & clear_mask) | (b_bits & sign_mask)
-        tl.store(OUT + tid, out_bits, mask=mask)
+        tl.store(A + tid, out_bits, mask=mask)
     else:
         num_ctas = tl.num_programs(0)
         for j in range(0, TILES_PER_CTA):
@@ -64,53 +59,38 @@ def _copysign_kernel(
             a_bits = tl.load(A + tid, mask=mask)
             b_bits = tl.load(B + tid, mask=mask)
             out_bits = (a_bits & clear_mask) | (b_bits & sign_mask)
-            tl.store(OUT + tid, out_bits, mask=mask)
+            tl.store(A + tid, out_bits, mask=mask)
 
 
-def _copysign_run(input, other, out):
+def _copysign_run(input, other):
     num_tasks = input.numel()
     if num_tasks == 0:
-        return out
+        return input
     ity = _INT_VIEW[input.element_size()]
     a = input.view(ity)
     b = other.view(ity) if other.dtype == input.dtype else other.to(input.dtype).view(ity)
-    o = out.view(ity)
     num_ctas = 12
     num_tiles = num_ctas
     tile = triton.next_power_of_2(triton.cdiv(num_tasks, num_tiles))
     tiles_per_cta = triton.cdiv(num_tiles, num_ctas)
-    _copysign_kernel[(num_ctas, 1, 1)](
+    _copysign_inplace_kernel[(num_ctas, 1, 1)](
         a,
         b,
-        o,
         num_tasks,
         TILE=tile,
         TILES_PER_CTA=tiles_per_cta,
         ONE_TILE=tiles_per_cta == 1,
     )
-    return out
+    return input
 
 
-def copysign(input, other, *, out=None):
-    """Magnitude of input, sign of other (kunlunxin integer sign-bit kernel)."""
-    logger.debug("GEMS_KUNLUNXIN COPYSIGN")
-    if out is None:
-        out = torch.empty_like(input)
-    return copysign_out(input, other, out=out)
-
-
-def copysign_out(input, other, *, out=None):
-    """Out-variant copysign specialized for XPU: integer sign-bit kernel."""
-    logger.debug("GEMS_KUNLUNXIN COPYSIGN_OUT")
-    if out is None:
-        out = torch.empty_like(input)
-    if not (input.is_contiguous() and other.is_contiguous() and out.is_contiguous()):
-        # non-contiguous: compute into a contiguous temp then copy into out
-        a_c = input.contiguous()
-        b_c = other if other.dtype == input.dtype else other.to(input.dtype)
-        b_c = b_c.contiguous()
-        out_c = torch.empty_like(a_c)
-        _copysign_run(a_c, b_c, out_c)
-        out.copy_(out_c)
-        return out
-    return _copysign_run(input, other, out)
+def copysign_(input, other):
+    """In-place copysign specialized for XPU: integer sign-bit kernel."""
+    logger.debug("GEMS_KUNLUNXIN COPYSIGN_")
+    if not input.is_contiguous() or not other.is_contiguous():
+        input_c = input.contiguous()
+        other_c = other.contiguous()
+        _copysign_run(input_c, other_c)
+        input.copy_(input_c)
+        return input
+    return _copysign_run(input, other)
