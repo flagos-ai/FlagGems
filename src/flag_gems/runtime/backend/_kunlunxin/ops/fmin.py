@@ -11,25 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-# Kunlunxin XPU vendor fmin / fmin_out.
-#
-# Performance & semantics rationale (2026-08-17, XPU 2, see
-# harness/solution/performance/fmin_xpu2_20260817.md):
-# - The generic flag_gems/ops/fmin.py kernel uses BLOCK_SIZE=1024, which on XPU
-#   is far from the memory-bound sweet spot (e.g. fp16 2^28: 44.4 ms at
-#   BLOCK=1024 vs 1.7 ms at BLOCK=16384; copy ceiling ~1.4 ms). BLOCK=16384 is
-#   therefore used for n >= 2*16384; below that BLOCK=1024 is kept so tiny
-#   launch-bound cells do not regress.
-# - NaN semantics: XPU tl.minimum lowers to a NaN-propagating minimum for
-#   wide vector lanes (torch.fmin itself ignores NaN). Making the kernel
-#   NaN-ignoring costs 10-30x on this backend: bit tricks (int16/int32 mask
-#   compares) run ~34/30 ms for 2^28 fp16/fp32 vs 1.7/3.4 ms for plain
-#   minimum, the fmax-style tl.where chain either spills (~142 ms) or crashes
-#   the XPU LLVM backend ("Cannot select: v16i1 setcc setuo"). The generic
-#   flag_gems/ops/fmin.py blob (BLOCK=1024) has the same NaN-propagating
-#   behavior for fp32/bf16 already; the vendor kernel keeps that (documented
-#   downstream, no test coverage in tests/test_fmin.py which uses randn).
 import logging
 
 import torch
@@ -42,6 +23,38 @@ logger = logging.getLogger(__name__)
 
 
 @triton.jit
+def _fmin_ignore_nan(x, y):
+    # torch.fmin semantics: ignore NaN (return the non-NaN operand).
+    # The XPU backend cannot select v16i1 fcmp setuo (unordered float compares
+    # used by isnan / x != x) for wide vectors - it crashes the LLVM backend -
+    # so NaN is detected through integer bit patterns instead (IEEE-754:
+    # exponent all-ones + non-zero mantissa). tl.PropagateNan.NONE is also not
+    # implemented by the XPU backend, hence the explicit select.
+    if x.dtype == tl.float32:
+        xi = x.to(tl.int32, bitcast=True)
+        yi = y.to(tl.int32, bitcast=True)
+        xnan = (xi & 0x7FFFFFFF) > 0x7F800000
+        ynan = (yi & 0x7FFFFFFF) > 0x7F800000
+    elif x.dtype == tl.float16:
+        xi = x.to(tl.int16, bitcast=True)
+        yi = y.to(tl.int16, bitcast=True)
+        xnan = (xi & 0x7FFF) > 0x7C00
+        ynan = (yi & 0x7FFF) > 0x7C00
+    elif x.dtype == tl.bfloat16:
+        # bf16 -> int16 bitcast is not supported by TritonXPUDtypeConvert, so
+        # detect NaN through the exact fp32 widening (bf16 NaN -> fp32 NaN).
+        xf = x.to(tl.float32)
+        yf = y.to(tl.float32)
+        xi = xf.to(tl.int32, bitcast=True)
+        yi = yf.to(tl.int32, bitcast=True)
+        xnan = (xi & 0x7FFFFFFF) > 0x7F800000
+        ynan = (yi & 0x7FFFFFFF) > 0x7F800000
+    else:
+        return tl.minimum(x, y)
+    return tl.where(xnan, y, tl.where(ynan, x, tl.minimum(x, y)))
+
+
+@triton.jit
 def fmin_kernel(x_ptr, y_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
     pid = tl.program_id(axis=0)
     block_start = pid * BLOCK_SIZE
@@ -49,7 +62,7 @@ def fmin_kernel(x_ptr, y_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
     mask = offsets < n_elements
     x = tl.load(x_ptr + offsets, mask=mask)
     y = tl.load(y_ptr + offsets, mask=mask)
-    out = tl.minimum(x, y)
+    out = _fmin_ignore_nan(x, y)
     tl.store(out_ptr + offsets, out, mask=mask)
 
 
