@@ -18,6 +18,7 @@ from .full import full
 from .full_like import full_like
 from .greater_equal import greater_equal_
 from .groupnorm import group_norm
+from .gru import gru, gru_data
 from .hadamard_transform import hadamard_transform
 from .index import index
 from .index_put import index_put, index_put_
@@ -59,6 +60,7 @@ from .repeat_interleave import repeat_interleave_self_tensor
 from .resolve_conj import resolve_conj
 from .rsqrt import rsqrt, rsqrt_
 from .sigmoid import sigmoid
+from .silu import silu
 from .special_bessel_j0 import special_bessel_j0, special_bessel_j0_out
 from .special_chebyshev_polynomial_u import special_chebyshev_polynomial_u
 from .special_chebyshev_polynomial_w import (
@@ -107,6 +109,8 @@ __all__ = [
     "full_like",
     "greater_equal_",
     "group_norm",
+    "gru",
+    "gru_data",
     "hadamard_transform",
     "index",
     "index_put",
@@ -162,6 +166,7 @@ __all__ = [
     "rsqrt",
     "rsqrt_",
     "sigmoid",
+    "silu",
     "special_bessel_j0",
     "special_bessel_j0_out",
     "special_chebyshev_polynomial_u",
