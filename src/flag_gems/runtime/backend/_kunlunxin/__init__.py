@@ -23,6 +23,7 @@ vendor_info = VendorDescriptor(
 )
 
 CUSTOMIZED_UNUSED_OPS = (
+    "atan2_out",
     "cummin",
     "cumsum",
     "randperm",
