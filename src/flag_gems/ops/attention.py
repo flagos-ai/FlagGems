@@ -1285,30 +1285,47 @@ def maybe_contiguous(x):
 # Dense flash attention with autograd support
 # ---------------------------------------------------------------------------
 
+
 class _FlashAttnFunc(torch.autograd.Function):
     """Dense flash attention autograd wrapper — trains + infers with one entry."""
-    
+
     @staticmethod
     def forward(
         ctx,
-        q, k, v,
-        dropout_p, softmax_scale, causal,
-        window_size, softcap, alibi_slopes, deterministic,
+        q,
+        k,
+        v,
+        dropout_p,
+        softmax_scale,
+        causal,
+        window_size,
+        softcap,
+        alibi_slopes,
+        deterministic,
     ):
         assert dropout_p == 0.0, "dropout not supported yet in trainable path"
         if softmax_scale is None:
             softmax_scale = 1.0 / (q.shape[-1] ** 0.5)
         wl, wr = window_size if window_size else (-1, -1)
-        
+
         out, lse, philox_args, unused, p = flash_attention_forward(
-            q, k, v,
-            None, None, 0, 0,  # dense: no cu_seqlens
-            dropout_p, causal, False,  # return_debug_mask=False
-            scale=softmax_scale, softcap=softcap,
-            window_size_left=wl, window_size_right=wr,
+            q,
+            k,
+            v,
+            None,
+            None,
+            0,
+            0,  # dense: no cu_seqlens
+            dropout_p,
+            causal,
+            False,  # return_debug_mask=False
+            scale=softmax_scale,
+            softcap=softcap,
+            window_size_left=wl,
+            window_size_right=wr,
             alibi_slopes=alibi_slopes,
         )
-        
+
         ctx.save_for_backward(q, k, v, out, lse, philox_args, unused)
         ctx.dropout_p = dropout_p
         ctx.softmax_scale = softmax_scale
@@ -1316,24 +1333,34 @@ class _FlashAttnFunc(torch.autograd.Function):
         ctx.window_size = (wl, wr)
         ctx.alibi_slopes = alibi_slopes
         return out
-    
+
     @staticmethod
     def backward(ctx, dout):
         q, k, v, out, lse, philox_args, unused = ctx.saved_tensors
         wl, wr = ctx.window_size
-        
+
         # Import backward kernel
-        from flag_gems.ops.flash_attention_backward import flash_attn_backward as _fa_bwd_kernel
-        
+        from flag_gems.ops.flash_attention_backward import (
+            flash_attn_backward as _fa_bwd_kernel,
+        )
+
         dq, dk, dv, _ = _fa_bwd_kernel(
-            dout.contiguous(), q, k, v, out, lse,
-            cu_seq_q=None, cu_seq_k=None,
-            max_seqlen_q=0, max_seqlen_k=0,
+            dout.contiguous(),
+            q,
+            k,
+            v,
+            out,
+            lse,
+            cu_seq_q=None,
+            cu_seq_k=None,
+            max_seqlen_q=0,
+            max_seqlen_k=0,
             is_dropout=ctx.dropout_p > 0.0,
             dropout_p=ctx.dropout_p,
             rng_state=(philox_args, unused) if philox_args is not None else None,
             is_causal=ctx.causal,
-            window_size_left=wl, window_size_right=wr,
+            window_size_left=wl,
+            window_size_right=wr,
             alibi_slopes=ctx.alibi_slopes,
             softmax_scale=ctx.softmax_scale,
         )
@@ -1342,7 +1369,9 @@ class _FlashAttnFunc(torch.autograd.Function):
 
 
 def flash_attn_func(
-    q, k, v,
+    q,
+    k,
+    v,
     dropout_p=0.0,
     softmax_scale=None,
     causal=False,
@@ -1353,19 +1382,27 @@ def flash_attn_func(
     return_attn_probs=False,
 ):
     """Dense flash attention — trains and infers with one entry.
-    
+
     q, k, v: [batch, seqlen, nheads, head_dim]
-    
+
     Aligned to flash_attn library's flash_attn_func signature.
     Returns out only (single tensor).
     """
     needs_grad = any(x.requires_grad for x in (q, k, v) if isinstance(x, torch.Tensor))
-    
+
     if needs_grad:
         # Training path
         return _FlashAttnFunc.apply(
-            q, k, v, dropout_p, softmax_scale, causal,
-            window_size, softcap, alibi_slopes, deterministic,
+            q,
+            k,
+            v,
+            dropout_p,
+            softmax_scale,
+            causal,
+            window_size,
+            softcap,
+            alibi_slopes,
+            deterministic,
         )
     else:
         # Inference path: call forward directly
@@ -1373,18 +1410,23 @@ def flash_attn_func(
         if softmax_scale is None:
             softmax_scale = 1.0 / (q.shape[-1] ** 0.5)
         out, lse, philox_args, unused, p = flash_attention_forward(
-            q, k, v, None, None, 0, 0,
-            dropout_p, causal, False,
-            scale=softmax_scale, softcap=softcap,
-            window_size_left=wl, window_size_right=wr,
+            q,
+            k,
+            v,
+            None,
+            None,
+            0,
+            0,
+            dropout_p,
+            causal,
+            False,
+            scale=softmax_scale,
+            softcap=softcap,
+            window_size_left=wl,
+            window_size_right=wr,
             alibi_slopes=alibi_slopes,
         )
         return out
-
-
-
-
-
 
 
 # Import backward kernel for autograd
@@ -1395,7 +1437,7 @@ from flag_gems.ops.flash_attention_backward import (  # noqa: E402
 
 class _FlashAttnVarlenFunc(torch.autograd.Function):
     """Varlen flash attention autograd wrapper — trains + infers with one entry."""
-    
+
     @staticmethod
     def forward(
         ctx,
@@ -1418,15 +1460,27 @@ class _FlashAttnVarlenFunc(torch.autograd.Function):
         assert dropout_p == 0.0, "dropout not supported yet in trainable path"
         if softmax_scale is None:
             softmax_scale = 1.0 / (q.shape[-1] ** 0.5)
-        
+
         # Call the inference implementation to get out + lse
         result = _flash_attn_varlen_func_impl(
-            q, k, v, cu_seqlens_q, cu_seqlens_k, max_seqlen_q, max_seqlen_k,
-            dropout_p, softmax_scale, causal, window_size, softcap, alibi_slopes,
-            deterministic, return_softmax_lse=True,
+            q,
+            k,
+            v,
+            cu_seqlens_q,
+            cu_seqlens_k,
+            max_seqlen_q,
+            max_seqlen_k,
+            dropout_p,
+            softmax_scale,
+            causal,
+            window_size,
+            softcap,
+            alibi_slopes,
+            deterministic,
+            return_softmax_lse=True,
         )
         out, lse = result if isinstance(result, tuple) else (result, None)
-        
+
         ctx.save_for_backward(q, k, v, out, lse, cu_seqlens_q, cu_seqlens_k)
         ctx.max_seqlen_q = max_seqlen_q
         ctx.max_seqlen_k = max_seqlen_k
@@ -1436,17 +1490,25 @@ class _FlashAttnVarlenFunc(torch.autograd.Function):
         ctx.window_size = window_size if window_size else (-1, -1)
         ctx.alibi_slopes = alibi_slopes
         ctx.return_softmax_lse = return_softmax_lse
-        
+
         return (out, lse) if return_softmax_lse else out
-    
+
     @staticmethod
     def backward(ctx, dout, dlse=None):
         q, k, v, out, lse, cu_seqlens_q, cu_seqlens_k = ctx.saved_tensors
         wl, wr = ctx.window_size if isinstance(ctx.window_size, tuple) else (-1, -1)
-        
+
         dq, dk, dv, _ = _fa_bwd_kernel(
-            dout.contiguous() if isinstance(dout, torch.Tensor) else dout[0].contiguous(),
-            q, k, v, out, lse,
+            (
+                dout.contiguous()
+                if isinstance(dout, torch.Tensor)
+                else dout[0].contiguous()
+            ),
+            q,
+            k,
+            v,
+            out,
+            lse,
             cu_seq_q=cu_seqlens_q,
             cu_seq_k=cu_seqlens_k,
             max_seqlen_q=ctx.max_seqlen_q,
@@ -1459,17 +1521,58 @@ class _FlashAttnVarlenFunc(torch.autograd.Function):
             alibi_slopes=ctx.alibi_slopes,
             softmax_scale=ctx.softmax_scale,
         )
-        # 15 forward inputs: q,k,v, cu_q, cu_k, max_q, max_k, dropout, scale, causal, window, cap, alibi, det, return_lse
-        return dq, dk, dv, None, None, None, None, None, None, None, None, None, None, None, None
+        # 15 forward inputs: q,k,v, cu_q, cu_k, max_q, max_k, dropout,
+        # scale, causal, window, cap, alibi, det, return_lse
+        return (
+            dq,
+            dk,
+            dv,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
 
 
 def _flash_attn_varlen_func_impl(
-    q, k, v, cu_seqlens_q, cu_seqlens_k, max_seqlen_q, max_seqlen_k,
-    dropout_p, softmax_scale, causal, window_size, softcap, alibi_slopes,
-    deterministic, return_softmax_lse, seqused_k=None, block_table=None,
-    return_attn_probs=False, out=None, q_v=None, scheduler_metadata=None,
-    q_descale=None, k_descale=None, v_descale=None, s_aux=None,
-    num_splits=0, cp_world_size=1, cp_rank=0, cp_tot_seqused_k=None, fa_version=2,
+    q,
+    k,
+    v,
+    cu_seqlens_q,
+    cu_seqlens_k,
+    max_seqlen_q,
+    max_seqlen_k,
+    dropout_p,
+    softmax_scale,
+    causal,
+    window_size,
+    softcap,
+    alibi_slopes,
+    deterministic,
+    return_softmax_lse,
+    seqused_k=None,
+    block_table=None,
+    return_attn_probs=False,
+    out=None,
+    q_v=None,
+    scheduler_metadata=None,
+    q_descale=None,
+    k_descale=None,
+    v_descale=None,
+    s_aux=None,
+    num_splits=0,
+    cp_world_size=1,
+    cp_rank=0,
+    cp_tot_seqused_k=None,
+    fa_version=2,
 ):
     """Original inference implementation, factored out."""
     if fa_version != 2:
@@ -1480,12 +1583,36 @@ def _flash_attn_varlen_func_impl(
         logger.debug("GEMS FLASH_ATTN_VARLEN_FUNC(C EXTENSION)")
         with torch_device_fn.device(q.device):
             out_cpp, softmax_lse = torch.ops.flag_gems.flash_attn_varlen_func(
-                q, k, v, max_seqlen_q, cu_seqlens_q, max_seqlen_k, cu_seqlens_k,
-                seqused_k, q_v, dropout_p, softmax_scale, causal, window_size,
-                softcap, alibi_slopes, deterministic, return_attn_probs,
-                block_table, return_softmax_lse, out, scheduler_metadata,
-                q_descale, k_descale, v_descale, s_aux, num_splits,
-                cp_world_size, cp_rank, cp_tot_seqused_k, fa_version,
+                q,
+                k,
+                v,
+                max_seqlen_q,
+                cu_seqlens_q,
+                max_seqlen_k,
+                cu_seqlens_k,
+                seqused_k,
+                q_v,
+                dropout_p,
+                softmax_scale,
+                causal,
+                window_size,
+                softcap,
+                alibi_slopes,
+                deterministic,
+                return_attn_probs,
+                block_table,
+                return_softmax_lse,
+                out,
+                scheduler_metadata,
+                q_descale,
+                k_descale,
+                v_descale,
+                s_aux,
+                num_splits,
+                cp_world_size,
+                cp_rank,
+                cp_tot_seqused_k,
+                fa_version,
             )
         return (out_cpp, softmax_lse) if return_softmax_lse else out_cpp
     else:
@@ -1515,12 +1642,27 @@ def _flash_attn_varlen_func_impl(
             max_seqlen_k.item() if hasattr(max_seqlen_k, "item") else max_seqlen_k
         )
         out, q, k, v, softmax_lse, *_ = mha_varlan_fwd(
-            q, k, v, out, cu_seqlens_q,
+            q,
+            k,
+            v,
+            out,
+            cu_seqlens_q,
             dummy_cu_seqlens_k if cu_seqlens_k is None else cu_seqlens_k,
-            seqused_k, None, block_table, alibi_slopes,
-            max_seqlen_q, max_seqlen_k, dropout_p, softmax_scale,
-            False, causal, real_window_size[0], real_window_size[1],
-            softcap, return_softmax_lse and dropout_p > 0, None,
+            seqused_k,
+            None,
+            block_table,
+            alibi_slopes,
+            max_seqlen_q,
+            max_seqlen_k,
+            dropout_p,
+            softmax_scale,
+            False,
+            causal,
+            real_window_size[0],
+            real_window_size[1],
+            softcap,
+            return_softmax_lse and dropout_p > 0,
+            None,
         )
     return (out, softmax_lse) if return_softmax_lse else out
 
@@ -1616,19 +1758,55 @@ def flash_attn_varlen_func(
     if needs_grad:
         # Training path: use autograd
         return _FlashAttnVarlenFunc.apply(
-            q, k, v, cu_seqlens_q, cu_seqlens_k, max_seqlen_q, max_seqlen_k,
-            dropout_p, softmax_scale, causal, window_size, softcap, alibi_slopes,
-            deterministic, return_softmax_lse,
+            q,
+            k,
+            v,
+            cu_seqlens_q,
+            cu_seqlens_k,
+            max_seqlen_q,
+            max_seqlen_k,
+            dropout_p,
+            softmax_scale,
+            causal,
+            window_size,
+            softcap,
+            alibi_slopes,
+            deterministic,
+            return_softmax_lse,
         )
     else:
         # Inference path: direct call
         return _flash_attn_varlen_func_impl(
-            q, k, v, cu_seqlens_q, cu_seqlens_k, max_seqlen_q, max_seqlen_k,
-            dropout_p, softmax_scale, causal, window_size, softcap, alibi_slopes,
-            deterministic, return_softmax_lse, seqused_k, block_table,
-            return_attn_probs, out, q_v, scheduler_metadata,
-            q_descale, k_descale, v_descale, s_aux, num_splits,
-            cp_world_size, cp_rank, cp_tot_seqused_k, fa_version,
+            q,
+            k,
+            v,
+            cu_seqlens_q,
+            cu_seqlens_k,
+            max_seqlen_q,
+            max_seqlen_k,
+            dropout_p,
+            softmax_scale,
+            causal,
+            window_size,
+            softcap,
+            alibi_slopes,
+            deterministic,
+            return_softmax_lse,
+            seqused_k,
+            block_table,
+            return_attn_probs,
+            out,
+            q_v,
+            scheduler_metadata,
+            q_descale,
+            k_descale,
+            v_descale,
+            s_aux,
+            num_splits,
+            cp_world_size,
+            cp_rank,
+            cp_tot_seqused_k,
+            fa_version,
         )
 
 
@@ -1816,7 +1994,6 @@ def flash_attn_varlen_opt_func(
     return (out, softmax_lse) if return_softmax_lse else out
 
 
-
 # ---------------------------------------------------------------------------
 # Trainable flash-attention entry points (autograd-enabled).
 #
@@ -1879,7 +2056,9 @@ def _mha_fwd_lowlevel(
     # flash_attention_forward 返回 (out, lse, philox_seed, philox_offset, p),
     # 实际上 philox_seed 是 mha_fwd 的 philox_args=[seed,offset], 已是 [2] tensor;
     # philox_offset 是 unused; p 是 S_dmask。对齐库: rng_state = [seed, offset] tensor。
-    rng_state = philox_args if philox_args is not None and philox_args.numel() > 0 else None
+    rng_state = (
+        philox_args if philox_args is not None and philox_args.numel() > 0 else None
+    )
     return out, lse, p, rng_state
 
 
