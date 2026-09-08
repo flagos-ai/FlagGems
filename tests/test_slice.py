@@ -135,8 +135,7 @@ def test_bool_slice_view(layout, dim, start, end, step):
         inp = base[:0]
 
     expected = torch.ops.aten.slice.Tensor(inp, dim, start, end, step)
-    with flag_gems.use_gems():
-        actual = torch.ops.aten.slice.Tensor(inp, dim, start, end, step)
+    actual = flag_gems.slice(inp, dim, start, end, step)
 
     assert actual.dtype == torch.bool
     assert torch.equal(actual, expected)
