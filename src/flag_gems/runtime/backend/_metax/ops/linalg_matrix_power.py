@@ -1,17 +1,3 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 """linalg_matrix_power override for the metax (MACA) backend.
 
 Metax runs the generic NV flow with one difference: its fp64 MMA (maca_mma
@@ -452,6 +438,55 @@ def _metax_fp64_mm(A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
 
 
 @triton.jit
+def _lu_trailing_update_par(
+    LU_ptr,
+    K0: tl.constexpr,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    PANEL: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_B: tl.constexpr,
+):
+    """A[K0+PANEL:M, K0+PANEL:N] -= L @ U  (MetaX-fixed trailing update).
+
+    Same Schur-complement update as the generic kernel, but this one feeds a
+    large-M LU factorization that the generic file never fixed for MetaX: the
+    update is an fp64 ``tl.dot`` whose output rows MetaX's fp64 MMA scrambles
+    (4x4 transpose per 16-row group).  ``_metax_fix_fp64_rows`` un-scrambles
+    before the masked ``tile - update`` store.  BLOCK_M is a multiple of 16
+    (the caller uses _LU_PAR_TILE_M = 64), so G = BLOCK_M // 16.
+    """
+    pid_m = tl.program_id(0)
+    pid_n = tl.program_id(1)
+    pid_b = tl.program_id(2)
+    rows = K0 + PANEL + pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    cols = K0 + PANEL + pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    bidx = tl.arange(0, BLOCK_B)
+    base = pid_b * M * N
+    tile_offs = base + rows[:, None] * N + cols[None, :]
+    tile_mask = (rows[:, None] < M) & (cols[None, :] < N)
+    tile = tl.load(LU_ptr + tile_offs, mask=tile_mask, other=0.0).to(
+        LU_ptr.dtype.element_ty
+    )
+    l_offs = base + rows[:, None] * N + (K0 + bidx[None, :])
+    u_offs = base + (K0 + bidx[:, None]) * N + cols[None, :]
+    l_mask = (rows[:, None] < M) & (bidx[None, :] < PANEL)
+    u_mask = (bidx[:, None] < PANEL) & (cols[None, :] < N)
+    l_vals = tl.load(LU_ptr + l_offs, mask=l_mask, other=0.0).to(
+        LU_ptr.dtype.element_ty
+    )
+    u_vals = tl.load(LU_ptr + u_offs, mask=u_mask, other=0.0).to(
+        LU_ptr.dtype.element_ty
+    )
+    update = tl.dot(l_vals.to(tl.float64), u_vals.to(tl.float64), allow_tf32=False)
+    update = _metax_fix_fp64_rows(update, BLOCK_M, BLOCK_N, BLOCK_M // 16)
+    tl.store(
+        LU_ptr + tile_offs, tile - update.to(LU_ptr.dtype.element_ty), mask=tile_mask
+    )
+
+
+@triton.jit
 def _trsm_update_register(
     A_ptr,
     B_ptr,
@@ -674,9 +709,13 @@ def _matmul(A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
 
 
 # Hook the shared hosts so every solve/matmul inside the generic hosts runs
-# the metax-fixed kernels (one backend per process - safe).
+# the metax-fixed kernels (one backend per process - safe).  The large-M LU
+# factorisation (_lu_factor_parallel, generic) resolves _lu_trailing_update_par
+# from its module globals at call time, so swapping it here redirects the
+# fp64 Schur-update dot through the row-un-scrambling kernel above.
 _generic._trsm_solve_2d = _trsm_solve_2d
 _generic._matmul = _matmul
+_generic._lu_trailing_update_par = _lu_trailing_update_par
 
 
 def linalg_matrix_power(
