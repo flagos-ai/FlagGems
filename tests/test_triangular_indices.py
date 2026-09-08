@@ -23,6 +23,7 @@ INT32_MAX = (1 << 31) - 1
 INT64_MIN = -(1 << 63)
 INT64_MAX = (1 << 63) - 1
 
+
 CASES = [
     (0, 0, 0),
     (0, 7, -10),
@@ -37,10 +38,16 @@ CASES = [
     (129, 257, 0),
 ]
 
+INVALID_ARGUMENT_CASES = [
+    (-1, 2, 0, {}),
+    (2, -1, 0, {}),
+    (2, 2, 0, {"dtype": torch.float32}),
+    (2, 2, 0, {"layout": torch.sparse_coo}),
+    (INT64_MAX + 1, 1, 0, {}),
+    (1, 1, INT64_MAX + 1, {}),
+]
 
-@pytest.mark.parametrize("op_name", ["tril_indices", "triu_indices"])
-@pytest.mark.parametrize("dtype", [torch.int32, torch.int64])
-@pytest.mark.parametrize("row,col,offset", CASES)
+
 def test_triangular_indices(op_name, dtype, row, col, offset):
     torch_op = getattr(torch, op_name)
     gems_op = getattr(flag_gems, op_name)
@@ -62,7 +69,23 @@ def test_triangular_indices(op_name, dtype, row, col, offset):
     assert not result.requires_grad
 
 
-@pytest.mark.parametrize("op_name", ["tril_indices", "triu_indices"])
+test_triangular_indices.__test__ = False
+
+
+@pytest.mark.tril_indices
+@pytest.mark.parametrize("dtype", [torch.int32, torch.int64])
+@pytest.mark.parametrize("row,col,offset", CASES)
+def test_tril_indices(dtype, row, col, offset):
+    test_triangular_indices("tril_indices", dtype, row, col, offset)
+
+
+@pytest.mark.triu_indices
+@pytest.mark.parametrize("dtype", [torch.int32, torch.int64])
+@pytest.mark.parametrize("row,col,offset", CASES)
+def test_triu_indices(dtype, row, col, offset):
+    test_triangular_indices("triu_indices", dtype, row, col, offset)
+
+
 def test_triangular_indices_default_options(op_name):
     result = getattr(flag_gems, op_name)(5, 7, -1, device=flag_gems.device)
     reference = getattr(torch, op_name)(5, 7, -1, device="cpu")
@@ -72,27 +95,19 @@ def test_triangular_indices_default_options(op_name):
     assert result.is_contiguous()
 
 
-@pytest.mark.parametrize(
-    "op_name,row,col,offset,expected",
-    [
-        (
-            "tril_indices",
-            INT64_MAX,
-            INT64_MAX,
-            1 - INT64_MAX,
-            [[INT64_MAX - 1], [0]],
-        ),
-        ("triu_indices", INT64_MAX, 1, 0, [[0], [0]]),
-        ("tril_indices", 1, INT64_MAX, 0, [[0], [0]]),
-        (
-            "triu_indices",
-            1,
-            INT64_MAX,
-            INT64_MAX - 1,
-            [[0], [INT64_MAX - 1]],
-        ),
-    ],
-)
+test_triangular_indices_default_options.__test__ = False
+
+
+@pytest.mark.tril_indices
+def test_tril_indices_default_options():
+    test_triangular_indices_default_options("tril_indices")
+
+
+@pytest.mark.triu_indices
+def test_triu_indices_default_options():
+    test_triangular_indices_default_options("triu_indices")
+
+
 def test_triangular_indices_sparse_int64_extremes(op_name, row, col, offset, expected):
     result = getattr(flag_gems, op_name)(
         row, col, offset, dtype=torch.int64, device=flag_gems.device
@@ -101,15 +116,47 @@ def test_triangular_indices_sparse_int64_extremes(op_name, row, col, offset, exp
     utils.gems_assert_equal(result.cpu(), reference)
 
 
+test_triangular_indices_sparse_int64_extremes.__test__ = False
+
+
+@pytest.mark.tril_indices
 @pytest.mark.parametrize(
-    "op_name,offset,expected_size",
+    "row,col,offset,expected",
     [
-        ("tril_indices", INT64_MIN, 0),
-        ("tril_indices", INT64_MAX, 20),
-        ("triu_indices", INT64_MAX, 0),
-        ("triu_indices", INT64_MIN, 20),
+        (
+            INT64_MAX,
+            INT64_MAX,
+            1 - INT64_MAX,
+            [[INT64_MAX - 1], [0]],
+        ),
+        (1, INT64_MAX, 0, [[0], [0]]),
     ],
 )
+def test_tril_indices_sparse_int64_extremes(row, col, offset, expected):
+    test_triangular_indices_sparse_int64_extremes(
+        "tril_indices", row, col, offset, expected
+    )
+
+
+@pytest.mark.triu_indices
+@pytest.mark.parametrize(
+    "row,col,offset,expected",
+    [
+        (INT64_MAX, 1, 0, [[0], [0]]),
+        (
+            1,
+            INT64_MAX,
+            INT64_MAX - 1,
+            [[0], [INT64_MAX - 1]],
+        ),
+    ],
+)
+def test_triu_indices_sparse_int64_extremes(row, col, offset, expected):
+    test_triangular_indices_sparse_int64_extremes(
+        "triu_indices", row, col, offset, expected
+    )
+
+
 def test_triangular_indices_far_offset_fast_paths(op_name, offset, expected_size):
     result = getattr(flag_gems, op_name)(
         4, 5, offset, dtype=torch.int64, device=flag_gems.device
@@ -118,27 +165,33 @@ def test_triangular_indices_far_offset_fast_paths(op_name, offset, expected_size
     assert result.is_contiguous()
 
 
+test_triangular_indices_far_offset_fast_paths.__test__ = False
+
+
+@pytest.mark.tril_indices
 @pytest.mark.parametrize(
-    "op_name,row,col,offset,expected",
+    "offset,expected_size",
     [
-        (
-            "tril_indices",
-            INT32_MAX + 1,
-            1,
-            -INT32_MAX,
-            [[INT32_MAX], [0]],
-        ),
-        ("triu_indices", INT64_MAX, 1, 0, [[0], [0]]),
-        ("tril_indices", 1, INT64_MAX, 0, [[0], [0]]),
-        (
-            "triu_indices",
-            1,
-            INT32_MAX + 1,
-            INT32_MAX,
-            [[0], [INT32_MAX]],
-        ),
+        (INT64_MIN, 0),
+        (INT64_MAX, 20),
     ],
 )
+def test_tril_indices_far_offset_fast_paths(offset, expected_size):
+    test_triangular_indices_far_offset_fast_paths("tril_indices", offset, expected_size)
+
+
+@pytest.mark.triu_indices
+@pytest.mark.parametrize(
+    "offset,expected_size",
+    [
+        (INT64_MAX, 0),
+        (INT64_MIN, 20),
+    ],
+)
+def test_triu_indices_far_offset_fast_paths(offset, expected_size):
+    test_triangular_indices_far_offset_fast_paths("triu_indices", offset, expected_size)
+
+
 def test_triangular_indices_int32_emitted_value_boundary(
     op_name, row, col, offset, expected
 ):
@@ -149,13 +202,47 @@ def test_triangular_indices_int32_emitted_value_boundary(
     utils.gems_assert_equal(result.cpu(), reference)
 
 
+test_triangular_indices_int32_emitted_value_boundary.__test__ = False
+
+
+@pytest.mark.tril_indices
 @pytest.mark.parametrize(
-    "op_name,row,col,offset",
+    "row,col,offset,expected",
     [
-        ("tril_indices", INT32_MAX + 2, 1, -(INT32_MAX + 1)),
-        ("triu_indices", 1, INT32_MAX + 2, INT32_MAX + 1),
+        (
+            INT32_MAX + 1,
+            1,
+            -INT32_MAX,
+            [[INT32_MAX], [0]],
+        ),
+        (1, INT64_MAX, 0, [[0], [0]]),
     ],
 )
+def test_tril_indices_int32_emitted_value_boundary(row, col, offset, expected):
+    test_triangular_indices_int32_emitted_value_boundary(
+        "tril_indices", row, col, offset, expected
+    )
+
+
+@pytest.mark.triu_indices
+@pytest.mark.parametrize(
+    "row,col,offset,expected",
+    [
+        (INT64_MAX, 1, 0, [[0], [0]]),
+        (
+            1,
+            INT32_MAX + 1,
+            INT32_MAX,
+            [[0], [INT32_MAX]],
+        ),
+    ],
+)
+def test_triu_indices_int32_emitted_value_boundary(row, col, offset, expected):
+    test_triangular_indices_int32_emitted_value_boundary(
+        "triu_indices", row, col, offset, expected
+    )
+
+
 def test_triangular_indices_rejects_unrepresentable_int32_value(
     op_name, row, col, offset
 ):
@@ -165,30 +252,49 @@ def test_triangular_indices_rejects_unrepresentable_int32_value(
         )
 
 
-@pytest.mark.parametrize("op_name", ["tril_indices", "triu_indices"])
-@pytest.mark.parametrize(
-    "row,col,offset,kwargs",
-    [
-        (-1, 2, 0, {}),
-        (2, -1, 0, {}),
-        (2, 2, 0, {"dtype": torch.float32}),
-        (2, 2, 0, {"layout": torch.sparse_coo}),
-        (INT64_MAX + 1, 1, 0, {}),
-        (1, 1, INT64_MAX + 1, {}),
-    ],
-)
+test_triangular_indices_rejects_unrepresentable_int32_value.__test__ = False
+
+
+@pytest.mark.tril_indices
+def test_tril_indices_rejects_unrepresentable_int32_value():
+    test_triangular_indices_rejects_unrepresentable_int32_value(
+        "tril_indices", INT32_MAX + 2, 1, -(INT32_MAX + 1)
+    )
+
+
+@pytest.mark.triu_indices
+def test_triu_indices_rejects_unrepresentable_int32_value():
+    test_triangular_indices_rejects_unrepresentable_int32_value(
+        "triu_indices", 1, INT32_MAX + 2, INT32_MAX + 1
+    )
+
+
 def test_triangular_indices_invalid_arguments(op_name, row, col, offset, kwargs):
     with pytest.raises((RuntimeError, TypeError)):
         getattr(flag_gems, op_name)(row, col, offset, device=flag_gems.device, **kwargs)
 
 
+test_triangular_indices_invalid_arguments.__test__ = False
+
+
+@pytest.mark.tril_indices
 @pytest.mark.parametrize(
-    "op_name,row,col,offset",
-    [
-        ("tril_indices", INT64_MAX, 2, 1),
-        ("triu_indices", INT64_MAX, 2, 1 - INT64_MAX),
-    ],
+    "row,col,offset,kwargs",
+    INVALID_ARGUMENT_CASES,
 )
+def test_tril_indices_invalid_arguments(row, col, offset, kwargs):
+    test_triangular_indices_invalid_arguments("tril_indices", row, col, offset, kwargs)
+
+
+@pytest.mark.triu_indices
+@pytest.mark.parametrize(
+    "row,col,offset,kwargs",
+    INVALID_ARGUMENT_CASES,
+)
+def test_triu_indices_invalid_arguments(row, col, offset, kwargs):
+    test_triangular_indices_invalid_arguments("triu_indices", row, col, offset, kwargs)
+
+
 def test_triangular_indices_rejects_size_overflow(op_name, row, col, offset):
     with pytest.raises(RuntimeError, match="signed 64-bit range"):
         getattr(flag_gems, op_name)(
@@ -196,15 +302,41 @@ def test_triangular_indices_rejects_size_overflow(op_name, row, col, offset):
         )
 
 
-@pytest.mark.parametrize(
-    "op_name,row,offset",
-    [
-        ("tril_indices", INT64_MAX // 16 + 1, 0),
-        ("triu_indices", INT64_MAX // 16 + 1, 1 - (INT64_MAX // 16 + 1)),
-    ],
-)
+test_triangular_indices_rejects_size_overflow.__test__ = False
+
+
+@pytest.mark.tril_indices
+def test_tril_indices_rejects_size_overflow():
+    test_triangular_indices_rejects_size_overflow("tril_indices", INT64_MAX, 2, 1)
+
+
+@pytest.mark.triu_indices
+def test_triu_indices_rejects_size_overflow():
+    test_triangular_indices_rejects_size_overflow(
+        "triu_indices", INT64_MAX, 2, 1 - INT64_MAX
+    )
+
+
 def test_triangular_indices_rejects_allocation_size_overflow(op_name, row, offset):
     with pytest.raises(RuntimeError, match="allocation size"):
         getattr(flag_gems, op_name)(
             row, 1, offset, dtype=torch.int64, device=flag_gems.device
         )
+
+
+test_triangular_indices_rejects_allocation_size_overflow.__test__ = False
+
+
+@pytest.mark.tril_indices
+def test_tril_indices_rejects_allocation_size_overflow():
+    test_triangular_indices_rejects_allocation_size_overflow(
+        "tril_indices", INT64_MAX // 16 + 1, 0
+    )
+
+
+@pytest.mark.triu_indices
+def test_triu_indices_rejects_allocation_size_overflow():
+    row = INT64_MAX // 16 + 1
+    test_triangular_indices_rejects_allocation_size_overflow(
+        "triu_indices", row, 1 - row
+    )
