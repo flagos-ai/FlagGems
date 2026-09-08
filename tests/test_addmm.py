@@ -87,8 +87,7 @@ def test_addmm(monkeypatch, M, N, K, scalar, dtype, b_column_major):
     alpha = beta = scalar
 
     ref_out1 = torch.addmm(ref_bias1, ref_mat1, ref_mat2, alpha=alpha, beta=beta)
-    with flag_gems.use_gems():
-        res_out1 = torch.addmm(bias1, mat1, mat2, alpha=alpha, beta=beta)
+    res_out1 = flag_gems.addmm(bias1, mat1, mat2, alpha=alpha, beta=beta)
 
     utils.gems_assert_close(res_out1, ref_out1, dtype, reduce_dim=K)
 
@@ -96,8 +95,7 @@ def test_addmm(monkeypatch, M, N, K, scalar, dtype, b_column_major):
     ref_bias2 = utils.to_reference(bias2, True)
 
     ref_out2 = torch.addmm(ref_bias2, ref_mat1, ref_mat2, alpha=alpha, beta=beta)
-    with flag_gems.use_gems():
-        res_out2 = torch.addmm(bias2, mat1, mat2, alpha=alpha, beta=beta)
+    res_out2 = flag_gems.addmm(bias2, mat1, mat2, alpha=alpha, beta=beta)
 
     utils.gems_assert_close(res_out2, ref_out2, dtype, reduce_dim=K)
 
@@ -117,8 +115,7 @@ def test_addmm_beta_zero_ignores_bias(dtype):
         utils.to_reference(mat2, True),
         beta=0,
     )
-    with flag_gems.use_gems():
-        result = torch.addmm(bias, mat1, mat2, beta=0)
+    result = flag_gems.addmm(bias, mat1, mat2, beta=0)
 
     assert torch.isfinite(result).all()
     utils.gems_assert_close(result, ref_out, dtype, reduce_dim=K)
@@ -142,8 +139,7 @@ def test_addmm_vector_bias_shapes(M, N, K, dtype, b_column_major):
         utils.to_reference(mat1, True),
         utils.to_reference(mat2, True),
     )
-    with flag_gems.use_gems():
-        result = torch.addmm(bias, mat1, mat2)
+    result = flag_gems.addmm(bias, mat1, mat2)
 
     utils.gems_assert_close(result, ref_out, dtype, reduce_dim=K)
 
@@ -166,8 +162,7 @@ def test_addmm_scalar_bias(dtype, b_column_major):
         utils.to_reference(mat1, True),
         utils.to_reference(mat2, True),
     )
-    with flag_gems.use_gems():
-        result = torch.addmm(bias, mat1, mat2)
+    result = flag_gems.addmm(bias, mat1, mat2)
 
     utils.gems_assert_close(result, ref_out, dtype, reduce_dim=K)
 
@@ -192,8 +187,7 @@ def test_addmm_padded_vector_bias(dtype, b_column_major):
         utils.to_reference(mat1, True),
         utils.to_reference(mat2, True),
     )
-    with flag_gems.use_gems():
-        result = torch.addmm(bias, mat1, mat2)
+    result = flag_gems.addmm(bias, mat1, mat2)
 
     utils.gems_assert_close(result, ref_out, dtype, reduce_dim=K)
 
@@ -218,8 +212,7 @@ def test_addmm_out(M, N, K, scalar, dtype):
     alpha = beta = scalar
 
     torch.addmm(ref_bias1, ref_mat1, ref_mat2, alpha=alpha, beta=beta, out=ref_out)
-    with flag_gems.use_gems():
-        torch.addmm(bias1, mat1, mat2, alpha=alpha, beta=beta, out=out)
+    flag_gems.addmm_out(bias1, mat1, mat2, alpha=alpha, beta=beta, out=out)
 
     utils.gems_assert_close(out, ref_out, dtype, reduce_dim=K)
 
@@ -227,8 +220,7 @@ def test_addmm_out(M, N, K, scalar, dtype):
     ref_bias2 = utils.to_reference(bias2, True)
 
     torch.addmm(ref_bias2, ref_mat1, ref_mat2, alpha=alpha, beta=beta, out=ref_out)
-    with flag_gems.use_gems():
-        torch.addmm(bias2, mat1, mat2, alpha=alpha, beta=beta, out=out)
+    flag_gems.addmm_out(bias2, mat1, mat2, alpha=alpha, beta=beta, out=out)
 
     utils.gems_assert_close(out, ref_out, dtype, reduce_dim=K)
 
@@ -249,8 +241,7 @@ def test_addmm_out_beta_zero_ignores_bias(dtype):
         utils.to_reference(mat2, True),
         beta=0,
     )
-    with flag_gems.use_gems():
-        torch.addmm(bias, mat1, mat2, beta=0, out=out)
+    flag_gems.addmm_out(bias, mat1, mat2, beta=0, out=out)
 
     assert torch.isfinite(out).all()
     utils.gems_assert_close(out, ref_out, dtype, reduce_dim=K)
@@ -275,8 +266,7 @@ def test_addmm_out_vector_bias_shapes(M, N, K, dtype, b_column_major):
         utils.to_reference(mat1, True),
         utils.to_reference(mat2, True),
     )
-    with flag_gems.use_gems():
-        torch.addmm(bias, mat1, mat2, out=out)
+    flag_gems.addmm_out(bias, mat1, mat2, out=out)
 
     utils.gems_assert_close(out, ref_out, dtype, reduce_dim=K)
 
@@ -301,8 +291,7 @@ def test_addmm_out_noncontiguous(dtype, b_column_major):
     ref_out = utils.to_reference(out, True)
 
     torch.addmm(ref_bias, ref_mat1, ref_mat2, out=ref_out)
-    with flag_gems.use_gems():
-        torch.addmm(bias, mat1, mat2, out=out)
+    flag_gems.addmm_out(bias, mat1, mat2, out=out)
 
     utils.gems_assert_close(out, ref_out, dtype, reduce_dim=K)
 
@@ -321,8 +310,7 @@ def test_addmm_broadcast_bias(dtype, bias_shape):
     ref_mat2 = utils.to_reference(mat2, True)
     ref_bias = utils.to_reference(bias, True)
     ref_out = torch.addmm(ref_bias, ref_mat1, ref_mat2)
-    with flag_gems.use_gems():
-        out = torch.addmm(bias, mat1, mat2)
+    out = flag_gems.addmm(bias, mat1, mat2)
 
     utils.gems_assert_close(out, ref_out, dtype, reduce_dim=K)
 
@@ -348,10 +336,9 @@ def test_addmm_dtype_fp32_accum(M, N, K):
         alpha=1.0,
     )
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.addmm.dtype(
-            bias, mat1, mat2, torch.float32, beta=1.0, alpha=1.0
-        )
+    res_out = flag_gems.addmm_dtype(
+        bias, mat1, mat2, torch.float32, beta=1.0, alpha=1.0
+    )
 
     if utils.TO_CPU:
         res_out = res_out.to("cpu")
@@ -373,10 +360,7 @@ def test_addmm_dtype_beta_zero_ignores_bias():
     bias = torch.full((N,), float("nan"), dtype=torch.float16, device=flag_gems.device)
     ref_out = mat1.detach().cpu().float() @ mat2.detach().cpu().float()
 
-    with flag_gems.use_gems():
-        result = torch.ops.aten.addmm.dtype(
-            bias, mat1, mat2, torch.float32, beta=0.0, alpha=1.0
-        )
+    result = flag_gems.addmm_dtype(bias, mat1, mat2, torch.float32, beta=0.0, alpha=1.0)
 
     if utils.TO_CPU:
         result = result.to("cpu")
@@ -407,10 +391,9 @@ def test_addmm_dtype_out_fp32_accum(M, N, K):
         alpha=1.0,
     )
 
-    with flag_gems.use_gems():
-        torch.ops.aten.addmm.dtype_out(
-            bias, mat1, mat2, torch.float32, beta=1.0, alpha=1.0, out=out
-        )
+    flag_gems.addmm_dtype_out(
+        bias, mat1, mat2, torch.float32, beta=1.0, alpha=1.0, out=out
+    )
 
     if utils.TO_CPU:
         out = out.to("cpu")
@@ -433,16 +416,15 @@ def test_addmm_dtype_out_beta_zero_ignores_bias():
     out = torch.empty((M, N), dtype=torch.float32, device=flag_gems.device)
     ref_out = mat1.detach().cpu().float() @ mat2.detach().cpu().float()
 
-    with flag_gems.use_gems():
-        torch.ops.aten.addmm.dtype_out(
-            bias,
-            mat1,
-            mat2,
-            torch.float32,
-            beta=0.0,
-            alpha=1.0,
-            out=out,
-        )
+    flag_gems.addmm_dtype_out(
+        bias,
+        mat1,
+        mat2,
+        torch.float32,
+        beta=0.0,
+        alpha=1.0,
+        out=out,
+    )
 
     if utils.TO_CPU:
         out = out.to("cpu")
