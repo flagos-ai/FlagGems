@@ -7497,6 +7497,27 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: linalg_matrix_exp
+  description: Computes the matrix exponential of a square matrix via scaling-and-squaring
+    with an optimized Taylor polynomial approximation of degree 18.
+  for:
+  - linalg.matrix_exp
+  labels:
+  - aten
+  kind:
+  - LinearAlg
+  stages:
+  - beta: '5.4'
+- id: linalg_matrix_exp_out
+  description: A variant of linalg_matrix_exp that writes the matrix exponential to the provided out tensor.
+  for:
+  - linalg.matrix_exp.out
+  labels:
+  - aten
+  kind:
+  - LinearAlg
+  stages:
+  - beta: '5.4'
 - id: linalg_matrix_norm
   description: 'Computes the matrix norm over the given dimensions.
 
