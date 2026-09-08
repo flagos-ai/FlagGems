@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import math
+
 import torch
 import triton
 
@@ -29,6 +31,25 @@ def _metax_max_num_warps():
 
 def simple_elementwise_blocksize_heur(args):
     return 512
+
+
+def addmm_heur_upgrade(args):
+    num_tiles = math.ceil(
+        (args["M"] * args["N"]) / (args["BLOCK_SIZE_M"] * args["BLOCK_SIZE_N"])
+    )
+    return num_tiles.bit_length() > 31
+
+
+def addmm_heur_upgrade_a_offs(args):
+    return math.ceil(args["M"] * args["K"]).bit_length() > 31
+
+
+def addmm_heur_upgrade_b_offs(args):
+    return math.ceil(args["K"] * args["N"]).bit_length() > 31
+
+
+def addmm_heur_upgrade_c_offs(args):
+    return math.ceil(args["M"] * args["N"]).bit_length() > 31
 
 
 def argmax_heur_block_m(args):
@@ -400,6 +421,12 @@ def zeros_heur_num_warps(args):
 
 
 HEURISTICS_CONFIGS = {
+    "addmm": {
+        "UPGRADE": addmm_heur_upgrade,
+        "UPGRADE_A_OFFS": addmm_heur_upgrade_a_offs,
+        "UPGRADE_B_OFFS": addmm_heur_upgrade_b_offs,
+        "UPGRADE_C_OFFS": addmm_heur_upgrade_c_offs,
+    },
     "amax": {
         "BLOCK_M": lambda args: 4,
         "BLOCK_N": lambda args: 1024,
