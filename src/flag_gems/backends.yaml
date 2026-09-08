@@ -83,6 +83,9 @@ backends:
     deps:
       - torch==2.9.0+cpu
       - torch-npu==2.9.0
+      - decorator==5.1.1
+      - attrs==24.2.0
+      - psutil==6.0.0
 
   ascend-cann900:
     python: "3.11"
@@ -99,6 +102,7 @@ backends:
 
   cambricon-neuware443:
     python: "3.10"
+    cmake_backend: MLU
     triton: triton==3.2.0+mlu1.7.2
     env:
       NEUWARE_HOME: /usr/local/neuware
@@ -113,6 +117,7 @@ backends:
 
   cambricon-neuware472:
     python: "3.12"
+    cmake_backend: MLU
     triton: triton==3.4.0+mlu2.1.1
     env:
       NEUWARE_HOME: /usr/local/neuware
@@ -148,7 +153,7 @@ backends:
     python: "3.12"
     cmake_backend: GCU
     triton: triton==3.6.0
-    flagtree: flagtree==0.6.0+enflame3.6
+    flagtree: flagtree==0.6.1+enflame3.6
     triton_post_install:
       - triton-gcu==3.6.0+1.0.20260722
     # This version of flagtree doesn't work yet
@@ -181,7 +186,7 @@ backends:
       - torch==2.9.0+das.opt1.dtk2604
 
   iluvatar:
-    python: "3.10"
+    python: "3.12"
     cmake_backend: IX
     triton: triton==3.1.0+corex.4.4.0
     # flagtree==0.5.1+iluvatar3.1 — plugin loading bug in venv, disabled for now
@@ -189,6 +194,7 @@ backends:
       COREX_ROOT: /usr/local/corex
       PATH: $COREX_ROOT/bin:$PATH
       LD_LIBRARY_PATH: $COREX_ROOT/lib:$LD_LIBRARY_PATH
+      CPATH: /usr/local/cuda-10.2/include
     deps:
       - torch==2.7.1+corex.4.4.0
       - torchaudio==2.7.1+corex.4.4.0

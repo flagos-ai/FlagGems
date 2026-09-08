@@ -153,3 +153,53 @@ def addbmm(bias, batch1, batch2, beta=1.0, alpha=1.0):
         )
 
     return out
+
+
+def addbmm_(bias, batch1, batch2, beta=1.0, alpha=1.0):
+    logger.debug("GEMS ADDBMM_")
+
+    assert batch1.ndim == 3 and batch2.ndim == 3, "batch1 and batch2 must be 3D"
+    assert bias.ndim == 2, "bias must be 2D"
+
+    B, M, K = batch1.shape
+    _, K2, N = batch2.shape
+    assert K == K2, "Inner dimensions must match"
+    assert (
+        bias.shape[0] == M and bias.shape[1] == N
+    ), f"bias shape mismatch: expected ({M}, {N}), got {bias.shape}"
+
+    batch1 = batch1.contiguous()
+    batch2 = batch2.contiguous()
+    bias_contig = bias.contiguous()
+
+    grid = lambda META: (
+        triton.cdiv(M, META["BLOCK_SIZE_M"]),
+        triton.cdiv(N, META["BLOCK_SIZE_N"]),
+    )
+
+    with torch_device_fn.device(bias.device):
+        addbmm_kernel[grid](
+            bias_contig,
+            batch1,
+            batch2,
+            bias,
+            alpha,
+            beta,
+            B,
+            M,
+            N,
+            K,
+            bias_contig.stride(0),
+            bias_contig.stride(1),
+            batch1.stride(0),
+            batch1.stride(1),
+            batch1.stride(2),
+            batch2.stride(0),
+            batch2.stride(1),
+            batch2.stride(2),
+            bias.stride(0),
+            bias.stride(1),
+            IS_FP64=bias.dtype == torch.float64,
+        )
+
+    return bias

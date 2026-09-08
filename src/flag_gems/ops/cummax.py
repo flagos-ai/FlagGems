@@ -487,3 +487,159 @@ def cummax(
     else:
         scan_then_fan_loop(input, out, out_indices, M, N, K, compute_dtype)
     return out, out_indices
+
+
+@triton.jit
+def cummaxmin_backward_kernel(
+    grad_ptr,
+    indices_ptr,
+    grad_input_ptr,
+    reduction_size,
+    inner_size,
+    red_stride,
+    BLOCK_SIZE: tl.constexpr,
+):
+    """Backward for cummax/cummin when the reduction axis is the last (inner_size == 1).
+
+    The logical layout is [outer, reduction, inner] where ``dim`` is the reduction
+    axis. Program id 0 indexes an (outer, inner) pair packed as
+    ``row = outer * inner_size + inner``. Each grad element at reduction position
+    ``i`` scatters (atomic add) into grad_input at the reduction position given by
+    ``indices``, keeping outer/inner fixed. Accumulation is done in float32.
+    """
+    row = tl.program_id(0)
+    outer = row // inner_size
+    inner = row % inner_size
+
+    base = outer * (reduction_size * inner_size) + inner
+
+    grad_base = grad_ptr + base
+    indices_base = indices_ptr + base
+    grad_input_base = grad_input_ptr + base
+
+    for block_start in range(0, reduction_size, BLOCK_SIZE):
+        pos = block_start + tl.arange(0, BLOCK_SIZE)
+        mask = pos < reduction_size
+
+        off = pos * red_stride
+        g = tl.load(grad_base + off, mask=mask, other=0.0).to(tl.float32)
+        t = tl.load(indices_base + off, mask=mask, other=0)
+
+        # Scatter to target reduction position (same outer/inner row).
+        tl.atomic_add(grad_input_base + t * red_stride, g, mask=mask)
+
+
+@triton.jit
+def cummaxmin_backward_inner_kernel(
+    grad_ptr,
+    indices_ptr,
+    grad_input_ptr,
+    reduction_size,
+    inner_size,
+    BLOCK_SIZE: tl.constexpr,
+):
+    """Coalesced backward variant for inner_size > 1 (reduction axis is interior).
+
+    Program id 0 indexes an (outer, r) pair as ``row = outer * reduction_size + r``.
+    Threads vectorize over the contiguous inner axis (stride 1), so grad and
+    indices loads are fully coalesced. Each element ``grad[outer, r, j]`` scatters
+    into ``grad_input[outer, t, j]`` where ``t = indices[outer, r, j]``, keeping the
+    inner column ``j`` fixed. Accumulation is done in float32.
+    """
+    row = tl.program_id(0)
+    outer = row // reduction_size
+
+    outer_base = outer * (reduction_size * inner_size)
+    src_base = outer_base + row % reduction_size * inner_size
+
+    grad_base = grad_ptr + src_base
+    indices_base = indices_ptr + src_base
+
+    for block_start in range(0, inner_size, BLOCK_SIZE):
+        j = block_start + tl.arange(0, BLOCK_SIZE)
+        mask = j < inner_size
+
+        g = tl.load(grad_base + j, mask=mask, other=0.0).to(tl.float32)
+        t = tl.load(indices_base + j, mask=mask, other=0)
+
+        # Target keeps inner column j fixed, varies reduction position by t.
+        out_off = outer_base + t * inner_size + j
+        tl.atomic_add(grad_input_ptr + out_off, g, mask=mask)
+
+
+def cummaxmin_backward(
+    grad_output: Tensor, input: Tensor, indices: Tensor, dim: int
+) -> Tensor:
+    """Backward pass for cummax/cummin operations.
+
+    Implements the scatter-add semantic ``grad_input.scatter_add_(dim, indices,
+    grad_output)``: each output-position gradient flows back to the input element
+    that produced it (given by ``indices`` from the forward pass). Repeated indices
+    accumulate. Accumulation is performed in float32 for numerical stability and
+    cast back to the input dtype.
+
+    Args:
+        grad_output: Gradient w.r.t. the output values (same shape as input)
+        input: Original input tensor (used only for shape/dtype/device)
+        indices: Indices from cummax/cummin forward pass (int64)
+        dim: Dimension along which cummax/cummin was computed
+
+    Returns:
+        grad_input: Gradient w.r.t. the input (same shape and dtype as input)
+    """
+    logger.debug("GEMS cummaxmin_backward")
+
+    ndim = grad_output.ndim
+    if dim < 0:
+        dim = dim + ndim
+
+    shape = list(grad_output.shape)
+    reduction_size = shape[dim]
+
+    # Ensure contiguous so strides are the standard row-major layout.
+    grad_c = grad_output.contiguous()
+    indices_c = indices.contiguous()
+
+    # inner_size = product of dims after `dim`; outer_size = product before.
+    inner_size = 1
+    for i in range(dim + 1, ndim):
+        inner_size *= shape[i]
+    outer_size = 1
+    for i in range(dim):
+        outer_size *= shape[i]
+
+    # Float32 accumulator in the same [outer, reduction, inner] contiguous layout,
+    # matching the reference upcast-accumulate semantics.
+    grad_input_f32 = torch.zeros(shape, dtype=torch.float32, device=grad_output.device)
+
+    if inner_size == 1:
+        # Reduction axis is last (stride 1): vectorize over reduction, coalesced.
+        num_rows = outer_size * inner_size
+        BLOCK_SIZE = min(triton.next_power_of_2(max(reduction_size, 1)), 1024)
+        grid = (num_rows,)
+        with torch_device_fn.device(grad_output.device):
+            cummaxmin_backward_kernel[grid](
+                grad_c,
+                indices_c,
+                grad_input_f32,
+                reduction_size,
+                inner_size,
+                inner_size,  # red_stride == inner_size == 1
+                BLOCK_SIZE,
+            )
+    else:
+        # Reduction axis is interior: vectorize over the contiguous inner axis
+        # so grad/indices loads and scatter are coalesced.
+        BLOCK_SIZE = min(triton.next_power_of_2(max(inner_size, 1)), 1024)
+        grid = (outer_size * reduction_size,)
+        with torch_device_fn.device(grad_output.device):
+            cummaxmin_backward_inner_kernel[grid](
+                grad_c,
+                indices_c,
+                grad_input_f32,
+                reduction_size,
+                inner_size,
+                BLOCK_SIZE,
+            )
+
+    return grad_input_f32.to(grad_output.dtype)

@@ -81,6 +81,18 @@ def test_exponential_pvalue(shape, dtype, lambd):
     assert pvalue > 0.05
 
 
+@pytest.mark.exponential
+@pytest.mark.parametrize("shape", DISTRIBUTION_SHAPES)
+@pytest.mark.parametrize("dtype", (torch.float32,))
+@pytest.mark.parametrize("lambd", (0.01, 0.5, 100.0))
+def test_exponential_out_pvalue(shape, dtype, lambd):
+    x = torch.empty(size=shape, dtype=dtype, device=flag_gems.device)
+    y = flag_gems.exponential(x, lambd=lambd)
+    expo_cdf = lambda v: np.where(v < 0, 0, 1.0 - np.exp(-lambd * v))
+    pvalue = scipy.stats.kstest(y.cpu().numpy().flatten(), expo_cdf).pvalue
+    assert pvalue > 0.05
+
+
 @pytest.mark.rand
 @pytest.mark.parametrize("shape", DISTRIBUTION_SHAPES)
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])

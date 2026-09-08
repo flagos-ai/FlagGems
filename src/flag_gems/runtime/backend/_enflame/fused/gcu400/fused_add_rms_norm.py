@@ -37,7 +37,7 @@ def fused_add_rms_norm_kernel(
     inv_N,
     BLOCK_N: tl.constexpr,
 ):
-    if tl.constexpr(input_ptr.dtype.element_ty == tl.float16) or tl.constexpr(
+    if tl.constexpr(input_ptr.dtype.element_ty == tl.float16) | tl.constexpr(
         input_ptr.dtype.element_ty == tl.bfloat16
     ):
         cdtype = tl.float32

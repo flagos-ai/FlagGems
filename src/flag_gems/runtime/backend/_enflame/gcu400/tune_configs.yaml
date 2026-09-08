@@ -176,6 +176,13 @@ baddbmm:
     GROUP_M: 2
   num_stages: 2
   num_warps: 4
+- META:
+    TILE_M: 64
+    TILE_N: 64
+    TILE_K: 64
+    GROUP_M: 2
+  num_stages: 2
+  num_warps: 4
 argmax:
 - META:
     BLOCK_M: 8

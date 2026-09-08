@@ -79,27 +79,7 @@ jobs:
               ;;
             ascend)
               VENDOR="ascend"
-              # The ascend runner pool contains nodes with two different CANN
-              # toolkits (8.5.x and 9.0.x). The job may land on either node, so
-              # detect the CANN version on the node and pick the matching
-              # backend: 8.5.x -> ascend-cann850, 9.0.x -> ascend-cann900
-              CANN_VERSION=$(ls -d /usr/local/Ascend/cann-* 2>/dev/null | sed 's|.*/cann-||' | sort -V | tail -1)
-              case "${CANN_VERSION}" in
-                8.5*)
-                  BACKEND="ascend-cann850"
-                  ;;
-                9.0*)
-                  BACKEND="ascend-cann900"
-                  ;;
-                *)
-                  echo "::error::Cannot detect CANN version on ascend runner (got '${CANN_VERSION}')" >&2
-                  exit 1
-                  ;;
-              esac
-              ;;
-            cann850)
-              VENDOR="ascend"
-              BACKEND="ascend-cann850"
+              BACKEND="ascend-cann900"
               ;;
             cann9)
               VENDOR="ascend"

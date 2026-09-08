@@ -52,9 +52,9 @@ def test_weight_norm_dim0():
     bench = base.GenericBenchmarkExcluse1D(
         op_name="weight_norm",
         input_fn=weight_norm_input_fn,
-        torch_op=torch.ops.aten._weight_norm.default,
-        dtypes=consts.FLOAT_DTYPES,
+        torch_op=torch._weight_norm,
     )
+    bench.set_gems(flag_gems.weight_norm)
     bench.run()
 
 
@@ -65,6 +65,34 @@ def test_weight_norm_dim0():
 def test_weight_norm_dim_last():
     bench = base.GenericBenchmarkExcluse1D(
         op_name="weight_norm",
+        input_fn=weight_norm_input_fn_last,
+        torch_op=torch._weight_norm,
+    )
+    bench.set_gems(flag_gems.weight_norm)
+    bench.run()
+
+
+@pytest.mark.underscore_weight_norm
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_underscore_weight_norm_dim0():
+    bench = base.GenericBenchmarkExcluse1D(
+        op_name="_weight_norm",
+        input_fn=weight_norm_input_fn,
+        torch_op=torch.ops.aten._weight_norm.default,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.underscore_weight_norm
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_underscore_weight_norm_dim_last():
+    bench = base.GenericBenchmarkExcluse1D(
+        op_name="_weight_norm",
         input_fn=weight_norm_input_fn_last,
         torch_op=torch.ops.aten._weight_norm.default,
         dtypes=consts.FLOAT_DTYPES,
