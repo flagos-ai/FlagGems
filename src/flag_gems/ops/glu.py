@@ -31,6 +31,8 @@ if HAS_TLE:
 else:
     tle = None
 
+HAS_TLE_EXTRACT_TILE = HAS_TLE and hasattr(tle, "extract_tile")
+
 def _next_pow2(x: int) -> int:
     return 1 if x <= 1 else 2 ** math.ceil(math.log2(x))
 
@@ -46,7 +48,7 @@ def glu_kernel(a, b):
 # From: FlagTree python/tutorials/tle/05-glu.py
 # ============================================================================
 
-if HAS_TLE:
+if HAS_TLE_EXTRACT_TILE:
 
     # (ROWS_PER_PROGRAM, num_warps, loop_stages). Include two-warp multi-stage candidates on
     # longer loops so async loads can overlap computation without requiring four warps.
@@ -148,7 +150,7 @@ if HAS_TLE:
         x_ptr,
         out_ptr,
         N,
-        D,
+        D: tl.constexpr,
         stride_xn,
         stride_outn,
         D_P2: tl.constexpr,
@@ -160,6 +162,10 @@ if HAS_TLE:
         row_start = tl.program_id(0) * ROWS_PER_PROGRAM
         offs = tl.arange(0, D2_P2)
         offs_d = tl.arange(0, D_P2)
+        # Pad A and B separately so extract_tile's second tile starts at B.
+        # For power-of-two D this reduces to the original contiguous offsets.
+        cols = offs % D_P2
+        input_offs = tl.where(offs < D_P2, cols, D + cols)
 
         # Process rows sequentially so halo/a/b/result registers can be
         # reused instead of materializing a multi-row tile.
@@ -174,9 +180,9 @@ if HAS_TLE:
         ):
             row = row_start + row_offset
             row_mask = row < N
-            load_mask = row_mask & (offs < (D * 2))
+            load_mask = row_mask & (cols < D)
             halo = tl.load(
-                x_ptr + row * stride_xn + offs,
+                x_ptr + row * stride_xn + input_offs,
                 mask=load_mask,
                 other=0.0,
             )
@@ -217,7 +223,7 @@ def glu(self, dim=-1):
     logger.debug("GEMS GLU FORWARD")
     D2 = self.shape[-1]
     D = D2 // 2
-    if HAS_TLE and dim == -1 and D < 8192:
+    if HAS_TLE_EXTRACT_TILE and dim == -1 and D < 8192:
         logger.debug("GEMS GLU FORWARD (TLE extract_tile path)")
         N = 1
         for d in self.shape[:-1]:
@@ -228,7 +234,7 @@ def glu(self, dim=-1):
         d_p2 = _next_pow2(D)
         d2_p2 = _next_pow2(D2)
 
-        if N == 0:
+        if N == 0 or D == 0:
             return out.reshape(self.shape[:-1] + (D,))
 
         with torch_device_fn.device(self.device):
