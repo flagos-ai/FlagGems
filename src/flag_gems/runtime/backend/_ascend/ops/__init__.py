@@ -104,6 +104,7 @@ from .replication_pad2d_backward import (
 )
 from .resolve_neg import resolve_neg
 from .rms_norm import rms_norm
+from .rms_norm_w8a16_int8 import rms_norm_w8a16_int8
 from .scatter import scatter, scatter_
 from .scatter_add_ import scatter_add_
 from .select_backward import select_backward
@@ -251,6 +252,7 @@ __all__ = [
     "replication_pad2d_backward_grad_input",
     "resolve_neg",
     "rms_norm",
+    "rms_norm_w8a16_int8",
     "scatter",
     "scatter_",
     "scatter_add_",
