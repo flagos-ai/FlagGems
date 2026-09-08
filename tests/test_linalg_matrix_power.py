@@ -15,6 +15,7 @@ else:
 # ---------------------------------------------------------------------------
 SHAPES_2D = [(2, 2), (3, 3), (4, 4), (5, 5), (8, 8)]
 SHAPES_BATCH = [(2, 2, 2), (3, 4, 4), (2, 3, 5, 5)]
+# The backend of ASCEND does not support matrix_power for n<0
 if flag_gems.vendor_name == "ascend":
     N_VALUES = [0, 1, 2, 3, 5, 8]
 else:
@@ -54,6 +55,7 @@ LARGE_CASES = [
 ]
 
 # negative powers on larger matrices
+# The backend of ASCEND does not support matrix_power for n<0
 if flag_gems.vendor_name != "ascend":
     LARGE_CASES += [
         *[
