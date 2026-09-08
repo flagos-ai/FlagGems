@@ -33,6 +33,23 @@ from flag_gems.ops.flash_attention_backward import (
 logger = logging.getLogger(__name__)
 
 
+def _normalize_attn_bias(attn_bias, batch, num_heads, seq_len_q, seq_len_k):
+    """Normalize an attention bias to a (batch, heads, seq_q, seq_k) view.
+
+    2D (seq_q, seq_k) and 3D (batch, seq_q, seq_k) biases are unsqueezed
+    to 4D, then expanded (stride-0, zero-copy) to the full shape.
+    """
+    if attn_bias.ndim == 2:
+        attn_bias = attn_bias.unsqueeze(0).unsqueeze(0)
+    elif attn_bias.ndim == 3:
+        attn_bias = attn_bias.unsqueeze(1)
+    elif attn_bias.ndim != 4:
+        raise ValueError(
+            f"attn_bias must be 2D, 3D, or 4D; got {attn_bias.ndim}D tensor"
+        )
+    return attn_bias.expand(batch, num_heads, seq_len_q, seq_len_k)
+
+
 def _flash_attn_backward_bhsd(
     dOut,
     Q,
@@ -79,8 +96,16 @@ def _flash_attn_backward_bhsd(
 
     if H_q % H_k != 0:
         raise ValueError(f"H_q ({H_q}) must be a multiple of H_k ({H_k})")
+    if V.shape[-1] != Head_Dim:
+        raise NotImplementedError(
+            "cudnn_attention_backward: value head dim "
+            f"({V.shape[-1]}) != q/k head dim ({Head_Dim}) is not yet supported"
+        )
+    if softmax_scale is not None:
+        scale = softmax_scale
+    else:
+        scale = 1.0 / math.sqrt(Head_Dim)
     group_size = H_q // H_k
-    scale = softmax_scale or (1.0 / math.sqrt(Head_Dim))
 
     use_dropout = is_dropout and (dropout_p > 0.0)
     if use_dropout:
@@ -111,7 +136,9 @@ def _flash_attn_backward_bhsd(
     dOut = dOut.contiguous()
     L = L.contiguous()
     if has_bias:
-        attn_bias = attn_bias.contiguous()
+        attn_bias = _normalize_attn_bias(
+            attn_bias, Batch, H_q, SeqLen_q, SeqLen_k
+        ).contiguous()
 
     bias_ptr = attn_bias if has_bias else Q
     dQ = torch.empty_like(Q)

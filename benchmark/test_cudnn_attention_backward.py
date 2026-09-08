@@ -49,7 +49,8 @@ def cudnn_attn_forward_native(
     dropout_p=0.0,
     softmax_scale=None,
 ):
-    scale = softmax_scale or (1.0 / math.sqrt(Q.shape[-1]))
+    # scale=None and scale=0.0 are distinct behaviors.
+    scale = softmax_scale
 
     results = torch.ops.aten._scaled_dot_product_cudnn_attention(
         Q,
@@ -220,7 +221,7 @@ def _cudnn_attn_bwd_gems(
     is_causal,
     scale=None,
 ):
-    return flag_gems.ops.cudnn_attention_backward(
+    return flag_gems.cudnn_attention_backward(
         dOut_bhsd,
         Q_bhsd,
         K_bhsd,

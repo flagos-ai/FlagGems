@@ -3277,7 +3277,7 @@ ops:
   kind:
   - NeuralNetwork
   stages:
-  - beta: '5.5'
+  - alpha: '5.4'
 - id: cudnn_attention_forward
   description: 'Forward kernel for cuDNN attention, computing scaled dot-product
 
