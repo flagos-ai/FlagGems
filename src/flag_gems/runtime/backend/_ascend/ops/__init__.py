@@ -39,6 +39,7 @@ from .cumsum import cumsum, normed_cumsum
 from .diag import diag
 from .diag_embed import diag_embed
 from .diagonal import diagonal_backward
+from .dist import dist
 from .dot import dot
 from .embedding import embedding
 from .exponential import exponential
@@ -64,7 +65,9 @@ from .linalg_lstsq import linalg_lstsq
 from .linalg_lu import linalg_lu, linalg_lu_out
 from .linalg_lu_factor import linalg_lu_factor, linalg_lu_factor_out
 from .linalg_lu_factor_ex import linalg_lu_factor_ex, linalg_lu_factor_ex_out
+from .linalg_qr import linalg_qr, linalg_qr_out
 from .linspace import linspace
+from .log_normal import log_normal
 from .log_sigmoid_backward import log_sigmoid_backward, log_sigmoid_backward_out
 from .log_softmax import log_softmax, log_softmax_backward, log_softmax_out
 from .masked_fill import masked_fill, masked_fill_
@@ -100,10 +103,12 @@ from .replication_pad2d_backward import (
 )
 from .resolve_neg import resolve_neg
 from .rms_norm import rms_norm
+from .rms_norm_w8a16_int8 import rms_norm_w8a16_int8
 from .scatter import scatter, scatter_
 from .scatter_add_ import scatter_add_
 from .select_backward import select_backward
 from .select_scatter import select_scatter
+from .silu import silu, silu_
 from .slice_scatter import slice_scatter
 from .softmax import softmax, softmax_backward, softmax_backward_out, softmax_out
 from .sort import sort
@@ -112,6 +117,7 @@ from .stack import stack
 from .threshold import threshold, threshold_backward
 from .triu import triu
 from .unique import _unique2
+from .unsafe_index import unsafe_index
 from .upsample_bicubic2d_aa import _upsample_bicubic2d_aa
 from .upsample_linear1d_backward import upsample_linear1d_backward
 from .upsample_nearest2d import upsample_nearest2d
@@ -154,6 +160,7 @@ __all__ = [
     "diag",
     "diag_embed",
     "diagonal_backward",
+    "dist",
     "dot",
     "embedding",
     "exponential",
@@ -195,7 +202,10 @@ __all__ = [
     "linalg_lu_factor_ex_out",
     "linalg_lu_factor_out",
     "linalg_lu_out",
+    "linalg_qr",
+    "linalg_qr_out",
     "linspace",
+    "log_normal",
     "log_sigmoid_backward",
     "log_sigmoid_backward_out",
     "log_softmax",
@@ -239,6 +249,7 @@ __all__ = [
     "replication_pad2d_backward_grad_input",
     "resolve_neg",
     "rms_norm",
+    "rms_norm_w8a16_int8",
     "scatter",
     "scatter_",
     "scatter_add_",
@@ -249,6 +260,8 @@ __all__ = [
     "select_backward",
     "select_scatter",
     "slice_scatter",
+    "silu",
+    "silu_",
     "softmax",
     "softmax_backward",
     "softmax_backward_out",
@@ -260,6 +273,7 @@ __all__ = [
     "threshold",
     "threshold_backward",
     "triu",
+    "unsafe_index",
     "upsample_linear1d_backward",
     "upsample_nearest2d",
     "var_mean",
