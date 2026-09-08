@@ -7534,6 +7534,29 @@ ops:
   - LinearAlg
   stages:
   - alpha: '5.4'
+- id: linalg_matrix_power
+  description: |
+    Computes the n-th power of a square matrix using binary exponentiation.
+  for:
+  - linalg_matrix_power
+  labels:
+  - aten
+  kind:
+  - LinearAlg
+  stages:
+  - beta: '5.4'
+- id: linalg_matrix_power_out
+  description: 'Out-of-place version of linalg_matrix_power. Supports calling
+    torch.linalg.matrix_power(A, n, *, out=None). The out parameter provides a
+    pre-allocated output tensor for in-place writing.'
+  for:
+  - linalg_matrix_power.out
+  labels:
+  - aten
+  kind:
+  - LinearAlg
+  stages:
+  - beta: '5.4'
 - id: linalg_matrix_rank
   description: |
     Computes the numerical rank of a matrix or a batch of matrices.
@@ -14057,6 +14080,20 @@ ops:
   - MoE
   stages:
   - beta: '5.3'
+- id: topk_w8a16_fp8
+  description: 'Returns the k largest (or smallest) elements of a group-wise FP8 E5M2
+    tensor along the last dimension, dequantizing with per-group scales.
+
+    '
+  for:
+  - None
+  labels:
+  - NoCPU
+  - Quantization
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: trace
   description: Returns the sum of the elements of the diagonal of the input 2-D matrix.
   for:

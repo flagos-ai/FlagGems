@@ -187,11 +187,71 @@ def bmm_sqmma_descriptor_pre_hook(nargs):
 @libtuner(
     configs=[
         triton.Config(
-            {"BLOCK_SIZE_M": 128, "BLOCK_SIZE_N": 128, "BLOCK_SIZE_K": 64},
+            {
+                "BLOCK_SIZE_M": 128,
+                "BLOCK_SIZE_N": 128,
+                "BLOCK_SIZE_K": 64,
+                "GROUP_M": 8,
+            },
             num_stages=1,
             num_warps=4,
             pre_hook=bmm_sqmma_descriptor_pre_hook,
-        )
+        ),
+        triton.Config(
+            {
+                "BLOCK_SIZE_M": 128,
+                "BLOCK_SIZE_N": 64,
+                "BLOCK_SIZE_K": 64,
+                "GROUP_M": 8,
+            },
+            num_stages=1,
+            num_warps=4,
+            pre_hook=bmm_sqmma_descriptor_pre_hook,
+        ),
+        triton.Config(
+            {
+                "BLOCK_SIZE_M": 64,
+                "BLOCK_SIZE_N": 128,
+                "BLOCK_SIZE_K": 64,
+                "GROUP_M": 8,
+            },
+            num_stages=1,
+            num_warps=4,
+            pre_hook=bmm_sqmma_descriptor_pre_hook,
+        ),
+        triton.Config(
+            {
+                "BLOCK_SIZE_M": 64,
+                "BLOCK_SIZE_N": 64,
+                "BLOCK_SIZE_K": 64,
+                "GROUP_M": 4,
+            },
+            num_stages=1,
+            num_warps=4,
+            pre_hook=bmm_sqmma_descriptor_pre_hook,
+        ),
+        triton.Config(
+            {
+                "BLOCK_SIZE_M": 128,
+                "BLOCK_SIZE_N": 128,
+                "BLOCK_SIZE_K": 128,
+                "GROUP_M": 8,
+            },
+            num_stages=1,
+            num_warps=4,
+            pre_hook=bmm_sqmma_descriptor_pre_hook,
+        ),
+        triton.Config(
+            {
+                "BLOCK_SIZE_M": 128,
+                "BLOCK_SIZE_N": 128,
+                "BLOCK_SIZE_K": 256,
+                "GROUP_M": 8,
+            },
+            num_stages=1,
+            num_warps=4,
+            pre_hook=bmm_sqmma_descriptor_pre_hook,
+        ),
     ],
     key=["M", "N", "K"],
     strategy=["align32", "align32", "align32"],
@@ -214,12 +274,17 @@ def bmm_sqmma_kernel(
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_N: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
+    GROUP_M: tl.constexpr,
 ):
     pid = tl.program_id(axis=0)
     batch_index = tl.program_id(axis=1)
-    num_pid_m = tl.cdiv(M, BLOCK_SIZE_M)
-    pid_m = pid % num_pid_m
-    pid_n = pid // num_pid_m
+    grid_m = tl.cdiv(M, BLOCK_SIZE_M)
+    grid_n = tl.cdiv(N, BLOCK_SIZE_N)
+    width = GROUP_M * grid_n
+    group_id = pid // width
+    group_size = min(grid_m - group_id * GROUP_M, GROUP_M)
+    pid_m = group_id * GROUP_M + (pid % group_size)
+    pid_n = (pid % width) // group_size
     offs_am = (pid_m * BLOCK_SIZE_M + batch_index * M).to(tl.int32)
     offs_bn = (pid_n * BLOCK_SIZE_N).to(tl.int32)
     offs_ak = 0
