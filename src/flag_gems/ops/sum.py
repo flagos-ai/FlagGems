@@ -81,11 +81,21 @@ def sum(inp, *, dtype=None):
     return out
 
 def sum_paddle(x: 'Tensor', axis: 'int | Sequence[int] | None' = None, dtype: 'DTypeLike | None' = None, keepdim: 'bool' = False, name: 'str | None' = None, *, out: 'Tensor | None' = None) -> 'Tensor':
-    return sum(inp = x, dtype=dtype)
+    # `axis` must be forwarded: dropping it silently turns every axis reduction
+    # into a full reduction. sum_dim_comm treats `[]` as "reduce all".
+    if axis is None:
+        dim = []
+    elif isinstance(axis, int):
+        dim = [axis]
+    else:
+        dim = list(axis)
+    if out is not None:
+        return sum_dim_out(x, dim, keepdim, dtype=dtype, out=out)
+    return sum_dim(x, dim, keepdim, dtype=dtype)
     
 def sum_out(inp, *, dtype=None, out):
     logger.debug("GEMS SUM_OUT")
-    M = inp.numel()
+    M = math.prod(inp.shape)  # paddle numel() returns a device Tensor
     if dtype is None:
         dtype = inp.dtype
         if dtype is torch.bool:
@@ -261,7 +271,7 @@ def sum_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
         N = inp.shape[dim]
         M = reduce(lambda x, y: x * y, shape[:dim], 1)
         inp = inp.contiguous()
-        K = inp.numel() // M // N
+        K = math.prod(inp.shape) // M // N  # paddle numel() returns a device Tensor
         shape[dim] = 1
         if out is None:
             out = torch.empty(shape, dtype=dtype, device=inp.device)
@@ -293,7 +303,7 @@ def sum_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
         for i in dim:
             N *= shape[i]
             shape[i] = 1
-        M = inp.numel() // N
+        M = math.prod(inp.shape) // N  # paddle numel() returns a device Tensor
         if out is None:
             out = torch.empty(shape, dtype=dtype, device=inp.device)
 

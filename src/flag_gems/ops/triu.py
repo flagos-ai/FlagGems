@@ -1,4 +1,5 @@
 import logging
+import math
 
 import torch
 import triton
@@ -65,7 +66,7 @@ def triu_batch_kernel(
 
     cols = mn_id * MN_BLOCK_SIZE + tl.arange(0, MN_BLOCK_SIZE)[None, :]
     mn_mask = cols < MN
-    mask = batch_mask and mn_mask
+    mask = batch_mask & mn_mask
     x = tl.load(X + cols, mask, other=0.0)
     m = cols // N
     n = cols % N
@@ -87,7 +88,9 @@ def triu(A, diagonal=0):
             grid = lambda meta: (triton.cdiv(M, meta["M_BLOCK_SIZE"]),)
             triu_kernel[grid](A, out, M, N, diagonal)
         else:
-            batch = int(torch.numel(A) / M / N)
+            # paddle's numel() returns a device Tensor, so int() on it forced a
+            # device-to-host sync on every call.
+            batch = math.prod(A.shape[:-2])
             B = A.view(batch, -1)
             grid = lambda meta: (
                 triton.cdiv(batch, meta["BATCH_BLOCK_SIZE"]),

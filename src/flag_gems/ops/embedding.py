@@ -1,4 +1,5 @@
 import logging
+import math
 
 import torch
 import triton
@@ -115,7 +116,7 @@ def embedding(indices, weight, padding_idx=-1, scale_grad_by_freq=False, sparse=
     logger.debug("GEMS EMBEDDING FORWARD")
     assert not sparse, "Currently do not support sparse format"
 
-    M = indices.size
+    M = math.prod(indices.shape)
     N = weight.shape[-1]
 
     BLOCK_SIZE = triton.next_power_of_2(N)
@@ -141,7 +142,9 @@ def embedding_backward(
     logger.debug("GEMS EMBEDDING BACKWARD")
     assert not sparse, "Currently do not support sparse format"
 
-    M = indices.numel()
+    # paddle's Tensor.numel() returns a device Tensor, so using it as a grid size
+    # forces a device-to-host sync on every call.
+    M = math.prod(indices.shape)
     N = grad_outputs.shape[-1]
 
     grad_inputs = torch.zeros(

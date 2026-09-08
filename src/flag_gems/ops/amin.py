@@ -9,14 +9,14 @@ from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry, libtuner
 from flag_gems.utils import triton_lang_extension as tle
-from flag_gems.utils.limits import get_dtype_min
+from flag_gems.utils.limits import get_dtype_max
 
 logger = logging.getLogger(__name__)
 
 
 @libentry()
 @triton.jit
-def amax_kernel_1(
+def amin_kernel_1(
     inp,
     mid,
     M,
@@ -27,23 +27,23 @@ def amax_kernel_1(
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     inp_ptrs = inp + offset
     mask = offset < M
-    min_value = get_dtype_min(inp.type.element_ty)
-    inp_val = tl.load(inp_ptrs, mask=mask, other=min_value)
-    amax_val = tl.max(inp_val)
+    max_value = get_dtype_max(inp.type.element_ty)
+    inp_val = tl.load(inp_ptrs, mask=mask, other=max_value)
+    amin_val = tl.min(inp_val)
     mid_ptr = mid + pid
-    tl.store(mid_ptr, amax_val)
+    tl.store(mid_ptr, amin_val)
 
 
 @libentry()
 @triton.jit
-def amax_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
+def amin_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
     offset = tl.arange(0, BLOCK_MID)
     mid_ptrs = mid + offset
     mask = offset < mid_size
-    min_value = get_dtype_min(mid.type.element_ty)
-    mid_val = tl.load(mid_ptrs, mask=mask, other=min_value)
-    amax_val = tl.max(mid_val)
-    tl.store(out, amax_val)
+    max_value = get_dtype_max(mid.type.element_ty)
+    mid_val = tl.load(mid_ptrs, mask=mask, other=max_value)
+    amin_val = tl.min(mid_val)
+    tl.store(out, amin_val)
 
 
 @libentry()
@@ -52,7 +52,7 @@ def amax_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
     key=["M", "N"],
 )
 @triton.jit
-def amax_kernel(
+def amin_kernel(
     inp,
     out,
     M,
@@ -62,11 +62,11 @@ def amax_kernel(
     BLOCK_N: tl.constexpr,
 ):
     dtype = inp.type.element_ty
-    min_value = get_dtype_min(dtype)
+    max_value = get_dtype_max(dtype)
 
     # `rows` enumerates the (outer, inner) pairs of the axes that are kept, where
     # K is the number of trailing elements after the reduced axis. K == 1 is the
-    # innermost-reduction case and degenerates to the original `rows * N` layout,
+    # innermost-reduction case and degenerates to the plain `rows * N` layout,
     # so a non-innermost axis no longer needs a materialized transpose.
     pid = tle.program_id(0)
     rows = pid * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
@@ -75,21 +75,21 @@ def amax_kernel(
     out = out + rows
 
     acc_type = tl.float32 if dtype is tl.bfloat16 else dtype
-    _all = tl.full([BLOCK_M, BLOCK_N], value=min_value, dtype=acc_type)
+    _all = tl.full([BLOCK_M, BLOCK_N], value=max_value, dtype=acc_type)
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
         col_mask = cols < N
         mask = row_mask & col_mask
-        a = tl.load(inp + inp_base + cols * K, mask, other=min_value)
-        _all = tl.maximum(_all, a)
-    all = tl.max(_all, axis=1)[:, None]
+        a = tl.load(inp + inp_base + cols * K, mask, other=max_value)
+        _all = tl.minimum(_all, a)
+    all = tl.min(_all, axis=1)[:, None]
     tl.store(out, all, row_mask)
 
 
-def amax(inp, dim=None, keepdim=False):
-    logger.debug("GEMS AMAX")
+def amin(inp, dim=None, keepdim=False):
+    logger.debug("GEMS AMIN")
     if dim is None or len(dim) == 0:
-        M = inp.size
+        M = math.prod(inp.shape)
         block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
         mid_size = triton.cdiv(M, block_size)
         block_mid = triton.next_power_of_2(mid_size)
@@ -103,15 +103,13 @@ def amax(inp, dim=None, keepdim=False):
                 shape[i] = 1
             out = torch.empty(shape, dtype=dtype, device=inp.device)
         with torch_device_fn.device(inp.device):
-            amax_kernel_1[(mid_size, 1)](
+            amin_kernel_1[(mid_size, 1)](
                 inp,
                 mid,
                 M,
                 block_size,
             )
-            amax_kernel_2[(1, 1)](
-                mid, out, mid_size, block_mid
-            )  # max block size is 128k, so mid does not requires int64 index
+            amin_kernel_2[(1, 1)](mid, out, mid_size, block_mid)
         return out
     else:
         if isinstance(dim, int):
@@ -144,12 +142,13 @@ def amax(inp, dim=None, keepdim=False):
 
         grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
         with torch_device_fn.device(inp.device):
-            amax_kernel[grid](inp, out, M, N, K)
+            amin_kernel[grid](inp, out, M, N, K)
         if not keepdim:
             out = out.squeeze(dim=dim)
         return out
 
-def amax_paddle(x: 'Tensor', dim: 'int | Sequence[int] | None' = None, keepdim: 'bool' = False,   name: 'str | None' = None, *, out: 'Tensor | None' = None) -> 'Tensor':
+
+def amin_paddle(x: 'Tensor', dim: 'int | Sequence[int] | None' = None, keepdim: 'bool' = False, name: 'str | None' = None, *, out: 'Tensor | None' = None) -> 'Tensor':
     if isinstance(dim, int):
         dim = [dim]
-    return amax(x, dim, keepdim)
+    return amin(x, dim, keepdim)

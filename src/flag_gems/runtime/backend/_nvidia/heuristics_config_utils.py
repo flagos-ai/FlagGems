@@ -46,7 +46,8 @@ def argmax_heur_tile_n_non_inner(args):
     tile_k = args["TILE_K"]
 
     if n <= 128:
-        return n
+        # TILE_N feeds tl.arange, which requires a power of 2.
+        return triton.next_power_of_2(n)
 
     target_tile = min(8192, n)
     tile_n = triton.next_power_of_2(target_tile)
@@ -171,6 +172,11 @@ def gather_heur_block_n(args):
 
 
 def index_select_heur_block_m(args):
+    # K > 1 means the indexed axis is not the innermost one, so BLOCK_M walks the
+    # contiguous trailing axis. 32 elements is enough to fill a cache line; going
+    # wider only costs blocks (and therefore occupancy).
+    if args["K"] > 1:
+        return max(16, min(32, triton.next_power_of_2(args["K"])))
     return min(4, triton.next_power_of_2(triton.cdiv(256, args["N"])))
 
 

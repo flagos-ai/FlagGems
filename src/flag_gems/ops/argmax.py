@@ -212,7 +212,9 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
         assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
         shape = inp.shape
         dim = dim % inp.ndim
-        if inp.numel() == 0:
+        # NOTE: paddle's Tensor.numel() returns a device Tensor, so `numel() == 0`
+        # in a boolean context forces a device-to-host sync on every call.
+        if math.prod(shape) == 0:
             out_shape = list(shape)
             if keepdim:
                 out_shape[dim] = 1

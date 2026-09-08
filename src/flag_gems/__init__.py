@@ -37,7 +37,12 @@ from flag_gems.ops import *  # noqa: F403
 from flag_gems.runtime.register import Register
 from flag_gems.runtime.register_paddle import RegisterPaddle
 
-setup_flaggems_logging(record=True, once=False)
+# Attaching the op-list file handler at import time makes every op call build a
+# LogRecord and write+flush a line (~30us per call). Keep it opt-in; enable(),
+# only_enable() and use_gems(record=True) still turn it on explicitly.
+setup_flaggems_logging(
+    record=os.environ.get("FLAGGEMS_OPLIST_LOG", "0") != "0", once=False
+)
 __version__ = "3.0"
 device = runtime.device.name
 vendor_name = runtime.device.vendor_name

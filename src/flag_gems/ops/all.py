@@ -33,24 +33,28 @@ def all_kernel_dim(
     out,
     M,
     N,
+    K,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    # Map the program id to the row of inp it should compute.
+    # `rows` enumerates the (outer, inner) pairs of the axes that are kept, where
+    # K is the number of trailing elements after the reduced axis. K == 1 is the
+    # innermost-reduction case and degenerates to the plain `rows * N` layout,
+    # so a non-innermost axis no longer needs a materialized transpose.
     pid = tle.program_id(0)
     rows = pid * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
-    inp = inp + rows * N
-    out = out + rows
     row_mask = rows < M
+    inp_base = (rows // K) * N * K + rows % K
+    out = out + rows
 
     _all = tl.full([BLOCK_M, BLOCK_N], value=1, dtype=tl.int1)
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
         col_mask = cols < N
-        mask = row_mask and col_mask
+        mask = row_mask & col_mask
 
-        a = tl.load(inp + cols, mask, other=1.0)
-        _all = _all and (a != 0)
+        a = tl.load(inp + inp_base + cols * K, mask, other=1.0)
+        _all = _all & (a != 0)
     all = tl.reduce(_all, axis=1, combine_fn=reduce_all)
     tl.store(out, all[:, None], row_mask)
 
@@ -102,7 +106,11 @@ def all(inp):
     return out
 
 def all_paddle(x: 'Tensor', axis: 'int | Sequence[int] | None' = None, keepdim: 'bool' = False, name: 'str | None' = None, *, out: 'Tensor | None' = None) -> 'Tensor':
-    return all(inp = x)
+    # `axis` must be forwarded: dropping it silently turns every axis reduction
+    # into a full reduction. all_dims handles None / int / sequence.
+    if isinstance(axis, (list, tuple)) and len(axis) == 0:
+        axis = None
+    return all_dims(x, dim=axis, keepdim=keepdim)
 
 def all_dim(inp, dim=None, keepdim=False):
     logger.debug("GEMS ALL DIM")
@@ -114,16 +122,19 @@ def all_dim(inp, dim=None, keepdim=False):
     else:
         assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
         dim = dim % inp.ndim
-        inp = dim_compress(inp, dim)
+        # Reduce a single axis in place: strided addressing instead of
+        # dim_compress, which would copy the whole tensor to move the axis last.
+        inp = inp.contiguous()
         N = shape[dim]
+        K = math.prod(shape[dim + 1 :])
+        M = math.prod(shape[:dim]) * K
         shape[dim] = 1
-        M = inp.numel() // N
 
         out = torch.empty(shape, dtype=torch.bool, device=inp.device)
 
         grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
         with torch_device_fn.device(inp.device):
-            all_kernel_dim[grid](inp, out, M, N)
+            all_kernel_dim[grid](inp, out, M, N, K)
         if not keepdim:
             out = out.squeeze(dim=dim)
     return out
@@ -143,13 +154,13 @@ def all_dims(inp, dim=None, keepdim=False):
     for i in dim:
         N *= shape[i]
         shape[i] = 1
-    M = inp.numel() // N
+    M = math.prod(inp.shape) // N  # paddle numel() returns a device Tensor
 
     out = torch.empty(shape, dtype=torch.bool, device=inp.device)
 
     grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
     with torch_device_fn.device(inp.device):
-        all_kernel_dim[grid](inp, out, M, N)
+        all_kernel_dim[grid](inp, out, M, N, 1)
     if not keepdim:
         out = out.squeeze(dim=dim)
     return out

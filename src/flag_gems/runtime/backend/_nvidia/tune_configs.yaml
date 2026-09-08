@@ -127,6 +127,36 @@ bmm:
       GROUP_M: 2
     num_warps: 4
     num_stages: 3
+  # Large-tile candidates for big fp16 problems: the list above caps at 128x128x32
+  # with 4 warps, which leaves Hopper's SMs underfed once M/N/K reach a few thousand.
+  - META:
+      TILE_M: 128
+      TILE_N: 256
+      TILE_K: 64
+      GROUP_M: 8
+    num_warps: 8
+    num_stages: 3
+  - META:
+      TILE_M: 256
+      TILE_N: 128
+      TILE_K: 64
+      GROUP_M: 8
+    num_warps: 8
+    num_stages: 3
+  - META:
+      TILE_M: 128
+      TILE_N: 128
+      TILE_K: 64
+      GROUP_M: 8
+    num_warps: 8
+    num_stages: 4
+  - META:
+      TILE_M: 128
+      TILE_N: 256
+      TILE_K: 32
+      GROUP_M: 8
+    num_warps: 8
+    num_stages: 4
 log_softmax:
   - META:
       BLOCK_M: 8
@@ -429,6 +459,45 @@ addmm:
       BLOCK_SIZE_K: 32
     num_stages: 5
     num_warps: 2
+  # fp32 GEMM candidates: shared memory per stage is (BM*BK + BK*BN) * 4 bytes, so
+  # the fp16-oriented tiles above either overflow the stage budget or leave the SMs
+  # underfed on large fp32 problems.
+  - META:
+      BLOCK_SIZE_M: 128
+      BLOCK_SIZE_N: 128
+      BLOCK_SIZE_K: 16
+    num_stages: 5
+    num_warps: 8
+  - META:
+      BLOCK_SIZE_M: 128
+      BLOCK_SIZE_N: 128
+      BLOCK_SIZE_K: 32
+    num_stages: 3
+    num_warps: 8
+  - META:
+      BLOCK_SIZE_M: 256
+      BLOCK_SIZE_N: 64
+      BLOCK_SIZE_K: 32
+    num_stages: 3
+    num_warps: 8
+  - META:
+      BLOCK_SIZE_M: 64
+      BLOCK_SIZE_N: 64
+      BLOCK_SIZE_K: 64
+    num_stages: 4
+    num_warps: 4
+  - META:
+      BLOCK_SIZE_M: 256
+      BLOCK_SIZE_N: 128
+      BLOCK_SIZE_K: 32
+    num_stages: 3
+    num_warps: 8
+  - META:
+      BLOCK_SIZE_M: 128
+      BLOCK_SIZE_N: 256
+      BLOCK_SIZE_K: 32
+    num_stages: 3
+    num_warps: 8
 cross_entropy_loss:
   - META:
       BLOCK_C: 256
@@ -481,19 +550,41 @@ masked_fill:
       - 8
       - 16
 naive_reduction:
-  - gen: true
-    param_map:
-      META:
-        BLOCK_M: block_m
-        BLOCK_N: block_n
-      num_warps: 4
-    block_m:
-      - 1
-      - 2
-      - 4
-      - 8
-    block_n:
-      - 1024
+  # Tiles stay at ~8K elements; the varying aspect ratio lets the tuner match the
+  # access pattern. Reducing a non-innermost axis walks the reduced axis with a
+  # stride, so BLOCK_M (the contiguous axis) has to be large enough to coalesce.
+  - META:
+      BLOCK_M: 1
+      BLOCK_N: 1024
+    num_warps: 4
+  - META:
+      BLOCK_M: 2
+      BLOCK_N: 1024
+    num_warps: 4
+  - META:
+      BLOCK_M: 4
+      BLOCK_N: 1024
+    num_warps: 4
+  - META:
+      BLOCK_M: 8
+      BLOCK_N: 1024
+    num_warps: 4
+  - META:
+      BLOCK_M: 16
+      BLOCK_N: 512
+    num_warps: 4
+  - META:
+      BLOCK_M: 32
+      BLOCK_N: 256
+    num_warps: 4
+  - META:
+      BLOCK_M: 64
+      BLOCK_N: 128
+    num_warps: 4
+  - META:
+      BLOCK_M: 128
+      BLOCK_N: 64
+    num_warps: 8
 layer_norm_persistent:
   - gen: true
     param_map:

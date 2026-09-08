@@ -12,6 +12,9 @@ from flag_gems.utils import dim_compress, libentry, libtuner
 from flag_gems.utils import triton_lang_extension as tle
 from flag_gems.utils.limits import get_dtype_max
 
+# Building the namedtuple class per call costs ~35us (it compiles a class via eval).
+Min_out = namedtuple("min", ["values", "indices"])
+
 logger = logging.getLogger(__name__)
 
 
@@ -135,9 +138,19 @@ def min_dim(inp, dim=None, keepdim=False):
     grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
     with torch_device_fn.device(inp.device):
         min_kernel[grid](inp, out_value, out_index, M, N)
-    Min_out = namedtuple("min", ["values", "indices"])
     out = Min_out(values=out_value, indices=out_index)
     return out
 
-def min_paddle(x, dim = None, keepdim=False):
-    return min(x)
+def min_paddle(x, axis = None, keepdim=False):
+    # paddle.min returns values only, so route to the values-only amin kernel:
+    # min_dim also allocates and squeezes an index tensor that is thrown away
+    # (~34us of dispatch per call).
+    from flag_gems.ops.amin import amin
+
+    if axis is None:
+        dims = []
+    elif isinstance(axis, int):
+        dims = [axis]
+    else:
+        dims = list(axis)
+    return amin(x, dims, keepdim)

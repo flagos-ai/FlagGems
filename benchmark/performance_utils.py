@@ -26,7 +26,6 @@ from .attri_util import (
     check_metric_dependencies,
 )
 from .conftest import Config, recordLogger
-from .paddle_warm_up import warmup_paddle
 
 torch_backend_device = flag_gems.runtime.torch_backend_device
 torch_device_fn = flag_gems.runtime.torch_device_fn
@@ -40,11 +39,6 @@ elif device == "npu":
 else:
     # torch_backend_device.matmul.allow_tf32 = False
     pass
-
-# For Paddle backend, start a singleton GPU warmup process to avoid low-power idle state.
-# This mainly stabilizes small-shape benchmarks (launch overhead sensitive), while large shapes are less affected.
-if flag_gems.framework_name == "paddle": #
-    warmup_paddle()
 
 def SkipVersion(module_name, skip_pattern):
     if importlib.util.find_spec(module_name) is None:

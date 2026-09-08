@@ -79,7 +79,15 @@ def mean(inp, *, dtype=None):
     return out
 
 def mean_paddle(x: 'Tensor', axis: list[int] = [], keepdim: bool = False, out = None) -> 'Tensor':
-    return mean(inp = x, dtype = None)
+    # `axis` must be forwarded: dropping it silently turns every axis reduction
+    # into a full reduction. mean_dim_comm treats `[]` as "reduce all".
+    if axis is None:
+        dim = []
+    elif isinstance(axis, int):
+        dim = [axis]
+    else:
+        dim = list(axis)
+    return mean_dim(x, dim, keepdim)
 
 @libentry()
 @triton.heuristics(runtime.get_heuristic_config("mean_non_inner"))
@@ -263,7 +271,7 @@ def mean_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
         # product of dims before dim0; use initializer 1 for empty slice
         M = reduce(lambda x, y: x * y, shape[:dim0], 1)
         inp = inp.contiguous()
-        K = inp.numel() // M // N
+        K = math.prod(inp.shape) // M // N  # paddle numel() returns a device Tensor
         shape[dim0] = 1
         if out is None:
             out = torch.empty(shape, dtype=dtype, device=inp.device)
@@ -295,7 +303,7 @@ def mean_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
         for i in dim:
             N *= shape[i]
             shape[i] = 1
-        M = inp.numel() // N
+        M = math.prod(inp.shape) // N  # paddle numel() returns a device Tensor
         if out is None:
             out = torch.empty(shape, dtype=dtype, device=inp.device)
 
