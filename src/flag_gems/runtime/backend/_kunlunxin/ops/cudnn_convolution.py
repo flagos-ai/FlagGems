@@ -16,6 +16,7 @@ import logging
 
 from .conv1d import conv1d
 from .conv2d import conv2d
+from .conv3d import conv3d
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +55,4 @@ def cudnn_convolution(
         return conv1d(input, weight, None, stride, padding, dilation, groups)
     if dimensions == 2:
         return conv2d(input, weight, None, stride, padding, dilation, groups)
-    raise NotImplementedError(
-        "Kunlunxin cudnn_convolution does not support 3D inputs: the local conv3d "
-        "implementation is not device-resident"
-    )
+    return conv3d(input, weight, None, stride, padding, dilation, groups)
