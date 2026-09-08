@@ -4658,6 +4658,7 @@ def grid_sample(
         >>> print(output.shape)
         torch.Size([1, 3, 64, 64])
     """
+    logger.debug("GEMS GRID_SAMPLE")
     # Validate inputs
     _validate_grid_sample_input(input, grid, mode, padding_mode)
 

@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from .bincount import bincount
+from .DSA.sparse_mla import triton_sparse_mla_fwd_interface
 from .flash_mla import flash_mla
 from .fused_add_rms_norm import fused_add_rms_norm
 from .fused_moe import fused_experts_impl, inplace_fused_experts, outplace_fused_experts
@@ -27,12 +28,16 @@ __all__ = [
     "flash_mla",
     "fused_add_rms_norm",
     "fused_experts_impl",
+    "fused_experts_impl",
     "fused_recurrent_gated_delta_rule_fwd",
     "hc_head_fused_kernel",
     "hc_head_fused_kernel_ref",
     "inplace_fused_experts",
     "outplace_fused_experts",
+    "inplace_fused_experts",
+    "outplace_fused_experts",
     "skip_layer_norm",
     "reshape_and_cache_flash",
     "sparse_attn_triton",
+    "triton_sparse_mla_fwd_interface",
 ]

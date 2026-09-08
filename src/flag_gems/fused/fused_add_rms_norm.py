@@ -68,6 +68,56 @@ def fused_add_rms_norm_kernel(
     tl.store(input_ptr + cols * in_stride_c, y, mask=mask)
 
 
+@libentry()
+@triton.jit(do_not_specialize=["eps"])
+def fused_add_rms_norm_loop_kernel(
+    input_ptr,  # pointer to the input
+    residual_ptr,  # pointer to the residual
+    w_ptr,  # pointer to the weights
+    N,  # number of columns in in_ptr
+    eps,  # epsilon to avoid division by zero
+    BLOCK_SIZE: tl.constexpr,
+):
+    if tl.constexpr(input_ptr.dtype.element_ty == tl.float16) or tl.constexpr(
+        input_ptr.dtype.element_ty == tl.bfloat16
+    ):
+        cdtype = tl.float32
+    else:
+        cdtype = input_ptr.dtype.element_ty
+
+    pid = ext.program_id(0)
+    row_start = pid * N
+
+    # Pass 1: add residual and compute variance
+    var_acc = tl.zeros((BLOCK_SIZE,), dtype=tl.float32)
+    num_steps = tl.cdiv(N, BLOCK_SIZE)
+
+    for step in range(0, num_steps):
+        start_n = step * BLOCK_SIZE
+        cols = start_n + tl.arange(0, BLOCK_SIZE)
+        mask = cols < N
+        x = tl.load(input_ptr + row_start + cols, mask=mask, other=0.0).to(cdtype)
+        r = tl.load(residual_ptr + row_start + cols, mask=mask, other=0.0).to(cdtype)
+        x = x + r
+        # write back to residual
+        tl.store(residual_ptr + row_start + cols, x, mask=mask)
+        var_acc += x * x
+
+    var = tl.sum(var_acc) / N
+    rrms = 1 / tl.sqrt(var + eps)
+
+    # Pass 2: normalize and write back to input
+    for step in range(0, num_steps):
+        start_n = step * BLOCK_SIZE
+        cols = start_n + tl.arange(0, BLOCK_SIZE)
+        mask = cols < N
+        # Re-read from residual (which now has x+r)
+        x = tl.load(residual_ptr + row_start + cols, mask=mask, other=0.0).to(cdtype)
+        w = tl.load(w_ptr + cols, mask=mask, other=0.0)
+        y = (x * rrms * w).to(cdtype)
+        tl.store(input_ptr + row_start + cols, y, mask=mask)
+
+
 def fused_add_rms_norm(x, residual, normalized_shape, weight, eps=1e-5):
     """
     This function performs fused residual addition and RMS normalization **in-place**.
@@ -84,13 +134,17 @@ def fused_add_rms_norm(x, residual, normalized_shape, weight, eps=1e-5):
     M = math.prod(x.shape[:dim])
     N = math.prod(normalized_shape)
 
-    BLOCK_SIZE = triton.next_power_of_2(N)
     x = x.contiguous()
     residual = residual.contiguous()
     weight = weight.contiguous()
 
     with torch_device_fn.device(x.device):
-        fused_add_rms_norm_kernel[M,](
-            x, residual, weight, N, 1, N, 1, N, eps, BLOCK_SIZE
-        )
+        if N <= 4096:
+            BLOCK_SIZE = triton.next_power_of_2(N)
+            fused_add_rms_norm_kernel[M,](
+                x, residual, weight, N, 1, N, 1, N, eps, BLOCK_SIZE
+            )
+        else:
+            BLOCK_SIZE = 1024
+            fused_add_rms_norm_loop_kernel[M,](x, residual, weight, N, eps, BLOCK_SIZE)
     return x, residual

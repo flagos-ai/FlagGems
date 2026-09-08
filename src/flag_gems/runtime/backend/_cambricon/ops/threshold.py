@@ -27,7 +27,6 @@ from ..utils.pointwise_dynamic import pointwise_dynamic
 logger = logging.getLogger(__name__)
 
 
-@libentry()
 @libtuner(
     configs=[
         triton.Config(kwargs={"BLOCK_SIZE": 4096}, num_stages=1, num_warps=1),
@@ -37,6 +36,7 @@ logger = logging.getLogger(__name__)
     ],
     key=["n_elements"],
 )
+@libentry()
 @triton.jit(do_not_specialize=["threshold_val", "value_val"])
 def threshold_kernel(
     X_ptr,

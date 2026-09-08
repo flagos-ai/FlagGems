@@ -12,12 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
+
 import torch
 import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
+
+logger = logging.getLogger(__name__)
 
 NUM_SIPS = 24
 BLOCK = 8192
@@ -45,6 +49,7 @@ def _grid(n_elements):
 
 
 def hardsigmoid(x: torch.Tensor):
+    logger.debug("GEMS_ENFLAME HARDSIGMOID")
     out = torch.empty_like(x)
     n_elements = x.numel()
     if n_elements == 0:
@@ -57,6 +62,7 @@ def hardsigmoid(x: torch.Tensor):
 
 
 def hardsigmoid_out(x: torch.Tensor, out: torch.Tensor):
+    logger.debug("GEMS_ENFLAME HARDSIGMOID_OUT")
     assert x.numel() == out.numel()
     n_elements = x.numel()
     if n_elements == 0:

@@ -36,6 +36,7 @@ from flag_gems.fused.deepseek_v4_attention_dequantize_and_gather_k_cache import 
 )
 from flag_gems.fused.deepseek_v4_attention_fused_q_kv_rmsnorm import fused_q_kv_rmsnorm
 from flag_gems.fused.DSA.bin_topk import bucket_sort_topk
+from flag_gems.fused.DSA.sparse_mla import triton_sparse_mla_fwd_interface
 from flag_gems.fused.FLA import (
     chunk_gated_delta_rule_fwd,
     fused_recurrent_gated_delta_rule_fwd,
@@ -191,6 +192,7 @@ __all__ = [
     "top_k_per_row_prefill",
     "topk_softmax",
     "topk_softplus_sqrt",
+    "triton_sparse_mla_fwd_interface",
     "unpack_seq_triton",
     "weight_norm",
 ]

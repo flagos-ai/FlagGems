@@ -60,7 +60,7 @@ def one_hot(tensor: torch.Tensor, num_classes: int = -1) -> torch.Tensor:
     )
     BLOCK_N = triton.next_power_of_2(num_classes)
     BLOCK_N = min(BLOCK_N, 128)
-    BLOCK_M = 32
+    BLOCK_M = 128
 
     grid = (triton.cdiv(numel, BLOCK_M),)
 

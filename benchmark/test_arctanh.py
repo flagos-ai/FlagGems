@@ -13,10 +13,24 @@
 # limitations under the License.
 
 import pytest
+import torch
 
 import flag_gems
 
 from . import base, consts
+
+
+@pytest.mark.arctanh
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_arctanh():
+    bench = base.UnaryPointwiseBenchmark(
+        op_name="arctanh",
+        torch_op=torch.arctanh,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
 
 
 @pytest.mark.arctanh_
@@ -29,5 +43,18 @@ def test_arctanh_inplace():
         torch_op=lambda a: a.arctanh_(),
         dtypes=consts.FLOAT_DTYPES,
         is_inplace=True,
+    )
+    bench.run()
+
+
+@pytest.mark.arctanh_out
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_arctanh_out():
+    bench = base.UnaryPointwiseOutBenchmark(
+        op_name="arctanh_out",
+        torch_op=torch.arctanh,
+        dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

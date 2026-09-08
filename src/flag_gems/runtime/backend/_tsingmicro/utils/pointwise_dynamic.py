@@ -406,8 +406,12 @@ class KernelGenerator:
             # tile size & tiles_per_cta, gsl style
             if ndim > 0:
                 code.writeline("tiles_per_cta: int,")
+                code.writeline("num_rows: int,")
+                code.writeline("rows_per_cta: int,")
+                code.writeline("col_tiles_per_row: int,")
                 code.writeline("tile_size: tl.constexpr,")
                 code.writeline("one_tile_per_cta: tl.constexpr,")
+                code.writeline("use_row_broadcast: tl.constexpr,")
         code.writeline("):")
 
     def gen_num_tiles(self, code):
@@ -776,6 +780,105 @@ class KernelGenerator:
             code.writeline("tile_id = pid + j * num_ctas")
             self.gen_body_one_tile_per_cta_1d_tile(code)
 
+    def gen_body_row_broadcast_1d_tile(self, code):
+        """Generate a row-aligned kernel for operands broadcast on the last dim.
+
+        A flat 1D tile reloads a trailing broadcast value for every output
+        element. Row-aligned tiling keeps that value live while processing all
+        column tiles in the row, reducing the load count from O(numel) to
+        O(number of logical rows).
+        """
+        ndim = self.ndim
+        last_dim = ndim - 1
+        schema = self.fx
+
+        code.writeline("num_ctas = tle.num_programs(0)")
+        code.writeline("for row_iter in range(0, rows_per_cta):")
+        with code.indent():
+            code.writeline("row = pid + row_iter * num_ctas")
+            code.writeline("if row < num_rows:")
+            with code.indent():
+                if ndim > 1:
+                    code.writeline("row_id = row")
+                    for i in reversed(range(last_dim)):
+                        if i > 0:
+                            code.writeline(f"i{i} = row_id % s{i}")
+                            code.writeline(f"row_id //= s{i}")
+                        else:
+                            code.writeline("i0 = row_id")
+
+                code.writeline(
+                    "# cache each row's first value; trailing-broadcast operands reuse it"
+                )
+                for i in range(schema.num_input_tensors()):
+                    if ndim > 1:
+                        offsets = tuple(
+                            f"i{j} * in{i}_stride{j}" for j in range(last_dim)
+                        )
+                        row_offset = " + ".join(offsets)
+                    else:
+                        row_offset = "0"
+                    code.writeline(
+                        f"in{i}_row = tl.load(in{i}_ptr + {row_offset})"
+                        f".to(in{i}_ptr.type.element_ty)"
+                    )
+
+                code.writeline("for col_tile in range(0, col_tiles_per_row):")
+                with code.indent():
+                    code.writeline(
+                        "cols = col_tile * tile_size + tl.arange(0, tile_size)"
+                    )
+                    code.writeline(f"mask = cols < s{last_dim}")
+                    code.writeline("# loads")
+                    for i in range(schema.num_input_tensors()):
+                        if ndim > 1:
+                            offsets = tuple(
+                                f"i{j} * in{i}_stride{j}" for j in range(last_dim)
+                            )
+                            row_offset = " + ".join(offsets)
+                        else:
+                            row_offset = "0"
+                        code.writeline(f"if in{i}_stride{last_dim} == 0:")
+                        with code.indent():
+                            code.writeline(
+                                f"in{i} = tl.broadcast_to(in{i}_row, (tile_size,))"
+                            )
+                        code.writeline("else:")
+                        with code.indent():
+                            code.writeline(
+                                f"in{i} = tl.load("
+                                f"in{i}_ptr + {row_offset} + "
+                                f"cols * in{i}_stride{last_dim}, mask=mask"
+                                f").to(in{i}_ptr.type.element_ty)"
+                            )
+
+                    inputs_to_scalar_fn = [
+                        self.input_name(i) for i in range(schema.num_inputs())
+                    ]
+                    outputs_to_scalar_fn = [
+                        self.output_name(i) for i in range(schema.num_output_tensors())
+                    ]
+                    code.newline()
+                    code.writeline("# compute")
+                    code.writeline(
+                        f"{_cs(outputs_to_scalar_fn)} = "
+                        f"{self.fn_name}({_cs(inputs_to_scalar_fn)})"
+                    )
+                    code.newline()
+                    code.writeline("# stores")
+                    for i in range(schema.num_output_tensors()):
+                        if ndim > 1:
+                            offsets = tuple(
+                                f"i{j} * out{i}_stride{j}" for j in range(last_dim)
+                            )
+                            row_offset = " + ".join(offsets)
+                        else:
+                            row_offset = "0"
+                        code.writeline(
+                            f"tl.store(out{i}_ptr + {row_offset} + "
+                            f"cols * out{i}_stride{last_dim}, out{i}, mask=mask)"
+                        )
+
     def codegen_1d_tile(self, code):
         """Generate kernel 1d tile & 1d grid with gsl support."""
         self.gen_import_function(code)
@@ -790,13 +893,15 @@ class KernelGenerator:
 
         with code.indent():
             code.writeline("pid = tle.program_id(0)")
-            # code.writeline("num_ctas = te.num_programs(0)")
-            # monolitic kernel: one_tile_per_cta, it may requires a very large grid to compute
-            code.writeline("if one_tile_per_cta: # monolitic kernel style")
+            code.writeline(
+                "if use_row_broadcast: # reuse trailing-broadcast loads per row"
+            )
+            with code.indent():
+                self.gen_body_row_broadcast_1d_tile(code)
+            code.writeline("elif one_tile_per_cta: # monolitic kernel style")
             with code.indent():
                 code.writeline("tile_id = pid")
                 self.gen_body_one_tile_per_cta_1d_tile(code)
-            # https://developer.nvidia.com/blog/cuda-pro-tip-write-flexible-kernels-grid-stride-loops/
             code.writeline("else: # grid-stride-loop style kernel")
             with code.indent():
                 self.gen_body_gsl_1d_tile(code)
@@ -969,6 +1074,20 @@ class WrapperGenerator:
             code.writeline("tiles_per_cta = triton.cdiv(num_tiles, num_ctas)")
             code.writeline("num_warps = heuristics_for_num_warps(tile_size)")
             code.writeline("one_tile_per_cta = tiles_per_cta==1")
+            trailing_broadcast = " or ".join(
+                f"in{i}.stride()[-1] == 0" for i in range(self.fx.num_input_tensors())
+            )
+            code.writeline(
+                f"use_row_broadcast = shape[-1] > 1 and ({trailing_broadcast})"
+            )
+            code.writeline("num_rows = num_tasks // shape[-1]")
+            code.writeline("rows_per_cta = 0")
+            code.writeline("col_tiles_per_row = 0")
+            code.writeline("if use_row_broadcast:")
+            with code.indent():
+                code.writeline(f"num_ctas = min({max_grid_size0}, num_rows)")
+                code.writeline("rows_per_cta = triton.cdiv(num_rows, num_ctas)")
+                code.writeline("col_tiles_per_row = triton.cdiv(shape[-1], tile_size)")
         code.writeline("grid = (num_ctas, 1, 1)")
         # code.writeline("print(f\"grid={grid}\")")
 
@@ -1087,8 +1206,12 @@ class WrapperGenerator:
                     code.writeline(f"{shape_args}, # task indexing space")
                     code.writeline("num_tasks, # num tasks")
                     code.writeline("tiles_per_cta=tiles_per_cta, # tiles_per_cta")
+                    code.writeline("num_rows=num_rows,")
+                    code.writeline("rows_per_cta=rows_per_cta,")
+                    code.writeline("col_tiles_per_row=col_tiles_per_row,")
                     code.writeline("tile_size=tile_size,")
                     code.writeline("one_tile_per_cta=one_tile_per_cta,")
+                    code.writeline("use_row_broadcast=use_row_broadcast,")
                 code.writeline("num_warps=num_warps,")
             code.writeline(")")
 

@@ -110,6 +110,7 @@ def fill_scalar_out(input, value, *, out=None):
 
 
 def fill_tensor_out(input, value, *, out=None):
+    logger.debug("GEMS_ENFLAME FILL_TENSOR_OUT")
     if out is None:
         return fill_tensor(input, value)
     if not value.is_cuda:

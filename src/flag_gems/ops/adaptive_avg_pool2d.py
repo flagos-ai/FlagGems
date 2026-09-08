@@ -68,16 +68,12 @@ def adaptive_avg_pool2d_kernel(
 
     # Adaptive pooling: compute adaptive windows
     # i_start = floor(i * in_h / out_h)
-    # i_end = floor((i + 1) * in_h / out_h)
+    # i_end = ceil((i + 1) * in_h / out_h)
     h_start = h_out_offsets[:, None] * in_h // out_h
-    h_end = ((h_out_offsets[:, None] + 1) * in_h) // out_h
+    h_end = 1 + ((h_out_offsets[:, None] + 1) * in_h - 1) // out_h
 
     w_start = w_out_offsets[None, :] * in_w // out_w
-    w_end = ((w_out_offsets[None, :] + 1) * in_w) // out_w
-
-    # For the last element, extend to the end of input
-    h_end = tl.where(h_out_offsets[:, None] == out_h - 1, in_h, h_end)
-    w_end = tl.where(w_out_offsets[None, :] == out_w - 1, in_w, w_end)
+    w_end = 1 + ((w_out_offsets[None, :] + 1) * in_w - 1) // out_w
 
     # Compute window size for each output position
     window_size = (h_end - h_start) * (w_end - w_start)
@@ -91,9 +87,10 @@ def adaptive_avg_pool2d_kernel(
 
     input_base_ptr = input_ptr + n_idx * in_stride_n + c_idx * in_stride_c
 
-    # Find the maximum window size
-    max_win_h = (in_h + out_h - 1) // out_h
-    max_win_w = (in_w + out_w - 1) // out_w
+    # Find the maximum window size. Under the ATen ceil rule a window can be
+    # one element longer than cdiv(in, out), so add 1 to the bound.
+    max_win_h = (in_h + out_h - 1) // out_h + 1
+    max_win_w = (in_w + out_w - 1) // out_w + 1
 
     # Loop over all possible positions in the max window
     for kh in range(64):

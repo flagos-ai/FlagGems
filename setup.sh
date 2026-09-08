@@ -69,7 +69,7 @@ else
   ARCH=$(uname -m)
   mkdir -p "$HOME/.local/bin"
   curl -sSf "${UV_MIRROR}/uv-${ARCH}-${UV_VERSION}-linux-gnu.tar.gz" \
-    | tar xz -C "$HOME/.local/bin" 2>/dev/null \
+    | tar xz --strip-components=1 -C "$HOME/.local/bin" 2>/dev/null \
     || { curl -LsSf https://astral.sh/uv/install.sh | sh; }
   command -v uv &>/dev/null || { printf "uv installation"; fail; }
   printf "Installed $(uv --version)"
@@ -80,7 +80,8 @@ fi
 
 # ── Install Python via uv ────────────────────────────────────
 printf "Installing Python ${PYTHON_VERSION} ..."
-uv python install "${PYTHON_VERSION}" --python-preference only-managed -q || fail
+UV_PYTHON_INSTALL_MIRROR="https://mirror.nju.edu.cn/github-release/astral-sh/python-build-standalone" \
+    uv python install "${PYTHON_VERSION}" --python-preference only-managed -q || fail
 ok
 
 # ── Create virtual environment ────────────────────────────────
@@ -99,8 +100,9 @@ source tools/env.sh "${BACKEND}"
 # ── Install build tools ──────────────────────────────────────
 printf "Installing build tools ..."
 uv pip install -q \
-  "setuptools>=64.0" \
-  "setuptools-scm>=8" \
+  "wheel==0.45.0" \
+  "setuptools>=64.0,<77" \
+  "setuptools-scm>=8,<10" \
   "scikit-build-core==0.12.2" \
   "pybind11==3.0.3" \
   "cmake>=3.20,<4" \

@@ -32,31 +32,34 @@ aten_patch_list = []
 # set FLAGGEMS_SOURCE_DIR for cpp extension to find
 os.environ["FLAGGEMS_SOURCE_DIR"] = str(Path(__file__).parent.resolve())
 
-try:
-    from flag_gems import c_operators
-
-    has_c_extension = True
-except ImportError:
-    c_operators = None
-    has_c_extension = False
-
+# Detect .so presence WITHOUT importing — importing the pybind11 extension
+# at module-init time conflicts with vendor torch packages (torch_npu,
+# torch_gcu) on some backends. The actual import happens lazily when
+# USE_C_EXTENSION=1 AND the .so exists.
+_has_cpp_so = any(Path(__file__).parent.glob("c_operators*.so"))
+c_operators = None
 
 use_env_c_extension = os.environ.get("USE_C_EXTENSION", "0") == "1"
-if use_env_c_extension and not has_c_extension:
+if use_env_c_extension and not _has_cpp_so:
     warnings.warn(
         "[FlagGems] USE_C_EXTENSION is set, but C extension is not available. "
         "Falling back to pure Python implementation.",
         RuntimeWarning,
     )
 
-if has_c_extension and use_env_c_extension:
+if use_env_c_extension and _has_cpp_so:
     try:
+        from flag_gems import c_operators as _co
+
+        c_operators = _co
+        has_c_extension = True
         from flag_gems import aten_patch
 
         aten_patch_list = aten_patch.get_registered_ops()
         use_c_extension = True
     except (ImportError, AttributeError):
         aten_patch_list = []
+        has_c_extension = False
         use_c_extension = False
 
 

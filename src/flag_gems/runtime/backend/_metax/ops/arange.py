@@ -44,9 +44,9 @@ def arange_start(
     logger.debug("GEMS_METAX ARANGE")
     if dtype is torch.int64:
         sgn = (step > 0) - (step < 0)
-        size = (end - start + step - sgn) // step
+        size = int((end - start + step - sgn) // step)
     else:
-        size = math.ceil((end - start) / step)
+        size = int(math.ceil((end - start) / step))
 
     BLOCK_SIZE = 1024
     grid = triton.cdiv(size, BLOCK_SIZE)

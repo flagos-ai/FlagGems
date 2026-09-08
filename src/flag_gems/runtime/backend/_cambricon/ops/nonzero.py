@@ -27,13 +27,13 @@ from ..utils import TOTAL_CORE_NUM
 logger = logging.getLogger(__name__)
 
 
-@libentry()
 @triton.autotune(
     configs=runtime.get_tuned_config("nonzero"),
     key=[
         "n_elements",
     ],
 )
+@libentry()
 @triton.jit
 def nonzero_kernel(
     inp,
@@ -53,7 +53,7 @@ def nonzero_kernel(
         mask = offset < n_elements
 
         inp_vals = tl.load(inp + offset, mask=mask, other=0.0).to(tl.int1)
-        nonzero_mask = mask and inp_vals
+        nonzero_mask = mask & inp_vals
         out_row_offset = tl.load(prefix_sum + offset, mask=nonzero_mask) - 1
         out_col_offset = tl.arange(0, ndim)
         out_offsets = out_row_offset[:, None] * ndim + out_col_offset[None, :]

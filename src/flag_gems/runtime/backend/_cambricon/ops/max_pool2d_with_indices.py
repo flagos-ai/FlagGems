@@ -53,7 +53,6 @@ def limit_grid(grid_0, grid_1):
     return min(grid_0, grid_0_ub), min(grid_1, grid_1_ub)
 
 
-@libentry()
 @libtuner(
     configs=[
         triton.Config({"BLOCK_H": 16, "BLOCK_W": 16}, num_stages=4, num_warps=4),
@@ -68,6 +67,7 @@ def limit_grid(grid_0, grid_1):
     warmup=5,
     rep=10,
 )
+@libentry()
 @triton.jit
 def max_pool2d_forward_kernel(
     input_ptr,
@@ -165,7 +165,6 @@ def max_pool2d_forward_kernel(
         pid_nc += grid_0
 
 
-@libentry()
 @libtuner(
     configs=[
         triton.Config({"BLOCK_IN_H": 16, "BLOCK_IN_W": 32}, num_warps=1, num_stages=0),
@@ -186,6 +185,7 @@ def max_pool2d_forward_kernel(
     warmup=5,
     rep=10,
 )
+@libentry()
 @triton.jit
 def max_pool2d_backward_kernel(
     grad_output_ptr,

@@ -27,7 +27,6 @@ from ..utils import TOTAL_CORE_NUM
 logger = logging.getLogger(__name__)
 
 
-@libentry()
 @libtuner(
     configs=[
         triton.Config(kwargs={"BLOCK_SIZE": 4096}, num_stages=1, num_warps=1),
@@ -37,6 +36,7 @@ logger = logging.getLogger(__name__)
     ],
     key=["n_elements"],
 )
+@libentry()
 @triton.jit
 def nan_to_num_kernel(
     X_ptr,

@@ -14,6 +14,17 @@ from flag_gems.utils.random_utils import (
 
 logger = logging.getLogger(__name__)
 
+_CPU_EXPONENTIAL_BUFFERS = {}
+
+
+def _get_cpu_exponential_buffer(shape, dtype, pin_memory):
+    key = (tuple(shape), dtype, pin_memory)
+    buf = _CPU_EXPONENTIAL_BUFFERS.get(key)
+    if buf is None or buf.shape != shape or buf.dtype != dtype:
+        buf = torch.empty(shape, dtype=dtype, device="cpu", pin_memory=pin_memory)
+        _CPU_EXPONENTIAL_BUFFERS[key] = buf
+    return buf
+
 
 @triton.jit
 def safe_fast_log_f32(x):
@@ -168,13 +179,21 @@ def fused_exponential_kernel_f64(
 
 
 def exponential_(x, lambd: float = 1.0, *, generator=None):
-    logger.debug("GEMS_TSINGMICRO EXPONENTIAL_")
+    logger.debug("GEMS EXPONENTIAL_")
 
     if True:
-        # run on the cpu for speed-up temporailly
-        x_cpu = torch.empty(x.shape, dtype=x.dtype, device="cpu", pin_memory=True)
-        x_cpu.exponential_(lambd=lambd)
-        x.copy_(x_cpu, non_blocking=True)
+        # CPU fallback for unsupported precision mode; keep it vector-friendly.
+        cpu_dtype = (
+            torch.float32 if x.dtype in (torch.float16, torch.bfloat16) else x.dtype
+        )
+        x_cpu = _get_cpu_exponential_buffer(x.shape, cpu_dtype, pin_memory=True)
+        x_cpu.uniform_(0.0, 1.0, generator=generator)
+        x_cpu.clamp_min_(torch.finfo(cpu_dtype).tiny)
+        x_cpu.log_().neg_().div_(lambd)
+        if cpu_dtype != x.dtype:
+            x.copy_(x_cpu.to(dtype=x.dtype), non_blocking=True)
+        else:
+            x.copy_(x_cpu, non_blocking=True)
         return x
 
     else:

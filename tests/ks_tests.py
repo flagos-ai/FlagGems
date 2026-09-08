@@ -52,6 +52,9 @@ def test_normal_pvalue(shape, dtype):
 @pytest.mark.parametrize("shape", DISTRIBUTION_SHAPES)
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
 def test_uniform_pvalue(shape, dtype):
+    if flag_gems.vendor_name == "cambricon":
+        torch.manual_seed(42)
+        torch.mlu.manual_seed_all(42)
     x = torch.randn(size=shape, dtype=dtype, device=flag_gems.device)
     with flag_gems.use_gems():
         x.uniform_(-3, 3)
@@ -75,6 +78,18 @@ def test_exponential_pvalue(shape, dtype, lambd):
         x.exponential_(lambd=lambd)
     expo_cdf = lambda x: np.where(x < 0, 0, 1.0 - np.exp(-lambd * x))
     pvalue = scipy.stats.kstest(x.cpu().numpy().flatten(), expo_cdf).pvalue
+    assert pvalue > 0.05
+
+
+@pytest.mark.exponential
+@pytest.mark.parametrize("shape", DISTRIBUTION_SHAPES)
+@pytest.mark.parametrize("dtype", (torch.float32,))
+@pytest.mark.parametrize("lambd", (0.01, 0.5, 100.0))
+def test_exponential_out_pvalue(shape, dtype, lambd):
+    x = torch.empty(size=shape, dtype=dtype, device=flag_gems.device)
+    y = flag_gems.exponential(x, lambd=lambd)
+    expo_cdf = lambda v: np.where(v < 0, 0, 1.0 - np.exp(-lambd * v))
+    pvalue = scipy.stats.kstest(y.cpu().numpy().flatten(), expo_cdf).pvalue
     assert pvalue > 0.05
 
 

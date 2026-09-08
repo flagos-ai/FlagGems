@@ -16,11 +16,23 @@ import logging
 
 import torch
 
-from flag_gems.ops.neg import neg_func
-
 logger = logging.getLogger(__name__)
 
 
 def resolve_conj(A: torch.Tensor):
     logger.debug("GEMS_METAX RESOLVE_CONJ")
-    return torch.complex(A.real, neg_func(A.imag)) if A.is_conj() else A
+    if not A.is_conj():
+        return A
+    # A has the conj bit set: logical value = conj(storage).
+    # resolve_conj materializes this into a contiguous tensor without the conj bit.
+    #
+    # We cannot use A.real / A.imag because those trigger operator dispatch back
+    # into _conj → resolve_conj, causing infinite recursion.
+    #
+    # torch.clone() on a conjugated tensor physically resolves the conjugation
+    # at the C++ aten::clone level (copies data with conj applied) and returns
+    # a new tensor without the conj bit. This does not recurse through resolve_conj.
+    #
+    # The shared empty.py skips the triton kernel for complex dtypes,
+    # so clone() → _to_copy → empty no longer fails with KeyError on complex64.
+    return A.clone()

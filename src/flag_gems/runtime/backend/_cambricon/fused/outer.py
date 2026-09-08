@@ -52,7 +52,6 @@ def early_config_prune(configs, named_args, **kwargs):
     return new_configs
 
 
-@libentry()
 @triton.autotune(
     configs=[
         triton.Config({"tile_size": 1024}, num_stages=3, num_warps=1),
@@ -66,6 +65,7 @@ def early_config_prune(configs, named_args, **kwargs):
     key=["M", "N"],
     prune_configs_by={"early_config_prune": early_config_prune},
 )
+@libentry()
 @triton.jit
 def outer_kernel(
     lhs,

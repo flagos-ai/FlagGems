@@ -98,3 +98,13 @@ def normal_float_tensor(mean, std, *, generator=None):
     device = std.device
     out = normal_distribution(shape, device)
     return transform_func_float_tensor(out, std, mean)
+
+
+def normal_(self, mean=0, std=1, *, generator=None):
+    logger.debug("GEMS_ENFLAME NORMAL_")
+    shape = self.shape
+    device = self.device
+    out = normal_distribution(shape, device, generator=generator)
+    self.copy_(out)
+    transform_func_float_float(self, std, mean, out0=self)
+    return self

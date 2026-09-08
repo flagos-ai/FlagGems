@@ -653,7 +653,7 @@ def _attn_bwd(
     remaining_m = Q_CTX - start_m
     num_steps = (remaining_m + BLOCK_M1 - 1) // BLOCK_M1
 
-    if num_steps > 0 and start_m < Q_CTX:
+    if (num_steps > 0) & (start_m < Q_CTX):
         dk, dv = _attn_bwd_dkdv(  #
             dk,
             dv,  #

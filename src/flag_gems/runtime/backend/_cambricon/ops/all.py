@@ -35,8 +35,8 @@ def reduce_all(a, b):
     return a and b
 
 
-@libentry()
 @triton.autotune(configs=runtime.get_tuned_config("all"), key=["M", "N"])
+@libentry()
 @triton.jit
 def all_kernel_dim(
     inp,
@@ -57,16 +57,16 @@ def all_kernel_dim(
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
         col_mask = cols < N
-        mask = row_mask and col_mask
+        mask = row_mask & col_mask
 
         a = tl.load(inp + cols, mask, other=1.0)
-        _all = _all and (a != 0)
+        _all = _all & (a != 0)
     all = tl.reduce(_all, axis=1, combine_fn=reduce_all)
     tl.store(out, all[:, None], row_mask)
 
 
-@libentry()
 @triton.autotune(configs=cfggen_reduce_op2(), key=["M"])
+@libentry()
 @triton.jit
 def all_kernel_1(
     inp,
@@ -85,13 +85,13 @@ def all_kernel_1(
         offset = off + tl.arange(0, BLOCK_SIZE)
         mask = offset < M
         inp_val = tl.load(inp + offset, mask=mask, other=1.0)
-        _tmp = _tmp and (inp_val != 0)
+        _tmp = _tmp & (inp_val != 0)
 
     # Reset to original reduce programming mode after optimizing the tl.reduce.
     for x in tl.static_range(1, int(ITER_NUM), 1):
         _tmp[: BLOCK_SIZE // (2**x)] = (
             _tmp[: BLOCK_SIZE // (2**x)]
-            and _tmp[BLOCK_SIZE // (2**x) : (BLOCK_SIZE // (2**x)) * 2]
+            & _tmp[BLOCK_SIZE // (2**x) : (BLOCK_SIZE // (2**x)) * 2]
         )
 
     tl.atomic_and(out, _tmp[0].to(tl.int32))
@@ -125,6 +125,10 @@ def all_dim(inp, dim=None, keepdim=False):
         shape[dim] = 1
         M = inp.numel() // N
 
+        # Cast to bool to avoid float16/bfloat16 comparison issues in kernel
+        if inp.dtype != torch.bool:
+            inp = inp.bool()
+
         out = torch.empty(shape, dtype=torch.bool, device=inp.device)
 
         grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
@@ -150,6 +154,10 @@ def all_dims(inp, dim=None, keepdim=False):
         N *= shape[i]
         shape[i] = 1
     M = inp.numel() // N
+
+    # Cast to bool to avoid float16/bfloat16 comparison issues in kernel
+    if inp.dtype != torch.bool:
+        inp = inp.bool()
 
     out = torch.empty(shape, dtype=torch.bool, device=inp.device)
 

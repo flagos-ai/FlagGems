@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
+
 import torch
 import triton
 import triton.language as tl
@@ -19,7 +21,26 @@ import triton.language as tl
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils.libentry import libentry
 
+logger = logging.getLogger(__name__)
+
 TOTAL_CORE_NUM = torch_device_fn.get_device_properties().multi_processor_count
+SMALL_INT_RANGE_LIMIT = 256
+
+
+@libentry()
+@triton.jit
+def dense_inverse_small_int_range_kernel(
+    in_ptr: tl.tensor,
+    inverse_indices_ptr: tl.tensor,
+    min_value: tl.constexpr,
+    num_tasks: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(axis=0)
+    offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offset < num_tasks
+    value = tl.load(in_ptr + offset, mask=mask, other=min_value)
+    tl.store(inverse_indices_ptr + offset, value - min_value, mask=mask)
 
 
 @libentry()
@@ -213,12 +234,78 @@ def sorted_unique_flat(
     return data_out[:out_size], inverse_indices, counts
 
 
+def small_range_unique_flat(
+    in0: torch.Tensor,
+    min_value: int,
+    max_value: int,
+    return_inverse: bool,
+    return_counts: bool,
+):
+    num_tasks = in0.numel()
+    value_range = max_value - min_value + 1
+    flat = in0.ravel()
+    if return_inverse:
+        inverse_indices = torch.empty([num_tasks], dtype=torch.int64, device=in0.device)
+    else:
+        inverse_indices = None
+
+    counts_full = torch.stack(
+        [
+            (flat == value).sum().to(torch.int64)
+            for value in range(min_value, max_value + 1)
+        ]
+    )
+    present = counts_full > 0
+    prefix = present.to(torch.int64).cumsum(axis=0)
+    out_size = prefix[-1].item()
+
+    values = (
+        torch.arange(value_range, dtype=torch.int64, device=in0.device) + min_value
+    ).to(in0.dtype)
+    data_out = values[present]
+    counts = counts_full[present] if return_counts else None
+
+    if return_inverse and out_size == value_range:
+        with torch_device_fn.device(in0.device.index):
+            block_size = 1024
+            grid = (triton.cdiv(num_tasks, block_size),)
+            dense_inverse_small_int_range_kernel[grid](
+                flat,
+                inverse_indices,
+                min_value,
+                num_tasks,
+                BLOCK_SIZE=block_size,
+            )
+    elif return_inverse:
+        inverse_indices.copy_(prefix[(flat - min_value).to(torch.int64)] - 1)
+
+    return data_out[:out_size], inverse_indices, counts
+
+
 def _unique2(
     in0: torch.Tensor,
     sorted: bool = True,
     return_inverse: bool = False,
     return_counts: bool = False,
 ):
+    logger.debug("GEMS_TSINGMICRO _UNIQUE2")
+    if in0.dtype in (torch.int16, torch.int32) and in0.numel() > 8192:
+        min_value = in0.min().item()
+        max_value = in0.max().item()
+        if max_value - min_value + 1 <= SMALL_INT_RANGE_LIMIT:
+            data_out, inverse_indices, counts = small_range_unique_flat(
+                in0, min_value, max_value, return_inverse, return_counts
+            )
+            return (
+                data_out,
+                (
+                    inverse_indices
+                    if inverse_indices is None
+                    else inverse_indices.view_as(in0)
+                ),
+                counts,
+            )
+
     sorted_data, sorted_indices = torch.sort(in0.ravel(), stable=False)
     data_out, inverse_indices, counts = sorted_unique_flat(
         sorted_data, sorted_indices, return_inverse, return_counts

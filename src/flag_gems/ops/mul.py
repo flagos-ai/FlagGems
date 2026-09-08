@@ -19,11 +19,19 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.runtime import device as runtime_device
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils.shape_utils import volume
 
 logger = logging.getLogger(__name__)
+
+# Name of the active flag_gems backend device (e.g. "cuda", "musa"). The
+# optimized Triton path below runs on this device; tensors on other device
+# types (e.g. plain "cpu") fall through to the aten reference path. Gating on
+# the hardcoded literal "cuda" wrongly excluded backends whose device type is
+# not "cuda" (e.g. mthreads reports "musa") from the shared Triton path.
+_DEVICE_NAME = runtime_device.name
 
 _FALLBACK_KEYSET = torch._C.DispatchKeySet(
     torch._C.DispatchKey.CompositeExplicitAutograd
@@ -576,7 +584,7 @@ def mul_broadcast_func(a, b, out=None):
         raise TypeError("mul expects tensor or scalar inputs")
 
     device = _select_device(a, b)
-    if device.type != "cuda":
+    if device.type != _DEVICE_NAME:
         if out is not None:
             return torch.ops.aten.mul.out.redispatch(_FALLBACK_KEYSET, a, b, out=out)
         return torch.ops.aten.mul.Tensor.redispatch(_FALLBACK_KEYSET, a, b)
@@ -721,7 +729,7 @@ def _launch_complex_generic(
 
 def mul_complex_broadcast_func(a, b, out=None):
     device = _select_device(a, b)
-    if device.type != "cuda":
+    if device.type != _DEVICE_NAME:
         if out is not None:
             return torch.ops.aten.mul.out.redispatch(_FALLBACK_KEYSET, a, b, out=out)
         return torch.ops.aten.mul.Tensor.redispatch(_FALLBACK_KEYSET, a, b)

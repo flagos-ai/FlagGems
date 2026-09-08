@@ -162,6 +162,44 @@ def mm(a, b):
     return c
 
 
+def router_gemm(x: torch.Tensor, weight: torch.Tensor) -> torch.Tensor:
+    """bf16 x bf16 -> fp32 GEMM for MoE router gate. weight shape: (N, K)."""
+    logger.debug("GEMS_ENFLAME ROUTER_GEMM")
+    if x.stride(0) > 1 and x.stride(1) > 1:
+        x = x.contiguous()
+    M, K = x.shape
+    N = weight.shape[0]
+    c = torch.empty((M, N), device=x.device, dtype=torch.float32)
+    b = weight.t().contiguous()
+    # launch kernel
+    MAX_GRID_DIM = 24
+    grid = lambda META: (
+        min(
+            triton.cdiv(MAX_GRID_DIM, META["num_warps"]),
+            triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
+        ),
+        META["SPLIT_K"],
+    )
+    with torch_device_fn.device(x.device):
+        mm_kernel[grid](
+            x,
+            b,
+            c,
+            M,
+            N,
+            K,
+            x.stride(0),
+            x.stride(1),
+            b.stride(0),
+            b.stride(1),
+            c.stride(0),
+            c.stride(1),
+            GROUP_M=8,
+            MAX_GRID_DIM=MAX_GRID_DIM,
+        )
+    return c
+
+
 def mm_out(a, b, *, out):
     logger.debug("GEMS_ENFLAME MM_OUT")
     # handle non-contiguous inputs if necessary

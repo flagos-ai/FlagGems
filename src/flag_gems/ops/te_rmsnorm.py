@@ -187,6 +187,7 @@ def te_rmsnorm_fwd(
             - None: Placeholder for amax (FP8 compatibility)
             - rsigma: 1/sqrt(mean(x^2) + eps), shape (...,) without last dim
     """
+    logger.debug("GEMS TE_RMSNORM_FWD")
     if quantizer is not None:
         logger.warning("FP8 quantizer is not yet supported, ignoring")
 
@@ -527,6 +528,7 @@ def te_rmsnorm_bwd(
         dx: gradient w.r.t. input, shape (*, N)
         dgamma: gradient w.r.t. weight, shape (N,)
     """
+    logger.debug("GEMS TE_RMSNORM_BWD")
     # Save original shape and flatten to 2D
     original_shape = x.shape
     N = gamma.shape[0]

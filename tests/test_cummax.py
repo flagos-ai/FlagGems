@@ -88,3 +88,31 @@ def test_cummax_with_nan(shape, dtype, nan_ratio):
         res_out.values, ref_out.values, dtype, reduce_dim=shape[dim], equal_nan=True
     )
     utils.gems_assert_equal(res_out.indices, ref_out.indices)
+
+
+@pytest.mark.cummaxmin_backward
+@pytest.mark.skipif(
+    utils.SkipVersion("triton", "<3.0"),
+    reason="Feature requires Triton >= 3.0.",
+)
+@pytest.mark.parametrize("shape", CUMMAX_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("reduce_op", ["cummax", "cummin"])
+def test_cummaxmin_backward(shape, dtype, reduce_op):
+    dim = 1 if shape == utils.REDUCTION_SHAPES[-1] else -1
+
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    grad = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+    reduce_fn = torch.cummax if reduce_op == "cummax" else torch.cummin
+    _, indices = reduce_fn(inp, dim=dim)
+
+    ref_grad = utils.to_reference(grad, True)
+    ref_indices = utils.to_reference(indices)
+    ref_out = torch.zeros(shape, dtype=ref_grad.dtype, device=ref_grad.device)
+    ref_out.scatter_add_(dim if dim >= 0 else dim + inp.ndim, ref_indices, ref_grad)
+
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.cummaxmin_backward(grad, inp, indices, dim)
+
+    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=shape[dim])
