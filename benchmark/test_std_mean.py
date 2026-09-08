@@ -205,8 +205,8 @@ class StdMeanBenchmark(base.UnaryReductionBenchmark):
             )
         torch_op = schema_op
         # Benchmark the FlagGems implementation directly, as other kernel
-        # benchmarks do. A full use_gems context registers unrelated operators
-        # and can include their Python dispatch gaps in short device timings.
+        # benchmarks do. Global operator registration can include unrelated
+        # Python dispatch gaps in short device timings.
         # Accuracy tests separately exercise all six public FlagGems entry points.
         gems_op = _STD_MEAN_IMPLS[variant]
         if variant == "std_mean_names_dim":
