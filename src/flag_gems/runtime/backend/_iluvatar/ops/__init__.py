@@ -29,16 +29,19 @@ from .conv_transpose1d import conv_transpose1d
 from .diagonal_scatter import diagonal_scatter
 from .div import div_mode, div_mode_
 from .gcd_ import gcd_
+from .gru import gru, gru_data
 from .hadamard_transform import hadamard_transform
 from .histc import histc
 from .index_select_backward import index_select_backward
 from .linalg_cholesky import linalg_cholesky
 from .linalg_matrix_norm import linalg_matrix_norm
+from .linalg_qr import linalg_qr, linalg_qr_out
 from .linalg_solve_triangular import (
     linalg_solve_triangular,
     linalg_solve_triangular_out,
 )
 from .linear import linear
+from .log_normal import log_normal
 from .log_normal_ import log_normal_
 from .matmul_bf16 import matmul_bf16
 from .matmul_int8 import matmul_int8
@@ -92,14 +95,19 @@ __all__ = [
     "div_mode",
     "div_mode_",
     "gcd_",
+    "gru",
+    "gru_data",
     "hadamard_transform",
     "histc",
     "index_select_backward",
     "linalg_cholesky",
     "linalg_matrix_norm",
+    "linalg_qr",
+    "linalg_qr_out",
     "linalg_solve_triangular",
     "linalg_solve_triangular_out",
     "linear",
+    "log_normal",
     "log_normal_",
     "matmul_bf16",
     "matmul_int8",
