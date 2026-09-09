@@ -20,6 +20,7 @@ import triton.language as tl
 from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 
 from flag_gems.runtime import torch_device_fn
+from flag_gems.utils.shape_utils import heuristics_for_num_warps, volume
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
@@ -90,15 +91,25 @@ def fill_tensor(input, value):
         return fill_tensor_func(input, value, out0=out)
 
 
+@triton.jit
+def _fill_tensor_out_kernel(out_ptr, n_elements, value, BLOCK_SIZE: tl.constexpr):
+    # 纯 store、不加载 input。value 传 Python 标量（会被 specialize 成编译期常量），
+    # tl.full 才会被优化成 memset；若传 runtime 0-dim 张量，tl.full 会物化大中间量。
+    pid = tl.program_id(0)
+    offs = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offs < n_elements
+    tl.store(
+        out_ptr + offs,
+        tl.full([BLOCK_SIZE], value, dtype=out_ptr.dtype.element_ty),
+        mask=mask,
+    )
+
+
 def fill_tensor_out(input, value, *, out=None):
-    # fill.Tensor_out fills `out` with a single 0-dim `value`. The generic
-    # ops/fill.py routes a cuda value through fill_tensor_func (`return value`),
-    # which broadcasts a 0-dim (stride-0) tensor read: on XPU that scalar-load
-    # per element defeats the block DMA and is CATASTROPHIC (measured 74ms for a
-    # (4096,4096) fill vs 0.07ms for a pure write) -> the IR dump
-    # ir-fill_tensor_out-dev0.log shows 1110 modules / 1389 kernel recompiles.
-    # Since value is 0-dim, this is semantically identical to fill.Scalar_out;
-    # read it once and reuse the fast tl.full pure-write fill_scalar_func.
+    # fill.Tensor_out 用单个 0-dim `value` 填充 `out`，语义等价于 fill.Scalar_out。
+    # 通用 ops/fill.py 走 fill_tensor_func（`return value`）在 XPU 上会 0-dim 标量逐元素
+    # 读，打散 block DMA。这里用专用 _fill_tensor_out_kernel：不加载 input、tl.full 保证
+    # 向量化、value 读成 Python 标量让编译期常量折叠成 memset。
     logger.debug("GEMS_KUNLUNXIN FILL_TENSOR_OUT")
     if out is None:
         return fill_tensor(input, value)
@@ -106,7 +117,20 @@ def fill_tensor_out(input, value, *, out=None):
         raise RuntimeError(
             f"fill_ only supports 0-dimension value tensor but got tensor with {value.ndim} dimensions."
         )
-    return fill_scalar_out(input, value.item(), out=out)
+    N = volume(input.shape)
+    grid_fn = (12, 1, 1)
+    block_size = triton.next_power_of_2(triton.cdiv(N, 12))
+    num_warps = heuristics_for_num_warps(block_size)
+    with torch_device_fn.device(input.device):
+        _fill_tensor_out_kernel[grid_fn](
+            out,
+            N,
+            value.item(),
+            BLOCK_SIZE=block_size,
+            num_warps=num_warps,
+            isCloseDtypeConvert=True,
+        )
+    return out
 
 
 def fill_tensor_(self, value):

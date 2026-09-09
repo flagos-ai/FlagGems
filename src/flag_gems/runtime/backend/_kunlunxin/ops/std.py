@@ -18,106 +18,147 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry
 
 logger = logging.getLogger(__name__)
 
 
+# XPU 归约正确性约束（见 sum.py / HARNESS_SUMMARY.md §2.5）：tl.sum 只在
+# tile <= 8192 时精确可靠（32768 需 buffer_size_limit 且 fp32 累加精度不足，
+# 会让 std 的方差超出 fp32 的 rtol）。因此全量归约用 8192 无掩码整块 + 单独 tail。
+_FLAT_CHUNK = 8192
+
+
+@libentry()
 @triton.jit
-def _std_map_kernel(X, Tmp_sum, Tmp_sum_sq, N, BLOCK_N: tl.constexpr):
+def _std_flat_core_kernel(X, Tmp_sum, Tmp_sum_sq, CHUNK: tl.constexpr):
     pid = tl.program_id(0)
-    offset = pid * BLOCK_N + tl.arange(0, BLOCK_N)
-    mask = offset < N
-    x = tl.load(X + offset, mask=mask, other=0.0).to(tl.float32)
-    sum_val = tl.sum(x, axis=0)
-    sum_sq_val = tl.sum(x * x, axis=0)
-    tl.store(Tmp_sum + pid, sum_val)
-    tl.store(Tmp_sum_sq + pid, sum_sq_val)
+    off = pid * CHUNK + tl.arange(0, CHUNK)
+    x = tl.load(X + off).to(tl.float32)
+    tl.store(Tmp_sum + pid, tl.sum(x, axis=0))
+    tl.store(Tmp_sum_sq + pid, tl.sum(x * x, axis=0))
 
 
+@libentry()
 @triton.jit
-def _std_reduce_kernel(
-    Tmp_sum, Tmp_sum_sq, Out, N, correction, BLOCK_NUM, BLOCK_SIZE: tl.constexpr
+def _std_flat_tail_kernel(X, Tmp_sum, Tmp_sum_sq, start, NTAIL, TL: tl.constexpr):
+    off = tl.arange(0, TL)
+    x = tl.load(X + start + off, mask=off < NTAIL, other=0.0).to(tl.float32)
+    tl.store(Tmp_sum, tl.sum(x, axis=0))
+    tl.store(Tmp_sum_sq, tl.sum(x * x, axis=0))
+
+
+@libentry()
+@triton.jit
+def _std_flat_tail_staged_kernel(X, Tmp_sum, Tmp_sum_sq, TL: tl.constexpr):
+    # 已零填充的 staging 缓冲，无掩码整块归约（tail > 8192 时掩码 load 不可靠）。
+    off = tl.arange(0, TL)
+    x = tl.load(X + off).to(tl.float32)
+    tl.store(Tmp_sum, tl.sum(x, axis=0))
+    tl.store(Tmp_sum_sq, tl.sum(x * x, axis=0))
+
+
+@libentry()
+@triton.jit
+def _std_flat_merge_kernel(
+    Tmp_sum, Tmp_sum_sq, Out, N, correction, nb, NLANES: tl.constexpr
 ):
-    total_sum_acc = tl.zeros((BLOCK_SIZE,), dtype=tl.float32)
-    total_sum_sq_acc = tl.zeros((BLOCK_SIZE,), dtype=tl.float32)
-    for off in range(0, BLOCK_NUM, BLOCK_SIZE):
-        offset = off + tl.arange(0, BLOCK_SIZE)
-        mask = offset < BLOCK_NUM
-        tmp_sum_vals = tl.load(Tmp_sum + offset, mask=mask, other=0.0).to(tl.float32)
-        tmp_sum_sq_vals = tl.load(Tmp_sum_sq + offset, mask=mask, other=0.0).to(
-            tl.float32
-        )
-        total_sum_acc += tmp_sum_vals
-        total_sum_sq_acc += tmp_sum_sq_vals
-    total_sum = tl.sum(total_sum_acc, axis=0)
-    total_sum_sq = tl.sum(total_sum_sq_acc, axis=0)
+    off = tl.arange(0, NLANES)
+    mask = off < nb
+    s = tl.load(Tmp_sum + off, mask=mask, other=0.0).to(tl.float32)
+    sq = tl.load(Tmp_sum_sq + off, mask=mask, other=0.0).to(tl.float32)
+    total_sum = tl.sum(s, axis=0)
+    total_sum_sq = tl.sum(sq, axis=0)
     mean = total_sum / N
     var = (total_sum_sq / N) - (mean * mean)
     var = var * N / tl.maximum(N - correction, 1.0)
-    safe_var = tl.maximum(var, 0.0)
-    std_dev = tl.sqrt(safe_var)
+    std_dev = tl.sqrt(tl.maximum(var, 0.0))
     tl.store(Out, std_dev.to(Out.dtype.element_ty))
 
 
 @libentry()
-@triton.heuristics(runtime.get_heuristic_config("softmax_inner"))
 @triton.jit(do_not_specialize=["correction"])
-def _std_dim_kernel_inner(
-    Out,
-    X,
-    M,
-    N,
-    correction,
-    TILE_N: tl.constexpr,
-    ONE_TILE_PER_CTA: tl.constexpr,
+def _std_dim_row_kernel(
+    Out, X, M, N, correction, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr
 ):
-    pid_m = tl.program_id(0)
-
-    if ONE_TILE_PER_CTA:
-        n_offsets = tl.arange(0, TILE_N)
-        mask = n_offsets < N
-        x = tl.load(X + pid_m * N + n_offsets, mask=mask, other=0.0).to(tl.float32)
-        mean = tl.sum(x, axis=0) / N
-    else:
-        sum_acc = tl.zeros((TILE_N,), dtype=tl.float32)
-        for start_n in range(0, N, TILE_N):
-            n_offsets = start_n + tl.arange(0, TILE_N)
-            mask = n_offsets < N
-            x = tl.load(X + pid_m * N + n_offsets, mask=mask, other=0.0).to(tl.float32)
-            sum_acc += x
-        mean = tl.sum(sum_acc, axis=0) / N
-
-    if ONE_TILE_PER_CTA:
-        n_offsets = tl.arange(0, TILE_N)
-        mask = n_offsets < N
-        x = tl.load(X + pid_m * N + n_offsets, mask=mask, other=0.0).to(tl.float32)
-        diff = x - mean
-        sq_sum = tl.sum(tl.where(mask, diff * diff, 0.0), axis=0)
-    else:
-        sq_acc = tl.zeros((TILE_N,), dtype=tl.float32)
-        for start_n in range(0, N, TILE_N):
-            n_offsets = start_n + tl.arange(0, TILE_N)
-            mask = n_offsets < N
-            x = tl.load(X + pid_m * N + n_offsets, mask=mask, other=0.0).to(tl.float32)
-            diff = x - mean
-            sq_acc += tl.where(mask, diff * diff, 0.0)
-        sq_sum = tl.sum(sq_acc, axis=0)
-
-    denom = N - correction
-    var = sq_sum / tl.maximum(denom, 1e-12)
+    pid = tl.program_id(0)
+    rows = pid * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    row_mask = rows < M
+    rows_c = tl.where(rows < M, rows, M - 1)
+    sum_acc = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
+    sum_sq_acc = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
+    for start_n in range(0, N, BLOCK_N):
+        cols = start_n + tl.arange(0, BLOCK_N)[None, :]
+        mask = row_mask & (cols < N)
+        a = tl.load(X + rows_c * N + cols, mask=mask, other=0.0).to(tl.float32)
+        sum_acc += a
+        sum_sq_acc += a * a
+    total_sum = tl.sum(sum_acc, axis=1)[:, None]
+    total_sum_sq = tl.sum(sum_sq_acc, axis=1)[:, None]
+    mean = total_sum / N
+    var = (total_sum_sq / N) - (mean * mean)
+    var = var * N / tl.maximum(N - correction, 1.0)
     std_dev = tl.sqrt(tl.maximum(var, 0.0))
-    tl.store(Out + pid_m, std_dev.to(Out.dtype.element_ty), mask=pid_m < M)
+    tl.store(Out + rows, std_dev.to(Out.dtype.element_ty), row_mask)
 
 
 def _std_dim_dispatch(out, x_contiguous, M, N, K, effective_correction):
-    # Every dim reduction is routed through dim_compress => K is always 1 and we
-    # only use the verified-correct inner kernel.
+    # dim_compress 保证归约维落在 trailing axis => 恒为 contiguous (M, N) 内归约。
+    # 用 2D tile（BLOCK_M 行/CTA）替代原 1 行/CTA 的 1D tile，减少 CTA 数、提升访存。
+    BLOCK_M = 128
+    BLOCK_N = min(8192, triton.next_power_of_2(N))
     with torch_device_fn.device(x_contiguous.device):
-        grid = (M, 1, 1)
-        _std_dim_kernel_inner[grid](out, x_contiguous, M, N, effective_correction)
+        grid = (triton.cdiv(M, BLOCK_M), 1, 1)
+        _std_dim_row_kernel[grid](
+            out, x_contiguous, M, N, effective_correction, BLOCK_M, BLOCK_N
+        )
+
+
+def _launch_std_flat(x, out, N, correction):
+    # 全量归约：32768 无掩码整块（带 buffer_size_limit=2048）并行 map，单次掩码
+    # tail（<=8192），再单次 merge。对齐 sum.py 的验证模式，避免原 1024 小块 +
+    # 掩码大 tile 的低效与不可靠。
+    CHUNK = _FLAT_CHUNK
+    nfull = N // CHUNK
+    tail = N % CHUNK
+    nb = nfull + (1 if tail else 0)
+    tmp_sum = torch.empty((nb,), dtype=torch.float32, device=x.device)
+    tmp_sum_sq = torch.empty((nb,), dtype=torch.float32, device=x.device)
+    with torch_device_fn.device(x.device):
+        if nfull:
+            _std_flat_core_kernel[(nfull, 1, 1)](
+                x, tmp_sum, tmp_sum_sq, CHUNK, buffer_size_limit=2048
+            )
+        if tail and tail <= 8192:
+            _std_flat_tail_kernel[(1, 1, 1)](
+                x,
+                tmp_sum[nfull : nfull + 1],
+                tmp_sum_sq[nfull : nfull + 1],
+                nfull * CHUNK,
+                tail,
+                triton.next_power_of_2(tail),
+            )
+        elif tail:
+            TL = triton.next_power_of_2(tail)
+            staged = torch.zeros((TL,), dtype=x.dtype, device=x.device)
+            torch.ops.aten._copy_from(x[nfull * CHUNK : N], staged[:tail], False)
+            _std_flat_tail_staged_kernel[(1, 1, 1)](
+                staged,
+                tmp_sum[nfull : nfull + 1],
+                tmp_sum_sq[nfull : nfull + 1],
+                TL,
+                buffer_size_limit=2048,
+            )
+        _std_flat_merge_kernel[(1, 1, 1)](
+            tmp_sum,
+            tmp_sum_sq,
+            out,
+            N,
+            correction,
+            nb,
+            triton.next_power_of_2(nb),
+        )
 
 
 def std(x, dim=None, *, correction=None, keepdim=False):
@@ -134,25 +175,8 @@ def std(x, dim=None, *, correction=None, keepdim=False):
             out = torch.zeros([], device=x.device, dtype=x.dtype)
             return out.view([1] * input_ndim) if keepdim else out
 
-        BLOCK_N_MAP = 1024
-        BLOCK_NUM = triton.cdiv(N, BLOCK_N_MAP)
-        tmp_sum = torch.empty((BLOCK_NUM,), dtype=torch.float32, device=x.device)
-        tmp_sum_sq = torch.empty((BLOCK_NUM,), dtype=torch.float32, device=x.device)
         out = torch.empty([], device=x.device, dtype=x.dtype)
-        BLOCK_SIZE_REDUCE = 1024
-        with torch_device_fn.device(x.device):
-            _std_map_kernel[(BLOCK_NUM,)](
-                x.contiguous(), tmp_sum, tmp_sum_sq, N, BLOCK_N_MAP
-            )
-            _std_reduce_kernel[(1,)](
-                tmp_sum,
-                tmp_sum_sq,
-                out,
-                N,
-                effective_correction,
-                BLOCK_NUM,
-                BLOCK_SIZE_REDUCE,
-            )
+        _launch_std_flat(x.contiguous(), out, N, effective_correction)
         return out.view([1] * input_ndim) if keepdim else out
 
     if isinstance(dim, int):
