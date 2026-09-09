@@ -140,34 +140,29 @@ any operator listed in both places.
 
 ## 4. Integrating with `pytest`
 
-Add the CLI options to `conftest.py` and apply them once per session, so any
-test file under `tests/` can be pointed at a custom implementation without
-code changes:
-
-```python
-# tests/conftest.py
-import pytest
-from flag_gems.dynamic_registry import DynamicOpOverride
-from flag_gems.cli_override import add_override_arguments, apply_overrides_from_args
-
-def pytest_addoption(parser):
-    add_override_arguments(parser)
-
-def pytest_configure(config):
-    config._override_registry = apply_overrides_from_args(config.option)
-
-def pytest_unconfigure(config):
-    if hasattr(config, "_override_registry"):
-        config._override_registry.restore_all()
-```
+The `--override` and `--override-config` options are already integrated into
+both `tests/conftest.py` and `benchmark/conftest.py`, so any test file under
+`tests/` or `benchmark/` can be pointed at a custom implementation without
+code changes.
 
 Running the existing accuracy test for `softmax` against a candidate
-implementation then requires no change to `test_softmax.py` itself:
+implementation requires no change to `test_softmax.py` itself:
 
 ```shell
 pytest tests/test_softmax.py \
     --override softmax:./candidates/softmax_v2.py:my_softmax
 ```
+
+Similarly, benchmark tests can use the same options:
+
+```shell
+pytest benchmark/test_reduction_perf.py \
+    --override sum:./candidates/sum_v2.py:my_sum \
+    --level core -s
+```
+
+The override is applied once per test session in `pytest_configure`, and
+automatically restored in `pytest_unconfigure` after all tests complete.
 
 ## 5. Concurrent testing of multiple implementations
 

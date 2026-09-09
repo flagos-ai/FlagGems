@@ -212,41 +212,43 @@ any operator listed in both places.
 ## 4. 与 `pytest` 集成
 
 <!--
-Add the CLI options to `conftest.py` and apply them once per session, so any
-test file under `tests/` can be pointed at a custom implementation without
-code changes:
+The `--override` and `--override-config` options are already integrated into
+both `tests/conftest.py` and `benchmark/conftest.py`, so any test file under
+`tests/` or `benchmark/` can be pointed at a custom implementation without
+code changes.
 -->
-将这些命令行选项添加到 `conftest.py` 中，并在每个测试会话（session）开始时应用一次，
-这样 `tests/` 目录下的任何测试文件都可以在不修改代码的前提下指向自定义实现：
-
-```python
-# tests/conftest.py
-import pytest
-from flag_gems.dynamic_registry import DynamicOpOverride
-from flag_gems.cli_override import add_override_arguments, apply_overrides_from_args
-
-def pytest_addoption(parser):
-    add_override_arguments(parser)
-
-def pytest_configure(config):
-    config._override_registry = apply_overrides_from_args(config.option)
-
-def pytest_unconfigure(config):
-    if hasattr(config, "_override_registry"):
-        config._override_registry.restore_all()
-```
+`--override` 和 `--override-config` 选项已经集成到 `tests/conftest.py` 和
+`benchmark/conftest.py` 中，因此 `tests/` 或 `benchmark/` 目录下的任何测试文件
+都可以在不修改代码的前提下指向自定义实现。
 
 <!--
 Running the existing accuracy test for `softmax` against a candidate
-implementation then requires no change to `test_softmax.py` itself:
+implementation requires no change to `test_softmax.py` itself:
 -->
-这样一来，要针对候选实现运行现有的 `softmax` 精度测试，`test_softmax.py`
-本身完全不需要任何改动：
+要针对候选实现运行现有的 `softmax` 精度测试，`test_softmax.py` 本身完全不需要任何改动：
 
 ```shell
 pytest tests/test_softmax.py \
     --override softmax:./candidates/softmax_v2.py:my_softmax
 ```
+
+<!--
+Similarly, benchmark tests can use the same options:
+-->
+类似地，性能基准测试也可以使用相同的选项：
+
+```shell
+pytest benchmark/test_reduction_perf.py \
+    --override sum:./candidates/sum_v2.py:my_sum \
+    --level core -s
+```
+
+<!--
+The override is applied once per test session in `pytest_configure`, and
+automatically restored in `pytest_unconfigure` after all tests complete.
+-->
+重载会在 `pytest_configure` 中对每个测试会话应用一次，
+并在所有测试完成后在 `pytest_unconfigure` 中自动恢复。
 
 <!--
 ## 5. Concurrent testing of multiple implementations
