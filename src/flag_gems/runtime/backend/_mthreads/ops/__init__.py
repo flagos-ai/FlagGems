@@ -74,6 +74,7 @@ from .log_softmax import (
     log_softmax_out,
 )
 from .max import max, max_dim
+from .max_pool2d_with_indices_backward import max_pool2d_with_indices_backward
 from .median import median, median_dim, median_dim_values, median_out
 from .min import min, min_dim
 from .mish import mish, mish_
@@ -195,6 +196,7 @@ __all__ = [
     "log_softmax_out",
     "max",
     "max_dim",
+    "max_pool2d_with_indices_backward",
     "median",
     "median_dim",
     "median_dim_values",
