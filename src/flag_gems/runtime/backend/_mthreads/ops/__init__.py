@@ -113,6 +113,7 @@ from .softplus_backward import softplus_backward
 from .sort import sort, sort_stable
 from .special_erfcx import special_erfcx
 from .special_gammainc import special_gammainc
+from .special_round import special_round
 from .special_round_out import special_round_out
 from .tile import tile
 from .topk_w8a16_fp8 import topk_w8a16_fp8
@@ -248,6 +249,7 @@ __all__ = [
     "sort_stable",
     "special_erfcx",
     "special_gammainc",
+    "special_round",
     "special_round_out",
     "tile",
     "topk_w8a16_fp8",
