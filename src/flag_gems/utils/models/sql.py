@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import os
+import time
 from hashlib import md5
 from itertools import chain
 from typing import (
@@ -29,6 +30,7 @@ from typing import (
 )
 
 import sqlalchemy
+import sqlalchemy.exc
 import sqlalchemy.ext.automap
 import sqlalchemy.orm
 import triton
@@ -220,22 +222,52 @@ class SQLPersistantModel(PersistantModel):
             ModelCls = SQLPersistantModel.build_sql_model_by_py(
                 short_name, keys, values
             )
-            try:
-                with self.engine.begin() as conn:
-                    conn.execute(
-                        sqlalchemy.schema.CreateTable(
-                            ModelCls.__table__, if_not_exists=True
+
+            # Retry logic for handling transient SQLite database locks
+            max_retries = 5
+            base_delay = 0.05  # 50ms
+            for attempt in range(max_retries):
+                try:
+                    with self.engine.begin() as conn:
+                        conn.execute(
+                            sqlalchemy.schema.CreateTable(
+                                ModelCls.__table__, if_not_exists=True
+                            )
                         )
-                    )
-            except Exception as e:
-                # Because of concurrent execution, the same table/type name is
-                # attempted to be created multiple times; these errors can be safely ignored.
-                err_msg = str(e)
-                if "duplicate key value violates unique constraint" not in err_msg:
-                    # DuplicateObject (42710): e.g. type "xxx" already exists
-                    if 'type "' not in err_msg or '" already exists' not in err_msg:
+                    break  # Success, exit retry loop
+                except sqlalchemy.exc.OperationalError as e:
+                    err_msg = str(e)
+                    # Check if it's a SQLite database lock error
+                    if "database is locked" in err_msg:
+                        if attempt < max_retries - 1:
+                            # Exponential backoff
+                            delay = base_delay * (2**attempt)
+                            time.sleep(delay)
+                            # After sleeping, check if table was created by another process
+                            ModelCls_retry = SQLPersistantModel.build_sql_model_by_db(
+                                short_name, self.engine
+                            )
+                            if ModelCls_retry is not None:
+                                self.sql_model_pool[short_name] = ModelCls_retry
+                                return ModelCls_retry
+                            continue
+                        else:
+                            # Max retries exceeded, propagate the error
+                            raise
+                    else:
+                        # Not a lock error, re-raise immediately
                         raise
-            self.sql_model_pool[name] = ModelCls
+                except Exception as e:
+                    # Because of concurrent execution, the same table/type name is
+                    # attempted to be created multiple times; these errors can be safely ignored.
+                    err_msg = str(e)
+                    if "duplicate key value violates unique constraint" not in err_msg:
+                        # DuplicateObject (42710): e.g. type "xxx" already exists
+                        if 'type "' not in err_msg or '" already exists' not in err_msg:
+                            raise
+                    break  # Table exists, exit retry loop
+
+            self.sql_model_pool[short_name] = ModelCls
             return ModelCls
 
     @override
