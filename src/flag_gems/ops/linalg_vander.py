@@ -42,7 +42,10 @@ def vander_kernel(
     row = offsets // N
 
     x_val = tl.load(x_ptr + row, mask=mask)
-    result = tl_extra_shim.pow(x_val.to(tl.float32), col.to(tl.float32))
+    # Compute in the output dtype: fp64 for float64, fp32 otherwise (fp16/bf16
+    # are upcast to fp32 since libdevice pow is not accurate at low precision).
+    compute_dtype = tl.float64 if out_ptr.dtype.element_ty == tl.float64 else tl.float32
+    result = tl_extra_shim.pow(x_val.to(compute_dtype), col.to(compute_dtype))
 
     tl.store(out_ptr + offsets, result, mask=mask)
 
