@@ -60,8 +60,155 @@ def true_div_func_scalar_tensor(x, y):
     return x / y
 
 
+# ---- complex true division (bit-view kernels) ----
+# XPU triton has no complex type support (jit specialization KeyErrors) and
+# xdnn native casts/copies on complex dtypes are [NOT IMPLEMENTED] / broken
+# (copy_ invalid device function). Decompose to interleaved component views
+# (complex32 -> float16, complex64 -> float32) and compute entirely in-kernel
+# with fp32 math; zero torch-side ops on complex tensors.
+
+
+@triton.jit
+def _cdiv_tt_kernel(a_ptr, b_ptr, o_ptr, n, BLOCK: tl.constexpr):
+    pid = tl.program_id(0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    m = offs < n
+    ar = tl.load(a_ptr + 2 * offs, mask=m, other=0.0).to(tl.float32)
+    ai = tl.load(a_ptr + 2 * offs + 1, mask=m, other=0.0).to(tl.float32)
+    br = tl.load(b_ptr + 2 * offs, mask=m, other=0.0).to(tl.float32)
+    bi = tl.load(b_ptr + 2 * offs + 1, mask=m, other=0.0).to(tl.float32)
+    den = br * br + bi * bi
+    re = (ar * br + ai * bi) / den
+    im = (ai * br - ar * bi) / den
+    ty = o_ptr.dtype.element_ty
+    tl.store(o_ptr + 2 * offs, re.to(ty), mask=m)
+    tl.store(o_ptr + 2 * offs + 1, im.to(ty), mask=m)
+
+
+@triton.jit
+def _cdiv_tr_kernel(a_ptr, b_ptr, o_ptr, n, BLOCK: tl.constexpr):
+    pid = tl.program_id(0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    m = offs < n
+    ar = tl.load(a_ptr + 2 * offs, mask=m, other=0.0).to(tl.float32)
+    ai = tl.load(a_ptr + 2 * offs + 1, mask=m, other=0.0).to(tl.float32)
+    br = tl.load(b_ptr + offs, mask=m, other=0.0).to(tl.float32)
+    # direct componentwise division: IEEE x/0 -> +/-inf, 0/0 -> nan, matching
+    # torch CPU semantics for a real divisor (den=br*br flushes to 0 on XPU
+    # when b is an exact f16 zero or tiny f32, wrongly yielding 0/0)
+    re = ar / br
+    im = ai / br
+    ty = o_ptr.dtype.element_ty
+    tl.store(o_ptr + 2 * offs, re.to(ty), mask=m)
+    tl.store(o_ptr + 2 * offs + 1, im.to(ty), mask=m)
+
+
+@triton.jit
+def _cdiv_ts_kernel(a_ptr, o_ptr, n, scalar, BLOCK: tl.constexpr):
+    pid = tl.program_id(0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    m = offs < n
+    ar = tl.load(a_ptr + 2 * offs, mask=m, other=0.0).to(tl.float32)
+    ai = tl.load(a_ptr + 2 * offs + 1, mask=m, other=0.0).to(tl.float32)
+    re = ar / scalar
+    im = ai / scalar
+    ty = o_ptr.dtype.element_ty
+    tl.store(o_ptr + 2 * offs, re.to(ty), mask=m)
+    tl.store(o_ptr + 2 * offs + 1, im.to(ty), mask=m)
+
+
+@triton.jit
+def _cdiv_rt_kernel(a_ptr, b_ptr, o_ptr, n, BLOCK: tl.constexpr):
+    # real tensor / complex tensor: a * conj(b) / |b|^2
+    pid = tl.program_id(0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    m = offs < n
+    ar = tl.load(a_ptr + offs, mask=m, other=0.0).to(tl.float32)
+    br = tl.load(b_ptr + 2 * offs, mask=m, other=0.0).to(tl.float32)
+    bi = tl.load(b_ptr + 2 * offs + 1, mask=m, other=0.0).to(tl.float32)
+    den = br * br + bi * bi
+    re = (ar * br) / den
+    im = (-ar * bi) / den
+    ty = o_ptr.dtype.element_ty
+    tl.store(o_ptr + 2 * offs, re.to(ty), mask=m)
+    tl.store(o_ptr + 2 * offs + 1, im.to(ty), mask=m)
+
+
+@triton.jit
+def _cdiv_st_kernel(b_ptr, o_ptr, n, scalar, BLOCK: tl.constexpr):
+    # python scalar / complex tensor
+    pid = tl.program_id(0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    m = offs < n
+    br = tl.load(b_ptr + 2 * offs, mask=m, other=0.0).to(tl.float32)
+    bi = tl.load(b_ptr + 2 * offs + 1, mask=m, other=0.0).to(tl.float32)
+    den = br * br + bi * bi
+    re = (scalar * br) / den
+    im = (-scalar * bi) / den
+    ty = o_ptr.dtype.element_ty
+    tl.store(o_ptr + 2 * offs, re.to(ty), mask=m)
+    tl.store(o_ptr + 2 * offs + 1, im.to(ty), mask=m)
+
+
+def _complex_view(T):
+    if T.dim() == 0:
+        T = T.unsqueeze(0)
+    if T.dtype == torch.complex32:
+        return T.view(torch.float16).reshape(-1)
+    return T.view(torch.float32).reshape(-1)
+
+
+def _complex_true_divide(A, B, out=None):
+    # A complex tensor path (B: complex tensor / real tensor / python scalar)
+    n = A.numel()
+    if out is None:
+        out = torch.empty_like(A)
+    ov = _complex_view(out)
+    BLOCK = 256
+    grid = (triton.cdiv(n, BLOCK),)
+    av = _complex_view(A)
+    if isinstance(B, torch.Tensor):
+        if B.is_complex():
+            _cdiv_tt_kernel[grid](av, _complex_view(B), ov, n, BLOCK=BLOCK)
+        else:
+            _cdiv_tr_kernel[grid](av, B.reshape(-1), ov, n, BLOCK=BLOCK)
+    else:
+        _cdiv_ts_kernel[grid](av, ov, n, float(B), BLOCK=BLOCK)
+    return out
+
+
+def _rational_true_divide(A, B, out=None):
+    # A real tensor / python scalar, B complex tensor -> complex result
+    n = B.numel()
+    if out is None:
+        out = torch.empty_like(B)
+    ov = _complex_view(out)
+    BLOCK = 256
+    grid = (triton.cdiv(n, BLOCK),)
+    _cdiv_rt_kernel[grid](A.reshape(-1), _complex_view(B), ov, n, BLOCK=BLOCK)
+    return out
+
+
+def _scalar_over_complex(A, B, out=None):
+    # A python scalar, B complex tensor -> complex result
+    n = B.numel()
+    if out is None:
+        out = torch.empty_like(B)
+    ov = _complex_view(out)
+    BLOCK = 256
+    grid = (triton.cdiv(n, BLOCK),)
+    _cdiv_st_kernel[grid](_complex_view(B), ov, n, float(A), BLOCK=BLOCK)
+    return out
+
+
 def true_divide(A, B):
     logger.debug("GEMS_KUNLUNXIN TRUE_DIVIDE")
+    if isinstance(A, torch.Tensor) and A.is_complex():
+        return _complex_true_divide(A, B)
+    if isinstance(B, torch.Tensor) and B.is_complex():
+        if isinstance(A, torch.Tensor):
+            return _rational_true_divide(A, B)
+        return _scalar_over_complex(A, B)
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         return true_div_func(A, B)
     elif isinstance(A, torch.Tensor):
@@ -75,6 +222,12 @@ def true_divide(A, B):
 
 def true_divide_out(A, B, out):
     logger.debug("GEMS_KUNLUNXIN TRUE_DIVIDE_OUT")
+    if isinstance(A, torch.Tensor) and A.is_complex():
+        return _complex_true_divide(A, B, out=out)
+    if isinstance(B, torch.Tensor) and B.is_complex():
+        if isinstance(A, torch.Tensor):
+            return _rational_true_divide(A, B, out=out)
+        return _scalar_over_complex(A, B, out=out)
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         return true_div_func(A, B, out0=out)
     elif isinstance(A, torch.Tensor):
@@ -88,6 +241,8 @@ def true_divide_out(A, B, out):
 
 def true_divide_(A, B):
     logger.debug("GEMS_KUNLUNXIN TRUE_DIVIDE_")
+    if A.is_complex():
+        return _complex_true_divide(A, B, out=A)
     if isinstance(B, torch.Tensor):
         return true_div_func(A, B, out0=A)
     else:
