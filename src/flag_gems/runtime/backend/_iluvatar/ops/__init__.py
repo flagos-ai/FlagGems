@@ -17,6 +17,7 @@ import importlib
 from ..utils.pointwise_dynamic import ModuleGenerator
 from ._native_batch_norm_legit_functional import _native_batch_norm_legit_functional
 from .adaptive_avg_pool2d_backward import _adaptive_avg_pool2d_backward
+from .adaptive_max_pool2d_backward import adaptive_max_pool2d_backward
 from .adaptive_max_pool3d_backward import run
 from .addmm import addmm, addmm_out
 from .addmm_ import addmm_
@@ -109,6 +110,7 @@ __all__ = [
     "_conv_depthwise2d",
     "_native_batch_norm_legit_functional",
     "_unsafe_masked_index_put_accumulate",
+    "adaptive_max_pool2d_backward",
     "addmm",
     "addmm_",
     "addmm_out",
