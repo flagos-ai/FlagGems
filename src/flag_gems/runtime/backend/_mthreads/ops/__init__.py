@@ -112,6 +112,7 @@ from .round_ import round_
 from .scatter_reduce import scatter_reduce, scatter_reduce_, scatter_reduce_out
 from .softplus_backward import softplus_backward
 from .sort import sort, sort_stable
+from .special_bessel_j1 import special_bessel_j1
 from .special_erfcx import special_erfcx
 from .special_gammainc import special_gammainc
 from .special_round import special_round
@@ -249,6 +250,7 @@ __all__ = [
     "softplus_backward",
     "sort",
     "sort_stable",
+    "special_bessel_j1",
     "special_erfcx",
     "special_gammainc",
     "special_round",
