@@ -137,6 +137,7 @@ from flag_gems.ops._scaled_dot_product_flash_attention import (
 from flag_gems.ops._scaled_dot_product_fused_attention_overrideable import (
     _scaled_dot_product_fused_attention_overrideable,
 )
+from flag_gems.ops._sparse_semi_structured_addmm import _sparse_semi_structured_addmm
 from flag_gems.ops._sparse_semi_structured_mm import _sparse_semi_structured_mm
 from flag_gems.ops._thnn_differentiable_gru_cell_backward import (
     _thnn_differentiable_gru_cell_backward,
@@ -383,11 +384,15 @@ from flag_gems.ops.fake_quantize_per_channel_affine_cachemask import (
     fake_quantize_per_channel_affine_cachemask,
     fake_quantize_per_channel_affine_cachemask_out,
 )
+from flag_gems.ops.fake_quantize_per_channel_affine_cachemask_backward import (
+    fake_quantize_per_channel_affine_cachemask_backward,
+)
 from flag_gems.ops.fake_quantize_per_tensor_affine import (
     fake_quantize_per_tensor_affine,
 )
 from flag_gems.ops.feature_dropout import feature_dropout, feature_dropout_
 from flag_gems.ops.fft import fft
+from flag_gems.ops.fft_irfftn import fft_irfftn
 from flag_gems.ops.fill import (
     fill_scalar,
     fill_scalar_,
@@ -904,6 +909,7 @@ from flag_gems.ops.special_shifted_chebyshev_polynomial_w import (
 from flag_gems.ops.special_sinc import special_sinc
 from flag_gems.ops.special_softmax import special_softmax
 from flag_gems.ops.special_xlog1py import special_xlog1py
+from flag_gems.ops.special_xlogy import special_xlogy, special_xlogy_
 from flag_gems.ops.split_with_sizes_copy import split_with_sizes_copy
 from flag_gems.ops.sqrt import sqrt, sqrt_
 from flag_gems.ops.square import square, square_, square_out
@@ -1085,6 +1091,7 @@ __all__ = [
     "_scaled_dot_product_fused_attention_overrideable",
     "_segment_reduce_backward",
     "_segment_reduce_backward_out",
+    "_sparse_semi_structured_addmm",
     "_sparse_semi_structured_mm",
     "_thnn_differentiable_gru_cell_backward",
     "_thnn_fused_lstm_cell",
@@ -1374,11 +1381,13 @@ __all__ = [
     "eye_m",
     "fake_quantize_per_channel_affine",
     "fake_quantize_per_channel_affine_cachemask",
+    "fake_quantize_per_channel_affine_cachemask_backward",
     "fake_quantize_per_channel_affine_cachemask_out",
     "fake_quantize_per_tensor_affine",
     "feature_dropout",
     "feature_dropout_",
     "fft",
+    "fft_irfftn",
     "fill_diagonal_",
     "fill_scalar",
     "fill_scalar_",
@@ -1956,6 +1965,8 @@ __all__ = [
     "special_sinc",
     "special_softmax",
     "special_xlog1py",
+    "special_xlogy",
+    "special_xlogy_",
     "split_with_sizes_copy",
     "sqrt",
     "sqrt_",

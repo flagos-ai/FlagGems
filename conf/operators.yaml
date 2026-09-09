@@ -4553,6 +4553,18 @@ ops:
   - Quantization
   stages:
   - alpha: '5.4'
+- id: fake_quantize_per_channel_affine_cachemask_backward
+  description: Applies the cache mask to the gradient of per-channel affine fake quantization.
+  for:
+  - fake_quantize_per_channel_affine_cachemask_backward
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Quantization
+  stages:
+  - alpha: '5.4'
 - id: fake_quantize_per_channel_affine_cachemask_out
   description: A variant of `fake_quantize_per_channel_affine_cachemask` that assigns
     the results to the provided output tensors.
@@ -4607,6 +4619,17 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.3'
+- id: fft_irfftn
+  description: Computes the N-dimensional inverse of torch.fft.rfftn.
+  for:
+  - fft_irfftn
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: fill_diagonal_
   description: 'Fills the main diagonal of a tensor that has at least two dimensions
 
@@ -12770,6 +12793,21 @@ ops:
   - BLAS
   stages:
   - alpha: '5.4'
+- id: sparse_semi_structured_addmm
+  description: 'Performs a matrix multiplication of the sparse semi-structured
+
+    (2:4 sparsity) matrices mat1 and mat2 with input added.
+
+    '
+  for:
+  - _sparse_semi_structured_addmm
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.4'
 - id: sparse_semi_structured_mm
   description: 'Performs a sparse semi-structured matrix multiplication of a dense
     matrix with a 2:4 sparsity pattern against a dense matrix.
@@ -13611,6 +13649,33 @@ ops:
     '
   for:
   - special.xlog1py
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: special_xlogy
+  description: 'Computes `x * log(y)` for each element pair in the input tensors `x`
+    and `y`. Returns 0 if `x == 0`.
+
+    '
+  for:
+  - special.xlogy
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: special_xlogy_
+  description: 'The in-place version of `special_xlogy()`.
+
+    '
+  for:
+  - special.xlogy_
   labels:
   - aten
   - KernelGen
