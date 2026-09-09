@@ -147,6 +147,7 @@ from .unique import _unique2
 from .unique_dim import unique_dim
 from .unsafe_index import unsafe_index
 from .unsafe_index_put import unsafe_index_put
+from .unsafe_masked_index import unsafe_masked_index
 from .upsample_bicubic2d_aa import _upsample_bicubic2d_aa
 from .upsample_linear1d_backward import upsample_linear1d_backward
 from .upsample_nearest2d import upsample_nearest2d
@@ -351,4 +352,5 @@ __all__ = [
     "zeros",
     "zeros_like",
     "special_erfinv",
+    "unsafe_masked_index",
 ]
