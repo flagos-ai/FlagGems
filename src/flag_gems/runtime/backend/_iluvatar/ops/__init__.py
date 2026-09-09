@@ -20,6 +20,7 @@ from .adaptive_max_pool3d_backward import run
 from .addmm import addmm, addmm_out
 from .addmm_ import addmm_
 from .arccosh_ import arccosh_
+from .as_strided_scatter import as_strided_scatter
 from .avg_pool3d import avg_pool3d_backward
 from .broadcast_tensors import broadcast_tensors
 from .broadcast_to import broadcast_to
@@ -99,6 +100,7 @@ __all__ = [
     "addmm_",
     "addmm_out",
     "arccosh_",
+    "as_strided_scatter",
     "avg_pool3d_backward",
     "broadcast_tensors",
     "broadcast_to",
