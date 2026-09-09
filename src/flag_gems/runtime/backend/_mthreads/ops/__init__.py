@@ -107,6 +107,7 @@ from .tile import tile
 from .topk_w8a16_fp8 import topk_w8a16_fp8
 from .trunc import trunc, trunc_
 from .unique import _unique2
+from .upsample_bilinear2d import upsample_bilinear2d
 from .upsample_linear1d_backward import upsample_linear1d_backward
 from .w8a8_block_fp8_matmul import w8a8_block_fp8_matmul
 from .zeros import zero_, zeros
@@ -237,6 +238,7 @@ __all__ = [
     "true_divide_out",
     "trunc",
     "trunc_",
+    "upsample_bilinear2d",
     "upsample_linear1d_backward",
     "w8a8_block_fp8_matmul",
     "zero_",
