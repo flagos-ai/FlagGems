@@ -1256,7 +1256,7 @@ def test_median_strided_nonlast_large_reduction_semantics(dtype, keepdim):
         assert torch.signbit(observed_values[1, 3]).item()
 
 
-@pytest.mark.median
+@pytest.mark.median_dim_values
 @pytest.mark.parametrize("keepdim", KEEPDIM)
 def test_median_strided_nonlast_large_reduction_out(keepdim):
     inp = torch.randn((384, 7), dtype=torch.float32, device=flag_gems.device)
@@ -1412,16 +1412,17 @@ def test_median_out_error_paths():
                 torch.ops.aten.median.out(inp, out=cpu_out)
 
 
-@pytest.mark.median
+@pytest.mark.median_dim_values
 @pytest.mark.parametrize("keepdim", KEEPDIM)
 def test_median_dim_values_out(keepdim):
     inp = torch.randn((7, 5), dtype=torch.float32, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
 
-    ref_values = torch.empty((1,), dtype=inp.dtype, device=ref_inp.device)
-    ref_indices = torch.empty((1,), dtype=torch.int64, device=ref_inp.device)
-    values = torch.empty((1,), dtype=inp.dtype, device=flag_gems.device)
-    indices = torch.empty((1,), dtype=torch.int64, device=flag_gems.device)
+    out_shape = (7, 1) if keepdim else (7,)
+    ref_values = torch.empty(out_shape, dtype=inp.dtype, device=ref_inp.device)
+    ref_indices = torch.empty(out_shape, dtype=torch.int64, device=ref_inp.device)
+    values = torch.empty(out_shape, dtype=inp.dtype, device=flag_gems.device)
+    indices = torch.empty(out_shape, dtype=torch.int64, device=flag_gems.device)
 
     ref_result = torch.ops.aten.median.dim_values(
         ref_inp, 1, keepdim, values=ref_values, indices=ref_indices
@@ -1438,15 +1439,15 @@ def test_median_dim_values_out(keepdim):
     utils.gems_assert_equal(indices, ref_indices)
 
 
-@pytest.mark.median
+@pytest.mark.median_dim_values
 def test_median_dim_values_out_python_api():
     inp = torch.randn((7, 5), dtype=torch.float32, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
 
-    ref_values = torch.empty((1,), dtype=inp.dtype, device=ref_inp.device)
-    ref_indices = torch.empty((1,), dtype=torch.int64, device=ref_inp.device)
-    values = torch.empty((1,), dtype=inp.dtype, device=flag_gems.device)
-    indices = torch.empty((1,), dtype=torch.int64, device=flag_gems.device)
+    ref_values = torch.empty((7,), dtype=inp.dtype, device=ref_inp.device)
+    ref_indices = torch.empty((7,), dtype=torch.int64, device=ref_inp.device)
+    values = torch.empty((7,), dtype=inp.dtype, device=flag_gems.device)
+    indices = torch.empty((7,), dtype=torch.int64, device=flag_gems.device)
 
     ref_result = torch.median(ref_inp, dim=1, out=(ref_values, ref_indices))
     with flag_gems.use_gems(include=MEDIAN_OPS):
@@ -1457,7 +1458,7 @@ def test_median_dim_values_out_python_api():
     utils.gems_assert_equal(indices, ref_indices)
 
 
-@pytest.mark.median
+@pytest.mark.median_dim_values
 def test_median_dim_values_out_wrong_device():
     if torch.device(flag_gems.device).type != "cuda":
         pytest.skip("device mismatch path requires a CUDA input and CPU out tensor")
