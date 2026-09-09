@@ -126,7 +126,7 @@ def special_hermite_polynomial_he_tensor_scalar(x, n):
 
 
 def special_hermite_polynomial_he(x, n):
-    logger.debug("METAX GEMS HERMITE_POLYNOMIAL_HE")
+    logger.debug("GEMS_METAX HERMITE_POLYNOMIAL_HE")
 
     # Validate n is in supported range [0, 10]
     if isinstance(n, torch.Tensor):
@@ -144,8 +144,22 @@ def special_hermite_polynomial_he(x, n):
                 f"special_hermite_polynomial_he only supports n in [0, 10], got n={n}"
             )
 
-    if isinstance(n, torch.Tensor):
+    if isinstance(x, torch.Tensor) and isinstance(n, torch.Tensor):
         return special_hermite_polynomial_he_tensor_tensor(x, n)
-    else:
+    elif isinstance(x, torch.Tensor):
         # n is a scalar
         return special_hermite_polynomial_he_tensor_scalar(x, n)
+    elif isinstance(n, torch.Tensor):
+        # x is a scalar - reuse the tensor-tensor kernel; the scalar broadcasts.
+        return special_hermite_polynomial_he_tensor_tensor(
+            torch.tensor(float(x), dtype=torch.float32, device=n.device), n
+        )
+    else:
+        # Both scalar - compute via the recurrence in plain Python, then wrap
+        # the result in a tensor (no torch compute API).
+        xi = float(x)
+        deg = int(n)
+        he_nm1, he_n = 1.0, xi
+        for k in range(1, deg):
+            he_nm1, he_n = he_n, xi * he_n - k * he_nm1
+        return torch.tensor(he_nm1 if deg == 0 else he_n)

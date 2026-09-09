@@ -224,8 +224,11 @@ def special_hermite_polynomial_he(x, n):
     elif isinstance(n, torch.Tensor):
         return special_hermite_polynomial_he_func_scalar_tensor(x, n)
     else:
-        # Both scalar - use torch directly
-        result = torch.special.hermite_polynomial_he(
-            torch.tensor(x, dtype=torch.float32), n
-        )
-        return result.to(x.dtype)
+        # Both scalar - compute via the recurrence in plain Python, then wrap
+        # the result in a tensor (no torch compute API).
+        xi = float(x)
+        deg = int(n)
+        he_nm1, he_n = 1.0, xi
+        for k in range(1, deg):
+            he_nm1, he_n = he_n, xi * he_n - k * he_nm1
+        return torch.tensor(he_nm1 if deg == 0 else he_n)

@@ -174,12 +174,86 @@ def hermite_he_func_scalar_n(x, n):
     return result
 
 
+@pointwise_dynamic(is_tensor=[False, True], promotion_methods=[(0, 1, "DEFAULT")])
+@triton.jit
+def hermite_he_func_scalar_x(x, n):
+    # Compute He_n(x) (probabilist's Hermite polynomial) with a scalar x.
+    # Same recurrence as hermite_he_func; n is validated to be in [0, 10] by
+    # the caller, so the fallback branch of the final tl.where is unreachable.
+    n_i32 = n.to(tl.int32)
+
+    x2 = x * x
+    x3 = x2 * x
+    x4 = x2 * x2
+    x5 = x4 * x
+
+    # He_0..He_5 via explicit closed forms.
+    he_0 = 1.0
+    he_1 = x
+    he_2 = x2 - 1.0
+    he_3 = x3 - 3.0 * x
+    he_4 = x4 - 6.0 * x2 + 3.0
+    he_5 = x5 - 10.0 * x3 + 15.0 * x
+    # He_6..He_10 via the recurrence, which is numerically more stable than the
+    # fully expanded polynomial form.
+    he_6 = x * he_5 - 5.0 * he_4
+    he_7 = x * he_6 - 6.0 * he_5
+    he_8 = x * he_7 - 7.0 * he_6
+    he_9 = x * he_8 - 8.0 * he_7
+    he_10 = x * he_9 - 9.0 * he_8
+
+    result = tl.where(
+        n_i32 == 0,
+        he_0,
+        tl.where(
+            n_i32 == 1,
+            he_1,
+            tl.where(
+                n_i32 == 2,
+                he_2,
+                tl.where(
+                    n_i32 == 3,
+                    he_3,
+                    tl.where(
+                        n_i32 == 4,
+                        he_4,
+                        tl.where(
+                            n_i32 == 5,
+                            he_5,
+                            tl.where(
+                                n_i32 == 6,
+                                he_6,
+                                tl.where(
+                                    n_i32 == 7,
+                                    he_7,
+                                    tl.where(
+                                        n_i32 == 8,
+                                        he_8,
+                                        tl.where(n_i32 == 9, he_9, he_10),
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    )
+    return result
+
+
 def special_hermite_polynomial_he(x, n):
     logger.debug("GEMS SPECIAL_HERMITE_POLYNOMIAL_HE")
-    assert x.dtype in (
-        torch.float32,
-        torch.float64,
-    ), "special_hermite_polynomial_he only supports float32 and float64"
+    if isinstance(x, torch.Tensor):
+        assert x.dtype in (
+            torch.float32,
+            torch.float64,
+        ), "special_hermite_polynomial_he only supports float32 and float64"
+    elif not isinstance(x, (int, float)):
+        raise TypeError(
+            f"special_hermite_polynomial_he expects a float32/float64 tensor or a "
+            f"Python number as x, got {type(x).__name__}"
+        )
 
     # Validate n is in supported range [0, 10]
     if isinstance(n, torch.Tensor):
@@ -197,7 +271,18 @@ def special_hermite_polynomial_he(x, n):
                 f"special_hermite_polynomial_he only supports n in [0, 10], got n={n}"
             )
 
-    if isinstance(n, torch.Tensor):
+    if isinstance(x, torch.Tensor) and isinstance(n, torch.Tensor):
         return hermite_he_func(x, n)
-    else:
+    elif isinstance(x, torch.Tensor):
         return hermite_he_func_scalar_n(x, n)
+    elif isinstance(n, torch.Tensor):
+        return hermite_he_func_scalar_x(x, n)
+    else:
+        # Both scalar - compute via the recurrence in plain Python, then wrap
+        # the result in a tensor (no torch compute API).
+        xi = float(x)
+        deg = int(n)
+        he_nm1, he_n = 1.0, xi
+        for k in range(1, deg):
+            he_nm1, he_n = he_n, xi * he_n - k * he_nm1
+        return torch.tensor(he_nm1 if deg == 0 else he_n)
