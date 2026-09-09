@@ -53,6 +53,7 @@ from .flip import flip
 from .fmod_ import fmod_, fmod_scalar_, fmod_tensor_
 from .gather import gather, gather_backward
 from .gcd_ import gcd_
+from .grid_sampler_3d_backward import grid_sampler_3d_backward
 from .histc import histc
 from .im2col import im2col
 from .index_add import index_add, index_add_
@@ -173,6 +174,7 @@ __all__ = [
     "gather",
     "gather_backward",
     "gcd_",
+    "grid_sampler_3d_backward",
     "histc",
     "im2col",
     "index_add",
