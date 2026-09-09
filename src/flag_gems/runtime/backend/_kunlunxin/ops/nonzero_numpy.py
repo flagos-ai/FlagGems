@@ -58,7 +58,6 @@ def nonzero_numpy(inp):
                     inp_ndim,
                     block,
                     isCloseUnrollControl=True,
-                    is_use_mask_zero=True,
                 )
         return list(out.unbind(dim=0))
 

@@ -1598,7 +1598,7 @@ def _unique2(
         # tested N (plain scatter_ has unique indices -> no atomic contention).
         cum = torch.cumsum(ne.to(torch.int64), 0) - 1
         inverse_indices = torch.empty(N, dtype=torch.int64, device=flat.device)
-        inverse_indices.scatter_(0, sorted_indices, cum)
+        inverse_indices.index_copy_(0, sorted_indices, cum)
 
     if return_counts:
         # counts[k] = length of the k-th value-run = start[k+1] - start[k]. The
