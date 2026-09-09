@@ -389,6 +389,9 @@ from flag_gems.ops.fake_quantize_per_channel_affine_cachemask_backward import (
 from flag_gems.ops.fake_quantize_per_tensor_affine import (
     fake_quantize_per_tensor_affine,
 )
+from flag_gems.ops.fake_quantize_per_tensor_affine_cachemask_backward import (
+    fake_quantize_per_tensor_affine_cachemask_backward,
+)
 from flag_gems.ops.feature_dropout import feature_dropout, feature_dropout_
 from flag_gems.ops.fft import fft
 from flag_gems.ops.fft_irfftn import fft_irfftn
@@ -919,6 +922,7 @@ from flag_gems.ops.std import std
 from flag_gems.ops.sub import sub, sub_
 from flag_gems.ops.subtract_ import subtract, subtract_
 from flag_gems.ops.sum import sum, sum_dim, sum_dim_out, sum_out
+from flag_gems.ops.sum_to_size import sum_to_size
 from flag_gems.ops.svd import svd
 from flag_gems.ops.sym_constrain_range import sym_constrain_range
 from flag_gems.ops.sym_storage_offset import sym_storage_offset
@@ -1382,6 +1386,7 @@ __all__ = [
     "fake_quantize_per_channel_affine_cachemask_backward",
     "fake_quantize_per_channel_affine_cachemask_out",
     "fake_quantize_per_tensor_affine",
+    "fake_quantize_per_tensor_affine_cachemask_backward",
     "feature_dropout",
     "feature_dropout_",
     "fft",
@@ -1983,6 +1988,7 @@ __all__ = [
     "sum_dim",
     "sum_dim_out",
     "sum_out",
+    "sum_to_size",
     "SUPPORTED_FP8_DTYPE",
     "svd",
     "sym_constrain_range",
