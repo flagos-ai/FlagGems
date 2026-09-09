@@ -49,11 +49,11 @@ def _make_chain(dimensions, first_vector, last_vector, dtype):
     return tensors
 
 
-def _reference_multi_dot(tensors):
+def _reference_multi_dot(tensors, *, out=None):
     allow_tf32 = torch.backends.cuda.matmul.allow_tf32
     try:
         torch.backends.cuda.matmul.allow_tf32 = False
-        return torch.linalg.multi_dot(tensors)
+        return torch.linalg.multi_dot(tensors, out=out)
     finally:
         torch.backends.cuda.matmul.allow_tf32 = allow_tf32
 
@@ -77,11 +77,13 @@ def test_accuracy_linalg_multi_dot(dimensions, first_vector, last_vector, dtype)
 def test_accuracy_linalg_multi_dot_out(dimensions, first_vector, last_vector, dtype):
     tensors = _make_chain(dimensions, first_vector, last_vector, dtype)
     reference_tensors = [utils.to_reference(tensor) for tensor in tensors]
-    reference = _reference_multi_dot(reference_tensors)
+    reference_out = torch.empty(0, dtype=dtype, device=reference_tensors[0].device)
+    reference = _reference_multi_dot(reference_tensors, out=reference_out)
 
     out = torch.empty(0, dtype=dtype, device=flag_gems.device)
     result = flag_gems.linalg_multi_dot_out(tensors, out=out)
 
+    assert reference is reference_out
     assert result is out
     assert tuple(out.shape) == tuple(reference.shape)
     utils.gems_assert_close(out, reference, dtype, reduce_dim=max(dimensions))
@@ -93,13 +95,20 @@ def test_accuracy_linalg_multi_dot_out_noncontiguous(dtype):
     dimensions = (64, 32, 128)
     tensors = _make_chain(dimensions, False, False, dtype)
     reference_tensors = [utils.to_reference(tensor) for tensor in tensors]
-    reference = _reference_multi_dot(reference_tensors)
+    reference_out = torch.empty(
+        dimensions[-1],
+        dimensions[0],
+        dtype=dtype,
+        device=reference_tensors[0].device,
+    ).t()
+    reference = _reference_multi_dot(reference_tensors, out=reference_out)
     out = torch.empty(
         dimensions[-1], dimensions[0], dtype=dtype, device=flag_gems.device
     ).t()
 
     result = flag_gems.linalg_multi_dot_out(tensors, out=out)
 
+    assert reference is reference_out
     assert result is out
     assert not out.is_contiguous()
     utils.gems_assert_close(out, reference, dtype, reduce_dim=max(dimensions))
