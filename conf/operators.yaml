@@ -7161,9 +7161,7 @@ ops:
   - alpha: '5.4'
 - id: linalg__powsum
   description: 'Computes the sum of the absolute input values raised to `ord` over
-    the
-
-    requested dimensions, without applying the final norm root.
+    the requested dimensions, without applying the final norm root.
 
     '
   for:
