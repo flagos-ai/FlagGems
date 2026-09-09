@@ -47,10 +47,23 @@ TEST_FILE_RE = re.compile(r"^tests/test_(.+)\.py$")
 
 
 def get_diff_files(base_sha: str, head_sha: str) -> list[str]:
-    """Get list of changed files between base and head."""
+    """Get list of changed files introduced by the PR branch.
+
+    Uses a three-dot diff (``base...head``), which compares ``head`` against
+    the merge-base of ``base`` and ``head``. This restricts the result to
+    changes the PR branch actually introduced, excluding files that diverged
+    on the base branch after the PR was created. This matches the semantics of
+    GitHub's "Files changed" view.
+    """
     try:
         result = subprocess.run(
-            ["git", "diff", "--name-only", "--diff-filter=ACMR", base_sha, head_sha],
+            [
+                "git",
+                "diff",
+                "--name-only",
+                "--diff-filter=ACMR",
+                f"{base_sha}...{head_sha}",
+            ],
             capture_output=True,
             text=True,
             check=True,
