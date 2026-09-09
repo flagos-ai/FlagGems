@@ -65,7 +65,6 @@ def test_swiglu(shape: tuple[int, ...], dtype: torch.dtype):
     te_forward = TE_OP(input_tensor, quantizer=None).to(device)
     te_forward = utils.to_reference(te_forward)
 
-    with flag_gems.use_gems():
-        fg_forward = flag_gems.swiglu(input_tensor, quantizer=None)
+    fg_forward = flag_gems.swiglu(input_tensor, quantizer=None)
 
     utils.gems_assert_close(fg_forward, te_forward, dtype)
