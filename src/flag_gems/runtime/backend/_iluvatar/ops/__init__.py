@@ -41,6 +41,7 @@ from .histc import histc
 from .igamma_ import igamma_
 from .index_select_backward import index_select_backward
 from .kthvalue import kthvalue
+from .lift_out import lift_out
 from .linalg_cholesky import linalg_cholesky
 from .linalg_ldl_factor_ex import ldl_factor_ex
 from .linalg_lstsq import linalg_lstsq
@@ -205,4 +206,5 @@ __all__ = [
     "ldl_factor_ex",
     "mvlgamma",
     "kthvalue",
+    "lift_out",
 ]
