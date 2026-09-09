@@ -34,6 +34,7 @@ from .hadamard_transform import hadamard_transform
 from .histc import histc
 from .index_select_backward import index_select_backward
 from .linalg_cholesky import linalg_cholesky
+from .linalg_ldl_factor_ex import ldl_factor_ex
 from .linalg_lstsq import linalg_lstsq
 from .linalg_matrix_norm import linalg_matrix_norm, linalg_matrix_norm_out
 from .linalg_matrix_power import linalg_matrix_power, linalg_matrix_power_out
@@ -157,4 +158,5 @@ __all__ = [
     "var",
     "var_correction",
     "var_dim",
+    "ldl_factor_ex",
 ]
