@@ -8681,6 +8681,17 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: matrix_exp_backward
+  description: Triton kernel implementation for matrix_exp_backward.
+  for:
+  - matrix_exp_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: max
   description: Returns the maximum value of all elements in the `input` tensor.
   for:
@@ -8712,6 +8723,17 @@ ops:
   stages:
   - stable: '2.0'
   cpp: '4.0'
+- id: max_pool1d
+  description: Triton kernel implementation for max_pool1d.
+  for:
+  - max_pool1d
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: max_pool2d_backward
   description: 'Applies a 2D max pooling over an input signal composed of several
     input planes.
@@ -13564,6 +13586,33 @@ ops:
     '
   for:
   - special.xlog1py
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: special_xlogy
+  description: 'Computes `x * log(y)` for each element pair in the input tensors `x`
+    and `y`. Returns 0 if `x == 0`.
+
+    '
+  for:
+  - special.xlogy
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: special_xlogy_
+  description: 'The in-place version of `special_xlogy()`.
+
+    '
+  for:
+  - special.xlogy_
   labels:
   - aten
   - KernelGen
