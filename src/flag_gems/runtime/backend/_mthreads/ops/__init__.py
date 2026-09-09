@@ -15,6 +15,7 @@
 from torch_musa import current_device, get_device_capability
 
 from ._conj import _conj
+from ._upsample_nearest_exact2d_backward import _upsample_nearest_exact2d_backward
 from .adaptive_avg_pool2d_backward import _adaptive_avg_pool2d_backward
 from .all import all, all_dim, all_dims
 from .amax import amax
@@ -295,6 +296,7 @@ if get_device_capability(current_device())[0] >= 3:
     "kthvalue",
     "mvlgamma",
     "atan2_",
+    "_upsample_nearest_exact2d_backward",
         ]
     )
 
