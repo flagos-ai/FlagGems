@@ -69,7 +69,7 @@ else
   ARCH=$(uname -m)
   mkdir -p "$HOME/.local/bin"
   curl -sSf "${UV_MIRROR}/uv-${ARCH}-${UV_VERSION}-linux-gnu.tar.gz" \
-    | tar xz -C "$HOME/.local/bin" 2>/dev/null \
+    | tar xz --strip-components=1 -C "$HOME/.local/bin" 2>/dev/null \
     || { curl -LsSf https://astral.sh/uv/install.sh | sh; }
   command -v uv &>/dev/null || { printf "uv installation"; fail; }
   printf "Installed $(uv --version)"

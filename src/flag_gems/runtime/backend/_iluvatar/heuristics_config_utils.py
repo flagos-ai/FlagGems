@@ -36,6 +36,18 @@ def argmin_heur_block_n(args):
     return min(4096, triton.next_power_of_2(args["N"]))
 
 
+def cauchy_heur_block(args):
+    return 1024
+
+
+def cauchy_heur_num_warps(args):
+    return 16 if args["N"] <= 4096 else 4
+
+
+def cauchy_heur_num_stages(args):
+    return 1
+
+
 def dropout_heur_block(args):
     if args["N"] <= 512:
         return 512
@@ -245,6 +257,11 @@ HEURISTICS_CONFIGS = {
     "argmin": {
         "BLOCK_M": argmin_heur_block_m,
         "BLOCK_N": argmin_heur_block_n,
+    },
+    "cauchy": {
+        "BLOCK": cauchy_heur_block,
+        "num_warps": cauchy_heur_num_warps,
+        "num_stages": cauchy_heur_num_stages,
     },
     "dropout": {
         "BLOCK": dropout_heur_block,
