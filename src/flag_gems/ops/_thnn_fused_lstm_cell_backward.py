@@ -48,6 +48,7 @@ def _fused_lstm_cell_backward_kernel(
     cy_stride_1,
     workspace_stride_0,
     workspace_stride_1,
+    workspace_size_1,
     BLOCK_SIZE: tl.constexpr,
     HAS_GRAD_HY: tl.constexpr,
     HAS_GRAD_CY: tl.constexpr,
@@ -60,21 +61,44 @@ def _fused_lstm_cell_backward_kernel(
     cols = offsets % hidden_size
 
     state_offsets = rows * cx_stride_0 + cols * cx_stride_1
-    workspace_offsets = rows * workspace_stride_0 + cols * workspace_stride_1
+    workspace_linear = rows * (4 * hidden_size) + cols
+    input_workspace_rows = workspace_linear // workspace_size_1
+    input_workspace_cols = workspace_linear % workspace_size_1
+    input_workspace_offsets = (
+        input_workspace_rows * workspace_stride_0
+        + input_workspace_cols * workspace_stride_1
+    )
+    input_gate = tl.load(workspace + input_workspace_offsets, mask=mask, other=0.0)
 
-    input_gate = tl.load(workspace + workspace_offsets, mask=mask, other=0.0)
+    forget_workspace_linear = workspace_linear + hidden_size
+    forget_workspace_rows = forget_workspace_linear // workspace_size_1
+    forget_workspace_cols = forget_workspace_linear % workspace_size_1
     forget_gate = tl.load(
-        workspace + workspace_offsets + hidden_size * workspace_stride_1,
+        workspace
+        + forget_workspace_rows * workspace_stride_0
+        + forget_workspace_cols * workspace_stride_1,
         mask=mask,
         other=0.0,
     )
+
+    cell_workspace_linear = workspace_linear + 2 * hidden_size
+    cell_workspace_rows = cell_workspace_linear // workspace_size_1
+    cell_workspace_cols = cell_workspace_linear % workspace_size_1
     cell_gate = tl.load(
-        workspace + workspace_offsets + 2 * hidden_size * workspace_stride_1,
+        workspace
+        + cell_workspace_rows * workspace_stride_0
+        + cell_workspace_cols * workspace_stride_1,
         mask=mask,
         other=0.0,
     )
+
+    output_workspace_linear = workspace_linear + 3 * hidden_size
+    output_workspace_rows = output_workspace_linear // workspace_size_1
+    output_workspace_cols = output_workspace_linear % workspace_size_1
     output_gate = tl.load(
-        workspace + workspace_offsets + 3 * hidden_size * workspace_stride_1,
+        workspace
+        + output_workspace_rows * workspace_stride_0
+        + output_workspace_cols * workspace_stride_1,
         mask=mask,
         other=0.0,
     )
@@ -165,9 +189,9 @@ def _validate_inputs(grad_hy, grad_cy, cx, cy, workspace):
     if cx.shape != cy.shape:
         raise RuntimeError("cx and cy must have the same shape")
     batch_size, hidden_size = cx.shape
-    if workspace.shape != (batch_size, 4 * hidden_size):
+    if workspace.numel() != batch_size * 4 * hidden_size:
         raise RuntimeError(
-            "workspace must have shape " f"({batch_size}, {4 * hidden_size})"
+            "workspace must have " f"{batch_size * 4 * hidden_size} elements"
         )
     for name, grad in (("grad_hy", grad_hy), ("grad_cy", grad_cy)):
         if grad is not None and grad.shape != cx.shape:
@@ -199,9 +223,7 @@ def _thnn_fused_lstm_cell_backward(grad_hy, grad_cy, cx, cy, workspace, has_bias
     _validate_inputs(grad_hy, grad_cy, cx, cy, workspace)
     batch_size, hidden_size = cx.shape
     gate_size = 4 * hidden_size
-    grad_gates = torch.empty(
-        (batch_size, gate_size), dtype=workspace.dtype, device=workspace.device
-    )
+    grad_gates = torch.empty_like(workspace, memory_format=torch.contiguous_format)
     grad_cx = torch.empty_like(cx, memory_format=torch.contiguous_format)
 
     n_elements = batch_size * hidden_size
@@ -230,6 +252,7 @@ def _thnn_fused_lstm_cell_backward(grad_hy, grad_cy, cx, cy, workspace, has_bias
                 cy.stride(1),
                 workspace.stride(0),
                 workspace.stride(1),
+                workspace.shape[1],
                 BLOCK_SIZE=block_size,
                 HAS_GRAD_HY=grad_hy is not None,
                 HAS_GRAD_CY=grad_cy is not None,

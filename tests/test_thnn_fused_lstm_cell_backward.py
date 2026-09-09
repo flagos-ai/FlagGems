@@ -112,8 +112,7 @@ def test_thnn_fused_lstm_cell_backward(dtype, shape, has_bias):
         reference = torch.ops.aten._thnn_fused_lstm_cell_backward(
             *_reference_args(args)
         )
-        with flag_gems.use_gems():
-            result = torch.ops.aten._thnn_fused_lstm_cell_backward(*args)
+        result = flag_gems._thnn_fused_lstm_cell_backward(*args)
     _assert_outputs(result, reference, dtype, shape[0])
 
 
@@ -153,6 +152,64 @@ def test_thnn_fused_lstm_cell_backward_noncontiguous(dtype):
         )
         result = flag_gems._thnn_fused_lstm_cell_backward(*args)
     _assert_outputs(result, reference, dtype, 5)
+
+
+@pytest.mark.skipif(cfg.TO_CPU, reason="native fused LSTM cell is CUDA-only")
+@pytest.mark.thnn_fused_lstm_cell_backward
+@pytest.mark.parametrize("dtype", DTYPES)
+@pytest.mark.parametrize("has_bias", [False, True])
+def test_thnn_fused_lstm_cell_backward_end_to_end(dtype, has_bias):
+    batch_size, hidden_size = 5, 19
+    input_gates = torch.randn(
+        batch_size,
+        4 * hidden_size,
+        dtype=dtype,
+        device=flag_gems.device,
+    )
+    hidden_gates = torch.randn_like(input_gates)
+    cx = torch.randn(batch_size, hidden_size, dtype=dtype, device=flag_gems.device)
+    bias = (
+        torch.randn(4 * hidden_size, dtype=dtype, device=flag_gems.device)
+        if has_bias
+        else None
+    )
+
+    with torch.no_grad():
+        ref_hy, ref_cy, ref_workspace = torch.ops.aten._thnn_fused_lstm_cell(
+            input_gates, hidden_gates, cx, bias, bias
+        )
+        hy, cy, workspace = flag_gems._thnn_fused_lstm_cell(
+            input_gates, hidden_gates, cx, bias, bias
+        )
+        grad_hy = torch.randn_like(hy)
+        grad_cy = torch.randn_like(cy)
+        reference = torch.ops.aten._thnn_fused_lstm_cell_backward(
+            grad_hy, grad_cy, cx, ref_cy, ref_workspace, has_bias
+        )
+        result = flag_gems._thnn_fused_lstm_cell_backward(
+            grad_hy, grad_cy, cx, cy, workspace, has_bias
+        )
+
+    utils.gems_assert_close(hy, ref_hy, dtype, reduce_dim=batch_size)
+    utils.gems_assert_close(cy, ref_cy, dtype, reduce_dim=batch_size)
+    _assert_outputs(result, reference, dtype, batch_size)
+
+
+@pytest.mark.skipif(cfg.TO_CPU, reason="native fused LSTM cell is CUDA-only")
+@pytest.mark.thnn_fused_lstm_cell_backward
+@pytest.mark.parametrize("workspace_shape", [(1, 80), (10, 8), (20, 4)])
+def test_thnn_fused_lstm_cell_backward_reshaped_workspace(workspace_shape):
+    args = list(_make_args(5, 4, torch.float32))
+    args[4] = args[4].reshape(workspace_shape)
+    with torch.no_grad():
+        reference = torch.ops.aten._thnn_fused_lstm_cell_backward(
+            *_reference_args(args)
+        )
+        result = flag_gems._thnn_fused_lstm_cell_backward(*args)
+
+    assert result[0].shape == workspace_shape
+    assert result[1].shape == workspace_shape
+    _assert_outputs(result, reference, torch.float32, 5)
 
 
 @pytest.mark.skipif(cfg.TO_CPU, reason="native fused LSTM cell is CUDA-only")
