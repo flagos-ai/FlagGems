@@ -20,7 +20,9 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry
+from flag_gems.utils import libentry, tl_extra_shim
+
+tld = tl_extra_shim
 
 logger = logging.getLogger(__name__)
 
@@ -32,8 +34,8 @@ _EIGH_TILE_MAX_N = 64
 
 @libentry()
 @triton.jit
-def _eig_2x2_kernel(A, eigenvalues, N, stride_a, stride_e, BLOCK_SIZE: tl.constexpr):
-    """Compute eigenvalues of 2x2 symmetric matrices using the closed form."""
+def _eig_2x2_kernel(A, eigenvalues, eigenvectors, N, stride_a, stride_e, stride_v):
+    """Compute eigenpairs of 2x2 symmetric matrices using the closed form."""
     pid = tl.program_id(0)
     if pid >= N:
         return
@@ -48,14 +50,23 @@ def _eig_2x2_kernel(A, eigenvalues, N, stride_a, stride_e, BLOCK_SIZE: tl.conste
     diff = (a - b) / 2.0
     disc = tl.sqrt(diff * diff + d * d)
 
-    ev1 = trace + disc
-    ev2 = trace - disc
-
-    ev_min = tl.where(ev1 < ev2, ev1, ev2)
-    ev_max = tl.where(ev1 < ev2, ev2, ev1)
+    ev_max = trace + disc
+    ev_min = trace - disc
 
     tl.store(eigenvalues + pid * stride_e + 0, ev_min)
     tl.store(eigenvalues + pid * stride_e + 1, ev_max)
+
+    # Jacobi rotation diagonalising [a d; d b]: theta = atan2(2d, a - b) / 2.
+    # The rotation is orthonormal by construction and atan2 handles every
+    # degenerate case: d == 0 (theta = 0 or pi/2), a == b, all-zero. Column 0
+    # is the eigenvector for ev_min, column 1 for ev_max (ascending pairing).
+    theta = 0.5 * tld.atan2(2.0 * d, a - b)
+    c = tl.cos(theta)
+    s = tl.sin(theta)
+    tl.store(eigenvectors + pid * stride_v + 2 * 0 + 0, s)
+    tl.store(eigenvectors + pid * stride_v + 2 * 1 + 0, -c)
+    tl.store(eigenvectors + pid * stride_v + 2 * 0 + 1, c)
+    tl.store(eigenvectors + pid * stride_v + 2 * 1 + 1, s)
 
 
 @libentry()
@@ -717,44 +728,22 @@ def linalg_eigh(A, UPLO="L", compute_v=True):
         eigenvalues = torch.zeros(
             A_flat.shape[0], 2, dtype=A_flat.dtype, device=A_flat.device
         )
+        eigenvectors = torch.zeros_like(A_flat)
         grid = (A_flat.shape[0],)
         with torch_device_fn.device(A_sym.device):
             _eig_2x2_kernel[grid](
                 A_flat,
                 eigenvalues,
+                eigenvectors,
                 A_flat.shape[0],
                 A_flat.stride(0),
                 eigenvalues.stride(0),
-                BLOCK_SIZE=1,
+                eigenvectors.stride(0),
             )
 
         eigenvalues = eigenvalues.reshape(*batch_shape, 2)
         if not compute_v:
             return eigenvalues.to(out_dtype), empty_v()
-
-        a_elem = A_flat[:, 0, 0]
-        d_vec = A_flat[:, 0, 1]
-        ev1 = eigenvalues.reshape(-1, 2)[:, 0]
-        ev2 = eigenvalues.reshape(-1, 2)[:, 1]
-
-        v1 = torch.stack([d_vec, ev1 - a_elem], dim=1)
-        v2 = torch.stack([d_vec, ev2 - a_elem], dim=1)
-
-        small_d = torch.abs(d_vec) < 1e-10
-        # Override the degenerate rows (d ~ 0) with the standard basis so the
-        # eigenvectors stay well-defined.
-        mask = small_d.unsqueeze(1)
-        v1 = torch.where(mask, torch.tensor([1.0, 0.0], device=A_flat.device), v1)
-        v2 = torch.where(mask, torch.tensor([0.0, 1.0], device=A_flat.device), v2)
-
-        v1 = v1 / v1.norm(dim=1, keepdim=True)
-        v2 = v2 / v2.norm(dim=1, keepdim=True)
-
-        eigenvectors = torch.zeros_like(A_flat)
-        eigenvectors[:, 0, 0] = v1[:, 0]
-        eigenvectors[:, 0, 1] = v2[:, 0]
-        eigenvectors[:, 1, 0] = v1[:, 1]
-        eigenvectors[:, 1, 1] = v2[:, 1]
 
         eigenvectors = eigenvectors.reshape(*batch_shape, 2, 2)
     else:
