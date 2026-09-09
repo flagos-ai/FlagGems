@@ -76,6 +76,7 @@ from .min import min, min_dim
 from .mish import mish, mish_
 from .mode import mode
 from .mul import mul, mul_
+from .mvlgamma import mvlgamma
 from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .nonzero_numpy import nonzero_numpy
 from .norm import norm, norm_scalar, norm_scalaropt_dim
@@ -277,6 +278,7 @@ if get_device_capability(current_device())[0] >= 3:
             "tanh",
     "atan2",
     "kthvalue",
+    "mvlgamma",
         ]
     )
 
