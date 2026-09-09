@@ -1,17 +1,3 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 """linalg_matrix_power override for the iluvatar (CoreX) backend.
 
 CoreX has no fp64 compute path, so:
@@ -26,6 +12,7 @@ input.
 """
 
 import importlib
+import logging
 
 import torch
 import triton
@@ -35,10 +22,14 @@ import flag_gems
 from flag_gems.ops.linalg_matrix_power import (
     _eye_like,
     _inverse,
+    _inverse_df64_large,
     _matrix_power_df64,
+    _matrix_power_df64_large,
     _trsm_solve_register,
 )
 from flag_gems.utils import libentry
+
+logger = logging.getLogger(__name__)
 
 # NB: bind the *module* explicitly - ``import flag_gems.ops.linalg_matrix_power
 # as _generic`` would resolve through the package attribute, which the
@@ -225,7 +216,13 @@ def _trsm_solve_2d(A_tri, B, upper: bool, unitriangular: bool):
         BM,
         upper,
         unit_flag,
-        num_warps=4,
+        # Must stay at one warp: the block reductions in _trsm_solve_register /
+        # _trsm_update_register lower to cross-warp shared-memory reductions for
+        # num_warps > 1, and on CoreX those corrupt each other as soon as more
+        # than two CTAs are resident per SM (grid > 2 * SM count).  With a single
+        # warp every reduction stays a register shuffle and the solve is exact
+        # (checked up to grid=256).
+        num_warps=1,
         num_stages=3,
     )
     return B
@@ -235,11 +232,19 @@ def _trsm_solve_2d(A_tri, B, upper: bool, unitriangular: bool):
 # in fp32 (one backend per process - safe).
 _generic._trsm_solve_2d = _trsm_solve_2d
 
+# CoreX atomics can hand back a stale value, so the Tier-3 grid-sync kernel's
+# spin barrier does not reliably publish its scratch tiles: the result is
+# intermittently wrong in a handful of rows (an occasional tile is read before
+# its producer's store is visible).  Drop the Tier-3 range and let 65 <= M <= 256
+# go through the host-side binary exponentiation, which is deterministic here
+# (one mm/bmm launch per squaring, no cross-CTA barrier).
+_generic.GRID_SYNC_MAX = _generic.TILED_MAX
+
 
 def linalg_matrix_power(A, n, *, out=None):
     """fp32 negatives take the df64 route (module docstring); everything else
     follows the generic NV dispatch."""
-    _generic.logger.debug("GEMS LINALG_MATRIX_POWER (iluvatar)")
+    logger.debug("GEMS_ILUVATAR LINALG_MATRIX_POWER")
 
     # ---- validation (identical to the generic entry) ----
     shape = A.shape
@@ -286,10 +291,13 @@ def linalg_matrix_power(A, n, *, out=None):
             Xh, Xl = inv
             return _matrix_power_df64(Xh, Xl, -n, m, shape, out=out)
         # Large M: the external fp32 LU has no df64 low part, so the inverse
-        # is a plain fp32 tensor; compute the power in fp32 via the generic
-        # positive-power dispatch.
-        A = inv
-        n = -n
+        # is a plain fp32 tensor (~1e-6 residual).  Raising that to |n| on a
+        # cond-80 matrix overshoots fp32 (n=-8 needs ~2e-9 inverse accuracy),
+        # so refine it to a df64 (hi/lo) pair with 2X - XAX Newton and raise
+        # the pair to |n| with the error-free df64 GEMM - both are on-device
+        # fp32 kernels, no fp64 compute required.
+        Xh, Xl = _inverse_df64_large(A, inv, iters=2)
+        return _matrix_power_df64_large(Xh, Xl, -n, shape, out=out)
     return _generic.linalg_matrix_power(A, n, out=out)
 
 
@@ -309,6 +317,6 @@ def linalg_matrix_power_out(A, n, *, out=None):
     ``*.out`` dispatcher key on this iluvatar override (whose fp32-negative path
     uses df64) rather than falling back to the generic entry.
     """
-    _generic.logger.debug("GEMS LINALG_MATRIX_POWER.OUT (iluvatar)")
+    logger.debug("GEMS_ILUVATAR LINALG_MATRIX_POWER_OUT")
     out_resolved = _resolve_linalg_matrix_power_out_args(out)
     return linalg_matrix_power(A, n, out=out_resolved)
