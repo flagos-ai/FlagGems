@@ -33,6 +33,7 @@ from .gcd_ import gcd_
 from .gru import gru, gru_data
 from .hadamard_transform import hadamard_transform
 from .histc import histc
+from .igamma_ import igamma_
 from .index_select_backward import index_select_backward
 from .linalg_cholesky import linalg_cholesky
 from .linalg_ldl_factor_ex import ldl_factor_ex
@@ -111,6 +112,7 @@ __all__ = [
     "gru_data",
     "hadamard_transform",
     "histc",
+    "igamma_",
     "index_select_backward",
     "linalg_cholesky",
     "linalg_lstsq",
