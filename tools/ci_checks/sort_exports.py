@@ -32,6 +32,7 @@ Usage:
 """
 
 import argparse
+import ast
 import re
 import sys
 from pathlib import Path
@@ -229,6 +230,109 @@ def sort_operators_yaml(
     return False
 
 
+def sort_full_config(file_path: Path, fix: bool = False, dry_run: bool = False) -> bool:
+    """Sort _FULL_CONFIG tuple in __init__.py by key (casefold).
+
+    Args:
+        file_path: Path to __init__.py
+        fix: If True, modify the file; if False, just check
+        dry_run: If True, print what would be done but don't write
+
+    Returns:
+        True if sorted or was fixed, False if unsorted and not fixed
+    """
+    if not file_path.exists():
+        return True
+
+    content = file_path.read_text()
+    tree = ast.parse(content)
+
+    # Find _FULL_CONFIG = (...) assignment
+    config_node = None
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name) and target.id == "_FULL_CONFIG":
+                    config_node = node
+                    break
+
+    if config_node is None or not isinstance(config_node.value, ast.Tuple):
+        return True  # No _FULL_CONFIG tuple
+
+    # Extract entries with full source text (including multi-line tuples)
+    entries = []
+    lines = content.splitlines()
+
+    for elt in config_node.value.elts:
+        if isinstance(elt, ast.Tuple) and len(elt.elts) >= 2:
+            key_node = elt.elts[0]
+            if isinstance(key_node, ast.Constant) and isinstance(key_node.value, str):
+                key = key_node.value
+                # Get the full source text for this tuple (may span multiple lines)
+                start_line = elt.lineno - 1  # 0-indexed
+                end_line = elt.end_lineno - 1  # 0-indexed
+
+                if start_line == end_line:
+                    # Single-line entry
+                    source_text = lines[start_line].rstrip()
+                else:
+                    # Multi-line entry - preserve all lines
+                    source_lines = [lines[start_line].rstrip()]
+                    for i in range(start_line + 1, end_line + 1):
+                        source_lines.append(lines[i].rstrip())
+                    source_text = "\n".join(source_lines)
+
+                entries.append((key, source_text))
+
+    if not entries:
+        return True
+
+    # Check if sorted
+    keys = [e[0] for e in entries]
+    sorted_keys = sorted(keys, key=str.casefold)
+
+    if keys == sorted_keys:
+        return True  # Already sorted
+
+    if not fix:
+        print(f"❌ {file_path}: _FULL_CONFIG is not sorted by key.casefold()")
+        for i, (actual, expected) in enumerate(zip(keys, sorted_keys)):
+            if actual != expected:
+                print(f"   Position {i}: got '{actual}', expected '{expected}'")
+                break
+        return False
+
+    if dry_run:
+        print(f"Would sort {file_path}: _FULL_CONFIG with {len(entries)} entries")
+        return False
+
+    # Sort entries by key
+    sorted_entries = sorted(entries, key=lambda e: e[0].casefold())
+
+    # Find the _FULL_CONFIG block boundaries
+    start_line = config_node.lineno - 1  # Line with "_FULL_CONFIG = ("
+    end_line = config_node.end_lineno - 1  # Line with closing ")"
+
+    # Reconstruct
+    new_lines = lines[:start_line]
+    new_lines.append("_FULL_CONFIG = (")
+    for entry in sorted_entries:
+        # entry[1] may have multiple lines
+        source_text = entry[1]
+        if "\n" in source_text:
+            # Multi-line entry
+            new_lines.extend(source_text.split("\n"))
+        else:
+            new_lines.append(source_text)
+    new_lines.append(")")
+    new_lines.extend(lines[end_line + 1 :])
+
+    new_content = "\n".join(new_lines) + "\n"
+    file_path.write_text(new_content)
+    print(f"✅ {file_path}: sorted _FULL_CONFIG")
+    return True
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Sort __all__ exports and operators.yaml by casefold"
@@ -281,7 +385,14 @@ def main():
                 file_path, fix=args.fix, dry_run=args.dry_run
             )
         else:
+            # Sort __all__
             sorted_ok = sort_python_all(file_path, fix=args.fix, dry_run=args.dry_run)
+            # Also sort _FULL_CONFIG if this is __init__.py
+            if file_path.name == "__init__.py":
+                config_sorted = sort_full_config(
+                    file_path, fix=args.fix, dry_run=args.dry_run
+                )
+                sorted_ok = sorted_ok and config_sorted
 
         all_sorted = all_sorted and sorted_ok
 
