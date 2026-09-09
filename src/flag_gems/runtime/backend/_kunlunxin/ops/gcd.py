@@ -38,8 +38,15 @@ def _c_rem(a, b):
 
 @libentry()
 @triton.jit
-def gcd_kernel(x_ptr, y_ptr, out_ptr, n_elements, BLOCK: tl.constexpr,
-               MINV: tl.constexpr, NITER: tl.constexpr):
+def gcd_kernel(
+    x_ptr,
+    y_ptr,
+    out_ptr,
+    n_elements,
+    BLOCK: tl.constexpr,
+    MINV: tl.constexpr,
+    NITER: tl.constexpr,
+):
     pid = ext.program_id(0)
     offsets = pid * BLOCK + tl.arange(0, BLOCK)
     mask = offsets < n_elements
@@ -89,12 +96,26 @@ _TL_DTYPE = {torch.int16: tl.int16, torch.int32: tl.int32, torch.int64: tl.int64
 
 
 @triton.jit
-def _bcast_copy_kernel(src_ptr, dst_ptr, n_elements, RANK: tl.constexpr,
-                       S0: tl.constexpr, S1: tl.constexpr, S2: tl.constexpr,
-                       S3: tl.constexpr, S4: tl.constexpr, S5: tl.constexpr,
-                       T0: tl.constexpr, T1: tl.constexpr, T2: tl.constexpr,
-                       T3: tl.constexpr, T4: tl.constexpr, T5: tl.constexpr,
-                       OUT_DTYPE: tl.constexpr, BLOCK: tl.constexpr):
+def _bcast_copy_kernel(
+    src_ptr,
+    dst_ptr,
+    n_elements,
+    RANK: tl.constexpr,
+    S0: tl.constexpr,
+    S1: tl.constexpr,
+    S2: tl.constexpr,
+    S3: tl.constexpr,
+    S4: tl.constexpr,
+    S5: tl.constexpr,
+    T0: tl.constexpr,
+    T1: tl.constexpr,
+    T2: tl.constexpr,
+    T3: tl.constexpr,
+    T4: tl.constexpr,
+    T5: tl.constexpr,
+    OUT_DTYPE: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
     # Gather-materialize a possibly-strided / broadcast (stride-0) source into a
     # contiguous buffer. Torch-level copy_ kernels are broken on this XPU for
     # strided sources (CUDA error: invalid device function), so we compute the
@@ -189,12 +210,26 @@ def _to_full_contiguous(t, shape, dtype):
     with torch_device_fn.device(out.device):
         grid = (triton.cdiv(numel, 128),)
         _bcast_copy_kernel[grid](
-            t, out, numel, RANK=rank,
-            S0=shape_t[0], S1=shape_t[1], S2=shape_t[2],
-            S3=shape_t[3], S4=shape_t[4], S5=shape_t[5],
-            T0=stride_t[0], T1=stride_t[1], T2=stride_t[2],
-            T3=stride_t[3], T4=stride_t[4], T5=stride_t[5],
-            OUT_DTYPE=_TL_DTYPE[dtype], BLOCK=128, num_warps=4)
+            t,
+            out,
+            numel,
+            RANK=rank,
+            S0=shape_t[0],
+            S1=shape_t[1],
+            S2=shape_t[2],
+            S3=shape_t[3],
+            S4=shape_t[4],
+            S5=shape_t[5],
+            T0=stride_t[0],
+            T1=stride_t[1],
+            T2=stride_t[2],
+            T3=stride_t[3],
+            T4=stride_t[4],
+            T5=stride_t[5],
+            OUT_DTYPE=_TL_DTYPE[dtype],
+            BLOCK=128,
+            num_warps=4,
+        )
     return out
 
 
@@ -213,8 +248,16 @@ def _launch_gcd(lhs, rhs, out):
     block, num_warps, minv, niter = _kernel_meta(out.dtype)
     grid = (triton.cdiv(numel, block),)
     with torch_device_fn.device(out.device):
-        gcd_kernel[grid](lhs, rhs, out, numel, BLOCK=block, MINV=minv,
-                         NITER=niter, num_warps=num_warps)
+        gcd_kernel[grid](
+            lhs,
+            rhs,
+            out,
+            numel,
+            BLOCK=block,
+            MINV=minv,
+            NITER=niter,
+            num_warps=num_warps,
+        )
     return out
 
 

@@ -323,7 +323,10 @@ from .softshrink import softshrink, softshrink_out
 from .sort import sort, sort_stable
 from .special_log_softmax import special_log_softmax
 from .special_logsumexp import special_logsumexp
-from .special_shifted_chebyshev_polynomial_u import special_shifted_chebyshev_polynomial_u, special_shifted_chebyshev_polynomial_u_
+from .special_shifted_chebyshev_polynomial_u import (
+    special_shifted_chebyshev_polynomial_u,
+    special_shifted_chebyshev_polynomial_u_,
+)
 from .sqrt import sqrt, sqrt_
 from .stack import stack
 from .std import std
@@ -390,6 +393,8 @@ __all__ = [
     "soft_margin_loss_backward",
     "special_log_softmax",
     "special_logsumexp",
+    "special_shifted_chebyshev_polynomial_u",
+    "special_shifted_chebyshev_polynomial_u_",
     "softshrink",
     "softshrink_out",
     "_unique2",
