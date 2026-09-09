@@ -107,7 +107,6 @@ def any(inp):
     logger.debug("GEMS ANY")
     n_elements = inp.numel()
 
-    # Handle empty tensor: any([]) is False (no elements satisfy the condition)
     if n_elements == 0:
         return torch.tensor(False, dtype=torch.bool, device=inp.device)
 

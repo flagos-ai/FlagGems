@@ -103,7 +103,6 @@ def all(inp):
     logger.debug("GEMS ALL")
     n_elements = inp.numel()
 
-    # Handle empty tensor: all([]) is True (vacuous truth)
     if n_elements == 0:
         return torch.tensor(True, dtype=torch.bool, device=inp.device)
 
