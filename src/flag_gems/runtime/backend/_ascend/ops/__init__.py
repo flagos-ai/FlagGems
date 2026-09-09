@@ -155,6 +155,7 @@ from .var_mean import var_mean
 from .vector_norm import vector_norm
 from .vstack import vstack
 from .where import where_scalar_other, where_scalar_self, where_self, where_self_out
+from .zero import zero
 from .zeros import zeros
 from .zeros_like import zeros_like
 
@@ -349,6 +350,7 @@ __all__ = [
     "where_scalar_self",
     "where_self",
     "where_self_out",
+    "zero",
     "zeros",
     "zeros_like",
     "special_erfinv",
