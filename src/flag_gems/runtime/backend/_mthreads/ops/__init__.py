@@ -66,6 +66,7 @@ from .index_select import index_select
 from .int_mm import int_mm, int_mm_out
 from .isin import isin
 from .kthvalue import kthvalue
+from .lift_out import lift_out
 from .linalg_cholesky import linalg_cholesky
 from .linalg_ldl_factor_ex import ldl_factor_ex
 from .linear import linear
@@ -303,6 +304,7 @@ if get_device_capability(current_device())[0] >= 3:
     "_upsample_bilinear2d_aa",
     "ldl_factor_ex",
     "_thnn_fused_lstm_cell_backward_impl",
+    "lift_out",
         ]
     )
 
