@@ -68,6 +68,10 @@ from .linalg_lu_factor_ex import linalg_lu_factor_ex, linalg_lu_factor_ex_out
 from .linalg_matrix_exp import linalg_matrix_exp, linalg_matrix_exp_out
 from .linalg_matrix_power import linalg_matrix_power, linalg_matrix_power_out
 from .linalg_qr import linalg_qr, linalg_qr_out
+from .linalg_solve_triangular import (
+    linalg_solve_triangular,
+    linalg_solve_triangular_out,
+)
 from .linspace import linspace
 from .log_normal import log_normal
 from .log_sigmoid_backward import log_sigmoid_backward, log_sigmoid_backward_out
@@ -210,6 +214,8 @@ __all__ = [
     "linalg_matrix_exp_out",
     "linalg_qr",
     "linalg_qr_out",
+    "linalg_solve_triangular",
+    "linalg_solve_triangular_out",
     "linspace",
     "log_normal",
     "log_sigmoid_backward",
