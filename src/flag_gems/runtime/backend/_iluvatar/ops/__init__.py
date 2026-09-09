@@ -79,6 +79,7 @@ from .special_shifted_chebyshev_polynomial_w import (
     special_shifted_chebyshev_polynomial_w,
 )
 from .tile import tile
+from .unsafe_masked_index_put_accumulate import _unsafe_masked_index_put_accumulate
 from .var import var, var_correction, var_dim
 
 _pointwise_dynamic = importlib.import_module("flag_gems.utils.pointwise_dynamic")
@@ -87,6 +88,7 @@ _pointwise_dynamic.ModuleGenerator = ModuleGenerator
 __all__ = [
     "_conv_depthwise2d",
     "_native_batch_norm_legit_functional",
+    "_unsafe_masked_index_put_accumulate",
     "addmm",
     "addmm_",
     "addmm_out",
