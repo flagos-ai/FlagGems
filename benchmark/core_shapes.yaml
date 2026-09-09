@@ -322,6 +322,19 @@ median:
     - [4, 8, 16, 8]
   shape_desc: "input shape"
 
+median_out:
+  shapes:
+    - [2]
+    - [64]
+    - [65]
+    - [128]
+    - [256]
+    - [257]
+    - [1024]
+    - [4096]
+    - [4, 8, 16, 8]
+  shape_desc: "input shape"
+
 median_dim:
   shapes:
     - [1536, 640]
