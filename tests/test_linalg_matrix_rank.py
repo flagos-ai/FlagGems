@@ -2106,39 +2106,25 @@ def test_linalg_matrix_rank_multidim_batch_large_path(hermitian, tol_kind, monke
 @pytest.mark.linalg_matrix_rank
 @pytest.mark.skipif(IS_ASCEND, reason="Ascend backend has its own implementation")
 def test_linalg_matrix_rank_blocked_probe_runs_once(monkeypatch):
-    # Cold-call coverage for the blocked-path dispatch: the first eligible
-    # call runs the one-time known-answer probe exactly once (the verdict
-    # cache is double-checked under a lock), and the dispatched result is
-    # correct whether the verdict enables blocked (healthy backend) or
-    # falls back to unblocked.
+    # The verdict cache makes the 768x768 known-answer probe a ONE-TIME
+    # cost: if caching broke, every blocked-eligible matrix_rank call would
+    # re-run the full probe.  Unit-test the cache directly with a fake
+    # probe -- whether k=768 dispatches to blocked, whether a failed probe
+    # falls back, and whether the results are correct are all covered by
+    # the existing blocked-path tests above.
     module = importlib.import_module("flag_gems.ops.linalg_matrix_rank")
     module._BLOCKED_TRIDIAG_OK.clear()
-    module._MR_GRAPHS.clear()
-    module._MR_GRAPH_BYTES = 0
+
     calls = []
-    orig_probe = module._blocked_tridiag_probe
 
-    def spy_probe(device):
+    def fake_probe(device):
         calls.append(device)
-        return orig_probe(device)
+        return True
 
-    monkeypatch.setattr(module, "_blocked_tridiag_probe", spy_probe)
+    monkeypatch.setattr(module, "_blocked_tridiag_probe", fake_probe)
 
-    k = 768
-    matrix = _blocked_rotated_spectrum(k, list(range(1, 101)), seed=5).to(
-        flag_gems.device
-    )
-    # fp32 rounding lifts the zero eigenspace to ~1e-5, so the fp64 oracle
-    # uses the FP32-default rtol.
-    rtol = k * torch.finfo(torch.float32).eps
-    reference = torch.linalg.matrix_rank(
-        matrix.cpu().double(), hermitian=True, rtol=rtol
-    )
-    assert reference.item() == 100  # construction sanity
+    device = torch.empty((), device=flag_gems.device).device
 
-    first = flag_gems.linalg_matrix_rank(matrix, hermitian=True)
-    _assert_equal(first, reference.to(flag_gems.device))
-    assert len(calls) == 1  # cold call probed exactly once
-    second = flag_gems.linalg_matrix_rank(matrix, hermitian=True)
-    _assert_equal(second, reference.to(flag_gems.device))
-    assert len(calls) == 1  # verdict cached, no repeat
+    assert module._blocked_tridiag_ok(device)
+    assert module._blocked_tridiag_ok(device)
+    assert len(calls) == 1
