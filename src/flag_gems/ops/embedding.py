@@ -1,6 +1,7 @@
 import logging
 import math
 
+import paddle
 import torch
 import triton
 import triton.language as tl
@@ -75,15 +76,16 @@ def embedding_backward_kernel(
     if not HAS_PADDING_IDX:
         grad_in += row_idx * N
         embedding_grad = tl.load(grad_out + cols, mask, other=0.0)
-        if tl.constexpr(embedding_grad.dtype.is_bf16()):
-            embedding_grad = embedding_grad.to(tl.float32)
+        # grad_in may be fp32 while grad_out is a half type: the caller widens the
+        # accumulator when several index elements collide on the same row, because
+        # half-type atomics are emulated and collapse under that contention.
+        embedding_grad = embedding_grad.to(grad_in.dtype.element_ty)
         tl.atomic_add(grad_in + cols, embedding_grad, mask=mask)
     else:
         if row_idx != padding_idx:
             grad_in += row_idx * N
             embedding_grad = tl.load(grad_out + cols, mask, other=0.0)
-            if tl.constexpr(embedding_grad.dtype.is_bf16()):
-                embedding_grad = embedding_grad.to(tl.float32)
+            embedding_grad = embedding_grad.to(grad_in.dtype.element_ty)
             tl.atomic_add(grad_in + cols, embedding_grad, mask=mask)
 
 
@@ -147,36 +149,35 @@ def embedding_backward(
     M = math.prod(indices.shape)
     N = grad_outputs.shape[-1]
 
-    grad_inputs = torch.zeros(
-        (num_weights, grad_outputs.shape[-1]),
-        device=grad_outputs.device,
-        dtype=(
-            torch.float32
-            if grad_outputs.dtype is torch.bfloat16
-            else grad_outputs.dtype
-        ),
+    # Half-type atomics are emulated with a CAS loop, and their cost blows up
+    # superlinearly with collisions per row (~16 collisions still costs 25us, ~128
+    # costs 456us). Widening the accumulator to fp32 avoids that but adds a cast
+    # pass, which dominates at small sizes, so only widen once contention is heavy.
+    acc_in_fp32 = grad_outputs.dtype in (torch.bfloat16, torch.float16) and (
+        M > 32 * num_weights
     )
-
-    if scale_grad_by_freq:
-        indice_freq = torch.zeros(
-            (num_weights,),
-            requires_grad=False,
-            device=grad_outputs.device,
-            dtype=torch.int32,
-        )
-        INDICE_BLOCK_SIZE = 256
-        indice_grid = (triton.cdiv(M, INDICE_BLOCK_SIZE),)
-
-        with torch_device_fn.device(grad_outputs.device):
-            indice_freq_kernel[indice_grid](indice_freq, indices, M, INDICE_BLOCK_SIZE)
-    else:
-        indice_freq = None
-
-    BLOCK_SIZE = triton.next_power_of_2(N)
-
-    HAS_PADDING_IDX = padding_idx is not None
-
+    # `torch.zeros(..., device=...)` costs ~70us per call through the proxy and
+    # dominated this op (the kernel launch itself is 0.11us). paddle.zeros
+    # allocates on the current place, so do it inside the device guard that the
+    # kernel launches need anyway.
     with torch_device_fn.device(grad_outputs.device):
+        grad_inputs = paddle.zeros(
+            [num_weights, N],
+            dtype=paddle.float32 if acc_in_fp32 else grad_outputs.dtype,
+        )
+
+        if scale_grad_by_freq:
+            indice_freq = paddle.zeros([num_weights], dtype=paddle.int32)
+            indice_freq.stop_gradient = True
+            INDICE_BLOCK_SIZE = 256
+            indice_grid = (triton.cdiv(M, INDICE_BLOCK_SIZE),)
+            indice_freq_kernel[indice_grid](indice_freq, indices, M, INDICE_BLOCK_SIZE)
+        else:
+            indice_freq = None
+
+        BLOCK_SIZE = triton.next_power_of_2(N)
+        HAS_PADDING_IDX = padding_idx is not None
+
         embedding_backward_kernel[M,](
             grad_inputs,
             grad_outputs,
@@ -187,16 +188,11 @@ def embedding_backward(
             BLOCK_SIZE,
         )
 
-    if scale_grad_by_freq:
-        with torch_device_fn.device(grad_outputs.device):
+        if scale_grad_by_freq:
             embedding_grad_scale_kernel[M,](
                 grad_inputs, indice_freq, num_weights, N, BLOCK_SIZE
             )
-    return (
-        grad_inputs.to(torch.bfloat16)
-        if grad_outputs.dtype is torch.bfloat16
-        else grad_inputs
-    )
+    return grad_inputs.to(grad_outputs.dtype) if acc_in_fp32 else grad_inputs
 
 
 class Embedding(PyLayer):
