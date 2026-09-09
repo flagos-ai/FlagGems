@@ -136,6 +136,7 @@ from flag_gems.ops._scaled_dot_product_flash_attention import (
 from flag_gems.ops._scaled_dot_product_fused_attention_overrideable import (
     _scaled_dot_product_fused_attention_overrideable,
 )
+from flag_gems.ops._sparse_semi_structured_addmm import _sparse_semi_structured_addmm
 from flag_gems.ops._sparse_semi_structured_mm import _sparse_semi_structured_mm
 from flag_gems.ops._thnn_differentiable_gru_cell_backward import (
     _thnn_differentiable_gru_cell_backward,
@@ -382,11 +383,18 @@ from flag_gems.ops.fake_quantize_per_channel_affine_cachemask import (
     fake_quantize_per_channel_affine_cachemask,
     fake_quantize_per_channel_affine_cachemask_out,
 )
+from flag_gems.ops.fake_quantize_per_channel_affine_cachemask_backward import (
+    fake_quantize_per_channel_affine_cachemask_backward,
+)
 from flag_gems.ops.fake_quantize_per_tensor_affine import (
     fake_quantize_per_tensor_affine,
 )
+from flag_gems.ops.fake_quantize_per_tensor_affine_cachemask_backward import (
+    fake_quantize_per_tensor_affine_cachemask_backward,
+)
 from flag_gems.ops.feature_dropout import feature_dropout, feature_dropout_
 from flag_gems.ops.fft import fft
+from flag_gems.ops.fft_irfftn import fft_irfftn
 from flag_gems.ops.fill import (
     fill_scalar,
     fill_scalar_,
@@ -913,6 +921,7 @@ from flag_gems.ops.std import std
 from flag_gems.ops.sub import sub, sub_
 from flag_gems.ops.subtract_ import subtract, subtract_
 from flag_gems.ops.sum import sum, sum_dim, sum_dim_out, sum_out
+from flag_gems.ops.sum_to_size import sum_to_size
 from flag_gems.ops.svd import svd
 from flag_gems.ops.sym_constrain_range import sym_constrain_range
 from flag_gems.ops.sym_storage_offset import sym_storage_offset
@@ -1083,6 +1092,7 @@ __all__ = [
     "_scaled_dot_product_fused_attention_overrideable",
     "_segment_reduce_backward",
     "_segment_reduce_backward_out",
+    "_sparse_semi_structured_addmm",
     "_sparse_semi_structured_mm",
     "_thnn_differentiable_gru_cell_backward",
     "_thnn_fused_lstm_cell",
@@ -1372,11 +1382,14 @@ __all__ = [
     "eye_m",
     "fake_quantize_per_channel_affine",
     "fake_quantize_per_channel_affine_cachemask",
+    "fake_quantize_per_channel_affine_cachemask_backward",
     "fake_quantize_per_channel_affine_cachemask_out",
     "fake_quantize_per_tensor_affine",
+    "fake_quantize_per_tensor_affine_cachemask_backward",
     "feature_dropout",
     "feature_dropout_",
     "fft",
+    "fft_irfftn",
     "fill_diagonal_",
     "fill_scalar",
     "fill_scalar_",
@@ -1973,6 +1986,7 @@ __all__ = [
     "sum_dim",
     "sum_dim_out",
     "sum_out",
+    "sum_to_size",
     "SUPPORTED_FP8_DTYPE",
     "svd",
     "sym_constrain_range",

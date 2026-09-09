@@ -243,6 +243,7 @@ _FULL_CONFIG = (
     ("_softmax.out", softmax_out),
     ("_softmax_backward_data", softmax_backward),
     ("_softmax_backward_data.out", softmax_backward_out),
+    ("_sparse_semi_structured_addmm", _sparse_semi_structured_addmm),
     ("_sparse_semi_structured_mm", _sparse_semi_structured_mm),
     (
         "_thnn_differentiable_gru_cell_backward",
@@ -566,13 +567,22 @@ _FULL_CONFIG = (
         "fake_quantize_per_channel_affine_cachemask.out",
         fake_quantize_per_channel_affine_cachemask_out,
     ),
+    (
+        "fake_quantize_per_channel_affine_cachemask_backward",
+        fake_quantize_per_channel_affine_cachemask_backward,
+    ),
     ("fake_quantize_per_tensor_affine", fake_quantize_per_tensor_affine),
     (
         "fake_quantize_per_tensor_affine.tensor_qparams",
         fake_quantize_per_tensor_affine,
     ),
+    (
+        "fake_quantize_per_tensor_affine_cachemask_backward",
+        fake_quantize_per_tensor_affine_cachemask_backward,
+    ),
     ("feature_dropout", feature_dropout),
     ("feature_dropout_", feature_dropout_),
+    ("fft_irfftn", fft_irfftn),
     ("fill.Scalar", fill_scalar),
     ("fill.Scalar_out", fill_scalar_out),
     ("fill.Tensor", fill_tensor),
@@ -1167,6 +1177,7 @@ _FULL_CONFIG = (
     ("sum.dim_IntList", sum_dim),
     ("sum.IntList_out", sum_dim_out),
     ("sum.out", sum_out),
+    ("sum_to_size", sum_to_size),
     ("svd", svd),
     ("sym_constrain_range", sym_constrain_range),
     ("sym_storage_offset", sym_storage_offset),

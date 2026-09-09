@@ -4528,6 +4528,18 @@ ops:
   - Quantization
   stages:
   - alpha: '5.4'
+- id: fake_quantize_per_channel_affine_cachemask_backward
+  description: Applies the cache mask to the gradient of per-channel affine fake quantization.
+  for:
+  - fake_quantize_per_channel_affine_cachemask_backward
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Quantization
+  stages:
+  - alpha: '5.4'
 - id: fake_quantize_per_channel_affine_cachemask_out
   description: A variant of `fake_quantize_per_channel_affine_cachemask` that assigns
     the results to the provided output tensors.
@@ -4553,6 +4565,23 @@ ops:
   - KernelGen
   kind:
   - Quantization
+  stages:
+  - alpha: '5.4'
+- id: fake_quantize_per_tensor_affine_cachemask_backward
+  description: 'Computes the gradient for fake_quantize_per_tensor_affine_cachemask
+    by multiplying the incoming
+
+    gradient by the cached boolean mask.
+
+    '
+  for:
+  - fake_quantize_per_tensor_affine_cachemask_backward
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Math
   stages:
   - alpha: '5.4'
 - id: feature_dropout
@@ -4582,6 +4611,17 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.3'
+- id: fft_irfftn
+  description: Computes the N-dimensional inverse of torch.fft.rfftn.
+  for:
+  - fft_irfftn
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: fill_diagonal_
   description: 'Fills the main diagonal of a tensor that has at least two dimensions
 
@@ -12745,6 +12785,21 @@ ops:
   - BLAS
   stages:
   - alpha: '5.4'
+- id: sparse_semi_structured_addmm
+  description: 'Performs a matrix multiplication of the sparse semi-structured
+
+    (2:4 sparsity) matrices mat1 and mat2 with input added.
+
+    '
+  for:
+  - _sparse_semi_structured_addmm
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.4'
 - id: sparse_semi_structured_mm
   description: 'Performs a sparse semi-structured matrix multiplication of a dense
     matrix with a 2:4 sparsity pattern against a dense matrix.
@@ -13846,6 +13901,17 @@ ops:
   stages:
   - stable: '3.0'
   cpp: '4.0'
+- id: sum_to_size
+  description: Triton kernel implementation for sum_to_size.
+  for:
+  - sum_to_size
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: swiglu
   description: Swish-Gated Linear Unit, a variant of GLU with the Swish activation
     function.
