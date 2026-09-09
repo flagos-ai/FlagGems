@@ -167,6 +167,7 @@ from .floor import floor, floor_, floor_out
 from .full import full
 from .full_like import full_like
 from .gather import gather, gather_backward
+from .gcd import gcd, gcd_, gcd_out
 from .ge import ge, ge_scalar, greater_equal_
 from .gelu import gelu, gelu_, gelu_backward
 from .get_scheduler_metadata import get_scheduler_metadata
@@ -567,6 +568,9 @@ __all__ = [
     "full_like",
     "gather",
     "gather_backward",
+    "gcd",
+    "gcd_",
+    "gcd_out",
     "ge",
     "ge_scalar",
     "gelu",
