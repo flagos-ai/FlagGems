@@ -66,6 +66,7 @@ from .int_mm import int_mm, int_mm_out
 from .isin import isin
 from .kthvalue import kthvalue
 from .linalg_cholesky import linalg_cholesky
+from .linalg_ldl_factor_ex import ldl_factor_ex
 from .linear import linear
 from .log import log
 from .log10 import log10, log10_, log10_out
@@ -299,6 +300,7 @@ if get_device_capability(current_device())[0] >= 3:
     "atan2_",
     "_upsample_nearest_exact2d_backward",
     "_upsample_bilinear2d_aa",
+    "ldl_factor_ex",
         ]
     )
 
