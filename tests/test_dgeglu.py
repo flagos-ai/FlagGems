@@ -19,6 +19,8 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+vendor_name = flag_gems.vendor_name
+
 try:
     from transformer_engine.pytorch import cpp_extensions as tex
 
@@ -29,6 +31,10 @@ except ImportError:
 
 @pytest.mark.dgeglu
 @pytest.mark.skipif(TE_OP is None, reason="'dgeglu' not found in TransformerEngine")
+@pytest.mark.skipif(
+    vendor_name == "kunlunxin",
+    reason="Kunlunxin TE/API and Triton kernel are unsupported",
+)
 @pytest.mark.parametrize("shape", utils.GLU_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_dgeglu(shape, dtype):
