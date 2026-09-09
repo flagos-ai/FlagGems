@@ -13546,6 +13546,72 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: special_zeta
+  description: Computes the Hurwitz zeta function element-wise for two tensor inputs.
+  for:
+  - special_zeta
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: special_zeta_out
+  description: Tensor/tensor variant of `special_zeta` that writes to `out`.
+  for:
+  - special_zeta.out
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: special_zeta_scalar_tensor
+  description: Variant of `special_zeta` whose first argument is a scalar.
+  for:
+  - special_zeta.self_scalar
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: special_zeta_scalar_tensor_out
+  description: Scalar/tensor variant of `special_zeta` that writes to `out`.
+  for:
+  - special_zeta.self_scalar_out
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: special_zeta_tensor_scalar
+  description: Variant of `special_zeta` whose second argument is a scalar.
+  for:
+  - special_zeta.other_scalar
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: special_zeta_tensor_scalar_out
+  description: Tensor/scalar variant of `special_zeta` that writes to `out`.
+  for:
+  - special_zeta.other_scalar_out
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: split_with_sizes_copy
   description: 'Splits a tensor into sub-tensors along a given dimension,
 
