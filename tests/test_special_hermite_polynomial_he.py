@@ -50,3 +50,38 @@ def test_special_hermite_polynomial_he(shape, dtype):
         utils.gems_assert_close(
             res_out, ref_out, dtype, equal_nan=True, atol=ATOL[dtype]
         )
+
+
+@pytest.mark.special_hermite_polynomial_he
+# CUDA does not support half/bfloat16 for this special function
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_special_hermite_polynomial_he_scalar_x(dtype):
+    """Scalar x + tensor n: x broadcasts against the n tensor."""
+    # n follows the parametrized dtype: an int64/fp64 n tensor yields an fp64
+    # output for both the native operator and the FlagGems kernel.
+    inp2 = torch.randint(0, 11, (16,), device=flag_gems.device).to(dtype)
+    x = -2.5
+
+    ref_out = torch.special.hermite_polynomial_he(x, utils.to_reference(inp2))
+    res_out = flag_gems.special_hermite_polynomial_he(x, inp2)
+
+    if flag_gems.vendor_name == "iluvatar":
+        res_out = res_out.to("cpu")
+    utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True, atol=ATOL[dtype])
+
+
+@pytest.mark.special_hermite_polynomial_he
+@pytest.mark.parametrize("x", [-2.5, 0.0, 1.8])
+@pytest.mark.parametrize("n", [0, 1, 5, 10])
+def test_special_hermite_polynomial_he_scalar_scalar(x, n):
+    """Both scalar: computed host-side and returned as a 0-dim tensor."""
+    res_out = flag_gems.special_hermite_polynomial_he(x, n)
+
+    ref = torch.special.hermite_polynomial_he(
+        torch.tensor(x, dtype=torch.float64), n
+    ).item()
+    assert isinstance(res_out, torch.Tensor)
+    assert res_out.dim() == 0
+    # Host-side recurrence in float64 matches the fp64 reference to fp32
+    # representability, so a tight relative bound suffices.
+    assert abs(res_out.item() - ref) <= 1e-3 * max(1.0, abs(ref))
