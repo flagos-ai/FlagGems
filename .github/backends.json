@@ -57,7 +57,7 @@
   },
   {
     "backend": "mthreads-musa520",
-    "runner_label": "mthreads",
+    "runner_label": "musa-520",
     "label": "vendor/MooreThreads",
     "gpu_check": "tools/gpu_check_mthreads.sh",
     "enabled": true
