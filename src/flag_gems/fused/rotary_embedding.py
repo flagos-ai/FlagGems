@@ -40,6 +40,10 @@ _FULL_AUTOTUNE_WORK_LIMIT = 8 * 1024
 # configuration is always picked by on-device benchmarking, so no limit
 # hard-codes a device-specific choice.
 _MULTI_BLOCK_AUTOTUNE_WORK_LIMIT = 64 * 1024
+# Ordered full-head transactions help interleaved out-of-place workloads at
+# medium occupancy. Single-token decode is launch-bound; larger workloads keep
+# the existing pair-wise kernel to avoid reshape/interleave throughput overhead.
+_CONTIGUOUS_INTERLEAVED_WORK_LIMIT = _MULTI_BLOCK_AUTOTUNE_WORK_LIMIT
 
 
 # Both kernels assign a complete rotary pair to one logical element, so their
@@ -242,6 +246,55 @@ def _rope_grid(n_tokens):
     return grid
 
 
+@triton.jit
+def _store_contiguous_interleaved_heads(
+    input_ptr,
+    output_ptr,
+    input_stride_h,
+    input_stride_d,
+    output_stride_h,
+    output_stride_d,
+    head_offsets,
+    cos,
+    sin,
+    NUM_HEADS: tl.constexpr,
+    HEAD_DIM: tl.constexpr,
+    PADDED_HEAD_DIM: tl.constexpr,
+    HEAD_BLOCK_SIZE: tl.constexpr,
+):
+    """Rotate interleaved pairs with one ordered load/store per head."""
+    dim_offsets = tl.arange(0, PADDED_HEAD_DIM)
+    if HEAD_BLOCK_SIZE > 0:
+        mask = (head_offsets[:, None] < NUM_HEADS) & (dim_offsets[None, :] < HEAD_DIM)
+        input_offsets = (
+            head_offsets[:, None] * input_stride_h
+            + dim_offsets[None, :] * input_stride_d
+        )
+        output_offsets = (
+            head_offsets[:, None] * output_stride_h
+            + dim_offsets[None, :] * output_stride_d
+        )
+        values = tl.load(input_ptr + input_offsets, mask=mask, other=0.0)
+        first, second = tl.split(
+            tl.reshape(values, (HEAD_BLOCK_SIZE, PADDED_HEAD_DIM // 2, 2))
+        )
+        rotated = tl.interleave(
+            first * cos[None, :] - second * sin[None, :],
+            second * cos[None, :] + first * sin[None, :],
+        )
+    else:
+        mask = dim_offsets < HEAD_DIM
+        input_offsets = head_offsets * input_stride_h + dim_offsets * input_stride_d
+        output_offsets = head_offsets * output_stride_h + dim_offsets * output_stride_d
+        values = tl.load(input_ptr + input_offsets, mask=mask, other=0.0)
+        first, second = tl.split(tl.reshape(values, (PADDED_HEAD_DIM // 2, 2)))
+        rotated = tl.interleave(
+            first * cos - second * sin,
+            second * cos + first * sin,
+        )
+    tl.store(output_ptr + output_offsets, rotated, mask=mask)
+
+
 @libentry()
 @libtuner(
     configs=_get_rope_autotune_configs(),
@@ -256,6 +309,7 @@ def _rope_grid(n_tokens):
     ],
     warmup=5,
     rep=10,
+    benchmark_mode="event",
     prune_configs_by={"early_config_prune": _prune_rope_configs},
     policy=_RopeTuner,
 )
@@ -429,10 +483,154 @@ def apply_rotary_pos_emb_kernel(
 
 @libentry()
 @libtuner(
+    configs=_get_rope_autotune_configs(),
+    key=_COMMON_AUTOTUNE_KEYS
+    + [
+        "oq_stride_s",
+        "oq_stride_h",
+        "oq_stride_d",
+        "ok_stride_s",
+        "ok_stride_h",
+        "ok_stride_d",
+    ],
+    warmup=5,
+    rep=10,
+    benchmark_mode="event",
+    prune_configs_by={"early_config_prune": _prune_rope_configs},
+    policy=_RopeTuner,
+)
+@triton.jit
+def apply_rotary_pos_emb_interleaved_kernel(
+    oq_ptr,
+    ok_ptr,
+    q_ptr,
+    k_ptr,
+    cos_ptr,
+    sin_ptr,
+    pos_ptr,
+    q_stride_s,
+    q_stride_h,
+    q_stride_d,
+    k_stride_s,
+    k_stride_h,
+    k_stride_d,
+    oq_stride_s,
+    oq_stride_h,
+    oq_stride_d,
+    ok_stride_s,
+    ok_stride_h,
+    ok_stride_d,
+    p_stride_s,
+    cos_stride_s,
+    sin_stride_s,
+    seq_len,
+    n_tokens_bucket,
+    NUM_Q_HEADS: tl.constexpr,
+    NUM_K_HEADS: tl.constexpr,
+    HEAD_DIM: tl.constexpr,
+    PADDED_HEAD_DIM: tl.constexpr,
+    HEAD_BLOCK_SIZE: tl.constexpr,
+    ROTARY_INTERLEAVED: tl.constexpr,
+    MAX_POSITION_EMBEDDINGS: tl.constexpr,
+):
+    """Out-of-place interleaved RoPE with ordered head-dimension I/O."""
+    s_id = ext.program_id(0)
+
+    if pos_ptr is None:
+        pos_id = s_id % seq_len
+    else:
+        pos_id = tl.load(pos_ptr + s_id * p_stride_s)
+    cos_ptr += pos_id * cos_stride_s
+    sin_ptr += pos_id * sin_stride_s
+    tl.device_assert(pos_id < MAX_POSITION_EMBEDDINGS, "position id out of bound")
+
+    pair_offsets = tl.arange(0, PADDED_HEAD_DIM // 2)
+    pair_mask = pair_offsets < HEAD_DIM // 2
+    cos = tl.load(cos_ptr + pair_offsets, mask=pair_mask, other=0.0).to(tl.float32)
+    sin = tl.load(sin_ptr + pair_offsets, mask=pair_mask, other=0.0).to(tl.float32)
+
+    oq_ptr += s_id * oq_stride_s
+    q_ptr += s_id * q_stride_s
+    ok_ptr += s_id * ok_stride_s
+    k_ptr += s_id * k_stride_s
+
+    if HEAD_BLOCK_SIZE > 0:
+        head_block_start = ext.program_id(1) * HEAD_BLOCK_SIZE
+        head_offsets = head_block_start + tl.arange(0, HEAD_BLOCK_SIZE)
+        if head_block_start < NUM_Q_HEADS:
+            _store_contiguous_interleaved_heads(
+                q_ptr,
+                oq_ptr,
+                q_stride_h,
+                q_stride_d,
+                oq_stride_h,
+                oq_stride_d,
+                head_offsets,
+                cos,
+                sin,
+                NUM_Q_HEADS,
+                HEAD_DIM,
+                PADDED_HEAD_DIM,
+                HEAD_BLOCK_SIZE,
+            )
+        if head_block_start < NUM_K_HEADS:
+            _store_contiguous_interleaved_heads(
+                k_ptr,
+                ok_ptr,
+                k_stride_h,
+                k_stride_d,
+                ok_stride_h,
+                ok_stride_d,
+                head_offsets,
+                cos,
+                sin,
+                NUM_K_HEADS,
+                HEAD_DIM,
+                PADDED_HEAD_DIM,
+                HEAD_BLOCK_SIZE,
+            )
+    else:
+        for off_h in range(0, NUM_Q_HEADS):
+            _store_contiguous_interleaved_heads(
+                q_ptr,
+                oq_ptr,
+                q_stride_h,
+                q_stride_d,
+                oq_stride_h,
+                oq_stride_d,
+                off_h,
+                cos,
+                sin,
+                NUM_Q_HEADS,
+                HEAD_DIM,
+                PADDED_HEAD_DIM,
+                0,
+            )
+        for off_h in range(0, NUM_K_HEADS):
+            _store_contiguous_interleaved_heads(
+                k_ptr,
+                ok_ptr,
+                k_stride_h,
+                k_stride_d,
+                ok_stride_h,
+                ok_stride_d,
+                off_h,
+                cos,
+                sin,
+                NUM_K_HEADS,
+                HEAD_DIM,
+                PADDED_HEAD_DIM,
+                0,
+            )
+
+
+@libentry()
+@libtuner(
     configs=_get_rope_inplace_autotune_configs(),
     key=_COMMON_AUTOTUNE_KEYS,
     warmup=5,
     rep=10,
+    benchmark_mode="event",
     prune_configs_by={"early_config_prune": _prune_rope_inplace_configs},
     policy=_RopeInplaceTuner,
 )
@@ -641,6 +839,11 @@ def apply_rotary_pos_emb(
 
     # The block size must be the next power of two, sometimes we need to pad it.
     padded_head_dim = max(triton.next_power_of_2(head_dim), 16)
+    use_contiguous_interleaved = (
+        rotary_interleaved
+        and 1 < n_tokens_bucket
+        and (n_tokens_bucket * padded_head_dim <= _CONTIGUOUS_INTERLEAVED_WORK_LIMIT)
+    )
 
     if inplace:
         kernel_args = (
@@ -708,7 +911,12 @@ def apply_rotary_pos_emb(
             padded_head_dim,
         )
         with torch_device_fn.device(q_embed.device):
-            apply_rotary_pos_emb_kernel[_rope_grid(n_tokens)](
+            outplace_kernel = (
+                apply_rotary_pos_emb_interleaved_kernel
+                if use_contiguous_interleaved
+                else apply_rotary_pos_emb_kernel
+            )
+            outplace_kernel[_rope_grid(n_tokens)](
                 *kernel_args,
                 ROTARY_INTERLEAVED=rotary_interleaved,
                 MAX_POSITION_EMBEDDINGS=cos.shape[0],
