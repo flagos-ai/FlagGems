@@ -30,7 +30,12 @@ SHAPES = (
         (4, 8, 64, 127),
     ]
 )
-DTYPES = [torch.float32] if QUICK_MODE else utils.FLOAT_DTYPES + [torch.float64]
+# KUNLUNXIN P800 has no fp64 compute path: a float64 device tensor is silently
+# created as float32, so the result dtype assertion can never pass.
+if flag_gems.vendor_name == "kunlunxin":
+    DTYPES = [torch.float32] if QUICK_MODE else utils.FLOAT_DTYPES
+else:
+    DTYPES = [torch.float32] if QUICK_MODE else utils.FLOAT_DTYPES + [torch.float64]
 
 
 def _make_grad_output(shape, dtype, noncontiguous=False):

@@ -336,9 +336,17 @@ from .trunc import trunc, trunc_
 from .uniform import uniform_
 from .unique import _unique2
 from .upsample_bicubic2d_aa import _upsample_bicubic2d_aa
+from .upsample_bilinear2d import upsample_bilinear2d
+from .upsample_bilinear2d_aa import _upsample_bilinear2d_aa
 from .upsample_linear1d import upsample_linear1d
+from .upsample_linear1d_backward import upsample_linear1d_backward
 from .upsample_nearest1d import upsample_nearest1d
 from .upsample_nearest2d import upsample_nearest2d
+from .upsample_nearest_exact1d_backward import (
+    _upsample_nearest_exact1d_backward,
+    _upsample_nearest_exact1d_backward_grad_input,
+)
+from .upsample_nearest_exact2d_backward import _upsample_nearest_exact2d_backward
 from .upsample_trilinear3d import upsample_trilinear3d
 from .var_mean import var_mean
 from .vdot import vdot
@@ -377,6 +385,10 @@ __all__ = [
     "softshrink_out",
     "_unique2",
     "_upsample_bicubic2d_aa",
+    "_upsample_bilinear2d_aa",
+    "_upsample_nearest_exact1d_backward",
+    "_upsample_nearest_exact1d_backward_grad_input",
+    "_upsample_nearest_exact2d_backward",
     "apply_repetition_penalties",
     "abs",
     "abs_",
@@ -806,7 +818,9 @@ __all__ = [
     "trunc_",
     "true_divide_",
     "uniform_",
+    "upsample_bilinear2d",
     "upsample_linear1d",
+    "upsample_linear1d_backward",
     "upsample_nearest1d",
     "upsample_nearest2d",
     "upsample_trilinear3d",
