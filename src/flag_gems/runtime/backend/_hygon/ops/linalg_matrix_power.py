@@ -1,17 +1,3 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 """linalg_matrix_power override for the hygon (HIP) backend.
 
 Hygon runs the generic NV implementation unchanged except that its HIP
@@ -26,9 +12,9 @@ import importlib
 
 import torch
 
-from flag_gems.ops.linalg_matrix_power import linalg_matrix_power  # noqa: E402, F401
 from flag_gems.ops.linalg_matrix_power import (  # noqa: E402, F401
     _trsm_kernel,
+    linalg_matrix_power,
     linalg_matrix_power_out,
 )
 

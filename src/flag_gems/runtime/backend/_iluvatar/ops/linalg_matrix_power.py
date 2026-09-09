@@ -1,17 +1,3 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 """linalg_matrix_power override for the iluvatar (CoreX) backend.
 
 CoreX has no fp64 compute path, so:
@@ -35,7 +21,9 @@ import flag_gems
 from flag_gems.ops.linalg_matrix_power import (
     _eye_like,
     _inverse,
+    _inverse_df64_large,
     _matrix_power_df64,
+    _matrix_power_df64_large,
     _trsm_solve_register,
 )
 from flag_gems.utils import libentry
@@ -286,10 +274,13 @@ def linalg_matrix_power(A, n, *, out=None):
             Xh, Xl = inv
             return _matrix_power_df64(Xh, Xl, -n, m, shape, out=out)
         # Large M: the external fp32 LU has no df64 low part, so the inverse
-        # is a plain fp32 tensor; compute the power in fp32 via the generic
-        # positive-power dispatch.
-        A = inv
-        n = -n
+        # is a plain fp32 tensor (~1e-6 residual).  Raising that to |n| on a
+        # cond-80 matrix overshoots fp32 (n=-8 needs ~2e-9 inverse accuracy),
+        # so refine it to a df64 (hi/lo) pair with 2X - XAX Newton and raise
+        # the pair to |n| with the error-free df64 GEMM - both are on-device
+        # fp32 kernels, no fp64 compute required.
+        Xh, Xl = _inverse_df64_large(A, inv, iters=2)
+        return _matrix_power_df64_large(Xh, Xl, -n, shape, out=out)
     return _generic.linalg_matrix_power(A, n, out=out)
 
 
