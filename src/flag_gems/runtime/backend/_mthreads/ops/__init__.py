@@ -22,6 +22,7 @@ from .arange import arange, arange_start
 from .arctan2 import arctan2
 from .argmin import argmin
 from .argsort import argsort
+from .atan2 import atan2
 from .avg_pool2d import avg_pool2d_backward
 from .batch_norm import batch_norm, batch_norm_backward
 from .bucketize import bucketize
@@ -271,6 +272,7 @@ if get_device_capability(current_device())[0] >= 3:
             "gelu",
             "mm",
             "tanh",
+    "atan2",
         ]
     )
 
