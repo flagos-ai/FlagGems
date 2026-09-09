@@ -16,6 +16,7 @@ import importlib
 
 from ..utils.pointwise_dynamic import ModuleGenerator
 from ._native_batch_norm_legit_functional import _native_batch_norm_legit_functional
+from .adaptive_avg_pool2d_backward import _adaptive_avg_pool2d_backward
 from .adaptive_max_pool3d_backward import run
 from .addmm import addmm, addmm_out
 from .addmm_ import addmm_
@@ -93,6 +94,7 @@ _pointwise_dynamic = importlib.import_module("flag_gems.utils.pointwise_dynamic"
 _pointwise_dynamic.ModuleGenerator = ModuleGenerator
 
 __all__ = [
+    "_adaptive_avg_pool2d_backward",
     "_conv_depthwise2d",
     "_native_batch_norm_legit_functional",
     "_unsafe_masked_index_put_accumulate",
