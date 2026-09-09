@@ -18,12 +18,12 @@ import triton
 
 from flag_gems.ops.index_reduce import (
     _index_is_unique,
+    _index_reduce_impl,
     _index_reduce_unique_kernel,
     _reduce_id,
     _restore_dim,
     _validate_args,
 )
-from flag_gems.ops.index_reduce import index_reduce_ as _generic_index_reduce
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress
 
@@ -40,8 +40,14 @@ def index_reduce_(inp, dim, index, source, reduce, *, include_self=True):
     dim = dim % inp.ndim
     index = index.contiguous()
     if not _index_is_unique(index, inp.size(dim)):
-        return _generic_index_reduce(
-            inp, dim, index, source, reduce, include_self=include_self
+        return _index_reduce_impl(
+            inp,
+            dim,
+            index,
+            source,
+            reduce,
+            include_self=include_self,
+            force_cas=True,
         )
 
     inp_work = dim_compress(inp, dim)
