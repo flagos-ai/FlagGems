@@ -52,6 +52,7 @@ from flag_gems.ops._conj_copy import _conj_copy, _conj_copy_out
 from flag_gems.ops._convert_weight_to_int4pack import _convert_weight_to_int4pack
 from flag_gems.ops._convolution_double_backward import _convolution_double_backward
 from flag_gems.ops._convolution_mode import _convolution_mode
+from flag_gems.ops._cummax_helper import _cummax_helper
 from flag_gems.ops._cummin_helper import _cummin_helper
 from flag_gems.ops._dyn_quant_pack_4bit_weight import _dyn_quant_pack_4bit_weight
 from flag_gems.ops._embedding_bag_dense_backward import _embedding_bag_dense_backward
@@ -105,7 +106,11 @@ from flag_gems.ops._native_batch_norm_legit_functional import (
 from flag_gems.ops._native_batch_norm_legit_no_training import (
     _native_batch_norm_legit_no_training,
 )
+from flag_gems.ops._nested_from_padded_tensor import _nested_from_padded_tensor
 from flag_gems.ops._nested_sum_backward import _nested_sum_backward
+from flag_gems.ops._nested_tensor_from_mask_left_aligned import (
+    _nested_tensor_from_mask_left_aligned,
+)
 from flag_gems.ops._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
 from flag_gems.ops._pdist_backward import _pdist_backward
 from flag_gems.ops._pdist_forward import _pdist_forward
@@ -467,6 +472,7 @@ from flag_gems.ops.hardsigmoid_backward import hardsigmoid_backward
 from flag_gems.ops.hardswish import hardswish, hardswish_out
 from flag_gems.ops.hardswish_ import hardswish_
 from flag_gems.ops.hardswish_backward import hardswish_backward
+from flag_gems.ops.hardtanh import hardtanh, hardtanh_out
 from flag_gems.ops.hardtanh_ import hardtanh_
 from flag_gems.ops.hardtanh_backward import hardtanh_backward
 from flag_gems.ops.heaviside import heaviside
@@ -1018,6 +1024,7 @@ __all__ = [
     "_convert_weight_to_int4pack",
     "_convolution_double_backward",
     "_convolution_mode",
+    "_cummax_helper",
     "_cummin_helper",
     "_dyn_quant_pack_4bit_weight",
     "_embedding_bag_dense_backward",
@@ -1050,7 +1057,9 @@ __all__ = [
     "_native_batch_norm_legit_no_stats_out",
     "_native_batch_norm_legit_no_training",
     "_native_batch_norm_legit_out",
+    "_nested_from_padded_tensor",
     "_nested_sum_backward",
+    "_nested_tensor_from_mask_left_aligned",
     "_nested_view_from_buffer_copy",
     "_pdist_backward",
     "_pdist_forward",
@@ -1457,8 +1466,10 @@ __all__ = [
     "hardswish_",
     "hardswish_backward",
     "hardswish_out",
+    "hardtanh",
     "hardtanh_",
     "hardtanh_backward",
+    "hardtanh_out",
     "heaviside",
     "heaviside_",
     "histc",
