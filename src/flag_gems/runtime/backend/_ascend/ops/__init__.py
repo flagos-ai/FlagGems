@@ -137,6 +137,7 @@ from .slice_scatter import slice_scatter
 from .softmax import softmax, softmax_backward, softmax_backward_out, softmax_out
 from .sort import sort
 from .sparse_sampled_addmm import sparse_sampled_addmm, sparse_sampled_addmm_out
+from .special_erfinv import special_erfinv
 from .stack import stack
 from .swiglu import swiglu
 from .threshold import threshold, threshold_backward
@@ -349,4 +350,5 @@ __all__ = [
     "where_self_out",
     "zeros",
     "zeros_like",
+    "special_erfinv",
 ]
