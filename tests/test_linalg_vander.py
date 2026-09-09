@@ -5,7 +5,6 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-FLOAT_DTYPES = utils.FLOAT_DTYPES
 COMPLEX_DTYPES = [torch.complex64, torch.complex128]
 
 # linalg_vander tests
@@ -23,7 +22,7 @@ if flag_gems.vendor_name == "metax":
     # torch.linalg.vander is not implemented for float16/bfloat16 on metax GPUs
     VANDER_DTYPES = [torch.float32]
 else:
-    VANDER_DTYPES = FLOAT_DTYPES
+    VANDER_DTYPES = utils.ALL_FLOAT_DTYPES
 
 
 def _assert_vander_close(res_out, ref_out, dtype):
