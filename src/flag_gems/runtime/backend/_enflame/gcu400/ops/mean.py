@@ -393,6 +393,7 @@ def _largest_divisor_le(n, limit):
 
 
 def mean_dim(x, dim, keepdim=False, *, dtype=None):
+    logger.debug("GEMS_ENFLAME MEAN_DIM")
     if not x.is_contiguous():
         x = x.contiguous()
     if dtype is None:

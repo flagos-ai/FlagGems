@@ -1,3 +1,5 @@
+from collections import namedtuple
+
 import pytest
 import torch
 
@@ -56,6 +58,104 @@ def _make_input(shape, pivot, device, dtype):
     return L @ U
 
 
+LinalgLUFactorResult = namedtuple("LinalgLUFactorResult", ["LU", "pivots"])
+
+
+def _swap_rows(lu, i, pivot_row):
+    *batch_shape, m, n = lu.shape
+    device = lu.device
+
+    rows = torch.arange(m, device=device).expand(*batch_shape, -1)
+
+    mask_i = (rows == i).float().unsqueeze(-1)
+    mask_p = (rows == pivot_row.unsqueeze(-1)).float().unsqueeze(-1)
+
+    row_i_vals = (lu * mask_i).sum(dim=-2, keepdim=True)
+    row_p_vals = (lu * mask_p).sum(dim=-2, keepdim=True)
+
+    mask_i_full = mask_i.expand(*batch_shape, m, n)
+    mask_p_full = mask_p.expand(*batch_shape, m, n)
+    diff_ip = (row_p_vals - row_i_vals).expand(*batch_shape, m, n)
+    diff_pi = (row_i_vals - row_p_vals).expand(*batch_shape, m, n)
+
+    lu = lu + mask_i_full * diff_ip
+    lu = lu + mask_p_full * diff_pi
+    return lu
+
+
+def _lu_factor_pivot(lu, m, n, k):
+    *batch_shape, _, _ = lu.shape
+    device = lu.device
+    pivots = torch.empty((*batch_shape, k), dtype=torch.int32, device=device)
+
+    for i in range(k):
+        col = lu[..., i:, i].abs()
+        pivot_rel = torch.argmax(col, dim=-1)
+        pivot_row = pivot_rel + i
+        pivots[..., i] = (pivot_row + 1).to(torch.int32)
+
+        lu = _swap_rows(lu, i, pivot_row)
+
+        pivot_val = lu[..., i, i]
+        lu[..., i + 1 :, i] = lu[..., i + 1 :, i] / pivot_val.unsqueeze(-1)
+
+        if i + 1 < m and i + 1 < n:
+            l_col = lu[..., i + 1 :, i].unsqueeze(-1)
+            u_row = lu[..., i : i + 1, i + 1 :]
+            lu[..., i + 1 :, i + 1 :] = lu[..., i + 1 :, i + 1 :] - l_col @ u_row
+
+    return lu, pivots
+
+
+def _lu_factor_no_pivot(lu, m, n, k):
+    *batch_shape, _, _ = lu.shape
+    device = lu.device
+    pivots = torch.empty((*batch_shape, k), dtype=torch.int32, device=device)
+
+    for i in range(k):
+        pivots[..., i] = i + 1
+        pivot_val = lu[..., i, i]
+        lu[..., i + 1 :, i] = lu[..., i + 1 :, i] / pivot_val.unsqueeze(-1)
+
+        if i + 1 < m and i + 1 < n:
+            l_col = lu[..., i + 1 :, i].unsqueeze(-1)
+            u_row = lu[..., i : i + 1, i + 1 :]
+            lu[..., i + 1 :, i + 1 :] = lu[..., i + 1 :, i + 1 :] - l_col @ u_row
+
+    return lu, pivots
+
+
+def ops_lu_factor(input, *, pivot=True):
+    if input.dim() < 2:
+        raise RuntimeError(
+            "torch.linalg.lu_factor: Expected input to have at least 2 dimensions"
+        )
+    if input.dtype != torch.float32:
+        raise NotImplementedError("Only float32 is supported")
+    m, n = input.shape[-2], input.shape[-1]
+    if m == 0 or n == 0:
+        raise NotImplementedError("Empty matrices are not supported")
+    if pivot not in (True, False):
+        raise TypeError(f"pivot must be a bool, got {type(pivot)}")
+
+    input_contiguous = input.contiguous()
+    m, n = input_contiguous.shape[-2], input_contiguous.shape[-1]
+    k = min(m, n)
+    lu = input_contiguous.clone()
+
+    if pivot:
+        lu, pivots = _lu_factor_pivot(lu, m, n, k)
+    else:
+        lu, pivots = _lu_factor_no_pivot(lu, m, n, k)
+
+    return LinalgLUFactorResult(lu, pivots)
+
+
+def _run_torch_ops_path(inp, pivot):
+    res = ops_lu_factor(inp, pivot=pivot)
+    return res.LU, res.pivots
+
+
 @pytest.mark.linalg_lu_factor
 @pytest.mark.parametrize(
     "shape",
@@ -78,10 +178,12 @@ def test_linalg_lu_factor(shape, dtype, pivot):
     inp = _make_input(shape, pivot, flag_gems.device, dtype)
     ref_inp = utils.to_reference(inp)
 
-    ref_lu, ref_pivots = torch.linalg.lu_factor(ref_inp, pivot=pivot)
+    if flag_gems.vendor_name != "ascend":
+        ref_lu, ref_pivots = torch.linalg.lu_factor(ref_inp, pivot=pivot)
+    else:
+        ref_lu, ref_pivots = _run_torch_ops_path(ref_inp, pivot=pivot)
     with flag_gems.use_gems():
         res_lu, res_pivots = torch.linalg.lu_factor(inp, pivot=pivot)
-
     batch_shape = inp.shape[:-2]
     m, n = inp.shape[-2], inp.shape[-1]
     k = min(m, n)
@@ -139,9 +241,15 @@ def test_linalg_lu_factor_out(shape, dtype, pivot):
     ref_pivots_out = torch.empty(
         (*batch_shape, k), dtype=torch.int32, device=ref_inp.device
     )
-    ref_LU, ref_pivots = torch.linalg.lu_factor(
-        ref_inp, pivot=pivot, out=(ref_LU_out, ref_pivots_out)
-    )
+    if flag_gems.vendor_name != "ascend":
+        ref_LU, ref_pivots = torch.linalg.lu_factor(
+            ref_inp, pivot=pivot, out=(ref_LU_out, ref_pivots_out)
+        )
+    else:
+        ref_LU, ref_pivots = _run_torch_ops_path(ref_inp, pivot=pivot)
+        ref_LU_out.copy_(ref_LU)
+        ref_pivots_out.copy_(ref_pivots)
+        ref_LU, ref_pivots = ref_LU_out, ref_pivots_out
 
     res_LU_out = torch.empty_like(inp)
     res_pivots_out = torch.empty(

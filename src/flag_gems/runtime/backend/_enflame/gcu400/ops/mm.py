@@ -12,12 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
+
 import torch
 import triton
 import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.utils import libentry, libtuner
+
+logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -109,6 +113,7 @@ def get_higher_dtype(a, b):
 
 
 def mm(a, b):
+    logger.debug("GEMS_ENFLAME MM")
     if a.stride(0) > 1 and a.stride(1) > 1:
         a = a.contiguous()
     if b.stride(0) > 1 and b.stride(1) > 1:

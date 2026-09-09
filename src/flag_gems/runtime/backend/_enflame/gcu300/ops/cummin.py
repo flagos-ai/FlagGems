@@ -103,8 +103,8 @@ def scan_part_min_kernel(
     inp_vals = tl.load(inp_ptrs, mask=mask, other=max_value)
     if (
         tl.constexpr(inp_vals.dtype.is_int64())
-        or tl.constexpr(inp_vals.dtype.is_uint64())
-    ) or tl.constexpr(inp_vals.dtype.is_fp64()):
+        | tl.constexpr(inp_vals.dtype.is_uint64())
+    ) | tl.constexpr(inp_vals.dtype.is_fp64()):
         inp_vals = inp_vals
     elif tl.constexpr(inp_vals.dtype.is_int()):
         inp_vals = inp_vals.to(tl.int32)
@@ -217,8 +217,8 @@ def scan_part_min_abc_kernel(
     inp_vals = tl.load(inp_ptrs, mask=mask, other=max_value)
     if (
         tl.constexpr(inp_vals.dtype.is_int64())
-        or tl.constexpr(inp_vals.dtype.is_uint64())
-    ) or tl.constexpr(inp_vals.dtype.is_fp64()):
+        | tl.constexpr(inp_vals.dtype.is_uint64())
+    ) | tl.constexpr(inp_vals.dtype.is_fp64()):
         inp_vals = inp_vals
     elif tl.constexpr(inp_vals.dtype.is_int()):
         inp_vals = inp_vals.to(tl.int32)
@@ -386,8 +386,8 @@ def scan_part_min_abc_loop_kernel(
         inp_vals = tl.load(inp + offset, mask=mask, other=max_value)
         if (
             tl.constexpr(inp_vals.dtype.is_int64())
-            or tl.constexpr(inp_vals.dtype.is_uint64())
-        ) or tl.constexpr(inp_vals.dtype.is_fp64()):
+            | tl.constexpr(inp_vals.dtype.is_uint64())
+        ) | tl.constexpr(inp_vals.dtype.is_fp64()):
             vals = inp_vals
         elif tl.constexpr(inp_vals.dtype.is_int()):
             vals = inp_vals.to(tl.int32)

@@ -18,6 +18,17 @@ import torch
 from . import base, consts
 
 
+@pytest.mark.hardsigmoid_
+def test_hardsigmoid_inplace():
+    bench = base.UnaryPointwiseBenchmark(
+        op_name="hardsigmoid_",
+        torch_op=torch.ops.aten.hardsigmoid_,
+        dtypes=consts.FLOAT_DTYPES,
+        is_inplace=True,
+    )
+    bench.run()
+
+
 @pytest.mark.hardsigmoid
 def test_hardsigmoid():
     bench = base.UnaryPointwiseBenchmark(

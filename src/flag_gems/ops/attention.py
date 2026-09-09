@@ -646,6 +646,41 @@ _bwd_prune_configs = (
 )
 
 
+def _prune_attn_bwd_configs(configs, nargs, **kwargs):
+    """Restrict _attn_bwd tuning candidates that crash on Hopper (sm90).
+
+    Empirically verified runtime "illegal memory access" faults (memcheck-clean,
+    deterministic per shape/dtype/prior-allocations, and never triggered by
+    pure kernel indexing):
+    - BLOCK_DMODEL <= 32 (head_dim <= 32): the num_warps >= 4 WGMMA path faults
+      (num_warps <= 2, the non-WGMMA path, is always safe) - a Triton WGMMA
+      codegen defect.
+    - BLOCK_DMODEL > 32: the single-warpgroup (num_warps = 4) path faults for
+      some M2 = 128 tiles depending on allocation layout; num_warps = 8 (two
+      warpgroups) is stable across every shape/dtype/order tried.
+
+    Rewriting candidates keeps the autotuner from ever benchmarking/selecting
+    a crashing config.
+    """
+    pruned = []
+    for config in configs:
+        if kwargs.get("BLOCK_DMODEL", 64) <= 32:
+            num_warps = min(config.num_warps, 2)
+        else:
+            num_warps = max(config.num_warps, 8)
+        if num_warps != config.num_warps:
+            config = triton.Config(
+                config.kwargs,
+                num_warps=num_warps,
+                num_stages=config.num_stages,
+                num_ctas=config.num_ctas,
+                maxnreg=config.maxnreg,
+                pre_hook=config.pre_hook,
+            )
+        pruned.append(config)
+    return pruned
+
+
 @libentry()
 @libtuner(
     configs=config_backward,
@@ -837,7 +872,13 @@ def _attn_bwd(
         m = tl.load(M + offs_m, mask=offs_m_mask, other=float("inf"))
         m = m[:, None]
 
-        MASK_BLOCK_N2: tl.constexpr = BLOCK_N2 // BLK_SLICE_FACTOR
+        # _attn_bwd_dq requires BLOCK_M2 % BLOCK_N2 == 0. When AABS shrinks
+        # BLOCK_M2 below BLOCK_N2 (small Q_CTX), clamp the KV tile to a divisor
+        # of BLOCK_M2 instead of letting the static_assert fire.
+        MASK_BLOCK_N2: tl.constexpr = min(BLOCK_N2 // BLK_SLICE_FACTOR, BLOCK_M2)
+        stage2_block_n: tl.constexpr = (
+            BLOCK_N2 if BLOCK_M2 % BLOCK_N2 == 0 else MASK_BLOCK_N2
+        )
 
         if IS_CAUSAL:
             # Masked diagonal phase: KV columns [diag_n, end_n)
@@ -872,10 +913,10 @@ def _attn_bwd(
                 )
 
             # Unmasked phase: KV columns [0, diag_n), all fully visible.
-            stage2_num_steps = (diag_n + BLOCK_N2 - 1) // BLOCK_N2
+            stage2_num_steps = (diag_n + stage2_block_n - 1) // stage2_block_n
         else:
             # Non-causal: single unmasked pass over all KV columns.
-            stage2_num_steps = (KV_CTX + BLOCK_N2 - 1) // BLOCK_N2
+            stage2_num_steps = (KV_CTX + stage2_block_n - 1) // stage2_block_n
 
         if stage2_num_steps > 0:
             dq = _attn_bwd_dq(
@@ -892,7 +933,7 @@ def _attn_bwd(
                 Q_CTX,  #
                 KV_CTX,  #
                 BLOCK_M2,
-                BLOCK_N2,
+                stage2_block_n,
                 BLOCK_DMODEL,  #
                 start_m,
                 0,

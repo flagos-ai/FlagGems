@@ -14,8 +14,6 @@
 
 # Weekly full-range test workflow
 #
-# Runs every Monday at 04:00 Beijing time (UTC 20:00 Sunday) against all
-# operator stages on all enabled backends in parallel.
 #
 # Main config: .github/configs/weekly/weekly-test.yaml
 # Per-backend config: .github/configs/weekly/<NAME>.yml
@@ -28,6 +26,10 @@ permissions:
 on:
   workflow_dispatch:
     inputs:
+      branch:
+        description: 'Checkout ref for the run. Leave empty to use master; accepts branch name, commit SHA, or tag.'
+        required: false
+        default: ''
       vendors:
         description: 'Comma-separated vendor names to run on (e.g. Ascend,Nvidia). Empty = all enabled vendors.'
         required: false
@@ -36,10 +38,18 @@ on:
         description: 'Comma-separated operators to test (e.g. abs,sum,add). Empty = all operator stages.'
         required: false
         default: ''
+      upload_log:
+        description: 'Leave empty to publish results to op-monitor. Enter any value to skip the Publish results to op-monitor step.'
+        required: false
+        default: ''
+      send_feishu:
+        description: 'Leave empty to send Feishu notifications. Enter any value to skip the Send Feishu notification step.'
+        required: false
+        default: ''
 
   schedule:
-    # Sunday 00:10 Beijing time = Saturday 16:10 UTC
-    - cron: '10 16 * * 6'
+    # Wednesday and Saturday 21:30 Beijing time = 13:30 UTC
+    - cron: '30 13 * * 3,6'
 
 defaults:
   run:
@@ -51,12 +61,17 @@ jobs:
     timeout-minutes: 5
     outputs:
       date: ${{ steps.get-date.outputs.DATE }}
+      checkout_ref: ${{ steps.build-matrix.outputs.checkout_ref }}
       matrix_container: ${{ steps.build-matrix.outputs.matrix_container }}
       matrix_native: ${{ steps.build-matrix.outputs.matrix_native }}
       api: ${{ steps.build-matrix.outputs.api }}
       ops: ${{ steps.build-matrix.outputs.ops }}
+      publish_results: ${{ steps.build-matrix.outputs.publish_results }}
+      send_feishu: ${{ steps.build-matrix.outputs.send_feishu }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.branch || 'master' }}
 
       - id: get-date
         run: echo "DATE=$(date -u '+%Y-%m-%d')" >> "$GITHUB_OUTPUT"
@@ -65,13 +80,17 @@ jobs:
         shell: python3 {0}
         env:
           # Optional workflow_dispatch inputs; empty for scheduled runs.
-          VENDORS_INPUT: ${{ github.event.inputs.vendors }}
-          OPS_INPUT: ${{ github.event.inputs.ops }}
+          BRANCH_INPUT: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.branch || '' }}
+          VENDORS_INPUT: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.vendors || '' }}
+          OPS_INPUT: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.ops || '' }}
+          UPLOAD_LOG_INPUT: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.upload_log || '' }}
+          SEND_FEISHU_INPUT: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.send_feishu || '' }}
         run: |
           import json
           import os
           import yaml
 
+          checkout_ref = os.environ.get('BRANCH_INPUT', '').strip() or 'master'
           with open('.github/configs/weekly/weekly-test.yaml') as f:
               main = yaml.safe_load(f)
 
@@ -99,12 +118,17 @@ jobs:
 
           # ops: empty input -> "all" operator stages; otherwise the given ops.
           ops = os.environ.get('OPS_INPUT', '').strip() or 'all'
+          publish_results = 'true' if not os.environ.get('UPLOAD_LOG_INPUT', '').strip() else 'false'
+          send_feishu = 'true' if not os.environ.get('SEND_FEISHU_INPUT', '').strip() else 'false'
 
           with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
+              out.write(f"checkout_ref={checkout_ref}\n")
               out.write(f"matrix_container={json.dumps({'include': container_include})}\n")
               out.write(f"matrix_native={json.dumps({'include': native_include})}\n")
               out.write(f"api={main['server']['api']}\n")
               out.write(f"ops={ops}\n")
+              out.write(f"publish_results={publish_results}\n")
+              out.write(f"send_feishu={send_feishu}\n")
 
   # Backends that run inside a container (use_container: true)
   test-container:
@@ -135,6 +159,8 @@ jobs:
     steps:
       - id: checkout-attempt-1
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ needs.prepare.outputs.checkout_ref }}
         continue-on-error: true
       - id: sleep-1
         if: steps.checkout-attempt-1.outcome == 'failure'
@@ -143,6 +169,8 @@ jobs:
       - id: checkout-attempt-2
         if: steps.checkout-attempt-1.outcome == 'failure'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ needs.prepare.outputs.checkout_ref }}
         continue-on-error: true
       - id: sleep-2
         if: steps.checkout-attempt-2.outcome == 'failure'
@@ -151,6 +179,8 @@ jobs:
       - id: checkout-attempt-3
         if: steps.checkout-attempt-2.outcome == 'failure'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ needs.prepare.outputs.checkout_ref }}
 
       - name: Fix git safe directory
         run: git config --global --add safe.directory "${GITHUB_WORKSPACE}"
@@ -292,26 +322,31 @@ jobs:
       #     path: ${{ env.ARCHIVE }}
 
       - name: Publish results to op-monitor
-        # Disabled publishing results to op-monitor for 910B/H800 backends due to network restrictions.
-        if: ${{ matrix.name != '910B' && matrix.name != 'H800' }}
+        if: needs.prepare.outputs.publish_results == 'true'
         timeout-minutes: 15
         continue-on-error: true
         run: |
-          # Normalize the backend name for special cases (e.g. MTT-S5000 -> "MTT S5000").
+          # get backend name from matrix
           BACKEND_NAME="${{ matrix.name }}"
-          if [ "$BACKEND_NAME" = "MTT-S5000" ]; then
-            BACKEND_NAME="MTT S5000"
+          echo "[Publish results] Uploading results archive to op-monitor server for backend: ${BACKEND_NAME}"
+          echo "[Publish results] Archive path: ${ARCHIVE}"
+          echo "[Publish results] Test date: ${DATE}"
+          # Check if the archive file exists before attempting to upload
+          if [ ! -f "${ARCHIVE}" ]; then
+            echo "[Publish results] ERROR: Archive file not found: ${ARCHIVE}"
+            exit 1
           fi
           # Upload the results archive to the op-monitor server.
-          curl -X POST "${{ needs.prepare.outputs.api }}" \
-            -H "X-API-Key: ${{ secrets.OPMON_UPLOAD_KEY }}" \
+          curl -X POST "${{ secrets.OPMON_URL }}api/upload/archive" \
+            -H "Authorization: Bearer ${{ secrets.OPMON_UPLOAD_KEY }}" \
             -F "file=@${ARCHIVE}" \
             -F "library_name=FlagGems" \
             -F "backend_name=${BACKEND_NAME}" \
-            -F "test_date=${DATE}"
+            -F "test_date=${DATE}" \
+            --compressed -o - -w "\nHTTP %{http_code}\n"
 
       - name: Send Feishu notification
-        if: always()
+        if: always() && needs.prepare.outputs.send_feishu == 'true'
         timeout-minutes: 5
         continue-on-error: true
         env:
@@ -343,6 +378,8 @@ jobs:
     steps:
       - id: checkout-attempt-1
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ needs.prepare.outputs.checkout_ref }}
         continue-on-error: true
       - id: sleep-1
         if: steps.checkout-attempt-1.outcome == 'failure'
@@ -351,6 +388,8 @@ jobs:
       - id: checkout-attempt-2
         if: steps.checkout-attempt-1.outcome == 'failure'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ needs.prepare.outputs.checkout_ref }}
         continue-on-error: true
       - id: sleep-2
         if: steps.checkout-attempt-2.outcome == 'failure'
@@ -359,6 +398,8 @@ jobs:
       - id: checkout-attempt-3
         if: steps.checkout-attempt-2.outcome == 'failure'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ needs.prepare.outputs.checkout_ref }}
 
       - name: Fix git safe directory
         run: git config --global --add safe.directory "${GITHUB_WORKSPACE}"
@@ -415,26 +456,38 @@ jobs:
           tar -czf "${ARCHIVE}" -C "$(dirname "${OUTPUT_DIR}")" "$(basename "${OUTPUT_DIR}")"
           echo "ARCHIVE=${ARCHIVE}" >> "$GITHUB_ENV"
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
-        with:
-          name: weekly-${{ matrix.name }}-${{ needs.prepare.outputs.date }}
-          path: ${{ env.ARCHIVE }}
+      # - name: Upload artifact
+      #   uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+      #   with:
+      #     name: weekly-${{ matrix.name }}-${{ needs.prepare.outputs.date }}
+      #     path: ${{ env.ARCHIVE }}
 
-      # Disabled publishing results to op-monitor for native backends
-      # due to potential network restrictions on self-hosted runners.
-      #
-      # - name: Publish results to op-monitor
-      #   run: |
-      #     curl -X POST "${{ needs.prepare.outputs.api }}" \
-      #       -H "X-API-Key: ${{ secrets.OPMON_UPLOAD_KEY }}" \
-      #       -F "file=@${ARCHIVE}" \
-      #       -F "library_name=FlagGems" \
-      #       -F "backend_name=${{ matrix.name }}" \
-      #       -F "test_date=${DATE}"
+      - name: Publish results to op-monitor
+        if: needs.prepare.outputs.publish_results == 'true'
+        timeout-minutes: 15
+        continue-on-error: true
+        run: |
+          # get backend name from matrix
+          BACKEND_NAME="${{ matrix.name }}"
+          echo "[Publish results] Uploading results archive to op-monitor server for backend: ${BACKEND_NAME}"
+          echo "[Publish results] Archive path: ${ARCHIVE}"
+          echo "[Publish results] Test date: ${DATE}"
+          # Check if the archive file exists before attempting to upload
+          if [ ! -f "${ARCHIVE}" ]; then
+            echo "[Publish results] ERROR: Archive file not found: ${ARCHIVE}"
+            exit 1
+          fi
+          # Upload the results archive to the op-monitor server.
+          curl -X POST "${{ secrets.OPMON_URL }}api/upload/archive" \
+            -H "Authorization: Bearer ${{ secrets.OPMON_UPLOAD_KEY }}" \
+            -F "file=@${ARCHIVE}" \
+            -F "library_name=FlagGems" \
+            -F "backend_name=${BACKEND_NAME}" \
+            -F "test_date=${DATE}" \
+            --compressed -o - -w "\nHTTP %{http_code}\n"
 
       - name: Send Feishu notification
-        if: always()
+        if: always() && needs.prepare.outputs.send_feishu == 'true'
         timeout-minutes: 5
         continue-on-error: true
         env:

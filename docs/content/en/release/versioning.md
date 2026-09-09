@@ -52,20 +52,33 @@ suffix is automatically stripped when publishing to PyPI.
 
 ## Development Cycle
 
-After each stable release, a dev tag is created to mark the start of the next
-version cycle:
+After each stable release, create a dev tag to mark the start of the next version
+cycle. **Never place the dev tag on the same commit as the release tag** —
+when a patch release follows, `git tag -f` would be needed to move the dev tag,
+and that two-step fix is easily forgotten.
+
+After pushing the release tag, immediately create an empty commit as the anchor
+for the dev tag:
+
+```bash
+# Release tag is already pushed (v5.4.0), continue:
+git commit --allow-empty -m "Start v5.5.0 development cycle"
+git tag v5.5.0.dev0
+git push origin master v5.5.0.dev0
+```
 
 ```
-v5.3.0          ← stable release
+v5.4.0              ← stable release
   │
-  ├── commit 1  ← 5.4.0.dev1+gabcdef0
-  ├── commit 2  ← 5.4.0.dev2+g1234567
+  │  Start v5.5.0 development cycle  ← empty commit
+  │  v5.5.0.dev0                     ← dev tag on this commit
+  │
+  ├── commit 1  ← 5.5.0.dev1+gabcdef0
+  ├── commit 2  ← 5.5.0.dev2+g1234567
   ├── ...
-  ├── commit N  ← 5.4.0.devN+g<hash>
+  ├── commit N
   │
-v5.4.0          ← next stable release
-  │
-v5.5.0.dev0     ← start of next dev cycle
+v5.5.0              ← next stable release
 ```
 
 ## Release Process
@@ -88,8 +101,9 @@ v5.5.0.dev0     ← start of next dev cycle
 
 4. **Start the next dev cycle:**
    ```bash
+   git commit --allow-empty -m "Start v5.5.0 development cycle"
    git tag v5.5.0.dev0
-   git push origin v5.5.0.dev0
+   git push origin master v5.5.0.dev0
    ```
    From this point, all commits on `master` produce versions like
    `5.5.0.dev1+gabcdef0`.

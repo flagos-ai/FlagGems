@@ -15,24 +15,42 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
 def _input_fn(shape, dtype, device):
     inp1 = torch.randn(shape, dtype=dtype, device=device)
     inp2 = torch.randn(shape, dtype=dtype, device=device)
-    target = (torch.randint(0, 2, shape, device=device, dtype=torch.int8) * 2 - 1).to(
-        dtype
-    )
+    if flag_gems.vendor_name == "cambricon":
+        # Cambricon torch.randint currently does not support int8/int16 generation.
+        target = (
+            (torch.randint(0, 2, shape, device="cpu", dtype=torch.int8) * 2 - 1)
+            .to(dtype)
+            .to(device)
+        )
+    else:
+        target = (
+            torch.randint(0, 2, shape, device=device, dtype=torch.int8) * 2 - 1
+        ).to(dtype)
     yield inp1, inp2, target, 0.5, 1
 
 
 def _backward_input_fn(shape, dtype, device):
     inp1 = torch.randn(shape, dtype=dtype, device=device, requires_grad=True)
     inp2 = torch.randn(shape, dtype=dtype, device=device, requires_grad=True)
-    target = (torch.randint(0, 2, shape, device=device, dtype=torch.int8) * 2 - 1).to(
-        dtype
-    )
+    if flag_gems.vendor_name == "cambricon":
+        # Cambricon torch.randint currently does not support int8/int16 generation.
+        target = (
+            (torch.randint(0, 2, shape, device="cpu", dtype=torch.int8) * 2 - 1)
+            .to(dtype)
+            .to(device)
+        )
+    else:
+        target = (
+            torch.randint(0, 2, shape, device=device, dtype=torch.int8) * 2 - 1
+        ).to(dtype)
     yield inp1, inp2, target, 0.5, 1
 
 

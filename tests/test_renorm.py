@@ -53,6 +53,9 @@ def test_renorm(shape, dtype, p, dim):
 
 
 @pytest.mark.renorm_
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
+)
 @pytest.mark.parametrize("shape", RENORM_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("p", [1, 2, 3])

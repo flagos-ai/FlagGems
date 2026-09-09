@@ -54,15 +54,15 @@ def multinomial_with_replacement(
     rv = r[:, 0]
     # rv = tl.reshape(r[0, :], [NBLOCK], can_reorder=True)
 
-    # Do a binary search for each random number on the cumulative probabilities.
-    # Each random number always selects the leftmost index of the data greater
-    # than or equal to itself. However, this is likely to give a wrong result
-    # in case the first probability is zero which is not expected to selected.
-    # This error happens when the tossed random number is also zero. To avoid
-    # this mistake, we simply perturb random variable with a small number.
-    rv += 0.0001
-    rv = tl.where(rv > 0.9999, 0.9999, rv)
-
+    # Do a binary search for each random number on the cumulative
+    # probabilities, selecting the leftmost index whose cumulative probability
+    # is strictly greater than the random value (the textbook inverse-CDF
+    # sample). The strict comparison makes zero-probability categories --
+    # including a zero-probability leading category, even when the tossed
+    # random value is zero -- impossible to select, so no perturbation of the
+    # random value is needed. Perturbing it (e.g. rv += eps) would bias
+    # sampling against small-probability categories whose cumulative mass falls
+    # below the perturbation.
     cdf_ptr += tl.program_id(1) * K
     start = tl.zeros((NBLOCK,), dtype=tl.int32)
     end = tl.zeros((NBLOCK,), dtype=tl.int32) + K - 1
@@ -70,8 +70,8 @@ def multinomial_with_replacement(
     for _ in range(steps):
         mid = start + (end - start) // 2
         x = tl.load(cdf_ptr + mid, mask=n < N)
-        start = tl.where(x < rv, mid + 1, start)
-        end = tl.where(x < rv, end, mid)
+        start = tl.where(x <= rv, mid + 1, start)
+        end = tl.where(x <= rv, end, mid)
 
     # Returns the last index in case of an overflow
     start = tl.where(start >= K, K - 1, start)
@@ -91,16 +91,25 @@ def multinomial(prob, n_samples, with_replacement=False, *, gen=None):
 
     # Sampling without replacement
     if (not with_replacement) or n_samples == 1:
-        # In case of with_replacement, sampling is approximated by selecing
-        # the top k indices over sorted probabilities with an exponential pertubation
-        # s = argmax( p / q ) where q ~ Exp(1)
-        q = torch.empty_like(prob).exponential_(1.0)
-        s = torch.div(prob, q, out=q)
+        # Gumbel-max trick: s = argmax( p / q ) where q ~ Exp(1)
+        # IMPORTANT: Both prob and q must be computed in float32 to avoid:
+        #   1. fp16/bf16 overflow when small q values cause prob/q -> inf
+        #   2. Multiple inf values making topk return duplicate indices
+        prob_f32 = prob.float()
+        prob_f32.clamp_(min=1e-12)  # avoid 0/q=0 ties for zero-prob categories
+        q = torch.empty(
+            prob.shape, dtype=torch.float32, device=prob.device
+        ).exponential_(1.0)
+        q.clamp_(min=1e-20)  # prevent division overflow
+        s = prob_f32 / q
         if n_samples == 1:
             return torch.argmax(s, dim=-1, keepdim=True).to(torch.int64)
         else:
-            vals, indices = torch.topk(s, n_samples, dim=-1)
-            return indices.to(torch.int64)
+            # Use sort instead of topk to avoid potential duplicates from
+            # FlagGems' topk kernel (which uses approximate sorting that can
+            # produce duplicate indices for very close float32 values).
+            _, indices = torch.sort(s, dim=-1, descending=True, stable=True)
+            return indices[..., :n_samples].to(torch.int64)
 
     from . import normed_cumsum
 

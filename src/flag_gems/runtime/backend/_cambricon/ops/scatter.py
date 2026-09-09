@@ -54,12 +54,12 @@ def generate_scatter_kernel(
     code.newline()
 
     # the decorators
-    code.writeline("@libentry()")
     code.writeline(
         '@libtuner(configs=runtime.get_tuned_config("scatter"), key=["N"], strategy=["log"],'
     )
     code.writeline('          restore_value=["out"], )')
 
+    code.writeline("@libentry()")
     code.writeline("@triton.jit")
 
     # signature

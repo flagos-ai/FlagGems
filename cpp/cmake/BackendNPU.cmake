@@ -71,6 +71,11 @@ if(CANN_HOME AND EXISTS "${CANN_HOME}/${ASCEND_ARCH_DIR}/pkg_inc")
     endif()
 endif()
 
+# Apply globally so translation units that include backend_utils.h
+# (which references acl/acl.h) resolve headers even when not explicitly
+# linked via target_link_npu_libraries().
+include_directories(${ASCEND_INCLUDE_DIRS})
+
 # ------------------------------- Create Imported Targets ----------------------
 # These targets are required by TritonJIT (fetched via FetchContent).
 # Guard with if(NOT TARGET ...) to avoid duplicate definition when
@@ -99,6 +104,8 @@ execute_process(
 
 if(TORCH_NPU_PATH)
     message(STATUS "Found torch_npu at: ${TORCH_NPU_PATH}")
+    # Apply globally — backend_utils.h includes NPUFunctions.h from this path
+    include_directories("${TORCH_NPU_PATH}/include")
     find_library(TORCH_NPU_LIB torch_npu
         PATHS "${TORCH_NPU_PATH}/lib"
         NO_DEFAULT_PATH

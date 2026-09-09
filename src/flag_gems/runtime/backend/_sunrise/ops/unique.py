@@ -790,6 +790,7 @@ def _unique2(
     return_inverse: bool = False,
     return_counts: bool = False,
 ):
+    logger.debug("GEMS_SUNRISE _UNIQUE2")
     if in0.numel() <= 8192:
         sorted_data, sorted_indices = torch.sort(
             in0.ravel().cpu()

@@ -20,12 +20,11 @@
 /src/flag_gems/*     @0x45f @huangyiqun @103yiran @douxetpur @bin913 @w1120029931-bit @hellojack163 @Caeruleann @tengqm
 /src/flag_gems/runtime/backend/*
 
-/tests/*             @0x45f @huangyiqun @103yiran @douxetpur @bin913 @w1120029931-bit @hellojack163 @Caeruleann @tengqm
+/benchmark/*         @0x45f @huangyiqun @103yiran @douxetpur @bin913 @w1120029931-bit @hellojack163 @Caeruleann
+/tests/*             @0x45f @huangyiqun @103yiran @douxetpur @bin913 @w1120029931-bit @hellojack163 @Caeruleann
 /modules_tests/*     @0x45f @huangyiqun @103yiran @douxetpur @bin913 @w1120029931-bit @hellojack163 @Caeruleann
-/benchmark/*         @0x45f @huangyiqun @103yiran @douxetpur @bin913 @w1120029931-bit @hellojack163 @Caeruleann @tengqm
-/docs/*              @0x45f @huangyiqun @103yiran @tengqm
-/container/*         @0x45f @huangyiqun @103yiran @tengqm
+/docs/*              @0x45f @huangyiqun @103yiran
+/tools/*             @0x45f @huangyiqun @103yiran
 
-/lib/*                @0x45f @huangyiqun @103yiran @douxetpur @bin913 @w1120029931-bit @hellojack163 @Caeruleann
-/ctests/*             @0x45f @huangyiqun @103yiran @douxetpur @bin913 @w1120029931-bit @hellojack163 @Caeruleann
-/include/*            @0x45f @huangyiqun @103yiran @douxetpur @bin913 @w1120029931-bit @hellojack163 @Caeruleann
+/cpp/*               @0x45f @huangyiqun @103yiran @douxetpur @bin913 @w1120029931-bit @hellojack163 @Caeruleann
+/triton_src/*        @0x45f @huangyiqun @103yiran @douxetpur @bin913 @w1120029931-bit @hellojack163 @Caeruleann

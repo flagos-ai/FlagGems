@@ -325,6 +325,28 @@ def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
 
     in_n, _, input_depth, input_height, input_width = input.shape
     out_c, weight_c, weight_depth, weight_height, weight_width = weight.shape
+
+    # Triton tl.dot requires K >= 16. The K dimension in conv3d im2col matmul
+    # is BLOCK_CI which tiles over weight_c. When weight_c < 16, AABS
+    # (Auto-Adjusted Block Size) shrinks BLOCK_CI to next_power_of_2(weight_c)
+    # which violates the K >= 16 constraint. Pad input/weight channels to 16.
+    _MIN_DOT_K = 16
+    if weight_c < _MIN_DOT_K:
+        pad_c = _MIN_DOT_K - weight_c
+        if groups == 1:
+            # Simple case: pad channel dim at the end (dim=1 for 5D input)
+            input = torch.nn.functional.pad(input, (0, 0, 0, 0, 0, 0, 0, pad_c))
+        else:
+            # For grouped conv, must pad each group's channels independently.
+            # Reshape to (N, groups, weight_c, D, H, W), pad weight_c dim, reshape back.
+            N, C, D, H, W = input.shape
+            input = input.reshape(N, groups, weight_c, D, H, W)
+            input = torch.nn.functional.pad(input, (0, 0, 0, 0, 0, 0, 0, pad_c))
+            input = input.reshape(N, groups * (weight_c + pad_c), D, H, W)
+        # Pad weight: (out_c, weight_c, kD, kH, kW) -> (out_c, weight_c+pad_c, kD, kH, kW)
+        weight = torch.nn.functional.pad(weight, (0, 0, 0, 0, 0, 0, 0, pad_c))
+        weight_c = weight_c + pad_c
+
     out_depth = conv3d_output_size(
         input_depth, weight_depth, stride_depth, padding_depth, dilation_depth
     )

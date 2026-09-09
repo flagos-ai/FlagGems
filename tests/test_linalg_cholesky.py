@@ -26,6 +26,8 @@ from . import accuracy_utils as utils
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_linalg_cholesky(shape, dtype):
     # Create a positive-definite matrix: A = B @ B^T + I
+    if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
+        pytest.skip("Issue #5253: Not supported")
     n = shape[-1]
     B = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     A = (
@@ -50,6 +52,8 @@ def test_linalg_cholesky(shape, dtype):
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_linalg_cholesky_upper(shape, dtype):
     # Test with upper=True
+    if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
+        pytest.skip("Issue #5253: Not supported")
     n = shape[-1]
     B = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     A = (
@@ -74,6 +78,8 @@ def test_linalg_cholesky_upper(shape, dtype):
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_linalg_cholesky_batch(shape, dtype):
     # Create positive-definite matrices for batched input: A = B @ B^T + I
+    if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
+        pytest.skip("Issue #5253: Not supported")
     n = shape[-1]
     B = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     A = (

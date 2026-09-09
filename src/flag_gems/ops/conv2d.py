@@ -383,28 +383,32 @@ class Conv2d(torch.autograd.Function):
 
         in_n, _, input_height, input_width = input.shape
         out_c, weight_c, weight_height, weight_width = weight.shape
+        orig_weight_c = weight_c  # Save original before potential padding
+
+        # Save original tensors for backward BEFORE padding
+        orig_input = input
+        orig_weight = weight
 
         # Triton tl.dot requires K >= 16. The K dimension in conv2d im2col matmul
-        # is BLOCK_CI which tiles over weight_c. When weight_c is very small (< 16),
-        # the Triton compiler may fail to compile. Pad input channels and weight
-        # channels to ensure weight_c >= 16.
+        # is BLOCK_CI which tiles over weight_c. When weight_c < 16, AABS
+        # (Auto-Adjusted Block Size) shrinks BLOCK_CI to next_power_of_2(weight_c)
+        # which violates the K >= 16 constraint. Pad input/weight channels to 16.
         _MIN_DOT_K = 16
-        if weight_c * weight_height * weight_width < _MIN_DOT_K:
-            pad_c = math.ceil(_MIN_DOT_K / (weight_height * weight_width)) - weight_c
-            if pad_c > 0:
-                if groups == 1:
-                    # Simple case: pad channel dim at the end
-                    input = torch.nn.functional.pad(input, (0, 0, 0, 0, 0, pad_c))
-                else:
-                    # For grouped conv, must pad each group's channels independently.
-                    # Reshape to (N, groups, weight_c, H, W), pad weight_c dim, reshape back.
-                    N, C, H, W = input.shape
-                    input = input.reshape(N, groups, weight_c, H, W)
-                    input = torch.nn.functional.pad(input, (0, 0, 0, 0, 0, pad_c))
-                    input = input.reshape(N, groups * (weight_c + pad_c), H, W)
-                # Pad weight: (out_c, weight_c, kH, kW) -> (out_c, weight_c+pad_c, kH, kW)
-                weight = torch.nn.functional.pad(weight, (0, 0, 0, 0, 0, pad_c))
-                weight_c = weight_c + pad_c
+        if weight_c < _MIN_DOT_K:
+            pad_c = _MIN_DOT_K - weight_c
+            if groups == 1:
+                # Simple case: pad channel dim at the end
+                input = torch.nn.functional.pad(input, (0, 0, 0, 0, 0, pad_c))
+            else:
+                # For grouped conv, must pad each group's channels independently.
+                # Reshape to (N, groups, weight_c, H, W), pad weight_c dim, reshape back.
+                N, C, H, W = input.shape
+                input = input.reshape(N, groups, weight_c, H, W)
+                input = torch.nn.functional.pad(input, (0, 0, 0, 0, 0, pad_c))
+                input = input.reshape(N, groups * (weight_c + pad_c), H, W)
+            # Pad weight: (out_c, weight_c, kH, kW) -> (out_c, weight_c+pad_c, kH, kW)
+            weight = torch.nn.functional.pad(weight, (0, 0, 0, 0, 0, pad_c))
+            weight_c = weight_c + pad_c
 
         out_height = conv2d_output_size(
             input_height, weight_height, stride_height, padding_height, dilation_height
@@ -459,13 +463,19 @@ class Conv2d(torch.autograd.Function):
             groups=groups,
         )
 
-        ctx.save_for_backward(weight, input, bias)
+        # Save ORIGINAL (unpadded) tensors for backward
+        ctx.save_for_backward(orig_weight, orig_input, bias)
 
         ctx.stride = (stride_height, stride_width)
         ctx.padding = (padding_height, padding_width)
         ctx.dilation = (dilation_height, dilation_width)
 
-        ctx.weight_info = (int(out_c / groups), weight_c, weight_height, weight_width)
+        ctx.weight_info = (
+            int(out_c / groups),
+            orig_weight_c,
+            weight_height,
+            weight_width,
+        )
         ctx.input_info = (in_n, input_height, input_width)
         ctx.out_info = (out_height, out_width)
 
@@ -547,6 +557,31 @@ class Conv2d(torch.autograd.Function):
             groups,
         )
         bias_zero = torch.zeros(groups * weight_c, device=device, dtype=out_grad.dtype)
+
+        # Backward path: out_c is passed as kernel's weight_c (constexpr K dim).
+        # When out_c < 16, AABS shrinks BLOCK_CI below 16, violating tl.dot K>=16.
+        # Pad revert_weight (dim=1) and new_out (channel dim) so the K dim >= 16.
+        _MIN_DOT_K = 16
+        bwd_weight_c = out_c  # This becomes the kernel's weight_c constexpr
+        if bwd_weight_c < _MIN_DOT_K:
+            pad_c = _MIN_DOT_K - bwd_weight_c
+            # Pad revert_weight on dim=1 (the out_c/group dimension)
+            # revert_weight shape: [groups*weight_c, out_c, kH, kW]
+            revert_weight = torch.nn.functional.pad(
+                revert_weight, (0, 0, 0, 0, 0, pad_c)
+            )
+            # Pad new_out on channel dim (dim=1).
+            # new_out shape: [N, groups*out_c, H, W]
+            # Each group has out_c channels, need to pad each group to _MIN_DOT_K.
+            if groups == 1:
+                new_out = torch.nn.functional.pad(new_out, (0, 0, 0, 0, 0, pad_c))
+            else:
+                N_bwd, C_bwd, H_bwd, W_bwd = new_out.shape
+                new_out = new_out.reshape(N_bwd, groups, out_c, H_bwd, W_bwd)
+                new_out = torch.nn.functional.pad(new_out, (0, 0, 0, 0, 0, pad_c))
+                new_out = new_out.reshape(N_bwd, groups * (out_c + pad_c), H_bwd, W_bwd)
+            bwd_weight_c = bwd_weight_c + pad_c
+
         conv2d_forward_kernel[grid](
             new_out,
             revert_weight,
@@ -561,7 +596,7 @@ class Conv2d(torch.autograd.Function):
             *new_out.stride(),
             *revert_weight.stride(),
             *input_back.stride(),
-            out_c,
+            bwd_weight_c,
             weight_height,
             weight_width,
             1,

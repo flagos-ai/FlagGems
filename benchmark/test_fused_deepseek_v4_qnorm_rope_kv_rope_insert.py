@@ -17,7 +17,7 @@ import logging
 import pytest
 import torch
 
-from flag_gems.fused import fused_deepseek_v4_qnorm_rope_kv_rope_insert
+from flag_gems import fused_deepseek_v4_qnorm_rope_kv_rope_insert
 
 from . import base
 

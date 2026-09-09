@@ -50,30 +50,34 @@ def embedding_backward_kernel(
     indices,  # pointer to the input
     padding_idx,  # padding_idx
     HAS_PADDING_IDX: tl.constexpr,
+    M,  # number of indices
     N: tl.constexpr,  # number of columns in X
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(0)
-    grad_out += pid * N
-    indices += pid
+    cols = tl.program_id(1) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = cols < N
 
-    mask = tl.arange(0, BLOCK_SIZE) < N
-    cols = tl.arange(0, BLOCK_SIZE)
+    row_idx = tl.load(indices + pid).to(tl.int32)
+    embedding_grad = tl.load(grad_out + pid * N + cols, mask, other=0.0)
+    if tl.constexpr(embedding_grad.dtype.is_bf16()):
+        seen = False
+        for idx in range(0, M):
+            prev_row_idx = tl.load(indices + idx, mask=idx < pid, other=-1).to(tl.int32)
+            seen = seen | (prev_row_idx == row_idx)
 
-    row_idx = tl.load(indices).to(tl.int32)
-    if not HAS_PADDING_IDX:
-        grad_in += row_idx * N
-        embedding_grad = tl.load(grad_out + cols, mask, other=0.0)
-        if tl.constexpr(embedding_grad.dtype.is_bf16()):
-            embedding_grad = embedding_grad.to(tl.float32)
-        tl.atomic_add(grad_in + cols, embedding_grad, mask=mask)
+        # Avoid fp32 atomic_add on MLU and preserve aten's bf16 accumulation order.
+        if (not seen) and (not HAS_PADDING_IDX or row_idx != padding_idx):
+            acc = tl.zeros((BLOCK_SIZE,), dtype=tl.float32)
+            for idx in range(0, M):
+                cur_row_idx = tl.load(indices + idx).to(tl.int32)
+                cur_mask = mask & (cur_row_idx == row_idx)
+                cur_grad = tl.load(grad_out + idx * N + cols, mask=cur_mask, other=0.0)
+                acc = (acc + cur_grad.to(tl.float32)).to(tl.bfloat16).to(tl.float32)
+            tl.store(grad_in + row_idx * N + cols, acc, mask=mask)
     else:
-        if row_idx != padding_idx:
-            grad_in += row_idx * N
-            embedding_grad = tl.load(grad_out + cols, mask, other=0.0)
-            if tl.constexpr(embedding_grad.dtype.is_bf16()):
-                embedding_grad = embedding_grad.to(tl.float32)
-            tl.atomic_add(grad_in + cols, embedding_grad, mask=mask)
+        if not HAS_PADDING_IDX or row_idx != padding_idx:
+            tl.atomic_add(grad_in + row_idx * N + cols, embedding_grad, mask=mask)
 
 
 @libentry()
@@ -130,6 +134,8 @@ def embedding_backward(
     logger.debug("GEMS_CAMBRICON EMBEDDING_BACKWARD")
     assert not sparse, "Currently do not support sparse format"
 
+    grad_outputs = grad_outputs.contiguous()
+    indices = indices.contiguous()
     M = indices.numel()
     N = grad_outputs.shape[-1]
 
@@ -163,12 +169,13 @@ def embedding_backward(
     HAS_PADDING_IDX = padding_idx is not None
 
     with torch_device_fn.device(grad_outputs.device):
-        embedding_backward_kernel[M,](
+        embedding_backward_kernel[(M, triton.cdiv(N, BLOCK_SIZE))](
             grad_inputs,
             grad_outputs,
             indices,
             padding_idx,
             HAS_PADDING_IDX,
+            M,
             N,
             BLOCK_SIZE,
         )

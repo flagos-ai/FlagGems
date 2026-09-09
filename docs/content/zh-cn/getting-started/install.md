@@ -113,6 +113,101 @@ pip install flag_gems
 > [从源码构建安装](#install-from-source)。
 
 <!--
+### 2.1. Set up backend dependencies with `flaggems-setup` {#flaggems-setup}
+
+`pip install flag_gems` installs the pure-Python operator library, but it does
+**not** pull in PyTorch or the vendor-specific runtime packages for your
+accelerator. The `flaggems-setup` console script — installed alongside FlagGems
+— completes the environment by installing the PyTorch stack and vendor packages
+for a chosen backend from the flagOS PyPI index.
+
+This is the recommended follow-up when you installed FlagGems from PyPI (as
+opposed to installing from source with `setup.sh`, which already performs these
+steps for you).
+-->
+### 2.1. 使用 `flaggems-setup` 安装后端依赖 {#flaggems-setup}
+
+`pip install flag_gems` 只安装纯 Python 实现的算子库，**不会**为你的加速器
+安装 PyTorch 或厂商专属的运行时依赖包。随 FlagGems 一同安装的 `flaggems-setup`
+命令行脚本会从 flagOS PyPI 仓库为你选定的后端安装 PyTorch 及厂商依赖包，
+从而补全运行环境。
+
+如果你是从 PyPI 安装 FlagGems（而非用 `setup.sh` 从源码安装，后者已经替你
+完成了这些步骤），推荐在安装完成后执行这一步。
+
+<!--
+List the available backends:
+-->
+列出可用的后端：
+
+```shell
+flaggems-setup --list
+```
+
+<!--
+Install the dependencies for your backend (the backend keys are the same ones
+`setup.sh` accepts):
+-->
+为你的后端安装依赖（后端名称与 `setup.sh` 接受的完全一致）：
+
+```shell
+# NVIDIA CUDA 12.8
+flaggems-setup nvidia-cuda128
+
+# Huawei Ascend CANN 9.0.0
+flaggems-setup ascend-cann900
+
+# MetaX MACA 3.8.1
+flaggems-setup metax-maca3810
+```
+
+<!--
+Preview the exact commands without running them:
+-->
+在不实际执行的情况下预览将要运行的命令：
+
+```shell
+flaggems-setup nvidia-cuda128 --dry-run
+```
+
+<!--
+By default the script uses `uv pip` when `uv` is on your `PATH`, and falls back
+to `pip` otherwise. Override the installer explicitly with `--pip`:
+-->
+默认情况下，当 `uv` 位于 `PATH` 中时脚本会使用 `uv pip`，否则回退到 `pip`。
+你也可以用 `--pip` 显式指定安装器：
+
+```shell
+flaggems-setup nvidia-cuda128 --pip "pip"
+```
+
+<!--
+`flaggems-setup` also installs a Triton-family compiler for you. By default it
+selects **FlagTree** when the backend provides one, and falls back to **Triton**
+otherwise — the same policy as `setup.sh`. Override the choice with the
+`--compiler` flag or the `COMPILER` environment variable:
+
+```shell
+# Force vanilla Triton instead of the auto-selected FlagTree
+flaggems-setup nvidia-cuda128 --compiler triton
+COMPILER=triton flaggems-setup nvidia-cuda128
+```
+
+See [Environment variables](#env-vars) for the full `COMPILER` behavior.
+-->
+`flaggems-setup` 还会为你安装 Triton 系编译器。默认情况下，当后端提供
+FlagTree 时优先选择 **FlagTree**，否则回退到 **Triton**——策略与 `setup.sh`
+一致。你可以用 `--compiler` 标志或 `COMPILER` 环境变量覆盖该选择：
+
+```shell
+# 强制使用原生 Triton，而非自动选择的 FlagTree
+flaggems-setup nvidia-cuda128 --compiler triton
+COMPILER=triton flaggems-setup nvidia-cuda128
+```
+
+`COMPILER` 的完整行为参见[环境变量](#env-vars)。
+
+<!--
 ## 3. Build and install from source {#install-from-source}
 
 ### 3.1. Clone the source
@@ -171,8 +266,8 @@ For example:
 # Huawei Ascend CANN 9.0.0
 ./setup.sh ascend-cann900
 
-# MetaX MACA
-./setup.sh metax
+# MetaX MACA 3.8.1
+./setup.sh metax-maca3810
 ```
 
 <!--

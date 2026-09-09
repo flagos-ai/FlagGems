@@ -27,7 +27,6 @@ from ..utils import TOTAL_CORE_NUM
 logger = logging.getLogger(__name__)
 
 
-@libentry()
 @libtuner(
     configs=[
         triton.Config(kwargs={"BLOCK_SIZE": 1024}, num_stages=3, num_warps=1),
@@ -38,6 +37,7 @@ logger = logging.getLogger(__name__)
     key=["size"],
     strategy=["log"],
 )
+@libentry()
 @triton.jit
 def arange_func(y_ptr, start, end, step, size, BLOCK_SIZE: tl.constexpr):
     pid = tl.program_id(axis=0)

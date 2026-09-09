@@ -255,9 +255,19 @@ def resolve_conj_triton(x: torch.Tensor, is_conj: bool) -> torch.Tensor:
 def resolve_conj(A: torch.Tensor):
     logger.debug("GEMS_MTHREADS RESOLVE_CONJ")
     if A.is_conj():
-        if len(A.shape) in (2, 3):
-            return resolve_conj_triton(A, is_conj=True)
-        else:
-            return torch.complex(A.real, A.imag.neg())
+        # Aligned with the common op (src/flag_gems/ops/resolve_conj.py):
+        # Use clone() to resolve conjugation physically at the C++ aten::clone
+        # level, bypassing Python dispatch entirely.
+        #
+        # Previous implementation attempted Triton kernel for 2D/3D and used
+        # torch.complex(A.real, A.imag.neg()) as fallback, both of which cause
+        # infinite recursion because accessing conjugated tensor data at Python
+        # level triggers aten::resolve_conj dispatch back to this function.
+        #
+        # if len(A.shape) in (2, 3):
+        #     return resolve_conj_triton(A, is_conj=True)
+        # else:
+        #     return torch.complex(A.real, A.imag.neg())
+        return A.clone()
     else:
         return A
