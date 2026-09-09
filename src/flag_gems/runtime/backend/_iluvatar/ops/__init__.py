@@ -31,6 +31,7 @@ from .conv_depthwise2d import _conv_depthwise2d
 from .conv_transpose1d import conv_transpose1d
 from .diagonal_scatter import diagonal_scatter
 from .div import div_mode, div_mode_
+from .fractional_max_pool2d_backward import fractional_max_pool2d_backward
 from .gcd_ import gcd_
 from .gru import gru, gru_data
 from .hadamard_transform import hadamard_transform
@@ -115,6 +116,7 @@ __all__ = [
     "diagonal_scatter",
     "div_mode",
     "div_mode_",
+    "fractional_max_pool2d_backward",
     "gcd_",
     "gru",
     "gru_data",
