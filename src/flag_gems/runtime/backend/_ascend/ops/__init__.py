@@ -65,6 +65,7 @@ from .linalg_lstsq import linalg_lstsq
 from .linalg_lu import linalg_lu, linalg_lu_out
 from .linalg_lu_factor import linalg_lu_factor, linalg_lu_factor_out
 from .linalg_lu_factor_ex import linalg_lu_factor_ex, linalg_lu_factor_ex_out
+from .linalg_matrix_exp import linalg_matrix_exp, linalg_matrix_exp_out
 from .linalg_qr import linalg_qr, linalg_qr_out
 from .linspace import linspace
 from .log_normal import log_normal
@@ -103,10 +104,12 @@ from .replication_pad2d_backward import (
 )
 from .resolve_neg import resolve_neg
 from .rms_norm import rms_norm
+from .rms_norm_w8a16_int8 import rms_norm_w8a16_int8
 from .scatter import scatter, scatter_
 from .scatter_add_ import scatter_add_
 from .select_backward import select_backward
 from .select_scatter import select_scatter
+from .silu import silu, silu_
 from .slice_scatter import slice_scatter
 from .softmax import softmax, softmax_backward, softmax_backward_out, softmax_out
 from .sort import sort
@@ -202,6 +205,8 @@ __all__ = [
     "linalg_lu_out",
     "linalg_qr",
     "linalg_qr_out",
+    "linalg_matrix_exp",
+    "linalg_matrix_exp_out",
     "linspace",
     "log_normal",
     "log_sigmoid_backward",
@@ -247,6 +252,7 @@ __all__ = [
     "replication_pad2d_backward_grad_input",
     "resolve_neg",
     "rms_norm",
+    "rms_norm_w8a16_int8",
     "scatter",
     "scatter_",
     "scatter_add_",
@@ -257,6 +263,8 @@ __all__ = [
     "select_backward",
     "select_scatter",
     "slice_scatter",
+    "silu",
+    "silu_",
     "softmax",
     "softmax_backward",
     "softmax_backward_out",
