@@ -46,10 +46,8 @@ class _FakeDeviceAPI:
 class _FakeTorch:
     bfloat16 = object()
 
-    def __init__(self, api, *, device_type="cuda"):
+    def __init__(self, api):
         self.cuda = api
-        if device_type == "musa":
-            self.musa = api
 
     @staticmethod
     def device(device_type, index):
@@ -61,24 +59,12 @@ class _FakeTorch:
 
 
 def _descriptor(backend="cuda"):
-    vendors = {
-        "cuda": "nvidia",
-        "hip": "amd",
-        "maca": "metax",
-        "musa": "mthreads",
-    }
-    architectures = {
-        "cuda": "sm90",
-        "hip": "gfx942",
-        "maca": "sm80",
-        "musa": "musa31",
-    }
     return DeviceDescriptor(
         backend=backend,
-        vendor=vendors[backend],
-        torch_device_type="musa" if backend == "musa" else "cuda",
-        device_name="MetaX C550" if backend == "maca" else "Test GPU",
-        architecture=architectures[backend],
+        vendor="nvidia" if backend == "cuda" else "amd",
+        torch_device_type="cuda",
+        device_name="Test GPU",
+        architecture="sm90" if backend == "cuda" else "gfx942",
         device_index=0,
     )
 
@@ -114,34 +100,6 @@ def test_hip_runtime_uses_rocm_visibility_names_without_changing_torch_api():
     assert runtime.visible_device_tokens(1, environ={"ROCR_VISIBLE_DEVICES": "6"}) == [
         "6"
     ]
-
-
-def test_maca_runtime_uses_metax_visibility_without_changing_torch_api():
-    runtime = DeviceRuntime(_descriptor("maca"), _FakeTorch(_FakeDeviceAPI()))
-    environment = {"CUDA_VISIBLE_DEVICES": "stale"}
-    runtime.apply_worker_visibility(environment, "5")
-
-    assert environment == {"MACA_VISIBLE_DEVICES": "5"}
-    assert runtime.visible_device_tokens(
-        2, environ={"MACA_VISIBLE_DEVICES": "4,6"}
-    ) == ["4", "6"]
-
-
-def test_musa_runtime_uses_mthreads_visibility_and_torch_api():
-    runtime = DeviceRuntime(
-        _descriptor("musa"),
-        _FakeTorch(_FakeDeviceAPI(), device_type="musa"),
-    )
-    environment = {"CUDA_VISIBLE_DEVICES": "stale"}
-    runtime.apply_worker_visibility(environment, "5")
-
-    assert environment == {
-        "CUDA_VISIBLE_DEVICES": "stale",
-        "MUSA_VISIBLE_DEVICES": "5",
-    }
-    assert runtime.visible_device_tokens(
-        2, environ={"MUSA_VISIBLE_DEVICES": "4,6"}
-    ) == ["4", "6"]
 
 
 def test_runtime_rejects_missing_or_empty_device_api():

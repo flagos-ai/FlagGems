@@ -12,37 +12,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-mul:
-  - config:
-    param_map:
-      META:
-        BLOCK_SIZE: block_size
-      num_stages: stages
-      num_warps: warps
-    block_size:
-      - 128
-      - 256
-      - 512
-      - 1024
-      - 2048
-      - 4096
-      - 8192
-    stages:
-      - 1
-      - 2
-      - 3
-      - 4
-      - 5
-      - 6
-      - 7
-      - 8
-    warps:
-      - 1
-      - 2
-      - 4
-      - 8
-      - 16
-  - strategy:
-      n_elements: align32
-      n_cols: default
-      dtype: default
+import pytest
+import torch
+
+from . import base, consts, utils
+
+
+def input_fn(shape, dtype, device):
+    inp = utils.generate_tensor_input(shape, dtype, device)
+    values = torch.empty_like(inp)
+    indices = torch.empty(inp.shape, dtype=torch.int64, device=device)
+    yield inp, values, indices, 1
+
+
+@pytest.mark.cummax_helper
+def test_cummax_helper():
+    bench = base.GenericBenchmark2DOnly(
+        input_fn=input_fn,
+        op_name="cummax_helper",
+        torch_op=torch.ops.aten._cummax_helper,
+        dtypes=consts.FLOAT_DTYPES + consts.INT_DTYPES,
+    )
+    bench.run()
