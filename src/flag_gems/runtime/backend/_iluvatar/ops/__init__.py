@@ -16,6 +16,7 @@ import importlib
 
 from ..utils.pointwise_dynamic import ModuleGenerator
 from ._native_batch_norm_legit_functional import _native_batch_norm_legit_functional
+from .acos_ import acos_
 from .adaptive_avg_pool2d_backward import _adaptive_avg_pool2d_backward
 from .adaptive_max_pool2d_backward import adaptive_max_pool2d_backward
 from .adaptive_max_pool3d_backward import run
@@ -117,6 +118,7 @@ __all__ = [
     "_native_batch_norm_legit_functional",
     "_thnn_fused_lstm_cell_backward_impl",
     "_unsafe_masked_index_put_accumulate",
+    "acos_",
     "adaptive_max_pool2d_backward",
     "addmm",
     "addmm_",
