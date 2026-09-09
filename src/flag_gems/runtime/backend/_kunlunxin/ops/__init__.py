@@ -300,6 +300,7 @@ from .safe_softmax import _safe_softmax
 from .scaled_softmax import scaled_softmax_backward, scaled_softmax_forward
 from .scatter import scatter, scatter_
 from .scatter_add_ import scatter_add_
+from .select_backward import select_backward
 from .select_scatter import select_scatter
 from .selu import selu, selu_
 from .sgn_ import sgn_
@@ -761,6 +762,7 @@ __all__ = [
     "scatter",
     "scatter_",
     "scatter_add_",
+    "select_backward",
     "select_scatter",
     "selu",
     "selu_",
