@@ -26,6 +26,7 @@ from .avg_pool3d import avg_pool3d_backward
 from .broadcast_tensors import broadcast_tensors
 from .broadcast_to import broadcast_to
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
+from .cholesky_solve_helper import run as _cholesky_solve_helper
 from .constant_pad_nd import constant_pad_nd
 from .conv_depthwise2d import _conv_depthwise2d
 from .conv_transpose1d import conv_transpose1d
@@ -104,6 +105,7 @@ _pointwise_dynamic.ModuleGenerator = ModuleGenerator
 
 __all__ = [
     "_adaptive_avg_pool2d_backward",
+    "_cholesky_solve_helper",
     "_conv_depthwise2d",
     "_native_batch_norm_legit_functional",
     "_unsafe_masked_index_put_accumulate",
