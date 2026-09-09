@@ -58,6 +58,7 @@ from .index_put import _index_put_impl_, index_put, index_put_
 from .index_select import index_select
 from .int_mm import int_mm, int_mm_out
 from .isin import isin
+from .kthvalue import kthvalue
 from .linalg_cholesky import linalg_cholesky
 from .linear import linear
 from .log import log
@@ -275,6 +276,7 @@ if get_device_capability(current_device())[0] >= 3:
             "mm",
             "tanh",
     "atan2",
+    "kthvalue",
         ]
     )
 
