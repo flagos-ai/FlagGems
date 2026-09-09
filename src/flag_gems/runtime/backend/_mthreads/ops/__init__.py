@@ -23,6 +23,7 @@ from .arctan2 import arctan2
 from .argmin import argmin
 from .argsort import argsort
 from .atan2 import atan2
+from .atan2_ import atan2_
 from .avg_pool2d import avg_pool2d_backward
 from .batch_norm import batch_norm, batch_norm_backward
 from .bucketize import bucketize
@@ -281,6 +282,7 @@ if get_device_capability(current_device())[0] >= 3:
     "atan2",
     "kthvalue",
     "mvlgamma",
+    "atan2_",
         ]
     )
 
