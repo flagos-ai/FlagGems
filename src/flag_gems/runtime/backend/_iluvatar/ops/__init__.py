@@ -97,6 +97,7 @@ from .special_round_out import special_round_out
 from .special_shifted_chebyshev_polynomial_w import (
     special_shifted_chebyshev_polynomial_w,
 )
+from .thnn_fused_lstm_cell_backward_impl import _thnn_fused_lstm_cell_backward_impl
 from .tile import tile
 from .unsafe_masked_index_put_accumulate import _unsafe_masked_index_put_accumulate
 from .var import var, var_correction, var_dim
@@ -109,6 +110,7 @@ __all__ = [
     "_cholesky_solve_helper",
     "_conv_depthwise2d",
     "_native_batch_norm_legit_functional",
+    "_thnn_fused_lstm_cell_backward_impl",
     "_unsafe_masked_index_put_accumulate",
     "adaptive_max_pool2d_backward",
     "addmm",
