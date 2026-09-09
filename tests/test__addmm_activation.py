@@ -52,10 +52,9 @@ def test_addmm_activation(M, N, K, scalar, dtype, use_gelu):
     ref_out = torch._addmm_activation(
         ref_bias, ref_mat1, ref_mat2, alpha=alpha, beta=beta, use_gelu=use_gelu
     )
-    with flag_gems.use_gems():
-        res_out = torch._addmm_activation(
-            bias, mat1, mat2, alpha=alpha, beta=beta, use_gelu=use_gelu
-        )
+    res_out = flag_gems._addmm_activation(
+        bias, mat1, mat2, alpha=alpha, beta=beta, use_gelu=use_gelu
+    )
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
 
@@ -86,9 +85,8 @@ def test_addmm_activation_out(M, N, K, scalar, dtype, use_gelu):
         use_gelu=use_gelu,
         out=ref_out,
     )
-    with flag_gems.use_gems():
-        torch.ops.aten._addmm_activation.out(
-            bias, mat1, mat2, alpha=alpha, beta=beta, use_gelu=use_gelu, out=out
-        )
+    flag_gems._addmm_activation_out(
+        bias, mat1, mat2, alpha=alpha, beta=beta, use_gelu=use_gelu, out=out
+    )
 
     utils.gems_assert_close(out, ref_out, dtype, reduce_dim=K)
