@@ -9620,6 +9620,20 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: nested_tensor_from_mask_left_aligned
+  description: |
+    Checks whether a 3D tensor `t` (N * L * D) combined with a 2D boolean padding
+    mask (N * L) is left-aligned, i.e. the valid (True) elements of every row appear
+    at the beginning with no gaps. Returns a bool.
+  for:
+    - _nested_tensor_from_mask_left_aligned
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Tensor
+  stages:
+    - alpha: '5.4'
 - id: nested_view_from_buffer_copy
   description: 'Creates a nested tensor from a flat buffer using component sizes,
     strides,
@@ -9637,6 +9651,20 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: nested_view_from_jagged
+  description: |
+    Constructs a jagged-layout nested tensor from a flat values buffer and an
+    offsets tensor. This is a pure view operation that wraps the values buffer
+    without copying any data.
+  for:
+    - _nested_view_from_jagged
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Tensor
+  stages:
+    - alpha: '5.4'
 - id: new_full
   description: 'Returns a Tensor of size `size` filled with `fill_value`.
 
