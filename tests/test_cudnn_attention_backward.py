@@ -423,6 +423,16 @@ def test_cudnn_attention_backward_scale(dtype, softmax_scale):
         pytest.skip(
             "_cudnn_attention_backward is CUDA-only, cannot run in quick-cpu mode"
         )
+    if softmax_scale == 0.0 and torch.cuda.is_available():
+        major, minor = torch.cuda.get_device_capability()
+        if (major, minor) == (8, 0):
+            pytest.skip(
+                "ATen's cuDNN backend returns all-NaN gradients for "
+                "scale=0.0 on A100 (SM80) GPUs (a -inf * 0 fusion "
+                "artifact in some cuDNN versions), so the ATen reference "
+                "is unreliable there; skipping on SM80 only, other "
+                "architectures are unverified but still tested."
+            )
 
     batch, num_head, q_seq_len, kv_seq_len, head_size = 1, 2, 64, 64, 64
     scale = softmax_scale
