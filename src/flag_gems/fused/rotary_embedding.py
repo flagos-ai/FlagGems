@@ -40,10 +40,12 @@ _FULL_AUTOTUNE_WORK_LIMIT = 8 * 1024
 # configuration is always picked by on-device benchmarking, so no limit
 # hard-codes a device-specific choice.
 _MULTI_BLOCK_AUTOTUNE_WORK_LIMIT = 64 * 1024
-# Ordered full-head transactions help interleaved out-of-place workloads at
-# medium occupancy. Single-token decode is launch-bound; larger workloads keep
-# the existing pair-wise kernel to avoid reshape/interleave throughput overhead.
-_CONTIGUOUS_INTERLEAVED_WORK_LIMIT = _MULTI_BLOCK_AUTOTUNE_WORK_LIMIT
+# Ordered full-head transactions help interleaved workloads at medium
+# occupancy. Single-token decode is launch-bound; larger workloads keep the
+# pair-wise kernel to avoid reshape/interleave throughput overhead. In-place
+# uses the contiguous path only once there is enough work to amortize it.
+_CONTIGUOUS_INTERLEAVED_WORK_LIMIT = 128 * 1024
+_CONTIGUOUS_INTERLEAVED_INPLACE_WORK_MIN = 32 * 1024
 
 
 # Both kernels assign a complete rotary pair to one logical element, so their
@@ -210,6 +212,13 @@ class _RopeInplaceTuner(_RopeTuner):
                 args[0].copy_(backups[0])
                 args[1].copy_(backups[1])
         return self.select_config(configs, timings)
+
+
+class _RopeInterleavedTuner(_RopeTuner):
+    def policy(self, bench_fn, configs, args, kwargs):
+        if args[0] is args[2] and args[1] is args[3]:
+            return _RopeInplaceTuner.policy(self, bench_fn, configs, args, kwargs)
+        return super().policy(bench_fn, configs, args, kwargs)
 
 
 _COMMON_AUTOTUNE_KEYS = [
@@ -497,7 +506,9 @@ def apply_rotary_pos_emb_kernel(
     rep=10,
     benchmark_mode="event",
     prune_configs_by={"early_config_prune": _prune_rope_configs},
-    policy=_RopeTuner,
+    # The same kernel is also safe for in-place tensors because each complete
+    # head is loaded before it is stored. Preserve aliased q/k while tuning.
+    policy=_RopeInterleavedTuner,
 )
 @triton.jit
 def apply_rotary_pos_emb_interleaved_kernel(
@@ -839,13 +850,57 @@ def apply_rotary_pos_emb(
 
     # The block size must be the next power of two, sometimes we need to pad it.
     padded_head_dim = max(triton.next_power_of_2(head_dim), 16)
+    interleaved_work = n_tokens_bucket * padded_head_dim
     use_contiguous_interleaved = (
         rotary_interleaved
         and 1 < n_tokens_bucket
-        and (n_tokens_bucket * padded_head_dim <= _CONTIGUOUS_INTERLEAVED_WORK_LIMIT)
+        and interleaved_work <= _CONTIGUOUS_INTERLEAVED_WORK_LIMIT
+    )
+    use_contiguous_interleaved_inplace = (
+        use_contiguous_interleaved
+        and interleaved_work >= _CONTIGUOUS_INTERLEAVED_INPLACE_WORK_MIN
     )
 
     if inplace:
+        if use_contiguous_interleaved_inplace:
+            kernel_args = (
+                q,
+                k,
+                q,
+                k,
+                cos,
+                sin,
+                position_ids,
+                q.stride(0),
+                q.stride(1),
+                q.stride(2),
+                k.stride(0),
+                k.stride(1),
+                k.stride(2),
+                q.stride(0),
+                q.stride(1),
+                q.stride(2),
+                k.stride(0),
+                k.stride(1),
+                k.stride(2),
+                position_ids.stride(0) if position_ids is not None else 0,
+                cos.stride(0),
+                sin.stride(0),
+                seq_len,
+                n_tokens_bucket,
+                q_heads,
+                k_heads,
+                head_dim,
+                padded_head_dim,
+            )
+            with torch_device_fn.device(q.device):
+                apply_rotary_pos_emb_interleaved_kernel[_rope_grid(n_tokens)](
+                    *kernel_args,
+                    ROTARY_INTERLEAVED=True,
+                    MAX_POSITION_EMBEDDINGS=cos.shape[0],
+                )
+            return q.view(q_shape), k.view(k_shape)
+
         kernel_args = (
             q,
             k,
