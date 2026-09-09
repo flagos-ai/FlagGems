@@ -33,8 +33,10 @@ else:
 
 HAS_TLE_EXTRACT_TILE = HAS_TLE and hasattr(tle, "extract_tile")
 
+
 def _next_pow2(x: int) -> int:
     return 1 if x <= 1 else 2 ** math.ceil(math.log2(x))
+
 
 @pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
 @triton.jit
@@ -42,6 +44,7 @@ def glu_kernel(a, b):
     sigmoid_b = 1 / (1 + exp(-b.to(tl.float32)))
     result = a * sigmoid_b
     return result
+
 
 # ============================================================================
 # TLE kernel (static extract_tile)
@@ -122,12 +125,11 @@ if HAS_TLE_EXTRACT_TILE:
                 num_warps=num_warps,
                 num_stages=1,
             )
-            for rows_per_program, num_warps, loop_stages in (
-                _GLU_TLE_AUTOTUNE_CONFIGS
-            )
+            for rows_per_program, num_warps, loop_stages in (_GLU_TLE_AUTOTUNE_CONFIGS)
             for loop_unroll in _GLU_TLE_LOOP_UNROLL_FACTORS
             if loop_unroll <= rows_per_program
-        ] + [
+        ]
+        + [
             triton.Config(
                 {
                     "ROWS_PER_PROGRAM": rows_per_program,
@@ -187,12 +189,8 @@ if HAS_TLE_EXTRACT_TILE:
                 other=0.0,
             )
 
-            a_tile = tle.extract_tile(
-                halo, index=[0], tile_shape=[D_P2]
-            )
-            b_tile = tle.extract_tile(
-                halo, index=[1], tile_shape=[D_P2]
-            )
+            a_tile = tle.extract_tile(halo, index=[0], tile_shape=[D_P2])
+            b_tile = tle.extract_tile(halo, index=[1], tile_shape=[D_P2])
 
             a_f32 = a_tile.to(tl.float32)
             b_f32 = b_tile.to(tl.float32)
@@ -204,6 +202,7 @@ if HAS_TLE_EXTRACT_TILE:
                 result.to(out_ptr.dtype.element_ty),
                 mask=row_mask & (offs_d < D),
             )
+
 
 @pointwise_dynamic(
     promotion_methods=[
@@ -217,6 +216,7 @@ def glu_backward_kernel(grad_output, a, b):
     da = grad_output * sigmoid_b
     db = grad_output.to(tl.float32) * a * sigmoid_b * (1.0 - sigmoid_b)
     return da, db
+
 
 def glu(self, dim=-1):
     assert self.shape[dim] % 2 == 0, "Split dimension must be even"
@@ -238,9 +238,7 @@ def glu(self, dim=-1):
             return out.reshape(self.shape[:-1] + (D,))
 
         with torch_device_fn.device(self.device):
-            grid = lambda meta: (
-                triton.cdiv(N, meta["ROWS_PER_PROGRAM"]),
-            )
+            grid = lambda meta: (triton.cdiv(N, meta["ROWS_PER_PROGRAM"]),)
             glu_kernel_tle[grid](
                 x,
                 out,
@@ -257,6 +255,7 @@ def glu(self, dim=-1):
     a, b = torch.chunk(self, 2, dim=dim)
     out = glu_kernel(a, b)
     return out
+
 
 def glu_backward(grad_output, self, dim=-1):
     assert self.shape[dim] % 2 == 0, "Split dimension must be even"
