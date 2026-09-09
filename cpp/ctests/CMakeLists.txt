@@ -32,6 +32,24 @@ if(FLAGGEMS_BACKEND STREQUAL "MLU")
     link_libraries(${Python_LIBRARIES} pybind11::embed ${MLU_LIBRARIES})
 endif()
 
+# Kunlunxin exposes a CUDA-compatible ABI, but its standalone C++ runtime must
+# load the vendor xcudart libraries and initialize torch_xmlir before use.
+set(FLAGGEMS_KUNLUNXIN_XCUDART_ROOT "" CACHE PATH
+    "Path to the Kunlunxin xcudart/lib directory for C++ tests")
+if(FLAGGEMS_KUNLUNXIN_XCUDART_ROOT)
+    set(_KLX_CUPTI "${FLAGGEMS_KUNLUNXIN_XCUDART_ROOT}/libcupti.so.12")
+    set(_KLX_XPURT "${FLAGGEMS_KUNLUNXIN_XCUDART_ROOT}/libxpurt.so.2")
+    if(NOT EXISTS "${_KLX_CUPTI}" OR NOT EXISTS "${_KLX_XPURT}")
+        message(FATAL_ERROR
+            "Kunlunxin runtime libraries not found under ${FLAGGEMS_KUNLUNXIN_XCUDART_ROOT}")
+    endif()
+
+    link_libraries("-Wl,--no-as-needed" ${_KLX_CUPTI} ${_KLX_XPURT}
+                   "-Wl,--as-needed" ${Python_LIBRARIES} pybind11::embed)
+    add_link_options("-Wl,--allow-shlib-undefined")
+    add_compile_definitions(FLAGGEMS_USE_KUNLUNXIN_RUNTIME)
+endif()
+
 if(FLAGGEMS_BUILD_POINTWISE_DYNAMIC_CPP)
   add_executable(test_triton_add test_triton_add.cpp)
   target_link_libraries(test_triton_add
