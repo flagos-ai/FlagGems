@@ -218,6 +218,7 @@ from .neg import neg, neg_
 from .negative import negative
 from .new_full import new_full
 from .new_ones import new_ones
+from .nextafter import nextafter, nextafter_
 from .nllloss import (
     nll_loss2d_backward,
     nll_loss2d_forward,
@@ -634,6 +635,8 @@ __all__ = [
     "ne_scalar",
     "neg",
     "neg_",
+    "nextafter",
+    "nextafter_",
     "negative",
     "not_equal",
     "not_equal_scalar",
