@@ -19,6 +19,7 @@ from .all import all, all_dim, all_dims
 from .amax import amax
 from .any import any, any_dim, any_dims
 from .arange import arange, arange_start
+from .arctan2 import arctan2
 from .argmin import argmin
 from .argsort import argsort
 from .avg_pool2d import avg_pool2d_backward
@@ -127,6 +128,7 @@ __all__ = [
     "any_dims",
     "arange",
     "arange_start",
+    "arctan2",
     "argmin",
     "argsort",
     "avg_pool2d_backward",
