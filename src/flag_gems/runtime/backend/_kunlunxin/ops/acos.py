@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 _acos = tl_extra_shim.acos
+_atan2 = tl_extra_shim.atan2
 
 # Without an explicit CodeGenConfig, pointwise_dynamic specializes the kernel
 # per input shape on XPU -> per-shape recompile -> IR explosion
@@ -48,8 +49,17 @@ config_ = CodeGenConfig(
 @pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")], config=config_)
 @triton.jit()
 def acos_kernel(x):
-    # TODO: use flag_gems.utils.tl_extra_shim help apis
-    return _acos(x.to(tl.float32))
+    x_f32 = x.to(tl.float32)
+    in_domain = tl.abs(x_f32) <= 1.0
+
+    # The P800 acos intrinsic has a repeatable error of about 3e-3 on
+    # in-domain fp32 values.  atan2(sqrt(1 - x^2), x) avoids that intrinsic;
+    # clamp the radicand because fp32 roundoff can make it slightly negative
+    # at the endpoints.  Keep the intrinsic for out-of-domain and NaN inputs,
+    # where the identity would otherwise return a finite 0 or pi.
+    radicand = tl.maximum(1.0 - x_f32 * x_f32, 0.0)
+    stable = _atan2(tl.sqrt(radicand), x_f32)
+    return tl.where(in_domain, stable, _acos(x_f32))
 
 
 def acos(x):

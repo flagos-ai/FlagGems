@@ -9,6 +9,7 @@ from flag_gems.utils import tl_extra_shim
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
 _acos = tl_extra_shim.acos
+_atan2 = tl_extra_shim.atan2
 logger = logging.getLogger(__name__)
 
 # arccos is an alias of acos (out = acos(x)). Neither arccos nor arccos_ was
@@ -35,7 +36,11 @@ config_ = CodeGenConfig(
 @pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")], config=config_)
 @triton.jit
 def arccos_func(x):
-    return _acos(x.to(tl.float32))
+    x_f32 = x.to(tl.float32)
+    in_domain = tl.abs(x_f32) <= 1.0
+    radicand = tl.maximum(1.0 - x_f32 * x_f32, 0.0)
+    stable = _atan2(tl.sqrt(radicand), x_f32)
+    return tl.where(in_domain, stable, _acos(x_f32))
 
 
 def arccos(A):
