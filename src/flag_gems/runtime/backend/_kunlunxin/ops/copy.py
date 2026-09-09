@@ -67,7 +67,13 @@ def _can_use_triton(dst: torch.Tensor, src: torch.Tensor) -> bool:
     if src.is_complex() or dst.is_complex():
         # Triton on kunlunxin does not support complex dtypes; fall back to PyTorch.
         return False
-    if not src.is_contiguous():
+    if not src.is_contiguous() and src.dtype != dst.dtype:
+        # kunlunxin: same-dtype strided src uses the triton kernel
+        # (probe 2026-09-07: transpose/permute/expand/slice exact;
+        # upstream generic backend has no contiguity gate; native
+        # path hits XMLIR invalid device function, 08 report L2).
+        # Dtype-converting strided copies stay native: klx make_llir
+        # can abort compiling those kernels (int->float family).
         return False
     return True
 
