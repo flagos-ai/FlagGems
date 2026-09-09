@@ -58,7 +58,25 @@ from .attention import (
 from .avg_pool2d import avg_pool2d, avg_pool2d_backward
 from .avg_pool3d import avg_pool3d, avg_pool3d_backward
 from .baddbmm import baddbmm
-from .batch_norm import batch_norm, batch_norm_backward
+from .batch_norm import (
+    _native_batch_norm_legit,
+    _native_batch_norm_legit_functional,
+    _native_batch_norm_legit_no_stats,
+    _native_batch_norm_legit_no_stats_out,
+    _native_batch_norm_legit_no_training,
+    _native_batch_norm_legit_out,
+    batch_norm,
+    batch_norm_backward,
+)
+from .batch_norm import batch_norm_impl_index as _batch_norm_impl_index
+from .batch_norm import (
+    batch_norm_impl_index_backward as _batch_norm_impl_index_backward,
+)
+from .batch_norm import batch_norm_no_update as _batch_norm_no_update
+from .batch_norm import (
+    batch_norm_with_update_functional as _batch_norm_with_update_functional,
+)
+from .batch_norm import miopen_batch_norm_backward
 from .bernoulli_ import bernoulli_
 from .bitwise_and import (
     bitwise_and_scalar,
@@ -420,6 +438,18 @@ __all__ = [
     "baddbmm",
     "batch_norm",
     "batch_norm_backward",
+    "_batch_norm_no_update",
+    "_batch_norm_no_update",
+    "_batch_norm_impl_index",
+    "_batch_norm_with_update_functional",
+    "_native_batch_norm_legit",
+    "_native_batch_norm_legit_functional",
+    "_native_batch_norm_legit_no_stats",
+    "_native_batch_norm_legit_no_stats_out",
+    "_native_batch_norm_legit_no_training",
+    "_native_batch_norm_legit_out",
+    "miopen_batch_norm_backward",
+    "_batch_norm_impl_index_backward",
     "bernoulli_",
     "bitwise_and_scalar",
     "bitwise_and_scalar_",
