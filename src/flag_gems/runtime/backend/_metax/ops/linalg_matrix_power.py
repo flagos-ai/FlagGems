@@ -724,7 +724,7 @@ def linalg_matrix_power(
     *,
     out: torch.Tensor | None = None,
 ) -> torch.Tensor:
-    logger.debug("GEMS LINALG_MATRIX_POWER")
+    logger.debug("GEMS_METAX LINALG_MATRIX_POWER")
 
     # ---- validation ----
     shape = A.shape
@@ -932,6 +932,6 @@ def linalg_matrix_power_out(
     entry keeps the ``*.out`` dispatcher key on this metax override rather than
     falling back to the generic entry.
     """
-    logger.debug("GEMS METAX LINALG_MATRIX_POWER.OUT")
+    logger.debug("GEMS_METAX LINALG_MATRIX_POWER_OUT")
     out_resolved = _resolve_linalg_matrix_power_out_args(out)
     return linalg_matrix_power(A, n, out=out_resolved)
