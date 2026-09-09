@@ -323,6 +323,7 @@ from .softshrink import softshrink, softshrink_out
 from .sort import sort, sort_stable
 from .special_log_softmax import special_log_softmax
 from .special_logsumexp import special_logsumexp
+from .special_shifted_chebyshev_polynomial_u import special_shifted_chebyshev_polynomial_u, special_shifted_chebyshev_polynomial_u_
 from .sqrt import sqrt, sqrt_
 from .stack import stack
 from .std import std
