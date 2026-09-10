@@ -18,7 +18,6 @@ from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
 from ._is_all_true import _is_all_true
-from ._linalg_eigvals import _linalg_eigvals
 from ._thnn_fused_lstm_cell_backward_impl import _thnn_fused_lstm_cell_backward_impl
 from .abs import abs, abs_
 from .absolute import absolute
@@ -818,7 +817,6 @@ __all__ = [
     "linalg_cross_out",
     "mvlgamma",
     "mvlgamma_",
-    "_linalg_eigvals",
     "linalg_det",
     "linalg_det_out",
     "linalg_householder_product",
