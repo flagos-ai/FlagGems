@@ -6,6 +6,8 @@ import triton.language as tl
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
+from .isnan import isnan
+
 logger = logging.getLogger(__name__)
 
 # ============================================================================
@@ -131,15 +133,15 @@ _NAN_CACHE_MAX = 16
 def _has_nan(x, y):
     """Host-side NaN detection for the fast path.
 
-    torch.isnan().any() resolves to the registered gems reductions inside
-    use_gems() and is pathologically slow on this backend, so the outcome is
-    cached per (data_ptr, version) pair (same scheme as logaddexp2).
+    Uses the gems ``isnan`` kernel explicitly (not ``torch.isnan`` dispatch);
+    the outcome is cached per (data_ptr, version) pair (same scheme as
+    logaddexp2).
     """
     key = (x.data_ptr(), x._version, y.data_ptr(), y._version)
     hit = _NAN_CACHE.get(key)
     if hit is not None:
         return hit
-    has = bool(torch.isnan(x).any()) or bool(torch.isnan(y).any())
+    has = bool(isnan(x).any()) or bool(isnan(y).any())
     if len(_NAN_CACHE) >= _NAN_CACHE_MAX:
         _NAN_CACHE.clear()
     _NAN_CACHE[key] = has
