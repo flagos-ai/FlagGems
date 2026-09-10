@@ -3177,6 +3177,22 @@ ops:
   - Tensor
   stages:
   - beta: '5.3'
+- id: corrcoef
+  description: |
+    Estimates the Pearson product-moment correlation coefficient matrix of the
+    variables given by the input matrix, where rows are the variables and
+    columns are the observations. The correlation matrix R is computed from
+    the covariance matrix C as R_ij = C_ij / sqrt(C_ii * C_jj), with the
+    internal computation carried out in float32 for numerical stability.
+  for:
+    - corrcoef
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Reduction
+  stages:
+    - alpha: '5.4'
 - id: cos
   description: Returns a new tensor with the cosine of the elements of `input` given
     in radians.
@@ -3263,6 +3279,27 @@ ops:
   - Tensor
   stages:
   - stable: '2.2'
+- id: cov
+  description: 'Estimates the covariance matrix of the variables given by the input
+
+    matrix, where rows are the variables and columns are the observations.
+
+    Supports Bessel''s correction and optional frequency/analytic observation
+
+    weights, with the internal computation carried out in float32 for
+
+    numerical stability.
+
+    '
+  for:
+  - cov
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Reduction
+  stages:
+  - alpha: '5.4'
 - id: cp_gather_indexer_k_quant_cache
   description: This is a fused operator that gathers FP8 K cache values and scales.
   for:
@@ -3524,6 +3561,18 @@ ops:
   - Reduction
   stages:
   - stable: '3.0'
+- id: cumulative_trapezoid
+  description: Cumulatively integrate y using the composite trapezoidal rule with
+    uniform spacing dx along the given dimension.
+  for:
+  - cumulative_trapezoid.dx
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Reduction
+  stages:
+  - alpha: '5.4'
 - id: cutlass_scaled_mm
   for:
   - cutlass_scaled_mm_sm_90
@@ -4133,6 +4182,20 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '5.0'
+- id: embedding_renorm_
+  description: >
+    In-place renormalization of the embedding rows selected by indices: each
+    indexed row whose norm_type-norm exceeds max_norm is scaled down so its
+    norm equals max_norm.
+  for:
+  - embedding_renorm_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: empty
   description: Tensor factory operator — verifies dtype inference for newly allocated
     tensors.
