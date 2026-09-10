@@ -178,7 +178,10 @@ from flag_gems.ops.acos_ import acos_
 from flag_gems.ops.acosh import acosh, acosh_
 from flag_gems.ops.adaptive_avg_pool1d import adaptive_avg_pool1d
 from flag_gems.ops.adaptive_avg_pool2d import adaptive_avg_pool2d
-from flag_gems.ops.adaptive_avg_pool3d_backward import _adaptive_avg_pool3d_backward
+from flag_gems.ops.adaptive_avg_pool3d_backward import (
+    _adaptive_avg_pool3d_backward,
+    adaptive_avg_pool3d_backward_grad_input,
+)
 from flag_gems.ops.adaptive_max_pool2d import adaptive_max_pool2d
 from flag_gems.ops.adaptive_max_pool2d_backward import adaptive_max_pool2d_backward
 from flag_gems.ops.adaptive_max_pool3d_backward import adaptive_max_pool3d_backward
@@ -1132,7 +1135,7 @@ __all__ = [
     "acosh_",
     "adaptive_avg_pool1d",
     "adaptive_avg_pool2d",
-    "adaptive_avg_pool3d_backward",
+    "adaptive_avg_pool3d_backward_grad_input",
     "adaptive_max_pool2d",
     "adaptive_max_pool2d_backward",
     "adaptive_max_pool3d_backward",
