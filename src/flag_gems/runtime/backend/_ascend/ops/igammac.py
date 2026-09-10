@@ -29,8 +29,6 @@ logger = logging.getLogger(__name__)
 _ASYM_K = 8
 _ASYM_N = 8
 
-_SUPPORTED_DTYPES = (torch.float32, torch.float64)
-
 
 @triton.jit
 def _lgamma(z):
@@ -86,7 +84,6 @@ def igammac_kernel(
     out_ptr,
     d_ptr,
     n_elements,
-    COMPUTE_DTYPE: tl.constexpr,
     SERIES_ITERS: tl.constexpr,
     CF_ITERS: tl.constexpr,
     ASYM_K: tl.constexpr,
@@ -98,11 +95,8 @@ def igammac_kernel(
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
     mask_offs = offsets < n_elements
 
-    a = tl.load(a_ptr + offsets, mask=mask_offs, other=1.0)
-    x = tl.load(x_ptr + offsets, mask=mask_offs, other=0.0)
-
-    a_f = a.to(COMPUTE_DTYPE)
-    x_f = x.to(COMPUTE_DTYPE)
+    a_f = tl.load(a_ptr + offsets, mask=mask_offs, other=1.0)
+    x_f = tl.load(x_ptr + offsets, mask=mask_offs, other=0.0)
 
     # Detect inf and NaN
     is_nan_x = x_f != x_f
@@ -123,7 +117,7 @@ def igammac_kernel(
     term = 1.0 / a_f
     series_sum = term
     for i in range(1, SERIES_ITERS):
-        term = term * x_f / (a_f + tl.cast(i, COMPUTE_DTYPE))
+        term = term * x_f / (a_f + tl.cast(i, tl.float32))
         series_sum = series_sum + term
     q_series = 1.0 - tl.exp(log_x_term) * series_sum
 
@@ -135,7 +129,7 @@ def igammac_kernel(
     C_val = b0
     D_val = tl.zeros_like(x_f)
     for i in range(1, CF_ITERS):
-        i_f = tl.cast(i, COMPUTE_DTYPE)
+        i_f = tl.cast(i, tl.float32)
         an = i_f * (a_f - i_f)
         bn = x_f + 2.0 * i_f + 1.0 - a_f
 
@@ -155,43 +149,22 @@ def igammac_kernel(
     #   Q(a,x) ~ 1/2 erfc(eta sqrt(a/2)) + e^{-a eta^2 / 2} / sqrt(2 pi a)
     #            * sum_{k=0}^{ASYM_K-1} c_k(eta) / a^k,
     # with sigma = (x-a)/a, eta = sgn(x-a) sqrt(-2(log(1+sigma)-sigma)).
-    # log1p keeps relative precision where log(1+sigma) - sigma cancels for
-    # small |sigma| in float32. In float64, the Taylor series
-    # log(1+s)-s = sum_{n>=2} (-1)^(n+1) s^n / n converges quickly in the
-    # asym activation region (|s| < 0.3) and avoids the log(1+s) rounding
-    # that flips the sign of log(1+s)-s for tiny |s|, plus any fp64 log1p
-    # backend issue.
+    # The ascend backend's log1p loses relative precision for tiny |sigma|
+    # (measured ~1e-3 rel at |sigma|~1e-3), which corrupts log(1+sigma)-sigma
+    # in the cancellation regime (large a with x ~ a).  Use the Taylor series
+    # log(1+s)-s = sum_{n>=2} (-1)^(n+1) s^n / n instead, which converges
+    # quickly for |s| < 0.3 (the asym activation region).
     sigma = (x_f - a_f) / a_f
     lam = x_f / a_f
-    if COMPUTE_DTYPE == tl.float64:
-        # Taylor series for log(1+s)-s = sum_{n>=2} (-1)^(n+1) s^n / n,
-        # which converges quickly in the asym activation region (|s| < 0.3)
-        # and avoids the log(1+s) rounding that flips the sign of
-        # log(1+s)-s for tiny |s|, plus any fp64 log1p backend issue.
-        sigma_pow = sigma * sigma
-        log1p_minus_sigma = sigma * 0.0
-        for n in range(2, 32):
-            if n % 2 == 0:
-                log1p_minus_sigma = log1p_minus_sigma - sigma_pow / n
-            else:
-                log1p_minus_sigma = log1p_minus_sigma + sigma_pow / n
-            sigma_pow = sigma_pow * sigma
-        eta2 = -2.0 * log1p_minus_sigma
-    else:
-        # fp32: the ascend backend's log1p loses relative precision for tiny
-        # |sigma| (measured ~1e-3 rel at |sigma|~1e-3), which corrupts
-        # log(1+sigma)-sigma in the cancellation regime (large a with x ~ a).
-        # Use the Taylor series log(1+s)-s = sum_{n>=2} (-1)^(n+1) s^n / n,
-        # which converges quickly for |s| < 0.3 (the asym activation region).
-        sigma_pow = sigma * sigma
-        log1p_minus_sigma = sigma * 0.0
-        for n in range(2, 32):
-            if n % 2 == 0:
-                log1p_minus_sigma = log1p_minus_sigma - sigma_pow / n
-            else:
-                log1p_minus_sigma = log1p_minus_sigma + sigma_pow / n
-            sigma_pow = sigma_pow * sigma
-        eta2 = -2.0 * log1p_minus_sigma
+    sigma_pow = sigma * sigma
+    log1p_minus_sigma = sigma * 0.0
+    for n in range(2, 32):
+        if n % 2 == 0:
+            log1p_minus_sigma = log1p_minus_sigma - sigma_pow / n
+        else:
+            log1p_minus_sigma = log1p_minus_sigma + sigma_pow / n
+        sigma_pow = sigma_pow * sigma
+    eta2 = -2.0 * log1p_minus_sigma
     eta = tl.where(
         lam > 1.0,
         tl.sqrt(eta2),
@@ -240,7 +213,7 @@ def igammac_kernel(
     tl.store(out_ptr + offsets, result, mask=mask_offs)
 
 
-def _build_d_coeffs(dtype=torch.float32):
+def _build_d_coeffs():
     """DLMF 8.12.4 asymptotic expansion coefficients c_k(eta) = sum_n d[k,n] eta^n.
 
     Table 8.12.1 of https://dlmf.nist.gov/8.12 (25x25, row-major).
@@ -924,31 +897,22 @@ def _build_d_coeffs(dtype=torch.float32):
         ],
     ]
     flat = [float(v) for row in d for v in row]
-    return torch.tensor(flat, dtype=dtype, device=flag_gems.device)
+    return torch.tensor(flat, dtype=torch.float32, device=flag_gems.device)
 
 
-D_COEFFS = {}
+_D_COEFFS = None
 
 
-def _get_d(dtype):
-    if dtype not in D_COEFFS:
-        D_COEFFS[dtype] = _build_d_coeffs(dtype)
-    return D_COEFFS[dtype]
+def _get_d():
+    global _D_COEFFS
+    if _D_COEFFS is None:
+        _D_COEFFS = _build_d_coeffs()
+    return _D_COEFFS
 
 
 def _launch_igammac(out: torch.Tensor, a: torch.Tensor, x: torch.Tensor):
-    if not a.is_floating_point():
-        a = a.to(torch.get_default_dtype())
-    if not x.is_floating_point():
-        x = x.to(torch.get_default_dtype())
-
-    if a.dtype != out.dtype:
-        a = a.to(out.dtype)
-    if x.dtype != out.dtype:
-        x = x.to(out.dtype)
-
-    compute_dtype = tl.float64 if out.dtype == torch.float64 else tl.float32
-
+    # a, x and out are already contiguous-or-not fp32 by the time we get here:
+    # igammac() normalizes and validates every dtype before calling.
     a_contig = a.contiguous()
     x_contig = x.contiguous()
     out_was_noncontig = not out.is_contiguous()
@@ -961,9 +925,8 @@ def _launch_igammac(out: torch.Tensor, a: torch.Tensor, x: torch.Tensor):
             a_contig,
             x_contig,
             out_contig,
-            _get_d(out.dtype),
+            _get_d(),
             n_elements,
-            COMPUTE_DTYPE=compute_dtype,
             SERIES_ITERS=50,
             CF_ITERS=50,
             ASYM_K=_ASYM_K,
@@ -990,15 +953,14 @@ def igammac(a: torch.Tensor, x: torch.Tensor, *, out: torch.Tensor = None):
         a = a.to(torch.get_default_dtype())
     if not x.is_floating_point():
         x = x.to(torch.get_default_dtype())
-    if a.dtype not in _SUPPORTED_DTYPES or x.dtype not in _SUPPORTED_DTYPES:
+    if a.dtype != torch.float32 or x.dtype != torch.float32:
         raise RuntimeError(
-            f"igammac Triton kernel supports dtypes {_SUPPORTED_DTYPES}, "
+            f"igammac only supports torch.float32, "
             f"but got a.dtype={a.dtype}, x.dtype={x.dtype}"
         )
 
     if out is None:
-        out_dtype = torch.promote_types(a.dtype, x.dtype)
-        out = torch.empty_like(a, dtype=out_dtype, device=a.device)
+        out = torch.empty_like(a)
     else:
         if out.device.type != flag_gems.device:
             raise ValueError(
@@ -1006,9 +968,9 @@ def igammac(a: torch.Tensor, x: torch.Tensor, *, out: torch.Tensor = None):
             )
         if not out.is_floating_point():
             raise TypeError("igammac_out: output tensor must be a floating point type")
-        if out.dtype not in _SUPPORTED_DTYPES:
+        if out.dtype != torch.float32:
             raise RuntimeError(
-                f"igammac_out Triton kernel supports dtypes {_SUPPORTED_DTYPES}, "
+                f"igammac_out only supports torch.float32, "
                 f"but got out.dtype={out.dtype}"
             )
         if a.numel() != x.numel() or a.numel() != out.numel():
