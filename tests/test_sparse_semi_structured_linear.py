@@ -228,9 +228,14 @@ def test_sparse_semi_structured_linear(M, K, dtype):
     res_out = flag_gems._sparse_semi_structured_linear(input, weight, meta)
 
     # Both tensors live on CUDA here; _assert_close moves them to CPU under
-    # --ref=cpu. The 2:4 element-wise select-position accumulation differs from
-    # the native op's tensor-core path in rounding, so use a relaxed tolerance.
-    atol = 0.1 if dtype in (torch.float16, torch.bfloat16) else 0.02
+    # --ref=cpu. Measured max deviation vs fp32-accumulated reference on H20 (SM90):
+    # fp16 ~1.0e-2, bf16 ~7.9e-2, fp32 ~4.7e-6 (after rtol coverage); 2x headroom.
+    if dtype == torch.bfloat16:
+        atol = 0.16
+    elif dtype == torch.float16:
+        atol = 0.025
+    else:
+        atol = 1e-5
     _assert_close(res_out, ref_out, dtype, atol=atol)
 
 
@@ -252,7 +257,14 @@ def test_sparse_semi_structured_linear_with_bias(M, K, dtype):
 
     res_out = flag_gems._sparse_semi_structured_linear(input, weight, meta, bias=bias)
 
-    atol = 0.1 if dtype in (torch.float16, torch.bfloat16) else 0.02
+    # Measured max deviation vs fp32-accumulated reference on H20 (SM90):
+    # fp16 ~1.0e-2, bf16 ~7.9e-2, fp32 ~4.7e-6 (after rtol coverage); 2x headroom.
+    if dtype == torch.bfloat16:
+        atol = 0.16
+    elif dtype == torch.float16:
+        atol = 0.025
+    else:
+        atol = 1e-5
     _assert_close(res_out, ref_out, dtype, atol=atol)
 
 
@@ -271,7 +283,14 @@ def test_sparse_semi_structured_linear_n_ne_k(M, K, N, dtype):
 
     res_out = flag_gems._sparse_semi_structured_linear(input, weight, meta)
 
-    atol = 0.1 if dtype in (torch.float16, torch.bfloat16) else 0.02
+    # Measured max deviation vs fp32-accumulated reference on H20 (SM90):
+    # fp16 ~1.0e-2, bf16 ~7.9e-2, fp32 ~4.7e-6 (after rtol coverage); 2x headroom.
+    if dtype == torch.bfloat16:
+        atol = 0.16
+    elif dtype == torch.float16:
+        atol = 0.025
+    else:
+        atol = 1e-5
     _assert_close(res_out, ref_out, dtype, atol=atol)
 
 
@@ -307,7 +326,14 @@ def test_sparse_semi_structured_linear_activation(activation, dtype):
         input, weight, meta, activation=activation
     )
 
-    atol = 0.1 if dtype in (torch.float16, torch.bfloat16) else 0.02
+    # Measured max deviation vs fp32-accumulated reference on H20 (SM90):
+    # fp16 ~1.0e-2, bf16 ~7.9e-2, fp32 ~4.7e-6 (after rtol coverage); 2x headroom.
+    if dtype == torch.bfloat16:
+        atol = 0.16
+    elif dtype == torch.float16:
+        atol = 0.025
+    else:
+        atol = 1e-5
     _assert_close(res_out, ref_out, dtype, atol=atol)
 
 
@@ -328,7 +354,14 @@ def test_sparse_semi_structured_linear_with_bias_shapes(M, K, dtype):
 
     res_out = flag_gems._sparse_semi_structured_linear(input, weight, meta, bias=bias)
 
-    atol = 0.1 if dtype in (torch.float16, torch.bfloat16) else 0.02
+    # Measured max deviation vs fp32-accumulated reference on H20 (SM90):
+    # fp16 ~1.0e-2, bf16 ~7.9e-2, fp32 ~4.7e-6 (after rtol coverage); 2x headroom.
+    if dtype == torch.bfloat16:
+        atol = 0.16
+    elif dtype == torch.float16:
+        atol = 0.025
+    else:
+        atol = 1e-5
     _assert_close(res_out, ref_out, dtype, atol=atol)
 
 
@@ -362,5 +395,12 @@ def test_sparse_semi_structured_linear_non_contiguous_weight(dtype):
 
     res_nc = flag_gems._sparse_semi_structured_linear(input, w_nc, meta)
 
-    atol = 0.1 if dtype in (torch.float16, torch.bfloat16) else 0.02
+    # Measured max deviation vs fp32-accumulated reference on H20 (SM90):
+    # fp16 ~1.0e-2, bf16 ~7.9e-2, fp32 ~4.7e-6 (after rtol coverage); 2x headroom.
+    if dtype == torch.bfloat16:
+        atol = 0.16
+    elif dtype == torch.float16:
+        atol = 0.025
+    else:
+        atol = 1e-5
     _assert_close(res_nc, ref_out, dtype, atol=atol)

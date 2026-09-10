@@ -1,12 +1,5 @@
 [
   {
-    "backend": "ascend-cann850",
-    "runner_label": "cann850",
-    "label": "vendor/Ascend",
-    "gpu_check": "tools/gpu_check_ascend.sh",
-    "enabled": true
-  },
-  {
     "backend": "ascend-cann900",
     "runner_label": "cann9",
     "label": "vendor/Ascend",
@@ -64,7 +57,7 @@
   },
   {
     "backend": "mthreads-musa520",
-    "runner_label": "mthreads",
+    "runner_label": "musa-520",
     "label": "vendor/MooreThreads",
     "gpu_check": "tools/gpu_check_mthreads.sh",
     "enabled": true
