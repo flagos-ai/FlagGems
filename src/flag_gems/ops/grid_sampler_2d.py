@@ -62,20 +62,28 @@ def _reflect_int_index(idx, n, align_corners: tl.constexpr):
 @triton.jit
 def _reflect_coord(coord, n, align_corners: tl.constexpr):
     # Reflect a continuous (pixel-space) coordinate into the valid range.
-    # align_corners=True:  period 2*(n-1), reflect over [0, n-1].
-    # align_corners=False: period 2*n, reflect over [-0.5, n-0.5] (shift by
-    #   0.5, reflect over [0, n], shift back), matching PyTorch grid_sampler.
+    # The coordinate is folded onto the positive domain with fabs before the
+    # modulo, so the modulo always runs on small magnitudes and fp32 keeps
+    # the epsilon of a coordinate sitting just past a reflection boundary.
+    # align_corners=True:  reflect over [0, n-1] (twice_low=0, twice_high=2n-2).
+    # align_corners=False: reflect over [-0.5, n-0.5] (twice_low=-1, twice_high=2n-1).
+    # span is the HALF-period ((twice_high - twice_low) / 2): the triangle
+    # wave folds every span and the flips parity picks the mirror.
     if align_corners:
-        p = 2 * (n - 1)
-        # p is 0 only when n == 1; in that case every coord maps to 0.
-        ref = tl.where(p == 0, 0.0, coord - tl.floor(coord / p) * p)
-        return tl.where(ref >= n, p - ref, ref)
+        min = 0.0
+        span = n - 1.0
     else:
-        p = 2 * n
-        c = coord + 0.5
-        c = c - tl.floor(c / p) * p
-        c = tl.where(c > n, p - c, c)
-        return c - 0.5
+        min = -0.5
+        span = n * 1.0
+    # Degenerate span (n == 1 with align_corners): every coord maps to 0.
+    in_abs = tl.abs(coord - min)
+    extra = in_abs % span
+    flips = tl.floor(in_abs / span)
+    ref = tl.where(flips % 2 == 0, extra, span - extra) + min
+    ref = tl.where(span == 0, 0.0, ref)
+    # Clip to [0, n-1] to bring values landing just outside the range
+    # back in bounds.
+    return tl.minimum(tl.maximum(ref, 0.0), n - 1)
 
 
 @libentry()
@@ -216,15 +224,17 @@ def grid_sampler_2d_kernel(
         if padding_mode == 2:  # Reflection: reflect fractional coords first
             x = _reflect_coord(x, IW, align_corners)
             y = _reflect_coord(y, IH, align_corners)
-        # Round to nearest even (matching PyTorch's nearbyint)
+        # Round to nearest even (matching PyTorch's nearbyint). The half check
+        # is exact (frac == 0.5) so no tie is fabricated for fractions that
+        # merely fall close to 0.5.
         x_floor = tl.floor(x)
         y_floor = tl.floor(y)
         x_frac = x - x_floor
         y_frac = y - y_floor
-        x_is_half = tl.abs(x_frac - 0.5) < 1e-6
-        y_is_half = tl.abs(y_frac - 0.5) < 1e-6
         x_floor_int = x_floor.to(tl.int32)
         y_floor_int = y_floor.to(tl.int32)
+        x_is_half = x_frac == 0.5
+        y_is_half = y_frac == 0.5
         x_nearest = tl.where(
             x_is_half, x_floor_int + (x_floor_int & 1), tl.floor(x + 0.5).to(tl.int32)
         )
@@ -238,13 +248,10 @@ def grid_sampler_2d_kernel(
             x_nearest = tl.minimum(tl.maximum(x_nearest, 0), IW - 1)
             y_nearest = tl.minimum(tl.maximum(y_nearest, 0), IH - 1)
             pixel_mask = mask & x_in & y_in
-        elif padding_mode == 1:  # Border
+        else:  # Border / Reflection: coordinates are already clipped into
+            # [0, n-1]; clamp the rounded index for safety.
             x_nearest = tl.minimum(tl.maximum(x_nearest, 0), IW - 1)
             y_nearest = tl.minimum(tl.maximum(y_nearest, 0), IH - 1)
-            pixel_mask = mask
-        else:  # Reflection: reflect the rounded index independently.
-            x_nearest = _reflect_int_index(x_nearest.to(tl.float32), IW, align_corners)
-            y_nearest = _reflect_int_index(y_nearest.to(tl.float32), IH, align_corners)
             pixel_mask = mask
 
         offset = ((n * C + c) * IH + y_nearest) * IW + x_nearest
