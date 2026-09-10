@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import random
 import time
 
@@ -16,12 +30,15 @@ else:
     FLOAT_DTYPES = utils.FLOAT_DTYPES
 
 INDEX_ACC_SHAPE = (
-    # Original test cases
+    # Keep these cases aligned with benchmark/test_index.py so benchmark
+    # latency rows have matching correctness coverage.
     ((2**28,), ((2**16,),)),
     ((32, 32), ((8,), (8,))),
     ((32, 32), ((8,), (2, 8))),
     ((32, 32), ((2, 8),)),
+    ((1024, 1024), ((64,), (64,))),
     ((512, 512, 512), ((128,), (128,), (128,))),
+    ((512, 512, 512), ((2, 128), (2, 128), (2, 128))),
     ((512, 512, 512), ((2, 128), (128,), (128,))),
     ((512, 512, 512), ((2, 128),)),
     (
@@ -33,47 +50,53 @@ INDEX_ACC_SHAPE = (
     ),
 )
 
+INDEX_NONLEADING_ADJACENT_SHAPE = (
+    ((1, 4096, 512), (None, (32768,), None)),
+    ((4, 512, 128), (None, (4096,), None)),
+    ((2, 256, 256, 64), (None, (4096,), (4096,), None)),
+    ((2, 128, 128, 128), (None, (2048,), (2048,), (2048,))),
+    (
+        (1, 128, 128, 64, 8),
+        (None, (2048,), (2048,), (2048,), None),
+    ),
+)
+
 # Make sure every thread has same seed.
 random.seed(time.time() // 100)
 
 
 def gen_indices(input_shape, indices_shape, accumulate):
     """
-    Generate indices for torch.ops.aten.index.
-    All index tensors must be broadcastable, so we ensure they have compatible shapes.
+    Generate indices for torch.ops.aten.index while preserving benchmark shapes.
     """
     indices = []
-    # For torch.ops.aten.index, all index tensors must be broadcastable
-    # So we use the same shape for all indices
-    if len(indices_shape) > 0:
-        # Find the minimum size across all indices to ensure broadcastability
-        sizes = []
-        for shape in indices_shape:
-            if isinstance(shape, int):
-                sizes.append(shape)
-            elif isinstance(shape, (tuple, list)) and len(shape) > 0:
-                sizes.append(shape[0])
-            else:
-                sizes.append(16)  # default
-        common_size = min(sizes) if sizes else 16
+    for dim, shape in enumerate(indices_shape):
+        index = np.random.choice(
+            np.arange(input_shape[dim]), size=shape, replace=accumulate
+        )
+        indices.append(torch.tensor(index, device=flag_gems.device))
+    return indices
 
-        for i, shape in enumerate(indices_shape):
-            if isinstance(shape, int):
-                size = min(shape, common_size)
-            elif isinstance(shape, (tuple, list)) and len(shape) > 0:
-                size = min(shape[0], common_size)
-            else:
-                size = common_size
-            index = np.random.choice(
-                np.arange(input_shape[i]), size=size, replace=accumulate
-            )
-            indices.append(torch.tensor(index, device=flag_gems.device))
+
+def gen_optional_indices(input_shape, indices_shape, accumulate):
+    indices = []
+    for dim, shape in enumerate(indices_shape):
+        if shape is None:
+            indices.append(None)
+            continue
+        index = np.random.choice(
+            np.arange(input_shape[dim]), size=shape, replace=accumulate
+        )
+        indices.append(torch.tensor(index, device=flag_gems.device))
     return indices
 
 
 @pytest.mark.index
 @pytest.mark.parametrize("input_shape, indices_shape", INDEX_ACC_SHAPE)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_index(input_shape, indices_shape, dtype):
     inp = torch.randn(
         input_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
@@ -95,6 +118,31 @@ def test_index(input_shape, indices_shape, dtype):
     utils.gems_assert_close(out, ref_out, dtype)
 
 
+@pytest.mark.index
+@pytest.mark.parametrize(
+    "input_shape, indices_shape",
+    INDEX_NONLEADING_ADJACENT_SHAPE,
+)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_index_nonleading_adjacent_tensor_indices(input_shape, indices_shape, dtype):
+    inp = torch.randn(
+        input_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
+    )
+    indices = gen_optional_indices(input_shape, indices_shape, True)
+
+    ref_inp = utils.to_reference(inp)
+    ref_indices = [
+        None if index is None else utils.to_reference(index) for index in indices
+    ]
+    ref_out = torch.ops.aten.index(ref_inp, ref_indices)
+    out = flag_gems.index(inp, indices)
+
+    utils.gems_assert_close(out, ref_out, dtype)
+
+
 # Additional test cases to improve coverage for index operator
 @pytest.mark.index
 @pytest.mark.parametrize(
@@ -104,6 +152,9 @@ def test_index(input_shape, indices_shape, dtype):
     ],
 )
 @pytest.mark.parametrize("dtype", [torch.float32])
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_index_with_none_basic_indexing(input_shape, index_pos, dtype):
     """Test basic indexing with None (ellipsis-like behavior)"""
     inp = torch.randn(input_shape, dtype=dtype, device=flag_gems.device)
@@ -151,6 +202,9 @@ def test_index_with_none_basic_indexing(input_shape, index_pos, dtype):
     ],
 )
 @pytest.mark.parametrize("dtype", [torch.int64])
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_index_with_none_and_tensor(input_shape, indices_idx, dtype):
     inp = torch.randint(0, 10000, input_shape, dtype=dtype, device=flag_gems.device)
     indices = []
@@ -179,6 +233,9 @@ def test_index_with_none_and_tensor(input_shape, indices_idx, dtype):
 
 @pytest.mark.index
 @pytest.mark.parametrize("dtype", [torch.float32])
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_index_boolean_mask(dtype):
     """Test boolean mask indexing"""
 
@@ -196,6 +253,9 @@ def test_index_boolean_mask(dtype):
 
 @pytest.mark.index
 @pytest.mark.parametrize("dtype", [torch.float32])
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_index_empty_tensor(dtype):
     """Test index with empty tensor"""
 
@@ -213,6 +273,9 @@ def test_index_empty_tensor(dtype):
 
 @pytest.mark.index
 @pytest.mark.parametrize("dtype", [torch.float32])
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_index_1d_special_case(dtype):
     """Test 1D input special case (uses gather)"""
 
@@ -230,6 +293,9 @@ def test_index_1d_special_case(dtype):
 
 @pytest.mark.index
 @pytest.mark.parametrize("dtype", [torch.float32])
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_index_error_empty_indices(dtype):
     """Test error handling: empty indices"""
 
@@ -242,6 +308,9 @@ def test_index_error_empty_indices(dtype):
 
 @pytest.mark.index
 @pytest.mark.parametrize("dtype", [torch.float32])
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_index_error_too_many_indices(dtype):
     """Test error handling: too many indices"""
 

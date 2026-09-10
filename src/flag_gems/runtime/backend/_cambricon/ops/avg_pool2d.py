@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -8,7 +22,7 @@ from flag_gems.utils import libentry
 
 from ..utils import MAX_GRID_SIZE_X, MAX_GRID_SIZE_Y
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 def pool2d_output_size(
@@ -37,7 +51,6 @@ def limit_grid(grid_0, grid_1):
     return min(grid_0, grid_0_ub), min(grid_1, grid_1_ub)
 
 
-@libentry()
 @triton.autotune(
     configs=[
         triton.Config({"BLOCK_H": 16, "BLOCK_W": 16}, num_stages=4, num_warps=4),
@@ -52,6 +65,7 @@ def limit_grid(grid_0, grid_1):
     ],
     key=["out_h", "out_w", "kernel_h", "kernel_w", "stride_h", "stride_w"],
 )
+@libentry()
 @triton.jit
 def avg_pool2d_forward_kernel(
     input_ptr,
@@ -156,7 +170,6 @@ def avg_pool2d_forward_kernel(
         pid_nc += grid_0
 
 
-@libentry()
 @triton.autotune(
     configs=[
         triton.Config({"BLOCK_H": 16, "BLOCK_W": 16}, num_stages=4, num_warps=4),
@@ -168,6 +181,7 @@ def avg_pool2d_forward_kernel(
     ],
     key=["in_h", "in_w", "kernel_h", "kernel_w", "stride_h", "stride_w"],
 )
+@libentry()
 @triton.jit
 def avg_pool2d_backward_kernel(
     grad_output_ptr,
@@ -337,7 +351,7 @@ def avg_pool2d(
     count_include_pad=True,
     divisor_override=None,
 ):
-    logger.debug("GEMS_CAMBRICON AVG_POOL2D FORWARD")
+    logger.debug("GEMS_CAMBRICON AVG_POOL2D")
 
     if divisor_override is not None and divisor_override == 0:
         raise ValueError("divisor_override cannot be zero")
@@ -412,7 +426,7 @@ def avg_pool2d_backward(
     count_include_pad,
     divisor_override,
 ):
-    logger.debug("GEMS_CAMBRICON AVG_POOL2D BACKWARD")
+    logger.debug("GEMS_CAMBRICON AVG_POOL2D_BACKWARD")
 
     if divisor_override is not None and divisor_override == 0:
         raise ValueError("divisor_override cannot be zero")

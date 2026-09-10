@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import importlib
 import logging
 import os
@@ -69,6 +83,7 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.writeline("import triton")
     code.writeline("from triton import language as tl")
     code.newline()
+    code.writeline("from flag_gems import runtime")
     code.writeline("from flag_gems.utils.libentry import libentry")
     code.writeline("from flag_gems.runtime import torch_device_fn")
     code.writeline("from flag_gems.utils import triton_lang_extension as ext")
@@ -140,7 +155,14 @@ def generate_destination_passing_padding_wrapper(
 
     with code.indent():
         # docstring
-        code.writeline("BLOCK_SIZE = 256")
+        code.writeline('pad_configs = runtime.get_tuned_config("pad")')
+        code.writeline(
+            'BLOCK_SIZE = pad_configs[0].kwargs.get("BLOCK_SIZE", 256) '
+            "if pad_configs else 256"
+        )
+        code.writeline("if 0 < out0.numel() < BLOCK_SIZE:")
+        with code.indent():
+            code.writeline("BLOCK_SIZE = triton.next_power_of_2(out0.numel())")
         code.writeline("grid = (triton.cdiv(out0.numel(), BLOCK_SIZE), 1, 1)")
         code.newline()
 

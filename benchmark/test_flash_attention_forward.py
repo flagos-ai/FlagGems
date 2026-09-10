@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import math
 
 import pytest
@@ -30,7 +44,7 @@ def torch_flash_attention_forward(
 def gems_flash_attention_forward(
     q, k, v, scale, is_causal, dropout_p=0.0, return_debug_mask=False, **extra_kwargs
 ):
-    return flag_gems.ops.flash_attention_forward(
+    return flag_gems.flash_attention_forward(
         q,
         k,
         v,
@@ -235,6 +249,45 @@ def flash_attention_forward_input_fn(config, dtype, device):
         )
 
     yield q, k, v, scale, is_causal, dropout_p, return_debug_mask, extra_kwargs
+
+
+def _flash_attention_forward_input_fn(config, dtype, device):
+    for (
+        q,
+        k,
+        v,
+        scale,
+        is_causal,
+        dropout_p,
+        return_debug_mask,
+        kwargs,
+    ) in flash_attention_forward_input_fn(config, dtype, device):
+        kwargs["scale"] = scale
+        yield (
+            q,
+            k,
+            v,
+            None,
+            None,
+            q.shape[-3],
+            k.shape[-3],
+            dropout_p,
+            is_causal,
+            return_debug_mask,
+            kwargs,
+        )
+
+
+@pytest.mark.underscore_flash_attention_forward
+def test__flash_attention_forward():
+    bench = FlashAttentionForwardBenchmark(
+        op_name="_flash_attention_forward",
+        input_fn=_flash_attention_forward_input_fn,
+        torch_op=torch.ops.aten._flash_attention_forward.default,
+        # FlashAttention supports CUDA float16 and bfloat16 inputs.
+        dtypes=[torch.float16, torch.bfloat16],
+    )
+    bench.run()
 
 
 @pytest.mark.skipif(utils.SkipVersion("torch", "<2.4"), reason="Low Pytorch Version.")

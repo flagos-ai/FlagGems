@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """
 FP8 Matrix Multiplication — Triton Kernel (Block-wise Scaling)
 Fixed config version for H20 deployment (no autotune warmup).
@@ -17,9 +31,13 @@ Based on v45. Fixed config: BLOCK_M=64, BLOCK_N=64, BLOCK_K=128,
 GROUP_SIZE_M=4, num_stages=3, num_warps=4 (best for M>=128 on H20).
 """
 
+import logging
+
 import torch
 import triton
 import triton.language as tl
+
+logger = logging.getLogger(__name__)
 
 GROUP_SIZE = 128
 
@@ -134,6 +152,7 @@ def fp8_matmul(
     Returns:
         (..., N) bfloat16
     """
+    logger.debug("GEMS FP8_MATMUL")
     assert b.ndim == 2
     assert a.is_contiguous() and b.is_contiguous()
     assert a_s.is_contiguous() and b_s.is_contiguous()
