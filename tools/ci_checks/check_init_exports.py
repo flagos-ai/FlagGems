@@ -243,7 +243,7 @@ def main():
         print(f"Checking {init_file}...")
 
         if not init_file.exists():
-            print(f"  ⚠️  File not found, skipping")
+            print("  ⚠️  File not found, skipping")
             continue
 
         try:
@@ -282,7 +282,7 @@ def main():
             total_errors += len(file_errors)
             print(f"  ❌ Found {len(file_errors)} issue(s)")
         else:
-            print(f"  ✅ All checks passed")
+            print("  ✅ All checks passed")
 
         print()
 
