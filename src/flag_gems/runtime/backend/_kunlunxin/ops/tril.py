@@ -472,7 +472,7 @@ def _launch_v2_flat(
             input.shape[-1],
             block_size,
             need_mask,
-            num_warps=num_warps,
+            num_warps=num_warps, buffer_size_limit=8192,
         )
     return out
 
@@ -499,7 +499,7 @@ def _launch_v2_flat_batched(
             N,
             block_size,
             need_mask,
-            num_warps=num_warps,
+            num_warps=num_warps, buffer_size_limit=8192,
         )
     return out
 
@@ -525,7 +525,7 @@ def _launch_v2_flat_batchgrid(
             MN,
             block_size,
             need_mask,
-            num_warps=num_warps,
+            num_warps=num_warps, buffer_size_limit=8192,
         )
     return out
 
@@ -549,7 +549,7 @@ def _launch_v2_rows(
             int(diagonal),
             block_n,
             need_mask,
-            num_warps=num_warps,
+            num_warps=num_warps, buffer_size_limit=8192,
         )
 
 
@@ -567,7 +567,7 @@ def _launch_v2_zero(
             total,
             block_size,
             need_mask,
-            num_warps=num_warps,
+            num_warps=num_warps, buffer_size_limit=8192,
         )
 
 
@@ -599,7 +599,7 @@ def _launch_v2_wide_scalar(
             bpr.bit_length() - 1,
             bpr - 1,
             block_size,
-            num_warps=num_warps,
+            num_warps=num_warps, buffer_size_limit=8192,
         )
     return out
 
@@ -617,6 +617,13 @@ def _launch_v2_pow2(
     batch = input.numel() // MN
     rows = M if active_rows is None else active_rows
     active_total = rows * N
+    # A 32768-lane unmasked tile halves the tl.where (vselect) cost for fp16 by
+    # cutting register spill (probed 2026-09-05, dev6: fp16 [4096,4096] 0.46ms ->
+    # 0.26ms, [64,512,512] 0.45 -> 0.26, [1024,1024] 0.065 -> 0.046). fp32/bf16
+    # are unchanged and masked shapes (active_total % 32768 != 0) prefer the
+    # smaller tile, so only the fp16 unmasked case switches.
+    if input.dtype == torch.float16 and active_total % 32768 == 0:
+        block_size = 32768
     grid = (triton.cdiv(active_total, block_size), batch)
     need_mask = active_total % block_size != 0
     with torch_device_fn.device(input.device):
@@ -630,7 +637,7 @@ def _launch_v2_pow2(
             N - 1,
             block_size,
             need_mask,
-            num_warps=num_warps,
+            num_warps=num_warps, buffer_size_limit=8192,
         )
     return out
 
@@ -659,7 +666,7 @@ def _launch_v2_band_batchgrid(
             N,
             block_size,
             need_mask,
-            num_warps=num_warps,
+            num_warps=num_warps, buffer_size_limit=8192,
         )
     return out
 
@@ -809,7 +816,7 @@ def _launch_tile(
             N,
             BLOCK_M=block_m,
             BLOCK_N=block_n,
-            num_warps=num_warps,
+            num_warps=num_warps, buffer_size_limit=8192,
             num_stages=num_stages,
         )
     return out
@@ -840,7 +847,7 @@ def _launch_rows(
             N,
             BLOCK_M=block_m,
             BLOCK_N=block_n,
-            num_warps=num_warps,
+            num_warps=num_warps, buffer_size_limit=8192,
             num_stages=num_stages,
         )
     return out
@@ -868,7 +875,7 @@ def _launch_exact_row(
             M,
             N,
             BLOCK_N=N,
-            num_warps=num_warps,
+            num_warps=num_warps, buffer_size_limit=8192,
             num_stages=num_stages,
         )
     return out
@@ -897,7 +904,7 @@ def _launch_exact_diag0_tile(
             N,
             BLOCK_M=block_m,
             BLOCK_N=block_n,
-            num_warps=num_warps,
+            num_warps=num_warps, buffer_size_limit=8192,
             num_stages=num_stages,
         )
     return out
@@ -938,7 +945,7 @@ def _launch_tril_inplace_contiguous(
             int(diagonal),
             N,
             BLOCK_SIZE=block_size,
-            num_warps=num_warps,
+            num_warps=num_warps, buffer_size_limit=8192,
             num_stages=num_stages,
         )
     return input
@@ -999,7 +1006,7 @@ def _launch_tril_inplace_strided(
             STRIDE_N=stride_n,
             BLOCK_M=block_m,
             BLOCK_N=block_n,
-            num_warps=num_warps,
+            num_warps=num_warps, buffer_size_limit=8192,
             num_stages=num_stages,
         )
     return input
@@ -1053,7 +1060,7 @@ def _launch_tril_strided_out(
             STRIDE_N=stride_n,
             BLOCK_M=block_m,
             BLOCK_N=block_n,
-            num_warps=num_warps,
+            num_warps=num_warps, buffer_size_limit=8192,
             num_stages=num_stages,
         )
     return out
