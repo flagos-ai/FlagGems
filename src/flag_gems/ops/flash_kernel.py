@@ -753,6 +753,54 @@ def flash_fwd_kernel(
         tl.store(p_lse + row_idx, lse, mask=row_idx < seqlen_q)
 
 
+_flash_fwd_configs_refreshed = False
+
+
+def _refresh_flash_fwd_configs():
+    global _flash_fwd_configs_refreshed
+    if _flash_fwd_configs_refreshed:
+        return
+    fn = flash_fwd_kernel
+    while not hasattr(fn, "configs"):
+        if not hasattr(fn, "fn"):
+            return
+        fn = fn.fn
+    good = list(filter(keep, runtime.get_tuned_config("attention")))
+    if good and len(good) > len(fn.configs):
+        fn.configs = good
+        cache = getattr(fn, "cache", None)
+        if isinstance(cache, dict):
+            cache.clear()
+    _flash_fwd_configs_refreshed = True
+
+
+class _FlashFwdLazy:
+    """Defer autotune-config binding to first call.
+
+    @triton.autotune captures runtime.get_tuned_config("attention") at import
+    time, before the vendor tuned-config table is fully populated, leaving a
+    single default config without BLOCK_M/BLOCK_N (KeyError: 'BLOCK_M'). Refresh
+    on first use, when the full table is available.
+    """
+
+    def __init__(self, kernel):
+        self._kernel = kernel
+
+    def __getitem__(self, grid):
+        _refresh_flash_fwd_configs()
+        return self._kernel[grid]
+
+    def __call__(self, *args, **kwargs):
+        _refresh_flash_fwd_configs()
+        return self._kernel(*args, **kwargs)
+
+    def __getattr__(self, name):
+        return getattr(self._kernel, name)
+
+
+flash_fwd_kernel = _FlashFwdLazy(flash_fwd_kernel)
+
+
 @triton.jit(do_not_specialize=["seqlen_q", "seqlen_k"])
 def flash_fwd_bh_parallel_kernel():
     # (TODO)
