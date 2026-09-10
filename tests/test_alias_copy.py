@@ -41,9 +41,9 @@ def test_alias_copy_out(shape, dtype):
     ref_out = torch.empty_like(ref_inp)
     out = torch.empty_like(inp)
 
-    torch.ops.aten.alias_copy(ref_inp, out=ref_out)
+    torch.ops.aten.alias_copy.out(ref_inp, out=ref_out)
     with flag_gems.use_gems():
-        res_out = torch.ops.aten.alias_copy(inp, out=out)
+        res_out = torch.ops.aten.alias_copy.out(inp, out=out)
 
     assert res_out is out
     utils.gems_assert_equal(res_out, ref_out)
