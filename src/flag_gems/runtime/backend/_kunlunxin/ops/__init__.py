@@ -74,6 +74,7 @@ from .bitwise_or import (
     bitwise_or_tensor_,
 )
 from .bitwise_right_shift import bitwise_right_shift
+from .block_diag import block_diag
 from .bmm import bmm, bmm_out
 from .broadcast_to import broadcast_to
 from .cat import cat, cat_out
@@ -98,6 +99,7 @@ from .conv3d import conv3d
 from .conv_depthwise2d import _conv_depthwise2d
 from .copy import copy, copy_
 from .copysign import copysign, copysign_out
+from .copysign_ import copysign_
 from .cos import cos, cos_
 from .count_nonzero import count_nonzero
 from .cummax import cummax
@@ -273,6 +275,7 @@ from .scaled_softmax import scaled_softmax_backward, scaled_softmax_forward
 from .scatter import scatter, scatter_
 from .scatter_add_ import scatter_add_
 from .select_scatter import select_scatter
+from .special_erfinv import special_erfinv, special_erfinv_out
 from .selu import selu, selu_
 from .sgn_ import sgn_
 from .sigmoid import sigmoid, sigmoid_, sigmoid_backward

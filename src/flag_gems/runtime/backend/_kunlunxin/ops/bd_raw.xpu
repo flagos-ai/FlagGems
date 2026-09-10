@@ -1,0 +1,55 @@
+#include "xpu/kernel/xtdk.h"
+
+#define ZBUF 256   // zero buffer (f32 units), 2KB
+#define DBUF 256   // data buffer, 2KB
+
+// block_diag via raw per-core DMA.
+// ptrs: device array of n source pointers (byte addresses).
+// out:  (n*br) x (n*bc) output, byte view.
+// rows [rows_start, rows_start+rows_count) are handled by this cluster.
+extern "C" __device__ void bd_raw(
+    _global_ptr_ const long long *ptrs,
+    _global_ptr_ char *out,
+    int n, int br, int bc, int esz, int total_rows,
+    int rows_start, int rows_count) {
+  __local__ float lz[ZBUF];
+  for (int i = 0; i < ZBUF; ++i) lz[i] = 0.f;
+  __local__ long long lptrs[64];
+  __local__ char ldb[DBUF * 4];
+  int nptr = n < 64 ? n : 64;
+  GM2LM(ptrs, lptrs, nptr * sizeof(long long));
+  int tc = n * bc;
+  int cid = core_id();
+  int ncores = core_num();
+  int row_end = rows_start + rows_count;
+  if (row_end > total_rows) row_end = total_rows;
+  for (int row = rows_start + cid; row < row_end; row += ncores) {
+    int blk = row / br;
+    int r = row - blk * br;
+    long long base = (long long)row * tc * esz;
+    int col_off = blk * bc;
+    // left zeros
+    int off = 0;
+    while (off < col_off) {
+      int len = col_off - off < ZBUF ? col_off - off : ZBUF;
+      LM2GM(lz, out + base + (long long)off * esz, len * esz);
+      off += len;
+    }
+    // data: copy bc elements from the block row
+    int doff = 0;
+    while (doff < bc) {
+      int len = bc - doff < DBUF ? bc - doff : DBUF;
+      GM2LM((_global_ptr_ const char *)(lptrs[blk]) + (long long)(r * bc + doff) * esz, ldb, len * esz);
+      LM2GM(ldb, out + base + (long long)(col_off + doff) * esz, len * esz);
+      doff += len;
+    }
+    // right zeros
+    off = col_off + bc;
+    while (off < tc) {
+      int len = tc - off < ZBUF ? tc - off : ZBUF;
+      LM2GM(lz, out + base + (long long)off * esz, len * esz);
+      off += len;
+    }
+  }
+  mfence();
+}
