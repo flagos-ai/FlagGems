@@ -5,7 +5,6 @@ import triton
 import triton.language as tl
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
-
 from .isnan import isnan
 
 logger = logging.getLogger(__name__)
