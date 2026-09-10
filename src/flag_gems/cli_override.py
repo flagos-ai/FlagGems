@@ -13,17 +13,19 @@
 # limitations under the License.
 
 """
-Command-line interface for dynamic operator override.
+pytest integration for dynamic operator override.
 
-This module provides CLI utilities to override operator implementations
-from command-line arguments, enabling flexible testing workflows.
+This module wires ``DynamicOpOverride`` into pytest's command-line options
+(``--override`` / ``--override-config``) so that ``tests/`` and
+``benchmark/`` can override operator implementations without modifying
+source code. It is only meant to be used from ``pytest_addoption`` /
+``pytest_configure`` in ``tests/conftest.py`` and ``benchmark/conftest.py``.
 """
 
-import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, Optional
 
 import yaml
 
@@ -133,14 +135,15 @@ def load_override_config(config_path: str) -> Dict[str, tuple]:
 
 
 def apply_overrides_from_args(
-    args: argparse.Namespace,
+    args: Any,
     registry: Optional[DynamicOpOverride] = None,
 ) -> DynamicOpOverride:
     """
-    Apply operator overrides based on parsed command-line arguments.
+    Apply operator overrides based on parsed pytest command-line options.
 
     Args:
-        args: Parsed arguments with 'override' and/or 'override_config' attributes
+        args: pytest's ``config.option`` namespace, exposing ``override``
+            and/or ``override_config`` attributes
         registry: Optional registry instance (creates new one if None)
 
     Returns:
@@ -180,18 +183,23 @@ def apply_overrides_from_args(
     return registry
 
 
-def add_override_arguments(parser: argparse.ArgumentParser):
+def add_override_arguments(parser) -> None:
     """
-    Add override-related arguments to an argument parser.
+    Register the ``--override``/``--override-config``/``--list-overrides``
+    options on a pytest ``Parser``.
 
     Args:
-        parser: ArgumentParser instance to add arguments to
+        parser: The ``_pytest.config.argparsing.Parser`` passed to
+            ``pytest_addoption``. Its API (``getgroup``/``addoption``)
+            differs from ``argparse.ArgumentParser``, and it already
+            reserves the short option ``-o`` for ``--override-ini``, so
+            this only targets pytest's parser rather than being a generic
+            argparse helper.
     """
-    override_group = parser.add_argument_group("operator override options")
+    group = parser.getgroup("operator override", "dynamic operator override options")
 
-    override_group.add_argument(
+    group.addoption(
         "--override",
-        "-o",
         action="append",
         metavar="SPEC",
         help=(
@@ -201,9 +209,8 @@ def add_override_arguments(parser: argparse.ArgumentParser):
         ),
     )
 
-    override_group.add_argument(
+    group.addoption(
         "--override-config",
-        "-c",
         metavar="PATH",
         help=(
             "Load operator overrides from YAML/JSON config file. "
@@ -211,104 +218,8 @@ def add_override_arguments(parser: argparse.ArgumentParser):
         ),
     )
 
-    override_group.add_argument(
+    group.addoption(
         "--list-overrides",
         action="store_true",
         help="List all active operator overrides and exit",
     )
-
-
-def create_test_wrapper_script(
-    test_script: str,
-    output_path: Optional[str] = None,
-) -> str:
-    """
-    Create a wrapper script that applies overrides before running tests.
-
-    Args:
-        test_script: Path to the original test script
-        output_path: Optional output path for wrapper (default: test_script_wrapped.py)
-
-    Returns:
-        Path to the created wrapper script
-    """
-    if output_path is None:
-        test_path = Path(test_script)
-        output_path = str(test_path.parent / f"{test_path.stem}_wrapped.py")
-
-    wrapper_code = f'''#!/usr/bin/env python3
-"""Auto-generated wrapper for {test_script} with dynamic override support."""
-
-import sys
-import argparse
-from pathlib import Path
-
-# Add flag_gems to path if needed
-import flag_gems
-from flag_gems.cli_override import add_override_arguments, apply_overrides_from_args
-
-def main():
-    parser = argparse.ArgumentParser(
-        description="Run {test_script} with optional operator overrides"
-    )
-    add_override_arguments(parser)
-
-    # Parse known args (let test script handle the rest)
-    args, remaining = parser.parse_known_args()
-
-    # Apply overrides
-    registry = apply_overrides_from_args(args)
-
-    if args.list_overrides:
-        overrides = registry.list_overrides()
-        if overrides:
-            print("Active overrides:")
-            for override in overrides:
-                print(f"  - {{override}}")
-        else:
-            print("No active overrides")
-        return 0
-
-    # Run the original test script
-    try:
-        # Update sys.argv for the test script
-        sys.argv = ["{test_script}"] + remaining
-
-        # Execute the test script
-        with open("{test_script}") as f:
-            code = compile(f.read(), "{test_script}", "exec")
-            exec(code, {{"__name__": "__main__"}})
-    finally:
-        # Cleanup overrides
-        registry.restore_all()
-
-    return 0
-
-if __name__ == "__main__":
-    sys.exit(main())
-'''
-
-    with open(output_path, "w") as f:
-        f.write(wrapper_code)
-
-    # Make executable
-    Path(output_path).chmod(0o755)
-
-    return output_path
-
-
-if __name__ == "__main__":
-    # Simple CLI for creating wrapper scripts
-    parser = argparse.ArgumentParser(
-        description="Create test wrapper scripts with override support"
-    )
-    parser.add_argument("test_script", help="Original test script path")
-    parser.add_argument(
-        "-o",
-        "--output",
-        help="Output path for wrapper script (default: auto-generated)",
-    )
-
-    args = parser.parse_args()
-    output = create_test_wrapper_script(args.test_script, args.output)
-    print(f"Created wrapper script: {output}")
