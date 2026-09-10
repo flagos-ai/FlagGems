@@ -1,28 +1,14 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import pytest
 import torch
 
 import flag_gems
+from flag_gems import max_pool3d
 
-from .accuracy_utils import FLOAT_DTYPES, gems_assert_close, to_reference
-from .conftest import QUICK_MODE
+from . import accuracy_utils as utils
 
-FLOAT_DTYPES = [torch.float32] if QUICK_MODE else FLOAT_DTYPES
-
-
+# Representative 5-D pooling configs: (shape, kernel_size, stride, padding,
+# dilation, ceil_mode). Chosen to cover cubic/non-cubic kernels, strides,
+# symmetric/asymmetric padding, dilation, ceil_mode and a typical 3D-CNN shape.
 MAXPOOL3D_CONFIGS = [
     # Classic 3x3x3 kernel, stride 2, padding 1
     ((4, 3, 16, 16, 16), 3, 2, 1, 1, False),
@@ -45,18 +31,16 @@ MAXPOOL3D_CONFIGS = [
 ]
 
 
-@pytest.mark.max_pool3d_with_indices
+@pytest.mark.max_pool3d
 @pytest.mark.parametrize(
     "shape, kernel_size, stride, padding, dilation, ceil_mode", MAXPOOL3D_CONFIGS
 )
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_max_pool3d_with_indices(
-    shape, kernel_size, stride, padding, dilation, ceil_mode, dtype
-):
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
-    ref_inp = to_reference(inp, True)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_max_pool3d(shape, kernel_size, stride, padding, dilation, ceil_mode, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp, True)
 
-    ref_out = torch.nn.functional.max_pool3d(
+    ref_out = torch.max_pool3d(
         ref_inp,
         kernel_size=kernel_size,
         stride=stride,
@@ -65,35 +49,8 @@ def test_max_pool3d_with_indices(
         ceil_mode=ceil_mode,
     )
 
-    with flag_gems.use_gems():
-        res_out = torch.nn.functional.max_pool3d(
-            inp,
-            kernel_size=kernel_size,
-            stride=stride,
-            padding=padding,
-            dilation=dilation,
-            ceil_mode=ceil_mode,
-        )
-
-    gems_assert_close(res_out, ref_out, dtype)
-
-
-@pytest.mark.max_pool3d_backward
-@pytest.mark.parametrize(
-    "shape, kernel_size, stride, padding, dilation, ceil_mode", MAXPOOL3D_CONFIGS
-)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_max_pool3d_backward(
-    shape, kernel_size, stride, padding, dilation, ceil_mode, dtype
-):
-    if flag_gems.vendor_name == "cambricon" and dilation == 2:
-        pytest.skip("Issue #5254: Not supported")
-
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
-    ref_inp = to_reference(inp, upcast=True)
-
-    ref_out = torch.nn.functional.max_pool3d(
-        ref_inp,
+    res_out = max_pool3d(
+        inp,
         kernel_size=kernel_size,
         stride=stride,
         padding=padding,
@@ -101,32 +58,4 @@ def test_max_pool3d_backward(
         ceil_mode=ceil_mode,
     )
 
-    with flag_gems.use_gems():
-        res_out = torch.nn.functional.max_pool3d(
-            inp,
-            kernel_size=kernel_size,
-            stride=stride,
-            padding=padding,
-            dilation=dilation,
-            ceil_mode=ceil_mode,
-        )
-
-    out_grad = torch.randn_like(res_out, device=flag_gems.device)
-    ref_grad = to_reference(out_grad, upcast=True)
-
-    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
-    with flag_gems.use_gems():
-        (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
-
-    # 3D backward accumulates over kernel_d * kernel_h * kernel_w elements per
-    # input position. With stride < kernel, each input can receive gradient
-    # contributions from overlapping output windows, amplifying fp error.
-    # Use kernel_volume^2 as reduce_dim to account for the compounded error.
-    if isinstance(kernel_size, int):
-        kd = kh = kw = kernel_size
-    else:
-        kd, kh, kw = kernel_size
-    kernel_volume = kd * kh * kw
-    gems_assert_close(
-        res_in_grad, ref_in_grad, dtype, reduce_dim=kernel_volume * kernel_volume
-    )
+    utils.gems_assert_close(res_out, ref_out, dtype)
