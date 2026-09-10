@@ -16,7 +16,6 @@
 Unit tests for dynamic operator override functionality.
 """
 
-import sys
 import tempfile
 from pathlib import Path
 
@@ -25,6 +24,11 @@ import torch
 
 import flag_gems
 from flag_gems.dynamic_registry import DynamicOpOverride
+
+# Needed for TestPytestIntegration, which uses the `pytester` fixture to
+# run pytest itself as a subprocess and verify the --override/--override-config
+# CLI options work end-to-end through the real pytest hooks.
+pytest_plugins = ["pytester"]
 
 
 # Test fixtures for custom implementations
@@ -544,6 +548,215 @@ def softmax_impl(input, dim=-1, dtype=None):
         assert hasattr(result, "_custom_marker")  # Still overridden
 
         registry.restore_all()
+
+
+class TestPytestIntegration:
+    """
+    End-to-end tests that invoke pytest as a subprocess (via the
+    ``pytester`` fixture) to verify that ``--override``/``--override-config``
+    work through the real ``pytest_addoption``/``pytest_configure``/
+    ``pytest_unconfigure`` hooks wired up in ``tests/conftest.py`` and
+    ``benchmark/conftest.py``.
+
+    These tests exist to catch integration bugs (e.g. option-parsing API
+    mismatches between ``argparse`` and pytest's own ``Parser``) that unit
+    tests calling ``DynamicOpOverride`` directly cannot see, since those
+    never go through ``pytest_addoption``.
+    """
+
+    @staticmethod
+    def _repo_src_path() -> str:
+        return str(Path(__file__).resolve().parents[2] / "src")
+
+    def test_override_option_registered(self, pytester):
+        """--override/--override-config/--list-overrides show up in --help."""
+        pytester.makeini(
+            f"""
+            [pytest]
+            pythonpath = {self._repo_src_path()}
+            """
+        )
+        pytester.makeconftest(
+            """
+            from flag_gems.cli_override import add_override_arguments, apply_overrides_from_args
+
+            def pytest_addoption(parser):
+                add_override_arguments(parser)
+
+            def pytest_configure(config):
+                config._override_registry = apply_overrides_from_args(config.option)
+
+            def pytest_unconfigure(config):
+                if hasattr(config, "_override_registry"):
+                    config._override_registry.restore_all()
+            """
+        )
+
+        result = pytester.runpytest("--help")
+        result.stdout.fnmatch_lines(["*--override=SPEC*"])
+        result.stdout.fnmatch_lines(["*--override-config=PATH*"])
+        result.stdout.fnmatch_lines(["*--list-overrides*"])
+
+    def test_override_applied_through_cli(self, pytester):
+        """A test file calling flag_gems.abs() sees the overridden impl."""
+        pytester.makeini(
+            f"""
+            [pytest]
+            pythonpath = {self._repo_src_path()}
+            """
+        )
+        pytester.makeconftest(
+            """
+            from flag_gems.cli_override import add_override_arguments, apply_overrides_from_args
+
+            def pytest_addoption(parser):
+                add_override_arguments(parser)
+
+            def pytest_configure(config):
+                config._override_registry = apply_overrides_from_args(config.option)
+
+            def pytest_unconfigure(config):
+                if hasattr(config, "_override_registry"):
+                    config._override_registry.restore_all()
+            """
+        )
+
+        custom_impl = pytester.makepyfile(
+            custom_abs="""
+            import torch
+
+            def my_abs(input):
+                result = torch.abs(input)
+                result._custom_marker = "from_cli_override"
+                return result
+            """
+        )
+
+        pytester.makepyfile(
+            test_uses_override="""
+            import torch
+            import flag_gems
+
+            def test_abs_is_overridden():
+                x = torch.tensor([-1.0, -2.0], device=flag_gems.device)
+                result = flag_gems.abs(x)
+                assert getattr(result, "_custom_marker", None) == "from_cli_override"
+            """
+        )
+
+        result = pytester.runpytest(
+            "-p",
+            "no:cacheprovider",
+            f"--override=abs:{custom_impl}:my_abs",
+            "test_uses_override.py",
+        )
+        result.assert_outcomes(passed=1)
+
+    def test_override_config_file_applied_through_cli(self, pytester):
+        """--override-config loads a YAML file and applies the overrides."""
+        pytester.makeini(
+            f"""
+            [pytest]
+            pythonpath = {self._repo_src_path()}
+            """
+        )
+        pytester.makeconftest(
+            """
+            from flag_gems.cli_override import add_override_arguments, apply_overrides_from_args
+
+            def pytest_addoption(parser):
+                add_override_arguments(parser)
+
+            def pytest_configure(config):
+                config._override_registry = apply_overrides_from_args(config.option)
+
+            def pytest_unconfigure(config):
+                if hasattr(config, "_override_registry"):
+                    config._override_registry.restore_all()
+            """
+        )
+
+        custom_impl = pytester.makepyfile(
+            custom_neg="""
+            import torch
+
+            def my_neg(input):
+                result = torch.neg(input)
+                result._custom_marker = "from_config_file"
+                return result
+            """
+        )
+
+        config_file = pytester.makefile(
+            ".yaml",
+            overrides=f"""
+            overrides:
+              neg:
+                file: {custom_impl}
+                function: my_neg
+            """,
+        )
+
+        pytester.makepyfile(
+            test_uses_config_override="""
+            import torch
+            import flag_gems
+
+            def test_neg_is_overridden():
+                x = torch.tensor([1.0, -2.0], device=flag_gems.device)
+                result = flag_gems.neg(x)
+                assert getattr(result, "_custom_marker", None) == "from_config_file"
+            """
+        )
+
+        result = pytester.runpytest(
+            "-p",
+            "no:cacheprovider",
+            f"--override-config={config_file}",
+            "test_uses_config_override.py",
+        )
+        result.assert_outcomes(passed=1)
+
+    def test_no_override_leaves_default_implementation(self, pytester):
+        """Without --override, flag_gems ops run unmodified."""
+        pytester.makeini(
+            f"""
+            [pytest]
+            pythonpath = {self._repo_src_path()}
+            """
+        )
+        pytester.makeconftest(
+            """
+            from flag_gems.cli_override import add_override_arguments, apply_overrides_from_args
+
+            def pytest_addoption(parser):
+                add_override_arguments(parser)
+
+            def pytest_configure(config):
+                config._override_registry = apply_overrides_from_args(config.option)
+
+            def pytest_unconfigure(config):
+                if hasattr(config, "_override_registry"):
+                    config._override_registry.restore_all()
+            """
+        )
+
+        pytester.makepyfile(
+            test_no_override="""
+            import torch
+            import flag_gems
+
+            def test_abs_not_overridden():
+                x = torch.tensor([-1.0, -2.0], device=flag_gems.device)
+                result = flag_gems.abs(x)
+                assert not hasattr(result, "_custom_marker")
+            """
+        )
+
+        result = pytester.runpytest(
+            "-p", "no:cacheprovider", "test_no_override.py"
+        )
+        result.assert_outcomes(passed=1)
 
 
 if __name__ == "__main__":
