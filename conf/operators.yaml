@@ -14038,6 +14038,19 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: sym_numel
+  description: Returns the total number of elements of the input tensor.
+  for:
+  - sym_numel
+  marks:
+  - sym_numel
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: sym_storage_offset
   description: Returns the storage offset of the input tensor as an integer. Used
     for torch.compile symbolic tracing.
