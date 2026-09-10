@@ -28,6 +28,8 @@ def _make_dynamic_quantized_gru(
         else torch.ao.quantization.float16_dynamic_qconfig
     )
     quantized_gru = torch.ao.nn.quantized.dynamic.GRU.from_float(float_gru)
+    # Keep quantized_gru on CPU as aten::quantized_gru.input is CPU-only
+    quantized_gru = quantized_gru.cpu()
     params = [module.param for module in quantized_gru._all_weight_values]
     return quantized_gru, params
 
@@ -72,6 +74,7 @@ def test_quantized_gru(shape, hidden_size, weight_dtype, num_layers, bidirection
     ref_hx = utils.to_reference(hx)
     ref_output, ref_hx_out = ref_gru(ref_input, ref_hx)
 
+    # Call the FlagGems implementation
     output, out_hx = quantized_gru_input(
         input_tensor,
         hx,
