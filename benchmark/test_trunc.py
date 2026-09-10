@@ -33,7 +33,7 @@ def test_trunc():
     bench.run()
 
 
-@pytest.mark.trunc
+@pytest.mark.trunc_
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
