@@ -24,7 +24,6 @@ from . import accuracy_utils as utils
 # Shapes: (batch_size, input_size, hidden_size)
 LSTM_CELL_SHAPES = [
     (1, 64, 64),
-    (16, 128, 128),
     (32, 256, 256),
     (64, 256, 256),
     (64, 512, 512),
