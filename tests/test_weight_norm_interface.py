@@ -64,6 +64,9 @@ def test_weight_norm_interface(shape, dtype, dim):
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_weight_norm_interface_backward(shape, dtype, dim):
+    if flag_gems.vendor_name == "cambricon":
+        torch.manual_seed(42)
+        torch.mlu.manual_seed_all(42)
     dim = dim % len(shape)
     res_w_grad = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     res_v = torch.randn_like(res_w_grad)

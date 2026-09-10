@@ -12,9 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
+
 import torch
 import triton
 import triton.language as tl
+
+logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -58,6 +62,7 @@ def slice_backward(
     end,
     step,
 ):
+    logger.debug("GEMS_ENFLAME SLICE_BACKWARD")
     grad_input = torch.zeros(
         input_sizes,
         device=grad_output.device,

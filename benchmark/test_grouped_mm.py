@@ -34,7 +34,7 @@ class GroupmmBenchmark(base.BlasBenchmark):
     def get_tflops(self, op, *args, **kwargs):
         groups, N, K = args[1].shape
         size_per_group = torch.diff(
-            args[2], prepend=torch.zeros(1, device="cuda", dtype=torch.int32)
+            args[2], prepend=torch.zeros(1, device=args[2].device, dtype=torch.int32)
         )
         total_flops = 0
         for i in range(groups):
@@ -54,8 +54,8 @@ def _input_fn(groups, N, K, cur_dtype, device):
         M_g = random.randint(1, 16384)
         N_g = N
         K_g = K
-        A_g = torch.rand([M_g, K_g], device="cuda", dtype=cur_dtype)
-        B_g = torch.rand([K_g, N_g], device="cuda", dtype=cur_dtype)
+        A_g = torch.rand([M_g, K_g], device=device, dtype=cur_dtype)
+        B_g = torch.rand([K_g, N_g], device=device, dtype=cur_dtype)
         group_A_list.append(A_g)
         group_B_list.append(B_g)
         M_list.append(M_g)
@@ -65,7 +65,7 @@ def _input_fn(groups, N, K, cur_dtype, device):
     mat_a = torch.cat([x for x in group_A_list], dim=0)
     mat_b = torch.stack([x for x in group_B_list], dim=0)
     offs = torch.tensor(
-        [sum(M_list[: i + 1]) for i in range(groups)], dtype=torch.int32, device="cuda"
+        [sum(M_list[: i + 1]) for i in range(groups)], dtype=torch.int32, device=device
     )
 
     yield mat_a, mat_b, offs

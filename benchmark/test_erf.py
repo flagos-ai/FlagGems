@@ -20,6 +20,19 @@ import flag_gems
 from . import base, consts
 
 
+@pytest.mark.special_erf
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_special_erf():
+    bench = base.UnaryPointwiseBenchmark(
+        op_name="special_erf",
+        torch_op=torch.special.erf,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
+
+
 @pytest.mark.erf
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"

@@ -137,8 +137,8 @@ def {wrapper_name}(x, merge_shapes, merge_strides, merge_dim_size):
             grid = lambda meta: (1, TOTAL_CORE_NUM, )
 
     out = torch.empty_like(x)
-    with torch.cuda.device(x.device):
-        {kernel_name}[grid]({args})
+    with torch.mlu.device(x.device):
+        {kernel_name}[grid]({args}, task_type="block")
     return out
         """,
             wrapper_name=self.wrapper_func_name,

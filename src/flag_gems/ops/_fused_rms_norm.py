@@ -274,44 +274,64 @@ def _fused_rms_norm_grad_dw_kernel(
     )
 
 
-def _fused_rms_norm_backward(dy, x, inv_rms, normalized_shape, weight=None, eps=1e-5):
+def _fused_rms_norm_backward(
+    grad_out, input, normalized_shape, rstd, weight=None, output_mask=(True, True)
+):
     """
     Fused RMS normalization backward pass.
 
+    Matches the ``aten::_fused_rms_norm_backward`` schema
+    ``(Tensor grad_out, Tensor input, int[] normalized_shape, Tensor rstd,
+    Tensor? weight, bool[2] output_mask) -> (Tensor, Tensor)``.
+
     Args:
-        dy: Gradient of the output
-        x: Input tensor from forward pass
-        inv_rms: Inverse RMS from forward pass
-        normalized_shape: Shape of the normalization dimensions
-        weight: Optional weight tensor
-        eps: Epsilon for numerical stability
+        grad_out: Gradient of the output.
+        input: Input tensor from the forward pass.
+        normalized_shape: Shape of the normalization dimensions.
+        rstd: Reciprocal RMS (inverse RMS) from the forward pass.
+        weight: Optional weight tensor.
+        output_mask: Two booleans selecting which of ``(dx, dw)`` to compute.
 
     Returns:
-        tuple: (dx, dw) gradients for input and weight (dw is None if weight is None)
+        tuple: (dx, dw) gradients for input and weight. Each entry is ``None``
+        when not requested by ``output_mask`` (``dw`` is also ``None`` when
+        ``weight`` is ``None``).
     """
     logger.debug("GEMS _FUSED_RMS_NORM BACKWARD")
-    dim = x.ndim - len(normalized_shape)
-    M = math.prod(x.shape[:dim])
+
+    if len(output_mask) != 2:
+        raise ValueError("output_mask must contain two booleans")
+    if output_mask[1] and weight is None:
+        raise RuntimeError("weight gradient requested without a weight tensor")
+
+    # The backward kernels derive the input gradient from ``rstd`` directly, so
+    # the epsilon is only a placeholder kept for kernel-signature compatibility.
+    eps = 1e-5
+    dim = input.ndim - len(normalized_shape)
+    M = math.prod(input.shape[:dim])
     N = math.prod(normalized_shape)
 
     BLOCK_SIZE = triton.next_power_of_2(N)
-    x = x.contiguous()
-    dy = dy.contiguous()
-    dx = torch.empty_like(x)
+    x = input.contiguous()
+    dy = grad_out.contiguous()
 
-    with torch_device_fn.device(x.device):
-        if weight is not None:
-            weight = weight.contiguous()
-            _fused_rms_norm_grad_dx_kernel[M,](
-                x, dy, inv_rms, dx, weight, N, 1, N, 1, N, eps, BLOCK_SIZE
-            )
-        else:
-            _fused_rms_norm_grad_dx_kernel_no_weight[M,](
-                x, dy, inv_rms, dx, N, 1, N, 1, N, eps, BLOCK_SIZE
-            )
+    dx = None
+    if output_mask[0]:
+        dx = torch.empty_like(x)
+        with torch_device_fn.device(x.device):
+            if weight is not None:
+                weight = weight.contiguous()
+                _fused_rms_norm_grad_dx_kernel[M,](
+                    x, dy, rstd, dx, weight, N, 1, N, 1, N, eps, BLOCK_SIZE
+                )
+            else:
+                _fused_rms_norm_grad_dx_kernel_no_weight[M,](
+                    x, dy, rstd, dx, N, 1, N, 1, N, eps, BLOCK_SIZE
+                )
 
     dw = None
-    if weight is not None:
+    if output_mask[1] and weight is not None:
+        weight = weight.contiguous()
         # ROW/COL block sizes chosen to balance occupancy and the partial-sum
         # buffer size for the weight-gradient reduction over rows.
         ROW_BLOCK_SIZE = 16
@@ -327,7 +347,7 @@ def _fused_rms_norm_backward(dy, x, inv_rms, normalized_shape, weight=None, eps=
             _fused_rms_norm_grad_dw_kernel[row_block_num, col_block_num](
                 x,
                 dy,
-                inv_rms,
+                rstd,
                 partial_buffer,
                 N,
                 1,
@@ -341,7 +361,7 @@ def _fused_rms_norm_backward(dy, x, inv_rms, normalized_shape, weight=None, eps=
             dw = (
                 torch.sum(partial_buffer, dim=0, dtype=torch.float32)
                 .to(x.dtype)
-                .reshape(-1)
+                .reshape(normalized_shape)
             )
 
     return dx, dw
@@ -360,9 +380,10 @@ class _FusedRmsNorm(torch.autograd.Function):
     def backward(ctx, dy, d_inv_rms):
         x, inv_rms, weight = ctx.saved_tensors
         normalized_shape = ctx.normalized_shape
-        eps = ctx.eps
 
-        dx, dw = _fused_rms_norm_backward(dy, x, inv_rms, normalized_shape, weight, eps)
+        dx, dw = _fused_rms_norm_backward(
+            dy, x, normalized_shape, inv_rms, weight, (True, weight is not None)
+        )
         return dx, None, dw, None
 
 

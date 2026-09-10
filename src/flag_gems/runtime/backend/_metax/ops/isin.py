@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
 import math
 
 import torch
@@ -25,6 +26,8 @@ from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
 from .unique import _unique2
+
+logger = logging.getLogger(__name__)
 
 
 def launch_arg(BLOCK_M, BLOCK_N, N, num_warps):
@@ -231,11 +234,11 @@ def isin_by_search(
     elif M <= 4194304:  # 2 ** 22 = 1024 * 4096
         _, BLOCK_M, num_warps = launch_arg(None, 1024, M, 8)
     elif M <= 8388608:  # 2 ** 23 = 1024 * 8192
-        _, BLOCK_M, num_warps = launch_arg(None, 2048, M, 16)
+        _, BLOCK_M, num_warps = launch_arg(None, 2048, M, 8)
     elif M <= 268435456:  # 2 ** 28 = 1024 * 262144
-        _, BLOCK_M, num_warps = launch_arg(None, 4096, M, 16)
+        _, BLOCK_M, num_warps = launch_arg(None, 4096, M, 8)
     else:
-        _, BLOCK_M, num_warps = launch_arg(None, 2048, M, 16)
+        _, BLOCK_M, num_warps = launch_arg(None, 2048, M, 8)
     log_n = int(math.log2(N)) + 1
     ctas_num = min(65536, triton.cdiv(M, BLOCK_M))
     tiles_per_cta = triton.cdiv(M, BLOCK_M * ctas_num)
@@ -266,6 +269,7 @@ def isin(
     assume_unique: bool = False,
     invert: bool = False,
 ) -> torch.Tensor:
+    logger.debug("GEMS_METAX ISIN")
     if not torch.is_tensor(in0):
         assert torch.is_tensor(in1)
         in0 = torch.tensor(in0, device=in1.device)

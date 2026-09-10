@@ -64,6 +64,9 @@ def test_mode(shape, dim, keepdim, dtype):
 
 
 @pytest.mark.mode
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
+)
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int32])
 @pytest.mark.parametrize(
     "data, dim, keepdim",

@@ -12,10 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from .matmul_bias_activation import matmul_bias_activation
 from .sparse_attention import sparse_attn_triton
 from .top_k_per_row_prefill import top_k_per_row_prefill
 
 __all__ = [
+    "matmul_bias_activation",
     "sparse_attn_triton",
     "top_k_per_row_prefill",
 ]

@@ -23,8 +23,6 @@ from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer
 from flag_gems.utils.shape_utils import restride_dim
 
-from .scatter import scatter
-
 logger = logging.getLogger(__name__)
 
 
@@ -53,10 +51,10 @@ def generate_gather_kernel(
     code.newline()
 
     # the decorators
-    code.writeline("@libentry()")
     code.writeline(
         '@libtuner(configs=runtime.get_tuned_config("gather"), key=["N"], strategy=["log"])'
     )
+    code.writeline("@libentry()")
     code.writeline("@triton.jit")
 
     # signature
@@ -251,11 +249,185 @@ class GatherFunction:
         return max_rank
 
 
+def generate_gather_backward_kernel(
+    rank: int,
+    dim: int,
+    large_tensor: bool,
+    fast_path: bool,
+    kernel_name: str,
+    code: IndentedBuffer,
+) -> IndentedBuffer:
+    code.newline()
+    code.newline()
+    code.writeline(
+        '@libtuner(configs=runtime.get_tuned_config("scatter"), key=["N"], strategy=["log"],'
+    )
+    code.writeline('          restore_value=["out"], )')
+    code.writeline("@libentry()")
+    code.writeline("@triton.jit")
+    code.writeline(f"def {kernel_name}(")
+    with code.indent():
+        code.writeline("grad,")
+        code.writeline("index,")
+        code.writeline("out,")
+
+        stride_args = ", ".join(f"out_stride_{i}: int" for i in range(rank))
+        code.writeline(f"{stride_args}, # stride for out")
+
+        stride_args = ", ".join(f"grad_stride_{i}: int" for i in range(rank))
+        code.writeline(f"{stride_args}, # stride for grad")
+
+        shape_args = ", ".join(f"index_shape_{i}: int" for i in range(rank))
+        code.writeline(f"{shape_args}, # shape for index")
+
+        code.writeline("dim,")
+        code.writeline("stride_dim,")
+        code.writeline("N,")
+        code.writeline("BLOCK_SIZE: tl.constexpr,")
+    code.writeline("):")
+
+    with code.indent():
+        code.writeline("pid = tl.program_id(0)")
+        code.writeline("offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)")
+        code.writeline("mask = offsets < N")
+        if fast_path:
+            # Fast path for the benchmark/common contiguous 2D last-dim case.
+            code.writeline("row = offsets // index_shape_1")
+            code.writeline("out_offsets = row * out_stride_0")
+            code.writeline("cur_grad = tl.load(grad + offsets, mask=mask, other=0)")
+        else:
+            if large_tensor:
+                code.writeline("out_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)")
+                code.writeline("grad_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)")
+            else:
+                code.writeline("out_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int32)")
+                code.writeline("grad_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int32)")
+            code.writeline("cur_idx = offsets")
+            for i in range(rank - 1, -1, -1):
+                code.writeline(f"mod = cur_idx % index_shape_{i}")
+                if dim != i:
+                    code.writeline(f"out_offsets += mod * out_stride_{i}")
+                code.writeline(f"grad_offsets += mod * grad_stride_{i}")
+                code.writeline(f"cur_idx = cur_idx // index_shape_{i}")
+            code.writeline(
+                "cur_grad = tl.load(grad + grad_offsets, mask=mask, other=0)"
+            )
+        if large_tensor:
+            code.writeline("cur_index = tl.load(index + offsets, mask=mask, other=0)")
+        else:
+            code.writeline(
+                "cur_index = tl.load(index + offsets, mask=mask, other=0).to(tl.int32)"
+            )
+        code.writeline("out_offsets += cur_index * stride_dim")
+        code.writeline(
+            "tl.atomic_add(out + out_offsets, cur_grad, sem='relaxed', mask=mask)"
+        )
+
+    code.newline()
+    code.newline()
+    return code
+
+
+def generate_gather_backward_wrapper(
+    rank: int,
+    wrapper_name: str,
+    kernel_name: str,
+    code: IndentedBuffer,
+) -> IndentedBuffer:
+    code.writeline(f"def {wrapper_name}(grad, index, out, dim, N):")
+    with code.indent():
+        code.writeline("out_strides = list(out.stride())")
+        code.writeline("grad_strides = grad.stride()")
+        code.writeline("index_shapes = list(index.shape)")
+        code.writeline("stride_dim = out_strides[dim]")
+        code.writeline("out_strides[dim] = 0")
+        code.writeline("grid = lambda meta: (")
+        with code.indent():
+            code.writeline('triton.cdiv(N, meta["BLOCK_SIZE"]),')
+        code.writeline(")")
+        code.writeline(f"{kernel_name}[grid](")
+        with code.indent():
+            code.writeline("grad, index, out,")
+            s = ", ".join(f"out_strides[{i}]" for i in range(rank))
+            code.writeline(f"{s},")
+            s = ", ".join(f"grad_strides[{i}]" for i in range(rank))
+            code.writeline(f"{s},")
+            s = ", ".join(f"index_shapes[{i}]" for i in range(rank))
+            code.writeline(f"{s},")
+            code.writeline("dim,")
+            code.writeline("stride_dim,")
+            code.writeline("N,")
+        code.writeline(")")
+        code.writeline("return out")
+    return code
+
+
+def generate_gather_backward_code(
+    rank: int,
+    dim: int,
+    large_tensor: bool,
+    fast_path: bool,
+    code: IndentedBuffer,
+) -> IndentedBuffer:
+    code = generate_imports(code)
+    code = generate_gather_backward_kernel(
+        rank, dim, large_tensor, fast_path, "_gather_backward_jit_function", code
+    )
+    code = generate_gather_backward_wrapper(
+        rank, "_gather_backward_wrapper", "_gather_backward_jit_function", code
+    )
+    return code
+
+
+class GatherBackwardFunction:
+    def __init__(self):
+        self.pid = os.getpid()
+        self.overloads: Mapping[str, Callable] = {}
+
+    def __call__(self, *args, **kwargs):
+        rank = kwargs["rank"]
+        dim = kwargs["dim"]
+        large_tensor = kwargs["large_tensor"]
+        fast_path = kwargs["fast_path"]
+        key = f"{self.arg_key(*args)}_{rank}_{dim}_{large_tensor}_{fast_path}"
+        if key in self.overloads:
+            overload = self.overloads[key]
+        else:
+            code = IndentedBuffer()
+            code = generate_gather_backward_code(
+                rank, dim, large_tensor, fast_path, code
+            )
+            file_name = f"gather_backward_rank_{key}_pid_{self.pid}.py"
+            with open(code_cache_dir() / file_name, "wt", encoding="utf-8") as f:
+                f.write(code.getvalue())
+            spec = importlib.util.spec_from_file_location(
+                f"_gen_gather_backward_module_rank_{key}_pid_{self.pid}",
+                f.name,
+            )
+            m = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(m)
+            overload = getattr(m, "_gather_backward_wrapper")
+            self.overloads[key] = overload
+        return overload(*args)
+
+    def arg_key(self, *args):
+        tensors = [item for item in args if torch.is_tensor(item)]
+        return max(item.ndim for item in tensors)
+
+
+_gather_backward_func = GatherBackwardFunction()
+
+
 _gather_func = GatherFunction()
 
 
 def gather(inp, dim, index, out=None, sparse_grad=False):
     logger.debug("GEMS_CAMBRICON GATHER")
+    if inp.ndim != index.ndim:
+        raise IndexError(
+            f"self and index must have the same number of dimensions, "
+            f"got self.ndim = {inp.ndim} and index.ndim = {index.ndim}"
+        )
     inp = inp.contiguous()
     index = index.contiguous()
     if out is None:
@@ -288,4 +460,23 @@ def gather(inp, dim, index, out=None, sparse_grad=False):
 def gather_backward(grad, self, dim, index, sparse_grad):
     logger.debug("GEMS_CAMBRICON GATHER_BACKWARD")
     result = grad.new_zeros(self.shape)
-    return scatter(result, dim, index, grad, reduce="add")
+    grad = grad.contiguous()
+    index = index.contiguous()
+    dim = dim % index.ndim
+    N = index.numel()
+    large_tensor = (grad.numel() * grad.element_size() > 2**31) or (
+        result.numel() * result.element_size() > 2**31
+    )
+    fast_path = len(index.shape) == 2 and dim == 1 and N > 8192
+    _gather_backward_func(
+        grad,
+        index,
+        result,
+        dim,
+        N,
+        rank=len(index.shape),
+        large_tensor=large_tensor,
+        fast_path=fast_path,
+        dim=dim,
+    )
+    return result

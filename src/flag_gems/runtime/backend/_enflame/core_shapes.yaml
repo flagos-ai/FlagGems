@@ -240,6 +240,23 @@ UnaryPointwiseBenchmark:
     - [1024, 1024, 512]
   shape_desc: "(B), M, N"
 
+ScaledDotProductFusedAttentionOverrideableBenchmark:
+  shapes:
+    - [2, 8, 64, 64]
+    - [4, 8, 128, 64]
+    - [2, 8, 128, 128]
+    - [1, 16, 256, 64]
+  shape_desc: "B, H, S, D"
+
+FractionalMaxPool2dBenchmark:
+  shapes:
+    - [4, 3, 224, 224]
+    - [16, 64, 56, 56]
+    - [32, 128, 28, 28]
+    - [64, 256, 14, 14]
+    - [128, 512, 7, 7]
+  shape_desc: "N, C, H, W"
+
 # the default shapes info
 Benchmark:
   shapes:
@@ -277,6 +294,15 @@ Conv3DBenchmark:
     - [16, 32, 12, 12, 12, 24, 3, 3, 3, 1, 2, 1]  # smaller input, different padding
   shape_desc: "N, C_in, D, H, W, C_out, K_d, K_h, K_w, stride, padding, groups"
 
+ConvDepthwise2DBenchmark:
+  shapes:
+    - [32, 32, 64, 64, 3, 3, 1, 1, 1]
+    - [16, 64, 128, 128, 3, 3, 2, 1, 1]
+    - [8, 128, 56, 56, 5, 5, 1, 2, 1]
+    - [4, 256, 28, 28, 3, 3, 1, 1, 2]
+    - [2, 512, 14, 14, 3, 3, 1, 1, 1]
+  shape_desc: "N, C, H, W, K_h, K_w, stride, padding, dilation"
+
 AttentionBenchmark:
   shapes:
     # - [4, 32, 1024, 64]
@@ -292,6 +318,12 @@ KronBenchmark:
     - [128, 128]
     - [256, 256]
     - [4, 8, 16, 32]
+
+poisson:
+  shapes:
+    - [64, 64]
+    - [256, 256]
+    - [1024, 1024]
 
 IndexPutAccFalseBenchmark:
   shapes:

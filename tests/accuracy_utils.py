@@ -291,12 +291,14 @@ def to_reference(inp, upcast=False):
     if TO_CPU:
         ref_inp = ref_inp.to("cpu")
     if upcast:
+        # When reference runs on CPU (TO_CPU=True), always upcast to float64/complex128
+        # since CPU always supports fp64. This ensures the reference has high precision
+        # for validating GPU float32 results, regardless of GPU fp64 support.
+        can_use_fp64 = fp64_is_supported or TO_CPU
         if ref_inp.is_complex():
-            ref_inp = ref_inp.to(
-                torch.complex128 if fp64_is_supported else torch.complex64
-            )
+            ref_inp = ref_inp.to(torch.complex128 if can_use_fp64 else torch.complex64)
         else:
-            ref_inp = ref_inp.to(torch.float64 if fp64_is_supported else torch.float32)
+            ref_inp = ref_inp.to(torch.float64 if can_use_fp64 else torch.float32)
     return ref_inp
 
 
