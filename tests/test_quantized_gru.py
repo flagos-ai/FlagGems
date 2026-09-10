@@ -42,8 +42,11 @@ def _make_dynamic_quantized_gru(
 @pytest.mark.parametrize(
     "num_layers,bidirectional", [(1, False), (2, True)], ids=["single", "stacked_bidir"]
 )
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
 def test_quantized_gru(shape, hidden_size, weight_dtype, num_layers, bidirectional):
     """Compare the dense Triton implementation with packed dynamic GRU."""
+    from flag_gems.ops.quantized_gru import quantized_gru_input
+
     batch_size, seq_len, input_size = shape
     directions = 2 if bidirectional else 1
     ref_gru, params = _make_dynamic_quantized_gru(
@@ -72,8 +75,8 @@ def test_quantized_gru(shape, hidden_size, weight_dtype, num_layers, bidirection
     ref_hx = utils.to_reference(hx)
     ref_output, ref_hx_out = ref_gru(ref_input, ref_hx)
 
-    # Call the FlagGems implementation via the registered interface
-    output, out_hx = flag_gems.quantized_gru_input(
+    # Call FlagGems Triton implementation directly
+    output, out_hx = quantized_gru_input(
         input_tensor,
         hx,
         params,
@@ -95,7 +98,10 @@ def test_quantized_gru(shape, hidden_size, weight_dtype, num_layers, bidirection
 
 @pytest.mark.quantized_gru
 @pytest.mark.parametrize("bidirectional", [False, True])
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
 def test_quantized_gru_packed_data(bidirectional):
+    from flag_gems.ops.quantized_gru import quantized_gru_data
+
     batch_size, seq_len, input_size, hidden_size = 3, 5, 8, 20
     directions = 2 if bidirectional else 1
     ref_gru, params = _make_dynamic_quantized_gru(
@@ -112,7 +118,7 @@ def test_quantized_gru_packed_data(bidirectional):
     hx_cpu = torch.zeros(directions, batch_size, hidden_size)
     ref_output, ref_hx = ref_gru(packed, hx_cpu)
 
-    output, out_hx = flag_gems.quantized_gru_data(
+    output, out_hx = quantized_gru_data(
         packed.data.to(flag_gems.device),
         packed.batch_sizes,
         hx_cpu.to(flag_gems.device),
