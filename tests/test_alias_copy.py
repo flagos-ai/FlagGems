@@ -27,8 +27,7 @@ def test_alias_copy(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
     ref_out = torch.ops.aten.alias_copy(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.alias_copy(inp)
+    res_out = flag_gems.alias_copy(inp)
     utils.gems_assert_equal(res_out, ref_out)
 
 
@@ -42,8 +41,7 @@ def test_alias_copy_out(shape, dtype):
     out = torch.empty_like(inp)
 
     torch.ops.aten.alias_copy.out(ref_inp, out=ref_out)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.alias_copy.out(inp, out=out)
+    res_out = flag_gems.alias_copy_out(inp, out=out)
 
     assert res_out is out
     utils.gems_assert_equal(res_out, ref_out)
