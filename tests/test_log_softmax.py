@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import random
 import time
 
@@ -38,8 +52,7 @@ def test_log_softmax(shape, dtype, dim):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.nn.functional.log_softmax(ref_inp, dim=dim)
-    with flag_gems.use_gems():
-        res_out = torch.nn.functional.log_softmax(inp, dim=dim)
+    res_out = flag_gems.log_softmax(inp, dim=dim)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -61,8 +74,7 @@ def test_accuracy_log_softmax_out(shape, dtype, dim):
     torch.ops.aten._log_softmax.out(ref_inp, dim, False, out=ref_out)
 
     res_out = torch.empty(shape, dtype=dtype, device=flag_gems.device)
-    with flag_gems.use_gems():
-        torch.ops.aten._log_softmax.out(inp, dim, False, out=res_out)
+    flag_gems.log_softmax_out(inp, dim, False, out=res_out)
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
@@ -86,10 +98,7 @@ def test_log_softmax_backward_data(shape, dtype, dim):
     ref_in_grad = torch.ops.aten._log_softmax_backward_data(
         ref_grad, ref_out, dim, ref_grad.dtype
     )
-    with flag_gems.use_gems():
-        res_in_grad = torch.ops.aten._log_softmax_backward_data(
-            res_grad, res_out, dim, dtype
-        )
+    res_in_grad = flag_gems.log_softmax_backward(res_grad, res_out, dim, dtype)
 
     utils.gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=shape[dim])
 
@@ -115,8 +124,22 @@ def test_accuracy_log_softmax_backward_out(shape, dtype, dim):
     )
 
     res_in_grad = torch.empty(shape, dtype=dtype, device=flag_gems.device)
-    with flag_gems.use_gems():
-        torch.ops.aten._log_softmax_backward_data.out(
-            res_grad, res_out, dim, dtype, out=res_in_grad
-        )
+    flag_gems.log_softmax_backward_out(res_grad, res_out, dim, dtype, out=res_in_grad)
     utils.gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=shape[dim])
+
+
+@pytest.mark.log_softmax_backward_data
+@pytest.mark.parametrize("shape", [(3, 17, 2), (3, 65, 2), (5, 257, 3)])
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_log_softmax_backward_partial_tiles(shape, dtype):
+    # Odd reduction lengths leave masked lanes in the backward sum.
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    output = torch.log_softmax(inp.float(), dim=1).to(dtype)
+    grad = torch.ones_like(output)
+    ref_output = utils.to_reference(output, True)
+    ref_grad = utils.to_reference(grad, True)
+    expected = torch.ops.aten._log_softmax_backward_data(
+        ref_grad, ref_output, 1, ref_grad.dtype
+    )
+    result = flag_gems.log_softmax_backward(grad, output, 1, dtype)
+    utils.gems_assert_close(result, expected, dtype, reduce_dim=shape[1])

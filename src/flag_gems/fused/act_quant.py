@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from typing import Optional, Tuple
 
 import torch
@@ -42,12 +56,14 @@ def act_quant_triton_kernel(
     stride_xm,
     stride_ym,
     stride_sm,
+    n_blocks,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     ROUND_SCALE: tl.constexpr,
 ):
-    pid_m = tl.program_id(0)
-    pid_n = tl.program_id(1)
+    pid = tl.program_id(0)
+    pid_m = pid // n_blocks
+    pid_n = pid % n_blocks
 
     row_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
     col_offsets = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
@@ -136,7 +152,7 @@ def act_quant_triton(
     y_view = y.view(-1, N)
     s_view = s.view(-1, n_blocks)
 
-    grid = (m_blocks, n_blocks)
+    grid = (m_blocks * n_blocks,)
     act_quant_triton_kernel[grid](
         x_2d,
         y_view,
@@ -146,6 +162,7 @@ def act_quant_triton(
         x_2d.stride(0),
         y_view.stride(0),
         s_view.stride(0),
+        n_blocks,
         BLOCK_M=BLOCK_M,
         BLOCK_N=BLOCK_N,
         ROUND_SCALE=(scale_fmt is not None),

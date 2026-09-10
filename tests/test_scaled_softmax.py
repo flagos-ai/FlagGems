@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import random
 import time
 
@@ -33,13 +47,17 @@ def test_scaled_softmax_forward(
     except ImportError:
         pytest.skip("transformer_engine_torch is not available, skipping accuracy test")
 
+    te_scaled_softmax_forward = getattr(tex, "scaled_softmax_forward", None)
+    if te_scaled_softmax_forward is None:
+        pytest.skip("'scaled_softmax_forward' not found in TransformerEngine")
+
     s = torch.randn(
         (batch_size, attn_heads, query_seq_len, key_seq_len),
         dtype=dtype,
         device=flag_gems.device,
     )
 
-    p_ref = tex.scaled_softmax_forward(s, scale_factor)
+    p_ref = te_scaled_softmax_forward(s, scale_factor)
     p_ref = utils.to_reference(p_ref)
     with flag_gems.use_gems():
         p = flag_gems.scaled_softmax_forward(s, scale_factor)
@@ -62,6 +80,13 @@ def test_scaled_softmax_backward(
     except ImportError:
         pytest.skip("transformer_engine_torch is not available, skipping accuracy test")
 
+    te_scaled_softmax_forward = getattr(tex, "scaled_softmax_forward", None)
+    te_scaled_softmax_backward = getattr(tex, "scaled_softmax_backward", None)
+    if te_scaled_softmax_forward is None:
+        pytest.skip("'scaled_softmax_forward' not found in TransformerEngine")
+    if te_scaled_softmax_backward is None:
+        pytest.skip("'scaled_softmax_backward' not found in TransformerEngine")
+
     out_grad = torch.randn(
         (batch_size, attn_heads, query_seq_len, key_seq_len),
         dtype=dtype,
@@ -73,11 +98,11 @@ def test_scaled_softmax_backward(
         device=flag_gems.device,
     )
 
-    p_ref = tex.scaled_softmax_forward(s, scale_factor)
+    p_ref = te_scaled_softmax_forward(s, scale_factor)
     with flag_gems.use_gems():
         p = flag_gems.scaled_softmax_forward(s, scale_factor)
         in_grad = flag_gems.scaled_softmax_backward(out_grad, p, scale_factor)
-    in_grad_ref = tex.scaled_softmax_backward(out_grad, p_ref, scale_factor)
+    in_grad_ref = te_scaled_softmax_backward(out_grad, p_ref, scale_factor)
     in_grad_ref = utils.to_reference(in_grad_ref)
 
     utils.gems_assert_close(

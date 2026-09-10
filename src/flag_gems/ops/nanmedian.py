@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 import math
 from collections import namedtuple
@@ -877,12 +891,18 @@ def _nanmedian_kthvalue_fallback(inp, M, N):
         block_n = _count_block_n(inp, N)
         with torch_device_fn.device(inp.device):
             count_valid_kernel[(M,)](inp, valid_count, M, N, block_n, inp.is_cuda)
+        # Replace NaN with +inf so kthvalue sorts them to the end deterministically
+        kth_inp = torch.where(
+            torch.isnan(inp),
+            torch.tensor(float("inf"), dtype=inp.dtype, device=inp.device),
+            inp,
+        )
         min_count = int(torch.min(valid_count).item())
         max_count = int(torch.max(valid_count).item())
         if min_count == max_count:
             if max_count == 0:
                 return _full_nan_result((M,), inp.dtype, inp.device)
-            values, indices = torch.kthvalue(inp, (max_count + 1) // 2, dim=1)
+            values, indices = torch.kthvalue(kth_inp, (max_count + 1) // 2, dim=1)
             return NanMedian(values=values, indices=indices)
 
         if max_count - min_count <= 1:
@@ -890,7 +910,7 @@ def _nanmedian_kthvalue_fallback(inp, M, N):
             max_k = (max_count + 1) // 2
 
             if min_k == max_k:
-                values, indices = torch.kthvalue(inp, max_k, dim=1)
+                values, indices = torch.kthvalue(kth_inp, max_k, dim=1)
                 if min_count > 0:
                     return NanMedian(values=values, indices=indices)
                 fallback = _full_nan_result((M,), inp.dtype, inp.device)
@@ -903,14 +923,14 @@ def _nanmedian_kthvalue_fallback(inp, M, N):
             result = _full_nan_result((M,), inp.dtype, inp.device)
 
             if min_count > 0:
-                values, indices = torch.kthvalue(inp, min_k, dim=1)
+                values, indices = torch.kthvalue(kth_inp, min_k, dim=1)
                 mask = valid_count == min_count
                 result = NanMedian(
                     values=torch.where(mask, values, result.values),
                     indices=torch.where(mask, indices, result.indices),
                 )
 
-            values, indices = torch.kthvalue(inp, max_k, dim=1)
+            values, indices = torch.kthvalue(kth_inp, max_k, dim=1)
             mask = valid_count == max_count
             return NanMedian(
                 values=torch.where(mask, values, result.values),
@@ -923,7 +943,7 @@ def _nanmedian_kthvalue_fallback(inp, M, N):
             if count == 0:
                 continue
             row_indices = torch.nonzero(valid_count == count).flatten()
-            rows = torch.index_select(inp, 0, row_indices)
+            rows = torch.index_select(kth_inp, 0, row_indices)
             values, indices = torch.kthvalue(rows, (count + 1) // 2, dim=1)
             result.values[row_indices] = values
             result.indices[row_indices] = indices
