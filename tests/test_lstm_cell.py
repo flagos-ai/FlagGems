@@ -70,10 +70,9 @@ def test_lstm_cell(shape, dtype):
     )
 
     # FlagGems computation
-    with flag_gems.use_gems():
-        res_hy, res_cy = torch.lstm_cell(
-            input_tensor, [h_prev, c_prev], w_ih, w_hh, b_ih, b_hh
-        )
+    res_hy, res_cy = torch.lstm_cell(
+        input_tensor, [h_prev, c_prev], w_ih, w_hh, b_ih, b_hh
+    )
 
     # LSTM cell has two matmuls (input@w_ih.T and h@w_hh.T) plus elementwise ops.
     # Use the larger reduction dimension to account for accumulated rounding errors.
@@ -114,8 +113,7 @@ def test_lstm_cell_no_bias(shape, dtype):
     ref_hy, ref_cy = torch.lstm_cell(ref_input, [ref_h, ref_c], ref_w_ih, ref_w_hh)
 
     # FlagGems computation
-    with flag_gems.use_gems():
-        res_hy, res_cy = torch.lstm_cell(input_tensor, [h_prev, c_prev], w_ih, w_hh)
+    res_hy, res_cy = torch.lstm_cell(input_tensor, [h_prev, c_prev], w_ih, w_hh)
 
     # LSTM cell has two matmuls (input@w_ih.T and h@w_hh.T) plus elementwise ops.
     # Use the larger reduction dimension to account for accumulated rounding errors.
