@@ -10314,6 +10314,18 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '2.1'
+- id: padded_dense_to_jagged_forward
+  description: 'Converts padded dense storage to a one- to five-level jagged tensor.
+
+    '
+  for:
+  - _padded_dense_to_jagged_forward
+  labels:
+  - aten
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: pairwise_distance
   description: 'Computes the pairwise distance between input vectors, or between columns
     of input matrices.
