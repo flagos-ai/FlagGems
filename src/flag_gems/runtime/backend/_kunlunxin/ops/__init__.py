@@ -12,6 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from ._batch_norm_impl_index import batch_norm_impl_index as _batch_norm_impl_index
+from ._native_batch_norm_legit_functional import _native_batch_norm_legit_functional
+from ._native_batch_norm_legit_no_training import _native_batch_norm_legit_no_training
+from ._batch_norm_no_update import _batch_norm_no_update
 from ._euclidean_dist import _euclidean_dist
 from ._functional_sym_constrain_range import _functional_sym_constrain_range
 from ._functional_sym_constrain_range_for_size import (
@@ -26,7 +30,7 @@ from .add import add, add_
 from .addcdiv import addcdiv, addcdiv_, addcdiv_out
 from .addcmul import addcmul, addcmul_out
 from .addmm import addmm, addmm_out
-from .addmv import addmv, addmv_out
+from .addmv import addmv, addmv_, addmv_out
 from .addr import addr
 from .alias_copy import alias_copy, alias_copy_out
 from .all import all, all_dim, all_dims
@@ -45,6 +49,7 @@ from .argmin import argmin
 from .as_strided_copy import as_strided_copy, as_strided_copy_out
 from .asin import asin, asin_
 from .atan import atan, atan_
+from .atan2 import atan2, atan2_, atan2_out
 from .attention import (
     ScaleDotProductAttention,
     flash_attention_forward,
@@ -57,6 +62,7 @@ from .avg_pool2d import avg_pool2d, avg_pool2d_backward
 from .baddbmm import baddbmm
 from .batch_norm import batch_norm, batch_norm_backward
 from .bernoulli_ import bernoulli_
+from .binary_cross_entropy import binary_cross_entropy, binary_cross_entropy_out
 from .bitwise_and import (
     bitwise_and_scalar,
     bitwise_and_scalar_,
@@ -126,8 +132,10 @@ from .elu import elu, elu_, elu_backward
 from .embedding import embedding, embedding_backward
 from .eq import eq, eq_scalar
 from .erf import erf, erf_
+from .erfinv import erfinv, erfinv_
 from .exp import exp, exp_, exp_out
 from .exp2 import exp2, exp2_
+from .expand_copy import expand_copy
 from .expm1 import expm1, expm1_, expm1_out
 from .exponential_ import exponential_
 from .eye import eye
@@ -168,9 +176,10 @@ from .isnan import isnan
 from .kron import kron
 from .layernorm import layer_norm, layer_norm_backward
 from .le import le, le_scalar
-from .leaky_relu import leaky_relu, leaky_relu_, leaky_relu_out
+from .leaky_relu import leaky_relu, leaky_relu_, leaky_relu_backward, leaky_relu_out
 from .lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
 from .less_equal import less_equal, less_equal_scalar
+from .less_equal_ import less_equal_, less_equal_scalar_
 from .lift_fresh_copy import lift_fresh_copy
 from .linspace import linspace
 from .log import log
@@ -190,8 +199,17 @@ from .masked_scatter import masked_scatter, masked_scatter_
 from .masked_select import masked_select
 from .matmul_bf16 import matmul_bf16
 from .matmul_int8 import matmul_int8
+from .matmuladd import matmuladd
 from .max import max, max_dim
-from .max_pool2d_with_indices import max_pool2d_backward, max_pool2d_with_indices
+from .max_pool2d_with_indices import (
+    max_pool2d_backward,
+    max_pool2d_with_indices,
+    max_pool2d_with_indices_backward,
+)
+from .max_pool3d_with_indices import max_pool3d_with_indices
+from .cudnn_batch_norm import cudnn_batch_norm  # noqa: F401
+from .cudnn_batch_norm_backward import cudnn_batch_norm_backward  # noqa: F401
+from .max_pool3d_backward import max_pool3d_backward, max_pool3d_with_indices_backward
 from .maximum import maximum
 from .mean import mean, mean_dim
 from .min import min, min_dim
@@ -218,6 +236,7 @@ from .nllloss import (
 )
 from .nonzero import nonzero
 from .nonzero_numpy import nonzero_numpy
+from .nonzero_static import nonzero_static, nonzero_static_out
 from .normal import (
     normal_,
     normal_float_tensor,
@@ -252,6 +271,9 @@ from .randperm import randperm
 from .reciprocal import reciprocal, reciprocal_
 from .reflection_pad1d import reflection_pad1d, reflection_pad1d_out
 from .reflection_pad2d import reflection_pad2d, reflection_pad2d_out
+from .replication_pad3d_backward import replication_pad3d_backward
+from .miopen_batch_norm_backward import miopen_batch_norm_backward
+from .native_batch_norm import native_batch_norm
 from .relu import relu, relu_
 from .repeat import repeat
 from .repeat_interleave import (
@@ -272,6 +294,12 @@ from .safe_softmax import _safe_softmax
 from .scaled_softmax import scaled_softmax_backward, scaled_softmax_forward
 from .scatter import scatter, scatter_
 from .scatter_add_ import scatter_add_
+from .searchsorted import (
+    searchsorted,
+    searchsorted_out,
+    searchsorted_scalar,
+    searchsorted_scalar_out,
+)
 from .select_scatter import select_scatter
 from .selu import selu, selu_
 from .sgn_ import sgn_
@@ -288,12 +316,13 @@ from .softmax import softmax, softmax_backward
 from .softplus import softplus
 from .softshrink import softshrink, softshrink_out
 from .sort import sort, sort_stable
+from .special_erfinv import special_erfinv, special_erfinv_, special_erfinv_out
 from .special_log_softmax import special_log_softmax
 from .special_logsumexp import special_logsumexp
 from .sqrt import sqrt, sqrt_
 from .stack import stack
 from .std import std
-from .sub import sub, sub_, subtract_
+from .sub import sub, sub_, subtract, subtract_
 from .sum import sum, sum_dim, sum_dim_out, sum_out
 from .t_copy import t_copy, t_copy_out
 from .tan import tan, tan_
@@ -335,6 +364,10 @@ from .zeros_like import zeros_like
 __all__ = [
     "_functional_sym_constrain_range",
     "_functional_sym_constrain_range_for_size",
+    "_batch_norm_impl_index",
+    "_native_batch_norm_legit_functional",
+    "_native_batch_norm_legit_no_training",
+    "_batch_norm_no_update",
     "_euclidean_dist",
     "_is_all_true",
     "_thnn_fused_lstm_cell_backward_impl",
@@ -344,6 +377,9 @@ __all__ = [
     "soft_margin_loss",
     "soft_margin_loss_out",
     "soft_margin_loss_backward",
+    "special_erfinv",
+    "special_erfinv_",
+    "special_erfinv_out",
     "special_log_softmax",
     "special_logsumexp",
     "softshrink",
@@ -365,6 +401,7 @@ __all__ = [
     "addmm",
     "addmm_out",
     "addmv",
+    "addmv_",
     "addmv_out",
     "addr",
     "alias_copy",
@@ -398,11 +435,16 @@ __all__ = [
     "asin_",
     "atan",
     "atan_",
+    "atan2",
+    "atan2_",
+    "atan2_out",
     "avg_pool2d",
     "avg_pool2d_backward",
     "baddbmm",
     "batch_norm",
     "batch_norm_backward",
+    "binary_cross_entropy",
+    "binary_cross_entropy_out",
     "bernoulli_",
     "bitwise_and_scalar",
     "bitwise_and_scalar_",
@@ -477,11 +519,13 @@ __all__ = [
     "eq_scalar",
     "erf",
     "erf_",
+    "erfinv",
     "exp",
     "exp_",
     "exp_out",
     "exp2",
     "exp2_",
+    "expand_copy",
     "expm1",
     "expm1_",
     "expm1_out",
@@ -545,7 +589,8 @@ __all__ = [
     "layer_norm_backward",
     "leaky_relu",
     "leaky_relu_",
-    "leaky_relu_out",
+    "leaky_relu_out",    "leaky_relu_backward",
+
     "le",
     "le_scalar",
     "lerp_scalar",
@@ -554,6 +599,8 @@ __all__ = [
     "lerp_tensor_",
     "less_equal",
     "less_equal_scalar",
+    "less_equal_",
+    "less_equal_scalar_",
     "lift_fresh_copy",
     "linspace",
     "log",
@@ -580,6 +627,7 @@ __all__ = [
     "lt_scalar_",
     "matmul_bf16",
     "matmul_int8",
+    "matmuladd",
     "masked_fill",
     "masked_fill_",
     "masked_scatter",
@@ -589,7 +637,11 @@ __all__ = [
     "max_dim",
     "maximum",
     "max_pool2d_with_indices",
-    "max_pool2d_backward",
+    "max_pool2d_backward",    "max_pool2d_with_indices_backward",
+
+    "max_pool3d_backward",
+    "max_pool3d_with_indices",
+    "max_pool3d_with_indices_backward",
     "mean",
     "mean_dim",
     "min",
@@ -625,6 +677,8 @@ __all__ = [
     "nll_loss2d_forward",
     "nonzero",
     "nonzero_numpy",
+    "nonzero_static",
+    "nonzero_static_out",
     "normal_float_tensor",
     "normal_tensor_float",
     "normal_tensor_tensor",
@@ -661,6 +715,11 @@ __all__ = [
     "reflection_pad1d_out",
     "reflection_pad2d",
     "reflection_pad2d_out",
+    "cudnn_batch_norm",
+    "cudnn_batch_norm_backward",
+    "miopen_batch_norm_backward",
+    "native_batch_norm",
+    "replication_pad3d_backward",
     "relu",
     "relu_",
     "remainder",
@@ -715,6 +774,10 @@ __all__ = [
     "softmax",
     "softmax_backward",
     "softplus",
+    "searchsorted",
+    "searchsorted_out",
+    "searchsorted_scalar",
+    "searchsorted_scalar_out",
     "sort",
     "sort_stable",
     "sqrt",
@@ -723,6 +786,7 @@ __all__ = [
     "std",
     "sub",
     "sub_",
+    "subtract",
     "subtract_",
     "sum",
     "sum_dim",

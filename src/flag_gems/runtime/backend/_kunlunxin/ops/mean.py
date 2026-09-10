@@ -21,12 +21,47 @@ import triton.language as tl
 
 # from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import dim_compress, libentry
+from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
 from ..utils.block_size_utils import get_block_size_1d
 
 logger = logging.getLogger(__name__)
+
+# Dispatch key set used to redispatch a native (non-FlagGems) copy.
+# `use_gems` intercepts aten::copy_ on the CUDA/XPU dispatch key with a
+# pointwise_dynamic Triton kernel that is catastrophically slow for large
+# tensors (~2.4GB/s floor: a 64MB permute copy under use_gems takes ~28ms vs
+# ~0.09ms native). Redispatching to CompositeExplicitAutograd routes around that
+# interception to the fast native copy. This is the same fallback mechanism
+# FlagGems' own copy_ uses internally (see flag_gems/ops/copy.py).
+_NATIVE_COPY_KEYSET = torch._C.DispatchKeySet(
+    torch._C.DispatchKey.CompositeExplicitAutograd
+)
+
+
+def _contiguous_native(t):
+    """Contiguous copy that bypasses the (slow, intercepted) FlagGems copy_."""
+    if t.is_contiguous():
+        return t
+    dst = torch.empty(t.shape, dtype=t.dtype, device=t.device)
+    torch.ops.aten.copy_.default.redispatch(_NATIVE_COPY_KEYSET, dst, t, False)
+    return dst
+
+
+def _dim_compress_native(inp, dims):
+    """Replicate dim_compress (permute reduced dims to the trailing dims) but
+    materialize the permutation with a native copy, never the intercepted
+    FlagGems copy_. For a contiguous input whose reduced dims already form a
+    trailing suffix this is a no-op (identity permute, already contiguous)."""
+    if isinstance(dims, int):
+        dims = [dims]
+    dim = inp.ndim
+    stride = inp.stride()
+    batch_dim = [i for i in range(dim) if i not in dims]
+    sorted_reduction_dim = sorted(dims, key=lambda x: stride[x], reverse=True)
+    order = batch_dim + sorted_reduction_dim
+    return _contiguous_native(inp.permute(*order))
 
 
 @libentry()
@@ -70,29 +105,44 @@ def mean(inp, *, dtype=None):
 # correct persisted-accumulator + single final reduce (the in-loop
 # tl.sum(a, axis=1) alternative miscompiles on XPU for fp16/bf16 -> wrong
 # results), but bound BLOCK_M x BLOCK_N to a fixed budget so the tile can never
-# explode. Under that fixed budget we RESHAPE the tile by N (the all_dim
-# lesson): large-N reductions want a wide/short tile (few loop trips, wide DMA)
-# while small/medium-N want a tall tile (more rows in flight). The wide path
-# raised fp16 [1024,65536]/[1024,1M] but a blanket-wide tile starved medium-M
-# shapes like [4096,4096] (BLOCK_M collapsed to 16), so we switch on N.
+# explode.
+#
+# Tile tuning (measured on-device, dev4, 2026-09, with buffer_size_limit=2048):
+#   - fp32 medium-N reductions are fastest at BLOCK_N=512, BLOCK_M=64.
+#   - fp16/bf16 load half the bytes per element, so a slightly narrower
+#     BLOCK_N=256 with more rows (BLOCK_M=128) wins: the fp32 accumulator
+#     occupies the same SRAM, and 256 keeps the convert pipe fed without
+#     bloating the persisted tile.
+#   - BLOCK_M=min(next_pow2(M),64/128) (parallelize over rows) beats the old
+#     cdiv(M,12) formula: it never collapses BLOCK_M on small-M shapes.
+#   - For very large N (N>8192) a wide BLOCK_N (up to 2048) wins (fewer loop
+#     trips, wide DMA); the budget cap then collapses BLOCK_M so the tile stays
+#     bounded.
 _TILE_BUDGET = 32768
 _N_WIDE = 8192
 
 
-def _block_n(N):
+def _block_n(N, dtype):
     if N > _N_WIDE:
         return builtins.min(triton.next_power_of_2(N), 2048)  # wide for large N
-    return builtins.min(triton.next_power_of_2(N), 512)  # tall-friendly otherwise
+    if dtype == torch.float32:
+        return builtins.min(triton.next_power_of_2(N), 512)
+    return builtins.min(triton.next_power_of_2(N), 256)  # fp16/bf16: narrower
+
+
+def _block_m(M, dtype):
+    cap = 128 if dtype != torch.float32 else 64
+    return builtins.min(triton.next_power_of_2(M), cap)
 
 
 def heur_n_block_size(args):
-    return _block_n(args["N"])
+    return _block_n(args["N"], args["X"].dtype)
 
 
 def heur_m_block_size(args):
-    block_n = _block_n(args["N"])
-    block_m = triton.next_power_of_2(triton.cdiv(args["M"], 12))  # cluster_num
-    return builtins.min(block_m, builtins.max(_TILE_BUDGET // block_n, 1))
+    block_n = _block_n(args["N"], args["X"].dtype)
+    block_m = _block_m(args["M"], args["X"].dtype)
+    return builtins.max(builtins.min(block_m, _TILE_BUDGET // block_n), 1)
 
 
 @libentry()
@@ -155,83 +205,47 @@ def mean_dim(x, dim, keepdim=False, *, dtype=None):
     shape = list(x.shape)
     dim = [d % x.ndim for d in dim]
 
-    # Fast path: reduce a SINGLE non-last dim of a contiguous fp16/bf16 tensor.
-    # Reducing the middle dim of a [M0, N, M1] view is exactly
-    #   bmm(ones[M0, 1, N], x[M0, N, M1]) / N  ->  [M0, M1].
-    # This reads x in its native (contiguous) layout through the matmul unit, so
-    # it AVOIDS the dim_compress .contiguous() transpose copy that dominates the
-    # 3-D middle-axis case (the "transpose wall": ~447ms of the 452ms for
-    # [100,65536,100]). Under use_gems, torch.bmm re-dispatches to the fast gems
-    # matmul kernel. gems fp32 bmm is broken on XPU (wrong results for non-pow2
-    # M1), so this path is fp16/bf16 only; fp32 falls through to the reduce
-    # kernel. We sum with ones=1.0 and divide afterwards (bmm accumulates in
-    # fp32; dividing after keeps the accumulator well-scaled).
-    #
-    # The gems bmm kernel can fail to compile (uni_sram OOM / SDNN combine
-    # failure) for extreme matmul shapes -- a huge output free dim (large M1) or
-    # a tiny free dim paired with a large odd contraction dim (e.g. M1=3,
-    # K=40999). We therefore try the bmm path and, on ANY compile/runtime error,
-    # fall through to the numerically-correct reduce kernel below. This keeps
-    # the speedup for the shapes bmm handles while guaranteeing correctness.
-    if (
-        len(dim) == 1
-        and dim[0] != x.ndim - 1
-        and dtype == x.dtype
-        and x.dtype in (torch.float16, torch.bfloat16)
-        and x.is_contiguous()
-        and shape[dim[0]] > 1
-    ):
-        d = dim[0]
-        N = shape[d]
-        M0 = 1
-        for s in shape[:d]:
-            M0 *= s
-        M1 = 1
-        for s in shape[d + 1 :]:
-            M1 *= s
-        try:
-            x3 = x.reshape(M0, N, M1)
-            ones = torch.ones((M0, 1, N), dtype=x.dtype, device=x.device)
-            out = (torch.bmm(ones, x3).reshape(M0, M1) / N).to(dtype)
-            out_shape = list(shape)
-            out_shape[d] = 1
-            out = out.reshape(out_shape)
-            if not keepdim:
-                out = out.squeeze(d)
-            return out
-        except Exception:
-            logger.debug("GEMS_KUNLUNXIN MEAN_DIM bmm fast path unavailable, fallback")
-
-    x = dim_compress(x, dim)
+    # Compress reduced dims to the trailing dims. Uses a native (non-FlagGems)
+    # copy for the permutation: under `use_gems` the intercepted FlagGems copy_
+    # runs at a ~2.4GB/s floor (64MB permute = ~28ms), which is the true cause
+    # of the old [64,512,512] 28-30ms pathological. Redispatch gives the native
+    # ~1440GB/s transpose, after which the reduction is contiguous and fast.
+    x = _dim_compress_native(x, dim)
     N = 1
     for i in dim:
         N *= shape[i]
         shape[i] = 1
     M = x.numel() // N
 
+    # Final contiguous output shape (singleton reduced dims dropped when
+    # keepdim=False). Allocating the output in this shape keeps the returned
+    # tensor contiguous: the squeezed view of a shape-with-singleton-dims
+    # tensor (e.g. [64,1,512] -> [64,512]) is non-contiguous, and torch then
+    # materializes it with contiguous()+clone()+copy_(), hitting the same slow
+    # intercepted copy_. Reduction rows map 1:1 onto flat offsets of the final
+    # tensor (compressed [M,N] -> flat output index m), so the kernel can write
+    # directly into the contiguous buffer.
+    out_shape = list(shape)
+    for i in dim:
+        out_shape[i] = 1
+    if not keepdim:
+        out_shape = [s for idx, s in enumerate(out_shape) if idx not in dim]
+
     # Edge case: M=1 means all dims are reduced → global mean over N elements.
     # mean_dim XPU API does not support M=1.
     if M == 1:
         scalar_out = mean(x, dtype=dtype)  # 0-d tensor
-        out = scalar_out.reshape(shape)
-        if not keepdim:
-            out = out.squeeze(dim)
-        return out
+        return scalar_out.reshape(out_shape)
 
     # Edge case: N=1 means reducing a trivial (size-1) dimension.
     # mean of 1 element = that element; just copy with dtype conversion.
     # mean_dim XPU API does not support N=1.
     if N == 1:
-        out = x.to(dtype=dtype).reshape(shape)
-        if not keepdim:
-            out = out.squeeze(dim)
-        return out
+        return _contiguous_native(x.to(dtype=dtype)).reshape(out_shape)
 
-    out = torch.empty(shape, dtype=dtype, device=x.device)
+    out = torch.empty(out_shape, dtype=dtype, device=x.device)
     grid = lambda META: (triton.cdiv(M, META["BLOCK_M"]),)
 
     with torch_device_fn.device(x.device):
         mean_dim_kernel[grid](x, out, M, N, buffer_size_limit=2048)
-    if not keepdim:
-        out = out.squeeze(dim)
     return out

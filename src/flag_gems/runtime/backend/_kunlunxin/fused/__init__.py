@@ -17,9 +17,17 @@ from .concat_and_cache_mla import concat_and_cache_mla
 from .cross_entropy_loss import cross_entropy_loss
 from .flash_mla import flash_mla
 from .fused_add_rms_norm import fused_add_rms_norm
+# fused_deepseek_v4_qnorm_rope_kv_rope_insert vendor kernel (XPU): the generic
+# kernel neither compiles (reduction inside a `while` grid-stride loop aborts
+# ConvertTritonXPUToLLVM) nor is numerically safe here (its 32-lane stride-2
+# scatter stores spill a 64-element block into the next row).
+from .fused_deepseek_v4_qnorm_rope_kv_rope_insert import (
+    fused_deepseek_v4_qnorm_rope_kv_rope_insert,
+)
 from .geglu import dgeglu, geglu
 from .gelu_and_mul import gelu_and_mul
 from .instance_norm import instance_norm
+from .matmul_bias_activation import matmul_bias_activation
 from .moe_align_block_size import moe_align_block_size, moe_align_block_size_triton
 from .outer import outer
 from .reglu import dreglu, reglu
@@ -59,6 +67,8 @@ __all__ = [
     "moe_align_block_size_triton",
     "reshape_and_cache_flash",
     "flash_mla",
+    "fused_deepseek_v4_qnorm_rope_kv_rope_insert",
+    "matmul_bias_activation",
     "topk_softmax",
     "rwkv_ka_fusion",
     "rwkv_mm_sparsity",

@@ -18,14 +18,39 @@ import torch
 import triton
 import triton.language as tl
 
+from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 
 
+# masked_fill-style config: isCloseVectorization keeps the mixed i1-mask
+# tl.where on the fast path on XPU (masked_fill reaches 0.56x fp32 / 0.36x
+# fp16 on 4096x4096, 2026-09-04). without it the bare pointwise_dynamic
+# produces discrete access -> catastrophic latency (where_self dtype-balanced
+# speedup 0.19 on the acceptance shape set, 2026-09-04 baseline). The
+# sub/less_equal_ recipe (isCloseVectorization off) scalarizes the whole where
+# kernel to 0.35x/0.19x because the bool CONDITION input is the bottleneck --
+# not the tl.where vselect itself (an arithmetic rewrite a*c+b*(1-c) gives the
+# same 0.35x; an int8 view of the condition plus sitofp hits a TritonXPU
+# vector-widen lowering bug). isCloseVectorization is the only lever that helps.
+config_closevec_ = CodeGenConfig(
+    512,
+    (65536, 65536, 65536),
+    32,
+    True,
+    prefer_1d_tile=True,
+    buffer_size_limit=8192,
+    isCloseVectorization=True,
+    kunlunAutoGrid=True,
+    unroll_num=8,
+)
+
+
 @pointwise_dynamic(
     is_tensor=[True, True, True],
     promotion_methods=[(1, 2, "NO_OPMATH")],
+    config=config_closevec_,
 )
 @triton.jit
 def where_inner(condition, self, other):
@@ -40,12 +65,7 @@ def where_self_out(condition, self, other, out=None):
             out.dtype == result_type
         ), f"Expected out type to be {result_type}, but got {out.dtype}."
 
-    c, a, b = list(
-        map(
-            lambda x: x if isinstance(x, torch.Tensor) else torch.tensor(x),
-            (condition, self, other),
-        )
-    )
+    c, a, b = condition, self, other
 
     if a.dtype != result_type:
         a = a.to(result_type)
@@ -59,11 +79,11 @@ def where_self_out(condition, self, other, out=None):
 
     device = devices[0]
     if c.device != device and c.ndim == 0:
-        c = c.to(device)
+        c = torch.scalar_tensor(c.item(), dtype=c.dtype, device=device)
     if a.device != device and a.ndim == 0:
-        a = a.to(device)
+        a = torch.scalar_tensor(a.item(), dtype=a.dtype, device=device)
     if b.device != device and b.ndim == 0:
-        b = b.to(device)
+        b = torch.scalar_tensor(b.item(), dtype=b.dtype, device=device)
 
     assert (
         len(set(devices)) == 1
