@@ -26,6 +26,8 @@ from .celu import celu
 from .channel_shuffle import channel_shuffle
 from .conv2d import conv2d
 from .conv_transpose1d import conv_transpose1d, conv_transpose1d_output_size
+from .conv_transpose2d import conv_transpose2d
+from .cudnn_convolution import cudnn_convolution
 from .div import (
     div_mode,
     div_mode_,
@@ -48,6 +50,7 @@ from .index_add import index_add, index_add_
 from .index_copy_ import index_copy, index_copy_
 from .index_put import _index_put_impl_, index_put, index_put_
 from .index_select import index_select
+from .isin import isin
 from .linalg_cholesky import linalg_cholesky
 from .linear import linear
 from .log import log
@@ -119,8 +122,10 @@ __all__ = [
     # "celu_",
     "channel_shuffle",
     "conv2d",
+    "conv_transpose2d",
     "conv_transpose1d",
     "conv_transpose1d_output_size",
+    "cudnn_convolution",
     "dropout",
     "dropout_backward",
     "erfinv",
@@ -142,6 +147,7 @@ __all__ = [
     "index_put_",
     "_index_put_impl_",
     "index_select",
+    "isin",
     "linalg_cholesky",
     "linear",
     "log",
