@@ -185,6 +185,7 @@ from .cosh import cosh, cosh_, cosh_out  # noqa: F401
 from .count_nonzero import count_nonzero
 from .cudnn_batch_norm import cudnn_batch_norm  # noqa: F401
 from .cudnn_batch_norm_backward import cudnn_batch_norm_backward  # noqa: F401
+from .cudnn_batch_norm import cudnn_batch_norm  # noqa: F401
 from .cudnn_convolution import cudnn_convolution  # noqa: F401
 from .cummax import cummax
 from .cummin import cummin
@@ -321,7 +322,8 @@ from .lcm import lcm, lcm_
 from .le import le, le_, le_scalar
 from .leaky_relu import leaky_relu, leaky_relu_, leaky_relu_backward, leaky_relu_out
 from .lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
-from .less_equal import less_equal, less_equal_, less_equal_scalar, less_equal_scalar_
+from .less_equal import less_equal, less_equal_scalar
+from .less_equal_ import less_equal_, less_equal_scalar_
 from .lgamma import lgamma, lgamma_
 from .lift_fresh import lift_fresh  # noqa: F401
 from .lift_fresh_copy import lift_fresh_copy
@@ -381,6 +383,7 @@ from .masked_scatter_backward import masked_scatter_backward
 from .masked_select import masked_select
 from .matmul_bf16 import matmul_bf16
 from .matmul_int8 import matmul_int8
+from .matmuladd import matmuladd
 from .max import max, max_dim
 from .max_pool2d_with_indices import (
     max_pool2d_backward,
@@ -891,6 +894,7 @@ __all__ = [
     "exp",
     "exp2",
     "exp2_",
+    "expand_copy",
     "exp_",
     "exp_out",
     "expand_copy",
@@ -1086,6 +1090,7 @@ __all__ = [
     "masked_select",
     "matmul_bf16",
     "matmul_int8",
+    "matmuladd",
     "max",
     "max_dim",
     "max_pool2d_backward",
@@ -1365,6 +1370,7 @@ __all__ = [
     "sub_",
     "subtract",
     "subtract_",
+    "subtract",
     "sum",
     "sum_dim",
     "sum_dim_out",
