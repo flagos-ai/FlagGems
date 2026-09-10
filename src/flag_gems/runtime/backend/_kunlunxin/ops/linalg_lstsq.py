@@ -66,7 +66,7 @@ _SUPPORTED_DTYPES = (torch.float32, torch.float64)
 
 # Largest padded row length a single reduction tile may span. 8192 is the
 # widest validated on XPU 3; beyond it the reduce is untested, so those shapes
-# take the reference path rather than risk a silent miscompile.
+# raise NotImplementedError rather than risk a silent miscompile.
 _MAX_ROW = 8192
 
 # EVERY vector store on this backend writes exactly 64 contiguous elements,
@@ -496,20 +496,6 @@ def _lstsq_wide(A, B, rcond):
     return Z[:, :nrhs, :n].transpose(-1, -2).contiguous()
 
 
-def _fallback(A, b, rcond, driver):
-    """Reference path for inputs outside the native scope (complex, or a padded
-    row wider than the validated reduction tile). Routed through CPU so it does
-    not re-enter this override."""
-    res = torch.linalg.lstsq(A.cpu(), b.cpu(), rcond=rcond, driver=driver)
-    dev = A.device
-    return (
-        res.solution.to(dev),
-        res.residuals.to(dev),
-        res.rank.to(dev),
-        res.singular_values.to(dev),
-    )
-
-
 def _empty_rank_sv(A):
     return (
         torch.empty(0, dtype=torch.int64, device=A.device),
@@ -527,8 +513,19 @@ def linalg_lstsq(A, b, rcond=None, driver=None):
             "torch.linalg.lstsq: `driver` other than `gels` is not supported on CUDA"
         )
 
-    if A.dtype not in _SUPPORTED_DTYPES or A.is_complex() or A.dim() < 2 or b.dim() < 1:
-        return _fallback(A, b, rcond, driver)
+    if A.is_complex() or A.dtype not in _SUPPORTED_DTYPES:
+        # No Triton kernel for this dtype on this backend. Raise rather than
+        # route through a CPU fallback; the accuracy suite's _gems_supports()
+        # keys off this exception to skip unsupported dtypes.
+        raise NotImplementedError(
+            f"Kunlunxin linalg_lstsq only supports real {_SUPPORTED_DTYPES} "
+            f"inputs, got {A.dtype}"
+        )
+    if A.dim() < 2 or b.dim() < 1:
+        raise RuntimeError(
+            "torch.linalg.lstsq: A must be at least 2-dimensional and b at "
+            "least 1-dimensional"
+        )
 
     m, n = A.shape[-2], A.shape[-1]
 
@@ -541,15 +538,23 @@ def linalg_lstsq(A, b, rcond=None, driver=None):
     elif dim_diff == 0:
         vector_rhs, b2 = False, b
     else:
-        return _fallback(A, b, rcond, driver)
+        raise RuntimeError(
+            "torch.linalg.lstsq: A and b are not broadcastable "
+            f"(A.dim()={A.dim()} vs b.dim()={b.dim()})"
+        )
     if b2.shape[-2] != m:
-        return _fallback(A, b, rcond, driver)
+        raise RuntimeError(
+            "torch.linalg.lstsq: A and b must have the same number of rows"
+        )
     nrhs = b2.shape[-1]
 
     try:
         batch_shape = torch.broadcast_shapes(A.shape[:-2], b2.shape[:-2])
     except RuntimeError:
-        return _fallback(A, b, rcond, driver)
+        raise RuntimeError(
+            "torch.linalg.lstsq: batch dimensions of A and b are not "
+            "broadcastable"
+        ) from None
 
     # degenerate dims are shape-determined; LAPACK ?gels quick-returns on any
     # zero dim and zeroes its buffer, so both solution and residuals are zeros.
@@ -567,7 +572,12 @@ def linalg_lstsq(A, b, rcond=None, driver=None):
         return solution, residuals, rank, singular_values
 
     if max(_p2(m), _p2(n)) > _MAX_ROW:
-        return _fallback(A, b, rcond, driver)
+        # No kernel for padded rows wider than the validated reduction tile;
+        # raise rather than fall back to a CPU reference.
+        raise NotImplementedError(
+            f"Kunlunxin linalg_lstsq: padded rows wider than {_MAX_ROW} are "
+            "not implemented on this backend"
+        )
 
     Af = A.expand(*batch_shape, m, n).reshape(-1, m, n).contiguous()
     Bf = b2.expand(*batch_shape, m, nrhs).reshape(-1, m, nrhs).contiguous()
