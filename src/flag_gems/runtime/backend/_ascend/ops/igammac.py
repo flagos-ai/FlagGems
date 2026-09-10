@@ -976,7 +976,7 @@ def _launch_igammac(out: torch.Tensor, a: torch.Tensor, x: torch.Tensor):
 
 
 def igammac(a: torch.Tensor, x: torch.Tensor, *, out: torch.Tensor = None):
-    logger.debug("GEMS IGAMMAC")
+    logger.debug("GEMS_ASCEND IGAMMAC")
     if a.device.type != flag_gems.device:
         raise ValueError(
             f"igammac: first input tensor must be on {flag_gems.device} device"
@@ -1020,5 +1020,5 @@ def igammac(a: torch.Tensor, x: torch.Tensor, *, out: torch.Tensor = None):
 
 
 def igammac_out(a: torch.Tensor, x: torch.Tensor, out: torch.Tensor):
-    logger.debug("GEMS IGAMMAC_OUT")
+    logger.debug("GEMS_ASCEND IGAMMAC_OUT")
     return igammac(a, x, out=out)
