@@ -66,6 +66,9 @@ from flag_gems.ops._fake_quantize_learnable_per_channel_affine_backward import (
 from flag_gems.ops._fake_quantize_learnable_per_tensor_affine import (
     _fake_quantize_learnable_per_tensor_affine,
 )
+from flag_gems.ops._fake_quantize_learnable_per_tensor_affine_backward import (
+    _fake_quantize_learnable_per_tensor_affine_backward,
+)
 from flag_gems.ops._fill_mem_eff_dropout_mask_ import _fill_mem_eff_dropout_mask_
 from flag_gems.ops._flash_attention_forward import _flash_attention_forward
 from flag_gems.ops._functional_sym_constrain_range import (
@@ -175,7 +178,10 @@ from flag_gems.ops.acos_ import acos_
 from flag_gems.ops.acosh import acosh, acosh_
 from flag_gems.ops.adaptive_avg_pool1d import adaptive_avg_pool1d
 from flag_gems.ops.adaptive_avg_pool2d import adaptive_avg_pool2d
-from flag_gems.ops.adaptive_avg_pool3d_backward import _adaptive_avg_pool3d_backward
+from flag_gems.ops.adaptive_avg_pool3d_backward import (
+    _adaptive_avg_pool3d_backward,
+    adaptive_avg_pool3d_backward_grad_input,
+)
 from flag_gems.ops.adaptive_max_pool2d import adaptive_max_pool2d
 from flag_gems.ops.adaptive_max_pool2d_backward import adaptive_max_pool2d_backward
 from flag_gems.ops.adaptive_max_pool3d_backward import adaptive_max_pool3d_backward
@@ -323,9 +329,12 @@ from flag_gems.ops.conv_transpose3d import conv_transpose3d
 from flag_gems.ops.copy import copy, copy_
 from flag_gems.ops.copysign import copysign, copysign_out
 from flag_gems.ops.copysign_ import copysign_
+from flag_gems.ops.corrcoef import corrcoef
 from flag_gems.ops.cos import cos, cos_
 from flag_gems.ops.cosh import cosh, cosh_, cosh_out
+from flag_gems.ops.cosine_embedding_loss import cosine_embedding_loss
 from flag_gems.ops.count_nonzero import count_nonzero
+from flag_gems.ops.cov import cov
 from flag_gems.ops.ctc_loss import ctc_loss
 from flag_gems.ops.cudnn_attention_forward import cudnn_attention_forward
 from flag_gems.ops.cudnn_batch_norm_backward import cudnn_batch_norm_backward
@@ -337,6 +346,7 @@ from flag_gems.ops.cummin import cummin
 from flag_gems.ops.cumprod import cumprod, cumprod_
 from flag_gems.ops.cumsum import cumsum, cumsum_out, normed_cumsum
 from flag_gems.ops.cumsum_ import cumsum_
+from flag_gems.ops.cumulative_trapezoid import cumulative_trapezoid
 from flag_gems.ops.deg2rad import deg2rad, deg2rad_, deg2rad_out
 from flag_gems.ops.dequantize import dequantize
 from flag_gems.ops.diag import diag
@@ -361,6 +371,7 @@ from flag_gems.ops.dsplit import dsplit
 from flag_gems.ops.elu import elu, elu_, elu_backward
 from flag_gems.ops.embedding import embedding, embedding_backward
 from flag_gems.ops.embedding_dense_backward import embedding_dense_backward
+from flag_gems.ops.embedding_renorm_ import embedding_renorm_
 from flag_gems.ops.empty import empty
 from flag_gems.ops.empty_permuted import empty_permuted
 from flag_gems.ops.eq import eq, eq_scalar, equal
@@ -705,6 +716,7 @@ from flag_gems.ops.normal import (
 )
 from flag_gems.ops.not_equal import not_equal, not_equal_scalar
 from flag_gems.ops.not_equal_ import not_equal_, not_equal_scalar_
+from flag_gems.ops.nuclear_norm import nuclear_norm
 from flag_gems.ops.one_hot import one_hot
 from flag_gems.ops.ones import ones
 from flag_gems.ops.ones_like import ones_like
@@ -1048,6 +1060,7 @@ __all__ = [
     "_euclidean_dist",
     "_fake_quantize_learnable_per_channel_affine_backward",
     "_fake_quantize_learnable_per_tensor_affine",
+    "_fake_quantize_learnable_per_tensor_affine_backward",
     "_fill_mem_eff_dropout_mask_",
     "_flash_attention_forward",
     "_functional_assert_async",
@@ -1127,7 +1140,7 @@ __all__ = [
     "acosh_",
     "adaptive_avg_pool1d",
     "adaptive_avg_pool2d",
-    "adaptive_avg_pool3d_backward",
+    "adaptive_avg_pool3d_backward_grad_input",
     "adaptive_max_pool2d",
     "adaptive_max_pool2d_backward",
     "adaptive_max_pool3d_backward",
@@ -1306,12 +1319,15 @@ __all__ = [
     "copysign",
     "copysign_",
     "copysign_out",
+    "corrcoef",
     "cos",
     "cos_",
     "cosh",
     "cosh_",
     "cosh_out",
+    "cosine_embedding_loss",
     "count_nonzero",
+    "cov",
     "ctc_loss",
     "cudnn_attention_forward",
     "cudnn_batch_norm_backward",
@@ -1326,6 +1342,7 @@ __all__ = [
     "cumsum",
     "cumsum_",
     "cumsum_out",
+    "cumulative_trapezoid",
     "deg2rad",
     "deg2rad_",
     "deg2rad_out",
@@ -1353,6 +1370,7 @@ __all__ = [
     "embedding",
     "embedding_backward",
     "embedding_dense_backward",
+    "embedding_renorm_",
     "empty",
     "empty_permuted",
     "eq",
@@ -1750,6 +1768,7 @@ __all__ = [
     "not_equal_",
     "not_equal_scalar",
     "not_equal_scalar_",
+    "nuclear_norm",
     "one_hot",
     "ones",
     "ones_like",
