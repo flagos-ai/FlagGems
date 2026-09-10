@@ -333,6 +333,118 @@ median_dim:
     - [[8, 64, 384, 64], 2, false]
   shape_desc: "input shape or [input shape, dim, keepdim]"
 
+foreach_abs:
+  shapes:
+    - [256, 256]
+    - [512, 512]
+    - [1024, 1024]
+  shape_desc: "M, N (per tensor, list of 16)"
+
+foreach_abs_:
+  shapes:
+    - [256, 256]
+    - [512, 512]
+    - [1024, 1024]
+  shape_desc: "M, N (per tensor, list of 16)"
+
+foreach_neg:
+  shapes:
+    - [256, 256]
+    - [512, 512]
+    - [1024, 1024]
+  shape_desc: "M, N (per tensor, list of 16)"
+
+foreach_neg_:
+  shapes:
+    - [256, 256]
+    - [512, 512]
+    - [1024, 1024]
+  shape_desc: "M, N (per tensor, list of 16)"
+
+foreach_sin:
+  shapes:
+    - [256, 256]
+    - [512, 512]
+    - [1024, 1024]
+  shape_desc: "M, N (per tensor, list of 16)"
+
+foreach_sin_:
+  shapes:
+    - [256, 256]
+    - [512, 512]
+    - [1024, 1024]
+  shape_desc: "M, N (per tensor, list of 16)"
+
+foreach_exp:
+  shapes:
+    - [256, 256]
+    - [512, 512]
+    - [1024, 1024]
+  shape_desc: "M, N (per tensor, list of 16)"
+
+foreach_exp_:
+  shapes:
+    - [256, 256]
+    - [512, 512]
+    - [1024, 1024]
+  shape_desc: "M, N (per tensor, list of 16)"
+
+foreach_sqrt:
+  shapes:
+    - [256, 256]
+    - [512, 512]
+    - [1024, 1024]
+  shape_desc: "M, N (per tensor, list of 16)"
+
+foreach_sqrt_:
+  shapes:
+    - [256, 256]
+    - [512, 512]
+    - [1024, 1024]
+  shape_desc: "M, N (per tensor, list of 16)"
+
+foreach_round:
+  shapes:
+    - [256, 256]
+    - [512, 512]
+    - [1024, 1024]
+  shape_desc: "M, N (per tensor, list of 16)"
+
+foreach_round_:
+  shapes:
+    - [256, 256]
+    - [512, 512]
+    - [1024, 1024]
+  shape_desc: "M, N (per tensor, list of 16)"
+
+foreach_sigmoid:
+  shapes:
+    - [256, 256]
+    - [512, 512]
+    - [1024, 1024]
+  shape_desc: "M, N (per tensor, list of 16)"
+
+foreach_sigmoid_:
+  shapes:
+    - [256, 256]
+    - [512, 512]
+    - [1024, 1024]
+  shape_desc: "M, N (per tensor, list of 16)"
+
+foreach_abs_list_length:
+  shapes:
+    - [64]
+    - [1024]
+    - [65536]
+  shape_desc: "N (per tensor, list of 1/16/128)"
+
+foreach_sin_list_length:
+  shapes:
+    - [64]
+    - [1024]
+    - [65536]
+  shape_desc: "N (per tensor, list of 1/16/128)"
+
 BlasBenchmark:
   shapes:
     - [2, 384, 384, 384]
