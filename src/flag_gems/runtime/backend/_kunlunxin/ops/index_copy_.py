@@ -123,8 +123,9 @@ def _validate(inp, dim, index, src):
 
 
 def index_copy_(inp, dim, index, src):
-    _validate(inp, dim, index, src)
+    assert -inp.ndim <= dim < inp.ndim, "Invalid dim"
     dim %= inp.ndim
+    _validate(inp, dim, index, src)
     n_elements = src.numel()
     block = 4096
     grid = (triton.cdiv(n_elements, block),)
