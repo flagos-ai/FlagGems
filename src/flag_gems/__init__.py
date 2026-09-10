@@ -1213,6 +1213,8 @@ _FULL_CONFIG = (
     ("topk", topk),
     ("trace", trace),
     ("transpose.int", transpose),
+    ("trapezoid.dx", trapz),
+    ("trapz.dx", trapz),
     ("tril", tril),
     ("tril.out", tril_out),
     ("tril_", tril_),
