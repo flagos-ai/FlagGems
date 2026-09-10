@@ -16,25 +16,29 @@
 
 #include "flag_gems/backend_utils.h"
 
-#if defined(FLAGGEMS_USE_GCU) || defined(FLAGGEMS_USE_MLU)
+#if defined(FLAGGEMS_USE_GCU) || defined(FLAGGEMS_USE_MLU) || defined(FLAGGEMS_USE_KUNLUNXIN_RUNTIME)
 #include <pybind11/embed.h>
 #endif
 
 namespace flag_gems::test {
 
-#if defined(FLAGGEMS_USE_GCU)
+#if defined(FLAGGEMS_USE_GCU) || defined(FLAGGEMS_USE_KUNLUNXIN_RUNTIME)
 namespace detail {
 
-  inline int gcu_init_backend() {
+  inline int init_python_backend() {
     // Intentionally leaked — avoids segfault from static destruction order
     // conflicts between pybind11 interpreter and PyTorch statics on exit.
     new pybind11::scoped_interpreter();
     pybind11::module_::import("torch");
+#if defined(FLAGGEMS_USE_GCU)
     pybind11::module_::import("torch_gcu");
+#elif defined(FLAGGEMS_USE_KUNLUNXIN_RUNTIME)
+    pybind11::module_::import("torch_xmlir");
+#endif
     return 0;
   }
 
-  static int gcu_init_ = gcu_init_backend();
+  static int python_backend_init_ = init_python_backend();
 
 }  // namespace detail
 #endif

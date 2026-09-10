@@ -30,7 +30,12 @@ SHAPES = (
         (4, 8, 64, 127),
     ]
 )
-DTYPES = [torch.float32] if QUICK_MODE else utils.FLOAT_DTYPES + [torch.float64]
+# KUNLUNXIN P800 has no fp64 compute path: a float64 device tensor is silently
+# created as float32, so the result dtype assertion can never pass.
+if flag_gems.vendor_name == "kunlunxin":
+    DTYPES = [torch.float32] if QUICK_MODE else utils.FLOAT_DTYPES
+else:
+    DTYPES = [torch.float32] if QUICK_MODE else utils.FLOAT_DTYPES + [torch.float64]
 
 
 def _make_grad_output(shape, dtype, noncontiguous=False):
@@ -63,10 +68,9 @@ def test_upsample_nearest_exact1d_backward(shape, dtype, noncontiguous):
     reference = torch.ops.aten._upsample_nearest_exact1d_backward.default(
         ref_grad_output, output_size, input_size
     )
-    with flag_gems.use_gems():
-        result = torch.ops.aten._upsample_nearest_exact1d_backward.default(
-            grad_output, output_size, input_size
-        )
+    result = flag_gems._upsample_nearest_exact1d_backward(
+        grad_output, output_size, input_size
+    )
 
     utils.gems_assert_close(result, reference, dtype)
 
@@ -85,10 +89,9 @@ def test_upsample_nearest_exact1d_backward_with_scale(input_w, output_w, scale, 
     reference = torch.ops.aten._upsample_nearest_exact1d_backward.default(
         ref_grad_output, output_size, input_size, scale
     )
-    with flag_gems.use_gems():
-        result = torch.ops.aten._upsample_nearest_exact1d_backward.default(
-            grad_output, output_size, input_size, scale
-        )
+    result = flag_gems._upsample_nearest_exact1d_backward(
+        grad_output, output_size, input_size, scale
+    )
 
     utils.gems_assert_close(result, reference, dtype)
 
@@ -121,10 +124,9 @@ def test_upsample_nearest_exact1d_backward_grad_input(dtype, noncontiguous):
         reference = torch.ops.aten._upsample_nearest_exact1d_backward.grad_input(
             ref_grad_output, (13,), input_size, grad_input=ref_grad_input
         )
-    with flag_gems.use_gems():
-        result = torch.ops.aten._upsample_nearest_exact1d_backward.grad_input(
-            grad_output, (13,), input_size, grad_input=grad_input
-        )
+    result = flag_gems._upsample_nearest_exact1d_backward_grad_input(
+        grad_output, (13,), input_size, grad_input=grad_input
+    )
 
     assert result is grad_input
     if ref_grad_input is not None:
@@ -142,10 +144,9 @@ def test_upsample_nearest_exact1d_backward_empty(shape):
     reference = torch.ops.aten._upsample_nearest_exact1d_backward.default(
         ref_grad_output, (output_w,), input_size
     )
-    with flag_gems.use_gems():
-        result = torch.ops.aten._upsample_nearest_exact1d_backward.default(
-            grad_output, (output_w,), input_size
-        )
+    result = flag_gems._upsample_nearest_exact1d_backward(
+        grad_output, (output_w,), input_size
+    )
     utils.gems_assert_equal(result, reference)
 
 
@@ -158,10 +159,7 @@ def test_upsample_nearest_exact1d_backward_uint8():
     reference = torch.ops.aten._upsample_nearest_exact1d_backward.default(
         grad_output, (17,), (2, 3, 5)
     )
-    with flag_gems.use_gems():
-        result = torch.ops.aten._upsample_nearest_exact1d_backward.default(
-            grad_output, (17,), (2, 3, 5)
-        )
+    result = flag_gems._upsample_nearest_exact1d_backward(grad_output, (17,), (2, 3, 5))
     utils.gems_assert_equal(result, reference)
 
 
@@ -172,7 +170,7 @@ def test_upsample_nearest_exact1d_backward_uint8():
 )
 def test_upsample_nearest_exact1d_backward_invalid_size(output_size, input_size):
     grad_output = torch.randn((1, 1, max(output_size[0], 1)), device=flag_gems.device)
-    with flag_gems.use_gems(), pytest.raises(RuntimeError):
-        torch.ops.aten._upsample_nearest_exact1d_backward.default(
+    with pytest.raises(RuntimeError):
+        flag_gems._upsample_nearest_exact1d_backward(
             grad_output, output_size, input_size
         )

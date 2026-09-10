@@ -13,15 +13,19 @@
 # limitations under the License.
 
 import logging
-import math
+import os
 
 import torch
 import triton
 import triton.language as tl
 
+from flag_gems.ops.zeros import zero_
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
+from flag_gems.utils.tensor_wrapper import StridedBuffer
 
+from .cat import copy_func
+from .cumsum import cumsum
 from .topk import _get_finfo_val, _get_iinfo_val, argsort
 
 logger = logging.getLogger(__name__)
@@ -140,7 +144,7 @@ def compute_global_hist_kernel(
         bit_offset = p * num_bits_per_pass
         for r_start in range(0, r, TILE_R):  # parallel
             bin_indices = r_start + tl.arange(0, TILE_R)
-            acc = tl.zeros((TILE_R, TILE_N), dtype=tl.int64)
+            acc = tl.zeros((TILE_R, TILE_N), dtype=tl.int32)
             for n_start in range(cta_n_start, cta_n_end, TILE_N):  # sequantial
                 n_offsets = n_start + tl.arange(0, TILE_N)  # (TILE_N, )
                 mask = n_offsets < cta_n_end
@@ -264,37 +268,81 @@ def sweep(
 @triton.jit
 def count_kernel(
     x_ptr,
-    counts_ptr,  # Output: [M, grid_n, num_bins]
+    counts_ptr,  # Output: [M, R_PAD] int32, bin-major: bin * GRID_N + block
     M,
     N,
     bit_offset,
     num_bins: tl.constexpr,
     BLOCK_N: tl.constexpr,
     descending: tl.constexpr,
+    GRID_N: tl.constexpr,
+    R_PAD: tl.constexpr,
 ):
+    # NOTE(kunlunxin): the histogram is written *bin-major* (all GRID_N block
+    # counters of bin 0, then bin 1, ...) with a per-row pitch of R_PAD.  In
+    # that layout the exclusive scan over the whole row is exactly
+    #     global_offsets[b, i] = sum_{j<i} total[j] + sum_{b'<b} counts[b', i]
+    # i.e. the value `scatter_kernel` needs, so a single contiguous 1D scan
+    # (bin_prefix_kernel) replaces the previous host-side chain of
+    # sum_dim + 2x cumsum + broadcast/clone + add.
+    # GRID_N / R_PAD are constexpr on purpose: they remove the runtime cdiv and
+    # the runtime div/mod on `pid`, and adding them as *runtime* i32 scalars is
+    # a known 15-30x launch-cost cliff on this backend.
     pid = tl.program_id(0)
 
-    num_blocks_per_row = tl.cdiv(N, BLOCK_N)
-    row_idx = pid // num_blocks_per_row
-    block_idx = pid % num_blocks_per_row
+    row_idx = pid // GRID_N
+    block_idx = pid % GRID_N
 
     row_start = row_idx * N
     n_offset = block_idx * BLOCK_N + tl.arange(0, BLOCK_N)
     mask = n_offset < N
 
-    val = tl.load(x_ptr + row_start + n_offset, mask=mask, other=0)
+    # Masked loads on XPU can still issue the tail address.  Clamp inactive
+    # lanes to the last real element and use the mask only for the histogram
+    # predicate.
+    n_offset_safe = tl.minimum(n_offset, N - 1)
+    val = tl.load(x_ptr + row_start + n_offset_safe)
     val_u = convert_to_uint_preverse_order(val, descending)
 
     bfe_mask = num_bins - 1
     key = (val_u >> bit_offset) & bfe_mask
 
+    counts_row = counts_ptr + row_idx * R_PAD + block_idx
     for i in range(num_bins):
         bin_mask = (key == i) & mask
         count = tl.sum(bin_mask.to(tl.int32))
-        out_offset = (
-            (row_idx * num_blocks_per_row * num_bins) + (block_idx * num_bins) + i
-        )
-        tl.store(counts_ptr + out_offset, count)
+        tl.store(counts_row + i * GRID_N, count)
+
+
+@libentry()
+@triton.jit
+def bin_prefix_kernel(
+    counts_ptr,  # [M, R_PAD] int32 (bin-major histogram)
+    offsets_ptr,  # [M, R_PAD] int32 (exclusive prefix sums)
+    R: tl.constexpr,  # num_bins * GRID_N valid entries per row
+    R_PAD: tl.constexpr,  # padded row pitch, multiple of TILE
+    TILE: tl.constexpr,
+):
+    """One program per row: exclusive scan of the bin-major histogram.
+
+    Loads and stores are *unmasked* on purpose -- the caller allocates
+    M * R_PAD elements and R_PAD is a multiple of TILE, so every lane of every
+    tile stays inside this row's own padded slice.  That side-steps both the
+    masked-store granule behaviour and `other=` contamination on this backend;
+    the padding lanes are neutralised with an explicit `tl.where` instead.
+    The carry follows the shape of cumsum_chunk_kernel in cumsum.py (vector
+    carry + tl.sum), which is the proven in-loop 1D scan pattern here.
+    """
+    row = tl.program_id(0)
+    base = row * R_PAD
+    carry = tl.zeros([TILE], tl.int32)
+    for start in range(0, R_PAD, TILE):
+        offs = start + tl.arange(0, TILE)
+        v = tl.load(counts_ptr + base + offs)
+        v = tl.where(offs < R, v, 0)
+        inclusive = tl.cumsum(v, axis=0)
+        tl.store(offsets_ptr + base + offs, inclusive - v + carry)
+        carry += tl.sum(v, axis=0)
 
 
 @triton.jit
@@ -310,53 +358,147 @@ def scatter_kernel(
     num_bins: tl.constexpr,
     BLOCK_N: tl.constexpr,
     descending: tl.constexpr,
+    GRID_N: tl.constexpr,
+    R_PAD: tl.constexpr,
 ):
     pid = tl.program_id(0)
-    num_blocks_per_row = tl.cdiv(N, BLOCK_N)
-    row_idx = pid // num_blocks_per_row
-    block_idx = pid % num_blocks_per_row
+    row_idx = pid // GRID_N
+    block_idx = pid % GRID_N
 
     row_start = row_idx * N
     n_offset = block_idx * BLOCK_N + tl.arange(0, BLOCK_N)
     mask = n_offset < N
 
-    val = tl.load(x_ptr + row_start + n_offset, mask=mask, other=0)
+    n_offset_safe = tl.minimum(n_offset, N - 1)
+    val = tl.load(x_ptr + row_start + n_offset_safe)
     val_u = convert_to_uint_preverse_order(val, descending)
 
-    idx = tl.load(idx_in_ptr + row_start + n_offset, mask=mask, other=0)
+    idx = tl.load(idx_in_ptr + row_start + n_offset_safe)
 
     bfe_mask = num_bins - 1
     key = (val_u >> bit_offset) & bfe_mask
 
+    # NOTE(kunlunxin): store masks are NOT honoured for data-dependent (scatter)
+    # addresses on this backend -- every lane of the tile performs its write.
+    # The previous form
+    #     local_rank = tl.cumsum(bin_mask.to(tl.int32), axis=0) - 1
+    #     tl.store(x_out_ptr + row_start + global_start + local_rank, val,
+    #              mask=bin_mask)
+    # therefore (a) wrote *out of bounds* at `global_start - 1` from every lane
+    # that precedes the first match of a bin (local_rank == -1; quantified with
+    # canary buffers in harness/probe/unique2_masked_scatter_probe.py -> one OOB
+    # element per tile, reported by the driver as "axi wresp error" / status 700)
+    # and (b) let every inactive lane after a match re-write the slot of the
+    # previous match with its own value, silently corrupting the sorted output.
+    # Fix: keep a per-lane destination, default it to a lane-unique scratch slot
+    # in front of the output buffer (the caller over-allocates BLOCK_N elements
+    # and passes a suffix view, so negative offsets in [-BLOCK_N, -1] are legal
+    # and unique per lane), select the real destination with tl.where, and issue
+    # a single *unmasked* store per lane.  Also avoid `bool.to(int32)`, which
+    # trips triton_xpu.convert_layout at large BLOCK.
+    lane = tl.arange(0, BLOCK_N)
+    dest_idx = (lane - BLOCK_N).to(tl.int64)
+
+    offsets_row = global_offsets_ptr + row_idx * R_PAD + block_idx
     for i in range(num_bins):
         bin_mask = (key == i) & mask
-        local_rank = tl.cumsum(bin_mask.to(tl.int32), axis=0) - 1
+        local_rank = tl.cumsum(tl.where(bin_mask, 1, 0), axis=0) - 1
 
-        offset_idx = (
-            (row_idx * num_blocks_per_row * num_bins) + (block_idx * num_bins) + i
+        global_start = tl.load(offsets_row + i * GRID_N)
+
+        dest_idx = tl.where(
+            bin_mask,
+            (row_start + global_start + local_rank).to(tl.int64),
+            dest_idx,
         )
-        global_start = tl.load(global_offsets_ptr + offset_idx)
 
-        dest_idx = row_start + global_start + local_rank
+    tl.store(x_out_ptr + dest_idx, val)
+    tl.store(idx_out_ptr + dest_idx, idx)
 
-        tl.store(x_out_ptr + dest_idx, val, mask=bin_mask)
-        tl.store(idx_out_ptr + dest_idx, idx, mask=bin_mask)
+
+@libentry()
+@triton.jit
+def init_indices_kernel(indices, total, N, BLOCK_SIZE: tl.constexpr):
+    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    tl.store(indices + offsets, offsets % N, mask=offsets < total)
+
+
+@libentry()
+@triton.jit
+def init_sort_buffers_kernel(
+    source, values, indices, total, N, BLOCK_SIZE: tl.constexpr
+):
+    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < total
+    tl.store(values + offsets, tl.load(source + offsets, mask=mask), mask=mask)
+    tl.store(indices + offsets, offsets % N, mask=mask)
 
 
 def radix_sort_low_mem(arr, k_bits=4, descending=False):
-    if arr.ndim == 1:
-        arr = arr.unsqueeze(0)
-    M, N = arr.shape
-    arr_in = arr
-    arr_out = torch.empty_like(arr_in)
+    original_shape = arr.shape
+    N = arr.shape[-1]
+    arr = arr.reshape(-1, N)
+    M = arr.shape[0]
 
-    indices = (
-        torch.arange(N, device=arr.device, dtype=torch.int64)
-        .broadcast_to(arr.shape)
-        .clone()
-    )
-    idx_in = indices
-    idx_out = torch.empty_like(idx_in)
+    # NOTE(kunlunxin): BLOCK_N is the per-program tile of the count/scatter
+    # passes.  512 leaves the discrete-scatter pass launch-bound: measured on
+    # XPU 2 for torch.sort of 16,777,216 int32 elements, 512 -> 1876 ms,
+    # 1024 -> 1247 ms, 2048 -> 764 ms, 4096 -> 590 ms.  8192 is *not* usable --
+    # it is the same speed as 4096 but silently mis-sorts (values_ok=False), so
+    # 4096 is the largest qualified tile.  Qualified with
+    # harness/probe/unique2_sort_validate.py (290/290: 8 dtypes x 17 shapes x
+    # asc/desc + constant inputs) and unique2_sort_sweep.py (exact and index
+    # permutation clean at N = 1M .. 167.8M).
+    #
+    # NOTE(kunlunxin, sort_stable 2026-08-30): a *fixed* 4096 is only right for
+    # long rows.  count/scatter cost tracks the padded row length
+    # ceil(N / BLOCK_N) * BLOCK_N (every masked-off lane still pays the 16-bin
+    # loop), so a 4096 tile makes a 64-wide row 64x more expensive than it needs
+    # to be.  Measured on XPU 5 (fp32, median of 7, candidate chain):
+    #   N=64    B=64 2.72 ms | 128 7.72 | 256 8.09 | 512 8.95 | 4096 11.94
+    #   N=256   B=256 11.33  | 128 16.16 | 64 26.08 | 512 30.40 | 4096 41.71
+    #   N=512   B=512 55.35  | 256 77.33 | 1024 140.67 | 4096 158.87
+    #   N=1024  B=1024 67.87 | 512 93.31 | 2048 143.89 | 4096 161.03
+    #   N=4096  B=4096 441.8 | 2048 611.8 | 1024 929.6 | 512 1364.2
+    #   N=131072/262144: 4096 is the best of {512,1024,2048,4096}
+    # i.e. the optimum is next_pow2(N) clamped to [64, 4096] on every shape
+    # measured.  64 is the floor because a <= 32-lane tile is mis-lowered here,
+    # 4096 the ceiling because 8192 silently mis-sorts (see above).
+    _env_block_n = os.environ.get("GEMS_XPU_RADIX_BLOCK_N")
+    if _env_block_n:
+        BLOCK_N = int(_env_block_n)
+    else:
+        BLOCK_N = min(4096, max(64, triton.next_power_of_2(N)))
+    grid_n = triton.cdiv(N, BLOCK_N)
+    grid = (M * grid_n,)
+
+    # NOTE(kunlunxin): scatter_kernel parks every inactive lane of a tile on a
+    # lane-unique scratch slot at `dest - BLOCK_N` (store masks are ignored for
+    # scatter addresses on this backend, see the comment there).  Allocate the
+    # ping-pong buffers with a BLOCK_N-element head pad plus a 256-element tail
+    # pad (masked *affine* stores on this backend touch a full 64-element
+    # granule, and init_sort_buffers_kernel runs a 256-lane masked tile) and hand
+    # the kernels a contiguous suffix view, so those writes stay inside our own
+    # allocation instead of clobbering the neighbouring one.
+    _HEAD_PAD = BLOCK_N
+    _TAIL_PAD = 256
+    _keepalive = []
+
+    def _padded(dtype):
+        buf = torch.empty(_HEAD_PAD + M * N + _TAIL_PAD, device=arr.device, dtype=dtype)
+        _keepalive.append(buf)
+        return buf[_HEAD_PAD : _HEAD_PAD + M * N].view(M, N)
+
+    arr_in = _padded(arr.dtype)
+    arr_out = _padded(arr.dtype)
+    idx_in = _padded(torch.int64)
+    idx_out = _padded(torch.int64)
+
+    index_block = 256
+    with torch_device_fn.device(arr.device):
+        init_sort_buffers_kernel[(triton.cdiv(M * N, index_block),)](
+            arr, arr_in, idx_in, M * N, N, BLOCK_SIZE=index_block
+        )
 
     dtype = arr.dtype
     num_bits = 1
@@ -369,14 +511,21 @@ def radix_sort_low_mem(arr, k_bits=4, descending=False):
     num_passes = (num_bits + k_bits - 1) // k_bits
     num_bins = 2**k_bits
 
-    BLOCK_N = 512
-    grid_n = triton.cdiv(N, BLOCK_N)
-    grid = (M * grid_n,)
+    # NOTE(kunlunxin): the per-pass histogram lives in a bin-major [M, R_PAD]
+    # buffer so that its exclusive prefix sum (bin_prefix_kernel, one program
+    # per row) *is* the scatter destination table.  This replaces the previous
+    # per-pass host chain sum_dim + cumsum + cumsum + broadcast_to().clone()
+    # + add, which allocated three int64 tensors of M*grid_n*num_bins elements
+    # per pass (vendor `cumsum` promotes int32 -> int64) and, when grid_n was
+    # small, degenerated into scan_then_fan with a 1-wide scan tile.
+    # R_PAD is a multiple of TILE so bin_prefix_kernel needs no masking at all.
+    r = num_bins * grid_n
+    tile_r = max(64, min(4096, triton.next_power_of_2(r)))
+    r_pad = triton.cdiv(r, tile_r) * tile_r
 
     with torch_device_fn.device(arr.device):
-        counts = torch.empty(
-            (M, grid_n, num_bins), device=arr.device, dtype=torch.int32
-        )
+        counts = torch.empty(M * r_pad, device=arr.device, dtype=torch.int32)
+        global_offsets = torch.empty(M * r_pad, device=arr.device, dtype=torch.int32)
 
         for p in range(num_passes):
             bit_offset = p * k_bits
@@ -389,19 +538,16 @@ def radix_sort_low_mem(arr, k_bits=4, descending=False):
                 num_bins,
                 BLOCK_N,
                 descending,
-                is_use_mask_zero=True,
+                GRID_N=grid_n,
+                R_PAD=r_pad,
             )
 
-            total_counts_per_bin = counts.sum(dim=1)
-            bin_global_starts = (
-                torch.cumsum(total_counts_per_bin, dim=1) - total_counts_per_bin
-            )
-            block_prefix_sum = torch.cumsum(counts, dim=1) - counts
-            global_offsets = (
-                bin_global_starts.unsqueeze(1)
-                .broadcast_to(block_prefix_sum.shape)
-                .clone()
-                + block_prefix_sum
+            bin_prefix_kernel[(M,)](
+                counts,
+                global_offsets,
+                R=r,
+                R_PAD=r_pad,
+                TILE=tile_r,
             )
 
             scatter_kernel[grid](
@@ -416,13 +562,53 @@ def radix_sort_low_mem(arr, k_bits=4, descending=False):
                 num_bins,
                 BLOCK_N,
                 descending,
-                is_use_mask_zero=True,
+                GRID_N=grid_n,
+                R_PAD=r_pad,
             )
 
             arr_in, arr_out = arr_out, arr_in
             idx_in, idx_out = idx_out, idx_in
 
-    return arr_in, idx_in
+    return arr_in.reshape(original_shape), idx_in.reshape(original_shape)
+
+
+def _copy_bitview(t):
+    # NOTE(kunlunxin): the tuned copy codegen hits an illegal memory access for
+    # int32 on the strided-read path at some shapes (deterministic repro:
+    # permute-read of a (65536, 4) / (32768, 8) int32 tensor, i.e.
+    # M * N = 256 Ki; smaller shapes are clean).  int32 and float32 share
+    # itemsize, so bit-cast both sides and reuse the proven fp32 copy path;
+    # the copy is bit-exact.  Same workaround as the cat family.
+    if t.dtype == torch.int32:
+        return t.view(torch.float32)
+    return t
+
+
+def _permute_copy_to_last(inp, dim):
+    """Materialize a dim-last view without routing a strided copy through copy_."""
+    order = [i for i in range(inp.ndim) if i != dim] + [dim]
+    shape = tuple(inp.shape[i] for i in order)
+    strides = tuple(inp.stride()[i] for i in order)
+    out = torch.empty(shape, dtype=inp.dtype, device=inp.device)
+    src = _copy_bitview(inp)
+    dst = _copy_bitview(out)
+    in_view = StridedBuffer(src, shape, strides)
+    out_view = StridedBuffer(dst, shape, dst.stride())
+    copy_func.instantiate(inp.ndim)(in_view, out0=out_view)
+    return out, order
+
+
+def _permute_copy_from_last(inp, out_shape, order):
+    """Copy a dim-last result into the original contiguous dimension order."""
+    out = torch.empty(out_shape, dtype=inp.dtype, device=inp.device)
+    shape = tuple(out_shape[i] for i in order)
+    strides = tuple(out.stride()[i] for i in order)
+    src = _copy_bitview(inp)
+    dst = _copy_bitview(out)
+    in_view = StridedBuffer(src, shape, src.stride())
+    out_view = StridedBuffer(dst, shape, strides)
+    copy_func.instantiate(len(order))(in_view, out0=out_view)
+    return out
 
 
 def radix_sort(arr, k_bits=8, descending=False):
@@ -444,9 +630,10 @@ def radix_sort(arr, k_bits=8, descending=False):
     grid_for_global_hist = (m * grid_n, 1, 1)
 
     with torch_device_fn.device(arr.device):
-        global_hist = torch.zeros(
+        global_hist = torch.empty(
             (m, n_passes, num_bins), device=arr.device, dtype=torch.int32
         )
+        zero_(global_hist)
         compute_global_hist_kernel[grid_for_global_hist](
             arr,
             global_hist,
@@ -459,15 +646,15 @@ def radix_sort(arr, k_bits=8, descending=False):
             k_bits,
             descending,
         )
-        ex_cumsum_bins = torch.cumsum(global_hist, -1) - global_hist
+        ex_cumsum_bins = cumsum(global_hist, dim=-1) - global_hist
         ex_cumsum_bins = ex_cumsum_bins.to(torch.uint32)
 
         # sort
-        arr_in = torch.clone(arr)
-        indices_in = (
-            torch.arange(0, n, dtype=torch.int64, device=arr_in.device)
-            .broadcast_to(arr.shape)
-            .contiguous()
+        arr_in = torch.empty_like(arr)
+        indices_in = torch.empty(arr.shape, dtype=torch.int64, device=arr.device)
+        init_block = 256
+        init_sort_buffers_kernel[(triton.cdiv(arr.numel(), init_block),)](
+            arr, arr_in, indices_in, arr.numel(), n, BLOCK_SIZE=init_block
         )
         arr_out = torch.empty_like(arr)
         indices_out = torch.empty_like(indices_in)
@@ -546,62 +733,58 @@ def sort_kernel(
 
 def sort(inp, dim=-1, descending=False):
     logger.debug("GEMS_KUNLUNXIN SORT")
+    if inp.ndim == 0:
+        return inp.clone(), torch.zeros_like(inp, dtype=torch.int64)
     sort_elem_cnt = inp.shape[dim]
+    if sort_elem_cnt == 0 or inp.numel() == 0:
+        return inp, torch.empty_like(inp, dtype=torch.int64)
     if sort_elem_cnt == 1:
-        return inp, torch.zeros_like(inp, dtype=torch.int64)
-    elif sort_elem_cnt > 512:  # TODO: Optimize implementation for large cases.
-        return torch.sort(inp, stable=False, dim=dim, descending=descending)
-    block_size = triton.next_power_of_2(sort_elem_cnt)
-
-    if dim < 0:
-        dim = dim + inp.ndim
-    if dim != inp.ndim - 1:
-        inp = torch.movedim(inp, dim, -1).contiguous()
-    else:
-        inp = inp.contiguous()
-    batch_size = math.prod(inp.shape) // sort_elem_cnt
-
-    out = torch.empty_like(inp)
-    out_index = torch.empty_like(inp, dtype=torch.int64)
-
-    with torch_device_fn.device(inp.device):
-        sort_kernel[batch_size,](
-            inp,
-            out,
-            out_index,
-            N=sort_elem_cnt,
-            BLOCK_SIZE=block_size,
-            DESCENDING=descending,
-            IS_FLOAT=inp.is_floating_point(),
-            num_warps=4,
-        )
-
-    if dim != inp.ndim - 1:
-        out = torch.movedim(out, -1, dim)
-        out_index = torch.movedim(out_index, -1, dim)
-    return out, out_index
+        indices = torch.empty_like(inp, dtype=torch.int64)
+        with torch_device_fn.device(inp.device):
+            init_indices_kernel[(triton.cdiv(inp.numel(), 256),)](
+                indices, inp.numel(), 1, BLOCK_SIZE=256
+            )
+        return inp, indices
+    # NOTE(kunlunxin): the bitonic argsort path (sort_kernel) mis-sorts /
+    # faults the device on XPU (unrolled compare-and-swap chain, ~hundreds of
+    # where-ops over BLOCK_SIZE lanes → miscompile + device kernel exception),
+    # so every non-trivial size goes through the stable radix chain here
+    # (identical to sort_stable); reference semantics of torch.sort with
+    # stable=True are preserved and radix is stable by construction.
+    return sort_stable(inp, stable=True, dim=dim, descending=descending)
 
 
 def sort_stable(inp, *, stable, dim=-1, descending=False):
     logger.debug("GEMS_KUNLUNXIN SORT_STABLE")
     # We only implement stable radix sort here
     _ = stable
+    if inp.ndim == 0:
+        return inp.clone(), torch.zeros_like(inp, dtype=torch.int64)
     sort_elem_cnt = inp.shape[dim]
+    if sort_elem_cnt == 0 or inp.numel() == 0:
+        return inp, torch.empty_like(inp, dtype=torch.int64)
     if sort_elem_cnt == 1:
-        return inp, torch.zeros_like(inp, dtype=torch.int64)
+        indices = torch.empty_like(inp, dtype=torch.int64)
+        with torch_device_fn.device(inp.device):
+            init_indices_kernel[(triton.cdiv(inp.numel(), 256),)](
+                indices, inp.numel(), 1, BLOCK_SIZE=256
+            )
+        return inp, indices
 
     if dim < 0:
         dim = dim + inp.ndim
+    original_shape = inp.shape
     if dim != inp.ndim - 1:
-        inp = torch.movedim(inp, dim, -1).contiguous()
+        inp, order = _permute_copy_to_last(inp, dim)
     else:
+        order = list(range(inp.ndim))
         inp = inp.contiguous()
 
     dtype = inp.dtype
     num_bits_per_pass = 1 if dtype == torch.bool else 4
     out, out_index = radix_sort_low_mem(inp, num_bits_per_pass, descending)
 
-    if dim != inp.ndim - 1:
-        out = torch.movedim(out, -1, dim)
-        out_index = torch.movedim(out_index, -1, dim)
+    if dim != len(order) - 1:
+        out = _permute_copy_from_last(out, original_shape, order)
+        out_index = _permute_copy_from_last(out_index, original_shape, order)
     return out, out_index

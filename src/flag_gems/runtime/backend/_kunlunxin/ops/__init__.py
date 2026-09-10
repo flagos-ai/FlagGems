@@ -22,6 +22,7 @@ from ._thnn_fused_lstm_cell_backward_impl import _thnn_fused_lstm_cell_backward_
 from .abs import abs, abs_
 from .absolute import absolute
 from .acos import acos
+from .adaptive_avg_pool2d_backward import _adaptive_avg_pool2d_backward
 from .add import add, add_
 from .addcdiv import addcdiv, addcdiv_, addcdiv_out
 from .addcmul import addcmul, addcmul_out
@@ -40,11 +41,14 @@ from .arange import arange, arange_start
 from .arccos import arccos, arccos_
 from .arcsin import arcsin, arcsin_, arcsin_out
 from .arctan import arctan, arctan_
+from .arctan2 import arctan2, arctan2_, arctan2_out
 from .argmax import argmax
 from .argmin import argmin
 from .as_strided_copy import as_strided_copy, as_strided_copy_out
 from .asin import asin, asin_
 from .atan import atan, atan_
+from .atan2 import atan2, atan2_, atan2_out
+from .atanh import atanh, atanh_
 from .attention import (
     ScaleDotProductAttention,
     flash_attention_forward,
@@ -54,8 +58,27 @@ from .attention import (
     scaled_dot_product_attention_forward,
 )
 from .avg_pool2d import avg_pool2d, avg_pool2d_backward
+from .avg_pool3d import avg_pool3d, avg_pool3d_backward
 from .baddbmm import baddbmm
-from .batch_norm import batch_norm, batch_norm_backward
+from .batch_norm import (
+    _native_batch_norm_legit,
+    _native_batch_norm_legit_functional,
+    _native_batch_norm_legit_no_stats,
+    _native_batch_norm_legit_no_stats_out,
+    _native_batch_norm_legit_no_training,
+    _native_batch_norm_legit_out,
+    batch_norm,
+    batch_norm_backward,
+)
+from .batch_norm import batch_norm_impl_index as _batch_norm_impl_index
+from .batch_norm import (
+    batch_norm_impl_index_backward as _batch_norm_impl_index_backward,
+)
+from .batch_norm import batch_norm_no_update as _batch_norm_no_update
+from .batch_norm import (
+    batch_norm_with_update_functional as _batch_norm_with_update_functional,
+)
+from .batch_norm import miopen_batch_norm_backward
 from .bernoulli_ import bernoulli_
 from .bitwise_and import (
     bitwise_and_scalar,
@@ -91,6 +114,7 @@ from .clamp import (
 )
 from .clip import clip, clip_
 from .concatenate import concatenate
+from .conj_physical import conj_physical
 from .contiguous import contiguous
 from .conv1d import conv1d
 from .conv2d import conv2d
@@ -108,6 +132,7 @@ from .deg2rad import deg2rad, deg2rad_, deg2rad_out
 from .diag import diag
 from .diag_embed import diag_embed
 from .diagonal import diagonal_backward
+from .diff import diff
 from .digamma_ import digamma_
 from .div import (
     div_mode,
@@ -146,6 +171,7 @@ from .floor import floor, floor_, floor_out
 from .full import full
 from .full_like import full_like
 from .gather import gather, gather_backward
+from .gcd import gcd, gcd_, gcd_out
 from .ge import ge, ge_scalar, greater_equal_
 from .gelu import gelu, gelu_, gelu_backward
 from .get_scheduler_metadata import get_scheduler_metadata
@@ -156,6 +182,7 @@ from .gt import gt, gt_scalar
 from .hadamard_transform import hadamard_transform
 from .hardsigmoid import hardsigmoid, hardsigmoid_out
 from .hstack import hstack
+from .hypot_ import hypot_
 from .index import index
 from .index_add import index_add, index_add_
 from .index_put import index_put, index_put_
@@ -191,7 +218,11 @@ from .masked_select import masked_select
 from .matmul_bf16 import matmul_bf16
 from .matmul_int8 import matmul_int8
 from .max import max, max_dim
-from .max_pool2d_with_indices import max_pool2d_backward, max_pool2d_with_indices
+from .max_pool2d_with_indices import (
+    max_pool2d_backward,
+    max_pool2d_with_indices,
+    max_pool2d_with_indices_backward,
+)
 from .maximum import maximum
 from .mean import mean, mean_dim
 from .min import min, min_dim
@@ -210,6 +241,7 @@ from .neg import neg, neg_
 from .negative import negative
 from .new_full import new_full
 from .new_ones import new_ones
+from .nextafter import nextafter, nextafter_
 from .nllloss import (
     nll_loss2d_backward,
     nll_loss2d_forward,
@@ -272,6 +304,7 @@ from .safe_softmax import _safe_softmax
 from .scaled_softmax import scaled_softmax_backward, scaled_softmax_forward
 from .scatter import scatter, scatter_
 from .scatter_add_ import scatter_add_
+from .select_backward import select_backward
 from .select_scatter import select_scatter
 from .selu import selu, selu_
 from .sgn_ import sgn_
@@ -290,6 +323,10 @@ from .softshrink import softshrink, softshrink_out
 from .sort import sort, sort_stable
 from .special_log_softmax import special_log_softmax
 from .special_logsumexp import special_logsumexp
+from .special_shifted_chebyshev_polynomial_u import (
+    special_shifted_chebyshev_polynomial_u,
+    special_shifted_chebyshev_polynomial_u_,
+)
 from .sqrt import sqrt, sqrt_
 from .stack import stack
 from .std import std
@@ -308,10 +345,20 @@ from .triu import triu, triu_
 from .trunc import trunc, trunc_
 from .uniform import uniform_
 from .unique import _unique2
+from .unique_consecutive import unique_consecutive
+from .unique_dim import unique_dim
 from .upsample_bicubic2d_aa import _upsample_bicubic2d_aa
+from .upsample_bilinear2d import upsample_bilinear2d
+from .upsample_bilinear2d_aa import _upsample_bilinear2d_aa
 from .upsample_linear1d import upsample_linear1d
+from .upsample_linear1d_backward import upsample_linear1d_backward
 from .upsample_nearest1d import upsample_nearest1d
 from .upsample_nearest2d import upsample_nearest2d
+from .upsample_nearest_exact1d_backward import (
+    _upsample_nearest_exact1d_backward,
+    _upsample_nearest_exact1d_backward_grad_input,
+)
+from .upsample_nearest_exact2d_backward import _upsample_nearest_exact2d_backward
 from .upsample_trilinear3d import upsample_trilinear3d
 from .var_mean import var_mean
 from .vdot import vdot
@@ -346,10 +393,16 @@ __all__ = [
     "soft_margin_loss_backward",
     "special_log_softmax",
     "special_logsumexp",
+    "special_shifted_chebyshev_polynomial_u",
+    "special_shifted_chebyshev_polynomial_u_",
     "softshrink",
     "softshrink_out",
     "_unique2",
     "_upsample_bicubic2d_aa",
+    "_upsample_bilinear2d_aa",
+    "_upsample_nearest_exact1d_backward",
+    "_upsample_nearest_exact1d_backward_grad_input",
+    "_upsample_nearest_exact2d_backward",
     "apply_repetition_penalties",
     "abs",
     "abs_",
@@ -390,6 +443,9 @@ __all__ = [
     "arcsin_out",
     "arctan",
     "arctan_",
+    "arctan2",
+    "arctan2_",
+    "arctan2_out",
     "argmax",
     "argmin",
     "as_strided_copy",
@@ -398,11 +454,31 @@ __all__ = [
     "asin_",
     "atan",
     "atan_",
+    "atan2",
+    "atan2_",
+    "atan2_out",
+    "atanh",
+    "atanh_",
     "avg_pool2d",
     "avg_pool2d_backward",
+    "avg_pool3d",
+    "avg_pool3d_backward",
+    "_adaptive_avg_pool2d_backward",
     "baddbmm",
     "batch_norm",
     "batch_norm_backward",
+    "_batch_norm_no_update",
+    "_batch_norm_no_update",
+    "_batch_norm_impl_index",
+    "_batch_norm_with_update_functional",
+    "_native_batch_norm_legit",
+    "_native_batch_norm_legit_functional",
+    "_native_batch_norm_legit_no_stats",
+    "_native_batch_norm_legit_no_stats_out",
+    "_native_batch_norm_legit_no_training",
+    "_native_batch_norm_legit_out",
+    "miopen_batch_norm_backward",
+    "_batch_norm_impl_index_backward",
     "bernoulli_",
     "bitwise_and_scalar",
     "bitwise_and_scalar_",
@@ -439,6 +515,7 @@ __all__ = [
     "clip",
     "clip_",
     "concatenate",
+    "conj_physical",
     "constant_pad_nd",
     "contiguous",
     "conv1d",
@@ -463,6 +540,7 @@ __all__ = [
     "diag",
     "diag_embed",
     "diagonal_backward",
+    "diff",
     "div_mode",
     "div_mode_",
     "dot",
@@ -508,6 +586,9 @@ __all__ = [
     "full_like",
     "gather",
     "gather_backward",
+    "gcd",
+    "gcd_",
+    "gcd_out",
     "ge",
     "ge_scalar",
     "gelu",
@@ -526,6 +607,7 @@ __all__ = [
     "gt",
     "gt_scalar",
     "hstack",
+    "hypot_",
     "hadamard_transform",
     "hardsigmoid",
     "hardsigmoid_out",
@@ -590,6 +672,7 @@ __all__ = [
     "maximum",
     "max_pool2d_with_indices",
     "max_pool2d_backward",
+    "max_pool2d_with_indices_backward",
     "mean",
     "mean_dim",
     "min",
@@ -616,6 +699,8 @@ __all__ = [
     "ne_scalar",
     "neg",
     "neg_",
+    "nextafter",
+    "nextafter_",
     "negative",
     "not_equal",
     "not_equal_scalar",
@@ -694,6 +779,7 @@ __all__ = [
     "scatter",
     "scatter_",
     "scatter_add_",
+    "select_backward",
     "select_scatter",
     "selu",
     "selu_",
@@ -755,7 +841,11 @@ __all__ = [
     "trunc_",
     "true_divide_",
     "uniform_",
+    "upsample_bilinear2d",
+    "unique_consecutive",
+    "unique_dim",
     "upsample_linear1d",
+    "upsample_linear1d_backward",
     "upsample_nearest1d",
     "upsample_nearest2d",
     "upsample_trilinear3d",
