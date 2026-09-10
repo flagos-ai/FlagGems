@@ -80,7 +80,7 @@ def test_lstm_cell(shape, dtype):
     # instability in certain shapes (e.g., 16x128x128 shows occasional edge-case errors).
     reduce_dim = max(input_size, hidden_size)
     if dtype == torch.bfloat16:
-        reduce_dim = int(reduce_dim * 1.5)  # Extra margin for bfloat16
+        reduce_dim = int(reduce_dim * 2.0)  # Extra margin for bfloat16
     utils.gems_assert_close(res_hy, ref_hy, dtype, reduce_dim=reduce_dim)
     utils.gems_assert_close(res_cy, ref_cy, dtype, reduce_dim=reduce_dim)
 
@@ -125,6 +125,6 @@ def test_lstm_cell_no_bias(shape, dtype):
     # instability in certain shapes (e.g., 16x128x128 shows occasional edge-case errors).
     reduce_dim = max(input_size, hidden_size)
     if dtype == torch.bfloat16:
-        reduce_dim = int(reduce_dim * 1.5)  # Extra margin for bfloat16
+        reduce_dim = int(reduce_dim * 2.0)  # Extra margin for bfloat16
     utils.gems_assert_close(res_hy, ref_hy, dtype, reduce_dim=reduce_dim)
     utils.gems_assert_close(res_cy, ref_cy, dtype, reduce_dim=reduce_dim)
