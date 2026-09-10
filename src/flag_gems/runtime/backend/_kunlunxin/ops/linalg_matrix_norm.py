@@ -514,6 +514,15 @@ def linalg_matrix_norm(A, ord="fro", dim=(-2, -1), keepdim=False, dtype=None):
     dim = list(dim)
     if len(dim) != 2:
         raise RuntimeError(f"linalg_matrix_norm: dim must be a 2-tuple, got {dim}")
+    # Validate every dim against the raw (possibly negative) value before
+    # normalising: modulo alone would silently map (2, 3) on a 2-D input to
+    # (0, 1) instead of raising like ATen.
+    for d in dim:
+        if not (-A.ndim <= d < A.ndim):
+            raise RuntimeError(
+                f"linalg_matrix_norm: dim {d} must be in the range "
+                f"[{-A.ndim}, {A.ndim})"
+            )
     dim = [d % A.ndim for d in dim]
     if dim[0] == dim[1]:
         raise RuntimeError(
