@@ -1659,6 +1659,7 @@ ops:
   - _batch_norm_with_update
   labels:
   - KernelGen
+  - aten
   kind:
   - NeuralNetwork
   stages:
