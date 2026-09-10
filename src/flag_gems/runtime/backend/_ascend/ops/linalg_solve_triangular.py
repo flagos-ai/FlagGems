@@ -285,7 +285,7 @@ class SolveTriangularFunction(torch.autograd.Function):
 
 
 def linalg_solve_triangular(A, B, *, upper=False, left=True, unitriangular=False):
-    logger.debug("GEMS LINALG_SOLVE_TRIANGULAR")
+    logger.debug("GEMS_ASCEND LINALG_SOLVE_TRIANGULAR")
     assert A.dtype in (
         torch.float32,
         torch.float64,
