@@ -12,12 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
+
 import torch
 import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils.libentry import libentry
+
+logger = logging.getLogger(__name__)
 
 TOTAL_CORE_NUM = torch_device_fn.get_device_properties().multi_processor_count
 SMALL_INT_RANGE_LIMIT = 256
@@ -284,6 +288,7 @@ def _unique2(
     return_inverse: bool = False,
     return_counts: bool = False,
 ):
+    logger.debug("GEMS_TSINGMICRO _UNIQUE2")
     if in0.dtype in (torch.int16, torch.int32) and in0.numel() > 8192:
         min_value = in0.min().item()
         max_value = in0.max().item()

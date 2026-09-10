@@ -637,6 +637,78 @@ def _patch_torch_randn_complex_dtype():
     setattr(torch, patched_attr, True)
 
 
+def _patch_torch_abs_long_runtime_error():
+    """Run ``torch.abs`` on CPU for PTPU int64 eager helper tensors.
+
+    Sunrise's eager ``UNARY_ABS`` kernel raises a plain ``RuntimeError`` for
+    ``torch.long`` inputs. Keep the workaround outside ``use_gems()`` so it
+    only covers setup/reference helpers such as flash-attention ALiBi bias
+    construction and cannot hide a missing FlagGems ``abs`` implementation.
+    """
+    patched_attr = "_flag_gems_sunrise_abs_long_runtime_error_patched"
+    if getattr(torch, patched_attr, False):
+        return
+
+    original_fn = torch.abs
+    runtime_marker = "unary_op<ptpu_kernel::UNARY_ABS>"
+    dtype_marker = "failed to dispatch data type Long"
+
+    @functools.wraps(original_fn)
+    def abs_with_ptpu_long_cpu_fallback(*args, **kwargs):
+        tensor = args[0] if args else kwargs.get("input")
+        try:
+            return original_fn(*args, **kwargs)
+        except RuntimeError as exc:
+            message = str(exc)
+            if (
+                _flag_gems_use_gems_active()
+                or not _is_ptpu_tensor(tensor)
+                or tensor.dtype != torch.long
+                or runtime_marker not in message
+                or dtype_marker not in message
+            ):
+                raise
+            return _torch_function_cpu_fallback(tensor, args, kwargs, original_fn)
+
+    torch.abs = abs_with_ptpu_long_cpu_fallback
+    setattr(torch, patched_attr, True)
+
+
+def _patch_torch_all_keepdim_runtime_error():
+    """Run unsupported PTPU bool ``torch.all(..., keepdim=True)`` on CPU.
+
+    Sunrise eager reduction raises a plain ``RuntimeError`` for this form.
+    Limit the fallback to the exact runtime message and reference/setup code
+    outside ``use_gems()`` so FlagGems' real ``all`` kernel remains visible.
+    """
+    patched_attr = "_flag_gems_sunrise_all_keepdim_runtime_error_patched"
+    if getattr(torch, patched_attr, False):
+        return
+
+    original_fn = torch.all
+    runtime_marker = "all_out with keepdim true is not implemented yet."
+
+    @functools.wraps(original_fn)
+    def all_with_ptpu_keepdim_cpu_fallback(*args, **kwargs):
+        tensor = args[0] if args else kwargs.get("input")
+        keepdim = args[2] if len(args) > 2 else kwargs.get("keepdim", False)
+        try:
+            return original_fn(*args, **kwargs)
+        except RuntimeError as exc:
+            if (
+                _flag_gems_use_gems_active()
+                or not _is_ptpu_tensor(tensor)
+                or tensor.dtype != torch.bool
+                or keepdim is not True
+                or runtime_marker not in str(exc)
+            ):
+                raise
+            return _torch_function_cpu_fallback(tensor, args, kwargs, original_fn)
+
+    torch.all = all_with_ptpu_keepdim_cpu_fallback
+    setattr(torch, patched_attr, True)
+
+
 def _patch_torch_cudnn_convolution():
     """Run `torch.cudnn_convolution(...)` on CPU via `F.conv{1,2,3}d` for PTPU.
 
@@ -3365,6 +3437,7 @@ def apply_sunrise_monkey_patches():
     _patch_torch_function("logsumexp", "aten::amax.out")
     _patch_tensor_method("mean", "aten::mean")
     _patch_torch_function("mean", "aten::mean")
+    _patch_torch_all_keepdim_runtime_error()
     _patch_torch_function("norm", "aten::linalg_vector_norm.out")
     _patch_torch_linalg_function("vector_norm", "aten::linalg_vector_norm.out")
     _patch_torch_linalg_function("qr", "aten::linalg_qr.out")
@@ -3403,6 +3476,7 @@ def apply_sunrise_monkey_patches():
     _patch_torch_nn_functional("logsigmoid", "aten::log_sigmoid_forward")
     _patch_torch_nn_functional_one_hot_cpu_reference()
     _patch_torch_randn_complex_dtype()
+    _patch_torch_abs_long_runtime_error()
     _patch_torch_cudnn_convolution()
     _patch_conv_depthwise2d_cpu_reference()
     _patch_thnn_fused_lstm_cell_cpu_reference()

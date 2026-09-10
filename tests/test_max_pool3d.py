@@ -86,6 +86,9 @@ def test_max_pool3d_with_indices(
 def test_max_pool3d_backward(
     shape, kernel_size, stride, padding, dilation, ceil_mode, dtype
 ):
+    if flag_gems.vendor_name == "cambricon" and dilation == 2:
+        pytest.skip("Issue #5254: Not supported")
+
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
     ref_inp = to_reference(inp, upcast=True)
 

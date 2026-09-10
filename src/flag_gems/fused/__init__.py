@@ -36,6 +36,7 @@ from flag_gems.fused.deepseek_v4_attention_dequantize_and_gather_k_cache import 
 )
 from flag_gems.fused.deepseek_v4_attention_fused_q_kv_rmsnorm import fused_q_kv_rmsnorm
 from flag_gems.fused.DSA.bin_topk import bucket_sort_topk
+from flag_gems.fused.DSA.sparse_mla import triton_sparse_mla_fwd_interface
 from flag_gems.fused.FLA import (
     chunk_gated_delta_rule_fwd,
     fused_recurrent_gated_delta_rule_fwd,
@@ -89,6 +90,7 @@ from flag_gems.fused.moe_sum import moe_sum
 from flag_gems.fused.mrope import mrope
 from flag_gems.fused.outer import outer
 from flag_gems.fused.pack_seq import pack_seq_triton
+from flag_gems.fused.post_layer_norm_residual import post_layer_norm_residual
 from flag_gems.fused.reglu import dreglu, reglu
 from flag_gems.fused.reshape_and_cache import reshape_and_cache
 from flag_gems.fused.reshape_and_cache_flash import reshape_and_cache_flash
@@ -173,6 +175,7 @@ __all__ = [
     "outer",
     "outplace_fused_experts",
     "pack_seq_triton",
+    "post_layer_norm_residual",
     "reglu",
     "reshape_and_cache",
     "reshape_and_cache_flash",
@@ -191,6 +194,7 @@ __all__ = [
     "top_k_per_row_prefill",
     "topk_softmax",
     "topk_softplus_sqrt",
+    "triton_sparse_mla_fwd_interface",
     "unpack_seq_triton",
     "weight_norm",
 ]

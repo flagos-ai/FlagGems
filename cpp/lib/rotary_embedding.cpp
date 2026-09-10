@@ -23,6 +23,26 @@
 namespace flag_gems {
 using namespace triton_jit;
 
+namespace {
+  // The rotary kernels launch one program per token. The MLU runtime turns that
+  // into grid_x * num_warps tasks and rejects grid_x above 65535, so a large
+  // token count has to be paid for with fewer warps per program. Other backends
+  // keep the original value.
+  inline int rotary_num_warps(int64_t n_tokens) {
+#if defined(FLAGGEMS_USE_MLU)
+    constexpr int64_t kMluMaxGridX = 65535;
+    int num_warps = 8;
+    while (num_warps > 1 && n_tokens * num_warps > kMluMaxGridX) {
+      num_warps /= 2;
+    }
+    return num_warps;
+#else
+    (void)n_tokens;
+    return 8;
+#endif
+  }
+}  // namespace
+
 void check_rotary_embedding_inputs(
     const at::Tensor& q,    // [batch_size, seq_len, q_heads, head_dim] or [num_tokens, q_heads, head_dim]
     const at::Tensor& k,    // [batch_size, seq_len, k_heads, head_dim] or [num_tokens, k_heads, head_dim]
@@ -174,7 +194,7 @@ def apply_rotary_pos_emb_inplace_kernel(
     n_tokens,
     1,
     1,
-    /* num_warps */ 8,
+    /* num_warps */ rotary_num_warps(n_tokens),
     /* num_stages */ 1,
     q,
     k,
@@ -253,7 +273,7 @@ std::tuple<at::Tensor, at::Tensor> rotary_embedding(const at::Tensor& q,
     n_tokens,
     1,
     1,
-    /* num_warps */ 8,
+    /* num_warps */ rotary_num_warps(n_tokens),
     /* num_stages */ 1,
     q_embed,
     k_embed,

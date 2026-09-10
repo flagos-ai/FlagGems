@@ -173,14 +173,8 @@ mm:
   - 32
   - 64
   warps:
-  - 4
   - 8
-# - META:
-#     BLOCK_M: 128
-#     BLOCK_N: 256
-#     BLOCK_K: 32
-#   num_stages: 3
-#   num_warps: 8
+  - 16
 # - META:
 #     BLOCK_M: 256
 #     BLOCK_N: 128

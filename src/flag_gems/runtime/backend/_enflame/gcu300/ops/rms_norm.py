@@ -40,7 +40,7 @@ def rms_norm_kernel(
     eps,  # epsilon to avoid division by zero
     BLOCK_SIZE: tl.constexpr,
 ):
-    if tl.constexpr(in_ptr.dtype.element_ty == tl.float16) or tl.constexpr(
+    if tl.constexpr(in_ptr.dtype.element_ty == tl.float16) | tl.constexpr(
         in_ptr.dtype.element_ty == tl.bfloat16
     ):
         cdtype = tl.float32

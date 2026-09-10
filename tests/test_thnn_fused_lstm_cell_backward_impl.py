@@ -34,6 +34,8 @@ LSTM_SHAPES = [
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_thnn_fused_lstm_cell_backward_impl(shape, dtype):
     """Test accuracy for _thnn_fused_lstm_cell_backward_impl."""
+    if flag_gems.vendor_name == "cambricon" and dtype == torch.bfloat16:
+        pytest.skip("Issue #5254: Not supported")
     batch_size, hidden_size = shape
     dev = flag_gems.device
 

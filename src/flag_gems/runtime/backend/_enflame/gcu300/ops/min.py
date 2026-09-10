@@ -105,7 +105,7 @@ def min_kernel(
     for start_n in range(0, N, BLOCK_N):
         n_offset = start_n + tl.arange(0, BLOCK_N)
         offset = m_offset[:, None] * N + n_offset[None, :]
-        mask = m_offset[:, None] < M and n_offset[None, :] < N
+        mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
         inp_ptrs = inp + offset
         inp_vals = tl.load(inp_ptrs, mask=mask, other=max_value)
         local_min, local_argmin = tl.min(inp_vals, 1, return_indices=True)

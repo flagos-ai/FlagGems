@@ -75,7 +75,7 @@ def test_one_hot():
     expected = torch.empty([4, 0, 100], dtype=torch.long, device=expected_device)
     utils.gems_assert_equal(t, expected)
 
-    if dev_type not in ("cuda", "xla", "mps", "ptpu"):
+    if dev_type not in ("cuda", "xla", "mps", "ptpu", "mlu"):
         bad = torch.tensor([3, 4, -1, 0], dtype=torch.long)
         with pytest.raises(RuntimeError):
             gems_one_hot(bad.to(device), -1)

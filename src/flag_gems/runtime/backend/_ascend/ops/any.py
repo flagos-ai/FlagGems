@@ -129,6 +129,7 @@ def any_dim(inp, dim=None, keepdim=False):
         shape[dim] = 1
         M = inp.numel() // N
         out = torch.empty(shape, dtype=torch.bool, device=inp.device)
+        inp = inp.to(torch.bool)
 
         def grid_fn(meta):
             grid = triton.cdiv(M, meta["BLOCK_M"])
@@ -159,6 +160,7 @@ def any_dims(inp, dim=None, keepdim=False):
     M = inp.numel() // N
 
     out = torch.empty(shape, dtype=torch.bool, device=inp.device)
+    inp = inp.to(torch.bool)
 
     grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
 
