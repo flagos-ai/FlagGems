@@ -4,8 +4,16 @@
 # Copyright (c) 2023-2025, Songlin Yang, Yu Zhang
 from flag_gems.fused.FLA.chunk import chunk_gated_delta_rule_fwd
 from flag_gems.fused.FLA.fused_recurrent import fused_recurrent_gated_delta_rule_fwd
+from flag_gems.fused.FLA.fused_recurrent_kda import (
+    fused_recurrent_kda,
+    fused_recurrent_kda_decode,
+    fused_recurrent_kda_fwd,
+)
 
 __all__ = [
     "chunk_gated_delta_rule_fwd",
     "fused_recurrent_gated_delta_rule_fwd",
+    "fused_recurrent_kda",
+    "fused_recurrent_kda_decode",
+    "fused_recurrent_kda_fwd",
 ]
