@@ -552,8 +552,7 @@ def linalg_lstsq(A, b, rcond=None, driver=None):
         batch_shape = torch.broadcast_shapes(A.shape[:-2], b2.shape[:-2])
     except RuntimeError:
         raise RuntimeError(
-            "torch.linalg.lstsq: batch dimensions of A and b are not "
-            "broadcastable"
+            "torch.linalg.lstsq: batch dimensions of A and b are not " "broadcastable"
         ) from None
 
     # degenerate dims are shape-determined; LAPACK ?gels quick-returns on any
