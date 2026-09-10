@@ -129,6 +129,7 @@ from .trunc import trunc, trunc_
 from .unique import _unique2
 from .upsample_bilinear2d import upsample_bilinear2d
 from .upsample_linear1d_backward import upsample_linear1d_backward
+from .var import var, var_correction, var_dim
 from .w8a8_block_fp8_matmul import w8a8_block_fp8_matmul
 from .zeros import zero_, zeros
 from .zeros_like import zeros_like
@@ -270,6 +271,9 @@ __all__ = [
     "trunc_",
     "upsample_bilinear2d",
     "upsample_linear1d_backward",
+    "var",
+    "var_correction",
+    "var_dim",
     "w8a8_block_fp8_matmul",
     "zero_",
     "zeros",
