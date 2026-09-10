@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Hygon internal implementation for attention
+from ._scaled_dot_product_flash_attention import _scaled_dot_product_flash_attention
 from .adaptive_max_pool3d_backward import adaptive_max_pool3d_backward
 from .addr import addr
 from .any import any, any_dim, any_dims
@@ -61,6 +63,10 @@ from .isin import isin
 from .lcm import lcm, lcm_
 from .linalg_ldl_factor import ldl_factor
 from .linalg_matrix_norm import linalg_matrix_norm
+from .linalg_solve_triangular import (
+    linalg_solve_triangular,
+    linalg_solve_triangular_out,
+)
 from .log_normal_ import log_normal_
 from .masked_scatter_backward import masked_scatter_backward
 from .matmul_bf16 import matmul_bf16
@@ -122,6 +128,7 @@ from .weight_norm import (
 )
 
 __all__ = [
+    "_scaled_dot_product_flash_attention",
     "_unique2",
     "adaptive_max_pool3d_backward",
     "avg_pool3d_backward",
@@ -165,6 +172,8 @@ __all__ = [
     "lcm",
     "lcm_",
     "linalg_matrix_norm",
+    "linalg_solve_triangular",
+    "linalg_solve_triangular_out",
     "log_normal_",
     "masked_scatter_backward",
     "matmul_bf16",
