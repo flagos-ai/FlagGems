@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -9,7 +23,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils import triton_lang_extension as ext
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 INTERPOLATION_METHOD = ["linear", "lower", "higher", "nearest", "midpoint"]
 
 
@@ -30,20 +44,20 @@ INTERPOLATION_METHOD = ["linear", "lower", "higher", "nearest", "midpoint"]
 #         return 1
 
 
-def heur_block_q(args):
+def _block_qn(Q, N):
     import builtins
 
-    return builtins.min(triton.next_power_of_2(args["Q"]), 1024)
-
-
-def heur_block_n(args):
-    import builtins
-
-    return builtins.min(triton.next_power_of_2(args["N"]), 1024)
+    block_q = builtins.min(triton.next_power_of_2(Q), 1024)
+    block_n = builtins.min(triton.next_power_of_2(N), 1024)
+    # A square 2D tile (BLOCK_N == BLOCK_Q) triggers a uni_sram overflow /
+    # PassManager crash in ConvertTritonXPUToLLVM on XPU for this gather kernel.
+    # Perturb one dim so the tile is never square (masking keeps it correct).
+    if block_n == block_q:
+        block_n = builtins.min(block_n * 2, 1024) if block_n < 1024 else block_n // 2
+    return block_q, block_n
 
 
 @libentry()
-@triton.heuristics(values={"BLOCK_Q": heur_block_q, "BLOCK_N": heur_block_n})
 @triton.jit
 def quantile_kernel(
     inp,
@@ -103,7 +117,7 @@ def quantile_kernel(
 def quantile(
     inp, q, dim=None, keepdim=False, interpolation="linear", out=None
 ) -> Tensor:
-    logger.debug("GEMS_KUNLUNXIN QUANTILE_DIM")
+    logger.debug("GEMS_KUNLUNXIN QUANTILE")
     assert torch.is_floating_point(inp)
     assert dim is None or isinstance(dim, int)
     assert isinstance(q, (float, torch.Tensor))
@@ -134,13 +148,21 @@ def quantile(
     inp, _ = inp.sort()  # Sort the input with torch.sort()
     output = torch.empty(inp.shape[:-1] + (Q,), dtype=inp.dtype, device=inp.device)
 
-    grid = lambda meta: (
-        triton.cdiv(Q, meta["BLOCK_Q"]),
-        triton.cdiv(N, meta["BLOCK_N"]),
-    )
+    BLOCK_Q, BLOCK_N = _block_qn(Q, N)
+    grid = (triton.cdiv(Q, BLOCK_Q), triton.cdiv(N, BLOCK_N))
 
     with torch_device_fn.device(inp.device):
-        quantile_kernel[grid](inp, q, output, N, M, Q, interpolation=interpolation)
+        quantile_kernel[grid](
+            inp,
+            q,
+            output,
+            N,
+            M,
+            Q,
+            BLOCK_Q=BLOCK_Q,
+            BLOCK_N=BLOCK_N,
+            interpolation=interpolation,
+        )
 
     output = output.permute(
         (-1,) + tuple(range(0, inp.ndim - 1))

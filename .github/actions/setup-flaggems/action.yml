@@ -1,9 +1,23 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 name: "Setup FlagGems"
 description: "Run setup.sh for a vendor and optionally check GPU availability"
 
 inputs:
-  vendor:
-    description: "FlagGems backend name (e.g. nvidia-cuda133, mthreads, ascend-cann900)"
+  backend:
+    description: "FlagGems backend label (e.g. nvidia-cuda133, mthreads-musa520, ascend-cann900)"
     required: true
   gpu_check_script:
     description: "Path to GPU check script (leave empty to skip)"
@@ -15,18 +29,41 @@ runs:
   steps:
     - name: Setup FlagGems
       shell: bash
-      run: ./setup.sh ${{ inputs.vendor }}
+      run: ./setup.sh ${{ inputs.backend }}
 
     - name: Install vllm (nvidia only)
-      if: startsWith(inputs.vendor, 'nvidia')
+      if: startsWith(inputs.backend, 'nvidia')
       shell: bash
+      env:
+        VLLM_VERSION: "0.21.0"
       run: |
         source .venv/bin/activate
-        uv pip install vllm==0.21.0 --torch-backend=cu130
+        # Record Layer 1 state before vllm install
+        uv pip freeze | grep -iE '^(torch|triton|flag)' | sort > /tmp/layer1-snapshot.txt
+
+        # Install vllm without deps to avoid overwriting torch/triton/flagtree
+        uv pip install --no-deps "vllm==${VLLM_VERSION}"
+
+        # Auto-generate safe dependency list (excludes torch, triton, nvidia-*, etc.)
+        python3 tools/vllm_safe_deps.py "vllm==${VLLM_VERSION}" > /tmp/vllm-safe-deps.txt
+
+        # Install only the safe deps, also --no-deps to prevent transitive pulls
+        uv pip install --no-deps -r /tmp/vllm-safe-deps.txt
+
+        # Verify Layer 1 packages were not modified
+        uv pip freeze | grep -iE '^(torch|triton|flag)' | sort > /tmp/layer2-snapshot.txt
+        if ! diff -q /tmp/layer1-snapshot.txt /tmp/layer2-snapshot.txt > /dev/null 2>&1; then
+          echo "::error::Layer 1 packages were modified by vllm install!"
+          diff /tmp/layer1-snapshot.txt /tmp/layer2-snapshot.txt
+          exit 1
+        fi
 
     - name: Check GPU availability
       if: inputs.gpu_check_script != ''
       shell: bash
       run: |
-        source tools/env.sh ${{ inputs.vendor }}
-        bash ${{ inputs.gpu_check_script }}
+        source .venv/bin/activate
+        GPU_OUTPUT=$(bash ${{ inputs.gpu_check_script }})
+        echo "$GPU_OUTPUT"
+        AVAILABLE_GPUS=$(echo "$GPU_OUTPUT" | grep "^Available GPUs:" | cut -d: -f2 | tr -d ' ')
+        echo "AVAILABLE_GPUS=${AVAILABLE_GPUS}" >> $GITHUB_ENV

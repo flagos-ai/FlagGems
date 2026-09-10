@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -5,7 +19,7 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry, libtuner
+from flag_gems.utils import libentry
 from flag_gems.utils.random_utils import (
     philox_backend_seed_offset,
     uint_to_uniform_float,
@@ -14,78 +28,75 @@ from flag_gems.utils.shape_utils import volume
 
 logger = logging.getLogger(__name__)
 
+# Poisson sampling split:
+#   lambda <= INVERSE_MAX : inverse-transform (one uniform + CDF accumulation)
+#   lambda  > INVERSE_MAX : normal approximation with alpha^2/6 skewness correction
+INVERSE_MAX = 20.0
+# INVERSE_CAP bounds the CDF loop; 48 covers lambda=20 at 2.5 sigma.
+INVERSE_CAP = 48
+# Fixed per-element philox stride so poisson() never reads input on the host.
+PHILOX_STRIDE = 8
+BLOCK_SIZE = 2048
+NUM_WARPS = 8
+
 
 @triton.jit
-def poisson_small_lambda(lam, seed, c0, c1, z, MAX_ITERS: tl.constexpr):
-    """
-    Knuth's algorithm for Poisson sampling with small lambda.
-    Returns the count of exponential inter-arrival times that sum to <= 1.
-    Uses inverse transform: -log(U) / lam for exponential samples.
-    """
-    # L = exp(-lambda)
-    L = tl.exp(-lam)
-    k = (lam * 0).to(tl.int32)  # Initialize counter to 0
-    p = lam * 0.0 + 1.0  # Initialize p to 1.0
+def high_precision_fast_sin_cos(x):
+    two_pi = 6.283185307179586
+    x = x - two_pi * tl.floor(x / two_pi + 0.5)
+    x2 = x * x
+    s_c0 = 0.99999999999999999999
+    s_c1 = -0.16666666666666666654
+    s_c2 = 0.00833333333333332876
+    s_c3 = -0.00019841269841269616
+    s_c4 = 2.755731922398589e-6
+    s_c5 = -2.505210838544172e-8
+    sin_x = x * (
+        s_c0 + x2 * (s_c1 + x2 * (s_c2 + x2 * (s_c3 + x2 * (s_c4 + x2 * s_c5))))
+    )
+    c_c0 = 1.0
+    c_c1 = -0.49999999999999999983
+    c_c2 = 0.04166666666666666636
+    c_c3 = -0.00138888888888888742
+    c_c4 = 2.4801587301587299e-5
+    c_c5 = -2.755731922398581e-7
+    cos_x = c_c0 + x2 * (c_c1 + x2 * (c_c2 + x2 * (c_c3 + x2 * (c_c4 + x2 * c_c5))))
+    return sin_x, cos_x
 
-    # We need to iterate. Each iteration we multiply p by a uniform random.
-    # Continue while p > L.
-    for _ in range(MAX_ITERS):
-        # Generate uniform random
-        r0, r1, r2, r3 = tl.philox(seed, c0, c1, z, z)
-        u = uint_to_uniform_float(r0)
-        # Ensure u is not 0 to avoid issues
-        u = tl.maximum(u, 1e-10)
-        p = p * u
-        # Increment counter where p > L
-        k = tl.where(p > L, k + 1, k)
-        # Update counter for next iteration
-        c0 = c0 + 1
 
+@triton.jit
+def poisson_inverse(lam, lam_bound, seed, c0, c1, z, CAP: tl.constexpr):
+    """Inverse-transform sampling: one uniform, accumulate CDF until s >= u."""
+    r0, r1, r2, r3 = tl.philox(seed, c0, c1, z, z)
+    u = uint_to_uniform_float(r0)
+    p = tl.exp(-lam)
+    s = p
+    k = (lam * 0).to(tl.int32)
+    iters = tl.minimum((lam_bound + 2.5 * tl.sqrt(lam_bound) + 2.0).to(tl.int32), CAP)
+    iters = tl.maximum(iters, 1)
+    for _ in tl.range(0, iters):
+        active = u > s
+        k = tl.where(active, k + 1, k)
+        denom = tl.where(active, k.to(tl.float32), 1.0)
+        p = tl.where(active, p * lam / denom, p)
+        s = tl.where(active, s + p, s)
     return k.to(tl.float32)
 
 
 @triton.jit
-def poisson_large_lambda(lam, seed, c0, c1, z):
-    """
-    Normal approximation for Poisson with large lambda.
-    Poisson(lambda) ~ N(lambda, lambda) for large lambda.
-    Uses Box-Muller transform.
-    """
-    # Generate two uniform random numbers for Box-Muller
+def poisson_corrected_normal(lam, seed, c0, c1, z):
+    """Normal approximation with alpha^2/6 skewness correction (Box-Muller)."""
     r0, r1, r2, r3 = tl.philox(seed, c0, c1, z, z)
-    u1 = uint_to_uniform_float(r0)
+    u1 = tl.maximum(uint_to_uniform_float(r0), 1e-10)
     u2 = uint_to_uniform_float(r1)
-
-    # Avoid log(0)
-    u1 = tl.maximum(u1, 1e-10)
-
-    # Box-Muller transform for standard normal
-    two_pi = 6.283185307179586
-    r = tl.sqrt(-2.0 * tl.log(u1))
-    theta = two_pi * u2
-    normal_sample = r * tl.cos(theta)
-
-    # Transform to Poisson approximation: mean=lam, std=sqrt(lam)
-    result = lam + tl.sqrt(lam) * normal_sample
-
-    # Poisson must be non-negative integer
-    result = tl.maximum(result, 0.0)
-    result = tl.floor(result + 0.5)  # Round to nearest integer
-
-    return result
+    radius = tl.sqrt(-2.0 * tl.log(u1))
+    _, cos_t = high_precision_fast_sin_cos(6.283185307179586 * u2)
+    alpha = radius * cos_t
+    y = lam + alpha * tl.sqrt(lam) + alpha * alpha / 6.0
+    return tl.floor(tl.maximum(y, 0.0) + 0.5)
 
 
 @libentry()
-@libtuner(
-    configs=[
-        triton.Config({"BLOCK": 64}, num_warps=2, num_stages=2),
-        triton.Config({"BLOCK": 128}, num_warps=2, num_stages=2),
-        triton.Config({"BLOCK": 256}, num_warps=4, num_stages=2),
-        triton.Config({"BLOCK": 512}, num_warps=4, num_stages=3),
-        triton.Config({"BLOCK": 1024}, num_warps=8, num_stages=3),
-    ],
-    key=["N"],
-)
 @triton.jit(do_not_specialize=["philox_seed", "philox_offset", "N"])
 def poisson_kernel(
     inp_ptr,
@@ -94,47 +105,26 @@ def poisson_kernel(
     philox_seed,
     philox_offset,
     BLOCK: tl.constexpr,
-    LAMBDA_THRESHOLD: tl.constexpr,
-    MAX_ITERS: tl.constexpr,
+    CAP: tl.constexpr,
+    STRIDE: tl.constexpr,
+    IMAX: tl.constexpr,
 ):
-    """
-    Poisson sampling kernel.
-    For each input lambda:
-    - If lambda < LAMBDA_THRESHOLD: use Knuth's algorithm
-    - Otherwise: use normal approximation
-    """
     philox_seed = philox_seed.to(tl.int64)
     philox_offset = philox_offset.to(tl.int64)
-    c0_base = (philox_offset & 0xFFFFFFFF).to(tl.uint32)
-    c1 = ((philox_offset >> 32) & 0xFFFFFFFF).to(tl.uint32)
-
-    pid = tl.program_id(0)
-    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    offs = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     mask = offs < N
-
-    # Load input lambda values
-    lam = tl.load(inp_ptr + offs, mask=mask, other=0.0).to(tl.float32)
-
-    # Clamp lambda to non-negative
-    lam = tl.maximum(lam, 0.0)
-
-    # Use different algorithms based on lambda size
-    use_small = lam < LAMBDA_THRESHOLD
-
-    # For small lambda: Knuth's algorithm
-    # Each thread needs its own random state offset based on position and iteration count
-    c0_small = c0_base + offs.to(tl.uint32) * MAX_ITERS
-    z = c0_small * 0
-    small_result = poisson_small_lambda(lam, philox_seed, c0_small, c1, z, MAX_ITERS)
-
-    # For large lambda: normal approximation
-    c0_large = c0_base + offs.to(tl.uint32)
-    z_large = c0_large * 0
-    large_result = poisson_large_lambda(lam, philox_seed, c0_large, c1, z_large)
-
-    # Select result based on lambda size
-    result = tl.where(use_small, small_result, large_result)
-
+    lam = tl.maximum(tl.load(inp_ptr + offs, mask=mask, other=0.0).to(tl.float32), 0.0)
+    bmax = tl.max(lam)
+    counter = philox_offset + offs.to(tl.int64) * STRIDE
+    c0 = (counter & 0xFFFFFFFF).to(tl.uint32)
+    c1 = ((counter >> 32) & 0xFFFFFFFF).to(tl.uint32)
+    z = c0 * 0
+    if bmax <= IMAX:
+        result = poisson_inverse(lam, bmax, philox_seed, c0, c1, z, CAP)
+    else:
+        inv = poisson_inverse(lam, IMAX * 1.0, philox_seed, c0, c1, z, CAP)
+        nrm = poisson_corrected_normal(lam, philox_seed, c0, c1, z)
+        result = tl.where(lam <= IMAX, inv, nrm)
     tl.store(out_ptr + offs, result, mask=mask)
 
 
@@ -143,13 +133,6 @@ def poisson(input, generator=None):
     Returns a tensor of the same size as input with each element sampled
     from a Poisson distribution with rate parameter given by the corresponding
     element in input.
-
-    Args:
-        input (Tensor): the input tensor containing the rates of the Poisson distribution
-        generator (torch.Generator, optional): a pseudorandom number generator for sampling
-
-    Returns:
-        Tensor: output tensor with Poisson samples
     """
     logger.debug("GEMS POISSON")
 
@@ -160,39 +143,29 @@ def poisson(input, generator=None):
         torch.float64,
     ), f"Unsupported dtype: {input.dtype}"
 
-    # Ensure input is contiguous
     inp = input.contiguous()
-    N = volume(inp.shape)
-
-    # Create output tensor with same shape and dtype as input
+    n = volume(inp.shape)
     out = torch.empty_like(inp)
-
-    if N == 0:
+    if n == 0:
         return out
 
-    # Parameters for the algorithm
-    LAMBDA_THRESHOLD = 30  # Threshold for switching between algorithms
-    MAX_ITERS = 64  # Maximum iterations for Knuth's algorithm
-
-    # Calculate grid
-    grid = lambda meta: (triton.cdiv(N, meta["BLOCK"]),)
-
-    # Get random seed and offset
-    # Each element may need up to MAX_ITERS random numbers for small lambda case
-    increment = triton.cdiv(N * MAX_ITERS, 4)
+    increment = triton.cdiv(n * PHILOX_STRIDE, 4)
     philox_seed, philox_offset = philox_backend_seed_offset(
         increment, generator=generator
     )
-
+    grid = triton.cdiv(n, BLOCK_SIZE)
     with torch_device_fn.device(inp.device):
-        poisson_kernel[grid](
+        poisson_kernel[(grid,)](
             inp,
             out,
-            N,
+            n,
             philox_seed,
             philox_offset,
-            LAMBDA_THRESHOLD=LAMBDA_THRESHOLD,
-            MAX_ITERS=MAX_ITERS,
+            BLOCK=BLOCK_SIZE,
+            CAP=INVERSE_CAP,
+            STRIDE=PHILOX_STRIDE,
+            IMAX=INVERSE_MAX,
+            num_warps=NUM_WARPS,
         )
 
     return out
