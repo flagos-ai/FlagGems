@@ -298,7 +298,7 @@ def linalg_solve_triangular(A, B, *, upper=False, left=True, unitriangular=False
 def linalg_solve_triangular_out(
     A, B, *, upper=False, left=True, unitriangular=False, out=None
 ):
-    logger.debug("GEMS LINALG_SOLVE_TRIANGULAR OUT")
+    logger.debug("GEMS_ASCEND LINALG_SOLVE_TRIANGULAR OUT")
     if out is None:
         return linalg_solve_triangular(
             A, B, upper=upper, left=left, unitriangular=unitriangular
