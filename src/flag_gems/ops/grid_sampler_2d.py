@@ -226,7 +226,9 @@ def grid_sampler_2d_kernel(
             y = _reflect_coord(y, IH, align_corners)
         # Round to nearest even (matching PyTorch's nearbyint). The half check
         # is exact (frac == 0.5) so no tie is fabricated for fractions that
-        # merely fall close to 0.5.
+        # merely fall close to 0.5, and the non-half branch rounds from the
+        # fractional part instead of floor(x + 0.5), whose fp32 addition can
+        # carry into the next integer (x = 0.5 - 2^-25 gives x + 0.5 == 1.0).
         x_floor = tl.floor(x)
         y_floor = tl.floor(y)
         x_frac = x - x_floor
@@ -235,12 +237,10 @@ def grid_sampler_2d_kernel(
         y_floor_int = y_floor.to(tl.int32)
         x_is_half = x_frac == 0.5
         y_is_half = y_frac == 0.5
-        x_nearest = tl.where(
-            x_is_half, x_floor_int + (x_floor_int & 1), tl.floor(x + 0.5).to(tl.int32)
-        )
-        y_nearest = tl.where(
-            y_is_half, y_floor_int + (y_floor_int & 1), tl.floor(y + 0.5).to(tl.int32)
-        )
+        x_up = (x_frac > 0.5) | (x_is_half & ((x_floor_int & 1) == 1))
+        y_up = (y_frac > 0.5) | (y_is_half & ((y_floor_int & 1) == 1))
+        x_nearest = x_floor_int + x_up.to(tl.int32)
+        y_nearest = y_floor_int + y_up.to(tl.int32)
 
         if padding_mode == 0:  # Zeros
             x_in = (x_nearest >= 0) & (x_nearest < IW)

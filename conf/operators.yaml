@@ -5969,6 +5969,13 @@ ops:
     Supports bilinear, nearest, and bicubic interpolation with zeros, border, and reflection padding.
   for:
   - grid_sampler_2d
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: grid_sampler_3d
   description: 'Given an `input` and a flow-field `grid` in 3D, computes the `output`
     using `input` values and pixel locations from `grid` with trilinear or nearest
