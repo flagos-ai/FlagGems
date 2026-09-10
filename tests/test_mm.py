@@ -108,8 +108,7 @@ def test_mm(M, N, K, dtype, b_column_major):
     ref_mat2 = utils.to_reference(mat2, True)
 
     ref_out = torch.mm(ref_mat1, ref_mat2)
-    with flag_gems.use_gems():
-        res_out = torch.mm(mat1, mat2)
+    res_out = flag_gems.mm(mat1, mat2)
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K, atol=_mm_atol_base())
 
@@ -169,8 +168,7 @@ def test_mm_broadcast_stride_zero(dtype):
     ref_b = utils.to_reference(b, True)
 
     ref_out = torch.mm(ref_a, ref_b)
-    with flag_gems.use_gems():
-        res_out = torch.mm(a, b)
+    res_out = flag_gems.mm(a, b)
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K, atol=_mm_atol_base())
 
@@ -195,8 +193,7 @@ def test_mm_out_vllm_tma_column_major_weight():
     ref_out = torch.empty((M, N), dtype=ref_mat1.dtype, device=ref_mat1.device)
     torch.mm(ref_mat1, ref_mat2, out=ref_out)
 
-    with flag_gems.use_gems():
-        torch.mm(mat1, mat2, out=out)
+    flag_gems.mm_out(mat1, mat2, out=out)
 
     utils.gems_assert_close(out, ref_out, dtype, reduce_dim=K, atol=_mm_atol_base())
 
@@ -283,8 +280,7 @@ def test_mm_self_transpose(M, K, dtype):
     ref_mat = utils.to_reference(mat, True)
 
     ref_out = torch.mm(ref_mat, ref_mat.t())
-    with flag_gems.use_gems():
-        res_out = torch.mm(mat, mat.t())
+    res_out = flag_gems.mm(mat, mat.t())
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K, atol=_mm_atol_base())
 
@@ -309,7 +305,6 @@ def test_mm_out_self_transpose(M, K, dtype):
     ref_out = utils.to_reference(out, True)
 
     torch.mm(ref_mat, ref_mat.t(), out=ref_out)
-    with flag_gems.use_gems():
-        torch.mm(mat, mat.t(), out=out)
+    flag_gems.mm_out(mat, mat.t(), out=out)
 
     utils.gems_assert_close(out, ref_out, dtype, reduce_dim=K, atol=_mm_atol_base())
