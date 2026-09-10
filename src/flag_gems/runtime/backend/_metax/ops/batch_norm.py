@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -14,7 +28,7 @@ from flag_gems.utils import triton_lang_extension as tle
 
 rsqrt = tl_extra_shim.rsqrt
 
-logger = logging.getLogger("flag_gems." + __name__)
+logger = logging.getLogger(__name__)
 
 
 def make_3d_for_bn(input: torch.Tensor) -> torch.Tensor:
@@ -318,7 +332,7 @@ class BatchNorm(torch.autograd.Function):
         momentum=0.1,
         eps=1e-05,
     ):
-        logger.debug("METAX GEMS BATCHNORM FORWARD")
+        logger.debug("GEMS_METAX BATCHNORM_FORWARD")
 
         input_3d = make_3d_for_bn(input)
 
@@ -360,9 +374,9 @@ class BatchNorm(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_out, save_mean, save_invstd):
-        logger.debug("METAX GEMS BATCHNORM BACKWARD")
+        logger.debug("GEMS_METAX BATCHNORM_BACKWARD")
 
-        (input, weight, bias, mean, inv_std) = ctx.saved_tensors
+        input, weight, bias, mean, inv_std = ctx.saved_tensors
         batch_dim = ctx.batch_dim
         spatial_dim = ctx.spatial_dim
 
@@ -443,7 +457,7 @@ def batch_norm_backward(
     eps=1e-05,
     output_mask=None,
 ):
-    logger.debug("METAX GEMS BATCHNORM BACKWARD")
+    logger.debug("GEMS_METAX BATCH_NORM_BACKWARD")
 
     input_3d = make_3d_for_bn(input)
     grad_out_3d = make_3d_for_bn(grad_out)

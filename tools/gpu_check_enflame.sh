@@ -1,14 +1,24 @@
 #!/bin/bash
 
-# Configuration parameters
-mem_threshold=30000     # Maximum memory usage limit (MB)
-sleep_interval=120          # Wait time (seconds), default is 2 minutes
-max_wait=1200
 
-# Sample output from efsmi -L
-# DEV    SN                Slot    ID           Bus             CPU Affinity     UUID
-# -------------------------------------------------------------------------------------------
-# 0      A0A8640510030     N/A     1ea0:2a22    0000:23:00.0    0-31             TPUH61160105
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Configuration parameters
+mem_threshold=30000     # Minimum free memory required (MB)
+sleep_interval=120      # Wait time between retries (seconds)
+max_wait=600           # Maximum total wait time (seconds)
 
 # Count chip lines (lines with Bus info)
 gpu_count=$(efsmi -L | grep -cP '\d+\:\d+\:')
@@ -18,43 +28,41 @@ if [ "$gpu_count" -eq 0 ]; then
     exit 1
 fi
 
-echo "Detected $npu_count Enflame NPU chip(s)."
+echo "Detected $gpu_count Enflame GPU chip(s)."
 
 waited_time=0
 while true; do
-    need_wait=false
-    i=0
+    available_gpus=()
 
     printf " GPU  Total (MiB)  Used (MiB)  Free (MiB)\n"
-    for ((i = 0 ; i < $gpu_count ; i++ )); do
-	total_i=$(efsmi -i 0 -q -d MEMORY | awk '/Device Mem Info/,/BAR1/ { if (/Total Size/) {gsub(/[^0-9]/,"",$0); print $0}}')
-	free_i=$(efsmi -i 0 -q -d MEMORY | awk '/Device Mem Info/,/BAR1/ { if (/Free Size/) {gsub(/[^0-9]/,"",$0); print $0}}')
+    for ((i=0; i<$gpu_count; i++)); do
+        total_i=$(efsmi -i $i -q -d MEMORY | awk '/Device Mem Info/,/BAR1/ { if (/Total Size/) {gsub(/[^0-9]/,"",$0); print $0}}')
+        free_i=$(efsmi -i $i -q -d MEMORY | awk '/Device Mem Info/,/BAR1/ { if (/Free Size/) {gsub(/[^0-9]/,"",$0); print $0}}')
 
         if [ -z "$free_i" ] || [ -z "$total_i" ]; then
-            echo "Warning: Failed to parse memory infor for chip $i."
+            echo "Warning: Failed to parse memory info for chip $i."
             continue
         fi
 
         used_i=$((total_i - free_i))
 
         printf "%4d%'13d%'12d%'12d\n" $i ${total_i} ${used_i} ${free_i}
-        if [ $free_i -lt $mem_threshold ]; then
-            need_wait=true
-            break
+        if [ $free_i -ge $mem_threshold ]; then
+            available_gpus+=($i)
         fi
     done
 
-    if [ "$need_wait" = false ]; then
-        echo "All GPUs have sufficient memory, proceeding with execution."
+    if [ ${#available_gpus[@]} -gt 0 ]; then
+        AVAILABLE_GPUS=$(IFS=,; echo "${available_gpus[*]}")
+        echo "Available GPUs: ${AVAILABLE_GPUS}"
         break
     fi
 
-    echo "GPU memory is insufficient, waiting for $sleep_interval seconds before retrying..."
+    echo "No GPU has sufficient memory, waiting for $sleep_interval seconds..."
     sleep $sleep_interval
-
-    # Stop waiting if already waited too long
     waited_time=$((waited_time + sleep_interval))
-    if [ $waited_time -gt $max_wait ]; then
-        break
+    if [ $waited_time -ge $max_wait ]; then
+        echo "Error: Timed out waiting for available GPU."
+        exit 1
     fi
 done

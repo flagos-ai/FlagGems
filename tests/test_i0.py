@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
@@ -19,8 +33,7 @@ def test_i0(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
     ref_out = torch.i0(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.i0(inp)
+    res_out = flag_gems.i0(inp)
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
@@ -31,8 +44,7 @@ def test_i0_(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
     ref_out = torch.ops.aten.i0_(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.i0_(inp)
+    res_out = flag_gems.i0_(inp)
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
@@ -42,16 +54,29 @@ def test_i0_(shape, dtype):
 def test_i0_out(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
-    if dtype in (torch.float16, torch.bfloat16):
-        out_ref = torch.empty_like(ref_inp, dtype=torch.float32)
-        ref_out = torch.ops.aten.i0.out(ref_inp.float(), out=out_ref)
-        out_ref = out_ref.to(dtype)
-        ref_out = out_ref
-    else:
-        out_ref = torch.empty_like(ref_inp)
-        ref_out = torch.ops.aten.i0.out(ref_inp, out=out_ref)
+    out_ref = torch.empty_like(ref_inp)
+    ref_out = torch.ops.aten.i0.out(ref_inp, out=out_ref)
     out_act = torch.empty_like(inp)
-    with flag_gems.use_gems():
-        act_out = torch.ops.aten.i0.out(inp, out=out_act)
+    act_out = flag_gems.i0_out(inp, out=out_act)
+    assert act_out is out_act
     utils.gems_assert_close(act_out, ref_out, dtype)
-    utils.gems_assert_close(out_act, out_ref, dtype)
+
+
+@pytest.mark.i0_out
+@pytest.mark.parametrize(
+    "input_dtype,out_dtype",
+    [(a, b) for a in utils.FLOAT_DTYPES for b in utils.FLOAT_DTYPES if a != b],
+)
+def test_i0_out_mixed_dtypes(input_dtype, out_dtype):
+    # Include large magnitudes and values on both sides of the polynomial split.
+    inp = torch.linspace(-10, 10, 257, device=flag_gems.device).to(input_dtype)
+    ref_inp = utils.to_reference(inp)
+    out_ref = torch.empty_like(ref_inp, dtype=out_dtype)
+    torch.ops.aten.i0.out(ref_inp, out=out_ref)
+    out_act = torch.empty_like(inp, dtype=out_dtype)
+
+    act_out = flag_gems.i0_out(inp, out=out_act)
+
+    assert act_out is out_act
+    assert act_out.dtype == out_dtype
+    utils.gems_assert_close(act_out, out_ref, out_dtype)

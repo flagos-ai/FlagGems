@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 import math
 
@@ -9,6 +23,8 @@ from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils import triton_lang_extension as tle
+
+logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -41,7 +57,7 @@ def mean_kernel_2(mid, out, M, MID_SIZE, BLOCK_MID: tl.constexpr):
 
 
 def mean(inp, *, dtype=None):
-    logging.debug("GEMS_SPACEMIT MEAN")
+    logger.debug("GEMS_SPACEMIT MEAN")
     M = inp.numel()
     if dtype is None:
         dtype = inp.dtype
@@ -97,7 +113,7 @@ def mean_dim_kernel(X, Mean, M, N, TILE_N: tl.constexpr):
 
 
 def mean_dim(x, dim, keepdim=False, *, dtype=None):
-    logging.debug("GEMS_SPACEMIT MEAN_DIM")
+    logger.debug("GEMS_SPACEMIT MEAN_DIM")
 
     if dtype is None:
         dtype = x.dtype

@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -38,7 +52,7 @@ def i64_i32_to_dtype_func(in_ptr, out_ptr, num_elem_per_grid, num_elem):
 
 
 def to_dtype(x, dtype, non_blocking=False, copy=False, memory_format=None):
-    logger.debug("GEMS TO.DTYPE")
+    logger.debug("GEMS_ENFLAME TO_DTYPE")
     if not copy and x.dtype == dtype:
         return x
     out = torch.empty_like(x, dtype=dtype, memory_format=memory_format)

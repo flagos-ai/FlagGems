@@ -1,6 +1,24 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import logging
+
 import torch
 import triton
 import triton.language as tl
+
+logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -58,6 +76,7 @@ def _paged_mqa_logits_metadata_kernel(
 def get_paged_mqa_logits_metadata(
     context_lens: torch.Tensor, block_size: int, num_sms: int
 ) -> torch.Tensor:
+    logger.debug("GEMS GET_PAGED_MQA_LOGITS_METADATA")
     SPLIT_KV = 256
     device = context_lens.device
 
