@@ -22,10 +22,12 @@ from triton.tools.tensor_descriptor import TensorDescriptor
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
+from flag_gems.runtime.backend._mthreads.ops.utils import tle_interfaces_available
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
+
 
 EXPAND_CONFIG_FILENAME = os.path.normpath(
     os.path.join(os.path.dirname(__file__), "..", "mm_mthreads_expand.yaml")
@@ -424,6 +426,333 @@ def mm_sqmma(A, B, M, N, K):
     return C
 
 
+# --------------------------------------------------------------------------
+# TLE warp-specialized mm kernel
+# --------------------------------------------------------------------------
+
+
+ENABLED_TLE = tle_interfaces_available()
+
+if ENABLED_TLE:
+    import triton.experimental.tle.language as tle
+
+
+TLE_BLOCK_M = 256
+TLE_BLOCK_N = 256
+TLE_BLOCK_K = 64
+TLE_PANEL_WIDTH = 4
+TLE_NUM_WARPS = 16
+TLE_NUM_STAGES = 3
+
+
+def _is_supported_tle_layout(tensor):
+    return tensor.is_contiguous() or (
+        tensor.stride(0) == 1 and tensor.stride(1) == tensor.shape[0]
+    )
+
+
+def is_tle_mm_compatible(a, b):
+    if a.dim() != 2 or b.dim() != 2 or a.shape[1] != b.shape[0]:
+        return False
+
+    M, K = a.shape
+    _, N = b.shape
+    return (
+        a.device == b.device
+        and a.dtype == b.dtype
+        and a.dtype in (torch.float16, torch.bfloat16)
+        and _is_supported_tle_layout(a)
+        and _is_supported_tle_layout(b)
+        and M % TLE_BLOCK_M == 0
+        and N % TLE_BLOCK_N == 0
+        and K % TLE_BLOCK_K == 0
+    )
+
+
+@triton.jit
+def _tle_rasterization_2d_column(
+    block_idx,
+    grid_x,
+    grid_y,
+    panel_width: tl.constexpr,
+    full_panel: tl.constexpr,
+):
+    panel_size = panel_width * grid_y
+    panel_idx = block_idx // panel_size
+    panel_offset = block_idx % panel_size
+
+    if full_panel:
+        width = panel_width
+    else:
+        residual_panel_width = grid_x % panel_width
+        full_panels_size = grid_x // panel_width * panel_width * grid_y
+        width = tl.where(
+            block_idx >= full_panels_size,
+            residual_panel_width,
+            panel_width,
+        )
+    row_idx = panel_offset // width
+    mini_x = panel_offset % width
+    mini_x = tl.where(row_idx % 2 == 1, width - 1 - mini_x, mini_x)
+    row_idx = tl.where(panel_idx % 2 == 1, grid_y - 1 - row_idx, row_idx)
+    col_idx = panel_idx * panel_width + mini_x
+    return col_idx, row_idx
+
+
+@triton.jit
+def _tle_mm_consumer(
+    a_reader,
+    b_reader,
+    c_ptr,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    pid_m,
+    pid_n,
+    block_m: tl.constexpr,
+    block_n: tl.constexpr,
+    block_k: tl.constexpr,
+    input_dtype: tl.constexpr,
+    TRANS_A: tl.constexpr,
+    TRANS_B: tl.constexpr,
+):
+    offset_m = pid_m * block_m + tl.arange(0, block_m)
+    offset_n = pid_n * block_n + tl.arange(0, block_n)
+    k_tiles: tl.constexpr = tl.cdiv(K, block_k)
+
+    acc = tl.zeros((block_m, block_n), dtype=tl.float32)
+    for k_iter in tl.range(
+        0,
+        k_tiles,
+        num_stages=1,
+        loop_unroll_factor=k_tiles,
+    ):
+        a_wait = a_reader.wait(k_iter)
+        b_wait = b_reader.wait(k_iter)
+        acc = tle.gpu.wgmma(
+            a_wait.slot.a,
+            b_wait.slot.b,
+            acc,
+            trans_a=TRANS_A,
+            trans_b=TRANS_B,
+        )
+        acc = tle.gpu.wgmma_wait(0, acc)
+        a_reader.release(k_iter)
+        b_reader.release(k_iter)
+
+    c_ptrs = c_ptr + N * offset_m[:, None] + offset_n[None, :]
+    tl.store(c_ptrs, acc.to(input_dtype))
+
+
+@triton.jit
+def _tle_mm_producer(
+    a_writer,
+    b_writer,
+    a_desc,
+    b_desc,
+    K: tl.constexpr,
+    pid_m,
+    pid_n,
+    block_m: tl.constexpr,
+    block_n: tl.constexpr,
+    block_k: tl.constexpr,
+    TRANS_A: tl.constexpr,
+    TRANS_B: tl.constexpr,
+):
+    offset_m = pid_m * block_m
+    offset_n = pid_n * block_n
+    k_tiles: tl.constexpr = tl.cdiv(K, block_k)
+
+    for k_iter in tl.range(
+        0,
+        k_tiles,
+        num_stages=1,
+        loop_unroll_factor=k_tiles,
+    ):
+        offset_k = k_iter * block_k
+        a_slot = a_writer.acquire(k_iter)
+        b_slot = b_writer.acquire(k_iter)
+        if TRANS_A:
+            tle.gpu.copy(
+                a_desc,
+                a_slot.a,
+                (block_k, block_m),
+                (offset_k, offset_m),
+            )
+        else:
+            tle.gpu.copy(
+                a_desc,
+                a_slot.a,
+                (block_m, block_k),
+                (offset_m, offset_k),
+            )
+        if TRANS_B:
+            tle.gpu.copy(
+                b_desc,
+                b_slot.b,
+                (block_n, block_k),
+                (offset_n, offset_k),
+            )
+        else:
+            tle.gpu.copy(
+                b_desc,
+                b_slot.b,
+                (block_k, block_n),
+                (offset_k, offset_n),
+            )
+        a_writer.commit(k_iter)
+        b_writer.commit(k_iter)
+
+
+@triton.jit
+def tle_mm_kernel(
+    a_desc,
+    b_desc,
+    c_ptr,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    block_m: tl.constexpr,
+    block_n: tl.constexpr,
+    block_k: tl.constexpr,
+    panel_width: tl.constexpr,
+    pipeline_stages: tl.constexpr,
+    input_dtype: tl.constexpr,
+    TRANS_A: tl.constexpr,
+    TRANS_B: tl.constexpr,
+    FULL_PANEL: tl.constexpr,
+):
+    raw_bx = tl.program_id(axis=0)
+    raw_by = tl.program_id(axis=1)
+    grid_x = tl.num_programs(axis=0)
+    grid_y = tl.num_programs(axis=1)
+    block_idx = raw_bx + raw_by * grid_x
+    pid_n, pid_m = _tle_rasterization_2d_column(
+        block_idx,
+        grid_x,
+        grid_y,
+        panel_width,
+        FULL_PANEL,
+    )
+
+    a_rows: tl.constexpr = block_k if TRANS_A else block_m
+    a_cols: tl.constexpr = block_m if TRANS_A else block_k
+    b_rows: tl.constexpr = block_n if TRANS_B else block_k
+    b_cols: tl.constexpr = block_k if TRANS_B else block_n
+    alloc_dtype = input_dtype.value
+    a_smem = tle.gpu.alloc(
+        (pipeline_stages, a_rows, a_cols),
+        dtype=alloc_dtype,
+        scope=tle.gpu.smem,
+        nv_mma_shared_layout=True,
+    )
+    b_smem = tle.gpu.alloc(
+        (pipeline_stages, b_rows, b_cols),
+        dtype=alloc_dtype,
+        scope=tle.gpu.smem,
+        nv_mma_shared_layout=True,
+    )
+    a_pipe = tle.pipe(
+        capacity=pipeline_stages,
+        scope="cta",
+        name="mm_a",
+        a=a_smem,
+    )
+    b_pipe = tle.pipe(
+        capacity=pipeline_stages,
+        scope="cta",
+        name="mm_b",
+        b=b_smem,
+    )
+
+    tle.gpu.warp_specialize(
+        [
+            (
+                _tle_mm_consumer,
+                (
+                    a_pipe.reader(),
+                    b_pipe.reader(),
+                    c_ptr,
+                    M,
+                    N,
+                    K,
+                    pid_m,
+                    pid_n,
+                    block_m,
+                    block_n,
+                    block_k,
+                    input_dtype,
+                    TRANS_A,
+                    TRANS_B,
+                ),
+            ),
+            (
+                _tle_mm_producer,
+                (
+                    a_pipe.writer(),
+                    b_pipe.writer(),
+                    a_desc,
+                    b_desc,
+                    K,
+                    pid_m,
+                    pid_n,
+                    block_m,
+                    block_n,
+                    block_k,
+                    TRANS_A,
+                    TRANS_B,
+                ),
+            ),
+        ],
+        worker_num_warps=[4],
+        worker_num_regs=[24],
+    )
+
+
+def _tle_physical_tensor(tensor, transpose):
+    return tensor.T if transpose else tensor
+
+
+def tle_mm(a, b):
+    logger.debug("GEMS_MTHREADS_TLE MM")
+    M, K = a.shape
+    _, N = b.shape
+    trans_a = not a.is_contiguous()
+    trans_b = not b.is_contiguous()
+    input_dtype = tl.float16 if a.dtype == torch.float16 else tl.bfloat16
+    a_physical = _tle_physical_tensor(a, trans_a)
+    b_physical = _tle_physical_tensor(b, trans_b)
+    a_tile = [TLE_BLOCK_K, TLE_BLOCK_M] if trans_a else [TLE_BLOCK_M, TLE_BLOCK_K]
+    b_tile = [TLE_BLOCK_N, TLE_BLOCK_K] if trans_b else [TLE_BLOCK_K, TLE_BLOCK_N]
+    a_desc = TensorDescriptor.from_tensor(a_physical, a_tile)
+    b_desc = TensorDescriptor.from_tensor(b_physical, b_tile)
+    output = torch.empty((M, N), dtype=a.dtype, device=a.device)
+    grid = (triton.cdiv(N, TLE_BLOCK_N), triton.cdiv(M, TLE_BLOCK_M), 1)
+    full_panel = grid[0] % TLE_PANEL_WIDTH == 0
+
+    with torch_device_fn.device(a.device):
+        tle_mm_kernel[grid](
+            a_desc,
+            b_desc,
+            output,
+            M,
+            N,
+            K,
+            TLE_BLOCK_M,
+            TLE_BLOCK_N,
+            TLE_BLOCK_K,
+            TLE_PANEL_WIDTH,
+            TLE_NUM_STAGES,
+            input_dtype,
+            trans_a,
+            trans_b,
+            full_panel,
+            num_warps=TLE_NUM_WARPS,
+            num_stages=TLE_NUM_STAGES,
+        )
+    return output
+
+
 def mm(a, b):
     a_dtype = a.dtype
     b_dtype = b.dtype
@@ -433,6 +762,9 @@ def mm(a, b):
         c_dtype = get_higher_dtype(a_dtype, b_dtype)
         c = torch.empty((M, N), device=a.device, dtype=c_dtype)
         return gemv_mm(a, b, c, M, K)
+
+    if ENABLED_TLE and is_tle_mm_compatible(a, b):
+        return tle_mm(a, b)
 
     if is_sqmma_compatible(a, b, N, K):
         return mm_sqmma(
