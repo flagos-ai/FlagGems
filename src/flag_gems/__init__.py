@@ -298,7 +298,11 @@ _FULL_CONFIG = (
     ("acosh", acosh),
     ("acosh_", acosh_),
     ("adaptive_avg_pool1d", adaptive_avg_pool1d),
-    ("adaptive_avg_pool3d_backward", _adaptive_avg_pool3d_backward),
+    ("adaptive_avg_pool3d_backward", adaptive_avg_pool3d_backward_grad_input),
+    (
+        "adaptive_avg_pool3d_backward.grad_input",
+        adaptive_avg_pool3d_backward_grad_input,
+    ),
     ("adaptive_max_pool2d", adaptive_max_pool2d),
     ("adaptive_max_pool2d_backward", adaptive_max_pool2d_backward),
     ("adaptive_max_pool3d_backward", adaptive_max_pool3d_backward),
