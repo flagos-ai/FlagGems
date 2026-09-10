@@ -15126,6 +15126,19 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: upsample_trilinear3d_backward
+  description: |
+    Computes the gradient of upsample_trilinear3d with respect to its input (NCDHW),
+    scattering the output gradient back to the eight source corner voxels.
+  for:
+  - upsample_trilinear3d_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: value_selecting_reduction_backward
   description: 'Computes the gradient of a value-selecting reduction (such as `max.dim`
 
