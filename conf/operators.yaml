@@ -2990,6 +2990,17 @@ ops:
   stages:
   - beta: '2.2'
   - stable: '5.3'
+- id: conv_tbc_backward
+  description: Triton kernel implementation for conv_tbc_backward.
+  for:
+  - conv_tbc_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: conv_transpose1d
   description: 'Applies a 1D transposed convolution operator over an input image composed
     of several input planes.
@@ -3018,6 +3029,20 @@ ops:
   - Convolution
   stages:
   - alpha: '5.3'
+- id: conv_transpose3d
+  description: 'Applies a 3D transposed convolution operator over an input volume
+    composed of several input planes.
+
+    '
+  for:
+  - conv_transpose3d
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: convert_weight_to_int4pack
   description: Converts a weight tensor to int4 packed format.
   for:
@@ -3210,6 +3235,18 @@ ops:
   - Math
   stages:
   - stable: '5.3'
+- id: cosine_embedding_loss
+  description: Compute the cosine embedding loss.
+  for:
+    - cosine_embedding_loss
+  labels:
+    - aten
+    - nn.functional
+    - KernelGen
+  kind:
+    - NeuralNetwork
+  stages:
+    - alpha: '5.4'
 - id: count_nonzero
   description: 'Counts the number of non-zero values in the tensor `input` along the
     given `dim`.
@@ -4477,6 +4514,20 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: fake_quantize_learnable_per_tensor_affine_backward
+  description: |
+    Triton kernel implementation for the backward pass of learnable
+    per-tensor affine fake quantization. Computes gradients with respect to
+    the input, scale, and zero-point.
+  for:
+    - _fake_quantize_learnable_per_tensor_affine_backward
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Math
+  stages:
+    - alpha: '5.4'
 - id: fake_quantize_per_channel_affine
   description: Applies fake quantization per channel with affine parameters (scale
     and zero_point).
@@ -4495,6 +4546,18 @@ ops:
     mask.
   for:
   - fake_quantize_per_channel_affine_cachemask
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Quantization
+  stages:
+  - alpha: '5.4'
+- id: fake_quantize_per_channel_affine_cachemask_backward
+  description: Applies the cache mask to the gradient of per-channel affine fake quantization.
+  for:
+  - fake_quantize_per_channel_affine_cachemask_backward
   labels:
   - aten
   - pointwise
@@ -4530,6 +4593,23 @@ ops:
   - Quantization
   stages:
   - alpha: '5.4'
+- id: fake_quantize_per_tensor_affine_cachemask_backward
+  description: 'Computes the gradient for fake_quantize_per_tensor_affine_cachemask
+    by multiplying the incoming
+
+    gradient by the cached boolean mask.
+
+    '
+  for:
+  - fake_quantize_per_tensor_affine_cachemask_backward
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: feature_dropout
   description: 'Applies feature dropout to the `input` tensor. Randomly zeroes out
     entire channels of the `input` tensor with probability `p`.
@@ -4557,6 +4637,17 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.3'
+- id: fft_irfftn
+  description: Computes the N-dimensional inverse of torch.fft.rfftn.
+  for:
+  - fft_irfftn
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: fill_diagonal_
   description: 'Fills the main diagonal of a tensor that has at least two dimensions
 
@@ -8656,6 +8747,17 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: matrix_exp_backward
+  description: Triton kernel implementation for matrix_exp_backward.
+  for:
+  - matrix_exp_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: max
   description: Returns the maximum value of all elements in the `input` tensor.
   for:
@@ -8687,6 +8789,17 @@ ops:
   stages:
   - stable: '2.0'
   cpp: '4.0'
+- id: max_pool1d
+  description: Triton kernel implementation for max_pool1d.
+  for:
+  - max_pool1d
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: max_pool2d_backward
   description: 'Applies a 2D max pooling over an input signal composed of several
     input planes.
@@ -10072,6 +10185,19 @@ ops:
   - pointwise
   kind:
   - Logic
+  stages:
+  - alpha: '5.4'
+- id: nuclear_norm
+  description: 'Computes the nuclear norm (sum of singular values) of a matrix.
+
+    '
+  for:
+  - nuclear_norm
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
   stages:
   - alpha: '5.4'
 - id: one_hot
@@ -12698,6 +12824,21 @@ ops:
   - BLAS
   stages:
   - alpha: '5.4'
+- id: sparse_semi_structured_addmm
+  description: 'Performs a matrix multiplication of the sparse semi-structured
+
+    (2:4 sparsity) matrices mat1 and mat2 with input added.
+
+    '
+  for:
+  - _sparse_semi_structured_addmm
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.4'
 - id: sparse_semi_structured_mm
   description: 'Performs a sparse semi-structured matrix multiplication of a dense
     matrix with a 2:4 sparsity pattern against a dense matrix.
@@ -13546,6 +13687,33 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: special_xlogy
+  description: 'Computes `x * log(y)` for each element pair in the input tensors `x`
+    and `y`. Returns 0 if `x == 0`.
+
+    '
+  for:
+  - special.xlogy
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: special_xlogy_
+  description: 'The in-place version of `special_xlogy()`.
+
+    '
+  for:
+  - special.xlogy_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: split_with_sizes_copy
   description: 'Splits a tensor into sub-tensors along a given dimension,
 
@@ -13772,6 +13940,17 @@ ops:
   stages:
   - stable: '3.0'
   cpp: '4.0'
+- id: sum_to_size
+  description: Triton kernel implementation for sum_to_size.
+  for:
+  - sum_to_size
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: swiglu
   description: Swish-Gated Linear Unit, a variant of GLU with the Swish activation
     function.
