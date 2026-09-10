@@ -6,7 +6,7 @@ import triton
 import triton.language as tl
 
 from flag_gems import runtime
-from flag_gems.runtime import torch_device_fn
+from flag_gems.runtime import device_guard
 from flag_gems.utils import dim_compress, libentry, libtuner
 from flag_gems.utils import triton_lang_extension as tle
 from flag_gems.utils.limits import get_dtype_max
@@ -102,7 +102,7 @@ def amin(inp, dim=None, keepdim=False):
             for i in range(0, inp.dim()):
                 shape[i] = 1
             out = torch.empty(shape, dtype=dtype, device=inp.device)
-        with torch_device_fn.device(inp.device):
+        with device_guard(inp):
             amin_kernel_1[(mid_size, 1)](
                 inp,
                 mid,
@@ -141,7 +141,7 @@ def amin(inp, dim=None, keepdim=False):
         out = torch.empty(shape, dtype=dtype, device=inp.device)
 
         grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
-        with torch_device_fn.device(inp.device):
+        with device_guard(inp):
             amin_kernel[grid](inp, out, M, N, K)
         if not keepdim:
             out = out.squeeze(dim=dim)

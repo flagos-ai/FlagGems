@@ -6,7 +6,7 @@ import triton
 import triton.language as tl
 
 from flag_gems import runtime
-from flag_gems.runtime import torch_device_fn
+from flag_gems.runtime import device_guard
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 
@@ -34,7 +34,7 @@ def triu_kernel(
     for n_offset in range(0, N, N_BLOCK_SIZE):
         cols = n_offset + tl.arange(0, N_BLOCK_SIZE)[None, :]
         n_mask = cols < N
-        mask = m_mask and n_mask
+        mask = m_mask & n_mask
 
         x = tl.load(X + cols, mask, other=0.0)
         y = tl.where(row + diagonal <= cols, x, 0.0)
@@ -83,7 +83,7 @@ def triu(A, diagonal=0):
     out = torch.empty_like(A)
     assert len(A.shape) > 1, "Input tensor must have at least 2 dimensions"
     M, N = A.shape[-2:]
-    with torch_device_fn.device(A.device):
+    with device_guard(A):
         if len(A.shape) == 2:
             grid = lambda meta: (triton.cdiv(M, meta["M_BLOCK_SIZE"]),)
             triu_kernel[grid](A, out, M, N, diagonal)

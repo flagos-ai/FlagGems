@@ -4,7 +4,7 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.runtime import torch_device_fn
+from flag_gems.runtime import device_guard
 from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger(__name__)
@@ -68,7 +68,7 @@ def diag_1d_to_2d(x, diagonal=0):
 
     grid = lambda meta: (triton.cdiv(N, BLOCK_SIZE),)
 
-    with torch_device_fn.device(x.device):
+    with device_guard(x):
         diag_1d_to_2d_kernel[grid](
             x, output, N, M, stride, diagonal, BLOCK_SIZE=BLOCK_SIZE
         )
@@ -90,7 +90,7 @@ def diag_2d_to_1d(x, diagonal=0):
 
     grid = lambda meta: (triton.cdiv(diag_len, BLOCK_SIZE),)
 
-    with torch_device_fn.device(x.device):
+    with device_guard(x):
         diag_2d_to_1d_kernel[grid](
             x, output, N, M, stride0, stride1, diagonal, BLOCK_SIZE=BLOCK_SIZE
         )

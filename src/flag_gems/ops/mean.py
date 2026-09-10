@@ -7,7 +7,7 @@ import triton
 import triton.language as tl
 
 from flag_gems import runtime
-from flag_gems.runtime import torch_device_fn
+from flag_gems.runtime import device_guard
 from flag_gems.utils import dim_compress, libentry, libtuner
 from flag_gems.utils import triton_lang_extension as tle
 
@@ -73,7 +73,7 @@ def mean(inp, *, dtype=None):
     mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
     out = torch.empty([], dtype=dtype, device=inp.device)
 
-    with torch_device_fn.device(inp.device):
+    with device_guard(inp):
         mean_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size)
         mean_kernel_2[(1, 1, 1)](mid, out, M, mid_size, block_mid)
     return out
@@ -276,7 +276,7 @@ def mean_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
         if out is None:
             out = torch.empty(shape, dtype=dtype, device=inp.device)
 
-        with torch_device_fn.device(inp.device):
+        with device_guard(inp):
             if K > 1:
                 grid = lambda meta: (M, triton.cdiv(K, meta["TILE_K"]), 1)
                 mean_dim_kernel_non_inner[grid](
@@ -308,7 +308,7 @@ def mean_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
             out = torch.empty(shape, dtype=dtype, device=inp.device)
 
         grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
-        with torch_device_fn.device(inp.device):
+        with device_guard(inp):
             mean_dim_kernel[grid](inp, out, M, N)
         if not keepdim:
             out = out.squeeze(dim=dim)

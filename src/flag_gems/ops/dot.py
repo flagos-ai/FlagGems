@@ -5,7 +5,7 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.runtime import torch_device_fn
+from flag_gems.runtime import device_guard
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 
@@ -77,7 +77,7 @@ def dot(x, y):
         mid = torch.empty((mid_size,), dtype=torch.float32, device=x.device)
         out = torch.empty([], dtype=x.dtype, device=x.device)
 
-        with torch_device_fn.device(x.device):
+        with device_guard(x):
             dot_kernel_1[grid_1](x, y, mid, N, block_size)
             dot_kernel_2[grid_2](mid, out, mid_size, block_mid)
 
@@ -88,7 +88,7 @@ def dot(x, y):
 
         out = torch.empty([], dtype=torch.float32, device=x.device)
 
-        with torch_device_fn.device(x.device):
+        with device_guard(x):
             dot_kernel[grid](x, y, out, N, block_size)
             out = out.to(x.dtype)
 

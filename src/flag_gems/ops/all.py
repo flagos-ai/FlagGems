@@ -6,7 +6,7 @@ import triton
 import triton.language as tl
 
 from flag_gems import runtime
-from flag_gems.runtime import torch_device_fn
+from flag_gems.runtime import device_guard
 from flag_gems.utils import dim_compress, libentry, libtuner
 from flag_gems.utils import triton_lang_extension as tle
 
@@ -99,7 +99,7 @@ def all(inp):
     mid = torch.empty((mid_size,), dtype=torch.bool, device=inp.device)
     out = torch.empty([], dtype=torch.bool, device=inp.device)
 
-    with torch_device_fn.device(inp.device):
+    with device_guard(inp):
         all_kernel_1[(mid_size, 1)](inp, mid, n_elements, mid_size, block_size)
         all_kernel_2[(1, 1)](mid, out, mid_size, block_mid)
 
@@ -133,7 +133,7 @@ def all_dim(inp, dim=None, keepdim=False):
         out = torch.empty(shape, dtype=torch.bool, device=inp.device)
 
         grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
-        with torch_device_fn.device(inp.device):
+        with device_guard(inp):
             all_kernel_dim[grid](inp, out, M, N, K)
         if not keepdim:
             out = out.squeeze(dim=dim)
@@ -159,7 +159,7 @@ def all_dims(inp, dim=None, keepdim=False):
     out = torch.empty(shape, dtype=torch.bool, device=inp.device)
 
     grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
-    with torch_device_fn.device(inp.device):
+    with device_guard(inp):
         all_kernel_dim[grid](inp, out, M, N, 1)
     if not keepdim:
         out = out.squeeze(dim=dim)

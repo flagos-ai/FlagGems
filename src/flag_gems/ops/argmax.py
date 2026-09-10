@@ -6,7 +6,7 @@ import triton
 import triton.language as tl
 
 from flag_gems import runtime
-from flag_gems.runtime import torch_device_fn
+from flag_gems.runtime import device_guard
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 from flag_gems.utils.limits import get_dtype_min
@@ -198,7 +198,7 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
         else:
             out = torch.empty([], dtype=torch.int64, device=inp.device)
 
-        with torch_device_fn.device(inp.device):
+        with device_guard(inp):
             argmax_kernel_1[(mid_size, 1, 1)](
                 inp,
                 mid_value,
@@ -235,7 +235,7 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
         if not keepdim:
             out_index = torch.squeeze(out_index, dim)
 
-        with torch_device_fn.device(inp.device):
+        with device_guard(inp):
             if K > 1:
                 grid = lambda meta: (
                     M,

@@ -8,7 +8,6 @@ import multiprocessing
 import os
 import time
 from abc import abstractmethod
-from collections import OrderedDict
 from functools import cached_property
 from itertools import starmap
 from pathlib import Path
@@ -66,6 +65,41 @@ if major_version == 2:
     setattr(triton.Config, "all_kwargs", all_kwargs)
 
 FLAGGEMS_DB_URL = os.getenv("FLAGGEMS_DB_URL", None)
+
+
+def _make_current_device_fn():
+    """Resolve the current device index as cheaply as possible.
+
+    Under paddle `torch.cuda.current_device()` formats a "gpu:N" string and parses
+    it back, which is ~0.9us and, being called on every launch, showed up as the
+    single largest item in the launch path. `_current_expected_place()` is a C++
+    call (~0.23us) and reflects any device the user selected, so it can key a
+    cache of the indices the slow path already returned.
+    """
+    fallback = torch_device_fn.current_device
+    if not getattr(fallback, "__module__", "").startswith("paddle"):
+        return fallback
+    try:
+        import paddle
+
+        expected_place = paddle.framework._current_expected_place
+        cache = {}
+
+        def current_device():
+            place = expected_place()
+            index = cache.get(place)
+            if index is None:
+                index = fallback()
+                cache[place] = index
+            return index
+
+        assert current_device() == fallback()
+        return current_device
+    except Exception:
+        return fallback
+
+
+_current_device = _make_current_device_fn()
 
 
 class Cache(object):
@@ -608,6 +642,25 @@ def libtuner(
     return decorator
 
 
+# Hoisted out of LibEntry.key: they were closures rebuilt on every launch.
+def _spec_arg(arg, divisibility):
+    if hasattr(arg, "data_ptr"):
+        return (arg.dtype, arg.data_ptr() % divisibility == 0)
+    return (type(arg), arg)
+
+
+def _dns_arg(arg):
+    if hasattr(arg, "data_ptr"):
+        return arg.dtype
+    if not isinstance(arg, int):
+        return type(arg)
+    if -(2**31) <= arg and arg <= 2**31 - 1:
+        return "i32"
+    if 2**63 <= arg and arg <= 2**64 - 1:
+        return "u64"
+    return "i64"
+
+
 class LibEntry(triton.KernelInterface):
     def __init__(
         self,
@@ -633,26 +686,18 @@ class LibEntry(triton.KernelInterface):
         ]
         self.lock = multiprocessing.Lock()
         self.signature = fn.signature
+        # `run` is on the hot path of every launch, and for small shapes the Python
+        # side dominates. Everything below is static per kernel, so derive it once
+        # instead of rebuilding it per call.
+        self.param_names = list(self.signature.parameters.keys())
+        self.specialize_index_set = set(self.specialize_indices)
+        self.do_not_specialize_index_set = set(self.do_not_specialize_indices)
+        self.trailing_params = tuple(self.jit_function.params)
 
     def key(self, spec_args, dns_args, const_args):
-        def spec_arg(arg):
-            if hasattr(arg, "data_ptr"):
-                return (arg.dtype, arg.data_ptr() % self.divisibility == 0)
-            return (type(arg), arg)
-
-        def dns_arg(arg):
-            if hasattr(arg, "data_ptr"):
-                return arg.dtype
-            if not isinstance(arg, int):
-                return type(arg)
-            if -(2**31) <= arg and arg <= 2**31 - 1:
-                return "i32"
-            if 2**63 <= arg and arg <= 2**64 - 1:
-                return "u64"
-            return "i64"
-
-        spec_key = [spec_arg(arg) for arg in spec_args]
-        dns_key = [dns_arg(arg) for arg in dns_args]
+        divisibility = self.divisibility
+        spec_key = [_spec_arg(arg, divisibility) for arg in spec_args]
+        dns_key = [_dns_arg(arg) for arg in dns_args]
         # const args passed by position
         return tuple(spec_key + dns_key + const_args)
 
@@ -663,14 +708,14 @@ class LibEntry(triton.KernelInterface):
         spec_args = []  # specialize arguments
         dns_args = []  # do not specialize arguments
         const_args = []  # constexpr arguments
-        k_args = OrderedDict()
-        param_names = list(self.signature.parameters.keys())
+        k_args = {}
+        param_names = self.param_names
+        spec_idx = self.specialize_index_set
+        dns_idx = self.do_not_specialize_index_set
+        pass_constexprs = major_version == 3 and 3 <= minor_version <= 6
         for i, arg in enumerate(args):
             hashable_arg = arg
-            if (
-                hasattr(arg, "__class__")
-                and arg.__class__.__name__ == "TensorDescriptor"
-            ):
+            if arg.__class__.__name__ == "TensorDescriptor":
                 # Create a hashable representation of TensorDescriptor
                 hashable_arg = (
                     "TensorDescriptor",
@@ -680,17 +725,17 @@ class LibEntry(triton.KernelInterface):
                     arg.padding if hasattr(arg, "padding") else None,
                     # Add other relevant attributes
                 )
-            if i in self.specialize_indices:
+            if i in spec_idx:
                 k_args[param_names[i]] = arg
                 spec_args.append(hashable_arg)
-            elif i in self.do_not_specialize_indices:
+            elif i in dns_idx:
                 k_args[param_names[i]] = arg
                 dns_args.append(hashable_arg)
             else:
-                if major_version == 3 and 3 <= minor_version <= 6:
+                if pass_constexprs:
                     k_args[param_names[i]] = arg
                 const_args.append(hashable_arg)
-        for p in self.jit_function.params[len(args) :]:
+        for p in self.trailing_params[len(args) :]:
             if p.name in kwargs:
                 val = kwargs[p.name]
             elif p.default is inspect._empty:
@@ -700,7 +745,7 @@ class LibEntry(triton.KernelInterface):
 
             if p.is_constexpr:
                 const_args.append(val)
-                if major_version == 3 and 3 <= minor_version <= 6:
+                if pass_constexprs:
                     k_args[p.name] = val
             elif p.do_not_specialize:
                 dns_args.append(val)
@@ -710,7 +755,7 @@ class LibEntry(triton.KernelInterface):
                 k_args[p.name] = val
 
         entry_key = self.key(spec_args, dns_args, const_args)
-        device = torch_device_fn.current_device()
+        device = _current_device()
         cache = self.kernel_cache[device]
         while entry_key not in cache:
             # NOTE: we serialize the first run of a jit function regardless of which device to run on
@@ -772,10 +817,9 @@ class LibEntry(triton.KernelInterface):
             grid = grid(meta)
         grid = grid + (1, 1)
 
-        if major_version == 3 and 3 <= minor_version <= 6:
+        if pass_constexprs:
             all_args = []
-            missing_keys = []
-            for key in list(self.signature.parameters.keys()):
+            for key in param_names:
                 if key in k_args:
                     all_args.append(k_args[key])
                 elif key in tune_constexprs:
@@ -785,10 +829,8 @@ class LibEntry(triton.KernelInterface):
                 elif key in constexprs:
                     all_args.append(constexprs[key])
                 else:
-                    missing_keys.append(key)
-                if len(missing_keys):
                     raise RuntimeError(
-                        f"[libentry]: probably a bug, the following kernel params where not captured: {missing_keys}"
+                        f"[libentry]: probably a bug, the following kernel param was not captured: {key}"
                     )
             kernel[grid[0:3]](*all_args)
         else:
