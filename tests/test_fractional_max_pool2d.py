@@ -2,6 +2,7 @@ import pytest
 import torch
 
 import flag_gems
+from flag_gems.runtime import torch_device_fn
 
 from . import accuracy_utils as utils
 
@@ -99,3 +100,41 @@ def test_fractional_max_pool2d_backward(shape, kernel_size, output_size, dtype):
     )
 
     utils.gems_assert_close(res_in_grad, ref_in_grad, dtype)
+
+
+@pytest.mark.fractional_max_pool2d_backward
+@pytest.mark.parametrize(
+    "grad_shape, indices_shape, message",
+    [
+        (
+            (2, 4, 4, 4),
+            (2, 4, 16, 16),
+            r"fractional_max_pool2d_backward\(\): gradOutput sizes unexpected",
+        ),
+        (
+            (2, 4, 16, 16),
+            (2, 4, 4, 4),
+            r"fractional_max_pool2d_backward\(\): indices sizes unexpected",
+        ),
+    ],
+)
+def test_fractional_max_pool2d_backward_rejects_unexpected_sizes(
+    grad_shape, indices_shape, message
+):
+    inp = torch.randn((2, 4, 16, 16), device=flag_gems.device)
+    grad_output = torch.randn(grad_shape, device=flag_gems.device)
+    indices = torch.zeros(indices_shape, dtype=torch.int64, device=flag_gems.device)
+
+    with pytest.raises(RuntimeError, match=message):
+        flag_gems.fractional_max_pool2d_backward(
+            grad_output,
+            inp,
+            kernel_size=(3, 3),
+            output_size=(16, 16),
+            indices=indices,
+        )
+
+    health = torch.ones(4, device=flag_gems.device)
+    health.add_(1)
+    torch_device_fn.synchronize()
+    assert health.cpu().tolist() == [2.0] * 4
