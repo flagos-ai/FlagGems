@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -71,7 +85,7 @@ def _launch_fmin(a_c, b_c, out_c):
 
 
 def fmin(a, b):
-    logger.debug("GEMS FMIN GCU400")
+    logger.debug("GEMS_ENFLAME FMIN")
     a_c, b_c, out_dtype, compute_dtype = _prepare_inputs(a, b, out=None)
     out_shape = a_c.shape
     if compute_dtype == out_dtype:
@@ -87,7 +101,7 @@ def fmin(a, b):
 
 
 def fmin_out(a, b, out):
-    logger.debug("GEMS FMIN_OUT GCU400")
+    logger.debug("GEMS_ENFLAME FMIN_OUT")
     if not isinstance(out, torch.Tensor):
         raise TypeError("out must be a Tensor")
     a_c, b_c, out_dtype, compute_dtype = _prepare_inputs(a, b, out=out)

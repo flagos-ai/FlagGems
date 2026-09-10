@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 import math
 
@@ -9,6 +23,8 @@ from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, tl_extra_shim
 from flag_gems.utils.type_utils import get_accumulator_dtype
+
+logger = logging.getLogger(__name__)
 
 pow = tl_extra_shim.pow
 
@@ -248,7 +264,7 @@ def weight_bias_backward_kernel(
 class LayerNorm(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, normalized_shape, weight, bias, eps=1e-5, cudnn_enable=True):
-        logging.debug("GEMS_SPACEMIT LAYERNORM_FORWARD")
+        logger.debug("GEMS_SPACEMIT LAYERNORM_FORWARD")
         # dim = x.ndim - len(normalized_shape)
         # M = math.prod(x.shape[:dim])
         N = math.prod(normalized_shape)
@@ -281,9 +297,9 @@ class LayerNorm(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, out_grad, mean_grad, rstd_grad):
-        logging.debug("GEMS_SPACEMIT LAYERNORM_BACKWARD")
+        logger.debug("GEMS_SPACEMIT LAYERNORM_BACKWARD")
         out_grad = out_grad.contiguous()
-        (x, weight, bias, mean, rstd) = ctx.saved_tensors
+        x, weight, bias, mean, rstd = ctx.saved_tensors
         M = ctx.M
         N = ctx.N
 
