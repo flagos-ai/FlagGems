@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import random
 import time
 
@@ -53,22 +67,9 @@ def test_slice_scatter(shape, stride, dim, dtype, start, end, step):
         ref_inp, dim=dim, src=ref_src, start=start, end=end, step=step
     )
 
-    if flag_gems.vendor_name == "kunlunxin":
-        from flag_gems.runtime.backend._kunlunxin import ops as kl_ops
-
-        res_out = kl_ops.slice_scatter(
-            inp, dim=dim, src=src, start=start, end=end, step=step
-        )
-    elif flag_gems.vendor_name == "cambricon":
-        from flag_gems.runtime.backend._cambricon import ops as cam_ops
-
-        res_out = cam_ops.slice_scatter(
-            inp, dim=dim, src=src, start=start, end=end, step=step
-        )
-    else:
-        res_out = flag_gems.ops.slice_scatter(
-            inp, dim=dim, src=src, start=start, end=end, step=step
-        )
+    res_out = flag_gems.slice_scatter(
+        inp, dim=dim, src=src, start=start, end=end, step=step
+    )
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -87,15 +88,8 @@ def testslice_scatter_with_self_overlapping_input():
     ref_out = torch.slice_scatter(
         ref_inp, dim=dim, src=ref_src, start=start, end=end, step=step
     )
-    if flag_gems.vendor_name == "kunlunxin":
-        from flag_gems.runtime.backend._kunlunxin import ops as kl_ops
-
-        res_out = kl_ops.slice_scatter(
-            inp, dim=dim, src=src, start=start, end=end, step=step
-        )
-    else:
-        res_out = flag_gems.ops.slice_scatter(
-            inp, dim=dim, src=src, start=start, end=end, step=step
-        )
+    res_out = flag_gems.slice_scatter(
+        inp, dim=dim, src=src, start=start, end=end, step=step
+    )
 
     utils.gems_assert_equal(res_out, ref_out)

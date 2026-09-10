@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from typing import Any, List, Optional
 
 import pytest
@@ -313,5 +327,5 @@ def test_flash_attn_varlen_opt_func(monkeypatch):
         torch_op=flash_attn_varlen_func_ref,
         dtypes=[torch.float16, torch.bfloat16],
     )
-    bench.set_gems(flag_gems.ops.flash_attn_varlen_opt_func)
+    bench.set_gems(flag_gems.flash_attn_varlen_opt_func)
     bench.run()

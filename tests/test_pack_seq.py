@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
@@ -119,9 +133,11 @@ def test_pack_seq_accuracy_3d(N, H, D, lengths_list, dtype):
 @pytest.mark.pack_seq_triton
 @pytest.mark.parametrize(
     "N, H, D, lengths_list",
-    [(6, 8, 4, [3, 3])]
-    if cfg.QUICK_MODE
-    else [(20, 8, 16, [10, 10]), (15, 4, 8, [5, 7, 3])],
+    (
+        [(6, 8, 4, [3, 3])]
+        if cfg.QUICK_MODE
+        else [(20, 8, 16, [10, 10]), (15, 4, 8, [5, 7, 3])]
+    ),
 )
 def test_pack_seq_shape_consistency(N, H, D, lengths_list):
     lengths = torch.tensor(lengths_list, dtype=torch.int32, device=flag_gems.device)
@@ -297,3 +313,71 @@ def test_pack_seq_fp8_block_sizes(block_t, block_d):
         expected = x_fp8[b * 25 : b * 25 + 25].to(torch.float32)
         actual = result[b, :25].to(torch.float32)
         torch.testing.assert_close(actual, expected, rtol=1e-1, atol=1e-2)
+
+
+# =============================================================================
+# INT8 (exploratory -- currently NOT formally supported, see
+# pack_seq_triton_review.md). These tests probe the actual current
+# behavior of pack_seq_triton on int8 input rather than assuming support:
+# there is no dedicated PAD_IS_INT8 branch in pack_seq.py, so int8 output
+# falls into the same float32-padding path used for float dtypes.
+# =============================================================================
+
+
+@pytest.mark.pack_seq_triton
+@pytest.mark.parametrize("pad_value", [-128, -1, 0, 127])
+def test_pack_seq_int8_custom_padding(pad_value):
+    N, D = 20, 16
+    lengths_list = [10, 10]
+    lengths = torch.tensor(lengths_list, dtype=torch.int32, device=flag_gems.device)
+    x = torch.randint(-128, 128, (N, D), dtype=torch.int8, device=flag_gems.device)
+
+    result = pack_seq_triton(x, lengths, pad_value=pad_value)
+
+    assert result.dtype == torch.int8
+    assert result.shape == (2, 10, D)
+
+    for b in range(2):
+        expected = x[b * 10 : b * 10 + 10]
+        actual = result[b, :10]
+        assert torch.equal(actual, expected), f"batch {b} valid region mismatch"
+
+    padded_data = result[:, 10:].to(torch.int32)
+    assert torch.all(padded_data == pad_value), (
+        f"int8 padding with pad_value={pad_value} produced "
+        f"{padded_data.unique().tolist()} instead"
+    )
+
+
+@pytest.mark.pack_seq_triton
+def test_pack_seq_int8_valid_region_with_default_padding():
+    """The valid-token copy must be correct regardless of the (currently
+    ill-defined) default `-inf` padding path for int8."""
+    N, D = 20, 16
+    lengths = torch.tensor([10, 10], dtype=torch.int32, device=flag_gems.device)
+    x = torch.randint(-128, 128, (N, D), dtype=torch.int8, device=flag_gems.device)
+
+    result = pack_seq_triton(x, lengths)
+    assert result.dtype == torch.int8
+
+    for b in range(2):
+        expected = x[b * 10 : b * 10 + 10]
+        actual = result[b, :10]
+        assert torch.equal(actual, expected)
+
+
+@pytest.mark.pack_seq_triton
+def test_pack_seq_int8_out_of_range_padding_is_unvalidated():
+    """There is currently no range check for int8 pad_value. This test
+    documents that an out-of-range value (e.g. 200) is silently accepted
+    today instead of raising -- a gap called out in the review."""
+    N, D = 20, 16
+    lengths = torch.tensor([10, 10], dtype=torch.int32, device=flag_gems.device)
+    x = torch.randint(-128, 128, (N, D), dtype=torch.int8, device=flag_gems.device)
+
+    result = pack_seq_triton(x, lengths, pad_value=200)
+    assert result.dtype == torch.int8
+    for b in range(2):
+        expected = x[b * 10 : b * 10 + 10]
+        actual = result[b, :10]
+        assert torch.equal(actual, expected)

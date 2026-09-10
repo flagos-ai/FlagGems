@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import triton
@@ -5,7 +19,7 @@ from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 config_ = CodeGenConfig(
     512,
@@ -13,7 +27,12 @@ config_ = CodeGenConfig(
     32,
     True,
     prefer_1d_tile=True,
-    isCloseMemoryAsync=False,
+    # isCloseMemoryAsync must stay at its default (True = async copy closed).
+    # Enabling async copy (=False) together with unroll_num=8 makes the LLVM
+    # lowering materialize a ~478-pointer local-buffer struct that is re-printed
+    # on every insertvalue, blowing the compiled IR up to ~9GB (see
+    # benchmark/ir_dump/ir-bitwise_and_tensor-dev5.log). unroll_num/autoGrid are
+    # kept for the #1277 speedup; only the async pipeline is dropped.
     kunlunAutoGrid=True,
     unroll_num=8,
 )

@@ -1,5 +1,25 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
+)
+from ._safe_softmax import _safe_softmax  # noqa: F401
+from ._upsample_nearest_exact1d import (
+    _upsample_nearest_exact1d,
+    _upsample_nearest_exact1d_out,
+    _upsample_nearest_exact1d_vec,
 )
 from .abs import abs, abs_
 from .absolute import absolute
@@ -47,7 +67,8 @@ from .bitwise_xor import (
     bitwise_xor_tensor_,
 )
 from .bmm import bmm, bmm_out
-from .cat import cat
+from .broadcast_to import broadcast_to
+from .cat import cat, cat_out
 from .ceil import ceil, ceil_
 from .celu import celu, celu_
 from .clamp import clamp, clamp_, clamp_tensor, clamp_tensor_
@@ -84,6 +105,10 @@ from .fill import fill_scalar, fill_scalar_, fill_tensor, fill_tensor_
 from .flip import flip
 from .floor_ import floor_
 from .fmin import fmin, fmin_out
+from .fractional_max_pool2d import (  # noqa: F401
+    fractional_max_pool2d,
+    fractional_max_pool2d_backward,
+)
 from .full import full
 from .full_like import full_like
 from .gather import gather, gather_backward
@@ -102,16 +127,19 @@ from .hypot import hypot, hypot_out
 from .i0 import i0, i0_, i0_out
 from .index import index
 from .index_add import index_add, index_add_
+from .index_put import _index_put_impl_, index_put, index_put_
 from .index_select import index_select
 from .isclose import allclose, isclose
 from .isfinite import isfinite
 from .isin import isin
 from .isinf import isinf
 from .isnan import isnan
+from .layernorm import layer_norm, layer_norm_backward
 from .le import le, le_scalar
 from .leaky_relu import leaky_relu, leaky_relu_, leaky_relu_out
 from .lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
 from .lift_fresh_copy import lift_fresh_copy, lift_fresh_copy_out
+from .linear import linear
 from .linspace import linspace
 from .log import log
 from .log_sigmoid import log_sigmoid
@@ -135,6 +163,7 @@ from .mm import mm
 from .mse_loss import mse_loss
 from .mul import mul, mul_
 from .multinomial import multinomial
+from .multiply_ import multiply_
 from .nan_to_num import nan_to_num
 from .ne import ne, ne_scalar
 from .neg import neg, neg_
@@ -144,6 +173,7 @@ from .normal import (
     normal_tensor_float,
     normal_tensor_tensor,
 )
+from .one_hot import one_hot
 from .ones import ones
 from .ones_like import ones_like
 from .pad import pad
@@ -155,6 +185,9 @@ from .pow import (
     pow_tensor_tensor,
     pow_tensor_tensor_,
 )
+from .prelu import prelu
+from .quantile import quantile
+from .randint import randint
 from .randn import randn
 from .randn_like import randn_like
 from .randperm import randperm
@@ -214,6 +247,7 @@ from .upsample_bicubic2d_aa import _upsample_bicubic2d_aa
 from .upsample_linear1d import upsample_linear1d
 from .upsample_nearest1d import upsample_nearest1d
 from .upsample_nearest2d import upsample_nearest2d
+from .var import var, var_correction, var_dim
 from .var_mean import var_mean
 from .vector_norm import vector_norm
 from .vstack import vstack
@@ -223,6 +257,7 @@ from .zeros import zeros
 from .zeros_like import zeros_like
 
 __all__ = [
+    "one_hot",
     "argmin",
     "avg_pool2d",
     "avg_pool2d_backward",
@@ -285,6 +320,7 @@ __all__ = [
     "lt",
     "mul",
     "mul_",
+    "multiply_",
     "ne_scalar",
     "ne",
     "pow_tensor_tensor",
@@ -474,6 +510,9 @@ __all__ = [
     "max_pool2d_with_indices",
     "max_pool2d_backward",
     "upsample_linear1d",
+    "var",
+    "var_dim",
+    "var_correction",
     "var_mean",
     "flash_attention_forward",
     "flash_attn_varlen_func",
@@ -531,4 +570,19 @@ __all__ = [
     "logit_out",
     "randperm",
     "slice_backward",
+    "quantile",
+    "_upsample_nearest_exact1d",
+    "_upsample_nearest_exact1d_out",
+    "_upsample_nearest_exact1d_vec",
+    "_saft_softmax",
+    "layer_norm",
+    "layer_norm_backward",
+    "linear",
+    "cat_out",
+    "prelu",
+    "broadcast_to",
+    "randint",
+    "_index_put_impl_",
+    "index_put",
+    "index_put_",
 ]

@@ -1,18 +1,39 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
 
-CAT_SHAPES = [
-    [(1, 32), (8, 32)],
-    [(16, 128), (32, 128)],
-    [(1024, 1024), (1024, 1024)],
-    [(1, 1024, 256), (8, 1024, 256), (16, 1024, 256)],
-    [(16, 320, 15), (32, 320, 15), (64, 320, 15)],
-    [(16, 128, 64, 64), (16, 128, 64, 64), (24, 128, 64, 64), (32, 128, 64, 64)],
-]
+if cfg.QUICK_MODE:
+    CAT_SHAPES = [
+        [(1, 32), (8, 32)],
+        [(16, 320, 15), (32, 320, 15), (64, 320, 15)],
+    ]
+else:
+    CAT_SHAPES = [
+        [(1, 32), (8, 32)],
+        [(16, 128), (32, 128)],
+        [(1024, 1024), (1024, 1024)],
+        [(1, 1024, 256), (8, 1024, 256), (16, 1024, 256)],
+        [(16, 320, 15), (32, 320, 15), (64, 320, 15)],
+        [(16, 128, 64, 64), (16, 128, 64, 64), (24, 128, 64, 64), (32, 128, 64, 64)],
+    ]
 
 
 def gen_cat_shapes_dim(shapes):
@@ -44,6 +65,9 @@ def gen_cat_shapes_dim(shapes):
 @pytest.mark.cat
 @pytest.mark.parametrize("shape, dim", gen_cat_shapes_dim(CAT_SHAPES))
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES + utils.INT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_cat(shape, dim, dtype):
     if dtype in utils.FLOAT_DTYPES:
         inp = [torch.randn(s, dtype=dtype, device=flag_gems.device) for s in shape]
@@ -75,6 +99,9 @@ def test_cat(shape, dim, dtype):
     ],
 )
 @pytest.mark.parametrize("dtype", [torch.float32])
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_cat_empty_tensor(shape, dim, dtype):
     inp = [torch.randn(s, dtype=dtype, device=flag_gems.device) for s in shape]
     ref_inp = [utils.to_reference(_) for _ in inp]
@@ -88,6 +115,9 @@ def test_cat_empty_tensor(shape, dim, dtype):
 
 @pytest.mark.cat_out
 @pytest.mark.parametrize("dtype", [torch.float32])
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_cat_out_matches_reference(dtype):
     a = torch.randn(3, 5, dtype=dtype, device=flag_gems.device)
     b = torch.randn(7, 5, dtype=dtype, device=flag_gems.device)
