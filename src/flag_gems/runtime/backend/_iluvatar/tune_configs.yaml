@@ -1610,3 +1610,34 @@ conv_transpose1d:
       BLOCK_IC: 16
     num_warps: 8
     num_stages: 1
+gru:
+  - META:
+      BLOCK_B: 16
+      BLOCK_N: 64
+      BLOCK_K: 64
+    num_warps: 4
+    num_stages: 3
+  - META:
+      BLOCK_B: 16
+      BLOCK_N: 128
+      BLOCK_K: 64
+    num_warps: 4
+    num_stages: 2
+  - META:
+      BLOCK_B: 16
+      BLOCK_N: 64
+      BLOCK_K: 32
+    num_warps: 4
+    num_stages: 3
+  - META:
+      BLOCK_B: 32
+      BLOCK_N: 128
+      BLOCK_K: 32
+    num_warps: 8
+    num_stages: 2
+  - META:
+      BLOCK_B: 32
+      BLOCK_N: 64
+      BLOCK_K: 64
+    num_warps: 8
+    num_stages: 2

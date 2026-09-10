@@ -18,6 +18,7 @@ from .full import full
 from .full_like import full_like
 from .greater_equal import greater_equal_
 from .groupnorm import group_norm
+from .gru import gru, gru_data
 from .hadamard_transform import hadamard_transform
 from .index import index
 from .index_put import index_put, index_put_
@@ -26,6 +27,8 @@ from .isin import isin
 from .kthvalue import kthvalue
 from .layernorm import layer_norm, layer_norm_backward
 from .lgamma_ import lgamma, lgamma_
+from .linalg_matrix_exp import linalg_matrix_exp, linalg_matrix_exp_out
+from .linalg_matrix_power import linalg_matrix_power, linalg_matrix_power_out
 from .linalg_qr import linalg_qr, linalg_qr_out
 from .linalg_solve_triangular import (
     linalg_solve_triangular,
@@ -108,6 +111,8 @@ __all__ = [
     "full_like",
     "greater_equal_",
     "group_norm",
+    "gru",
+    "gru_data",
     "hadamard_transform",
     "index",
     "index_put",
@@ -119,6 +124,10 @@ __all__ = [
     "layer_norm_backward",
     "lgamma",
     "lgamma_",
+    "linalg_matrix_exp",
+    "linalg_matrix_exp_out",
+    "linalg_matrix_power",
+    "linalg_matrix_power_out",
     "linalg_qr",
     "linalg_qr_out",
     "linalg_solve_triangular",
