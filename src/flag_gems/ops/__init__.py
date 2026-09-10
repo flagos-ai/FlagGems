@@ -580,6 +580,7 @@ from flag_gems.ops.linalg_matrix_sqrth import (
     linalg_matrix_sqrth_out,
 )
 from flag_gems.ops.linalg_norm import linalg_norm
+from flag_gems.ops.linalg_polar import linalg_polar, linalg_polar_out
 from flag_gems.ops.linalg_qr import linalg_qr, linalg_qr_out
 from flag_gems.ops.linalg_slogdet import linalg_slogdet
 from flag_gems.ops.linalg_solve_triangular import (
@@ -1610,6 +1611,8 @@ __all__ = [
     "linalg_matrix_sqrth",
     "linalg_matrix_sqrth_out",
     "linalg_norm",
+    "linalg_polar",
+    "linalg_polar_out",
     "linalg_qr",
     "linalg_qr_out",
     "linalg_slogdet",
