@@ -20,8 +20,7 @@ def test_set_source_tensor(shape, dtype):
     ref_source = utils.to_reference(source)
 
     ref_inp.set_(ref_source)
-    with flag_gems.use_gems():
-        inp.set_(source)
+    inp.set_(source)
 
     utils.gems_assert_close(utils.to_reference(inp), utils.to_reference(source), dtype)
 
@@ -44,8 +43,7 @@ def test_set_source_tensor_storage_offset(shape, dtype):
     offset = source.storage_offset()
 
     ref_inp.set_(ref_source, offset, size, stride)
-    with flag_gems.use_gems():
-        inp.set_(source, offset, size, stride)
+    inp.set_(source, offset, size, stride)
 
     utils.gems_assert_close(utils.to_reference(inp), utils.to_reference(source), dtype)
 
@@ -58,8 +56,7 @@ def test_set_default(dtype):
     ref_inp = utils.to_reference(inp.clone())
 
     ref_inp.set_()
-    with flag_gems.use_gems():
-        inp.set_()
+    inp.set_()
 
     assert inp.numel() == 0, f"Expected 0 elements, got {inp.numel()}"
     assert ref_inp.numel() == 0
