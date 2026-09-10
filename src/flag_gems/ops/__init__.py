@@ -989,6 +989,7 @@ from flag_gems.ops.upsample_trilinear3d import upsample_trilinear3d
 from flag_gems.ops.value_selecting_reduction_backward import (
     value_selecting_reduction_backward,
 )
+from flag_gems.ops.vander import vander
 from flag_gems.ops.var import var, var_correction, var_dim
 from flag_gems.ops.var_mean import var_mean
 from flag_gems.ops.vdot import vdot
@@ -2067,6 +2068,7 @@ __all__ = [
     "upsample_nearest3d",
     "upsample_trilinear3d",
     "value_selecting_reduction_backward",
+    "vander",
     "var",
     "var_correction",
     "var_dim",
