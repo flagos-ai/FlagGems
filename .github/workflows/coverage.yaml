@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 # Note this *workflow_run* workflow runs on the default branch.
 name: coverage
 
@@ -21,7 +35,7 @@ jobs:
       pull-requests: write
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           ref: gh-pages
 
@@ -102,7 +116,7 @@ jobs:
 
       - id: push-change
         if: ${{ steps.download.outputs.result == 'HAS_DATA' }}
-        uses: ad-m/github-push-action@fdfe7e83ff42edf5d49846b69f3c78d806169d51  # v1.2.0
+        uses: ad-m/github-push-action@881a6320fdb16eb5318c5054f31c218aec2b324c  # v1.3.0
         with:
           branch: gh-pages
           github_token: ${{ secrets.GITHUB_TOKEN }}

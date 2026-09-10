@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import importlib
 import logging
 import os
@@ -239,23 +253,23 @@ def generate_pad_kernel(
 
         if rank > 0:
             # shape for inputs
-            shape_args = ", ".join(f"x_shape{j}: int" for j in range(rank))
+            shape_args = ", ".join(f"x_shape{j}" for j in range(rank))
             code.writeline(f"{shape_args}, # shape for x")
 
             # shape for inputs
-            stride_args = ", ".join(f"in_strides{j}: int" for j in range(rank))
+            stride_args = ", ".join(f"in_strides{j}" for j in range(rank))
             code.writeline(f"{stride_args}, # stride for x")
 
             # shape for inputs
-            stride_args = ", ".join(f"out_strides{j}: int" for j in range(rank))
+            stride_args = ", ".join(f"out_strides{j}" for j in range(rank))
             code.writeline(f"{stride_args}, # stride for out")
 
             # shape for inputs
-            stride_args = ", ".join(f"valid_dim{j}_start: int" for j in range(rank))
+            stride_args = ", ".join(f"valid_dim{j}_start" for j in range(rank))
             code.writeline(f"{stride_args}, # valid dim start")
 
             # shape for inputs
-            stride_args = ", ".join(f"valid_dim{j}_end: int" for j in range(rank))
+            stride_args = ", ".join(f"valid_dim{j}_end" for j in range(rank))
             code.writeline(f"{stride_args}, # valid dim end")
 
             for i in range(rank):
@@ -353,9 +367,20 @@ def generate_pad_kernel(
 
         code.newline()
 
+        for i in range(rank):
+            code.writeline(
+                f"safe_src_index_{i} = tl.where(src_index_{i} < x_shape{i}, src_index_{i}, x_shape{i} - 1)"
+            )
+
+        code.newline()
+
         code.writeline("src_offset = src_index_0 * in_strides0")
         for i in range(1, rank):
             code.writeline(f"src_offset += src_index_{i} * in_strides{i}")
+
+        code.writeline("safe_src_offset = safe_src_index_0 * in_strides0")
+        for i in range(1, rank):
+            code.writeline(f"safe_src_offset += safe_src_index_{i} * in_strides{i}")
 
         code.writeline("load_cond = src_index_0 < x_shape0")
         for i in range(1, rank):
@@ -363,10 +388,10 @@ def generate_pad_kernel(
 
         code.writeline("if IS_CONSTANT: ")
         with code.indent():
-            # use explicit comparison and bitwise-and for non-scalar masks
             code.writeline(
-                "x_val = tl.load(in0_ptr + src_offset, mask=((if_pad == 0) & load_cond), other=value)"
+                "x_loaded = tl.load(in0_ptr + safe_src_offset, mask=offset < out_elem_cnt, other=0)"
             )
+            code.writeline("x_val = tl.where(cond, x_loaded, value)")
         code.writeline("else: ")
         with code.indent():
             code.writeline(
@@ -453,7 +478,7 @@ _pad_func = PadFunction()
 
 
 def pad(self, pad, mode="constant", value=None):
-    logger.debug("GEMS CONSTANT PAD ND")
+    logger.debug("GEMS_SUNRISE CONSTANT_PAD_ND")
 
     ndim = self.ndim
 

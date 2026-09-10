@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import importlib
 import os
 from dataclasses import dataclass
@@ -59,9 +73,34 @@ def _cs(strings: Iterable[str]) -> str:
     return ", ".join(strings)
 
 
+def _balanced_grid_partition(num_tiles: int, max_grid_size: int) -> Tuple[int, int]:
+    if num_tiles <= 0:
+        raise ValueError("num_tiles must be positive")
+    if max_grid_size <= 0:
+        raise ValueError("max_grid_size must be positive")
+    initial_ctas = min(max_grid_size, num_tiles)
+    tiles_per_cta = (num_tiles + initial_ctas - 1) // initial_ctas
+    num_ctas = (num_tiles + tiles_per_cta - 1) // tiles_per_cta
+    return num_ctas, tiles_per_cta
+
+
 def _broadcast_vec(i, ndim):
     axes = [":" if j == i else "None" for j in range(ndim)]
     return f"[{_cs(axes)}]"
+
+
+def _tensor_inputs_all_complex(schema: "FunctionSchema") -> bool:
+    saw_typed_tensor = False
+    for i in range(schema.num_inputs()):
+        if not schema.is_tensor(i):
+            continue
+        input_dtype = schema.input_type(i)
+        if input_dtype is None:
+            return False
+        saw_typed_tensor = True
+        if input_dtype not in (torch.complex64, torch.complex128):
+            return False
+    return saw_typed_tensor
 
 
 class FunctionSchema:
@@ -301,7 +340,9 @@ class KernelGenerator:
             if ndim > 0:
                 # strides for inputs
                 for i in range(schema.num_input_tensors()):
-                    stride_args = _cs(f"in{i}_stride{j}: int" for j in range(ndim))
+                    stride_args = _cs(
+                        f"in{i}_stride{j}: tl.constexpr" for j in range(ndim)
+                    )
                     code.writeline(f"{stride_args}, # strides for in{i}")
                     if with_block_pointer:
                         stride_order_args = _cs(
@@ -311,7 +352,9 @@ class KernelGenerator:
 
                 # strides for outputs
                 for i in range(schema.num_output_tensors()):
-                    stride_args = _cs(f"out{i}_stride{j}: int" for j in range(ndim))
+                    stride_args = _cs(
+                        f"out{i}_stride{j}: tl.constexpr" for j in range(ndim)
+                    )
                     code.writeline(f"{stride_args}, # strides for out{i}")
                     if with_block_pointer:
                         stride_order_args = _cs(
@@ -831,19 +874,7 @@ class WrapperGenerator:
             with code.indent():
                 self.gen_return(code)
             max_tile_size = self.config.max_tile_size
-            # Check if all input and output dtypes are complex
-            all_complex = True
-            for i in range(self.fx.num_inputs()):
-                if self.fx.is_tensor(i):
-                    input_dtype = self.fx.input_type(i)
-                    if input_dtype is not None and not (
-                        input_dtype == torch.complex64
-                        or input_dtype == torch.complex128
-                    ):
-                        all_complex = False
-                        break
-            if all_complex:
-                # If all inputs are complex, set max_tile_size to half
+            if _tensor_inputs_all_complex(self.fx):
                 max_tile_size = max_tile_size // 2
             major, _ = get_device_capability()
             if self.name.find("fill_scalar") != -1 and major >= 9:
@@ -857,13 +888,18 @@ class WrapperGenerator:
                 "num_tiles = math.prod(triton.cdiv(size, tile_size) for size, tile_size in zip(shape, tile_sizes))"
             )
 
-            if self.name.find("fill_scalar") != -1 and major >= 9:
-                code.writeline("num_ctas = num_tiles")
+            max_grid_size0 = self.config.max_grid_size[0]
+            if self.config.balance_grid:
+                code.writeline(
+                    f"num_ctas, tiles_per_cta = _balanced_grid_partition(num_tiles, {max_grid_size0})"
+                )
             else:
-                max_grid_size0 = self.config.max_grid_size[0]
-                code.writeline(f"num_ctas = min({max_grid_size0}, num_tiles)")
+                if self.name.find("fill_scalar") != -1 and major >= 9:
+                    code.writeline("num_ctas = num_tiles")
+                else:
+                    code.writeline(f"num_ctas = min({max_grid_size0}, num_tiles)")
 
-            code.writeline("tiles_per_cta = triton.cdiv(num_tiles, num_ctas)")
+                code.writeline("tiles_per_cta = triton.cdiv(num_tiles, num_ctas)")
             code.writeline("num_warps = heuristics_for_num_warps(tile_size)")
             code.writeline("one_tile_per_cta = tiles_per_cta==1")
         code.writeline("grid = (num_ctas, 1, 1)")
@@ -881,18 +917,7 @@ class WrapperGenerator:
             with code.indent():
                 self.gen_return(code)
             max_tile_size = self.config.max_tile_size
-            # Check if all input and output dtypes are complex
-            all_complex = True
-            for i in range(self.fx.num_inputs()):
-                if self.fx.is_tensor(i):
-                    input_dtype = self.fx.input_type(i)
-                    if input_dtype is not None and not (
-                        input_dtype == torch.complex64
-                        or input_dtype == torch.complex128
-                    ):
-                        all_complex = False
-                        break
-            if all_complex:
+            if _tensor_inputs_all_complex(self.fx):
                 max_tile_size = max_tile_size // 2
             major, _ = get_device_capability()
             if self.name.find("fill_scalar") != -1 and major >= 9:
@@ -905,13 +930,18 @@ class WrapperGenerator:
             code.writeline("tile_size = tile_sizes[0]")
             code.writeline("num_tiles = triton.cdiv(num_tasks, tile_size)")
 
-            if self.name.find("fill_scalar") != -1 and major >= 9:
-                code.writeline("num_ctas = num_tiles")
+            max_grid_size0 = self.config.max_grid_size[0]
+            if self.config.balance_grid:
+                code.writeline(
+                    f"num_ctas, tiles_per_cta = _balanced_grid_partition(num_tiles, {max_grid_size0})"
+                )
             else:
-                max_grid_size0 = self.config.max_grid_size[0]
-                code.writeline(f"num_ctas = min({max_grid_size0}, num_tiles)")
+                if self.name.find("fill_scalar") != -1 and major >= 9:
+                    code.writeline("num_ctas = num_tiles")
+                else:
+                    code.writeline(f"num_ctas = min({max_grid_size0}, num_tiles)")
 
-            code.writeline("tiles_per_cta = triton.cdiv(num_tiles, num_ctas)")
+                code.writeline("tiles_per_cta = triton.cdiv(num_tiles, num_ctas)")
             code.writeline("num_warps = heuristics_for_num_warps(tile_size)")
             code.writeline("one_tile_per_cta = tiles_per_cta==1")
         code.writeline("grid = (num_ctas, 1, 1)")
@@ -1181,6 +1211,10 @@ class ModuleGenerator:
         code.writeline("from flag_gems.utils.libentry import libentry")
         code.writeline("from flag_gems.utils import triton_lang_extension as ext")
         code.writeline("from flag_gems.runtime import torch_device_fn")
+        if self.config.balance_grid:
+            code.writeline(
+                "from flag_gems.utils.pointwise_dynamic import _balanced_grid_partition"
+            )
 
         # Generate extra imports and local JIT deps of the scalar function
         jit_dep_imports, local_jit_sources = self._collect_jit_deps(self.scalar_fn)
@@ -1493,10 +1527,15 @@ class PointwiseDynamicFunction:
         out_tensors = []
         for i in range(schema.num_output_tensors()):
             k = f"out{i}"
-            if k in kwargs:
+            if k in kwargs and kwargs[k] is not None:
                 out_tensors.append(kwargs[k])
             else:
                 outputs_that_need_allocation.append(i)
+
+        # Clean kwargs: only keep valid outN keys, discard mismatched keys
+        # and None values that leaked through caller wrappers.
+        valid_out_keys = {f"out{i}" for i in range(schema.num_output_tensors())}
+        kwargs = {k: v for k, v in kwargs.items() if k in valid_out_keys}
         # input arguments must be passed by position
         if not _skip_tensor_check and schema._is_tensor is not None:
             if not check_tensor_attributes(args, (schema._is_tensor)):
@@ -1628,6 +1667,8 @@ class PointwiseDynamicFunction:
             f"pointwise_dynamic_{self._scalar_fn_cache_key}_{kernel_name}_"
             f"{'1d_tile_' if self.config.prefer_1d_tile else ''}"
             f"{'bptr' if (not self.config.prefer_1d_tile and self.config.prefer_block_pointer) else ''}"
+            f"_t{self.config.max_tile_size}"
+            f"{'_balanced' if self.config.balance_grid else ''}"
             ".py"
         )
         file_path = str(code_cache_dir() / file_name)
@@ -1638,7 +1679,7 @@ class PointwiseDynamicFunction:
         # NOTE: manually instantiated overload does not have `prepare_args` as
         # preprocessing, so you have to manually allocate output and make sure that
         # the inputs & ouputs actually fits the manually instantiated overload
-        key = f"{ndim}_{self.config.prefer_block_pointer}"
+        key = f"{ndim}_{self.config.prefer_block_pointer}_{self.config.balance_grid}"
         if key in self.overloads:
             return self.overloads[key]
 
@@ -1713,7 +1754,7 @@ class PointwiseDynamicFunction:
         Returns:
             KernelInfo with file_path, kernel_name, wrapper_name, and ndim
         """
-        key = f"{ndim}_{self.config.prefer_block_pointer}"
+        key = f"{ndim}_{self.config.prefer_block_pointer}_{self.config.balance_grid}"
 
         # Ensure the kernel is instantiated
         if key not in self._kernel_info_cache:

@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Precision-checking register – loaded only when precision checking is enabled.
 
 This module is NOT imported on the normal execution path.  It is lazily
@@ -16,7 +30,7 @@ from ..logging_utils import (
     precision_config,
     write_precision_result,
 )
-from .register import Register
+from .op_registrar import GeneralOpRegistrar
 
 # Maximum tensor element count allowed for precision check
 # (skip if exceeded to avoid large tensor copy overhead)
@@ -177,7 +191,7 @@ def _wrap_op_with_precision_check(op_key, fn):
     return wrapper
 
 
-class PrecisionCheckRegister(Register):
+class PrecisionCheckRegister(GeneralOpRegistrar):
     """Register subclass that wraps every operator with precision checking.
 
     This class is only instantiated when the user has explicitly called
