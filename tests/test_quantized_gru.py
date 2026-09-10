@@ -28,8 +28,6 @@ def _make_dynamic_quantized_gru(
         else torch.ao.quantization.float16_dynamic_qconfig
     )
     quantized_gru = torch.ao.nn.quantized.dynamic.GRU.from_float(float_gru)
-    # Keep quantized_gru on CPU as aten::quantized_gru.input is CPU-only
-    quantized_gru = quantized_gru.cpu()
     params = [module.param for module in quantized_gru._all_weight_values]
     return quantized_gru, params
 
@@ -42,7 +40,6 @@ def _make_dynamic_quantized_gru(
 @pytest.mark.parametrize(
     "num_layers,bidirectional", [(1, False), (2, True)], ids=["single", "stacked_bidir"]
 )
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
 def test_quantized_gru(shape, hidden_size, weight_dtype, num_layers, bidirectional):
     """Compare the dense Triton implementation with packed dynamic GRU."""
     from flag_gems.ops.quantized_gru import quantized_gru_input
@@ -71,11 +68,11 @@ def test_quantized_gru(shape, hidden_size, weight_dtype, num_layers, bidirection
         device=flag_gems.device,
     )
     # Reference runs on CPU via torch.ao dynamic quantized GRU
-    ref_input = utils.to_reference(input_tensor)
-    ref_hx = utils.to_reference(hx)
+    # PyTorch's quantized_gru only supports CPU, so explicitly move to CPU
+    ref_input = utils.to_reference(input_tensor).cpu()
+    ref_hx = utils.to_reference(hx).cpu()
     ref_output, ref_hx_out = ref_gru(ref_input, ref_hx)
 
-    # Call FlagGems Triton implementation directly
     output, out_hx = quantized_gru_input(
         input_tensor,
         hx,
@@ -98,7 +95,6 @@ def test_quantized_gru(shape, hidden_size, weight_dtype, num_layers, bidirection
 
 @pytest.mark.quantized_gru
 @pytest.mark.parametrize("bidirectional", [False, True])
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
 def test_quantized_gru_packed_data(bidirectional):
     from flag_gems.ops.quantized_gru import quantized_gru_data
 
