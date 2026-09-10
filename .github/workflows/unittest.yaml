@@ -30,6 +30,9 @@ on:
 jobs:
   preprocess:
     runs-on: ubuntu-latest
+    concurrency:
+      group: unit-test-${{ (github.event.pull_request && contains(github.event.pull_request.title, 'KernelGen')) && 'kg' || github.run_id }}
+      cancel-in-progress: false
     outputs:
       changed_files: ${{ steps.changed-files.outputs.all_changed_files }}
       pr_id: ${{ steps.get-pr-id.outputs.PR_ID }}
@@ -181,3 +184,28 @@ jobs:
       changed_files: ${{ needs.preprocess.outputs.changed_files }}
     secrets:
       RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
+
+  # Gate job: aggregates the jobs above, most of which are label-gated and
+  # get skipped for PRs without the matching label. Use this job (not the
+  # individual jobs) as the required status check in branch protection
+  # rules, otherwise skipped jobs block merges forever.
+  unittest-required:
+    runs-on: ubuntu-latest
+    needs:
+      - preprocess
+      - cpp-op
+      - python-op
+      - examples
+      - backend-tests
+      - alpha-ops
+    if: always()
+    steps:
+      - name: Verify required jobs passed
+        run: |
+          echo '${{ toJSON(needs) }}' | jq .
+          failed=$(echo '${{ toJSON(needs) }}' | jq -r \
+            '[.[] | select(.result != "success" and .result != "skipped")] | length')
+          if [ "$failed" != "0" ]; then
+            echo "::error::One or more required jobs failed"
+            exit 1
+          fi

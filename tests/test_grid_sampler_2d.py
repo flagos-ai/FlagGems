@@ -64,14 +64,18 @@ def test_grid_sampler_2d(dtype, shape, align_corners, padding_mode, interpolatio
 @pytest.mark.parametrize("padding_mode", PADDING_MODES)
 @pytest.mark.parametrize("align_corners", [False, True])
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("out_size", [(5, 7), (12, 3), (1, 9), (10, 10)])
 def test_grid_sampler_2d_oh_ne_iw(
-    dtype, align_corners, padding_mode, interpolation_mode
+    dtype, align_corners, padding_mode, interpolation_mode, out_size
 ):
     # Output spatial size differs from the input spatial size (OH != IH,
     # OW != IW), exercising the independent output-/input-dimension indexing
     # paths in the kernel which the same-size shapes above leave uncovered.
+    # The out_size combinations cover downsampling (5, 7), upsampling mixed
+    # with downsampling across the two axes (12, 3) and (10, 10), non-square
+    # outputs, and a degenerate output dimension of size 1 (1, 9).
     N, C, IH, IW = 1, 2, 8, 16
-    OH, OW = 5, 7
+    OH, OW = out_size
     input_t = torch.randn(N, C, IH, IW, dtype=dtype, device=flag_gems.device)
     grid = (
         torch.rand(N, OH, OW, 2, dtype=torch.float32, device=flag_gems.device) * 2.4
