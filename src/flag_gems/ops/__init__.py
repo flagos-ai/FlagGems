@@ -114,6 +114,9 @@ from flag_gems.ops._nested_sum_backward import _nested_sum_backward
 from flag_gems.ops._nested_tensor_from_mask_left_aligned import (
     _nested_tensor_from_mask_left_aligned,
 )
+from flag_gems.ops._nested_tensor_softmax_with_shape import (
+    _nested_tensor_softmax_with_shape,
+)
 from flag_gems.ops._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
 from flag_gems.ops._nested_view_from_jagged import _nested_view_from_jagged
 from flag_gems.ops._pdist_backward import _pdist_backward
@@ -1088,6 +1091,7 @@ __all__ = [
     "_nested_from_padded_tensor",
     "_nested_sum_backward",
     "_nested_tensor_from_mask_left_aligned",
+    "_nested_tensor_softmax_with_shape",
     "_nested_view_from_buffer_copy",
     "_nested_view_from_jagged",
     "_pdist_backward",
