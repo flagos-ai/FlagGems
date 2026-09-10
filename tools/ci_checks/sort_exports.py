@@ -100,7 +100,9 @@ def sort_python_all(file_path: Path, fix: bool = False, dry_run: bool = False) -
     if not fix:
         print(f"❌ {file_path}: __all__ is not sorted by casefold")
         if duplicates:
-            print(f"   Found {len(duplicates)} duplicate(s): {', '.join(set(duplicates))}")
+            print(
+                f"   Found {len(duplicates)} duplicate(s): {', '.join(set(duplicates))}"
+            )
         # Show first mismatch
         for i, (actual, expected) in enumerate(zip(unique_items, sorted_items)):
             if actual != expected:

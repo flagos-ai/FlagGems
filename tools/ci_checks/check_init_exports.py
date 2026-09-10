@@ -288,7 +288,9 @@ def main():
 
     if total_errors > 0:
         print(f"{'=' * 70}")
-        print(f"❌ Found {total_errors} issue(s) across {len(all_errors_by_file)} file(s):\n")
+        print(
+            f"❌ Found {total_errors} issue(s) across {len(all_errors_by_file)} file(s):\n"
+        )
 
         for file_path, errors in all_errors_by_file.items():
             print(f"📁 {file_path}:")
