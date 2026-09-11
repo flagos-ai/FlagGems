@@ -92,6 +92,7 @@ from flag_gems.ops._is_all_true import _is_all_true
 from flag_gems.ops._jagged_to_padded_dense_forward import (
     _jagged_to_padded_dense_forward,
 )
+from flag_gems.ops._linalg_eigh import _linalg_eigh
 from flag_gems.ops._linalg_eigvals import _linalg_eigvals
 from flag_gems.ops._list_to_tensor import _list_to_tensor
 from flag_gems.ops._make_dep_token import _make_dep_token
@@ -554,6 +555,7 @@ from flag_gems.ops.linalg_cholesky import linalg_cholesky
 from flag_gems.ops.linalg_cross import linalg_cross, linalg_cross_out
 from flag_gems.ops.linalg_det import linalg_det, linalg_det_out
 from flag_gems.ops.linalg_eig import linalg_eig
+from flag_gems.ops.linalg_eigh import linalg_eigh
 from flag_gems.ops.linalg_householder_product import linalg_householder_product
 from flag_gems.ops.linalg_ldl_factor import ldl_factor
 from flag_gems.ops.linalg_ldl_solve import linalg_ldl_solve
@@ -1080,6 +1082,7 @@ __all__ = [
     "_index_put_impl_",
     "_is_all_true",
     "_jagged_to_padded_dense_forward",
+    "_linalg_eigh",
     "_linalg_eigvals",
     "_list_to_tensor",
     "_make_dep_token",
@@ -1596,6 +1599,7 @@ __all__ = [
     "linalg_det",
     "linalg_det_out",
     "linalg_eig",
+    "linalg_eigh",
     "linalg_householder_product",
     "linalg_ldl_solve",
     "linalg_lstsq",
