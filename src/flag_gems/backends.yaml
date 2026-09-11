@@ -192,7 +192,7 @@ backends:
     python: "3.12"
     cmake_backend: IX
     triton: triton==3.2.0+corex.4.5.0.20260804
-    flagtree==0.6.1+iluvatar3.6
+    flagtree: flagtree==0.6.1+iluvatar3.6
     env:
       COREX_ROOT: /usr/local/corex
       PATH: $COREX_ROOT/bin:$PATH
