@@ -136,6 +136,64 @@ def test_nanmean_empty_and_dtype():
 
 
 @pytest.mark.nanmean
+@pytest.mark.parametrize(
+    "shape,dim,keepdim",
+    [
+        ((0, 3), 1, False),
+        ((2, 0, 3), 0, False),
+        ((2, 0, 3), (0, 2), True),
+    ],
+)
+def test_nanmean_zero_sized_free_dimensions(shape, dim, keepdim):
+    inp = torch.empty(shape, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp)
+
+    reference = torch.nanmean(ref_inp, dim=dim, keepdim=keepdim)
+    result = flag_gems.nanmean(inp, dim=dim, keepdim=keepdim)
+
+    assert result.shape == reference.shape
+    utils.gems_assert_equal(result, reference, equal_nan=True)
+
+
+@pytest.mark.nanmean
+@pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
+def test_nanmean_real_input_complex_output(dtype):
+    if dtype == torch.complex128 and not utils.fp64_is_supported:
+        pytest.skip("FP64 is not supported")
+    inp = _nan_input((7, 11), torch.float32, flag_gems.device)
+    reference = torch.nanmean(inp.clone(), dim=1, dtype=dtype)
+
+    result = flag_gems.nanmean(inp, dim=1, dtype=dtype)
+
+    assert result.dtype == dtype
+    torch.testing.assert_close(result, reference, equal_nan=True)
+
+
+@pytest.mark.nanmean
+@pytest.mark.parametrize(
+    "input_dtype,output_dtype",
+    [
+        (torch.float64, torch.float32),
+        (torch.float64, torch.float16),
+        (torch.float32, torch.float16),
+        (torch.float32, torch.bfloat16),
+    ],
+)
+def test_nanmean_dtype_downcast(input_dtype, output_dtype):
+    if input_dtype == torch.float64 and not utils.fp64_is_supported:
+        pytest.skip("FP64 is not supported")
+    inp = _nan_input((129, 257), input_dtype, flag_gems.device)
+    reference = torch.nanmean(inp.clone(), dim=1, dtype=output_dtype)
+
+    result = flag_gems.nanmean(inp, dim=1, dtype=output_dtype)
+
+    assert result.dtype == output_dtype
+    utils.gems_assert_close(
+        result, reference, output_dtype, equal_nan=True, reduce_dim=257
+    )
+
+
+@pytest.mark.nanmean
 def test_nanmean_invalid_dims():
     inp = torch.randn((2, 3), device=flag_gems.device)
     with pytest.raises(RuntimeError, match="appears multiple times"):
@@ -148,11 +206,64 @@ def test_nanmean_invalid_dims():
 def test_nanmean_out_resizes_and_returns_out():
     inp = _nan_input((4, 8), torch.float32, flag_gems.device)
     out = torch.empty((0,), dtype=torch.float16, device=flag_gems.device)
+    ref_out = torch.empty((0,), dtype=torch.float16, device=flag_gems.device)
+    reference = torch.nanmean(inp.clone(), dim=1, out=ref_out)
     returned = flag_gems.nanmean_out(inp, dim=1, out=out)
-    reference = torch.nanmean(inp, dim=1).to(torch.float16)
     assert returned is out
+    assert reference is ref_out
     assert out.shape == (4,)
-    torch.testing.assert_close(out, reference, equal_nan=True)
+    utils.gems_assert_close(out, reference, torch.float16, equal_nan=True, reduce_dim=8)
+
+
+@pytest.mark.nanmean_out
+@pytest.mark.parametrize(
+    "input_dtype,output_dtype",
+    [
+        (torch.float64, torch.float32),
+        (torch.float64, torch.float16),
+        (torch.float32, torch.float16),
+        (torch.float32, torch.bfloat16),
+    ],
+)
+def test_nanmean_out_dtype_downcast(input_dtype, output_dtype):
+    if input_dtype == torch.float64 and not utils.fp64_is_supported:
+        pytest.skip("FP64 is not supported")
+    inp = _nan_input((65, 129), input_dtype, flag_gems.device)
+    out_storage = torch.empty((65, 2), dtype=output_dtype, device=flag_gems.device)
+    out = out_storage[:, 0]
+    ref_storage = torch.empty_like(out_storage)
+    ref_out = ref_storage[:, 0]
+    reference = torch.nanmean(inp.clone(), dim=1, out=ref_out)
+
+    result = flag_gems.nanmean_out(inp, dim=1, out=out)
+
+    assert result is out
+    assert reference is ref_out
+    assert result.dtype == output_dtype
+    assert result.stride() == ref_out.stride()
+    utils.gems_assert_close(
+        result, reference, output_dtype, equal_nan=True, reduce_dim=129
+    )
+
+
+@pytest.mark.nanmean_out
+def test_nanmean_out_rejects_explicit_dtype_mismatch():
+    inp = torch.randn((4, 8), device=flag_gems.device)
+    out = torch.empty((4,), dtype=torch.float16, device=flag_gems.device)
+    with pytest.raises(RuntimeError):
+        torch.nanmean(inp, dim=1, dtype=torch.float32, out=out)
+    with pytest.raises(RuntimeError):
+        flag_gems.nanmean_out(inp, dim=1, dtype=torch.float32, out=out)
+
+
+@pytest.mark.nanmean_out
+def test_nanmean_out_rejects_device_mismatch():
+    inp = torch.randn((4, 8), device=flag_gems.device)
+    out = torch.empty((4,), device="cpu")
+    with pytest.raises(RuntimeError):
+        torch.nanmean(inp, dim=1, out=out)
+    with pytest.raises(RuntimeError):
+        flag_gems.nanmean_out(inp, dim=1, out=out)
 
 
 @pytest.mark.nanmean
@@ -174,3 +285,19 @@ def test_nanmean_complex_and_autograd():
     torch.testing.assert_close(
         grad_inp.grad, torch.tensor([0.5, 0.0, 0.5], device=flag_gems.device)
     )
+
+
+@pytest.mark.nanmean
+@pytest.mark.parametrize("keepdim", [False, True])
+def test_nanmean_backward_dim(keepdim):
+    inp = _nan_input((5, 7), torch.float32, flag_gems.device).requires_grad_(True)
+    ref_inp = utils.to_reference(inp.detach(), True).requires_grad_(True)
+    reference = torch.nanmean(ref_inp, dim=1, keepdim=keepdim)
+    result = flag_gems.nanmean(inp, dim=1, keepdim=keepdim)
+    grad = torch.randn_like(result)
+
+    result.backward(grad)
+    reference.backward(utils.to_reference(grad))
+
+    utils.gems_assert_close(result, reference, torch.float32, equal_nan=True)
+    utils.gems_assert_close(inp.grad, ref_inp.grad, torch.float32)

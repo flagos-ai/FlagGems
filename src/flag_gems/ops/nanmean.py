@@ -18,28 +18,35 @@ def nanmean_kernel_1(
     inp,
     mid_sum,
     mid_cnt,
+    out,
     M,
     BLOCK_SIZE: tl.constexpr,
 ):
-    if tl.constexpr(inp.dtype.element_ty == tl.float64):
-        cdtype = tl.float64
-    elif tl.constexpr(mid_sum.dtype.element_ty == tl.float64):
-        cdtype = tl.float64
+    if tl.constexpr(out.dtype.element_ty == tl.float64):
+        value_dtype = tl.float64
+        acc_dtype = tl.float64
+    elif tl.constexpr(out.dtype.element_ty == tl.float16):
+        value_dtype = tl.float16
+        acc_dtype = tl.float32
+    elif tl.constexpr(out.dtype.element_ty == tl.bfloat16):
+        value_dtype = tl.bfloat16
+        acc_dtype = tl.float32
     else:
-        cdtype = tl.float32
+        value_dtype = tl.float32
+        acc_dtype = tl.float32
 
     pid = ext.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     inp_ptrs = inp + offset
     mask = offset < M
 
-    x = tl.load(inp_ptrs, mask=mask, other=0.0).to(cdtype)
+    x = tl.load(inp_ptrs, mask=mask, other=0.0).to(value_dtype)
     is_nan = x != x
     valid = mask & (~is_nan)
     x = tl.where(valid, x, 0.0)
 
-    sum_val = tl.sum(x, axis=0)
-    cnt_val = tl.sum(valid.to(cdtype), axis=0)
+    sum_val = tl.sum(x, axis=0, dtype=acc_dtype)
+    cnt_val = tl.sum(valid.to(acc_dtype), axis=0)
     tl.store(mid_sum + pid, sum_val)
     tl.store(mid_cnt + pid, cnt_val)
 
@@ -53,20 +60,21 @@ def nanmean_kernel_2(
     mid_size,
     BLOCK_SIZE: tl.constexpr,
 ):
-    if tl.constexpr(mid_sum.dtype.element_ty == tl.float64):
-        cdtype = tl.float64
-    else:
-        cdtype = tl.float32
+    acc_dtype = (
+        tl.float64
+        if tl.constexpr(mid_sum.dtype.element_ty == tl.float64)
+        else tl.float32
+    )
 
-    _sum = tl.zeros((), dtype=cdtype)
-    _cnt = tl.zeros((), dtype=cdtype)
+    _sum = tl.zeros((), dtype=acc_dtype)
+    _cnt = tl.zeros((), dtype=acc_dtype)
 
     for start in range(0, mid_size, BLOCK_SIZE):
         idx = start + tl.arange(0, BLOCK_SIZE)
         mask = idx < mid_size
-        sv = tl.load(mid_sum + idx, mask=mask, other=0.0).to(cdtype)
-        cv = tl.load(mid_cnt + idx, mask=mask, other=0.0).to(cdtype)
-        _sum += tl.sum(sv, axis=0)
+        sv = tl.load(mid_sum + idx, mask=mask, other=0.0).to(acc_dtype)
+        cv = tl.load(mid_cnt + idx, mask=mask, other=0.0).to(acc_dtype)
+        _sum += tl.sum(sv, axis=0, dtype=acc_dtype)
         _cnt += tl.sum(cv, axis=0)
 
     tl.store(out, _sum / _cnt)
@@ -80,33 +88,37 @@ def nanmean_global_single_kernel(
     M,
     BLOCK_SIZE: tl.constexpr,
 ):
-    if tl.constexpr(inp.dtype.element_ty == tl.float64):
-        cdtype = tl.float64
-    elif tl.constexpr(out.dtype.element_ty == tl.float64):
-        cdtype = tl.float64
+    if tl.constexpr(out.dtype.element_ty == tl.float64):
+        value_dtype = tl.float64
+        acc_dtype = tl.float64
+    elif tl.constexpr(out.dtype.element_ty == tl.float16):
+        value_dtype = tl.float16
+        acc_dtype = tl.float32
+    elif tl.constexpr(out.dtype.element_ty == tl.bfloat16):
+        value_dtype = tl.bfloat16
+        acc_dtype = tl.float32
     else:
-        cdtype = tl.float32
+        value_dtype = tl.float32
+        acc_dtype = tl.float32
 
-    _sum = tl.zeros((), dtype=cdtype)
-    _cnt = tl.zeros((), dtype=cdtype)
+    _sum = tl.zeros((), dtype=acc_dtype)
+    _cnt = tl.zeros((), dtype=acc_dtype)
 
     for start in range(0, M, BLOCK_SIZE):
         idx = start + tl.arange(0, BLOCK_SIZE)
         mask = idx < M
-        x = tl.load(inp + idx, mask=mask, other=0.0).to(cdtype)
+        x = tl.load(inp + idx, mask=mask, other=0.0).to(value_dtype)
         is_nan = x != x
         valid = mask & (~is_nan)
         x = tl.where(valid, x, 0.0)
-        _sum += tl.sum(x, axis=0)
-        _cnt += tl.sum(valid.to(cdtype), axis=0)
+        _sum += tl.sum(x, axis=0, dtype=acc_dtype)
+        _cnt += tl.sum(valid.to(acc_dtype), axis=0)
 
     tl.store(out, _sum / _cnt)
 
 
-def _compute_dtype(inp, dtype):
-    if inp.dtype == torch.float64 or dtype == torch.float64:
-        return torch.float64
-    return torch.float32
+def _compute_dtype(dtype):
+    return torch.float64 if dtype == torch.float64 else torch.float32
 
 
 def _nanmean_global(inp, *, dtype=None):
@@ -128,14 +140,14 @@ def _nanmean_global(inp, *, dtype=None):
             nanmean_global_single_kernel[(1,)](inp, out, M, BLOCK_SIZE=4096)
         return out
 
-    compute_dtype = _compute_dtype(inp, dtype)
+    compute_dtype = _compute_dtype(dtype)
     block_size = max(triton.next_power_of_2(math.ceil(math.sqrt(M))), 4096)
     mid_size = triton.cdiv(M, block_size)
     mid_sum = torch.empty(mid_size, dtype=compute_dtype, device=inp.device)
     mid_cnt = torch.empty(mid_size, dtype=compute_dtype, device=inp.device)
 
     with torch_device_fn.device(inp.device):
-        nanmean_kernel_1[(mid_size, 1, 1)](inp, mid_sum, mid_cnt, M, block_size)
+        nanmean_kernel_1[(mid_size, 1, 1)](inp, mid_sum, mid_cnt, out, M, block_size)
         block_mid = triton.next_power_of_2(mid_size)
         nanmean_kernel_2[(1,)](mid_sum, mid_cnt, out, mid_size, BLOCK_SIZE=block_mid)
 
@@ -170,32 +182,38 @@ def nanmean_dim_non_inner_kernel(
     BLOCK_K: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    if tl.constexpr(inp.dtype.element_ty == tl.float64):
-        cdtype = tl.float64
-    elif tl.constexpr(out.dtype.element_ty == tl.float64):
-        cdtype = tl.float64
+    if tl.constexpr(out.dtype.element_ty == tl.float64):
+        value_dtype = tl.float64
+        acc_dtype = tl.float64
+    elif tl.constexpr(out.dtype.element_ty == tl.float16):
+        value_dtype = tl.float16
+        acc_dtype = tl.float32
+    elif tl.constexpr(out.dtype.element_ty == tl.bfloat16):
+        value_dtype = tl.bfloat16
+        acc_dtype = tl.float32
     else:
-        cdtype = tl.float32
+        value_dtype = tl.float32
+        acc_dtype = tl.float32
 
     pid_m = ext.program_id(0)
     pid_k = ext.program_id(1)
     k = pid_k * BLOCK_K + tl.arange(0, BLOCK_K)[None, :]
     k_mask = k < K
 
-    sum_acc = tl.zeros([BLOCK_N, BLOCK_K], dtype=cdtype)
+    sum_acc = tl.zeros([BLOCK_N, BLOCK_K], dtype=acc_dtype)
     count_acc = tl.zeros([BLOCK_N, BLOCK_K], dtype=tl.int32)
 
     for start_n in range(0, N, BLOCK_N):
         n = start_n + tl.arange(0, BLOCK_N)[:, None]
         mask = (n < N) & k_mask
         offsets = pid_m * N * K + n * K + k
-        val = tl.load(inp + offsets, mask=mask, other=0.0).to(cdtype)
+        val = tl.load(inp + offsets, mask=mask, other=0.0).to(value_dtype)
         valid = mask & (val == val)
         val = tl.where(valid, val, 0.0)
         sum_acc += val
         count_acc += valid.to(tl.int32)
 
-    result = tl.sum(sum_acc, axis=0) / tl.sum(count_acc, axis=0)
+    result = tl.sum(sum_acc, axis=0, dtype=acc_dtype) / tl.sum(count_acc, axis=0)
     tl.store(out + pid_m * K + k, result[None, :], mask=k_mask)
 
 
@@ -209,27 +227,33 @@ def nanmean_dim_inner_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    if tl.constexpr(inp.dtype.element_ty == tl.float64):
-        cdtype = tl.float64
-    elif tl.constexpr(out.dtype.element_ty == tl.float64):
-        cdtype = tl.float64
+    if tl.constexpr(out.dtype.element_ty == tl.float64):
+        value_dtype = tl.float64
+        acc_dtype = tl.float64
+    elif tl.constexpr(out.dtype.element_ty == tl.float16):
+        value_dtype = tl.float16
+        acc_dtype = tl.float32
+    elif tl.constexpr(out.dtype.element_ty == tl.bfloat16):
+        value_dtype = tl.bfloat16
+        acc_dtype = tl.float32
     else:
-        cdtype = tl.float32
+        value_dtype = tl.float32
+        acc_dtype = tl.float32
 
     rows = ext.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     row_mask = rows < M
-    sum_acc = tl.zeros([BLOCK_M, BLOCK_N], dtype=cdtype)
+    sum_acc = tl.zeros([BLOCK_M, BLOCK_N], dtype=acc_dtype)
     count_acc = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.int32)
 
     for start_n in range(0, N, BLOCK_N):
         cols = start_n + tl.arange(0, BLOCK_N)[None, :]
         mask = row_mask & (cols < N)
-        val = tl.load(inp + rows * N + cols, mask=mask, other=0.0).to(cdtype)
+        val = tl.load(inp + rows * N + cols, mask=mask, other=0.0).to(value_dtype)
         valid = mask & (val == val)
         sum_acc += tl.where(valid, val, 0.0)
         count_acc += valid.to(tl.int32)
 
-    result = tl.sum(sum_acc, axis=1) / tl.sum(count_acc, axis=1)
+    result = tl.sum(sum_acc, axis=1, dtype=acc_dtype) / tl.sum(count_acc, axis=1)
     tl.store(out + rows, result[:, None], mask=row_mask)
 
 
@@ -303,6 +327,10 @@ def nanmean_dim(inp, dim=None, keepdim=False, *, dtype=None):
         out = torch.full(shape, float("nan"), dtype=dtype, device=inp.device)
         return out if keepdim else _squeeze_dims(out, dims)
 
+    if math.prod(shape) == 0:
+        out = torch.empty(shape, dtype=dtype, device=inp.device)
+        return out if keepdim else _squeeze_dims(out, dims)
+
     if len(dims) == 1:
         dim = dims[0]
         if not inp.is_contiguous():
@@ -333,6 +361,17 @@ def nanmean_dim(inp, dim=None, keepdim=False, *, dtype=None):
     return out if keepdim else _squeeze_dims(out, dims)
 
 
+def _nanmean_autograd(inp, dim, keepdim, dtype):
+    dims = _normalize_dims(dim, inp.ndim)
+    if inp.ndim > 0 and len(dims) == 0:
+        dims = list(range(inp.ndim))
+    dims = tuple(dims)
+    valid = ~torch.isnan(inp)
+    total = torch.where(valid, inp, 0).sum(dim=dims, keepdim=keepdim, dtype=dtype)
+    count = valid.sum(dim=dims, keepdim=keepdim)
+    return total / count
+
+
 def nanmean(inp, dim=None, keepdim=False, *, dtype=None):
     logger.debug("GEMS NANMEAN")
     if not (inp.is_floating_point() or inp.is_complex()):
@@ -345,8 +384,16 @@ def nanmean(inp, dim=None, keepdim=False, *, dtype=None):
             "nanmean(): could not infer output dtype. Optional dtype must be either "
             f"a floating point or complex dtype. Got: {dtype}"
         )
-    if inp.is_complex():
-        valid = ~(torch.isnan(inp.real) | torch.isnan(inp.imag))
+    complex_output = dtype is not None and dtype.is_complex
+    if inp.is_complex() or complex_output:
+        if inp.is_complex():
+            real_part = inp.real
+            imag_part = inp.imag
+            valid = ~(torch.isnan(real_part) | torch.isnan(imag_part))
+        else:
+            real_part = inp
+            imag_part = torch.zeros_like(inp)
+            valid = ~torch.isnan(inp)
         factor = valid.detach().sum(dim=dim, keepdim=keepdim)
         real_dtype = (
             torch.float64
@@ -354,25 +401,22 @@ def nanmean(inp, dim=None, keepdim=False, *, dtype=None):
             else torch.float32
         )
         real_mask = (
-            ~torch.isnan(inp.real)
+            ~torch.isnan(real_part)
             if dtype is not None and not dtype.is_complex
             else valid
         )
-        real_sum = torch.where(real_mask, inp.real, 0).sum(
+        real_sum = torch.where(real_mask, real_part, 0).sum(
             dim=dim, keepdim=keepdim, dtype=real_dtype
         )
         real_mean = real_sum / factor
         if dtype is not None and not dtype.is_complex:
             return real_mean.to(dtype)
-        imag_sum = torch.where(valid, inp.imag, 0).sum(
+        imag_sum = torch.where(valid, imag_part, 0).sum(
             dim=dim, keepdim=keepdim, dtype=real_dtype
         )
         return torch.complex(real_mean, imag_sum / factor).to(dtype or inp.dtype)
     if inp.requires_grad:
-        cpu_inp = inp.to("cpu")
-        return torch.nanmean(cpu_inp, dim=dim, keepdim=keepdim, dtype=dtype).to(
-            inp.device
-        )
+        return _nanmean_autograd(inp, dim, keepdim, dtype)
     if dim is None:
         result = _nanmean_global(inp, dtype=dtype)
         if keepdim:
@@ -383,7 +427,18 @@ def nanmean(inp, dim=None, keepdim=False, *, dtype=None):
 
 def nanmean_out(inp, dim=None, keepdim=False, *, dtype=None, out=None):
     logger.debug("GEMS NANMEAN_OUT")
-    result = nanmean(inp, dim=dim, keepdim=keepdim, dtype=dtype)
+    if out is None:
+        raise RuntimeError("nanmean(): missing required out tensor")
+    if out.device != inp.device:
+        raise RuntimeError(
+            "nanmean: expected result tensor to be on the same device as input"
+        )
+    if dtype is not None and dtype != out.dtype:
+        raise RuntimeError(
+            "nanmean: provided dtype must match dtype of result. Got "
+            f"{out.dtype} and {dtype}."
+        )
+    result = nanmean(inp, dim=dim, keepdim=keepdim, dtype=dtype or out.dtype)
     if out.shape != result.shape:
         out.resize_(result.shape)
     out.copy_(result)
