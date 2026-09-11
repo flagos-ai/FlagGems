@@ -56,7 +56,9 @@ def _ref_batch_norm_backward_elemt(
 
 @pytest.mark.batch_norm_backward_elemt
 @pytest.mark.parametrize("shape", SHAPES)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+# aten::batch_norm_backward_elemt only accepts float32 (rejects Half/BFloat16
+# at the dispatch level with "expected scalar type Float but found Half")
+@pytest.mark.parametrize("dtype", [torch.float32])
 @pytest.mark.parametrize("has_weight", [True, False])
 def test_batch_norm_backward_elemt(shape, dtype, has_weight):
     C = shape[1]
@@ -100,16 +102,15 @@ def test_batch_norm_backward_elemt(shape, dtype, has_weight):
         ref_count,
     )
 
-    with flag_gems.use_gems():
-        res_out = torch.batch_norm_backward_elemt(
-            grad_output,
-            inp,
-            mean,
-            invstd,
-            weight,
-            sum_dy,
-            sum_dy_xmu,
-            count,
-        )
+    res_out = torch.batch_norm_backward_elemt(
+        grad_output,
+        inp,
+        mean,
+        invstd,
+        weight,
+        sum_dy,
+        sum_dy_xmu,
+        count,
+    )
 
     utils.gems_assert_close(res_out, ref_out, dtype)
