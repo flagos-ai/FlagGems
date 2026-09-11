@@ -787,3 +787,30 @@ def index_reduce_(inp, dim, index, source, reduce, *, include_self=True):
         out = torch.where(touched == 0, inp_compute, out)
 
     return _restore_dim(out.to(inp.dtype), inp, dim)
+
+
+def index_reduce(inp, dim, index, source, reduce, *, include_self=True):
+    logger.debug("GEMS INDEX_REDUCE")
+    out = inp.clone(memory_format=torch.contiguous_format)
+    return index_reduce_(out, dim, index, source, reduce, include_self=include_self)
+
+
+def index_reduce_out(inp, dim, index, source, reduce, *, include_self=True, out=None):
+    logger.debug("GEMS INDEX_REDUCE_OUT")
+    if out is None:
+        return index_reduce(inp, dim, index, source, reduce, include_self=include_self)
+    _validate_args(inp, dim, index, source, reduce)
+    if out.dtype != inp.dtype:
+        raise RuntimeError(
+            f"Expected out tensor to have dtype {inp.dtype}, but got {out.dtype} instead"
+        )
+    if out.device != inp.device:
+        raise RuntimeError(
+            f"Expected out tensor to be on device {inp.device}, but got {out.device} instead"
+        )
+    if tuple(out.shape) != tuple(inp.shape):
+        out.resize_(inp.shape)
+
+    if out.data_ptr() != inp.data_ptr() or out.stride() != inp.stride():
+        out.copy_(inp)
+    return index_reduce_(out, dim, index, source, reduce, include_self=include_self)
