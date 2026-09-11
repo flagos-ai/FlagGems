@@ -18,7 +18,7 @@ import torch.nn.functional as F
 
 import flag_gems
 from benchmark.base import Benchmark
-from flag_gems.testing.fla import naive_chunk_gated_delta_rule_fwd
+from flag_gems.fused.FLA.chunk import naive_chunk_gated_delta_rule_fwd
 
 
 def torch_chunk_gated_delta_rule_fwd(
