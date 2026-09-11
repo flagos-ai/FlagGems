@@ -18,6 +18,7 @@ import torch.nn.functional as F
 
 import flag_gems
 from benchmark.base import Benchmark
+from flag_gems.testing.fla import naive_chunk_gated_delta_rule_fwd
 
 
 def torch_chunk_gated_delta_rule_fwd(
@@ -32,28 +33,10 @@ def torch_chunk_gated_delta_rule_fwd(
     if cu_seqlens is not None:
         raise NotImplementedError("The PyTorch baseline only supports fixed lengths")
 
-    output_dtype = v.dtype
-    q, k, v, g, beta = (x.float() for x in (q, k, v, g, beta))
-    B, T, H, K = q.shape
-    V = v.shape[-1]
-    state = (
-        initial_state.float().clone()
-        if initial_state is not None
-        else q.new_zeros(B, H, K, V)
+    output, final_state = naive_chunk_gated_delta_rule_fwd(
+        q, k, v, g, beta, scale, initial_state
     )
-    outputs = []
-    for t in range(T):
-        # Apply the decay before computing the delta against the current state.
-        state = state * g[:, t].exp()[..., None, None]
-        delta = v[:, t] - torch.einsum("bhk,bhkv->bhv", k[:, t], state)
-        state = (
-            state
-            + torch.einsum("bhk,bhv->bhkv", k[:, t], delta) * beta[:, t, :, None, None]
-        )
-        outputs.append(torch.einsum("bhk,bhkv->bhv", q[:, t], state) * scale)
-
-    output = torch.stack(outputs, dim=1).to(output_dtype)
-    return output, state if output_final_state else None
+    return output, final_state if output_final_state else None
 
 
 class ChunkGatedDeltaRuleFwdBenchmark(Benchmark):
