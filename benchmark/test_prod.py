@@ -1,47 +1,51 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
+
+import flag_gems
 
 from . import base, consts, utils
 
 
-def _prod_dim_int_input_fn(shape, dtype, device):
-    inp = utils.generate_tensor_input(shape, dtype, device)
-    yield inp, 1, False
-
-
-class ProdBenchmark(base.UnaryReductionBenchmark):
-    """Benchmark for prod without dim (1D shapes only)."""
-
-    def set_more_shapes(self):
-        return [s for s in super().set_more_shapes() if len(s) == 1]
-
-    def set_shapes(self, shape_file_path=None):
-        super().set_shapes(shape_file_path)
-        self.shapes = [s for s in self.shapes if len(s) == 1]
-
-
-class ProdDimIntBenchmark(base.GenericBenchmark):
-    """Benchmark for prod.dim_int (2D+ shapes only)."""
-
-    def set_more_shapes(self):
-        more_shapes_2d = [(1024, 2**i) for i in range(0, 11, 4)]
-        more_shapes_3d = [(64, 2**i, 64) for i in range(0, 11, 4)]
-        return more_shapes_2d + more_shapes_3d
-
-
 @pytest.mark.prod
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_prod():
-    bench = ProdBenchmark(
+    bench = base.UnaryReductionBenchmark(
         op_name="prod", torch_op=torch.prod, dtypes=consts.FLOAT_DTYPES
     )
     bench.run()
+
+
+class ProdDimIntBenchmark(base.GenericBenchmark2DOnly):
+    def set_more_shapes(self):
+        return [(1024, 2**i) for i in range(0, 11, 4)]
+
+
+def prod_dim_int_input_fn(shape, dtype, device):
+    inp = utils.generate_tensor_input(shape, dtype, device)
+    yield inp, 1, False
 
 
 @pytest.mark.prod_dim_int
 def test_prod_dim_int():
     bench = ProdDimIntBenchmark(
         op_name="prod_dim_int",
-        input_fn=_prod_dim_int_input_fn,
+        input_fn=prod_dim_int_input_fn,
         torch_op=torch.prod,
         dtypes=consts.FLOAT_DTYPES,
     )

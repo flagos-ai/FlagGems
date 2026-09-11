@@ -1,3 +1,19 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import logging
+
 import torch
 import triton
 import triton.language as tl
@@ -5,6 +21,8 @@ import triton.language.extra.smt as smt
 
 from flag_gems import runtime
 from flag_gems.utils import libentry, libtuner
+
+logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -212,9 +230,10 @@ def mm_kernel(
 
 
 def mm(a, b):
+    logger.debug("GEMS_SPACEMIT MM")
     if not a.is_contiguous():
         a = a.contiguous()
-    if not b.is_contiguous():
+    if b.stride(0) > 1 and b.stride(1) > 1:
         b = b.contiguous()
     # checks constraints
     assert a.shape[1] == b.shape[0], "incompatible dimensions"
@@ -247,3 +266,42 @@ def mm(a, b):
         SUB_BLK_K=SUB_BLK_K,
     )
     return c
+
+
+def mm_out(a, b, *, out):
+    logger.debug("GEMS_SPACEMIT MM_OUT")
+    if not a.is_contiguous():
+        a = a.contiguous()
+    if b.stride(0) > 1 and b.stride(1) > 1:
+        b = b.contiguous()
+
+    # checks constraints
+    assert a.shape[1] == b.shape[0], "incompatible dimensions"
+    M, K = a.shape
+    _, N = b.shape
+
+    # launch kernel
+    grid = lambda META: (
+        triton.cdiv(M, META["BLOCK_SIZE_M"]),
+        triton.cdiv(N, META["BLOCK_SIZE_N"]),
+    )
+    BLOCK_SIZE_K = triton.next_power_of_2(K)
+    SUB_BLK_K = min(512, BLOCK_SIZE_K)
+
+    mm_kernel[grid](
+        a,
+        b,
+        out,
+        M,
+        N,
+        K,
+        a.stride(0),
+        a.stride(1),
+        b.stride(0),
+        b.stride(1),
+        out.stride(0),
+        out.stride(1),
+        BLOCK_SIZE_K=BLOCK_SIZE_K,
+        SUB_BLK_K=SUB_BLK_K,
+    )
+    return out

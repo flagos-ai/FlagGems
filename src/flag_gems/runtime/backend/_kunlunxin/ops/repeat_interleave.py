@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -10,7 +24,7 @@ from flag_gems.utils.tensor_wrapper import StridedBuffer
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 @pointwise_dynamic(num_inputs=1, promotion_methods=[(0, "DEFAULT")])
@@ -20,7 +34,7 @@ def copy_func(x):
 
 
 def repeat_interleave_self_int(inp, repeats, dim=None, *, output_size=None):
-    logger.debug("GEMS REPEAT_INTERLEAVE_SELF_INT")
+    logger.debug("GEMS_KUNLUNXIN REPEAT_INTERLEAVE_SELF_INT")
     if dim is None:
         inp = inp.flatten()
         dim = 0
@@ -83,7 +97,7 @@ def repeat_interleave_tensor_kernel(
 
 
 def repeat_interleave_tensor(repeats, *, output_size=None):
-    logger.debug("GEMS REPEAT_INTERLEAVE_TENSOR")
+    logger.debug("GEMS_KUNLUNXIN REPEAT_INTERLEAVE_TENSOR")
 
     assert repeats.ndim == 1, "repeat_interleave only accept 1D vector as repeat"
 
@@ -109,7 +123,7 @@ def repeat_interleave_tensor(repeats, *, output_size=None):
 
 
 def repeat_interleave_self_tensor(inp, repeats, dim=None, *, output_size=None):
-    logger.debug("GEMS REPEAT_INTERLEAVE_SELF_TENSOR")
+    logger.debug("GEMS_KUNLUNXIN REPEAT_INTERLEAVE_SELF_TENSOR")
 
     if dim is None:
         inp = inp.flatten()

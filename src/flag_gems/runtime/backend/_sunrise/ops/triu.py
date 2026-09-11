@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -9,7 +23,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -73,34 +87,113 @@ def triu_batch_kernel(
     tl.store(Y + cols, y, mask=mask)
 
 
-INT32_MAX = torch.iinfo(torch.int32).max
+def _check_batch_contiguous(tensor, allow_zero_stride=True):
+    if tensor.is_contiguous():
+        return True, tensor
+
+    dims = tensor.dim()
+
+    if dims >= 2:
+        n = tensor.size(-1)
+        stride_row, stride_col = tensor.stride(-2), tensor.stride(-1)
+
+        if not (stride_col == 1 and stride_row == n):
+            return False, tensor.contiguous()
+
+    if allow_zero_stride and dims <= 3:
+        return True, tensor
+
+    expected_stride = tensor.size(-1) * tensor.size(-2)
+    for i in range(dims - 3, -1, -1):
+        if (
+            allow_zero_stride
+            and i == 0
+            and (tensor.stride(i) == 0 or tensor.size(i) == 1)
+        ):
+            continue
+
+        if tensor.stride(i) != expected_stride:
+            return False, tensor.contiguous()
+
+        expected_stride *= tensor.size(i)
+
+    return True, tensor
 
 
 def triu(A, diagonal=0):
-    logger.debug("GEMS TRIU")
-    A = A.contiguous()
+    logger.debug("GEMS_SUNRISE TRIU")
     ori_type = A.dtype
     out = torch.empty(A.shape, device="ptpu").as_strided(A.shape, A.stride())
     assert len(A.shape) > 1, "Input tensor must have at least 2 dimensions"
-    M, N = A.shape[-2:]
-    with torch_device_fn.device(A.device):
-        if len(A.shape) == 2:
+
+    can_use_directly, A_input = _check_batch_contiguous(A, allow_zero_stride=False)
+
+    out = torch.empty(
+        A.shape, dtype=A.dtype, device=A.device, memory_format=torch.contiguous_format
+    )
+
+    M, N = A_input.shape[-2:]
+
+    with torch_device_fn.device(A_input.device):
+        if len(A_input.shape) == 2:
             grid = lambda meta: (triton.cdiv(M, meta["M_BLOCK_SIZE"]),)
-            triu_kernel[grid](A, out, M, N, diagonal)
+            triu_kernel[grid](A_input, out, M, N, diagonal)
         else:
-            batch = int(torch.numel(A) / M / N)
-            B = A.view(batch, -1)
+            batch = int(torch.numel(A_input) / M / N)
+            B = A_input.view(batch, -1)
             grid = lambda meta: (
                 triton.cdiv(batch, meta["BATCH_BLOCK_SIZE"]),
                 triton.cdiv(M * N, meta["MN_BLOCK_SIZE"]),
             )
-            triu_batch_kernel[grid](
-                B,
-                out,
-                batch,
-                M * N,
-                N,
-                diagonal,
-            )
+            triu_batch_kernel[grid](B, out, batch, M * N, N, diagonal)
             out = out.view(A.shape)
+
     return out.to(ori_type)
+
+
+def triu_(A, diagonal=0):
+    logger.debug("GEMS_SUNRISE TRIU_")
+
+    assert len(A.shape) > 1, "Input tensor must have at least 2 dimensions"
+    diagonal = int(diagonal)
+    M, N = A.shape[-2:]
+
+    can_use_directly, A_to_use = _check_batch_contiguous(A, allow_zero_stride=True)
+
+    if not can_use_directly:
+        logger.debug(
+            "GEMS_SUNRISE Input tensor does not satisfy contiguity requirements, using temporary tensor for computation"
+        )
+
+        result_temp = torch.empty_like(A_to_use, memory_format=torch.contiguous_format)
+
+        with torch_device_fn.device(A.device):
+            if len(A.shape) == 2:
+                grid = lambda meta: (triton.cdiv(M, meta["M_BLOCK_SIZE"]),)
+                triu_kernel[grid](A_to_use, result_temp, M, N, diagonal)
+            else:
+                batch = int(torch.numel(A) / M / N)
+                B = A_to_use.view(batch, -1)
+                result_temp_flat = result_temp.view(batch, -1)
+                grid = lambda meta: (
+                    triton.cdiv(batch, meta["BATCH_BLOCK_SIZE"]),
+                    triton.cdiv(M * N, meta["MN_BLOCK_SIZE"]),
+                )
+                triu_batch_kernel[grid](B, result_temp_flat, batch, M * N, N, diagonal)
+
+        A.copy_(result_temp)
+    else:
+        with torch_device_fn.device(A.device):
+            if len(A.shape) == 2:
+                grid = lambda meta: (triton.cdiv(M, meta["M_BLOCK_SIZE"]),)
+                triu_kernel[grid](A, A, M, N, diagonal)
+            else:
+                batch = int(torch.numel(A) / M / N)
+                B = A.view(batch, -1)
+                grid = lambda meta: (
+                    triton.cdiv(batch, meta["BATCH_BLOCK_SIZE"]),
+                    triton.cdiv(M * N, meta["MN_BLOCK_SIZE"]),
+                )
+                triu_batch_kernel[grid](B, B, batch, M * N, N, diagonal)
+
+    return A
