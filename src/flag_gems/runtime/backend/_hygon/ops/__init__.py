@@ -115,6 +115,7 @@ from .special_chebyshev_polynomial_w import (
 )
 from .split_with_sizes_copy import split_with_sizes_copy
 from .tile import tile
+from .topk_w8a16_fp8 import topk_w8a16_fp8
 from .unique import _unique2
 from .unique_dim import unique_dim
 from .unsqueeze import unsqueeze, unsqueeze_
@@ -225,6 +226,7 @@ __all__ = [
     "split_with_sizes_copy",
     "SUPPORTED_FP8_DTYPE",
     "tile",
+    "topk_w8a16_fp8",
     "true_divide",
     "true_divide_",
     "true_divide_out",
