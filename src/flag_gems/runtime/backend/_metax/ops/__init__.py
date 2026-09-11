@@ -55,6 +55,7 @@ from .matmul_int8 import matmul_int8
 from .min import min, min_dim
 from .mm import mm, mm_out
 from .mv import mv
+from .mvlgamma import mvlgamma
 from .mvlgamma_ import mvlgamma_
 from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .nansum import nansum, nansum_out
@@ -182,6 +183,7 @@ __all__ = [
     "mm",
     "mm_out",
     "mv",
+    "mvlgamma",
     "mvlgamma_",
     "nanmedian",
     "nanmedian_dim",
