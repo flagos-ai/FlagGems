@@ -26,19 +26,91 @@ from ..heuristics_config_utils import dreglu_dswiglu_config, reglu_swiglu_config
 logger = logging.getLogger(__name__)
 
 
-def heur_tile_m(args):
-    return triton.cdiv(args["M"], 12)  # cluster_num
+@libentry()
+@triton.jit
+def swiglu_kernel(
+    x_ptr,
+    y_ptr,
+    M,
+    N_OUT,
+    stride_x_m,
+    stride_x_n,
+    stride_y_m,
+    stride_y_n,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    NEED_MASK: tl.constexpr,
+):
+    pid_m = tl.program_id(axis=0)
+    pid_n = tl.program_id(axis=1)
+    offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    x_ptr_a = x_ptr + offs_m[:, None] * stride_x_m + offs_n[None, :] * stride_x_n
+    x_ptr_b = (
+        x_ptr + offs_m[:, None] * stride_x_m + (offs_n[None, :] + N_OUT) * stride_x_n
+    )
+    y_ptr = y_ptr + offs_m[:, None] * stride_y_m + offs_n[None, :] * stride_y_n
+    if NEED_MASK:
+        mask = (offs_m[:, None] < M) & (offs_n[None, :] < N_OUT)
+        block_a = tl.load(x_ptr_a, mask=mask, other=0.0).to(tl.float32)
+        block_b = tl.load(x_ptr_b, mask=mask, other=0.0).to(tl.float32)
+        silu_a = block_a * tl.sigmoid(block_a)
+        tl.store(y_ptr, (silu_a * block_b).to(y_ptr.dtype.element_ty), mask=mask)
+    else:
+        block_a = tl.load(x_ptr_a).to(tl.float32)
+        block_b = tl.load(x_ptr_b).to(tl.float32)
+        silu_a = block_a * tl.sigmoid(block_a)
+        tl.store(y_ptr, (silu_a * block_b).to(y_ptr.dtype.element_ty))
 
 
-def heru_tile_n(args):
-    import builtins
+def swiglu(input_tensor: torch.Tensor, quantizer: Optional[Any] = None) -> torch.Tensor:
+    logger.debug("GEMS_KUNLUNXIN SWIGLU_FORWARD")
+    shape = input_tensor.shape
+    if input_tensor.dim() < 1:
+        raise ValueError("Input tensor must have at least 1 dimension.")
+    last_dim = shape[-1]
+    if last_dim % 2 != 0:
+        raise ValueError(
+            f"The last dimension of the input tensor must be even, but got {last_dim}."
+        )
+    N_OUT = last_dim // 2
+    M = input_tensor.numel() // last_dim
+    if input_tensor.numel() == 0:
+        output_shape = (*shape[:-1], N_OUT)
+        return torch.empty(
+            output_shape, device=input_tensor.device, dtype=input_tensor.dtype
+        )
+    input_2d = input_tensor.contiguous().view(M, last_dim)
+    output_2d = torch.empty(
+        (M, N_OUT), device=input_tensor.device, dtype=input_tensor.dtype
+    )
+    block_m, block_n, num_warps = reglu_swiglu_config(input_tensor.dtype, M, N_OUT)
+    need_mask = (M % block_m != 0) or (N_OUT % block_n != 0)
+    grid = (triton.cdiv(M, block_m), triton.cdiv(N_OUT, block_n))
+    swiglu_kernel[grid](
+        input_2d,
+        output_2d,
+        M,
+        N_OUT,
+        input_2d.stride(0),
+        input_2d.stride(1),
+        output_2d.stride(0),
+        output_2d.stride(1),
+        BLOCK_M=block_m,
+        BLOCK_N=block_n,
+        NEED_MASK=need_mask,
+        num_warps=num_warps,
+    )
+    output_shape = (*shape[:-1], N_OUT)
+    return output_2d.view(output_shape)
 
-    return builtins.min(args["N"], 8192)
+
+__all__ = ["swiglu", "dswiglu"]
 
 
 @libentry()
 @triton.jit
-def dreglu_kernel(
+def dswiglu_kernel(
     grad_output_ptr,
     input_ptr,
     grad_input_ptr,
@@ -82,111 +154,50 @@ def dreglu_kernel(
         grad_out = tl.load(grad_output_ptr, mask=mask, other=0.0).to(tl.float32)
         block_a = tl.load(input_ptr_a, mask=mask, other=0.0).to(tl.float32)
         block_b = tl.load(input_ptr_b, mask=mask, other=0.0).to(tl.float32)
-        relu_a = tl.maximum(block_a, 0.0)
-        d_relu_a = tl.where(block_a > 0, 1.0, 0.0)
-        grad_a = grad_out * d_relu_a * block_b
-        grad_b = grad_out * relu_a
-        tl.store(grad_input_ptr_a, grad_a, mask=mask)
-        tl.store(grad_input_ptr_b, grad_b, mask=mask)
+        sig = tl.sigmoid(block_a)
+        silu_a = block_a * sig
+        d_silu_a = sig + block_a * sig * (1.0 - sig)
+        tl.store(grad_input_ptr_a, grad_out * d_silu_a * block_b, mask=mask)
+        tl.store(grad_input_ptr_b, grad_out * silu_a, mask=mask)
     else:
         grad_out = tl.load(grad_output_ptr).to(tl.float32)
         block_a = tl.load(input_ptr_a).to(tl.float32)
         block_b = tl.load(input_ptr_b).to(tl.float32)
-        relu_a = tl.maximum(block_a, 0.0)
-        d_relu_a = tl.where(block_a > 0, 1.0, 0.0)
-        tl.store(grad_input_ptr_a, grad_out * d_relu_a * block_b)
-        tl.store(grad_input_ptr_b, grad_out * relu_a)
+        sig = tl.sigmoid(block_a)
+        silu_a = block_a * sig
+        d_silu_a = sig + block_a * sig * (1.0 - sig)
+        tl.store(grad_input_ptr_a, grad_out * d_silu_a * block_b)
+        tl.store(grad_input_ptr_b, grad_out * silu_a)
 
 
-@libentry()
-@triton.jit
-def reglu_kernel(
-    x_ptr,
-    y_ptr,
-    M,
-    N_OUT,
-    stride_x_m,
-    stride_x_n,
-    stride_y_m,
-    stride_y_n,
-    BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-):
-    pid_m = tl.program_id(axis=0)
-    pid_n = tl.program_id(axis=1)
-    offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-    x_ptr_a = x_ptr + offs_m[:, None] * stride_x_m + offs_n[None, :] * stride_x_n
-    x_ptr_b = (
-        x_ptr + offs_m[:, None] * stride_x_m + (offs_n[None, :] + N_OUT) * stride_x_n
-    )
-    y_ptr = y_ptr + offs_m[:, None] * stride_y_m + offs_n[None, :] * stride_y_n
-    mask = (offs_m[:, None] < M) & (offs_n[None, :] < N_OUT)
-    block_a = tl.load(x_ptr_a, mask=mask, other=0.0)
-    block_b = tl.load(x_ptr_b, mask=mask, other=0.0)
-    gate = tl.where(block_a > 0, block_a, 0.0)
-    output = gate * block_b
-    tl.store(y_ptr, output, mask=mask)
-
-
-def reglu(input_tensor: torch.Tensor, quantizer: Optional[Any] = None) -> torch.Tensor:
-    shape = input_tensor.shape
-    if input_tensor.dim() < 1:
-        raise ValueError("Input tensor must have at least 1 dimension.")
-    last_dim = shape[-1]
-    if last_dim % 2 != 0:
-        raise ValueError(
-            f"The last dimension of the input tensor must be even, but got {last_dim}."
-        )
-    N_OUT = last_dim // 2
-    M = input_tensor.numel() // last_dim
-    if input_tensor.numel() == 0:
-        output_shape = (*shape[:-1], N_OUT)
-        return torch.empty(
-            output_shape, device=input_tensor.device, dtype=input_tensor.dtype
-        )
-    input_2d = input_tensor.contiguous().view(M, last_dim)
-    output_2d = torch.empty(
-        (M, N_OUT), device=input_tensor.device, dtype=input_tensor.dtype
-    )
-    block_m, block_n, num_warps = reglu_swiglu_config(input_tensor.dtype, M, N_OUT)
-    grid = (triton.cdiv(M, block_m), triton.cdiv(N_OUT, block_n))
-    reglu_kernel[grid](
-        input_2d,
-        output_2d,
-        M,
-        N_OUT,
-        input_2d.stride(0),
-        input_2d.stride(1),
-        output_2d.stride(0),
-        output_2d.stride(1),
-        BLOCK_M=block_m,
-        BLOCK_N=block_n,
-        num_warps=num_warps,
-    )
-    output_shape = (*shape[:-1], N_OUT)
-    return output_2d.view(output_shape)
-
-
-def dreglu(
+def dswiglu(
     grad_output: torch.Tensor,
     input_tensor: torch.Tensor,
     quantizer: Optional[Any] = None,
 ) -> torch.Tensor:
+    logger.debug("GEMS_KUNLUNXIN DSWIGLU")
     shape = input_tensor.shape
+    if input_tensor.dim() < 1:
+        raise ValueError("Input tensor must have at least 1 dimension.")
+    if shape[-1] % 2 != 0:
+        raise ValueError(
+            f"The last dimension of the input tensor must be even, but got {shape[-1]}."
+        )
     if shape[:-1] != grad_output.shape[:-1] or shape[-1] != 2 * grad_output.shape[-1]:
         raise ValueError(
             f"Shape mismatch: input {shape} vs grad_output {grad_output.shape}"
         )
-    M = grad_output.numel() // grad_output.shape[-1]
-    N = grad_output.shape[-1]
+    N = shape[-1] // 2
+    if input_tensor.numel() == 0:
+        return torch.empty(shape, device=input_tensor.device, dtype=input_tensor.dtype)
+    M = input_tensor.numel() // shape[-1]
     grad_output_2d = grad_output.contiguous().view(M, N)
     input_2d = input_tensor.contiguous().view(M, 2 * N)
     grad_input = torch.empty_like(input_2d)
     block_m, block_n, num_warps = dreglu_dswiglu_config(input_tensor.dtype, M, N)
     need_mask = (M % block_m != 0) or (N % block_n != 0)
     grid = (triton.cdiv(M, block_m), triton.cdiv(N, block_n))
-    dreglu_kernel[grid](
+    dswiglu_kernel[grid](
         grad_output_2d,
         input_2d,
         grad_input,
