@@ -64,14 +64,28 @@ def _is_unversioned_platform_miss(exc: FileNotFoundError, platform_key: str) -> 
     return str(exc).startswith(prefix)
 
 
+def _is_absent_manifest_error(exc: RuntimeError) -> bool:
+    """Recognize an absent (not malformed) FlagTune Manifest.
+
+    FlagTree's manifest loader raises ``ManifestFetchError`` — a
+    ``RuntimeError`` subclass, not ``FileNotFoundError`` — when no
+    ``FLAGTUNE_MANIFEST_URL`` is configured and no Manifest is cached. That is
+    the common "FlagTune not set up" case and should fall back to the Default
+    config space instead of crashing model loading. Keyed on the message
+    because ``ManifestFetchError`` lives in FlagTree and may not be importable.
+    """
+    return str(exc).startswith("FLAGTUNE_MANIFEST_URL is not configured")
+
+
 def platform_model_package_available() -> bool:
     """Return whether the active platform resolves to an outer model package.
 
     Resolution follows FlagTree's existing user-directory, package-cache,
-    Manifest, and download rules. Only an unversioned Manifest miss means the
-    platform is unadapted. Fixed-version misses, disabled remote access,
-    malformed Manifests, download failures, checksum mismatches, and invalid
-    archives continue to raise their original exceptions.
+    Manifest, and download rules. An unversioned Manifest miss (no entry for
+    the platform) or an absent Manifest (no URL configured) means the platform
+    is unadapted. Fixed-version misses, disabled remote access, malformed
+    Manifests, download failures, checksum mismatches, and invalid archives
+    continue to raise their original exceptions.
     """
     platform_key = _discover_platform_key()
     cache_key = _availability_cache_key(platform_key)
@@ -89,6 +103,10 @@ def platform_model_package_available() -> bool:
         )
     except FileNotFoundError as exc:
         if not _is_unversioned_platform_miss(exc, platform_key):
+            raise
+        available = False
+    except RuntimeError as exc:
+        if not _is_absent_manifest_error(exc):
             raise
         available = False
     else:

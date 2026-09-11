@@ -67,6 +67,24 @@ def test_unversioned_manifest_miss_marks_platform_unadapted(monkeypatch):
     assert model_package.platform_model_package_available() is False
 
 
+def test_absent_manifest_marks_platform_unadapted(monkeypatch):
+    """Treat an absent Manifest (no URL configured) as unavailable, not a crash."""
+    error = RuntimeError(
+        "FLAGTUNE_MANIFEST_URL is not configured and no cached FlagTune "
+        "Manifest exists at /root/.flagtree/flagtune_models/manifest.json"
+    )
+    manager = _manager_raising(error)
+    monkeypatch.setattr(
+        model_package,
+        "_discover_platform_key",
+        lambda: "hygon-bw1000",
+    )
+    monkeypatch.setattr(model_package, "_get_model_manager", lambda: manager)
+
+    assert model_package.platform_model_package_available() is False
+    assert model_package.platform_model_package_available() is False
+
+
 @pytest.mark.parametrize(
     "error",
     [
