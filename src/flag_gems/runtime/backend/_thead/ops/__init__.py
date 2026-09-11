@@ -14,6 +14,9 @@
 
 
 from ._conv_depthwise2d import _conv_depthwise2d
+from ._scaled_dot_product_fused_attention_overrideable import (
+    _scaled_dot_product_fused_attention_overrideable,
+)
 from ._unsafe_masked_index_put_accumulate import _unsafe_masked_index_put_accumulate
 from ._upsample_nearest_exact2d_backward import _upsample_nearest_exact2d_backward
 from .adaptive_max_pool3d_backward import adaptive_max_pool3d_backward
@@ -72,6 +75,7 @@ from .unbind_copy import unbind_copy
 
 __all__ = [
     "_conv_depthwise2d",
+    "_scaled_dot_product_fused_attention_overrideable",
     "_unsafe_masked_index_put_accumulate",
     "_upsample_nearest_exact2d_backward",
     "adaptive_max_pool3d_backward",
