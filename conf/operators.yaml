@@ -3781,6 +3781,22 @@ ops:
   stages:
   - beta: '5.0'
   - stable: '5.3'
+- id: dirichlet_grad
+  description: 'Computes the reparameterized-gradient of the Dirichlet distribution
+    with respect
+
+    to its concentration parameters, used by `torch.distributions.Dirichlet` autograd.
+
+    '
+  for:
+  - _dirichlet_grad
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: dispatch_fused_moe_kernel
   description: 'Accelerates neural network training by combining token routing (dispatch/all-to-all
     communication),
@@ -4673,6 +4689,21 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: fake_quantize_per_tensor_affine_cachemask_tensor_qparams
+  description: |
+    Fake-quantizes `input` per-tensor with affine mapping given by `scale` and
+    `zero_point`, clamping the quantized integer into `[quant_min, quant_max]`,
+    and returns both the dequantized output and a boolean mask indicating which
+    elements fell inside the quantized range.
+  for:
+    - _fake_quantize_per_tensor_affine_cachemask_tensor_qparams
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Math
+  stages:
+    - alpha: '5.4'
 - id: feature_dropout
   description: 'Applies feature dropout to the `input` tensor. Randomly zeroes out
     entire channels of the `input` tensor with probability `p`.
@@ -9841,6 +9872,20 @@ ops:
     - Tensor
   stages:
     - alpha: '5.4'
+- id: nested_view_from_jagged_copy
+  description: |
+    Constructs a jagged-layout nested tensor from a flat buffer split into
+    batch elements according to offsets/lengths metadata, owning a fresh copy
+    of the buffer.
+  for:
+    - _nested_view_from_jagged_copy
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Tensor
+  stages:
+    - alpha: '5.4'
 - id: new_full
   description: 'Returns a Tensor of size `size` filled with `fill_value`.
 
@@ -14031,6 +14076,23 @@ ops:
     symbolic tracing to provide bounds information.
   for:
   - sym_constrain_range
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
+- id: sym_size
+  description: 'Returns the size of the input tensor as a list of integers.
+
+    This is a metadata operation with no computation and is used for
+
+    torch.compile symbolic tracing.
+
+    '
+  for:
+  - sym_size
   labels:
   - aten
   - KernelGen
