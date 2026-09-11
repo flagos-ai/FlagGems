@@ -54,8 +54,7 @@ def test_linalg_solve_ex(shape, dtype):
     ref_A = utils.to_reference(A)
     ref_B = utils.to_reference(B)
     ref_out, ref_info = torch.linalg.solve_ex(ref_A, ref_B)
-    with flag_gems.use_gems():
-        res_out, res_info = torch.linalg.solve_ex(A, B)
+    res_out, res_info = torch.linalg.solve_ex(A, B)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
     assert torch.equal(res_info, ref_info.to(res_info.device))
@@ -73,8 +72,7 @@ def test_linalg_solve_ex_batched(batch_shape, n, k, dtype):
     ref_A = utils.to_reference(A)
     ref_B = utils.to_reference(B)
     ref_out, ref_info = torch.linalg.solve_ex(ref_A, ref_B)
-    with flag_gems.use_gems():
-        res_out, res_info = torch.linalg.solve_ex(A, B)
+    res_out, res_info = torch.linalg.solve_ex(A, B)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
     assert torch.equal(res_info, ref_info.to(res_info.device))
