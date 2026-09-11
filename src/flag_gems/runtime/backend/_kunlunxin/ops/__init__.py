@@ -197,7 +197,6 @@ from .fused_experts_impl import (
     inplace_fused_experts,
     outplace_fused_experts,
 )
-from .fused_recurrent_gated_delta_rule_fwd import fused_recurrent_gated_delta_rule_fwd
 from .gather import gather, gather_backward
 from .ge import ge, ge_scalar, greater_equal_
 from .gelu import gelu, gelu_, gelu_backward
@@ -726,7 +725,6 @@ __all__ = [
     "full",
     "full_like",
     "fused_experts_impl",
-    "fused_recurrent_gated_delta_rule_fwd",
     "gather",
     "gather_backward",
     "ge",
