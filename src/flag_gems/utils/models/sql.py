@@ -29,6 +29,7 @@ from typing import (
 )
 
 import sqlalchemy
+import sqlalchemy.event
 import sqlalchemy.ext.automap
 import sqlalchemy.orm
 import triton
@@ -46,7 +47,29 @@ class SQLPersistantModel(PersistantModel):
 
     def __init__(self, db_url: str, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.engine: Final[sqlalchemy.engine.Engine] = sqlalchemy.create_engine(db_url)
+
+        # Configure engine with SQLite-specific connection args for concurrency
+        engine_kwargs = {}
+        if "sqlite" in db_url:
+            engine_kwargs["connect_args"] = {
+                "timeout": 30.0,  # busy_timeout in seconds
+                "check_same_thread": False,
+            }
+
+        self.engine: Final[sqlalchemy.engine.Engine] = sqlalchemy.create_engine(
+            db_url, **engine_kwargs
+        )
+
+        # Enable WAL mode for SQLite to allow concurrent reads and writes
+        if "sqlite" in db_url:
+
+            @sqlalchemy.event.listens_for(self.engine, "connect")
+            def set_sqlite_pragma(dbapi_conn, connection_record):
+                cursor = dbapi_conn.cursor()
+                cursor.execute("PRAGMA journal_mode=WAL")
+                cursor.execute("PRAGMA synchronous=NORMAL")
+                cursor.close()
+
         self.sql_model_pool: Dict[str, Type[Base]] = {}
 
     @staticmethod
