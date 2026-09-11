@@ -1,17 +1,3 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 ops:
 - id: _adaptive_avg_pool3d_backward
   description: 'Computes the gradient of 3D adaptive average pooling.
@@ -3324,17 +3310,18 @@ ops:
   - stable: '2.0'
   - removed: '3.0'
 - id: ctc_loss
-  description: Connectionist Temporal Classification loss for sequence-to-sequence models.
+  description: Connectionist Temporal Classification loss for sequence-to-sequence
+    models.
   for:
-    - ctc_loss.IntList
-    - ctc_loss.Tensor
+  - ctc_loss.IntList
+  - ctc_loss.Tensor
   labels:
-    - aten
-    - KernelGen
+  - aten
+  - KernelGen
   kind:
-    - NeuralNetwork
+  - NeuralNetwork
   stages:
-    - alpha: '5.4'
+  - alpha: '5.4'
 - id: cudnn_attention_forward
   description: 'Forward kernel for cuDNN attention, computing scaled dot-product
 
@@ -3975,21 +3962,23 @@ ops:
   stages:
   - stable: '1.0'
 - id: dsplit
-  description: |
-    Split a tensor along the third axis (depth-wise). Pure layout operation returning zero-copy views.
+  description: 'Split a tensor along the third axis (depth-wise). Pure layout operation
+    returning zero-copy views.
+
+    '
   for:
-    - dsplit.int
-    - dsplit.array
+  - dsplit.int
+  - dsplit.array
   marks:
-    - dsplit
+  - dsplit
   labels:
-    - aten
-    - KernelGen
-    - skip_precision_check
+  - aten
+  - KernelGen
+  - skip_precision_check
   kind:
-    - Tensor
+  - Tensor
   stages:
-    - alpha: '5.4'
+  - alpha: '5.4'
 - id: dswiglu
   description: 'Swish-Gated Linear Unit, a variant of GLU with the Swish activation
     function.
@@ -4564,20 +4553,24 @@ ops:
   stages:
   - stable: '3.0'
 - id: fake_quantize_learnable_per_channel_affine_backward
-  description: |
-    Triton kernel implementation for `_fake_quantize_learnable_per_channel_affine_backward`,
+  description: 'Triton kernel implementation for `_fake_quantize_learnable_per_channel_affine_backward`,
+
     the backward of learnable per-channel fake quantization. Computes the gradients
+
     with respect to the input, scale and zero-point, accounting for the saturation
+
     branch where the quantized value is clamped to `[quant_min, quant_max]`.
+
+    '
   for:
-    - _fake_quantize_learnable_per_channel_affine_backward
+  - _fake_quantize_learnable_per_channel_affine_backward
   labels:
-    - aten
-    - KernelGen
+  - aten
+  - KernelGen
   kind:
-    - Math
+  - Math
   stages:
-    - alpha: '5.4'
+  - alpha: '5.4'
 - id: fake_quantize_learnable_per_tensor_affine
   description: 'Fake-quantizes the input tensor per-tensor with learnable scale and
     zero_point.
@@ -4759,21 +4752,27 @@ ops:
   stages:
   - alpha: '5.4'
 - id: fill_mem_eff_dropout_mask_
-  description: |
-    Triton kernel implementation for `_fill_mem_eff_dropout_mask_`, the in-place
+  description: 'Triton kernel implementation for `_fill_mem_eff_dropout_mask_`, the
+    in-place
+
     helper used by the memory efficient attention dropout path. It fills a
+
     contiguous 4D float32 tensor of shape `(batch, heads, queries, keys)` with
+
     random uniform values in [0, 1) drawn from a Philox4x32-10 stream
+
     identified by `seed` and `offset`.
+
+    '
   for:
-    - _fill_mem_eff_dropout_mask_
+  - _fill_mem_eff_dropout_mask_
   labels:
-    - aten
-    - KernelGen
+  - aten
+  - KernelGen
   kind:
-    - NeuralNetwork
+  - NeuralNetwork
   stages:
-    - alpha: '5.4'
+  - alpha: '5.4'
 - id: fill_scalar
   description: Fills a scalar with the specified value.
   for:
@@ -5995,9 +5994,9 @@ ops:
   stages:
   - alpha: '5.3'
 - id: grid_sampler_3d
-  description: 'Given an `input` and a flow-field `grid` in 3D, computes the `output`
+  description: Given an `input` and a flow-field `grid` in 3D, computes the `output`
     using `input` values and pixel locations from `grid` with trilinear or nearest
-    interpolation.'
+    interpolation.
   for:
   - grid_sampler_3d
   labels:
@@ -6073,9 +6072,9 @@ ops:
   stages:
   - stable: '5.0'
 - id: gru
-  description: Gated recurrent unit (GRU). At each time step, computes a new hidden state
-    from the input and the previous hidden state using a reset gate and an update gate,
-    across one or more layers and optionally bidirectionally.
+  description: Gated recurrent unit (GRU). At each time step, computes a new hidden
+    state from the input and the previous hidden state using a reset gate and an update
+    gate, across one or more layers and optionally bidirectionally.
   for:
   - gru.input
   labels:
@@ -7569,7 +7568,8 @@ ops:
   stages:
   - alpha: '5.4'
 - id: linalg_eig
-  description: 'Computes the eigenvalue decomposition of a general square matrix, returning
+  description: 'Computes the eigenvalue decomposition of a general square matrix,
+    returning
 
     the complex eigenvalues and eigenvectors. Also supports batches of matrices.
 
@@ -7817,8 +7817,9 @@ ops:
   stages:
   - beta: '5.4'
 - id: linalg_matrix_rank
-  description: |
-    Computes the numerical rank of a matrix or a batch of matrices.
+  description: 'Computes the numerical rank of a matrix or a batch of matrices.
+
+    '
   for:
   - linalg_matrix_rank
   labels:
@@ -7828,7 +7829,8 @@ ops:
   stages:
   - beta: '5.4'
 - id: linalg_matrix_rank_atol_rtol_float
-  description: Computes numerical matrix rank using optional scalar absolute and relative tolerances.
+  description: Computes numerical matrix rank using optional scalar absolute and relative
+    tolerances.
   for:
   - linalg_matrix_rank.atol_rtol_float
   labels:
@@ -7838,7 +7840,8 @@ ops:
   stages:
   - beta: '5.4'
 - id: linalg_matrix_rank_atol_rtol_float_out
-  description: Computes numerical matrix rank using scalar tolerances and an output tensor.
+  description: Computes numerical matrix rank using scalar tolerances and an output
+    tensor.
   for:
   - linalg_matrix_rank.atol_rtol_float_out
   labels:
@@ -7848,7 +7851,8 @@ ops:
   stages:
   - beta: '5.4'
 - id: linalg_matrix_rank_atol_rtol_tensor
-  description: Computes numerical matrix rank using optional tensor absolute and relative tolerances.
+  description: Computes numerical matrix rank using optional tensor absolute and relative
+    tolerances.
   for:
   - linalg_matrix_rank.atol_rtol_tensor
   labels:
@@ -7858,7 +7862,8 @@ ops:
   stages:
   - beta: '5.4'
 - id: linalg_matrix_rank_atol_rtol_tensor_out
-  description: Computes numerical matrix rank using tensor tolerances and an output tensor.
+  description: Computes numerical matrix rank using tensor tolerances and an output
+    tensor.
   for:
   - linalg_matrix_rank.atol_rtol_tensor_out
   labels:
@@ -7868,7 +7873,8 @@ ops:
   stages:
   - beta: '5.4'
 - id: linalg_matrix_rank_out
-  description: Computes numerical matrix rank using a scalar tolerance and an output tensor.
+  description: Computes numerical matrix rank using a scalar tolerance and an output
+    tensor.
   for:
   - linalg_matrix_rank.out
   labels:
@@ -7878,7 +7884,8 @@ ops:
   stages:
   - beta: '5.4'
 - id: linalg_matrix_rank_out_tol_tensor
-  description: Computes numerical matrix rank using a tensor tolerance and an output tensor.
+  description: Computes numerical matrix rank using a tensor tolerance and an output
+    tensor.
   for:
   - linalg_matrix_rank.out_tol_tensor
   labels:
@@ -7922,24 +7929,27 @@ ops:
   stages:
   - alpha: '5.4'
 - id: linalg_norm
-  description: |
-    Computes a vector or matrix norm, mirroring torch.linalg.norm dispatch.
+  description: 'Computes a vector or matrix norm, mirroring torch.linalg.norm dispatch.
+
     The vector branch (ord=None/2/1/0/p/±inf, dim as int or 1-tuple or None)
-    reuses linalg_vector_norm; the matrix branch (ord='fro'/'nuc'/±1/±2/±inf,
+
+    reuses linalg_vector_norm; the matrix branch (ord=''fro''/''nuc''/±1/±2/±inf,
+
     dim as 2-tuple) reuses linalg_matrix_norm.
+
+    '
   for:
-    - linalg_norm
+  - linalg_norm
   labels:
-    - aten
+  - aten
   kind:
-    - LinearAlg
+  - LinearAlg
   stages:
-    - beta: '5.4'
+  - beta: '5.4'
 - id: linalg_qr
   description: Computes the QR decomposition of a matrix (or a batch of matrices)
-    via a blocked Householder algorithm with a TSQR fast path for tall-skinny
-    inputs. Pure-Triton implementation supporting the "reduced", "complete"
-    and "r" modes.
+    via a blocked Householder algorithm with a TSQR fast path for tall-skinny inputs.
+    Pure-Triton implementation supporting the "reduced", "complete" and "r" modes.
   for:
   - linalg_qr
   labels:
@@ -8212,7 +8222,8 @@ ops:
   stages:
   - beta: '5.3'
 - id: log_normal
-  description: Returns a new tensor with log-normal samples parameterized by mean and standard deviation.
+  description: Returns a new tensor with log-normal samples parameterized by mean
+    and standard deviation.
   for:
   - log_normal
   labels:
@@ -9290,8 +9301,8 @@ ops:
   - stable: '3.0'
   cpp: '4.0'
 - id: mm_w8a8_fp8
-  description: Dynamically quantizes BF16 activations and weights to FP8 E4M3,
-    computes their matrix product with FP8 Tensor Cores, and applies FP32 scales.
+  description: Dynamically quantizes BF16 activations and weights to FP8 E4M3, computes
+    their matrix product with FP8 Tensor Cores, and applies FP32 scales.
   for:
   - None
   labels:
@@ -12671,18 +12682,21 @@ ops:
   stages:
   - stable: '2.0'
 - id: slice
-  description: |
-    Slices the input tensor along the specified dimension.
-    Returns a view of the original tensor with the given dimension sliced from start to end.
+  description: 'Slices the input tensor along the specified dimension.
+
+    Returns a view of the original tensor with the given dimension sliced from start
+    to end.
+
+    '
   for:
-    - slice.Tensor
+  - slice.Tensor
   labels:
-    - aten
-    - KernelGen
+  - aten
+  - KernelGen
   kind:
-    - Tensor
+  - Tensor
   stages:
-    - alpha: '5.4'
+  - alpha: '5.4'
 - id: slice_backward
   description: 'An automatic differentiation (autograd) function that computes the
     gradient of a tensor slicing operation
@@ -14311,6 +14325,28 @@ ops:
   - Math
   stages:
   - alpha: '5.3'
+- id: tensordot
+  description: Triton kernel implementation for tensordot.
+  for:
+  - tensordot
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.4'
+- id: tensordot_out
+  description: A variant of tensordot() that writes the result into the out tensor.
+  for:
+  - tensordot.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.4'
 - id: thnn_differentiable_gru_cell_backward
   description: Computes differentiable gradients for a fused GRU cell.
   for:
