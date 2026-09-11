@@ -1173,6 +1173,7 @@ _FULL_CONFIG = (
     ("special_multigammaln", special_multigammaln),
     ("special_ndtr", special_ndtr),
     ("special_ndtri", special_ndtri),
+    ("special_psi", special_psi),
     ("special_round", special_round),
     ("special_round.out", special_round_out),
     ("special_scaled_modified_bessel_k1", special_scaled_modified_bessel_k1),
