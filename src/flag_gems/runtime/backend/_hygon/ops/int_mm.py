@@ -94,7 +94,7 @@ def _int_mm_packed_mat2_kernel(
             mat2_mask = (offs_k[:, None] < k_remaining) & (offs_n[None, :] < N)
             mat2_block = tl.load(mat2_ptrs, mask=mat2_mask, other=0)
 
-        acc = tl.dot(self_block, mat2_block, acc)
+        acc = tl.dot(self_block, mat2_block, acc, out_dtype=tl.int32)
         self_ptrs += BLOCK_K * stride_ak
         mat2_ptrs += BLOCK_K
 
@@ -216,6 +216,7 @@ def _launch(self, mat2, out, M, N, K):
             block_k=_BLOCK_K,
             num_warps=4,
             num_stages=1,
+            explicit_out_dtype=True,
             num_ldmatrixes=1,
         )
 
