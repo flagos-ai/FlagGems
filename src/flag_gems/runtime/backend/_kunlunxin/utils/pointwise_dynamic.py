@@ -1030,10 +1030,7 @@ class WrapperGenerator:
                         code.writeline(f"tile_size{i}=tile_sizes[{i}],")
                     code.writeline("one_tile_per_cta=one_tile_per_cta,")
                 code.writeline("num_warps=num_warps,")
-                if self.config.is_scatter_slice:
-                    code.writeline("buffer_size_limit=512,")
-                    code.writeline("isCloseOffsetAnalysis=True,")
-                elif self.config.is_cat:
+                if self.config.is_cat:
                     code.writeline("buffer_size_limit=512,")
                 elif self.config.buffer_size_limit:
                     code.writeline(
@@ -1099,10 +1096,7 @@ class WrapperGenerator:
                     code.writeline("tile_size=tile_size,")
                     code.writeline("one_tile_per_cta=one_tile_per_cta,")
                 code.writeline("num_warps=num_warps,")
-                if self.config.is_scatter_slice:
-                    code.writeline("buffer_size_limit=512,")
-                    code.writeline("isCloseOffsetAnalysis=True,")
-                elif self.config.is_cat:
+                if self.config.is_cat:
                     code.writeline("buffer_size_limit=512,")
                 elif self.config.buffer_size_limit:
                     code.writeline(
