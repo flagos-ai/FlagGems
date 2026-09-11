@@ -29,8 +29,7 @@ def test_leaky_relu(shape, dtype):
 
     negative_slope = 0.01
     ref_out = torch.nn.functional.leaky_relu(ref_inp, negative_slope=negative_slope)
-    with flag_gems.use_gems():
-        res_out = torch.nn.functional.leaky_relu(res_inp, negative_slope=negative_slope)
+    res_out = flag_gems.leaky_relu(res_inp, negative_slope=negative_slope)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -44,10 +43,7 @@ def test_leaky_relu_(shape, dtype):
 
     negative_slope = 0.01
     ref_out = torch.nn.functional.leaky_relu_(ref_inp, negative_slope=negative_slope)
-    with flag_gems.use_gems():
-        res_out = torch.nn.functional.leaky_relu_(
-            res_inp, negative_slope=negative_slope
-        )
+    res_out = flag_gems.leaky_relu_(res_inp, negative_slope=negative_slope)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -64,8 +60,7 @@ def test_leaky_relu_out(shape, dtype):
     torch.ops.aten.leaky_relu.out(ref_inp, negative_slope=negative_slope, out=ref_out)
 
     out = torch.empty(shape, dtype=dtype, device=flag_gems.device)
-    with flag_gems.use_gems():
-        torch.ops.aten.leaky_relu.out(inp, negative_slope=negative_slope, out=out)
+    flag_gems.leaky_relu_out(inp, negative_slope=negative_slope, out=out)
 
     utils.gems_assert_close(out, ref_out, dtype)
 
@@ -84,9 +79,23 @@ def test_leaky_relu_backward(shape, dtype):
     ref_in_grad = torch.ops.aten.leaky_relu_backward(
         ref_grad, ref_inp, negative_slope, False
     )
-    with flag_gems.use_gems():
-        res_in_grad = torch.ops.aten.leaky_relu_backward(
-            res_grad, res_inp, negative_slope, False
-        )
+    res_in_grad = flag_gems.leaky_relu_backward(
+        res_grad, res_inp, negative_slope, False
+    )
 
     utils.gems_assert_close(res_in_grad, ref_in_grad, dtype)
+
+
+@pytest.mark.leaky_relu_
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_leaky_relu_inplace_autotune(dtype):
+    # An uncommon size avoids the forward tests' autotune cache entries.
+    # All-negative values make repeated slope application observable.
+    original = torch.full((1031,), -2.0, dtype=dtype, device=flag_gems.device)
+    ref = utils.to_reference(original.clone())
+    expected = torch.nn.functional.leaky_relu(ref, negative_slope=0.5)
+    for _ in range(2):
+        inp = original.clone()
+        result = flag_gems.leaky_relu_(inp, negative_slope=0.5)
+        assert result is inp
+        utils.gems_assert_equal(result, expected)
