@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -15,7 +29,6 @@ from ..utils import TOTAL_CORE_NUM
 logger = logging.getLogger(__name__)
 
 
-@libentry()
 @triton.autotune(
     configs=[
         triton.Config({"BLOCK_C": 2**n}, num_warps=1, num_stages=3)
@@ -23,6 +36,7 @@ logger = logging.getLogger(__name__)
     ],
     key=["C"],
 )
+@libentry()
 @triton.jit
 def softmax_forward_kernel(
     inp_ptr,
@@ -74,7 +88,7 @@ def softmax_forward_kernel(
                 inp_ptrs = (
                     inp_ptr + pid_n * C * D + offset_c[:, None] * D + offset_d[None, :]
                 )
-                inp_mask = offset_c[:, None] < C and offset_d[None, :] < D
+                inp_mask = (offset_c[:, None] < C) & (offset_d[None, :] < D)
                 inp = tl.load(inp_ptrs, mask=inp_mask, other=-float("inf")).to(
                     tl.float32
                 )
@@ -94,7 +108,6 @@ def softmax_forward_kernel(
             tl.store(final_sum_ptrs, final_sum)
 
 
-@libentry()
 @triton.autotune(
     configs=[
         triton.Config({"C_TILE_NUM": num}, num_warps=1, num_stages=s)
@@ -104,6 +117,7 @@ def softmax_forward_kernel(
     key=["C"],
     restore_value=["final_max_ptr"],
 )
+@libentry()
 @triton.jit
 def max_kernel(
     inp_ptr,
@@ -142,7 +156,6 @@ def max_kernel(
         tl.atomic_max(final_max_ptrs, final_max)
 
 
-@libentry()
 @triton.autotune(
     configs=[
         triton.Config({"C_TILE_NUM": num}, num_warps=1, num_stages=s)
@@ -152,6 +165,7 @@ def max_kernel(
     key=["C"],
     reset_to_zero=["final_sum_ptr"],
 )
+@libentry()
 @triton.jit
 def softmax_forward_with_max_kernel(
     inp_ptr,
@@ -194,7 +208,6 @@ def softmax_forward_with_max_kernel(
         tl.atomic_add(final_sum_ptrs, final_sum)
 
 
-@libentry()
 @triton.autotune(
     configs=[
         triton.Config({"BLOCK_N": 2**n}, num_warps=4, num_stages=0)
@@ -202,6 +215,7 @@ def softmax_forward_with_max_kernel(
     ],
     key=["N"],
 )
+@libentry()
 @triton.jit(do_not_specialize=["ignore_index"])
 def nllloss_without_weight_kernel(
     inp_ptr,
@@ -223,7 +237,7 @@ def nllloss_without_weight_kernel(
     tgt_mask = offset_n < N
     tgt = tl.load(tgt_ptrs, mask=tgt_mask, other=0)
 
-    ignore_mask = not (tgt == ignore_index)
+    ignore_mask = ~(tgt == ignore_index)
 
     final_max_ptrs = final_max_ptr + offset_n * D + offset_d
     final_sum_ptrs = final_sum_ptr + offset_n * D + offset_d
@@ -237,16 +251,16 @@ def nllloss_without_weight_kernel(
     out = tl.log2(final_sum) * loge2 + final_max - inp_tgt
 
     out_ptrs = out_ptr + offset_n * D + offset_d
-    tl.store(out_ptrs, out, mask=tgt_mask and ignore_mask)
+    tl.store(out_ptrs, out, mask=tgt_mask & ignore_mask)
 
 
-@libentry()
 @triton.heuristics(
     values={
         "num_warps": lambda args: 1,
         "num_stages": lambda args: 0,
     },
 )
+@libentry()
 @triton.jit(do_not_specialize=["ignore_index"])
 def nllloss_with_weight_kernel(
     inp_ptr,
@@ -267,7 +281,7 @@ def nllloss_with_weight_kernel(
     tgt_ptrs = tgt_ptr + pid_n * D + offset_d
     tgt = tl.load(tgt_ptrs)
 
-    ignore_mask = not (tgt == ignore_index)
+    ignore_mask = ~(tgt == ignore_index)
 
     if w_ptr is None:
         w_tgt = ignore_mask
@@ -292,11 +306,11 @@ def nllloss_with_weight_kernel(
     tl.store(out_ptrs, out, mask=ignore_mask)
 
 
-@libentry()
 @triton.autotune(
     configs=runtime.get_tuned_config("cross_entropy_loss"),
     key=["C", "D"],
 )
+@libentry()
 @triton.jit(do_not_specialize=["label_smoothing"])
 def celoss_probability_kernel(
     inp_ptr,
@@ -319,7 +333,7 @@ def celoss_probability_kernel(
     for off in range(0, C, BLOCK_C):
         offset_c = off + tl.arange(0, BLOCK_C)
         inp_ptrs = inp_ptr + pid_n * C * D + offset_c[:, None] * D + offset_d[None, :]
-        inp_mask = offset_c[:, None] < C and offset_d[None, :] < D
+        inp_mask = (offset_c[:, None] < C) & (offset_d[None, :] < D)
         inp = tl.load(inp_ptrs, inp_mask, other=-float("inf")).to(tl.float32)
         cur_max = tl.maximum(tmp_max, inp)
         cur_exp = tl.exp(inp - cur_max)
@@ -334,7 +348,7 @@ def celoss_probability_kernel(
         offset_c = off + tl.arange(0, BLOCK_C)
         inp_ptrs = inp_ptr + pid_n * C * D + offset_c[:, None] * D + offset_d[None, :]
         tgt_ptrs = tgt_ptr + pid_n * C * D + offset_c[:, None] * D + offset_d[None, :]
-        mask = offset_c[:, None] < C and offset_d[None, :] < D
+        mask = (offset_c[:, None] < C) & (offset_d[None, :] < D)
         inp = tl.load(inp_ptrs, mask, other=0).to(tl.float32)
         tgt = tl.load(tgt_ptrs, mask, other=0).to(tl.float32)
         tgt = tgt * (1.0 - label_smoothing) + label_smoothing / C
@@ -351,11 +365,11 @@ def celoss_probability_kernel(
     tl.store(out_ptrs, out, mask=offset_d < D)
 
 
-@libentry()
 @triton.autotune(
     configs=runtime.get_tuned_config("cross_entropy_loss"),
     key=["C", "D"],
 )
+@libentry()
 @triton.jit(do_not_specialize=["ignore_index", "label_smoothing"])
 def celoss_indices_smooth_kernel(
     inp_ptr,
@@ -378,7 +392,7 @@ def celoss_indices_smooth_kernel(
     tgt_mask = offset_d < D
     tgt = tl.load(tgt_ptrs, mask=tgt_mask, other=0)
 
-    ignore_mask = not (tgt == ignore_index) and tgt_mask
+    ignore_mask = (~(tgt == ignore_index)) & tgt_mask
 
     if w_ptr is None:
         w_tgt = ignore_mask
@@ -393,7 +407,7 @@ def celoss_indices_smooth_kernel(
     for off in range(0, C, BLOCK_C):
         offset_c = off + tl.arange(0, BLOCK_C)
         inp_ptrs = inp_ptr + pid_n * C * D + offset_c[:, None] * D + offset_d[None, :]
-        mask = offset_c[:, None] < C and offset_d[None, :] < D
+        mask = (offset_c[:, None] < C) & (offset_d[None, :] < D)
         inp = tl.load(inp_ptrs, mask, other=-float("inf")).to(tl.float32)
         cur_max = tl.maximum(tmp_max, inp)
         cur_exp = tl.exp(inp - cur_max)
@@ -408,7 +422,7 @@ def celoss_indices_smooth_kernel(
     for off in range(0, C, BLOCK_C):
         offset_c = off + tl.arange(0, BLOCK_C)
         inp_ptrs = inp_ptr + pid_n * C * D + offset_c[:, None] * D + offset_d[None, :]
-        mask = offset_c[:, None] < C and offset_d[None, :] < D
+        mask = (offset_c[:, None] < C) & (offset_d[None, :] < D)
         inp = tl.load(inp_ptrs, mask, other=0).to(tl.float32)
 
         w_mask = offset_c < C
@@ -463,7 +477,7 @@ def single_celoss_indice_bwd(
     inp_grad_ptrs = (
         inp_grad_ptr + pid_n * C * D + offset_c[:, None] * D + offset_d[None, :]
     )
-    tl.store(inp_grad_ptrs, inp_grad, mask=inp_mask and ignore_mask)
+    tl.store(inp_grad_ptrs, inp_grad, mask=inp_mask & ignore_mask)
 
 
 def config_prune(configs, named_args, **kwargs):
@@ -477,7 +491,6 @@ def config_prune(configs, named_args, **kwargs):
     return pruned_configs
 
 
-@libentry()
 @triton.autotune(
     configs=[
         triton.Config(
@@ -499,6 +512,7 @@ def config_prune(configs, named_args, **kwargs):
         "early_config_prune": config_prune,
     },
 )
+@libentry()
 @triton.jit(do_not_specialize=["ignore_index", "mean_num"])
 def celoss_indice_bwd_with_saved_sum_kernel(
     out_grad_ptr,
@@ -622,11 +636,11 @@ def celoss_indice_bwd_with_saved_sum_kernel(
             )
 
 
-@libentry()
 @triton.autotune(
     configs=runtime.get_tuned_config("cross_entropy_loss"),
     key=["C", "D"],
 )
+@libentry()
 @triton.jit(do_not_specialize=["label_smoothing", "mean_num"])
 def celoss_probability_bwd(
     out_grad_ptr,
@@ -656,7 +670,7 @@ def celoss_probability_bwd(
 
     for off in range(0, C, BLOCK_C):
         offset_c = off + tl.arange(0, BLOCK_C)
-        mask = offset_c[:, None] < C and offset_d[None, :] < D
+        mask = (offset_c[:, None] < C) & (offset_d[None, :] < D)
         inp_ptrs = inp_ptr + pid_n * C * D + offset_c[:, None] * D + offset_d[None, :]
         inp = tl.load(inp_ptrs, mask, other=-float("inf")).to(tl.float32)
 
@@ -686,7 +700,7 @@ def celoss_probability_bwd(
         offset_c = off + tl.arange(0, BLOCK_C)
         offset = pid_n * C * D + offset_c[:, None] * D + offset_d[None, :]
         inp_ptrs = inp_ptr + offset
-        mask = offset_c[:, None] < C and offset_d[None, :] < D
+        mask = (offset_c[:, None] < C) & (offset_d[None, :] < D)
         inp = tl.load(inp_ptrs, mask, other=0).to(tl.float32)
 
         tgt_ptrs = tgt_ptr + offset
@@ -707,11 +721,11 @@ def celoss_probability_bwd(
         tl.store(inp_grad_ptrs, inp_grad, mask)
 
 
-@libentry()
 @triton.autotune(
     configs=runtime.get_tuned_config("cross_entropy_loss"),
     key=["C", "D"],
 )
+@libentry()
 @triton.jit(do_not_specialize=["ignore_index", "label_smoothing", "mean_num"])
 def celoss_indices_smooth_bwd(
     out_grad_ptr,
@@ -746,7 +760,7 @@ def celoss_indices_smooth_bwd(
     for off in range(0, C, BLOCK_C):
         offset_c = off + tl.arange(0, BLOCK_C)
         inp_ptrs = inp_ptr + pid_n * C * D + offset_c[:, None] * D + offset_d[None, :]
-        inp_mask = offset_c[:, None] < C and offset_d[None, :] < D
+        inp_mask = (offset_c[:, None] < C) & (offset_d[None, :] < D)
         inp = tl.load(inp_ptrs, inp_mask, other=-float("inf")).to(tl.float32)
 
         w_mask = offset_c < C
@@ -777,7 +791,7 @@ def celoss_indices_smooth_bwd(
     for off in range(0, C, BLOCK_C):
         offset_c = off + tl.arange(0, BLOCK_C)
         inp_ptrs = inp_ptr + pid_n * C * D + offset_c[:, None] * D + offset_d[None, :]
-        inp_mask = offset_c[:, None] < C and offset_d[None, :] < D
+        inp_mask = (offset_c[:, None] < C) & (offset_d[None, :] < D)
         inp = tl.load(inp_ptrs, inp_mask, other=-float("inf")).to(tl.float32)
 
         w_mask = offset_c < C
@@ -798,13 +812,13 @@ def celoss_indices_smooth_bwd(
         inp_grad_ptrs = (
             inp_grad_ptr + pid_n * C * D + offset_c[:, None] * D + offset_d[None, :]
         )
-        tl.store(inp_grad_ptrs, inp_grad, mask=inp_mask and ignore_mask)
+        tl.store(inp_grad_ptrs, inp_grad, mask=inp_mask & ignore_mask)
 
 
 class CrossEntropyLoss(torch.autograd.Function):
     @staticmethod
     def forward(ctx, inp, target, weight, reduction, ignore_index, label_smoothing):
-        logger.debug("GEMS_CAMBRICON CrossEntropyLoss")
+        logger.debug("GEMS_CAMBRICON CROSS_ENTROPY_LOSS")
 
         shape = list(inp.shape)
         dim = inp.ndim
@@ -938,7 +952,7 @@ class CrossEntropyLoss(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, out_grad):
-        logger.debug("GEMS_CAMBRICON CrossEntropyLoss VJP")
+        logger.debug("GEMS_CAMBRICON CROSS_ENTROPY_LOSS_VJP")
 
         inp, tgt, weight, final_max, final_sum = ctx.saved_tensors
         N = ctx.N

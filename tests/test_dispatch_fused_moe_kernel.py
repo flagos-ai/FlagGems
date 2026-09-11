@@ -47,6 +47,16 @@ def torch_fused_moe_reference(hidden_states, w1, w2, topk_weights, topk_ids):
     return output
 
 
+def _assert_moe_close(result, reference, dtype):
+    # Two GEMMs and a fused SiLU/multiply round intermediate tensors to dtype.
+    # Scale the absolute tolerance with the output, including values near zero.
+    rtol = {torch.float32: 1e-4, torch.float16: 2e-3, torch.bfloat16: 2e-2}[dtype]
+    atol = max(1e-5, reference.abs().max().item() * rtol)
+    torch.testing.assert_close(
+        utils.to_reference(result).float(), reference, rtol=rtol, atol=atol
+    )
+
+
 @pytest.mark.dispatch_fused_moe_kernel
 @pytest.mark.parametrize(
     "num_tokens, num_experts, hidden_size, intermediate_size, topk",
@@ -64,6 +74,7 @@ def test_dispatch_fused_moe_kernel_accuracy(
 ):
     """Test dispatch_fused_moe_kernel accuracy through fused_experts_impl."""
     device = flag_gems.device
+    torch.manual_seed(0)
 
     hidden_states = torch.randn(num_tokens, hidden_size, device=device, dtype=dtype)
     w1 = (
@@ -84,10 +95,10 @@ def test_dispatch_fused_moe_kernel_accuracy(
     topk_weights = topk_weights / topk_weights.sum(dim=-1, keepdim=True)
     topk_weights = topk_weights.to(dtype)
 
-    ref_hidden = utils.to_reference(hidden_states)
-    ref_w1 = utils.to_reference(w1)
-    ref_w2 = utils.to_reference(w2)
-    ref_topk_weights = utils.to_reference(topk_weights)
+    ref_hidden = utils.to_reference(hidden_states).float()
+    ref_w1 = utils.to_reference(w1).float()
+    ref_w2 = utils.to_reference(w2).float()
+    ref_topk_weights = utils.to_reference(topk_weights).float()
     ref_topk_ids = utils.to_reference(topk_ids)
 
     ref_out = torch_fused_moe_reference(
@@ -98,7 +109,7 @@ def test_dispatch_fused_moe_kernel_accuracy(
         hidden_states, w1, w2, topk_weights, topk_ids
     )
 
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    _assert_moe_close(res_out, ref_out, dtype)
 
 
 @pytest.mark.dispatch_fused_moe_kernel
@@ -115,6 +126,7 @@ def test_dispatch_fused_moe_kernel_many_experts(
 ):
     """Test with many experts (DeepSeek-V3-like configuration)."""
     device = flag_gems.device
+    torch.manual_seed(0)
 
     hidden_states = torch.randn(num_tokens, hidden_size, device=device, dtype=dtype)
     w1 = (
@@ -135,10 +147,10 @@ def test_dispatch_fused_moe_kernel_many_experts(
     topk_weights = topk_weights / topk_weights.sum(dim=-1, keepdim=True)
     topk_weights = topk_weights.to(dtype)
 
-    ref_hidden = utils.to_reference(hidden_states)
-    ref_w1 = utils.to_reference(w1)
-    ref_w2 = utils.to_reference(w2)
-    ref_topk_weights = utils.to_reference(topk_weights)
+    ref_hidden = utils.to_reference(hidden_states).float()
+    ref_w1 = utils.to_reference(w1).float()
+    ref_w2 = utils.to_reference(w2).float()
+    ref_topk_weights = utils.to_reference(topk_weights).float()
     ref_topk_ids = utils.to_reference(topk_ids)
 
     ref_out = torch_fused_moe_reference(
@@ -149,7 +161,7 @@ def test_dispatch_fused_moe_kernel_many_experts(
         hidden_states, w1, w2, topk_weights, topk_ids
     )
 
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    _assert_moe_close(res_out, ref_out, dtype)
 
 
 @pytest.mark.dispatch_fused_moe_kernel
@@ -157,6 +169,7 @@ def test_dispatch_fused_moe_kernel_many_experts(
 def test_dispatch_fused_moe_kernel_single_token(dtype):
     """Test with a single token (edge case for block alignment)."""
     device = flag_gems.device
+    torch.manual_seed(0)
     num_tokens = 1
     num_experts = 8
     hidden_size = 128
@@ -182,10 +195,10 @@ def test_dispatch_fused_moe_kernel_single_token(dtype):
     topk_weights = topk_weights / topk_weights.sum(dim=-1, keepdim=True)
     topk_weights = topk_weights.to(dtype)
 
-    ref_hidden = utils.to_reference(hidden_states)
-    ref_w1 = utils.to_reference(w1)
-    ref_w2 = utils.to_reference(w2)
-    ref_topk_weights = utils.to_reference(topk_weights)
+    ref_hidden = utils.to_reference(hidden_states).float()
+    ref_w1 = utils.to_reference(w1).float()
+    ref_w2 = utils.to_reference(w2).float()
+    ref_topk_weights = utils.to_reference(topk_weights).float()
     ref_topk_ids = utils.to_reference(topk_ids)
 
     ref_out = torch_fused_moe_reference(
@@ -196,4 +209,4 @@ def test_dispatch_fused_moe_kernel_single_token(dtype):
         hidden_states, w1, w2, topk_weights, topk_ids
     )
 
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    _assert_moe_close(res_out, ref_out, dtype)
