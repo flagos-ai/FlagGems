@@ -138,11 +138,11 @@ def test_bool_slice_view(layout, dim, start, end, step):
     actual = flag_gems.slice(inp, dim, start, end, step)
 
     assert actual.dtype == torch.bool
-    utils.gems_assert_equal(actual, expected)
+    utils.gems_assert_equal(actual, utils.to_reference(expected))
     assert actual.shape == expected.shape
     assert actual.stride() == expected.stride()
     assert actual.storage_offset() == expected.storage_offset()
     assert actual.untyped_storage().data_ptr() == inp.untyped_storage().data_ptr()
     if actual.numel():
         actual.logical_not_()
-        utils.gems_assert_equal(actual, expected)
+        utils.gems_assert_equal(actual, utils.to_reference(expected))
