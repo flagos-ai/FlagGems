@@ -74,6 +74,7 @@ from .special_shifted_chebyshev_polynomial_w import (
 )
 from .tile import tile
 from .var import var, var_correction, var_dim
+from .var_mean import var_mean
 
 _pointwise_dynamic = importlib.import_module("flag_gems.utils.pointwise_dynamic")
 _pointwise_dynamic.ModuleGenerator = ModuleGenerator
@@ -137,4 +138,5 @@ __all__ = [
     "var",
     "var_correction",
     "var_dim",
+    "var_mean",
 ]
