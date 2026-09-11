@@ -29,6 +29,7 @@ from .conv_transpose1d import conv_transpose1d
 from .diagonal_scatter import diagonal_scatter
 from .div import div_mode, div_mode_
 from .gcd_ import gcd_
+from .gru import gru, gru_data
 from .hadamard_transform import hadamard_transform
 from .histc import histc
 from .index_select_backward import index_select_backward
@@ -94,6 +95,8 @@ __all__ = [
     "div_mode",
     "div_mode_",
     "gcd_",
+    "gru",
+    "gru_data",
     "hadamard_transform",
     "histc",
     "index_select_backward",
@@ -115,8 +118,8 @@ __all__ = [
     "permute_copy",
     "renorm_",
     "repeat",
-    "resolve_neg",
     "repeat_interleave_self_int",
+    "resolve_neg",
     "run",
     "scatter_add_",
     "softplus_backward",
