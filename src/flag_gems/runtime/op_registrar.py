@@ -125,10 +125,48 @@ class GeneralOpRegistrar:
     def get_vendor_unused_op(self):
         return backend.get_unused_ops(self.device.vendor_name)
 
+    def _resolve_dispatch_impls(self, fn, extra_dispatch_keys):
+        """Resolve legacy dispatch keys and per-key implementation pairs.
+
+        A plain dispatch key keeps the existing behavior and reuses ``fn``.
+        A ``(dispatch_key, impl)`` pair selects a dedicated implementation for
+        that key.  A pair targeting the current device key replaces the
+        default device implementation instead of registering it twice.
+        """
+        device_fn = fn
+        device_overridden = False
+        dispatch_impls = []
+
+        for dispatch_spec in extra_dispatch_keys:
+            if isinstance(dispatch_spec, tuple):
+                if len(dispatch_spec) != 2:
+                    raise ValueError(
+                        "Dispatch implementation must be a "
+                        "(dispatch_key, implementation) pair."
+                    )
+                dispatch_key, dispatch_fn = dispatch_spec
+            else:
+                dispatch_key, dispatch_fn = dispatch_spec, fn
+
+            if dispatch_key == self.reg_key:
+                if device_overridden:
+                    raise ValueError(
+                        f"Duplicate device implementation for {self.reg_key}."
+                    )
+                device_fn = dispatch_fn
+                device_overridden = True
+            else:
+                dispatch_impls.append((dispatch_key, dispatch_fn))
+
+        return device_fn, dispatch_impls
+
     def register_impl(self, key, fn, extra_dispatch_keys=()):
         if self.lib is None:
             raise ValueError("Library instance is not provided.")
         device_key = self.reg_key
+        device_fn, dispatch_impls = self._resolve_dispatch_impls(
+            fn, extra_dispatch_keys
+        )
         self.all_ops.append(fn.__name__)
         self.all_keys.append(key)
         if self.device.vendor == common.vendors.CAMBRICON:
@@ -141,15 +179,15 @@ class GeneralOpRegistrar:
             except Exception:
                 pass
             try:
-                self.lib.impl(key, fn, device_key, allow_override=True)
+                self.lib.impl(key, device_fn, device_key, allow_override=True)
             except TypeError:
                 # Older torch versions don't support allow_override
-                self.lib.impl(key, fn, device_key)
+                self.lib.impl(key, device_fn, device_key)
         else:
-            self.lib.impl(key, fn, device_key)
+            self.lib.impl(key, device_fn, device_key)
 
-        for dispatch_key in extra_dispatch_keys:
-            self.lib.impl(key, fn, dispatch_key)
+        for dispatch_key, dispatch_fn in dispatch_impls:
+            self.lib.impl(key, dispatch_fn, dispatch_key)
 
     def for_each(self):
         for key, func, extra_dispatch_keys in self.config:
