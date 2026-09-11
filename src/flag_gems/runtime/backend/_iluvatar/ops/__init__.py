@@ -30,6 +30,7 @@ from .broadcast_tensors import broadcast_tensors
 from .broadcast_to import broadcast_to
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
 from .cholesky_solve_helper import run as _cholesky_solve_helper
+from .concatenate import run as concatenate
 from .constant_pad_nd import constant_pad_nd
 from .conv_depthwise2d import _conv_depthwise2d
 from .conv_transpose1d import conv_transpose1d
@@ -132,6 +133,7 @@ __all__ = [
     "broadcast_to",
     "cholesky_solve",
     "cholesky_solve_out",
+    "concatenate",
     "constant_pad_nd",
     "conv_transpose1d",
     "diagonal_scatter",
