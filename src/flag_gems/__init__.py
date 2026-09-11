@@ -1220,6 +1220,7 @@ _FULL_CONFIG = (
     ("topk", topk),
     ("trace", trace),
     ("transpose.int", transpose),
+    ("transpose_copy.int", transpose_copy),
     ("tril", tril),
     ("tril.out", tril_out),
     ("tril_", tril_),
