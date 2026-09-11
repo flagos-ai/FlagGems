@@ -15,10 +15,14 @@
 import importlib
 import logging
 import os
-from typing import Any, Callable, List, Mapping, Tuple
+from typing import Any, Callable, Dict, List, Tuple
 
 import torch
+import triton
+import triton.language as tl
 
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer
 
@@ -41,11 +45,11 @@ def generate_index_copy_kernel(
     kernel_name: str,
     code: IndentedBuffer,
 ) -> IndentedBuffer:
-    # the decorators
+    # Decorators
     code.writeline("@libentry()")
     code.writeline("@triton.jit")
 
-    # signature
+    # Signature
     code.writeline(f"def {kernel_name}(")
     with code.indent():
         if rank > 0:
@@ -53,23 +57,25 @@ def generate_index_copy_kernel(
             code.writeline("src,")
             code.writeline("out,")
             code.writeline("N,")
-            code.writeline("inp_numel,")
-            code.writeline("inp_stride_dim,")
-            code.writeline("inp_shape_dim,")
-            code.writeline("src_shape_dim,")
-            code.writeline("delta,")
+            code.writeline("inp_numel: tl.constexpr,")
+            code.writeline("inp_stride_dim: tl.constexpr,")
+            code.writeline("inp_shape_dim: tl.constexpr,")
+            code.writeline("src_shape_dim: tl.constexpr,")
+            code.writeline("delta: tl.constexpr,")
 
-            stride_args = ", ".join(f"src_stride_{i}: int" for i in range(rank))
+            stride_args = ", ".join(
+                f"src_stride_{i}: tl.constexpr" for i in range(rank)
+            )
             code.writeline(f"{stride_args}, # stride for src")
 
-            shape_args = ", ".join(f"src_shape_{i}: int" for i in range(rank))
+            shape_args = ", ".join(f"src_shape_{i}: tl.constexpr" for i in range(rank))
             code.writeline(f"{shape_args}, # shape for src")
 
             code.writeline("BLOCK_SIZE: tl.constexpr,")
 
         code.writeline("):")
 
-        # Kernel Code
+        # Kernel
         with code.indent():
             code.writeline("pid = tl.program_id(axis=0)")
             code.writeline("offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)")
@@ -82,7 +88,7 @@ def generate_index_copy_kernel(
             comp = [f"src_offset{i} * src_stride_{i}" for i in range(rank)]
             code.writeline(f"src_offset = {' + '.join(comp)}")
 
-            code.writeline("pre_cal = (inp_stride_dim * src_shape_dim)")
+            code.writeline("pre_cal = inp_stride_dim * src_shape_dim")
 
             # index copy
             code.writeline("pre_idx = (src_offset // pre_cal).to(tl.int64)")
@@ -90,17 +96,24 @@ def generate_index_copy_kernel(
                 "dim_idx = (src_offset % pre_cal // inp_stride_dim).to(tl.int64)"
             )
             code.writeline(
-                "src_dim_idx = (tl.load(index + dim_idx, mask=mask, other=0)).to(tl.int64)"
+                "src_dim_idx = tl.load(index + dim_idx, mask=mask, other=0).to(tl.int64)"
             )
             code.writeline(
-                'assert src_dim_idx >= 0 and src_dim_idx < inp_shape_dim, "0 <= index < self.size(dim)"'
+                "valid_index = (src_dim_idx >= 0) & (src_dim_idx < inp_shape_dim)"
             )
             code.writeline(
-                "input_idx = (src_offset + (delta * pre_idx + src_dim_idx - dim_idx) * inp_stride_dim).to(tl.int64)"
+                "tl.device_assert((~mask) | valid_index, "
+                '"index value out of bounds: 0 <= index < self.size(dim)")'
+            )
+
+            code.writeline(
+                "input_idx = (src_offset + "
+                "(delta * pre_idx + src_dim_idx - dim_idx) * inp_stride_dim"
+                ").to(tl.int64)"
             )
 
             code.writeline("input_mask = (input_idx >= 0) & (input_idx < inp_numel)")
-            code.writeline("store_mask = mask & input_mask")
+            code.writeline("store_mask = mask & valid_index & input_mask")
             code.writeline("src_val = tl.load(src + src_offset, mask=mask, other=0)")
             code.writeline("tl.store(out + input_idx, src_val, mask=store_mask)")
 
@@ -133,15 +146,22 @@ def generate_destination_passing_wrapper(
     code: IndentedBuffer,
 ) -> IndentedBuffer:
     parameters: str = parameter_for_wrapper()
-    wrapper_signature: str = f"def {wrapper_name} ({parameters}):"
+    wrapper_signature: str = f"def {wrapper_name}({parameters}):"
     code.writeline(wrapper_signature)
 
     with code.indent():
         code.writeline("src_strides = list(src.stride())")
         code.writeline("src_shapes = list(src.shape)")
 
-        # kernel launch
-        code.writeline("BLOCK_SIZE = 128")  # BLOCK_SIZE setting
+        # Kernel launch
+        code.writeline("if N <= 4096:")
+        code.writeline("    BLOCK_SIZE = 64")
+        code.writeline("elif N <= 65536:")
+        code.writeline("    BLOCK_SIZE = 128")
+        code.writeline("elif N <= 524288:")
+        code.writeline("    BLOCK_SIZE = 256")
+        code.writeline("else:")
+        code.writeline("    BLOCK_SIZE = 512")
         code.writeline("grid = (triton.cdiv(N, BLOCK_SIZE),)")
         kernel_launch: str = f"{kernel_name}[grid]("
         code.writeline(kernel_launch)
@@ -181,10 +201,10 @@ def generate_code(
 class IndexCopyFunction:
     def __init__(self):
         self.pid = os.getpid()
-        self.overloads: Mapping[str, Callable] = {}
+        self.overloads: Dict[int, Callable[..., Any]] = {}
 
     def __call__(self, *args, **kwargs):
-        key = f"{self.arg_key(*args)}"
+        key = self.arg_key(*args)
         if key in self.overloads:
             return self.overloads[key](*args, **kwargs)
 
@@ -219,10 +239,11 @@ class IndexCopyFunction:
 
         return overload(*args, **kwargs)
 
-    def arg_key(self, *args):
-        tensors = [item for item in args if torch.is_tensor(item)]
-        max_rank = max(item.ndim for item in tensors)
-        return max_rank
+    def arg_key(self, *args) -> int:
+        # Cache per rank: shape and stride are passed to Triton as
+        # tl.constexpr, so Triton specializes the kernel on its own.
+        src = args[2]
+        return src.ndim
 
 
 _index_copy_func = IndexCopyFunction()
@@ -233,12 +254,45 @@ _FALLBACK_KEYSET = torch._C.DispatchKeySet(
 )
 
 
+@libentry()
+@triton.jit
+def _index_copy_clone_kernel(
+    inp,
+    out,
+    n_elements,
+    BLOCK_SIZE: tl.constexpr,
+):
+    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+    value = tl.load(inp + offsets, mask=mask)
+    tl.store(out + offsets, value, mask=mask)
+
+
+def _clone_without_copy_dispatch(inp):
+    # Lightweight Triton copy to avoid dispatch interference with FlagGems' copy_ override.
+    if not inp.is_contiguous():
+        return torch.ops.aten.clone.default.redispatch(_FALLBACK_KEYSET, inp)
+
+    out = torch.empty_like(inp)
+    n_elements = inp.numel()
+    if n_elements == 0:
+        return out
+
+    block_size = 256
+    grid = (triton.cdiv(n_elements, block_size),)
+    _index_copy_clone_kernel[grid](
+        inp,
+        out,
+        n_elements,
+        BLOCK_SIZE=block_size,
+    )
+    return out
+
+
 def index_copy(inp, dim, index, src):
     logger.debug("GEMS INDEX_COPY")
-    assert ((0 <= index) * (index < inp.size(dim))).equal(
-        torch.ones(tuple(index.shape), dtype=torch.bool, device=inp.device)
-    ), "0 <= index < self.size(dim)"
-    assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
+    assert -inp.ndim <= dim < inp.ndim, "Invalid dim"
+    dim %= inp.ndim
     assert index.numel() == src.size(
         dim
     ), "The dimth dimension of source must have the same size as the length of index"
@@ -249,37 +303,34 @@ def index_copy(inp, dim, index, src):
         (inp.size(i) == src.size(i)) or i == dim for i in range(0, inp.ndim)
     ), "src.size(d) == self.size(d) for all dimensions d != dim"
 
-    # Use native clone to avoid potential issues with FlagGems copy_ dispatch
-    out = torch.ops.aten.clone.default.redispatch(_FALLBACK_KEYSET, inp)
-
-    dim %= inp.ndim
     inp_stride_dim = inp.stride(dim)
     src_shape_dim = src.size(dim)
     inp_shape_dim = inp.size(dim)
     delta = inp.size(dim) - src_shape_dim
     N = src.numel()
 
-    _index_copy_func(
-        out,
-        index,
-        src,
-        dim,
-        inp_stride_dim,
-        inp_shape_dim,
-        src_shape_dim,
-        delta,
-        N,
-        inp.numel(),
-    )
+    with torch_device_fn.device(inp.device):
+        out = _clone_without_copy_dispatch(inp)
+        if N > 0:
+            _index_copy_func(
+                out,
+                index,
+                src,
+                dim,
+                inp_stride_dim,
+                inp_shape_dim,
+                src_shape_dim,
+                delta,
+                N,
+                inp.numel(),
+            )
     return out
 
 
 def index_copy_(inp, dim, index, src):
     logger.debug("GEMS INDEX_COPY_")
-    assert ((0 <= index) * (index < inp.size(dim))).equal(
-        torch.ones(tuple(index.shape), dtype=torch.bool, device=inp.device)
-    ), "0 <= index < self.size(dim)"
-    assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
+    assert -inp.ndim <= dim < inp.ndim, "Invalid dim"
+    dim %= inp.ndim
     assert index.numel() == src.size(
         dim
     ), "The dimth dimension of source must have the same size as the length of index"
@@ -290,23 +341,24 @@ def index_copy_(inp, dim, index, src):
         (inp.size(i) == src.size(i)) or i == dim for i in range(0, inp.ndim)
     ), "src.size(d) == self.size(d) for all dimensions d != dim"
 
-    dim %= inp.ndim
     inp_stride_dim = inp.stride(dim)
     src_shape_dim = src.size(dim)
     inp_shape_dim = inp.size(dim)
     delta = inp.size(dim) - src_shape_dim
     N = src.numel()
 
-    _index_copy_func(
-        inp,
-        index,
-        src,
-        dim,
-        inp_stride_dim,
-        inp_shape_dim,
-        src_shape_dim,
-        delta,
-        N,
-        inp.numel(),
-    )
+    if N > 0:
+        with torch_device_fn.device(inp.device):
+            _index_copy_func(
+                inp,
+                index,
+                src,
+                dim,
+                inp_stride_dim,
+                inp_shape_dim,
+                src_shape_dim,
+                delta,
+                N,
+                inp.numel(),
+            )
     return inp

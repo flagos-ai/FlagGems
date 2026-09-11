@@ -24,3 +24,14 @@ def test_absolute():
         op_name="absolute", torch_op=torch.absolute, dtypes=consts.FLOAT_DTYPES
     )
     bench.run()
+
+
+@pytest.mark.absolute_
+def test_absolute_inplace():
+    bench = base.UnaryPointwiseBenchmark(
+        op_name="absolute_",
+        torch_op=lambda x: x.absolute_(),
+        dtypes=consts.FLOAT_DTYPES,
+        is_inplace=True,
+    )
+    bench.run()

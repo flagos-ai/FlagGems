@@ -50,8 +50,8 @@ def cfggen_middle_n():
     return configs
 
 
-@libentry()
 @triton.autotune(configs=cfggen_middle_n(), key=["M", "N"])
+@libentry()
 @triton.jit(do_not_specialize=["eps"])
 def skip_layer_norm_middle_n_kernel(
     Y,  # pointer to the output
@@ -119,8 +119,8 @@ def cfggen():
     return configs
 
 
-@libentry()
 @triton.autotune(configs=cfggen(), key=["M", "N"])
+@libentry()
 @triton.jit(do_not_specialize=["eps"])
 def skip_layer_norm_kernel(
     Y,  # pointer to the output
@@ -148,7 +148,7 @@ def skip_layer_norm_kernel(
     for off in range(0, N, BLOCK_COL_SIZE):
         cols = off + tl.arange(0, BLOCK_COL_SIZE)[None, :]
         col_mask = cols < N
-        mask = row_mask and col_mask
+        mask = row_mask & col_mask
 
         x = tl.load(X + cols, mask, other=0.0).to(tl.float32)
         r = tl.load(R + cols, mask, other=0.0).to(tl.float32)
@@ -167,7 +167,7 @@ def skip_layer_norm_kernel(
     for off in range(0, N, BLOCK_COL_SIZE):
         cols = off + tl.arange(0, BLOCK_COL_SIZE)[None, :]
         col_mask = cols < N
-        mask = row_mask and col_mask
+        mask = row_mask & col_mask
 
         w = tl.load(W + cols, col_mask)
         b = tl.load(B + cols, col_mask)
@@ -200,7 +200,7 @@ class SkipLayerNorm(torch.autograd.Function):
             grid = lambda META: (
                 min(triton.cdiv(M, META["BLOCK_ROW_SIZE"]), TOTAL_CORE_NUM),
             )
-            with torch.cuda.device(x.device):
+            with torch_device_fn.device(x.device):
                 skip_layer_norm_middle_n_kernel[grid](
                     y, x, residual, weight, bias, M, eps, N
                 )

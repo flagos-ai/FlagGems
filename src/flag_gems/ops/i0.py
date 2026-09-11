@@ -120,7 +120,7 @@ def i0(x: torch.Tensor):
         raise ValueError(f"i0: input tensor must be on {flag_gems.device} device")
     # Result dtype follows PyTorch's floating type behavior
     out_dtype = x.dtype if x.is_floating_point() else torch.get_default_dtype()
-    out = torch.empty_like(x.to(dtype=out_dtype), dtype=out_dtype, device=x.device)
+    out = torch.empty_like(x, dtype=out_dtype)
     _launch_i0(out, x)
     return out
 

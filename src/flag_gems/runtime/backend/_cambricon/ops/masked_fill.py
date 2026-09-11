@@ -26,11 +26,11 @@ from ..utils import MAX_GRID_SIZE_X
 logger = logging.getLogger(__name__)
 
 
-@libentry()
 @libtuner(
     configs=runtime.get_tuned_config("masked_fill"),
     key=["N"],
 )
+@libentry()
 @triton.jit
 def masked_fill_kernel(inp, expand_mask, value, out, N, BLOCK_SIZE: tl.constexpr):
     pid = tl.program_id(axis=0)
@@ -38,16 +38,16 @@ def masked_fill_kernel(inp, expand_mask, value, out, N, BLOCK_SIZE: tl.constexpr
     mask = offsets < N
 
     fill_mask = tl.load(expand_mask + offsets, mask=mask, other=0).to(tl.int1)
-    cur_inp = tl.load(inp + offsets, mask=(not fill_mask) and mask, other=0)
-    tl.store(out + offsets, cur_inp, (not fill_mask) and mask)
-    tl.store(out + offsets, value, fill_mask and mask)
+    cur_inp = tl.load(inp + offsets, mask=(~fill_mask) & mask, other=0)
+    tl.store(out + offsets, cur_inp, (~fill_mask) & mask)
+    tl.store(out + offsets, value, fill_mask & mask)
 
 
-@libentry()
 @libtuner(
     configs=runtime.get_tuned_config("masked_fill"),
     key=["N"],
 )
+@libentry()
 @triton.jit
 def masked_fill_kernel_self(inp, expand_mask, value, N, BLOCK_SIZE: tl.constexpr):
     num_programs = tl.num_programs(0)
@@ -60,7 +60,7 @@ def masked_fill_kernel_self(inp, expand_mask, value, N, BLOCK_SIZE: tl.constexpr
 
         fill_mask = tl.load(expand_mask + offsets, mask=mask, other=0).to(tl.int1)
         cur_val = tl.full((BLOCK_SIZE,), value, dtype=inp.dtype.element_ty)
-        tl.store(inp + offsets, cur_val, fill_mask and mask)
+        tl.store(inp + offsets, cur_val, fill_mask & mask)
 
 
 def masked_fill(inp, mask, value):

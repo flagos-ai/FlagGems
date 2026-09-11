@@ -21,23 +21,37 @@ from ..utils.pointwise_dynamic import pointwise_dynamic
 logger = logging.getLogger(__name__)
 
 
-@pointwise_dynamic(promotion_methods=[(0, 1, "ALWAYS_BOOL")])
+@pointwise_dynamic(
+    is_tensor=[True, True, False], promotion_methods=[(0, 1, "ALWAYS_BOOL")]
+)
 @triton.jit
-def gt_func(x, y):
+def gt_func(x, y, inplace):
     return x > y
 
 
 def gt(A, B):
     logger.debug("GEMS_CAMBRICON GT")
-    return gt_func(A, B)
+    return gt_func(A, B, False)
 
 
-@pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "ALWAYS_BOOL")])
+@pointwise_dynamic(
+    is_tensor=[True, False, False], promotion_methods=[(0, 1, "ALWAYS_BOOL")]
+)
 @triton.jit
-def gt_func_scalar(x, y):
+def gt_func_scalar(x, y, inplace):
     return x > y
 
 
 def gt_scalar(A, B):
     logger.debug("GEMS_CAMBRICON GT_SCALAR")
-    return gt_func_scalar(A, B)
+    return gt_func_scalar(A, B, False)
+
+
+def gt_tensor_(A, B):
+    logger.debug("GEMS_CAMBRICON GT_ TENSOR")
+    return gt_func(A, B, True, out0=A)
+
+
+def gt_scalar_(A, B):
+    logger.debug("GEMS_CAMBRICON GT_ SCALAR")
+    return gt_func_scalar(A, B, True, out0=A)
