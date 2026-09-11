@@ -299,6 +299,32 @@ def _process_histogram_step(
     RADIX11_SIZE: tl.constexpr = 2048
     RADIX11_MASK: tl.constexpr = 0x7FF
     RADIX10_SIZE: tl.constexpr = 1024
+    # Threshold for giving up on further radix refinement and handing the
+    # threshold bin to the final sort. It must NOT be NUM_FINAL_ITEMS: that is
+    # the capacity of s_final_logits, not a sensible amount of work to sort.
+    #
+    # Without triton.experimental.tle (e.g. PPU) USE_RADIX_FINAL cannot be
+    # honoured, so the final stage is the O(final_cnt^2) rank-by-counting loop
+    # below, doing scalar loads from the global-memory scratch. Decode rows are
+    # max_model_len/4 long (~1024 tokens), so no bin can ever exceed 2048 and
+    # the old threshold made the kernel stop after STEP 0 -- an fp16 pre-pass
+    # keeping only 5 mantissa bits -- then sort that whole coarse bin. Real
+    # DSv4 indexer logits are a weighted sum over 64 heads and cluster tightly,
+    # so ~930 of ~1024 values shared one bin: 204 us/call where the vendor CUDA
+    # kernel needs 12.6.
+    #
+    # Scale the threshold with the row instead, so short rows refine through
+    # STEP 1-3 on the full fp32 key and leave only exact duplicates to sort,
+    # while long rows -- where the original already refined and the extra
+    # passes cost 16x more -- keep the old behaviour exactly: at row_len 16384
+    # the expression is 2048, i.e. NUM_FINAL_ITEMS.
+    #
+    # Measured (CUDA-graph replay, 64 rows, topk 512, vs the old constant):
+    # clustered 2.66x @1024, 5.39x @4096; very-clustered 3.81x @1024; worst
+    # case 0.95x. A flat 64 was faster on short rows but cost 0.76x on
+    # well-spread rows at 4096.
+    EXIT_FLOOR: tl.constexpr = 64
+    EXIT_SHIFT: tl.constexpr = 3
 
     lane = tl.arange(0, BLOCK_SIZE)
     vec = tl.arange(0, VEC)
@@ -453,8 +479,11 @@ def _process_histogram_step(
     tl.debug_barrier()
     threshold_bin_idx = tl.load(s_threshold_bin_idx_ptr)
     final_bin_size = tl.load(s_final_bin_size_ptr)
-    use_final = final_bin_size <= NUM_FINAL_ITEMS
-    write_directly = ((STEP == 0) & (final_bin_size <= NUM_FINAL_ITEMS)) | (STEP >= 1)
+    exit_thresh = tl.maximum(
+        EXIT_FLOOR, tl.minimum(NUM_FINAL_ITEMS, (row_end - row_start) >> EXIT_SHIFT)
+    )
+    use_final = final_bin_size <= exit_thresh
+    write_directly = ((STEP == 0) & (final_bin_size <= exit_thresh)) | (STEP >= 1)
 
     found_ptrs = s_found_topk_values_ptr + zeros
     final_cnt_ptrs = s_final_cnt_ptr + zeros
@@ -662,7 +691,7 @@ def _process_histogram_step(
                 MERGE_BLOCKS=MERGE_BLOCKS,
             )
     tl.debug_barrier()
-    return final_bin_size > NUM_FINAL_ITEMS, logit_pattern, threshold_bin_idx
+    return final_bin_size > exit_thresh, logit_pattern, threshold_bin_idx
 
 
 @triton.jit
