@@ -12,13 +12,32 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from flag_gems.ops.flash_attention_backward import (  # noqa: F401
+    efficient_attention_backward,
+    scaled_dot_product_efficient_attention_backward,
+)
+
+from ._amp_foreach_non_finite_check_and_unscale_ import (
+    _amp_foreach_non_finite_check_and_unscale_,
+)
+from ._batch_norm_impl_index import batch_norm_impl_index as _batch_norm_impl_index
+from ._batch_norm_no_update import _batch_norm_no_update
+from ._dyn_quant_pack_4bit_weight import _dyn_quant_pack_4bit_weight
+from ._embedding_bag_dense_backward import _embedding_bag_dense_backward
 from ._euclidean_dist import _euclidean_dist
 from ._functional_sym_constrain_range import _functional_sym_constrain_range
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
+from ._fused_adam import _fused_adam, _fused_adam_
+from ._fused_rms_norm import _fused_rms_norm  # noqa: F401
 from ._is_all_true import _is_all_true
+from ._native_batch_norm_legit_functional import _native_batch_norm_legit_functional
+from ._native_batch_norm_legit_no_training import _native_batch_norm_legit_no_training
 from ._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
+from ._pdist_backward import _pdist_backward
+from ._pdist_forward import _pdist_forward, pdist
+from ._prelu_kernel import _prelu_kernel  # noqa: F401
 from ._scaled_dot_product_fused_attention_overrideable import (
     _scaled_dot_product_fused_attention_overrideable,
 )
@@ -57,8 +76,9 @@ from .argsort import argsort
 from .as_strided_copy import as_strided_copy, as_strided_copy_out
 from .as_strided_scatter import as_strided_scatter
 from .asin import asin, asin_
+from .assert_async import _assert_async
 from .atan import atan, atan_
-from .attention import (
+from .attention import (  # noqa: F401
     ScaleDotProductAttention,
     flash_attention_forward,
     flash_attn_varlen_func,
@@ -71,7 +91,11 @@ from .avg_pool3d import avg_pool3d
 from .avg_pool3d_backward import avg_pool3d_backward
 from .baddbmm import baddbmm
 from .batch_norm import batch_norm, batch_norm_backward
+from .bernoulli import bernoulli
 from .bernoulli_ import bernoulli_
+from .binary_cross_entropy import binary_cross_entropy, binary_cross_entropy_out
+from .binary_cross_entropy_backward import binary_cross_entropy_backward
+from .binary_cross_entropy_with_logits import binary_cross_entropy_with_logits
 from .bitwise_and import (
     bitwise_and_scalar,
     bitwise_and_scalar_,
@@ -93,6 +117,7 @@ from .bmm import bmm, bmm_out
 from .broadcast_to import broadcast_to
 from .bucketize import bucketize
 from .cat import cat, cat_out
+from .cdist_backward import _cdist_backward
 from .ceil import ceil, ceil_, ceil_out
 from .celu import celu, celu_
 from .cholesky_inverse import cholesky_inverse
@@ -120,12 +145,14 @@ from .copy import copy, copy_
 from .copysign import copysign, copysign_out
 from .cos import cos, cos_
 from .count_nonzero import count_nonzero
+from .cudnn_batch_norm_backward import cudnn_batch_norm_backward  # noqa: F401
 from .cummax import cummax
 from .cummin import cummin
 from .cumprod import cumprod, cumprod_
 from .cumsum import cumsum, cumsum_out, normed_cumsum
 from .cumsum_ import cumsum_
 from .deg2rad import deg2rad, deg2rad_, deg2rad_out
+from .dequantize import dequantize
 from .diag import diag
 from .diag_embed import diag_embed
 from .diagonal import diagonal_backward
@@ -146,7 +173,7 @@ from .div import (
 from .dot import dot
 from .dropout import dropout, dropout_backward
 from .elu import elu, elu_, elu_backward
-from .embedding import embedding, embedding_backward
+from .embedding import embedding, embedding_backward, embedding_dense_backward
 from .eq import eq, eq_scalar
 from .erf import erf, erf_, special_erf
 from .erfinv import erfinv
@@ -171,14 +198,22 @@ from .floor import floor, floor_, floor_out
 from .fractional_max_pool2d import fractional_max_pool2d, fractional_max_pool2d_backward
 from .full import full
 from .full_like import full_like
+from .fused_experts_impl import (
+    fused_experts_impl,
+    inplace_fused_experts,
+    outplace_fused_experts,
+)
 from .gather import gather, gather_backward
 from .ge import ge, ge_scalar, greater_equal_
 from .gelu import gelu, gelu_, gelu_backward
+from .geometric import geometric, geometric_  # noqa: F401
+from .get_paged_mqa_logits_metadata import get_paged_mqa_logits_metadata
 from .get_scheduler_metadata import get_scheduler_metadata
 from .glu import glu, glu_backward
 from .greater import greater, greater_out, greater_scalar, greater_scalar_out
 from .grid_sample import grid_sample
 from .grid_sampler_3d_backward import grid_sampler_3d_backward
+from .grouped_mm import group_mm
 from .groupnorm import group_norm, group_norm_backward
 from .gt import gt, gt_scalar
 from .hadamard_transform import hadamard_transform
@@ -205,7 +240,7 @@ from .kron import kron
 from .kthvalue import kthvalue
 from .layernorm import layer_norm, layer_norm_backward
 from .le import le, le_scalar
-from .leaky_relu import leaky_relu, leaky_relu_, leaky_relu_out
+from .leaky_relu import leaky_relu, leaky_relu_, leaky_relu_backward, leaky_relu_out
 from .lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
 from .less_equal import less_equal, less_equal_scalar
 from .lgamma import lgamma, lgamma_
@@ -251,6 +286,7 @@ from .logspace import logspace
 from .logsumexp import logsumexp
 from .lt import lt, lt_, lt_scalar, lt_scalar_
 from .lu_unpack import lu_unpack, lu_unpack_out
+from .margin_ranking_loss import margin_ranking_loss
 from .masked_fill import masked_fill, masked_fill_
 from .masked_scatter import masked_scatter, masked_scatter_
 from .masked_scatter_backward import masked_scatter_backward
@@ -271,28 +307,40 @@ from .mean import mean, mean_dim
 from .median import median, median_dim, median_dim_values, median_out
 from .min import min, min_dim
 from .minimum import minimum
+from .miopen_batch_norm_backward import miopen_batch_norm_backward
+from .mish_backward import mish_backward
 from .mm import mm, mm_out
 from .mode import mode
+from .moe_sum import moe_sum
 from .mse_loss import mse_loss
+from .mse_loss_backward import mse_loss_backward
 from .mul import mul, mul_
 from .multinomial import multinomial
+from .multiply import multiply
 from .multiply_ import multiply_
 from .mv import mv, mv_cluster
 from .mvlgamma import mvlgamma
 from .mvlgamma_ import mvlgamma_
 from .nan_to_num import nan_to_num
 from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
+from .nansum import nansum, nansum_out
 from .narrow_copy import narrow_copy
+from .native_batch_norm import native_batch_norm
+from .native_group_norm import native_group_norm
+from .native_layer_norm import native_layer_norm
 from .ne import ne, ne_scalar
 from .neg import neg, neg_
 from .negative import negative
 from .new_full import new_full
 from .new_ones import new_ones
 from .nllloss import (
+    nll_loss2d,
     nll_loss2d_backward,
     nll_loss2d_forward,
     nll_loss_backward,
     nll_loss_forward,
+    nll_loss_nd_backward,
+    nll_loss_nd_forward,
 )
 from .nonzero import nonzero
 from .nonzero_numpy import nonzero_numpy
@@ -309,6 +357,7 @@ from .ones import ones
 from .ones_like import ones_like
 from .ormqr import ormqr
 from .pad import constant_pad_nd, pad
+from .pairwise_distance import pairwise_distance
 from .per_token_group_quant_fp8 import SUPPORTED_FP8_DTYPE, per_token_group_quant_fp8
 from .permute_copy import permute_copy
 from .pixel_unshuffle import pixel_unshuffle, pixel_unshuffle_out
@@ -324,6 +373,7 @@ from .pow import (
 from .prelu import prelu
 from .prod import prod, prod_dim
 from .quantile import quantile
+from .quantized_lstm import quantized_lstm
 from .rad2deg import rad2deg, rad2deg_
 from .rand import rand
 from .rand_like import rand_like
@@ -331,6 +381,7 @@ from .randint_like import randint_like
 from .randn import randn
 from .randn_like import randn_like
 from .randperm import randperm
+from .range import range  # noqa: F401
 from .reciprocal import reciprocal, reciprocal_
 from .reflection_pad1d import reflection_pad1d, reflection_pad1d_out
 from .reflection_pad1d_backward import reflection_pad1d_backward
@@ -339,6 +390,7 @@ from .reflection_pad2d_backward import reflection_pad2d_backward
 from .reflection_pad3d import reflection_pad3d, reflection_pad3d_out
 from .reflection_pad3d_backward import reflection_pad3d_backward
 from .relu import relu, relu_
+from .relu6 import relu6  # noqa: F401
 from .renorm import renorm, renorm_
 from .repeat import repeat
 from .repeat_interleave import (
@@ -365,6 +417,8 @@ from .round import round, round_, round_out
 from .rsqrt import rsqrt, rsqrt_
 from .rsub import rsub, rsub_scalar, rsub_tensor
 from .safe_softmax import _safe_softmax
+from .scalar_tensor import scalar_tensor
+from .scaled_mm import scaled_mm, scaled_mm_out
 from .scaled_softmax import scaled_softmax_backward, scaled_softmax_forward
 from .scatter import scatter, scatter_
 from .scatter_add_ import scatter_add_
@@ -389,15 +443,20 @@ from .sigmoid import sigmoid, sigmoid_, sigmoid_backward
 from .signbit import signbit, signbit_out
 from .silu import silu, silu_, silu_backward
 from .sin import sin, sin_
-from .sinc import sinc, sinc_
+from .sinc import sinc, sinc_, special_sinc
 from .slice_backward import slice_backward
 from .slice_scatter import slice_scatter
+from .smooth_l1_loss import smooth_l1_loss, smooth_l1_loss_backward, smooth_l1_loss_out
 from .soft_margin_loss import soft_margin_loss, soft_margin_loss_out
 from .soft_margin_loss_backward import soft_margin_loss_backward
-from .softmax import softmax, softmax_backward
-from .softplus import softplus
+from .softmax import softmax, softmax_backward, softmax_backward_out, softmax_out
+from .softplus import softplus, softplus_backward
 from .softshrink import softshrink, softshrink_out
 from .sort import sort, sort_stable
+from .sparse_sampled_addmm import (  # noqa: F401
+    sparse_sampled_addmm,
+    sparse_sampled_addmm_out,
+)
 from .special_bessel_j0 import special_bessel_j0
 from .special_bessel_j1 import special_bessel_j1
 from .special_bessel_y0 import special_bessel_y0
@@ -451,6 +510,7 @@ from .sum import sum, sum_dim, sum_dim_out, sum_out
 from .t_copy import t_copy, t_copy_out
 from .tan import tan, tan_
 from .tanh import tanh, tanh_, tanh_backward
+from .te_rmsnorm import te_rmsnorm_bwd
 from .threshold import threshold, threshold_, threshold_backward
 from .tile import tile
 from .to import to_copy
@@ -478,6 +538,7 @@ from .vdot import vdot
 from .vector_norm import vector_norm
 from .view_copy import view_copy
 from .vstack import vstack
+from .weight_norm import _weight_norm
 from .weightnorm import weight_norm_interface, weight_norm_interface_backward
 from .where import where_scalar_other, where_scalar_self, where_self, where_self_out
 from .xlogy import (
@@ -493,13 +554,26 @@ from .zeros import zeros
 from .zeros_like import zeros_like
 
 __all__ = [
+    "_amp_foreach_non_finite_check_and_unscale_",
+    "_assert_async",
+    "_batch_norm_impl_index",
+    "_batch_norm_no_update",
+    "_cdist_backward",
     "_conv_depthwise2d",
+    "_dyn_quant_pack_4bit_weight",
+    "_embedding_bag_dense_backward",
     "_euclidean_dist",
     "_functional_sym_constrain_range",
     "_functional_sym_constrain_range_for_size",
+    "_fused_adam",
+    "_fused_adam_",
     "_index_put_impl_",
     "_is_all_true",
+    "_native_batch_norm_legit_functional",
+    "_native_batch_norm_legit_no_training",
     "_nested_view_from_buffer_copy",
+    "_pdist_backward",
+    "_pdist_forward",
     "_safe_softmax",
     "_scaled_dot_product_fused_attention_overrideable",
     "_segment_reduce_backward",
@@ -510,6 +584,7 @@ __all__ = [
     "_upsample_bicubic2d_aa",
     "_upsample_bicubic2d_aa_backward",
     "_upsample_nearest_exact2d_backward",
+    "_weight_norm",
     "abs",
     "abs_",
     "absolute",
@@ -572,7 +647,12 @@ __all__ = [
     "baddbmm_out",
     "batch_norm",
     "batch_norm_backward",
+    "bernoulli",
     "bernoulli_",
+    "binary_cross_entropy",
+    "binary_cross_entropy_backward",
+    "binary_cross_entropy_out",
+    "binary_cross_entropy_with_logits",
     "bitwise_and_scalar",
     "bitwise_and_scalar_",
     "bitwise_and_scalar_tensor",
@@ -636,6 +716,7 @@ __all__ = [
     "deg2rad",
     "deg2rad_",
     "deg2rad_out",
+    "dequantize",
     "diag",
     "diag_embed",
     "diagonal_backward",
@@ -652,6 +733,7 @@ __all__ = [
     "elu_backward",
     "embedding",
     "embedding_backward",
+    "embedding_dense_backward",
     "eq",
     "eq_scalar",
     "erf",
@@ -688,6 +770,7 @@ __all__ = [
     "fractional_max_pool2d_backward",
     "full",
     "full_like",
+    "fused_experts_impl",
     "gather",
     "gather_backward",
     "ge",
@@ -695,6 +778,7 @@ __all__ = [
     "gelu",
     "gelu_",
     "gelu_backward",
+    "get_paged_mqa_logits_metadata",
     "get_scheduler_metadata",
     "glu",
     "glu_backward",
@@ -705,6 +789,7 @@ __all__ = [
     "greater_scalar_out",
     "grid_sample",
     "grid_sampler_3d_backward",
+    "group_mm",
     "group_norm",
     "group_norm_backward",
     "gt",
@@ -727,6 +812,7 @@ __all__ = [
     "index_reduce_",
     "index_select",
     "index_select_backward",
+    "inplace_fused_experts",
     "isclose",
     "isfinite",
     "isin",
@@ -742,6 +828,7 @@ __all__ = [
     "le_scalar",
     "leaky_relu",
     "leaky_relu_",
+    "leaky_relu_backward",
     "leaky_relu_out",
     "lerp_scalar",
     "lerp_scalar_",
@@ -804,6 +891,7 @@ __all__ = [
     "lt_scalar_",
     "lu_unpack",
     "lu_unpack_out",
+    "margin_ranking_loss",
     "masked_fill",
     "masked_fill_",
     "masked_scatter",
@@ -830,13 +918,18 @@ __all__ = [
     "min",
     "min_dim",
     "minimum",
+    "miopen_batch_norm_backward",
+    "mish_backward",
     "mm",
     "mm_out",
     "mode",
+    "moe_sum",
     "mse_loss",
+    "mse_loss_backward",
     "mul",
     "mul_",
     "multinomial",
+    "multiply",
     "multiply_",
     "mv",
     "mv_cluster",
@@ -847,7 +940,12 @@ __all__ = [
     "nanmedian_dim",
     "nanmedian_dim_values",
     "nanmedian_out",
+    "nansum",
+    "nansum_out",
     "narrow_copy",
+    "native_batch_norm",
+    "native_group_norm",
+    "native_layer_norm",
     "ne",
     "ne_scalar",
     "neg",
@@ -855,10 +953,13 @@ __all__ = [
     "negative",
     "new_full",
     "new_ones",
+    "nll_loss2d",
     "nll_loss2d_backward",
     "nll_loss2d_forward",
     "nll_loss_backward",
     "nll_loss_forward",
+    "nll_loss_nd_backward",
+    "nll_loss_nd_forward",
     "nonzero",
     "nonzero_numpy",
     "norm",
@@ -874,7 +975,10 @@ __all__ = [
     "ones",
     "ones_like",
     "ormqr",
+    "outplace_fused_experts",
     "pad",
+    "pairwise_distance",
+    "pdist",
     "per_token_group_quant_fp8",
     "permute_copy",
     "pixel_unshuffle",
@@ -892,6 +996,7 @@ __all__ = [
     "prod",
     "prod_dim",
     "quantile",
+    "quantized_lstm",
     "rad2deg",
     "rad2deg_",
     "rand",
@@ -945,9 +1050,13 @@ __all__ = [
     "rsub",
     "rsub_scalar",
     "rsub_tensor",
+    "scalar_tensor",
     "scaled_dot_product_attention",
     "scaled_dot_product_attention_backward",
     "scaled_dot_product_attention_forward",
+    "scaled_dot_product_efficient_attention_backward",
+    "scaled_mm",
+    "scaled_mm_out",
     "scaled_softmax_backward",
     "scaled_softmax_forward",
     "ScaleDotProductAttention",
@@ -982,12 +1091,18 @@ __all__ = [
     "sinc_",
     "slice_backward",
     "slice_scatter",
+    "smooth_l1_loss",
+    "smooth_l1_loss_backward",
+    "smooth_l1_loss_out",
     "soft_margin_loss",
     "soft_margin_loss_backward",
     "soft_margin_loss_out",
     "softmax",
     "softmax_backward",
+    "softmax_backward_out",
+    "softmax_out",
     "softplus",
+    "softplus_backward",
     "softshrink",
     "softshrink_out",
     "sort",
@@ -1028,6 +1143,7 @@ __all__ = [
     "special_shifted_chebyshev_polynomial_u_",
     "special_shifted_chebyshev_polynomial_v",
     "special_shifted_chebyshev_polynomial_w",
+    "special_sinc",
     "sqrt",
     "sqrt_",
     "stack",
@@ -1047,6 +1163,7 @@ __all__ = [
     "tanh",
     "tanh_",
     "tanh_backward",
+    "te_rmsnorm_bwd",
     "threshold",
     "threshold_",
     "threshold_backward",
