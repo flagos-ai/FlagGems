@@ -9290,8 +9290,10 @@ ops:
   - stable: '3.0'
   cpp: '4.0'
 - id: mm_w8a8_fp8
-  description: Dynamically quantizes BF16 activations and weights to FP8 E4M3,
-    computes their matrix product with FP8 Tensor Cores, and applies FP32 scales.
+  description: Dynamically quantizes BF16 activations and weights to W8A8,
+    computes their matrix product, and applies FP32 scales. Hopper uses FP8
+    E4M3 Tensor Cores; Ascend uses INT8 Cube plus FixPipe VDEQF16 (FP Buffer)
+    because UB cannot load FP8.
   for:
   - None
   labels:
