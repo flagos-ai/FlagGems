@@ -2719,23 +2719,39 @@ def _launch_matrix_rank(
     k = min(m, n)
     rows = max(m, n)
     is_fp64 = input.dtype == torch.float64
+    native_fp64 = _native_fp64_supported()
+    # Devices without native FP64 also avoid the fused fp32 k==32 tile: at
+    # least one such backend's compiler (Iluvatar CoreX) miscompiles exactly
+    # that fused Jacobi configuration -- smaller fused sizes and every
+    # decomposition path are unaffected, while k=32 fused returns near-zero
+    # ranks on rank-30 inputs.  Route k=32 to the verified decompositions
+    # there (capability-based, no vendor dispatch): hermitian lowers the
+    # tridiagonalization threshold to 32, non-hermitian falls to
+    # bidiagonalization.
+    avoid_fused_k32 = not native_fp64 and not is_fp64 and k == 32
     herm_tridiag = hermitian and k >= (
-        _HERM_TRIDIAG_MIN_K_FP64 if is_fp64 else _HERM_TRIDIAG_MIN_K_FP32
+        _HERM_TRIDIAG_MIN_K_FP64
+        if is_fp64
+        else (_HERM_TRIDIAG_MIN_K_FP32 if native_fp64 else 32)
     )
     # Single-program fused Jacobi eligibility (no grid synchronization by
     # construction).  Everything beyond this goes to the barrier-free
     # decompositions (hermitian tridiagonalization / bidiagonalization),
     # whose per-column kernels synchronize at launch boundaries.
-    fused_eligible = rows <= _FUSED_JACOBI_MAX_ROWS and (
-        (
-            is_fp64
-            and k <= _FUSED_JACOBI_MAX_K_FP64
-            and (k <= 16 or rows <= _FUSED_JACOBI_WIDE_MAX_ROWS)
-        )
-        or (
-            not is_fp64
-            and k <= _FUSED_JACOBI_MAX_K
-            and (k <= 32 or rows <= _FUSED_JACOBI_WIDE_MAX_ROWS)
+    fused_eligible = (
+        not avoid_fused_k32
+        and rows <= _FUSED_JACOBI_MAX_ROWS
+        and (
+            (
+                is_fp64
+                and k <= _FUSED_JACOBI_MAX_K_FP64
+                and (k <= 16 or rows <= _FUSED_JACOBI_WIDE_MAX_ROWS)
+            )
+            or (
+                not is_fp64
+                and k <= _FUSED_JACOBI_MAX_K
+                and (k <= 32 or rows <= _FUSED_JACOBI_WIDE_MAX_ROWS)
+            )
         )
     )
     use_bidiag = (not hermitian) and not fused_eligible
@@ -2775,7 +2791,7 @@ def _launch_matrix_rank(
     scalar_tol = (
         not isinstance(atol, torch.Tensor)
         and not isinstance(rtol, torch.Tensor)
-        and _native_fp64_supported()
+        and native_fp64
         and _is_exact_float32(atol)
         and _is_exact_float32(rtol)
     )
@@ -2982,6 +2998,7 @@ def linalg_matrix_rank(input, *, atol=None, rtol=None, hermitian=False):
 
 def linalg_matrix_rank_tol(input, tol, hermitian=False):
     """NumPy-compatible legacy overload where tol is an absolute tolerance."""
+    logger.debug("GEMS LINALG_MATRIX_RANK_TOL")
     return linalg_matrix_rank(input, atol=tol, rtol=0.0, hermitian=hermitian)
 
 
@@ -3014,10 +3031,12 @@ def _copy_rank_to_out(input, result, out):
 
 
 def linalg_matrix_rank_out(input, *, atol=None, rtol=None, hermitian=False, out=None):
+    logger.debug("GEMS LINALG_MATRIX_RANK_OUT")
     result = linalg_matrix_rank(input, atol=atol, rtol=rtol, hermitian=hermitian)
     return _copy_rank_to_out(input, result, out)
 
 
 def linalg_matrix_rank_tol_out(input, tol, hermitian=False, *, out=None):
+    logger.debug("GEMS LINALG_MATRIX_RANK_TOL_OUT")
     result = linalg_matrix_rank_tol(input, tol, hermitian)
     return _copy_rank_to_out(input, result, out)

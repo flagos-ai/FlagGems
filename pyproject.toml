@@ -85,6 +85,9 @@ ascend-cann850 = [
 ascend-cann900 = [
     "torch==2.10.0+cpu",
     "torch-npu==2.10.0",
+    "decorator==5.2.1",
+    "attrs==25.3.0",
+    "psutil==7.0.0",
 ]
 
 cambricon-neuware443 = [
