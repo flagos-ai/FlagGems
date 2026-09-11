@@ -310,8 +310,8 @@ from .minimum import minimum
 from .miopen_batch_norm_backward import miopen_batch_norm_backward
 from .mish_backward import mish_backward
 from .mm import mm, mm_out
-from .moe_sum import moe_sum
 from .mode import mode
+from .moe_sum import moe_sum
 from .mse_loss import mse_loss
 from .mse_loss_backward import mse_loss_backward
 from .mul import mul, mul_
@@ -811,8 +811,8 @@ __all__ = [
     "index_put_",
     "index_reduce_",
     "index_select",
-    "inplace_fused_experts",
     "index_select_backward",
+    "inplace_fused_experts",
     "isclose",
     "isfinite",
     "isin",
@@ -922,8 +922,8 @@ __all__ = [
     "mish_backward",
     "mm",
     "mm_out",
-    "moe_sum",
     "mode",
+    "moe_sum",
     "mse_loss",
     "mse_loss_backward",
     "mul",
