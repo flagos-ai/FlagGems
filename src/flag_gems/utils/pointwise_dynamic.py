@@ -73,6 +73,17 @@ def _cs(strings: Iterable[str]) -> str:
     return ", ".join(strings)
 
 
+def _balanced_grid_partition(num_tiles: int, max_grid_size: int) -> Tuple[int, int]:
+    if num_tiles <= 0:
+        raise ValueError("num_tiles must be positive")
+    if max_grid_size <= 0:
+        raise ValueError("max_grid_size must be positive")
+    initial_ctas = min(max_grid_size, num_tiles)
+    tiles_per_cta = (num_tiles + initial_ctas - 1) // initial_ctas
+    num_ctas = (num_tiles + tiles_per_cta - 1) // tiles_per_cta
+    return num_ctas, tiles_per_cta
+
+
 def _broadcast_vec(i, ndim):
     axes = [":" if j == i else "None" for j in range(ndim)]
     return f"[{_cs(axes)}]"
@@ -877,13 +888,18 @@ class WrapperGenerator:
                 "num_tiles = math.prod(triton.cdiv(size, tile_size) for size, tile_size in zip(shape, tile_sizes))"
             )
 
-            if self.name.find("fill_scalar") != -1 and major >= 9:
-                code.writeline("num_ctas = num_tiles")
+            max_grid_size0 = self.config.max_grid_size[0]
+            if self.config.balance_grid:
+                code.writeline(
+                    f"num_ctas, tiles_per_cta = _balanced_grid_partition(num_tiles, {max_grid_size0})"
+                )
             else:
-                max_grid_size0 = self.config.max_grid_size[0]
-                code.writeline(f"num_ctas = min({max_grid_size0}, num_tiles)")
+                if self.name.find("fill_scalar") != -1 and major >= 9:
+                    code.writeline("num_ctas = num_tiles")
+                else:
+                    code.writeline(f"num_ctas = min({max_grid_size0}, num_tiles)")
 
-            code.writeline("tiles_per_cta = triton.cdiv(num_tiles, num_ctas)")
+                code.writeline("tiles_per_cta = triton.cdiv(num_tiles, num_ctas)")
             code.writeline("num_warps = heuristics_for_num_warps(tile_size)")
             code.writeline("one_tile_per_cta = tiles_per_cta==1")
         code.writeline("grid = (num_ctas, 1, 1)")
@@ -914,13 +930,18 @@ class WrapperGenerator:
             code.writeline("tile_size = tile_sizes[0]")
             code.writeline("num_tiles = triton.cdiv(num_tasks, tile_size)")
 
-            if self.name.find("fill_scalar") != -1 and major >= 9:
-                code.writeline("num_ctas = num_tiles")
+            max_grid_size0 = self.config.max_grid_size[0]
+            if self.config.balance_grid:
+                code.writeline(
+                    f"num_ctas, tiles_per_cta = _balanced_grid_partition(num_tiles, {max_grid_size0})"
+                )
             else:
-                max_grid_size0 = self.config.max_grid_size[0]
-                code.writeline(f"num_ctas = min({max_grid_size0}, num_tiles)")
+                if self.name.find("fill_scalar") != -1 and major >= 9:
+                    code.writeline("num_ctas = num_tiles")
+                else:
+                    code.writeline(f"num_ctas = min({max_grid_size0}, num_tiles)")
 
-            code.writeline("tiles_per_cta = triton.cdiv(num_tiles, num_ctas)")
+                code.writeline("tiles_per_cta = triton.cdiv(num_tiles, num_ctas)")
             code.writeline("num_warps = heuristics_for_num_warps(tile_size)")
             code.writeline("one_tile_per_cta = tiles_per_cta==1")
         code.writeline("grid = (num_ctas, 1, 1)")
@@ -1190,6 +1211,10 @@ class ModuleGenerator:
         code.writeline("from flag_gems.utils.libentry import libentry")
         code.writeline("from flag_gems.utils import triton_lang_extension as ext")
         code.writeline("from flag_gems.runtime import torch_device_fn")
+        if self.config.balance_grid:
+            code.writeline(
+                "from flag_gems.utils.pointwise_dynamic import _balanced_grid_partition"
+            )
 
         # Generate extra imports and local JIT deps of the scalar function
         jit_dep_imports, local_jit_sources = self._collect_jit_deps(self.scalar_fn)
@@ -1643,6 +1668,7 @@ class PointwiseDynamicFunction:
             f"{'1d_tile_' if self.config.prefer_1d_tile else ''}"
             f"{'bptr' if (not self.config.prefer_1d_tile and self.config.prefer_block_pointer) else ''}"
             f"_t{self.config.max_tile_size}"
+            f"{'_balanced' if self.config.balance_grid else ''}"
             ".py"
         )
         file_path = str(code_cache_dir() / file_name)
@@ -1653,7 +1679,7 @@ class PointwiseDynamicFunction:
         # NOTE: manually instantiated overload does not have `prepare_args` as
         # preprocessing, so you have to manually allocate output and make sure that
         # the inputs & ouputs actually fits the manually instantiated overload
-        key = f"{ndim}_{self.config.prefer_block_pointer}"
+        key = f"{ndim}_{self.config.prefer_block_pointer}_{self.config.balance_grid}"
         if key in self.overloads:
             return self.overloads[key]
 
@@ -1728,7 +1754,7 @@ class PointwiseDynamicFunction:
         Returns:
             KernelInfo with file_path, kernel_name, wrapper_name, and ndim
         """
-        key = f"{ndim}_{self.config.prefer_block_pointer}"
+        key = f"{ndim}_{self.config.prefer_block_pointer}_{self.config.balance_grid}"
 
         # Ensure the kernel is instantiated
         if key not in self._kernel_info_cache:

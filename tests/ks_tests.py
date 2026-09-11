@@ -93,6 +93,18 @@ def test_exponential_out_pvalue(shape, dtype, lambd):
     assert pvalue > 0.05
 
 
+@pytest.mark.log_normal
+@pytest.mark.parametrize("shape", DISTRIBUTION_SHAPES)
+@pytest.mark.parametrize("dtype", (torch.float32,))
+@pytest.mark.parametrize("mean,std", ((0.0, 0.25), (1.0, 2.0)))
+def test_log_normal_pvalue(shape, dtype, mean, std):
+    x = torch.empty(size=shape, dtype=dtype, device=flag_gems.device)
+    y = flag_gems.log_normal(x, mean=mean, std=std)
+    lognorm_cdf = lambda v: scipy.stats.lognorm.cdf(v, s=std, scale=np.exp(mean))
+    pvalue = scipy.stats.kstest(y.cpu().numpy().flatten(), lognorm_cdf).pvalue
+    assert pvalue > 0.05
+
+
 @pytest.mark.rand
 @pytest.mark.parametrize("shape", DISTRIBUTION_SHAPES)
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])

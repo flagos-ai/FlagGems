@@ -269,6 +269,8 @@ def masked_select_backward(grad, input, mask):
 
     input_expanded, mask_expanded = torch.broadcast_tensors(input, mask)
     mask_contiguous = mask_expanded.contiguous()
+    if grad.numel() < mask_contiguous.sum().item():
+        raise RuntimeError("Number of elements of source < number of ones in mask")
     result = torch.empty_like(input_expanded, memory_format=torch.preserve_format)
     if result.numel() == 0:
         return result

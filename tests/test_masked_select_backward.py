@@ -22,6 +22,7 @@ from . import conftest as cfg
 
 FLOAT_DTYPES = [torch.float32] if cfg.QUICK_MODE else utils.FLOAT_DTYPES
 SHAPES = [(0,), (17,), (4096,), (4097,), (128, 256), (65536,), (65537,)]
+BOUNDARY_SHAPES = [(32769,), (262144,), (262145,)]
 if not cfg.QUICK_MODE:
     SHAPES += [(1024, 1024)]
 
@@ -52,9 +53,16 @@ def test_accuracy_masked_select_backward(shape, dtype):
 
 
 @pytest.mark.masked_select_backward
+@pytest.mark.parametrize("shape", BOUNDARY_SHAPES)
+def test_accuracy_masked_select_backward_kernel_boundaries(shape):
+    _assert_matches_reference(*_make_args(shape, torch.float32))
+
+
+@pytest.mark.masked_select_backward
+@pytest.mark.parametrize("shape", [(32769,), (262145,)])
 @pytest.mark.parametrize("threshold", [0.0, 1.0])
-def test_accuracy_masked_select_backward_mask_extremes(threshold):
-    grad, inp, mask = _make_args((8192,), torch.float32, threshold)
+def test_accuracy_masked_select_backward_mask_extremes(shape, threshold):
+    grad, inp, mask = _make_args(shape, torch.float32, threshold)
     # ATen accepts a source longer than the number of selected mask entries.
     grad = torch.cat((grad, torch.randn(3, device=flag_gems.device)))
     _assert_matches_reference(grad, inp, mask)
@@ -128,3 +136,10 @@ def test_masked_select_backward_errors():
         flag_gems.masked_select_backward(
             grad.to(torch.float64), inp, torch.ones_like(inp, dtype=torch.bool)
         )
+
+    mask = torch.ones_like(inp, dtype=torch.bool)
+    error = "Number of elements of source < number of ones in mask"
+    with pytest.raises(RuntimeError, match=error):
+        torch.ops.aten.masked_select_backward.default(grad, inp, mask)
+    with pytest.raises(RuntimeError, match=error):
+        flag_gems.masked_select_backward(grad, inp, mask)
