@@ -40,6 +40,7 @@ from .linalg_solve_triangular import (
 from .linalg_svdvals import linalg_svdvals
 from .log_sigmoid_forward import log_sigmoid_forward
 from .log_softmax import log_softmax, log_softmax_backward
+from .logcumsumexp import logcumsumexp
 from .logical_or import logical_or, logical_or_
 from .lt_ import lt_, lt_scalar_
 from .masked_fill import masked_fill, masked_fill_
@@ -145,6 +146,7 @@ __all__ = [
     "log_sigmoid_forward",
     "log_softmax",
     "log_softmax_backward",
+    "logcumsumexp",
     "logical_or",
     "logical_or_",
     "lt_",
