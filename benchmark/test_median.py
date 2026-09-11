@@ -23,10 +23,16 @@ from . import base, consts, utils
 class MedianNoDimBenchmark(base.Benchmark):
     DEFAULT_SHAPE_FILES = "benchmark/core_shapes.yaml"
     DEFAULT_SHAPE_DESC = "input shape"
+    with_out = False
 
     def get_input_iter(self, cur_dtype) -> Generator:
         for shape in self.shapes:
-            yield (utils.generate_tensor_input(shape, cur_dtype, self.device),)
+            inp = utils.generate_tensor_input(shape, cur_dtype, self.device)
+            if self.with_out:
+                out = torch.empty((), dtype=cur_dtype, device=self.device)
+                yield inp, {"out": out}
+            else:
+                yield (inp,)
 
 
 class MedianReductionBenchmark(base.Benchmark):
@@ -58,6 +64,17 @@ def test_median():
         op_name="median",
         torch_op=torch.median,
         dtypes=consts.FLOAT_DTYPES + consts.INT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.median_out
+def test_median_out():
+    bench = MedianNoDimBenchmark(
+        op_name="median_out",
+        torch_op=torch.ops.aten.median.out,
+        dtypes=consts.FLOAT_DTYPES + consts.INT_DTYPES,
+        with_out=True,
     )
     bench.run()
 

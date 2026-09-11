@@ -1382,13 +1382,13 @@ def test_median_int_lastdim_select_all_equal(dtype, width):
     )
 
 
-@pytest.mark.median
+@pytest.mark.median_out
 def test_median_out():
     inp = torch.randn((7, 5), dtype=torch.float32, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
 
-    ref_buf = torch.empty((1,), dtype=inp.dtype, device=ref_inp.device)
-    out = torch.empty((1,), dtype=inp.dtype, device=flag_gems.device)
+    ref_buf = torch.empty((), dtype=inp.dtype, device=ref_inp.device)
+    out = torch.empty((), dtype=inp.dtype, device=flag_gems.device)
     ref_result = torch.ops.aten.median.out(ref_inp, out=ref_buf)
     with flag_gems.use_gems(include=MEDIAN_OPS):
         res_result = torch.ops.aten.median.out(inp, out=out)
@@ -1397,7 +1397,7 @@ def test_median_out():
     utils.gems_assert_equal(out, ref_buf)
 
 
-@pytest.mark.median
+@pytest.mark.median_out
 def test_median_out_error_paths():
     inp = torch.randn((7,), dtype=torch.float32, device=flag_gems.device)
     bad_dtype = torch.empty((), dtype=torch.int32, device=flag_gems.device)
