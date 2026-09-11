@@ -42,21 +42,9 @@ def selu_kernel_(x_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
     tl.store(x_ptr + offsets, y, mask=mask)
 
 
-def selu_(*args, **kwargs):
+def selu_(self):
     logger.debug("GEMS SELU_")
-    x = None
-    if len(args) > 0 and torch.is_tensor(args[0]):
-        x = args[0]
-    elif "input" in kwargs and torch.is_tensor(kwargs["input"]):
-        x = kwargs["input"]
-    elif "self" in kwargs and torch.is_tensor(kwargs["self"]):
-        x = kwargs["self"]
-    elif "x" in kwargs and torch.is_tensor(kwargs["x"]):
-        x = kwargs["x"]
-    else:
-        raise ValueError(
-            "selu_ expects a Tensor as the first argument or under 'input'/'self'/'x' keyword."
-        )
+    x = self
 
     supported_dtypes = {torch.float16, torch.bfloat16, torch.float32}
     if (not x.is_contiguous()) or (x.dtype not in supported_dtypes):

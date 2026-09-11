@@ -30,8 +30,7 @@ def test_atanh_(shape, dtype):
     ref_out = ref_inp.atanh_()
 
     inp1 = inp.clone()
-    with flag_gems.use_gems():
-        res_out = inp1.atanh_()
+    res_out = flag_gems.atanh_(inp1)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
     utils.gems_assert_close(inp1, ref_inp, dtype)

@@ -52,15 +52,9 @@ def atanh_kernel_(
     tl.store(x_ptr + offsets, y, mask=mask)
 
 
-def atanh_(*args, **kwargs):
+def atanh_(self):
     logger.debug("GEMS ATANH_")
-    x = None
-    if len(args) >= 1 and isinstance(args[0], torch.Tensor):
-        x = args[0]
-    else:
-        x = kwargs.get("input", kwargs.get("self", None))
-    if not isinstance(x, torch.Tensor):
-        raise TypeError("atanh_ expects a single Tensor argument")
+    x = self
 
     if not x.is_contiguous():
         raise ValueError("Input tensor must be contiguous")

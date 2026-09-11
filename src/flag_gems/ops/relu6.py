@@ -37,17 +37,9 @@ def relu6_kernel(x_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
     tl.store(out_ptr + offsets, y, mask=mask)
 
 
-def relu6(*args, **kwargs):
+def relu6(self):
     logger.debug("GEMS RELU6")
-    x = (
-        args[0]
-        if len(args) > 0
-        else kwargs.get("input", kwargs.get("self", kwargs.get("x")))
-    )
-    if x is None:
-        raise TypeError(
-            "relu6 expects a tensor as the first positional argument or keyword 'input'/'self'/'x'."
-        )
+    x = self
 
     x_contig = x.contiguous()
 
