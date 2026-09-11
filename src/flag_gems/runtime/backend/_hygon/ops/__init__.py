@@ -20,6 +20,9 @@ from .adaptive_avg_pool2d_backward import adaptive_avg_pool2d_backward
 from .adaptive_max_pool2d_backward import adaptive_max_pool2d_backward
 from .adaptive_max_pool3d_backward import adaptive_max_pool3d_backward
 from .addr import addr
+from .amp_foreach_non_finite_check_and_unscale_ import (
+    amp_foreach_non_finite_check_and_unscale_,
+)
 from .any import any, any_dim, any_dims
 from .attention import (
     ScaleDotProductAttention,
@@ -167,6 +170,7 @@ __all__ = [
     "adaptive_max_pool2d_backward",
     "adaptive_max_pool3d_backward",
     "addr",
+    "amp_foreach_non_finite_check_and_unscale_",
     "any",
     "any_dim",
     "any_dims",
