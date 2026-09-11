@@ -82,6 +82,14 @@ class _AtenSparseMMAdapter:
         return torch.ops.aten._sparse_semi_structured_mm(packed, meta, mat2)
 
 
+class _GemsSparseMMAdapter:
+    """Consume the shared 5-arg benchmark signature and call the flag_gems
+    op with its (mat1, mat1_meta, mat2) prefix."""
+
+    def __call__(self, mat1, mat1_meta, mat2, packed, meta):
+        return flag_gems._sparse_semi_structured_mm(mat1, mat1_meta, mat2)
+
+
 @pytest.mark.sparse_semi_structured_mm
 @pytest.mark.skipif(
     not _ATEN_CC_SUPPORTED,
@@ -93,5 +101,5 @@ def test_sparse_semi_structured_mm():
         torch_op=_AtenSparseMMAdapter(),
         dtypes=consts.FLOAT_DTYPES,
     )
-    bench.set_gems(flag_gems._sparse_semi_structured_mm)
+    bench.set_gems(_GemsSparseMMAdapter())
     bench.run()
