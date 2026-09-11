@@ -140,6 +140,7 @@ from .sparse_sampled_addmm import sparse_sampled_addmm, sparse_sampled_addmm_out
 from .special_erfinv import special_erfinv
 from .stack import stack
 from .swiglu import swiglu
+from .thnn_fused_lstm_cell import thnn_fused_lstm_cell
 from .threshold import threshold, threshold_backward
 from .topk import topk
 from .triu import triu
@@ -355,4 +356,5 @@ __all__ = [
     "zeros_like",
     "special_erfinv",
     "unsafe_masked_index",
+    "thnn_fused_lstm_cell",
 ]
