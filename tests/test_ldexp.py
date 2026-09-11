@@ -18,6 +18,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
 
 
 @pytest.mark.ldexp
@@ -196,6 +197,8 @@ def test_ldexp_out_alias_resize_and_stride(dtype):
 @pytest.mark.ldexp_out
 @pytest.mark.parametrize("out_dtype", [torch.float16, torch.float32, torch.float64])
 def test_ldexp_out_dtype_casting(out_dtype):
+    if cfg.TO_CPU and out_dtype != torch.float32:
+        pytest.skip("ATen CPU ldexp.out does not support dynamic output dtype casting")
     self = torch.randn((17,), dtype=torch.float32, device=flag_gems.device)
     other = torch.randint(-4, 5, (17,), dtype=torch.int32, device=flag_gems.device)
     ref_self = utils.to_reference(self)
