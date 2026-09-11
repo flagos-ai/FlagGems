@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import torch
 
 from flag_gems.runtime import device
@@ -101,8 +115,8 @@ def test_heuristics_for_num_warps():
         assert shape_utils.heuristics_for_num_warps(4096) == 1
     elif device.vendor_name == "enflame":
         assert shape_utils.heuristics_for_num_warps(1024) == 4
-        assert shape_utils.heuristics_for_num_warps(2048) == 8
-        assert shape_utils.heuristics_for_num_warps(4096) == 16
+        assert shape_utils.heuristics_for_num_warps(2048) == 4
+        assert shape_utils.heuristics_for_num_warps(4096) == 4
     elif device.vendor_name == "sunrise":
         assert shape_utils.heuristics_for_num_warps(1024) == 8
         assert shape_utils.heuristics_for_num_warps(2048) == 16

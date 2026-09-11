@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -10,7 +24,7 @@ from flag_gems.utils import triton_lang_extension as ext
 
 rsqrt = tl_extra_shim.rsqrt
 
-logger = logging.getLogger("flag_gems." + __name__)
+logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -39,7 +53,11 @@ def group_norm_kernel(
     wb_offset = group * group_size + group_offset
     wb_mask = wb_offset < C
 
-    xy_offset = pid * num_elements + group_offset[:, None] * HW + hw_offset[None, :]
+    xy_offset = (
+        pid * num_elements
+        + group_offset[:, None].to(tl.int64) * HW
+        + hw_offset[None, :].to(tl.int64)
+    )
     xy_mask = wb_offset[:, None] < C and hw_offset[None, :] < HW
 
     Mean_ptr = Mean + pid
@@ -97,7 +115,11 @@ def group_norm_backward_kernel(
 
     wb_mask = wb_offset < C
 
-    xy_offset = pid * num_elements + group_offset[:, None] * HW + hw_offset[None, :]
+    xy_offset = (
+        pid * num_elements
+        + group_offset[:, None].to(tl.int64) * HW
+        + hw_offset[None, :].to(tl.int64)
+    )
     xy_mask = wb_offset[:, None] < C and hw_offset[None, :] < HW
 
     Mean_ptr = Mean + pid
@@ -156,8 +178,18 @@ def weight_bias_backward_kernel(
     mean_ptr = Mean + group + n_offset * num_groups
     rstd_ptr = Rstd + group + n_offset * num_groups
 
-    dY_ptr = dY + pid * BLOCK_HW + n_offset[:, None] * C * HW + hw_offset[None, :]
-    x_ptr = X + pid * BLOCK_HW + n_offset[:, None] * C * HW + hw_offset[None, :]
+    dY_ptr = (
+        dY
+        + pid * BLOCK_HW
+        + n_offset[:, None].to(tl.int64) * C * HW
+        + hw_offset[None, :].to(tl.int64)
+    )
+    x_ptr = (
+        X
+        + pid * BLOCK_HW
+        + n_offset[:, None].to(tl.int64) * C * HW
+        + hw_offset[None, :].to(tl.int64)
+    )
 
     grad_y = tl.load(dY_ptr, mask=xy_mask, other=0.0).to(tl.float32)
     x = tl.load(x_ptr, mask=xy_mask, other=0.0)
@@ -178,7 +210,7 @@ def weight_bias_backward_kernel(
 class GroupNorm(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, N, C, HW, num_groups, weight=None, bias=None, eps=1e-05):
-        logger.debug("GEMS_METAX GROUPNORM FORWARD")
+        logger.debug("GEMS_METAX GROUPNORM_FORWARD")
         group_size = C // num_groups
         x = x.contiguous()
         if weight is not None:
@@ -217,9 +249,9 @@ class GroupNorm(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, y_grad, mean_grad, rstd_grad):
-        logger.debug("GEMS_METAX GROUPNORM BACKWARD")
+        logger.debug("GEMS_METAX GROUPNORM_BACKWARD")
         y_grad = y_grad.contiguous()
-        (x, weight, bias, mean, rstd) = ctx.saved_tensors
+        x, weight, bias, mean, rstd = ctx.saved_tensors
         num_groups = ctx.num_groups
         group_size = ctx.group_size
         N = ctx.N

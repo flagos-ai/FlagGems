@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -130,7 +144,7 @@ def masked_scatter_impl(inp, mask, source, N):
 
 
 def masked_scatter(inp, mask, source):
-    logger.debug("GEMS_ASCEND MASKED SCATTER")
+    logger.debug("GEMS_ASCEND MASKED_SCATTER")
 
     assert broadcastable(
         inp.shape, mask.shape
@@ -154,7 +168,7 @@ def masked_scatter(inp, mask, source):
 
 
 def masked_scatter_(inp, mask, source):
-    logger.debug("GEMS_ASCEND MASKED SCATTER_")
+    logger.debug("GEMS_ASCEND MASKED_SCATTER_")
 
     assert broadcastable(inp.shape, mask.shape)
     _, mask = torch.broadcast_tensors(inp, mask)
