@@ -30,7 +30,17 @@ ADAPTIVE_MAX_POOL3D_BENCH_CONFIGS_COMPREHENSIVE = (
 def _input_fn(shapes, dtype, device):
     input_shape, output_size = shapes
     inp = base.generate_tensor_input(input_shape, dtype, device)
-    yield inp, output_size, {"return_indices": False}
+    # Values-only pooling is an identity passthrough when output_size equals the
+    # input's (D, H, W): the kernel returns the input untouched and launches
+    # nothing.  The KERNEL-mode harness times ops by profiling NPU kernels, and
+    # a zero-kernel call makes the Ascend profiler emit no data at all, which
+    # then dies inside triton-ascend's _collect_prof_result on an empty frame
+    # ("Can only use .str accessor with string values!").  Only the with-indices
+    # variant is benchmarked there -- it does launch a kernel; correctness of the
+    # values-only identity path is covered by tests/test_adaptive_max_pool3d.py.
+    is_identity = tuple(output_size) == tuple(input_shape[-3:])
+    if not is_identity:
+        yield inp, output_size, {"return_indices": False}
     yield inp, output_size, {"return_indices": True}
 
 
