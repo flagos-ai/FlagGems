@@ -54,6 +54,7 @@ batch_norm_backward: test_batch_norm
 batch_norm_impl_index: test_batch_norm
 segment_reduce_backward: test_segment_reduce
 segment_reduce_backward_out: test_segment_reduce
+special_chebyshev_polynomial_t_out: test_special_chebyshev_polynomial_t
 upsample_bicubic2d_aa_backward: test_upsample_bicubic2d_aa
 upsample_linear1d_backward: test_upsample_linear1d
 
