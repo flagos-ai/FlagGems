@@ -3,6 +3,7 @@ from ._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
 from ._thnn_fused_lstm_cell_backward_impl import _thnn_fused_lstm_cell_backward_impl
 from .adaptive_max_pool3d_backward import adaptive_max_pool3d_backward
 from .addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out
+from .addmv_ import addmv_
 from .alpha_dropout import alpha_dropout
 from .amax import amax
 from .arange import arange, arange_start
@@ -102,6 +103,7 @@ __all__ = [
     "addmm_dtype",
     "addmm_dtype_out",
     "addmm_out",
+    "addmv_",
     "alpha_dropout",
     "amax",
     "arange",
