@@ -7003,6 +7003,19 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: is_same_size
+  description: Returns True if the two input tensors have the same shape.
+  for:
+  - is_same_size
+  marks:
+  - is_same_size
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: isclose
   description: 'Returns a new tensor with boolean elements representing if each element
     of `input`
