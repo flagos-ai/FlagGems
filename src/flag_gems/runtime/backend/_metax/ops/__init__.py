@@ -20,6 +20,7 @@ from .conv_transpose1d import conv_transpose1d, conv_transpose1d_output_size
 from .cudnn_convolution import cudnn_convolution
 from .erfinv import erfinv
 from .exponential_ import exponential_
+from .float_power_ import float_power_tensor_scalar_, float_power_tensor_tensor_
 from .full import full
 from .full_like import full_like
 from .gcd_ import gcd_
@@ -146,6 +147,8 @@ __all__ = [
     "cudnn_convolution",
     "erfinv",
     "exponential_",
+    "float_power_tensor_scalar_",
+    "float_power_tensor_tensor_",
     "full",
     "full_like",
     "gcd_",
