@@ -14581,6 +14581,16 @@ ops:
   - BLAS
   stages:
   - beta: '5.3'
+- id: triplet_margin_loss
+  description: Triplet margin loss for learning embeddings
+  for:
+  - triplet_margin_loss
+  labels:
+  - KernelGen
+  kind:
+  - Loss
+  stages:
+  - alpha: '5.5'
 - id: triton_lighting_indexer_k_tiled_interface
   description: Part of FP8 MQA framework. It is currently not exposed as an operator
     for use.

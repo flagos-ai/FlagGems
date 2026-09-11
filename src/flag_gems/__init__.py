@@ -1224,6 +1224,7 @@ _FULL_CONFIG = (
     ("tril", tril),
     ("tril.out", tril_out),
     ("tril_", tril_),
+    ("triplet_margin_loss", triplet_margin_loss),
     ("triu", triu),
     ("triu_", triu_),
     ("true_divide.out", true_divide_out),
