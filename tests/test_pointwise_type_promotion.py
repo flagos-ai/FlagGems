@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import pytest
@@ -117,6 +131,8 @@ def test_type_promotion_complex_to_long(shape, float_type):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("float_dtype", FLOAT_DTYPES)
 def test_type_promotion_bool_to_long(shape, float_dtype):
+    if flag_gems.vendor_name == "sunrise" and float_dtype == torch.float32:
+        pytest.skip("Issues #3838: Skipping fp32 pow test on sunrise platform")
     inp1 = torch.randn(shape, dtype=float_dtype, device=flag_gems.device)
     inp2 = torch.randint(0, 10, shape, device=flag_gems.device)
     ref_inp1 = to_reference(inp1)

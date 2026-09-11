@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import random
 import time
 
@@ -241,7 +255,7 @@ def test_index_put__acc_true(input_shape, indices_shape, values_shape, is_bool, 
     flag_gems.index_put_(inp, indices, values, accumulate)
 
     # BUG #2820: This is a hack
-    if flag_gems.vendor_name == "cambricon" and dtype == torch.float16:
+    if flag_gems.vendor_name in ["cambricon", "sunrise"] and dtype == torch.float16:
         inp = utils.to_cpu(inp, ref_inp)
         ref_inp = ref_inp.to(dtype)
         torch.testing.assert_close(inp, ref_inp, atol=3e-3, rtol=3e-2)

@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -7,7 +21,7 @@ import triton.language as tl
 from flag_gems import runtime
 from flag_gems.utils import dim_compress, libentry
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 # def cfggen():
 #     block_m = [1, 2, 4]
 #     block_n = [128, 1024, 2048, 4096]
@@ -77,7 +91,7 @@ def index_add_kernel(
 
 
 def index_add(inp, dim, index, src, alpha=1):
-    logger.debug("GEMS_KUNLUNXIN INDEX ADD")
+    logger.debug("GEMS_KUNLUNXIN INDEX_ADD")
     assert ((0 <= index) * (index < inp.size(dim))).equal(
         torch.ones(tuple(index.shape), dtype=torch.bool, device="cuda")
     ), "0 <= index < self.size(dim)"
@@ -120,7 +134,7 @@ def index_add(inp, dim, index, src, alpha=1):
 
 
 def index_add_(inp, dim, index, src, alpha=1):
-    logger.debug("GEMS_KUNLUNXIN INDEX ADD_")
+    logger.debug("GEMS_KUNLUNXIN INDEX_ADD_")
     assert ((0 <= index) * (index < inp.size(dim))).equal(
         torch.ones(tuple(index.shape), dtype=torch.bool, device="cuda")
     ), "0 <= index < self.size(dim)"
