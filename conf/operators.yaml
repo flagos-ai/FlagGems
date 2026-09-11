@@ -6142,6 +6142,52 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: hamming_window
+  description: Computes the Hamming window function.
+  for:
+  - hamming_window
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: hamming_window_periodic
+  description: A variant of hamming_window() that takes an explicit periodic flag.
+  for:
+  - hamming_window.periodic
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: hamming_window_periodic_alpha
+  description: A variant of hamming_window() that takes an explicit periodic flag and
+    alpha parameter.
+  for:
+  - hamming_window.periodic_alpha
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: hamming_window_periodic_alpha_beta
+  description: A variant of hamming_window() that takes an explicit periodic flag,
+    alpha, and beta parameters.
+  for:
+  - hamming_window.periodic_alpha_beta
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: hardshrink
   description: 'Applies the hard shrinkage function element-wise: returns x if |x|
     > lambd, else 0.
