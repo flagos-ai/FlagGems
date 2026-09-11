@@ -19,6 +19,7 @@ from ._thnn_fused_lstm_cell_backward_impl import _thnn_fused_lstm_cell_backward_
 from ._upsample_bilinear2d_aa import _upsample_bilinear2d_aa
 from ._upsample_nearest_exact2d_backward import _upsample_nearest_exact2d_backward
 from .adaptive_avg_pool2d_backward import _adaptive_avg_pool2d_backward
+from .addmv_ import addmv_
 from .all import all, all_dim, all_dims
 from .amax import amax
 from .any import any, any_dim, any_dims
@@ -323,6 +324,7 @@ if get_device_capability(current_device())[0] >= 3:
     "lift_out",
     "lcm_",
     "lift_fresh",
+    "addmv_",
         ]
     )
 
