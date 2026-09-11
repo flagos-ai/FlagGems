@@ -31,6 +31,7 @@ from .attention import (
 from .avg_pool3d_backward import avg_pool3d_backward
 from .broadcast_tensors import broadcast_tensors
 from .broadcast_to import broadcast_to
+from .cholesky_inverse import cholesky_inverse
 from .conj_physical import conj_physical
 from .cudnn_convolution import cudnn_convolution
 from .diff import diff
@@ -273,4 +274,5 @@ __all__ = [
     "weight_norm_interface",
     "weight_norm_interface_backward",
     "adaptive_avg_pool2d_backward",
+    "cholesky_inverse",
 ]
