@@ -12,11 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
+
 import torch
 import triton
 import triton.language as tl
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
+
+logger = logging.getLogger(__name__)
 
 _NP2 = triton.next_power_of_2
 _CDIV = triton.cdiv
@@ -82,6 +86,7 @@ def mse_none_pd(x, y):
 
 
 def mse_loss(inp, target, reduction=1):
+    logger.debug("GEMS_ENFLAME MSE_LOSS")
     M = inp.numel()
     dtype = inp.dtype
 

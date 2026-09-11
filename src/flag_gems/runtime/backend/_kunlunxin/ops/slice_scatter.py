@@ -77,6 +77,7 @@ def slice_scatter_kernel(
     step,
     src_dim_size,
     BLOCK_SIZE: tl.constexpr,
+    NEED_CLAMP: tl.constexpr,
 ):
     # General path (correct for arbitrary dim / start / partial slice / step).
     pid = tl.program_id(0)
@@ -101,7 +102,9 @@ def slice_scatter_kernel(
     src_idx = (
         pre_idx * src_dim_size * dim_prod_post + src_dim_idx * dim_prod_post + post_idx
     )
-    src_data = tl.load(src_ptr + src_idx, mask=mask & slice_mask)
+    if NEED_CLAMP:
+        src_idx = tl.where(slice_mask, src_idx, 0)
+    src_data = tl.load(src_ptr + src_idx, mask=mask & slice_mask, other=0.0)
     result = tl.where(slice_mask, src_data, inp_data)
     tl.store(out_ptr + idx, result, mask=mask)
 
@@ -112,6 +115,26 @@ def _block_for(numel):
     if numel <= (1 << 18):
         return 8192, 8
     return 16384, 8
+
+
+def _needs_clamp(total_elements, dim_size, dim_prod_post, start, step, src_dim_size):
+    """Exact O(1) bounds check on the src index `slice_scatter_kernel` computes.
+
+    `src_idx` is monotonic in each of pre_idx / dim_idx / post_idx, so its
+    extremes over the whole launch domain are reached at the corners. If both
+    stay inside `src`, masked-out lanes can never form an illegal address and
+    the in-kernel clamp is dead weight -> compile it out.
+    """
+    outer = total_elements // (dim_size * dim_prod_post)
+    n_src = outer * src_dim_size * dim_prod_post
+    # floor division, matching the kernel's `//` on negative values
+    lo = ((0 - start) // step) * dim_prod_post
+    hi = (
+        (outer - 1) * src_dim_size * dim_prod_post
+        + ((dim_size - 1 - start) // step) * dim_prod_post
+        + (dim_prod_post - 1)
+    )
+    return lo < 0 or hi >= n_src
 
 
 def slice_scatter(inp, src, dim=0, start=None, end=None, step=1):
@@ -184,6 +207,9 @@ def slice_scatter(inp, src, dim=0, start=None, end=None, step=1):
         step,
         src_dim_size,
         BLOCK_SIZE=block_size,
+        NEED_CLAMP=_needs_clamp(
+            total_elements, dim_size, dim_prod_post, start, step, src_dim_size
+        ),
         num_warps=num_warps,
     )
     return out

@@ -20,6 +20,23 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
+@pytest.mark.special_erf
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_special_erf(shape, dtype, caplog):
+    x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_x = utils.to_reference(x)
+    if dtype in (torch.float16, torch.bfloat16):
+        ref_out = torch.ops.aten.special_erf(ref_x.float()).to(dtype)
+    else:
+        ref_out = torch.ops.aten.special_erf(ref_x)
+    with caplog.at_level("DEBUG", logger="flag_gems.ops.special_erf"):
+        with flag_gems.use_gems():
+            act_out = torch.ops.aten.special_erf(x)
+    assert "GEMS SPECIAL_ERF" in caplog.text
+    utils.gems_assert_close(act_out, ref_out, dtype)
+
+
 @pytest.mark.erf
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)

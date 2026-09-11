@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
 import math
 
 import torch
@@ -21,6 +22,8 @@ import triton.language as tl
 from flag_gems.utils import tl_extra_shim
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
+
+logger = logging.getLogger(__name__)
 
 atan2 = tl_extra_shim.atan2
 
@@ -48,6 +51,7 @@ def angle_float_and_int(real):
 
 
 def angle(input_tensor: torch.Tensor) -> torch.Tensor:
+    logger.debug("GEMS_KUNLUNXIN ANGLE")
     if input_tensor.dtype == torch.complex32 or input_tensor.dtype == torch.complex64:
         real = input_tensor.real
         imag = input_tensor.imag

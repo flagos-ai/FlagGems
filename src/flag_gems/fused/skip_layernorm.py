@@ -73,6 +73,67 @@ def skip_layer_norm_kernel(
     tl.store(Y + cols * y_stride_c, y, mask=mask)
 
 
+@libentry()
+@triton.jit(do_not_specialize=["eps"])
+def skip_layer_norm_loop_kernel(
+    Y,  # pointer to the output
+    X,  # pointer to the input
+    R,  # pointer to the residual
+    W,  # pointer to the weights
+    B,  # pointer to the biases
+    N,  # number of columns in X
+    eps,  # epsilon to avoid division by zero
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = ext.program_id(0)
+    row_start = pid * N
+
+    # Pass 1: add residual and compute mean (read from X and R directly)
+    mean_acc = tl.zeros((BLOCK_SIZE,), dtype=tl.float32)
+    num_steps = tl.cdiv(N, BLOCK_SIZE)
+
+    for step in range(0, num_steps):
+        start_n = step * BLOCK_SIZE
+        cols = start_n + tl.arange(0, BLOCK_SIZE)
+        mask = cols < N
+        x = tl.load(X + row_start + cols, mask=mask, other=0.0).to(tl.float32)
+        r = tl.load(R + row_start + cols, mask=mask, other=0.0).to(tl.float32)
+        x = x + r
+        mean_acc += x
+
+    mean = tl.sum(mean_acc, axis=0) / N
+
+    # Pass 2: compute variance (re-read from X and R to avoid fp16 truncation)
+    var_acc = tl.zeros((BLOCK_SIZE,), dtype=tl.float32)
+    for step in range(0, num_steps):
+        start_n = step * BLOCK_SIZE
+        cols = start_n + tl.arange(0, BLOCK_SIZE)
+        mask = cols < N
+        x = tl.load(X + row_start + cols, mask=mask, other=0.0).to(tl.float32)
+        r = tl.load(R + row_start + cols, mask=mask, other=0.0).to(tl.float32)
+        x = x + r
+        diff = tl.where(mask, x - mean, 0.0)
+        var_acc += diff * diff
+
+    var = tl.sum(var_acc, axis=0) / N
+    rstd = 1 / tl.sqrt(var + eps)
+
+    # Pass 3: normalize (re-read from X and R to avoid fp16 truncation)
+    for step in range(0, num_steps):
+        start_n = step * BLOCK_SIZE
+        cols = start_n + tl.arange(0, BLOCK_SIZE)
+        mask = cols < N
+        x = tl.load(X + row_start + cols, mask=mask, other=0.0).to(tl.float32)
+        r = tl.load(R + row_start + cols, mask=mask, other=0.0).to(tl.float32)
+        x = x + r
+        w = tl.load(W + cols, mask=mask, other=0.0).to(tl.float32)
+        b = tl.load(B + cols, mask=mask, other=0.0).to(tl.float32)
+        x_hat = (x - mean) * rstd
+        y = w * x_hat + b
+        y = y.to(Y.dtype.element_ty)
+        tl.store(Y + row_start + cols, y, mask=mask)
+
+
 class SkipLayerNorm(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, residual, normalized_shape, weight, bias, eps=1e-5):
@@ -81,7 +142,6 @@ class SkipLayerNorm(torch.autograd.Function):
         M = math.prod(x.shape[:dim])
         N = math.prod(normalized_shape)
 
-        BLOCK_SIZE = triton.next_power_of_2(N)
         x = x.contiguous()
         residual = residual.contiguous()
         weight = weight.contiguous()
@@ -89,9 +149,16 @@ class SkipLayerNorm(torch.autograd.Function):
         y = torch.empty_like(x)
 
         with torch_device_fn.device(x.device):
-            skip_layer_norm_kernel[M,](
-                y, x, residual, weight, bias, N, 1, N, 1, N, 1, N, eps, BLOCK_SIZE
-            )
+            if N <= 4096:
+                BLOCK_SIZE = triton.next_power_of_2(N)
+                skip_layer_norm_kernel[M,](
+                    y, x, residual, weight, bias, N, 1, N, 1, N, 1, N, eps, BLOCK_SIZE
+                )
+            else:
+                BLOCK_SIZE = 1024
+                skip_layer_norm_loop_kernel[M,](
+                    y, x, residual, weight, bias, N, eps, BLOCK_SIZE
+                )
         return y
 
 

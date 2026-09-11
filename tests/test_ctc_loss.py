@@ -225,14 +225,13 @@ def _call_ctc_loss(
             **kwargs,
         )
     if path == "registered":
-        with flag_gems.use_gems(include=["ctc_loss"]):
-            return F.ctc_loss(
-                log_probs,
-                targets,
-                input_lengths,
-                target_lengths,
-                **kwargs,
-            )
+        return flag_gems.ctc_loss(
+            log_probs,
+            targets,
+            input_lengths,
+            target_lengths,
+            **kwargs,
+        )
     raise ValueError(f"unknown CTC call path: {path}")
 
 
@@ -371,14 +370,13 @@ def test_ctc_loss_registered_intlist_forward():
         target_lengths_list,
         reduction="sum",
     )
-    with flag_gems.use_gems(include=["ctc_loss"]):
-        res_out = F.ctc_loss(
-            log_probs,
-            targets,
-            input_lengths,
-            target_lengths_list,
-            reduction="sum",
-        )
+    res_out = flag_gems.ctc_loss(
+        log_probs,
+        targets,
+        input_lengths,
+        target_lengths_list,
+        reduction="sum",
+    )
 
     utils.gems_assert_close(res_out, ref_out, torch.float32, reduce_dim=t_steps)
 
@@ -403,14 +401,13 @@ def test_ctc_loss_registered_intlist_backward():
         target_lengths_list,
         reduction="mean",
     )
-    with flag_gems.use_gems(include=["ctc_loss"]):
-        res_out = F.ctc_loss(
-            log_probs,
-            targets,
-            input_lengths,
-            target_lengths_list,
-            reduction="mean",
-        )
+    res_out = flag_gems.ctc_loss(
+        log_probs,
+        targets,
+        input_lengths,
+        target_lengths_list,
+        reduction="mean",
+    )
 
     out_grad = torch.ones_like(res_out)
     (ref_grad,) = torch.autograd.grad(
@@ -441,14 +438,13 @@ def test_ctc_loss_registered_tensor_backward():
         utils.to_reference(target_lengths),
         reduction="mean",
     )
-    with flag_gems.use_gems(include=["ctc_loss"]):
-        res_out = F.ctc_loss(
-            log_probs,
-            targets,
-            input_lengths,
-            target_lengths,
-            reduction="mean",
-        )
+    res_out = flag_gems.ctc_loss(
+        log_probs,
+        targets,
+        input_lengths,
+        target_lengths,
+        reduction="mean",
+    )
 
     out_grad = torch.ones_like(res_out)
     (ref_grad,) = torch.autograd.grad(
@@ -858,6 +854,8 @@ def test_ctc_loss_float_lengths_raise(path, length_name):
 @pytest.mark.parametrize("path", ["direct", "registered"])
 @pytest.mark.parametrize("target_layout", TARGET_LAYOUTS)
 def test_ctc_loss_float_targets_match_pytorch(path, target_layout):
+    if flag_gems.vendor_name == "cambricon" and path == "registered":
+        pytest.skip("Issue #5253: Not supported")
     utils.init_seed(505)
     t_steps, batch, classes, max_target = (8, 2, 6, 3)
     log_probs = _make_log_probs((t_steps, batch, classes), torch.float32).detach()

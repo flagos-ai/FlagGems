@@ -49,3 +49,27 @@ def test_fused_rms_norm():
     )
     bench.set_gems(flag_gems._fused_rms_norm)
     bench.run()
+
+
+@pytest.mark.fused_rms_norm_backward
+def test_fused_rms_norm_backward():
+    """Benchmark for aten._fused_rms_norm_backward which returns (dx, dw)."""
+
+    def fused_rms_norm_backward_input_fn(shape, dtype, device):
+        M, N = shape
+        normalized_shape = [N]
+        eps = 1e-5
+        inp = torch.randn(shape, dtype=dtype, device=device)
+        grad = torch.randn_like(inp)
+        weight = torch.randn(N, dtype=dtype, device=device)
+        rstd = torch.rsqrt(inp.to(torch.float32).pow(2).mean(dim=-1) + eps)
+        yield grad, inp, normalized_shape, rstd, weight, [True, True]
+
+    bench = base.GenericBenchmark2DOnly(
+        input_fn=fused_rms_norm_backward_input_fn,
+        op_name="fused_rms_norm_backward",
+        torch_op=torch.ops.aten._fused_rms_norm_backward,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.set_gems(flag_gems.ops._fused_rms_norm_backward)
+    bench.run()
