@@ -24,6 +24,14 @@ if(FLAGGEMS_BACKEND STREQUAL "GCU")
     link_libraries(${Python_LIBRARIES} pybind11::embed)
 endif()
 
+# MLU backend: link pybind11::embed so test_utils.h can auto-init torch_mlu
+# (the PrivateUse1 device/allocator is only registered from Python), and link
+# the MLU runtime directly since backend_utils.h calls torch_mlu:: entry points
+# from the test binaries themselves.
+if(FLAGGEMS_BACKEND STREQUAL "MLU")
+    link_libraries(${Python_LIBRARIES} pybind11::embed ${MLU_LIBRARIES})
+endif()
+
 if(FLAGGEMS_BUILD_POINTWISE_DYNAMIC_CPP)
   add_executable(test_triton_add test_triton_add.cpp)
   target_link_libraries(test_triton_add

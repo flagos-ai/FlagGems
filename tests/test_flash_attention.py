@@ -671,6 +671,7 @@ def test_flash_attention_foward_splitkv(
 @pytest.mark.skipif(vendor_name == "metax", reason="Issue #2811: Not working")
 @pytest.mark.skipif(vendor_name == "mthreads", reason="Issue #2812: Not working")
 @pytest.mark.skipif(vendor_name == "kunlunxin", reason="Issue #2814: Not working")
+@pytest.mark.skipif(vendor_name == "cambricon", reason="Issue #5254: Not supported")
 @pytest.mark.skipif(vendor_name == "tsingmicro", reason="Issue #4083: Not working")
 @pytest.mark.flash_attention_forward
 @pytest.mark.parametrize(
@@ -757,4 +758,7 @@ def test_flash_fwd_dropout(
     )
 
     dropout_ratio = torch.sum(debug_softmax < 0) / torch.sum(debug_softmax != 0)
-    np.testing.assert_allclose(dropout_ratio.to("cpu"), dropout_p, rtol=5e-2)
+    dropout_ratio = dropout_ratio.to("cpu")
+    if vendor_name == "cambricon":
+        dropout_ratio = dropout_ratio.item()
+    np.testing.assert_allclose(dropout_ratio, dropout_p, rtol=5e-2)

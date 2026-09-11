@@ -292,16 +292,17 @@ TORCH_LIBRARY(flag_gems, m) {
 
 // Define dispatch key based on backend
 // CUDA, IX and MACA use CUDA dispatch key (IX/MACA are CUDA-compatible)
-// NPU, MUSA and GCU use PrivateUse1 dispatch key
+// NPU, MUSA, GCU and MLU use PrivateUse1 dispatch key
 #if defined(FLAGGEMS_USE_CUDA) || defined(FLAGGEMS_USE_IX) || defined(FLAGGEMS_USE_HCU) || \
     defined(FLAGGEMS_USE_MACA)
 #define FLAGGEMS_DISPATCH_KEY CUDA
-#elif defined(FLAGGEMS_USE_NPU) || defined(FLAGGEMS_USE_MUSA) || defined(FLAGGEMS_USE_GCU)
+#elif defined(FLAGGEMS_USE_NPU) || defined(FLAGGEMS_USE_MUSA) || defined(FLAGGEMS_USE_GCU) || \
+    defined(FLAGGEMS_USE_MLU)
 #define FLAGGEMS_DISPATCH_KEY PrivateUse1
 #else
 #error \
     "No backend defined. Define one of: FLAGGEMS_USE_CUDA, FLAGGEMS_USE_IX, FLAGGEMS_USE_NPU, FLAGGEMS_USE_MUSA, "
-"FLAGGEMS_USE_GCU, FLAGGEMS_USE_HCU, FLAGGEMS_USE_MACA"
+"FLAGGEMS_USE_GCU, FLAGGEMS_USE_HCU, FLAGGEMS_USE_MACA, FLAGGEMS_USE_MLU"
 #endif
 
 TORCH_LIBRARY_IMPL(flag_gems, FLAGGEMS_DISPATCH_KEY, m) {
@@ -382,4 +383,32 @@ TORCH_LIBRARY_IMPL(flag_gems, FLAGGEMS_DISPATCH_KEY, m) {
   m.impl("to_copy", TORCH_FN(to_copy));
   m.impl("copy_", TORCH_FN(copy_));
 }
+// zeros() is a factory function: its schema has no Tensor argument, so the
+// dispatcher cannot derive a backend key from the call and the kernel
+// registered above is never reached from torch.ops.flag_gems.zeros(...).
+// PyTorch handles aten factories with a BackendSelect kernel that computes the
+// key from (dtype, layout, device) and redispatches -- see the BackendSelect
+// comment in c10/core/DispatchKey.h. Do the same here.
+namespace {
+  at::Tensor zeros_backend_select(at::IntArrayRef size,
+                                  c10::optional<at::ScalarType> dtype,
+                                  c10::optional<at::Layout> layout,
+                                  c10::optional<at::Device> device,
+                                  c10::optional<bool> pin_memory) {
+    static auto op = c10::Dispatcher::singleton()
+                         .findSchemaOrThrow("flag_gems::zeros", "")
+                         .typed<at::Tensor(at::IntArrayRef,
+                                           c10::optional<at::ScalarType>,
+                                           c10::optional<at::Layout>,
+                                           c10::optional<at::Device>,
+                                           c10::optional<bool>)>();
+    c10::DispatchKeySet ks(c10::computeDispatchKey(dtype, layout, device));
+    return op.redispatch(ks, size, dtype, layout, device, pin_memory);
+  }
+}  // namespace
+
+TORCH_LIBRARY_IMPL(flag_gems, BackendSelect, m) {
+  m.impl("zeros", TORCH_FN(zeros_backend_select));
+}
+
 }  // namespace flag_gems

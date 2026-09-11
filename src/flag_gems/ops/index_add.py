@@ -247,7 +247,15 @@ def index_add(inp, dim, index, src, alpha=1):
         ((inp.size(i) == src.size(i)) or i == dim) for i in range(0, inp.ndim)
     ), "src.size(d) == self.size(d) for all dimensions d != dim"
 
-    out = inp.clone()
+    # MetaX workaround: tl.atomic_add does not support bf16 in MLIR backend.
+    # Cast to float32, perform the operation, and cast back.
+    orig_dtype = inp.dtype
+    needs_cast = orig_dtype == torch.bfloat16
+    if needs_cast:
+        out = inp.clone().to(torch.float32)
+        src = src.to(torch.float32)
+    else:
+        out = inp.clone()
 
     dim %= inp.ndim
     inp_stride_dim = inp.stride(dim)
@@ -269,6 +277,8 @@ def index_add(inp, dim, index, src, alpha=1):
         inp.numel(),
         alpha,
     )
+    if needs_cast:
+        return out.to(orig_dtype)
     return out
 
 
@@ -288,6 +298,16 @@ def index_add_(inp, dim, index, src, alpha=1):
         ((inp.size(i) == src.size(i)) or i == dim) for i in range(0, inp.ndim)
     ), "src.size(d) == self.size(d) for all dimensions d != dim"
 
+    # MetaX workaround: tl.atomic_add does not support bf16 in MLIR backend.
+    # Cast to float32, perform the operation, and cast back in-place.
+    orig_dtype = inp.dtype
+    needs_cast = orig_dtype == torch.bfloat16
+    if needs_cast:
+        out = inp.to(torch.float32)
+        src = src.to(torch.float32)
+    else:
+        out = inp
+
     dim %= inp.ndim
     inp_stride_dim = inp.stride(dim)
     src_shape_dim = src.size(dim)
@@ -296,7 +316,7 @@ def index_add_(inp, dim, index, src, alpha=1):
     N = src.numel()
 
     _index_add_func(
-        inp,
+        out,
         index,
         src,
         dim,
@@ -308,4 +328,6 @@ def index_add_(inp, dim, index, src, alpha=1):
         inp.numel(),
         alpha,
     )
+    if needs_cast:
+        inp.copy_(out.to(orig_dtype))
     return inp

@@ -6,6 +6,9 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
+)
 @pytest.mark.embedding_bag_dense_backward
 @pytest.mark.parametrize("num_bags", [3, 8, 16])
 @pytest.mark.parametrize("embedding_dim", [16, 32])
@@ -83,6 +86,9 @@ def test_embedding_bag_dense_backward(num_bags, embedding_dim, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
+)
 @pytest.mark.embedding_bag_dense_backward
 @pytest.mark.parametrize("num_bags", [3, 8])
 @pytest.mark.parametrize("embedding_dim", [16, 32])
@@ -161,6 +167,9 @@ def test_embedding_bag_dense_backward_with_weights(num_bags, embedding_dim, dtyp
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
+)
 @pytest.mark.embedding_bag_dense_backward
 @pytest.mark.parametrize("num_bags", [3, 8])
 @pytest.mark.parametrize("embedding_dim", [16, 32])

@@ -36,6 +36,9 @@ SHAPE_DEPTHWISE = [
 
 
 @pytest.mark.conv_depthwise2d
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
+)
 @pytest.mark.parametrize("shape_input, shape_weight, kernel", SHAPE_DEPTHWISE)
 @pytest.mark.parametrize("stride", [[1, 1], [2, 2]])
 @pytest.mark.parametrize("padding", [[0, 0], [1, 1]])

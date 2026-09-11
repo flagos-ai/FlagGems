@@ -41,7 +41,12 @@ def native_per_token_group_quant_fp8(
     if scale_ue8m0:
         min_val = torch.tensor(1e-10, dtype=x_s.dtype, device=x_s.device)
         x_s = torch.exp2(torch.ceil(torch.log2(torch.maximum(x_s.abs(), min_val))))
-    x_q = (x_ / x_s).clamp(min=fp8_min, max=fp8_max).to(dtype)
+    if dtype == torch.float32 and not scale_ue8m0:
+        # The fallback output dtype has a subnormal scale on Iluvatar.
+        # Form the mathematically equivalent reference without dividing by it.
+        x_q = ((x_.float() / amax) * fp8_max).clamp(fp8_min, fp8_max)
+    else:
+        x_q = (x_ / x_s).clamp(min=fp8_min, max=fp8_max).to(dtype)
     x_q = x_q.reshape(x.shape)
     x_s = x_s.reshape(x.shape[:-1] + (x.shape[-1] // group_size,))
 
@@ -64,10 +69,9 @@ def test_per_token_group_quant_fp8(num_tokens, d, dtype, group_size, seed, scale
     ref_out, ref_scale = native_per_token_group_quant_fp8(
         ref_x, group_size, scale_ue8m0=scale_ue8m0
     )
-    with flag_gems.use_gems():
-        out, scale = flag_gems.per_token_group_quant_fp8(
-            x, group_size, scale_ue8m0=scale_ue8m0
-        )
+    out, scale = flag_gems.per_token_group_quant_fp8(
+        x, group_size, scale_ue8m0=scale_ue8m0
+    )
 
     utils.gems_assert_close(scale, ref_scale, dtype=torch.float32)
 

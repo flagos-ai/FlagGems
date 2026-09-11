@@ -51,7 +51,6 @@ def limit_grid(grid_0, grid_1):
     return min(grid_0, grid_0_ub), min(grid_1, grid_1_ub)
 
 
-@libentry()
 @triton.autotune(
     configs=[
         triton.Config({"BLOCK_H": 16, "BLOCK_W": 16}, num_stages=4, num_warps=4),
@@ -66,6 +65,7 @@ def limit_grid(grid_0, grid_1):
     ],
     key=["out_h", "out_w", "kernel_h", "kernel_w", "stride_h", "stride_w"],
 )
+@libentry()
 @triton.jit
 def avg_pool2d_forward_kernel(
     input_ptr,
@@ -170,7 +170,6 @@ def avg_pool2d_forward_kernel(
         pid_nc += grid_0
 
 
-@libentry()
 @triton.autotune(
     configs=[
         triton.Config({"BLOCK_H": 16, "BLOCK_W": 16}, num_stages=4, num_warps=4),
@@ -182,6 +181,7 @@ def avg_pool2d_forward_kernel(
     ],
     key=["in_h", "in_w", "kernel_h", "kernel_w", "stride_h", "stride_w"],
 )
+@libentry()
 @triton.jit
 def avg_pool2d_backward_kernel(
     grad_output_ptr,
