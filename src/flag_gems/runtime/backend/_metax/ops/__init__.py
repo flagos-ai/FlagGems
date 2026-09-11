@@ -17,6 +17,7 @@ from .cholesky_inverse import cholesky_inverse
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
 from .conv_depthwise2d import _conv_depthwise2d
 from .conv_transpose1d import conv_transpose1d, conv_transpose1d_output_size
+from .cudnn_convolution import cudnn_convolution
 from .erfinv import erfinv
 from .exponential_ import exponential_
 from .full import full
@@ -142,6 +143,7 @@ __all__ = [
     "cholesky_solve_out",
     "conv_transpose1d",
     "conv_transpose1d_output_size",
+    "cudnn_convolution",
     "erfinv",
     "exponential_",
     "full",
