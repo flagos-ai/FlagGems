@@ -149,8 +149,8 @@ from .deg2rad import deg2rad, deg2rad_, deg2rad_out
 from .diag import diag
 from .diag_embed import diag_embed
 from .diagonal import diagonal_backward
-from .diff import diff
 from .diagonal_copy import diagonal_copy
+from .diff import diff
 from .digamma import digamma
 from .digamma_ import digamma_
 from .div import (
@@ -696,8 +696,8 @@ __all__ = [
     "diag",
     "diag_embed",
     "diagonal_backward",
-    "diff",
     "diagonal_copy",
+    "diff",
     "digamma",
     "digamma_",
     "div_mode",
