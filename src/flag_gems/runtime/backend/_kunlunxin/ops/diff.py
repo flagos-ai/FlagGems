@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 # `out[row, j:j+BLOCK] = in[row, j+1:...] - in[row, j:...]`. A fixed BLOCK=8192
 # beats an N-adaptive block on XPU (large tiles stay well utilized; smaller
 # tiles regress small-N cases). 1D inputs keep the fast flat-DMA path.
-BLOCK = 8192
+BLOCK = 1024
 
 
 @libentry()
@@ -113,6 +113,7 @@ def diff(input, n=1, dim=-1, prepend=None, append=None) -> torch.Tensor:
         scratch_b = torch.empty(scratch_b_shape, device=input.device, dtype=input.dtype)
 
     _launch(input, scratch_a, N, N - 1, N)
+    torch_device_fn.synchronize()
     src, src_stride = scratch_a, N - 1
 
     for k in range(1, n):
@@ -123,6 +124,7 @@ def diff(input, n=1, dim=-1, prepend=None, append=None) -> torch.Tensor:
         else:
             dst, dst_stride = scratch_a, N - 1
         _launch(src, dst, src_stride, dst_stride, N - k)
+        torch_device_fn.synchronize()
         src, src_stride = dst, dst_stride
 
     return torch.moveaxis(output, -1, dim)
