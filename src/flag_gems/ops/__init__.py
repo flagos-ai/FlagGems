@@ -195,6 +195,7 @@ from flag_gems.ops.addmv import addmv, addmv_out
 from flag_gems.ops.addmv_ import addmv_
 from flag_gems.ops.addr import addr
 from flag_gems.ops.addr_ import addr_
+from flag_gems.ops.and_scalar import and_scalar
 from flag_gems.ops.affine_grid_generator import affine_grid_generator
 from flag_gems.ops.alias import alias
 from flag_gems.ops.alias_copy import alias_copy, alias_copy_out
@@ -1169,6 +1170,7 @@ __all__ = [
     "addmv_out",
     "addr",
     "addr_",
+    "and_scalar",
     "affine_grid_generator",
     "alias",
     "alias_copy",
