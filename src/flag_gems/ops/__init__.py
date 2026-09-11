@@ -666,6 +666,7 @@ from flag_gems.ops.mode import mode
 from flag_gems.ops.mse_loss import mse_loss
 from flag_gems.ops.mse_loss_backward import mse_loss_backward
 from flag_gems.ops.mul import mul, mul_
+from flag_gems.ops.multilabel_margin_loss_forward import multilabel_margin_loss_forward
 from flag_gems.ops.multinomial import multinomial
 from flag_gems.ops.multiply import multiply
 from flag_gems.ops.multiply_ import multiply_
@@ -1715,6 +1716,7 @@ __all__ = [
     "mse_loss_backward",
     "mul",
     "mul_",
+    "multilabel_margin_loss_forward",
     "multinomial",
     "multiply",
     "multiply_",

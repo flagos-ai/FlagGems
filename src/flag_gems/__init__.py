@@ -905,6 +905,7 @@ _FULL_CONFIG = (
     ("mse_loss_backward", mse_loss_backward),
     ("mul.Tensor", mul),
     ("mul_.Tensor", mul_),
+    ("multilabel_margin_loss_forward", multilabel_margin_loss_forward),
     ("multinomial", multinomial),
     ("multiply", multiply),
     ("multiply.Scalar", multiply),
