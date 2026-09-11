@@ -26,6 +26,19 @@ random.seed(time.time() // 100)
 
 device = flag_gems.device
 
+UNIQUE_DIM_FLOAT_DTYPES = [
+    pytest.param(
+        dtype,
+        marks=pytest.mark.skipif(
+            flag_gems.vendor_name == "mthreads"
+            and dtype == torch.bfloat16
+            and not utils.TO_CPU,
+            reason="native MUSA unique_dim does not support bfloat16 reference",
+        ),
+    )
+    for dtype in utils.FLOAT_DTYPES
+]
+
 
 # Shapes that exercise 2D / 3D / higher-rank paths together with dim choices,
 # including negative dims and a "no other dim" 1D layout.
@@ -100,44 +113,32 @@ def test_unique_dim_int(shape, dim, dtype, pattern, return_inverse, return_count
     inp = _make_input(shape, dim, dtype, pattern)
     ref_inp = utils.to_reference(inp, False)
 
-    with flag_gems.use_gems():
-        res = torch.unique(
-            inp,
-            sorted=True,
-            return_inverse=return_inverse,
-            return_counts=return_counts,
-            dim=dim,
-        )
-    ref = torch.unique(
-        ref_inp,
+    res_out, res_inv, res_counts = flag_gems.unique_dim(
+        inp,
+        dim=dim,
         sorted=True,
         return_inverse=return_inverse,
         return_counts=return_counts,
-        dim=dim,
+    )
+    ref_out, ref_inv, ref_counts = torch.ops.aten.unique_dim.default(
+        ref_inp,
+        dim,
+        True,
+        return_inverse,
+        return_counts,
     )
 
-    if not (return_inverse or return_counts):
-        res_out, ref_out = res, ref
-        utils.gems_assert_equal(res_out, ref_out)
-        return
-
-    if return_inverse and return_counts:
-        res_out, res_inv, res_counts = res
-        ref_out, ref_inv, ref_counts = ref
-    elif return_inverse:
-        res_out, res_inv = res
-        ref_out, ref_inv = ref
-        res_counts = ref_counts = None
-    else:
-        res_out, res_counts = res
-        ref_out, ref_counts = ref
-        res_inv = ref_inv = None
-
     utils.gems_assert_equal(res_out, ref_out)
-    if res_inv is not None:
+
+    if return_inverse:
         utils.gems_assert_equal(res_inv, ref_inv)
-    if res_counts is not None:
+    else:
+        assert res_inv.numel() == 0
+
+    if return_counts:
         utils.gems_assert_equal(res_counts, ref_counts)
+    else:
+        assert res_counts.numel() == 0
 
 
 @pytest.mark.unique_dim
@@ -150,7 +151,7 @@ def test_unique_dim_int(shape, dim, dtype, pattern, return_inverse, return_count
         ((4, 8, 6), -1),
     ],
 )
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", UNIQUE_DIM_FLOAT_DTYPES)
 @pytest.mark.parametrize("return_inverse", [True])
 @pytest.mark.parametrize("return_counts", [True])
 def test_unique_dim_float(shape, dim, dtype, return_inverse, return_counts):
@@ -159,14 +160,13 @@ def test_unique_dim_float(shape, dim, dtype, return_inverse, return_counts):
     inp = _make_input(shape, dim, dtype, "few_unique")
     ref_inp = utils.to_reference(inp, False)
 
-    with flag_gems.use_gems():
-        res_out, res_inv, res_counts = torch.unique(
-            inp,
-            sorted=True,
-            return_inverse=return_inverse,
-            return_counts=return_counts,
-            dim=dim,
-        )
+    res_out, res_inv, res_counts = flag_gems.unique_dim(
+        inp,
+        dim=dim,
+        sorted=True,
+        return_inverse=return_inverse,
+        return_counts=return_counts,
+    )
     ref_out, ref_inv, ref_counts = torch.unique(
         ref_inp,
         sorted=True,
@@ -183,7 +183,7 @@ def test_unique_dim_float(shape, dim, dtype, return_inverse, return_counts):
 @pytest.mark.unique_dim
 @pytest.mark.parametrize("return_inverse", [False, True])
 @pytest.mark.parametrize("return_counts", [False, True])
-def test_unique_dim_aten_returns_three_tensors(return_inverse, return_counts):
+def test_unique_dim_returns_three_tensors(return_inverse, return_counts):
     inp = torch.tensor(
         [[2, 0], [1, 0], [2, 0], [0, 0]],
         dtype=torch.int32,
@@ -191,10 +191,13 @@ def test_unique_dim_aten_returns_three_tensors(return_inverse, return_counts):
     )
     ref_inp = utils.to_reference(inp, False)
 
-    with flag_gems.use_gems():
-        res_out, res_inv, res_counts = torch.ops.aten.unique_dim.default(
-            inp, 0, True, return_inverse, return_counts
-        )
+    res_out, res_inv, res_counts = flag_gems.unique_dim(
+        inp,
+        dim=0,
+        sorted=True,
+        return_inverse=return_inverse,
+        return_counts=return_counts,
+    )
     ref_out, ref_inv, ref_counts = torch.ops.aten.unique_dim.default(
         ref_inp, 0, True, return_inverse, return_counts
     )
