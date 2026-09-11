@@ -63,6 +63,7 @@ from .nonzero import nonzero
 from .nonzero_numpy import nonzero_numpy
 from .ones import ones
 from .ones_like import ones_like
+from .ormqr import ormqr
 from .outer import outer
 from .polar import polar
 from .prod import prod, prod_dim
@@ -193,6 +194,7 @@ __all__ = [
     "nonzero_numpy",
     "ones",
     "ones_like",
+    "ormqr",
     "outer",
     "polar",
     "prod",
