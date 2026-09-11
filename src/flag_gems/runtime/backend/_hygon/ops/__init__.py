@@ -109,6 +109,7 @@ from .randperm import randperm
 from .reflection_pad3d_backward import reflection_pad3d_backward
 from .renorm import renorm, renorm_
 from .repeat import repeat
+from .replication_pad2d import replication_pad2d
 from .replication_pad2d_backward import (
     replication_pad2d_backward,
     replication_pad2d_backward_grad_input,
@@ -245,6 +246,7 @@ __all__ = [
     "renorm",
     "renorm_",
     "repeat",
+    "replication_pad2d",
     "replication_pad2d_backward",
     "replication_pad2d_backward_grad_input",
     "replication_pad3d_backward",
