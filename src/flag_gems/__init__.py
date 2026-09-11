@@ -543,6 +543,7 @@ _FULL_CONFIG = (
     ("dot", dot),
     ("dsplit.array", dsplit),
     ("dsplit.int", dsplit),
+    ("einsum", einsum),
     ("elu", elu),
     ("elu_", elu_),
     ("elu_backward", elu_backward),
