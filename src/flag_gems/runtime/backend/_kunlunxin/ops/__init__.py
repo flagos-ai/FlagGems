@@ -12,6 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from flag_gems.ops.flash_attention_backward import (  # noqa: F401
+    efficient_attention_backward,
+    scaled_dot_product_efficient_attention_backward,
+)
+
 from ._amp_foreach_non_finite_check_and_unscale_ import (
     _amp_foreach_non_finite_check_and_unscale_,
 )
@@ -67,10 +72,6 @@ from .attention import (  # noqa: F401
     scaled_dot_product_attention,
     scaled_dot_product_attention_backward,
     scaled_dot_product_attention_forward,
-)
-from flag_gems.ops.flash_attention_backward import (  # noqa: F401
-    efficient_attention_backward,
-    scaled_dot_product_efficient_attention_backward,
 )
 from .avg_pool2d import avg_pool2d, avg_pool2d_backward
 from .baddbmm import baddbmm

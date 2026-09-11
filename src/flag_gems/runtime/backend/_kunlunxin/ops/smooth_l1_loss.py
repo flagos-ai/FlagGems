@@ -21,7 +21,7 @@ from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 
 from flag_gems.utils import pointwise_dynamic
 
-from .sum import sum 
+from .sum import sum
 
 logger = logging.getLogger(__name__)
 
