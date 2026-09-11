@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 import math
 
@@ -49,7 +63,7 @@ def arange_int_func(
 def arange_start(
     start, end, step=1, *, dtype=None, layout=None, device=None, pin_memory=None
 ):
-    logger.debug("GEMS ARANGE")
+    logger.debug("GEMS_ENFLAME ARANGE")
     if dtype is None:
         dtype = torch.int64
 
@@ -73,7 +87,7 @@ def arange_start(
 
     BLOCK_SIZE = 1024
     if size > 65536:
-        BLOCK_SIZE = 65536
+        BLOCK_SIZE = 16384
     elif size > 1024:
         BLOCK_SIZE = min(triton.next_power_of_2(size), 8192)
 

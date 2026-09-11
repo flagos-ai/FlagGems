@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import concurrent.futures
 import fcntl
 import gc
@@ -11,12 +25,15 @@ from typing import Generator
 
 import pytest
 import torch
+import triton
 import yaml
 
 import flag_gems
-from benchmark.base import Benchmark, GenericBenchmark2DOnly
-from benchmark.conftest import Config, emit_record_logger
-from benchmark.consts import (
+
+from . import consts
+from .base import Benchmark, GenericBenchmark2DOnly
+from .conftest import Config, emit_record_logger
+from .consts import (
     COMPLEX_DTYPES,
     DEFAULT_METRICS,
     FLOAT_DTYPES,
@@ -26,8 +43,6 @@ from benchmark.consts import (
     OperationAttribute,
     model_shapes,
 )
-
-from . import consts
 
 try:
     from vllm.model_executor.layers.quantization.utils.fp8_utils import (
@@ -70,6 +85,20 @@ DEEPGEMM_N_MULTIPLE = 64
 DEEPGEMM_K_MULTIPLE = 128
 
 
+MUL_DEFAULT_SHAPES = [
+    ("broadcast", (1, 1), (1, 2048)),
+    ("broadcast", (32, 1), (32, 2048)),
+    ("broadcast", (128, 1), (128, 2048)),
+    ("broadcast", (496, 1), (496, 2048)),
+    ("broadcast", (512, 1), (512, 2048)),
+    ("broadcast", (4108, 1), (4108, 2048)),
+    ("broadcast", (16384, 1), (16384, 2048)),
+    ("broadcast", (1048576, 1), (1, 32)),
+    ("scalar", (32,)),
+    ("scalar", (512, 2048)),
+]
+
+
 # ============================================================================
 # Blas benchmark classes (from test_blas_perf.py)
 # ============================================================================
@@ -87,6 +116,25 @@ class BlasBenchmark(Benchmark):
         self.input_fn = input_fn
 
     def get_input_iter(self, cur_dtype) -> Generator:
+        if self.op_name == "mm" and Config.mm_layout is not None:
+            layouts = {
+                "nn": (False,),
+                "nt": (True,),
+                "both": (False, True),
+            }[Config.mm_layout]
+            for b_column_major in layouts:
+                for b, m, n, k in self.shapes:
+                    yield from self.input_fn(
+                        b,
+                        m,
+                        n,
+                        k,
+                        cur_dtype,
+                        self.device,
+                        b_column_major,
+                    )
+            return
+
         for b, m, n, k in self.shapes:
             yield from self.input_fn(b, m, n, k, cur_dtype, self.device, False)
 
@@ -109,7 +157,7 @@ class BlasBenchmark(Benchmark):
         total_flops = 0
         # shape(m,k)(k,n)
         # total_flops mxnx2k
-        if self.op_name == "mm":
+        if self.op_name in ("mm", "mm_w8a8_fp8"):
             total_flops = args[0].shape[0] * args[0].shape[1] * args[1].shape[1] * 2
         # shape(m,n)(n,p)
         # total_flops mxpx(2n+1)
@@ -176,7 +224,7 @@ class GroupmmBenchmark(BlasBenchmark):
     def get_tflops(self, op, *args, **kwargs):
         groups, N, K = args[1].shape
         size_per_group = torch.diff(
-            args[2], prepend=torch.zeros(1, device="cuda", dtype=torch.int32)
+            args[2], prepend=torch.zeros(1, device=args[2].device, dtype=torch.int32)
         )
         total_flops = 0
         for i in range(groups):
@@ -339,8 +387,8 @@ def group_mm_input_fn(groups, N, K, cur_dtype, device):
         M_g = random.randint(1, 16384)
         N_g = N
         K_g = K
-        A_g = torch.rand([M_g, K_g], device="cuda", dtype=cur_dtype)
-        B_g = torch.rand([K_g, N_g], device="cuda", dtype=cur_dtype)
+        A_g = torch.rand([M_g, K_g], device=device, dtype=cur_dtype)
+        B_g = torch.rand([K_g, N_g], device=device, dtype=cur_dtype)
         group_A_list.append(A_g)
         group_B_list.append(B_g)
         M_list.append(M_g)
@@ -350,7 +398,7 @@ def group_mm_input_fn(groups, N, K, cur_dtype, device):
     mat_a = torch.cat([x for x in group_A_list], dim=0)
     mat_b = torch.stack([x for x in group_B_list], dim=0)
     offs = torch.tensor(
-        [sum(M_list[: i + 1]) for i in range(groups)], dtype=torch.int32, device="cuda"
+        [sum(M_list[: i + 1]) for i in range(groups)], dtype=torch.int32, device=device
     )
 
     yield mat_a, mat_b, offs
@@ -462,6 +510,54 @@ class W8A8BlockFP8MatmulBenchmark(Benchmark):
 # ============================================================================
 
 
+def _normalize_mul_dims(dims, field_name):
+    if not isinstance(dims, (list, tuple)):
+        raise ValueError(f"mul {field_name} must be a list or tuple of dimensions.")
+    if not dims:
+        raise ValueError(f"mul {field_name} must contain at least one dimension.")
+    if any(
+        isinstance(dim, bool) or not isinstance(dim, int) or dim <= 0 for dim in dims
+    ):
+        raise ValueError(f"mul {field_name} dimensions must be positive integers.")
+    return tuple(dims)
+
+
+def _normalize_mul_shape(shape):
+    if not isinstance(shape, (list, tuple)) or not shape:
+        raise ValueError("mul shape must be a non-empty list or tuple.")
+
+    kind = shape[0]
+    if kind == "broadcast":
+        if len(shape) != 3:
+            raise ValueError(
+                "mul broadcast shape expects ('broadcast', lhs_shape, rhs_shape)."
+            )
+        lhs_shape = _normalize_mul_dims(shape[1], "lhs_shape")
+        rhs_shape = _normalize_mul_dims(shape[2], "rhs_shape")
+        try:
+            torch.broadcast_shapes(lhs_shape, rhs_shape)
+        except RuntimeError as error:
+            raise ValueError(
+                f"mul shapes {lhs_shape} and {rhs_shape} cannot be broadcast."
+            ) from error
+        return kind, lhs_shape, rhs_shape
+
+    if kind in {"same", "scalar"}:
+        if len(shape) != 2:
+            raise ValueError(f"mul {kind} shape expects ('{kind}', tensor_shape).")
+        return kind, _normalize_mul_dims(shape[1], "tensor_shape")
+
+    raise ValueError("mul shape kind must be 'broadcast', 'same', or 'scalar'.")
+
+
+def _estimate_mul_shape_cost(shape):
+    normalized_shape = _normalize_mul_shape(shape)
+    kind, lhs_shape = normalized_shape[:2]
+    if kind == "broadcast":
+        return math.prod(torch.broadcast_shapes(lhs_shape, normalized_shape[2]))
+    return math.prod(lhs_shape)
+
+
 def _parallel_device_is_available():
     if hasattr(torch_device_object, "is_available"):
         return torch_device_object.is_available()
@@ -475,11 +571,26 @@ def _parallel_device_count():
 
 
 def _parallel_visible_devices_env():
+    if flag_gems.vendor_name == "metax":
+        return "MACA_VISIBLE_DEVICES"
     env_name_map = {
         "cuda": "CUDA_VISIBLE_DEVICES",
         "musa": "MUSA_VISIBLE_DEVICES",
     }
     return env_name_map.get(flag_gems.device)
+
+
+def _parallel_device_ids():
+    visible_devices_env = _parallel_visible_devices_env()
+    if visible_devices_env:
+        configured_devices = os.environ.get(visible_devices_env, "")
+        if configured_devices:
+            return [
+                device.strip()
+                for device in configured_devices.split(",")
+                if device.strip()
+            ]
+    return [str(device) for device in range(_parallel_device_count())]
 
 
 def _parallel_device_label():
@@ -573,6 +684,11 @@ class ParallelBenchmarkMixin:
                         metric.latency = self.get_latency(
                             self.torch_op, *args, **kwargs
                         )
+                elif self.op_name in ("mm", "mm_out"):
+                    with flag_gems.use_gems(include=[self.op_name]):
+                        metric.latency = self.get_latency(
+                            self.torch_op, *args, **kwargs
+                        )
                 else:
                     with flag_gems.use_gems(exclude=["zero_"]):
                         metric.latency = self.get_latency(
@@ -644,6 +760,9 @@ class ParallelBenchmarkMixin:
         fixed_overhead = self._get_tuning_fixed_overhead()
 
         def estimate_shape_cost(shape):
+            if self.op_name == "mul":
+                return _estimate_mul_shape_cost(shape) + fixed_overhead
+
             if self.op_name == "sparse_attention":
                 if len(shape) != 6:
                     return 1 + fixed_overhead
@@ -662,6 +781,7 @@ class ParallelBenchmarkMixin:
 
             if self.op_name in {
                 "mm",
+                "mm_w8a8_fp8",
                 "addmm",
                 "bmm",
                 "baddbmm",
@@ -682,6 +802,7 @@ class ParallelBenchmarkMixin:
 
                 if self.op_name in {
                     "mm",
+                    "mm_w8a8_fp8",
                     "bmm",
                     "w8a8_block_fp8_matmul",
                     "router_gemm",
@@ -784,6 +905,8 @@ class ParallelBenchmarkMixin:
         if Config.user_desired_metrics:
             for metric in Config.user_desired_metrics:
                 cmd.extend(["--metrics", metric])
+        if Config.mm_layout is not None:
+            cmd.extend(["--mm-layout", Config.mm_layout])
 
         env = os.environ.copy()
         visible_devices_env = _parallel_visible_devices_env()
@@ -792,6 +915,11 @@ class ParallelBenchmarkMixin:
                 f"--parallel is not supported on device type '{flag_gems.device}'."
             )
         env[visible_devices_env] = str(gpu_id)
+        if flag_gems.vendor_name == "metax":
+            # mcPytorch prefers MACA_VISIBLE_DEVICES while vLLM-MetaX and some
+            # helper processes use CUDA_VISIBLE_DEVICES. Keep both consistent.
+            env["MACA_VISIBLE_DEVICES"] = str(gpu_id)
+            env["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
         env[PARALLEL_WORKER_ENV] = "1"
         env[PARALLEL_RESULT_FILE_ENV] = tmp_result_path
 
@@ -821,7 +949,8 @@ class ParallelBenchmarkMixin:
             return self._run_inputs(self.get_input_iter(dtype))
         if not _parallel_device_is_available():
             pytest.skip(f"--parallel N requires {_parallel_device_label()}.")
-        available_gpus = _parallel_device_count()
+        device_ids = _parallel_device_ids()
+        available_gpus = min(_parallel_device_count(), len(device_ids))
         if available_gpus < required_gpus:
             pytest.skip(
                 "--parallel requires at least "
@@ -842,7 +971,7 @@ class ParallelBenchmarkMixin:
         merged_metrics = []
         future_to_chunk = {}
         with concurrent.futures.ThreadPoolExecutor(max_workers=len(shape_chunks)) as ex:
-            for gpu_id, shape_chunk in enumerate(shape_chunks):
+            for gpu_id, shape_chunk in zip(device_ids, shape_chunks):
                 future = ex.submit(
                     self._run_parallel_worker_subprocess,
                     node_id=node_id,
@@ -925,9 +1054,78 @@ class ParallelBenchmarkMixin:
 
 class ParallelBlasBenchmark(ParallelBenchmarkMixin, BlasBenchmark):
     def get_parallel_metric_group_size(self, shape):
+        if self.op_name == "mm" and Config.mm_layout is not None:
+            return 2 if Config.mm_layout == "both" else 1
         if Config.bench_level == BenchLevel.COMPREHENSIVE:
             return 2
         return 1
+
+
+_MM_W8A8_FP8_OUT_CACHE = {}
+_MM_W8A8_FP8_OUT_CACHE_MAX_ENTRIES = int(
+    os.environ.get("FLAGGEMS_BENCH_MM_W8A8_OUT_CACHE_MAX", "8")
+)
+
+
+def _mm_w8a8_fp8_output_dtype(a):
+    output_dtype = os.environ.get("FLAGGEMS_MM_W8A8_OUTPUT_DTYPE", "bf16").lower()
+    if output_dtype in ("bf16", "bfloat16"):
+        return torch.bfloat16
+    if output_dtype in ("fp8", "float8"):
+        fp8_e4m3 = getattr(torch, "float8_e4m3fn", None)
+        fp8_e5m2 = getattr(torch, "float8_e5m2", None)
+        if a.dtype in (fp8_e4m3, fp8_e5m2):
+            return a.dtype
+        if fp8_e4m3 is not None:
+            return fp8_e4m3
+    return torch.bfloat16
+
+
+def _mm_w8a8_fp8_out_cached(a, b):
+    out_dtype = _mm_w8a8_fp8_output_dtype(a)
+    device_index = a.device.index if a.device.index is not None else -1
+    key = (device_index, a.shape[0], b.shape[1], out_dtype)
+    out = _MM_W8A8_FP8_OUT_CACHE.get(key)
+    if out is None or out.device != a.device:
+        out = torch.empty((a.shape[0], b.shape[1]), device=a.device, dtype=out_dtype)
+        _MM_W8A8_FP8_OUT_CACHE[key] = out
+        while len(_MM_W8A8_FP8_OUT_CACHE) > _MM_W8A8_FP8_OUT_CACHE_MAX_ENTRIES:
+            _MM_W8A8_FP8_OUT_CACHE.pop(next(iter(_MM_W8A8_FP8_OUT_CACHE)))
+    else:
+        _MM_W8A8_FP8_OUT_CACHE.pop(key)
+        _MM_W8A8_FP8_OUT_CACHE[key] = out
+    return flag_gems.mm_w8a8_fp8_out(a, b, out=out)
+
+
+class ParallelMmW8A8Fp8Benchmark(ParallelBlasBenchmark):
+    SHAPE_CONFIG_KEYS = ("mm",)
+
+    def get_latency(self, op, *args, **kwargs):
+        if op is not self.torch_op:
+            # Populate prequantization, descriptor, output, and autotune caches
+            # before CUDA Graph capture so replay measures the FP8 GEMM only.
+            for _ in range(2):
+                op(*args, **kwargs)
+            torch.cuda.synchronize()
+        return triton.testing.do_bench_cudagraph(
+            lambda: op(*args, **kwargs),
+            rep=Config.repetition,
+            return_mode="median",
+        )
+
+    def set_shapes(self, shape_file_path=None):
+        super().set_shapes(shape_file_path)
+        if not shape_file_path or not os.path.isfile(shape_file_path):
+            return
+        with open(shape_file_path, "r", encoding="utf-8") as shape_file:
+            yaml_config = yaml.safe_load(shape_file) or {}
+        if "mm" not in yaml_config:
+            return
+        self.shapes = [
+            tuple(shape)
+            for shape in yaml_config["mm"].get("shapes", self.DEFAULT_SHAPES)
+        ]
+        self.shape_desc = yaml_config["mm"].get("shape_desc", self.shape_desc)
 
 
 class ParallelBaddbmmBenchmark(ParallelBenchmarkMixin, BaddbmmBenchmark):
@@ -951,6 +1149,56 @@ class ParallelVdotBenchmark(ParallelBenchmarkMixin, VdotBenchmark):
 
 class ParallelAddrBenchmark(ParallelBenchmarkMixin, AddrBenchmark):
     pass
+
+
+class ParallelMulBenchmark(ParallelBenchmarkMixin, Benchmark):
+    SHAPE_CONFIG_KEYS = ("mul",)
+    DEFAULT_METRICS = DEFAULT_METRICS[:] + ["tflops"]
+    DEFAULT_DTYPES = FLOAT_DTYPES
+    DEFAULT_SHAPES = MUL_DEFAULT_SHAPES
+    DEFAULT_SHAPE_DESC = "kind, lhs_shape, rhs_shape"
+    DEFAULT_SHAPE_FILES = os.path.join(os.path.dirname(__file__), "core_shapes.yaml")
+
+    def set_more_shapes(self):
+        return []
+
+    def set_shapes(self, shape_file_path=None):
+        shape_file_path = shape_file_path or self.DEFAULT_SHAPE_FILES
+        self.shapes = self.DEFAULT_SHAPES[:]
+        self.shape_desc = self.DEFAULT_SHAPE_DESC
+
+        if not os.path.isfile(shape_file_path):
+            raise FileNotFoundError(f"Shape file '{shape_file_path}' does not exist.")
+
+        with open(shape_file_path, "r", encoding="utf-8") as shape_file:
+            yaml_config = yaml.safe_load(shape_file) or {}
+
+        for shape_key in self.SHAPE_CONFIG_KEYS + (self.op_name,):
+            if shape_key in yaml_config:
+                self.shapes = yaml_config[shape_key].get("shapes", self.DEFAULT_SHAPES)
+                self.shape_desc = yaml_config[shape_key].get(
+                    "shape_desc", self.DEFAULT_SHAPE_DESC
+                )
+                break
+
+        self.shapes = [_normalize_mul_shape(shape) for shape in self.shapes]
+
+    def get_input_iter(self, cur_dtype):
+        for shape in self.shapes:
+            kind, lhs_shape = shape[:2]
+            lhs = torch.randn(lhs_shape, dtype=cur_dtype, device=self.device)
+            if kind == "broadcast":
+                rhs = torch.randn(shape[2], dtype=cur_dtype, device=self.device)
+            elif kind == "same":
+                rhs = torch.randn(lhs_shape, dtype=cur_dtype, device=self.device)
+            else:
+                rhs = 0.5
+            yield lhs, rhs
+
+    def get_tflops(self, op, *args, **kwargs):
+        return torch.broadcast_shapes(
+            getattr(args[0], "shape", ()), getattr(args[1], "shape", ())
+        ).numel()
 
 
 class ParallelRouterGemmBenchmark(ParallelBenchmarkMixin, RouterGemmBenchmark):
@@ -1310,6 +1558,20 @@ def test_blas_benchmark(op_name, torch_op, input_fn, bench_cls):
     bench.run()
 
 
+@pytest.mark.mm_w8a8_fp8
+def test_mm_w8a8_fp8():
+    if not hasattr(flag_gems, "mm_w8a8_fp8_out"):
+        pytest.skip("mm_w8a8_fp8 benchmark requires the Hopper W8A8 backend")
+    bench = ParallelMmW8A8Fp8Benchmark(
+        input_fn=mm_input_fn,
+        op_name="mm_w8a8_fp8",
+        torch_op=torch.Tensor.mm,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.set_gems(_mm_w8a8_fp8_out_cached)
+    bench.run()
+
+
 @pytest.mark.w8a8_block_fp8_matmul
 def test_perf_w8a8_block_fp8_matmul():
     if not VLLM_W8A8_BLOCK_FP8_AVAILABLE:
@@ -1359,6 +1621,17 @@ def test_perf_sparse_attention():
         torch_op=sparse_attention_mthreads_baseline,
     )
     bench.set_gems(flag_gems.sparse_attn_triton)
+    bench.run()
+
+
+@pytest.mark.mul
+def test_perf_mul():
+    bench = ParallelMulBenchmark(
+        op_name="mul",
+        torch_op=torch.mul,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.set_gems(flag_gems.mul)
     bench.run()
 
 

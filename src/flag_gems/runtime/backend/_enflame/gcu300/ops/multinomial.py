@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -51,7 +65,7 @@ def multinomial_with_replacement(
 
 
 def multinomial(prob, n_samples, with_replacement=False, *, gen=None):
-    logger.debug("GEMS MULTINOMIAL")
+    logger.debug("GEMS_ENFLAME MULTINOMIAL")
     assert prob.dtype in (torch.float16, torch.float32, torch.bfloat16, torch.float64)
     assert 0 < prob.dim() <= 2, "prob_dist must be 1 or 2 dim"
     n_categories = prob.size(-1)
