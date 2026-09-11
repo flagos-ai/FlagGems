@@ -17,6 +17,7 @@ from .conv_transpose1d import conv_transpose1d, conv_transpose1d_output_size
 from .exponential_ import exponential_
 from .full import full
 from .full_like import full_like
+from .gcd_ import gcd_
 from .greater_equal import greater_equal_
 from .groupnorm import group_norm
 from .gru import gru, gru_data
@@ -122,6 +123,7 @@ __all__ = [
     "exponential_",
     "full",
     "full_like",
+    "gcd_",
     "greater_equal_",
     "group_norm",
     "gru",
