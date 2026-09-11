@@ -19,6 +19,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.ops import amax, amin, mean_dim, prod_dim, sum_dim
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
@@ -530,26 +531,30 @@ def _segment_reduce_uniform_lengths(data, reduce, lengths, axis):
     # Large uniform segments (> _UNIFORM_KERNEL_MAX_SEGMENT_LENGTH): the
     # general _segment_reduce_forward_kernel iterates ~data_size_axis /
     # BLOCK_SIZE times per program, which is pathological for e.g.
-    # (1024**3,) (seg_len = 16M). Reshape and reduce with the torch
-    # elementwise/reduction ops instead; measured on XPU this is not slower
-    # than the general kernel for the shapes it serves.
+    # (1024**3,) (seg_len = 16M). Reshape and reduce with the gems
+    # dimension-wise reduce ops instead of torch native reductions; measured
+    # on XPU this is not slower than the general kernel for the shapes it
+    # serves.
     view_shape = (
         data.shape[:axis] + (segment_count, segment_length) + data.shape[axis + 1 :]
     )
     reshaped = data.reshape(view_shape)
     reduce_dim = axis + 1
 
-    if segment_length == 1:
-        return torch.squeeze(reshaped, dim=reduce_dim)
+    # Move the reduce dim to the last position: the gems dim-reduce kernels
+    # only compile on XPU for inner (K == 1) reduce, the non-inner variants
+    # of sum_dim/prod_dim hit triton XPU OutOfResources.
+    moved = reshaped.movedim(reduce_dim, -1)
+
     if reduce == "sum":
-        return torch.sum(reshaped, dim=reduce_dim)
+        return sum_dim(moved, dim=[-1])
     if reduce == "mean":
-        return torch.mean(reshaped, dim=reduce_dim)
+        return mean_dim(moved, dim=[-1])
     if reduce == "max":
-        return torch.amax(reshaped, dim=reduce_dim)
+        return amax(moved, dim=[-1])
     if reduce == "min":
-        return torch.amin(reshaped, dim=reduce_dim)
-    return torch.prod(reshaped, dim=reduce_dim)
+        return amin(moved, dim=[-1])
+    return prod_dim(moved, dim=-1)
 
 
 def _segment_reduce_uniform_sum_mean_backward(data, grad, reduce, lengths, axis):
