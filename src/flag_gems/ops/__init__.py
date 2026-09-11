@@ -144,6 +144,10 @@ from flag_gems.ops._sparse_semi_structured_mm import _sparse_semi_structured_mm
 from flag_gems.ops._thnn_differentiable_gru_cell_backward import (
     _thnn_differentiable_gru_cell_backward,
 )
+from flag_gems.ops._thnn_fused_gru_cell import (
+    _thnn_fused_gru_cell,
+    _thnn_fused_gru_cell_out,
+)
 from flag_gems.ops._thnn_fused_lstm_cell import _thnn_fused_lstm_cell
 from flag_gems.ops._thnn_fused_lstm_cell_backward_impl import (
     _thnn_fused_lstm_cell_backward_impl,
@@ -1114,6 +1118,8 @@ __all__ = [
     "_sparse_semi_structured_addmm",
     "_sparse_semi_structured_mm",
     "_thnn_differentiable_gru_cell_backward",
+    "_thnn_fused_gru_cell",
+    "_thnn_fused_gru_cell_out",
     "_thnn_fused_lstm_cell",
     "_thnn_fused_lstm_cell_backward_impl",
     "_unique2",
