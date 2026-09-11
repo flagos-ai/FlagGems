@@ -178,9 +178,9 @@ from .gt import gt, gt_scalar
 from .hadamard_transform import hadamard_transform
 from .hardsigmoid import hardsigmoid, hardsigmoid_out
 from .hstack import hstack
-from .im2col import im2col
 from .igammac import igammac, igammac_out
 from .igammac_ import igammac_
+from .im2col import im2col
 from .index import index
 from .index_add import index_add, index_add_
 from .index_put import index_put, index_put_
@@ -667,10 +667,10 @@ __all__ = [
     "hardsigmoid",
     "hardsigmoid_out",
     "hstack",
-    "im2col",
     "igammac",
     "igammac_",
     "igammac_out",
+    "im2col",
     "index",
     "index_add",
     "index_add_",
