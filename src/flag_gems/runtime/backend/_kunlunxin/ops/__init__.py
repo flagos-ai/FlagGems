@@ -26,7 +26,7 @@ from .add import add, add_
 from .addcdiv import addcdiv, addcdiv_, addcdiv_out
 from .addcmul import addcmul, addcmul_, addcmul_out
 from .addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out  # noqa: F401
-from .addmm_ import addmm, addmm_out
+from .addmm_ import addmm_
 from .addmv import addmv, addmv_out
 from .addr import addr
 from .alias_copy import alias_copy, alias_copy_out
