@@ -70,6 +70,15 @@ def _fallback_pow(x, exponent):
 
 
 @triton.jit
+def _fallback_asin(x):
+    # asin(x) == atan(x / sqrt(1 - x*x)); used when a backend's libdevice lacks a
+    # native asin (e.g. the sunrise tang fork). Borrowing the symbol is not enough
+    # there: it exists at the Python level but lowers to None, so the kernel fails
+    # to compile with "cannot convert None ... to tensor".
+    return tl.extra.libdevice.atan(x / tl.sqrt(1.0 - x * x))
+
+
+@triton.jit
 def _fallback_tanh(x):
     return 2.0 / (1.0 + tl.exp(-2.0 * x)) - 1.0
 
@@ -1265,6 +1274,7 @@ def _fallback_erfc(x):
 
 _FALLBACK_SYMBOLS = {
     "pow": _fallback_pow,
+    "asin": _fallback_asin,
     "tanh": _fallback_tanh,
     "erfc": _fallback_erfc,
     "erfinv": _fallback_erfinv,
@@ -1311,6 +1321,7 @@ tl_extra_shim = _patch_missing_symbols(
     tl_extra_shim,
     (
         "acos",
+        "asin",
         "atan",
         "j0",
         "j1",
