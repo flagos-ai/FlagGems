@@ -186,6 +186,11 @@ def main():
             if op_id.endswith("_"):
                 base_id = op_id[:-1]
                 has_marker = check_marker_in_file(test_file, base_id)
+            # For operators starting with underscore (e.g., _unique), also accept marker without leading underscore
+            # because pytest markers cannot start with underscore
+            elif op_id.startswith("_"):
+                marker_without_prefix = op_id[1:]
+                has_marker = check_marker_in_file(test_file, marker_without_prefix)
 
         if not has_marker:
             errors.append(
