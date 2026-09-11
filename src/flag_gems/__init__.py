@@ -696,6 +696,8 @@ _FULL_CONFIG = (
     ("heaviside", heaviside),
     ("heaviside_", heaviside_),
     ("histc", histc),
+    ("histogram.bin_ct", histogram_bin_ct),
+    ("histogram.bins_tensor", histogram_bins_tensor),
     ("hsplit.array", hsplit),
     ("hsplit.int", hsplit),
     ("hstack", hstack),
