@@ -15,8 +15,6 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base
 
 # GatherBlockQuantized Benchmark
@@ -47,16 +45,24 @@ class GatherBlockQuantizedBenchmark(base.Benchmark):
                 torch.rand(n_blocks, dtype=torch.float32, device=self.device) * 2 + 0.5
             )
 
-            # Reference implementation for torch op (since it doesn't exist)
-            # We'll use flag_gems implementation as the "torch" baseline
+            # Dequantize all values (no indices) using the composed aten baseline
             yield quantized_data, scales, None, block_size
+
+
+def _aten_gather_block_quantized(quantized_data, scales, indices, block_size):
+    """Reference composed from native aten ops (no native block-quantized
+    gather exists in PyTorch): expand per-block scales to element level,
+    then dequantize."""
+    scale_expanded = scales.repeat_interleave(block_size)
+    scale_expanded = scale_expanded[: quantized_data.numel()]
+    return quantized_data.float() * scale_expanded
 
 
 @pytest.mark.gather_block_quantized
 def test_gather_block_quantized():
     bench = GatherBlockQuantizedBenchmark(
         op_name="gather_block_quantized",
-        torch_op=flag_gems.ops.gather_block_quantized,
+        torch_op=_aten_gather_block_quantized,
         # gather_block_quantized consumes int8 data and float32 scales.
         dtypes=[torch.float32],
     )
