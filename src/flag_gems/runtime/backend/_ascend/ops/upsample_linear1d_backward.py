@@ -148,7 +148,6 @@ class _FeatureMask:
 
 class _DispatchPath:
     # Final launcher ids. The selector owns priority; the entrypoint only launches.
-    DOWNSAMPLE_VIEW_COPY = 1
     SCALE2_CONV = 2
     ALIGN_TRUE_SCALE2_CONV = 3
     DOT = 4
@@ -491,16 +490,15 @@ def upsample_linear1d_backward_high_scale_kernel(
         row_start += row_step
 
 
-# Purpose: closed-form align_corners=False exact 2x downsample or upsample backward.
-# Applies to: fallback exact scale 0.5/2.0 paths for all supported dtypes.
+# Purpose: closed-form align_corners=False exact 2x downsample backward.
+# Applies to: fallback exact scale 0.5 paths for all supported dtypes.
 @triton.jit
-def upsample_linear1d_backward_align_false_scale_kernel(
+def upsample_linear1d_backward_align_false_down2_kernel(
     grad_out_ptr,
     grad_in_ptr,
     rows,
     in_w,
     out_w,
-    SCALE_MODE: tl.constexpr,
     BLOCK_W: tl.constexpr,
     ROWS_PER_BLOCK: tl.constexpr,
 ):
@@ -514,41 +512,65 @@ def upsample_linear1d_backward_align_false_scale_kernel(
         mask = (row_offsets < rows) & width_mask
         go_base = grad_out_ptr + row_offsets * out_w
 
-        if SCALE_MODE == 0:
-            x_out = x_in >> 1
-            acc = tl.load(go_base + x_out, mask=mask & (x_out < out_w), other=0.0)
-            acc = acc.to(tl.float32) * 0.5
-        else:
-            x_out = x_in << 1
-            is_first = x_in == 0
-            is_last = x_in == (in_w - 1)
+        x_out = x_in >> 1
+        acc = tl.load(go_base + x_out, mask=mask & (x_out < out_w), other=0.0)
+        acc = acc.to(tl.float32) * 0.5
 
-            g_even = tl.load(
-                go_base + x_out, mask=mask & (x_out < out_w), other=0.0
-            ).to(tl.float32)
+        tl.store(grad_in_ptr + row_offsets * in_w + x_in, acc, mask=mask)
+        row_start += row_step
 
-            x_odd = x_out + 1
-            g_odd = tl.load(go_base + x_odd, mask=mask & (x_odd < out_w), other=0.0).to(
-                tl.float32
-            )
 
-            x_prev = x_out - 1
-            g_prev = tl.load(
-                go_base + tl.maximum(x_prev, 0),
-                mask=mask & (x_in > 0),
-                other=0.0,
-            ).to(tl.float32)
+# Purpose: closed-form align_corners=False exact 2x upsample backward.
+# Applies to: fallback exact scale 2.0 paths for all supported dtypes.
+@triton.jit
+def upsample_linear1d_backward_align_false_up2_kernel(
+    grad_out_ptr,
+    grad_in_ptr,
+    rows,
+    in_w,
+    out_w,
+    BLOCK_W: tl.constexpr,
+    ROWS_PER_BLOCK: tl.constexpr,
+):
+    row_start = ext.program_id(axis=1) * ROWS_PER_BLOCK
+    row_step = tl.num_programs(axis=1) * ROWS_PER_BLOCK
+    x_in = ext.program_id(axis=0) * BLOCK_W + tl.arange(0, BLOCK_W)[None, :]
+    width_mask = x_in < in_w
 
-            x_next_even = x_out + 2
-            g_next_even = tl.load(
-                go_base + x_next_even,
-                mask=mask & (x_next_even < out_w) & ~is_last,
-                other=0.0,
-            ).to(tl.float32)
+    while row_start < rows:
+        row_offsets = row_start + tl.arange(0, ROWS_PER_BLOCK)[:, None]
+        mask = (row_offsets < rows) & width_mask
+        go_base = grad_out_ptr + row_offsets * out_w
+        x_out = x_in << 1
+        is_first = x_in == 0
+        is_last = x_in == (in_w - 1)
 
-            acc = (g_even + g_odd) * 0.75 + (g_prev + g_next_even) * 0.25
-            acc += tl.where(is_first, g_even * 0.25, 0.0)
-            acc += tl.where(is_last, g_odd * 0.25, 0.0)
+        g_even = tl.load(go_base + x_out, mask=mask & (x_out < out_w), other=0.0).to(
+            tl.float32
+        )
+
+        x_odd = x_out + 1
+        g_odd = tl.load(go_base + x_odd, mask=mask & (x_odd < out_w), other=0.0).to(
+            tl.float32
+        )
+
+        x_prev = x_out - 1
+        g_prev = tl.load(
+            go_base + tl.maximum(x_prev, 0),
+            mask=mask & (x_in > 0),
+            other=0.0,
+        ).to(tl.float32)
+
+        x_next_even = x_out + 2
+        g_next_even = tl.load(
+            go_base + x_next_even,
+            mask=mask & (x_next_even < out_w) & ~is_last,
+            other=0.0,
+        ).to(tl.float32)
+
+        even_weight = 0.75 + is_first.to(tl.float32) * 0.25
+        odd_weight = 0.75 + is_last.to(tl.float32) * 0.25
+        acc = g_even * even_weight + g_odd * odd_weight + (g_prev + g_next_even) * 0.25
 
         tl.store(grad_in_ptr + row_offsets * in_w + x_in, acc, mask=mask)
         row_start += row_step
@@ -875,7 +897,7 @@ def _select_upsample_linear1d_backward_path(
             | _FeatureMask.DTYPE_FLOAT
         )
         if (feature_mask & required) == required:
-            return _DispatchPath.DOWNSAMPLE_VIEW_COPY
+            return _DispatchPath.ALIGN_FALSE_DOWN2
 
         if (
             (feature_mask & dot_required) == dot_required
@@ -987,15 +1009,6 @@ def _select_upsample_linear1d_backward_path(
         return _DispatchPath.HIGH_SCALE_WINDOW
 
     return _DispatchPath.GENERIC
-
-
-def _upsample_linear1d_backward_downsample_view_copy(grad_out_3d, n, c, in_w, out_w):
-    grad_in = torch.empty(
-        (n, c, in_w), device=grad_out_3d.device, dtype=grad_out_3d.dtype
-    )
-    half_grad = (grad_out_3d * 0.5).unsqueeze(-1).expand(n, c, out_w, 2)
-    grad_in.view(n, c, out_w, 2).copy_(half_grad)
-    return grad_in
 
 
 def _get_scale2_conv_weight(grad_out_3d, channels, in_w):
@@ -1258,15 +1271,7 @@ def upsample_linear1d_backward(
     )
 
     with _device_guard(grad_output):
-        if dispatch_path == _DispatchPath.DOWNSAMPLE_VIEW_COPY:
-            grad_in = _upsample_linear1d_backward_downsample_view_copy(
-                grad_out_3d,
-                n,
-                c,
-                in_w,
-                out_w,
-            )
-        elif dispatch_path == _DispatchPath.SCALE2_CONV:
+        if dispatch_path == _DispatchPath.SCALE2_CONV:
             grad_in = _upsample_linear1d_backward_scale2_conv(
                 grad_out_3d,
                 n,
@@ -1328,13 +1333,12 @@ def upsample_linear1d_backward(
             row_blocks = triton.cdiv(rows, rows_per_block)
             grid = (triton.cdiv(in_w, block_w), min(row_blocks, CORE_NUM))
 
-            upsample_linear1d_backward_align_false_scale_kernel[grid](
+            upsample_linear1d_backward_align_false_down2_kernel[grid](
                 grad_out_3d,
                 grad_in,
                 rows,
                 in_w,
                 out_w,
-                SCALE_MODE=0,
                 BLOCK_W=block_w,
                 ROWS_PER_BLOCK=rows_per_block,
             )
@@ -1348,13 +1352,12 @@ def upsample_linear1d_backward(
             row_blocks = triton.cdiv(rows, rows_per_block)
             grid = (triton.cdiv(in_w, block_w), min(row_blocks, CORE_NUM))
 
-            upsample_linear1d_backward_align_false_scale_kernel[grid](
+            upsample_linear1d_backward_align_false_up2_kernel[grid](
                 grad_out_3d,
                 grad_in,
                 rows,
                 in_w,
                 out_w,
-                SCALE_MODE=1,
                 BLOCK_W=block_w,
                 ROWS_PER_BLOCK=rows_per_block,
             )
