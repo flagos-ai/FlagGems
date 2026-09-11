@@ -80,6 +80,20 @@ def topk_gating_softmax_kernel(
             val = tl.load(output_ptr + idx, mask=valid_rows)
             tl.store(output_ptr + idx, val / norm, mask=valid_rows)
 
+@triton.jit
+def _renormalize_topk_weights_kernel(
+    output_ptr,
+    K: tl.constexpr,
+    BLOCK_SIZE_K: tl.constexpr,
+):
+    row = tl.program_id(0)
+    offsets = tl.arange(0, BLOCK_SIZE_K)
+    mask = offsets < K
+
+    ptrs = output_ptr + row * K + offsets
+    weights = tl.load(ptrs, mask=mask, other=0.0).to(tl.float32)
+    denominator = tl.sum(weights, axis=0) + 1e-8
+    tl.store(ptrs, weights / denominator, mask=mask)
 
 def topk_softmax(
     topk_weights: torch.Tensor,
@@ -129,9 +143,16 @@ def topk_softmax(
         num_experts=num_experts,
         start_expert=0,
         end_expert=num_experts,
-        renormalize=renormalize,
+        renormalize=False,
         INDEX_TY=index_ty,
         BLOCK_SIZE_ROWS=BLOCK_SIZE_ROWS,
         BLOCK_SIZE_EXPERTS=BLOCK_SIZE_EXPERTS,
         num_warps=num_warps,
     )
+    if renormalize:
+        _renormalize_topk_weights_kernel[(num_tokens,)](
+            output_ptr=topk_weights,
+            K=topk,
+            BLOCK_SIZE_K=triton.next_power_of_2(topk),
+            num_warps=1,
+        )
