@@ -19,6 +19,15 @@ import flag_gems
 
 from . import base, consts, utils
 
+_ASCEND_NATIVE_BASELINE_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason=(
+        "missing direct native kernel: schema=aten::index_reduce.out, "
+        "vendor=ascend, device=npu, dispatch_key=PrivateUse1; "
+        "torch-npu falls back to CPU"
+    ),
+)
+
 
 class IndexReduceBenchmark(base.Benchmark):
     DEFAULT_SHAPES = [(1024, 1024), (4096, 256), (64, 512, 256)]
@@ -69,6 +78,7 @@ def _run_index_reduce_benchmark(reduce):
 
 
 @pytest.mark.index_reduce_
+@_ASCEND_NATIVE_BASELINE_SKIP
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
@@ -77,6 +87,7 @@ def test_index_reduce_prod():
 
 
 @pytest.mark.index_reduce_
+@_ASCEND_NATIVE_BASELINE_SKIP
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
@@ -85,6 +96,7 @@ def test_index_reduce_mean():
 
 
 @pytest.mark.index_reduce_
+@_ASCEND_NATIVE_BASELINE_SKIP
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
@@ -93,6 +105,7 @@ def test_index_reduce_amax():
 
 
 @pytest.mark.index_reduce_
+@_ASCEND_NATIVE_BASELINE_SKIP
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )

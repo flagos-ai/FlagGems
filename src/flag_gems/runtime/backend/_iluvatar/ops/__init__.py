@@ -32,6 +32,7 @@ from .gcd_ import gcd_
 from .gru import gru, gru_data
 from .hadamard_transform import hadamard_transform
 from .histc import histc
+from .index_reduce import index_reduce_
 from .index_select_backward import index_select_backward
 from .linalg_cholesky import linalg_cholesky
 from .linalg_matrix_norm import linalg_matrix_norm
@@ -99,6 +100,7 @@ __all__ = [
     "gru_data",
     "hadamard_transform",
     "histc",
+    "index_reduce_",
     "index_select_backward",
     "linalg_cholesky",
     "linalg_matrix_norm",
