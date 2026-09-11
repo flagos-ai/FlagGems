@@ -17,7 +17,7 @@ import torch
 
 import flag_gems
 
-from . import base, consts
+from . import base, consts, utils
 
 
 @pytest.mark.prod
@@ -27,5 +27,26 @@ from . import base, consts
 def test_prod():
     bench = base.UnaryReductionBenchmark(
         op_name="prod", torch_op=torch.prod, dtypes=consts.FLOAT_DTYPES
+    )
+    bench.run()
+
+
+class ProdDimIntBenchmark(base.GenericBenchmark2DOnly):
+    def set_more_shapes(self):
+        return [(1024, 2**i) for i in range(0, 11, 4)]
+
+
+def prod_dim_int_input_fn(shape, dtype, device):
+    inp = utils.generate_tensor_input(shape, dtype, device)
+    yield inp, 1, False
+
+
+@pytest.mark.prod_dim_int
+def test_prod_dim_int():
+    bench = ProdDimIntBenchmark(
+        op_name="prod_dim_int",
+        input_fn=prod_dim_int_input_fn,
+        torch_op=torch.prod,
+        dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
