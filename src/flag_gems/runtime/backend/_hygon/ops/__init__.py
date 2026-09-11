@@ -132,6 +132,7 @@ from .searchsorted import (
 from .silu import silu, silu_, silu_backward
 from .softplus_backward import softplus_backward
 from .sort import sort, sort_stable
+from .special_chebyshev_polynomial_u import special_chebyshev_polynomial_u
 from .special_chebyshev_polynomial_v import special_chebyshev_polynomial_v
 from .special_chebyshev_polynomial_w import (
     special_chebyshev_polynomial_w,
@@ -283,6 +284,7 @@ __all__ = [
     "softplus_backward",
     "sort",
     "sort_stable",
+    "special_chebyshev_polynomial_u",
     "special_chebyshev_polynomial_v",
     "special_chebyshev_polynomial_w",
     "special_chebyshev_polynomial_w_out",
