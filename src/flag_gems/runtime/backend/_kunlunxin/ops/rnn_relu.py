@@ -4,6 +4,8 @@ import torch
 import triton
 import triton.language as tl
 
+from .stack import stack
+
 logger = logging.getLogger(__name__)
 
 
@@ -181,7 +183,7 @@ def rnn_relu(
             # autograd-safe assembly; this branch runs outside use_gems
             # (backward tests call the wrapper directly), so torch.stack is
             # never intercepted by the flag_gems pointwise stack override.
-            output = torch.stack(outputs, 0)
+            output = stack(outputs, 0)
         except ZeroDivisionError:
             # per-step small-shape recurrence, same math, crash-free
             h = hx2d
@@ -201,7 +203,7 @@ def rnn_relu(
                     x.dtype
                 )
                 outputs.append(h)
-            output = torch.stack(outputs, 0)
+            output = stack(outputs, 0)
 
     if batch_first:
         output = output.transpose(0, 1).contiguous()

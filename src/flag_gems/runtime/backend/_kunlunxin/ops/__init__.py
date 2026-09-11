@@ -62,12 +62,14 @@ from .assert_async import _assert_async
 from .atan import atan, atan_
 from .attention import (  # noqa: F401
     ScaleDotProductAttention,
-    efficient_attention_backward,
     flash_attention_forward,
     flash_attn_varlen_func,
     scaled_dot_product_attention,
     scaled_dot_product_attention_backward,
     scaled_dot_product_attention_forward,
+)
+from flag_gems.ops.flash_attention_backward import (  # noqa: F401
+    efficient_attention_backward,
     scaled_dot_product_efficient_attention_backward,
 )
 from .avg_pool2d import avg_pool2d, avg_pool2d_backward

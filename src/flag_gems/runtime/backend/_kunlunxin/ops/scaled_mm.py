@@ -23,6 +23,8 @@ from flag_gems.ops.scaled_mm import (
     _resolve_out_dtype,
 )
 
+from .mm import mm
+
 logger = logging.getLogger(__name__)
 
 
@@ -43,7 +45,8 @@ def _scaled_mm_impl(self, mat2, scale_a, scale_b, bias, out_dtype, out):
     scale_b, _ = _normalize_scale(scale_b, N, is_left_scale=False)
     bias = _normalize_bias(bias, N)
 
-    result = torch.mm(self.to(torch.float32), mat2.to(torch.float32))
+    # Explicit gems mm (not torch.mm dispatch): the vendor Triton kernel.
+    result = mm(self.to(torch.float32), mat2.to(torch.float32))
     if scale_a.numel() == 1:
         result = result * scale_a
     else:

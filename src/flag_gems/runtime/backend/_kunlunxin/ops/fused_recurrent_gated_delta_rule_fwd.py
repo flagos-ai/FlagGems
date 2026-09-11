@@ -10,6 +10,8 @@ import logging
 
 import torch
 
+from .exp import exp
+
 logger = logging.getLogger(__name__)
 
 
@@ -67,7 +69,7 @@ def fused_recurrent_gated_delta_rule_fwd(
                     query = query / (query.norm() + 1e-6)
                     key = key / (key.norm() + 1e-6)
                 query = query * scale
-                state = state * torch.exp(g[batch_idx, position, value_head].float())
+                state = state * exp(g[batch_idx, position, value_head].float())
                 value = value - (state * key[:, None]).sum(0)
                 value = value * beta[batch_idx, position, value_head].float()
                 state = state + key[:, None] * value[None, :]

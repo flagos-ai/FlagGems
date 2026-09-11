@@ -21,6 +21,8 @@ from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 
 from flag_gems.utils import pointwise_dynamic
 
+from .sum import sum 
+
 logger = logging.getLogger(__name__)
 
 config_ = CodeGenConfig(
@@ -140,7 +142,8 @@ def smooth_l1_loss(input, target, reduction=1, beta: float = 1.0):
     loss = _loss_values(input_expanded, target_expanded, beta)
     if reduction == 0:
         return loss
-    result = torch.sum(loss)
+    # Explicit gems sum (not torch.sum dispatch): the vendor reduction.
+    result = sum(loss)
     if reduction == 1:
         result = result / loss.numel()
     return result
