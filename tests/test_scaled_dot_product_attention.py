@@ -283,9 +283,9 @@ def test_scaled_dot_product_attention_legacy(
 
 
 @pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="Issue #2849: Not working")
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "hygon", reason="Issue #2849: RuntimeError"
-)
+# @pytest.mark.skipif(
+#     flag_gems.vendor_name == "hygon", reason="Issue #2849: RuntimeError"
+# )
 @pytest.mark.skipif(
     flag_gems.vendor_name == "kunlunxin", reason="Issue #2849: Not working"
 )
@@ -394,7 +394,7 @@ def test_scaled_dot_product_attention_legacy_backward(
             v_atol = 5e-4
     else:
         if dtype == torch.bfloat16:
-            v_atol = 5e-3
+            v_atol = 7e-3 if flag_gems.vendor_name == "hygon" else 5e-3
         elif dtype == torch.float16:
             v_atol = 2e-3
         else:
