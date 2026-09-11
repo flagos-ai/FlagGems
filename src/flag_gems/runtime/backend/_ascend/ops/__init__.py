@@ -40,6 +40,7 @@ from .cumsum import cumsum, normed_cumsum
 from .diag import diag
 from .diag_embed import diag_embed
 from .diagonal import diagonal_backward
+from .diff import diff
 from .dist import dist
 from .dot import dot
 from .embedding import embedding
@@ -196,6 +197,7 @@ __all__ = [
     "diag",
     "diag_embed",
     "diagonal_backward",
+    "diff",
     "dist",
     "dot",
     "embedding",
