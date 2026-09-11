@@ -21,8 +21,11 @@ import torch
 
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
-from flag_gems.utils.shape_utils import (MemOverlap, has_internal_overlapping,
-                                         restride_dim)
+from flag_gems.utils.shape_utils import (
+    MemOverlap,
+    has_internal_overlapping,
+    restride_dim,
+)
 
 logger = logging.getLogger(__name__)
 
