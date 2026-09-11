@@ -501,6 +501,7 @@ from flag_gems.ops.hash_tensor import hash_tensor
 from flag_gems.ops.heaviside import heaviside
 from flag_gems.ops.heaviside_ import heaviside_
 from flag_gems.ops.histc import histc
+from flag_gems.ops.histogramdd import histogramdd
 from flag_gems.ops.hsplit import hsplit
 from flag_gems.ops.hstack import hstack
 from flag_gems.ops.huber_loss import huber_loss, huber_loss_out
@@ -1520,6 +1521,7 @@ __all__ = [
     "heaviside",
     "heaviside_",
     "histc",
+    "histogramdd",
     "hsplit",
     "hstack",
     "huber_loss",

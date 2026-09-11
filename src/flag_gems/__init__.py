@@ -696,6 +696,9 @@ _FULL_CONFIG = (
     ("heaviside", heaviside),
     ("heaviside_", heaviside_),
     ("histc", histc),
+    # histogramdd is CompositeImplicitAutograd; a plain 2-tuple would let the native
+    # decomposition run and use_gems() would silently no-op (false pass).
+    ("histogramdd", histogramdd, None, ["CompositeImplicitAutograd"]),
     ("hsplit.array", hsplit),
     ("hsplit.int", hsplit),
     ("hstack", hstack),
