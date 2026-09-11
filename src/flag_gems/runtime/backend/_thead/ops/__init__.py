@@ -34,6 +34,7 @@ from .log_sigmoid_backward import log_sigmoid_backward, log_sigmoid_backward_out
 from .mm import mm, mm_out
 from .mm_w8a8_int8 import mm_w8a8_int8, mm_w8a8_int8_out
 from .mv import mv
+from .mvlgamma import mvlgamma
 from .nll_loss_backward import nll_loss_backward
 from .nonzero_numpy import nonzero_numpy
 from .reflection_pad3d_backward import reflection_pad3d_backward
@@ -119,4 +120,5 @@ __all__ = [
     "tile",
     "topk_w8a16_fp8",
     "unbind_copy",
+    "mvlgamma",
 ]
