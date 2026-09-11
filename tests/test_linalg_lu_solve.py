@@ -61,8 +61,7 @@ def test_linalg_lu_solve(shape, dtype):
     ref_B = utils.to_reference(B)
     ref_out = torch.linalg.lu_solve(ref_LU, ref_pivots, ref_B)
 
-    with flag_gems.use_gems():
-        res_out = torch.linalg.lu_solve(LU, pivots, B)
+    res_out = torch.linalg.lu_solve(LU, pivots, B)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -80,7 +79,6 @@ def test_linalg_lu_solve_batched(shape, dtype):
     ref_B = utils.to_reference(B)
     ref_out = torch.linalg.lu_solve(ref_LU, ref_pivots, ref_B)
 
-    with flag_gems.use_gems():
-        res_out = torch.linalg.lu_solve(LU, pivots, B)
+    res_out = torch.linalg.lu_solve(LU, pivots, B)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
