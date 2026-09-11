@@ -109,8 +109,10 @@ def batch_norm_with_update_kernel(
             mask = batch_mask[:, None] & spatial_mask[None, :]
             curr_input = tl.load(curr_input_pointer, mask=mask).to(tl.float32)
 
-            step = m_step * n_num_steps + n_step + 1
-            new_mean = tl.where(mask, mean + (curr_input - mean) / step, mean)
+            # Use the per-lane valid count as the denominator. A global tile
+            # index would over-count lanes that are masked out in earlier
+            # tiles (e.g. a masked spatial tail followed by more batch tiles).
+            new_mean = tl.where(mask, mean + (curr_input - mean) / (cnt + 1), mean)
             new_var = tl.where(
                 mask, var + (curr_input - new_mean) * (curr_input - mean), var
             )
@@ -205,8 +207,9 @@ def _batch_norm_with_update(
     batch_dim, feat_dim, spatial_dim = input_3d.shape
     output = torch.empty_like(input_3d)
 
-    mean = torch.empty(feat_dim, device=input.device, dtype=input.dtype)
-    inv_std = torch.empty(feat_dim, device=input.device, dtype=input.dtype)
+    # ATen returns accumulation-dtype statistics (FP32 for FP16/BF16 inputs).
+    mean = torch.empty(feat_dim, device=input.device, dtype=torch.float32)
+    inv_std = torch.empty(feat_dim, device=input.device, dtype=torch.float32)
 
     running_mean_arg = input if running_mean is None else running_mean
     running_var_arg = input if running_var is None else running_var

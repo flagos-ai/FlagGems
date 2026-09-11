@@ -30,6 +30,9 @@ from . import accuracy_utils as utils
         (8, 32, 224, 224),
         (2050, 16, 32, 32),
         (8, 16, 3, 224, 224),
+        # Both the batch and spatial dimensions require multiple tiles with a
+        # masked spatial tail: (2049, C, 9) -> BLOCK_M=2048, BLOCK_N=8, 2x2 tiles.
+        (2049, 16, 9),
     ],
 )
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -90,6 +93,13 @@ def test_batch_norm_with_update(shape, dtype, affine):
         momentum,
         eps,
     )
+
+    # save_mean / save_invstd are returned in the accumulation dtype (FP32,
+    # matching ATen) while the reference runs upcast to FP64.
+    assert res_save_mean.dtype == torch.float32
+    assert res_save_invstd.dtype == torch.float32
+    utils.gems_assert_close(res_save_mean, ref_save_mean, torch.float32)
+    utils.gems_assert_close(res_save_invstd, ref_save_invstd, torch.float32)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
     utils.gems_assert_close(res_running_mean, ref_running_mean, dtype)
