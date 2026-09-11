@@ -106,6 +106,7 @@ from .pow import (
     pow_tensor_tensor_,
 )
 from .randperm import randperm
+from .reflection_pad1d_backward import reflection_pad1d_backward
 from .reflection_pad3d_backward import reflection_pad3d_backward
 from .renorm import renorm, renorm_
 from .repeat import repeat
@@ -240,6 +241,7 @@ __all__ = [
     "pow_tensor_tensor",
     "pow_tensor_tensor_",
     "randperm",
+    "reflection_pad1d_backward",
     "reflection_pad3d_backward",
     "remainder",
     "remainder_",
