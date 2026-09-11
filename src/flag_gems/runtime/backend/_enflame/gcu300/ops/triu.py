@@ -32,7 +32,7 @@ def triu_kernel(
     for n_offset in range(0, N, N_BLOCK_SIZE):
         cols = n_offset + tl.arange(0, N_BLOCK_SIZE)[None, :]
         n_mask = cols < N
-        mask = m_mask and n_mask
+        mask = m_mask & n_mask
 
         x = tl.load(X + cols, mask, other=0.0)
         y = tl.where(row + diagonal <= cols, x, 0.0)
@@ -64,7 +64,7 @@ def triu_batch_kernel(
 
     cols = mn_id * MN_BLOCK_SIZE + tl.arange(0, MN_BLOCK_SIZE)[None, :]
     mn_mask = cols < MN
-    mask = batch_mask and mn_mask
+    mask = batch_mask & mn_mask
     x = tl.load(X + cols, mask, other=0.0)
     m = cols // N
     n = cols % N
@@ -76,7 +76,7 @@ INT32_MAX = torch.iinfo(torch.int32).max
 
 
 def triu(A, diagonal=0):
-    logger.debug("GEMS TRIU")
+    logger.debug("GEMS_ENFLAME TRIU")
     A = A.contiguous()
     out = torch.empty_like(A)
     assert len(A.shape) > 1, "Input tensor must have at least 2 dimensions"

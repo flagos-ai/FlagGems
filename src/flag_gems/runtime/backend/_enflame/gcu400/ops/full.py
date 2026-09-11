@@ -1,6 +1,6 @@
 import logging
-
 import math
+
 import torch
 import triton
 import triton.language as tl
@@ -50,7 +50,7 @@ def full_func_scalar(out, fill_value):
 
 
 def full(size, fill_value, *, dtype=None, layout=None, device=None, pin_memory=None):
-    logger.debug("GEMS FULL")
+    logger.debug("GEMS_ENFLAME FULL")
     if device is None:
         device = torch.device("cpu")
     if dtype is None:
@@ -62,13 +62,10 @@ def full(size, fill_value, *, dtype=None, layout=None, device=None, pin_memory=N
             dtype = torch.get_default_dtype()
     else:
         fill_value = check_dtype(fill_value, dtype, device)
-    return_dtype = dtype
-    if dtype == torch.int64:
-        dtype = torch.int32
 
     out = torch.empty(size, device=device, dtype=dtype)
 
     if isinstance(fill_value, torch.Tensor):
-        return full_func(out, fill_value, out0=out).to(return_dtype)
+        return full_func(out, fill_value, out0=out)
     else:
-        return full_func_scalar(out, fill_value, out0=out).to(return_dtype)
+        return full_func_scalar(out, fill_value, out0=out)

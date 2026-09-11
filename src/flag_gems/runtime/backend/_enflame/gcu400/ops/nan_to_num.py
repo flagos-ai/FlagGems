@@ -4,8 +4,9 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils.pointwise_dynamic import pointwise_dynamic
 from flag_gems.utils import tl_extra_shim
+
+from ..utils.pointwise_dynamic import pointwise_dynamic
 
 _isnan = tl_extra_shim.isnan
 
@@ -27,7 +28,7 @@ def nan_to_num_func(x, nan, posinf, neginf):
 
 
 def nan_to_num(A, nan=None, posinf=None, neginf=None):
-    logger.debug("GEMS NAN_TO_NUM TENSOR")
+    logger.debug("GEMS_ENFLAME NAN_TO_NUM")
     if posinf is None:
         posinf = torch.finfo(A.dtype).max
     if neginf is None:
@@ -38,7 +39,7 @@ def nan_to_num(A, nan=None, posinf=None, neginf=None):
 
 
 def nan_to_num_(A, nan=None, posinf=None, neginf=None):
-    logger.debug("GEMS NAN_TO_NUM_ TENSOR")
+    logger.debug("GEMS_ENFLAME NAN_TO_NUM_")
     if posinf is None:
         posinf = torch.finfo(A.dtype).max
     if neginf is None:

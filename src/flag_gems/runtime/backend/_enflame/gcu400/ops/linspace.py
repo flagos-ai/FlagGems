@@ -7,7 +7,7 @@ import triton.language as tl
 logger = logging.getLogger(__name__)
 
 
-@triton.jit(do_not_specialize=['steps'])
+@triton.jit(do_not_specialize=["steps"])
 def linspace_kernel(
     out_ptr,
     start,
@@ -28,7 +28,7 @@ def linspace_kernel(
 def linspace(
     start, end, steps, *, dtype=None, layout=None, device=None, pin_memory=None
 ) -> torch.Tensor:
-    logger.debug("GEMS LINSPACE")
+    logger.debug("GEMS_ENFLAME LINSPACE")
     assert steps >= 1, "steps must be >= 1"
 
     out = torch.empty(
@@ -58,7 +58,12 @@ def linspace(
 
     grid = (triton.cdiv(steps, BLOCK),)
     linspace_kernel[grid](
-        out, start, float(end), step_size, steps,
-        BLOCK=BLOCK, num_warps=nw,
+        out,
+        start,
+        float(end),
+        step_size,
+        steps,
+        BLOCK=BLOCK,
+        num_warps=nw,
     )
     return out

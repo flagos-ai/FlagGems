@@ -25,7 +25,7 @@ def isfinite_func(x):
 def isfinite(
     A: torch.Tensor,
 ) -> torch.Tensor:
-    logger.debug("GEMS ISFINITE")
+    logger.debug("GEMS_ENFLAME ISFINITE")
     if A.is_floating_point():
         return isfinite_func(A)
     else:

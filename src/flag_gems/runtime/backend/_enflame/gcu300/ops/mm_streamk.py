@@ -450,8 +450,8 @@ def classic_mm(
 
 def streamk_mm(a, b, c, M, N, K, sm_count=108):
     logger.debug(
-        "GEMS MM, [mm scenario]: streamk, [shape info]: [-, %s, %s, %s](batch, M, N, K), "
-        "[A column-major]: %s, [B column-major]: %s",
+        "GEMS_ENFLAME STREAMK_MM, [mm scenario]: streamk, [shape info]: "
+        "[-, %s, %s, %s](batch, M, N, K), [A column-major]: %s, [B column-major]: %s",
         M,
         N,
         K,

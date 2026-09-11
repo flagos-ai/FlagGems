@@ -28,13 +28,11 @@ def ones_kernel(
 
 
 def ones(size, *, dtype=None, layout=None, device=None, pin_memory=None):
-    logger.debug("GEMS ONES")
+    logger.debug("GEMS_ENFLAME ONES")
     if dtype is None:
         dtype = torch.get_default_dtype()
     if device is None:
         device = torch.device(device_.name)
-    if dtype == torch.int64:
-        dtype = torch.int32
 
     out = torch.empty(size, device=device, dtype=dtype)
     N = volume(size)

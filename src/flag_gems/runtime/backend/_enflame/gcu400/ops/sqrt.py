@@ -49,14 +49,16 @@ def _launch_sqrt(inp, out, N_total):
 
     with torch_device_fn.device(inp.device):
         sqrt_flat_kernel[(grid_size,)](
-            inp, out, N_total,
+            inp,
+            out,
+            N_total,
             BLOCK=BLOCK,
             num_warps=nw,
         )
 
 
 def sqrt(A):
-    logger.debug("GEMS SQRT")
+    logger.debug("GEMS_ENFLAME SQRT")
     inp = A.contiguous()
     N_total = inp.numel()
     out = torch.empty_like(inp)
@@ -65,7 +67,7 @@ def sqrt(A):
 
 
 def sqrt_(A):
-    logger.debug("GEMS SQRT_")
+    logger.debug("GEMS_ENFLAME SQRT_")
     inp = A.contiguous()
     N_total = inp.numel()
     _launch_sqrt(inp, A, N_total)

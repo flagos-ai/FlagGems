@@ -56,7 +56,7 @@ def _choose_block(N_total):
 
 
 def silu(self):
-    logger.debug("GEMS SILU FORWARD")
+    logger.debug("GEMS_ENFLAME SILU")
     inp = self.contiguous()
     N_total = inp.numel()
     out = torch.empty_like(inp)
@@ -68,7 +68,9 @@ def silu(self):
 
     with torch_device_fn.device(inp.device):
         silu_flat_kernel[(grid_size,)](
-            inp, out, N_total,
+            inp,
+            out,
+            N_total,
             BLOCK=BLOCK,
             num_warps=nw,
         )
@@ -77,13 +79,13 @@ def silu(self):
 
 
 def silu_backward(grad_output, self):
-    logger.debug("GEMS SILU BACKWARD")
+    logger.debug("GEMS_ENFLAME SILU_BACKWARD")
     grad_input = silu_backward_kernel(self, grad_output)
     return grad_input
 
 
 def silu_(A):
-    logger.debug("GEMS SILU_ FORWARD")
+    logger.debug("GEMS_ENFLAME SILU_")
     inp = A.contiguous()
     N_total = inp.numel()
 
@@ -94,7 +96,9 @@ def silu_(A):
 
     with torch_device_fn.device(inp.device):
         silu_flat_kernel[(grid_size,)](
-            inp, A, N_total,
+            inp,
+            A,
+            N_total,
             BLOCK=BLOCK,
             num_warps=nw,
         )

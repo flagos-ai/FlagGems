@@ -20,7 +20,7 @@ def sum_kernel_1(
     M,
     BLOCK_SIZE: tl.constexpr,
 ):
-    if tl.constexpr(inp.dtype.element_ty == tl.float16) or tl.constexpr(
+    if tl.constexpr(inp.dtype.element_ty == tl.float16) | tl.constexpr(
         inp.dtype.element_ty == tl.bfloat16
     ):
         cdtype = tl.float32
@@ -41,7 +41,7 @@ def sum_kernel_1(
 @libentry()
 @triton.jit
 def sum_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
-    if tl.constexpr(mid.dtype.element_ty == tl.float16) or tl.constexpr(
+    if tl.constexpr(mid.dtype.element_ty == tl.float16) | tl.constexpr(
         mid.dtype.element_ty == tl.bfloat16
     ):
         cdtype = tl.float32
@@ -78,7 +78,7 @@ def sum_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    if tl.constexpr(inp.dtype.element_ty == tl.float16) or tl.constexpr(
+    if tl.constexpr(inp.dtype.element_ty == tl.float16) | tl.constexpr(
         inp.dtype.element_ty == tl.bfloat16
     ):
         cdtype = tl.float32
@@ -95,7 +95,7 @@ def sum_kernel(
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
         col_mask = cols < N
-        mask = row_mask and col_mask
+        mask = row_mask & col_mask
 
         a = tl.load(inp + cols, mask, other=0).to(cdtype)
         _sum += a
@@ -104,7 +104,7 @@ def sum_kernel(
 
 
 def sum(inp, *, dtype=None):
-    logger.debug("GEMS SUM")
+    logger.debug("GEMS_ENFLAME SUM")
     if inp.dtype == torch.int64:
         inp = inp.to(torch.int32)
     if dtype == torch.int64:
@@ -130,7 +130,7 @@ def sum(inp, *, dtype=None):
 
 
 def sum_out(inp, *, dtype=None, out):
-    logger.debug("GEMS SUM_OUT")
+    logger.debug("GEMS_ENFLAME SUM_OUT")
     M = inp.numel()
     if dtype is None:
         dtype = inp.dtype
@@ -149,7 +149,7 @@ def sum_out(inp, *, dtype=None, out):
 
 
 def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
-    logger.debug("GEMS SUM DIM")
+    logger.debug("GEMS_ENFLAME SUM_DIM")
     if dtype is None:
         dtype = inp.dtype
         if dtype is torch.bool:
@@ -182,7 +182,7 @@ def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
 
 
 def sum_dim_out(inp, dim=None, keepdim=False, *, dtype=None, out):
-    logger.debug("GEMS SUM_DIM_OUT")
+    logger.debug("GEMS_ENFLAME SUM_DIM_OUT")
     if dtype is None:
         dtype = inp.dtype
         if dtype is torch.bool:
@@ -203,6 +203,8 @@ def sum_dim_out(inp, dim=None, keepdim=False, *, dtype=None, out):
         N *= shape[i]
         shape[i] = 1
     M = inp.numel() // N
+
+    out.resize_(shape)
 
     grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
     with torch_device_fn.device(inp.device):

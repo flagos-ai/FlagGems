@@ -21,10 +21,13 @@ def reduce_any(a, b):
 
 # ========== Global any (optimized: grid-stride + bool→u8) ==========
 
+
 @libentry()
 @triton.jit(do_not_specialize=["N_total"])
 def any_global_kernel(
-    inp_ptr, mid_ptr, N_total,
+    inp_ptr,
+    mid_ptr,
+    N_total,
     BLOCK: tl.constexpr,
 ):
     pid = tl.program_id(0)
@@ -53,6 +56,7 @@ def any_reduce_kernel(mid_ptr, out_ptr, MID_SIZE, BLOCK_MID: tl.constexpr):
 
 # ========== Dim any (kept close to generic, with bool→u8 + fixed &/|) ==========
 
+
 def _keep_config(conf):
     bm = conf.kwargs["BLOCK_M"]
     bn = conf.kwargs["BLOCK_N"]
@@ -68,7 +72,10 @@ def _keep_config(conf):
 )
 @triton.jit
 def any_kernel_dim(
-    inp, out, M, N,
+    inp,
+    out,
+    M,
+    N,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
@@ -82,10 +89,10 @@ def any_kernel_dim(
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
         col_mask = cols < N
-        mask = row_mask and col_mask
+        mask = row_mask & col_mask
 
         a = tl.load(inp + cols, mask, other=0.0)
-        _any = _any or (a != 0)
+        _any = _any | (a != 0)
     any_result = tl.reduce(_any, axis=1, combine_fn=reduce_any)
     tl.store(out, any_result[:, None], row_mask)
 
@@ -97,7 +104,7 @@ def _to_u8_if_bool(inp):
 
 
 def any(inp):
-    logger.debug("GEMS ANY GCU400")
+    logger.debug("GEMS_ENFLAME ANY")
     inp = _to_u8_if_bool(inp)
     N_total = inp.numel()
     if N_total <= 4096:
@@ -121,7 +128,7 @@ def any(inp):
 
 
 def any_dim(inp, dim=None, keepdim=False):
-    logger.debug("GEMS ANY DIM GCU400")
+    logger.debug("GEMS_ENFLAME ANY_DIM")
     shape = list(inp.shape)
     if dim is None:
         out = any(inp)
@@ -147,7 +154,7 @@ def any_dim(inp, dim=None, keepdim=False):
 
 
 def any_dims(inp, dim=None, keepdim=False):
-    logger.debug("GEMS ANY DIMS GCU400")
+    logger.debug("GEMS_ENFLAME ANY_DIMS")
 
     if dim is None or isinstance(dim, int):
         return any_dim(inp, dim=dim, keepdim=keepdim)

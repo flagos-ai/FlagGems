@@ -87,8 +87,8 @@ def scan_part_max_kernel(
     inp_vals = tl.load(inp_ptrs, mask=mask, other=min_value)
     if (
         tl.constexpr(inp_vals.dtype.is_int64())
-        or tl.constexpr(inp_vals.dtype.is_uint64())
-    ) or tl.constexpr(inp_vals.dtype.is_fp64()):
+        | tl.constexpr(inp_vals.dtype.is_uint64())
+    ) | tl.constexpr(inp_vals.dtype.is_fp64()):
         inp_vals = inp_vals
     elif tl.constexpr(inp_vals.dtype.is_int()):
         inp_vals = inp_vals.to(tl.int32)
@@ -201,8 +201,8 @@ def scan_part_max_abc_kernel(
     inp_vals = tl.load(inp_ptrs, mask=mask, other=min_value)
     if (
         tl.constexpr(inp_vals.dtype.is_int64())
-        or tl.constexpr(inp_vals.dtype.is_uint64())
-    ) or tl.constexpr(inp_vals.dtype.is_fp64()):
+        | tl.constexpr(inp_vals.dtype.is_uint64())
+    ) | tl.constexpr(inp_vals.dtype.is_fp64()):
         inp_vals = inp_vals
     elif tl.constexpr(inp_vals.dtype.is_int()):
         inp_vals = inp_vals.to(tl.int32)
@@ -372,8 +372,8 @@ def scan_part_max_abc_loop_kernel(
         inp_vals = tl.load(inp + offset, mask=mask, other=min_value)
         if (
             tl.constexpr(inp_vals.dtype.is_int64())
-            or tl.constexpr(inp_vals.dtype.is_uint64())
-        ) or tl.constexpr(inp_vals.dtype.is_fp64()):
+            | tl.constexpr(inp_vals.dtype.is_uint64())
+        ) | tl.constexpr(inp_vals.dtype.is_fp64()):
             vals = inp_vals
         elif tl.constexpr(inp_vals.dtype.is_int()):
             vals = inp_vals.to(tl.int32)
@@ -391,9 +391,7 @@ def scan_part_max_abc_loop_kernel(
         prev_max_idx_b = tl.broadcast_to(prev_max_idx, (BLOCK_SIZE,))
 
         final_vals = tl.maximum(result, prev_max_val_b)
-        final_idx = tl.where(
-            result >= prev_max_val_b, cummax_indices, prev_max_idx_b
-        )
+        final_idx = tl.where(result >= prev_max_val_b, cummax_indices, prev_max_idx_b)
         prev_max_val = tl.sum(tl.where(last_mask, final_vals, 0.0), axis=0)
         prev_max_idx = tl.sum(tl.where(last_mask, final_idx, 0), axis=0)
 
@@ -432,7 +430,7 @@ def cummax(
     *,
     out: Union[Tensor, Tuple[Tensor, ...], List[Tensor], None] = None,
 ) -> torch.return_types.cummax:
-    logger.debug("GEMS cummax")
+    logger.debug("GEMS_ENFLAME CUMMAX")
     assert dim >= -input.ndim and dim < input.ndim, "Invalid dim"
     shape = input.shape
     dim = dim % input.ndim

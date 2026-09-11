@@ -9,9 +9,9 @@ logger = logging.getLogger(__name__)
 
 
 def vstack(
-    tensors: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]]
+    tensors: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]],
 ) -> torch.Tensor:
-    logger.debug("GEMS GCU400 VSTACK")
+    logger.debug("GEMS_ENFLAME VSTACK")
 
     n = len(tensors)
     if n == 0:

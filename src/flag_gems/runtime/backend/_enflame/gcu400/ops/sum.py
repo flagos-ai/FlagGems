@@ -24,7 +24,7 @@ def sum_global_kernel_1(
     BLOCK_SIZE: tl.constexpr,
     num_stages: tl.constexpr = 1,
 ):
-    if tl.constexpr(X.dtype.element_ty == tl.float16) or tl.constexpr(
+    if tl.constexpr(X.dtype.element_ty == tl.float16) | tl.constexpr(
         X.dtype.element_ty == tl.bfloat16
     ):
         cdtype = tl.float32
@@ -45,7 +45,7 @@ def sum_global_kernel_1(
 @libentry()
 @triton.jit(do_not_specialize=["M"])
 def sum_single_kernel(X, Out, M, BLOCK_SIZE: tl.constexpr):
-    if tl.constexpr(X.dtype.element_ty == tl.float16) or tl.constexpr(
+    if tl.constexpr(X.dtype.element_ty == tl.float16) | tl.constexpr(
         X.dtype.element_ty == tl.bfloat16
     ):
         cdtype = tl.float32
@@ -62,7 +62,7 @@ def sum_single_kernel(X, Out, M, BLOCK_SIZE: tl.constexpr):
 @libentry()
 @triton.jit(do_not_specialize=["MID_SIZE"])
 def sum_global_kernel_2(Mid, Out, MID_SIZE, BLOCK_MID: tl.constexpr):
-    if tl.constexpr(Mid.dtype.element_ty == tl.float16) or tl.constexpr(
+    if tl.constexpr(Mid.dtype.element_ty == tl.float16) | tl.constexpr(
         Mid.dtype.element_ty == tl.bfloat16
     ):
         cdtype = tl.float32
@@ -87,7 +87,7 @@ def sum_dim_kernel(
     BLOCK_N: tl.constexpr,
     num_stages: tl.constexpr = 1,
 ):
-    if tl.constexpr(X.dtype.element_ty == tl.float16) or tl.constexpr(
+    if tl.constexpr(X.dtype.element_ty == tl.float16) | tl.constexpr(
         X.dtype.element_ty == tl.bfloat16
     ):
         cdtype = tl.float32
@@ -132,13 +132,18 @@ def _launch_global_sum(inp, out, M):
 
     with torch_device_fn.device(inp.device):
         sum_global_kernel_1[(grid_size, 1, 1)](
-            inp, mid, M,
+            inp,
+            mid,
+            M,
             BLOCK_SIZE=block_size,
             num_stages=1,
             num_warps=2,
         )
         sum_global_kernel_2[(1, 1, 1)](
-            mid, out, mid_size, block_mid,
+            mid,
+            out,
+            mid_size,
+            block_mid,
             num_warps=1,
         )
 
@@ -150,7 +155,10 @@ def _launch_dim_sum(inp, out, M, N):
 
     with torch_device_fn.device(inp.device):
         sum_dim_kernel[(grid_m,)](
-            inp, out, M, N,
+            inp,
+            out,
+            M,
+            N,
             BLOCK_M=BLOCK_M,
             BLOCK_N=BLOCK_N,
             num_stages=1,
@@ -159,11 +167,7 @@ def _launch_dim_sum(inp, out, M, N):
 
 
 def sum(inp, *, dtype=None):
-    logger.debug("GEMS SUM GCU400")
-    if inp.dtype == torch.int64:
-        inp = inp.to(torch.int32)
-    if dtype == torch.int64:
-        dtype = torch.int32
+    logger.debug("GEMS_ENFLAME SUM")
 
     if dtype is None:
         dtype = inp.dtype
@@ -180,11 +184,7 @@ def sum(inp, *, dtype=None):
 
 
 def sum_out(inp, *, dtype=None, out):
-    logger.debug("GEMS SUM_OUT GCU400")
-    if inp.dtype == torch.int64:
-        inp = inp.to(torch.int32)
-    if dtype == torch.int64:
-        dtype = torch.int32
+    logger.debug("GEMS_ENFLAME SUM_OUT")
 
     if dtype is None:
         dtype = inp.dtype
@@ -199,11 +199,7 @@ def sum_out(inp, *, dtype=None, out):
 
 
 def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
-    logger.debug("GEMS SUM_DIM GCU400")
-    if inp.dtype == torch.int64:
-        inp = inp.to(torch.int32)
-    if dtype == torch.int64:
-        dtype = torch.int32
+    logger.debug("GEMS_ENFLAME SUM_DIM")
 
     if dtype is None:
         dtype = inp.dtype
@@ -223,7 +219,9 @@ def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
                 for d in dims_to_reduce:
                     out_shape[d % inp.ndim] = 1
             else:
-                for d in sorted(dims_to_reduce, key=lambda x: x % inp.ndim, reverse=True):
+                for d in sorted(
+                    dims_to_reduce, key=lambda x: x % inp.ndim, reverse=True
+                ):
                     out_shape.pop(d % inp.ndim)
         return torch.zeros(out_shape, dtype=dtype, device=inp.device)
 
@@ -257,11 +255,7 @@ def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
 
 
 def sum_dim_out(inp, dim=None, keepdim=False, *, dtype=None, out):
-    logger.debug("GEMS SUM_DIM_OUT GCU400")
-    if inp.dtype == torch.int64:
-        inp = inp.to(torch.int32)
-    if dtype == torch.int64:
-        dtype = torch.int32
+    logger.debug("GEMS_ENFLAME SUM_DIM_OUT")
 
     if dtype is None:
         dtype = inp.dtype

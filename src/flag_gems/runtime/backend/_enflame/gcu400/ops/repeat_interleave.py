@@ -64,7 +64,7 @@ def repeat_interleave_flat_kernel(
 
 
 def repeat_interleave_self_int(inp, repeats, dim=None, *, output_size=None):
-    logger.debug("GEMS REPEAT_INTERLEAVE_SELF_INT")
+    logger.debug("GEMS_ENFLAME REPEAT_INTERLEAVE_SELF_INT")
     if dim is None:
         inp = inp.contiguous().flatten()
         dim = 0
@@ -108,15 +108,23 @@ def repeat_interleave_self_int(inp, repeats, dim=None, *, output_size=None):
     with torch_device_fn.device(inp.device):
         if inner_size == 1:
             repeat_interleave_flat_kernel[(grid_size,)](
-                inp, output, N_total,
-                repeats=repeats, NUM_BLOCKS=NUM_BLOCKS, BLOCK=BLOCK,
+                inp,
+                output,
+                N_total,
+                repeats=repeats,
+                NUM_BLOCKS=NUM_BLOCKS,
+                BLOCK=BLOCK,
             )
         else:
             repeat_inner = repeats * inner_size
             repeat_interleave_kernel[(grid_size,)](
-                inp, output, N_total,
+                inp,
+                output,
+                N_total,
                 inner_size,
-                repeat_inner=repeat_inner, NUM_BLOCKS=NUM_BLOCKS, BLOCK=BLOCK,
+                repeat_inner=repeat_inner,
+                NUM_BLOCKS=NUM_BLOCKS,
+                BLOCK=BLOCK,
             )
 
     return output
@@ -142,7 +150,7 @@ def repeat_interleave_tensor_kernel(
 
 
 def repeat_interleave_tensor(repeats, *, output_size=None):
-    logger.debug("GEMS REPEAT_INTERLEAVE_TENSOR")
+    logger.debug("GEMS_ENFLAME REPEAT_INTERLEAVE_TENSOR")
     assert repeats.ndim == 1, "repeat_interleave only accept 1D vector as repeat"
     cumsum = repeats.cumsum(axis=0)
     result_size = cumsum[-1].item()
@@ -152,13 +160,18 @@ def repeat_interleave_tensor(repeats, *, output_size=None):
     grid = (size,)
     BLOCK_SIZE = 32
     repeat_interleave_tensor_kernel[grid](
-        repeats, cumsum, out, size, BLOCK_SIZE=BLOCK_SIZE, num_warps=1,
+        repeats,
+        cumsum,
+        out,
+        size,
+        BLOCK_SIZE=BLOCK_SIZE,
+        num_warps=1,
     )
     return out
 
 
 def repeat_interleave_self_tensor(inp, repeats, dim=None, *, output_size=None):
-    logger.debug("GEMS REPEAT_INTERLEAVE_SELF_TENSOR")
+    logger.debug("GEMS_ENFLAME REPEAT_INTERLEAVE_SELF_TENSOR")
     if dim is None:
         inp = inp.flatten()
         dim = 0
@@ -179,9 +192,7 @@ def repeat_interleave_self_tensor(inp, repeats, dim=None, *, output_size=None):
     if dim < 0:
         dim = dim + len(inp_shape)
     if repeats.size(0) != inp_shape[dim]:
-        raise RuntimeError(
-            "repeats must have the same size as input along dim"
-        )
+        raise RuntimeError("repeats must have the same size as input along dim")
     indices = repeat_interleave_tensor(repeats)
     res = torch.index_select(inp, dim, indices)
     return res

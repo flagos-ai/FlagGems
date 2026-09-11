@@ -4,9 +4,9 @@ import torch
 import triton
 import triton.language as tl
 
-from .. import runtime
-from ..runtime import torch_device_fn
-from ..utils import libentry, libtuner
+from flag_gems import runtime
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry, libtuner
 
 if runtime.device.vendor_name == "iluvatar":
     from flag_gems.runtime.backend._iluvatar.ops.bmm import bmm
@@ -118,7 +118,7 @@ def baddbmm_kernel(
 
     bias_ptrs = bias + offs_m[:, None] * bias_M_stride + offs_n[None, :] * bias_N_stride
 
-    if DIVISIBLE_M and DIVISIBLE_N:
+    if DIVISIBLE_M & DIVISIBLE_N:
         mask_c = None
     else:
         mask_c = True
@@ -136,7 +136,7 @@ def baddbmm_kernel(
 class BaddbmmFunction(torch.autograd.Function):
     @staticmethod
     def forward(ctx, bias, A, B, beta, alpha):
-        logger.debug("GEMS BADDBMM FORWARD")
+        logger.debug("GEMS_ENFLAME BADDBMM_FORWARD")
 
         ctx.save_for_backward(A, B, bias)
         ctx.alpha = alpha
@@ -177,7 +177,7 @@ class BaddbmmFunction(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_output):
-        logger.debug("GEMS BADDBMM BACKWARD")
+        logger.debug("GEMS_ENFLAME BADDBMM_BACKWARD")
         A, B, bias = ctx.saved_tensors
 
         grad_A = None

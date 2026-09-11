@@ -49,14 +49,16 @@ def _launch_ceil(inp, out, N_total):
 
     with torch_device_fn.device(inp.device):
         ceil_flat_kernel[(grid_size,)](
-            inp, out, N_total,
+            inp,
+            out,
+            N_total,
             BLOCK=BLOCK,
             num_warps=nw,
         )
 
 
 def ceil(A):
-    logger.debug("GEMS CEIL")
+    logger.debug("GEMS_ENFLAME CEIL")
     inp = A.contiguous()
     N_total = inp.numel()
     out = torch.empty_like(inp)
@@ -65,7 +67,7 @@ def ceil(A):
 
 
 def ceil_(A):
-    logger.debug("GEMS CEIL_")
+    logger.debug("GEMS_ENFLAME CEIL_")
     inp = A.contiguous()
     N_total = inp.numel()
     _launch_ceil(inp, A, N_total)

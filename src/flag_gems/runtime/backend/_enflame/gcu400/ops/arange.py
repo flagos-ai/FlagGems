@@ -16,21 +16,27 @@ NUM_SIPS = 24
 
 @libentry()
 @triton.jit(do_not_specialize=["start", "step", "size"])
-def arange_func(y_ptr, start, step, size,
-                BLOCK_SIZE: tl.constexpr, GRID_DIM: tl.constexpr):
+def arange_func(
+    y_ptr, start, step, size, BLOCK_SIZE: tl.constexpr, GRID_DIM: tl.constexpr
+):
     pid = tl.program_id(0)
     num_tiles = (size + BLOCK_SIZE - 1) // BLOCK_SIZE
     for tile_id in tl.range(pid, num_tiles, GRID_DIM):
         offs = tile_id * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
         mask = offs < size
-        vals = (offs * step + start).to(tl.float32) if step != 1 else (offs + start).to(tl.float32)
+        vals = (
+            (offs * step + start).to(tl.float32)
+            if step != 1
+            else (offs + start).to(tl.float32)
+        )
         tl.store(y_ptr + offs, vals, mask=mask)
 
 
 @libentry()
 @triton.jit(do_not_specialize=["start", "step", "size"])
-def arange_int_func(y_ptr, start, step, size,
-                    BLOCK_SIZE: tl.constexpr, GRID_DIM: tl.constexpr):
+def arange_int_func(
+    y_ptr, start, step, size, BLOCK_SIZE: tl.constexpr, GRID_DIM: tl.constexpr
+):
     pid = tl.program_id(0)
     num_tiles = (size + BLOCK_SIZE - 1) // BLOCK_SIZE
     for tile_id in tl.range(pid, num_tiles, GRID_DIM):
@@ -43,7 +49,7 @@ def arange_int_func(y_ptr, start, step, size,
 def arange_start(
     start, end, step=1, *, dtype=None, layout=None, device=None, pin_memory=None
 ):
-    logger.debug("GEMS ARANGE")
+    logger.debug("GEMS_ENFLAME ARANGE")
     if dtype is None:
         dtype = torch.int64
 
@@ -67,7 +73,7 @@ def arange_start(
 
     BLOCK_SIZE = 1024
     if size > 65536:
-        BLOCK_SIZE = 65536
+        BLOCK_SIZE = 16384
     elif size > 1024:
         BLOCK_SIZE = min(triton.next_power_of_2(size), 8192)
 
@@ -76,27 +82,29 @@ def arange_start(
 
     is_int = dtype in (torch.int32, torch.int64, torch.int16, torch.int8)
 
-    if dtype == torch.int64:
-        compute_dtype = torch.int32
-    else:
-        compute_dtype = dtype
-
-    result = torch.empty((size,), device=device, dtype=compute_dtype, pin_memory=pin_memory)
+    result = torch.empty((size,), device=device, dtype=dtype, pin_memory=pin_memory)
 
     with torch_device_fn.device(result.device):
         if is_int:
             arange_int_func[(grid_dim,)](
-                result, int(start), int(step), size,
-                BLOCK_SIZE=BLOCK_SIZE, GRID_DIM=grid_dim, num_warps=nw,
+                result,
+                int(start),
+                int(step),
+                size,
+                BLOCK_SIZE=BLOCK_SIZE,
+                GRID_DIM=grid_dim,
+                num_warps=nw,
             )
         else:
             arange_func[(grid_dim,)](
-                result, float(start), float(step), size,
-                BLOCK_SIZE=BLOCK_SIZE, GRID_DIM=grid_dim, num_warps=nw,
+                result,
+                float(start),
+                float(step),
+                size,
+                BLOCK_SIZE=BLOCK_SIZE,
+                GRID_DIM=grid_dim,
+                num_warps=nw,
             )
-
-    if dtype == torch.int64:
-        result = result.to(torch.int64)
 
     return result
 

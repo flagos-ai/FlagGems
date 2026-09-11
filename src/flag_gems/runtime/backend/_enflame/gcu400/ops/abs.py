@@ -46,14 +46,16 @@ def _run_abs(inp, out, N_total):
 
     with torch_device_fn.device(inp.device):
         abs_flat_kernel[(grid_size,)](
-            inp, out, N_total,
+            inp,
+            out,
+            N_total,
             BLOCK=BLOCK,
             num_warps=8,
         )
 
 
 def abs(A):
-    logger.debug("GEMS ABS")
+    logger.debug("GEMS_ENFLAME ABS")
     inp = A.contiguous()
     out = torch.empty_like(inp)
     _run_abs(inp, out, inp.numel())
@@ -61,7 +63,7 @@ def abs(A):
 
 
 def abs_(A):
-    logger.debug("GEMS ABS_")
+    logger.debug("GEMS_ENFLAME ABS_")
     inp = A.contiguous()
     _run_abs(inp, A, inp.numel())
     return A

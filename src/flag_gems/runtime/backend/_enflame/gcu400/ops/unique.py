@@ -1,9 +1,13 @@
+import logging
+
 import torch
 import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils.libentry import libentry
+
+logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -265,7 +269,9 @@ def global_quick_unique_flat_impl(
     mask = i0 < num_tasks
 
     prefix = tl.load(tile_cumsum_ptr + global_pid)
-    cur_tile_sum = tl.load(tile_sum_ptr + global_pid, mask=global_pid < global_ctas_num, other=0)
+    cur_tile_sum = tl.load(
+        tile_sum_ptr + global_pid, mask=global_pid < global_ctas_num, other=0
+    )
 
     tile_mask = r < cur_tile_sum
     out_offset = prefix + r
@@ -672,6 +678,7 @@ def _unique2(
     return_inverse: bool = False,
     return_counts: bool = False,
 ):
+    logger.debug("GEMS_ENFLAME _UNIQUE2")
     if in0.numel() <= 8192:
         sorted_data, sorted_indices = torch.sort(in0.ravel())
         data_out, inverse_indices, counts = simple_unique_flat(

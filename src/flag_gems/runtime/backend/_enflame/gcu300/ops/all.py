@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 @triton.jit
 def reduce_all(a, b):
-    return a and b
+    return a & b
 
 
 def keep(conf):
@@ -54,10 +54,10 @@ def all_kernel_dim(
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
         col_mask = cols < N
-        mask = row_mask and col_mask
+        mask = row_mask & col_mask
 
         a = tl.load(inp + cols, mask, other=1.0)
-        _all = _all and (a != 0)
+        _all = _all & (a != 0)
     all = tl.reduce(_all, axis=1, combine_fn=reduce_all)
     tl.store(out, all[:, None], row_mask)
 
@@ -93,7 +93,7 @@ def all_kernel_2(mid, out, MID_SIZE, BLOCK_MID: tl.constexpr):
 
 
 def all(inp):
-    logger.debug("GEMS ALL")
+    logger.debug("GEMS_ENFLAME ALL")
     n_elements = inp.numel()
     block_size = triton.next_power_of_2(math.ceil(math.sqrt(n_elements)))
     mid_size = triton.cdiv(n_elements, block_size)
@@ -110,7 +110,7 @@ def all(inp):
 
 
 def all_dim(inp, dim=None, keepdim=False):
-    logger.debug("GEMS ALL DIM")
+    logger.debug("GEMS_ENFLAME ALL_DIM")
     shape = list(inp.shape)
     if dim is None:
         out = all(inp)
@@ -135,7 +135,7 @@ def all_dim(inp, dim=None, keepdim=False):
 
 
 def all_dims(inp, dim=None, keepdim=False):
-    logger.debug("GEMS ALL DIMS")
+    logger.debug("GEMS_ENFLAME ALL_DIMS")
 
     if dim is None or isinstance(dim, int):
         return all_dim(inp, dim=dim, keepdim=keepdim)

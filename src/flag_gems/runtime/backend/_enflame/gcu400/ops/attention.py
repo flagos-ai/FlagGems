@@ -8,7 +8,8 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.config import use_c_extension
-from flag_gems.ops.flash_api import mha_fwd, mha_varlan_fwd
+from flag_gems.ops.flash_api import mha_varlan_fwd
+from .flash_api import mha_fwd
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 
@@ -129,7 +130,8 @@ def _attn_fwd_inner(
 configs = [
     triton.Config(
         {"BLOCK_M": BM, "BLOCK_N": BN, "PRE_LOAD_V": PLV},
-        num_stages=s, num_warps=w,
+        num_stages=s,
+        num_warps=w,
     )
     for BM in [64, 128]
     for BN in [128]
@@ -638,7 +640,7 @@ def _attn_bwd(
     remaining_m = Q_CTX - start_m
     num_steps = (remaining_m + BLOCK_M1 - 1) // BLOCK_M1
 
-    if num_steps > 0 and start_m < Q_CTX:
+    if (num_steps > 0) & (start_m < Q_CTX):
         dk, dv = _attn_bwd_dkdv(  #
             dk,
             dv,  #
@@ -769,7 +771,7 @@ def scaled_dot_product_attention_forward(
     scale=None,
     enable_gqa=False,
 ):
-    logger.debug("GEMS SCALED DOT PRODUCT ATTENTION FORWARD")
+    logger.debug("GEMS_ENFLAME SCALED_DOT_PRODUCT_ATTENTION_FORWARD")
     # shape constraints
     HEAD_DIM_Q, HEAD_DIM_K = query.shape[-1], key.shape[-1]
     # when v is in float8_e5m2 it is transposed.
@@ -876,7 +878,7 @@ def scaled_dot_product_attention_backward(
     scale=None,
     enable_gqa=False,
 ):
-    logger.debug("GEMS SCALED DOT PRODUCT ATTENTION BACKWARD")
+    logger.debug("GEMS_ENFLAME SCALED_DOT_PRODUCT_ATTENTION_BACKWARD")
     # shape constraints
     HEAD_DIM_Q, HEAD_DIM_K = query.shape[-1], key.shape[-1]
     # when v is in float8_e5m2 it is transposed.
@@ -1094,7 +1096,7 @@ def flash_attention_forward(
     alibi_slopes=None,
     disable_splitkv=False,
 ):
-    logger.debug("GEMS FLASH_ATTENTION_FORWARD")
+    logger.debug("GEMS_ENFLAME FLASH_ATTENTION_FORWARD")
     assert (
         cumulative_sequence_length_q is None and cumulative_sequence_length_k is None
     ), "varlen is not supported yet."
@@ -1271,7 +1273,7 @@ def flash_attn_varlen_func(
     if num_splits > 0:
         raise RuntimeError("num_splits > 0 is not implemented in GEMS.")
     if use_c_extension:
-        logger.debug("GEMS FLASH_ATTN_VARLEN_FUNC(C EXTENSION)")
+        logger.debug("GEMS_ENFLAME FLASH_ATTN_VARLEN_FUNC")
         with torch_device_fn.device(q.device):
             out_cpp, softmax_lse = torch.ops.flag_gems.flash_attn_varlen_func(
                 q,
@@ -1307,7 +1309,7 @@ def flash_attn_varlen_func(
             )
         return (out_cpp, softmax_lse) if return_softmax_lse else out_cpp
     else:
-        logger.debug("GEMS FLASH_ATTN_VARLEN_FUNC")
+        logger.debug("GEMS_ENFLAME FLASH_ATTN_VARLEN_FUNC")
         assert (
             cu_seqlens_k is not None or seqused_k is not None
         ), "cu_seqlens_k or seqused_k must be provided"

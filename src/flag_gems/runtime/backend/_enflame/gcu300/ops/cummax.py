@@ -89,8 +89,8 @@ def scan_part_max_kernel(
     inp_vals = tl.load(inp_ptrs, mask=mask, other=min_value)
     if (
         tl.constexpr(inp_vals.dtype.is_int64())
-        or tl.constexpr(inp_vals.dtype.is_uint64())
-    ) or tl.constexpr(inp_vals.dtype.is_fp64()):
+        | tl.constexpr(inp_vals.dtype.is_uint64())
+    ) | tl.constexpr(inp_vals.dtype.is_fp64()):
         inp_vals = inp_vals
     elif tl.constexpr(inp_vals.dtype.is_int()):
         inp_vals = inp_vals.to(tl.int32)
@@ -203,8 +203,8 @@ def scan_part_max_abc_kernel(
     inp_vals = tl.load(inp_ptrs, mask=mask, other=min_value)
     if (
         tl.constexpr(inp_vals.dtype.is_int64())
-        or tl.constexpr(inp_vals.dtype.is_uint64())
-    ) or tl.constexpr(inp_vals.dtype.is_fp64()):
+        | tl.constexpr(inp_vals.dtype.is_uint64())
+    ) | tl.constexpr(inp_vals.dtype.is_fp64()):
         inp_vals = inp_vals
     elif tl.constexpr(inp_vals.dtype.is_int()):
         inp_vals = inp_vals.to(tl.int32)
@@ -372,8 +372,8 @@ def scan_part_max_abc_loop_kernel(
         inp_vals = tl.load(inp + offset, mask=mask, other=min_value)
         if (
             tl.constexpr(inp_vals.dtype.is_int64())
-            or tl.constexpr(inp_vals.dtype.is_uint64())
-        ) or tl.constexpr(inp_vals.dtype.is_fp64()):
+            | tl.constexpr(inp_vals.dtype.is_uint64())
+        ) | tl.constexpr(inp_vals.dtype.is_fp64()):
             vals = inp_vals
         elif tl.constexpr(inp_vals.dtype.is_int()):
             vals = inp_vals.to(tl.int32)
@@ -429,7 +429,7 @@ def cummax(
     *,
     out: Union[Tensor, Tuple[Tensor, ...], List[Tensor], None] = None,
 ) -> torch.return_types.cummax:
-    logger.debug("GEMS cummax")
+    logger.debug("GEMS_ENFLAME CUMMAX")
     assert dim >= -input.ndim and dim < input.ndim, "Invalid dim"
     shape = input.shape
     dim = dim % input.ndim

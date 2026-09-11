@@ -46,14 +46,16 @@ def _run_neg(inp, out, N_total):
 
     with torch_device_fn.device(inp.device):
         neg_flat_kernel[(grid_size,)](
-            inp, out, N_total,
+            inp,
+            out,
+            N_total,
             BLOCK=BLOCK,
             num_warps=8,
         )
 
 
 def neg(A):
-    logger.debug("GEMS NEG")
+    logger.debug("GEMS_ENFLAME NEG")
     inp = A.contiguous()
     out = torch.empty_like(inp)
     _run_neg(inp, out, inp.numel())
@@ -61,7 +63,7 @@ def neg(A):
 
 
 def neg_(A):
-    logger.debug("GEMS NEG_")
+    logger.debug("GEMS_ENFLAME NEG_")
     inp = A.contiguous()
     _run_neg(inp, A, inp.numel())
     return A

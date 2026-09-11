@@ -51,7 +51,7 @@ UNROLL = 4
 
 
 def rand(size, *, dtype=None, layout=None, device=None, pin_memory=None):
-    logger.debug("GEMS RAND")
+    logger.debug("GEMS_ENFLAME RAND")
     if dtype is None:
         dtype = torch.get_default_dtype()
     if device is None:

@@ -52,7 +52,7 @@ def _choose_block(N_total):
 
 
 def sigmoid(self):
-    logger.debug("GEMS SIGMOID FORWARD")
+    logger.debug("GEMS_ENFLAME SIGMOID")
     inp = self.contiguous()
     N_total = inp.numel()
     out = torch.empty_like(inp)
@@ -65,7 +65,9 @@ def sigmoid(self):
 
     with torch_device_fn.device(inp.device):
         sigmoid_flat_kernel[(grid_size,)](
-            inp, out, N_total,
+            inp,
+            out,
+            N_total,
             BLOCK=BLOCK,
             num_warps=nw,
         )
@@ -74,13 +76,13 @@ def sigmoid(self):
 
 
 def sigmoid_backward(grad_output, output):
-    logger.debug("GEMS SIGMOID BACKWARD")
+    logger.debug("GEMS_ENFLAME SIGMOID_BACKWARD")
     grad_input = sigmoid_backward_kernel(grad_output, output)
     return grad_input
 
 
 def sigmoid_(A):
-    logger.debug("GEMS SIGMOID_ FORWARD")
+    logger.debug("GEMS_ENFLAME SIGMOID_")
     inp = A.contiguous()
     N_total = inp.numel()
 
@@ -92,7 +94,9 @@ def sigmoid_(A):
 
     with torch_device_fn.device(inp.device):
         sigmoid_flat_kernel[(grid_size,)](
-            inp, A, N_total,
+            inp,
+            A,
+            N_total,
             BLOCK=BLOCK,
             num_warps=nw,
         )

@@ -4,18 +4,19 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.utils import tl_extra_shim
+
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-try:
-    from triton.language.extra.cuda.libdevice import pow as _pow
-except ImportError:
-    try:
-        from triton.language.math import pow as _pow
-    except ImportError:
-        from triton.language.libdevice import pow as _pow
-
-
+_pow = tl_extra_shim.pow
 logger = logging.getLogger(__name__)
+
+
+def _is_float64_scalar(*args):
+    return any(
+        isinstance(a, torch.Tensor) and a.dtype == torch.float64 and a.ndim == 0
+        for a in args
+    )
 
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "BOOL_TO_LONG")])
@@ -25,7 +26,10 @@ def pow_func(x, exponent):
 
 
 def pow_tensor_tensor(A, exponent):
-    logger.debug("GEMS POW_TENSOR_TENSOR")
+    logger.debug("GEMS_ENFLAME POW_TENSOR_TENSOR")
+    if _is_float64_scalar(A, exponent):
+        device = A.device
+        return torch.pow(A.cpu(), exponent.cpu()).to(device)
     if exponent.dtype == torch.int64:
         exponent = exponent.to(torch.int32)
     if A.dtype == torch.int64:
@@ -34,7 +38,10 @@ def pow_tensor_tensor(A, exponent):
 
 
 def pow_tensor_tensor_(A, exponent):
-    logger.debug("GEMS POW_TENSOR_TENSOR_")
+    logger.debug("GEMS_ENFLAME POW_TENSOR_TENSOR_")
+    if _is_float64_scalar(A, exponent):
+        A.copy_(torch.pow(A.cpu(), exponent.cpu()))
+        return A
     if exponent.dtype == torch.int64:
         exponent = exponent.to(torch.int32)
     if A.dtype == torch.int64:
@@ -49,12 +56,17 @@ def pow_func_tensor_scalar(x, exponent):
 
 
 def pow_tensor_scalar(A, exponent):
-    logger.debug("GEMS POW_TENSOR_SCALAR")
+    logger.debug("GEMS_ENFLAME POW_TENSOR_SCALAR")
+    if _is_float64_scalar(A):
+        return torch.pow(A.cpu(), exponent).to(A.device)
     return pow_func_tensor_scalar(A, exponent)
 
 
 def pow_tensor_scalar_(A, exponent):
-    logger.debug("GEMS POW_TENSOR_SCALAR_")
+    logger.debug("GEMS_ENFLAME POW_TENSOR_SCALAR_")
+    if _is_float64_scalar(A):
+        A.copy_(torch.pow(A.cpu(), exponent))
+        return A
     return pow_func_tensor_scalar(A, exponent, out0=A)
 
 
@@ -65,5 +77,7 @@ def pow_func_scalar_tensor(x, exponent):
 
 
 def pow_scalar(A, exponent):
-    logger.debug("GEMS POW_SCALAR")
+    logger.debug("GEMS_ENFLAME POW_SCALAR")
+    if _is_float64_scalar(exponent):
+        return torch.pow(A, exponent.cpu()).to(exponent.device)
     return pow_func_scalar_tensor(A, exponent)

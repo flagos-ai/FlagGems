@@ -63,7 +63,7 @@ def _choose_block(N, is_fp32):
 
 
 def softplus(self, beta=1.0, threshold=20.0):
-    logger.debug("GEMS SOFTPLUS GCU400")
+    logger.debug("GEMS_ENFLAME SOFTPLUS")
     inp = self if self.is_contiguous() else self.contiguous()
     N = inp.numel()
     out = torch.empty_like(inp)
@@ -75,12 +75,20 @@ def softplus(self, beta=1.0, threshold=20.0):
     with torch_device_fn.device(inp.device):
         if beta == 1.0 and threshold == 20.0:
             softplus_beta1_kernel[(grid_size,)](
-                inp, out, N,
-                BLOCK=BLOCK, num_warps=4,
+                inp,
+                out,
+                N,
+                BLOCK=BLOCK,
+                num_warps=4,
             )
         else:
             softplus_kernel[(grid_size,)](
-                inp, out, N, float(beta), float(threshold),
-                BLOCK=BLOCK, num_warps=4,
+                inp,
+                out,
+                N,
+                float(beta),
+                float(threshold),
+                BLOCK=BLOCK,
+                num_warps=4,
             )
     return out

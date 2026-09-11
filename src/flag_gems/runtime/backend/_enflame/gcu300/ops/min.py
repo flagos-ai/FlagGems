@@ -91,7 +91,7 @@ def min_kernel(
     for start_n in range(0, N, BLOCK_N):
         n_offset = start_n + tl.arange(0, BLOCK_N)
         offset = m_offset[:, None] * N + n_offset[None, :]
-        mask = m_offset[:, None] < M and n_offset[None, :] < N
+        mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
         inp_ptrs = inp + offset
         inp_vals = tl.load(inp_ptrs, mask=mask, other=max_value)
         local_min, local_argmin = tl.min(inp_vals, 1, return_indices=True)
@@ -116,7 +116,7 @@ def min(inp):
     if inp.dtype == torch.float64:
         inp = inp.to(torch.float32)
 
-    logger.debug("GEMS MIN")
+    logger.debug("GEMS_ENFLAME MIN")
     M = inp.numel()
     block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
     mid_size = triton.cdiv(M, block_size)
@@ -139,7 +139,7 @@ def min_dim(inp, dim=None, keepdim=False):
     if inp.dtype == torch.float64:
         inp = inp.to(torch.float32)
 
-    logger.debug("GEMS MIN DIM")
+    logger.debug("GEMS_ENFLAME MIN_DIM")
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     shape = list(inp.shape)
     dim = dim % inp.ndim

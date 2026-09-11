@@ -272,7 +272,7 @@ def max_pool2d_with_indices(
     dilation=1,
     ceil_mode=False,
 ):
-    logger.debug("GEMS MAX_POOL2D_WITH_INDICES FORWARD")
+    logger.debug("GEMS_ENFLAME MAX_POOL2D_WITH_INDICES")
     input = input.contiguous()
 
     params = _parse_pool_params(kernel_size, stride, padding, dilation)
@@ -352,7 +352,7 @@ def max_pool2d_backward(
     dilation,
     ceil_mode,
 ):
-    logger.debug("GEMS MAX_POOL2D BACKWARD")
+    logger.debug("GEMS_ENFLAME MAX_POOL2D_BACKWARD")
     grad_output = grad_output.contiguous()
     indices = indices.contiguous()
 

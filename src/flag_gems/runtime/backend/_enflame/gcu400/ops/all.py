@@ -22,7 +22,9 @@ def reduce_all(a, b):
 @libentry()
 @triton.jit(do_not_specialize=["N_total"])
 def all_global_kernel(
-    inp_ptr, mid_ptr, N_total,
+    inp_ptr,
+    mid_ptr,
+    N_total,
     BLOCK: tl.constexpr,
 ):
     pid = tl.program_id(0)
@@ -64,7 +66,10 @@ def _keep_config(conf):
 )
 @triton.jit
 def all_kernel_dim(
-    inp, out, M, N,
+    inp,
+    out,
+    M,
+    N,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
@@ -78,10 +83,10 @@ def all_kernel_dim(
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
         col_mask = cols < N
-        mask = row_mask and col_mask
+        mask = row_mask & col_mask
 
         a = tl.load(inp + cols, mask, other=1.0)
-        _all = _all and (a != 0)
+        _all = _all & (a != 0)
     all_result = tl.reduce(_all, axis=1, combine_fn=reduce_all)
     tl.store(out, all_result[:, None], row_mask)
 
@@ -93,7 +98,7 @@ def _to_u8_if_bool(inp):
 
 
 def all(inp):
-    logger.debug("GEMS ALL GCU400")
+    logger.debug("GEMS_ENFLAME ALL")
     inp = _to_u8_if_bool(inp)
     N_total = inp.numel()
     if N_total <= 4096:
@@ -117,7 +122,7 @@ def all(inp):
 
 
 def all_dim(inp, dim=None, keepdim=False):
-    logger.debug("GEMS ALL DIM GCU400")
+    logger.debug("GEMS_ENFLAME ALL_DIM")
     shape = list(inp.shape)
     if dim is None:
         out = all(inp)
@@ -143,7 +148,7 @@ def all_dim(inp, dim=None, keepdim=False):
 
 
 def all_dims(inp, dim=None, keepdim=False):
-    logger.debug("GEMS ALL DIMS GCU400")
+    logger.debug("GEMS_ENFLAME ALL_DIMS")
 
     if dim is None or isinstance(dim, int):
         return all_dim(inp, dim=dim, keepdim=keepdim)

@@ -41,7 +41,7 @@ def select_scatter_kernel(
 
 
 def select_scatter(inp, src, dim, index):
-    logger.debug("GEMS SELECT_SCATTER")
+    logger.debug("GEMS_ENFLAME SELECT_SCATTER")
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     assert index >= -inp.size(dim) and index < inp.size(dim), "Invalid index"
     dim = dim % inp.ndim

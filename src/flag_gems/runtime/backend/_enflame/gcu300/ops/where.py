@@ -19,15 +19,15 @@ def where_inner(condition, self, other):
 
 
 def where_self_out(condition, self, other, out=None):
-    logger.debug("GEMS WHERE_SELF_OUT")
+    logger.debug("GEMS_ENFLAME WHERE_SELF_OUT")
     result_type = torch.result_type(self, other)
     return_type = result_type
     if result_type == torch.int64:
         result_type = torch.int32
     if out is not None:
         assert (
-            out.dtype == result_type
-        ), f"Expected out type to be {result_type}, but got {out.dtype}."
+            out.dtype == return_type
+        ), f"Expected out type to be {return_type}, but got {out.dtype}."
 
     c, a, b = list(
         map(
@@ -63,24 +63,33 @@ def where_self_out(condition, self, other, out=None):
 
     if out is None:
         out_shape = torch.broadcast_shapes(c.shape, a.shape, b.shape)
-        out = torch.empty(out_shape, dtype=result_type, device=device)
+        compute_out = torch.empty(out_shape, dtype=result_type, device=device)
+    else:
+        out_shape = torch.broadcast_shapes(c.shape, a.shape, b.shape)
+        if out.dtype != result_type:
+            compute_out = torch.empty(out_shape, dtype=result_type, device=device)
+        else:
+            compute_out = out
 
     ndim = max(c.ndim, a.ndim, b.ndim)
     where_inner.instantiate(ndim)
-    where_inner(c, a, b, out0=out)
-    return out.to(return_type)
+    where_inner(c, a, b, out0=compute_out)
+    if compute_out is not out and out is not None:
+        out.copy_(compute_out.to(return_type))
+        return out
+    return compute_out.to(return_type)
 
 
 def where_self(condition, self, other):
-    logger.debug("GEMS WHERE_SELF")
+    logger.debug("GEMS_ENFLAME WHERE_SELF")
     return where_self_out(condition, self, other)
 
 
 def where_scalar_self(condition, self, other):
-    logger.debug("GEMS WHERE_SCALAR_SELF")
+    logger.debug("GEMS_ENFLAME WHERE_SCALAR_SELF")
     return where_self_out(condition, self, other)
 
 
 def where_scalar_other(condition, self, other):
-    logger.debug("GEMS WHERE_SCALAR_OTHER")
+    logger.debug("GEMS_ENFLAME WHERE_SCALAR_OTHER")
     return where_self_out(condition, self, other)

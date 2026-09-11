@@ -22,7 +22,7 @@ def glu_kernel(a, b):
 
 def glu(self, dim=-1):
     assert self.shape[dim] % 2 == 0, "Split dimension must be even"
-    logger.debug("GLU FORWARD")
+    logger.debug("GEMS_ENFLAME GLU")
     return_type = self.dtype
     if self.dtype == torch.int64:
         self = self.to(torch.in32)

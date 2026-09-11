@@ -276,7 +276,7 @@ def generate_pad_kernel(
     code.writeline("):")
 
     with code.indent():
-        code.writeline("pid = tle.program_id(0)")
+        code.writeline("pid = tl.program_id(0)")
         code.writeline("block_offset = pid * BLOCK_SIZE")
         code.writeline("offset = block_offset + tl.arange(0, BLOCK_SIZE)")
         code.newline()
@@ -456,7 +456,7 @@ _pad_func = PadFunction()
 
 
 def pad(self, pad, mode="constant", value=None):
-    logger.debug("GEMS CONSTANT PAD ND")
+    logger.debug("GEMS_ENFLAME CONSTANT_PAD_ND")
 
     ndim = self.ndim
 

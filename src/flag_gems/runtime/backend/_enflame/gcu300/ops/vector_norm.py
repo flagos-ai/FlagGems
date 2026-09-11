@@ -26,7 +26,7 @@ def l2_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
         col_mask = cols < N
-        mask = row_mask and col_mask
+        mask = row_mask & col_mask
 
         a = tl.load(X + cols, mask, other=0.0).to(tl.float32)
         _sum += a * a
@@ -74,7 +74,7 @@ def max_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
         col_mask = cols < N
-        mask = row_mask and col_mask
+        mask = row_mask & col_mask
 
         a = tl.load(X + cols, mask, other=0.0).to(tl.float32)
         _max = tl.maximum(tl.abs(a), _max)
@@ -122,7 +122,7 @@ def min_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
         col_mask = cols < N
-        mask = row_mask and col_mask
+        mask = row_mask & col_mask
 
         a = tl.load(X + cols, mask, other=float("inf")).to(tl.float32)
         _min = tl.minimum(tl.abs(a), _min)
@@ -170,7 +170,7 @@ def l0_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
         col_mask = cols < N
-        mask = row_mask and col_mask
+        mask = row_mask & col_mask
 
         a = tl.load(X + cols, mask, other=0).to(tl.float32)
         _sum += tl.where(a != 0, 1, 0)
@@ -218,7 +218,7 @@ def v_norm_kernel(X, Out, M, N, ord, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexp
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
         col_mask = cols < N
-        mask = row_mask and col_mask
+        mask = row_mask & col_mask
 
         a = tl.load(X + cols, mask, other=0.0).to(tl.float32)
         _sum += pow(tl.abs(a), ord)
@@ -253,7 +253,7 @@ def l1_norm_kernel_2(Mid, Out, ord, MID_SIZE, BLOCK_MID: tl.constexpr):
 
 
 def vector_norm(x, ord=2, dim=None, keepdim=False, dtype=None):
-    logger.debug("GEMS VECTOR NORM")
+    logger.debug("GEMS_ENFLAME VECTOR_NORM")
     if dtype is not None:
         dtype = torch.dtype(dtype)
     else:

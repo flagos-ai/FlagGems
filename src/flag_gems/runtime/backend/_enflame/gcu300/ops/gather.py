@@ -5,10 +5,11 @@ from typing import Any, Callable, Mapping, Tuple
 
 import torch
 
-from flag_gems.ops.scatter import scatter_
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 from flag_gems.utils.shape_utils import restride_dim
+
+from .scatter import scatter_
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +22,7 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.writeline("from flag_gems.utils import libentry")
     code.writeline("from flag_gems import runtime")
     code.writeline("from flag_gems.utils import triton_lang_extension as ext")
-
+    code.writeline("from flag_gems.utils.tensor_wrapper import StridedBuffer")
     code.newline()
     code.newline()
     return code
@@ -199,7 +200,13 @@ _gather_func = GatherFunction()
 
 
 def gather(inp, dim, index, out=None, sparse_grad=False):
-    logger.debug("GEMS GATHER")
+    logger.debug("GEMS_ENFLAME GATHER")
+
+    # index must have same number of dimensions as input
+    if index.ndim != inp.ndim:
+        raise IndexError(
+            "Index tensor must have the same number of dimensions as input tensor"
+        )
 
     return_dtype = inp.dtype
     if inp.dtype == torch.int64:
@@ -215,6 +222,11 @@ def gather(inp, dim, index, out=None, sparse_grad=False):
 
 
 def gather_backward(grad, self, dim, index, sparse_grad):
-    logger.debug("GEMS GATHER BACKWARD")
+    logger.debug("GEMS_ENFLAME GATHER_BACKWARD")
+    # GCU300 does not support 64-bit data types. scatter_ loads the index
+    # tensor in the kernel, so an int64 index would produce a 64-bit load.
+    # Convert int64 index to int32 before dispatching to scatter_.
+    if index.dtype == torch.int64:
+        index = index.to(torch.int32)
     result = grad.new_zeros(self.shape)
     return scatter_(result, dim, index, grad, reduce="add")

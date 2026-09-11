@@ -1,9 +1,13 @@
+import logging
+
 import torch
 import triton
 import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.utils import libentry, libtuner
+
+logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -95,6 +99,7 @@ def get_higher_dtype(a, b):
 
 
 def mm(a, b):
+    logger.debug("GEMS_ENFLAME MM")
     if a.stride(0) > 1 and a.stride(1) > 1:
         a = a.contiguous()
     if b.stride(0) > 1 and b.stride(1) > 1:
@@ -109,10 +114,18 @@ def mm(a, b):
         META["SPLIT_K"],
     )
     mm_kernel[grid](
-        a, b, c, M, N, K,
-        a.stride(0), a.stride(1),
-        b.stride(0), b.stride(1),
-        c.stride(0), c.stride(1),
+        a,
+        b,
+        c,
+        M,
+        N,
+        K,
+        a.stride(0),
+        a.stride(1),
+        b.stride(0),
+        b.stride(1),
+        c.stride(0),
+        c.stride(1),
         dot_out_dtype=tl.float32,
         GROUP_M=8,
     )
@@ -133,10 +146,18 @@ def mm_out(a, b, *, out):
         META["SPLIT_K"],
     )
     mm_kernel[grid](
-        a, b, c, M, N, K,
-        a.stride(0), a.stride(1),
-        b.stride(0), b.stride(1),
-        c.stride(0), c.stride(1),
+        a,
+        b,
+        c,
+        M,
+        N,
+        K,
+        a.stride(0),
+        a.stride(1),
+        b.stride(0),
+        b.stride(1),
+        c.stride(0),
+        c.stride(1),
         dot_out_dtype=tl.float32,
         GROUP_M=8,
     )

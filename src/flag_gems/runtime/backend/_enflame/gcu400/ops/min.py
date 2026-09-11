@@ -33,9 +33,9 @@ def min_kernel_inner_1d(
     dtype = inp.type.element_ty
     max_value = get_dtype_max(dtype)
 
-    if tl.constexpr(dtype == tl.float16) or tl.constexpr(dtype == tl.bfloat16):
+    if tl.constexpr(dtype == tl.float16) | tl.constexpr(dtype == tl.bfloat16):
         acc_dtype = tl.float32
-    elif tl.constexpr(dtype == tl.int16) or tl.constexpr(dtype == tl.int8):
+    elif tl.constexpr(dtype == tl.int16) | tl.constexpr(dtype == tl.int8):
         acc_dtype = tl.int32
     else:
         acc_dtype = dtype
@@ -82,9 +82,9 @@ def min_kernel_non_inner(
     total_work = M * num_k_tiles
 
     dtype = inp.type.element_ty
-    if tl.constexpr(dtype == tl.float16) or tl.constexpr(dtype == tl.bfloat16):
+    if tl.constexpr(dtype == tl.float16) | tl.constexpr(dtype == tl.bfloat16):
         acc_dtype = tl.float32
-    elif tl.constexpr(dtype == tl.int16) or tl.constexpr(dtype == tl.int8):
+    elif tl.constexpr(dtype == tl.int16) | tl.constexpr(dtype == tl.int8):
         acc_dtype = tl.int32
     else:
         acc_dtype = dtype
@@ -137,9 +137,9 @@ def min_kernel_inner_batch(
     dtype = inp.type.element_ty
     max_value = get_dtype_max(dtype)
 
-    if tl.constexpr(dtype == tl.float16) or tl.constexpr(dtype == tl.bfloat16):
+    if tl.constexpr(dtype == tl.float16) | tl.constexpr(dtype == tl.bfloat16):
         acc_dtype = tl.float32
-    elif tl.constexpr(dtype == tl.int16) or tl.constexpr(dtype == tl.int8):
+    elif tl.constexpr(dtype == tl.int16) | tl.constexpr(dtype == tl.int8):
         acc_dtype = tl.int32
     else:
         acc_dtype = dtype
@@ -164,20 +164,12 @@ def min_kernel_inner_batch(
 
 
 def min(inp):
-    logger.debug("GEMS MIN GCU400")
+    logger.debug("GEMS_ENFLAME MIN")
     return torch.amin(inp)
 
 
 def min_dim(inp, dim=None, keepdim=False):
-    logger.debug("GEMS MIN DIM GCU400")
-
-    return_dtype = inp.dtype
-    if inp.dtype == torch.int64:
-        inp = inp.to(torch.int32)
-    if inp.dtype == torch.int16:
-        inp = inp.to(torch.int32)
-    if inp.dtype == torch.float64:
-        inp = inp.to(torch.float32)
+    logger.debug("GEMS_ENFLAME MIN_DIM")
 
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     shape = inp.shape
@@ -192,7 +184,7 @@ def min_dim(inp, dim=None, keepdim=False):
     shape_list = list(shape)
     shape_list[dim] = 1
     out_value = torch.empty(shape_list, dtype=inp.dtype, device=inp.device)
-    out_index = torch.empty(shape_list, dtype=torch.int32, device=inp.device)
+    out_index = torch.empty(shape_list, dtype=torch.int64, device=inp.device)
 
     if K == 1:
         BLOCK_N = _min(triton.next_power_of_2(N), 4096)
@@ -201,7 +193,11 @@ def min_dim(inp, dim=None, keepdim=False):
             grid_m = _min(triton.cdiv(M, BLOCK_M), 48)
             with torch_device_fn.device(inp.device):
                 min_kernel_inner_batch[(grid_m,)](
-                    inp, out_value, out_index, M, N,
+                    inp,
+                    out_value,
+                    out_index,
+                    M,
+                    N,
                     BLOCK_M=BLOCK_M,
                     num_warps=1,
                 )
@@ -210,9 +206,14 @@ def min_dim(inp, dim=None, keepdim=False):
             num_stages = 3 if M > grid_m else 1
             with torch_device_fn.device(inp.device):
                 min_kernel_inner_1d[(grid_m,)](
-                    inp, out_value, out_index, M, N,
+                    inp,
+                    out_value,
+                    out_index,
+                    M,
+                    N,
                     BLOCK_N=BLOCK_N,
-                    num_stages=num_stages, num_warps=1,
+                    num_stages=num_stages,
+                    num_warps=1,
                 )
     else:
         BLOCK_K = _min(triton.next_power_of_2(K), 128)
@@ -227,9 +228,17 @@ def min_dim(inp, dim=None, keepdim=False):
 
         with torch_device_fn.device(inp.device):
             min_kernel_non_inner[(grid_size,)](
-                inp, out_value, out_index, M, N, K, num_k_tiles,
-                BLOCK_K=BLOCK_K, BLOCK_N=BLOCK_N,
-                num_stages=num_stages, num_warps=1,
+                inp,
+                out_value,
+                out_index,
+                M,
+                N,
+                K,
+                num_k_tiles,
+                BLOCK_K=BLOCK_K,
+                BLOCK_N=BLOCK_N,
+                num_stages=num_stages,
+                num_warps=1,
             )
 
     if not keepdim:
@@ -237,5 +246,5 @@ def min_dim(inp, dim=None, keepdim=False):
         out_index = torch.squeeze(out_index, dim)
 
     Min_out = namedtuple("min", ["values", "indices"])
-    out = Min_out(values=out_value.to(return_dtype), indices=out_index.to(torch.int64))
+    out = Min_out(values=out_value, indices=out_index)
     return out

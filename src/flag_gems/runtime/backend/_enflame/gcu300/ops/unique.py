@@ -1,9 +1,13 @@
+import logging
+
 import torch
 import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils.libentry import libentry
+
+logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -766,7 +770,11 @@ def simple_unique_flat(
                 tile_size=triton.next_power_of_2(out_size),
                 num_warps=8,
             )
-    return data_out[:out_size], inverse_indices.to(torch.int64), counts
+    return (
+        data_out[:out_size],
+        inverse_indices.to(torch.int64) if inverse_indices is not None else None,
+        counts,
+    )
 
 
 def _unique2(
@@ -775,6 +783,7 @@ def _unique2(
     return_inverse: bool = False,
     return_counts: bool = False,
 ):
+    logger.debug("GEMS_ENFLAME _UNIQUE2")
     if in0.numel() <= 8192:
         sorted_data, sorted_indices = torch.sort(in0.ravel())
         data_out, inverse_indices, counts = simple_unique_flat(

@@ -51,7 +51,7 @@ UNROLL = 4
 
 
 def uniform_(self, from_=0.0, to=1.0, *, generator=None):
-    logger.debug("GEMS UNIFORM")
+    logger.debug("GEMS_ENFLAME UNIFORM_")
     N = volume(self.shape)
     grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK"] * UNROLL),)
 

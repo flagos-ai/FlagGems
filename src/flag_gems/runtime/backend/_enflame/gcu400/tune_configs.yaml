@@ -1,26 +1,29 @@
 attention:
-- gen: true
-  param_map:
-    META:
-      BLOCK_M: block_m
-      BLOCK_N: block_n
-      PRE_LOAD_V: pre_load_v
-    num_warps: warps
-    num_stages: stages
-  block_m:
-  - 64
-  - 128
-  block_n:
-  - 64
-  - 128
-  pre_load_v:
-  - true
-  - false
-  warps:
-  - 2
-  - 4
-  stages:
-  - 3
+  - gen: true
+    param_map:
+      META:
+        BLOCK_M: block_m
+        BLOCK_N: block_n
+        PRE_LOAD_V: pre_load_v
+      num_warps: warps
+      num_stages: stages
+    block_m:
+      - 32
+      - 64
+      - 128
+    block_n:
+      - 32
+      - 64
+      - 128
+    pre_load_v:
+      - true
+      - false
+    warps:
+      - 4
+    stages:
+      - 2
+      - 3
+      - 4
 addmm:
 - META:
     BLOCK_SIZE_M: 32
@@ -159,6 +162,13 @@ baddbmm:
     TILE_M: 256
     TILE_N: 256
     TILE_K: 256
+    GROUP_M: 2
+  num_stages: 2
+  num_warps: 4
+- META:
+    TILE_M: 64
+    TILE_N: 64
+    TILE_K: 64
     GROUP_M: 2
   num_stages: 2
   num_warps: 4
@@ -993,3 +1003,29 @@ log_softmax:
   - 1
   - 2
   - 4
+
+linear:
+  - META:
+      BLOCK_SIZE_M: 128
+      BLOCK_SIZE_N: 256
+      BLOCK_SIZE_K: 128
+    num_stages: 3
+    num_warps: 2
+  - META:
+      BLOCK_SIZE_M: 128
+      BLOCK_SIZE_N: 256
+      BLOCK_SIZE_K: 128
+    num_stages: 2
+    num_warps: 2
+  - META:
+      BLOCK_SIZE_M: 128
+      BLOCK_SIZE_N: 256
+      BLOCK_SIZE_K: 64
+    num_stages: 3
+    num_warps: 2
+  - META:
+      BLOCK_SIZE_M: 64
+      BLOCK_SIZE_N: 64
+      BLOCK_SIZE_K: 128
+    num_stages: 2
+    num_warps: 1

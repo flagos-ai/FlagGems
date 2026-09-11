@@ -192,7 +192,7 @@ def argmin_kernel(
             for start_n in range(0, N, BLOCK_N):
                 n_offset = start_n + tl.arange(0, BLOCK_N)
                 offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
-                mask = m_offset[:, None] < M and n_offset[None, :] < N
+                mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
                 inp_ptrs = inp + offset
                 inp_vals = tl.load(inp_ptrs, mask=mask, other=max_value)
                 # tl.bfloat is promoted to tl.float32 by tl.min
@@ -212,7 +212,7 @@ def argmin_kernel(
 
 
 def argmin(inp, dim=None, keepdim=False, *, dtype=None):
-    logger.debug("GEMS ARGMIN")
+    logger.debug("GEMS_ENFLAME ARGMIN")
     if dim is None:
         M = inp.numel()
         if dtype is None:
@@ -291,7 +291,10 @@ def argmin(inp, dim=None, keepdim=False, *, dtype=None):
             ):
                 triton_dtype = torch2triton_dtype[inp.dtype]
                 # use default paramerter to calcualte grid
-                grid_for_split_K = (triton.cdiv(M, 8), min(triton.cdiv(K, 32), GRID_Y_LIMIT))
+                grid_for_split_K = (
+                    triton.cdiv(M, 8),
+                    min(triton.cdiv(K, 32), GRID_Y_LIMIT),
+                )
                 with torch_device_fn.device(inp.device):
                     argmin_split_K_kernel_merged[grid_for_split_K](
                         inp,

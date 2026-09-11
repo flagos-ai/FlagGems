@@ -172,7 +172,7 @@ def concat_and_cache_mla(
     kv_cache_dtype: str,
     scale: torch.Tensor,
 ) -> None:
-    logger.debug("GEMS CONCAT_AND_CACHE_MLA")
+    logger.debug("GEMS_ENFLAME CONCAT_AND_CACHE_MLA")
     return ConcatAndCacheMla.apply(
         kv_c, k_pe, kv_cache, slot_mapping, kv_cache_dtype, scale
     )

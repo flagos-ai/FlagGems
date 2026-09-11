@@ -5,8 +5,7 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry
-from flag_gems.utils import tl_extra_shim
+from flag_gems.utils import libentry, tl_extra_shim
 
 _atan = tl_extra_shim.atan
 
@@ -41,7 +40,7 @@ def _choose_block(N, is_fp32):
 
 
 def atan(A):
-    logger.debug("GEMS ATAN GCU400")
+    logger.debug("GEMS_ENFLAME ATAN")
     inp = A if A.is_contiguous() else A.contiguous()
     N = inp.numel()
     out = torch.empty_like(inp)
@@ -52,14 +51,17 @@ def atan(A):
 
     with torch_device_fn.device(inp.device):
         atan_kernel[(grid_size,)](
-            inp, out, N,
-            BLOCK=BLOCK, num_warps=8,
+            inp,
+            out,
+            N,
+            BLOCK=BLOCK,
+            num_warps=8,
         )
     return out
 
 
 def atan_(A):
-    logger.debug("GEMS ATAN_ GCU400")
+    logger.debug("GEMS_ENFLAME ATAN_")
     inp = A if A.is_contiguous() else A.contiguous()
     N = inp.numel()
 
@@ -69,7 +71,10 @@ def atan_(A):
 
     with torch_device_fn.device(inp.device):
         atan_kernel[(grid_size,)](
-            inp, A, N,
-            BLOCK=BLOCK, num_warps=8,
+            inp,
+            A,
+            N,
+            BLOCK=BLOCK,
+            num_warps=8,
         )
     return A

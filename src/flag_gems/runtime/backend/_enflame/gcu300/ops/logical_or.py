@@ -15,5 +15,5 @@ def logical_or_func(x, y):
 
 
 def logical_or(A, B):
-    logger.debug("GEMS LOGICAL_OR")
+    logger.debug("GEMS_ENFLAME LOGICAL_OR")
     return logical_or_func(A, B)
