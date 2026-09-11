@@ -417,7 +417,10 @@ def _segment_reduce_uniform_forward_kernel(
     has_nan = tl.zeros((BLOCK_M, BLOCK_K), dtype=tl.int1)
     nan_value = tl.zeros((BLOCK_M, BLOCK_K), dtype=compute_dtype)
 
-    for pos in tl.static_range(MAX_BLOCKS):
+    # A runtime loop (not tl.static_range): unrolling the max/min path
+    # (nan_mask / has_nan / nan_value / tl.where per iteration) blows up
+    # the IR past uni_sram on TritonXPU -> OutOfResources at Vectorize.
+    for pos in range(MAX_BLOCKS):
         segment_mask = pos < segment_length
         block_mask = mask & segment_mask
         data_offsets = base_offsets + pos * inner_size
@@ -521,11 +524,32 @@ def _segment_reduce_uniform_lengths(data, reduce, lengths, axis):
             )
         return output
 
-    # uniform segments longer than _UNIFORM_KERNEL_MAX_SEGMENT_LENGTH fall
-    # through to the general _segment_reduce_forward_kernel (the caller's
-    # None-fallback); measured on XPU that path is not slower than the
-    # reshape + torch.{sum,mean,amax,amin,prod} alternative it replaces.
-    return None
+    if data.device.type == "npu":
+        return None
+
+    # Large uniform segments (> _UNIFORM_KERNEL_MAX_SEGMENT_LENGTH): the
+    # general _segment_reduce_forward_kernel iterates ~data_size_axis /
+    # BLOCK_SIZE times per program, which is pathological for e.g.
+    # (1024**3,) (seg_len = 16M). Reshape and reduce with the torch
+    # elementwise/reduction ops instead; measured on XPU this is not slower
+    # than the general kernel for the shapes it serves.
+    view_shape = (
+        data.shape[:axis] + (segment_count, segment_length) + data.shape[axis + 1 :]
+    )
+    reshaped = data.reshape(view_shape)
+    reduce_dim = axis + 1
+
+    if segment_length == 1:
+        return torch.squeeze(reshaped, dim=reduce_dim)
+    if reduce == "sum":
+        return torch.sum(reshaped, dim=reduce_dim)
+    if reduce == "mean":
+        return torch.mean(reshaped, dim=reduce_dim)
+    if reduce == "max":
+        return torch.amax(reshaped, dim=reduce_dim)
+    if reduce == "min":
+        return torch.amin(reshaped, dim=reduce_dim)
+    return torch.prod(reshaped, dim=reduce_dim)
 
 
 def _segment_reduce_uniform_sum_mean_backward(data, grad, reduce, lengths, axis):
