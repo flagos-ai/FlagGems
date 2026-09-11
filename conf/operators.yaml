@@ -6940,6 +6940,21 @@ ops:
   - Quantization
   stages:
   - beta: '5.3'
+- id: infinitely_differentiable_gelu_backward
+  description: The smooth (erf-based) GELU gradient used by higher-order autograd,
+    computed as `grad * (0.5 * erf(x / sqrt(2)) + 0.5 + x * exp(-x * x / 2) / sqrt(2
+    * pi))`.
+  for:
+  - infinitely_differentiable_gelu_backward
+  labels:
+  - aten
+  - Activation
+  - pointwise
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: inplace_fused_experts
   description: This operator writes output directly to `hidden_states`.
   for:

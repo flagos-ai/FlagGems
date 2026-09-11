@@ -521,6 +521,9 @@ from flag_gems.ops.index_put import _index_put_impl_, index_put, index_put_
 from flag_gems.ops.index_reduce import index_reduce_
 from flag_gems.ops.index_select import index_select
 from flag_gems.ops.index_select_backward import index_select_backward
+from flag_gems.ops.infinitely_differentiable_gelu_backward import (
+    infinitely_differentiable_gelu_backward,
+)
 from flag_gems.ops.is_nonzero import is_nonzero
 from flag_gems.ops.isclose import allclose, isclose
 from flag_gems.ops.isfinite import isfinite
@@ -1548,6 +1551,7 @@ __all__ = [
     "index_reduce_",
     "index_select",
     "index_select_backward",
+    "infinitely_differentiable_gelu_backward",
     "is_nonzero",
     "isclose",
     "isfinite",
