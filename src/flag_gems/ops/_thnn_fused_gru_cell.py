@@ -25,6 +25,8 @@ from flag_gems.utils import libentry, tl_extra_shim
 
 logger = logging.getLogger(__name__)
 
+_SUPPORTED_DTYPES = (torch.float16, torch.bfloat16, torch.float32, torch.float64)
+
 
 @libentry()
 @triton.jit
@@ -190,6 +192,10 @@ def _validate_tensor(tensor, shape, dtype, device, name):
 def _validate_inputs(input_gates, hidden_gates, hx, input_bias, hidden_bias):
     if input_gates.ndim != 2:
         raise RuntimeError("input_gates must be a 2-D tensor")
+    if input_gates.dtype not in _SUPPORTED_DTYPES:
+        raise RuntimeError(
+            "_thnn_fused_gru_cell only supports FP16, BF16, FP32, and FP64"
+        )
     batch_size, gate_size = input_gates.shape
     if gate_size % 3 != 0:
         raise RuntimeError("input_gates.size(1) must be divisible by 3")
@@ -316,6 +322,8 @@ def _thnn_fused_gru_cell_out(
         input_gates.device,
         "out1",
     )
+    if torch._C._overlaps(out0, out1):
+        raise RuntimeError("out0 and out1 must not overlap")
     _launch_gru_cell(
         input_gates,
         hidden_gates,

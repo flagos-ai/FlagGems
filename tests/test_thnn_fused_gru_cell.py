@@ -18,7 +18,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
-from .conftest import QUICK_MODE
+from .conftest import QUICK_MODE, TO_CPU
 
 DTYPES = utils.ALL_FLOAT_DTYPES
 SHAPES = [(1, 4), (4, 17), (33, 129), (2, 257)]
@@ -170,6 +170,28 @@ def test_accuracy_thnn_fused_gru_cell_rejects_input_bias_only():
         )
 
 
+@pytest.mark.skipif(TO_CPU, reason="native fused GRU cell is CUDA-only")
+@pytest.mark.thnn_fused_gru_cell
+@pytest.mark.parametrize("dtype", [torch.int32, torch.bool, torch.complex64])
+def test_thnn_fused_gru_cell_rejects_unsupported_dtype(dtype):
+    shape = (2, 21)
+    if dtype == torch.bool:
+        input_gates = torch.randint(
+            0, 2, shape, dtype=torch.int32, device=flag_gems.device
+        ).bool()
+    elif dtype.is_complex:
+        input_gates = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    else:
+        input_gates = torch.randint(-4, 5, shape, dtype=dtype, device=flag_gems.device)
+    hidden_gates = torch.zeros_like(input_gates)
+    hx = torch.zeros((2, 7), dtype=dtype, device=flag_gems.device)
+
+    with pytest.raises(RuntimeError):
+        torch.ops.aten._thnn_fused_gru_cell(input_gates, hidden_gates, hx)
+    with pytest.raises(RuntimeError):
+        flag_gems._thnn_fused_gru_cell(input_gates, hidden_gates, hx)
+
+
 def _make_noncontiguous_outputs(batch_size, hidden_size, dtype):
     out0 = torch.empty(hidden_size, batch_size, dtype=dtype, device=flag_gems.device).T
     out1 = torch.empty(
@@ -205,6 +227,7 @@ def test_accuracy_thnn_fused_gru_cell_out(dtype):
 @pytest.mark.thnn_fused_gru_cell_out
 def test_accuracy_thnn_fused_gru_cell_out_resize():
     input_gates, hidden_gates, hx = _make_inputs(2, 7, torch.float32)
+    reference = _reference(input_gates, hidden_gates, hx)
     outputs = tuple(torch.empty(0, device=flag_gems.device) for _ in range(2))
     result = flag_gems._thnn_fused_gru_cell_out(
         input_gates, hidden_gates, hx, out0=outputs[0], out1=outputs[1]
@@ -212,3 +235,89 @@ def test_accuracy_thnn_fused_gru_cell_out_resize():
     assert result[0] is outputs[0] and result[1] is outputs[1]
     assert tuple(outputs[0].shape) == (2, 7)
     assert tuple(outputs[1].shape) == (2, 35)
+    _assert_close(result, reference, torch.float32)
+
+
+@pytest.mark.thnn_fused_gru_cell_out
+@pytest.mark.parametrize("output_index", [0, 1])
+def test_thnn_fused_gru_cell_out_rejects_invalid_dtype(output_index):
+    input_gates, hidden_gates, hx = _make_inputs(2, 7, torch.float32)
+    outputs = [
+        torch.empty((2, 7), dtype=torch.float32, device=flag_gems.device),
+        torch.empty((2, 35), dtype=torch.float32, device=flag_gems.device),
+    ]
+    outputs[output_index] = outputs[output_index].to(torch.float64)
+    with pytest.raises(RuntimeError):
+        flag_gems._thnn_fused_gru_cell_out(
+            input_gates,
+            hidden_gates,
+            hx,
+            out0=outputs[0],
+            out1=outputs[1],
+        )
+
+
+@pytest.mark.thnn_fused_gru_cell_out
+@pytest.mark.parametrize("output_index", [0, 1])
+def test_thnn_fused_gru_cell_out_rejects_invalid_device(output_index):
+    input_gates, hidden_gates, hx = _make_inputs(2, 7, torch.float32)
+    outputs = [
+        torch.empty((2, 7), device=flag_gems.device),
+        torch.empty((2, 35), device=flag_gems.device),
+    ]
+    wrong_device = "meta" if input_gates.device.type == "cpu" else "cpu"
+    outputs[output_index] = torch.empty(
+        outputs[output_index].shape, device=wrong_device
+    )
+    with pytest.raises(RuntimeError):
+        flag_gems._thnn_fused_gru_cell_out(
+            input_gates,
+            hidden_gates,
+            hx,
+            out0=outputs[0],
+            out1=outputs[1],
+        )
+
+
+@pytest.mark.thnn_fused_gru_cell_out
+def test_thnn_fused_gru_cell_out_rejects_overlapping_outputs():
+    input_gates, hidden_gates, hx = _make_inputs(2, 7, torch.float32)
+    storage = torch.empty((2, 35), device=flag_gems.device)
+    out0 = storage[:, :7]
+    with pytest.raises(RuntimeError):
+        flag_gems._thnn_fused_gru_cell_out(
+            input_gates, hidden_gates, hx, out0=out0, out1=storage
+        )
+
+
+@pytest.mark.skipif(TO_CPU, reason="native fused GRU cell is CUDA-only")
+@pytest.mark.thnn_fused_gru_cell
+@pytest.mark.parametrize("dtype", DTYPES)
+@pytest.mark.parametrize("with_bias", [False, True])
+def test_thnn_fused_gru_cell_backward_end_to_end(dtype, with_bias):
+    batch_size, hidden_size = 5, 19
+    input_gates, hidden_gates, hx = _make_inputs(batch_size, hidden_size, dtype)
+    input_bias = None
+    hidden_bias = None
+    if with_bias:
+        input_bias = torch.randn(3 * hidden_size, dtype=dtype, device=flag_gems.device)
+        hidden_bias = torch.randn_like(input_bias)
+
+    ref_hy, ref_workspace = torch.ops.aten._thnn_fused_gru_cell(
+        input_gates, hidden_gates, hx, input_bias, hidden_bias
+    )
+    hy, workspace = flag_gems._thnn_fused_gru_cell(
+        input_gates, hidden_gates, hx, input_bias, hidden_bias
+    )
+    grad_hy = torch.randn_like(hy)
+    reference = torch.ops.aten._thnn_fused_gru_cell_backward(
+        grad_hy, ref_workspace, with_bias
+    )
+    result = torch.ops.aten._thnn_fused_gru_cell_backward(grad_hy, workspace, with_bias)
+
+    utils.gems_assert_close(hy, ref_hy, dtype)
+    for actual, expected in zip(result, reference):
+        if expected is None:
+            assert actual is None
+        else:
+            utils.gems_assert_close(actual, expected, dtype)
