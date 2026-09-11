@@ -1,0 +1,13 @@
+{
+  "input_name": "_sample_dirichlet",
+  "source_name": "_sample_dirichlet",
+  "impl_name": "_sample_dirichlet",
+  "canonical_name": "_sample_dirichlet",
+  "source_op_id": "sample_dirichlet",
+  "impl_op_id": "sample_dirichlet",
+  "canonical_op_id": "sample_dirichlet",
+  "worktree_dir": "/root/flaggems/.worktrees/gen-_sample_dirichlet",
+  "registry_row": null,
+  "registry_pr_url": "(未在规范名表中)",
+  "registry_speedup": "(未在待提交列表中)"
+}
