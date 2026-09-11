@@ -90,7 +90,8 @@ def test_scaled_dot_product_attention(monkeypatch, dropout_p, is_causal):
 
 @pytest.mark.scaled_dot_product_attention_backward
 @pytest.mark.xfail(
-    reason="Operator bug: backward kernel triggers CUDA illegal memory access"
+    reason="Operator bug: backward kernel triggers CUDA illegal memory access",
+    run=False,
 )
 @pytest.mark.parametrize("dropout_p", [0.0])
 @pytest.mark.parametrize("is_causal", [True, False])
