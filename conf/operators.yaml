@@ -6421,6 +6421,25 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: hash_tensor
+  description: 'Reduces the input tensor by XOR-ing the raw 64-bit representations
+    of its elements over the given dims (an empty dim list reduces over all
+    elements).
+
+    Floating types are widened to float64 and bit-cast to uint64; integer and bool
+    types are extended to int64 and bit-cast to uint64. The output dtype is always
+    uint64 and mode must be 0.
+
+    '
+  for:
+  - hash_tensor
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Reduction
+  stages:
+  - alpha: '5.4'
 - id: hc_head_fused_kernel
   description: 'The head fusion kernel for MHC (Manifold-Constrained Hyper-Connections).
 
