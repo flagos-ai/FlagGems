@@ -9377,6 +9377,51 @@ ops:
   - Math
   stages:
   - stable: '2.2'
+- id: multi_margin_loss
+  description: Computes the multi-class margin loss with optional class weights.
+  for:
+  - multi_margin_loss
+  labels:
+  - aten
+  - Loss
+  - nn.functional
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
+- id: multi_margin_loss_backward
+  description: Computes the input gradient of the multi-class margin loss.
+  for:
+  - multi_margin_loss_backward
+  labels:
+  - aten
+  - Loss
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
+- id: multi_margin_loss_backward_out
+  description: Writes the multi-class margin-loss gradient into grad_input.
+  for:
+  - multi_margin_loss_backward.grad_input
+  labels:
+  - aten
+  - Loss
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
+- id: multi_margin_loss_out
+  description: Writes the multi-class margin loss into the provided output tensor.
+  for:
+  - multi_margin_loss.out
+  labels:
+  - aten
+  - Loss
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: multinomial
   description: 'Returns a tensor where each row contains `num_samples` indices sampled
 
