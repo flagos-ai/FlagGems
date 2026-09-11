@@ -480,6 +480,8 @@ _FULL_CONFIG = (
     ("conv_transpose1d", conv_transpose1d),
     ("conv_transpose2d", conv_transpose2d),
     ("conv_transpose3d", conv_transpose3d),
+    ("convolution_overrideable", convolution_overrideable),
+    ("convolution_overrideable.out", convolution_overrideable_out),
     (
         "copy_",
         copy_,
