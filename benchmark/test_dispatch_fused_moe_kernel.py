@@ -20,6 +20,9 @@ class DispatchFusedMoeKernelBenchmark(base.Benchmark):
 
     def set_shapes(self, shape_file_path=None):
         # (num_tokens, num_experts, hidden_size, intermediate_size, topk)
+        # Keep the 256-expert weights at 3 GiB in fp16/bf16. The benchmark
+        # holds the previous inputs while constructing the next case, so two
+        # sets of weights must fit alongside kernel workspaces on CI GPUs.
         self.shapes = [
             (1, 8, 4096, 14336, 2),
             (4, 8, 4096, 14336, 2),
@@ -28,12 +31,12 @@ class DispatchFusedMoeKernelBenchmark(base.Benchmark):
             (128, 8, 4096, 14336, 2),
             (256, 8, 4096, 14336, 2),
             (512, 8, 4096, 14336, 2),
-            (1, 256, 7168, 2048, 8),
-            (4, 256, 7168, 2048, 8),
-            (16, 256, 7168, 2048, 8),
-            (64, 256, 7168, 2048, 8),
-            (128, 256, 7168, 2048, 8),
-            (256, 256, 7168, 2048, 8),
+            (1, 256, 1024, 2048, 8),
+            (4, 256, 1024, 2048, 8),
+            (16, 256, 1024, 2048, 8),
+            (64, 256, 1024, 2048, 8),
+            (128, 256, 1024, 2048, 8),
+            (256, 256, 1024, 2048, 8),
         ]
 
     def get_input_iter(self, cur_dtype):
