@@ -1,41 +1,15 @@
-from .. import arch_version
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 __all__ = []
-
-if arch_version == 300:
-    from .gcu300.cross_entropy_loss import cross_entropy_loss
-    from .gcu300.flash_mla import flash_mla
-    from .gcu300.fused_add_rms_norm import fused_add_rms_norm
-    from .gcu300.gelu_and_mul import gelu_and_mul
-    from .gcu300.rotary_embedding import apply_rotary_pos_emb  # noqa: F401
-    from .gcu300.silu_and_mul import silu_and_mul
-    from .gcu300.skip_layernorm import skip_layer_norm
-
-    __all__ = [
-        "apply_rotary_pos_emb",
-        "cross_entropy_loss",
-        "flash_mla",
-        "fused_add_rms_norm",
-        "gelu_and_mul",
-        "silu_and_mul",
-        "skip_layer_norm",
-    ]
-
-elif arch_version == 400 or arch_version == 410:
-    from .gcu400.cross_entropy_loss import cross_entropy_loss
-    from .gcu400.flash_mla import flash_mla
-    from .gcu400.fused_add_rms_norm import fused_add_rms_norm
-    from .gcu400.gelu_and_mul import gelu_and_mul
-    from .gcu400.outer import outer
-    from .gcu400.silu_and_mul import silu_and_mul
-    from .gcu400.skip_layernorm import skip_layer_norm
-
-    __all__ = [
-        "cross_entropy_loss",
-        "flash_mla",
-        "fused_add_rms_norm",
-        "gelu_and_mul",
-        "outer",
-        "silu_and_mul",
-        "skip_layer_norm",
-    ]

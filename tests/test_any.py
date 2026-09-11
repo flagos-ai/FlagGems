@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
@@ -47,6 +61,28 @@ def test_any(shape, dtype, kind):
 def test_any_dims(shape, dim, keepdim, dtype, kind):
     if kind == "allFalse":
         inp = torch.zeros(shape, dtype=dtype, device=flag_gems.device)
+    else:
+        inp = torch.randint(0, 2, shape, dtype=dtype, device="cpu").to(flag_gems.device)
+    ref_inp = utils.to_reference(inp)
+
+    ref_out = torch.any(ref_inp, dim=dim, keepdim=keepdim)
+    with flag_gems.use_gems():
+        res_out = torch.any(inp, dim=dim, keepdim=keepdim)
+
+    utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.any_dim
+@pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + [torch.bool])
+@pytest.mark.parametrize("keepdim", [True, False])
+@pytest.mark.parametrize("dim", [0, 1])
+@pytest.mark.parametrize("kind", ["normal", "allFalse", "allTrue"])
+def test_any_dim(shape, dtype, keepdim, dim, kind):
+    if kind == "allFalse":
+        inp = torch.zeros(shape, dtype=dtype, device=flag_gems.device)
+    elif kind == "allTrue":
+        inp = torch.ones(shape, dtype=dtype, device=flag_gems.device)
     else:
         inp = torch.randint(0, 2, shape, dtype=dtype, device="cpu").to(flag_gems.device)
     ref_inp = utils.to_reference(inp)

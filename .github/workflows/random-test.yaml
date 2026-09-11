@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 ---
 name: Random Test
 
@@ -26,7 +40,7 @@ jobs:
       authorized: ${{ steps.makeDecision.outputs.continue }}
     steps:
       - id: checkUser
-        uses: tspascoal/get-user-teams-membership@v4
+        uses: tspascoal/get-user-teams-membership@b2546c5affc730fd8e3d8483ae9ad3621938c2f9  # v4.0.2
         with:
           username: ${{ github.actor }}
           team: 'FlagGems'
@@ -48,48 +62,71 @@ jobs:
     if: needs.check-permission.outputs.authorized == 'true'
     runs-on: ${{ inputs.runner }}
     steps:
-      - uses: Wandalen/wretry.action@v3.8.0
-        with:
-          action: actions/checkout@v6
-          attempt_limit: 5
-          attempt_delay: 20000
-      - name: Setup FlagGems
+      - name: Resolve vendor
+        id: resolve
         shell: bash
         env:
           RUNNER_LABEL: ${{ inputs.runner }}
         run: |
-          # Validate vendor names
           case "${RUNNER_LABEL}" in
             h20)
               VENDOR="nvidia"
+              BACKEND="nvidia-cuda133"
               ;;
-            moore)
-              VENDOR="mthreads"
+            a100|h100)
+              VENDOR="nvidia"
+              BACKEND="nvidia-cuda133"
+              ;;
+            ascend)
+              VENDOR="ascend"
+              BACKEND="ascend-cann900"
+              ;;
+            cann9)
+              VENDOR="ascend"
+              BACKEND="ascend-cann900"
+              ;;
+            metax)
+              VENDOR="metax"
+              BACKEND="metax-maca3810"
+              ;;
+            maca381)
+              VENDOR="metax"
+              BACKEND="metax-maca3810"
+              ;;
+            enflame)
+              VENDOR="enflame"
+              BACKEND="enflame-tops1106"
+              ;;
+            cambricon)
+              VENDOR="cambricon"
+              BACKEND="cambricon-neuware472"
               ;;
             *)
               VENDOR="${RUNNER_LABEL}"
+              BACKEND="${RUNNER_LABEL}"
               ;;
           esac
-
-          echo "VENDOR=${VENDOR}"
+          echo "VENDOR=${VENDOR}" >> $GITHUB_OUTPUT
           echo "VENDOR=${VENDOR}" >> $GITHUB_ENV
+          echo "BACKEND=${BACKEND}" >> $GITHUB_OUTPUT
+          echo "BACKEND=${BACKEND}" >> $GITHUB_ENV
 
-          ./setup.sh ${VENDOR}
-
-      - name: Check GPU availability
-        shell: bash
-        run: |
-          bash "tools/gpu_check_${VENDOR}.sh"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        continue-on-error: true
+      - uses: ./.github/actions/checkout-retry
+      - uses: ./.github/actions/setup-flaggems
+        with:
+          backend: ${{ steps.resolve.outputs.BACKEND }}
+          gpu_check_script: tools/gpu_check_${{ steps.resolve.outputs.VENDOR }}.sh
 
       - name: Run tests
         shell: bash
         run: |
           source .venv/bin/activate
-          source tools/set-env.sh ${VENDOR}
           tools/run_tests.py --ops ${{ inputs.operators }} --gpus ${{ inputs.gpus }}
 
       - name: Upload results
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: random-test
           path: results/

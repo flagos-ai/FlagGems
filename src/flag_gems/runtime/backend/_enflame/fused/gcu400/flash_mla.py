@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 import math
 
@@ -5,9 +19,10 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.runtime import device, error, torch_device_fn
+from flag_gems.runtime import device, torch_device_fn
 from flag_gems.utils import triton_lang_extension as ext
 
+vendor_name = device.vendor_name
 device = device.name
 logger = logging.getLogger(__name__)
 
@@ -168,7 +183,7 @@ def flash_mla(
     dv,
     causal,
 ):
-    logger.debug("GEMS FLASH MLA")
+    logger.debug("GEMS_ENFLAME FLASH_MLA")
     assert causal, "causal False not supported"
     assert d > dv, "mla with rope dim should be larger than no rope dim"
 
@@ -182,16 +197,24 @@ def flash_mla(
 
     o = torch.empty([b * s_q, h_q, dv], dtype=q.dtype, device=device)
 
-    major, _ = torch.cuda.get_device_capability(device)
-    if major == 3:
-        BLOCK_H = 64
-        num_stages = 1
-    elif major == 4:
-        BLOCK_H = 16
-        num_stages = 1
-    else:
-        error.backend_not_support(device)
-    BLOCK_N = 16
+    # major, _ = get_device_capability()
+    # if major == 9:
+    #     BLOCK_H = 64
+    #     num_stages = 3
+    # elif major == 8:
+    #     BLOCK_H = 32
+    #     num_stages = 2
+    # elif major == 7 and vendor_name == "iluvatar":
+    #     BLOCK_H = 32
+    #     num_stages = 1
+    # elif major == 3 and vendor_name == "mthreads":
+    #     BLOCK_H = 32
+    #     num_stages = 1
+    # else:
+    #     error.backend_not_support(device)
+    BLOCK_H = 16
+    num_stages = 3
+    BLOCK_N = 32
     grid = (
         triton.cdiv(head_num, BLOCK_H),
         batch_size,

@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -13,7 +27,7 @@ logger = logging.getLogger(__name__)
 def ones_like(
     x, *, dtype=None, layout=None, device=None, pin_memory=None, memory_format=None
 ):
-    logger.debug("GEMS ONES_LIKE")
+    logger.debug("GEMS_ENFLAME ONES_LIKE")
     if device is None:
         device = x.device
     if dtype is None:
@@ -22,5 +36,5 @@ def ones_like(
     N = x.numel()
     grid_fn = lambda meta: (min(triton.cdiv(N, meta["BLOCK_SIZE"]), 24),)
     with torch_device_fn.device(x.device):
-        ones_kernel[grid_fn](out, N, BLOCK_SIZE=1024 * 32, num_warps=1)
+        ones_kernel[grid_fn](out, N, BLOCK_SIZE=1024 * 16, num_warps=1)
     return out

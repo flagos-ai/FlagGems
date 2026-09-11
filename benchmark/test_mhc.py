@@ -1,10 +1,31 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
-from flag_gems.fused.mhc.hc_head_fused_kernel import (
-    hc_head_fused_kernel,
-    hc_head_fused_kernel_ref,
-)
+import flag_gems
+from flag_gems.fused.mhc.hc_head_fused_kernel import hc_head_fused_kernel
+
+try:
+    from vllm.model_executor.layers.mhc import (
+        _hc_head_fused_kernel as _vllm_hc_head_fused,
+    )
+
+    HAS_VLLM = True
+except ImportError:
+    HAS_VLLM = False
 from flag_gems.fused.mhc.hc_split_sinkhorn import (
     hc_split_sinkhorn,
     mhc_split_sinkhorn_torch_ref,
@@ -43,6 +64,9 @@ class MHCPostBenchmark(base.Benchmark):
 
 
 @pytest.mark.mhc_post
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_mhc_post():
     bench = MHCPostBenchmark(
         op_name="mhc_post",
@@ -113,6 +137,9 @@ class MHCPreBenchmark(base.Benchmark):
 
 
 @pytest.mark.mhc_pre
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_mhc_pre():
     bench = MHCPreBenchmark(
         op_name="mhc_pre",
@@ -159,6 +186,9 @@ class MHCSplitSinkhornBenchmark(base.Benchmark):
 
 
 @pytest.mark.hc_split_sinkhorn_forward
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_hc_split_sinkhorn_forward():
     bench = MHCSplitSinkhornBenchmark(
         op_name="hc_split_sinkhorn_forward",
@@ -201,6 +231,9 @@ class MHCBwdBenchmark(base.Benchmark):
 
 
 @pytest.mark.mhc_bwd
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_mhc_bwd():
     bench = MHCBwdBenchmark(
         op_name="mhc_bwd",
@@ -216,6 +249,10 @@ class HCHeadFusedBenchmark(base.Benchmark):
 
     def set_shapes(self, shape_file_path=None):
         self.shapes = [
+            (1, 1280, 4),
+            (4, 2560, 4),
+            (16, 4096, 4),
+            (64, 7168, 4),
             (256, 1280, 2),
             (256, 1280, 4),
             (512, 1280, 2),
@@ -245,12 +282,25 @@ class HCHeadFusedBenchmark(base.Benchmark):
             yield hs_flat, fn, hc_scale, hc_base, out, hidden_size, 1e-6, 1e-6, hc_mult
 
 
+def _hc_head_fused_kernel_ref(
+    hs_flat, fn, hc_scale, hc_base, out, hidden_size, rms_eps, hc_eps, hc_mult
+):
+    _vllm_hc_head_fused(
+        hs_flat, fn, hc_scale, hc_base, out, hidden_size, rms_eps, hc_eps, hc_mult
+    )
+    return out
+
+
 @pytest.mark.hc_head_fused_kernel
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+@pytest.mark.skipif(not HAS_VLLM, reason="vLLM not available")
 def test_hc_head_fused_kernel():
     bench = HCHeadFusedBenchmark(
         op_name="hc_head_fused_kernel",
-        torch_op=hc_head_fused_kernel_ref,
+        torch_op=_hc_head_fused_kernel_ref,
         gems_op=hc_head_fused_kernel,
-        dtypes=[torch.float32, torch.float16, torch.bfloat16],
+        dtypes=[torch.bfloat16],
     )
     bench.run()

@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -13,30 +27,33 @@ logger = logging.getLogger(__name__)
 
 
 @libentry()
-@triton.jit(do_not_specialize=["K", "N", "philox_seed", "philox_offset"])
+@triton.jit(
+    do_not_specialize=["K", "N", "n_sample_blocks", "philox_seed", "philox_offset"]
+)
 def multinomial_with_replacement(
-    cdf_ptr, out_ptr, K, N, philox_seed, philox_offset, NBLOCK: tl.constexpr = 128
+    cdf_ptr,
+    out_ptr,
+    K,
+    N,
+    n_sample_blocks,
+    philox_seed,
+    philox_offset,
+    NBLOCK: tl.constexpr = 128,
 ):
-    # The computation is arranged in a 2d grid of blocks, each producing
-    # a batch of samples for a particular distribution.
-    #            <------------------- grid.x --------------------->
-    #           |   dist0.batch0 | dist0.batch1 | dist0.batch2 ...
-    #   grid.y  |   dist1.batch0 | dist1.batch1 | dist1.batch2 ...
-    #           |   dist2.batch0 | dist2.batch1 | dist2.batch2 ...
-    y_off = tl.program_id(1) * N
-    n = tl.program_id(0) * NBLOCK + tl.arange(0, NBLOCK)
+    # Flattened 1D grid: pid encodes (dist_id, sample_batch).
+    # This avoids grid.y exceeding the GCU hardware limit of 255.
+    pid = tl.program_id(0)
+    dist_id = pid // n_sample_blocks
+    sample_batch = pid % n_sample_blocks
+
+    y_off = dist_id * N
+    n = sample_batch * NBLOCK + tl.arange(0, NBLOCK)
     rv, _, _, _ = uniform(philox_seed, philox_offset, y_off + n)
 
-    # Do a binary search for each random number on the cumulative probabilities.
-    # Each random number always selects the leftmost index of the data greater
-    # than or equal to itself. However, this is likely to give a wrong result
-    # in case the first probability is zero which is not expected to selected.
-    # This error happens when the tossed random number is also zero. To avoid
-    # this mistake, we simply perturb random variable with a small number.
     rv += 0.0001
     rv = tl.where(rv > 0.9999, 0.9999, rv)
 
-    cdf_ptr += tl.program_id(1) * K
+    cdf_ptr += dist_id * K
     start = tl.zeros((NBLOCK,), dtype=tl.int32)
     end = tl.zeros((NBLOCK,), dtype=tl.int32) + K - 1
     steps = tl.math.log2(K.to(tl.float32)).to(tl.int32) + 1
@@ -46,14 +63,13 @@ def multinomial_with_replacement(
         start = tl.where(x < rv, mid + 1, start)
         end = tl.where(x < rv, end, mid)
 
-    # Returns the last index in case of an overflow
     start = tl.where(start >= K, K - 1, start)
 
     tl.store(out_ptr + y_off + n, start, mask=n < N)
 
 
 def multinomial(prob, n_samples, with_replacement=False, *, gen=None):
-    logger.debug("GEMS MULTINOMIAL")
+    logger.debug("GEMS_ENFLAME MULTINOMIAL")
     assert prob.dtype in (torch.float16, torch.float32, torch.bfloat16, torch.float64)
     assert 0 < prob.dim() <= 2, "prob_dist must be 1 or 2 dim"
     n_categories = prob.size(-1)
@@ -83,12 +99,18 @@ def multinomial(prob, n_samples, with_replacement=False, *, gen=None):
     else:
         n_dist = cum_prob.size(0)
         out = torch.empty((n_dist, n_samples), device=prob.device, dtype=torch.int64)
-    # The CTA level parallelism is framed in a 2d grid of blocks with grid.y
-    # indexing into distributions and grid.x output sample batches
     increment = n_dist * n_samples
     philox_seed, philox_offset = philox_backend_seed_offset(increment, generator=gen)
-    grid = lambda META: (triton.cdiv(n_samples, META["NBLOCK"]), n_dist)
+    NBLOCK = 128
+    n_sample_blocks = triton.cdiv(n_samples, NBLOCK)
+    grid = (n_sample_blocks * n_dist,)
     multinomial_with_replacement[grid](
-        cum_prob, out, n_categories, n_samples, philox_seed, philox_offset
+        cum_prob,
+        out,
+        n_categories,
+        n_samples,
+        n_sample_blocks,
+        philox_seed,
+        philox_offset,
     )
     return out

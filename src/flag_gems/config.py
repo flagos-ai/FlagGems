@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import os
 import warnings
 from pathlib import Path
@@ -18,31 +32,34 @@ aten_patch_list = []
 # set FLAGGEMS_SOURCE_DIR for cpp extension to find
 os.environ["FLAGGEMS_SOURCE_DIR"] = str(Path(__file__).parent.resolve())
 
-try:
-    from flag_gems import c_operators
-
-    has_c_extension = True
-except ImportError:
-    c_operators = None
-    has_c_extension = False
-
+# Detect .so presence WITHOUT importing — importing the pybind11 extension
+# at module-init time conflicts with vendor torch packages (torch_npu,
+# torch_gcu) on some backends. The actual import happens lazily when
+# USE_C_EXTENSION=1 AND the .so exists.
+_has_cpp_so = any(Path(__file__).parent.glob("c_operators*.so"))
+c_operators = None
 
 use_env_c_extension = os.environ.get("USE_C_EXTENSION", "0") == "1"
-if use_env_c_extension and not has_c_extension:
+if use_env_c_extension and not _has_cpp_so:
     warnings.warn(
         "[FlagGems] USE_C_EXTENSION is set, but C extension is not available. "
         "Falling back to pure Python implementation.",
         RuntimeWarning,
     )
 
-if has_c_extension and use_env_c_extension:
+if use_env_c_extension and _has_cpp_so:
     try:
+        from flag_gems import c_operators as _co
+
+        c_operators = _co
+        has_c_extension = True
         from flag_gems import aten_patch
 
         aten_patch_list = aten_patch.get_registered_ops()
         use_c_extension = True
     except (ImportError, AttributeError):
         aten_patch_list = []
+        has_c_extension = False
         use_c_extension = False
 
 
@@ -131,6 +148,7 @@ def resolve_user_setting(user_setting_info, user_setting_type="include"):
         # Lazily infer vendor/arch if not provided.
         vendor_name = _runtime.device.vendor_name
         arch_event = _runtime.backend.BackendArchEvent()
+        arch_name = None
         if arch_event.has_arch:
             arch_name = getattr(arch_event, "arch", None)
         yaml_candidates = get_default_enable_config(vendor_name, arch_name)
@@ -156,9 +174,65 @@ def resolve_user_setting(user_setting_info, user_setting_type="include"):
     return []
 
 
+# Precision-check skip set – derived from conf/operators.yaml
+
+_CONF_DIR = Path(__file__).resolve().parent.parent.parent / "conf"
+_OPERATORS_YAML = _CONF_DIR / "operators.yaml"
+
+_skip_precision_check_ops: "frozenset[str] | None" = None
+
+
+def get_skip_precision_check_ops() -> "frozenset[str]":
+    """Return the frozenset of operator base-names that carry the
+    ``skip_precision_check`` label in ``conf/operators.yaml``.
+
+    The set is built by scanning each entry under the top-level ``ops`` key;
+    if its ``labels`` list contains ``"skip_precision_check"``, every name in
+    its ``for`` field is included (with any overload suffix like ``.Tensor``
+    stripped to yield the base name).
+
+    The result is cached after the first call so subsequent imports are free.
+    """
+    global _skip_precision_check_ops
+    if _skip_precision_check_ops is not None:
+        return _skip_precision_check_ops
+
+    ops: set = set()
+    if _OPERATORS_YAML.is_file():
+        try:
+            data = yaml.safe_load(_OPERATORS_YAML.read_text())
+        except Exception as err:  # noqa: BLE001
+            warnings.warn(
+                f"get_skip_precision_check_ops: failed to read "
+                f"{_OPERATORS_YAML}: {err}"
+            )
+            _skip_precision_check_ops = frozenset()
+            return _skip_precision_check_ops
+
+        if isinstance(data, dict):
+            for entry in data.get("ops", []):
+                labels = entry.get("labels", [])
+                if "skip_precision_check" in labels:
+                    for op_name in entry.get("for", []):
+                        if op_name is None:
+                            continue
+                        # Extract base name (strip overload suffix)
+                        base = str(op_name).split(".")[0]
+                        ops.add(base)
+    else:
+        warnings.warn(
+            f"get_skip_precision_check_ops: operators.yaml not found at "
+            f"{_OPERATORS_YAML}"
+        )
+
+    _skip_precision_check_ops = frozenset(ops)
+    return _skip_precision_check_ops
+
+
 __all__ = [
     "aten_patch_list",
     "has_c_extension",
     "use_c_extension",
     "resolve_user_setting",
+    "get_skip_precision_check_ops",
 ]

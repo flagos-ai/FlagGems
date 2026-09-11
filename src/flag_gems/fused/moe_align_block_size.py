@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 from functools import lru_cache
 from typing import Optional
@@ -158,7 +172,7 @@ def moe_align_block_size_tle_atomic_fused_coop(
         tl.store(sorted_token_ids_ptr + offs, numel, mask=offs < numel_sorted_token_ids)
     for base in range(pid * BLOCK_TOKENS, numel_expert_ids, NUM_BLOCKS * BLOCK_TOKENS):
         offs = base + token_offsets
-        tl.store(expert_ids_ptr + offs, 0, mask=offs < numel_expert_ids)
+        tl.store(expert_ids_ptr + offs, -1, mask=offs < numel_expert_ids)
     if pid == 0:
         tl.store(cumsum_ptr + expert_offsets, 0, mask=expert_mask)
     tle.distributed_barrier(mesh)
@@ -288,7 +302,7 @@ def moe_align_block_size_tle_cluster_fused(
     ):
         offs = base + init_offsets
         mask = offs < numel_expert_ids
-        tl.store(expert_ids_ptr + offs, 0, mask=mask)
+        tl.store(expert_ids_ptr + offs, -1, mask=mask)
 
     local_counts = tle.gpu.alloc(
         [BLOCK_EXPERT],
@@ -409,7 +423,7 @@ def moe_align_block_size_stage1(
 
     offsets_expert = pid * block_size_expert + tl.arange(0, block_size_expert)
     mask_expert = offsets_expert < numel_expert_ids
-    tl.store(expert_ids_ptr + offsets_expert, 0, mask=mask_expert)
+    tl.store(expert_ids_ptr + offsets_expert, -1, mask=mask_expert)
 
     start_idx = pid * tokens_per_thread
 
@@ -648,6 +662,128 @@ def moe_align_block_size_triton(
         numel,
         tokens_per_thread,
     )
+
+
+@triton.jit
+def _moe_align_block_size_singleton_kernel(
+    topk_ids_ptr,
+    sorted_token_ids_ptr,
+    expert_ids_ptr,
+    num_tokens_post_pad_ptr,
+    num_routes: tl.constexpr,
+    BLOCK_SIZE_M: tl.constexpr,
+):
+    route_idx = tl.program_id(0)
+    offsets = route_idx * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
+    values = tl.full((BLOCK_SIZE_M,), num_routes, dtype=tl.int32)
+    values = tl.where(tl.arange(0, BLOCK_SIZE_M) == 0, route_idx, values)
+    tl.store(sorted_token_ids_ptr + offsets, values)
+    tl.store(expert_ids_ptr + route_idx, tl.load(topk_ids_ptr + route_idx))
+    if route_idx == 0:
+        tl.store(num_tokens_post_pad_ptr, num_routes * BLOCK_SIZE_M)
+
+
+def moe_align_block_size_singleton(
+    topk_ids: torch.Tensor,
+    block_size: int,
+) -> "tuple[torch.Tensor, torch.Tensor, torch.Tensor]":
+    num_routes = topk_ids.numel()
+    sorted_token_ids = torch.empty(
+        (num_routes * block_size,), dtype=torch.int32, device=topk_ids.device
+    )
+    expert_ids = torch.empty((num_routes,), dtype=torch.int32, device=topk_ids.device)
+    num_tokens_post_pad = torch.empty((1,), dtype=torch.int32, device=topk_ids.device)
+    _moe_align_block_size_singleton_kernel[(num_routes,)](
+        topk_ids,
+        sorted_token_ids,
+        expert_ids,
+        num_tokens_post_pad,
+        num_routes,
+        BLOCK_SIZE_M=block_size,
+    )
+    return sorted_token_ids, expert_ids, num_tokens_post_pad
+
+
+@triton.jit
+def _moe_align_block_size_small_grouped_kernel(
+    topk_ids_ptr,
+    sorted_token_ids_ptr,
+    expert_ids_ptr,
+    num_tokens_post_pad_ptr,
+    NUM_EXPERTS: tl.constexpr,
+    NUM_ROUTES: tl.constexpr,
+    BLOCK_SIZE_M: tl.constexpr,
+    BLOCK_EXPERT: tl.constexpr,
+    BLOCK_ROUTES: tl.constexpr,
+    MAX_BLOCKS_PER_EXPERT: tl.constexpr,
+):
+    expert_offsets = tl.arange(0, BLOCK_EXPERT)
+    expert_mask = expert_offsets < NUM_EXPERTS
+    counts = tl.zeros((BLOCK_EXPERT,), dtype=tl.int32)
+
+    for route_idx in tl.static_range(0, BLOCK_ROUTES):
+        if route_idx < NUM_ROUTES:
+            expert_id = tl.load(topk_ids_ptr + route_idx).to(tl.int32)
+            counts += tl.where(expert_offsets == expert_id, 1, 0)
+
+    aligned_counts = tl.cdiv(counts, BLOCK_SIZE_M) * BLOCK_SIZE_M
+    starts = tl.cumsum(aligned_counts, 0) - aligned_counts
+    total_tokens = tl.sum(aligned_counts, 0)
+    tl.store(num_tokens_post_pad_ptr, total_tokens)
+
+    for block_idx in tl.static_range(0, MAX_BLOCKS_PER_EXPERT):
+        block_offset = block_idx * BLOCK_SIZE_M
+        valid_block = expert_mask & (block_offset < aligned_counts)
+        tl.store(
+            expert_ids_ptr + starts // BLOCK_SIZE_M + block_idx,
+            expert_offsets,
+            mask=valid_block,
+        )
+        for lane in tl.static_range(0, BLOCK_SIZE_M):
+            lane_offset = block_offset + lane
+            valid_lane = expert_mask & (lane_offset < aligned_counts)
+            tl.store(
+                sorted_token_ids_ptr + starts + lane_offset,
+                NUM_ROUTES,
+                mask=valid_lane,
+            )
+
+    ranks = tl.zeros((BLOCK_EXPERT,), dtype=tl.int32)
+    for route_idx in tl.static_range(0, BLOCK_ROUTES):
+        if route_idx < NUM_ROUTES:
+            expert_id = tl.load(topk_ids_ptr + route_idx).to(tl.int32)
+            is_expert = expert_offsets == expert_id
+            rank = tl.sum(tl.where(is_expert, ranks, 0), 0)
+            start = tl.sum(tl.where(is_expert, starts, 0), 0)
+            tl.store(sorted_token_ids_ptr + start + rank, route_idx)
+            ranks += tl.where(is_expert, 1, 0)
+
+
+def moe_align_block_size_small_grouped(
+    topk_ids: torch.Tensor,
+    num_experts: int,
+    block_size: int,
+) -> "tuple[torch.Tensor, torch.Tensor, torch.Tensor]":
+    num_routes = topk_ids.numel()
+    max_num_tokens_padded = num_routes * block_size
+    sorted_token_ids = torch.empty(
+        (max_num_tokens_padded,), dtype=torch.int32, device=topk_ids.device
+    )
+    expert_ids = torch.empty((num_routes,), dtype=torch.int32, device=topk_ids.device)
+    num_tokens_post_pad = torch.empty((1,), dtype=torch.int32, device=topk_ids.device)
+    _moe_align_block_size_small_grouped_kernel[(1,)](
+        topk_ids,
+        sorted_token_ids,
+        expert_ids,
+        num_tokens_post_pad,
+        NUM_EXPERTS=num_experts,
+        NUM_ROUTES=num_routes,
+        BLOCK_SIZE_M=block_size,
+        BLOCK_EXPERT=triton.next_power_of_2(num_experts),
+        BLOCK_ROUTES=triton.next_power_of_2(num_routes),
+        MAX_BLOCKS_PER_EXPERT=triton.cdiv(num_routes, block_size),
+    )
+    return sorted_token_ids, expert_ids, num_tokens_post_pad
 
 
 def moe_align_block_size(
