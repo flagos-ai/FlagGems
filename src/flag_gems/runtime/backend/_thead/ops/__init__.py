@@ -13,6 +13,7 @@
 # limitations under the License.
 
 
+from ._unsafe_masked_index_put_accumulate import _unsafe_masked_index_put_accumulate
 from .adaptive_max_pool3d_backward import adaptive_max_pool3d_backward
 from .addmm_ import addmm_
 from .broadcast_tensors import broadcast_tensors
@@ -63,6 +64,7 @@ from .topk_w8a16_fp8 import topk_w8a16_fp8
 from .unbind_copy import unbind_copy
 
 __all__ = [
+    "_unsafe_masked_index_put_accumulate",
     "adaptive_max_pool3d_backward",
     "addmm_",
     "broadcast_tensors",
