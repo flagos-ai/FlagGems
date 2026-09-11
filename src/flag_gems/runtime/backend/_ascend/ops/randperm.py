@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -10,7 +24,7 @@ from flag_gems.runtime import device, torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils.random_utils import philox_backend_seed_offset
 
-logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
+logger = logging.getLogger(__name__)
 
 device_ = device
 
@@ -98,19 +112,19 @@ def bitonic_sortbykey_kernel(
 def radix_type_convert(k):
     if tl.constexpr(k.dtype == tl.int8):
         ik = k.to(tl.int8, bitcast=True)
-        mask = (ik >> 7) & 0x1
+        mask = ((ik >> 7) & 0x1) != 0
         o = tl.where(mask, ik & 0x7F, ik | 0x80)
     elif tl.constexpr(k.dtype == tl.int16):
         ik = k.to(tl.int16, bitcast=True)
-        mask = (ik >> 15) & 0x1
+        mask = ((ik >> 15) & 0x1) != 0
         o = tl.where(mask, ik & 0x7FFF, ik | 0x8000)
     elif tl.constexpr(k.dtype == tl.int32):
         ik = k.to(tl.int32, bitcast=True)
-        mask = (ik >> 31) & 0x1
+        mask = ((ik >> 31) & 0x1) != 0
         o = tl.where(mask, ik & 0x7FFFFFFF, ik | 0x80000000)
     elif tl.constexpr(k.dtype == tl.int64):
         ik = k.to(tl.int64, bitcast=True)
-        mask = (ik >> 63) & 0x1
+        mask = ((ik >> 63) & 0x1) != 0
         o = tl.where(mask, ik & 0x7FFFFFFFFFFFFFFF, ik | 0x8000000000000000)
     else:
         o = k
@@ -231,11 +245,8 @@ def radix_sortbykey_scatter_kernel(
                 (portion_id * passes + p) * max_tiles_per_portion + bk
             ) * bins + bin_id
             partial_prefix = tl.load(d_lookback + rd_lbk_offset, volatile=True)
-            max_wait = 1000
-            wait_count = 0
-            while partial_prefix == 0 and wait_count < max_wait:
+            while partial_prefix == 0:
                 partial_prefix = tl.load(d_lookback + rd_lbk_offset, volatile=True)
-                wait_count += 1
             inc_sum += (partial_prefix & LOOKBACK_VALUE_MASK).to(tl.int32)
             if partial_prefix & LOOKBACK_GLOBAL_MASK:
                 # break
@@ -411,7 +422,7 @@ def sort_by_key(key, value, valid_bits):
     else:
         # bitonic method
         BLOCK_SIZE = triton.next_power_of_2(n_elements)
-        logger.debug(n_elements)
+        logger.debug("GEMS_ASCEND n_elements=%s", n_elements)
 
         grid = (1,)
         k_out = torch.empty_like(key)

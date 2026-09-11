@@ -1,263 +1,431 @@
-import importlib
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
-import os
-from typing import Any, Callable, List, Mapping, Tuple
 
 import torch
+import triton
+import triton.language as tl
 
-from flag_gems.utils.code_cache import code_cache_dir
-from flag_gems.utils.code_utils import IndentedBuffer
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import dim_compress, libentry
+from flag_gems.utils import triton_lang_extension as tle
 
-logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
+logger = logging.getLogger(__name__)
 
-
-def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
-    code.writeline("import triton")
-    code.writeline("import triton.language as tl")
-    code.writeline("from flag_gems.utils import libentry")
-    code.writeline("from flag_gems import runtime")
-    code.newline()
-    code.newline()
-
-    return code
+_FALLBACK_KEYSET = torch._C.DispatchKeySet(
+    torch._C.DispatchKey.CompositeExplicitAutograd
+)
 
 
-def generate_index_add_kernel(
-    rank: int,
-    kernel_name: str,
-    code: IndentedBuffer,
-) -> IndentedBuffer:
-    # the decorators
-    code.writeline("@libentry()")
-    code.writeline(
-        '@triton.autotune(configs=runtime.get_tuned_config("index_add"), key=["BLOCK_SIZE"])'
+@libentry()
+@triton.jit
+def index_add_kernel(
+    inp_ptr,
+    out_ptr,
+    index_ptr,
+    src_ptr,
+    M,
+    N,
+    alpha,
+    inp_len,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    pid_m = tle.program_id(axis=0)
+    pid_n = tle.program_id(axis=1)
+
+    rows_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    cols_offset = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)[None, :]
+
+    rows_mask = rows_offset < M
+    cols_mask = cols_offset < N
+    block_mask = rows_mask & cols_mask
+
+    cur_indices = tl.load(index_ptr + cols_offset, mask=cols_mask, other=0)
+
+    inp_off = rows_offset * inp_len + cur_indices
+    cur_inp = tl.load(inp_ptr + inp_off, mask=block_mask, other=0.0)
+
+    src_off = rows_offset * N + cols_offset
+    cur_src = tl.load(src_ptr + src_off, mask=block_mask, other=0.0)
+
+    result = cur_inp + alpha * cur_src
+    tl.store(out_ptr + inp_off, result, mask=block_mask)
+
+
+@libentry()
+@triton.jit
+def _index_add_contiguous_suffix_kernel(
+    out,
+    index,
+    src,
+    row_count,
+    index_len,
+    out_dim,
+    suffix_size,
+    alpha,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    ROW_BLOCKS_PER_PROGRAM: tl.constexpr,
+    ACCUMULATE_FP32: tl.constexpr,
+):
+    pid_row_group = tle.program_id(axis=0)
+    pid_n = tle.program_id(axis=1)
+
+    cols = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    col_mask = cols < suffix_size
+    active_group = pid_row_group > 0
+
+    # Contiguous tensors are viewed as [prefix, index_len, suffix].
+    # Row grouping keeps Ascend launch axes within the device limit.  The first
+    # row-group is intentionally unused; it absorbs repeated program-0 execution
+    # seen during Ascend lowering while preserving atomic-add semantics.
+    for block_offset in tl.static_range(0, ROW_BLOCKS_PER_PROGRAM):
+        pid_row = (pid_row_group - 1) * ROW_BLOCKS_PER_PROGRAM + block_offset
+        # Keep each atomic update one-dimensional.  The Ascend lowering of a
+        # [BLOCK_M, BLOCK_N] atomic tile is substantially slower for wide suffixes.
+        for row_offset in tl.static_range(0, BLOCK_M):
+            row = pid_row * BLOCK_M + row_offset
+            row_mask = active_group & (row < row_count)
+
+            src_dim_idx = row % index_len
+            prefix_idx = row // index_len
+            dst_dim_idx = tl.load(index + src_dim_idx, mask=row_mask, other=0).to(
+                tl.int64
+            )
+            valid = row_mask & (dst_dim_idx >= 0) & (dst_dim_idx < out_dim)
+
+            src_offsets = row * suffix_size + cols
+            out_offsets = (prefix_idx * out_dim + dst_dim_idx) * suffix_size + cols
+            values = tl.load(src + src_offsets, mask=row_mask & col_mask, other=0.0)
+            if ACCUMULATE_FP32:
+                values = values.to(tl.float32)
+            tl.atomic_add(
+                out + out_offsets,
+                values * alpha,
+                mask=valid & col_mask,
+                sem="relaxed",
+            )
+
+
+@libentry()
+@triton.jit
+def _index_add_contiguous_suffix_flat_kernel(
+    out,
+    index,
+    src,
+    total_count,
+    index_len,
+    out_dim,
+    suffix_size,
+    alpha,
+    BLOCK_SIZE: tl.constexpr,
+    BLOCKS_PER_PROGRAM: tl.constexpr,
+    ACCUMULATE_FP32: tl.constexpr,
+):
+    pid_group = tle.program_id(axis=0)
+
+    # A 1D layout is safer for leading-dim and tiny-suffix updates.  Program 0
+    # is a no-op for the same reason as the row-tiled kernel above.
+    active_group = pid_group > 0
+    for block_offset in tl.static_range(0, BLOCKS_PER_PROGRAM):
+        pid = (pid_group - 1) * BLOCKS_PER_PROGRAM + block_offset
+        offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = active_group & (offsets < total_count)
+
+        cols = offsets % suffix_size
+        rows = offsets // suffix_size
+        src_dim_idx = rows % index_len
+        prefix_idx = rows // index_len
+        dst_dim_idx = tl.load(index + src_dim_idx, mask=mask, other=0).to(tl.int64)
+        valid = mask & (dst_dim_idx >= 0) & (dst_dim_idx < out_dim)
+
+        src_offsets = rows * suffix_size + cols
+        out_offsets = (prefix_idx * out_dim + dst_dim_idx) * suffix_size + cols
+        values = tl.load(src + src_offsets, mask=mask, other=0.0)
+        if ACCUMULATE_FP32:
+            values = values.to(tl.float32)
+        tl.atomic_add(out + out_offsets, values * alpha, mask=valid, sem="relaxed")
+
+
+def _get_block_config(M, N):
+    BLOCK_M = 4 if M < 4096 else 8
+    BLOCK_N = max(4, min(512, triton.next_power_of_2(N)))
+    return BLOCK_M, BLOCK_N
+
+
+def _volume(shape):
+    value = 1
+    for item in shape:
+        value *= int(item)
+    return value
+
+
+def _assert_index_in_bounds(index, upper_bound):
+    # Validate before scatter so an in-place call leaves its input unchanged on error.
+    lower, upper = torch.ops.aten.aminmax.default.redispatch(
+        _FALLBACK_KEYSET, index, dim=None, keepdim=False
     )
-    code.writeline("@triton.jit")
-
-    # signature
-    code.writeline(f"def {kernel_name}(")
-    with code.indent():
-        if rank > 0:
-            code.writeline("index,")
-            code.writeline("src,")
-            code.writeline("out,")
-            code.writeline("N,")
-            code.writeline("inp_numel,")
-            code.writeline("inp_stride_dim,")
-            code.writeline("inp_shape_dim,")
-            code.writeline("src_shape_dim,")
-            code.writeline("delta,")
-            code.writeline("alpha,")
-
-            stride_args = ", ".join(f"src_stride_{i}: int" for i in range(rank))
-            code.writeline(f"{stride_args}, # stride for src")
-
-            shape_args = ", ".join(f"src_shape_{i}: int" for i in range(rank))
-            code.writeline(f"{shape_args}, # shape for src")
-
-            code.writeline("BLOCK_SIZE: tl.constexpr,")
-
-        code.writeline("):")
-
-        # Kernel Code
-        with code.indent():
-            code.writeline("pid = tl.program_id(axis=0)")
-            code.writeline("offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)")
-            code.writeline("mask = offsets < N")
-
-            for i in range(rank - 1, -1, -1):
-                code.writeline(f"src_offset{i} = offsets % src_shape_{i}")
-                code.writeline(f"offsets = offsets // src_shape_{i}")
-            code.newline()
-            comp = [f"src_offset{i} * src_stride_{i}" for i in range(rank)]
-            code.writeline(f"src_offset = {' + '.join(comp)}")
-
-            code.writeline("pre_cal = (inp_stride_dim * src_shape_dim)")
-
-            # index add
-            code.writeline("pre_idx = (src_offset // pre_cal).to(tl.int64)")
-            code.writeline(
-                "dim_idx = (src_offset % pre_cal // inp_stride_dim).to(tl.int64)"
-            )
-            code.writeline(
-                "src_dim_idx = (tl.load(index + dim_idx, mask=mask, other=0)).to(tl.int64)"
-            )
-            code.writeline(
-                'assert src_dim_idx >= 0 and src_dim_idx < inp_shape_dim, "0 <= index < self.size(dim)"'
-            )
-            code.writeline(
-                "input_idx = (src_offset + (delta * pre_idx + src_dim_idx - dim_idx) * inp_stride_dim).to(tl.int64)"
-            )
-
-            code.writeline("input_mask = input_idx < inp_numel")
-            code.writeline(
-                "add_on = tl.load(src + src_offset, mask=mask, other=0) * alpha"
-            )
-            code.writeline(
-                "tl.atomic_add(out + input_idx, add_on, mask=input_mask, sem='relaxed')"
-            )
-            # TODO: tl.atomic_add doesn't support bfloat16! The following method may be unsafe.
-            # code.writeline("cur_out = tl.load(out + input_idx, mask=input_mask)")
-            # code.writeline("tl.store(out + input_idx, cur_out + add_on, mask=input_mask)")
-
-        code.newline()
-        code.newline()
-        return code
+    assert (
+        lower.item() >= 0 and upper.item() < upper_bound
+    ), "0 <= index < self.size(dim)"
 
 
-def parameter_for_wrapper() -> str:
-    # out, index, src, dim, inp_stride_dim, src_shape_dim, delta, N, inp.numel(), alpha
-    parameters: List[str] = []
-    parameters.append("out")
-    parameters.append("index")
-    parameters.append("src")
-    parameters.append("dim")
-    parameters.append("inp_stride_dim")
-    parameters.append("inp_shape_dim")
-    parameters.append("src_shape_dim")
-    parameters.append("delta")
-    parameters.append("N")
-    parameters.append("inp_numel")
-    parameters.append("alpha")
-
-    return ", ".join(parameters)
-
-
-def generate_destination_passing_wrapper(
-    rank: int,
-    wrapper_name: str,
-    kernel_name: str,
-    code: IndentedBuffer,
-) -> IndentedBuffer:
-    parameters: str = parameter_for_wrapper()
-    wrapper_signature: str = f"def {wrapper_name} ({parameters}):"
-    code.writeline(wrapper_signature)
-
-    with code.indent():
-        code.writeline("src_strides = list(src.stride())")
-        code.writeline("src_shapes = list(src.shape)")
-
-        # kernel launch
-        code.writeline("grid = lambda meta: (")
-        with code.indent():
-            code.writeline("triton.cdiv(N, meta['BLOCK_SIZE']), ")
-        code.writeline(")")
-        kernel_launch: str = f"{kernel_name}[grid]("
-        code.writeline(kernel_launch)
-        with code.indent():
-            code.writeline(
-                "index, src, out, N, inp_numel, inp_stride_dim, inp_shape_dim, src_shape_dim, delta, alpha, "
-            )
-            if rank > 0:
-                s = ", ".join(f"src_strides[{i}]" for i in range(rank))
-                code.writeline(f"{s},")
-
-                s = ", ".join(f"src_shapes[{i}]" for i in range(rank))
-                code.writeline(f"{s},")
-            # code.writeline("BLOCK_SIZE=BLOCK_SIZE")
-        code.writeline(")")
-        code.writeline("return out")
-
-    return code
+def _can_use_contiguous_suffix_path(inp, dim, index, src):
+    if src.numel() == 0:
+        return False
+    if not (
+        inp.ndim == src.ndim
+        and 0 <= dim < inp.ndim
+        and index.ndim == 1
+        and index.dtype in (torch.int32, torch.int64)
+        and inp.dtype == src.dtype
+        and index.numel() == src.size(dim)
+        and inp.is_contiguous()
+        and src.is_contiguous()
+        and all(inp.size(i) == src.size(i) for i in range(inp.ndim) if i != dim)
+    ):
+        return False
+    return _volume(src.shape[dim + 1 :]) > 1
 
 
-def generate_code(
-    inputs: Tuple[Any],
-    wrapper_name: str,
-    kernel_name: str,
-    code: IndentedBuffer,
-) -> IndentedBuffer:
-    # inputs: [out, index, src, dim, inp_stride_dim, inp_shape_dim, src_shape_dim, delta, N, inp.numel(), alpha]
-    shape = inputs[2].shape
-    rank = len(shape)
-
-    code = generate_imports(code)
-    code = generate_index_add_kernel(rank, kernel_name, code)
-    code = generate_destination_passing_wrapper(rank, wrapper_name, kernel_name, code)
-    return code
+def _flat_contiguous_suffix_block_config(total_count):
+    block_size = 128
+    blocks = triton.cdiv(total_count, block_size)
+    blocks_per_program = 1
+    if blocks > 65535:
+        blocks_per_program = triton.next_power_of_2(triton.cdiv(blocks, 65535))
+        if blocks_per_program > 16:
+            return None
+    return block_size, blocks, blocks_per_program
 
 
-class IndexAddFunction:
-    def __init__(self):
-        self.pid = os.getpid()
-        self.overloads: Mapping[str, Callable] = {}
+def _run_contiguous_suffix_flat_path(out, dim, index, src, alpha):
+    suffix_size = _volume(src.shape[dim + 1 :])
+    row_count = _volume(src.shape[:dim]) * index.numel()
+    total_count = row_count * suffix_size
+    config = _flat_contiguous_suffix_block_config(total_count)
+    if config is None:
+        return False
 
-    def __call__(self, *args, **kwargs):
-        key = f"{self.arg_key(*args)}"
-        if key in self.overloads:
-            overload = self.overloads[key]
-        else:
-            code = IndentedBuffer()
-            code = generate_code(
-                args,
-                "_index_add_wrapper",
-                "_index_add_jit_function",
-                code,
-            )
-
-            file_name = f"index_add_rank_{key}_pid_{self.pid}.py"
-
-            with open(code_cache_dir() / file_name, "wt", encoding="utf-8") as f:
-                f.write(code.getvalue())
-
-            # load
-            spec = importlib.util.spec_from_file_location(
-                f"_gen_module_rank_{key}_pid_{self.pid}",
-                f.name,
-            )
-
-            m = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(m)
-            overload = getattr(m, "_index_add_wrapper")
-            self.overloads[key] = overload
-
-        return overload(*args, **kwargs)
-
-    def arg_key(self, *args):
-        tensors = [item for item in args if torch.is_tensor(item)]
-        max_rank = max(item.ndim for item in tensors)
-        return max_rank
+    block_size, blocks, blocks_per_program = config
+    grid = (triton.cdiv(blocks, blocks_per_program) + 1,)
+    with torch_device_fn.device(out.device):
+        _index_add_contiguous_suffix_flat_kernel[grid](
+            out,
+            index,
+            src,
+            total_count,
+            index.numel(),
+            out.size(dim),
+            suffix_size,
+            alpha,
+            BLOCK_SIZE=block_size,
+            BLOCKS_PER_PROGRAM=blocks_per_program,
+            ACCUMULATE_FP32=(
+                out.dtype == torch.float32 and src.dtype == torch.bfloat16
+            ),
+        )
+    return True
 
 
-_index_add_func = IndexAddFunction()
+def _contiguous_suffix_block_config(row_count, suffix_size):
+    block_m = 16
+    block_n = 64 if suffix_size <= 64 else 512
+    if triton.cdiv(suffix_size, block_n) > 65535:
+        return None
+
+    row_blocks = triton.cdiv(row_count, block_m)
+    row_blocks_per_program = 1
+    if row_blocks > 65535:
+        row_blocks_per_program = triton.next_power_of_2(triton.cdiv(row_blocks, 65535))
+        if row_blocks_per_program > 16:
+            return None
+    return block_m, block_n, row_blocks, row_blocks_per_program
+
+
+def _run_contiguous_suffix_path(out, dim, index, src, alpha):
+    suffix_size = _volume(src.shape[dim + 1 :])
+    if dim == 0 or suffix_size < 16:
+        return _run_contiguous_suffix_flat_path(out, dim, index, src, alpha)
+
+    row_count = _volume(src.shape[:dim]) * index.numel()
+    config = _contiguous_suffix_block_config(row_count, suffix_size)
+    if config is None:
+        return False
+
+    block_m, block_n, row_blocks, row_blocks_per_program = config
+
+    grid = (
+        triton.cdiv(row_blocks, row_blocks_per_program) + 1,
+        triton.cdiv(suffix_size, block_n),
+    )
+    with torch_device_fn.device(out.device):
+        _index_add_contiguous_suffix_kernel[grid](
+            out,
+            index,
+            src,
+            row_count,
+            index.numel(),
+            out.size(dim),
+            suffix_size,
+            alpha,
+            BLOCK_M=block_m,
+            BLOCK_N=block_n,
+            ROW_BLOCKS_PER_PROGRAM=row_blocks_per_program,
+            ACCUMULATE_FP32=(
+                out.dtype == torch.float32 and src.dtype == torch.bfloat16
+            ),
+        )
+    return True
 
 
 def index_add(inp, dim, index, src, alpha=1):
-    logger.debug("GEMS_ASCEND INDEX ADD")
-    assert ((0 <= index).to(torch.int8) * (index < inp.size(dim))).equal(
-        torch.ones(tuple(index.shape), dtype=torch.int8, device=inp.device)
-    ), "0 <= index < self.size(dim)"
-    assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
-    assert index.numel() == src.size(
-        dim
-    ), "The dimth dimension of source must have the same size as the length of index"
-    assert (
-        inp.ndim == src.ndim
-    ), "Self and source should have the same number of dimensions"
-    assert (
-        ((inp.size(i) == src.size(i)) or i == dim) for i in range(0, inp.ndim)
-    ), "src.size(d) == self.size(d) for all dimensions d != dim"
+    logger.debug("GEMS_ASCEND INDEX_ADD")
+
+    inp = inp.contiguous()
+    index = index.contiguous()
+    src = src.contiguous()
+
+    dim = dim % inp.ndim
+    inp_len = inp.size(dim)
+    N = index.numel()
+    M = src.numel() // N
+
+    normalized_dim = dim % inp.ndim if -inp.ndim <= dim < inp.ndim else dim
+    if _can_use_contiguous_suffix_path(inp, normalized_dim, index, src):
+        _assert_index_in_bounds(index, inp.size(dim))
+        accumulate_fp32 = inp.dtype == torch.bfloat16
+        out = inp.float() if accumulate_fp32 else inp.clone()
+        if _run_contiguous_suffix_path(out, normalized_dim, index, src, alpha):
+            return out.to(inp.dtype) if accumulate_fp32 else out
+
+    final_dim = inp.ndim - 1
+    if dim != final_dim:
+        inp = dim_compress(inp, dim)
+        src = dim_compress(src, dim)
 
     out = inp.clone()
 
-    dim %= inp.ndim
-    inp_stride_dim = inp.stride(dim)
-    src_shape_dim = src.size(dim)
-    inp_shape_dim = inp.size(dim)
-    delta = inp.size(dim) - src_shape_dim
-    N = src.numel()
-
-    _index_add_func(
-        out,
-        index,
-        src,
-        dim,
-        inp_stride_dim,
-        inp_shape_dim,
-        src_shape_dim,
-        delta,
-        N,
-        inp.numel(),
-        alpha,
+    BLOCK_M, BLOCK_N = _get_block_config(M, N)
+    grid = (
+        triton.cdiv(M, BLOCK_M),
+        triton.cdiv(N, BLOCK_N),
     )
-    return out
+
+    with torch_device_fn.device(inp.device):
+        index_add_kernel[grid](
+            inp,
+            out,
+            index,
+            src,
+            M,
+            N,
+            alpha,
+            inp_len,
+            BLOCK_M=BLOCK_M,
+            BLOCK_N=BLOCK_N,
+        )
+
+    if dim != final_dim:
+        order = list(range(out.ndim - 1))
+        order.insert(dim, final_dim)
+        return out.permute(order).contiguous()
+    else:
+        return out
+
+
+def index_add_(inp, dim, index, src, alpha=1):
+    logger.debug("GEMS_ASCEND INDEX_ADD_")
+
+    index = index.contiguous()
+    src = src.contiguous()
+
+    dim = dim % inp.ndim
+    inp_len = inp.size(dim)
+    N = index.numel()
+    M = src.numel() // N
+
+    normalized_dim = dim % inp.ndim if -inp.ndim <= dim < inp.ndim else dim
+    if _can_use_contiguous_suffix_path(inp, normalized_dim, index, src):
+        _assert_index_in_bounds(index, inp.size(dim))
+        accumulate_fp32 = inp.dtype == torch.bfloat16
+        out = inp.float() if accumulate_fp32 else inp
+        if _run_contiguous_suffix_path(out, normalized_dim, index, src, alpha):
+            if accumulate_fp32:
+                inp.copy_(out)
+            return inp
+
+    final_dim = inp.ndim - 1
+
+    if dim != final_dim:
+        inp_work = dim_compress(inp.clone().contiguous(), dim)
+        src_work = dim_compress(src, dim)
+        out_work = inp_work.clone()
+
+        BLOCK_M, BLOCK_N = _get_block_config(M, N)
+        grid = (
+            triton.cdiv(M, BLOCK_M),
+            triton.cdiv(N, BLOCK_N),
+        )
+
+        with torch_device_fn.device(inp.device):
+            index_add_kernel[grid](
+                inp_work,
+                out_work,
+                index,
+                src_work,
+                M,
+                N,
+                alpha,
+                inp_len,
+                BLOCK_M=BLOCK_M,
+                BLOCK_N=BLOCK_N,
+            )
+
+        order = list(range(out_work.ndim - 1))
+        order.insert(dim, final_dim)
+        inp_work = out_work.permute(order).contiguous()
+        inp.copy_(inp_work)
+    else:
+        inp_contig = inp.contiguous()
+        out_contig = inp_contig.clone()
+
+        BLOCK_M, BLOCK_N = _get_block_config(M, N)
+        grid = (
+            triton.cdiv(M, BLOCK_M),
+            triton.cdiv(N, BLOCK_N),
+        )
+
+        with torch_device_fn.device(inp.device):
+            index_add_kernel[grid](
+                inp_contig,
+                out_contig,
+                index,
+                src,
+                M,
+                N,
+                alpha,
+                inp_len,
+                BLOCK_M=BLOCK_M,
+                BLOCK_N=BLOCK_N,
+            )
+
+        if inp.is_contiguous():
+            inp.copy_(out_contig)
+        else:
+            inp.copy_(out_contig)
+
+    return inp

@@ -1,9 +1,50 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import contextlib
+import logging
 import math
 from typing import Optional, Tuple
 
 import torch
 import triton
 import triton.language as tl
+from triton.knobs import autotuning as _autotuning_knobs
+
+logger = logging.getLogger(__name__)
+
+
+@contextlib.contextmanager
+def _disable_aabs_for_small_seqlen(seqlen_q, seqlen_k):
+    """Temporarily disable FlagTree AABS for very short sequences.
+
+    AABS shrinks a tl.load-driven BLOCK to next_power_of_2(seqlen) when
+    BLOCK > seqlen. For seqlen < 16 it lowers BLOCK_M/BLOCK_N below Triton's
+    tl.dot K>=16 lower bound (these blocks double as a dot operand), which
+    makes _flash_attn_bwd_dq_fused / _flash_attn_bwd_dkv fail to compile with
+    "Input shapes should have M >= 1, N >= 1 and K >= 16" (decode: seqlen 1).
+    Fall back to the plain (non-adjusted) configs for such shapes.
+    """
+    if min(seqlen_q, seqlen_k) >= 16:
+        yield
+        return
+    previous = _autotuning_knobs.adjust_block_size
+    _autotuning_knobs.adjust_block_size = False
+    try:
+        yield
+    finally:
+        _autotuning_knobs.adjust_block_size = previous
 
 
 def _parse_rng_state(rng_state: torch.Tensor) -> Tuple[int, int]:
@@ -16,49 +57,6 @@ def _parse_philox(
     philox_offset: torch.Tensor,
 ) -> Tuple[int, int]:
     return int(philox_seed.item()), int(philox_offset.item())
-
-
-def _smem_bytes(block_m, block_n, head_dim, num_stages, dtype_bytes=2):
-    q_do_tile = 2 * block_m * head_dim * dtype_bytes
-    kv_tile = 2 * block_n * head_dim * dtype_bytes * num_stages
-    return q_do_tile + kv_tile
-
-
-def _get_max_shared_mem():
-    props = torch.cuda.get_device_properties(torch.cuda.current_device())
-    return getattr(
-        props,
-        "shared_memory_per_block_optin",
-        props.shared_memory_per_block,
-    )
-
-
-def _prune_configs(configs, named_args, **kwargs):
-    head_dim = named_args.get("HEAD_DIM", 128)
-
-    max_smem = _get_max_shared_mem() - 4 * 1024
-
-    pruned = []
-    for cfg in configs:
-        bm = cfg.kwargs["BLOCK_M"]
-        bn = cfg.kwargs["BLOCK_N"]
-        ns = cfg.num_stages
-        if _smem_bytes(bm, bn, head_dim, ns) <= max_smem:
-            pruned.append(cfg)
-
-    if not pruned:
-        pruned = [
-            min(
-                configs,
-                key=lambda c: _smem_bytes(
-                    c.kwargs["BLOCK_M"],
-                    c.kwargs["BLOCK_N"],
-                    head_dim,
-                    c.num_stages,
-                ),
-            )
-        ]
-    return pruned
 
 
 _DQ_CONFIGS = [
@@ -90,7 +88,6 @@ _DKV_CONFIGS = [
 @triton.autotune(
     configs=_DQ_CONFIGS,
     key=["seqlen_q", "seqlen_k", "HEAD_DIM"],
-    prune_configs_by={"early_config_prune": _prune_configs},
 )
 @triton.jit
 def _flash_attn_bwd_dq_fused(
@@ -299,7 +296,6 @@ def _flash_attn_bwd_dq_fused(
 @triton.autotune(
     configs=_DKV_CONFIGS,
     key=["seqlen_q", "seqlen_k", "HEAD_DIM"],
-    prune_configs_by={"early_config_prune": _prune_configs},
 )
 @triton.jit
 def _flash_attn_bwd_dkv(
@@ -528,7 +524,6 @@ def _flash_attn_bwd_dkv(
 @triton.autotune(
     configs=_DQ_CONFIGS,
     key=["max_seqlen_q", "max_seqlen_k", "HEAD_DIM"],
-    prune_configs_by={"early_config_prune": _prune_configs},
 )
 @triton.jit
 def _flash_attn_bwd_varlen_dq_fused(
@@ -739,7 +734,6 @@ def _flash_attn_bwd_varlen_dq_fused(
 @triton.autotune(
     configs=_DKV_CONFIGS,
     key=["max_seqlen_q", "max_seqlen_k", "HEAD_DIM"],
-    prune_configs_by={"early_config_prune": _prune_configs},
 )
 @triton.jit
 def _flash_attn_bwd_varlen_dkv(
@@ -1203,119 +1197,120 @@ def flash_attn_backward(
             attn_bias if has_bias else None
         )
 
-        grid_dq = lambda META: (triton.cdiv(SeqLen_q, META["BLOCK_M"]), Batch, H_q)
-        _flash_attn_bwd_dq_fused[grid_dq](
-            Q,
-            K,
-            V,
-            dOut,
-            Out,
-            L,
-            D,
-            dQ,
-            bias_ptr,
-            dbias_ptr,
-            alibi_ptr,
-            scale,
-            group_size,
-            wl,
-            wr,
-            dropout_p,
-            drop_scale,
-            seed_int,
-            base_offset_int,
-            drop_stride_b,
-            drop_stride_h,
-            drop_stride_m,
-            Q.stride(0),
-            Q.stride(1),
-            Q.stride(2),
-            Q.stride(3),
-            K.stride(0),
-            K.stride(1),
-            K.stride(2),
-            K.stride(3),
-            V.stride(0),
-            V.stride(1),
-            V.stride(2),
-            V.stride(3),
-            Out.stride(0),
-            Out.stride(1),
-            Out.stride(2),
-            Out.stride(3),
-            L.stride(0),
-            L.stride(1),
-            D.stride(0),
-            D.stride(1),
-            sb_b,
-            sb_h,
-            sb_m,
-            sb_n,
-            SeqLen_q,
-            SeqLen_k,
-            HEAD_DIM=Head_Dim,
-            IS_CAUSAL=is_causal,
-            IS_DROPOUT=use_dropout,
-            HAS_WINDOW=has_window,
-            HAS_ALIBI=has_alibi,
-            HAS_BIAS=has_bias,
-            DO_BIAS_GRAD=do_bias_grad,
-        )
+        with _disable_aabs_for_small_seqlen(SeqLen_q, SeqLen_k):
+            grid_dq = lambda META: (triton.cdiv(SeqLen_q, META["BLOCK_M"]), Batch, H_q)
+            _flash_attn_bwd_dq_fused[grid_dq](
+                Q,
+                K,
+                V,
+                dOut,
+                Out,
+                L,
+                D,
+                dQ,
+                bias_ptr,
+                dbias_ptr,
+                alibi_ptr,
+                scale,
+                group_size,
+                wl,
+                wr,
+                dropout_p,
+                drop_scale,
+                seed_int,
+                base_offset_int,
+                drop_stride_b,
+                drop_stride_h,
+                drop_stride_m,
+                Q.stride(0),
+                Q.stride(1),
+                Q.stride(2),
+                Q.stride(3),
+                K.stride(0),
+                K.stride(1),
+                K.stride(2),
+                K.stride(3),
+                V.stride(0),
+                V.stride(1),
+                V.stride(2),
+                V.stride(3),
+                Out.stride(0),
+                Out.stride(1),
+                Out.stride(2),
+                Out.stride(3),
+                L.stride(0),
+                L.stride(1),
+                D.stride(0),
+                D.stride(1),
+                sb_b,
+                sb_h,
+                sb_m,
+                sb_n,
+                SeqLen_q,
+                SeqLen_k,
+                HEAD_DIM=Head_Dim,
+                IS_CAUSAL=is_causal,
+                IS_DROPOUT=use_dropout,
+                HAS_WINDOW=has_window,
+                HAS_ALIBI=has_alibi,
+                HAS_BIAS=has_bias,
+                DO_BIAS_GRAD=do_bias_grad,
+            )
 
-        grid_dkv = lambda META: (triton.cdiv(SeqLen_k, META["BLOCK_N"]), Batch, H_k)
-        _flash_attn_bwd_dkv[grid_dkv](
-            Q,
-            K,
-            V,
-            dOut,
-            L,
-            D,
-            dK,
-            dV,
-            bias_ptr,
-            alibi_ptr,
-            scale,
-            group_size,
-            wl,
-            wr,
-            dropout_p,
-            drop_scale,
-            seed_int,
-            base_offset_int,
-            drop_stride_b,
-            drop_stride_h,
-            drop_stride_m,
-            Q.stride(0),
-            Q.stride(1),
-            Q.stride(2),
-            Q.stride(3),
-            K.stride(0),
-            K.stride(1),
-            K.stride(2),
-            K.stride(3),
-            V.stride(0),
-            V.stride(1),
-            V.stride(2),
-            V.stride(3),
-            Out.stride(0),
-            Out.stride(1),
-            Out.stride(2),
-            Out.stride(3),
-            L.stride(0),
-            L.stride(1),
-            sb_b,
-            sb_h,
-            sb_m,
-            sb_n,
-            SeqLen_q,
-            SeqLen_k,
-            HEAD_DIM=Head_Dim,
-            IS_CAUSAL=is_causal,
-            IS_DROPOUT=use_dropout,
-            HAS_WINDOW=has_window,
-            HAS_ALIBI=has_alibi,
-            HAS_BIAS=has_bias,
-        )
+            grid_dkv = lambda META: (triton.cdiv(SeqLen_k, META["BLOCK_N"]), Batch, H_k)
+            _flash_attn_bwd_dkv[grid_dkv](
+                Q,
+                K,
+                V,
+                dOut,
+                L,
+                D,
+                dK,
+                dV,
+                bias_ptr,
+                alibi_ptr,
+                scale,
+                group_size,
+                wl,
+                wr,
+                dropout_p,
+                drop_scale,
+                seed_int,
+                base_offset_int,
+                drop_stride_b,
+                drop_stride_h,
+                drop_stride_m,
+                Q.stride(0),
+                Q.stride(1),
+                Q.stride(2),
+                Q.stride(3),
+                K.stride(0),
+                K.stride(1),
+                K.stride(2),
+                K.stride(3),
+                V.stride(0),
+                V.stride(1),
+                V.stride(2),
+                V.stride(3),
+                Out.stride(0),
+                Out.stride(1),
+                Out.stride(2),
+                Out.stride(3),
+                L.stride(0),
+                L.stride(1),
+                sb_b,
+                sb_h,
+                sb_m,
+                sb_n,
+                SeqLen_q,
+                SeqLen_k,
+                HEAD_DIM=Head_Dim,
+                IS_CAUSAL=is_causal,
+                IS_DROPOUT=use_dropout,
+                HAS_WINDOW=has_window,
+                HAS_ALIBI=has_alibi,
+                HAS_BIAS=has_bias,
+            )
 
     return dQ, dK, dV, dBias
 
@@ -1340,6 +1335,7 @@ def flash_attention_backward(
     window_size_left=None,
     window_size_right=None,
 ):
+    logger.debug("GEMS FLASH_ATTENTION_BACKWARD")
     is_dropout = dropout_p > 0.0
     rng_tuple = _parse_rng_state(rng_state) if is_dropout else None
     wl = -1 if window_size_left is None else int(window_size_left)
@@ -1384,6 +1380,7 @@ def scaled_dot_product_flash_attention_backward(
     *,
     scale=None,
 ):
+    logger.debug("GEMS SCALED_DOT_PRODUCT_FLASH_ATTENTION_BACKWARD")
     is_dropout = dropout_p > 0.0
     rng_tuple = _parse_philox(philox_seed, philox_offset) if is_dropout else None
     use_varlen = (cum_seq_q is not None) and (cum_seq_k is not None)
@@ -1427,12 +1424,13 @@ def scaled_dot_product_cudnn_attention_backward(
     scale=None,
     bias_requires_grad=False,
 ):
+    logger.debug("GEMS SCALED_DOT_PRODUCT_CUDNN_ATTENTION_BACKWARD")
     grad_out_bshd = grad_out.permute(0, 2, 1, 3).contiguous()
     query_bshd = query.permute(0, 2, 1, 3).contiguous()
     key_bshd = key.permute(0, 2, 1, 3).contiguous()
     value_bshd = value.permute(0, 2, 1, 3).contiguous()
     out_bshd = out.permute(0, 2, 1, 3).contiguous()
-    lse = logsumexp.squeeze(-1).float()
+    lse = logsumexp.float()
 
     is_dropout = dropout_p > 0.0
     rng_tuple = _parse_philox(philox_seed, philox_offset) if is_dropout else None
@@ -1487,6 +1485,7 @@ def efficient_attention_backward(
     window_size=None,
     shared_storage_dqdkdv=False,
 ):
+    logger.debug("GEMS EFFICIENT_ATTENTION_BACKWARD")
     if custom_mask_type == 0:
         is_causal, wl, wr = False, -1, -1
     elif custom_mask_type == 1:
@@ -1543,6 +1542,7 @@ def scaled_dot_product_efficient_attention_backward(
     *,
     scale=None,
 ):
+    logger.debug("GEMS SCALED_DOT_PRODUCT_EFFICIENT_ATTENTION_BACKWARD")
     need_dq, need_dk, need_dv, need_dbias = grad_input_mask
 
     grad_out_bshd = grad_out_.permute(0, 2, 1, 3).contiguous()

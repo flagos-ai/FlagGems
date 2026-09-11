@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -6,10 +20,11 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
+from flag_gems.runtime.backend._ascend import heuristics_config_utils as _hcu
 from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils import triton_lang_extension as ext
 
-logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
+logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -182,7 +197,7 @@ def var_mean_kernel_1(
 
 
 @libentry()
-@triton.heuristics(runtime.get_heuristic_config("var_mean"))
+@triton.heuristics(_hcu.HEURISTICS_CONFIGS["var_mean"])
 @triton.jit(do_not_specialize=["correction"])
 def var_mean_kernel_2(
     Acc,
@@ -225,7 +240,7 @@ def var_mean_kernel_2(
 
 
 def var_mean(x, dim=None, *, correction=None, keepdim=False):
-    logger.debug("GEMS_ASCEND VAR MEAN")
+    logger.debug("GEMS_ASCEND VAR_MEAN")
     if correction is None:
         correction = 1.0
 

@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 import math
 
@@ -11,6 +25,8 @@ from flag_gems.utils import libentry
 from ..utils.config_utils import MAX_GRID_DIM
 
 logger = logging.getLogger(__name__)
+
+MAX_BLOCK_SIZE = 32768
 
 
 @libentry()
@@ -34,16 +50,22 @@ def rms_norm_kernel(
         Y_cur = pid * y_stride_r + Y
         X_cur = pid * x_stride_r + X
 
-        mask = tl.arange(0, BLOCK_SIZE) < N
-        cols = tl.arange(0, BLOCK_SIZE)
-        x = tl.load(X_cur + cols * x_stride_c, mask, other=0.0).to(tl.float32)
-
-        var = tl.sum(x * x, axis=0) / N
+        _var = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
+        for off in range(0, N, BLOCK_SIZE):
+            cols = off + tl.arange(0, BLOCK_SIZE)
+            mask = cols < N
+            x = tl.load(X_cur + cols * x_stride_c, mask, other=0.0).to(tl.float32)
+            _var += x * x
+        var = tl.sum(_var, axis=0) / N
         rrms = 1 / tl.sqrt(var + eps)
 
-        w = tl.load(W + tl.arange(0, BLOCK_SIZE), mask=mask, other=0.0)
-        y = (x * rrms).to(Y_cur.dtype.element_ty) * w
-        tl.store(Y_cur + cols * y_stride_c, y, mask=mask)
+        for off in range(0, N, BLOCK_SIZE):
+            cols = off + tl.arange(0, BLOCK_SIZE)
+            mask = cols < N
+            x = tl.load(X_cur + cols * x_stride_c, mask, other=0.0).to(tl.float32)
+            w = tl.load(W + cols, mask=mask, other=0.0)
+            y = (x * rrms).to(Y_cur.dtype.element_ty) * w
+            tl.store(Y_cur + cols * y_stride_c, y, mask=mask)
         tl.store(INV_RMS + pid, rrms)
 
 
@@ -71,22 +93,31 @@ def rms_norm_grad_dx_kernel(
         DY_cur = pid * x_stride_r + DY
         INV_RMS_cur = pid + INV_RMS
 
-        mask = tl.arange(0, BLOCK_SIZE) < N
-        cols = tl.arange(0, BLOCK_SIZE)
-        x = tl.load(X_cur + cols * x_stride_c, mask, other=0.0).to(tl.float32)
         inv_rms = tl.load(INV_RMS_cur).to(tl.float32)
-        dy = tl.load(DY_cur + cols * x_stride_c, mask, other=0.0).to(tl.float32)
-        w = tl.load(W + tl.arange(0, BLOCK_SIZE), mask=mask, other=0.0)
 
-        dy = dy * w
+        _row_sum = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
+        for off in range(0, N, BLOCK_SIZE):
+            cols = off + tl.arange(0, BLOCK_SIZE)
+            mask = cols < N
+            x = tl.load(X_cur + cols * x_stride_c, mask, other=0.0).to(tl.float32)
+            dy = tl.load(DY_cur + cols * x_stride_c, mask, other=0.0).to(tl.float32)
+            w = tl.load(W + cols, mask=mask, other=0.0)
+            dy_w = dy * w
+            normalized_buf = x * inv_rms
+            _row_sum += normalized_buf * dy_w
+        row_sum_stats = tl.sum(_row_sum, axis=0)
 
-        normalized_buf = x * inv_rms
-        row_sum_stats = tl.sum(normalized_buf * dy, axis=0)
-
-        norm_val = normalized_buf / N
-        dx = (dy - norm_val * row_sum_stats) * inv_rms
-
-        tl.store(DX_cur + cols * dx_stride_c, dx, mask=mask)
+        for off in range(0, N, BLOCK_SIZE):
+            cols = off + tl.arange(0, BLOCK_SIZE)
+            mask = cols < N
+            x = tl.load(X_cur + cols * x_stride_c, mask, other=0.0).to(tl.float32)
+            dy = tl.load(DY_cur + cols * x_stride_c, mask, other=0.0).to(tl.float32)
+            w = tl.load(W + cols, mask=mask, other=0.0)
+            dy_w = dy * w
+            normalized_buf = x * inv_rms
+            norm_val = normalized_buf / N
+            dx = (dy_w - norm_val * row_sum_stats) * inv_rms
+            tl.store(DX_cur + cols * dx_stride_c, dx, mask=mask)
 
 
 @libentry()
@@ -147,12 +178,12 @@ def rms_norm_grad_dw_kernel(
 class RmsNorm(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, normalized_shape, weight, eps=1e-5):
-        logger.debug("Enflame RMSNORM FORWARD")
+        logger.debug("GEMS_ENFLAME RMSNORM_FORWARD")
         dim = x.ndim - len(normalized_shape)
         M = math.prod(x.shape[:dim])
         N = math.prod(normalized_shape)
 
-        BLOCK_SIZE = triton.next_power_of_2(N)
+        BLOCK_SIZE = min(triton.next_power_of_2(N), MAX_BLOCK_SIZE)
         x = x.contiguous()
         weight = weight.contiguous()
         y = torch.empty_like(x)
@@ -176,7 +207,7 @@ class RmsNorm(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, dy):
-        logger.debug("Enflame RMSNORM BACKWARD")
+        logger.debug("GEMS_ENFLAME RMSNORM_BACKWARD")
         x, inv_rms, weight = ctx.saved_tensors
         normalized_shape = ctx.normalized_shape
         eps = ctx.eps
@@ -185,7 +216,7 @@ class RmsNorm(torch.autograd.Function):
         M = math.prod(x.shape[:dim])
         N = math.prod(normalized_shape)
 
-        BLOCK_SIZE = triton.next_power_of_2(N)
+        BLOCK_SIZE = min(triton.next_power_of_2(N), MAX_BLOCK_SIZE)
         x = x.contiguous()
         weight = weight.contiguous()
         dx = torch.empty_like(x)

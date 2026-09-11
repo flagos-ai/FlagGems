@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 single_dim_shapes: &single_dim_shapes
   shapes:
     - [64]
@@ -26,8 +40,116 @@ ctc_loss_backward:
     - [1024, 32, 128, 96]
   shape_desc: "T, N, C, S"
 
+cdist_backward:
+  shapes:
+    - [2, 16, 32]
+    - [4, 32, 64]
+    - [8, 64, 128]
+  shape_desc: "batch, n1, dim"
+
 randperm:
   <<: *single_dim_shapes
+
+exponential:
+  shapes:
+    - [64, 64]
+    - [10000, 1]
+    - [100, 1, 100]
+    - [10000, 256]
+    - [100, 256, 100]
+    - [4096, 4096]
+    - [64, 512, 512]
+    - [268435456]
+    - [10000, 65536]
+    - [100, 65536, 100]
+    - [1024, 1024, 1024]
+    - [1073741824]
+  shape_desc: "input shape"
+
+svd:
+  shapes:
+    - [4096, 2, 2]
+    - [4096, 16, 2]
+    - [4096, 2, 16]
+    - [4096, 8, 8]
+    - [256, 16, 8]
+    - [256, 8, 16]
+    - [64, 32]
+    - [32, 64]
+    - [16, 16, 16]
+    - [17, 17]
+    - [256, 256]
+  shape_desc: "(*B), M, N"
+
+linalg_qr:
+  shapes:
+    # square: tiny -> large
+    - [8, 8]
+    - [64, 64]
+    - [256, 256]
+    - [512, 512]
+    - [1024, 1024]
+    - [4096, 4096]
+    # tall (m > n): fused, routing-win, TSQR
+    - [128, 32]
+    - [512, 64]
+    - [4096, 4]
+    - [8192, 8]
+    # wide (m < n)
+    - [8, 32]
+    - [16, 64]
+    - [32, 128]
+    - [64, 256]
+    # batched
+    - [64, 8, 8]
+    - [128, 32, 32]
+    - [32, 128, 128]
+    - [4, 1024, 1024]
+  shape_desc: "(*B), M, N"
+
+linalg_qr_out:
+  shapes:
+    # square: tiny -> large
+    - [8, 8]
+    - [64, 64]
+    - [256, 256]
+    - [512, 512]
+    - [1024, 1024]
+    - [4096, 4096]
+    # tall (m > n): fused, routing-win, TSQR
+    - [128, 32]
+    - [512, 64]
+    - [4096, 4]
+    - [8192, 8]
+    # wide (m < n)
+    - [8, 32]
+    - [16, 64]
+    - [32, 128]
+    - [64, 256]
+    # batched
+    - [64, 8, 8]
+    - [128, 32, 32]
+    - [32, 128, 128]
+    - [4, 1024, 1024]
+  shape_desc: "(*B), M, N"
+
+segment_reduce: &segment_reduce_shapes
+  shapes:
+    - [1048576]
+    - [64, 64]
+    - [4096, 4096]
+    - [64, 512, 512]
+    - [1024, 1024, 1024]
+  shape_desc: "data shape"
+
+segment_reduce_out:
+  <<: *segment_reduce_shapes
+
+segment_reduce_backward:
+  <<: *segment_reduce_shapes
+
+segment_reduce_backward_out:
+  <<: *segment_reduce_shapes
 
 gelu_backward:
   shapes:
@@ -58,6 +180,15 @@ cosh_out:
     - [1024, 65536]
   shape_desc: "(B), M, N"
 
+linalg_matrix_norm:
+  shapes:
+    - [256, 512]
+    - [2, 2048]
+    - [4, 32, 64]
+    - [16, 2, 2048]
+    - [8, 4, 32, 32]
+  shape_desc: "(*B), M, N"
+
 log10:
   shapes:
     - [4096, 4096]
@@ -79,6 +210,15 @@ log10_out:
     - [1024, 65536]
   shape_desc: "(B), M, N"
 
+float_power_:
+  shapes:
+    - [1048576]
+    - [64, 64]
+    - [4096, 4096]
+    - [64, 512, 512]
+    - [1024, 65536]
+  shape_desc: "(B), M, N"
+
 gcd:
   shapes:
     - [65536]
@@ -94,6 +234,14 @@ softmax_backward:
     - [4096, 4096]
     - [64, 512, 512]
     - [256, 1024, 1024]
+
+softmax_backward_out:
+  shapes:
+    - [1048576] # 1024 * 1024
+    - [64, 64]
+    - [4096, 4096]
+    - [64, 512, 512]
+    - [1024, 1024, 1024]
 
 smooth_l1_loss:
   shapes:
@@ -127,6 +275,64 @@ quantile:
     - [64, 512, 128]
     - [20, 8, 10000]
 
+nanmedian:
+  shapes:
+    - [64]
+    - [64, 64]
+    - [1024, 1024]
+    - [256, 4096]
+    - [16, 131072]
+  shape_desc: "N or M, N"
+
+nanmedian_out:
+  shapes:
+    - [64]
+    - [64, 64]
+    - [1024, 1024]
+    - [256, 4096]
+    - [16, 131072]
+  shape_desc: "N or M, N"
+
+nanmedian_dim:
+  shapes:
+    - [64, 64]
+    - [1024, 1024]
+    - [256, 4096]
+    - [16, 131072]
+  shape_desc: "M, N"
+
+nanmedian_dim_values:
+  shapes:
+    - [64, 64]
+    - [1024, 1024]
+    - [256, 4096]
+    - [16, 131072]
+  shape_desc: "M, N"
+
+median:
+  shapes:
+    - [2]
+    - [64]
+    - [65]
+    - [128]
+    - [256]
+    - [257]
+    - [1024]
+    - [4096]
+    - [4, 8, 16, 8]
+  shape_desc: "input shape"
+
+median_dim:
+  shapes:
+    - [1536, 640]
+    - [144, 8192]
+    - [768, 1536]
+    - [32, 384, 128]
+    - [[32, 384, 128], 1, false]
+    - [[640, 1536], 0, false]
+    - [[8, 64, 384, 64], 2, false]
+  shape_desc: "input shape or [input shape, dim, keepdim]"
+
 BlasBenchmark:
   shapes:
     - [2, 384, 384, 384]
@@ -136,12 +342,62 @@ BlasBenchmark:
     - [16, 4096, 4096, 4096]
   shape_desc: "B, M, N, K"   # shapes are defined as (B, M, N, K)
 
-groupmm:
+addmm_vector_bias:
+  shapes:
+    - [1, 64, 256, 184]
+    - [1, 128, 512, 512]
+    - [1, 256, 256, 1024]
+    - [1, 512, 1024, 1024]
+    - [1, 1024, 512, 1536]
+  shape_desc: "B, M, N, K"
+
+addmm_out_vector_bias:
+  shapes:
+    - [1, 64, 256, 184]
+    - [1, 128, 512, 512]
+    - [1, 256, 256, 1024]
+    - [1, 512, 1024, 1024]
+    - [1, 1024, 512, 1536]
+  shape_desc: "B, M, N, K"
+
+grouped_mm:
   shapes:
     - [16, 512, 2048]
     - [16, 2560, 2048]
     - [64, 2048, 128]
   shape_desc: "Groups, N, K"   # shapes are defined as (Groups, N, K)
+
+sparse_sampled_addmm:
+  shapes:
+    - [2, 128, 128, 128]
+    - [4, 256, 256, 256]
+    - [8, 512, 512, 512]
+    - [16, 512, 512, 512]
+    - [4, 1024, 1024, 1024]
+    - [16, 1024, 1024, 1024]
+    - [8, 2048, 2048, 64]
+    - [2, 2048, 2048, 128]
+    - [4, 4096, 4096, 128]
+    - [1, 4096, 4096, 64]
+    - [2, 4096, 1024, 512]
+    - [2, 1024, 1000, 384]
+  shape_desc: "B, M, N, K"
+
+sparse_sampled_addmm_out:
+  shapes:
+    - [2, 128, 128, 128]
+    - [4, 256, 256, 256]
+    - [8, 512, 512, 512]
+    - [16, 512, 512, 512]
+    - [4, 1024, 1024, 1024]
+    - [16, 1024, 1024, 1024]
+    - [8, 2048, 2048, 64]
+    - [2, 2048, 2048, 128]
+    - [4, 4096, 4096, 128]
+    - [1, 4096, 4096, 64]
+    - [2, 4096, 1024, 512]
+    - [2, 1024, 1000, 384]
+  shape_desc: "B, M, N, K"
 
 MvAndOuterBenchmark:
   shapes:
@@ -221,6 +477,34 @@ TensorRepeatBenchmark:
     - [512, 2048]
   shape_desc: "(B), M, N"
 
+weight_norm:
+  shapes:
+    - [64, 64]
+    - [512, 512]
+    - [1024, 1024]
+
+# MetaX C550: reduced shapes to avoid 32-bit pointer limitation in MacaLauncher
+group_norm:
+  shapes:
+    - [4, 16, 64, 4]
+    - [16, 16, 8, 48]
+    - [16, 16, 8, 88]
+    - [16, 16, 128]
+  shape_desc: "N, C, *"
+
+argmin:
+  shapes:
+    - [65536]
+    - [64, 64]
+    - [512, 512]
+    - [64, 64, 64]
+
+log_softmax:
+  shapes:
+    - [64, 64]
+    - [256, 256]
+    - [1024, 1024]
+
 GenericBenchmarkExcluse1D:
   shapes:
     - [64, 64]
@@ -277,6 +561,24 @@ GenericBenchmark2DOnly:
     - [4096, 4096]
     - [1024, 65536]
 
+# huber_loss is a reduction op: small tensors are dominated by launch/dispatch
+# overhead, so its per-op shape set keeps the default 2D shapes and additionally
+# covers larger reduction workloads where the Triton kernel is representative.
+huber_loss:
+  shapes:
+    - [64, 64]
+    - [256, 256]
+    - [1024, 1024]
+    - [4096, 4096]
+    - [1024, 65536]
+    - [2048, 32768]
+    - [2048, 65536]
+    - [4096, 32768]
+    - [4096, 65536]
+    - [3072, 49152]
+    - [3072, 65536]
+  shape_desc: "M, N"
+
 # default 4d-only shapes
 GenericBenchmark4DOnly:
   shapes:
@@ -285,6 +587,14 @@ GenericBenchmark4DOnly:
     - [1024, 1024,4,8]
     - [4096, 4096,4,8]
     - [1024, 65536,4,8]
+
+IndexReduceBenchmark:
+  shapes:
+    - [1048576]
+    - [1024, 1024]
+    - [4096, 4096]
+    - [64, 512, 512]
+  shape_desc: "(B), M, N"
 
 UnaryReductionBenchmark:
   shapes:
@@ -331,6 +641,18 @@ Conv2DBenchmark:
     - [16, 32, 24, 24, 24, 3, 3, 1, 1, 2]
   shape_desc: "N, C_in, H, W, C_out, K_h, K_w, stride, padding, groups"
 
+conv_transpose2d:
+  shapes:
+    - [1, 64, 128, 128, 64, 3, 3, 1, 1, 1]
+    - [1, 64, 64, 64, 32, 3, 3, 2, 1, 1]
+    - [4, 32, 32, 32, 32, 3, 3, 2, 1, 1]
+    - [8, 16, 64, 64, 16, 5, 5, 2, 2, 1]
+    - [16, 32, 16, 16, 64, 3, 3, 2, 1, 1]
+    - [16, 32, 32, 32, 64, 3, 3, 2, 1, 1]
+    - [32, 64, 32, 32, 32, 3, 3, 1, 0, 1]
+    - [32, 64, 16, 16, 32, 3, 3, 2, 1, 1]
+  shape_desc: "N, C_in, H, W, C_out, K_h, K_w, stride, padding, groups"
+
 Conv3DBenchmark:
   shapes:
     - [32, 64, 64, 64, 64, 32, 3, 3, 3, 1, 1, 1]  # standard dimensions, common parameters
@@ -357,6 +679,14 @@ AttentionBenchmark:
     - [4, 32, 2048, 128]
     - [4, 32, 4096, 128]
     - [4, 32, 8192, 128]
+
+ScaledDotProductFusedAttentionOverrideableBenchmark:
+  shapes:
+    - [2, 8, 64, 64]
+    - [4, 8, 128, 64]
+    - [2, 8, 128, 128]
+    - [1, 16, 256, 64]
+  shape_desc: "B, H, S, D"
 
 KronBenchmark:
   shapes:
@@ -398,6 +728,23 @@ index:
     - [[512, 512, 512], [[2, 128]]]
     - [[64, 64, 64], [[2, 8], [2, 8]]]
 
+index_select_backward:
+  shapes:
+    - [16, 64]
+    - [32, 128]
+    - [64, 256]
+    - [16, 16, 64]
+    - [32, 32, 128]
+  shape_desc: "N, M"
+
+unsafe_index:
+  shapes:
+    - [[268435456], [[65536]]]
+    - [[32, 32], [[8], [8]]]
+    - [[32, 32], [[8], [2, 8]]]
+    - [[32, 32], [[2, 8]]]
+    - [[512, 512, 512], [[2, 128], [2, 128], [2, 128]]]
+
 FlashMLABenchmark:
   shapes:
     - [1024]
@@ -436,6 +783,19 @@ FusedRecurrentGatedDeltaRuleBenchmark:
     - [256]
     - [512]
   shape_desc: "(T,) many lengths"
+
+ChunkGatedDeltaRuleBenchmark:
+  shapes:
+    - [1, 64, 4, 8, 64, 64]
+    - [1, 128, 4, 8, 64, 64]
+    - [1, 256, 4, 8, 64, 64]
+    - [1, 512, 4, 8, 64, 64]
+    - [2, 64, 4, 8, 64, 64]
+    - [2, 128, 4, 8, 64, 64]
+    - [2, 256, 4, 8, 64, 64]
+    - [2, 512, 4, 8, 64, 64]
+  shape_desc: "B, T, Hg, H, K, V"
+
 MoeAlignBlockSizeBenchmark:
   shapes:
     - [16, 8]
@@ -458,6 +818,23 @@ PerTokenGroupQuantFp8Benchmark:
     - [83, 512, 64]
     - [2048, 4096, 256]
     - [2048, 13824, 512]
+
+
+fused_inv_rope_fp8_quant:
+  shapes:
+    - [256, 128, 8, false]
+    - [512, 128, 8, false]
+    - [1024, 128, 8, false]
+    - [2048, 128, 8, false]
+    - [4096, 128, 8, false]
+
+    - [256, 128, 8, true]
+    - [512, 128, 8, true]
+    - [1024, 128, 8, true]
+    - [2048, 128, 8, true]
+    - [4096, 128, 8, true]
+  shape_desc: "num_tokens, num_heads, n_groups, tma_aligned_scales"
+
 ReshapeAndCacheBenchmark:
   shapes:
     - [21, 4, 64, 8, 512]
@@ -473,3 +850,86 @@ ReshapeAndCacheFlashBenchmark:
     - [21, 4, 80, 16, 10000]
     - [42, 8, 64, 8, 1024]
     - [42, 8, 80, 16, 10000]
+
+FractionalMaxPool2dBenchmark:
+  shapes:
+    - [4, 3, 224, 224]
+    - [16, 64, 56, 56]
+    - [32, 128, 28, 28]
+    - [64, 256, 14, 14]
+    - [128, 512, 7, 7]
+  shape_desc: "N, C, H, W"
+
+pixel_shuffle:
+  shapes:
+    - [1, 4, 2, 3, 2]
+    - [2, 9, 4, 4, 3]
+    - [4, 64, 32, 32, 2]
+    - [2, 128, 64, 64, 2]
+    - [1, 64, 16, 16, 4]
+    - [8, 36, 64, 64, 3]
+    - [1, 16, 128, 128, 2]
+  shape_desc: "N, C, H, W, upscale_factor"
+
+pixel_unshuffle:
+  shapes:
+    - [1, 3, 8, 8, 2]
+    - [2, 4, 12, 6, 3]
+    - [4, 16, 64, 48, 4]
+  shape_desc: "N, C, H, W, downscale_factor"
+
+repeat:
+  shapes:
+    - [536870912]  # 2^29, repeat [2] -> 2^30 < 2^31
+    - [64, 64]
+    - [4096, 4096]
+    - [64, 512, 512]
+    - [512, 512, 512]
+
+topk_w8a16_fp8:
+  shapes:
+    - [64, 128, 8]
+    - [256, 256, 8]
+    - [128, 1024, 16]
+    - [64, 4096, 32]
+    - [32, 8192, 64]
+    - [16, 16384, 128]
+    - [8, 32768, 256]
+  shape_desc: "M, N, K"
+
+tile:
+  shapes:
+    - [536870912]  # 2^29, tile [2] -> 2^30 < 2^31
+    - [64, 64]
+    - [4096, 4096]
+    - [64, 512, 512]
+    - [512, 512, 512]
+
+hstack:
+  shapes:
+    - [536870912]  # 2^29, 3 tensors -> 1.5G total offset < 2^31
+    - [64, 64]
+    - [4096, 4096]
+    - [64, 512, 512]
+    - [512, 512, 512]
+
+repeat_interleave_self_int:
+  shapes:
+    - [16, 256, 256]
+    - [128, 256, 256]
+    - [64, 64, 64, 64]
+  shape_desc: "M, N, K"
+
+repeat_interleave_self_tensor:
+  shapes:
+    - [16, 256, 256]
+    - [128, 256, 256]
+    - [64, 64, 64, 64]
+  shape_desc: "M, N, K"
+
+repeat_interleave_tensor:
+  shapes:
+    - [16, 256, 256]
+    - [128, 256, 256]
+    - [64, 64, 64, 64]
+  shape_desc: "M, N, K"

@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 import math
 
@@ -13,7 +27,7 @@ from flag_gems.utils.libentry import libentry
 from .any import reduce_any
 from .unique import _unique2
 
-logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
+logger = logging.getLogger(__name__)
 
 
 def launch_arg(BLOCK_M, BLOCK_N, N, num_warps):
@@ -284,9 +298,35 @@ def isin(
         in1 = torch.tensor(in1, device=in0.device)
     if in0.numel() == 0 or in1.numel() == 0:
         return torch.zeros_like(in0, dtype=torch.bool)
-    elif in0.numel() <= 12288 and in1.numel() <= 12288:  # 1024 * 12
+    elif in0.numel() <= 12288 and in1.numel() <= 12288:
         return isin_by_comparation(in0, in1, invert)
-    elif assume_unique or in1.numel() <= 4194304:  # 1024 * 4096
+    elif in0.numel() > 100000000 or in1.numel() > 100000000:
+        in0_ravel = in0.contiguous().ravel()
+        in1_ravel = torch.unique(in1.contiguous().ravel())
+        in1_sorted, _ = torch.sort(in1_ravel)
+        M = in0_ravel.numel()
+        N = in1_sorted.numel()
+        BLOCK_M = 512
+        log_n = int(math.log2(N)) + 1
+        ctas_num = min(65536, triton.cdiv(M, BLOCK_M))
+        tiles_per_cta = triton.cdiv(M, BLOCK_M * ctas_num)
+        grid = (ctas_num,)
+        out = torch.empty_like(in0_ravel, dtype=torch.bool)
+        with torch_device_fn.device(in0_ravel.device.index):
+            isin_by_search_kernel[grid](
+                in0_ravel,
+                in1_sorted,
+                out,
+                M,
+                N,
+                log_n,
+                BLOCK_M,
+                tiles_per_cta=tiles_per_cta,
+                invert=invert,
+                num_warps=8,
+            )
+        return out.view_as(in0)
+    elif assume_unique or in1.numel() <= 4194304:
         return isin_by_search(in0, in1, invert, unique_in0=False, unique_in1=False)
     else:
         return isin_by_search(in0, in1, invert, unique_in0=False, unique_in1=True)

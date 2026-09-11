@@ -1,9 +1,25 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 import math
 
 import torch
 import triton
 import triton.language as tl
+
+import flag_gems
 
 logger = logging.getLogger(__name__)
 
@@ -87,8 +103,8 @@ def launch_reflection_pad2d(input: torch.Tensor, padding, out: torch.Tensor = No
     # Validate input
     if input.dim() < 3:
         raise ValueError("input must have at least 3 dimensions")
-    if not input.is_ptpu:
-        raise ValueError("input must be a PTPU tensor")
+    if input.device.type != flag_gems.device:
+        raise ValueError(f"input must be a {flag_gems.device} tensor")
 
     x = input.contiguous()
     H_in = int(x.shape[-2])
@@ -117,8 +133,8 @@ def launch_reflection_pad2d(input: torch.Tensor, padding, out: torch.Tensor = No
             (*leading_shape, H_out, W_out), device=x.device, dtype=x.dtype
         )
     else:
-        if not out.is_ptpu:
-            raise ValueError("out must be a PTPU tensor")
+        if out.device.type != flag_gems.device:
+            raise ValueError(f"out must be a {flag_gems.device} tensor")
         expected_shape = (*leading_shape, H_out, W_out)
         if tuple(out.shape) != expected_shape:
             raise ValueError(
@@ -148,10 +164,10 @@ def launch_reflection_pad2d(input: torch.Tensor, padding, out: torch.Tensor = No
 
 
 def reflection_pad2d(input: torch.Tensor, padding):
-    logger.debug("GEMS REFLECTION_PAD2D")
+    logger.debug("GEMS_SUNRISE REFLECTION_PAD2D")
     return launch_reflection_pad2d(input, padding, out=None)
 
 
 def reflection_pad2d_out(input: torch.Tensor, padding, out: torch.Tensor):
-    logger.debug("GEMS REFLECTION_PAD2D_OUT")
+    logger.debug("GEMS_SUNRISE REFLECTION_PAD2D_OUT")
     return launch_reflection_pad2d(input, padding, out=out)

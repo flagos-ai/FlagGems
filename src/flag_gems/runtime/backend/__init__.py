@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import ast
 import functools
 import importlib
@@ -8,6 +22,7 @@ from pathlib import Path
 
 from ..common import vendors
 from . import backend_utils
+from .backend_utils import BackendEventBase
 
 
 class BackendState:
@@ -37,12 +52,75 @@ class BackendState:
         self.device_fn_cache = {}
         self.customized_ops = None
 
+    def is_available(self):
+        return True
+
+    def get_ops(self, vendor=None):
+        """Provide a unified interface for the upper layer"""
+        return get_customized_ops(vendor)
+
 
 # Global singleton instance
 _state = BackendState()
 
 
-class BackendArchEvent:
+class TritonVersionEvent(BackendEventBase):
+    _instance = None
+    has_version_spec = False
+
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
+    def __init__(self, version=None):
+        self.has_version_spec = False
+        self.version = version if version is not None else self.get_version()
+        self.dir = self.get_version_spec_dir()
+        if self.dir and Path(self.dir).exists():
+            self.module = self.get_version_spec_module()
+            self.has_version_spec = True
+
+    def is_available(self):
+        return self.has_version_spec
+
+    def get_version_spec_dir(self, path=None):
+        dir_name = f"triton_{self.version}"
+        backend_path = Path(path or _state.vendor_module.__path__[0])
+        backend_path = backend_path.parent if backend_path.is_file() else backend_path
+        excluded = ("ops", "fused")
+        return {
+            p.name: str(p)
+            for p in backend_path.iterdir()
+            if p.is_dir() and p.name not in excluded and not p.name.startswith("_")
+        }.get(dir_name, None)
+
+    def get_functions_from_module(self, module):
+        return inspect.getmembers(module, inspect.isfunction) if module else []
+
+    def get_version_spec_module(self):
+        module_name = f"triton_{self.version}"
+        path_dir = os.path.dirname(self.dir)
+        sys.path.insert(0, str(path_dir))
+        version_module = importlib.import_module(module_name)
+        sys.path.remove(str(path_dir))
+        return version_module
+
+    def get_ops(self, *args, **kwargs):
+        return self.get_version_ops()
+
+    def get_version_ops(self):
+        pass
+
+    def get_version(self):
+        try:
+            import triton
+        except ImportError:
+            return None
+        return triton.__version__
+
+
+class BackendArchEvent(BackendEventBase):
     has_arch: bool = False
     _instance = None
     _initialized: bool = False
@@ -67,6 +145,9 @@ class BackendArchEvent:
             self.autotune_configs = self.get_autotune_configs()
             self.heuristics_configs = self.get_heuristics_configs()
 
+    def is_available(self):
+        return self.has_arch
+
     def get_functions_from_module(self, module):
         return inspect.getmembers(module, inspect.isfunction) if module else []
 
@@ -88,22 +169,36 @@ class BackendArchEvent:
             return
         arch_map = _state.vendor_module.ARCH_MAP
         arch_string = os.environ.get("ARCH", "")
-        arch_string_num = arch_string.split("_")[-1][0] if arch_string else arch_string
-        if not arch_string_num:
+        # Candidate keys ordered from the most to the least specific. The last
+        # one is the major version alone, so a map that lists whole families
+        # keeps matching the same devices it did before.
+        keys = []
+        if arch_string:
+            keys.append(arch_string.split("_")[-1][0])
+        else:
             try:
                 if not _state.torch_device_object.is_available():
                     return False
                 props = _state.torch_device_object.get_device_properties(device)
-                arch_string_num = str(props.major)
+                # AMD reports the exact target here, sometimes with feature
+                # suffixes such as "gfx942:sramecc+:xnack-". Other vendors do
+                # not expose this attribute at all.
+                gcn_arch = (getattr(props, "gcnArchName", "") or "").strip()
+                if gcn_arch:
+                    keys.append(gcn_arch.split(":")[0])
+                keys.append(f"{props.major}.{props.minor}")
+                keys.append(str(props.major))
             except Exception:
                 self.has_arch = False
-        if arch_string_num not in arch_map:
-            print(
-                f"[INFO] : FlagGems Unsupported GPU arch {arch_string} specialization"
-            )
-        else:
-            self.has_arch = True
-            return arch_map[arch_string_num]
+
+        for key in keys:
+            if key in arch_map:
+                self.has_arch = True
+                return arch_map[key]
+        print(
+            "[INFO] : FlagGems Unsupported GPU arch "
+            f"{arch_string or (keys[0] if keys else 'unknown')} specialization"
+        )
 
     def _get_supported_archs(self, path=None):
         path = Path(path or _state.vendor_module.__path__[0])
@@ -126,6 +221,10 @@ class BackendArchEvent:
         sys.path.remove(str(path_dir))
         return current_arch_module
 
+    def get_ops(self, *args, **kwargs):
+        """Provide a unified interface for the upper layer"""
+        return self.get_arch_ops()
+
     def get_arch_ops(self):
         arch_specialized_ops = []
         sys.path.append(self.current_arch_path)
@@ -145,6 +244,25 @@ class BackendArchEvent:
             arch_specialized_ops.extend(self.get_functions_from_module(ops_module))
 
         return arch_specialized_ops
+
+
+class SpecOpRegistrar:
+    def __init__(self, registry, vendor=None):
+        self._globals = registry
+        self.vendor = vendor
+
+    def apply(self, vendor=None):
+        vendor = vendor or self.vendor
+        spec_events = self._get_specific_events()
+        for event in spec_events:
+            if not event.is_available():
+                continue
+            operators = event.get_ops(vendor)
+            for fn_name, fn in operators:
+                self._globals[fn_name] = fn
+
+    def _get_specific_events(self):
+        return (_state, BackendArchEvent(), TritonVersionEvent())
 
 
 def _import_module_safe(module_name, vendor_name, module_type):
@@ -295,6 +413,11 @@ def get_customized_ops(vendor_name=None):
     return _state.customized_ops
 
 
+def get_ops(vendor_name=None):
+    """Provide a unified interface for the upper layer"""
+    return get_customized_ops(vendor_name)
+
+
 def get_unused_ops(vendor_name=None):
     global vendor_module  # noqa: F824
     get_vendor_module(vendor_name)
@@ -303,12 +426,9 @@ def get_unused_ops(vendor_name=None):
 
 def get_heuristic_config(vendor_name=None):
     config_name = "heuristics_config_utils"
+    vendor_name = vendor_name or "nvidia"
     mod_name = f"_{vendor_name}.{config_name}"
-    try:
-        _state.heuristic_config_module = importlib.import_module(mod_name)
-    except Exception:
-        mod_name = f"_nvidia.{config_name}"
-        _state.heuristic_config_module = importlib.import_module(mod_name)
+    _state.heuristic_config_module = importlib.import_module(mod_name)
     return getattr(_state.heuristic_config_module, "HEURISTICS_CONFIGS", None)
 
 

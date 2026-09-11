@@ -4,6 +4,23 @@ weight: 50
 ---
 
 <!--
+ Copyright 2026 FlagOS Contributors
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+ -->
+
+
+<!--
 # Running FlagGems on Non-NVIDIA Hardware
 
 ## 1. Supported platforms
@@ -15,10 +32,10 @@ weight: 50
 <!--
 FlagGems supports a range of AI chips/platforms beyond NVIDIA.
 For an up-to-date list of validated platforms, please refer to
-[Supported Platforms](/FlagGems/overview//features/#platforms-supported)
+[Supported Platforms](/FlagGems/overview/platforms/)
 -->
 *FlagGems* 在 NVIDIA 芯片之外支持若干不同类型的 AI 芯片或平台。
-请参阅[平台支持](/FlagGems/zh-cn/overview/features/#platforms-supported)
+请参阅[平台支持](/FlagGems/zh-cn/overview/platforms/)
 文档了解已经验证过的平台的最新列表。
 
 <!--
@@ -124,10 +141,10 @@ export GEMS_VENDOR=<厂商名称>
 
 <!--
 For the list of valid `vendor_name`s, please check the
-[supported platforms](/FlagGems/overview/features/#platforms-supported) documentation
+[supported platforms](/FlagGems/overview/platforms/) documentation
 for details.
 -->
-参阅[平台支持](/FlagGems/zh-cn/overview/features/#platforms-supported)文档，
+参阅[平台支持](/FlagGems/zh-cn/overview/platforms/)文档，
 了解不同厂商对应的符号名。
 
 <!--

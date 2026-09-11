@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
@@ -158,7 +172,7 @@ def _torch_op_wrapper(*args, **kwargs):
     return flag_gems.fused_recurrent_gated_delta_rule_fwd(*args, **kwargs)
 
 
-@pytest.mark.skipif(flag_gems.device != "cuda", reason="benchmark requires CUDA device")
+@pytest.mark.fused_recurrent_gated_delta_rule_fwd
 @pytest.mark.fused_recurrent_gated_delta_rule
 @pytest.mark.parametrize("qkv_contiguous", [False])
 def test_perf_fused_recurrent_gated_delta_rule(qkv_contiguous):

@@ -1,20 +1,34 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
+from flag_gems.runtime.backend._ascend import heuristics_config_utils as _hcu
 from flag_gems.utils.random_utils import (
     philox_backend_seed_offset,
     uint_to_uniform_float,
 )
 
-logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
+logger = logging.getLogger(__name__)
 
 
-@triton.heuristics(runtime.get_heuristic_config("exponential_"))
+@triton.heuristics(_hcu.HEURISTICS_CONFIGS["exponential_"])
 @triton.jit(do_not_specialize=["philox_seed", "philox_offset", "N"])
 def fused_exponential_kernel(
     out_ptr,
@@ -34,14 +48,14 @@ def fused_exponential_kernel(
 
     for task_index in range(tasks_per_worker):
         task_id = pid + task_index * n_workers
-        philox_seed = philox_seed.to(tl.int64)
+        philox_seed_64 = philox_seed.to(tl.int64)
         philox_offset_64 = philox_offset.to(tl.int64)
         c0 = (philox_offset_64 & 0xFFFFFFFF).to(tl.uint32)
         c1 = ((philox_offset_64 >> 32) & 0xFFFFFFFF).to(tl.uint32)
         i4 = task_id * BLOCK + tl.arange(0, BLOCK)
         c0 += i4
         _O = c0 * 0
-        r0, r1, r2, r3 = tl.philox(philox_seed, c0, c1, _O, _O)
+        r0, r1, r2, r3 = tl.philox(philox_seed_64, c0, c1, _O, _O)
         if is_double:
             d0 = uint_to_uniform_float(paste_u64(r0, r2))
             d1 = uint_to_uniform_float(paste_u64(r1, r3))

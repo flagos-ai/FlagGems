@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 import os
 
@@ -5,11 +19,10 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 
-logger = logging.getLogger("flag_gems.runtime.backend._mthreads.ops.sparse_attention")
+logger = logging.getLogger(__name__)
 EXPAND_CONFIG_FILENAME = os.path.normpath(
     os.path.join(
         os.path.dirname(__file__),
@@ -27,17 +40,9 @@ def sparse_attention_get_configs():
 
 @libentry()
 @libtuner(
-    configs=runtime.ops_get_configs(
-        "sparse_attention", yaml_path=EXPAND_CONFIG_FILENAME
-    )
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else sparse_attention_get_configs(),
+    configs=sparse_attention_get_configs(),
     key=["topk", "H_ACTUAL", "D"],
-    strategy=runtime.get_expand_config(
-        "sparse_attention", yaml_path=EXPAND_CONFIG_FILENAME
-    )["strategy"]
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else ["align32", "align32", "align32"],
+    strategy=["align32", "align32", "align32"],
     warmup=5,
     rep=5,
 )
@@ -152,39 +157,31 @@ def sparse_attn_triton(
         d,
     )
     grid = (m, b)
-    prev_sqmma = os.environ.get("MUSA_ENABLE_SQMMA")
-    os.environ["MUSA_ENABLE_SQMMA"] = "1"
-    try:
-        with torch_device_fn.device(q.device):
-            sparse_attn_triton_kernel[grid](
-                q,
-                kv,
-                o,
-                attn_sink,
-                topk_idxs,
-                q.stride(0),
-                q.stride(1),
-                q.stride(2),
-                q.stride(3),
-                kv.stride(0),
-                kv.stride(1),
-                kv.stride(2),
-                o.stride(0),
-                o.stride(1),
-                o.stride(2),
-                o.stride(3),
-                topk_idxs.stride(0),
-                topk_idxs.stride(1),
-                topk_idxs.stride(2),
-                softmax_scale,
-                topk,
-                h,
-                D=d,
-                H=h_padded,
-            )
-        return o
-    finally:
-        if prev_sqmma is None:
-            os.environ.pop("MUSA_ENABLE_SQMMA", None)
-        else:
-            os.environ["MUSA_ENABLE_SQMMA"] = prev_sqmma
+    with torch_device_fn.device(q.device):
+        sparse_attn_triton_kernel[grid](
+            q,
+            kv,
+            o,
+            attn_sink,
+            topk_idxs,
+            q.stride(0),
+            q.stride(1),
+            q.stride(2),
+            q.stride(3),
+            kv.stride(0),
+            kv.stride(1),
+            kv.stride(2),
+            o.stride(0),
+            o.stride(1),
+            o.stride(2),
+            o.stride(3),
+            topk_idxs.stride(0),
+            topk_idxs.stride(1),
+            topk_idxs.stride(2),
+            softmax_scale,
+            topk,
+            h,
+            D=d,
+            H=h_padded,
+        )
+    return o

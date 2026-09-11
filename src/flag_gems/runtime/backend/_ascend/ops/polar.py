@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -7,11 +21,11 @@ import triton.language as tl
 from flag_gems.utils import pointwise_dynamic
 from flag_gems.utils.codegen_config_utils import CodeGenConfig
 
-logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
+logger = logging.getLogger(__name__)
 
 
 config_ = CodeGenConfig(
-    384,
+    256,
     tuple([48, 1, 1]),
     32,
     False,
@@ -36,26 +50,8 @@ def polar_kernel(abs, angle):
 
 def polar(abs, angle):
     logger.debug("GEMS_ASCEND POLAR")
+    output = torch.empty((*abs.shape, 2), dtype=abs.dtype, device=abs.device)
 
-    # Use separate contiguous output tensors instead of non-contiguous slices
-    # of a (*, 2) buffer. On Ascend NPU without OPP, AsStrided (used for
-    # output[..., 0] slicing) is not available.
-    out_real = torch.empty_like(abs)
-    out_imag = torch.empty_like(abs)
+    polar_kernel(abs, angle, out0=output[..., 0], out1=output[..., 1])
 
-    polar_kernel(abs, angle, out0=out_real, out1=out_imag)
-
-    # Combine into complex tensor via CPU round-trip.
-    # On Ascend NPU without OPP, Pack (torch.stack on device), select+copy_,
-    # and torch.complex are all broken or fall back to CPU.
-    real_cpu = out_real.cpu()
-    imag_cpu = out_imag.cpu()
-
-    # view_as_complex only supports float16/float32/float64; cast bf16 if needed
-    orig_dtype = real_cpu.dtype
-    if orig_dtype == torch.bfloat16:
-        real_cpu = real_cpu.float()
-        imag_cpu = imag_cpu.float()
-
-    output_cpu = torch.stack([real_cpu, imag_cpu], dim=-1)
-    return torch.view_as_complex(output_cpu).to(abs.device)
+    return torch.view_as_complex(output)

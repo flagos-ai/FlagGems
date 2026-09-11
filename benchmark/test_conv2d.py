@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
@@ -50,6 +64,9 @@ def _input_fn(shape, dtype, device):
 
 
 @pytest.mark.conv2d
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_conv2d(monkeypatch):
     if flag_gems.vendor_name == "hygon":
         monkeypatch.setenv("TRITON_HIP_USE_NEW_STREAM_PIPELINE", "0")
@@ -58,6 +75,45 @@ def test_conv2d(monkeypatch):
     bench = Conv2DBenchmark(
         input_fn=_input_fn,
         op_name="conv2d",
+        torch_op=torch.nn.functional.conv2d,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.set_gems(flag_gems.conv2d)
+
+    bench.run()
+
+
+class Conv2DPaddingBenchmark(base.GenericBenchmark):
+    DEFAULT_SHAPES = [
+        (16, 32, 12, 12, 24, 3, 3, 1, "valid", 1),
+        (32, 64, 128, 128, 32, 3, 3, 1, "valid", 1),
+        (32, 64, 210, 210, 16, 5, 5, 1, "valid", 1),
+        (16, 32, 24, 24, 24, 3, 3, 1, "same", 1),
+        (32, 64, 128, 128, 32, 3, 3, 1, "same", 1),
+        (32, 64, 210, 210, 16, 5, 5, 1, "same", 1),
+        (16, 32, 24, 24, 24, 3, 3, 1, "same", 2),
+    ]
+
+    def set_more_shapes(self):
+        return []
+
+    def get_input_iter(self, dtype):
+        for shape in self.DEFAULT_SHAPES:
+            yield from self.input_fn(shape, dtype, self.device)
+
+
+@pytest.mark.conv2d_padding
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_conv2d_padding(monkeypatch):
+    if flag_gems.vendor_name == "hygon":
+        monkeypatch.setenv("TRITON_HIP_USE_NEW_STREAM_PIPELINE", "0")
+
+    torch.backends.cudnn.allow_tf32 = False
+    bench = Conv2DPaddingBenchmark(
+        input_fn=_input_fn,
+        op_name="conv2d_padding",
         torch_op=torch.nn.functional.conv2d,
         dtypes=consts.FLOAT_DTYPES,
     )

@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -308,7 +322,12 @@ def _run_cluster_remote(
     M, K = a.shape
     N = b.shape[1]
     dot_k = _select_remote_dot_k(bk)
-    use_mask = (M % bm != 0) or (N % bn != 0) or (K % bk != 0)
+    use_mask = (
+        (M % bm != 0)
+        or (N % bn != 0)
+        or (K % bk != 0)
+        or (triton.cdiv(N, bn) % TLE_CLUSTER_SIZE != 0)
+    )
     a_slots = TLE_REMOTE_A_SLOTS
     use_nv_mma_smem_layout = (bk == 32) or (bk == 64 and num_stages <= 2)
     _cluster_remote_gemm_kernel[_grid_cluster_remote(M, N, bm, bn)](
@@ -601,3 +620,14 @@ def mm_out(a, b, *, out):
     if cluster_remote_mm_scenario(a, b, out, M, N, K):
         return cluster_remote_mm(a, b, out, M, N, K)
     return general_mm(a, b, out, M, N, K)
+
+
+def router_gemm(x: torch.Tensor, weight: torch.Tensor) -> torch.Tensor:
+    """bf16 x bf16 -> fp32 GEMM for MoE router gate. weight shape: (N, K)."""
+    if x.stride(0) > 1 and x.stride(1) > 1:
+        x = x.contiguous()
+    M, K = x.shape
+    N = weight.shape[0]
+    c = torch.empty((M, N), device=x.device, dtype=torch.float32)
+    b = weight.t().contiguous()
+    return general_mm(x, b, c, M, N, K)

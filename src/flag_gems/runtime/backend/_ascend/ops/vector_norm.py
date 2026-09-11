@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 import math
 
@@ -10,7 +24,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry, tl_extra_shim
 from flag_gems.utils import triton_lang_extension as ext
 
-logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
+logger = logging.getLogger(__name__)
 
 
 try:
@@ -270,13 +284,18 @@ def l1_norm_kernel_2(Mid, Out, ord, MID_SIZE, BLOCK_MID: tl.constexpr):
 
 
 def vector_norm(x, ord=2, dim=None, keepdim=False, dtype=None):
-    logger.debug("GEMS_ASCEND VECTOR NORM")
+    logger.debug("GEMS_ASCEND VECTOR_NORM")
     if dtype is not None:
         dtype = torch.dtype(dtype)
     else:
         dtype = x.dtype
     if dtype not in [torch.float16, torch.float32, torch.bfloat16]:
         raise NotImplementedError(f"vector_norm not implemented for {dtype}")
+
+    compute_dtype = dtype
+    if dtype == torch.float16:
+        compute_dtype = torch.float32
+        x = x.to(torch.float32)
 
     with torch_device_fn.device(x.device):
         if (not dim) or len(dim) == x.ndim:
@@ -295,8 +314,8 @@ def vector_norm(x, ord=2, dim=None, keepdim=False, dtype=None):
                 BLOCK_MID_SUB = 512
             else:
                 BLOCK_MID_SUB = 1
-            mid = torch.empty([MID_SIZE], dtype=dtype, device=x.device)
-            out = torch.empty(shape, dtype=dtype, device=x.device)
+            mid = torch.empty([MID_SIZE], dtype=compute_dtype, device=x.device)
+            out = torch.empty(shape, dtype=compute_dtype, device=x.device)
             if ord == 2:
                 l2_norm_kernel_1[(MID_SIZE,)](x, mid, M, BLOCK_SIZE, BLOCK_MID_SUB)
                 l2_norm_kernel_2[(1,)](mid, out, MID_SIZE, BLOCK_MID, BLOCK_MID_SUB)
@@ -321,7 +340,7 @@ def vector_norm(x, ord=2, dim=None, keepdim=False, dtype=None):
                 N *= shape[i]
                 shape[i] = 1
             M = x.numel() // N
-            out = torch.empty(shape, dtype=dtype, device=x.device)
+            out = torch.empty(shape, dtype=compute_dtype, device=x.device)
             grid = lambda META: (triton.cdiv(M, META["BLOCK_M"]),)
             if ord == 2:
                 l2_norm_kernel[grid](x, out, M, N)
@@ -335,4 +354,6 @@ def vector_norm(x, ord=2, dim=None, keepdim=False, dtype=None):
                 v_norm_kernel[grid](x, out, M, N, ord)
     if not keepdim:
         out = out.squeeze(dim=dim)
+    if compute_dtype != dtype:
+        out = out.to(dtype)
     return out

@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import triton
 
 
@@ -7,19 +21,6 @@ def argmax_heur_block_m(args):
 
 def argmax_heur_block_n(args):
     return 100
-
-
-def argmax_heur_tile_k(args):
-    tile_k = 64
-    return tile_k
-
-
-def argmax_heur_tile_n_non_inner(args):
-    return 128
-
-
-def argmax_heur_one_tile_per_cta(args):
-    return args["TILE_N"] >= args["N"]
 
 
 def argmin_heur_block_m(args):
@@ -91,8 +92,20 @@ def index_select_heur_block_n(args):
     return max(m, 16)
 
 
-def mm_heur_even_k(args):
-    return args["K"] % (args["BLOCK_K"]) == 0
+def log_normal_heur_block(args):
+    if args["N"] <= 512:
+        return 512
+    else:
+        return 1024
+
+
+def log_normal_heur_num_warps(args):
+    if args["N"] <= 512:
+        return 4
+    elif args["N"] <= 1024:
+        return 8
+    else:
+        return 16
 
 
 def rand_heur_block(args):
@@ -146,7 +159,7 @@ def softmax_heur_tile_k(args):
 
 
 def softmax_heur_tile_n_non_inner(args):
-    return triton.cdiv(768, args["TILE_K"])
+    return triton.cdiv(1024, args["TILE_K"])
 
 
 def softmax_heur_one_tile_per_cta(args):
@@ -219,14 +232,13 @@ def upsample_nearest2d_SAME_W(args):
 
 
 def batch_norm_heur_block_m(args):
-    return min(128, triton.next_power_of_2(args["batch_dim"]))
+    return min(64, triton.next_power_of_2(args["batch_dim"]))
 
 
 def batch_norm_heur_block_n(args):
-    # A maximum of 4096 elements are loaded at once.
     BLOCK_M = batch_norm_heur_block_m(args)
     BLOCK_N = triton.next_power_of_2(args["spatial_dim"])
-    return min(BLOCK_N, max(1, 2**12 // BLOCK_M))
+    return min(BLOCK_N, max(1, 2**10 // BLOCK_M))
 
 
 def vdot_heur_block_size(args):
@@ -239,12 +251,24 @@ def vdot_heur_block_size(args):
         return 1024
 
 
+def mm_heur_even_k(args):
+    return args["K"] % (args["BLOCK_K"] * args["SPLIT_K"]) == 0
+
+
+def post_layer_norm_residual_heur_tile_n(args):
+    return triton.next_power_of_2(args["N"])
+
+
+def post_layer_norm_residual_heur_tile_m(args):
+    tile_n = triton.next_power_of_2(args["N"])
+    # Eight resident rows are beneficial through 1K columns on Ascend.
+    if tile_n <= 1024:
+        return 8
+    # Keep larger tiles within the one-pass kernel's original element budget.
+    return max(1, min(8, 4096 // tile_n))
+
+
 HEURISTICS_CONFIGS = {
-    "argmax_non_inner": {
-        "TILE_K": argmax_heur_tile_k,
-        "TILE_N": argmax_heur_tile_n_non_inner,
-        "ONE_TILE_PER_CTA": argmax_heur_one_tile_per_cta,
-    },
     "argmax": {
         "BLOCK_M": argmax_heur_block_m,
         "BLOCK_N": argmax_heur_block_n,
@@ -252,6 +276,11 @@ HEURISTICS_CONFIGS = {
     "argmin": {
         "BLOCK_M": argmin_heur_block_m,
         "BLOCK_N": argmin_heur_block_n,
+    },
+    "baddbmm": {
+        "DIVISIBLE_M": bmm_heur_divisible_m,
+        "DIVISIBLE_N": bmm_heur_divisible_n,
+        "DIVISIBLE_K": bmm_heur_divisible_k,
     },
     "bmm": {
         "DIVISIBLE_M": bmm_heur_divisible_m,
@@ -273,6 +302,10 @@ HEURISTICS_CONFIGS = {
     "index_select": {
         "BLOCK_M": index_select_heur_block_m,
         "BLOCK_N": index_select_heur_block_n,
+    },
+    "log_normal": {
+        "BLOCK": log_normal_heur_block,
+        "num_warps": log_normal_heur_num_warps,
     },
     "mm": {
         "EVEN_K": mm_heur_even_k,
@@ -304,6 +337,10 @@ HEURISTICS_CONFIGS = {
         "TILE_M": softmax_heur_tile_m,
         "ONE_TILE_PER_CTA": softmax_heur_one_tile_per_cta,
     },
+    "post_layer_norm_residual": {
+        "TILE_M": post_layer_norm_residual_heur_tile_m,
+        "TILE_N": post_layer_norm_residual_heur_tile_n,
+    },
     "uniform": {
         "BLOCK": uniform_heur_block,
         "num_warps": uniform_heur_num_warps,
@@ -321,5 +358,11 @@ HEURISTICS_CONFIGS = {
     },
     "vdot": {
         "BLOCK_SIZE": vdot_heur_block_size,
+    },
+    "mha_block_16": {
+        "BLOCK_M": lambda args: 16,  # 16
+        "BLOCK_N": lambda args: 16,  # 64
+        "num_warps": lambda args: 4,  # 4
+        "num_stages": lambda args: 3,  # 3
     },
 }

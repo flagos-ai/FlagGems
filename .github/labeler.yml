@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 benchmark:
   - changed-files:
       # TODO(Qiming): cleanse this directory
@@ -7,14 +21,7 @@ ops/cpp:
   - changed-files:
       - any-glob-to-any-file:
           - '.clang-format'
-          - 'CMakeLists.txt'
-          - 'build/**'
-          - 'cmake/**'
-          - 'ctests/**'
-          - 'include/**'
-          - 'lib/**'
-          - 'src/flag_gems/csrc/**'
-          - 'triton_src/**'
+          - 'cpp/**'
 
 ci/cd:
   - changed-files:
@@ -86,6 +93,11 @@ vendor/Cambricon:
       - any-glob-to-any-file:
           - 'src/flag_gems/runtime/backend/_cambricon/**'
 
+vendor/Enflame:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/flag_gems/runtime/backend/_enflame/**'
+
 vendor/Hygon:
   - changed-files:
       - any-glob-to-any-file:
@@ -116,10 +128,20 @@ vendor/NVIDIA:
       - any-glob-to-any-file:
           - 'src/flag_gems/runtime/backend/_nvidia/**'
 
+vendor/SpaceMit:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/flag_gems/runtime/backend/_spacemit**'
+
 vendor/Sunrise:
   - changed-files:
       - any-glob-to-any-file:
           - 'src/flag_gems/runtime/backend/_sunrise/**'
+
+vendor/THead:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/flag_gems/runtime/backend/_thead/**'
 
 vendor/TsingMicro:
   - changed-files:

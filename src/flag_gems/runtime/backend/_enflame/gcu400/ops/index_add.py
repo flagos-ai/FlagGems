@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import importlib
 import logging
 import os
@@ -80,7 +94,7 @@ def generate_index_add_kernel(
                 "src_dim_idx = (tl.load(index + dim_idx, mask=mask, other=0)).to(tl.int64)"
             )
             code.writeline(
-                'assert src_dim_idx >= 0 and src_dim_idx < inp_shape_dim, "0 <= index < self.size(dim)"'
+                'assert (src_dim_idx >= 0) & (src_dim_idx < inp_shape_dim), "0 <= index < self.size(dim)"'
             )
             code.writeline(
                 "input_idx = (src_offset + (delta * pre_idx + src_dim_idx - dim_idx) * inp_stride_dim).to(tl.int64)"
@@ -221,7 +235,7 @@ _index_add_func = IndexAddFunction()
 
 
 def index_add(inp, dim, index, src, alpha=1):
-    logger.debug("GEMS INDEX ADD")
+    logger.debug("GEMS_ENFLAME INDEX_ADD")
     if index.dtype == torch.int64:
         index = index.to(torch.int32)
     assert ((0 <= index) * (index < inp.size(dim))).equal(
@@ -261,3 +275,44 @@ def index_add(inp, dim, index, src, alpha=1):
         alpha,
     )
     return out
+
+
+def index_add_(inp, dim, index, src, alpha=1):
+    logger.debug("GEMS_ENFLAME INDEX_ADD_")
+    if index.dtype == torch.int64:
+        index = index.to(torch.int32)
+    assert ((0 <= index) * (index < inp.size(dim))).equal(
+        torch.ones(tuple(index.shape), dtype=torch.bool, device=inp.device)
+    ), "0 <= index < self.size(dim)"
+    assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
+    assert index.numel() == src.size(
+        dim
+    ), "The dimth dimension of source must have the same size as the length of index"
+    assert (
+        inp.ndim == src.ndim
+    ), "Self and source should have the same number of dimensions"
+    assert (
+        ((inp.size(i) == src.size(i)) or i == dim) for i in range(0, inp.ndim)
+    ), "src.size(d) == self.size(d) for all dimensions d != dim"
+
+    dim %= inp.ndim
+    inp_stride_dim = inp.stride(dim)
+    src_shape_dim = src.size(dim)
+    inp_shape_dim = inp.size(dim)
+    delta = inp.size(dim) - src_shape_dim
+    N = src.numel()
+
+    _index_add_func(
+        inp,
+        index,
+        src,
+        dim,
+        inp_stride_dim,
+        inp_shape_dim,
+        src_shape_dim,
+        delta,
+        N,
+        inp.numel(),
+        alpha,
+    )
+    return inp

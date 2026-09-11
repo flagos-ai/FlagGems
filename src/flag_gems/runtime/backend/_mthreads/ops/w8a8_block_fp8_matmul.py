@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 import os
 from typing import List
@@ -5,17 +19,13 @@ from typing import List
 import torch
 import triton
 import triton.language as tl
+from triton.tools.tensor_descriptor import TensorDescriptor
 
-from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as ext
 
-from .utils import create_tma_device_descriptor, get_cached_tma_device_descriptor
-
-logger = logging.getLogger(
-    "flag_gems.runtime.backend._mthreads.ops.w8a8_block_fp8_matmul"
-)
+logger = logging.getLogger(__name__)
 EXPAND_CONFIG_FILENAME = os.path.normpath(
     os.path.join(
         os.path.dirname(__file__),
@@ -47,16 +57,6 @@ def is_sqmma_compatible(a, b, output_dtype, n, k):
     )
 
 
-def get_triton_type(elem_type):
-    type_map = {
-        torch.float16: tl.float16,
-        torch.bfloat16: tl.bfloat16,
-        torch.float32: tl.float32,
-        torch.float8_e4m3fn: tl.float8e4nv,
-    }
-    return type_map.get(elem_type, None)
-
-
 def matmul_get_configs():
     return [
         triton.Config(
@@ -74,19 +74,14 @@ def matmul_get_configs():
 
 @libentry()
 @libtuner(
-    configs=runtime.ops_get_configs(
-        "w8a8_block_fp8_general", pre_hook=None, yaml_path=EXPAND_CONFIG_FILENAME
-    )
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else matmul_get_configs(),
+    configs=matmul_get_configs(),
     key=["M", "N", "K", "stride_am", "stride_bk"],
-    strategy=runtime.get_expand_config(
-        "w8a8_block_fp8_general", yaml_path=EXPAND_CONFIG_FILENAME
-    )["strategy"]
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else ["align32", "align32", "align32", "align32", "align32"],
+    strategy=["align32", "align32", "align32", "align32", "align32"],
     warmup=5,
     rep=5,
+    flagtune_op_name="w8a8_block_fp8_matmul",
+    flagtune_expand_op_name="w8a8_block_fp8_general",
+    flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
 )
 @triton.jit
 def w8a8_block_fp8_matmul_kernel(
@@ -163,87 +158,53 @@ def w8a8_block_fp8_matmul_kernel(
 
 
 def sqmma_descriptor_pre_hook(nargs):
-    a = nargs["A"]
-    b = nargs["B"]
-    c = nargs["C"]
-    block_m = nargs["BLOCK_M"]
-    block_n = nargs["BLOCK_N"]
-    block_k = nargs["BLOCK_K"]
-    device = c.device
-
-    nargs["a_desc_ptr"].copy_(
-        get_cached_tma_device_descriptor(a, block_m, block_k, device)
-    )
-    nargs["b_desc_ptr"].copy_(
-        get_cached_tma_device_descriptor(b, block_k, block_n, device)
-    )
-    nargs["c_desc_ptr"].copy_(create_tma_device_descriptor(c, block_m, block_n, device))
-
-
-def sqmma_get_configs(pre_hook=sqmma_descriptor_pre_hook):
-    return [
-        triton.Config(
-            {
-                "BLOCK_M": 64,
-                "BLOCK_N": 64,
-                "BLOCK_K": 128,
-                "GROUP_M": 8,
-            },
-            num_stages=3,
-            num_warps=4,
-            pre_hook=pre_hook,
-        )
-    ]
+    nargs["a_desc"].block_shape = [nargs["BLOCK_M"], nargs["BLOCK_K"]]
+    nargs["b_desc"].block_shape = [nargs["BLOCK_K"], nargs["BLOCK_N"]]
+    nargs["c_desc"].block_shape = [nargs["BLOCK_M"], nargs["BLOCK_N"]]
 
 
 @libentry()
 @libtuner(
-    configs=runtime.ops_get_configs(
-        "w8a8_block_fp8_general_tma",
-        pre_hook=sqmma_descriptor_pre_hook,
-        yaml_path=EXPAND_CONFIG_FILENAME,
-    )
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else sqmma_get_configs(),
+    configs=[
+        triton.Config(
+            {"BLOCK_M": 64, "BLOCK_N": 64, "BLOCK_K": 128, "GROUP_M": 8},
+            num_stages=3,
+            num_warps=4,
+            pre_hook=sqmma_descriptor_pre_hook,
+        )
+    ],
     key=["M", "N", "K", "stride_am", "stride_bk", "dtype"],
-    strategy=runtime.get_expand_config(
-        "w8a8_block_fp8_general_tma", yaml_path=EXPAND_CONFIG_FILENAME
-    )["strategy"]
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else ["align32", "align32", "align32", "align32", "align32", "default"],
+    strategy=["align32", "align32", "align32", "align32", "align32", "default"],
     warmup=5,
     rep=5,
+    flagtune_op_name="w8a8_block_fp8_matmul",
+    flagtune_expand_op_name="w8a8_block_fp8_general_tma",
+    flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
+    flagtune_pre_hook=sqmma_descriptor_pre_hook,
 )
 @triton.jit
 def w8a8_block_fp8_matmul_sqmma_kernel(
-    A,
-    B,
-    C,
+    a_desc,
+    b_desc,
+    c_desc,
     As,
     Bs,
-    a_desc_ptr,
-    b_desc_ptr,
-    c_desc_ptr,
     M,
     N,
     K,
-    group_n,
-    group_k,
     stride_am,
     stride_bk,
+    dtype: tl.constexpr,
+    group_n,
+    group_k,
     stride_As_m,
     stride_As_k,
     stride_Bs_n,
     stride_Bs_k,
-    dtype: tl.constexpr,
-    input_dtype: tl.constexpr,
-    output_dtype: tl.constexpr,
     GROUP_M: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     BLOCK_K: tl.constexpr,
-    is_transpose_a: tl.constexpr = False,
-    is_transpose_b: tl.constexpr = True,
 ):
     pid = ext.program_id(0)
     grid_m = tl.cdiv(M, BLOCK_M)
@@ -261,24 +222,10 @@ def w8a8_block_fp8_matmul_sqmma_kernel(
     row_offset = offs_am + tl.arange(0, BLOCK_M)
     col_offset = offs_bn + tl.arange(0, BLOCK_N)
     acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
-    tme_load_input_dtype = input_dtype
-    c_store_dtype = output_dtype
 
     for _ in range(0, tl.cdiv(K, BLOCK_K)):
-        a = tl._experimental_descriptor_load(
-            a_desc_ptr,
-            [offs_am, offs_k],
-            [BLOCK_M, BLOCK_K],
-            tme_load_input_dtype,
-            is_transpose_a,
-        )
-        b = tl._experimental_descriptor_load(
-            b_desc_ptr,
-            [offs_k, offs_bn],
-            [BLOCK_K, BLOCK_N],
-            tme_load_input_dtype,
-            is_transpose_b,
-        )
+        a = tl.load_tensor_descriptor(a_desc, [offs_am, offs_k])
+        b = tl.load_tensor_descriptor(b_desc, [offs_k, offs_bn])
 
         scale_k = offs_k // group_k
         a_s = tl.load(
@@ -298,9 +245,7 @@ def w8a8_block_fp8_matmul_sqmma_kernel(
         )
         offs_k += BLOCK_K
 
-    tl._experimental_descriptor_store(
-        c_desc_ptr, acc.to(c_store_dtype), [offs_am, offs_bn]
-    )
+    tl.store_tensor_descriptor(c_desc, [offs_am, offs_bn], acc.to(c_desc.dtype))
 
 
 def general_w8a8_block_fp8_matmul(
@@ -316,7 +261,7 @@ def general_w8a8_block_fp8_matmul(
     group_k,
 ):
     logger.debug(
-        "GEMS_MTHREADS W8A8_BLOCK_FP8_MATMUL(general), [shape info]: [-, %s, %s, %s](batch, M, N, K)",
+        "GEMS_MTHREADS W8A8_BLOCK_FP8_MATMUL_GENERAL_, [shape info]: [-, %s, %s, %s](batch, M, N, K)",
         M,
         N,
         K,
@@ -364,8 +309,8 @@ def sqmma_w8a8_block_fp8_matmul(
     group_k,
 ):
     logger.debug(
-        "GEMS_MTHREADS W8A8_BLOCK_FP8_MATMUL(sqmma), [shape info]: [-, %s, %s, %s](batch, M, N, K), "
-        "[A column-major]: %s, [B column-major]: %s",
+        "GEMS_MTHREADS W8A8_BLOCK_FP8_MATMUL_SQMMA_, [shape info]: "
+        "[-, %s, %s, %s](batch, M, N, K), [A column-major]: %s, [B column-major]: %s",
         M,
         N,
         K,
@@ -373,24 +318,14 @@ def sqmma_w8a8_block_fp8_matmul(
         b.stride(0) == 1,
     )
     device = a.device
-    is_transpose_a = False
-    is_transpose_b = True
-
     if not a.is_contiguous():
-        if a.stride(0) == 1 and a.stride(1) == a.shape[0]:
-            is_transpose_a = True
-        else:
-            a = a.contiguous()
+        a = a.contiguous()
     if not b.is_contiguous():
-        if b.stride(0) == 1 and b.stride(1) == b.shape[0]:
-            is_transpose_b = False
-        else:
-            b = b.contiguous()
-            is_transpose_b = True
+        b = b.contiguous()
 
-    desc_a = torch.empty((64,), dtype=torch.int8, device=device)
-    desc_b = torch.empty((64,), dtype=torch.int8, device=device)
-    desc_c = torch.empty((64,), dtype=torch.int8, device=device)
+    desc_a = TensorDescriptor.from_tensor(a, [1, 1])
+    desc_b = TensorDescriptor.from_tensor(b, [1, 1])
+    desc_c = TensorDescriptor.from_tensor(c, [1, 1])
 
     grid = lambda meta: (
         triton.cdiv(M, meta["BLOCK_M"]) * triton.cdiv(N, meta["BLOCK_N"]),
@@ -400,30 +335,23 @@ def sqmma_w8a8_block_fp8_matmul(
 
     with torch_device_fn.device(device):
         w8a8_block_fp8_matmul_sqmma_kernel[grid](
-            a,
-            b,
-            c,
-            a_s,
-            b_s,
             desc_a,
             desc_b,
             desc_c,
+            a_s,
+            b_s,
             M,
             N,
             K,
-            group_n,
-            group_k,
             a.stride(0),
             b.stride(1),
+            str(a.dtype).split(".")[-1],
+            group_n,
+            group_k,
             a_s.stride(0),
             a_s.stride(1),
             b_s.stride(0),
             b_s.stride(1),
-            dtype=str(a.dtype).split(".")[-1],
-            input_dtype=get_triton_type(a.dtype),
-            output_dtype=get_triton_type(c.dtype),
-            is_transpose_a=is_transpose_a,
-            is_transpose_b=is_transpose_b,
         )
     return c
 
@@ -465,24 +393,8 @@ def w8a8_block_fp8_matmul(
     a_2d = A.reshape(M, K)
     as_2d = As.reshape(M, As.shape[-1])
     c_2d = c.reshape(M, N)
-    prev_sqmma = os.environ.get("MUSA_ENABLE_SQMMA")
-    os.environ["MUSA_ENABLE_SQMMA"] = "1"
-    try:
-        if is_sqmma_compatible(a_2d, B, output_dtype, N, K):
-            return sqmma_w8a8_block_fp8_matmul(
-                a_2d,
-                B,
-                c_2d,
-                as_2d,
-                Bs,
-                M,
-                N,
-                K,
-                block_n,
-                block_k,
-            ).reshape(c.shape)
-
-        return general_w8a8_block_fp8_matmul(
+    if is_sqmma_compatible(a_2d, B, output_dtype, N, K):
+        return sqmma_w8a8_block_fp8_matmul(
             a_2d,
             B,
             c_2d,
@@ -494,8 +406,16 @@ def w8a8_block_fp8_matmul(
             block_n,
             block_k,
         ).reshape(c.shape)
-    finally:
-        if prev_sqmma is None:
-            os.environ.pop("MUSA_ENABLE_SQMMA", None)
-        else:
-            os.environ["MUSA_ENABLE_SQMMA"] = prev_sqmma
+
+    return general_w8a8_block_fp8_matmul(
+        a_2d,
+        B,
+        c_2d,
+        as_2d,
+        Bs,
+        M,
+        N,
+        K,
+        block_n,
+        block_k,
+    ).reshape(c.shape)
