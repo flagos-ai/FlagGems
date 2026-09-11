@@ -51,7 +51,18 @@ class NestedViewFromBufferCopyBenchmark(base.Benchmark):
         return 0.0
 
 
+# aten::_nested_view_from_buffer_copy segfaults the whole process on CUDA
+# (its native impl dereferences the sizes/strides/offsets data pointers
+# host-side without a device check), and a try/except probe cannot guard
+# against a crash that takes the process down, so the test is skipped.
+_ATEN_CUDA_SUPPORTED = False
+
+
 @pytest.mark.nested_view_from_buffer_copy
+@pytest.mark.skipif(
+    not _ATEN_CUDA_SUPPORTED,
+    reason="aten::_nested_view_from_buffer_copy segfaults on CUDA in stock PyTorch; no native baseline available",
+)
 @pytest.mark.parametrize(
     "dtype",
     consts.FLOAT_DTYPES,
@@ -59,7 +70,7 @@ class NestedViewFromBufferCopyBenchmark(base.Benchmark):
 def test_nested_view_from_buffer_copy(dtype):
     bench = NestedViewFromBufferCopyBenchmark(
         op_name="nested_view_from_buffer_copy",
-        torch_op=flag_gems._nested_view_from_buffer_copy,
+        torch_op=torch.ops.aten._nested_view_from_buffer_copy,
         dtypes=[dtype],
     )
     bench.run()
