@@ -33,8 +33,7 @@ def test_i0(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
     ref_out = torch.i0(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.i0(inp)
+    res_out = flag_gems.i0(inp)
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
@@ -45,8 +44,7 @@ def test_i0_(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
     ref_out = torch.ops.aten.i0_(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.i0_(inp)
+    res_out = flag_gems.i0_(inp)
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
@@ -56,13 +54,29 @@ def test_i0_(shape, dtype):
 def test_i0_out(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
+    out_ref = torch.empty_like(ref_inp)
+    ref_out = torch.ops.aten.i0.out(ref_inp, out=out_ref)
+    out_act = torch.empty_like(inp)
+    act_out = flag_gems.i0_out(inp, out=out_act)
+    assert act_out is out_act
+    utils.gems_assert_close(act_out, ref_out, dtype)
 
-    ref_out = torch.empty_like(ref_inp)
-    torch.i0(ref_inp, out=ref_out)
 
-    out = torch.empty_like(inp)
-    with flag_gems.use_gems():
-        res_out = torch.i0(inp, out=out)
+@pytest.mark.i0_out
+@pytest.mark.parametrize(
+    "input_dtype,out_dtype",
+    [(a, b) for a in utils.FLOAT_DTYPES for b in utils.FLOAT_DTYPES if a != b],
+)
+def test_i0_out_mixed_dtypes(input_dtype, out_dtype):
+    # Include large magnitudes and values on both sides of the polynomial split.
+    inp = torch.linspace(-10, 10, 257, device=flag_gems.device).to(input_dtype)
+    ref_inp = utils.to_reference(inp)
+    out_ref = torch.empty_like(ref_inp, dtype=out_dtype)
+    torch.ops.aten.i0.out(ref_inp, out=out_ref)
+    out_act = torch.empty_like(inp, dtype=out_dtype)
 
-    assert res_out is out
-    utils.gems_assert_close(out, ref_out, dtype)
+    act_out = flag_gems.i0_out(inp, out=out_act)
+
+    assert act_out is out_act
+    assert act_out.dtype == out_dtype
+    utils.gems_assert_close(act_out, out_ref, out_dtype)
