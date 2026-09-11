@@ -35,6 +35,7 @@ from .linalg_svdvals import linalg_svdvals
 from .linear_backward import linear_backward
 from .log_normal_ import log_normal_, log_normal_heur_block, log_normal_heur_num_warps
 from .log_sigmoid_backward import log_sigmoid_backward, log_sigmoid_backward_out
+from .matmul_bias_activation import matmul_bias_activation
 from .max_pool3d_with_indices_backward import max_pool3d_with_indices_backward
 from .mm import mm, mm_out
 from .mm_w8a8_int8 import mm_w8a8_int8, mm_w8a8_int8_out
@@ -135,4 +136,5 @@ __all__ = [
     "unbind_copy",
     "mvlgamma",
     "max_pool3d_with_indices_backward",
+    "matmul_bias_activation",
 ]
