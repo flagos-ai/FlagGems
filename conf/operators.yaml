@@ -5435,6 +5435,19 @@ ops:
   kind:
   - Math
   stages:
+- id: frobenius_norm
+  description: |
+    Computes the Frobenius norm (L2 norm) of a tensor over specified dimensions.
+    Equivalent to sqrt(sum(x * x, dim=dim)).
+  for:
+  - frobenius_norm.dim
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Reduction
+  stages:
+  - alpha: '5.4'
   - alpha: '5.4'
 - id: full
   description: 'Creates a tensor of size `size` filled with `fill_value`.
