@@ -108,6 +108,7 @@ from .replication_pad2d_backward import (
     replication_pad2d_backward,
     replication_pad2d_backward_grad_input,
 )
+from .replication_pad3d_backward import replication_pad3d_backward
 from .rrelu_with_noise import rrelu_with_noise, rrelu_with_noise_
 from .scatter import scatter, scatter_
 from .scatter_reduce import scatter_reduce, scatter_reduce_, scatter_reduce_out
@@ -153,6 +154,7 @@ __all__ = [
     "avg_pool3d_backward",
     "broadcast_tensors",
     "broadcast_to",
+    "cholesky_inverse",
     "conj_physical",
     "cudnn_convolution",
     "diff",
@@ -231,6 +233,7 @@ __all__ = [
     "repeat",
     "replication_pad2d_backward",
     "replication_pad2d_backward_grad_input",
+    "replication_pad3d_backward",
     "rrelu_with_noise",
     "rrelu_with_noise_",
     "scaled_dot_product_attention",
@@ -273,6 +276,4 @@ __all__ = [
     "weight_norm_except_dim_backward",
     "weight_norm_interface",
     "weight_norm_interface_backward",
-    "adaptive_avg_pool2d_backward",
-    "cholesky_inverse",
 ]
