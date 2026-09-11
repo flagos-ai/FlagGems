@@ -349,6 +349,7 @@ class KernelGenerator:
                 code.writeline(f"{tile_sizes},")
                 code.writeline("one_tile_per_cta: tl.constexpr,")
                 code.writeline("stages: tl.constexpr,")
+            code.writeline("ENABLE_I64: tl.constexpr,")
         code.writeline("):")
 
     def gen_signature_1d_tile(self, code):
@@ -410,6 +411,7 @@ class KernelGenerator:
                 code.writeline("tile_size: tl.constexpr,")
                 code.writeline("one_tile_per_cta: tl.constexpr,")
                 code.writeline("stages: tl.constexpr,")
+            code.writeline("ENABLE_I64: tl.constexpr,")
         code.writeline("):")
 
     def gen_signature_stride_constexpr(self, code, with_block_pointer=False):
@@ -488,6 +490,7 @@ class KernelGenerator:
                 code.writeline(f"{tile_sizes},")
                 code.writeline("one_tile_per_cta: tl.constexpr,")
                 code.writeline("stages: tl.constexpr,")
+            code.writeline("ENABLE_I64: tl.constexpr,")
         code.writeline("):")
 
     def gen_signature_1d_tile_stride_constexpr(self, code):
@@ -553,6 +556,7 @@ class KernelGenerator:
                 code.writeline("tile_size: tl.constexpr,")
                 code.writeline("one_tile_per_cta: tl.constexpr,")
                 code.writeline("stages: tl.constexpr,")
+            code.writeline("ENABLE_I64: tl.constexpr,")
         code.writeline("):")
 
     def gen_num_tiles(self, code):
@@ -1024,6 +1028,12 @@ class WrapperGenerator:
 
         for i in range(schema.num_output_tensors()):
             params.append(f"{self.output_name(i)}: Union[torch.Tensor, StridedBuffer]")
+        # enable_i64 defaults to False so that wrappers instantiated directly
+        # via `func.instantiate(ndim)(...)` (which bypasses prepare_args) still
+        # work. Such call sites already convert int64 -> int32 before calling,
+        # so ENABLE_I64=False is the correct flag for them. The normal
+        # __call__ path still passes enable_i64 explicitly.
+        params.append("enable_i64: bool = False")
         code.writeline(f"def {self.name}({_cs(params)}): ")
 
     def gen_docstring(self, code: IndentedBuffer):
@@ -1228,6 +1238,7 @@ class WrapperGenerator:
                         code.writeline("one_tile_per_cta=one_tile_per_cta,")
                     code.writeline("num_warps=num_warps,")
                     code.writeline("stages=stages,")
+                    code.writeline("ENABLE_I64=enable_i64,")
                 code.writeline(")")
             code.writeline("else:")
             with code.indent():
@@ -1276,6 +1287,7 @@ class WrapperGenerator:
                         code.writeline("one_tile_per_cta=one_tile_per_cta,")
                     code.writeline("num_warps=num_warps,")
                     code.writeline("stages=stages,")
+                    code.writeline("ENABLE_I64=enable_i64,")
                 code.writeline(")")
 
     def gen_kernel_launch_1d(
@@ -1320,6 +1332,7 @@ class WrapperGenerator:
                         code.writeline("tile_size=tile_size,")
                         code.writeline("one_tile_per_cta=one_tile_per_cta,")
                     code.writeline("num_warps=num_warps,")
+                    code.writeline("ENABLE_I64=enable_i64,")
                 code.writeline(")")
             code.writeline("else:")
             with code.indent():
@@ -1353,6 +1366,7 @@ class WrapperGenerator:
                         code.writeline("tile_size=tile_size,")
                         code.writeline("one_tile_per_cta=one_tile_per_cta,")
                     code.writeline("num_warps=num_warps,")
+                    code.writeline("ENABLE_I64=enable_i64,")
                 code.writeline(")")
 
     def gen_return(self, code: IndentedBuffer):
@@ -1462,9 +1476,9 @@ class PointwiseDynamicFunction:
 
     def __call__(self, *args, **kwargs):
         # inputs must be passed by position, outputs must be passed by keyword
-        ndim, args, kwargs = self.prepare_args(*args, **kwargs)
+        ndim, args, kwargs, enable_i64 = self.prepare_args(*args, **kwargs)
         overload = self.instantiate(ndim)
-        out = overload(*args, **kwargs)
+        out = overload(*args, enable_i64=enable_i64, **kwargs)
         # NOTE: overload keeps the type of outputs:
         # if a pre-defiend output is a Tensor or StridedBuffer, the corresponding
         # output is also a Tensor StridedBuffer, respectively
@@ -1510,6 +1524,19 @@ class PointwiseDynamicFunction:
             promote_args = (args[j] for j in arg_indices)
             _, dtype = type_promotion(*promote_args, type_promotion=method)
             outputs_dtypes_for_allocation.append(dtype)
+
+        # GCU300 does not support 64-bit data types. Surface a constexpr flag to
+        # the generated kernel whenever any 64-bit dtype (int64 / uint64) appears
+        # among input tensors or promoted output dtypes, so that op authors can
+        # branch on `ENABLE_I64` in their scalar function to handle the 64-bit
+        # case explicitly. This flag is informational only; pointwise_dynamic does
+        # not alter the kernel body or any dtype here.
+        _I64_DTYPES = (torch.int64, torch.uint64)
+        in_i64 = any(
+            isinstance(t, torch.Tensor) and t.dtype in _I64_DTYPES for t in in_tensors
+        )
+        out_i64 = any(dt in _I64_DTYPES for dt in outputs_dtypes_for_allocation)
+        enable_i64 = in_i64 or out_i64
 
         tensors = out_tensors + in_tensors
         if self.use_fast_path(tensors):  # dimension collapse & use physical ordering
@@ -1597,7 +1624,7 @@ class PointwiseDynamicFunction:
                     task_shape,
                     broadcasted_stride(item.shape, item.stride(), task_shape),
                 )
-        return (ndim, args, kwargs)
+        return (ndim, args, kwargs, enable_i64)
 
     def _unwrap(self, tensors):
         # unwrap StridedBuffer to get Tensor

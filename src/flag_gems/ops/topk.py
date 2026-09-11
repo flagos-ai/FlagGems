@@ -526,6 +526,36 @@ if HAS_TLE:
         tl.store(yi_ptrs, y_indices, mask=mask_k)
 
 
+# Measured launch overrides for the radix TLE top-k path, kept as data so they
+# are easy to inspect and extend as more shapes are tuned. Keyed by (dtype, k);
+# each value lists (min_topk_elem_cnt, (BLOCK_N, RADIX_BITS, num_warps)) rows,
+# and the row with the largest matching min_topk_elem_cnt is used, so row order
+# does not matter. The base heuristic applies when no row matches. These values
+# were tuned on A100; other architectures fall back to the heuristic until they
+# are tuned and given their own rows.
+_TOPK_RADIX_TLE_TUNED_CONFIGS = {
+    # A100: fp32 k=256 rows with >= 32768 elements are faster with a wider 8-bit
+    # radix pass over 1024-column tiles.
+    (torch.float32, 256): ((32768, (1024, 8, 8)),),
+}
+
+
+def _get_topk_radix_tle_config(x_dtype, topk_elem_cnt, k, k_pad):
+    # Base heuristic, used when no measured override applies.
+    block_n_radix = max(k_pad, min(512, triton.next_power_of_2(topk_elem_cnt)))
+    block_n_radix = min(block_n_radix, 1024)
+    radix_bits = 4
+    num_warps = 4
+
+    best_min = -1
+    for min_elem, config in _TOPK_RADIX_TLE_TUNED_CONFIGS.get((x_dtype, k), ()):
+        if min_elem <= topk_elem_cnt and min_elem > best_min:
+            best_min = min_elem
+            block_n_radix, radix_bits, num_warps = config
+
+    return block_n_radix, radix_bits, num_warps
+
+
 def topk(x, k, dim=-1, largest=True, sorted=True):
     logger.debug("GEMS TOPK")
     # If dim equals to last dim, we set it to -1.
@@ -567,8 +597,9 @@ def topk(x, k, dim=-1, largest=True, sorted=True):
         out_shape = x.shape[:-1] + (k,)
         y_vals = torch.empty(out_shape, device=x.device, dtype=x.dtype)
         y_idx = torch.empty(out_shape, device=x.device, dtype=torch.int64)
-        block_n_radix = max(k_pad, min(512, triton.next_power_of_2(topk_elem_cnt)))
-        block_n_radix = min(block_n_radix, 1024)
+        block_n_radix, radix_bits, num_warps = _get_topk_radix_tle_config(
+            x.dtype, topk_elem_cnt, k, k_pad
+        )
 
         x_2d = x.reshape(batch_size, topk_elem_cnt)
         y_vals_2d = y_vals.reshape(batch_size, k)
@@ -584,8 +615,8 @@ def topk(x, k, dim=-1, largest=True, sorted=True):
                 K=k,
                 K_PAD=k_pad,
                 BLOCK_N=block_n_radix,
-                RADIX_BITS=4,
-                num_warps=4,
+                RADIX_BITS=radix_bits,
+                num_warps=num_warps,
                 num_stages=1,
             )
         return (y_vals, y_idx)

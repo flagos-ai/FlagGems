@@ -27,6 +27,7 @@ from .attention import (
 )
 from .baddbmm import baddbmm, baddbmm_out
 from .cat import cat
+from .copy import copy, copy_
 from .count_nonzero import count_nonzero
 from .cumsum import cumsum, cumsum_out, normed_cumsum
 from .div import (
@@ -47,6 +48,7 @@ from .flash_api import mha_fwd, mha_varlan_fwd
 from .hstack import hstack
 from .index import index
 from .index_add import index_add, index_add_
+from .index_put import _index_put_impl_, index_put, index_put_
 from .isin import isin
 from .kron import kron
 from .masked_select import masked_select
@@ -74,20 +76,34 @@ from .pow import (
 from .randn import randn
 from .randn_like import randn_like
 from .repeat import repeat
-from .rms_norm import rms_norm
+from .repeat_interleave import (
+    repeat_interleave_self_int,
+    repeat_interleave_self_tensor,
+    repeat_interleave_tensor,
+)
+from .rms_norm import rms_norm, rms_norm_backward, rms_norm_forward
 from .rsqrt import rsqrt, rsqrt_
 from .select_scatter import select_scatter
+from .silu import silu, silu_, silu_backward
 from .silu_and_mul import silu_and_mul, silu_and_mul_out
+from .silu_and_mul_with_clamp import (
+    silu_and_mul_with_clamp,
+    silu_and_mul_with_clamp_out,
+)
+from .slice_backward import slice_backward
 from .stack import stack
 from .sub import sub, sub_
 from .tile import tile
 from .unique import _unique2
 from .upsample_bicubic2d import upsample_bicubic2d
 from .vdot import vdot
+from .weightnorm import weight_norm_interface, weight_norm_interface_backward
+from .where import where_scalar_other, where_scalar_self, where_self, where_self_out
 from .zeros import zero_, zeros
 from .zeros_like import zeros_like
 
 __all__ = [
+    "_index_put_impl_",
     "_unique2",
     "add",
     "add_",
@@ -101,6 +117,8 @@ __all__ = [
     "baddbmm",
     "baddbmm_out",
     "cat",
+    "copy",
+    "copy_",
     "count_nonzero",
     "cumsum",
     "cumsum_out",
@@ -122,6 +140,8 @@ __all__ = [
     "index",
     "index_add",
     "index_add_",
+    "index_put",
+    "index_put_",
     "isin",
     "kron",
     "masked_select",
@@ -154,18 +174,27 @@ __all__ = [
     "remainder",
     "remainder_",
     "repeat",
+    "repeat_interleave_self_int",
+    "repeat_interleave_self_tensor",
+    "repeat_interleave_tensor",
     "rms_norm",
     "rms_norm_backward",
     "rms_norm_forward",
     "rsqrt",
     "rsqrt_",
-    "ScaleDotProductAttention",
     "scaled_dot_product_attention",
     "scaled_dot_product_attention_backward",
     "scaled_dot_product_attention_forward",
+    "ScaleDotProductAttention",
     "select_scatter",
+    "silu",
+    "silu_",
     "silu_and_mul",
     "silu_and_mul_out",
+    "silu_and_mul_with_clamp",
+    "silu_and_mul_with_clamp_out",
+    "silu_backward",
+    "slice_backward",
     "stack",
     "sub",
     "sub_",
@@ -175,6 +204,12 @@ __all__ = [
     "true_divide_out",
     "upsample_bicubic2d",
     "vdot",
+    "weight_norm_interface",
+    "weight_norm_interface_backward",
+    "where_scalar_other",
+    "where_scalar_self",
+    "where_self",
+    "where_self_out",
     "zero_",
     "zeros",
     "zeros_like",

@@ -46,12 +46,12 @@ def argmax_kernel_once(
     tl.store(out, index_val.to(tl.int64))
 
 
-@libentry()
 @libtuner(
     configs=cfggen_reduce_op(),
     key=["M"],
     strategy=["log"],
 )
+@libentry()
 @triton.jit
 def argmax_kernel_1(
     inp,
@@ -103,7 +103,6 @@ def argmax_kernel_2(mid_value, mid_index, out, real_size, mid_size: tl.constexpr
     tl.store(out, out_val)
 
 
-@libentry()
 @libtuner(
     configs=runtime.get_tuned_config("argmax"),
     key=[
@@ -112,6 +111,7 @@ def argmax_kernel_2(mid_value, mid_index, out, real_size, mid_size: tl.constexpr
     ],
     strategy=["log", "log"],
 )
+@libentry()
 @triton.jit
 def argmax_kernel(
     inp,
@@ -136,7 +136,7 @@ def argmax_kernel(
     for start_n in range(0, N, BLOCK_N):
         n_offset = start_n + tl.arange(0, BLOCK_N)
         offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
-        mask = m_offset[:, None] < M and n_offset[None, :] < N
+        mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
         inp_ptrs = inp + offset
         inp_vals = tl.load(inp_ptrs, mask=mask, other=-float("inf"))
         local_max, local_argmax = tl.max(

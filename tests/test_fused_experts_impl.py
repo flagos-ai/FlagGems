@@ -17,6 +17,7 @@ from math import ceil
 
 import pytest
 import torch
+import triton.language as tl
 
 import flag_gems
 from flag_gems.runtime import torch_device_fn
@@ -101,6 +102,108 @@ def is_cuda_available():
 
 
 CUDA_AVAILABLE = is_cuda_available()
+
+
+DISPATCH_FUSED_MOE_KERNEL_CONFIGS = [
+    # (num_tokens, num_experts, hidden_size, output_size, topk)
+    (5, 4, 32, 64, 2),
+    (17, 6, 48, 96, 3),
+]
+
+
+def _dispatch_fused_moe_kernel_config():
+    return {
+        "BLOCK_SIZE_M": 16,
+        "BLOCK_SIZE_N": 32,
+        "BLOCK_SIZE_K": 32,
+        "GROUP_SIZE_M": 1,
+        "num_warps": 2,
+        "num_stages": 3,
+    }
+
+
+def _dispatch_fused_moe_compute_type(dtype):
+    if dtype == torch.bfloat16:
+        return tl.bfloat16
+    if dtype == torch.float16:
+        return tl.float16
+    if dtype == torch.float32:
+        return tl.float32
+    raise ValueError(f"Unsupported dispatch_fused_moe_kernel dtype: {dtype}")
+
+
+def _dispatch_fused_moe_reference(A, B, topk_weights, topk_ids):
+    expert_weights = B[topk_ids.to(torch.long)]
+    result = torch.einsum("mk,mtnk->mtn", A.float(), expert_weights.float())
+    result = result * topk_weights.float().unsqueeze(-1)
+    return result.to(A.dtype)
+
+
+@pytest.mark.dispatch_fused_moe_kernel
+@pytest.mark.parametrize("config", DISPATCH_FUSED_MOE_KERNEL_CONFIGS)
+@pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_dispatch_fused_moe_kernel_matches_ref(config, dtype):
+    """Test the low-level routed GEMM dispatch against a PyTorch reference."""
+    num_tokens, num_experts, hidden_size, output_size, topk = config
+    device = flag_gems.device
+    kernel_config = _dispatch_fused_moe_kernel_config()
+
+    torch.manual_seed(0)
+
+    A = torch.randn(num_tokens, hidden_size, device=device, dtype=dtype) * (
+        1.0 / hidden_size**0.5
+    )
+    B = torch.randn(num_experts, output_size, hidden_size, device=device, dtype=dtype)
+
+    gating = torch.randn(num_tokens, num_experts, device=device, dtype=torch.float32)
+    topk_weights, topk_ids = torch.topk(torch.softmax(gating, dim=-1), topk, dim=-1)
+    topk_weights = topk_weights / topk_weights.sum(dim=-1, keepdim=True)
+    topk_weights = topk_weights.to(dtype).contiguous()
+    topk_ids = topk_ids.to(torch.int32).contiguous()
+
+    (
+        sorted_token_ids,
+        expert_ids,
+        num_tokens_post_padded,
+    ) = flag_gems.moe_align_block_size(
+        topk_ids,
+        kernel_config["BLOCK_SIZE_M"],
+        num_experts,
+    )
+
+    result = torch.empty(num_tokens, topk, output_size, device=device, dtype=dtype)
+    flag_gems.dispatch_fused_moe_kernel(
+        A,
+        B,
+        result,
+        None,
+        None,
+        None,
+        topk_weights,
+        sorted_token_ids,
+        expert_ids,
+        num_tokens_post_padded,
+        True,
+        topk,
+        kernel_config,
+        compute_type=_dispatch_fused_moe_compute_type(dtype),
+        use_fp8_w8a8=False,
+        use_int8_w8a8=False,
+        use_int8_w8a16=False,
+        use_int4_w4a16=False,
+        per_channel_quant=False,
+    )
+
+    ref = _dispatch_fused_moe_reference(A, B, topk_weights, topk_ids)
+
+    torch_device_fn.synchronize()
+
+    rtol = 1e-1
+    atol = max(1e-2, ref.abs().max().item() * 1e-5)
+    torch.testing.assert_close(result, ref, rtol=rtol, atol=atol)
 
 
 def torch_fused_moe_reference(

@@ -19,8 +19,7 @@ import triton
 import triton.language as tl
 
 from flag_gems import runtime
-from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import dim_compress, libentry, libtuner
+from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger(__name__)
@@ -35,9 +34,9 @@ def count_nonzero_kernel_1(x_ptr, out_ptr, numel, BLOCK_SIZE: tl.constexpr):
     numel = tl.cast(numel, tl.int64)
     mask = offsets < numel
     x = tl.load(x_ptr + offsets, mask=mask, other=0)
-    is_nonzero = (x != 0).to(tl.int32)
+    is_nonzero = (x != 0).to(tl.int64)
     nonzero_count = tl.sum(is_nonzero, axis=0)
-    tl.atomic_add(out_ptr, nonzero_count)
+    tl.atomic_add(out_ptr, nonzero_count.to(tl.int32))
 
 
 @libentry()
@@ -63,7 +62,7 @@ def count_nonzero_kernel(x_ptr, out_ptr, N, numel, BLOCK_SIZE: tl.constexpr):
         for start_n in range(0, N, BLOCK_SIZE):
             cols_offsets = start_n + tl.arange(0, BLOCK_SIZE)
             offset = pid_x * N + cols_offsets
-            mask = offset < numel and cols_offsets < N
+            mask = (offset < numel) & (cols_offsets < N)
             x = tl.load(x_ptr + offset, mask=mask, other=0)
             is_nonzero = (x != 0).to(tl.int64)
             nonzero_count += tl.sum(is_nonzero)
@@ -77,7 +76,7 @@ def count_nonzero_kernel(x_ptr, out_ptr, N, numel, BLOCK_SIZE: tl.constexpr):
         for start_n in range(0, N, BLOCK_SIZE):
             cols_offsets = start_n + tl.arange(0, BLOCK_SIZE)
             offset = pid_x * N + cols_offsets
-            mask = offset < numel and cols_offsets < N
+            mask = (offset < numel) & (cols_offsets < N)
             x = tl.load(x_ptr + offset, mask=mask, other=0)
             is_nonzero = (x != 0).to(tl.int64)
             nonzero_count += tl.sum(is_nonzero)
@@ -101,9 +100,9 @@ def count_nonzero_combin_kernel_1(x_ptr, out_ptr, N, numel, BLOCK_SIZE: tl.const
     for start_n in range(0, N, BLOCK_SIZE):
         cols_offsets = start_n + tl.arange(0, BLOCK_SIZE)
         offset = pid_x * N + cols_offsets
-        mask = offset < numel and cols_offsets < N
+        mask = (offset < numel) & (cols_offsets < N)
         x = tl.load(x_ptr + offset, mask=mask, other=0)
-        nonzero_count += tl.sum(x)
+        nonzero_count += tl.sum((x != 0).to(tl.int64))
     tl.store(out_ptr + pid_x, nonzero_count)
 
 
@@ -117,11 +116,53 @@ def count_nonzero_combin_kernel(
     numel = tl.cast(numel, tl.int64)
     cols_offsets = pid_y * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     offset = pid_x * N + cols_offsets
-    mask = offset < numel and cols_offsets < N
+    mask = (offset < numel) & (cols_offsets < N)
     x = tl.load(x_ptr + offset, mask=mask, other=0)
     is_nonzero = (x != 0).to(tl.int64)
     nonzero_count = tl.sum(is_nonzero)
     tl.store(combin_ptr + pid_x * combin_N + pid_y, nonzero_count)
+
+
+@libentry()
+@triton.heuristics(runtime.get_heuristic_config("count_nonzero_reduce"))
+@triton.jit
+def count_nonzero_reduce_rows_kernel(
+    x_ptr,
+    out_ptr,
+    out_numel,
+    out_dim1,
+    reduce_size,
+    stride0,
+    stride1,
+    reduce_stride,
+    OUT_NDIM: tl.constexpr,
+    BLOCK_ROWS: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tle.program_id(0).to(tl.int64)
+    row_start = pid * BLOCK_ROWS
+    for row_offset in range(0, BLOCK_ROWS):
+        row = row_start + row_offset
+        if row < out_numel:
+            if OUT_NDIM == 1:
+                base = row * stride0
+            else:
+                row0 = row // out_dim1
+                row1 = row % out_dim1
+                base = row0 * stride0 + row1 * stride1
+
+            count = tl.zeros((), dtype=tl.int64)
+            for start_n in range(0, reduce_size, BLOCK_SIZE):
+                offsets = start_n + tl.arange(0, BLOCK_SIZE)
+                mask = offsets < reduce_size
+                x = tl.load(
+                    x_ptr + base + offsets * reduce_stride,
+                    mask=mask,
+                    other=0,
+                )
+                count += tl.sum((x != 0).to(tl.int64))
+
+            tl.store(out_ptr + row, count)
 
 
 def count_nonzero(x, dim=None):
@@ -129,47 +170,71 @@ def count_nonzero(x, dim=None):
     if dim is not None:
         assert dim >= -x.ndim and dim < x.ndim, "Invalid dim"
         shape = x.shape
-        BLOCK_SIZE = 2048
-        numel = x.numel()
-        x = dim_compress(x, dim)
-        x = x.contiguous().flatten()
-        combin_shape = list(shape)
-        combin_shape[dim] = triton.cdiv(combin_shape[dim], BLOCK_SIZE)
-        if combin_shape[dim] != 1:
-            combin = torch.zeros(combin_shape, dtype=torch.int64, device=x.device)
-            grid = (triton.cdiv(numel, shape[dim]), combin_shape[dim], 1)
-            count_nonzero_combin_kernel[grid](
-                x, combin, shape[dim], combin_shape[dim], numel, BLOCK_SIZE
-            )
-            x = combin
-            shape = x.shape
-            numel = x.numel()
-            out_shape = list(shape)
-            del out_shape[dim]
-            out = torch.zeros(out_shape, dtype=torch.int64, device=x.device)
-            grid = lambda meta: (triton.cdiv(numel, shape[dim]),)
-            count_nonzero_combin_kernel_1[grid](x, out, shape[dim], numel)
-            return out
+        dim = dim % x.ndim
+        x = x.movedim(dim, -1)
+
         out_shape = list(shape)
-        del out_shape[dim]
+        reduce_size = out_shape.pop(dim)
         out = torch.zeros(out_shape, dtype=torch.int64, device=x.device)
-        grid = lambda meta: (
-            min(
-                torch_device_fn.get_device_properties().multi_processor_count,
-                triton.cdiv(numel, shape[dim]),
-            ),
-        )
-        count_nonzero_kernel[grid](x, out, shape[dim], numel)
+
+        if x.ndim == 1:
+            x = x.contiguous().flatten().view(1, -1)
+            out = torch.zeros((), dtype=torch.int64, device=x.device)
+            grid = lambda meta: (1,)
+            count_nonzero_reduce_rows_kernel[grid](
+                x,
+                out.view(1),
+                1,
+                0,
+                reduce_size,
+                x.stride(0),
+                0,
+                x.stride(-1),
+                OUT_NDIM=1,
+            )
+            return out
+
+        if x.ndim in (2, 3):
+            stride0 = x.stride(0)
+            stride1 = x.stride(1) if x.ndim == 3 else 0
+            reduce_stride = x.stride(-1)
+            out_numel = out.numel()
+            out_dim1 = out.shape[1] if x.ndim == 3 else 0
+            grid = lambda meta: (triton.cdiv(out_numel, meta["BLOCK_ROWS"]),)
+            count_nonzero_reduce_rows_kernel[grid](
+                x,
+                out,
+                out_numel,
+                out_dim1,
+                reduce_size,
+                stride0,
+                stride1,
+                reduce_stride,
+                OUT_NDIM=2 if x.ndim == 3 else 1,
+            )
+            return out
+
+        x = x.contiguous().flatten()
+        grid = lambda meta: (triton.cdiv(x.numel(), meta["BLOCK_SIZE"]),)
+        count_nonzero_kernel_1[grid](x, out.reshape(1), x.numel(), BLOCK_SIZE=1024 * 8)
         return out
     else:
-        x = x.contiguous().flatten()
+        x = x.contiguous().flatten().view(1, -1)
         numel = x.numel()
 
         out = torch.zeros(1, dtype=torch.int64, device=x.device)
 
-        BLOCK_SIZE = 1024 * 8
-        grid = lambda meta: (triton.cdiv(numel, meta["BLOCK_SIZE"]),)
+        grid = lambda meta: (1,)
+        count_nonzero_reduce_rows_kernel[grid](
+            x,
+            out,
+            1,
+            0,
+            numel,
+            x.stride(0),
+            0,
+            x.stride(-1),
+            OUT_NDIM=1,
+        )
 
-        count_nonzero_kernel_1[grid](x, out, numel, BLOCK_SIZE=BLOCK_SIZE)
-
-        return out[0].to(torch.int64)
+        return out[0]

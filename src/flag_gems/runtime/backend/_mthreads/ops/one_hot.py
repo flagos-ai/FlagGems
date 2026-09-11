@@ -24,6 +24,11 @@ from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
 
+# Fused validation allocates the output before reporting an invalid index.
+# Keep that speculative allocation at or below 64 MiB.  S5000 crossover tests
+# remain favorable through 16M elements and first approach parity near 32M.
+_FUSED_VALIDATION_MAX_OUTPUT_ELEMENTS = 8_388_608
+
 
 # ── dense comparison kernels (specialised for 16/32/64 classes) ──────────────
 
@@ -125,6 +130,39 @@ def one_hot_set_one_kernel(
     tl.store(output_ptr + out_offsets, 1, mask=mask)
 
 
+@libentry()
+@triton.jit
+def one_hot_validate_set_one_kernel(
+    input_ptr,
+    output_ptr,
+    status_ptr,
+    num_elements,
+    num_classes,
+    BLOCK_SIZE: tl.constexpr,
+):
+    """Validate indices while scattering into a zero-initialized output.
+
+    Status values preserve the existing error precedence: negative indices
+    take priority over indices greater than or equal to ``num_classes``.
+    """
+    pid = ext.program_id(axis=0)
+    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < num_elements
+    indices = tl.load(input_ptr + offsets, mask=mask, other=0)
+    negative = indices < 0
+    too_large = indices >= num_classes
+    valid = mask & ~negative & ~too_large
+    safe_indices = tl.minimum(tl.maximum(indices, 0), num_classes - 1)
+    tl.store(
+        output_ptr + offsets * num_classes + safe_indices,
+        1,
+        mask=valid,
+    )
+    code = tl.where(negative, 2, tl.where(too_large, 1, 0))
+    block_code = tl.max(tl.where(mask, code, 0), axis=0)
+    tl.atomic_max(status_ptr, block_code)
+
+
 # ── block-size helpers ─────────────────────────────────────────────────────────
 
 
@@ -176,12 +214,25 @@ def one_hot(tensor: torch.Tensor, num_classes: int = -1) -> torch.Tensor:
         shape = (*tensor.shape, num_classes)
         return torch.empty(shape, device=tensor.device, dtype=torch.int64)
 
-    # Fused validation: minimise device syncs.
-    if num_classes == -1:
-        maxv = int(tensor.max().item())
-        num_classes = maxv + 1
-        if (tensor < 0).any():
-            raise RuntimeError("Class values must be non-negative.")
+    use_fused_validation = False
+    inferred_num_classes = num_classes == -1
+    if inferred_num_classes:
+        if tensor.device.type == "cpu":
+            num_classes = int(tensor.max().item()) + 1
+            if (tensor < 0).any():
+                raise RuntimeError("Class values must be non-negative.")
+        else:
+            minv, maxv = tensor.aminmax()
+            minv, maxv = int(minv.item()), int(maxv.item())
+            if minv < 0:
+                raise RuntimeError("Class values must be non-negative.")
+            num_classes = maxv + 1
+    elif (
+        num_classes > 0
+        and tensor.device.type != "cpu"
+        and tensor.numel() * num_classes <= _FUSED_VALIDATION_MAX_OUTPUT_ELEMENTS
+    ):
+        use_fused_validation = True
     else:
         invalid = (tensor < 0) | (tensor >= num_classes)
         if invalid.any():
@@ -202,7 +253,40 @@ def one_hot(tensor: torch.Tensor, num_classes: int = -1) -> torch.Tensor:
     num_elements = flat_input.numel()
 
     with torch_device_fn.device(tensor.device):
-        if num_classes <= 16:
+        if use_fused_validation:
+            out = torch.zeros(
+                num_elements * num_classes, device=tensor.device, dtype=torch.int64
+            )
+            status = torch.zeros(1, device=tensor.device, dtype=torch.int32)
+            BLOCK_SIZE = _scatter_block_size(num_elements)
+            grid = lambda meta: (triton.cdiv(num_elements, meta["BLOCK_SIZE"]),)
+            one_hot_validate_set_one_kernel[grid](
+                flat_input,
+                out,
+                status,
+                num_elements,
+                num_classes,
+                BLOCK_SIZE=BLOCK_SIZE,
+            )
+            error = int(status.item())
+            if error == 2:
+                raise RuntimeError("Class values must be non-negative.")
+            if error == 1:
+                raise RuntimeError("Class values must be smaller than num_classes.")
+        elif inferred_num_classes:
+            out = torch.zeros(
+                num_elements * num_classes, device=tensor.device, dtype=torch.int64
+            )
+            BLOCK_SIZE = _scatter_block_size(num_elements)
+            grid = lambda meta: (triton.cdiv(num_elements, meta["BLOCK_SIZE"]),)
+            one_hot_set_one_kernel[grid](
+                flat_input,
+                out,
+                num_elements,
+                num_classes,
+                BLOCK_SIZE=BLOCK_SIZE,
+            )
+        elif num_classes <= 16:
             out = torch.empty(
                 num_elements * num_classes, device=tensor.device, dtype=torch.int64
             )
@@ -242,9 +326,6 @@ def one_hot(tensor: torch.Tensor, num_classes: int = -1) -> torch.Tensor:
                 BLOCK_SIZE=BLOCK_SIZE,
             )
         else:
-            # For large num_classes use a scatter approach:
-            #   torch.zeros  → fast device memset
-            #   one_hot_set_one_kernel → write only the "1" positions
             out = torch.zeros(
                 num_elements * num_classes, device=tensor.device, dtype=torch.int64
             )

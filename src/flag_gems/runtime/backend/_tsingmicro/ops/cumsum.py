@@ -19,11 +19,12 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.runtime import device, torch_device_fn
+from flag_gems.runtime import device as runtime_device
+from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 
-device = device.name
+device = runtime_device.name
 logger = logging.getLogger(__name__)
 
 
@@ -448,7 +449,7 @@ def normed_cumsum(inp, dim=-1):
 
         if inp.dtype != torch.float64:
             acc_dtype = torch.float32
-        sums = torch.empty((n_rows, n_chunks), dtype=acc_dtype, device=device.name)
+        sums = torch.empty((n_rows, n_chunks), dtype=acc_dtype, device=device)
         cumsums = torch.empty_like(sums)
         block_cumsum_kernel[grid](
             inp,

@@ -64,11 +64,14 @@ def mul(A, B):
             ar, ai = Ar[..., 0], Ar[..., 1]
             br, bi = Br[..., 0], Br[..., 1]
             common_dtype = torch.promote_types(ar.dtype, br.dtype)
-            ar, ai = ar.to(common_dtype), ai.to(common_dtype)
-            br, bi = br.to(common_dtype), bi.to(common_dtype)
+            compute_dtype = (
+                torch.float32 if common_dtype == torch.float16 else common_dtype
+            )
+            ar, ai = ar.to(compute_dtype), ai.to(compute_dtype)
+            br, bi = br.to(compute_dtype), bi.to(compute_dtype)
 
-            real_out = torch.empty_like(ar, dtype=common_dtype)
-            imag_out = torch.empty_like(ar, dtype=common_dtype)
+            real_out = torch.empty_like(ar, dtype=compute_dtype)
+            imag_out = torch.empty_like(ar, dtype=compute_dtype)
             mul_complex_kernel(ar, ai, br, bi, out0=real_out, out1=imag_out)
 
             out = torch.view_as_complex(torch.stack((real_out, imag_out), dim=-1))

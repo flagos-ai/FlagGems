@@ -23,6 +23,21 @@ namespace flag_gems {
 
 using namespace triton_jit;
 
+namespace {
+  bool& aten_patch_installed_flag() {
+    static bool installed = false;
+    return installed;
+  }
+}  // namespace
+
+void set_aten_patch_installed(bool installed) {
+  aten_patch_installed_flag() = installed;
+}
+
+bool aten_patch_installed() {
+  return aten_patch_installed_flag();
+}
+
 std::vector<int64_t> broadcasted_stride(const std::vector<int64_t>& shape,
                                         const std::vector<int64_t>& stride,
                                         const std::vector<int64_t>& target_shape) {
@@ -65,6 +80,25 @@ static at::Tensor& redispatch_copy_fallback(at::Tensor& dst, const at::Tensor& s
   constexpr c10::DispatchKeySet fallback_keyset =
       c10::DispatchKeySet(c10::DispatchKey::CompositeExplicitAutograd);
 
+  if (!aten_patch_installed()) {
+    // Without the aten overrides there is nothing to recurse into, so keep the
+    // regular backend path. Backends that implement device copies through
+    // aten::_copy_from (e.g. MLU) are only reachable this way.
+    return op.call(dst, src, non_blocking);
+  }
+
+  // NOTE for backends whose device copies are serviced by a fallback rather than
+  // a real kernel (Cambricon MLU is one: aten::_copy_from is not implemented and
+  // MLUFallback stages the copy through CPU): once flag_gems owns aten::copy_ on
+  // PrivateUse1 there is no reachable vendor copy left. Excluding PrivateUse1
+  // below makes the composite path fail with "no fallback function is registered
+  // for schema aten::_copy_from"; calling _copy_from directly instead recurses
+  // through the CPU fallback back into this override until the stack overflows.
+  // Such backends must keep copy_/_to_copy out of the aten override list.
+
+  // Exclude PrivateUse1 to prevent recursive dispatch:
+  // _to_copy/copy_ -> redispatch -> _copy_from -> CPU fallback -> _to_copy -> ...
+  c10::impl::ExcludeDispatchKeyGuard guard(c10::DispatchKey::PrivateUse1);
   return op.redispatch(fallback_keyset, dst, src, non_blocking);
 }
 
@@ -88,6 +122,13 @@ static at::Tensor redispatch_to_copy_fallback(const at::Tensor& src,
   constexpr c10::DispatchKeySet fallback_keyset =
       c10::DispatchKeySet(c10::DispatchKey::CompositeExplicitAutograd);
 
+  if (!aten_patch_installed()) {
+    // See redispatch_copy_fallback().
+    return op.call(src, dtype, layout, device, pin_memory, non_blocking, memory_format);
+  }
+
+  // See redispatch_copy_fallback() for why there is no MLU-style shortcut here.
+  c10::impl::ExcludeDispatchKeyGuard guard(c10::DispatchKey::PrivateUse1);
   return op.redispatch(fallback_keyset, src, dtype, layout, device, pin_memory, non_blocking, memory_format);
 }
 

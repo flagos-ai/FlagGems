@@ -28,8 +28,8 @@ from ..utils import TOTAL_CORE_NUM
 logger = logging.getLogger(__name__)
 
 
-@libentry()
 @triton.autotune(configs=runtime.get_tuned_config("triu"), key=["M", "N"])
+@libentry()
 @triton.jit(do_not_specialize=["diagonal"])
 def triu_kernel(
     X,
@@ -57,7 +57,7 @@ def triu_kernel(
             for n_offset in range(0, N, N_BLOCK_SIZE):
                 cols = n_offset + tl.arange(0, N_BLOCK_SIZE)[None, :]
                 n_mask = cols < N
-                mask = m_mask and n_mask
+                mask = m_mask & n_mask
 
                 x = tl.load(PX + cols, mask, other=0.0)
                 y = tl.where(row + diagonal <= cols, x, 0.0)
@@ -78,11 +78,11 @@ def triu_kernel(
             tl.store(Y + offset, write, mask=n_mask)
 
 
-@libentry()
 @triton.autotune(
     configs=runtime.get_tuned_config("triu_batch"),
     key=["batch", "MN", "N", "diagonal"],
 )
+@libentry()
 @triton.jit(do_not_specialize=["diagonal"])
 def triu_batch_kernel(
     X,
@@ -107,7 +107,7 @@ def triu_batch_kernel(
 
     cols = mn_id * MN_BLOCK_SIZE + tl.arange(0, MN_BLOCK_SIZE)[None, :]
     mn_mask = cols < MN
-    mask = batch_mask and mn_mask
+    mask = batch_mask & mn_mask
     x = tl.load(X + cols, mask, other=0.0)
     m = cols // N
     n = cols % N

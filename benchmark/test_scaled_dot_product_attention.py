@@ -27,6 +27,25 @@ class AttentionBenchmark(base.GenericBenchmark):
         return []
 
 
+def scaled_dot_product_flash_attention_input_fn(shape, dtype, device):
+    query = torch.randn(shape, device=device, dtype=dtype)
+    key = torch.randn(shape, device=device, dtype=dtype)
+    value = torch.randn(shape, device=device, dtype=dtype)
+    yield query, key, value, 0.0, False, False
+
+
+@pytest.mark.scaled_dot_product_flash_attention
+def test_scaled_dot_product_flash_attention():
+    bench = AttentionBenchmark(
+        op_name="scaled_dot_product_flash_attention",
+        input_fn=scaled_dot_product_flash_attention_input_fn,
+        torch_op=torch.ops.aten._scaled_dot_product_flash_attention.default,
+        # FlashAttention supports CUDA float16 and bfloat16 inputs.
+        dtypes=[torch.float16, torch.bfloat16],
+    )
+    bench.run()
+
+
 @pytest.mark.scaled_dot_product_attention
 @pytest.mark.parametrize("dropout_p", [0.0])
 @pytest.mark.parametrize("is_causal", [True, False])

@@ -56,7 +56,6 @@ def config_prune(configs, named_args, **kwargs):
     return pruned_configs
 
 
-@libentry()
 @triton.autotune(
     configs=runtime.get_tuned_config("mv"),
     key=["M", "N"],
@@ -67,6 +66,7 @@ def config_prune(configs, named_args, **kwargs):
         "ONE_TILE_PER_CTA": lambda args: args["M"] <= args["BLOCK_M"],
     },
 )
+@libentry()
 @triton.jit
 def mv_kernel(
     A,

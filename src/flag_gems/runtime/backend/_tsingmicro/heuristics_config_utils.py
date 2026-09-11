@@ -351,6 +351,28 @@ def vdot_heur_block_size(args):
         return 1024
 
 
+def count_nonzero_reduce_heur_block_rows(args):
+    out_numel = args["out_numel"]
+    reduce_size = args["reduce_size"]
+
+    if out_numel <= 1024:
+        return 1
+    if reduce_size <= 8:
+        return 8192
+    return 32
+
+
+def count_nonzero_reduce_heur_block_size(args):
+    out_numel = args["out_numel"]
+    reduce_size = args["reduce_size"]
+
+    if out_numel <= 1024:
+        return 1024
+    if reduce_size <= 8:
+        return 32
+    return 256
+
+
 def mean_heur_tile_k(args):
     MAX_TILE_K = 512
     NUM_SMS = torch.txda.get_device_properties(
@@ -512,6 +534,10 @@ HEURISTICS_CONFIGS = {
     },
     "vdot": {
         "BLOCK_SIZE": vdot_heur_block_size,
+    },
+    "count_nonzero_reduce": {
+        "BLOCK_ROWS": count_nonzero_reduce_heur_block_rows,
+        "BLOCK_SIZE": count_nonzero_reduce_heur_block_size,
     },
     # Dynamically chosen by mha_varlen_heur_block_m based on seqlen_q:
     "mha_varlen_fwd": {

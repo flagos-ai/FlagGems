@@ -40,6 +40,8 @@ def glu(self, dim=-1):
     logger.debug("GEMS_ENFLAME GLU")
     # Split into a and b
     a, b = torch.chunk(self, 2, dim=dim)
+    a = a.contiguous()
+    b = b.contiguous()
     out = glu_kernel(a, b)
 
     return out

@@ -53,7 +53,8 @@ at::Tensor zeros(at::IntArrayRef size,
   const uint64_t num_blocks = (static_cast<uint64_t>(n_elements) + tile_size - 1) / tile_size;
 
   const TritonJITFunction &f =
-      TritonJITFunction::get_instance(std::string(utils::get_triton_src_path() / "zeros.py"), "zeros_kernel");
+      TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "ops" / "zeros.py"),
+                                      "zeros_kernel");
 
   c10::DeviceGuard guard(out.device());
   backend::StreamType stream = backend::getCurrentStream();

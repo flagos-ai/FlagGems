@@ -105,7 +105,6 @@ def to_copy(
     non_blocking=False,
     memory_format=None,
 ):
-    # print("GEMS _TO_COPY (gcu300)")
     if (layout is not None and layout != torch.strided) or x.layout != torch.strided:
         raise NotImplementedError(
             "FlagGems to_copy currently supports strided tensors only."
@@ -126,7 +125,6 @@ def to_copy(
     # print(f"x.dtype: {x.dtype}, target_dtype: {target_dtype}")
     # print(f"x.device: {x.device}, target_device: {target_device}")
     if x.dtype == torch.float64 or target_dtype == torch.float64:
-        print("GEMS _TO_COPY float64")
         raise NotImplementedError(
             "float64 tensors are not supported in FlagGems to_copy yet."
         )
