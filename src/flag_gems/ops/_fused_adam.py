@@ -182,9 +182,9 @@ def _fused_adam(
             grad,
             exp_avg,
             exp_avg_sq,
-            max_exp_avg_sqs[i]
-            if max_exp_avg_sqs
-            else exp_avg_sq,  # dummy if no amsgrad
+            (
+                max_exp_avg_sqs[i] if max_exp_avg_sqs else exp_avg_sq
+            ),  # dummy if no amsgrad
             n,
             BLOCK_SIZE,
             lr,

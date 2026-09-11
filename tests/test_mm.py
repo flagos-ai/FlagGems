@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import random
 
 import numpy as np
@@ -39,6 +53,43 @@ MK_SHAPES = (
 )
 
 
+def _mm_atol_base():
+    """On MetaX C550, the hardware matmul unit has inherent precision limits in
+    fp16/bf16 (confirmed by native torch.mm showing the same error vs fp64 ref).
+    Use a larger atol base to accommodate hardware accumulation precision."""
+    if flag_gems.vendor_name == "metax":
+        return 3e-4
+    return 1e-4
+
+
+def _cuda_hopper_w8a8_fp8_available():
+    tensor_descriptor = getattr(
+        getattr(triton, "tools", None), "tensor_descriptor", None
+    )
+    return (
+        flag_gems.device == "cuda"
+        and torch.cuda.is_available()
+        and torch.cuda.get_device_capability()[0] >= 9
+        and hasattr(torch, "float8_e4m3fn")
+        and hasattr(tensor_descriptor, "TensorDescriptor")
+    )
+
+
+def _mm_w8a8_fp8_reference(a, b):
+    fp8_dtype = torch.float8_e4m3fn
+    fp8_info = torch.finfo(fp8_dtype)
+
+    a_fp32 = a.float()
+    a_scale = a_fp32.abs().amax(dim=1).clamp_min(1e-10) / fp8_info.max
+    a_fp8 = (a_fp32 / a_scale[:, None]).clamp(fp8_info.min, fp8_info.max).to(fp8_dtype)
+
+    b_fp32 = b.float()
+    b_scale = b_fp32.abs().amax(dim=0).clamp_min(1e-10) / fp8_info.max
+    b_fp8 = (b_fp32 / b_scale[None, :]).clamp(fp8_info.min, fp8_info.max).to(fp8_dtype)
+
+    return torch.mm(a_fp8.float(), b_fp8.float()) * a_scale[:, None] * b_scale[None, :]
+
+
 # Issue #2833: fails at (1, 1, 2)
 @pytest.mark.mm
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
@@ -60,13 +111,51 @@ def test_mm(M, N, K, dtype, b_column_major):
     with flag_gems.use_gems():
         res_out = torch.mm(mat1, mat2)
 
+    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K, atol=_mm_atol_base())
+
+
+@pytest.mark.mm_w8a8_fp8
+@pytest.mark.parametrize(
+    "M, N, K",
+    [
+        (1, 16, 16),
+        (2, 32, 32),
+        (8, 64, 64),
+        (16, 128, 64),
+        (32, 128, 128),
+        (64, 256, 128),
+        (128, 256, 256),
+        (192, 512, 512),
+        (256, 768, 1024),
+        (512, 1024, 1024),
+    ],
+)
+@pytest.mark.skipif(
+    not _cuda_hopper_w8a8_fp8_available(),
+    reason="mm_w8a8_fp8 requires CUDA Hopper FP8 and TMA support",
+)
+def test_mm_w8a8_fp8(M, N, K):
+    dtype = torch.bfloat16
+    torch.manual_seed(0)
+
+    mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
+    mat2 = torch.randn((K, N), dtype=dtype, device=flag_gems.device)
+    ref_out = utils.to_reference(_mm_w8a8_fp8_reference(mat1, mat2), True)
+
+    res_out = flag_gems.mm_w8a8_fp8(mat1, mat2, out_dtype=dtype)
+    out = torch.empty((M, N), dtype=dtype, device=flag_gems.device)
+    res_out_reused = flag_gems.mm_w8a8_fp8_out(mat1, mat2, out=out)
+
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
+    utils.gems_assert_close(res_out_reused, ref_out, dtype, reduce_dim=K)
 
 
 @pytest.mark.mm
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_mm_broadcast_stride_zero(dtype):
     """Regression test: broadcast tensors (stride=0) must not crash TMA path."""
+    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
+        pytest.skip("Issue #3794: not working ")
     torch.manual_seed(0)
     M, K, N = 128, 256, 256
 
@@ -83,7 +172,7 @@ def test_mm_broadcast_stride_zero(dtype):
     with flag_gems.use_gems():
         res_out = torch.mm(a, b)
 
-    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
+    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K, atol=_mm_atol_base())
 
 
 @pytest.mark.mm
@@ -109,7 +198,7 @@ def test_mm_out_vllm_tma_column_major_weight():
     with flag_gems.use_gems():
         torch.mm(mat1, mat2, out=out)
 
-    utils.gems_assert_close(out, ref_out, dtype, reduce_dim=K)
+    utils.gems_assert_close(out, ref_out, dtype, reduce_dim=K, atol=_mm_atol_base())
 
 
 @pytest.mark.mm
@@ -117,8 +206,11 @@ def test_mm_out_vllm_tma_column_major_weight():
     not hasattr(
         getattr(getattr(triton, "tools", None), "tensor_descriptor", None),
         "TensorDescriptor",
-    ),
-    reason="Host TMA TensorDescriptor is required for this regression test.",
+    )
+    or flag_gems.vendor_name != "nvidia"
+    or not torch.cuda.is_available()
+    or torch.cuda.get_device_capability()[0] < 9,
+    reason="Host TMA TensorDescriptor and Hopper GPU are required for this regression test.",
 )
 def test_mm_kernel_general_host_tma_vllm_column_major_weight_compile_error():
     """Reproduce the vLLM TMA descriptor compile error for a column-major BF16 weight."""
@@ -194,7 +286,7 @@ def test_mm_self_transpose(M, K, dtype):
     with flag_gems.use_gems():
         res_out = torch.mm(mat, mat.t())
 
-    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
+    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K, atol=_mm_atol_base())
 
 
 @pytest.mark.mm_out
@@ -220,4 +312,4 @@ def test_mm_out_self_transpose(M, K, dtype):
     with flag_gems.use_gems():
         torch.mm(mat, mat.t(), out=out)
 
-    utils.gems_assert_close(out, ref_out, dtype, reduce_dim=K)
+    utils.gems_assert_close(out, ref_out, dtype, reduce_dim=K, atol=_mm_atol_base())

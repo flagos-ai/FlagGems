@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -56,7 +70,7 @@ def _choose_block(N_total):
 
 
 def silu(self):
-    logger.debug("GEMS SILU FORWARD")
+    logger.debug("GEMS_ENFLAME SILU")
     inp = self.contiguous()
     N_total = inp.numel()
     out = torch.empty_like(inp)
@@ -79,13 +93,13 @@ def silu(self):
 
 
 def silu_backward(grad_output, self):
-    logger.debug("GEMS SILU BACKWARD")
+    logger.debug("GEMS_ENFLAME SILU_BACKWARD")
     grad_input = silu_backward_kernel(self, grad_output)
     return grad_input
 
 
 def silu_(A):
-    logger.debug("GEMS SILU_ FORWARD")
+    logger.debug("GEMS_ENFLAME SILU_")
     inp = A.contiguous()
     N_total = inp.numel()
 
