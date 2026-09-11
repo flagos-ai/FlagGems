@@ -37,6 +37,7 @@ from .isin import isin
 from .kthvalue import kthvalue
 from .layernorm import layer_norm, layer_norm_backward
 from .lcm import lcm
+from .lcm_ import lcm_
 from .lgamma_ import lgamma, lgamma_
 from .linalg_cholesky import linalg_cholesky
 from .linalg_ldl_factor import ldl_factor
@@ -168,6 +169,7 @@ __all__ = [
     "layer_norm",
     "layer_norm_backward",
     "lcm",
+    "lcm_",
     "ldl_factor",
     "lgamma",
     "lgamma_",
