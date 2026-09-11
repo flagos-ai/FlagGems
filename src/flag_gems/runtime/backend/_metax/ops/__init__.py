@@ -30,6 +30,7 @@ from .kthvalue import kthvalue
 from .layernorm import layer_norm, layer_norm_backward
 from .lcm import lcm
 from .lgamma_ import lgamma, lgamma_
+from .linalg_cholesky import linalg_cholesky
 from .linalg_lstsq import linalg_lstsq
 from .linalg_matrix_exp import linalg_matrix_exp, linalg_matrix_exp_out
 from .linalg_matrix_power import linalg_matrix_power, linalg_matrix_power_out
@@ -215,4 +216,5 @@ __all__ = [
     "zeros",
     "zeros_like",
     "gt_scalar_",
+    "linalg_cholesky",
 ]
