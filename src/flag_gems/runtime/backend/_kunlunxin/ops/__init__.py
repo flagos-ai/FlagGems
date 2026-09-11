@@ -33,7 +33,8 @@ from .adaptive_max_pool2d import adaptive_max_pool2d
 from .add import add, add_
 from .addcdiv import addcdiv, addcdiv_, addcdiv_out
 from .addcmul import addcmul, addcmul_out
-from .addmm import addmm, addmm_out
+from .addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out  # noqa: F401
+from .addmm_ import addmm_
 from .addmv import addmv, addmv_out
 from .addr import addr
 from .affine_grid_generator import affine_grid_generator  # noqa: F401
@@ -90,6 +91,8 @@ from .broadcast_to import broadcast_to
 from .cat import cat, cat_out
 from .ceil import ceil, ceil_, ceil_out
 from .celu import celu, celu_
+from .cholesky_inverse import cholesky_inverse
+from .cholesky_solve import cholesky_solve, cholesky_solve_out
 from .clamp import (
     clamp,
     clamp_,
@@ -189,6 +192,22 @@ from .leaky_relu import leaky_relu, leaky_relu_, leaky_relu_out
 from .lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
 from .less_equal import less_equal, less_equal_scalar
 from .lift_fresh_copy import lift_fresh_copy
+from .linalg_cholesky import linalg_cholesky
+from .linalg_cross import linalg_cross, linalg_cross_out
+from .linalg_det import linalg_det, linalg_det_out
+from .linalg_householder_product import linalg_householder_product
+from .linalg_ldl_factor import ldl_factor
+from .linalg_ldl_factor_ex import ldl_factor_ex
+from .linalg_lstsq import linalg_lstsq
+from .linalg_lu_factor import linalg_lu_factor, linalg_lu_factor_out
+from .linalg_lu_factor_ex import linalg_lu_factor_ex, linalg_lu_factor_ex_out
+from .linalg_matrix_norm import linalg_matrix_norm
+from .linalg_slogdet import linalg_slogdet
+from .linalg_solve_triangular import (
+    linalg_solve_triangular,
+    linalg_solve_triangular_out,
+)
+from .linear_backward import linear_backward
 from .linspace import linspace
 from .log import log
 from .log1p import log1p, log1p_
@@ -202,6 +221,7 @@ from .logical_xor import logical_xor, logical_xor_
 from .logspace import logspace
 from .logsumexp import logsumexp
 from .lt import lt, lt_, lt_scalar, lt_scalar_
+from .lu_unpack import lu_unpack, lu_unpack_out
 from .masked_fill import masked_fill, masked_fill_
 from .masked_scatter import masked_scatter, masked_scatter_
 from .masked_select import masked_select
@@ -226,6 +246,8 @@ from .mul import mul, mul_
 from .multinomial import multinomial
 from .multiply_ import multiply_
 from .mv import mv, mv_cluster
+from .mvlgamma import mvlgamma
+from .mvlgamma_ import mvlgamma_
 from .nan_to_num import nan_to_num
 from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .narrow_copy import narrow_copy
@@ -242,6 +264,7 @@ from .nllloss import (
 )
 from .nonzero import nonzero
 from .nonzero_numpy import nonzero_numpy
+from .norm import norm, norm_scalar, norm_scalaropt_dim
 from .normal import (
     normal_,
     normal_float_tensor,
@@ -251,6 +274,7 @@ from .normal import (
 from .not_equal import not_equal, not_equal_scalar
 from .ones import ones
 from .ones_like import ones_like
+from .ormqr import ormqr
 from .pad import constant_pad_nd, pad
 from .per_token_group_quant_fp8 import SUPPORTED_FP8_DTYPE, per_token_group_quant_fp8
 from .permute_copy import permute_copy
@@ -281,6 +305,7 @@ from .reflection_pad2d_backward import reflection_pad2d_backward
 from .reflection_pad3d import reflection_pad3d, reflection_pad3d_out
 from .reflection_pad3d_backward import reflection_pad3d_backward
 from .relu import relu, relu_
+from .renorm import renorm, renorm_
 from .repeat import repeat
 from .repeat_interleave import (
     repeat_interleave_self_int,
@@ -399,6 +424,7 @@ __all__ = [
     "addcmul",
     "addcmul_out",
     "addmm",
+    "addmm_",
     "addmm_out",
     "addmv",
     "addmv_out",
@@ -440,6 +466,8 @@ __all__ = [
     "avg_pool3d",
     "avg_pool3d_backward",
     "baddbmm",
+    "baddbmm_",
+    "baddbmm_out",
     "batch_norm",
     "batch_norm_backward",
     "bernoulli_",
@@ -467,6 +495,9 @@ __all__ = [
     "ceil_out",
     "celu",
     "celu_",
+    "cholesky_inverse",
+    "cholesky_solve",
+    "cholesky_solve_out",
     "clamp",
     "clamp_",
     "clamp_max",
@@ -590,6 +621,8 @@ __all__ = [
     "kron",
     "layer_norm",
     "layer_norm_backward",
+    "ldl_factor",
+    "ldl_factor_ex",
     "le",
     "le_scalar",
     "leaky_relu",
@@ -602,6 +635,22 @@ __all__ = [
     "less_equal",
     "less_equal_scalar",
     "lift_fresh_copy",
+    "linalg_cholesky",
+    "linalg_cross",
+    "linalg_cross_out",
+    "linalg_det",
+    "linalg_det_out",
+    "linalg_householder_product",
+    "linalg_lstsq",
+    "linalg_lu_factor",
+    "linalg_lu_factor_ex",
+    "linalg_lu_factor_ex_out",
+    "linalg_lu_factor_out",
+    "linalg_matrix_norm",
+    "linalg_slogdet",
+    "linalg_solve_triangular",
+    "linalg_solve_triangular_out",
+    "linear_backward",
     "linspace",
     "log",
     "log1p",
@@ -625,6 +674,8 @@ __all__ = [
     "lt_",
     "lt_scalar",
     "lt_scalar_",
+    "lu_unpack",
+    "lu_unpack_out",
     "masked_fill",
     "masked_fill_",
     "masked_scatter",
@@ -655,6 +706,8 @@ __all__ = [
     "multiply_",
     "mv",
     "mv_cluster",
+    "mvlgamma",
+    "mvlgamma_",
     "nan_to_num",
     "nanmedian",
     "nanmedian_dim",
@@ -674,6 +727,9 @@ __all__ = [
     "nll_loss_forward",
     "nonzero",
     "nonzero_numpy",
+    "norm",
+    "norm_scalar",
+    "norm_scalaropt_dim",
     "normal_",
     "normal_float_tensor",
     "normal_tensor_float",
@@ -683,6 +739,7 @@ __all__ = [
     "not_equal_scalar",
     "ones",
     "ones_like",
+    "ormqr",
     "pad",
     "per_token_group_quant_fp8",
     "permute_copy",
@@ -721,6 +778,8 @@ __all__ = [
     "relu_",
     "remainder",
     "remainder_",
+    "renorm",
+    "renorm_",
     "repeat",
     "repeat_interleave_self_int",
     "repeat_interleave_self_tensor",
