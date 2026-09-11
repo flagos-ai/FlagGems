@@ -71,17 +71,16 @@ def test_accuracy_batch_norm_backward_reduce(shape, dtype, input_g, weight_g, bi
         bias_g,
     )
 
-    with flag_gems.use_gems():
-        res_out = torch.batch_norm_backward_reduce(
-            grad_output,
-            inp,
-            mean,
-            invstd,
-            weight,
-            input_g,
-            weight_g,
-            bias_g,
-        )
+    res_out = torch.batch_norm_backward_reduce(
+        grad_output,
+        inp,
+        mean,
+        invstd,
+        weight,
+        input_g,
+        weight_g,
+        bias_g,
+    )
 
     reduce_dim = math.prod(shape) // C
 
