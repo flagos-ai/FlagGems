@@ -13869,6 +13869,17 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: spsolve
+  description: Triton kernel implementation for _spsolve.
+  for:
+  - _spsolve
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.4'
 - id: sqrt
   description: Returns a new tensor with the square-root of the elements of `input`.
   for:
