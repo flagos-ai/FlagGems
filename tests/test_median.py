@@ -131,7 +131,7 @@ def test_median_no_dim(shape, dtype):
     utils.gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.median
+@pytest.mark.median_dim
 @pytest.mark.parametrize("shape, dim", DIM_CASES)
 @pytest.mark.parametrize("keepdim", KEEPDIM)
 @pytest.mark.parametrize("dtype", DTYPES)
