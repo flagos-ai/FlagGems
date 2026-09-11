@@ -20,6 +20,42 @@ import flag_gems
 from benchmark.base import Benchmark
 
 
+def torch_chunk_gated_delta_rule_fwd(
+    q, k, v, g, beta, scale, initial_state, output_final_state, cu_seqlens=None
+):
+    """Token-by-token PyTorch baseline for the fixed-length benchmark.
+
+    Speedup is relative to this eager recurrence, not to the FLA Triton kernels.
+    Only the output and final state are produced; chunk-specific intermediates
+    returned by the Gems implementation are not needed by the benchmark.
+    """
+    if cu_seqlens is not None:
+        raise NotImplementedError("The PyTorch baseline only supports fixed lengths")
+
+    output_dtype = v.dtype
+    q, k, v, g, beta = (x.float() for x in (q, k, v, g, beta))
+    B, T, H, K = q.shape
+    V = v.shape[-1]
+    state = (
+        initial_state.float().clone()
+        if initial_state is not None
+        else q.new_zeros(B, H, K, V)
+    )
+    outputs = []
+    for t in range(T):
+        # Apply the decay before computing the delta against the current state.
+        state = state * g[:, t].exp()[..., None, None]
+        delta = v[:, t] - torch.einsum("bhk,bhkv->bhv", k[:, t], state)
+        state = (
+            state
+            + torch.einsum("bhk,bhv->bhkv", k[:, t], delta) * beta[:, t, :, None, None]
+        )
+        outputs.append(torch.einsum("bhk,bhkv->bhv", q[:, t], state) * scale)
+
+    output = torch.stack(outputs, dim=1).to(output_dtype)
+    return output, state if output_final_state else None
+
+
 class ChunkGatedDeltaRuleFwdBenchmark(Benchmark):
     DEFAULT_DTYPES = [torch.bfloat16, torch.float16]
     DEFAULT_SHAPES = [(64,), (128,), (256,), (512,), (1024,)]
@@ -48,7 +84,10 @@ class ChunkGatedDeltaRuleFwdBenchmark(Benchmark):
         B, H, K, V = 1, 4, 64, 64
 
         q = torch.randn(B, T, H, K, device=device, dtype=dtype)
-        k = torch.randn(B, T, H, K, device=device, dtype=dtype)
+        # Keep the delta-rule recurrence stable over the longest sequences.
+        k = F.normalize(
+            torch.randn(B, T, H, K, device=device, dtype=torch.float32), dim=-1
+        ).to(dtype)
         v = torch.randn(B, T, H, V, device=device, dtype=dtype)
         g = F.logsigmoid(torch.randn(B, T, H, device=device, dtype=dtype))
         beta = torch.rand(B, T, H, device=device, dtype=dtype).sigmoid()
@@ -75,7 +114,7 @@ class ChunkGatedDeltaRuleFwdBenchmark(Benchmark):
 def test_perf_chunk_gated_delta_rule_fwd():
     bench = ChunkGatedDeltaRuleFwdBenchmark(
         op_name="chunk_gated_delta_rule_fwd",
-        torch_op=flag_gems.chunk_gated_delta_rule_fwd,
+        torch_op=torch_chunk_gated_delta_rule_fwd,
     )
     bench.set_gems(flag_gems.chunk_gated_delta_rule_fwd)
     bench.run()
