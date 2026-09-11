@@ -9248,6 +9248,25 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: mixed_dtypes_linear
+  description: 'Weight-only quantized matrix multiplication (CUTLASS fpA_intB semantics).
+
+    Computes out = activation(input @ dequant(weight) + bias) where weight is uint8
+
+    (int8 mode: (u-128)*scale or packed int4 mode: (u-8)*scale). Bias and activation
+
+    are optional.
+
+    '
+  for:
+  - _mixed_dtypes_linear
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.4'
 - id: mkldnn_rnn_layer
   description: 'Applies a single-layer unidirectional LSTM (oneDNN mkldnn_rnn_layer,
     mode=2)
