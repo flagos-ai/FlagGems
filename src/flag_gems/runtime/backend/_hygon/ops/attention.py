@@ -54,7 +54,7 @@ def _attn_fwd_inner(
     STAGE: tl.constexpr,
     offs_m: tl.constexpr,
     offs_n: tl.constexpr,  #
-    KV_CTX: tl.constexpr,
+    KV_CTX,
     fp8_v: tl.constexpr,
     HAS_ATTN_MASK: tl.constexpr,
     PRE_LOAD_V: tl.constexpr,
@@ -160,7 +160,7 @@ configs += SMALL_HEAD_DIM_CONFIGS
 @libentry()
 @libtuner(
     configs=list(filter(partial(keep, must_keep=SMALL_HEAD_DIM_CONFIGS), configs)),
-    key=["KV_CTX", "HEAD_DIM"],
+    key=["HEAD_DIM"],
 )
 @triton.jit
 def _attn_fwd(
@@ -439,8 +439,9 @@ def _attn_bwd_dkdv(
             mask &= offs_m[None, :] >= offs_n[:, None]
         pT = tl.where(mask, pT, 0.0)  # (BLOCK_N1, BLOCK_M1)
 
-        do = tl.load(do_ptrs)
-        # do = tl.load(do_ptrs, mask=offs_m_mask[:, None], other=0.0) # (BLOCK_M1, BLOCK_DMODEL)
+        do = tl.load(
+            do_ptrs, mask=offs_m_mask[:, None], other=0.0
+        )  # (BLOCK_M1, BLOCK_DMODEL)
 
         # Compute dV.
         dv += tl.dot(pT, do.to(tl.float32))  # (BLOCK_N1, BLOCK_DMODEL)
@@ -533,9 +534,19 @@ def _attn_bwd_dq(
 config_backward = runtime.get_tuned_config("attention_bwd")
 
 
+def _prune_bwd_configs(configs, named_args, **kwargs):
+    BLOCK_DMODEL = kwargs.get("BLOCK_DMODEL", named_args.get("BLOCK_DMODEL", 128))
+    if BLOCK_DMODEL >= 128:
+        pruned = [c for c in configs if c.kwargs["BLOCK_N1"] <= 64]
+        return pruned if pruned else configs
+    pruned = [c for c in configs if c.kwargs["BLOCK_N1"] >= 128]
+    return pruned if pruned else configs
+
+
 @libentry()
 @libtuner(
     configs=config_backward,
+    prune_configs_by={"early_config_prune": _prune_bwd_configs},
     key=["KV_CTX", "BLOCK_DMODEL"],
 )
 @triton.jit
@@ -557,6 +568,9 @@ def _attn_bwd(
     stride_d,  #
     kv_stride_z,
     kv_stride_h,  #
+    dk_stride_z,
+    dk_stride_h,
+    dk_stride_tok,  #
     H,  # query head num
     Q_CTX,  #
     KV_CTX,  #
@@ -569,7 +583,6 @@ def _attn_bwd(
     BLK_SLICE_FACTOR: tl.constexpr,  #
     BLOCK_DMODEL: tl.constexpr,
 ):
-    tl.device_assert(Q_CTX % BLOCK_M1 == 0, "Q_CTX must be a multiple of BLOCK_M1.")
 
     LN2: tl.constexpr = 0.6931471824645996  # = ln(2)
 
@@ -580,6 +593,7 @@ def _attn_bwd(
     kv_head_id = q_head_id // GROUP_HEAD
     adj = (stride_h * q_head_id + stride_z * batch_id).to(tl.int64)
     kv_adj = (kv_stride_h * kv_head_id + kv_stride_z * batch_id).to(tl.int64)
+    dk_adj = (dk_stride_h * q_head_id + dk_stride_z * batch_id).to(tl.int64)
 
     pid = tl.program_id(0)
 
@@ -589,8 +603,8 @@ def _attn_bwd(
     V += kv_adj
     DO += adj
     DQ += adj
-    DK += adj
-    DV += adj
+    DK += dk_adj
+    DV += dk_adj
     M += off_chz
     D += off_chz
 
@@ -619,34 +633,37 @@ def _attn_bwd(
         other=0.0,
     )
 
-    num_steps = BLOCK_N1 // MASK_BLOCK_M1
+    # Masked diagonal phase: Q rows [start_m, end_m) where causal mask applies
+    if start_m < Q_CTX:
+        end_m = min(start_m + BLOCK_N1, Q_CTX)
+        num_steps = (end_m - start_m + MASK_BLOCK_M1 - 1) // MASK_BLOCK_M1
 
-    dk, dv = _attn_bwd_dkdv(
-        dk,
-        dv,  #
-        Q,
-        key,
-        value,
-        sm_scale,  #
-        DO,  #
-        M,
-        D,  #
-        stride_tok,
-        stride_d,  #
-        H,
-        Q_CTX,  #
-        KV_CTX,  #
-        MASK_BLOCK_M1,
-        BLOCK_N1,
-        BLOCK_DMODEL,  #
-        start_n,
-        start_m,
-        num_steps,  #
-        MASK=True,  #
-    )
+        dk, dv = _attn_bwd_dkdv(
+            dk,
+            dv,  #
+            Q,
+            key,
+            value,
+            sm_scale,  #
+            DO,  #
+            M,
+            D,  #
+            stride_tok,
+            stride_d,  #
+            H,
+            Q_CTX,  #
+            KV_CTX,  #
+            MASK_BLOCK_M1,
+            BLOCK_N1,
+            BLOCK_DMODEL,  #
+            start_n,
+            start_m,
+            num_steps,  #
+            MASK=True,  #
+        )
+        start_m += num_steps * MASK_BLOCK_M1
 
-    # Compute dK and dV for non-masked blocks.
-    start_m += num_steps * MASK_BLOCK_M1
+    # Unmasked phase: remaining Q rows above diagonal
     remaining_m = Q_CTX - start_m
     num_steps = (remaining_m + BLOCK_M1 - 1) // BLOCK_M1
 
@@ -675,19 +692,17 @@ def _attn_bwd(
             MASK=False,  #
         )
 
-    dv_ptrs = DV + offs_n[:, None] * stride_tok + offs_k[None, :] * stride_d
+    dv_ptrs = DV + offs_n[:, None] * dk_stride_tok + offs_k[None, :] * stride_d
     tl.store(dv_ptrs, dv, mask=offs_n_mask[:, None])
 
     # Write back dK.
     dk *= sm_scale
-    dk_ptrs = DK + offs_n[:, None] * stride_tok + offs_k[None, :] * stride_d
+    dk_ptrs = DK + offs_n[:, None] * dk_stride_tok + offs_k[None, :] * stride_d
     tl.store(dk_ptrs, dk, mask=offs_n_mask[:, None])
 
     # THIS BLOCK DOES DQ:
     MASK_BLOCK_N2: tl.constexpr = BLOCK_N2 // BLK_SLICE_FACTOR
     start_m = pid * BLOCK_M2
-    end_n = min(start_m + BLOCK_M2, KV_CTX)  # Ensure end_n does not exceed N_CTX
-    num_steps = (end_n - start_n + MASK_BLOCK_N2 - 1) // MASK_BLOCK_N2
 
     offs_m = start_m + tl.arange(0, BLOCK_M2)
     offs_m_mask = offs_m < Q_CTX
@@ -708,10 +723,10 @@ def _attn_bwd(
     m = m[:, None]
 
     # Stage 1 - Compute dQ for masked (diagonal) blocks.
-    # NOTE: This code scans each row of QK^T backward (from right to left,
-    # but inside each call to _attn_bwd_dq, from left to right), but that's
-    # not due to anything important.  I just wanted to reuse the loop
-    # structure for dK & dV above as much as possible.
+    # diag_n is the KV position where causal boundary starts for this Q block
+    diag_n = min(start_m, KV_CTX)
+    end_n = min(start_m + BLOCK_M2, KV_CTX)
+    num_steps = (end_n - diag_n + MASK_BLOCK_N2 - 1) // MASK_BLOCK_N2
 
     if num_steps > 0:
         dq = _attn_bwd_dq(
@@ -731,14 +746,13 @@ def _attn_bwd(
             MASK_BLOCK_N2,
             BLOCK_DMODEL,  #
             start_m,
-            start_n,
+            diag_n,
             num_steps,  #
             MASK=True,  #
         )
 
-    # Stage 2 - non-masked blocks
-    stage2_end_n = start_n
-    stage2_num_steps = (stage2_end_n + BLOCK_N2 - 1) // BLOCK_N2
+    # Stage 2 - Unmasked: KV columns [0, diag_n), all fully visible
+    stage2_num_steps = (diag_n + BLOCK_N2 - 1) // BLOCK_N2
 
     if stage2_num_steps > 0:
         dq = _attn_bwd_dq(
@@ -758,7 +772,7 @@ def _attn_bwd(
             BLOCK_N2,
             BLOCK_DMODEL,  #
             start_m,
-            stage2_end_n - stage2_num_steps * BLOCK_N2,
+            0,
             stage2_num_steps,  #
             MASK=False,  #
         )
@@ -788,6 +802,15 @@ def scaled_dot_product_attention_forward(
     assert HEAD_DIM_Q == HEAD_DIM_K and HEAD_DIM_K == HEAD_DIM_V
     assert HEAD_DIM_K in {16, 32, 64, 128, 256}
     assert dropout_p == 0.0, "Currenty only support dropout_p=0.0"
+
+    # Workaround: Triton/HIP codegen bug on certain KV_CTX values (e.g. 1034)
+    # in causal mode. Padding KV seq to next multiple of 16 avoids the issue.
+    ALIGN = 16
+    kv_seq_len = key.shape[2]
+    if is_causal and kv_seq_len % ALIGN != 0:
+        pad_len = ALIGN - (kv_seq_len % ALIGN)
+        key = torch.nn.functional.pad(key, (0, 0, 0, pad_len))
+        value = torch.nn.functional.pad(value, (0, 0, 0, pad_len))
 
     o = torch.empty_like(query, dtype=value.dtype)
 
@@ -888,6 +911,71 @@ def scaled_dot_product_attention_backward(
     enable_gqa=False,
 ):
     logger.debug("GEMS_HYGON SCALED_DOT_PRODUCT_ATTENTION_BACKWARD")
+
+    # CPU fallback for non-causal backward
+    # Hygon's _attn_bwd kernel only correctly implements causal backward.
+    # Non-causal backward has fundamental gradient accumulation bugs causing
+    # 70-90% element errors. Use CPU float32 reference implementation instead.
+    if not is_causal:
+        logger.debug("Using CPU float32 fallback for non-causal backward")
+
+        # Move to CPU and convert to float32 for numerical stability
+        q = query.cpu().float()
+        k = key.cpu().float()
+        v = value.cpu().float()
+        grad_out = do.cpu().float()
+
+        sm_scale = scale if scale is not None else 1.0 / (k.shape[-1] ** 0.5)
+
+        # Handle GQA: expand k/v to match q's head dimension
+        BATCH, Q_HEAD, Q_CTX, HEAD_DIM = q.shape
+        _, KV_HEAD, KV_CTX, _ = k.shape
+        group_head = Q_HEAD // KV_HEAD
+
+        if group_head > 1:
+            # Expand k/v by repeating along head dimension
+            k = k.repeat_interleave(group_head, dim=1)
+            v = v.repeat_interleave(group_head, dim=1)
+
+        # Recompute attention weights (forward pass)
+        scores = torch.matmul(q, k.transpose(-2, -1)) * sm_scale
+        attn = torch.softmax(scores, dim=-1)
+
+        # Backward pass (manually compute gradients)
+        # d_attn = grad_out @ v^T
+        grad_attn = torch.matmul(grad_out, v.transpose(-2, -1))
+
+        # d_v = attn^T @ grad_out
+        grad_v = torch.matmul(attn.transpose(-2, -1), grad_out)
+
+        # Softmax backward: d_scores = attn * (d_attn - (attn * d_attn).sum(dim=-1, keepdim=True))
+        sum_term = (attn * grad_attn).sum(dim=-1, keepdim=True)
+        grad_scores = attn * (grad_attn - sum_term)
+
+        # Scale backward
+        grad_scores = grad_scores * sm_scale
+
+        # d_q = d_scores @ k
+        grad_q = torch.matmul(grad_scores, k)
+
+        # d_k = d_scores^T @ q
+        grad_k = torch.matmul(grad_scores.transpose(-2, -1), q)
+
+        # Handle GQA: reduce dk/dv back to KV_HEAD
+        if group_head > 1:
+            grad_k = grad_k.reshape(BATCH, KV_HEAD, group_head, KV_CTX, HEAD_DIM)
+            grad_v = grad_v.reshape(BATCH, KV_HEAD, group_head, KV_CTX, HEAD_DIM)
+            grad_k = grad_k.sum(dim=2)
+            grad_v = grad_v.sum(dim=2)
+
+        # Move gradients back to device and convert to original dtype
+        dq = grad_q.to(device=query.device, dtype=query.dtype)
+        dk = grad_k.to(device=key.device, dtype=key.dtype)
+        dv = grad_v.to(device=value.device, dtype=value.dtype)
+
+        return dq, dk, dv
+
+    # Causal backward uses the Triton kernel
     # shape constraints
     HEAD_DIM_Q, HEAD_DIM_K = query.shape[-1], key.shape[-1]
     # when v is in float8_e5m2 it is transposed.
@@ -960,12 +1048,13 @@ def scaled_dot_product_attention_backward(
         D_HEAD=BLOCK_DMODEL,  #
     )
 
-    max_block_n1 = (
-        max([cfg.kwargs["BLOCK_N1"] for cfg in config_backward])
-        if config_backward
-        else 128
+    grid = lambda meta: (
+        max(
+            triton.cdiv(KV_CTX, meta["BLOCK_N1"]), triton.cdiv(Q_CTX, meta["BLOCK_M2"])
+        ),
+        1,
+        BATCH * Q_HEAD,
     )
-    grid = (triton.cdiv(Q_CTX, max_block_n1), 1, BATCH * Q_HEAD)
 
     _attn_bwd[grid](
         query,
@@ -984,6 +1073,9 @@ def scaled_dot_product_attention_backward(
         query.stride(3),  #
         key.stride(0),
         key.stride(1),  #
+        dk.stride(0),
+        dk.stride(1),
+        dk.stride(2),  #
         Q_HEAD,
         Q_CTX,  #
         KV_CTX,  #
