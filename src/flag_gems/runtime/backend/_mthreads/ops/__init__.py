@@ -125,6 +125,7 @@ from .special_bessel_j1 import special_bessel_j1
 from .special_bessel_y0 import special_bessel_y0
 from .special_erfcx import special_erfcx
 from .special_gammainc import special_gammainc
+from .special_multigammaln import special_multigammaln
 from .special_round import special_round
 from .special_round_out import special_round_out
 from .tile import tile
@@ -267,6 +268,7 @@ __all__ = [
     "special_bessel_y0",
     "special_erfcx",
     "special_gammainc",
+    "special_multigammaln",
     "special_round",
     "special_round_out",
     "tile",
