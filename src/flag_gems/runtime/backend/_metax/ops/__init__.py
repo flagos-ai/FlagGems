@@ -76,6 +76,7 @@ from .segment_reduce import segment_reduce, segment_reduce_out
 from .sigmoid import sigmoid
 from .silu import silu
 from .special_bessel_j0 import special_bessel_j0, special_bessel_j0_out
+from .special_bessel_y0 import special_bessel_y0
 from .special_chebyshev_polynomial_u import special_chebyshev_polynomial_u
 from .special_chebyshev_polynomial_w import (
     special_chebyshev_polynomial_w,
@@ -206,6 +207,7 @@ __all__ = [
     "silu",
     "special_bessel_j0",
     "special_bessel_j0_out",
+    "special_bessel_y0",
     "special_chebyshev_polynomial_u",
     "special_chebyshev_polynomial_w",
     "special_chebyshev_polynomial_w_out",
