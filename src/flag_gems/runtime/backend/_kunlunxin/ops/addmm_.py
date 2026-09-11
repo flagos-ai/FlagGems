@@ -2,7 +2,7 @@ import logging
 
 from flag_gems.utils import broadcastable_to
 
-from .addmm import addmm
+from .addmm import addmm_out
 
 logger = logging.getLogger(__name__)
 
@@ -15,10 +15,8 @@ def addmm_(self, mat1, mat2, *, beta=1, alpha=1):
     ), "Incompatible input shape"
 
     logger.debug("GEMS_KUNLUNXIN ADDMM_")
-    # Route to the kunlunxin heuristic addmm (single-config, @libentry cached)
-    # instead of the generic libtuner addmm. The generic path re-tunes across
-    # many configs per shape -> massive IR / compile blowup (see IR dump), and
-    # the imported `addmm` name in the generic ops/addmm_.py binds to the generic
-    # (un-specialized) kernel, bypassing this backend's fast kernel entirely.
-    result = addmm(self, mat1, mat2, beta=beta, alpha=alpha)
-    return self.copy_(result)
+    # Write directly into self via the vendor-tuned out variant, avoiding
+    # allocating a temporary and a separate copy_ (the previous generic path
+    # ran addmm + copy_). The BLOCK_K_CHOICE/tile heuristics of the tuned
+    # kernel apply: fp16 BK=256, bf16/fp32 BK=128, 128-tile for M,N<=512.
+    return addmm_out(self, mat1, mat2, beta=beta, alpha=alpha, out=self)
