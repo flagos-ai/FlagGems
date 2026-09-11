@@ -14,15 +14,14 @@
 
 """Public ``topk_w8a16_fp8`` entry.
 
-The THead / PPU implementation lives in
-``flag_gems.runtime.backend._thead.ops.topk_w8a16_fp8`` and is installed over
-this stub by ``SpecOpRegistrar``. Other vendors should add their own backend
-instead of putting a PPU TLE kernel in the generic tree.
+Hygon (E4M3FN) and THead / PPU (E5M2) implementations live in their
+backend ops packages and are installed over this stub by ``SpecOpRegistrar``.
+Other vendors should add their own backend implementation.
 """
 
 
 def topk_w8a16_fp8(*args, **kwargs):
     raise NotImplementedError(
-        "topk_w8a16_fp8 is implemented for the THead/PPU backend; "
+        "topk_w8a16_fp8 is implemented for the Hygon and THead/PPU backends; "
         "import flag_gems.topk_w8a16_fp8 after the vendor registrar has run"
     )
