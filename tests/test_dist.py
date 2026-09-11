@@ -18,6 +18,36 @@ else:
 # general p -> (sum |x - y| ** p) ** (1 / p).
 P_LIST_ALL = P_LIST + [float("inf"), float("-inf")]
 
+
+def composed_dist(x, y, p=2.0):
+    # torch-native dist via basic torch ops (sub+abs+pow+sum).
+    diff = torch.abs(x - y)
+    if p == float("inf"):
+        return torch.amax(diff)
+    elif p == float("-inf"):
+        return torch.amin(diff)
+    elif p == 0:
+        return torch.sum(diff != 0, dtype=torch.float32).to(x.dtype)
+    else:
+        return torch.pow(torch.sum(torch.pow(diff, p)), 1.0 / p).to(x.dtype)
+
+
+# torch_npu's native dist only supports p in {0, 1, 2} -- other norms return
+# inaccurate results on NPU. When the reference runs on NPU (not CPU), use
+# the composed version for any p outside {0, 1, 2}.
+_ASCEND_SUPPORTED_P = (0.0, 1.0, 2.0)
+
+
+def _ref_dist(x, y, p=2.0):
+    if (
+        flag_gems.vendor_name == "ascend"
+        and not cfg.TO_CPU
+        and p not in _ASCEND_SUPPORTED_P
+    ):
+        return composed_dist(x, y, p=p)
+    return torch.dist(x, y, p)
+
+
 SHAPES = [
     (1,),  # tiny, single-kernel path with BLOCK_SIZE = 1
     (16,),
@@ -43,7 +73,7 @@ def test_dist_accuracy(shape, p, dtype):
 
     ref_x = utils.to_reference(x, True)
     ref_y = utils.to_reference(y, True)
-    ref_out = torch.dist(ref_x, ref_y, p)
+    ref_out = _ref_dist(ref_x, ref_y, p)
 
     out = flag_gems.dist(x, y, p)
 
@@ -71,7 +101,7 @@ def test_dist_broadcast(input_shape, other_shape, p, dtype):
 
     ref_x = utils.to_reference(x, True)
     ref_y = utils.to_reference(y, True)
-    ref_out = torch.dist(ref_x, ref_y, p)
+    ref_out = _ref_dist(ref_x, ref_y, p)
 
     out = flag_gems.dist(x, y, p)
 
@@ -91,7 +121,7 @@ def test_dist_non_contiguous(p, dtype):
 
     ref_x = utils.to_reference(x, True)
     ref_y = utils.to_reference(y, True)
-    ref_out = torch.dist(ref_x, ref_y, p)
+    ref_out = _ref_dist(ref_x, ref_y, p)
 
     out = flag_gems.dist(x, y, p)
 
@@ -110,7 +140,7 @@ def test_dist_negative_p(p, dtype):
 
     ref_x = utils.to_reference(x, True)
     ref_y = utils.to_reference(y, True)
-    ref_out = torch.dist(ref_x, ref_y, p)
+    ref_out = _ref_dist(ref_x, ref_y, p)
 
     out = flag_gems.dist(x, y, p)
 
@@ -132,7 +162,7 @@ def test_dist_fp64(shape, p):
 
     ref_x = utils.to_reference(x, True)
     ref_y = utils.to_reference(y, True)
-    ref_out = torch.dist(ref_x, ref_y, p)
+    ref_out = _ref_dist(ref_x, ref_y, p)
 
     out = flag_gems.dist(x, y, p)
 
@@ -149,7 +179,7 @@ def test_dist_empty(p):
 
     ref_x = utils.to_reference(x)
     ref_y = utils.to_reference(y)
-    ref_out = torch.dist(ref_x, ref_y, p)
+    ref_out = _ref_dist(ref_x, ref_y, p)
 
     out = flag_gems.dist(x, y, p)
 

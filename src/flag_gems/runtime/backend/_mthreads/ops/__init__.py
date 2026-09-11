@@ -26,6 +26,8 @@ from .celu import celu
 from .channel_shuffle import channel_shuffle
 from .conv2d import conv2d
 from .conv_transpose1d import conv_transpose1d, conv_transpose1d_output_size
+from .conv_transpose2d import conv_transpose2d
+from .cudnn_convolution import cudnn_convolution
 from .div import (
     div_mode,
     div_mode_,
@@ -48,6 +50,7 @@ from .index_add import index_add, index_add_
 from .index_copy_ import index_copy, index_copy_
 from .index_put import _index_put_impl_, index_put, index_put_
 from .index_select import index_select
+from .isin import isin
 from .linalg_cholesky import linalg_cholesky
 from .linear import linear
 from .log import log
@@ -102,10 +105,12 @@ from .zeros_like import zeros_like
 
 __all__ = [
     "_conj",
-    "amax",
+    "_index_put_impl_",
+    "_unique2",
     "all",
     "all_dim",
     "all_dims",
+    "amax",
     "any",
     "any_dim",
     "any_dims",
@@ -116,17 +121,24 @@ __all__ = [
     "batch_norm_backward",
     "bucketize",
     "celu",
-    # "celu_",
+    "celu_",
     "channel_shuffle",
+    "constant_pad_nd",
     "conv2d",
     "conv_transpose1d",
     "conv_transpose1d_output_size",
+    "conv_transpose2d",
+    "cudnn_convolution",
+    "div_mode",
+    "div_mode_",
     "dropout",
     "dropout_backward",
     "erfinv",
     "erfinv_",
     "feature_dropout_",
     "flip",
+    "floor_divide",
+    "floor_divide_",
     "fmod_",
     "fmod_scalar_",
     "fmod_tensor_",
@@ -140,8 +152,8 @@ __all__ = [
     "index_copy_",
     "index_put",
     "index_put_",
-    "_index_put_impl_",
     "index_select",
+    "isin",
     "linalg_cholesky",
     "linear",
     "log",
@@ -174,7 +186,6 @@ __all__ = [
     "one_hot",
     "ones",
     "ones_like",
-    "constant_pad_nd",
     "pad",
     "permute_copy",
     "prod",
@@ -200,11 +211,6 @@ __all__ = [
     "true_divide",
     "true_divide_",
     "true_divide_out",
-    "div_mode",
-    "div_mode_",
-    "floor_divide",
-    "floor_divide_",
-    "_unique2",
     "trunc",
     "trunc_",
     "upsample_linear1d_backward",
