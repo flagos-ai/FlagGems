@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import importlib
 import logging
 import os
@@ -11,7 +25,7 @@ from flag_gems.utils.shape_utils import restride_dim
 
 from .scatter import scatter_
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
@@ -55,7 +69,15 @@ def generate_gather_kernel(
 
     code.writeline("def heur_block_m(args):")
     with code.indent():
-        code.writeline('return triton.next_power_of_2(triton.cdiv(args["M"], 12))')
+        # BOUNDED BLOCK_M: the kernel materializes [BLOCK_M, BLOCK_N] int64 offset
+        # tiles (inp_offsets / idx_offsets / cur_idx). The old
+        # next_power_of_2(cdiv(M, 12)) is the UNBOUNDED-BLOCK anti-pattern: for
+        # large M it produces giant int64 tiles (tensor<128x4096xi64> etc.) that
+        # ConvertTritonXPUToLLVM expands per element -> multi-GB IR explosion.
+        # Cap at 8 (matches the original autotune block_m in [1,2,4,8]).
+        code.writeline(
+            'return builtins.min(triton.next_power_of_2(triton.cdiv(args["M"], 12)), 8)'
+        )
 
     code.newline()
 
@@ -209,6 +231,10 @@ def generate_gather_wrapper(
                 code.writeline("inp_dim_size,")
                 code.writeline("M,")
                 code.writeline("N,")
+                # Chunk the [BLOCK_M, BLOCK_N] int64 offset tiles into 2048-element
+                # pieces so the large constexpr tile is not materialized whole
+                # (prevents IR explosion even with a wide BLOCK_N).
+                code.writeline("buffer_size_limit=2048,")
         code.writeline(")")
         code.writeline("return out")
 
@@ -277,7 +303,7 @@ _gather_func = GatherFunction()
 
 
 def gather(inp, dim, index, out=None, sparse_grad=False):
-    logger.debug("GEMS GATHER")
+    logger.debug("GEMS_KUNLUNXIN GATHER")
     if dim < 0:
         dim += inp.ndim
     if inp.ndim != index.ndim:
@@ -303,6 +329,6 @@ def gather(inp, dim, index, out=None, sparse_grad=False):
 
 
 def gather_backward(grad, self, dim, index, sparse_grad):
-    logger.debug("GEMS GATHER BACKWARD")
+    logger.debug("GEMS_KUNLUNXIN GATHER_BACKWARD")
     result = grad.new_zeros(self.shape)
     return scatter_(result, dim, index, grad, reduce="add")

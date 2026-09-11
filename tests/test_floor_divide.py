@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import random
 
 import numpy as np
@@ -8,6 +22,8 @@ import flag_gems
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
+
+device = flag_gems.device
 
 
 def replace_zeros(inp):
@@ -25,19 +41,19 @@ def replace_zeros(inp):
 )
 def test_floor_divide_mixed(dtype1, dtype2):
     if dtype1.is_floating_point:
-        x = torch.randn(128, device="cuda", dtype=dtype1)
+        x = torch.randn(128, device=device, dtype=dtype1)
     else:
-        x = torch.randint(-10, 10, (128,), device="cuda", dtype=dtype1)
+        x = torch.randint(-10, 10, (128,), device=device, dtype=dtype1)
 
     if dtype2.is_floating_point:
-        y = torch.randn(128, device="cuda", dtype=dtype2) + 0.1
+        y = torch.randn(128, device=device, dtype=dtype2) + 0.1
     else:
-        y = torch.randint(1, 10, (128,), device="cuda", dtype=dtype2)
+        y = torch.randint(1, 10, (128,), device=device, dtype=dtype2)
 
     # reference
     ref = torch.div(x, y, rounding_mode="floor")
 
-    out = flag_gems.ops.floor_divide(x, y)
+    out = flag_gems.floor_divide(x, y)
 
     torch.testing.assert_close(out, ref)
 
@@ -55,21 +71,21 @@ def test_floor_divide_mixed(dtype1, dtype2):
 def test_floor_divide_scalar_tensor(x_dtype, y_dtype):
     def make_tensor(shape, dtype):
         if dtype.is_floating_point:
-            return torch.randn(shape, device="cuda", dtype=dtype)
+            return torch.randn(shape, device=device, dtype=dtype)
         else:
-            return torch.randint(1, 10, (shape,), device="cuda", dtype=dtype)
+            return torch.randint(1, 10, (shape,), device=device, dtype=dtype)
 
     y = make_tensor(128, y_dtype)
 
     if x_dtype.is_floating_point:
-        x = torch.randn(1, device="cuda", dtype=x_dtype).squeeze(0)
+        x = torch.randn(1, device=device, dtype=x_dtype).squeeze(0)
     else:
-        x = torch.randint(1, 10, (), device="cuda", dtype=x_dtype).item()
+        x = torch.randint(1, 10, (), device=device, dtype=x_dtype).item()
 
     ref = torch.div(x, y, rounding_mode="floor")
 
     # flaggems
-    out = flag_gems.ops.floor_divide(x, y)
+    out = flag_gems.floor_divide(x, y)
 
     torch.testing.assert_close(out, ref)
 
@@ -79,6 +95,8 @@ def test_floor_divide_scalar_tensor(x_dtype, y_dtype):
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test_floor_divide_float(shape, dtype):
+    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
+        pytest.skip("Issue #3796: not working")
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp1 = utils.to_reference(inp1, False)
@@ -96,6 +114,8 @@ def test_floor_divide_float(shape, dtype):
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test_floor_divide_float_(shape, dtype):
+    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
+        pytest.skip("Issue #3796: not working")
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp1 = utils.to_reference(inp1.clone(), False)
@@ -112,6 +132,9 @@ def test_floor_divide_float_(shape, dtype):
 @pytest.mark.skipif(flag_gems.vendor_name == "aipu", reason="Issue #3025")
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_floor_divide_int(shape, dtype):
     inp1 = torch.randint(
         torch.iinfo(dtype).min,

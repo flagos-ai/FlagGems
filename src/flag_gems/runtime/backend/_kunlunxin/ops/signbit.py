@@ -1,0 +1,55 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import logging
+
+import triton
+import triton.language as tl
+
+from flag_gems.utils import pointwise_dynamic
+
+logger = logging.getLogger(__name__)
+
+
+@pointwise_dynamic(promotion_methods=[(0, "ALWAYS_BOOL")])
+@triton.jit
+def signbit_func(x):
+    if tl.constexpr(x.dtype.is_fp32()):
+        xi32 = x.to(tl.int32, bitcast=True)
+        return xi32 < 0
+    elif tl.constexpr(x.dtype.is_fp16()):
+        xi16 = x.to(tl.int16, bitcast=True)
+        return xi16 < 0
+    elif tl.constexpr(x.dtype.is_bf16()):
+        xf32 = x.to(tl.float32)
+        xi32 = xf32.to(tl.int32, bitcast=True)
+        return xi32 < 0
+    elif tl.constexpr(x.dtype.is_fp64()):
+        xi64 = x.to(tl.int64, bitcast=True)
+        return xi64 < 0
+    else:
+        return x < 0
+
+
+def signbit(A):
+    logger.debug("GEMS_KUNLUNXIN SIGNBIT")
+    return signbit_func(A)
+
+
+def signbit_out(A, *, out=None):
+    logger.debug("GEMS_KUNLUNXIN SIGNBIT_OUT")
+    if out is None:
+        return signbit_func(A)
+    signbit_func(A, out0=out)
+    return out

@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -9,7 +23,6 @@ from flag_gems.utils import pointwise_dynamic, tl_extra_shim
 # TODO: Check if this logger instantiation is good
 logger = logging.getLogger(__name__)
 div_rn = tl_extra_shim.div_rn
-div_rz = tl_extra_shim.div_rz
 fmod = tl_extra_shim.fmod
 trunc = tl_extra_shim.trunc
 
@@ -33,7 +46,7 @@ def true_div_func_scalar_tensor(x, y):
 
 
 def true_divide(A, B):
-    logger.debug("GEMS TRUE_DIVIDE")
+    logger.debug("GEMS_ILUVATAR TRUE_DIVIDE")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         return true_div_func(A, B)
     elif isinstance(A, torch.Tensor):
@@ -46,7 +59,7 @@ def true_divide(A, B):
 
 
 def true_divide_(A, B):
-    logger.debug("GEMS TRUE_DIVIDE_")
+    logger.debug("GEMS_ILUVATAR TRUE_DIVIDE_")
     if isinstance(B, torch.Tensor):
         return true_div_func(A, B, out0=A)
     else:
@@ -56,23 +69,54 @@ def true_divide_(A, B):
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def trunc_div_func(x, y):
-    return trunc(x / y)
+    # Use IEEE 754 RNE division (div_rn) then trunc, matching PyTorch's
+    # trunc_divide semantics.  div_rz (RTZ) and Triton's default f32 `/`
+    # (fdiv.approx) both give wrong results when the exact quotient falls
+    # just below an integer boundary.
+    return trunc(div_rn(x, y))
 
 
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def trunc_div_func_tensor_scalar(x, y):
-    return trunc(div_rz(x, y))
+    return trunc(div_rn(x, tl.cast(y, x.dtype)))
 
 
 @pointwise_dynamic(is_tensor=[False, True], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def trunc_div_func_scalar_tensor(x, y):
-    return trunc(div_rz(x, y))
+    return trunc(div_rn(tl.cast(x, y.dtype), y))
+
+
+# Integer truncation division: Triton's // on integers is C-style (truncates toward zero)
+@pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
+@triton.jit
+def trunc_div_int_func(x, y):
+    return x // y
+
+
+@pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")])
+@triton.jit
+def trunc_div_int_func_tensor_scalar(x, y):
+    return x // y
+
+
+@pointwise_dynamic(is_tensor=[False, True], promotion_methods=[(0, 1, "DEFAULT")])
+@triton.jit
+def trunc_div_int_func_scalar_tensor(x, y):
+    return x // y
 
 
 def trunc_divide(A, B):
-    logger.debug("GEMS TRUNC_DIVIDE")
+    logger.debug("GEMS_ILUVATAR TRUNC_DIVIDE")
+    # Integer types: use dedicated int kernels (Triton // is C-style truncation)
+    if isinstance(A, torch.Tensor) and not A.is_floating_point():
+        if isinstance(B, torch.Tensor):
+            return trunc_div_int_func(A, B)
+        else:
+            return trunc_div_int_func_tensor_scalar(A, B)
+    if isinstance(B, torch.Tensor) and not B.is_floating_point():
+        return trunc_div_int_func_scalar_tensor(A, B)
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         return trunc_div_func(A, B)
     elif isinstance(A, torch.Tensor):
@@ -85,7 +129,13 @@ def trunc_divide(A, B):
 
 
 def trunc_divide_(A, B):
-    logger.debug("GEMS TRUNC_DIVIDE_")
+    logger.debug("GEMS_ILUVATAR TRUNC_DIVIDE_")
+    # Integer types: use dedicated int kernels (Triton // is C-style truncation)
+    if not A.is_floating_point():
+        if isinstance(B, torch.Tensor):
+            return trunc_div_int_func(A, B, out0=A)
+        else:
+            return trunc_div_int_func_tensor_scalar(A, B, out0=A)
     if isinstance(B, torch.Tensor):
         return trunc_div_func(A, B, out0=A)
     else:
@@ -123,13 +173,18 @@ def _int_floordiv(x, y):
 # https://github.com/pytorch/pytorch/blob/d6d9183456cd07ca0b361a194b98c2fb196e7c36/c10/util/generic_math.h#L23
 @triton.jit
 def _float_floordiv(x, y):
+    # Cast to float32 for fmod/div_rn which only support fp32/fp64 on CUDA
+    orig_dtype = x.dtype
+    x_fp32 = x.to(tl.float32)
+    y_fp32 = y.to(tl.float32)
+
     # NOTE: fmod's sign is the same as the dividend
-    remainder = fmod(x, y)
+    remainder = fmod(x_fp32, y_fp32)
     imperfect = remainder != 0.0
-    different_sign = (x < 0) ^ (y < 0)
+    different_sign = (x_fp32 < 0) ^ (y_fp32 < 0)
 
     # NOTE: we have to use div_rn explicitly here
-    q = div_rn(x - remainder, y)
+    q = div_rn(x_fp32 - remainder, y_fp32)
     q = tl.where(imperfect & different_sign, q - 1, q)
 
     floor_q = tl.math.floor(q)
@@ -139,16 +194,16 @@ def _float_floordiv(x, y):
     q_is_zeros = q == 0.0
     floor_q = tl.where(q_is_zeros, tl.where(different_sign, -0.0, 0.0), floor_q)
 
-    is_div_by_zero = y == 0.0
-    float_division = x / y
+    is_div_by_zero = y_fp32 == 0.0
+    float_division = x_fp32 / y_fp32
     out = tl.where(is_div_by_zero, float_division, floor_q)
-    return out
+    return out.to(orig_dtype)
 
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def floor_div_func(x, y):
-    if x.type.scalar.is_int() & x.type.scalar.is_int():
+    if x.type.scalar.is_int() & y.type.scalar.is_int():
         return _int_floordiv(x, y)
     else:
         return _float_floordiv(x, y)
@@ -157,7 +212,7 @@ def floor_div_func(x, y):
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def floor_div_func_tensor_scalar(x, y):
-    if x.type.scalar.is_int() & x.type.scalar.is_int():
+    if x.type.scalar.is_int() & y.type.scalar.is_int():
         return _int_floordiv(x, y)
     else:
         return _float_floordiv(x, y)
@@ -166,14 +221,14 @@ def floor_div_func_tensor_scalar(x, y):
 @pointwise_dynamic(is_tensor=[False, True], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def floor_div_func_scalar_tensor(x, y):
-    if x.type.scalar.is_int() & x.type.scalar.is_int():
+    if x.type.scalar.is_int() & y.type.scalar.is_int():
         return _int_floordiv(x, y)
     else:
         return _float_floordiv(x, y)
 
 
 def floor_divide(A, B):
-    logger.debug("GEMS FLOOR_DIVIDE")
+    logger.debug("GEMS_ILUVATAR FLOOR_DIVIDE")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         return floor_div_func(A, B)
     elif isinstance(A, torch.Tensor):
@@ -186,7 +241,7 @@ def floor_divide(A, B):
 
 
 def floor_divide_(A, B):
-    logger.debug("GEMS FLOOR_DIVIDE_")
+    logger.debug("GEMS_ILUVATAR FLOOR_DIVIDE_")
     if isinstance(B, torch.Tensor):
         return floor_div_func(A, B, out0=A)
     else:
@@ -244,7 +299,7 @@ def rem_st(x, y):
 
 
 def remainder(A, B):
-    logger.debug("GEMS FLOOR_DIVIDE")
+    logger.debug("GEMS_ILUVATAR REMAINDER")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         return rem_tt(A, B)
     elif isinstance(A, torch.Tensor):
@@ -257,7 +312,7 @@ def remainder(A, B):
 
 
 def remainder_(A, B):
-    logger.debug("GEMS REMAINDER_")
+    logger.debug("GEMS_ILUVATAR REMAINDER_")
     if isinstance(B, torch.Tensor):
         return rem_tt(A, B, out0=A)
     else:

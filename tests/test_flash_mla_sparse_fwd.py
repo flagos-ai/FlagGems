@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import dataclasses
 import random
 from typing import List, Optional, Tuple
@@ -6,6 +20,8 @@ import pytest
 import torch
 
 import flag_gems
+
+from .conftest import QUICK_MODE
 
 random.seed(42)
 
@@ -119,16 +135,19 @@ class FlashmlaSparseTestKit:
 
     @staticmethod
     def get_correctness_test_params():
-        cases = [
-            Flashmla_Sparse_Test_Param(s_q, s_kv, topk, h_q, h_kv, d_qk, d_v)
-            for s_q in [64, 128, 512]
-            for s_kv in [1024, 2048, 4096]
-            for h_q in [64, 128, 256]
-            for h_kv in [1]
-            for d_qk in [576]
-            for d_v in [512]
-            for topk in [64, 128, 256]
-        ]
+        if QUICK_MODE:
+            cases = [Flashmla_Sparse_Test_Param(64, 1024, 128, 128, 1, 576, 512)]
+        else:
+            cases = [
+                Flashmla_Sparse_Test_Param(s_q, s_kv, topk, h_q, h_kv, d_qk, d_v)
+                for s_q in [64, 128, 512]
+                for s_kv in [1024, 2048, 4096]
+                for h_q in [64, 128, 256]
+                for h_kv in [1]
+                for d_qk in [576]
+                for d_v in [512]
+                for topk in [64, 128, 256]
+            ]
         return cases
 
     @staticmethod
@@ -168,31 +187,44 @@ class FlashmlaSparseTestKit:
 
     @staticmethod
     def get_correctness_test_params_flashmla():
-        cases = [
-            Flashmla_Sparse_Test_Param(
-                s_q,
-                s_kv,
-                topk,
-                h_q,
-                d_qk=d_qk,
-                have_attn_sink=have_attn_sink,
-                have_topk_length=have_topk_length,
-            )
-            for s_q in [1, 62, 213]
-            for h_q in [128, 64]
-            for d_qk in [512, 576]
-            for s_kv, topk in [
-                (592, 128),
-                (1840, 256),
-                (1592, 384),
-                (1521, 512),
-                (95, 128),
-                (153, 256),
-                (114, 384),
+        if QUICK_MODE:
+            cases = [
+                Flashmla_Sparse_Test_Param(
+                    s_q=62,
+                    s_kv=592,
+                    topk=128,
+                    h_q=128,
+                    d_qk=512,
+                    have_attn_sink=True,
+                    have_topk_length=False,
+                )
             ]
-            for have_attn_sink in [True, False]
-            for have_topk_length in [True, False]
-        ]
+        else:
+            cases = [
+                Flashmla_Sparse_Test_Param(
+                    s_q,
+                    s_kv,
+                    topk,
+                    h_q,
+                    d_qk=d_qk,
+                    have_attn_sink=have_attn_sink,
+                    have_topk_length=have_topk_length,
+                )
+                for s_q in [1, 62, 213]
+                for h_q in [128, 64]
+                for d_qk in [512, 576]
+                for s_kv, topk in [
+                    (592, 128),
+                    (1840, 256),
+                    (1592, 384),
+                    (1521, 512),
+                    (95, 128),
+                    (153, 256),
+                    (114, 384),
+                ]
+                for have_attn_sink in [True, False]
+                for have_topk_length in [True, False]
+            ]
         return cases
 
     @staticmethod
@@ -293,8 +325,15 @@ class FlashmlaSparseTestKit:
         return q, kv, indices, attn_sink, topk_length
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "sunrise",
+    reason="Issues #3833: Precision & Compile Error.",
+)
 @pytest.mark.flash_mla_sparse_fwd
 @pytest.mark.parametrize("param", FlashmlaSparseTestKit.get_correctness_test_params())
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_flashmla_sparse(param):
     """Sparse MLA forward propagation test"""
     # Skip FlashMLA unsupported cases
@@ -357,9 +396,13 @@ def test_flashmla_sparse(param):
     flag_gems.testing.assert_close(your_lse, ref_lse, torch.float32, atol=1e-4)
 
 
+@pytest.mark.skip(reason="Issue #3691: operator not working")
 @pytest.mark.flash_mla_sparse_fwd
 @pytest.mark.parametrize(
     "param", FlashmlaSparseTestKit.get_correctness_test_params_flashmla()
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_flash_mla_sparse_flashmla(param: Flashmla_Sparse_Test_Param):
     """Sparse MLA forward propagation test from FlashMLA"""

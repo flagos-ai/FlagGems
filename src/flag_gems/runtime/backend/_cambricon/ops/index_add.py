@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import importlib
 import logging
 import os
@@ -11,7 +25,7 @@ from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 def cfggen():
@@ -25,8 +39,8 @@ def cfggen():
     return configs
 
 
-@libentry()
 @triton.autotune(configs=cfggen(), key=["M", "N"])
+@libentry()
 @triton.jit
 def index_add_kernel(
     inp,
@@ -47,7 +61,7 @@ def index_add_kernel(
 
     rows_mask = rows_offsets < M
     index_mask = cols_offsets < N
-    block_mask = rows_mask and index_mask
+    block_mask = rows_mask & index_mask
 
     cur_indices = tl.load(index + cols_offsets, mask=index_mask, other=0)
     inp_off = rows_offsets * inp_len + cur_indices[None, :]
@@ -60,9 +74,9 @@ def index_add_kernel(
 
 
 def index_add(inp, dim, index, src, alpha=1):
-    logger.debug("GEMS_CAMBRICON INDEX ADD")
+    logger.debug("GEMS_CAMBRICON INDEX_ADD")
     assert ((0 <= index) * (index < inp.size(dim))).equal(
-        torch.ones(tuple(index.shape), dtype=torch.bool, device="cuda")
+        torch.ones(tuple(index.shape), dtype=torch.bool, device="mlu")
     ), "0 <= index < self.size(dim)"
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     assert index.numel() == src.size(
@@ -309,7 +323,7 @@ _index_add_func = IndexAddFunction()
 
 
 def index_add_(inp, dim, index, src, alpha=1):
-    logger.debug("GEMS_CAMBRICON INDEX ADD_")
+    logger.debug("GEMS_CAMBRICON INDEX_ADD_")
     assert ((0 <= index) * (index < inp.size(dim))).equal(
         torch.ones(tuple(index.shape), dtype=torch.bool, device=inp.device)
     ), "0 <= index < self.size(dim)"

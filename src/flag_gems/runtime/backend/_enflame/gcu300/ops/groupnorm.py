@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -38,7 +52,7 @@ def group_norm_kernel(
     wb_mask = wb_offset < C
 
     xy_offset = pid * num_elements + group_offset[:, None] * HW + hw_offset[None, :]
-    xy_mask = wb_offset[:, None] < C and hw_offset[None, :] < HW
+    xy_mask = (wb_offset[:, None] < C) & (hw_offset[None, :] < HW)
 
     Mean_ptr = Mean + pid
     Rstd_ptr = Rstd + pid
@@ -157,7 +171,7 @@ def weight_bias_backward_kernel(
     group = pid // group_size
     n_offset = tl.arange(0, BLOCK_N)
     hw_offset = tl.arange(0, BLOCK_HW)
-    xy_mask = n_offset[:, None] < N and hw_offset[None, :] < HW
+    xy_mask = (n_offset[:, None] < N) & (hw_offset[None, :] < HW)
     mr_mask = n_offset < N
 
     mean_ptr = Mean + group + n_offset * num_groups
@@ -181,7 +195,7 @@ def weight_bias_backward_kernel(
 
 
 def group_norm(input, weight, bias, N, C, HxW, group, eps=1e-05):
-    logger.debug("GEMS GROUPNORM FORWARD")
+    logger.debug("GEMS_ENFLAME GROUP_NORM")
 
     group_size = triton.cdiv(C, group)
     input = input.contiguous()
@@ -215,7 +229,7 @@ def group_norm(input, weight, bias, N, C, HxW, group, eps=1e-05):
 def group_norm_backward(
     grad_out, input, mean, rstd, weight, N, C, HxW, group, output_mask
 ):
-    logger.debug("GEMS GROUPNORM BACKWARD")
+    logger.debug("GEMS_ENFLAME GROUP_NORM_BACKWARD")
 
     grad_out = grad_out.contiguous()
     input = input.contiguous()

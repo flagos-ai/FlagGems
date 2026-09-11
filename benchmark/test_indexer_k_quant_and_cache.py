@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import os
 
 import pytest
@@ -76,7 +90,7 @@ class IndexerKQuantAndCacheBenchmark(base.Benchmark):
         super().__init__(
             op_name="indexer_k_quant_and_cache",
             torch_op=vllm_op,
-            dtypes=[torch.float16, torch.bfloat16],
+            dtypes=[torch.float16, torch.bfloat16],  # vLLM supports both K dtypes.
         )
         self.set_gems(indexer_k_quant_and_cache)
         self.shape_desc = (
@@ -84,11 +98,49 @@ class IndexerKQuantAndCacheBenchmark(base.Benchmark):
         )
 
     def set_shapes(self, shape_file_path=None):
+        head_dim = 512
+        quant_block_size = 128
+        block_size = 16
+        token_sweep = (
+            1,
+            2,
+            4,
+            8,
+            16,
+            17,
+            32,
+            64,
+            128,
+            256,
+            512,
+            1024,
+            2048,
+            4096,
+            8192,
+            16384,
+            32768,
+            65536,
+        )
         self.shapes = [
-            (128, 16, 16, 128, 128),
-            (512, 64, 16, 128, 128),
-            (1024, 128, 16, 512, 128),
-            (2048, 256, 16, 512, 128),
+            (
+                num_tokens,
+                max(1, (2 * num_tokens + block_size - 1) // block_size),
+                block_size,
+                head_dim,
+                quant_block_size,
+            )
+            for num_tokens in token_sweep
+        ]
+        block_size = 64
+        self.shapes += [
+            (
+                num_tokens,
+                max(1, (2 * num_tokens + block_size - 1) // block_size),
+                block_size,
+                head_dim,
+                quant_block_size,
+            )
+            for num_tokens in (8192, 32768, 65536)
         ]
 
     def get_input_iter(self, dtype):
