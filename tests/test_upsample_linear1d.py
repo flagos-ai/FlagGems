@@ -160,6 +160,7 @@ def upsample_linear1d_backward_call(grad, input_size, align_corners):
     return out.reshape(orig_shape)
 
 
+# CI probe: schedule the upsample_linear1d_backward changed-test path.
 @pytest.mark.upsample_linear1d_backward
 @pytest.mark.parametrize(
     "shape",

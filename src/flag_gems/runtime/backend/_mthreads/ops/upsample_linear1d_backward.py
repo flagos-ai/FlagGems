@@ -154,6 +154,7 @@ def _last(x):
 def upsample_linear1d_backward(
     grad_output, output_size, input_size, align_corners, scale_factors=None
 ):
+    # CI probe: schedule the Moore Threads backend test job.
     logger.debug("GEMS_MTHREADS UPSAMPLE_LINEAR1D_BACKWARD")
     if (
         not isinstance(grad_output, torch.Tensor)
