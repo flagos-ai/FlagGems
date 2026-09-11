@@ -231,103 +231,142 @@ class IndexAddFunction:
 _index_add_func = IndexAddFunction()
 
 
+def _normalize_dim(inp, dim):
+    if inp.ndim == 0:
+        raise AssertionError("Expected self to have at least one dimension")
+    if dim < -inp.ndim or dim >= inp.ndim:
+        raise IndexError(
+            f"Dimension out of range (expected to be in range of "
+            f"[{-inp.ndim}, {inp.ndim - 1}], but got {dim})"
+        )
+    return dim % inp.ndim
+
+
+def _validate_index_add_args(inp, dim, index, src):
+    dim = _normalize_dim(inp, dim)
+    if index.ndim > 1:
+        raise AssertionError("Index is supposed to be a vector")
+    if index.dtype not in (torch.int32, torch.int64):
+        raise AssertionError("Expected dtype int32/int64 for index")
+    if inp.dtype != src.dtype:
+        raise AssertionError("Self and source should have the same dtype")
+    if inp.device != src.device:
+        raise AssertionError("Self and source should be on the same device")
+    if index.device != inp.device:
+        raise AssertionError("Index and self should be on the same device")
+    if inp.ndim != src.ndim:
+        raise AssertionError(
+            "Self and source should have the same number of dimensions"
+        )
+    if not all(inp.size(i) == src.size(i) for i in range(inp.ndim) if i != dim):
+        raise AssertionError("src.size(d) == self.size(d) for all dimensions d != dim")
+    if index.numel() != src.size(dim):
+        raise AssertionError(
+            "The dimth dimension of source must have the same size as the length of index"
+        )
+    return dim
+
+
+def _resolve_index_for_kernel(index):
+    # Pointer-based kernels see physical storage rather than the lazy negative
+    # bit. Materialize the logical index values before bounds checking/launch.
+    if index.is_neg():
+        return torch.neg(torch._neg_view(index))
+    return index
+
+
+def _assert_index_in_bounds(index, upper_bound):
+    if index.numel() == 0:
+        return
+    valid = (0 <= index) * (index < upper_bound)
+    if not valid.equal(
+        torch.ones(tuple(index.shape), dtype=torch.bool, device=index.device)
+    ):
+        raise AssertionError("0 <= index < self.size(dim)")
+
+
+def _launch_index_add(out, dim, index, src, alpha):
+    inp_stride_dim = out.stride(dim)
+    src_shape_dim = src.size(dim)
+    inp_shape_dim = out.size(dim)
+    delta = inp_shape_dim - src_shape_dim
+    N = src.numel()
+
+    _index_add_func(
+        out,
+        index,
+        src,
+        dim,
+        inp_stride_dim,
+        inp_shape_dim,
+        src_shape_dim,
+        delta,
+        N,
+        out.numel(),
+        alpha,
+    )
+    return out
+
+
 def index_add(inp, dim, index, src, alpha=1):
     logger.debug("GEMS INDEX ADD")
-    assert ((0 <= index) * (index < inp.size(dim))).equal(
-        torch.ones(tuple(index.shape), dtype=torch.bool, device=inp.device)
-    ), "0 <= index < self.size(dim)"
-    assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
-    assert index.numel() == src.size(
-        dim
-    ), "The dimth dimension of source must have the same size as the length of index"
-    assert (
-        inp.ndim == src.ndim
-    ), "Self and source should have the same number of dimensions"
-    assert (
-        ((inp.size(i) == src.size(i)) or i == dim) for i in range(0, inp.ndim)
-    ), "src.size(d) == self.size(d) for all dimensions d != dim"
+    dim = _validate_index_add_args(inp, dim, index, src)
+    if src.numel() == 0:
+        return inp.clone(memory_format=torch.contiguous_format)
+
+    index = _resolve_index_for_kernel(index).contiguous()
+    _assert_index_in_bounds(index, inp.size(dim))
+
+    work_inp = inp.contiguous()
+    work_src = src.contiguous()
 
     # MetaX workaround: tl.atomic_add does not support bf16 in MLIR backend.
     # Cast to float32, perform the operation, and cast back.
     orig_dtype = inp.dtype
     needs_cast = orig_dtype == torch.bfloat16
     if needs_cast:
-        out = inp.clone().to(torch.float32)
-        src = src.to(torch.float32)
+        out = work_inp.to(torch.float32)
+        work_src = work_src.to(torch.float32)
     else:
-        out = inp.clone()
+        out = work_inp.clone(memory_format=torch.contiguous_format)
 
-    dim %= inp.ndim
-    inp_stride_dim = inp.stride(dim)
-    src_shape_dim = src.size(dim)
-    inp_shape_dim = inp.size(dim)
-    delta = inp.size(dim) - src_shape_dim
-    N = src.numel()
-
-    _index_add_func(
-        out,
-        index,
-        src,
-        dim,
-        inp_stride_dim,
-        inp_shape_dim,
-        src_shape_dim,
-        delta,
-        N,
-        inp.numel(),
-        alpha,
-    )
-    if needs_cast:
-        return out.to(orig_dtype)
-    return out
+    out = _launch_index_add(out, dim, index, work_src, alpha)
+    return out.to(orig_dtype) if needs_cast else out
 
 
 def index_add_(inp, dim, index, src, alpha=1):
     logger.debug("GEMS INDEX ADD_")
-    assert ((0 <= index) * (index < inp.size(dim))).equal(
-        torch.ones(tuple(index.shape), dtype=torch.bool, device=inp.device)
-    ), "0 <= index < self.size(dim)"
-    assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
-    assert index.numel() == src.size(
-        dim
-    ), "The dimth dimension of source must have the same size as the length of index"
-    assert (
-        inp.ndim == src.ndim
-    ), "Self and source should have the same number of dimensions"
-    assert (
-        ((inp.size(i) == src.size(i)) or i == dim) for i in range(0, inp.ndim)
-    ), "src.size(d) == self.size(d) for all dimensions d != dim"
+    dim = _validate_index_add_args(inp, dim, index, src)
+    if src is inp or index is inp:
+        raise RuntimeError(
+            "input overlaps with source or index; clone the overlapping tensor "
+            "before calling index_add_"
+        )
+    if src.numel() == 0:
+        return inp
+    if torch._C._is_alias_of(inp, src) or torch._C._is_alias_of(inp, index):
+        raise RuntimeError(
+            "input overlaps with source or index; clone the overlapping tensor "
+            "before calling index_add_"
+        )
+
+    index = _resolve_index_for_kernel(index).contiguous()
+    _assert_index_in_bounds(index, inp.size(dim))
+
+    work_inp = inp if inp.is_contiguous() else inp.contiguous()
+    work_src = src.contiguous()
 
     # MetaX workaround: tl.atomic_add does not support bf16 in MLIR backend.
     # Cast to float32, perform the operation, and cast back in-place.
     orig_dtype = inp.dtype
     needs_cast = orig_dtype == torch.bfloat16
     if needs_cast:
-        out = inp.to(torch.float32)
-        src = src.to(torch.float32)
+        out = work_inp.to(torch.float32)
+        work_src = work_src.to(torch.float32)
     else:
-        out = inp
+        out = work_inp
 
-    dim %= inp.ndim
-    inp_stride_dim = inp.stride(dim)
-    src_shape_dim = src.size(dim)
-    inp_shape_dim = inp.size(dim)
-    delta = inp.size(dim) - src_shape_dim
-    N = src.numel()
-
-    _index_add_func(
-        out,
-        index,
-        src,
-        dim,
-        inp_stride_dim,
-        inp_shape_dim,
-        src_shape_dim,
-        delta,
-        N,
-        inp.numel(),
-        alpha,
-    )
-    if needs_cast:
-        inp.copy_(out.to(orig_dtype))
+    out = _launch_index_add(out, dim, index, work_src, alpha)
+    if out is not inp:
+        inp.copy_(out.to(orig_dtype) if needs_cast else out)
     return inp

@@ -21,6 +21,7 @@ from .groupnorm import group_norm
 from .gru import gru, gru_data
 from .hadamard_transform import hadamard_transform
 from .index import index
+from .index_add import index_add, index_add_
 from .index_put import index_put, index_put_
 from .index_select import index_select
 from .isin import isin
@@ -115,6 +116,8 @@ __all__ = [
     "gru_data",
     "hadamard_transform",
     "index",
+    "index_add",
+    "index_add_",
     "index_put",
     "index_put_",
     "index_select",
