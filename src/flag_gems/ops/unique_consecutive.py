@@ -355,10 +355,10 @@ def simple_unique_consecutive_flat(
             num_warps=8,
         )
 
-    out_size = unique_size.item()
+    out_size = int(unique_size.item())
     counts = None
     if return_counts:
-        idx = idx[:out_size]
+        idx = idx.narrow(0, 0, out_size)
         counts = torch.empty_like(idx)
         with torch_device_fn.device(data.device.index):
             output_counts_kernel[grid](
@@ -371,7 +371,7 @@ def simple_unique_consecutive_flat(
                 num_warps=8,
             )
 
-    return data_out[:out_size], inverse_indices, counts
+    return data_out.narrow(0, 0, out_size), inverse_indices, counts
 
 
 def large_unique_consecutive_flat(
@@ -444,11 +444,11 @@ def large_unique_consecutive_flat(
             return_counts=return_counts,
             num_warps=num_warps,
         )
-        out_size = tile_sum[-1].item()
+        out_size = int(tile_sum[-1].item())
 
         counts = None
         if return_counts:
-            idx = idx[:out_size]
+            idx = idx.narrow(0, 0, out_size)
             counts = torch.empty_like(idx)
             output_counts_kernel[grid](
                 idx,
@@ -460,7 +460,7 @@ def large_unique_consecutive_flat(
                 num_warps=num_warps,
             )
 
-    return data_out[:out_size], inverse_indices, counts
+    return data_out.narrow(0, 0, out_size), inverse_indices, counts
 
 
 def unique_consecutive(
