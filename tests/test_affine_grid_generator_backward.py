@@ -52,10 +52,9 @@ def test_affine_grid_generator_backward_2d(shape, dtype, align_corners):
         ref_grad_output, size, align_corners
     )
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.affine_grid_generator_backward(
-            grad_output, size, align_corners
-        )
+    res_out = torch.ops.aten.affine_grid_generator_backward(
+        grad_output, size, align_corners
+    )
 
     # Reduction over H*W*2 (each spatial point has 2 coordinates) introduces
     # ordering differences in floating-point accumulation; relax tolerance
@@ -77,9 +76,8 @@ def test_affine_grid_generator_backward_3d(shape, dtype, align_corners):
         ref_grad_output, size, align_corners
     )
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.affine_grid_generator_backward(
-            grad_output, size, align_corners
-        )
+    res_out = torch.ops.aten.affine_grid_generator_backward(
+        grad_output, size, align_corners
+    )
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=D * H * W * 3)
