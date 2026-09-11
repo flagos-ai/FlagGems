@@ -222,8 +222,8 @@ def test_ldexp_overlapping_operands_(overlap):
 def test_ldexp_rejects_internally_overlapping_self_():
     self = torch.ones((1,), device=flag_gems.device).expand(4)
     other = torch.ones((4,), dtype=torch.int32, device=flag_gems.device)
-    ref_self = utils.to_reference(self, True)
-    ref_other = utils.to_reference(other)
+    ref_self = torch.ones((1,)).expand(4)
+    ref_other = torch.ones((4,), dtype=torch.int32)
 
     with pytest.raises(RuntimeError):
         ref_self.ldexp_(ref_other)
