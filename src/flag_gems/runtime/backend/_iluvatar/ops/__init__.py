@@ -22,6 +22,7 @@ from .adaptive_max_pool2d_backward import adaptive_max_pool2d_backward
 from .adaptive_max_pool3d_backward import run
 from .addmm import addmm, addmm_out
 from .addmm_ import addmm_
+from .arccos_ import arccos_
 from .arccosh_ import arccosh_
 from .as_strided_scatter import as_strided_scatter
 from .avg_pool3d import avg_pool3d_backward
@@ -126,6 +127,7 @@ __all__ = [
     "addmm",
     "addmm_",
     "addmm_out",
+    "arccos_",
     "arccosh_",
     "as_strided_scatter",
     "avg_pool3d_backward",
