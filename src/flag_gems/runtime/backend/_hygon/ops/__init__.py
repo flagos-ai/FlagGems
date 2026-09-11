@@ -40,6 +40,7 @@ from .broadcast_to import broadcast_to
 from .cholesky_inverse import cholesky_inverse
 from .conj_physical import conj_physical
 from .cudnn_convolution import cudnn_convolution
+from .diagonal_scatter import diagonal_scatter
 from .diff import diff
 from .div import (
     div_mode,
@@ -183,6 +184,7 @@ __all__ = [
     "cholesky_inverse",
     "conj_physical",
     "cudnn_convolution",
+    "diagonal_scatter",
     "diff",
     "div_mode",
     "div_mode_",
