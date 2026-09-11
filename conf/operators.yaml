@@ -9301,6 +9301,26 @@ ops:
   - BLAS
   stages:
   - alpha: '5.4'
+- id: mm_w8a8_int8
+  description: Dynamically quantizes floating activation rows to INT8, multiplies prequantized INT8 weights with per-column scales, and dequantizes the output.
+  for:
+  - mm_w8a8_int8
+  labels:
+  - non-aten
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.4'
+- id: mm_w8a8_int8_out
+  description: A variant of mm_w8a8_int8 with caller-owned output.
+  for:
+  - mm_w8a8_int8_out
+  labels:
+  - non-aten
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.4'
 - id: mode
   description: Returns a namedtuple (values, indices) where values is the mode value
     of each row of the input tensor in the given dimension dim, i.e. a value which
