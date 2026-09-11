@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -92,9 +106,7 @@ def max_pool2d_forward_kernel(
     dtype = input_ptr.type.element_ty
     min_val = get_dtype_min(dtype)
     max_val_acc = tl.full((BLOCK_H, BLOCK_W), min_val, dtype=dtype)
-    # GCU300 does not support 64-bit data types; keep argmax indices in int32
-    # and cast back to int64 on the host after the kernel.
-    max_idx_acc = tl.full((BLOCK_H, BLOCK_W), -1, dtype=tl.int32)
+    max_idx_acc = tl.full((BLOCK_H, BLOCK_W), -1, dtype=tl.int64)
 
     input_base_ptr = input_ptr + n_idx * in_stride_n + c_idx * in_stride_c
 
@@ -293,14 +305,13 @@ def max_pool2d_with_indices(
     output = torch.empty(
         (in_n, in_c, out_h, out_w), device=input.device, dtype=input.dtype
     )
-    # GCU300 does not support 64-bit data types; allocate int32 indices for the
-    # kernel and cast back to int64 (torch returns int64 indices) afterwards.
-    indices_i32 = torch.empty(
+    # gcu300 don't support int64
+    indices = torch.empty(
         (in_n, in_c, out_h, out_w), device=input.device, dtype=torch.int32
     )
 
     if output.numel() == 0:
-        return output, indices_i32.to(torch.int64)
+        return output, indices
 
     grid = lambda meta: (
         in_n * in_c,
@@ -310,7 +321,7 @@ def max_pool2d_with_indices(
     max_pool2d_forward_kernel[grid](
         input,
         output,
-        indices_i32,
+        indices,
         input.stride(0),
         input.stride(1),
         input.stride(2),
@@ -330,7 +341,7 @@ def max_pool2d_with_indices(
         dilation_w,
     )
 
-    return output, indices_i32.to(torch.int64)
+    return output, indices
 
 
 def max_pool2d_backward(
@@ -346,11 +357,8 @@ def max_pool2d_backward(
     logger.debug("GEMS_ENFLAME MAX_POOL2D BACKWARD")
     grad_output = grad_output.contiguous()
     indices = indices.contiguous()
-
     # GCU300 does not support 64-bit data types; the backward kernel loads and
     # compares indices, so an int64 indices tensor would trigger a 64-bit load.
-    # Downcast to int32 for the kernel (values are flat spatial indices < 2^31
-    # for any supported spatial extent).
     if indices.dtype == torch.int64:
         indices = indices.to(torch.int32)
 
@@ -405,3 +413,20 @@ def max_pool2d_backward(
     )
 
     return grad_input.to(grad_output.dtype)
+
+
+def max_pool2d_with_indices_backward(
+    grad_output: torch.Tensor,
+    self: torch.Tensor,
+    kernel_size,
+    stride,
+    padding,
+    dilation,
+    ceil_mode: bool,
+    indices: torch.Tensor,
+):
+    """Wrapper matching the aten::max_pool2d_with_indices_backward schema."""
+    logger.debug("GEMS_ENFLAME MAX_POOL2D_WITH_INDICES_BACKWARD")
+    return max_pool2d_backward(
+        grad_output, self, indices, kernel_size, stride, padding, dilation, ceil_mode
+    )

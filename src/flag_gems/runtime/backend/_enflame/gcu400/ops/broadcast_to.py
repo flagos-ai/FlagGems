@@ -25,6 +25,46 @@ logger = logging.getLogger(__name__)
 
 
 @triton.jit
+def broadcast_to_repeat_kernel(
+    x_ptr,
+    out_ptr,
+    n_elements,
+    BLOCK_SIZE: tl.constexpr,
+    X: tl.constexpr,
+):
+    """1D flat 周期复制: out[o] = x[o % X], 每 X 个连续输出 = x 全量。
+
+    X 作 constexpr 使编译器将 `% X` 折叠为位与 (2 幂) 或乘逆 (一般),
+    消除逐元素整数除法。仅适用于 x contiguous 且为 out 尾段的复制单元。
+    """
+    pid = tl.program_id(axis=0)
+    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+    v = tl.load(x_ptr + offsets % X, mask=mask)
+    tl.store(out_ptr + offsets, v, mask=mask)
+
+
+@triton.jit
+def broadcast_to_row_kernel(
+    x_ptr,
+    out_ptr,
+    rows,
+    cols,
+    BLOCK_SIZE: tl.constexpr,
+    NUM_GRID: tl.constexpr,
+):
+    pid = tl.program_id(axis=0)
+    tiles_per_row = (cols + BLOCK_SIZE - 1) // BLOCK_SIZE
+    for task in range(pid, rows * tiles_per_row, NUM_GRID):
+        row = task // tiles_per_row
+        tile = task % tiles_per_row
+        v = tl.load(x_ptr + row)
+        col_offs = tile * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = col_offs < cols
+        tl.store(out_ptr + row * cols + col_offs, v, mask=mask)
+
+
+@triton.jit
 def broadcast_to_kernel(
     x_ptr,
     out_ptr,
@@ -34,30 +74,31 @@ def broadcast_to_kernel(
     out_cumprod_ptr,
     in_stride_ptr,
     BLOCK_SIZE: tl.constexpr,
-    MAX_DIMS: tl.constexpr,
+    NUM_GRID: tl.constexpr,
 ):
     pid = tl.program_id(axis=0)
-    block_start = pid * BLOCK_SIZE
-    offsets = block_start + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
+    n_tile = (n_elements + BLOCK_SIZE - 1) // BLOCK_SIZE
+    for tile_id in range(pid, n_tile, NUM_GRID):
+        block_start = tile_id * BLOCK_SIZE
+        offsets = block_start + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < n_elements
+        in_offsets = tl.zeros([BLOCK_SIZE], dtype=tl.int32)
+        for d in range(0, ndims):
+            s = tl.load(out_shape_ptr + d)
+            stride_right = tl.load(out_cumprod_ptr + d)
+            in_stride = tl.load(in_stride_ptr + d)
+            idx_d = (offsets // stride_right) % s
+            in_offsets += idx_d * in_stride
+        x = tl.load(x_ptr + in_offsets, mask=mask)
+        tl.store(out_ptr + offsets, x, mask=mask)
 
-    # Compute input offsets corresponding to each output linear index
-    in_offsets = tl.zeros([BLOCK_SIZE], dtype=tl.int64)
 
-    # Accumulate contributions per dimension
-    for d in range(MAX_DIMS):
-        # Load scalars defining the output decomposition and input strides
-        s = tl.load(out_shape_ptr + d)
-        stride_right = tl.load(out_cumprod_ptr + d)
-        in_stride = tl.load(in_stride_ptr + d)
-        # idx along dimension d for each linear offset
-        idx_d = (offsets // stride_right) % s
-        # contribution to input linear offset
-        in_offsets += idx_d * in_stride
-
-    # Load from input using computed offsets and store to output
-    x = tl.load(x_ptr + in_offsets, mask=mask)
-    tl.store(out_ptr + offsets, x, mask=mask)
+def _select_block_size(n_elements):
+    if n_elements <= 48 * 1024:
+        return 1024
+    if n_elements <= 48 * 16384:
+        return 16384
+    return 32768
 
 
 def broadcast_to(x, size):
@@ -86,14 +127,15 @@ def broadcast_to(x, size):
 
     if in_ndim > out_ndim:
         raise RuntimeError(
-            f"broadcast_to: requested size has fewer dimensions ({out_ndim}) than input ({in_ndim})"
+            f"broadcast_to: requested size has fewer dimensions ({out_ndim}) "
+            f"than input ({in_ndim})"
         )
 
     # Pad input shape/strides on the left to match output ndim
     if in_ndim < out_ndim:
         pad = out_ndim - in_ndim
         in_shape = [1] * pad + in_shape
-        # For padded (new) leading dims, stride effectively is 0 since they will be broadcast
+        # For padded (new) leading dims, stride effectively is 0
         in_strides = [0] * pad + in_strides
 
     # Resolve -1 and validate broadcastability
@@ -107,9 +149,10 @@ def broadcast_to(x, size):
             target = req
         if src != target and src != 1:
             raise RuntimeError(
-                f"The expanded size of the tensor ({target}) must match the existing size ({src}) "
-                f"at non-singleton dimension {d}. Target sizes must be the same, or -1, "
-                f"or the size of dimension in the original tensor must be 1."
+                f"The expanded size of the tensor ({target}) must match the "
+                f"existing size ({src}) at non-singleton dimension {d}. "
+                f"Target sizes must be the same, or -1, or the size of "
+                f"dimension in the original tensor must be 1."
             )
         out_shape.append(int(target))
 
@@ -117,58 +160,100 @@ def broadcast_to(x, size):
     if in_shape == out_shape:
         return x.expand(size)
 
+    n_elements = 1
+    for s in out_shape:
+        n_elements *= s
+    if n_elements == 0:
+        return torch.empty(out_shape, dtype=x.dtype, device=x.device)
+
+    # ---- int32 无法表达的极端输出: aten 物化 fallback ----
+    if n_elements >= 2**31:
+        return x.expand(size).contiguous()
+
+    out = torch.empty(out_shape, dtype=x.dtype, device=x.device)
+
+    # ---- Fast path: x contiguous 且构成 out 尾部重复单元 (常见 leading
+    # broadcast / addmm bias [N]->[M,N])。周期 X = 最长公共后缀积,
+    # 若 == x.numel(), 输出每 X 个连续元素恰为 x 全量, 一次 launch 周期复制。
+    x_numel = x.numel()
+    X = 1
+    if x.is_contiguous():
+        x_shape = list(x.shape)
+        for i in range(1, len(x_shape) + 1):
+            if out_shape[out_ndim - i] != x_shape[len(x_shape) - i]:
+                break
+            X *= x_shape[len(x_shape) - i]
+    if X == x_numel and X > 0 and n_elements % X == 0:
+        BLOCK_SIZE = _select_block_size(n_elements)
+        grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
+        broadcast_to_repeat_kernel[grid](
+            x,
+            out,
+            n_elements,
+            BLOCK_SIZE=BLOCK_SIZE,
+            X=X,
+            num_warps=4,
+        )
+        return out
+
+    # ---- Fast path 2: 尾部列扩展 x[..., 1] -> out[..., C] (每行标量行复制)。
+    # X fast path 在 x[-1]==1 处取模周期断裂而失效, 但逐行语义简单:
+    # out 可看作 (rows, cols), x 每行一个标量, 按行复制即可。
+    if (
+        x.is_contiguous()
+        and in_shape[-1] == 1
+        and out_shape[-1] > 1
+        and in_shape[:-1] == out_shape[:-1]
+    ):
+        rows = x.numel()
+        cols = out_shape[-1]
+        # 列宽对齐大 BLOCK 时整列/整行单任务更省调度; 否则回退小 BLOCK 防 mask 空转。
+        if cols % 4096 == 0:
+            BLOCK_SIZE = 4096
+        elif cols % 2048 == 0 and cols >= 2048:
+            BLOCK_SIZE = 2048
+        else:
+            BLOCK_SIZE = 1024
+        NUM_GRID = min(48, triton.cdiv(n_elements, BLOCK_SIZE))
+        grid = (NUM_GRID,)
+        broadcast_to_row_kernel[grid](
+            x,
+            out,
+            rows,
+            cols,
+            BLOCK_SIZE=BLOCK_SIZE,
+            NUM_GRID=NUM_GRID,
+            num_warps=4,
+        )
+        return out
+
+    # ---- General path: 逐维分解 ----
     # Effective input strides: 0 for broadcasted dims, original stride otherwise
     in_stride_eff = [
         int(in_strides[d]) if in_shape[d] != 1 else 0 for d in range(out_ndim)
     ]
 
-    # Prepare decomposition multipliers: product of sizes to the right for each dim
+    # Prepare decomposition multipliers: product of sizes to the right per dim
     out_cumprod_right = [0] * out_ndim
     prod = 1
     for d in range(out_ndim - 1, -1, -1):
         out_cumprod_right[d] = prod
         prod *= out_shape[d]
 
-    # Allocate output
-    out = torch.empty(out_shape, dtype=x.dtype, device=x.device)
-
-    n_elements = out.numel()
-    if n_elements == 0:
-        return out
-
-    # Triton kernel parameters
-    BLOCK_SIZE = 1024
-    if n_elements // BLOCK_SIZE > 48:
-        BLOCK_SIZE = 16384
-    if n_elements // BLOCK_SIZE > 48:
-        BLOCK_SIZE = 16384 * 2
-    MAX_DIMS = max(out_ndim, 1)  # at least 1
-    # Round up MAX_DIMS to a reasonable static upper bound for compilation (e.g., 16)
-    STATIC_MAX = 16
-    if MAX_DIMS > STATIC_MAX:
-        STATIC_MAX = MAX_DIMS
-
-    # Create device arrays for shapes/strides with padding for MAX_DIMS
-    pad_len = STATIC_MAX - out_ndim
-
-    # torch.tensor(..., device=cuda) first allocates on CPU then copies to CUDA.
-    # This implicit unpinned CPU->CUDA copy is illegal during CUDA graph capture
-    # (triggered by models with attention_bias=True or mlp_bias=True that route
-    # through addmm -> broadcast_to).
-    # Fix: allocate on CPU with pin_memory=True, then transfer non-blocking.
-    # The device.type guard avoids calling pin_memory() on CPU-only tensors.
-
+    # GCU 不支持 int64 tensor: shape/strides 元数据必须 int32。
     def _to_device(data, device):
-        t = torch.tensor(data, dtype=torch.int64, device="cpu")
+        t = torch.tensor(data, dtype=torch.int32, device="cpu")
         if device.type == flag_gems.device:
             t = t.pin_memory()
         return t.to(device, non_blocking=True)
 
-    out_shape_arr = _to_device(out_shape + [1] * pad_len, x.device)
-    out_cumprod_arr = _to_device(out_cumprod_right + [1] * pad_len, x.device)
-    in_stride_arr = _to_device(in_stride_eff + [0] * pad_len, x.device)
+    out_shape_arr = _to_device(out_shape, x.device)
+    out_cumprod_arr = _to_device(out_cumprod_right, x.device)
+    in_stride_arr = _to_device(in_stride_eff, x.device)
 
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    BLOCK_SIZE = _select_block_size(n_elements)
+    NUM_GRID = min(48, triton.cdiv(n_elements, BLOCK_SIZE))
+    grid = (NUM_GRID,)
 
     broadcast_to_kernel[grid](
         x,
@@ -179,6 +264,7 @@ def broadcast_to(x, size):
         out_cumprod_arr,
         in_stride_arr,
         BLOCK_SIZE=BLOCK_SIZE,
-        MAX_DIMS=STATIC_MAX,
+        NUM_GRID=NUM_GRID,
+        num_warps=4,
     )
     return out
