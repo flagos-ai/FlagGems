@@ -13841,6 +13841,19 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: split_with_sizes
+  description: |
+    Splits a tensor into sub-tensors along a given dimension,
+    where each split has a specified size. Returns views into the input.
+  for:
+    - split_with_sizes
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Tensor
+  stages:
+    - alpha: '5.4'
 - id: split_with_sizes_copy
   description: 'Splits a tensor into sub-tensors along a given dimension,
 
@@ -14499,7 +14512,7 @@ ops:
   stages:
   - beta: '5.3'
 - id: topk_w8a16_fp8
-  description: 'Returns the k largest (or smallest) elements of a group-wise FP8 E5M2
+  description: 'Returns the k largest (or smallest) elements of a group-wise FP8 E4M3FN/E5M2
     tensor along the last dimension, dequantizing with per-group scales.
 
     '
