@@ -50,6 +50,7 @@ from .full import full
 from .full_like import full_like
 from .gather import gather, gather_backward
 from .groupnorm import group_norm, group_norm_backward
+from .gru import gru, gru_data
 from .hadamard_transform import hadamard_transform
 from .hstack import hstack
 from .igammac import igammac, igammac_out
@@ -191,6 +192,8 @@ __all__ = [
     "gather_backward",
     "group_norm",
     "group_norm_backward",
+    "gru",
+    "gru_data",
     "hadamard_transform",
     "hstack",
     "igammac",
