@@ -70,7 +70,7 @@ class SparseSemiStructuredMMBenchmark(base.Benchmark):
                 0, 2, (M, K4), dtype=torch.bool, device=self.device
             )
             mat2 = torch.randn(4 * K4, N, dtype=cur_dtype, device=self.device)
-            yield mat1, mat1_meta, mat2, _to_aten_compressed(mat1, mat1_meta)
+            yield mat1, mat1_meta, mat2, *_to_aten_compressed(mat1, mat1_meta)
 
 
 class _AtenSparseMMAdapter:
