@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 import math
 from functools import reduce
@@ -10,6 +24,7 @@ from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry, libtuner
 from flag_gems.utils import triton_lang_extension as ext
+from flag_gems.utils.codegen_config_utils import get_codegen_config
 
 logger = logging.getLogger(__name__)
 
@@ -338,7 +353,11 @@ def mean_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
                     K,
                     BLOCK_SIZE_K=BLOCK_SIZE_K,
                     VEC_SIZE=VEC_SIZE,
-                    num_warps=8 if BLOCK_SIZE_K <= 128 else 16,
+                    num_warps=(
+                        8
+                        if BLOCK_SIZE_K <= 128
+                        else min(16, get_codegen_config().max_num_warps_per_cta)
+                    ),
                 )
             elif K > 1:
                 grid = lambda meta: (M, triton.cdiv(K, meta["TILE_K"]), 1)

@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 attention:
 - gen: true
   param_map:
@@ -24,6 +38,20 @@ attention:
   - 1
   - 2
   - 3
+attention_bwd:
+- gen: true
+  param_map:
+    META: metas
+    num_warps: warps
+    num_stages: stages
+  metas:
+    - {BLOCK_M1: 32, BLOCK_N1: 128, BLOCK_M2: 128, BLOCK_N2: 32}
+  warps:
+    - 4
+    - 8
+  stages:
+    - 1
+    - 2
 bmm:
   - META:
       TILE_M: 128
@@ -1582,3 +1610,34 @@ conv_transpose1d:
       BLOCK_IC: 16
     num_warps: 8
     num_stages: 1
+gru:
+  - META:
+      BLOCK_B: 16
+      BLOCK_N: 64
+      BLOCK_K: 64
+    num_warps: 4
+    num_stages: 3
+  - META:
+      BLOCK_B: 16
+      BLOCK_N: 128
+      BLOCK_K: 64
+    num_warps: 4
+    num_stages: 2
+  - META:
+      BLOCK_B: 16
+      BLOCK_N: 64
+      BLOCK_K: 32
+    num_warps: 4
+    num_stages: 3
+  - META:
+      BLOCK_B: 32
+      BLOCK_N: 128
+      BLOCK_K: 32
+    num_warps: 8
+    num_stages: 2
+  - META:
+      BLOCK_B: 32
+      BLOCK_N: 64
+      BLOCK_K: 64
+    num_warps: 8
+    num_stages: 2

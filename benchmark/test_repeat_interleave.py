@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
@@ -16,12 +30,14 @@ class RepeatInterleaveBenchmark(base.GenericBenchmark):
     to prevent excessive memory usage.
     """
 
+    DEFAULT_SHAPES = [
+        (16, 256, 256),
+        (128, 256, 256),
+        (64, 64, 64, 64),
+    ]
+
     def set_more_shapes(self):
-        return [
-            (16, 256, 256),
-            (512, 512, 512),
-            (64, 64, 64, 64),
-        ]
+        return []
 
 
 # repeat_interleave.self_int(Tensor self, SymInt repeats,
@@ -61,7 +77,7 @@ def repeat_interleave_self_tensor_input_fn(shape, dtype, device):
     yield inp, repeats, dim
 
 
-@pytest.mark.skip(reason="This test case runs out of memory: issue #2674")
+# @pytest.mark.skip(reason="This test case runs out of memory: issue #2674")
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
@@ -89,7 +105,7 @@ def repeat_interleave_tensor_input_fn(shape, dtype, device):
     yield repeats,
 
 
-@pytest.mark.skip(reason="This test case runs out of memory: issue #2674")
+# @pytest.mark.skip(reason="This test case runs out of memory: issue #2674")
 @pytest.mark.repeat_interleave_tensor
 def test_repeat_interleave_tensor():
     bench = RepeatInterleaveBenchmark(

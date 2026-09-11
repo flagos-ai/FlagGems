@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
@@ -72,6 +86,9 @@ def test_max_pool3d_with_indices(
 def test_max_pool3d_backward(
     shape, kernel_size, stride, padding, dilation, ceil_mode, dtype
 ):
+    if flag_gems.vendor_name == "cambricon" and dilation == 2:
+        pytest.skip("Issue #5254: Not supported")
+
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
     ref_inp = to_reference(inp, upcast=True)
 

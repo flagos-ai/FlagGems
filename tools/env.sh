@@ -60,6 +60,7 @@ case $BACKEND in
     ;;
   kunlunxin)
     export LD_LIBRARY_PATH=/xcudart/lib:/usr/local/cuda/lib64
+    export XPU_EVENT_KL3_ENABLE=1
     ;;
   metax)
     export MACA_PATH=${MACA_PATH:-/opt/maca}

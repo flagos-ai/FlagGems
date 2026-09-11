@@ -1,5 +1,19 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
-import math
+from functools import reduce as _reduce
 
 import torch
 import triton
@@ -19,8 +33,8 @@ def reduce_mul(a, b):
     return a * b
 
 
-@libentry()
 @triton.autotune(configs=cfggen_reduce_op2(), key=["M"])
+@libentry()
 @triton.jit
 def prod_kernel_mid(
     inp,
@@ -94,7 +108,6 @@ def heur_block_n(args):
     return triton.next_power_of_2(args["N"])
 
 
-@libentry()
 @triton.autotune(
     configs=runtime.get_tuned_config("prod"),
     key=[
@@ -102,6 +115,7 @@ def heur_block_n(args):
         "N",
     ],
 )
+@libentry()
 @triton.jit
 def prod_kernel(
     inp,
@@ -138,24 +152,34 @@ def prod_kernel(
 def prod_dim(inp, dim=None, keepdim=False, *, dtype=None):
     logger.debug("GEMS_CAMBRICON PROD_DIM")
 
-    assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
-    shape = inp.shape
-    dim = dim % inp.ndim
-    N = shape[dim]
-    M = math.prod(shape[:dim])
-    K = inp.numel() // M // N
-
-    inp = inp.contiguous()
-
-    shape_list = list(shape)
-    shape_list[dim] = 1
+    if not (-inp.ndim <= dim < inp.ndim):
+        raise IndexError(
+            f"Dimension out of range (expected to be in range of "
+            f"[{-inp.ndim}, {inp.ndim - 1}])"
+        )
 
     if dtype is None:
         dtype = inp.dtype
-    out = torch.empty(shape_list, dtype=dtype, device=inp.device)
-    if not keepdim:
-        out = torch.squeeze(out, dim)
 
+    shape = list(inp.shape)
+    d = dim % inp.ndim
+    N = inp.shape[d]
+    M = _reduce(lambda x, y: x * y, shape[:d], 1)
+    K = _reduce(lambda x, y: x * y, shape[d + 1 :], 1)
+    shape[d] = 1
+    out = torch.empty(shape, dtype=dtype, device=inp.device)
+
+    if M == 0 or K == 0:
+        if not keepdim:
+            out = torch.squeeze(out, d)
+        return out
+    if N == 0:
+        out.fill_(1)
+        if not keepdim:
+            out = torch.squeeze(out, d)
+        return out
+
+    inp = inp.contiguous()
     grid = lambda meta: (
         triton.cdiv(M, meta["BLOCK_M"]),
         K,
@@ -163,4 +187,6 @@ def prod_dim(inp, dim=None, keepdim=False, *, dtype=None):
     with torch_device_fn.device(inp.device):
         prod_kernel[grid](inp, out, M, N, K)
 
+    if not keepdim:
+        out = torch.squeeze(out, d)
     return out

@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 import random
 
@@ -114,8 +128,17 @@ def test_trunc_divide_scalar_scalar(dtype):
 def test_trunc_divide_tensor_int(shape, dtype):
     # Regression test: integer types must be dispatched at Python layer to avoid
     # passing int tensors to div_rz which only supports floating point.
-    inp1 = torch.randint(1, 100, shape, dtype=dtype, device=flag_gems.device)
-    inp2 = torch.randint(1, 100, shape, dtype=dtype, device=flag_gems.device)
+    if flag_gems.vendor_name == "cambricon":
+        # Cambricon torch.randint currently does not support int8/int16 generation.
+        inp1 = torch.randint(1, 100, shape, dtype=dtype, device="cpu").to(
+            flag_gems.device
+        )
+        inp2 = torch.randint(1, 100, shape, dtype=dtype, device="cpu").to(
+            flag_gems.device
+        )
+    else:
+        inp1 = torch.randint(1, 100, shape, dtype=dtype, device=flag_gems.device)
+        inp2 = torch.randint(1, 100, shape, dtype=dtype, device=flag_gems.device)
 
     ref_inp1 = utils.to_reference(inp1, False)
     ref_inp2 = utils.to_reference(inp2, False)
@@ -133,7 +156,13 @@ def test_trunc_divide_tensor_int(shape, dtype):
 def test_trunc_divide_tensor_scalar_int(shape, dtype):
     # Regression test: integer types must be dispatched at Python layer to avoid
     # passing int tensors to div_rz which only supports floating point.
-    inp1 = torch.randint(1, 100, shape, dtype=dtype, device=flag_gems.device)
+    if flag_gems.vendor_name == "cambricon":
+        # Cambricon torch.randint currently does not support int8/int16 generation.
+        inp1 = torch.randint(1, 100, shape, dtype=dtype, device="cpu").to(
+            flag_gems.device
+        )
+    else:
+        inp1 = torch.randint(1, 100, shape, dtype=dtype, device=flag_gems.device)
     scalar = random.randint(1, 10)
     ref_inp1 = utils.to_reference(inp1, False)
 
@@ -150,7 +179,13 @@ def test_trunc_divide_tensor_scalar_int(shape, dtype):
 def test_trunc_div_scalar_tensor_int(shape, dtype):
     # Regression test: integer types must be dispatched at Python layer to avoid
     # passing int tensors to div_rz which only supports floating point.
-    inp2 = torch.randint(1, 100, shape, dtype=dtype, device=flag_gems.device)
+    if flag_gems.vendor_name == "cambricon":
+        # Cambricon torch.randint currently does not support int8/int16 generation.
+        inp2 = torch.randint(1, 100, shape, dtype=dtype, device="cpu").to(
+            flag_gems.device
+        )
+    else:
+        inp2 = torch.randint(1, 100, shape, dtype=dtype, device=flag_gems.device)
     scalar = random.randint(1, 100)
     ref_inp2 = utils.to_reference(inp2, False)
 
