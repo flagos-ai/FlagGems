@@ -28,8 +28,7 @@ def test_trunc(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.trunc(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.trunc(inp)
+    res_out = flag_gems.trunc(inp)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -42,7 +41,6 @@ def test_trunc_(shape, dtype):
     ref_inp = utils.to_reference(inp.clone())
 
     ref_out = ref_inp.trunc_()
-    with flag_gems.use_gems():
-        res_out = inp.trunc_()
+    res_out = flag_gems.trunc_(inp)
 
     utils.gems_assert_equal(res_out, ref_out)
