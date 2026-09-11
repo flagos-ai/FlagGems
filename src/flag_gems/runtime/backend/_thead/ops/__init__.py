@@ -23,6 +23,7 @@ from .cudnn_batch_norm_backward import cudnn_batch_norm_backward, make_3d_for_bn
 from .cudnn_convolution import cudnn_convolution
 from .diagonal_scatter import diagonal_scatter
 from .embedding_dense_backward import embedding_dense_backward
+from .erfc import erfc
 from .gcd_ import gcd, gcd_
 from .index_copy_ import index_copy, index_copy_
 from .lcm import lcm, lcm_
@@ -76,6 +77,7 @@ __all__ = [
     "cudnn_convolution",
     "diagonal_scatter",
     "embedding_dense_backward",
+    "erfc",
     "gcd",
     "gcd_",
     "index_copy",
