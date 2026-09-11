@@ -1,6 +1,7 @@
 from ._make_dep_token import _make_dep_token
 from ._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
 from ._thnn_fused_lstm_cell_backward_impl import _thnn_fused_lstm_cell_backward_impl
+from .adaptive_avg_pool2d_backward import _adaptive_avg_pool2d_backward
 from .adaptive_max_pool3d_backward import adaptive_max_pool3d_backward
 from .addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out
 from .addmv_ import addmv_
@@ -110,6 +111,7 @@ from .zeros import zeros
 from .zeros_like import zeros_like
 
 __all__ = [
+    "_adaptive_avg_pool2d_backward",
     "_conv_depthwise2d",
     "_make_dep_token",
     "_nested_view_from_buffer_copy",
