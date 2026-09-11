@@ -874,6 +874,7 @@ _FULL_CONFIG = (
     ("masked_scatter_", masked_scatter_),
     ("masked_scatter_backward", masked_scatter_backward),
     ("masked_select", masked_select),
+    ("matmul_backward", matmul_backward),
     ("matrix_exp_backward", matrix_exp_backward),
     ("max", max),
     ("max.dim", max_dim),
