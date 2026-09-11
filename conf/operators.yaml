@@ -14594,6 +14594,18 @@ ops:
   - BLAS
   stages:
   - beta: '5.3'
+- id: trilinear
+  description: Computes trilinear product (3-way tensor product) using einsum semantics.
+  for:
+  - _trilinear
+  - _trilinear.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: triton_lighting_indexer_k_tiled_interface
   description: Part of FP8 MQA framework. It is currently not exposed as an operator
     for use.
