@@ -90,6 +90,7 @@ from .special_shifted_chebyshev_polynomial_w import (
 from .tanh import tanh
 from .to_copy import to_copy
 from .unique import _unique2
+from .unsafe_masked_index_put_accumulate import _unsafe_masked_index_put_accumulate
 from .upsample_linear1d import upsample_linear1d
 from .upsample_nearest2d import upsample_nearest2d
 from .weight_int8pack_mm import weight_int8pack_mm
@@ -103,6 +104,7 @@ __all__ = [
     "_nested_view_from_buffer_copy",
     "_thnn_fused_lstm_cell_backward_impl",
     "_unique2",
+    "_unsafe_masked_index_put_accumulate",
     "adaptive_max_pool3d_backward",
     "addmm",
     "addmm_dtype",
