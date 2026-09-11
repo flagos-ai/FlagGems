@@ -17,7 +17,7 @@ on:
   workflow_call:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -37,5 +37,7 @@ jobs:
 
       - id: rebase
         run: |
-          git rebase master
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rebase origin/master
           git push -u origin gh-pages -f
