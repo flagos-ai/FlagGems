@@ -74,10 +74,11 @@ class MaxPool3dBenchmark(base.GenericBenchmark):
 
 
 @pytest.mark.max_pool3d
+@pytest.mark.max_pool3d_with_indices
 def test_perf_max_pool3d():
     bench = MaxPool3dBenchmark(
         input_fn=max_pool3d_input_fn,
-        op_name="max_pool3d",
+        op_name="max_pool3d_with_indices",
         torch_op=lambda inp, **kwargs: torch.nn.functional.max_pool3d(
             inp, return_indices=True, **kwargs
         ),
@@ -87,7 +88,7 @@ def test_perf_max_pool3d():
     bench.run()
 
 
-@pytest.mark.max_pool3d
+@pytest.mark.max_pool3d_backward
 def test_perf_max_pool3d_backward():
     def max_pool3d_backward_input_fn(shape, dtype, device):
         for forward_args in max_pool3d_input_fn(shape, dtype, device):
