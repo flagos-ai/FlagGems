@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 import math
 
@@ -10,7 +24,7 @@ from flag_gems.runtime import device, torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
-logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
+logger = logging.getLogger(__name__)
 
 
 def get_npu_properties():
@@ -425,9 +439,8 @@ def normed_cumsum(inp, dim=-1):
             )
             return out
 
-        if inp.dtype != torch.float64:
-            acc_dtype = torch.float32
-        sums = torch.empty((n_rows, n_chunks), dtype=acc_dtype, device=device.name)
+        acc_dtype = torch.float32 if inp.dtype != torch.float64 else torch.float64
+        sums = torch.empty((n_rows, n_chunks), dtype=acc_dtype, device=inp.device)
         cumsums = torch.empty_like(sums)
         block_cumsum_kernel[grid](
             inp,

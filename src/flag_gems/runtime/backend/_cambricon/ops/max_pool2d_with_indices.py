@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -9,7 +23,7 @@ from flag_gems.utils.limits import get_dtype_min
 
 from ..utils import MAX_GRID_SIZE_X, MAX_GRID_SIZE_Y
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 def max_pool2d_output_size(
@@ -39,7 +53,6 @@ def limit_grid(grid_0, grid_1):
     return min(grid_0, grid_0_ub), min(grid_1, grid_1_ub)
 
 
-@libentry()
 @libtuner(
     configs=[
         triton.Config({"BLOCK_H": 16, "BLOCK_W": 16}, num_stages=4, num_warps=4),
@@ -54,6 +67,7 @@ def limit_grid(grid_0, grid_1):
     warmup=5,
     rep=10,
 )
+@libentry()
 @triton.jit
 def max_pool2d_forward_kernel(
     input_ptr,
@@ -151,7 +165,6 @@ def max_pool2d_forward_kernel(
         pid_nc += grid_0
 
 
-@libentry()
 @libtuner(
     configs=[
         triton.Config({"BLOCK_IN_H": 16, "BLOCK_IN_W": 32}, num_warps=1, num_stages=0),
@@ -172,6 +185,7 @@ def max_pool2d_forward_kernel(
     warmup=5,
     rep=10,
 )
+@libentry()
 @triton.jit
 def max_pool2d_backward_kernel(
     grad_output_ptr,
@@ -310,7 +324,7 @@ def max_pool2d_with_indices(
     dilation=1,
     ceil_mode=False,
 ):
-    logger.debug("GEMS_CAMBRICON MAX_POOL2D_WITH_INDICES FORWARD")
+    logger.debug("GEMS_CAMBRICON MAX_POOL2D_WITH_INDICES")
     input = input.contiguous()
 
     params = _parse_pool_params(kernel_size, stride, padding, dilation)
@@ -389,7 +403,7 @@ def max_pool2d_backward(
     dilation,
     ceil_mode,
 ):
-    logger.debug("GEMS_CAMBRICON MAX_POOL2D_WITH_INDICES BACKWARD")
+    logger.debug("GEMS_CAMBRICON MAX_POOL2D_WITH_INDICES_BACKWARD")
     grad_output = grad_output.contiguous()
     indices = indices.contiguous()
 

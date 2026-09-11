@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import json
 import logging
 import os
@@ -62,11 +76,15 @@ class BenchConfig:
     def __init__(self):
         self.mode = consts.BenchMode.KERNEL
         self.bench_level = consts.BenchLevel.COMPREHENSIVE
-        self.warm_up = consts.DEFAULT_WARMUP_COUNT
-        self.repetition = consts.DEFAULT_ITER_COUNT
+        self.warm_up = consts.DEFAULT_WARMUP_TIME
+        self.repetition = consts.DEFAULT_ITER_TIME
 
         # Speed Up Benchmark Test, Big Shape Will Cause Timeout
         if vendor_name == "kunlunxin":
+            self.warm_up = 1
+            self.repetition = 1
+
+        if vendor_name == "tsingmicro":
             self.warm_up = 1
             self.repetition = 1
 
@@ -77,6 +95,7 @@ class BenchConfig:
         self.shape_file = os.path.join(os.path.dirname(__file__), "core_shapes.yaml")
         self.query = False
         self.parallel = 0
+        self.mm_layout = None
 
 
 def pytest_addoption(parser):
@@ -87,10 +106,11 @@ def pytest_addoption(parser):
         action="store",
         default="kernel",
         required=False,
-        choices=["kernel", "operator", "wrapper"],
+        choices=[mode.value for mode in consts.BenchMode],
         help=(
             "Specify how to measure latency, 'kernel' for device kernel, "
-            "'operator' for end2end operator or 'wrapper' for runtime wrapper."
+            "'operator' for end2end operator, 'wrapper' for runtime wrapper, "
+            "or 'cudagraph' for CUDA Graph captured execution."
         ),
     )
 
@@ -105,14 +125,14 @@ def pytest_addoption(parser):
 
     parser.addoption(
         "--warmup",
-        default=consts.DEFAULT_WARMUP_COUNT,
-        help="Number of warmup runs before benchmark run.",
+        default=consts.DEFAULT_WARMUP_TIME,
+        help="Time(ms) of warmup runs before benchmark run.",
     )
 
     parser.addoption(
         "--iter",
-        default=consts.DEFAULT_ITER_COUNT,
-        help="Number of reps for each benchmark run.",
+        default=consts.DEFAULT_ITER_TIME,
+        help="Time(ms) of reps for each benchmark run.",
     )
 
     parser.addoption(
@@ -188,15 +208,25 @@ def pytest_addoption(parser):
         ),
     )
 
+    parser.addoption(
+        "--mm-layout",
+        action="store",
+        default=None,
+        choices=["nn", "nt", "both"],
+        help=(
+            "Select the B layout for the MM benchmark: nn uses row-major B, "
+            "nt uses column-major B, and both runs both layouts. By default, "
+            "core runs nn while comprehensive runs both."
+        ),
+    )
+
     try:
         parser.addoption(
             "--collect-marks",
-            action="store_true",
-            help="Collect the tests with marker information without executing them",
+            default=None,
+            help="Collect the tests with marker information and write to the specified file",
         )
     except ValueError:
-        # Mixed test+benchmark pytest runs may already register this option in
-        # tests/conftest.py. Reuse the existing option in that case.
         pass
 
 
@@ -241,6 +271,7 @@ def pytest_configure(config):
     Config.record_json = config.getoption("--record") == "json"
 
     Config.parallel = int(config.getoption("--parallel") or 0)
+    Config.mm_layout = config.getoption("--mm-layout")
     if Config.record_json:
         Config.output = config.getoption("--output")
         REPORT_FILE = Config.output
@@ -387,7 +418,8 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
 
 
 def pytest_collection_modifyitems(session, config, items):
-    if not config.getoption("--collect-marks"):
+    collect_marks_file = config.getoption("--collect-marks")
+    if not collect_marks_file:
         return
 
     report = []
@@ -412,7 +444,8 @@ def pytest_collection_modifyitems(session, config, items):
         data["marks"] = op_marks
         report.append(data)
 
-    print(yaml.dump(report, indent=2))
+    with open(collect_marks_file, "w") as f:
+        yaml.dump(report, f, indent=2)
 
     # Skip all tests
     items.clear()

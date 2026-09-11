@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Triton implementation of torch.scatter_reduce for FlagGems.
 
 Supports all reduce modes: sum, prod, mean, amax, amin.
@@ -1079,7 +1093,7 @@ def scatter_reduce(inp, dim, index, src, reduce, *, include_self=True):
     Returns:
         Output tensor with same shape and dtype as inp.
     """
-    logger.debug("GEMS SCATTER_REDUCE_TWO")
+    logger.debug("GEMS_SUNRISE SCATTER_REDUCE")
 
     assert reduce in (
         "sum",
@@ -1381,7 +1395,7 @@ def scatter_reduce(inp, dim, index, src, reduce, *, include_self=True):
 
 def scatter_reduce_(inp, dim, index, src, reduce, *, include_self=True):
     """In-place variant of scatter_reduce. Modifies inp in-place."""
-    logger.debug("GEMS SCATTER_REDUCE_TWO_")
+    logger.debug("GEMS_SUNRISE SCATTER_REDUCE_")
 
     result = scatter_reduce(inp, dim, index, src, reduce, include_self=include_self)
     inp.copy_(result)
@@ -1390,7 +1404,7 @@ def scatter_reduce_(inp, dim, index, src, reduce, *, include_self=True):
 
 def scatter_reduce_out(inp, dim, index, src, reduce, *, include_self=True, out=None):
     """Out-variant of scatter_reduce. Writes result to out tensor if provided."""
-    logger.debug("GEMS SCATTER_REDUCE_TWO_OUT")
+    logger.debug("GEMS_SUNRISE SCATTER_REDUCE_TWO_OUT")
 
     result = scatter_reduce(inp, dim, index, src, reduce, include_self=include_self)
     if out is not None:

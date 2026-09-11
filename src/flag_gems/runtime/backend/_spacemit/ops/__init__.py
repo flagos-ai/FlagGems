@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 # from .addmm import addmm
 from .argmax import argmax
 from .argmin import argmin
@@ -27,15 +41,15 @@ from .softmax import softmax
 from .where import where_scalar_other, where_scalar_self, where_self, where_self_out
 
 __all__ = [
-    # "addmm",
+    "_conv_depthwise2d",
+    "addmm",
     "argmax",
     "argmin",
     "bmm",
     "bmm_out",
-    # "conv1d",
-    # "conv2d",
-    # "_conv_depthwise2d",
-    # "flash_attention",
+    "conv1d",
+    "conv2d",
+    "flash_attention",
     "gelu",
     "gelu_",
     "gelu_backward",
@@ -51,11 +65,11 @@ __all__ = [
     "pow_tensor_tensor",
     "pow_tensor_tensor_",
     "rsqrt",
-    # "scaled_dot_product_attention",
+    "scaled_dot_product_attention",
     "sigmoid",
     "silu",
     "softmax",
-    # "thnn_conv2d",
+    "thnn_conv2d",
     "where_scalar_other",
     "where_scalar_self",
     "where_self",

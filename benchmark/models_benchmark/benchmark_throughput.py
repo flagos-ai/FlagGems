@@ -592,10 +592,8 @@ def validate_args(args):
     # --data-parallel is not supported currently.
     # https://github.com/vllm-project/vllm/issues/16222
     if args.data_parallel_size > 1:
-        raise ValueError(
-            "Data parallel is not supported in offline benchmark, \
-            please use benchmark serving instead"
-        )
+        raise ValueError("Data parallel is not supported in offline benchmark, \
+            please use benchmark serving instead")
 
 
 def create_argument_parser():
