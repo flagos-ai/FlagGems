@@ -183,7 +183,8 @@ def test_nanmean_dtype_downcast(input_dtype, output_dtype):
     if input_dtype == torch.float64 and not utils.fp64_is_supported:
         pytest.skip("FP64 is not supported")
     inp = _nan_input((129, 257), input_dtype, flag_gems.device)
-    reference = torch.nanmean(inp.clone(), dim=1, dtype=output_dtype)
+    ref_inp = utils.to_reference(inp)
+    reference = torch.nanmean(ref_inp, dim=1, dtype=output_dtype)
 
     result = flag_gems.nanmean(inp, dim=1, dtype=output_dtype)
 
@@ -205,9 +206,10 @@ def test_nanmean_invalid_dims():
 @pytest.mark.nanmean_out
 def test_nanmean_out_resizes_and_returns_out():
     inp = _nan_input((4, 8), torch.float32, flag_gems.device)
+    ref_inp = utils.to_reference(inp)
     out = torch.empty((0,), dtype=torch.float16, device=flag_gems.device)
-    ref_out = torch.empty((0,), dtype=torch.float16, device=flag_gems.device)
-    reference = torch.nanmean(inp.clone(), dim=1, out=ref_out)
+    ref_out = torch.empty((0,), dtype=torch.float16, device=ref_inp.device)
+    reference = torch.nanmean(ref_inp, dim=1, out=ref_out)
     returned = flag_gems.nanmean_out(inp, dim=1, out=out)
     assert returned is out
     assert reference is ref_out
@@ -229,11 +231,12 @@ def test_nanmean_out_dtype_downcast(input_dtype, output_dtype):
     if input_dtype == torch.float64 and not utils.fp64_is_supported:
         pytest.skip("FP64 is not supported")
     inp = _nan_input((65, 129), input_dtype, flag_gems.device)
+    ref_inp = utils.to_reference(inp)
     out_storage = torch.empty((65, 2), dtype=output_dtype, device=flag_gems.device)
     out = out_storage[:, 0]
-    ref_storage = torch.empty_like(out_storage)
+    ref_storage = torch.empty((65, 2), dtype=output_dtype, device=ref_inp.device)
     ref_out = ref_storage[:, 0]
-    reference = torch.nanmean(inp.clone(), dim=1, out=ref_out)
+    reference = torch.nanmean(ref_inp, dim=1, out=ref_out)
 
     result = flag_gems.nanmean_out(inp, dim=1, out=out)
 
