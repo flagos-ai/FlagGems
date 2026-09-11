@@ -54,6 +54,7 @@ from .linalg_svdvals import linalg_svdvals
 from .log_sigmoid_forward import log_sigmoid_forward
 from .log_softmax import log_softmax, log_softmax_backward
 from .logcumsumexp import logcumsumexp
+from .logcumsumexp_out import logcumsumexp_out
 from .logical_not_ import logical_not_
 from .logical_or import logical_or, logical_or_
 from .lt_ import lt_, lt_scalar_
@@ -190,6 +191,7 @@ __all__ = [
     "log_softmax",
     "log_softmax_backward",
     "logcumsumexp",
+    "logcumsumexp_out",
     "logical_not_",
     "logical_or",
     "logical_or_",
