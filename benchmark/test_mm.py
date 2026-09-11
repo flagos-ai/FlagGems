@@ -51,9 +51,7 @@ def test_mm():
 
 
 _MM_W8A8_FP8_OUT_CACHE = {}
-_MM_W8A8_FP8_OUT_CACHE_MAX_ENTRIES = int(
-    os.environ.get("FLAGGEMS_BENCH_MM_W8A8_OUT_CACHE_MAX", "8")
-)
+_MM_W8A8_FP8_OUT_CACHE_MAX_ENTRIES = 8
 
 
 def _mm_w8a8_fp8_out_cached(a, b):
