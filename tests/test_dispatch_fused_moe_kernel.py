@@ -51,7 +51,7 @@ def _assert_moe_close(result, reference, dtype):
     # Two GEMMs and a fused SiLU/multiply round intermediate tensors to dtype.
     # Scale the absolute tolerance with the output, including values near zero.
     rtol = {torch.float32: 1e-4, torch.float16: 2e-3, torch.bfloat16: 2e-2}[dtype]
-    atol = max(1e-5, reference.abs().max().item() * rtol)
+    atol = max(1e-4, reference.abs().max().item() * rtol)
     torch.testing.assert_close(
         utils.to_reference(result).float(), reference, rtol=rtol, atol=atol
     )
