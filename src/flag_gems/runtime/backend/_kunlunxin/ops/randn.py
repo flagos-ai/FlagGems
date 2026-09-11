@@ -57,7 +57,7 @@ def randn_kernel(
     i4 = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     c0 += i4
     _O = c0 * 0
-    r0, r1, r2, r3 = tl.philox(philox_seed, c0, c1, _O, _O, 7)
+    r0, r1, r2, r3 = tl.philox(philox_seed, c0, c1, _O, _O, 5)
     r0 = uint_to_uniform_float(r0)
     r1 = uint_to_uniform_float(r1)
     r2 = uint_to_uniform_float(r2)
@@ -83,7 +83,15 @@ def randn(size, *, dtype=None, layout=None, device=None, pin_memory=None):
         dtype = torch.get_default_dtype()
     if device is None:
         device = torch.device(device_.name)
-    out = torch.empty(size, device=device, dtype=dtype)
+    # Allocate via empty_strided instead of torch.empty: inside `use_gems()`
+    # the registered `empty.memory_format` override would zero-fill the whole
+    # buffer before the generation kernel writes it again (an extra full
+    # device write, ~2x slowdown on large fills).  empty_strided is not part of
+    # the registry, so it takes the native allocation path.
+    _strides = [1] * len(size)
+    for _i in range(len(size) - 2, -1, -1):
+        _strides[_i] = _strides[_i + 1] * size[_i + 1]
+    out = torch.empty_strided(size, _strides, device=device, dtype=dtype)
     N = volume(size)
     cluster_num = 12
     BLOCK_SIZE = min(
