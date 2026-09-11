@@ -437,7 +437,10 @@ class Benchmark:
                 try:
                     args, kwargs = self.unpack_to_args_kwargs(input)
                     metric.shape_detail = self.record_shapes(*args, **kwargs)
-                    if "latency_base" in self.to_bench_metrics:
+                    if (
+                        "latency_base" in self.to_bench_metrics
+                        and not Config.skip_native
+                    ):
                         metric.latency_base = self.get_latency(
                             self.torch_op, *args, **kwargs
                         )
@@ -460,13 +463,30 @@ class Benchmark:
                                         self.torch_op, *args, **kwargs
                                     )
                     if "speedup" in self.to_bench_metrics:
-                        metric.speedup = metric.latency_base / metric.latency
+                        if Config.skip_native:
+                            if (
+                                metric.latency_base is not None
+                                and metric.latency is not None
+                            ):
+                                metric.speedup = metric.latency_base / metric.latency
+                        else:
+                            metric.speedup = metric.latency_base / metric.latency
 
                     if "gbps" in self.to_bench_metrics:
-                        metric.gbps_base = self.get_gbps(
-                            args, latency=metric.latency_base
-                        )
-                        metric.gbps = self.get_gbps(args, latency=metric.latency)
+                        if Config.skip_native:
+                            if metric.latency_base is not None:
+                                metric.gbps_base = self.get_gbps(
+                                    args, latency=metric.latency_base
+                                )
+                            if metric.latency is not None:
+                                metric.gbps = self.get_gbps(
+                                    args, latency=metric.latency
+                                )
+                        else:
+                            metric.gbps_base = self.get_gbps(
+                                args, latency=metric.latency_base
+                            )
+                            metric.gbps = self.get_gbps(args, latency=metric.latency)
 
                     if "tflops" in self.to_bench_metrics:
                         metric.tflops = (
@@ -490,8 +510,15 @@ class Benchmark:
                 mode=Config.mode.value,
                 result=metrics,
             )
+            if Config.native_baseline_skip_reason:
+                result.native_baseline_skip_reason = Config.native_baseline_skip_reason
             print(result)
-            update_result(self.op_name, asdict(result))
+            result_dict = asdict(result)
+            if Config.native_baseline_skip_reason:
+                result_dict["native_baseline_skip_reason"] = (
+                    Config.native_baseline_skip_reason
+                )
+            update_result(self.op_name, result_dict)
             emit_record_logger(result.to_json())
 
 

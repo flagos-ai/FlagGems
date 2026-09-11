@@ -637,40 +637,89 @@ def parse_perf_data(op, result_file):
 
     bench_res = {}
     records = data.get("details", [])
+    if not any(item.get("native_baseline_skip_reason") for item in records):
+        for item in records:
+            dtype = consts.DTYPE_MAP.get(item["dtype"], item["dtype"])
+            details = {}
+            total = 0.0
+            count = 0
+            for res in item.get("result", []):
+                shape = str(res.get("shape_detail", "Unknown")).replace(" ", "")
+                details.setdefault(shape, {})
+                details[shape]["base"] = res.get("latency_base", 0.0)
+                details[shape]["gems"] = res.get("latency", 0.0)
+                speedup = res.get("speedup", 0.0)
+                details[shape]["speedup"] = speedup
+                count += 1
+                total += speedup
+
+            if details:
+                bench_res[dtype] = {
+                    "result": "OK",
+                    "details": details,
+                    "speedup": total / count,
+                }
+            else:
+                bench_res[dtype] = {
+                    "result": "Unknown",
+                    "details": {},
+                    "speedup": 0,
+                }
+
+        return {
+            "status": result.title(),
+            "data": bench_res,
+            "test_case": data.get("test_case", "Unknown"),
+        }
+
+    native_baseline_skip_reasons = []
+    speedup_totals = {}
+    speedup_counts = {}
 
     for item in records:
         dtype = consts.DTYPE_MAP.get(item["dtype"], item["dtype"])
-        details = {}
-        total = 0.0
-        count = 0
+        skip_reason = item.get("native_baseline_skip_reason")
+        if skip_reason and skip_reason not in native_baseline_skip_reasons:
+            native_baseline_skip_reasons.append(skip_reason)
+        dtype_result = bench_res.setdefault(
+            dtype,
+            {
+                "result": "Unknown",
+                "details": {},
+                "speedup": None,
+            },
+        )
+        details = dtype_result["details"]
         for res in item.get("result", []):
             shape = str(res.get("shape_detail", "Unknown")).replace(" ", "")
             details.setdefault(shape, {})
-            details[shape]["base"] = res.get("latency_base", 0.0)
-            details[shape]["gems"] = res.get("latency", 0.0)
-            speedup = res.get("speedup", 0.0)
+            details[shape]["base"] = res.get("latency_base")
+            details[shape]["gems"] = res.get("latency")
+            speedup = res.get("speedup")
             details[shape]["speedup"] = speedup
-            count += 1
-            total += speedup
+            if isinstance(speedup, (int, float)):
+                speedup_counts[dtype] = speedup_counts.get(dtype, 0) + 1
+                speedup_totals[dtype] = speedup_totals.get(dtype, 0.0) + speedup
 
         if details:
-            bench_res[dtype] = {
-                "result": "OK",
-                "details": details,
-                "speedup": total / count,
-            }
-        else:
-            bench_res[dtype] = {
-                "result": "Unknown",
-                "details": {},
-                "speedup": 0,
-            }
+            dtype_result["result"] = "OK"
 
-    return {
+    for dtype, dtype_result in bench_res.items():
+        count = speedup_counts.get(dtype, 0)
+        dtype_result["speedup"] = (
+            speedup_totals.get(dtype, 0.0) / count if count else None
+        )
+
+    parsed_result = {
         "status": result.title(),
         "data": bench_res,
         "test_case": data.get("test_case", "Unknown"),
     }
+    if native_baseline_skip_reasons:
+        parsed_result["native_baseline_skip_reason"] = "; ".join(
+            native_baseline_skip_reasons
+        )
+    return parsed_result
 
 
 def run_accuracy_q(gpu_id, op):
