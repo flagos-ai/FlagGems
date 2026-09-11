@@ -300,6 +300,7 @@ backends:
 
   thead:
     python: "3.12"
+    flagtree: flagtree==0.6.2a2+ppu3.6
     triton: triton==3.5.0+ppu2.0.0.oe
     env_source:
       - /usr/local/PPU_SDK/envsetup.sh
