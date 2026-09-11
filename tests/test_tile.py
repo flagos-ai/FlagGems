@@ -34,7 +34,15 @@ def test_tile(shape, dims, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.tile(ref_inp, dims)
-    with flag_gems.use_gems():
-        res_out = torch.tile(inp, dims)
+    res_out = flag_gems.tile(inp, dims)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.tile
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_tile_noncontiguous(dtype):
+    inp = torch.randn((17, 33), dtype=dtype, device=flag_gems.device).T
+    ref = torch.tile(utils.to_reference(inp), (2, 3))
+    result = flag_gems.tile(inp, (2, 3))
+    utils.gems_assert_equal(result, ref)
