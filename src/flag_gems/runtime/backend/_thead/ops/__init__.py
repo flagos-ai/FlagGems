@@ -31,6 +31,7 @@ from .embedding_dense_backward import embedding_dense_backward
 from .erfc import erfc
 from .gcd_ import gcd, gcd_
 from .index_copy_ import index_copy, index_copy_
+from .index_select_backward import index_select_backward
 from .lcm import lcm, lcm_
 from .linalg_cholesky import linalg_cholesky
 from .linalg_matrix_power import linalg_matrix_power, linalg_matrix_power_out
@@ -93,6 +94,7 @@ __all__ = [
     "gcd_",
     "index_copy",
     "index_copy_",
+    "index_select_backward",
     "lcm",
     "lcm_",
     "linalg_cholesky",
