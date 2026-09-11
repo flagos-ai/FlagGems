@@ -13961,6 +13961,17 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+  - id: standard_gamma_grad
+    description: Triton kernel implementation for _standard_gamma_grad.
+    for:
+      - _standard_gamma_grad
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
 - id: std
   description: 'Calculates the standard deviation over the dimensions specified by
     `dim`.
