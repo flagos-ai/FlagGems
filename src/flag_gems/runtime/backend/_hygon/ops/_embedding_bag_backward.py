@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
+
 import torch
 import triton
 import triton.language as tl
@@ -33,6 +35,8 @@ from flag_gems.ops._embedding_bag_backward import (
 )
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
+
+logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -808,6 +812,7 @@ def _embedding_bag_backward(
     padding_idx=-1,
 ):
     """DTK 3.1 entry with explicit constexpr-tuple unwrapping."""
+    logger.debug("GEMS_HYGON _EMBEDDING_BAG_BACKWARD")
     return _embedding_bag_backward_impl(
         grad,
         indices,

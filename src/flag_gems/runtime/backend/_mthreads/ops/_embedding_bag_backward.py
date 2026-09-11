@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
+
 import torch
 import triton
 import triton.language as tl
@@ -27,6 +29,8 @@ from flag_gems.runtime.backend._mthreads.ops._embedding_bag import (
     _embedding_bag_check_flags,
 )
 from flag_gems.utils import libentry
+
+logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -636,6 +640,7 @@ def _embedding_bag_backward(
     padding_idx=-1,
 ):
     """MUSA MAX accumulates in FP32 and keeps validation in a separate checker."""
+    logger.debug("GEMS_MTHREADS _EMBEDDING_BAG_BACKWARD")
     return _embedding_bag_backward_impl(
         grad,
         indices,

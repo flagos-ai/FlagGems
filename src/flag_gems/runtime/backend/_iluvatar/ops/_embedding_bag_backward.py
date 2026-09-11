@@ -229,7 +229,7 @@ def _embedding_bag_backward(
     per_sample_weights=None,
     padding_idx=-1,
 ):
-    logger.debug("GEMS _EMBEDDING_BAG_BACKWARD")
+    logger.debug("GEMS_ILUVATAR _EMBEDDING_BAG_BACKWARD")
     launcher = _BackwardLaunch()
     result = _embedding_bag_backward_impl(
         grad,

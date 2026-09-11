@@ -528,7 +528,7 @@ def _embedding_bag(
     include_last_offset=False,
     padding_idx=-1,
 ):
-    logger.debug("GEMS _EMBEDDING_BAG")
+    logger.debug("GEMS_ASCEND _EMBEDDING_BAG")
     # Strided gathers need smaller tiles to fit the vector-core UB.
     config = None
     if weight.ndim == 2:
@@ -578,7 +578,7 @@ def _embedding_bag_forward_only(
     include_last_offset=False,
     padding_idx=-1,
 ):
-    logger.debug("GEMS _EMBEDDING_BAG_FORWARD_ONLY")
+    logger.debug("GEMS_ASCEND _EMBEDDING_BAG_FORWARD_ONLY")
     config = None
     if weight.ndim == 2:
         bags = max(offsets.numel() - int(include_last_offset), 1)

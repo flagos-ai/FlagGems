@@ -189,7 +189,7 @@ def _embedding_bag(
     include_last_offset=False,
     padding_idx=-1,
 ):
-    logger.debug("GEMS _EMBEDDING_BAG")
+    logger.debug("GEMS_ILUVATAR _EMBEDDING_BAG")
     return _generic_impl(
         weight,
         indices,
@@ -216,7 +216,7 @@ def _embedding_bag_forward_only(
     include_last_offset=False,
     padding_idx=-1,
 ):
-    logger.debug("GEMS _EMBEDDING_BAG_FORWARD_ONLY")
+    logger.debug("GEMS_ILUVATAR _EMBEDDING_BAG_FORWARD_ONLY")
     return _generic_impl(
         weight,
         indices,

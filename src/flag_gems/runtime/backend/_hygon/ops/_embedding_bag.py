@@ -111,7 +111,7 @@ def _embedding_bag_forward_only(
     include_last_offset=False,
     padding_idx=-1,
 ):
-    logger.debug("GEMS _EMBEDDING_BAG_FORWARD_ONLY")
+    logger.debug("GEMS_HYGON _EMBEDDING_BAG_FORWARD_ONLY")
     kernel = block_config = None
     if (
         weight.dtype == torch.float64

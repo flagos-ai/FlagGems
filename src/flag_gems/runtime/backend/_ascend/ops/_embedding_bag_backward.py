@@ -429,7 +429,7 @@ def _embedding_bag_backward(
     per_sample_weights=None,
     padding_idx=-1,
 ):
-    logger.debug("GEMS _EMBEDDING_BAG_BACKWARD")
+    logger.debug("GEMS_ASCEND _EMBEDDING_BAG_BACKWARD")
     return _embedding_bag_backward_impl(
         grad,
         indices,

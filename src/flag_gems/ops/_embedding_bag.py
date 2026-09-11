@@ -327,7 +327,6 @@ def _embedding_bag_impl(
     synchronizes and cannot be captured in a device graph. All indirect memory
     accesses remain masked regardless of the error-reporting mechanism.
     """
-    logger.debug("GEMS _EMBEDDING_BAG")
     if weight.ndim != 2 or indices.ndim != 1 or offsets.ndim != 1:
         raise RuntimeError("weight must be 2D and indices and offsets must be 1D")
     if weight.dtype not in (
@@ -512,6 +511,7 @@ def _embedding_bag(
     include_last_offset=False,
     padding_idx=-1,
 ):
+    logger.debug("GEMS _EMBEDDING_BAG")
     return _embedding_bag_impl(
         weight,
         indices,

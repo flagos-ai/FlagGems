@@ -641,7 +641,6 @@ def _embedding_bag_backward_impl(
     Dense MAX ignores scale_grad_by_freq. These are intentional ATen semantics.
     NVIDIA dense data errors are reported asynchronously by a CUDA device assert.
     """
-    logger.debug("GEMS _EMBEDDING_BAG_BACKWARD")
     if grad.ndim != 2 or grad.dtype not in (
         torch.float16,
         torch.bfloat16,
@@ -999,6 +998,7 @@ def _embedding_bag_backward(
     per_sample_weights=None,
     padding_idx=-1,
 ):
+    logger.debug("GEMS _EMBEDDING_BAG_BACKWARD")
     return _embedding_bag_backward_impl(
         grad,
         indices,
