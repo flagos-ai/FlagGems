@@ -72,6 +72,7 @@ from .repeat_interleave import repeat_interleave_self_tensor
 from .resolve_conj import resolve_conj
 from .rms_norm_w8a16_fp8 import rms_norm_w8a16_fp8
 from .rsqrt import rsqrt, rsqrt_
+from .scalar_tensor import scalar_tensor
 from .segment_reduce import segment_reduce, segment_reduce_out
 from .sigmoid import sigmoid
 from .silu import silu
@@ -134,6 +135,7 @@ __all__ = [
     "group_norm",
     "gru",
     "gru_data",
+    "gt_scalar_",
     "hadamard_transform",
     "index",
     "index_put",
@@ -146,6 +148,7 @@ __all__ = [
     "lcm",
     "lgamma",
     "lgamma_",
+    "linalg_cholesky",
     "linalg_lstsq",
     "linalg_matrix_exp",
     "linalg_matrix_exp_out",
@@ -201,6 +204,7 @@ __all__ = [
     "rms_norm_w8a16_fp8",
     "rsqrt",
     "rsqrt_",
+    "scalar_tensor",
     "segment_reduce",
     "segment_reduce_out",
     "sigmoid",
@@ -225,6 +229,4 @@ __all__ = [
     "zero_out",
     "zeros",
     "zeros_like",
-    "gt_scalar_",
-    "linalg_cholesky",
 ]
