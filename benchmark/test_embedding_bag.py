@@ -28,9 +28,9 @@ from flag_gems import _embedding_bag, _embedding_bag_forward_only
 from . import base
 
 pytestmark = pytest.mark.skipif(
-    flag_gems.vendor_name in ("ascend", "metax")
+    flag_gems.vendor_name == "ascend"
     and version.parse(triton.__version__) < version.parse("3.5"),
-    reason="CANN 8.5 and MACA 3.7.2 are accuracy-only validation targets",
+    reason="CANN 8.5 is an accuracy-only validation target",
 )
 
 SHAPES = [
