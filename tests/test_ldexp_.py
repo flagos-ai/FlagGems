@@ -126,7 +126,7 @@ def test_ldexp_extreme_integral_exponents_():
     )
     ref_out = _functional_reference(
         utils.to_reference(self.clone(), True), utils.to_reference(other)
-    )
+    ).to(torch.float32)
 
     result = flag_gems.ldexp_(self, other)
 
