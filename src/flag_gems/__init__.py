@@ -1136,6 +1136,7 @@ _FULL_CONFIG = (
     ("special_chebyshev_polynomial_w", special_chebyshev_polynomial_w),
     ("special_chebyshev_polynomial_w.out", special_chebyshev_polynomial_w_out),
     ("special_digamma", special_digamma),
+    ("special_entr", special_entr),
     ("special_erf", special_erf),
     ("special_erfc", special_erfc),
     ("special_erfcx", special_erfcx),
