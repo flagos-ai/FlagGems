@@ -103,6 +103,7 @@ from .unique import _unique2
 from .unsafe_masked_index_put_accumulate import _unsafe_masked_index_put_accumulate
 from .upsample_linear1d import upsample_linear1d
 from .upsample_nearest2d import upsample_nearest2d
+from .upsample_nearest_exact2d_backward import _upsample_nearest_exact2d_backward
 from .weight_int8pack_mm import weight_int8pack_mm
 from .zero import zero, zero_, zero_out
 from .zeros import zeros
@@ -115,6 +116,7 @@ __all__ = [
     "_thnn_fused_lstm_cell_backward_impl",
     "_unique2",
     "_unsafe_masked_index_put_accumulate",
+    "_upsample_nearest_exact2d_backward",
     "adaptive_max_pool3d_backward",
     "addmm",
     "addmm_dtype",
