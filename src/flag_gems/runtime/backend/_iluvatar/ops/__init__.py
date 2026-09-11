@@ -48,6 +48,7 @@ from .matmul_int8 import matmul_int8
 from .mm import mm, mm_out
 from .narrow_copy import narrow_copy
 from .nonzero_numpy import nonzero_numpy
+from .per_token_group_quant_fp8 import per_token_group_quant_fp8
 from .permute_copy import permute_copy
 from .renorm_ import renorm_
 from .repeat import repeat
@@ -115,6 +116,7 @@ __all__ = [
     "mm_out",
     "narrow_copy",
     "nonzero_numpy",
+    "per_token_group_quant_fp8",
     "permute_copy",
     "renorm_",
     "repeat",
