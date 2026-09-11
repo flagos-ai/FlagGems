@@ -14,14 +14,11 @@ LOGDET_SHAPES = [
     (4, 4),
     (8, 8),
     (16, 16),
-    (32, 32),
-    (64, 64),
-    (128, 128),
     (4096, 4, 4),
     (1024, 8, 8),
     (128, 16, 16),
 ]
-LOGDET_MORE_SHAPES = [(512, 32, 32), (32, 64, 64), (8, 256, 256)]
+LOGDET_MORE_SHAPES = [(16384, 4, 4), (4096, 8, 8), (512, 16, 16)]
 LOGDET_DTYPES = [torch.float32] + (
     [torch.float64] if flag_gems.runtime.device.support_fp64 else []
 )

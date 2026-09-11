@@ -9,7 +9,7 @@ from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
 
 LOGDET_SHAPES = (
-    [(2, 2), (16, 16), (64, 64)]
+    [(2, 2), (16, 16)]
     if QUICK_MODE
     else [
         (1, 1),
@@ -18,9 +18,6 @@ LOGDET_SHAPES = (
         (5, 5),
         (8, 8),
         (16, 16),
-        (32, 32),
-        (64, 64),
-        (128, 128),
     ]
 )
 LOGDET_BATCH_SHAPES = (
@@ -90,6 +87,35 @@ def test_logdet_fp64_large_batch_4x4():
 
 
 @pytest.mark.logdet
+@pytest.mark.skipif(not utils.fp64_is_supported, reason="FP64 is not supported")
+def test_logdet_fp64_large_batch_4x4_nonfinite():
+    diagonal = torch.ones((4096, 4), dtype=torch.float64, device=flag_gems.device)
+    diagonal[:, 0] = float("inf")
+    inp = torch.diag_embed(diagonal)
+    reference = torch.logdet(utils.to_reference(inp))
+
+    result = flag_gems.logdet(inp)
+
+    utils.gems_assert_equal(result, reference)
+
+
+@pytest.mark.logdet
+@pytest.mark.skipif(not utils.fp64_is_supported, reason="FP64 is not supported")
+def test_logdet_fp64_large_batch_4x4_pathological():
+    inp = torch.eye(4, dtype=torch.float64, device=flag_gems.device).repeat(4096, 1, 1)
+    inp[:1366, 3, 3] = 1e-200
+    inp[1366:2731, 0, 0] = -1.0
+    inp[2731:, 3, :] = 0.0
+    reference = torch.logdet(utils.to_reference(inp))
+
+    result = flag_gems.logdet(inp)
+
+    utils.gems_assert_close(
+        result, reference, torch.float64, equal_nan=True, reduce_dim=4
+    )
+
+
+@pytest.mark.logdet
 @pytest.mark.parametrize("dtype", REAL_DTYPES)
 def test_logdet_negative_and_singular(dtype):
     positive = _positive_definite((3, 4, 4), dtype)
@@ -150,34 +176,23 @@ def test_logdet_empty(dtype):
 
 @pytest.mark.logdet
 @pytest.mark.parametrize("dtype", COMPLEX_DTYPES)
-def test_logdet_complex_fallback(dtype):
+def test_logdet_rejects_complex(dtype):
     real_dtype = torch.float32 if dtype == torch.complex64 else torch.float64
     real = torch.randn((2, 4, 4), dtype=real_dtype, device=flag_gems.device)
     imag = torch.randn_like(real)
     inp = torch.complex(real, imag) + 4 * torch.eye(
         4, dtype=dtype, device=flag_gems.device
     )
-    ref_inp = utils.to_reference(inp)
-    reference = torch.logdet(ref_inp)
-
-    result = flag_gems.logdet(inp)
-
-    _assert_logdet_close(result, reference, dtype, 4)
+    with pytest.raises(RuntimeError, match="complex inputs are not supported"):
+        flag_gems.logdet(inp)
 
 
 @pytest.mark.logdet
 @pytest.mark.parametrize("dtype", REAL_DTYPES)
-def test_logdet_autograd_fallback(dtype):
+def test_logdet_rejects_autograd(dtype):
     inp = _positive_definite((4, 4), dtype).detach().requires_grad_(True)
-    ref_inp = utils.to_reference(inp).detach().requires_grad_(True)
-    reference = torch.logdet(ref_inp)
-    ref_grad = torch.autograd.grad(reference, ref_inp)[0]
-
-    result = flag_gems.logdet(inp)
-    result_grad = torch.autograd.grad(result, inp)[0]
-
-    _assert_logdet_close(result, reference, dtype, 4)
-    _assert_logdet_close(result_grad, ref_grad, dtype, 4)
+    with pytest.raises(RuntimeError, match="autograd is not supported"):
+        flag_gems.logdet(inp)
 
 
 @pytest.mark.logdet
@@ -187,7 +202,12 @@ def test_logdet_errors():
         torch.randn((3, 4), device=flag_gems.device),
         torch.ones((3, 3), dtype=torch.int32, device=flag_gems.device),
         torch.randn((3, 3), dtype=torch.float16, device=flag_gems.device),
+        torch.randn((64, 64), dtype=torch.float32, device=flag_gems.device),
     ]
+    if utils.fp64_is_supported:
+        invalid_inputs.append(
+            torch.randn((32, 32), dtype=torch.float64, device=flag_gems.device)
+        )
     for inp in invalid_inputs:
         with pytest.raises(RuntimeError):
             flag_gems.logdet(inp)

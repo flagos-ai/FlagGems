@@ -121,6 +121,32 @@ def _logdet_4x4_kernel(inp, out):
     scale = tl.maximum(scale, tl.abs(a31))
     scale = tl.maximum(scale, tl.abs(a32))
     scale = tl.maximum(scale, tl.abs(a33))
+    is_diagonal = (
+        (a01 == 0.0)
+        & (a02 == 0.0)
+        & (a03 == 0.0)
+        & (a10 == 0.0)
+        & (a12 == 0.0)
+        & (a13 == 0.0)
+        & (a20 == 0.0)
+        & (a21 == 0.0)
+        & (a23 == 0.0)
+        & (a30 == 0.0)
+        & (a31 == 0.0)
+        & (a32 == 0.0)
+    )
+    diagonal_negative = (
+        (a00 < 0.0).to(tl.int32)
+        + (a11 < 0.0).to(tl.int32)
+        + (a22 < 0.0).to(tl.int32)
+        + (a33 < 0.0).to(tl.int32)
+    ) % 2 != 0
+    diagonal_logdet = (
+        tl.log(tl.abs(a00))
+        + tl.log(tl.abs(a11))
+        + tl.log(tl.abs(a22))
+        + tl.log(tl.abs(a33))
+    )
     safe_scale = tl.where(scale == 0.0, 1.0, scale)
     inverse_scale = 1.0 / safe_scale
 
@@ -165,45 +191,25 @@ def _logdet_4x4_kernel(inp, out):
     logabsdet = tl.log(tl.abs(determinant)) + 4.0 * tl.log(scale)
     result = tl.where(determinant < 0.0, float("nan"), logabsdet)
     result = tl.where(determinant == 0.0, -float("inf"), result)
+
+    # Scaling an infinite diagonal by 1 / inf creates inf * 0. Handle diagonal
+    # matrices directly so non-finite diagonal entries retain ATen semantics.
+    diagonal_result = tl.where(diagonal_negative, float("nan"), diagonal_logdet)
+    result = tl.where(is_diagonal, diagonal_result, result)
     tl.store(out + pid, result)
-
-
-@libentry()
-@triton.jit
-def _logdet_post_real_kernel(sign, logabsdet, out, n_elements, block: tl.constexpr):
-    offsets = tle.program_id(0) * block + tl.arange(0, block)
-    mask = offsets < n_elements
-    sign_values = tl.load(sign + offsets, mask=mask)
-    log_values = tl.load(logabsdet + offsets, mask=mask)
-    result = tl.where(sign_values == -1.0, float("nan"), log_values)
-    tl.store(out + offsets, result, mask=mask)
-
-
-def _native_logdet(inp):
-    sign, logabsdet, _, _ = torch.ops.aten._linalg_slogdet.default(inp)
-    out = logabsdet
-    n_elements = out.numel()
-    if n_elements == 0:
-        return out
-
-    block = 256
-    grid = (triton.cdiv(n_elements, block),)
-    with torch_device_fn.device(inp.device):
-        _logdet_post_real_kernel[grid](sign, logabsdet, out, n_elements, block)
-    return out
 
 
 def logdet(inp):
     logger.debug("GEMS LOGDET")
 
     if inp.dim() < 2 or inp.shape[-1] != inp.shape[-2]:
-        return _native_logdet(inp)
-    if inp.is_complex() or inp.requires_grad:
-        # Triton does not expose complex values as a scalar type. Preserve the
-        # complex and autograd contracts through the native CPU implementation.
-        return torch.logdet(inp.cpu()).to(inp.device)
+        raise RuntimeError("logdet: input must be batches of square matrices")
+    if inp.is_complex():
+        raise RuntimeError("logdet: complex inputs are not supported by this kernel")
+    if inp.requires_grad:
+        raise RuntimeError("logdet: autograd is not supported by this kernel")
     if inp.dtype not in (torch.float32, torch.float64):
-        return _native_logdet(inp)
+        raise RuntimeError(f"logdet: unsupported dtype {inp.dtype}")
 
     n = inp.shape[-1]
     batch_shape = inp.shape[:-2]
@@ -220,9 +226,12 @@ def logdet(inp):
             _logdet_4x4_kernel[(batch_count,)](inp_contiguous, out, num_warps=1)
         return out.reshape(batch_shape)
 
-    fp64_fallback = inp.dtype == torch.float64 and n > 16
-    if n > _REGISTER_TILE_LIMIT or fp64_fallback:
-        return _native_logdet(inp)
+    fp64_unsupported = inp.dtype == torch.float64 and n > 16
+    if n > _REGISTER_TILE_LIMIT or fp64_unsupported:
+        raise RuntimeError(
+            f"logdet: {inp.dtype} matrices of size {n} are not supported by "
+            "the Triton kernel"
+        )
 
     inp_contiguous = inp.contiguous().reshape(batch_count, n, n)
     out = torch.empty(batch_count, dtype=inp.dtype, device=inp.device)
