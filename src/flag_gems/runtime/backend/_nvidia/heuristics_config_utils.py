@@ -60,7 +60,9 @@ def argmax_heur_tile_n_non_inner(args):
     tile_k = args["TILE_K"]
 
     if n <= 128:
-        return n
+        # tl.arange requires a power-of-2 length, and the kernel masks the
+        # padding lanes, so round up to the next power of 2.
+        return triton.next_power_of_2(n)
 
     target_tile = min(8192, n)
     tile_n = triton.next_power_of_2(target_tile)
