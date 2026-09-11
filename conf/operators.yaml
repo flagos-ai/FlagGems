@@ -14723,6 +14723,33 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: underscore_ctc_loss
+  description: 'Computes the CTC loss and the alpha lattice used by its backward pass.
+
+    '
+  for:
+  - _ctc_loss
+  - _ctc_loss.Tensor
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
+- id: underscore_ctc_loss_out
+  description: A variant of `_ctc_loss` that allows the outputs to be assigned to
+    `out`.
+  for:
+  - _ctc_loss.out
+  - _ctc_loss.Tensor_out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: unflatten
   description: Expand a single dimension into multiple dimensions (inverse of flatten).
   for:
