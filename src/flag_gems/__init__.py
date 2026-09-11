@@ -136,6 +136,10 @@ _FULL_CONFIG = (
     ),
     ("_euclidean_dist", _euclidean_dist),
     (
+        "_fake_quantize_learnable_per_channel_affine",
+        _fake_quantize_learnable_per_channel_affine,
+    ),
+    (
         "_fake_quantize_learnable_per_channel_affine_backward",
         _fake_quantize_learnable_per_channel_affine_backward,
     ),
