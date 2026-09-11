@@ -62,6 +62,7 @@ class SQLPersistantModel(PersistantModel):
 
         # Enable WAL mode for SQLite to allow concurrent reads and writes
         if "sqlite" in db_url:
+
             @sqlalchemy.event.listens_for(self.engine, "connect")
             def set_sqlite_pragma(dbapi_conn, connection_record):
                 cursor = dbapi_conn.cursor()
