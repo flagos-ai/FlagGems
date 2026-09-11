@@ -148,7 +148,7 @@ def skip_layer_norm_kernel(
     for off in range(0, N, BLOCK_COL_SIZE):
         cols = off + tl.arange(0, BLOCK_COL_SIZE)[None, :]
         col_mask = cols < N
-        mask = row_mask and col_mask
+        mask = row_mask & col_mask
 
         x = tl.load(X + cols, mask, other=0.0).to(tl.float32)
         r = tl.load(R + cols, mask, other=0.0).to(tl.float32)
@@ -167,7 +167,7 @@ def skip_layer_norm_kernel(
     for off in range(0, N, BLOCK_COL_SIZE):
         cols = off + tl.arange(0, BLOCK_COL_SIZE)[None, :]
         col_mask = cols < N
-        mask = row_mask and col_mask
+        mask = row_mask & col_mask
 
         w = tl.load(W + cols, col_mask)
         b = tl.load(B + cols, col_mask)

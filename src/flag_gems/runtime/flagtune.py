@@ -26,6 +26,15 @@ _flagtune_op_registry = {}
 _include_ops = None
 
 
+def _platform_cost_model_available():
+    """Lazily resolve the active platform package without creating import cycles."""
+    from flag_gems.flagtune.runtime.model_package import (
+        platform_model_package_available,
+    )
+
+    return platform_model_package_available()
+
+
 class TuningMode(str, Enum):
     """Runtime configuration-selection path for one LibTuner operator."""
 
@@ -188,7 +197,8 @@ def resolve_tuning_mode(op_name, *, supports_cost_model=False):
     an adapted operator. With neither switch set, unadapted operators default to
     Default and adapted operators default to Cost Model. ``FLAGTUNE_INCLUDE``
     applies the same capability-based selection to individual operators. An
-    adapted operator uses Expanded only when ``USE_FLAGTUNE_COST_MODEL=0``.
+    adapted operator uses Expanded only when ``USE_FLAGTUNE_COST_MODEL=0``. If
+    the active platform has no model package, it follows the unadapted routes.
     """
     try:
         name = _normalize_op_name(op_name)
@@ -196,13 +206,29 @@ def resolve_tuning_mode(op_name, *, supports_cost_model=False):
         return TuningMode.DEFAULT
 
     use_flagtune_setting = _use_flagtune_setting_from_env()
+    if use_flagtune_setting is False:
+        return TuningMode.DEFAULT
+
+    # An explicit Expanded request does not need a model package. Short-circuit
+    # before probing so this path remains usable in offline environments.
+    if supports_cost_model:
+        cost_model_value = os.environ.get(USE_FLAGTUNE_COST_MODEL_ENV)
+        explicitly_expanded = use_flagtune_setting is True or (
+            name in get_flagtune_include()
+        )
+        if (
+            explicitly_expanded
+            and cost_model_value is not None
+            and cost_model_value.strip() == "0"
+        ):
+            return TuningMode.EXPANDED
+
+    if supports_cost_model and not _platform_cost_model_available():
+        supports_cost_model = False
+
     cost_model_setting = None
     if supports_cost_model:
         cost_model_setting = _optional_binary_environment(USE_FLAGTUNE_COST_MODEL_ENV)
-
-    if use_flagtune_setting is False:
-        return TuningMode.DEFAULT
-    if supports_cost_model:
         if cost_model_setting is False:
             return TuningMode.EXPANDED
         if cost_model_setting is True or use_flagtune_setting is True:

@@ -680,6 +680,8 @@ def run_accuracy_q(gpu_id, op):
     base = f'pytest -m "{op}" --record json --output accuracy_{op}.json'
     if op not in CFG.skip_cpu_tests:
         base += " --ref cpu"
+    if CFG.quick:
+        base += " --quick"
     cmd = base + " --continue-on-collection-errors -vs"
 
     accuracy_dir = ROOT.joinpath("tests")
@@ -1264,6 +1266,12 @@ def main():
         help="Save each test's stdout/stderr to log files (default: discard)",
     )
     parser.add_argument(
+        "--quick",
+        action="store_true",
+        default=False,
+        help="Run tests in quick mode (reduced parameter combinations for faster testing)",
+    )
+    parser.add_argument(
         "--color",
         choices=["auto", "always", "never"],
         default="auto",
@@ -1271,6 +1279,7 @@ def main():
     )
     OPTS = parser.parse_args()
     CFG.dump_output = OPTS.dump_output
+    CFG.quick = OPTS.quick
     CFG.start = OPTS.start
 
     # Apply color mode (IS_TTY controls cursor-based footer, USE_COLORS controls ANSI colors)

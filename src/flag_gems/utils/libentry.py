@@ -21,6 +21,8 @@ import logging
 import math
 import multiprocessing
 import os
+import sys
+import threading
 import time
 import warnings
 from abc import abstractmethod
@@ -995,7 +997,20 @@ class LibTuner(triton.runtime.Autotuner):
                 def bench(config: triton.Config) -> List[float]:
                     ret = cache.get(config)
                     if ret is None:
-                        ret = self._bench(*args, config=config, **kwargs)
+                        try:
+                            ret = self._bench(*args, config=config, **kwargs)
+                        except RuntimeError as e:
+                            # A config whose COMPILE raises a plain RuntimeError
+                            # is outside triton's autotuner catch list
+                            # (OutOfResources / CompileTimeAssertionFailure /
+                            # PTXASError) and would kill the whole process. Some
+                            # backend compilers do this — e.g. cambricon MLU
+                            # AutoTileForTritonPass raises "PassManager::run
+                            # failed" on a tensor.expand_shape it cannot tile.
+                            # Treat such a config as a non-candidate (inf) so
+                            # tuning continues and a working config is selected.
+                            print(f"[libentry] config {config} failed to compile: {e}")
+                            ret = (float("inf"), float("inf"), float("inf"))
                         # Some Triton backends (e.g. tsingmicro with
                         # use_cuda_graph=True) return a scalar float from
                         # _bench instead of the standard (p50, p20, p80) tuple.
@@ -1544,7 +1559,13 @@ class LibEntry(triton.KernelInterface):
             for p in self.jit_function.params
             if not p.is_constexpr and p.do_not_specialize
         ]
-        self.lock = multiprocessing.Lock()
+        if sys.platform == "darwin":
+            # A process-shared semaphore consumes one file descriptor per
+            # decorated kernel and can exhaust macOS's low default limit. The
+            # cache is process-local, so only threads need serialization here.
+            self.lock = threading.Lock()
+        else:
+            self.lock = multiprocessing.Lock()
         self.signature = fn.signature
 
     @staticmethod

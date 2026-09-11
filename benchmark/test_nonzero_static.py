@@ -80,7 +80,8 @@ def _make_input(shape, dtype, nnz_ratio, device):
 
 
 def _get_baseline_nonzero_static():
-    if flag_gems.vendor_name in ("ascend", "hygon"):
+    # Nonzero_static is not supported for cuda <= 11.4
+    if flag_gems.vendor_name in ("ascend", "hygon", "iluvatar"):
         return _composed_nonzero_static_baseline
     return torch.nonzero_static
 

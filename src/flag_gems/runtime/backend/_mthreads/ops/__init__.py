@@ -14,6 +14,7 @@
 
 from torch_musa import current_device, get_device_capability
 
+from ._conj import _conj
 from .all import all, all_dim, all_dims
 from .amax import amax
 from .any import any, any_dim, any_dims
@@ -22,7 +23,11 @@ from .argmin import argmin
 from .batch_norm import batch_norm, batch_norm_backward
 from .bucketize import bucketize
 from .celu import celu
+from .channel_shuffle import channel_shuffle
 from .conv2d import conv2d
+from .conv_transpose1d import conv_transpose1d, conv_transpose1d_output_size
+from .conv_transpose2d import conv_transpose2d
+from .cudnn_convolution import cudnn_convolution
 from .div import (
     div_mode,
     div_mode_,
@@ -35,6 +40,7 @@ from .div import (
 from .dropout import dropout, dropout_backward
 from .erfinv import erfinv
 from .erfinv_ import erfinv_
+from .feature_dropout import feature_dropout_
 from .flip import flip
 from .fmod_ import fmod_, fmod_scalar_, fmod_tensor_
 from .gather import gather, gather_backward
@@ -44,7 +50,9 @@ from .index_add import index_add, index_add_
 from .index_copy_ import index_copy, index_copy_
 from .index_put import _index_put_impl_, index_put, index_put_
 from .index_select import index_select
+from .isin import isin
 from .linalg_cholesky import linalg_cholesky
+from .linear import linear
 from .log import log
 from .log10 import log10, log10_, log10_out
 from .log_normal_ import log_normal_
@@ -66,7 +74,7 @@ from .normal import normal_
 from .one_hot import one_hot
 from .ones import ones
 from .ones_like import ones_like
-from .pad import constant_pad_nd
+from .pad import constant_pad_nd, pad
 from .permute_copy import permute_copy
 from .prod import prod, prod_dim
 from .rand import rand
@@ -90,15 +98,19 @@ from .special_gammainc import special_gammainc
 from .tile import tile
 from .trunc import trunc, trunc_
 from .unique import _unique2
+from .upsample_linear1d_backward import upsample_linear1d_backward
 from .w8a8_block_fp8_matmul import w8a8_block_fp8_matmul
 from .zeros import zero_, zeros
 from .zeros_like import zeros_like
 
 __all__ = [
-    "amax",
+    "_conj",
+    "_index_put_impl_",
+    "_unique2",
     "all",
     "all_dim",
     "all_dims",
+    "amax",
     "any",
     "any_dim",
     "any_dims",
@@ -109,13 +121,24 @@ __all__ = [
     "batch_norm_backward",
     "bucketize",
     "celu",
-    # "celu_",
+    "celu_",
+    "channel_shuffle",
+    "constant_pad_nd",
     "conv2d",
+    "conv_transpose1d",
+    "conv_transpose1d_output_size",
+    "conv_transpose2d",
+    "cudnn_convolution",
+    "div_mode",
+    "div_mode_",
     "dropout",
     "dropout_backward",
     "erfinv",
     "erfinv_",
+    "feature_dropout_",
     "flip",
+    "floor_divide",
+    "floor_divide_",
     "fmod_",
     "fmod_scalar_",
     "fmod_tensor_",
@@ -129,9 +152,10 @@ __all__ = [
     "index_copy_",
     "index_put",
     "index_put_",
-    "_index_put_impl_",
     "index_select",
+    "isin",
     "linalg_cholesky",
+    "linear",
     "log",
     "log10",
     "log10_",
@@ -162,7 +186,7 @@ __all__ = [
     "one_hot",
     "ones",
     "ones_like",
-    "constant_pad_nd",
+    "pad",
     "permute_copy",
     "prod",
     "prod_dim",
@@ -187,13 +211,9 @@ __all__ = [
     "true_divide",
     "true_divide_",
     "true_divide_out",
-    "div_mode",
-    "div_mode_",
-    "floor_divide",
-    "floor_divide_",
-    "_unique2",
     "trunc",
     "trunc_",
+    "upsample_linear1d_backward",
     "w8a8_block_fp8_matmul",
     "zero_",
     "zeros",
@@ -202,8 +222,8 @@ __all__ = [
 
 
 if get_device_capability(current_device())[0] >= 3:
-    from .addmm import addmm, addmm_dtype, addmm_dtype_out  # noqa: F401
-    from .baddbmm import baddbmm  # noqa: F401
+    from .addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out  # noqa: F401
+    from .baddbmm import baddbmm, baddbmm_out  # noqa: F401
     from .bmm import bmm  # noqa: F401
     from .gelu import gelu  # noqa: F401
     from .mm import mm  # noqa: F401
@@ -214,7 +234,9 @@ if get_device_capability(current_device())[0] >= 3:
             "addmm",
             "addmm_dtype",
             "addmm_dtype_out",
+            "addmm_out",
             "baddbmm",
+            "baddbmm_out",
             "bmm",
             "gelu",
             "mm",

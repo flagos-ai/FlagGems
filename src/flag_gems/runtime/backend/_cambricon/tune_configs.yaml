@@ -1462,10 +1462,14 @@ index:
   - 1
   - 2
   - 4
+  # BLOCK_SIZE1=4096 excluded: with the default num_stages=2 a 4096-wide tile
+  # exceeds NRAM (always OutOfResources, can never win) and BLOCK_SIZE0=4 x
+  # BLOCK_SIZE1=4096 trips an MLU AutoTileForTritonPass failure
+  # ("PassManager::run failed" on an untileable tensor.expand_shape that
+  # collapses [1, 4, 4096]) in inductor-wrapped contexts with dynamic shapes.
   block_size1:
   - 1024
   - 2048
-  - 4096
   warps:
   - 1
   - 4

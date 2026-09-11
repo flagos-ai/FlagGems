@@ -12,13 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import logging
-
 import triton
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
-
-logger = logging.getLogger(__name__)
 
 
 @pointwise_dynamic(is_tensor=(True,), promotion_methods=[(0, "DEFAULT")])
@@ -31,11 +27,3 @@ def copy(src):
 @triton.jit
 def copy_(src):
     return src
-
-
-_copy_pointwise_ = copy_
-
-
-def copy_(*args, **kwargs):
-    logger.debug("GEMS_ENFLAME COPY_")
-    return _copy_pointwise_(*args, **kwargs)

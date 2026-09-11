@@ -17,7 +17,7 @@ import warnings
 
 import torch
 import triton
-import triton.experimental.tle as tle
+import triton.experimental.tle.language as tle
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn

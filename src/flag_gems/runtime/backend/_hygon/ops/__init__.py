@@ -12,7 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Hygon internal implementation for attention
+from ._scaled_dot_product_flash_attention import _scaled_dot_product_flash_attention
 from .adaptive_max_pool3d_backward import adaptive_max_pool3d_backward
+from .addr import addr
 from .any import any, any_dim, any_dims
 from .attention import (
     ScaleDotProductAttention,
@@ -41,6 +44,7 @@ from .div import (
     trunc_divide,
     trunc_divide_,
 )
+from .exponential import exponential
 from .exponential_ import exponential_
 from .fill import (
     fill_scalar,
@@ -50,14 +54,21 @@ from .fill import (
     fill_tensor_,
     fill_tensor_out,
 )
-from .gelu import gelu, gelu_
+from .gelu import gelu, gelu_, gelu_backward
 from .hadamard_transform import hadamard_transform
 from .index_add import index_add, index_add_
 from .index_copy_ import index_copy, index_copy_
 from .index_select_backward import index_select_backward
 from .isin import isin
 from .lcm import lcm, lcm_
+from .linalg_ldl_factor import ldl_factor
+from .linalg_matrix_norm import linalg_matrix_norm
+from .linalg_solve_triangular import (
+    linalg_solve_triangular,
+    linalg_solve_triangular_out,
+)
 from .log_normal_ import log_normal_
+from .masked_scatter_backward import masked_scatter_backward
 from .matmul_bf16 import matmul_bf16
 from .matmul_int8 import matmul_int8
 from .max_pool3d_with_indices import (
@@ -87,6 +98,13 @@ from .replication_pad2d_backward import (
     replication_pad2d_backward,
     replication_pad2d_backward_grad_input,
 )
+from .scatter import scatter, scatter_
+from .searchsorted import (
+    searchsorted,
+    searchsorted_out,
+    searchsorted_scalar,
+    searchsorted_scalar_out,
+)
 from .silu import silu, silu_, silu_backward
 from .softplus_backward import softplus_backward
 from .sort import sort, sort_stable
@@ -97,7 +115,10 @@ from .special_chebyshev_polynomial_w import (
 )
 from .split_with_sizes_copy import split_with_sizes_copy
 from .tile import tile
+from .topk_w8a16_fp8 import topk_w8a16_fp8
 from .unique import _unique2
+from .unique_dim import unique_dim
+from .unsqueeze import unsqueeze, unsqueeze_
 from .upsample_nearest2d import upsample_nearest2d
 from .weight_norm import (
     weight_norm,
@@ -108,21 +129,22 @@ from .weight_norm import (
 )
 
 __all__ = [
+    "_scaled_dot_product_flash_attention",
     "_unique2",
     "adaptive_max_pool3d_backward",
+    "addr",
+    "any",
+    "any_dim",
+    "any_dims",
     "avg_pool3d_backward",
     "broadcast_tensors",
     "broadcast_to",
     "conj_physical",
-    "ScaleDotProductAttention",
-    "SUPPORTED_FP8_DTYPE",
-    "any",
-    "any_dim",
-    "any_dims",
     "cudnn_convolution",
     "diff",
     "div_mode",
     "div_mode_",
+    "exponential",
     "exponential_",
     "fill_scalar",
     "fill_scalar_",
@@ -136,6 +158,7 @@ __all__ = [
     "floor_divide_",
     "gelu",
     "gelu_",
+    "gelu_backward",
     "hadamard_transform",
     "heur_block_n",
     "index_add",
@@ -146,7 +169,12 @@ __all__ = [
     "isin",
     "lcm",
     "lcm_",
+    "ldl_factor",
+    "linalg_matrix_norm",
+    "linalg_solve_triangular",
+    "linalg_solve_triangular_out",
     "log_normal_",
+    "masked_scatter_backward",
     "matmul_bf16",
     "matmul_int8",
     "max_pool3d_backward",
@@ -154,9 +182,9 @@ __all__ = [
     "max_unpool2d",
     "median_dim",
     "median_dim_values",
+    "mm",
     "mul",
     "mul_",
-    "mm",
     "nansum",
     "nansum_out",
     "nll_loss_backward",
@@ -179,6 +207,13 @@ __all__ = [
     "scaled_dot_product_attention",
     "scaled_dot_product_attention_backward",
     "scaled_dot_product_attention_forward",
+    "ScaleDotProductAttention",
+    "scatter",
+    "scatter_",
+    "searchsorted",
+    "searchsorted_out",
+    "searchsorted_scalar",
+    "searchsorted_scalar_out",
     "silu",
     "silu_",
     "silu_backward",
@@ -189,12 +224,17 @@ __all__ = [
     "special_chebyshev_polynomial_w",
     "special_chebyshev_polynomial_w_out",
     "split_with_sizes_copy",
+    "SUPPORTED_FP8_DTYPE",
     "tile",
+    "topk_w8a16_fp8",
     "true_divide",
     "true_divide_",
     "true_divide_out",
     "trunc_divide",
     "trunc_divide_",
+    "unique_dim",
+    "unsqueeze",
+    "unsqueeze_",
     "upsample_nearest2d",
     "weight_norm",
     "weight_norm_except_dim",

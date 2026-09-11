@@ -5,6 +5,12 @@ import flag_gems
 
 from . import base
 
+DTYPES = [
+    torch.float32,
+]
+if flag_gems.runtime.device.support_fp64:
+    DTYPES.append(torch.float64)
+
 VECDOT_SHAPES = [
     (10,),
     (100,),
@@ -44,7 +50,7 @@ def test_linalg_vecdot_benchmark():
     bench = VecdotBenchmark(
         op_name="linalg_vecdot",
         torch_op=torch.linalg.vecdot,
-        dtypes=[torch.float32, torch.float64],
+        dtypes=DTYPES,
     )
     bench.gems_op = flag_gems.linalg_vecdot
     bench.run()
@@ -55,7 +61,7 @@ def test_linalg_vecdot_out_benchmark():
     bench = VecdotBenchmark(
         op_name="linalg_vecdot_out",
         torch_op=torch.linalg.vecdot,
-        dtypes=[torch.float32, torch.float64],
+        dtypes=DTYPES,
     )
     bench.gems_op = flag_gems.linalg_vecdot_out
     bench.run()

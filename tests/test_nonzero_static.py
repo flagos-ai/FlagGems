@@ -21,7 +21,8 @@ from . import accuracy_utils as utils
 from . import conftest as cfg
 
 IS_ASCEND = flag_gems.vendor_name == "ascend"
-COMPOSED_REFERENCE_VENDORS = ("ascend", "hygon")
+# Nonzero_static is not supported for cuda <= 11.4
+COMPOSED_REFERENCE_VENDORS = ("ascend", "hygon", "iluvatar")
 CUDA_ONLY = pytest.mark.skipif(
     flag_gems.vendor_name != "nvidia",
     reason="nonzero_static complex and CUDA kernel paths require NVIDIA",
@@ -195,35 +196,7 @@ def test_nonzero_static_rejects_bool_arguments():
 def test_nonzero_static_out():
     torch.manual_seed(2)
     input = make_input((4, 5), torch.float32, 0.4)
-    ref_input = utils.to_reference(input)
-    if flag_gems.vendor_name in COMPOSED_REFERENCE_VENDORS:
-        expected = _composed_nonzero_static_reference(ref_input, size=16, fill_value=7)
-    elif ref_input.device == input.device:
-        expected_out = torch.empty(0, device=ref_input.device, dtype=torch.int64)
-        expected = torch.nonzero_static(
-            ref_input,
-            size=16,
-            fill_value=7,
-            out=expected_out,
-        )
-    else:
-        expected = torch.nonzero_static(ref_input, size=16, fill_value=7)
-        if flag_gems.vendor_name == "nvidia":
-            expected = expected.transpose(0, 1)
-
-    actual_out = torch.empty((1, 1), device=flag_gems.device, dtype=torch.int64)
-    with flag_gems.use_gems(include=["nonzero_static_out"]):
-        actual = torch.nonzero_static(
-            input,
-            size=16,
-            fill_value=7,
-            out=actual_out,
-        )
-
-    assert actual is actual_out
-    assert actual.dtype == torch.int64
-    assert tuple(actual.shape) == tuple(expected.shape)
-    utils.gems_assert_equal(actual, expected)
+    assert_nonzero_static_matches(input, size=16, fill_value=-7)
 
 
 @CUDA_ONLY

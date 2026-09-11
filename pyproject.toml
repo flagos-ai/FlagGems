@@ -77,6 +77,9 @@ dependencies = [
 ascend-cann850 = [
     "torch==2.9.0+cpu",
     "torch-npu==2.9.0",
+    "decorator==5.1.1",
+    "attrs==24.2.0",
+    "psutil==6.0.0",
 ]
 
 ascend-cann900 = [
@@ -150,14 +153,6 @@ kunlunxin = [
     "torch_xray==2.0.4",
     "xformers==0.0.29+1e7a8ec.d20260114",
     "xmlir==1.0.0.1",
-]
-
-metax-maca3720 = [
-    "torch==2.8.0+metax3.7.2.0",
-    "torchaudio==2.4.1+metax3.7.2.0",
-    "torchvision==0.15.1+metax3.7.2.0",
-    "flash_attn==2.6.3+metax3.7.2.0torch2.8",
-    "numpy==2.3.5",
 ]
 
 metax-maca3810 = [
@@ -273,7 +268,7 @@ flaggems-flagtune-compare = "flag_gems.flagtune.cli.compare:main"
 
 [tool.setuptools_scm]
 write_to = "src/flag_gems/_version.py"
-version_scheme = "no-guess-dev"
+version_scheme = "only-version"
 
 [tool.uv]
 

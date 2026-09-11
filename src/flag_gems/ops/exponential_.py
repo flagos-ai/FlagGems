@@ -40,11 +40,15 @@ def safe_fast_log_f32(x):
     bits = x.to(tl.int32, bitcast=True)
     exponent = (bits >> 23) - 127
     mantissa = (bits & 0x7FFFFF).to(tl.float32) * (1.0 / 8388608.0) + 1.0
-    m1 = mantissa - 1.0
-    return (
-        m1 * (1.0 + m1 * (-0.5 + m1 * (0.3333333333 - m1 * 0.25)))
-        + exponent.to(tl.float32) * 0.6931471805599453
-    )
+    t = mantissa - 1.0
+    # Degree-5 minimax polynomial for ln(1+t) on [0, 1)
+    p = 3.0102415366e-02
+    p = p * t - 1.3011859043e-01
+    p = p * t + 2.8330324636e-01
+    p = p * t - 4.8915625549e-01
+    p = p * t + 9.9901031459e-01
+    p = p * t + 2.2125781657e-05
+    return p + exponent.to(tl.float32) * 0.6931471805599453
 
 
 @triton.jit
@@ -78,7 +82,7 @@ def transform_exponential_f32_precise(u, inv_lambd, eps_minus):
 
 @triton.jit
 def transform_exponential_f32_fast(u, inv_lambd, eps_minus):
-    log = tl.where(u >= 1.0 + eps_minus, eps_minus, safe_fast_log_f32(u))
+    log = tl.where(u >= 1.0 - 1e-4, eps_minus, safe_fast_log_f32(u))
     # log = tl.log(tl.maximum(u, 1e-38))
     return -inv_lambd * log
 
@@ -115,7 +119,7 @@ def fused_exponential_kernel_f32_unroll8(
     c1 = ((philox_offset >> 32) & 0xFFFFFFFF).to(tl.uint32)
 
     pid = tl.program_id(0)
-    block_start = pid * BLOCK
+    block_start = pid * BLOCK * 2
     offsets = block_start + tl.arange(0, BLOCK)
 
     c0_first = c0 + offsets * 4
