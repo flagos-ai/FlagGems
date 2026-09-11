@@ -40,6 +40,22 @@ ctc_loss_backward:
     - [1024, 32, 128, 96]
   shape_desc: "T, N, C, S"
 
+_ctc_loss_backward:
+  shapes:
+    - [64, 4, 32, 16]
+    - [256, 16, 64, 48]
+    - [512, 32, 64, 48]
+    - [1024, 32, 128, 96]
+  shape_desc: "T, N, C, S"
+
+_ctc_loss_backward_out:
+  shapes:
+    - [64, 4, 32, 16]
+    - [256, 16, 64, 48]
+    - [512, 32, 64, 48]
+    - [1024, 32, 128, 96]
+  shape_desc: "T, N, C, S"
+
 cdist_backward:
   shapes:
     - [2, 16, 32]

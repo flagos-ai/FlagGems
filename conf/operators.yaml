@@ -3335,6 +3335,32 @@ ops:
     - NeuralNetwork
   stages:
     - alpha: '5.4'
+- id: ctc_loss_backward
+  description: 'Computes the gradient of the CTC loss with respect to log_probs.
+
+    '
+  for:
+  - _ctc_loss_backward
+  - _ctc_loss_backward.Tensor
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
+- id: ctc_loss_backward_out
+  description: A variant of `_ctc_loss_backward` that allows the output to be assigned
+    to `out`.
+  for:
+  - _ctc_loss_backward.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: cudnn_attention_forward
   description: 'Forward kernel for cuDNN attention, computing scaled dot-product
 
