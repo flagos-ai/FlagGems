@@ -49,6 +49,7 @@ from .fill import fill_scalar, fill_scalar_, fill_tensor, fill_tensor_
 from .flip import flip
 from .full import full
 from .full_like import full_like
+from .fused_adam_ import fused_adam_
 from .gather import gather, gather_backward
 from .grouped_matmul import grouped_matmul
 from .groupnorm import group_norm, group_norm_backward
@@ -209,6 +210,7 @@ __all__ = [
     "flip",
     "full",
     "full_like",
+    "fused_adam_",
     "gather",
     "gather_backward",
     "group_norm",
