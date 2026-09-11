@@ -96,6 +96,8 @@ _FULL_CONFIG = (
     ("__xor__.Tensor", xor),
     ("_adaptive_avg_pool2d", adaptive_avg_pool2d),
     ("_adaptive_avg_pool2d_backward", _adaptive_avg_pool2d_backward),
+    ("_adaptive_avg_pool3d", _adaptive_avg_pool3d),
+    ("_adaptive_avg_pool3d.out", _adaptive_avg_pool3d_out),
     ("_adaptive_avg_pool3d_backward", _adaptive_avg_pool3d_backward),
     ("_add_relu.Tensor", _add_relu),
     ("_add_relu_.Tensor", _add_relu_),

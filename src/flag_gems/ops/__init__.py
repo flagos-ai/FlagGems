@@ -178,6 +178,10 @@ from flag_gems.ops.acos_ import acos_
 from flag_gems.ops.acosh import acosh, acosh_
 from flag_gems.ops.adaptive_avg_pool1d import adaptive_avg_pool1d
 from flag_gems.ops.adaptive_avg_pool2d import adaptive_avg_pool2d
+from flag_gems.ops.adaptive_avg_pool3d import (
+    _adaptive_avg_pool3d,
+    _adaptive_avg_pool3d_out,
+)
 from flag_gems.ops.adaptive_avg_pool3d_backward import (
     _adaptive_avg_pool3d_backward,
     adaptive_avg_pool3d_backward_grad_input,
@@ -1030,7 +1034,9 @@ __all__ = [
     "__lshift__",
     "__rshift__",
     "_adaptive_avg_pool2d_backward",
+    "_adaptive_avg_pool3d",
     "_adaptive_avg_pool3d_backward",
+    "_adaptive_avg_pool3d_out",
     "_add_relu",
     "_add_relu_",
     "_amp_foreach_non_finite_check_and_unscale_",
