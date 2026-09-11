@@ -20,18 +20,11 @@ from pathlib import Path
 import pytest
 import torch
 import triton
-from packaging import version
 
 import flag_gems
 from flag_gems import _embedding_bag, _embedding_bag_forward_only
 
 from . import base
-
-pytestmark = pytest.mark.skipif(
-    flag_gems.vendor_name == "ascend"
-    and version.parse(triton.__version__) < version.parse("3.5"),
-    reason="CANN 8.5 is an accuracy-only validation target",
-)
 
 SHAPES = [
     # Bags, embedding dimension, table rows, samples per bag.
