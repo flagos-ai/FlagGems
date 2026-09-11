@@ -10,6 +10,20 @@ from . import base, consts, utils
 P_LIST = (float("-inf"), float("inf"), 0.0, 1.0, 2.0, 6.6)
 
 
+def composed_dist(x, y, p=2.0):
+    # torch_npu's native dist only supports p in {0, 1, 2}; compose the other
+    # norms from basic torch ops (same approach as benchmark pairwise_distance).
+    if p == float("inf"):
+        return torch.amax(torch.abs(x - y))
+    elif p == float("-inf"):
+        return torch.amin(torch.abs(x - y))
+    elif p == 0.0 or p == 1.0 or p == 2.0:
+        return torch.dist(x, y, p)
+    else:
+        diff = torch.abs(x - y)
+        return torch.pow(torch.sum(torch.pow(diff, p)), 1.0 / p).to(x.dtype)
+
+
 def dist_input_fn(shape, dtype, device):
     inp1 = utils.generate_tensor_input(shape, dtype, device)
     inp2 = utils.generate_tensor_input(shape, dtype, device)
@@ -39,10 +53,13 @@ class DistBenchmark(base.GenericBenchmark):
 
 @pytest.mark.dist
 def test_dist():
+    safe_dist = torch.dist
+    if base.vendor_name == "ascend":
+        safe_dist = composed_dist
     bench = DistBenchmark(
         op_name="dist",
         input_fn=dist_input_fn,
-        torch_op=torch.dist,
+        torch_op=safe_dist,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.set_gems(flag_gems.dist)
