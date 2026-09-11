@@ -521,26 +521,11 @@ def _segment_reduce_uniform_lengths(data, reduce, lengths, axis):
             )
         return output
 
-    if data.device.type == "npu":
-        return None
-
-    view_shape = (
-        data.shape[:axis] + (segment_count, segment_length) + data.shape[axis + 1 :]
-    )
-    reshaped = data.reshape(view_shape)
-    reduce_dim = axis + 1
-
-    if segment_length == 1:
-        return torch.squeeze(reshaped, dim=reduce_dim)
-    if reduce == "sum":
-        return torch.sum(reshaped, dim=reduce_dim)
-    if reduce == "mean":
-        return torch.mean(reshaped, dim=reduce_dim)
-    if reduce == "max":
-        return torch.amax(reshaped, dim=reduce_dim)
-    if reduce == "min":
-        return torch.amin(reshaped, dim=reduce_dim)
-    return torch.prod(reshaped, dim=reduce_dim)
+    # uniform segments longer than _UNIFORM_KERNEL_MAX_SEGMENT_LENGTH fall
+    # through to the general _segment_reduce_forward_kernel (the caller's
+    # None-fallback); measured on XPU that path is not slower than the
+    # reshape + torch.{sum,mean,amax,amin,prod} alternative it replaces.
+    return None
 
 
 def _segment_reduce_uniform_sum_mean_backward(data, grad, reduce, lengths, axis):
