@@ -17,7 +17,7 @@
 #
 # Main config: .github/configs/weekly/weekly-test.yaml
 # Per-backend config: .github/configs/weekly/<NAME>.yml
-
+# vendors: Nvidia,MThreads,KunLunXin,Iluvatar,Ascend,Hygon,Metax,THead,Cambricon
 name: weekly
 
 permissions:
