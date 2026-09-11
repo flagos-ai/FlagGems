@@ -17,7 +17,7 @@ import torch
 
 import flag_gems
 
-from . import base, consts
+from . import base, consts, utils
 
 
 @pytest.mark.amin
@@ -26,6 +26,24 @@ def test_amin(dtype):
     bench = base.UnaryReductionBenchmark(
         op_name="amin",
         torch_op=torch.amin,
+        dtypes=[dtype],
+    )
+    bench.run()
+
+
+def amin_dim_input_fn(shape, dtype, device):
+    inp = utils.generate_tensor_input(shape, dtype, device)
+    dim = 1 if len(shape) > 1 else 0
+    yield inp, dim
+
+
+@pytest.mark.amin
+@pytest.mark.parametrize("dtype", consts.FLOAT_DTYPES)
+def test_amin_dim(dtype):
+    bench = base.GenericBenchmark(
+        op_name="amin_dim",
+        torch_op=torch.amin,
+        input_fn=amin_dim_input_fn,
         dtypes=[dtype],
     )
     bench.run()
