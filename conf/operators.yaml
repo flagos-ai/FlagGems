@@ -2398,6 +2398,22 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: cholesky
+  description: 'Computes the Cholesky decomposition of a symmetric positive-definite
+    matrix A
+
+    or for batches of symmetric positive-definite matrices.
+
+    '
+  for:
+  - cholesky
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.4'
 - id: cholesky_inverse
   description: Compute inverse of symmetric positive-definite matrix from Cholesky
     factor.
