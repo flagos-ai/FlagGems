@@ -112,6 +112,7 @@ from .repeat_interleave import (
     repeat_interleave_self_tensor,
     repeat_interleave_tensor,
 )
+from .replication_pad2d import replication_pad2d
 from .resolve_conj import resolve_conj
 from .rms_norm_w8a16_fp8 import rms_norm_w8a16_fp8
 from .round_ import round_
@@ -248,6 +249,7 @@ __all__ = [
     "repeat_interleave_self_int",
     "repeat_interleave_self_tensor",
     "repeat_interleave_tensor",
+    "replication_pad2d",
     "resolve_conj",
     "rms_norm_w8a16_fp8",
     "round_",
