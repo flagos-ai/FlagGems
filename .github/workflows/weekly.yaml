@@ -259,7 +259,11 @@ jobs:
       - name: Install FlagGems dependencies
         env: ${{ fromJSON(matrix.test_env) }}
         shell: bash --login -e -o pipefail {0}
-        run: pip install .
+        run: |
+          pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+          pip config set global.extra-index-url "https://mirrors.aliyun.com/pypi/simple/ https://mirrors.cloud.tencent.com/pypi/simple/ https://mirrors.163.com/pypi/simple/"
+          pip config set global.trusted-host "pypi.tuna.tsinghua.edu.cn mirrors.aliyun.com mirrors.cloud.tencent.com mirrors.163.com"
+          pip install .[test]
 
       - name: Check GPU availability
         shell: bash --login -e -o pipefail {0}
