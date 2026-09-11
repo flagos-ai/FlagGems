@@ -16,6 +16,7 @@ import pytest
 import torch
 
 import flag_gems
+from flag_gems.utils.device_info import get_device_capability
 
 from . import base, consts
 
@@ -23,11 +24,7 @@ from . import base, consts
 _ATEN_CC_SUPPORTED = (
     flag_gems.device == "cuda"
     and torch.cuda.is_available()
-    and torch.cuda.get_device_capability() == (8, 0)
-) or (
-    flag_gems.device == "cuda"
-    and torch.cuda.is_available()
-    and torch.cuda.get_device_capability() == (8, 6)
+    and get_device_capability()[0] == 8
 )
 
 # Sparse semi-structured MM shapes
