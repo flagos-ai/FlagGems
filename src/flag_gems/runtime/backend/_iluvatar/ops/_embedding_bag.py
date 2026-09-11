@@ -99,46 +99,55 @@ def _embedding_bag_corex_assert(code):
 @libentry()
 @triton.jit(
     do_not_specialize=[
-        "Error",
-        "AccBits",
-        "OutBits",
-        "Freq",
-        "N",
-        "A",
-        "D",
-        "Kind",
-        "Count",
+        "error",
+        "acc_bits",
+        "out_bits",
+        "freq",
+        "num_error_flags",
+        "num_acc_elements",
+        "embedding_dim",
+        "kind",
+        "count_freq",
     ]
 )
 def _corex_embedding_bag_check_flags(
-    Error, AccBits, OutBits, Freq, N, A, D, Kind, Count, BLOCK: tl.constexpr
+    error,
+    acc_bits,  # accumulator pointer bits
+    out_bits,  # output pointer bits
+    freq,  # embedding occurrence frequencies
+    num_error_flags,
+    num_acc_elements,  # number of accumulator elements
+    embedding_dim,
+    kind,
+    count_freq,  # count or normalize by embedding frequency
+    block: tl.constexpr,  # element block size
 ):
     # Fixed pointer and integer signatures keep every caller in one SDK module.
     # The top bit makes all extents uint64 scalars, including small/empty calls.
-    n = (N & 0x7FFFFFFFFFFFFFFF).to(tl.int64)
-    a = (A & 0x7FFFFFFFFFFFFFFF).to(tl.int64)
-    d = (D & 0x7FFFFFFFFFFFFFFF).to(tl.int64)
-    lane = tl.arange(0, BLOCK)
-    x = tl.program_id(0).to(tl.int64) * BLOCK + lane
+    n = (num_error_flags & 0x7FFFFFFFFFFFFFFF).to(tl.int64)
+    a = (num_acc_elements & 0x7FFFFFFFFFFFFFFF).to(tl.int64)
+    d = (embedding_dim & 0x7FFFFFFFFFFFFFFF).to(tl.int64)
+    lane = tl.arange(0, block)
+    x = tl.program_id(0).to(tl.int64) * block + lane
     if a > 0:
-        acc = AccBits.to(tl.pointer_type(tl.float32))
+        acc = acc_bits.to(tl.pointer_type(tl.float32))
         values = tl.load(acc + x, x < a, other=0)
-        if Count != 0:
-            frequency = tl.load(Freq + x // d, x < a, other=1)
+        if count_freq != 0:
+            frequency = tl.load(freq + x // d, x < a, other=1)
             values = values / tl.maximum(frequency, 1).to(tl.float32)
-        if Kind == 1:
-            target16 = OutBits.to(tl.pointer_type(tl.float16))
+        if kind == 1:
+            target16 = out_bits.to(tl.pointer_type(tl.float16))
             tl.store(target16 + x, values.to(tl.float16), x < a)
-        elif Kind == 2:
-            target_bf16 = OutBits.to(tl.pointer_type(tl.bfloat16))
+        elif kind == 2:
+            target_bf16 = out_bits.to(tl.pointer_type(tl.bfloat16))
             tl.store(target_bf16 + x, values.to(tl.bfloat16), x < a)
         else:
-            target32 = OutBits.to(tl.pointer_type(tl.float32))
+            target32 = out_bits.to(tl.pointer_type(tl.float32))
             tl.store(target32 + x, values, x < a)
     if tl.program_id(0) == 0:
         bad = tl.full((), 0, tl.int32)
-        for base in range(0, n, BLOCK):
-            code = tl.load(Error + base + lane, base + lane < n, other=0)
+        for base in range(0, n, block):
+            code = tl.load(error + base + lane, base + lane < n, other=0)
             bad |= tl.max(code, 0)
         _embedding_bag_corex_assert(bad)
 

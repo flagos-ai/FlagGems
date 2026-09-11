@@ -40,78 +40,80 @@ def _round_positive_bf16(value):
 @libentry()
 @triton.jit
 def _eb_backward_sparse_mthreads(
-    GRAD,
-    INDICES,
-    MAPPING,
-    BAG_SIZE,
-    WEIGHTS,
-    PREFIX,
-    CHUNKS,
-    OUT_IDX,
-    VALUES,
-    N,
-    B,
-    D,
-    V,
-    PAD,
-    SG0: tl.constexpr,
-    SG1: tl.constexpr,
-    SI: tl.constexpr,
-    SB: tl.constexpr,
-    SW: tl.constexpr,
-    MODE: tl.constexpr,
-    HAS_WEIGHTS: tl.constexpr,
-    COMPACT: tl.constexpr,
-    RANKED: tl.constexpr,
-    FP64: tl.constexpr,
-    BD: tl.constexpr,
-    BS: tl.constexpr,
+    grad,  # output gradient
+    indices,
+    mapping,
+    bag_size,
+    weights,
+    prefix,
+    chunks,
+    out_idx,  # output sparse row indices
+    values,
+    num_indices,
+    num_bags,
+    embedding_dim,
+    num_weights,
+    pad,  # padding index
+    sg0: tl.constexpr,  # output-gradient bag stride
+    sg1: tl.constexpr,  # output-gradient feature stride
+    si: tl.constexpr,  # indices stride
+    sb: tl.constexpr,  # bag-size stride
+    sw: tl.constexpr,  # per-sample-weight stride
+    mode: tl.constexpr,
+    has_weights: tl.constexpr,
+    compact: tl.constexpr,
+    ranked: tl.constexpr,
+    fp64: tl.constexpr,  # float64 accumulation
+    bd: tl.constexpr,  # embedding-dimension block size
+    bs: tl.constexpr,  # sample block size
 ):
     pid = tl.program_id(0).to(tl.int64)
-    nd = tl.maximum(tl.cdiv(D, BD), 1)
-    sample = (pid // nd) * BS + tl.arange(0, BS)
-    col = (pid % nd) * BD + tl.arange(0, BD)
-    idx = tl.load(INDICES + sample * SI, sample < N, other=PAD)
-    active = (sample < N) & (idx >= 0) & (idx < V) & (idx != PAD)
-    if COMPACT:
-        pos = tl.load(PREFIX + sample, sample < N, other=0) - 1
-        if RANKED:
+    nd = tl.maximum(tl.cdiv(embedding_dim, bd), 1)
+    sample = (pid // nd) * bs + tl.arange(0, bs)
+    col = (pid % nd) * bd + tl.arange(0, bd)
+    idx = tl.load(indices + sample * si, sample < num_indices, other=pad)
+    active = (sample < num_indices) & (idx >= 0) & (idx < num_weights) & (idx != pad)
+    if compact:
+        pos = tl.load(prefix + sample, sample < num_indices, other=0) - 1
+        if ranked:
             chunk = sample // 256
-            pos += tl.load(CHUNKS + chunk, sample < N, other=0)
+            pos += tl.load(chunks + chunk, sample < num_indices, other=0)
     else:
         pos = sample
     pos = pos.to(tl.int64)
-    bag = tl.load(MAPPING + sample, sample < N, other=0)
-    active = active & (bag >= 0) & (bag < B)
-    if FP64:
+    bag = tl.load(mapping + sample, sample < num_indices, other=0)
+    active = active & (bag >= 0) & (bag < num_bags)
+    if fp64:
         acc_type = tl.float64
     else:
         acc_type = tl.float32
     g = tl.load(
-        GRAD + bag[:, None] * SG0 + col[None, :] * SG1,
-        active[:, None] & (col[None, :] < D),
+        grad + bag[:, None] * sg0 + col[None, :] * sg1,
+        active[:, None] & (col[None, :] < embedding_dim),
         other=0,
     ).to(acc_type)
-    if MODE == 1:
+    if mode == 1:
         # ATen materializes the inverse bag size in grad dtype before its
         # sparse per-occurrence multiplication, including the reduced-dtype
         # rounding of both the denominator and reciprocal.
-        size = tl.load(BAG_SIZE + bag * SB, active, other=1)
+        size = tl.load(bag_size + bag * sb, active, other=1)
         # This override is selected only for BF16 sparse MEAN. Preserve both
         # round-to-nearest-even stages using integer bits before multiplication.
         # Denominators and inverses here are positive, finite FP32 numbers.
         size = _round_positive_bf16(size.to(tl.float32))
         inverse = _round_positive_bf16(1.0 / tl.maximum(size, 1))
         g = g * inverse[:, None]
-    if HAS_WEIGHTS:
-        weight = tl.load(WEIGHTS + sample * SW, sample < N, other=0).to(acc_type)
+    if has_weights:
+        weight = tl.load(weights + sample * sw, sample < num_indices, other=0).to(
+            acc_type
+        )
         g = g * weight[:, None]
     if pid % nd == 0:
-        tl.store(OUT_IDX + pos, idx, active)
+        tl.store(out_idx + pos, idx, active)
     tl.store(
-        VALUES + pos[:, None] * D + col[None, :],
+        values + pos[:, None] * embedding_dim + col[None, :],
         g,
-        active[:, None] & (col[None, :] < D),
+        active[:, None] & (col[None, :] < embedding_dim),
     )
 
 
@@ -124,34 +126,41 @@ def _launch_sparse_bf16(kernel, packed_kernel, grid, pointers, metadata, **optio
 
 @triton.jit
 def _validate_max(
-    INDICES, OFFSETS, OFFSET2BAG, BAG_SIZE, MAXIMUM, OUT, ERROR, META: tl.constexpr
+    indices,
+    offsets,
+    offset_to_bag,
+    bag_size,
+    maximum_indices,
+    out,  # output buffer
+    error,
+    meta: tl.constexpr,  # packed kernel metadata
 ):
     _eb_backward_validate_body(
-        INDICES,
-        OFFSETS,
-        OFFSET2BAG,
-        BAG_SIZE,
-        MAXIMUM,
-        INDICES,
-        INDICES,
-        INDICES,
-        INDICES,
-        ERROR,
-        OUT,
+        indices,
+        offsets,
+        offset_to_bag,
+        bag_size,
+        maximum_indices,
+        indices,
+        indices,
+        indices,
+        indices,
+        error,
+        out,
         0,
-        META[0],
-        META[1],
-        META[2],
-        META[3],
-        META[4],
-        META[5],
-        META[8],
-        META[9],
-        META[10],
-        META[11],
-        META[12],
-        META[13],
-        META[14],
+        meta[0],
+        meta[1],
+        meta[2],
+        meta[3],
+        meta[4],
+        meta[5],
+        meta[8],
+        meta[9],
+        meta[10],
+        meta[11],
+        meta[12],
+        meta[13],
+        meta[14],
         2,
         False,
         False,
@@ -166,78 +175,83 @@ def _validate_max(
 @libentry()
 @triton.jit
 def max_owned_tiles(
-    GRAD,
-    INDICES,
-    OFFSETS,
-    OFFSET2BAG,
-    BAG_SIZE,
-    MAXIMUM,
-    ACC,
-    OUT,
-    ERROR,
-    META: tl.constexpr,
+    grad,  # output gradient
+    indices,
+    offsets,
+    offset_to_bag,
+    bag_size,
+    maximum_indices,
+    acc,  # accumulator buffer
+    out,  # output buffer
+    error,
+    meta: tl.constexpr,  # packed kernel metadata
 ):
-    if tl.program_id(0).to(tl.int64) < META[20]:
-        _validate_max(INDICES, OFFSETS, OFFSET2BAG, BAG_SIZE, MAXIMUM, OUT, ERROR, META)
-    B: tl.constexpr = META[1]
-    D: tl.constexpr = META[2]
-    V: tl.constexpr = META[3]
-    PAD: tl.constexpr = META[5]
-    SG0: tl.constexpr = META[6]
-    SG1: tl.constexpr = META[7]
-    SB: tl.constexpr = META[11]
-    SX0: tl.constexpr = META[12]
-    SX1: tl.constexpr = META[13]
-    FP64: tl.constexpr = META[15]
-    CAST: tl.constexpr = META[16]
-    BR: tl.constexpr = META[17]
-    BD: tl.constexpr = META[18]
-    BB: tl.constexpr = META[19]
+    if tl.program_id(0).to(tl.int64) < meta[20]:
+        _validate_max(
+            indices, offsets, offset_to_bag, bag_size, maximum_indices, out, error, meta
+        )
+    num_bags: tl.constexpr = meta[1]
+    embedding_dim: tl.constexpr = meta[2]
+    num_weights: tl.constexpr = meta[3]
+    pad: tl.constexpr = meta[5]
+    sg0: tl.constexpr = meta[6]
+    sg1: tl.constexpr = meta[7]
+    sb: tl.constexpr = meta[11]
+    sx0: tl.constexpr = meta[12]
+    sx1: tl.constexpr = meta[13]
+    fp64: tl.constexpr = meta[15]
+    CAST: tl.constexpr = meta[16]
+    BR: tl.constexpr = meta[17]
+    bd: tl.constexpr = meta[18]
+    BB: tl.constexpr = meta[19]
     pid = tl.program_id(0).to(tl.int64)
-    nc: tl.constexpr = tl.cdiv(D, BD)
-    if pid < tl.cdiv(V, BR) * nc:
+    nc: tl.constexpr = tl.cdiv(embedding_dim, bd)
+    if pid < tl.cdiv(num_weights, BR) * nc:
         row0 = pid // nc * BR
         rows = row0 + tl.arange(0, BR)
-        cols = pid % nc * BD + tl.arange(0, BD)
-        positions = rows[:, None] * D + cols[None, :]
-        output_mask = (rows[:, None] < V) & (cols[None, :] < D)
-        tl.store(ACC + positions, 0, output_mask)
+        cols = pid % nc * bd + tl.arange(0, bd)
+        positions = rows[:, None] * embedding_dim + cols[None, :]
+        output_mask = (rows[:, None] < num_weights) & (cols[None, :] < embedding_dim)
+        tl.store(acc + positions, 0, output_mask)
         # Each CTA owns all addresses in this output tile. No other CTA writes
         # its zeros, atomics, or cast, so a CTA barrier is sufficient here.
         tl.debug_barrier()
-        if FP64:
+        if fp64:
             acc_dtype = tl.float64
         else:
             acc_dtype = tl.float32
-        for start in range(0, B, BB):
+        for start in range(0, num_bags, BB):
             bags = start + tl.arange(0, BB)
             maximum = tl.load(
-                MAXIMUM + bags[:, None] * SX0 + cols[None, :] * SX1,
-                (bags[:, None] < B) & (cols[None, :] < D),
+                maximum_indices + bags[:, None] * sx0 + cols[None, :] * sx1,
+                (bags[:, None] < num_bags) & (cols[None, :] < embedding_dim),
                 other=-1,
             ).to(tl.int64)
-            sizes = tl.load(BAG_SIZE + bags * SB, bags < B, other=0)
+            sizes = tl.load(bag_size + bags * sb, bags < num_bags, other=0)
             active = (
-                (bags[:, None] < B)
-                & (cols[None, :] < D)
+                (bags[:, None] < num_bags)
+                & (cols[None, :] < embedding_dim)
                 & (maximum >= row0)
                 & (maximum < row0 + BR)
-                & (maximum < V)
-                & (maximum != PAD)
+                & (maximum < num_weights)
+                & (maximum != pad)
                 & (sizes[:, None] > 0)
             )
             values = tl.load(
-                GRAD + bags[:, None] * SG0 + cols[None, :] * SG1,
+                grad + bags[:, None] * sg0 + cols[None, :] * sg1,
                 active,
                 other=0,
             ).to(acc_dtype)
             tl.atomic_add(
-                ACC + maximum * D + cols[None, :], values, active, sem="relaxed"
+                acc + maximum * embedding_dim + cols[None, :],
+                values,
+                active,
+                sem="relaxed",
             )
         if CAST:
             tl.debug_barrier()
-            values = tl.load(ACC + positions, output_mask, other=0)
-            tl.store(OUT + positions, values, output_mask)
+            values = tl.load(acc + positions, output_mask, other=0)
+            tl.store(out + positions, values, output_mask)
 
 
 def _compute_max_owned(
@@ -301,49 +315,68 @@ def _compute_max_owned(
 @libentry()
 @triton.jit
 def _max_initialize_direct(
-    INDICES, OFFSETS, OFFSET2BAG, BAG_SIZE, MAXIMUM, OUT, ERROR, META: tl.constexpr
+    indices,
+    offsets,
+    offset_to_bag,
+    bag_size,
+    maximum_indices,
+    out,  # output buffer
+    error,
+    meta: tl.constexpr,  # packed kernel metadata
 ):
     pid = tl.program_id(0).to(tl.int64)
     z = pid * 1024 + tl.arange(0, 1024)
-    tl.store(OUT + z, 0, z < META[2] * META[3])
+    tl.store(out + z, 0, z < meta[2] * meta[3])
     # Large output tables require more zeroing CTAs than input-validation CTAs.
     # Only the latter own an error slot, which the checked kernel reads later.
-    if pid < META[20]:
-        _validate_max(INDICES, OFFSETS, OFFSET2BAG, BAG_SIZE, MAXIMUM, OUT, ERROR, META)
+    if pid < meta[20]:
+        _validate_max(
+            indices, offsets, offset_to_bag, bag_size, maximum_indices, out, error, meta
+        )
 
 
 @libentry()
 @triton.jit
-def max_scatter_direct(GRAD, BAG_SIZE, MAXIMUM, OUT, META: tl.constexpr):
-    B: tl.constexpr = META[1]
-    D: tl.constexpr = META[2]
-    V: tl.constexpr = META[3]
-    PAD: tl.constexpr = META[5]
-    SG0: tl.constexpr = META[6]
-    SG1: tl.constexpr = META[7]
-    SB: tl.constexpr = META[11]
-    SX0: tl.constexpr = META[12]
-    SX1: tl.constexpr = META[13]
-    BLOCK: tl.constexpr = META[19]
-    x = tl.program_id(0).to(tl.int64) * BLOCK + tl.arange(0, BLOCK)
-    if D > 0:
-        bags = x // D
-        cols = x % D
-        maximum = tl.load(MAXIMUM + bags * SX0 + cols * SX1, x < B * D, other=-1).to(
-            tl.int64
-        )
-        sizes = tl.load(BAG_SIZE + bags * SB, x < B * D, other=0)
+def max_scatter_direct(
+    grad,  # output gradient
+    bag_size,
+    maximum_indices,
+    out,  # output buffer
+    meta: tl.constexpr,  # packed kernel metadata
+):
+    num_bags: tl.constexpr = meta[1]
+    embedding_dim: tl.constexpr = meta[2]
+    num_weights: tl.constexpr = meta[3]
+    pad: tl.constexpr = meta[5]
+    sg0: tl.constexpr = meta[6]
+    sg1: tl.constexpr = meta[7]
+    sb: tl.constexpr = meta[11]
+    sx0: tl.constexpr = meta[12]
+    sx1: tl.constexpr = meta[13]
+    block: tl.constexpr = meta[19]
+    x = tl.program_id(0).to(tl.int64) * block + tl.arange(0, block)
+    if embedding_dim > 0:
+        bags = x // embedding_dim
+        cols = x % embedding_dim
+        maximum = tl.load(
+            maximum_indices + bags * sx0 + cols * sx1,
+            x < num_bags * embedding_dim,
+            other=-1,
+        ).to(tl.int64)
+        sizes = tl.load(bag_size + bags * sb, x < num_bags * embedding_dim, other=0)
         active = (
-            (x < B * D)
+            (x < num_bags * embedding_dim)
             & (maximum >= 0)
-            & (maximum < V)
-            & (maximum != PAD)
+            & (maximum < num_weights)
+            & (maximum != pad)
             & (sizes > 0)
         )
-        values = tl.load(GRAD + bags * SG0 + cols * SG1, active, other=0).to(
-            OUT.dtype.element_ty
+        values = tl.load(grad + bags * sg0 + cols * sg1, active, other=0).to(
+            out.dtype.element_ty
         )
-        tl.atomic_add(OUT + maximum * D + cols, values, active, sem="relaxed")
+        tl.atomic_add(
+            out + maximum * embedding_dim + cols, values, active, sem="relaxed"
+        )
 
 
 _SCATTER_CONFIG = (128, 4)
@@ -395,34 +428,41 @@ def _compute_max_direct(
 @libentry()
 @triton.jit
 def _max_initialize_sort(
-    INDICES, OFFSETS, OFFSET2BAG, BAG_SIZE, MAXIMUM, OUT, ERROR, META: tl.constexpr
+    indices,
+    offsets,
+    offset_to_bag,
+    bag_size,
+    maximum_indices,
+    out,  # output buffer
+    error,
+    meta: tl.constexpr,  # packed kernel metadata
 ):
     _eb_backward_validate_body(
-        INDICES,
-        OFFSETS,
-        OFFSET2BAG,
-        BAG_SIZE,
-        MAXIMUM,
-        INDICES,
-        INDICES,
-        INDICES,
-        INDICES,
-        ERROR,
-        OUT,
-        META[2] * META[3],
-        META[0],
-        META[1],
-        META[2],
-        META[3],
-        META[4],
-        META[5],
-        META[8],
-        META[9],
-        META[10],
-        META[11],
-        META[12],
-        META[13],
-        META[14],
+        indices,
+        offsets,
+        offset_to_bag,
+        bag_size,
+        maximum_indices,
+        indices,
+        indices,
+        indices,
+        indices,
+        error,
+        out,
+        meta[2] * meta[3],
+        meta[0],
+        meta[1],
+        meta[2],
+        meta[3],
+        meta[4],
+        meta[5],
+        meta[8],
+        meta[9],
+        meta[10],
+        meta[11],
+        meta[12],
+        meta[13],
+        meta[14],
         2,
         False,
         False,
@@ -443,61 +483,69 @@ def _segment_sum(left_key, left_value, right_key, right_value):
 
 @libentry()
 @triton.jit
-def max_sort_segments(GRAD, BAG_SIZE, MAXIMUM, OUT, META: tl.constexpr):
-    B: tl.constexpr = META[1]
-    D: tl.constexpr = META[2]
-    V: tl.constexpr = META[3]
-    PAD: tl.constexpr = META[5]
-    SG0: tl.constexpr = META[6]
-    SG1: tl.constexpr = META[7]
-    SB: tl.constexpr = META[11]
-    SX0: tl.constexpr = META[12]
-    SX1: tl.constexpr = META[13]
-    FP64: tl.constexpr = META[15]
-    BD: tl.constexpr = META[18]
-    BB: tl.constexpr = META[19]
-    cols = tl.program_id(0).to(tl.int64) * BD + tl.arange(0, BD)
+def max_sort_segments(
+    grad,  # output gradient
+    bag_size,
+    maximum_indices,
+    out,  # output buffer
+    meta: tl.constexpr,  # packed kernel metadata
+):
+    num_bags: tl.constexpr = meta[1]
+    embedding_dim: tl.constexpr = meta[2]
+    num_weights: tl.constexpr = meta[3]
+    pad: tl.constexpr = meta[5]
+    sg0: tl.constexpr = meta[6]
+    sg1: tl.constexpr = meta[7]
+    sb: tl.constexpr = meta[11]
+    sx0: tl.constexpr = meta[12]
+    sx1: tl.constexpr = meta[13]
+    fp64: tl.constexpr = meta[15]
+    bd: tl.constexpr = meta[18]
+    BB: tl.constexpr = meta[19]
+    cols = tl.program_id(0).to(tl.int64) * bd + tl.arange(0, bd)
     bags = tl.arange(0, BB).to(tl.int64)
     maximum = tl.load(
-        MAXIMUM + bags[None, :] * SX0 + cols[:, None] * SX1,
-        (bags[None, :] < B) & (cols[:, None] < D),
+        maximum_indices + bags[None, :] * sx0 + cols[:, None] * sx1,
+        (bags[None, :] < num_bags) & (cols[:, None] < embedding_dim),
         other=-1,
     ).to(tl.int64)
-    sizes = tl.load(BAG_SIZE + bags * SB, bags < B, other=0)
+    sizes = tl.load(bag_size + bags * sb, bags < num_bags, other=0)
     active = (
-        (bags[None, :] < B)
-        & (cols[:, None] < D)
+        (bags[None, :] < num_bags)
+        & (cols[:, None] < embedding_dim)
         & (maximum >= 0)
-        & (maximum < V)
-        & (maximum != PAD)
+        & (maximum < num_weights)
+        & (maximum != pad)
         & (sizes[None, :] > 0)
     )
     # The bag component makes every active key unique and provides the source
     # position after sorting. The host bounds the product below INT64_MAX.
-    packed = tl.where(active, maximum, V) * BB + bags[None, :]
-    if (V + 1) * BB < 2147483648:
+    packed = tl.where(active, maximum, num_weights) * BB + bags[None, :]
+    if (num_weights + 1) * BB < 2147483648:
         packed = packed.to(tl.int32)
     packed = tl.sort(packed, dim=1, descending=False)
     rows = packed // BB
     source_bag = (packed % BB).to(tl.int64)
     values = tl.load(
-        GRAD + source_bag * SG0 + cols[:, None] * SG1,
-        (rows < V) & (source_bag < B) & (cols[:, None] < D),
+        grad + source_bag * sg0 + cols[:, None] * sg1,
+        (rows < num_weights)
+        & (source_bag < num_bags)
+        & (cols[:, None] < embedding_dim),
         other=0,
     )
-    if FP64:
+    if fp64:
         values = values.to(tl.float64)
     else:
         values = values.to(tl.float32)
     _, sums = tl.associative_scan((rows, values), 1, _segment_sum)
     positions = tl.arange(0, BB)[None, :]
-    next_positions = tl.broadcast_to(tl.minimum(positions + 1, BB - 1), (BD, BB))
+    next_positions = tl.broadcast_to(tl.minimum(positions + 1, BB - 1), (bd, BB))
     next_rows = tl.gather(rows, next_positions, 1)
     tail = (positions == BB - 1) | (rows != next_rows)
     tl.store(
-        OUT + rows.to(tl.int64) * D + cols[:, None],
+        out + rows.to(tl.int64) * embedding_dim + cols[:, None],
         sums,
-        (rows < V) & (cols[:, None] < D) & tail,
+        (rows < num_weights) & (cols[:, None] < embedding_dim) & tail,
     )
 
 

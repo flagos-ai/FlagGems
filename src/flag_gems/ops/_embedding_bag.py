@@ -30,104 +30,108 @@ _USE_DEVICE_ASSERT = runtime_device.vendor_name in ("nvidia", "hygon")
 @libentry()
 @triton.jit(debug=_USE_DEVICE_ASSERT)
 def _embedding_bag_forward_kernel(
-    Weight,
-    Indices,
-    Offsets,
-    PerSample,
-    Output,
-    Offset2Bag,
-    BagSize,
-    MaxIndices,
-    Error,
-    N: tl.constexpr,
-    O: tl.constexpr,
-    B: tl.constexpr,
-    D: tl.constexpr,
-    V: tl.constexpr,
-    STRIDE_W0: tl.constexpr,
-    STRIDE_W1: tl.constexpr,
-    STRIDE_I: tl.constexpr,
-    STRIDE_O: tl.constexpr,
-    STRIDE_P: tl.constexpr,
-    PADDING: tl.constexpr,
-    MODE: tl.constexpr,
-    HAS_PER_SAMPLE: tl.constexpr,
-    BLOCK_L: tl.constexpr,
-    BLOCK_D: tl.constexpr,
-    ASCEND_ABI: tl.constexpr = False,
-    BAG_SIZE_B: tl.constexpr = False,
-    SEARCH_STEPS: tl.constexpr = 0,
-    INDEX_BLOCK: tl.constexpr = 128,
-    ASYNC_ASSERT: tl.constexpr = False,
-    SERIAL_MAX: tl.constexpr = False,
-    KEY_MAX: tl.constexpr = False,
-    RECIPROCAL_MEAN: tl.constexpr = False,
-    SKIP_PAD_SCALE: tl.constexpr = False,
+    weight,
+    indices,
+    offsets,
+    per_sample_weights,
+    output,
+    offset_to_bag,
+    bag_size,
+    max_indices,  # maximum-value embedding indices
+    error,
+    num_indices: tl.constexpr,
+    num_offsets: tl.constexpr,
+    num_bags: tl.constexpr,
+    embedding_dim: tl.constexpr,
+    num_weights: tl.constexpr,
+    stride_w0: tl.constexpr,  # weight row stride
+    stride_w1: tl.constexpr,  # weight feature stride
+    stride_i: tl.constexpr,  # indices stride
+    stride_o: tl.constexpr,  # offsets stride
+    stride_p: tl.constexpr,  # per-sample-weight stride
+    padding: tl.constexpr,
+    mode: tl.constexpr,
+    has_per_sample: tl.constexpr,
+    block_l: tl.constexpr,  # bag-length block size
+    block_d: tl.constexpr,  # embedding-dimension block size
+    ascend_abi: tl.constexpr = False,  # Ascend auxiliary-output application binary interface
+    bag_size_b: tl.constexpr = False,  # bag-size output uses num_bags entries
+    search_steps: tl.constexpr = 0,
+    index_block: tl.constexpr = 128,
+    async_assert: tl.constexpr = False,  # asynchronous device assertion
+    serial_max: tl.constexpr = False,  # serial maximum reduction
+    key_max: tl.constexpr = False,  # maximum reduction using ordered keys
+    reciprocal_mean: tl.constexpr = False,
+    skip_pad_scale: tl.constexpr = False,  # skip padding-scale adjustment
 ):
     pid = tle.program_id(0)
     programs = tle.num_programs(0)
-    dim_tiles = tl.maximum(tl.cdiv(D, BLOCK_D), 1)
+    dim_tiles = tl.maximum(tl.cdiv(embedding_dim, block_d), 1)
     acc_dtype: tl.constexpr = (
-        tl.float64 if Weight.dtype.element_ty == tl.float64 else tl.float32
+        tl.float64 if weight.dtype.element_ty == tl.float64 else tl.float32
     )
-    rows = tl.arange(0, BLOCK_L)
-    cols = tl.arange(0, BLOCK_D)
-    total_work = B * dim_tiles
+    rows = tl.arange(0, block_l)
+    cols = tl.arange(0, block_d)
+    total_work = num_bags * dim_tiles
     for work in range(pid, total_work, programs):
         bag = work // dim_tiles
         dim_tile = work % dim_tiles
-        dim = dim_tile * BLOCK_D + cols
-        begin = tl.load(Offsets + bag * STRIDE_O).to(tl.int64)
-        end = tl.load(Offsets + (bag + 1) * STRIDE_O, bag + 1 < O, other=0).to(tl.int64)
-        end = tl.where(bag + 1 < O, end, N)
-        valid_offsets = (begin >= 0) & (end >= begin) & (end <= N)
+        dim = dim_tile * block_d + cols
+        begin = tl.load(offsets + bag * stride_o).to(tl.int64)
+        end = tl.load(
+            offsets + (bag + 1) * stride_o, bag + 1 < num_offsets, other=0
+        ).to(tl.int64)
+        end = tl.where(bag + 1 < num_offsets, end, num_indices)
+        valid_offsets = (begin >= 0) & (end >= begin) & (end <= num_indices)
         valid_offsets &= (bag != 0) | (begin == 0)
-        if O > B:
-            valid_offsets &= (bag != B - 1) | (end == N)
+        if num_offsets > num_bags:
+            valid_offsets &= (bag != num_bags - 1) | (end == num_indices)
         if dim_tile == 0:
             code = tl.where(valid_offsets, 0, 2)
-            index_lane = tl.arange(0, INDEX_BLOCK)
+            index_lane = tl.arange(0, index_block)
             # Fixed partitions keep mapping writes disjoint even when a
             # malformed offset sequence makes different bags overlap.
-            if N > 0:
+            if num_indices > 0:
                 for input_base in range(
-                    bag * INDEX_BLOCK, N, tl.maximum(B, 1) * INDEX_BLOCK
+                    bag * index_block,
+                    num_indices,
+                    tl.maximum(num_bags, 1) * index_block,
                 ):
                     pos = input_base + index_lane
-                    in_bounds = pos < N
-                    idx = tl.load(Indices + pos * STRIDE_I, in_bounds, other=0)
-                    invalid = in_bounds & ((idx < 0) | (idx >= V))
+                    in_bounds = pos < num_indices
+                    idx = tl.load(indices + pos * stride_i, in_bounds, other=0)
+                    invalid = in_bounds & ((idx < 0) | (idx >= num_weights))
                     code |= tl.max(invalid.to(tl.int32), 0)
-                    low = tl.full((INDEX_BLOCK,), 0, tl.int64)
-                    high = tl.full((INDEX_BLOCK,), B, tl.int64)
-                    for _ in range(SEARCH_STEPS):
+                    low = tl.full((index_block,), 0, tl.int64)
+                    high = tl.full((index_block,), num_bags, tl.int64)
+                    for _ in range(search_steps):
                         mid = (low + high) // 2
                         off = tl.load(
-                            Offsets + mid * STRIDE_O,
-                            in_bounds & (mid < B),
-                            other=N,
+                            offsets + mid * stride_o,
+                            in_bounds & (mid < num_bags),
+                            other=num_indices,
                         )
-                        right = (mid < B) & (off <= pos)
+                        right = (mid < num_bags) & (off <= pos)
                         low = tl.where(right, mid + 1, low)
                         high = tl.where(right, high, mid)
-                    tl.store(Offset2Bag + pos, tl.maximum(low - 1, 0), in_bounds)
-            if ASYNC_ASSERT:
+                    tl.store(offset_to_bag + pos, tl.maximum(low - 1, 0), in_bounds)
+            if async_assert:
                 tl.device_assert(code == 0, "embedding_bag: invalid index or offset")
             else:
-                tl.store(Error + bag, code)
+                tl.store(error + bag, code)
         end = tl.where(valid_offsets, end, begin)
-        begin = tl.minimum(tl.maximum(begin, 0), N)
-        end = tl.minimum(tl.maximum(end, begin), N)
-        if MODE == 2 and SERIAL_MAX:
+        begin = tl.minimum(tl.maximum(begin, 0), num_indices)
+        end = tl.minimum(tl.maximum(end, begin), num_indices)
+        if mode == 2 and serial_max:
             count = tl.full((), 0, tl.int64)
-            best = tl.full((BLOCK_D,), 0, acc_dtype)
-            winner = tl.full((BLOCK_D,), -1, tl.int64)
+            best = tl.full((block_d,), 0, acc_dtype)
+            winner = tl.full((block_d,), -1, tl.int64)
             for pos in range(begin, end):
-                idx = tl.load(Indices + pos * STRIDE_I).to(tl.int64)
-                valid = (idx >= 0) & (idx < V) & (idx != PADDING)
+                idx = tl.load(indices + pos * stride_i).to(tl.int64)
+                valid = (idx >= 0) & (idx < num_weights) & (idx != padding)
                 values = tl.load(
-                    Weight + idx * STRIDE_W0 + dim * STRIDE_W1,
-                    valid & (dim < D),
+                    weight + idx * stride_w0 + dim * stride_w1,
+                    valid & (dim < embedding_dim),
                     other=0.0,
                 ).to(acc_dtype)
                 replace = valid & ((count == 0) | (values > best))
@@ -135,42 +139,48 @@ def _embedding_bag_forward_kernel(
                 winner = tl.where(replace, idx, winner)
                 count += valid.to(tl.int64)
             result = best
-            tl.store(MaxIndices + bag * D + dim, winner, dim < D)
+            tl.store(
+                max_indices + bag * embedding_dim + dim, winner, dim < embedding_dim
+            )
         else:
             count = tl.full((), 0, tl.int64)
-            if MODE == 2:
-                if KEY_MAX:
-                    best = tl.full((BLOCK_D,), -9223372036854775808, tl.int64)
+            if mode == 2:
+                if key_max:
+                    best = tl.full((block_d,), -9223372036854775808, tl.int64)
                 else:
-                    best = tl.full((BLOCK_D,), float("-inf"), acc_dtype)
+                    best = tl.full((block_d,), float("-inf"), acc_dtype)
                 best_pos = tl.full(
-                    (BLOCK_D,), N, tl.int32 if KEY_MAX and N < 2147483647 else tl.int64
+                    (block_d,),
+                    num_indices,
+                    tl.int32 if key_max and num_indices < 2147483647 else tl.int64,
                 )
-                first = tl.full((), N, tl.int64)
+                first = tl.full((), num_indices, tl.int64)
             else:
-                acc = tl.zeros((BLOCK_L, BLOCK_D), acc_dtype)
-            if N > 0:
-                for base in range(begin, end, BLOCK_L):
+                acc = tl.zeros((block_l, block_d), acc_dtype)
+            if num_indices > 0:
+                for base in range(begin, end, block_l):
                     pos = base + rows
                     active = pos < end
-                    idx = tl.load(Indices + pos * STRIDE_I, active, other=0).to(
+                    idx = tl.load(indices + pos * stride_i, active, other=0).to(
                         tl.int64
                     )
-                    valid = active & (idx >= 0) & (idx < V) & (idx != PADDING)
-                    if D > 0:
+                    valid = active & (idx >= 0) & (idx < num_weights) & (idx != padding)
+                    if embedding_dim > 0:
                         values = tl.load(
-                            Weight
-                            + idx[:, None] * STRIDE_W0
-                            + dim[None, :] * STRIDE_W1,
-                            valid[:, None] & (dim[None, :] < D),
+                            weight
+                            + idx[:, None] * stride_w0
+                            + dim[None, :] * stride_w1,
+                            valid[:, None] & (dim[None, :] < embedding_dim),
                             other=0.0,
                         ).to(acc_dtype)
                     else:
-                        values = tl.zeros((BLOCK_L, BLOCK_D), acc_dtype)
+                        values = tl.zeros((block_l, block_d), acc_dtype)
                     count += tl.sum(valid.to(tl.int32), 0)
-                    if MODE == 2:
-                        first = tl.minimum(first, tl.min(tl.where(valid, pos, N), 0))
-                        if KEY_MAX:
+                    if mode == 2:
+                        first = tl.minimum(
+                            first, tl.min(tl.where(valid, pos, num_indices), 0)
+                        )
+                        if key_max:
                             bits = values.to(tl.int64, bitcast=True)
                             magnitude = bits & 0x7FFFFFFFFFFFFFFF
                             numeric = valid[:, None] & (magnitude <= 0x7FF0000000000000)
@@ -184,8 +194,10 @@ def _embedding_bag_forward_kernel(
                                 candidate, 0, return_indices=True
                             )
                             tile_pos = tl.where(
-                                tile_best > -9223372036854775808, base + relative, N
-                            ).to(tl.int32 if N < 2147483647 else tl.int64)
+                                tile_best > -9223372036854775808,
+                                base + relative,
+                                num_indices,
+                            ).to(tl.int32 if num_indices < 2147483647 else tl.int64)
                         else:
                             numeric = valid[:, None] & (values == values)
                             candidate = tl.where(numeric, values, float("-inf"))
@@ -194,7 +206,7 @@ def _embedding_bag_forward_kernel(
                                 tl.where(
                                     numeric & (values == tile_best[None, :]),
                                     pos[:, None],
-                                    N,
+                                    num_indices,
                                 ),
                                 0,
                             )
@@ -204,28 +216,33 @@ def _embedding_bag_forward_kernel(
                         best = tl.where(replace, tile_best, best)
                         best_pos = tl.where(replace, tile_pos, best_pos)
                     else:
-                        if HAS_PER_SAMPLE:
+                        if has_per_sample:
                             # CUDA ATen multiplies zero padding values by their sample
                             # weights, preserving NaN from a nonfinite padding weight.
                             scale = tl.load(
-                                PerSample + pos * STRIDE_P,
-                                valid if SKIP_PAD_SCALE else active,
+                                per_sample_weights + pos * stride_p,
+                                valid if skip_pad_scale else active,
                                 other=0.0,
                             )
                             values *= scale[:, None].to(acc_dtype)
                         acc += values
-            if MODE == 2:
-                if N == 0 or D == 0:
-                    winner = tl.full((BLOCK_D,), -1, tl.int64)
-                    result = tl.zeros((BLOCK_D,), acc_dtype)
+            if mode == 2:
+                if num_indices == 0 or embedding_dim == 0:
+                    winner = tl.full((block_d,), -1, tl.int64)
+                    result = tl.zeros((block_d,), acc_dtype)
                 else:
-                    first_idx = tl.load(Indices + first * STRIDE_I, first < N, other=0)
+                    first_idx = tl.load(
+                        indices + first * stride_i, first < num_indices, other=0
+                    )
                     first_value = tl.load(
-                        Weight + first_idx.to(tl.int64) * STRIDE_W0 + dim * STRIDE_W1,
-                        (first < N) & (first_idx >= 0) & (first_idx < V) & (dim < D),
+                        weight + first_idx.to(tl.int64) * stride_w0 + dim * stride_w1,
+                        (first < num_indices)
+                        & (first_idx >= 0)
+                        & (first_idx < num_weights)
+                        & (dim < embedding_dim),
                         other=0.0,
                     )
-                    if KEY_MAX:
+                    if key_max:
                         first_nan = (
                             first_value.to(tl.int64, bitcast=True) & 0x7FFFFFFFFFFFFFFF
                         ) > 0x7FF0000000000000
@@ -235,46 +252,50 @@ def _embedding_bag_forward_kernel(
                     else:
                         best_pos = tl.where(first_value != first_value, first, best_pos)
                     winner = tl.load(
-                        Indices + best_pos.to(tl.int64) * STRIDE_I,
-                        best_pos < N,
+                        indices + best_pos.to(tl.int64) * stride_i,
+                        best_pos < num_indices,
                         other=-1,
                     )
                     result = tl.load(
-                        Weight + winner.to(tl.int64) * STRIDE_W0 + dim * STRIDE_W1,
-                        (winner >= 0) & (winner < V) & (dim < D),
+                        weight + winner.to(tl.int64) * stride_w0 + dim * stride_w1,
+                        (winner >= 0) & (winner < num_weights) & (dim < embedding_dim),
                         other=0.0,
                     )
-                if ASCEND_ABI:
+                if ascend_abi:
                     winner = tl.where(count == 0, 0, winner)
-                if D > 0:
-                    tl.store(MaxIndices + bag * D + dim, winner, dim < D)
+                if embedding_dim > 0:
+                    tl.store(
+                        max_indices + bag * embedding_dim + dim,
+                        winner,
+                        dim < embedding_dim,
+                    )
             else:
                 result = tl.sum(acc, 0)
-                if MODE == 1:
-                    if RECIPROCAL_MEAN:
+                if mode == 1:
+                    if reciprocal_mean:
                         reciprocal = 1.0 / tl.maximum(count, 1).to(acc_dtype)
                         result = result * reciprocal
                     else:
                         result = result / tl.maximum(count, 1).to(acc_dtype)
-        if D > 0:
-            tl.store(Output + bag * D + dim, result, dim < D)
+        if embedding_dim > 0:
+            tl.store(output + bag * embedding_dim + dim, result, dim < embedding_dim)
         if dim_tile == 0:
-            if ASCEND_ABI and MODE == 0:
-                tl.store(BagSize + bag, 0)
+            if ascend_abi and mode == 0:
+                tl.store(bag_size + bag, 0)
             else:
-                tl.store(BagSize + bag, count)
-    if O > B and not BAG_SIZE_B:
+                tl.store(bag_size + bag, count)
+    if num_offsets > num_bags and not bag_size_b:
         if pid == 0:
-            tl.store(BagSize + B, 0)
-    if B == 0:
+            tl.store(bag_size + num_bags, 0)
+    if num_bags == 0:
         if pid == 0:
-            only_offset = tl.load(Offsets)
-            if ASYNC_ASSERT:
+            only_offset = tl.load(offsets)
+            if async_assert:
                 tl.device_assert(
                     only_offset == 0, "embedding_bag: invalid terminal offset"
                 )
             else:
-                tl.store(Error, tl.where(only_offset == 0, 0, 2))
+                tl.store(error, tl.where(only_offset == 0, 0, 2))
 
 
 def _embedding_bag_impl(
@@ -450,16 +471,16 @@ def _embedding_bag_impl(
                 per_sample_weights is not None,
                 block_l,
                 block_d,
-                ASCEND_ABI=ascend_abi,
-                BAG_SIZE_B=bag_size_b,
+                ascend_abi=ascend_abi,
+                bag_size_b=bag_size_b,
                 # A single bag maps every position to zero. Avoid a redundant
                 # vector gather from one scalar offset on Ascend's compiler.
-                SEARCH_STEPS=bags.bit_length() if bags > 1 else 0,
-                INDEX_BLOCK=index_block,
-                ASYNC_ASSERT=async_assert,
-                SERIAL_MAX=serial_max,
-                KEY_MAX=key_max,
-                RECIPROCAL_MEAN=reciprocal_mean,
+                search_steps=bags.bit_length() if bags > 1 else 0,
+                index_block=index_block,
+                async_assert=async_assert,
+                serial_max=serial_max,
+                key_max=key_max,
+                reciprocal_mean=reciprocal_mean,
                 num_warps=num_warps,
                 # Keep assertions enabled even with TRITON_DEBUG=0.
                 **launch_kwargs,

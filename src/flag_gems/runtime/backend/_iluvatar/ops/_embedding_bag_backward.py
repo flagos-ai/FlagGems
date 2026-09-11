@@ -57,34 +57,41 @@ class _BackwardLaunch:
 @libentry()
 @triton.jit
 def _max_initialize(
-    INDICES, OFFSETS, OFFSET2BAG, BAG_SIZE, MAXIMUM, OUT, ERROR, META: tl.constexpr
+    indices,
+    offsets,
+    offset_to_bag,
+    bag_size,
+    maximum_indices,
+    out,  # output buffer
+    error,
+    meta: tl.constexpr,  # packed kernel metadata
 ):
     _eb_backward_validate_body(
-        INDICES,
-        OFFSETS,
-        OFFSET2BAG,
-        BAG_SIZE,
-        MAXIMUM,
-        INDICES,
-        INDICES,
-        INDICES,
-        INDICES,
-        ERROR,
-        OUT,
-        META.value[2] * META.value[3],
-        META.value[0],
-        META.value[1],
-        META.value[2],
-        META.value[3],
-        META.value[4],
-        META.value[5],
-        META.value[8],
-        META.value[9],
-        META.value[10],
-        META.value[11],
-        META.value[12],
-        META.value[13],
-        META.value[14],
+        indices,
+        offsets,
+        offset_to_bag,
+        bag_size,
+        maximum_indices,
+        indices,
+        indices,
+        indices,
+        indices,
+        error,
+        out,
+        meta.value[2] * meta.value[3],
+        meta.value[0],
+        meta.value[1],
+        meta.value[2],
+        meta.value[3],
+        meta.value[4],
+        meta.value[5],
+        meta.value[8],
+        meta.value[9],
+        meta.value[10],
+        meta.value[11],
+        meta.value[12],
+        meta.value[13],
+        meta.value[14],
         2,
         False,
         False,
@@ -99,36 +106,46 @@ def _max_initialize(
 
 @libentry()
 @triton.jit
-def max_scatter_direct(GRAD, BAG_SIZE, MAXIMUM, OUT, META: tl.constexpr):
-    B: tl.constexpr = META.value[1]
-    D: tl.constexpr = META.value[2]
-    V: tl.constexpr = META.value[3]
-    PAD: tl.constexpr = META.value[5]
-    SG0: tl.constexpr = META.value[6]
-    SG1: tl.constexpr = META.value[7]
-    SB: tl.constexpr = META.value[11]
-    SX0: tl.constexpr = META.value[12]
-    SX1: tl.constexpr = META.value[13]
-    BLOCK: tl.constexpr = META.value[19]
-    x = tl.program_id(0).to(tl.int64) * BLOCK + tl.arange(0, BLOCK)
-    if D > 0:
-        bags = x // D
-        cols = x % D
-        maximum = tl.load(MAXIMUM + bags * SX0 + cols * SX1, x < B * D, other=-1).to(
-            tl.int64
-        )
-        sizes = tl.load(BAG_SIZE + bags * SB, x < B * D, other=0)
+def max_scatter_direct(
+    grad,  # output gradient
+    bag_size,
+    maximum_indices,
+    out,  # output buffer
+    meta: tl.constexpr,  # packed kernel metadata
+):
+    num_bags: tl.constexpr = meta.value[1]
+    embedding_dim: tl.constexpr = meta.value[2]
+    num_weights: tl.constexpr = meta.value[3]
+    pad: tl.constexpr = meta.value[5]
+    sg0: tl.constexpr = meta.value[6]
+    sg1: tl.constexpr = meta.value[7]
+    sb: tl.constexpr = meta.value[11]
+    sx0: tl.constexpr = meta.value[12]
+    sx1: tl.constexpr = meta.value[13]
+    block: tl.constexpr = meta.value[19]
+    x = tl.program_id(0).to(tl.int64) * block + tl.arange(0, block)
+    if embedding_dim > 0:
+        bags = x // embedding_dim
+        cols = x % embedding_dim
+        maximum = tl.load(
+            maximum_indices + bags * sx0 + cols * sx1,
+            x < num_bags * embedding_dim,
+            other=-1,
+        ).to(tl.int64)
+        sizes = tl.load(bag_size + bags * sb, x < num_bags * embedding_dim, other=0)
         active = (
-            (x < B * D)
+            (x < num_bags * embedding_dim)
             & (maximum >= 0)
-            & (maximum < V)
-            & (maximum != PAD)
+            & (maximum < num_weights)
+            & (maximum != pad)
             & (sizes > 0)
         )
-        values = tl.load(GRAD + bags * SG0 + cols * SG1, active, other=0).to(
-            OUT.dtype.element_ty
+        values = tl.load(grad + bags * sg0 + cols * sg1, active, other=0).to(
+            out.dtype.element_ty
         )
-        tl.atomic_add(OUT + maximum * D + cols, values, active, sem="relaxed")
+        tl.atomic_add(
+            out + maximum * embedding_dim + cols, values, active, sem="relaxed"
+        )
 
 
 def _compute_max(grad, indices, offsets, mapping, sizes, maximum, num_weights, padding):

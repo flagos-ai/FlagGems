@@ -34,122 +34,152 @@ _USE_PACKED_META = runtime_device.vendor_name == "nvidia"
 
 @libentry()
 @triton.jit
-def _eb_backward_init(ACC, FREQ, ERROR, A, V, COUNT: tl.constexpr, BLOCK: tl.constexpr):
-    x = tl.program_id(0).to(tl.int64) * BLOCK + tl.arange(0, BLOCK)
-    tl.store(ACC + x, 0, x < A)
-    if COUNT:
-        tl.store(FREQ + x, 0, x < V)
+def _eb_backward_init(
+    acc,  # accumulator buffer
+    freq,  # embedding occurrence frequencies
+    error,
+    num_acc_elements,  # number of accumulator elements
+    num_weights,
+    count_freq: tl.constexpr,  # count or normalize by embedding frequency
+    block: tl.constexpr,  # element block size
+):
+    x = tl.program_id(0).to(tl.int64) * block + tl.arange(0, block)
+    tl.store(acc + x, 0, x < num_acc_elements)
+    if count_freq:
+        tl.store(freq + x, 0, x < num_weights)
     if tl.program_id(0) == 0:
-        tl.store(ERROR, 0)
+        tl.store(error, 0)
 
 
 @libentry()
 @triton.jit
 def _eb_backward_validate(
-    INDICES,
-    OFFSETS,
-    OFFSET2BAG,
-    BAG_SIZE,
-    MAXIMUM,
-    MAPPING,
-    KEEP,
-    FREQ,
-    CHUNKS,
-    ERROR,
-    ACC,
-    A,
-    N,
-    B,
-    D: tl.constexpr,
-    V,
-    O,
-    PAD,
-    SI: tl.constexpr,
-    SO: tl.constexpr,
-    SM: tl.constexpr,
-    SB: tl.constexpr,
-    SX0: tl.constexpr,
-    SX1: tl.constexpr,
-    HAS_MAP: tl.constexpr,
-    MODE: tl.constexpr,
-    SPARSE: tl.constexpr,
-    COUNT: tl.constexpr,
-    RANKED: tl.constexpr,
-    DEVICE_ASSERT: tl.constexpr,
-    INIT_ACC: tl.constexpr,
-    NCHUNKS: tl.constexpr,
-    BLOCK: tl.constexpr,
-    STORE_ERROR: tl.constexpr = True,
+    indices,
+    offsets,
+    offset_to_bag,
+    bag_size,
+    maximum_indices,
+    mapping,
+    keep,
+    freq,  # embedding occurrence frequencies
+    chunks,
+    error,
+    acc,  # accumulator buffer
+    num_acc_elements,  # number of accumulator elements
+    num_indices,
+    num_bags,
+    embedding_dim: tl.constexpr,
+    num_weights,
+    num_offsets,
+    pad,  # padding index
+    si: tl.constexpr,  # indices stride
+    so: tl.constexpr,  # offsets stride
+    sm: tl.constexpr,  # offset-to-bag mapping stride
+    sb: tl.constexpr,  # bag-size stride
+    sx0: tl.constexpr,  # maximum-indices row stride
+    sx1: tl.constexpr,  # maximum-indices feature stride
+    has_map: tl.constexpr,  # offset-to-bag mapping is available
+    mode: tl.constexpr,
+    sparse: tl.constexpr,
+    count_freq: tl.constexpr,  # count or normalize by embedding frequency
+    ranked: tl.constexpr,
+    device_assert: tl.constexpr,
+    init_acc: tl.constexpr,  # initialize accumulator
+    num_chunks: tl.constexpr,
+    block: tl.constexpr,  # element block size
+    store_error: tl.constexpr = True,
 ):
-    if INIT_ACC:
+    if init_acc:
         z = tl.program_id(0).to(tl.int64) * 1024 + tl.arange(0, 1024)
-        tl.store(ACC + z, 0, z < A)
-    x = tl.program_id(0).to(tl.int64) * BLOCK + tl.arange(0, BLOCK)
-    idx = tl.load(INDICES + x * SI, x < N, other=0)
-    bad_index = (x < N) & ((idx < 0) | (idx >= V))
+        tl.store(acc + z, 0, z < num_acc_elements)
+    x = tl.program_id(0).to(tl.int64) * block + tl.arange(0, block)
+    idx = tl.load(indices + x * si, x < num_indices, other=0)
+    bad_index = (x < num_indices) & ((idx < 0) | (idx >= num_weights))
 
-    off = tl.load(OFFSETS + x * SO, x < O, other=0)
-    prev = tl.load(OFFSETS + (x - 1) * SO, (x > 0) & (x < O), other=0)
-    bad_offset = (x < O) & ((off < prev) | (off < 0) | (off > N))
-    bad_offset = bad_offset | ((x == 0) & (O > 0) & (off != 0))
-    bad_offset = bad_offset | ((O == B + 1) & (x == B) & (off != N))
+    off = tl.load(offsets + x * so, x < num_offsets, other=0)
+    prev = tl.load(offsets + (x - 1) * so, (x > 0) & (x < num_offsets), other=0)
+    bad_offset = (x < num_offsets) & ((off < prev) | (off < 0) | (off > num_indices))
+    bad_offset = bad_offset | ((x == 0) & (num_offsets > 0) & (off != 0))
+    bad_offset = bad_offset | (
+        (num_offsets == num_bags + 1) & (x == num_bags) & (off != num_indices)
+    )
 
-    if HAS_MAP:
-        bag = tl.load(OFFSET2BAG + x * SM, x < N, other=0).to(tl.int64)
+    if has_map:
+        bag = tl.load(offset_to_bag + x * sm, x < num_indices, other=0).to(tl.int64)
     else:
         # CPU SUM forward can omit offset2bag. Upper bound selects the last
         # equal boundary, which is necessary when consecutive bags are empty.
-        left = tl.full((BLOCK,), 0, tl.int64)
-        right = tl.full((BLOCK,), B, tl.int64)
+        left = tl.full((block,), 0, tl.int64)
+        right = tl.full((block,), num_bags, tl.int64)
         while tl.sum((left < right).to(tl.int32), 0) > 0:
             mid = (left + right) // 2
-            boundary = tl.load(OFFSETS + mid * SO, (mid < B) & (x < N), other=N + 1)
+            boundary = tl.load(
+                offsets + mid * so,
+                (mid < num_bags) & (x < num_indices),
+                other=num_indices + 1,
+            )
             advance = boundary <= x
             active = left < right
             left = tl.where(active & advance, mid + 1, left)
             right = tl.where(active & ~advance, mid, right)
         bag = left - 1
-    valid_bag = (bag >= 0) & (bag < B)
-    start = tl.load(OFFSETS + bag * SO, (x < N) & valid_bag, other=0)
+    valid_bag = (bag >= 0) & (bag < num_bags)
+    start = tl.load(offsets + bag * so, (x < num_indices) & valid_bag, other=0)
     end = tl.load(
-        OFFSETS + (bag + 1) * SO, (x < N) & valid_bag & (bag + 1 < O), other=N
+        offsets + (bag + 1) * so,
+        (x < num_indices) & valid_bag & (bag + 1 < num_offsets),
+        other=num_indices,
     )
-    bad_map = (x < N) & (~valid_bag | (x < start) | (x >= end))
-    if MODE != 2 or SPARSE:
-        tl.store(MAPPING + x, bag, x < N)
-    valid_idx = (x < N) & (idx >= 0) & (idx < V) & (idx != PAD)
-    if SPARSE:
+    bad_map = (x < num_indices) & (~valid_bag | (x < start) | (x >= end))
+    if mode != 2 or sparse:
+        tl.store(mapping + x, bag, x < num_indices)
+    valid_idx = (x < num_indices) & (idx >= 0) & (idx < num_weights) & (idx != pad)
+    if sparse:
         selected = valid_idx.to(tl.int32)
-        if RANKED:
-            tl.store(KEEP + x, tl.cumsum(selected, 0), x < N)
+        if ranked:
+            tl.store(keep + x, tl.cumsum(selected, 0), x < num_indices)
             count = tl.sum(selected, 0)
-            if NCHUNKS == 1:
+            if num_chunks == 1:
                 if tl.program_id(0) == 0:
-                    tl.store(CHUNKS, 0)
-                    tl.store(ERROR + 1, count)
+                    tl.store(chunks, 0)
+                    tl.store(error + 1, count)
             else:
-                tl.store(CHUNKS + tl.program_id(0), count, tl.program_id(0) < NCHUNKS)
+                tl.store(
+                    chunks + tl.program_id(0), count, tl.program_id(0) < num_chunks
+                )
         else:
-            tl.store(KEEP + x, selected, x < N)
-    if COUNT:
-        tl.atomic_add(FREQ + idx, 1, valid_idx, sem="relaxed")
+            tl.store(keep + x, selected, x < num_indices)
+    if count_freq:
+        tl.atomic_add(freq + idx, 1, valid_idx, sem="relaxed")
 
-    bad_size = tl.full((BLOCK,), False, tl.int1)
-    bad_max = tl.full((BLOCK,), False, tl.int1)
-    if D > 0 and (MODE == 1 or (MODE == 2 and not SPARSE)):
-        size = tl.load(BAG_SIZE + x * SB, x < B, other=0)
-        bstart = tl.load(OFFSETS + x * SO, x < B, other=0)
-        bend = tl.load(OFFSETS + (x + 1) * SO, (x < B) & (x + 1 < O), other=N)
-        bad_size = (x < B) & ((size < 0) | (size > bend - bstart))
-        if MODE == 1:
-            sample_size = tl.load(BAG_SIZE + bag * SB, (x < N) & valid_bag, other=0)
+    bad_size = tl.full((block,), False, tl.int1)
+    bad_max = tl.full((block,), False, tl.int1)
+    if embedding_dim > 0 and (mode == 1 or (mode == 2 and not sparse)):
+        size = tl.load(bag_size + x * sb, x < num_bags, other=0)
+        bstart = tl.load(offsets + x * so, x < num_bags, other=0)
+        bend = tl.load(
+            offsets + (x + 1) * so,
+            (x < num_bags) & (x + 1 < num_offsets),
+            other=num_indices,
+        )
+        bad_size = (x < num_bags) & ((size < 0) | (size > bend - bstart))
+        if mode == 1:
+            sample_size = tl.load(
+                bag_size + bag * sb, (x < num_indices) & valid_bag, other=0
+            )
             bad_size = bad_size | (valid_idx & (sample_size <= 0))
-        elif D > 0:
-            row = x // D
-            col = x % D
-            maximum = tl.load(MAXIMUM + row * SX0 + col * SX1, x < B * D, other=-1)
+        elif embedding_dim > 0:
+            row = x // embedding_dim
+            col = x % embedding_dim
+            maximum = tl.load(
+                maximum_indices + row * sx0 + col * sx1,
+                x < num_bags * embedding_dim,
+                other=-1,
+            )
             # Ascend uses zero for empty MAX bags, including an empty table.
-            bad_max = (x < B * D) & ((maximum < -1) | (maximum >= tl.maximum(V, 1)))
+            bad_max = (x < num_bags * embedding_dim) & (
+                (maximum < -1) | (maximum >= tl.maximum(num_weights, 1))
+            )
     invalid = (
         bad_index.to(tl.int32)
         + 2 * bad_offset.to(tl.int32)
@@ -157,13 +187,13 @@ def _eb_backward_validate(
         + 8 * bad_size.to(tl.int32)
         + 16 * bad_max.to(tl.int32)
     )
-    if STORE_ERROR:
-        if INIT_ACC:
+    if store_error:
+        if init_acc:
             # Distinct slots need no prior reset or cross-program atomic ordering.
-            tl.store(ERROR + tl.program_id(0), tl.max(invalid, 0))
+            tl.store(error + tl.program_id(0), tl.max(invalid, 0))
         else:
-            tl.atomic_max(ERROR, tl.max(invalid, 0), sem="relaxed")
-    if DEVICE_ASSERT:
+            tl.atomic_max(error, tl.max(invalid, 0), sem="relaxed")
+    if device_assert:
         tl.device_assert(
             invalid == 0,
             "embedding_bag_backward received invalid indices, offsets, or auxiliary data",
@@ -173,181 +203,198 @@ def _eb_backward_validate(
 @libentry()
 @triton.jit
 def _eb_backward_chunk_offsets(
-    CHUNKS, ERROR, NCHUNKS: tl.constexpr, BLOCK: tl.constexpr
+    chunks,
+    error,
+    num_chunks: tl.constexpr,
+    block: tl.constexpr,  # element block size
 ):
-    x = tl.arange(0, BLOCK)
-    count = tl.load(CHUNKS + x, x < NCHUNKS, other=0)
+    x = tl.arange(0, block)
+    count = tl.load(chunks + x, x < num_chunks, other=0)
     inclusive = tl.cumsum(count, 0)
-    tl.store(CHUNKS + x, inclusive - count, x < NCHUNKS)
-    tl.store(ERROR + 1, tl.sum(count, 0))
+    tl.store(chunks + x, inclusive - count, x < num_chunks)
+    tl.store(error + 1, tl.sum(count, 0))
 
 
 @libentry()
 @triton.jit
 def _eb_backward_scatter(
-    GRAD,
-    INDICES,
-    MAPPING,
-    BAG_SIZE,
-    MAXIMUM,
-    WEIGHTS,
-    ACC,
-    N,
-    B,
-    D,
-    V,
-    PAD,
-    SG0: tl.constexpr,
-    SG1: tl.constexpr,
-    SI: tl.constexpr,
-    SB: tl.constexpr,
-    SX0: tl.constexpr,
-    SX1: tl.constexpr,
-    SW: tl.constexpr,
-    MODE: tl.constexpr,
-    HAS_WEIGHTS: tl.constexpr,
-    FP64: tl.constexpr,
-    BD: tl.constexpr,
-    BS: tl.constexpr,
+    grad,  # output gradient
+    indices,
+    mapping,
+    bag_size,
+    maximum_indices,
+    weights,
+    acc,  # accumulator buffer
+    num_indices,
+    num_bags,
+    embedding_dim,
+    num_weights,
+    pad,  # padding index
+    sg0: tl.constexpr,  # output-gradient bag stride
+    sg1: tl.constexpr,  # output-gradient feature stride
+    si: tl.constexpr,  # indices stride
+    sb: tl.constexpr,  # bag-size stride
+    sx0: tl.constexpr,  # maximum-indices row stride
+    sx1: tl.constexpr,  # maximum-indices feature stride
+    sw: tl.constexpr,  # per-sample-weight stride
+    mode: tl.constexpr,
+    has_weights: tl.constexpr,
+    fp64: tl.constexpr,  # float64 accumulation
+    bd: tl.constexpr,  # embedding-dimension block size
+    bs: tl.constexpr,  # sample block size
 ):
     pid = tl.program_id(0).to(tl.int64)
-    nd = tl.cdiv(D, BD)
-    sample = (pid // nd) * BS + tl.arange(0, BS)
-    col = (pid % nd) * BD + tl.arange(0, BD)
-    if FP64:
+    nd = tl.cdiv(embedding_dim, bd)
+    sample = (pid // nd) * bs + tl.arange(0, bs)
+    col = (pid % nd) * bd + tl.arange(0, bd)
+    if fp64:
         acc_type = tl.float64
     else:
         acc_type = tl.float32
-    if MODE == 2:
+    if mode == 2:
         idx = tl.load(
-            MAXIMUM + sample[:, None] * SX0 + col[None, :] * SX1,
-            (sample[:, None] < B) & (col[None, :] < D),
+            maximum_indices + sample[:, None] * sx0 + col[None, :] * sx1,
+            (sample[:, None] < num_bags) & (col[None, :] < embedding_dim),
             other=-1,
         )
-        size = tl.load(BAG_SIZE + sample * SB, sample < B, other=0)
+        size = tl.load(bag_size + sample * sb, sample < num_bags, other=0)
         g = tl.load(
-            GRAD + sample[:, None] * SG0 + col[None, :] * SG1,
-            (sample[:, None] < B) & (col[None, :] < D),
+            grad + sample[:, None] * sg0 + col[None, :] * sg1,
+            (sample[:, None] < num_bags) & (col[None, :] < embedding_dim),
             other=0,
         ).to(acc_type)
         active = (
-            (sample[:, None] < B)
-            & (col[None, :] < D)
+            (sample[:, None] < num_bags)
+            & (col[None, :] < embedding_dim)
             & (idx >= 0)
-            & (idx < V)
-            & (idx != PAD)
+            & (idx < num_weights)
+            & (idx != pad)
             & (size[:, None] > 0)
         )
     else:
-        idx1 = tl.load(INDICES + sample * SI, sample < N, other=PAD)
-        bag = tl.load(MAPPING + sample, sample < N, other=0)
+        idx1 = tl.load(indices + sample * si, sample < num_indices, other=pad)
+        bag = tl.load(mapping + sample, sample < num_indices, other=0)
         active1 = (
-            (sample < N)
+            (sample < num_indices)
             & (idx1 >= 0)
-            & (idx1 < V)
-            & (idx1 != PAD)
+            & (idx1 < num_weights)
+            & (idx1 != pad)
             & (bag >= 0)
-            & (bag < B)
+            & (bag < num_bags)
         )
         g = tl.load(
-            GRAD + bag[:, None] * SG0 + col[None, :] * SG1,
-            active1[:, None] & (col[None, :] < D),
+            grad + bag[:, None] * sg0 + col[None, :] * sg1,
+            active1[:, None] & (col[None, :] < embedding_dim),
             other=0,
         ).to(acc_type)
-        if MODE == 1:
-            size = tl.load(BAG_SIZE + bag * SB, active1, other=1).to(acc_type)
+        if mode == 1:
+            size = tl.load(bag_size + bag * sb, active1, other=1).to(acc_type)
             g = g / tl.maximum(size[:, None], 1)
-        if HAS_WEIGHTS:
-            weight = tl.load(WEIGHTS + sample * SW, sample < N, other=0).to(acc_type)
+        if has_weights:
+            weight = tl.load(weights + sample * sw, sample < num_indices, other=0).to(
+                acc_type
+            )
             g = g * weight[:, None]
         idx = idx1[:, None]
-        active = active1[:, None] & (col[None, :] < D)
-    tl.atomic_add(ACC + idx.to(tl.int64) * D + col[None, :], g, active, sem="relaxed")
+        active = active1[:, None] & (col[None, :] < embedding_dim)
+    tl.atomic_add(
+        acc + idx.to(tl.int64) * embedding_dim + col[None, :], g, active, sem="relaxed"
+    )
 
 
 @libentry()
 @triton.jit
-def _eb_backward_finish(ACC, FREQ, OUT, A, D, COUNT: tl.constexpr, BLOCK: tl.constexpr):
-    x = tl.program_id(0).to(tl.int64) * BLOCK + tl.arange(0, BLOCK)
-    val = tl.load(ACC + x, x < A, other=0)
-    if COUNT:
-        count = tl.load(FREQ + x // D, x < A, other=1)
+def _eb_backward_finish(
+    acc,  # accumulator buffer
+    freq,  # embedding occurrence frequencies
+    out,  # output buffer
+    num_acc_elements,  # number of accumulator elements
+    embedding_dim,
+    count_freq: tl.constexpr,  # count or normalize by embedding frequency
+    block: tl.constexpr,  # element block size
+):
+    x = tl.program_id(0).to(tl.int64) * block + tl.arange(0, block)
+    val = tl.load(acc + x, x < num_acc_elements, other=0)
+    if count_freq:
+        count = tl.load(freq + x // embedding_dim, x < num_acc_elements, other=1)
         val = val / tl.maximum(count, 1).to(val.dtype)
-    tl.store(OUT + x, val, x < A)
+    tl.store(out + x, val, x < num_acc_elements)
 
 
 @libentry()
 @triton.jit
 def _eb_backward_sparse(
-    GRAD,
-    INDICES,
-    MAPPING,
-    BAG_SIZE,
-    WEIGHTS,
-    PREFIX,
-    CHUNKS,
-    OUT_IDX,
-    VALUES,
-    N,
-    B,
-    D,
-    V,
-    PAD,
-    SG0: tl.constexpr,
-    SG1: tl.constexpr,
-    SI: tl.constexpr,
-    SB: tl.constexpr,
-    SW: tl.constexpr,
-    MODE: tl.constexpr,
-    HAS_WEIGHTS: tl.constexpr,
-    COMPACT: tl.constexpr,
-    RANKED: tl.constexpr,
-    FP64: tl.constexpr,
-    BD: tl.constexpr,
-    BS: tl.constexpr,
+    grad,  # output gradient
+    indices,
+    mapping,
+    bag_size,
+    weights,
+    prefix,
+    chunks,
+    out_idx,  # output sparse row indices
+    values,
+    num_indices,
+    num_bags,
+    embedding_dim,
+    num_weights,
+    pad,  # padding index
+    sg0: tl.constexpr,  # output-gradient bag stride
+    sg1: tl.constexpr,  # output-gradient feature stride
+    si: tl.constexpr,  # indices stride
+    sb: tl.constexpr,  # bag-size stride
+    sw: tl.constexpr,  # per-sample-weight stride
+    mode: tl.constexpr,
+    has_weights: tl.constexpr,
+    compact: tl.constexpr,
+    ranked: tl.constexpr,
+    fp64: tl.constexpr,  # float64 accumulation
+    bd: tl.constexpr,  # embedding-dimension block size
+    bs: tl.constexpr,  # sample block size
 ):
     pid = tl.program_id(0).to(tl.int64)
-    nd = tl.maximum(tl.cdiv(D, BD), 1)
-    sample = (pid // nd) * BS + tl.arange(0, BS)
-    col = (pid % nd) * BD + tl.arange(0, BD)
-    idx = tl.load(INDICES + sample * SI, sample < N, other=PAD)
-    active = (sample < N) & (idx >= 0) & (idx < V) & (idx != PAD)
-    if COMPACT:
-        pos = tl.load(PREFIX + sample, sample < N, other=0) - 1
-        if RANKED:
+    nd = tl.maximum(tl.cdiv(embedding_dim, bd), 1)
+    sample = (pid // nd) * bs + tl.arange(0, bs)
+    col = (pid % nd) * bd + tl.arange(0, bd)
+    idx = tl.load(indices + sample * si, sample < num_indices, other=pad)
+    active = (sample < num_indices) & (idx >= 0) & (idx < num_weights) & (idx != pad)
+    if compact:
+        pos = tl.load(prefix + sample, sample < num_indices, other=0) - 1
+        if ranked:
             chunk = sample // 256
-            pos += tl.load(CHUNKS + chunk, sample < N, other=0)
+            pos += tl.load(chunks + chunk, sample < num_indices, other=0)
     else:
         pos = sample
     pos = pos.to(tl.int64)
-    bag = tl.load(MAPPING + sample, sample < N, other=0)
-    active = active & (bag >= 0) & (bag < B)
-    if FP64:
+    bag = tl.load(mapping + sample, sample < num_indices, other=0)
+    active = active & (bag >= 0) & (bag < num_bags)
+    if fp64:
         acc_type = tl.float64
     else:
         acc_type = tl.float32
     g = tl.load(
-        GRAD + bag[:, None] * SG0 + col[None, :] * SG1,
-        active[:, None] & (col[None, :] < D),
+        grad + bag[:, None] * sg0 + col[None, :] * sg1,
+        active[:, None] & (col[None, :] < embedding_dim),
         other=0,
     ).to(acc_type)
-    if MODE == 1:
+    if mode == 1:
         # ATen materializes the inverse bag size in grad dtype before its
         # sparse per-occurrence multiplication, including the reduced-dtype
         # rounding of both the denominator and reciprocal.
-        size = tl.load(BAG_SIZE + bag * SB, active, other=1)
-        size = size.to(GRAD.dtype.element_ty).to(acc_type)
-        inverse = (1.0 / tl.maximum(size, 1)).to(GRAD.dtype.element_ty).to(acc_type)
+        size = tl.load(bag_size + bag * sb, active, other=1)
+        size = size.to(grad.dtype.element_ty).to(acc_type)
+        inverse = (1.0 / tl.maximum(size, 1)).to(grad.dtype.element_ty).to(acc_type)
         g = g * inverse[:, None]
-    if HAS_WEIGHTS:
-        weight = tl.load(WEIGHTS + sample * SW, sample < N, other=0).to(acc_type)
+    if has_weights:
+        weight = tl.load(weights + sample * sw, sample < num_indices, other=0).to(
+            acc_type
+        )
         g = g * weight[:, None]
     if pid % nd == 0:
-        tl.store(OUT_IDX + pos, idx, active)
+        tl.store(out_idx + pos, idx, active)
     tl.store(
-        VALUES + pos[:, None] * D + col[None, :],
+        values + pos[:, None] * embedding_dim + col[None, :],
         g,
-        active[:, None] & (col[None, :] < D),
+        active[:, None] & (col[None, :] < embedding_dim),
     )
 
 
@@ -358,15 +405,20 @@ _eb_backward_init_body = _eb_backward_init.fn
 
 @libentry()
 @triton.jit
-def _eb_backward_init_packed(ACC, FREQ, ERROR, META: tl.constexpr):
+def _eb_backward_init_packed(
+    acc,  # accumulator buffer
+    freq,  # embedding occurrence frequencies
+    error,
+    meta: tl.constexpr,  # packed kernel metadata
+):
     _eb_backward_init_body(
-        ACC,
-        FREQ,
-        ERROR,
-        META[0],
-        META[1],
-        META[2],
-        META[3],
+        acc,
+        freq,
+        error,
+        meta[0],
+        meta[1],
+        meta[2],
+        meta[3],
     )
 
 
@@ -376,53 +428,53 @@ _eb_backward_validate_body = _eb_backward_validate.fn
 @libentry()
 @triton.jit
 def _eb_backward_validate_packed(
-    INDICES,
-    OFFSETS,
-    OFFSET2BAG,
-    BAG_SIZE,
-    MAXIMUM,
-    MAPPING,
-    KEEP,
-    FREQ,
-    CHUNKS,
-    ERROR,
-    ACC,
-    META: tl.constexpr,
+    indices,
+    offsets,
+    offset_to_bag,
+    bag_size,
+    maximum_indices,
+    mapping,
+    keep,
+    freq,  # embedding occurrence frequencies
+    chunks,
+    error,
+    acc,  # accumulator buffer
+    meta: tl.constexpr,  # packed kernel metadata
 ):
     _eb_backward_validate_body(
-        INDICES,
-        OFFSETS,
-        OFFSET2BAG,
-        BAG_SIZE,
-        MAXIMUM,
-        MAPPING,
-        KEEP,
-        FREQ,
-        CHUNKS,
-        ERROR,
-        ACC,
-        META[0],
-        META[1],
-        META[2],
-        META[3],
-        META[4],
-        META[5],
-        META[6],
-        META[7],
-        META[8],
-        META[9],
-        META[10],
-        META[11],
-        META[12],
-        META[13],
-        META[14],
-        META[15],
-        META[16],
-        META[17],
-        META[18],
-        META[19],
-        META[20],
-        META[21],
+        indices,
+        offsets,
+        offset_to_bag,
+        bag_size,
+        maximum_indices,
+        mapping,
+        keep,
+        freq,
+        chunks,
+        error,
+        acc,
+        meta[0],
+        meta[1],
+        meta[2],
+        meta[3],
+        meta[4],
+        meta[5],
+        meta[6],
+        meta[7],
+        meta[8],
+        meta[9],
+        meta[10],
+        meta[11],
+        meta[12],
+        meta[13],
+        meta[14],
+        meta[15],
+        meta[16],
+        meta[17],
+        meta[18],
+        meta[19],
+        meta[20],
+        meta[21],
     )
 
 
@@ -431,12 +483,16 @@ _eb_backward_chunk_offsets_body = _eb_backward_chunk_offsets.fn
 
 @libentry()
 @triton.jit
-def _eb_backward_chunk_offsets_packed(CHUNKS, ERROR, META: tl.constexpr):
+def _eb_backward_chunk_offsets_packed(
+    chunks,
+    error,
+    meta: tl.constexpr,  # packed kernel metadata
+):
     _eb_backward_chunk_offsets_body(
-        CHUNKS,
-        ERROR,
-        META[0],
-        META[1],
+        chunks,
+        error,
+        meta[0],
+        meta[1],
     )
 
 
@@ -446,33 +502,40 @@ _eb_backward_scatter_body = _eb_backward_scatter.fn
 @libentry()
 @triton.jit
 def _eb_backward_scatter_packed(
-    GRAD, INDICES, MAPPING, BAG_SIZE, MAXIMUM, WEIGHTS, ACC, META: tl.constexpr
+    grad,  # output gradient
+    indices,
+    mapping,
+    bag_size,
+    maximum_indices,
+    weights,
+    acc,  # accumulator buffer
+    meta: tl.constexpr,  # packed kernel metadata
 ):
     _eb_backward_scatter_body(
-        GRAD,
-        INDICES,
-        MAPPING,
-        BAG_SIZE,
-        MAXIMUM,
-        WEIGHTS,
-        ACC,
-        META[0],
-        META[1],
-        META[2],
-        META[3],
-        META[4],
-        META[5],
-        META[6],
-        META[7],
-        META[8],
-        META[9],
-        META[10],
-        META[11],
-        META[12],
-        META[13],
-        META[14],
-        META[15],
-        META[16],
+        grad,
+        indices,
+        mapping,
+        bag_size,
+        maximum_indices,
+        weights,
+        acc,
+        meta[0],
+        meta[1],
+        meta[2],
+        meta[3],
+        meta[4],
+        meta[5],
+        meta[6],
+        meta[7],
+        meta[8],
+        meta[9],
+        meta[10],
+        meta[11],
+        meta[12],
+        meta[13],
+        meta[14],
+        meta[15],
+        meta[16],
     )
 
 
@@ -481,15 +544,20 @@ _eb_backward_finish_body = _eb_backward_finish.fn
 
 @libentry()
 @triton.jit
-def _eb_backward_finish_packed(ACC, FREQ, OUT, META: tl.constexpr):
+def _eb_backward_finish_packed(
+    acc,  # accumulator buffer
+    freq,  # embedding occurrence frequencies
+    out,  # output buffer
+    meta: tl.constexpr,  # packed kernel metadata
+):
     _eb_backward_finish_body(
-        ACC,
-        FREQ,
-        OUT,
-        META[0],
-        META[1],
-        META[2],
-        META[3],
+        acc,
+        freq,
+        out,
+        meta[0],
+        meta[1],
+        meta[2],
+        meta[3],
     )
 
 
@@ -499,44 +567,44 @@ _eb_backward_sparse_body = _eb_backward_sparse.fn
 @libentry()
 @triton.jit
 def _eb_backward_sparse_packed(
-    GRAD,
-    INDICES,
-    MAPPING,
-    BAG_SIZE,
-    WEIGHTS,
-    PREFIX,
-    CHUNKS,
-    OUT_IDX,
-    VALUES,
-    META: tl.constexpr,
+    grad,  # output gradient
+    indices,
+    mapping,
+    bag_size,
+    weights,
+    prefix,
+    chunks,
+    out_idx,  # output sparse row indices
+    values,
+    meta: tl.constexpr,  # packed kernel metadata
 ):
     _eb_backward_sparse_body(
-        GRAD,
-        INDICES,
-        MAPPING,
-        BAG_SIZE,
-        WEIGHTS,
-        PREFIX,
-        CHUNKS,
-        OUT_IDX,
-        VALUES,
-        META[0],
-        META[1],
-        META[2],
-        META[3],
-        META[4],
-        META[5],
-        META[6],
-        META[7],
-        META[8],
-        META[9],
-        META[10],
-        META[11],
-        META[12],
-        META[13],
-        META[14],
-        META[15],
-        META[16],
+        grad,
+        indices,
+        mapping,
+        bag_size,
+        weights,
+        prefix,
+        chunks,
+        out_idx,
+        values,
+        meta[0],
+        meta[1],
+        meta[2],
+        meta[3],
+        meta[4],
+        meta[5],
+        meta[6],
+        meta[7],
+        meta[8],
+        meta[9],
+        meta[10],
+        meta[11],
+        meta[12],
+        meta[13],
+        meta[14],
+        meta[15],
+        meta[16],
     )
 
 

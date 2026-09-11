@@ -37,170 +37,191 @@ from flag_gems.utils import libentry
 
 @libentry()
 @triton.jit
-def _eb_backward_init_packed(ACC, FREQ, ERROR, META: tl.constexpr):
+def _eb_backward_init_packed(
+    acc,  # accumulator buffer
+    freq,  # embedding occurrence frequencies
+    error,
+    meta: tl.constexpr,  # packed kernel metadata
+):
     _eb_backward_init_body(
-        ACC,
-        FREQ,
-        ERROR,
-        META.value[0],
-        META.value[1],
-        META.value[2],
-        META.value[3],
+        acc,
+        freq,
+        error,
+        meta.value[0],
+        meta.value[1],
+        meta.value[2],
+        meta.value[3],
     )
 
 
 @libentry()
 @triton.jit(debug=True)
 def _eb_backward_validate_packed(
-    INDICES,
-    OFFSETS,
-    OFFSET2BAG,
-    BAG_SIZE,
-    MAXIMUM,
-    MAPPING,
-    KEEP,
-    FREQ,
-    CHUNKS,
-    ERROR,
-    ACC,
-    META: tl.constexpr,
+    indices,
+    offsets,
+    offset_to_bag,
+    bag_size,
+    maximum_indices,
+    mapping,
+    keep,
+    freq,  # embedding occurrence frequencies
+    chunks,
+    error,
+    acc,  # accumulator buffer
+    meta: tl.constexpr,  # packed kernel metadata
 ):
     _eb_backward_validate_body(
-        INDICES,
-        OFFSETS,
-        OFFSET2BAG,
-        BAG_SIZE,
-        MAXIMUM,
-        MAPPING,
-        KEEP,
-        FREQ,
-        CHUNKS,
-        ERROR,
-        ACC,
-        META.value[0],
-        META.value[1],
-        META.value[2],
-        META.value[3],
-        META.value[4],
-        META.value[5],
-        META.value[6],
-        META.value[7],
-        META.value[8],
-        META.value[9],
-        META.value[10],
-        META.value[11],
-        META.value[12],
-        META.value[13],
-        META.value[14],
-        META.value[15],
-        META.value[16],
-        META.value[17],
-        META.value[18],
-        META.value[19],
-        META.value[20],
-        META.value[21],
+        indices,
+        offsets,
+        offset_to_bag,
+        bag_size,
+        maximum_indices,
+        mapping,
+        keep,
+        freq,
+        chunks,
+        error,
+        acc,
+        meta.value[0],
+        meta.value[1],
+        meta.value[2],
+        meta.value[3],
+        meta.value[4],
+        meta.value[5],
+        meta.value[6],
+        meta.value[7],
+        meta.value[8],
+        meta.value[9],
+        meta.value[10],
+        meta.value[11],
+        meta.value[12],
+        meta.value[13],
+        meta.value[14],
+        meta.value[15],
+        meta.value[16],
+        meta.value[17],
+        meta.value[18],
+        meta.value[19],
+        meta.value[20],
+        meta.value[21],
     )
 
 
 @libentry()
 @triton.jit
-def _eb_backward_chunk_offsets_packed(CHUNKS, ERROR, META: tl.constexpr):
+def _eb_backward_chunk_offsets_packed(
+    chunks,
+    error,
+    meta: tl.constexpr,  # packed kernel metadata
+):
     _eb_backward_chunk_offsets_body(
-        CHUNKS,
-        ERROR,
-        META.value[0],
-        META.value[1],
+        chunks,
+        error,
+        meta.value[0],
+        meta.value[1],
     )
 
 
 @libentry()
 @triton.jit
 def _eb_backward_scatter_packed(
-    GRAD, INDICES, MAPPING, BAG_SIZE, MAXIMUM, WEIGHTS, ACC, META: tl.constexpr
+    grad,  # output gradient
+    indices,
+    mapping,
+    bag_size,
+    maximum_indices,
+    weights,
+    acc,  # accumulator buffer
+    meta: tl.constexpr,  # packed kernel metadata
 ):
     _eb_backward_scatter_body(
-        GRAD,
-        INDICES,
-        MAPPING,
-        BAG_SIZE,
-        MAXIMUM,
-        WEIGHTS,
-        ACC,
-        META.value[0],
-        META.value[1],
-        META.value[2],
-        META.value[3],
-        META.value[4],
-        META.value[5],
-        META.value[6],
-        META.value[7],
-        META.value[8],
-        META.value[9],
-        META.value[10],
-        META.value[11],
-        META.value[12],
-        META.value[13],
-        META.value[14],
-        META.value[15],
-        META.value[16],
+        grad,
+        indices,
+        mapping,
+        bag_size,
+        maximum_indices,
+        weights,
+        acc,
+        meta.value[0],
+        meta.value[1],
+        meta.value[2],
+        meta.value[3],
+        meta.value[4],
+        meta.value[5],
+        meta.value[6],
+        meta.value[7],
+        meta.value[8],
+        meta.value[9],
+        meta.value[10],
+        meta.value[11],
+        meta.value[12],
+        meta.value[13],
+        meta.value[14],
+        meta.value[15],
+        meta.value[16],
     )
 
 
 @libentry()
 @triton.jit
-def _eb_backward_finish_packed(ACC, FREQ, OUT, META: tl.constexpr):
+def _eb_backward_finish_packed(
+    acc,  # accumulator buffer
+    freq,  # embedding occurrence frequencies
+    out,  # output buffer
+    meta: tl.constexpr,  # packed kernel metadata
+):
     _eb_backward_finish_body(
-        ACC,
-        FREQ,
-        OUT,
-        META.value[0],
-        META.value[1],
-        META.value[2],
-        META.value[3],
+        acc,
+        freq,
+        out,
+        meta.value[0],
+        meta.value[1],
+        meta.value[2],
+        meta.value[3],
     )
 
 
 @libentry()
 @triton.jit
 def _eb_backward_sparse_packed(
-    GRAD,
-    INDICES,
-    MAPPING,
-    BAG_SIZE,
-    WEIGHTS,
-    PREFIX,
-    CHUNKS,
-    OUT_IDX,
-    VALUES,
-    META: tl.constexpr,
+    grad,  # output gradient
+    indices,
+    mapping,
+    bag_size,
+    weights,
+    prefix,
+    chunks,
+    out_idx,  # output sparse row indices
+    values,
+    meta: tl.constexpr,  # packed kernel metadata
 ):
     _eb_backward_sparse_body(
-        GRAD,
-        INDICES,
-        MAPPING,
-        BAG_SIZE,
-        WEIGHTS,
-        PREFIX,
-        CHUNKS,
-        OUT_IDX,
-        VALUES,
-        META.value[0],
-        META.value[1],
-        META.value[2],
-        META.value[3],
-        META.value[4],
-        META.value[5],
-        META.value[6],
-        META.value[7],
-        META.value[8],
-        META.value[9],
-        META.value[10],
-        META.value[11],
-        META.value[12],
-        META.value[13],
-        META.value[14],
-        META.value[15],
-        META.value[16],
+        grad,
+        indices,
+        mapping,
+        bag_size,
+        weights,
+        prefix,
+        chunks,
+        out_idx,
+        values,
+        meta.value[0],
+        meta.value[1],
+        meta.value[2],
+        meta.value[3],
+        meta.value[4],
+        meta.value[5],
+        meta.value[6],
+        meta.value[7],
+        meta.value[8],
+        meta.value[9],
+        meta.value[10],
+        meta.value[11],
+        meta.value[12],
+        meta.value[13],
+        meta.value[14],
+        meta.value[15],
+        meta.value[16],
     )
 
 
@@ -220,34 +241,40 @@ def _launch_hygon(kernel, packed_kernel, grid, pointers, metadata, **options):
 
 @triton.jit
 def _validate_max(
-    INDICES, OFFSETS, OFFSET2BAG, BAG_SIZE, MAXIMUM, OUT, META: tl.constexpr
+    indices,
+    offsets,
+    offset_to_bag,
+    bag_size,
+    maximum_indices,
+    out,  # output buffer
+    meta: tl.constexpr,  # packed kernel metadata
 ):
     _eb_backward_validate_body(
-        INDICES,
-        OFFSETS,
-        OFFSET2BAG,
-        BAG_SIZE,
-        MAXIMUM,
-        INDICES,
-        INDICES,
-        INDICES,
-        INDICES,
-        OUT,
-        OUT,
+        indices,
+        offsets,
+        offset_to_bag,
+        bag_size,
+        maximum_indices,
+        indices,
+        indices,
+        indices,
+        indices,
+        out,
+        out,
         0,
-        META.value[0],
-        META.value[1],
-        META.value[2],
-        META.value[3],
-        META.value[4],
-        META.value[5],
-        META.value[8],
-        META.value[9],
-        META.value[10],
-        META.value[11],
-        META.value[12],
-        META.value[13],
-        META.value[14],
+        meta.value[0],
+        meta.value[1],
+        meta.value[2],
+        meta.value[3],
+        meta.value[4],
+        meta.value[5],
+        meta.value[8],
+        meta.value[9],
+        meta.value[10],
+        meta.value[11],
+        meta.value[12],
+        meta.value[13],
+        meta.value[14],
         2,
         False,
         False,
@@ -263,76 +290,79 @@ def _validate_max(
 @libentry()
 @triton.jit(debug=True)
 def max_owned_tiles(
-    GRAD,
-    INDICES,
-    OFFSETS,
-    OFFSET2BAG,
-    BAG_SIZE,
-    MAXIMUM,
-    ACC,
-    OUT,
-    META: tl.constexpr,
+    grad,  # output gradient
+    indices,
+    offsets,
+    offset_to_bag,
+    bag_size,
+    maximum_indices,
+    acc,  # accumulator buffer
+    out,  # output buffer
+    meta: tl.constexpr,  # packed kernel metadata
 ):
-    _validate_max(INDICES, OFFSETS, OFFSET2BAG, BAG_SIZE, MAXIMUM, OUT, META)
-    B: tl.constexpr = META.value[1]
-    D: tl.constexpr = META.value[2]
-    V: tl.constexpr = META.value[3]
-    PAD: tl.constexpr = META.value[5]
-    SG0: tl.constexpr = META.value[6]
-    SG1: tl.constexpr = META.value[7]
-    SB: tl.constexpr = META.value[11]
-    SX0: tl.constexpr = META.value[12]
-    SX1: tl.constexpr = META.value[13]
-    FP64: tl.constexpr = META.value[15]
-    CAST: tl.constexpr = META.value[16]
-    BR: tl.constexpr = META.value[17]
-    BD: tl.constexpr = META.value[18]
-    BB: tl.constexpr = META.value[19]
+    _validate_max(indices, offsets, offset_to_bag, bag_size, maximum_indices, out, meta)
+    num_bags: tl.constexpr = meta.value[1]
+    embedding_dim: tl.constexpr = meta.value[2]
+    num_weights: tl.constexpr = meta.value[3]
+    pad: tl.constexpr = meta.value[5]
+    sg0: tl.constexpr = meta.value[6]
+    sg1: tl.constexpr = meta.value[7]
+    sb: tl.constexpr = meta.value[11]
+    sx0: tl.constexpr = meta.value[12]
+    sx1: tl.constexpr = meta.value[13]
+    fp64: tl.constexpr = meta.value[15]
+    CAST: tl.constexpr = meta.value[16]
+    BR: tl.constexpr = meta.value[17]
+    bd: tl.constexpr = meta.value[18]
+    BB: tl.constexpr = meta.value[19]
     pid = tl.program_id(0).to(tl.int64)
-    nc: tl.constexpr = tl.cdiv(D, BD)
-    if pid < tl.cdiv(V, BR) * nc:
+    nc: tl.constexpr = tl.cdiv(embedding_dim, bd)
+    if pid < tl.cdiv(num_weights, BR) * nc:
         row0 = pid // nc * BR
         rows = row0 + tl.arange(0, BR)
-        cols = pid % nc * BD + tl.arange(0, BD)
-        positions = rows[:, None] * D + cols[None, :]
-        output_mask = (rows[:, None] < V) & (cols[None, :] < D)
-        tl.store(ACC + positions, 0, output_mask)
+        cols = pid % nc * bd + tl.arange(0, bd)
+        positions = rows[:, None] * embedding_dim + cols[None, :]
+        output_mask = (rows[:, None] < num_weights) & (cols[None, :] < embedding_dim)
+        tl.store(acc + positions, 0, output_mask)
         # Each CTA owns all addresses in this output tile. No other CTA writes
         # its zeros, atomics, or cast, so a CTA barrier is sufficient here.
         tl.debug_barrier()
-        if FP64:
+        if fp64:
             acc_dtype = tl.float64
         else:
             acc_dtype = tl.float32
-        for start in range(0, B, BB):
+        for start in range(0, num_bags, BB):
             bags = start + tl.arange(0, BB)
             maximum = tl.load(
-                MAXIMUM + bags[:, None] * SX0 + cols[None, :] * SX1,
-                (bags[:, None] < B) & (cols[None, :] < D),
+                maximum_indices + bags[:, None] * sx0 + cols[None, :] * sx1,
+                (bags[:, None] < num_bags) & (cols[None, :] < embedding_dim),
                 other=-1,
             ).to(tl.int64)
-            sizes = tl.load(BAG_SIZE + bags * SB, bags < B, other=0)
+            sizes = tl.load(bag_size + bags * sb, bags < num_bags, other=0)
             active = (
-                (bags[:, None] < B)
-                & (cols[None, :] < D)
+                (bags[:, None] < num_bags)
+                & (cols[None, :] < embedding_dim)
                 & (maximum >= row0)
                 & (maximum < row0 + BR)
-                & (maximum < V)
-                & (maximum != PAD)
+                & (maximum < num_weights)
+                & (maximum != pad)
                 & (sizes[:, None] > 0)
             )
             values = tl.load(
-                GRAD + bags[:, None] * SG0 + cols[None, :] * SG1,
+                grad + bags[:, None] * sg0 + cols[None, :] * sg1,
                 active,
                 other=0,
             ).to(acc_dtype)
             tl.atomic_add(
-                ACC + maximum * D + cols[None, :], values, active, sem="relaxed"
+                acc + maximum * embedding_dim + cols[None, :],
+                values,
+                active,
+                sem="relaxed",
             )
         if CAST:
             tl.debug_barrier()
-            values = tl.load(ACC + positions, output_mask, other=0)
-            tl.store(OUT + positions, values, output_mask)
+            values = tl.load(acc + positions, output_mask, other=0)
+            tl.store(out + positions, values, output_mask)
 
 
 def _compute_max_owned(
@@ -390,34 +420,40 @@ def _compute_max_owned(
 @libentry()
 @triton.jit(debug=True)
 def _max_initialize(
-    INDICES, OFFSETS, OFFSET2BAG, BAG_SIZE, MAXIMUM, OUT, META: tl.constexpr
+    indices,
+    offsets,
+    offset_to_bag,
+    bag_size,
+    maximum_indices,
+    out,  # output buffer
+    meta: tl.constexpr,  # packed kernel metadata
 ):
     _eb_backward_validate_body(
-        INDICES,
-        OFFSETS,
-        OFFSET2BAG,
-        BAG_SIZE,
-        MAXIMUM,
-        INDICES,
-        INDICES,
-        INDICES,
-        INDICES,
-        OUT,
-        OUT,
-        META.value[2] * META.value[3],
-        META.value[0],
-        META.value[1],
-        META.value[2],
-        META.value[3],
-        META.value[4],
-        META.value[5],
-        META.value[8],
-        META.value[9],
-        META.value[10],
-        META.value[11],
-        META.value[12],
-        META.value[13],
-        META.value[14],
+        indices,
+        offsets,
+        offset_to_bag,
+        bag_size,
+        maximum_indices,
+        indices,
+        indices,
+        indices,
+        indices,
+        out,
+        out,
+        meta.value[2] * meta.value[3],
+        meta.value[0],
+        meta.value[1],
+        meta.value[2],
+        meta.value[3],
+        meta.value[4],
+        meta.value[5],
+        meta.value[8],
+        meta.value[9],
+        meta.value[10],
+        meta.value[11],
+        meta.value[12],
+        meta.value[13],
+        meta.value[14],
         2,
         False,
         False,
@@ -446,49 +482,57 @@ def _segment_tail(left_key, left_tail, right_key, right_tail):
 
 @libentry()
 @triton.jit
-def max_sort_segments(GRAD, BAG_SIZE, MAXIMUM, OUT, META: tl.constexpr):
-    B: tl.constexpr = META.value[1]
-    D: tl.constexpr = META.value[2]
-    V: tl.constexpr = META.value[3]
-    PAD: tl.constexpr = META.value[5]
-    SG0: tl.constexpr = META.value[6]
-    SG1: tl.constexpr = META.value[7]
-    SB: tl.constexpr = META.value[11]
-    SX0: tl.constexpr = META.value[12]
-    SX1: tl.constexpr = META.value[13]
-    FP64: tl.constexpr = META.value[15]
-    BD: tl.constexpr = META.value[18]
-    BB: tl.constexpr = META.value[19]
-    cols = tl.program_id(0).to(tl.int64) * BD + tl.arange(0, BD)
+def max_sort_segments(
+    grad,  # output gradient
+    bag_size,
+    maximum_indices,
+    out,  # output buffer
+    meta: tl.constexpr,  # packed kernel metadata
+):
+    num_bags: tl.constexpr = meta.value[1]
+    embedding_dim: tl.constexpr = meta.value[2]
+    num_weights: tl.constexpr = meta.value[3]
+    pad: tl.constexpr = meta.value[5]
+    sg0: tl.constexpr = meta.value[6]
+    sg1: tl.constexpr = meta.value[7]
+    sb: tl.constexpr = meta.value[11]
+    sx0: tl.constexpr = meta.value[12]
+    sx1: tl.constexpr = meta.value[13]
+    fp64: tl.constexpr = meta.value[15]
+    bd: tl.constexpr = meta.value[18]
+    BB: tl.constexpr = meta.value[19]
+    cols = tl.program_id(0).to(tl.int64) * bd + tl.arange(0, bd)
     bags = tl.arange(0, BB).to(tl.int64)
     maximum = tl.load(
-        MAXIMUM + bags[None, :] * SX0 + cols[:, None] * SX1,
-        (bags[None, :] < B) & (cols[:, None] < D),
+        maximum_indices + bags[None, :] * sx0 + cols[:, None] * sx1,
+        (bags[None, :] < num_bags) & (cols[:, None] < embedding_dim),
         other=-1,
     ).to(tl.int64)
-    sizes = tl.load(BAG_SIZE + bags * SB, bags < B, other=0)
+    sizes = tl.load(bag_size + bags * sb, bags < num_bags, other=0)
     active = (
-        (bags[None, :] < B)
-        & (cols[:, None] < D)
+        (bags[None, :] < num_bags)
+        & (cols[:, None] < embedding_dim)
         & (maximum >= 0)
-        & (maximum < V)
-        & (maximum != PAD)
+        & (maximum < num_weights)
+        & (maximum != pad)
         & (sizes[None, :] > 0)
     )
     # The bag component makes every active key unique and provides the source
     # position after sorting. The host bounds the product below INT64_MAX.
-    packed = tl.where(active, maximum, V) * BB + bags[None, :]
-    if (V + 1) * BB < 2147483648:
+    packed = tl.where(active, maximum, num_weights) * BB + bags[None, :]
+    if (num_weights + 1) * BB < 2147483648:
         packed = packed.to(tl.int32)
     packed = tl.sort(packed, dim=1, descending=False)
     rows = packed // BB
     source_bag = (packed % BB).to(tl.int64)
     values = tl.load(
-        GRAD + source_bag * SG0 + cols[:, None] * SG1,
-        (rows < V) & (source_bag < B) & (cols[:, None] < D),
+        grad + source_bag * sg0 + cols[:, None] * sg1,
+        (rows < num_weights)
+        & (source_bag < num_bags)
+        & (cols[:, None] < embedding_dim),
         other=0,
     )
-    if FP64:
+    if fp64:
         values = values.to(tl.float64)
     else:
         values = values.to(tl.float32)
@@ -497,9 +541,9 @@ def max_sort_segments(GRAD, BAG_SIZE, MAXIMUM, OUT, META: tl.constexpr):
     # without a shared/global key temporary or races on partial sums.
     _, tail = tl.associative_scan((rows, packed), 1, _segment_tail, reverse=True)
     tl.store(
-        OUT + rows.to(tl.int64) * D + cols[:, None],
+        out + rows.to(tl.int64) * embedding_dim + cols[:, None],
         sums,
-        (rows < V) & (cols[:, None] < D) & (packed == tail),
+        (rows < num_weights) & (cols[:, None] < embedding_dim) & (packed == tail),
     )
 
 
@@ -562,23 +606,34 @@ _max_sort_segments_body = max_sort_segments.fn
 @libentry()
 @triton.jit(debug=True)
 def max_fused_sort(
-    GRAD, INDICES, OFFSETS, MAPPING, BAG_SIZE, MAXIMUM, OUT, META: tl.constexpr
+    grad,  # output gradient
+    indices,
+    offsets,
+    mapping,
+    bag_size,
+    maximum_indices,
+    out,  # output buffer
+    meta: tl.constexpr,  # packed kernel metadata
 ):
-    _validate_max(INDICES, OFFSETS, MAPPING, BAG_SIZE, MAXIMUM, OUT, META)
-    V: tl.constexpr = META.value[3]
-    D: tl.constexpr = META.value[2]
-    BD: tl.constexpr = META.value[18]
+    _validate_max(indices, offsets, mapping, bag_size, maximum_indices, out, meta)
+    num_weights: tl.constexpr = meta.value[3]
+    embedding_dim: tl.constexpr = meta.value[2]
+    bd: tl.constexpr = meta.value[18]
     pid = tl.program_id(0).to(tl.int64)
-    if pid < tl.cdiv(D, BD):
-        for base in range(0, V * BD, 1024):
+    if pid < tl.cdiv(embedding_dim, bd):
+        for base in range(0, num_weights * bd, 1024):
             x = base + tl.arange(0, 1024)
-            row = x // BD
-            col = pid * BD + x % BD
-            tl.store(OUT + row * D + col, 0, (row < V) & (col < D))
+            row = x // bd
+            col = pid * bd + x % bd
+            tl.store(
+                out + row * embedding_dim + col,
+                0,
+                (row < num_weights) & (col < embedding_dim),
+            )
         # This CTA owns every row for its feature tile. Its subsequent unique
         # segment-tail stores cannot race with another CTA's initialization.
         tl.debug_barrier()
-        _max_sort_segments_body(GRAD, BAG_SIZE, MAXIMUM, OUT, META)
+        _max_sort_segments_body(grad, bag_size, maximum_indices, out, meta)
 
 
 _FUSED_CONFIG = (8, 4)
@@ -641,36 +696,46 @@ def _compute_max_segmented(
 
 @libentry()
 @triton.jit
-def max_scatter_direct(GRAD, BAG_SIZE, MAXIMUM, OUT, META: tl.constexpr):
-    B: tl.constexpr = META.value[1]
-    D: tl.constexpr = META.value[2]
-    V: tl.constexpr = META.value[3]
-    PAD: tl.constexpr = META.value[5]
-    SG0: tl.constexpr = META.value[6]
-    SG1: tl.constexpr = META.value[7]
-    SB: tl.constexpr = META.value[11]
-    SX0: tl.constexpr = META.value[12]
-    SX1: tl.constexpr = META.value[13]
-    BLOCK: tl.constexpr = META.value[19]
-    x = tl.program_id(0).to(tl.int64) * BLOCK + tl.arange(0, BLOCK)
-    if D > 0:
-        bags = x // D
-        cols = x % D
-        maximum = tl.load(MAXIMUM + bags * SX0 + cols * SX1, x < B * D, other=-1).to(
-            tl.int64
-        )
-        sizes = tl.load(BAG_SIZE + bags * SB, x < B * D, other=0)
+def max_scatter_direct(
+    grad,  # output gradient
+    bag_size,
+    maximum_indices,
+    out,  # output buffer
+    meta: tl.constexpr,  # packed kernel metadata
+):
+    num_bags: tl.constexpr = meta.value[1]
+    embedding_dim: tl.constexpr = meta.value[2]
+    num_weights: tl.constexpr = meta.value[3]
+    pad: tl.constexpr = meta.value[5]
+    sg0: tl.constexpr = meta.value[6]
+    sg1: tl.constexpr = meta.value[7]
+    sb: tl.constexpr = meta.value[11]
+    sx0: tl.constexpr = meta.value[12]
+    sx1: tl.constexpr = meta.value[13]
+    block: tl.constexpr = meta.value[19]
+    x = tl.program_id(0).to(tl.int64) * block + tl.arange(0, block)
+    if embedding_dim > 0:
+        bags = x // embedding_dim
+        cols = x % embedding_dim
+        maximum = tl.load(
+            maximum_indices + bags * sx0 + cols * sx1,
+            x < num_bags * embedding_dim,
+            other=-1,
+        ).to(tl.int64)
+        sizes = tl.load(bag_size + bags * sb, x < num_bags * embedding_dim, other=0)
         active = (
-            (x < B * D)
+            (x < num_bags * embedding_dim)
             & (maximum >= 0)
-            & (maximum < V)
-            & (maximum != PAD)
+            & (maximum < num_weights)
+            & (maximum != pad)
             & (sizes > 0)
         )
-        values = tl.load(GRAD + bags * SG0 + cols * SG1, active, other=0).to(
-            OUT.dtype.element_ty
+        values = tl.load(grad + bags * sg0 + cols * sg1, active, other=0).to(
+            out.dtype.element_ty
         )
-        tl.atomic_add(OUT + maximum * D + cols, values, active, sem="relaxed")
+        tl.atomic_add(
+            out + maximum * embedding_dim + cols, values, active, sem="relaxed"
+        )
 
 
 _SCATTER_CONFIG = (128, 4)

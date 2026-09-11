@@ -27,34 +27,40 @@ from flag_gems.utils import libentry
 
 @triton.jit
 def _validate_max(
-    INDICES, OFFSETS, OFFSET2BAG, BAG_SIZE, MAXIMUM, OUT, META: tl.constexpr
+    indices,
+    offsets,
+    offset_to_bag,
+    bag_size,
+    maximum_indices,
+    out,  # output buffer
+    meta: tl.constexpr,  # packed kernel metadata
 ):
     _eb_backward_validate_body(
-        INDICES,
-        OFFSETS,
-        OFFSET2BAG,
-        BAG_SIZE,
-        MAXIMUM,
-        INDICES,
-        INDICES,
-        INDICES,
-        INDICES,
-        OUT,
-        OUT,
+        indices,
+        offsets,
+        offset_to_bag,
+        bag_size,
+        maximum_indices,
+        indices,
+        indices,
+        indices,
+        indices,
+        out,
+        out,
         0,
-        META[0],
-        META[1],
-        META[2],
-        META[3],
-        META[4],
-        META[5],
-        META[8],
-        META[9],
-        META[10],
-        META[11],
-        META[12],
-        META[13],
-        META[14],
+        meta[0],
+        meta[1],
+        meta[2],
+        meta[3],
+        meta[4],
+        meta[5],
+        meta[8],
+        meta[9],
+        meta[10],
+        meta[11],
+        meta[12],
+        meta[13],
+        meta[14],
         2,
         False,
         False,
@@ -70,114 +76,117 @@ def _validate_max(
 @libentry()
 @triton.jit(debug=True)
 def max_owned_tiles(
-    GRAD,
-    INDICES,
-    OFFSETS,
-    OFFSET2BAG,
-    BAG_SIZE,
-    MAXIMUM,
-    ACC,
-    OUT,
-    META: tl.constexpr,
+    grad,  # output gradient
+    indices,
+    offsets,
+    offset_to_bag,
+    bag_size,
+    maximum_indices,
+    acc,  # accumulator buffer
+    out,  # output buffer
+    meta: tl.constexpr,  # packed kernel metadata
 ):
-    _validate_max(INDICES, OFFSETS, OFFSET2BAG, BAG_SIZE, MAXIMUM, OUT, META)
-    B: tl.constexpr = META[1]
-    D: tl.constexpr = META[2]
-    V: tl.constexpr = META[3]
-    PAD: tl.constexpr = META[5]
-    SG0: tl.constexpr = META[6]
-    SG1: tl.constexpr = META[7]
-    SB: tl.constexpr = META[11]
-    SX0: tl.constexpr = META[12]
-    SX1: tl.constexpr = META[13]
-    FP64: tl.constexpr = META[15]
-    CAST: tl.constexpr = META[16]
-    BR: tl.constexpr = META[17]
-    BD: tl.constexpr = META[18]
-    BB: tl.constexpr = META[19]
+    _validate_max(indices, offsets, offset_to_bag, bag_size, maximum_indices, out, meta)
+    num_bags: tl.constexpr = meta[1]
+    embedding_dim: tl.constexpr = meta[2]
+    num_weights: tl.constexpr = meta[3]
+    pad: tl.constexpr = meta[5]
+    sg0: tl.constexpr = meta[6]
+    sg1: tl.constexpr = meta[7]
+    sb: tl.constexpr = meta[11]
+    sx0: tl.constexpr = meta[12]
+    sx1: tl.constexpr = meta[13]
+    fp64: tl.constexpr = meta[15]
+    CAST: tl.constexpr = meta[16]
+    BR: tl.constexpr = meta[17]
+    bd: tl.constexpr = meta[18]
+    BB: tl.constexpr = meta[19]
     pid = tl.program_id(0).to(tl.int64)
-    nc: tl.constexpr = tl.cdiv(D, BD)
-    if pid < tl.cdiv(V, BR) * nc:
+    nc: tl.constexpr = tl.cdiv(embedding_dim, bd)
+    if pid < tl.cdiv(num_weights, BR) * nc:
         row0 = pid // nc * BR
         rows = row0 + tl.arange(0, BR)
-        cols = pid % nc * BD + tl.arange(0, BD)
-        positions = rows[:, None] * D + cols[None, :]
-        output_mask = (rows[:, None] < V) & (cols[None, :] < D)
-        tl.store(ACC + positions, 0, output_mask)
+        cols = pid % nc * bd + tl.arange(0, bd)
+        positions = rows[:, None] * embedding_dim + cols[None, :]
+        output_mask = (rows[:, None] < num_weights) & (cols[None, :] < embedding_dim)
+        tl.store(acc + positions, 0, output_mask)
         # Each CTA owns all addresses in this output tile. No other CTA writes
         # its zeros, atomics, or cast, so a CTA barrier is sufficient here.
         tl.debug_barrier()
-        if FP64:
+        if fp64:
             acc_dtype = tl.float64
         else:
             acc_dtype = tl.float32
-        for start in range(0, B, BB):
+        for start in range(0, num_bags, BB):
             bags = start + tl.arange(0, BB)
             maximum = tl.load(
-                MAXIMUM + bags[:, None] * SX0 + cols[None, :] * SX1,
-                (bags[:, None] < B) & (cols[None, :] < D),
+                maximum_indices + bags[:, None] * sx0 + cols[None, :] * sx1,
+                (bags[:, None] < num_bags) & (cols[None, :] < embedding_dim),
                 other=-1,
             ).to(tl.int64)
-            sizes = tl.load(BAG_SIZE + bags * SB, bags < B, other=0)
+            sizes = tl.load(bag_size + bags * sb, bags < num_bags, other=0)
             active = (
-                (bags[:, None] < B)
-                & (cols[None, :] < D)
+                (bags[:, None] < num_bags)
+                & (cols[None, :] < embedding_dim)
                 & (maximum >= row0)
                 & (maximum < row0 + BR)
-                & (maximum < V)
-                & (maximum != PAD)
+                & (maximum < num_weights)
+                & (maximum != pad)
                 & (sizes[:, None] > 0)
             )
             values = tl.load(
-                GRAD + bags[:, None] * SG0 + cols[None, :] * SG1,
+                grad + bags[:, None] * sg0 + cols[None, :] * sg1,
                 active,
                 other=0,
             ).to(acc_dtype)
             tl.atomic_add(
-                ACC + maximum * D + cols[None, :], values, active, sem="relaxed"
+                acc + maximum * embedding_dim + cols[None, :],
+                values,
+                active,
+                sem="relaxed",
             )
         if CAST:
             tl.debug_barrier()
-            values = tl.load(ACC + positions, output_mask, other=0)
-            tl.store(OUT + positions, values, output_mask)
+            values = tl.load(acc + positions, output_mask, other=0)
+            tl.store(out + positions, values, output_mask)
 
 
 @libentry()
 @triton.jit(debug=True)
 def max_shared_tiles(
-    GRAD,
-    INDICES,
-    OFFSETS,
-    OFFSET2BAG,
-    BAG_SIZE,
-    MAXIMUM,
-    ACC,
-    OUT,
-    META: tl.constexpr,
+    grad,  # output gradient
+    indices,
+    offsets,
+    offset_to_bag,
+    bag_size,
+    maximum_indices,
+    acc,  # accumulator buffer
+    out,  # output buffer
+    meta: tl.constexpr,  # packed kernel metadata
 ):
-    _validate_max(INDICES, OFFSETS, OFFSET2BAG, BAG_SIZE, MAXIMUM, OUT, META)
-    B: tl.constexpr = META[1]
-    D: tl.constexpr = META[2]
-    V: tl.constexpr = META[3]
-    PAD: tl.constexpr = META[5]
-    SG0: tl.constexpr = META[6]
-    SG1: tl.constexpr = META[7]
-    SB: tl.constexpr = META[11]
-    SX0: tl.constexpr = META[12]
-    SX1: tl.constexpr = META[13]
-    FP64: tl.constexpr = META[15]
-    SMEM_ASM: tl.constexpr = META[20]
-    BR: tl.constexpr = META[17]
-    BD: tl.constexpr = META[18]
-    BB: tl.constexpr = META[19]
+    _validate_max(indices, offsets, offset_to_bag, bag_size, maximum_indices, out, meta)
+    num_bags: tl.constexpr = meta[1]
+    embedding_dim: tl.constexpr = meta[2]
+    num_weights: tl.constexpr = meta[3]
+    pad: tl.constexpr = meta[5]
+    sg0: tl.constexpr = meta[6]
+    sg1: tl.constexpr = meta[7]
+    sb: tl.constexpr = meta[11]
+    sx0: tl.constexpr = meta[12]
+    sx1: tl.constexpr = meta[13]
+    fp64: tl.constexpr = meta[15]
+    SMEM_ASM: tl.constexpr = meta[20]
+    BR: tl.constexpr = meta[17]
+    bd: tl.constexpr = meta[18]
+    BB: tl.constexpr = meta[19]
     pid = tl.program_id(0).to(tl.int64)
-    nc: tl.constexpr = tl.cdiv(D, BD)
-    if pid < tl.cdiv(V, BR) * nc:
+    nc: tl.constexpr = tl.cdiv(embedding_dim, bd)
+    if pid < tl.cdiv(num_weights, BR) * nc:
         row0 = pid // nc * BR
         rows = row0 + tl.arange(0, BR)
-        cols = pid % nc * BD + tl.arange(0, BD)
-        positions = rows[:, None] * D + cols[None, :]
-        output_mask = (rows[:, None] < V) & (cols[None, :] < D)
+        cols = pid % nc * bd + tl.arange(0, bd)
+        positions = rows[:, None] * embedding_dim + cols[None, :]
+        output_mask = (rows[:, None] < num_weights) & (cols[None, :] < embedding_dim)
         base = tl.inline_asm_elementwise(
             SMEM_ASM,
             constraints="=r,r",
@@ -187,7 +196,7 @@ def max_shared_tiles(
             pack=1,
         )
         smem_offsets = (
-            tl.arange(0, BR)[:, None] * (BD + 1) + tl.arange(0, BD)[None, :]
+            tl.arange(0, BR)[:, None] * (bd + 1) + tl.arange(0, bd)[None, :]
         ) * 4
         tl.inline_asm_elementwise(
             "{ .reg .u32 a; add.u32 a, $1, $2; st.shared.u32 [a], 0; mov.u32 $0, 0; }",
@@ -198,34 +207,34 @@ def max_shared_tiles(
             pack=1,
         )
         tl.debug_barrier()
-        if FP64:
+        if fp64:
             acc_dtype = tl.float64
         else:
             acc_dtype = tl.float32
-        for start in range(0, B, BB):
+        for start in range(0, num_bags, BB):
             bags = start + tl.arange(0, BB)
             maximum = tl.load(
-                MAXIMUM + bags[:, None] * SX0 + cols[None, :] * SX1,
-                (bags[:, None] < B) & (cols[None, :] < D),
+                maximum_indices + bags[:, None] * sx0 + cols[None, :] * sx1,
+                (bags[:, None] < num_bags) & (cols[None, :] < embedding_dim),
                 other=-1,
             ).to(tl.int64)
-            sizes = tl.load(BAG_SIZE + bags * SB, bags < B, other=0)
+            sizes = tl.load(bag_size + bags * sb, bags < num_bags, other=0)
             active = (
-                (bags[:, None] < B)
-                & (cols[None, :] < D)
+                (bags[:, None] < num_bags)
+                & (cols[None, :] < embedding_dim)
                 & (maximum >= row0)
                 & (maximum < row0 + BR)
-                & (maximum < V)
-                & (maximum != PAD)
+                & (maximum < num_weights)
+                & (maximum != pad)
                 & (sizes[:, None] > 0)
             )
             values = tl.load(
-                GRAD + bags[:, None] * SG0 + cols[None, :] * SG1,
+                grad + bags[:, None] * sg0 + cols[None, :] * sg1,
                 active,
                 other=0,
             ).to(acc_dtype)
             smem_index = (
-                (maximum - row0).to(tl.int32) * (BD + 1) + tl.arange(0, BD)[None, :]
+                (maximum - row0).to(tl.int32) * (bd + 1) + tl.arange(0, bd)[None, :]
             ) * 4
             tl.inline_asm_elementwise(
                 "{ .reg .pred p; .reg .u32 a; .reg .f32 v; "
@@ -246,7 +255,7 @@ def max_shared_tiles(
             is_pure=False,
             pack=1,
         )
-        tl.store(OUT + positions, values, output_mask)
+        tl.store(out + positions, values, output_mask)
 
 
 def _compute_max(grad, indices, offsets, mapping, sizes, maximum, num_weights, padding):
