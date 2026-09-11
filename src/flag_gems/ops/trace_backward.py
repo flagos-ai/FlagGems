@@ -1,0 +1,90 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import logging
+
+import torch
+import triton
+import triton.language as tl
+
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
+
+logger = logging.getLogger(__name__)
+
+
+@libentry()
+@triton.jit
+def trace_backward_kernel(
+    grad_ptr,
+    out_ptr,
+    num_diag,
+    diag_stride,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < num_diag
+
+    grad = tl.load(grad_ptr).to(out_ptr.type.element_ty)
+
+    # out has been pre-filled with zeros; only the diagonal entries are written.
+    diag_offsets = offsets * diag_stride
+    tl.store(out_ptr + diag_offsets, grad, mask=mask)
+
+
+def trace_backward(grad, sizes):
+    logger.debug("GEMS TRACE_BACKWARD")
+
+    if grad.dim() != 0:
+        raise RuntimeError(
+            f"trace_backward: expected grad to be a 0-dimensional tensor, "
+            f"but got {grad.dim()} dimensions"
+        )
+
+    if len(sizes) != 2:
+        raise RuntimeError(
+            f"trace_backward: expected sizes to describe a 2D tensor, "
+            f"but got {len(sizes)} dimensions"
+        )
+
+    N, M = int(sizes[0]), int(sizes[1])
+
+    out = torch.zeros((N, M), dtype=grad.dtype, device=grad.device)
+
+    numel = N * M
+    if numel == 0:
+        return out
+
+    # aten::trace_backward scatters `grad` into the flat positions
+    # arange(0, N * M, M + 1), matching the gradient of trace() which sums the
+    # main diagonal of a contiguous (N, M) tensor (element (d, d) lives at the
+    # flat offset d * M + d = d * (M + 1)). The number of such positions is
+    # ceil(N * M / (M + 1)).
+    diag_stride = M + 1
+    num_diag = triton.cdiv(numel, diag_stride)
+
+    BLOCK_SIZE = 1024
+    grid = (triton.cdiv(num_diag, BLOCK_SIZE),)
+
+    with torch_device_fn.device(grad.device):
+        trace_backward_kernel[grid](
+            grad,
+            out,
+            num_diag,
+            diag_stride,
+            BLOCK_SIZE=BLOCK_SIZE,
+        )
+
+    return out

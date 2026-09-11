@@ -14535,6 +14535,17 @@ ops:
   - Reduction
   stages:
   - stable: '4.0'
+- id: trace_backward
+  description: Triton kernel implementation for trace_backward.
+  for:
+  - trace_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.4'
 - id: transpose
   description: 'Returns a view of the original tensor with its two dimensions swapped.
 
