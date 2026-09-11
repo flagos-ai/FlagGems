@@ -9,6 +9,7 @@ from .alpha_dropout import alpha_dropout
 from .amax import amax
 from .arange import arange, arange_start
 from .arccosh_ import arccosh_
+from .as_strided_scatter import as_strided_scatter
 from .avg_pool3d import avg_pool3d_backward
 from .baddbmm import baddbmm, baddbmm_out
 from .bmm import bmm
@@ -135,6 +136,7 @@ __all__ = [
     "arange",
     "arange_start",
     "arccosh_",
+    "as_strided_scatter",
     "avg_pool3d_backward",
     "baddbmm",
     "baddbmm_out",
