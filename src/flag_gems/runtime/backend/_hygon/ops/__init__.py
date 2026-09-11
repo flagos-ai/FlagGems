@@ -88,6 +88,7 @@ from .median import median_dim, median_dim_values
 from .mm import mm
 from .mm_w8a8_int8 import mm_w8a8_int8, mm_w8a8_int8_out
 from .mul import mul, mul_
+from .mvlgamma import mvlgamma
 from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .nansum import nansum, nansum_out
 from .nll_loss_backward import heur_block_n, nll_loss_backward
@@ -209,6 +210,7 @@ __all__ = [
     "mm_w8a8_int8_out",
     "mul",
     "mul_",
+    "mvlgamma",
     "nanmedian",
     "nanmedian_dim",
     "nanmedian_dim_values",
