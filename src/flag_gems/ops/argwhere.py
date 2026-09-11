@@ -96,6 +96,6 @@ def argwhere(input):
         argwhere_kernel[grid](inp_bool, prefix_sum, out, n_elements, shape, inp_ndim)
 
     num_nonzeros = prefix_sum[n_elements - 1].item()
-    out = out[0:num_nonzeros]
+    out = out.narrow(0, 0, num_nonzeros)
 
     return out
