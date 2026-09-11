@@ -257,8 +257,8 @@ from .logical_xor import logical_xor, logical_xor_
 from .logspace import logspace
 from .logsumexp import logsumexp
 from .lt import lt, lt_, lt_scalar, lt_scalar_
-from .margin_ranking_loss import margin_ranking_loss
 from .lu_unpack import lu_unpack, lu_unpack_out
+from .margin_ranking_loss import margin_ranking_loss
 from .masked_fill import masked_fill, masked_fill_
 from .masked_scatter import masked_scatter, masked_scatter_
 from .masked_select import masked_select
@@ -786,9 +786,9 @@ __all__ = [
     "lt_",
     "lt_scalar",
     "lt_scalar_",
-    "margin_ranking_loss",
     "lu_unpack",
     "lu_unpack_out",
+    "margin_ranking_loss",
     "masked_fill",
     "masked_fill_",
     "masked_scatter",
@@ -861,8 +861,8 @@ __all__ = [
     "not_equal_scalar",
     "ones",
     "ones_like",
-    "outplace_fused_experts",
     "ormqr",
+    "outplace_fused_experts",
     "pad",
     "pairwise_distance",
     "pdist",
@@ -999,7 +999,6 @@ __all__ = [
     "special_log_ndtr_",
     "special_log_softmax",
     "special_logsumexp",
-    "special_sinc",
     "special_modified_bessel_k0",
     "special_modified_bessel_k0_out",
     "special_multigammaln",
@@ -1009,6 +1008,7 @@ __all__ = [
     "special_shifted_chebyshev_polynomial_u_",
     "special_shifted_chebyshev_polynomial_v",
     "special_shifted_chebyshev_polynomial_w",
+    "special_sinc",
     "sqrt",
     "sqrt_",
     "stack",
