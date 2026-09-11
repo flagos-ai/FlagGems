@@ -59,6 +59,7 @@ from .fill import (
     fill_tensor_,
     fill_tensor_out,
 )
+from .fused_moving_avg_obs_fq_helper import fused_moving_avg_obs_fq_helper
 from .gelu import gelu, gelu_, gelu_backward
 from .hadamard_transform import hadamard_transform
 from .index_add import index_add, index_add_
@@ -180,6 +181,7 @@ __all__ = [
     "flash_attn_varlen_func",
     "floor_divide",
     "floor_divide_",
+    "fused_moving_avg_obs_fq_helper",
     "gelu",
     "gelu_",
     "gelu_backward",
