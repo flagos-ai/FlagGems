@@ -27,6 +27,7 @@ from .index_select import index_select
 from .isin import isin
 from .kthvalue import kthvalue
 from .layernorm import layer_norm, layer_norm_backward
+from .lcm import lcm
 from .lgamma_ import lgamma, lgamma_
 from .linalg_lstsq import linalg_lstsq
 from .linalg_matrix_exp import linalg_matrix_exp, linalg_matrix_exp_out
@@ -128,6 +129,7 @@ __all__ = [
     "kthvalue",
     "layer_norm",
     "layer_norm_backward",
+    "lcm",
     "lgamma",
     "lgamma_",
     "linalg_lstsq",
