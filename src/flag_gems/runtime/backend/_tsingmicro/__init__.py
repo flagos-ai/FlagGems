@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -46,7 +60,7 @@ def get_device_properties(
 
 
 def get_device_capability(
-    device: Optional[Union[torch.device, str, int]] = None
+    device: Optional[Union[torch.device, str, int]] = None,
 ) -> Tuple[int, int]:
     return (8, 0)
 
@@ -68,8 +82,7 @@ vendor_info = VendorDescriptor(
 
 CUSTOMIZED_UNUSED_OPS = (
     "arange_start",
-    # "copy",
-    # "copy_",
+    "argmax",
     "gcd",
     "gcd_out",
     "gelu",
@@ -78,11 +91,24 @@ CUSTOMIZED_UNUSED_OPS = (
     "sort",
     "sort_stable",
     "topk",
-    # "to_copy",
     "tril",
     "tril_",
     "tril_out",
     "unique_consecutive",
+    "broadcast_to",
+    "expand",
+    "expand_",
+    "repeat_interleave_self_int",
+    "repeat_interleave_self_tensor",
+    "pad",
+    "pow_scalar",
+    "pow_tensor_scalar",
+    "pow_tensor_scalar_",
+    "pow_tensor_tensor",
+    "pow_tensor_tensor_",
+    "constant_pad_nd",
+    "masked_fill",
+    "masked_fill_",
 )
 
 __all__ = ["*"]

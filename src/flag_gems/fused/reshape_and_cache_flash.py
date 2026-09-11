@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -5,10 +19,12 @@ import triton
 import triton.language as tl
 
 from flag_gems.config import use_c_extension
-from flag_gems.runtime import torch_device_fn
+from flag_gems.runtime import device, torch_device_fn
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
+
+vendor_name = device.vendor_name
 
 
 @libentry()
@@ -82,6 +98,12 @@ def reshape_and_cache_flash(
         )
     else:
         logger.debug("GEMS RESHAPE_AND_CACHE_FLASH")
+        # GCU300 rejects 64-bit IR; slot_mapping arrives as int64 and its
+        # index arithmetic would emit 64-bit ops. Downcast to int32 on enflame
+        # (mirrors the enflame concat_and_cache_mla override). Vendor+dtype
+        # guarded so no other backend is affected.
+        if vendor_name == "enflame" and slot_mapping.dtype == torch.int64:
+            slot_mapping = slot_mapping.to(torch.int32)
         num_tokens = slot_mapping.size(0)
         num_heads = key.size(1)
         head_size = key.size(2)

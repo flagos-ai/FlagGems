@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -95,7 +109,7 @@ def write_back_kernel(
     select_ints = select_mask.to(tl.constexpr(part_sums_ptr.dtype.element_ty))
     out_ptr += advance
     pre_sums = tl.cumsum(select_ints, axis=0) - 1
-    tl.store(out_ptr + pre_sums, inp, mask=offset < N and select_mask)
+    tl.store(out_ptr + pre_sums, inp, mask=(offset < N) & select_mask)
 
 
 @libentry()
@@ -110,7 +124,7 @@ def masked_select_single_pass_kernel(
     mask_ints = mask.to(tl.int32)
     out_offsets = tl.cumsum(mask_ints, axis=0) - 1
 
-    tl.store(out_ptr + out_offsets, inp, mask=offsets < N and mask)
+    tl.store(out_ptr + out_offsets, inp, mask=(offsets < N) & mask)
 
 
 @libentry()

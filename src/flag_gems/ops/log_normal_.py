@@ -20,24 +20,105 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.ops.randn import randn_kernel
+from flag_gems.ops.randn import pair_uniform_to_normal_fast
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import pointwise_dynamic
-from flag_gems.utils.random_utils import philox_backend_seed_offset
+from flag_gems.utils.random_utils import (
+    philox_backend_seed_offset,
+    uint_to_uniform_float,
+)
 from flag_gems.utils.shape_utils import volume
 
 logger = logging.getLogger(__name__)
 UNROLL = 4
 
 
-@pointwise_dynamic(
-    is_tensor=[True, False, False], promotion_methods=[(0, 1, 2, "DEFAULT")]
-)
-@triton.jit
-def log_normal_transform(val, mean, std):
-    # Log-normal distribution: exp(N(mean, std))
-    # If X ~ N(mean, std), then exp(X) ~ logNormal(mean, std)
-    return tl.exp(val * std + mean)
+# Small-N fast path: avoid autotune overhead for tiny tensors.
+_SMALL_N_THRESHOLD = 65536
+_SMALL_BLOCK = tl.constexpr(256)
+
+
+@triton.jit(do_not_specialize=["philox_seed", "philox_offset", "N", "mean", "std"])
+def _log_normal_kernel_impl(
+    out_ptr,
+    N,
+    mean,
+    std,
+    philox_seed,
+    philox_offset,
+    BLOCK: tl.constexpr,
+):
+    philox_seed = philox_seed.to(tl.int64)
+    philox_offset = philox_offset.to(tl.int64)
+    c0 = (philox_offset & 0xFFFFFFFF).to(tl.uint32)
+    c1 = ((philox_offset >> 32) & 0xFFFFFFFF).to(tl.uint32)
+    i4 = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    c0 += i4
+    _O = c0 * 0
+    r0, r1, r2, r3 = tl.philox(philox_seed, c0, c1, _O, _O)
+
+    f0 = uint_to_uniform_float(r0)
+    f1 = uint_to_uniform_float(r1)
+    f2 = uint_to_uniform_float(r2)
+    f3 = uint_to_uniform_float(r3)
+
+    n0, n1 = pair_uniform_to_normal_fast(f0, f1)
+    n2, n3 = pair_uniform_to_normal_fast(f2, f3)
+
+    # Transform standard normal to log-normal: exp(N(mean, std))
+    y0 = tl.exp(n0 * std + mean)
+    y1 = tl.exp(n1 * std + mean)
+    y2 = tl.exp(n2 * std + mean)
+    y3 = tl.exp(n3 * std + mean)
+
+    off_0 = tl.program_id(0) * BLOCK * 4 + tl.arange(0, BLOCK)
+    off_1 = off_0 + BLOCK
+    off_2 = off_1 + BLOCK
+    off_3 = off_2 + BLOCK
+
+    tl.store(out_ptr + off_0, y0, mask=off_0 < N, eviction_policy="evict_first")
+    tl.store(out_ptr + off_1, y1, mask=off_1 < N, eviction_policy="evict_first")
+    tl.store(out_ptr + off_2, y2, mask=off_2 < N, eviction_policy="evict_first")
+    tl.store(out_ptr + off_3, y3, mask=off_3 < N, eviction_policy="evict_first")
+
+
+configs = [
+    triton.Config({"BLOCK": 256}, num_warps=8, num_stages=2),
+    triton.Config({"BLOCK": 512}, num_warps=4, num_stages=2),
+    triton.Config({"BLOCK": 512}, num_warps=8, num_stages=3),
+    triton.Config({"BLOCK": 1024}, num_warps=4, num_stages=2),
+    triton.Config({"BLOCK": 1024}, num_warps=8, num_stages=3),
+    triton.Config({"BLOCK": 1024}, num_warps=8, num_stages=4),
+]
+
+
+@triton.autotune(configs=configs, key=["N"])
+@triton.jit(do_not_specialize=["philox_seed", "philox_offset", "N", "mean", "std"])
+def log_normal_kernel(
+    out_ptr,
+    N,
+    mean,
+    std,
+    philox_seed,
+    philox_offset,
+    BLOCK: tl.constexpr,
+):
+    _log_normal_kernel_impl(
+        out_ptr, N, mean, std, philox_seed, philox_offset, BLOCK=BLOCK
+    )
+
+
+@triton.jit(do_not_specialize=["philox_seed", "philox_offset", "N", "mean", "std"])
+def log_normal_kernel_small(
+    out_ptr,
+    N,
+    mean,
+    std,
+    philox_seed,
+    philox_offset,
+):
+    _log_normal_kernel_impl(
+        out_ptr, N, mean, std, philox_seed, philox_offset, BLOCK=_SMALL_BLOCK
+    )
 
 
 def log_normal_distribution(
@@ -46,19 +127,19 @@ def log_normal_distribution(
     if out is None:
         out = torch.empty(shape, device=device, dtype=dtype)
     N = volume(shape)
-    grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK"] * UNROLL),)
-
     increment = triton.cdiv(N, UNROLL)
     philox_seed, philox_offset = philox_backend_seed_offset(
         increment, generator=generator
     )
-    # Generate float32 normal first, then transform and convert to target dtype
-    temp_out = torch.empty(shape, device=device, dtype=torch.float32)
     with torch_device_fn.device(device):
-        randn_kernel[grid_fn](temp_out, N, philox_seed, philox_offset)
-
-    # Transform to log-normal and store in output
-    log_normal_transform(temp_out, mean, std, out0=out)
+        if N <= _SMALL_N_THRESHOLD:
+            grid = (triton.cdiv(N, _SMALL_BLOCK * UNROLL),)
+            log_normal_kernel_small[grid](
+                out, N, mean, std, philox_seed, philox_offset, num_warps=8
+            )
+        else:
+            grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK"] * UNROLL),)
+            log_normal_kernel[grid_fn](out, N, mean, std, philox_seed, philox_offset)
     return out
 
 

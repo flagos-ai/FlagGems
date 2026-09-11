@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import math
 import os
 
@@ -18,16 +32,16 @@ def _compute_output_numel(x, sizes):
 
 
 def repeat(inp, sizes):
-    original_precision_priority = os.environ.get("PRECISION_PRIORITY", None)
+    original_precision_priority = os.environ.get("PRECISION_MODE", None)
 
     out_numel = _compute_output_numel(inp, sizes)
     if out_numel > _F32_PRECISION_NUMEL_THRESHOLD:
-        os.environ["PRECISION_PRIORITY"] = "1"
+        os.environ["PRECISION_MODE"] = "1"
 
     try:
         return _original_repeat(inp, sizes)
     finally:
         if original_precision_priority is not None:
-            os.environ["PRECISION_PRIORITY"] = original_precision_priority
+            os.environ["PRECISION_MODE"] = original_precision_priority
         else:
-            os.environ.pop("PRECISION_PRIORITY", None)
+            os.environ.pop("PRECISION_MODE", None)

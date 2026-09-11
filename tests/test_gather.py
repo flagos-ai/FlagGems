@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import random
 import time
 
@@ -34,8 +48,7 @@ def test_gather(inp_shape, dim, dtype):
             inp_shape[:2], dtype=torch.long, device=flag_gems.device
         )
         with pytest.raises(IndexError):
-            with flag_gems.use_gems():
-                torch.gather(mismatch_inp, 0, mismatch_index)
+            flag_gems.gather(mismatch_inp, 0, mismatch_index)
 
     inp = torch.randn(
         inp_shape, dtype=dtype, device=flag_gems.device, requires_grad=True
@@ -64,8 +77,7 @@ def test_gather(inp_shape, dim, dtype):
     ref_index = utils.to_reference(index)
     ref_out = torch.gather(ref_inp, dim, ref_index)
 
-    with flag_gems.use_gems():
-        res_out = torch.gather(inp, dim, index)
+    res_out = flag_gems.gather(inp, dim, index)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -73,8 +85,7 @@ def test_gather(inp_shape, dim, dtype):
     ref_grad = utils.to_reference(out_grad)
 
     (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
-    with flag_gems.use_gems():
-        (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
+    res_in_grad = flag_gems.gather_backward(out_grad, inp, dim, index, False)
 
     res_in_grad = utils.to_reference(res_in_grad)
     utils.gems_assert_close(res_in_grad, ref_in_grad, dtype)
@@ -87,7 +98,7 @@ def test_gather(inp_shape, dim, dtype):
 @pytest.mark.parametrize("inp_shape", INPUT_SHAPES)
 @pytest.mark.parametrize("dim", [0, 1, 2])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_gather_backward_autograd(inp_shape, dim, dtype):
+def test_gather_backward_against_autograd(inp_shape, dim, dtype):
     # Exercise the backward path with repeated indices, which forces
     # gradient accumulation (reduce="add") and exposes precision loss in
     # reduced-precision dtypes as well as the unsupported bfloat16 path.
@@ -110,8 +121,7 @@ def test_gather_backward_autograd(inp_shape, dim, dtype):
     ref_index = utils.to_reference(index)
     ref_out = torch.gather(ref_inp, dim, ref_index)
 
-    with flag_gems.use_gems():
-        res_out = torch.gather(inp, dim, index)
+    res_out = flag_gems.gather(inp, dim, index)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -119,11 +129,11 @@ def test_gather_backward_autograd(inp_shape, dim, dtype):
     ref_grad = utils.to_reference(out_grad)
 
     (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
-    with flag_gems.use_gems():
-        (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
+    res_in_grad = flag_gems.gather_backward(out_grad, inp, dim, index, False)
 
     res_in_grad = utils.to_reference(res_in_grad)
-    utils.gems_assert_equal(res_in_grad, ref_in_grad)
+    # Repeated-index sums can differ in accumulation order.
+    utils.gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
 
 def _make_gather_backward_index(inp_shape, dim, duplicate_indices):
@@ -152,7 +162,7 @@ def _make_gather_backward_index(inp_shape, dim, duplicate_indices):
 @pytest.mark.gather_backward
 @pytest.mark.parametrize("inp_shape", INPUT_SHAPES)
 @pytest.mark.parametrize("dim", [0, 1, 2])
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("duplicate_indices", [False, True])
 def test_gather_backward(inp_shape, dim, dtype, duplicate_indices):
     inp = torch.randn(inp_shape, dtype=dtype, device=flag_gems.device)
@@ -166,7 +176,26 @@ def test_gather_backward(inp_shape, dim, dtype, duplicate_indices):
         ref_grad, ref_inp, dim, ref_index, False
     )
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.gather_backward.default(grad, inp, dim, index, False)
+    res_out = flag_gems.gather_backward(grad, inp, dim, index, False)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.gather_backward
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("dim", [0, 1])
+def test_gather_backward_repeated_fractional_grad(dtype, dim):
+    shape = (1, 3) if dim == 0 else (3, 1)
+    index_shape = (257, 3) if dim == 0 else (3, 257)
+    inp = torch.zeros(shape, dtype=dtype, device=flag_gems.device)
+    index = torch.zeros(index_shape, dtype=torch.int64, device=flag_gems.device)
+    grad = torch.full(index_shape, 0.1, dtype=dtype, device=flag_gems.device)
+    ref_out = torch.ops.aten.gather_backward.default(
+        utils.to_reference(grad).float(),
+        utils.to_reference(inp).float(),
+        dim,
+        utils.to_reference(index),
+        False,
+    ).to(dtype)
+    out = flag_gems.gather_backward(grad, inp, dim, index, False)
+    utils.gems_assert_close(out, ref_out, dtype)

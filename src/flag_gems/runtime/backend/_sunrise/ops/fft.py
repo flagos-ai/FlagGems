@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 import math
 from typing import Tuple
@@ -7,6 +21,7 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import tensor_wrapper
 from flag_gems.utils.triton_version_utils import HAS_TLE
 
 logger = logging.getLogger(__name__)
@@ -37,12 +52,16 @@ def _bitrev_indices(n: int, device: torch.device) -> torch.Tensor:
     if cached is not None:
         return cached
     log_n = _log2(n)
-    idx = torch.arange(n, device=device, dtype=torch.int32)
+    # These are launch constants, not part of the device computation. Build
+    # them on CPU because PTPU lacks the eager aten bit-shift overloads used by
+    # the straightforward tensor implementation below.
+    idx = torch.arange(n, device="cpu", dtype=torch.int32)
     rev = torch.zeros_like(idx)
     tmp = idx.clone()
     for _ in range(log_n):
         rev = (rev << 1) | (tmp & 1)
         tmp = tmp >> 1
+    rev = rev.to(device)
     _BITREV_CACHE[key] = rev
     return rev
 
@@ -53,19 +72,40 @@ def _twiddle_tables(n: int, device: torch.device) -> Tuple[torch.Tensor, torch.T
     if cached is not None:
         return cached
     log_n = _log2(n)
-    tw_real = torch.empty((n - 1,), device=device, dtype=torch.float32)
-    tw_imag = torch.empty((n - 1,), device=device, dtype=torch.float32)
+    # Twiddle tables are immutable launch constants. CPU construction avoids
+    # depending on Sunrise eager aten coverage while the FFT itself stays on
+    # PTPU.
+    tw_real = torch.empty((n - 1,), device="cpu", dtype=torch.float32)
+    tw_imag = torch.empty((n - 1,), device="cpu", dtype=torch.float32)
     offset = 0
     for stage in range(log_n):
         m = 1 << (stage + 1)
         half = m >> 1
-        j = torch.arange(half, device=device, dtype=torch.float32)
+        j = torch.arange(half, device="cpu", dtype=torch.float32)
         angle = (-2.0 * PI / m) * j
         tw_real[offset : offset + half] = torch.cos(angle)
         tw_imag[offset : offset + half] = torch.sin(angle)
         offset += half
+    tw_real = tw_real.to(device)
+    tw_imag = tw_imag.to(device)
     _TWIDDLE_CACHE[key] = (tw_real, tw_imag)
     return tw_real, tw_imag
+
+
+@triton.jit
+def _split_complex_kernel(x, real, imag, n_elements, BLOCK_SIZE: tl.constexpr):
+    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+    tl.store(real + offsets, tl.load(x + offsets * 2, mask=mask), mask=mask)
+    tl.store(imag + offsets, tl.load(x + offsets * 2 + 1, mask=mask), mask=mask)
+
+
+@triton.jit
+def _pack_complex_kernel(real, imag, out, n_elements, BLOCK_SIZE: tl.constexpr):
+    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+    tl.store(out + offsets * 2, tl.load(real + offsets, mask=mask), mask=mask)
+    tl.store(out + offsets * 2 + 1, tl.load(imag + offsets, mask=mask), mask=mask)
 
 
 def _prepare_input(x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -73,8 +113,21 @@ def _prepare_input(x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         if x.dtype not in (torch.complex64, torch.complex128):
             raise ValueError(f"unsupported complex dtype: {x.dtype}")
         x = x.to(torch.complex64)
-        real = x.real.contiguous()
-        imag = x.imag.contiguous()
+        if not x.is_contiguous():
+            raise NotImplementedError("Sunrise FFT requires contiguous complex input")
+        real = torch.empty(x.shape, device=x.device, dtype=torch.float32)
+        imag = torch.empty_like(real)
+        x_real_ptr = tensor_wrapper.TypedPtr.reinterpret_tensor(x, torch.float32)
+        grid = (triton.cdiv(x.numel(), 256),)
+        with torch_device_fn.device(x.device):
+            _split_complex_kernel[grid](
+                x_real_ptr,
+                real,
+                imag,
+                x.numel(),
+                BLOCK_SIZE=256,
+                num_warps=4,
+            )
     else:
         if x.dtype not in (torch.float16, torch.float32, torch.bfloat16):
             raise ValueError(f"unsupported dtype: {x.dtype}")
@@ -82,6 +135,27 @@ def _prepare_input(x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         real = x.contiguous()
         imag = torch.zeros_like(real)
     return real, imag
+
+
+def _pack_complex(real: torch.Tensor, imag: torch.Tensor) -> torch.Tensor:
+    # `torch.empty` is registered to Sunrise while `use_gems()` is active and
+    # its dummy initialization kernel cannot bind a complex pointer. Allocate
+    # the complex storage directly; the pack kernel writes it through the
+    # float32 reinterpretation below.
+    out = torch.empty_strided(
+        real.shape, real.stride(), device=real.device, dtype=torch.complex64
+    )
+    out_real_ptr = tensor_wrapper.TypedPtr.reinterpret_tensor(out, torch.float32)
+    grid = (triton.cdiv(real.numel(), 256),)
+    _pack_complex_kernel[grid](
+        real,
+        imag,
+        out_real_ptr,
+        real.numel(),
+        BLOCK_SIZE=256,
+        num_warps=4,
+    )
+    return out
 
 
 @triton.jit
@@ -941,7 +1015,7 @@ def fft(x: torch.Tensor) -> torch.Tensor:
                     num_warps=4,
                     num_stages=1,
                 )
-            return torch.complex(out_real, out_imag)
+            return _pack_complex(out_real, out_imag)
         else:
             buf0_real = torch.empty((m, n), device=x.device, dtype=torch.float32)
             buf0_imag = torch.empty((m, n), device=x.device, dtype=torch.float32)
@@ -979,4 +1053,22 @@ def fft(x: torch.Tensor) -> torch.Tensor:
                 out_real = buf1_real
                 out_imag = buf1_imag
 
-            return torch.complex(out_real, out_imag)
+            return _pack_complex(out_real, out_imag)
+
+
+def fft_c2c(
+    x: torch.Tensor, dim: list[int], normalization: int, forward: bool
+) -> torch.Tensor:
+    """Adapt ``aten::_fft_c2c`` to the Sunrise last-dimension FFT kernel."""
+    normalized_dims = tuple(d % x.ndim for d in dim)
+    if normalized_dims != (x.ndim - 1,):
+        raise NotImplementedError(
+            "Sunrise FFT only supports transforming the last dimension"
+        )
+    if normalization != 0:
+        raise NotImplementedError(
+            "Sunrise FFT only supports the default forward normalization"
+        )
+    if not forward:
+        raise NotImplementedError("Sunrise FFT does not support inverse transforms")
+    return fft(x)
