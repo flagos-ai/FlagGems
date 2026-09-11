@@ -197,10 +197,17 @@ def _prepare_out_tensor(in_t, out_dhw, scale_dhw, dtype=None, device=None):
     return torch.empty((N, C, OD, OH, OW), dtype=dtype, device=device)
 
 
-def _upsample_nearest_exact3d(input, output_size, scale_factors=None):
+def _upsample_nearest_exact3d(
+    self, output_size, scales_d=None, scales_h=None, scales_w=None
+):
+    input = self
     logger.debug("GEMS _UPSAMPLE_NEAREST_EXACT3D")
     out_dhw = _parse_size_3d(output_size)
-    scale_dhw = _parse_scale_3d(scale_factors)
+    scale_dhw = (
+        (scales_d, scales_h, scales_w)
+        if any(s is not None for s in (scales_d, scales_h, scales_w))
+        else None
+    )
     out_t = _prepare_out_tensor(input, out_dhw, scale_dhw)
     if out_t.numel() == 0:
         return out_t
@@ -209,10 +216,17 @@ def _upsample_nearest_exact3d(input, output_size, scale_factors=None):
     )
 
 
-def _upsample_nearest_exact3d_out(input, output_size, scale_factors=None, *, out):
+def _upsample_nearest_exact3d_out(
+    self, output_size, scales_d=None, scales_h=None, scales_w=None, *, out
+):
+    input = self
     logger.debug("GEMS _UPSAMPLE_NEAREST_EXACT3D_OUT")
     out_dhw = _parse_size_3d(output_size)
-    scale_dhw = _parse_scale_3d(scale_factors)
+    scale_dhw = (
+        (scales_d, scales_h, scales_w)
+        if any(s is not None for s in (scales_d, scales_h, scales_w))
+        else None
+    )
     if out.ndim != 5:
         raise ValueError(
             f"Out tensor must be 5D (N, C, D, H, W); got shape {tuple(out.shape)}"

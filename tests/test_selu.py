@@ -28,8 +28,7 @@ def test_selu(shape, dtype):
     ref_inp = utils.to_reference(res_inp, True)
 
     ref_out = torch.nn.functional.selu(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.nn.functional.selu(res_inp)
+    res_out = flag_gems.selu(self=res_inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -42,7 +41,6 @@ def test_selu_(shape, dtype):
     ref_inp = utils.to_reference(inp.clone())
 
     ref_out = torch.ops.aten.selu_(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.selu_(inp)
+    res_out = flag_gems.selu_(self=inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

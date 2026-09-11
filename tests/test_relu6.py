@@ -28,7 +28,6 @@ def test_relu6(shape, dtype):
     ref_inp = utils.to_reference(res_inp, True)
 
     ref_out = torch.nn.functional.relu6(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.nn.functional.relu6(res_inp)
+    res_out = flag_gems.relu6(self=res_inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

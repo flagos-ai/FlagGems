@@ -39,7 +39,6 @@ def test_prelu(shape, dtype, weight_kind):
     ref_w = utils.to_reference(w)
 
     ref_out = torch.ops.aten.prelu(ref_x, ref_w)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.prelu(x, w)
+    res_out = flag_gems.prelu(self=x, weight=w)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

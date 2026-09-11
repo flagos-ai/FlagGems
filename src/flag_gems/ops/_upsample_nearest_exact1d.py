@@ -162,10 +162,11 @@ def _prepare_out_tensor(in_t, out_w, scale_w, dtype=None, device=None):
     return torch.empty((N, C, OW), dtype=dtype, device=device)
 
 
-def _upsample_nearest_exact1d(input, output_size, scale_factors=None):
+def _upsample_nearest_exact1d(self, output_size, scales=None):
+    input = self
     logger.debug("GEMS _UPSAMPLE_NEAREST_EXACT1D")
     out_w = _parse_size_1d(output_size)
-    scale_w = _parse_scale_1d(scale_factors)
+    scale_w = _parse_scale_1d(scales)
     out_t = _prepare_out_tensor(input, out_w, scale_w)
     if out_t.numel() == 0:
         return out_t
@@ -174,10 +175,11 @@ def _upsample_nearest_exact1d(input, output_size, scale_factors=None):
     )
 
 
-def _upsample_nearest_exact1d_out(input, output_size, scale_factors=None, *, out):
+def _upsample_nearest_exact1d_out(self, output_size, scales=None, *, out):
+    input = self
     logger.debug("GEMS _UPSAMPLE_NEAREST_EXACT1D_OUT")
     out_w = _parse_size_1d(output_size)
-    scale_w = _parse_scale_1d(scale_factors)
+    scale_w = _parse_scale_1d(scales)
     if out.ndim != 3:
         raise ValueError(
             f"Out tensor must be 3D (N, C, W); got shape {tuple(out.shape)}"
