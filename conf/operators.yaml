@@ -6536,6 +6536,23 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: hspmm
+  description: 'Performs a matrix multiplication of a sparse COO tensor with a dense
+    tensor.
+
+    Returns an uncoalesced sparse COO tensor with the same number of specified elements
+    as the input sparse tensor.
+
+    '
+  for:
+  - hspmm
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.4'
 - id: hstack
   description: 'Stack tensors in sequence horizontally (column wise). This is equivalent
     to concatenation
