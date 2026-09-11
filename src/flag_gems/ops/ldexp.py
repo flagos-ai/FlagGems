@@ -20,6 +20,7 @@ import triton
 import triton.language as tl
 
 from flag_gems.utils import pointwise_dynamic
+from flag_gems.utils.type_utils import ELEMENTWISE_TYPE_PROMOTION_KIND, type_promotion
 
 logger = logging.getLogger(__name__)
 
@@ -85,13 +86,54 @@ def ldexp_complex_fp64_func(xr, xi, yr, yi):
 
 
 def _result_dtype(self, other):
-    self_dtype = (
-        torch.float32
-        if self.dtype == torch.bool
-        or (not self.is_floating_point() and not self.is_complex())
-        else self.dtype
+    _, result_dtype = type_promotion(
+        self,
+        other,
+        type_promotion=ELEMENTWISE_TYPE_PROMOTION_KIND.INT_TO_FLOAT,
     )
-    return torch.promote_types(self_dtype, other.dtype)
+    return result_dtype
+
+
+def _result_device(self, other):
+    if self.device == other.device:
+        return self.device
+    if self.ndim == 0 and self.device.type == "cpu":
+        return other.device
+    if other.ndim == 0 and other.device.type == "cpu":
+        return self.device
+    raise RuntimeError(
+        f"Expected all tensors to be on the same device, but found {self.device} "
+        f"and {other.device}"
+    )
+
+
+def _is_exact_alias(left, right):
+    return (
+        left.data_ptr() == right.data_ptr()
+        and left.storage_offset() == right.storage_offset()
+        and left.shape == right.shape
+        and left.stride() == right.stride()
+    )
+
+
+def _validate_out(self, other, out, result_dtype):
+    result_device = _result_device(self, other)
+    if out.device != result_device:
+        raise RuntimeError(
+            f"Expected out tensor to be on {result_device}, but got {out.device}"
+        )
+    if not torch.can_cast(result_dtype, out.dtype):
+        raise RuntimeError(
+            f"result type {result_dtype} can't be cast to the desired output "
+            f"type {out.dtype}"
+        )
+    for operand in (self, other):
+        if operand.device == out.device and torch._C._overlaps(out, operand):
+            if not _is_exact_alias(out, operand):
+                raise RuntimeError(
+                    "some elements of the input tensor and the written-to tensor "
+                    "refer to a single memory location"
+                )
 
 
 def _complex_parts(tensor, real_dtype):
@@ -117,25 +159,17 @@ def _complex_ldexp(self, other, result_dtype):
 
 def _ldexp_impl(self, other, out=None):
     result_dtype = _result_dtype(self, other)
+    if out is not None:
+        _validate_out(self, other, out, result_dtype)
     if self.is_complex() or other.is_complex():
         result = _complex_ldexp(self, other, result_dtype)
         if out is None:
             return result
-        if not torch.can_cast(result_dtype, out.dtype):
-            raise RuntimeError(
-                f"result type {result_dtype} can't be cast to the desired output "
-                f"type {out.dtype}"
-            )
         out.resize_(result.shape)
         out.copy_(result)
         return out
 
     if out is not None:
-        if not torch.can_cast(result_dtype, out.dtype):
-            raise RuntimeError(
-                f"result type {result_dtype} can't be cast to the desired output "
-                f"type {out.dtype}"
-            )
         out.resize_(torch.broadcast_shapes(self.shape, other.shape))
 
     func = ldexp_fp64_func if result_dtype == torch.float64 else ldexp_func

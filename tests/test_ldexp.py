@@ -61,13 +61,39 @@ def test_ldexp_dtype_promotion(self_dtype, other_dtype, expected_dtype):
     else:
         other = torch.randint(-8, 9, shape, dtype=other_dtype, device=flag_gems.device)
 
-    ref_self = utils.to_reference(self, True)
-    ref_other = utils.to_reference(other, True)
+    ref_self = utils.to_reference(self)
+    ref_other = utils.to_reference(other)
     ref_out = torch.ops.aten.ldexp.Tensor(ref_self, ref_other)
 
     res_out = flag_gems.ldexp(self, other)
 
-    assert res_out.dtype == expected_dtype
+    assert ref_out.dtype == expected_dtype
+    assert res_out.dtype == ref_out.dtype
+    utils.gems_assert_close(res_out, ref_out, expected_dtype)
+
+
+@pytest.mark.ldexp
+@pytest.mark.parametrize(
+    "self_dtype,other_dtype,expected_dtype",
+    [
+        (torch.complex64, torch.complex128, torch.complex64),
+        (torch.float32, torch.float64, torch.float32),
+        (torch.float16, torch.float32, torch.float16),
+    ],
+)
+def test_ldexp_zero_dim_promotion(self_dtype, other_dtype, expected_dtype):
+    if self_dtype.is_complex and flag_gems.vendor_name in ("ascend", "tsingmicro"):
+        pytest.skip("The backend does not support complex tensors")
+    self = torch.randn((17,), dtype=self_dtype, device=flag_gems.device)
+    other = torch.randn((), dtype=other_dtype, device=flag_gems.device)
+    ref_self = utils.to_reference(self)
+    ref_other = utils.to_reference(other)
+
+    ref_out = torch.ops.aten.ldexp.Tensor(ref_self, ref_other)
+    res_out = flag_gems.ldexp(self, other)
+
+    assert ref_out.dtype == expected_dtype
+    assert res_out.dtype == ref_out.dtype
     utils.gems_assert_close(res_out, ref_out, expected_dtype)
 
 
@@ -141,25 +167,96 @@ def test_ldexp_out_alias_resize_and_stride(dtype):
     self = torch.randn((11, 37), dtype=dtype, device=flag_gems.device)
     other = torch.randint(-8, 9, (37,), device=flag_gems.device, dtype=torch.int32)
 
-    ref_self = utils.to_reference(self, True)
+    ref_self = utils.to_reference(self)
     ref_other = utils.to_reference(other)
-    # Some supported PyTorch builds hit an internal CPU TensorIterator assertion
-    # for BF16 ldexp.out. The functional overload has identical values, while
-    # the GEMS call below still exercises the actual out overload semantics.
-    ref_out = torch.ops.aten.ldexp.Tensor(ref_self, ref_other)
+    ref_storage = torch.empty((37, 11), dtype=dtype, device=ref_self.device)
+    ref_out_buf = ref_storage.T
+    ref_out = torch.ops.aten.ldexp.out(ref_self, ref_other, out=ref_out_buf)
 
     storage = torch.empty((37, 11), dtype=dtype, device=flag_gems.device)
     res_out_buf = storage.T
     res_out = flag_gems.ldexp_out(self, other, out=res_out_buf)
 
+    assert ref_out is ref_out_buf
     assert res_out is res_out_buf
+    assert res_out.dtype == ref_out.dtype
     assert res_out.stride() == (1, 11)
     utils.gems_assert_close(res_out, ref_out, dtype)
 
+    ref_empty_out = torch.empty((0,), dtype=dtype, device=ref_self.device)
+    ref_resized = torch.ops.aten.ldexp.out(ref_self, ref_other, out=ref_empty_out)
     empty_out = torch.empty((0,), dtype=dtype, device=flag_gems.device)
     resized = flag_gems.ldexp_out(self, other, out=empty_out)
+    assert ref_resized is ref_empty_out
     assert resized is empty_out
-    assert resized.shape == self.shape
+    assert resized.shape == ref_resized.shape
+    utils.gems_assert_close(resized, ref_resized, dtype)
+
+
+@pytest.mark.ldexp_out
+@pytest.mark.parametrize("out_dtype", [torch.float16, torch.float32, torch.float64])
+def test_ldexp_out_dtype_casting(out_dtype):
+    self = torch.randn((17,), dtype=torch.float32, device=flag_gems.device)
+    other = torch.randint(-4, 5, (17,), dtype=torch.int32, device=flag_gems.device)
+    ref_self = utils.to_reference(self)
+    ref_other = utils.to_reference(other)
+    ref_out_buf = torch.empty((17,), dtype=out_dtype, device=ref_self.device)
+    ref_out = torch.ops.aten.ldexp.out(ref_self, ref_other, out=ref_out_buf)
+    out = torch.empty((17,), dtype=out_dtype, device=flag_gems.device)
+
+    result = flag_gems.ldexp_out(self, other, out=out)
+
+    assert ref_out is ref_out_buf
+    assert result is out
+    assert result.dtype == ref_out.dtype
+    utils.gems_assert_close(result, ref_out, out_dtype)
+
+
+@pytest.mark.ldexp_out
+def test_ldexp_out_aliasing():
+    self = torch.randn((17,), device=flag_gems.device)
+    other = torch.randint(-4, 5, (17,), dtype=torch.int32, device=flag_gems.device)
+    ref_self = utils.to_reference(self)
+    ref_other = utils.to_reference(other)
+
+    ref_result = torch.ops.aten.ldexp.out(ref_self, ref_other, out=ref_self)
+    result = flag_gems.ldexp_out(self, other, out=self)
+
+    assert ref_result is ref_self
+    assert result is self
+    utils.gems_assert_close(result, ref_result, torch.float32)
+
+
+@pytest.mark.ldexp_out
+def test_ldexp_out_rejects_partial_overlap():
+    ref_storage = torch.randn((18,))
+    ref_self = ref_storage[:-1]
+    ref_out = ref_storage[1:]
+    ref_other = torch.ones((17,), dtype=torch.int32)
+    with pytest.raises(RuntimeError):
+        torch.ops.aten.ldexp.out(ref_self, ref_other, out=ref_out)
+
+    storage = torch.randn((18,), device=flag_gems.device)
+    self = storage[:-1]
+    out = storage[1:]
+    other = torch.ones((17,), dtype=torch.int32, device=flag_gems.device)
+    with pytest.raises(RuntimeError):
+        flag_gems.ldexp_out(self, other, out=out)
+
+
+@pytest.mark.ldexp_out
+def test_ldexp_out_rejects_device_mismatch():
+    self = torch.randn((17,), device=flag_gems.device)
+    other = torch.ones((17,), dtype=torch.int32, device=flag_gems.device)
+    wrong_device = "meta" if self.device.type == "cpu" else "cpu"
+    out = torch.empty((17,), device=wrong_device)
+    ref_self = utils.to_reference(self)
+    ref_other = utils.to_reference(other)
+    ref_out = torch.empty((17,), device="meta")
+    with pytest.raises(RuntimeError):
+        torch.ops.aten.ldexp.out(ref_self, ref_other, out=ref_out)
+    with pytest.raises(RuntimeError):
+        flag_gems.ldexp_out(self, other, out=out)
 
 
 @pytest.mark.ldexp_out
