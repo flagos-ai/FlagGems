@@ -3177,6 +3177,22 @@ ops:
   - Tensor
   stages:
   - beta: '5.3'
+- id: corrcoef
+  description: |
+    Estimates the Pearson product-moment correlation coefficient matrix of the
+    variables given by the input matrix, where rows are the variables and
+    columns are the observations. The correlation matrix R is computed from
+    the covariance matrix C as R_ij = C_ij / sqrt(C_ii * C_jj), with the
+    internal computation carried out in float32 for numerical stability.
+  for:
+    - corrcoef
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Reduction
+  stages:
+    - alpha: '5.4'
 - id: cos
   description: Returns a new tensor with the cosine of the elements of `input` given
     in radians.
@@ -3235,6 +3251,18 @@ ops:
   - Math
   stages:
   - stable: '5.3'
+- id: cosine_embedding_loss
+  description: Compute the cosine embedding loss.
+  for:
+    - cosine_embedding_loss
+  labels:
+    - aten
+    - nn.functional
+    - KernelGen
+  kind:
+    - NeuralNetwork
+  stages:
+    - alpha: '5.4'
 - id: count_nonzero
   description: 'Counts the number of non-zero values in the tensor `input` along the
     given `dim`.
@@ -3251,6 +3279,27 @@ ops:
   - Tensor
   stages:
   - stable: '2.2'
+- id: cov
+  description: 'Estimates the covariance matrix of the variables given by the input
+
+    matrix, where rows are the variables and columns are the observations.
+
+    Supports Bessel''s correction and optional frequency/analytic observation
+
+    weights, with the internal computation carried out in float32 for
+
+    numerical stability.
+
+    '
+  for:
+  - cov
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Reduction
+  stages:
+  - alpha: '5.4'
 - id: cp_gather_indexer_k_quant_cache
   description: This is a fused operator that gathers FP8 K cache values and scales.
   for:
@@ -3512,6 +3561,18 @@ ops:
   - Reduction
   stages:
   - stable: '3.0'
+- id: cumulative_trapezoid
+  description: Cumulatively integrate y using the composite trapezoidal rule with
+    uniform spacing dx along the given dimension.
+  for:
+  - cumulative_trapezoid.dx
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Reduction
+  stages:
+  - alpha: '5.4'
 - id: cutlass_scaled_mm
   for:
   - cutlass_scaled_mm_sm_90
@@ -3720,6 +3781,22 @@ ops:
   stages:
   - beta: '5.0'
   - stable: '5.3'
+- id: dirichlet_grad
+  description: 'Computes the reparameterized-gradient of the Dirichlet distribution
+    with respect
+
+    to its concentration parameters, used by `torch.distributions.Dirichlet` autograd.
+
+    '
+  for:
+  - _dirichlet_grad
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: dispatch_fused_moe_kernel
   description: 'Accelerates neural network training by combining token routing (dispatch/all-to-all
     communication),
@@ -4121,6 +4198,20 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '5.0'
+- id: embedding_renorm_
+  description: >
+    In-place renormalization of the embedding rows selected by indices: each
+    indexed row whose norm_type-norm exceeds max_norm is scaled down so its
+    norm equals max_norm.
+  for:
+  - embedding_renorm_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: empty
   description: Tensor factory operator — verifies dtype inference for newly allocated
     tensors.
@@ -4502,6 +4593,20 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: fake_quantize_learnable_per_tensor_affine_backward
+  description: |
+    Triton kernel implementation for the backward pass of learnable
+    per-tensor affine fake quantization. Computes gradients with respect to
+    the input, scale, and zero-point.
+  for:
+    - _fake_quantize_learnable_per_tensor_affine_backward
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Math
+  stages:
+    - alpha: '5.4'
 - id: fake_quantize_per_channel_affine
   description: Applies fake quantization per channel with affine parameters (scale
     and zero_point).
@@ -4520,6 +4625,18 @@ ops:
     mask.
   for:
   - fake_quantize_per_channel_affine_cachemask
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Quantization
+  stages:
+  - alpha: '5.4'
+- id: fake_quantize_per_channel_affine_cachemask_backward
+  description: Applies the cache mask to the gradient of per-channel affine fake quantization.
+  for:
+  - fake_quantize_per_channel_affine_cachemask_backward
   labels:
   - aten
   - pointwise
@@ -4555,6 +4672,38 @@ ops:
   - Quantization
   stages:
   - alpha: '5.4'
+- id: fake_quantize_per_tensor_affine_cachemask_backward
+  description: 'Computes the gradient for fake_quantize_per_tensor_affine_cachemask
+    by multiplying the incoming
+
+    gradient by the cached boolean mask.
+
+    '
+  for:
+  - fake_quantize_per_tensor_affine_cachemask_backward
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: fake_quantize_per_tensor_affine_cachemask_tensor_qparams
+  description: |
+    Fake-quantizes `input` per-tensor with affine mapping given by `scale` and
+    `zero_point`, clamping the quantized integer into `[quant_min, quant_max]`,
+    and returns both the dequantized output and a boolean mask indicating which
+    elements fell inside the quantized range.
+  for:
+    - _fake_quantize_per_tensor_affine_cachemask_tensor_qparams
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Math
+  stages:
+    - alpha: '5.4'
 - id: feature_dropout
   description: 'Applies feature dropout to the `input` tensor. Randomly zeroes out
     entire channels of the `input` tensor with probability `p`.
@@ -4582,6 +4731,17 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.3'
+- id: fft_irfftn
+  description: Computes the N-dimensional inverse of torch.fft.rfftn.
+  for:
+  - fft_irfftn
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: fill_diagonal_
   description: 'Fills the main diagonal of a tensor that has at least two dimensions
 
@@ -6259,6 +6419,25 @@ ops:
   - aten
   kind:
   - Tensor
+  stages:
+  - alpha: '5.4'
+- id: hash_tensor
+  description: 'Reduces the input tensor by XOR-ing the raw 64-bit representations
+    of its elements over the given dims (an empty dim list reduces over all
+    elements).
+
+    Floating types are widened to float64 and bit-cast to uint64; integer and bool
+    types are extended to int64 and bit-cast to uint64. The output dtype is always
+    uint64 and mode must be 0.
+
+    '
+  for:
+  - hash_tensor
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Reduction
   stages:
   - alpha: '5.4'
 - id: hc_head_fused_kernel
@@ -9742,6 +9921,20 @@ ops:
     - Tensor
   stages:
     - alpha: '5.4'
+- id: nested_view_from_jagged_copy
+  description: |
+    Constructs a jagged-layout nested tensor from a flat buffer split into
+    batch elements according to offsets/lengths metadata, owning a fresh copy
+    of the buffer.
+  for:
+    - _nested_view_from_jagged_copy
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Tensor
+  stages:
+    - alpha: '5.4'
 - id: new_full
   description: 'Returns a Tensor of size `size` filled with `fill_value`.
 
@@ -10149,6 +10342,19 @@ ops:
   - pointwise
   kind:
   - Logic
+  stages:
+  - alpha: '5.4'
+- id: nuclear_norm
+  description: 'Computes the nuclear norm (sum of singular values) of a matrix.
+
+    '
+  for:
+  - nuclear_norm
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
   stages:
   - alpha: '5.4'
 - id: one_hot
@@ -12775,6 +12981,21 @@ ops:
   - BLAS
   stages:
   - alpha: '5.4'
+- id: sparse_semi_structured_addmm
+  description: 'Performs a matrix multiplication of the sparse semi-structured
+
+    (2:4 sparsity) matrices mat1 and mat2 with input added.
+
+    '
+  for:
+  - _sparse_semi_structured_addmm
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.4'
 - id: sparse_semi_structured_mm
   description: 'Performs a sparse semi-structured matrix multiplication of a dense
     matrix with a 2:4 sparsity pattern against a dense matrix.
@@ -13623,6 +13844,33 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: special_xlogy
+  description: 'Computes `x * log(y)` for each element pair in the input tensors `x`
+    and `y`. Returns 0 if `x == 0`.
+
+    '
+  for:
+  - special.xlogy
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: special_xlogy_
+  description: 'The in-place version of `special_xlogy()`.
+
+    '
+  for:
+  - special.xlogy_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: split_with_sizes_copy
   description: 'Splits a tensor into sub-tensors along a given dimension,
 
@@ -13849,6 +14097,17 @@ ops:
   stages:
   - stable: '3.0'
   cpp: '4.0'
+- id: sum_to_size
+  description: Triton kernel implementation for sum_to_size.
+  for:
+  - sum_to_size
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: swiglu
   description: Swish-Gated Linear Unit, a variant of GLU with the Swish activation
     function.
@@ -13866,6 +14125,23 @@ ops:
     symbolic tracing to provide bounds information.
   for:
   - sym_constrain_range
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
+- id: sym_size
+  description: 'Returns the size of the input tensor as a list of integers.
+
+    This is a metadata operation with no computation and is used for
+
+    torch.compile symbolic tracing.
+
+    '
+  for:
+  - sym_size
   labels:
   - aten
   - KernelGen
