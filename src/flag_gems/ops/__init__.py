@@ -713,6 +713,7 @@ from flag_gems.ops.normal import (
     normal_tensor_float,
     normal_tensor_tensor,
 )
+from flag_gems.ops.normal_functional import normal_functional
 from flag_gems.ops.not_equal import not_equal, not_equal_scalar
 from flag_gems.ops.not_equal_ import not_equal_, not_equal_scalar_
 from flag_gems.ops.nuclear_norm import nuclear_norm
@@ -1763,6 +1764,7 @@ __all__ = [
     "norm_scalaropt_dim",
     "normal_",
     "normal_float_tensor",
+    "normal_functional",
     "normal_tensor_float",
     "normal_tensor_tensor",
     "normed_cumsum",
