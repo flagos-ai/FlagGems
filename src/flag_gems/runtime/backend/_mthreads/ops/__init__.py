@@ -28,6 +28,8 @@ from ._upsample_nearest_exact2d_backward import _upsample_nearest_exact2d_backwa
 from .adaptive_avg_pool2d_backward import _adaptive_avg_pool2d_backward
 from .adaptive_max_pool3d_backward import adaptive_max_pool3d_backward
 from .addmv_ import addmv_
+from ._embedding_bag import _embedding_bag, _embedding_bag_forward_only
+from ._embedding_bag_backward import _embedding_bag_backward
 from .all import all, all_dim, all_dims
 from .amax import amax
 from .any import any, any_dim, any_dims
@@ -167,6 +169,9 @@ from .zeros_like import zeros_like
 __all__ = [
     "_adaptive_avg_pool2d_backward",
     "_amp_foreach_non_finite_check_and_unscale_",
+    "_embedding_bag",
+    "_embedding_bag_forward_only",
+    "_embedding_bag_backward",
     "_conj",
     "_functional_sym_constrain_range_for_size",
     "_index_put_impl_",

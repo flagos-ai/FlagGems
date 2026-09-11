@@ -62,6 +62,8 @@ special_zeta_scalar_tensor: test_special_zeta
 special_zeta_tensor_scalar: test_special_zeta
 
 # Operators tested in combined files or with different naming
+embedding_bag_backward: test_embedding_bag
+embedding_bag_forward_only: test_embedding_bag
 batch_norm_backward: test_batch_norm
 multi_margin_loss_backward: test_multi_margin_loss
 multi_margin_loss_backward_out: test_multi_margin_loss

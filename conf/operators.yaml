@@ -4389,6 +4389,28 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '3.0'
+- id: embedding_bag
+  description: Reduce indexed embedding rows into sum, mean, or maximum bags and return backward metadata.
+  for:
+  - _embedding_bag
+  labels:
+  - aten
+  - NoCPU
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
+- id: embedding_bag_backward
+  description: Compute dense or sparse embedding bag gradients with optional frequency and per-sample scaling.
+  for:
+  - _embedding_bag_backward
+  labels:
+  - aten
+  - NoCPU
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: embedding_bag_dense_backward
   description: 'Computes the gradient for the backward pass of embedding_bag in dense
     mode.
@@ -4399,6 +4421,17 @@ ops:
   labels:
   - aten
   - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
+- id: embedding_bag_forward_only
+  description: Compute embedding bag reductions with the target auxiliary tensor interface.
+  for:
+  - _embedding_bag_forward_only
+  labels:
+  - aten
+  - NoCPU
   kind:
   - NeuralNetwork
   stages:
