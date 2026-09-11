@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import logging
+import math
 
 import torch
 
@@ -25,7 +26,10 @@ logger = logging.getLogger(__name__)
 def linear_backward(input, grad_output, weight, output_mask):
     logger.debug("GEMS_KUNLUNXIN LINEAR_BACKWARD")
     batch_dims = input.shape[:-1]
-    batch_size = input.numel() // input.shape[-1]
+    # numel() // in_features divides by zero for zero-width inputs
+    # (e.g. input (batch, 0), weight (out_features, 0)); derive the batch
+    # size from the leading dims instead.
+    batch_size = math.prod(batch_dims)
     in_features = input.shape[-1]
     out_features = weight.shape[0]
     input_flat = input.reshape(batch_size, in_features).contiguous()
