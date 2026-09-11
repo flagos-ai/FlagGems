@@ -1268,6 +1268,8 @@ _FULL_CONFIG = (
     ("vdot", vdot),
     ("view_as_complex", view_as_complex),
     ("view_copy", view_copy),
+    ("vsplit.array", vsplit),
+    ("vsplit.int", vsplit),
     ("vstack", vstack),
     ("where.self", where_self),
     ("where.self_out", where_self_out),

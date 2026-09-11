@@ -15337,6 +15337,22 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: vsplit
+  description: 'Split a tensor along the first axis (row-wise).
+
+    Each chunk is copied into a freshly allocated output by a Triton kernel.
+
+    '
+  for:
+  - vsplit.int
+  - vsplit.array
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: vstack
   description: Stack tensors in sequence vertically (row wise).
   for:
