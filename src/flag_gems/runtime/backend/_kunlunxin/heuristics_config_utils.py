@@ -347,3 +347,125 @@ HEURISTICS_CONFIGS = {
         "num_warps": lambda args: 8,
     },
 }
+
+
+def reglu_swiglu_config(dtype, M, N):
+    """XPU4 probe-tuned fixed tiling for reglu/swiglu forward (2 loads + 1 store).
+
+    Probe findings (2026-08-13, XPU4, official benchmark matrix, probe6 A/B):
+    - fp16 BLOCK_N>=2048 is compile-flaky (ConvertTritonXPUToLLVM assertion),
+      so fp16 stays at BLOCK_N<=1024 (BLOCK_N=512 only for tiny rows).
+    - fp32/bf16 large rows: wider BLOCK_N slashes per-program overhead
+      (fp32 [4096,4096] 0.82ms -> 0.47ms @ BN2048; fp32 [1024,131072]
+      6.58ms -> 1.80ms @ BN8192; bf16 [1024,131072] 8.52ms -> 2.94ms @ BN16384).
+    - Tiny rows are launch-overhead bound; A/B (official do_bench, median):
+        (64,64) M=64:                 bm1_bn1024 best (14.1/11.6/13.5us)
+        (1024,2)/(1024,32) fp16/bf16: bm8_bn512 wins (127 vs 157us)
+        (1024,2)/(64,64,2) fp32:      bm8_bn1024 wins (107 vs 111us)
+        (64,64,2)/(64,64,32) fp16:    bm8_bn512 wins (452 vs 558us)
+        (64,512,512) (M=32768):       bm16_bn1024 best (3245 vs 3318us)
+        (1024,512):                   bm1_bn1024 best
+    """
+    if N >= 2048 and M >= 1024:
+        if dtype == torch.float32:
+            if N >= 65536:
+                return 1, 8192, 8
+            elif N >= 4096:
+                return 1, 4096, 8
+            else:
+                return 1, 2048, 8
+        elif dtype == torch.bfloat16:
+            if N >= 65536:
+                return 1, 16384, 16
+            elif N >= 4096:
+                return 1, 4096, 8
+            else:
+                return 1, 2048, 8
+        # fp16 large rows: BLOCK_N>=2048 compile-flaky -> keep BN1024
+        return 8, 1024, 4
+    if N <= 64:
+        if M < 256:
+            # e.g. (64,64): bm1_bn1024 wins in A/B
+            return 1, 1024, 4
+        if dtype == torch.float32:
+            return 8, 1024, 4
+        return 8, 512, 4
+    # 64 < N < 2048 (or M < 1024): many-rows -> bm16, else bm1
+    return (16, 1024, 4) if M >= 8192 else (1, 1024, 4)
+
+
+def dreglu_dswiglu_config(dtype, M, N):
+    """XPU1 probe-tuned fixed tiling for dreglu/dswiglu backward (3 loads + 2 stores).
+
+    dswiglu backward has the exact same memory shape as dreglu backward
+    (3 loads: grad_out / gate half / linear half, 2 stores into the two
+    halves of grad_input) and is benchmarked on the same official (M, N)
+    cells, so the dreglu tiling table transfers directly. Only the
+    activation math differs.
+
+    Probe findings (2026-08-19, XPU1, official benchmark matrix, probe1/probe2
+    fixed-config sweeps + libtuner ConfigCache dump):
+    - libtuner's favourite big-row config (342,2048) is the best known for
+      N==2048 (fp16 (4096,2048) 0.824ms) and for M=32768 x N=256 (fp16 6.42ms);
+      huge tiles in general (BLOCK_N >= 16384 fp32 / bn>=8192 fp16/bf16) hit
+      TritonXPULegalize/uni_sram failures -> exclude.
+    - N==4096/N==65536 win with wide single-row tiles:
+      fp16 (1024,4096) 0.805->0.212ms @1x4096w8; fp16 (1024,65536)
+      6.51->1.68ms @1x16384w16; fp32 (1024,65536) 5.56->2.23ms @4x8192w8;
+      bf16 (1024,65536) 6.64->2.33ms @1x16384w8.
+    - fp16 1x(N<=2048) tiles lose to (342,2048); fp16 above BN=2048 compiles
+      (unlike forward reglu) but 2D tiles fill uni_sram -> cap bn.
+    """
+    f16 = dtype == torch.float16
+    f32 = dtype == torch.float32
+    # --- large rows: N >= 2048 ---
+    if N >= 2048:
+        if f16:
+            if N >= 65536:
+                return 1, 16384, 16
+            if N == 4096:
+                return 1, 4096, 8
+            return 342, 2048, 4
+        if f32:
+            if N >= 65536:
+                return 4, 8192, 8
+            if N == 4096:
+                return 1, 4096, 8
+            return 4, 2048, 8
+        if N >= 65536:
+            return 1, 16384, 8
+        if N == 4096:
+            return 1, 4096, 8
+        return 4, 2048, 4
+    # --- tiny rows: N <= 64 ---
+    if N <= 64:
+        if N == 1:
+            if M <= 1024:
+                return (8, 64, 4) if f32 else (16, 64, 8)
+            # M >= 2048: fp16/bf16 (32,64,4) 0.621ms; fp32 tuned (6,32) 0.612ms
+            return (6, 32, 4) if f32 else (32, 64, 4)
+        if N == 16:
+            if M <= 1024:
+                # fp32 (1,1024) 0.164ms beats 2D tiles under official do_bench
+                return (1, 1024, 4) if f32 else (4, 256, 4)
+            # M >= 2048: fp32 (8,1024) 0.637ms; f16/bf16 4x256 0.737/0.731ms
+            return (8, 1024, 4) if f32 else (4, 256, 4)
+        if N == 32:
+            # M=64 micro-case (official probe3): f16 1x256 21.9us, f32 1x1024
+            # 15.7us, bf16 1x1024 18.3us
+            return (1, 1024, 4) if f32 else ((1, 256, 4) if f16 else (1, 1024, 4))
+        return (8, 256, 4)
+    # --- mid rows: 64 < N <= 1024 ---
+    if f16:
+        if M >= 32768:
+            # (64,512,512): tuned (342,2048) = 6.42ms is best known
+            return 342, 2048, 4
+        return 1, 2048, 8
+    if M >= 32768:
+        # (64,512,512): launch/lane-bound, tuned (8,1024) fp32 / (1,1024) bf16
+        return (8, 1024, 4) if f32 else (1, 1024, 4)
+    # probe3 (official do_bench): fp32 1x1024 165.7us @M=1024, 8x1024
+    # 641.9us @M=4096; bf16 1x1024 201.9/791.2us
+    if f32:
+        return (8, 1024, 4) if M > 1024 else (1, 1024, 4)
+    return 1, 1024, 4

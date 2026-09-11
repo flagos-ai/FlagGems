@@ -21,6 +21,8 @@ import triton.language as tl
 
 from flag_gems.utils import libentry
 
+from ..heuristics_config_utils import dreglu_dswiglu_config, reglu_swiglu_config
+
 logger = logging.getLogger(__name__)
 
 
@@ -61,50 +63,6 @@ def swiglu_kernel(
         tl.store(y_ptr, (silu_a * block_b).to(y_ptr.dtype.element_ty))
 
 
-def _pick_swiglu_config(dtype, M, N_OUT):
-    """Fixed tiling for swiglu, mirroring the XPU probe-tuned reglu config.
-
-    Probe findings (2026-08-13, XPU4, official benchmark matrix, probe6 A/B):
-    - fp16 BLOCK_N>=2048 is compile-flaky (ConvertTritonXPUToLLVM assertion),
-      so fp16 stays at BLOCK_N<=1024 (BLOCK_N=512 only for tiny rows).
-    - fp32/bf16 large rows: wider BLOCK_N slashes per-program overhead
-      (fp32 [4096,4096] 0.82ms -> 0.47ms @ BN2048; fp32 [1024,131072]
-      6.58ms -> 1.80ms @ BN8192; bf16 [1024,131072] 8.52ms -> 2.94ms @ BN16384).
-    - Tiny rows are launch-overhead bound; A/B (official do_bench, median):
-        (64,64) M=64:                 bm1_bn1024 best (14.1/11.6/13.5us)
-        (1024,2)/(1024,32) fp16/bf16: bm8_bn512 wins (127 vs 157us)
-        (1024,2)/(64,64,2) fp32:      bm8_bn1024 wins (107 vs 111us)
-        (64,64,2)/(64,64,32) fp16:    bm8_bn512 wins (452 vs 558us)
-        (64,512,512) (M=32768):       bm16_bn1024 best
-    """
-    if N_OUT >= 2048 and M >= 1024:
-        if dtype == torch.float32:
-            if N_OUT >= 65536:
-                return 1, 8192, 8
-            elif N_OUT >= 4096:
-                return 1, 4096, 8
-            else:
-                return 1, 2048, 8
-        elif dtype == torch.bfloat16:
-            if N_OUT >= 65536:
-                return 1, 16384, 16
-            elif N_OUT >= 4096:
-                return 1, 4096, 8
-            else:
-                return 1, 2048, 8
-        # fp16 large rows: BLOCK_N>=2048 compile-flaky -> keep BN1024
-        return 8, 1024, 4
-    if N_OUT <= 64:
-        if M < 256:
-            # e.g. (64,64): bm1_bn1024 wins in A/B
-            return 1, 1024, 4
-        if dtype == torch.float32:
-            return 8, 1024, 4
-        return 8, 512, 4
-    # 64 < N_OUT < 2048 (or M < 1024): many-rows -> bm16, else bm1
-    return (16, 1024, 4) if M >= 8192 else (1, 1024, 4)
-
-
 def swiglu(input_tensor: torch.Tensor, quantizer: Optional[Any] = None) -> torch.Tensor:
     logger.debug("GEMS_KUNLUNXIN SWIGLU_FORWARD")
     shape = input_tensor.shape
@@ -126,7 +84,7 @@ def swiglu(input_tensor: torch.Tensor, quantizer: Optional[Any] = None) -> torch
     output_2d = torch.empty(
         (M, N_OUT), device=input_tensor.device, dtype=input_tensor.dtype
     )
-    block_m, block_n, num_warps = _pick_swiglu_config(input_tensor.dtype, M, N_OUT)
+    block_m, block_n, num_warps = reglu_swiglu_config(input_tensor.dtype, M, N_OUT)
     need_mask = (M % block_m != 0) or (N_OUT % block_n != 0)
     grid = (triton.cdiv(M, block_m), triton.cdiv(N_OUT, block_n))
     swiglu_kernel[grid](
@@ -212,69 +170,6 @@ def dswiglu_kernel(
         tl.store(grad_input_ptr_b, grad_out * silu_a)
 
 
-def _pick_dswiglu_config(dtype, M, N):
-    """Fixed tiling for dswiglu, reusing the XPU probe-tuned dreglu table.
-
-    dswiglu backward has the exact same memory shape as dreglu backward
-    (3 loads: grad_out / gate half / linear half, 2 stores into the two halves
-    of grad_input) and is benchmarked on the same official (M, N) cells, so the
-    dreglu tiling table (`_kunlunxin/fused/reglu.py:_pick_dreglu_config`,
-    XPU1 2026-08-19) transfers directly. Only the activation math differs.
-
-    Reused findings:
-    - BLOCK_N >= 16384 on fp32 and BLOCK_N >= 8192 on fp16/bf16 hit
-      TritonXPULegalize / uni_sram failures -> excluded.
-    - Wide single-row tiles win on large N (N == 4096 -> 1x4096,
-      N >= 65536 -> 1x16384 fp16/bf16 and 4x8192 fp32).
-    - N == 2048 prefers the tall (342, 2048) tile on fp16.
-    - Tiny N (<= 64) is launch bound -> few-row x 64..1024 tiles.
-    """
-    f16 = dtype == torch.float16
-    f32 = dtype == torch.float32
-    # --- large rows: N >= 2048 ---
-    if N >= 2048:
-        if f16:
-            if N >= 65536:
-                return 1, 16384, 16
-            if N == 4096:
-                return 1, 4096, 8
-            return 342, 2048, 4
-        if f32:
-            if N >= 65536:
-                return 4, 8192, 8
-            if N == 4096:
-                return 1, 4096, 8
-            return 4, 2048, 8
-        if N >= 65536:
-            return 1, 16384, 8
-        if N == 4096:
-            return 1, 4096, 8
-        return 4, 2048, 4
-    # --- tiny rows: N <= 64 ---
-    if N <= 64:
-        if N == 1:
-            if M <= 1024:
-                return (8, 64, 4) if f32 else (16, 64, 8)
-            return (6, 32, 4) if f32 else (32, 64, 4)
-        if N == 16:
-            if M <= 1024:
-                return (1, 1024, 4) if f32 else (4, 256, 4)
-            return (8, 1024, 4) if f32 else (4, 256, 4)
-        if N == 32:
-            return (1, 1024, 4) if f32 else ((1, 256, 4) if f16 else (1, 1024, 4))
-        return (8, 256, 4)
-    # --- mid rows: 64 < N <= 1024 ---
-    if f16:
-        if M >= 32768:
-            return 342, 2048, 4
-        return 1, 2048, 8
-    if M >= 32768:
-        return (8, 1024, 4) if f32 else (1, 1024, 4)
-    if f32:
-        return (8, 1024, 4) if M > 1024 else (1, 1024, 4)
-    return 1, 1024, 4
-
-
 def dswiglu(
     grad_output: torch.Tensor,
     input_tensor: torch.Tensor,
@@ -299,7 +194,7 @@ def dswiglu(
     grad_output_2d = grad_output.contiguous().view(M, N)
     input_2d = input_tensor.contiguous().view(M, 2 * N)
     grad_input = torch.empty_like(input_2d)
-    block_m, block_n, num_warps = _pick_dswiglu_config(input_tensor.dtype, M, N)
+    block_m, block_n, num_warps = dreglu_dswiglu_config(input_tensor.dtype, M, N)
     need_mask = (M % block_m != 0) or (N % block_n != 0)
     grid = (triton.cdiv(M, block_m), triton.cdiv(N, block_n))
     dswiglu_kernel[grid](
