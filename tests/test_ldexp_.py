@@ -115,6 +115,44 @@ def test_ldexp_special_values_(dtype):
 
 
 @pytest.mark.ldexp_
+def test_ldexp_extreme_integral_exponents_():
+    self = torch.tensor(
+        [2.0**-100, -(2.0**-100), 2.0**100, -(2.0**100)],
+        dtype=torch.float32,
+        device=flag_gems.device,
+    )
+    other = torch.tensor(
+        [128, 128, -128, -128], dtype=torch.int32, device=flag_gems.device
+    )
+    ref_out = _functional_reference(
+        utils.to_reference(self.clone(), True), utils.to_reference(other)
+    )
+
+    result = flag_gems.ldexp_(self, other)
+
+    assert torch.isfinite(result).all()
+    utils.gems_assert_equal(result, ref_out)
+
+
+@pytest.mark.ldexp_
+@pytest.mark.skipif(not utils.fp64_is_supported, reason="FP64 is not supported")
+def test_ldexp_fp64_exponent_precision_():
+    self = torch.ones((2,), dtype=torch.float64, device=flag_gems.device)
+    other = torch.tensor(
+        [1.0 + 2.0**-30, 1.0 + 2.0**-29],
+        dtype=torch.float64,
+        device=flag_gems.device,
+    )
+    ref_out = _functional_reference(
+        utils.to_reference(self.clone(), True), utils.to_reference(other, True)
+    )
+
+    result = flag_gems.ldexp_(self, other)
+
+    torch.testing.assert_close(result.cpu(), ref_out.cpu(), rtol=1e-12, atol=0.0)
+
+
+@pytest.mark.ldexp_
 @pytest.mark.skipif(
     flag_gems.vendor_name in ("ascend", "tsingmicro"),
     reason="The backend does not support complex tensors",
@@ -134,6 +172,63 @@ def test_ldexp_complex_(dtype):
 
     assert result is self
     utils.gems_assert_close(result, ref_out, dtype)
+
+
+@pytest.mark.ldexp_
+@pytest.mark.skipif(
+    not utils.fp64_is_supported or flag_gems.vendor_name in ("ascend", "tsingmicro"),
+    reason="Complex128 is not supported",
+)
+def test_ldexp_complex128_exponent_precision_():
+    self = torch.tensor(
+        [1.0 + 0.5j, -0.25 + 2.0j],
+        dtype=torch.complex128,
+        device=flag_gems.device,
+    )
+    other = torch.tensor(
+        [1.0 + 2.0**-30 + 0.0j, 1.0 + 2.0**-29 + 0.0j],
+        dtype=torch.complex128,
+        device=flag_gems.device,
+    )
+    ref_out = _functional_reference(
+        utils.to_reference(self.clone(), True), utils.to_reference(other, True)
+    )
+
+    result = flag_gems.ldexp_(self, other)
+
+    torch.testing.assert_close(result.cpu(), ref_out.cpu(), rtol=1e-12, atol=1e-14)
+
+
+@pytest.mark.ldexp_
+@pytest.mark.parametrize("overlap", ["exact", "partial"])
+def test_ldexp_overlapping_operands_(overlap):
+    storage = torch.tensor([0.25, 0.5, 1.0, 1.5, 2.0], device=flag_gems.device)
+    ref_storage = utils.to_reference(storage.clone(), True)
+    if overlap == "exact":
+        self, other = storage[1:4], storage[1:4]
+        ref_self, ref_other = ref_storage[1:4], ref_storage[1:4]
+    else:
+        self, other = storage[1:], storage[:-1]
+        ref_self, ref_other = ref_storage[1:], ref_storage[:-1]
+
+    ref_result = ref_self.ldexp_(ref_other)
+    result = flag_gems.ldexp_(self, other)
+
+    assert result is self
+    utils.gems_assert_close(result, ref_result, torch.float32)
+
+
+@pytest.mark.ldexp_
+def test_ldexp_rejects_internally_overlapping_self_():
+    self = torch.ones((1,), device=flag_gems.device).expand(4)
+    other = torch.ones((4,), dtype=torch.int32, device=flag_gems.device)
+    ref_self = utils.to_reference(self, True)
+    ref_other = utils.to_reference(other)
+
+    with pytest.raises(RuntimeError):
+        ref_self.ldexp_(ref_other)
+    with pytest.raises(RuntimeError):
+        flag_gems.ldexp_(self, other)
 
 
 @pytest.mark.ldexp_

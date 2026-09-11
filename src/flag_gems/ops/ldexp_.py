@@ -20,8 +20,17 @@ import triton
 import triton.language as tl
 
 from flag_gems.utils import pointwise_dynamic, tl_extra_shim
+from flag_gems.utils.shape_utils import MemOverlap, has_internal_overlapping
 
 _exp2 = tl_extra_shim.exp2
+
+
+@triton.jit
+def _ldexp_fallback(x, exponent):
+    return x * tl.exp2(exponent.to(x.dtype))
+
+
+_ldexp = getattr(tl_extra_shim, "ldexp", _ldexp_fallback)
 
 logger = logging.getLogger(__name__)
 
@@ -35,9 +44,21 @@ def ldexp_inplace_func(x, other):
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def ldexp_inplace_fp64_func(x, other):
-    # Some Triton 3.2/CUDA 12.4 builds abort while lowering fp64 exp2.
-    # Keep the multiply/output in fp64 and use the portable fp32 exp2 path.
-    return x.to(tl.float64) * _exp2(other.to(tl.float32)).to(tl.float64)
+    return x.to(tl.float64) * _exp2(other.to(tl.float64))
+
+
+@pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
+@triton.jit
+def ldexp_inplace_integral_func(x, other):
+    exponent = tl.maximum(tl.minimum(other, 2147483647), -2147483648).to(tl.int32)
+    return _ldexp(x.to(tl.float32), exponent)
+
+
+@pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
+@triton.jit
+def ldexp_inplace_integral_fp64_func(x, other):
+    exponent = tl.maximum(tl.minimum(other, 2147483647), -2147483648).to(tl.int32)
+    return _ldexp(x.to(tl.float64), exponent)
 
 
 @pointwise_dynamic(
@@ -78,13 +99,47 @@ def ldexp_inplace_complex_fp64_func(xr, xi, yr, yi):
     xi = xi.to(tl.float64)
     yr = yr.to(tl.float64)
     yi = yi.to(tl.float64)
-    scale = _exp2(yr.to(tl.float32)).to(tl.float64)
+    scale = _exp2(yr)
     angle = yi * 0.693147180559945309417232121458176568
     cos_angle = tl.cos(angle)
     sin_angle = tl.sin(angle)
     return (
         scale * (xr * cos_angle - xi * sin_angle),
         scale * (xr * sin_angle + xi * cos_angle),
+    )
+
+
+@pointwise_dynamic(
+    is_tensor=[True, True, True],
+    num_outputs=2,
+    promotion_methods=[
+        (0, 1, 2, "DEFAULT"),
+        (0, 1, 2, "DEFAULT"),
+    ],
+)
+@triton.jit
+def ldexp_inplace_complex_integral_func(xr, xi, other):
+    exponent = tl.maximum(tl.minimum(other, 2147483647), -2147483648).to(tl.int32)
+    return (
+        _ldexp(xr.to(tl.float32), exponent),
+        _ldexp(xi.to(tl.float32), exponent),
+    )
+
+
+@pointwise_dynamic(
+    is_tensor=[True, True, True],
+    num_outputs=2,
+    promotion_methods=[
+        (0, 1, 2, "DEFAULT"),
+        (0, 1, 2, "DEFAULT"),
+    ],
+)
+@triton.jit
+def ldexp_inplace_complex_integral_fp64_func(xr, xi, other):
+    exponent = tl.maximum(tl.minimum(other, 2147483647), -2147483648).to(tl.int32)
+    return (
+        _ldexp(xr.to(tl.float64), exponent),
+        _ldexp(xi.to(tl.float64), exponent),
     )
 
 
@@ -119,8 +174,41 @@ def _ldexp_complex_(self, other):
     func(xr, xi, yr, yi, out0=output[..., 0], out1=output[..., 1])
 
 
+def _ldexp_complex_integral_(self, other):
+    real_dtype = torch.float64 if self.dtype == torch.complex128 else torch.float32
+    xr, xi = _complex_parts(self, real_dtype)
+    output = torch.view_as_real(self)
+    func = (
+        ldexp_inplace_complex_integral_fp64_func
+        if self.dtype == torch.complex128
+        else ldexp_inplace_complex_integral_func
+    )
+    func(xr, xi, other, out0=output[..., 0], out1=output[..., 1])
+
+
+def _is_exact_alias(left, right):
+    return (
+        left.data_ptr() == right.data_ptr()
+        and left.storage_offset() == right.storage_offset()
+        and left.shape == right.shape
+        and left.stride() == right.stride()
+    )
+
+
 def ldexp_(self, other):
     logger.debug("GEMS LDEXP_")
+    if has_internal_overlapping(self) == MemOverlap.Yes:
+        raise RuntimeError(
+            "unsupported operation: more than one element of the written-to tensor "
+            "refers to a single memory location"
+        )
+    if (
+        self.device == other.device
+        and torch._C._overlaps(self, other)
+        and not _is_exact_alias(self, other)
+    ):
+        other = other.clone()
+
     result_dtype = _result_dtype(self, other)
     if not torch.can_cast(result_dtype, self.dtype):
         raise RuntimeError(
@@ -135,13 +223,24 @@ def ldexp_(self, other):
             f"{output_shape}"
         )
 
+    integral_exponent = not other.is_floating_point() and not other.is_complex()
     if self.is_complex():
-        _ldexp_complex_(self, other)
+        if integral_exponent:
+            _ldexp_complex_integral_(self, other)
+        else:
+            _ldexp_complex_(self, other)
     else:
-        func = (
-            ldexp_inplace_fp64_func
-            if self.dtype == torch.float64
-            else ldexp_inplace_func
-        )
+        if integral_exponent:
+            func = (
+                ldexp_inplace_integral_fp64_func
+                if self.dtype == torch.float64
+                else ldexp_inplace_integral_func
+            )
+        else:
+            func = (
+                ldexp_inplace_fp64_func
+                if self.dtype == torch.float64
+                else ldexp_inplace_func
+            )
         func(self, other, out0=self)
     return self
