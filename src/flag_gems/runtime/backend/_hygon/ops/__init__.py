@@ -49,6 +49,7 @@ from .div import (
     trunc_divide,
     trunc_divide_,
 )
+from .embedding_bag_dense_backward import embedding_bag_dense_backward
 from .exponential import exponential
 from .exponential_ import exponential_
 from .fill import (
@@ -172,6 +173,7 @@ __all__ = [
     "diff",
     "div_mode",
     "div_mode_",
+    "embedding_bag_dense_backward",
     "exponential",
     "exponential_",
     "fill_scalar",
