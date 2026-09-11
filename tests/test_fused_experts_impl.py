@@ -302,8 +302,9 @@ def test_fused_moe_vs_ref(config, dtype):
 
 
 try:
-    from vllm.model_executor.layers.fused_moe.fused_moe import \
-        fused_experts_impl as vllm_fused_experts_impl
+    from vllm.model_executor.layers.fused_moe.fused_moe import (
+        fused_experts_impl as vllm_fused_experts_impl,
+    )
 
     HAS_VLLM_FUSED_MOE = True
 except ImportError:
