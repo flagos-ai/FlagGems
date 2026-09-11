@@ -20,14 +20,16 @@ import flag_gems
 from . import base
 
 GROUP_SIZE = 128
-FP8_DTYPE = torch.float8_e5m2
+FP8_DTYPE = (
+    torch.float8_e4m3fn if flag_gems.vendor_name == "hygon" else torch.float8_e5m2
+)
 
 
-def _fp8_e5_available():
+def _fp8_available():
     return torch.cuda.is_available() and hasattr(torch, "float8_e5m2")
 
 
-def _quantize_fp8_e5_grouped(x, group_size=GROUP_SIZE):
+def _quantize_fp8_grouped(x, group_size=GROUP_SIZE):
     fp8_info = torch.finfo(FP8_DTYPE)
     *leading, n = x.shape
     padded = (n + group_size - 1) // group_size * group_size
@@ -41,7 +43,7 @@ def _quantize_fp8_e5_grouped(x, group_size=GROUP_SIZE):
     )
 
 
-def _dequant_fp8_e5(x_fp8, x_scale, group_size=GROUP_SIZE):
+def _dequant_fp8(x_fp8, x_scale, group_size=GROUP_SIZE):
     *leading, n = x_fp8.shape
     num_groups = x_scale.shape[-1]
     padded = num_groups * group_size
@@ -53,6 +55,10 @@ def _dequant_fp8_e5(x_fp8, x_scale, group_size=GROUP_SIZE):
 
 def _torch_topk_w8a16(x_fp8, x_scale, k, dequant):
     return torch.topk(dequant, k, dim=-1, largest=True, sorted=True)
+
+
+def _gems_bf16_topk(x_fp8, x_scale, k, dequant):
+    return flag_gems.topk(dequant, k, dim=-1, largest=True, sorted=True)
 
 
 def _gems_topk_w8a16(x_fp8, x_scale, k, dequant):
@@ -77,23 +83,28 @@ class TopKFp8W8A16Benchmark(base.Benchmark):
 
     def get_input_iter(self, dtype):
         for m, n, k in self.shapes:
+            torch.manual_seed(5966)
             x = torch.randn((m, n), dtype=dtype, device=self.device)
-            x_fp8, x_scale = _quantize_fp8_e5_grouped(x)
-            dequant = _dequant_fp8_e5(x_fp8, x_scale)
+            x_fp8, x_scale = _quantize_fp8_grouped(x)
+            dequant = _dequant_fp8(x_fp8, x_scale)
             yield x_fp8, x_scale, k, dequant
 
 
 @pytest.mark.topk_w8a16_fp8
 @pytest.mark.skipif(
-    getattr(flag_gems, "vendor_name", None) != "thead",
-    reason="topk_w8a16_fp8 is a THead/PPU operator",
+    getattr(flag_gems, "vendor_name", None) not in ("thead", "hygon"),
+    reason="topk_w8a16_fp8 requires an implemented backend",
 )
-@pytest.mark.skipif(not _fp8_e5_available(), reason="float8_e5m2 is unavailable")
-def test_topk_w8a16_fp8():
+@pytest.mark.skipif(not _fp8_available(), reason="required FP8 format is unavailable")
+@pytest.mark.parametrize("baseline", ["torch", "flaggems"])
+def test_topk_w8a16_fp8(baseline):
     bench = TopKFp8W8A16Benchmark(
         op_name="topk_w8a16_fp8",
-        torch_op=_torch_topk_w8a16,
+        torch_op=_torch_topk_w8a16 if baseline == "torch" else _gems_bf16_topk,
         dtypes=[torch.bfloat16],
     )
     bench.set_gems(_gems_topk_w8a16)
+    print(
+        f"FP8 format: {FP8_DTYPE}; BF16 baseline: {baseline}; input quantization excluded"
+    )
     bench.run()
