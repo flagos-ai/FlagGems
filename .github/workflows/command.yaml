@@ -113,27 +113,7 @@ jobs:
               ;;
             metax)
               VENDOR="metax"
-              # The metax runner pool contains nodes with two different MACA
-              # drivers (3.7.x and 3.8.x). The job may land on either node, so
-              # detect the driver on the node and pick the matching backend:
-              #   3.7.x -> metax-maca3720, 3.8.x -> metax-maca3810
-              MACA_VERSION=$(mx-smi 2>/dev/null | awk -F': ' '/MACA Version/{split($2,a," "); print a[1]}')
-              case "${MACA_VERSION}" in
-                3.7.*)
-                  BACKEND="metax-maca3720"
-                  ;;
-                3.8.*)
-                  BACKEND="metax-maca3810"
-                  ;;
-                *)
-                  echo "::error::Cannot detect MACA version on metax runner (got '${MACA_VERSION}')" >&2
-                  exit 1
-                  ;;
-              esac
-              ;;
-            maca372)
-              VENDOR="metax"
-              BACKEND="metax-maca3720"
+              BACKEND="metax-maca3810"
               ;;
             maca381)
               VENDOR="metax"
