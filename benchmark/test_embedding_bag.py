@@ -23,11 +23,7 @@ import triton
 from packaging import version
 
 import flag_gems
-from flag_gems import (
-    _embedding_bag,
-    _embedding_bag_backward,
-    _embedding_bag_forward_only,
-)
+from flag_gems import _embedding_bag, _embedding_bag_forward_only
 
 from . import base
 
@@ -65,41 +61,6 @@ DTYPES = [
     ),
 ]
 FORWARD_MODES = [(0, False), (1, False), (2, False), (0, True)]
-BACKWARD_CASES = [
-    pytest.param(
-        dtype,
-        mode,
-        weighted,
-        frequency,
-        sparse,
-        marks=[
-            pytest.mark.skipif(
-                dtype == torch.float64 and not flag_gems.runtime.device.support_fp64,
-                reason="Device does not support float64",
-            ),
-            pytest.mark.skipif(
-                dtype == torch.bfloat16 and not flag_gems.runtime.device.support_bf16,
-                reason="Device does not support bfloat16",
-            ),
-            pytest.mark.skipif(
-                dtype == torch.bfloat16 and mode == 2 and not sparse,
-                reason="Native dense MAX embedding bag backward does not dispatch bfloat16",
-            ),
-        ],
-    )
-    for dtype in [torch.float16, torch.float32, torch.bfloat16, torch.float64]
-    for mode, weighted, frequency, sparse in [
-        (0, False, False, False),
-        (1, False, False, False),
-        (2, False, False, False),
-        (0, True, False, False),
-        (0, False, True, False),
-        (1, False, True, False),
-        (0, False, False, True),
-        (1, False, False, True),
-        (2, False, False, True),
-    ]
-]
 
 
 def _npu_complete_kernel_latency(fn, warmup=5, active=30, profile_dir=None):
@@ -209,25 +170,7 @@ class EmbeddingBagBenchmark(base.Benchmark):
                 include_last,
                 0,
             )
-            if not self.backward:
-                yield forward_args
-                continue
-            output, mapping, sizes, maximum = _embedding_bag(*forward_args)
-            grad = torch.randn_like(output)
-            yield (
-                grad,
-                indices,
-                offsets,
-                mapping,
-                sizes,
-                maximum,
-                num_weights,
-                self.frequency,
-                self.bag_mode,
-                self.sparse,
-                psw,
-                0,
-            )
+            yield forward_args
 
 
 @pytest.mark.embedding_bag
@@ -257,33 +200,5 @@ def test_embedding_bag_forward_only(dtype, mode, weighted):
         dtypes=[dtype],
         mode=mode,
         weighted=weighted,
-    )
-    bench.run()
-
-
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "ascend",
-    reason="Native aten::_embedding_bag_backward falls back to CPU on CANN 8.5 and 9.0",
-)
-@pytest.mark.embedding_bag_backward
-@pytest.mark.parametrize(
-    "dtype,mode,weighted,frequency,sparse",
-    BACKWARD_CASES,
-)
-def test_embedding_bag_backward(dtype, mode, weighted, frequency, sparse):
-    suffix = f"_mode{mode}"
-    suffix += "_weighted" if weighted else ""
-    suffix += "_frequency" if frequency else ""
-    suffix += "_sparse" if sparse else ""
-    bench = EmbeddingBagBenchmark(
-        op_name=f"embedding_bag_backward{suffix}",
-        torch_op=torch.ops.aten._embedding_bag_backward.default,
-        gems_op=_embedding_bag_backward,
-        dtypes=[dtype],
-        mode=mode,
-        weighted=weighted,
-        frequency=frequency,
-        sparse=sparse,
-        backward=True,
     )
     bench.run()
