@@ -34,6 +34,7 @@ from .attention import (
     scaled_dot_product_attention_forward,
 )
 from .avg_pool3d_backward import avg_pool3d_backward
+from .baddbmm_ import baddbmm_
 from .binary_cross_entropy_backward import binary_cross_entropy_backward
 from .broadcast_tensors import broadcast_tensors
 from .broadcast_to import broadcast_to
@@ -181,6 +182,7 @@ __all__ = [
     "any_dim",
     "any_dims",
     "avg_pool3d_backward",
+    "baddbmm_",
     "binary_cross_entropy_backward",
     "broadcast_tensors",
     "broadcast_to",
