@@ -28,6 +28,16 @@ logger = logging.getLogger(__name__)
 
 @libentry()
 @triton.jit
+def canonicalize_nan_kernel(inp, out, n_elements, BLOCK_SIZE: tl.constexpr):
+    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+    values = tl.load(inp + offsets, mask=mask)
+    values = tl.where(values != values, float("nan"), values)
+    tl.store(out + offsets, values, mask=mask)
+
+
+@libentry()
+@triton.jit
 def msort_kernel(
     inp,
     out,
@@ -78,7 +88,15 @@ def _msort_contiguous(inp, out):
     # Triton's bitonic sort is fastest for the common, bounded first dimension.
     # Keep the existing radix implementation as the large-dimension fallback.
     if n_rows > 512:
-        values, _ = sort_stable(inp, stable=False, dim=0, descending=False)
+        radix_inp = inp
+        if inp.dtype.is_floating_point:
+            radix_inp = torch.empty_like(inp)
+            block_size = 1024
+            with torch_device_fn.device(inp.device):
+                canonicalize_nan_kernel[(triton.cdiv(inp.numel(), block_size),)](
+                    inp, radix_inp, inp.numel(), BLOCK_SIZE=block_size
+                )
+        values, _ = sort_stable(radix_inp, stable=False, dim=0, descending=False)
         out.copy_(values)
         return
 
@@ -100,6 +118,8 @@ def _msort_contiguous(inp, out):
 
 def msort(inp):
     logger.debug("GEMS MSORT")
+    if inp.is_complex():
+        raise RuntimeError('"msort" not implemented for complex dtypes')
     out = torch.empty_like(inp, memory_format=torch.preserve_format)
     msort_out(inp, out=out)
     return out
@@ -107,6 +127,8 @@ def msort(inp):
 
 def msort_out(inp, *, out):
     logger.debug("GEMS MSORT.OUT")
+    if inp.is_complex():
+        raise RuntimeError('"msort" not implemented for complex dtypes')
     if out.dtype != inp.dtype:
         raise RuntimeError(
             f"Expected out tensor to have dtype {inp.dtype}, but got {out.dtype} instead"

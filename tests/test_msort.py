@@ -69,8 +69,27 @@ def test_msort_noncontiguous_empty_scalar_and_special_values():
 
     # Exercise the large-first-dimension radix fallback.
     inp = torch.randn((1025, 3), device=flag_gems.device)
-    ref_out = torch.msort(utils.to_reference(inp))
-    utils.gems_assert_equal(flag_gems.msort(inp), ref_out)
+    inp[0, 0] = -float("nan")
+    inp[1, 0] = float("nan")
+    inp[2, 0] = -float("inf")
+    inp[3, 0] = float("inf")
+    # CUDA's own radix path can expose the same signed-NaN ordering bug;
+    # use the CPU ATen result as the semantic reference for this regression.
+    ref_out = torch.msort(inp.cpu())
+    torch.testing.assert_close(
+        flag_gems.msort(inp).cpu(), ref_out, atol=0, rtol=0, equal_nan=True
+    )
+
+
+@pytest.mark.msort
+@pytest.mark.parametrize("shape", [(), (0,), (1,), (2, 3)])
+@pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
+def test_msort_rejects_complex(shape, dtype):
+    inp = torch.empty(shape, dtype=dtype, device=flag_gems.device)
+    with pytest.raises(RuntimeError):
+        torch.msort(utils.to_reference(inp))
+    with pytest.raises(RuntimeError):
+        flag_gems.msort(inp)
 
 
 @pytest.mark.msort_out
