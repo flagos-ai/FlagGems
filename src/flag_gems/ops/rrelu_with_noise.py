@@ -94,9 +94,10 @@ def _fill_training_noise(noise, lower, upper, generator):
 
     sampled = torch.empty_like(noise, memory_format=torch.contiguous_format)
     sampled.uniform_(float(lower), float(upper), generator=generator)
-    noise.copy_(sampled)   # 新增
-    return noise       # 修改
+    noise.copy_(sampled)  # 新增
+    return noise  # 修改
     # return sampled
+
 
 def _rrelu_with_noise_impl(
     self,
