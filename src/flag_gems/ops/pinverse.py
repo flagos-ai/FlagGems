@@ -20,32 +20,12 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
 from .svd import svd
 
 logger = logging.getLogger(__name__)
-
-_SUPPORTED_DTYPES = (
-    torch.float32,
-    torch.float64,
-    torch.complex64,
-    torch.complex128,
-)
-_NATIVE_SVD = torch.library.get_kernel(
-    torch.ops.aten.svd.default, runtime.device.dispatch_key
-)
-_NATIVE_LINALG_SVD = torch.library.get_kernel(
-    torch.ops.aten.linalg_svd.default, runtime.device.dispatch_key
-)
-_NATIVE_MM = torch.library.get_kernel(
-    torch.ops.aten.mm.default, runtime.device.dispatch_key
-)
-_NATIVE_BMM = torch.library.get_kernel(
-    torch.ops.aten.bmm.default, runtime.device.dispatch_key
-)
 
 
 @libentry()
@@ -124,92 +104,34 @@ def _pinverse_reconstruct_kernel(
     )
 
 
-def _native_svd_impl(keyset, inp, some=True, compute_uv=True):
-    return _NATIVE_SVD.call_boxed(keyset, inp, some, compute_uv)
-
-
-def _native_linalg_svd_impl(keyset, inp, full_matrices=True, *, driver=None):
-    return _NATIVE_LINALG_SVD.call_boxed(keyset, inp, full_matrices, driver=driver)
-
-
-def _native_mm_impl(keyset, left, right):
-    return _NATIVE_MM.call_boxed(keyset, left, right)
-
-
-def _native_bmm_impl(keyset, left, right):
-    return _NATIVE_BMM.call_boxed(keyset, left, right)
-
-
-def _native_pinverse(inp, rcond):
-    # linalg_pinv is a different ATen schema, so this does not redispatch
-    # through the pinverse registration. Under use_gems(), temporarily restore
-    # the vendor SVD that linalg_pinv calls internally; destroying this scoped
-    # library restores the surrounding registration.
-    if not inp.is_cuda:
-        return torch.ops.aten.linalg_pinv.default(inp, rcond, False)
-
-    native_svd_lib = torch.library.Library("aten", "IMPL")
-    native_svd_lib.impl(
-        "svd",
-        _native_svd_impl,
-        runtime.device.dispatch_key,
-        with_keyset=True,
-        allow_override=True,
-    )
-    native_svd_lib.impl(
-        "linalg_svd",
-        _native_linalg_svd_impl,
-        runtime.device.dispatch_key,
-        with_keyset=True,
-        allow_override=True,
-    )
-    native_svd_lib.impl(
-        "mm",
-        _native_mm_impl,
-        runtime.device.dispatch_key,
-        with_keyset=True,
-        allow_override=True,
-    )
-    native_svd_lib.impl(
-        "bmm",
-        _native_bmm_impl,
-        runtime.device.dispatch_key,
-        with_keyset=True,
-        allow_override=True,
-    )
-    try:
-        return torch.ops.aten.linalg_pinv.default(inp, rcond, False)
-    finally:
-        native_svd_lib._destroy()
-
-
 def pinverse(inp, rcond=1e-15):
     """Compute the Moore-Penrose pseudoinverse of a matrix or matrix batch."""
     logger.debug("GEMS PINVERSE")
 
-    if inp.ndim < 2 or inp.dtype not in _SUPPORTED_DTYPES:
-        return _native_pinverse(inp, rcond)
+    if inp.ndim < 2:
+        raise RuntimeError("pinverse: expected a tensor with at least 2 dimensions")
+    if not inp.is_cuda or inp.dtype != torch.float32:
+        raise NotImplementedError(
+            "FlagGems pinverse currently supports only float32 CUDA tensors"
+        )
+    if inp.requires_grad:
+        raise NotImplementedError(
+            "FlagGems pinverse does not yet support autograd inputs"
+        )
+    if rcond < 0.0:
+        raise NotImplementedError(
+            "FlagGems pinverse does not yet support negative rcond values"
+        )
 
-    # The generated SVD fast path currently supports real float32 CUDA inputs.
-    # Preserve native dtype, CPU, empty-tensor and autograd behavior elsewhere.
-    if (
-        not inp.is_cuda
-        or inp.dtype != torch.float32
-        or inp.requires_grad
-        or inp.numel() == 0
-        or rcond < 0.0
-    ):
-        return _native_pinverse(inp, rcond)
+    m, n = inp.shape[-2:]
+    if inp.numel() == 0:
+        return torch.empty((*inp.shape[:-2], n, m), dtype=inp.dtype, device=inp.device)
 
     if not inp.is_contiguous():
         inp = inp.contiguous()
 
-    try:
-        result = svd(inp, some=True, compute_uv=True)
-    except NotImplementedError:
-        return _native_pinverse(inp, rcond)
+    result = svd(inp, some=True, compute_uv=True)
 
-    m, n = inp.shape[-2:]
     k = min(m, n)
     batch = inp.numel() // (m * n)
     u = result.U.reshape(batch, m, k)

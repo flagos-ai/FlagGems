@@ -18,15 +18,10 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
-from .conftest import QUICK_MODE
 
-DTYPES = [torch.float32, torch.complex64]
-if not QUICK_MODE:
-    DTYPES += [torch.float64, torch.complex128]
+DTYPES = [torch.float32]
 
 SHAPES = [(3, 2), (2, 3), (4, 4), (2, 5, 3), (2, 2, 4, 3)]
-if QUICK_MODE:
-    SHAPES = [(3, 2), (4, 4), (2, 5, 3)]
 
 PINVERSE_ATOL = {
     torch.float32: 2e-2,
@@ -105,6 +100,10 @@ def test_pinverse_rcond_and_rank_deficiency(rcond):
     inp = torch.diag(
         torch.tensor([2.0, 1e-4, 0.0], dtype=torch.float32, device=flag_gems.device)
     )
+    if rcond < 0:
+        with pytest.raises(NotImplementedError, match="negative rcond"):
+            flag_gems.pinverse(inp, rcond=rcond)
+        return
     reference = torch.pinverse(utils.to_reference(inp), rcond=rcond)
 
     result = flag_gems.pinverse(inp, rcond=rcond)
@@ -123,6 +122,10 @@ def test_pinverse_rcond_and_rank_deficiency(rcond):
 def test_pinverse_nonfinite(value, rcond):
     inp = torch.eye(3, dtype=torch.float32, device=flag_gems.device)
     inp[0, 0] = value
+    if rcond < 0:
+        with pytest.raises(NotImplementedError, match="negative rcond"):
+            flag_gems.pinverse(inp, rcond=rcond)
+        return
     ref_inp = utils.to_reference(inp)
     if ref_inp.device.type == "cpu" and (torch.isnan(ref_inp).any() or rcond < 0):
         pytest.skip("CPU and CUDA SVD differ for this non-finite input")
@@ -134,7 +137,13 @@ def test_pinverse_nonfinite(value, rcond):
 
 @pytest.mark.pinverse
 @pytest.mark.parametrize(
-    "shape,dtype", [((4,), torch.float32), ((3, 3), torch.float16)]
+    "shape,dtype",
+    [
+        ((4,), torch.float32),
+        ((3, 3), torch.float16),
+        ((3, 3), torch.float64),
+        ((3, 3), torch.complex64),
+    ],
 )
 def test_pinverse_invalid_input(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
@@ -146,12 +155,42 @@ def test_pinverse_invalid_input(shape, dtype):
 def test_pinverse_autograd():
     inp = _make_well_conditioned((4, 3), torch.float32, flag_gems.device)
     inp.requires_grad_(True)
-    ref_inp = utils.to_reference(inp).detach().requires_grad_(True)
-    reference = torch.pinverse(ref_inp)
-    reference.square().sum().backward()
+    with pytest.raises(NotImplementedError, match="autograd"):
+        flag_gems.pinverse(inp)
 
-    result = flag_gems.pinverse(inp)
-    result.square().sum().backward()
 
-    utils.gems_assert_close(result, reference, inp.dtype, atol=1e-4)
-    utils.gems_assert_close(inp.grad, ref_inp.grad, inp.dtype, atol=1e-3)
+@pytest.mark.pinverse
+@pytest.mark.parametrize("shape", [(48, 40), (40, 48), (4, 96, 40), (4, 40, 96)])
+def test_pinverse_large_multitile_and_moore_penrose(shape):
+    inp = _make_well_conditioned(shape, torch.float32, flag_gems.device)
+    reference = torch.pinverse(utils.to_reference(inp), rcond=1e-5)
+    result = flag_gems.pinverse(inp, rcond=1e-5)
+    utils.gems_assert_close(result, reference, torch.float32, atol=5e-2)
+
+    reconstructed = inp @ result @ inp
+    inverse_reconstructed = result @ inp @ result
+    torch.testing.assert_close(reconstructed, inp, atol=5e-2, rtol=5e-2)
+    torch.testing.assert_close(inverse_reconstructed, result, atol=5e-2, rtol=5e-2)
+
+
+@pytest.mark.pinverse
+@pytest.mark.parametrize("case", ["rank_deficient", "ill_conditioned"])
+def test_pinverse_non_diagonal_difficult_inputs(case):
+    generator = torch.Generator(device="cpu").manual_seed(29)
+    if case == "rank_deficient":
+        left = torch.randn((48, 8), generator=generator)
+        right = torch.randn((8, 40), generator=generator)
+        inp = (left @ right).to(flag_gems.device)
+        rcond = 1e-5
+    else:
+        left, _ = torch.linalg.qr(torch.randn((40, 40), generator=generator))
+        right, _ = torch.linalg.qr(torch.randn((40, 40), generator=generator))
+        singular = torch.logspace(0, -3, 40)
+        inp = (left @ torch.diag(singular) @ right.T).to(flag_gems.device)
+        rcond = 1e-4
+
+    reference = torch.pinverse(utils.to_reference(inp), rcond=rcond)
+    result = flag_gems.pinverse(inp, rcond=rcond)
+    torch.testing.assert_close(
+        utils.to_cpu(result, reference), reference, atol=1e-1, rtol=2e-2
+    )
