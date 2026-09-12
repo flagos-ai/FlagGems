@@ -17,9 +17,10 @@ from typing import Optional
 
 import torch
 import triton
+from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 
-from ..utils.codegen_config_utils import CodeGenConfig
 from ..utils.pointwise_dynamic import pointwise_dynamic
+from ..utils.tle_copy import tle_copy
 
 logger = logging.getLogger(__name__)
 
@@ -27,31 +28,20 @@ _FALLBACK_KEYSET = torch._C.DispatchKeySet(
     torch._C.DispatchKey.CompositeExplicitAutograd
 )
 
+_FLOAT8_E8M0FNU = getattr(torch, "float8_e8m0fnu", None)
+
 config_ = CodeGenConfig(
     512,
     (65536, 65536, 65536),
     32,
     True,
     prefer_1d_tile=True,
-    is_scatter_slice=True,
+    buffer_size_limit=4096,
+    kunlunAutoGrid=True,
 )
 
 
-# @pointwise_dynamic(is_tensor=(True,), promotion_methods=[(0, "DEFAULT")])
-# @triton.jit
-# def copy(src):
-#     return src
-
-
-@pointwise_dynamic(
-    is_tensor=(True,), promotion_methods=[(0, "DEFAULT")], config=config_
-)
-@triton.jit
-def copy_slice(src):
-    return src
-
-
-@pointwise_dynamic(is_tensor=[True], promotion_methods=[(0, "DEFAULT")])
+@pointwise_dynamic(is_tensor=[True], promotion_methods=[(0, "DEFAULT")], config=config_)
 @triton.jit
 def _copy_kernel(src):
     return src
@@ -65,9 +55,13 @@ def _can_use_triton(dst: torch.Tensor, src: torch.Tensor) -> bool:
     if dst.is_quantized or src.is_quantized:
         return False
     if src.is_complex() or dst.is_complex():
-        # Triton on kunlunxin does not support complex dtypes; fall back to PyTorch.
+        # Preserve PyTorch's behaviour of warning when casting complex to real
+        # by forcing the redispatch path, which issues the warning internally.
         return False
-    if not src.is_contiguous():
+    if _FLOAT8_E8M0FNU is not None and (
+        src.dtype == _FLOAT8_E8M0FNU or dst.dtype == _FLOAT8_E8M0FNU
+    ):
+        # Triton does not support float8 yet, so defer to PyTorch which has a reference implementation.
         return False
     return True
 
@@ -81,7 +75,7 @@ def _expand_like(src: torch.Tensor, target_shape: torch.Size) -> torch.Tensor:
 def copy(
     template: torch.Tensor, src: torch.Tensor, *, non_blocking: Optional[bool] = False
 ):
-    logger.debug("GEMS_KUNLUNXIN COPY")
+    logger.debug("GEMS COPY (functional)")
     out = torch.empty_strided(
         template.size(), template.stride(), dtype=template.dtype, device=template.device
     )
@@ -90,8 +84,10 @@ def copy(
 
 
 def copy_(dst: torch.Tensor, src: torch.Tensor, non_blocking: bool = False):
-    if not isinstance(src, torch.Tensor):
-        raise TypeError("src must be a Tensor")
+    if isinstance(src, (int, float, bool)):
+        src = torch.tensor(src, device=dst.device)
+    elif not isinstance(src, torch.Tensor):
+        raise TypeError("unsupport src type for copy_: ", type(src))
 
     # this is the same as PyTorch's check
     if dst._is_zerotensor():
@@ -116,6 +112,18 @@ def copy_(dst: torch.Tensor, src: torch.Tensor, non_blocking: bool = False):
             _FALLBACK_KEYSET, dst, src, non_blocking
         )
 
+    if _FLOAT8_E8M0FNU is not None and (
+        src.dtype == _FLOAT8_E8M0FNU or dst.dtype == _FLOAT8_E8M0FNU
+    ):
+        return torch.ops.aten.copy_.default.redispatch(
+            _FALLBACK_KEYSET, dst, src, non_blocking
+        )
+
+    if src.numel() > 2**31 - 1 or dst.numel() > 2**31 - 1:
+        return torch.ops.aten.copy_.default.redispatch(
+            _FALLBACK_KEYSET, dst, src, non_blocking
+        )
+
     if not _can_use_triton(dst, src):
         return torch.ops.aten.copy_.default.redispatch(
             _FALLBACK_KEYSET, dst, src, non_blocking
@@ -127,7 +135,7 @@ def copy_(dst: torch.Tensor, src: torch.Tensor, non_blocking: bool = False):
             _FALLBACK_KEYSET, dst, src, non_blocking
         )
 
-    logger.debug("GEMS_KUNLUNXIN COPY_")
+    logger.debug("GEMS COPY_")
 
     try:
         broadcast_shape = torch.broadcast_shapes(dst.shape, src.shape)
@@ -141,6 +149,16 @@ def copy_(dst: torch.Tensor, src: torch.Tensor, non_blocking: bool = False):
 
     expanded_src = _expand_like(src, dst.shape)
 
+    # tle takes the whole move when it can: a TMA tile for contiguous same-dtype
+    # copies, and an SDNN 2D row transfer for strided or broadcast layouts, with
+    # the dtype cast folded in.
+    if tle_copy(expanded_src, dst):
+        return dst
+
+    # What tle cannot represent goes to the pointwise kernel, which addresses the
+    # destination element by element and so has none of tle's layout and dtype
+    # restrictions. It takes the *expanded* src: a stride-0 view is how the
+    # broadcast reaches the kernel.
     overload = _copy_kernel.instantiate(expanded_src.ndim)
     overload(expanded_src, out0=dst)
     return dst
