@@ -1758,9 +1758,7 @@ def adaptive_max_pool3d(input: torch.Tensor, output_size, return_indices=None):
         with real indices, since ``torch.adaptive_max_pool3d_with_indices``
         consumes them.
     """
-    # Logging is skipped on the hot path to keep overhead minimal.
-    # if logger.isEnabledFor(logging.DEBUG):
-    #     logger.debug("GEMS ADAPTIVE_MAX_POOL3D")
+    logger.debug("GEMS_ASCEND ADAPTIVE_MAX_POOL3D")
 
     if return_indices is None:
         return_indices = True  # aten 2-arg schema: real indices required

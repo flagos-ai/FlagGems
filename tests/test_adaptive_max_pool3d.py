@@ -147,12 +147,15 @@ def test_accuracy_adaptive_max_pool3d_forward(shape, output_size, desc, dtype):
         torch.arange(ref_inp.size(1), device=ref_inp.device)[None, :, None, None, None],
         ref_indices,
     ]
-    assert torch.allclose(
-        gems_vals.float(), res_out.float(), atol=0, rtol=0
-    ), f"GEMS indices mismatch for {desc}"
-    assert torch.allclose(
-        ref_vals.float(), ref_out.float(), atol=0, rtol=0
-    ), f"Reference indices mismatch for {desc}"
+    # Index consistency: the value at each returned index must equal the
+    # pooled output value.  gems_assert_close() wants its second argument on
+    # the reference device (checked under --ref cpu), hence to_reference() for
+    # the device-side pair; the reference-side pair is already there and only
+    # needs the fp64 upcast cast back to the test dtype.
+    utils.gems_assert_close(
+        utils.to_reference(gems_vals), utils.to_reference(res_out), dtype
+    )
+    utils.gems_assert_close(ref_vals.to(dtype), ref_out, dtype)
 
 
 @pytest.mark.adaptive_max_pool3d
@@ -265,11 +268,9 @@ def test_accuracy_adaptive_max_pool3d_nan(shape, output_size, desc, dtype):
         ref_inp, output_size=output_size, return_indices=True
     )
 
-    # NaN must be in the same positions
     res_nan = torch.isnan(res_out)
     ref_nan = torch.isnan(ref_out)
-    res_nan_cmp = utils.to_cpu(res_nan, ref_nan)
-    assert torch.equal(res_nan_cmp, ref_nan), f"NaN mask mismatch for {desc}"
+    utils.gems_assert_equal(res_nan, ref_nan)
     # Where not NaN, values must match
     utils.gems_assert_close(res_out[~res_nan], ref_out[~ref_nan], dtype)
 
@@ -345,9 +346,9 @@ def test_accuracy_adaptive_max_pool3d_mixed_sign(shape, output_size, desc, dtype
         torch.arange(inp.size(1), device=inp.device)[None, :, None, None, None],
         res_indices,
     ]
-    assert torch.allclose(
-        gems_vals.float(), res_out.float(), atol=0, rtol=0
-    ), f"Index-value mismatch for {desc}"
+    utils.gems_assert_close(
+        utils.to_reference(gems_vals), utils.to_reference(res_out), dtype
+    )
 
 
 # ============================================================================
