@@ -102,8 +102,8 @@ def test_upsample_nearest_exact3d_backward_grad_input(noncontiguous):
         dtype=torch.float32,
         device=flag_gems.device,
     )
-    ref = torch.ops.aten._upsample_nearest_exact3d_backward.default(
-        utils.to_reference(grad_output), output_size, input_size
+    ref_grad_output = (
+        grad_output.cpu() if noncontiguous else utils.to_reference(grad_output)
     )
 
     if noncontiguous:
@@ -111,9 +111,22 @@ def test_upsample_nearest_exact3d_backward_grad_input(noncontiguous):
             (2, 3, 3, 5, 4), dtype=torch.float32, device=flag_gems.device
         ).transpose(-1, -2)
         assert not grad_input.is_contiguous()
+        ref_grad_input = torch.empty(
+            (2, 3, 3, 5, 4), dtype=torch.float32, device=ref_grad_output.device
+        ).transpose(-1, -2)
     else:
         # The native out overload resizes an empty destination in place.
         grad_input = torch.empty(0, dtype=torch.float32, device=flag_gems.device)
+        ref_grad_input = torch.empty(
+            0, dtype=torch.float32, device=ref_grad_output.device
+        )
+
+    ref = torch.ops.aten._upsample_nearest_exact3d_backward.grad_input(
+        ref_grad_output,
+        output_size,
+        input_size,
+        grad_input=ref_grad_input,
+    )
 
     result = flag_gems._upsample_nearest_exact3d_backward_grad_input(
         grad_output,
@@ -126,5 +139,9 @@ def test_upsample_nearest_exact3d_backward_grad_input(noncontiguous):
     )
 
     assert result is grad_input
+    assert ref is ref_grad_input
     assert tuple(result.shape) == input_size
-    utils.gems_assert_close(result, ref, torch.float32)
+    if noncontiguous:
+        torch.testing.assert_close(result.cpu(), ref)
+    else:
+        utils.gems_assert_close(result, ref, torch.float32)

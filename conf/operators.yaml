@@ -14772,6 +14772,18 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: upsample_nearest_exact3d_backward_grad_input
+  description: A variant of `_upsample_nearest_exact3d_backward()` that writes into
+    the provided `grad_input` tensor.
+  for:
+  - _upsample_nearest_exact3d_backward.grad_input
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: upsample_trilinear3d
   description: Upsamples the input (NCDHW) using trilinear interpolation.
   for:

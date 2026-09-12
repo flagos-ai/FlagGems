@@ -280,6 +280,10 @@ _FULL_CONFIG = (
         "_upsample_nearest_exact3d_backward.grad_input",
         _upsample_nearest_exact3d_backward_grad_input,
     ),
+    (
+        "_weight_int4pack_mm_with_scales_and_zeros",
+        _weight_int4pack_mm_with_scales_and_zeros,
+    ),
     ("_weight_int8pack_mm", weight_int8pack_mm),
     ("_weight_norm", _weight_norm),
     ("_weight_norm_interface", weight_norm_interface),
