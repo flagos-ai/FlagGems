@@ -1424,6 +1424,67 @@ randperm:
       - 4
       - 8
       - 16
+quantized_max_pool2d:
+  - META:
+      BLOCK_H: 16
+      BLOCK_W: 16
+    num_stages: 4
+    num_warps: 4
+  - META:
+      BLOCK_H: 32
+      BLOCK_W: 16
+    num_stages: 3
+    num_warps: 4
+  - META:
+      BLOCK_H: 16
+      BLOCK_W: 32
+    num_stages: 3
+    num_warps: 4
+  - META:
+      BLOCK_H: 32
+      BLOCK_W: 32
+    num_stages: 2
+    num_warps: 8
+  - META:
+      BLOCK_H: 8
+      BLOCK_W: 8
+    num_stages: 5
+    num_warps: 2
+  - META:
+      BLOCK_H: 16
+      BLOCK_W: 8
+    num_stages: 5
+    num_warps: 2
+  - META:
+      BLOCK_H: 8
+      BLOCK_W: 16
+    num_stages: 5
+    num_warps: 2
+  - META:
+      BLOCK_H: 64
+      BLOCK_W: 16
+    num_stages: 2
+    num_warps: 8
+  - META:
+      BLOCK_H: 16
+      BLOCK_W: 64
+    num_stages: 2
+    num_warps: 8
+  - META:
+      BLOCK_H: 32
+      BLOCK_W: 64
+    num_stages: 3
+    num_warps: 8
+  - META:
+      BLOCK_H: 64
+      BLOCK_W: 32
+    num_stages: 3
+    num_warps: 8
+  - META:
+      BLOCK_H: 64
+      BLOCK_W: 64
+    num_stages: 2
+    num_warps: 8
 replication_pad3d:
   - META:
       BLOCK_H: 16
