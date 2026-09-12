@@ -85,13 +85,6 @@ DEEPGEMM_N_MULTIPLE = 64
 DEEPGEMM_K_MULTIPLE = 128
 
 
-@pytest.fixture(autouse=True)
-def _disable_implicit_flagtune(monkeypatch):
-    """Avoid remote tuning-model downloads unless tuning was requested."""
-    if "USE_FLAGTUNE" not in os.environ:
-        monkeypatch.setenv("USE_FLAGTUNE", "0")
-
-
 MUL_DEFAULT_SHAPES = [
     ("broadcast", (1, 1), (1, 2048)),
     ("broadcast", (32, 1), (32, 2048)),
@@ -1547,13 +1540,6 @@ class ParallelSparseAttentionBenchmark(ParallelBenchmarkMixin, Benchmark):
             marks=pytest.mark.mm,
         ),
         pytest.param(
-            "mm_w8a8_fp8",
-            torch.Tensor.mm,
-            mm_input_fn,
-            ParallelMmW8A8Fp8Benchmark,
-            marks=pytest.mark.mm_w8a8_fp8,
-        ),
-        pytest.param(
             "baddbmm",
             torch.baddbmm,
             baddbmm_input_fn,
@@ -1569,10 +1555,20 @@ def test_blas_benchmark(op_name, torch_op, input_fn, bench_cls):
         torch_op=torch_op,
         dtypes=FLOAT_DTYPES,
     )
-    if op_name == "mm_w8a8_fp8":
-        if not hasattr(flag_gems, "mm_w8a8_fp8_out"):
-            pytest.skip("mm_w8a8_fp8 benchmark requires the Hopper W8A8 backend")
-        bench.set_gems(_mm_w8a8_fp8_out_cached)
+    bench.run()
+
+
+@pytest.mark.mm_w8a8_fp8
+def test_mm_w8a8_fp8():
+    if not hasattr(flag_gems, "mm_w8a8_fp8_out"):
+        pytest.skip("mm_w8a8_fp8 benchmark requires the Hopper W8A8 backend")
+    bench = ParallelMmW8A8Fp8Benchmark(
+        input_fn=mm_input_fn,
+        op_name="mm_w8a8_fp8",
+        torch_op=torch.Tensor.mm,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.set_gems(_mm_w8a8_fp8_out_cached)
     bench.run()
 
 
