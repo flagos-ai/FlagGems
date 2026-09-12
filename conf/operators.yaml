@@ -11674,6 +11674,17 @@ ops:
   - NeuralNetwork
   stages:
   - beta: '5.0'
+- id: rrelu_with_noise
+  description: 'Triton kernel implementation for rrelu_with_noise
+    '
+  for:
+  - rrelu_with_noise
+  labels:
+  - aten
+  kind:
+  - NeuralNetwork
+  stages:
+  - beta: '5.4'
 - id: rrelu_with_noise_functional
   description: 'Triton kernel implementation for rrelu_with_noise_functional.
 
