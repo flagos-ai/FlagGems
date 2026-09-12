@@ -27,6 +27,17 @@ logger = logging.getLogger(__name__)
 
 
 @triton.jit
+def _broadcast_offset(offset, OUT_SHAPE: tl.constexpr, STRIDES: tl.constexpr):
+    tensor_offset = 0
+    remaining = offset
+    for axis in tl.static_range(len(OUT_SHAPE) - 1, -1, -1):
+        coordinate = remaining % OUT_SHAPE[axis]
+        remaining //= OUT_SHAPE[axis]
+        tensor_offset += coordinate * STRIDES[axis]
+    return tensor_offset
+
+
+@triton.jit
 def _loss_value(
     inp,
     target,
@@ -35,8 +46,15 @@ def _loss_value(
     FULL: tl.constexpr,
     IS_FP16: tl.constexpr,
     IS_BF16: tl.constexpr,
+    IS_FP64: tl.constexpr,
 ):
     if IS_FP16 or IS_BF16:
+        inp = inp.to(tl.float32)
+        target = target.to(tl.float32)
+    elif IS_FP64:
+        inp = inp.to(tl.float64)
+        target = target.to(tl.float64)
+    else:
         inp = inp.to(tl.float32)
         target = target.to(tl.float32)
     if LOG_INPUT:
@@ -62,17 +80,23 @@ def _poisson_nll_loss_none_kernel(
     output_ptr,
     n_elements,
     eps,
+    OUT_SHAPE: tl.constexpr,
+    INPUT_STRIDES: tl.constexpr,
+    TARGET_STRIDES: tl.constexpr,
     LOG_INPUT: tl.constexpr,
     FULL: tl.constexpr,
     IS_FP16: tl.constexpr,
     IS_BF16: tl.constexpr,
+    IS_FP64: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
     offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < n_elements
-    inp = tl.load(input_ptr + offsets, mask=mask, other=0.0)
-    target = tl.load(target_ptr + offsets, mask=mask, other=0.0)
-    loss = _loss_value(inp, target, eps, LOG_INPUT, FULL, IS_FP16, IS_BF16)
+    input_offsets = _broadcast_offset(offsets, OUT_SHAPE, INPUT_STRIDES)
+    target_offsets = _broadcast_offset(offsets, OUT_SHAPE, TARGET_STRIDES)
+    inp = tl.load(input_ptr + input_offsets, mask=mask, other=0.0)
+    target = tl.load(target_ptr + target_offsets, mask=mask, other=0.0)
+    loss = _loss_value(inp, target, eps, LOG_INPUT, FULL, IS_FP16, IS_BF16, IS_FP64)
     tl.store(output_ptr + offsets, loss, mask=mask)
 
 
@@ -84,18 +108,24 @@ def _poisson_nll_loss_reduce_kernel(
     output_ptr,
     n_elements,
     eps,
+    OUT_SHAPE: tl.constexpr,
+    INPUT_STRIDES: tl.constexpr,
+    TARGET_STRIDES: tl.constexpr,
     reduction: tl.constexpr,
     LOG_INPUT: tl.constexpr,
     FULL: tl.constexpr,
     IS_FP16: tl.constexpr,
     IS_BF16: tl.constexpr,
+    IS_FP64: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
     offsets = tl.arange(0, BLOCK_SIZE)
     mask = offsets < n_elements
-    inp = tl.load(input_ptr + offsets, mask=mask, other=0.0)
-    target = tl.load(target_ptr + offsets, mask=mask, other=0.0)
-    loss = _loss_value(inp, target, eps, LOG_INPUT, FULL, IS_FP16, IS_BF16)
+    input_offsets = _broadcast_offset(offsets, OUT_SHAPE, INPUT_STRIDES)
+    target_offsets = _broadcast_offset(offsets, OUT_SHAPE, TARGET_STRIDES)
+    inp = tl.load(input_ptr + input_offsets, mask=mask, other=0.0)
+    target = tl.load(target_ptr + target_offsets, mask=mask, other=0.0)
+    loss = _loss_value(inp, target, eps, LOG_INPUT, FULL, IS_FP16, IS_BF16, IS_FP64)
     total = tl.sum(tl.where(mask, loss, 0.0), axis=0)
     if reduction == 1:
         total /= n_elements
@@ -110,17 +140,23 @@ def _poisson_nll_loss_partial_kernel(
     partial_ptr,
     n_elements,
     eps,
+    OUT_SHAPE: tl.constexpr,
+    INPUT_STRIDES: tl.constexpr,
+    TARGET_STRIDES: tl.constexpr,
     LOG_INPUT: tl.constexpr,
     FULL: tl.constexpr,
     IS_FP16: tl.constexpr,
     IS_BF16: tl.constexpr,
+    IS_FP64: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
     offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < n_elements
-    inp = tl.load(input_ptr + offsets, mask=mask, other=0.0)
-    target = tl.load(target_ptr + offsets, mask=mask, other=0.0)
-    loss = _loss_value(inp, target, eps, LOG_INPUT, FULL, IS_FP16, IS_BF16)
+    input_offsets = _broadcast_offset(offsets, OUT_SHAPE, INPUT_STRIDES)
+    target_offsets = _broadcast_offset(offsets, OUT_SHAPE, TARGET_STRIDES)
+    inp = tl.load(input_ptr + input_offsets, mask=mask, other=0.0)
+    target = tl.load(target_ptr + target_offsets, mask=mask, other=0.0)
+    loss = _loss_value(inp, target, eps, LOG_INPUT, FULL, IS_FP16, IS_BF16, IS_FP64)
     tl.store(partial_ptr + tl.program_id(0), tl.sum(tl.where(mask, loss, 0.0)))
 
 
@@ -143,33 +179,69 @@ def _poisson_nll_loss_final_kernel(
 
 
 def _result_dtype(input, target):
-    dtype = torch.promote_types(input.dtype, target.dtype)
-    if not dtype.is_floating_point:
-        return torch.get_default_dtype()
-    return dtype
+    if input.dtype == torch.bool and target.dtype == torch.bool:
+        raise RuntimeError("Subtraction with two bool tensors is not supported")
+    unary_dtype = (
+        input.dtype if input.dtype.is_floating_point else torch.get_default_dtype()
+    )
+    product_dtype = torch.promote_types(input.dtype, target.dtype)
+    return torch.promote_types(unary_dtype, product_dtype)
+
+
+def _broadcast_metadata(input, target):
+    ndim = max(input.ndim, target.ndim)
+    input_shape = (1,) * (ndim - input.ndim) + tuple(input.shape)
+    target_shape = (1,) * (ndim - target.ndim) + tuple(target.shape)
+    input_strides = (0,) * (ndim - input.ndim) + tuple(input.stride())
+    target_strides = (0,) * (ndim - target.ndim) + tuple(target.stride())
+    output_shape = []
+    for input_size, target_size in zip(input_shape, target_shape):
+        if input_size == target_size:
+            output_shape.append(input_size)
+        elif input_size == 1:
+            output_shape.append(target_size)
+        elif target_size == 1:
+            output_shape.append(input_size)
+        else:
+            raise RuntimeError(
+                "The size of tensor input must match the size of tensor target "
+                "at each non-singleton dimension"
+            )
+    input_strides = tuple(
+        0 if size == 1 and output_size != 1 else stride
+        for size, output_size, stride in zip(input_shape, output_shape, input_strides)
+    )
+    target_strides = tuple(
+        0 if size == 1 and output_size != 1 else stride
+        for size, output_size, stride in zip(target_shape, output_shape, target_strides)
+    )
+    return tuple(output_shape), input_strides, target_strides
 
 
 def poisson_nll_loss(input, target, log_input, full, eps, reduction):
     logger.debug("GEMS POISSON_NLL_LOSS")
+    if input.device != target.device:
+        raise RuntimeError("input and target must be on the same device")
+    if full and target.dtype == torch.bool:
+        raise RuntimeError("Subtraction with a bool target is not supported")
     dtype = _result_dtype(input, target)
-    input, target = torch.broadcast_tensors(input.to(dtype), target.to(dtype))
-    input = input.contiguous()
-    target = target.contiguous()
-    n_elements = input.numel()
+    output_shape, input_strides, target_strides = _broadcast_metadata(input, target)
+    n_elements = math.prod(output_shape)
 
     if n_elements == 0:
         if reduction not in (1, 2):
-            return torch.empty_like(input)
+            return torch.empty(output_shape, dtype=dtype, device=input.device)
         value = 0.0 if reduction == 2 else float("nan")
         return torch.full((), value, dtype=dtype, device=input.device)
 
     output = torch.empty(
-        input.shape if reduction not in (1, 2) else (),
+        output_shape if reduction not in (1, 2) else (),
         dtype=dtype,
         device=input.device,
     )
     is_fp16 = dtype == torch.float16
     is_bf16 = dtype == torch.bfloat16
+    is_fp64 = dtype == torch.float64
     eps = float(torch.tensor(eps, dtype=dtype).item())
 
     with torch_device_fn.device(input.device):
@@ -180,10 +252,14 @@ def poisson_nll_loss(input, target, log_input, full, eps, reduction):
                 output,
                 n_elements,
                 eps,
+                OUT_SHAPE=output_shape,
+                INPUT_STRIDES=input_strides,
+                TARGET_STRIDES=target_strides,
                 LOG_INPUT=bool(log_input),
                 FULL=bool(full),
                 IS_FP16=is_fp16,
                 IS_BF16=is_bf16,
+                IS_FP64=is_fp64,
                 BLOCK_SIZE=1024,
             )
         elif n_elements <= 65536:
@@ -194,11 +270,15 @@ def poisson_nll_loss(input, target, log_input, full, eps, reduction):
                 output,
                 n_elements,
                 eps,
+                OUT_SHAPE=output_shape,
+                INPUT_STRIDES=input_strides,
+                TARGET_STRIDES=target_strides,
                 reduction=reduction,
                 LOG_INPUT=bool(log_input),
                 FULL=bool(full),
                 IS_FP16=is_fp16,
                 IS_BF16=is_bf16,
+                IS_FP64=is_fp64,
                 BLOCK_SIZE=block_size,
             )
         else:
@@ -216,10 +296,14 @@ def poisson_nll_loss(input, target, log_input, full, eps, reduction):
                 partial,
                 n_elements,
                 eps,
+                OUT_SHAPE=output_shape,
+                INPUT_STRIDES=input_strides,
+                TARGET_STRIDES=target_strides,
                 LOG_INPUT=bool(log_input),
                 FULL=bool(full),
                 IS_FP16=is_fp16,
                 IS_BF16=is_bf16,
+                IS_FP64=is_fp64,
                 BLOCK_SIZE=block_size,
             )
             _poisson_nll_loss_final_kernel[(1,)](

@@ -99,3 +99,93 @@ def test_accuracy_poisson_nll_loss_boundary(dtype):
     )
     result = flag_gems.poisson_nll_loss(input, target, False, True, 1e-8, 0)
     utils.gems_assert_close(result, ref, dtype, equal_nan=True)
+
+
+@pytest.mark.poisson_nll_loss
+@pytest.mark.parametrize(
+    "input_dtype,target_dtype,expected_dtype",
+    [
+        (torch.int64, torch.float16, torch.float32),
+        (torch.float16, torch.int64, torch.float16),
+        (torch.bool, torch.float32, torch.float32),
+        (torch.float32, torch.bool, torch.float32),
+        (torch.float32, torch.float64, torch.float64),
+    ],
+)
+def test_poisson_nll_loss_mixed_dtype_promotion(
+    input_dtype, target_dtype, expected_dtype
+):
+    input = torch.ones((2, 3), dtype=input_dtype, device=flag_gems.device)
+    target = torch.ones((1, 3), dtype=target_dtype, device=flag_gems.device)
+    ref = torch.ops.aten.poisson_nll_loss(
+        utils.to_reference(input),
+        utils.to_reference(target),
+        True,
+        False,
+        1e-8,
+        0,
+    )
+    result = flag_gems.poisson_nll_loss(input, target, True, False, 1e-8, 0)
+    assert result.dtype == expected_dtype
+    assert ref.dtype == expected_dtype
+    utils.gems_assert_close(result, ref, expected_dtype)
+
+
+@pytest.mark.poisson_nll_loss
+def test_poisson_nll_loss_mixed_dtype_exceptions():
+    bool_input = torch.ones((2, 3), dtype=torch.bool, device=flag_gems.device)
+    with pytest.raises(RuntimeError):
+        torch.ops.aten.poisson_nll_loss(bool_input, bool_input, True, False, 1e-8, 0)
+    with pytest.raises(RuntimeError):
+        flag_gems.poisson_nll_loss(bool_input, bool_input, True, False, 1e-8, 0)
+
+    float_input = torch.ones((2, 3), device=flag_gems.device)
+    with pytest.raises(RuntimeError):
+        torch.ops.aten.poisson_nll_loss(float_input, bool_input, True, True, 1e-8, 0)
+    with pytest.raises(RuntimeError):
+        flag_gems.poisson_nll_loss(float_input, bool_input, True, True, 1e-8, 0)
+
+
+@pytest.mark.poisson_nll_loss
+def test_poisson_nll_loss_invalid_broadcast():
+    input = torch.ones((2, 3), device=flag_gems.device)
+    target = torch.ones((4, 3), device=flag_gems.device)
+    with pytest.raises(RuntimeError):
+        torch.ops.aten.poisson_nll_loss(input, target, True, False, 1e-8, 0)
+    with pytest.raises(RuntimeError):
+        flag_gems.poisson_nll_loss(input, target, True, False, 1e-8, 0)
+
+
+@pytest.mark.poisson_nll_loss
+@pytest.mark.parametrize("eps", [0.0, -1e-3, float("inf"), float("nan")])
+def test_poisson_nll_loss_special_eps(eps):
+    input = torch.tensor([0.0, 0.5, 2.0], device=flag_gems.device)
+    target = torch.tensor([1.0, 2.0, 3.0], device=flag_gems.device)
+    ref = torch.ops.aten.poisson_nll_loss(
+        utils.to_reference(input),
+        utils.to_reference(target),
+        False,
+        False,
+        eps,
+        0,
+    )
+    result = flag_gems.poisson_nll_loss(input, target, False, False, eps, 0)
+    utils.gems_assert_close(result, ref, torch.float32, equal_nan=True)
+
+
+@pytest.mark.poisson_nll_loss
+@pytest.mark.parametrize("size", [65536, 65537])
+@pytest.mark.parametrize("reduction", [1, 2])
+def test_poisson_nll_loss_reduction_boundary(size, reduction):
+    input = torch.randn(size, device=flag_gems.device)
+    target = torch.randint(0, 5, (size,), device=flag_gems.device).float()
+    ref = torch.ops.aten.poisson_nll_loss(
+        utils.to_reference(input, upcast=True),
+        utils.to_reference(target, upcast=True),
+        True,
+        False,
+        1e-8,
+        reduction,
+    )
+    result = flag_gems.poisson_nll_loss(input, target, True, False, 1e-8, reduction)
+    utils.gems_assert_close(result, ref, torch.float32, reduce_dim=size, equal_nan=True)
