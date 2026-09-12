@@ -30,7 +30,7 @@ def _bounds(training):
 
 
 def _run(op_name, self, noise, lower, upper, training, generator=None):
-    op = getattr(torch.ops.aten, op_name)
+    op = getattr(flag_gems, op_name)
     return op(self, noise, lower, upper, training, generator)
 
 
