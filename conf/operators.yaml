@@ -9757,16 +9757,6 @@ ops:
     Alias for torch.linalg.householder_product.'
   for:
   - orgqr
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - LinearAlg
-  stages:
-  - alpha: '5.4'
-- id: orgqr_out
-  description: A variant of orgqr() that assigns the output to the out tensor.
-  for:
   - orgqr.out
   labels:
   - aten
