@@ -91,6 +91,7 @@ from .repeat_interleave import (
     repeat_interleave_tensor,
 )
 from .resolve_conj import resolve_conj
+from .rms_norm_w8a16_fp8 import rms_norm_w8a16_fp8
 from .round_ import round_
 from .softplus_backward import softplus_backward
 from .sort import sort, sort_stable
@@ -202,6 +203,7 @@ __all__ = [
     "repeat_interleave_self_tensor",
     "repeat_interleave_tensor",
     "resolve_conj",
+    "rms_norm_w8a16_fp8",
     "round_",
     "softplus_backward",
     "sort",
