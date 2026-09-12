@@ -33,7 +33,6 @@ Usage:
 
 import argparse
 import ast
-import re
 import sys
 from pathlib import Path
 
@@ -61,21 +60,52 @@ def sort_python_all(file_path: Path, fix: bool = False, dry_run: bool = False) -
 
     source = file_path.read_text()
 
-    # Match __all__ = [ ... ]
-    # Use MULTILINE and DOTALL to handle multi-line lists
-    pattern = r"^(__all__\s*=\s*\[)(.*?)(^\])"
-    match = re.search(pattern, source, re.MULTILINE | re.DOTALL)
+    # Locate the module-level `__all__ = [...]` assignment via AST instead of a
+    # regex. A DOTALL regex that looks for the next line-leading "]" can swallow
+    # unrelated code (e.g. all the intervening imports) when a file contains more
+    # than one `__all__` definition, such as an empty `__all__ = []` placeholder
+    # followed later by the real list. Parsing with ast pins the exact node.
+    try:
+        tree = ast.parse(source)
+    except SyntaxError as exc:
+        print(f"❌ {file_path}: cannot parse ({exc})")
+        return False
 
-    if not match:
-        # No __all__ found, that's fine
+    all_nodes = [
+        node
+        for node in tree.body
+        if isinstance(node, ast.Assign)
+        and any(isinstance(t, ast.Name) and t.id == "__all__" for t in node.targets)
+        and isinstance(node.value, ast.List)
+    ]
+
+    if not all_nodes:
+        # No __all__ list found, that's fine
         return True
 
-    prefix = match.group(1)  # "__all__ = ["
-    content = match.group(2)  # the items
-    suffix = match.group(3)  # "]"
+    if len(all_nodes) > 1:
+        # Multiple `__all__ = [...]` definitions collapse to whichever runs last
+        # at import time and are almost always a mistake. Refuse to rewrite so we
+        # never guess wrong and clobber code between them.
+        lines_at = ", ".join(str(n.lineno) for n in all_nodes)
+        print(
+            f"❌ {file_path}: found {len(all_nodes)} `__all__` list definitions "
+            f"(lines {lines_at}); expected exactly one. Skipping to avoid data loss."
+        )
+        return False
 
-    # Extract all string items (handles both " and ')
-    items = re.findall(r'["\']([^"\']+)["\']', content)
+    node = all_nodes[0]
+    items = [
+        elt.value
+        for elt in node.value.elts
+        if isinstance(elt, ast.Constant) and isinstance(elt.value, str)
+    ]
+
+    # Boundaries of the `__all__ = [ ... ]` statement (1-indexed inclusive).
+    node_start = node.lineno - 1
+    node_end = node.end_lineno - 1
+    prefix = "__all__ = ["
+    suffix = "]"
 
     if not items:
         return True
@@ -119,14 +149,14 @@ def sort_python_all(file_path: Path, fix: bool = False, dry_run: bool = False) -
                 break
         return False
 
-    # Detect indent and quote style from existing items
-    lines = content.strip().split("\n")
+    # Detect indent and quote style from the existing __all__ block
+    source_lines = source.split("\n")
+    block_lines = source_lines[node_start : node_end + 1]
     quote = '"'
     indent = 4  # default
-    for line in lines:
+    for line in block_lines[1:]:  # skip the `__all__ = [` line itself
         stripped = line.strip()
-        if stripped:
-            # Use lines with leading whitespace for indent detection
+        if stripped and stripped != "]":
             if line != line.lstrip():
                 indent = len(line) - len(line.lstrip())
             quote = '"' if '"' in stripped else "'"
@@ -134,12 +164,14 @@ def sort_python_all(file_path: Path, fix: bool = False, dry_run: bool = False) -
 
     indent_str = " " * indent
 
-    # Rebuild the __all__ content
-    new_items_lines = [f"{indent_str}{quote}{item}{quote}," for item in sorted_items]
-    new_content = "\n" + "\n".join(new_items_lines) + "\n"
+    # Rebuild only the `__all__ = [ ... ]` statement, replacing it in place by
+    # line range so nothing outside the assignment can be touched.
+    new_block = [prefix]
+    new_block += [f"{indent_str}{quote}{item}{quote}," for item in sorted_items]
+    new_block.append(suffix)
 
-    new_source = (
-        source[: match.start()] + prefix + new_content + suffix + source[match.end() :]
+    new_source = "\n".join(
+        source_lines[:node_start] + new_block + source_lines[node_end + 1 :]
     )
 
     if dry_run:
