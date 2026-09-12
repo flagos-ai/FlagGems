@@ -138,6 +138,71 @@ def all_bool_dim_kernel(
     tl.store(outb, r == 0x01010101, row_mask)
 
 
+@libentry()
+@triton.heuristics(
+    values={
+        "BLOCK_M": heur_m_block_size,
+        "BLOCK_N": heur_n_block_size,
+    },
+)
+@triton.jit
+def all_dim_kernel_f(
+    inp,
+    out,
+    M,
+    N,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    ACC: tl.constexpr,
+):
+    """all_dim_kernel variant storing the raw reduced value (float); see any.py -f note."""
+    pid = ext.program_id(0)
+    rows = pid * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    inb = inp + rows * N
+    outb = out + rows
+    row_mask = rows < M
+    acc = tl.full([BLOCK_M, BLOCK_N], float("inf"), ACC)
+    for off in range(0, N, BLOCK_N):
+        cols = off + tl.arange(0, BLOCK_N)[None, :]
+        mask = row_mask and (cols < N)
+        a = tl.load(inb + cols, mask, other=float("inf")).to(ACC)
+        acc = tl.minimum(acc, tl.abs(a))
+    r = tl.reduce(acc, axis=1, combine_fn=_min2)[:, None]
+    tl.store(outb, r, row_mask)
+
+
+@libentry()
+@triton.heuristics(
+    values={
+        "BLOCK_M": heur_m_block_size,
+        "BLOCK_N": heur_n_block_size_nw,
+    },
+)
+@triton.jit
+def all_bool_dim_kernel_f(
+    inw,
+    out,
+    M,
+    NW,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    """all_bool_dim_kernel variant storing the raw int32 reduced value; see any.py -f note."""
+    pid = ext.program_id(0)
+    rows = pid * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    inb = inw + rows * NW
+    outb = out + rows
+    row_mask = rows < M
+    acc = tl.full([BLOCK_M, BLOCK_N], 0x01010101, tl.int32)
+    for off in range(0, NW, BLOCK_N):
+        cols = off + tl.arange(0, BLOCK_N)[None, :]
+        mask = row_mask and (cols < NW)
+        w = tl.load(inb + cols, mask, other=0x01010101)
+        acc = tl.minimum(acc, w)
+    r = tl.reduce(acc, axis=1, combine_fn=_min2)[:, None]
+    tl.store(outb, r, row_mask)
+
+
 # ---- global (all elements reduced to a single bool): two-stage ----
 _GLOBAL_CHUNKS = (256, 128, 64, 32, 16, 8, 4, 2, 1)
 
@@ -321,15 +386,31 @@ def all(inp):
 
 
 def _per_row_all(inp, M, N, out_shape):
-    """Reduce a contiguous [M, N] view over its N axis (per row) -> bool tensor."""
-    out = torch.empty(M, dtype=torch.bool, device=inp.device)
+    """Reduce a contiguous [M, N] view over its N axis (per row) -> bool tensor.
+
+    See any.py `_per_row_any`: large M uses the wide-scratch two-step form to avoid
+    the scalarizing 1-byte bool output store; small M stays single-kernel."""
     grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
+    two_step = M > BLOCK_M_DEFAULT
     if inp.dtype == torch.bool and N % 4 == 0:
         inw = inp.reshape(-1).view(torch.int32).reshape(M, N // 4)
+        if two_step:
+            mid = torch.empty(M, dtype=torch.int32, device=inp.device)
+            with torch_device_fn.device(inp.device):
+                all_bool_dim_kernel_f[grid](inw, mid, M, N // 4, buffer_size_limit=2048)
+            return (mid == 0x01010101).reshape(out_shape)
+        out = torch.empty(M, dtype=torch.bool, device=inp.device)
         with torch_device_fn.device(inp.device):
             all_bool_dim_kernel[grid](inw, out, M, N // 4, buffer_size_limit=2048)
     else:
         acc = _acc_dtype(inp.dtype)
+        if two_step:
+            mid_dt = torch.float16 if acc == tl.float16 else torch.float32
+            mid = torch.empty(M, dtype=mid_dt, device=inp.device)
+            with torch_device_fn.device(inp.device):
+                all_dim_kernel_f[grid](inp, mid, M, N, ACC=acc, buffer_size_limit=2048)
+            return (mid != 0).reshape(out_shape)
+        out = torch.empty(M, dtype=torch.bool, device=inp.device)
         with torch_device_fn.device(inp.device):
             all_dim_kernel[grid](inp, out, M, N, ACC=acc, buffer_size_limit=2048)
     return out.reshape(out_shape)

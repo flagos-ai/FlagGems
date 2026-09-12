@@ -151,6 +151,74 @@ def any_bool_dim_kernel(
     tl.store(outb, r != 0, row_mask)
 
 
+@libentry()
+@triton.heuristics(
+    values={
+        "BLOCK_M": heur_m_block_size,
+        "BLOCK_N": heur_n_block_size,
+    },
+)
+@triton.jit
+def any_dim_kernel_f(
+    inp,
+    out,
+    M,
+    N,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    ACC: tl.constexpr,
+):
+    """any_dim_kernel variant that stores the raw reduced value (float) instead of a
+    bool. On XPU a 1-byte i1/i8 store scalarizes the whole kernel (~2.3x slower at
+    [4096,4096]); storing the float result and converting (scratch != 0) outside wins
+    when M is large."""
+    pid = ext.program_id(0)
+    rows = pid * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    inb = inp + rows * N
+    outb = out + rows
+    row_mask = rows < M
+    acc = tl.zeros([BLOCK_M, BLOCK_N], dtype=ACC)
+    for off in range(0, N, BLOCK_N):
+        cols = off + tl.arange(0, BLOCK_N)[None, :]
+        mask = row_mask and (cols < N)
+        a = tl.load(inb + cols, mask, other=0.0).to(ACC)
+        acc = tl.maximum(acc, tl.abs(a))
+    r = tl.reduce(acc, axis=1, combine_fn=_max2)[:, None]
+    tl.store(outb, r, row_mask)
+
+
+@libentry()
+@triton.heuristics(
+    values={
+        "BLOCK_M": heur_m_block_size,
+        "BLOCK_N": heur_n_block_size_nw,
+    },
+)
+@triton.jit
+def any_bool_dim_kernel_f(
+    inw,
+    out,
+    M,
+    NW,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    """any_bool_dim_kernel variant storing the raw int32 reduced value (see -f note)."""
+    pid = ext.program_id(0)
+    rows = pid * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    inb = inw + rows * NW
+    outb = out + rows
+    row_mask = rows < M
+    acc = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.int32)
+    for off in range(0, NW, BLOCK_N):
+        cols = off + tl.arange(0, BLOCK_N)[None, :]
+        mask = row_mask and (cols < NW)
+        w = tl.load(inb + cols, mask, other=0)
+        acc = tl.maximum(acc, w)
+    r = tl.reduce(acc, axis=1, combine_fn=_max2)[:, None]
+    tl.store(outb, r, row_mask)
+
+
 # ---- global (all elements reduced to a single bool): two-stage ----
 # Stage 1 views the flat buffer as [P, C] and reduces each of the P chunk-rows
 # (grid = cdiv(P, BLOCK_M), the same fast per-row tile). Stage 2 reduces the P
@@ -325,15 +393,35 @@ def any(inp):
 
 
 def _per_row_any(inp, M, N, out_shape):
-    """Reduce a contiguous [M, N] view over its N axis (per row) -> bool tensor."""
-    out = torch.empty(M, dtype=torch.bool, device=inp.device)
+    """Reduce a contiguous [M, N] view over its N axis (per row) -> bool tensor.
+
+    For large M the bool output is produced in two steps (reduce -> float/int
+    scratch, then `scratch != 0`): a 1-byte output store scalarizes the whole
+    kernel on XPU (~2.3x at [4096,4096]), so writing a wider result and doing a
+    tiny follow-up compare is faster. Small M stays single-kernel (launch-bound)."""
     grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
+    two_step = M > BLOCK_M_DEFAULT
     if inp.dtype == torch.bool and N % 4 == 0:
         inw = inp.reshape(-1).view(torch.int32).reshape(M, N // 4)
+        if two_step:
+            mid = torch.empty(M, dtype=torch.int32, device=inp.device)
+            with torch_device_fn.device(inp.device):
+                any_bool_dim_kernel_f[grid](
+                    inw, mid, M, N // 4, buffer_size_limit=2048
+                )
+            return (mid != 0).reshape(out_shape)
+        out = torch.empty(M, dtype=torch.bool, device=inp.device)
         with torch_device_fn.device(inp.device):
             any_bool_dim_kernel[grid](inw, out, M, N // 4, buffer_size_limit=2048)
     else:
         acc = _acc_dtype(inp.dtype)
+        if two_step:
+            mid_dt = torch.float16 if acc == tl.float16 else torch.float32
+            mid = torch.empty(M, dtype=mid_dt, device=inp.device)
+            with torch_device_fn.device(inp.device):
+                any_dim_kernel_f[grid](inp, mid, M, N, ACC=acc, buffer_size_limit=2048)
+            return (mid != 0).reshape(out_shape)
+        out = torch.empty(M, dtype=torch.bool, device=inp.device)
         with torch_device_fn.device(inp.device):
             any_dim_kernel[grid](inp, out, M, N, ACC=acc, buffer_size_limit=2048)
     return out.reshape(out_shape)
