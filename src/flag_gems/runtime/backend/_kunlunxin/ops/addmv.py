@@ -116,18 +116,34 @@ def addmv_dot_kernel(
     n_mask = offset_n < N
     offs_m = tl.arange(0, BLOCK_M)
     acc = tl.zeros((BLOCK_N, 1), dtype=tl.float32)
-    for m in range(0, M, BLOCK_M):
-        m_mask = m + offs_m < M
+    # The reduction's remainder tile goes FIRST, on its own. A masked reduction
+    # tile that lands in a **later** loop iteration comes back with its masked
+    # lanes contributing garbage on this backend: bf16 M=497/BLOCK_M=256 reads
+    # max_abs 396 with 93% of the rows wrong, and the same shape is exact the
+    # moment the tile is moved out of the loop (ablations: M=768 and M=1024,
+    # which are exact, have no remainder tile; M=700 and M=1000, which fail,
+    # have one). fp16/fp32 happen to come back exact on the same code, so this
+    # is not a precision effect. Taking the remainder out leaves the full tiles
+    # needing no reduction mask at all -- only the n mask, for rows past N.
+    # Evidence: artifacts/op-perf-batch-2026-09/evidence/addmv-bf16-acc/
+    remainder = M % BLOCK_M
+    if remainder > 0:
+        m0 = M - remainder
+        m_mask0 = m0 + offs_m < M
+        a0 = tl.load(
+            A + offset_n[:, None] * stride_an + (m0 + offs_m)[None, :] * stride_am,
+            mask=n_mask[:, None] & m_mask0[None, :],
+            other=0.0,
+        )
+        b0 = tl.load(B + (m0 + offs_m) * stride_bm, mask=m_mask0, other=0.0)
+        acc += tl.dot(a0, b0[:, None], allow_tf32=False)
+    for m in range(0, M - remainder, BLOCK_M):
         a = tl.load(
             A + offset_n[:, None] * stride_an + (m + offs_m)[None, :] * stride_am,
-            mask=n_mask[:, None] & m_mask[None, :],
+            mask=n_mask[:, None],
             other=0.0,
         )
-        b = tl.load(
-            B + (m + offs_m) * stride_bm,
-            mask=m_mask,
-            other=0.0,
-        )
+        b = tl.load(B + (m + offs_m) * stride_bm)
         acc += tl.dot(a, b[:, None], allow_tf32=False)
     # 2-D epilogue: keep the tl.dot result as [BLOCK_N, 1].
     inp = tl.load(Inp + offset_n[:, None] * stride_in, mask=n_mask[:, None], other=0.0).to(
@@ -190,16 +206,27 @@ def addmv_kernel(
     offset_n = pid * BLOCK_N + tl.arange(0, BLOCK_N)[:, None]
     offset_m = tl.arange(0, BLOCK_M)[None, :]
     n_mask = offset_n < N
-    A_ptrs = A + offset_n * stride_an + offset_m * stride_am
-    B_ptrs = B + offset_m * stride_bm
     acc = tl.zeros((BLOCK_N, BLOCK_M), dtype=tl.float32)
-    for m in range(0, M, BLOCK_M):
-        m_mask = m + offset_m < M
-        a = tl.load(A_ptrs, mask=n_mask & m_mask, other=0.0).to(tl.float32)
-        b = tl.load(B_ptrs, mask=m_mask, other=0.0).to(tl.float32)
+    # Same remainder-first split as the tl.dot kernel (see the comment there):
+    # a masked reduction tile in a later iteration is what corrupts bf16, so the
+    # remainder gets its own step and the full tiles run mask-free.
+    remainder = M % BLOCK_M
+    if remainder > 0:
+        m0 = M - remainder
+        m_mask0 = m0 + offset_m < M
+        a0 = tl.load(
+            A + offset_n * stride_an + (m0 + offset_m) * stride_am,
+            mask=n_mask & m_mask0,
+            other=0.0,
+        ).to(tl.float32)
+        b0 = tl.load(B + (m0 + offset_m) * stride_bm, mask=m_mask0, other=0.0).to(tl.float32)
+        acc += a0 * b0
+    for m in range(0, M - remainder, BLOCK_M):
+        a = tl.load(A + offset_n * stride_an + (m + offset_m) * stride_am, mask=n_mask, other=0.0).to(
+            tl.float32
+        )
+        b = tl.load(B + (m + offset_m) * stride_bm).to(tl.float32)
         acc += a * b
-        A_ptrs += BLOCK_M * stride_am
-        B_ptrs += BLOCK_M * stride_bm
 
     acc = tl.sum(acc, axis=1)[:, None]
     Inp_ptrs = Inp + offset_n * stride_in
