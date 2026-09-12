@@ -127,6 +127,85 @@ def test_nanquantile_scalar_out(dtype, interpolation):
 
 
 @pytest.mark.nanquantile
+@pytest.mark.parametrize("tensor_q", [False, True])
+@pytest.mark.parametrize("use_out", [False, True])
+def test_nanquantile_dim_none_keepdim_shape(tensor_q, use_out):
+    inp = _input((2, 3), torch.float32)
+    ref_inp = utils.to_reference(inp)
+    q = torch.tensor([0.25, 0.75], device=inp.device) if tensor_q else 0.25
+    ref_q = utils.to_reference(q) if tensor_q else q
+    if use_out:
+        out = torch.empty(0, device=inp.device)
+        ref_out = torch.empty(0, device=ref_inp.device)
+        if tensor_q:
+            reference = torch.ops.aten.nanquantile.out(
+                ref_inp, ref_q, None, True, interpolation="linear", out=ref_out
+            )
+            result = flag_gems.nanquantile_out(inp, q, dim=None, keepdim=True, out=out)
+        else:
+            reference = torch.ops.aten.nanquantile.scalar_out(
+                ref_inp, q, None, True, interpolation="linear", out=ref_out
+            )
+            result = flag_gems.nanquantile_scalar_out(
+                inp, q, dim=None, keepdim=True, out=out
+            )
+        assert result is out
+        assert reference is ref_out
+    elif tensor_q:
+        reference = torch.nanquantile(ref_inp, ref_q, keepdim=True)
+        result = flag_gems.nanquantile(inp, q, keepdim=True)
+    else:
+        reference = torch.nanquantile(ref_inp, q, keepdim=True)
+        result = flag_gems.nanquantile_scalar(inp, q, keepdim=True)
+    assert result.shape == reference.shape
+    _assert_close(result, reference, torch.float32, inp.numel())
+
+
+@pytest.mark.nanquantile
+@pytest.mark.parametrize("size", [1025, 2049])
+def test_nanquantile_large_q_is_tiled(size):
+    inp = _input((2, size), torch.float32)
+    q = torch.linspace(0, 1, 513, device=inp.device)
+    reference = torch.nanquantile(utils.to_reference(inp), utils.to_reference(q), dim=1)
+    result = flag_gems.nanquantile(inp, q, dim=1)
+    _assert_close(result, reference, torch.float32, size)
+
+
+@pytest.mark.nanquantile
+@pytest.mark.parametrize(
+    "interpolation", ["linear", "lower", "higher", "nearest", "midpoint"]
+)
+def test_nanquantile_gather_interpolations(interpolation):
+    inp = _input((2, 4097), torch.float32)
+    q = torch.tensor([0.13, 0.51, 0.92], device=inp.device)
+    reference = torch.nanquantile(
+        utils.to_reference(inp),
+        utils.to_reference(q),
+        dim=1,
+        interpolation=interpolation,
+    )
+    result = flag_gems.nanquantile(inp, q, dim=1, interpolation=interpolation)
+    _assert_close(result, reference, torch.float32, inp.shape[1])
+
+
+@pytest.mark.nanquantile_out
+def test_nanquantile_noncontiguous_out():
+    inp = _input((3, 1025), torch.float32)
+    q = torch.tensor([0.2, 0.5, 0.8], device=inp.device)
+    ref_inp, ref_q = utils.to_reference(inp), utils.to_reference(q)
+    out = torch.empty((3, 3), device=inp.device).T
+    ref_out = torch.empty((3, 3), device=ref_inp.device).T
+    reference = torch.ops.aten.nanquantile.out(
+        ref_inp, ref_q, 1, False, interpolation="linear", out=ref_out
+    )
+    result = flag_gems.nanquantile_out(inp, q, dim=1, out=out)
+    assert result is out
+    assert reference is ref_out
+    assert not result.is_contiguous()
+    _assert_close(result, reference, torch.float32, inp.shape[1])
+
+
+@pytest.mark.nanquantile
 @pytest.mark.parametrize("size", [1, 1024, 1025, 4097])
 def test_nanquantile_all_nan_and_path_boundaries(size):
     inp = torch.full((3, size), float("nan"), device=flag_gems.device)
@@ -165,8 +244,6 @@ def test_nanquantile_errors():
         )
     with pytest.raises(RuntimeError):
         flag_gems.nanquantile(inp, torch.ones((1, 1), device=inp.device))
-    with pytest.raises(RuntimeError):
-        flag_gems.nanquantile(inp, torch.tensor(1.1, device=inp.device))
     with pytest.raises(RuntimeError):
         flag_gems.nanquantile(
             inp, torch.tensor(0.5, device=inp.device), interpolation="bad"

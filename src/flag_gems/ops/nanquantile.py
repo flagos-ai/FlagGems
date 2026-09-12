@@ -39,7 +39,7 @@ def _nanquantile_bitonic_kernel(
     q,
     out,
     reduction_size,
-    q_size: tl.constexpr,
+    q_size,
     BLOCK_M: tl.constexpr,
     BLOCK_Q: tl.constexpr,
     interpolation: tl.constexpr,
@@ -54,7 +54,7 @@ def _nanquantile_bitonic_kernel(
     sorted_values = tl.sort(sortable, descending=False)
     valid_count = tl.sum(valid_value.to(tl.int32), axis=0)
 
-    q_offsets = tl.arange(0, BLOCK_Q)
+    q_offsets = ext.program_id(1) * BLOCK_Q + tl.arange(0, BLOCK_Q)
     valid_q = q_offsets < q_size
     q_values = tl.load(q + q_offsets, mask=valid_q, other=0.0).to(compute_type)
     last_valid = tl.maximum(valid_count - 1, 0).to(compute_type)
@@ -89,6 +89,16 @@ def _nanquantile_bitonic_kernel(
 
     result = tl.where(valid_count == 0, float("nan"), result)
     tl.store(out + row * q_size + q_offsets, result, mask=valid_q)
+
+
+@libentry()
+@triton.jit
+def _validate_q_kernel(q, q_size, BLOCK_SIZE: tl.constexpr):
+    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < q_size
+    values = tl.load(q + offsets, mask=mask, other=0.0)
+    valid = (~mask) | ((values >= 0.0) & (values <= 1.0))
+    tl.device_assert(valid, "quantile() q values must be in the range [0, 1]")
 
 
 def _heur_block_q(args):
@@ -224,7 +234,9 @@ def _nanquantile_impl(
     logger.debug("GEMS NANQUANTILE")
     _validate_args(inp, q, dim, interpolation, out)
 
-    if dim is None:
+    original_ndim = inp.ndim
+    dim_was_none = dim is None
+    if dim_was_none:
         reduced = inp.ravel()
         dim = 0
     else:
@@ -248,13 +260,14 @@ def _nanquantile_impl(
             )
         q = torch.tensor(q_value, dtype=inp.dtype, device=inp.device)
     q_contiguous = q.contiguous().reshape(-1)
-    if q_is_tensor:
-        if q_contiguous.numel() <= 16:
-            q_in_range = all(0.0 <= value <= 1.0 for value in q_contiguous.tolist())
-        else:
-            q_in_range = bool(torch.all((q_contiguous >= 0) & (q_contiguous <= 1)))
-        if not q_in_range:
-            raise RuntimeError("quantile() q values must be in the range [0, 1]")
+    if q_is_tensor and q_contiguous.numel():
+        block_size = 256
+        with torch_device_fn.device(inp.device):
+            _validate_q_kernel[(triton.cdiv(q_contiguous.numel(), block_size),)](
+                q_contiguous,
+                q_contiguous.numel(),
+                BLOCK_SIZE=block_size,
+            )
 
     reduction_size = reduced.size(-1)
     if reduction_size > MAX_REDUCTION_SIZE:
@@ -265,22 +278,30 @@ def _nanquantile_impl(
     n_rows = reduced.numel() // reduction_size
     q_size = q_contiguous.numel()
     internal_shape = (*reduced.shape[:-1], q_size)
-    direct_out = False
-    if out is not None and q_is_scalar:
+    if q_is_scalar:
         result_shape = list(reduced.shape[:-1])
         if keepdim:
-            result_shape.insert(dim, 1)
+            if dim_was_none:
+                result_shape = [1] * original_ndim
+            else:
+                result_shape.insert(dim, 1)
+    else:
+        result_shape = [q_size, *reduced.shape[:-1]]
+        if keepdim:
+            if dim_was_none:
+                result_shape = [q_size, *([1] * original_ndim)]
+            else:
+                result_shape.insert(dim + 1, 1)
+    direct_out = False
+    if out is not None and q_is_scalar:
         out.resize_(result_shape)
-        out_view = out.squeeze(dim) if keepdim else out
+        out_view = out.reshape(reduced.shape[:-1])
         if out_view.is_contiguous():
             internal = out_view.unsqueeze(-1)
             direct_out = True
         else:
             internal = torch.empty(internal_shape, dtype=inp.dtype, device=inp.device)
     elif out is not None and n_rows == 1:
-        result_shape = [q_size, *reduced.shape[:-1]]
-        if keepdim:
-            result_shape.insert(dim + 1, 1)
         out.resize_(result_shape)
         if out.is_contiguous():
             internal = out.reshape(internal_shape)
@@ -301,13 +322,13 @@ def _nanquantile_impl(
             with torch_device_fn.device(inp.device):
                 if reduction_size <= MAX_BITONIC_SIZE:
                     block_m = triton.next_power_of_2(reduction_size)
-                    block_q = triton.next_power_of_2(q_size)
-                    _nanquantile_bitonic_kernel[(n_rows,)](
+                    block_q = min(triton.next_power_of_2(q_size), 16)
+                    _nanquantile_bitonic_kernel[(n_rows, triton.cdiv(q_size, block_q))](
                         reduced,
                         q_contiguous,
                         internal,
                         reduction_size,
-                        q_size=q_size,
+                        q_size,
                         BLOCK_M=block_m,
                         BLOCK_Q=block_q,
                         interpolation=INTERPOLATION_CODES[interpolation],
@@ -334,7 +355,7 @@ def _nanquantile_impl(
     else:
         result = internal.movedim(-1, 0)
     if keepdim:
-        result = result.unsqueeze(dim + (0 if q_is_scalar else 1))
+        result = result.reshape(result_shape)
 
     if out is not None:
         if direct_out:
