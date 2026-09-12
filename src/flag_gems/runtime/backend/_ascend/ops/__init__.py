@@ -52,6 +52,7 @@ from .gather import gather, gather_backward
 from .groupnorm import group_norm, group_norm_backward
 from .hadamard_transform import hadamard_transform
 from .hstack import hstack
+from .igammac import igammac, igammac_out
 from .index import index
 from .index_add import index_add, index_add_
 from .index_copy_ import index_copy, index_copy_
@@ -68,6 +69,12 @@ from .linalg_lu_factor_ex import linalg_lu_factor_ex, linalg_lu_factor_ex_out
 from .linalg_matrix_exp import linalg_matrix_exp, linalg_matrix_exp_out
 from .linalg_matrix_norm import linalg_matrix_norm, linalg_matrix_norm_out
 from .linalg_matrix_power import linalg_matrix_power, linalg_matrix_power_out
+from .linalg_matrix_rank import (
+    linalg_matrix_rank,
+    linalg_matrix_rank_out,
+    linalg_matrix_rank_tol,
+    linalg_matrix_rank_tol_out,
+)
 from .linalg_qr import linalg_qr, linalg_qr_out
 from .linalg_solve_triangular import (
     linalg_solve_triangular,
@@ -187,6 +194,8 @@ __all__ = [
     "group_norm_backward",
     "hadamard_transform",
     "hstack",
+    "igammac",
+    "igammac_out",
     "index",
     "index_add",
     "index_add_",
@@ -214,6 +223,10 @@ __all__ = [
     "linalg_matrix_norm_out",
     "linalg_matrix_power",
     "linalg_matrix_power_out",
+    "linalg_matrix_rank",
+    "linalg_matrix_rank_out",
+    "linalg_matrix_rank_tol",
+    "linalg_matrix_rank_tol_out",
     "linalg_qr",
     "linalg_qr_out",
     "linalg_solve_triangular",
