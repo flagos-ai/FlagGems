@@ -7792,7 +7792,29 @@ ops:
   kind:
   - LinearAlg
   stages:
-  - alpha: '5.4'
+  - beta: '5.4'
+- id: linalg_matrix_norm_out
+  description: 'Out-of-place version of linalg_matrix_norm,
+
+    Computes the matrix norm over the given dimensions.
+
+    Supports ord values: 1, -1, 2, -2, inf, -inf, ''fro'', ''nuc''.
+
+    For ord=2/-2/nuc, internally uses SVD (singular value decomposition).
+
+    For ord=1/-1/inf/-inf, uses max/min absolute column/row sums.
+
+    For ord=''fro'', uses Frobenius norm via per-row L2 reduction.
+
+    '
+  for:
+  - linalg_matrix_norm_out
+  labels:
+  - aten
+  kind:
+  - LinearAlg
+  stages:
+  - beta: '5.4'
 - id: linalg_matrix_power
   description: |
     Computes the n-th power of a square matrix using binary exponentiation.
