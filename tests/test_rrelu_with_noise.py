@@ -71,8 +71,7 @@ def test_rrelu_with_noise(op_name, training, shape, dtype):
     ref_noise = utils.to_reference(noise.clone())
     ref_result = _run(op_name, ref_inp, ref_noise, lower, upper, training)
 
-    with flag_gems.use_gems():
-        result = _run(op_name, inp, noise, lower, upper, training)
+    result = _run(op_name, inp, noise, lower, upper, training)
 
     # This checks the public alias contract. It cannot by itself distinguish a
     # direct out0 write from a temporary followed by copy_, so the kernel call
@@ -92,8 +91,7 @@ def test_rrelu_with_noise_training_random_contract(op_name, dtype):
     inp = original.clone()
     noise = torch.zeros_like(inp)
 
-    with flag_gems.use_gems():
-        result = _run(op_name, inp, noise, lower, upper, True)
+    result = _run(op_name, inp, noise, lower, upper, True)
 
     sampled = _training_sample_mask(original)
     _assert_training_contract(result, original, noise, lower, upper)
@@ -118,12 +116,11 @@ def test_rrelu_with_noise_generator_reproducibility(op_name, dtype):
 
     outputs = []
     noises = []
-    with flag_gems.use_gems():
-        for generator in generators:
-            inp = original.clone()
-            noise = torch.zeros_like(inp)
-            outputs.append(_run(op_name, inp, noise, lower, upper, True, generator))
-            noises.append(noise)
+    for generator in generators:
+        inp = original.clone()
+        noise = torch.zeros_like(inp)
+        outputs.append(_run(op_name, inp, noise, lower, upper, True, generator))
+        noises.append(noise)
 
     utils.gems_assert_equal(outputs[0], outputs[1])
     utils.gems_assert_equal(noises[0], noises[1])
@@ -131,16 +128,15 @@ def test_rrelu_with_noise_generator_reproducibility(op_name, dtype):
 
     advanced_input = original.clone()
     advanced_noise = torch.zeros_like(advanced_input)
-    with flag_gems.use_gems():
-        advanced_output = _run(
-            op_name,
-            advanced_input,
-            advanced_noise,
-            lower,
-            upper,
-            True,
-            generators[0],
-        )
+    advanced_output = _run(
+        op_name,
+        advanced_input,
+        advanced_noise,
+        lower,
+        upper,
+        True,
+        generators[0],
+    )
 
     assert not torch.equal(noises[0], advanced_noise)
     _assert_training_contract(advanced_output, original, advanced_noise, lower, upper)
@@ -155,16 +151,15 @@ def test_rrelu_with_noise_eval_does_not_advance_generator(op_name):
     inp = torch.randn((257,), device=flag_gems.device)
     noise = torch.randn_like(inp)
 
-    with flag_gems.use_gems():
-        _run(
-            op_name,
-            inp,
-            noise,
-            DEFAULT_LOWER,
-            DEFAULT_UPPER,
-            False,
-            generator,
-        )
+    _run(
+        op_name,
+        inp,
+        noise,
+        DEFAULT_LOWER,
+        DEFAULT_UPPER,
+        False,
+        generator,
+    )
 
     assert torch.equal(generator.get_state(), state_before)
 
@@ -180,8 +175,7 @@ def test_rrelu_with_noise_inplace_alias(training, dtype):
         noise.uniform_(lower, upper)
     input_ptr = inp.data_ptr()
 
-    with flag_gems.use_gems():
-        result = _run("rrelu_with_noise_", inp, noise, lower, upper, training)
+    result = _run("rrelu_with_noise_", inp, noise, lower, upper, training)
 
     assert result.data_ptr() == input_ptr
 
@@ -201,8 +195,7 @@ def test_rrelu_with_noise_training_mask(op_name):
     ref_noise = torch.zeros_like(ref_inp)
     ref_result = _run(op_name, ref_inp, ref_noise, lower, upper, True)
 
-    with flag_gems.use_gems():
-        result = _run(op_name, inp, noise, lower, upper, True)
+    result = _run(op_name, inp, noise, lower, upper, True)
 
     utils.gems_assert_close(result, ref_result, dtype, equal_nan=True)
     utils.gems_assert_close(noise, ref_noise, dtype)
@@ -237,8 +230,7 @@ def test_rrelu_with_noise_non_contiguous(op_name, training, dtype):
         ref_noise = ref_noise_base[:, ::2]
         ref_result = _run(op_name, ref_inp, ref_noise, lower, upper, training)
 
-    with flag_gems.use_gems():
-        result = _run(op_name, inp, noise, lower, upper, training)
+    result = _run(op_name, inp, noise, lower, upper, training)
 
     if training:
         _assert_training_contract(result, original, noise, lower, upper)
@@ -259,8 +251,7 @@ def test_rrelu_with_noise_empty(op_name, training, shape):
     noise = torch.empty_like(inp)
     input_ptr = inp.data_ptr()
 
-    with flag_gems.use_gems():
-        result = _run(op_name, inp, noise, DEFAULT_LOWER, DEFAULT_UPPER, training)
+    result = _run(op_name, inp, noise, DEFAULT_LOWER, DEFAULT_UPPER, training)
 
     assert result.shape == inp.shape
     assert result.dtype == inp.dtype
@@ -276,8 +267,7 @@ def test_rrelu_with_noise_eval_does_not_modify_noise(op_name):
     noise_before = noise.clone()
     input_before = inp.clone()
 
-    with flag_gems.use_gems():
-        _run(op_name, inp, noise, DEFAULT_LOWER, DEFAULT_UPPER, False)
+    _run(op_name, inp, noise, DEFAULT_LOWER, DEFAULT_UPPER, False)
 
     utils.gems_assert_equal(noise, noise_before)
     if not op_name.endswith("_"):
@@ -298,11 +288,10 @@ def test_rrelu_with_noise_autograd(training):
 
     gems_inp = inp.clone().requires_grad_()
     gems_noise = torch.zeros_like(gems_inp)
-    with flag_gems.use_gems():
-        gems_out = _run(
-            "rrelu_with_noise", gems_inp, gems_noise, lower, upper, training
-        )
-        gems_out.sum().backward()
+    gems_out = _run(
+        "rrelu_with_noise", gems_inp, gems_noise, lower, upper, training
+    )
+    gems_out.sum().backward()
 
     utils.gems_assert_close(gems_inp.grad, ref_inp.grad, dtype)
 
@@ -326,11 +315,10 @@ def test_rrelu_with_noise_inplace_autograd_non_leaf(training):
     gems_leaf = source.clone().requires_grad_()
     gems_self = gems_leaf * 1.0
     gems_noise = torch.zeros_like(gems_self)
-    with flag_gems.use_gems():
-        gems_out = _run(
-            "rrelu_with_noise_", gems_self, gems_noise, lower, upper, training
-        )
-        gems_out.sum().backward()
+    gems_out = _run(
+        "rrelu_with_noise_", gems_self, gems_noise, lower, upper, training
+    )
+    gems_out.sum().backward()
 
     utils.gems_assert_close(gems_leaf.grad, ref_leaf.grad, dtype)
 
@@ -353,9 +341,8 @@ def test_rrelu_with_noise_backward_self_is_result(training):
         ref_grad, ref_result, ref_noise, lower, upper, training, True
     )
 
-    with flag_gems.use_gems():
-        gems_out = torch.ops.aten.rrelu_with_noise_backward(
-            grad_output, result, noise, lower, upper, training, True
-        )
+    gems_out = torch.ops.aten.rrelu_with_noise_backward(
+        grad_output, result, noise, lower, upper, training, True
+    )
 
     utils.gems_assert_close(gems_out, ref_out, dtype)
