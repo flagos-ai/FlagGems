@@ -1,4 +1,19 @@
 #!/usr/bin/env python3
+
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Command-line orchestration for offline FlagGems Pretune runs.
 
 The command validates a combined FlagTree/FlagGems operator YAML, selects
@@ -20,8 +35,9 @@ Environment variables:
   * ``FLAGGEMS_DB_URL`` is the inherited database URL when ``--database`` is
     absent; ``FLAGGEMS_CACHE_DIR`` chooses the default SQLite cache directory.
   * Backend visibility variables such as ``CUDA_VISIBLE_DEVICES``,
-    ``ROCR_VISIBLE_DEVICES``, and ``HIP_VISIBLE_DEVICES`` limit visible device
-    tokens and are captured in the run manifest.
+    ``ROCR_VISIBLE_DEVICES``, ``HIP_VISIBLE_DEVICES``, and
+    ``MACA_VISIBLE_DEVICES`` limit visible device tokens and are captured in
+    the run manifest.
   * ``USE_FLAGTUNE`` selects FlagGems' Default or FlagTune routing, while
     ``FLAGTUNE_INCLUDE`` selects individual operators for capability-based tuning.
   * ``USE_FLAGTUNE_COST_MODEL``, ``FLAGTUNE_DISABLE_OPS``,
@@ -52,7 +68,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime
 from decimal import ROUND_FLOOR, Decimal
 from pathlib import Path
-from typing import Any, Optional, Sequence, Union
+from typing import Any, Mapping, Optional, Sequence, Union
 from urllib.parse import urlsplit, urlunsplit
 
 SCRIPT_PATH = Path(__file__).resolve()
@@ -93,6 +109,12 @@ from flag_gems.flagtune.reporting.artifacts import (  # noqa: E402
     write_outputs,
 )
 from flag_gems.flagtune.reporting.schema import SCHEMA_VERSION  # noqa: E402
+from flag_gems.flagtune.route.common import platform as route_platform  # noqa: E402
+from flag_gems.flagtune.route.mm import (  # noqa: E402
+    make_recipe_id,
+    recipe_layout_metadata,
+    route_metadata_for_variant,
+)
 
 DEFAULT_OUTPUT_ROOT = PROJECT_ROOT / "flagtune-pretune-output"
 STRATEGY_ENV_NAMES = (
@@ -110,11 +132,151 @@ STRATEGY_ENV_NAMES = (
     "CUDA_VISIBLE_DEVICES",
     "ROCR_VISIBLE_DEVICES",
     "HIP_VISIBLE_DEVICES",
+    "MACA_VISIBLE_DEVICES",
+    "MUSA_VISIBLE_DEVICES",
 )
 
 
 class PretuneError(RuntimeError):
     """Report a user-facing planning, validation, or execution error."""
+
+
+def _dtype_recipe(args_dtypes: str, tensor_count: int) -> list[str]:
+    """Expand the CLI dtype shorthand to one entry per tensor recipe."""
+    values = [item.strip() for item in str(args_dtypes).split(",") if item.strip()]
+    if len(values) == 1:
+        values *= tensor_count
+    return values[:tensor_count]
+
+
+def planner_benchmark_shape(
+    record: ShapeRecord,
+    spec: OperatorBenchmarkSpec,
+    platform_key: Optional[str] = None,
+) -> dict[str, Any]:
+    """Attach the planner's route/stage binding to an executor shape payload."""
+    shape = record.to_benchmark_shape()
+    if spec.op_id == "flaggems/mm":
+        shape["variant_source"] = "planner"
+        variant = str(record.variant or "")
+        if variant:
+            normalized_platform = route_platform(
+                {"platform_key": platform_key or "unknown"}
+            )
+            shape["route"] = route_metadata_for_variant(
+                variant, normalized_platform, shape.get("dynamic_inputs", {})
+            )
+    return shape
+
+
+def _write_recipe_manifests(
+    run_dir: Path,
+    rows: Sequence[Mapping[str, Any]],
+    selected: Sequence[ShapeRecord],
+    spec: OperatorBenchmarkSpec,
+    context: PlanningContext,
+    args_dtypes: str,
+) -> dict[str, int]:
+    """Persist stable recipe and route identities for audit/compare stages."""
+    dtypes = _dtype_recipe(args_dtypes, len(spec.benchmark.tensors))
+    row_by_selected = {
+        int(row.get("selected_index")): row
+        for row in rows
+        if row.get("selected_index") is not None
+    }
+    platform_key = str(getattr(context, "vendor_name", "unknown"))
+    route_counts = {"adapted": 0, "planned_skip": 0, "failed": 0, "route_drift": 0}
+    recipe_path = run_dir / "recipe_manifest.jsonl"
+    route_path = run_dir / "route_manifest.jsonl"
+    with recipe_path.open("w", encoding="utf-8") as recipes, route_path.open(
+        "w", encoding="utf-8"
+    ) as routes:
+        for record in selected:
+            selected_key = (
+                record.selected_index if record.selected_index is not None else -1
+            )
+            row = row_by_selected.get(selected_key, {})
+            route = row.get("route")
+            if not isinstance(route, Mapping):
+                variant = str(row.get("variant") or record.variant or "")
+                if spec.op_id == "flaggems/mm":
+                    route = route_metadata_for_variant(
+                        variant,
+                        route_platform({"platform_key": platform_key}),
+                        row.get("dynamic_inputs"),
+                    )
+                else:
+                    route = {
+                        "platform": platform_key,
+                        "physical_route": variant,
+                        "route_variant": variant,
+                        "tuning_variant": variant,
+                        "cost_model_variant": variant,
+                        "stage": "public",
+                        "latency_scope": "public_kernel",
+                        "dynamic_inputs": {},
+                        "adapted": True,
+                    }
+            recipe_id = row.get("recipe_id") or make_recipe_id(
+                spec.op_id,
+                str(route.get("platform") or platform_key),
+                record.values,
+                dtypes,
+                row.get("output_dtypes") or [],
+                row.get("variant") or record.variant,
+                route.get("dynamic_inputs", {}),
+            )
+            physical = route.get("physical_route")
+            adapted = bool(route.get("adapted"))
+            status = row.get("status", "planned")
+            if status == "failed":
+                route_counts["failed"] += 1
+            elif row.get("route_drift"):
+                route_counts["route_drift"] += 1
+            elif adapted:
+                route_counts["adapted"] += 1
+            else:
+                route_counts["planned_skip"] += 1
+            recipe = {
+                "recipe_id": recipe_id,
+                "input_row_index": row.get("source_index", record.source_index),
+                "source_shape_index": record.source_index,
+                "selected_index": record.selected_index,
+                "op_id": spec.op_id,
+                "variant": row.get("variant") or record.variant,
+                "values": dict(record.values),
+                "input_dtypes": row.get("input_dtypes") or dtypes,
+                "output_dtypes": row.get("output_dtypes") or [],
+                "platform": route.get("platform") or platform_key,
+                **recipe_layout_metadata(record.values),
+                "status": status,
+            }
+            recipes.write(json.dumps(recipe, sort_keys=True, allow_nan=False) + "\n")
+            routes.write(
+                json.dumps(
+                    {
+                        "recipe_id": recipe_id,
+                        "source_shape_index": record.source_index,
+                        "input_row_index": row.get("source_index", record.source_index),
+                        "physical_route": physical,
+                        "cost_model_variant": route.get("cost_model_variant"),
+                        "route_variant": route.get("route_variant") or physical,
+                        "tuning_variant": route.get("tuning_variant"),
+                        "stage": route.get("stage"),
+                        "latency_scope": route.get("latency_scope"),
+                        "dynamic_inputs": route.get("dynamic_inputs", {}),
+                        **recipe_layout_metadata(record.values),
+                        "adapted": adapted,
+                        "route_drift": bool(row.get("route_drift")),
+                        "status": status,
+                        "reason": row.get("error") or route.get("reason", ""),
+                    },
+                    sort_keys=True,
+                    allow_nan=False,
+                )
+                + "\n"
+            )
+    return route_counts
 
 
 @dataclass(frozen=True)
@@ -368,6 +530,7 @@ def select_shape_records(
     requested_variant: Optional[str],
     sort_spec: SortSpec,
     max_shapes: Optional[Union[int, str]],
+    runtime_context: Optional[Mapping[str, Any]] = None,
 ) -> list[ShapeRecord]:
     """Resolve variants, filter, sort, limit, and index shape records.
 
@@ -389,7 +552,28 @@ def select_shape_records(
     selected = []
     for record in records:
         try:
-            variant = spec.resolve_variant(record.values)
+            if (
+                runtime_context
+                and runtime_context.get("planner_output") is True
+                and spec.op_id == "flaggems/mm"
+            ):
+                if requested_variant is None:
+                    raise PretuneError(
+                        "MM planner output requires an explicit requested variant; "
+                        "recipe mappings cannot be route-predicted"
+                    )
+                # MM shape YAMLs are planner-produced per-variant candidate
+                # domains.  Trust that external partition and do not run a
+                # second route classifier on recipe metadata.
+                variant = requested_variant
+            elif requested_variant is None or not getattr(
+                spec, "explicit_variant_selection", False
+            ):
+                variant = spec.resolve_variant(record.values)
+            elif operator_info.variants[requested_variant].matches(record.values):
+                variant = requested_variant
+            else:
+                continue
         except (RuntimeError, ValueError) as exc:
             raise PretuneError(str(exc)) from exc
         if requested_variant is None or variant == requested_variant:
@@ -581,6 +765,11 @@ def run_main(args: argparse.Namespace) -> int:
         requested_variant,
         sort_spec,
         args.max_shapes,
+        {
+            "platform_key": getattr(context, "vendor_name", "unknown"),
+            "dtypes": args.dtypes,
+            "planner_output": True,
+        },
     )
     if context.visible_device_count <= 0:
         raise PretuneError("no visible devices")
@@ -609,7 +798,17 @@ def run_main(args: argparse.Namespace) -> int:
     start = time.perf_counter()
     try:
         batch = run_shape_config_benchmarks(
-            [(record.to_benchmark_shape(), None) for record in selected],
+            [
+                (
+                    planner_benchmark_shape(
+                        record,
+                        spec,
+                        getattr(context, "vendor_name", None),
+                    ),
+                    None,
+                )
+                for record in selected
+            ],
             operator_config=config_path,
             dtypes=args.dtypes,
             warmup=args.warmup,
@@ -634,9 +833,15 @@ def run_main(args: argparse.Namespace) -> int:
         for row in rows
         if isinstance((protocol := row.get("benchmark_protocol")), dict)
     }
-    failed_rows = sum(row.get("status") != "ok" for row in rows)
+    failed_rows = sum(
+        row.get("status") not in {"ok", "skipped"} for row in rows
+    )
+    skipped_rows = sum(row.get("status") == "skipped" for row in rows)
     missing_rows = len(selected) - len(rows)
     write_outputs(run_dir, rows, spec.shape.identity)
+    route_counts = _write_recipe_manifests(
+        run_dir, rows, selected, spec, context, args.dtypes
+    )
     cached_count = sum(int(row.get("benchmark_cache_hit_count") or 0) for row in rows)
     measured_count = sum(int(row.get("benchmark_success_count") or 0) for row in rows)
     failed = (
@@ -656,6 +861,7 @@ def run_main(args: argparse.Namespace) -> int:
             f"workers={workers}",
             f"worker_returncodes={batch.worker_returncodes}",
             f"failed_rows={failed_rows}",
+            f"skipped_rows={skipped_rows}",
             f"missing_rows={missing_rows}",
             f"database_merge={json.dumps(batch.database_merge, sort_keys=True)}",
         ],
@@ -720,6 +926,7 @@ def run_main(args: argparse.Namespace) -> int:
         "benchmark_summary": {
             "result_row_count": len(rows),
             "failed_row_count": failed_rows,
+            "skipped_row_count": skipped_rows,
             "missing_row_count": missing_rows,
             "cached_count": cached_count,
             "measured_count": measured_count,
@@ -730,6 +937,7 @@ def run_main(args: argparse.Namespace) -> int:
             "gpu_tokens": tokens[:workers],
             "gpu_names": list(context.device_names),
             "device_architectures": list(context.device_architectures),
+            "route_counts": route_counts,
             "database_merge": batch.database_merge,
             "database_merge_error": batch.database_merge_error,
             "database_shards": [str(path) for path in batch.database_shards],
@@ -741,6 +949,8 @@ def run_main(args: argparse.Namespace) -> int:
             "pretune_csv": str(run_dir / "pretune.csv"),
             "pretune_jsonl": str(run_dir / "pretune.jsonl"),
             "pretune_log": str(run_dir / "pretune.log"),
+            "recipe_manifest": str(run_dir / "recipe_manifest.jsonl"),
+            "route_manifest": str(run_dir / "route_manifest.jsonl"),
         },
         "retention": {
             "keep_intermediate_files": bool(args.keep_intermediate_files),

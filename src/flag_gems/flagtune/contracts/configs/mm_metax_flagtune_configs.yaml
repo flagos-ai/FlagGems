@@ -1,0 +1,269 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+schema_version: 3
+op_id: flaggems/mm
+
+pretune:
+  shape:
+    fields:
+      B: {type: int, default: 1, min: 1, max: 1, aliases: [batch]}
+      M: {type: int, min: 1}
+      N: {type: int, min: 1}
+      K: {type: int, min: 1}
+      A_layout:
+        type: str
+        default: {literal: contiguous}
+        choices: [contiguous, transposed_2d]
+      B_layout:
+        type: str
+        default: {literal: contiguous}
+        choices: [contiguous, transposed_2d]
+      Count: {type: int, required: false, min: 0, role: count}
+    identity: [B, M, N, K, A_layout, B_layout]
+  dispatch:
+    policy: first_match
+    explicit_variant_selection: true
+    order:
+      - metax_gemv_k_parallel
+      - metax_gemv
+      - metax_splitk_two_step
+      - metax_splitk
+      - metax_nn
+      - metax_nt
+      - metax_general
+  benchmark:
+    tensors:
+      a: {factory: randn, shape: [M, K], dtype: runtime, layout: A_layout}
+      b: {factory: randn, shape: [K, N], dtype: runtime, layout: B_layout}
+    invoke:
+      kind: flag_gems_public
+      args: [a, b]
+
+variants:
+  metax_general:
+    inputs: &dense_inputs
+      M: {min: 1}
+      N: {min: 2}
+      K: {min: 1}
+      stride_am: {default: K}
+      stride_ak: {default: 1}
+      stride_bk: {default: N}
+      stride_bn: {default: 1}
+    when: {op: gt, args: [N, 1]}
+    params: &dense_params
+      BLOCK_M: {values: [16, 32, 64, 128, 256]}
+      BLOCK_N: {values: [32, 64, 128, 256]}
+      BLOCK_K: {values: [16, 32, 64, 128]}
+      pipeline: {values: ["null", basic, cpasync]}
+      scenario: {values: [""]}
+      num_stages: {values: [2, 3, 4]}
+      num_warps: {values: [2, 4, 8]}
+    features: &dense_features
+      - {name: M, op: ident, args: [M]}
+      - {name: N, op: ident, args: [N]}
+      - {name: K, op: ident, args: [K]}
+      - {name: stride_am, op: ident, args: [stride_am]}
+      - {name: stride_ak, op: ident, args: [stride_ak]}
+      - {name: stride_bk, op: ident, args: [stride_bk]}
+      - {name: stride_bn, op: ident, args: [stride_bn]}
+      - {name: BLOCK_M, op: ident, args: [BLOCK_M]}
+      - {name: BLOCK_N, op: ident, args: [BLOCK_N]}
+      - {name: BLOCK_K, op: ident, args: [BLOCK_K]}
+      - {name: num_stages, op: ident, args: [num_stages]}
+      - {name: num_warps, op: ident, args: [num_warps]}
+      - {name: pipeline_is_null, op: eq, args: [pipeline, {literal: "null"}]}
+      - {name: pipeline_is_basic, op: eq, args: [pipeline, {literal: basic}]}
+      - {name: pipeline_is_cpasync, op: eq, args: [pipeline, {literal: cpasync}]}
+      - {name: grid_m, op: cdiv, args: [M, BLOCK_M]}
+      - {name: grid_n, op: cdiv, args: [N, BLOCK_N]}
+      - {name: grid_k, op: cdiv, args: [K, BLOCK_K]}
+      - {name: tile_mn, op: mul, args: [BLOCK_M, BLOCK_N]}
+      - {name: tile_mk, op: mul, args: [BLOCK_M, BLOCK_K]}
+      - {name: tile_nk, op: mul, args: [BLOCK_N, BLOCK_K]}
+
+  metax_nn:
+    inputs:
+      M: {min: 1}
+      N: {min: 2}
+      K: {min: 1}
+      stride_am: {default: K}
+      stride_ak: {default: 1}
+      stride_bk: {default: N}
+      stride_bn: {default: 1}
+    when: {op: gt, args: [N, 1]}
+    params: *dense_params
+    features: *dense_features
+
+  metax_nt:
+    inputs:
+      M: {min: 1}
+      N: {min: 2}
+      K: {min: 1}
+      stride_am: {default: K}
+      stride_ak: {default: 1}
+      stride_bk: {default: 1}
+      stride_bn: {default: K}
+    when: {op: gt, args: [N, 1]}
+    params:
+      BLOCK_M: {values: [16, 32, 64, 128, 256]}
+      BLOCK_N: {values: [32, 64, 128, 256]}
+      BLOCK_K: {values: [32, 64, 128]}
+      pipeline: {values: [basic, cpasync]}
+      scenario: {values: [""]}
+      num_stages: {values: [2, 3, 4]}
+      num_warps: {values: [4, 8]}
+    features: *dense_features
+
+  metax_gemv:
+    inputs: &gemv_inputs
+      M: {min: 1}
+      N: {default: 1, min: 1, max: 1}
+      K: {min: 1}
+      stride_am: {default: K}
+      stride_ak: {default: 1}
+      stride_bk: {default: 1}
+    when: {op: eq, args: [N, 1]}
+    params:
+      BLOCK_M: {values: [8, 16, 32]}
+      BLOCK_K: {values: [256]}
+      num_stages: {values: [2, 3, 4, 5, 6, 7, 8]}
+      num_warps: {values: [1, 2, 4, 8]}
+    features: &gemv_features
+      - {name: M, op: ident, args: [M]}
+      - {name: K, op: ident, args: [K]}
+      - {name: stride_am, op: ident, args: [stride_am]}
+      - {name: stride_ak, op: ident, args: [stride_ak]}
+      - {name: stride_bk, op: ident, args: [stride_bk]}
+      - {name: BLOCK_M, op: ident, args: [BLOCK_M]}
+      - {name: BLOCK_K, op: ident, args: [BLOCK_K]}
+      - {name: num_stages, op: ident, args: [num_stages]}
+      - {name: num_warps, op: ident, args: [num_warps]}
+      - {name: grid_m, op: cdiv, args: [M, BLOCK_M]}
+      - {name: grid_k, op: cdiv, args: [K, BLOCK_K]}
+      - {name: tile_mk, op: mul, args: [BLOCK_M, BLOCK_K]}
+
+  metax_gemv_k_parallel:
+    stage: public
+    route_binding: metax_gemv_k_parallel_partial
+    dtype_roles: {A: input, B: input, P: workspace}
+    inputs:
+      M: {min: 1}
+      N: {default: 1, min: 1, max: 1}
+      K: {min: 1}
+      stride_am: {default: K}
+      stride_ak: {default: 1}
+      stride_bk: {default: 1}
+      SPLIT_K: {default: 1, min: 1}
+    when: {op: eq, args: [N, 1]}
+    params:
+      BLOCK_M: {values: [4, 8, 16, 32]}
+      BLOCK_K: {values: [128, 256]}
+      num_stages: {values: [2, 4]}
+      num_warps: {values: [1, 2, 4]}
+    features:
+      - {name: M, op: ident, args: [M]}
+      - {name: K, op: ident, args: [K]}
+      - {name: SPLIT_K, op: ident, args: [SPLIT_K]}
+      - {name: stride_am, op: ident, args: [stride_am]}
+      - {name: stride_ak, op: ident, args: [stride_ak]}
+      - {name: stride_bk, op: ident, args: [stride_bk]}
+      - {name: BLOCK_M, op: ident, args: [BLOCK_M]}
+      - {name: BLOCK_K, op: ident, args: [BLOCK_K]}
+      - {name: num_stages, op: ident, args: [num_stages]}
+      - {name: num_warps, op: ident, args: [num_warps]}
+      - {name: grid_m, op: cdiv, args: [M, BLOCK_M]}
+      - {name: grid_k, op: cdiv, args: [K, BLOCK_K]}
+      - {name: split_grid, op: mul, args: [grid_m, SPLIT_K]}
+
+  metax_splitk:
+    inputs: &splitk_inputs
+      M: {min: 1}
+      N: {min: 2}
+      K: {min: 1}
+      stride_am: {default: K}
+      stride_ak: {default: 1}
+      stride_bk: {default: N}
+      stride_bn: {default: 1}
+    when: {op: gt, args: [N, 1]}
+    params:
+      BLOCK_M: {values: [16]}
+      BLOCK_N: {values: [16, 64]}
+      BLOCK_K: {values: [64, 128, 256]}
+      SPLIT_K: {values: [8, 16]}
+      pipeline: {values: ["null", basic]}
+      num_stages: {values: [2, 3, 6, 8]}
+      num_warps: {values: [2, 4]}
+    features: &splitk_features
+      - {name: M, op: ident, args: [M]}
+      - {name: N, op: ident, args: [N]}
+      - {name: K, op: ident, args: [K]}
+      - {name: stride_am, op: ident, args: [stride_am]}
+      - {name: stride_ak, op: ident, args: [stride_ak]}
+      - {name: stride_bk, op: ident, args: [stride_bk]}
+      - {name: stride_bn, op: ident, args: [stride_bn]}
+      - {name: BLOCK_M, op: ident, args: [BLOCK_M]}
+      - {name: BLOCK_N, op: ident, args: [BLOCK_N]}
+      - {name: BLOCK_K, op: ident, args: [BLOCK_K]}
+      - {name: SPLIT_K, op: ident, args: [SPLIT_K]}
+      - {name: num_stages, op: ident, args: [num_stages]}
+      - {name: num_warps, op: ident, args: [num_warps]}
+      - {name: pipeline_is_null, op: eq, args: [pipeline, {literal: "null"}]}
+      - {name: pipeline_is_basic, op: eq, args: [pipeline, {literal: basic}]}
+      - {name: grid_m, op: cdiv, args: [M, BLOCK_M]}
+      - {name: grid_n, op: cdiv, args: [N, BLOCK_N]}
+      - {name: grid_k, op: cdiv, args: [K, BLOCK_K]}
+      - {name: split_grid, op: mul, args: [SPLIT_K, grid_m]}
+
+  metax_splitk_two_step:
+    stage: public
+    route_binding: metax_splitk_two_step_partial
+    dtype_roles: {A: input, B: input, P: workspace}
+    inputs:
+      M: {min: 1}
+      N: {min: 2}
+      K: {min: 1}
+      stride_am: {default: K}
+      stride_ak: {default: 1}
+      stride_bk: {default: N}
+      stride_bn: {default: 1}
+      SPLIT_K: {default: 1, min: 1}
+    when: {op: gt, args: [N, 1]}
+    params:
+      BLOCK_M: {values: [16, 32]}
+      BLOCK_N: {values: [16, 32, 64, 128]}
+      BLOCK_K: {values: [64]}
+      pipeline: {values: ["null", basic, cpasync]}
+      num_stages: {values: [2, 4]}
+      num_warps: {values: [2, 4]}
+    features:
+      - {name: M, op: ident, args: [M]}
+      - {name: N, op: ident, args: [N]}
+      - {name: K, op: ident, args: [K]}
+      - {name: SPLIT_K, op: ident, args: [SPLIT_K]}
+      - {name: stride_am, op: ident, args: [stride_am]}
+      - {name: stride_ak, op: ident, args: [stride_ak]}
+      - {name: stride_bk, op: ident, args: [stride_bk]}
+      - {name: stride_bn, op: ident, args: [stride_bn]}
+      - {name: BLOCK_M, op: ident, args: [BLOCK_M]}
+      - {name: BLOCK_N, op: ident, args: [BLOCK_N]}
+      - {name: BLOCK_K, op: ident, args: [BLOCK_K]}
+      - {name: num_stages, op: ident, args: [num_stages]}
+      - {name: num_warps, op: ident, args: [num_warps]}
+      - {name: pipeline_is_null, op: eq, args: [pipeline, {literal: "null"}]}
+      - {name: pipeline_is_basic, op: eq, args: [pipeline, {literal: basic}]}
+      - {name: pipeline_is_cpasync, op: eq, args: [pipeline, {literal: cpasync}]}
+      - {name: grid_m, op: cdiv, args: [M, BLOCK_M]}
+      - {name: grid_n, op: cdiv, args: [N, BLOCK_N]}
+      - {name: split_grid, op: mul, args: [SPLIT_K, grid_m]}

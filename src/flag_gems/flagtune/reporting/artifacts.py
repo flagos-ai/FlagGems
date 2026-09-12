@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Read Pretune shape YAML and write stable run artifacts.
 
 Inputs:
@@ -91,8 +105,10 @@ def load_shape_config(path: Path, operator_name: str) -> ShapeConfig:
             malformed, or a row length differs from the shape specification.
 
     Notes:
-        Dimension names, types, positivity, ``Count``, and variant constraints
-        are intentionally left to the compiled operator YAML schema.
+        Dimension names, types, required/optional fields, ``Count``, and variant
+        constraints are intentionally left to the compiled operator YAML schema.
+        Rows may omit trailing optional fields; schemas with a final Count field
+        also support omitting optional fields immediately before Count.
     """
 
     try:
@@ -131,10 +147,10 @@ def load_shape_config(path: Path, operator_name: str) -> ShapeConfig:
     for index, row in enumerate(raw_shapes):
         if not isinstance(row, (list, tuple)):
             raise PretuneIOError(f"{operator_name}.shapes[{index}] must be a list")
-        if len(row) != len(shape_spec):
+        if len(row) > len(shape_spec):
             raise PretuneIOError(
                 f"{operator_name}.shapes[{index}] has {len(row)} values but "
-                f"the shape specification has {len(shape_spec)} fields"
+                f"the shape specification has only {len(shape_spec)} fields"
             )
         rows.append(tuple(row))
     if not rows:
@@ -238,7 +254,18 @@ def write_outputs(
             )
             handle.write("\n")
 
-    fieldnames = pretune_csv_fieldnames(shape_fields)
+    include_recipe_id = any(
+        str(row.get("recipe_id", "")).strip() for row in rows
+    )
+    include_route_metadata = any(
+        row.get("route") is not None or row.get("model_inputs") is not None
+        for row in rows
+    )
+    fieldnames = pretune_csv_fieldnames(
+        shape_fields,
+        include_recipe_id=include_recipe_id,
+        include_route_metadata=include_route_metadata,
+    )
     with (run_dir / "pretune.csv").open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()
@@ -249,6 +276,12 @@ def write_outputs(
             )
             row["output_dtypes"] = json.dumps(
                 row.get("output_dtypes"), separators=(",", ":")
+            )
+            row["route"] = json.dumps(
+                row.get("route"), sort_keys=True, separators=(",", ":")
+            )
+            row["model_inputs"] = json.dumps(
+                row.get("model_inputs"), sort_keys=True, separators=(",", ":")
             )
             row["best_config"] = json.dumps(
                 row.get("best_config"), sort_keys=True, separators=(",", ":")

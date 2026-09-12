@@ -57,7 +57,13 @@ SCRIPT_PATH = (
 )
 BENCHMARK_PATH = SCRIPT_PATH.parents[1] / "collection" / "scheduler.py"
 CONFIG_PATH = (
-    SCRIPT_PATH.parents[1] / "contracts" / "configs" / "mm_flagtune_configs.yaml"
+    SCRIPT_PATH.parents[1]
+    / "contracts"
+    / "configs"
+    / "mm_hopper_flagtune_configs.yaml"
+)
+MUL_CONFIG_PATH = (
+    SCRIPT_PATH.parents[1] / "contracts" / "configs" / "mul_flagtune_configs.yaml"
 )
 
 
@@ -154,9 +160,16 @@ def test_operator_yaml_compiles_shape_dispatch_and_benchmark_contract():
 
     assert spec.op_id == "flaggems/mm"
     assert spec.public_operator_name == "mm"
-    assert spec.shape.identity == ("B", "M", "N", "K")
+    assert spec.shape.identity == ("B", "M", "N", "K", "B_layout")
     assert spec.shape.count_field == "Count"
-    assert spec.dispatch_order == ("gemv", "splitk", "general_tma")
+    assert spec.dispatch_order == (
+        "gemv",
+        "splitk_two_step",
+        "splitk",
+        "general_tma",
+        "tma_transposed_direct",
+    )
+    assert spec.explicit_variant_selection is True
     assert [tensor.name for tensor in spec.benchmark.tensors] == ["a", "b"]
     assert [tensor.dtype for tensor in spec.benchmark.tensors] == [
         "runtime",
@@ -164,6 +177,143 @@ def test_operator_yaml_compiles_shape_dispatch_and_benchmark_contract():
     ]
     assert tuple(reference.name for reference in spec.benchmark.args) == ("a", "b")
     assert spec.resolve_variant({"B": 1, "M": 16, "N": 1, "K": 4096}) == "gemv"
+    assert spec.shape.fields["B_layout"].choices == (
+        "contiguous",
+        "transposed_2d",
+    )
+
+
+def test_mul_operator_yaml_compiles_broadcast_and_scalar_variants():
+    """Derive kernel inputs from nested shapes and select variant call recipes."""
+    mod = load_module()
+    spec = mod.load_operator_benchmark_spec(MUL_CONFIG_PATH)
+
+    broadcast, _ = spec.shape.normalize_values(
+        {
+            "kind": "broadcast",
+            "lhs_shape": [2, 1],
+            "rhs_shape": [2, 2048],
+        },
+        "broadcast",
+    )
+    scalar, _ = spec.shape.normalize_values(
+        {"kind": "scalar", "lhs_shape": [18]}, "scalar"
+    )
+
+    assert spec.op_id == "flaggems/mul"
+    assert spec.shape.identity == ("kind", "lhs_shape", "rhs_shape")
+    assert spec.dispatch_order == ("broadcast_2d", "scalar")
+    assert broadcast["n_elements"] == 4096
+    assert broadcast["n_cols"] == 2048
+    assert broadcast["output_rank"] == 2
+    assert broadcast["same_shape"] == 0
+    assert broadcast["has_rhs"] == 1
+    assert scalar["rhs_shape"] == ()
+    assert scalar["n_elements"] == 18
+    assert scalar["n_cols"] == 18
+    assert scalar["output_rank"] == 1
+    assert scalar["same_shape"] == 0
+    assert scalar["has_rhs"] == 0
+    assert spec.resolve_variant(broadcast) == "broadcast_2d"
+    assert spec.resolve_variant(scalar) == "scalar"
+    with pytest.raises(mod.OperatorConfigError, match="no 'flaggems/mul' variant"):
+        invalid, _ = spec.shape.normalize_values(
+            {
+                "kind": "broadcast",
+                "lhs_shape": [2, 3, 4],
+                "rhs_shape": [2, 3, 4],
+            },
+            "invalid",
+        )
+        spec.resolve_variant(invalid)
+    assert [
+        reference.name for reference in spec.benchmark.args_for("broadcast_2d")
+    ] == ["lhs", "rhs"]
+    assert [reference.name for reference in spec.benchmark.args_for("scalar")] == [
+        "lhs",
+        "factor",
+    ]
+    assert spec.benchmark.input_tensor_names_for("scalar") == ("lhs",)
+
+
+def test_mul_shape_loader_aligns_optional_rhs_before_count(tmp_path):
+    """Read existing scalar rows where Count follows an omitted rhs_shape."""
+    mod = load_module()
+    path = tmp_path / "mul-shapes.yaml"
+    write_yaml(
+        path,
+        {
+            "mul": {
+                "shape_desc": "kind, lhs_shape, rhs_shape, Count",
+                "shapes": [
+                    ["broadcast", [2, 1], [2, 2048], 7],
+                    ["scalar", [18], 3],
+                    ["scalar", [32]],
+                ],
+            }
+        },
+    )
+
+    records = mod.load_shape_records(
+        path, mod.load_operator_benchmark_spec(MUL_CONFIG_PATH)
+    )
+
+    assert records[0].values["rhs_shape"] == (2, 2048)
+    assert records[0].count == 7
+    assert records[1].values["rhs_shape"] == ()
+    assert records[1].values["n_elements"] == 18
+    assert records[1].count == 3
+    assert records[2].values["lhs_shape"] == (32,)
+    assert records[2].count is None
+
+
+def test_mul_executor_uses_variant_specific_tensor_and_scalar_arguments():
+    """Construct only active tensors and pass the scalar recipe to ``mul``."""
+    from flag_gems.flagtune.runtime import executor as executor_mod
+
+    mod = load_module()
+    spec = mod.load_operator_benchmark_spec(MUL_CONFIG_PATH)
+    calls = []
+
+    class FakeRuntime:
+        def make_tensor(self, factory, shape, dtype):
+            value = (factory, tuple(shape), dtype)
+            calls.append(value)
+            return value
+
+    worker = executor_mod.BenchmarkWorker.__new__(executor_mod.BenchmarkWorker)
+    worker.spec = spec
+    worker.device_runtime = FakeRuntime()
+    worker.operator = lambda *args: args
+
+    broadcast, _ = spec.shape.normalize_values(
+        {
+            "kind": "broadcast",
+            "lhs_shape": [2, 1],
+            "rhs_shape": [2, 4],
+        },
+        "broadcast",
+    )
+    broadcast_tensors = worker._make_tensors(
+        broadcast, ["bfloat16", "bfloat16"], "broadcast_2d"
+    )
+    assert set(broadcast_tensors) == {"lhs", "rhs"}
+    assert worker._invoke(broadcast_tensors, "broadcast_2d") == (
+        broadcast_tensors["lhs"],
+        broadcast_tensors["rhs"],
+    )
+
+    calls.clear()
+    scalar, _ = spec.shape.normalize_values(
+        {"kind": "scalar", "lhs_shape": [18]}, "scalar"
+    )
+    scalar_tensors = worker._make_tensors(scalar, ["bfloat16", "bfloat16"], "scalar")
+    assert set(scalar_tensors) == {"lhs"}
+    assert worker._invoke(scalar_tensors, "scalar") == (
+        scalar_tensors["lhs"],
+        1.25,
+    )
+    assert [entry[1] for entry in calls] == [(18,)]
 
 
 def test_operator_yaml_rejects_device_placement_policy(tmp_path):
@@ -253,7 +403,7 @@ def test_load_new_shape_spec_with_optional_count(tmp_path):
         {
             "mm": {
                 "shape_spec": ["M", "N", "K", "Count"],
-                "shapes": [[16, 32, 64, 7]],
+                "shapes": [[16, 32, 64, 7], [32, 64, 128]],
             }
         },
     )
@@ -262,10 +412,12 @@ def test_load_new_shape_spec_with_optional_count(tmp_path):
         path, mod.load_operator_benchmark_spec(CONFIG_PATH)
     )
 
-    assert len(records) == 1
-    assert records[0].shape == [1, 16, 32, 64]
-    assert records[0].shape_key == "1,16,32,64"
+    assert len(records) == 2
+    assert records[0].shape == [1, 16, 32, 64, "contiguous"]
+    assert records[0].shape_key == "1,16,32,64,contiguous"
     assert records[0].count == 7
+    assert records[1].shape == [1, 32, 64, 128, "contiguous"]
+    assert records[1].count is None
 
 
 def test_load_legacy_shape_desc_without_count(tmp_path):
@@ -286,7 +438,7 @@ def test_load_legacy_shape_desc_without_count(tmp_path):
         path, mod.load_operator_benchmark_spec(CONFIG_PATH)
     )
 
-    assert records[0].shape == [1, 128, 256, 512]
+    assert records[0].shape == [1, 128, 256, 512, "contiguous"]
     assert records[0].count is None
 
 
@@ -675,6 +827,9 @@ def test_write_outputs_keeps_structured_jsonl_and_flat_csv(tmp_path):
             "op_id",
             "op_name",
             "variant",
+            "route_variant",
+            "tuning_variant",
+            "stage",
             "B",
             "M",
             "N",
@@ -692,6 +847,7 @@ def test_write_outputs_keeps_structured_jsonl_and_flat_csv(tmp_path):
             "first_call_ms",
             "tuning_time_ms",
             "latency_source",
+            "latency_scope",
             "benchmark_requested_mode",
             "benchmark_resolved_mode",
             "benchmark_implementation",
@@ -804,6 +960,10 @@ def test_worker_success_and_failure_rows_use_platform_key(monkeypatch, tmp_path)
         op_id="flaggems/mm",
         public_operator_name="mm",
         shape=SimpleNamespace(identity=("M",)),
+        benchmark=SimpleNamespace(
+            tensor_names=("input",),
+            input_tensor_names_for=lambda _variant: ("input",),
+        ),
     )
     worker.base_states = {}
     worker.device_runtime = SimpleNamespace(
@@ -819,10 +979,10 @@ def test_worker_success_and_failure_rows_use_platform_key(monkeypatch, tmp_path)
         },
     )
     worker._find_tuner = lambda _variant: (object(), tuner)
-    worker._make_tensors = lambda _values, _dtypes: {}
+    worker._make_tensors = lambda _values, _dtypes, _variant: {}
     worker._benchmark_selected_config = lambda **_kwargs: (0.9, 1.0, 1.1)
 
-    def invoke(_tensors):
+    def invoke(_tensors, _variant):
         tuner.best_config = tuner.configs[0]
         return SimpleNamespace(dtype="bfloat16")
 
@@ -895,12 +1055,24 @@ def test_generic_scheduler_prepares_cases_from_operator_yaml():
         CONFIG_PATH,
     )
 
-    assert tasks[0].payload["values"] == {"B": 1, "M": 17, "N": 3, "K": 32}
+    assert tasks[0].payload["values"] == {
+        "B": 1,
+        "M": 17,
+        "N": 3,
+        "K": 32,
+        "B_layout": "contiguous",
+    }
     assert tasks[0].payload["configs"] == configs
     assert tasks[0].payload["variant"] == "general_tma"
     assert set(tasks[0].to_json()) == {"task_index", "payload"}
     assert tasks[1].payload["variant"] == "gemv"
-    assert tasks[2].payload["values"] == {"B": 1, "M": 32, "N": 32, "K": 32}
+    assert tasks[2].payload["values"] == {
+        "B": 1,
+        "M": 32,
+        "N": 32,
+        "K": 32,
+        "B_layout": "contiguous",
+    }
     assert tasks[3].payload["count"] == 7
 
 
@@ -944,8 +1116,8 @@ def test_public_batch_api_returns_input_order_and_fail_fast_state(
     )
 
     assert [row["token"] for row in batch.results] == [
-        {"B": 1, "M": 16, "N": 16, "K": 16},
-        {"B": 1, "M": 32, "N": 32, "K": 32},
+        {"B": 1, "M": 16, "N": 16, "K": 16, "B_layout": "contiguous"},
+        {"B": 1, "M": 32, "N": 32, "K": 32, "B_layout": "contiguous"},
     ]
     assert len(seen["tasks"]) == 2
     assert seen["kwargs"]["operator_config"] == CONFIG_PATH.resolve()
@@ -969,7 +1141,7 @@ def test_public_batch_api_rejects_unknown_or_misaligned_input_dtypes(tmp_path):
     }
     with pytest.raises(mod.BenchmarkError, match="unsupported tensor dtype"):
         mod.run_shape_config_benchmarks(cases, dtypes="float8_unknown", **common)
-    with pytest.raises(mod.BenchmarkError, match="invoke.args has 2"):
+    with pytest.raises(mod.BenchmarkError, match="benchmark.tensors has 2"):
         mod.run_shape_config_benchmarks(
             cases, dtypes="bfloat16,float16,float32", **common
         )
