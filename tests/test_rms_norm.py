@@ -17,6 +17,7 @@ import pytest
 import torch
 
 import flag_gems
+from flag_gems.runtime import torch_device_fn
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
@@ -31,6 +32,12 @@ GROUP_SIZE = 128
 
 
 def _cuda_fp8_e4m3fn_available():
+    if flag_gems.vendor_name == "mthreads":
+        return (
+            FP8_DTYPE is not None
+            and torch_device_fn.is_available()
+            and torch_device_fn.get_device_capability()[0] >= 3
+        )
     if FP8_DTYPE is None or not torch.cuda.is_available():
         return False
     # PPU can store and cast e4m3fn even though it reports sm_80.
@@ -120,10 +127,11 @@ def test_rms_norm(shape, dtype):
 
 @pytest.mark.rms_norm_w8a16_fp8
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
-@pytest.mark.parametrize("capture", [False, True], ids=["eager", "cudagraph"])
+@pytest.mark.parametrize("capture", [False, True], ids=["eager", "graph"])
 @pytest.mark.skipif(
-    flag_gems.vendor_name != "thead" or not _cuda_fp8_e4m3fn_available(),
-    reason="Regression test for THead W8A16 weight dequantization",
+    flag_gems.vendor_name not in ("thead", "mthreads")
+    or not _cuda_fp8_e4m3fn_available(),
+    reason="Regression test for backend W8A16 weight dequantization",
 )
 def test_rms_norm_w8a16_fp8_weight_updates(dtype, capture):
     n = 4096
@@ -137,14 +145,19 @@ def test_rms_norm_w8a16_fp8_weight_updates(dtype, capture):
         )
 
     if capture:
-        stream = torch.cuda.Stream()
-        stream.wait_stream(torch.cuda.current_stream())
-        with torch.cuda.stream(stream):
+        stream = torch_device_fn.Stream()
+        stream.wait_stream(torch_device_fn.current_stream())
+        with torch_device_fn.stream(stream):
             for _ in range(3):
                 run()
-        torch.cuda.current_stream().wait_stream(stream)
-        graph = torch.cuda.CUDAGraph()
-        with torch.cuda.graph(graph):
+        torch_device_fn.current_stream().wait_stream(stream)
+        graph_type = (
+            torch_device_fn.MUSAGraph
+            if flag_gems.vendor_name == "mthreads"
+            else torch_device_fn.CUDAGraph
+        )
+        graph = graph_type()
+        with torch_device_fn.graph(graph):
             res_out = run()
 
     # Keep storage addresses fixed while changing each input independently.
@@ -177,8 +190,9 @@ def test_rms_norm_w8a16_fp8_weight_updates(dtype, capture):
     [(2, 256, 128), (2, 384, 128), (2, 32768, 64), (2, 33024, 128), (513, 4096, 128)],
 )
 @pytest.mark.skipif(
-    flag_gems.vendor_name != "thead" or not _cuda_fp8_e4m3fn_available(),
-    reason="THead E4M3FN byte decoding across all kernel paths",
+    flag_gems.vendor_name not in ("thead", "mthreads")
+    or not _cuda_fp8_e4m3fn_available(),
+    reason="Backend E4M3FN byte decoding across all kernel paths",
 )
 def test_rms_norm_w8a16_fp8_encodings(dtype, m, n, group_size):
     # Cover all 256 encodings, including signed zero, subnormals, and NaNs.
@@ -262,6 +276,67 @@ def _run_rms_norm_w8a16_test(shape, quantize_weight, op):
 )
 def test_rms_norm_w8a16_fp8(shape):
     _run_rms_norm_w8a16_test(shape, _quantize_fp8_weight, flag_gems.rms_norm_w8a16_fp8)
+
+
+@pytest.mark.rms_norm_w8a16_fp8
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+@pytest.mark.parametrize(
+    "shape,normalized_shape,group_size,strided",
+    [
+        ((0, 4096), (4096,), 128, False),
+        ((3, 65), (65,), 64, False),
+        ((5, 1000), (1000,), 128, True),
+        ((3, 1056), (1056,), 96, True),
+        ((17, 4096), (4096,), 128, True),
+        ((513, 4096), (4096,), 256, False),
+        ((3, 8192), (8192,), 64, False),
+        ((65, 16384), (16384,), 128, False),
+        ((2, 32768), (32768,), 128, False),
+        ((3, 33024), (33024,), 128, True),
+        ((2, 65536), (65536,), 256, False),
+        ((2, 131200), (131200,), 128, True),
+        ((2, 3, 64, 64), (64, 64), 128, True),
+        ((4096,), (4096,), 128, False),
+    ],
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "mthreads" or not _cuda_fp8_e4m3fn_available(),
+    reason="MThreads W8A16 kernel shape and stride coverage",
+)
+def test_rms_norm_w8a16_fp8_mthreads_shapes(
+    dtype, shape, normalized_shape, group_size, strided
+):
+    import math
+
+    n = math.prod(normalized_shape)
+    inp_shape = (*shape[:-1], shape[-1] * 2) if strided else shape
+    inp = torch.randn(inp_shape, device=flag_gems.device, dtype=dtype)
+    if strided:
+        inp = inp[..., ::2]
+    weight = torch.randn(n, device=flag_gems.device, dtype=dtype).to(FP8_DTYPE)
+    scale = (
+        torch.rand(
+            (n + group_size - 1) // group_size, device=flag_gems.device, dtype=dtype
+        )
+        + 0.01
+    )
+    if strided:
+        weight = weight.view(torch.uint8).repeat_interleave(2)[::2].view(FP8_DTYPE)
+        scale = scale.repeat_interleave(2)[::2]
+    result = flag_gems.rms_norm_w8a16_fp8(
+        inp, normalized_shape, weight, scale, eps=1e-5, group_size=group_size
+    )
+    ref_x = utils.to_reference(inp).float().reshape(-1, n)
+    ref_w = utils.to_reference(weight.float())
+    ref_scale = utils.to_reference(scale).float().repeat_interleave(group_size)[:n]
+    ref = (
+        ref_x
+        * torch.rsqrt((ref_x * ref_x).mean(-1, keepdim=True) + 1e-5)
+        * (ref_w * ref_scale)
+    ).reshape(shape)
+    assert result.shape == inp.shape
+    assert result.dtype == dtype
+    utils.gems_assert_close(result, ref, dtype)
 
 
 @pytest.mark.rms_norm_w8a16_int8
