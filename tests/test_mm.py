@@ -168,6 +168,11 @@ def test_mm_w8a8_fp8(M, N, K):
         (256, 768, 1024),
         (512, 1024, 2048),
         (64, 64, 32768),
+        (32, 1024, 8192),
+        (128, 1024, 16384),
+        (256, 256, 32768),
+        (512, 1024, 8192),
+        (192, 768, 8193),
     ],
 )
 @pytest.mark.parametrize("dtype", [torch.float8_e4m3fn, torch.float8_e5m2])
@@ -188,6 +193,19 @@ def test_mm_w8a8_fp8_mthreads_prequantized(M, N, K, dtype, column_major):
     torch.testing.assert_close(result, ref.to(out.dtype), rtol=0.016, atol=0.01)
     result_fp32 = flag_gems.mm_w8a8_fp8(a, b, out_dtype=torch.float32)
     torch.testing.assert_close(result_fp32, ref, rtol=5e-4, atol=0.003)
+
+
+@pytest.mark.mm_w8a8_fp8
+@pytest.mark.skipif(not _mthreads_w8a8_fp8_available(), reason="MThreads FP8 backend")
+@pytest.mark.parametrize("M,N,K", [(256, 256, 8192), (128, 1024, 16384)])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test_mm_w8a8_fp8_mthreads_large_k_scales(M, N, K, dtype):
+    torch.manual_seed(42)
+    a = torch.randn((M, K), device=flag_gems.device, dtype=dtype)
+    b = torch.randn((K, N), device=flag_gems.device, dtype=dtype)
+    ref = _mm_w8a8_fp8_reference(a, b)
+    result = flag_gems.mm_w8a8_fp8(a, b, out_dtype=torch.float32)
+    torch.testing.assert_close(result, ref, rtol=5e-4, atol=0.003)
 
 
 @pytest.mark.mm_w8a8_fp8

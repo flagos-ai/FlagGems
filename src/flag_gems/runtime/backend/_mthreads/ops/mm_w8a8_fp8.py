@@ -158,6 +158,17 @@ def _select_config(m, n, k, descriptor):
             triton.next_power_of_2(triton.cdiv(k, 256)),
         )
         return bm, 64, 256, 2, split
+    if descriptor and k >= 8192 and m <= 512 and m * n <= 512 * 1024:
+        # Bound workspace/reduction traffic while filling underoccupied TME
+        # grids. Wider M tiles amortize loads when a full tile is available.
+        bm = min(64 if n <= 512 else 128, max(32, triton.next_power_of_2(m)))
+        bn = 64 if m <= 64 else 128
+        bk = 256 if bm <= 64 else 128
+        tiles = triton.cdiv(m, bm) * triton.cdiv(n, bn)
+        target_ctas = 128 if m <= 64 else 64
+        split = min(16, triton.next_power_of_2(triton.cdiv(target_ctas, tiles)))
+        if split > 1:
+            return bm, bn, bk, 2 if bk == 256 else 3, split
     if m <= 32:
         return max(16, triton.next_power_of_2(m)), 64, 128, 3, 1
     if descriptor and m >= 512 and n >= 1024:
