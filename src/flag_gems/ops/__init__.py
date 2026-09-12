@@ -400,6 +400,10 @@ from flag_gems.ops.fake_quantize_per_channel_affine_cachemask_backward import (
 from flag_gems.ops.fake_quantize_per_tensor_affine import (
     fake_quantize_per_tensor_affine,
 )
+from flag_gems.ops.fake_quantize_per_tensor_affine_cachemask import (
+    fake_quantize_per_tensor_affine_cachemask,
+    fake_quantize_per_tensor_affine_cachemask_out,
+)
 from flag_gems.ops.fake_quantize_per_tensor_affine_cachemask_backward import (
     fake_quantize_per_tensor_affine_cachemask_backward,
 )
@@ -1409,7 +1413,9 @@ __all__ = [
     "fake_quantize_per_channel_affine_cachemask_backward",
     "fake_quantize_per_channel_affine_cachemask_out",
     "fake_quantize_per_tensor_affine",
+    "fake_quantize_per_tensor_affine_cachemask",
     "fake_quantize_per_tensor_affine_cachemask_backward",
+    "fake_quantize_per_tensor_affine_cachemask_out",
     "feature_dropout",
     "feature_dropout_",
     "fft",

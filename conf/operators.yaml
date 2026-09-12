@@ -4672,6 +4672,19 @@ ops:
   - Quantization
   stages:
   - alpha: '5.4'
+- id: fake_quantize_per_tensor_affine_cachemask
+  description: Applies per-tensor affine fake quantization and returns the quantized
+    output with its unclamped-range mask.
+  for:
+  - fake_quantize_per_tensor_affine_cachemask
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Quantization
+  stages:
+  - alpha: '5.4'
 - id: fake_quantize_per_tensor_affine_cachemask_backward
   description: 'Computes the gradient for fake_quantize_per_tensor_affine_cachemask
     by multiplying the incoming
@@ -4687,6 +4700,19 @@ ops:
   - KernelGen
   kind:
   - Math
+  stages:
+  - alpha: '5.4'
+- id: fake_quantize_per_tensor_affine_cachemask_out
+  description: A variant of `fake_quantize_per_tensor_affine_cachemask` that assigns
+    the results to the provided output tensors.
+  for:
+  - fake_quantize_per_tensor_affine_cachemask.out
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Quantization
   stages:
   - alpha: '5.4'
 - id: fake_quantize_per_tensor_affine_cachemask_tensor_qparams
