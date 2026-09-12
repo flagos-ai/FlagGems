@@ -573,6 +573,7 @@ from .special_digamma import special_digamma
 from .special_erfcx import special_erfcx
 from .special_erfinv import special_erfinv, special_erfinv_, special_erfinv_out
 from .special_exp2 import special_exp2
+from .special_expit import special_expit
 from .special_gammainc import special_gammainc
 from .special_gammaincc import special_gammaincc
 from .special_gammaln import special_gammaln, special_gammaln_out
