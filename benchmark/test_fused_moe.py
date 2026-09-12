@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import inspect
+
 import pytest
 import torch
 import triton.language as tl
@@ -28,6 +30,14 @@ try:
     HAS_VLLM_FUSED_MOE = True
 except ImportError:
     HAS_VLLM_FUSED_MOE = False
+
+VLLM_FUSED_MOE_KWARGS = {}
+if HAS_VLLM_FUSED_MOE:
+    vllm_parameters = inspect.signature(vllm_fused_experts_impl).parameters
+    if "inplace" in vllm_parameters:
+        VLLM_FUSED_MOE_KWARGS["inplace"] = False
+    if "activation" in vllm_parameters:
+        VLLM_FUSED_MOE_KWARGS["activation"] = "silu"
 
 
 def _dispatch_fused_moe_kernel_config():
@@ -235,13 +245,12 @@ class FusedMoEBenchmark(base.Benchmark):
 def _vllm_fused_moe_wrapper(hidden_states, w1, w2, topk_weights, topk_ids):
     """Wrapper to call vllm fused_experts_impl."""
     return vllm_fused_experts_impl(
-        hidden_states.clone(),
+        hidden_states,
         w1,
         w2,
         topk_weights,
         topk_ids,
-        inplace=False,
-        activation="silu",
+        **VLLM_FUSED_MOE_KWARGS,
     )
 
 
