@@ -324,6 +324,11 @@ def test_no_tle_fallback(n, upper, dtype, monkeypatch):
 
 
 @pytest.mark.linalg_solve_triangular
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend",
+    reason="Verify the correctness of the PyTorch combination implementation path, "
+    "and perform verification only on the Ascend platform.",
+)
 @pytest.mark.parametrize("n", [16, 64, 128, 256, 512])
 @pytest.mark.parametrize("k", [1, 8, 64, 256])
 @pytest.mark.parametrize("upper", [False, True])
