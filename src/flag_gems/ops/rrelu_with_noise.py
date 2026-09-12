@@ -19,7 +19,31 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.ops.rrelu_with_noise_backward import (
+    rrelu_with_noise_backward,
+)  # 导入反向函数
 from flag_gems.utils import pointwise_dynamic
+
+
+class RReLUWithNoiseFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, input, noise, lower, upper, training, generator=None):
+        output = _rrelu_with_noise_impl(input, noise, lower, upper, training, generator)
+        ctx.save_for_backward(input, noise)
+        ctx.lower = lower
+        ctx.upper = upper
+        ctx.training = training
+        return output
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        input, noise = ctx.saved_tensors
+        grad_input = rrelu_with_noise_backward(
+            grad_output, input, noise, ctx.lower, ctx.upper, ctx.training, False
+        )
+        # 对应 forward 的 6 个输入
+        return grad_input, None, None, None, None, None
+
 
 logger = logging.getLogger(__name__)
 
@@ -94,9 +118,7 @@ def _fill_training_noise(noise, lower, upper, generator):
 
     sampled = torch.empty_like(noise, memory_format=torch.contiguous_format)
     sampled.uniform_(float(lower), float(upper), generator=generator)
-    noise.copy_(sampled)  # 新增
-    return noise  # 修改
-    # return sampled
+    return sampled
 
 
 def _rrelu_with_noise_impl(
@@ -137,7 +159,8 @@ def rrelu_with_noise(
 ):
     """FlagGems implementation of aten.rrelu_with_noise."""
     logger.debug("GEMS RRELU_WITH_NOISE")
-    return _rrelu_with_noise_impl(self, noise, lower, upper, training, generator)
+    # return _rrelu_with_noise_impl(self, noise, lower, upper, training, generator)
+    return RReLUWithNoiseFunction.apply(self, noise, lower, upper, training, generator)
 
 
 def rrelu_with_noise_(

@@ -282,15 +282,14 @@ def test_rrelu_with_noise_autograd(training):
     inp = torch.randn((257,), dtype=dtype, device=flag_gems.device)
 
     ref_inp = utils.to_reference(inp.clone()).requires_grad_()
+    # ref_noise = torch.zeros_like(ref_inp).requires_grad_()
     ref_noise = torch.zeros_like(ref_inp)
     ref_out = _run("rrelu_with_noise", ref_inp, ref_noise, lower, upper, training)
     ref_out.sum().backward()
 
     gems_inp = inp.clone().requires_grad_()
     gems_noise = torch.zeros_like(gems_inp)
-    gems_out = _run(
-        "rrelu_with_noise", gems_inp, gems_noise, lower, upper, training
-    )
+    gems_out = _run("rrelu_with_noise", gems_inp, gems_noise, lower, upper, training)
     gems_out.sum().backward()
 
     utils.gems_assert_close(gems_inp.grad, ref_inp.grad, dtype)
@@ -315,9 +314,7 @@ def test_rrelu_with_noise_inplace_autograd_non_leaf(training):
     gems_leaf = source.clone().requires_grad_()
     gems_self = gems_leaf * 1.0
     gems_noise = torch.zeros_like(gems_self)
-    gems_out = _run(
-        "rrelu_with_noise_", gems_self, gems_noise, lower, upper, training
-    )
+    gems_out = _run("rrelu_with_noise_", gems_self, gems_noise, lower, upper, training)
     gems_out.sum().backward()
 
     utils.gems_assert_close(gems_leaf.grad, ref_leaf.grad, dtype)
