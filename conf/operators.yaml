@@ -10373,6 +10373,20 @@ ops:
   - Tensor
   stages:
   - stable: '2.1'
+- id: orgqr
+  description: 'Computes the first n columns of a product of Householder matrices.
+
+    Alias for torch.linalg.householder_product.'
+  for:
+  - orgqr
+  - orgqr.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.4'
 - id: ormqr
   description: 'Computes the matrix-matrix multiplication of a product of Householder
     matrices
