@@ -82,6 +82,7 @@ from .mm import mm
 from .mul import mul, mul_
 from .nansum import nansum, nansum_out
 from .nll_loss_backward import heur_block_n, nll_loss_backward
+from .pad_sequence import pad_sequence
 from .per_token_group_quant_fp8 import SUPPORTED_FP8_DTYPE, per_token_group_quant_fp8
 from .pow import (
     pow_scalar,
@@ -188,6 +189,7 @@ __all__ = [
     "nansum",
     "nansum_out",
     "nll_loss_backward",
+    "pad_sequence",
     "per_token_group_quant_fp8",
     "pool3d_output_size",
     "pow_scalar",
