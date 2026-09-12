@@ -99,11 +99,14 @@ def max_pool2d_forward_kernel(
             h_in = h_out_offsets[:, None] * stride_h - padding_h + kh * dilation_h
             w_in = w_out_offsets[None, :] * stride_w - padding_w + kw * dilation_w
             in_mask = (h_in >= 0) & (h_in < in_h) & (w_in >= 0) & (w_in < in_w)
-            input_offset = h_in * in_stride_h + w_in * in_stride_w
+            h_safe = tl.where(in_mask, h_in, 0)
+            w_safe = tl.where(in_mask, w_in, 0)
+            input_offset = h_safe * in_stride_h + w_safe * in_stride_w
             current_val = tl.load(
                 input_base_ptr + input_offset, mask=in_mask, other=min_val
             )
-            current_idx = h_in * in_w + w_in
+            current_val = tl.where(in_mask, current_val, min_val)
+            current_idx = h_safe * in_w + w_safe
 
             is_new_max = current_val > max_val_acc
             max_val_acc = tl.where(is_new_max, current_val, max_val_acc)
@@ -123,6 +126,121 @@ def max_pool2d_forward_kernel(
     out_mask = (out_h_offsets[:, None] < out_h) & (out_w_offsets[None, :] < out_w)
     tl.store(output_block_ptr, max_val_acc, mask=out_mask)
     tl.store(indices_block_ptr, max_idx_acc, mask=out_mask)
+
+
+@libentry()
+@triton.jit
+def max_pool2d_forward_flat_kernel(
+    input_ptr,
+    output_ptr,
+    indices_ptr,
+    total,
+    in_h,
+    in_w,
+    out_h,
+    out_w,
+    kernel_h: tl.constexpr,
+    kernel_w: tl.constexpr,
+    stride_h: tl.constexpr,
+    stride_w: tl.constexpr,
+    padding_h: tl.constexpr,
+    padding_w: tl.constexpr,
+    dilation_h: tl.constexpr,
+    dilation_w: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    offsets = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    output_mask = offsets < total
+    out_hw = out_h * out_w
+    nc_idx = offsets // out_hw
+    rem = offsets % out_hw
+    oh = rem // out_w
+    ow = rem % out_w
+    nc_safe = tl.where(output_mask, nc_idx, 0)
+
+    max_val = tl.full((BLOCK,), float("-inf"), tl.float32)
+    max_idx = tl.full((BLOCK,), -1, tl.int64)
+    for kh in tl.static_range(kernel_h):
+        for kw in tl.static_range(kernel_w):
+            ih = oh * stride_h - padding_h + kh * dilation_h
+            iw = ow * stride_w - padding_w + kw * dilation_w
+            valid = output_mask & (ih >= 0) & (ih < in_h) & (iw >= 0) & (iw < in_w)
+            ih_safe = tl.where(valid, ih, 0)
+            iw_safe = tl.where(valid, iw, 0)
+            input_offset = nc_safe * (in_h * in_w) + ih_safe * in_w + iw_safe
+            value = tl.load(input_ptr + input_offset, mask=valid, other=float("-inf"))
+            value = tl.where(valid, value.to(tl.float32), float("-inf"))
+            is_new_max = valid & (value > max_val)
+            max_val = tl.where(is_new_max, value, max_val)
+            max_idx = tl.where(is_new_max, ih_safe * in_w + iw_safe, max_idx)
+
+    tl.store(output_ptr + offsets, max_val, mask=output_mask)
+    tl.store(indices_ptr + offsets, max_idx, mask=output_mask)
+
+
+@libentry()
+@triton.jit
+def max_pool2d_backward_flat_kernel(
+    grad_output_ptr,
+    indices_ptr,
+    grad_input_ptr,
+    total,
+    in_h,
+    in_w,
+    out_h,
+    out_w,
+    kernel_h: tl.constexpr,
+    kernel_w: tl.constexpr,
+    stride_h: tl.constexpr,
+    stride_w: tl.constexpr,
+    padding_h: tl.constexpr,
+    padding_w: tl.constexpr,
+    dilation_h: tl.constexpr,
+    dilation_w: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    offsets = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    input_mask = offsets < total
+    in_hw = in_h * in_w
+    nc_idx = offsets // in_hw
+    rem = offsets % in_hw
+    ih = rem // in_w
+    iw = rem % in_w
+    nc_safe = tl.where(input_mask, nc_idx, 0)
+    input_flat_idx = ih * in_w + iw
+
+    grad_acc = tl.zeros((BLOCK,), dtype=tl.float32)
+    for kh in tl.static_range(kernel_h):
+        for kw in tl.static_range(kernel_w):
+            h_num = ih + padding_h - kh * dilation_h
+            w_num = iw + padding_w - kw * dilation_w
+            h_nonnegative = h_num >= 0
+            w_nonnegative = w_num >= 0
+            h_num_safe = tl.where(h_nonnegative, h_num, 0)
+            w_num_safe = tl.where(w_nonnegative, w_num, 0)
+            oh = h_num_safe // stride_h
+            ow = w_num_safe // stride_w
+            h_rem = h_num_safe - oh * stride_h
+            w_rem = w_num_safe - ow * stride_w
+            valid = (
+                input_mask
+                & h_nonnegative
+                & w_nonnegative
+                & (h_rem == 0)
+                & (w_rem == 0)
+                & (oh < out_h)
+                & (ow < out_w)
+            )
+            oh_safe = tl.where(valid, oh, 0)
+            ow_safe = tl.where(valid, ow, 0)
+            out_offset = nc_safe * (out_h * out_w) + oh_safe * out_w + ow_safe
+            index_value = tl.load(indices_ptr + out_offset, mask=valid, other=-1)
+            index_value = tl.where(valid, index_value, -1)
+            match = valid & (index_value == input_flat_idx)
+            grad_value = tl.load(grad_output_ptr + out_offset, mask=valid, other=0.0)
+            grad_acc += tl.where(match, grad_value.to(tl.float32), 0.0)
+
+    tl.store(grad_input_ptr + offsets, grad_acc, mask=input_mask)
 
 
 @libentry()
@@ -286,31 +404,16 @@ def max_pool2d_with_indices(
     if output.numel() == 0:
         return output, indices
 
-    # Adaptive tiling: size the (BLOCK_H, BLOCK_W) tile to the actual output so we
-    # don't allocate a fixed 64x64 tile (4096 lanes) for tiny outputs (e.g. 7x7 or
-    # 4x4 on late ResNet stages). The old fixed 64x64 tile made every one of the
-    # N*C programs issue ~BLOCK_H*BLOCK_W*kh*kw masked loads, the vast majority of
-    # them wasted -> masked-load volume dominated runtime (~96ms for 128x512x7x7).
-    # next_pow2(out) capped at 64 keeps the tile just big enough to cover the output
-    # (grid dim1 tiles anything larger) while cutting wasted lanes up to ~64x.
-    block_h = min(triton.next_power_of_2(out_h), 64)
-    block_w = min(triton.next_power_of_2(out_w), 64)
-
-    grid = (
-        in_n * in_c,
-        triton.cdiv(out_h, block_h) * triton.cdiv(out_w, block_w),
-    )
+    total = output.numel()
+    block = 1024
+    grid = (triton.cdiv(total, block),)
 
     with torch_device_fn.device(input.device):
-        max_pool2d_forward_kernel[grid](
+        max_pool2d_forward_flat_kernel[grid](
             input,
             output,
             indices,
-            input.stride(0),
-            input.stride(1),
-            input.stride(2),
-            input.stride(3),
-            in_c,
+            total,
             in_h,
             in_w,
             out_h,
@@ -323,8 +426,10 @@ def max_pool2d_with_indices(
             padding_w,
             dilation_h,
             dilation_w,
-            block_h,
-            block_w,
+            block,
+            num_warps=1,
+            buffer_size_limit=2048,
+            isCloseVectorization=True,
         )
 
     return output, indices
@@ -365,34 +470,20 @@ def max_pool2d_backward(
     if grad_input.numel() == 0:
         return grad_input.to(original_dtype)
 
-    # Adaptive tiling (same rationale as forward): avoid a fixed 64x16 tile over a
-    # tiny grad_input (e.g. 7x7). next_pow2(in) capped keeps the tile just covering
-    # the input, grid dim1 tiles anything larger.
-    block_in_h = min(triton.next_power_of_2(in_h), 64)
-    block_in_w = min(triton.next_power_of_2(in_w), 32)
-
-    grid = (
-        in_n * in_c,
-        triton.cdiv(in_h, block_in_h) * triton.cdiv(in_w, block_in_w),
-    )
-
-    out_stride_nc = out_h * out_w
-    out_stride_h = out_w
-    out_stride_w = 1
+    total = grad_input.numel()
+    block = 1024
+    grid = (triton.cdiv(total, block),)
 
     with torch_device_fn.device(grad_input.device):
-        max_pool2d_backward_kernel[grid](
+        max_pool2d_backward_flat_kernel[grid](
             grad_output,
             indices,
             grad_input,
-            in_c,
+            total,
             in_h,
             in_w,
             out_h,
             out_w,
-            out_stride_nc,
-            out_stride_h,
-            out_stride_w,
             kernel_h,
             kernel_w,
             stride_h,
@@ -401,8 +492,27 @@ def max_pool2d_backward(
             padding_w,
             dilation_h,
             dilation_w,
-            block_in_h,
-            block_in_w,
+            block,
+            num_warps=1,
+            buffer_size_limit=2048,
+            isCloseVectorization=True,
         )
 
     return grad_input.to(original_dtype)
+
+
+def max_pool2d_with_indices_backward(
+    grad_output: torch.Tensor,
+    self: torch.Tensor,
+    kernel_size,
+    stride,
+    padding,
+    dilation,
+    ceil_mode: bool,
+    indices: torch.Tensor,
+):
+    """Kunlunxin implementation of aten::max_pool2d_with_indices_backward."""
+    logger.debug("GEMS_KUNLUNXIN MAX_POOL2D_WITH_INDICES_BACKWARD")
+    return max_pool2d_backward(
+        grad_output, self, indices, kernel_size, stride, padding, dilation, ceil_mode
+    )
