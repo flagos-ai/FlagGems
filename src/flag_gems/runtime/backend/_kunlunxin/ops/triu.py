@@ -56,21 +56,30 @@ def _triu_flat_kernel(
     MN,
     N: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
+    NEED_MASK: tl.constexpr,
 ):
     # Batched single-pass triu: keep where col >= row + diag, else write 0.
     # `% MN` folds the flat index into one matrix, so this works for any batch.
+    # NEED_MASK is False only when total % BLOCK_SIZE == 0 (every block full),
+    # which lets the load/store drop the always-true mask (slow masked-memory
+    # path on this XPU).
     pid = tl.program_id(0)
     offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < total
 
     matrix_offsets = offsets % MN
     rows = matrix_offsets // N
     cols = matrix_offsets - rows * N
     keep = cols >= rows + diag
 
-    x = tl.load(in_ptr + offsets, mask=mask, other=0.0)
-    y = tl.where(keep, x, 0.0)
-    tl.store(out_ptr + offsets, y, mask=mask)
+    if NEED_MASK:
+        mask = offsets < total
+        x = tl.load(in_ptr + offsets, mask=mask, other=0.0)
+        y = tl.where(keep, x, 0.0)
+        tl.store(out_ptr + offsets, y, mask=mask)
+    else:
+        x = tl.load(in_ptr + offsets)
+        y = tl.where(keep, x, 0.0)
+        tl.store(out_ptr + offsets, y)
 
 
 @triton.jit
@@ -81,21 +90,27 @@ def _triu_flat_2d_kernel(
     diag,
     N: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
+    NEED_MASK: tl.constexpr,
 ):
     # Single-matrix fast path: no `% MN`. Works out-of-place (in != out),
     # in-place (in == out), and over a contiguous top-row prefix of one matrix
     # (offsets stay within [0, M*N) so row = offset // N is exact).
     pid = tl.program_id(0)
     offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < total
 
     rows = offsets // N
     cols = offsets - rows * N
     keep = cols >= rows + diag
 
-    x = tl.load(in_ptr + offsets, mask=mask, other=0.0)
-    y = tl.where(keep, x, 0.0)
-    tl.store(out_ptr + offsets, y, mask=mask)
+    if NEED_MASK:
+        mask = offsets < total
+        x = tl.load(in_ptr + offsets, mask=mask, other=0.0)
+        y = tl.where(keep, x, 0.0)
+        tl.store(out_ptr + offsets, y, mask=mask)
+    else:
+        x = tl.load(in_ptr + offsets)
+        y = tl.where(keep, x, 0.0)
+        tl.store(out_ptr + offsets, y)
 
 
 def _check_input(A):
@@ -110,20 +125,27 @@ def _triu_row_kernel(
     N,
     diag,
     BLOCK_N: tl.constexpr,
+    NEED_MASK: tl.constexpr,
 ):
     # One program per row (grid = batch*M). `row = pid % M` is a single mod PER
     # PROGRAM, replacing the flat kernel's per-element div/mod. Each row streams
     # its N columns as contiguous BLOCK_N chunks (block DMA), keeping the entries
     # with col >= row + diag and zeroing the rest.
+    # NEED_MASK is False only when N % BLOCK_N == 0 (every chunk full), dropping
+    # the always-true mask from the load/store.
     pid = tl.program_id(0)
     row = pid % M
     base = pid * N
     for c0 in range(0, N, BLOCK_N):
         cols = c0 + tl.arange(0, BLOCK_N)
-        m = cols < N
         keep = cols >= row + diag
-        x = tl.load(in_ptr + base + cols, mask=m, other=0.0)
-        tl.store(out_ptr + base + cols, tl.where(keep, x, 0.0), mask=m)
+        if NEED_MASK:
+            m = cols < N
+            x = tl.load(in_ptr + base + cols, mask=m, other=0.0)
+            tl.store(out_ptr + base + cols, tl.where(keep, x, 0.0), mask=m)
+        else:
+            x = tl.load(in_ptr + base + cols)
+            tl.store(out_ptr + base + cols, tl.where(keep, x, 0.0))
 
 
 # Large flat tiles hide the div/where compute better than small ones on this XPU
@@ -147,22 +169,45 @@ def _launch_flat(input_c, out, diagonal, total=None):
         # be a top-row prefix (band_hi * N) -> that many rows; row = pid % M.
         num_rows = total // N
         block_n = min(triton.next_power_of_2(N), _BLOCK_SIZE)
+        need_mask = N % block_n != 0
         with torch_device_fn.device(input_c.device):
             _triu_row_kernel[(num_rows,)](
-                input_c, out, M, N, diagonal, block_n, num_warps=8
+                input_c, out, M, N, diagonal, block_n, need_mask, num_warps=8
             )
         return
     grid = (triton.cdiv(total, _BLOCK_SIZE),)
+    need_mask = total % _BLOCK_SIZE != 0
     with torch_device_fn.device(input_c.device):
         if total <= MN:
             # single matrix (or a top-row prefix of one) -> skip the `% MN`.
             _triu_flat_2d_kernel[grid](
-                input_c, out, total, diagonal, N, _BLOCK_SIZE, num_warps=8
+                input_c,
+                out,
+                total,
+                diagonal,
+                N,
+                _BLOCK_SIZE,
+                need_mask,
+                num_warps=8,
             )
         else:
             _triu_flat_kernel[grid](
-                input_c, out, total, diagonal, MN, N, _BLOCK_SIZE, num_warps=8
+                input_c,
+                out,
+                total,
+                diagonal,
+                MN,
+                N,
+                _BLOCK_SIZE,
+                need_mask,
+                num_warps=8,
             )
+
+
+def _band_bounds(M, N, diagonal):
+    # Number of top rows that still contain kept elements for the given
+    # diagonal. Rows [band_hi, M) are entirely below the diagonal (all zeros).
+    return min(M, max(0, N - diagonal))
 
 
 def _launch_triu_inplace_contiguous(A, diagonal):
@@ -170,12 +215,12 @@ def _launch_triu_inplace_contiguous(A, diagonal):
     if diagonal >= N:  # zero everything
         A.zero_()
         return
-    # rows [band_hi, M) are entirely below the diagonal. When that slice is
+    # Rows [band_hi, M) are entirely below the diagonal. When that slice is
     # contiguous (2D / batch == 1) we memset it in bulk (vendor bandwidth) and
     # run the flat kernel only over the contiguous band prefix [0, band_hi*N).
-    # For batched tensors the slice is strided (zero_()/fill_() would miszero a
+    # For batched inputs the slice is strided (zero_()/fill_() would miszero a
     # contiguous block on this XPU), so we fall back to one flat pass over all.
-    band_hi = min(M, max(0, N - diagonal))
+    band_hi = _band_bounds(M, N, diagonal)
     if band_hi < M:
         below = A[..., band_hi:, :]
         if below.is_contiguous():
@@ -198,6 +243,20 @@ def triu(A, diagonal=0):
     if diagonal >= N:  # zero everything
         out.zero_()
         return out
+    # Symmetric band trick to triu_: rows [band_hi, M) are entirely below the
+    # diagonal (all-zero output). When that output slice is contiguous
+    # (2D / batch == 1) bulk-memset it and run the flat kernel only over the
+    # top band prefix [0, band_hi*N) instead of the whole matrix. Only worth it
+    # for large matrices: on tiny inputs the extra zero_() launch outweighs the
+    # saved band work.
+    band_hi = _band_bounds(M, N, diagonal)
+    if band_hi < M and A.numel() >= (1 << 20):
+        below = out[..., band_hi:, :]
+        if below.is_contiguous():
+            below.zero_()
+            if band_hi > 0:
+                _launch_flat(A, out, diagonal, total=band_hi * N)
+            return out
     _launch_flat(A, out, diagonal)
     return out
 
