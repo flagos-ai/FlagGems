@@ -21,6 +21,7 @@ from flag_gems.ops.__xor__ import xor, xor_, xor_scalar_, xor_scalar_tensor
 from flag_gems.ops._adaptive_avg_pool2d_backward import _adaptive_avg_pool2d_backward
 from flag_gems.ops._add_relu import _add_relu
 from flag_gems.ops._add_relu_ import _add_relu_
+from flag_gems.ops._aminmax import _aminmax, _aminmax_out
 from flag_gems.ops._amp_foreach_non_finite_check_and_unscale_ import (
     _amp_foreach_non_finite_check_and_unscale_,
 )
@@ -1033,6 +1034,8 @@ __all__ = [
     "_adaptive_avg_pool3d_backward",
     "_add_relu",
     "_add_relu_",
+    "_aminmax",
+    "_aminmax_out",
     "_amp_foreach_non_finite_check_and_unscale_",
     "_amp_update_scale_",
     "_assert_async",
