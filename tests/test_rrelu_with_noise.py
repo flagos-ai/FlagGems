@@ -55,6 +55,7 @@ def _assert_training_contract(result, original, noise, lower, upper):
     utils.gems_assert_close(result, expected, original.dtype)
 
 
+@pytest.mark.rrelu_with_noise
 @pytest.mark.parametrize("op_name", ["rrelu_with_noise", "rrelu_with_noise_"])
 @pytest.mark.parametrize("training", [False, True])
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
@@ -82,6 +83,7 @@ def test_rrelu_with_noise(op_name, training, shape, dtype):
     utils.gems_assert_close(noise, ref_noise, dtype)
 
 
+@pytest.mark.rrelu_with_noise
 @pytest.mark.parametrize("op_name", ["rrelu_with_noise", "rrelu_with_noise_"])
 @pytest.mark.parametrize("dtype", utils.ALL_FLOAT_DTYPES)
 def test_rrelu_with_noise_training_random_contract(op_name, dtype):
@@ -101,6 +103,7 @@ def test_rrelu_with_noise_training_random_contract(op_name, dtype):
         utils.gems_assert_equal(inp, original)
 
 
+@pytest.mark.rrelu_with_noise
 @pytest.mark.parametrize("op_name", ["rrelu_with_noise", "rrelu_with_noise_"])
 @pytest.mark.parametrize("dtype", utils.ALL_FLOAT_DTYPES)
 def test_rrelu_with_noise_generator_reproducibility(op_name, dtype):
@@ -143,6 +146,7 @@ def test_rrelu_with_noise_generator_reproducibility(op_name, dtype):
     _assert_training_contract(advanced_output, original, advanced_noise, lower, upper)
 
 
+@pytest.mark.rrelu_with_noise
 @pytest.mark.parametrize("op_name", ["rrelu_with_noise", "rrelu_with_noise_"])
 def test_rrelu_with_noise_eval_does_not_advance_generator(op_name):
     generator = torch.Generator(device=flag_gems.device)
@@ -165,6 +169,7 @@ def test_rrelu_with_noise_eval_does_not_advance_generator(op_name):
     assert torch.equal(generator.get_state(), state_before)
 
 
+@pytest.mark.rrelu_with_noise
 @pytest.mark.parametrize("training", [False, True])
 @pytest.mark.parametrize("dtype", utils.ALL_FLOAT_DTYPES)
 def test_rrelu_with_noise_inplace_alias(training, dtype):
@@ -181,6 +186,7 @@ def test_rrelu_with_noise_inplace_alias(training, dtype):
     assert result.data_ptr() == input_ptr
 
 
+@pytest.mark.rrelu_with_noise
 @pytest.mark.parametrize("op_name", ["rrelu_with_noise", "rrelu_with_noise_"])
 def test_rrelu_with_noise_training_mask(op_name):
     # NaN takes the non-sampled path and records one. Signed-zero behavior is
@@ -202,6 +208,7 @@ def test_rrelu_with_noise_training_mask(op_name):
     utils.gems_assert_close(noise, ref_noise, dtype)
 
 
+@pytest.mark.rrelu_with_noise
 @pytest.mark.parametrize("op_name", ["rrelu_with_noise", "rrelu_with_noise_"])
 @pytest.mark.parametrize("training", [False, True])
 @pytest.mark.parametrize("dtype", utils.ALL_FLOAT_DTYPES)
@@ -243,6 +250,7 @@ def test_rrelu_with_noise_non_contiguous(op_name, training, dtype):
     utils.gems_assert_equal(noise_base[:, 1::2], noise_untouched)
 
 
+@pytest.mark.rrelu_with_noise
 @pytest.mark.parametrize("op_name", ["rrelu_with_noise", "rrelu_with_noise_"])
 @pytest.mark.parametrize("training", [False, True])
 @pytest.mark.parametrize("shape", [(0,), (0, 7), (2, 0, 3)])
@@ -260,6 +268,7 @@ def test_rrelu_with_noise_empty(op_name, training, shape):
         assert result.data_ptr() == input_ptr
 
 
+@pytest.mark.rrelu_with_noise
 @pytest.mark.parametrize("op_name", ["rrelu_with_noise", "rrelu_with_noise_"])
 def test_rrelu_with_noise_eval_does_not_modify_noise(op_name):
     inp = torch.randn((257,), device=flag_gems.device)
@@ -275,6 +284,7 @@ def test_rrelu_with_noise_eval_does_not_modify_noise(op_name):
         utils.gems_assert_equal(inp, input_before)
 
 
+@pytest.mark.rrelu_with_noise
 @pytest.mark.parametrize("training", [False, True])
 def test_rrelu_with_noise_autograd(training):
     dtype = torch.float32
@@ -297,6 +307,7 @@ def test_rrelu_with_noise_autograd(training):
     utils.gems_assert_close(gems_inp.grad, ref_inp.grad, dtype)
 
 
+@pytest.mark.rrelu_with_noise
 @pytest.mark.parametrize("training", [False, True])
 def test_rrelu_with_noise_inplace_autograd_non_leaf(training):
     # A leaf requiring grad is correctly rejected by PyTorch for any in-place
@@ -324,6 +335,7 @@ def test_rrelu_with_noise_inplace_autograd_non_leaf(training):
     utils.gems_assert_close(gems_leaf.grad, ref_leaf.grad, dtype)
 
 
+@pytest.mark.rrelu_with_noise
 @pytest.mark.parametrize("training", [False, True])
 def test_rrelu_with_noise_backward_self_is_result(training):
     # Explicitly cover the backward variant used when the forward op was
