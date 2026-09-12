@@ -187,7 +187,15 @@ def _launch_erfinv(x: torch.Tensor, out: torch.Tensor):
         mode = 0
     else:
         mode = 1
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    # The grid must be a *stable* object. The XPU backend injects it into
+    # XPUOptions, and the kernel cache key is built with `str(options)` -- so a
+    # grid lambda rebuilt on every call puts a fresh address (and therefore a
+    # fresh key) into the key, and every call recompiles the kernel from
+    # scratch: measured 107ms per call at [64,64] fp16, 186ms at [4096,4096].
+    # BLOCK_SIZE is an explicit constexpr here, so the grid is fully determined
+    # and a plain tuple is equivalent.
+    # Minimal repro: artifacts/op-perf-batch-2026-09/evidence/percall-kernel-tax/
+    grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
     _erfinv_kernel[grid](
         x,
         out,
