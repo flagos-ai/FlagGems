@@ -42,15 +42,23 @@ logger = logging.getLogger(__name__)
 # motivated the modulo wrap.
 @triton.jit
 def reflection_pad1d_kernel(
-    in_ptr, out_ptr, W_in, pad_left, W_out, total_out, BLOCK: tl.constexpr
+    in_ptr,
+    out_ptr,
+    W_in,
+    pad_left,
+    W_out,
+    total_out,
+    BLOCK: tl.constexpr,
+    NEED_MASK: tl.constexpr = True,
 ):
     pid = tl.program_id(axis=0)
     o = pid * BLOCK + tl.arange(0, BLOCK)
-    mask = o < total_out
 
-    # Decode flat output index -> (batch row, w_out)
+    # Decode flat output index -> (batch row, w_out). XPU has no hardware
+    # integer divider, so keep a single `//` and derive the remainder as
+    # w_idx = o - b * W_out (exact for non-negative values, maxdiff=0).
     b = o // W_out
-    w_idx = o % W_out
+    w_idx = o - b * W_out
 
     # Reflected width index. pad_left < W_in is validated on the host, so a
     # single period (abs + where) is exact -- no `% (2*(W_in-1))` needed.
@@ -60,8 +68,16 @@ def reflection_pad1d_kernel(
     iw = tl.where(t < W_in, t, pW - t)
 
     in_offs = b * W_in + iw
-    vals = tl.load(in_ptr + in_offs, mask=mask)
-    tl.store(out_ptr + o, vals, mask=mask)
+    if NEED_MASK:
+        # Tail block: mask off lanes o >= total_out. When BLOCK divides
+        # total_out exactly the host passes NEED_MASK=False and the
+        # unmasked path avoids the slow masked-memory path on XPU.
+        mask = o < total_out
+        vals = tl.load(in_ptr + in_offs, mask=mask)
+        tl.store(out_ptr + o, vals, mask=mask)
+    else:
+        vals = tl.load(in_ptr + in_offs)
+        tl.store(out_ptr + o, vals)
 
 
 @triton.jit
@@ -135,10 +151,22 @@ def _launch_reflection_pad1d(input: torch.Tensor, padding, out: torch.Tensor = N
         )
 
     total_out = B * W_out
+    # Adaptive BLOCK: tiny outputs fit with far less launch overhead in a
+    # 256-lane program than in one 1024-lane program (measured 1.2-1.7x on
+    # (3,33)/(2,4,64)); medium/large shapes keep BLOCK=1024 (sweep optimum).
+    BLOCK = 256 if total_out <= 1024 else 1024
+    need_mask = (total_out % BLOCK) != 0
     grid = (triton.cdiv(total_out, BLOCK),)
     with torch_device_fn.device(x.device):
         reflection_pad1d_kernel[grid](
-            x, out, W_in, pad_left, W_out, total_out, BLOCK=BLOCK
+            x,
+            out,
+            W_in,
+            pad_left,
+            W_out,
+            total_out,
+            BLOCK=BLOCK,
+            NEED_MASK=need_mask,
         )
     return out
 

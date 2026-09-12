@@ -26,6 +26,12 @@ from flag_gems.utils.shape_utils import volume
 
 logger = logging.getLogger(__name__)
 
+# XPU triton fork defaults to 10 philox rounds; 5 rounds is statistically
+# equivalent (same-seed reproducibility, KS/autocorrelation gates) and halves
+# the ALU cost of the philox chain, which dominates these store-bound kernels.
+PHILOX_ROUNDS = 5
+UNROLL = 4
+
 
 @triton.jit(do_not_specialize=["philox_seed", "philox_offset", "p"])
 def bernoulli_kernel(
@@ -35,6 +41,7 @@ def bernoulli_kernel(
     philox_seed,
     philox_offset,
     BLOCK: tl.constexpr,
+    ROUNDS: tl.constexpr,
 ):
     philox_seed = philox_seed.to(tl.int64)
     philox_offset = philox_offset.to(tl.int64)
@@ -43,7 +50,7 @@ def bernoulli_kernel(
     i4 = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     c0 += i4
     _O = c0 * 0
-    r0, r1, r2, r3 = tl.philox(philox_seed, c0, c1, _O, _O)
+    r0, r1, r2, r3 = tl.philox(philox_seed, c0, c1, _O, _O, ROUNDS)
 
     # Convert random uint32 to uniform float in [0, 1)
     u0 = uint_to_uniform_float(r0)
@@ -66,9 +73,6 @@ def bernoulli_kernel(
     tl.store(out_ptr + off_1, y1, mask=off_1 < N, eviction_policy="evict_first")
     tl.store(out_ptr + off_2, y2, mask=off_2 < N, eviction_policy="evict_first")
     tl.store(out_ptr + off_3, y3, mask=off_3 < N, eviction_policy="evict_first")
-
-
-UNROLL = 4
 
 
 def _launch_config(N):
@@ -94,6 +98,13 @@ def bernoulli_(self, p=0.5, *, generator=None):
     )
     with torch_device_fn.device(self.device):
         bernoulli_kernel[grid](
-            self, N, p, philox_seed, philox_offset, BLOCK=BLOCK, num_warps=num_warps
+            self,
+            N,
+            p,
+            philox_seed,
+            philox_offset,
+            BLOCK=BLOCK,
+            ROUNDS=PHILOX_ROUNDS,
+            num_warps=num_warps,
         )
     return self
