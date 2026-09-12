@@ -52,6 +52,7 @@ searchsorted_scalar: test_searchsorted
 # Operators tested in combined files or with different naming
 batch_norm_backward: test_batch_norm
 batch_norm_impl_index: test_batch_norm
+mm_w8a8_fp8: test_mm
 segment_reduce_backward: test_segment_reduce
 segment_reduce_backward_out: test_segment_reduce
 upsample_bicubic2d_aa_backward: test_upsample_bicubic2d_aa
