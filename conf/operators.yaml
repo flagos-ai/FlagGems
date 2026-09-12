@@ -39,6 +39,34 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: _logcumsumexp
+  description: 'Returns the log of the cumulative sum of exponentials of elements along a
+    dimension, computed in a numerically stable way. Underscored variant of
+    `torch.logcumsumexp`.
+
+    '
+  for:
+  - _logcumsumexp
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: _logcumsumexp_out
+  description: 'A variant of `_logcumsumexp` that assigns the output to the `out` tensor.
+
+    '
+  for:
+  - _logcumsumexp.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: _reshape_alias
   description: 'Creates a view of the input tensor with the given size and stride,
 
