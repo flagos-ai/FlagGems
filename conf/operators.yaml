@@ -56,6 +56,19 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: _stack
+  description: |
+    Concatenates a sequence of tensors along a new dimension. This is the
+    internal `_stack` implementation that mirrors `stack`.
+  for:
+  - _stack
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: _weight_norm
   description: 'Reparameterizes a module''s weight tensor by decoupling its magnitude
     (g)
