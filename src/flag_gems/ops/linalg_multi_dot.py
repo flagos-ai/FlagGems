@@ -16,26 +16,103 @@ import logging
 import warnings
 
 import torch
+import triton
+import triton.language as tl
 
-from flag_gems import runtime
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
+from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
 
 _CPU_KEYSET = torch._C.DispatchKeySet(torch._C.DispatchKey.CPU)
-_DEVICE_KEYSET = torch._C.DispatchKeySet(
-    getattr(torch._C.DispatchKey, runtime.device.dispatch_key)
-)
 
 
-def _native_mm(left, right, out=None):
-    """Run the backend GEMM without re-entering FlagGems' ``mm`` override."""
-    keyset = _CPU_KEYSET if left.device.type == "cpu" else _DEVICE_KEYSET
-    if out is not None:
-        if not out.is_contiguous():
-            out.copy_(torch.ops.aten.mm.default.redispatch(keyset, left, right))
-            return out
-        return torch.ops.aten.mm.out.redispatch(keyset, left, right, out=out)
-    return torch.ops.aten.mm.default.redispatch(keyset, left, right)
+@libentry()
+@triton.jit
+def _multi_dot_mm_kernel(
+    left,
+    right,
+    output,
+    rows,
+    columns,
+    inner,
+    stride_lm,
+    stride_lk,
+    stride_rk,
+    stride_rn,
+    stride_om,
+    stride_on,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    IS_FP64: tl.constexpr,
+):
+    pid = ext.program_id(0)
+    grid_n = tl.cdiv(columns, BLOCK_N)
+    pid_m = pid // grid_n
+    pid_n = pid % grid_n
+    offsets_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    offsets_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    offsets_k = tl.arange(0, BLOCK_K)
+
+    accumulator = tl.zeros(
+        (BLOCK_M, BLOCK_N), dtype=tl.float64 if IS_FP64 else tl.float32
+    )
+    for start_k in range(0, tl.cdiv(inner, BLOCK_K)):
+        current_k = start_k * BLOCK_K + offsets_k
+        left_values = tl.load(
+            left + offsets_m[:, None] * stride_lm + current_k[None, :] * stride_lk,
+            mask=(offsets_m[:, None] < rows) & (current_k[None, :] < inner),
+            other=0.0,
+        )
+        right_values = tl.load(
+            right + current_k[:, None] * stride_rk + offsets_n[None, :] * stride_rn,
+            mask=(current_k[:, None] < inner) & (offsets_n[None, :] < columns),
+            other=0.0,
+        )
+        accumulator += tl.dot(left_values, right_values, allow_tf32=False)
+
+    tl.store(
+        output + offsets_m[:, None] * stride_om + offsets_n[None, :] * stride_on,
+        accumulator,
+        mask=(offsets_m[:, None] < rows) & (offsets_n[None, :] < columns),
+    )
+
+
+def _matrix_multiply(left, right, out=None):
+    """Multiply without TF32 so results match ATen's multi_dot precision."""
+    if left.device.type == "cpu":
+        if out is not None:
+            return torch.ops.aten.mm.out.redispatch(_CPU_KEYSET, left, right, out=out)
+        return torch.ops.aten.mm.default.redispatch(_CPU_KEYSET, left, right)
+
+    rows, inner = left.shape
+    columns = right.shape[1]
+    if out is None:
+        out = torch.empty((rows, columns), dtype=left.dtype, device=left.device)
+    grid = (triton.cdiv(rows, 32) * triton.cdiv(columns, 32),)
+    with torch_device_fn.device(left.device):
+        _multi_dot_mm_kernel[grid](
+            left,
+            right,
+            out,
+            rows,
+            columns,
+            inner,
+            left.stride(0),
+            left.stride(1),
+            right.stride(0),
+            right.stride(1),
+            out.stride(0),
+            out.stride(1),
+            BLOCK_M=32,
+            BLOCK_N=32,
+            BLOCK_K=32,
+            IS_FP64=left.dtype == torch.float64,
+            num_warps=4,
+        )
+    return out
 
 
 def _validate_and_prepare(tensors):
@@ -129,8 +206,8 @@ def _multiply_chain(arrays, splits, start, end, out=None):
     left = _multiply_chain(arrays, splits, start, split)
     right = _multiply_chain(arrays, splits, split + 1, end)
     if out is not None:
-        return _native_mm(left, right, out=out)
-    return _native_mm(left, right)
+        return _matrix_multiply(left, right, out=out)
+    return _matrix_multiply(left, right)
 
 
 def _multiply_three(arrays, out=None):
@@ -141,17 +218,17 @@ def _multiply_three(arrays, out=None):
     right_cost = inner_ab * columns * (rows + inner_bc)
 
     if left_cost > right_cost:
-        right = _native_mm(b, c)
-        return _native_mm(a, right, out=out)
+        right = _matrix_multiply(b, c)
+        return _matrix_multiply(a, right, out=out)
 
-    left = _native_mm(a, b)
-    return _native_mm(left, c, out=out)
+    left = _matrix_multiply(a, b)
+    return _matrix_multiply(left, c, out=out)
 
 
 def _multi_dot_impl(arrays, out=None):
     num_tensors = len(arrays)
     if num_tensors == 2:
-        return _native_mm(arrays[0], arrays[1], out=out)
+        return _matrix_multiply(arrays[0], arrays[1], out=out)
     if num_tensors == 3:
         return _multiply_three(arrays, out=out)
 
