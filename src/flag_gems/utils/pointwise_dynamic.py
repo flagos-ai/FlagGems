@@ -22,6 +22,7 @@ import torch
 import triton
 from triton.runtime.jit import JITFunction
 
+from flag_gems.runtime import torch_device_fn
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 from flag_gems.utils.codegen_config_utils import CodeGenConfig, get_codegen_config
@@ -1301,6 +1302,12 @@ class PointwiseDynamicFunction:
         self.complex_strategy = ComplexStrategy()
         self._operand_indices = self._infer_operand_indices()
 
+        # Graph capture output buffer pool.
+        # During a warmup run (non-capture), allocated outputs are recorded here
+        # keyed by (shape, dtype, device_str).  During a subsequent graph capture
+        # the same buffers are reused so that no dynamic allocation is needed.
+        self._capture_output_pool: dict = {}
+
     # -------------------- operand index inference --------------------
 
     def _infer_operand_indices(self):
@@ -1346,7 +1353,66 @@ class PointwiseDynamicFunction:
         ndim, args, kwargs = self.prepare_args(*args, **kwargs)
         overload = self.instantiate(ndim)
         out = overload(*args, **kwargs)
+        # Record allocated outputs so that a subsequent graph-capture run can
+        # reuse the same buffers instead of calling empty_like / empty.
+        if not self._is_capturing():
+            results = out if isinstance(out, (tuple, list)) else (out,)
+            for t in results:
+                if isinstance(t, torch.Tensor):
+                    self._record_output_buffer(t)
         return self._unwrap(out)
+
+    # -------------------- graph capture helpers --------------------
+
+    @staticmethod
+    def _is_capturing() -> bool:
+        """Return True when the current stream is inside CUDA/MUSA graph capture."""
+        try:
+            # Use backend-agnostic torch_device_fn (torch.cuda / torch.musa / ...)
+            return torch_device_fn.is_current_stream_capturing()
+        except (RuntimeError, AttributeError):
+            return False
+
+    def _alloc_output(
+        self,
+        shape,
+        dtype: torch.dtype,
+        device: torch.device,
+        *,
+        like_tensor=None,
+    ) -> torch.Tensor:
+        """Allocate an output tensor, reusing a cached buffer during graph capture.
+
+        Normal mode: behaves exactly like ``torch.empty_like`` / ``torch.empty``.
+        Capture mode: looks up ``_capture_output_pool`` for a previously recorded
+        buffer with the same (shape, dtype, device) key.  If none is found the
+        call falls back to a regular allocation which will raise on backends that
+        forbid it (providing a clear error message).
+
+        After every *non-capture* invocation the caller should pass the newly
+        allocated tensor to :meth:`_record_output_buffer` so that the next
+        capture run can reuse it.
+        """
+        buf_key = (tuple(shape), dtype, str(device))
+
+        if self._is_capturing():
+            pool = self._capture_output_pool.get(buf_key)
+            if pool:
+                return pool[0]  # reuse the warmup-phase buffer
+            # No cached buffer – fall through to normal alloc which will
+            # either succeed (CUDA) or raise a clear error (MUSA / others).
+
+        if like_tensor is not None:
+            return torch.empty_like(like_tensor, dtype=dtype)
+        return torch.empty(shape, dtype=dtype, device=device)
+
+    def _record_output_buffer(self, tensor: torch.Tensor) -> None:
+        """Cache *tensor* so that a later graph-capture run can reuse it."""
+        if self._is_capturing():
+            return  # do not overwrite pool during capture
+        buf_key = (tuple(tensor.shape), tensor.dtype, str(tensor.device))
+        # Keep only the latest buffer per key to bound memory usage.
+        self._capture_output_pool[buf_key] = [tensor]
 
     # -------------------- complex helpers --------------------
 
@@ -1558,7 +1624,12 @@ class PointwiseDynamicFunction:
             self.config.prefer_block_pointer = False
         if self.use_fast_path(tensors):  # dimension collapse & use physical ordering
             allocated_outputs = [
-                torch.empty_like(tensors[0], dtype=dtype)
+                self._alloc_output(
+                    tensors[0].shape,
+                    dtype,
+                    tensors[0].device,
+                    like_tensor=tensors[0],
+                )
                 for dtype in outputs_dtypes_for_allocation
             ]
             task_shape = (tensors[0].numel(),)
@@ -1604,14 +1675,23 @@ class PointwiseDynamicFunction:
             for item in tensors:
                 if item.shape == task_shape:
                     allocated_outputs = [
-                        torch.empty_like(item, dtype=dtype)
+                        self._alloc_output(
+                            item.shape,
+                            dtype,
+                            item.device,
+                            like_tensor=item,
+                        )
                         for dtype in outputs_dtypes_for_allocation
                     ]
                     break
             else:  # nobreak
                 device = tensors[0].device
                 allocated_outputs = [
-                    torch.empty(task_shape, dtype=dtype, device=device)
+                    self._alloc_output(
+                        task_shape,
+                        dtype,
+                        device,
+                    )
                     for dtype in outputs_dtypes_for_allocation
                 ]
             args = tuple(

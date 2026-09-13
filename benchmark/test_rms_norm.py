@@ -43,6 +43,8 @@ FP8_DTYPE = torch.float8_e4m3fn if hasattr(torch, "float8_e4m3fn") else None
 def _cuda_fp8_e4m3fn_available():
     if FP8_DTYPE is None or not torch.cuda.is_available():
         return False
+    if flag_gems.vendor_name == "thead":
+        return True
     major, _ = torch.cuda.get_device_capability()
     return major >= 9
 
@@ -132,7 +134,7 @@ class RmsNormInt8W8A16Benchmark(RmsNormW8A16Benchmark):
 @pytest.mark.rms_norm_w8a16_fp8
 @pytest.mark.skipif(
     not _cuda_fp8_e4m3fn_available(),
-    reason="RMSNorm W8A16 FP8 requires CUDA sm90+ float8_e4m3fn",
+    reason="RMSNorm W8A16 FP8 requires CUDA float8_e4m3fn",
 )
 def test_rms_norm_w8a16_fp8():
     bench = RmsNormFp8W8A16Benchmark(
