@@ -22,6 +22,7 @@ import torch
 import triton
 from triton.runtime.jit import JITFunction
 
+from flag_gems.runtime import torch_device_fn
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 from flag_gems.utils.codegen_config_utils import CodeGenConfig, get_codegen_config
@@ -71,6 +72,17 @@ def _tuple_content(strings: Sequence[str]) -> str:
 
 def _cs(strings: Iterable[str]) -> str:
     return ", ".join(strings)
+
+
+def _balanced_grid_partition(num_tiles: int, max_grid_size: int) -> Tuple[int, int]:
+    if num_tiles <= 0:
+        raise ValueError("num_tiles must be positive")
+    if max_grid_size <= 0:
+        raise ValueError("max_grid_size must be positive")
+    initial_ctas = min(max_grid_size, num_tiles)
+    tiles_per_cta = (num_tiles + initial_ctas - 1) // initial_ctas
+    num_ctas = (num_tiles + tiles_per_cta - 1) // tiles_per_cta
+    return num_ctas, tiles_per_cta
 
 
 def _broadcast_vec(i, ndim):
@@ -877,13 +889,18 @@ class WrapperGenerator:
                 "num_tiles = math.prod(triton.cdiv(size, tile_size) for size, tile_size in zip(shape, tile_sizes))"
             )
 
-            if self.name.find("fill_scalar") != -1 and major >= 9:
-                code.writeline("num_ctas = num_tiles")
+            max_grid_size0 = self.config.max_grid_size[0]
+            if self.config.balance_grid:
+                code.writeline(
+                    f"num_ctas, tiles_per_cta = _balanced_grid_partition(num_tiles, {max_grid_size0})"
+                )
             else:
-                max_grid_size0 = self.config.max_grid_size[0]
-                code.writeline(f"num_ctas = min({max_grid_size0}, num_tiles)")
+                if self.name.find("fill_scalar") != -1 and major >= 9:
+                    code.writeline("num_ctas = num_tiles")
+                else:
+                    code.writeline(f"num_ctas = min({max_grid_size0}, num_tiles)")
 
-            code.writeline("tiles_per_cta = triton.cdiv(num_tiles, num_ctas)")
+                code.writeline("tiles_per_cta = triton.cdiv(num_tiles, num_ctas)")
             code.writeline("num_warps = heuristics_for_num_warps(tile_size)")
             code.writeline("one_tile_per_cta = tiles_per_cta==1")
         code.writeline("grid = (num_ctas, 1, 1)")
@@ -914,13 +931,18 @@ class WrapperGenerator:
             code.writeline("tile_size = tile_sizes[0]")
             code.writeline("num_tiles = triton.cdiv(num_tasks, tile_size)")
 
-            if self.name.find("fill_scalar") != -1 and major >= 9:
-                code.writeline("num_ctas = num_tiles")
+            max_grid_size0 = self.config.max_grid_size[0]
+            if self.config.balance_grid:
+                code.writeline(
+                    f"num_ctas, tiles_per_cta = _balanced_grid_partition(num_tiles, {max_grid_size0})"
+                )
             else:
-                max_grid_size0 = self.config.max_grid_size[0]
-                code.writeline(f"num_ctas = min({max_grid_size0}, num_tiles)")
+                if self.name.find("fill_scalar") != -1 and major >= 9:
+                    code.writeline("num_ctas = num_tiles")
+                else:
+                    code.writeline(f"num_ctas = min({max_grid_size0}, num_tiles)")
 
-            code.writeline("tiles_per_cta = triton.cdiv(num_tiles, num_ctas)")
+                code.writeline("tiles_per_cta = triton.cdiv(num_tiles, num_ctas)")
             code.writeline("num_warps = heuristics_for_num_warps(tile_size)")
             code.writeline("one_tile_per_cta = tiles_per_cta==1")
         code.writeline("grid = (num_ctas, 1, 1)")
@@ -1190,6 +1212,10 @@ class ModuleGenerator:
         code.writeline("from flag_gems.utils.libentry import libentry")
         code.writeline("from flag_gems.utils import triton_lang_extension as ext")
         code.writeline("from flag_gems.runtime import torch_device_fn")
+        if self.config.balance_grid:
+            code.writeline(
+                "from flag_gems.utils.pointwise_dynamic import _balanced_grid_partition"
+            )
 
         # Generate extra imports and local JIT deps of the scalar function
         jit_dep_imports, local_jit_sources = self._collect_jit_deps(self.scalar_fn)
@@ -1276,6 +1302,12 @@ class PointwiseDynamicFunction:
         self.complex_strategy = ComplexStrategy()
         self._operand_indices = self._infer_operand_indices()
 
+        # Graph capture output buffer pool.
+        # During a warmup run (non-capture), allocated outputs are recorded here
+        # keyed by (shape, dtype, device_str).  During a subsequent graph capture
+        # the same buffers are reused so that no dynamic allocation is needed.
+        self._capture_output_pool: dict = {}
+
     # -------------------- operand index inference --------------------
 
     def _infer_operand_indices(self):
@@ -1321,7 +1353,66 @@ class PointwiseDynamicFunction:
         ndim, args, kwargs = self.prepare_args(*args, **kwargs)
         overload = self.instantiate(ndim)
         out = overload(*args, **kwargs)
+        # Record allocated outputs so that a subsequent graph-capture run can
+        # reuse the same buffers instead of calling empty_like / empty.
+        if not self._is_capturing():
+            results = out if isinstance(out, (tuple, list)) else (out,)
+            for t in results:
+                if isinstance(t, torch.Tensor):
+                    self._record_output_buffer(t)
         return self._unwrap(out)
+
+    # -------------------- graph capture helpers --------------------
+
+    @staticmethod
+    def _is_capturing() -> bool:
+        """Return True when the current stream is inside CUDA/MUSA graph capture."""
+        try:
+            # Use backend-agnostic torch_device_fn (torch.cuda / torch.musa / ...)
+            return torch_device_fn.is_current_stream_capturing()
+        except (RuntimeError, AttributeError):
+            return False
+
+    def _alloc_output(
+        self,
+        shape,
+        dtype: torch.dtype,
+        device: torch.device,
+        *,
+        like_tensor=None,
+    ) -> torch.Tensor:
+        """Allocate an output tensor, reusing a cached buffer during graph capture.
+
+        Normal mode: behaves exactly like ``torch.empty_like`` / ``torch.empty``.
+        Capture mode: looks up ``_capture_output_pool`` for a previously recorded
+        buffer with the same (shape, dtype, device) key.  If none is found the
+        call falls back to a regular allocation which will raise on backends that
+        forbid it (providing a clear error message).
+
+        After every *non-capture* invocation the caller should pass the newly
+        allocated tensor to :meth:`_record_output_buffer` so that the next
+        capture run can reuse it.
+        """
+        buf_key = (tuple(shape), dtype, str(device))
+
+        if self._is_capturing():
+            pool = self._capture_output_pool.get(buf_key)
+            if pool:
+                return pool[0]  # reuse the warmup-phase buffer
+            # No cached buffer – fall through to normal alloc which will
+            # either succeed (CUDA) or raise a clear error (MUSA / others).
+
+        if like_tensor is not None:
+            return torch.empty_like(like_tensor, dtype=dtype)
+        return torch.empty(shape, dtype=dtype, device=device)
+
+    def _record_output_buffer(self, tensor: torch.Tensor) -> None:
+        """Cache *tensor* so that a later graph-capture run can reuse it."""
+        if self._is_capturing():
+            return  # do not overwrite pool during capture
+        buf_key = (tuple(tensor.shape), tensor.dtype, str(tensor.device))
+        # Keep only the latest buffer per key to bound memory usage.
+        self._capture_output_pool[buf_key] = [tensor]
 
     # -------------------- complex helpers --------------------
 
@@ -1533,7 +1624,12 @@ class PointwiseDynamicFunction:
             self.config.prefer_block_pointer = False
         if self.use_fast_path(tensors):  # dimension collapse & use physical ordering
             allocated_outputs = [
-                torch.empty_like(tensors[0], dtype=dtype)
+                self._alloc_output(
+                    tensors[0].shape,
+                    dtype,
+                    tensors[0].device,
+                    like_tensor=tensors[0],
+                )
                 for dtype in outputs_dtypes_for_allocation
             ]
             task_shape = (tensors[0].numel(),)
@@ -1579,14 +1675,23 @@ class PointwiseDynamicFunction:
             for item in tensors:
                 if item.shape == task_shape:
                     allocated_outputs = [
-                        torch.empty_like(item, dtype=dtype)
+                        self._alloc_output(
+                            item.shape,
+                            dtype,
+                            item.device,
+                            like_tensor=item,
+                        )
                         for dtype in outputs_dtypes_for_allocation
                     ]
                     break
             else:  # nobreak
                 device = tensors[0].device
                 allocated_outputs = [
-                    torch.empty(task_shape, dtype=dtype, device=device)
+                    self._alloc_output(
+                        task_shape,
+                        dtype,
+                        device,
+                    )
                     for dtype in outputs_dtypes_for_allocation
                 ]
             args = tuple(
@@ -1643,6 +1748,7 @@ class PointwiseDynamicFunction:
             f"{'1d_tile_' if self.config.prefer_1d_tile else ''}"
             f"{'bptr' if (not self.config.prefer_1d_tile and self.config.prefer_block_pointer) else ''}"
             f"_t{self.config.max_tile_size}"
+            f"{'_balanced' if self.config.balance_grid else ''}"
             ".py"
         )
         file_path = str(code_cache_dir() / file_name)
@@ -1653,7 +1759,7 @@ class PointwiseDynamicFunction:
         # NOTE: manually instantiated overload does not have `prepare_args` as
         # preprocessing, so you have to manually allocate output and make sure that
         # the inputs & ouputs actually fits the manually instantiated overload
-        key = f"{ndim}_{self.config.prefer_block_pointer}"
+        key = f"{ndim}_{self.config.prefer_block_pointer}_{self.config.balance_grid}"
         if key in self.overloads:
             return self.overloads[key]
 
@@ -1728,7 +1834,7 @@ class PointwiseDynamicFunction:
         Returns:
             KernelInfo with file_path, kernel_name, wrapper_name, and ndim
         """
-        key = f"{ndim}_{self.config.prefer_block_pointer}"
+        key = f"{ndim}_{self.config.prefer_block_pointer}_{self.config.balance_grid}"
 
         # Ensure the kernel is instantiated
         if key not in self._kernel_info_cache:
