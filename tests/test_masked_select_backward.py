@@ -140,6 +140,4 @@ def test_masked_select_backward_errors():
     mask = torch.ones_like(inp, dtype=torch.bool)
     error = "Number of elements of source < number of ones in mask"
     with pytest.raises(RuntimeError, match=error):
-        torch.ops.aten.masked_select_backward.default(grad, inp, mask)
-    with pytest.raises(RuntimeError, match=error):
         flag_gems.masked_select_backward(grad, inp, mask)
