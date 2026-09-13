@@ -76,6 +76,18 @@ BlasBenchmark:
     - [16, 4096, 4096, 4096]
   shape_desc: "B, M, N, K"   # shapes are defined as (B, M, N, K)
 
+# grouped_mm consumes 3-element shapes (Groups, N, K); without this op-level key
+# GroupmmBenchmark falls back through its MRO to the 4-element BlasBenchmark
+# entry above and dies in benchmark/base.py:434 with
+# "too many values to unpack (expected 3)".
+# Values copied verbatim from benchmark/core_shapes.yaml:311-316.
+grouped_mm:
+  shapes:
+    - [16, 512, 2048]
+    - [16, 2560, 2048]
+    - [64, 2048, 128]
+  shape_desc: "Groups, N, K"   # shapes are defined as (Groups, N, K)
+
 # NORM shapes can be either 3D or 4D:
 # - 3D shapes are represented as [batch_size, channels, hidden_size]
 # - 4D shapes are represented as [batch_size, channels, height, width]
@@ -218,6 +230,22 @@ Conv2DBenchmark:
   - [16, 32, 24, 24, 24, 3, 3, 1, 2, 2]
   shape_desc: "N, C_in, H, W, C_out, K_h, K_w, stride, padding, groups"
 
+# conv_transpose2d: op-name key. Without it the MRO fallback in benchmark/base.py:192-203
+# resolves `Benchmark` (2-/3-element shapes) and the 10-name destructuring in
+# benchmark/test_conv_transpose2d.py::_input_fn fails at benchmark/base.py:429-434,
+# yielding 0 valid samples. Copied verbatim from benchmark/core_shapes.yaml:592-601.
+conv_transpose2d:
+  shapes:
+    - [1, 64, 128, 128, 64, 3, 3, 1, 1, 1]
+    - [1, 64, 64, 64, 32, 3, 3, 2, 1, 1]
+    - [4, 32, 32, 32, 32, 3, 3, 2, 1, 1]
+    - [8, 16, 64, 64, 16, 5, 5, 2, 2, 1]
+    - [16, 32, 16, 16, 64, 3, 3, 2, 1, 1]
+    - [16, 32, 32, 32, 64, 3, 3, 2, 1, 1]
+    - [32, 64, 32, 32, 32, 3, 3, 1, 0, 1]
+    - [32, 64, 16, 16, 32, 3, 3, 2, 1, 1]
+  shape_desc: "N, C_in, H, W, C_out, K_h, K_w, stride, padding, groups"
+
 Conv3DBenchmark:
   shapes:
     - [32, 64, 64, 64, 64, 32, 3, 3, 3, 1, 1, 1]  # standard dimensions, common parameters
@@ -258,3 +286,48 @@ index:
     - [[1024, 1024], [[64], [64]]]
     - [[512, 512, 512], [[2, 128]]]
     - [[64, 64, 64], [[2, 8], [2, 8]]]
+
+nanmedian:
+  shapes:
+    - [64]
+    - [64, 64]
+    - [1024, 1024]
+    - [256, 4096]
+    - [16, 131072]
+  shape_desc: "N or M, N"
+
+nanmedian_out:
+  shapes:
+    - [64]
+    - [64, 64]
+    - [1024, 1024]
+    - [256, 4096]
+    - [16, 131072]
+  shape_desc: "N or M, N"
+
+nanmedian_dim:
+  shapes:
+    - [64, 64]
+    - [1024, 1024]
+    - [256, 4096]
+    - [16, 131072]
+  shape_desc: "M, N"
+
+nanmedian_dim_values:
+  shapes:
+    - [64, 64]
+    - [1024, 1024]
+    - [256, 4096]
+    - [16, 131072]
+  shape_desc: "M, N"
+
+per_token_group_quant_fp8:
+  shapes:
+    - [7, 512, 64]
+    - [7, 5120, 128]
+    - [83, 512, 512]
+    - [83, 4096, 256]
+    - [2048, 512, 64]
+    - [2048, 4096, 128]
+    - [2048, 13824, 512]
+  shape_desc: "num_tokens, d, group_size"
