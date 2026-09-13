@@ -30,6 +30,9 @@ on:
 jobs:
   preprocess:
     runs-on: ubuntu-latest
+    concurrency:
+      group: unit-test-${{ (github.event.pull_request && contains(github.event.pull_request.title, 'KernelGen')) && 'kg' || github.run_id }}
+      cancel-in-progress: false
     outputs:
       changed_files: ${{ steps.changed-files.outputs.all_changed_files }}
       pr_id: ${{ steps.get-pr-id.outputs.PR_ID }}

@@ -80,11 +80,35 @@ def sort_python_all(file_path: Path, fix: bool = False, dry_run: bool = False) -
     if not items:
         return True
 
+    # Remove duplicates while preserving order, then sort by casefold
+    seen = set()
+    unique_items = []
+    duplicates = []
+    for item in items:
+        if item in seen:
+            duplicates.append(item)
+        else:
+            seen.add(item)
+            unique_items.append(item)
+
     # Sort by casefold
-    sorted_items = sorted(items, key=str.casefold)
+    sorted_items = sorted(unique_items, key=str.casefold)
 
     if items == sorted_items:
-        return True  # Already sorted
+        return True  # Already sorted and no duplicates
+
+    if not fix:
+        print(f"❌ {file_path}: __all__ is not sorted by casefold")
+        if duplicates:
+            print(
+                f"   Found {len(duplicates)} duplicate(s): {', '.join(set(duplicates))}"
+            )
+        # Show first mismatch
+        for i, (actual, expected) in enumerate(zip(unique_items, sorted_items)):
+            if actual != expected:
+                print(f"   Position {i}: got '{actual}', expected '{expected}'")
+                break
+        return False
 
     if not fix:
         print(f"❌ {file_path}: __all__ is not sorted by casefold")
@@ -119,13 +143,19 @@ def sort_python_all(file_path: Path, fix: bool = False, dry_run: bool = False) -
     )
 
     if dry_run:
-        print(f"Would sort {file_path}: {len(items)} items")
+        msg = f"Would sort {file_path}: {len(unique_items)} items"
+        if duplicates:
+            msg += f" (removing {len(duplicates)} duplicate(s))"
+        print(msg)
         print(f"  First item: '{sorted_items[0]}'")
         print(f"  Last item: '{sorted_items[-1]}'")
         return False
 
     file_path.write_text(new_source)
-    print(f"✅ {file_path}: sorted {len(items)} items in __all__")
+    msg = f"✅ {file_path}: sorted {len(sorted_items)} items in __all__"
+    if duplicates:
+        msg += f" (removed {len(duplicates)} duplicate(s): {', '.join(sorted(set(duplicates)))})"
+    print(msg)
     return False
 
 
@@ -333,6 +363,45 @@ def sort_full_config(file_path: Path, fix: bool = False, dry_run: bool = False) 
     return True
 
 
+def discover_init_files() -> list[Path]:
+    """Discover all __init__.py files that should be checked.
+
+    Same logic as check_init_exports.py for consistency.
+    """
+    root = Path("src/flag_gems")
+    if not root.exists():
+        return []
+
+    files = []
+
+    # 1. Main package init (contains _FULL_CONFIG)
+    main_init = root / "__init__.py"
+    if main_init.exists():
+        files.append(main_init)
+
+    # 2. All backend ops __init__.py files
+    backend_root = root / "runtime" / "backend"
+    if backend_root.exists():
+        for vendor_dir in backend_root.iterdir():
+            if not vendor_dir.is_dir() or not vendor_dir.name.startswith("_"):
+                continue
+
+            # Check vendor-level ops/
+            vendor_ops_init = vendor_dir / "ops" / "__init__.py"
+            if vendor_ops_init.exists():
+                files.append(vendor_ops_init)
+
+            # Check architecture-level ops/
+            for arch_dir in vendor_dir.iterdir():
+                if not arch_dir.is_dir():
+                    continue
+                arch_ops_init = arch_dir / "ops" / "__init__.py"
+                if arch_ops_init.exists():
+                    files.append(arch_ops_init)
+
+    return sorted(files)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Sort __all__ exports and operators.yaml by casefold"
@@ -355,7 +424,7 @@ def main():
     parser.add_argument(
         "--files",
         nargs="+",
-        help="Specific files to process (default: all known files)",
+        help="Specific files to process (default: auto-discover all __init__.py + operators.yaml)",
     )
 
     args = parser.parse_args()
@@ -370,12 +439,11 @@ def main():
     if args.files:
         files_to_check = [Path(f) for f in args.files]
     else:
-        # Default: all known files
-        files_to_check = [
-            Path("src/flag_gems/__init__.py"),
-            Path("src/flag_gems/ops/__init__.py"),
-            Path("conf/operators.yaml"),
-        ]
+        # Auto-discover all __init__.py files + operators.yaml
+        files_to_check = discover_init_files()
+        files_to_check.append(Path("conf/operators.yaml"))
+
+    print(f"Processing {len(files_to_check)} file(s)...\n")
 
     all_sorted = True
 
@@ -387,8 +455,8 @@ def main():
         else:
             # Sort __all__
             sorted_ok = sort_python_all(file_path, fix=args.fix, dry_run=args.dry_run)
-            # Also sort _FULL_CONFIG if this is __init__.py
-            if file_path.name == "__init__.py":
+            # Also sort _FULL_CONFIG if this is the main __init__.py
+            if str(file_path) == "src/flag_gems/__init__.py":
                 config_sorted = sort_full_config(
                     file_path, fix=args.fix, dry_run=args.dry_run
                 )
