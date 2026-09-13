@@ -21,6 +21,8 @@ import logging
 import math
 import multiprocessing
 import os
+import sys
+import threading
 import time
 import warnings
 from abc import abstractmethod
@@ -1557,7 +1559,13 @@ class LibEntry(triton.KernelInterface):
             for p in self.jit_function.params
             if not p.is_constexpr and p.do_not_specialize
         ]
-        self.lock = multiprocessing.Lock()
+        if sys.platform == "darwin":
+            # A process-shared semaphore consumes one file descriptor per
+            # decorated kernel and can exhaust macOS's low default limit. The
+            # cache is process-local, so only threads need serialization here.
+            self.lock = threading.Lock()
+        else:
+            self.lock = multiprocessing.Lock()
         self.signature = fn.signature
 
     @staticmethod
