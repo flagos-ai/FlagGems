@@ -175,7 +175,7 @@ def test_thnn_fused_lstm_cell_backward_end_to_end(dtype, has_bias):
     )
 
     with torch.no_grad():
-        ref_hy, ref_cy, ref_workspace = torch.ops.aten._thnn_fused_lstm_cell(
+        ref_hy, ref_cy, _ = torch.ops.aten._thnn_fused_lstm_cell(
             input_gates, hidden_gates, cx, bias, bias
         )
         hy, cy, workspace = flag_gems._thnn_fused_lstm_cell(
@@ -184,7 +184,7 @@ def test_thnn_fused_lstm_cell_backward_end_to_end(dtype, has_bias):
         grad_hy = torch.randn_like(hy)
         grad_cy = torch.randn_like(cy)
         reference = torch.ops.aten._thnn_fused_lstm_cell_backward(
-            grad_hy, grad_cy, cx, ref_cy, ref_workspace, has_bias
+            grad_hy, grad_cy, cx, cy, workspace, has_bias
         )
         result = flag_gems._thnn_fused_lstm_cell_backward(
             grad_hy, grad_cy, cx, cy, workspace, has_bias

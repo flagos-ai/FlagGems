@@ -222,7 +222,6 @@ def _thnn_fused_lstm_cell_backward(grad_hy, grad_cy, cx, cy, workspace, has_bias
 
     _validate_inputs(grad_hy, grad_cy, cx, cy, workspace)
     batch_size, hidden_size = cx.shape
-    gate_size = 4 * hidden_size
     grad_gates = torch.empty_like(workspace, memory_format=torch.contiguous_format)
     grad_cx = torch.empty_like(cx, memory_format=torch.contiguous_format)
 
@@ -262,16 +261,17 @@ def _thnn_fused_lstm_cell_backward(grad_hy, grad_cy, cx, cy, workspace, has_bias
     if not has_bias:
         return grad_gates, grad_gates, grad_cx, None, None
 
+    bias_batch_size, bias_gate_size = workspace.shape
     grad_bias = torch.empty(
-        (gate_size,), dtype=workspace.dtype, device=workspace.device
+        (bias_gate_size,), dtype=workspace.dtype, device=workspace.device
     )
-    if gate_size != 0:
+    if bias_gate_size != 0:
         with torch_device_fn.device(workspace.device):
-            _fused_lstm_bias_backward_kernel[(gate_size,)](
+            _fused_lstm_bias_backward_kernel[(bias_gate_size,)](
                 grad_gates,
                 grad_bias,
-                batch_size,
-                gate_size,
+                bias_batch_size,
+                bias_gate_size,
                 BLOCK_BATCH=256,
                 IS_FP64=workspace.dtype == torch.float64,
             )
