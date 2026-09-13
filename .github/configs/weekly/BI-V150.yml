@@ -25,7 +25,7 @@ runner_labels: v150-flaggems-weekly
 use_container: true
 
 # Container image for this backends
-container_image: harbor.baai.ac.cn/flaggems/iluvatar-flaggems-test-bi-v150:20260819
+container_image: harbor.baai.ac.cn/flagos-app/vllm0.24.0-iluvatar-corex4.5.0:2.1.2-0.2.1_g07063fd.d20260828
 
 # Container volumes to mount for this backends
 container_volumes:
@@ -38,10 +38,23 @@ container_volumes:
 
 # Container options for this backends
 container_options: >-
-  --ipc=host
-  --privileged
-  --cap-add=ALL
-  --security-opt seccomp=unconfined
+  --device /dev/itrctl
+  --device /dev/iluvatar0
+  --device /dev/iluvatar1
+  --device /dev/iluvatar2
+  --device /dev/iluvatar3
+  --device /dev/iluvatar4
+  --device /dev/iluvatar5
+  --device /dev/iluvatar6
+  --device /dev/iluvatar7
+  --device /dev/iluvatar8
+  --device /dev/iluvatar9
+  --device /dev/iluvatar10
+  --device /dev/iluvatar11
+  --device /dev/iluvatar12
+  --device /dev/iluvatar13
+  --device /dev/iluvatar14
+  --device /dev/iluvatar15
   --workdir=/root
 
 # GPUs to test for this backends
