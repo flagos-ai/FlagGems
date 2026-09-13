@@ -53,3 +53,22 @@ def test_nonzero(shape, dtype):
         res_out = torch.nonzero(inp)
 
     utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.nonzero
+@pytest.mark.parametrize("shape", [(0,), (0, 3), (2, 0, 4), (1, 0, 1, 2)])
+def test_nonzero_empty(shape):
+    inp = torch.empty(shape, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp, False)
+    ref_out = torch.nonzero(ref_inp)
+    ref_method_out = ref_inp.nonzero()
+
+    with flag_gems.use_gems():
+        res_out = torch.nonzero(inp)
+        res_method_out = inp.nonzero()
+
+    utils.gems_assert_equal(res_out, ref_out)
+    utils.gems_assert_equal(res_method_out, ref_method_out)
+    expected_shape = (0, len(shape))
+    assert tuple(res_out.shape) == expected_shape
+    assert tuple(res_method_out.shape) == expected_shape

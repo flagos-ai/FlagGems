@@ -50,3 +50,24 @@ def test_nonzero_numpy(shape, dtype):
     assert len(res_out) == len(ref_out), "Number of output tensors should match"
     for res_t, ref_t in zip(res_out, ref_out):
         gems_assert_equal(res_t, ref_t)
+
+
+@pytest.mark.nonzero_numpy
+@pytest.mark.parametrize("shape", [(0,), (0, 3), (2, 0, 4), (1, 0, 1, 2)])
+def test_nonzero_numpy_empty(shape):
+    inp = torch.empty(shape, dtype=torch.bool, device=flag_gems.device)
+    ref_inp = to_reference(inp, False)
+    ref_nonzero = torch.nonzero(ref_inp, as_tuple=True)
+    ref_where = torch.where(ref_inp)
+
+    with flag_gems.use_gems():
+        res_nonzero = torch.nonzero(inp, as_tuple=True)
+        res_where = torch.where(inp)
+
+    assert len(res_nonzero) == len(ref_nonzero)
+    for res_t, ref_t in zip(res_nonzero, ref_nonzero):
+        gems_assert_equal(res_t, ref_t)
+
+    assert len(res_where) == len(ref_where)
+    for res_t, ref_t in zip(res_where, ref_where):
+        gems_assert_equal(res_t, ref_t)

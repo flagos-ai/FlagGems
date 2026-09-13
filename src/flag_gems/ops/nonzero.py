@@ -63,6 +63,12 @@ def nonzero(inp, *, as_tuple=False):
 
     inp = inp.contiguous()
     n_elements = inp.numel()
+    if n_elements == 0:
+        out = inp.new_empty((0, inp_ndim), dtype=torch.int64)
+        if as_tuple:
+            return torch.unbind(out, dim=1)
+        return out
+
     inp_view = inp.view(n_elements)
 
     shape = torch.tensor(inp.shape, dtype=torch.int32, device=inp.device)
