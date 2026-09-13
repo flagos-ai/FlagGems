@@ -12,7 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, List, Optional, Tuple
+"""Unified FlagGems/vLLM benchmark for variable-length FlashAttention."""
+
+from dataclasses import dataclass
+from functools import partial
+from importlib.metadata import PackageNotFoundError, version
+from itertools import accumulate
+from pathlib import Path
+from typing import Any, Callable, Optional, Tuple
 
 import pytest
 import torch
@@ -21,371 +28,662 @@ import flag_gems
 
 from . import base, utils
 
+SHAPE_ENTRY_KEY = "flash_attn_varlen_func"
+SHAPE_FIELDS = (
+    "name",
+    "query_lens_rle",
+    "kv_lens_rle",
+    "num_query_heads",
+    "num_kv_heads",
+    "head_dim",
+    "causal",
+    "paged",
+    "block_size",
+    "num_blocks",
+    "block_table_width",
+    "kv_layout",
+    "num_splits",
+)
+SHAPE_DESC = ", ".join(SHAPE_FIELDS)
+TRACE_SHAPE_FIELDS = SHAPE_FIELDS + ("max_seqlen_q", "max_seqlen_k")
+TRACE_SHAPE_DESC = ", ".join(TRACE_SHAPE_FIELDS)
+
 vendor_name = flag_gems.vendor_name
+HOPPER_AVAILABLE = (
+    vendor_name == "nvidia"
+    and flag_gems.device == "cuda"
+    and torch.cuda.is_available()
+    and torch.cuda.get_device_capability()[0] == 9
+)
 
-
-def make_paged_kv_cache(
-    num_blocks: int,
-    block_size: int,
-    num_kv_heads: int,
-    head_size: int,
-    dtype: torch.dtype,
-    device: str,
-    non_contiguous: bool,
-) -> Tuple[torch.Tensor, torch.Tensor]:
-    shape = (num_blocks, block_size, num_kv_heads, head_size)
-    if not non_contiguous:
-        key_cache = torch.randn(*shape, dtype=dtype, device=device)
-        value_cache = torch.randn_like(key_cache)
-        return key_cache, value_cache
-
-    storage_shape = (num_blocks * 2, block_size, num_kv_heads, head_size)
-    key_storage = torch.randn(*storage_shape, dtype=dtype, device=device)
-    value_storage = torch.randn_like(key_storage)
-    key_cache = key_storage[::2][:num_blocks]
-    value_cache = value_storage[::2][:num_blocks]
-
-    assert key_cache.shape == shape
-    assert value_cache.shape == shape
-    assert key_cache.stride() == value_cache.stride()
-    assert key_cache.stride(-1) == 1
-    assert key_cache.stride(0) != block_size * key_cache.stride(1)
-    return key_cache, value_cache
-
-
-class FlashAttnVarlenBenchmark(base.Benchmark):
-    """
-    benchmark for flash_attn_varlen_func
-    """
-
-    cache_non_contiguous = False
-
-    def set_shapes(self, shape_file_path: Optional[List[Any]] = None):
-        # Collecting from qwen/Qwen3-1.7B
-        # --random-input 512 --random-output 2048 --num-prompts 200 --request-rate inf
-        # Format: (cu_seq_lens_q, seqused_k, num_heads, head_size, block_size,
-        # num_blocks, alibi, soft_cap)
-
-        all_cu_seq_lens_q = [
-            (
-                0,
-                512,
+BENCHMARK_TARGETS = [
+    pytest.param("flag_gems", 2, id="flag_gems-fa2"),
+    pytest.param(
+        "flag_gems",
+        3,
+        id="flag_gems-fa3",
+        marks=pytest.mark.skipif(
+            not HOPPER_AVAILABLE,
+            reason="FA3 requires an NVIDIA Hopper GPU",
+        ),
+    ),
+    pytest.param(
+        "vllm",
+        3,
+        id="vllm-fa3",
+        marks=pytest.mark.skipif(
+            not HOPPER_AVAILABLE
+            or utils.SkipVersion("vllm", "<0.9")
+            or utils.SkipVersion("torch", "<2.7"),
+            reason=(
+                "vLLM FA3 requires vLLM >= 0.9, Torch >= 2.7, and an NVIDIA "
+                "Hopper GPU"
             ),
-            (
-                0,
-                1,
-                2,
-                72,
-            ),
-            tuple(range(0, 45))
-            + (
-                105,
-                121,
-                137,
-                153,
-                169,
-                185,
-                201,
-                217,
-                233,
-                249,
-                265,
-            ),
-            tuple(range(0, 196))
-            + (
-                211,
-                226,
-                240,
-                253,
-                265,
-            ),
-        ]
-        all_seqused_k = [
-            (512,),
-            (
-                1,
-                1,
-                70,
-            ),
-            (515,) + (514,) * 20 + (513,) * 20 + (512,) * 14,
-            (2333,)
-            + (2331,) * 20
-            + (2330,) * 20
-            + (2329,) * 14
-            + (2328,) * 18
-            + (2327,) * 15
-            + (2326,) * 17
-            + (2325,) * 18
-            + (2324,) * 21
-            + (2323,) * 22
-            + (2322,) * 24
-            + (2321,) * 5
-            + (
-                2320,
-                2319,
-                2318,
-                2317,
-                2316,
-            ),
-        ]
+        ),
+    ),
+    pytest.param(
+        "iluvatar_legacy",
+        2,
+        id="iluvatar-legacy-fa2",
+        marks=pytest.mark.skipif(
+            vendor_name != "iluvatar",
+            reason="Legacy FlashAttention baseline is only used on Iluvatar",
+        ),
+    ),
+]
 
-        num_heads = 16
-        num_heads_k = 8
-        head_dim = 128
-        block_size = 16
-        num_blocks = 2000
-        alibi = False
-        soft_cap = None
 
-        all_configs = [
-            (
-                cu_seq_lens_q,
-                seqused_k,
-                num_heads,
-                num_heads_k,
-                head_dim,
-                block_size,
-                num_blocks,
-                alibi,
-                soft_cap,
-            )
-            for cu_seq_lens_q, seqused_k in zip(all_cu_seq_lens_q, all_seqused_k)
-        ]
+@dataclass(frozen=True)
+class VarlenCase:
+    name: str
+    query_lens: Tuple[int, ...]
+    kv_lens: Tuple[int, ...]
+    num_query_heads: int
+    num_kv_heads: int
+    head_dim: int
+    causal: bool
+    paged: bool
+    block_size: Optional[int]
+    num_blocks: Optional[int]
+    block_table_width: Optional[int]
+    kv_layout: str
+    num_splits: int
+    max_seqlen_q: Optional[int] = None
+    max_seqlen_k: Optional[int] = None
 
-        self.shapes = all_configs
 
-    def get_input_iter(self, dtype):
-        for config in self.shapes:
-            yield self.flash_attn_varlen_input_fn(config, dtype, self.device)
+@dataclass
+class VarlenInput:
+    case: VarlenCase
+    q: torch.Tensor
+    k: torch.Tensor
+    v: torch.Tensor
+    out: torch.Tensor
+    cu_seqlens_q: torch.Tensor
+    cu_seqlens_k: Optional[torch.Tensor]
+    seqused_k: Optional[torch.Tensor]
+    block_table: Optional[torch.Tensor]
+    scheduler_metadata: Optional[torch.Tensor]
+    max_seqlen_q: int
+    max_seqlen_k: int
 
-    def flash_attn_varlen_input_fn(self, config, dtype, device):
-        """Input function for flash attention varlen benchmark"""
-        (
-            cu_query_lens,
-            seqused_k,
-            num_query_heads,
-            num_kv_heads,
-            head_size,
-            block_size,
-            num_blocks,
-            alibi,
-            soft_cap,
-        ) = config
 
-        if alibi is True and soft_cap is not None:
-            return
+@dataclass(frozen=True)
+class Provider:
+    name: str
+    provider_version: str
+    op: Callable
+    scheduler_metadata_fn: Optional[Callable] = None
 
-        num_seqs = len(cu_query_lens) - 1
-        max_query_len = max(
-            map(lambda x, y: x - y, cu_query_lens[1:], cu_query_lens[:-1])
-        )
-        max_kv_len = max(seqused_k)
-        window_size = (-1, -1)
-        scale = head_size**-0.5
 
-        assert num_seqs == len(seqused_k)
+def _positive_int(value: Any, field: str, *, allow_zero: bool = False) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"{field} must be an integer, got {value!r}")
+    if value < (0 if allow_zero else 1):
+        kind = "non-negative" if allow_zero else "positive"
+        raise ValueError(f"{field} must be {kind}, got {value!r}")
+    return value
 
-        with torch.device(device):
-            query = torch.randn(
-                cu_query_lens[-1],
-                num_query_heads,
-                head_size,
-                dtype=dtype,
-                device=device,
-            )
-            out = torch.empty_like(query)
-            key_cache, value_cache = make_paged_kv_cache(
-                num_blocks,
-                block_size,
-                num_kv_heads,
-                head_size,
-                dtype=dtype,
-                device=device,
-                non_contiguous=self.cache_non_contiguous,
-            )
-            cu_query_lens = torch.tensor(
-                cu_query_lens, dtype=torch.int32, device=device
-            )
-            seqused_k = torch.tensor(seqused_k, dtype=torch.int32, device=device)
 
-            max_num_blocks_per_seq = (max_kv_len + block_size - 1) // block_size
-            block_tables = torch.randint(
-                0,
-                num_blocks,
-                (num_seqs, max_num_blocks_per_seq),
-                dtype=torch.int32,
-                device=device,
-            )
+def _expand_rle(value: Any, field: str) -> Tuple[int, ...]:
+    if not isinstance(value, (list, tuple)) or not value:
+        raise ValueError(f"{field} must be a non-empty list of [length, repeat]")
+    lengths = []
+    for index, run in enumerate(value):
+        if not isinstance(run, (list, tuple)) or len(run) != 2:
+            raise ValueError(f"{field}[{index}] must be [length, repeat]")
+        length = _positive_int(run[0], f"{field}[{index}].length")
+        repeat = _positive_int(run[1], f"{field}[{index}].repeat")
+        lengths.extend([length] * repeat)
+    return tuple(lengths)
 
-            causal = True
 
-            if alibi:
-                alibi_slopes = (
-                    torch.ones(
-                        num_seqs, num_query_heads, device=device, dtype=torch.float32
-                    )
-                    * 0.3
-                )
-            else:
-                alibi_slopes = None
-
-        return (
-            query,
-            key_cache,
-            value_cache,
-            max_query_len,
-            cu_query_lens,
-            max_kv_len,
-            None,
-            seqused_k,
-            None,
-            0.0,
-            scale,
-            causal,
-            window_size,
-            soft_cap if soft_cap is not None else 0,
-            alibi_slopes,
-            False,
-            False,
-            block_tables,
-            False,
-            out,
-            None,
-            None,
-            None,
-            None,
-            {
-                "s_aux": None,
-                "num_splits": 0,
-                "cp_world_size": 1,
-                "cp_rank": 0,
-                "cp_tot_seqused_k": None,
-                "fa_version": 2,
-            },
+def _parse_case(
+    record: Any,
+    index: int,
+    shape_fields: Tuple[str, ...] = SHAPE_FIELDS,
+) -> VarlenCase:
+    if shape_fields == SHAPE_FIELDS:
+        expected_fields = SHAPE_FIELDS
+    elif shape_fields == TRACE_SHAPE_FIELDS:
+        expected_fields = TRACE_SHAPE_FIELDS
+    else:
+        raise ValueError(
+            "varlen shape_desc must contain either the legacy fields "
+            f"({SHAPE_DESC}) or trace fields ({TRACE_SHAPE_DESC})"
         )
 
-
-def flash_attn_varlen_legacy(*args, **kwargs):
-    """
-    Compatibility wrapper for running old flash_attn_varlen_func.
-    """
+    if not isinstance(record, (list, tuple)) or len(record) != len(expected_fields):
+        raise ValueError(
+            f"shape #{index} must contain {len(expected_fields)} fields: "
+            f"{', '.join(expected_fields)}"
+        )
+    if expected_fields == TRACE_SHAPE_FIELDS:
+        max_seqlen_q = record[-2]
+        max_seqlen_k = record[-1]
+        record = record[:-2]
+    else:
+        max_seqlen_q = None
+        max_seqlen_k = None
     (
-        query,
-        key_cache,
-        value_cache,
-        max_query_len,
-        cu_query_lens,
-        max_kv_len,
-        _,
-        seqused_k,
-        _,
-        dropout_p,
-        scale,
+        name,
+        query_lens_rle,
+        kv_lens_rle,
+        num_query_heads,
+        num_kv_heads,
+        head_dim,
         causal,
-        window_size,
-        soft_cap,
+        paged,
+        block_size,
+        num_blocks,
+        block_table_width,
+        kv_layout,
+        num_splits,
+    ) = record
+
+    if not isinstance(name, str) or not name:
+        raise ValueError(f"shape #{index} name must be a non-empty string")
+
+    query_lens = _expand_rle(query_lens_rle, f"shape {name!r}.query_lens_rle")
+    kv_lens = _expand_rle(kv_lens_rle, f"shape {name!r}.kv_lens_rle")
+    if len(query_lens) != len(kv_lens):
+        raise ValueError(
+            f"shape {name!r} has different query/KV batch sizes: "
+            f"{len(query_lens)} != {len(kv_lens)}"
+        )
+
+    observed_max_seqlen_q = max(query_lens)
+    observed_max_seqlen_k = max(kv_lens)
+    if max_seqlen_q is not None:
+        max_seqlen_q = _positive_int(
+            max_seqlen_q, f"shape {name!r}.max_seqlen_q"
+        )
+        if max_seqlen_q < observed_max_seqlen_q:
+            raise ValueError(
+                f"shape {name!r} max_seqlen_q={max_seqlen_q} is smaller than "
+                f"the observed maximum {observed_max_seqlen_q}"
+            )
+    if max_seqlen_k is not None:
+        max_seqlen_k = _positive_int(
+            max_seqlen_k, f"shape {name!r}.max_seqlen_k"
+        )
+        if max_seqlen_k < observed_max_seqlen_k:
+            raise ValueError(
+                f"shape {name!r} max_seqlen_k={max_seqlen_k} is smaller than "
+                f"the observed maximum {observed_max_seqlen_k}"
+            )
+
+    num_query_heads = _positive_int(num_query_heads, f"shape {name!r}.num_query_heads")
+    num_kv_heads = _positive_int(num_kv_heads, f"shape {name!r}.num_kv_heads")
+    head_dim = _positive_int(head_dim, f"shape {name!r}.head_dim")
+    if num_query_heads % num_kv_heads:
+        raise ValueError(
+            f"shape {name!r} requires num_query_heads to be divisible by "
+            "num_kv_heads"
+        )
+    if not isinstance(causal, bool) or not isinstance(paged, bool):
+        raise ValueError(f"shape {name!r} causal and paged must be booleans")
+    if kv_layout not in ("NHD", "HND"):
+        raise ValueError(f"shape {name!r} kv_layout must be NHD or HND")
+    num_splits = _positive_int(
+        num_splits, f"shape {name!r}.num_splits", allow_zero=True
+    )
+
+    if paged:
+        block_size = _positive_int(block_size, f"shape {name!r}.block_size")
+        num_blocks = _positive_int(num_blocks, f"shape {name!r}.num_blocks")
+        block_table_width = _positive_int(
+            block_table_width, f"shape {name!r}.block_table_width"
+        )
+        required_max_seqlen_k = (
+            max_seqlen_k
+            if max_seqlen_k is not None
+            else observed_max_seqlen_k
+        )
+        required_width = max(
+            (required_max_seqlen_k + block_size - 1) // block_size,
+            max((length + block_size - 1) // block_size for length in kv_lens),
+        )
+        if block_table_width < required_width:
+            raise ValueError(
+                f"shape {name!r} needs block_table_width >= {required_width}"
+            )
+    elif any(
+        value is not None for value in (block_size, num_blocks, block_table_width)
+    ):
+        raise ValueError(f"dense shape {name!r} must set paged cache fields to null")
+
+    return VarlenCase(
+        name=name,
+        query_lens=query_lens,
+        kv_lens=kv_lens,
+        num_query_heads=num_query_heads,
+        num_kv_heads=num_kv_heads,
+        head_dim=head_dim,
+        causal=causal,
+        paged=paged,
+        block_size=block_size,
+        num_blocks=num_blocks,
+        block_table_width=block_table_width,
+        kv_layout=kv_layout,
+        num_splits=num_splits,
+        max_seqlen_q=max_seqlen_q,
+        max_seqlen_k=max_seqlen_k,
+    )
+
+
+def _cu_seqlens(lengths: Tuple[int, ...], device: str) -> torch.Tensor:
+    return torch.tensor((0, *accumulate(lengths)), dtype=torch.int32, device=device)
+
+
+def _package_version(package: str) -> str:
+    try:
+        return version(package)
+    except PackageNotFoundError:
+        return "source"
+
+
+def flash_attn_varlen_legacy(
+    flash_attn_varlen_func,
+    q,
+    k,
+    v,
+    max_seqlen_q,
+    cu_seqlens_q,
+    max_seqlen_k,
+    cu_seqlens_k=None,
+    seqused_k=None,
+    q_v=None,
+    dropout_p=0.0,
+    softmax_scale=None,
+    causal=False,
+    window_size=None,
+    softcap=0.0,
+    alibi_slopes=None,
+    deterministic=False,
+    return_attn_probs=False,
+    block_table=None,
+    return_softmax_lse=False,
+    out=None,
+    **_unused,
+):
+    """Adapt the legacy FlashAttention API used by the Iluvatar benchmark."""
+
+    del q_v, return_softmax_lse
+    k_flat = k.reshape(-1, k.shape[2], k.shape[3])
+    v_flat = v.reshape(-1, v.shape[2], v.shape[3])
+    if cu_seqlens_k is None:
+        cu_seqlens_k = torch.cat(
+            [
+                torch.zeros(1, dtype=torch.int32, device=seqused_k.device),
+                torch.cumsum(seqused_k, dim=0),
+            ]
+        ).to(torch.int32)
+
+    return flash_attn_varlen_func(
+        q,
+        k_flat,
+        v_flat,
+        cu_seqlens_q,
+        cu_seqlens_k,
+        max_seqlen_q,
+        max_seqlen_k,
+        dropout_p,
+        softmax_scale,
+        causal,
+        tuple(window_size or (-1, -1)),
+        float(softcap),
         alibi_slopes,
         deterministic,
         return_attn_probs,
-        block_tables,
-        _,
-        out,
-        *_,
-    ) = args
-
-    k_flat = key_cache.reshape(-1, key_cache.shape[2], key_cache.shape[3])
-    v_flat = value_cache.reshape(-1, value_cache.shape[2], value_cache.shape[3])
-    cu_seqlens_k = torch.cat(
-        [
-            torch.zeros(1, dtype=torch.int32, device=seqused_k.device),
-            torch.cumsum(seqused_k, dim=0),
-        ]
-    ).to(torch.int32)
-
-    from flash_attn import flash_attn_varlen_func
-
-    result = flash_attn_varlen_func(
-        query,  # q
-        k_flat,  # k (flattened from key_cache)
-        v_flat,  # v (flattened from value_cache)
-        cu_query_lens,  # cu_seqlens_q
-        cu_seqlens_k,  # cu_seqlens_k (constructed from seqused_k)
-        max_query_len,  # max_seqlen_q
-        max_kv_len,  # max_seqlen_k
-        dropout_p,  # dropout_p
-        scale,  # softmax_scale
-        causal,  # causal
-        tuple(window_size),  # window_size
-        float(soft_cap),  # softcap
-        alibi_slopes,  # alibi_slopes
-        deterministic,  # deterministic
-        return_attn_probs,  # return_attn_probs
-        block_tables,  # block_table
-        alibi_slopes is not None,  # use_alibi (derived from alibi_slopes)
-        0,  # alibi_mode
-        1,  # imp_mode
-        out=out,  # out
-        bias=None,  # bias
+        block_table,
+        alibi_slopes is not None,
+        0,
+        1,
+        out=out,
+        bias=None,
     )
-    return result
 
 
-@pytest.mark.skipif(
-    utils.SkipVersion("vllm", "<0.9"),
-    reason="vLLM version prior to 0.9 does not include the flash_attn_varlen_func API.",
-)
-@pytest.mark.skipif(
-    utils.SkipVersion("torch", "<2.7"),
-    reason="Torch version prior to 2.7 is not compatible with VLLM.",
-)
+def _load_provider(name: str, fa_version: int) -> Provider:
+    if name == "flag_gems":
+        return Provider(
+            name="flag_gems",
+            provider_version=_package_version("flag_gems"),
+            op=flag_gems.flash_attn_varlen_func,
+        )
+    elif name == "iluvatar_legacy":
+        try:
+            from flash_attn import flash_attn_varlen_func
+        except Exception as error:
+            pytest.fail(f"legacy FlashAttention is unavailable: {error}")
+
+        return Provider(
+            name="vllm_legacy",
+            provider_version=_package_version("flash-attn"),
+            op=partial(flash_attn_varlen_legacy, flash_attn_varlen_func),
+        )
+    elif name == "vllm":
+        try:
+            from vllm.vllm_flash_attn import (
+                fa_version_unsupported_reason,
+                flash_attn_varlen_func,
+                get_scheduler_metadata,
+                is_fa_version_supported,
+            )
+        except Exception as error:
+            pytest.fail(f"vLLM FlashAttention is unavailable: {error}")
+
+        if not is_fa_version_supported(fa_version):
+            reason = fa_version_unsupported_reason(fa_version) or "unknown reason"
+            pytest.skip(f"vLLM FA{fa_version} is unavailable: {reason}")
+
+        return Provider(
+            name="vllm",
+            provider_version=_package_version("vllm"),
+            op=flash_attn_varlen_func,
+            scheduler_metadata_fn=get_scheduler_metadata,
+        )
+    else:
+        raise ValueError(f"unsupported FlashAttention provider: {name}")
+
+
+class FlashAttnVarlenBenchmark(base.Benchmark):
+    """Run every varlen shape through one selected public provider."""
+
+    DEFAULT_METRICS = ["latency"]
+    DEFAULT_SHAPE_FILES = str(Path(__file__).with_name("core_shapes.yaml"))
+    DEFAULT_SHAPE_DESC = SHAPE_DESC
+
+    def __init__(
+        self,
+        *,
+        provider: Provider,
+        fa_version: int,
+        cache_non_contiguous: bool = False,
+        **kwargs,
+    ):
+        self.provider = provider
+        self.fa_version = fa_version
+        self.cache_non_contiguous = cache_non_contiguous
+        super().__init__(
+            torch_op=self._invoke,
+            gems_op=self._invoke,
+            dtypes=[torch.float16, torch.bfloat16],
+            **kwargs,
+        )
+
+    def set_shapes(self, shape_file_path=None):
+        super().set_shapes(shape_file_path)
+        fields = tuple(field.strip() for field in self.shape_desc.split(","))
+        if fields not in (SHAPE_FIELDS, TRACE_SHAPE_FIELDS):
+            raise ValueError(
+                "varlen shape_desc must contain either the legacy fields "
+                f"({SHAPE_DESC}) or trace fields ({TRACE_SHAPE_DESC})"
+            )
+        cases = [
+            _parse_case(record, index, fields)
+            for index, record in enumerate(self.shapes)
+        ]
+
+        names = [case.name for case in cases]
+        duplicates = sorted({name for name in names if names.count(name) > 1})
+        if duplicates:
+            raise ValueError(f"varlen shape names must be unique: {duplicates}")
+
+        if self.fa_version == 2:
+            cases = [case for case in cases if case.num_splits == 0]
+            if not cases:
+                pytest.skip("The shape file has no num_splits=0 FA2 cases.")
+        self.shapes = cases
+
+    def get_input_iter(self, dtype):
+        for index, case in enumerate(self.shapes):
+            yield (self._make_input(case, dtype, seed=2026 + index),)
+
+    def unpack_to_args_kwargs(self, input_tuple):
+        return [input_tuple[0]], {}
+
+    def _make_input(self, case: VarlenCase, dtype, *, seed: int) -> VarlenInput:
+        generator = torch.Generator(device=self.device)
+        generator.manual_seed(seed)
+        q = torch.randn(
+            sum(case.query_lens),
+            case.num_query_heads,
+            case.head_dim,
+            dtype=dtype,
+            device=self.device,
+            generator=generator,
+        )
+        out = torch.empty_like(q)
+        cu_seqlens_q = _cu_seqlens(case.query_lens, self.device)
+        max_seqlen_q = (
+            case.max_seqlen_q
+            if case.max_seqlen_q is not None
+            else max(case.query_lens)
+        )
+        max_seqlen_k = (
+            case.max_seqlen_k
+            if case.max_seqlen_k is not None
+            else max(case.kv_lens)
+        )
+
+        if case.paged:
+            if case.kv_layout == "NHD":
+                physical_shape = (
+                    case.num_blocks,
+                    case.block_size,
+                    case.num_kv_heads,
+                    case.head_dim,
+                )
+            else:
+                physical_shape = (
+                    case.num_blocks,
+                    case.num_kv_heads,
+                    case.block_size,
+                    case.head_dim,
+                )
+            storage_shape = physical_shape
+            if self.cache_non_contiguous:
+                storage_shape = (case.num_blocks * 2, *physical_shape[1:])
+            k = torch.randn(
+                storage_shape,
+                dtype=dtype,
+                device=self.device,
+                generator=generator,
+            )
+            v = torch.randn(
+                storage_shape,
+                dtype=dtype,
+                device=self.device,
+                generator=generator,
+            )
+            if self.cache_non_contiguous:
+                k = k[::2]
+                v = v[::2]
+            if case.kv_layout == "HND":
+                # Keep the public [page, token, head, dim] shape while using
+                # the physical HND stride order selected by cache allocators.
+                k = k.permute(0, 2, 1, 3)
+                v = v.permute(0, 2, 1, 3)
+            seqused_k = torch.tensor(
+                case.kv_lens, dtype=torch.int32, device=self.device
+            )
+            cu_seqlens_k = None
+            block_table = torch.randint(
+                0,
+                case.num_blocks,
+                (len(case.kv_lens), case.block_table_width),
+                dtype=torch.int32,
+                device=self.device,
+                generator=generator,
+            )
+        else:
+            cache_shape = (
+                sum(case.kv_lens),
+                case.num_kv_heads,
+                case.head_dim,
+            )
+            k = torch.randn(
+                cache_shape,
+                dtype=dtype,
+                device=self.device,
+                generator=generator,
+            )
+            v = torch.randn(
+                cache_shape,
+                dtype=dtype,
+                device=self.device,
+                generator=generator,
+            )
+            cu_seqlens_k = _cu_seqlens(case.kv_lens, self.device)
+            seqused_k = None
+            block_table = None
+
+        scheduler_metadata = None
+        if (
+            self.provider.scheduler_metadata_fn is not None
+            and self.fa_version == 3
+            and case.paged
+        ):
+            scheduler_metadata = self.provider.scheduler_metadata_fn(
+                batch_size=len(case.query_lens),
+                max_seqlen_q=max_seqlen_q,
+                max_seqlen_k=max_seqlen_k,
+                num_heads_q=case.num_query_heads,
+                num_heads_kv=case.num_kv_heads,
+                headdim=case.head_dim,
+                headdim_v=case.head_dim,
+                qkv_dtype=dtype,
+                cache_seqlens=seqused_k,
+                cu_seqlens_q=cu_seqlens_q,
+                page_size=case.block_size,
+                causal=case.causal,
+                window_size=(-1, -1),
+                num_splits=case.num_splits,
+            )
+
+        return VarlenInput(
+            case=case,
+            q=q,
+            k=k,
+            v=v,
+            out=out,
+            cu_seqlens_q=cu_seqlens_q,
+            cu_seqlens_k=cu_seqlens_k,
+            seqused_k=seqused_k,
+            block_table=block_table,
+            scheduler_metadata=scheduler_metadata,
+            max_seqlen_q=max_seqlen_q,
+            max_seqlen_k=max_seqlen_k,
+        )
+
+    def _invoke(self, tensors: VarlenInput):
+        case = tensors.case
+        return self.provider.op(
+            tensors.q,
+            tensors.k,
+            tensors.v,
+            max_seqlen_q=tensors.max_seqlen_q,
+            cu_seqlens_q=tensors.cu_seqlens_q,
+            max_seqlen_k=tensors.max_seqlen_k,
+            cu_seqlens_k=tensors.cu_seqlens_k,
+            seqused_k=tensors.seqused_k,
+            q_v=None,
+            dropout_p=0.0,
+            softmax_scale=case.head_dim**-0.5,
+            causal=case.causal,
+            window_size=[-1, -1],
+            softcap=0.0,
+            alibi_slopes=None,
+            deterministic=False,
+            return_attn_probs=False,
+            block_table=tensors.block_table,
+            return_softmax_lse=False,
+            out=tensors.out,
+            scheduler_metadata=tensors.scheduler_metadata,
+            q_descale=None,
+            k_descale=None,
+            v_descale=None,
+            s_aux=None,
+            num_splits=case.num_splits,
+            cp_world_size=1,
+            cp_rank=0,
+            cp_tot_seqused_k=None,
+            fa_version=self.fa_version,
+        )
+
+    def record_shapes(self, tensors: VarlenInput):
+        case = tensors.case
+        shape_detail = {
+            "name": case.name,
+            "provider": self.provider.name,
+            "provider_version": self.provider.provider_version,
+            "fa_version": self.fa_version,
+            "num_splits": case.num_splits,
+            "max_seqlen_q": tensors.max_seqlen_q,
+            "max_seqlen_k": tensors.max_seqlen_k,
+        }
+        return shape_detail
+
+
 @pytest.mark.skipif(vendor_name == "hygon", reason="#2816: RuntimeError")
 @pytest.mark.skipif(vendor_name == "cambricon", reason="#2886: TypeError")
 @pytest.mark.flash_attn_varlen_func
-def test_flash_attn_varlen_func(monkeypatch):
+@pytest.mark.parametrize(
+    ("provider_name", "fa_version"),
+    BENCHMARK_TARGETS,
+)
+def test_flash_attn_varlen_func(monkeypatch, provider_name, fa_version):
+    """Benchmark one YAML as one pytest item through the public API."""
+
     monkeypatch.setenv("VLLM_CONFIGURE_LOGGING", "0")
-
-    if vendor_name == "iluvatar":
-        # iluvatar does not have updated vllm_flash_attn, use conversion wrapper
-        flash_attn_varlen_func = flash_attn_varlen_legacy
-    else:
-        from vllm.vllm_flash_attn.flash_attn_interface import flash_attn_varlen_func
-
+    provider = _load_provider(provider_name, fa_version)
     bench = FlashAttnVarlenBenchmark(
-        op_name="flash_attn_varlen_func",
-        torch_op=flash_attn_varlen_func,
-        gems_op=flag_gems.flash_attn_varlen_func,
-        dtypes=[torch.float16, torch.bfloat16],
+        op_name=SHAPE_ENTRY_KEY,
+        provider=provider,
+        fa_version=fa_version,
     )
     bench.run()
 
 
-@pytest.mark.skipif(
-    utils.SkipVersion("vllm", "<0.9"),
-    reason="vLLM version prior to 0.9 does not include the flash_attn_varlen_func API.",
-)
-@pytest.mark.skipif(
-    utils.SkipVersion("torch", "<2.7"),
-    reason="Torch version prior to 2.7 is not compatible with VLLM.",
-)
 @pytest.mark.skipif(vendor_name == "hygon", reason="#2816: RuntimeError")
 @pytest.mark.skipif(vendor_name == "cambricon", reason="#2886: TypeError")
 @pytest.mark.flash_attn_varlen_func
 @pytest.mark.flash_attn_varlen_func_noncontig
-def test_flash_attn_varlen_func_noncontig(monkeypatch):
+@pytest.mark.parametrize(
+    ("provider_name", "fa_version"),
+    BENCHMARK_TARGETS,
+)
+def test_flash_attn_varlen_func_noncontig(monkeypatch, provider_name, fa_version):
+    """Benchmark noncontiguous paged cache strides through the public API."""
+
     monkeypatch.setenv("VLLM_CONFIGURE_LOGGING", "0")
-
-    if vendor_name == "iluvatar":
-        # iluvatar does not have updated vllm_flash_attn, use conversion wrapper
-        flash_attn_varlen_func = flash_attn_varlen_legacy
-    else:
-        from vllm.vllm_flash_attn.flash_attn_interface import flash_attn_varlen_func
-
+    provider = _load_provider(provider_name, fa_version)
     bench = FlashAttnVarlenBenchmark(
         op_name="flash_attn_varlen_func_noncontig",
-        torch_op=flash_attn_varlen_func,
-        gems_op=flag_gems.ops.flash_attn_varlen_func,
-        # Match the supported flash_attn_varlen_func dtype coverage.
-        dtypes=[torch.float16, torch.bfloat16],
+        provider=provider,
+        fa_version=fa_version,
         cache_non_contiguous=True,
     )
     bench.run()
