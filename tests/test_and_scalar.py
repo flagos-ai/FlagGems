@@ -41,8 +41,7 @@ def test_and_scalar(shape, dtype, caplog):
 
     ref_out = torch.ops.aten.__and__.Scalar(ref_inp1, inp2)
     with caplog.at_level("DEBUG", logger="flag_gems.ops.and_scalar"):
-        with flag_gems.use_gems():
-            res_out = torch.ops.aten.__and__.Scalar(inp1, inp2)
+        res_out = flag_gems.and_scalar(inp1, inp2)
 
     assert "GEMS AND SCALAR" in caplog.text
     utils.gems_assert_equal(res_out, ref_out)

@@ -195,7 +195,6 @@ from flag_gems.ops.addmv import addmv, addmv_out
 from flag_gems.ops.addmv_ import addmv_
 from flag_gems.ops.addr import addr
 from flag_gems.ops.addr_ import addr_
-from flag_gems.ops.and_scalar import and_scalar
 from flag_gems.ops.affine_grid_generator import affine_grid_generator
 from flag_gems.ops.alias import alias
 from flag_gems.ops.alias_copy import alias_copy, alias_copy_out
@@ -205,6 +204,7 @@ from flag_gems.ops.alpha_dropout_ import alpha_dropout_
 from flag_gems.ops.amax import amax
 from flag_gems.ops.amin import amin, amin_
 from flag_gems.ops.aminmax import aminmax
+from flag_gems.ops.and_scalar import and_scalar
 from flag_gems.ops.angle import angle
 from flag_gems.ops.any import any, any_dim, any_dims
 from flag_gems.ops.arange import arange, arange_start
