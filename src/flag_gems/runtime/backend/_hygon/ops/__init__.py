@@ -91,6 +91,7 @@ from .linalg_solve_triangular import (
     linalg_solve_triangular_out,
 )
 from .log_normal_ import log_normal_
+from .masked_scale import masked_scale
 from .masked_scatter_backward import masked_scatter_backward
 from .matmul_bf16 import matmul_bf16
 from .matmul_int8 import matmul_int8
@@ -246,6 +247,7 @@ __all__ = [
     "linalg_solve_triangular",
     "linalg_solve_triangular_out",
     "log_normal_",
+    "masked_scale",
     "masked_scatter_backward",
     "matmul_bf16",
     "matmul_int8",
