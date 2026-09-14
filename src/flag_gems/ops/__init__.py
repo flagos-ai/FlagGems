@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from flag_gems.ops.__iand__ import __iand___scalar, __iand___tensor
 from flag_gems.ops.__ilshift__ import __ilshift__
 from flag_gems.ops.__irshift__ import __irshift__
 from flag_gems.ops.__lshift__ import __lshift__
@@ -184,6 +185,7 @@ from flag_gems.ops.adaptive_avg_pool3d_backward import (
 )
 from flag_gems.ops.adaptive_max_pool2d import adaptive_max_pool2d
 from flag_gems.ops.adaptive_max_pool2d_backward import adaptive_max_pool2d_backward
+from flag_gems.ops.adaptive_max_pool3d import adaptive_max_pool3d
 from flag_gems.ops.adaptive_max_pool3d_backward import adaptive_max_pool3d_backward
 from flag_gems.ops.add import add, add_
 from flag_gems.ops.addbmm import addbmm, addbmm_
@@ -325,6 +327,10 @@ from flag_gems.ops.conv_tbc_backward import conv_tbc_backward
 from flag_gems.ops.conv_transpose1d import conv_transpose1d
 from flag_gems.ops.conv_transpose2d import conv_transpose2d
 from flag_gems.ops.conv_transpose3d import conv_transpose3d
+from flag_gems.ops.convolution_overrideable import (
+    convolution_overrideable,
+    convolution_overrideable_out,
+)
 from flag_gems.ops.copy import copy, copy_
 from flag_gems.ops.copysign import copysign, copysign_out
 from flag_gems.ops.copysign_ import copysign_
@@ -1025,6 +1031,8 @@ from flag_gems.ops.zeros import zero_, zeros
 from flag_gems.ops.zeros_like import zeros_like
 
 __all__ = [
+    "__iand___scalar",
+    "__iand___tensor",
     "__ilshift__",
     "__irshift__",
     "__lshift__",
@@ -1148,6 +1156,7 @@ __all__ = [
     "adaptive_avg_pool3d_backward_grad_input",
     "adaptive_max_pool2d",
     "adaptive_max_pool2d_backward",
+    "adaptive_max_pool3d",
     "adaptive_max_pool3d_backward",
     "add",
     "add_",
@@ -1318,6 +1327,8 @@ __all__ = [
     "conv_transpose1d",
     "conv_transpose2d",
     "conv_transpose3d",
+    "convolution_overrideable",
+    "convolution_overrideable_out",
     "copy",
     "copy_",
     "copysign",

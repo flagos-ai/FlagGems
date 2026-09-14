@@ -284,6 +284,18 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: adaptive_max_pool3d
+  description: |
+    Applies three-dimensional adaptive max pooling over an input signal and
+    returns both the pooled values and the selected input indices.
+  for:
+  - adaptive_max_pool3d
+  labels:
+  - aten
+  kind:
+  - NeuralNetwork
+  stages:
+  - beta: '5.4'
 - id: adaptive_max_pool3d_backward
   description: 'Computes the gradient for adaptive max pooling 3D.
 
@@ -3099,6 +3111,40 @@ ops:
     '
   for:
   - _convolution_mode
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Convolution
+  stages:
+  - alpha: '5.4'
+- id: convolution_overrideable
+  description: 'Generic overrideable convolution dispatch. Infers the spatial rank
+    from
+
+    the weight tensor and routes to the FlagGems Triton convolution kernels
+
+    (forward `conv2d` im2col kernel and transposed conv variants), supporting
+
+    stride, padding, dilation, transposed, output_padding and groups.
+
+    '
+  for:
+  - convolution_overrideable
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Convolution
+  stages:
+  - alpha: '5.4'
+- id: convolution_overrideable_out
+  description: 'A variant of convolution_overrideable() that writes the result into
+    the out tensor.
+
+    '
+  for:
+  - convolution_overrideable.out
   labels:
   - aten
   - KernelGen
@@ -6673,6 +6719,28 @@ ops:
   stages:
   - beta: '5.0'
   - stable: '5.3'
+- id: iand_scalar
+  description: The scalar version of `iand_tensor`.
+  for:
+  - __iand__.Scalar
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: iand_tensor
+  description: The in-place version of bitwise and operation for two tensors.
+  for:
+  - __iand__.Tensor
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: igamma
   description: Computes the regularized lower incomplete gamma function element-wise.
   for:
