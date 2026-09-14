@@ -19,19 +19,18 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry
+from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
 
-# Redispatch key used to reach PyTorch's native (vendor) logsumexp. On this XPU
-# the vendor's fused logsumexp kernel beats any Triton path we can express for a
-# middle-dim (K>1) reduction (see the module docstring / solution doc), so the
-# K>1 branch defers to it instead of materializing a slow transpose copy.
-_FALLBACK_KEYSET = torch._C.DispatchKeySet(
-    torch._C.DispatchKey.CompositeImplicitAutograd
-)
-
+# 2026-09-14: the K>1 / N==1 / multi-dim branches used to redispatch to the
+# native (vendor) logsumexp. That is banned for metric integrity -- under the
+# official benchmark (dim=1 over 3-D shapes) the gem *became* the reference
+# implementation, so its ratio was ~1.0 by construction (documented as
+# "构造性假象" in evidence/reverse-eng/report-reduce.md). They now go through
+# a gems-side dim compression + the contiguous inner-dim kernels.
+#
 # Inner-dim (K==1) reduction tiers:
 #  - N <= _MULTIROW_MAX_N:   one multirow tile kernel (N constexpr, block DMA,
 #    order-preserving uint32-key max). The uint32 key turns the XPU fp32
@@ -501,11 +500,35 @@ def _reduce_inner(inp, rows, N):
     return out
 
 
-def _native_logsumexp(inp, dim, keepdim):
-    """Reach PyTorch's native (vendor) logsumexp, bypassing the gems override."""
-    return torch.ops.aten.logsumexp.default.redispatch(
-        _FALLBACK_KEYSET, inp, dim, keepdim
-    )
+def _reduce_middle(inp, dim, keepdim):
+    """Reduce a non-innermost dim with the gems' own machinery.
+
+    The reduced dim is compressed innermost (``dim_compress`` -> permute +
+    contiguous, materialized by the FlagGems copy_, never the vendor engine),
+    then the contiguous inner-dim kernels run as usual. Measured on
+    [64,512,512] fp32 dim=1: 0.61 ms vs torch 0.78 ms (~1.26x), where the old
+    native delegation reported 0.98 by construction.
+    """
+    N = inp.shape[dim]
+    perm = dim_compress(inp, dim)
+    M = perm.numel() // N
+    # _reduce_inner views its input as a contiguous [rows, N] matrix; the
+    # permuted tensor is contiguous, so the reshape is a free view. (Passing the
+    # N-D tensor directly made the N > _MULTIROW_MAX_N chunk-split path slice
+    # the wrong dim -> "shape [6000, 4096] is invalid for input of size
+    # 24599400" on [200, 40999, 3].)
+    out = _reduce_inner(perm.reshape(M, N), M, N)
+    shape = list(perm.shape)
+    shape[-1] = 1
+    out = out.view(shape)
+    order = [i for i in range(inp.ndim) if i != dim] + [dim]
+    inverse = [0] * inp.ndim
+    for pos, src in enumerate(order):
+        inverse[src] = pos
+    out = out.permute(inverse)
+    if not keepdim:
+        out = out.squeeze(dim=dim)
+    return out
 
 
 def logsumexp(inp, dim, keepdim=False):
@@ -516,9 +539,17 @@ def logsumexp(inp, dim, keepdim=False):
             # Empty dim list means no reduction, just return the input.
             return inp.clone()
         if len(dim) != 1:
-            # Multi-dim reduction: the vendor's native kernel beats a sequence
-            # of Triton reductions on this XPU.
-            return _native_logsumexp(inp, list(dim), keepdim)
+            # Multi-dim reduction: fold single-dim reductions (innermost
+            # first so the dim indices stay valid), same as the generic
+            # implementation.
+            sorted_dims = sorted([d % inp.ndim for d in dim], reverse=True)
+            result = inp
+            for d in sorted_dims:
+                result = logsumexp(result, d, keepdim=True)
+            if not keepdim:
+                for d in sorted(sorted_dims, reverse=True):
+                    result = result.squeeze(d)
+            return result
         dim = dim[0]
 
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
@@ -529,14 +560,11 @@ def logsumexp(inp, dim, keepdim=False):
     for i in range(dim + 1, inp.ndim):
         K *= inp.shape[i]
 
-    # Middle-dim reduction (K > 1) or a size-1 reduction: defer to the native
-    # vendor kernel. A Triton middle reduction on XPU is a dead end -- a physical
-    # transpose+contiguous can't reach the vendor's fast copy once gems overrides
-    # copy_, and a direct strided/discrete reduction either overflows uni_sram or
-    # mis-computes (2D axis=0 reduce here). N==1 is a trivial identity that
-    # the native kernel does faster than a gems copy.
+    # Middle-dim reduction (K > 1) or a size-1 reduction: compress the reduced
+    # dim innermost and use the contiguous inner-dim kernels (see the module
+    # header note on why the native redispatch was removed).
     if K > 1 or N == 1:
-        return _native_logsumexp(inp, [dim], keepdim)
+        return _reduce_middle(inp, dim, keepdim)
 
     # K == 1: innermost-dim reduction -> fast contiguous Triton kernels.
     M = 1

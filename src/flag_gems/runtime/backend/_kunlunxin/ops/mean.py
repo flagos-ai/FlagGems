@@ -21,47 +21,12 @@ import triton.language as tl
 
 # from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry
+from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils import triton_lang_extension as ext
 
 from ..utils.block_size_utils import get_block_size_1d
 
 logger = logging.getLogger(__name__)
-
-# Dispatch key set used to redispatch a native (non-FlagGems) copy.
-# `use_gems` intercepts aten::copy_ on the CUDA/XPU dispatch key with a
-# pointwise_dynamic Triton kernel that is catastrophically slow for large
-# tensors (~2.4GB/s floor: a 64MB permute copy under use_gems takes ~28ms vs
-# ~0.09ms native). Redispatching to CompositeExplicitAutograd routes around that
-# interception to the fast native copy. This is the same fallback mechanism
-# FlagGems' own copy_ uses internally (see flag_gems/ops/copy.py).
-_NATIVE_COPY_KEYSET = torch._C.DispatchKeySet(
-    torch._C.DispatchKey.CompositeExplicitAutograd
-)
-
-
-def _contiguous_native(t):
-    """Contiguous copy that bypasses the (slow, intercepted) FlagGems copy_."""
-    if t.is_contiguous():
-        return t
-    dst = torch.empty(t.shape, dtype=t.dtype, device=t.device)
-    torch.ops.aten.copy_.default.redispatch(_NATIVE_COPY_KEYSET, dst, t, False)
-    return dst
-
-
-def _dim_compress_native(inp, dims):
-    """Replicate dim_compress (permute reduced dims to the trailing dims) but
-    materialize the permutation with a native copy, never the intercepted
-    FlagGems copy_. For a contiguous input whose reduced dims already form a
-    trailing suffix this is a no-op (identity permute, already contiguous)."""
-    if isinstance(dims, int):
-        dims = [dims]
-    dim = inp.ndim
-    stride = inp.stride()
-    batch_dim = [i for i in range(dim) if i not in dims]
-    sorted_reduction_dim = sorted(dims, key=lambda x: stride[x], reverse=True)
-    order = batch_dim + sorted_reduction_dim
-    return _contiguous_native(inp.permute(*order))
 
 
 @libentry()
@@ -205,12 +170,15 @@ def mean_dim(x, dim, keepdim=False, *, dtype=None):
     shape = list(x.shape)
     dim = [d % x.ndim for d in dim]
 
-    # Compress reduced dims to the trailing dims. Uses a native (non-FlagGems)
-    # copy for the permutation: under `use_gems` the intercepted FlagGems copy_
-    # runs at a ~2.4GB/s floor (64MB permute = ~28ms), which is the true cause
-    # of the old [64,512,512] 28-30ms pathological. Redispatch gives the native
-    # ~1440GB/s transpose, after which the reduction is contiguous and fast.
-    x = _dim_compress_native(x, dim)
+    # Compress reduced dims to the trailing dims. The permutation is
+    # materialized by the gem's own copy (dim_compress -> permute+contiguous ->
+    # FlagGems copy_ / TLE copy family). 2026-09-14: an earlier revision
+    # redispatched the permutation to the *native* copy because the gems copy_
+    # was believed to sit at a ~2.4GB/s floor (28ms for a 64MB permute); that
+    # no longer reproduces on the current TLE copy family (measured 0.25ms gems
+    # vs 0.11ms native for the [64,512,512] fp32 permute), and vendor
+    # delegation in the measured path is banned for metric integrity.
+    x = dim_compress(x, dim)
     N = 1
     for i in dim:
         N *= shape[i]
@@ -238,10 +206,10 @@ def mean_dim(x, dim, keepdim=False, *, dtype=None):
         return scalar_out.reshape(out_shape)
 
     # Edge case: N=1 means reducing a trivial (size-1) dimension.
-    # mean of 1 element = that element; just copy with dtype conversion.
+    # mean of 1 element = that element; just cast (gems to_copy) and reshape.
     # mean_dim XPU API does not support N=1.
     if N == 1:
-        return _contiguous_native(x.to(dtype=dtype)).reshape(out_shape)
+        return x.to(dtype=dtype).reshape(out_shape)
 
     out = torch.empty(out_shape, dtype=dtype, device=x.device)
     grid = lambda META: (triton.cdiv(M, META["BLOCK_M"]),)

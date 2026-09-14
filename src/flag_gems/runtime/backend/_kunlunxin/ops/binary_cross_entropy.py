@@ -481,7 +481,9 @@ def _fast_reduced(xf, yf, wf, red, n_elements, dtype, out):
 def _write_out(result, out):
     if result.data_ptr() == out.data_ptr():
         return out
-    torch.ops.aten._copy_from(result.to(out.dtype).reshape(out.shape), out, False)
+    # 2026-09-14: was aten::_copy_from (vendor copy); vendor delegation inside
+    # a gem is banned for metric integrity. copy_() -> FlagGems copy override.
+    out.copy_(result.to(out.dtype).reshape(out.shape))
     return out
 
 
