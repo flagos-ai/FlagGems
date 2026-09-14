@@ -75,6 +75,7 @@ jobs:
           CHANGED_FILES: ${{ inputs.changed_files }}
         shell: bash
         run: |
+          source .venv/bin/activate
           bash ${{ inputs.test_script }} ${{ inputs.backend }} ${{ inputs.pr_id }}
       - name: Run backend tests
         if: ${{ inputs.test_script == '' }}
