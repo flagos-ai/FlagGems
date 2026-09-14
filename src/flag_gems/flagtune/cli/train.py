@@ -1,9 +1,24 @@
 #!/usr/bin/env python3
+
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Command-line collection and XGBoost-ranker training for one FlagTune variant.
 
-This offline tool benchmarks the complete or sampled parameter Cartesian
-product for one YAML variant, appends measurements to streaming JSONL, performs
-one grouped XGBoost ranking fit, and exports a versioned self-contained archive
+This offline tool benchmarks the complete or sampled runtime Expanded + Default
+candidate space for one YAML variant, appends measurements to streaming JSONL,
+performs one grouped XGBoost ranking fit, and exports a versioned self-contained archive
 at ``<output>/<op_id>/<variant>/<dtype_key>/model.tar.gz`` for later platform
 package assembly.
 
@@ -56,6 +71,7 @@ from flag_gems.flagtune.cli.pretune import (  # noqa: E402
     load_shape_records,
     parse_max_shapes,
     parse_sort,
+    planner_benchmark_shape,
     sanitize_db_url,
     select_shape_records,
     visible_device_tokens,
@@ -72,6 +88,10 @@ from flag_gems.flagtune.contracts.operator import (  # noqa: E402
     OperatorConfigError,
     initialize_planning_context,
     load_operator_benchmark_spec,
+)
+from flag_gems.flagtune.config_space import (  # noqa: E402
+    runtime_configs_hash,
+    runtime_configs_for_variant,
 )
 from flag_gems.flagtune.reporting.artifacts import (  # noqa: E402
     PretuneIOError,
@@ -364,6 +384,89 @@ def _chunks(values: Sequence[Any], size: int) -> Iterable[Sequence[Any]]:
         yield values[start : start + size]
 
 
+def _grouped_chunks(
+    values: Sequence[Any], size: int, key: Any
+) -> Iterable[Sequence[Any]]:
+    """Yield batches that never split equal ranking groups.
+
+    FlagTree's ranker requires every serialized ``ranking_group`` to occupy one
+    contiguous run in ``benchmark_data.jsonl``.  Collection workers are
+    intentionally batched for bounded memory, so ordinary positional chunks
+    can split duplicate normalized shapes across batches.  Group records first
+    and pack whole groups into batches; an individual group larger than
+    ``size`` is emitted as one oversized batch rather than being split.
+    """
+    groups: dict[Any, list[Any]] = {}
+    order: list[Any] = []
+    for value in values:
+        group_key = key(value)
+        if group_key not in groups:
+            groups[group_key] = []
+            order.append(group_key)
+        groups[group_key].append(value)
+
+    batch: list[Any] = []
+    for group_key in order:
+        group = groups[group_key]
+        if batch and len(batch) + len(group) > size:
+            yield batch
+            batch = []
+        if len(group) > size:
+            if batch:
+                yield batch
+                batch = []
+            yield group
+            continue
+        batch.extend(group)
+    if batch:
+        yield batch
+
+
+def _collection_group_key(
+    record: Any,
+    spec: Any,
+    variant_info: Any,
+    platform_key: Optional[str],
+) -> str:
+    """Build the final ranker group identity before collection batching."""
+    payload = planner_benchmark_shape(record, spec, platform_key)
+    values = payload.get("values") if isinstance(payload, Mapping) else None
+    if not isinstance(values, Mapping):
+        values = payload
+    try:
+        dimensions = variant_info.normalize_inputs(values)
+    except Exception:
+        # The executor will report the detailed schema error.  Keeping a stable
+        # fallback key here still prevents byte-identical records from being
+        # split across batches before that validation runs.
+        dimensions = dict(values) if isinstance(values, Mapping) else repr(values)
+    route = payload.get("route") if isinstance(payload, Mapping) else None
+    if not isinstance(route, Mapping):
+        route = {}
+    physical_variant = str(record.variant or variant_info.name)
+    route_variant = route.get("route_variant") or physical_variant
+    tuning_variant = route.get("tuning_variant") or physical_variant
+    stage = route.get("stage") or (
+        "partial" if str(tuning_variant).endswith("_partial") else "public"
+    )
+    latency_scope = (
+        "partial_kernel" if stage == "partial" else "public_kernel"
+    )
+    return json.dumps(
+        {
+            "operator_id": variant_info.op_id,
+            "variant": tuning_variant,
+            "route_variant": route_variant,
+            "stage": stage,
+            "latency_scope": latency_scope,
+            "dimensions": dimensions,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+        default=repr,
+    )
+
+
 def _database_url(args: argparse.Namespace, run_dir: Path) -> tuple[str, Path, str]:
     """Resolve the collection SQLite URL, absolute path, and provenance label.
 
@@ -386,7 +489,7 @@ def _append_collection_rows(
     results: Sequence[Mapping[str, Any]],
     variant_info: Any,
     shape_fields: Sequence[str],
-    expected_config_count: int,
+    expected_config_count: Optional[int] = None,
 ) -> tuple[int, int, int]:
     """Validate and append flattened per-config records to streaming JSONL.
 
@@ -396,8 +499,8 @@ def _append_collection_rows(
         results: Ordered generic executor rows from one benchmark batch.
         variant_info: Registered FlagTune variant used to normalize inputs.
         shape_fields: Operator-defined workload identity fields.
-        expected_config_count: Required exhaustive timing count per shape.
-
+        expected_config_count: Backward-compatible fallback for legacy worker
+            rows that predate ``timed_config_count``.
     Returns:
         ``(written_rows, finite_latency_rows, failed_shapes)``.
 
@@ -409,11 +512,54 @@ def _append_collection_rows(
     written = 0
     finite = 0
     failed_shapes = 0
+    # Worker results arrive in completion order.  The FlagTree ranker consumes
+    # JSONL groups as contiguous runs.  Sort by the exact structured group key
+    # (rather than source index alone) because distinct source rows can share
+    # normalized model inputs, e.g. duplicate Count/layout recipes.
+    def result_order_key(result: Mapping[str, Any]) -> tuple[int, str, int]:
+        try:
+            shape_values = result.get("model_inputs")
+            if not isinstance(shape_values, Mapping):
+                shape_values = {
+                    name: result[name]
+                    for name in variant_info.input_names
+                    if name in result
+                }
+            inputs = variant_info.normalize_inputs(shape_values)
+            expected_scope = (
+                "partial_kernel"
+                if result.get("stage") == "partial"
+                or str(result.get("tuning_variant", "")).endswith("_partial")
+                or str(result.get("variant", "")).endswith("_partial")
+                else "public_kernel"
+            )
+            group = {
+                "operator_id": variant_info.op_id,
+                "variant": result.get("tuning_variant") or variant_info.name,
+                "route_variant": result.get("route_variant") or variant_info.name,
+                "stage": result.get("stage") or expected_scope.removesuffix("_kernel"),
+                "latency_scope": expected_scope,
+                "dimensions": inputs,
+                "model_dtype_key": result.get("dtype_key"),
+            }
+            group_key = json.dumps(group, sort_keys=True, separators=(",", ":"))
+        except Exception:
+            group_key = ""
+        value = result.get("source_index", result.get("task_index"))
+        try:
+            source_index = int(value) if value is not None else 0
+        except (TypeError, ValueError):
+            source_index = 0
+        return (0 if group_key else 1, group_key, source_index)
+
+    ordered_results = sorted(results, key=result_order_key)
     with (
         data_path.open("a", encoding="utf-8") as data_file,
         failure_path.open("a", encoding="utf-8") as failure_file,
     ):
-        for result in results:
+        for result in ordered_results:
+            if result.get("status") == "skipped":
+                continue
             missing_shape_fields = [name for name in shape_fields if name not in result]
             workload_dimensions = {
                 name: result[name] for name in shape_fields if name in result
@@ -439,20 +585,53 @@ def _append_collection_rows(
                 failure_file.write("\n")
                 failed_shapes += 1
                 continue
-            if len(timings) != expected_config_count:
+            expected_scope = (
+                "partial_kernel"
+                if result.get("stage") == "partial"
+                or str(result.get("tuning_variant", "")).endswith("_partial")
+                or str(result.get("variant", "")).endswith("_partial")
+                else "public_kernel"
+            )
+            if result.get("latency_scope") not in {None, expected_scope}:
+                failed = pretune_json_row(result, shape_fields)
+                failed["collection_error"] = "latency_scope does not match tuning stage"
+                failure_file.write(json.dumps(failed, sort_keys=True, allow_nan=False) + "\n")
+                failed_shapes += 1
+                continue
+            if any(timing.get("latency_scope") not in {None, expected_scope} for timing in timings):
+                failed = pretune_json_row(result, shape_fields)
+                failed["collection_error"] = "config timing latency_scope mismatch"
+                failure_file.write(json.dumps(failed, sort_keys=True, allow_nan=False) + "\n")
+                failed_shapes += 1
+                continue
+            timed_config_count = result.get("timed_config_count")
+            if timed_config_count is None:
+                timed_config_count = (
+                    expected_config_count
+                    if expected_config_count is not None
+                    else len(timings)
+                )
+            if (
+                not isinstance(timed_config_count, int)
+                or timed_config_count <= 0
+                or len(timings) != timed_config_count
+            ):
                 failed = pretune_json_row(result, shape_fields)
                 failed["collection_error"] = (
-                    f"expected {expected_config_count} config timings, got {len(timings)}"
+                    f"timed_config_count={timed_config_count!r} does not match "
+                    f"{len(timings)} config timings"
                 )
                 failure_file.write(json.dumps(failed, sort_keys=True, allow_nan=False))
                 failure_file.write("\n")
                 failed_shapes += 1
                 continue
-            shape_values = {
-                name: result[name]
-                for name in variant_info.input_names
-                if name in result
-            }
+            shape_values = result.get("model_inputs")
+            if not isinstance(shape_values, Mapping):
+                shape_values = {
+                    name: result[name]
+                    for name in variant_info.input_names
+                    if name in result
+                }
             try:
                 inputs = variant_info.normalize_inputs(shape_values)
             except Exception as exc:
@@ -464,10 +643,18 @@ def _append_collection_rows(
                 continue
             ranking_group = {
                 "operator_id": variant_info.op_id,
-                "variant": variant_info.name,
+                "variant": result.get("tuning_variant") or variant_info.name,
+                "route_variant": result.get("route_variant") or variant_info.name,
+                "stage": result.get("stage") or expected_scope.removesuffix("_kernel"),
+                "latency_scope": expected_scope,
                 "dimensions": inputs,
                 "model_dtype_key": result["dtype_key"],
             }
+            model_dtype_values = result.get("model_dtypes") or [
+                *result["input_dtypes"],
+                *result["output_dtypes"],
+            ]
+            model_input_count = len(result["input_dtypes"])
             for config_order, timing in enumerate(timings):
                 serialized_timing = {
                     name: (rounded_ms(value) if name.endswith("_ms") else value)
@@ -487,6 +674,22 @@ def _append_collection_rows(
                     "ranking_group": ranking_group,
                     "Count": result.get("Count"),
                     "dtypes": {
+                        # FlagTree validates model_identity.dtype_key from this
+                        # field.  For partial kernels the third role is the
+                        # FP32 P workspace, so dtypes must describe A/B/P.
+                        "inputs": model_dtype_values[:model_input_count],
+                        "outputs": model_dtype_values[model_input_count:],
+                    },
+                    # Public output dtype and model identity are deliberately
+                    # separate for partial kernels: C is the public BF16
+                    # output, while the partial model's third role is the
+                    # FP32 P workspace.
+                    "model_dtypes": result.get("model_dtypes")
+                    or [
+                        *result["input_dtypes"],
+                        *result["output_dtypes"],
+                    ],
+                    "public_dtypes": {
                         "inputs": result["input_dtypes"],
                         "outputs": result["output_dtypes"],
                     },
@@ -598,6 +801,11 @@ def run_main(args: argparse.Namespace) -> int:
             requested_variant,
             sort_spec,
             args.max_shapes,
+            {
+                "platform_key": getattr(context, "vendor_name", "unknown"),
+                "dtypes": args.dtypes,
+                "planner_output": True,
+            },
         )
     except PretuneError as exc:
         raise TrainError(str(exc)) from exc
@@ -611,11 +819,28 @@ def run_main(args: argparse.Namespace) -> int:
         )
     workers = min(parallel, len(selected))
     gpu_tokens = visible_device_tokens(context)[:workers]
-    configs = list(variant_info.iter_configs())
+    runtime_configs = runtime_configs_for_variant(
+        op_id,
+        requested_variant,
+        platform=getattr(context, "vendor_name", None),
+    )
+    if runtime_configs is None:
+        raise TrainError(
+            f"{operation_id} has no runtime candidate resolver; "
+            "runtime YAML is authoritative"
+        )
+    if not runtime_configs:
+        raise TrainError(
+            f"{operation_id} runtime Expanded + Default config space is empty"
+        )
+    configs = runtime_configs
     if not configs:
         raise TrainError(f"{operation_id} has an empty parameter space")
+    runtime_candidate_hash = (
+        runtime_configs_hash(configs) if runtime_configs is not None else None
+    )
     shape_batch_size = args.shape_batch_size or max(workers, workers * 4)
-    expected_rows = len(selected) * len(configs)
+    maximum_expected_rows = len(selected) * len(configs)
 
     plan = {
         "dry_run": bool(args.dry_run),
@@ -628,9 +853,15 @@ def run_main(args: argparse.Namespace) -> int:
         "selected_shape_count": len(selected),
         "max_shapes": args.max_shapes,
         "config_count_per_shape": len(configs),
-        "expected_benchmark_row_count": expected_rows,
+        "config_source": (
+            "runtime_expanded_plus_default"
+            if runtime_configs is not None
+            else "contract"
+        ),
+        "runtime_config_sha256": runtime_candidate_hash,
+        "maximum_benchmark_row_count": maximum_expected_rows,
         "feature_count": len(variant_info.feature_names),
-        "estimated_dense_float32_bytes": expected_rows
+        "estimated_dense_float32_bytes": maximum_expected_rows
         * len(variant_info.feature_names)
         * 4,
         "max_configs_per_shape": args.max_configs_per_shape,
@@ -664,8 +895,10 @@ def run_main(args: argparse.Namespace) -> int:
     started_at = datetime.now().astimezone().isoformat()
     start = time.perf_counter()
     collection_rows = 0
+    expected_rows = 0
     finite_rows = 0
     failed_shapes = 0
+    skipped_shapes = 0
     benchmark_cache_hits = 0
     benchmark_successes = 0
     benchmark_protocols: dict[str, Mapping[str, Any]] = {}
@@ -673,6 +906,7 @@ def run_main(args: argparse.Namespace) -> int:
     platform_keys: set[str] = set()
     dtype_keys: set[str] = set()
     ordered_dtypes: Optional[list[str]] = None
+    model_dtypes: Optional[list[str]] = None
     gpu_metadata: Optional[Mapping[str, Any]] = None
     _status(
         f"Run directory: {run_dir}; shapes={len(selected)}; "
@@ -691,7 +925,15 @@ def run_main(args: argparse.Namespace) -> int:
         0 if args.no_progress else args.progress_interval
     )
     try:
-        for batch_index, records in enumerate(_chunks(selected, shape_batch_size)):
+        grouped_batch_key = lambda record: _collection_group_key(  # noqa: E731
+            record,
+            spec,
+            variant_info,
+            getattr(context, "vendor_name", None),
+        )
+        for batch_index, records in enumerate(
+            _grouped_chunks(selected, shape_batch_size, grouped_batch_key)
+        ):
             batch_dir = run_dir / "collection_batches" / f"batch_{batch_index:05d}"
             batch_workers = min(workers, len(records))
             _status(
@@ -700,7 +942,17 @@ def run_main(args: argparse.Namespace) -> int:
             )
             try:
                 batch = run_shape_config_benchmarks(
-                    [(record.to_benchmark_shape(), configs) for record in records],
+                    [
+                        (
+                            planner_benchmark_shape(
+                                record,
+                                spec,
+                                getattr(context, "vendor_name", None),
+                            ),
+                            configs,
+                        )
+                        for record in records
+                    ],
                     operator_config=config_path,
                     dtypes=args.dtypes,
                     warmup=args.warmup,
@@ -732,12 +984,20 @@ def run_main(args: argparse.Namespace) -> int:
                     *result.get("input_dtypes", []),
                     *result.get("output_dtypes", []),
                 ]
+                current_model_dtypes = list(
+                    result.get("model_dtypes") or current_dtypes
+                )
                 if ordered_dtypes is None:
                     ordered_dtypes = current_dtypes
+                    model_dtypes = current_model_dtypes
                     gpu_metadata = current_gpu_metadata
                 elif current_dtypes != ordered_dtypes:
                     raise TrainError(
                         "collection produced inconsistent ordered input/output dtypes"
+                    )
+                elif current_model_dtypes != model_dtypes:
+                    raise TrainError(
+                        "collection produced inconsistent model dtype identities"
                     )
                 elif current_gpu_metadata != gpu_metadata:
                     raise TrainError("collection mixed platform/architecture metadata")
@@ -755,11 +1015,15 @@ def run_main(args: argparse.Namespace) -> int:
                 batch.results,
                 variant_info,
                 spec.shape.identity,
-                len(configs),
             )
+            expected_rows += written
             collection_rows += written
             finite_rows += finite
             failed_shapes += failures + max(0, len(records) - len(batch.results))
+            batch_skipped = sum(
+                result.get("status") == "skipped" for result in batch.results
+            )
+            skipped_shapes += batch_skipped
             batch_cache_hits = sum(
                 int(result.get("benchmark_cache_hit_count") or 0)
                 for result in batch.results
@@ -781,6 +1045,7 @@ def run_main(args: argparse.Namespace) -> int:
                     "data_rows": written,
                     "finite_rows": finite,
                     "failed_shapes": failures,
+                    "skipped_shapes": batch_skipped,
                     "cached_count": batch_cache_hits,
                     "measured_count": batch_successes,
                 }
@@ -789,6 +1054,7 @@ def run_main(args: argparse.Namespace) -> int:
             _status(
                 f"Finished collection batch {batch_index + 1}: "
                 f"rows={written}, finite={finite}, failed_shapes={failures}, "
+                f"skipped_shapes={batch_skipped}, "
                 f"latency_cache_hits={batch_cache_hits}, "
                 f"new_finite_benchmarks={batch_successes}"
             )
@@ -835,11 +1101,13 @@ def run_main(args: argparse.Namespace) -> int:
         training_summary = {
             **training_summary,
             "benchmark_protocols": list(benchmark_protocols.values()),
+            "runtime_config_sha256": runtime_candidate_hash,
         }
         if (
             not platform_keys
             or not dtype_keys
             or ordered_dtypes is None
+            or model_dtypes is None
             or gpu_metadata is None
         ):
             raise TrainError(
@@ -857,7 +1125,7 @@ def run_main(args: argparse.Namespace) -> int:
             run_dir,
             training_summary,
             identity=identity,
-            dtypes=ordered_dtypes,
+            dtypes=model_dtypes,
             gpu=gpu_metadata,
             model_version=args.model_version,
         )
@@ -916,6 +1184,12 @@ def run_main(args: argparse.Namespace) -> int:
             "variant": requested_variant,
             "selected_shape_count": len(selected),
             "config_count_per_shape": len(configs),
+            "config_source": plan["config_source"],
+            "contract_config_count": None,
+            "runtime_config_count": (
+                len(runtime_configs) if runtime_configs is not None else None
+            ),
+            "runtime_config_sha256": runtime_candidate_hash,
             "expected_benchmark_row_count": expected_rows,
             "max_configs_per_shape": args.max_configs_per_shape,
             "feature_count": len(variant_info.feature_names),
@@ -927,6 +1201,7 @@ def run_main(args: argparse.Namespace) -> int:
             "collection_row_count": collection_rows,
             "finite_collection_row_count": finite_rows,
             "failed_shape_count": failed_shapes,
+            "skipped_shape_count": skipped_shapes,
             "cached_count": benchmark_cache_hits,
             "measured_count": benchmark_successes,
             "resolved_protocols": list(benchmark_protocols.values()),

@@ -58,7 +58,7 @@ def _availability_cache_key(platform_key: str):
     )
 
 
-def _is_unversioned_platform_miss(exc: FileNotFoundError, platform_key: str) -> bool:
+def _is_unversioned_platform_miss(exc: Exception, platform_key: str) -> bool:
     """Recognize only a Manifest with no entry for the current platform."""
     prefix = f"FlagTune Manifest has no package for platform {platform_key!r};"
     return str(exc).startswith(prefix)
@@ -73,6 +73,11 @@ def platform_model_package_available() -> bool:
     malformed Manifests, download failures, checksum mismatches, and invalid
     archives continue to raise their original exceptions.
     """
+    try:
+        from triton.flagtune.runtime.errors import ModelUnavailableError
+        missing_errors = (FileNotFoundError, ModelUnavailableError)
+    except ImportError:
+        missing_errors = (FileNotFoundError,)
     platform_key = _discover_platform_key()
     cache_key = _availability_cache_key(platform_key)
     cached = _PLATFORM_PACKAGE_AVAILABILITY.get(cache_key)
@@ -87,7 +92,7 @@ def platform_model_package_available() -> bool:
             platform_key=platform_key,
             dtype_key="f32",
         )
-    except FileNotFoundError as exc:
+    except missing_errors as exc:
         if not _is_unversioned_platform_miss(exc, platform_key):
             raise
         available = False

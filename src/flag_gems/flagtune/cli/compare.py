@@ -1,4 +1,19 @@
 #!/usr/bin/env python3
+
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Compare two Pretune CSV artifacts and emit FlagTune Schema v3 results.
 
 Schema v1, v2, and v3 Pretune CSV inputs are accepted. Rows are joined by the
@@ -110,9 +125,12 @@ def _dimension_columns(fieldnames: Sequence[str], label: str) -> tuple[str, ...]
     return dimensions
 
 
-def _copy_columns(dimensions: Sequence[str]) -> tuple[str, ...]:
+def _copy_columns(
+    dimensions: Sequence[str], *, include_recipe_id: bool = False
+) -> tuple[str, ...]:
     """Return stable copied columns for one operator-defined workload schema."""
-    return (*COPY_COLUMNS_PREFIX, *dimensions, *COPY_COLUMNS_SUFFIX)
+    prefix = ("recipe_id",) if include_recipe_id else ()
+    return (*prefix, *COPY_COLUMNS_PREFIX, *dimensions, *COPY_COLUMNS_SUFFIX)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -199,25 +217,35 @@ def _require_columns(
 
 
 def _index_rows(
-    rows: Sequence[dict[str, str]], fieldnames: Sequence[str], label: str
-) -> dict[int, dict[str, str]]:
-    """Index rows by original input row while rejecting duplicates."""
-    _require_columns(fieldnames, ["input_row_index"], label)
-    indexed: dict[int, dict[str, str]] = {}
+    rows: Sequence[dict[str, str]],
+    fieldnames: Sequence[str],
+    label: str,
+    key_field: str = "input_row_index",
+) -> dict[str, dict[str, str]]:
+    """Index rows by stable recipe identity while rejecting duplicates."""
+    _require_columns(fieldnames, [key_field], label)
+    indexed: dict[str, dict[str, str]] = {}
     for row_number, row in enumerate(rows, start=2):
-        raw_index = row.get("input_row_index", "")
-        try:
-            input_row_index = int(raw_index)
-        except (TypeError, ValueError) as exc:
+        raw_key = row.get(key_field, "")
+        if key_field == "input_row_index":
+            try:
+                key = str(int(raw_key))
+            except (TypeError, ValueError) as exc:
+                raise ComparisonError(
+                    f"{label} row {row_number} has invalid input_row_index "
+                    f"{raw_key!r}"
+                ) from exc
+        else:
+            key = str(raw_key).strip()
+            if not key:
+                raise ComparisonError(
+                    f"{label} row {row_number} has empty {key_field}"
+                )
+        if key in indexed:
             raise ComparisonError(
-                f"{label} row {row_number} has invalid input_row_index "
-                f"{raw_index!r}"
-            ) from exc
-        if input_row_index in indexed:
-            raise ComparisonError(
-                f"{label} CSV has duplicate input_row_index {input_row_index}"
+                f"{label} CSV has duplicate {key_field} {raw_key}"
             )
-        indexed[input_row_index] = row
+        indexed[key] = row
     return indexed
 
 
@@ -318,7 +346,16 @@ def compare_rows(
         "model_platform_key",
         *baseline_dimensions,
     )
-    copy_columns = _copy_columns(baseline_dimensions)
+    use_recipe_id = (
+        "recipe_id" in baseline_fields
+        and "recipe_id" in ours_fields
+        and all(str(row.get("recipe_id", "")).strip() for row in baseline_rows)
+        and all(str(row.get("recipe_id", "")).strip() for row in ours_rows)
+    )
+    join_field = "recipe_id" if use_recipe_id else "input_row_index"
+    copy_columns = _copy_columns(
+        baseline_dimensions, include_recipe_id=use_recipe_id
+    )
     baseline_rows, baseline_fields = _normalize_schema(baseline_rows, baseline_fields)
     ours_rows, ours_fields = _normalize_schema(ours_rows, ours_fields)
     protocol_aware = _validate_protocol_schemas(baseline_fields, ours_fields)
@@ -331,8 +368,10 @@ def compare_rows(
     ]
     _require_columns(baseline_fields, required, "baseline")
     _require_columns(ours_fields, required, "ours")
-    baseline_by_index = _index_rows(baseline_rows, baseline_fields, "baseline")
-    ours_by_index = _index_rows(ours_rows, ours_fields, "ours")
+    baseline_by_index = _index_rows(
+        baseline_rows, baseline_fields, "baseline", join_field
+    )
+    ours_by_index = _index_rows(ours_rows, ours_fields, "ours", join_field)
     baseline_indexes = set(baseline_by_index)
     ours_indexes = set(ours_by_index)
     if baseline_indexes != ours_indexes:
@@ -346,14 +385,18 @@ def compare_rows(
     for input_row_index in sorted(baseline_indexes):
         baseline = baseline_by_index[input_row_index]
         ours = ours_by_index[input_row_index]
-        _validate_identity(input_row_index, baseline, ours, identity_columns)
+        display_index = baseline.get("input_row_index", input_row_index)
+        _validate_identity(display_index, baseline, ours, identity_columns)
         if protocol_aware:
-            _validate_protocol_identity(input_row_index, baseline, ours)
+            _validate_protocol_identity(display_index, baseline, ours)
         baseline_tuning = _parse_metric(baseline, tuning_column)
         ours_tuning = _parse_metric(ours, tuning_column)
         baseline_latency = _parse_metric(baseline, latency_column)
         ours_latency = _parse_metric(ours, latency_column)
 
+        planned_skip = baseline.get("status") in {"skipped", "planned_skip"} and ours.get(
+            "status"
+        ) in {"skipped", "planned_skip"}
         shared_errors = []
         if baseline.get("status") != "ok":
             shared_errors.append(f"baseline status is {baseline.get('status')!r}")
@@ -403,7 +446,9 @@ def compare_rows(
         for name in POLICY_COLUMNS:
             output[f"baseline_{name}"] = baseline.get(name, "")
             output[f"ours_{name}"] = ours.get(name, "")
-        output["comparison_status"] = "invalid" if errors else "ok"
+        output["comparison_status"] = (
+            "planned_skip" if planned_skip else ("invalid" if errors else "ok")
+        )
         output["comparison_error"] = "; ".join(errors)
         compared.append(output)
     return compared
@@ -426,6 +471,17 @@ def output_fieldnames(dimensions: Sequence[str]) -> list[str]:
     for name in POLICY_COLUMNS:
         fields.extend((f"baseline_{name}", f"ours_{name}"))
     fields.extend(("comparison_status", "comparison_error"))
+    return fields
+
+
+def _output_fieldnames_for_rows(
+    dimensions: Sequence[str], rows: Sequence[Mapping[str, str]]
+) -> list[str]:
+    """Include recipe identity when the compared inputs provide it."""
+    fields = output_fieldnames(dimensions)
+    if rows and "recipe_id" in rows[0]:
+        index = fields.index("input_row_index")
+        fields.insert(index, "recipe_id")
     return fields
 
 
@@ -467,6 +523,7 @@ def comparison_json_row(
     """Convert one flat comparison result to nested JSONL Schema v3."""
     return {
         "schema_version": SCHEMA_VERSION,
+        "recipe_id": row.get("recipe_id") or None,
         "input_row_index": int(row["input_row_index"]),
         "operator": {
             "id": row.get("op_id") or None,
@@ -524,7 +581,9 @@ def write_comparison(path: Path, rows: Sequence[Mapping[str, str]]) -> Path:
     dimensions = _dimension_columns(list(rows[0]), "comparison")
     try:
         with path.open("w", encoding="utf-8", newline="") as handle:
-            writer = csv.DictWriter(handle, fieldnames=output_fieldnames(dimensions))
+            writer = csv.DictWriter(
+                handle, fieldnames=_output_fieldnames_for_rows(dimensions, rows)
+            )
             writer.writeheader()
             writer.writerows(rows)
         with jsonl_path.open("w", encoding="utf-8") as handle:
