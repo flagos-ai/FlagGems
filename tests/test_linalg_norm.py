@@ -109,10 +109,18 @@ def test_vector_1d(dtype, ord, shape):
         # (Σ|x|^0.5)² magnifies last-ulp pow differences; fp64 rtol is 1e-7.
         pytest.skip("pow rounding exceeds fp64 rtol")
     A = _make_input(shape, dtype, flag_gems.device)
-    ref = torch.linalg.norm(utils.to_reference(A), ord, dim=None)
+    # The 0.5-norm is R = S², so 2S ≈ 1e5 magnifies the fp32 reference's own
+    # accumulation noise into the result: at N=65536 the CPU fp32 ref deviates
+    # from the fp64 truth by ~7e3 median / ~1.6e4 p90 in R — larger than both
+    # rtol*|R| and atol*N, and platform-dependent (the rounding path of pow and
+    # tl.sum differs per backend, so the same seed fails on Metax but may pass
+    # elsewhere).  Upcast the reference to fp64 for ord=0.5 so the assertion
+    # checks the kernel against truth instead of against reference noise.
+    ref = torch.linalg.norm(utils.to_reference(A, upcast=ord == 0.5), ord, dim=None)
     res = flag_gems.linalg_norm(A, ord=ord, dim=None)
-    # reduce_dim scales atol with the reduction length: the 0.5-norm squares
-    # the accumulation error, so the tolerance must grow with N.
+    # reduce_dim scales atol with the reduction length as a backstop: the
+    # 0.5-norm squares the accumulation error, so the tolerance must grow
+    # with N (only reached on platforms where the fp64 upcast is unavailable).
     utils.gems_assert_close(
         res, ref, dtype, reduce_dim=shape[0], atol=_get_atol(dtype, ord)
     )
