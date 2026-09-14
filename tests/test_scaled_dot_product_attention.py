@@ -160,10 +160,9 @@ def test_scaled_dot_product_flash_attention(
     with caplog.at_level(
         "DEBUG", logger="flag_gems.ops._scaled_dot_product_flash_attention"
     ):
-        with flag_gems.use_gems():
-            result = torch.ops.aten._scaled_dot_product_flash_attention.default(
-                q, k, v, 0.0, is_causal, False, scale=scale
-            )
+        result = torch.ops.aten._scaled_dot_product_flash_attention.default(
+            q, k, v, 0.0, is_causal, False, scale=scale
+        )
 
     assert "GEMS _SCALED_DOT_PRODUCT_FLASH_ATTENTION" in caplog.text
     assert len(result) == 9
@@ -430,8 +429,7 @@ def test_scaled_dot_product_attention_square_qk_even_mn(
     scale = float(1.0 / np.sqrt(head_size))
     torch_result = torch_sdpa(ref_q, ref_k, ref_v, scale, is_causal)
 
-    with flag_gems.use_gems():
-        gems_result = torch_sdpa(q, k, v, scale, is_causal)
+    gems_result = torch_sdpa(q, k, v, scale, is_causal)
 
     utils.gems_assert_close(gems_result, torch_result, dtype)
 
@@ -466,7 +464,6 @@ def test_scaled_dot_product_attention_nonsquare_qk(
     scale = float(1.0 / np.sqrt(head_size))
     torch_result = torch_sdpa(ref_q, ref_k, ref_v, scale, is_causal)
 
-    with flag_gems.use_gems():
-        gems_result = torch_sdpa(q, k, v, scale, is_causal)
+    gems_result = torch_sdpa(q, k, v, scale, is_causal)
 
     utils.gems_assert_close(gems_result, torch_result, dtype)
