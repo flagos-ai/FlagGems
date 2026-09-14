@@ -130,6 +130,7 @@ from .replication_pad2d_backward import (
 from .replication_pad3d_backward import replication_pad3d_backward
 from .rrelu_with_noise import rrelu_with_noise, rrelu_with_noise_
 from .scatter import scatter, scatter_
+from .scatter_add import scatter_add
 from .scatter_reduce import scatter_reduce, scatter_reduce_, scatter_reduce_out
 from .searchsorted import (
     searchsorted,
@@ -289,6 +290,7 @@ __all__ = [
     "ScaleDotProductAttention",
     "scatter",
     "scatter_",
+    "scatter_add",
     "scatter_reduce",
     "scatter_reduce_",
     "scatter_reduce_out",
