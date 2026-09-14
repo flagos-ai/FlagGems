@@ -5,6 +5,7 @@ import triton
 from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
+from ..utils.tle_copy import tle_copy
 
 logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
@@ -36,9 +37,7 @@ config_ = CodeGenConfig(
     True,
     prefer_1d_tile=True,
     buffer_size_limit=4096,
-    isCloseVectorization=False,
     kunlunAutoGrid=True,
-    unroll_num=8,
 )
 
 
@@ -64,7 +63,14 @@ def permute_copy(x: torch.Tensor, dims):
     src = x.contiguous() if not x.is_contiguous() else x
     out = torch.empty(out_shape, dtype=x.dtype, device=x.device)
 
-    # x.permute(dims) is a strided zero-copy view with shape == out_shape;
-    # pointwise_dynamic reads it (strided) and writes contiguous `out`.
-    _permute_copy_pw(src.permute(dims), out0=out)
+    # x.permute(dims) is a strided zero-copy view with shape == out_shape.
+    permuted = src.permute(dims)
+    # tle takes it as a TMA tile when the permutation keeps the innermost axis
+    # contiguous, and otherwise transposes a 64x64 tile on chip -- the shape
+    # XDNN's transpose_021_sdnn_bsp uses. Measured on KL3 for f16 transposes, the
+    # pointwise kernel is never the cheaper option here: 124us vs 83us at 8KB,
+    # 2.1ms vs 90us at 2MB, 32ms vs 207us at 32MB.
+    if tle_copy(permuted, out):
+        return out
+    _permute_copy_pw(permuted, out0=out)
     return out

@@ -100,7 +100,7 @@ def add(A, B, *, alpha=1):
         return torch.tensor(A + B * alpha)
 
 
-def add_(A, B, *, alpha=1.0):
+def add_(A, B, *, alpha=1):
     logger.debug("GEMS_KUNLUNXIN ADD_")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         return add_func(A, B, alpha, out0=A)
