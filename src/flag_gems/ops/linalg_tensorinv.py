@@ -300,4 +300,5 @@ def linalg_tensorinv(A, ind=2, *, out=None):
 def linalg_tensorinv_out(A, ind=2, *, out=None):
     """Out-of-place variant of linalg_tensorinv: computes the tensor inverse
     and writes the result into the provided ``out`` tensor."""
+    logger.debug("GEMS LINALG_TENSORINV_OUT")
     return linalg_tensorinv(A, ind=ind, out=out)
