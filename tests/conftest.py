@@ -17,8 +17,10 @@ import json
 import logging
 import os
 from datetime import datetime
+from pathlib import Path
 
 import pytest
+from _pytest.mark.structures import Mark, MarkDecorator
 
 # TODO(Qiming): Try remove this line
 # import torch  # noqa: F401
@@ -49,6 +51,59 @@ device = flag_gems.device
 
 TIMESTAMP = datetime.now().strftime("%Y%m%d_%H%M%S")
 REPORT_FILE = "accuracy_result.json"
+
+
+def _register_underscore_markers(config):
+    """Auto-register pytest markers for underscore-prefixed operator names.
+
+    Pytest doesn't allow attribute access for names starting with underscore.
+    This function reads operator IDs from operators.yaml and registers
+    underscore-prefixed ones using setattr, allowing test files to use
+    @pytest.mark._stack directly without manual registration.
+    """
+    operators_yaml = Path("conf/operators.yaml")
+    if not operators_yaml.exists():
+        return
+
+    try:
+        with open(operators_yaml) as f:
+            data = yaml.safe_load(f)
+    except Exception:
+        return
+
+    ops = data.get("ops", [])
+    underscore_ops = [op["id"] for op in ops if op.get("id", "").startswith("_")]
+
+    for op_id in underscore_ops:
+        if not hasattr(pytest.mark, op_id):
+            setattr(
+                pytest.mark,
+                op_id,
+                MarkDecorator(Mark(op_id, (), {}, _ispytest=True), _ispytest=True),
+            )
+            config.addinivalue_line(
+                "markers",
+                f"{op_id}: auto-registered marker for underscore-prefixed operator",
+            )
+
+
+def _validate_underscore_operator_markers(items):
+    """Validate test functions for underscore operators have correct markers.
+
+    For test files named test__xxx.py, checks if test functions have the
+    corresponding @pytest.mark._xxx marker. Skips tests with missing markers.
+    """
+    for item in items:
+        func_name = item.name.split("[")[0]
+        if func_name.startswith("test__"):
+            expected_marker = "_" + func_name[6:]
+            all_marks = [mark.name for mark in item.iter_markers()]
+            if expected_marker not in all_marks:
+                item.add_marker(
+                    pytest.mark.skip(
+                        reason=f"Missing @pytest.mark.{expected_marker} decorator"
+                    )
+                )
 
 
 def pytest_addoption(parser):
@@ -131,6 +186,8 @@ def pytest_configure(config):
             level=logging.INFO,
             format="[%(levelname)s] %(message)s",
         )
+
+    _register_underscore_markers(config)
 
 
 def pytest_runtest_teardown(item, nextitem):
@@ -252,3 +309,5 @@ def pytest_collection_modifyitems(session, config, items):
 
         # Skip all tests
         items.clear()
+
+    _validate_underscore_operator_markers(items)
