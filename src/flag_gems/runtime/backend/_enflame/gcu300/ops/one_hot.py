@@ -47,6 +47,10 @@ def one_hot(tensor: torch.Tensor, num_classes: int = -1) -> torch.Tensor:
 
     # GCU300 does not support 64-bit data types. torch.one_hot returns int64,
     # so allocate an int32 output for the kernel and cast back to int64 after.
+    if tensor.dtype == torch.int64:
+        tensor = tensor.to(torch.int32)
+    if tensor.dtype == torch.uint64:
+        tensor = tensor.to(torch.uint32)
     out_i32 = torch.empty(
         (*tensor.shape, num_classes), device=tensor.device, dtype=torch.int32
     )

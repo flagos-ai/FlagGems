@@ -40,12 +40,7 @@ def where_self_out(condition, self, other, out=None):
             out.dtype == result_type
         ), f"Expected out type to be {result_type}, but got {out.dtype}."
 
-    c, a, b = list(
-        map(
-            lambda x: x if isinstance(x, torch.Tensor) else torch.tensor(x),
-            (condition, self, other),
-        )
-    )
+    c, a, b = condition, self, other
 
     if a.dtype != result_type:
         a = a.to(result_type)
@@ -59,11 +54,11 @@ def where_self_out(condition, self, other, out=None):
 
     device = devices[0]
     if c.device != device and c.ndim == 0:
-        c = c.to(device)
+        c = torch.scalar_tensor(c.item(), dtype=c.dtype, device=device)
     if a.device != device and a.ndim == 0:
-        a = a.to(device)
+        a = torch.scalar_tensor(a.item(), dtype=a.dtype, device=device)
     if b.device != device and b.ndim == 0:
-        b = b.to(device)
+        b = torch.scalar_tensor(b.item(), dtype=b.dtype, device=device)
 
     assert (
         len(set(devices)) == 1

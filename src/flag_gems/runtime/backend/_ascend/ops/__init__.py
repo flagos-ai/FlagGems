@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from .adaptive_max_pool3d import adaptive_max_pool3d
 from .addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out
 from .all import all, all_dim, all_dims
 from .amax import amax
@@ -50,8 +51,10 @@ from .full import full
 from .full_like import full_like
 from .gather import gather, gather_backward
 from .groupnorm import group_norm, group_norm_backward
+from .gru import gru, gru_data
 from .hadamard_transform import hadamard_transform
 from .hstack import hstack
+from .igammac import igammac, igammac_out
 from .index import index
 from .index_add import index_add, index_add_
 from .index_copy_ import index_copy, index_copy_
@@ -68,6 +71,12 @@ from .linalg_lu_factor import linalg_lu_factor, linalg_lu_factor_out
 from .linalg_lu_factor_ex import linalg_lu_factor_ex, linalg_lu_factor_ex_out
 from .linalg_matrix_exp import linalg_matrix_exp, linalg_matrix_exp_out
 from .linalg_matrix_power import linalg_matrix_power, linalg_matrix_power_out
+from .linalg_matrix_rank import (
+    linalg_matrix_rank,
+    linalg_matrix_rank_out,
+    linalg_matrix_rank_tol,
+    linalg_matrix_rank_tol_out,
+)
 from .linalg_qr import linalg_qr, linalg_qr_out
 from .linalg_solve_triangular import (
     linalg_solve_triangular,
@@ -138,6 +147,7 @@ from .zeros_like import zeros_like
 __all__ = [
     "_unique2",
     "_upsample_bicubic2d_aa",
+    "adaptive_max_pool3d",
     "addmm",
     "addmm_dtype",
     "addmm_dtype_out",
@@ -185,8 +195,12 @@ __all__ = [
     "gather_backward",
     "group_norm",
     "group_norm_backward",
+    "gru",
+    "gru_data",
     "hadamard_transform",
     "hstack",
+    "igammac",
+    "igammac_out",
     "index",
     "index_add",
     "index_add_",
@@ -213,6 +227,10 @@ __all__ = [
     "linalg_matrix_exp_out",
     "linalg_matrix_power",
     "linalg_matrix_power_out",
+    "linalg_matrix_rank",
+    "linalg_matrix_rank_out",
+    "linalg_matrix_rank_tol",
+    "linalg_matrix_rank_tol_out",
     "linalg_qr",
     "linalg_qr_out",
     "linalg_solve_triangular",
