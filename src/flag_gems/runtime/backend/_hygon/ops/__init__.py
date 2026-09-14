@@ -25,6 +25,7 @@ from .amp_foreach_non_finite_check_and_unscale_ import (
     amp_foreach_non_finite_check_and_unscale_,
 )
 from .any import any, any_dim, any_dims
+from .as_strided_scatter import as_strided_scatter
 from .attention import (
     ScaleDotProductAttention,
     flash_attention_forward,
@@ -188,6 +189,7 @@ __all__ = [
     "any",
     "any_dim",
     "any_dims",
+    "as_strided_scatter",
     "avg_pool3d_backward",
     "baddbmm_",
     "beam_search_score",
