@@ -20,7 +20,14 @@ from typing import Optional, Tuple
 import torch
 import triton
 import triton.language as tl
-from triton.knobs import autotuning as _autotuning_knobs
+
+try:
+    from triton.knobs import autotuning as _autotuning_knobs
+
+    _HAS_TRITON_KNOBS = True
+except (ImportError, ModuleNotFoundError):
+    _autotuning_knobs = None
+    _HAS_TRITON_KNOBS = False
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +43,7 @@ def _disable_aabs_for_small_seqlen(seqlen_q, seqlen_k):
     "Input shapes should have M >= 1, N >= 1 and K >= 16" (decode: seqlen 1).
     Fall back to the plain (non-adjusted) configs for such shapes.
     """
-    if min(seqlen_q, seqlen_k) >= 16:
+    if not _HAS_TRITON_KNOBS or min(seqlen_q, seqlen_k) >= 16:
         yield
         return
     previous = _autotuning_knobs.adjust_block_size
