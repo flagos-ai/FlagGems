@@ -78,6 +78,8 @@ def test_special_log1p_nan_inf():
 @pytest.mark.special_log1p
 def test_special_log1p_small_values():
     """Test special_log1p precision for very small values."""
+    if not utils.fp64_is_supported:
+        pytest.skip("fp64 not supported on this device")
     inp = torch.tensor(
         [1e-15, 1e-10, 1e-8, 1e-5, -1e-5, -1e-8],
         dtype=torch.float64,

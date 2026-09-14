@@ -208,6 +208,345 @@ def softmax_backward_kernel_inner(
             tl.store(in_grad_ptr + n_offsets, in_grad_tile, mask=mask)
 
 
+# --- Multi-row 2D-tile backward kernel (launch-bound huge-rows / small-N only) ----
+# Same recipe as rms_norm_multirow_kernel: when the row count is large but N is
+# tiny, the per-row kernel launches `rows` tiny programs and per-program launch
+# latency (~0.6-0.9us) dominates (e.g. K>1 backward of [64,256,64] -> 4096 rows of
+# 256 elements -> ~1.6ms). Each program here owns a [TILE_M, N] tile of TILE_M
+# consecutive rows (the whole softmax dim as ONE contiguous column block) and
+# reduces along axis=1, cutting the grid to cdiv(rows, TILE_M). N is a constexpr
+# and the columns span exactly [0, N) with NO power-of-2 padding, so the tile is
+# one stride-1 contiguous block (block DMA); padded/runtime-N addressing forces
+# discrete access (~2x slower, HARNESS 1.3). Gated to power-of-2 N <= 256 and
+# rows >= MULTIROW_M; otherwise keep the per-row kernel.
+MULTIROW_N = 256
+MULTIROW_M = 512
+TILE_BUDGET = 4096  # rows*cols per 2D tile; two input tiles live in registers
+
+
+@libentry()
+@triton.jit
+def softmax_backward_multirow_kernel(
+    out_ptr,
+    out_grad_ptr,
+    in_grad_ptr,
+    M,
+    N: tl.constexpr,
+    TILE_M: tl.constexpr,
+):
+    pid = ext.program_id(0)
+    m_off = pid * TILE_M + tl.arange(0, TILE_M)
+    m_mask = m_off < M
+    n_off = tl.arange(0, N)
+    offs = m_off[:, None] * N + n_off[None, :]
+    # Only rows are masked. Out-of-range rows may load garbage (XPU ignores
+    # `other=`) but the axis=1 reduction is per-row and independent, and their
+    # store is masked out, so they never affect valid rows or the output.
+    out_tile = tl.load(out_ptr + offs, mask=m_mask[:, None], other=0.0).to(tl.float32)
+    out_grad_tile = tl.load(out_grad_ptr + offs, mask=m_mask[:, None], other=0.0).to(
+        tl.float32
+    )
+    scale = tl.sum(out_tile * out_grad_tile, axis=1)
+    in_grad_tile = out_tile * (out_grad_tile - scale[:, None])
+    tl.store(in_grad_ptr + offs, in_grad_tile, mask=m_mask[:, None])
+
+
+def softmax_backward_kernel_inner_heur_multirow(args):
+    N = args["N"]
+    rows = args["M"]
+    return N <= MULTIROW_N and (N & (N - 1)) == 0 and rows >= MULTIROW_M
+
+
+def softmax_backward_multirow_tile_m(args):
+    return max(1, TILE_BUDGET // args["N"])
+
+
+# --- Split-N kernels (few rows x huge N) ------------------------------------------
+# The per-row kernel gives ONE program to a whole row and walks it twice (scale
+# pass, then write pass) in TILE_N=4096 chunks. With rows=1 and N in the
+# hundreds of millions that is a single CTA doing hundreds of thousands of
+# serial tile iterations (~20GB/s: 1D [1073741824] took ~270ms). Split the row
+# across `split` CTAs: kernel 1 accumulates a partial sum(out*grad) per chunk,
+# kernel 2 re-loads the row scale from the partials and writes its chunk. The
+# scale accumulator stays within the tl.sum safety limit (TILE_N=4096 <= 8192,
+# HARNESS 1.5).
+#
+# Tail handling: this backend CANNOT compile the per-row kernel's
+# full-loop + masked-tail-loop structure for bf16 ("LLVM ERROR: SmallVector
+# unable to grow"), clamped tail addresses defeat vectorized access (~10-18x
+# slower), and a reduce inside a runtime branch is illegal. So coverage is
+# partitioned at N_ALIGNED = N // TILE_N * TILE_N: every aligned part spans an
+# exact multiple of TILE_N and its loops need NO masked lanes at all (block
+# DMA). The < TILE_N-element remainder [N_ALIGNED, N) is handled by separate
+# one-tile masked kernels (the per-row ONE_TILE_PER_CTA shape, which compiles
+# for all dtypes), launched only when N is not TILE_N-aligned.
+SPLIT_TILE_N = 4096
+SPLIT_CHUNK_TARGET = 16384
+SPLIT_MAX = 2048
+SPLIT_MAX_PROGRAMS = 32768
+
+
+@libentry()
+@triton.jit
+def softmax_backward_split_scale_kernel(
+    out_ptr,
+    out_grad_ptr,
+    part_scale_ptr,
+    N,
+    N_ALIGNED,
+    CHUNK: tl.constexpr,
+    TILE_S: tl.constexpr,
+    TILE_N: tl.constexpr,
+):
+    # grid = (rows, TILE_S). The part dim is padded to TILE_S (a power of 2) so
+    # the partial-sum vector the write kernel reduces over has NO masked lanes:
+    # this XPU miscompiles non-trivially-masked reductions (HARNESS 1.5), and a
+    # SPLIT < TILE_S mask there silently corrupted the scale. Padded parts
+    # (part >= real split) have start >= N_ALIGNED, so their loop is empty and
+    # they store a harmless 0.0. `N` is the true row stride (addressing);
+    # `N_ALIGNED` only bounds the loop coverage.
+    row = ext.program_id(0)
+    part = ext.program_id(1)
+    start = tl.minimum(part * CHUNK, N_ALIGNED)
+    end = tl.minimum(start + CHUNK, N_ALIGNED)
+    out_ptr += row * N
+    out_grad_ptr += row * N
+    acc = tl.zeros([TILE_N], dtype=tl.float32)
+    for off in range(start, end, TILE_N):
+        idx = off + tl.arange(0, TILE_N)
+        o = tl.load(out_ptr + idx).to(tl.float32)
+        g = tl.load(out_grad_ptr + idx).to(tl.float32)
+        acc += o * g
+    tl.store(part_scale_ptr + row * TILE_S + part, tl.sum(acc, 0))
+
+
+@libentry()
+@triton.jit
+def softmax_backward_split_scale_remainder_kernel(
+    out_ptr,
+    out_grad_ptr,
+    part_scale_ptr,
+    N,
+    N_ALIGNED,
+    SPLIT,
+    TILE_S: tl.constexpr,
+    TILE_N: tl.constexpr,
+):
+    # One program per row: the ragged remainder [N_ALIGNED, N), ONE masked tile
+    # (r < TILE_N by construction; same shape as the per-row kernel's
+    # ONE_TILE_PER_CTA path, which compiles for all dtypes). Writes slot SPLIT
+    # of the padded partial buffer (slots > SPLIT stay zero from zero-init).
+    row = ext.program_id(0)
+    out_ptr += row * N + N_ALIGNED
+    out_grad_ptr += row * N + N_ALIGNED
+    r = N - N_ALIGNED
+    idx = tl.arange(0, TILE_N)
+    mask = idx < r
+    o = tl.load(out_ptr + idx, mask=mask, other=0.0).to(tl.float32)
+    g = tl.load(out_grad_ptr + idx, mask=mask, other=0.0).to(tl.float32)
+    tl.store(part_scale_ptr + row * TILE_S + SPLIT, tl.sum(o * g, 0))
+
+
+@libentry()
+@triton.jit
+def softmax_backward_split_write_kernel(
+    out_ptr,
+    out_grad_ptr,
+    in_grad_ptr,
+    part_scale_ptr,
+    N,
+    N_ALIGNED,
+    CHUNK: tl.constexpr,
+    TILE_S: tl.constexpr,
+    TILE_N: tl.constexpr,
+):
+    row = ext.program_id(0)
+    part = ext.program_id(1)
+    # All TILE_S lanes are valid: the scale kernels write every slot of the
+    # padded (rows, TILE_S) buffer (aligned parts 0.0 when empty, remainder
+    # slot SPLIT, slots > SPLIT zero-init), so this reduction needs NO mask
+    # (a non-trivial mask here miscompiles, HARNESS 1.5).
+    s = tl.load(part_scale_ptr + row * TILE_S + tl.arange(0, TILE_S))
+    scale = tl.sum(s, 0)
+    start = tl.minimum(part * CHUNK, N_ALIGNED)
+    end = tl.minimum(start + CHUNK, N_ALIGNED)
+    out_ptr += row * N
+    out_grad_ptr += row * N
+    in_grad_ptr += row * N
+    for off in range(start, end, TILE_N):
+        idx = off + tl.arange(0, TILE_N)
+        o = tl.load(out_ptr + idx).to(tl.float32)
+        g = tl.load(out_grad_ptr + idx).to(tl.float32)
+        tl.store(in_grad_ptr + idx, (o * (g - scale)).to(in_grad_ptr.dtype.element_ty))
+
+
+@libentry()
+@triton.jit
+def softmax_backward_split_write_remainder_kernel(
+    out_ptr,
+    out_grad_ptr,
+    in_grad_ptr,
+    part_scale_ptr,
+    N,
+    N_ALIGNED,
+    SPLIT,
+    TILE_S: tl.constexpr,
+    TILE_N: tl.constexpr,
+):
+    row = ext.program_id(0)
+    s = tl.load(part_scale_ptr + row * TILE_S + tl.arange(0, TILE_S))
+    scale = tl.sum(s, 0)
+    out_ptr += row * N + N_ALIGNED
+    out_grad_ptr += row * N + N_ALIGNED
+    in_grad_ptr += row * N + N_ALIGNED
+    r = N - N_ALIGNED
+    idx = tl.arange(0, TILE_N)
+    mask = idx < r
+    o = tl.load(out_ptr + idx, mask=mask, other=0.0).to(tl.float32)
+    g = tl.load(out_grad_ptr + idx, mask=mask, other=0.0).to(tl.float32)
+    tl.store(
+        in_grad_ptr + idx, (o * (g - scale)).to(in_grad_ptr.dtype.element_ty), mask=mask
+    )
+
+
+def softmax_backward_split_plan(rows, N):
+    """Return (split, chunk, tile_s, n_aligned, has_remainder) or None."""
+    # Empirical crossover (micro-bench, fp32): the split's two-kernel structure
+    # (kernel barrier + partial round-trip) only pays when the per-row kernel
+    # leaves the machine idle, i.e. very few rows AND a long serial row walk.
+    # rows=1/N=1048576: 2.8x faster; rows=4: 1.6x; rows=8: 1.14x SLOWER;
+    # rows>=16: up to 1.45x slower. At N=65536 the split is ~2x slower even
+    # with rows<=4 (overhead dominates), hence the N floor.
+    if N < 1048576 or rows > 4:
+        return None
+    n_aligned = N // SPLIT_TILE_N * SPLIT_TILE_N
+    split = min(
+        triton.cdiv(n_aligned, SPLIT_CHUNK_TARGET),
+        SPLIT_MAX,
+        max(1, SPLIT_MAX_PROGRAMS // rows),
+    )
+    if split < 2:
+        return None
+    chunk = triton.cdiv(triton.cdiv(n_aligned, split), SPLIT_TILE_N) * SPLIT_TILE_N
+    split = triton.cdiv(n_aligned, chunk)
+    if split < 2:
+        return None
+    has_remainder = N > n_aligned
+    return (
+        split,
+        chunk,
+        triton.next_power_of_2(split + 1 if has_remainder else split),
+        n_aligned,
+        has_remainder,
+    )
+
+
+def launch_softmax_backward_inner(out_mat, out_grad_mat, in_grad_mat, rows, N):
+    plan = softmax_backward_split_plan(rows, N)
+    if plan is not None:
+        split, chunk, tile_s, n_aligned, has_remainder = plan
+        # zeros, NOT empty: slots beyond the written ones (padded parts / the
+        # remainder slot when N is aligned) must reduce as 0.0.
+        part_scale = torch.zeros(
+            (rows * tile_s,), dtype=torch.float32, device=out_mat.device
+        )
+        grid = (rows, tile_s, 1)
+        softmax_backward_split_scale_kernel[grid](
+            out_mat,
+            out_grad_mat,
+            part_scale,
+            N,
+            n_aligned,
+            CHUNK=chunk,
+            TILE_S=tile_s,
+            TILE_N=SPLIT_TILE_N,
+            buffer_size_limit=2048,
+        )
+        if has_remainder:
+            softmax_backward_split_scale_remainder_kernel[(rows, 1, 1)](
+                out_mat,
+                out_grad_mat,
+                part_scale,
+                N,
+                n_aligned,
+                split,
+                TILE_S=tile_s,
+                TILE_N=SPLIT_TILE_N,
+                buffer_size_limit=2048,
+            )
+        softmax_backward_split_write_kernel[grid](
+            out_mat,
+            out_grad_mat,
+            in_grad_mat,
+            part_scale,
+            N,
+            n_aligned,
+            CHUNK=chunk,
+            TILE_S=tile_s,
+            TILE_N=SPLIT_TILE_N,
+            buffer_size_limit=2048,
+        )
+        if has_remainder:
+            softmax_backward_split_write_remainder_kernel[(rows, 1, 1)](
+                out_mat,
+                out_grad_mat,
+                in_grad_mat,
+                part_scale,
+                N,
+                n_aligned,
+                split,
+                TILE_S=tile_s,
+                TILE_N=SPLIT_TILE_N,
+                buffer_size_limit=2048,
+            )
+    elif softmax_backward_kernel_inner_heur_multirow({"N": N, "M": rows}):
+        tile_m = softmax_backward_multirow_tile_m({"N": N})
+        grid = (triton.cdiv(rows, tile_m), 1, 1)
+        softmax_backward_multirow_kernel[grid](
+            out_mat,
+            out_grad_mat,
+            in_grad_mat,
+            rows,
+            N,
+            TILE_M=tile_m,
+            buffer_size_limit=2048,
+        )
+    else:
+        grid = (rows, 1, 1)
+        softmax_backward_kernel_inner[grid](
+            out_mat,
+            out_grad_mat,
+            in_grad_mat,
+            rows,
+            N,
+            buffer_size_limit=2048,
+        )
+
+
+def softmax_backward_out(grad_output, output, dim, input_dtype, *, grad_input):
+    logger.debug("GEMS_KUNLUNXIN SOFTMAX_BACKWARD_OUT")
+
+    assert dim >= -output.ndim and dim < output.ndim, "Invalid dim"
+    if tuple(grad_input.shape) != tuple(output.shape):
+        grad_input.resize_(output.shape)
+    if grad_input.dtype != input_dtype:
+        raise RuntimeError(
+            f"_softmax_backward_data.out: expected grad_input dtype {input_dtype}, got {grad_input.dtype}"
+        )
+    if output.numel() == 0:
+        return grad_input
+    # The generic `_softmax_backward_data.out` implementation lowers to
+    # softmax_backward_kernel_non_inner, whose 2D-tile `tl.sum(axis=0)`
+    # reduction fails to compile on this XPU ("axis must not be 0 for 2D+
+    # shapes"). Reuse the tuned kunlunxin functional (which handles K > 1 by
+    # transposing the reduced dim innermost) and write the result back into
+    # `grad_input` via the native strided copy; gems never overrides
+    # `_copy_from`, so this reaches the vendor engine directly.
+    in_grad = softmax_backward(grad_output, output, dim, input_dtype)
+    torch.ops.aten._copy_from(in_grad, grad_input, False)
+    return grad_input
+
+
 def softmax(self, dim, half_to_float=False):
     logger.debug("GEMS_KUNLUNXIN SOFTMAX")
 
@@ -294,55 +633,37 @@ def softmax_backward(grad_output, output, dim, input_dtype):
 
     grad_output = grad_output.contiguous()
     output = output.contiguous()
-    in_grad = torch.empty_like(output, dtype=torch.float32)
     K = output.numel() // M // N
 
-    with torch_device_fn.device(in_grad.device):
+    with torch_device_fn.device(output.device):
         if K > 1:
-            # how to use softmax_backward_kernel_inner?
-            # some transpose and continuous
-            out_grad_view = grad_output.view(M, N, K).transpose(1, 2).contiguous()
-            out_view = output.view(M, N, K).transpose(1, 2).contiguous()
-            # # 合并 M 和 K 维为 M' = M * K
-            out_grad_reshaped = out_grad_view.view(M * K, N)
-            out_reshaped = out_view.view(M * K, N)
-            # 分配输入梯度的视图
-            in_grad_view = in_grad.view(M, N, K).transpose(1, 2).contiguous()
-            in_grad_reshaped = in_grad_view.view(M * K, N)
-
-            grid = lambda meta: (M * K, 1, 1)  # noqa: E731
-
-            # 调用 Triton 反向内核
-            softmax_backward_kernel_inner[grid](
-                out_reshaped,
-                out_grad_reshaped,
-                in_grad_reshaped,
-                M * K,
-                N,
-                buffer_size_limit=2048,
+            # Transpose so the reduced dim N is innermost and contiguous, then
+            # treat [M, N, K] as a [M*K, N] row-major matrix.
+            out_mat = output.view(M, N, K).transpose(1, 2).contiguous().view(M * K, N)
+            out_grad_mat = (
+                grad_output.view(M, N, K).transpose(1, 2).contiguous().view(M * K, N)
             )
-            # 将输入梯度恢复到原始布局
-            # in_grad_view.copy_(in_grad_reshaped.view(M, K, N).transpose(1, 2))
-            origin_dim = output.ndim
-            if output.ndim == 3:
-                m, n, k = output.shape
-            elif output.ndim == 2:
-                m, n = output.shape
-            if M == 1 and origin_dim == 2:
-                in_grad = in_grad_reshaped.view(K, N).transpose(0, 1)
-            elif M == 1 and origin_dim == 3:
-                in_grad = in_grad_reshaped.transpose(0, 1).view(m, n, k)
-            else:
-                in_grad = in_grad_reshaped.view(m, k, n).transpose(1, 2)
+            rows = M * K
+            in_grad_mat = torch.empty(
+                (rows, N), dtype=torch.float32, device=output.device
+            )
+            # The kernel writes a fresh [rows, N] buffer. The old code produced
+            # this buffer via `empty_like(...).view(M,N,K).transpose(1,2)
+            # .contiguous()`, which materialized a copy of an UNINITIALIZED
+            # tensor (a full read+write pass with no information), and then
+            # recovered the layout from views + `.to(input_dtype)` (another
+            # full pass). Layout restore + dtype cast now fold into a single
+            # native strided copy via `_copy_from`.
+            launch_softmax_backward_inner(out_mat, out_grad_mat, in_grad_mat, rows, N)
+            # 将输入梯度恢复到原始布局（同一趟原生 strided copy 内完成 cast）
+            in_grad = torch.empty_like(output, dtype=input_dtype)
+            torch.ops.aten._copy_from(
+                in_grad_mat.view(M, K, N),
+                in_grad.view(M, N, K).transpose(1, 2),
+                False,
+            )
+            return in_grad
         else:
-            grid = lambda meta: (M, 1, 1)  # noqa: E731
-
-            softmax_backward_kernel_inner[grid](
-                output,
-                grad_output,
-                in_grad,
-                M,
-                N,
-                buffer_size_limit=2048,
-            )
+            in_grad = torch.empty_like(output, dtype=torch.float32)
+            launch_softmax_backward_inner(output, grad_output, in_grad, M, N)
     return in_grad.to(input_dtype)

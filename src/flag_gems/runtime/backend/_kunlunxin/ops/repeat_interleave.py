@@ -122,6 +122,64 @@ def repeat_interleave_tensor(repeats, *, output_size=None):
     return out
 
 
+@triton.jit
+def repeat_interleave_self_tensor_bcast_kernel(
+    inp_ptr,
+    rep_ptr,
+    cum_ptr,
+    out_ptr,
+    DIM_SIZE,
+    IDX_TOTAL,
+    INNER,
+    BLOCK: tl.constexpr,
+    NEED_MASK: tl.constexpr,
+):
+    # Load-once-store-k: one program handles one BLOCK-element chunk of one
+    # input row (o, j) and writes its k = repeats[j] copies to the k
+    # consecutive output rows. The input chunk is read exactly once instead of
+    # once per output row (the per-output-row copy kernel re-reads it k times
+    # on average, wasting read bandwidth for the common k > 1 case).
+    j = ext.program_id(0)
+    o = ext.program_id(1)
+    c = ext.program_id(2)
+    k = tl.load(rep_ptr + j).to(tl.int32)
+    col = c * BLOCK + tl.arange(0, BLOCK)
+    in_off = (o * DIM_SIZE + j).to(tl.int64) * INNER + col
+    start = (tl.load(cum_ptr + j) - k).to(tl.int64) + o.to(tl.int64) * IDX_TOTAL
+    if NEED_MASK:
+        mask = col < INNER
+        vals = tl.load(inp_ptr + in_off, mask=mask, other=0)
+        for t in range(0, k):
+            tl.store(out_ptr + (start + t) * INNER + col, vals, mask=mask)
+    else:
+        vals = tl.load(inp_ptr + in_off)
+        for t in range(0, k):
+            tl.store(out_ptr + (start + t) * INNER + col, vals)
+
+
+@triton.jit
+def repeat_interleave_self_tensor_gather_kernel(
+    inp_ptr,
+    index_ptr,
+    out_ptr,
+    IDX_TOTAL,
+    DIM_SIZE,
+    TOTAL_ROWS,
+    BLOCK: tl.constexpr,
+):
+    # inner == 1 fast path: each output element is a scalar gather
+    # out[o * IDX_TOTAL + j] = inp[o * DIM_SIZE + index[j]]
+    pid = ext.program_id(0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < TOTAL_ROWS
+    r = offs
+    j = r % IDX_TOTAL
+    o = r // IDX_TOTAL
+    src = tl.load(index_ptr + j, mask=mask, other=0)
+    vals = tl.load(inp_ptr + (o * DIM_SIZE + src).to(tl.int64), mask=mask, other=0)
+    tl.store(out_ptr + r.to(tl.int64), vals, mask=mask)
+
+
 def repeat_interleave_self_tensor(inp, repeats, dim=None, *, output_size=None):
     logger.debug("GEMS_KUNLUNXIN REPEAT_INTERLEAVE_SELF_TENSOR")
 
@@ -155,7 +213,60 @@ def repeat_interleave_self_tensor(inp, repeats, dim=None, *, output_size=None):
             )
         )
 
-    indices = repeat_interleave_tensor(repeats)
-    res = torch.index_select(inp, dim, indices)
+    cumsum = repeats.cumsum(axis=0)
+    idx_total = int(cumsum[-1].item())
 
-    return res
+    outer = 1
+    for s in inp_shape[:dim]:
+        outer *= s
+    inner = 1
+    for s in inp_shape[dim + 1 :]:
+        inner *= s
+
+    inp = inp.contiguous()
+    out_shape = inp_shape[:dim] + [idx_total] + inp_shape[dim + 1 :]
+    out = torch.empty(out_shape, dtype=inp.dtype, device=inp.device)
+
+    total_rows = outer * idx_total
+    if total_rows == 0 or inner == 0:
+        return out
+
+    if inner == 1:
+        # inner == 1 fast path: flat scalar gather, one BLOCK per program.
+        indices = repeat_interleave_tensor(repeats)
+        indices = indices.contiguous()
+        BLOCK = 1024
+        grid = (triton.cdiv(total_rows, BLOCK),)
+        repeat_interleave_self_tensor_gather_kernel[grid](
+            inp,
+            indices,
+            out,
+            idx_total,
+            inp_shape[dim],
+            total_rows,
+            BLOCK=BLOCK,
+            num_warps=4,
+        )
+        return out
+
+    # inner > 1: load-once-store-k. Each program reads one contiguous chunk of
+    # one input row exactly once and stores its k = repeats[j] copies to the k
+    # consecutive output rows (grid decomposed as (input row, outer, chunk)).
+    block = min(triton.next_power_of_2(inner), 32768)
+    chunks = triton.cdiv(inner, block)
+    need_mask = (inner % block) != 0
+    grid = (inp_shape[dim], outer, chunks)
+    repeat_interleave_self_tensor_bcast_kernel[grid](
+        inp,
+        repeats,
+        cumsum,
+        out,
+        inp_shape[dim],
+        idx_total,
+        inner,
+        BLOCK=block,
+        NEED_MASK=need_mask,
+        num_warps=8 if block >= 4096 else 4,
+        buffer_size_limit=8192 if block >= 8192 else 2048,
+    )
+    return out

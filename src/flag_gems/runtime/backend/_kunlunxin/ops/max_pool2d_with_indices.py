@@ -63,6 +63,7 @@ def max_pool2d_forward_kernel(
     in_w,
     out_h,
     out_w,
+    nc_total,
     # Pooling parameters
     kernel_h: tl.constexpr,
     kernel_w: tl.constexpr,
@@ -75,54 +76,80 @@ def max_pool2d_forward_kernel(
     # Meta-parameters for tiling
     BLOCK_H: tl.constexpr,
     BLOCK_W: tl.constexpr,
+    BLOCK_NC: tl.constexpr,
 ):
     pid_nc = tl.program_id(0)
     pid_hw = tl.program_id(1)
     num_w_blocks = tl.cdiv(out_w, BLOCK_W)
     h_block_idx = pid_hw // num_w_blocks
     w_block_idx = pid_hw % num_w_blocks
-    n_idx = pid_nc // in_c
-    c_idx = pid_nc % in_c
 
     h_out_offsets = h_block_idx * BLOCK_H + tl.arange(0, BLOCK_H)
     w_out_offsets = w_block_idx * BLOCK_W + tl.arange(0, BLOCK_W)
 
     dtype = input_ptr.type.element_ty
     min_val = get_dtype_min(dtype)
-    max_val_acc = tl.full((BLOCK_H, BLOCK_W), min_val, dtype=dtype)
-    max_idx_acc = tl.full((BLOCK_H, BLOCK_W), -1, dtype=tl.int32)
 
-    input_base_ptr = input_ptr + n_idx * in_stride_n + c_idx * in_stride_c
-
-    for kh in tl.static_range(0, kernel_h):
-        for kw in tl.static_range(0, kernel_w):
-            h_in = h_out_offsets[:, None] * stride_h - padding_h + kh * dilation_h
-            w_in = w_out_offsets[None, :] * stride_w - padding_w + kw * dilation_w
-            in_mask = (h_in >= 0) & (h_in < in_h) & (w_in >= 0) & (w_in < in_w)
-            input_offset = h_in * in_stride_h + w_in * in_stride_w
-            current_val = tl.load(
-                input_base_ptr + input_offset, mask=in_mask, other=min_val
-            )
-            current_idx = h_in * in_w + w_in
-
-            is_new_max = current_val > max_val_acc
-            max_val_acc = tl.where(is_new_max, current_val, max_val_acc)
-            max_idx_acc = tl.where(is_new_max & in_mask, current_idx, max_idx_acc)
-
-    out_base_ptr = output_ptr + pid_nc * out_h * out_w
-    indices_base_ptr = indices_ptr + pid_nc * out_h * out_w
     out_h_offsets = h_block_idx * BLOCK_H + tl.arange(0, BLOCK_H)
     out_w_offsets = w_block_idx * BLOCK_W + tl.arange(0, BLOCK_W)
-    output_block_ptr = (
-        out_base_ptr + out_h_offsets[:, None] * out_w + out_w_offsets[None, :]
-    )
-    indices_block_ptr = (
-        indices_base_ptr + out_h_offsets[:, None] * out_w + out_w_offsets[None, :]
-    )
-
     out_mask = (out_h_offsets[:, None] < out_h) & (out_w_offsets[None, :] < out_w)
-    tl.store(output_block_ptr, max_val_acc, mask=out_mask)
-    tl.store(indices_block_ptr, max_idx_acc, mask=out_mask)
+    out_offsets = out_h_offsets[:, None] * out_w + out_w_offsets[None, :]
+
+    # Batch multiple (n, c) channels into one program with a serial 2D-tile
+    # loop: with small output tiles (late ResNet stages) the per-(n,c) grid
+    # made the kernel launch-bound (up to 65536 tiny programs). Tail channels
+    # are clamped to the last valid channel, so their stores are idempotent
+    # (same values to the same addresses).
+    nc_start = pid_nc * BLOCK_NC
+    for i in tl.range(0, BLOCK_NC):
+        nc = nc_start + i
+        nc_safe = tl.minimum(nc, nc_total - 1)
+        n_idx = nc_safe // in_c
+        c_idx = nc_safe % in_c
+
+        max_val_acc = tl.full((BLOCK_H, BLOCK_W), min_val, dtype=dtype)
+        max_idx_acc = tl.full((BLOCK_H, BLOCK_W), -1, dtype=tl.int32)
+
+        input_base_ptr = input_ptr + n_idx * in_stride_n + c_idx * in_stride_c
+
+        for kh in tl.static_range(0, kernel_h):
+            for kw in tl.static_range(0, kernel_w):
+                h_in = (
+                    h_out_offsets[:, None] * stride_h
+                    - padding_h
+                    + kh * dilation_h
+                )
+                w_in = (
+                    w_out_offsets[None, :] * stride_w
+                    - padding_w
+                    + kw * dilation_w
+                )
+                in_mask = (h_in >= 0) & (h_in < in_h) & (w_in >= 0) & (w_in < in_w)
+                # On XPU, masked loads are unreliable: `other` is not honored and even
+                # the valid lanes of a partially-masked load can return corrupted data
+                # (observed on every window whose footprint crosses the far input
+                # boundary). Padding windows therefore use clamped, always in-bounds
+                # addresses with an UNMASKED load, and the padding lanes are restored
+                # to -inf in registers so they can never win the max.
+                # Affine clamp: min/max keep the address expression piecewise
+                # affine so the XPU offset analysis can prove unit/constant
+                # strides (tl.where on the address forces per-lane discrete
+                # gather). Padding lanes are still restored to -inf below.
+                h_in_safe = tl.minimum(tl.maximum(h_in, 0), in_h - 1)
+                w_in_safe = tl.minimum(tl.maximum(w_in, 0), in_w - 1)
+                input_offset = h_in_safe * in_stride_h + w_in_safe * in_stride_w
+                current_val = tl.load(input_base_ptr + input_offset)
+                current_val = tl.where(in_mask, current_val, min_val)
+                current_idx = h_in_safe * in_w + w_in_safe
+
+                is_new_max = current_val > max_val_acc
+                max_val_acc = tl.where(is_new_max, current_val, max_val_acc)
+                max_idx_acc = tl.where(is_new_max, current_idx, max_idx_acc)
+
+        out_base_ptr = output_ptr + nc * out_h * out_w
+        indices_base_ptr = indices_ptr + nc * out_h * out_w
+        tl.store(out_base_ptr + out_offsets, max_val_acc, mask=out_mask)
+        tl.store(indices_base_ptr + out_offsets, max_idx_acc, mask=out_mask)
 
 
 @libentry()
@@ -296,8 +323,14 @@ def max_pool2d_with_indices(
     block_h = min(triton.next_power_of_2(out_h), 64)
     block_w = min(triton.next_power_of_2(out_w), 64)
 
+    # Channel batching: keep per-program tile volume around 2048 lanes so small
+    # outputs (4x4/7x7/14x14/28x28) amortize program launch over multiple
+    # (n, c) channels instead of issuing one tiny program per channel.
+    nc_total = in_n * in_c
+    block_nc = max(1, min(nc_total, 2048 // (block_h * block_w)))
+
     grid = (
-        in_n * in_c,
+        triton.cdiv(nc_total, block_nc),
         triton.cdiv(out_h, block_h) * triton.cdiv(out_w, block_w),
     )
 
@@ -315,6 +348,7 @@ def max_pool2d_with_indices(
             in_w,
             out_h,
             out_w,
+            nc_total,
             kernel_h,
             kernel_w,
             stride_h,
@@ -325,6 +359,7 @@ def max_pool2d_with_indices(
             dilation_w,
             block_h,
             block_w,
+            block_nc,
         )
 
     return output, indices

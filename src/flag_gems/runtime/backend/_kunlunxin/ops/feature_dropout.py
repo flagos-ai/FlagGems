@@ -30,15 +30,25 @@ logger = logging.getLogger(__name__)
 #     philox, fused multiply, NO mask materialization (the generic path wastes a
 #     full (N,C)-sized 2.6GB mask roundtrip here). @libentry -> compiles once.
 #   * spatial > 1: feature dropout keeps/drops an ENTIRE channel, so the mask is
-#     constant across the whole contiguous spatial run of a channel. Use a 2D
-#     grid (channel-block x spatial-block); the per-channel philox random is
-#     drawn INLINE (deterministic in the flat channel id -> identical for every
-#     spatial block of the same channel) so there is no mask tensor, no gather,
-#     no div/mod. The inner spatial axis is stride-1 (block DMA). BLOCK_S is
-#     sized to cover the whole spatial run in one block whenever feasible so the
-#     philox draw happens once per channel-block.
+#     constant across the whole contiguous spatial run of a channel. The XPU
+#     cannot do fast 2D runtime-addressed tiles (`ch[:,None]*spatial + s` defeats
+#     OffsetAnalysis -> per-element discrete access, ~50x slower than flat 1D),
+#     and tl.reshape/broadcast of the small per-channel m vector hits uni_sram
+#     OutOfResources. So we stay on a WIDE FLAT 1D tile and pack the per-channel
+#     keep/drop decisions of the (<= 32) channels spanned by the tile into a
+#     SINGLE int32 bitmask: one philox draw over BLOCK_K lanes, `bits =
+#     sum(keep << kk)`, then every element extracts its channel's bit with a
+#     variable shift `bit = (bits >> local) & 1`. `local = channel(off) -
+#     channel(tile_start)` is computed WITHOUT integer division:
+#       - power-of-two spatial: exact right shifts (USE_SHIFT path);
+#       - otherwise: exact magic-number multiplication ((n*M)>>K, verified
+#         exactness for the covered range) on int64 for the tile base scalar and
+#         int32 for the per-element delta.
+#     A tile boundary mask (NEED_MASK) is a constexpr so aligned shapes keep the
+#     fully unmasked fast load/store. Exotic shapes where no exact magic exists
+#     (or the tile would span > 32 channels) fall back to the legacy 2D kernel.
 
-UNROLL = 8
+UNROLL = 4
 
 
 @libentry()
@@ -52,80 +62,42 @@ def _fd_elementwise_bulk_kernel(
     philox_offset,
     BLOCK: tl.constexpr,
 ):
-    # Bulk kernel: every program's UNROLL sub-stores are FULLY in-bounds (the
+    # Bulk kernel: every program's 4 sub-stores are FULLY in-bounds (the
     # launcher only grids over the aligned region n_full = floor(N/TILE)*TILE),
     # so there is NO store mask. This dodges the XPU masked-store legalization
     # bug where a program containing ANY fully-masked sub-store silently skips
-    # ALL of its (even the valid) stores -> dropped tail. Wide UNROLL=8 blocks
-    # give block DMA + saturate bandwidth on the large elementwise shapes.
-    UNROLL: tl.constexpr = 8
+    # ALL of its (even the valid) stores -> dropped tail.
+    # 4 sub-stores of BLOCK (tile 4096 @ BLOCK=1024) is the measured sweet spot:
+    # with 8 sub-vectors the fp32/bf16 paths run 2.2-2.6x slower than fp16
+    # (register liveness / scheduling), tile 4096 puts all three dtypes on the
+    # same philox-bound rate (~5G el/s).
     philox_seed = philox_seed.to(tl.int64)
     philox_offset = philox_offset.to(tl.int64)
     c0 = (philox_offset & 0xFFFFFFFF).to(tl.uint32)
     c1 = ((philox_offset >> 32) & 0xFFFFFFFF).to(tl.uint32)
 
-    i4_0 = tl.program_id(0) * BLOCK * 2 + tl.arange(0, BLOCK)
-    c0_0 = c0 + i4_0
-    _O = c0_0 * 0
-    r0, r1, r2, r3 = tl.philox(philox_seed, c0_0, c1, _O, _O)
-    r0 = uint_to_uniform_float(r0)
-    r1 = uint_to_uniform_float(r1)
-    r2 = uint_to_uniform_float(r2)
-    r3 = uint_to_uniform_float(r3)
+    i4 = tl.program_id(0) * BLOCK * 4 + tl.arange(0, BLOCK)
+    cc = c0 + i4
+    _O = cc * 0
+    r0, r1, r2, r3 = tl.philox(philox_seed, cc, c1, _O, _O)
+    m0 = uint_to_uniform_float(r0) > p
+    m1 = uint_to_uniform_float(r1) > p
+    m2 = uint_to_uniform_float(r2) > p
+    m3 = uint_to_uniform_float(r3) > p
 
-    i4_1 = tl.program_id(0) * BLOCK * 2 + BLOCK + tl.arange(0, BLOCK)
-    c0_1 = c0 + i4_1
-    _O1 = c0_1 * 0
-    r4, r5, r6, r7 = tl.philox(philox_seed, c0_1, c1, _O1, _O1)
-    r4 = uint_to_uniform_float(r4)
-    r5 = uint_to_uniform_float(r5)
-    r6 = uint_to_uniform_float(r6)
-    r7 = uint_to_uniform_float(r7)
+    x0 = tl.load(X + i4)
+    x1 = tl.load(X + i4 + BLOCK)
+    x2 = tl.load(X + i4 + 2 * BLOCK)
+    x3 = tl.load(X + i4 + 3 * BLOCK)
 
-    m0 = r0 > p
-    m1 = r1 > p
-    m2 = r2 > p
-    m3 = r3 > p
-    m4 = r4 > p
-    m5 = r5 > p
-    m6 = r6 > p
-    m7 = r7 > p
-
-    off_0 = tl.program_id(0) * BLOCK * UNROLL + tl.arange(0, BLOCK)
-    off_1 = off_0 + BLOCK
-    off_2 = off_1 + BLOCK
-    off_3 = off_2 + BLOCK
-    off_4 = off_3 + BLOCK
-    off_5 = off_4 + BLOCK
-    off_6 = off_5 + BLOCK
-    off_7 = off_6 + BLOCK
-
-    x0 = tl.load(X + off_0)
-    x1 = tl.load(X + off_1)
-    x2 = tl.load(X + off_2)
-    x3 = tl.load(X + off_3)
-    x4 = tl.load(X + off_4)
-    x5 = tl.load(X + off_5)
-    x6 = tl.load(X + off_6)
-    x7 = tl.load(X + off_7)
-
-    y0 = tl.where(m0, x0 * scale, 0.0)
-    y1 = tl.where(m1, x1 * scale, 0.0)
-    y2 = tl.where(m2, x2 * scale, 0.0)
-    y3 = tl.where(m3, x3 * scale, 0.0)
-    y4 = tl.where(m4, x4 * scale, 0.0)
-    y5 = tl.where(m5, x5 * scale, 0.0)
-    y6 = tl.where(m6, x6 * scale, 0.0)
-    y7 = tl.where(m7, x7 * scale, 0.0)
-
-    tl.store(Y + off_0, y0)
-    tl.store(Y + off_1, y1)
-    tl.store(Y + off_2, y2)
-    tl.store(Y + off_3, y3)
-    tl.store(Y + off_4, y4)
-    tl.store(Y + off_5, y5)
-    tl.store(Y + off_6, y6)
-    tl.store(Y + off_7, y7)
+    tl.store(Y + i4, tl.where(m0, x0 * scale, 0.0).to(Y.dtype.element_ty))
+    tl.store(Y + i4 + BLOCK, tl.where(m1, x1 * scale, 0.0).to(Y.dtype.element_ty))
+    tl.store(
+        Y + i4 + 2 * BLOCK, tl.where(m2, x2 * scale, 0.0).to(Y.dtype.element_ty)
+    )
+    tl.store(
+        Y + i4 + 3 * BLOCK, tl.where(m3, x3 * scale, 0.0).to(Y.dtype.element_ty)
+    )
 
 
 @libentry()
@@ -205,6 +177,81 @@ def _fd_channel_kernel(
     tl.store(Y + offset, y, mask=tile_mask)
 
 
+@libentry()
+@triton.jit(
+    do_not_specialize=[
+        "numel",
+        "spatial",
+        "magic_m",
+        "magic_k",
+        "dm_m",
+        "dm_k",
+        "p",
+        "scale",
+        "philox_seed",
+        "philox_offset",
+    ]
+)
+def _fd_channel_flat_kernel(
+    X,
+    Y,
+    numel,
+    spatial,
+    magic_m,  # int64 magic: channel(start) = (start * magic_m) >> magic_k
+    magic_k,
+    dm_m,  # int32 magic: local = ((delta + r) * dm_m) >> dm_k
+    dm_k,
+    p,
+    scale,
+    philox_seed,
+    philox_offset,
+    TILE: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    LOG_BS: tl.constexpr,
+    USE_SHIFT: tl.constexpr,
+    NEED_MASK: tl.constexpr,
+):
+    # Flat 1D wide tile; per-channel keep/drop decisions bit-packed into one
+    # int32 (BLOCK_K <= 32 channels spanned by the tile). Every element then
+    # extracts its channel's bit with a variable shift -> zero integer
+    # division, zero 2D addressing, fully coalesced load/store.
+    pid = tl.program_id(0)
+    philox_seed = philox_seed.to(tl.int64)
+    philox_offset = philox_offset.to(tl.int64)
+    start = pid * TILE  # int32 (numel < 2^31, same assumption as the other kernels)
+    off = start + tl.arange(0, TILE)
+
+    if USE_SHIFT:
+        # Power-of-two spatial: right shifts are exact floor division.
+        ch0 = start >> LOG_BS
+        local = tl.minimum((off >> LOG_BS) - ch0, 31)
+        ch0 = ch0.to(tl.int64)
+    else:
+        ch0 = (start.to(tl.int64) * magic_m) >> magic_k
+        r = (start - ch0 * spatial).to(tl.int32)  # start % spatial
+        # channel(off) - channel(start) = floor((r + delta) / spatial), delta < TILE
+        local = tl.minimum(((tl.arange(0, TILE) + r) * dm_m) >> dm_k, 31)
+
+    kk = tl.arange(0, BLOCK_K)
+    c0 = (philox_offset & 0xFFFFFFFF).to(tl.uint32)
+    c1 = ((philox_offset >> 32) & 0xFFFFFFFF).to(tl.uint32)
+    c0 = c0 + (ch0 + kk).to(tl.uint32)
+    _O = c0 * 0
+    r0, _, _, _ = tl.philox(philox_seed, c0, c1, _O, _O)
+    keep = (uint_to_uniform_float(r0) > p).to(tl.int32)  # [BLOCK_K]
+    bits = tl.sum(keep << kk, axis=0)  # one int32, bit kk = channel ch0+kk
+    bit = (bits >> local) & 1
+    m = bit.to(tl.float32) * scale
+
+    if NEED_MASK:
+        mask = off < numel
+        x = tl.load(X + off, mask=mask, other=0.0)
+        tl.store(Y + off, (x * m).to(Y.dtype.element_ty), mask=mask)
+    else:
+        x = tl.load(X + off)
+        tl.store(Y + off, (x * m).to(Y.dtype.element_ty))
+
+
 def _elementwise_launch_config(N):
     if N <= 512:
         return 512, 4
@@ -223,7 +270,49 @@ def _tail_block(n_tail):
     return b
 
 
-def _channel_config(spatial):
+def _magic_div(spatial, max_n, k_hi, k_lo, m_limit):
+    # Exact floor-division magic numbers: floor(n / spatial) == (n * M) >> K
+    # for every 0 <= n <= max_n (classic round-up magic; exactness guaranteed by
+    # M*spatial - 2^K >= 0 and max_n * (M*spatial - 2^K) < 2^K).
+    for k in range(k_hi, k_lo - 1, -1):
+        m = ((1 << k) // spatial) + 1
+        if m * max_n >= m_limit:
+            continue
+        e = m * spatial - (1 << k)
+        if e >= 0 and max_n * e < (1 << k):
+            return m, k
+    return None
+
+
+def _channel_config(spatial, numel):
+    # Flat-bits channel kernel config. The tile is halved until it spans at
+    # most 31 channel boundaries, so the packed bitmask fits ONE int32
+    # (BLOCK_K <= 32). Returns None when no exact magic exists for the spatial
+    # size -> caller falls back to the legacy 2D kernel.
+    tile = 8192
+    while tile > 64 and triton.cdiv(tile, spatial) + 1 > 32:
+        tile //= 2
+    block_k = triton.next_power_of_2(triton.cdiv(tile, spatial) + 1)
+    if block_k > 32:
+        return None
+    use_shift = (spatial & (spatial - 1)) == 0
+    magic_m = magic_k = dm_m = dm_k = 0
+    if not use_shift:
+        m1 = _magic_div(spatial, numel + tile, 62, 32, 1 << 63)
+        if m1 is None:
+            return None
+        m2 = _magic_div(spatial, tile + spatial, 31, 15, 1 << 31)
+        if m2 is None:
+            return None
+        magic_m, magic_k = m1
+        dm_m, dm_k = m2
+    need_mask = (numel % tile) != 0
+    num_warps = 8 if tile >= 4096 else 4
+    return (tile, block_k, use_shift, need_mask, magic_m, magic_k, dm_m, dm_k, num_warps)
+
+
+def _channel_config_2d(spatial):
+    # Legacy 2D-tile config, kept as the fallback for exotic spatial sizes.
     # Size BLOCK_S to cover the whole spatial run in one block whenever feasible
     # (so the inline philox draw happens once per channel-block, not once per
     # spatial-tile). Target a ~8192-element tile with the inner (stride-1)
@@ -283,24 +372,61 @@ def _feature_dropout_impl(input, out, p):
                     num_warps=4,
                 )
         else:
-            block_c, block_s, num_warps = _channel_config(spatial)
-            grid = (triton.cdiv(NC, block_c), triton.cdiv(spatial, block_s))
+            numel = NC * spatial
             # NC randoms consumed (one philox draw per channel).
             increment = triton.cdiv(NC, 4) * 4
             philox_seed, philox_offset = philox_backend_seed_offset(increment)
-            _fd_channel_kernel[grid](
-                input,
-                out,
-                NC,
-                spatial,
-                p,
-                scale,
-                philox_seed,
-                philox_offset,
-                BLOCK_C=block_c,
-                BLOCK_S=block_s,
-                num_warps=num_warps,
-            )
+            cfg = _channel_config(spatial, numel)
+            if cfg is None:
+                # No exact magic for this spatial size -> legacy 2D tile kernel.
+                block_c, block_s, num_warps = _channel_config_2d(spatial)
+                grid = (triton.cdiv(NC, block_c), triton.cdiv(spatial, block_s))
+                _fd_channel_kernel[grid](
+                    input,
+                    out,
+                    NC,
+                    spatial,
+                    p,
+                    scale,
+                    philox_seed,
+                    philox_offset,
+                    BLOCK_C=block_c,
+                    BLOCK_S=block_s,
+                    num_warps=num_warps,
+                )
+            else:
+                (
+                    tile,
+                    block_k,
+                    use_shift,
+                    need_mask,
+                    magic_m,
+                    magic_k,
+                    dm_m,
+                    dm_k,
+                    num_warps,
+                ) = cfg
+                grid = (triton.cdiv(numel, tile),)
+                _fd_channel_flat_kernel[grid](
+                    input,
+                    out,
+                    numel,
+                    spatial,
+                    magic_m,
+                    magic_k,
+                    dm_m,
+                    dm_k,
+                    p,
+                    scale,
+                    philox_seed,
+                    philox_offset,
+                    TILE=tile,
+                    BLOCK_K=block_k,
+                    LOG_BS=spatial.bit_length() - 1,
+                    USE_SHIFT=use_shift,
+                    NEED_MASK=need_mask,
+                    num_warps=num_warps,
+                )
     return out
 
 

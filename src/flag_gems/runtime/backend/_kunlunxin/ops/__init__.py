@@ -12,12 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from ._amp_foreach_non_finite_check_and_unscale_ import (
+    _amp_foreach_non_finite_check_and_unscale_,
+)
 from ._euclidean_dist import _euclidean_dist
 from ._functional_sym_constrain_range import _functional_sym_constrain_range
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
 from ._is_all_true import _is_all_true
+from ._jagged_to_padded_dense_forward import _jagged_to_padded_dense_forward
+from ._linalg_eigvals import _linalg_eigvals
 from ._thnn_fused_lstm_cell_backward_impl import _thnn_fused_lstm_cell_backward_impl
 from .abs import abs, abs_
 from .absolute import absolute
@@ -110,6 +115,7 @@ from .diag_embed import diag_embed
 from .diagonal import diagonal_backward
 from .digamma_ import digamma_
 from .div import (
+    divide,
     div_mode,
     div_mode_,
     floor_divide,
@@ -119,6 +125,8 @@ from .div import (
     true_divide,
     true_divide_,
     true_divide_out,
+    true_divide_tensor,
+    true_divide_tensor_,
 )
 from .dot import dot
 from .dropout import dropout, dropout_backward
@@ -129,6 +137,7 @@ from .erf import erf, erf_
 from .exp import exp, exp_, exp_out
 from .exp2 import exp2, exp2_
 from .expm1 import expm1, expm1_, expm1_out
+from .exponential import exponential
 from .exponential_ import exponential_
 from .eye import eye
 from .eye_m import eye_m
@@ -146,6 +155,8 @@ from .floor import floor, floor_, floor_out
 from .full import full
 from .full_like import full_like
 from .gather import gather, gather_backward
+from .gcd import gcd, gcd_out
+from .gcd_ import gcd_
 from .ge import ge, ge_scalar, greater_equal_
 from .gelu import gelu, gelu_, gelu_backward
 from .get_scheduler_metadata import get_scheduler_metadata
@@ -172,10 +183,15 @@ from .leaky_relu import leaky_relu, leaky_relu_, leaky_relu_out
 from .lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
 from .less_equal import less_equal, less_equal_scalar
 from .lift_fresh_copy import lift_fresh_copy
+from .linalg_solve_triangular import (
+    linalg_solve_triangular,
+    linalg_solve_triangular_out,
+)
 from .linspace import linspace
 from .log import log
 from .log1p import log1p, log1p_
 from .log_sigmoid import log_sigmoid
+from .log_sigmoid_backward import log_sigmoid_backward, log_sigmoid_backward_out
 from .log_softmax import log_softmax, log_softmax_backward
 from .logaddexp2 import logaddexp2, logaddexp2_out
 from .logical_and import logical_and, logical_and_
@@ -284,10 +300,12 @@ from .slice_backward import slice_backward
 from .slice_scatter import slice_scatter
 from .soft_margin_loss import soft_margin_loss, soft_margin_loss_out
 from .soft_margin_loss_backward import soft_margin_loss_backward
-from .softmax import softmax, softmax_backward
+from .softmax import softmax, softmax_backward, softmax_backward_out
 from .softplus import softplus
 from .softshrink import softshrink, softshrink_out
 from .sort import sort, sort_stable
+from .special_erfc import special_erfc
+from .special_log1p import special_log1p, special_log1p_out
 from .special_log_softmax import special_log_softmax
 from .special_logsumexp import special_logsumexp
 from .sqrt import sqrt, sqrt_
@@ -327,6 +345,8 @@ from .xlogy import (
     xlogy_scalar_tensor_out,
     xlogy_tensor_scalar,
     xlogy_tensor_scalar_out,
+    xlogy_,
+    xlogy_tensor_scalar_,
 )
 from .zero import zero, zero_, zero_out
 from .zeros import zeros
@@ -337,6 +357,9 @@ __all__ = [
     "_functional_sym_constrain_range_for_size",
     "_euclidean_dist",
     "_is_all_true",
+    "_jagged_to_padded_dense_forward",
+    "_linalg_eigvals",
+    "_amp_foreach_non_finite_check_and_unscale_",
     "_thnn_fused_lstm_cell_backward_impl",
     "_conv_depthwise2d",
     "_safe_softmax",
@@ -344,6 +367,9 @@ __all__ = [
     "soft_margin_loss",
     "soft_margin_loss_out",
     "soft_margin_loss_backward",
+    "special_erfc",
+    "special_log1p",
+    "special_log1p_out",
     "special_log_softmax",
     "special_logsumexp",
     "softshrink",
@@ -485,6 +511,7 @@ __all__ = [
     "expm1",
     "expm1_",
     "expm1_out",
+    "exponential",
     "exponential_",
     "eye",
     "eye_m",
@@ -508,6 +535,9 @@ __all__ = [
     "full_like",
     "gather",
     "gather_backward",
+    "gcd",
+    "gcd_out",
+    "gcd_",
     "ge",
     "ge_scalar",
     "gelu",
@@ -555,11 +585,15 @@ __all__ = [
     "less_equal",
     "less_equal_scalar",
     "lift_fresh_copy",
+    "linalg_solve_triangular",
+    "linalg_solve_triangular_out",
     "linspace",
     "log",
     "log1p",
     "log1p_",
     "log_sigmoid",
+    "log_sigmoid_backward",
+    "log_sigmoid_backward_out",
     "log_softmax",
     "log_softmax_backward",
     "logaddexp2",
@@ -714,6 +748,7 @@ __all__ = [
     "slice_scatter",
     "softmax",
     "softmax_backward",
+    "softmax_backward_out",
     "softplus",
     "sort",
     "sort_stable",
@@ -747,6 +782,7 @@ __all__ = [
     "tril",
     "tril_",
     "tril_out",
+    "divide",
     "triu",
     "triu_",
     "true_divide",
@@ -754,6 +790,8 @@ __all__ = [
     "trunc",
     "trunc_",
     "true_divide_",
+    "true_divide_tensor",
+    "true_divide_tensor_",
     "uniform_",
     "upsample_linear1d",
     "upsample_nearest1d",
@@ -776,6 +814,8 @@ __all__ = [
     "xlogy_scalar_tensor_out",
     "xlogy_tensor_scalar",
     "xlogy_tensor_scalar_out",
+    "xlogy_",
+    "xlogy_tensor_scalar_",
     "zero",
     "zero_",
     "zero_out",

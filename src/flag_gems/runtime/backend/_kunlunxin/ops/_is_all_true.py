@@ -9,6 +9,7 @@ from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
 from ..utils.block_size_utils import get_block_size_1d
+from .all import _GLOBAL_2D_MIN, _pick_2d_cols, all_kernel_dim
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +70,30 @@ def _is_all_true(inp):
     # all() of the empty set is True (vacuous truth).
     if n_elements == 0:
         return torch.tensor(True, dtype=torch.bool, device=inp.device)
+
+    # Fast path for large flat reductions, ported verbatim from the tuned
+    # kunlunxin `all()` recipe: the flat axis=0 tl.reduce tops out ~82 GB/s on
+    # XPU, while viewing the contiguous buffer as a [M, K] grid and reducing
+    # along axis=1 via all_kernel_dim coalesces far better (measured ~1.75x at
+    # 1G for `all`). Falls back to the flat path when the buffer is small,
+    # non-contiguous, or has no clean power-of-2 column width. Input dtype is
+    # asserted bool above, so no `!= 0` widening is needed beyond what the
+    # kernel already does.
+    if n_elements >= _GLOBAL_2D_MIN and inp.is_contiguous():
+        K = _pick_2d_cols(n_elements)
+        if K:
+            M = n_elements // K
+            inp2d = inp.view(M, K)
+            mid = torch.empty((M,), dtype=torch.bool, device=inp.device)
+            out = torch.empty([], dtype=torch.bool, device=inp.device)
+            block_mid = triton.next_power_of_2(M)
+            grid = lambda meta: (max(triton.cdiv(M, meta["BLOCK_M"]), 1),)
+            with torch_device_fn.device(inp.device):
+                all_kernel_dim[grid](inp2d, mid, M, K, buffer_size_limit=2048)
+                is_all_true_kernel_2[(1, 1, 1)](
+                    mid, out, M, block_mid, buffer_size_limit=2048
+                )
+            return out
 
     block_size = get_block_size_1d(n_elements, inp.element_size())
     mid_size = triton.cdiv(n_elements, block_size)

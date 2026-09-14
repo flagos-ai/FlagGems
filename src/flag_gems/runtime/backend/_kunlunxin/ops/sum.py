@@ -35,7 +35,10 @@ def sum_kernel_1(
     inp,
     mid,
     M,
+    INP_OFFSET,
+    MID_OFFSET,
     BLOCK_SIZE: tl.constexpr,
+    NEED_MASK: tl.constexpr,
 ):
     if tl.constexpr(inp.dtype.element_ty == tl.float16) or tl.constexpr(
         inp.dtype.element_ty == tl.bfloat16
@@ -45,13 +48,22 @@ def sum_kernel_1(
         cdtype = inp.dtype.element_ty
 
     pid = ext.program_id(0)
-    offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    # Reduce inp[INP_OFFSET : INP_OFFSET + M], program pid covers its pid-th
+    # BLOCK_SIZE chunk; partial sum goes to mid[MID_OFFSET + pid]. The offsets
+    # let the hybrid path isolate the tail into a single masked program without
+    # Python-level view ops (FlagGems overrides narrow and friends).
+    offset = INP_OFFSET + pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     inp_ptrs = inp + offset
-    mask = offset < M
 
-    inp_val = tl.load(inp_ptrs, mask=mask, other=0).to(cdtype)
+    # NEED_MASK=False (chunk fully in-bounds) avoids the XPU slow masked-memory
+    # path (HARNESS 1.4); measured 2x+ on the contiguous split reduction.
+    if NEED_MASK:
+        mask = offset < INP_OFFSET + M
+        inp_val = tl.load(inp_ptrs, mask=mask, other=0).to(cdtype)
+    else:
+        inp_val = tl.load(inp_ptrs).to(cdtype)
     sum_val = tl.sum(inp_val)
-    mid_ptr = mid + pid
+    mid_ptr = mid + MID_OFFSET + pid
     tl.store(mid_ptr, sum_val)
 
 
@@ -94,6 +106,37 @@ _BLOCK_N_MAX = 8192
 _SMALL_M = 4096
 _HUGE_N = 32768
 _SMALL_BLOCK_M = 8
+
+# Full-tensor split reduction (sum / sum_out) first-stage block. For fp32 a
+# 131072-element unmasked block (streamed via buffer_size_limit=2048) is
+# exactness-verified on XPU (all-ones per-program == 131072, +-1 alternation,
+# randn vs fp64 reference) and ~25-35% faster than the get_block_size_1d byte cap
+# (32768 elts) on large divisible inputs. Taken ONLY when dtype is fp32, M is an
+# exact multiple of 131072 and M is large enough to keep >=128 programs; every
+# other case keeps the get_block_size_1d block. See
+# harness/solution/performance/sum_out_perf_fix.md (probe3/probe4).
+_FP32_SPLIT_BLK = 131072
+_FP32_SPLIT_MIN_M = 16 * 1024 * 1024
+
+# Small full-tensor reductions run in ONE program directly into `out`: the
+# two-stage path pays two triton launches + a mid allocation (~8us floor) while
+# a single unmasked program over a pow2 M <= 8192 is the documented-safe tl.sum
+# regime (HARNESS 1.5). Non-pow2 / larger M keeps the two-stage split path.
+_SINGLE_KERNEL_MAX_M = 8192
+# Hybrid tail split (unmasked prefix + 1 masked tail program) only pays off once
+# enough full blocks exist to amortize the extra launch (~3us, ~0.3us/program).
+_HYBRID_MIN_FULL = 16
+
+
+def _full_sum_block_size(inp_dtype, M, element_size):
+    block_size = get_block_size_1d(M, element_size)
+    if (
+        inp_dtype is torch.float32
+        and M >= _FP32_SPLIT_MIN_M
+        and M % _FP32_SPLIT_BLK == 0
+    ):
+        block_size = _FP32_SPLIT_BLK
+    return block_size
 
 
 @libentry()
@@ -142,7 +185,14 @@ def _launch_sum_dim(inp, out, M, N):
         mid = torch.empty((mid_size,), dtype=out.dtype, device=inp.device)
         with torch_device_fn.device(inp.device):
             sum_kernel_1[(mid_size, 1, 1)](
-                inp, mid, N, block_size, buffer_size_limit=2048
+                inp,
+                mid,
+                N,
+                0,
+                0,
+                block_size,
+                M % block_size != 0,
+                buffer_size_limit=2048,
             )
             if mid_size == 1:
                 out.copy_(mid.reshape(out.shape))
@@ -162,6 +212,92 @@ def _launch_sum_dim(inp, out, M, N):
         sum_kernel[grid](inp, out, M, N, block_m, block_n, buffer_size_limit=2048)
 
 
+def _full_sum_launch(inp, out, M, dtype):
+    # Shared device path for full-tensor reductions (sum / sum_out). `out` is a
+    # 0-dim tensor receiving the scalar result.
+    with torch_device_fn.device(inp.device):
+        if 0 < M <= _SINGLE_KERNEL_MAX_M and M & (M - 1) == 0:
+            sum_kernel_1[(1, 1, 1)](
+                inp,
+                out,
+                M,
+                0,
+                0,
+                M,
+                False,
+                buffer_size_limit=2048,
+            )
+            return
+
+        block_size = _full_sum_block_size(dtype, M, inp.element_size())
+        full = M // block_size
+        tail = M - full * block_size
+        if tail == 0:
+            mid_size = full
+            mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
+            sum_kernel_1[(mid_size, 1, 1)](
+                inp,
+                mid,
+                M,
+                0,
+                0,
+                block_size,
+                False,
+                buffer_size_limit=2048,
+            )
+        elif full < _HYBRID_MIN_FULL:
+            # Small tail: a single masked kernel handles everything (cheap, and
+            # the extra launch of the hybrid path would not pay off).
+            mid_size = full + 1
+            mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
+            sum_kernel_1[(mid_size, 1, 1)](
+                inp,
+                mid,
+                M,
+                0,
+                0,
+                block_size,
+                True,
+                buffer_size_limit=2048,
+            )
+        else:
+            # Large tail: run the divisible prefix UNMASKED (fast DMA path) and
+            # isolate the tail into ONE masked program. Masked loads take a slow
+            # path on XPU (HARNESS 1.4); previously every program paid it.
+            mid_size = full + 1
+            mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
+            sum_kernel_1[(full, 1, 1)](
+                inp,
+                mid,
+                full * block_size,
+                0,
+                0,
+                block_size,
+                False,
+                buffer_size_limit=2048,
+            )
+            sum_kernel_1[(1, 1, 1)](
+                inp,
+                mid,
+                tail,
+                full * block_size,
+                full,
+                block_size,
+                True,
+                buffer_size_limit=2048,
+            )
+        if mid_size == 1:
+            out.copy_(mid.reshape(out.shape))
+            return
+        sum_kernel_2[(1, 1, 1)](
+            mid,
+            out,
+            mid_size,
+            triton.next_power_of_2(mid_size),
+            buffer_size_limit=2048,
+        )
+
+
 def sum(inp, *, dtype=None):
     logger.debug("GEMS_KUNLUNXIN SUM")
     M = inp.numel()
@@ -170,18 +306,8 @@ def sum(inp, *, dtype=None):
         if dtype is torch.bool:
             inp = inp.to(torch.int64)
             dtype = torch.int64
-    block_size = get_block_size_1d(M, inp.element_size())
-    mid_size = triton.cdiv(M, block_size)
-    block_mid = triton.next_power_of_2(mid_size)
-
-    mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
     out = torch.empty([], dtype=dtype, device=inp.device)
-
-    with torch_device_fn.device(inp.device):
-        sum_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size, buffer_size_limit=2048)
-        if mid_size == 1:
-            return mid.reshape([])
-        sum_kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid, buffer_size_limit=2048)
+    _full_sum_launch(inp, out, M, dtype)
     return out
 
 
@@ -193,16 +319,7 @@ def sum_out(inp, *, dtype=None, out):
         if dtype is torch.bool:
             inp = inp.to(torch.int64)
             dtype = torch.int64
-    block_size = get_block_size_1d(M, inp.element_size())
-    mid_size = triton.cdiv(M, block_size)
-    block_mid = triton.next_power_of_2(mid_size)
-
-    mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
-    with torch_device_fn.device(inp.device):
-        sum_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size, buffer_size_limit=2048)
-        if mid_size == 1:
-            return mid.reshape([])
-        sum_kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid, buffer_size_limit=2048)
+    _full_sum_launch(inp, out, M, dtype)
     return out
 
 
