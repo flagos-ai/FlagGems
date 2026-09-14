@@ -60,6 +60,7 @@ from .div import (
 from .embedding_bag_dense_backward import embedding_bag_dense_backward
 from .exponential import exponential
 from .exponential_ import exponential_
+from .feature_dropout import feature_dropout
 from .fill import (
     fill_scalar,
     fill_scalar_,
@@ -199,6 +200,7 @@ __all__ = [
     "embedding_bag_dense_backward",
     "exponential",
     "exponential_",
+    "feature_dropout",
     "fill_scalar",
     "fill_scalar_",
     "fill_scalar_out",
