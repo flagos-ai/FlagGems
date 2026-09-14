@@ -58,6 +58,7 @@ __all__ = [
     "addmm_out",
     "all",
     "any",
+    "apply_arm_overrides",
     "argmax",
     "bmm",
     "cumsum",
@@ -90,7 +91,6 @@ __all__ = [
     "sub",
     "topk",
     "where_self_out",
-    "apply_arm_overrides",
 ]
 
 import logging as _logging  # noqa: E402

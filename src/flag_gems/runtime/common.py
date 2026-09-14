@@ -92,6 +92,14 @@ DEFAULT_STRATEGIES = {
         "default",
     ],
     "mm_tma_transposed_direct": ["default", "default", "default", "default"],
+    "mm_w8a8_fp8_general_tma": [
+        "align32",
+        "align32",
+        "align32",
+        "align32",
+        "align32",
+        "default",
+    ],
     "mm_warp_specialized_tma": ["default", "default", "default", "default"],
     "mv": ["align32", "align32"],
     "mul": ["align32", "default"],
@@ -137,6 +145,23 @@ DEFAULT_STRATEGIES = {
         "align32",
     ],
     "mm_splitk": ["align32", "align32", "align32", "align32", "align32"],
+    "mm_w8a8_fp8_splitk": ["align32", "align32", "align32", "align32", "align32"],
+    "mm_w8a8_fp8_block_scaled": ["align32", "align32", "align32", "align32", "align32"],
+    "mm_w8a8_fp8_block_scaled_splitk": [
+        "align32",
+        "align32",
+        "align32",
+        "align32",
+        "align32",
+    ],
+    "mm_w8a8_fp8_gemv": ["align32", "align32", "align32", "default"],
+    "mm_w8a8_fp8_skinny": [
+        "mm_w8a8_fp8_tma_m",
+        "align32",
+        "align32",
+        "align32",
+        "default",
+    ],
 }
 
 OP_KEY_ORDERS = {
@@ -183,6 +208,7 @@ OP_KEY_ORDERS = {
     "mm_sqmma": ["M", "N", "K", "dtype"],
     "mm_general_tma": ["M", "N", "K", "stride_am", "stride_bk", "dtype"],
     "mm_tma_transposed_direct": ["M", "N", "K", "stride_bk"],
+    "mm_w8a8_fp8_general_tma": ["M", "N", "K", "stride_am", "stride_bk", "dtype"],
     "mm_warp_specialized_tma": ["M", "N", "K", "stride_bk"],
     "mv": ["M", "N"],
     "mul": ["n_elements", "dtype"],
@@ -195,6 +221,11 @@ OP_KEY_ORDERS = {
     "w8a8_block_fp8_bmm_general": ["B", "M", "N", "K", "stride_xm", "stride_yk"],
     "w8a8_block_fp8_bmm_splitk": ["B", "M", "N", "K", "stride_xm", "stride_yk"],
     "mm_splitk": ["M", "N", "K", "stride_am", "stride_bk"],
+    "mm_w8a8_fp8_splitk": ["M", "N", "K", "stride_am", "stride_bk"],
+    "mm_w8a8_fp8_block_scaled": ["M", "N", "K", "stride_am", "stride_bk"],
+    "mm_w8a8_fp8_block_scaled_splitk": ["M", "N", "K", "stride_am", "stride_bk"],
+    "mm_w8a8_fp8_gemv": ["M", "K", "stride_am", "stride_bk"],
+    "mm_w8a8_fp8_skinny": ["M", "N", "K", "stride_am", "stride_bk"],
 }
 
 
