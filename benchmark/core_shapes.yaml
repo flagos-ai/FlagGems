@@ -219,6 +219,20 @@ float_power_:
     - [1024, 65536]
   shape_desc: "(B), M, N"
 
+trunc:
+  shapes:
+    - [4096, 4096]
+    - [64, 512, 512]
+    - [1024, 65536]
+  shape_desc: "(B), M, N"
+
+trunc_:
+  shapes:
+    - [4096, 4096]
+    - [64, 512, 512]
+    - [1024, 65536]
+  shape_desc: "(B), M, N"
+
 gcd:
   shapes:
     - [65536]
