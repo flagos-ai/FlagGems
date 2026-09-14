@@ -55,8 +55,7 @@ def mm_w8a8_fp8_input_fn(b, m, n, k, cur_dtype, device, b_column_major):
 
 class MmW8A8Fp8Benchmark(base.BlasBenchmark):
     def get_input_iter(self, dtype):
-        # vLLM CUTLASS expects row-major A and column-major B. Both paths use
-        # these same prequantized tensors; preparation is outside timing.
+        # Keep row-major A and column-major B for both benchmark paths.
         for b, m, n, k in self.shapes:
             yield from self.input_fn(b, m, n, k, dtype, self.device, True)
 
@@ -94,16 +93,22 @@ class MmW8A8Fp8Benchmark(base.BlasBenchmark):
 def test_mm_w8a8_fp8():
     if not hasattr(flag_gems, "mm_w8a8_fp8_out"):
         pytest.skip("mm_w8a8_fp8 benchmark requires the Hopper W8A8 backend")
-    vllm_ops = pytest.importorskip("vllm._custom_ops")
-    scale = torch.ones(1, dtype=torch.float32, device=flag_gems.device)
+    scale = torch.ones((), dtype=torch.float32, device=flag_gems.device)
 
-    def vllm_fp8_mm(a, b):
-        return vllm_ops.cutlass_scaled_mm(a, b, scale, scale, torch.bfloat16)
+    def torch_fp8_mm(a, b):
+        return torch._scaled_mm(
+            a,
+            b,
+            scale,
+            scale,
+            out_dtype=torch.bfloat16,
+            use_fast_accum=False,
+        )
 
     bench = MmW8A8Fp8Benchmark(
         input_fn=mm_w8a8_fp8_input_fn,
         op_name="mm_w8a8_fp8",
-        torch_op=vllm_fp8_mm,
+        torch_op=torch_fp8_mm,
         dtypes=consts.FP8_DTYPES,
     )
     bench.set_gems(_mm_w8a8_fp8_out_cached)
