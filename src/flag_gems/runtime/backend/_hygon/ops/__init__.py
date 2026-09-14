@@ -19,6 +19,7 @@ from ._scaled_dot_product_flash_attention import _scaled_dot_product_flash_atten
 from .adaptive_avg_pool2d_backward import adaptive_avg_pool2d_backward
 from .adaptive_max_pool2d_backward import adaptive_max_pool2d_backward
 from .adaptive_max_pool3d_backward import adaptive_max_pool3d_backward
+from .addmm_ import addmm_
 from .addmv_ import addmv_
 from .addr import addr
 from .amp_foreach_non_finite_check_and_unscale_ import (
@@ -189,6 +190,7 @@ __all__ = [
     "adaptive_avg_pool2d_backward",
     "adaptive_max_pool2d_backward",
     "adaptive_max_pool3d_backward",
+    "addmm_",
     "addmv_",
     "addr",
     "amp_foreach_non_finite_check_and_unscale_",
