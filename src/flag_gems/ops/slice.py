@@ -197,7 +197,6 @@ def slice(input_tensor, dim=0, start=None, end=None, step=1):
     # storage with the input.  The result is built as a zero-copy view via
     # ``torch.as_strided`` rather than an allocated copy.
     assert input_tensor.dtype not in (
-        torch.bool,
         torch.complex64,
         torch.complex128,
     ), f"slice: unsupported dtype {input_tensor.dtype}"
