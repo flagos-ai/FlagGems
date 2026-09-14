@@ -14,21 +14,13 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
 from . import accuracy_utils as utils
 
-# ``_reshape_alias`` starts with an underscore, and ``pytest.mark`` refuses to
-# generate a marker via attribute access for such names. Register it directly
-# on the MarkGenerator so ``@pytest.mark._reshape_alias`` and ``-m
-# _reshape_alias`` both work.
-setattr(
-    pytest.mark,
-    "_reshape_alias",
-    MarkDecorator(Mark("_reshape_alias", (), {}, _ispytest=True), _ispytest=True),
-)
+# NOTE: The @pytest.mark._reshape_alias marker is now auto-registered by
+# conftest.py's _register_underscore_markers() hook. No manual setattr needed.
 
 # (input_shape, size, stride) triples that describe a valid contiguous reshape
 # sharing the same storage as the input.

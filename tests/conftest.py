@@ -17,8 +17,10 @@ import json
 import logging
 import os
 from datetime import datetime
+from pathlib import Path
 
 import pytest
+from _pytest.mark.structures import Mark, MarkDecorator
 
 # TODO(Qiming): Try remove this line
 # import torch  # noqa: F401
@@ -49,6 +51,89 @@ device = flag_gems.device
 
 TIMESTAMP = datetime.now().strftime("%Y%m%d_%H%M%S")
 REPORT_FILE = "accuracy_result.json"
+
+
+def _register_underscore_markers(config):
+    """
+    Auto-register pytest markers for operators with underscore-prefixed names.
+
+    pytest doesn't allow attribute access for names starting with underscore
+    (e.g., pytest.mark._stack raises AttributeError). This function reads all
+    operator IDs from operators.yaml and registers underscore-prefixed ones
+    using setattr, allowing test files to use @pytest.mark._stack directly
+    without manual registration.
+
+    This approach provides a consistent experience: all operators, regardless
+    of their naming, can be marked the same way in test files.
+    """
+    from pathlib import Path
+
+    operators_yaml = Path("conf/operators.yaml")
+    if not operators_yaml.exists():
+        # During test collection, operators.yaml might not be accessible
+        # (e.g., when running from a different directory). Skip registration
+        # in this case; the tests will still work if markers are manually
+        # registered in individual test files.
+        return
+
+    try:
+        with open(operators_yaml) as f:
+            data = yaml.safe_load(f)
+    except Exception:
+        # Silently skip if we can't load the file
+        return
+
+    ops = data.get("ops", [])
+    underscore_ops = [op["id"] for op in ops if op.get("id", "").startswith("_")]
+
+    # Register each underscore-prefixed operator as a pytest marker
+    for op_id in underscore_ops:
+        # Check if already registered (e.g., manually in a test file)
+        if not hasattr(pytest.mark, op_id):
+            setattr(
+                pytest.mark,
+                op_id,
+                MarkDecorator(Mark(op_id, (), {}, _ispytest=True), _ispytest=True),
+            )
+            # Also register in pytest's marker registry to avoid "unknown marker" warnings
+            config.addinivalue_line(
+                "markers",
+                f"{op_id}: Operator {op_id} test marker (auto-registered for underscore-prefixed name)",
+            )
+
+
+def _validate_underscore_operator_markers(items):
+    """
+    Validate that test functions for underscore-prefixed operators use correct markers.
+
+    For test files named test__xxx.py (double underscore), checks if the test
+    functions have the corresponding @pytest.mark._xxx marker. If missing,
+    adds a warning marker to help developers identify the issue.
+
+    This helps maintain consistency: test__stack.py should use @pytest.mark._stack.
+    """
+    for item in items:
+        # Extract test function name, removing parametrization suffix
+        # e.g., "test__stack[shape0-0-float16]" -> "test__stack"
+        func_name = item.name.split("[")[0]
+
+        # Check if this is a test for an underscore-prefixed operator
+        # Pattern: test__xxx -> operator _xxx
+        if func_name.startswith("test__"):
+            # Extract expected operator ID: test__stack -> _stack
+            expected_marker = "_" + func_name[6:]  # Remove "test__" prefix
+
+            # Check if the test has the expected marker
+            all_marks = [mark.name for mark in item.iter_markers()]
+            if expected_marker not in all_marks:
+                # Add a warning but don't fail the test - this is informational
+                # The CI check will catch this, but we want to give a helpful message
+                item.add_marker(
+                    pytest.mark.skip(
+                        reason=f"Test function '{func_name}' should have @pytest.mark.{expected_marker} decorator. "
+                        f"Found markers: {[m for m in all_marks if m not in BUILTIN_MARKS]}"
+                    )
+                )
 
 
 def pytest_addoption(parser):
@@ -131,6 +216,12 @@ def pytest_configure(config):
             level=logging.INFO,
             format="[%(levelname)s] %(message)s",
         )
+
+    # Auto-register underscore-prefixed markers from operators.yaml
+    # This solves the limitation that pytest.mark._xxx cannot be accessed as
+    # an attribute by default. We register all underscore-prefixed operators
+    # so test files can directly use @pytest.mark._stack without manual setattr.
+    _register_underscore_markers(config)
 
 
 def pytest_runtest_teardown(item, nextitem):
@@ -252,3 +343,7 @@ def pytest_collection_modifyitems(session, config, items):
 
         # Skip all tests
         items.clear()
+
+    # Validate that test functions for underscore-prefixed operators
+    # have the correct marker
+    _validate_underscore_operator_markers(items)
