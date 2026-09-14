@@ -35,6 +35,7 @@ from .batch_norm import batch_norm, batch_norm_backward
 from .bucketize import bucketize
 from .celu import celu
 from .channel_shuffle import channel_shuffle
+from .cholesky_inverse import cholesky_inverse
 from .conv2d import conv2d
 from .conv_transpose1d import conv_transpose1d, conv_transpose1d_output_size
 from .conv_transpose2d import conv_transpose2d
@@ -329,6 +330,7 @@ if get_device_capability(current_device())[0] >= 3:
     "lift_fresh",
     "addmv_",
     "ormqr",
+    "cholesky_inverse",
         ]
     )
 
