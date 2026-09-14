@@ -35,6 +35,7 @@ from .attention import (
 )
 from .avg_pool3d_backward import avg_pool3d_backward
 from .baddbmm_ import baddbmm_
+from .beam_search_score import beam_search_score
 from .binary_cross_entropy_backward import binary_cross_entropy_backward
 from .broadcast_tensors import broadcast_tensors
 from .broadcast_to import broadcast_to
@@ -188,6 +189,7 @@ __all__ = [
     "any_dims",
     "avg_pool3d_backward",
     "baddbmm_",
+    "beam_search_score",
     "binary_cross_entropy_backward",
     "broadcast_tensors",
     "broadcast_to",
