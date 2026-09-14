@@ -57,7 +57,6 @@ def test_batch_norm_elemt(shape, dtype):
         view_shape
     ) * ref_weight.view(view_shape) + ref_bias.view(view_shape)
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.batch_norm_elemt(inp, weight, bias, mean, invstd, 0.0)
+    res_out = torch.ops.aten.batch_norm_elemt(inp, weight, bias, mean, invstd, 0.0)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
