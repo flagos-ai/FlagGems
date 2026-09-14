@@ -480,6 +480,8 @@ _FULL_CONFIG = (
     ("conv_transpose1d", conv_transpose1d),
     ("conv_transpose2d", conv_transpose2d),
     ("conv_transpose3d", conv_transpose3d),
+    ("convolution_overrideable", convolution_overrideable),
+    ("convolution_overrideable.out", convolution_overrideable_out),
     (
         "copy_",
         copy_,
@@ -1185,6 +1187,7 @@ _FULL_CONFIG = (
     ("special_softmax", special_softmax),
     ("special_xlog1py", special_xlog1py),
     ("special_xlogy", special_xlogy),
+    ("split_with_sizes", split_with_sizes),
     ("split_with_sizes_copy", split_with_sizes_copy),
     ("sqrt", sqrt),
     ("sqrt_", sqrt_),
