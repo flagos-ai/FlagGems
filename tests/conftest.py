@@ -20,11 +20,11 @@ from datetime import datetime
 from pathlib import Path
 
 import pytest
-from _pytest.mark.structures import Mark, MarkDecorator
 
 # TODO(Qiming): Try remove this line
 # import torch  # noqa: F401
 import yaml
+from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
