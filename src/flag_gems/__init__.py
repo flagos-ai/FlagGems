@@ -312,6 +312,7 @@ _FULL_CONFIG = (
     ),
     ("adaptive_max_pool2d", adaptive_max_pool2d),
     ("adaptive_max_pool2d_backward", adaptive_max_pool2d_backward),
+    ("adaptive_max_pool3d", adaptive_max_pool3d),
     ("adaptive_max_pool3d_backward", adaptive_max_pool3d_backward),
     ("add.Tensor", add),
     ("add_.Tensor", add_),
@@ -480,6 +481,8 @@ _FULL_CONFIG = (
     ("conv_transpose1d", conv_transpose1d),
     ("conv_transpose2d", conv_transpose2d),
     ("conv_transpose3d", conv_transpose3d),
+    ("convolution_overrideable", convolution_overrideable),
+    ("convolution_overrideable.out", convolution_overrideable_out),
     (
         "copy_",
         copy_,

@@ -227,7 +227,13 @@ test = [
     "pandas==2.3.3",
     "pytest==9.0.3",
     "pytest-md-report==0.8.0",
-    "scipy>=1.15.3",
+    # Cap scipy below 1.18.0: scipy>=1.18.0 requires numpy>=2.0.0, which forces
+    # numpy to upgrade to 2.x. On Iluvatar the container's pre-installed torch
+    # is compiled against numpy 1.x, so a 2.x numpy breaks the torch<->numpy
+    # ABI bridge ("module compiled using NumPy 1.x cannot be run in NumPy 2.x").
+    # scipy 1.17.x keeps numpy>=1.26.4,<2.7, letting the container's numpy 1.26.4
+    # stay in place, while remaining >=2.0-compatible for numpy-2.x backends.
+    "scipy>=1.15.3,<1.18.0",
 ]
 
 # Package for running example tests
