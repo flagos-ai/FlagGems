@@ -132,6 +132,7 @@ from .replication_pad2d_backward import (
 )
 from .replication_pad3d_backward import replication_pad3d_backward
 from .rrelu_with_noise import rrelu_with_noise, rrelu_with_noise_
+from .scalar_tensor import scalar_tensor
 from .scatter import scatter, scatter_
 from .scatter_add import scatter_add
 from .scatter_reduce import scatter_reduce, scatter_reduce_, scatter_reduce_out
@@ -291,6 +292,7 @@ __all__ = [
     "replication_pad3d_backward",
     "rrelu_with_noise",
     "rrelu_with_noise_",
+    "scalar_tensor",
     "scaled_dot_product_attention",
     "scaled_dot_product_attention_backward",
     "scaled_dot_product_attention_forward",
