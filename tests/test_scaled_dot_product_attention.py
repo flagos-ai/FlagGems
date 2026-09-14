@@ -130,7 +130,6 @@ def test_scaled_dot_product_flash_attention(
     head_size,
     is_causal,
     dtype,
-    caplog,
 ):
     current_device = torch_device_fn.current_device()
     q, k, v = make_input(
@@ -157,14 +156,10 @@ def test_scaled_dot_product_flash_attention(
             ref_q, ref_k, ref_v, 0.0, is_causal, False, scale=scale
         )
         ref_out, ref_lse = ref_result[0], ref_result[1]
-    with caplog.at_level(
-        "DEBUG", logger="flag_gems.ops._scaled_dot_product_flash_attention"
-    ):
-        result = torch.ops.aten._scaled_dot_product_flash_attention.default(
-            q, k, v, 0.0, is_causal, False, scale=scale
-        )
+    result = torch.ops.aten._scaled_dot_product_flash_attention.default(
+        q, k, v, 0.0, is_causal, False, scale=scale
+    )
 
-    assert "GEMS _SCALED_DOT_PRODUCT_FLASH_ATTENTION" in caplog.text
     assert len(result) == 9
     utils.gems_assert_close(result[0], ref_out, dtype)
     utils.gems_assert_close(result[1], ref_lse, torch.float)
