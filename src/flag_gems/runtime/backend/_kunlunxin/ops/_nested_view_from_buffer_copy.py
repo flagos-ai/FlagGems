@@ -21,9 +21,11 @@ logger = logging.getLogger("flag_gems." + __name__)
 #   2. 改用 **jagged layout** 的 `_nested_view_from_values_offsets_lengths` 视图
 #      构造（`torch._nested_view_from_jagged`）：组件长度（lengths）显式传入，
 #      因此任意 offsets（含空洞/重叠）都直接映射到 `values[offsets[i]:+len_i]`，
-#      与参考语义一致。整个快速路径只使用不被 override 的原语
-#      （empty_strided / _copy_from / _nested_view_from_jagged），零主机同步、
-#      零 Triton launch，use_gems 与裸调用耗时相同（~0.22ms）。
+#      与参考语义一致。整个快速路径只使用元数据原语（empty_strided /
+#      _nested_view_from_jagged）+ gem 自己的 copy_（Triton），零主机同步，
+#      use_gems 与裸调用耗时相同（~0.22ms）。⚠️ 2026-09-14：原先用
+#      `aten::_copy_from`（vendor 拷贝引擎）做快照，属被禁的 vendor 委托，
+#      已改为 `copy_()`（走 FlagGems copy override）。
 #   3. 限制：jagged 组件为连续（stride-1）1-D 视图，故仅当 self 为 1-D、
 #      nested_size 为 (N,1) int64、strides 全 1、offsets 为 int64 时走快速路径；
 #      其他情况回退到通用 `as_nested_tensor` 路径（保留任意 stride/维度语义）。
@@ -50,15 +52,15 @@ def _nested_view_from_buffer_copy(
         values = torch.empty_strided(
             self.shape, self.stride(), dtype=self.dtype, device=self.device
         )
-        torch.ops.aten._copy_from(self, values, False)
+        values.copy_(self)
         # Jagged offsets must have num_components+1 entries; with explicit
         # `lengths` the trailing entry is not used for component sizes, so the
         # input offsets (padded by one element) are passed through unchanged.
         full_offsets = torch.empty_strided(
             (num_components + 1,), (1,), dtype=torch.int64, device=self.device
         )
-        torch.ops.aten._copy_from(offsets, full_offsets[:num_components], False)
-        torch.ops.aten._copy_from(offsets[:1], full_offsets[num_components:], False)
+        full_offsets[:num_components].copy_(offsets)
+        full_offsets[num_components:].copy_(offsets[:1])
         from torch.nested._internal.nested_tensor import (
             nested_view_from_values_offsets_lengths,
         )
@@ -76,8 +78,7 @@ def _nested_view_from_buffer_copy(
     snapshot = torch.empty_strided(
         self.shape, self.stride(), dtype=self.dtype, device=self.device
     )
-    if not tle_copy(self, snapshot):
-        torch.ops.aten._copy_from(self, snapshot, False)
+    snapshot.copy_(self)
 
     components = []
     for i in range(num_components):

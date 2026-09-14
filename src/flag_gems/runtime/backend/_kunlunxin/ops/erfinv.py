@@ -226,12 +226,14 @@ def erfinv_(x: torch.Tensor):
     elementwise map, so an in-place launch on the same buffer (load slot i,
     apply the polynomial, store slot i) is alias-safe for contiguous inputs.
     Non-contiguous inputs are evaluated through a contiguous scratch and
-    written back in the original layout via the native strided copy engine.
+    written back in the original layout via the gem's own copy_ (Triton).
     """
     if x.is_contiguous():
         _launch_erfinv(x, x)
     else:
         x_cont = x.contiguous()
         _launch_erfinv(x_cont, x_cont)
-        torch.ops.aten._copy_from(x_cont, x, False)
+        # 2026-09-14: was aten::_copy_from (vendor strided copy); vendor
+        # delegation inside a gem is banned for metric integrity.
+        x.copy_(x_cont)
     return x
