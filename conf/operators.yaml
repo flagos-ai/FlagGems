@@ -16918,6 +16918,28 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: upsample_bilinear2d_backward
+  description: Computes gradients of bilinear interpolation without anti-aliasing.
+  for:
+  - upsample_bilinear2d_backward
+  labels:
+  - aten
+  - Reduction
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
+- id: upsample_bilinear2d_backward_grad_input
+  description: Writes bilinear interpolation gradients into a supplied tensor.
+  for:
+  - upsample_bilinear2d_backward.grad_input
+  labels:
+  - aten
+  - Reduction
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: upsample_lanczos2d_aa
   description: Resizes a 4D image tensor with antialiased Lanczos-3 interpolation.
   for:
