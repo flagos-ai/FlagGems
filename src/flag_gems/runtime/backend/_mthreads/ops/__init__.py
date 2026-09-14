@@ -98,6 +98,7 @@ from .normal import normal_
 from .one_hot import one_hot
 from .ones import ones
 from .ones_like import ones_like
+from .ormqr import ormqr
 from .pad import constant_pad_nd, pad
 from .permute_copy import permute_copy
 from .prod import prod, prod_dim
@@ -325,6 +326,7 @@ if get_device_capability(current_device())[0] >= 3:
     "lcm_",
     "lift_fresh",
     "addmv_",
+    "ormqr",
         ]
     )
 
