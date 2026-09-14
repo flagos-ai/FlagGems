@@ -16881,6 +16881,28 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '5.0'
+- id: upsample_bicubic2d_backward
+  description: Computes non-antialiased bicubic interpolation gradients using deterministic gather.
+  for:
+  - upsample_bicubic2d_backward
+  labels:
+  - aten
+  - Reduction
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
+- id: upsample_bicubic2d_backward_grad_input
+  description: Writes non-antialiased bicubic interpolation gradients to grad_input.
+  for:
+  - upsample_bicubic2d_backward.grad_input
+  labels:
+  - aten
+  - Reduction
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: upsample_bilinear2d
   description: 'Upsamples the input, using bilinear mode.
 
