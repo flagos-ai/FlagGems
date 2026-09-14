@@ -40,6 +40,7 @@ from .broadcast_tensors import broadcast_tensors
 from .broadcast_to import broadcast_to
 from .cholesky_inverse import cholesky_inverse
 from .conj_physical import conj_physical
+from .conv_depthwise2d import conv_depthwise2d
 from .cudnn_convolution import cudnn_convolution
 from .diagonal_scatter import diagonal_scatter
 from .diff import diff
@@ -189,6 +190,7 @@ __all__ = [
     "broadcast_to",
     "cholesky_inverse",
     "conj_physical",
+    "conv_depthwise2d",
     "cudnn_convolution",
     "diagonal_scatter",
     "diff",
