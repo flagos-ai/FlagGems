@@ -55,6 +55,11 @@ config_ = CodeGenConfig(
 )
 @triton.jit
 def lerp_tensor_kernel(input, end, weight):
+    # fp16: native-dtype compute reaches the memory-bandwidth ceiling (~torch);
+    # fp32/bf16 keep fp32 upcast for precision (fp16U native is exact enough the
+    # full tests pass, probed 0.1022 -> 0.0889 ms on [4096,4096]).
+    if input.dtype == tl.float16:
+        return input + weight * (end - input)
     input32 = input.to(tl.float32)
     end32 = end.to(tl.float32)
     weight32 = weight.to(tl.float32)
