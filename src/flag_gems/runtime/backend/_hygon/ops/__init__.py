@@ -159,6 +159,7 @@ from .special_shifted_chebyshev_polynomial_v import (
     special_shifted_chebyshev_polynomial_v,
 )
 from .split_with_sizes_copy import split_with_sizes_copy
+from .thnn_fused_lstm_cell import thnn_fused_lstm_cell
 from .tile import tile
 from .topk_w8a16_fp8 import topk_w8a16_fp8
 from .unique import _unique2
@@ -319,6 +320,7 @@ __all__ = [
     "special_shifted_chebyshev_polynomial_v",
     "split_with_sizes_copy",
     "SUPPORTED_FP8_DTYPE",
+    "thnn_fused_lstm_cell",
     "tile",
     "topk_w8a16_fp8",
     "true_divide",
