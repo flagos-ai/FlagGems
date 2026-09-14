@@ -79,6 +79,8 @@ def torch_ge(v):
 _FULL_CONFIG = (
     ("__and__.Scalar", bitwise_and_scalar),
     ("__and__.Tensor", bitwise_and_tensor),
+    ("__iand__.Scalar", __iand___scalar),
+    ("__iand__.Tensor", __iand___tensor),
     ("__ilshift__.Tensor", __ilshift__),
     ("__ior__.Scalar", bitwise_or_scalar_),
     ("__ior__.Tensor", bitwise_or_tensor_),
@@ -313,6 +315,7 @@ _FULL_CONFIG = (
     ),
     ("adaptive_max_pool2d", adaptive_max_pool2d),
     ("adaptive_max_pool2d_backward", adaptive_max_pool2d_backward),
+    ("adaptive_max_pool3d", adaptive_max_pool3d),
     ("adaptive_max_pool3d_backward", adaptive_max_pool3d_backward),
     ("add.Tensor", add),
     ("add_.Tensor", add_),
@@ -481,6 +484,8 @@ _FULL_CONFIG = (
     ("conv_transpose1d", conv_transpose1d),
     ("conv_transpose2d", conv_transpose2d),
     ("conv_transpose3d", conv_transpose3d),
+    ("convolution_overrideable", convolution_overrideable),
+    ("convolution_overrideable.out", convolution_overrideable_out),
     (
         "copy_",
         copy_,
@@ -1185,6 +1190,7 @@ _FULL_CONFIG = (
     ("special_softmax", special_softmax),
     ("special_xlog1py", special_xlog1py),
     ("special_xlogy", special_xlogy),
+    ("split_with_sizes", split_with_sizes),
     ("split_with_sizes_copy", split_with_sizes_copy),
     ("sqrt", sqrt),
     ("sqrt_", sqrt_),
