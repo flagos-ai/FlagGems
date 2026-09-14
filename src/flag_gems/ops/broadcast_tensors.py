@@ -30,9 +30,22 @@ def _compute_broadcast_shape(tensors):
 
     broadcast_shape = []
     for i in range(max_ndim):
+        # A size of 1 is broadcastable to any other size (including 0), so it
+        # never determines the result. The result is the unique non-1 size,
+        # or 1 if every input is 1 at this dim. Two distinct non-1 sizes (e.g.
+        # 0 and 3, or 2 and 3) are incompatible and must raise.
         dim_size = 1
         for shape in padded_shapes:
-            dim_size = max(dim_size, shape[i])
+            if shape[i] == 1:
+                continue
+            if dim_size == 1:
+                dim_size = shape[i]
+            elif dim_size != shape[i]:
+                raise RuntimeError(
+                    "The size of tensor a ("
+                    f"{dim_size}) must match the size of tensor b "
+                    f"({shape[i]}) at non-singleton dimension {i}"
+                )
         broadcast_shape.append(dim_size)
 
     return tuple(broadcast_shape)
