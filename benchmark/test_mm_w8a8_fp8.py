@@ -53,8 +53,7 @@ def mm_w8a8_fp8_input_fn(b, m, n, k, cur_dtype, device, b_column_major):
 
 class MmW8A8Fp8Benchmark(base.BlasBenchmark):
     def get_input_iter(self, dtype):
-        # torch._scaled_mm expects row-major A and column-major B. Both paths use
-        # these same prequantized tensors; preparation is outside timing.
+        # Keep row-major A and column-major B for both benchmark paths.
         for b, m, n, k in self.shapes:
             yield from self.input_fn(b, m, n, k, dtype, self.device, True)
 
@@ -84,7 +83,12 @@ def test_mm_w8a8_fp8():
 
     def torch_fp8_mm(a, b):
         return torch._scaled_mm(
-            a, b, scale_a=scale, scale_b=scale, out_dtype=torch.bfloat16
+            a,
+            b,
+            scale,
+            scale,
+            out_dtype=torch.bfloat16,
+            use_fast_accum=False,
         )
 
     bench = MmW8A8Fp8Benchmark(
