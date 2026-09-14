@@ -53,14 +53,14 @@ repos:
       name: auto-sort __all__ and operators.yaml
       language: python
       entry: python tools/ci_checks/sort_exports.py --fix
-      files: ^(src/flag_gems/__init__\.py|src/flag_gems/ops/__init__\.py|conf/operators\.yaml)$
+      files: ^(src/flag_gems/__init__\.py|src/flag_gems/ops/__init__\.py|src/flag_gems/runtime/backend/.*/ops/__init__\.py|conf/operators\.yaml)$
       additional_dependencies: [pyyaml]
       pass_filenames: false
     - id: check-init-exports
       name: check __init__.py exports
       language: python
       entry: python tools/ci_checks/check_init_exports.py
-      files: ^src/flag_gems/__init__\.py$
+      files: ^(src/flag_gems/__init__\.py|src/flag_gems/runtime/backend/.*/ops/__init__\.py)$
       additional_dependencies: []
       pass_filenames: false
     - id: check-operators-yaml

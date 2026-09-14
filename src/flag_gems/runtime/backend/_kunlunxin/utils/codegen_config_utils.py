@@ -54,7 +54,6 @@ class CodeGenConfig:
     prefer_1d_tile: bool
     # gen_configs: -> configs
     # prune_config: (as jit function, ) cofigs -> configs
-    is_scatter_slice: bool = False
     is_cat: bool = False
     isCloseVectorization: bool = False
     isCloseDtypeConvert: bool = False

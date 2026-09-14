@@ -52,7 +52,7 @@ def clamp_func_tensor(x, mini, maxi):
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def clamp_func_min_tensor(x, mini):
-    return tl.maximum(mini, x)
+    return tl.maximum(mini.to(tl.float32), x.to(tl.float32))
 
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
