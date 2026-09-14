@@ -300,29 +300,46 @@ def _process_histogram_step(
     RADIX11_MASK: tl.constexpr = 0x7FF
     RADIX10_SIZE: tl.constexpr = 1024
     # Threshold for giving up on further radix refinement and handing the
-    # threshold bin to the final sort. It must NOT be NUM_FINAL_ITEMS: that is
-    # the capacity of s_final_logits, not a sensible amount of work to sort.
+    # threshold bin to the final stage. Applies to the NON-TLE path only; see
+    # the HAS_TLE branch below, which keeps the original NUM_FINAL_ITEMS.
     #
     # Without triton.experimental.tle (e.g. PPU) USE_RADIX_FINAL cannot be
     # honoured, so the final stage is the O(final_cnt^2) rank-by-counting loop
-    # below, doing scalar loads from the global-memory scratch. Decode rows are
-    # max_model_len/4 long (~1024 tokens), so no bin can ever exceed 2048 and
-    # the old threshold made the kernel stop after STEP 0 -- an fp16 pre-pass
-    # keeping only 5 mantissa bits -- then sort that whole coarse bin. Real
-    # DSv4 indexer logits are a weighted sum over 64 heads and cluster tightly,
-    # so ~930 of ~1024 values shared one bin: 204 us/call where the vendor CUDA
-    # kernel needs 12.6.
+    # below, doing scalar loads from the global-memory scratch. There,
+    # NUM_FINAL_ITEMS is the wrong threshold: it is the capacity of
+    # s_final_logits, not a sensible amount of work to sort. DeepSeek-V4 decode
+    # rows are max_model_len/4 (~1024 tokens), so no bin can ever exceed 2048
+    # and the kernel always stopped after STEP 0 -- an fp16 pre-pass keeping
+    # only 5 mantissa bits -- then sorted that whole coarse bin. Real indexer
+    # logits are a weighted sum over 64 heads and cluster tightly, so ~930 of
+    # ~1024 values shared one bin: 204 us/call where the vendor CUDA kernel
+    # needs 12.6.
     #
-    # Scale the threshold with the row instead, so short rows refine through
-    # STEP 1-3 on the full fp32 key and leave only exact duplicates to sort,
-    # while long rows -- where the original already refined and the extra
-    # passes cost 16x more -- keep the old behaviour exactly: at row_len 16384
-    # the expression is 2048, i.e. NUM_FINAL_ITEMS.
+    # Scaling with the row makes short rows refine through STEP 1-3 on the full
+    # fp32 key, leaving only exact duplicates to sort, while long rows -- where
+    # the original already refined and extra passes cost 16x more -- keep the
+    # old behaviour by construction: at row_len 16384 the expression is 2048.
     #
-    # Measured (CUDA-graph replay, 64 rows, topk 512, vs the old constant):
-    # clustered 2.66x @1024, 5.39x @4096; very-clustered 3.81x @1024; worst
-    # case 0.95x. A flat 64 was faster on short rows but cost 0.76x on
-    # well-spread rows at 4096.
+    # Do NOT lower this to force all four steps unconditionally. That trades the
+    # quadratic sort for six extra full passes over the row, which loses on
+    # well-spread inputs where STEP 0 already exits with a tiny bin: a flat 64
+    # measured 0.76x on randn at row_len 4096.
+    #
+    # Measured (CUDA-graph replay, 64 rows, topk 512, vs the flat constant):
+    # clustered 2.77x @1024 and 5.81x @4096, very-clustered 3.83x @1024 and
+    # 5.08x @4096, coarse-grid 3.18x @4096, all-equal 2.69x @1024.
+    #
+    # Two known costs at long rows, both measured, neither fixable here:
+    #   - clustered @16384 is 0.93x. At that length the expression yields
+    #     exactly NUM_FINAL_ITEMS, so behaviour is bit-identical and the ~22 us
+    #     is purely the runtime max/min. Removing it needs a compile-time
+    #     threshold, which is incompatible with scaling by a runtime row length.
+    #   - all-equal @4096 is 0.89x. There the threshold really is smaller (512),
+    #     so extra refinement steps run, and when every value is identical
+    #     refinement cannot split the bin -- pure loss. Pathological input;
+    #     real indexer logits are clustered, not identical, and clustered @4096
+    #     is 5.81x faster.
+    # The trade is deliberate: ~7% on rows >= 16384 for 2.8-5.8x below that.
     EXIT_FLOOR: tl.constexpr = 64
     EXIT_SHIFT: tl.constexpr = 3
 
@@ -479,9 +496,17 @@ def _process_histogram_step(
     tl.debug_barrier()
     threshold_bin_idx = tl.load(s_threshold_bin_idx_ptr)
     final_bin_size = tl.load(s_final_bin_size_ptr)
-    exit_thresh = tl.maximum(
-        EXIT_FLOOR, tl.minimum(NUM_FINAL_ITEMS, (row_end - row_start) >> EXIT_SHIFT)
-    )
+    if HAS_TLE:
+        # With TLE the final stage is _final_select_radix, which is not
+        # quadratic, so there is nothing to trade extra radix passes against.
+        # Keep the original constant so this path stays bit-identical and pays
+        # no codegen cost for a runtime threshold.
+        exit_thresh = NUM_FINAL_ITEMS
+    else:
+        exit_thresh = tl.maximum(
+            EXIT_FLOOR,
+            tl.minimum(NUM_FINAL_ITEMS, (row_end - row_start) >> EXIT_SHIFT),
+        )
     use_final = final_bin_size <= exit_thresh
     write_directly = ((STEP == 0) & (final_bin_size <= exit_thresh)) | (STEP >= 1)
 
