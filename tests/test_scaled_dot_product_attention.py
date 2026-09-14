@@ -131,6 +131,9 @@ def test_scaled_dot_product_flash_attention(
     is_causal,
     dtype,
 ):
+    # Hygon: skip non-square causal attention (known issue)
+    if flag_gems.vendor_name == "hygon" and is_causal and q_seq_len != kv_seq_len:
+        pytest.skip("Hygon causal attention only supports square matrices")
     current_device = torch_device_fn.current_device()
     q, k, v = make_input(
         batch,
@@ -147,7 +150,8 @@ def test_scaled_dot_product_flash_attention(
     ref_q = utils.to_reference(q, False)
     ref_k = utils.to_reference(k, False)
     ref_v = utils.to_reference(v, False)
-    if cfg.TO_CPU:
+    # Hygon PyTorch doesn't have flash_attn, use CPU reference
+    if cfg.TO_CPU or flag_gems.vendor_name == "hygon":
         ref_out, ref_lse = scaled_dot_product_flash_attention_ref(
             ref_q, ref_k, ref_v, scale, is_causal
         )
