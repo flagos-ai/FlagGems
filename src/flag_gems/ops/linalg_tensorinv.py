@@ -235,6 +235,7 @@ def linalg_tensorinv(A, ind=2, *, out=None):
         Tensor X such that tensordot(A, X, ind) is the identity matrix, with
         shape A.shape[ind:] + A.shape[:ind].
     """
+    logger.debug("GEMS LINALG_TENSORINV")
     check_inv_input(A, ind)
 
     # tensorinv reduces to a single dense matrix inverse: flatten the first
