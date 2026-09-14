@@ -99,6 +99,9 @@ backends:
     deps:
       - torch==2.10.0+cpu
       - torch-npu==2.10.0
+      - decorator==5.2.1
+      - attrs==25.3.0
+      - psutil==7.0.0
 
   cambricon-neuware443:
     python: "3.10"
@@ -178,12 +181,15 @@ backends:
 
   hygon:
     python: "3.10"
-    triton: triton==3.3.0+das.opt1.dtk2604.torch290
-    flagtree: flagtree==0.5.1+hcu3.1
+    triton: triton==3.5.1+das.opt1.dtk2604.torch290
+    flagtree: flagtree==0.6.1+hcu3.6
     env_source:
       - /opt/dtk-26.04/env.sh
+    env:
+      TRITON_HIP_CLANG_PATH: /opt/dtk-26.04/aillvm/bin/clang-18
     deps:
       - torch==2.9.0+das.opt1.dtk2604
+      - flash_attn==2.8.3+das.opt1.dtk2604.torch290
 
   iluvatar:
     python: "3.12"
