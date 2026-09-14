@@ -60,10 +60,7 @@ class MmW8A8Fp8Benchmark(base.BlasBenchmark):
             yield from self.input_fn(b, m, n, k, dtype, self.device, True)
 
     def get_latency(self, op, *args, **kwargs):
-        if op is self.torch_op:
-            # Match the FP8 input values in BF16 without timing the conversion.
-            args = tuple(arg.to(torch.bfloat16) for arg in args)
-        else:
+        if op is not self.torch_op:
             # Populate descriptor, output, and autotune caches before capture.
             for _ in range(2):
                 op(*args, **kwargs)
@@ -96,10 +93,22 @@ class MmW8A8Fp8Benchmark(base.BlasBenchmark):
 def test_mm_w8a8_fp8():
     if not hasattr(flag_gems, "mm_w8a8_fp8_out"):
         pytest.skip("mm_w8a8_fp8 benchmark requires the Hopper W8A8 backend")
+    scale = torch.ones((), dtype=torch.float32, device=flag_gems.device)
+
+    def torch_fp8_mm(a, b):
+        return torch._scaled_mm(
+            a,
+            b,
+            scale,
+            scale,
+            out_dtype=torch.bfloat16,
+            use_fast_accum=False,
+        )
+
     bench = MmW8A8Fp8Benchmark(
         input_fn=mm_w8a8_fp8_input_fn,
         op_name="mm_w8a8_fp8",
-        torch_op=torch.mm,
+        torch_op=torch_fp8_mm,
         dtypes=consts.FP8_DTYPES,
     )
     bench.set_gems(_mm_w8a8_fp8_out_cached)
