@@ -9,6 +9,7 @@ rule-check.yaml (GitHub Actions workflow)
 └── derive-changed-operators (git diff → operator IDs)
     ├── check-operators-yaml       [blocking]  schema + duplicate ID
     ├── check-init-exports         [blocking]  __all__ + registry
+    ├── check-wheel-contents       [blocking]  fused modules included in wheel
     ├── check-kernelgen-tests      [blocking]  use_gems() prohibition
     ├── check-operator-markers     [blocking]  test file + marker
     ├── check-aten-operators       [blocking]  aten name format
@@ -35,6 +36,9 @@ python tools/ci_checks/check_performance_reference.py --operators '["my_new_op"]
 
 # Check all (for __init__.py)
 python tools/ci_checks/check_init_exports.py
+
+# Check that fused modules are included in a built wheel
+python tools/ci_checks/check_wheel_contents.py dist/flag_gems-*.whl
 
 # Check all operators.yaml entries
 python tools/ci_checks/check_operators_yaml.py --all
@@ -65,6 +69,13 @@ pre-commit install
 
 - `__all__` must be sorted alphabetically
 - `_FULL_CONFIG` must not have duplicate keys (known exceptions in allowlist)
+
+### check_wheel_contents.py (blocking)
+
+- Every Python source module under `src/flag_gems/fused` must be present in the
+  built wheel
+- Prevents namespace-like directories from working in editable installs but
+  disappearing from non-editable installations
 
 ### check_kernelgen_tests.py (blocking)
 
@@ -113,4 +124,6 @@ Some `_FULL_CONFIG` duplicates are intentional (overloads). These are listed in 
 
 ## Dependencies
 
-Only `pyyaml` is needed (already a project dependency). All checks use Python stdlib AST parsing — no import of FlagGems or PyTorch required.
+The operator checks need `pyyaml` (already a project dependency). The wheel
+check uses Python's standard library after the normal project build. No check
+imports FlagGems or PyTorch.
