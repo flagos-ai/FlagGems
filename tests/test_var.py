@@ -55,8 +55,7 @@ def test_accuracy_var(shape, correction, keepdim, dtype):
 
     ref_inp = utils.to_reference(inp)
 
-    with flag_gems.use_gems():
-        res_out = torch.var(inp, correction=correction, keepdim=keepdim)
+    res_out = flag_gems.var(inp, correction=correction, keepdim=keepdim)
 
     ref_out = torch.var(ref_inp, correction=correction, keepdim=keepdim)
 
@@ -92,8 +91,7 @@ def test_accuracy_var_dim(shape, dim, correction, keepdim, dtype):
 
     ref_inp = utils.to_reference(inp)
 
-    with flag_gems.use_gems():
-        res_out = torch.var(inp, dim=dim, correction=correction, keepdim=keepdim)
+    res_out = flag_gems.var(inp, dim=dim, correction=correction, keepdim=keepdim)
 
     ref_out = torch.var(ref_inp, dim=dim, correction=correction, keepdim=keepdim)
 
@@ -134,8 +132,7 @@ def test_accuracy_var_correction(shape, dim, correction, keepdim, dtype):
 
     ref_inp = utils.to_reference(inp)
 
-    with flag_gems.use_gems():
-        res_out = torch.var(inp, dim=dim, correction=correction, keepdim=keepdim)
+    res_out = flag_gems.var(inp, dim=dim, correction=correction, keepdim=keepdim)
 
     ref_out = torch.var(ref_inp, dim=dim, correction=correction, keepdim=keepdim)
 
