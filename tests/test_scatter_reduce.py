@@ -667,11 +667,12 @@ def linked_product_inputs(request):
 def test_scatter_reduce_prod_partial_blocks(linked_product_inputs, dtype, include_self):
     inp, index, src = linked_product_inputs
     inp, src = inp.to(dtype), src.to(dtype)
+    ref_inp, ref_index, ref_src = _reference_inputs(inp, index, src)
     reference = torch.scatter_reduce(
-        inp.cpu().float(),
+        ref_inp,
         -1,
-        index.cpu(),
-        src.cpu().float(),
+        ref_index,
+        ref_src,
         "prod",
         include_self=include_self,
     )
@@ -690,11 +691,12 @@ def test_scatter_reduce_inplace_prod_partial_blocks(
 ):
     inp, index, src = linked_product_inputs
     inp, src = inp.to(dtype), src.to(dtype)
+    ref_inp, ref_index, ref_src = _reference_inputs(inp, index, src)
     reference = torch.scatter_reduce(
-        inp.cpu().float(),
+        ref_inp,
         -1,
-        index.cpu(),
-        src.cpu().float(),
+        ref_index,
+        ref_src,
         "prod",
         include_self=include_self,
     )
@@ -714,11 +716,12 @@ def test_scatter_reduce_out_prod_partial_blocks(
 ):
     inp, index, src = linked_product_inputs
     inp, src = inp.to(dtype), src.to(dtype)
+    ref_inp, ref_index, ref_src = _reference_inputs(inp, index, src)
     reference = torch.scatter_reduce(
-        inp.cpu().float(),
+        ref_inp,
         -1,
-        index.cpu(),
-        src.cpu().float(),
+        ref_index,
+        ref_src,
         "prod",
         include_self=include_self,
     )
