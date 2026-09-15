@@ -153,6 +153,7 @@ from .clamp import (
 from .clip import clip, clip_
 from .col2im import col2im
 from .concatenate import concatenate
+from .conj_physical import conj_physical
 from .contiguous import contiguous
 from .conv1d import conv1d
 from .conv2d import conv2d
@@ -249,6 +250,7 @@ from .heaviside_ import heaviside_  # noqa: F401
 from .histc import histc
 from .hstack import hstack
 from .hypot import hypot
+from .hypot_ import hypot_
 from .igamma_ import igamma_  # noqa: F401
 from .igammac import igammac, igammac_out
 from .igammac_ import igammac_
@@ -369,6 +371,7 @@ from .negative import negative
 from .negative_ import negative_
 from .new_full import new_full
 from .new_ones import new_ones
+from .nextafter import nextafter, nextafter_
 from .nllloss import (
     nll_loss2d,
     nll_loss2d_backward,
@@ -749,6 +752,7 @@ __all__ = [
     "clip_",
     "col2im",
     "concatenate",
+    "conj_physical",
     "constant_pad_nd",
     "contiguous",
     "conv1d",
@@ -873,6 +877,7 @@ __all__ = [
     "histc",
     "hstack",
     "hypot",
+    "hypot_",
     "igammac",
     "igammac_",
     "igammac_out",
@@ -1036,6 +1041,8 @@ __all__ = [
     "negative_",
     "new_full",
     "new_ones",
+    "nextafter",
+    "nextafter_",
     "nll_loss2d",
     "nll_loss2d_backward",
     "nll_loss2d_forward",
