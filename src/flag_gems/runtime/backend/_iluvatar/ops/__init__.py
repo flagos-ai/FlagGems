@@ -72,6 +72,7 @@ from .special_modified_bessel_k1 import (
 from .special_shifted_chebyshev_polynomial_w import (
     special_shifted_chebyshev_polynomial_w,
 )
+from .std import std
 from .tile import tile
 from .var import var, var_correction, var_dim
 
@@ -133,6 +134,7 @@ __all__ = [
     "special_modified_bessel_k1",
     "special_modified_bessel_k1_out",
     "special_shifted_chebyshev_polynomial_w",
+    "std",
     "tile",
     "var",
     "var_correction",

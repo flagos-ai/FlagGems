@@ -75,9 +75,18 @@ def test_std(shape, dim, correction, keepdim, dtype):
 
     ref_inp = utils.to_reference(inp)
 
-    with flag_gems.use_gems():
-        res_out = torch.std(inp, dim=dim, correction=correction, keepdim=keepdim)
+    res_out = flag_gems.std(inp, dim=dim, correction=correction, keepdim=keepdim)
 
     ref_out = torch.std(ref_inp, dim=dim, correction=correction, keepdim=keepdim)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.std
+def test_std_reuses_kernel_across_reduction_sizes():
+    inp = torch.randn((200, 40999), device=flag_gems.device)
+    reference = utils.to_reference(inp, True)
+    for dim in (0, 1, 0):
+        result = flag_gems.std(inp, dim=dim, correction=1)
+        expected = torch.std(reference, dim=dim, correction=1)
+        utils.gems_assert_close(result, expected, torch.float32)
