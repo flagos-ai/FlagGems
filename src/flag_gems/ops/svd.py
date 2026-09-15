@@ -3519,10 +3519,7 @@ def svd(input, some=True, compute_uv=True):
         # Jacobi kernel. Route it through the cyclic Jacobi implementation,
         # including the single-matrix case.
         use_cyclic16 = k == 16 and max(m, n) <= 64
-        if (
-            _can_use_small_jacobi_kernel(input, some, compute_uv)
-            and not use_cyclic16
-        ):
+        if _can_use_small_jacobi_kernel(input, some, compute_uv) and not use_cyclic16:
             return SVDResult(*_small_jacobi_svd(input))
         if _can_use_tsqr_cholesky_kernel(input, some, compute_uv):
             return SVDResult(*_tsqr_cholesky_svd(input))
