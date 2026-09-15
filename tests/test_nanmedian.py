@@ -29,7 +29,7 @@ ASCEND_UNSUPPORTED_REFERENCE_DTYPES = (torch.bfloat16, torch.float64)
 
 
 def _filter_reference_supported(dtypes):
-    if flag_gems.vendor_name == "ascend":
+    if flag_gems.vendor_name == "ascend" and not utils.TO_CPU:
         return [
             dtype
             for dtype in dtypes
@@ -358,7 +358,7 @@ def test_nanmedian_bool_unsupported():
 @pytest.mark.parametrize("case", ["mixed", "equal"])
 def test_nanmedian_byte_boundaries(dtype, length, case):
     inp = _byte_boundary_input(dtype, length, case)
-    ref = torch.nanmedian(inp.cpu())
+    ref = torch.nanmedian(utils.to_reference(inp))
     res = flag_gems.nanmedian(inp)
     assert res.dtype == dtype
     utils.gems_assert_equal(res, ref)
@@ -370,7 +370,7 @@ def test_nanmedian_byte_boundaries(dtype, length, case):
 @pytest.mark.parametrize("case", ["mixed", "equal"])
 def test_nanmedian_out_byte_boundaries(dtype, length, case):
     inp = _byte_boundary_input(dtype, length, case)
-    ref = torch.nanmedian(inp.cpu())
+    ref = torch.nanmedian(utils.to_reference(inp))
     out = torch.empty((), dtype=dtype, device=flag_gems.device)
     res = flag_gems.nanmedian_out(inp, out=out)
     assert res is out
@@ -395,7 +395,7 @@ def _byte_boundary_input(dtype, length, case):
 @pytest.mark.parametrize("case", ["mixed", "equal"])
 def test_nanmedian_dim_byte_boundaries(dtype, length, keepdim, case):
     inp = _byte_boundary_input(dtype, length, case).repeat(2, 1)
-    ref = torch.nanmedian(inp.cpu(), dim=-1, keepdim=keepdim)
+    ref = torch.nanmedian(utils.to_reference(inp), dim=-1, keepdim=keepdim)
     res = flag_gems.nanmedian_dim(inp, dim=-1, keepdim=keepdim)
     _assert_nanmedian_values(res.values, ref.values, dtype)
     _assert_nanmedian_indices_valid(inp, res.values, res.indices, -1, keepdim, dtype)
@@ -408,7 +408,7 @@ def test_nanmedian_dim_byte_boundaries(dtype, length, keepdim, case):
 @pytest.mark.parametrize("case", ["mixed", "equal"])
 def test_nanmedian_dim_values_byte_boundaries(dtype, length, keepdim, case):
     inp = _byte_boundary_input(dtype, length, case).repeat(2, 1)
-    ref = torch.nanmedian(inp.cpu(), dim=-1, keepdim=keepdim)
+    ref = torch.nanmedian(utils.to_reference(inp), dim=-1, keepdim=keepdim)
     values = torch.empty(ref.values.shape, dtype=dtype, device=flag_gems.device)
     indices = torch.empty(ref.indices.shape, dtype=torch.long, device=flag_gems.device)
     res = flag_gems.nanmedian_dim_values(
