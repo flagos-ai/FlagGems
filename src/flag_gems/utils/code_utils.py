@@ -58,7 +58,9 @@
 
 import builtins
 import contextlib
+import importlib
 import keyword
+import logging
 import os
 import re
 import threading
@@ -67,6 +69,9 @@ from collections import defaultdict
 from io import StringIO
 from pathlib import Path
 from typing import Dict, Set
+
+
+logger = logging.getLogger(__name__)
 
 
 class IndentedBuffer:
@@ -199,3 +204,77 @@ def write_atomic(
     with tmp_path.open("wt", encoding=encoding) as f:
         f.write(content)
     tmp_path.replace(path)
+
+
+_GENERATED_MODULE_IMPORT_ATTEMPTS = 2
+
+
+def load_generated_module(module_name, file_path, source):
+    """Write, verify, and import a generated Python module.
+
+    Generated source caches are disposable. If an entry is corrupted between
+    writing and importing (for example, it contains an embedded NUL), rewrite
+    that entry once instead of letting the caller exit.
+    """
+    expected = source.encode("utf-8")
+    if b"\x00" in expected:
+        raise RuntimeError(
+            f"Refusing to cache generated module {module_name}: source contains NUL bytes"
+        )
+
+    last_error = None
+    for attempt in range(1, _GENERATED_MODULE_IMPORT_ATTEMPTS + 1):
+        write_atomic(file_path, source)
+        try:
+            actual = Path(file_path).read_bytes()
+        except OSError as exc:
+            last_error = exc
+            logger.warning(
+                "Unable to read generated code cache %s after write "
+                "(attempt %d/%d): %s",
+                file_path,
+                attempt,
+                _GENERATED_MODULE_IMPORT_ATTEMPTS,
+                exc,
+            )
+            continue
+
+        if actual != expected:
+            last_error = RuntimeError(
+                f"generated cache content mismatch for {file_path}"
+            )
+            logger.warning(
+                "Generated code cache verification failed for %s "
+                "(attempt %d/%d); rewriting it",
+                file_path,
+                attempt,
+                _GENERATED_MODULE_IMPORT_ATTEMPTS,
+            )
+            continue
+
+        importlib.invalidate_caches()
+        spec = importlib.util.spec_from_file_location(module_name, file_path)
+        if spec is None or spec.loader is None:
+            raise ImportError(f"Unable to create import spec for {file_path}")
+        module = importlib.util.module_from_spec(spec)
+        try:
+            spec.loader.exec_module(module)
+        except SyntaxError as exc:
+            if "null bytes" not in str(exc).lower():
+                raise
+            last_error = exc
+            logger.warning(
+                "Generated code cache %s contained NUL bytes while importing "
+                "(attempt %d/%d); rewriting it",
+                file_path,
+                attempt,
+                _GENERATED_MODULE_IMPORT_ATTEMPTS,
+            )
+            continue
+        return module
+
+    raise RuntimeError(
+        f"Generated code cache remained corrupt for {module_name} after "
+        f"{_GENERATED_MODULE_IMPORT_ATTEMPTS} attempts; "
+        "check storage health or configure a healthy FLAGGEMS_CACHE_DIR"
+    ) from last_error
