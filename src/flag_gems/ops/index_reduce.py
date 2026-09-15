@@ -18,7 +18,6 @@ import torch
 import triton
 import triton.language as tl
 
-import flag_gems
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry
 
@@ -472,8 +471,8 @@ def _identity_like(inp, reduce):
     raise RuntimeError(f"Unsupported reduce: {reduce}")
 
 
-def _needs_cas(reduce, dtype):
-    return flag_gems.vendor_name in ("iluvatar",) or (
+def _needs_cas(reduce, dtype, force_cas=False):
+    return force_cas or (
         reduce in ("amax", "amin") and dtype in (torch.float16, torch.bfloat16)
     )
 
@@ -497,12 +496,10 @@ def _triton_version_at_least(major, minor):
 _TRITON_SUPPORTS_BF16_ATOMIC_ADD = _triton_version_at_least(3, 4)
 
 
-def _should_scan_duplicate_index(index, out_dim, reduce, dtype):
-    if flag_gems.vendor_name == "ascend":
-        return False
+def _should_scan_duplicate_index(index, out_dim, reduce, dtype, force_cas=False):
     if _TRITON_SUPPORTS_BF16_ATOMIC_ADD:
         return False
-    if reduce != "prod" and not _needs_cas(reduce, dtype):
+    if reduce != "prod" and not _needs_cas(reduce, dtype, force_cas):
         return False
     return not _index_is_unique(index, out_dim)
 
@@ -512,9 +509,6 @@ def _index_is_unique(index, out_dim):
         return False
     if index.numel() <= 1:
         return True
-    if flag_gems.vendor_name == "ascend":
-        index_cpu = index.cpu()
-        return index_cpu.unique().numel() == index_cpu.numel()
     return index.unique().numel() == index.numel()
 
 
@@ -569,6 +563,26 @@ def _restore_dim(out, inp, dim):
 
 def index_reduce_(inp, dim, index, source, reduce, *, include_self=True):
     logger.debug("GEMS INDEX_REDUCE_")
+    return _index_reduce_impl(
+        inp,
+        dim,
+        index,
+        source,
+        reduce,
+        include_self=include_self,
+    )
+
+
+def _index_reduce_impl(
+    inp,
+    dim,
+    index,
+    source,
+    reduce,
+    *,
+    include_self=True,
+    force_cas=False,
+):
     _validate_args(inp, dim, index, source, reduce)
 
     if index.numel() == 0:
@@ -578,13 +592,12 @@ def index_reduce_(inp, dim, index, source, reduce, *, include_self=True):
     index = index.contiguous()
     reduce_id = _reduce_id(reduce)
     use_fp32_workspace = (
-        flag_gems.vendor_name != "ascend"
-        and reduce == "mean"
+        reduce == "mean"
         and inp.dtype == torch.bfloat16
         and not _TRITON_SUPPORTS_BF16_ATOMIC_ADD
     )
 
-    if _should_scan_duplicate_index(index, inp.size(dim), reduce, inp.dtype):
+    if _should_scan_duplicate_index(index, inp.size(dim), reduce, inp.dtype, force_cas):
         inp_work = dim_compress(inp, dim)
         source_work = dim_compress(source, dim)
         N = index.numel()
@@ -612,12 +625,7 @@ def index_reduce_(inp, dim, index, source, reduce, *, include_self=True):
             )
         return _restore_dim(out.to(inp.dtype), inp, dim)
 
-    if (
-        flag_gems.vendor_name != "ascend"
-        and inp.is_contiguous()
-        and source.is_contiguous()
-        and not use_fp32_workspace
-    ):
+    if inp.is_contiguous() and source.is_contiguous() and not use_fp32_workspace:
         pre = _prod(inp.shape[:dim])
         post = _prod(inp.shape[dim + 1 :])
         N = index.numel()
@@ -638,7 +646,7 @@ def index_reduce_(inp, dim, index, source, reduce, *, include_self=True):
         if include_self:
             touched = torch.empty(1, dtype=torch.int32, device=inp.device)
 
-        use_cas = _needs_cas(reduce, inp.dtype)
+        use_cas = _needs_cas(reduce, inp.dtype, force_cas)
         index_major = post > 1 or dim == 0
         with torch_device_fn.device(inp.device):
             _index_reduce_contiguous_flat_kernel[
@@ -685,47 +693,6 @@ def index_reduce_(inp, dim, index, source, reduce, *, include_self=True):
     N = index.numel()
     out_n = inp_work.size(-1)
 
-    if flag_gems.vendor_name == "ascend" and _index_is_unique(index, out_n):
-        out = inp_work
-        grid = lambda meta: (
-            triton.cdiv(M, meta["BLOCK_M"]),
-            triton.cdiv(N, meta["BLOCK_N"]),
-        )
-        with torch_device_fn.device(inp.device):
-            _index_reduce_unique_kernel[grid](
-                out,
-                index,
-                source_work,
-                M,
-                N,
-                out_n,
-                reduce_id,
-                include_self,
-                False,
-            )
-        return _restore_dim(out, inp, dim)
-
-    if flag_gems.vendor_name == "ascend":
-        inp_compute = inp_work.to(torch.float32)
-        source_compute = source_work.to(torch.float32)
-        out = torch.empty_like(inp_compute)
-        total = inp_compute.numel()
-        grid = (total,)
-        with torch_device_fn.device(inp.device):
-            _index_reduce_scan_kernel[grid](
-                out,
-                index,
-                source_compute,
-                inp_compute,
-                total,
-                N,
-                out_n,
-                reduce_id,
-                include_self,
-                False,
-            )
-        return _restore_dim(out.to(inp.dtype), inp, dim)
-
     if use_fp32_workspace:
         inp_compute = inp_work.to(torch.float32)
         source_compute = source_work.to(torch.float32)
@@ -747,7 +714,7 @@ def index_reduce_(inp, dim, index, source, reduce, *, include_self=True):
     if include_self:
         touched = torch.empty(1, dtype=torch.int32, device=inp.device)
 
-    use_cas = _needs_cas(reduce, inp_work.dtype)
+    use_cas = _needs_cas(reduce, inp_work.dtype, force_cas)
     total = M * N
     index_major = dim == 0
 
