@@ -34,8 +34,8 @@ def _cuda_fp8_e4m3fn_available():
         )
     if FP8_DTYPE is None or not torch.cuda.is_available():
         return False
-    # PPU can store and cast e4m3fn even though it reports sm_80.
-    if flag_gems.vendor_name == "thead":
+    # PPU and MetaX can store and cast e4m3fn even though they report sm_80.
+    if flag_gems.vendor_name in ("thead", "metax"):
         return True
     major, _ = torch.cuda.get_device_capability()
     return major >= 9
@@ -61,7 +61,7 @@ def _quantize_fp8_weight(weight, group_size=GROUP_SIZE):
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
 @pytest.mark.parametrize("capture", [False, True], ids=["eager", "graph"])
 @pytest.mark.skipif(
-    flag_gems.vendor_name not in ("thead", "mthreads")
+    flag_gems.vendor_name not in ("thead", "mthreads", "metax")
     or not _cuda_fp8_e4m3fn_available(),
     reason="Regression test for backend W8A16 weight dequantization",
 )
@@ -122,7 +122,7 @@ def test_rms_norm_w8a16_fp8_weight_updates(dtype, capture):
     [(2, 256, 128), (2, 384, 128), (2, 32768, 64), (2, 33024, 128), (513, 4096, 128)],
 )
 @pytest.mark.skipif(
-    flag_gems.vendor_name not in ("thead", "mthreads")
+    flag_gems.vendor_name not in ("thead", "mthreads", "metax")
     or not _cuda_fp8_e4m3fn_available(),
     reason="Backend E4M3FN byte decoding across all kernel paths",
 )
