@@ -35,15 +35,6 @@ FORWARD_CONFIGS = [
     triton.Config({"BLOCK_H": 16, "BLOCK_W": 16}, num_warps=8),
 ]
 
-BACKWARD_CONFIGS = [
-    triton.Config({"BLOCK_H": 4, "BLOCK_W": 4}, num_warps=4),
-    triton.Config({"BLOCK_H": 4, "BLOCK_W": 8}, num_warps=4),
-    triton.Config({"BLOCK_H": 8, "BLOCK_W": 8}, num_warps=4),
-    triton.Config({"BLOCK_H": 4, "BLOCK_W": 16}, num_warps=4),
-    triton.Config({"BLOCK_H": 8, "BLOCK_W": 16}, num_warps=8),
-]
-
-
 @libentry()
 @triton.autotune(
     configs=FORWARD_CONFIGS,
@@ -190,81 +181,6 @@ def fractional_max_pool3d_forward_kernel(
     tl.store(indices_ptr + out_offsets, max_idx_acc, mask=out_mask)
 
 
-@libentry()
-@triton.autotune(
-    configs=BACKWARD_CONFIGS,
-    key=["out_d", "out_h", "out_w"],
-    reset_to_zero=["grad_input_ptr"],
-)
-@triton.jit
-def fractional_max_pool3d_backward_kernel(
-    grad_output_ptr,
-    indices_ptr,
-    grad_input_ptr,
-    # Shapes
-    in_n,
-    in_c,
-    in_d,
-    in_h,
-    in_w,
-    out_d,
-    out_h,
-    out_w,
-    # Output strides (element-based, contiguous)
-    out_stride_nc,
-    out_stride_d,
-    out_stride_h,
-    out_stride_w,
-    # Tiling meta-parameters
-    BLOCK_H: tl.constexpr,
-    BLOCK_W: tl.constexpr,
-):
-    """Backward kernel for fractional max pool 3d.
-
-    Scatters gradients back to input positions using the indices from forward.
-    Uses atomic_add since multiple output positions may map to the same input.
-    """
-    pid_nc = tl.program_id(0)
-    pid_dhw = tl.program_id(1)
-
-    num_h_blocks = tl.cdiv(out_h, BLOCK_H)
-    num_w_blocks = tl.cdiv(out_w, BLOCK_W)
-    num_hw_blocks = num_h_blocks * num_w_blocks
-
-    d_idx = pid_dhw // num_hw_blocks
-    hw_remainder = pid_dhw % num_hw_blocks
-    h_block_idx = hw_remainder // num_w_blocks
-    w_block_idx = hw_remainder % num_w_blocks
-
-    h_out_offsets = h_block_idx * BLOCK_H + tl.arange(0, BLOCK_H)
-    w_out_offsets = w_block_idx * BLOCK_W + tl.arange(0, BLOCK_W)
-
-    h_mask = h_out_offsets < out_h
-    w_mask = w_out_offsets < out_w
-    out_mask = h_mask[:, None] & w_mask[None, :]
-
-    # Load grad_output and indices for this tile
-    out_base = pid_nc * out_stride_nc
-    out_offsets = (
-        out_base
-        + d_idx * out_stride_d
-        + h_out_offsets[:, None] * out_stride_h
-        + w_out_offsets[None, :] * out_stride_w
-    )
-
-    grad_vals = tl.load(grad_output_ptr + out_offsets, mask=out_mask, other=0.0)
-    idx_vals = tl.load(indices_ptr + out_offsets, mask=out_mask, other=-1)
-
-    # Scatter gradients to input using indices
-    in_nc_offset = pid_nc * in_d * in_h * in_w
-    in_offsets = in_nc_offset + idx_vals
-
-    valid_mask = out_mask & (idx_vals >= 0)
-    tl.atomic_add(
-        grad_input_ptr + in_offsets, grad_vals.to(tl.float32), mask=valid_mask
-    )
-
-
 def fractional_max_pool3d(
     input: torch.Tensor,
     kernel_size,
@@ -389,68 +305,3 @@ def fractional_max_pool3d(
     if return_indices:
         return output, indices
     return output
-
-
-def fractional_max_pool3d_backward(
-    grad_output: torch.Tensor,
-    input: torch.Tensor,
-    kernel_size,
-    output_size,
-    indices: torch.Tensor,
-):
-    """Backward pass for fractional_max_pool3d.
-
-    Scatters gradients back to input positions using the indices from forward.
-    """
-    logger.debug("GEMS FRACTIONAL_MAX_POOL3D_BACKWARD")
-    if isinstance(kernel_size, int):
-        kernel_d = kernel_h = kernel_w = kernel_size
-    else:
-        kernel_d, kernel_h, kernel_w = kernel_size
-
-    if isinstance(output_size, int):
-        out_d = out_h = out_w = output_size
-    else:
-        out_d, out_h, out_w = output_size
-
-    in_n, in_c, in_d, in_h, in_w = input.shape
-
-    grad_output = grad_output.contiguous()
-    indices = indices.contiguous()
-
-    grad_input = torch.zeros_like(input, dtype=torch.float32)
-
-    if grad_input.numel() == 0:
-        return grad_input.to(grad_output.dtype)
-
-    grid = lambda meta: (
-        in_n * in_c,
-        out_d
-        * triton.cdiv(out_h, meta["BLOCK_H"])
-        * triton.cdiv(out_w, meta["BLOCK_W"]),
-    )
-
-    out_stride_nc = out_d * out_h * out_w
-    out_stride_d = out_h * out_w
-    out_stride_h = out_w
-    out_stride_w = 1
-
-    fractional_max_pool3d_backward_kernel[grid](
-        grad_output,
-        indices,
-        grad_input,
-        in_n,
-        in_c,
-        in_d,
-        in_h,
-        in_w,
-        out_d,
-        out_h,
-        out_w,
-        out_stride_nc,
-        out_stride_d,
-        out_stride_h,
-        out_stride_w,
-    )
-
-    return grad_input.to(grad_output.dtype)
