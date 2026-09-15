@@ -32,6 +32,22 @@ ctc_loss:
     - [1024, 32, 128, 96]
   shape_desc: "T, N, C, S"
 
+_ctc_loss:
+  shapes:
+    - [64, 4, 32, 16]
+    - [256, 16, 64, 48]
+    - [512, 32, 64, 48]
+    - [1024, 32, 128, 96]
+  shape_desc: "T, N, C, S"
+
+_ctc_loss_out:
+  shapes:
+    - [64, 4, 32, 16]
+    - [256, 16, 64, 48]
+    - [512, 32, 64, 48]
+    - [1024, 32, 128, 96]
+  shape_desc: "T, N, C, S"
+
 ctc_loss_backward:
   shapes:
     - [64, 4, 32, 16]
