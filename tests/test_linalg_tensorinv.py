@@ -26,6 +26,13 @@ TENSORINV_SHAPES_IND1 = [
 TENSORINV_DTYPES = [torch.float32, torch.float16]
 
 
+def _prod(dims):
+    out = 1
+    for d in dims:
+        out *= d
+    return out
+
+
 @pytest.mark.linalg_tensorinv
 @pytest.mark.parametrize("shape", TENSORINV_SHAPES_IND2)
 # torch.linalg.tensorinv requires a float32 reference path for lower precision inputs.
@@ -256,7 +263,7 @@ def test_linalg_tensorinv_singular(A_cpu):
     )
 
 
-@pytest.mark.linalg_tensorinv
+@pytest.mark.linalg_tensorinv_out
 @pytest.mark.parametrize("shape", TENSORINV_SHAPES_IND2)
 # torch.linalg.tensorinv requires a float32 reference path for lower precision inputs.
 @pytest.mark.parametrize("dtype", TENSORINV_DTYPES)
@@ -299,3 +306,197 @@ def test_linalg_tensorinv_out(shape, dtype):
 
     assert res_out is out, "linalg_tensorinv(out=) must return the provided out tensor"
     utils.gems_assert_close(out, ref_out, dtype)
+
+
+@pytest.mark.linalg_tensorinv
+@pytest.mark.parametrize(
+    "ind",
+    [0, -1, -2],
+)
+def test_linalg_tensorinv_non_positive_ind(ind):
+    """A non-positive ind must raise, matching torch.linalg.tensorinv.
+
+    Regression guard: with the check ordered after the shape checks, ind=0
+    passed validation on a 1x1 input (where prod(shape[:0]) == prod(shape[0:])
+    holds trivially) and returned a wrong result instead of an error.
+    """
+    A = torch.randn(1, 1, dtype=torch.float32, device=flag_gems.device)
+
+    with pytest.raises(RuntimeError):
+        torch.linalg.tensorinv(utils.to_reference(A), ind=ind)
+
+    with pytest.raises(RuntimeError):
+        flag_gems.linalg_tensorinv(A, ind=ind)
+
+
+@pytest.mark.linalg_tensorinv
+def test_linalg_tensorinv_invalid_input():
+    """Invalid shapes must raise RuntimeError rather than produce a result."""
+    A_1d = torch.randn(4, dtype=torch.float32, device=flag_gems.device)
+    with pytest.raises(RuntimeError):
+        flag_gems.linalg_tensorinv(A_1d, ind=2)
+
+    # prod(shape[:2]) = 6 != prod(shape[2:]) = 4
+    A_mismatch = torch.randn(2, 3, 2, 2, dtype=torch.float32, device=flag_gems.device)
+    with pytest.raises(RuntimeError):
+        flag_gems.linalg_tensorinv(A_mismatch, ind=2)
+
+    # ind > A.dim()
+    with pytest.raises(RuntimeError):
+        flag_gems.linalg_tensorinv(A_1d, ind=3)
+
+
+@pytest.mark.linalg_tensorinv
+@pytest.mark.parametrize("shape", [(2, 2), (8, 8), (4, 6, 8, 3)])
+@pytest.mark.parametrize("dtype", [torch.float32])
+def test_linalg_tensorinv_non_contiguous(shape, dtype):
+    """Non-contiguous inputs must give the same result as contiguous ones:
+    the implementation works on a contiguous copy, and losing that copy would
+    silently produce a wrong result on strided input.
+    """
+    if len(shape) == 2:
+        ind = 1
+        m = shape[0]
+    else:
+        ind = 2
+        m = shape[0] * shape[1]
+
+    # Deliberately asymmetric: a symmetric generator (A @ A.T) would make the
+    # transposed view numerically equal to its own transpose, so a stride bug
+    # would go unnoticed.
+    base = torch.randn(m, m, dtype=dtype, device=flag_gems.device) * 2.0
+    base = base + m * torch.eye(m, dtype=dtype, device=flag_gems.device)
+
+    # A stride-2 slice of a half-empty buffer keeps `shape` unchanged (so the
+    # prod(shape[:ind]) == prod(shape[ind:]) requirement still holds) while
+    # being non-contiguous.
+    buf = torch.empty(
+        (shape[0] * 2,) + tuple(shape[1:]), dtype=dtype, device=flag_gems.device
+    )
+    buf[::2].copy_(base.reshape(shape))
+    A_stride = buf[::2]
+
+    assert tuple(A_stride.shape) == shape
+    assert not A_stride.is_contiguous()
+
+    # A dense transposed view: for a 2D square input `A.t()` keeps stride
+    # (1, n), which survives both reshape and a plain clone(), so this is the
+    # input that actually depends on the contiguous-copy guarantee.  For the
+    # 4D case, transpose the last two dims so the row/col product split (and
+    # hence prod(shape[:ind]) == prod(shape[ind:])) is preserved, while the
+    # flattened stride still ends up transposed.
+    A_dense = (
+        base.reshape(shape).transpose(0, 1)
+        if len(shape) == 2
+        else base.reshape(shape).transpose(-1, -2)
+    )
+    assert not A_dense.is_contiguous()
+    assert _prod(A_dense.shape[:ind]) == _prod(A_dense.shape[ind:])
+    if len(shape) == 2:
+        assert not torch.equal(A_dense, base.reshape(shape))
+
+    # Contiguous inputs must remain correct too.
+    for A_view in (A_stride, A_dense, base.reshape(shape)):
+        ref_out = torch.linalg.tensorinv(utils.to_reference(A_view), ind=ind)
+        res_out = flag_gems.linalg_tensorinv(A_view, ind=ind)
+
+        utils.gems_assert_close(res_out, ref_out, dtype, atol=1e-2, reduce_dim=1)
+
+
+@pytest.mark.linalg_tensorinv
+def test_linalg_tensorinv_non_spd_blocked_path():
+    """The blocked (>64) path with a general non-SPD matrix.
+
+    The existing blocked-path test uses an SPD matrix, for which the
+    column-maximum pivot is always the diagonal element, so its row-swap
+    branch never runs. Plain randn has no such guarantee and exercises the
+    swap logic in the blocked kernel.
+    """
+    dtype = torch.float32
+    n = 80  # > _TENSORINV_BLOCK_MAX -> blocked kernel
+    torch.manual_seed(42)
+    A = torch.randn(n, n, dtype=dtype, device=flag_gems.device) * 2.0
+    ind = 1
+
+    ref_out = torch.linalg.tensorinv(utils.to_reference(A), ind=ind)
+    res_out = flag_gems.linalg_tensorinv(A, ind=ind)
+
+    utils.gems_assert_close(res_out, ref_out, dtype, atol=1e-2, reduce_dim=1)
+
+
+@pytest.mark.linalg_tensorinv
+def test_linalg_tensorinv_blocked_path_singular():
+    """A singular exact-zero-pivot matrix on the blocked path must propagate
+    inf/nan, same as the register path.
+    """
+    dtype = torch.float32
+    n = 80
+    A = torch.zeros(n, n, dtype=dtype, device=flag_gems.device)
+
+    res_out = flag_gems.linalg_tensorinv(A, ind=1)
+
+    assert torch.isnan(res_out).any() or torch.isinf(res_out).any(), (
+        "tensorinv on a singular matrix must return inf/nan on the blocked "
+        "path too, not a finite wrong inverse"
+    )
+
+
+@pytest.mark.linalg_tensorinv
+def test_linalg_tensorinv_input_not_mutated():
+    """The in-place Gauss-Jordan works on a clone, so the caller's tensor must
+    come back unchanged.
+    """
+    dtype = torch.float32
+    A = torch.randn(8, 8, dtype=dtype, device=flag_gems.device) * 2.0
+    A0 = A.clone()
+
+    flag_gems.linalg_tensorinv(A, ind=1)
+
+    assert torch.equal(A, A0), "linalg_tensorinv must not mutate its input"
+
+
+@pytest.mark.linalg_tensorinv_out
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+def test_linalg_tensorinv_out_overwrites_and_non_contiguous(dtype):
+    """out= must be fully overwritten (stale contents incl. inf/nan must not
+    survive) and must accept a non-contiguous input.
+    """
+    ind = 1
+    m = 4
+    if dtype == torch.float16:
+        A = (torch.randn(m, m, dtype=torch.float32, device=flag_gems.device) * 2.0).to(
+            dtype
+        )
+    else:
+        A = torch.randn(m, m, dtype=dtype, device=flag_gems.device) * 2.0
+    A = A @ A.mT + 0.1 * torch.eye(m, dtype=dtype, device=flag_gems.device)
+
+    ref_A = utils.to_reference(A)
+    if dtype == torch.float16:
+        ref_out = torch.linalg.tensorinv(ref_A.to(torch.float32), ind=ind).to(dtype)
+    else:
+        ref_out = torch.linalg.tensorinv(ref_A, ind=ind)
+
+    # Pre-fill with values that would be obviously wrong if left in place.
+    out = torch.full((m, m), float("nan"), dtype=dtype, device=flag_gems.device)
+    res_out = flag_gems.linalg_tensorinv(A, ind=ind, out=out)
+
+    assert res_out is out
+    assert not torch.isnan(out).any(), "out= must be fully overwritten"
+    utils.gems_assert_close(out, ref_out, dtype, atol=1e-2, reduce_dim=1)
+
+    # Non-contiguous input through the out= path.
+    A_view = A.t()
+    assert not A_view.is_contiguous()
+    out2 = torch.empty_like(A)
+    ref_view_A = utils.to_reference(A_view)
+    if dtype == torch.float16:
+        ref_view = torch.linalg.tensorinv(ref_view_A.to(torch.float32), ind=ind).to(
+            dtype
+        )
+    else:
+        ref_view = torch.linalg.tensorinv(ref_view_A, ind=ind)
+    res_view = flag_gems.linalg_tensorinv(A_view, ind=ind, out=out2)
+
+    assert res_view is out2
+    utils.gems_assert_close(out2, ref_view, dtype, atol=1e-2, reduce_dim=1)

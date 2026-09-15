@@ -19,15 +19,24 @@ _TENSORINV_BLOCK_MAX = 64
 
 
 def check_inv_input(A, ind):
-    """Validate input for tensorinv: A is >=2D, 0 <= ind <= A.dim(), and
+    """Validate input for tensorinv: ind is strictly positive, A is >=2D, and
     prod(A.shape[:ind]) == prod(A.shape[ind:]). Raises RuntimeError on
     violation, matching torch.linalg.tensorinv's behaviour.
     """
+    # Checked first, as in torch: a non-positive ind is rejected before any
+    # shape reasoning, so ind=0 cannot slip through to the prod comparison
+    # below (which it would satisfy trivially for a 1x1 input, yielding a
+    # silently wrong result instead of an error).
+    if ind <= 0:
+        raise RuntimeError(
+            "linalg.tensorinv: Expected a strictly positive integer for "
+            f"'ind', but got {ind}"
+        )
     if A.dim() < 2:
         raise RuntimeError(
             "linalg.tensorinv: Expected input to be at least 2D, " f"got {A.dim()}D"
         )
-    if ind < 0 or ind > A.dim():
+    if ind > A.dim():
         raise RuntimeError(
             "linalg.tensorinv: Expected 0 <= ind <= input.dim(), "
             f"got ind={ind} for input.dim()={A.dim()}"
