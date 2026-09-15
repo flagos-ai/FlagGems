@@ -340,6 +340,7 @@ from flag_gems.ops.cosh import cosh, cosh_, cosh_out
 from flag_gems.ops.cosine_embedding_loss import cosine_embedding_loss
 from flag_gems.ops.count_nonzero import count_nonzero
 from flag_gems.ops.cov import cov
+from flag_gems.ops.cross import cross, cross_out
 from flag_gems.ops.ctc_loss import ctc_loss
 from flag_gems.ops.cudnn_attention_forward import cudnn_attention_forward
 from flag_gems.ops.cudnn_batch_norm_backward import cudnn_batch_norm_backward
@@ -1335,6 +1336,8 @@ __all__ = [
     "copysign_",
     "copysign_out",
     "corrcoef",
+    "cross",
+    "cross_out",
     "cos",
     "cos_",
     "cosh",
