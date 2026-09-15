@@ -5767,6 +5767,21 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: fused_sgd_
+  description: |
+    The in-place version of `fused_sgd()`. Covers both the default overload and
+    `_fused_sgd_.tensor_lr`, which takes the learning rate as a tensor so a
+    scheduler can update it without a host round-trip; both share one kernel.
+  for:
+  - _fused_sgd_
+  - _fused_sgd_.tensor_lr
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: gather
   description: Gathers values along an axis specified by `dim`.
   for:
