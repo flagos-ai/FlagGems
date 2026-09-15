@@ -50,6 +50,8 @@ nanmedian_dim_values: test_nanmedian
 searchsorted_scalar: test_searchsorted
 
 # Operators tested in combined files or with different naming
+flash_attention_forward_w8a8_fp8: test_flash_attention
+flash_attn_varlen_func_w8a8_fp8: test_flash_attention
 batch_norm_backward: test_batch_norm
 batch_norm_impl_index: test_batch_norm
 segment_reduce_backward: test_segment_reduce
