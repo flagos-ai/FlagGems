@@ -23,10 +23,33 @@ from . import accuracy_utils as utils
 @pytest.mark.uniform_
 @pytest.mark.parametrize("shape", utils.DISTRIBUTION_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_accuracy_uniform(shape, dtype):
+def test_uniform_(shape, dtype):
     x = torch.randn(size=shape, dtype=dtype, device=flag_gems.device)
-    with flag_gems.use_gems():
-        x.uniform_(-3, 3)
+    flag_gems.uniform_(x, -3, 3)
 
-    assert (x <= 3.0).all()
+    # uniform samples from [from, to); a strict upper bound keeps an upper-edge
+    # rounding bug from passing.
+    assert (x < 3.0).all()
     assert (x >= -3.0).all()
+
+
+@pytest.mark.uniform
+@pytest.mark.parametrize("shape", utils.DISTRIBUTION_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_uniform(shape, dtype):
+    x = torch.randn(size=shape, dtype=dtype, device=flag_gems.device)
+    x_copy = x.clone()
+    out = flag_gems.uniform(x, -3, 3)
+
+    # out-of-place uniform must not modify the input; that is the main semantic
+    # difference from uniform_.
+    assert torch.equal(x, x_copy)
+    assert (out < 3.0).all()
+    assert (out >= -3.0).all()
+
+
+@pytest.mark.uniform
+def test_uniform_rejects_inverted_interval():
+    x = torch.randn(size=(8,), dtype=torch.float32, device=flag_gems.device)
+    with pytest.raises(RuntimeError, match=r"\[from, to\)"):
+        flag_gems.uniform(x, 3.0, -1.0)
