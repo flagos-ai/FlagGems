@@ -7627,6 +7627,24 @@ ops:
   - BLAS
   stages:
   - alpha: '5.4'
+- id: linalg_cholesky_ex
+  description: 'Computes the Cholesky decomposition of a symmetric positive-definite
+    matrix,
+
+    returning the lower/upper triangular factor together with an info tensor
+
+    indicating whether the decomposition succeeded for each matrix in the batch.
+
+    '
+  for:
+  - linalg_cholesky_ex
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.4'
 - id: linalg_cond
   description: Compute the condition number of a matrix with respect to various norms.
   for:
@@ -7635,6 +7653,7 @@ ops:
   - aten
   - KernelGen
   kind:
+  - BLAS
   - LinearAlg
   stages:
   - alpha: '5.4'

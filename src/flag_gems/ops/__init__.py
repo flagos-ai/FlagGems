@@ -566,6 +566,7 @@ from flag_gems.ops.lift import lift, lift_out
 from flag_gems.ops.lift_fresh import lift_fresh
 from flag_gems.ops.lift_fresh_copy import lift_fresh_copy, lift_fresh_copy_out
 from flag_gems.ops.linalg_cholesky import linalg_cholesky
+from flag_gems.ops.linalg_cholesky_ex import linalg_cholesky_ex
 from flag_gems.ops.linalg_cond import linalg_cond, linalg_cond_p_str
 from flag_gems.ops.linalg_cross import linalg_cross, linalg_cross_out
 from flag_gems.ops.linalg_det import linalg_det, linalg_det_out
@@ -1630,6 +1631,7 @@ __all__ = [
     "lift_fresh_copy_out",
     "lift_out",
     "linalg_cholesky",
+    "linalg_cholesky_ex",
     "linalg_cond",
     "linalg_cond_p_str",
     "linalg_cross",
