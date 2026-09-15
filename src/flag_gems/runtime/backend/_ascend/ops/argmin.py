@@ -125,6 +125,7 @@ def argmin(inp, dim=None, keepdim=False, *, dtype=None):
         result = argmin(inp.to(torch.float32), dim=dim, keepdim=keepdim, dtype=dtype)
         return result
     if dim is None:
+        inp = inp.contiguous()
         M = inp.numel()
         if dtype is None:
             dtype = inp.dtype
