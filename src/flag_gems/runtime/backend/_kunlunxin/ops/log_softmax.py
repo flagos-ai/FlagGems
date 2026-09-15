@@ -1276,8 +1276,37 @@ def log_softmax_out(self, dim, half_to_float=False, *, out):
 
 def log_softmax_backward_out(grad_output, output, dim, input_dtype, *, out):
     logger.debug("GEMS_KUNLUNXIN LOG_SOFTMAX_BACKWARD_OUT")
-    res = log_softmax_backward(grad_output, output, dim, input_dtype)
-    if tuple(out.shape) != tuple(res.shape):
-        out.resize_(res.shape)
-    out.copy_(res)
+
+    assert dim >= -output.ndim and dim < output.ndim, "Invalid dim"
+    dim = dim % output.ndim
+    M = 1
+    N = output.shape[dim]
+    for i in range(dim):
+        M *= output.shape[i]
+
+    if tuple(out.shape) != tuple(output.shape):
+        out.resize_(output.shape)
+    if out.dtype != input_dtype:
+        raise RuntimeError(
+            f"_log_softmax_backward_data.out: expected out dtype {input_dtype}, got {out.dtype}"
+        )
+
+    K = output.numel() // M // N
+    if K == 1 and out.is_contiguous():
+        # Fast path: reduction over the last (contiguous) dim, the common
+        # benchmark/tests case. Write directly into `out` so the .out variant
+        # pays the same single-kernel cost as the functional variant (no extra
+        # copy). The per-row kernels pre-offset the base pointers by pid*N and
+        # store stride-1, so a contiguous [M, N] output is required here.
+        grad_output_c = grad_output.contiguous()
+        output_c = output.contiguous()
+        with torch_device_fn.device(out.device):
+            _backward_launch(output_c, grad_output_c, out, M, N)
+        return out
+
+    # Interior dim (K>1) or non-contiguous out: reuse the functional variant and
+    # write back via the native strided-copy engine. gems overrides copy_/copy
+    # but never _copy_from, so this reaches the vendor copy engine directly.
+    in_grad = log_softmax_backward(grad_output, output, dim, input_dtype)
+    torch.ops.aten._copy_from(in_grad, out, False)
     return out
