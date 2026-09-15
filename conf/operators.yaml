@@ -4731,6 +4731,19 @@ ops:
   - Quantization
   stages:
   - alpha: '5.4'
+- id: fake_quantize_per_tensor_affine_cachemask
+  description: Applies per-tensor affine fake quantization and returns the quantized
+    output with its unclamped-range mask.
+  for:
+  - fake_quantize_per_tensor_affine_cachemask
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Quantization
+  stages:
+  - alpha: '5.4'
 - id: fake_quantize_per_tensor_affine_cachemask_backward
   description: 'Computes the gradient for fake_quantize_per_tensor_affine_cachemask
     by multiplying the incoming
@@ -4746,6 +4759,19 @@ ops:
   - KernelGen
   kind:
   - Math
+  stages:
+  - alpha: '5.4'
+- id: fake_quantize_per_tensor_affine_cachemask_out
+  description: A variant of `fake_quantize_per_tensor_affine_cachemask` that assigns
+    the results to the provided output tensors.
+  for:
+  - fake_quantize_per_tensor_affine_cachemask.out
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Quantization
   stages:
   - alpha: '5.4'
 - id: fake_quantize_per_tensor_affine_cachemask_tensor_qparams
@@ -6993,6 +7019,22 @@ ops:
   - Tensor
   stages:
   - beta: '5.3'
+- id: index_reduce
+  description: 'Returns a new tensor after accumulating `source` into `input` at the
+    indices
+
+    specified by `index`, using `prod`, `mean`, `amax`, or `amin` reduction.
+
+    '
+  for:
+  - index_reduce
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: index_reduce_
   description: 'Accumulates the elements of `source` into `input` at the indices specified
 
@@ -7008,6 +7050,20 @@ ops:
   - Tensor
   stages:
   - beta: '5.4'
+- id: index_reduce_out
+  description: 'An out variant of `index_reduce` that writes the reduced values to
+    `out`.
+
+    '
+  for:
+  - index_reduce.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: index_select
   description: 'Returns a new tensor which indexes the `input` tensor along dimension
     `dim`
@@ -7704,7 +7760,20 @@ ops:
 - id: linalg_eigvals
   description: Computes the eigenvalues of a square matrix.
   for:
+  - linalg_eigvals
   - _linalg_eigvals
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: linalg_eigvals_out
+  description: A variant of `linalg_eigvals` that allows the output to be assigned
+    to `out`.
+  for:
+  - linalg_eigvals.out
   labels:
   - aten
   - KernelGen
@@ -8032,6 +8101,30 @@ ops:
     matrix to an output tensor.
   for:
   - linalg_matrix_sqrth.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.4'
+- id: linalg_multi_dot
+  description: Efficiently multiplies a chain of two or more matrices using the optimal
+    multiplication order.
+  for:
+  - linalg_multi_dot
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.4'
+- id: linalg_multi_dot_out
+  description: Writes the optimally ordered product of a matrix chain to a provided
+    output tensor.
+  for:
+  - linalg_multi_dot.out
   labels:
   - aten
   - KernelGen
@@ -13253,6 +13346,37 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: special_chebyshev_polynomial_t
+  description: 'Computes the Chebyshev polynomial of the first kind
+
+    :math:`T_{n}(\\text{input})`.
+
+    '
+  for:
+  - special.chebyshev_polynomial_t
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: special_chebyshev_polynomial_t_out
+  description: 'A variant of `special_chebyshev_polynomial_t()` with output saved
+    to
+
+    provided `out`.
+
+    '
+  for:
+  - special_chebyshev_polynomial_t.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: special_chebyshev_polynomial_u
   description: 'Computes the Chebyshev polynomial of the second kind U_n(x) for each
     element
@@ -15427,6 +15551,19 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: upsample_trilinear3d_backward
+  description: |
+    Computes the gradient of upsample_trilinear3d with respect to its input (NCDHW),
+    scattering the output gradient back to the eight source corner voxels.
+  for:
+  - upsample_trilinear3d_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: value_selecting_reduction_backward
   description: 'Computes the gradient of a value-selecting reduction (such as `max.dim`
 
@@ -15544,6 +15681,22 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: vsplit
+  description: 'Split a tensor along the first axis (row-wise).
+
+    Each chunk is copied into a freshly allocated output by a Triton kernel.
+
+    '
+  for:
+  - vsplit.int
+  - vsplit.array
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: vstack
   description: Stack tensors in sequence vertically (row wise).
   for:
@@ -15613,6 +15766,22 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '3.0'
+- id: weight_norm_differentiable_backward
+  description: 'Computes the differentiable gradients for the magnitude and direction
+
+    parameters of a weight-normalized tensor.
+
+    '
+  for:
+  - _weight_norm_differentiable_backward
+  labels:
+  - aten
+  - fused
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: weight_norm_interface
   description: 'Apply weight normalization to neural network layers, decoupling the
     magnitued

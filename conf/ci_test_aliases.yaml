@@ -29,6 +29,7 @@ atan2_out: test_atan2
 alias_copy_out: test_alias_copy
 as_strided_copy_out: test_as_strided_copy
 baddbmm_out: test_baddbmm
+linalg_eigvals_out: test_linalg_eigvals
 nanmedian_out: test_nanmedian
 scaled_mm_out: test_scaled_mm
 searchsorted_out: test_searchsorted
@@ -53,6 +54,7 @@ searchsorted_scalar: test_searchsorted
 batch_norm_backward: test_batch_norm
 segment_reduce_backward: test_segment_reduce
 segment_reduce_backward_out: test_segment_reduce
+special_chebyshev_polynomial_t_out: test_special_chebyshev_polynomial_t
 upsample_bicubic2d_aa_backward: test_upsample_bicubic2d_aa
 upsample_linear1d_backward: test_upsample_linear1d
 
