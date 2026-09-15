@@ -19,8 +19,9 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
-from flag_gems.utils import libentry, libtuner
+from flag_gems.utils import libentry
+
+from ..heuristics_config_utils import dreglu_dswiglu_config, reglu_swiglu_config
 
 logger = logging.getLogger(__name__)
 
@@ -36,24 +37,6 @@ def heru_tile_n(args):
 
 
 @libentry()
-@libtuner(
-    configs=[
-        triton.Config({"BLOCK_M": 1, "BLOCK_N": 1024}),
-        triton.Config({"BLOCK_M": 2, "BLOCK_N": 1024}),
-        triton.Config({"BLOCK_M": 4, "BLOCK_N": 1024}),
-        triton.Config({"BLOCK_M": 8, "BLOCK_N": 1024}),
-        triton.Config({"BLOCK_M": 6, "BLOCK_N": 32}),
-        triton.Config({"BLOCK_M": 342, "BLOCK_N": 2048}),
-        triton.Config({"BLOCK_M": 2731, "BLOCK_N": 256}),
-    ],
-    key=["M", "N"],
-)
-# @triton.heuristics(
-#     values={
-#         "BLOCK_M": heur_tile_m,
-#         "BLOCK_N": heru_tile_n,
-#     },
-# )
 @triton.jit
 def dreglu_kernel(
     grad_output_ptr,
@@ -69,6 +52,7 @@ def dreglu_kernel(
     stride_grad_in_n,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
+    NEED_MASK: tl.constexpr,
 ):
     pid_m = tl.program_id(axis=0)
     pid_n = tl.program_id(axis=1)
@@ -94,22 +78,27 @@ def dreglu_kernel(
         + (offs_n[None, :] + N) * stride_grad_in_n
     )
     mask = (offs_m[:, None] < M) & (offs_n[None, :] < N)
-    grad_out = tl.load(grad_output_ptr, mask=mask, other=0.0).to(tl.float32)
-    block_a = tl.load(input_ptr_a, mask=mask, other=0.0).to(tl.float32)
-    block_b = tl.load(input_ptr_b, mask=mask, other=0.0).to(tl.float32)
-    relu_a = tl.maximum(block_a, 0.0)
-    d_relu_a = tl.where(block_a > 0, 1.0, 0.0)
-    grad_a = grad_out * d_relu_a * block_b
-    grad_b = grad_out * relu_a
-    tl.store(grad_input_ptr_a, grad_a, mask=mask)
-    tl.store(grad_input_ptr_b, grad_b, mask=mask)
+    if NEED_MASK:
+        grad_out = tl.load(grad_output_ptr, mask=mask, other=0.0).to(tl.float32)
+        block_a = tl.load(input_ptr_a, mask=mask, other=0.0).to(tl.float32)
+        block_b = tl.load(input_ptr_b, mask=mask, other=0.0).to(tl.float32)
+        relu_a = tl.maximum(block_a, 0.0)
+        d_relu_a = tl.where(block_a > 0, 1.0, 0.0)
+        grad_a = grad_out * d_relu_a * block_b
+        grad_b = grad_out * relu_a
+        tl.store(grad_input_ptr_a, grad_a, mask=mask)
+        tl.store(grad_input_ptr_b, grad_b, mask=mask)
+    else:
+        grad_out = tl.load(grad_output_ptr).to(tl.float32)
+        block_a = tl.load(input_ptr_a).to(tl.float32)
+        block_b = tl.load(input_ptr_b).to(tl.float32)
+        relu_a = tl.maximum(block_a, 0.0)
+        d_relu_a = tl.where(block_a > 0, 1.0, 0.0)
+        tl.store(grad_input_ptr_a, grad_out * d_relu_a * block_b)
+        tl.store(grad_input_ptr_b, grad_out * relu_a)
 
 
 @libentry()
-@libtuner(
-    configs=runtime.get_tuned_config("gated_activation"),
-    key=["M", "N_OUT"],
-)
 @triton.jit
 def reglu_kernel(
     x_ptr,
@@ -160,10 +149,8 @@ def reglu(input_tensor: torch.Tensor, quantizer: Optional[Any] = None) -> torch.
     output_2d = torch.empty(
         (M, N_OUT), device=input_tensor.device, dtype=input_tensor.dtype
     )
-    grid = lambda META: (
-        triton.cdiv(M, META["BLOCK_M"]),
-        triton.cdiv(N_OUT, META["BLOCK_N"]),
-    )
+    block_m, block_n, num_warps = reglu_swiglu_config(input_tensor.dtype, M, N_OUT)
+    grid = (triton.cdiv(M, block_m), triton.cdiv(N_OUT, block_n))
     reglu_kernel[grid](
         input_2d,
         output_2d,
@@ -173,6 +160,9 @@ def reglu(input_tensor: torch.Tensor, quantizer: Optional[Any] = None) -> torch.
         input_2d.stride(1),
         output_2d.stride(0),
         output_2d.stride(1),
+        BLOCK_M=block_m,
+        BLOCK_N=block_n,
+        num_warps=num_warps,
     )
     output_shape = (*shape[:-1], N_OUT)
     return output_2d.view(output_shape)
@@ -193,10 +183,9 @@ def dreglu(
     grad_output_2d = grad_output.contiguous().view(M, N)
     input_2d = input_tensor.contiguous().view(M, 2 * N)
     grad_input = torch.empty_like(input_2d)
-    grid = lambda META: (
-        triton.cdiv(M, META["BLOCK_M"]),
-        triton.cdiv(N, META["BLOCK_N"]),
-    )
+    block_m, block_n, num_warps = dreglu_dswiglu_config(input_tensor.dtype, M, N)
+    need_mask = (M % block_m != 0) or (N % block_n != 0)
+    grid = (triton.cdiv(M, block_m), triton.cdiv(N, block_n))
     dreglu_kernel[grid](
         grad_output_2d,
         input_2d,
@@ -209,5 +198,9 @@ def dreglu(
         input_2d.stride(1),
         grad_input.stride(0),
         grad_input.stride(1),
+        BLOCK_M=block_m,
+        BLOCK_N=block_n,
+        NEED_MASK=need_mask,
+        num_warps=num_warps,
     )
     return grad_input.view(shape)
