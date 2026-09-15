@@ -199,6 +199,36 @@ def test_grouped_topk_large_scale(
 @pytest.mark.grouped_topk
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
 @pytest.mark.skipif(not HAS_VLLM, reason="vLLM is not installed")
+@pytest.mark.parametrize("scoring_func", [0, 1])
+def test_grouped_topk_bfloat16_selection_precision(scoring_func):
+    scores = torch.full((1, 64), -4.0, dtype=torch.bfloat16, device=flag_gems.device)
+    scores[0, :8] = -1.0
+    scores[0, :2] = 1.0
+
+    bias = torch.zeros(64, dtype=torch.bfloat16, device=flag_gems.device)
+    # This bias only breaks the expert 0/1 tie when addition is performed in FP32.
+    bias[1] = 2**-10
+
+    ref_weights, ref_ids = vllm_grouped_topk(
+        scores, 8, 1, 1, False, 1.0, bias, scoring_func
+    )
+    res_weights, res_ids = flag_gems.grouped_topk(
+        scores, 8, 1, 1, False, 1.0, bias, scoring_func
+    )
+
+    utils.gems_assert_equal(res_ids, utils.to_reference(ref_ids))
+    atol, rtol = get_tolerance(torch.bfloat16, scoring_func, False)
+    torch.testing.assert_close(
+        utils.to_reference(res_weights),
+        utils.to_reference(ref_weights),
+        atol=atol,
+        rtol=rtol,
+    )
+
+
+@pytest.mark.grouped_topk
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
+@pytest.mark.skipif(not HAS_VLLM, reason="vLLM is not installed")
 @pytest.mark.parametrize("routed_scaling_factor", [1.0, 2.5])
 @pytest.mark.parametrize("renormalize", [True, False])
 def test_grouped_topk_scaling_factor(routed_scaling_factor, renormalize):
