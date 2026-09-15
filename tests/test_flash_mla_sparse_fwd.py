@@ -13,7 +13,9 @@
 # limitations under the License.
 
 import dataclasses
+import importlib
 import random
+from types import SimpleNamespace
 from typing import List, Optional, Tuple
 
 import pytest
@@ -394,6 +396,1412 @@ def test_flashmla_sparse(param):
         your_max_logbits, ref_max_logbits, torch.float32, atol=1e-4
     )
     flag_gems.testing.assert_close(your_lse, ref_lse, torch.float32, atol=1e-4)
+
+
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "sunrise",
+    reason="Issues #3833: Precision & Compile Error.",
+)
+@pytest.mark.flash_mla_sparse_fwd
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+@pytest.mark.parametrize("have_attn_sink", [False, True])
+@pytest.mark.parametrize("have_topk_length", [False, True])
+@pytest.mark.parametrize("d_qk", [512, 576])
+def test_flash_mla_sparse_hq4_torch_reference_and_strided_out(
+    have_attn_sink, have_topk_length, d_qk
+):
+    """Cover the unpadded four-head path without relying on native FlashMLA."""
+    s_q, s_kv, topk = 4, 19, 32
+    h_q, h_kv, d_v = 4, 1, 512
+    dtype = torch.bfloat16
+    device = flag_gems.device
+
+    FlashmlaSparseTestKit._init_seed(2026)
+    q = torch.randn((s_q, h_q, d_qk), dtype=dtype, device=device) / 10
+    kv = torch.randn((s_kv, h_kv, d_qk), dtype=dtype, device=device) / 10
+
+    indices = torch.arange(topk, dtype=torch.int32).remainder(s_kv).repeat(s_q, 1)
+    # Both kinds of invalid indices must be ignored inside the effective top-k range.
+    indices[0, 1] = -1
+    indices[0, 3] = -123456
+    indices[0, 5] = s_kv
+    indices[0, 7] = s_kv + 114514
+    # Entries after topk_length are valid on purpose: using one would change the result.
+    indices[1, 7:] = torch.arange(topk - 7, dtype=torch.int32).remainder(s_kv)
+    # The final query has no valid index at all.
+    indices[3, 0::2] = -7
+    indices[3, 1::2] = s_kv + 3
+    indices = indices.view(s_q, h_kv, topk).to(device)
+
+    topk_length = None
+    if have_topk_length:
+        topk_length = torch.tensor([topk, 7, 0, topk], dtype=torch.int32, device=device)
+    attn_sink = None
+    if have_attn_sink:
+        attn_sink = torch.tensor(
+            [0.25, float("-inf"), float("+inf"), -0.75],
+            dtype=torch.float32,
+            device=device,
+        )
+    sm_scale = d_qk**-0.5
+
+    ref_output, ref_max_logits, ref_lse = (
+        FlashmlaSparseTestKit.torch_flash_mla_sparse_fwd(
+            s_q,
+            s_kv,
+            h_q,
+            h_kv,
+            d_qk,
+            topk,
+            q,
+            kv,
+            indices,
+            sm_scale,
+            d_v,
+            attn_sink,
+            topk_length,
+        )
+    )
+
+    sentinel = torch.tensor(17.0, dtype=dtype, device=device)
+    output_storage = torch.full(
+        (s_q, 64, d_v), sentinel.item(), dtype=dtype, device=device
+    )
+    out = output_storage[:, :h_q, :]
+    untouched_heads = output_storage[:, h_q:, :].clone()
+    assert not out.is_contiguous()
+    assert out.stride(-1) == 1
+
+    output, max_logits, lse = flag_gems.flash_mla_sparse_fwd(
+        q,
+        kv,
+        indices,
+        sm_scale,
+        d_v,
+        attn_sink,
+        topk_length,
+        out=out,
+    )
+
+    assert output is out
+    assert output.data_ptr() == out.data_ptr()
+    torch.testing.assert_close(
+        output, ref_output, atol=8e-4, rtol=3.01 / 128, equal_nan=False
+    )
+    torch.testing.assert_close(
+        max_logits,
+        ref_max_logits,
+        atol=1e-6,
+        rtol=2.01 / 65536,
+        equal_nan=False,
+    )
+    torch.testing.assert_close(
+        lse, ref_lse, atol=1e-6, rtol=2.01 / 65536, equal_nan=False
+    )
+
+    # A +inf sink and queries with no effective valid index produce zero output.
+    if have_attn_sink:
+        assert torch.count_nonzero(output[:, 2, :]).item() == 0
+    invalid_rows = output[2:] if have_topk_length else output[3:]
+    invalid_max_logits = max_logits[2:] if have_topk_length else max_logits[3:]
+    invalid_lse = lse[2:] if have_topk_length else lse[3:]
+    assert torch.count_nonzero(invalid_rows).item() == 0
+    assert torch.isneginf(invalid_max_logits).all()
+    assert torch.isposinf(invalid_lse).all()
+    # The four-head view must not allow a padded-head kernel to write the backing tail.
+    assert torch.equal(output_storage[:, h_q:, :], untouched_heads)
+
+    no_stats_storage = torch.full(
+        (s_q, 64, d_v), sentinel.item(), dtype=dtype, device=device
+    )
+    no_stats_out = no_stats_storage[:, :h_q, :]
+    no_stats_output, no_stats_max_logits, no_stats_lse = flag_gems.flash_mla_sparse_fwd(
+        q,
+        kv,
+        indices,
+        sm_scale,
+        d_v,
+        attn_sink,
+        topk_length,
+        out=no_stats_out,
+        return_stats=False,
+    )
+    assert no_stats_output is no_stats_out
+    assert no_stats_max_logits is None
+    assert no_stats_lse is None
+    torch.testing.assert_close(no_stats_output, output, atol=0, rtol=0)
+    assert torch.equal(no_stats_storage[:, h_q:, :], untouched_heads)
+
+
+def _make_pair_metadata_case():
+    """Build all four pair modes, a fallback pair, and an odd tail."""
+    s_q, s_kv, topk = 11, 64, 32
+    h_q, h_kv, d_qk = 4, 1, 512
+    dtype = torch.bfloat16
+    device = flag_gems.device
+    pair_window_size = 4
+
+    FlashmlaSparseTestKit._init_seed(3901)
+    q = torch.randn((s_q, h_q, d_qk), dtype=dtype, device=device) / 10
+    kv = torch.randn((s_kv, h_kv, d_qk), dtype=dtype, device=device) / 10
+
+    # Each list is the complete effective index row. Modes 2 and 4 use a
+    # shifted four-token window; modes 3 and 4 insert one new top-k token.
+    active_rows = [
+        [0, -1, s_kv + 7, 20, 21],
+        [0, -1, s_kv + 7, 20, 21, 22],  # mode 1
+        [3, 4, 5, 30, 31, 32, 33],
+        [3, 4, 5, 31, 32, 33, 34],  # mode 2
+        [6, 7, 40, 41],
+        [6, 7, 8, 40, 41, 42],  # mode 3
+        [9, 10, 50, 51, 52, 53],
+        [9, 10, 11, 51, 52, 53, 54],  # mode 4
+        [-2147483648, 2147483647, -1, s_kv],
+        [2, 4, 6, 8, 10],  # descriptor mode 0: both rows use fallback
+        [-2147483648, -7, s_kv, s_kv + 3],  # odd, all-invalid tail
+    ]
+    topk_length = torch.tensor(
+        [len(row) for row in active_rows], dtype=torch.int32, device=device
+    )
+    indices = torch.empty((s_q, h_kv, topk), dtype=torch.int32)
+    poison = torch.arange(topk, dtype=torch.int32)
+    for row_idx, active in enumerate(active_rows):
+        indices[row_idx, 0] = (poison * 17 + row_idx * 19 + 13).remainder(s_kv)
+        indices[row_idx, 0, : len(active)] = torch.tensor(active, dtype=torch.int32)
+
+    pair_metadata = torch.tensor(
+        [
+            (3 << 3) | 1,
+            (3 << 3) | 2,
+            (2 << 3) | 3,
+            (2 << 3) | 4,
+            0,
+            0,
+        ],
+        dtype=torch.int32,
+        device=device,
+    )
+    return (
+        q,
+        kv,
+        indices.to(device),
+        topk_length,
+        pair_metadata,
+        pair_window_size,
+    )
+
+
+def _pair_metadata_reference(q, kv, indices, topk_length, attn_sink):
+    s_q, h_q, d_qk = q.shape
+    s_kv, h_kv, _ = kv.shape
+    return FlashmlaSparseTestKit.torch_flash_mla_sparse_fwd(
+        s_q,
+        s_kv,
+        h_q,
+        h_kv,
+        d_qk,
+        indices.shape[-1],
+        q,
+        kv,
+        indices,
+        d_qk**-0.5,
+        512,
+        attn_sink,
+        topk_length,
+    )
+
+
+def _pair_metadata_sink(have_attn_sink):
+    if not have_attn_sink:
+        return None
+    return torch.tensor(
+        [0.25, float("-inf"), float("+inf"), -0.75],
+        dtype=torch.float32,
+        device=flag_gems.device,
+    )
+
+
+def _make_quad_metadata_case(scale=0.1):
+    from flag_gems.fused.deepseek_v4_attention_combine_topk_swa_indices import (
+        combine_topk_swa_indices,
+    )
+
+    torch.manual_seed(937)
+    # Uneven requests force groups across request boundaries and an odd tail.
+    starts = torch.tensor([0, 5, 13, 29], dtype=torch.int32, device="cuda")
+    contexts = [0, 8, 19]
+    request_lengths = [5, 8, 16]
+    seq = torch.tensor(
+        [a + b for a, b in zip(contexts, request_lengths)],
+        dtype=torch.int32,
+        device="cuda",
+    )
+    gather = torch.tensor(
+        [a + min(b, 7) for a, b in zip(request_lengths, contexts)],
+        dtype=torch.int32,
+        device="cuda",
+    )
+    topk = torch.empty((29, 32), dtype=torch.int32, device="cuda")
+    for request, (start, end) in enumerate(zip([0, 5, 13], [5, 13, 29])):
+        # Shared prefixes need not be sorted or equal to arange.
+        topk[start:end] = torch.randperm(32, device="cuda", dtype=torch.int32)
+    args = (topk, starts, seq, gather, 8, 4, 32, 128, 32)
+    combined = combine_topk_swa_indices(
+        *args, return_pair_metadata=True, return_quad_metadata=True
+    )
+    q = torch.randn((29, 4, 512), device="cuda", dtype=torch.bfloat16) * scale
+    kv = torch.randn((384, 1, 512), device="cuda", dtype=torch.bfloat16) * scale
+    return q, kv, args, combined
+
+
+@pytest.mark.flash_mla_sparse_fwd
+@pytest.mark.parametrize("scale", [0.1, 1.0])
+@pytest.mark.parametrize("have_attn_sink", [False, True])
+@pytest.mark.parametrize("length_hint", [None, 1024])
+def test_flash_mla_sparse_quad_reference_and_strided_output(
+    scale, have_attn_sink, length_hint
+):
+    q, kv, args, (indices, lengths, pairs, quads) = _make_quad_metadata_case(scale)
+    sink = _pair_metadata_sink(have_attn_sink)
+    reference, _, _ = _pair_metadata_reference(q, kv, indices[:, None], lengths, sink)
+    storage = torch.full((29, 9, 512), 17.0, dtype=q.dtype, device=q.device)
+    output, max_logits, lse = flag_gems.flash_mla_sparse_fwd(
+        q,
+        kv,
+        indices[:, None],
+        512**-0.5,
+        attn_sink=sink,
+        topk_length=lengths,
+        out=storage[:, :4],
+        return_stats=False,
+        pair_metadata=pairs,
+        pair_window_size=args[4],
+        quad_metadata=quads,
+        max_kv_length=length_hint,
+    )
+    assert max_logits is None and lse is None
+    torch.testing.assert_close(
+        output,
+        reference,
+        atol=8e-4 if scale == 0.1 else 1e-2,
+        rtol=3.01 / 128,
+        equal_nan=False,
+    )
+    assert torch.all(storage[:, 4:] == 17)
+    # Groups 1, 3, and the final tail must use pair/single fallback.
+    assert quads.tolist() == [1, 0, 1, 0, 1, 1, 1, 0]
+
+
+@pytest.mark.flash_mla_sparse_fwd
+def test_flash_mla_sparse_quad_cuda_graph_recomputes_metadata():
+    from flag_gems.fused.deepseek_v4_attention_combine_topk_swa_indices import (
+        combine_topk_swa_indices,
+    )
+
+    q, kv, args, _ = _make_quad_metadata_case()
+    out = torch.empty_like(q)
+
+    def run():
+        indices, lengths, pairs, quads = combine_topk_swa_indices(
+            *args, return_pair_metadata=True, return_quad_metadata=True
+        )
+        flag_gems.flash_mla_sparse_fwd(
+            q,
+            kv,
+            indices[:, None],
+            512**-0.5,
+            topk_length=lengths,
+            out=out,
+            return_stats=False,
+            pair_metadata=pairs,
+            pair_window_size=args[4],
+            quad_metadata=quads,
+        )
+        return indices, lengths, pairs, quads
+
+    for _ in range(3):
+        run()
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):
+        indices, lengths, pairs, quads = run()
+    graph.replay()
+    assert quads[4].item() == 1
+    # Break only the boundary between two valid pairs in the same quad.
+    args[0][18:20, 0] = (args[0][18:20, 0] + 1) % 32
+    graph.replay()
+    assert quads[4].item() == 0
+    assert pairs[8].item() & 7 and pairs[9].item() & 7
+    reference, _, _ = _pair_metadata_reference(q, kv, indices[:, None], lengths, None)
+    torch.testing.assert_close(out, reference, atol=8e-4, rtol=3.01 / 128)
+
+
+@pytest.mark.flash_mla_sparse_fwd
+@pytest.mark.parametrize("have_attn_sink", [False, True])
+def test_flash_mla_sparse_grouped_metadata_graph_and_padded_output(have_attn_sink):
+    from flag_gems.fused.deepseek_v4_attention_combine_topk_swa_indices import (
+        combine_topk_swa_indices,
+    )
+
+    torch.manual_seed(712)
+    tokens = 1024
+    topk = torch.arange(2048, device="cuda", dtype=torch.int32).repeat(tokens, 1)
+    args = (
+        topk,
+        torch.tensor([0, tokens], device="cuda", dtype=torch.int32),
+        torch.tensor([4096 + tokens], device="cuda", dtype=torch.int32),
+        torch.tensor([127 + tokens], device="cuda", dtype=torch.int32),
+        128,
+        4,
+        2048,
+        4096,
+        2048,
+    )
+    q = torch.randn((tokens, 4, 512), device="cuda", dtype=torch.bfloat16) * 0.1
+    kv = torch.randn((4096, 1, 512), device="cuda", dtype=q.dtype) * 0.1
+    sink = _pair_metadata_sink(have_attn_sink)
+    storage = torch.full((tokens, 64, 512), 11.75, device="cuda", dtype=q.dtype)
+    reference_storage = torch.full_like(storage, 11.75)
+    out = storage[:, :4]
+    reference_out = reference_storage[:, :4]
+
+    def run():
+        metadata = combine_topk_swa_indices(
+            *args, return_pair_metadata=True, return_quad_metadata=True
+        )
+        indices, lengths, pairs, quads = metadata
+        flag_gems.flash_mla_sparse_fwd(
+            q,
+            kv,
+            indices[:, None],
+            512**-0.5,
+            attn_sink=sink,
+            topk_length=lengths,
+            out=out,
+            return_stats=False,
+            pair_metadata=pairs,
+            pair_window_size=128,
+            quad_metadata=quads,
+            max_kv_length=1408,
+        )
+        return metadata
+
+    for _ in range(3):
+        run()
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):
+        actual = run()
+    for changed in (False, True, False):
+        topk[18:20, 0] = 3 if changed else 0
+        q.copy_(torch.randn_like(q) * 0.1)
+        graph.replay()
+        # Pair-only dispatch retains the generic producer and consumer path.
+        expected = combine_topk_swa_indices(*args, return_pair_metadata=True)
+        for a, b in zip(actual[:3], expected):
+            torch.testing.assert_close(a, b, atol=0, rtol=0)
+        assert actual[3][4].item() == int(not changed)
+        assert actual[2][8].item() & 7 and actual[2][9].item() & 7
+        indices, lengths, pairs = expected
+        flag_gems.flash_mla_sparse_fwd(
+            q,
+            kv,
+            indices[:, None],
+            512**-0.5,
+            attn_sink=sink,
+            topk_length=lengths,
+            out=reference_out,
+            return_stats=False,
+            pair_metadata=pairs,
+            pair_window_size=128,
+        )
+        torch.testing.assert_close(
+            out, reference_out, atol=8e-4, rtol=3.01 / 128, equal_nan=False
+        )
+        assert torch.isfinite(out).all()
+        assert torch.all(storage[:, 4:] == 11.75)
+        assert torch.all(reference_storage[:, 4:] == 11.75)
+
+
+@pytest.mark.flash_mla_sparse_fwd
+@pytest.mark.parametrize("request_lengths", [(5, 8, 16), (515, 516)])
+@pytest.mark.parametrize("have_attn_sink", [False, True])
+def test_flash_mla_sparse_quad_graph_switches_work_item_dispatch(
+    request_lengths, have_attn_sink
+):
+    from flag_gems.fused.deepseek_v4_attention_combine_topk_swa_indices import (
+        combine_topk_swa_indices,
+    )
+
+    torch.manual_seed(1847)
+    tokens = sum(request_lengths)
+    starts = [0]
+    for length in request_lengths:
+        starts.append(starts[-1] + length)
+    topk_cpu = torch.full((tokens, 2048), -1, dtype=torch.int32)
+    request_ids = torch.empty(tokens, dtype=torch.int32)
+    for request, (start, end) in enumerate(zip(starts, starts[1:])):
+        request_ids[start:end] = request
+        for row in range(start, end):
+            length = (4096 + row - start + 1) // 4
+            topk_cpu[row, :length] = torch.arange(length, dtype=torch.int32)
+    source = topk_cpu.to("cuda")
+    args = (
+        source,
+        torch.tensor(starts, dtype=torch.int32, device="cuda"),
+        torch.tensor(
+            [4096 + length for length in request_lengths],
+            dtype=torch.int32,
+            device="cuda",
+        ),
+        torch.tensor(
+            [127 + length for length in request_lengths],
+            dtype=torch.int32,
+            device="cuda",
+        ),
+        128,
+        4,
+        2048,
+        4096,
+        2048,
+    )
+    q = torch.randn((tokens, 4, 512), device="cuda", dtype=torch.bfloat16) * 0.1
+    kv = (
+        torch.randn((len(request_lengths) * 4096, 1, 512), device="cuda", dtype=q.dtype)
+        * 0.1
+    )
+    sink = _pair_metadata_sink(have_attn_sink)
+    storage = torch.full((tokens, 64, 512), 11.75, device="cuda", dtype=q.dtype)
+    reference_storage = torch.full_like(storage, 11.75)
+    out, reference_out = storage[:, :4], reference_storage[:, :4]
+    assert out.stride() == (32768, 512, 1)
+    eligible = torch.tensor(
+        [
+            row + 3 < tokens and request_ids[row] == request_ids[row + 3]
+            for row in range(0, tokens, 4)
+        ],
+        dtype=torch.bool,
+    )
+    # Request boundaries and the odd tail must never become certified quads.
+    assert eligible.any() and (~eligible).any()
+
+    def run():
+        fields = combine_topk_swa_indices(
+            *args, return_pair_metadata=True, return_quad_metadata=True
+        )
+        indices, lengths, pairs, quads = fields
+        flag_gems.flash_mla_sparse_fwd(
+            q,
+            kv,
+            indices[:, None],
+            512**-0.5,
+            attn_sink=sink,
+            topk_length=lengths,
+            out=out,
+            return_stats=False,
+            pair_metadata=pairs,
+            pair_window_size=128,
+            quad_metadata=quads,
+            max_kv_length=1408,
+        )
+        return fields
+
+    for _ in range(3):
+        run()
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):
+        retained = [run() for _ in range(4)]
+    pointers = [tensor.data_ptr() for fields in retained for tensor in fields]
+    assert len(pointers) == len(set(pointers))
+    for mode in ("shared", "fallback", "mixed", "shared"):
+        changed = topk_cpu.clone()
+        expected_quads = eligible.clone()
+        for row in range(tokens):
+            # Swapping two valid candidates keeps every row's legal set intact.
+            # Mixed groups retain both pair prefixes while breaking only their
+            # boundary, exercising pair work-items as well as single fallback.
+            swap = (mode == "fallback" and row % 2 == 1) or (
+                mode == "mixed" and (row // 4) % 2 == 1 and row % 4 >= 2
+            )
+            if swap:
+                changed[row, 0], changed[row, 1] = (
+                    topk_cpu[row, 1],
+                    topk_cpu[row, 0],
+                )
+        if mode == "fallback":
+            expected_quads.zero_()
+        elif mode == "mixed":
+            expected_quads[1::2] = False
+        source.copy_(changed)
+        q.copy_(torch.randn_like(q) * 0.1)
+        kv.copy_(torch.randn_like(kv) * 0.1)
+        graph.replay()
+        expected = combine_topk_swa_indices(*args, return_pair_metadata=True)
+        for fields in retained:
+            for actual, gold in zip(fields[:3], expected):
+                torch.testing.assert_close(actual, gold, atol=0, rtol=0)
+            assert torch.equal(fields[3].cpu().bool(), expected_quads)
+        indices, lengths, pairs = expected
+        flag_gems.flash_mla_sparse_fwd(
+            q,
+            kv,
+            indices[:, None],
+            512**-0.5,
+            attn_sink=sink,
+            topk_length=lengths,
+            out=reference_out,
+            return_stats=False,
+            pair_metadata=pairs,
+            pair_window_size=128,
+        )
+        torch.testing.assert_close(
+            out, reference_out, atol=8e-4, rtol=3.01 / 128, equal_nan=False
+        )
+        assert torch.isfinite(out).all()
+        assert torch.all(storage[:, 4:] == 11.75)
+        assert torch.all(reference_storage[:, 4:] == 11.75)
+        assert torch.equal(source.cpu(), changed)
+
+
+@pytest.mark.flash_mla_sparse_fwd
+def test_flash_mla_sparse_quad_metadata_parameter_validation():
+    q, kv, args, (indices, lengths, pairs, quads) = _make_quad_metadata_case()
+    kwargs = dict(
+        topk_length=lengths,
+        return_stats=False,
+        pair_metadata=pairs,
+        pair_window_size=args[4],
+    )
+    with pytest.raises(TypeError, match="quad_metadata"):
+        flag_gems.flash_mla_sparse_fwd(
+            q, kv, indices[:, None], 1.0, quad_metadata=1, **kwargs
+        )
+    for bad in [quads[:-1], quads.to(torch.int64), quads.cpu()]:
+        with pytest.raises(AssertionError):
+            flag_gems.flash_mla_sparse_fwd(
+                q, kv, indices[:, None], 1.0, quad_metadata=bad, **kwargs
+            )
+    with pytest.raises(ValueError, match="requires pair_metadata"):
+        flag_gems.flash_mla_sparse_fwd(
+            q, kv, indices[:, None], 1.0, topk_length=lengths, quad_metadata=quads
+        )
+    for hint in [True, 1.0, "128"]:
+        with pytest.raises(TypeError, match="max_kv_length"):
+            flag_gems.flash_mla_sparse_fwd(
+                q, kv, indices[:, None], 1.0, max_kv_length=hint, **kwargs
+            )
+    with pytest.raises(ValueError, match="max_kv_length"):
+        flag_gems.flash_mla_sparse_fwd(
+            q, kv, indices[:, None], 1.0, max_kv_length=-1, **kwargs
+        )
+
+
+@pytest.mark.flash_mla_sparse_fwd
+@pytest.mark.parametrize("block_k", [32, 64])
+@pytest.mark.parametrize("next_block", [False, True])
+@pytest.mark.parametrize("score_delta", [80, 90, 100])
+def test_flash_mla_sparse_quad_softmax_preserves_subnormal_contributions(
+    block_k, next_block, score_delta
+):
+    from flag_gems.fused.deepseek_v4_attention_combine_topk_swa_indices import (
+        combine_topk_swa_indices,
+    )
+
+    source = torch.arange(2048, dtype=torch.int32, device=flag_gems.device).repeat(4, 1)
+    indices, lengths, pairs, quads = combine_topk_swa_indices(
+        source,
+        torch.tensor([0, 4], dtype=torch.int32, device=flag_gems.device),
+        torch.tensor([1028], dtype=torch.int32, device=flag_gems.device),
+        torch.tensor([131], dtype=torch.int32, device=flag_gems.device),
+        128,
+        4,
+        2048,
+        4096,
+        2048,
+        return_pair_metadata=True,
+        return_quad_metadata=True,
+    )
+    assert quads.tolist() == [1]
+    q = torch.zeros((4, 4, 512), dtype=torch.bfloat16, device=flag_gems.device)
+    kv = torch.zeros((4096, 1, 512), dtype=torch.bfloat16, device=flag_gems.device)
+    q[:, :, 0] = 32
+    kv[indices[0, :block_k].long(), 0, 1] = float(2**120)
+    peak_id = int(indices[0, block_k if next_block else 0].item())
+    kv[peak_id, 0, 0] = score_delta / (32 * 512**-0.5)
+    kv[peak_id, 0, 1] = 0
+    sink = torch.zeros(4, dtype=torch.float32, device=flag_gems.device)
+
+    # CPU FP64 avoids both GPU GEMM FTZ and process-global denormal settings.
+    # Inputs are converted after BF16 rounding, and every valid index is used.
+    q_ref, kv_ref = q.cpu().double(), kv.cpu().double()
+    ids_ref, lengths_ref = indices.cpu(), lengths.cpu()
+    expected = torch.empty((4, 4, 512), dtype=torch.float64)
+    for row in range(4):
+        values = kv_ref[ids_ref[row, : int(lengths_ref[row])].long(), 0]
+        scores = (q_ref[row, :, None, :] * values[None, :, :]).sum(-1) * 512**-0.5
+        maximum = scores.max(-1).values
+        weights = torch.exp(scores - maximum[:, None])
+        denominator = weights.sum(-1) + torch.exp(-maximum)
+        expected[row] = (weights[:, :, None] * values[None, :, :]).sum(1) / denominator[
+            :, None
+        ]
+    assert torch.isfinite(expected).all()
+    if score_delta == 90:
+        assert (expected[:, :, 1] > 0.02).all()
+
+    storage = torch.full(
+        (4, 64, 512), 11.75, dtype=torch.bfloat16, device=flag_gems.device
+    )
+    output = storage[:, :4]
+    actual, _, _ = flag_gems.flash_mla_sparse_fwd(
+        q,
+        kv,
+        indices[:, None],
+        512**-0.5,
+        attn_sink=sink,
+        topk_length=lengths,
+        out=output,
+        return_stats=False,
+        pair_metadata=pairs,
+        pair_window_size=128,
+        quad_metadata=quads,
+        max_kv_length=1408 if block_k == 64 else None,
+    )
+    assert actual.data_ptr() == output.data_ptr()
+    assert torch.isfinite(actual).all()
+    torch.testing.assert_close(
+        actual.cpu().float(),
+        expected.float(),
+        atol=1e-2,
+        rtol=3.01 / 128,
+    )
+    assert torch.all(storage[:, 4:] == 11.75)
+
+
+@pytest.mark.flash_mla_sparse_fwd
+@pytest.mark.parametrize(
+    "updates,missing,expected",
+    [
+        ({}, None, True),
+        ({"shared_memory_per_block_optin": 215039}, None, False),
+        ({"shared_memory_per_block_optin": 215040}, None, True),
+        ({"name": "NVIDIA H100"}, None, False),
+        ({"major": 8}, None, False),
+        ({"minor": 1}, None, False),
+        ({}, "shared_memory_per_block_optin", False),
+        ({}, "name", False),
+        ({}, "major", False),
+        ({}, "minor", False),
+    ],
+)
+def test_flash_mla_sparse_quad_pipeline_resource_gate(
+    monkeypatch, updates, missing, expected
+):
+    module = importlib.import_module("flag_gems.fused.flashmla_sparse")
+    properties = dict(
+        name="NVIDIA H20", major=9, minor=0, shared_memory_per_block_optin=232448
+    )
+    properties.update(updates)
+    if missing:
+        del properties[missing]
+    monkeypatch.setattr(module.triton, "__version__", "3.7.1")
+    monkeypatch.setattr(
+        torch.cuda,
+        "get_device_properties",
+        lambda device: SimpleNamespace(**properties),
+    )
+    gate = module._use_quad_gather_pipeline
+    gate.cache_clear()
+    try:
+        assert gate(torch.device("cuda", 0)) is expected
+    finally:
+        gate.cache_clear()
+
+
+@pytest.mark.flash_mla_sparse_fwd
+@pytest.mark.parametrize("version", ["3.7.0", "3.8.0", "3.7.1.dev0"])
+def test_flash_mla_sparse_quad_pipeline_other_compilers(monkeypatch, version):
+    module = importlib.import_module("flag_gems.fused.flashmla_sparse")
+    monkeypatch.setattr(module.triton, "__version__", version)
+
+    def unexpected_query(device):
+        pytest.fail("An unsupported compiler must retain the original schedule")
+
+    monkeypatch.setattr(torch.cuda, "get_device_properties", unexpected_query)
+    gate = module._use_quad_gather_pipeline
+    gate.cache_clear()
+    try:
+        assert gate(torch.device("cuda", 0)) is False
+    finally:
+        gate.cache_clear()
+
+
+@pytest.mark.flash_mla_sparse_fwd
+def test_flash_mla_sparse_quad_pipeline_device_cache(monkeypatch):
+    module = importlib.import_module("flag_gems.fused.flashmla_sparse")
+    monkeypatch.setattr(module.triton, "__version__", "3.7.1")
+    queries = []
+
+    def properties(device):
+        queries.append(device)
+        return SimpleNamespace(
+            name="NVIDIA H20",
+            major=9,
+            minor=0,
+            shared_memory_per_block_optin=232448 if device.index == 0 else 163840,
+        )
+
+    monkeypatch.setattr(torch.cuda, "get_device_properties", properties)
+    gate = module._use_quad_gather_pipeline
+    gate.cache_clear()
+    try:
+        assert gate(torch.device("cpu")) is False
+        assert gate(torch.device("cuda")) is False  # No implicit current-device key.
+        assert not queries
+        for _ in range(3):
+            assert gate(torch.device("cuda", 0)) is True
+            assert gate(torch.device("cuda", 1)) is False
+        assert queries == [torch.device("cuda", 0), torch.device("cuda", 1)]
+    finally:
+        gate.cache_clear()
+
+
+@pytest.mark.flash_mla_sparse_fwd
+@pytest.mark.parametrize("have_attn_sink", [False, True])
+def test_flash_mla_sparse_quad_pipeline_fresh_capture(have_attn_sink):
+    module = importlib.import_module("flag_gems.fused.flashmla_sparse")
+    q, kv, args, fields = _make_quad_metadata_case()
+    indices, lengths, pairs, quads = fields
+    sink = _pair_metadata_sink(have_attn_sink)
+    reference, _, _ = _pair_metadata_reference(q, kv, indices[:, None], lengths, sink)
+    storage = torch.full((29, 64, 512), 11.75, device=q.device, dtype=q.dtype)
+
+    def run(hint):
+        return flag_gems.flash_mla_sparse_fwd(
+            q,
+            kv,
+            indices[:, None],
+            512**-0.5,
+            attn_sink=sink,
+            topk_length=lengths,
+            out=storage[:, :4],
+            return_stats=False,
+            pair_metadata=pairs,
+            pair_window_size=args[4],
+            quad_metadata=quads,
+            max_kv_length=hint,
+        )
+
+    gate = module._use_quad_gather_pipeline
+    gate.cache_clear()
+    run(None)
+    assert gate.cache_info().misses == 0  # BK32 must not query hardware.
+    run(1024)  # Compile kernels outside capture.
+    torch.cuda.synchronize()
+    gate.cache_clear()  # First resource query happens inside this capture.
+    try:
+        graph = torch.cuda.CUDAGraph()
+        with torch.cuda.graph(graph):
+            result = run(1024)
+        assert gate.cache_info().misses == 1
+        for _ in range(4):
+            graph.replay()
+        torch.cuda.synchronize()
+        assert torch.isfinite(result[0]).all()
+        torch.testing.assert_close(result[0], reference, atol=8e-4, rtol=3.01 / 128)
+        assert torch.all(storage[:, 4:] == 11.75)
+    finally:
+        gate.cache_clear()
+
+
+def _make_host_validation_inputs():
+    q = torch.zeros((2, 4, 512), dtype=torch.bfloat16)
+    kv = torch.zeros((1, 1, 512), dtype=torch.bfloat16)
+    indices = torch.zeros((2, 1, 1), dtype=torch.int32)
+    topk_length = torch.ones(2, dtype=torch.int32)
+    attn_sink = torch.zeros(4, dtype=torch.float32)
+    return q, kv, indices, topk_length, attn_sink
+
+
+@pytest.mark.flash_mla_sparse_fwd
+def test_flash_mla_sparse_rejects_empty_kv_before_kernel_launch():
+    q, _, indices, topk_length, _ = _make_host_validation_inputs()
+    empty_kv = torch.empty((0, 1, 512), dtype=torch.bfloat16)
+
+    with pytest.raises(AssertionError, match="kv must contain at least one row"):
+        flag_gems.flash_mla_sparse_fwd(
+            q,
+            empty_kv,
+            indices,
+            q.shape[-1] ** -0.5,
+            topk_length=topk_length,
+            return_stats=False,
+        )
+
+
+@pytest.mark.flash_mla_sparse_fwd
+@pytest.mark.parametrize("tensor_name", ["kv", "indices", "topk_length", "attn_sink"])
+def test_flash_mla_sparse_rejects_mixed_devices_before_kernel_launch(tensor_name):
+    q, kv, indices, topk_length, attn_sink = _make_host_validation_inputs()
+    inputs = {
+        "kv": kv,
+        "indices": indices,
+        "topk_length": topk_length,
+        "attn_sink": attn_sink,
+    }
+    inputs[tensor_name] = torch.empty_like(inputs[tensor_name], device="meta")
+
+    with pytest.raises(AssertionError):
+        flag_gems.flash_mla_sparse_fwd(
+            q,
+            inputs["kv"],
+            inputs["indices"],
+            q.shape[-1] ** -0.5,
+            attn_sink=inputs["attn_sink"],
+            topk_length=inputs["topk_length"],
+            return_stats=False,
+        )
+
+
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "sunrise",
+    reason="Issues #3833: Precision & Compile Error.",
+)
+@pytest.mark.flash_mla_sparse_fwd
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+@pytest.mark.parametrize("h_q", [4, 64])
+def test_flash_mla_sparse_clamps_topk_length_to_row_bounds(h_q):
+    """Malformed lengths must not make either Triton path read another row."""
+
+    device = flag_gems.device
+    q = torch.randn((2, h_q, 512), dtype=torch.bfloat16, device=device)
+    kv = torch.randn((64, 1, 512), dtype=torch.bfloat16, device=device)
+    indices = torch.arange(64, dtype=torch.int32, device=device).view(1, 1, 64)
+    indices = indices.expand(2, -1, -1).contiguous()
+    raw_lengths = torch.tensor([-7, 71], dtype=torch.int32, device=device)
+    clamped_lengths = raw_lengths.clamp(0, indices.shape[-1])
+
+    output, _, _ = flag_gems.flash_mla_sparse_fwd(
+        q,
+        kv,
+        indices,
+        512**-0.5,
+        topk_length=raw_lengths,
+        return_stats=False,
+    )
+    reference, _, _ = flag_gems.flash_mla_sparse_fwd(
+        q,
+        kv,
+        indices,
+        512**-0.5,
+        topk_length=clamped_lengths,
+        return_stats=False,
+    )
+
+    torch.testing.assert_close(output, reference, atol=0, rtol=0)
+
+
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "sunrise",
+    reason="Issues #3833: Precision & Compile Error.",
+)
+@pytest.mark.flash_mla_sparse_fwd
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+@pytest.mark.parametrize("have_attn_sink", [False, True])
+def test_flash_mla_sparse_hq4_pair_metadata_modes_and_fallback(have_attn_sink):
+    """Exercise modes 1-4, mode 0, invalid IDs, and the odd-tail path."""
+    q, kv, indices, topk_length, pair_metadata, window = _make_pair_metadata_case()
+    attn_sink = _pair_metadata_sink(have_attn_sink)
+    sm_scale = q.shape[-1] ** -0.5
+    reference, _, _ = _pair_metadata_reference(q, kv, indices, topk_length, attn_sink)
+    baseline, baseline_max_logits, baseline_lse = flag_gems.flash_mla_sparse_fwd(
+        q,
+        kv,
+        indices,
+        sm_scale,
+        512,
+        attn_sink,
+        topk_length,
+        return_stats=False,
+    )
+    assert baseline_max_logits is None and baseline_lse is None
+
+    output_storage = torch.full(
+        (q.shape[0], 9, 512), 17.0, dtype=q.dtype, device=q.device
+    )
+    out = output_storage[:, : q.shape[1], :]
+    untouched_tail = output_storage[:, q.shape[1] :, :].clone()
+    assert not out.is_contiguous()
+    output, max_logits, lse = flag_gems.flash_mla_sparse_fwd(
+        q,
+        kv,
+        indices,
+        sm_scale,
+        512,
+        attn_sink,
+        topk_length,
+        out=out,
+        return_stats=False,
+        pair_metadata=pair_metadata,
+        pair_window_size=window,
+    )
+
+    assert output is out
+    assert output.data_ptr() == out.data_ptr()
+    assert max_logits is None and lse is None
+    torch.testing.assert_close(
+        output, baseline, atol=8e-4, rtol=3.01 / 128, equal_nan=False
+    )
+    torch.testing.assert_close(
+        output, reference, atol=8e-4, rtol=3.01 / 128, equal_nan=False
+    )
+    assert torch.equal(output_storage[:, q.shape[1] :, :], untouched_tail)
+    assert torch.count_nonzero(output[[8, 10]]).item() == 0
+
+    if have_attn_sink:
+        # -inf is a no-op, while +inf forces the corresponding head to zero.
+        no_sink_output, _, _ = flag_gems.flash_mla_sparse_fwd(
+            q,
+            kv,
+            indices,
+            sm_scale,
+            512,
+            topk_length=topk_length,
+            return_stats=False,
+        )
+        torch.testing.assert_close(
+            output[:, 1],
+            no_sink_output[:, 1],
+            atol=8e-4,
+            rtol=3.01 / 128,
+            equal_nan=False,
+        )
+        assert torch.count_nonzero(output[:, 2]).item() == 0
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="requires CUDA graphs")
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "sunrise",
+    reason="Issues #3833: Precision & Compile Error.",
+)
+@pytest.mark.flash_mla_sparse_fwd
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_flash_mla_sparse_pair_metadata_cuda_graph_replay():
+    """Replay reads updated q values and writes the caller-owned output."""
+    q, kv, indices, topk_length, pair_metadata, window = _make_pair_metadata_case()
+    sm_scale = q.shape[-1] ** -0.5
+    graph_out = torch.empty_like(q)
+    warmup_out = torch.empty_like(q)
+
+    capture_stream = torch.cuda.Stream(device=q.device)
+    capture_stream.wait_stream(torch.cuda.current_stream(q.device))
+    with torch.cuda.stream(capture_stream):
+        for _ in range(3):
+            warmup_output, warmup_max_logits, warmup_lse = (
+                flag_gems.flash_mla_sparse_fwd(
+                    q,
+                    kv,
+                    indices,
+                    sm_scale,
+                    512,
+                    topk_length=topk_length,
+                    out=warmup_out,
+                    return_stats=False,
+                    pair_metadata=pair_metadata,
+                    pair_window_size=window,
+                )
+            )
+            assert warmup_output is warmup_out
+            assert warmup_max_logits is None and warmup_lse is None
+    torch.cuda.current_stream(q.device).wait_stream(capture_stream)
+    torch.cuda.synchronize(q.device)
+    original_eager = warmup_out.clone()
+
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph, stream=capture_stream):
+        captured_output, captured_max_logits, captured_lse = (
+            flag_gems.flash_mla_sparse_fwd(
+                q,
+                kv,
+                indices,
+                sm_scale,
+                512,
+                topk_length=topk_length,
+                out=graph_out,
+                return_stats=False,
+                pair_metadata=pair_metadata,
+                pair_window_size=window,
+            )
+        )
+    assert captured_output is graph_out
+    assert captured_max_logits is None and captured_lse is None
+
+    graph.replay()
+    torch.cuda.synchronize(q.device)
+    original_replay = graph_out.clone()
+    torch.testing.assert_close(original_replay, original_eager, atol=0, rtol=0)
+
+    original_q = q.clone()
+    q.copy_(original_q * -1.75 + 0.03125)
+    torch.cuda.synchronize(q.device)
+    graph.replay()
+    torch.cuda.synchronize(q.device)
+    updated_replay = graph_out.clone()
+
+    eager_out = torch.empty_like(graph_out)
+    eager_output, eager_max_logits, eager_lse = flag_gems.flash_mla_sparse_fwd(
+        q,
+        kv,
+        indices,
+        sm_scale,
+        512,
+        topk_length=topk_length,
+        out=eager_out,
+        return_stats=False,
+        pair_metadata=pair_metadata,
+        pair_window_size=window,
+    )
+    assert eager_output is eager_out
+    assert eager_max_logits is None and eager_lse is None
+    torch.testing.assert_close(updated_replay, eager_output, atol=0, rtol=0)
+    assert not torch.equal(updated_replay[:8], original_replay[:8])
+
+
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "sunrise",
+    reason="Issues #3833: Precision & Compile Error.",
+)
+@pytest.mark.flash_mla_sparse_fwd
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_flash_mla_sparse_hq4_mode4_virtual_union_exceeds_row_stride():
+    """Mode 4 must map its 2177th union item back into a 2176-wide row."""
+    s_q, s_kv, physical_width = 2, 2304, 2176
+    h_q, h_kv, d_qk = 4, 1, 512
+    window = 128
+    first_topk_length = 2047
+    device = flag_gems.device
+
+    FlashmlaSparseTestKit._init_seed(3903)
+    q = torch.randn((s_q, h_q, d_qk), dtype=torch.bfloat16, device=device) / 10
+    kv = torch.randn((s_kv, h_kv, d_qk), dtype=torch.bfloat16, device=device) / 10
+    indices = torch.full(
+        (s_q, h_kv, physical_width), -1, dtype=torch.int32, device=device
+    )
+    prefix = torch.arange(first_topk_length, dtype=torch.int32, device=device)
+    indices[0, 0, :first_topk_length] = prefix
+    indices[1, 0, :first_topk_length] = prefix
+    indices[1, 0, first_topk_length] = first_topk_length
+    indices[0, 0, first_topk_length:2175] = torch.arange(
+        2048, 2176, dtype=torch.int32, device=device
+    )
+    indices[1, 0, 2048:physical_width] = torch.arange(
+        2049, 2177, dtype=torch.int32, device=device
+    )
+    topk_length = torch.tensor([2175, 2176], dtype=torch.int32, device=device)
+    pair_metadata = torch.tensor(
+        [(first_topk_length << 3) | 4], dtype=torch.int32, device=device
+    )
+    sm_scale = d_qk**-0.5
+
+    assert indices.is_contiguous()
+    assert indices.stride(0) == physical_width
+    assert int(topk_length[1].item()) + 1 == 2177
+    reference, _, _ = _pair_metadata_reference(q, kv, indices, topk_length, None)
+    baseline, _, _ = flag_gems.flash_mla_sparse_fwd(
+        q,
+        kv,
+        indices,
+        sm_scale,
+        512,
+        topk_length=topk_length,
+        return_stats=False,
+    )
+    output, max_logits, lse = flag_gems.flash_mla_sparse_fwd(
+        q,
+        kv,
+        indices,
+        sm_scale,
+        512,
+        topk_length=topk_length,
+        return_stats=False,
+        pair_metadata=pair_metadata,
+        pair_window_size=window,
+    )
+
+    assert max_logits is None and lse is None
+    torch.testing.assert_close(
+        output, baseline, atol=8e-4, rtol=3.01 / 128, equal_nan=False
+    )
+    torch.testing.assert_close(
+        output, reference, atol=8e-4, rtol=3.01 / 128, equal_nan=False
+    )
+
+
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "sunrise",
+    reason="Issues #3833: Precision & Compile Error.",
+)
+@pytest.mark.flash_mla_sparse_fwd
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_flash_mla_sparse_hq4_damaged_pair_descriptors_fall_back():
+    """Structurally inconsistent descriptors must execute two single rows."""
+    q, kv, indices, topk_length, pair_metadata, window = _make_pair_metadata_case()
+    sm_scale = q.shape[-1] ** -0.5
+    reference, _, _ = _pair_metadata_reference(q, kv, indices, topk_length, None)
+    baseline, _, _ = flag_gems.flash_mla_sparse_fwd(
+        q,
+        kv,
+        indices,
+        sm_scale,
+        512,
+        topk_length=topk_length,
+        return_stats=False,
+    )
+
+    damaged = pair_metadata.clone()
+    damaged[0] = (5 << 3) | 1  # mode 1 claims an empty window
+    damaged[1] = (2 << 3) | 2  # mode 2 claims a five-token window
+    damaged[2] = (2 << 3) | 1  # mode 1 cannot grow by two total entries
+    damaged[3] = (3 << 3) | 4  # mode 4 claims a three-token window
+    damaged[4] = 7  # unsupported mode
+    damaged[5] = 1  # valid-looking mode, but the pair has no second row
+
+    output, max_logits, lse = flag_gems.flash_mla_sparse_fwd(
+        q,
+        kv,
+        indices,
+        sm_scale,
+        512,
+        topk_length=topk_length,
+        return_stats=False,
+        pair_metadata=damaged,
+        pair_window_size=window,
+    )
+
+    assert max_logits is None and lse is None
+    torch.testing.assert_close(
+        output, baseline, atol=8e-4, rtol=3.01 / 128, equal_nan=False
+    )
+    torch.testing.assert_close(
+        output, reference, atol=8e-4, rtol=3.01 / 128, equal_nan=False
+    )
+
+
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "sunrise",
+    reason="Issues #3833: Precision & Compile Error.",
+)
+@pytest.mark.flash_mla_sparse_fwd
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_flash_mla_sparse_pair_metadata_stats_bypass_and_default():
+    """The default and statistics paths retain the regular implementation."""
+    q, kv, indices, topk_length, pair_metadata, window = _make_pair_metadata_case()
+    attn_sink = _pair_metadata_sink(True)
+    sm_scale = q.shape[-1] ** -0.5
+
+    default_output, default_max_logits, default_lse = flag_gems.flash_mla_sparse_fwd(
+        q,
+        kv,
+        indices,
+        sm_scale,
+        512,
+        attn_sink,
+        topk_length,
+    )
+    output, max_logits, lse = flag_gems.flash_mla_sparse_fwd(
+        q,
+        kv,
+        indices,
+        sm_scale,
+        512,
+        attn_sink,
+        topk_length,
+        pair_metadata=pair_metadata,
+        pair_window_size=window,
+    )
+
+    assert max_logits is not None and lse is not None
+    assert torch.equal(output, default_output)
+    assert torch.equal(max_logits, default_max_logits)
+    assert torch.equal(lse, default_lse)
+
+    reference, ref_max_logits, ref_lse = _pair_metadata_reference(
+        q, kv, indices, topk_length, attn_sink
+    )
+    torch.testing.assert_close(
+        output, reference, atol=8e-4, rtol=3.01 / 128, equal_nan=False
+    )
+    torch.testing.assert_close(
+        max_logits,
+        ref_max_logits,
+        atol=1e-6,
+        rtol=2.01 / 65536,
+        equal_nan=False,
+    )
+    torch.testing.assert_close(
+        lse, ref_lse, atol=1e-6, rtol=2.01 / 65536, equal_nan=False
+    )
+
+
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "sunrise",
+    reason="Issues #3833: Precision & Compile Error.",
+)
+@pytest.mark.flash_mla_sparse_fwd
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_flash_mla_sparse_pair_metadata_parameter_validation():
+    q, kv, indices, topk_length, pair_metadata, window = _make_pair_metadata_case()
+    sm_scale = q.shape[-1] ** -0.5
+
+    for bad_value in (None, 0, 1, "false"):
+        with pytest.raises(TypeError):
+            flag_gems.flash_mla_sparse_fwd(
+                q,
+                kv,
+                indices,
+                sm_scale,
+                topk_length=topk_length,
+                return_stats=bad_value,
+            )
+    for bad_value in (None, True, 4.0, "4"):
+        with pytest.raises(TypeError):
+            flag_gems.flash_mla_sparse_fwd(
+                q,
+                kv,
+                indices,
+                sm_scale,
+                topk_length=topk_length,
+                pair_metadata=pair_metadata,
+                pair_window_size=bad_value,
+            )
+    with pytest.raises(TypeError):
+        flag_gems.flash_mla_sparse_fwd(
+            q,
+            kv,
+            indices,
+            sm_scale,
+            topk_length=topk_length,
+            pair_metadata="not a tensor",
+            pair_window_size=window,
+        )
+    with pytest.raises(ValueError):
+        flag_gems.flash_mla_sparse_fwd(
+            q,
+            kv,
+            indices,
+            sm_scale,
+            topk_length=topk_length,
+            pair_window_size=window,
+        )
+    for bad_window in (0, -1):
+        with pytest.raises(ValueError):
+            flag_gems.flash_mla_sparse_fwd(
+                q,
+                kv,
+                indices,
+                sm_scale,
+                topk_length=topk_length,
+                pair_metadata=pair_metadata,
+                pair_window_size=bad_window,
+            )
+    with pytest.raises(ValueError):
+        flag_gems.flash_mla_sparse_fwd(
+            q,
+            kv,
+            indices,
+            sm_scale,
+            pair_metadata=pair_metadata,
+            pair_window_size=window,
+        )
+
+    wrong_shape = pair_metadata[:-1]
+    with pytest.raises(AssertionError):
+        flag_gems.flash_mla_sparse_fwd(
+            q,
+            kv,
+            indices,
+            sm_scale,
+            topk_length=topk_length,
+            pair_metadata=wrong_shape,
+            pair_window_size=window,
+        )
+    wrong_dtype = pair_metadata.to(torch.int64)
+    with pytest.raises(AssertionError):
+        flag_gems.flash_mla_sparse_fwd(
+            q,
+            kv,
+            indices,
+            sm_scale,
+            topk_length=topk_length,
+            pair_metadata=wrong_dtype,
+            pair_window_size=window,
+        )
+    noncontiguous = torch.empty(
+        (pair_metadata.numel(), 2), dtype=torch.int32, device=q.device
+    )[:, 0]
+    assert not noncontiguous.is_contiguous()
+    with pytest.raises(AssertionError):
+        flag_gems.flash_mla_sparse_fwd(
+            q,
+            kv,
+            indices,
+            sm_scale,
+            topk_length=topk_length,
+            pair_metadata=noncontiguous,
+            pair_window_size=window,
+        )
+    if q.device.type != "cpu":
+        wrong_device = pair_metadata.cpu()
+        with pytest.raises(AssertionError):
+            flag_gems.flash_mla_sparse_fwd(
+                q,
+                kv,
+                indices,
+                sm_scale,
+                topk_length=topk_length,
+                pair_metadata=wrong_device,
+                pair_window_size=window,
+            )
+
+
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "sunrise",
+    reason="Issues #3833: Precision & Compile Error.",
+)
+@pytest.mark.flash_mla_sparse_fwd
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_flash_mla_sparse_pair_metadata_is_keyword_only():
+    q, kv, indices, topk_length, pair_metadata, window = _make_pair_metadata_case()
+    with pytest.raises(TypeError):
+        flag_gems.flash_mla_sparse_fwd(
+            q,
+            kv,
+            indices,
+            q.shape[-1] ** -0.5,
+            512,
+            None,
+            topk_length,
+            None,
+            False,
+            pair_metadata,
+            window,
+        )
 
 
 @pytest.mark.skip(reason="Issue #3691: operator not working")
