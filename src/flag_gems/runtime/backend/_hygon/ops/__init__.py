@@ -99,6 +99,7 @@ from .replication_pad2d_backward import (
     replication_pad2d_backward_grad_input,
 )
 from .scatter import scatter, scatter_
+from .scatter_reduce import scatter_reduce, scatter_reduce_, scatter_reduce_out
 from .searchsorted import (
     searchsorted,
     searchsorted_out,
@@ -210,6 +211,9 @@ __all__ = [
     "ScaleDotProductAttention",
     "scatter",
     "scatter_",
+    "scatter_reduce",
+    "scatter_reduce_",
+    "scatter_reduce_out",
     "searchsorted",
     "searchsorted_out",
     "searchsorted_scalar",

@@ -33,6 +33,7 @@ nanmedian_out: test_nanmedian
 scaled_mm_out: test_scaled_mm
 searchsorted_out: test_searchsorted
 searchsorted_scalar_out: test_searchsorted
+scatter_reduce_two_out: test_scatter_reduce
 segment_reduce_out: test_segment_reduce
 
 # Compound / alternative names
@@ -48,6 +49,8 @@ arctan: test_atan
 nanmedian_dim: test_nanmedian
 nanmedian_dim_values: test_nanmedian
 searchsorted_scalar: test_searchsorted
+scatter_reduce_two: test_scatter_reduce
+scatter_reduce_two_: test_scatter_reduce
 
 # Operators tested in combined files or with different naming
 batch_norm_backward: test_batch_norm
