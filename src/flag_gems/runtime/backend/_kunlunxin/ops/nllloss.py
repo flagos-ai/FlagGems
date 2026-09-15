@@ -27,6 +27,21 @@ from .zeros_like import zeros_like as xpu_zeros_like
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# XPU masked-load hazard (probed 2026-08-26): `tl.load(ptr, mask=<data dependent
+# mask>, other=0)` returns the in-bounds VALUE instead of `other` on this
+# backend, so ignored target lanes contributed `-w*x` to the loss and to
+# total_weight (deterministic at ignore_index=1 + weight, e.g. res 0.0391 vs
+# ref 0.0; weight=None was masked by the computed `ignore_mask.to(f32)` zero).
+#
+# Fix applied to every gather below: load UNMASKED at clamped in-bounds indices
+# (`idx = tl.minimum(offset, extent - 1)`, `tgt_safe = clamp(tgt, 0, C - 1)`)
+# and select the contribution with `tl.where(ignore_mask, ..., 0.0)`. No load
+# relies on `other=` semantics any more. int64 clamp constants are built from
+# 0-d int64 tensors on purpose: N / C can be specialized to constexpr by triton
+# (N=1, C=256, ...), where `(N - 1).to(tl.int64)` raises CompilationError.
+# ---------------------------------------------------------------------------
+
 
 @libentry()
 @triton.jit(do_not_specialize=["ignore_index"])
@@ -47,10 +62,15 @@ def nll_loss_forward_kernel(
     offsets_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
 
     mask_n = offsets_n < N
+    # XPU masked-load hazard: see the note above the kernel section.
+    zero64 = tl.full([], 0, tl.int64)
+    one64 = tl.full([], 1, tl.int64)
+    idx_n = tl.minimum(offsets_n, tl.full([], 0, tl.int64) + N - one64)
 
-    tgt = tl.load(tgt_ptr + offsets_n, mask=mask_n, other=0)
+    tgt = tl.load(tgt_ptr + idx_n)
     assert (tgt == ignore_index) or (tgt >= 0 and tgt < C), "Invalid target value"
-    ignore_mask = not (tgt == ignore_index) and mask_n
+    ignore_mask = mask_n & (tgt != ignore_index)
+    tgt_safe = tl.minimum(tl.maximum(tgt, zero64), zero64 + C - one64)
 
     if wgt_ptr is None:
         # `ignore_mask.to(tl.float32)` (arith.uitofp on a bool tile) makes
@@ -58,11 +78,12 @@ def nll_loss_forward_kernel(
         # the explicit select is equivalent and compiles for every block.
         wgt_tgt = tl.where(ignore_mask, 1.0, 0.0)
     else:
-        wgt_tgt = tl.load(wgt_ptr + tgt, mask=ignore_mask, other=0).to(tl.float32)
+        wgt_tgt = tl.load(wgt_ptr + tgt_safe).to(tl.float32)
 
-    inp_tgt_ptrs = inp_ptr + offsets_n * C + tgt
-    inp_tgt = tl.load(inp_tgt_ptrs, mask=ignore_mask, other=0).to(tl.float32)
-    out = inp_tgt * wgt_tgt * -1
+    inp_tgt_ptrs = inp_ptr + idx_n * C + tgt_safe
+    inp_tgt = tl.load(inp_tgt_ptrs).to(tl.float32)
+    out = tl.where(ignore_mask, inp_tgt * wgt_tgt * -1, 0.0)
+    wgt_out = tl.where(ignore_mask, wgt_tgt, 0.0)
 
     if PADDED:
         # Scratch buffers are over-allocated to a whole number of reduction
@@ -70,11 +91,11 @@ def nll_loss_forward_kernel(
         # unmasked store zero-fills the pad and lets the reduction kernel run
         # on fully unmasked tiles.
         tl.store(out_ptr + offsets_n, out)
-        tl.store(ignore_wgt_tgt_ptr + offsets_n, wgt_tgt)
+        tl.store(ignore_wgt_tgt_ptr + offsets_n, wgt_out)
     else:
         tl.store(out_ptr + offsets_n, out, mask=mask_n)
         if reduction != 0:
-            tl.store(ignore_wgt_tgt_ptr + offsets_n, wgt_tgt, mask=mask_n)
+            tl.store(ignore_wgt_tgt_ptr + offsets_n, wgt_out, mask=mask_n)
 
 
 # ---------------------------------------------------------------------------
@@ -187,18 +208,22 @@ def nll_loss_backward_kernel(
     offsets_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
 
     mask_n = offsets_n < N
+    # XPU masked-load hazard: see the note above the kernel section.
+    zero64 = tl.full([], 0, tl.int64)
+    one64 = tl.full([], 1, tl.int64)
+    idx_n = tl.minimum(offsets_n, tl.full([], 0, tl.int64) + N - one64)
 
-    tgt = tl.load(tgt_ptr + offsets_n, mask=mask_n, other=0)
-    ignore_mask = not (tgt == ignore_index) and mask_n
+    tgt = tl.load(tgt_ptr + idx_n)
+    ignore_mask = mask_n & (tgt != ignore_index)
+    tgt_safe = tl.minimum(tl.maximum(tgt, zero64), zero64 + C - one64)
 
     if wgt_ptr is None:
         wgt_tgt = ignore_mask.to(tl.float32)
     else:
-        wgt_tgt = tl.load(wgt_ptr + tgt, mask=ignore_mask, other=0).to(tl.float32)
+        wgt_tgt = tl.load(wgt_ptr + tgt_safe).to(tl.float32)
 
     if reduction == 0:
-        out_grad_ptrs = out_grad_ptr + offsets_n
-        out_grad = tl.load(out_grad_ptrs, mask=mask_n, other=0).to(tl.float32)
+        out_grad = tl.load(out_grad_ptr + idx_n).to(tl.float32)
     else:
         out_grad = tl.load(out_grad_ptr).to(tl.float32)
     if reduction == 1:
@@ -207,7 +232,7 @@ def nll_loss_backward_kernel(
         total_w = 1
 
     inp_grad = tl.where(ignore_mask, -1 * out_grad * wgt_tgt / total_w, 0)
-    inp_grad_ptrs = inp_grad_ptr + offsets_n * C + tgt
+    inp_grad_ptrs = inp_grad_ptr + idx_n * C + tgt_safe
     tl.store(inp_grad_ptrs, inp_grad, mask=ignore_mask)
 
 
@@ -228,31 +253,37 @@ def nll_loss2d_forward_kernel(
 ):
     pid_nd = tl.program_id(0)
     offset_nd = pid_nd * BLOCK_ND + tl.arange(0, BLOCK_ND)
-    offset_d = offset_nd % D
-    offset_n = offset_nd // D
 
     mask_block = offset_nd < N * D
+    # XPU masked-load hazard: see the note above the kernel section.
+    zero64 = tl.full([], 0, tl.int64)
+    one64 = tl.full([], 1, tl.int64)
+    idx_nd = tl.minimum(offset_nd, tl.full([], 0, tl.int64) + N * D - one64)
+    idx_d = idx_nd % D
+    idx_n = idx_nd // D
 
-    tgt_ptrs = tgt_ptr + offset_n * D + offset_d
-    tgt = tl.load(tgt_ptrs, mask=mask_block, other=0)
+    tgt = tl.load(tgt_ptr + idx_nd)
     assert (tgt == ignore_index) or (tgt >= 0 and tgt < C), "Invalid target value"
-    ignore_mask = not (tgt == ignore_index) and mask_block
+    ignore_mask = mask_block & (tgt != ignore_index)
+    tgt_safe = tl.minimum(tl.maximum(tgt, zero64), zero64 + C - one64)
 
     if wgt_ptr is None:
         wgt_tgt = ignore_mask.to(tl.float32)
     else:
-        wgt_tgt = tl.load(wgt_ptr + tgt, mask=ignore_mask, other=0).to(tl.float32)
+        wgt_tgt = tl.load(wgt_ptr + tgt_safe).to(tl.float32)
 
-    inp_tgt_ptrs = inp_ptr + offset_n * C * D + tgt * D + offset_d
-    inp_tgt = tl.load(inp_tgt_ptrs, mask=ignore_mask, other=0).to(tl.float32)
-    out = inp_tgt * wgt_tgt * -1
+    inp_tgt_ptrs = inp_ptr + idx_n * C * D + tgt_safe * D + idx_d
+    inp_tgt = tl.load(inp_tgt_ptrs).to(tl.float32)
+    out = tl.where(ignore_mask, inp_tgt * wgt_tgt * -1, 0.0)
 
-    out_ptrs = out_ptr + offset_n * D + offset_d
-    tl.store(out_ptrs, out, mask=mask_block)
+    tl.store(out_ptr + offset_nd, out, mask=mask_block)
 
     if reduction == 1:
-        ignore_wgt_tgt_ptrs = ignore_wgt_tgt_ptr + offset_n * D + offset_d
-        tl.store(ignore_wgt_tgt_ptrs, wgt_tgt, mask=mask_block)
+        tl.store(
+            ignore_wgt_tgt_ptr + offset_nd,
+            tl.where(ignore_mask, wgt_tgt, 0.0),
+            mask=mask_block,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -316,19 +347,23 @@ def nll_loss2d_forward_tiled_kernel(
     tgt = tl.load(tgt_ptr + flat)
     assert (tgt == ignore_index) or (tgt >= 0 and tgt < C), "Invalid target value"
     ignore_mask = tgt != ignore_index
+    # XPU masked-load hazard: see the note above the kernel section.
+    zero64 = tl.full([], 0, tl.int64)
+    one64 = tl.full([], 1, tl.int64)
+    tgt_safe = tl.minimum(tl.maximum(tgt, zero64), zero64 + C - one64)
 
     if wgt_ptr is None:
         wgt_tgt = tl.where(ignore_mask, 1.0, 0.0)
     else:
-        wgt_tgt = tl.load(wgt_ptr + tgt, mask=ignore_mask, other=0).to(tl.float32)
+        wgt_tgt = tl.load(wgt_ptr + tgt_safe).to(tl.float32)
 
-    inp_tgt_ptrs = inp_ptr + rows * (C * D) + tgt * D + cols
-    inp_tgt = tl.load(inp_tgt_ptrs, mask=ignore_mask, other=0).to(tl.float32)
-    out = inp_tgt * wgt_tgt * -1
+    inp_tgt_ptrs = inp_ptr + rows * (C * D) + tgt_safe * D + cols
+    inp_tgt = tl.load(inp_tgt_ptrs).to(tl.float32)
+    out = tl.where(ignore_mask, inp_tgt * wgt_tgt * -1, 0.0)
 
     tl.store(out_ptr + flat, out)
     if reduction == 1:
-        tl.store(ignore_wgt_tgt_ptr + flat, wgt_tgt)
+        tl.store(ignore_wgt_tgt_ptr + flat, tl.where(ignore_mask, wgt_tgt, 0.0))
 
 
 # ---------------------------------------------------------------------------
@@ -361,9 +396,10 @@ def nll_loss2d_forward_tiled_kernel(
 #   - the `wgt_ptr is None` branch uses `tl.where` rather than
 #     `ignore_mask.to(tl.float32)`; the uitofp form fails
 #     `TritonXPUUnrollControl` for BLOCK >= 256 in fp16.
-# The discrete `inp` gather keeps HEAD's exact expression and masking so the
-# (pre-existing) out-of-range `tgt*D` read behaviour for a hit `ignore_index`
-# is bit-for-bit unchanged.
+#   - the discrete `inp` gather now follows the family clamp+where pattern
+#     instead of HEAD's `mask=ignore_mask, other=0`: the target is clamped to
+#     `[0, C-1]` for the address (so a hit `ignore_index` no longer reads
+#     out of range) and the ignored lanes are zeroed with `tl.where`.
 # ---------------------------------------------------------------------------
 # `BLOCK_ND = 1024` is **silently wrong** in this kernel: with fp32 input and a
 # `weight` tensor it returns an exact `0.0` for ~5-6% of the lanes (isolated
@@ -416,21 +452,25 @@ def nll_loss2d_forward_flat_kernel(
     tgt = tl.load(tgt_ptr + offset_nd)
     assert (tgt == ignore_index) or (tgt >= 0 and tgt < C), "Invalid target value"
     ignore_mask = tgt != ignore_index
+    # XPU masked-load hazard: see the note above the kernel section.
+    zero64 = tl.full([], 0, tl.int64)
+    one64 = tl.full([], 1, tl.int64)
+    tgt_safe = tl.minimum(tl.maximum(tgt, zero64), zero64 + C - one64)
 
     if wgt_ptr is None:
         wgt_tgt = tl.where(ignore_mask, 1.0, 0.0)
     else:
-        wgt_tgt = tl.load(wgt_ptr + tgt, mask=ignore_mask, other=0).to(tl.float32)
+        wgt_tgt = tl.load(wgt_ptr + tgt_safe).to(tl.float32)
 
     offset_d = offset_nd % D
     offset_n = offset_nd // D
-    inp_tgt_ptrs = inp_ptr + offset_n * C * D + tgt * D + offset_d
-    inp_tgt = tl.load(inp_tgt_ptrs, mask=ignore_mask, other=0).to(tl.float32)
-    out = inp_tgt * wgt_tgt * -1
+    inp_tgt_ptrs = inp_ptr + offset_n * C * D + tgt_safe * D + offset_d
+    inp_tgt = tl.load(inp_tgt_ptrs).to(tl.float32)
+    out = tl.where(ignore_mask, inp_tgt * wgt_tgt * -1, 0.0)
 
     tl.store(out_ptr + offset_nd, out)
     if reduction == 1:
-        tl.store(ignore_wgt_tgt_ptr + offset_nd, wgt_tgt)
+        tl.store(ignore_wgt_tgt_ptr + offset_nd, tl.where(ignore_mask, wgt_tgt, 0.0))
 
 
 def _nll2d_flat_block(M):
@@ -542,23 +582,26 @@ def nll_loss2d_backward_kernel(
 ):
     pid_nd = tl.program_id(0)
     offset_nd = pid_nd * BLOCK_ND + tl.arange(0, BLOCK_ND)
-    offset_d = offset_nd % D
-    offset_n = offset_nd // D
 
     mask_block = offset_nd < N * D
+    # XPU masked-load hazard: see the note above the kernel section.
+    zero64 = tl.full([], 0, tl.int64)
+    one64 = tl.full([], 1, tl.int64)
+    idx_nd = tl.minimum(offset_nd, tl.full([], 0, tl.int64) + N * D - one64)
+    idx_d = idx_nd % D
+    idx_n = idx_nd // D
 
-    tgt_ptrs = tgt_ptr + offset_n * D + offset_d
-    tgt = tl.load(tgt_ptrs, mask=mask_block, other=0)
-    ignore_mask = not (tgt == ignore_index) and mask_block
+    tgt = tl.load(tgt_ptr + idx_nd)
+    ignore_mask = mask_block & (tgt != ignore_index)
+    tgt_safe = tl.minimum(tl.maximum(tgt, zero64), zero64 + C - one64)
 
     if wgt_ptr is None:
         wgt_tgt = ignore_mask.to(tl.float32)
     else:
-        wgt_tgt = tl.load(wgt_ptr + tgt, mask=ignore_mask, other=0).to(tl.float32)
+        wgt_tgt = tl.load(wgt_ptr + tgt_safe).to(tl.float32)
 
     if reduction == 0:
-        out_grad_ptrs = out_grad_ptr + offset_n * D + offset_d
-        out_grad = tl.load(out_grad_ptrs, mask=mask_block, other=0).to(tl.float32)
+        out_grad = tl.load(out_grad_ptr + idx_nd).to(tl.float32)
     else:
         out_grad = tl.load(out_grad_ptr).to(tl.float32)
 
@@ -567,7 +610,7 @@ def nll_loss2d_backward_kernel(
     else:
         total_w = 1
     inp_grad = tl.where(ignore_mask, -1 * out_grad * wgt_tgt / total_w, 0)
-    inp_grad_ptrs = inp_grad_ptr + offset_n * C * D + tgt * D + offset_d
+    inp_grad_ptrs = inp_grad_ptr + idx_n * C * D + tgt_safe * D + idx_d
     tl.store(inp_grad_ptrs, inp_grad, mask=ignore_mask)
 
 
@@ -796,6 +839,13 @@ def nll_loss_forward(self, target, weight=None, reduction=1, ignore_index=-100):
         n_blocks = triton.cdiv(N, BLOCK_N)
 
     with torch_device_fn.device(self.device):
+        # NOTE: the `is_use_mask_zero=True` launch kwarg was removed here (and on
+        # the 2d forward launches below): on this XPU triton fork it is not a
+        # known launch option and the launch fails device-side with error 719
+        # (kl3ChannelCheckErrors -> kernel exception) even for the minimal (1, 2)
+        # f16 case, poisoning the context; probe matrix: flag on -> rc=1/719,
+        # flag off -> matches CPU exactly.  The kernels no longer rely on any
+        # masked-load "mask zero" semantics (see the clamp+where note above).
         nll_loss_forward_kernel[(n_blocks, 1, 1)](
             self,  # torch.Size([4096, 256])
             target,  # torch.Size([4096]), tensor([174, 125, 174,  ..., 216, 171, 120])
@@ -808,7 +858,6 @@ def nll_loss_forward(self, target, weight=None, reduction=1, ignore_index=-100):
             reduction,  # 0
             BLOCK_N,
             fused,
-            is_use_mask_zero=True,
         )
 
     # redution: 0-None, 1-mean, 2-sum
@@ -947,7 +996,6 @@ def nll_loss2d_forward(self, target, weight=None, reduction=1, ignore_index=-100
                 reduction,
                 D,
                 flat_block,
-                is_use_mask_zero=True,
             )
         elif block_d is None:
             grid = lambda meta: (triton.cdiv(N * D, meta["BLOCK_ND"]),)
@@ -962,7 +1010,6 @@ def nll_loss2d_forward(self, target, weight=None, reduction=1, ignore_index=-100
                 C,
                 D,
                 reduction,
-                is_use_mask_zero=True,
             )
         else:
             nll_loss2d_forward_tiled_kernel[(D // block_d, N, 1)](
@@ -976,7 +1023,6 @@ def nll_loss2d_forward(self, target, weight=None, reduction=1, ignore_index=-100
                 reduction,
                 D,
                 block_d,
-                is_use_mask_zero=True,
             )
 
     # redution: 0-None, 1-mean, 2-sum
