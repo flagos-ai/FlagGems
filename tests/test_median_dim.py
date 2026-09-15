@@ -51,10 +51,12 @@ def _call_median_dim(inp, dim, keepdim, equal_nan=False, exact_indices=True):
     utils.gems_assert_equal(result.values, ref.values, equal_nan=equal_nan)
     assert tuple(result.values.shape) == tuple(ref.values.shape)
     assert tuple(result.indices.shape) == tuple(ref.indices.shape)
-    # Whatever index comes back has to point at the median it reports.
+    # Whatever index comes back has to point at the median it reports.  Both
+    # sides live on the accelerator, so move them to the reference device
+    # first: gems_assert_equal expects `ref` to be there when --ref=cpu is used.
     utils.gems_assert_equal(
-        _selected_along_dim(inp, dim, result.indices, keepdim),
-        result.values,
+        utils.to_reference(_selected_along_dim(inp, dim, result.indices, keepdim)),
+        utils.to_reference(result.values),
         equal_nan=equal_nan,
     )
     if exact_indices:
@@ -119,8 +121,12 @@ def test_median_dim_even_count_picks_lower_middle(values, expected):
     result = flag_gems.median_dim(inp, dim=0)
 
     value, index = expected
-    utils.gems_assert_equal(result.values, torch.full_like(result.values, value))
-    utils.gems_assert_equal(result.indices, torch.full_like(result.indices, index))
+    utils.gems_assert_equal(
+        result.values, utils.to_reference(torch.full_like(result.values, value))
+    )
+    utils.gems_assert_equal(
+        result.indices, utils.to_reference(torch.full_like(result.indices, index))
+    )
 
 
 @pytest.mark.median_dim
@@ -137,8 +143,12 @@ def test_median_dim_scalar_input():
     result = flag_gems.median_dim(inp, dim=0)
 
     assert result.values.ndim == 0 and result.indices.ndim == 0
-    utils.gems_assert_equal(result.values, torch.full_like(result.values, 3.0))
-    utils.gems_assert_equal(result.indices, torch.zeros_like(result.indices))
+    utils.gems_assert_equal(
+        result.values, utils.to_reference(torch.full_like(result.values, 3.0))
+    )
+    utils.gems_assert_equal(
+        result.indices, utils.to_reference(torch.zeros_like(result.indices))
+    )
 
 
 @pytest.mark.median_dim
