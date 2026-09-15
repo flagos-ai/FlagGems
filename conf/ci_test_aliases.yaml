@@ -34,6 +34,9 @@ scaled_mm_out: test_scaled_mm
 searchsorted_out: test_searchsorted
 searchsorted_scalar_out: test_searchsorted
 segment_reduce_out: test_segment_reduce
+special_zeta_out: test_special_zeta
+special_zeta_scalar_tensor_out: test_special_zeta
+special_zeta_tensor_scalar_out: test_special_zeta
 
 # Compound / alternative names
 arange_start_step: test_arange
@@ -48,6 +51,8 @@ arctan: test_atan
 nanmedian_dim: test_nanmedian
 nanmedian_dim_values: test_nanmedian
 searchsorted_scalar: test_searchsorted
+special_zeta_scalar_tensor: test_special_zeta
+special_zeta_tensor_scalar: test_special_zeta
 
 # Operators tested in combined files or with different naming
 batch_norm_backward: test_batch_norm
