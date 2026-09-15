@@ -46,7 +46,7 @@ def _masked_scale_kernel(input, mask, scale):
 
 
 def _masked_scale(input, mask, scale):
-    logger.debug("GEMS _MASKED_SCALE")
+    logger.debug("GEMS_KUNLUNXIN _MASKED_SCALE")
     if not input.is_floating_point():
         raise ValueError(f"Only floating-point dtype is supported, got {input.dtype}")
     return _masked_scale_kernel(input, mask, scale)

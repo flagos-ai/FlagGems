@@ -61,24 +61,23 @@ def test__batch_norm_impl_index(shape, dtype, affine):
         True,
     )
 
-    with flag_gems.use_gems():
-        (
-            res_out,
-            res_save_mean,
-            res_save_var,
-            res_reserve,
-            res_impl_index,
-        ) = torch._batch_norm_impl_index(
-            inp,
-            weight,
-            bias,
-            running_mean,
-            running_var,
-            True,
-            0.1,
-            eps,
-            True,
-        )
+    (
+        res_out,
+        res_save_mean,
+        res_save_var,
+        res_reserve,
+        res_impl_index,
+    ) = flag_gems._batch_norm_impl_index(
+        inp,
+        weight,
+        bias,
+        running_mean,
+        running_var,
+        True,
+        0.1,
+        eps,
+        True,
+    )
 
     utils.gems_assert_close(res_out, ref_out, dtype)
     utils.gems_assert_close(res_save_mean, ref_save_mean, dtype)

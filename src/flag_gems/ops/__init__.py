@@ -177,6 +177,9 @@ from flag_gems.ops._weight_int4pack_mm_with_scales_and_zeros import (
     _weight_int4pack_mm_with_scales_and_zeros,
 )
 from flag_gems.ops._weight_norm import _weight_norm
+from flag_gems.ops._weight_norm_differentiable_backward import (
+    weight_norm_differentiable_backward,
+)
 from flag_gems.ops.abs import abs, abs_
 from flag_gems.ops.absolute import absolute, absolute_
 from flag_gems.ops.acos import acos
@@ -411,6 +414,10 @@ from flag_gems.ops.fake_quantize_per_channel_affine_cachemask_backward import (
 from flag_gems.ops.fake_quantize_per_tensor_affine import (
     fake_quantize_per_tensor_affine,
 )
+from flag_gems.ops.fake_quantize_per_tensor_affine_cachemask import (
+    fake_quantize_per_tensor_affine_cachemask,
+    fake_quantize_per_tensor_affine_cachemask_out,
+)
 from flag_gems.ops.fake_quantize_per_tensor_affine_cachemask_backward import (
     fake_quantize_per_tensor_affine_cachemask_backward,
 )
@@ -533,7 +540,7 @@ from flag_gems.ops.index_add import index_add, index_add_
 from flag_gems.ops.index_copy_ import index_copy, index_copy_
 from flag_gems.ops.index_fill import index_fill, index_fill_
 from flag_gems.ops.index_put import _index_put_impl_, index_put, index_put_
-from flag_gems.ops.index_reduce import index_reduce_
+from flag_gems.ops.index_reduce import index_reduce, index_reduce_, index_reduce_out
 from flag_gems.ops.index_select import index_select
 from flag_gems.ops.index_select_backward import index_select_backward
 from flag_gems.ops.is_nonzero import is_nonzero
@@ -565,11 +572,13 @@ from flag_gems.ops.lgamma_ import lgamma, lgamma_
 from flag_gems.ops.lift import lift, lift_out
 from flag_gems.ops.lift_fresh import lift_fresh
 from flag_gems.ops.lift_fresh_copy import lift_fresh_copy, lift_fresh_copy_out
+from flag_gems.ops.linalg__powsum import linalg__powsum
 from flag_gems.ops.linalg_cholesky import linalg_cholesky
 from flag_gems.ops.linalg_cond import linalg_cond, linalg_cond_p_str
 from flag_gems.ops.linalg_cross import linalg_cross, linalg_cross_out
 from flag_gems.ops.linalg_det import linalg_det, linalg_det_out
 from flag_gems.ops.linalg_eig import linalg_eig
+from flag_gems.ops.linalg_eigvals import linalg_eigvals, linalg_eigvals_out
 from flag_gems.ops.linalg_householder_product import linalg_householder_product
 from flag_gems.ops.linalg_ldl_factor import ldl_factor
 from flag_gems.ops.linalg_ldl_solve import linalg_ldl_solve
@@ -596,6 +605,7 @@ from flag_gems.ops.linalg_matrix_sqrth import (
     linalg_matrix_sqrth,
     linalg_matrix_sqrth_out,
 )
+from flag_gems.ops.linalg_multi_dot import linalg_multi_dot, linalg_multi_dot_out
 from flag_gems.ops.linalg_norm import linalg_norm
 from flag_gems.ops.linalg_qr import linalg_qr, linalg_qr_out
 from flag_gems.ops.linalg_slogdet import linalg_slogdet
@@ -881,6 +891,10 @@ from flag_gems.ops.special_bessel_j0 import special_bessel_j0
 from flag_gems.ops.special_bessel_j1 import special_bessel_j1
 from flag_gems.ops.special_bessel_y0 import special_bessel_y0
 from flag_gems.ops.special_bessel_y1 import special_bessel_y1
+from flag_gems.ops.special_chebyshev_polynomial_t import (
+    special_chebyshev_polynomial_t,
+    special_chebyshev_polynomial_t_out,
+)
 from flag_gems.ops.special_chebyshev_polynomial_u import special_chebyshev_polynomial_u
 from flag_gems.ops.special_chebyshev_polynomial_v import special_chebyshev_polynomial_v
 from flag_gems.ops.special_chebyshev_polynomial_w import (
@@ -1014,6 +1028,7 @@ from flag_gems.ops.upsample_nearest1d import upsample_nearest1d
 from flag_gems.ops.upsample_nearest2d import upsample_nearest2d
 from flag_gems.ops.upsample_nearest3d import upsample_nearest3d
 from flag_gems.ops.upsample_trilinear3d import upsample_trilinear3d
+from flag_gems.ops.upsample_trilinear3d_backward import upsample_trilinear3d_backward
 from flag_gems.ops.value_selecting_reduction_backward import (
     value_selecting_reduction_backward,
 )
@@ -1023,6 +1038,7 @@ from flag_gems.ops.vdot import vdot
 from flag_gems.ops.vector_norm import vector_norm
 from flag_gems.ops.view_as_complex import view_as_complex
 from flag_gems.ops.view_copy import view_copy
+from flag_gems.ops.vsplit import vsplit
 from flag_gems.ops.vstack import vstack
 from flag_gems.ops.w8a8_block_fp8_matmul import w8a8_block_fp8_matmul
 from flag_gems.ops.weight_int8pack_mm import weight_int8pack_mm
@@ -1442,7 +1458,9 @@ __all__ = [
     "fake_quantize_per_channel_affine_cachemask_backward",
     "fake_quantize_per_channel_affine_cachemask_out",
     "fake_quantize_per_tensor_affine",
+    "fake_quantize_per_tensor_affine_cachemask",
     "fake_quantize_per_tensor_affine_cachemask_backward",
+    "fake_quantize_per_tensor_affine_cachemask_out",
     "feature_dropout",
     "feature_dropout_",
     "fft",
@@ -1580,7 +1598,9 @@ __all__ = [
     "index_fill_",
     "index_put",
     "index_put_",
+    "index_reduce",
     "index_reduce_",
+    "index_reduce_out",
     "index_select",
     "index_select_backward",
     "is_nonzero",
@@ -1625,6 +1645,7 @@ __all__ = [
     "lift_fresh_copy",
     "lift_fresh_copy_out",
     "lift_out",
+    "linalg__powsum",
     "linalg_cholesky",
     "linalg_cond",
     "linalg_cond_p_str",
@@ -1633,6 +1654,8 @@ __all__ = [
     "linalg_det",
     "linalg_det_out",
     "linalg_eig",
+    "linalg_eigvals",
+    "linalg_eigvals_out",
     "linalg_householder_product",
     "linalg_ldl_solve",
     "linalg_lstsq",
@@ -1653,6 +1676,8 @@ __all__ = [
     "linalg_matrix_rank_tol_out",
     "linalg_matrix_sqrth",
     "linalg_matrix_sqrth_out",
+    "linalg_multi_dot",
+    "linalg_multi_dot_out",
     "linalg_norm",
     "linalg_qr",
     "linalg_qr_out",
@@ -1982,6 +2007,8 @@ __all__ = [
     "special_bessel_j1",
     "special_bessel_y0",
     "special_bessel_y1",
+    "special_chebyshev_polynomial_t",
+    "special_chebyshev_polynomial_t_out",
     "special_chebyshev_polynomial_u",
     "special_chebyshev_polynomial_v",
     "special_chebyshev_polynomial_w",
@@ -2119,6 +2146,7 @@ __all__ = [
     "upsample_nearest2d",
     "upsample_nearest3d",
     "upsample_trilinear3d",
+    "upsample_trilinear3d_backward",
     "value_selecting_reduction_backward",
     "var",
     "var_correction",
@@ -2128,9 +2156,11 @@ __all__ = [
     "vector_norm",
     "view_as_complex",
     "view_copy",
+    "vsplit",
     "vstack",
     "w8a8_block_fp8_matmul",
     "weight_int8pack_mm",
+    "weight_norm_differentiable_backward",
     "weight_norm_interface",
     "weight_norm_interface_backward",
     "where_scalar_other",
