@@ -34,10 +34,9 @@ else:
 # bartlett_window only supports float32 (torch.bartlett_window default dtype)
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test_bartlett_window(window_length, periodic, dtype):
-    with flag_gems.use_gems():
-        res_out = torch.bartlett_window(
-            window_length, periodic=periodic, dtype=dtype, device=flag_gems.device
-        )
+    res_out = torch.bartlett_window(
+        window_length, periodic=periodic, dtype=dtype, device=flag_gems.device
+    )
     ref_out = torch.bartlett_window(
         window_length, periodic=periodic, dtype=dtype, device="cpu"
     )
