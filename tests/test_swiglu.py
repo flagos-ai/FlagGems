@@ -19,6 +19,8 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+vendor_name = flag_gems.vendor_name
+
 try:
     from transformer_engine.pytorch import cpp_extensions as tex
 
@@ -50,6 +52,10 @@ VALID_POINTWISE_SHAPES = filter_valid_shapes(utils.SWIGLU_SPECIAL_SHAPES)
 @pytest.mark.parametrize("shape", VALID_POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.skipif(TE_OP is None, reason="'swiglu' not found in TransformerEngine")
+@pytest.mark.skipif(
+    vendor_name == "kunlunxin",
+    reason="Kunlunxin TE/API and Triton kernel are unsupported",
+)
 def test_swiglu(shape: tuple[int, ...], dtype: torch.dtype):
     torch.manual_seed(42)
     device = flag_gems.device
@@ -59,7 +65,6 @@ def test_swiglu(shape: tuple[int, ...], dtype: torch.dtype):
     te_forward = TE_OP(input_tensor, quantizer=None).to(device)
     te_forward = utils.to_reference(te_forward)
 
-    with flag_gems.use_gems():
-        fg_forward = flag_gems.swiglu(input_tensor, quantizer=None)
+    fg_forward = flag_gems.swiglu(input_tensor, quantizer=None)
 
     utils.gems_assert_close(fg_forward, te_forward, dtype)
