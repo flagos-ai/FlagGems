@@ -43,7 +43,6 @@ def test_frobenius_norm(shape, dtype, keepdim, dim):
         pytest.skip("dim out of range for shape")
 
     ref_out = torch.ops.aten.frobenius_norm.dim(ref_inp, dim, keepdim)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.frobenius_norm.dim(inp, dim, keepdim)
+    res_out = torch.ops.aten.frobenius_norm.dim(inp, dim, keepdim)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
