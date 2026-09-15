@@ -78,6 +78,6 @@ def test_nmsnorm_accuracy(shape, dtype, eps):
     with flag_gems.use_gems():
         res_out = flag_gems.experimental_ops.rmsnorm(inp, weight=weight, eps=eps)
 
-    # Move result to CPU for comparison
-    res_out_cpu = res_out.cpu()
-    gems_assert_close(res_out_cpu, ref_out, dtype, equal_nan=True)
+    # Let gems_assert_close handle the device transfer so that res and ref
+    # always end up on the same device (avoids a CPU/device mismatch).
+    gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
