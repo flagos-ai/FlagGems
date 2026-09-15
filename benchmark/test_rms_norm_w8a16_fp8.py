@@ -35,8 +35,8 @@ def _fp8_available():
     )
 
 
-def _gems_rms_norm(x, shape, weight_fp8, weight_scale, weight_ref):
-    return flag_gems.rms_norm(x, shape, weight_ref, eps=1e-5)
+def _torch_rms_norm(x, shape, weight_fp8, weight_scale, weight_ref):
+    return torch.nn.functional.rms_norm(x, shape, weight_ref, eps=1e-5)
 
 
 def _gems_rms_norm_w8a16_fp8(x, shape, weight_fp8, weight_scale, weight_ref):
@@ -79,7 +79,7 @@ class RmsNormW8A16FP8Benchmark(base.Benchmark):
                 .to(torch.float8_e4m3fn)
                 .reshape(n)
             )
-            # The BF16 baseline uses the same effective quantized weight.
+            # The Torch BF16 baseline uses the same effective quantized weight.
             # Quantization and reference dequantization are outside timing.
             weight_ref = (
                 (weight_fp8.float().reshape(-1, GROUP_SIZE) * scales.float()[:, None])
@@ -92,10 +92,10 @@ class RmsNormW8A16FP8Benchmark(base.Benchmark):
 @pytest.mark.rms_norm_w8a16_fp8
 @pytest.mark.skipif(not _fp8_available(), reason="Requires FP8 E4M3FN support")
 def test_rms_norm_w8a16_fp8():
-    print("Baseline: FlagGems BF16 (flag_gems.rms_norm)")
+    print("Baseline: Torch BF16 (torch.nn.functional.rms_norm)")
     bench = RmsNormW8A16FP8Benchmark(
         op_name="rms_norm_w8a16_fp8",
-        torch_op=_gems_rms_norm,
+        torch_op=_torch_rms_norm,
         dtypes=[torch.bfloat16],
     )
     bench.set_gems(_gems_rms_norm_w8a16_fp8)
