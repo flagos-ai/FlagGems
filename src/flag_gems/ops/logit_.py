@@ -64,21 +64,9 @@ def logit_kernel(
     tl.store(x_ptr + offsets, out, mask=mask)
 
 
-def logit_(*args, **kwargs):
+def logit_(self, eps=None):
     logger.debug("GEMS LOGIT_")
-    if len(args) == 0:
-        raise TypeError("logit_ expected at least 1 argument (got 0)")
-    x = args[0]
-    eps = None
-    if len(args) > 1:
-        eps = args[1]
-    if "eps" in kwargs:
-        eps = kwargs["eps"]
-
-    if not isinstance(x, torch.Tensor):
-        raise TypeError("logit_ expects a torch.Tensor as the first argument")
-    if not x.is_floating_point():
-        raise TypeError("logit_ expects a floating point tensor")
+    x = self
 
     has_eps = eps is not None
     eps_value = float(eps) if has_eps else 0.0

@@ -48,23 +48,9 @@ def selu_kernel(x_ptr, y_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
     tl.store(y_ptr + offsets, y, mask=mask)
 
 
-def selu(*args, **kwargs):
+def selu(self):
     logger.debug("GEMS SELU")
-    x = None
-    if len(args) > 0:
-        x = args[0]
-    elif "input" in kwargs:
-        x = kwargs["input"]
-    elif "self" in kwargs:
-        x = kwargs["self"]
-    else:
-        raise TypeError("selu() missing required argument 'input' (pos 1)")
-
-    if not isinstance(x, torch.Tensor):
-        raise TypeError("selu() expected a torch.Tensor as input")
-
-    if not x.is_floating_point():
-        raise TypeError("selu() expected a floating point tensor")
+    x = self
 
     x_contig = x.contiguous()
     y = torch.empty_like(x_contig)
