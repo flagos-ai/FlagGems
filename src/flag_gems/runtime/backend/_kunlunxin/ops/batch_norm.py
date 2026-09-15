@@ -32,6 +32,24 @@ from ._batch_norm_no_update import (
 logger = logging.getLogger(__name__)
 rsqrt = tl_extra_shim.rsqrt
 
+# ---------------------------------------------------------------------------
+# XPU masked-load hazard (same family as the nll_loss / vector_norm fixes,
+# probed 2026-08-26): `tl.load(ptr, mask=<runtime mask>, other=0)` is not
+# reliable on this backend - the masked tail lanes can be filled with real
+# in-bounds values instead of `other`.  Both effects matter here:
+#   * value leak: the padded tail lanes entered the per-(n,c) sums, which made
+#     the training save_mean/save_invstd wrong by 0.005-0.011 on shapes whose
+#     reduction tile exceeds the buffer (combine kernel); the fused per-channel
+#     stats of the small-shape path are exposed to the same leak;
+#   * out-of-bounds address: `idx` (or `idx * feat_dim`) can exceed the buffer,
+#     e.g. batch_dim=17 with TILE_N=32 reads 15 partial rows past the end.
+#
+# Fix applied to every masked tile loop below: clamp the index to the last valid
+# one and load UNMASKED, then zero the invalid lanes explicitly with
+# `tl.where(mask, x, 0.0)`. Those `tl.where`s are elementwise (never inside a
+# reduction), which is the constrained-safe form on this backend.
+# ---------------------------------------------------------------------------
+
 
 def make_3d_for_bn(input: Tensor) -> Tensor:
     if input.ndim == 2:
@@ -84,10 +102,13 @@ def batch_norm_stats_kernel(
     for off in range(0, spatial_dim, TILE_S):
         idx = off + tl.arange(0, TILE_S)
         if NEED_MASK:
+            # Clamped index + tl.where (see the masked-load note above).
             mask = idx < spatial_dim
-            x = tl.load(input_pointer + base + idx, mask=mask, other=0.0).to(tl.float32)
+            idx_safe = tl.minimum(idx, spatial_dim - 1)
+            x = tl.load(input_pointer + base + idx_safe).to(tl.float32)
+            x = tl.where(mask, x, 0.0)
             s += x
-            sq += tl.where(mask, x * x, 0.0)
+            sq += x * x
         else:
             x = tl.load(input_pointer + base + idx).to(tl.float32)
             s += x
@@ -112,9 +133,11 @@ def batch_norm_reduce_partials_kernel(
     chunk = pid // feat_dim
     batch_offsets = chunk * TILE_N + tl.arange(0, TILE_N)
     mask = batch_offsets < batch_dim
-    offsets = batch_offsets * feat_dim + channel
-    part_sum = tl.load(part_sum_pointer + offsets, mask=mask, other=0.0)
-    part_sqsum = tl.load(part_sqsum_pointer + offsets, mask=mask, other=0.0)
+    # Clamped index + tl.where (see the masked-load note above).
+    batch_offsets_safe = tl.minimum(batch_offsets, batch_dim - 1)
+    offsets = batch_offsets_safe * feat_dim + channel
+    part_sum = tl.load(part_sum_pointer + offsets)
+    part_sqsum = tl.load(part_sqsum_pointer + offsets)
     part_sum = tl.where(mask, part_sum, 0.0)
     part_sqsum = tl.where(mask, part_sqsum, 0.0)
     tl.store(reduced_sum_pointer + pid, tl.sum(part_sum))
@@ -146,8 +169,12 @@ def batch_norm_combine_kernel(
     c = tl.program_id(axis=0)
     idx = tl.arange(0, TILE_N)
     mask = idx < batch_dim
-    part_sum = tl.load(part_sum_pointer + c + idx * feat_dim, mask=mask, other=0.0)
-    part_sqsum = tl.load(part_sqsum_pointer + c + idx * feat_dim, mask=mask, other=0.0)
+    # Clamped index + tl.where (see the masked-load note above): TILE_N is
+    # next_pow2(batch_dim), so the untouched tail would otherwise read past the
+    # partials buffer (batch_dim=17 -> 15 rows past).
+    idx_safe = tl.minimum(idx, batch_dim - 1)
+    part_sum = tl.load(part_sum_pointer + c + idx_safe * feat_dim)
+    part_sqsum = tl.load(part_sqsum_pointer + c + idx_safe * feat_dim)
     part_sum = tl.where(mask, part_sum, 0.0)
     part_sqsum = tl.where(mask, part_sqsum, 0.0)
     ssum = tl.sum(part_sum)
@@ -212,8 +239,12 @@ def batch_norm_normalize_kernel(
     for off in range(0, spatial_dim, TILE_S):
         idx = off + tl.arange(0, TILE_S)
         if NEED_MASK:
+            # Clamped index + tl.where (see the masked-load note above); the
+            # store stays masked so the padded lanes are never written.
             mask = idx < spatial_dim
-            x = tl.load(input_pointer + base + idx, mask=mask).to(tl.float32)
+            idx_safe = tl.minimum(idx, spatial_dim - 1)
+            x = tl.load(input_pointer + base + idx_safe).to(tl.float32)
+            x = tl.where(mask, x, 0.0)
             y = weight * (x - mean) * inv_std + bias
             tl.store(
                 output_pointer + base + idx,
@@ -277,12 +308,13 @@ def batch_norm_fused_stats_kernel(
         for off in range(0, spatial_dim, TILE_S):
             idx = off + tl.arange(0, TILE_S)
             if NEED_MASK:
+                # Clamped index + tl.where (see the masked-load note above).
                 mask = idx < spatial_dim
-                x = tl.load(input_pointer + base + idx, mask=mask, other=0.0).to(
-                    tl.float32
-                )
+                idx_safe = tl.minimum(idx, spatial_dim - 1)
+                x = tl.load(input_pointer + base + idx_safe).to(tl.float32)
+                x = tl.where(mask, x, 0.0)
                 s += x
-                sq += tl.where(mask, x * x, 0.0)
+                sq += x * x
             else:
                 x = tl.load(input_pointer + base + idx).to(tl.float32)
                 s += x
@@ -347,8 +379,12 @@ def batch_norm_fused_normalize_kernel(
         for off in range(0, spatial_dim, TILE_S):
             idx = off + tl.arange(0, TILE_S)
             if NEED_MASK:
+                # Clamped index + tl.where (see the masked-load note above); the
+                # store stays masked so the padded lanes are never written.
                 mask = idx < spatial_dim
-                x = tl.load(input_pointer + base + idx, mask=mask).to(tl.float32)
+                idx_safe = tl.minimum(idx, spatial_dim - 1)
+                x = tl.load(input_pointer + base + idx_safe).to(tl.float32)
+                x = tl.where(mask, x, 0.0)
                 y = weight * (x - mean) * inv_std + bias
                 tl.store(
                     output_pointer + base + idx,
@@ -519,6 +555,12 @@ def batch_norm_heur_block_n(args):
     return min(BLOCK_N, max(1, 2**14 // BLOCK_M))
 
 
+# NOTE (kunlunxin / XPU): this triton backward kernel is NOT launched any more.
+# It only ever worked with spatial_dim == 1 (the old wrapper fed it a
+# [N*S, C, 1] transpose whose strided copy_ fails to launch on XPU), and the
+# natural [N, C, S] layout crashes the XPU compiler (PassManager::run failed).
+# `batch_norm_backward` below computes the backward with eager fp32 torch ops
+# instead. Kept for reference / potential re-wiring once the compiler is fixed.
 @libentry()
 @triton.heuristics(
     values={
@@ -996,52 +1038,76 @@ def batch_norm_backward(
     eps=1e-05,
     output_mask=None,
 ):
+    # The triton backward kernel above was only ever launched with
+    # spatial_dim == 1: the old wrapper transposed the inputs into [N*S, C, 1]
+    # via permute(0, 2, 1).reshape, whose strided copy_ fails on XPU
+    # ("CUDA error: invalid device function"), and feeding the kernel the
+    # natural [N, C, S] layout (spatial > 1) trips an XPU compiler crash
+    # (RuntimeError: PassManager::run failed). Compute the backward with eager
+    # fp32 torch ops on the natural contiguous layout instead.
     logger.debug("GEMS_KUNLUNXIN BATCH_NORM_BACKWARD")
-    input_3d_i = make_3d_for_bn(input)
-    m, n, k = input_3d_i.shape
-    input_3d_f = input_3d_i.permute(0, 2, 1).reshape(-1, n)
-    input_3d = make_3d_for_bn(input_3d_f)
-
-    output_grad_3d_i = make_3d_for_bn(grad_out)
-    output_grad_3d_f = output_grad_3d_i.permute(0, 2, 1).reshape(-1, n)
-    output_grad_3d = make_3d_for_bn(output_grad_3d_f)
-
-    batch_dim, feat_dim, spatial_dim = input_3d.shape
-
+    if output_mask is None:
+        output_mask = [True, True, True]
+    input_3d = make_3d_for_bn(input).contiguous()
+    grad_3d = make_3d_for_bn(grad_out).contiguous()
+    n, c, sp = input_3d.shape
+    count = n * sp
+    # CPU aten returns EMPTY save tensors in eval mode; fall back to the
+    # running stats whenever the saves are absent or empty.
+    if save_mean is not None and save_mean.numel() > 0:
+        mean = save_mean.to(torch.float32)
+    else:
+        mean = running_mean.to(torch.float32)
+    if save_invstd is not None and save_invstd.numel() > 0:
+        inv_std = save_invstd.to(torch.float32)
+    else:
+        inv_std = torch.rsqrt(running_var.to(torch.float32) + eps)
+    x = input_3d.to(torch.float32)
+    dy = grad_3d.to(torch.float32)
+    xhat = (x - mean.view(1, c, 1)) * inv_std.view(1, c, 1)
+    # flag_gems sum_dim dim_compress permutes non-last reduction dims onto a
+    # strided layout whose copy_ fails to launch on XPU ("invalid device
+    # function"). Reduce the contiguous last dim only (identity permute, no
+    # copy), then fold the batch dim with a ones-vector GEMM.
+    if n > 0:
+        ones_n = torch.ones((1, n), dtype=torch.float32, device=input.device)
+        sum_dy = torch.mm(ones_n, dy.sum(dim=2)).view(c)
+        sum_dy_xhat = torch.mm(ones_n, (dy * xhat).sum(dim=2)).view(c)
+    else:
+        # zero-batch input: gems mm heuristic divides by K == 0
+        sum_dy = torch.zeros(c, dtype=torch.float32, device=input.device)
+        sum_dy_xhat = torch.zeros(c, dtype=torch.float32, device=input.device)
+    if weight is not None:
+        w = weight.to(torch.float32)
+    else:
+        w = torch.ones_like(mean)
+    grads = []
     if output_mask[0]:
-        input_grad = torch.empty_like(input_3d)
+        if train:
+            gi = (
+                inv_std.view(1, c, 1)
+                * w.view(1, c, 1)
+                * (
+                    dy
+                    - sum_dy.view(1, c, 1) / count
+                    - xhat * sum_dy_xhat.view(1, c, 1) / count
+                )
+            )
+        else:
+            # eval: running stats are constants, no centering correction
+            gi = inv_std.view(1, c, 1) * w.view(1, c, 1) * dy
+        grads.append(gi.to(input.dtype).view_as(input))
     else:
-        input_grad = None
+        grads.append(None)
     if output_mask[1]:
-        weight_grad = torch.empty((feat_dim,), dtype=input.dtype, device=input.device)
+        if weight is not None:
+            grads.append(sum_dy_xhat.to(input.dtype))
+        else:
+            grads.append(torch.zeros(c, dtype=input.dtype, device=input.device))
     else:
-        weight_grad = None
+        grads.append(None)
     if output_mask[2]:
-        bias_grad = torch.empty((feat_dim,), dtype=input.dtype, device=input.device)
+        grads.append(sum_dy.to(input.dtype))
     else:
-        bias_grad = None
-
-    with torch_device_fn.device(input.device):
-        batch_norm_backward_kernel[(feat_dim, 1, 1)](
-            output_grad_3d,
-            input_3d,
-            save_mean,
-            save_invstd,
-            weight,
-            input_grad,
-            weight_grad,
-            bias_grad,
-            batch_dim,
-            spatial_dim,
-            *output_grad_3d.stride(),
-            *input_3d.stride(),
-            *input_grad.stride(),
-            *output_mask,
-            buffer_size_limit=2048,
-        )
-
-    return (
-        input_grad.reshape(m, k, n).permute(0, 2, 1).view_as(input),
-        weight_grad,
-        bias_grad,
-    )
+        grads.append(None)
+    return tuple(grads)
