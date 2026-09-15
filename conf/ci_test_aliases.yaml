@@ -29,6 +29,8 @@ atan2_out: test_atan2
 alias_copy_out: test_alias_copy
 as_strided_copy_out: test_as_strided_copy
 baddbmm_out: test_baddbmm
+ctc_loss_backward: test__ctc_loss_backward
+ctc_loss_backward_out: test__ctc_loss_backward
 nanmedian_out: test_nanmedian
 scaled_mm_out: test_scaled_mm
 searchsorted_out: test_searchsorted
