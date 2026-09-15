@@ -49,6 +49,7 @@ from .abs import abs, abs_
 from .absolute import absolute, absolute_
 from .acos import acos, acos_
 from .adaptive_avg_pool2d import adaptive_avg_pool2d
+from .adaptive_avg_pool2d_backward import _adaptive_avg_pool2d_backward
 from .adaptive_max_pool2d import adaptive_max_pool2d
 from .add import add, add_
 from .addcdiv import addcdiv, addcdiv_, addcdiv_out
@@ -567,11 +568,16 @@ from .unique_consecutive import unique_consecutive
 from .unique_dim import unique_dim
 from .upsample_bicubic2d_aa import _upsample_bicubic2d_aa
 from .upsample_bicubic2d_aa_backward import _upsample_bicubic2d_aa_backward
+from .upsample_bilinear2d import upsample_bilinear2d
 from .upsample_linear1d import upsample_linear1d
 from .upsample_linear1d_backward import upsample_linear1d_backward
 from .upsample_nearest1d import upsample_nearest1d
 from .upsample_nearest2d import upsample_nearest2d
 from .upsample_nearest3d import upsample_nearest3d
+from .upsample_nearest_exact1d_backward import (
+    _upsample_nearest_exact1d_backward,
+    _upsample_nearest_exact1d_backward_grad_input,
+)
 from .upsample_trilinear3d import upsample_trilinear3d
 from .var import var, var_correction, var_dim
 from .var_mean import var_mean
@@ -595,6 +601,7 @@ from .zeros import zeros
 from .zeros_like import zeros_like
 
 __all__ = [
+    "_adaptive_avg_pool2d_backward",
     "_amp_foreach_non_finite_check_and_unscale_",
     "_assert_async",
     "_batch_norm_impl_index",
@@ -625,6 +632,8 @@ __all__ = [
     "_unsafe_masked_index_put_accumulate",
     "_upsample_bicubic2d_aa",
     "_upsample_bicubic2d_aa_backward",
+    "_upsample_nearest_exact1d_backward",
+    "_upsample_nearest_exact1d_backward_grad_input",
     "_upsample_nearest_exact2d_backward",
     "_weight_norm",
     "abs",
@@ -1277,6 +1286,7 @@ __all__ = [
     "uniform_",
     "unique_consecutive",
     "unique_dim",
+    "upsample_bilinear2d",
     "upsample_linear1d",
     "upsample_linear1d_backward",
     "upsample_nearest1d",
