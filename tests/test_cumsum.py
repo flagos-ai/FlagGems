@@ -70,8 +70,7 @@ def test_cumsum(shape, dtype):
 
         res_out = kl_ops.cumsum(inp, dim=dim)
     else:
-        with flag_gems.use_gems():
-            res_out = torch.cumsum(inp, dim=dim)
+        res_out = flag_gems.cumsum(inp, dim=dim)
 
     # we should use ref's output type, since cumsum of int dtype results in int64
     if flag_gems.vendor_name in ["cambricon", "enflame", "tsingmicro"]:
@@ -105,8 +104,7 @@ def test_cumsum_empty(shape, dim, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.cumsum(ref_inp, dim=dim)
-    with flag_gems.use_gems():
-        res_out = torch.cumsum(inp, dim=dim)
+    res_out = flag_gems.cumsum(inp, dim=dim)
 
     assert res_out.shape == ref_out.shape
     assert res_out.dtype == ref_out.dtype
@@ -124,7 +122,21 @@ def test_cumsum_out(shape, dtype):
     ref_out_buf = torch.empty_like(ref_inp)
 
     torch.cumsum(ref_inp, dim=dim, out=ref_out_buf)
-    with flag_gems.use_gems():
-        torch.cumsum(inp, dim=dim, out=out)
+    flag_gems.cumsum_out(inp, dim=dim, out=out)
 
     utils.gems_assert_close(out, ref_out_buf, dtype, reduce_dim=shape[dim])
+
+
+@pytest.mark.cumsum_out
+@pytest.mark.parametrize("shape, dim", [((2637,), 0), ((3, 257), 1), ((5, 7), 0)])
+@pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+def test_cumsum_out_integer(shape, dim, dtype):
+    inp = torch.randint(-3, 3, shape, device=flag_gems.device).to(dtype)
+    ref_inp = utils.to_reference(inp)
+    out = torch.empty_like(inp)
+    ref_out = torch.empty_like(ref_inp)
+    torch.cumsum(ref_inp, dim=dim, out=ref_out)
+    result = flag_gems.cumsum_out(inp, dim=dim, out=out)
+    assert result is out
+    assert result.dtype == dtype
+    utils.gems_assert_equal(out, ref_out)
