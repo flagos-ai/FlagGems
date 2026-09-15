@@ -8156,6 +8156,30 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: linalg_tensorinv
+  description: Triton kernel implementation for linalg_tensorinv.
+  for:
+  - linalg_tensorinv
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: linalg_tensorinv_out
+  description: |-
+    Out-of-place variant of linalg_tensorinv: computes the tensor inverse
+    and writes the result into the provided out tensor.
+  for:
+  - linalg_tensorinv.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: linalg_vander
   description: Computes the Vandermonde matrix of a given vector.
   for:
