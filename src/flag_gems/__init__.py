@@ -565,6 +565,7 @@ _FULL_CONFIG = (
     ("embedding_backward", embedding_backward),
     ("embedding_dense_backward", embedding_dense_backward),
     ("embedding_renorm_", embedding_renorm_),
+    ("embedding_sparse_backward", embedding_sparse_backward),
     ("empty_permuted", empty_permuted),
     ("eq.Scalar", eq_scalar),
     ("eq.Tensor", eq),
