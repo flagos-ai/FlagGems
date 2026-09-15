@@ -15,7 +15,6 @@
 import logging
 import math
 
-import torch
 import triton
 import triton.language as tl
 
@@ -26,6 +25,7 @@ from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 _pow = tl_extra_shim.pow
+_fast_expf = tl_extra_shim.fast_expf
 
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "BOOL_TO_LONG")])
@@ -147,6 +147,16 @@ def pow_func_scalar_tensor(x, exponent):
     return _pow(x.to(tl.float32), exponent.to(tl.float32))
 
 
+@pointwise_dynamic(is_tensor=[False, True], promotion_methods=[(0, 1, "BOOL_TO_LONG")])
+@triton.jit
+def pow_func_scalar_tensor_fast(log_base, exponent):
+    # For a positive scalar base, pow(base, exp) == exp(exp * log(base)).
+    # log(base) is constant so it is computed once on the host; fast_expf is the
+    # XPU fast approximate expf (much cheaper and more accurate than the native
+    # tl.exp2 path, which produced NaN at large shapes for base 100.001).
+    return _fast_expf(exponent.to(tl.float32) * log_base.to(tl.float32))
+
+
 # ---------------------------------------------------------------------------
 # pow_scalar fast path (aten::pow.Scalar, scalar base >0 finite, !=1).
 #
@@ -232,10 +242,7 @@ def _launch_pow_scalar_fast(x, out, lnb):
 
 def pow_scalar(A, exponent):
     logger.debug("GEMS_KUNLUNXIN POW_SCALAR")
-    base = float(A)
-    if base > 0.0 and base != 1.0 and math.isfinite(base):
-        x = exponent.contiguous()
-        out = torch.empty_like(exponent)
-        _launch_pow_scalar_fast(x, out, math.log(base))
-        return out
+    base = A.item() if hasattr(A, "item") else float(A)
+    if base > 0:
+        return pow_func_scalar_tensor_fast(math.log(base), exponent)
     return pow_func_scalar_tensor(A, exponent)
