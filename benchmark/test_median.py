@@ -62,7 +62,7 @@ def test_median():
     bench.run()
 
 
-@pytest.mark.median
+@pytest.mark.median_dim
 def test_median_dim():
     bench = MedianReductionBenchmark(
         op_name="median_dim",
