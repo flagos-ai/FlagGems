@@ -755,6 +755,7 @@ _FULL_CONFIG = (
     ("index_reduce_", index_reduce_),
     ("index_select", index_select),
     ("index_select_backward", index_select_backward),
+    ("inner", inner),
     ("is_nonzero", is_nonzero),
     ("isclose", isclose),
     ("isfinite", isfinite),
