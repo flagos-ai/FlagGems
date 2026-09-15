@@ -506,6 +506,7 @@ from flag_gems.ops.hardtanh_backward import hardtanh_backward
 from flag_gems.ops.hash_tensor import hash_tensor
 from flag_gems.ops.heaviside import heaviside
 from flag_gems.ops.heaviside_ import heaviside_
+from flag_gems.ops.hinge_embedding_loss import hinge_embedding_loss
 from flag_gems.ops.histc import histc
 from flag_gems.ops.hsplit import hsplit
 from flag_gems.ops.hstack import hstack
@@ -1530,6 +1531,7 @@ __all__ = [
     "hash_tensor",
     "heaviside",
     "heaviside_",
+    "hinge_embedding_loss",
     "histc",
     "hsplit",
     "hstack",
