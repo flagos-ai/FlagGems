@@ -115,6 +115,7 @@ from flag_gems.ops._native_batch_norm_legit_no_training import (
 from flag_gems.ops._native_multi_head_attention import _native_multi_head_attention
 from flag_gems.ops._nested_from_padded_tensor import _nested_from_padded_tensor
 from flag_gems.ops._nested_sum_backward import _nested_sum_backward
+from flag_gems.ops._nested_tensor_from_mask import _nested_tensor_from_mask
 from flag_gems.ops._nested_tensor_from_mask_left_aligned import (
     _nested_tensor_from_mask_left_aligned,
 )
@@ -1137,6 +1138,7 @@ __all__ = [
     "_native_multi_head_attention",
     "_nested_from_padded_tensor",
     "_nested_sum_backward",
+    "_nested_tensor_from_mask",
     "_nested_tensor_from_mask_left_aligned",
     "_nested_view_from_buffer_copy",
     "_nested_view_from_jagged",
