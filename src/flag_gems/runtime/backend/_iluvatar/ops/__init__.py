@@ -36,6 +36,7 @@ from .concatenate import run as concatenate
 from .constant_pad_nd import constant_pad_nd
 from .conv_depthwise2d import _conv_depthwise2d
 from .conv_transpose1d import conv_transpose1d
+from .cudnn_convolution import cudnn_convolution
 from .diagonal_scatter import diagonal_scatter
 from .div import div_mode, div_mode_
 from .fractional_max_pool2d_backward import fractional_max_pool2d_backward
@@ -140,6 +141,7 @@ __all__ = [
     "concatenate",
     "constant_pad_nd",
     "conv_transpose1d",
+    "cudnn_convolution",
     "diagonal_scatter",
     "div_mode",
     "div_mode_",
