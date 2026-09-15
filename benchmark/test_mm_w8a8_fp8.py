@@ -26,7 +26,7 @@ _MM_W8A8_FP8_OUT_CACHE = {}
 _MM_W8A8_FP8_OUT_CACHE_MAX_ENTRIES = 8
 
 
-def _mm_w8a8_fp8_out_cached(a, b):
+def _mm_w8a8_fp8_out_cached(a, b, scale_a, scale_b):
     out_dtype = torch.bfloat16
     device_index = a.device.index if a.device.index is not None else -1
     key = (device_index, a.shape[0], b.shape[1], out_dtype)
@@ -39,6 +39,9 @@ def _mm_w8a8_fp8_out_cached(a, b):
     else:
         _MM_W8A8_FP8_OUT_CACHE.pop(key)
         _MM_W8A8_FP8_OUT_CACHE[key] = out
+    if flag_gems.vendor_name == "mthreads":
+        return flag_gems.mm_w8a8_fp8_out(a, b, scale_a, scale_b, out=out)
+    # The existing Hopper interface accepts unscaled FP8 inputs only.
     return flag_gems.mm_w8a8_fp8_out(a, b, out=out)
 
 
@@ -48,7 +51,21 @@ def mm_w8a8_fp8_input_fn(b, m, n, k, cur_dtype, device, b_column_major):
         weight = torch.randn([n, k], dtype=torch.float32, device=device).t()
     else:
         weight = torch.randn([k, n], dtype=torch.float32, device=device)
-    yield a.to(cur_dtype), weight.to(cur_dtype)
+    # Quantization and scale preparation stay outside the timed calls.
+    # Preserve unit scales for Hopper's existing unscaled-input interface.
+    scale_a = torch.full(
+        (1,),
+        0.5 if flag_gems.vendor_name == "mthreads" else 1.0,
+        dtype=torch.float32,
+        device=device,
+    )
+    scale_b = torch.full(
+        (1,),
+        1.5 if flag_gems.vendor_name == "mthreads" else 1.0,
+        dtype=torch.float32,
+        device=device,
+    )
+    yield a.to(cur_dtype), weight.to(cur_dtype), scale_a, scale_b
 
 
 class MmW8A8Fp8Benchmark(base.BlasBenchmark):
@@ -79,14 +96,13 @@ class MmW8A8Fp8Benchmark(base.BlasBenchmark):
 def test_mm_w8a8_fp8():
     if not hasattr(flag_gems, "mm_w8a8_fp8_out"):
         pytest.skip("mm_w8a8_fp8 benchmark requires a supported FP8 backend")
-    scale = torch.ones(1, dtype=torch.float32, device=flag_gems.device)
 
-    def torch_fp8_mm(a, b):
+    def torch_fp8_mm(a, b, scale_a, scale_b):
         return torch._scaled_mm(
             a,
             b,
-            scale,
-            scale,
+            scale_a,
+            scale_b,
             out_dtype=torch.bfloat16,
             use_fast_accum=False,
         )

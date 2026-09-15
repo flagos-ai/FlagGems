@@ -23,26 +23,14 @@ from flag_gems.utils import libentry
 
 @libentry()
 @triton.jit
-def _quantize_rows(
-    X, Q, S, K: tl.constexpr, SX: tl.constexpr, SK: tl.constexpr, BLOCK_K: tl.constexpr
-):
-    row = tl.program_id(0).to(tl.int64)
-    k = tl.arange(0, BLOCK_K).to(tl.int64)
-    x = tl.load(X + row * SX + k * SK, k < K, 0.0).to(tl.float32)
-    scale = tl.maximum(tl.max(tl.abs(x), 0), 1.0e-10) / 448.0
-    q = tl.minimum(tl.maximum(x / scale, -448.0), 448.0)
-    tl.store(Q + row * K + k, q.to(Q.dtype.element_ty), k < K)
-    tl.store(S + row, scale)
-
-
-@libentry()
-@triton.jit
 def mm_w8a8_fp8_kernel(
     A,
     B,
     C,
     SA,
     SB,
+    Bias,
+    SR,
     M: tl.constexpr,
     N: tl.constexpr,
     K: tl.constexpr,
@@ -57,8 +45,12 @@ def mm_w8a8_fp8_kernel(
     BLOCK_K: tl.constexpr,
     SPLIT_K: tl.constexpr,
     DESCRIPTOR: tl.constexpr,
-    SCALE_A: tl.constexpr,
-    SCALE_B: tl.constexpr,
+    SA_STRIDE: tl.constexpr,
+    SB_STRIDE: tl.constexpr,
+    HAS_BIAS: tl.constexpr,
+    BIAS_STRIDE: tl.constexpr,
+    HAS_SR: tl.constexpr,
+    SR_STRIDE: tl.constexpr,
 ):
     pid = tl.program_id(0)
     grid_m = tl.cdiv(M, BLOCK_M)
@@ -91,14 +83,25 @@ def mm_w8a8_fp8_kernel(
                 0.0,
             )
         acc = tl.dot(a, tl.trans(bt), acc)
-    if SCALE_A:
-        acc *= tl.load(SA + rm, rm < M, 0.0)[:, None]
-    if SCALE_B:
-        acc *= tl.load(SB + rn, rn < N, 0.0)[None, :]
+    if SA_STRIDE == 0:
+        acc *= tl.load(SA)
+    else:
+        acc *= tl.load(SA + rm * SA_STRIDE, rm < M, 0.0)[:, None]
+    if SB_STRIDE == 0:
+        acc *= tl.load(SB)
+    else:
+        acc *= tl.load(SB + rn * SB_STRIDE, rn < N, 0.0)[None, :]
     if SPLIT_K > 1:
         ptr = C + split * M * N + rm[:, None] * N + rn[None, :]
         tl.store(ptr, acc, (rm[:, None] < M) & (rn[None, :] < N))
     else:
+        if HAS_BIAS:
+            acc += tl.load(Bias + rn * BIAS_STRIDE, rn < N, 0.0)[None, :].to(tl.float32)
+        if HAS_SR:
+            if SR_STRIDE == 0:
+                acc /= tl.load(SR)
+            else:
+                acc /= tl.load(SR + rm * SR_STRIDE, rm < M, 1.0)[:, None]
         ptr = C + rm[:, None].to(tl.int64) * CM + rn[None, :].to(tl.int64) * CN
         tl.store(ptr, acc, (rm[:, None] < M) & (rn[None, :] < N))
 
@@ -108,35 +111,31 @@ def mm_w8a8_fp8_kernel(
 def _reduce_split_k(
     P,
     C,
+    Bias,
+    SR,
     M: tl.constexpr,
     N: tl.constexpr,
     CM: tl.constexpr,
     CN: tl.constexpr,
     SPLIT_K: tl.constexpr,
     BLOCK: tl.constexpr,
+    HAS_BIAS: tl.constexpr,
+    BIAS_STRIDE: tl.constexpr,
+    HAS_SR: tl.constexpr,
+    SR_STRIDE: tl.constexpr,
 ):
     x = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     acc = tl.full((BLOCK,), 0, tl.float32)
     for s in range(SPLIT_K):
         acc += tl.load(P + s * M * N + x, x < M * N, 0.0)
+    if HAS_BIAS:
+        acc += tl.load(Bias + (x % N) * BIAS_STRIDE, x < M * N, 0.0).to(tl.float32)
+    if HAS_SR:
+        if SR_STRIDE == 0:
+            acc /= tl.load(SR)
+        else:
+            acc /= tl.load(SR + (x // N) * SR_STRIDE, x < M * N, 1.0)
     tl.store(C + (x // N).to(tl.int64) * CM + (x % N).to(tl.int64) * CN, acc, x < M * N)
-
-
-def _quantize(x):
-    rows, k = x.shape
-    q = torch.empty((rows, k), device=x.device, dtype=torch.float8_e4m3fn)
-    scale = torch.empty(rows, device=x.device, dtype=torch.float32)
-    _quantize_rows[(rows,)](
-        x,
-        q,
-        scale,
-        k,
-        x.stride(0),
-        x.stride(1),
-        BLOCK_K=triton.next_power_of_2(k),
-        num_warps=4 if k <= 2048 else 8,
-    )
-    return q, scale
 
 
 def _select_config(m, n, k, descriptor):
@@ -176,7 +175,7 @@ def _select_config(m, n, k, descriptor):
     return 64, 128, 256, 2, 1
 
 
-def _launch(a, b, out, sa=None, sb=None):
+def _launch(a, b, out, sa, sb, sa_stride, sb_stride, bias, sr, sr_stride):
     m, k = a.shape
     n = b.shape[1]
     # E5M2 descriptor loads fail S5000 accuracy checks. Masked FP8 loads also
@@ -204,12 +203,20 @@ def _launch(a, b, out, sa=None, sb=None):
         if split > 1
         else out
     )
+    epilogue = dict(
+        HAS_BIAS=bias is not None,
+        BIAS_STRIDE=bias.stride(0) if bias is not None else 0,
+        HAS_SR=sr is not None,
+        SR_STRIDE=sr_stride,
+    )
     mm_w8a8_fp8_kernel[(triton.cdiv(m, bm) * triton.cdiv(n, bn), split)](
         aa,
         bb,
         partial,
         sa,
         sb,
+        bias,
+        sr,
         m,
         n,
         k,
@@ -224,8 +231,9 @@ def _launch(a, b, out, sa=None, sb=None):
         BLOCK_K=bk,
         SPLIT_K=split,
         DESCRIPTOR=descriptor,
-        SCALE_A=sa is not None,
-        SCALE_B=sb is not None,
+        SA_STRIDE=sa_stride,
+        SB_STRIDE=sb_stride,
+        **epilogue,
         num_warps=4,
         num_stages=stages,
     )
@@ -233,49 +241,127 @@ def _launch(a, b, out, sa=None, sb=None):
         _reduce_split_k[(triton.cdiv(m * n, 512),)](
             partial,
             out,
+            bias,
+            sr,
             m,
             n,
             out.stride(0),
             out.stride(1),
             SPLIT_K=split,
             BLOCK=512,
+            **epilogue,
             num_warps=4,
         )
     return out
 
 
-def mm_w8a8_fp8(a, b, *, out_dtype=None):
-    """FP8 GEMM, with dynamic row/column quantization for BF16/FP16 inputs."""
+def _scale_stride(scale, x, axis, name):
+    if not isinstance(scale, torch.Tensor) or scale.dtype != torch.float32:
+        raise TypeError(f"{name} must be a float32 tensor")
+    if scale.device != x.device:
+        raise ValueError(f"{name} must be on the same device as the inputs")
+    if scale.numel() == 1 and scale.ndim <= 2:
+        return 0
+    size = x.shape[axis]
+    shape = (size, 1) if axis == 0 else (1, size)
+    if scale.shape == (size,):
+        return scale.stride(0)
+    if scale.shape == shape:
+        return scale.stride(axis)
+    raise ValueError(f"{name} must be a scalar, ({size},), or {shape}")
+
+
+def mm_w8a8_fp8(
+    input,
+    mat2,
+    scale_a,
+    scale_b,
+    bias=None,
+    scale_result=None,
+    out_dtype=None,
+    use_fast_accum=False,
+    *,
+    out=None,
+):
+    """FP8 matmul with the torch._scaled_mm interface on MThreads.
+
+    scale_a is scalar, (M,), or (M, 1); scale_b is scalar, (N,), or (1, N).
+    Scales must be float32 tensors on the input device. Following torch_musa,
+    scale_result divides the scaled product plus bias, for all output dtypes;
+    it can be scalar, (M,), or (M, 1). Output defaults to input.dtype.
+    Both use_fast_accum settings use FP32 accumulation, as in torch_musa.
+    BF16/FP16 inputs and K-block scales are not supported.
+    """
+    a, b = input, mat2
     if a.ndim != 2 or b.ndim != 2:
         raise ValueError("mm_w8a8_fp8 expects two-dimensional inputs")
-    dtype = out_dtype or (
-        a.dtype if a.dtype in (torch.float16, torch.bfloat16) else torch.bfloat16
+    if out is None:
+        dtype = a.dtype if out_dtype is None else out_dtype
+        out = torch.empty((a.shape[0], b.shape[1]), device=a.device, dtype=dtype)
+    return mm_w8a8_fp8_out(
+        a, b, scale_a, scale_b, bias, scale_result, out_dtype, use_fast_accum, out=out
     )
-    out = torch.empty((a.shape[0], b.shape[1]), device=a.device, dtype=dtype)
-    return mm_w8a8_fp8_out(a, b, out=out)
 
 
-def mm_w8a8_fp8_out(a, b, *, out):
+def mm_w8a8_fp8_out(
+    input,
+    mat2,
+    scale_a,
+    scale_b,
+    bias=None,
+    scale_result=None,
+    out_dtype=None,
+    use_fast_accum=False,
+    *,
+    out,
+):
+    """torch._scaled_mm.out-compatible variant with a reusable output."""
+    a, b = input, mat2
     if a.ndim != 2 or b.ndim != 2 or a.shape[1] != b.shape[0]:
         raise ValueError("mm_w8a8_fp8 expects compatible two-dimensional inputs")
     if a.device != b.device or a.device != out.device:
         raise ValueError("inputs and out must be on the same device")
-    supported = (torch.float16, torch.bfloat16, torch.float8_e4m3fn, torch.float8_e5m2)
-    if a.dtype not in supported or b.dtype not in supported:
-        raise TypeError("mm_w8a8_fp8 supports FP16, BF16, and FP8 inputs")
-    if tuple(out.shape) != (a.shape[0], b.shape[1]):
-        raise ValueError("out has an incompatible shape")
-    if out.dtype not in (*supported, torch.float32):
+    fp8_dtypes = (torch.float8_e4m3fn, torch.float8_e5m2)
+    if a.dtype not in fp8_dtypes or b.dtype not in fp8_dtypes:
+        raise TypeError("mm_w8a8_fp8 requires FP8 inputs")
+    if out.dtype not in (*fp8_dtypes, torch.float16, torch.bfloat16, torch.float32):
         raise TypeError("unsupported output dtype")
+    if out_dtype is not None and out_dtype != out.dtype:
+        raise ValueError("out_dtype must match out.dtype")
+    if not isinstance(use_fast_accum, bool):
+        raise TypeError("use_fast_accum must be a bool")
+    sa_stride = _scale_stride(scale_a, a, 0, "scale_a")
+    sb_stride = _scale_stride(scale_b, b, 1, "scale_b")
+    sr_stride = (
+        _scale_stride(scale_result, a, 0, "scale_result")
+        if scale_result is not None
+        else 0
+    )
+    if bias is not None:
+        bias_dtypes = (
+            (torch.float32,)
+            if out.dtype == torch.float32
+            else (torch.float16, torch.bfloat16)
+        )
+        if not isinstance(bias, torch.Tensor) or bias.dtype not in bias_dtypes:
+            raise TypeError("bias has an unsupported dtype for the output")
+        if bias.device != a.device or bias.numel() != b.shape[1]:
+            raise ValueError("bias must contain N elements on the input device")
+        bias = bias.reshape(-1)
+    if tuple(out.shape) != (a.shape[0], b.shape[1]):
+        out.resize_(a.shape[0], b.shape[1])
     if out.numel() == 0:
         return out
-    if a.shape[1] == 0:
-        return out.zero_()
     with torch_device_fn.device(a.device):
-        sa = sb = None
-        if a.dtype in (torch.float16, torch.bfloat16):
-            a, sa = _quantize(a)
-        if b.dtype in (torch.float16, torch.bfloat16):
-            bt, sb = _quantize(b.T)
-            b = bt.T
-        return _launch(a, b, out, sa, sb)
+        return _launch(
+            a,
+            b,
+            out,
+            scale_a,
+            scale_b,
+            sa_stride,
+            sb_stride,
+            bias,
+            scale_result,
+            sr_stride,
+        )
