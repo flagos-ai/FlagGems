@@ -4609,6 +4609,19 @@ ops:
   - LinearAlg
   stages:
   - stable: '3.0'
+- id: fake_quantize_learnable_per_channel_affine
+  description: |
+    Triton kernel implementation for _fake_quantize_learnable_per_channel_affine,
+    the per-channel fake-quantize affine operator with learnable scale and zero point.
+  for:
+    - _fake_quantize_learnable_per_channel_affine
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Math
+  stages:
+    - alpha: '5.4'
 - id: fake_quantize_learnable_per_channel_affine_backward
   description: |
     Triton kernel implementation for `_fake_quantize_learnable_per_channel_affine_backward`,
@@ -5668,6 +5681,19 @@ ops:
   - NeuralNetwork
   stages:
   - beta: '5.3'
+- id: fused_moving_avg_obs_fake_quant
+  description: |
+    Fused moving-average observer with fake-quantize for QAT; performs min/max reduction, EMA running stats update, scale/zero_point calculation, and fake quantization in a single Triton kernel launch.
+  for:
+  - fused_moving_avg_obs_fake_quant
+  labels:
+  - aten
+  - quantization
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: fused_moving_avg_obs_fq_helper
   description: Fused moving-average observer with fake-quantize for QAT; updates running
     min/max, recomputes scale/zero_point, and fake-quantizes the input for both per-tensor
@@ -6040,6 +6066,19 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.3'
+- id: grid_sampler_2d
+  description: |
+    Performs 2D grid sampling of the input tensor using the given grid.
+    Supports bilinear, nearest, and bicubic interpolation with zeros, border, and reflection padding.
+  for:
+  - grid_sampler_2d
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: grid_sampler_3d
   description: 'Given an `input` and a flow-field `grid` in 3D, computes the `output`
     using `input` values and pixel locations from `grid` with trilinear or nearest
@@ -7588,6 +7627,17 @@ ops:
   - BLAS
   stages:
   - alpha: '5.4'
+- id: linalg_cond
+  description: Compute the condition number of a matrix with respect to various norms.
+  for:
+  - linalg_cond
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.4'
 - id: linalg_cross
   description: Computes the cross product of two 3-dimensional vectors along a specified
     dimension.
@@ -8041,6 +8091,19 @@ ops:
   - LinearAlg
   stages:
   - alpha: '5.4'
+- id: linalg_solve
+  description: |
+    Solves a linear system AX = B via fused LU decomposition with partial pivoting
+    and forward/backward substitution in a single Triton kernel.
+  for:
+  - linalg_solve
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.4'
 - id: linalg_solve_triangular
   description: 'Solves a triangular system of linear equations with a unique solution,
     returning
@@ -8086,6 +8149,17 @@ ops:
   description: Computes the singular values of a matrix.
   for:
   - linalg_svdvals
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: linalg_vander
+  description: Computes the Vandermonde matrix of a given vector.
+  for:
+  - linalg_vander
   labels:
   - aten
   - KernelGen
@@ -9801,6 +9875,20 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: native_multi_head_attention
+  description: >
+    Triton kernel implementation of the native multi-head attention forward
+    pass, including the fused qkv projection, scaled dot-product attention and
+    output projection.
+  for:
+    - _native_multi_head_attention
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - NeuralNetwork
+  stages:
+    - alpha: '5.4'
 - id: ne
   description: Computes that `input` is not equal to `other` element-wise.
   for:
@@ -10876,6 +10964,19 @@ ops:
   - Tensor
   stages:
   - stable: '2.2'
+- id: quantized_gru
+  description: |
+    Quantized GRU (Gated Recurrent Unit) implementation using Triton fused gate kernel for efficient RNN inference.
+  for:
+  - quantized_gru.input
+  - quantized_gru.data
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: quantized_lstm
   description: Applies a multi-layer quantized LSTM over an input sequence. Takes
     the input sequence, initial hidden and cell states, and per-layer quantized weights,
@@ -13034,6 +13135,21 @@ ops:
   - BLAS
   stages:
   - alpha: '5.4'
+- id: sparse_semi_structured_linear
+  description: 'Performs a semi-structured (2:4) sparse linear transformation
+
+    with optional bias and activation.
+
+    '
+  for:
+  - _sparse_semi_structured_linear
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.4'
 - id: sparse_semi_structured_mm
   description: 'Performs a sparse semi-structured matrix multiplication of a dense
     matrix with a 2:4 sparsity pattern against a dense matrix.
@@ -13211,6 +13327,18 @@ ops:
   labels:
   - aten
   - pointwise
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: special_entr
+  description: 'Computes the entropy function element-wise: entr(x) = -x * ln(x)
+    for x > 0, 0 for x == 0, -inf for x < 0.'
+  for:
+  - special_entr
+  labels:
+  - aten
   - KernelGen
   kind:
   - Math
@@ -14217,6 +14345,17 @@ ops:
     for torch.compile symbolic tracing.
   for:
   - sym_stride
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
+- id: t_
+  description: Transpose a 2D tensor in-place.
+  for:
+  - t_
   labels:
   - aten
   - KernelGen
