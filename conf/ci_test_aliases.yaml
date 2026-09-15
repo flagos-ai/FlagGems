@@ -57,6 +57,3 @@ segment_reduce_backward_out: test_segment_reduce
 special_chebyshev_polynomial_t_out: test_special_chebyshev_polynomial_t
 upsample_bicubic2d_aa_backward: test_upsample_bicubic2d_aa
 upsample_linear1d_backward: test_upsample_linear1d
-
-# Underscore-prefixed aten op shares the base operator test file
-_adaptive_avg_pool3d_backward: test_adaptive_avg_pool3d_backward
