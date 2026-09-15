@@ -1217,7 +1217,9 @@ def test_median_strided_nonlast_large_reduction_out(keepdim):
     ref_out = torch.median(
         ref_inp, dim=0, keepdim=keepdim, out=(ref_values, ref_indices)
     )
-    res_out = gems_median_dim_values(inp, dim=0, keepdim=keepdim, values=values, indices=indices)
+    res_out = gems_median_dim_values(
+        inp, dim=0, keepdim=keepdim, values=values, indices=indices
+    )
 
     assert res_out.values.data_ptr() == values.data_ptr()
     assert res_out.indices.data_ptr() == indices.data_ptr()
@@ -1365,9 +1367,7 @@ def test_median_dim_values_out(keepdim):
     ref_result = torch.ops.aten.median.dim_values(
         ref_inp, 1, keepdim, values=ref_values, indices=ref_indices
     )
-    res_result = gems_median_dim_values(
-        inp, 1, keepdim, values=values, indices=indices
-    )
+    res_result = gems_median_dim_values(inp, 1, keepdim, values=values, indices=indices)
 
     _assert_median_dim_equal(
         res_result, ref_result, torch.float32, inp=inp, dim=1, keepdim=keepdim
