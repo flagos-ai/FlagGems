@@ -549,6 +549,7 @@ _FULL_CONFIG = (
     ("divide_.Tensor", true_divide_),
     ("divide_.Tensor_mode", div_mode_),
     ("dot", dot),
+    ("dropout_", dropout_),
     ("dsplit.array", dsplit),
     ("dsplit.int", dsplit),
     ("elu", elu),
