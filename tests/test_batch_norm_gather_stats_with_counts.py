@@ -73,17 +73,16 @@ def test_batch_norm_gather_stats_with_counts(shape, dtype, num_segments):
         counts,
     )
 
-    with flag_gems.use_gems():
-        res_out = torch.batch_norm_gather_stats_with_counts(
-            input_t,
-            mean,
-            invstd,
-            running_mean.clone(),
-            running_var.clone(),
-            0.1,
-            1e-5,
-            counts,
-        )
+    res_out = torch.batch_norm_gather_stats_with_counts(
+        input_t,
+        mean,
+        invstd,
+        running_mean.clone(),
+        running_var.clone(),
+        0.1,
+        1e-5,
+        counts,
+    )
 
     for ref_val, res_val in zip(ref_out, res_out):
         # Output is always float32 regardless of input dtype
