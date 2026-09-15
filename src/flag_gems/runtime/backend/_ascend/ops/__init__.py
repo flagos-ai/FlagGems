@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from ._dyn_quant_matmul_4bit import _dyn_quant_matmul_4bit
 from .adaptive_max_pool3d import adaptive_max_pool3d
 from .addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out
 from .all import all, all_dim, all_dims
@@ -164,6 +165,7 @@ from .zeros import zeros
 from .zeros_like import zeros_like
 
 __all__ = [
+    "_dyn_quant_matmul_4bit",
     "_segment_reduce_backward",
     "_segment_reduce_backward_out",
     "_unique2",
