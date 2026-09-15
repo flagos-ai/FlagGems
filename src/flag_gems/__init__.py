@@ -1005,6 +1005,8 @@ _FULL_CONFIG = (
     ("prelu", prelu),
     ("prod", prod),
     ("prod.dim_int", prod_dim),
+    ("put", put),
+    ("put.out", put_out),
     ("quantile", quantile),
     ("quantized_lstm.input", quantized_lstm),
     ("rad2deg", rad2deg),
