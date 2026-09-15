@@ -67,7 +67,7 @@ classifiers = [
 dependencies = [
     "packaging>=26.0",
     "PyYAML==6.0.1",
-    "sqlalchemy==2.0.48",
+    "sqlalchemy>=1.4.31,<2.1",
     # python 3.10 requires numpy < 2, while upper layer requires numpy>2 ..
     "numpy",
 ]
