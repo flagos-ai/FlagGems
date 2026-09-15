@@ -69,10 +69,12 @@ def _call_median_dim_values(inp, dim, keepdim, equal_nan=False, exact_indices=Tr
     utils.gems_assert_equal(result.values, ref_result.values, equal_nan=equal_nan)
     utils.gems_assert_equal(values, ref_values, equal_nan=equal_nan)
 
-    # Whatever index comes back has to point at the median it reports.
+    # Whatever index comes back has to point at the median it reports.  Both
+    # sides live on the accelerator, so move them to the reference device
+    # first: gems_assert_equal expects `ref` to be there when --ref=cpu is used.
     utils.gems_assert_equal(
-        _selected_along_dim(inp, dim, result.indices, keepdim),
-        result.values,
+        utils.to_reference(_selected_along_dim(inp, dim, result.indices, keepdim)),
+        utils.to_reference(result.values),
         equal_nan=equal_nan,
     )
     if exact_indices:
