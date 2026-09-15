@@ -27,7 +27,9 @@ if has_triton_tle(3, 6, 0):
     try:
         import triton.experimental.tle.language as tle
 
-        HAS_TLE_W8A8_BLOCK_FP8_BMM = hasattr(tle.gpu, "alloc_barriers")
+        HAS_TLE_W8A8_BLOCK_FP8_BMM = hasattr(tle, "pipe") and hasattr(
+            tle.gpu, "warp_specialize"
+        )
     except ImportError:
         tle = None
         HAS_TLE_W8A8_BLOCK_FP8_BMM = False
@@ -46,19 +48,18 @@ def _set_triton_descriptor_allocator(device: torch.device) -> None:
 
 
 def _get_tle_w8a8_block_fp8_bmm_configs():
-    # TLE shared-memory tensors require power-of-two shapes, so stage counts
-    # like 6 cannot compile.  Stage 8 compiles, but hits launch failures on
-    # large DeepSeek-V4 Pro shapes (for example BMM K=7168), so keep the stable
-    # Hopper TLE path on 4 stages for now.
+    # The current TLE memory-descriptor type still rejects non-power-of-two
+    # stage dimensions, so keep stage 6 disabled.  Stages 4 and 8 are both
+    # correct once the persistent pipe generation continues across output tiles.
     return [
         config
         for config in runtime.get_tuned_config("w8a8_block_fp8_bmm")
-        if config.num_stages == 4
+        if config.num_stages in (4, 8)
     ]
 
 
 def _filter_tle_w8a8_block_fp8_bmm_configs(configs):
-    return [config for config in configs if config.num_stages == 4]
+    return [config for config in configs if config.num_stages in (4, 8)]
 
 
 class _TLEW8A8BlockFP8BMMTuner(LibTuner.get("default")):
@@ -105,12 +106,7 @@ def _get_tile(
 
 @triton.jit
 def _tle_w8a8_block_fp8_bmm_compute_partition(
-    x_smem,
-    y_smem,
-    empty_x,
-    empty_y,
-    full_x,
-    full_y,
+    xy_reader,
     xs_ptr,
     z_ptr,
     ys_ptr,
@@ -159,13 +155,15 @@ def _tle_w8a8_block_fp8_bmm_compute_partition(
         else:
             acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
 
+        # A persistent CTA keeps the same pipe barriers while advancing by
+        # num_sms output tiles.  Carry the ring generation across those tiles;
+        # restarting it from k_block_idx=0 can wait on the wrong parity.
+        tile_sequence = tile_id // num_sms
         for k_block_idx in range(0, num_k_blocks):
-            index = k_block_idx % num_stages
-            phase = k_block_idx // num_stages
-            x_slot = x_smem.slot(index).slot(0)  # [BLOCK_M, BLOCK_K]
-            y_slot = y_smem.slot(index)  # [BLOCK_N, BLOCK_K]
-            tle.gpu.barrier_wait(full_x[index], phaseIdx=phase)
-            tle.gpu.barrier_wait(full_y[index], phaseIdx=phase)
+            ring_iter = tile_sequence * num_k_blocks + k_block_idx
+            xy_slot = xy_reader.wait(ring_iter).slot
+            x_slot = xy_slot.x.slot(0)  # [BLOCK_M, BLOCK_K]
+            y_slot = xy_slot.y  # [BLOCK_N, BLOCK_K]
 
             x_s = tl.load(
                 xs_ptr + xs_row_base + k_block_idx * xs_sKb,
@@ -194,8 +192,7 @@ def _tle_w8a8_block_fp8_bmm_compute_partition(
                 partial = tle.gpu.wgmma_wait(0, partial)
                 acc = acc + partial * xy_s[:, None]
 
-            tle.gpu.barrier_arrive(empty_x[index], phaseIdx=phase)
-            tle.gpu.barrier_arrive(empty_y[index], phaseIdx=phase)
+            xy_reader.release(ring_iter)
 
         if SWAP_AB:
             acc_out = tl.trans(acc)
@@ -214,12 +211,7 @@ def _tle_w8a8_block_fp8_bmm_compute_partition(
 def _tle_w8a8_block_fp8_bmm_load_partition(
     x_desc,
     y_desc,
-    x_smem,
-    y_smem,
-    empty_x,
-    empty_y,
-    full_x,
-    full_y,
+    xy_writer,
     B: tl.constexpr,
     M: tl.constexpr,
     M_aligned: tl.constexpr,
@@ -246,26 +238,24 @@ def _tle_w8a8_block_fp8_bmm_load_partition(
         n_start = n_tile_id * BLOCK_N
         y_row = batch_id * N + n_start
 
+        tile_sequence = tile_id // num_sms
         for k_block_idx in range(0, K // BLOCK_K):
-            index = k_block_idx % num_stages
-            phase = k_block_idx // num_stages
+            ring_iter = tile_sequence * (K // BLOCK_K) + k_block_idx
             k_start = k_block_idx * BLOCK_K
-            tle.gpu.barrier_wait(empty_x[index], phaseIdx=phase)
+            xy_slot = xy_writer.acquire(ring_iter)
             tle.gpu.copy(
                 x_desc,
-                x_smem.slot(index),
+                xy_slot.x,
                 [1, BLOCK_M, BLOCK_K],
                 [batch_id, m_start, k_start],
-                barrier=full_x[index],
             )
-            tle.gpu.barrier_wait(empty_y[index], phaseIdx=phase)
             tle.gpu.copy(
                 y_desc,
-                y_smem.slot(index),
+                xy_slot.y,
                 [BLOCK_N, BLOCK_K],
                 [y_row, k_start],
-                barrier=full_y[index],
             )
+            xy_writer.commit(ring_iter)
 
 
 if HAS_TLE_W8A8_BLOCK_FP8_BMM:
@@ -308,7 +298,7 @@ if HAS_TLE_W8A8_BLOCK_FP8_BMM:
         num_stages: tl.constexpr,
         num_sms: tl.constexpr,
     ):
-        _ = num_warps
+        _ = (num_warps, X_ELEM_BYTES, Y_ELEM_BYTES)
         x_smem = tle.gpu.alloc(
             [num_stages, 1, BLOCK_M, BLOCK_K],
             dtype=x_desc.dtype,
@@ -321,21 +311,12 @@ if HAS_TLE_W8A8_BLOCK_FP8_BMM:
             layout=None,
             scope=tle.gpu.smem,
         )
-        empty_x = tle.gpu.alloc_barriers(
-            num_barriers=num_stages, arrive_count=1, init=tle.gpu.READY
-        )
-        empty_y = tle.gpu.alloc_barriers(
-            num_barriers=num_stages, arrive_count=1, init=tle.gpu.READY
-        )
-        full_x = tle.gpu.alloc_barriers(
-            num_barriers=num_stages,
-            arrive_count=1,
-            expect_bytes=BLOCK_M * BLOCK_K * X_ELEM_BYTES,
-        )
-        full_y = tle.gpu.alloc_barriers(
-            num_barriers=num_stages,
-            arrive_count=1,
-            expect_bytes=BLOCK_N * BLOCK_K * Y_ELEM_BYTES,
+        xy_pipe = tle.pipe(
+            capacity=num_stages,
+            scope="cta",
+            name="w8a8_xy",
+            x=x_smem,
+            y=y_smem,
         )
 
         tle.gpu.warp_specialize(
@@ -343,12 +324,7 @@ if HAS_TLE_W8A8_BLOCK_FP8_BMM:
                 (
                     _tle_w8a8_block_fp8_bmm_compute_partition,
                     (
-                        x_smem,
-                        y_smem,
-                        empty_x,
-                        empty_y,
-                        full_x,
-                        full_y,
+                        xy_pipe.reader(),
                         xs_ptr,
                         z_ptr,
                         ys_ptr,
@@ -377,12 +353,7 @@ if HAS_TLE_W8A8_BLOCK_FP8_BMM:
                     (
                         x_desc,
                         y_desc,
-                        x_smem,
-                        y_smem,
-                        empty_x,
-                        empty_y,
-                        full_x,
-                        full_y,
+                        xy_pipe.writer(),
                         B,
                         M,
                         M_aligned,
