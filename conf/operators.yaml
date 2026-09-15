@@ -252,6 +252,21 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.1'
+- id: adaptive_max_pool1d
+  description: 'Applies a one-dimensional adaptive max pooling over an input signal,
+
+    returning both the pooled values and the selected input indices.
+
+    '
+  for:
+  - adaptive_max_pool1d
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: adaptive_max_pool2d
   description: 'Applies two-dimensional adaptive max pooling and returns both pooled
     values
