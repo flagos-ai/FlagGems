@@ -55,7 +55,7 @@ permissions:
 
 jobs:
   test:
-    if: ${{ inputs.backend != 'iluvatar' }}
+    if: ${{ inputs.backend != 'iluvatar' && inputs.backend != 'thead' }}
     runs-on: ${{ inputs.runner_label }}
     concurrency:
       group: >-
@@ -126,3 +126,106 @@ jobs:
         run: |
           source .venv/bin/activate
           tools/test-op.sh ${{ inputs.pr_id }}
+
+  test-thead:
+    if: ${{ inputs.backend == 'thead' }}
+    runs-on: ${{ inputs.runner_label }}
+    concurrency:
+      group: >-
+        op-test-${{ inputs.backend }}-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    container:
+      # Official FlagTree PPU image: Python 3.12, vendor Torch 2.10, SDK 2.1.
+      # https://github.com/flagos-ai/FlagTree/wiki/User-manual-for-ppu
+      image: harbor.baai.ac.cn/flagtree/flagtree-ppu-py312-torch2.10.0-sdk2.1.0-cu130-ubuntu24.04@sha256:5181a3396d4619e7aec9e23bc01c3d996e0d5901fa39947f5f710b50c59b3084
+      options: >-
+        --shm-size=8g
+        --device=/dev/alixpu
+        --device=/dev/alixpu_ctl
+        --device=/dev/alixpu_ppu0
+    env:
+      PYTHONNOUSERSITE: '1'
+      PIP_INDEX_URL: https://pypi.org/simple
+      TRITON_PPU_LLC_PATH: /usr/local/PPU_SDK/bin/ppu-llc
+      TRITON_IR_FORMATTER_PATH: /usr/local/PPU_SDK/bin/llvm-irformatter
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        continue-on-error: true
+      - uses: ./.github/actions/checkout-retry
+
+      - name: Install FlagGems with the image's PPU runtime
+        run: |
+          set -euo pipefail
+          # Do not run setup.sh thead: its backend extra installs the old Torch.
+          python3.12 -m venv --system-site-packages .venv
+          source .venv/bin/activate
+          python - <<'PYTHON'
+          import json
+          import torch
+          from pathlib import Path
+
+          assert torch.__version__.split('+')[0] == '2.10.0', torch.__version__
+          Path('.venv/ppu-torch.json').write_text(json.dumps({
+              'version': torch.__version__, 'path': torch.__file__
+          }))
+          Path('.venv/ppu-constraints.txt').write_text(
+              f'torch==={torch.__version__}\n'
+          )
+          PYTHON
+          export PIP_CONSTRAINT="$PWD/.venv/ppu-constraints.txt"
+          python -m pip install 'setuptools>=64,<77' 'setuptools-scm>=8,<10' 'wheel==0.46.2' 'PyYAML==6.0.1'
+          FLAGTREE_PACKAGE=$(python - <<'PYTHON'
+          import yaml
+          from pathlib import Path
+
+          print(yaml.safe_load(Path('src/flag_gems/backends.yaml').read_text())
+                ['backends']['thead']['flagtree'])
+          PYTHON
+          )
+          python -m pip install --ignore-installed --no-deps "$FLAGTREE_PACKAGE" \
+            --index-url https://resource.flagos.net/repository/flagos-pypi-hosted/simple
+          python -m pip install --no-build-isolation -e '.[test]'
+          python - <<'PYTHON'
+          import importlib.metadata
+          import json
+          from pathlib import Path
+          import torch
+          import triton
+          import flag_gems
+
+          before = json.loads(Path('.venv/ppu-torch.json').read_text())
+          assert {'version': torch.__version__, 'path': torch.__file__} == before
+          assert flag_gems.vendor_name == 'thead', flag_gems.vendor_name
+          print(f'Torch: {torch.__version__} ({torch.__file__})')
+          print(f'FlagTree: {importlib.metadata.version("flagtree")}')
+          print(f'Triton: {triton.__version__}')
+          PYTHON
+          "$TRITON_PPU_LLC_PATH" --version
+
+      - name: Check PPU availability
+        env:
+          GPU_CHECK_SCRIPT: ${{ inputs.gpu_check_script }}
+        run: |
+          source .venv/bin/activate
+          GPU_OUTPUT=$(bash "${GPU_CHECK_SCRIPT:-tools/gpu_check_thead.sh}")
+          echo "$GPU_OUTPUT"
+          AVAILABLE_GPUS=$(echo "$GPU_OUTPUT" | grep '^Available GPUs:' | cut -d: -f2 | tr -d ' ')
+          test -n "$AVAILABLE_GPUS"
+          echo "AVAILABLE_GPUS=${AVAILABLE_GPUS}" >> "$GITHUB_ENV"
+
+      - name: Run PPU tests
+        env:
+          CHANGED_FILES: ${{ inputs.changed_files }}
+          TEST_SCRIPT: ${{ inputs.test_script }}
+          BACKEND: ${{ inputs.backend }}
+          PR_ID: ${{ inputs.pr_id }}
+        run: |
+          source .venv/bin/activate
+          if [[ -n "$TEST_SCRIPT" ]]; then
+            bash "$TEST_SCRIPT" "$BACKEND" "$PR_ID"
+          else
+            bash tools/test-op.sh "$PR_ID"
+          fi
