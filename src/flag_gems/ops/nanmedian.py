@@ -501,6 +501,9 @@ def _empty_flat_value(inp):
     out = torch.empty((), dtype=inp.dtype, device=inp.device)
     if torch.is_floating_point(inp):
         out.fill_(float("nan"))
+    elif inp.dtype in (torch.int8, torch.uint8, torch.int16):
+        # PyTorch converts the empty reduction sentinel to zero for narrow integers.
+        out.zero_()
     else:
         out.fill_(torch.iinfo(inp.dtype).min)
     return out

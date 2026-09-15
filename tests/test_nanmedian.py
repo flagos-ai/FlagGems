@@ -48,6 +48,7 @@ LARGE_RADIX_DTYPES = _filter_reference_supported(
         torch.float32,
         torch.bfloat16,
         torch.int32,
+        torch.int8,
         torch.uint8,
     ]
 )
@@ -55,11 +56,12 @@ LARGE_RADIX_DTYPES = _filter_reference_supported(
 
 def _make_input(shape, dtype, with_nan=True):
     if dtype is torch.uint8:
-        inp = torch.randint(0, 101, shape, dtype=dtype, device="cpu").to(
+        inp = torch.randint(0, 256, shape, dtype=dtype, device="cpu").to(
             flag_gems.device
         )
     elif not dtype.is_floating_point:
-        inp = torch.randint(-100, 101, shape, dtype=dtype, device="cpu").to(
+        low, high = (-128, 128) if dtype == torch.int8 else (-100, 101)
+        inp = torch.randint(low, high, shape, dtype=dtype, device="cpu").to(
             flag_gems.device
         )
     else:
@@ -301,7 +303,10 @@ def test_nanmedian_dim_values_non_contiguous_out():
 
 
 @pytest.mark.nanmedian
-@pytest.mark.parametrize("dtype", [torch.float32, torch.int32, torch.uint8])
+@pytest.mark.parametrize(
+    "dtype",
+    [torch.float32, torch.int8, torch.uint8, torch.int16, torch.int32, torch.int64],
+)
 def test_nanmedian_empty(dtype):
     inp = torch.empty((0,), dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
@@ -312,8 +317,22 @@ def test_nanmedian_empty(dtype):
     _assert_nanmedian_values(res, ref, dtype)
 
 
+@pytest.mark.nanmedian_out
+@pytest.mark.parametrize(
+    "dtype",
+    [torch.float32, torch.int8, torch.uint8, torch.int16, torch.int32, torch.int64],
+)
+def test_nanmedian_out_empty(dtype):
+    inp = torch.empty((0,), dtype=dtype, device=flag_gems.device)
+    ref = torch.nanmedian(utils.to_reference(inp))
+    out = torch.full((), 1, dtype=dtype, device=flag_gems.device)
+    res = flag_gems.nanmedian_out(inp, out=out)
+    assert res is out
+    _assert_nanmedian_values(res, ref, dtype)
+
+
 @pytest.mark.nanmedian_dim
-@pytest.mark.parametrize("dtype", [torch.float32, torch.int32, torch.uint8])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.int32, torch.int8, torch.uint8])
 def test_nanmedian_dim_empty(dtype):
     inp = torch.empty((2, 0), dtype=dtype, device=flag_gems.device)
     with pytest.raises(IndexError):
@@ -331,3 +350,71 @@ def test_nanmedian_bool_unsupported():
     inp = torch.tensor([True, False], device=flag_gems.device)
     with pytest.raises(NotImplementedError):
         flag_gems.nanmedian(inp)
+
+
+@pytest.mark.nanmedian
+@pytest.mark.parametrize("dtype", EXTRA_INT_DTYPES)
+@pytest.mark.parametrize("length", [16, 17, 131073])
+@pytest.mark.parametrize("case", ["mixed", "equal"])
+def test_nanmedian_byte_boundaries(dtype, length, case):
+    inp = _byte_boundary_input(dtype, length, case)
+    ref = torch.nanmedian(inp.cpu())
+    res = flag_gems.nanmedian(inp)
+    assert res.dtype == dtype
+    utils.gems_assert_equal(res, ref)
+
+
+@pytest.mark.nanmedian_out
+@pytest.mark.parametrize("dtype", EXTRA_INT_DTYPES)
+@pytest.mark.parametrize("length", [16, 17, 131073])
+@pytest.mark.parametrize("case", ["mixed", "equal"])
+def test_nanmedian_out_byte_boundaries(dtype, length, case):
+    inp = _byte_boundary_input(dtype, length, case)
+    ref = torch.nanmedian(inp.cpu())
+    out = torch.empty((), dtype=dtype, device=flag_gems.device)
+    res = flag_gems.nanmedian_out(inp, out=out)
+    assert res is out
+    utils.gems_assert_equal(res, ref)
+
+
+def _byte_boundary_input(dtype, length, case):
+    low, high = torch.iinfo(dtype).min, torch.iinfo(dtype).max
+    middle = -1 if dtype == torch.int8 else 128
+    data = [high, low, middle, 0, high, low] if case == "mixed" else [high]
+    return (
+        torch.tensor(data, dtype=dtype)
+        .repeat((length + len(data) - 1) // len(data))[:length]
+        .to(flag_gems.device)
+    )
+
+
+@pytest.mark.nanmedian_dim
+@pytest.mark.parametrize("dtype", EXTRA_INT_DTYPES)
+@pytest.mark.parametrize("length", [16, 17, 129])
+@pytest.mark.parametrize("keepdim", [False, True])
+@pytest.mark.parametrize("case", ["mixed", "equal"])
+def test_nanmedian_dim_byte_boundaries(dtype, length, keepdim, case):
+    inp = _byte_boundary_input(dtype, length, case).repeat(2, 1)
+    ref = torch.nanmedian(inp.cpu(), dim=-1, keepdim=keepdim)
+    res = flag_gems.nanmedian_dim(inp, dim=-1, keepdim=keepdim)
+    _assert_nanmedian_values(res.values, ref.values, dtype)
+    _assert_nanmedian_indices_valid(inp, res.values, res.indices, -1, keepdim, dtype)
+
+
+@pytest.mark.nanmedian_dim_values
+@pytest.mark.parametrize("dtype", EXTRA_INT_DTYPES)
+@pytest.mark.parametrize("length", [16, 17, 129])
+@pytest.mark.parametrize("keepdim", [False, True])
+@pytest.mark.parametrize("case", ["mixed", "equal"])
+def test_nanmedian_dim_values_byte_boundaries(dtype, length, keepdim, case):
+    inp = _byte_boundary_input(dtype, length, case).repeat(2, 1)
+    ref = torch.nanmedian(inp.cpu(), dim=-1, keepdim=keepdim)
+    values = torch.empty(ref.values.shape, dtype=dtype, device=flag_gems.device)
+    indices = torch.empty(ref.indices.shape, dtype=torch.long, device=flag_gems.device)
+    res = flag_gems.nanmedian_dim_values(
+        inp, dim=-1, keepdim=keepdim, values=values, indices=indices
+    )
+    assert res.values is values
+    assert res.indices is indices
+    _assert_nanmedian_values(values, ref.values, dtype)
+    _assert_nanmedian_indices_valid(inp, values, indices, -1, keepdim, dtype)
