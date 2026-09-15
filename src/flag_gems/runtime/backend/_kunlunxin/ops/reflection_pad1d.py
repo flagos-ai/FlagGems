@@ -24,22 +24,6 @@ from flag_gems.runtime import torch_device_fn
 logger = logging.getLogger(__name__)
 
 
-# Flat 1D kernel over the ENTIRE output (all batch rows at once).
-#
-# ROOT CAUSE of the old slowness: the previous kernel wrapped every store index
-# with `% W_out` ("modulo wrap") to avoid masked stores. On KunlunXin XPU that
-# runtime modulo defeats OffsetAnalysis, so EVERY load/store degrades to the
-# discrete per-element path (~1.2 GB/s), a ~470x penalty vs mask-based
-# contiguous stores (see reflection_pad2d_perf_fix.md). Baseline big shape
-# [32,64,2048] pad[3,5] measured ~14ms / speedup 0.002.
-#
-# Fix: flatten (b, w_out) into one linear output index `o` and store to `o`
-# directly (provably stride-1 -> block DMA). A single boolean mask
-# `o < total_out` handles the tail. Because the layout is one flat contiguous
-# buffer, the only masked-out threads sit at the very end (o >= total_out) and
-# could not corrupt a valid element even if not suppressed (and it is in fact
-# suppressed here). This removes the "adjacent batch corruption" hazard that
-# motivated the modulo wrap.
 @triton.jit
 def reflection_pad1d_kernel(
     in_ptr,
