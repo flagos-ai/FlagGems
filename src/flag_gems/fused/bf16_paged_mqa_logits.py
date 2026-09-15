@@ -80,7 +80,8 @@ def _kernel_H32_D128(
     scores = tl.dot(k_block, q_t)
 
     # ReLU + weighted sum → logits[64] fp32
-    scores = tl.maximum(scores, 0.0)
+    # Workaround: synthesized zero tensor avoids a rank-0 constant src1
+    scores = tl.maximum(scores, scores * 0.0)
     logits_val = tl.sum(scores * w[None, :], axis=1)
 
     # Store (mask only the last partial block)
@@ -144,7 +145,8 @@ def _kernel_H64_D128(
     k_block = tl.load(kv_cache_ptr + k_offs, eviction_policy="evict_first")
 
     scores = tl.dot(k_block, q_t)
-    scores = tl.maximum(scores, 0.0)
+    # Workaround: synthesized zero tensor avoids a rank-0 constant src1
+    scores = tl.maximum(scores, scores * 0.0)
     logits_val = tl.sum(scores * w[None, :], axis=1)
 
     out_base = pid_row * max_ctx + kv_pos
