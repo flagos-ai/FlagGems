@@ -796,6 +796,7 @@ _FULL_CONFIG = (
     ("lift.out", lift_out),
     ("lift_fresh", lift_fresh),
     ("lift_fresh_copy", lift_fresh_copy),
+    ("linalg__powsum", linalg__powsum),
     ("linalg_cholesky", linalg_cholesky),
     ("linalg_cond", linalg_cond),
     ("linalg_cond.p_str", linalg_cond_p_str),
