@@ -130,7 +130,7 @@ def _linalg_cross_complex_xpu(input, other, dim, output=None):
 
 def linalg_cross(input, other, *, dim=-1):
     """Kunlunxin XPU implementation of ``torch.linalg.cross``."""
-    logger.debug("GEMS LINALG_CROSS (kunlunxin)")
+    logger.debug("GEMS_KUNLUNXIN LINALG_CROSS")
     if input.is_complex():
         return _linalg_cross_complex_xpu(input, other, dim)
     # The generic real kernels compile and pass on XPU; keep them untouched.
@@ -138,7 +138,7 @@ def linalg_cross(input, other, *, dim=-1):
 
 
 def linalg_cross_out(input, other, *, dim=-1, out):
-    logger.debug("GEMS LINALG_CROSS_OUT (kunlunxin)")
+    logger.debug("GEMS_KUNLUNXIN LINALG_CROSS_OUT")
     if torch._C._is_alias_of(out, input) or torch._C._is_alias_of(out, other):
         raise RuntimeError(
             "linalg_cross: out must not share memory with either input tensor"
