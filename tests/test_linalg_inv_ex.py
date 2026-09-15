@@ -62,12 +62,13 @@ def _make_invertible_matrix(shape, dtype, device):
     ],
 )
 @pytest.mark.parametrize("dtype", _TEST_DTYPES)
-def test_linalg_inv_ex(shape, dtype):
+@pytest.mark.parametrize("check_errors", [False, True])
+def test_linalg_inv_ex(shape, dtype, check_errors):
     A = _make_invertible_matrix(shape, dtype, DEVICE)
     ref_A = utils.to_reference(A)
 
-    ref_result = torch.linalg.inv_ex(ref_A)
-    res_result = torch.linalg.inv_ex(A)
+    ref_result = torch.linalg.inv_ex(ref_A, check_errors=check_errors)
+    res_result = torch.linalg.inv_ex(A, check_errors=check_errors)
 
     n = shape[-1]
 
