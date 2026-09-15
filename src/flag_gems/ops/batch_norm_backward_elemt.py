@@ -21,23 +21,19 @@ import triton
 import triton.language as tl
 from torch import Tensor
 
+from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry, libtuner
+from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
 
 @libentry()
-@libtuner(
-    configs=[
-        triton.Config({"BLOCK_SIZE": 1024}, num_warps=4, num_stages=4),
-        triton.Config({"BLOCK_SIZE": 1024}, num_warps=8, num_stages=1),
-        triton.Config({"BLOCK_SIZE": 2048}, num_warps=8, num_stages=1),
-        triton.Config({"BLOCK_SIZE": 2048}, num_warps=8, num_stages=2),
-        triton.Config({"BLOCK_SIZE": 4096}, num_warps=16, num_stages=1),
-    ],
-    key=["n_elements"],
+@triton.autotune(
+    configs=runtime.get_tuned_config("batch_norm"),
+    key=["batch_dim", "spatial_dim"],
 )
+@triton.heuristics(runtime.get_heuristic_config("batch_norm"))
 @triton.jit
 def batch_norm_backward_elemt_kernel(
     grad_out_ptr,
@@ -49,59 +45,90 @@ def batch_norm_backward_elemt_kernel(
     sum_dy_xmu_ptr,
     grad_input_ptr,
     inv_count,
-    C,
-    spatial_size,
-    n_elements,
-    BLOCK_SIZE: tl.constexpr,
+    batch_dim,
+    spatial_dim,
+    grad_out_batch_stride,
+    grad_out_feat_stride,
+    grad_out_spatial_stride,
+    input_batch_stride,
+    input_feat_stride,
+    input_spatial_stride,
+    grad_input_batch_stride,
+    grad_input_feat_stride,
+    grad_input_spatial_stride,
     HAS_WEIGHT: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
 ):
     """
-    Compute batch norm backward element-wise gradient in a single fused kernel.
+    Per-channel batch norm backward element-wise gradient kernel.
+
+    Grid is 1D over channels (feat_dim). Each program loads per-channel
+    statistics once, then tiles over (batch, spatial) dimensions with a
+    2D BLOCK_M x BLOCK_N tile for coalesced memory access.
 
     Formula:
-    grad_input = weight * invstd * (grad_out - (sum_dy + xmu * invstd^2 * sum_dy_xmu) / count)
-    where xmu = input - mean
-
-    All computation is fully inlined. No external op calls.
-    Grid is 1D over total elements, tiled by BLOCK_SIZE.
+    grad_input = weight * invstd * (grad_out
+                 - (sum_dy + (input - mean) * invstd^2 * sum_dy_xmu) / count)
     """
-    pid = tl.program_id(0)
+    feat_pid = tl.program_id(axis=0)
 
-    # Element offsets for this tile
-    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-
-    # Coalesced loads of input and grad_output (upcast to fp32 for precision)
-    inp = tl.load(input_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
-    grad_out = tl.load(grad_out_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
-
-    # Compute channel index: for (N, C, *spatial) layout
-    # element at flat offset i belongs to channel (i // spatial_size) % C
-    channel_idx = (offsets // spatial_size) % C
-
-    # Gathered loads of per-channel statistics (upcast to fp32)
-    mean = tl.load(mean_ptr + channel_idx, mask=mask, other=0.0).to(tl.float32)
-    invstd = tl.load(invstd_ptr + channel_idx, mask=mask, other=1.0).to(tl.float32)
-    sum_dy = tl.load(sum_dy_ptr + channel_idx, mask=mask, other=0.0).to(tl.float32)
-    sum_dy_xmu = tl.load(sum_dy_xmu_ptr + channel_idx, mask=mask, other=0.0).to(
-        tl.float32
-    )
+    # Load per-channel statistics once (scalar per program)
+    mean = tl.load(mean_ptr + feat_pid).to(tl.float32)
+    invstd = tl.load(invstd_ptr + feat_pid).to(tl.float32)
+    sum_dy = tl.load(sum_dy_ptr + feat_pid).to(tl.float32)
+    sum_dy_xmu = tl.load(sum_dy_xmu_ptr + feat_pid).to(tl.float32)
 
     if HAS_WEIGHT:
-        weight = tl.load(weight_ptr + channel_idx, mask=mask, other=1.0).to(tl.float32)
+        weight = tl.load(weight_ptr + feat_pid).to(tl.float32)
     else:
         weight = 1.0
 
-    # Fused gradient computation in fp32 (single pass, no intermediate buffers)
-    xmu = inp - mean
-    result = (
-        weight
-        * invstd
-        * (grad_out - (sum_dy + xmu * (invstd * invstd) * sum_dy_xmu) * inv_count)
-    )
+    # Precompute channel-level constants
+    invstd_sq_sum_dy_xmu = invstd * invstd * sum_dy_xmu
 
-    # Cast back to output dtype and store
-    tl.store(grad_input_ptr + offsets, result, mask=mask)
+    # Tile over (batch, spatial) with 2D blocks
+    for m_step in range(0, tl.cdiv(batch_dim, BLOCK_M)):
+        for n_step in range(0, tl.cdiv(spatial_dim, BLOCK_N)):
+            batch_offset = m_step * BLOCK_M + tl.arange(0, BLOCK_M)
+            batch_mask = batch_offset < batch_dim
+
+            spatial_offset = n_step * BLOCK_N + tl.arange(0, BLOCK_N)
+            spatial_mask = spatial_offset < spatial_dim
+
+            mask = batch_mask[:, None] & spatial_mask[None, :]
+
+            # Compute pointers using strides for correct memory layout
+            curr_grad_out_ptr = (
+                grad_out_ptr
+                + grad_out_feat_stride * feat_pid
+                + grad_out_batch_stride * batch_offset[:, None]
+                + grad_out_spatial_stride * spatial_offset[None, :]
+            )
+            curr_input_ptr = (
+                input_ptr
+                + input_feat_stride * feat_pid
+                + input_batch_stride * batch_offset[:, None]
+                + input_spatial_stride * spatial_offset[None, :]
+            )
+            curr_grad_input_ptr = (
+                grad_input_ptr
+                + grad_input_feat_stride * feat_pid
+                + grad_input_batch_stride * batch_offset[:, None]
+                + grad_input_spatial_stride * spatial_offset[None, :]
+            )
+
+            # Coalesced loads
+            grad_out = tl.load(curr_grad_out_ptr, mask=mask, other=0.0).to(tl.float32)
+            inp = tl.load(curr_input_ptr, mask=mask, other=0.0).to(tl.float32)
+
+            # Fused element-wise gradient computation in fp32
+            xmu = inp - mean
+            result = weight * invstd * (
+                grad_out - (sum_dy + xmu * invstd_sq_sum_dy_xmu) * inv_count
+            )
+
+            tl.store(curr_grad_input_ptr, result, mask=mask)
 
 
 def batch_norm_backward_elemt(
@@ -140,10 +167,16 @@ def batch_norm_backward_elemt(
     sum_dy = sum_dy.contiguous()
     sum_dy_xmu = sum_dy_xmu.contiguous()
 
-    # Get dimensions
-    C = input.shape[1]
-    spatial_size = input.numel() // (input.shape[0] * C)
-    n_elements = input.numel()
+    # Normalize to 3D: (N, C, spatial)
+    original_shape = input.shape
+    if input.ndim == 2:
+        input = input.unsqueeze(-1)
+        grad_out = grad_out.unsqueeze(-1)
+    elif input.ndim >= 4:
+        input = input.flatten(2, -1)
+        grad_out = grad_out.flatten(2, -1)
+
+    batch_dim, feat_dim, spatial_dim = input.shape
 
     # Precompute 1/count to avoid per-element division
     inv_count = 1.0 / count.item()
@@ -155,14 +188,12 @@ def batch_norm_backward_elemt(
     else:
         weight = weight.contiguous()
 
-    # Allocate output
+    # Allocate output matching 3D shape
     grad_input = torch.empty_like(input)
 
-    # Launch kernel with dynamic grid based on autotuned BLOCK_SIZE
+    # Launch kernel: 1D grid over channels, 2D tile over (batch, spatial)
     with torch_device_fn.device(input.device):
-        batch_norm_backward_elemt_kernel[
-            lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-        ](
+        batch_norm_backward_elemt_kernel[(feat_dim,)](
             grad_out,
             input,
             mean,
@@ -172,10 +203,12 @@ def batch_norm_backward_elemt(
             sum_dy_xmu,
             grad_input,
             inv_count,
-            C,
-            spatial_size,
-            n_elements,
+            batch_dim,
+            spatial_dim,
+            *grad_out.stride(),
+            *input.stride(),
+            *grad_input.stride(),
             HAS_WEIGHT=has_weight,
         )
 
-    return grad_input
+    return grad_input.view(original_shape)
