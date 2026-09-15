@@ -105,11 +105,17 @@ def addmm_activation_kernel(
 
     if USE_GELU:
         # GELU with tanh approximation (matches aten::_addmm_activation use_gelu=True)
-        acc_fp32 = accumulator.to(tl.float32)
+        # Route by accumulator dtype: float32 truncation cannot meet float64's
+        # tolerance, so fp64 evaluates the activation in double precision too.
+        # fp16/bf16 and fp32 keep their existing fp32 evaluation.
+        if IS_FP64:
+            acc_gelu = accumulator
+        else:
+            acc_gelu = accumulator.to(tl.float32)
         accumulator = (
             0.5
-            * acc_fp32
-            * (1 + tanh(acc_fp32 * 0.79788456 * (1 + 0.044715 * pow(acc_fp32, 2))))
+            * acc_gelu
+            * (1 + tanh(acc_gelu * 0.79788456 * (1 + 0.044715 * pow(acc_gelu, 2))))
         )
     else:
         # ReLU (default activation)

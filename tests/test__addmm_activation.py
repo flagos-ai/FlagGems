@@ -31,7 +31,7 @@ else:
         (15, 160, 1024),
         (495, 5333, 71),
     ]
-    FLOAT_DTYPES = utils.FLOAT_DTYPES
+    FLOAT_DTYPES = utils.ALL_FLOAT_DTYPES
 
 
 @pytest.mark.addmm_activation
