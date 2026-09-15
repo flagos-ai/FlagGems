@@ -767,6 +767,7 @@ from flag_gems.ops.quantized_gru import (
     quantized_gru_impl,
     quantized_gru_input,
 )
+from flag_gems.ops.quantized_gru_cell import quantized_gru_cell
 from flag_gems.ops.quantized_lstm import quantized_lstm
 from flag_gems.ops.rad2deg import rad2deg, rad2deg_
 from flag_gems.ops.rand import rand
@@ -1839,6 +1840,7 @@ __all__ = [
     "prod",
     "prod_dim",
     "quantile",
+    "quantized_gru_cell",
     "quantized_gru_data",
     "quantized_gru_impl",
     "quantized_gru_input",
