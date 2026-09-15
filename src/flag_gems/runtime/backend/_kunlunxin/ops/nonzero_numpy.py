@@ -22,7 +22,13 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
-from .nonzero import _count_nonzero, _dense_result, _sparse_result, nonzero
+from .nonzero import (
+    _count_nonzero,
+    _dense_result,
+    _sparse_result,
+    _unbind_views,
+    nonzero,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -280,7 +286,14 @@ def _nznp_compact(inp, n_elements, n_full, rem, counts_h, total):
                     BLOCK=block,
                     num_warps=_NZNP_WARPS,
                 )
-    return list(out[:, :total].unbind(0))
+    # Dim-major [ndim, row_stride] output, row d is the view [d, :total]:
+    # ``out[:, :total].unbind(0)`` would fall back to ATen (forbidden), so
+    # build the same rows as zero-copy ``as_strided`` views (metadata-only,
+    # not registered -> no re-dispatch).
+    return [
+        torch.as_strided(out, (total,), (1,), storage_offset=d * row_stride)
+        for d in range(ndim)
+    ]
 
 
 def nonzero_numpy(inp):
@@ -327,7 +340,7 @@ def nonzero_numpy(inp):
     if n_elements == 0:
         # ATen: empty input -> ndim empty 1-D index tensors.
         out = torch.empty(0, inp_ndim, dtype=torch.int64, device=inp.device)
-        return list(out.unbind(dim=1))
+        return _unbind_views(out)
 
     inp = inp.contiguous()
 

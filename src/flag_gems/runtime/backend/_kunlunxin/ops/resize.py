@@ -15,24 +15,13 @@ import logging
 
 import torch
 
+from ..utils.tle_copy import tle_copy
+from .copy import copy_ as _vendor_copy_
+
 logger = logging.getLogger(__name__)
 
 
 def resize(inp: torch.Tensor, size, memory_format=None):
-    """Out-of-place resize (kunlunxin / XPU).
-
-    The generic implementation copies the data with a Triton kernel
-    (``_resize_kernel``). On XPU that contiguous copy is ~22x slower than the
-    vendor's native copy engine (e.g. [4096, 4096] fp16: 0.88ms vs 0.04ms),
-    which makes every ``resize`` call pure overhead (native resize copies the
-    preserved elements with the DMA engine and is essentially free).
-
-    Fix: allocate the output and copy the preserved ``min(old, new)`` elements
-    through the ATen ``_copy_from`` primitive. gems overrides ``copy_``/``copy``
-    but never ``_copy_from``, so this reaches the native strided-copy engine and
-    runs at native speed even while use_gems is active. Result matches native
-    ``aten.resize`` exactly (output is a fresh tensor, not an alias).
-    """
     logger.debug("GEMS RESIZE")
 
     if not isinstance(size, tuple):
@@ -48,8 +37,12 @@ def resize(inp: torch.Tensor, size, memory_format=None):
     copy_numel = min(inp.numel(), out.numel())
     src = inp.reshape(-1)[:copy_numel]
     dst = out.reshape(-1)[:copy_numel]
-    # Native contiguous copy (bypasses the slow gems/Triton copy path).
-    torch.ops.aten._copy_from(src, dst, False)
+    # tle hardware move (TMA/DMA) for everything it can express -- the common
+    # contiguous same-dtype copy; shapes/dtypes outside that envelope fall back
+    # to the vendor pointwise copy. Neither path re-enters ATen
+    # (``aten::_copy_from`` is a private op with no vendor handling).
+    if not tle_copy(src, dst):
+        _vendor_copy_(dst, src)
 
     return out
 
