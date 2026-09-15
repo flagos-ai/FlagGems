@@ -17,7 +17,7 @@ import logging
 
 from flag_gems.runtime.backend._hygon.ops.attention import flash_attention_forward
 
-logger = logging.getLogger("flag_gems.ops._scaled_dot_product_flash_attention")
+logger = logging.getLogger(__name__)
 
 
 def _scaled_dot_product_flash_attention(
@@ -31,7 +31,7 @@ def _scaled_dot_product_flash_attention(
     scale=None,
 ):
     """Run scaled dot product FlashAttention through hygon's optimized implementation."""
-    logger.debug("GEMS _SCALED_DOT_PRODUCT_FLASH_ATTENTION")
+    logger.debug("GEMS_HYGON _SCALED_DOT_PRODUCT_FLASH_ATTENTION")
     max_q = query.shape[2]
     max_k = key.shape[2]
     output, logsumexp, rng_state, unused, debug_mask = flash_attention_forward(
