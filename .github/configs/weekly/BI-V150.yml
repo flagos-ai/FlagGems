@@ -38,6 +38,10 @@ container_volumes:
 
 # Container options for this backends
 container_options: >-
+  --ipc=host
+  --privileged
+  --shm-size=256g
+  --security-opt seccomp=unconfined
   --device /dev/itrctl
   --device /dev/iluvatar0
   --device /dev/iluvatar1

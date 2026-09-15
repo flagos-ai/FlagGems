@@ -1,27 +1,3 @@
-"""Backward of reflection_pad3d WITHOUT atomics (Kunlunxin XPU).
-
-Performance reconstruction (2026-08-16):
-- flat-DHW input-parallel decomposition, grid=(cdiv(DHW,BLOCK), N*C): no atomics,
-  each input element accumulates the reflected grad_output contributions in fp32.
-- All shape dims are tl.constexpr, and every index/address vector stays int32:
-  the previous flat kernel paid ~330us of runtime int64 div/mod + long address
-  chains; constexpr dims turn the per-lane decodes into shifts, and int32 keeps
-  the address arithmetic short.
-- Address structure: rows are one of 9 (d-mode x h-mode) shared base vectors,
-  columns one of 3 shared vectors; each of the 27 loads is a single R[i]+C[j]
-  add. The XPU backend lowers this affine structure far more cheaply than 27
-  independently re-derived address chains (measured ~5x on the big benchmark
-  shapes, ~2.5x on the rest).
-- Before loading, the reflected d/h/w coordinates are clamped to their valid
-  center value with tl.where, so every load is unconditional and in-bounds.
-  Per-contribution validity is reapplied with value-level tl.where(mask, v, 0.0);
-  this also guards against the XPU backend's known masked-load `other` quirk
-  (masked lanes may still read OOB memory - the select zeroes them afterwards).
-- fp32 accumulation, explicit destination-dtype store.
-
-Semantics identical to the previous implementation (48/48 CPU-ref cases).
-"""
-
 import logging
 
 import torch

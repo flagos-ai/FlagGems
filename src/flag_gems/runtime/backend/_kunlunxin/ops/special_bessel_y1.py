@@ -176,7 +176,7 @@ def special_bessel_y1_func(x):
 
 
 def special_bessel_y1(A):
-    logger.debug("GEMS SPECIAL_BESSEL_Y1")
+    logger.debug("GEMS_KUNLUNXIN SPECIAL_BESSEL_Y1")
     if A.dtype not in (torch.float32, torch.float64):
         raise TypeError(
             f"special_bessel_y1: unsupported dtype {A.dtype}, only float32 and float64 are supported"
