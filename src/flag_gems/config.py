@@ -29,6 +29,12 @@ has_c_extension = False
 use_c_extension = False
 aten_patch_list = []
 
+# Global allow_tf32 configuration for Triton kernels
+# Controlled by FLAGGEMS_ALLOW_TF32 environment variable
+# Set FLAGGEMS_ALLOW_TF32=1 to enable TF32 (faster but lower precision)
+# Default is False (disabled) for numerical accuracy
+ALLOW_TF32 = os.environ.get("FLAGGEMS_ALLOW_TF32", "0") == "1"
+
 # set FLAGGEMS_SOURCE_DIR for cpp extension to find
 os.environ["FLAGGEMS_SOURCE_DIR"] = str(Path(__file__).parent.resolve())
 
@@ -235,4 +241,5 @@ __all__ = [
     "use_c_extension",
     "resolve_user_setting",
     "get_skip_precision_check_ops",
+    "ALLOW_TF32",
 ]
