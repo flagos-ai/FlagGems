@@ -214,6 +214,7 @@ from flag_gems.ops.alpha_dropout_ import alpha_dropout_
 from flag_gems.ops.amax import amax
 from flag_gems.ops.amin import amin, amin_
 from flag_gems.ops.aminmax import aminmax
+from flag_gems.ops.and_scalar import and_scalar
 from flag_gems.ops.angle import angle
 from flag_gems.ops.any import any, any_dim, any_dims
 from flag_gems.ops.arange import arange, arange_start
@@ -1216,6 +1217,7 @@ __all__ = [
     "addmv_out",
     "addr",
     "addr_",
+    "and_scalar",
     "affine_grid_generator",
     "alias",
     "alias_copy",
