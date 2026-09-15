@@ -22,6 +22,7 @@ from . import base, consts
 
 class EinsumBenchmark(base.Benchmark):
     DEFAULT_METRICS = consts.DEFAULT_METRICS[:] + ["tflops"]
+    # Core benchmark shapes cover representative small/large matmul and batched matmul contractions.
     DEFAULT_SHAPES = [(1, 512, 512, 512), (1, 1024, 1024, 1024), (16, 512, 512, 512)]
 
     def __init__(self, *args, batched=False, input_fn=None, **kwargs):
