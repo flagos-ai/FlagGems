@@ -583,7 +583,7 @@ def _apply_one(
 
 def ormqr(input, tau, other, left=True, transpose=False):
     """Multiply a general matrix by the Householder-reflector product Q."""
-    logger.debug("GEMS KUNLUNXIN ORMQR")
+    logger.debug("GEMS_KUNLUNXIN ORMQR")
     assert input.dtype in (
         torch.float32,
         torch.float64,

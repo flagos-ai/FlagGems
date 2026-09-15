@@ -4731,6 +4731,19 @@ ops:
   - Quantization
   stages:
   - alpha: '5.4'
+- id: fake_quantize_per_tensor_affine_cachemask
+  description: Applies per-tensor affine fake quantization and returns the quantized
+    output with its unclamped-range mask.
+  for:
+  - fake_quantize_per_tensor_affine_cachemask
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Quantization
+  stages:
+  - alpha: '5.4'
 - id: fake_quantize_per_tensor_affine_cachemask_backward
   description: 'Computes the gradient for fake_quantize_per_tensor_affine_cachemask
     by multiplying the incoming
@@ -4746,6 +4759,19 @@ ops:
   - KernelGen
   kind:
   - Math
+  stages:
+  - alpha: '5.4'
+- id: fake_quantize_per_tensor_affine_cachemask_out
+  description: A variant of `fake_quantize_per_tensor_affine_cachemask` that assigns
+    the results to the provided output tensors.
+  for:
+  - fake_quantize_per_tensor_affine_cachemask.out
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Quantization
   stages:
   - alpha: '5.4'
 - id: fake_quantize_per_tensor_affine_cachemask_tensor_qparams
@@ -6993,6 +7019,22 @@ ops:
   - Tensor
   stages:
   - beta: '5.3'
+- id: index_reduce
+  description: 'Returns a new tensor after accumulating `source` into `input` at the
+    indices
+
+    specified by `index`, using `prod`, `mean`, `amax`, or `amin` reduction.
+
+    '
+  for:
+  - index_reduce
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: index_reduce_
   description: 'Accumulates the elements of `source` into `input` at the indices specified
 
@@ -7008,6 +7050,20 @@ ops:
   - Tensor
   stages:
   - beta: '5.4'
+- id: index_reduce_out
+  description: 'An out variant of `index_reduce` that writes the reduced values to
+    `out`.
+
+    '
+  for:
+  - index_reduce.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: index_select
   description: 'Returns a new tensor which indexes the `input` tensor along dimension
     `dim`
@@ -7612,6 +7668,21 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: linalg__powsum
+  description: 'Computes the sum of the absolute input values raised to `ord` over
+    the requested dimensions, without applying the final norm root.
+
+    '
+  for:
+  - linalg__powsum
+  labels:
+  - aten
+  - KernelGen
+  - Reduction
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.4'
 - id: linalg_cholesky
   description: 'Computes the Cholesky decomposition of a symmetric positive-definite
     matrix A
@@ -8045,6 +8116,30 @@ ops:
     matrix to an output tensor.
   for:
   - linalg_matrix_sqrth.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.4'
+- id: linalg_multi_dot
+  description: Efficiently multiplies a chain of two or more matrices using the optimal
+    multiplication order.
+  for:
+  - linalg_multi_dot
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.4'
+- id: linalg_multi_dot_out
+  description: Writes the optimally ordered product of a matrix chain to a provided
+    output tensor.
+  for:
+  - linalg_multi_dot.out
   labels:
   - aten
   - KernelGen
