@@ -642,3 +642,172 @@ def test_scatter_reduce_out_dtype_mismatch():
 
     with pytest.raises(RuntimeError, match="Expected out tensor to have dtype"):
         flag_gems.scatter_reduce_out(inp, 0, index, src, "sum", out=out)
+
+
+# Odd index lengths exercise masked atomic lanes and the final partial build block.
+@pytest.fixture(params=[(16385,), (2, 16385)], ids=["1d", "2d"])
+def linked_product_inputs(request):
+    shape = request.param
+    torch.manual_seed(17)
+    inp = torch.randn(shape, device=flag_gems.device).mul_(0.1).add_(1.0)
+    src_shape = (*shape[:-1], shape[-1] + 19)
+    src = torch.randn(src_shape, device=flag_gems.device).mul_(0.01).add_(1.0)
+    index = torch.randint(
+        0, shape[-1] // 2, shape, device=flag_gems.device, dtype=torch.int64
+    )
+    # Identity updates mixed with active lanes must not create duplicate links.
+    src[..., ::3] = 1.0
+    return inp, index, src
+
+
+@pytest.mark.scatter_reduce_two
+@pytest.mark.scatter_reduce
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("include_self", [True, False])
+def test_scatter_reduce_prod_partial_blocks(linked_product_inputs, dtype, include_self):
+    inp, index, src = linked_product_inputs
+    inp, src = inp.to(dtype), src.to(dtype)
+    reference = torch.scatter_reduce(
+        inp.cpu().float(),
+        -1,
+        index.cpu(),
+        src.cpu().float(),
+        "prod",
+        include_self=include_self,
+    )
+    result = flag_gems.scatter_reduce(
+        inp, -1, index, src, "prod", include_self=include_self
+    )
+    utils.gems_assert_close(result, reference, dtype)
+
+
+@pytest.mark.scatter_reduce_two_
+@pytest.mark.scatter_reduce
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("include_self", [True, False])
+def test_scatter_reduce_inplace_prod_partial_blocks(
+    linked_product_inputs, dtype, include_self
+):
+    inp, index, src = linked_product_inputs
+    inp, src = inp.to(dtype), src.to(dtype)
+    reference = torch.scatter_reduce(
+        inp.cpu().float(),
+        -1,
+        index.cpu(),
+        src.cpu().float(),
+        "prod",
+        include_self=include_self,
+    )
+    result = flag_gems.scatter_reduce_(
+        inp, -1, index, src, "prod", include_self=include_self
+    )
+    assert result is inp
+    utils.gems_assert_close(result, reference, dtype)
+
+
+@pytest.mark.scatter_reduce_two_out
+@pytest.mark.scatter_reduce
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("include_self", [True, False])
+def test_scatter_reduce_out_prod_partial_blocks(
+    linked_product_inputs, dtype, include_self
+):
+    inp, index, src = linked_product_inputs
+    inp, src = inp.to(dtype), src.to(dtype)
+    reference = torch.scatter_reduce(
+        inp.cpu().float(),
+        -1,
+        index.cpu(),
+        src.cpu().float(),
+        "prod",
+        include_self=include_self,
+    )
+    out = torch.empty_like(inp)
+    result = flag_gems.scatter_reduce_out(
+        inp, -1, index, src, "prod", include_self=include_self, out=out
+    )
+    assert result is out
+    utils.gems_assert_close(result, reference, dtype)
+
+
+@pytest.mark.scatter_reduce_two_
+@pytest.mark.scatter_reduce
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "hygon", reason="HCU short-row and CAS regression"
+)
+@pytest.mark.parametrize("shape", [(2, 64), (2, 257)], ids=["short", "medium"])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("reduce", ["amax", "amin"])
+@pytest.mark.parametrize("include_self", [True, False])
+def test_scatter_reduce_inplace_extrema_special_values(
+    shape, dtype, reduce, include_self
+):
+    inp = torch.full(shape, 3.0, dtype=dtype, device=flag_gems.device)
+    src = torch.ones_like(inp)
+    index = torch.arange(shape[1], device=flag_gems.device).repeat(shape[0], 1)
+    src[:, :8] = torch.tensor(
+        [float("nan"), float("inf"), float("-inf"), -0.0, 0.0, -2.0, 2.0, 1.0],
+        dtype=dtype,
+        device=flag_gems.device,
+    )
+    index[:, 5:8] = 5
+    index[:, -1] = 5
+    # A touched NaN participates only with include_self; an untouched NaN remains.
+    inp[:, 8] = float("nan")
+    inp[:, -1] = float("nan")
+    reference = torch.scatter_reduce(
+        inp.cpu().float(),
+        -1,
+        index.cpu(),
+        src.cpu().float(),
+        reduce,
+        include_self=include_self,
+    )
+    result = flag_gems.scatter_reduce_(
+        inp, -1, index, src, reduce, include_self=include_self
+    )
+    assert result is inp
+    actual = result.cpu().float()
+    torch.testing.assert_close(actual, reference, rtol=0, atol=0, equal_nan=True)
+    zero_mask = reference == 0
+    assert torch.equal(
+        torch.signbit(actual[zero_mask]), torch.signbit(reference[zero_mask])
+    )
+
+
+@pytest.mark.scatter_reduce_two
+@pytest.mark.scatter_reduce_two_
+@pytest.mark.scatter_reduce_two_out
+@pytest.mark.scatter_reduce
+@pytest.mark.skipif(flag_gems.vendor_name != "hygon", reason="HCU sum CAS regression")
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32])
+@pytest.mark.parametrize("include_self", [True, False])
+def test_scatter_reduce_sum_contention(dtype, include_self):
+    torch.manual_seed(19)
+    inp = torch.ones((64, 256), dtype=dtype, device=flag_gems.device)
+    index = torch.randint(0, 32, (64, 255), device=flag_gems.device)
+    src = torch.randint(-2, 3, (64, 269), device=flag_gems.device).to(dtype) * 0.25
+    reference = torch.scatter_reduce(
+        inp.cpu().float(),
+        -1,
+        index.cpu(),
+        src.cpu().float(),
+        "sum",
+        include_self=include_self,
+    )
+    for _ in range(8):
+        functional = flag_gems.scatter_reduce(
+            inp, -1, index, src, "sum", include_self=include_self
+        )
+        inplace = inp.clone()
+        returned = flag_gems.scatter_reduce_(
+            inplace, -1, index, src, "sum", include_self=include_self
+        )
+        assert returned is inplace
+        out = torch.empty_like(inp)
+        returned = flag_gems.scatter_reduce_out(
+            inp, -1, index, src, "sum", include_self=include_self, out=out
+        )
+        assert returned is out
+        for actual in (functional, inplace, out):
+            torch.testing.assert_close(actual.cpu().float(), reference, rtol=0, atol=0)
