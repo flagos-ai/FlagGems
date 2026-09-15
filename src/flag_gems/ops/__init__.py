@@ -338,6 +338,7 @@ from flag_gems.ops.corrcoef import corrcoef
 from flag_gems.ops.cos import cos, cos_
 from flag_gems.ops.cosh import cosh, cosh_, cosh_out
 from flag_gems.ops.cosine_embedding_loss import cosine_embedding_loss
+from flag_gems.ops.cosine_similarity import cosine_similarity
 from flag_gems.ops.count_nonzero import count_nonzero
 from flag_gems.ops.cov import cov
 from flag_gems.ops.ctc_loss import ctc_loss
@@ -1341,6 +1342,7 @@ __all__ = [
     "cosh_",
     "cosh_out",
     "cosine_embedding_loss",
+    "cosine_similarity",
     "count_nonzero",
     "cov",
     "ctc_loss",

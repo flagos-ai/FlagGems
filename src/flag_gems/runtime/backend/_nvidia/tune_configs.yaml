@@ -1211,6 +1211,32 @@ cross_entropy_loss_sum_and_scale:
       - 64
       - 256
       - 1024
+cosine_similarity:
+  - gen: true
+    param_map:
+      META: {BLOCK_M: block_m, BLOCK_D: block_d}
+      num_warps: 4
+    block_m: [16, 32]
+    block_d: [1]
+  - gen: true
+    param_map:
+      META: {BLOCK_M: block_m, BLOCK_D: block_d}
+      num_warps: warps
+    block_m: [4, 8]
+    block_d: [128, 256]
+    warps: [4, 8]
+  - gen: true
+    param_map:
+      META: {BLOCK_M: block_m, BLOCK_D: block_d}
+      num_warps: 4
+    block_m: [16]
+    block_d: [64, 128, 256]
+  - gen: true
+    param_map:
+      META: {BLOCK_M: block_m, BLOCK_D: block_d}
+      num_warps: 8
+    block_m: [1, 4, 8]
+    block_d: [1024, 4096]
 conj_physical:
   - META:
       BLOCK_SIZE: 64

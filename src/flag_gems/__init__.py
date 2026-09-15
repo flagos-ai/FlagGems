@@ -501,6 +501,7 @@ _FULL_CONFIG = (
     ("cosh.out", cosh_out),
     ("cosh_", cosh_),
     ("cosine_embedding_loss", cosine_embedding_loss),
+    ("cosine_similarity", cosine_similarity),
     ("count_nonzero", count_nonzero),
     ("cov", cov),
     ("ctc_loss.IntList", ctc_loss, None, (AUTOGRAD_DISPATCH_KEY,)),
