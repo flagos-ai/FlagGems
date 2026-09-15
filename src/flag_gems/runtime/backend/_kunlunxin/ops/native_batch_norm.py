@@ -294,7 +294,7 @@ def native_batch_norm(
     and the generic Welford 2D-tile kernel (which does not compile on XPU) was
     used instead.
     """
-    logger.debug("GEMS NATIVE_BATCH_NORM")
+    logger.debug("GEMS_KUNLUNXIN NATIVE_BATCH_NORM")
 
     input_3d = make_3d_for_bn(input)  # [N, C, S]
     if not input_3d.is_contiguous():

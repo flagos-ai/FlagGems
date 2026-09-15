@@ -42,14 +42,13 @@ def legendre_polynomial_p_kernel(
 
     prev2 = one
     prev1 = x
-    for degree in tl.static_range(2, 256):
-        use_degree = n >= degree
-        current = tl.where(
-            use_degree,
-            ((2.0 * degree - 1.0) * x * prev1 - (degree - 1.0) * prev2) / degree,
-            prev1,
-        )
-        prev2 = tl.where(use_degree, prev1, prev2)
+    # Dynamic loop bounded by n (runtime scalar): avoids the 254x unrolled
+    # static_range(2, 256) body that makes Triton compilation take >15 min on
+    # XPU. Math is identical: after the loop prev1 == P_n(x) for n >= 2, and
+    # the loop body is skipped entirely when n < 2.
+    for degree in range(2, n + 1):
+        current = ((2.0 * degree - 1.0) * x * prev1 - (degree - 1.0) * prev2) / degree
+        prev2 = prev1
         prev1 = current
 
     result = tl.where(n > 1, prev1, result)
