@@ -34,23 +34,12 @@ def _cuda_hopper_w8a8_fp8_available():
     )
 
 
-def _mm_w8a8_fp8_reference(a, b):
-    fp8_dtype = torch.float8_e4m3fn
-    fp8_info = torch.finfo(fp8_dtype)
-
-    a_fp32 = a.float()
-    a_scale = a_fp32.abs().amax(dim=1).clamp_min(1e-10) / fp8_info.max
-    a_fp8 = (a_fp32 / a_scale[:, None]).clamp(fp8_info.min, fp8_info.max).to(fp8_dtype)
-
-    b_fp32 = b.float()
-    b_scale = b_fp32.abs().amax(dim=0).clamp_min(1e-10) / fp8_info.max
-    b_fp8 = (b_fp32 / b_scale[None, :]).clamp(fp8_info.min, fp8_info.max).to(fp8_dtype)
-
-    return torch.mm(a_fp8.float(), b_fp8.float()) * a_scale[:, None] * b_scale[None, :]
-
-
 def _mthreads_w8a8_fp8_available():
     return flag_gems.vendor_name == "mthreads" and hasattr(flag_gems, "mm_w8a8_fp8")
+
+
+def _scaled_mm_backend_available():
+    return _cuda_hopper_w8a8_fp8_available() or _mthreads_w8a8_fp8_available()
 
 
 def _external_scales(a, b, rowwise=False):
@@ -94,15 +83,10 @@ def test_mm_w8a8_fp8(M, N, K):
 
     mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
     mat2 = torch.randn((K, N), dtype=dtype, device=flag_gems.device)
-    if _mthreads_w8a8_fp8_available():
-        mat1, mat2 = mat1.to(torch.float8_e4m3fn), mat2.to(torch.float8_e4m3fn)
-        sa, sb = _external_scales(mat1, mat2)
-        args = (mat1, mat2, sa, sb)
-        ref_out = utils.to_reference(_scaled_fp8_reference(*args), True)
-    else:
-        # Keep the existing BF16-input contract for the Hopper implementation.
-        args = (mat1, mat2)
-        ref_out = utils.to_reference(_mm_w8a8_fp8_reference(*args), True)
+    mat1, mat2 = mat1.to(torch.float8_e4m3fn), mat2.to(torch.float8_e4m3fn)
+    sa, sb = _external_scales(mat1, mat2)
+    args = (mat1, mat2, sa, sb)
+    ref_out = utils.to_reference(_scaled_fp8_reference(*args), True)
 
     res_out = flag_gems.mm_w8a8_fp8(*args, out_dtype=dtype)
     out = torch.empty((M, N), dtype=dtype, device=flag_gems.device)
@@ -176,21 +160,24 @@ def test_mm_w8a8_fp8_mthreads_large_k_scales(M, N, K, scalar_a):
 
 
 @pytest.mark.mm_w8a8_fp8
-@pytest.mark.skipif(not _mthreads_w8a8_fp8_available(), reason="MThreads FP8 backend")
-def test_mm_w8a8_fp8_mthreads_graph_updates():
-    a = torch.randn((32, 128), device=flag_gems.device).to(torch.float8_e4m3fn)
-    b = torch.randn((128, 64), device=flag_gems.device).to(a.dtype)
+@pytest.mark.skipif(not _scaled_mm_backend_available(), reason="FP8 scaled MM backend")
+@pytest.mark.parametrize("M,N,K", [(32, 64, 128), (256, 256, 8192)])
+def test_mm_w8a8_fp8_graph_updates(M, N, K):
+    a = torch.randn((M, K), device=flag_gems.device).to(torch.float8_e4m3fn)
+    b = torch.randn((N, K), device=flag_gems.device).to(a.dtype).T
     sa, sb = _external_scales(a, b, rowwise=True)
-    out = torch.empty((32, 64), device=a.device, dtype=torch.bfloat16)
-    stream = torch.musa.Stream()
-    stream.wait_stream(torch.musa.current_stream())
-    with torch.musa.stream(stream):
+    out = torch.empty((M, N), device=a.device, dtype=torch.bfloat16)
+    backend = torch.cuda if flag_gems.device == "cuda" else torch.musa
+    graph_cls = backend.CUDAGraph if flag_gems.device == "cuda" else backend.MUSAGraph
+    stream = backend.Stream()
+    stream.wait_stream(backend.current_stream())
+    with backend.stream(stream):
         for _ in range(3):
             flag_gems.mm_w8a8_fp8_out(a, b, sa, sb, out=out)
-        graph = torch.musa.MUSAGraph()
-        with torch.musa.graph(graph):
+        graph = graph_cls()
+        with backend.graph(graph):
             flag_gems.mm_w8a8_fp8_out(a, b, sa, sb, out=out)
-    torch.musa.current_stream().wait_stream(stream)
+    backend.current_stream().wait_stream(stream)
     for _ in range(2):
         a.copy_(torch.randn(a.shape, device=a.device).to(a.dtype))
         b.copy_(torch.randn(b.shape, device=b.device).to(b.dtype))
@@ -202,8 +189,8 @@ def test_mm_w8a8_fp8_mthreads_graph_updates():
 
 
 @pytest.mark.mm_w8a8_fp8
-@pytest.mark.skipif(not _mthreads_w8a8_fp8_available(), reason="MThreads FP8 backend")
-def test_mm_w8a8_fp8_mthreads_empty():
+@pytest.mark.skipif(not _scaled_mm_backend_available(), reason="FP8 scaled MM backend")
+def test_mm_w8a8_fp8_empty():
     for m, n, k in [(0, 32, 16), (32, 0, 16), (32, 16, 0)]:
         a = torch.empty((m, k), device=flag_gems.device, dtype=torch.float8_e4m3fn)
         b = torch.empty((k, n), device=flag_gems.device, dtype=a.dtype)
@@ -215,11 +202,11 @@ def test_mm_w8a8_fp8_mthreads_empty():
 
 
 @pytest.mark.mm_w8a8_fp8
-@pytest.mark.skipif(not _mthreads_w8a8_fp8_available(), reason="MThreads FP8 backend")
+@pytest.mark.skipif(not _scaled_mm_backend_available(), reason="FP8 scaled MM backend")
 @pytest.mark.parametrize(
     "out_dtype", [torch.float16, torch.float8_e4m3fn, torch.float8_e5m2]
 )
-def test_mm_w8a8_fp8_mthreads_output_dtype(out_dtype):
+def test_mm_w8a8_fp8_output_dtype(out_dtype):
     a = torch.randn((64, 32), device=flag_gems.device).to(torch.float8_e4m3fn).T
     b = torch.randn((64, 32), device=flag_gems.device).to(a.dtype)
     sa, sb = _external_scales(a, b)
@@ -232,8 +219,8 @@ def test_mm_w8a8_fp8_mthreads_output_dtype(out_dtype):
 
 
 @pytest.mark.mm_w8a8_fp8
-@pytest.mark.skipif(not _mthreads_w8a8_fp8_available(), reason="MThreads FP8 backend")
-def test_mm_w8a8_fp8_mthreads_independent_and_invalid_out():
+@pytest.mark.skipif(not _scaled_mm_backend_available(), reason="FP8 scaled MM backend")
+def test_mm_w8a8_fp8_independent_and_invalid_out():
     a = torch.randn((64, 32), device=flag_gems.device).to(torch.float8_e4m3fn).T
     b = torch.randn((64, 32), device=flag_gems.device).to(a.dtype)
     sa, sb = _external_scales(a, b)
@@ -263,9 +250,9 @@ def test_mm_w8a8_fp8_mthreads_broadcast(dtype):
 
 
 @pytest.mark.mm_w8a8_fp8
-@pytest.mark.skipif(not _mthreads_w8a8_fp8_available(), reason="MThreads FP8 backend")
+@pytest.mark.skipif(not _scaled_mm_backend_available(), reason="FP8 scaled MM backend")
 @pytest.mark.parametrize("out_variant", [False, True])
-def test_mm_w8a8_fp8_mthreads_invalid_inputs_and_scales(out_variant):
+def test_mm_w8a8_fp8_invalid_inputs_and_scales(out_variant):
     a = torch.randn((32, 64), device=flag_gems.device).to(torch.float8_e4m3fn)
     b = torch.randn((64, 16), device=flag_gems.device).to(a.dtype)
     sa, sb = _external_scales(a, b)
@@ -306,9 +293,9 @@ def test_mm_w8a8_fp8_mthreads_invalid_inputs_and_scales(out_variant):
 
 
 @pytest.mark.mm_w8a8_fp8
-@pytest.mark.skipif(not _mthreads_w8a8_fp8_available(), reason="MThreads FP8 backend")
+@pytest.mark.skipif(not _scaled_mm_backend_available(), reason="FP8 scaled MM backend")
 @pytest.mark.parametrize("shape", [(), (1,), (1, 1)])
-def test_mm_w8a8_fp8_mthreads_scalar_shapes(shape):
+def test_mm_w8a8_fp8_scalar_shapes(shape):
     a = torch.randn((32, 128), device=flag_gems.device).to(torch.float8_e4m3fn)
     b = torch.randn((64, 128), device=flag_gems.device).to(a.dtype).T
     sa = torch.full(shape, 0.7, device=a.device)
@@ -426,3 +413,127 @@ def test_mm_w8a8_fp8_mthreads_strided_epilogue(K):
     result = flag_gems.mm_w8a8_fp8(a, b, sa, sb, bias=bias, scale_result=sr, out=out)
     assert result is out
     torch.testing.assert_close(result, ref, rtol=5e-4, atol=0.003)
+
+
+@pytest.mark.mm_w8a8_fp8
+@pytest.mark.skipif(not _cuda_hopper_w8a8_fp8_available(), reason="Hopper FP8 backend")
+@pytest.mark.parametrize(
+    "M,N,K",
+    [
+        (1, 1, 1),
+        (7, 33, 15),
+        (31, 65, 129),
+        (32, 64, 7168),
+        (128, 256, 8192),
+        (192, 768, 8193),
+        (256, 256, 16384),
+        (256, 768, 1024),
+        (512, 1024, 2048),
+        (16, 9216, 2048),
+        (129, 272, 6144),
+        (256, 128, 16),
+    ],
+)
+@pytest.mark.parametrize("column_major", [False, True])
+@pytest.mark.parametrize("rowwise", [False, True])
+@pytest.mark.parametrize("e5_operand", [None, "a", "b"])
+def test_mm_w8a8_fp8_hopper_external_scales(M, N, K, column_major, rowwise, e5_operand):
+    torch.manual_seed(42)
+    ad = torch.float8_e5m2 if e5_operand == "a" else torch.float8_e4m3fn
+    bd = torch.float8_e5m2 if e5_operand == "b" else torch.float8_e4m3fn
+    a = torch.randn((M, K), device=flag_gems.device).to(ad)
+    b = torch.randn((N, K) if column_major else (K, N), device=a.device).to(bd)
+    if column_major:
+        b = b.T
+    sa, sb = _external_scales(a, b, rowwise)
+    ref = _scaled_fp8_reference(a, b, sa, sb)
+    out = torch.empty((M, N * 2), device=a.device, dtype=torch.bfloat16)[:, ::2]
+    for _ in range(2):
+        assert flag_gems.mm_w8a8_fp8_out(a, b, sa, sb, out=out) is out
+        torch.testing.assert_close(out, ref.to(out.dtype), rtol=0.016, atol=0.01)
+    result = flag_gems.mm_w8a8_fp8(a, b, sa, sb, out_dtype=torch.float32)
+    torch.testing.assert_close(result, ref, rtol=5e-4, atol=0.003)
+
+
+@pytest.mark.mm_w8a8_fp8
+@pytest.mark.skipif(not _cuda_hopper_w8a8_fp8_available(), reason="Hopper FP8 backend")
+@pytest.mark.parametrize("M,N,K", [(32, 64, 128), (256, 256, 8192)])
+@pytest.mark.parametrize(
+    "out_dtype", [None, torch.bfloat16, torch.float16, torch.float32]
+)
+@pytest.mark.parametrize("with_scale_result", [False, True])
+@pytest.mark.parametrize("use_fast_accum", [False, True])
+def test_mm_w8a8_fp8_hopper_torch_interface(
+    M, N, K, out_dtype, with_scale_result, use_fast_accum
+):
+    torch.manual_seed(42)
+    a = torch.randn((M, K), device=flag_gems.device).to(torch.float8_e4m3fn)
+    b = torch.randn((N, K), device=a.device).to(a.dtype).T
+    sa, sb = _external_scales(a, b)
+    bias = None
+    if out_dtype != torch.float32:
+        bias_dtype = torch.float16 if out_dtype == torch.float16 else torch.bfloat16
+        bias = torch.randn((N,), device=a.device, dtype=bias_dtype)
+    sr = torch.full((1,), 2.0, device=a.device) if with_scale_result else None
+    kwargs = dict(
+        input=a,
+        mat2=b,
+        scale_a=sa,
+        scale_b=sb,
+        bias=bias,
+        scale_result=sr,
+        out_dtype=out_dtype,
+        use_fast_accum=use_fast_accum,
+    )
+    # Our implementation retains FP32 promotion for both values of the hint.
+    expected = torch._scaled_mm(**{**kwargs, "use_fast_accum": False})
+    actual = flag_gems.mm_w8a8_fp8(**kwargs)
+    assert actual.dtype == (a.dtype if out_dtype is None else out_dtype)
+    ref = _scaled_fp8_reference(a, b, sa, sb)
+    if bias is not None:
+        ref += bias.float()
+    ref = ref.to(actual.dtype).float()
+    rtol, atol = (0.125, 0.125) if out_dtype is None else (0.016, 0.01)
+    if out_dtype == torch.float32:
+        rtol, atol = 5e-4, 0.003
+    torch.testing.assert_close(actual.float(), ref, rtol=rtol, atol=atol)
+    if out_dtype is None:
+        torch.testing.assert_close(
+            actual.float(), expected.float(), rtol=rtol, atol=atol
+        )
+    else:
+        # cuBLAS FP8 accumulation differs near cancellation even with fast_accum=False.
+        # Keep the strict elementwise check against the FP32 reference above.
+        relative_error = torch.linalg.vector_norm(actual.float() - expected.float()) / (
+            torch.linalg.vector_norm(expected.float()).clamp_min(1e-12)
+        )
+        assert relative_error < (0.005 if out_dtype == torch.bfloat16 else 0.001)
+    out = torch.empty_like(actual)
+    assert flag_gems.mm_w8a8_fp8(**kwargs, out=out) is out
+    torch.testing.assert_close(out.float(), actual.float(), rtol=rtol, atol=atol)
+    assert (
+        flag_gems.mm_w8a8_fp8_out(
+            a, b, sa, sb, bias, sr, out_dtype, use_fast_accum, out=out
+        )
+        is out
+    )
+    torch.testing.assert_close(out.float(), actual.float(), rtol=rtol, atol=atol)
+
+
+@pytest.mark.mm_w8a8_fp8
+@pytest.mark.skipif(not _cuda_hopper_w8a8_fp8_available(), reason="Hopper FP8 backend")
+@pytest.mark.parametrize("M,N,K", [(32, 64, 128), (256, 256, 8192)])
+def test_mm_w8a8_fp8_hopper_torch_rowwise(M, N, K):
+    a = torch.randn((M, K), device=flag_gems.device).to(torch.float8_e4m3fn)
+    b = torch.randn((N, K), device=a.device).to(a.dtype).T
+    sa = torch.linspace(0.5, 1.0, M, device=a.device)[:, None]
+    sb = torch.linspace(1.0, 1.5, N, device=a.device)[None, :]
+    kwargs = dict(out_dtype=torch.bfloat16)
+    expected = torch._scaled_mm(a, b, sa, sb, **kwargs)
+    actual = flag_gems.mm_w8a8_fp8(a, b, sa, sb, **kwargs)
+    ref = _scaled_fp8_reference(a, b, sa, sb).to(actual.dtype)
+    torch.testing.assert_close(actual, ref, rtol=0.016, atol=0.01)
+    relative_error = torch.linalg.vector_norm(actual.float() - expected.float()) / (
+        torch.linalg.vector_norm(expected.float()).clamp_min(1e-12)
+    )
+    assert relative_error < 0.005

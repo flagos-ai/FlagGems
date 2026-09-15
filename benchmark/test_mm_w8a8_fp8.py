@@ -39,10 +39,7 @@ def _mm_w8a8_fp8_out_cached(a, b, scale_a, scale_b):
     else:
         _MM_W8A8_FP8_OUT_CACHE.pop(key)
         _MM_W8A8_FP8_OUT_CACHE[key] = out
-    if flag_gems.vendor_name == "mthreads":
-        return flag_gems.mm_w8a8_fp8_out(a, b, scale_a, scale_b, out=out)
-    # The existing Hopper interface accepts unscaled FP8 inputs only.
-    return flag_gems.mm_w8a8_fp8_out(a, b, out=out)
+    return flag_gems.mm_w8a8_fp8_out(a, b, scale_a, scale_b, out=out)
 
 
 def mm_w8a8_fp8_input_fn(b, m, n, k, cur_dtype, device, b_column_major):
@@ -52,16 +49,15 @@ def mm_w8a8_fp8_input_fn(b, m, n, k, cur_dtype, device, b_column_major):
     else:
         weight = torch.randn([k, n], dtype=torch.float32, device=device)
     # Quantization and scale preparation stay outside the timed calls.
-    # Preserve unit scales for Hopper's existing unscaled-input interface.
     scale_a = torch.full(
         (1,),
-        0.5 if flag_gems.vendor_name == "mthreads" else 1.0,
+        0.5,
         dtype=torch.float32,
         device=device,
     )
     scale_b = torch.full(
         (1,),
-        1.5 if flag_gems.vendor_name == "mthreads" else 1.0,
+        1.5,
         dtype=torch.float32,
         device=device,
     )
