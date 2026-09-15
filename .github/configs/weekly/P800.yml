@@ -25,7 +25,7 @@ runner_labels: p800-flaggems-weekly
 use_container: true
 
 # Container image for this backends
-container_image: harbor.baai.ac.cn/flaggems/kunlunxin-flaggems-test-p800:20260526
+container_image: harbor.baai.ac.cn/flagos-app/vllm0.24.0-kunlunxin-xre5.37.1:2.1.2-0.2.0_gf780db1.d20260823
 
 # Container volumes to mount for this backends
 container_volumes:
@@ -36,15 +36,6 @@ container_volumes:
 
 # Container options for this backends
 container_options: >-
-  --privileged
-  --ulimit=stack=67108864
-  --ulimit=memlock=-1
-  --ulimit=nofile=120000
-  --shm-size=256g
-  --group-add video
-  --cap-add=SYS_PTRACE
-  --cap-add=SYS_ADMIN
-  --security-opt seccomp=unconfined
   --device=/dev/xpu0:/dev/xpu0
   --device=/dev/xpu1:/dev/xpu1
   --device=/dev/xpu2:/dev/xpu2
@@ -54,7 +45,6 @@ container_options: >-
   --device=/dev/xpu6:/dev/xpu6
   --device=/dev/xpu7:/dev/xpu7
   --device=/dev/xpuctrl:/dev/xpuctrl
-  --device=/dev/fuse
   --workdir=/root
 
 # GPUs to test for this backends
