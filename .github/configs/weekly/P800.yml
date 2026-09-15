@@ -36,6 +36,15 @@ container_volumes:
 
 # Container options for this backends
 container_options: >-
+  --privileged
+  --ulimit=stack=67108864
+  --ulimit=memlock=-1
+  --ulimit=nofile=120000
+  --shm-size=256g
+  --group-add video
+  --cap-add=SYS_PTRACE
+  --cap-add=SYS_ADMIN
+  --security-opt seccomp=unconfined
   --device=/dev/xpu0:/dev/xpu0
   --device=/dev/xpu1:/dev/xpu1
   --device=/dev/xpu2:/dev/xpu2
@@ -45,6 +54,7 @@ container_options: >-
   --device=/dev/xpu6:/dev/xpu6
   --device=/dev/xpu7:/dev/xpu7
   --device=/dev/xpuctrl:/dev/xpuctrl
+  --device=/dev/fuse
   --workdir=/root
 
 # GPUs to test for this backends

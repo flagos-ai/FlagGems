@@ -57,7 +57,7 @@ def _paged_mqa_logits_metadata_kernel(
 def get_paged_mqa_logits_metadata(
     context_lens: torch.Tensor, block_size: int, num_sms: int
 ) -> torch.Tensor:
-    logger.debug("KUNLUNXIN GET_PAGED_MQA_LOGITS_METADATA")
+    logger.debug("GEMS_KUNLUNXIN GET_PAGED_MQA_LOGITS_METADATA")
     del block_size
 
     if context_lens.dim() == 2:
