@@ -66,7 +66,10 @@ def test_median_out_even_count_picks_lower_middle(values, expected):
     result = flag_gems.median_out(inp, out=out)
 
     assert result is out
-    utils.gems_assert_equal(out, torch.full_like(out, expected))
+    # Build the expectation on the reference device: gems_assert_equal expects
+    # `ref` to live there when running with --ref=cpu.
+    ref = torch.full_like(utils.to_reference(out), expected)
+    utils.gems_assert_equal(out, ref)
 
 
 @pytest.mark.median_out
