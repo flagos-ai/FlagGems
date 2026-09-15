@@ -327,6 +327,10 @@ from flag_gems.ops.conv_tbc_backward import conv_tbc_backward
 from flag_gems.ops.conv_transpose1d import conv_transpose1d
 from flag_gems.ops.conv_transpose2d import conv_transpose2d
 from flag_gems.ops.conv_transpose3d import conv_transpose3d
+from flag_gems.ops.convolution_backward_overrideable import (
+    convolution_backward_overrideable,
+    convolution_backward_overrideable_out,
+)
 from flag_gems.ops.convolution_overrideable import (
     convolution_overrideable,
     convolution_overrideable_out,
@@ -1062,6 +1066,8 @@ __all__ = [
     "_convert_weight_to_int4pack",
     "_convolution_double_backward",
     "_convolution_mode",
+    "convolution_backward_overrideable",
+    "convolution_backward_overrideable_out",
     "_cummax_helper",
     "_cummin_helper",
     "_dirichlet_grad",
