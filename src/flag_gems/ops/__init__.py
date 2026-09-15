@@ -323,6 +323,7 @@ from flag_gems.ops.conv1d import conv1d
 from flag_gems.ops.conv2d import conv2d
 from flag_gems.ops.conv3d import conv3d
 from flag_gems.ops.conv_depthwise2d import _conv_depthwise2d
+from flag_gems.ops.conv_depthwise3d import conv_depthwise3d
 from flag_gems.ops.conv_tbc_backward import conv_tbc_backward
 from flag_gems.ops.conv_transpose1d import conv_transpose1d
 from flag_gems.ops.conv_transpose2d import conv_transpose2d
@@ -1059,6 +1060,7 @@ __all__ = [
     "_conj_copy",
     "_conj_copy_out",
     "_conv_depthwise2d",
+    "conv_depthwise3d",
     "_convert_weight_to_int4pack",
     "_convolution_double_backward",
     "_convolution_mode",
