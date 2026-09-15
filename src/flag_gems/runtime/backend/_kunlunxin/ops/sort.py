@@ -22,7 +22,9 @@ import triton.language as tl
 from flag_gems.ops.zeros import zero_
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
+from flag_gems.utils.tensor_wrapper import StridedBuffer
 
+from .cat import copy_func
 from .cumsum import cumsum
 from .topk import _get_finfo_val, _get_iinfo_val, argsort
 
@@ -295,7 +297,11 @@ def count_kernel(
     n_offset = block_idx * BLOCK_N + tl.arange(0, BLOCK_N)
     mask = n_offset < N
 
-    val = tl.load(x_ptr + row_start + n_offset, mask=mask, other=0)
+    # Masked loads on XPU can still issue the tail address.  Clamp inactive
+    # lanes to the last real element and use the mask only for the histogram
+    # predicate.
+    n_offset_safe = tl.minimum(n_offset, N - 1)
+    val = tl.load(x_ptr + row_start + n_offset_safe)
     val_u = convert_to_uint_preverse_order(val, descending)
 
     bfe_mask = num_bins - 1
@@ -363,10 +369,11 @@ def scatter_kernel(
     n_offset = block_idx * BLOCK_N + tl.arange(0, BLOCK_N)
     mask = n_offset < N
 
-    val = tl.load(x_ptr + row_start + n_offset, mask=mask, other=0)
+    n_offset_safe = tl.minimum(n_offset, N - 1)
+    val = tl.load(x_ptr + row_start + n_offset_safe)
     val_u = convert_to_uint_preverse_order(val, descending)
 
-    idx = tl.load(idx_in_ptr + row_start + n_offset, mask=mask, other=0)
+    idx = tl.load(idx_in_ptr + row_start + n_offset_safe)
 
     bfe_mask = num_bins - 1
     key = (val_u >> bit_offset) & bfe_mask
@@ -533,7 +540,6 @@ def radix_sort_low_mem(arr, k_bits=4, descending=False):
                 descending,
                 GRID_N=grid_n,
                 R_PAD=r_pad,
-                is_use_mask_zero=True,
             )
 
             bin_prefix_kernel[(M,)](
@@ -558,13 +564,51 @@ def radix_sort_low_mem(arr, k_bits=4, descending=False):
                 descending,
                 GRID_N=grid_n,
                 R_PAD=r_pad,
-                is_use_mask_zero=True,
             )
 
             arr_in, arr_out = arr_out, arr_in
             idx_in, idx_out = idx_out, idx_in
 
     return arr_in.reshape(original_shape), idx_in.reshape(original_shape)
+
+
+def _copy_bitview(t):
+    # NOTE(kunlunxin): the tuned copy codegen hits an illegal memory access for
+    # int32 on the strided-read path at some shapes (deterministic repro:
+    # permute-read of a (65536, 4) / (32768, 8) int32 tensor, i.e.
+    # M * N = 256 Ki; smaller shapes are clean).  int32 and float32 share
+    # itemsize, so bit-cast both sides and reuse the proven fp32 copy path;
+    # the copy is bit-exact.  Same workaround as the cat family.
+    if t.dtype == torch.int32:
+        return t.view(torch.float32)
+    return t
+
+
+def _permute_copy_to_last(inp, dim):
+    """Materialize a dim-last view without routing a strided copy through copy_."""
+    order = [i for i in range(inp.ndim) if i != dim] + [dim]
+    shape = tuple(inp.shape[i] for i in order)
+    strides = tuple(inp.stride()[i] for i in order)
+    out = torch.empty(shape, dtype=inp.dtype, device=inp.device)
+    src = _copy_bitview(inp)
+    dst = _copy_bitview(out)
+    in_view = StridedBuffer(src, shape, strides)
+    out_view = StridedBuffer(dst, shape, dst.stride())
+    copy_func.instantiate(inp.ndim)(in_view, out0=out_view)
+    return out, order
+
+
+def _permute_copy_from_last(inp, out_shape, order):
+    """Copy a dim-last result into the original contiguous dimension order."""
+    out = torch.empty(out_shape, dtype=inp.dtype, device=inp.device)
+    shape = tuple(out_shape[i] for i in order)
+    strides = tuple(out.stride()[i] for i in order)
+    src = _copy_bitview(inp)
+    dst = _copy_bitview(out)
+    in_view = StridedBuffer(src, shape, src.stride())
+    out_view = StridedBuffer(dst, shape, strides)
+    copy_func.instantiate(len(order))(in_view, out0=out_view)
+    return out
 
 
 def radix_sort(arr, k_bits=8, descending=False):
@@ -689,8 +733,10 @@ def sort_kernel(
 
 def sort(inp, dim=-1, descending=False):
     logger.debug("GEMS_KUNLUNXIN SORT")
+    if inp.ndim == 0:
+        return inp.clone(), torch.zeros_like(inp, dtype=torch.int64)
     sort_elem_cnt = inp.shape[dim]
-    if sort_elem_cnt == 0:
+    if sort_elem_cnt == 0 or inp.numel() == 0:
         return inp, torch.empty_like(inp, dtype=torch.int64)
     if sort_elem_cnt == 1:
         indices = torch.empty_like(inp, dtype=torch.int64)
@@ -712,8 +758,10 @@ def sort_stable(inp, *, stable, dim=-1, descending=False):
     logger.debug("GEMS_KUNLUNXIN SORT_STABLE")
     # We only implement stable radix sort here
     _ = stable
+    if inp.ndim == 0:
+        return inp.clone(), torch.zeros_like(inp, dtype=torch.int64)
     sort_elem_cnt = inp.shape[dim]
-    if sort_elem_cnt == 0:
+    if sort_elem_cnt == 0 or inp.numel() == 0:
         return inp, torch.empty_like(inp, dtype=torch.int64)
     if sort_elem_cnt == 1:
         indices = torch.empty_like(inp, dtype=torch.int64)
@@ -725,16 +773,18 @@ def sort_stable(inp, *, stable, dim=-1, descending=False):
 
     if dim < 0:
         dim = dim + inp.ndim
+    original_shape = inp.shape
     if dim != inp.ndim - 1:
-        inp = torch.movedim(inp, dim, -1).contiguous()
+        inp, order = _permute_copy_to_last(inp, dim)
     else:
+        order = list(range(inp.ndim))
         inp = inp.contiguous()
 
     dtype = inp.dtype
     num_bits_per_pass = 1 if dtype == torch.bool else 4
     out, out_index = radix_sort_low_mem(inp, num_bits_per_pass, descending)
 
-    if dim != inp.ndim - 1:
-        out = torch.movedim(out, -1, dim)
-        out_index = torch.movedim(out_index, -1, dim)
+    if dim != len(order) - 1:
+        out = _permute_copy_from_last(out, original_shape, order)
+        out_index = _permute_copy_from_last(out_index, original_shape, order)
     return out, out_index
