@@ -1610,12 +1610,13 @@ def _unique2(
     counts = None
 
     if return_inverse:
-        # unique-id per sorted position (0-based run index), scattered back to
-        # the original order. `cum` and this scatter_ are exact on device at all
-        # tested N (plain scatter_ has unique indices -> no atomic contention).
+        # unique-id per sorted position (0-based run index), written back to the
+        # original order. `cum` and this write are exact on device at all tested
+        # N: index_copy_ has unique indices (no contention) and never takes the
+        # backend's atomic scatter path.
         cum = torch.cumsum(ne.to(torch.int64), 0) - 1
         inverse_indices = torch.empty(N, dtype=torch.int64, device=flat.device)
-        inverse_indices.scatter_(0, sorted_indices, cum)
+        inverse_indices.index_copy_(0, sorted_indices, cum)
 
     if return_counts:
         # counts[k] = length of the k-th value-run = start[k+1] - start[k]. The

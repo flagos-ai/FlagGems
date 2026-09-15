@@ -49,27 +49,43 @@ def nonzero_kernel(
     inp,
     prefix_sum,
     out,
+    num_nonzeros,
     n_elements: tl.constexpr,
     shape,
     ndim: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
+    # The scatter runs without any store mask. The previous kernel guarded the
+    # store with `mask and inp_vals`: that predicate is data dependent, and a
+    # data dependent store mask does not reliably suppress lanes on this
+    # backend. A lane whose element is zero has out_offset = prefix_sum - 1
+    # pointing at the previous run's row - or at -1 when no nonzero precedes
+    # it - so a leaked store either corrupts a valid row or writes before the
+    # buffer and kills the context (device error 719; every sparse nonzero
+    # call crashed, taking unique2 and unique_dim down with it).
+    #
+    # Loads are clamped instead of masked, so a tail lane replays the last
+    # element. Zero lanes (and tail lanes replaying a zero) are redirected to
+    # a dummy row one past the real output, so every lane stores
+    # unconditionally and in bounds; a tail lane replaying a nonzero last
+    # element rewrites that element's own row with the same values.
     pid = ext.program_id(0)
 
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offset < n_elements
+    offset_c = tl.minimum(offset, n_elements - 1)
 
-    inp_vals = tl.load(inp + offset, mask=mask).to(tl.int1)
-    out_offset = tl.load(prefix_sum + offset, mask=mask) - 1
+    inp_vals = tl.load(inp + offset_c).to(tl.int1)
+    row = tl.load(prefix_sum + offset_c) - 1
 
-    nonzero_mask = mask and inp_vals  # noqa
+    dummy = tl.full([], 0, tl.int64) + num_nonzeros
+    safe_row = tl.where(inp_vals, row, dummy)
 
-    idx_flat = offset
-    for dim in range(ndim - 1, -1, -1):
+    idx_flat = offset_c
+    for dim in tl.static_range(ndim - 1, -1, -1):
         dim_size = tl.load(shape + dim)
         remainder = idx_flat % dim_size
         idx_flat //= dim_size
-        tl.store(out + out_offset * ndim + dim, remainder, mask=nonzero_mask)
+        tl.store(out + safe_row * ndim + dim, remainder)
 
 
 def _dense_block_size(n):
@@ -94,15 +110,21 @@ def nonzero_dense_flat_kernel(
     # FALLBACK kernel for ndim > 8 (per-lane metadata loads); the default dense
     # path uses nonzero_dense_flat_args_kernel which keeps shape/strides in
     # kernel arguments (no global loads, no masked loads).
+    #
+    # No masks: with mask-zero load semantics a tail lane reads stride_d and
+    # shape_d as 0, and its `// 0` / `% 0` raises a device exception (error
+    # 719) whenever n_out is not a multiple of BLOCK_SIZE. Clamping j keeps
+    # every lane on a real element; tail lanes rewrite the last coordinate
+    # with the same value.
     pid = ext.program_id(0)
     j = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE).to(tl.int64)
-    mask = j < n_out
-    i = j // ndim
-    d = j % ndim
-    stride_d = tl.load(strides + d, mask=mask)
-    shape_d = tl.load(shape + d, mask=mask)
+    j_c = tl.minimum(j, n_out - 1)
+    i = j_c // ndim
+    d = j_c % ndim
+    stride_d = tl.load(strides + d)
+    shape_d = tl.load(shape + d)
     coord = (i // stride_d) % shape_d
-    tl.store(out + j, coord, mask=mask)
+    tl.store(out + j_c, coord)
 
 
 # Cap for the default dense tile. Larger tiles measured identical throughput
@@ -383,15 +405,15 @@ def nonzero(inp, *, as_tuple=False):
                     inp_ndim,
                     block,
                     isCloseUnrollControl=True,
-                    is_use_mask_zero=True,
                 )
         if as_tuple:
             return torch.unbind(out, dim=1)
         return out
 
-    # SPARSE path: data-dependent scatter via prefix sum.
+    # SPARSE path: data-dependent scatter via prefix sum. The extra row is the
+    # dummy target for zero/tail lanes (see kernel comment); it is sliced away.
     shape = _device_int_tensor(inp.shape, torch.int32, inp.device)
-    out = torch.empty(num_nonzeros, inp_ndim, dtype=torch.int64, device=inp.device)
+    out = torch.empty(num_nonzeros + 1, inp_ndim, dtype=torch.int64, device=inp.device)
 
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
     with torch_device_fn.device(inp.device):
@@ -399,12 +421,13 @@ def nonzero(inp, *, as_tuple=False):
             inp_bool,
             prefix_sum,
             out,
+            num_nonzeros,
             n_elements,
             shape,
             inp_ndim,
             isCloseUnrollControl=True,
-            is_use_mask_zero=True,
         )
+    out = out[0:num_nonzeros]
 
     if as_tuple:
         return torch.unbind(out, dim=1)
@@ -449,7 +472,6 @@ def _dense_result(inp, num_nonzeros, as_tuple):
                     inp_ndim,
                     block,
                     isCloseUnrollControl=True,
-                    is_use_mask_zero=True,
                 )
     if as_tuple:
         return torch.unbind(out, dim=1)
@@ -460,7 +482,9 @@ def _sparse_result(inp, inp_ndim, n_elements, num_nonzeros, as_tuple):
     inp_view = inp.view(n_elements)
     inp_bool = inp_view if inp_view.dtype == torch.bool else (inp_view != 0)
     prefix_sum = cumsum(inp_bool, dim=0)
-    out = torch.empty(num_nonzeros, inp_ndim, dtype=torch.int64, device=inp.device)
+    # The extra row is the dummy target for zero/tail lanes (see the
+    # nonzero_kernel comment); it is sliced away before returning.
+    out = torch.empty(num_nonzeros + 1, inp_ndim, dtype=torch.int64, device=inp.device)
     if inp_ndim <= 8:
         shape = _shape_int32_tensor(inp.shape, inp.device)
     else:
@@ -472,12 +496,13 @@ def _sparse_result(inp, inp_ndim, n_elements, num_nonzeros, as_tuple):
             inp_bool,
             prefix_sum,
             out,
+            num_nonzeros,
             n_elements,
             shape,
             inp_ndim,
             isCloseUnrollControl=True,
-            is_use_mask_zero=True,
         )
+    out = out[0:num_nonzeros]
     if as_tuple:
         return torch.unbind(out, dim=1)
     return out
@@ -496,13 +521,15 @@ def nonzero_dense_dimmajor_kernel(
     # written to a contiguous run out[dim*N + offset] -> stride-1 store per dim.
     pid = ext.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offset < n_elements
-    idx_flat = offset
+    # Clamp tail lanes because masked stores are not reliable on this backend.
+    # Redundant lanes rewrite the final valid coordinate with the same value.
+    offset_c = tl.minimum(offset, n_elements - 1)
+    idx_flat = offset_c
     for dim in range(ndim - 1, -1, -1):
         dim_size = tl.load(shape + dim)
         remainder = idx_flat % dim_size
         idx_flat //= dim_size
-        tl.store(out + dim * n_elements + offset, remainder, mask=mask)
+        tl.store(out + dim * n_elements + offset_c, remainder)
 
 
 @libentry()
