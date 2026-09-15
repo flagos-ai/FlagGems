@@ -210,6 +210,10 @@ _FULL_CONFIG = (
     ("_nested_view_from_buffer_copy", _nested_view_from_buffer_copy),
     ("_nested_view_from_jagged", _nested_view_from_jagged),
     ("_nested_view_from_jagged_copy", _nested_view_from_jagged_copy),
+    # _pad_circular is a CompositeImplicitAutograd op; it decomposes before
+    # reaching the backend key, so we must also register the CompositeImplicitAutograd
+    # key for use_gems() to intercept it instead of silently running the decomposition.
+    ("_pad_circular", _pad_circular, None, ["CompositeImplicitAutograd"]),
     ("_pdist_backward", _pdist_backward),
     ("_pdist_forward", _pdist_forward),
     ("_prelu_kernel", _prelu_kernel),
