@@ -61,6 +61,7 @@ from .repeat import repeat
 from .repeat_interleave import repeat_interleave_self_tensor
 from .resolve_conj import resolve_conj
 from .rsqrt import rsqrt, rsqrt_
+from .segment_reduce import segment_reduce, segment_reduce_out
 from .sigmoid import sigmoid
 from .silu import silu
 from .special_bessel_j0 import special_bessel_j0, special_bessel_j0_out
@@ -171,6 +172,8 @@ __all__ = [
     "resolve_conj",
     "rsqrt",
     "rsqrt_",
+    "segment_reduce",
+    "segment_reduce_out",
     "sigmoid",
     "silu",
     "special_bessel_j0",
