@@ -882,6 +882,8 @@ _FULL_CONFIG = (
     ("masked_scatter_backward", masked_scatter_backward),
     ("masked_select", masked_select),
     ("matrix_exp_backward", matrix_exp_backward),
+    ("matrix_power", matrix_power),
+    ("matrix_power.out", matrix_power_out),
     ("max", max),
     ("max.dim", max_dim),
     ("max_pool1d", max_pool1d),
