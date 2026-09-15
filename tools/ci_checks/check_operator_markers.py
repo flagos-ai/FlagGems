@@ -65,6 +65,7 @@ def find_test_file(op_id: str, aliases: dict[str, str]) -> Path | None:
       1. Alias mapping from ci_test_aliases.yaml
       2. tests/test_<id>.py (direct match)
       3. tests/test_<id without trailing _>.py (inplace variants)
+      4. _out variants share the base operator's test file
     """
     # Check alias first
     if op_id in aliases:
@@ -82,16 +83,53 @@ def find_test_file(op_id: str, aliases: dict[str, str]) -> Path | None:
         return direct
 
     # Inplace variant: abs_ might share tests/test_abs.py
-    if op_id.endswith("_"):
+    if op_id.endswith("_") and not op_id.endswith("_out"):
         base = TESTS_DIR / f"test_{op_id[:-1]}.py"
         if base.exists():
             return base
 
+    # _out variant: _conj_physical_out shares tests/test__conj_physical.py.
+    # Recurse so the base operator also benefits from alias/direct lookup.
+    if op_id.endswith("_out"):
+        base_file = find_test_file(op_id[: -len("_out")], aliases)
+        if base_file is not None:
+            return base_file
+
     return None
 
 
+def candidate_markers(op_id: str) -> set[str]:
+    """Return the acceptable pytest marker names for an operator id.
+
+    Repo conventions:
+      - leading-underscore ids use an ``underscore_`` prefixed marker
+        (e.g. ``_weight_norm`` -> ``underscore_weight_norm``)
+      - ``_out`` variants share the base operator's marker
+      - inplace variants (trailing ``_``) may reuse the base marker
+    """
+    names = {op_id}
+
+    # underscore_ convention for leading-underscore ids: "_foo" -> "underscore_foo"
+    if op_id.startswith("_"):
+        names.add("underscore" + op_id)
+
+    # _out variants fall back to the base operator's markers
+    if op_id.endswith("_out"):
+        names |= candidate_markers(op_id[: -len("_out")])
+
+    # inplace variants (trailing underscore) fall back to the base marker
+    if op_id.endswith("_") and not op_id.endswith("_out"):
+        names |= candidate_markers(op_id[:-1])
+
+    return names
+
+
 def check_marker_in_file(filepath: Path, op_id: str) -> bool:
-    """Check if the test file has at least one @pytest.mark.<op_id> decorator."""
+    """Check if the test file has at least one accepted @pytest.mark decorator.
+
+    Accepts any marker name in :func:`candidate_markers` to honor the repo's
+    ``underscore_`` naming convention and shared ``_out`` markers.
+    """
     try:
         source = filepath.read_text()
         tree = ast.parse(source)
@@ -99,18 +137,19 @@ def check_marker_in_file(filepath: Path, op_id: str) -> bool:
         # If we can't parse, assume marker is present (don't block on parse errors)
         return True
 
+    wanted = candidate_markers(op_id)
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             for decorator in node.decorator_list:
-                if _is_pytest_mark(decorator, op_id):
+                if _is_pytest_mark(decorator, wanted):
                     return True
     return False
 
 
-def _is_pytest_mark(node: ast.expr, marker_name: str) -> bool:
-    """Check if a decorator node is @pytest.mark.<marker_name>."""
+def _is_pytest_mark(node: ast.expr, marker_names: set[str]) -> bool:
+    """Check if a decorator node is @pytest.mark.<name> for an accepted name."""
     # Pattern: pytest.mark.<name>
-    if isinstance(node, ast.Attribute) and node.attr == marker_name:
+    if isinstance(node, ast.Attribute) and node.attr in marker_names:
         # Check it's pytest.mark.<name>
         if isinstance(node.value, ast.Attribute) and node.value.attr == "mark":
             if (
@@ -120,7 +159,7 @@ def _is_pytest_mark(node: ast.expr, marker_name: str) -> bool:
                 return True
     # Pattern: pytest.mark.<name>(...) - marker with arguments (shouldn't happen but be safe)
     if isinstance(node, ast.Call):
-        return _is_pytest_mark(node.func, marker_name)
+        return _is_pytest_mark(node.func, marker_names)
     return False
 
 
@@ -179,13 +218,10 @@ def main():
             )
             continue
 
-        # Rule 2: Test file must have the operator marker
+        # Rule 2: Test file must have the operator marker.
+        # candidate_markers() already covers inplace (trailing _), _out and
+        # the underscore_ naming convention for leading-underscore ids.
         has_marker = check_marker_in_file(test_file, op_id)
-        if not has_marker:
-            # For inplace variants (e.g., abs_), also accept base marker
-            if op_id.endswith("_"):
-                base_id = op_id[:-1]
-                has_marker = check_marker_in_file(test_file, base_id)
 
         if not has_marker:
             errors.append(
