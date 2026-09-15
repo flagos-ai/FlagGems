@@ -31,7 +31,20 @@ BLOCK_SIZE_K = 32
 
 
 @libentry()
-@triton.jit
+@triton.jit(
+    do_not_specialize=[
+        "M",
+        "N",
+        "K",
+        "stride_am",
+        "stride_ak",
+        "stride_bk",
+        "stride_bn",
+        "stride_bias",
+        "stride_cm",
+        "stride_cn",
+    ]
+)
 def matmul_bias_activation_kernel(
     a_ptr,
     b_ptr,

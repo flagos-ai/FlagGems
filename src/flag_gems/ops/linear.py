@@ -34,7 +34,20 @@ logger = logging.getLogger(__name__)
     warmup=5,
     rep=10,
 )
-@triton.jit
+@triton.jit(
+    do_not_specialize=[
+        "M",
+        "N",
+        "K",
+        "stride_im",
+        "stride_ik",
+        "stride_wn",
+        "stride_wk",
+        "stride_om",
+        "stride_on",
+        "stride_bn",
+    ]
+)
 def linear_kernel(
     input_ptr,
     weight_ptr,
