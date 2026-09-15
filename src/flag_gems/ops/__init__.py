@@ -694,6 +694,7 @@ from flag_gems.ops.native_batch_norm import native_batch_norm
 from flag_gems.ops.native_dropout_backward import native_dropout_backward
 from flag_gems.ops.native_group_norm import native_group_norm
 from flag_gems.ops.native_layer_norm import native_layer_norm
+from flag_gems.ops.native_norm import native_norm
 from flag_gems.ops.ne import ne, ne_scalar
 from flag_gems.ops.ne_ import ne_, ne_scalar_
 from flag_gems.ops.neg import neg, neg_
@@ -1749,6 +1750,7 @@ __all__ = [
     "native_dropout_backward",
     "native_group_norm",
     "native_layer_norm",
+    "native_norm",
     "ne",
     "ne_",
     "ne_scalar",
