@@ -659,6 +659,7 @@ _FULL_CONFIG = (
     ("fractional_max_pool2d", fractional_max_pool2d),
     ("fractional_max_pool2d_backward", fractional_max_pool2d_backward),
     ("frexp", frexp),
+    ("frobenius_norm.dim", frobenius_norm),
     ("full", full),
     ("full_like", full_like),
     ("fused_moving_avg_obs_fake_quant", fused_moving_avg_obs_fake_quant),
