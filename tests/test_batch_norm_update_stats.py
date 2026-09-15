@@ -55,13 +55,12 @@ def test_batch_norm_update_stats(shape, dtype, has_running):
         0.1,
     )
 
-    with flag_gems.use_gems():
-        res_out = torch.batch_norm_update_stats(
-            input_t,
-            running_mean.clone() if running_mean is not None else None,
-            running_var.clone() if running_var is not None else None,
-            0.1,
-        )
+    res_out = torch.batch_norm_update_stats(
+        input_t,
+        running_mean.clone() if running_mean is not None else None,
+        running_var.clone() if running_var is not None else None,
+        0.1,
+    )
 
     for ref_val, res_val in zip(ref_out, res_out):
         utils.gems_assert_close(res_val, ref_val, torch.float32)
