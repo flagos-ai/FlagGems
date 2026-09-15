@@ -35,6 +35,7 @@ FORWARD_CONFIGS = [
     triton.Config({"BLOCK_H": 16, "BLOCK_W": 16}, num_warps=8),
 ]
 
+
 @libentry()
 @triton.autotune(
     configs=FORWARD_CONFIGS,
