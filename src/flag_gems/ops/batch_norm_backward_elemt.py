@@ -43,8 +43,8 @@ def batch_norm_backward_elemt_kernel(
     weight_ptr,
     sum_dy_ptr,
     sum_dy_xmu_ptr,
+    count_ptr,
     grad_input_ptr,
-    inv_count,
     batch_dim,
     spatial_dim,
     grad_out_batch_stride,
@@ -72,6 +72,9 @@ def batch_norm_backward_elemt_kernel(
                  - (sum_dy + (input - mean) * invstd^2 * sum_dy_xmu) / count)
     """
     feat_pid = tl.program_id(axis=0)
+
+    # Load count once (scalar tensor) and compute inv_count on device
+    inv_count = 1.0 / tl.load(count_ptr).to(tl.float32)
 
     # Load per-channel statistics once (scalar per program)
     mean = tl.load(mean_ptr + feat_pid).to(tl.float32)
@@ -178,9 +181,6 @@ def batch_norm_backward_elemt(
 
     batch_dim, feat_dim, spatial_dim = input.shape
 
-    # Precompute 1/count to avoid per-element division
-    inv_count = 1.0 / count.item()
-
     # Handle optional weight
     has_weight = weight is not None
     if not has_weight:
@@ -201,8 +201,8 @@ def batch_norm_backward_elemt(
             weight,
             sum_dy,
             sum_dy_xmu,
+            count,
             grad_input,
-            inv_count,
             batch_dim,
             spatial_dim,
             *grad_out.stride(),
