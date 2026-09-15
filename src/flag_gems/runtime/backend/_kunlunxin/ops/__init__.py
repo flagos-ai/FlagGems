@@ -198,6 +198,7 @@ from .elu import elu, elu_, elu_backward
 from .embedding import embedding, embedding_backward, embedding_dense_backward
 from .eq import eq, eq_, eq_scalar, eq_scalar_
 from .erf import erf, erf_, special_erf
+from .erfc import erfc, erfc_, special_erfc
 from .erfinv import erfinv
 from .erfinv_ import erfinv_  # noqa: F401
 from .exp import exp, exp_, exp_out
@@ -798,6 +799,8 @@ __all__ = [
     "eq_scalar_",
     "erf",
     "erf_",
+    "erfc",
+    "erfc_",
     "erfinv",
     "exp",
     "exp2",
@@ -1205,6 +1208,7 @@ __all__ = [
     "special_chebyshev_polynomial_w_out",
     "special_digamma",
     "special_erf",
+    "special_erfc",
     "special_erfcx",
     "special_erfinv",
     "special_erfinv_",
