@@ -27,6 +27,7 @@ from flag_gems.logging_utils import setup_flaggems_logging, teardown_flaggems_lo
 from flag_gems.modules import *  # noqa: F403
 from flag_gems.ops import *  # noqa: F403
 from flag_gems.ops import range as range_op
+from flag_gems.ops._dirichlet_grad import _HAS_MAP_ELEMENTWISE
 from flag_gems.patches import *  # noqa: F403
 from flag_gems.patches import patch_empty_vllm  # noqa: F401
 from flag_gems.runtime import flagtune
@@ -129,7 +130,7 @@ _FULL_CONFIG = (
     ("_cudnn_rnn_backward", cudnn_rnn_backward),
     ("_cummax_helper", _cummax_helper),
     ("_cummin_helper", _cummin_helper),
-    ("_dirichlet_grad", _dirichlet_grad),
+    ("_dirichlet_grad", _dirichlet_grad, lambda: _HAS_MAP_ELEMENTWISE),
     ("_dyn_quant_pack_4bit_weight", _dyn_quant_pack_4bit_weight),
     ("_efficient_attention_backward", efficient_attention_backward),
     ("_embedding_bag_dense_backward", _embedding_bag_dense_backward),
@@ -339,6 +340,7 @@ _FULL_CONFIG = (
     ("affine_grid_generator", affine_grid_generator),
     ("alias", alias),
     ("alias_copy", alias_copy),
+    ("alias_copy.out", alias_copy_out),
     ("all", all),
     ("all.dim", all_dim),
     ("all.dims", all_dims),
