@@ -110,6 +110,10 @@ def sum_out(inp, *, dtype=None, out):
         if dtype is torch.bool:
             inp = inp.to(torch.int64)
             dtype = torch.int64
+    if M == 0:
+        out = out.resize_(())
+        out.fill_(0)
+        return out
     block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
     mid_size = triton.cdiv(M, block_size)
     block_mid = triton.next_power_of_2(mid_size)
@@ -118,7 +122,7 @@ def sum_out(inp, *, dtype=None, out):
     with torch_device_fn.device(inp.device):
         sum_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size)
         sum_kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid)
-    return out
+    return out.resize_(())
 
 
 @libentry()
