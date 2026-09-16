@@ -62,7 +62,7 @@ from .index_select_backward import index_select_backward
 from .isin import isin
 from .lcm import lcm, lcm_
 from .linalg_ldl_factor import ldl_factor
-from .linalg_matrix_norm import linalg_matrix_norm
+from .linalg_matrix_norm import linalg_matrix_norm, linalg_matrix_norm_out
 from .linalg_solve_triangular import (
     linalg_solve_triangular,
     linalg_solve_triangular_out,
@@ -79,9 +79,11 @@ from .max_pool3d_with_indices import (
 from .max_unpool2d import max_unpool2d
 from .median import median_dim, median_dim_values
 from .mm import mm
+from .mm_w8a8_int8 import mm_w8a8_int8, mm_w8a8_int8_out
 from .mul import mul, mul_
 from .nansum import nansum, nansum_out
 from .nll_loss_backward import heur_block_n, nll_loss_backward
+from .pad_sequence import pad_sequence
 from .per_token_group_quant_fp8 import SUPPORTED_FP8_DTYPE, per_token_group_quant_fp8
 from .pow import (
     pow_scalar,
@@ -99,6 +101,7 @@ from .replication_pad2d_backward import (
     replication_pad2d_backward_grad_input,
 )
 from .scatter import scatter, scatter_
+from .scatter_reduce import scatter_reduce, scatter_reduce_, scatter_reduce_out
 from .searchsorted import (
     searchsorted,
     searchsorted_out,
@@ -171,6 +174,7 @@ __all__ = [
     "lcm_",
     "ldl_factor",
     "linalg_matrix_norm",
+    "linalg_matrix_norm_out",
     "linalg_solve_triangular",
     "linalg_solve_triangular_out",
     "log_normal_",
@@ -183,11 +187,14 @@ __all__ = [
     "median_dim",
     "median_dim_values",
     "mm",
+    "mm_w8a8_int8",
+    "mm_w8a8_int8_out",
     "mul",
     "mul_",
     "nansum",
     "nansum_out",
     "nll_loss_backward",
+    "pad_sequence",
     "per_token_group_quant_fp8",
     "pool3d_output_size",
     "pow_scalar",
@@ -210,6 +217,9 @@ __all__ = [
     "ScaleDotProductAttention",
     "scatter",
     "scatter_",
+    "scatter_reduce",
+    "scatter_reduce_",
+    "scatter_reduce_out",
     "searchsorted",
     "searchsorted_out",
     "searchsorted_scalar",
