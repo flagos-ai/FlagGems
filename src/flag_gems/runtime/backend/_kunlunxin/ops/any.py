@@ -54,8 +54,23 @@ def _acc_dtype(dt):
     return tl.float16 if dt == torch.float16 else tl.float32
 
 
+def _row_tile_rows(args):
+    """行归约的 BLOCK_M：fp16 用 128，其余 64。
+
+    依据（node97 · do_bench 口径 · 3 趟交错 ±1% · 逐 tile 与原生 torch.any 对拍 correct）：
+    [4096,4096] 行归约把 fp16 的 BLOCK_M 从 64 提到 128，kernel 126.9µs → 94.5µs（−26%，
+    官方口径该格 127.2 → 99.7µs）；f32/bf16 维持 64（128 行会把 fp32 累积器推到 256KB，
+    反而 121/205µs vs 114/202µs）。物理口径：累积器 tile 控制在 ~128KB —— fp16 2B/lane
+    可 128 行，fp32 系 4B/lane 只能 64 行。
+    """
+    t = args.get("inp")
+    if getattr(t, "dtype", None) == torch.float16:
+        return BLOCK_M_DEFAULT * 2
+    return BLOCK_M_DEFAULT
+
+
 def heur_m_block_size(args):
-    return min(triton.next_power_of_2(args["M"]), BLOCK_M_DEFAULT)
+    return min(triton.next_power_of_2(args["M"]), _row_tile_rows(args))
 
 
 def heur_n_block_size(args):
@@ -203,18 +218,23 @@ def any_bool_dim_kernel_f(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    """any_bool_dim_kernel variant storing the raw int32 reduced value (see -f note)."""
+    """any_bool_dim_kernel variant storing the raw reduced value (see -f note).
+
+    ⚠️ 累积用 **fp32** 而非 int32：本后端 int32 max 明显更慢 —— [4096,4096] 实测
+    120.1µs → 63.3µs（−47%，`evidence/any-dim-20260916/probes/alt_dtype_kernels.py`，
+    逐项与原生 torch.any 对拍 correct）。word ≥ 0 ⇒ fp32 表示非零保持（< 2^24 精确，
+    更大时按最近舍入仍非零），语义不变。"""
     pid = ext.program_id(0)
     rows = pid * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     inb = inw + rows * NW
     outb = out + rows
     row_mask = rows < M
-    acc = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.int32)
+    acc = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
     for off in range(0, NW, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
         mask = row_mask and (cols < NW)
         w = tl.load(inb + cols, mask, other=0)
-        acc = tl.maximum(acc, w)
+        acc = tl.maximum(acc, w.to(tl.float32))
     r = tl.reduce(acc, axis=1, combine_fn=_max2)[:, None]
     tl.store(outb, r, row_mask)
 
@@ -392,6 +412,22 @@ def any(inp):
     return out
 
 
+@libentry()
+@triton.jit
+def any_mid_neq0_kernel(mid, out, M, BLOCK: tl.constexpr):
+    """`mid[M] -> out[M]`（bool，`v != 0`）——两段式的第二段。
+
+    为什么不用 `(mid != 0)`：在 `use_gems()` 上下文里那是一次**嵌套的 gem 派发**
+    （本 op 内部再走一次 gem 分派），官方口径 A/B 实测 bool [4096,4096] 该格
+    64.9µs（本 kernel）vs 76.7µs（`(mid != 0)`）—— 差 ~12µs。本 kernel 只做同一个
+    逐元素判断，一次自己的发射即可。
+    """
+    offs = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < M
+    v = tl.load(mid + offs, mask=mask, other=0)
+    tl.store(out + offs, v != 0, mask=mask)
+
+
 def _per_row_any(inp, M, N, out_shape):
     """Reduce a contiguous [M, N] view over its N axis (per row) -> bool tensor.
 
@@ -400,16 +436,22 @@ def _per_row_any(inp, M, N, out_shape):
     kernel on XPU (~2.3x at [4096,4096]), so writing a wider result and doing a
     tiny follow-up compare is faster. Small M stays single-kernel (launch-bound)."""
     grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
+    mid_grid = (triton.cdiv(M, 2048),)
     two_step = M > BLOCK_M_DEFAULT
     if inp.dtype == torch.bool and N % 4 == 0:
         inw = inp.reshape(-1).view(torch.int32).reshape(M, N // 4)
         if two_step:
-            mid = torch.empty(M, dtype=torch.int32, device=inp.device)
+            # mid 随 `any_bool_dim_kernel_f` 的 fp32 累积（见该 kernel 注释）
+            mid = torch.empty(M, dtype=torch.float32, device=inp.device)
+            out = torch.empty(M, dtype=torch.bool, device=inp.device)
             with torch_device_fn.device(inp.device):
                 any_bool_dim_kernel_f[grid](
                     inw, mid, M, N // 4, buffer_size_limit=2048
                 )
-            return (mid != 0).reshape(out_shape)
+                any_mid_neq0_kernel[mid_grid](
+                    mid, out, M, BLOCK=2048, buffer_size_limit=2048
+                )
+            return out.reshape(out_shape)
         out = torch.empty(M, dtype=torch.bool, device=inp.device)
         with torch_device_fn.device(inp.device):
             any_bool_dim_kernel[grid](inw, out, M, N // 4, buffer_size_limit=2048)
@@ -418,9 +460,13 @@ def _per_row_any(inp, M, N, out_shape):
         if two_step:
             mid_dt = torch.float16 if acc == tl.float16 else torch.float32
             mid = torch.empty(M, dtype=mid_dt, device=inp.device)
+            out = torch.empty(M, dtype=torch.bool, device=inp.device)
             with torch_device_fn.device(inp.device):
                 any_dim_kernel_f[grid](inp, mid, M, N, ACC=acc, buffer_size_limit=2048)
-            return (mid != 0).reshape(out_shape)
+                any_mid_neq0_kernel[mid_grid](
+                    mid, out, M, BLOCK=2048, buffer_size_limit=2048
+                )
+            return out.reshape(out_shape)
         out = torch.empty(M, dtype=torch.bool, device=inp.device)
         with torch_device_fn.device(inp.device):
             any_dim_kernel[grid](inp, out, M, N, ACC=acc, buffer_size_limit=2048)
