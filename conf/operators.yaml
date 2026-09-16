@@ -12284,6 +12284,28 @@ ops:
   - Math
   stages:
   - beta: '5.3'
+- id: rrelu_with_noise
+  description: 'Triton kernel implementation for rrelu_with_noise
+    '
+  for:
+  - rrelu_with_noise
+  labels:
+  - aten
+  kind:
+  - NeuralNetwork
+  stages:
+  - beta: '5.4'
+- id: rrelu_with_noise_
+  description: 'Triton kernel implementation for rrelu_with_noise_
+    '
+  for:
+  - rrelu_with_noise_
+  labels:
+  - aten
+  kind:
+  - NeuralNetwork
+  stages:
+  - beta: '5.4'
 - id: rrelu_with_noise_backward
   description: 'Computes the gradient of the Randomized Leaky ReLU (RReLU) activation
     function with respect to
