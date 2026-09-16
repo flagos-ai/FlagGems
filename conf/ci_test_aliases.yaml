@@ -68,6 +68,8 @@ std_mean_correction_names: test_std_mean
 std_mean_correction_out: test_std_mean
 std_mean_dim: test_std_mean
 std_mean_names_dim: test_std_mean
+tril_indices: test_triangular_indices
+triu_indices: test_triangular_indices
 upsample_bicubic2d_aa_backward: test_upsample_bicubic2d_aa
 upsample_linear1d_backward: test_upsample_linear1d
 

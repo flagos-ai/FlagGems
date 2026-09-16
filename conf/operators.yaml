@@ -15402,6 +15402,17 @@ ops:
   - BLAS
   stages:
   - beta: '5.3'
+- id: tril_indices
+  description: Returns the row and column coordinates of the lower-triangular part
+    of a `row` by `col` matrix in row-major order.
+  for:
+  - tril_indices
+  labels:
+  - aten
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: tril_out
   description: 'A variant of `tril()` that explicitly assigns the output to the `out`
     parameter.
@@ -15452,6 +15463,17 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '5.0'
+- id: triu_indices
+  description: Returns the row and column coordinates of the upper-triangular part
+    of a `row` by `col` matrix in row-major order.
+  for:
+  - triu_indices
+  labels:
+  - aten
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: true_divide
   description: Performs element-wise true division between two tensors.
   for:
