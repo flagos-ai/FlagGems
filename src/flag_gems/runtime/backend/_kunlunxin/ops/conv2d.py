@@ -1057,5 +1057,5 @@ class Conv2d(torch.autograd.Function):
 
 
 def conv2d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
-    logger.debug("GEMS CONV2D")
+    logger.debug("GEMS_KUNLUNXIN CONV2D")
     return Conv2d.apply(input, weight, bias, stride, padding, dilation, groups)
