@@ -30,6 +30,7 @@ alias_copy_out: test_alias_copy
 as_strided_copy_out: test_as_strided_copy
 baddbmm_out: test_baddbmm
 linalg_eigvals_out: test_linalg_eigvals
+multi_margin_loss_out: test_multi_margin_loss
 nanmedian_out: test_nanmedian
 scaled_mm_out: test_scaled_mm
 searchsorted_out: test_searchsorted
@@ -57,6 +58,8 @@ special_zeta_tensor_scalar: test_special_zeta
 
 # Operators tested in combined files or with different naming
 batch_norm_backward: test_batch_norm
+multi_margin_loss_backward: test_multi_margin_loss
+multi_margin_loss_backward_out: test_multi_margin_loss
 segment_reduce_backward: test_segment_reduce
 segment_reduce_backward_out: test_segment_reduce
 special_chebyshev_polynomial_t_out: test_special_chebyshev_polynomial_t
