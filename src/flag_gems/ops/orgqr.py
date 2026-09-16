@@ -124,10 +124,19 @@ def _orgqr_impl(input, tau, out):
             )
         input_work = preserved_input
 
+    copy_back = False
     if input.ndim == 2:
         out_work = out.unsqueeze(0)
     else:
-        out_work = out.reshape(batch_size, m, n)
+        try:
+            out_work = out.view(batch_size, m, n)
+        except RuntimeError:
+            # Flattening arbitrary batch strides may require a copy. Compute
+            # in a workspace and explicitly write back to the provided out.
+            out_work = torch.empty(
+                (batch_size, m, n), dtype=out.dtype, device=out.device
+            )
+            copy_back = True
 
     block_m = triton.next_power_of_2(m)
     block_n = min(triton.next_power_of_2(n), 32)
@@ -147,6 +156,8 @@ def _orgqr_impl(input, tau, out):
             BLOCK_M=block_m,
             BLOCK_N=block_n,
         )
+        if copy_back:
+            out.copy_(out_work.view(out.shape))
     return out
 
 
@@ -162,6 +173,6 @@ def orgqr(input, tau):
 
 
 def orgqr_out(input, tau, *, out):
-    """Write Q directly into ``out`` from the Triton kernel."""
+    """Write Q into ``out``, preserving its storage and arbitrary batch strides."""
     logger.debug("GEMS ORGQR_OUT")
     return _orgqr_impl(input, tau, out)

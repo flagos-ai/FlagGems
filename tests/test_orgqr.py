@@ -76,6 +76,39 @@ def test_accuracy_orgqr_out(shape, dtype):
 
 
 @pytest.mark.orgqr_out
+@pytest.mark.parametrize("dtype", ORGQR_DTYPES)
+@pytest.mark.parametrize("layout", ["transposed_batch", "sliced_batch"])
+def test_orgqr_out_multiple_noncontiguous_batch_dimensions(dtype, layout):
+    input, tau = make_reflectors((2, 3, 7, 5), dtype)
+    ref_input = utils.to_reference(input)
+    ref_tau = utils.to_reference(tau)
+
+    def make_out(device):
+        if layout == "transposed_batch":
+            return torch.full(
+                (3, 2, 7, 5), float("nan"), dtype=dtype, device=device
+            ).transpose(0, 1)
+        return torch.full((4, 3, 7, 5), float("nan"), dtype=dtype, device=device)[::2]
+
+    out = make_out(flag_gems.device)
+    ref_out = make_out(ref_input.device)
+    original_stride = out.stride()
+    original_pointer = out.data_ptr()
+    assert not out.is_contiguous()
+    # These batch layouts cannot be flattened without allocating a copy.
+    with pytest.raises(RuntimeError):
+        out.view(6, 7, 5)
+
+    reference = torch.orgqr(ref_input, ref_tau, out=ref_out)
+    result = flag_gems.orgqr_out(input, tau, out=out)
+
+    assert result is out
+    assert out.stride() == original_stride
+    assert out.data_ptr() == original_pointer
+    utils.gems_assert_close(out, reference, dtype)
+
+
+@pytest.mark.orgqr_out
 def test_orgqr_out_stride_alias_dtype_and_device_contract():
     input, tau = make_reflectors((7, 5), torch.float32)
     ref_input = utils.to_reference(input)
