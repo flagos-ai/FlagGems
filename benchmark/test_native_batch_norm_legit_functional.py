@@ -1,6 +1,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -27,8 +29,6 @@ def test_native_batch_norm_legit_functional():
         running_mean = torch.zeros(C, dtype=dtype, device=device)
         running_var = torch.ones(C, dtype=dtype, device=device)
         yield inp, weight, bias, running_mean, running_var, True, 0.1, 1e-5
-
-    import flag_gems
 
     bench = NormBenchmark(
         input_fn=native_batch_norm_legit_functional_input_fn,
