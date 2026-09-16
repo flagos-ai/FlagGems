@@ -174,7 +174,7 @@ def special_ndtri_func(x):
 
 
 def special_ndtri(self):
-    logger.debug("GEMS SPECIAL_NDTRI")
+    logger.debug("GEMS_KUNLUNXIN SPECIAL_NDTRI")
     if self.dtype not in _SUPPORTED_DTYPES:
         raise NotImplementedError(
             f"\"ndtri\" not implemented for '{self.dtype}'; supported dtypes are "
