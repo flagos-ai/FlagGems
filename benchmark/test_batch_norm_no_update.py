@@ -16,6 +16,8 @@ import pytest
 import torch
 import torch.nn.functional as F
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -54,8 +56,6 @@ def torch_batch_norm_no_update(
 
 @pytest.mark.batch_norm_no_update
 def test_batch_norm_no_update():
-    import flag_gems
-
     bench = NormBenchmark(
         input_fn=batch_norm_no_update_input_fn,
         op_name="batch_norm_no_update",

@@ -16,6 +16,8 @@ import pytest
 import torch
 import torch.nn.functional as F
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -54,8 +56,6 @@ def torch_native_batch_norm_legit_no_training(
 
 @pytest.mark.native_batch_norm_legit_no_training
 def test_native_batch_norm_legit_no_training():
-    import flag_gems
-
     bench = NormBenchmark(
         input_fn=native_batch_norm_legit_no_training_input_fn,
         op_name="native_batch_norm_legit_no_training",
