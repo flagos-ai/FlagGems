@@ -137,8 +137,13 @@ def max_kernel_inner_1d(
             update = x > max_vals
             if dtype.is_floating():
                 nan_i32 = (mask & (x != x)).to(tl.int32)
-                has_nan = tl.max(nan_i32, axis=0) != 0
-                local_first_nan = tl.argmax(nan_i32, axis=0)
+                has_nan_i32, local_first_nan = tl.max(
+                    nan_i32,
+                    axis=0,
+                    return_indices=True,
+                    return_indices_tie_break_left=True,
+                )
+                has_nan = has_nan_i32 != 0
                 take_nan = has_nan & ~result_has_nan
                 first_nan = tl.where(take_nan, col_off + local_first_nan, first_nan)
                 result_has_nan |= has_nan
@@ -212,8 +217,13 @@ def max_kernel_non_inner(
             update = local_max > max_vals
             if dtype.is_floating():
                 nan_i32 = (mask & (vals != vals)).to(tl.int32)
-                has_nan = tl.max(nan_i32, axis=0) != 0
-                local_first_nan = tl.argmax(nan_i32, axis=0)
+                has_nan_i32, local_first_nan = tl.max(
+                    nan_i32,
+                    axis=0,
+                    return_indices=True,
+                    return_indices_tie_break_left=True,
+                )
+                has_nan = has_nan_i32 != 0
                 take_nan = has_nan & ~result_has_nan
                 first_nan = tl.where(take_nan, n_off + local_first_nan, first_nan)
                 result_has_nan |= has_nan

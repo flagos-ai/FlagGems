@@ -115,12 +115,22 @@ def max_kernel_gsl(
                 offset = row * N + n_offset
                 mask = n_offset < N
                 inp_vals = tl.load(inp + offset, mask=mask, other=min_value)
-                max_value, max_index = tl.max(inp_vals, axis=0, return_indices=True)
+                max_value, max_index = tl.max(
+                    inp_vals,
+                    axis=0,
+                    return_indices=True,
+                    return_indices_tie_break_left=True,
+                )
                 update_mask = max_value > result_value
                 if dtype.is_floating():
                     nan_i32 = (mask & (inp_vals != inp_vals)).to(tl.int32)
-                    has_nan = tl.max(nan_i32, axis=0) != 0
-                    first_nan = tl.argmax(nan_i32, axis=0)
+                    has_nan_i32, first_nan = tl.max(
+                        nan_i32,
+                        axis=0,
+                        return_indices=True,
+                        return_indices_tie_break_left=True,
+                    )
+                    has_nan = has_nan_i32 != 0
 
                     take_nan = has_nan & ~result_has_nan
                     update_mask &= ~has_nan & ~result_has_nan
@@ -164,12 +174,22 @@ def max_kernel(
         mask = m_offset[:, None] < M and n_offset[None, :] < N
         inp_ptrs = inp + offset
         inp_vals = tl.load(inp_ptrs, mask=mask, other=min_value)
-        max_value, max_index = tl.max(inp_vals, axis=1, return_indices=True)
+        max_value, max_index = tl.max(
+            inp_vals,
+            axis=1,
+            return_indices=True,
+            return_indices_tie_break_left=True,
+        )
         update_mask = max_value > result_value
         if dtype.is_floating():
             nan_i32 = (mask & (inp_vals != inp_vals)).to(tl.int32)
-            has_nan = tl.max(nan_i32, axis=1) != 0
-            first_nan = tl.argmax(nan_i32, axis=1)
+            has_nan_i32, first_nan = tl.max(
+                nan_i32,
+                axis=1,
+                return_indices=True,
+                return_indices_tie_break_left=True,
+            )
+            has_nan = has_nan_i32 != 0
 
             take_nan = has_nan & ~result_has_nan
             update_mask &= ~has_nan & ~result_has_nan
@@ -253,6 +273,9 @@ def max_dim(inp, dim=None, keepdim=False):
     n = shape[dim]
     shape[dim] = 1
     use_fast = inp.is_contiguous() and _is_reduce_last_dim(dim, inp.ndim)
+    # The GSL scalar reduction can return a mismatched index for int32 inputs.
+    # Keep the contiguous layout, but route int32 through the tiled 2D kernel.
+    use_gsl = use_fast and inp.dtype != torch.int32
 
     out_value = torch.empty(shape, dtype=inp.dtype, device=inp.device)
     out_index = torch.empty(shape, dtype=torch.int64, device=inp.device)
@@ -270,7 +293,7 @@ def max_dim(inp, dim=None, keepdim=False):
         return Max_out(values=out_value, indices=out_index)
 
     with torch_device_fn.device(inp.device):
-        if use_fast:
+        if use_gsl:
             _launch_max_dim_last(inp, out_value, out_index, n)
         else:
             grid = lambda meta: (triton.cdiv(m, meta["BLOCK_M"]),)

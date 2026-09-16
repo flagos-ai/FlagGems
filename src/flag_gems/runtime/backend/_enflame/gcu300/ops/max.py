@@ -75,7 +75,9 @@ def keep(conf):
     BLOCK_N = conf.kwargs["BLOCK_N"]
     if BLOCK_M * BLOCK_N < 2048:
         return False
-    if BLOCK_M * BLOCK_N >= 256 * 1024:
+    # NaN tracking adds an int32 reduction buffer. Keep at most 32K lanes so
+    # autotuning does not exceed GCU300 L1 and abort the device process.
+    if BLOCK_M * BLOCK_N > 32 * 1024:
         return False
     return True
 
@@ -115,12 +117,21 @@ def max_kernel_dim_low(
         mask_0 = (m_offset[:, None] < M) & (n_offset_0[None, :] < N)
         inp_ptrs_0 = inp + offset_0
         inp_vals_0 = tl.load(inp_ptrs_0, mask=mask_0, other=min_value)
-        result_value, result_index = tl.max(inp_vals_0, axis=1, return_indices=True)
+        result_value, result_index = tl.max(
+            inp_vals_0,
+            axis=1,
+            return_indices=True,
+            return_indices_tie_break_left=True,
+        )
         if dtype.is_floating():
             nan_i32 = (mask_0 & (inp_vals_0 != inp_vals_0)).to(tl.int32)
-            result_has_nan = tl.max(nan_i32, axis=1) != 0
-            first_nan = tl.argmax(nan_i32, axis=1)
-            result_value = tl.where(result_has_nan, float("nan"), result_value)
+            result_has_nan_i32, first_nan = tl.max(
+                nan_i32,
+                axis=1,
+                return_indices=True,
+                return_indices_tie_break_left=True,
+            )
+            result_has_nan = result_has_nan_i32 != 0
             result_index = tl.where(result_has_nan, first_nan, result_index)
         # tl.device_print("test1")
         # for i in tl.range(BLOCK_N, N, BLOCK_N, num_stages=num_stages):
@@ -133,20 +144,33 @@ def max_kernel_dim_low(
                 mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
                 inp_ptrs = inp + offset
                 inp_vals = tl.load(inp_ptrs, mask=mask, other=min_value)
-                max_value, max_index = tl.max(inp_vals, axis=1, return_indices=True)
+                max_value, max_index = tl.max(
+                    inp_vals,
+                    axis=1,
+                    return_indices=True,
+                    return_indices_tie_break_left=True,
+                )
                 update_mask = max_value > result_value
                 if dtype.is_floating():
                     nan_i32 = (mask & (inp_vals != inp_vals)).to(tl.int32)
-                    has_nan = tl.max(nan_i32, axis=1) != 0
-                    first_nan = tl.argmax(nan_i32, axis=1)
+                    has_nan_i32, first_nan = tl.max(
+                        nan_i32,
+                        axis=1,
+                        return_indices=True,
+                        return_indices_tie_break_left=True,
+                    )
+                    has_nan = has_nan_i32 != 0
 
                     take_nan = has_nan & ~result_has_nan
                     update_mask &= ~has_nan & ~result_has_nan
-                    result_value = tl.where(take_nan, float("nan"), result_value)
                     result_index = tl.where(take_nan, i + first_nan, result_index)
                     result_has_nan |= has_nan
                 result_value = tl.where(update_mask, max_value, result_value)
                 result_index = tl.where(update_mask, i + max_index, result_index)
+        if dtype.is_floating():
+            result_value = tl.where(result_has_nan, float("nan"), result_value).to(
+                dtype
+            )
         mask1 = m_offset < M
         offset_index = m_offset
         out_value_ptrs = out_value + offset_index
@@ -190,12 +214,21 @@ def max_kernel_dim_high(
         mask_0 = (m_offset_0[:, None] < M) & (n_offset[None, :] < N)
         inp_ptrs_0 = inp + offset_0
         inp_vals_0 = tl.load(inp_ptrs_0, mask=mask_0, other=min_value)
-        result_value, result_index = tl.max(inp_vals_0, axis=0, return_indices=True)
+        result_value, result_index = tl.max(
+            inp_vals_0,
+            axis=0,
+            return_indices=True,
+            return_indices_tie_break_left=True,
+        )
         if dtype.is_floating():
             nan_i32 = (mask_0 & (inp_vals_0 != inp_vals_0)).to(tl.int32)
-            result_has_nan = tl.max(nan_i32, axis=0) != 0
-            first_nan = tl.argmax(nan_i32, axis=0)
-            result_value = tl.where(result_has_nan, float("nan"), result_value)
+            result_has_nan_i32, first_nan = tl.max(
+                nan_i32,
+                axis=0,
+                return_indices=True,
+                return_indices_tie_break_left=True,
+            )
+            result_has_nan = result_has_nan_i32 != 0
             result_index = tl.where(result_has_nan, first_nan, result_index)
         if M > BLOCK_M:
             for i in tl.range(BLOCK_M, M, BLOCK_M, num_stages=num_stages):
@@ -206,20 +239,33 @@ def max_kernel_dim_high(
                 mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
                 inp_ptrs = inp + offset
                 inp_vals = tl.load(inp_ptrs, mask=mask, other=min_value)
-                max_value, max_index = tl.max(inp_vals, axis=0, return_indices=True)
+                max_value, max_index = tl.max(
+                    inp_vals,
+                    axis=0,
+                    return_indices=True,
+                    return_indices_tie_break_left=True,
+                )
                 update_mask = max_value > result_value
                 if dtype.is_floating():
                     nan_i32 = (mask & (inp_vals != inp_vals)).to(tl.int32)
-                    has_nan = tl.max(nan_i32, axis=0) != 0
-                    first_nan = tl.argmax(nan_i32, axis=0)
+                    has_nan_i32, first_nan = tl.max(
+                        nan_i32,
+                        axis=0,
+                        return_indices=True,
+                        return_indices_tie_break_left=True,
+                    )
+                    has_nan = has_nan_i32 != 0
 
                     take_nan = has_nan & ~result_has_nan
                     update_mask &= ~has_nan & ~result_has_nan
-                    result_value = tl.where(take_nan, float("nan"), result_value)
                     result_index = tl.where(take_nan, i + first_nan, result_index)
                     result_has_nan |= has_nan
                 result_value = tl.where(update_mask, max_value, result_value)
                 result_index = tl.where(update_mask, i + max_index, result_index)
+        if dtype.is_floating():
+            result_value = tl.where(result_has_nan, float("nan"), result_value).to(
+                dtype
+            )
         mask1 = n_offset < N
         offset_index = n_offset
         out_value_ptrs = out_value + offset_index
@@ -266,12 +312,21 @@ def max_kernel_dim_mid(
         mask_0 = (m_offset_0[:, None] < M) & (n_offset[None, :] < N)
         inp_ptrs_0 = inp + offset_0
         inp_vals_0 = tl.load(inp_ptrs_0, mask=mask_0, other=min_value)
-        result_value, result_index = tl.max(inp_vals_0, axis=0, return_indices=True)
+        result_value, result_index = tl.max(
+            inp_vals_0,
+            axis=0,
+            return_indices=True,
+            return_indices_tie_break_left=True,
+        )
         if dtype.is_floating():
             nan_i32 = (mask_0 & (inp_vals_0 != inp_vals_0)).to(tl.int32)
-            result_has_nan = tl.max(nan_i32, axis=0) != 0
-            first_nan = tl.argmax(nan_i32, axis=0)
-            result_value = tl.where(result_has_nan, float("nan"), result_value)
+            result_has_nan_i32, first_nan = tl.max(
+                nan_i32,
+                axis=0,
+                return_indices=True,
+                return_indices_tie_break_left=True,
+            )
+            result_has_nan = result_has_nan_i32 != 0
             result_index = tl.where(result_has_nan, first_nan, result_index)
         if M > BLOCK_M:
             for i in tl.range(BLOCK_M, M, BLOCK_M, num_stages=num_stages):
@@ -281,20 +336,33 @@ def max_kernel_dim_mid(
                 mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
                 inp_ptrs = inp + offset
                 inp_vals = tl.load(inp_ptrs, mask=mask, other=min_value)
-                max_value, max_index = tl.max(inp_vals, axis=0, return_indices=True)
+                max_value, max_index = tl.max(
+                    inp_vals,
+                    axis=0,
+                    return_indices=True,
+                    return_indices_tie_break_left=True,
+                )
                 update_mask = max_value > result_value
                 if dtype.is_floating():
                     nan_i32 = (mask & (inp_vals != inp_vals)).to(tl.int32)
-                    has_nan = tl.max(nan_i32, axis=0) != 0
-                    first_nan = tl.argmax(nan_i32, axis=0)
+                    has_nan_i32, first_nan = tl.max(
+                        nan_i32,
+                        axis=0,
+                        return_indices=True,
+                        return_indices_tie_break_left=True,
+                    )
+                    has_nan = has_nan_i32 != 0
 
                     take_nan = has_nan & ~result_has_nan
                     update_mask &= ~has_nan & ~result_has_nan
-                    result_value = tl.where(take_nan, float("nan"), result_value)
                     result_index = tl.where(take_nan, i + first_nan, result_index)
                     result_has_nan |= has_nan
                 result_value = tl.where(update_mask, max_value, result_value)
                 result_index = tl.where(update_mask, i + max_index, result_index)
+        if dtype.is_floating():
+            result_value = tl.where(result_has_nan, float("nan"), result_value).to(
+                dtype
+            )
         mask1 = n_offset < N
         offset_index = n_offset
         out_value_ptrs = out_value + offset_index

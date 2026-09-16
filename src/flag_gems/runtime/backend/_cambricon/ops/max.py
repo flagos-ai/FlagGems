@@ -35,11 +35,13 @@ logger = logging.getLogger(__name__)
 def max_kernel_float_once(
     inp,
     out,
-    M: tl.constexpr,
+    M,
+    BLOCK_SIZE: tl.constexpr,
 ):
-    offset = tl.arange(0, M)
-    inp_val = tl.load(inp + offset)
-    nan_mask = inp_val != inp_val
+    offset = tl.arange(0, BLOCK_SIZE)
+    mask = offset < M
+    inp_val = tl.load(inp + offset, mask=mask, other=-float("inf"))
+    nan_mask = mask & (inp_val != inp_val)
     has_nan = tl.max(nan_mask.to(tl.int32), 0) != 0
     inp_val = tl.where(nan_mask, -float("inf"), inp_val)
     max_val = tl.max(inp_val, 0)
@@ -245,8 +247,13 @@ def max_kernel(
         if inp.type.element_ty.is_floating():
             nan_mask = mask & (inp_vals != inp_vals)
             nan_i32 = nan_mask.to(tl.int32)
-            has_nan = tl.max(nan_i32, axis=1) != 0
-            first_nan = tl.argmax(nan_i32, axis=1)
+            has_nan_i32, first_nan = tl.max(
+                nan_i32,
+                axis=1,
+                return_indices=True,
+                return_indices_tie_break_left=True,
+            )
+            has_nan = has_nan_i32 != 0
             inp_vals = tl.where(nan_mask, min_value, inp_vals)
         max_value, max_index = tl.max(
             inp_vals,
@@ -288,7 +295,9 @@ def max(inp):
         if torch.is_floating_point(inp):
             if M <= 65536:
                 out = torch.empty([], dtype=dtype, device=device)
-                max_kernel_float_once[(1, 1, 1)](inp, out, M)
+                max_kernel_float_once[(1, 1, 1)](
+                    inp, out, M, BLOCK_SIZE=triton.next_power_of_2(M)
+                )
             else:
                 out = torch.full([], float("-inf"), dtype=torch.float32, device=device)
                 nan_flag = torch.zeros([], dtype=torch.int32, device=device)

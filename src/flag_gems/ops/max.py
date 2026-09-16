@@ -103,20 +103,30 @@ def max_kernel(
         mask = m_offset[:, None] < M and n_offset[None, :] < N
         inp_ptrs = inp + offset
         inp_vals = tl.load(inp_ptrs, mask=mask, other=min_value)
-        max_value, max_index = tl.max(inp_vals, axis=1, return_indices=True)
+        max_value, max_index = tl.max(
+            inp_vals,
+            axis=1,
+            return_indices=True,
+            return_indices_tie_break_left=True,
+        )
         update_mask = max_value > result_value
         if dtype.is_floating():
             nan_mask = mask & (inp_vals != inp_vals)
             nan_i32 = nan_mask.to(tl.int32)
-            has_nan = tl.max(nan_i32, axis=1) != 0
-            first_nan = tl.argmax(nan_i32, axis=1)
+            has_nan_i32, first_nan = tl.max(
+                nan_i32,
+                axis=1,
+                return_indices=True,
+                return_indices_tie_break_left=True,
+            )
+            has_nan = has_nan_i32 != 0
 
             # Chunks are visited in increasing index order, so only the first
             # chunk containing a NaN may set the output index. Within that
             # chunk tl.argmax returns the first true entry.
             take_nan = has_nan & ~result_has_nan
             update_mask &= ~has_nan & ~result_has_nan
-            result_value = tl.where(take_nan, float("nan"), result_value)
+            result_value = tl.where(take_nan, float("nan"), result_value).to(acc_type)
             result_index = tl.where(take_nan, i + first_nan, result_index)
             result_has_nan |= has_nan
         result_value = tl.where(update_mask, max_value, result_value)

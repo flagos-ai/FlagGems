@@ -119,8 +119,13 @@ def max_kernel(
         if dtype.is_floating():
             nan_mask = mask & (inp_vals != inp_vals)
             nan_i32 = nan_mask.to(tl.int32)
-            has_nan = tl.max(nan_i32, axis=1) != 0
-            first_nan = tl.argmax(nan_i32, axis=1)
+            has_nan_i32, first_nan = tl.max(
+                nan_i32,
+                axis=1,
+                return_indices=True,
+                return_indices_tie_break_left=True,
+            )
+            has_nan = has_nan_i32 != 0
             inp_vals = tl.where(nan_mask, min_value, inp_vals)
         max_value, max_index = tl.max(
             inp_vals,
@@ -133,7 +138,7 @@ def max_kernel(
             update_max = ~has_nan & ~result_has_nan & (max_value > result_value)
             result_value = tl.where(update_max, max_value, result_value)
             result_index = tl.where(update_max, i + max_index, result_index)
-            result_value = tl.where(update_nan, float("nan"), result_value)
+            result_value = tl.where(update_nan, float("nan"), result_value).to(acc_type)
             result_index = tl.where(update_nan, i + first_nan, result_index)
             result_has_nan |= has_nan
         else:
