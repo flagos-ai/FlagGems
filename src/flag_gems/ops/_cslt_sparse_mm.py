@@ -44,11 +44,8 @@ and ``transpose_result`` semantics of the native op.
    describe the Ampere (8.x) layout -- applying it to an Ampere-compressed blob
    decodes the wrong positions and produces numerically wrong results.
 
-   This implementation therefore only claims correctness on Hopper. Elsewhere
-   :func:`_cslt_sparse_mm_enabled` returns ``False`` so the op is never
-   registered into the ATen dispatch table, and ``use_gems()`` leaves
-   ``torch._cslt_sparse_mm`` pointing at the native cuSPARSELt kernel rather
-   than silently returning wrong values.
+   This implementation therefore only claims correctness on Hopper. Tests and
+   benchmarks skip unsupported architectures.
 """
 
 import logging
@@ -58,24 +55,6 @@ import triton
 import triton.language as tl
 
 logger = logging.getLogger(__name__)
-
-# Compute-capability major version whose cuSPARSELt metadata swizzle this
-# implementation decodes. See the module docstring: the layout is architecture
-# specific, so the Triton path must stay disabled elsewhere.
-_SUPPORTED_CC_MAJOR = 9
-
-
-def _cslt_sparse_mm_enabled():
-    """Registration predicate: only claim the op where the swizzle is correct.
-
-    Returning ``False`` keeps the Triton path out of the ATen dispatch table so
-    ``torch._cslt_sparse_mm`` continues to resolve to the native cuSPARSELt
-    kernel on architectures this decoder does not model.
-    """
-    if not torch.cuda.is_available():
-        return False
-    major, _ = torch.cuda.get_device_capability()
-    return major == _SUPPORTED_CC_MAJOR
 
 
 @triton.jit
@@ -272,8 +251,7 @@ def _cslt_sparse_mm(
     ``transpose_result`` is set).
 
     Only correct on architectures whose cuSPARSELt metadata swizzle this
-    decoder implements; :func:`_cslt_sparse_mm_enabled` gates registration so
-    other architectures keep using the native op. See the module docstring.
+    decoder implements. See the module docstring.
     """
     logger.debug("GEMS _CSLT_SPARSE_MM")
 

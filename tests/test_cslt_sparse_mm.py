@@ -24,7 +24,6 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.ops._cslt_sparse_mm import _cslt_sparse_mm_enabled
 
 from . import accuracy_utils as utils
 
@@ -36,11 +35,9 @@ CSLT_AVAILABLE = (
 )
 
 # The cuSPARSELt compressed layout is vendor internal and differs per GPU
-# architecture, so the Triton decoder is only registered where its swizzle is
-# known to be correct. Skip rather than fail elsewhere: on those devices
-# the native op remains registered, so there is no Triton implementation to
-# compare against.
-ARCH_SUPPORTED = CSLT_AVAILABLE and _cslt_sparse_mm_enabled()
+# architecture, so only exercise the decoder where its swizzle is known to be
+# correct.
+ARCH_SUPPORTED = CSLT_AVAILABLE and torch.cuda.get_device_capability()[0] == 9
 
 pytestmark = [
     pytest.mark.skipif(
@@ -54,7 +51,7 @@ pytestmark = [
         CSLT_AVAILABLE and not ARCH_SUPPORTED,
         reason=(
             "the Triton _cslt_sparse_mm decoder models the Hopper cuSPARSELt "
-            "metadata layout; not registered on this architecture"
+            "metadata layout; unsupported on this architecture"
         ),
     ),
 ]
