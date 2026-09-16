@@ -122,7 +122,7 @@ def _launch_hypot_kernel(x: torch.Tensor, y: torch.Tensor, out: torch.Tensor):
 
 
 def hypot(a: torch.Tensor, b: torch.Tensor):
-    logger.debug("GEMS HYPOT (KUNLUNXIN)")
+    logger.debug("GEMS_KUNLUNXIN HYPOT")
     out_dtype = _infer_hypot_out_dtype(a, b)
     device = a.device
     if b.device != device:
