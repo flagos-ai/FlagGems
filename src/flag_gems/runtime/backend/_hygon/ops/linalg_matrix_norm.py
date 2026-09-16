@@ -5,7 +5,9 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.ops.linalg_matrix_norm import _check_matrix_norm_out
 from flag_gems.ops.linalg_matrix_norm import _fro_norm as _fro_norm_generic
+from flag_gems.ops.linalg_matrix_norm import _matrix_norm_out_shape
 from flag_gems.ops.linalg_matrix_norm import _nuc_norm as _nuc_norm_generic
 from flag_gems.ops.linalg_matrix_norm import _ord1_norm as _ord1_norm_generic
 from flag_gems.ops.linalg_matrix_norm import _ord2_norm as _ord2_norm_generic
@@ -319,7 +321,7 @@ def _batched_col_absmax(Ab, batch, M, N, is_min, use_fp64):
 # ===========================================================================
 
 
-def _fro_norm(A, dim, keepdim, dtype):
+def _fro_norm(A, dim, keepdim, dtype, out=None):
     """Frobenius norm -- single-launch large-2D path, otherwise generic."""
     d0, d1 = dim
     if A.ndim == 2 and d0 == 0 and d1 == 1:
@@ -335,27 +337,37 @@ def _fro_norm(A, dim, keepdim, dtype):
             flat = A.reshape(total)
             partial = torch.zeros((), dtype=acc_dtype, device=A.device)
             count = torch.zeros((), dtype=torch.int32, device=A.device)
-            out = torch.empty((), dtype=acc_dtype, device=A.device)
+            # scratch is acc-dtype (fp32/fp64); out_dtype differs for fp32/fp16
+            # inputs, so this path never writes direct -- the impl epilogue
+            # copies into out.
+            scratch = torch.empty((), dtype=acc_dtype, device=A.device)
             _fro_single_kernel[(nb,)](
                 flat,
                 partial,
                 count,
-                out,
+                scratch,
                 total,
                 nb,
                 2048,
                 acc,
                 num_warps=4,
             )
-            result = out.to(out_dtype)
+            result = scratch.to(out_dtype)
             if keepdim:
                 result = result.reshape(1, 1)
             return result
-    return _fro_norm_generic(A, dim, keepdim, dtype)
+    # generic path's _fro_kernel casts its store to the buffer dtype, so it can
+    # write straight into out when contiguous (zero-copy out=).
+    return _fro_norm_generic(A, dim, keepdim, dtype, out=out)
 
 
-def _ord1_norm(A, ord_val, dim, keepdim, dtype):
-    """1-norm -- single-launch 2D column path and batched path, else generic."""
+def _ord1_norm(A, ord_val, dim, keepdim, dtype, out=None):
+    """1-norm -- single-launch 2D column path and batched path, else generic.
+
+    The custom single-launch kernels accumulate in acc-dtype atomics that never
+    match ``out_dtype``, so they return a fresh result and the impl epilogue
+    copies into ``out``.  Only the generic (nonstandard-2D) delegation can
+    write direct, and it forwards ``out``."""
     d0, d1 = dim
     out_dtype = dtype if dtype is not None else A.dtype
     is_min = ord_val < 0
@@ -400,11 +412,15 @@ def _ord1_norm(A, ord_val, dim, keepdim, dtype):
 
     # 2D with non-standard dims (dim != (0, 1)): reuse the generic
     # implementation, which permutes the target dims correctly.
-    return _ord1_norm_generic(A, ord_val, dim, keepdim, dtype)
+    return _ord1_norm_generic(A, ord_val, dim, keepdim, dtype, out=out)
 
 
-def _ordinf_norm(A, ord_val, dim, keepdim, dtype):
-    """Infinity-norm -- single-launch per-row reduction for 2D and batched."""
+def _ordinf_norm(A, ord_val, dim, keepdim, dtype, out=None):
+    """Infinity-norm -- single-launch per-row reduction for 2D and batched.
+
+    Both custom paths accumulate in acc-dtype atomics that never match
+    ``out_dtype``, so they return a fresh result and the impl epilogue copies
+    into ``out`` (there is no generic delegation for ordinf)."""
     d0, d1 = dim
     out_dtype = dtype if dtype is not None else A.dtype
     is_min = ord_val < 0
@@ -453,8 +469,16 @@ def _ordinf_norm(A, ord_val, dim, keepdim, dtype):
 # ===========================================================================
 
 
-def linalg_matrix_norm(A, ord="fro", dim=(-2, -1), keepdim=False, dtype=None):
-    """Matrix norm -- Hygon dispatch, mirrors the generic entry point."""
+def _linalg_matrix_norm_impl(
+    A, ord="fro", dim=(-2, -1), keepdim=False, dtype=None, *, out=None
+):
+    """Matrix norm compute -- validation + dispatch (Hygon).
+
+    ``out=None`` returns a freshly-allocated result.  When ``out`` is given, it
+    is validated and resized up front (before the compute); producers that can
+    write straight into its storage do so (zero-copy), otherwise a single final
+    copy is made.  Pattern follows ``linalg_lu_factor``.
+    """
     logger.debug("GEMS LINALG_MATRIX_NORM (hygon)")
 
     if A.ndim < 2:
@@ -470,39 +494,77 @@ def linalg_matrix_norm(A, ord="fro", dim=(-2, -1), keepdim=False, dtype=None):
             f"linalg_matrix_norm: dims must be different, got ({dim[0]}, {dim[1]})"
         )
 
-    # dtype guard for SVD-based ords
+    # dtype guard for SVD-based ords (upcast before the out-dtype check so the
+    # expected result dtype matches what the upcast SVD helpers produce)
     _svd_ord = (isinstance(ord, str) and ord == "nuc") or (
         not isinstance(ord, str) and abs(float(ord)) == 2
     )
     if _svd_ord and A.dtype in (torch.float16, torch.bfloat16):
         A = A.float()  # upcast to fp32 for SVD
 
+    # --- out validation + resize up front (before any compute) --------------
+    if out is not None:
+        out_dtype = dtype if dtype is not None else A.dtype
+        _check_matrix_norm_out(out, out_dtype, A.device)
+        out.resize_(_matrix_norm_out_shape(A, dim[0], dim[1], keepdim))
+
     if isinstance(ord, str):
         if ord == "fro":
-            _r = _fro_norm(A, dim, keepdim, dtype)
+            result = _fro_norm(A, dim, keepdim, dtype, out=out)
         elif ord == "nuc":
-            _r = _nuc_norm_generic(A, dim=dim, keepdim=keepdim, dtype=dtype)
+            result = _nuc_norm_generic(A, dim=dim, keepdim=keepdim, dtype=dtype)
         else:
             raise RuntimeError(
                 f"linalg_matrix_norm: Order '{ord}' not supported. "
                 "Use 'fro' or 'nuc'."
             )
-        return _r
-
-    ord_val = float(ord)
-    if ord_val not in _SUPPORTED_NUMERIC:
-        raise RuntimeError(
-            f"linalg_matrix_norm: Order {ord} not supported. "
-            "Use 1, -1, 2, -2, inf, -inf."
-        )
-
-    abs_ord = abs(ord_val)
-    if abs_ord == 2.0:
-        _r = _ord2_norm_generic(A, ord_val, dim, keepdim, dtype)
-    elif abs_ord == 1.0:
-        _r = _ord1_norm(A, ord_val, dim, keepdim, dtype)
-    elif math.isinf(abs_ord):
-        _r = _ordinf_norm(A, ord_val, dim, keepdim, dtype)
     else:
-        raise RuntimeError(f"linalg_matrix_norm: Order {ord} not supported.")
-    return _r
+        ord_val = float(ord)
+        if ord_val not in _SUPPORTED_NUMERIC:
+            raise RuntimeError(
+                f"linalg_matrix_norm: Order {ord} not supported. "
+                "Use 1, -1, 2, -2, inf, -inf."
+            )
+
+        abs_ord = abs(ord_val)
+        if abs_ord == 2.0:
+            result = _ord2_norm_generic(A, ord_val, dim, keepdim, dtype)
+        elif abs_ord == 1.0:
+            result = _ord1_norm(A, ord_val, dim, keepdim, dtype, out=out)
+        elif math.isinf(abs_ord):
+            result = _ordinf_norm(A, ord_val, dim, keepdim, dtype, out=out)
+        else:
+            raise RuntimeError(f"linalg_matrix_norm: Order {ord} not supported.")
+
+    # --- out variant epilogue: single fallback copy when not written direct -
+    if out is not None and result is not out:
+        out.resize_(result.shape)
+        out.copy_(result)
+        return out
+    return result
+
+
+def linalg_matrix_norm(
+    A, ord="fro", dim=(-2, -1), keepdim=False, dtype=None, *, out=None
+):
+    """Matrix norm -- Hygon dispatch, mirrors the generic entry point."""
+    return _linalg_matrix_norm_impl(
+        A, ord=ord, dim=dim, keepdim=keepdim, dtype=dtype, out=out
+    )
+
+
+def linalg_matrix_norm_out(
+    A, ord="fro", dim=(-2, -1), keepdim=False, dtype=None, *, out=None
+):
+    """Matrix norm out variant (torch ``linalg_matrix_norm.out`` overload).
+
+    Requires a pre-allocated ``out`` and delegates to the shared impl, which
+    performs the validation / resize / direct write and returns the aliased
+    ``out``.
+    """
+    logger.debug("GEMS LINALG_MATRIX_NORM_OUT (hygon)")
+    if out is None:
+        raise TypeError("linalg_matrix_norm(): out must be provided for out variant")
+    return _linalg_matrix_norm_impl(
+        A, ord=ord, dim=dim, keepdim=keepdim, dtype=dtype, out=out
+    )
