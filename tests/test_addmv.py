@@ -54,10 +54,7 @@ def test_addmv(M, N, scalar, dtype):
 
     # broadcast bias scalar
     bias2 = torch.randn((), dtype=dtype, device=flag_gems.device)
-    if flag_gems.vendor_name == "kunlunxin":
-        ref_bias2 = utils.to_reference(bias2, True)
-    else:
-        ref_bias2 = utils.to_reference(bias2)
+    ref_bias2 = utils.to_reference(bias2, True)
 
     ref_out2 = torch.addmv(ref_bias2, ref_mat, ref_vec, alpha=alpha, beta=beta)
     with flag_gems.use_gems():
