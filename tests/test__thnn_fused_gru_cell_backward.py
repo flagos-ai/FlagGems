@@ -112,7 +112,7 @@ def test_thnn_fused_gru_cell_backward(dtype, shape, has_bias):
     grad_hy = torch.randn(batch_size, hidden_size, device=flag_gems.device, dtype=dtype)
     reference = _reference(grad_hy, workspace, has_bias)
 
-    result = torch.ops.aten._thnn_fused_gru_cell_backward(grad_hy, workspace, has_bias)
+    result = flag_gems._thnn_fused_gru_cell_backward(grad_hy, workspace, has_bias)
 
     _assert_outputs_close(result, reference, dtype, batch_size)
 
@@ -148,7 +148,7 @@ def test_thnn_fused_gru_cell_backward_empty(shape):
     workspace = torch.empty(batch_size, 5 * hidden_size, device=flag_gems.device)
     reference = _reference(grad_hy, workspace, True)
 
-    result = torch.ops.aten._thnn_fused_gru_cell_backward(grad_hy, workspace, True)
+    result = flag_gems._thnn_fused_gru_cell_backward(grad_hy, workspace, True)
 
     _assert_outputs_close(result, reference, torch.float32, batch_size)
 
@@ -181,7 +181,7 @@ def test_thnn_fused_gru_cell_backward_out(dtype, shape):
     reference = _reference(grad_hy, workspace, True)
     outputs = _make_noncontiguous_outputs(batch_size, hidden_size, dtype)
 
-    result = torch.ops.aten._thnn_fused_gru_cell_backward.out(
+    result = flag_gems._thnn_fused_gru_cell_backward_out(
         grad_hy,
         workspace,
         True,

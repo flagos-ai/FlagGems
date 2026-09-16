@@ -493,7 +493,7 @@ def _thnn_fused_gru_cell_backward_out(
     out3: torch.Tensor,
     out4: torch.Tensor,
 ):
-    logger.debug("GEMS _THNN_FUSED_GRU_CELL_BACKWARD.OUT")
+    logger.debug("GEMS _THNN_FUSED_GRU_CELL_BACKWARD_OUT")
     _validate_inputs(grad_hy, workspace)
     if not has_bias:
         raise RuntimeError("the out overload requires has_bias=True")
