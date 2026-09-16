@@ -2263,7 +2263,7 @@ ops:
 - id: cauchy
   description: Draws random numbers from a Cauchy distribution.
   for:
-  - cauchy.float
+  - cauchy
   labels:
   - aten
   kind:
@@ -2273,7 +2273,7 @@ ops:
 - id: cauchy_
   description: Fills the tensor with numbers drawn from the Cauchy distribution.
   for:
-  - cauchy_.float
+  - cauchy_
   labels:
   - aten
   kind:
