@@ -22,5 +22,5 @@ logger = logging.getLogger("flag_gems.ops.special_exp2")
 
 
 def special_exp2(x):
-    logger.debug("GEMS SPECIAL_EXP2")
+    logger.debug("GEMS_KUNLUNXIN SPECIAL_EXP2")
     return exp2(x)
