@@ -28,15 +28,13 @@ def test_native_batch_norm_legit_functional():
         running_var = torch.ones(C, dtype=dtype, device=device)
         yield inp, weight, bias, running_mean, running_var, True, 0.1, 1e-5
 
+    import flag_gems
+
     bench = NormBenchmark(
         input_fn=native_batch_norm_legit_functional_input_fn,
         op_name="native_batch_norm_legit_functional",
         torch_op=torch.ops.aten._native_batch_norm_legit_functional.default,
+        gems_op=flag_gems._native_batch_norm_legit_functional,
         dtypes=consts.FLOAT_DTYPES,
     )
-    from flag_gems.ops._native_batch_norm_legit_functional import (
-        _native_batch_norm_legit_functional as gems_bn,
-    )
-
-    bench.set_gems(gems_bn)
     bench.run()
