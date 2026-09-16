@@ -108,7 +108,7 @@ def _pick_block_size(n_elements):
 
 
 def fmin(a, b):
-    logger.debug("GEMS KUNLUNXIN FMIN")
+    logger.debug("GEMS_KUNLUNXIN FMIN")
     a_c, b_c, out_dtype, compute_dtype = _prepare_inputs(a, b, out=None)
     out_shape = a_c.shape
     if compute_dtype == out_dtype:
@@ -128,7 +128,7 @@ def fmin(a, b):
 
 
 def fmin_out(a, b, out):
-    logger.debug("GEMS KUNLUNXIN FMIN_OUT")
+    logger.debug("GEMS_KUNLUNXIN FMIN_OUT")
     if not isinstance(out, torch.Tensor):
         raise TypeError("out must be a Tensor")
     a_c, b_c, out_dtype, compute_dtype = _prepare_inputs(a, b, out=out)
