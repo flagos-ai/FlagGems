@@ -102,6 +102,7 @@ from flag_gems.ops._linalg_eigvals import _linalg_eigvals
 from flag_gems.ops._list_to_tensor import _list_to_tensor
 from flag_gems.ops._make_dep_token import _make_dep_token
 from flag_gems.ops._masked_scale import _masked_scale
+from flag_gems.ops._masked_softmax_backward import _masked_softmax_backward
 from flag_gems.ops._native_batch_norm_legit import (
     _native_batch_norm_legit,
     _native_batch_norm_legit_no_stats,
@@ -146,6 +147,7 @@ from flag_gems.ops._scaled_dot_product_flash_attention import (
 from flag_gems.ops._scaled_dot_product_fused_attention_overrideable import (
     _scaled_dot_product_fused_attention_overrideable,
 )
+from flag_gems.ops._sobol_engine_ff_ import _sobol_engine_ff_
 from flag_gems.ops._sparse_semi_structured_addmm import _sparse_semi_structured_addmm
 from flag_gems.ops._sparse_semi_structured_linear import _sparse_semi_structured_linear
 from flag_gems.ops._sparse_semi_structured_mm import _sparse_semi_structured_mm
@@ -355,6 +357,7 @@ from flag_gems.ops.cosh import cosh, cosh_, cosh_out
 from flag_gems.ops.cosine_embedding_loss import cosine_embedding_loss
 from flag_gems.ops.count_nonzero import count_nonzero
 from flag_gems.ops.cov import cov
+from flag_gems.ops.cross import cross, cross_out
 from flag_gems.ops.ctc_loss import ctc_loss
 from flag_gems.ops.cudnn_attention_forward import cudnn_attention_forward
 from flag_gems.ops.cudnn_batch_norm_backward import cudnn_batch_norm_backward
@@ -387,11 +390,13 @@ from flag_gems.ops.div import (
 from flag_gems.ops.divide import divide
 from flag_gems.ops.dot import dot
 from flag_gems.ops.dropout import dropout, dropout_backward
+from flag_gems.ops.dropout_ import dropout_
 from flag_gems.ops.dsplit import dsplit
 from flag_gems.ops.elu import elu, elu_, elu_backward
 from flag_gems.ops.embedding import embedding, embedding_backward
 from flag_gems.ops.embedding_dense_backward import embedding_dense_backward
 from flag_gems.ops.embedding_renorm_ import embedding_renorm_
+from flag_gems.ops.embedding_sparse_backward import embedding_sparse_backward
 from flag_gems.ops.empty import empty
 from flag_gems.ops.empty_permuted import empty_permuted
 from flag_gems.ops.eq import eq, eq_scalar, equal
@@ -477,6 +482,7 @@ from flag_gems.ops.fractional_max_pool2d import (
     fractional_max_pool2d,
     fractional_max_pool2d_backward,
 )
+from flag_gems.ops.fractional_max_pool3d import fractional_max_pool3d
 from flag_gems.ops.frexp import frexp
 from flag_gems.ops.full import full
 from flag_gems.ops.full_like import full_like
@@ -531,6 +537,7 @@ from flag_gems.ops.hash_tensor import hash_tensor
 from flag_gems.ops.heaviside import heaviside
 from flag_gems.ops.heaviside_ import heaviside_
 from flag_gems.ops.histc import histc
+from flag_gems.ops.histogramdd import histogramdd
 from flag_gems.ops.hsplit import hsplit
 from flag_gems.ops.hstack import hstack
 from flag_gems.ops.huber_loss import huber_loss, huber_loss_out
@@ -731,6 +738,7 @@ from flag_gems.ops.nansum import nansum, nansum_out
 from flag_gems.ops.narrow import narrow
 from flag_gems.ops.narrow_copy import narrow_copy
 from flag_gems.ops.native_batch_norm import native_batch_norm
+from flag_gems.ops.native_channel_shuffle import native_channel_shuffle
 from flag_gems.ops.native_dropout_backward import native_dropout_backward
 from flag_gems.ops.native_group_norm import native_group_norm
 from flag_gems.ops.native_layer_norm import native_layer_norm
@@ -886,7 +894,9 @@ from flag_gems.ops.sinc import sinc, sinc_
 from flag_gems.ops.sinh import sinh, sinh_
 from flag_gems.ops.slice import slice
 from flag_gems.ops.slice_backward import slice_backward
+from flag_gems.ops.slice_copy import slice_copy, slice_copy_out
 from flag_gems.ops.slice_scatter import slice_scatter
+from flag_gems.ops.slogdet import slogdet
 from flag_gems.ops.smooth_l1_loss import (
     smooth_l1_loss,
     smooth_l1_loss_backward,
@@ -1178,6 +1188,7 @@ __all__ = [
     "_list_to_tensor",
     "_make_dep_token",
     "_masked_scale",
+    "_masked_softmax_backward",
     "_native_batch_norm_legit",
     "_native_batch_norm_legit_functional",
     "_native_batch_norm_legit_no_stats",
@@ -1207,6 +1218,7 @@ __all__ = [
     "_scaled_dot_product_fused_attention_overrideable",
     "_segment_reduce_backward",
     "_segment_reduce_backward_out",
+    "_sobol_engine_ff_",
     "_sparse_semi_structured_addmm",
     "_sparse_semi_structured_linear",
     "_sparse_semi_structured_mm",
@@ -1427,6 +1439,8 @@ __all__ = [
     "copysign_",
     "copysign_out",
     "corrcoef",
+    "cross",
+    "cross_out",
     "cos",
     "cos_",
     "cosh",
@@ -1469,6 +1483,7 @@ __all__ = [
     "dot",
     "dropout",
     "dropout_backward",
+    "dropout_",
     "dsplit",
     "efficient_attention_backward",
     "elu",
@@ -1478,6 +1493,7 @@ __all__ = [
     "embedding_backward",
     "embedding_dense_backward",
     "embedding_renorm_",
+    "embedding_sparse_backward",
     "empty",
     "empty_permuted",
     "eq",
@@ -1565,6 +1581,7 @@ __all__ = [
     "frac_",
     "fractional_max_pool2d",
     "fractional_max_pool2d_backward",
+    "fractional_max_pool3d",
     "frexp",
     "full",
     "full_like",
@@ -1628,6 +1645,7 @@ __all__ = [
     "heaviside",
     "heaviside_",
     "histc",
+    "histogramdd",
     "hsplit",
     "hstack",
     "huber_loss",
@@ -1865,6 +1883,7 @@ __all__ = [
     "narrow",
     "narrow_copy",
     "native_batch_norm",
+    "native_channel_shuffle",
     "native_dropout_backward",
     "native_group_norm",
     "native_layer_norm",
@@ -2053,7 +2072,10 @@ __all__ = [
     "sinh_",
     "slice",
     "slice_backward",
+    "slice_copy",
+    "slice_copy_out",
     "slice_scatter",
+    "slogdet",
     "smooth_l1_loss",
     "smooth_l1_loss_backward",
     "smooth_l1_loss_out",
