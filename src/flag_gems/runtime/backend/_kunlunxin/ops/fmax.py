@@ -101,7 +101,7 @@ def _launch_fmax(a_c, b_c, out_c):
 
 
 def fmax(a, b):
-    logger.debug("GEMS KUNLUNXIN FMAX")
+    logger.debug("GEMS_KUNLUNXIN FMAX")
     a_c, b_c, out_dtype, compute_dtype = _prepare_inputs(a, b, out=None)
     out_shape = a_c.shape
     if compute_dtype == out_dtype:
@@ -117,7 +117,7 @@ def fmax(a, b):
 
 
 def fmax_out(a, b, out):
-    logger.debug("GEMS KUNLUNXIN FMAX_OUT")
+    logger.debug("GEMS_KUNLUNXIN FMAX_OUT")
     if not isinstance(out, torch.Tensor):
         raise TypeError("out must be a Tensor")
     a_c, b_c, out_dtype, compute_dtype = _prepare_inputs(a, b, out=out)
