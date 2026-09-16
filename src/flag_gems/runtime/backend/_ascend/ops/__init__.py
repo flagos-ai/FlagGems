@@ -78,6 +78,7 @@ from .linalg_matrix_rank import (
     linalg_matrix_rank_tol,
     linalg_matrix_rank_tol_out,
 )
+from .linalg_norm import linalg_norm
 from .linalg_qr import linalg_qr, linalg_qr_out
 from .linalg_solve_triangular import (
     linalg_solve_triangular,
@@ -239,6 +240,7 @@ __all__ = [
     "linalg_matrix_rank_out",
     "linalg_matrix_rank_tol",
     "linalg_matrix_rank_tol_out",
+    "linalg_norm",
     "linalg_qr",
     "linalg_qr_out",
     "linalg_solve_triangular",
