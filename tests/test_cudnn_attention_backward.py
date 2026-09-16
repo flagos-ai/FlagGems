@@ -534,6 +534,7 @@ def test_cudnn_attention_backward_scale(dtype, softmax_scale):
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required")
 @pytest.mark.cudnn_attention_backward
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("batch", [1, 3])
 @pytest.mark.parametrize(
     "bias_shape",
     [
@@ -544,18 +545,20 @@ def test_cudnn_attention_backward_scale(dtype, softmax_scale):
         "4d_bxh",
     ],
 )
-def test_cudnn_attention_backward_attn_bias_shapes(dtype, bias_shape):
+def test_cudnn_attention_backward_attn_bias_shapes(dtype, batch, bias_shape):
     """2D, 3D, and broadcast 4D attention biases must match ATen.
 
     The supported bias shapes are (seq_q, seq_k), (batch, seq_q, seq_k),
     and broadcastable 4D forms; gradients are checked for every case.
+    batch > 1 makes the 3D and (B, H) forms distinguishable from their
+    lower-rank broadcasts.
     """
     if TO_CPU:
         pytest.skip(
             "_cudnn_attention_backward is CUDA-only, cannot run in quick-cpu mode"
         )
 
-    batch, num_head, q_seq_len, kv_seq_len, head_size = 1, 2, 64, 64, 64
+    num_head, q_seq_len, kv_seq_len, head_size = 2, 64, 64, 64
     scale = float(1.0 / math.sqrt(head_size))
 
     Q, K, V = make_qkv(
@@ -589,11 +592,24 @@ def test_cudnn_attention_backward_attn_bias_shapes(dtype, bias_shape):
 
     attn_bias = torch.randn(*bias_shape_t, dtype=dtype, device=flag_gems.device) * 0.1
 
+    # ATen's cuDNN kernels only accept a 4D bias; broadcast 2D/3D forms to
+    # the full (batch, num_head, q_seq_len, kv_seq_len) shape for the
+    # forward and the ATen backward reference. The GEMS backward still
+    # receives the original 2D/3D tensor, which also exercises its bias
+    # normalization.
+    if attn_bias.ndim == 2:
+        bias_4d = attn_bias.unsqueeze(0).unsqueeze(0)
+    elif attn_bias.ndim == 3:
+        bias_4d = attn_bias.unsqueeze(1)
+    else:
+        bias_4d = attn_bias
+    bias_4d = bias_4d.expand(batch, num_head, q_seq_len, kv_seq_len)
+
     out, lse, philox_seed, philox_offset = cudnn_attn_forward_native(
         Q,
         K,
         V,
-        attn_bias=attn_bias,
+        attn_bias=bias_4d,
         is_causal=False,
         softmax_scale=scale,
     )
@@ -624,7 +640,7 @@ def test_cudnn_attention_backward_attn_bias_shapes(dtype, bias_shape):
         ref_lse,
         philox_seed,
         philox_offset,
-        attn_bias,
+        bias_4d,
         None,
         None,
         q_seq_len,
@@ -670,13 +686,103 @@ def test_cudnn_attention_backward_attn_bias_shapes(dtype, bias_shape):
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
 @pytest.mark.parametrize(
     "head_size, value_head_size",
-    [(64, 96), (128, 96), (64, 32), (96, 128), (64, 64)],
+    [(64, 64), (64, 32), (64, 128), (96, 96)],
+)
+def test_cudnn_attention_backward_varlen_rejected(dtype, head_size, value_head_size):
+    """varlen inputs are not supported and must raise NotImplementedError,
+    for equal and unequal head dim combinations alike."""
+    if TO_CPU:
+        pytest.skip(
+            "_cudnn_attention_backward is CUDA-only, cannot run in quick-cpu mode"
+        )
+
+    batch, num_head, q_seq_len, kv_seq_len = 1, 2, 64, 64
+    scale = float(1.0 / math.sqrt(head_size))
+
+    Q, K, V = make_qkv(
+        batch,
+        num_head,
+        q_seq_len,
+        kv_seq_len,
+        head_size,
+        dtype,
+        flag_gems.device,
+    )
+    V = torch.randn(
+        batch,
+        kv_seq_len,
+        num_head,
+        value_head_size,
+        dtype=dtype,
+        device=flag_gems.device,
+    )
+    dOut = torch.randn(
+        batch,
+        q_seq_len,
+        num_head,
+        value_head_size,
+        dtype=dtype,
+        device=flag_gems.device,
+    )
+
+    out, lse, philox_seed, philox_offset = cudnn_attn_forward_native(
+        Q,
+        K,
+        V,
+        attn_bias=None,
+        is_causal=False,
+        softmax_scale=scale,
+    )
+
+    Q_bhsd = Q.permute(0, 2, 1, 3).contiguous()
+    K_bhsd = K.permute(0, 2, 1, 3).contiguous()
+    V_bhsd = V.permute(0, 2, 1, 3).contiguous()
+    out_bhsd = out.permute(0, 2, 1, 3).contiguous()
+    dOut_bhsd = dOut.permute(0, 2, 1, 3).contiguous()
+
+    cum_seq = torch.arange(
+        0,
+        (batch + 1) * q_seq_len,
+        q_seq_len,
+        dtype=torch.int32,
+        device=flag_gems.device,
+    )
+
+    with pytest.raises(NotImplementedError):
+        flag_gems.cudnn_attention_backward(
+            dOut_bhsd,
+            Q_bhsd,
+            K_bhsd,
+            V_bhsd,
+            out_bhsd,
+            lse,
+            philox_seed,
+            philox_offset,
+            None,
+            cum_seq,
+            cum_seq,
+            q_seq_len,
+            kv_seq_len,
+            0.0,
+            False,
+            scale=scale,
+        )
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required")
+@pytest.mark.cudnn_attention_backward
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+@pytest.mark.parametrize(
+    "head_size, value_head_size",
+    [(64, 96), (128, 96), (64, 32), (96, 128), (96, 96), (64, 64)],
 )
 def test_cudnn_attention_backward_value_head_dim(dtype, head_size, value_head_size):
-    """value head dim != q/k head dim must produce correct gradients.
+    """Head dim combinations outside equal power-of-two must produce correct
+    gradients.
 
-    Differing value head dims take the dual-dim kernels; the matching
-    (64, 64) case exercises the shared-kernel fallback route.
+    Differing value head dims and equal non-power-of-two dims (96, 96)
+    take the dual-dim kernels; the matching (64, 64) case exercises the
+    shared-kernel fallback route.
     """
     if TO_CPU:
         pytest.skip(

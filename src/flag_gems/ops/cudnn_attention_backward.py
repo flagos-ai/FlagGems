@@ -599,17 +599,17 @@ def _flash_attn_backward_bhsd(
             max_seqlen_k,
             H_q,
             Q.stride(0),
-            Q.stride(2),
             Q.stride(1),
+            Q.stride(2),
             K.stride(0),
-            K.stride(2),
             K.stride(1),
+            K.stride(2),
             V.stride(0),
-            V.stride(2),
             V.stride(1),
+            V.stride(2),
             Out.stride(0),
-            Out.stride(2),
             Out.stride(1),
+            Out.stride(2),
             sb_m,
             sb_h,
             sb_n,
@@ -652,17 +652,17 @@ def _flash_attn_backward_bhsd(
             max_seqlen_k,
             H_q,
             Q.stride(0),
-            Q.stride(2),
             Q.stride(1),
+            Q.stride(2),
             K.stride(0),
-            K.stride(2),
             K.stride(1),
+            K.stride(2),
             V.stride(0),
-            V.stride(2),
             V.stride(1),
+            V.stride(2),
             Out.stride(0),
-            Out.stride(2),
             Out.stride(1),
+            Out.stride(2),
             sb_m,
             sb_h,
             sb_n,
@@ -1033,9 +1033,19 @@ def cudnn_attention_backward(
     rng_tuple = _parse_philox(philox_seed, philox_offset) if is_dropout else None
     use_varlen = (cum_seq_q is not None) and (cum_seq_k is not None)
 
-    if not use_varlen and value.shape[-1] != query.shape[-1]:
+    if use_varlen:
+        # Varlen inputs are not yet supported; reject before kernel launch.
+        raise NotImplementedError(
+            "cudnn_attention_backward: varlen is not yet supported"
+        )
+
+    head_dim_qk = query.shape[-1]
+    head_dim_v = value.shape[-1]
+    if head_dim_qk != head_dim_v or triton.next_power_of_2(head_dim_qk) != head_dim_qk:
         # The shared flash backward kernels use a single HEAD_DIM constexpr
-        # for q/k and value; route to the dual-dim dense kernels here.
+        # for q/k and value, which requires equal power-of-two head dims.
+        # Route everything else to the dual-dim kernels: they cover
+        # Dqk != Dv as well as equal non-power-of-two dims via padding.
         dQ, dK, dV = _flash_attn_backward_bhsd_dual_dim(
             grad_out,
             query,
