@@ -19,8 +19,8 @@ import pytest
 import torch
 
 from flag_gems.ops._upsample_lanczos2d_aa_backward import (
-    _upsample_lanczos2d_aa_backward,
-    _upsample_lanczos2d_aa_backward_out,
+    upsample_lanczos2d_aa_backward,
+    upsample_lanczos2d_aa_backward_grad_input,
 )
 
 from . import base
@@ -155,7 +155,7 @@ def test_upsample_lanczos2d_aa_backward():
     bench = UpsampleLanczos2dAaBackwardBenchmark(
         op_name="upsample_lanczos2d_aa_backward",
         torch_op=_composite_reference,
-        gems_op=_upsample_lanczos2d_aa_backward,
+        gems_op=upsample_lanczos2d_aa_backward,
         # The upstream CPU schema supports float/double; benchmark the two
         # primary accelerator dtypes while accuracy tests retain BF16/FP64.
         dtypes=[torch.float16, torch.float32],
@@ -168,7 +168,7 @@ def test_upsample_lanczos2d_aa_backward_grad_input():
     bench = UpsampleLanczos2dAaBackwardOutBenchmark(
         op_name="upsample_lanczos2d_aa_backward_grad_input",
         torch_op=_composite_reference_out,
-        gems_op=_upsample_lanczos2d_aa_backward_out,
+        gems_op=upsample_lanczos2d_aa_backward_grad_input,
         dtypes=[torch.float16, torch.float32],
     )
     bench.run()

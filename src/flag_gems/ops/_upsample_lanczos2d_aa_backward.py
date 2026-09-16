@@ -474,7 +474,7 @@ def _should_use_fused_path(
     return total_elems <= _FUSE_THRESHOLD
 
 
-def _upsample_lanczos2d_aa_backward(
+def upsample_lanczos2d_aa_backward(
     grad_output: torch.Tensor,
     output_size,  # [H_out, W_out]
     input_size,  # [N, C, H_in, W_in]
@@ -731,7 +731,7 @@ def _upsample_lanczos2d_aa_backward(
         return grad_in_flat.reshape(N, C, H_in, W_in)
 
 
-def _upsample_lanczos2d_aa_backward_out(
+def upsample_lanczos2d_aa_backward_grad_input(
     grad_output: torch.Tensor,
     output_size,
     input_size,
@@ -741,6 +741,7 @@ def _upsample_lanczos2d_aa_backward_out(
     *,
     grad_input: torch.Tensor,
 ) -> torch.Tensor:
+    logger.debug("GEMS UPSAMPLE_LANCZOS2D_AA_BACKWARD_GRAD_INPUT")
     if grad_input.device != grad_output.device:
         raise RuntimeError(
             f"Expected grad_input on {grad_output.device}, but got {grad_input.device}"
@@ -749,7 +750,7 @@ def _upsample_lanczos2d_aa_backward_out(
         raise RuntimeError(
             f"Expected grad_input dtype {grad_output.dtype}, but got {grad_input.dtype}"
         )
-    result = _upsample_lanczos2d_aa_backward(
+    result = upsample_lanczos2d_aa_backward(
         grad_output,
         output_size,
         input_size,
