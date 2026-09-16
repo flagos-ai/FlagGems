@@ -77,6 +77,16 @@ def torch_ge(v):
     return version.parse(torch.__version__) >= version.parse(v)
 
 
+def torch_has_aten_overload(operator, overload):
+    """Return whether this backend's PyTorch build exposes an ATen overload."""
+    try:
+        packet = getattr(torch.ops.aten, operator)
+        getattr(packet, overload)
+    except (AttributeError, RuntimeError):
+        return False
+    return True
+
+
 _FULL_CONFIG = (
     ("__and__.Scalar", bitwise_and_scalar),
     ("__and__.Tensor", bitwise_and_tensor),
@@ -102,6 +112,8 @@ _FULL_CONFIG = (
     ("_adaptive_avg_pool3d_backward", _adaptive_avg_pool3d_backward),
     ("_add_relu.Tensor", _add_relu),
     ("_add_relu_.Tensor", _add_relu_),
+    ("_addmm_activation", _addmm_activation),
+    ("_addmm_activation.out", _addmm_activation_out),
     (
         "_amp_foreach_non_finite_check_and_unscale_",
         _amp_foreach_non_finite_check_and_unscale_,
@@ -232,6 +244,7 @@ _FULL_CONFIG = (
     ("_nested_view_from_buffer_copy", _nested_view_from_buffer_copy),
     ("_nested_view_from_jagged", _nested_view_from_jagged),
     ("_nested_view_from_jagged_copy", _nested_view_from_jagged_copy),
+    ("_padded_dense_to_jagged_forward", _padded_dense_to_jagged_forward),
     ("_pdist_backward", _pdist_backward),
     ("_pdist_forward", _pdist_forward),
     ("_prelu_kernel", _prelu_kernel),
@@ -314,6 +327,14 @@ _FULL_CONFIG = (
     ("_upsample_nearest_exact2d", _upsample_nearest_exact2d),
     ("_upsample_nearest_exact2d_backward", _upsample_nearest_exact2d_backward),
     ("_upsample_nearest_exact3d", _upsample_nearest_exact3d),
+    (
+        "_upsample_nearest_exact3d_backward",
+        _upsample_nearest_exact3d_backward,
+    ),
+    (
+        "_upsample_nearest_exact3d_backward.grad_input",
+        _upsample_nearest_exact3d_backward_grad_input,
+    ),
     (
         "_weight_int4pack_mm_with_scales_and_zeros",
         _weight_int4pack_mm_with_scales_and_zeros,
@@ -776,6 +797,7 @@ _FULL_CONFIG = (
     ("index_select", index_select),
     ("index_select_backward", index_select_backward),
     ("is_nonzero", is_nonzero),
+    ("is_same_size", is_same_size),
     ("isclose", isclose),
     ("isfinite", isfinite),
     ("isin.Scalar_Tensor", isin),
@@ -841,6 +863,9 @@ _FULL_CONFIG = (
     ("linalg_matrix_exp", linalg_matrix_exp),
     ("linalg_matrix_exp.out", linalg_matrix_exp_out),
     ("linalg_matrix_norm", linalg_matrix_norm),
+    ("linalg_matrix_norm.out", linalg_matrix_norm_out),
+    ("linalg_matrix_norm.str_ord", linalg_matrix_norm),
+    ("linalg_matrix_norm.str_ord_out", linalg_matrix_norm_out),
     ("linalg_matrix_power", linalg_matrix_power),
     ("linalg_matrix_power.out", linalg_matrix_power_out),
     ("linalg_matrix_rank", linalg_matrix_rank_tol),
@@ -873,6 +898,8 @@ _FULL_CONFIG = (
     ("linalg_solve_triangular.out", linalg_solve_triangular_out),
     ("linalg_svd", linalg_svd),
     ("linalg_svdvals", linalg_svdvals),
+    ("linalg_tensorinv", linalg_tensorinv),
+    ("linalg_tensorinv.out", linalg_tensorinv_out),
     ("linalg_vander", linalg_vander),
     ("linalg_vecdot", linalg_vecdot),
     ("linalg_vecdot.out", linalg_vecdot_out),
@@ -966,6 +993,14 @@ _FULL_CONFIG = (
     ("mse_loss_backward", mse_loss_backward),
     ("mul.Tensor", mul),
     ("mul_.Tensor", mul_),
+    ("multi_margin_loss", multi_margin_loss),
+    ("multi_margin_loss.out", multi_margin_loss_out),
+    ("multi_margin_loss_backward", multi_margin_loss_backward),
+    (
+        "multi_margin_loss_backward.grad_input",
+        multi_margin_loss_backward_out,
+    ),
+    ("multilabel_margin_loss_forward", multilabel_margin_loss_forward),
     ("multinomial", multinomial),
     ("multiply", multiply),
     ("multiply.Scalar", multiply),
@@ -1208,6 +1243,7 @@ _FULL_CONFIG = (
     ("special_erfinv.out", special_erfinv_out),
     ("special_exp2", special_exp2),
     ("special_expit", special_expit),
+    ("special_expm1", special_expm1),
     ("special_gammainc", special_gammainc),
     ("special_gammaincc", special_gammaincc),
     ("special_gammaincc.out", igammac_out),
@@ -1221,6 +1257,18 @@ _FULL_CONFIG = (
     ("special_i1.out", special_i1_out),
     ("special_i1e", special_i1e),
     ("special_i1e.out", special_i1e_out),
+    ("special_laguerre_polynomial_l", special_laguerre_polynomial_l),
+    ("special_laguerre_polynomial_l.n_scalar", special_laguerre_polynomial_l),
+    (
+        "special_laguerre_polynomial_l.n_scalar_out",
+        special_laguerre_polynomial_l_out,
+    ),
+    ("special_laguerre_polynomial_l.out", special_laguerre_polynomial_l_out),
+    ("special_laguerre_polynomial_l.x_scalar", special_laguerre_polynomial_l),
+    (
+        "special_laguerre_polynomial_l.x_scalar_out",
+        special_laguerre_polynomial_l_out,
+    ),
     ("special_legendre_polynomial_p", special_legendre_polynomial_p),
     ("special_log1p", special_log1p),
     ("special_log1p.out", special_log1p_out),
@@ -1266,6 +1314,36 @@ _FULL_CONFIG = (
     ("squeeze_copy", squeeze_copy),
     ("stack", stack),
     ("std.correction", std),
+    (
+        "std_mean",
+        std_mean,
+        lambda: torch_has_aten_overload("std_mean", "default"),
+    ),
+    (
+        "std_mean.correction",
+        std_mean_correction,
+        lambda: torch_has_aten_overload("std_mean", "correction"),
+    ),
+    (
+        "std_mean.correction_names",
+        std_mean_correction_names,
+        lambda: torch_has_aten_overload("std_mean", "correction_names"),
+    ),
+    (
+        "std_mean.correction_out",
+        std_mean_correction_out,
+        lambda: torch_has_aten_overload("std_mean", "correction_out"),
+    ),
+    (
+        "std_mean.dim",
+        std_mean_dim,
+        lambda: torch_has_aten_overload("std_mean", "dim"),
+    ),
+    (
+        "std_mean.names_dim",
+        std_mean_names_dim,
+        lambda: torch_has_aten_overload("std_mean", "names_dim"),
+    ),
     ("sub.Tensor", sub),
     ("sub_.Tensor", sub_),
     ("subtract.Tensor", subtract),
@@ -1285,6 +1363,8 @@ _FULL_CONFIG = (
     ("t_copy.out", t_copy_out),
     ("take", take),
     ("take.out", take_out),
+    ("take_along_dim", take_along_dim),
+    ("take_along_dim.out", take_along_dim_out),
     ("tan", tan),
     ("tan_", tan_),
     ("tanh", tanh),
@@ -1297,12 +1377,16 @@ _FULL_CONFIG = (
     ("tile", tile),
     ("topk", topk),
     ("trace", trace),
+    ("trace_backward", trace_backward),
     ("transpose.int", transpose),
+    ("transpose_copy.int", transpose_copy),
     ("tril", tril),
     ("tril.out", tril_out),
     ("tril_", tril_),
+    ("tril_indices", tril_indices),
     ("triu", triu),
     ("triu_", triu_),
+    ("triu_indices", triu_indices),
     ("true_divide.out", true_divide_out),
     ("true_divide.Scalar", true_divide),
     ("true_divide.Tensor", true_divide_tensor),

@@ -541,6 +541,31 @@ ops:
   - BLAS
   stages:
   - alpha: '5.4'
+- id: addmm_activation
+  description: |
+    Performs `addmm` followed by an activation function. Computes
+    `beta * input + alpha * (mat1 @ mat2)` and applies ReLU, or GELU (tanh
+    approximation) when `use_gelu` is True.
+  for:
+  - _addmm_activation
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.4'
+- id: addmm_activation_out
+  description: A variant of `_addmm_activation()` that assigns the output to the provided `out` parameter.
+  for:
+  - _addmm_activation.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.4'
 - id: addmm_dtype
   description: 'A variant of `addmm` that allows the dtype of the output tensor to
     be specified.
@@ -1625,7 +1650,8 @@ ops:
   stages:
   - stable: '3.0'
 - id: batch_norm_backward_reduce
-  description: Triton kernel implementation for batch normalization backward reduce stage.
+  description: Triton kernel implementation for batch normalization backward reduce
+    stage.
   for:
   - native_batch_norm_backward_reduce
   labels:
@@ -2263,7 +2289,7 @@ ops:
 - id: cauchy
   description: Draws random numbers from a Cauchy distribution.
   for:
-  - cauchy.float
+  - cauchy
   labels:
   - aten
   kind:
@@ -2273,7 +2299,7 @@ ops:
 - id: cauchy_
   description: Fills the tensor with numbers drawn from the Cauchy distribution.
   for:
-  - cauchy_.float
+  - cauchy_
   labels:
   - aten
   kind:
@@ -4261,17 +4287,18 @@ ops:
   stages:
   - alpha: '5.4'
 - id: embedding_bag_sparse_backward
-  description: |
-    Computes the sparse (COO) gradient for the backward pass of embedding_bag.
+  description: 'Computes the sparse (COO) gradient for the backward pass of embedding_bag.
+
+    '
   for:
-    - _embedding_bag_sparse_backward
+  - _embedding_bag_sparse_backward
   labels:
-    - aten
-    - KernelGen
+  - aten
+  - KernelGen
   kind:
-    - NeuralNetwork
+  - NeuralNetwork
   stages:
-    - alpha: '5.4'
+  - alpha: '5.4'
 - id: embedding_dense_backward
   description: Calculates the gradient of the weight matrix for a dense embedding
     layer during backpropagation.
@@ -4651,18 +4678,20 @@ ops:
   stages:
   - stable: '3.0'
 - id: fake_quantize_learnable_per_channel_affine
-  description: |
-    Triton kernel implementation for _fake_quantize_learnable_per_channel_affine,
+  description: 'Triton kernel implementation for _fake_quantize_learnable_per_channel_affine,
+
     the per-channel fake-quantize affine operator with learnable scale and zero point.
+
+    '
   for:
-    - _fake_quantize_learnable_per_channel_affine
+  - _fake_quantize_learnable_per_channel_affine
   labels:
-    - aten
-    - KernelGen
+  - aten
+  - KernelGen
   kind:
-    - Math
+  - Math
   stages:
-    - alpha: '5.4'
+  - alpha: '5.4'
 - id: fake_quantize_learnable_per_channel_affine_backward
   description: 'Triton kernel implementation for `_fake_quantize_learnable_per_channel_affine_backward`,
 
@@ -5767,8 +5796,11 @@ ops:
   stages:
   - beta: '5.3'
 - id: fused_moving_avg_obs_fake_quant
-  description: |
-    Fused moving-average observer with fake-quantize for QAT; performs min/max reduction, EMA running stats update, scale/zero_point calculation, and fake quantization in a single Triton kernel launch.
+  description: 'Fused moving-average observer with fake-quantize for QAT; performs
+    min/max reduction, EMA running stats update, scale/zero_point calculation, and
+    fake quantization in a single Triton kernel launch.
+
+    '
   for:
   - fused_moving_avg_obs_fake_quant
   labels:
@@ -6164,9 +6196,12 @@ ops:
   stages:
   - alpha: '5.3'
 - id: grid_sampler_2d
-  description: |
-    Performs 2D grid sampling of the input tensor using the given grid.
-    Supports bilinear, nearest, and bicubic interpolation with zeros, border, and reflection padding.
+  description: 'Performs 2D grid sampling of the input tensor using the given grid.
+
+    Supports bilinear, nearest, and bicubic interpolation with zeros, border, and
+    reflection padding.
+
+    '
   for:
   - grid_sampler_2d
   labels:
@@ -7257,6 +7292,19 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: is_same_size
+  description: Returns True if the two input tensors have the same shape.
+  for:
+  - is_same_size
+  marks:
+  - is_same_size
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: isclose
   description: 'Returns a new tensor with boolean elements representing if each element
     of `input`
@@ -8087,7 +8135,29 @@ ops:
   kind:
   - LinearAlg
   stages:
-  - alpha: '5.4'
+  - beta: '5.4'
+- id: linalg_matrix_norm_out
+  description: 'Out-of-place version of linalg_matrix_norm,
+
+    Computes the matrix norm over the given dimensions.
+
+    Supports ord values: 1, -1, 2, -2, inf, -inf, ''fro'', ''nuc''.
+
+    For ord=2/-2/nuc, internally uses SVD (singular value decomposition).
+
+    For ord=1/-1/inf/-inf, uses max/min absolute column/row sums.
+
+    For ord=''fro'', uses Frobenius norm via per-row L2 reduction.
+
+    '
+  for:
+  - linalg_matrix_norm_out
+  labels:
+  - aten
+  kind:
+  - LinearAlg
+  stages:
+  - beta: '5.4'
 - id: linalg_matrix_power
   description: 'Computes the n-th power of a square matrix using binary exponentiation.
 
@@ -8304,9 +8374,12 @@ ops:
   stages:
   - alpha: '5.4'
 - id: linalg_solve
-  description: |
-    Solves a linear system AX = B via fused LU decomposition with partial pivoting
+  description: 'Solves a linear system AX = B via fused LU decomposition with partial
+    pivoting
+
     and forward/backward substitution in a single Triton kernel.
+
+    '
   for:
   - linalg_solve
   labels:
@@ -8361,6 +8434,30 @@ ops:
   description: Computes the singular values of a matrix.
   for:
   - linalg_svdvals
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: linalg_tensorinv
+  description: Triton kernel implementation for linalg_tensorinv.
+  for:
+  - linalg_tensorinv
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: linalg_tensorinv_out
+  description: |-
+    Out-of-place variant of linalg_tensorinv: computes the tensor inverse
+    and writes the result into the provided out tensor.
+  for:
+  - linalg_tensorinv.out
   labels:
   - aten
   - KernelGen
@@ -9657,7 +9754,8 @@ ops:
   stages:
   - alpha: '5.4'
 - id: mm_w8a8_int8
-  description: Multiplies prequantized INT8 matrices with scalar or per-row/column FP32 scales and optional bias; input quantization is external.
+  description: Multiplies prequantized INT8 matrices with scalar or per-row/column
+    FP32 scales and optional bias; input quantization is external.
   for:
   - mm_w8a8_int8
   labels:
@@ -9771,6 +9869,63 @@ ops:
   - Math
   stages:
   - stable: '2.2'
+- id: multi_margin_loss
+  description: Computes the multi-class margin loss with optional class weights.
+  for:
+  - multi_margin_loss
+  labels:
+  - aten
+  - Loss
+  - nn.functional
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
+- id: multi_margin_loss_backward
+  description: Computes the input gradient of the multi-class margin loss.
+  for:
+  - multi_margin_loss_backward
+  labels:
+  - aten
+  - Loss
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
+- id: multi_margin_loss_backward_out
+  description: Writes the multi-class margin-loss gradient into grad_input.
+  for:
+  - multi_margin_loss_backward.grad_input
+  labels:
+  - aten
+  - Loss
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
+- id: multi_margin_loss_out
+  description: Writes the multi-class margin loss into the provided output tensor.
+  for:
+  - multi_margin_loss.out
+  labels:
+  - aten
+  - Loss
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
+- id: multilabel_margin_loss_forward
+  description: 'Computes the forward multi-label margin loss and returns both the
+    loss and the per-class target membership mask.'
+  for:
+  - multilabel_margin_loss_forward
+  labels:
+  - aten
+  - Loss
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: multinomial
   description: 'Returns a tensor where each row contains `num_samples` indices sampled
 
@@ -10109,19 +10264,20 @@ ops:
   stages:
   - alpha: '5.4'
 - id: native_multi_head_attention
-  description: >
-    Triton kernel implementation of the native multi-head attention forward
-    pass, including the fused qkv projection, scaled dot-product attention and
-    output projection.
+  description: 'Triton kernel implementation of the native multi-head attention forward
+    pass, including the fused qkv projection, scaled dot-product attention and output
+    projection.
+
+    '
   for:
-    - _native_multi_head_attention
+  - _native_multi_head_attention
   labels:
-    - aten
-    - KernelGen
+  - aten
+  - KernelGen
   kind:
-    - NeuralNetwork
+  - NeuralNetwork
   stages:
-    - alpha: '5.4'
+  - alpha: '5.4'
 - id: ne
   description: Computes that `input` is not equal to `other` element-wise.
   for:
@@ -10844,7 +11000,8 @@ ops:
   stages:
   - stable: '2.1'
 - id: pad_sequence
-  description: Pads a list of variable length tensors with a given padding value and stacks them into a single padded batch tensor.
+  description: Pads a list of variable length tensors with a given padding value and
+    stacks them into a single padded batch tensor.
   for:
   - pad_sequence
   labels:
@@ -10856,6 +11013,18 @@ ops:
   - NeuralNetwork
   stages:
   - beta: '5.4'
+- id: padded_dense_to_jagged_forward
+  description: 'Converts padded dense storage to a one- to five-level jagged tensor.
+
+    '
+  for:
+  - _padded_dense_to_jagged_forward
+  labels:
+  - aten
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: pairwise_distance
   description: 'Computes the pairwise distance between input vectors, or between columns
     of input matrices.
@@ -11224,8 +11393,10 @@ ops:
   stages:
   - stable: '2.2'
 - id: quantized_gru
-  description: |
-    Quantized GRU (Gated Recurrent Unit) implementation using Triton fused gate kernel for efficient RNN inference.
+  description: 'Quantized GRU (Gated Recurrent Unit) implementation using Triton fused
+    gate kernel for efficient RNN inference.
+
+    '
   for:
   - quantized_gru.input
   - quantized_gru.data
@@ -12590,6 +12761,22 @@ ops:
   - Tensor
   stages:
   - stable: '3.0'
+- id: scatter_reduce_two
+  description: 'Applies a reduction to source values scattered at the indices specified
+    by `index`.
+
+    This entry covers the functional `scatter_reduce.two` ATen overload.
+
+    '
+  for:
+  - scatter_reduce.two
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Reduction
+  stages:
+  - alpha: '5.3'
 - id: scatter_reduce_two_
   description: 'A specific low-level ATen operator primarily encountered during model
     compilation
@@ -12599,6 +12786,22 @@ ops:
     '
   for:
   - scatter_reduce_.two
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Reduction
+  stages:
+  - alpha: '5.3'
+- id: scatter_reduce_two_out
+  description: 'Applies a scatter reduction and writes the result to the provided
+    `out` tensor.
+
+    This entry covers the `scatter_reduce.two_out` ATen overload.
+
+    '
+  for:
+  - scatter_reduce.two_out
   labels:
   - aten
   - KernelGen
@@ -13656,8 +13859,8 @@ ops:
   stages:
   - alpha: '5.4'
 - id: special_entr
-  description: 'Computes the entropy function element-wise: entr(x) = -x * ln(x)
-    for x > 0, 0 for x == 0, -inf for x < 0.'
+  description: 'Computes the entropy function element-wise: entr(x) = -x * ln(x) for
+    x > 0, 0 for x == 0, -inf for x < 0.'
   for:
   - special_entr
   labels:
@@ -13769,6 +13972,22 @@ ops:
     + exp(-x)).
   for:
   - special.expit
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: special_expm1
+  description: 'Computes the exponential of the elements minus 1 of `input`.
+
+    Alias for expm1; delegates to the expm1 kernel.
+
+    '
+  for:
+  - special_expm1
   labels:
   - aten
   - pointwise
@@ -13940,6 +14159,24 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: special_laguerre_polynomial_l
+  description: |
+    Computes the Laguerre polynomial :math:`L_n(x)` element-wise for tensor
+    and scalar x/n overloads, including destination-passing variants.
+  for:
+    - special_laguerre_polynomial_l
+    - special_laguerre_polynomial_l.out
+    - special_laguerre_polynomial_l.x_scalar
+    - special_laguerre_polynomial_l.x_scalar_out
+    - special_laguerre_polynomial_l.n_scalar
+    - special_laguerre_polynomial_l.n_scalar_out
+  labels:
+    - aten
+    - pointwise
+  kind:
+    - Math
+  stages:
+    - alpha: '5.4'
 - id: special_legendre_polynomial_p
   description: 'Computes the Legendre polynomial P_n(x) of degree n for each element
     in the input tensor,
@@ -14565,6 +14802,84 @@ ops:
   - Reduction
   stages:
   - stable: '4.0'
+- id: std_mean
+  description: Calculates the standard deviation and mean over all input elements.
+  for:
+  - std_mean
+  labels:
+  - aten
+  - Reduction
+  kind:
+  - Reduction
+  stages:
+  - alpha: '5.4'
+- id: std_mean_correction
+  description: 'Calculates the standard deviation and mean over selected dimensions,
+    using an optional degrees-of-freedom correction.
+
+    '
+  for:
+  - std_mean.correction
+  labels:
+  - aten
+  - Reduction
+  kind:
+  - Reduction
+  stages:
+  - alpha: '5.4'
+- id: std_mean_correction_names
+  description: 'Named-dimension variant of `std_mean` with an optional degrees-of-freedom
+    correction.
+
+    '
+  for:
+  - std_mean.correction_names
+  labels:
+  - aten
+  - Reduction
+  kind:
+  - Reduction
+  stages:
+  - alpha: '5.4'
+- id: std_mean_correction_out
+  description: Out-tensor variant of `std_mean` with a degrees-of-freedom correction.
+  for:
+  - std_mean.correction_out
+  labels:
+  - aten
+  - Reduction
+  kind:
+  - Reduction
+  stages:
+  - alpha: '5.4'
+- id: std_mean_dim
+  description: 'Calculates the standard deviation and mean over selected dimensions,
+    using the legacy `unbiased` argument.
+
+    '
+  for:
+  - std_mean.dim
+  labels:
+  - aten
+  - Reduction
+  kind:
+  - Reduction
+  stages:
+  - alpha: '5.4'
+- id: std_mean_names_dim
+  description: 'Named-dimension variant of `std_mean` using the legacy `unbiased`
+    argument.
+
+    '
+  for:
+  - std_mean.names_dim
+  labels:
+  - aten
+  - Reduction
+  kind:
+  - Reduction
+  stages:
+  - alpha: '5.4'
 - id: sub
   description: Subtracts `other`, scaled by `alpha`, from the `input` tensor.
   for:
@@ -14789,6 +15104,39 @@ ops:
     '
   for:
   - take
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
+- id: take_along_dim
+  description: 'Selects values from `input` at the 1-dimensional `indices` along the
+
+    given `dim`. Reduces to a broadcasted gather; if `dim` is None the input
+
+    is treated as flattened to 1-D.
+
+    '
+  for:
+  - take_along_dim
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
+- id: take_along_dim_out
+  description: 'Out-variant of take_along_dim that writes the gathered result into
+    the
+
+    `out` tensor, resizing it if needed.
+
+    '
+  for:
+  - take_along_dim.out
   labels:
   - aten
   - KernelGen
@@ -15133,6 +15481,17 @@ ops:
   - Reduction
   stages:
   - stable: '4.0'
+- id: trace_backward
+  description: Triton kernel implementation for trace_backward.
+  for:
+  - trace_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.4'
 - id: transpose
   description: 'Returns a view of the original tensor with its two dimensions swapped.
 
@@ -15150,6 +15509,18 @@ ops:
   - Tensor
   stages:
   - alpha: '5.1'
+- id: transpose_copy
+  description: |
+    Returns a new contiguous tensor with the two specified dimensions swapped.
+    The result does not alias the input tensor.
+  for:
+    - transpose_copy.int
+  labels:
+    - aten
+  kind:
+    - Tensor
+  stages:
+    - alpha: '5.4'
 - id: tril
   description: 'Returns the lower triangular part of an input matrix (or a batch of
     matrices) and
@@ -15179,6 +15550,17 @@ ops:
   - BLAS
   stages:
   - beta: '5.3'
+- id: tril_indices
+  description: Returns the row and column coordinates of the lower-triangular part
+    of a `row` by `col` matrix in row-major order.
+  for:
+  - tril_indices
+  labels:
+  - aten
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: tril_out
   description: 'A variant of `tril()` that explicitly assigns the output to the `out`
     parameter.
@@ -15229,6 +15611,17 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '5.0'
+- id: triu_indices
+  description: Returns the row and column coordinates of the upper-triangular part
+    of a `row` by `col` matrix in row-major order.
+  for:
+  - triu_indices
+  labels:
+  - aten
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: true_divide
   description: Performs element-wise true division between two tensors.
   for:
@@ -15471,8 +15864,7 @@ ops:
     unsafe variant skips autograd history recording and assumes the caller passes
     valid
 
-    indices; it shares the semantics of `index_put`, including the `accumulate`
-    flag.
+    indices; it shares the semantics of `index_put`, including the `accumulate` flag.
 
     '
   for:
@@ -15829,6 +16221,29 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.1'
+- id: upsample_nearest_exact3d_backward
+  description: A backward case for `_upsample_nearest_exact3d()`.
+  for:
+  - _upsample_nearest_exact3d_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
+- id: upsample_nearest_exact3d_backward_grad_input
+  description: A variant of `_upsample_nearest_exact3d_backward()` that writes into
+    the provided `grad_input` tensor.
+  for:
+  - _upsample_nearest_exact3d_backward.grad_input
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: upsample_trilinear3d
   description: Upsamples the input (NCDHW) using trilinear interpolation.
   for:
@@ -15841,9 +16256,12 @@ ops:
   stages:
   - alpha: '5.4'
 - id: upsample_trilinear3d_backward
-  description: |
-    Computes the gradient of upsample_trilinear3d with respect to its input (NCDHW),
+  description: 'Computes the gradient of upsample_trilinear3d with respect to its
+    input (NCDHW),
+
     scattering the output gradient back to the eight source corner voxels.
+
+    '
   for:
   - upsample_trilinear3d_backward
   labels:

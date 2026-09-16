@@ -63,7 +63,7 @@ from .int_mm import int_mm, int_mm_out
 from .isin import isin
 from .lcm import lcm, lcm_
 from .linalg_ldl_factor import ldl_factor
-from .linalg_matrix_norm import linalg_matrix_norm
+from .linalg_matrix_norm import linalg_matrix_norm, linalg_matrix_norm_out
 from .linalg_solve_triangular import (
     linalg_solve_triangular,
     linalg_solve_triangular_out,
@@ -102,6 +102,7 @@ from .replication_pad2d_backward import (
     replication_pad2d_backward_grad_input,
 )
 from .scatter import scatter, scatter_
+from .scatter_reduce import scatter_reduce, scatter_reduce_, scatter_reduce_out
 from .searchsorted import (
     searchsorted,
     searchsorted_out,
@@ -176,6 +177,7 @@ __all__ = [
     "lcm_",
     "ldl_factor",
     "linalg_matrix_norm",
+    "linalg_matrix_norm_out",
     "linalg_solve_triangular",
     "linalg_solve_triangular_out",
     "log_normal_",
@@ -218,6 +220,9 @@ __all__ = [
     "ScaleDotProductAttention",
     "scatter",
     "scatter_",
+    "scatter_reduce",
+    "scatter_reduce_",
+    "scatter_reduce_out",
     "searchsorted",
     "searchsorted_out",
     "searchsorted_scalar",
