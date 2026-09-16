@@ -145,6 +145,278 @@ def _df64_matmul(a_h, a_l, b_h, b_l, M, BLOCK: tl.constexpr):
 
 
 @triton.jit
+def _df64_gemm_kernel(
+    A_h,
+    A_l,
+    B_h,
+    B_l,
+    C_h,
+    C_l,
+    M,
+    N,
+    K,
+    stride_am,
+    stride_ak,
+    stride_bk,
+    stride_bn,
+    stride_cm,
+    stride_cn,
+    batch_stride_a,
+    batch_stride_b,
+    batch_stride_c,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    """Error-free df64 GEMM C = A @ B for arbitrary M (grid-tiled; the M <= 32
+    in-register ``_df64_matmul`` above is a single-program special case).
+
+    Each program owns one BLOCK_M x BLOCK_N output tile and accumulates the
+    K-contraction with the scalar fma-based df64 ops (``_df64_mul_ds`` /
+    ``_df64_add``), which are error-free — a tl.dot-based df64 product cannot
+    capture the primary dot's fp32 sum rounding and so stays at ~fp32 accuracy.
+    Grid: (cdiv(M, BLOCK_M), cdiv(N, BLOCK_N), batch)."""
+    pid_m = tl.program_id(0)
+    pid_n = tl.program_id(1)
+    pid_b = tl.program_id(2)
+    rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    mask_m = rm < M
+    mask_n = rn < N
+    cmask = mask_m[:, None] & mask_n[None, :]
+
+    a_h = A_h + pid_b * batch_stride_a
+    a_l = A_l + pid_b * batch_stride_a
+    b_h = B_h + pid_b * batch_stride_b
+    b_l = B_l + pid_b * batch_stride_b
+    c_h = C_h + pid_b * batch_stride_c
+    c_l = C_l + pid_b * batch_stride_c
+
+    acc_h = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+    acc_l = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+    for k in range(K):
+        ah = tl.load(a_h + rm * stride_am + k * stride_ak, mask=mask_m, other=0.0)
+        al = tl.load(a_l + rm * stride_am + k * stride_ak, mask=mask_m, other=0.0)
+        bh = tl.load(b_h + k * stride_bk + rn * stride_bn, mask=mask_n, other=0.0)
+        bl = tl.load(b_l + k * stride_bk + rn * stride_bn, mask=mask_n, other=0.0)
+        ph, pl = _df64_mul_ds(ah[:, None], al[:, None], bh[None, :], bl[None, :])
+        acc_h, acc_l = _df64_add(acc_h, acc_l, ph, pl)
+    # Overflow (inf) operands: keep signed inf, drop the lo part (see _df64_add).
+    bad = acc_h != acc_h
+    acc_h = tl.where(bad, float("inf"), acc_h)
+    acc_l = tl.where(bad, 0.0, acc_l)
+    tl.store(c_h + rm[:, None] * stride_cm + rn[None, :] * stride_cn, acc_h, mask=cmask)
+    tl.store(c_l + rm[:, None] * stride_cm + rn[None, :] * stride_cn, acc_l, mask=cmask)
+
+
+def _df64_gemm(A_h, A_l, B_h, B_l):
+    """Error-free df64 matmul C = A @ B for arbitrary M via the tiled
+    ``_df64_gemm_kernel``.  A_h/A_l are the df64 (hi, lo) pair of a (…, M, K)
+    fp32 tensor (batch dims allowed), B similarly (…, K, N).  Returns (C_h,
+    C_l).  Used by the large-M df64 inverse refinement / power where the
+    in-register ``_df64_matmul`` (M <= 32) is not applicable."""
+    A_h = A_h.contiguous()
+    B_h = B_h.contiguous()
+    M, K = A_h.shape[-2], A_h.shape[-1]
+    N = B_h.shape[-1]
+    *batch, _, _ = A_h.shape
+    bs = 1
+    for d in batch:
+        bs *= d
+    A2 = A_h.reshape(bs, M, K)
+    B2 = B_h.reshape(bs, K, N)
+    if A_l is None:
+        A_l = torch.zeros_like(A_h)
+    if B_l is None:
+        B_l = torch.zeros_like(B_h)
+    A_l = A_l.contiguous().reshape(bs, M, K)
+    B_l = B_l.contiguous().reshape(bs, K, N)
+    C_h = torch.empty(bs, M, N, dtype=torch.float32, device=A_h.device)
+    C_l = torch.empty(bs, M, N, dtype=torch.float32, device=A_h.device)
+    BLOCK_M, BLOCK_N = 32, 32
+    _df64_gemm_kernel[(triton.cdiv(M, BLOCK_M), triton.cdiv(N, BLOCK_N), bs)](
+        A2,
+        A_l,
+        B2,
+        B_l,
+        C_h,
+        C_l,
+        M,
+        N,
+        K,
+        A2.stride(-2),
+        A2.stride(-1),
+        B2.stride(-2),
+        B2.stride(-1),
+        C_h.stride(-2),
+        C_h.stride(-1),
+        M * K,
+        K * N,
+        M * N,
+        BLOCK_M=BLOCK_M,
+        BLOCK_N=BLOCK_N,
+    )
+    if len(batch) == 0:
+        return C_h.squeeze(0), C_l.squeeze(0)
+    shape = tuple(batch) + (M, N)
+    return C_h.reshape(shape), C_l.reshape(shape)
+
+
+@triton.jit
+def _df64_lincomb_kernel(
+    Ah_ptr,
+    Al_ptr,
+    Bh_ptr,
+    Bl_ptr,
+    Ch_ptr,
+    Cl_ptr,
+    total,
+    CA,
+    CB,
+    BLOCK: tl.constexpr,
+):
+    """df64 elementwise out = CA * (Ah, Al) + CB * (Bh, Bl).
+
+    CA / CB are exact binary scalars (powers of two) on the no-fp64 inverse
+    path, so the pre-scale ``h * CA`` is exact and the TwoSum in ``_df64_add``
+    keeps the combine error-free.  Used for the 2X - XAX Newton step — the form
+    that converges for a df64 inverse: X(2I - AX) stalls at the fp32 ULP around
+    the identity (the ``2I - AX`` subtraction's diagonal error is unrepresentable
+    below fp32)."""
+    pid = tl.program_id(0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < total
+    h1 = tl.load(Ah_ptr + offs, mask=mask, other=0.0)
+    l1 = tl.load(Al_ptr + offs, mask=mask, other=0.0)
+    h2 = tl.load(Bh_ptr + offs, mask=mask, other=0.0)
+    l2 = tl.load(Bl_ptr + offs, mask=mask, other=0.0)
+    h, ll = _df64_add(h1 * CA, l1 * CA, h2 * CB, l2 * CB)
+    tl.store(Ch_ptr + offs, h, mask=mask)
+    tl.store(Cl_ptr + offs, ll, mask=mask)
+
+
+def _df64_lincomb(Ah, Al, Bh, Bl, CA=2.0, CB=-1.0):
+    """Error-free df64 elementwise out = CA*A + CB*B for exact binary CA/CB,
+    returning the (hi, lo) pair."""
+    total = Ah.numel()
+    Ah = Ah.contiguous()
+    Al = Al.contiguous()
+    Bh = Bh.contiguous()
+    Bl = Bl.contiguous()
+    Ch = torch.empty_like(Ah)
+    Cl = torch.empty_like(Ah)
+    _df64_lincomb_kernel[(triton.cdiv(total, 1024),)](
+        Ah,
+        Al,
+        Bh,
+        Bl,
+        Ch,
+        Cl,
+        total,
+        CA,
+        CB,
+        BLOCK=1024,
+    )
+    return Ch, Cl
+
+
+def _inverse_df64_large(A, X0, iters=2):
+    """df64 (hi, lo) inverse of fp32 A for M > 64, refined from the fp32-stored
+    approximate inverse ``X0`` (external fp32 LU + TRSM — only ~1e-6 accurate,
+    far too coarse for a |n|-th power of a cond-80 matrix).
+
+    The refinement runs the 2X - XAX Newton form in error-free df64 arithmetic:
+      X <- 2X - X(AX)
+    two df64 GEMMs (A@X then X@(AX)) and one elementwise df64 lincomb per step.
+    This converges to ~1e-13 (the df64 floor) in two steps from the fp32 start
+    (verified: ||I - AX||_inf 8e-7 -> 6e-13 -> 1e-13 at M=256/1024).  The
+    algebraically-equal X(2I - AX) form cannot reach this — its (2I - AX)
+    diagonal rounds to the fp32 ULP around the identity, stalling the residual
+    at 5.96e-8.  Returns (Xh, Xl)."""
+    Ah = A.contiguous()
+    Al = torch.zeros_like(Ah)
+    Xh = X0.contiguous()
+    Xl = torch.zeros_like(X0)
+    for _ in range(iters):
+        # T = A X ; S = X T = X A X ; X <- 2X - S.
+        Th, Tl = _df64_gemm(Ah, Al, Xh, Xl)
+        Sh, Sl = _df64_gemm(Xh, Xl, Th, Tl)
+        Xh, Xl = _df64_lincomb(Xh, Xl, Sh, Sl, 2.0, -1.0)
+    return Xh, Xl
+
+
+def _df64_rescale_pair(Ch, Cl):
+    """Rescale a df64 pair by an exact power of two so its max |hi| entry lies
+    in (0.5, 1], returning ``(Ch, Cl, s)`` with true value = stored * 2**s.
+
+    Power-of-two scaling is exact in fp32 (mantissa unchanged), so the error-free
+    df64 accuracy survives.  Used by ``_matrix_power_df64_large`` to keep every
+    intermediate of an overflowing power inside fp32 normal range.
+    """
+    m = torch.max(torch.abs(Ch))
+    m = m.item()
+    if m == 0.0 or m != m:  # all-zero or NaN pair: nothing to rescale
+        return Ch, Cl, 0
+    s = int(math.ceil(math.log2(m)))  # 2**(s-1) < max <= 2**s
+    if s != 0:
+        f = 2.0 ** (-s)  # exact power of two
+        Ch = Ch * f
+        Cl = Cl * f
+    return Ch, Cl, s
+
+
+def _matrix_power_df64_large(A_h, A_l, n, shape, out=None):
+    """df64 power (A_h, A_l)^n for arbitrary M via host-side binary
+    exponentiation over the error-free tiled ``_df64_gemm`` (the M <= 64
+    in-register ``_matrix_power_df64_pair`` cannot hold these tiles).  Returns
+    the fp32 hi part; the no-fp64 backends have no fp64 recombine of hi+lo.
+
+    The chain is rescaled by exact powers of two after every product so every
+    intermediate stays inside fp32 normal range (see ``_df64_rescale_pair``).
+    A cond-80 A^-31 reaches ~1e59 >> fp32 max 3.4e38: an unscaled df64 GEMM
+    overflows its fp32 accumulator part-way through the K contraction, freezing
+    each output sign on whichever partial sum first crossed fp32 max (and NaN ->
+    +inf once an opposite-sign overflow lands) instead of the true value's sign.
+    Rescaling keeps the whole K sum finite and df64-accurate, so each output's
+    sign is correct; the final chunked 2**er multiply then overflows to +/-
+    inf exactly where the fp32 cast of the true value does."""
+    # Normalize the input so stored max <= 1: true input = stored * 2**ei.
+    zh, zl, ei = _df64_rescale_pair(A_h, A_l)
+    rh, rl, er = None, None, 0
+    n_remaining = n
+    while n_remaining > 0:
+        if n_remaining & 1:
+            if rh is None:
+                rh, rl, er = zh, zl, ei
+            else:
+                Ch, Cl = _df64_gemm(rh, rl, zh, zl)
+                Ch, Cl, s = _df64_rescale_pair(Ch, Cl)
+                rh, rl, er = Ch, Cl, er + ei + s
+        n_remaining >>= 1
+        if n_remaining > 0:
+            Ch, Cl = _df64_gemm(zh, zl, zh, zl)
+            Ch, Cl, s = _df64_rescale_pair(Ch, Cl)
+            zh, zl, ei = Ch, Cl, ei + ei + s
+    # Materialize the fp32 result (true = stored * 2**er).  The multiply runs in
+    # chunks of at most 127 (2**127 ~ 1.7e38 < fp32 max) so entries that should
+    # stay finite never overflow early, while entries above fp32 max round to
+    # +/-inf with the correct sign.
+    res = rh
+    e = er
+    while e > 0:
+        k = 127 if e > 127 else e
+        res = res * math.ldexp(1.0, k)
+        e -= k
+    while e < 0:
+        k = -126 if e < -126 else e
+        res = res * math.ldexp(1.0, k)
+        e -= k
+    if out is not None:
+        out.copy_(res)
+        return out
+    return res
+
+
+@triton.jit
 def _single_tile_kernel_df64(
     A_h_ptr,
     A_l_ptr,
@@ -654,22 +926,6 @@ def _df64_div_ds(a_h, a_l, b_h, b_l):
     q2 = r_h / b_h
     h = q1 + q2
     ll = q2 - (h - q1)
-    return h, ll
-
-
-@triton.jit
-def _df64_sqrt_ds(a_h, a_l):
-    # Double-single square root: fp32 root plus one Newton/df64 correction.
-    x = tl.sqrt(a_h)
-    p = x * x
-    pe = tl.fma(x, x, -p)
-    r_h, r_l = _df64_add(a_h, a_l, -p, -pe)
-    corr = r_h / (2.0 * x)
-    h = x + corr
-    ll = corr - (h - x)
-    not_positive = a_h <= 0.0
-    h = tl.where(not_positive, 0.0, h)
-    ll = tl.where(not_positive, 0.0, ll)
     return h, ll
 
 
