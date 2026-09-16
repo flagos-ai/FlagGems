@@ -479,7 +479,6 @@ def _linalg_matrix_norm_impl(
     write straight into its storage do so (zero-copy), otherwise a single final
     copy is made.  Pattern follows ``linalg_lu_factor``.
     """
-    logger.debug("GEMS LINALG_MATRIX_NORM (hygon)")
 
     if A.ndim < 2:
         raise RuntimeError(
@@ -548,6 +547,7 @@ def linalg_matrix_norm(
     A, ord="fro", dim=(-2, -1), keepdim=False, dtype=None, *, out=None
 ):
     """Matrix norm -- Hygon dispatch, mirrors the generic entry point."""
+    logger.debug("GEMS_HYGON LINALG_MATRIX_NORM")
     return _linalg_matrix_norm_impl(
         A, ord=ord, dim=dim, keepdim=keepdim, dtype=dtype, out=out
     )
@@ -562,7 +562,7 @@ def linalg_matrix_norm_out(
     performs the validation / resize / direct write and returns the aliased
     ``out``.
     """
-    logger.debug("GEMS LINALG_MATRIX_NORM_OUT (hygon)")
+    logger.debug("GEMS_HYGON LINALG_MATRIX_NORM_OUT")
     if out is None:
         raise TypeError("linalg_matrix_norm(): out must be provided for out variant")
     return _linalg_matrix_norm_impl(
