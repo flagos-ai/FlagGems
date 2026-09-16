@@ -31,11 +31,14 @@ from .linalg_svdvals import linalg_svdvals
 from .linear_backward import linear_backward
 from .log_normal_ import log_normal_, log_normal_heur_block, log_normal_heur_num_warps
 from .log_sigmoid_backward import log_sigmoid_backward, log_sigmoid_backward_out
+from .mm import mm, mm_out
+from .mv import mv
 from .nll_loss_backward import nll_loss_backward
 from .nonzero_numpy import nonzero_numpy
 from .reflection_pad3d_backward import reflection_pad3d_backward
 from .renorm import renorm, renorm_
 from .repeat import repeat
+from .rms_norm_w8a16_fp8 import rms_norm_w8a16_fp8
 from .scatter_reduce_ import scatter_reduce, scatter_reduce_, scatter_reduce_out
 from .softplus_backward import softplus_backward
 from .special_chebyshev_polynomial_u import special_chebyshev_polynomial_u
@@ -84,12 +87,16 @@ __all__ = [
     "log_sigmoid_backward",
     "log_sigmoid_backward_out",
     "make_3d_for_bn",
+    "mm",
+    "mm_out",
+    "mv",
     "nll_loss_backward",
     "nonzero_numpy",
     "reflection_pad3d_backward",
     "renorm",
     "renorm_",
     "repeat",
+    "rms_norm_w8a16_fp8",
     "scatter_reduce",
     "scatter_reduce_",
     "scatter_reduce_out",
