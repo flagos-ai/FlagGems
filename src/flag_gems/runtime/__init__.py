@@ -18,10 +18,12 @@ from . import backend, common, error
 from .backend.device_finder import DeviceDetector
 from .configs_loader import TunedConfigLoader
 from .flagtune import (
+    CostModelIntent,
     TuningMode,
     flagtune,
     flagtune_enabled,
     flagtune_expanded_enabled,
+    resolve_cost_model_intent,
     resolve_tuning_mode,
 )
 
@@ -82,6 +84,8 @@ def ops_get_configs(op_name, pre_hook=None, yaml_path=None):
 
 
 __all__ = [
+    "CostModelIntent",
+    "resolve_cost_model_intent",
     "TunedConfigLoader",
     "TuningMode",
     "DeviceDetector",

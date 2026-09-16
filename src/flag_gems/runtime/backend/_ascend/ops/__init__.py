@@ -50,6 +50,7 @@ from .flip import flip
 from .full import full
 from .full_like import full_like
 from .gather import gather, gather_backward
+from .grouped_matmul import grouped_matmul
 from .groupnorm import group_norm, group_norm_backward
 from .gru import gru, gru_data
 from .hadamard_transform import hadamard_transform
@@ -69,6 +70,7 @@ from .linalg_lu import linalg_lu, linalg_lu_out
 from .linalg_lu_factor import linalg_lu_factor, linalg_lu_factor_out
 from .linalg_lu_factor_ex import linalg_lu_factor_ex, linalg_lu_factor_ex_out
 from .linalg_matrix_exp import linalg_matrix_exp, linalg_matrix_exp_out
+from .linalg_matrix_norm import linalg_matrix_norm, linalg_matrix_norm_out
 from .linalg_matrix_power import linalg_matrix_power, linalg_matrix_power_out
 from .linalg_matrix_rank import (
     linalg_matrix_rank,
@@ -101,6 +103,7 @@ from .nonzero_static import nonzero_static, nonzero_static_out
 from .ones import ones
 from .ones_like import ones_like
 from .outer import outer
+from .pad_sequence import pad_sequence
 from .pairwise_distance import pairwise_distance
 from .polar import polar
 from .polygamma import polygamma_
@@ -120,8 +123,10 @@ from .replication_pad2d_backward import (
 from .resolve_neg import resolve_neg
 from .rms_norm import rms_norm
 from .rms_norm_w8a16_int8 import rms_norm_w8a16_int8
+from .rnn_tanh import rnn_tanh, rnn_tanh_data
 from .scatter import scatter, scatter_
 from .scatter_add_ import scatter_add_
+from .scatter_reduce import scatter_reduce, scatter_reduce_, scatter_reduce_out
 from .select_backward import select_backward
 from .select_scatter import select_scatter
 from .silu import silu, silu_
@@ -134,6 +139,7 @@ from .threshold import threshold, threshold_backward
 from .triu import triu
 from .unique import _unique2
 from .unsafe_index import unsafe_index
+from .unsafe_index_put import unsafe_index_put
 from .upsample_bicubic2d_aa import _upsample_bicubic2d_aa
 from .upsample_linear1d_backward import upsample_linear1d_backward
 from .upsample_nearest2d import upsample_nearest2d
@@ -195,6 +201,7 @@ __all__ = [
     "gather_backward",
     "group_norm",
     "group_norm_backward",
+    "grouped_matmul",
     "gru",
     "gru_data",
     "hadamard_transform",
@@ -224,6 +231,8 @@ __all__ = [
     "linalg_lu_out",
     "linalg_matrix_exp",
     "linalg_matrix_exp_out",
+    "linalg_matrix_norm",
+    "linalg_matrix_norm_out",
     "linalg_matrix_power",
     "linalg_matrix_power_out",
     "linalg_matrix_rank",
@@ -267,6 +276,7 @@ __all__ = [
     "ones",
     "ones_like",
     "outer",
+    "pad_sequence",
     "pairwise_distance",
     "polar",
     "polygamma_",
@@ -282,6 +292,8 @@ __all__ = [
     "resolve_neg",
     "rms_norm",
     "rms_norm_w8a16_int8",
+    "rnn_tanh",
+    "rnn_tanh_data",
     "scaled_dot_product_attention",
     "scaled_dot_product_attention_backward",
     "scaled_dot_product_attention_forward",
@@ -289,6 +301,9 @@ __all__ = [
     "scatter",
     "scatter_",
     "scatter_add_",
+    "scatter_reduce",
+    "scatter_reduce_",
+    "scatter_reduce_out",
     "select_backward",
     "select_scatter",
     "silu",
@@ -306,6 +321,7 @@ __all__ = [
     "threshold_backward",
     "triu",
     "unsafe_index",
+    "unsafe_index_put",
     "upsample_linear1d_backward",
     "upsample_nearest2d",
     "var_mean",
