@@ -12,6 +12,8 @@ from flag_gems.utils.random_utils import (
 )
 from flag_gems.utils.shape_utils import volume
 
+from ..utils.config_utils import MAX_GRID_DIM
+
 logger = logging.getLogger(__name__)
 
 
@@ -107,37 +109,46 @@ def poisson_kernel(
     # GCU300: keep philox_seed/offset as int64 (scalar params are allowed by the
     # verifier) so the `>> 32` high-word extraction is correct. ENABLE_I64 flags
     # that 64-bit scalar values are in use.
+    philox_seed = philox_seed.to(tl.int64)
+    philox_offset = philox_offset.to(tl.int64)
     c0_base = (philox_offset & 0xFFFFFFFF).to(tl.uint32)
     c1 = ((philox_offset >> 32) & 0xFFFFFFFF).to(tl.uint32)
 
-    pid = tl.program_id(0)
-    offs = pid * BLOCK + tl.arange(0, BLOCK)
-    mask = offs < N
+    pid_base = tl.program_id(0)
+    num_programs = tl.num_programs(0)
+    num_tiles = tl.cdiv(N, BLOCK)
+    # grid-stride-loop over the element-tile space so grid.x can be capped well
+    # below gcu300's 65535 hardware limit regardless of how large N grows.
+    for pid in range(pid_base, num_tiles, num_programs):
+        offs = pid * BLOCK + tl.arange(0, BLOCK)
+        mask = offs < N
 
-    # Load input lambda values
-    lam = tl.load(inp_ptr + offs, mask=mask, other=0.0).to(tl.float32)
+        # Load input lambda values
+        lam = tl.load(inp_ptr + offs, mask=mask, other=0.0).to(tl.float32)
 
-    # Clamp lambda to non-negative
-    lam = tl.maximum(lam, 0.0)
+        # Clamp lambda to non-negative
+        lam = tl.maximum(lam, 0.0)
 
-    # Use different algorithms based on lambda size
-    use_small = lam < LAMBDA_THRESHOLD
+        # Use different algorithms based on lambda size
+        use_small = lam < LAMBDA_THRESHOLD
 
-    # For small lambda: Knuth's algorithm
-    # Each thread needs its own random state offset based on position and iteration count
-    c0_small = c0_base + offs.to(tl.uint32) * MAX_ITERS
-    z = c0_small * 0
-    small_result = poisson_small_lambda(lam, philox_seed, c0_small, c1, z, MAX_ITERS)
+        # For small lambda: Knuth's algorithm
+        # Each thread needs its own random state offset based on position and iteration count
+        c0_small = c0_base + offs.to(tl.uint32) * MAX_ITERS
+        z = c0_small * 0
+        small_result = poisson_small_lambda(
+            lam, philox_seed, c0_small, c1, z, MAX_ITERS
+        )
 
-    # For large lambda: normal approximation
-    c0_large = c0_base + offs.to(tl.uint32)
-    z_large = c0_large * 0
-    large_result = poisson_large_lambda(lam, philox_seed, c0_large, c1, z_large)
+        # For large lambda: normal approximation
+        c0_large = c0_base + offs.to(tl.uint32)
+        z_large = c0_large * 0
+        large_result = poisson_large_lambda(lam, philox_seed, c0_large, c1, z_large)
 
-    # Select result based on lambda size
-    result = tl.where(use_small, small_result, large_result)
+        # Select result based on lambda size
+        result = tl.where(use_small, small_result, large_result)
 
-    tl.store(out_ptr + offs, result, mask=mask)
+        tl.store(out_ptr + offs, result, mask=mask)
 
 
 def poisson(input, generator=None):
@@ -176,8 +187,10 @@ def poisson(input, generator=None):
     LAMBDA_THRESHOLD = 30  # Threshold for switching between algorithms
     MAX_ITERS = 64  # Maximum iterations for Knuth's algorithm
 
-    # Calculate grid
-    grid = lambda meta: (triton.cdiv(N, meta["BLOCK"]),)
+    # Calculate grid — the kernel virtualizes the tile space with a
+    # grid-stride-loop, so grid.x can be capped well below gcu300's 65535
+    # hardware limit regardless of how large N grows.
+    grid = lambda meta: (min(MAX_GRID_DIM, triton.cdiv(N, meta["BLOCK"])),)
 
     # Get random seed and offset
     # Each element may need up to MAX_ITERS random numbers for small lambda case

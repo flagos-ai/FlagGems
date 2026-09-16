@@ -34,6 +34,22 @@ class TuningMode(str, Enum):
     COST_MODEL = "cost_model"
 
 
+class CostModelIntent(str, Enum):
+    DISABLED = "disabled"
+    AUTO = "auto"
+    REQUIRED = "required"
+
+
+def resolve_cost_model_intent(*, supports_cost_model=False):
+    """Parse user intent without importing or probing the model runtime."""
+    if _use_flagtune_setting_from_env() is False or not supports_cost_model:
+        return CostModelIntent.DISABLED
+    setting = _optional_binary_environment(USE_FLAGTUNE_COST_MODEL_ENV)
+    if setting is False:
+        return CostModelIntent.DISABLED
+    return CostModelIntent.REQUIRED if setting else CostModelIntent.AUTO
+
+
 @dataclass(frozen=True)
 class FlagTuneOpSpec:
     name: str
@@ -188,7 +204,9 @@ def resolve_tuning_mode(op_name, *, supports_cost_model=False):
     an adapted operator. With neither switch set, unadapted operators default to
     Default and adapted operators default to Cost Model. ``FLAGTUNE_INCLUDE``
     applies the same capability-based selection to individual operators. An
-    adapted operator uses Expanded only when ``USE_FLAGTUNE_COST_MODEL=0``.
+    adapted operator uses Expanded only when ``USE_FLAGTUNE_COST_MODEL=0``. If
+    a model cannot be loaded, the policy handles AUTO fallback. Mode resolution
+    is deliberately independent of device discovery and model availability.
     """
     try:
         name = _normalize_op_name(op_name)
@@ -196,17 +214,13 @@ def resolve_tuning_mode(op_name, *, supports_cost_model=False):
         return TuningMode.DEFAULT
 
     use_flagtune_setting = _use_flagtune_setting_from_env()
-    cost_model_setting = None
-    if supports_cost_model:
-        cost_model_setting = _optional_binary_environment(USE_FLAGTUNE_COST_MODEL_ENV)
-
     if use_flagtune_setting is False:
         return TuningMode.DEFAULT
+
     if supports_cost_model:
-        if cost_model_setting is False:
+        intent = resolve_cost_model_intent(supports_cost_model=True)
+        if intent is CostModelIntent.DISABLED:
             return TuningMode.EXPANDED
-        if cost_model_setting is True or use_flagtune_setting is True:
-            return TuningMode.COST_MODEL
         return TuningMode.COST_MODEL
     if use_flagtune_setting is True or name in get_flagtune_include():
         return TuningMode.EXPANDED

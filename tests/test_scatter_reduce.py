@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import importlib
+
 import pytest
 import torch
 
@@ -20,683 +22,795 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import conftest as cfg
 
-if cfg.QUICK_MODE:
-    FLOAT_DTYPES = [torch.float32]
-    SHAPES = [(4, 8)]
-else:
-    FLOAT_DTYPES = utils.FLOAT_DTYPES
-    SHAPES = [(1, 1), (8, 8), (64, 64), (256, 256)]
+FLOAT_DTYPES = utils.FLOAT_DTYPES
+REDUCE_MODES = ("sum", "prod", "mean", "amax", "amin")
+# None exercises the schema default by omitting the include_self keyword.
+INCLUDE_SELF_CASES = (None, False)
 
-bf16_is_supported = utils.bf16_is_supported
+SHAPE_DIM_CASES = (
+    pytest.param(utils.UT_SHAPES_1D[1], 0, id="1d_dim0"),
+    pytest.param(utils.UT_SHAPES_2D[0], -1, id="2d_dim_last"),
+    pytest.param((4, 8, 4), 1, id="3d_dim1"),
+    pytest.param((2, 4, 3, 4), 2, id="4d_dim2"),
+    pytest.param((2, 4, 3, 4, 5), -2, id="5d_dim_neg2"),
+)
+HIGH_DIM_SHAPE_DIM_CASES = (
+    pytest.param((2, 3, 2, 2, 2, 2), 0, id="6d_dim0"),
+    pytest.param((2, 2, 2, 3, 2, 2), 3, id="6d_dim3"),
+    pytest.param((2, 2, 2, 2, 2, 2, 2, 3), 7, id="8d_dim_last"),
+    pytest.param((2, 2, 2, 3, 2, 2, 2, 2), -5, id="8d_dim_neg5"),
+)
+ACTIVE_PREFIX_CASES = (
+    pytest.param(
+        3,
+        (2, 2, 2, 3, 2, 2, 2, 2),
+        (1, 2, 1, 4, 1, 2, 1, 2),
+        (3, 2, 2, 4, 2, 3, 2, 2),
+        id="8d_active_prefix",
+    ),
+)
+
+if not cfg.QUICK_MODE:
+    # Full accuracy runs retain the quick structural cases and add roughly
+    # 1/4-million-element shapes that exercise long index ranges and reduction axes.
+    SHAPE_DIM_CASES += (
+        pytest.param((1 << 18,), 0, id="large_1d_dim0"),
+        pytest.param((256, 1000), -1, id="large_2d_dim_last"),
+        pytest.param((5, 320, 128), 1, id="large_3d_dim1"),
+        pytest.param((4, 64, 64, 16), 2, id="large_4d_dim2"),
+        pytest.param((2, 16, 16, 16, 32), -2, id="large_5d_dim_neg2"),
+    )
+    HIGH_DIM_SHAPE_DIM_CASES += (
+        pytest.param((8, 8, 8, 8, 8, 1), 0, id="large_6d_dim0"),
+        pytest.param((1, 8, 8, 16, 16, 16), 3, id="large_6d_dim3"),
+        pytest.param((2, 2, 2, 4, 4, 4, 4, 128), 7, id="large_8d_dim_last"),
+        pytest.param((2, 2, 4, 16, 2, 8, 8, 8), -5, id="large_8d_dim_neg5"),
+    )
+    ACTIVE_PREFIX_CASES += (
+        pytest.param(
+            3,
+            (2, 2, 4, 16, 4, 4, 8, 8),
+            (1, 2, 4, 32, 4, 4, 4, 8),
+            (2, 2, 4, 32, 4, 4, 8, 8),
+            id="large_8d_active_prefix",
+        ),
+    )
 
 
-def make_test_data(inp_shape, src_shape, dim, dtype, device, include_self=True):
-    inp = torch.randn(inp_shape, dtype=dtype, device=device)
-    src = torch.randn(src_shape, dtype=dtype, device=device)
-    size_dim = inp_shape[dim]
-    index = torch.randint(0, size_dim, src_shape, dtype=torch.long, device=device)
+def _make_test_data(shape, dim, dtype, reduce):
+    """Create valid tensors for the aten scatter_reduce overload family."""
+    torch.manual_seed(0)
+    normalized_dim = dim % len(shape)
+    src_shape = list(shape)
+    src_shape[normalized_dim] *= 2
+
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    src = torch.randn(src_shape, dtype=dtype, device=flag_gems.device)
+    if reduce == "prod":
+        inp.mul_(0.1).add_(1.0)
+        src.mul_(0.1).add_(1.0)
+    index = torch.randint(
+        0,
+        shape[normalized_dim],
+        src_shape,
+        dtype=torch.long,
+        device=flag_gems.device,
+    )
     return inp, index, src
 
 
-# ---------------------------------------------------------------------------
-# Basic tests with all reduce modes and include_self
-# ---------------------------------------------------------------------------
+def _make_high_dim_active_prefix_data(
+    dtype, reduce, dim, self_shape, index_shape, src_shape
+):
+    """Create unequal, noncontiguous 8-D tensors with a valid active prefix."""
+    torch.manual_seed(0)
+    reverse_dims = tuple(reversed(range(len(self_shape))))
+    inp = torch.randn(
+        tuple(reversed(self_shape)),
+        dtype=dtype,
+        device=flag_gems.device,
+    ).permute(reverse_dims)
+    src = torch.randn(
+        tuple(reversed(src_shape)),
+        dtype=dtype,
+        device=flag_gems.device,
+    ).permute(reverse_dims)
+    index = torch.randint(
+        0,
+        self_shape[dim],
+        tuple(reversed(index_shape)),
+        dtype=torch.long,
+        device=flag_gems.device,
+    ).permute(reverse_dims)
+    if reduce == "prod":
+        inp.mul_(0.1).add_(1.0)
+        src.mul_(0.1).add_(1.0)
+
+    assert not inp.is_contiguous()
+    assert not index.is_contiguous()
+    assert not src.is_contiguous()
+    return inp, index, src
+
+
+def _include_self_kwargs(include_self):
+    """Translate the None test sentinel into an omitted ATen keyword."""
+    return {} if include_self is None else {"include_self": include_self}
+
+
+def _reference_inputs(inp, index, src):
+    """Move reference tensors to --ref cpu when requested and upcast values."""
+    return (
+        utils.to_reference(inp, upcast=True),
+        utils.to_reference(index),
+        utils.to_reference(src, upcast=True),
+    )
+
+
+def _assert_scatter_reduce_close(result, reference, dtype, dim, src, reduce):
+    """Compare scatter reductions with accumulation-aware tolerances."""
+    normalized_dim = dim % src.ndim
+    reduce_dim = src.shape[normalized_dim] if reduce in ("sum", "prod", "mean") else 1
+    utils.gems_assert_close(result, reference, dtype, reduce_dim=reduce_dim)
 
 
 @pytest.mark.scatter_reduce_two
-@pytest.mark.parametrize("shape", SHAPES)
+@pytest.mark.parametrize("shape,dim", SHAPE_DIM_CASES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-@pytest.mark.parametrize("reduce", ["sum", "prod", "mean", "amax", "amin"])
-@pytest.mark.parametrize("include_self", [True, False])
-def test_scatter_reduce_basic(shape, dtype, reduce, include_self):
-    dim = 0
-    inp_shape = shape
-    src_shape = (shape[0] * 2, shape[1]) if len(shape) == 2 else shape
+@pytest.mark.parametrize("reduce", REDUCE_MODES)
+@pytest.mark.parametrize("include_self", INCLUDE_SELF_CASES)
+@pytest.mark.scatter_reduce
+def test_scatter_reduce(shape, dim, dtype, reduce, include_self):
+    """Validate ordinary accuracy for aten::scatter_reduce.two."""
+    inp, index, src = _make_test_data(shape, dim, dtype, reduce)
+    ref_inp, ref_index, ref_src = _reference_inputs(inp, index, src)
+    kwargs = _include_self_kwargs(include_self)
 
-    inp = torch.randn(inp_shape, dtype=dtype, device=flag_gems.device)
-    src = torch.randn(src_shape, dtype=dtype, device=flag_gems.device)
-    index = torch.randint(
-        0, inp_shape[dim], src_shape, dtype=torch.long, device=flag_gems.device
+    ref_out = torch.ops.aten.scatter_reduce.two(
+        ref_inp, dim, ref_index, ref_src, reduce, **kwargs
     )
+    result = flag_gems.scatter_reduce(inp, dim, index, src, reduce, **kwargs)
 
-    ref_inp = utils.to_reference(inp, upcast=True)
-    ref_index = utils.to_reference(index)
-    ref_src = utils.to_reference(src, upcast=True)
-    ref_out = torch.scatter_reduce(
-        ref_inp, dim, ref_index, ref_src, reduce=reduce, include_self=include_self
-    )
-
-    with flag_gems.use_gems():
-        res_out = torch.scatter_reduce(
-            inp, dim, index, src, reduce=reduce, include_self=include_self
-        )
-
-    utils.gems_assert_close(res_out, ref_out, dtype)
-
-
-# ---------------------------------------------------------------------------
-# Dimensionality tests: 1D, 3D, 4D, 5D
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.scatter_reduce_two
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
-@pytest.mark.parametrize("reduce", ["sum", "prod", "mean", "amax", "amin"])
-def test_scatter_reduce_1d(dtype, reduce):
-    inp = torch.randn(16, dtype=dtype, device=flag_gems.device)
-    src = torch.randn(32, dtype=dtype, device=flag_gems.device)
-    index = torch.randint(0, 16, (32,), dtype=torch.long, device=flag_gems.device)
-
-    ref_inp = utils.to_reference(inp, upcast=True)
-    ref_index = utils.to_reference(index)
-    ref_src = utils.to_reference(src, upcast=True)
-    ref_out = torch.scatter_reduce(ref_inp, 0, ref_index, ref_src, reduce=reduce)
-
-    with flag_gems.use_gems():
-        res_out = torch.scatter_reduce(inp, 0, index, src, reduce=reduce)
-
-    utils.gems_assert_close(res_out, ref_out, dtype)
-
-
-@pytest.mark.scatter_reduce_two
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
-@pytest.mark.parametrize("reduce", ["sum", "prod", "mean", "amax", "amin"])
-def test_scatter_reduce_3d(dtype, reduce):
-    inp = torch.randn(8, 16, 4, dtype=dtype, device=flag_gems.device)
-    src = torch.randn(8, 32, 4, dtype=dtype, device=flag_gems.device)
-    index = torch.randint(0, 16, (8, 32, 4), dtype=torch.long, device=flag_gems.device)
-
-    ref_inp = utils.to_reference(inp, upcast=True)
-    ref_index = utils.to_reference(index)
-    ref_src = utils.to_reference(src, upcast=True)
-    ref_out = torch.scatter_reduce(ref_inp, 1, ref_index, ref_src, reduce=reduce)
-
-    with flag_gems.use_gems():
-        res_out = torch.scatter_reduce(inp, 1, index, src, reduce=reduce)
-
-    utils.gems_assert_close(res_out, ref_out, dtype)
-
-
-@pytest.mark.scatter_reduce_two
-@pytest.mark.parametrize("dtype", [torch.float32])
-@pytest.mark.parametrize("reduce", ["sum", "prod", "mean", "amax", "amin"])
-def test_scatter_reduce_4d(dtype, reduce):
-    inp = torch.randn(4, 8, 4, 6, dtype=dtype, device=flag_gems.device)
-    src = torch.randn(4, 16, 4, 6, dtype=dtype, device=flag_gems.device)
-    index = torch.randint(
-        0, 8, (4, 16, 4, 6), dtype=torch.long, device=flag_gems.device
-    )
-
-    ref_inp = utils.to_reference(inp, upcast=True)
-    ref_index = utils.to_reference(index)
-    ref_src = utils.to_reference(src, upcast=True)
-    ref_out = torch.scatter_reduce(ref_inp, 1, ref_index, ref_src, reduce=reduce)
-
-    with flag_gems.use_gems():
-        res_out = torch.scatter_reduce(inp, 1, index, src, reduce=reduce)
-
-    utils.gems_assert_close(res_out, ref_out, dtype)
-
-
-@pytest.mark.scatter_reduce_two
-@pytest.mark.parametrize("dtype", [torch.float32])
-@pytest.mark.parametrize("reduce", ["sum", "prod", "mean", "amax", "amin"])
-def test_scatter_reduce_5d(dtype, reduce):
-    inp = torch.randn(2, 4, 3, 4, 5, dtype=dtype, device=flag_gems.device)
-    src = torch.randn(2, 8, 3, 4, 5, dtype=dtype, device=flag_gems.device)
-    index = torch.randint(
-        0, 4, (2, 8, 3, 4, 5), dtype=torch.long, device=flag_gems.device
-    )
-
-    ref_inp = utils.to_reference(inp, upcast=True)
-    ref_index = utils.to_reference(index)
-    ref_src = utils.to_reference(src, upcast=True)
-    ref_out = torch.scatter_reduce(ref_inp, 1, ref_index, ref_src, reduce=reduce)
-
-    with flag_gems.use_gems():
-        res_out = torch.scatter_reduce(inp, 1, index, src, reduce=reduce)
-
-    utils.gems_assert_close(res_out, ref_out, dtype)
-
-
-# ---------------------------------------------------------------------------
-# Dim tests: all axes for 3D tensor
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.scatter_reduce_two
-@pytest.mark.parametrize("dim", [0, 1, 2])
-@pytest.mark.parametrize("reduce", ["sum", "prod", "mean", "amax", "amin"])
-def test_scatter_reduce_dims(dim, reduce):
-    dtype = torch.float32
-    inp = torch.randn(8, 16, 4, dtype=dtype, device=flag_gems.device)
-    src = torch.randn(8, 16, 4, dtype=dtype, device=flag_gems.device)
-    index = torch.randint(
-        0, inp.shape[dim], src.shape, dtype=torch.long, device=flag_gems.device
-    )
-
-    ref_inp = utils.to_reference(inp, upcast=True)
-    ref_index = utils.to_reference(index)
-    ref_src = utils.to_reference(src, upcast=True)
-    ref_out = torch.scatter_reduce(ref_inp, dim, ref_index, ref_src, reduce=reduce)
-
-    with flag_gems.use_gems():
-        res_out = torch.scatter_reduce(inp, dim, index, src, reduce=reduce)
-
-    utils.gems_assert_close(res_out, ref_out, dtype)
-
-
-# ---------------------------------------------------------------------------
-# include_self=False tests
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.scatter_reduce_two
-@pytest.mark.parametrize("reduce", ["sum", "prod", "mean", "amax", "amin"])
-def test_scatter_reduce_include_self_false(reduce):
-    dtype = torch.float32
-    inp = torch.randn(16, dtype=dtype, device=flag_gems.device)
-    src = torch.randn(32, dtype=dtype, device=flag_gems.device)
-    index = torch.randint(0, 16, (32,), dtype=torch.long, device=flag_gems.device)
-
-    ref_inp = utils.to_reference(inp, upcast=True)
-    ref_index = utils.to_reference(index)
-    ref_src = utils.to_reference(src, upcast=True)
-    ref_out = torch.scatter_reduce(
-        ref_inp, 0, ref_index, ref_src, reduce=reduce, include_self=False
-    )
-
-    with flag_gems.use_gems():
-        res_out = torch.scatter_reduce(
-            inp, 0, index, src, reduce=reduce, include_self=False
-        )
-
-    utils.gems_assert_close(res_out, ref_out, dtype)
-
-
-# ---------------------------------------------------------------------------
-# Duplicate index test
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.scatter_reduce_two
-@pytest.mark.parametrize("reduce", ["sum", "prod", "mean", "amax", "amin"])
-def test_scatter_reduce_duplicate_index(reduce):
-    dtype = torch.float32
-    inp = torch.randn(4, dtype=dtype, device=flag_gems.device)
-    src = torch.randn(8, dtype=dtype, device=flag_gems.device)
-    index = torch.zeros(8, dtype=torch.long, device=flag_gems.device)
-
-    ref_inp = utils.to_reference(inp, upcast=True)
-    ref_index = utils.to_reference(index)
-    ref_src = utils.to_reference(src, upcast=True)
-    ref_out = torch.scatter_reduce(ref_inp, 0, ref_index, ref_src, reduce=reduce)
-
-    with flag_gems.use_gems():
-        res_out = torch.scatter_reduce(inp, 0, index, src, reduce=reduce)
-
-    utils.gems_assert_close(res_out, ref_out, dtype)
-
-
-# ---------------------------------------------------------------------------
-# Inplace tests
-# ---------------------------------------------------------------------------
+    assert result.data_ptr() != inp.data_ptr()
+    _assert_scatter_reduce_close(result, ref_out, dtype, dim, src, reduce)
 
 
 @pytest.mark.scatter_reduce_two_
-@pytest.mark.parametrize("shape", SHAPES)
-@pytest.mark.parametrize("reduce", ["sum", "prod", "mean", "amax", "amin"])
-def test_scatter_reduce_inplace(shape, reduce):
-    dtype = torch.float32
-    dim = 0
-    inp_shape = shape
-    src_shape = (shape[0] * 2, shape[1]) if len(shape) == 2 else shape
+@pytest.mark.parametrize("shape,dim", SHAPE_DIM_CASES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("reduce", REDUCE_MODES)
+@pytest.mark.parametrize("include_self", INCLUDE_SELF_CASES)
+@pytest.mark.scatter_reduce
+def test_scatter_reduce_(shape, dim, dtype, reduce, include_self):
+    """Validate ordinary accuracy and aliasing for aten::scatter_reduce_.two."""
+    inp, index, src = _make_test_data(shape, dim, dtype, reduce)
+    ref_inp, ref_index, ref_src = _reference_inputs(inp.clone(), index, src)
+    kwargs = _include_self_kwargs(include_self)
 
-    inp = torch.randn(inp_shape, dtype=dtype, device=flag_gems.device)
-    src = torch.randn(src_shape, dtype=dtype, device=flag_gems.device)
-    index = torch.randint(
-        0, inp_shape[dim], src_shape, dtype=torch.long, device=flag_gems.device
+    ref_out = torch.ops.aten.scatter_reduce_.two(
+        ref_inp, dim, ref_index, ref_src, reduce, **kwargs
+    )
+    result = flag_gems.scatter_reduce_(inp, dim, index, src, reduce, **kwargs)
+
+    assert result.data_ptr() == inp.data_ptr()
+    _assert_scatter_reduce_close(result, ref_out, dtype, dim, src, reduce)
+
+
+@pytest.mark.scatter_reduce_two_out
+@pytest.mark.parametrize("shape,dim", SHAPE_DIM_CASES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("reduce", REDUCE_MODES)
+@pytest.mark.parametrize("include_self", INCLUDE_SELF_CASES)
+@pytest.mark.scatter_reduce
+def test_scatter_reduce_out(shape, dim, dtype, reduce, include_self):
+    """Validate ordinary accuracy and storage for aten::scatter_reduce.two_out."""
+    inp, index, src = _make_test_data(shape, dim, dtype, reduce)
+    ref_inp, ref_index, ref_src = _reference_inputs(inp, index, src)
+    result_out = torch.empty_like(inp)
+    ref_out = torch.empty_like(ref_inp)
+    kwargs = _include_self_kwargs(include_self)
+
+    ref_result = torch.ops.aten.scatter_reduce.two_out(
+        ref_inp, dim, ref_index, ref_src, reduce, out=ref_out, **kwargs
+    )
+    result = flag_gems.scatter_reduce_out(
+        inp, dim, index, src, reduce, out=result_out, **kwargs
     )
 
-    ref_inp = utils.to_reference(inp, upcast=True)
-    ref_index = utils.to_reference(index)
-    ref_src = utils.to_reference(src, upcast=True)
-    ref_out = ref_inp.clone().scatter_reduce_(dim, ref_index, ref_src, reduce=reduce)
-
-    with flag_gems.use_gems():
-        res_out = inp.clone().scatter_reduce_(dim, index, src, reduce=reduce)
-
-    utils.gems_assert_close(res_out, ref_out, dtype)
-
-
-# ---------------------------------------------------------------------------
-# Edge case tests
-# ---------------------------------------------------------------------------
+    assert result.data_ptr() == result_out.data_ptr()
+    assert ref_result.data_ptr() == ref_out.data_ptr()
+    _assert_scatter_reduce_close(result, ref_result, dtype, dim, src, reduce)
 
 
 @pytest.mark.scatter_reduce_two
-def test_scatter_reduce_empty_src():
+@pytest.mark.parametrize("shape,dim", HIGH_DIM_SHAPE_DIM_CASES)
+@pytest.mark.parametrize("reduce", REDUCE_MODES)
+@pytest.mark.parametrize("include_self", INCLUDE_SELF_CASES)
+@pytest.mark.scatter_reduce
+def test_scatter_reduce_high_dim(shape, dim, reduce, include_self):
+    """Validate the functional overload for 6-D and 8-D tensors."""
     dtype = torch.float32
-    inp = torch.randn(8, dtype=dtype, device=flag_gems.device)
-    src = torch.randn(0, dtype=dtype, device=flag_gems.device)
-    index = torch.randint(0, 8, (0,), dtype=torch.long, device=flag_gems.device)
+    inp, index, src = _make_test_data(shape, dim, dtype, reduce)
+    ref_inp, ref_index, ref_src = _reference_inputs(inp, index, src)
+    kwargs = _include_self_kwargs(include_self)
 
-    ref_inp = utils.to_reference(inp, upcast=True)
-    ref_index = utils.to_reference(index)
-    ref_src = utils.to_reference(src, upcast=True)
-    ref_out = torch.scatter_reduce(ref_inp, 0, ref_index, ref_src, reduce="sum")
+    ref_out = torch.ops.aten.scatter_reduce.two(
+        ref_inp, dim, ref_index, ref_src, reduce, **kwargs
+    )
+    result = flag_gems.scatter_reduce(inp, dim, index, src, reduce, **kwargs)
 
-    with flag_gems.use_gems():
-        res_out = torch.scatter_reduce(inp, 0, index, src, reduce="sum")
-
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    assert result.data_ptr() != inp.data_ptr()
+    _assert_scatter_reduce_close(result, ref_out, dtype, dim, src, reduce)
 
 
-@pytest.mark.scatter_reduce_two
-def test_scatter_reduce_negative_dim():
+@pytest.mark.scatter_reduce_two_
+@pytest.mark.parametrize("shape,dim", HIGH_DIM_SHAPE_DIM_CASES)
+@pytest.mark.parametrize("reduce", REDUCE_MODES)
+@pytest.mark.parametrize("include_self", INCLUDE_SELF_CASES)
+@pytest.mark.scatter_reduce
+def test_scatter_reduce__high_dim(shape, dim, reduce, include_self):
+    """Validate the in-place overload for 6-D and 8-D tensors."""
     dtype = torch.float32
-    inp = torch.randn(8, 16, dtype=dtype, device=flag_gems.device)
-    src = torch.randn(8, 32, dtype=dtype, device=flag_gems.device)
-    index = torch.randint(0, 16, (8, 32), dtype=torch.long, device=flag_gems.device)
+    inp, index, src = _make_test_data(shape, dim, dtype, reduce)
+    ref_inp, ref_index, ref_src = _reference_inputs(inp.clone(), index, src)
+    kwargs = _include_self_kwargs(include_self)
 
-    ref_inp = utils.to_reference(inp, upcast=True)
-    ref_index = utils.to_reference(index)
-    ref_src = utils.to_reference(src, upcast=True)
-    ref_out = torch.scatter_reduce(ref_inp, -1, ref_index, ref_src, reduce="sum")
+    ref_out = torch.ops.aten.scatter_reduce_.two(
+        ref_inp, dim, ref_index, ref_src, reduce, **kwargs
+    )
+    result = flag_gems.scatter_reduce_(inp, dim, index, src, reduce, **kwargs)
 
-    with flag_gems.use_gems():
-        res_out = torch.scatter_reduce(inp, -1, index, src, reduce="sum")
-
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    assert result.data_ptr() == inp.data_ptr()
+    _assert_scatter_reduce_close(result, ref_out, dtype, dim, src, reduce)
 
 
-@pytest.mark.scatter_reduce_two
-@pytest.mark.parametrize("reduce", ["sum", "prod", "mean", "amax", "amin"])
-def test_scatter_reduce_large(reduce):
+@pytest.mark.scatter_reduce_two_out
+@pytest.mark.parametrize("shape,dim", HIGH_DIM_SHAPE_DIM_CASES)
+@pytest.mark.parametrize("reduce", REDUCE_MODES)
+@pytest.mark.parametrize("include_self", INCLUDE_SELF_CASES)
+@pytest.mark.scatter_reduce
+def test_scatter_reduce_out_high_dim(shape, dim, reduce, include_self):
+    """Validate the out overload for 6-D and 8-D tensors."""
     dtype = torch.float32
-    inp = torch.randn(256, 256, dtype=dtype, device=flag_gems.device)
-    src = torch.randn(512, 256, dtype=dtype, device=flag_gems.device)
-    index = torch.randint(0, 256, (512, 256), dtype=torch.long, device=flag_gems.device)
+    inp, index, src = _make_test_data(shape, dim, dtype, reduce)
+    ref_inp, ref_index, ref_src = _reference_inputs(inp, index, src)
+    result_out = torch.empty_like(inp)
+    ref_out = torch.empty_like(ref_inp)
+    kwargs = _include_self_kwargs(include_self)
 
-    ref_inp = utils.to_reference(inp, upcast=True)
-    ref_index = utils.to_reference(index)
-    ref_src = utils.to_reference(src, upcast=True)
-    ref_out = torch.scatter_reduce(ref_inp, 0, ref_index, ref_src, reduce=reduce)
+    ref_result = torch.ops.aten.scatter_reduce.two_out(
+        ref_inp, dim, ref_index, ref_src, reduce, out=ref_out, **kwargs
+    )
+    result = flag_gems.scatter_reduce_out(
+        inp, dim, index, src, reduce, out=result_out, **kwargs
+    )
 
-    with flag_gems.use_gems():
-        res_out = torch.scatter_reduce(inp, 0, index, src, reduce=reduce)
-
-    utils.gems_assert_close(res_out, ref_out, dtype)
-
-
-# ---------------------------------------------------------------------------
-# bfloat16 support test
-# ---------------------------------------------------------------------------
+    assert result.data_ptr() == result_out.data_ptr()
+    assert ref_result.data_ptr() == ref_out.data_ptr()
+    _assert_scatter_reduce_close(result, ref_result, dtype, dim, src, reduce)
 
 
 @pytest.mark.scatter_reduce_two
-@pytest.mark.skipif(
-    not bf16_is_supported, reason="bfloat16 not supported on this device"
+@pytest.mark.parametrize("dim,self_shape,index_shape,src_shape", ACTIVE_PREFIX_CASES)
+@pytest.mark.parametrize("reduce", REDUCE_MODES)
+@pytest.mark.parametrize("include_self", INCLUDE_SELF_CASES)
+@pytest.mark.scatter_reduce
+def test_scatter_reduce_high_dim_active_prefix(
+    dim, self_shape, index_shape, src_shape, reduce, include_self
+):
+    """Validate functional 8-D canonicalization with an active prefix."""
+    dtype = torch.float32
+    inp, index, src = _make_high_dim_active_prefix_data(
+        dtype, reduce, dim, self_shape, index_shape, src_shape
+    )
+    ref_inp, ref_index, ref_src = _reference_inputs(inp, index, src)
+    kwargs = _include_self_kwargs(include_self)
+
+    ref_out = torch.ops.aten.scatter_reduce.two(
+        ref_inp,
+        dim,
+        ref_index,
+        ref_src,
+        reduce,
+        **kwargs,
+    )
+    result = flag_gems.scatter_reduce(
+        inp,
+        dim,
+        index,
+        src,
+        reduce,
+        **kwargs,
+    )
+
+    assert result.data_ptr() != inp.data_ptr()
+    _assert_scatter_reduce_close(result, ref_out, dtype, dim, src, reduce)
+
+
+@pytest.mark.scatter_reduce_two_
+@pytest.mark.parametrize("dim,self_shape,index_shape,src_shape", ACTIVE_PREFIX_CASES)
+@pytest.mark.parametrize("reduce", REDUCE_MODES)
+@pytest.mark.parametrize("include_self", INCLUDE_SELF_CASES)
+@pytest.mark.scatter_reduce
+def test_scatter_reduce__high_dim_active_prefix(
+    dim, self_shape, index_shape, src_shape, reduce, include_self
+):
+    """Validate in-place 8-D canonicalization with an active prefix."""
+    dtype = torch.float32
+    inp, index, src = _make_high_dim_active_prefix_data(
+        dtype, reduce, dim, self_shape, index_shape, src_shape
+    )
+    ref_inp, ref_index, ref_src = _reference_inputs(inp.clone(), index, src)
+    kwargs = _include_self_kwargs(include_self)
+
+    ref_out = torch.ops.aten.scatter_reduce_.two(
+        ref_inp,
+        dim,
+        ref_index,
+        ref_src,
+        reduce,
+        **kwargs,
+    )
+    result = flag_gems.scatter_reduce_(
+        inp,
+        dim,
+        index,
+        src,
+        reduce,
+        **kwargs,
+    )
+
+    assert result.data_ptr() == inp.data_ptr()
+    _assert_scatter_reduce_close(result, ref_out, dtype, dim, src, reduce)
+
+
+@pytest.mark.scatter_reduce_two_out
+@pytest.mark.parametrize("dim,self_shape,index_shape,src_shape", ACTIVE_PREFIX_CASES)
+@pytest.mark.parametrize("reduce", REDUCE_MODES)
+@pytest.mark.parametrize("include_self", INCLUDE_SELF_CASES)
+@pytest.mark.scatter_reduce
+def test_scatter_reduce_out_high_dim_active_prefix(
+    dim, self_shape, index_shape, src_shape, reduce, include_self
+):
+    """Validate out 8-D canonicalization with an active prefix."""
+    dtype = torch.float32
+    inp, index, src = _make_high_dim_active_prefix_data(
+        dtype, reduce, dim, self_shape, index_shape, src_shape
+    )
+    ref_inp, ref_index, ref_src = _reference_inputs(inp, index, src)
+    result_out = torch.empty_like(inp)
+    ref_out = torch.empty_like(ref_inp)
+    kwargs = _include_self_kwargs(include_self)
+
+    ref_result = torch.ops.aten.scatter_reduce.two_out(
+        ref_inp,
+        dim,
+        ref_index,
+        ref_src,
+        reduce,
+        out=ref_out,
+        **kwargs,
+    )
+    result = flag_gems.scatter_reduce_out(
+        inp,
+        dim,
+        index,
+        src,
+        reduce,
+        out=result_out,
+        **kwargs,
+    )
+
+    assert result.data_ptr() == result_out.data_ptr()
+    assert ref_result.data_ptr() == ref_out.data_ptr()
+    _assert_scatter_reduce_close(result, ref_result, dtype, dim, src, reduce)
+
+
+@pytest.mark.scatter_reduce_two
+@pytest.mark.parametrize("reduce", ("amax", "amin"))
+@pytest.mark.scatter_reduce
+def test_scatter_reduce_5d_canonical_gate(monkeypatch, reduce):
+    """Exercise the large-5D extrema gate without allocating a benchmark shape."""
+    scatter_reduce_module = importlib.import_module("flag_gems.ops.scatter_reduce")
+    monkeypatch.setattr(scatter_reduce_module, "_CANONICALIZE_5D_MIN_ELEMENTS", 0)
+
+    shape, dim, dtype = (2, 2, 3, 2, 2), 2, torch.float32
+    inp, index, src = _make_test_data(shape, dim, dtype, reduce)
+    ref_inp, ref_index, ref_src = _reference_inputs(inp, index, src)
+
+    ref_out = torch.ops.aten.scatter_reduce.two(
+        ref_inp, dim, ref_index, ref_src, reduce
+    )
+    result = flag_gems.scatter_reduce(inp, dim, index, src, reduce)
+
+    _assert_scatter_reduce_close(result, ref_out, dtype, dim, src, reduce)
+
+
+EMPTY_CASES = (
+    pytest.param((8,), 0, id="empty_index"),
+    pytest.param((0, 512), -1, id="empty_rows"),
 )
-@pytest.mark.parametrize("reduce", ["sum", "prod", "mean", "amax", "amin"])
-def test_scatter_reduce_bf16(reduce):
-    dtype = torch.bfloat16
-    inp = torch.randn(16, 32, dtype=dtype, device=flag_gems.device)
-    src = torch.randn(16, 64, dtype=dtype, device=flag_gems.device)
-    index = torch.randint(0, 32, (16, 64), dtype=torch.long, device=flag_gems.device)
-
-    ref_inp = utils.to_reference(inp, upcast=True)
-    ref_index = utils.to_reference(index)
-    ref_src = utils.to_reference(src, upcast=True)
-    ref_out = torch.scatter_reduce(ref_inp, 1, ref_index, ref_src, reduce=reduce)
-
-    with flag_gems.use_gems():
-        res_out = torch.scatter_reduce(inp, 1, index, src, reduce=reduce)
-
-    utils.gems_assert_close(res_out, ref_out, dtype)
 
 
-# ---------------------------------------------------------------------------
-# NaN / Inf special value tests
-# ---------------------------------------------------------------------------
+def _make_empty_test_data(shape, dtype=torch.float32):
+    """Create the empty index/source special case for all three overloads."""
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    index = torch.empty(
+        shape if len(shape) > 1 else 0, dtype=torch.long, device=flag_gems.device
+    )
+    src = torch.empty_like(index, dtype=dtype)
+    return inp, index, src
 
 
 @pytest.mark.scatter_reduce_two
-@pytest.mark.parametrize("reduce", ["sum", "amax", "amin"])
-def test_scatter_reduce_nan_values(reduce):
+@pytest.mark.parametrize("shape,dim", EMPTY_CASES)
+@pytest.mark.parametrize("include_self", (True, False))
+@pytest.mark.parametrize("reduce", REDUCE_MODES)
+@pytest.mark.scatter_reduce
+def test_scatter_reduce_empty(shape, dim, include_self, reduce):
+    """Validate aten::scatter_reduce.two for an empty index and source."""
     dtype = torch.float32
-    inp = torch.randn(8, dtype=dtype, device=flag_gems.device)
-    src = torch.randn(16, dtype=dtype, device=flag_gems.device)
-    # Inject NaN into source
-    src[0] = float("nan")
-    src[5] = float("nan")
-    index = torch.randint(0, 8, (16,), dtype=torch.long, device=flag_gems.device)
-
-    ref_inp = utils.to_reference(inp, upcast=True)
-    ref_index = utils.to_reference(index)
-    ref_src = utils.to_reference(src, upcast=True)
-    ref_out = torch.scatter_reduce(ref_inp, 0, ref_index, ref_src, reduce=reduce)
-
-    with flag_gems.use_gems():
-        res_out = torch.scatter_reduce(inp, 0, index, src, reduce=reduce)
-
-    if reduce in ("amax", "amin"):
-        # atomic_min/max on GPU don't propagate NaN the same as CPU
-        # Only verify non-NaN positions match
-        non_nan_mask = ~torch.isnan(ref_out)
-        utils.gems_assert_close(res_out[non_nan_mask], ref_out[non_nan_mask], dtype)
-    else:
-        utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
-
-
-@pytest.mark.scatter_reduce_two
-@pytest.mark.parametrize("reduce", ["sum", "amax", "amin"])
-def test_scatter_reduce_inf_values(reduce):
-    dtype = torch.float32
-    inp = torch.randn(8, dtype=dtype, device=flag_gems.device)
-    src = torch.randn(16, dtype=dtype, device=flag_gems.device)
-    src[0] = float("inf")
-    src[3] = float("-inf")
-    index = torch.randint(0, 8, (16,), dtype=torch.long, device=flag_gems.device)
-
-    ref_inp = utils.to_reference(inp, upcast=True)
-    ref_index = utils.to_reference(index)
-    ref_src = utils.to_reference(src, upcast=True)
-    ref_out = torch.scatter_reduce(ref_inp, 0, ref_index, ref_src, reduce=reduce)
-
-    with flag_gems.use_gems():
-        res_out = torch.scatter_reduce(inp, 0, index, src, reduce=reduce)
-
-    if reduce == "sum":
-        # Inf + (-Inf) = NaN, atomic ordering may differ between GPU and CPU
-        non_nan = ~torch.isnan(ref_out)
-        utils.gems_assert_close(res_out[non_nan], ref_out[non_nan], dtype)
-    else:
-        utils.gems_assert_close(res_out, ref_out, dtype)
-
-
-# ---------------------------------------------------------------------------
-# Non-contiguous tensor tests
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.scatter_reduce_two
-@pytest.mark.parametrize("reduce", ["sum", "prod", "mean", "amax", "amin"])
-def test_scatter_reduce_noncontiguous(reduce):
-    dtype = torch.float32
-    # Test with contiguous tensors at different sizes to stress offset arithmetic
-    inp = torch.randn(8, 16, dtype=dtype, device=flag_gems.device)
-    src = torch.randn(8, 32, dtype=dtype, device=flag_gems.device)
-    index = torch.randint(0, 16, (8, 32), dtype=torch.long, device=flag_gems.device)
-
-    ref_inp = utils.to_reference(inp, upcast=True)
-    ref_index = utils.to_reference(index)
-    ref_src = utils.to_reference(src, upcast=True)
-    ref_out = torch.scatter_reduce(ref_inp, 1, ref_index, ref_src, reduce=reduce)
-
-    with flag_gems.use_gems():
-        res_out = torch.scatter_reduce(inp, 1, index, src, reduce=reduce)
-
-    utils.gems_assert_close(res_out, ref_out, dtype)
-
-
-@pytest.mark.scatter_reduce_two
-@pytest.mark.parametrize("reduce", ["sum", "amax", "amin"])
-def test_scatter_reduce_noncontiguous_3d(reduce):
-    dtype = torch.float32
-    # Test 3D scatter with contiguous tensors
-    inp = torch.randn(8, 8, 8, dtype=dtype, device=flag_gems.device)
-    src = torch.randn(8, 16, 8, dtype=dtype, device=flag_gems.device)
-    index = torch.randint(0, 8, (8, 16, 8), dtype=torch.long, device=flag_gems.device)
-
-    ref_inp = utils.to_reference(inp, upcast=True)
-    ref_index = utils.to_reference(index)
-    ref_src = utils.to_reference(src, upcast=True)
-    ref_out = torch.scatter_reduce(ref_inp, 1, ref_index, ref_src, reduce=reduce)
-
-    with flag_gems.use_gems():
-        res_out = torch.scatter_reduce(inp, 1, index, src, reduce=reduce)
-
-    utils.gems_assert_close(res_out, ref_out, dtype)
-
-
-# ---------------------------------------------------------------------------
-# Zero-value source test
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.scatter_reduce_two
-@pytest.mark.parametrize("reduce", ["sum", "prod", "mean"])
-def test_scatter_reduce_zero_src(reduce):
-    dtype = torch.float32
-    inp = torch.randn(8, dtype=dtype, device=flag_gems.device)
-    src = torch.zeros(16, dtype=dtype, device=flag_gems.device)
-    index = torch.randint(0, 8, (16,), dtype=torch.long, device=flag_gems.device)
-
-    ref_inp = utils.to_reference(inp, upcast=True)
-    ref_index = utils.to_reference(index)
-    ref_src = utils.to_reference(src, upcast=True)
-    ref_out = torch.scatter_reduce(ref_inp, 0, ref_index, ref_src, reduce=reduce)
-
-    with flag_gems.use_gems():
-        res_out = torch.scatter_reduce(inp, 0, index, src, reduce=reduce)
-
-    utils.gems_assert_close(res_out, ref_out, dtype)
-
-
-# ---------------------------------------------------------------------------
-# Single element index mapping
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.scatter_reduce_two
-@pytest.mark.parametrize("reduce", ["sum", "prod", "mean", "amax", "amin"])
-def test_scatter_reduce_single_element(reduce):
-    dtype = torch.float32
-    inp = torch.randn(1, dtype=dtype, device=flag_gems.device)
-    src = torch.randn(1, dtype=dtype, device=flag_gems.device)
-    index = torch.zeros(1, dtype=torch.long, device=flag_gems.device)
-
-    ref_inp = utils.to_reference(inp, upcast=True)
-    ref_index = utils.to_reference(index)
-    ref_src = utils.to_reference(src, upcast=True)
-    ref_out = torch.scatter_reduce(ref_inp, 0, ref_index, ref_src, reduce=reduce)
-
-    with flag_gems.use_gems():
-        res_out = torch.scatter_reduce(inp, 0, index, src, reduce=reduce)
-
-    utils.gems_assert_close(res_out, ref_out, dtype)
-
-
-# ---------------------------------------------------------------------------
-# Extreme edge case tests
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.scatter_reduce_two
-@pytest.mark.parametrize("reduce", ["sum", "amax", "amin"])
-def test_scatter_reduce_large_tensor(reduce):
-    """Test with tensors large enough to stress int32 offset arithmetic."""
-    dtype = torch.float32
-    inp = torch.randn(1024, 1024, dtype=dtype, device=flag_gems.device)
-    src = torch.randn(1024, 2048, dtype=dtype, device=flag_gems.device)
-    index = torch.randint(
-        0, 1024, (1024, 2048), dtype=torch.long, device=flag_gems.device
+    inp, index, src = _make_empty_test_data(shape, dtype)
+    ref_inp, ref_index, ref_src = _reference_inputs(inp, index, src)
+    ref_out = torch.ops.aten.scatter_reduce.two(
+        ref_inp, dim, ref_index, ref_src, reduce, include_self=include_self
     )
 
-    ref_inp = utils.to_reference(inp, upcast=True)
-    ref_index = utils.to_reference(index)
-    ref_src = utils.to_reference(src, upcast=True)
-    ref_out = torch.scatter_reduce(ref_inp, 1, ref_index, ref_src, reduce=reduce)
+    result = flag_gems.scatter_reduce(
+        inp, dim, index, src, reduce, include_self=include_self
+    )
 
-    with flag_gems.use_gems():
-        res_out = torch.scatter_reduce(inp, 1, index, src, reduce=reduce)
+    assert result is not inp
+    if inp.numel() != 0:
+        assert result.data_ptr() != inp.data_ptr()
+    utils.gems_assert_close(result, ref_out, dtype)
 
-    utils.gems_assert_close(res_out, ref_out, dtype)
+
+@pytest.mark.scatter_reduce_two_
+@pytest.mark.parametrize("shape,dim", EMPTY_CASES)
+@pytest.mark.parametrize("include_self", (True, False))
+@pytest.mark.parametrize("reduce", REDUCE_MODES)
+@pytest.mark.scatter_reduce
+def test_scatter_reduce__empty(shape, dim, include_self, reduce):
+    """Validate aten::scatter_reduce_.two for an empty index and source."""
+    dtype = torch.float32
+    inp, index, src = _make_empty_test_data(shape, dtype)
+    ref_inp, ref_index, ref_src = _reference_inputs(inp.clone(), index, src)
+    ref_out = torch.ops.aten.scatter_reduce_.two(
+        ref_inp, dim, ref_index, ref_src, reduce, include_self=include_self
+    )
+
+    result = flag_gems.scatter_reduce_(
+        inp, dim, index, src, reduce, include_self=include_self
+    )
+
+    assert result.data_ptr() == inp.data_ptr()
+    utils.gems_assert_close(result, ref_out, dtype)
+
+
+@pytest.mark.scatter_reduce_two_out
+@pytest.mark.parametrize("shape,dim", EMPTY_CASES)
+@pytest.mark.parametrize("include_self", (True, False))
+@pytest.mark.parametrize("reduce", REDUCE_MODES)
+@pytest.mark.scatter_reduce
+def test_scatter_reduce_out_empty(shape, dim, include_self, reduce):
+    """Validate aten::scatter_reduce.two_out for an empty index and source."""
+    dtype = torch.float32
+    inp, index, src = _make_empty_test_data(shape, dtype)
+    ref_inp, ref_index, ref_src = _reference_inputs(inp, index, src)
+    result_out = torch.empty_like(inp)
+    ref_out = torch.empty_like(ref_inp)
+    ref_result = torch.ops.aten.scatter_reduce.two_out(
+        ref_inp,
+        dim,
+        ref_index,
+        ref_src,
+        reduce,
+        include_self=include_self,
+        out=ref_out,
+    )
+
+    result = flag_gems.scatter_reduce_out(
+        inp,
+        dim,
+        index,
+        src,
+        reduce,
+        include_self=include_self,
+        out=result_out,
+    )
+
+    assert result.data_ptr() == result_out.data_ptr()
+    utils.gems_assert_close(result, ref_result, dtype)
 
 
 @pytest.mark.scatter_reduce_two
-@pytest.mark.parametrize("reduce", ["sum", "prod"])
+@pytest.mark.parametrize("reduce", REDUCE_MODES)
+@pytest.mark.scatter_reduce
+def test_scatter_reduce_noncontiguous(reduce):
+    """Validate aten::scatter_reduce.two with noncontiguous tensors."""
+    dtype = torch.float32
+    inp = torch.randn(16, 8, dtype=dtype, device=flag_gems.device).transpose(0, 1)
+    src = torch.randn(32, 8, dtype=dtype, device=flag_gems.device).transpose(0, 1)
+    index = torch.randint(
+        0, 16, (32, 8), dtype=torch.long, device=flag_gems.device
+    ).transpose(0, 1)
+    assert not inp.is_contiguous()
+    assert not src.is_contiguous()
+    assert not index.is_contiguous()
+    ref_inp, ref_index, ref_src = _reference_inputs(inp, index, src)
+    ref_out = torch.ops.aten.scatter_reduce.two(ref_inp, -1, ref_index, ref_src, reduce)
+
+    result = flag_gems.scatter_reduce(inp, -1, index, src, reduce)
+
+    _assert_scatter_reduce_close(result, ref_out, dtype, -1, src, reduce)
+
+
+@pytest.mark.scatter_reduce_two
+@pytest.mark.parametrize("reduce", REDUCE_MODES)
+@pytest.mark.scatter_reduce
 def test_scatter_reduce_high_contention(reduce):
-    """Stress test: 256 source elements map to a single output position."""
+    """Validate aten::scatter_reduce.two when all source values share one index."""
     dtype = torch.float32
-    inp = torch.randn(1, dtype=dtype, device=flag_gems.device)
+    inp = torch.ones(1, dtype=dtype, device=flag_gems.device)
     src = torch.randn(256, dtype=dtype, device=flag_gems.device)
+    if reduce == "prod":
+        src.mul_(0.01).add_(1.0)
     index = torch.zeros(256, dtype=torch.long, device=flag_gems.device)
+    ref_inp, ref_index, ref_src = _reference_inputs(inp, index, src)
+    ref_out = torch.ops.aten.scatter_reduce.two(ref_inp, 0, ref_index, ref_src, reduce)
 
-    ref_inp = utils.to_reference(inp, upcast=True)
-    ref_index = utils.to_reference(index)
-    ref_src = utils.to_reference(src, upcast=True)
-    ref_out = torch.scatter_reduce(ref_inp, 0, ref_index, ref_src, reduce=reduce)
+    result = flag_gems.scatter_reduce(inp, 0, index, src, reduce)
 
-    with flag_gems.use_gems():
-        res_out = torch.scatter_reduce(inp, 0, index, src, reduce=reduce)
-
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    _assert_scatter_reduce_close(result, ref_out, dtype, 0, src, reduce)
 
 
 @pytest.mark.scatter_reduce_two
-@pytest.mark.parametrize("reduce", ["sum", "prod"])
-def test_scatter_reduce_extreme_contention(reduce):
-    """Extreme: 1024 sources all map to 1 output."""
-    dtype = torch.float32
-    inp = torch.tensor([1.0], dtype=dtype, device=flag_gems.device)
-    src = torch.randn(1024, dtype=dtype, device=flag_gems.device)
-    index = torch.zeros(1024, dtype=torch.long, device=flag_gems.device)
-
-    ref_inp = utils.to_reference(inp, upcast=True)
-    ref_index = utils.to_reference(index)
-    ref_src = utils.to_reference(src, upcast=True)
-    ref_out = torch.scatter_reduce(ref_inp, 0, ref_index, ref_src, reduce=reduce)
-
-    with flag_gems.use_gems():
-        res_out = torch.scatter_reduce(inp, 0, index, src, reduce=reduce)
-
-    utils.gems_assert_close(res_out, ref_out, dtype)
-
-
-@pytest.mark.scatter_reduce_two
-def test_scatter_reduce_prod_with_nan():
-    """Prod with NaN source should not cause infinite CAS spin."""
+@pytest.mark.scatter_reduce
+def test_scatter_reduce_nan():
+    """Validate NaN propagation for aten::scatter_reduce.two with sum reduction."""
     dtype = torch.float32
     inp = torch.ones(4, dtype=dtype, device=flag_gems.device)
-    src = torch.tensor(
-        [2.0, float("nan"), 3.0, 4.0], dtype=dtype, device=flag_gems.device
+    src = torch.tensor([float("nan"), 2.0], dtype=dtype, device=flag_gems.device)
+    index = torch.tensor([0, 1], dtype=torch.long, device=flag_gems.device)
+    ref_inp, ref_index, ref_src = _reference_inputs(inp, index, src)
+    ref_out = torch.ops.aten.scatter_reduce.two(ref_inp, 0, ref_index, ref_src, "sum")
+
+    result = flag_gems.scatter_reduce(inp, 0, index, src, "sum")
+
+    utils.gems_assert_close(result, ref_out, dtype, equal_nan=True)
+
+
+@pytest.mark.scatter_reduce_two
+@pytest.mark.scatter_reduce
+def test_scatter_reduce_prod_nan():
+    """Validate special values on the optimized two-dimensional product path."""
+    dtype = torch.float32
+    inp = torch.ones((1, 512), dtype=dtype, device=flag_gems.device)
+    src = torch.ones_like(inp)
+    index = torch.arange(512, dtype=torch.long, device=flag_gems.device).view(1, -1)
+    src[0, 0] = float("inf")
+    src[0, 1] = 0.0
+    index[0, 1] = 0
+    src[0, 2] = -0.0
+    index[0, 2] = 1
+    src[0, 3] = float("nan")
+    index[0, 3] = 2
+    ref_inp, ref_index, ref_src = _reference_inputs(inp, index, src)
+    ref_out = torch.ops.aten.scatter_reduce.two(
+        ref_inp,
+        -1,
+        ref_index,
+        ref_src,
+        "prod",
     )
-    index = torch.tensor([0, 0, 1, 1], dtype=torch.long, device=flag_gems.device)
 
-    ref_inp = utils.to_reference(inp, upcast=True)
-    ref_index = utils.to_reference(index)
-    ref_src = utils.to_reference(src, upcast=True)
-    ref_out = torch.scatter_reduce(ref_inp, 0, ref_index, ref_src, reduce="prod")
+    result = flag_gems.scatter_reduce(inp, -1, index, src, "prod")
 
-    with flag_gems.use_gems():
-        res_out = torch.scatter_reduce(inp, 0, index, src, reduce="prod")
-
-    non_nan = ~torch.isnan(ref_out)
-    utils.gems_assert_close(res_out[non_nan], ref_out[non_nan], dtype)
+    utils.gems_assert_close(result, ref_out, dtype, equal_nan=True)
+    assert (
+        torch.signbit(result[0, 1].cpu()).item()
+        == torch.signbit(ref_out[0, 1].cpu()).item()
+    )
 
 
 @pytest.mark.scatter_reduce_two
-@pytest.mark.parametrize("reduce", ["sum", "amax", "amin"])
-def test_scatter_reduce_mixed_nan_inf(reduce):
-    """Source with both NaN and Inf values."""
-    dtype = torch.float32
-    inp = torch.randn(8, dtype=dtype, device=flag_gems.device)
-    src = torch.randn(16, dtype=dtype, device=flag_gems.device)
-    src[0] = float("nan")
-    src[1] = float("inf")
-    src[2] = float("-inf")
-    src[3] = float("nan")
-    index = torch.randint(0, 8, (16,), dtype=torch.long, device=flag_gems.device)
+@pytest.mark.scatter_reduce
+def test_scatter_reduce_invalid_reduce():
+    """Validate the error contract of aten::scatter_reduce.two for an invalid reduction."""
+    inp, index, src = _make_test_data((8,), 0, torch.float32, "sum")
 
-    ref_inp = utils.to_reference(inp, upcast=True)
-    ref_index = utils.to_reference(index)
-    ref_src = utils.to_reference(src, upcast=True)
-    ref_out = torch.scatter_reduce(ref_inp, 0, ref_index, ref_src, reduce=reduce)
-
-    with flag_gems.use_gems():
-        res_out = torch.scatter_reduce(inp, 0, index, src, reduce=reduce)
-
-    if reduce in ("amax", "amin"):
-        non_nan = ~torch.isnan(ref_out)
-        utils.gems_assert_close(res_out[non_nan], ref_out[non_nan], dtype)
-    else:
-        utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+    with pytest.raises((AssertionError, RuntimeError), match="[Uu]nsupported|reduce"):
+        flag_gems.scatter_reduce(inp, 0, index, src, "invalid")
 
 
 @pytest.mark.scatter_reduce_two
-def test_scatter_reduce_ndim_too_high():
-    """Tensors with >5 dimensions should raise an error."""
-    dtype = torch.float32
-    inp = torch.randn(2, 3, 4, 5, 6, 7, dtype=dtype, device=flag_gems.device)
-    src = torch.randn(2, 3, 4, 5, 6, 7, dtype=dtype, device=flag_gems.device)
+@pytest.mark.scatter_reduce
+def test_scatter_reduce_invalid_dim():
+    """Validate the error contract of aten::scatter_reduce.two for an invalid dimension."""
+    inp, index, src = _make_test_data((8,), 0, torch.float32, "sum")
+
+    with pytest.raises(IndexError, match="Dimension out of range"):
+        flag_gems.scatter_reduce(inp, 1, index, src, "sum")
+
+
+@pytest.mark.scatter_reduce_two_out
+@pytest.mark.scatter_reduce
+def test_scatter_reduce_out_dtype_mismatch():
+    """Validate the error contract of aten::scatter_reduce.two_out for a wrong out dtype."""
+    inp, index, src = _make_test_data((8,), 0, torch.float32, "sum")
+    out = torch.empty_like(inp, dtype=torch.float16)
+
+    with pytest.raises(RuntimeError, match="Expected out tensor to have dtype"):
+        flag_gems.scatter_reduce_out(inp, 0, index, src, "sum", out=out)
+
+
+# Odd index lengths exercise masked atomic lanes and the final partial build block.
+@pytest.fixture(params=[(16385,), (2, 16385)], ids=["1d", "2d"])
+def linked_product_inputs(request):
+    shape = request.param
+    torch.manual_seed(17)
+    inp = torch.randn(shape, device=flag_gems.device).mul_(0.1).add_(1.0)
+    src_shape = (*shape[:-1], shape[-1] + 19)
+    src = torch.randn(src_shape, device=flag_gems.device).mul_(0.01).add_(1.0)
     index = torch.randint(
-        0, 2, (2, 3, 4, 5, 6, 7), dtype=torch.long, device=flag_gems.device
+        0, shape[-1] // 2, shape, device=flag_gems.device, dtype=torch.int64
+    )
+    # Identity updates mixed with active lanes must not create duplicate links.
+    src[..., ::3] = 1.0
+    return inp, index, src
+
+
+@pytest.mark.scatter_reduce_two
+@pytest.mark.scatter_reduce
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("include_self", [True, False])
+def test_scatter_reduce_prod_partial_blocks(linked_product_inputs, dtype, include_self):
+    inp, index, src = linked_product_inputs
+    inp, src = inp.to(dtype), src.to(dtype)
+    ref_inp, ref_index, ref_src = _reference_inputs(inp, index, src)
+    reference = torch.scatter_reduce(
+        ref_inp,
+        -1,
+        ref_index,
+        ref_src,
+        "prod",
+        include_self=include_self,
+    )
+    result = flag_gems.scatter_reduce(
+        inp, -1, index, src, "prod", include_self=include_self
+    )
+    utils.gems_assert_close(result, reference, dtype)
+
+
+@pytest.mark.scatter_reduce_two_
+@pytest.mark.scatter_reduce
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("include_self", [True, False])
+def test_scatter_reduce_inplace_prod_partial_blocks(
+    linked_product_inputs, dtype, include_self
+):
+    inp, index, src = linked_product_inputs
+    inp, src = inp.to(dtype), src.to(dtype)
+    ref_inp, ref_index, ref_src = _reference_inputs(inp, index, src)
+    reference = torch.scatter_reduce(
+        ref_inp,
+        -1,
+        ref_index,
+        ref_src,
+        "prod",
+        include_self=include_self,
+    )
+    result = flag_gems.scatter_reduce_(
+        inp, -1, index, src, "prod", include_self=include_self
+    )
+    assert result is inp
+    utils.gems_assert_close(result, reference, dtype)
+
+
+@pytest.mark.scatter_reduce_two_out
+@pytest.mark.scatter_reduce
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("include_self", [True, False])
+def test_scatter_reduce_out_prod_partial_blocks(
+    linked_product_inputs, dtype, include_self
+):
+    inp, index, src = linked_product_inputs
+    inp, src = inp.to(dtype), src.to(dtype)
+    ref_inp, ref_index, ref_src = _reference_inputs(inp, index, src)
+    reference = torch.scatter_reduce(
+        ref_inp,
+        -1,
+        ref_index,
+        ref_src,
+        "prod",
+        include_self=include_self,
+    )
+    out = torch.empty_like(inp)
+    result = flag_gems.scatter_reduce_out(
+        inp, -1, index, src, "prod", include_self=include_self, out=out
+    )
+    assert result is out
+    utils.gems_assert_close(result, reference, dtype)
+
+
+@pytest.mark.scatter_reduce_two_
+@pytest.mark.scatter_reduce
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "hygon", reason="HCU short-row and CAS regression"
+)
+@pytest.mark.parametrize("shape", [(2, 64), (2, 257)], ids=["short", "medium"])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("reduce", ["amax", "amin"])
+@pytest.mark.parametrize("include_self", [True, False])
+def test_scatter_reduce_inplace_extrema_special_values(
+    shape, dtype, reduce, include_self
+):
+    inp = torch.full(shape, 3.0, dtype=dtype, device=flag_gems.device)
+    src = torch.ones_like(inp)
+    index = torch.arange(shape[1], device=flag_gems.device).repeat(shape[0], 1)
+    src[:, :8] = torch.tensor(
+        [float("nan"), float("inf"), float("-inf"), -0.0, 0.0, -2.0, 2.0, 1.0],
+        dtype=dtype,
+        device=flag_gems.device,
+    )
+    index[:, 5:8] = 5
+    index[:, -1] = 5
+    # A touched NaN participates only with include_self; an untouched NaN remains.
+    inp[:, 8] = float("nan")
+    inp[:, -1] = float("nan")
+    reference = torch.scatter_reduce(
+        inp.cpu().float(),
+        -1,
+        index.cpu(),
+        src.cpu().float(),
+        reduce,
+        include_self=include_self,
+    )
+    result = flag_gems.scatter_reduce_(
+        inp, -1, index, src, reduce, include_self=include_self
+    )
+    assert result is inp
+    actual = result.cpu().float()
+    torch.testing.assert_close(actual, reference, rtol=0, atol=0, equal_nan=True)
+    zero_mask = reference == 0
+    assert torch.equal(
+        torch.signbit(actual[zero_mask]), torch.signbit(reference[zero_mask])
     )
 
-    with pytest.raises(AssertionError, match="up to 5D"):
-        with flag_gems.use_gems():
-            torch.scatter_reduce(inp, 0, index, src, reduce="sum")
-
 
 @pytest.mark.scatter_reduce_two
-@pytest.mark.parametrize("reduce", ["sum", "amax"])
-def test_scatter_reduce_noncontiguous_index(reduce):
-    """Test with non-contiguous index tensor."""
-    dtype = torch.float32
-    inp = torch.randn(16, dtype=dtype, device=flag_gems.device)
-    src = torch.randn(32, dtype=dtype, device=flag_gems.device)
-    full_index = torch.randint(0, 20, (64,), dtype=torch.long, device=flag_gems.device)
-    index = full_index[::2]  # shape (32,), non-contiguous
-    index = index.clamp(0, 15)
-
-    ref_inp = utils.to_reference(inp, upcast=True)
-    ref_index = utils.to_reference(index)
-    ref_src = utils.to_reference(src, upcast=True)
-    ref_out = torch.scatter_reduce(ref_inp, 0, ref_index, ref_src, reduce=reduce)
-
-    with flag_gems.use_gems():
-        res_out = torch.scatter_reduce(inp, 0, index, src, reduce=reduce)
-
-    utils.gems_assert_close(res_out, ref_out, dtype)
-
-
-@pytest.mark.scatter_reduce_two
-@pytest.mark.parametrize("reduce", ["sum", "amax"])
-def test_scatter_reduce_all_same_index(reduce):
-    """All 64 elements scattered to the same output position."""
-    dtype = torch.float32
-    inp = torch.randn(4, dtype=dtype, device=flag_gems.device)
-    src = torch.randn(64, dtype=dtype, device=flag_gems.device)
-    index = torch.full((64,), 2, dtype=torch.long, device=flag_gems.device)
-
-    ref_inp = utils.to_reference(inp, upcast=True)
-    ref_index = utils.to_reference(index)
-    ref_src = utils.to_reference(src, upcast=True)
-    ref_out = torch.scatter_reduce(ref_inp, 0, ref_index, ref_src, reduce=reduce)
-
-    with flag_gems.use_gems():
-        res_out = torch.scatter_reduce(inp, 0, index, src, reduce=reduce)
-
-    utils.gems_assert_close(res_out, ref_out, dtype)
-
-
-@pytest.mark.scatter_reduce_two
-@pytest.mark.parametrize("reduce", ["sum", "prod", "mean"])
-def test_scatter_reduce_identity_src(reduce):
-    """Source of all ones (identity for prod, additive for sum/mean)."""
-    dtype = torch.float32
-    inp = torch.randn(8, dtype=dtype, device=flag_gems.device)
-    src = torch.ones(16, dtype=dtype, device=flag_gems.device)
-    index = torch.randint(0, 8, (16,), dtype=torch.long, device=flag_gems.device)
-
-    ref_inp = utils.to_reference(inp, upcast=True)
-    ref_index = utils.to_reference(index)
-    ref_src = utils.to_reference(src, upcast=True)
-    ref_out = torch.scatter_reduce(ref_inp, 0, ref_index, ref_src, reduce=reduce)
-
-    with flag_gems.use_gems():
-        res_out = torch.scatter_reduce(inp, 0, index, src, reduce=reduce)
-
-    utils.gems_assert_close(res_out, ref_out, dtype)
+@pytest.mark.scatter_reduce_two_
+@pytest.mark.scatter_reduce_two_out
+@pytest.mark.scatter_reduce
+@pytest.mark.skipif(flag_gems.vendor_name != "hygon", reason="HCU sum CAS regression")
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32])
+@pytest.mark.parametrize("include_self", [True, False])
+def test_scatter_reduce_sum_contention(dtype, include_self):
+    torch.manual_seed(19)
+    inp = torch.ones((64, 256), dtype=dtype, device=flag_gems.device)
+    index = torch.randint(0, 32, (64, 255), device=flag_gems.device)
+    src = torch.randint(-2, 3, (64, 269), device=flag_gems.device).to(dtype) * 0.25
+    reference = torch.scatter_reduce(
+        inp.cpu().float(),
+        -1,
+        index.cpu(),
+        src.cpu().float(),
+        "sum",
+        include_self=include_self,
+    )
+    for _ in range(8):
+        functional = flag_gems.scatter_reduce(
+            inp, -1, index, src, "sum", include_self=include_self
+        )
+        inplace = inp.clone()
+        returned = flag_gems.scatter_reduce_(
+            inplace, -1, index, src, "sum", include_self=include_self
+        )
+        assert returned is inplace
+        out = torch.empty_like(inp)
+        returned = flag_gems.scatter_reduce_out(
+            inp, -1, index, src, "sum", include_self=include_self, out=out
+        )
+        assert returned is out
+        for actual in (functional, inplace, out):
+            torch.testing.assert_close(actual.cpu().float(), reference, rtol=0, atol=0)

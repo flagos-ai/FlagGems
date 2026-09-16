@@ -13,7 +13,8 @@
 # limitations under the License.
 
 repos:
-- repo: https://github.com/pre-commit/pre-commit-hooks
+  # https://github.com/pre-commit/pre-commit-hooks
+- repo: https://gitcode.com/gh_mirrors/pr/pre-commit-hooks.git
   rev: v2.3.0
   hooks:
   - id: check-yaml
@@ -28,21 +29,48 @@ repos:
     # E701 : Multiple statements on one line.
     # E704 : Multiple statements on one line.
 
-- repo: https://github.com/pre-commit/mirrors-clang-format
+# https://github.com/pre-commit/mirrors-clang-format
+- repo: https://gitcode.com/pre-commit-clang/mirrors-clang-format
   rev: v13.0.0
   hooks:
     - id: clang-format
       files: \.(cpp|h|cc|c|hpp)$
       exclude: ^third_party/
 
-- repo: https://github.com/pycqa/isort
+# https://github.com/pycqa/isort
+- repo: https://gitcode.com/GitHub_Trending/is/isort
   rev: 5.12.0
   hooks:
     - id: isort
       args: ["--profile", "black"]
 
-- repo: https://github.com/psf/black.git
+# https://github.com/psf/black.git
+- repo: https://gitcode.com/GitHub_Trending/bl/black
   rev: 26.5.1
   hooks:
     - id: black
     - id: black-jupyter
+
+- repo: local
+  hooks:
+    - id: sort-exports
+      name: auto-sort __all__ and operators.yaml
+      language: python
+      entry: python tools/ci_checks/sort_exports.py --fix
+      files: ^(src/flag_gems/__init__\.py|src/flag_gems/ops/__init__\.py|src/flag_gems/runtime/backend/.*/ops/__init__\.py|conf/operators\.yaml)$
+      additional_dependencies: [pyyaml]
+      pass_filenames: false
+    - id: check-init-exports
+      name: check __init__.py exports
+      language: python
+      entry: python tools/ci_checks/check_init_exports.py
+      files: ^(src/flag_gems/__init__\.py|src/flag_gems/runtime/backend/.*/ops/__init__\.py)$
+      additional_dependencies: []
+      pass_filenames: false
+    - id: check-operators-yaml
+      name: check operators.yaml duplicates
+      language: python
+      entry: python tools/ci_checks/check_operators_yaml.py --operators '[]'
+      files: ^conf/operators\.yaml$
+      additional_dependencies: [pyyaml]
+      pass_filenames: false

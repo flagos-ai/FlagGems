@@ -100,26 +100,29 @@ def kron_stride_constant_kernel(
     c_stride_1: tl.constexpr,
     a_batch_stride: tl.constexpr,
     b_batch_stride: tl.constexpr,
-    c_batch_stride: tl.constexpr,
+    c_batch_stride: tl.int64,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     ENABLE_I64: tl.constexpr,
 ):
-    pid = tl.program_id(0)
+    pid_base = tl.program_id(0)
     num_programs = tl.num_programs(0)
-    num_blocks_n = tl.cdiv(N, BLOCK_N)
-    num_blocks_m = tl.cdiv(M, BLOCK_M)
-    num_blocks_per_batch = num_blocks_m * num_blocks_n
+
+    # block counts derived from the autotuned BLOCK_* (constexprs) — no need
+    # to know the chosen config on the host.
+    num_tiles_m = tl.cdiv(M, BLOCK_M)
+    num_tiles_n = tl.cdiv(N, BLOCK_N)
+    num_blocks_per_batch = num_tiles_m * num_tiles_n
     total_tiles = batch_size * num_blocks_per_batch
 
-    # Persistent grid: GCU300 caps grid.x at 65535, so the launch grid is
-    # min(total_tiles, MAX_GRID_DIM); each CTA iterates over its share of
-    # tiles. See enflame-gcu-grid-x-limit.
-    for tile_id in tl.range(pid, total_tiles, num_programs):
-        batch_id = tile_id // num_blocks_per_batch
-        local_pid = tile_id % num_blocks_per_batch
-        block_m = local_pid // num_blocks_n
-        block_n = local_pid % num_blocks_n
+    # grid-stride-loop over the flattened (batch, tile_m, tile_n) space so the
+    # launch grid.x can be capped well below gcu300's 65535 limit regardless
+    # of how large batch_size * cdiv(M,BM) * cdiv(N,BN) grows.
+    for pid in range(pid_base, total_tiles, num_programs):
+        batch_id = pid // num_blocks_per_batch
+        local_pid = pid % num_blocks_per_batch
+        block_m = local_pid // num_tiles_n
+        block_n = local_pid % num_tiles_n
 
         offs_m = block_m * BLOCK_M + tl.arange(0, BLOCK_M)
         offs_n = block_n * BLOCK_N + tl.arange(0, BLOCK_N)
@@ -158,41 +161,44 @@ def kron_kernel(
     b_ptr,
     c_ptr,
     map_ptr,
-    batch_size: tl.int64,
-    M: tl.int64,
-    N: tl.int64,
-    M1: tl.int64,
-    M2: tl.int64,
-    N1: tl.int64,
-    N2: tl.int64,
-    a_stride_0: tl.int64,
-    a_stride_1: tl.int64,
-    b_stride_0: tl.int64,
-    b_stride_1: tl.int64,
-    c_stride_0: tl.int64,
-    c_stride_1: tl.int64,
-    a_batch_stride: tl.int64,
-    b_batch_stride: tl.int64,
-    c_batch_stride: tl.constexpr,
+    batch_size: tl.int32,
+    M: tl.int32,
+    N: tl.int32,
+    M1: tl.int32,
+    M2: tl.int32,
+    N1: tl.int32,
+    N2: tl.int32,
+    a_stride_0: tl.int32,
+    a_stride_1: tl.int32,
+    b_stride_0: tl.int32,
+    b_stride_1: tl.int32,
+    c_stride_0: tl.int32,
+    c_stride_1: tl.int32,
+    a_batch_stride: tl.int32,
+    b_batch_stride: tl.int32,
+    c_batch_stride: tl.int64,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     ENABLE_I64: tl.constexpr,
 ):
-    pid = tl.program_id(0)
+    pid_base = tl.program_id(0)
     num_programs = tl.num_programs(0)
-    num_blocks_n = tl.cdiv(N, BLOCK_N)
-    num_blocks_m = tl.cdiv(M, BLOCK_M)
-    num_blocks_per_batch = num_blocks_m * num_blocks_n
+
+    # block counts derived from the autotuned BLOCK_* (constexprs) — no need
+    # to know the chosen config on the host.
+    num_tiles_m = tl.cdiv(M, BLOCK_M)
+    num_tiles_n = tl.cdiv(N, BLOCK_N)
+    num_blocks_per_batch = num_tiles_m * num_tiles_n
     total_tiles = batch_size * num_blocks_per_batch
 
-    # Persistent grid: GCU300 caps grid.x at 65535, so the launch grid is
-    # min(total_tiles, MAX_GRID_DIM); each CTA iterates over its share of
-    # tiles. See enflame-gcu-grid-x-limit.
-    for tile_id in tl.range(pid, total_tiles, num_programs):
-        batch_id = tile_id // num_blocks_per_batch
-        local_pid = tile_id % num_blocks_per_batch
-        block_m = local_pid // num_blocks_n
-        block_n = local_pid % num_blocks_n
+    # grid-stride-loop over the flattened (batch, tile_m, tile_n) space so the
+    # launch grid.x can be capped well below gcu300's 65535 limit regardless
+    # of how large batch_size * cdiv(M,BM) * cdiv(N,BN) grows.
+    for pid in range(pid_base, total_tiles, num_programs):
+        batch_id = pid // num_blocks_per_batch
+        local_pid = pid % num_blocks_per_batch
+        block_m = local_pid // num_tiles_n
+        block_n = local_pid % num_tiles_n
 
         offs_m = block_m * BLOCK_M + tl.arange(0, BLOCK_M)
         offs_n = block_n * BLOCK_N + tl.arange(0, BLOCK_N)
@@ -273,6 +279,11 @@ def kron(A, B):
     a_batch_stride = M1 * N1
     b_batch_stride = M2 * N2
     c_batch_stride = M * N
+    # Pass strides as python ints so Triton can widen c_batch_stride to int64
+    # when M*N exceeds int32 (large kron shapes).
+    a_batch_stride = int(a_batch_stride)
+    b_batch_stride = int(b_batch_stride)
+    c_batch_stride = int(c_batch_stride)
     FlagOfNotUseDMA = False
     FlagOfNotUseDMA |= torch.any(torch.tensor(A_view.stride()) <= 0)
     FlagOfNotUseDMA |= (
@@ -302,14 +313,18 @@ def kron(A, B):
         )
     )([x for x in C_reshaped.stride() if x != 0])
     with torch_device_fn.device(A.device):
-        # Persistent grid: GCU300 caps grid.x at 65535. Launch at most
-        # MAX_GRID_DIM CTAs; each CTA loops over its share of tiles inside the
-        # kernel (total_tiles is recomputed there with the real BLOCK_M/BLOCK_N).
-        # The host estimate uses the smallest tuned block sizes (8 x 1024) as an
-        # upper bound on the tile count so we don't over-launch CTAs.
-        total_tiles = batch_size * triton.cdiv(M, 8) * triton.cdiv(N, 1024)
-        num_ctas = min(total_tiles, MAX_GRID_DIM)
-        grid = (num_ctas,)
+        # The kernels virtualize the (batch, tile_m, tile_n) launch space with a
+        # grid-stride-loop, so we only need a bounded number of CTAs to cover an
+        # arbitrarily large total tile count.  Cap grid.x well under gcu300's
+        # 65535 hardware limit (MAX_GRID_DIM = 128 is already very conservative).
+        grid = lambda meta: (
+            min(
+                MAX_GRID_DIM,
+                batch_size
+                * triton.cdiv(M, meta["BLOCK_M"])
+                * triton.cdiv(N, meta["BLOCK_N"]),
+            ),
+        )
         if FlagOfNotUseDMA:
             kron_stride_constant_kernel[grid](
                 A_view,

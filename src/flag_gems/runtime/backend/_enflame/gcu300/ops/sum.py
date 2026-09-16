@@ -34,7 +34,7 @@ def sum_kernel_1(
     M,
     BLOCK_SIZE: tl.constexpr,
 ):
-    if tl.constexpr(inp.dtype.element_ty == tl.float16) or tl.constexpr(
+    if tl.constexpr(inp.dtype.element_ty == tl.float16) | tl.constexpr(
         inp.dtype.element_ty == tl.bfloat16
     ):
         cdtype = tl.float32
@@ -55,7 +55,7 @@ def sum_kernel_1(
 @libentry()
 @triton.jit
 def sum_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
-    if tl.constexpr(mid.dtype.element_ty == tl.float16) or tl.constexpr(
+    if tl.constexpr(mid.dtype.element_ty == tl.float16) | tl.constexpr(
         mid.dtype.element_ty == tl.bfloat16
     ):
         cdtype = tl.float32
@@ -92,7 +92,7 @@ def sum_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    if tl.constexpr(inp.dtype.element_ty == tl.float16) or tl.constexpr(
+    if tl.constexpr(inp.dtype.element_ty == tl.float16) | tl.constexpr(
         inp.dtype.element_ty == tl.bfloat16
     ):
         cdtype = tl.float32
@@ -109,7 +109,7 @@ def sum_kernel(
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
         col_mask = cols < N
-        mask = row_mask and col_mask
+        mask = row_mask & col_mask
 
         a = tl.load(inp + cols, mask, other=0).to(cdtype)
         _sum += a

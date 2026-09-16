@@ -16,15 +16,21 @@ import importlib.util
 
 from torch_musa import current_device, get_device_capability
 
+from ._conj import _conj
 from .all import all, all_dim, all_dims
 from .amax import amax
 from .any import any, any_dim, any_dims
 from .arange import arange, arange_start
 from .argmin import argmin
+from .argsort import argsort
 from .batch_norm import batch_norm, batch_norm_backward
 from .bucketize import bucketize
 from .celu import celu
+from .channel_shuffle import channel_shuffle
 from .conv2d import conv2d
+from .conv_transpose1d import conv_transpose1d, conv_transpose1d_output_size
+from .conv_transpose2d import conv_transpose2d
+from .cudnn_convolution import cudnn_convolution
 from .div import (
     div_mode,
     div_mode_,
@@ -37,6 +43,7 @@ from .div import (
 from .dropout import dropout, dropout_backward
 from .erfinv import erfinv
 from .erfinv_ import erfinv_
+from .feature_dropout import feature_dropout_
 from .flip import flip
 from .fmod_ import fmod_, fmod_scalar_, fmod_tensor_
 from .gather import gather, gather_backward
@@ -46,8 +53,10 @@ from .index_add import index_add, index_add_
 from .index_copy_ import index_copy, index_copy_
 from .index_put import _index_put_impl_, index_put, index_put_
 from .index_select import index_select
+from .isin import isin
 from .layernorm import layer_norm_backward
 from .linalg_cholesky import linalg_cholesky
+from .linear import linear
 from .log import log
 from .log10 import log10, log10_, log10_out
 from .log_normal_ import log_normal_
@@ -69,7 +78,7 @@ from .normal import normal_
 from .one_hot import one_hot
 from .ones import ones
 from .ones_like import ones_like
-from .pad import constant_pad_nd
+from .pad import constant_pad_nd, pad
 from .permute_copy import permute_copy
 from .prod import prod, prod_dim
 from .rand import rand
@@ -86,13 +95,16 @@ from .repeat_interleave import (
     repeat_interleave_tensor,
 )
 from .resolve_conj import resolve_conj
+from .rms_norm_w8a16_fp8 import rms_norm_w8a16_fp8
 from .round_ import round_
+from .scatter_reduce import scatter_reduce, scatter_reduce_, scatter_reduce_out
 from .softplus_backward import softplus_backward
 from .sort import sort, sort_stable
 from .special_gammainc import special_gammainc
 from .tile import tile
 from .trunc import trunc, trunc_
 from .unique import _unique2
+from .upsample_linear1d_backward import upsample_linear1d_backward
 from .zeros import zero_, zeros
 from .zeros_like import zeros_like
 
@@ -102,27 +114,42 @@ _HAS_TENSOR_DESCRIPTOR = (
 )
 
 __all__ = [
-    "amax",
+    "_conj",
+    "_index_put_impl_",
+    "_unique2",
     "all",
     "all_dim",
     "all_dims",
+    "amax",
     "any",
     "any_dim",
     "any_dims",
     "arange",
     "arange_start",
     "argmin",
+    "argsort",
     "batch_norm",
     "batch_norm_backward",
     "bucketize",
     "celu",
-    # "celu_",
+    "celu_",
+    "channel_shuffle",
+    "constant_pad_nd",
     "conv2d",
+    "conv_transpose1d",
+    "conv_transpose1d_output_size",
+    "conv_transpose2d",
+    "cudnn_convolution",
+    "div_mode",
+    "div_mode_",
     "dropout",
     "dropout_backward",
     "erfinv",
     "erfinv_",
+    "feature_dropout_",
     "flip",
+    "floor_divide",
+    "floor_divide_",
     "fmod_",
     "fmod_scalar_",
     "fmod_tensor_",
@@ -136,9 +163,11 @@ __all__ = [
     "index_copy_",
     "index_put",
     "index_put_",
-    "_index_put_impl_",
     "index_select",
+    "isin",
+    "layer_norm_backward",
     "linalg_cholesky",
+    "linear",
     "log",
     "log10",
     "log10_",
@@ -148,7 +177,6 @@ __all__ = [
     "log_softmax_backward",
     "log_softmax_backward_out",
     "log_softmax_out",
-    "layer_norm_backward",
     "max",
     "max_dim",
     "median",
@@ -170,7 +198,7 @@ __all__ = [
     "one_hot",
     "ones",
     "ones_like",
-    "constant_pad_nd",
+    "pad",
     "permute_copy",
     "prod",
     "prod_dim",
@@ -186,7 +214,11 @@ __all__ = [
     "repeat_interleave_self_tensor",
     "repeat_interleave_tensor",
     "resolve_conj",
+    "rms_norm_w8a16_fp8",
     "round_",
+    "scatter_reduce",
+    "scatter_reduce_",
+    "scatter_reduce_out",
     "softplus_backward",
     "sort",
     "sort_stable",
@@ -195,13 +227,9 @@ __all__ = [
     "true_divide",
     "true_divide_",
     "true_divide_out",
-    "div_mode",
-    "div_mode_",
-    "floor_divide",
-    "floor_divide_",
-    "_unique2",
     "trunc",
     "trunc_",
+    "upsample_linear1d_backward",
     "zero_",
     "zeros",
     "zeros_like",
@@ -238,3 +266,8 @@ if get_device_capability(current_device())[0] >= 3:
                 "mm",
             ]
         )
+
+if get_device_capability(current_device()) >= (3, 1):
+    from .mm_w8a8_fp8 import mm_w8a8_fp8, mm_w8a8_fp8_out  # noqa: F401
+
+    __all__.extend(["mm_w8a8_fp8", "mm_w8a8_fp8_out"])

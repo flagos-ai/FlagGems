@@ -48,7 +48,7 @@ def test_hardswish(shape, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.hardswish
+@pytest.mark.hardswish_out
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_hardswish_out(shape, dtype):

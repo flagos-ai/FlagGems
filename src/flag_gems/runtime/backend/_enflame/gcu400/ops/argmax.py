@@ -82,7 +82,7 @@ def argmax_kernel_non_inner(
     pid_k = ext.program_id(1)
     k_offset = pid_k * TILE_K + tl.arange(0, TILE_K)
 
-    if tl.constexpr(inp.dtype.element_ty == tl.float16) or tl.constexpr(
+    if tl.constexpr(inp.dtype.element_ty == tl.float16) | tl.constexpr(
         inp.dtype.element_ty == tl.bfloat16
     ):
         cdtype = tl.float32
@@ -94,7 +94,7 @@ def argmax_kernel_non_inner(
     if ONE_TILE_PER_CTA:
         n_offset = tl.arange(0, TILE_N)
         offset = pid_m * N * K + n_offset[:, None] * K + k_offset
-        mask = k_offset < K and n_offset[:, None] < N
+        mask = (k_offset < K) & (n_offset[:, None] < N)
         inp_ptrs = inp + offset
         inp_vals = tl.load(inp_ptrs, mask=mask, other=min_value)
         local_max, local_argmax = tl.max(
@@ -111,7 +111,7 @@ def argmax_kernel_non_inner(
         for start_n in range(0, N, TILE_N):
             n_offset = start_n + tl.arange(0, TILE_N)
             offset = pid_m * N * K + n_offset[:, None] * K + k_offset
-            mask = k_offset < K and n_offset[:, None] < N
+            mask = (k_offset < K) & (n_offset[:, None] < N)
             inp_ptrs = inp + offset
             inp_vals = tl.load(inp_ptrs, mask=mask, other=min_value)
             local_max, local_argmax = tl.max(

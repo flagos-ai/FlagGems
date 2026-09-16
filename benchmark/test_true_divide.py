@@ -64,3 +64,14 @@ def test_true_divide_tensor_dispatch():
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
+
+
+@pytest.mark.true_divide_
+def test_true_divide_tensor_inplace_dispatch():
+    bench = base.BinaryPointwiseBenchmark(
+        op_name="true_divide_",
+        torch_op=torch.ops.aten.true_divide_.Tensor,
+        dtypes=consts.FLOAT_DTYPES,
+        is_inplace=True,
+    )
+    bench.run()

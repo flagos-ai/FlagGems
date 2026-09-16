@@ -26,7 +26,7 @@ if cfg.QUICK_MODE:
     FLOAT_DTYPES = [torch.float32]
     LAYER_NORM_SHAPES = [(1, 40999)]
     LAYER_NORM_MEDIUM_SHAPES = []
-    LAYER_NORM_AUTOGRAD_CASES = [
+    LAYER_NORM_FORWARD_BACKWARD_CASES = [
         ((2, 3, 512), (512,)),
     ]
     LAYER_NORM_BACKWARD_LARGE_M_SHAPES = [
@@ -50,7 +50,7 @@ else:
         (2048, 1024),
         (1024, 2048),
     ]
-    LAYER_NORM_AUTOGRAD_CASES = [
+    LAYER_NORM_FORWARD_BACKWARD_CASES = [
         ((32, 256, 512), (512,)),
     ]
     LAYER_NORM_BACKWARD_LARGE_M_SHAPES = [
@@ -130,10 +130,7 @@ def test_native_layer_norm(shape, normalized_shape, dtype, affine, caplog):
     )
 
     with caplog.at_level("DEBUG", logger="flag_gems.ops.native_layer_norm"):
-        with flag_gems.use_gems():
-            result = torch.ops.aten.native_layer_norm.default(
-                inp, normalized_shape, weight, bias, eps
-            )
+        result = flag_gems.native_layer_norm(inp, normalized_shape, weight, bias, eps)
 
     assert "GEMS NATIVE_LAYER_NORM" in caplog.text
     assert len(result) == len(ref_result) == 3
@@ -178,14 +175,13 @@ def test_layer_norm(shape, dtype, wb_none):
         bias=ref_bias,
         eps=eps,
     )
-    with flag_gems.use_gems():
-        res_out = torch.layer_norm(
-            res_inp,
-            shape[1:],
-            weight=res_weight,
-            bias=res_bias,
-            eps=eps,
-        )
+    res_out, _, _ = flag_gems.layer_norm(
+        res_inp,
+        shape[1:],
+        weight=res_weight,
+        bias=res_bias,
+        eps=eps,
+    )
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -209,14 +205,13 @@ def test_native_layer_norm_statistics(shape, dtype):
         ref_bias,
         1e-5,
     )
-    with flag_gems.use_gems():
-        res_out, res_mean, res_rstd = torch.ops.aten.native_layer_norm(
-            res_inp,
-            normalized_shape,
-            res_weight,
-            res_bias,
-            1e-5,
-        )
+    res_out, res_mean, res_rstd = flag_gems.native_layer_norm(
+        res_inp,
+        normalized_shape,
+        res_weight,
+        res_bias,
+        1e-5,
+    )
 
     reduce_dim = math.prod(normalized_shape)
     utils.gems_assert_close(res_out, ref_out, dtype)
@@ -278,21 +273,20 @@ def test_layer_norm_backward(monkeypatch, shape, normalized_shape, dtype, wb_non
         ref_bias,
         output_mask,
     )
-    with flag_gems.use_gems():
-        (
-            res_in_grad,
-            res_weight_grad,
-            res_bias_grad,
-        ) = torch.ops.aten.native_layer_norm_backward(
-            res_grad,
-            res_inp,
-            normalized_shape,
-            res_mean,
-            res_rstd,
-            res_weight,
-            res_bias,
-            output_mask,
-        )
+    (
+        res_in_grad,
+        res_weight_grad,
+        res_bias_grad,
+    ) = flag_gems.layer_norm_backward(
+        res_grad,
+        res_inp,
+        normalized_shape,
+        res_mean,
+        res_rstd,
+        res_weight,
+        res_bias,
+        output_mask,
+    )
 
     utils.gems_assert_close(res_in_grad, ref_in_grad, dtype)
     if not wb_none:
@@ -369,21 +363,20 @@ def _test_layer_norm_backward_case(
         ref_bias,
         output_mask,
     )
-    with flag_gems.use_gems():
-        (
-            res_in_grad,
-            res_weight_grad,
-            res_bias_grad,
-        ) = torch.ops.aten.native_layer_norm_backward(
-            res_grad,
-            res_inp,
-            normalized_shape,
-            res_mean,
-            res_rstd,
-            res_weight,
-            res_bias,
-            output_mask,
-        )
+    (
+        res_in_grad,
+        res_weight_grad,
+        res_bias_grad,
+    ) = flag_gems.layer_norm_backward(
+        res_grad,
+        res_inp,
+        normalized_shape,
+        res_mean,
+        res_rstd,
+        res_weight,
+        res_bias,
+        output_mask,
+    )
 
     M = res_inp.numel() // math.prod(normalized_shape)
     if output_mask[0]:
@@ -401,13 +394,11 @@ def _test_layer_norm_backward_case(
 
 
 @pytest.mark.layer_norm_backward
-@pytest.mark.parametrize("shape,normalized_shape", LAYER_NORM_AUTOGRAD_CASES)
+@pytest.mark.parametrize("shape,normalized_shape", LAYER_NORM_FORWARD_BACKWARD_CASES)
 @pytest.mark.parametrize("wb_none", [False, True])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_layer_norm_autograd(shape, normalized_shape, dtype, wb_none):
-    res_inp = torch.randn(
-        shape, dtype=dtype, device=flag_gems.device, requires_grad=True
-    )
+def test_layer_norm_backward_from_forward(shape, normalized_shape, dtype, wb_none):
+    res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     res_grad = torch.randn_like(res_inp)
     if wb_none:
         res_weight = None
@@ -417,17 +408,15 @@ def test_layer_norm_autograd(shape, normalized_shape, dtype, wb_none):
             normalized_shape,
             dtype=dtype,
             device=flag_gems.device,
-            requires_grad=True,
         )
         res_bias = torch.randn(
             normalized_shape,
             dtype=dtype,
             device=flag_gems.device,
-            requires_grad=True,
         )
 
     # Direct backward tests use an upcast reference with shared forward statistics.
-    # Keep this end-to-end autograd reference in the input dtype so existing
+    # Keep this forward/backward reference in the input dtype so existing
     # forward rounding is not attributed to the backward implementation.
     ref_inp = utils.to_reference(res_inp.detach().clone()).requires_grad_()
     ref_grad = utils.to_reference(res_grad)
@@ -450,19 +439,27 @@ def test_layer_norm_autograd(shape, normalized_shape, dtype, wb_none):
     )
     ref_out.backward(ref_grad)
 
-    with flag_gems.use_gems():
-        res_out = torch.layer_norm(
-            res_inp,
-            normalized_shape,
-            weight=res_weight,
-            bias=res_bias,
-        )
-        res_out.backward(res_grad)
+    res_out, res_mean, res_rstd = flag_gems.native_layer_norm(
+        res_inp, normalized_shape, res_weight, res_bias
+    )
+    # Explicitly compose the public APIs; this does not test dispatcher autograd.
+    res_in_grad, res_weight_grad, res_bias_grad = flag_gems.layer_norm_backward(
+        res_grad,
+        res_inp,
+        normalized_shape,
+        res_mean,
+        res_rstd,
+        res_weight,
+        res_bias,
+        (True, not wb_none, not wb_none),
+    )
 
     N = math.prod(normalized_shape)
     M = res_inp.numel() // N
     utils.gems_assert_close(res_out, ref_out, dtype)
-    utils.gems_assert_close(res_inp.grad, ref_inp.grad, dtype, reduce_dim=N)
+    utils.gems_assert_close(res_in_grad, ref_inp.grad, dtype, reduce_dim=N)
     if not wb_none:
-        utils.gems_assert_close(res_weight.grad, ref_weight.grad, dtype, reduce_dim=M)
-        utils.gems_assert_close(res_bias.grad, ref_bias.grad, dtype, reduce_dim=M)
+        utils.gems_assert_close(res_weight_grad, ref_weight.grad, dtype, reduce_dim=M)
+        utils.gems_assert_close(res_bias_grad, ref_bias.grad, dtype, reduce_dim=M)
+    else:
+        assert res_weight_grad is res_bias_grad is None
