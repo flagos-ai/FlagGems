@@ -1,26 +1,19 @@
-# Kunlunxin (XPU) override of less_equal / less_equal_scalar.
-#
-# `less_equal.Tensor` is functionally identical to `le.Tensor`, and kunlunxin
-# already ships a tuned override for le (`_kunlunxin/ops/le.py`). But
-# `less_equal` was NOT overridden, so it fell back to the generic bare
-# `pointwise_dynamic` (no CodeGenConfig) -> discrete access on XPU ->
-# catastrophic latency (see `harness/perf_ir_3/ir-less_equal-dev1.log`, the
-# kernel is `less_equal_func_kernel` generated from `ops/less_equal.py`).
-#
-# Fix: reuse the exact le recipe -- same tuned CodeGenConfig
-# (block=1024, unroll_num=8, kunlunAutoGrid=True, prefer_1d_tile=True) plus the
-# TRITONXPU_COMPARE_FUSION / TRITONXPU_FP16_FAST launch env vars for the tensor
-# path. Kernel body / algorithm unchanged (zero correctness risk).
 import logging
+import math
 import os
 
+import torch
 import triton
 import triton.language as tl
 from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 
+from flag_gems.ops.less_equal_ import less_equal_ as _generic_less_equal_
+from flag_gems.runtime import device
+
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
+device = device.name
 
 
 config_ = CodeGenConfig(
@@ -66,12 +59,268 @@ def less_equal_func_scalar(x, y):
 
 def less_equal_scalar(A, B):
     logger.debug("GEMS_KUNLUNXIN LESS_EQUAL_SCALAR")
-    # NOTE: unlike the tensor path, the scalar path must NOT set
-    # TRITONXPU_COMPARE_FUSION / TRITONXPU_FP16_FAST. For tensor-vs-scalar
-    # compare these fusion env vars make the compiler emit an fp16 compare that
-    # trips `arith.cmpf requires all operands to have the same type` and blows
-    # the uni_sram budget -> `out of resource: uni_sram` compile failure (fp16).
-    # The sibling le_scalar / gt_scalar deliberately omit them for the same
-    # reason.
+    numel = A.numel()
+    dtype = A.dtype
+    if (
+        A.is_contiguous()
+        and dtype in (torch.float16, torch.float32, torch.bfloat16)
+        and float(B) == float(torch.tensor(float(B), dtype=dtype).item())
+    ):
+        s = float(B)
+        if math.isfinite(s):
+            raw = _less_equal_scalar_raw(A, s, dtype)
+            if raw is not None:
+                return raw
+        if (
+            numel >= _LESS_EQUAL_SCALAR_FAST_TILE
+            and numel % _LESS_EQUAL_SCALAR_FAST_TILE == 0
+        ):
+            return _less_equal_scalar_fast(
+                A, s, (numel // _LESS_EQUAL_SCALAR_FAST_TILE,)
+            )
+        if (
+            numel >= _LESS_EQUAL_SCALAR_MASKED_MIN
+            and numel % _LESS_EQUAL_SCALAR_FAST_TILE != 0
+        ):
+            return _less_equal_scalar_fast_masked(A, s, numel)
     res = less_equal_func_scalar(A, B)
     return res
+
+
+_LESS_EQUAL_SCALAR_MIN_NORM = 1.1754943508222875e-38
+
+
+def _less_equal_scalar_raw(A, s, dtype):
+    """less_equal(A, scalar) via the vendor single-pass payload, or None."""
+    if A.numel() == 0:
+        return None
+    from .lt import _raw_lt_scalar
+
+    if dtype == torch.float16:
+        pred_s = float(
+            torch.tensor(s, dtype=dtype)
+            .nextafter(torch.tensor(float("inf"), dtype=dtype))
+            .item()
+        )
+        return _raw_lt_scalar(A, pred_s)
+    if s == 0.0 or abs(s) >= _LESS_EQUAL_SCALAR_MIN_NORM:
+        s_eff = (
+            _LESS_EQUAL_SCALAR_MIN_NORM
+            if s == 0.0
+            else float(
+                torch.tensor(s, dtype=dtype)
+                .nextafter(torch.tensor(float("inf"), dtype=dtype))
+                .item()
+            )
+        )
+        return _raw_lt_scalar(A, s_eff)
+    return None
+
+
+_LESS_EQUAL_SCALAR_FAST_TILE = 131072
+_LESS_EQUAL_SCALAR_MASKED_MIN = 1 << 20
+
+
+@triton.jit
+def less_equal_scalar_fast_kernel(out_ptr, x_ptr, scalar, TILE: tl.constexpr):
+    pid = tl.program_id(0)
+    tid = pid * TILE + tl.arange(0, TILE)
+    x = tl.load(x_ptr + tid).to(tl.float32)
+    t = (x - scalar) * 1.0e38
+    t = tl.maximum(0.0, t)
+    t = tl.minimum(1.0, t)
+    tl.store(out_ptr + tid, 1.0 - t)
+
+
+def _less_equal_scalar_fast(A, scalar, grid):
+    out32 = torch.empty_like(A, dtype=torch.float32)
+    less_equal_scalar_fast_kernel[grid](
+        out32,
+        A,
+        scalar,
+        TILE=_LESS_EQUAL_SCALAR_FAST_TILE,
+        num_warps=4,
+        buffer_size_limit=8192,
+        unroll_num=16,
+        isCloseMemoryAsync=False,
+    )
+    out = torch.empty_like(A, dtype=torch.bool)
+    torch.ops.aten._copy_from(out32, out, False)
+    return out
+
+
+@triton.jit
+def less_equal_scalar_fast_masked_kernel(
+    out_ptr, x_ptr, scalar, numel, TILE: tl.constexpr
+):
+    pid = tl.program_id(0)
+    tid = pid * TILE + tl.arange(0, TILE)
+    mask = tid < numel
+    x = tl.load(x_ptr + tid, mask=mask).to(tl.float32)
+    t = (x - scalar) * 1.0e38
+    t = tl.maximum(0.0, t)
+    t = tl.minimum(1.0, t)
+    tl.store(out_ptr + tid, 1.0 - t, mask=mask)
+
+
+def _less_equal_scalar_fast_masked(A, scalar, numel):
+    out32 = torch.empty_like(A, dtype=torch.float32)
+    grid = (math.ceil(numel / _LESS_EQUAL_SCALAR_FAST_TILE),)
+    less_equal_scalar_fast_masked_kernel[grid](
+        out32,
+        A,
+        scalar,
+        numel,
+        TILE=_LESS_EQUAL_SCALAR_FAST_TILE,
+        num_warps=4,
+        buffer_size_limit=8192,
+        unroll_num=16,
+        isCloseMemoryAsync=False,
+    )
+    out = torch.empty_like(A, dtype=torch.bool)
+    torch.ops.aten._copy_from(out32, out, False)
+    return out
+
+
+config_inplace_ = CodeGenConfig(
+    512,
+    (65536, 65536, 65536),
+    32,
+    True,
+    prefer_1d_tile=True,
+    kunlunAutoGrid=True,
+    unroll_num=8,
+)
+
+
+@pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")], config=config_inplace_)
+@triton.jit
+def less_equal_func_tensor_inplace(x, y):
+    t = (x.to(tl.float32) - y.to(tl.float32)) * 1.0e32
+    t = t * 1.0e32
+    t = 1.0 - t
+    t = tl.maximum(0.0, t)
+    t = tl.minimum(1.0, t)
+    return t
+
+
+def less_equal_(A, B):
+    logger.debug("GEMS_KUNLUNXIN LESS_EQUAL_ TENSOR")
+    if A.device != B.device:
+        if A.device.type == device:
+            B = B.to(A.device)
+        else:
+            A = A.to(B.device)
+    numel = A.numel()
+    if A.is_contiguous() and A.dtype in (torch.float16, torch.float32, torch.bfloat16):
+        if (
+            A.dtype in (torch.float16, torch.float32)
+            and B.is_contiguous()
+            and B.dtype == A.dtype
+            and A.shape == B.shape
+            and numel
+            >= _LESS_EQUAL_TENSOR_INPLACE_FAST_TILE
+            * _LESS_EQUAL_TENSOR_INPLACE_MIN_GRID
+            and numel % _LESS_EQUAL_TENSOR_INPLACE_FAST_TILE == 0
+        ):
+            return _less_equal_tensor_inplace_fast(A, B, numel)
+        less_equal_func_tensor_inplace(A, B, out0=A)
+        return A
+    return _generic_less_equal_(A, B)
+
+
+_LESS_EQUAL_TENSOR_INPLACE_FAST_TILE = 131072
+_LESS_EQUAL_TENSOR_INPLACE_MIN_GRID = 128
+
+
+@triton.jit
+def less_equal_tensor_inplace_fast_kernel(x_ptr, y_ptr, TILE: tl.constexpr):
+    pid = tl.program_id(0)
+    tid = pid * TILE + tl.arange(0, TILE)
+    x = tl.load(x_ptr + tid)
+    y = tl.load(y_ptr + tid)
+    t = (x.to(tl.float32) - y.to(tl.float32)) * 1.0e32
+    t = t * 1.0e32
+    t = 1.0 - t
+    t = tl.maximum(0.0, t)
+    t = tl.minimum(1.0, t)
+    tl.store(x_ptr + tid, t)
+
+
+def _less_equal_tensor_inplace_fast(A, B, numel):
+    grid = (numel // _LESS_EQUAL_TENSOR_INPLACE_FAST_TILE,)
+    less_equal_tensor_inplace_fast_kernel[grid](
+        A,
+        B,
+        TILE=_LESS_EQUAL_TENSOR_INPLACE_FAST_TILE,
+        num_warps=4,
+        buffer_size_limit=8192,
+        unroll_num=16,
+        isCloseMemoryAsync=True,
+    )
+    return A
+
+
+@pointwise_dynamic(
+    is_tensor=[True, False],
+    promotion_methods=[(0, 1, "DEFAULT")],
+    config=config_inplace_,
+)
+@triton.jit
+def less_equal_func_scalar_inplace(x, y):
+    t = (x.to(tl.float32) - y) * 1.0e32
+    t = t * 1.0e32
+    t = tl.maximum(0.0, t)
+    t = tl.minimum(1.0, t)
+    return 1.0 - t
+
+
+def less_equal_scalar_(A, B):
+    logger.debug("GEMS_KUNLUNXIN LESS_EQUAL_ SCALAR")
+    numel = A.numel()
+    if (
+        A.is_contiguous()
+        and A.dtype in (torch.float16, torch.float32, torch.bfloat16)
+        and float(B) == float(torch.tensor(float(B), dtype=A.dtype).item())
+    ):
+        if (
+            A.dtype in (torch.float16, torch.float32)
+            and numel
+            >= _LESS_EQUAL_SCALAR_INPLACE_FAST_TILE
+            * _LESS_EQUAL_SCALAR_INPLACE_MIN_GRID
+            and numel % _LESS_EQUAL_SCALAR_INPLACE_FAST_TILE == 0
+        ):
+            return _less_equal_scalar_inplace_fast(A, float(B))
+        less_equal_func_scalar_inplace(A, B, out0=A)
+        return A
+    return less_equal_func_scalar(A, B, out0=A)
+
+
+_LESS_EQUAL_SCALAR_INPLACE_FAST_TILE = 131072
+_LESS_EQUAL_SCALAR_INPLACE_MIN_GRID = 128
+
+
+@triton.jit
+def less_equal_scalar_inplace_fast_kernel(x_ptr, scalar, TILE: tl.constexpr):
+    pid = tl.program_id(0)
+    tid = pid * TILE + tl.arange(0, TILE)
+    x = tl.load(x_ptr + tid)
+    t = (x.to(tl.float32) - scalar) * 1.0e32
+    t = t * 1.0e32
+    t = tl.maximum(0.0, t)
+    t = tl.minimum(1.0, t)
+    tl.store(x_ptr + tid, 1.0 - t)
+
+
+def _less_equal_scalar_inplace_fast(A, scalar):
+    grid = (A.numel() // _LESS_EQUAL_SCALAR_INPLACE_FAST_TILE,)
+    less_equal_scalar_inplace_fast_kernel[grid](
+        A,
+        scalar,
+        TILE=_LESS_EQUAL_SCALAR_INPLACE_FAST_TILE,
+        num_warps=4,
+        buffer_size_limit=8192,
+        unroll_num=16,
+        isCloseMemoryAsync=True,
+    )
+    return A
