@@ -545,7 +545,7 @@ def apply_rotary_pos_emb_interleaved_kernel(
     MAX_POSITION_EMBEDDINGS: tl.constexpr,
 ):
     """Out-of-place interleaved RoPE with ordered head-dimension I/O."""
-    s_id = ext.program_id(0)
+    s_id = tl.program_id(0).to(tl.int64)
 
     if pos_ptr is None:
         pos_id = s_id % seq_len
@@ -566,7 +566,7 @@ def apply_rotary_pos_emb_interleaved_kernel(
     k_ptr += s_id * k_stride_s
 
     if HEAD_BLOCK_SIZE > 0:
-        head_block_start = ext.program_id(1) * HEAD_BLOCK_SIZE
+        head_block_start = tl.program_id(1).to(tl.int64) * HEAD_BLOCK_SIZE
         head_offsets = head_block_start + tl.arange(0, HEAD_BLOCK_SIZE)
         if head_block_start < NUM_Q_HEADS:
             _store_contiguous_interleaved_heads(
