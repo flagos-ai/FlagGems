@@ -106,43 +106,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         continue-on-error: true
       - uses: ./.github/actions/checkout-retry
-      # TEMP probe: dump container environment to diagnose gpu_check / torch.
-      # Revert before merge.
-      - name: Probe kunlunxin container environment
-        shell: bash
-        run: |
-          echo "=== os / arch ==="; uname -a; cat /etc/os-release 2>/dev/null | head -3
-          echo "=== xpu-smi present? ==="; which xpu-smi || echo "xpu-smi NOT on PATH"
-          echo "=== XPU_HOME / /usr/local/xpu ==="; echo "XPU_HOME=${XPU_HOME:-unset}"; ls -d /usr/local/xpu* 2>/dev/null || echo "no /usr/local/xpu*"
-          echo "=== xpu-smi output ==="; /usr/local/xpu/bin/xpu-smi 2>&1 | head -30 || xpu-smi 2>&1 | head -30 || echo "xpu-smi failed"
-          echo "=== /dev devices ==="; ls -l /dev | grep -iE "xpu|klx|p800" || echo "no xpu/klx/p800 device nodes in /dev"
-          echo "=== pip index / env hints ==="; env | grep -iE "PIP_|INDEX|XPU|XRE|PATH=" | head -20
       - uses: ./.github/actions/setup-flaggems
         with:
           backend: ${{ inputs.backend }}
           gpu_check_script: ${{ inputs.gpu_check_script }}
-
-      # TEMP probe: inspect installed torch and flag_gems device. Revert before merge.
-      - name: Probe torch / flag_gems after setup
-        shell: bash
-        run: |
-          source .venv/bin/activate
-          echo "=== pip torch packages ==="; uv pip freeze | grep -iE "^torch|xmlir|xpu|triton|flagtree|flag" || true
-          echo "=== python torch info ==="
-          python3 - <<'PY' 2>&1 | head -40
-          import torch
-          print("torch:", torch.__version__)
-          print("torch file:", torch.__file__)
-          for attr in ("cuda", "xpu"):
-              m = getattr(torch, attr, None)
-              avail = getattr(m, "is_available", lambda: "n/a")() if m else "no attr"
-              print(f"torch.{attr}.is_available:", avail)
-          try:
-              import flag_gems
-              print("flag_gems.device:", flag_gems.device)
-          except Exception as e:
-              print("flag_gems import error:", repr(e))
-          PY
 
       - name: Test alpha ops
         if: ${{ inputs.test_script != '' }}

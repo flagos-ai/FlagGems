@@ -209,7 +209,7 @@ backends:
 
   kunlunxin:
     python: "3.10"
-    triton: triton==3.0.0+a48aedef
+    triton: triton==3.6.0+gitcd2d6c1b
     flagtree: flagtree==0.6.1+xpu3.6
     env:
       PATH: /usr/local/xpu/bin:$PATH

@@ -3,9 +3,6 @@ import torch
 
 import flag_gems
 
-# TEMP probe: trigger test-op.sh to run this file on the kunlunxin runner.
-# Revert before merge.
-
 from . import accuracy_utils as utils
 
 
