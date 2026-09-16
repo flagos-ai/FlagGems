@@ -849,6 +849,8 @@ _FULL_CONFIG = (
     ("linalg_multi_dot.out", linalg_multi_dot_out),
     ("linalg_norm", linalg_norm),
     ("linalg_norm.ord_str", linalg_norm),
+    ("linalg_polar", linalg_polar),
+    ("linalg_polar.out", linalg_polar_out),
     ("linalg_qr", linalg_qr),
     ("linalg_qr.out", linalg_qr_out),
     ("linalg_slogdet", linalg_slogdet),
