@@ -17,7 +17,7 @@
 #
 # Main config: .github/configs/weekly/weekly-test.yaml
 # Per-backend config: .github/configs/weekly/<NAME>.yml
-# vendors: Nvidia,MThreads,KunLunXin,Iluvatar,Ascend,Hygon,Metax,THead,Cambricon
+# vendors: Nvidia,MThreads,KunLunXin,Iluvatar,Ascend,Hygon,Metax,THead,Cambricon,TsingMicro
 name: weekly
 
 permissions:
@@ -273,10 +273,21 @@ jobs:
         shell: bash --login -e -o pipefail {0}
         run: |
           echo "[GPU check] Running GPU availability check script: ${{ matrix.gpu_check_script }}"
-          GPU_OUTPUT=$(bash ${{ matrix.gpu_check_script }})
+          # Best-effort run: some backends (see force_test_gpus below) execute
+          # this only to print the detected GPUs, so a non-zero exit here must
+          # not fail the job.
+          GPU_OUTPUT=$(bash ${{ matrix.gpu_check_script }} || true)
           echo "[GPU check] GPU availability check output:"
           echo "$GPU_OUTPUT"
-          AVAILABLE_GPUS=$(echo "$GPU_OUTPUT" | grep "^Available GPUs:" | cut -d: -f2 | tr -d ' ')
+          if [ "${{ matrix.force_test_gpus }}" = "true" ]; then
+            # This backend deliberately pins the GPUs under test to the
+            # configured test_gpus list (e.g. only the first N cards on a host
+            # that exposes more). Ignore the gpu_check result and use test_gpus.
+            AVAILABLE_GPUS="${{ matrix.test_gpus }}"
+            echo "[GPU check] force_test_gpus=true -> using configured test_gpus"
+          else
+            AVAILABLE_GPUS=$(echo "$GPU_OUTPUT" | grep "^Available GPUs:" | cut -d: -f2 | tr -d ' ')
+          fi
           echo "[GPU check] Available GPUs: ${AVAILABLE_GPUS}"
           echo "AVAILABLE_GPUS=${AVAILABLE_GPUS}" >> $GITHUB_ENV
 
@@ -423,10 +434,21 @@ jobs:
         shell: bash --login -e -o pipefail {0}
         run: |
           echo "[GPU check] Running GPU availability check script: ${{ matrix.gpu_check_script }}"
-          GPU_OUTPUT=$(bash ${{ matrix.gpu_check_script }})
+          # Best-effort run: some backends (see force_test_gpus below) execute
+          # this only to print the detected GPUs, so a non-zero exit here must
+          # not fail the job.
+          GPU_OUTPUT=$(bash ${{ matrix.gpu_check_script }} || true)
           echo "[GPU check] GPU availability check output:"
           echo "$GPU_OUTPUT"
-          AVAILABLE_GPUS=$(echo "$GPU_OUTPUT" | grep "^Available GPUs:" | cut -d: -f2 | tr -d ' ')
+          if [ "${{ matrix.force_test_gpus }}" = "true" ]; then
+            # This backend deliberately pins the GPUs under test to the
+            # configured test_gpus list (e.g. only the first N cards on a host
+            # that exposes more). Ignore the gpu_check result and use test_gpus.
+            AVAILABLE_GPUS="${{ matrix.test_gpus }}"
+            echo "[GPU check] force_test_gpus=true -> using configured test_gpus"
+          else
+            AVAILABLE_GPUS=$(echo "$GPU_OUTPUT" | grep "^Available GPUs:" | cut -d: -f2 | tr -d ' ')
+          fi
           echo "[GPU check] Available GPUs: ${AVAILABLE_GPUS}"
           echo "AVAILABLE_GPUS=${AVAILABLE_GPUS}" >> $GITHUB_ENV
 
