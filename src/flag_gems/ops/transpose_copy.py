@@ -124,10 +124,10 @@ def _has_lazy_metadata(input: torch.Tensor) -> bool:
     return input.is_conj() or is_neg()
 
 
-def _can_use_triton(input: torch.Tensor) -> bool:
+def _can_use_triton_storage(input: torch.Tensor) -> bool:
     if input.device.type == "cpu" or input.layout != torch.strided:
         return False
-    if input.is_quantized or input.is_complex() or _is_float8(input.dtype):
+    if input.is_quantized:
         return False
     if _has_lazy_metadata(input):
         return False
@@ -137,6 +137,28 @@ def _can_use_triton(input: torch.Tensor) -> bool:
         (size - 1) * stride for size, stride in zip(input.shape, input.stride())
     )
     return max_input_offset <= _MAX_TRITON_OFFSET
+
+
+def _can_use_triton(input: torch.Tensor) -> bool:
+    if input.is_complex() or _is_float8(input.dtype):
+        return False
+    return _can_use_triton_storage(input)
+
+
+def _can_use_byte_triton(input: torch.Tensor) -> bool:
+    # FP8 transpose is bitwise, so uint8 pointers avoid FP8 scalar codegen.
+    return (
+        _is_float8(input.dtype)
+        and input.element_size() == 1
+        and _can_use_triton_storage(input)
+    )
+
+
+def _view_as_uint8(input: torch.Tensor) -> torch.Tensor:
+    # dtype views require a logical dimension on some PyTorch builds.
+    if input.ndim == 0:
+        return input.reshape(1).view(torch.uint8)
+    return input.view(torch.uint8)
 
 
 def _fallback_transpose_copy(input: torch.Tensor, dim0: int, dim1: int) -> torch.Tensor:
@@ -222,22 +244,32 @@ def transpose_copy(input: torch.Tensor, dim0: int, dim1: int) -> torch.Tensor:
     if input.numel() == 0:
         return torch.empty(out_shape, dtype=input.dtype, device=input.device)
 
-    if not _can_use_triton(input):
+    use_byte_triton = _can_use_byte_triton(input)
+    if not use_byte_triton and not _can_use_triton(input):
         return _fallback_transpose_copy(input, normalized_dim0, normalized_dim1)
 
     if input.ndim <= 1:
         out = torch.empty(out_shape, dtype=input.dtype, device=input.device)
-        return _launch_copy(input, out)
+        kernel_input = _view_as_uint8(input) if use_byte_triton else input
+        kernel_out = _view_as_uint8(out) if use_byte_triton else out
+        _launch_copy(kernel_input, kernel_out)
+        return out
 
     if normalized_dim0 == normalized_dim1:
         if input.is_contiguous():
             out = torch.empty(out_shape, dtype=input.dtype, device=input.device)
-            return _launch_copy(input, out)
+            kernel_input = _view_as_uint8(input) if use_byte_triton else input
+            kernel_out = _view_as_uint8(out) if use_byte_triton else out
+            _launch_copy(kernel_input, kernel_out)
+            return out
         return _fallback_transpose_copy(input, normalized_dim0, normalized_dim1)
 
     if input.ndim <= _MAX_TILED_RANK:
         out = torch.empty(out_shape, dtype=input.dtype, device=input.device)
-        return _launch_tiled_transpose_copy(
-            input, out, normalized_dim0, normalized_dim1
+        kernel_input = _view_as_uint8(input) if use_byte_triton else input
+        kernel_out = _view_as_uint8(out) if use_byte_triton else out
+        _launch_tiled_transpose_copy(
+            kernel_input, kernel_out, normalized_dim0, normalized_dim1
         )
+        return out
     return _fallback_transpose_copy(input, normalized_dim0, normalized_dim1)

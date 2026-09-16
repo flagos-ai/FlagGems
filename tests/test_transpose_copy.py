@@ -30,15 +30,40 @@ if utils.fp64_is_supported:
     _BASE_DTYPES.append(torch.complex128)
 TRANSPOSE_COPY_DTYPES = list(dict.fromkeys(_BASE_DTYPES))
 
-_MIN_FP8_E4M3FN_CUDA_CAPABILITY = (8, 9)
-
 
 def _float8_dtypes():
-    dtype_names = ["float8_e4m3fn", "float8_e5m2", "float8_e8m0fnu"]
-    if flag_gems.vendor_name == "nvidia" and torch.cuda.is_available():
-        if torch.cuda.get_device_capability() < _MIN_FP8_E4M3FN_CUDA_CAPABILITY:
-            dtype_names.remove("float8_e4m3fn")
-    return [getattr(torch, name) for name in dtype_names if hasattr(torch, name)]
+    dtype_names = [
+        "float8_e4m3fn",
+        "float8_e4m3fnuz",
+        "float8_e5m2",
+        "float8_e5m2fnuz",
+        "float8_e8m0fnu",
+    ]
+    dtype_params = []
+    for name in dtype_names:
+        if not hasattr(torch, name):
+            continue
+        dtype = getattr(torch, name)
+        try:
+            input_probe = torch.empty(1, dtype=torch.uint8, device=flag_gems.device)
+            input_probe.view(dtype)
+            output_probe = torch.empty(1, dtype=dtype, device=flag_gems.device)
+            output_probe.view(torch.uint8)
+        except (NotImplementedError, RuntimeError, TypeError) as error:
+            dtype_params.append(
+                pytest.param(
+                    dtype,
+                    marks=pytest.mark.skip(
+                        reason=(
+                            f"{flag_gems.vendor_name} does not support {dtype} "
+                            f"byte storage views: {error}"
+                        )
+                    ),
+                )
+            )
+        else:
+            dtype_params.append(dtype)
+    return dtype_params
 
 
 FLOAT8_DTYPES = _float8_dtypes()
@@ -50,6 +75,16 @@ TRANSPOSE_COPY_CASES = [
     ((2, 3, 4, 5), -3, -1),
     ((1, 7, 1), 1, -1),
     ((0, 3, 5), 0, 2),
+]
+
+TRANSPOSE_COPY_FLOAT8_CASES = [
+    ((), 0, 0, False),
+    ((7,), 0, 0, False),
+    ((4, 6), 0, 1, False),
+    ((2, 3, 4), 0, -1, False),
+    ((2, 3, 4, 5), 1, -1, False),
+    ((2, 3, 4), 1, 1, False),
+    ((2, 3, 5), 0, -1, True),
 ]
 
 
@@ -73,16 +108,6 @@ def _assert_copy_layout(result, reference, input):
     assert result.stride() == reference.stride()
     assert result.is_contiguous()
     assert not torch._C._is_alias_of(input, result)
-
-
-def _skip_if_native_clone_is_unsupported(input, dim0, dim1):
-    try:
-        input.transpose(dim0, dim1).clone(memory_format=torch.contiguous_format)
-    except (NotImplementedError, RuntimeError) as error:
-        message = str(error).lower()
-        if "not implemented" not in message and "not support" not in message:
-            raise
-        pytest.skip(f"backend clone/copy does not support {input.dtype}: {error}")
 
 
 @pytest.mark.transpose_copy
@@ -154,18 +179,26 @@ def test_transpose_copy_invalid_dims(shape, dim0, dim1):
 
 
 @pytest.mark.transpose_copy
-@pytest.mark.skipif(
-    flag_gems.device != "cuda" or not torch.cuda.is_available() or not FLOAT8_DTYPES,
-    reason="float8 coverage requires a CUDA-compatible backend and PyTorch float8",
-)
+@pytest.mark.parametrize("shape,dim0,dim1,non_contiguous", TRANSPOSE_COPY_FLOAT8_CASES)
 @pytest.mark.parametrize("dtype", FLOAT8_DTYPES)
-def test_accuracy_transpose_copy_float8(dtype):
-    input = torch.arange(24, dtype=torch.uint8, device=flag_gems.device).reshape(4, 6)
-    input = input.view(dtype)
-    _skip_if_native_clone_is_unsupported(input, 0, 1)
-    ref_input = utils.to_reference(input)
-    reference = torch.ops.aten.transpose_copy.int(ref_input, 0, 1)
+def test_accuracy_transpose_copy_float8(shape, dim0, dim1, non_contiguous, dtype):
+    base_shape = (shape[0] * 2, *shape[1:]) if non_contiguous else shape
+    input_bytes = torch.arange(
+        math.prod(base_shape), dtype=torch.uint8, device=flag_gems.device
+    ).reshape(base_shape)
+    if non_contiguous:
+        input_bytes = input_bytes[::2]
+    input = (
+        input_bytes.reshape(1).view(dtype).reshape(())
+        if input_bytes.ndim == 0
+        else input_bytes.view(dtype)
+    )
+    reference = (
+        utils.to_reference(input_bytes)
+        .transpose(dim0, dim1)
+        .clone(memory_format=torch.contiguous_format)
+    )
 
-    result = flag_gems.transpose_copy(input, 0, 1)
+    result = flag_gems.transpose_copy(input, dim0, dim1)
 
     _assert_copy_layout(result.view(torch.uint8), reference.view(torch.uint8), input)

@@ -45,9 +45,12 @@ class TransposeCopyBenchmark(base.Benchmark):
 
 @pytest.mark.transpose_copy
 def test_transpose_copy():
+    dtypes = consts.FLOAT_DTYPES + [
+        dtype for dtype in consts.FP8_DTYPES if dtype is not None
+    ]
     bench = TransposeCopyBenchmark(
         op_name="transpose_copy",
         torch_op=torch.ops.aten.transpose_copy.int,
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=dtypes,
     )
     bench.run()
