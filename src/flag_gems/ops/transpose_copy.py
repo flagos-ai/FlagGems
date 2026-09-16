@@ -19,6 +19,7 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
+from flag_gems.utils.tensor_wrapper import StridedBuffer
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +28,154 @@ _BLOCK_DIM0 = 32
 _BLOCK_DIM1 = 32
 _MAX_TILED_RANK = 4
 _MAX_TRITON_OFFSET = torch.iinfo(torch.int32).max
+
+
+@triton.jit
+def _complex_copy_kernel(
+    input,
+    out,
+    n_words,
+    SHAPE: tl.constexpr,
+    STRIDES: tl.constexpr,
+    WORDS: tl.constexpr,
+    CONJ: tl.constexpr,
+    NEG: tl.constexpr,
+    SIGN_MASK: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    offsets = tl.program_id(0).to(tl.int64) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    word = offsets % WORDS
+    index = offsets // WORDS
+    source = tl.full((BLOCK_SIZE,), 0, tl.int64)
+    # Older vendor compilers require explicit access to the constexpr payload.
+    for dim in tl.static_range(len(SHAPE) - 1, -1, -1):
+        source += (index % SHAPE.value[dim]) * STRIDES.value[dim]
+        index //= SHAPE.value[dim]
+    values = tl.load(input + source * WORDS + word, offsets < n_words, other=0)
+    # The last word of each IEEE component contains its sign bit.
+    flip = ((word == WORDS // 2 - 1) & NEG) | ((word == WORDS - 1) & (NEG != CONJ))
+    values ^= tl.where(flip, SIGN_MASK, 0).to(values.dtype)
+    tl.store(out + offsets, values, offsets < n_words)
+
+
+@triton.jit
+def _complex_transpose_tiled_kernel(
+    input,
+    out,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    INPUT_STRIDES: tl.constexpr,
+    OUTPUT_STRIDES: tl.constexpr,
+    OTHER_SHAPE: tl.constexpr,
+    OTHER_INPUT_STRIDES: tl.constexpr,
+    OTHER_OUTPUT_STRIDES: tl.constexpr,
+    WORDS: tl.constexpr,
+    CONJ: tl.constexpr,
+    NEG: tl.constexpr,
+    SIGN_MASK: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    pid = tl.program_id(0).to(tl.int64)
+    tiles_n = tl.cdiv(N, BLOCK)
+    tiles = tl.cdiv(M, BLOCK) * tiles_n
+    batch = pid // tiles
+    tile = pid % tiles
+    input_base = tl.full((), 0, tl.int64)
+    output_base = tl.full((), 0, tl.int64)
+    for dim in tl.static_range(len(OTHER_SHAPE) - 1, -1, -1):
+        coord = batch % OTHER_SHAPE.value[dim]
+        batch //= OTHER_SHAPE.value[dim]
+        input_base += coord * OTHER_INPUT_STRIDES.value[dim]
+        output_base += coord * OTHER_OUTPUT_STRIDES.value[dim]
+    m = tile // tiles_n * BLOCK + tl.arange(0, BLOCK)
+    n_words = tl.arange(0, BLOCK * WORDS)
+    n = tile % tiles_n * BLOCK + n_words // WORDS
+    word = n_words % WORDS
+    source = (
+        input_base
+        + m[:, None] * INPUT_STRIDES.value[0]
+        + n[None, :] * INPUT_STRIDES.value[1]
+    )
+    values = tl.load(
+        input + source * WORDS + word[None, :],
+        (m[:, None] < M) & (n[None, :] < N),
+        other=0,
+    )
+    flip = ((word == WORDS // 2 - 1) & NEG) | ((word == WORDS - 1) & (NEG != CONJ))
+    values ^= tl.where(flip[None, :], SIGN_MASK, 0).to(values.dtype)
+    target = (
+        output_base
+        + n[:, None] * OUTPUT_STRIDES.value[0]
+        + m[None, :] * OUTPUT_STRIDES.value[1]
+    )
+    tl.store(
+        out + target * WORDS + word[:, None],
+        tl.trans(values, 1, 0),
+        (n[:, None] < N) & (m[None, :] < M),
+    )
+
+
+def _launch_complex_copy(input, out, dim0, dim1):
+    # Integer pointers preserve all bits and do not require complex/FP64 arithmetic.
+    word_bits = 16 if input.element_size() == 4 else 32
+    if not _has_lazy_metadata(input) and input.element_size() <= 8:
+        word_bits = input.element_size() * 8
+    word_dtype = {16: torch.uint16, 32: torch.uint32, 64: torch.uint64}[word_bits]
+    words = input.element_size() * 8 // word_bits
+    # Keep tensor metadata available to backend launchers and profilers.
+    kernel_input = StridedBuffer(
+        input,
+        shape=(*input.shape, words),
+        strides=(*(stride * words for stride in input.stride()), 1),
+        dtype=word_dtype,
+    )
+    kernel_out = StridedBuffer(
+        out,
+        shape=(*out.shape, words),
+        strides=(*(stride * words for stride in out.stride()), 1),
+        dtype=word_dtype,
+    )
+    with torch_device_fn.device(input.device):
+        if dim0 != dim1:
+            other_dims = [dim for dim in range(input.ndim) if dim not in (dim0, dim1)]
+            grid = (
+                triton.cdiv(input.shape[dim0], _BLOCK_DIM0)
+                * triton.cdiv(input.shape[dim1], _BLOCK_DIM1)
+                * (input.numel() // input.shape[dim0] // input.shape[dim1]),
+            )
+            _complex_transpose_tiled_kernel[grid](
+                kernel_input,
+                kernel_out,
+                input.shape[dim0],
+                input.shape[dim1],
+                (input.stride(dim0), input.stride(dim1)),
+                (out.stride(dim0), out.stride(dim1)),
+                tuple(input.shape[dim] for dim in other_dims),
+                tuple(input.stride(dim) for dim in other_dims),
+                tuple(out.stride(dim) for dim in other_dims),
+                words,
+                input.is_conj(),
+                input.is_neg(),
+                (1 << (word_bits - 1)) if _has_lazy_metadata(input) else 0,
+                _BLOCK_DIM0,
+            )
+        else:
+            shape = (input.numel(),) if input.is_contiguous() else tuple(input.shape)
+            strides = (1,) if input.is_contiguous() else input.stride()
+            n_words = input.numel() * words
+            _complex_copy_kernel[(triton.cdiv(n_words, _BLOCK_SIZE),)](
+                kernel_input,
+                kernel_out,
+                n_words,
+                shape,
+                strides,
+                words,
+                input.is_conj(),
+                input.is_neg(),
+                (1 << (word_bits - 1)) if _has_lazy_metadata(input) else 0,
+                _BLOCK_SIZE,
+            )
+    return out
 
 
 @triton.jit
@@ -243,6 +392,14 @@ def transpose_copy(input: torch.Tensor, dim0: int, dim1: int) -> torch.Tensor:
         )
     if input.numel() == 0:
         return torch.empty(out_shape, dtype=input.dtype, device=input.device)
+
+    if (
+        input.is_complex()
+        and input.device.type != "cpu"
+        and input.layout == torch.strided
+    ):
+        out = torch.empty(out_shape, dtype=input.dtype, device=input.device)
+        return _launch_complex_copy(input, out, normalized_dim0, normalized_dim1)
 
     use_byte_triton = _can_use_byte_triton(input)
     if not use_byte_triton and not _can_use_triton(input):

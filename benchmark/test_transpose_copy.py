@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 TRANSPOSE_COPY_CASES = [
@@ -52,5 +54,39 @@ def test_transpose_copy():
         op_name="transpose_copy",
         torch_op=torch.ops.aten.transpose_copy.int,
         dtypes=dtypes,
+    )
+    bench.run()
+
+
+def _complex_benchmark_params():
+    params = []
+    for name in ("complex32", "complex64", "complex128"):
+        if not hasattr(torch, name):
+            continue
+        dtype = getattr(torch, name)
+        marks = []
+        try:
+            probe = torch.empty((2, 3), dtype=dtype, device=flag_gems.device)
+            torch.ops.aten.transpose_copy.int(probe, 0, 1)
+        except (NotImplementedError, RuntimeError, TypeError) as error:
+            if not any(
+                text in str(error).lower()
+                for text in ("not support", "unsupported", "not implemented")
+            ):
+                raise
+            marks.append(
+                pytest.mark.skip(reason=f"Native {name} benchmark unavailable: {error}")
+            )
+        params.append(pytest.param(dtype, marks=marks, id=name))
+    return params
+
+
+@pytest.mark.transpose_copy
+@pytest.mark.parametrize("dtype", _complex_benchmark_params())
+def test_transpose_copy_complex(dtype):
+    bench = TransposeCopyBenchmark(
+        op_name="transpose_copy",
+        torch_op=torch.ops.aten.transpose_copy.int,
+        dtypes=[dtype],
     )
     bench.run()
