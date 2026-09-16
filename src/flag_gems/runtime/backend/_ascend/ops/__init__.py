@@ -131,6 +131,7 @@ from .sort import sort
 from .sparse_sampled_addmm import sparse_sampled_addmm, sparse_sampled_addmm_out
 from .stack import stack
 from .threshold import threshold, threshold_backward
+from .topk import topk
 from .triu import triu
 from .unique import _unique2
 from .unsafe_index import unsafe_index
@@ -304,6 +305,7 @@ __all__ = [
     "stack",
     "threshold",
     "threshold_backward",
+    "topk",
     "triu",
     "unsafe_index",
     "upsample_linear1d_backward",
