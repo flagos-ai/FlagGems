@@ -32,14 +32,17 @@ def empty_kernel(
     n_elements,
     BLOCK_SIZE: tl.constexpr,
 ):
-    """Empty kernel that does nothing - just allocates uninitialized memory."""
+    """Zero-fills the output buffer.
+
+    aten::empty only promises uninitialized memory, so zeroing is stricter
+    than the contract requires. It is load-bearing rather than incidental,
+    though: parts of the stack allocate state buffers through empty() and rely
+    on the zero-fill. Read the NOTE in empty() before touching this store.
+    """
     pid = tle.program_id(axis=0)
     block_start = pid * BLOCK_SIZE
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
     mask = offsets < n_elements
-    # Empty means uninitialized, so we don't write anything
-    # But we need at least one store to make the kernel valid
-    # Store a dummy value that the user will ignore anyway
     tl.store(output_ptr + offsets, 0.0, mask=mask)
 
 
@@ -52,7 +55,13 @@ def empty(
     pin_memory=None,
     memory_format=None,
 ):
-    """Returns a tensor filled with uninitialized data."""
+    """Returns a tensor whose contents callers must treat as uninitialized.
+
+    Matches aten::empty's contract, which promises nothing about the contents.
+    This implementation happens to zero-fill via empty_kernel (except for the
+    complex-dtype path below), and some consumers have come to depend on that;
+    see the NOTE further down.
+    """
     logger.debug("GEMS EMPTY")
     if dtype is None:
         dtype = torch.get_default_dtype()
@@ -81,9 +90,13 @@ def empty(
         device=device,
         pin_memory=pin_memory,
     )
-    # Skip triton kernel for complex dtypes — triton cannot canonicalize complex
-    # pointer types on some backends, and empty() returns uninitialized memory
-    # anyway so skipping the store is functionally safe for all backends.
+    # Skip the triton kernel for complex dtypes: triton cannot canonicalize
+    # complex pointer types on some backends. This is a hard constraint, not a
+    # choice. It does mean complex tensors come back genuinely uninitialized
+    # while every other dtype is zero-filled, so a consumer relying on the
+    # zero-fill described in the NOTE below would not get it here. That is
+    # consistent with aten::empty's contract, and no such complex-dtype
+    # consumer is known -- but it has not been audited either.
     if dtype.is_complex:
         return out
     # NOTE: removing this zero-store looks like an easy win (~6% of decode GPU
