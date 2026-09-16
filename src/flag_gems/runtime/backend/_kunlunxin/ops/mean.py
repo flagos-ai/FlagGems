@@ -25,8 +25,13 @@ from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils import triton_lang_extension as ext
 
 from ..utils.block_size_utils import get_block_size_1d
+from .sum import sum_dim as _sum_dim_tle
 
 logger = logging.getLogger(__name__)
+
+# Dtypes the TLE sum path (moved onto tle.gpu upstream, see `sum.py`) can carry.
+# Outside this set `mean_dim` keeps the original dim_compress + pointer path.
+_TLE_FAST_DTYPES = (torch.float16, torch.float32, torch.bfloat16)
 
 
 @libentry()
@@ -169,6 +174,37 @@ def mean_dim(x, dim, keepdim=False, *, dtype=None):
 
     shape = list(x.shape)
     dim = [d % x.ndim for d in dim]
+
+    # --- TLE fast path (D-022) -----------------------------------------------
+    # A single-axis reduce over a contiguous TLE-supported dtype does not need
+    # `dim_compress`: the sum path already has a row kernel for the last axis
+    # and a two-pass fold for a middle one.  `dim_compress` would permute and
+    # materialise the whole tensor first — on the 1G f32 along dim=1 case that
+    # is 5.69 ms of copy plus 2.50 ms of reduce, against 2.39 ms for the entire
+    # aten call.  Anything outside the gate below falls through to the original
+    # path, unchanged.
+    if len(dim) == 1 and x.is_contiguous() and x.dtype in _TLE_FAST_DTYPES:
+        N_tle = shape[dim[0]]
+        if N_tle > 1 and x.numel() // N_tle > 1:
+            try:
+                # One launch total: `scale` is folded into the sum kernel before its
+                # store, so `mean = sum * (1/N)` needs no second elementwise op. That
+                # matters here: a gem-dispatched elementwise op costs a **fixed ~92µs
+                # per call** on this machine regardless of element count (measured
+                # 2026-09-16 on (64,64) and (4096,4096) alike), which is more than the
+                # whole TLE row-reduce it would complement.
+                # Accumulation stays fp32 (aten opmath) and the cast happens after the
+                # scale, in the kernel's store — the same order torch.mean uses.
+                out = _sum_dim_tle(
+                    x, dim=dim, keepdim=keepdim, dtype=dtype, scale=1.0 / N_tle
+                )
+                logger.debug("GEMS_KUNLUNXIN MEAN_DIM tle fast path N=%d", N_tle)
+                return out
+            except Exception as exc:  # noqa: BLE001 — any gap re-uses the old path
+                logger.debug(
+                    "GEMS_KUNLUNXIN MEAN_DIM tle fast path unavailable (%s); "
+                    "falling back to dim_compress", exc
+                )
 
     # Compress reduced dims to the trailing dims. The permutation is
     # materialized by the gem's own copy (dim_compress -> permute+contiguous ->
