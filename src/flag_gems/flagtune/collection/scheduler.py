@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Operator-independent multi-GPU benchmark scheduling and DB coordination.
 
 Inputs:
@@ -674,8 +688,8 @@ def run_shape_config_benchmarks(
         shape_configs: Cases expressed as :class:`BenchmarkCase`, ``(shape,
             configs)`` tuples, or bare shapes.
         operator_config: Data-driven operator YAML used by the generic executor.
-        dtypes: Ordered input tensor dtypes. One value broadcasts to all
-            ``benchmark.invoke.args`` entries.
+        dtypes: Ordered benchmark tensor-recipe dtypes. One value broadcasts to
+            every recipe; variant-specific scalar arguments consume no dtype.
         warmup: Non-negative candidate-config warmup duration in milliseconds.
         iterations: Positive candidate-config measurement duration in
             milliseconds.
@@ -745,12 +759,13 @@ def run_shape_config_benchmarks(
     config_path = Path(operator_config).expanduser().resolve()
     from flag_gems.flagtune.contracts.operator import load_operator_benchmark_spec
 
-    input_count = len(load_operator_benchmark_spec(config_path).benchmark.args)
+    input_count = len(load_operator_benchmark_spec(config_path).benchmark.tensors)
     if len(requested) == 1:
         requested *= input_count
     elif len(requested) != input_count:
         raise BenchmarkError(
-            f"dtypes has {len(requested)} values but invoke.args has {input_count} inputs"
+            f"dtypes has {len(requested)} values but benchmark.tensors has "
+            f"{input_count} inputs"
         )
     tasks = _prepare_tasks(shape_configs, config_path)
     work_path = Path(work_dir).expanduser().resolve()

@@ -481,7 +481,7 @@ def unique_consecutive(
     Returns:
         (Tensor, Tensor (optional), Tensor (optional)): output, inverse_indices, counts
     """
-    logger.debug("GEMS UNIQUE_CONSECUTIVE")
+    logger.debug("GEMS_KUNLUNXIN UNIQUE_CONSECUTIVE")
 
     if dim is not None:
         raise NotImplementedError(
