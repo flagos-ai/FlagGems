@@ -97,6 +97,7 @@ jobs:
     runs-on: klx-p800-1
     container:
       image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin-xre5.37.1:2.1.2
+      options: --device /dev/xpu0 --device /dev/xpuctrl
     concurrency:
       group: >-
         op-test-${{ inputs.backend }}-${{ github.event.pull_request.number || github.ref }}
@@ -119,9 +120,7 @@ jobs:
       - uses: ./.github/actions/setup-flaggems
         with:
           backend: ${{ inputs.backend }}
-          # TEMP: gpu_check disabled to let the job run to completion for
-          # diagnosis. Restore to ${{ inputs.gpu_check_script }} before merge.
-          gpu_check_script: ''
+          gpu_check_script: ${{ inputs.gpu_check_script }}
 
       # TEMP probe: inspect installed torch and flag_gems device. Revert before merge.
       - name: Probe torch / flag_gems after setup
