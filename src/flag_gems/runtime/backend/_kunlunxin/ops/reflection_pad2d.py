@@ -21,30 +21,11 @@ import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 
+from ..utils.tle_copy import tle_copy
+
 logger = logging.getLogger(__name__)
 
 
-# Flat 1D kernel over the ENTIRE output (all batches at once).
-#
-# ROOT CAUSE of the old slowness: the previous kernel wrapped every store index
-# with `% HW_out` ("modulo wrap") to avoid masked stores. On KunlunXin XPU that
-# runtime modulo defeats OffsetAnalysis, so EVERY load/store degrades to the
-# discrete per-element path (~1.2 GB/s). Even a pure contiguous copy written with
-# `%total` measured 228ms / 1.2 GB/s vs 0.49ms / 578 GB/s for the mask-based
-# copy — a ~470x penalty (see reflection_pad2d_perf_fix.md).
-#
-# Fix: flatten (b, h_out, w_out) into one linear output index `o` and store to
-# `o` directly (provably stride-1 -> block DMA). A single boolean mask
-# `o < total_out` handles the tail. Because the layout is one flat contiguous
-# buffer, the only masked-out threads sit at the very end (o >= total_out) and
-# would write PAST the whole buffer — so even if a masked store were not
-# suppressed it could not corrupt a valid element; and it is in fact suppressed
-# here (verified maxdiff=0 on all shapes, including a tail-masked shape). This
-# removes the "adjacent batch corruption" hazard that motivated the modulo wrap.
-#
-# The reflected input index is still a data-dependent gather (structural XPU
-# wall), and the flat-index decode needs integer div/mod (slow on XPU), so the
-# big shape stays ~40ms; but that is ~4.5x faster than the 183ms modulo version.
 @triton.jit
 def reflection_pad2d_kernel(
     in_ptr,
@@ -63,7 +44,6 @@ def reflection_pad2d_kernel(
     o = pid * BLOCK + tl.arange(0, BLOCK)
     mask = o < total_out
 
-    # Decode flat output index -> (batch, h_out, w_out)
     b = o // HW_out
     rem = o % HW_out
     h_idx = rem // W_out
@@ -96,6 +76,191 @@ def copy_tensor_kernel(in_ptr, out_ptr, total, BLOCK: tl.constexpr):
     mask = o < total
     vals = tl.load(in_ptr + o, mask=mask)
     tl.store(out_ptr + o, vals, mask=mask)
+
+
+@triton.jit
+def pad2d_hside_kernel(
+    in_ptr,
+    out_ptr,
+    H_in: tl.constexpr,
+    W_in: tl.constexpr,
+    pad_left: tl.constexpr,
+    pad_top: tl.constexpr,
+    pad_bottom: tl.constexpr,
+    W_out: tl.constexpr,
+    HW_out: tl.constexpr,
+    HW_in: tl.constexpr,
+    total_h,
+    BLOCK: tl.constexpr,
+):
+    pid = tl.program_id(axis=0)
+    o = pid * BLOCK + tl.arange(0, BLOCK)
+    m = o < total_h
+    oc = tl.minimum(o, total_h - 1)
+
+    R = pad_top + pad_bottom
+    RW = R * W_out
+    # All divisors below are constexpr -> compile-time magic-number division
+    # (a runtime divisor on XPU costs ~30 instructions: the flat kernel's
+    # measured soft-div is the dominant cost of the gather path).
+    b = oc // RW
+    rem = oc - b * RW
+    r = rem // W_out
+    w = rem - r * W_out
+
+    # Output row: top region rows [0, pad_top), bottom region rows
+    # [H_in+pad_top, H_out).
+    h_out = tl.where(r < pad_top, r, H_in + r)
+
+    # Reflected height index (single-reflection exact: host validates
+    # pad_top/pad_bottom < H_in, so |h_out - pad_top| <= 2*(H_in-1)).
+    y = h_out - pad_top
+    t_h = tl.abs(y)
+    pH = 2 * (H_in - 1)
+    ih = tl.where(t_h < H_in, t_h, pH - t_h)
+
+    # Reflected width index (same single-reflection argument for pad_left/right).
+    x = w - pad_left
+    t_w = tl.abs(x)
+    pW = 2 * (W_in - 1)
+    iw = tl.where(t_w < W_in, t_w, pW - t_w)
+
+    vals = tl.load(in_ptr + b * HW_in + ih * W_in + iw)
+    tl.store(out_ptr + b * HW_out + h_out * W_out + w, vals, mask=m)
+
+
+@triton.jit
+def pad2d_wside_kernel(
+    in_ptr,
+    out_ptr,
+    H_in: tl.constexpr,
+    W_in: tl.constexpr,
+    pad_left: tl.constexpr,
+    pad_right: tl.constexpr,
+    pad_top: tl.constexpr,
+    W_out: tl.constexpr,
+    HW_out: tl.constexpr,
+    HW_in: tl.constexpr,
+    total_w,
+    BLOCK: tl.constexpr,
+):
+    pid = tl.program_id(axis=0)
+    o = pid * BLOCK + tl.arange(0, BLOCK)
+    m = o < total_w
+    oc = tl.minimum(o, total_w - 1)
+
+    P = pad_left + pad_right
+    row = oc // P
+    j = oc - row * P
+    b = row // H_in
+    y = row - b * H_in
+
+    # output column (left segment [0, pad_left), right segment
+    # [pad_left+W_in, W_out)); source column reversed, exact when
+    # pad_left/pad_right < W_in (host-validated).
+    w_out = tl.where(j < pad_left, j, pad_left + W_in + (j - pad_left))
+    src = tl.where(j < pad_left, pad_left - j, W_in - 2 - (j - pad_left))
+
+    vals = tl.load(in_ptr + b * HW_in + y * W_in + src)
+    tl.store(out_ptr + b * HW_out + (pad_top + y) * W_out + w_out, vals, mask=m)
+
+
+@triton.jit
+def interior_copy_kernel(
+    in_ptr,
+    out_ptr,
+    HW_out,
+    interior_off,
+    H_in: tl.constexpr,
+    W_in: tl.constexpr,
+    W_out: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    # Interior block, one program per (row, column-block): the interior is
+    # H_in*W_in elements per batch laid out as H_in rows of W_in at row stride
+    # W_out, NOT one contiguous run. Grid axis 0 = b*H_in + y and axis 1 =
+    # column blocks, so every address is affine in the program ids -- no
+    # runtime div/mod (H_in constexpr -> compile-time magic-number division;
+    # a runtime divisor on XPU costs ~30 instructions, see
+    # pad2d_hside_kernel). The tail is masked exactly like copy_tensor_kernel
+    # (affine indices + mask, verified maxdiff=0).
+    r = tl.program_id(axis=0)
+    b = r // H_in
+    y = r - b * H_in
+    o = tl.program_id(axis=1) * BLOCK + tl.arange(0, BLOCK)
+    mask = o < W_in
+    vals = tl.load(in_ptr + b * (H_in * W_in) + y * W_in + o, mask=mask)
+    tl.store(out_ptr + b * HW_out + y * W_out + interior_off + o, vals, mask=mask)
+
+
+def _launch_reflection_pad2d_split(
+    x, out, pad_left, pad_right, pad_top, pad_bottom, H_in, W_in, H_out, W_out, B
+):
+    """Big-shape split: copy-family recipe (tle SDNN row transfer, Triton
+    fallback) for the contiguous interior + two small Triton kernels for the
+    H-side (top/bottom rows) and W-side (interior left/right columns) borders.
+    No `torch.ops.aten.slice` / `_copy_from` here: slice is intercepted by gems
+    and `_copy_from` lands on the XPU fallback, so both are replaced by the
+    same copy-family path as alias_copy / lift_out (tle first, pointwise
+    fallback)."""
+    HW_out = H_out * W_out
+    HW_in = H_in * W_in
+    interior_off = pad_top * W_out + pad_left
+    with torch_device_fn.device(x.device):
+        # 1. Interior block: B*H_in rows of W_in elements at row stride W_out.
+        interior = torch.as_strided(
+            out,
+            size=(B, H_in, W_in),
+            stride=(HW_out, W_out, 1),
+            storage_offset=interior_off,
+        )
+        if not tle_copy(x, interior):
+            grid = (B * H_in, triton.cdiv(W_in, 4096))
+            interior_copy_kernel[grid](
+                x,
+                out,
+                HW_out,
+                interior_off,
+                H_in,
+                W_in,
+                W_out,
+                BLOCK=4096,
+            )
+        # 2. Top/bottom rows.
+        if pad_top > 0 or pad_bottom > 0:
+            total_h = B * (pad_top + pad_bottom) * W_out
+            pad2d_hside_kernel[(triton.cdiv(total_h, 4096),)](
+                x,
+                out,
+                H_in,
+                W_in,
+                pad_left,
+                pad_top,
+                pad_bottom,
+                W_out,
+                HW_out,
+                HW_in,
+                total_h,
+                BLOCK=4096,
+            )
+        # 3. Interior rows' left/right columns.
+        if pad_left > 0 or pad_right > 0:
+            total_w = B * H_in * (pad_left + pad_right)
+            pad2d_wside_kernel[(triton.cdiv(total_w, 4096),)](
+                x,
+                out,
+                H_in,
+                W_in,
+                pad_left,
+                pad_right,
+                pad_top,
+                W_out,
+                HW_out,
+                HW_in,
+                total_w,
+                BLOCK=4096,
+            )
+    return out
 
 
 def launch_reflection_pad2d(input: torch.Tensor, padding, out: torch.Tensor = None):
@@ -165,13 +330,29 @@ def launch_reflection_pad2d(input: torch.Tensor, padding, out: torch.Tensor = No
             copy_tensor_kernel[grid](x, out, total, BLOCK=BLOCK)
         return out
 
+    HW_out = H_out * W_out
+    HW_in = H_in * W_in
+    total_out = B * HW_out
+
+    if total_out >= 1048576:
+        return _launch_reflection_pad2d_split(
+            x,
+            out,
+            pad_left,
+            pad_right,
+            pad_top,
+            pad_bottom,
+            H_in,
+            W_in,
+            H_out,
+            W_out,
+            B,
+        )
+
     # BLOCK=1024 is the best all-round tile on XPU: small shapes avoid the
     # per-program waste of a huge block, while medium/large shapes still get
     # enough work per program to stay off the launch floor (measured sweep).
     BLOCK = 1024
-    HW_out = H_out * W_out
-    HW_in = H_in * W_in
-    total_out = B * HW_out
     grid = (triton.cdiv(total_out, BLOCK),)
     with torch_device_fn.device(x.device):
         reflection_pad2d_kernel[grid](

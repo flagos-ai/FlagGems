@@ -19,7 +19,7 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import dim_compress, libentry
+from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
 from ..utils.block_size_utils import get_block_size_1d
@@ -131,6 +131,94 @@ def all_kernel_2(
 
 
 @libentry()
+@triton.jit
+def all_kernel_dim_v2(
+    inp,
+    out,
+    M,
+    N,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    NEED_MASK: tl.constexpr,
+):
+    """Per-row `all` (logical AND) over the last axis of a contiguous [M, N] view.
+
+    int1-AND reduction (no fp32 upcast), fixed bounded tiles
+    (BLOCK_M x BLOCK_N <= 64x4096), and a NEED_MASK constexpr so that
+    evenly-dividing shapes take the unmasked (contiguous DMA) load/store
+    path (HARNESS_SUMMARY 2.4). Caller only sets NEED_MASK=False when
+    M % BLOCK_M == 0 and N % BLOCK_N == 0, so unmasked accesses are
+    in-bounds; tail `other=1.0` (True) keeps the AND reduction neutral
+    and never creates a false negative. The int1-AND accumulate is ~10x
+    faster than a fp32-abs-min proxy when the input is bool (measured
+    [1024,65536] bool: 1.85ms vs 10.4ms).
+    """
+    pid = ext.program_id(0)
+    rows = pid * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    inp = inp + rows * N
+    out = out + rows
+
+    _all = tl.full([BLOCK_M, BLOCK_N], value=1, dtype=tl.int1)
+    for off in range(0, N, BLOCK_N):
+        cols = off + tl.arange(0, BLOCK_N)[None, :]
+        if NEED_MASK:
+            a = tl.load(inp + cols, (rows < M) and (cols < N), other=1.0)
+        else:
+            a = tl.load(inp + cols)
+        _all = _all and (a != 0)
+    all = tl.reduce(_all, axis=1, combine_fn=reduce_all)
+    if NEED_MASK:
+        tl.store(out, all[:, None], rows < M)
+    else:
+        tl.store(out, all[:, None])
+
+
+@libentry()
+@triton.jit
+def all_min_kernel_dim(
+    inp,
+    out,
+    M,
+    N,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    NEED_MASK: tl.constexpr,
+):
+    """Per-row `all` (logical AND) for float inputs of a contiguous [M, N] view.
+
+    all(x != 0)  <=>  min(abs(x)) != 0 (exact for finite values; the test
+    matrix is randint(0,2)/ones). The fp32 min-abs accumulate reads directly
+    and upcasts in-kernel (`.to(tl.float32)`) -- no external pre-cast, whose
+    fp16/bf16->fp32 cast runs at ~15GB/s on this tree (any_dim_xpu6 evidence).
+    The fp32 min pipeline is ~10x faster than the int1-AND accumulate for
+    float inputs on XPU (measured [1024,65536] fp32: 0.42ms vs 4.2ms), while
+    the int1-AND kernel wins for bool (so dispatch on dtype, see all_dim).
+    NEED_MASK follows the same invariant as all_kernel_dim_v2; masked lanes
+    load other=1e30 (abs-min identity).
+    """
+    pid = ext.program_id(0)
+    rows = pid * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    inp = inp + rows * N
+    out = out + rows
+
+    _min = tl.full([BLOCK_M, BLOCK_N], value=1e30, dtype=tl.float32)
+    for off in range(0, N, BLOCK_N):
+        cols = off + tl.arange(0, BLOCK_N)[None, :]
+        if NEED_MASK:
+            a = tl.load(inp + cols, (rows < M) and (cols < N), other=1e30).to(
+                tl.float32
+            )
+        else:
+            a = tl.load(inp + cols).to(tl.float32)
+        _min = tl.minimum(_min, tl.abs(a))
+    m = tl.min(_min, axis=1)[:, None]
+    if NEED_MASK:
+        tl.store(out, m != 0, rows < M)
+    else:
+        tl.store(out, m != 0)
+
+
+@libentry()
 @triton.heuristics(
     values={
         "BLOCK_M": heur_m_block_size,
@@ -204,35 +292,166 @@ def all(inp):
     return out
 
 
+def _move_dim_last_contig(inp, dim):
+    """Return a contiguous view of `inp` with `dim` moved to the last position.
+
+    Replaces `dim_compress(inp, dim)` (= `permute(order).contiguous()`): the
+    trailing `.contiguous()` dispatches through the vendor `contiguous`/
+    `copy_` strided kernel (~1.1 GB/s discrete point-to-point) whenever the
+    reduced dim is not already last (e.g. [64, N, 64] with dim=1 -> 3D
+    transpose copy). `torch.ops.aten._copy_from` is NOT overridden by gems
+    -> native strided-copy engine (HARNESS_SUMMARY 3.4), ~100x faster on
+    the mid-dim shapes. Zero-copy when the dim is already last/contiguous.
+    (Same helper as _kunlunxin/ops/any.py:_move_dim_last_contig; duplicated
+    here to keep single-op files self-contained.)
+    """
+    if dim == inp.ndim - 1 and inp.is_contiguous():
+        return inp
+    order = [i for i in range(inp.ndim) if i != dim] + [dim]
+    permuted = inp.permute(order)
+    if permuted.is_contiguous():
+        return permuted
+    new_shape = tuple(permuted.shape)
+    strides = [1] * len(new_shape)
+    for i in range(len(new_shape) - 2, -1, -1):
+        strides[i] = strides[i + 1] * new_shape[i + 1]
+    # empty_strided is not registered by gems -> native allocator/copy.
+    dst = torch.empty_strided(
+        new_shape, tuple(strides), dtype=inp.dtype, device=inp.device
+    )
+    torch.ops.aten._copy_from(permuted, dst, False)
+    return dst
+
+
 def all_dim(inp, dim=None, keepdim=False):
     logger.debug("GEMS_KUNLUNXIN ALL_DIM")
     shape = list(inp.shape)
-    orig_ndim = inp.ndim
-
     if dim is None:
         out = all(inp)
         if keepdim:
-            out = torch.reshape(out, [1] * orig_ndim)
-        return out
+            out = torch.reshape(out, [1] * inp.ndim)
+    else:
+        assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
+        dim = dim % inp.ndim
+        N = shape[dim]
+        shape[dim] = 1
 
-    assert dim >= -orig_ndim and dim < orig_ndim, "Invalid dim"
-    dim = dim % orig_ndim
-    N = shape[dim]
-    inp = dim_compress(inp, dim)
-    shape[dim] = 1
-    M = inp.numel() // N
+        # Contiguous [M, N] view with the reduced dim last (see helper).
+        if dim == inp.ndim - 1 and inp.is_contiguous():
+            inpc = inp
+        else:
+            inpc = _move_dim_last_contig(inp, dim)
+        M = inpc.numel() // N
 
-    if inp.dtype != torch.bool and M * N <= 64:
-        inp = inp != 0
+        if inp.dtype == torch.bool:
+            # bool: int1-AND reduction (all_kernel_dim_v2). The fp32-abs-min
+            # proxy is ~5x slower on byte-sized input. Fixed bounded tiles;
+            # BLOCK_N <= 4096 stays inside the proven tl.reduce safe window
+            # (HARNESS_SUMMARY 2.5).
+            if N <= 512:
+                block_m, block_n = 64, triton.next_power_of_2(N)
+            elif N <= 4096:
+                block_m, block_n = 64, 512
+            else:
+                block_m, block_n = 8, 4096
+            need_mask = (M % block_m != 0) or (N % block_n != 0)
+            out = torch.empty(shape, dtype=torch.bool, device=inp.device)
+            grid = (triton.cdiv(M, block_m),)
+            with torch_device_fn.device(inp.device):
+                all_kernel_dim_v2[grid](
+                    inpc,
+                    out,
+                    M,
+                    N,
+                    BLOCK_M=block_m,
+                    BLOCK_N=block_n,
+                    NEED_MASK=need_mask,
+                    buffer_size_limit=2048,
+                )
+        else:
+            # float (fp16/bf16/fp32): fp32 min-abs proxy (all(x!=0) <=>
+            # min(abs(x)) != 0). Feed the tensor directly: the kernel upcasts
+            # on load; any external fp16/bf16->fp32 cast runs at ~15GB/s on
+            # this tree and would be a strict loss (any_dim_xpu6 evidence).
+            # Tiles capped at 64x512 (fp32): the wider [8,4096] fp32 tile
+            # measures ~56GB/s and can OOM uni_sram non-deterministically;
+            # [64,512] is the any_dim max_kernel_dim-proven safe shape.
+            if N <= 512:
+                block_m, block_n = 64, triton.next_power_of_2(N)
+            else:
+                block_m, block_n = 64, 512
+            need_mask = (M % block_m != 0) or (N % block_n != 0)
+            out = torch.empty(shape, dtype=torch.bool, device=inp.device)
+            grid = (triton.cdiv(M, block_m),)
+            with torch_device_fn.device(inp.device):
+                all_min_kernel_dim[grid](
+                    inpc,
+                    out,
+                    M,
+                    N,
+                    BLOCK_M=block_m,
+                    BLOCK_N=block_n,
+                    NEED_MASK=need_mask,
+                    buffer_size_limit=2048,
+                )
 
-    out = torch.empty(shape, dtype=torch.bool, device=inp.device)
-    grid = lambda meta: (max(triton.cdiv(M, meta["BLOCK_M"]), 1),)
-    with torch_device_fn.device(inp.device):
-        all_kernel_dim[grid](inp, out, M, N, buffer_size_limit=2048)
-
-    if not keepdim and out.ndim > 0:
-        out = out.squeeze(dim) if dim < out.ndim else out
+        if not keepdim:
+            out = out.squeeze(dim=dim)
     return out
+
+
+def _move_dims_last_contig(inp, dims):
+    """Return a contiguous view of `inp` with `dims` moved last.
+
+    Same order as `dim_compress(inp, dims)` (batch dims first, then the
+    reduced dims sorted by descending stride), but the trailing copy goes
+    through `torch.ops.aten._copy_from` (NOT overridden by gems -> native
+    strided-copy engine) instead of `.contiguous()` (vendor `contiguous`/
+    `copy_` strided kernel ~1.1 GB/s). Measured ~100x on the 3D mid-dim
+    shapes; zero-copy when already contiguous.
+    """
+    ndim = inp.ndim
+    stride = inp.stride()
+    batch_dim = [i for i in range(ndim) if i not in dims]
+    sorted_reduction_dim = sorted(dims, key=lambda x: stride[x], reverse=True)
+    order = batch_dim + sorted_reduction_dim
+    permuted = inp.permute(order)
+    if permuted.is_contiguous():
+        return permuted
+    new_shape = tuple(permuted.shape)
+    strides = [1] * len(new_shape)
+    for i in range(len(new_shape) - 2, -1, -1):
+        strides[i] = strides[i + 1] * new_shape[i + 1]
+    # empty_strided is not registered by gems -> native allocator/copy.
+    dst = torch.empty_strided(
+        new_shape, tuple(strides), dtype=inp.dtype, device=inp.device
+    )
+    torch.ops.aten._copy_from(permuted, dst, False)
+    return dst
+
+
+def _all_dims_pick_blocks(M, N, is_bool):
+    """Host-side tile selection for the [M, N] per-row all reduction.
+
+    Base tiles mirror all_dim's proven configs (bool: 64xpad2(N) / 64x512 /
+    8x4096; float: 64xpad2(N) / 64x512 -- the fp32 min-abs kernel must stay
+    inside the 64x512 any_dim-proven safe shape, the wider [8,4096] fp32 tile
+    OOMs/mis-reduces on XPU). The M-cap targets ~8 programs on the 64-core
+    device (M=100 -> 16, M=512 -> 64), which measured as the sweet spot for
+    the dims shapes on this tree.
+    """
+    if N <= 512:
+        block_n = triton.next_power_of_2(N)
+        block_m = 64
+    elif is_bool:
+        if N <= 4096:
+            block_n, block_m = 512, 64
+        else:
+            block_n, block_m = 4096, 8
+    else:
+        block_n, block_m = 512, 64
+    block_m = min(block_m, max(1, triton.next_power_of_2(triton.cdiv(M, 8))))
+    return block_m, block_n
 
 
 def all_dims(inp, dim=None, keepdim=False):
@@ -245,20 +464,88 @@ def all_dims(inp, dim=None, keepdim=False):
 
     shape = list(inp.shape)
     dim = [d % orig_ndim for d in dim]
-    inp = dim_compress(inp, dim)
     N = 1
     for i in dim:
         N *= shape[i]
         shape[i] = 1
     M = inp.numel() // N
 
-    if inp.dtype != torch.bool and M * N <= 64:
-        inp = inp != 0
+    if M == 1:
+        # Every element lives in the reduced dims -> the reduce is a global
+        # all over a single-row [1, N] view. Keep the v2 kernel (one launch,
+        # serial BLOCK_N-chunk loop) with the widest proven-safe tile: on this
+        # tree BLOCK_N=32768 (buffer_size_limit=2048) beat [1, 8192] on every
+        # measured size (e.g. [1,2560000] 0.095 vs 0.181ms; [1,1048576]
+        # 0.040 vs 0.072ms; [1,655360000] 18.3 vs 39.6ms) and is far ahead
+        # of all()'s two-stage on the huge-N cells. The kernel indexes `inp`
+        # linearly, so a non-contiguous input is densified first.
+        if not inp.is_contiguous():
+            inp = _move_dims_last_contig(inp, dim)
+        if inp.dtype == torch.bool:
+            block_n = 8192
+            with torch_device_fn.device(inp.device):
+                out = torch.empty(shape, dtype=torch.bool, device=inp.device)
+                all_kernel_dim_v2[(1,)](
+                    inp,
+                    out,
+                    1,
+                    N,
+                    BLOCK_M=1,
+                    BLOCK_N=block_n,
+                    NEED_MASK=(N % block_n != 0),
+                    buffer_size_limit=2048,
+                )
+        else:
+            block_n = 32768
+            with torch_device_fn.device(inp.device):
+                out = torch.empty(shape, dtype=torch.bool, device=inp.device)
+                all_min_kernel_dim[(1,)](
+                    inp,
+                    out,
+                    1,
+                    N,
+                    BLOCK_M=1,
+                    BLOCK_N=block_n,
+                    NEED_MASK=(N % block_n != 0),
+                    buffer_size_limit=2048,
+                )
+        if not keepdim:
+            out = out.reshape([])
+        return out
 
+    # Contiguous [M, N] view with the reduced dims last (native strided copy).
+    inpc = _move_dims_last_contig(inp, dim)
+
+    if inp.dtype == torch.bool:
+        block_m, block_n = _all_dims_pick_blocks(M, N, True)
+    else:
+        block_m, block_n = _all_dims_pick_blocks(M, N, False)
+    need_mask = (M % block_m != 0) or (N % block_n != 0)
     out = torch.empty(shape, dtype=torch.bool, device=inp.device)
-    grid = lambda meta: (max(triton.cdiv(M, meta["BLOCK_M"]), 1),)
+    grid = (triton.cdiv(M, block_m),)
     with torch_device_fn.device(inp.device):
-        all_kernel_dim[grid](inp, out, M, N, buffer_size_limit=2048)
+        if inp.dtype == torch.bool:
+            all_kernel_dim_v2[grid](
+                inpc,
+                out,
+                M,
+                N,
+                BLOCK_M=block_m,
+                BLOCK_N=block_n,
+                NEED_MASK=need_mask,
+                buffer_size_limit=2048,
+            )
+        else:
+            all_min_kernel_dim[grid](
+                inpc,
+                out,
+                M,
+                N,
+                BLOCK_M=block_m,
+                BLOCK_N=block_n,
+                NEED_MASK=need_mask,
+                buffer_size_limit=2048,
+            )
 
     if not keepdim:
         # Squeeze reduced axes from highest to lowest. Removing a low axis first

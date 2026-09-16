@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from .adaptive_max_pool3d import adaptive_max_pool3d
 from .addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out
 from .all import all, all_dim, all_dims
 from .amax import amax
@@ -50,8 +51,10 @@ from .full import full
 from .full_like import full_like
 from .gather import gather, gather_backward
 from .groupnorm import group_norm, group_norm_backward
+from .gru import gru, gru_data
 from .hadamard_transform import hadamard_transform
 from .hstack import hstack
+from .igammac import igammac, igammac_out
 from .index import index
 from .index_add import index_add, index_add_
 from .index_copy_ import index_copy, index_copy_
@@ -65,13 +68,27 @@ from .linalg_lstsq import linalg_lstsq
 from .linalg_lu import linalg_lu, linalg_lu_out
 from .linalg_lu_factor import linalg_lu_factor, linalg_lu_factor_out
 from .linalg_lu_factor_ex import linalg_lu_factor_ex, linalg_lu_factor_ex_out
+from .linalg_matrix_exp import linalg_matrix_exp, linalg_matrix_exp_out
+from .linalg_matrix_norm import linalg_matrix_norm, linalg_matrix_norm_out
+from .linalg_matrix_power import linalg_matrix_power, linalg_matrix_power_out
+from .linalg_matrix_rank import (
+    linalg_matrix_rank,
+    linalg_matrix_rank_out,
+    linalg_matrix_rank_tol,
+    linalg_matrix_rank_tol_out,
+)
 from .linalg_qr import linalg_qr, linalg_qr_out
+from .linalg_solve_triangular import (
+    linalg_solve_triangular,
+    linalg_solve_triangular_out,
+)
 from .linspace import linspace
 from .log_normal import log_normal
 from .log_sigmoid_backward import log_sigmoid_backward, log_sigmoid_backward_out
 from .log_softmax import log_softmax, log_softmax_backward, log_softmax_out
 from .masked_fill import masked_fill, masked_fill_
 from .masked_scatter import masked_scatter, masked_scatter_
+from .masked_scatter_backward import masked_scatter_backward
 from .masked_select import masked_select
 from .matmul_bf16 import matmul_bf16
 from .matmul_int8 import matmul_int8
@@ -85,6 +102,7 @@ from .nonzero_static import nonzero_static, nonzero_static_out
 from .ones import ones
 from .ones_like import ones_like
 from .outer import outer
+from .pad_sequence import pad_sequence
 from .pairwise_distance import pairwise_distance
 from .polar import polar
 from .polygamma import polygamma_
@@ -103,11 +121,15 @@ from .replication_pad2d_backward import (
 )
 from .resolve_neg import resolve_neg
 from .rms_norm import rms_norm
+from .rms_norm_w8a16_int8 import rms_norm_w8a16_int8
+from .rnn_tanh import rnn_tanh, rnn_tanh_data
 from .scatter import scatter, scatter_
 from .scatter_add_ import scatter_add_
+from .scatter_reduce import scatter_reduce, scatter_reduce_, scatter_reduce_out
 from .segment_reduce import _segment_reduce_backward, _segment_reduce_backward_out
 from .select_backward import select_backward
 from .select_scatter import select_scatter
+from .silu import silu, silu_
 from .slice_scatter import slice_scatter
 from .softmax import softmax, softmax_backward, softmax_backward_out, softmax_out
 from .sort import sort
@@ -117,6 +139,7 @@ from .threshold import threshold, threshold_backward
 from .triu import triu
 from .unique import _unique2
 from .unsafe_index import unsafe_index
+from .unsafe_index_put import unsafe_index_put
 from .upsample_bicubic2d_aa import _upsample_bicubic2d_aa
 from .upsample_linear1d_backward import upsample_linear1d_backward
 from .upsample_nearest2d import upsample_nearest2d
@@ -132,6 +155,7 @@ __all__ = [
     "_segment_reduce_backward_out",
     "_unique2",
     "_upsample_bicubic2d_aa",
+    "adaptive_max_pool3d",
     "addmm",
     "addmm_dtype",
     "addmm_dtype_out",
@@ -179,8 +203,12 @@ __all__ = [
     "gather_backward",
     "group_norm",
     "group_norm_backward",
+    "gru",
+    "gru_data",
     "hadamard_transform",
     "hstack",
+    "igammac",
+    "igammac_out",
     "index",
     "index_add",
     "index_add_",
@@ -191,7 +219,6 @@ __all__ = [
     "index_select",
     "isin",
     "layer_norm",
-    "native_layer_norm",
     "linalg_cross",
     "linalg_cross_out",
     "linalg_det",
@@ -203,8 +230,20 @@ __all__ = [
     "linalg_lu_factor_ex_out",
     "linalg_lu_factor_out",
     "linalg_lu_out",
+    "linalg_matrix_exp",
+    "linalg_matrix_exp_out",
+    "linalg_matrix_norm",
+    "linalg_matrix_norm_out",
+    "linalg_matrix_power",
+    "linalg_matrix_power_out",
+    "linalg_matrix_rank",
+    "linalg_matrix_rank_out",
+    "linalg_matrix_rank_tol",
+    "linalg_matrix_rank_tol_out",
     "linalg_qr",
     "linalg_qr_out",
+    "linalg_solve_triangular",
+    "linalg_solve_triangular_out",
     "linspace",
     "log_normal",
     "log_sigmoid_backward",
@@ -216,6 +255,7 @@ __all__ = [
     "masked_fill_",
     "masked_scatter",
     "masked_scatter_",
+    "masked_scatter_backward",
     "masked_select",
     "matmul_bf16",
     "matmul_int8",
@@ -230,12 +270,14 @@ __all__ = [
     "multinomial",
     "nansum",
     "nansum_out",
+    "native_layer_norm",
     "nonzero_static",
     "nonzero_static_out",
     "normed_cumsum",
     "ones",
     "ones_like",
     "outer",
+    "pad_sequence",
     "pairwise_distance",
     "polar",
     "polygamma_",
@@ -250,15 +292,23 @@ __all__ = [
     "replication_pad2d_backward_grad_input",
     "resolve_neg",
     "rms_norm",
-    "scatter",
-    "scatter_",
-    "scatter_add_",
-    "ScaleDotProductAttention",
+    "rms_norm_w8a16_int8",
+    "rnn_tanh",
+    "rnn_tanh_data",
     "scaled_dot_product_attention",
     "scaled_dot_product_attention_backward",
     "scaled_dot_product_attention_forward",
+    "ScaleDotProductAttention",
+    "scatter",
+    "scatter_",
+    "scatter_add_",
+    "scatter_reduce",
+    "scatter_reduce_",
+    "scatter_reduce_out",
     "select_backward",
     "select_scatter",
+    "silu",
+    "silu_",
     "slice_scatter",
     "softmax",
     "softmax_backward",
@@ -272,6 +322,7 @@ __all__ = [
     "threshold_backward",
     "triu",
     "unsafe_index",
+    "unsafe_index_put",
     "upsample_linear1d_backward",
     "upsample_nearest2d",
     "var_mean",
