@@ -197,6 +197,21 @@ _FULL_CONFIG = (
         (AUTOGRAD_DISPATCH_KEY,),
     ),
     ("_index_put_impl_", _index_put_impl_),
+    (
+        "_int_mm",
+        int_mm,
+        lambda: vendor_name
+        in {"ascend", "hygon", "iluvatar", "metax", "mthreads", "nvidia"}
+        and hasattr(torch, "_int_mm"),
+    ),
+    (
+        "_int_mm.out",
+        int_mm_out,
+        lambda: vendor_name
+        in {"ascend", "hygon", "iluvatar", "metax", "mthreads", "nvidia"}
+        and hasattr(torch, "_int_mm")
+        and hasattr(torch.ops.aten._int_mm, "out"),
+    ),
     ("_is_all_true", _is_all_true),
     ("_jagged_to_padded_dense_forward", _jagged_to_padded_dense_forward),
     ("_linalg_eigvals", _linalg_eigvals),
@@ -1140,6 +1155,8 @@ _FULL_CONFIG = (
     ("round", round),
     ("round.out", round_out),
     ("round_", round_),
+    ("rrelu_with_noise", rrelu_with_noise),
+    ("rrelu_with_noise_", rrelu_with_noise_),
     ("rrelu_with_noise_backward", rrelu_with_noise_backward),
     ("rrelu_with_noise_functional", rrelu_with_noise_functional),
     ("rsqrt", rsqrt),

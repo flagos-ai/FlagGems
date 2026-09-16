@@ -20,6 +20,7 @@ from .amax import amax
 from .any import any, any_dim, any_dims
 from .arange import arange, arange_start
 from .argmin import argmin
+from .argsort import argsort
 from .batch_norm import batch_norm, batch_norm_backward
 from .bucketize import bucketize
 from .celu import celu
@@ -50,6 +51,7 @@ from .index_add import index_add, index_add_
 from .index_copy_ import index_copy, index_copy_
 from .index_put import _index_put_impl_, index_put, index_put_
 from .index_select import index_select
+from .int_mm import int_mm, int_mm_out
 from .isin import isin
 from .linalg_cholesky import linalg_cholesky
 from .linear import linear
@@ -119,6 +121,7 @@ __all__ = [
     "arange",
     "arange_start",
     "argmin",
+    "argsort",
     "batch_norm",
     "batch_norm_backward",
     "bucketize",
@@ -155,6 +158,8 @@ __all__ = [
     "index_put",
     "index_put_",
     "index_select",
+    "int_mm",
+    "int_mm_out",
     "isin",
     "linalg_cholesky",
     "linear",

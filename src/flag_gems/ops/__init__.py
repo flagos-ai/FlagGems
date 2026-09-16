@@ -551,6 +551,7 @@ from flag_gems.ops.index_put import _index_put_impl_, index_put, index_put_
 from flag_gems.ops.index_reduce import index_reduce, index_reduce_, index_reduce_out
 from flag_gems.ops.index_select import index_select
 from flag_gems.ops.index_select_backward import index_select_backward
+from flag_gems.ops.int_mm import int_mm, int_mm_out
 from flag_gems.ops.is_nonzero import is_nonzero
 from flag_gems.ops.is_same_size import is_same_size
 from flag_gems.ops.isclose import allclose, isclose
@@ -842,6 +843,7 @@ from flag_gems.ops.rnn_tanh import rnn_tanh, rnn_tanh_data
 from flag_gems.ops.roll import roll
 from flag_gems.ops.rot90 import rot90
 from flag_gems.ops.round import round, round_, round_out
+from flag_gems.ops.rrelu_with_noise import rrelu_with_noise, rrelu_with_noise_
 from flag_gems.ops.rrelu_with_noise_backward import rrelu_with_noise_backward
 from flag_gems.ops.rrelu_with_noise_functional import rrelu_with_noise_functional
 from flag_gems.ops.rsqrt import rsqrt, rsqrt_
@@ -1656,6 +1658,8 @@ __all__ = [
     "index_reduce_out",
     "index_select",
     "index_select_backward",
+    "int_mm",
+    "int_mm_out",
     "is_nonzero",
     "is_same_size",
     "isclose",
@@ -1990,6 +1994,8 @@ __all__ = [
     "round_",
     "round_out",
     "router_gemm",
+    "rrelu_with_noise",
+    "rrelu_with_noise_",
     "rrelu_with_noise_backward",
     "rrelu_with_noise_functional",
     "rsqrt",
