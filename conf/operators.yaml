@@ -2263,7 +2263,7 @@ ops:
 - id: cauchy
   description: Draws random numbers from a Cauchy distribution.
   for:
-  - cauchy.float
+  - cauchy
   labels:
   - aten
   kind:
@@ -2273,7 +2273,7 @@ ops:
 - id: cauchy_
   description: Fills the tensor with numbers drawn from the Cauchy distribution.
   for:
-  - cauchy_.float
+  - cauchy_
   labels:
   - aten
   kind:
@@ -8066,7 +8066,29 @@ ops:
   kind:
   - LinearAlg
   stages:
-  - alpha: '5.4'
+  - beta: '5.4'
+- id: linalg_matrix_norm_out
+  description: 'Out-of-place version of linalg_matrix_norm,
+
+    Computes the matrix norm over the given dimensions.
+
+    Supports ord values: 1, -1, 2, -2, inf, -inf, ''fro'', ''nuc''.
+
+    For ord=2/-2/nuc, internally uses SVD (singular value decomposition).
+
+    For ord=1/-1/inf/-inf, uses max/min absolute column/row sums.
+
+    For ord=''fro'', uses Frobenius norm via per-row L2 reduction.
+
+    '
+  for:
+  - linalg_matrix_norm_out
+  labels:
+  - aten
+  kind:
+  - LinearAlg
+  stages:
+  - beta: '5.4'
 - id: linalg_matrix_power
   description: 'Computes the n-th power of a square matrix using binary exponentiation.
 
@@ -9750,6 +9772,51 @@ ops:
   - Math
   stages:
   - stable: '2.2'
+- id: multi_margin_loss
+  description: Computes the multi-class margin loss with optional class weights.
+  for:
+  - multi_margin_loss
+  labels:
+  - aten
+  - Loss
+  - nn.functional
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
+- id: multi_margin_loss_backward
+  description: Computes the input gradient of the multi-class margin loss.
+  for:
+  - multi_margin_loss_backward
+  labels:
+  - aten
+  - Loss
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
+- id: multi_margin_loss_backward_out
+  description: Writes the multi-class margin-loss gradient into grad_input.
+  for:
+  - multi_margin_loss_backward.grad_input
+  labels:
+  - aten
+  - Loss
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
+- id: multi_margin_loss_out
+  description: Writes the multi-class margin loss into the provided output tensor.
+  for:
+  - multi_margin_loss.out
+  labels:
+  - aten
+  - Loss
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: multinomial
   description: 'Returns a tensor where each row contains `num_samples` indices sampled
 
@@ -13935,6 +14002,24 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: special_laguerre_polynomial_l
+  description: |
+    Computes the Laguerre polynomial :math:`L_n(x)` element-wise for tensor
+    and scalar x/n overloads, including destination-passing variants.
+  for:
+    - special_laguerre_polynomial_l
+    - special_laguerre_polynomial_l.out
+    - special_laguerre_polynomial_l.x_scalar
+    - special_laguerre_polynomial_l.x_scalar_out
+    - special_laguerre_polynomial_l.n_scalar
+    - special_laguerre_polynomial_l.n_scalar_out
+  labels:
+    - aten
+    - pointwise
+  kind:
+    - Math
+  stages:
+    - alpha: '5.4'
 - id: special_legendre_polynomial_p
   description: 'Computes the Legendre polynomial P_n(x) of degree n for each element
     in the input tensor,

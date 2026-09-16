@@ -597,7 +597,7 @@ from flag_gems.ops.linalg_lu_factor_ex import (
     linalg_lu_factor_ex_out,
 )
 from flag_gems.ops.linalg_matrix_exp import linalg_matrix_exp, linalg_matrix_exp_out
-from flag_gems.ops.linalg_matrix_norm import linalg_matrix_norm
+from flag_gems.ops.linalg_matrix_norm import linalg_matrix_norm, linalg_matrix_norm_out
 from flag_gems.ops.linalg_matrix_power import (
     linalg_matrix_power,
     linalg_matrix_power_out,
@@ -702,6 +702,12 @@ from flag_gems.ops.mode import mode
 from flag_gems.ops.mse_loss import mse_loss
 from flag_gems.ops.mse_loss_backward import mse_loss_backward
 from flag_gems.ops.mul import mul, mul_
+from flag_gems.ops.multi_margin_loss import (
+    multi_margin_loss,
+    multi_margin_loss_backward,
+    multi_margin_loss_backward_out,
+    multi_margin_loss_out,
+)
 from flag_gems.ops.multinomial import multinomial
 from flag_gems.ops.multiply import multiply
 from flag_gems.ops.multiply_ import multiply_
@@ -929,6 +935,10 @@ from flag_gems.ops.special_hermite_polynomial_h import special_hermite_polynomia
 from flag_gems.ops.special_i0e import special_i0e, special_i0e_out
 from flag_gems.ops.special_i1 import special_i1, special_i1_out
 from flag_gems.ops.special_i1e import special_i1e, special_i1e_out
+from flag_gems.ops.special_laguerre_polynomial_l import (
+    special_laguerre_polynomial_l,
+    special_laguerre_polynomial_l_out,
+)
 from flag_gems.ops.special_legendre_polynomial_p import special_legendre_polynomial_p
 from flag_gems.ops.special_log1p import special_log1p, special_log1p_out
 from flag_gems.ops.special_log_ndtr import special_log_ndtr
@@ -1700,6 +1710,7 @@ __all__ = [
     "linalg_matrix_exp",
     "linalg_matrix_exp_out",
     "linalg_matrix_norm",
+    "linalg_matrix_norm_out",
     "linalg_matrix_power",
     "linalg_matrix_power_out",
     "linalg_matrix_rank",
@@ -1814,6 +1825,10 @@ __all__ = [
     "mse_loss_backward",
     "mul",
     "mul_",
+    "multi_margin_loss",
+    "multi_margin_loss_backward",
+    "multi_margin_loss_backward_out",
+    "multi_margin_loss_out",
     "multinomial",
     "multiply",
     "multiply_",
@@ -2070,6 +2085,8 @@ __all__ = [
     "special_i1_out",
     "special_i1e",
     "special_i1e_out",
+    "special_laguerre_polynomial_l",
+    "special_laguerre_polynomial_l_out",
     "special_legendre_polynomial_p",
     "special_log1p",
     "special_log1p_out",
