@@ -73,11 +73,12 @@ def heur_block_n(args):
 def keep(conf):
     BLOCK_M = conf.kwargs["BLOCK_M"]
     BLOCK_N = conf.kwargs["BLOCK_N"]
-    if BLOCK_M * BLOCK_N < 2048:
+    tile_size = BLOCK_M * BLOCK_N
+    if tile_size < 2048:
         return False
-    # NaN tracking adds an int32 reduction buffer. Keep at most 32K lanes so
-    # autotuning does not exceed GCU300 L1 and abort the device process.
-    if BLOCK_M * BLOCK_N > 32 * 1024:
+    # Indexed max and NaN tracking keep several per-lane buffers in L1. Larger
+    # or multi-stage tiles can abort the GCU300 device during autotuning.
+    if tile_size > 16 * 1024 or conf.num_stages != 1:
         return False
     return True
 
