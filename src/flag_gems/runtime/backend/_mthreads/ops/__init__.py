@@ -20,6 +20,7 @@ from .amax import amax
 from .any import any, any_dim, any_dims
 from .arange import arange, arange_start
 from .argmin import argmin
+from .argsort import argsort
 from .batch_norm import batch_norm, batch_norm_backward
 from .bucketize import bucketize
 from .celu import celu
@@ -91,7 +92,9 @@ from .repeat_interleave import (
     repeat_interleave_tensor,
 )
 from .resolve_conj import resolve_conj
+from .rms_norm_w8a16_fp8 import rms_norm_w8a16_fp8
 from .round_ import round_
+from .scatter_reduce import scatter_reduce, scatter_reduce_, scatter_reduce_out
 from .softplus_backward import softplus_backward
 from .sort import sort, sort_stable
 from .special_gammainc import special_gammainc
@@ -105,33 +108,41 @@ from .zeros_like import zeros_like
 
 __all__ = [
     "_conj",
-    "amax",
+    "_index_put_impl_",
+    "_unique2",
     "all",
     "all_dim",
     "all_dims",
+    "amax",
     "any",
     "any_dim",
     "any_dims",
     "arange",
     "arange_start",
     "argmin",
+    "argsort",
     "batch_norm",
     "batch_norm_backward",
     "bucketize",
     "celu",
-    # "celu_",
+    "celu_",
     "channel_shuffle",
+    "constant_pad_nd",
     "conv2d",
-    "conv_transpose2d",
     "conv_transpose1d",
     "conv_transpose1d_output_size",
+    "conv_transpose2d",
     "cudnn_convolution",
+    "div_mode",
+    "div_mode_",
     "dropout",
     "dropout_backward",
     "erfinv",
     "erfinv_",
     "feature_dropout_",
     "flip",
+    "floor_divide",
+    "floor_divide_",
     "fmod_",
     "fmod_scalar_",
     "fmod_tensor_",
@@ -145,7 +156,6 @@ __all__ = [
     "index_copy_",
     "index_put",
     "index_put_",
-    "_index_put_impl_",
     "index_select",
     "isin",
     "linalg_cholesky",
@@ -180,7 +190,6 @@ __all__ = [
     "one_hot",
     "ones",
     "ones_like",
-    "constant_pad_nd",
     "pad",
     "permute_copy",
     "prod",
@@ -197,7 +206,11 @@ __all__ = [
     "repeat_interleave_self_tensor",
     "repeat_interleave_tensor",
     "resolve_conj",
+    "rms_norm_w8a16_fp8",
     "round_",
+    "scatter_reduce",
+    "scatter_reduce_",
+    "scatter_reduce_out",
     "softplus_backward",
     "sort",
     "sort_stable",
@@ -206,11 +219,6 @@ __all__ = [
     "true_divide",
     "true_divide_",
     "true_divide_out",
-    "div_mode",
-    "div_mode_",
-    "floor_divide",
-    "floor_divide_",
-    "_unique2",
     "trunc",
     "trunc_",
     "upsample_linear1d_backward",
@@ -243,3 +251,8 @@ if get_device_capability(current_device())[0] >= 3:
             "tanh",
         ]
     )
+
+if get_device_capability(current_device()) >= (3, 1):
+    from .mm_w8a8_fp8 import mm_w8a8_fp8, mm_w8a8_fp8_out  # noqa: F401
+
+    __all__.extend(["mm_w8a8_fp8", "mm_w8a8_fp8_out"])

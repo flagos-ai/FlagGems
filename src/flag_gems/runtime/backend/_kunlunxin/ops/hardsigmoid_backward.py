@@ -1,0 +1,55 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import logging
+
+import triton
+import triton.language as tl
+from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
+
+from ..utils.pointwise_dynamic import pointwise_dynamic
+
+logger = logging.getLogger(__name__)
+
+config_ = CodeGenConfig(
+    512,
+    (65536, 65536, 65536),
+    32,
+    True,
+    prefer_1d_tile=True,
+    buffer_size_limit=4096,
+    kunlunAutoGrid=True,
+    unroll_num=8,
+)
+
+
+@pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")], config=config_)
+@triton.jit
+def hardsigmoid_backward_func(grad_output, self):
+    # hardsigmoid: y = clamp(x/6 + 0.5, 0, 1)
+    # gradient: dy/dx = 1/6 when -3 < x < 3, else 0
+    # => grad_input = grad_output * (|self| < 3) / 6
+    grad_output_fp32 = grad_output.to(tl.float32)
+    self_fp32 = self.to(tl.float32)
+    # `0.0 if x <= -3, `+inf (->1.0) if x > -3`; and the mirrored bound.
+    p = tl.maximum(0.0, (self_fp32 + 3.0) * 1.0e30)
+    q = tl.maximum(0.0, (3.0 - self_fp32) * 1.0e30)
+    in_range = tl.minimum(1.0, p) * tl.minimum(1.0, q)
+    result = grad_output_fp32 * in_range * (1.0 / 6.0)
+    return result.to(grad_output.dtype)
+
+
+def hardsigmoid_backward(grad_output, self):
+    logger.debug("GEMS_KUNLUNXIN HARDSIGMOID_BACKWARD")
+    return hardsigmoid_backward_func(grad_output, self)

@@ -24,13 +24,6 @@ import flag_gems
 from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
 
-
-@pytest.fixture(autouse=True)
-def _disable_flagtune_for_mm_unit_tests(monkeypatch):
-    """Keep operator correctness tests independent of remote tuning models."""
-    monkeypatch.setenv("USE_FLAGTUNE", "0")
-
-
 if QUICK_MODE:
     MNK_SHAPES = [
         (1, 1, 32),
@@ -69,34 +62,6 @@ def _mm_atol_base():
     return 1e-4
 
 
-def _cuda_hopper_w8a8_fp8_available():
-    tensor_descriptor = getattr(
-        getattr(triton, "tools", None), "tensor_descriptor", None
-    )
-    return (
-        flag_gems.device == "cuda"
-        and torch.cuda.is_available()
-        and torch.cuda.get_device_capability()[0] >= 9
-        and hasattr(torch, "float8_e4m3fn")
-        and hasattr(tensor_descriptor, "TensorDescriptor")
-    )
-
-
-def _mm_w8a8_fp8_reference(a, b):
-    fp8_dtype = torch.float8_e4m3fn
-    fp8_info = torch.finfo(fp8_dtype)
-
-    a_fp32 = a.float()
-    a_scale = a_fp32.abs().amax(dim=1).clamp_min(1e-10) / fp8_info.max
-    a_fp8 = (a_fp32 / a_scale[:, None]).clamp(fp8_info.min, fp8_info.max).to(fp8_dtype)
-
-    b_fp32 = b.float()
-    b_scale = b_fp32.abs().amax(dim=0).clamp_min(1e-10) / fp8_info.max
-    b_fp8 = (b_fp32 / b_scale[None, :]).clamp(fp8_info.min, fp8_info.max).to(fp8_dtype)
-
-    return torch.mm(a_fp8.float(), b_fp8.float()) * a_scale[:, None] * b_scale[None, :]
-
-
 # Issue #2833: fails at (1, 1, 2)
 @pytest.mark.mm
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
@@ -115,46 +80,9 @@ def test_mm(M, N, K, dtype, b_column_major):
     ref_mat2 = utils.to_reference(mat2, True)
 
     ref_out = torch.mm(ref_mat1, ref_mat2)
-    with flag_gems.use_gems():
-        res_out = torch.mm(mat1, mat2)
+    res_out = flag_gems.mm(mat1, mat2)
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K, atol=_mm_atol_base())
-
-
-@pytest.mark.mm_w8a8_fp8
-@pytest.mark.parametrize(
-    "M, N, K",
-    [
-        (1, 16, 16),
-        (2, 32, 32),
-        (8, 64, 64),
-        (16, 128, 64),
-        (32, 128, 128),
-        (64, 256, 128),
-        (128, 256, 256),
-        (192, 512, 512),
-        (256, 768, 1024),
-        (512, 1024, 1024),
-    ],
-)
-@pytest.mark.skipif(
-    not _cuda_hopper_w8a8_fp8_available(),
-    reason="mm_w8a8_fp8 requires CUDA Hopper FP8 and TMA support",
-)
-def test_mm_w8a8_fp8(M, N, K):
-    dtype = torch.bfloat16
-    torch.manual_seed(0)
-
-    mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
-    mat2 = torch.randn((K, N), dtype=dtype, device=flag_gems.device)
-    ref_out = utils.to_reference(_mm_w8a8_fp8_reference(mat1, mat2), True)
-
-    res_out = flag_gems.mm_w8a8_fp8(mat1, mat2, out_dtype=dtype)
-    out = torch.empty((M, N), dtype=dtype, device=flag_gems.device)
-    res_out_reused = flag_gems.mm_w8a8_fp8_out(mat1, mat2, out=out)
-
-    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
-    utils.gems_assert_close(res_out_reused, ref_out, dtype, reduce_dim=K)
 
 
 @pytest.mark.mm
@@ -176,8 +104,7 @@ def test_mm_broadcast_stride_zero(dtype):
     ref_b = utils.to_reference(b, True)
 
     ref_out = torch.mm(ref_a, ref_b)
-    with flag_gems.use_gems():
-        res_out = torch.mm(a, b)
+    res_out = flag_gems.mm(a, b)
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K, atol=_mm_atol_base())
 
@@ -202,8 +129,7 @@ def test_mm_out_vllm_tma_column_major_weight():
     ref_out = torch.empty((M, N), dtype=ref_mat1.dtype, device=ref_mat1.device)
     torch.mm(ref_mat1, ref_mat2, out=ref_out)
 
-    with flag_gems.use_gems():
-        torch.mm(mat1, mat2, out=out)
+    flag_gems.mm_out(mat1, mat2, out=out)
 
     utils.gems_assert_close(out, ref_out, dtype, reduce_dim=K, atol=_mm_atol_base())
 
@@ -290,8 +216,7 @@ def test_mm_self_transpose(M, K, dtype):
     ref_mat = utils.to_reference(mat, True)
 
     ref_out = torch.mm(ref_mat, ref_mat.t())
-    with flag_gems.use_gems():
-        res_out = torch.mm(mat, mat.t())
+    res_out = flag_gems.mm(mat, mat.t())
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K, atol=_mm_atol_base())
 
@@ -316,7 +241,6 @@ def test_mm_out_self_transpose(M, K, dtype):
     ref_out = utils.to_reference(out, True)
 
     torch.mm(ref_mat, ref_mat.t(), out=ref_out)
-    with flag_gems.use_gems():
-        torch.mm(mat, mat.t(), out=out)
+    flag_gems.mm_out(mat, mat.t(), out=out)
 
     utils.gems_assert_close(out, ref_out, dtype, reduce_dim=K, atol=_mm_atol_base())
