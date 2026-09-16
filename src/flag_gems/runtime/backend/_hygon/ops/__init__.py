@@ -79,9 +79,11 @@ from .max_pool3d_with_indices import (
 from .max_unpool2d import max_unpool2d
 from .median import median_dim, median_dim_values
 from .mm import mm
+from .mm_w8a8_int8 import mm_w8a8_int8, mm_w8a8_int8_out
 from .mul import mul, mul_
 from .nansum import nansum, nansum_out
 from .nll_loss_backward import heur_block_n, nll_loss_backward
+from .pad_sequence import pad_sequence
 from .per_token_group_quant_fp8 import SUPPORTED_FP8_DTYPE, per_token_group_quant_fp8
 from .pow import (
     pow_scalar,
@@ -115,6 +117,7 @@ from .special_chebyshev_polynomial_w import (
 )
 from .split_with_sizes_copy import split_with_sizes_copy
 from .tile import tile
+from .topk_w8a16_fp8 import topk_w8a16_fp8
 from .unique import _unique2
 from .unique_dim import unique_dim
 from .unsqueeze import unsqueeze, unsqueeze_
@@ -131,16 +134,14 @@ __all__ = [
     "_scaled_dot_product_flash_attention",
     "_unique2",
     "adaptive_max_pool3d_backward",
-    "avg_pool3d_backward",
-    "broadcast_tensors",
-    "broadcast_to",
-    "conj_physical",
-    "ScaleDotProductAttention",
-    "SUPPORTED_FP8_DTYPE",
     "addr",
     "any",
     "any_dim",
     "any_dims",
+    "avg_pool3d_backward",
+    "broadcast_tensors",
+    "broadcast_to",
+    "conj_physical",
     "cudnn_convolution",
     "diff",
     "div_mode",
@@ -168,9 +169,9 @@ __all__ = [
     "index_copy_",
     "index_select_backward",
     "isin",
-    "ldl_factor",
     "lcm",
     "lcm_",
+    "ldl_factor",
     "linalg_matrix_norm",
     "linalg_solve_triangular",
     "linalg_solve_triangular_out",
@@ -183,12 +184,15 @@ __all__ = [
     "max_unpool2d",
     "median_dim",
     "median_dim_values",
+    "mm",
+    "mm_w8a8_int8",
+    "mm_w8a8_int8_out",
     "mul",
     "mul_",
-    "mm",
     "nansum",
     "nansum_out",
     "nll_loss_backward",
+    "pad_sequence",
     "per_token_group_quant_fp8",
     "pool3d_output_size",
     "pow_scalar",
@@ -208,6 +212,7 @@ __all__ = [
     "scaled_dot_product_attention",
     "scaled_dot_product_attention_backward",
     "scaled_dot_product_attention_forward",
+    "ScaleDotProductAttention",
     "scatter",
     "scatter_",
     "searchsorted",
@@ -224,16 +229,18 @@ __all__ = [
     "special_chebyshev_polynomial_w",
     "special_chebyshev_polynomial_w_out",
     "split_with_sizes_copy",
+    "SUPPORTED_FP8_DTYPE",
     "tile",
+    "topk_w8a16_fp8",
     "true_divide",
     "true_divide_",
     "true_divide_out",
     "trunc_divide",
     "trunc_divide_",
     "unique_dim",
-    "upsample_nearest2d",
     "unsqueeze",
     "unsqueeze_",
+    "upsample_nearest2d",
     "weight_norm",
     "weight_norm_except_dim",
     "weight_norm_except_dim_backward",

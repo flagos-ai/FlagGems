@@ -29,6 +29,7 @@ from .conv_transpose1d import conv_transpose1d
 from .diagonal_scatter import diagonal_scatter
 from .div import div_mode, div_mode_
 from .gcd_ import gcd_
+from .gru import gru, gru_data
 from .hadamard_transform import hadamard_transform
 from .histc import histc
 from .index_select_backward import index_select_backward
@@ -47,6 +48,7 @@ from .matmul_int8 import matmul_int8
 from .mm import mm, mm_out
 from .narrow_copy import narrow_copy
 from .nonzero_numpy import nonzero_numpy
+from .pad_sequence import pad_sequence
 from .permute_copy import permute_copy
 from .renorm_ import renorm_
 from .repeat import repeat
@@ -94,6 +96,8 @@ __all__ = [
     "div_mode",
     "div_mode_",
     "gcd_",
+    "gru",
+    "gru_data",
     "hadamard_transform",
     "histc",
     "index_select_backward",
@@ -112,11 +116,12 @@ __all__ = [
     "mm_out",
     "narrow_copy",
     "nonzero_numpy",
+    "pad_sequence",
     "permute_copy",
     "renorm_",
     "repeat",
-    "resolve_neg",
     "repeat_interleave_self_int",
+    "resolve_neg",
     "run",
     "scatter_add_",
     "softplus_backward",
