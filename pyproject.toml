@@ -210,6 +210,12 @@ thead = [
     "torch==2.9.0+ppu2.0.0.oe",
 ]
 
+biren = [
+    "torch==2.12.0+cpu",
+    "torch-supa==1.0.0.21200+br2xx",
+    "triton==3.4.0+br2xx",
+]
+
 
 tsingmicro = [
     "torch==2.7.0+cpu",

@@ -104,6 +104,12 @@ case $BACKEND in
     # The envsetup.sh is provided by the PPU SDK
     source /usr/local/PPU_SDK/envsetup.sh
     ;;
+  biren)
+    # The brsw_set_env.sh script is provided by the SUPA SDK
+    if [ -f /usr/local/birensupa/all/latest/scripts/brsw_set_env.sh ]; then
+      source /usr/local/birensupa/all/latest/scripts/brsw_set_env.sh
+    fi
+    ;;
   tsingmicro)
     export TX8_DEPS_ROOT=/opt/tx8_deps
     export LLVM_SYSPATH=/opt/llvm
