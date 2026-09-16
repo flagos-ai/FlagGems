@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -32,7 +46,7 @@ def triu_kernel(
     for n_offset in range(0, N, N_BLOCK_SIZE):
         cols = n_offset + tl.arange(0, N_BLOCK_SIZE)[None, :]
         n_mask = cols < N
-        mask = m_mask and n_mask
+        mask = m_mask & n_mask
 
         x = tl.load(X + cols, mask, other=0.0)
         y = tl.where(row + diagonal <= cols, x, 0.0)
@@ -64,7 +78,7 @@ def triu_batch_kernel(
 
     cols = mn_id * MN_BLOCK_SIZE + tl.arange(0, MN_BLOCK_SIZE)[None, :]
     mn_mask = cols < MN
-    mask = batch_mask and mn_mask
+    mask = batch_mask & mn_mask
     x = tl.load(X + cols, mask, other=0.0)
     m = cols // N
     n = cols % N

@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 import math
 from typing import Optional
@@ -231,6 +245,115 @@ def instance_norm_loop_kernel(
 
 @libentry()
 @triton.jit(do_not_specialize=["eps"])
+def instancenorm_fwd_kernel_xpu_mr(
+    X,
+    Y,
+    W,
+    B,
+    MEAN,
+    RSTRD,
+    M,  # M = B * C
+    C,
+    eps,
+    TILE_M: tl.constexpr,
+    N: tl.constexpr,  # spatial size, exact span [0, N) without padding
+    HAS_WEIGHT_BIAS: tl.constexpr,
+):
+    # Multi-row single-pass forward. Each program owns TILE_M consecutive rows
+    # (instances) and the whole spatial dim as ONE contiguous [TILE_M, N] tile,
+    # so the grid drops to cdiv(M, TILE_M) and the tile is a single stride-1
+    # block (N constexpr, no power-of-2 padding) -> block DMA on XPU. Stats
+    # (mean / 1-std) are derived from the same in-register x, so the data is
+    # read exactly once.
+    pid = tl.program_id(0)
+    m_off = pid * TILE_M + tl.arange(0, TILE_M)
+    m_mask = m_off < M
+    n_off = tl.arange(0, N)
+    # Out-of-range rows may still read (XPU can ignore `other`), so clamp the
+    # row index into the tensor to avoid out-of-bounds device reads.
+    safe_m = tl.minimum(m_off, M - 1)
+    offs = safe_m[:, None] * N + n_off[None, :]
+
+    # Only rows are masked; out-of-range rows load in-bounds duplicates whose
+    # per-row stats are independent and never stored, so they cannot affect
+    # the valid rows.
+    x = tl.load(X + offs, mask=m_mask[:, None], other=0.0).to(tl.float32)
+
+    mean = tl.sum(x, axis=1) / N
+    var = tl.sum(x * x, axis=1) / N - mean * mean
+    rstd = tl.math.rsqrt(var + eps)
+
+    tl.store(MEAN + m_off, mean, m_mask)
+    tl.store(RSTRD + m_off, rstd, m_mask)
+
+    if HAS_WEIGHT_BIAS:
+        c_off = safe_m % C
+        w = tl.load(W + c_off, mask=m_mask, other=0.0)
+        b = tl.load(B + c_off, mask=m_mask, other=0.0)
+        y = (x - mean[:, None]) * rstd[:, None] * w[:, None] + b[:, None]
+    else:
+        y = (x - mean[:, None]) * rstd[:, None]
+    tl.store(Y + offs, y.to(Y.dtype.element_ty), mask=m_mask[:, None])
+
+
+@libentry()
+@triton.jit(do_not_specialize=["eps"])
+def instancenorm_fwd_kernel_xpu_large(
+    X,
+    Y,
+    W,
+    B_,
+    MEAN,
+    RSTRD,
+    M,  # M = B * C
+    N,
+    C,
+    eps,
+    TILE_N: tl.constexpr,
+    HAS_WEIGHT_BIAS: tl.constexpr,
+):
+    # Per-row forward for very long rows (N > TILE_N), one program per row,
+    # row scanned in TILE_N-wide chunks (two sweeps: stats then normalize).
+    pid = tl.program_id(0)
+    m_mask = pid < M
+    c_off = pid % C
+    n_off = tl.arange(0, TILE_N)
+
+    sum_x = tl.zeros((TILE_N,), dtype=tl.float32)
+    sum_x2 = tl.zeros((TILE_N,), dtype=tl.float32)
+    for start in range(0, N, TILE_N):
+        cols = start + n_off
+        mask = cols < N
+        x = tl.load(X + pid * N + cols, mask=mask, other=0.0).to(tl.float32)
+        sum_x += x
+        sum_x2 += x * x
+
+    mean = tl.sum(sum_x) / N
+    var = tl.sum(sum_x2) / N - mean * mean
+    rstd = tl.math.rsqrt(var + eps)
+
+    tl.store(MEAN + pid, mean, m_mask)
+    tl.store(RSTRD + pid, rstd, m_mask)
+
+    if HAS_WEIGHT_BIAS:
+        w = tl.load(W + c_off, mask=m_mask, other=0.0)
+        b = tl.load(B_ + c_off, mask=m_mask, other=0.0)
+    else:
+        w = 1.0
+        b = 0.0
+
+    for start in range(0, N, TILE_N):
+        cols = start + n_off
+        mask = cols < N
+        x = tl.load(X + pid * N + cols, mask=mask, other=0.0).to(tl.float32)
+        y = (x - mean) * rstd
+        if HAS_WEIGHT_BIAS:
+            y = y * w + b
+        tl.store(Y + pid * N + cols, y.to(Y.dtype.element_ty), mask=mask)
+
+
+@libentry()
+@triton.jit(do_not_specialize=["eps"])
 def instancenorm_fwd_kernel_xpu(
     X,
     Y,
@@ -246,6 +369,9 @@ def instancenorm_fwd_kernel_xpu(
     XBLOCK: tl.constexpr,
     RBLOCK: tl.constexpr,
 ):
+    # Generic wide-tile forward: [XBLOCK, RBLOCK] programs with a masked scan
+    # over N. On XPU this stays fast for medium/long rows, so it is kept for
+    # the rows where the exact-width multi-row (or per-row) kernel is slower.
     pid = tl.program_id(0)
     xoffset = pid * XBLOCK
     _xindex = xoffset + tl.arange(0, XBLOCK)
@@ -344,51 +470,6 @@ def instance_norm_use_running_stats_kernel(
         out = (x - m) * rstd
 
     tl.store(out_ptr + pid * N + n_offsets, out, mask=mask)
-
-
-@triton.jit
-def update_running_stats_kernel(
-    mean_ptr,  # pointer to the mean
-    rstd_ptr,  # pointer to the 1/std
-    running_mean_ptr,
-    running_var_ptr,
-    momentum,
-    B,
-    C,
-    N,
-    eps,
-    BLOCK_BATCH_SIZE: tl.constexpr = 1,
-    BLOCK_CHANNEL_SIZE: tl.constexpr = 2048,
-):
-    cid = tl.program_id(0) * BLOCK_CHANNEL_SIZE + tl.arange(0, BLOCK_CHANNEL_SIZE)
-    col_mask = cid < C
-    running_mean = tl.load(running_mean_ptr + cid, mask=col_mask).to(tl.float32)
-    running_var = tl.load(running_var_ptr + cid, mask=col_mask).to(tl.float32)
-
-    new_mean = tl.zeros((BLOCK_CHANNEL_SIZE,), dtype=tl.float32)
-    new_var = tl.zeros((BLOCK_CHANNEL_SIZE,), dtype=tl.float32)
-    for b in range(0, B, BLOCK_BATCH_SIZE):
-        bid = b * BLOCK_BATCH_SIZE + tl.arange(0, BLOCK_BATCH_SIZE)[:, None]
-        row_mask = bid < B
-        mask = row_mask and col_mask[None, :]
-        mean = tl.load(mean_ptr + bid * C + cid[None, :], mask=mask, other=0.0).to(
-            tl.float32
-        )
-        rstd = tl.load(rstd_ptr + bid * C + cid[None, :], mask=mask, other=0.0).to(
-            tl.float32
-        )
-        var = (
-            (1 / (rstd * rstd) + eps) * N / (N - 1)
-        )  # NOTE: use unbiased var to update running_var
-
-        new_mean += tl.sum(mean, axis=0)
-        new_var += tl.sum(var, axis=0)
-
-    new_running_mean = (1 - momentum) * running_mean + momentum * new_mean / B
-    new_running_var = (1 - momentum) * running_var + momentum * new_var / B
-
-    tl.store(running_mean_ptr + cid, new_running_mean, mask=col_mask)
-    tl.store(running_var_ptr + cid, new_running_var, mask=col_mask)
 
 
 def instance_norm_backward_kernel_heur_block_row_size(args):
@@ -542,6 +623,56 @@ def weight_bias_backward_kernel(
     tl.store(dB, db, mask=c_mask)
 
 
+@libentry()
+@triton.jit
+def instance_norm_update_running_stats_kernel(
+    mean_ptr,  # pointer to the mean, [B, C] fp32
+    rstd_ptr,  # pointer to the rstd, [B, C] fp32
+    running_mean_ptr,
+    running_var_ptr,
+    C,
+    N,
+    eps,
+    momentum,
+    B: tl.constexpr,
+    BLOCK_C: tl.constexpr,
+):
+    # Fused replacement for the torch-op chain (mean/lerp) used before: one
+    # kernel computes the batch mean and the unbiased batch variance per
+    # channel from the forward stats, then applies the running stat update.
+    # torch's instance_norm updates running_var with the *unbiased* batch
+    # variance: batch_var = N/(N-1) * mean_b(1/rstd^2 - eps) (N>1), see
+    # tests/test_instance_norm.py --ref cpu.
+    cid = tl.program_id(0) * BLOCK_C + tl.arange(0, BLOCK_C)
+    c_mask = cid < C
+
+    acc_m = tl.zeros((BLOCK_C,), dtype=tl.float32)
+    acc_v = tl.zeros((BLOCK_C,), dtype=tl.float32)
+    for b in range(0, B):
+        off = b * C + cid
+        mean = tl.load(mean_ptr + off, mask=c_mask, other=0.0).to(tl.float32)
+        rstd = tl.load(rstd_ptr + off, mask=c_mask, other=0.0).to(tl.float32)
+        acc_m += mean
+        acc_v += 1.0 / (rstd * rstd) - eps
+
+    batch_mean = acc_m / B
+    unbias = tl.where(N > 1, N / (N - 1), 1.0)
+    batch_var = acc_v * unbias / B
+
+    rm = tl.load(running_mean_ptr + cid, mask=c_mask, other=0.0).to(tl.float32)
+    rv = tl.load(running_var_ptr + cid, mask=c_mask, other=0.0).to(tl.float32)
+    new_rm = (1.0 - momentum) * rm + momentum * batch_mean
+    new_rv = (1.0 - momentum) * rv + momentum * batch_var
+    tl.store(
+        running_mean_ptr + cid,
+        new_rm.to(running_mean_ptr.dtype.element_ty),
+        mask=c_mask,
+    )
+    tl.store(
+        running_var_ptr + cid, new_rv.to(running_var_ptr.dtype.element_ty), mask=c_mask
+    )
+
+
 class InstanceNorm(torch.autograd.Function):
     @staticmethod
     def forward(
@@ -602,43 +733,84 @@ class InstanceNorm(torch.autograd.Function):
 
         with torch_device_fn.device(x.device):
             if use_input_stats:
-                grid = (12, 1, 1)
-                instancenorm_fwd_kernel_xpu[grid](
-                    x,
-                    y,
-                    weight,
-                    bias,
-                    mean,
-                    rstd,
-                    M,
-                    N,
-                    C,
-                    eps,
-                    HAS_WEIGHT_BIAS=has_weight_bias,
-                    XBLOCK=triton.next_power_of_2(triton.cdiv(M, 12)),
-                    RBLOCK=8192,
-                    isCloseUnrollControl=True,
-                    buffer_size_limit=512,
-                )
-                if has_running_stats and use_input_stats:  # update running stats
-                    grid = lambda meta: (
-                        triton.cdiv(C, meta["BLOCK_CHANNEL_SIZE"]),
-                        1,
-                        1,
+                if N > 8192:
+                    # Long rows: one program per row, row scanned in 8192-wide chunks.
+                    grid = (M, 1, 1)
+                    instancenorm_fwd_kernel_xpu_large[grid](
+                        x,
+                        y,
+                        weight,
+                        bias,
+                        mean,
+                        rstd,
+                        M,
+                        N,
+                        C,
+                        eps,
+                        TILE_N=8192,
+                        HAS_WEIGHT_BIAS=has_weight_bias,
                     )
-                    update_running_stats_kernel[grid](
+                elif N in (64, 128) and (N & (N - 1)) == 0:
+                    # Exact-width multi-row kernel (single-pass). Measured fastest
+                    # on XPU for these row widths (64/128); TILE_M is restricted:
+                    # non-power-of-2 TILE_M miscompiles, TILE_M=1 is wrong for the
+                    # weight path, and TILE_M >= 64 faults (fp32), so TILE_M is a
+                    # power of two in [2, 32].
+                    tile_m = 1 << (min(8192 // N, M).bit_length() - 1)
+                    tile_m = max(2, min(tile_m, 32))
+                    grid = (triton.cdiv(M, tile_m), 1, 1)
+                    instancenorm_fwd_kernel_xpu_mr[grid](
+                        x,
+                        y,
+                        weight,
+                        bias,
+                        mean,
+                        rstd,
+                        M,
+                        C,
+                        eps,
+                        TILE_M=tile_m,
+                        N=N,
+                        HAS_WEIGHT_BIAS=has_weight_bias,
+                    )
+                else:
+                    # Generic wide-tile scan for the remaining row widths.
+                    grid = (12, 1, 1)
+                    instancenorm_fwd_kernel_xpu[grid](
+                        x,
+                        y,
+                        weight,
+                        bias,
+                        mean,
+                        rstd,
+                        M,
+                        N,
+                        C,
+                        eps,
+                        XBLOCK=triton.next_power_of_2(triton.cdiv(M, 12)),
+                        RBLOCK=8192,
+                        HAS_WEIGHT_BIAS=has_weight_bias,
+                        isCloseUnrollControl=True,
+                        buffer_size_limit=512,
+                    )
+                if has_running_stats:  # update running stats
+                    # mean / rstd are [B, C] fp32; running_mean / running_var are [C].
+                    # torch's instance_norm updates running_var with the *unbiased*
+                    # batch variance (verified against the fp64 CPU reference):
+                    # batch_var = N/(N-1) * mean_b(1/rstd^2 - eps), see
+                    # tests/test_instance_norm.py --ref cpu.
+                    grid = (max(1, triton.cdiv(C, 64)), 1, 1)
+                    instance_norm_update_running_stats_kernel[grid](
                         mean,
                         rstd,
                         running_mean,
                         running_var,
-                        momentum,
-                        B,
                         C,
                         N,
                         eps,
-                        isCloseCoreTiling=True,
-                        isCloseVectorization=True,
-                        isCloseUnrollControl=True,
+                        momentum,
+                        B=B,
+                        BLOCK_C=64,
                     )
             else:  # use running stats instead of input stats
                 TILE_N = triton.next_power_of_2(N)
@@ -672,7 +844,7 @@ class InstanceNorm(torch.autograd.Function):
     def backward(ctx, out_grad):
         logger.debug("GEMS_KUNLUNXIN INSTANCENORM_BACKWARD")
         out_grad = out_grad.contiguous()
-        (x, weight, mean, rstd) = ctx.saved_tensors
+        x, weight, mean, rstd = ctx.saved_tensors
         M = ctx.M
         N = ctx.N
         C = ctx.C

@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -61,6 +75,19 @@ def where_self_out(condition, self, other, out=None):
     if out is None:
         out_shape = torch.broadcast_shapes(c.shape, a.shape, b.shape)
         out = torch.empty(out_shape, dtype=result_type, device=device)
+
+    # Workaround for a triton_gcu / GCU400 LLVM backend bug:
+    # for single-element pointwise kernels, the compiler emits
+    # `extract_vector_elt (v16i32 = bitcast v512i1)` for the boundary-check
+    # mask, which the backend cannot select ("LLVM ERROR: Cannot select").
+    # Avoid launching the triton kernel altogether: compute the single value
+    # on host and write it back through the aten cross-device copy path.
+    if out.numel() == 1:
+        c_val = bool(c.reshape(()).item())
+        a_val = a.reshape(()).item()
+        b_val = b.reshape(()).item()
+        out.copy_(torch.tensor(a_val if c_val else b_val, dtype=out.dtype))
+        return out
 
     ndim = max(c.ndim, a.ndim, b.ndim)
     where_inner.instantiate(ndim)

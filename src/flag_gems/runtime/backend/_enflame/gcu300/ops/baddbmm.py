@@ -1,12 +1,26 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
 import triton
 import triton.language as tl
 
-from .. import runtime
-from ..runtime import torch_device_fn
-from ..utils import libentry, libtuner
+from flag_gems import runtime
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry, libtuner
 
 if runtime.device.vendor_name == "iluvatar":
     from flag_gems.runtime.backend._iluvatar.ops.bmm import bmm
@@ -118,7 +132,7 @@ def baddbmm_kernel(
 
     bias_ptrs = bias + offs_m[:, None] * bias_M_stride + offs_n[None, :] * bias_N_stride
 
-    if DIVISIBLE_M and DIVISIBLE_N:
+    if DIVISIBLE_M & DIVISIBLE_N:
         mask_c = None
     else:
         mask_c = True

@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
@@ -12,7 +26,15 @@ class ArgsortBenchmark(base.GenericBenchmark2DOnly):
 
 
 def _input_fn(shape, dtype, device):
-    inp = utils.generate_tensor_input(shape, dtype, device)
+    if dtype in (torch.int8, torch.uint8):
+        low, high = (-128, 128) if dtype == torch.int8 else (0, 256)
+        inp = torch.randint(low, high, shape, dtype=dtype, device="cpu").to(device)
+    elif dtype == torch.int64:
+        inp = torch.randint(-(2**60), 2**60, shape, dtype=dtype, device="cpu").to(
+            device
+        )
+    else:
+        inp = utils.generate_tensor_input(shape, dtype, device)
     yield inp, {"dim": -1, "descending": False},
 
 
@@ -25,6 +47,7 @@ def test_argsort():
         input_fn=_input_fn,
         op_name="argsort",
         torch_op=torch.argsort,
-        dtypes=consts.INT_DTYPES + consts.FLOAT_DTYPES,
+        dtypes=consts.INT_DTYPES + consts.FLOAT_DTYPES + consts.EXTRA_INT_DTYPES,
     )
+    bench.set_gems(flag_gems.argsort)
     bench.run()

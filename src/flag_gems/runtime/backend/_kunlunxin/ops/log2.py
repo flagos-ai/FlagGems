@@ -1,0 +1,40 @@
+import logging
+
+import triton
+import triton.language as tl
+from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
+
+from ..utils.pointwise_dynamic import pointwise_dynamic
+
+logger = logging.getLogger(__name__)
+
+config_ = CodeGenConfig(
+    512,
+    (65536, 65536, 65536),
+    32,
+    True,
+    prefer_1d_tile=True,
+    buffer_size_limit=4096,
+    isCloseVectorization=True,
+    kunlunAutoGrid=True,
+    unroll_num=8,
+)
+
+
+@pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")], config=config_)
+@triton.jit
+def log2_func(x):
+    return (tl.log(x.to(tl.float32)) * 1.4426950408889634).to(x.dtype)
+
+
+def log2(A):
+    logger.debug("GEMS_KUNLUNXIN LOG2")
+    return log2_func(A)
+
+
+def log2_(A):
+    logger.debug("GEMS_KUNLUNXIN LOG2_")
+    if not A.is_floating_point():
+        raise TypeError(f"log2_ does not support dtype {A.dtype}")
+    log2_func(A, out0=A)
+    return A

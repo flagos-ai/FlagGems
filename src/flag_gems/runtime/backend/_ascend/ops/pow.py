@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import triton
@@ -13,7 +27,13 @@ logger = logging.getLogger(__name__)
 @pointwise_dynamic(promotion_methods=[(0, 1, "BOOL_TO_LONG")])
 @triton.jit
 def pow_func(x, exponent):
-    return _pow(x.to(tl.float32), exponent)
+    if (
+        tl.constexpr(exponent.dtype.is_fp32())
+        or tl.constexpr(exponent.dtype.is_fp16())
+        or tl.constexpr(exponent.dtype.is_bf16())
+    ):
+        return _pow(x.to(tl.float32), exponent)
+    return _pow(x.to(tl.float32), exponent.to(tl.float32))
 
 
 def pow_tensor_tensor(A, exponent):
@@ -31,7 +51,13 @@ def pow_tensor_tensor_(A, exponent):
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "BOOL_TO_LONG")])
 @triton.jit
 def pow_func_tensor_scalar(x, exponent):
-    return _pow(x.to(tl.float32), exponent)
+    if (
+        tl.constexpr(exponent.dtype.is_fp32())
+        or tl.constexpr(exponent.dtype.is_fp16())
+        or tl.constexpr(exponent.dtype.is_bf16())
+    ):
+        return _pow(x.to(tl.float32), exponent)
+    return _pow(x.to(tl.float32), exponent.to(tl.float32))
 
 
 def pow_tensor_scalar(A, exponent):
@@ -49,7 +75,13 @@ def pow_tensor_scalar_(A, exponent):
 @pointwise_dynamic(is_tensor=[False, True], promotion_methods=[(0, 1, "BOOL_TO_LONG")])
 @triton.jit
 def pow_func_scalar_tensor(x, exponent):
-    return _pow(x.to(tl.float32), exponent)
+    if (
+        tl.constexpr(exponent.dtype.is_fp32())
+        or tl.constexpr(exponent.dtype.is_fp16())
+        or tl.constexpr(exponent.dtype.is_bf16())
+    ):
+        return _pow(x.to(tl.float32), exponent)
+    return _pow(x.to(tl.float32), exponent.to(tl.float32))
 
 
 def pow_scalar(A, exponent):

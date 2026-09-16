@@ -6,6 +6,7 @@ import triton.language as tl
 from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 
 from flag_gems.runtime import torch_device_fn
+from flag_gems.utils.shape_utils import heuristics_for_num_warps, volume
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
@@ -50,6 +51,15 @@ def fill_scalar(input, value):
         return fill_scalar_func(input, value, out0=out)
 
 
+def fill_scalar_out(input, value, *, out=None):
+    logger.debug("GEMS_KUNLUNXIN FILL_SCALAR_OUT")
+    if out is None:
+        return fill_scalar(input, value)
+    with torch_device_fn.device(input.device):
+        fill_scalar_func(input, value, out0=out)
+    return out
+
+
 def fill_tensor(input, value):
     if not value.is_cuda:
         return fill_scalar(input, value.item())
@@ -61,6 +71,44 @@ def fill_tensor(input, value):
     out = torch.empty_like(input)
     with torch_device_fn.device(input.device):
         return fill_tensor_func(input, value, out0=out)
+
+
+@triton.jit
+def _fill_tensor_out_kernel(out_ptr, n_elements, value, BLOCK_SIZE: tl.constexpr):
+    pid = tl.program_id(0)
+    offs = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offs < n_elements
+    tl.store(
+        out_ptr + offs,
+        tl.full([BLOCK_SIZE], value, dtype=out_ptr.dtype.element_ty),
+        mask=mask,
+    )
+
+
+def fill_tensor_out(input, value, *, out=None):
+    logger.debug("GEMS_KUNLUNXIN FILL_TENSOR_OUT")
+    if out is None:
+        return fill_tensor(input, value)
+    if value.is_cuda and value.ndim != 0:
+        raise RuntimeError(
+            f"fill_ only supports 0-dimension value tensor but got tensor with {value.ndim} dimensions."
+        )
+    N = volume(input.shape)
+    if N == 0:
+        return out
+    grid_fn = (12, 1, 1)
+    block_size = triton.next_power_of_2(triton.cdiv(N, 12))
+    num_warps = heuristics_for_num_warps(block_size)
+    with torch_device_fn.device(input.device):
+        _fill_tensor_out_kernel[grid_fn](
+            out,
+            N,
+            value.item(),
+            BLOCK_SIZE=block_size,
+            num_warps=num_warps,
+            isCloseDtypeConvert=True,
+        )
+    return out
 
 
 def fill_tensor_(self, value):

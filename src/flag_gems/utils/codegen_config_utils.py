@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from dataclasses import dataclass
 from typing import Tuple
 
@@ -20,10 +34,8 @@ def default_heuristics_for_num_warps(tile_size):
 def metax_heuristics_for_num_warps(tile_size):
     if tile_size <= 1024:
         return 4
-    elif tile_size <= 2048:
-        return 8
     else:
-        return 16
+        return 8  # MetaX C550: max 512 threads = 8 warps × 64 threads/warp
 
 
 def hygon_heuristics_for_num_warps(tile_size):
@@ -75,6 +87,7 @@ class CodeGenConfig:
 
     prefer_block_pointer: bool
     prefer_1d_tile: bool
+    balance_grid: bool = False
     # gen_configs: -> configs
     # prune_config: (as jit function, ) cofigs -> configs
 
@@ -105,7 +118,7 @@ CODEGEN_COFIGS = {
     vendors.METAX: CodeGenConfig(
         2048,
         (65536, 65536, 65536),
-        16,
+        8,  # MetaX C550: max 512 threads = 8 warps × 64 threads/warp
         True,
         prefer_1d_tile=int(triton.__version__[0]) < 3,
     ),
@@ -185,7 +198,18 @@ def get_codegen_config():
     return CODEGEN_COFIGS.get(device.vendor)
 
 
-def get_heuristics_for_num_warps(tile_size):
+def get_heuristics_for_num_warps_fn():
+    """Resolve the active backend's immutable pointwise warp policy.
+
+    Pointwise PT2 plans call this once while materializing outside Dynamo, then
+    retain the returned function as structural launch policy.  Runtime tile
+    buckets may remain symbolic without re-running backend dispatch in a graph.
+    """
+
     if device.vendor not in HEURISTICS_CONFIG:
-        return HEURISTICS_CONFIG.get(vendors.NVIDIA)(tile_size)
-    return HEURISTICS_CONFIG.get(device.vendor)(tile_size)
+        return HEURISTICS_CONFIG.get(vendors.NVIDIA)
+    return HEURISTICS_CONFIG.get(device.vendor)
+
+
+def get_heuristics_for_num_warps(tile_size):
+    return get_heuristics_for_num_warps_fn()(tile_size)

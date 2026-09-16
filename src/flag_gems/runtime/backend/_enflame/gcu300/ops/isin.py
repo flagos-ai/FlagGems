@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 import math
 
@@ -43,11 +57,11 @@ def isin_by_comparation_impl(
     for col_off in range(0, N, BLOCK_N):
         cols = col_off + tl.arange(0, BLOCK_N)[None, :]
         col_mask = cols < N
-        mask = row_mask and col_mask
+        mask = row_mask & col_mask
         in1 = tl.load(in1_ravel_ptr + cols, mask, other=0)
         block = tl.where(
             mask,
-            tl.where(invert, block and (in0 != in1), block or (in0 == in1)),
+            tl.where(invert, block & (in0 != in1), block | (in0 == in1)),
             invert,
         )
     out = tl.reduce(block, axis=1, combine_fn=(reduce_all if invert else reduce_any))
@@ -151,9 +165,9 @@ def isin_by_search_impl(
     for i in range(log_n):
         mid = tl.where(while_mask, start + (end - start) // 2, 0)
         mid_val = tl.load(in1_sorted_ptr + mid, mask=while_mask)
-        out = tl.where(while_mask, out or (mid_val == in0_ravel), out)  # found
-        start = tl.where(while_mask and (mid_val < in0_ravel), mid + 1, start)
-        end = tl.where(while_mask and (mid_val > in0_ravel), mid, end)
+        out = tl.where(while_mask, out | (mid_val == in0_ravel), out)  # found
+        start = tl.where(while_mask & (mid_val < in0_ravel), mid + 1, start)
+        end = tl.where(while_mask & (mid_val > in0_ravel), mid, end)
         while_mask = start < end
 
     # store out

@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -19,8 +33,11 @@ def gems_silu_and_mul(
     x: torch.Tensor,
     y: torch.Tensor,
 ) -> torch.Tensor:
-    logger.debug("GEMS CUSTOM SILU_AND_MUL FORWARD")
-    # TODO: Implement C++ wrapper for silu_and_mul
+
+    # NOTE: Dynamo cannot trace logging.Logger methods
+    # (torch._dynamo.exc.Unsupported 'logging.Logger method not supported
+    # for non-export cases'), so this entry point must not log.
+    # Debug-only removal; numerics/control flow unchanged.
     return flag_gems.silu_and_mul(x, y)
 
 

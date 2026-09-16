@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 import math
 from collections import namedtuple
@@ -85,9 +99,9 @@ def max_kernel_inner_1d(
     dtype = inp.type.element_ty
     min_value = get_dtype_min(dtype)
 
-    if tl.constexpr(dtype == tl.float16) or tl.constexpr(dtype == tl.bfloat16):
+    if tl.constexpr(dtype == tl.float16) | tl.constexpr(dtype == tl.bfloat16):
         acc_dtype = tl.float32
-    elif tl.constexpr(dtype == tl.int16) or tl.constexpr(dtype == tl.int8):
+    elif tl.constexpr(dtype == tl.int16) | tl.constexpr(dtype == tl.int8):
         acc_dtype = tl.int32
     else:
         acc_dtype = dtype
@@ -134,9 +148,9 @@ def max_kernel_non_inner(
     total_work = M * num_k_tiles
 
     dtype = inp.type.element_ty
-    if tl.constexpr(dtype == tl.float16) or tl.constexpr(dtype == tl.bfloat16):
+    if tl.constexpr(dtype == tl.float16) | tl.constexpr(dtype == tl.bfloat16):
         acc_dtype = tl.float32
-    elif tl.constexpr(dtype == tl.int16) or tl.constexpr(dtype == tl.int8):
+    elif tl.constexpr(dtype == tl.int16) | tl.constexpr(dtype == tl.int8):
         acc_dtype = tl.int32
     else:
         acc_dtype = dtype

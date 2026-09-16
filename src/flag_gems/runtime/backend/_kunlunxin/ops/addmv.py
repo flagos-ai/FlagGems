@@ -8,12 +8,26 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import broadcastable_to, libentry
 from flag_gems.utils import triton_lang_extension as ext
 
+from ..utils.pointwise_dynamic import pointwise_dynamic
+from .mv import mv
+
 logger = logging.getLogger(__name__)
+
+
+@pointwise_dynamic(
+    is_tensor=[True, True, False, False],
+    promotion_methods=[(0, 1, "DEFAULT")],
+)
+@triton.jit
+def _addmv_combine_kernel(mv_res, bias, alpha, beta):
+    return mv_res.to(tl.float32) * alpha + bias.to(tl.float32) * beta
+
+
+_MV_DELEGATE_M = 2048
 
 
 def heur_block_n(args):
     N = args.get("N", 0)
-    # Use smaller BLOCK_N for more parallelism
     if N <= 64:
         return triton.next_power_of_2(N)
     elif N <= 256:
@@ -28,7 +42,6 @@ def heur_block_m(args):
     import builtins
 
     M = args.get("M", 0)
-    # Larger BLOCK_M for better memory coalescing
     return builtins.min(triton.next_power_of_2(M), 4096)
 
 
@@ -80,13 +93,17 @@ def addmv_kernel(
     tl.store(Out_ptrs, out_block, mask=n_mask)
 
 
-def addmv(self, mat, vec, *, beta=1, alpha=1):
-    logger.debug("GEMS_KUNLUNXIN ADDMV")
-    assert mat.shape[1] == vec.shape[0], "incompatible dimensions"
-    assert broadcastable_to(self.shape, (mat.shape[0],)), "Incompatible self shape"
-    N, M = mat.shape
-    out = torch.empty((N,), device=mat.device, dtype=mat.dtype)
-    self = self.broadcast_to(out.shape)
+def _addmv_mv(self, mat, vec, beta, alpha, out, N):
+    mv_res = mv(mat, vec).reshape(N)
+    bias = torch.zeros_like(mv_res) if beta == 0 else self.broadcast_to((N,))
+    _addmv_combine_kernel(mv_res, bias, alpha, beta, out0=out)
+    return out
+
+
+def _addmv_triton(self, mat, vec, beta, alpha, out, N, M):
+    if beta == 0:
+        self = torch.zeros_like(self)
+    self = self.broadcast_to((N,))
     grid = lambda META: (triton.cdiv(N, META["BLOCK_N"]),)
     with torch_device_fn.device(mat.device):
         addmv_kernel[grid](
@@ -107,32 +124,37 @@ def addmv(self, mat, vec, *, beta=1, alpha=1):
     return out
 
 
-def addmv_out(self, mat, vec, *, beta=1, alpha=1, out=None):
-    logger.debug("GEMS_KUNLUNXIN ADDMV_OUT")
+def _addmv_impl(self, mat, vec, beta, alpha, out):
     assert mat.shape[1] == vec.shape[0], "incompatible dimensions"
     assert broadcastable_to(self.shape, (mat.shape[0],)), "Incompatible self shape"
     N, M = mat.shape
     if out is None:
-        out = torch.empty((N,), device=mat.device, dtype=mat.dtype)
+        out = torch.empty(N, device=mat.device, dtype=mat.dtype)
     else:
         assert out.shape == (N,), "Incompatible output shape"
 
-    self = self.broadcast_to(out.shape)
-    grid = lambda META: (triton.cdiv(N, META["BLOCK_N"]),)
-    with torch_device_fn.device(mat.device):
-        addmv_kernel[grid](
-            mat,
-            vec,
-            self,
-            out,
-            N,
-            M,
-            alpha,
-            beta,
-            mat.stride(0),
-            mat.stride(1),
-            vec.stride(0),
-            self.stride(0),
-            out.stride(0),
-        )
-    return out
+    if M == 0:
+        if beta == 0:
+            out.zero_()
+        else:
+            out.copy_(self.broadcast_to((N,)).mul(beta))
+        return out
+
+    if M >= _MV_DELEGATE_M:
+        return _addmv_mv(self, mat, vec, beta, alpha, out, N)
+    return _addmv_triton(self, mat, vec, beta, alpha, out, N, M)
+
+
+def addmv(self, mat, vec, *, beta=1, alpha=1):
+    logger.debug("GEMS_KUNLUNXIN ADDMV")
+    return _addmv_impl(self, mat, vec, beta, alpha, None)
+
+
+def addmv_out(self, mat, vec, *, beta=1, alpha=1, out=None):
+    logger.debug("GEMS_KUNLUNXIN ADDMV_OUT")
+    return _addmv_impl(self, mat, vec, beta, alpha, out)
+
+
+def addmv_(self, mat, vec, *, beta=1, alpha=1):
+    logger.debug("GEMS_KUNLUNXIN ADDMV_")
+    return _addmv_impl(self, mat, vec, beta, alpha, self)

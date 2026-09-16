@@ -1,5 +1,18 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
-import os
 
 import torch
 import triton
@@ -33,22 +46,14 @@ def heur_divisible_k(args):
 
 
 autotune_decorator = triton.autotune(
-    configs=[],
-    generate_configs="bmm",
+    configs=[
+        triton.Config({"TILE_M": 256, "TILE_N": 256, "TILE_K": 256}),
+        triton.Config({"TILE_M": 256, "TILE_N": 256, "TILE_K": 128}),
+        triton.Config({"TILE_M": 128, "TILE_N": 128, "TILE_K": 128}),
+        triton.Config({"TILE_M": 16, "TILE_N": 16, "TILE_K": 16}),  # 适配小矩阵
+    ],
     key=["M", "N", "K"],
 )
-
-
-KLX_USE_AUTOTUNE = os.environ.get("KLX_USE_AUTOTUNE", "1") == "1"
-
-if not KLX_USE_AUTOTUNE:
-    autotune_decorator = triton.autotune(
-        configs=[
-            triton.Config({"TILE_M": 256, "TILE_N": 256, "TILE_K": 256}),
-            triton.Config({"TILE_M": 16, "TILE_N": 16, "TILE_K": 16}),  # 适配小矩阵
-        ],
-        key=["M", "N", "K"],
-    )
 
 
 @libentry()
@@ -119,7 +124,7 @@ def bmm_kernel(
 
     num_iters = tl.cdiv(K, TILE_K)
     o = tl.zeros((TILE_M, TILE_N), dtype=tl.float32)
-    for _ in range(num_iters):
+    for k in range(0, num_iters):
         if DIVISIBLE_K:
             if DIVISIBLE_M:
                 mask_a = tl.full([TILE_M, TILE_K], value=1, dtype=tl.int1)
@@ -130,19 +135,19 @@ def bmm_kernel(
             else:
                 mask_b = mask_n[None, :]
         else:
-            mask_k = offs_k < K
-            offs_k += TILE_K
+            mask_k_row = offs_k[None, :] < K - k * TILE_K
+            mask_k_col = offs_k[:, None] < K - k * TILE_K
             if DIVISIBLE_M:
-                mask_a = mask_k[None, :]
+                mask_a = mask_k_row
             else:
-                mask_a = mask_m[:, None] & mask_k[None, :]
+                mask_a = mask_m[:, None] & mask_k_row
             if DIVISIBLE_N:
-                mask_b = mask_k[:, None]
+                mask_b = mask_k_col
             else:
-                mask_b = mask_k[:, None] & mask_n[None, :]
+                mask_b = mask_k_col & mask_n[None, :]
 
-        a = tl.load(a_ptrs, mask_a)
-        b = tl.load(b_ptrs, mask_b)
+        a = tl.load(a_ptrs, mask_a, other=0.0)
+        b = tl.load(b_ptrs, mask_b, other=0.0)
 
         a_ptrs += TILE_K
         b_ptrs += TILE_K * N

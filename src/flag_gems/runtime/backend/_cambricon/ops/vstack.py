@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import importlib
 import logging
 import math
@@ -69,8 +83,7 @@ class VstackKernelCode(IndentedBuffer):
 
     def __imports(self):
         """Generate imports for the kernel code."""
-        self.tpl(
-            """
+        self.tpl("""
 import math
 import torch
 import triton
@@ -78,10 +91,9 @@ from triton import language as tl
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 from flag_gems.runtime.backend import _state
-TOTAL_CORE_NUM = vendor_module.TOTAL_CORE_NUM
-MAX_NRAM_SIZE = vendor_module.MAX_NRAM_SIZE
-        """
-        )
+TOTAL_CORE_NUM = _state.vendor_module.TOTAL_CORE_NUM
+MAX_NRAM_SIZE = _state.vendor_module.MAX_NRAM_SIZE
+        """)
 
     def __wrapper(self):
         """Generate wrapper function for the kernel code."""
@@ -256,14 +268,14 @@ def {wrapper_name}(tensors, inputs, idx, total_size, input_num, deal_num, is_sma
                                 input_idx = i - 1
                                 if self.input_num == 2:
                                     self.writeline(
-                                        f"condidate_num = idx_{idx} - idx_{i}"
+                                        f"condidate_num = tl.cast(idx_{idx} - idx_{i}, tl.int32)"
                                     )
                                 else:
                                     if i == 1:
                                         self.writeline(f"if input_iter == {input_idx}:")
                                         with self.indent():
                                             self.writeline(
-                                                f"condidate_num = idx_{idx} - idx_{i}"
+                                                f"condidate_num = tl.cast(idx_{idx} - idx_{i}, tl.int32)"
                                             )
                                     else:
                                         if i < self.input_num - 1:
@@ -272,13 +284,13 @@ def {wrapper_name}(tensors, inputs, idx, total_size, input_num, deal_num, is_sma
                                             )
                                             with self.indent():
                                                 self.writeline(
-                                                    f"condidate_num = idx_{idx} - idx_{i}"
+                                                    f"condidate_num = tl.cast(idx_{idx} - idx_{i}, tl.int32)"
                                                 )
                                         else:
                                             self.writeline("else:")
                                             with self.indent():
                                                 self.writeline(
-                                                    f"condidate_num = idx_{idx} - idx_{i}"
+                                                    f"condidate_num = tl.cast(idx_{idx} - idx_{i}, tl.int32)"
                                                 )
 
                             self.writeline("input_iter += 1")

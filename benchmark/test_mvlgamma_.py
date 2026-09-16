@@ -1,0 +1,38 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import pytest
+import torch
+
+from . import base, consts
+
+
+@pytest.mark.special_multigammaln
+def test_special_multigammaln():
+    bench = base.UnaryPointwiseBenchmark(
+        op_name="special_multigammaln",
+        torch_op=lambda a: torch.special.multigammaln(a, 5),
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.mvlgamma_
+def test_mvlgamma_():
+    bench = base.UnaryPointwiseBenchmark(
+        op_name="mvlgamma_",
+        torch_op=lambda a: a.mvlgamma_(5),
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()

@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """
 Test suite for grid_sample operator.
 
@@ -15,7 +29,8 @@ Test coverage description:
 import pytest
 import torch
 
-from flag_gems.ops import grid_sample
+import flag_gems
+from flag_gems import grid_sample
 
 from . import conftest as cfg
 
@@ -75,6 +90,9 @@ def create_tensor(shape, dtype, device="cuda"):
 class TestGridSampleNearest4D:
     """Test 4D nearest neighbor mode."""
 
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
+    )
     @pytest.mark.grid_sample
     @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
     def test_nearest_zeros_4d_small(self, dtype):
@@ -96,6 +114,9 @@ class TestGridSampleNearest4D:
 
         assert_close(y_gems, y_torch, dtype=dtype)
 
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
+    )
     @pytest.mark.grid_sample
     @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
     def test_nearest_zeros_4d_medium(self, dtype):
@@ -117,6 +138,9 @@ class TestGridSampleNearest4D:
 
         assert_close(y_gems, y_torch, dtype=dtype)
 
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
+    )
     @pytest.mark.grid_sample
     @pytest.mark.parametrize("padding_mode", ["zeros", "border", "reflection"])
     @pytest.mark.parametrize("align_corners", [True, False])
@@ -220,6 +244,9 @@ class TestGridSampleEdgeCases:
 
         assert_close(y_gems, y_torch, dtype=dtype)
 
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
+    )
     @pytest.mark.grid_sample
     def test_grid_out_of_bounds_border(self):
         """Test: border padding should use boundary values when grid is out of bounds."""
@@ -374,6 +401,9 @@ class TestGridSampleValidation:
 # TODO: Additional test classes to be implemented
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required.")
 class TestGridSampleBilinear4D:
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
+    )
     @pytest.mark.grid_sample
     @pytest.mark.parametrize("shape", [(1, 1, 8, 8), (2, 3, 16, 16)])
     @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -396,6 +426,9 @@ class TestGridSampleBilinear4D:
 
         assert_close(y_gems, y_torch, dtype=dtype)
 
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
+    )
     @pytest.mark.grid_sample
     @pytest.mark.parametrize("shape", [(1, 1, 8, 8), (2, 3, 16, 16)])
     @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -418,6 +451,9 @@ class TestGridSampleBilinear4D:
 
         assert_close(y_gems, y_torch, dtype=dtype)
 
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
+    )
     @pytest.mark.grid_sample
     @pytest.mark.parametrize("padding_mode", ["zeros", "border", "reflection"])
     @pytest.mark.parametrize("align_corners", [True, False])
@@ -565,6 +601,9 @@ class TestGridSampleBicubic4D:
 class TestGridSample5D:
     """Test 5D input support."""
 
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
+    )
     @pytest.mark.grid_sample
     @pytest.mark.parametrize("shape", [(1, 2, 8, 8, 8), (2, 3, 8, 8, 8)])
     @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -587,6 +626,9 @@ class TestGridSample5D:
 
         assert_close(y_gems, y_torch, dtype=dtype)
 
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
+    )
     @pytest.mark.grid_sample
     @pytest.mark.parametrize(
         "mode", ["nearest", "bilinear"]
@@ -641,6 +683,9 @@ class TestGridSampleExtremeSizes:
     - Large sizes: 512×512, 1024×1024, 2048×2048, 4096×4096
     """
 
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
+    )
     @pytest.mark.grid_sample
     @pytest.mark.parametrize("mode", ["nearest", "bilinear"])
     @pytest.mark.parametrize("padding_mode", ["zeros", "border"])
@@ -664,6 +709,9 @@ class TestGridSampleExtremeSizes:
 
         assert_close(y_gems, y_torch, dtype=dtype)
 
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
+    )
     @pytest.mark.grid_sample
     @pytest.mark.parametrize("mode", ["nearest", "bilinear"])
     @pytest.mark.parametrize("padding_mode", ["zeros", "border", "reflection"])
@@ -686,6 +734,9 @@ class TestGridSampleExtremeSizes:
 
         assert_close(y_gems, y_torch, dtype=dtype)
 
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
+    )
     @pytest.mark.grid_sample
     @pytest.mark.parametrize("mode", ["nearest", "bilinear"])
     @pytest.mark.parametrize("padding_mode", ["zeros", "border", "reflection"])
@@ -711,6 +762,9 @@ class TestGridSampleExtremeSizes:
 
     # Large size tests (256×256, 512×512, 1024×1024)
     @pytest.mark.grid_sample
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
+    )
     @pytest.mark.parametrize("mode", ["nearest", "bilinear", "bicubic"])
     @pytest.mark.parametrize("padding_mode", ["zeros", "border", "reflection"])
     def test_256x256_large_size(self, mode, padding_mode):
@@ -735,6 +789,9 @@ class TestGridSampleExtremeSizes:
         atol = 3.0e-6 if mode == "bicubic" else ATOL_DICT.get(dtype, 1e-5)
         assert_close(y_gems, y_torch, atol=atol, dtype=dtype)
 
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
+    )
     @pytest.mark.grid_sample
     @pytest.mark.parametrize("mode", ["nearest", "bilinear"])
     @pytest.mark.parametrize("padding_mode", ["zeros", "border"])
@@ -763,6 +820,9 @@ class TestGridSampleExtremeSizes:
         gpu_memory_available < 8 * 1024**3,
         reason="Insufficient GPU memory for 1024×1024 test",
     )
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
+    )
     @pytest.mark.parametrize("mode", ["nearest", "bilinear"])
     @pytest.mark.parametrize("padding_mode", ["zeros", "border"])
     def test_1024x1024_very_large_size(self, mode, padding_mode):
@@ -787,9 +847,13 @@ class TestGridSampleExtremeSizes:
 
     # Phase 3: Extra large size tests (2048×2048, 4096×4096)
     @pytest.mark.grid_sample
+    @pytest.mark.skip(reason="Skip extreme large size to avoid CI timeout")
     @pytest.mark.skipif(
         gpu_memory_available < 16 * 1024**3,
         reason="Insufficient GPU memory for 2048×2048 test",
+    )
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
     )
     @pytest.mark.parametrize("mode", ["nearest", "bilinear"])
     @pytest.mark.parametrize("padding_mode", ["zeros", "border"])
@@ -814,9 +878,13 @@ class TestGridSampleExtremeSizes:
         assert_close(y_gems, y_torch, dtype=dtype)
 
     @pytest.mark.grid_sample
+    @pytest.mark.skip(reason="Skip extreme large size to avoid CI timeout")
     @pytest.mark.skipif(
         gpu_memory_available < 32 * 1024**3,
         reason="Insufficient GPU memory for 4096×4096 test",
+    )
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
     )
     @pytest.mark.parametrize("mode", ["nearest", "bilinear"])
     @pytest.mark.parametrize("padding_mode", ["zeros", "border"])
@@ -841,9 +909,13 @@ class TestGridSampleExtremeSizes:
         assert_close(y_gems, y_torch, dtype=dtype)
 
     @pytest.mark.grid_sample
+    @pytest.mark.skip(reason="Skip large 5D size to avoid CI timeout")
     @pytest.mark.skipif(
         gpu_memory_available < 8 * 1024**3,
         reason="Insufficient GPU memory for 2048×2048 test",
+    )
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
     )
     @pytest.mark.parametrize("mode", ["nearest", "bilinear"])
     @pytest.mark.parametrize("padding_mode", ["zeros", "border"])
@@ -868,9 +940,13 @@ class TestGridSampleExtremeSizes:
         assert_close(y_gems, y_torch, dtype=dtype)
 
     @pytest.mark.grid_sample
+    @pytest.mark.skip(reason="Skip extreme large size to avoid CI timeout")
     @pytest.mark.skipif(
         gpu_memory_available < 24 * 1024**3,
         reason="Insufficient GPU memory for 2048×2048 test",
+    )
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
     )
     @pytest.mark.parametrize("mode", ["nearest", "bilinear"])
     def test_5d_128x128x128_very_large_size(self, mode):

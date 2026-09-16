@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 import math
 
@@ -8,9 +22,11 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.config import use_c_extension
-from flag_gems.ops.flash_api import mha_fwd, mha_varlan_fwd
+from flag_gems.ops.flash_api import mha_varlan_fwd
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
+
+from .flash_api import mha_fwd
 
 logger = logging.getLogger(__name__)
 
@@ -639,7 +655,7 @@ def _attn_bwd(
     remaining_m = Q_CTX - start_m
     num_steps = (remaining_m + BLOCK_M1 - 1) // BLOCK_M1
 
-    if num_steps > 0 and start_m < Q_CTX:
+    if (num_steps > 0) & (start_m < Q_CTX):
         dk, dv = _attn_bwd_dkdv(  #
             dk,
             dv,  #

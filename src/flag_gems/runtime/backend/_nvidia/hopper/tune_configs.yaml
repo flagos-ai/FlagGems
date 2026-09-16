@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 mm:
   - META:
       BLOCK_M: 64
@@ -131,6 +145,140 @@ mm:
       BLOCK_K: 32
     num_stages: 4
     num_warps: 8
+mm_tma_transposed_direct:
+  - META:
+      BLOCK_M: 8
+      BLOCK_N: 128
+      BLOCK_K: 128
+      N_MAJOR: true
+    num_stages: 3
+    num_warps: 4
+  - META:
+      BLOCK_M: 8
+      BLOCK_N: 64
+      BLOCK_K: 256
+      N_MAJOR: true
+    num_stages: 3
+    num_warps: 4
+  - META:
+      BLOCK_M: 8
+      BLOCK_N: 128
+      BLOCK_K: 256
+      N_MAJOR: true
+    num_stages: 3
+    num_warps: 4
+  - META:
+      BLOCK_M: 16
+      BLOCK_N: 128
+      BLOCK_K: 64
+      N_MAJOR: true
+    num_stages: 3
+    num_warps: 4
+  - META:
+      BLOCK_M: 16
+      BLOCK_N: 64
+      BLOCK_K: 64
+      N_MAJOR: true
+    num_stages: 2
+    num_warps: 4
+  - META:
+      BLOCK_M: 16
+      BLOCK_N: 64
+      BLOCK_K: 64
+      N_MAJOR: true
+    num_stages: 3
+    num_warps: 4
+  - META:
+      BLOCK_M: 16
+      BLOCK_N: 64
+      BLOCK_K: 128
+      N_MAJOR: true
+    num_stages: 2
+    num_warps: 4
+  - META:
+      BLOCK_M: 16
+      BLOCK_N: 64
+      BLOCK_K: 128
+      N_MAJOR: true
+    num_stages: 3
+    num_warps: 4
+  - META:
+      BLOCK_M: 16
+      BLOCK_N: 64
+      BLOCK_K: 256
+      N_MAJOR: true
+    num_stages: 3
+    num_warps: 4
+  - META:
+      BLOCK_M: 32
+      BLOCK_N: 64
+      BLOCK_K: 64
+      N_MAJOR: true
+    num_stages: 3
+    num_warps: 4
+  - META:
+      BLOCK_M: 32
+      BLOCK_N: 128
+      BLOCK_K: 64
+      N_MAJOR: true
+    num_stages: 3
+    num_warps: 4
+  - META:
+      BLOCK_M: 64
+      BLOCK_N: 128
+      BLOCK_K: 64
+      N_MAJOR: true
+    num_stages: 3
+    num_warps: 8
+  - META:
+      BLOCK_M: 16
+      BLOCK_N: 64
+      BLOCK_K: 256
+      N_MAJOR: false
+    num_stages: 3
+    num_warps: 4
+  - META:
+      BLOCK_M: 32
+      BLOCK_N: 64
+      BLOCK_K: 128
+      N_MAJOR: false
+    num_stages: 3
+    num_warps: 8
+  - META:
+      BLOCK_M: 16
+      BLOCK_N: 64
+      BLOCK_K: 128
+      N_MAJOR: false
+    num_stages: 3
+    num_warps: 4
+  - META:
+      BLOCK_M: 16
+      BLOCK_N: 64
+      BLOCK_K: 128
+      N_MAJOR: false
+    num_stages: 2
+    num_warps: 4
+  - META:
+      BLOCK_M: 32
+      BLOCK_N: 64
+      BLOCK_K: 128
+      N_MAJOR: false
+    num_stages: 2
+    num_warps: 4
+  - META:
+      BLOCK_M: 16
+      BLOCK_N: 64
+      BLOCK_K: 64
+      N_MAJOR: false
+    num_stages: 2
+    num_warps: 4
+  - META:
+      BLOCK_M: 32
+      BLOCK_N: 64
+      BLOCK_K: 32
+      N_MAJOR: false
+    num_stages: 3
+    num_warps: 4
 mm_splitk:
   - META:
       BLOCK_M: 16
@@ -165,6 +313,49 @@ mm_splitk:
       BLOCK_N: 64
       BLOCK_K: 256
       SPLIT_K: 8
+    num_stages: 3
+    num_warps: 4
+mm_splitk_two_step:
+  - META:
+      BLOCK_M: 16
+      BLOCK_N: 16
+      BLOCK_K: 64
+    num_stages: 2
+    num_warps: 2
+  - META:
+      BLOCK_M: 16
+      BLOCK_N: 16
+      BLOCK_K: 64
+    num_stages: 3
+    num_warps: 2
+  - META:
+      BLOCK_M: 16
+      BLOCK_N: 16
+      BLOCK_K: 64
+    num_stages: 4
+    num_warps: 2
+  - META:
+      BLOCK_M: 16
+      BLOCK_N: 32
+      BLOCK_K: 64
+    num_stages: 2
+    num_warps: 2
+  - META:
+      BLOCK_M: 16
+      BLOCK_N: 64
+      BLOCK_K: 64
+    num_stages: 3
+    num_warps: 4
+  - META:
+      BLOCK_M: 16
+      BLOCK_N: 64
+      BLOCK_K: 128
+    num_stages: 2
+    num_warps: 4
+  - META:
+      BLOCK_M: 16
+      BLOCK_N: 128
+      BLOCK_K: 64
     num_stages: 3
     num_warps: 4
 sqrt:

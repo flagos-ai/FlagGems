@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 import math
 
@@ -7,6 +21,8 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
+
+from ..utils.config_utils import MAX_GRID_DIM
 
 logger = logging.getLogger(__name__)
 
@@ -69,13 +85,13 @@ def kron_stride_constant_kernel(
     b_ptr,
     c_ptr,
     map_ptr,
-    batch_size: tl.int32,
-    M: tl.int32,
-    N: tl.int32,
-    M1: tl.int32,
-    M2: tl.int32,
-    N1: tl.int32,
-    N2: tl.int32,
+    batch_size: tl.int64,
+    M: tl.int64,
+    N: tl.int64,
+    M1: tl.int64,
+    M2: tl.int64,
+    N1: tl.int64,
+    N2: tl.int64,
     a_stride_0: tl.constexpr,
     a_stride_1: tl.constexpr,
     b_stride_0: tl.constexpr,
@@ -84,48 +100,58 @@ def kron_stride_constant_kernel(
     c_stride_1: tl.constexpr,
     a_batch_stride: tl.constexpr,
     b_batch_stride: tl.constexpr,
-    c_batch_stride: tl.constexpr,
+    c_batch_stride: tl.int64,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
+    ENABLE_I64: tl.constexpr,
 ):
-    pid = tl.program_id(0)
-    num_blocks_n = tl.cdiv(N, BLOCK_N)
-    num_blocks_m = tl.cdiv(M, BLOCK_M)
-    num_blocks_per_batch = num_blocks_m * num_blocks_n
+    pid_base = tl.program_id(0)
+    num_programs = tl.num_programs(0)
 
-    batch_id = pid // num_blocks_per_batch
-    local_pid = pid % num_blocks_per_batch
-    block_m = local_pid // num_blocks_n
-    block_n = local_pid % num_blocks_n
+    # block counts derived from the autotuned BLOCK_* (constexprs) — no need
+    # to know the chosen config on the host.
+    num_tiles_m = tl.cdiv(M, BLOCK_M)
+    num_tiles_n = tl.cdiv(N, BLOCK_N)
+    num_blocks_per_batch = num_tiles_m * num_tiles_n
+    total_tiles = batch_size * num_blocks_per_batch
 
-    offs_m = block_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    offs_n = block_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    # grid-stride-loop over the flattened (batch, tile_m, tile_n) space so the
+    # launch grid.x can be capped well below gcu300's 65535 limit regardless
+    # of how large batch_size * cdiv(M,BM) * cdiv(N,BN) grows.
+    for pid in range(pid_base, total_tiles, num_programs):
+        batch_id = pid // num_blocks_per_batch
+        local_pid = pid % num_blocks_per_batch
+        block_m = local_pid // num_tiles_n
+        block_n = local_pid % num_tiles_n
 
-    mask = (offs_m[:, None] < M) & (offs_n[None, :] < N) & (batch_id < batch_size)
+        offs_m = block_m * BLOCK_M + tl.arange(0, BLOCK_M)
+        offs_n = block_n * BLOCK_N + tl.arange(0, BLOCK_N)
 
-    offset = batch_id * 2
-    is_valid = batch_id < batch_size
-    a_batch_idx = tl.load(map_ptr + offset, mask=is_valid)
-    b_batch_idx = tl.load(map_ptr + offset + 1, mask=is_valid)
+        mask = (offs_m[:, None] < M) & (offs_n[None, :] < N) & (batch_id < batch_size)
 
-    a_row = offs_m[:, None] // M2
-    a_col = offs_n[None, :] // N2
-    b_row = offs_m[:, None] % M2
-    b_col = offs_n[None, :] % N2
+        offset = batch_id * 2
+        is_valid = batch_id < batch_size
+        a_batch_idx = tl.load(map_ptr + offset, mask=is_valid)
+        b_batch_idx = tl.load(map_ptr + offset + 1, mask=is_valid)
 
-    a_idx = a_batch_idx * a_batch_stride + a_row * a_stride_0 + a_col * a_stride_1
-    b_idx = b_batch_idx * b_batch_stride + b_row * b_stride_0 + b_col * b_stride_1
+        a_row = offs_m[:, None] // M2
+        a_col = offs_n[None, :] // N2
+        b_row = offs_m[:, None] % M2
+        b_col = offs_n[None, :] % N2
 
-    a = tl.load(a_ptr + a_idx, mask=mask)
-    b = tl.load(b_ptr + b_idx, mask=mask)
-    c = a * b
+        a_idx = a_batch_idx * a_batch_stride + a_row * a_stride_0 + a_col * a_stride_1
+        b_idx = b_batch_idx * b_batch_stride + b_row * b_stride_0 + b_col * b_stride_1
 
-    c_idx = (
-        batch_id * c_batch_stride
-        + offs_m[:, None] * c_stride_0
-        + offs_n[None, :] * c_stride_1
-    )
-    tl.store(c_ptr + c_idx, c, mask=mask)
+        a = tl.load(a_ptr + a_idx, mask=mask)
+        b = tl.load(b_ptr + b_idx, mask=mask)
+        c = a * b
+
+        c_idx = (
+            batch_id * c_batch_stride
+            + offs_m[:, None] * c_stride_0
+            + offs_n[None, :] * c_stride_1
+        )
+        tl.store(c_ptr + c_idx, c, mask=mask)
 
 
 @triton.autotune(configs=runtime.get_tuned_config("kron"), key=["M", "N"])
@@ -150,48 +176,58 @@ def kron_kernel(
     c_stride_1: tl.int32,
     a_batch_stride: tl.int32,
     b_batch_stride: tl.int32,
-    c_batch_stride: tl.constexpr,
+    c_batch_stride: tl.int64,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
+    ENABLE_I64: tl.constexpr,
 ):
-    pid = tl.program_id(0)
-    num_blocks_n = tl.cdiv(N, BLOCK_N)
-    num_blocks_m = tl.cdiv(M, BLOCK_M)
-    num_blocks_per_batch = num_blocks_m * num_blocks_n
+    pid_base = tl.program_id(0)
+    num_programs = tl.num_programs(0)
 
-    batch_id = pid // num_blocks_per_batch
-    local_pid = pid % num_blocks_per_batch
-    block_m = local_pid // num_blocks_n
-    block_n = local_pid % num_blocks_n
+    # block counts derived from the autotuned BLOCK_* (constexprs) — no need
+    # to know the chosen config on the host.
+    num_tiles_m = tl.cdiv(M, BLOCK_M)
+    num_tiles_n = tl.cdiv(N, BLOCK_N)
+    num_blocks_per_batch = num_tiles_m * num_tiles_n
+    total_tiles = batch_size * num_blocks_per_batch
 
-    offs_m = block_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    offs_n = block_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    # grid-stride-loop over the flattened (batch, tile_m, tile_n) space so the
+    # launch grid.x can be capped well below gcu300's 65535 limit regardless
+    # of how large batch_size * cdiv(M,BM) * cdiv(N,BN) grows.
+    for pid in range(pid_base, total_tiles, num_programs):
+        batch_id = pid // num_blocks_per_batch
+        local_pid = pid % num_blocks_per_batch
+        block_m = local_pid // num_tiles_n
+        block_n = local_pid % num_tiles_n
 
-    mask = (offs_m[:, None] < M) & (offs_n[None, :] < N) & (batch_id < batch_size)
+        offs_m = block_m * BLOCK_M + tl.arange(0, BLOCK_M)
+        offs_n = block_n * BLOCK_N + tl.arange(0, BLOCK_N)
 
-    offset = batch_id * 2
-    is_valid = batch_id < batch_size
-    a_batch_idx = tl.load(map_ptr + offset, mask=is_valid)
-    b_batch_idx = tl.load(map_ptr + offset + 1, mask=is_valid)
+        mask = (offs_m[:, None] < M) & (offs_n[None, :] < N) & (batch_id < batch_size)
 
-    a_row = offs_m[:, None] // M2
-    a_col = offs_n[None, :] // N2
-    b_row = offs_m[:, None] % M2
-    b_col = offs_n[None, :] % N2
+        offset = batch_id * 2
+        is_valid = batch_id < batch_size
+        a_batch_idx = tl.load(map_ptr + offset, mask=is_valid)
+        b_batch_idx = tl.load(map_ptr + offset + 1, mask=is_valid)
 
-    a_idx = a_batch_idx * a_batch_stride + a_row * a_stride_0 + a_col * a_stride_1
-    b_idx = b_batch_idx * b_batch_stride + b_row * b_stride_0 + b_col * b_stride_1
+        a_row = offs_m[:, None] // M2
+        a_col = offs_n[None, :] // N2
+        b_row = offs_m[:, None] % M2
+        b_col = offs_n[None, :] % N2
 
-    a = tl.load(a_ptr + a_idx, mask=mask)
-    b = tl.load(b_ptr + b_idx, mask=mask)
-    c = a * b
+        a_idx = a_batch_idx * a_batch_stride + a_row * a_stride_0 + a_col * a_stride_1
+        b_idx = b_batch_idx * b_batch_stride + b_row * b_stride_0 + b_col * b_stride_1
 
-    c_idx = (
-        batch_id * c_batch_stride
-        + offs_m[:, None] * c_stride_0
-        + offs_n[None, :] * c_stride_1
-    )
-    tl.store(c_ptr + c_idx, c, mask=mask)
+        a = tl.load(a_ptr + a_idx, mask=mask)
+        b = tl.load(b_ptr + b_idx, mask=mask)
+        c = a * b
+
+        c_idx = (
+            batch_id * c_batch_stride
+            + offs_m[:, None] * c_stride_0
+            + offs_n[None, :] * c_stride_1
+        )
+        tl.store(c_ptr + c_idx, c, mask=mask)
 
 
 def kron(A, B):
@@ -217,6 +253,12 @@ def kron(A, B):
     batch_size = math.prod(out_shape[:-2]) if out_shape[:-2] else 1
 
     output_dtype = torch.promote_types(A.dtype, B.dtype)
+
+    if output_dtype == torch.int64:
+        output_dtype = torch.int32
+    elif output_dtype == torch.uint64:
+        output_dtype = torch.uint32
+
     C = torch.empty(out_shape, device=A.device, dtype=output_dtype)
 
     C_reshaped = C.view(-1, M, N)
@@ -237,6 +279,11 @@ def kron(A, B):
     a_batch_stride = M1 * N1
     b_batch_stride = M2 * N2
     c_batch_stride = M * N
+    # Pass strides as python ints so Triton can widen c_batch_stride to int64
+    # when M*N exceeds int32 (large kron shapes).
+    a_batch_stride = int(a_batch_stride)
+    b_batch_stride = int(b_batch_stride)
+    c_batch_stride = int(c_batch_stride)
     FlagOfNotUseDMA = False
     FlagOfNotUseDMA |= torch.any(torch.tensor(A_view.stride()) <= 0)
     FlagOfNotUseDMA |= (
@@ -266,10 +313,17 @@ def kron(A, B):
         )
     )([x for x in C_reshaped.stride() if x != 0])
     with torch_device_fn.device(A.device):
+        # The kernels virtualize the (batch, tile_m, tile_n) launch space with a
+        # grid-stride-loop, so we only need a bounded number of CTAs to cover an
+        # arbitrarily large total tile count.  Cap grid.x well under gcu300's
+        # 65535 hardware limit (MAX_GRID_DIM = 128 is already very conservative).
         grid = lambda meta: (
-            batch_size
-            * triton.cdiv(M, meta["BLOCK_M"])
-            * triton.cdiv(N, meta["BLOCK_N"]),
+            min(
+                MAX_GRID_DIM,
+                batch_size
+                * triton.cdiv(M, meta["BLOCK_M"])
+                * triton.cdiv(N, meta["BLOCK_N"]),
+            ),
         )
         if FlagOfNotUseDMA:
             kron_stride_constant_kernel[grid](
@@ -293,6 +347,7 @@ def kron(A, B):
                 a_batch_stride,
                 b_batch_stride,
                 c_batch_stride,
+                ENABLE_I64=True,
             )
         else:
             kron_kernel[grid](
@@ -316,6 +371,7 @@ def kron(A, B):
                 a_batch_stride,
                 b_batch_stride,
                 c_batch_stride,
+                ENABLE_I64=True,
             )
 
     if A.dim() <= 1 and B.dim() <= 1:

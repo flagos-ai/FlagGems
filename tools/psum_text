@@ -1,5 +1,20 @@
 #!/usr/bin/env python
 
+
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import argparse
 import json
 import sys
@@ -135,8 +150,12 @@ def parse_single_accuracy():
         data2 = DATA["after"].get("result", {})
     else:
         data1 = DATA.get("result", {})
+        data2 = {}
 
-    op = list(data1.keys())[0]
+    if not data1 and not data2:
+        return ["### Accuracy Result", "", "*No accuracy data collected!*", ""]
+
+    op = list(data1.keys())[0] if data1 else list(data2.keys())[0]
     op_data1 = data1.get(op, {}).get("accuracy", {})
     op_data2 = {}
     if ARGS.compare:
@@ -192,9 +211,9 @@ def parse_single_accuracy():
 def parse_single_performance():
     def _get_summary(op_data, case=None):
         status = op_data.get("status", "OK")
-        duration = op_data1.get("duration", 0)
+        duration = op_data.get("duration", 0)
         if status in ["Skipped", "Failed"]:
-            reason = op_data1.get("reason", "Unknown")
+            reason = op_data.get("reason", "Unknown")
             reason = "<blockquote>" + reason.replace("\n", "<br/>") + "</blockquote>"
             if status == "Failed":
                 status = "<span style='color:Red'>Failed</span>"
@@ -216,13 +235,18 @@ def parse_single_performance():
     if ARGS.compare:
         data1 = DATA["before"].get("result", {})
         data2 = DATA["after"].get("result", {})
-        op = list(data1.keys())[0]
-        op_data2 = data2.get(op, {}).get("performance", {})
     else:
         data1 = DATA.get("result", {})
+        data2 = {}
 
-    op = list(data1.keys())[0]
+    if not data1 and not data2:
+        return ["### Performance Result", "", "*No performance data collected!*", ""]
+
+    op = list(data1.keys())[0] if data1 else list(data2.keys())[0]
     op_data1 = data1.get(op, {}).get("performance", {})
+    op_data2 = {}
+    if ARGS.compare:
+        op_data2 = data2.get(op, {}).get("performance", {})
 
     lines = []
     lines.append("### Performance Result")
@@ -306,6 +330,29 @@ def parse_single_performance():
             for shp, res2 in ddata2.get("details", {}).items():
                 if shp in ddata1.get("details", {}):
                     continue
+                s2 = res2.get("speedup", 0)
+                b2 = res2.get("base", 0)
+                g2 = res2.get("gems", 0)
+                line = (
+                    f"| | 0 -> {s2:.3f} |"
+                    f" 0 -> {b2:.3f} |"
+                    f" 0 -> {g2:.3f} |"
+                    f" `{shp}` |"
+                )
+                lines.append(line)
+
+    # Handle dtypes that only exist in the 'after' data
+    if ARGS.compare:
+        for dtype, ddata2 in perf_data2.items():
+            if dtype in perf_data1:
+                continue
+            speedup2 = ddata2.get("speedup", 0)
+            spd_str = f"**0 -> {speedup2:.3f}**"
+            spd_str = f"<span style='color:Green'>**{spd_str}**</span>"
+            line = f"| {dtype} | {spd_str} | - | - | - |"
+            lines.append(line)
+
+            for shp, res2 in ddata2.get("details", {}).items():
                 s2 = res2.get("speedup", 0)
                 b2 = res2.get("base", 0)
                 g2 = res2.get("gems", 0)

@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -773,3 +787,30 @@ def index_reduce_(inp, dim, index, source, reduce, *, include_self=True):
         out = torch.where(touched == 0, inp_compute, out)
 
     return _restore_dim(out.to(inp.dtype), inp, dim)
+
+
+def index_reduce(inp, dim, index, source, reduce, *, include_self=True):
+    logger.debug("GEMS INDEX_REDUCE")
+    out = inp.clone(memory_format=torch.contiguous_format)
+    return index_reduce_(out, dim, index, source, reduce, include_self=include_self)
+
+
+def index_reduce_out(inp, dim, index, source, reduce, *, include_self=True, out=None):
+    logger.debug("GEMS INDEX_REDUCE_OUT")
+    if out is None:
+        return index_reduce(inp, dim, index, source, reduce, include_self=include_self)
+    _validate_args(inp, dim, index, source, reduce)
+    if out.dtype != inp.dtype:
+        raise RuntimeError(
+            f"Expected out tensor to have dtype {inp.dtype}, but got {out.dtype} instead"
+        )
+    if out.device != inp.device:
+        raise RuntimeError(
+            f"Expected out tensor to be on device {inp.device}, but got {out.device} instead"
+        )
+    if tuple(out.shape) != tuple(inp.shape):
+        out.resize_(inp.shape)
+
+    if out.data_ptr() != inp.data_ptr() or out.stride() != inp.stride():
+        out.copy_(inp)
+    return index_reduce_(out, dim, index, source, reduce, include_self=include_self)

@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from typing import Generator
 
 import pytest
@@ -31,6 +45,14 @@ except Exception:
     router_gemm = None
     ROUTER_GEMM_AVAILABLE = False
 
+if base.vendor_name == "cambricon":
+    try:
+        from flag_gems.runtime.backend._cambricon.ops.mm import router_gemm
+
+        ROUTER_GEMM_AVAILABLE = True
+    except Exception:
+        pass
+
 
 class RouterGemmBenchmark(base.Benchmark):
     DEFAULT_METRICS = consts.DEFAULT_METRICS[:] + ["tflops"]
@@ -59,7 +81,7 @@ class RouterGemmBenchmark(base.Benchmark):
 @pytest.mark.router_gemm
 @pytest.mark.skipif(
     not ROUTER_GEMM_AVAILABLE,
-    reason="router_gemm benchmark requires NVIDIA Hopper backend",
+    reason="router_gemm benchmark requires Cambricon or NVIDIA Hopper backend",
 )
 def test_perf_router_gemm():
     bench = RouterGemmBenchmark(

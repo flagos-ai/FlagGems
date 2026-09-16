@@ -1,0 +1,233 @@
+import math
+
+import pytest
+import torch
+
+import flag_gems
+
+from . import base, consts, utils
+from .conftest import Config
+
+VENDOR = flag_gems.vendor_name
+
+
+SVD_SHAPES_SMALL = [
+    (2, 64),
+    (64, 3),
+    (256, 8),
+]
+
+SVD_SHAPES_MEDIUM = [
+    (32, 512),
+    (64, 1024),
+    (1024, 128),
+    (64, 64),
+]
+
+SVD_SHAPES_LARGE = [
+    (256, 1024),
+    (1024, 512),
+    (2048, 2),
+    (512, 512),
+    (512, 256),
+]
+
+# Batched SVD shapes — per-matrix (k, rows) within limits.
+SVD_SHAPES_BATCHED = [
+    (4, 32, 64),
+    (8, 128, 256),
+    (2, 128, 512),
+    (16, 2, 16),
+    (16, 2, 2048),
+    (4, 4, 64, 64),
+    (8, 4, 32, 32),
+]
+
+
+# ---------------------------------------------------------------------------
+# Input generation
+# ---------------------------------------------------------------------------
+
+# Union of all SVD-specific shapes — only these shapes get ord=2/-2/nuc.
+_SVD_ORDS = (2, -2, "nuc")
+_SVD_SHAPES = set(
+    SVD_SHAPES_SMALL + SVD_SHAPES_MEDIUM + SVD_SHAPES_LARGE + SVD_SHAPES_BATCHED
+)
+
+
+def _svd_ords_allowed(shape, dtype):
+    """Return True when SVD-based ords can be tested for this shape/dtype."""
+    if dtype not in (torch.float32, torch.float64):
+        return False
+    k = min(shape[-2], shape[-1])
+    rows = max(shape[-2], shape[-1])
+    if k > 512 or rows > 2048:
+        return False
+    return True
+
+
+def matrix_norm_input_fn(shape, dtype, device):
+    """Yield (input, ord) or (input, ord, dim) tuples for each supported ord."""
+    # generate_tensor_input only handles float16/32/bf16; handle float64 directly.
+    if dtype == torch.float64:
+        inp = torch.randn(shape, dtype=dtype, device=device)
+    else:
+        inp = utils.generate_tensor_input(shape, dtype, device)
+
+    # On Ascend: non-SVD ords (1, -1, inf, -inf, fro) crash/hang CANN native,
+    # so skip them (no torch baseline to compare against).  Only benchmark
+    # SVD ords (2, -2, 'nuc').
+    if VENDOR == "ascend":
+        if shape in _SVD_SHAPES and _svd_ords_allowed(shape, dtype):
+            for ord_val in _SVD_ORDS:
+                yield inp.clone(), ord_val
+        return
+
+    for ord_val in (1, -1, float("inf"), float("-inf")):
+        yield inp.clone(), ord_val
+    yield inp.clone(), "fro"
+
+    # SVD-based norms for shapes in the SVD tier lists.
+    if shape in _SVD_SHAPES and _svd_ords_allowed(shape, dtype):
+        for ord_val in _SVD_ORDS:
+            yield inp.clone(), ord_val
+
+    if len(shape) > 2:
+        yield inp.clone(), "fro", (-2, -1)
+
+
+def matrix_norm_out_input_fn(shape, dtype, device):
+    """Like matrix_norm_input_fn, but each yield also carries a pre-allocated
+    ``out`` tensor (as a dict kwarg) for the ``*.out`` overloads.
+
+    matrix_norm reduces the trailing two matrix dims, so the output has shape
+    ``shape[:-2]`` (a 0-dim scalar for a 2D input) — the same shape the
+    non-benchmark ``*.out`` tests pre-allocate.
+    """
+
+    def _out():
+        return torch.empty(shape[:-2], dtype=dtype, device=device)
+
+    if dtype == torch.float64:
+        inp = torch.randn(shape, dtype=dtype, device=device)
+    else:
+        inp = utils.generate_tensor_input(shape, dtype, device)
+
+    if VENDOR == "ascend":
+        if shape in _SVD_SHAPES and _svd_ords_allowed(shape, dtype):
+            for ord_val in _SVD_ORDS:
+                yield inp.clone(), ord_val, {"out": _out()}
+        return
+
+    for ord_val in (1, -1, float("inf"), float("-inf")):
+        yield inp.clone(), ord_val, {"out": _out()}
+    yield inp.clone(), "fro", {"out": _out()}
+
+    if shape in _SVD_SHAPES and _svd_ords_allowed(shape, dtype):
+        for ord_val in _SVD_ORDS:
+            yield inp.clone(), ord_val, {"out": _out()}
+
+    if len(shape) > 2:
+        yield inp.clone(), "fro", (-2, -1), {"out": _out()}
+
+
+# ---------------------------------------------------------------------------
+# Benchmark class
+# ---------------------------------------------------------------------------
+
+
+class MatrixNormBenchmark(base.Benchmark):
+    DEFAULT_SHAPE_DESC = "(*B), M, N"
+    # Maximum total elements to keep benchmark time reasonable.
+    MAX_ELEMENTS = 128 * 1024 * 1024  # 128M — include all default shapes
+
+    def set_more_shapes(self):
+        # Square-matrix sweep (fused-kernel ords, all levels).
+        shapes = [
+            (2, 128),
+            (8, 8),
+            (64, 64),
+            (256, 256),
+            (512, 512),
+        ]
+        # Batched shapes — always included (core + comprehensive).
+        shapes += [
+            (4, 32, 64),
+            (8, 128, 256),
+            (4, 4, 64, 64),
+            (16, 2, 256),
+        ]
+        # SVD core shapes — always included, cover each dispatch path (float32-only).
+        shapes += [
+            (8, 1),
+            (64, 2),
+            (3, 4),
+            (64, 3),
+            (16, 64),
+            (32, 128),
+            (128, 64),
+        ]
+        # SVD tiers + batched SVD — comprehensive only (slow, many kernel launches).
+        if Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
+            shapes += SVD_SHAPES_SMALL
+            shapes += SVD_SHAPES_MEDIUM
+            shapes += SVD_SHAPES_LARGE
+            shapes += SVD_SHAPES_BATCHED
+        return [s for s in shapes if math.prod(s) <= self.MAX_ELEMENTS]
+
+    def get_input_iter(self, cur_dtype):
+        for shape in self.shapes:
+            yield from matrix_norm_input_fn(shape, cur_dtype, self.device)
+
+
+class MatrixNormOutBenchmark(MatrixNormBenchmark):
+    """matrix_norm *.out benchmark: input tuples also carry a pre-allocated out.
+
+    Uses the same ``op_name`` as the functional benchmark so ``set_shapes``
+    reads the matrix_norm core shapes (an ``op_name`` absent from core_shapes.yaml
+    falls back to the generic DEFAULT_SHAPES, whose 1-D (2**30,) entry is invalid
+    for matrix_norm).
+    """
+
+    def get_input_iter(self, cur_dtype):
+        for shape in self.shapes:
+            yield from matrix_norm_out_input_fn(shape, cur_dtype, self.device)
+
+
+# ---------------------------------------------------------------------------
+# Test entry point
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.linalg_matrix_norm
+def test_linalg_matrix_norm():
+    bench_dtypes = consts.FLOAT_DTYPES
+    if VENDOR == "ascend":
+        bench_dtypes = [torch.float32]
+    elif flag_gems.runtime.device.support_fp64:
+        bench_dtypes = bench_dtypes + [torch.float64]
+
+    bench = MatrixNormBenchmark(
+        op_name="linalg_matrix_norm",
+        torch_op=torch.linalg.matrix_norm,
+        dtypes=bench_dtypes,
+    )
+    bench.set_gems(flag_gems.linalg_matrix_norm)
+    bench.run()
+
+
+@pytest.mark.linalg_matrix_norm_out
+def test_linalg_matrix_norm_out():
+    bench_dtypes = consts.FLOAT_DTYPES
+    if VENDOR == "ascend":
+        bench_dtypes = [torch.float32]
+    elif flag_gems.runtime.device.support_fp64:
+        bench_dtypes = bench_dtypes + [torch.float64]
+
+    bench = MatrixNormOutBenchmark(
+        op_name="linalg_matrix_norm",
+        torch_op=torch.linalg.matrix_norm,
+        dtypes=bench_dtypes,
+        gems_op=flag_gems.linalg_matrix_norm_out,
+    )
+    bench.run()

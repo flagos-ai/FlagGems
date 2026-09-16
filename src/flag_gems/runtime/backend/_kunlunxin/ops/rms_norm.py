@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import builtins
 import logging
 import math
@@ -11,6 +25,20 @@ from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
+
+# Launch-bound fix (same pattern as skip_layer_norm). The default forward kernel
+# launches one program per row (grid=(M,)); each row's 1D reduce runs at the XPU
+# memory ceiling, so per-row is optimal when N is large. BUT when N is small (each
+# row moves few elements) AND M is large (many programs), per-program launch latency
+# (~0.6-0.9us) dominates: [10000,256] launches 10000 programs -> speedup 0.006.
+# In that regime a 2D multi-row tile (each program owns TILE_M rows, reduces along
+# axis=1) cuts the grid from M to cdiv(M, TILE_M) and amortizes launch cost. The 2D
+# axis=1 reduce is slower per element, so gate it strictly to the launch-bound corner:
+# N small (TILE_M can be large) AND M large (actually launch-bound). Otherwise keep
+# the per-row kernel.
+MULTIROW_N = 256  # multi-row tile only pays off for normalized dims this small
+MULTIROW_M = 4096  # ... and only once there are enough rows to be launch-bound
+TILE_BUDGET = 8192  # rows * padded-cols per 2D tile; keeps the tile in SRAM
 
 
 @libentry()
@@ -28,22 +56,147 @@ def rms_norm_kernel(
     N: tl.constexpr,  # number of columns in X
     eps: tl.constexpr,  # epsilon to avoid division by zero
     BLOCK_SIZE: tl.constexpr,
+    NEED_MASK: tl.constexpr,  # whether N is not a multiple of BLOCK_SIZE
 ):
     pid = ext.program_id(0)
     Y += pid * y_stride_r
     X += pid * x_stride_r
 
-    mask = tl.arange(0, BLOCK_SIZE) < N
     cols = tl.arange(0, BLOCK_SIZE)
-    x = tl.load(X + cols * x_stride_c, mask, other=0.0).to(tl.float32)
-
-    var = tl.sum(x * x, axis=0) / N
-    rrms = 1 / tl.sqrt(var + eps)
-
-    w = tl.load(W + tl.arange(0, BLOCK_SIZE), mask=mask, other=0.0)
-    y = (x * rrms).to(Y.dtype.element_ty) * w
-    tl.store(Y + cols * y_stride_c, y, mask=mask)
+    if NEED_MASK:
+        mask = cols < N
+        x = tl.load(X + cols * x_stride_c, mask, other=0.0).to(tl.float32)
+        var = tl.sum(x * x, axis=0) / N
+        rrms = 1 / tl.sqrt(var + eps)
+        w = tl.load(W + cols, mask=mask, other=0.0)
+        y = (x * rrms).to(Y.dtype.element_ty) * w
+        tl.store(Y + cols * y_stride_c, y, mask=mask)
+    else:
+        # NOTE (kunlunxin/XPU): when N is a multiple of BLOCK_SIZE every `cols < N`
+        # mask is trivially all-true, but the masked tl.load/tl.store still force
+        # the slow XPU masked-memory path (measured ~1.06x fp32 / ~1.85x fp16 /
+        # ~2.43x bf16 slower with byte-identical output, same as rms_norm_kerne_tile
+        # below). Take the unmasked fast path whenever it is provably safe.
+        x = tl.load(X + cols * x_stride_c).to(tl.float32)
+        var = tl.sum(x * x, axis=0) / N
+        rrms = 1 / tl.sqrt(var + eps)
+        w = tl.load(W + cols)
+        y = (x * rrms).to(Y.dtype.element_ty) * w
+        tl.store(Y + cols * y_stride_c, y)
     tl.store(INV_RMS + pid, rrms)
+
+
+# --- Multi-row 2D-tile forward kernel (launch-bound huge-M / small-N only) -------
+# Each program owns a [TILE_M, N] tile (TILE_M consecutive rows, the whole
+# normalized dim as ONE contiguous column block) and reduces along axis=1, so the
+# launch count drops from M to cdiv(M, TILE_M). Also stores per-row INV_RMS for
+# the backward pass. N is passed as a constexpr and the columns span exactly
+# [0, N) with NO power-of-2 padding: the whole tile is then one stride-1
+# contiguous block, so XPU OffsetAnalysis emits block DMA. If N were a runtime
+# arg the `m_off * N` index math cannot be proven stride-1 -> discrete access
+# (~2x slower); if TILE_N were padded to next_pow2(N) the non-unit inner stride
+# also forces discrete access. Both cost ~2x (measured [10000,256] 4.9->2.4ms).
+@libentry()
+@triton.jit
+def rms_norm_multirow_kernel(
+    Y,  # output
+    INV_RMS,  # per-row inverse rms
+    X,  # input
+    W,  # weight
+    M,  # number of rows
+    eps: tl.constexpr,
+    TILE_M: tl.constexpr,
+    N: tl.constexpr,  # number of columns (normalized dim), used as tile width
+):
+    pid = ext.program_id(0)
+
+    n_off = tl.arange(0, N)
+    w = tl.load(W + n_off).to(tl.float32)
+
+    m_off = pid * TILE_M + tl.arange(0, TILE_M)
+    m_mask = m_off < M
+    offs = m_off[:, None] * N + n_off[None, :]
+
+    # Only rows are masked. Out-of-range rows load garbage (XPU ignores `other=`)
+    # but their reduction is per-row (axis=1) and independent, and their store is
+    # masked out below, so they never affect the valid rows or the output.
+    x = tl.load(X + offs, mask=m_mask[:, None], other=0.0).to(tl.float32)
+
+    var = tl.sum(x * x, axis=1) / N
+    rrms = 1.0 / tl.sqrt(var + eps)
+
+    y = (x * rrms[:, None]).to(Y.dtype.element_ty) * w[None, :]
+    tl.store(Y + offs, y.to(Y.dtype.element_ty), mask=m_mask[:, None])
+    tl.store(INV_RMS + m_off, rrms, mask=m_mask)
+
+
+# --- Unmasked 2D multi-row tile (main fast path when M % TILE_M == 0) ---------
+# Measured on this XPU (do_bench, 2026-08-13): ANY mask involvement on the 2D
+# row-tile -- masked loads, `other=0.0`, safe-m clamping, masked stores -- makes
+# the XPU OffsetAnalysis give up on block-DMA and the kernel collapses (e.g.
+# [10000,256] tile: unmasked 292us vs masked 2.4ms, vs clamp+masked 6.5ms; the
+# head per-row kernel there is 4-6ms because 10000 launches dominate).  So this
+# kernel is strictly unmasked and MUST only be launched when M % TILE_M == 0
+# (no out-of-range rows) and N is used as an exact constexpr column width
+# (N % TILE_N == 0 trivially, tile is one stride-1 block -> block DMA).  The
+# per-row tiled kernel and the masked multirow kernel below remain the
+# correctness fallbacks for shapes that don't divide evenly.
+@libentry()
+@triton.jit
+def rms_norm_tile2d_kernel(
+    Y,  # output
+    INV_RMS,  # per-row inverse rms
+    X,  # input
+    W,  # weight
+    eps: tl.constexpr,
+    TILE_M: tl.constexpr,  # rows per program (M % TILE_M == 0 guaranteed)
+    N: tl.constexpr,  # number of columns (normalized dim), used as tile width
+):
+    pid = ext.program_id(0)
+
+    n_off = tl.arange(0, N)
+    w = tl.load(W + n_off).to(tl.float32)
+
+    m_off = pid * TILE_M + tl.arange(0, TILE_M)
+    offs = m_off[:, None] * N + n_off[None, :]
+
+    x = tl.load(X + offs).to(tl.float32)
+
+    var = tl.sum(x * x, axis=1) / N
+    rrms = 1.0 / tl.sqrt(var + eps)
+
+    y = (x * rrms[:, None]).to(Y.dtype.element_ty) * w[None, :]
+    tl.store(Y + offs, y.to(Y.dtype.element_ty))
+    tl.store(INV_RMS + m_off, rrms)
+
+
+# --- N == 1 fast path ----------------------------------------------------------
+# With a normalized dim of 1 every "row" is a single element, so rms_norm is
+# elementwise: y = x / sqrt(x^2 + eps) * w[0].  The generic per-row kernel then
+# launches one LANE-sized program per row: [10000,1] fp16 = 236us, and bf16
+# ~95ms (BLOCK_SIZE=1 pathological scalar path).  A flat 1D kernel processes
+# numel in 4096-lane blocks -> ~7-8us on [10000,1] for all 3 dtypes (native
+# ~18-25us).  N==1 only: every element is its own row, so INV_RMS is just the
+# per-element rrms.
+@libentry()
+@triton.jit
+def rms_norm_flat_kernel(
+    Y,  # output
+    INV_RMS,  # per-element inverse rms (== per-row, N == 1)
+    X,  # input
+    W,  # weight (single element)
+    xnumel: tl.constexpr,
+    eps: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    pid = ext.program_id(0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    x = tl.load(X + offs).to(tl.float32)
+    rrms = 1.0 / tl.sqrt(x * x + eps)
+    w = tl.load(W)
+    y = (x * rrms).to(Y.dtype.element_ty) * w
+    tl.store(Y + offs, y)
+    tl.store(INV_RMS + offs, rrms)
 
 
 @libentry()
@@ -61,37 +214,44 @@ def rms_norm_kerne_tile(
     N: tl.constexpr,  # number of columns in X
     eps: tl.constexpr,  # epsilon to avoid division by zero
     BLOCK_SIZE: tl.constexpr,
+    NEED_MASK: tl.constexpr,  # whether N is not a multiple of BLOCK_SIZE
 ):
     pid = tl.program_id(0)
     Y += pid * y_stride_r
     X += pid * x_stride_r
 
-    # mask = tl.arange(0, BLOCK_SIZE) < N
-    # cols = tl.arange(0, BLOCK_SIZE)
-    # x = tl.load(X + cols * x_stride_c, mask, other=0.0).to(tl.float32)
-
-    # var = tl.sum(x * x, axis=0) / N
-    # rrms = 1 / tl.sqrt(var + eps)
-
+    # NOTE (kunlunxin/XPU): when N is a multiple of BLOCK_SIZE (the common
+    # transformer case, e.g. N=65536, BLOCK_SIZE=8192) every `cols < N` mask is
+    # trivially all-true, but keeping the masked tl.load/tl.store still forces the
+    # XPU slow masked-memory path.  Measured on this XPU: masked vs unmasked is
+    # ~1.06x for fp32 but ~1.85x (fp16) / ~2.43x (bf16) slower, with byte-for-byte
+    # identical output.  So we take an unmasked fast path when NEED_MASK is False
+    # and fall back to the masked path (correctness) when N is not divisible.
     _var_base = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
     for off in range(0, N, BLOCK_SIZE):
         cols = off + tl.arange(0, BLOCK_SIZE)
-        mask = cols < N
-        x = tl.load(X + cols, mask, other=0.0).to(tl.float32)
+        if NEED_MASK:
+            mask = cols < N
+            x = tl.load(X + cols, mask, other=0.0).to(tl.float32)
+        else:
+            x = tl.load(X + cols).to(tl.float32)
         _var_base += x * x / N
     var = tl.sum(_var_base)
     rrms = 1 / tl.sqrt(var + eps)
 
-    # w = tl.load(W + tl.arange(0, BLOCK_SIZE), mask=mask, other=0.0)
-    # y = (x * rrms).to(Y.dtype.element_ty) * w
-    # tl.store(Y + cols * y_stride_c, y, mask=mask)
     for off in range(0, N, BLOCK_SIZE):
         cols = off + tl.arange(0, BLOCK_SIZE)
-        mask = cols < N
-        x = tl.load(X + cols, mask, other=0.0).to(tl.float32)
-        w = tl.load(W + cols, mask, other=0.0)
-        y = (x * rrms).to(Y.dtype.element_ty) * w
-        tl.store(Y + cols * y_stride_c, y, mask=mask)
+        if NEED_MASK:
+            mask = cols < N
+            x = tl.load(X + cols, mask, other=0.0).to(tl.float32)
+            w = tl.load(W + cols, mask, other=0.0)
+            y = (x * rrms).to(Y.dtype.element_ty) * w
+            tl.store(Y + cols * y_stride_c, y, mask=mask)
+        else:
+            x = tl.load(X + cols).to(tl.float32)
+            w = tl.load(W + cols)
+            y = (x * rrms).to(Y.dtype.element_ty) * w
+            tl.store(Y + cols * y_stride_c, y)
 
     tl.store(INV_RMS + pid, rrms)
 
@@ -298,6 +458,31 @@ def rms_norm_grad_kernel(
     tl.store(dw_ptr, dw_partial, mask=mask)
 
 
+def _rms_norm_tile_m(N, M):
+    """TILE_M for the unmasked 2D tile kernel, or None if not applicable.
+
+    The tile kernel is strictly unmasked (any mask collapses block-DMA on XPU),
+    so it is only valid when M % TILE_M == 0 AND N fits the tile SRAM budget.
+    TILE_M sweep measured on this XPU (official do_bench, 2026-08-13):
+      (64,64)   tm=16 15.4-15.8us | (256,256)  tm=32/16 21.0-23.7us
+      (1024,1024) tm=32 63-73us    | (4096,4096) tm=16 557-728us
+      (10000,256) tm=16 292-318us  (tm=32 does not divide 10000)
+    """
+    if N <= 256:
+        for cand in (32, 16):
+            if M % cand == 0:
+                return cand
+        return None
+    tm = 16
+    while tm * N > 65536:  # keep the [TILE_M, N] fp32 tile within SRAM
+        tm //= 2
+    while tm >= 2:
+        if M % tm == 0:
+            return tm
+        tm //= 2
+    return None
+
+
 def rms_norm_forward(x, normalized_shape, weight, eps=1e-5):
     logger.debug("GEMS_KUNLUNXIN RMS_NORM")
     dim = x.ndim - len(normalized_shape)
@@ -311,18 +496,46 @@ def rms_norm_forward(x, normalized_shape, weight, eps=1e-5):
 
     x = x.contiguous()
     weight = weight.contiguous()
-    y = torch.empty_like(x)
-    inv_rms = torch.empty((M,), device=x.device, dtype=torch.float32)
+    # NOTE (kunlunxin/XPU): allocate via native empty_strided instead of
+    # torch.empty_like/empty. `empty` is intercepted by the gems empty op and,
+    # on this XPU, the XPU triton JIT bakes the launch grid into the compile
+    # key -- the resulting per-call recompile of the gems empty kernel costs
+    # ~95-100ms/call (measured 2026-08-13, see bench_post spike at fp16 64x64 /
+    # 256x256). empty_strided is NOT intercepted, so it allocates natively.
+    y = torch.empty_strided(x.size(), x.stride(), dtype=x.dtype, device=x.device)
+    inv_rms = torch.empty_strided((M,), (1,), dtype=torch.float32, device=x.device)
 
     with torch_device_fn.device(x.device):
         if N > 64 * 128:
+            need_mask = (N % BLOCK_SIZE) != 0
             rms_norm_kerne_tile[M,](
-                y, inv_rms, x, weight, N, 1, N, 1, M, N, eps, BLOCK_SIZE
+                y, inv_rms, x, weight, N, 1, N, 1, M, N, eps, BLOCK_SIZE, need_mask
             )
+        elif N == 1:
+            # elementwise normalize; flat 4096-lane blocks (see kernel docstring)
+            FLAT_BLOCK = 4096
+            grid = (triton.cdiv(M, FLAT_BLOCK),)
+            rms_norm_flat_kernel[grid](y, inv_rms, x, weight, M, eps, FLAT_BLOCK)
         else:
-            rms_norm_kernel[M,](
-                y, inv_rms, x, weight, N, 1, N, 1, M, N, eps, BLOCK_SIZE
-            )
+            TILE_M = _rms_norm_tile_m(N, M)
+            if TILE_M is not None:
+                # Unmasked 2D tile: strictly faster than any masked per-row /
+                # masked multirow variant for every benchmark shape (see
+                # _rms_norm_tile_m docstring for the measured table).
+                grid = (M // TILE_M,)
+                rms_norm_tile2d_kernel[grid](y, inv_rms, x, weight, eps, TILE_M, N)
+            elif N <= MULTIROW_N and M >= MULTIROW_M:
+                # Small N + many rows, M not divisible by any TILE_M candidate:
+                # batched masked multi-row fallback (correct, slower than the
+                # unmasked tile above, still better than per-row launches).
+                TILE_M = builtins.max(1, TILE_BUDGET // N)
+                grid = (triton.cdiv(M, TILE_M),)
+                rms_norm_multirow_kernel[grid](y, inv_rms, x, weight, M, eps, TILE_M, N)
+            else:
+                need_mask = (N % BLOCK_SIZE) != 0
+                rms_norm_kernel[M,](
+                    y, inv_rms, x, weight, N, 1, N, 1, M, N, eps, BLOCK_SIZE, need_mask
+                )
 
     return y, inv_rms
 

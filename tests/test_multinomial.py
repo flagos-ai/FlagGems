@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import random
 import time
 
@@ -67,8 +81,21 @@ def test_multinomial_with_replacement_1(shape, dtype, n_samples):
     # Do a simple Chi-square test
     assert torch.equal(inp_counts.sum(-1), out_counts.sum(-1))
 
-    _, pvalue = scipy.stats.chisquare(out_counts.tolist(), inp_counts.tolist(), axis=-1)
-    assert np.sum(pvalue < 0.05) / len(pvalue) < 0.1
+    if flag_gems.vendor_name == "cambricon":
+        # Avoid scipy.stats import failure in the Cambricon test environment.
+        valid_counts = inp_counts > 0
+        chi_square = torch.where(
+            valid_counts, (out_counts - inp_counts).float().square() / inp_counts, 0
+        ).sum(-1)
+        df = (valid_counts.sum(-1).float() - 1).cpu()
+        chi_square = chi_square.cpu()
+        pvalue = torch.special.gammaincc(df / 2, chi_square / 2)
+        assert torch.sum(pvalue < 0.05) / pvalue.numel() < 0.1
+    else:
+        _, pvalue = scipy.stats.chisquare(
+            out_counts.tolist(), inp_counts.tolist(), axis=-1
+        )
+        assert np.sum(pvalue < 0.05) / len(pvalue) < 0.1
 
 
 @pytest.mark.multinomial

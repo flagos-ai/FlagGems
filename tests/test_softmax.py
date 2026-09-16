@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import random
 import time
 
@@ -45,9 +59,11 @@ def test_softmax(shape, dtype, dim, neg_inf):
 @pytest.mark.softmax_out
 @pytest.mark.parametrize(
     "shape",
-    [(1, 256)]
-    if cfg.QUICK_MODE
-    else [(1, 256), (4096, 256), (200, 2560, 3), (1, 0, 128, 512)],
+    (
+        [(1, 256)]
+        if cfg.QUICK_MODE
+        else [(1, 256), (4096, 256), (200, 2560, 3), (1, 0, 128, 512)]
+    ),
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
@@ -110,13 +126,6 @@ def test_softmax_backward_out(shape, dtype, dim, neg_inf):
 @pytest.mark.parametrize("dim", DIM_LIST)
 @pytest.mark.parametrize("neg_inf", [True, False])
 def test_softmax_backward(shape, dtype, dim, neg_inf):
-    if shape[dim] == 1 and flag_gems.vendor_name == "kunlunxin":
-        pytest.skip(
-            "Issue #2851: XPU _softmax_backward_data short-circuits to zero when reduction dim "
-            "is 1, while the Triton kernel computes normally with synthetic inputs, "
-            "causing a mismatch that does not reflect a real correctness issue."
-        )
-
     res_grad = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     if neg_inf:
         res_grad = torch.where(res_grad < 0.0, float("-inf"), res_grad)

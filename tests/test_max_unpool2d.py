@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
@@ -53,7 +67,11 @@ def test_max_unpool2d(shape, pool_cfg, dtype):
         kernel_size, stride=stride, padding=padding, return_indices=True
     )
     ref_pooled, ref_indices = pool(ref_inp.float().contiguous())
-    pooled, indices = pool(inp.contiguous())
+    if flag_gems.vendor_name == "cambricon" and utils.TO_CPU:
+        pooled = ref_pooled.to(dtype=dtype, device=flag_gems.device)
+        indices = ref_indices.to(device=flag_gems.device)
+    else:
+        pooled, indices = pool(inp.contiguous())
 
     # Get output_size for unpooling
     output_size = [inp.shape[2], inp.shape[3]]
@@ -81,11 +99,16 @@ def test_max_unpool2d_non_contiguous(dtype):
     assert not inp_noncontig.is_contiguous()
 
     pool = torch.nn.MaxPool2d(2, stride=2, return_indices=True)
-    pooled_noncontig, indices_noncontig = pool(inp_noncontig)
-
     output_size = [8, 8]
-    ref_pooled = utils.to_reference(pooled_noncontig)
-    ref_indices = utils.to_reference(indices_noncontig)
+    ref_inp_noncontig = utils.to_reference(inp_noncontig)
+    ref_pooled, ref_indices = pool(ref_inp_noncontig)
+    if flag_gems.vendor_name == "cambricon" and utils.TO_CPU:
+        pooled_noncontig = ref_pooled.to(dtype=dtype, device=flag_gems.device)
+        indices_noncontig = ref_indices.to(device=flag_gems.device)
+    else:
+        pooled_noncontig, indices_noncontig = pool(inp_noncontig)
+        ref_pooled = utils.to_reference(pooled_noncontig)
+        ref_indices = utils.to_reference(indices_noncontig)
     ref_out = torch.ops.aten.max_unpool2d(
         ref_pooled, ref_indices.to(torch.int64), output_size
     )

@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 import math
 
@@ -84,7 +98,7 @@ def argmin_kernel_opt_k1(
     argmin_vals = tl.full([BLOCK_M], dtype=tl.int64, value=0)
     for start_n in range(0, N, BLOCK_N):
         n_offset = start_n + tl.arange(0, BLOCK_N)
-        offset = m_offset[:, None] * N + n_offset[None, :]
+        offset = m_offset[:, None].to(tl.int64) * N + n_offset[None, :].to(tl.int64)
         inp_vals = tl.load(inp + offset, mask=True)
 
         local_min, local_argmin = tl.min(
@@ -134,7 +148,9 @@ def argmin_split_K_kernel_merged(
         n = start_n + tl.arange(0, BLOCK_N)
         n_mask = n < N
 
-        offset = m * N * K + n[:, None, None] * K + k[None, :, :]
+        offset = (
+            m.to(tl.int64) * N * K + n[:, None, None].to(tl.int64) * K + k.to(tl.int64)
+        )
 
         inp_vals = tl.load(
             inp + offset,
@@ -152,7 +168,7 @@ def argmin_split_K_kernel_merged(
         global_min = tl.where(mask, local_min, global_min)
         global_argmin = tl.where(mask, local_argmin, global_argmin)
 
-    out_offset = m * K + k  # (BLOCK_M, BLOCK_K)
+    out_offset = m.to(tl.int64) * K + k.to(tl.int64)  # (BLOCK_M, BLOCK_K)
     tl.store(out_index + out_offset, global_argmin, mask=mk_mask)
 
 
@@ -180,7 +196,11 @@ def argmin_kernel(
     argmin_values = tl.full([BLOCK_M], dtype=tl.int64, value=0)
     for start_n in range(0, N, BLOCK_N):
         n_offset = start_n + tl.arange(0, BLOCK_N)
-        offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
+        offset = (
+            m_offset[:, None].to(tl.int64) * N * K
+            + n_offset[None, :].to(tl.int64) * K
+            + pid_k
+        )
         mask = m_offset[:, None] < M and n_offset[None, :] < N
         inp_ptrs = inp + offset
         inp_vals = tl.load(inp_ptrs, mask=mask, other=max_value)

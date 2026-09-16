@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 # LayerNorm-related implementation.
 # References:
 # - PyTorch: https://github.com/pytorch/pytorch/blob/v2.7.0/torch/nn/modules/normalization.py#L321
@@ -33,23 +47,24 @@ __all__ = [
 def gems_rms_forward(
     x: torch.Tensor, residual: Optional[torch.Tensor], weight: torch.Tensor, eps: float
 ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+
+    # NOTE: Dynamo cannot trace logging.Logger methods
+    # (torch._dynamo.exc.Unsupported 'logging.Logger method not supported
+    # for non-export cases'), so this entry point must not log.
+    # Debug-only removal; numerics/control flow unchanged.
     add_residual = residual is not None
     if add_residual:
         if use_c_extension:
-            logger.debug("GEMS CUSTOM FUSED_ADD_RMS_NORM(C EXTENSION)")
             torch.ops.flag_gems.fused_add_rms_norm(x, residual, weight, eps)
             return x, residual
         else:
-            logger.debug("GEMS CUSTOM FUSED_ADD_RMS_NORM")
             return flag_gems.fused_add_rms_norm(
                 x, residual, list(weight.size()), weight, eps
             )
     else:
         if use_c_extension:
-            logger.debug("GEMS CUSTOM RMS_NORM(C EXTENSION)")
             return torch.ops.flag_gems.rms_norm(x, weight, eps)
         else:
-            logger.debug("GEMS CUSTOM RMS_NORM")
             return flag_gems.rms_norm(x, list(weight.size()), weight, eps)
 
 
