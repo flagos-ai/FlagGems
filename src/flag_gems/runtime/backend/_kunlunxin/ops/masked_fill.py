@@ -1,34 +1,19 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 import logging
 import math
+import os
 
 import torch
 import triton
 import triton.language as tl
 from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 
+from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import broadcastable_to
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
-# ---------------------------------------------------------------------------
-# Generic pointwise path (fallback for non-contiguous inputs, broadcastable
-# masks, tensor values and tiny shapes). Tuned on XPU: isCloseVectorization
-# keeps the mixed i1-mask/dtype tl.where vectorized.
 _config = CodeGenConfig(
     512,
     (65536, 65536, 65536),
@@ -62,20 +47,6 @@ def masked_fill_tensor_value_kernel(inp, expand_mask, value):
     return tl.where(expand_mask, value, inp)
 
 
-# ---------------------------------------------------------------------------
-# Flat fast path (scalar value, contiguous fp16/bf16/fp32, numel >= gate).
-#
-# XPU 6 probe (2026-08-14, 268435456-elem shapes): the bottleneck is NOT the
-# bool mask read (mask-reduced to bytes reads fine; a no-select kernel reading
-# the mask == plain copy) and NOT the allocation. It is the per-lane `sel`
-# that `tl.where(bool_mask, value, x)` lowers to: measured ~5x the fp32 copy
-# time for the same traffic, and the select-with-splat is even worse. The
-# cheapest exact form found is a select in the integer view of the data,
-#   r = xi + (V - xi) * m                (m = mask byte 0/1 -> int view)
-# which is bit-identical to where(mask, V(pattern), x) with 2-3x less per
-# lane work: measured +1.6x fp16 / +1.3x fp32 over the pointwise path on all
-# mid/large benchmark shapes, no regression on small shapes (gated below
-# _FAST_MIN_NUMEL where the pointwise path stays).
 _FAST_TILE = 131072
 _FAST_MIN_NUMEL = 1 << 20
 _FAST_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
@@ -136,6 +107,94 @@ def _masked_fill_fast(inp, mask, value, out):
     return out
 
 
+try:
+    import triton.experimental.tle as tle
+
+    _TLE_OK = True
+except ImportError:
+    tle = None
+    _TLE_OK = False
+
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_NCLUSTER = 12
+_RAW_MAX_ELEMS = 2**31 - 1
+_RAW_CHUNK_BYTES = 1280
+
+_RAW_TYPE_CODE = {
+    torch.float32: 0,
+    torch.float16: 1,
+    torch.bfloat16: 2,
+}
+
+if _TLE_OK:
+
+    @tle.raw.dialect("xpu3", file=os.path.join(_HERE, "masked_fill_raw.xpu"))
+    def masked_fill_raw_(
+        in_, mask, numel, esz, type_code, value_bits, chunk_start, chunk_count
+    ): ...
+
+    @triton.jit(
+        do_not_specialize=[
+            "numel",
+            "esz",
+            "type_code",
+            "value_bits",
+            "chunk_count",
+        ]
+    )
+    def masked_fill_raw_kernel(
+        In, Mask, numel, esz, type_code, value_bits, chunk_count
+    ):
+        pid = tl.program_id(0)
+        tle.raw.call(
+            masked_fill_raw_,
+            (
+                In,
+                Mask,
+                numel,
+                esz,
+                type_code,
+                value_bits,
+                pid * chunk_count,
+                chunk_count,
+            ),
+        )
+
+
+def _raw_masked_fill_(inp, mask, value):
+    """In-place masked_fill_ via the raw payload, or None when it does not
+    apply (non-contiguous / broadcast mask / unsupported dtype / empty)."""
+    if not _TLE_OK or not inp.is_contiguous() or not mask.is_contiguous():
+        return None
+    type_code = _RAW_TYPE_CODE.get(inp.dtype)
+    if type_code is None:
+        return None
+    if tuple(mask.shape) != tuple(inp.shape):
+        return None
+    M = inp.numel()
+    if M == 0 or M > _RAW_MAX_ELEMS:
+        return None
+    value_bits = _fast_bits(value, inp.dtype)
+    esz = inp.element_size()
+    chunk_elems = _RAW_CHUNK_BYTES // esz
+    total_chunks = (M + chunk_elems - 1) // chunk_elems
+    per = (total_chunks + _NCLUSTER - 1) // _NCLUSTER
+    with torch_device_fn.device(inp.device):
+        masked_fill_raw_kernel[(_NCLUSTER,)](
+            inp.view(torch.uint8),
+            mask.view(torch.uint8),
+            M,
+            esz,
+            type_code,
+            value_bits,
+            per,
+        )
+    return inp
+
+
+_RAW_MIN_ELEMS = 65536
+
+
 def _use_fast_path(inp, mask, value):
     if torch.is_tensor(value):
         return False
@@ -178,8 +237,6 @@ def masked_fill(inp, mask, value):
         return _masked_fill_fast(inp, mask, value, out)
 
     if inp.is_contiguous() and tuple(mask.shape) == tuple(inp.shape):
-        # Common case (mask matches inp): one flat stride-1 pass, which is
-        # what the tuned 1D config accelerates.
         mask = mask.contiguous()
         kernel(inp.view(-1), mask.view(-1), value, out0=out.view(-1))
     else:
@@ -214,6 +271,10 @@ def masked_fill_(inp, mask, value):
         return inp
 
     if _use_fast_path(inp, mask, value):
+        if inp.numel() >= _RAW_MIN_ELEMS:
+            raw_out = _raw_masked_fill_(inp, mask, value)
+            if raw_out is not None:
+                return raw_out
         return _masked_fill_fast(inp, mask, value, inp)
 
     if inp.is_contiguous() and tuple(mask.shape) == tuple(inp.shape):

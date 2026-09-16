@@ -12,6 +12,50 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+fractional_max_pool2d_backward:
+  shapes:
+    - [4, 3, 224, 224]
+    - [16, 64, 56, 56]
+    - [32, 128, 28, 28]
+    - [64, 256, 14, 14]
+    - [128, 512, 7, 7]
+  shape_desc: "N, C, H, W"
+
+fractional_max_pool2d:
+  shapes:
+    - [4, 3, 32, 32]
+    - [8, 16, 28, 28]
+    - [2, 4, 20, 20]
+    - [1, 64, 56, 56]
+    - [2, 8, 16, 16]
+    - [2, 8, 16, 20]
+  shape_desc: "N, C, H, W"
+
+reshape_and_cache:
+  shapes:
+    - [42, 8, 64, 8, 1024]
+    - [42, 8, 80, 16, 10000]
+    - [42, 8, 120, 32, 2048]
+    - [256, 8, 128, 16, 4096]
+    - [1024, 8, 80, 16, 8192]
+  shape_desc: "num_tokens, num_heads, head_size, block_size, num_blocks"
+
+smooth_l1_loss_backward:
+  shapes:
+    - [262144]
+    - [1024, 1024]
+    - [4096, 4096]
+    - [64, 512, 512]
+  shape_desc: "(B), M, N"
+
+smooth_l1_loss:
+  shapes:
+    - [262144]
+    - [1024, 1024]
+    - [4096, 4096]
+    - [64, 512, 512]
+  shape_desc: "(B), M, N"
+
 outer:
   shapes:
     - [384, 384]
@@ -109,6 +153,21 @@ TensorSelectBenchmark:
     - [1024, 1024]
     - [4096, 4096]
     - [1024, 65536]
+
+# scatter_reduce: output-centric scan is O(N_elem * dim_size); the
+# [1024, 65536] shape (BLOCK=65536) takes 10+ min to compile and minutes per
+# gated invocation, so the runnable matrix for this op keeps dim_size <= 4096.
+# NOTE: key must match benchmark op_name ("scatter_reduce.two"): set_shapes
+# (benchmark/base.py:185) checks self.op_name in yaml_config FIRST, and only
+# falls back to class-name lookup (TensorSelectBenchmark) if the op key is
+# absent.
+scatter_reduce.two:
+  shapes:
+    - [64, 64]
+    - [256, 256]
+    - [1024, 1024]
+    - [4096, 4096]
+  shape_desc: "M, N"
 
 EmbeddingBenchmark:
   shapes:
@@ -287,6 +346,11 @@ index:
     - [[512, 512, 512], [[2, 128]]]
     - [[64, 64, 64], [[2, 8], [2, 8]]]
 
+concat_and_cache_mla:
+  shapes:
+    - [512, 64, 42, 16, 8]
+  shape_desc: "kv_lora_rank, qk_rope_head_dim, num_tokens, block_size, num_blocks"
+
 nanmedian:
   shapes:
     - [64]
@@ -331,3 +395,54 @@ per_token_group_quant_fp8:
     - [2048, 4096, 128]
     - [2048, 13824, 512]
   shape_desc: "num_tokens, d, group_size"
+
+fused_recurrent_gated_delta_rule:
+  shapes:
+    - [1]
+    - [2]
+    - [4]
+    - [8]
+    - [16]
+    - [24]
+    - [32]
+    - [40]
+    - [48]
+    - [56]
+    - [72]
+    - [80]
+    - [88]
+    - [96]
+    - [104]
+    - [112]
+    - [120]
+    - [128]
+    - [136]
+    - [144]
+    - [152]
+    - [160]
+    - [168]
+    - [176]
+    - [192]
+    - [200]
+    - [208]
+    - [216]
+    - [224]
+    - [232]
+    - [240]
+    - [248]
+    - [272]
+    - [288]
+    - [304]
+    - [320]
+    - [336]
+    - [352]
+    - [368]
+    - [384]
+    - [400]
+    - [416]
+    - [432]
+    - [448]
+    - [464]
+    - [480]
+    - [496]
+  shape_desc: "T"
