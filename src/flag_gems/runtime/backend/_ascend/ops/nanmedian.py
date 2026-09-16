@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 import math
 
@@ -691,6 +705,7 @@ def nanmedian_ascend_float_flat_sorted_search_kernel(
 
 
 def _nanmedian_float_sort_select(inp, M, N, values, indices):
+    # Sort candidates on device; the Triton gather selects the NaN-aware rank.
     rows = inp.reshape(M, N)
     sorted_values, sorted_indices = torch.sort(rows, dim=1)
     search_rounds = (
@@ -721,6 +736,7 @@ def _nanmedian_float_topk_supported(N):
 
 
 def _nanmedian_float_topk_select(inp, M, N, values, indices):
+    # Topk orders candidates; Triton counts valid values and gathers their median.
     rows = inp.reshape(M, N)
     k = (N + 1) // 2
 
@@ -1015,6 +1031,7 @@ def _nanmedian_byte_histogram_select(inp, M, N, values, indices):
 
 
 def _nanmedian_integer_sort_select(inp, M, N, values, indices):
+    # Use device sort where the specialized histogram/radix paths do not apply.
     rows = inp.reshape(M, N)
     sorted_values, sorted_indices = torch.sort(rows, dim=1)
     kth = (N + 1) // 2 - 1
