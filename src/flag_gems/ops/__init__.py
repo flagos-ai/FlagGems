@@ -56,6 +56,7 @@ from flag_gems.ops._embedding_bag_dense_backward import _embedding_bag_dense_bac
 from flag_gems.ops._embedding_bag_per_sample_weights_backward import (
     _embedding_bag_per_sample_weights_backward,
 )
+from flag_gems.ops._embedding_bag_sparse_backward import _embedding_bag_sparse_backward
 from flag_gems.ops._euclidean_dist import _euclidean_dist
 from flag_gems.ops._fake_quantize_learnable_per_channel_affine import (
     _fake_quantize_learnable_per_channel_affine,
@@ -255,6 +256,7 @@ from flag_gems.ops.avg_pool3d import avg_pool3d, avg_pool3d_backward
 from flag_gems.ops.baddbmm import baddbmm, baddbmm_out
 from flag_gems.ops.baddbmm_ import baddbmm_
 from flag_gems.ops.batch_norm import batch_norm, batch_norm_backward
+from flag_gems.ops.batch_norm_backward_reduce import batch_norm_backward_reduce
 from flag_gems.ops.bernoulli import bernoulli
 from flag_gems.ops.bernoulli_ import bernoulli_
 from flag_gems.ops.bilinear import bilinear
@@ -493,6 +495,7 @@ from flag_gems.ops.greater import (
     greater_scalar,
     greater_scalar_out,
 )
+from flag_gems.ops.greater_ import greater_
 from flag_gems.ops.greater_equal import greater_equal_
 from flag_gems.ops.grid_sample import grid_sample
 from flag_gems.ops.grid_sampler_2d import grid_sampler_2d
@@ -818,7 +821,6 @@ from flag_gems.ops.resize_as import resize_as, resize_as_
 from flag_gems.ops.resolve_conj import resolve_conj
 from flag_gems.ops.resolve_neg import resolve_neg
 from flag_gems.ops.rms_norm import rms_norm, rms_norm_backward, rms_norm_forward
-from flag_gems.ops.rms_norm_w8a16_fp8 import rms_norm_w8a16_fp8
 from flag_gems.ops.rnn_relu import rnn_relu
 from flag_gems.ops.roll import roll
 from flag_gems.ops.rot90 import rot90
@@ -1103,6 +1105,7 @@ __all__ = [
     "_dyn_quant_pack_4bit_weight",
     "_embedding_bag_dense_backward",
     "_embedding_bag_per_sample_weights_backward",
+    "_embedding_bag_sparse_backward",
     "_euclidean_dist",
     "_fake_quantize_learnable_per_channel_affine",
     "_fake_quantize_learnable_per_channel_affine_backward",
@@ -1282,6 +1285,7 @@ __all__ = [
     "baddbmm_out",
     "batch_norm",
     "batch_norm_backward",
+    "batch_norm_backward_reduce",
     "bernoulli",
     "bernoulli_",
     "bilinear",
@@ -1533,6 +1537,7 @@ __all__ = [
     "glu",
     "glu_backward",
     "greater",
+    "greater_",
     "greater_equal_",
     "greater_out",
     "greater_scalar",

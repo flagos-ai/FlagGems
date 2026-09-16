@@ -1621,6 +1621,17 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '3.0'
+- id: batch_norm_backward_reduce
+  description: Triton kernel implementation for batch normalization backward reduce stage.
+  for:
+  - native_batch_norm_backward_reduce
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: batch_norm_impl_index
   description: Applies Batch Normalization and returns the normalized output along
     with saved statistics, a reserve tensor, and the backend implementation index.
@@ -4232,6 +4243,18 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: embedding_bag_sparse_backward
+  description: |
+    Computes the sparse (COO) gradient for the backward pass of embedding_bag.
+  for:
+    - _embedding_bag_sparse_backward
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - NeuralNetwork
+  stages:
+    - alpha: '5.4'
 - id: embedding_dense_backward
   description: Calculates the gradient of the weight matrix for a dense embedding
     layer during backpropagation.
@@ -6034,6 +6057,18 @@ ops:
   - Math
   stages:
   - stable: '5.3'
+- id: greater_
+  description: The in-place version of `greater()`.
+  for:
+  - greater_.Tensor
+  - greater_.Scalar
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: greater_equal_
   description: The in-place version of `greater_equal()`, which is an alias for `ge()`.
   for:
@@ -9547,6 +9582,26 @@ ops:
   labels:
   - NoCPU
   - Quantization
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.4'
+- id: mm_w8a8_int8
+  description: Multiplies prequantized INT8 matrices with scalar or per-row/column FP32 scales and optional bias; input quantization is external.
+  for:
+  - mm_w8a8_int8
+  labels:
+  - non-aten
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.4'
+- id: mm_w8a8_int8_out
+  description: A variant of mm_w8a8_int8 with caller-owned output.
+  for:
+  - mm_w8a8_int8_out
+  labels:
+  - non-aten
   kind:
   - BLAS
   stages:
