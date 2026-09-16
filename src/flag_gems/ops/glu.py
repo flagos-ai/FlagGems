@@ -46,15 +46,9 @@ def glu_kernel(a, b):
     return result
 
 
-# ============================================================================
-# TLE kernel (static extract_tile)
-# From: FlagTree python/tutorials/tle/05-glu.py
-# ============================================================================
-
 if HAS_TLE_EXTRACT_TILE:
 
-    # (ROWS_PER_PROGRAM, num_warps, loop_stages). Include two-warp multi-stage candidates on
-    # longer loops so async loads can overlap computation without requiring four warps.
+    # Each configuration is (ROWS_PER_PROGRAM, num_warps, LOOP_STAGES).
     _GLU_TLE_AUTOTUNE_CONFIGS = [
         (1, 2, 1),
         (1, 4, 1),
