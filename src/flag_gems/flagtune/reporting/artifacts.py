@@ -254,7 +254,16 @@ def write_outputs(
             )
             handle.write("\n")
 
-    fieldnames = pretune_csv_fieldnames(shape_fields)
+    include_recipe_id = any(str(row.get("recipe_id", "")).strip() for row in rows)
+    include_route_metadata = any(
+        row.get("route") is not None or row.get("model_inputs") is not None
+        for row in rows
+    )
+    fieldnames = pretune_csv_fieldnames(
+        shape_fields,
+        include_recipe_id=include_recipe_id,
+        include_route_metadata=include_route_metadata,
+    )
     with (run_dir / "pretune.csv").open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()
@@ -265,6 +274,12 @@ def write_outputs(
             )
             row["output_dtypes"] = json.dumps(
                 row.get("output_dtypes"), separators=(",", ":")
+            )
+            row["route"] = json.dumps(
+                row.get("route"), sort_keys=True, separators=(",", ":")
+            )
+            row["model_inputs"] = json.dumps(
+                row.get("model_inputs"), sort_keys=True, separators=(",", ":")
             )
             row["best_config"] = json.dumps(
                 row.get("best_config"), sort_keys=True, separators=(",", ":")

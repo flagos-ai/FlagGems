@@ -194,12 +194,16 @@ def _run_training_with_results(mod, monkeypatch, tmp_path, results, exported):
     """Run the training coordinator with collection and XGBoost boundaries faked."""
 
     class Record:
+        variant = "general_tma"
+
         @staticmethod
         def to_benchmark_shape():
             return {"M": 16}
 
     variant = SimpleNamespace(
         name="general_tma",
+        op_id="flaggems/mm",
+        normalize_inputs=lambda values: {"M": values["M"]},
         feature_names=("M",),
         iter_configs=lambda: iter(({"BLOCK": 16},)),
     )
@@ -418,6 +422,9 @@ def test_collection_rows_are_flattened_to_streaming_training_jsonl(tmp_path):
     assert row["ranking_group"] == {
         "operator_id": "flaggems/mm",
         "variant": "general_tma",
+        "route_variant": "general_tma",
+        "stage": "public",
+        "latency_scope": "public_kernel",
         "dimensions": {
             "M": 64,
             "N": 32,
@@ -498,6 +505,9 @@ def test_mul_collection_rows_reuse_derived_variant_inputs(tmp_path):
     assert row["ranking_group"] == {
         "operator_id": "flaggems/mul",
         "variant": "scalar",
+        "route_variant": "scalar",
+        "stage": "public",
+        "latency_scope": "public_kernel",
         "dimensions": {"n_elements": 18, "has_rhs": 0},
         "model_dtype_key": "bf16-bf16",
     }

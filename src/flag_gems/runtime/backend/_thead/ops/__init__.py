@@ -26,15 +26,19 @@ from .gcd_ import gcd, gcd_
 from .index_copy_ import index_copy, index_copy_
 from .lcm import lcm, lcm_
 from .linalg_cholesky import linalg_cholesky
+from .linalg_matrix_power import linalg_matrix_power, linalg_matrix_power_out
 from .linalg_svdvals import linalg_svdvals
 from .linear_backward import linear_backward
 from .log_normal_ import log_normal_, log_normal_heur_block, log_normal_heur_num_warps
 from .log_sigmoid_backward import log_sigmoid_backward, log_sigmoid_backward_out
+from .mm import mm, mm_out
+from .mv import mv
 from .nll_loss_backward import nll_loss_backward
 from .nonzero_numpy import nonzero_numpy
 from .reflection_pad3d_backward import reflection_pad3d_backward
 from .renorm import renorm, renorm_
 from .repeat import repeat
+from .rms_norm_w8a16_fp8 import rms_norm_w8a16_fp8
 from .scatter_reduce_ import scatter_reduce, scatter_reduce_, scatter_reduce_out
 from .softplus_backward import softplus_backward
 from .special_chebyshev_polynomial_u import special_chebyshev_polynomial_u
@@ -52,6 +56,7 @@ from .special_shifted_chebyshev_polynomial_w import (
     special_shifted_chebyshev_polynomial_w,
 )
 from .tile import tile
+from .topk_w8a16_fp8 import topk_w8a16_fp8
 from .unbind_copy import unbind_copy
 
 __all__ = [
@@ -72,6 +77,8 @@ __all__ = [
     "lcm",
     "lcm_",
     "linalg_cholesky",
+    "linalg_matrix_power",
+    "linalg_matrix_power_out",
     "linalg_svdvals",
     "linear_backward",
     "log_normal_",
@@ -80,12 +87,16 @@ __all__ = [
     "log_sigmoid_backward",
     "log_sigmoid_backward_out",
     "make_3d_for_bn",
+    "mm",
+    "mm_out",
+    "mv",
     "nll_loss_backward",
     "nonzero_numpy",
     "reflection_pad3d_backward",
     "renorm",
     "renorm_",
     "repeat",
+    "rms_norm_w8a16_fp8",
     "scatter_reduce",
     "scatter_reduce_",
     "scatter_reduce_out",
@@ -101,5 +112,6 @@ __all__ = [
     "special_hermite_polynomial_h_tensor_tensor",
     "special_shifted_chebyshev_polynomial_w",
     "tile",
+    "topk_w8a16_fp8",
     "unbind_copy",
 ]

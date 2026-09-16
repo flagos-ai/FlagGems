@@ -86,7 +86,7 @@ def mul_kernel(
     key=["n_elements", "dtype"],
     strategy=["align32", "default"],
     warmup=5,
-    rep=5,
+    rep=20,
     flagtune_op_name="mul",
     flagtune_expand_op_name="mul",
     flagtune_op_id="flaggems/mul",

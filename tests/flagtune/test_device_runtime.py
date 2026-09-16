@@ -1,5 +1,6 @@
 """Validate the strict FlagTune device-operation adapter in its focused suite."""
 
+import importlib
 import importlib.util
 from types import SimpleNamespace
 
@@ -155,8 +156,10 @@ def test_runtime_rejects_missing_or_empty_device_api():
 
 def test_runtime_metadata_keeps_architecture_separate_from_platform(monkeypatch):
     runtime = DeviceRuntime(_descriptor(), _FakeTorch(_FakeDeviceAPI()))
+    device_module = importlib.import_module("flag_gems.flagtune.runtime.device")
     monkeypatch.setattr(
-        "flag_gems.flagtune.runtime.device.probe_flagtune_device",
+        device_module,
+        "probe_flagtune_device",
         lambda _index=0: _descriptor(),
     )
 
