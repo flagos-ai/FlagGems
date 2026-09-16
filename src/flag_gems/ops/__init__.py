@@ -502,6 +502,7 @@ from flag_gems.ops.grid_sampler_2d import grid_sampler_2d
 from flag_gems.ops.grid_sampler_3d import grid_sampler_3d
 from flag_gems.ops.grid_sampler_3d_backward import grid_sampler_3d_backward
 from flag_gems.ops.group_gemm import group_mm
+from flag_gems.ops.group_gemm_w8a8_fp8 import group_gemm_w8a8_fp8, group_mm_w8a8_fp8
 from flag_gems.ops.groupnorm import group_norm, group_norm_backward
 from flag_gems.ops.gru import gru, gru_data
 from flag_gems.ops.gt import gt, gt_scalar, gt_scalar_, gt_tensor_
@@ -1581,7 +1582,9 @@ __all__ = [
     "grid_sampler_2d",
     "grid_sampler_3d",
     "grid_sampler_3d_backward",
+    "group_gemm_w8a8_fp8",
     "group_mm",
+    "group_mm_w8a8_fp8",
     "group_norm",
     "group_norm_backward",
     "gru",

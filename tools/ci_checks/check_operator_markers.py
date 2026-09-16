@@ -65,6 +65,7 @@ def find_test_file(op_id: str, aliases: dict[str, str]) -> Path | None:
       1. Alias mapping from ci_test_aliases.yaml
       2. tests/test_<id>.py (direct match)
       3. tests/test_<id without trailing _>.py (inplace variants)
+      4. A shared tests/test_*.py file containing the operator marker
     """
     # Check alias first
     if op_id in aliases:
@@ -87,7 +88,7 @@ def find_test_file(op_id: str, aliases: dict[str, str]) -> Path | None:
         if base.exists():
             return base
 
-    return None
+    return find_test_file_by_marker(op_id)
 
 
 def check_marker_in_file(filepath: Path, op_id: str) -> bool:
@@ -122,6 +123,28 @@ def _is_pytest_mark(node: ast.expr, marker_name: str) -> bool:
     if isinstance(node, ast.Call):
         return _is_pytest_mark(node.func, marker_name)
     return False
+
+
+def find_test_file_by_marker(op_id: str) -> Path | None:
+    """Find a shared test file containing @pytest.mark.<op_id>."""
+    marker_text = f"pytest.mark.{op_id}"
+    for filepath in sorted(TESTS_DIR.glob("test_*.py")):
+        try:
+            source = filepath.read_text()
+        except (OSError, UnicodeDecodeError):
+            continue
+        if marker_text not in source:
+            continue
+        try:
+            tree = ast.parse(source)
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if any(_is_pytest_mark(item, op_id) for item in node.decorator_list):
+                return filepath
+    return None
 
 
 def main():
