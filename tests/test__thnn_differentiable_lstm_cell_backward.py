@@ -152,7 +152,7 @@ def test_thnn_differentiable_lstm_cell_backward(
         *_reference_args(args)
     )
 
-    result = torch.ops.aten._thnn_differentiable_lstm_cell_backward(*args)
+    result = flag_gems._thnn_differentiable_lstm_cell_backward(*args)
 
     _assert_outputs_close(result, reference, dtype, batch_size)
 
@@ -202,7 +202,7 @@ def test_thnn_differentiable_lstm_cell_backward_empty(shape):
         *_reference_args(args)
     )
 
-    result = torch.ops.aten._thnn_differentiable_lstm_cell_backward(*args)
+    result = flag_gems._thnn_differentiable_lstm_cell_backward(*args)
 
     _assert_outputs_close(result, reference, torch.float32, batch_size)
 
