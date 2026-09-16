@@ -26,21 +26,28 @@ _flagtune_op_registry = {}
 _include_ops = None
 
 
-def _platform_cost_model_available():
-    """Lazily resolve the active platform package without creating import cycles."""
-    from flag_gems.flagtune.runtime.model_package import (
-        platform_model_package_available,
-    )
-
-    return platform_model_package_available()
-
-
 class TuningMode(str, Enum):
     """Runtime configuration-selection path for one LibTuner operator."""
 
     DEFAULT = "default"
     EXPANDED = "expanded"
     COST_MODEL = "cost_model"
+
+
+class CostModelIntent(str, Enum):
+    DISABLED = "disabled"
+    AUTO = "auto"
+    REQUIRED = "required"
+
+
+def resolve_cost_model_intent(*, supports_cost_model=False):
+    """Parse user intent without importing or probing the model runtime."""
+    if _use_flagtune_setting_from_env() is False or not supports_cost_model:
+        return CostModelIntent.DISABLED
+    setting = _optional_binary_environment(USE_FLAGTUNE_COST_MODEL_ENV)
+    if setting is False:
+        return CostModelIntent.DISABLED
+    return CostModelIntent.REQUIRED if setting else CostModelIntent.AUTO
 
 
 @dataclass(frozen=True)
@@ -198,7 +205,8 @@ def resolve_tuning_mode(op_name, *, supports_cost_model=False):
     Default and adapted operators default to Cost Model. ``FLAGTUNE_INCLUDE``
     applies the same capability-based selection to individual operators. An
     adapted operator uses Expanded only when ``USE_FLAGTUNE_COST_MODEL=0``. If
-    the active platform has no model package, it follows the unadapted routes.
+    a model cannot be loaded, the policy handles AUTO fallback. Mode resolution
+    is deliberately independent of device discovery and model availability.
     """
     try:
         name = _normalize_op_name(op_name)
@@ -209,30 +217,10 @@ def resolve_tuning_mode(op_name, *, supports_cost_model=False):
     if use_flagtune_setting is False:
         return TuningMode.DEFAULT
 
-    # An explicit Expanded request does not need a model package. Short-circuit
-    # before probing so this path remains usable in offline environments.
     if supports_cost_model:
-        cost_model_value = os.environ.get(USE_FLAGTUNE_COST_MODEL_ENV)
-        explicitly_expanded = use_flagtune_setting is True or (
-            name in get_flagtune_include()
-        )
-        if (
-            explicitly_expanded
-            and cost_model_value is not None
-            and cost_model_value.strip() == "0"
-        ):
+        intent = resolve_cost_model_intent(supports_cost_model=True)
+        if intent is CostModelIntent.DISABLED:
             return TuningMode.EXPANDED
-
-    if supports_cost_model and not _platform_cost_model_available():
-        supports_cost_model = False
-
-    cost_model_setting = None
-    if supports_cost_model:
-        cost_model_setting = _optional_binary_environment(USE_FLAGTUNE_COST_MODEL_ENV)
-        if cost_model_setting is False:
-            return TuningMode.EXPANDED
-        if cost_model_setting is True or use_flagtune_setting is True:
-            return TuningMode.COST_MODEL
         return TuningMode.COST_MODEL
     if use_flagtune_setting is True or name in get_flagtune_include():
         return TuningMode.EXPANDED

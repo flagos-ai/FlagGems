@@ -24,6 +24,9 @@ from ._batch_norm_impl_index import batch_norm_impl_index as _batch_norm_impl_in
 from ._batch_norm_no_update import _batch_norm_no_update
 from ._dyn_quant_pack_4bit_weight import _dyn_quant_pack_4bit_weight
 from ._embedding_bag_dense_backward import _embedding_bag_dense_backward
+from ._embedding_bag_per_sample_weights_backward import (  # noqa: F401
+    _embedding_bag_per_sample_weights_backward,
+)
 from ._euclidean_dist import _euclidean_dist
 from ._functional_sym_constrain_range import _functional_sym_constrain_range
 from ._functional_sym_constrain_range_for_size import (
@@ -32,6 +35,9 @@ from ._functional_sym_constrain_range_for_size import (
 from ._fused_adam import _fused_adam, _fused_adam_
 from ._fused_rms_norm import _fused_rms_norm  # noqa: F401
 from ._is_all_true import _is_all_true
+from ._jagged_to_padded_dense_forward import (  # noqa: F401
+    _jagged_to_padded_dense_forward,
+)
 from ._native_batch_norm_legit_functional import _native_batch_norm_legit_functional
 from ._native_batch_norm_legit_no_training import _native_batch_norm_legit_no_training
 from ._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
@@ -51,6 +57,7 @@ from .acos import acos, acos_
 from .adaptive_avg_pool2d import adaptive_avg_pool2d
 from .adaptive_max_pool2d import adaptive_max_pool2d
 from .add import add, add_
+from .addbmm import addbmm, addbmm_  # noqa: F401
 from .addcdiv import addcdiv, addcdiv_, addcdiv_out
 from .addcmul import addcmul, addcmul_, addcmul_out
 from .addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out  # noqa: F401
@@ -130,6 +137,7 @@ from .bitwise_xor import (
     xor_scalar_,
     xor_scalar_tensor,
 )
+from .block_diag import block_diag  # noqa: F401
 from .bmm import bmm, bmm_out
 from .broadcast_tensors import broadcast_tensors
 from .broadcast_to import broadcast_to
@@ -140,6 +148,8 @@ from .ceil import ceil, ceil_, ceil_out
 from .celu import celu, celu_
 from .cholesky_inverse import cholesky_inverse
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
+from .chunk import chunk
+from .chunk_cat import chunk_cat as _chunk_cat
 from .clamp import (
     clamp,
     clamp_,
@@ -196,13 +206,17 @@ from .dot import dot
 from .dropout import dropout, dropout_backward
 from .elu import elu, elu_, elu_backward
 from .embedding import embedding, embedding_backward, embedding_dense_backward
+from .empty import empty  # noqa: F401
+from .empty_permuted import empty_permuted  # noqa: F401
 from .eq import eq, eq_, eq_scalar, eq_scalar_
 from .erf import erf, erf_, special_erf
 from .erfinv import erfinv
 from .erfinv_ import erfinv_  # noqa: F401
 from .exp import exp, exp_, exp_out
 from .exp2 import exp2, exp2_
+from .expand_copy import expand_copy
 from .expm1 import expm1, expm1_, expm1_out
+from .exponential import exponential  # noqa: F401
 from .exponential_ import exponential_
 from .eye import eye
 from .eye_m import eye_m
@@ -279,6 +293,7 @@ from .less_equal import less_equal, less_equal_scalar
 from .lgamma import lgamma, lgamma_
 from .lift_fresh import lift_fresh  # noqa: F401
 from .lift_fresh_copy import lift_fresh_copy
+from .lift_out import lift_out  # noqa: F401
 from .linalg_cholesky import linalg_cholesky
 from .linalg_cross import linalg_cross, linalg_cross_out
 from .linalg_det import linalg_det, linalg_det_out
@@ -286,6 +301,7 @@ from .linalg_householder_product import linalg_householder_product
 from .linalg_ldl_factor import ldl_factor
 from .linalg_ldl_factor_ex import ldl_factor_ex
 from .linalg_lstsq import linalg_lstsq
+from .linalg_lu import linalg_lu, linalg_lu_out  # noqa: F401
 from .linalg_lu_factor import linalg_lu_factor, linalg_lu_factor_out
 from .linalg_lu_factor_ex import linalg_lu_factor_ex, linalg_lu_factor_ex_out
 from .linalg_matrix_norm import linalg_matrix_norm
@@ -359,8 +375,10 @@ from .mvlgamma_ import mvlgamma_
 from .nan_to_num import nan_to_num
 from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .nansum import nansum, nansum_out
+from .narrow import narrow  # noqa: F401
 from .narrow_copy import narrow_copy
 from .native_batch_norm import native_batch_norm
+from .native_dropout_backward import native_dropout_backward
 from .native_group_norm import native_group_norm
 from .native_layer_norm import native_layer_norm
 from .ne import ne, ne_, ne_scalar, ne_scalar_
@@ -443,6 +461,7 @@ from .replication_pad2d_backward import (
 from .replication_pad3d import replication_pad3d  # noqa: F401
 from .replication_pad3d_backward import replication_pad3d_backward  # noqa: F401
 from .resize import resize, resize_
+from .resize_output import _resize_output, _resize_output_  # noqa: F401
 from .resolve_conj import resolve_conj
 from .resolve_neg import resolve_neg
 from .rms_norm import rms_norm, rms_norm_backward, rms_norm_forward
@@ -526,6 +545,7 @@ from .special_modified_bessel_k0 import (
 )
 from .special_multigammaln import special_multigammaln
 from .special_ndtri import special_ndtri
+from .special_round import special_round, special_round_out
 from .special_shifted_chebyshev_polynomial_t import (
     special_shifted_chebyshev_polynomial_t,
 )
@@ -565,6 +585,8 @@ from .uniform import uniform_
 from .unique import _unique2
 from .unique_consecutive import unique_consecutive
 from .unique_dim import unique_dim
+from .unsafe_chunk import unsafe_chunk  # noqa: F401
+from .unsqueeze import unsqueeze_  # noqa: F401 (in-place dim insertion, XPU fast path)
 from .upsample_bicubic2d_aa import _upsample_bicubic2d_aa
 from .upsample_bicubic2d_aa_backward import _upsample_bicubic2d_aa_backward
 from .upsample_linear1d import upsample_linear1d
@@ -600,6 +622,7 @@ __all__ = [
     "_batch_norm_impl_index",
     "_batch_norm_no_update",
     "_cdist_backward",
+    "_chunk_cat",
     "_conv_depthwise2d",
     "_dyn_quant_pack_4bit_weight",
     "_embedding_bag_dense_backward",
@@ -737,6 +760,7 @@ __all__ = [
     "cholesky_inverse",
     "cholesky_solve",
     "cholesky_solve_out",
+    "chunk",
     "clamp",
     "clamp_",
     "clamp_max",
@@ -804,9 +828,11 @@ __all__ = [
     "exp2_",
     "exp_",
     "exp_out",
+    "expand_copy",
     "expm1",
     "expm1_",
     "expm1_out",
+    "exponential",
     "exponential_",
     "eye",
     "eye_m",
@@ -849,6 +875,8 @@ __all__ = [
     "gelu",
     "gelu_",
     "gelu_backward",
+    "geometric",
+    "geometric_",
     "get_paged_mqa_logits_metadata",
     "get_scheduler_metadata",
     "glu",
@@ -1024,6 +1052,7 @@ __all__ = [
     "nansum_out",
     "narrow_copy",
     "native_batch_norm",
+    "native_dropout_backward",
     "native_group_norm",
     "native_layer_norm",
     "ne",
@@ -1226,6 +1255,8 @@ __all__ = [
     "special_modified_bessel_k0_out",
     "special_multigammaln",
     "special_ndtri",
+    "special_round",
+    "special_round_out",
     "special_shifted_chebyshev_polynomial_t",
     "special_shifted_chebyshev_polynomial_u",
     "special_shifted_chebyshev_polynomial_u_",
