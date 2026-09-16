@@ -1,17 +1,3 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import logging
 
 import torch
@@ -122,6 +108,51 @@ def repeat_interleave_tensor(repeats, *, output_size=None):
     return out
 
 
+@triton.jit
+def repeat_interleave_self_tensor_kernel(
+    inp,
+    out,
+    cumsum,
+    repeats,
+    D,
+    outer,
+    rsum,
+    inner,
+    BLOCK_I: tl.constexpr,
+    NEED_MASK: tl.constexpr,
+):
+    # Input-side decomposition: one program handles one input row (o, i).
+    # The row is loaded ONCE and stored r_i times to the r_i consecutive
+    # output rows [start, start + r_i); start = cumsum[i] - r_i. This
+    # replaces the index-materialize + gather approach: the store side is
+    # moved r_i times anyway, but the LOAD side is done once per input row
+    # (outer*D loads of `inner` instead of rsum loads), and building the
+    # mapping needs only cumsum (no index tensor, no .item() sync beyond
+    # the single rsum host read).
+    pid = ext.program_id(axis=0)
+    if pid < outer * D:
+        o = pid // D
+        i = pid % D
+        r = tl.load(repeats + i)
+        tl.device_assert(r >= 0, "repeats can not be negative")
+        start = tl.load(cumsum + i) - r
+        base_in = pid * inner
+        base_out = (o * rsum + start) * inner
+        if NEED_MASK:
+            for c in range(0, inner, BLOCK_I):
+                cols = c + tl.arange(0, BLOCK_I)
+                m = cols < inner
+                v = tl.load(inp + base_in + cols, mask=m, other=0)
+                for rep in range(0, r):
+                    tl.store(out + base_out + rep * inner + cols, v, mask=m)
+        else:
+            for c in range(0, inner, BLOCK_I):
+                cols = c + tl.arange(0, BLOCK_I)
+                v = tl.load(inp + base_in + cols)
+                for rep in range(0, r):
+                    tl.store(out + base_out + rep * inner + cols, v)
+
+
 def repeat_interleave_self_tensor(inp, repeats, dim=None, *, output_size=None):
     logger.debug("GEMS_KUNLUNXIN REPEAT_INTERLEAVE_SELF_TENSOR")
 
@@ -155,7 +186,45 @@ def repeat_interleave_self_tensor(inp, repeats, dim=None, *, output_size=None):
             )
         )
 
-    indices = repeat_interleave_tensor(repeats)
-    res = torch.index_select(inp, dim, indices)
+    repeats = repeats.contiguous()
+    inp = inp.contiguous()
+    D = inp_shape[dim]
+    outer = 1
+    inner = 1
+    for s in inp_shape[:dim]:
+        outer *= s
+    for s in inp_shape[dim + 1 :]:
+        inner *= s
 
-    return res
+    if inner == 1:
+        # Indexed dim is the innermost: genuine per-element gather. Fall back
+        # to the index-select path (materialized index + vendor index_select).
+        indices = repeat_interleave_tensor(repeats)
+        return torch.index_select(inp, dim, indices)
+
+    cumsum = repeats.cumsum(axis=0)
+    rsum = int(cumsum[-1].item())
+    out_shape = inp_shape[:dim] + [rsum] + inp_shape[dim + 1 :]
+    out = torch.empty(out_shape, dtype=inp.dtype, device=inp.device)
+
+    # BLOCK_I: cap at 4096 (measured sweet spot on XPU); floor at 64 (narrow
+    # vector stores below 64 elements per instruction are unreliable in
+    # TritonXPU; masked path covers inner < 64).
+    block_i = min(max(triton.next_power_of_2(inner), 64), 4096)
+    need_mask = inner % block_i != 0
+    grid = (outer * D,)
+    repeat_interleave_self_tensor_kernel[grid](
+        inp,
+        out,
+        cumsum,
+        repeats,
+        D,
+        outer,
+        rsum,
+        inner,
+        BLOCK_I=block_i,
+        NEED_MASK=need_mask,
+        num_warps=8,
+        buffer_size_limit=4096,
+    )
+    return out
