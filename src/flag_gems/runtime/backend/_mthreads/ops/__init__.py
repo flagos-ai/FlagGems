@@ -20,6 +20,7 @@ from .amax import amax
 from .any import any, any_dim, any_dims
 from .arange import arange, arange_start
 from .argmin import argmin
+from .argsort import argsort
 from .batch_norm import batch_norm, batch_norm_backward
 from .bucketize import bucketize
 from .celu import celu
@@ -91,7 +92,9 @@ from .repeat_interleave import (
     repeat_interleave_tensor,
 )
 from .resolve_conj import resolve_conj
+from .rms_norm_w8a16_fp8 import rms_norm_w8a16_fp8
 from .round_ import round_
+from .scatter_reduce import scatter_reduce, scatter_reduce_, scatter_reduce_out
 from .softplus_backward import softplus_backward
 from .sort import sort, sort_stable
 from .special_gammainc import special_gammainc
@@ -117,6 +120,7 @@ __all__ = [
     "arange",
     "arange_start",
     "argmin",
+    "argsort",
     "batch_norm",
     "batch_norm_backward",
     "bucketize",
@@ -202,7 +206,11 @@ __all__ = [
     "repeat_interleave_self_tensor",
     "repeat_interleave_tensor",
     "resolve_conj",
+    "rms_norm_w8a16_fp8",
     "round_",
+    "scatter_reduce",
+    "scatter_reduce_",
+    "scatter_reduce_out",
     "softplus_backward",
     "sort",
     "sort_stable",
@@ -243,3 +251,8 @@ if get_device_capability(current_device())[0] >= 3:
             "tanh",
         ]
     )
+
+if get_device_capability(current_device()) >= (3, 1):
+    from .mm_w8a8_fp8 import mm_w8a8_fp8, mm_w8a8_fp8_out  # noqa: F401
+
+    __all__.extend(["mm_w8a8_fp8", "mm_w8a8_fp8_out"])

@@ -101,7 +101,7 @@ def special_multigammaln_kernel_xpu(
 
 
 def special_multigammaln(*args, **kwargs):
-    logger.debug("GEMS SPECIAL_MULTIGAMMALN")
+    logger.debug("GEMS_KUNLUNXIN SPECIAL_MULTIGAMMALN")
     A = args[0]
     p = args[1] if len(args) > 1 else kwargs.get("p", 1)
 
