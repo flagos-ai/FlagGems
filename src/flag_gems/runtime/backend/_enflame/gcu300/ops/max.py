@@ -19,12 +19,14 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import dim_compress, libentry, libtuner
+from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils.limits import get_dtype_min
 
 logger = logging.getLogger(__name__)
+
+_MAX_REDUCTION_TILE = 256
+_MAX_OUTPUT_TILE = 4
 
 
 @libentry()
@@ -66,28 +68,7 @@ def max_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
     tl.store(out, max_val)
 
 
-def heur_block_n(args):
-    return triton.next_power_of_2(args["N"])
-
-
-def keep(conf):
-    BLOCK_M = conf.kwargs["BLOCK_M"]
-    BLOCK_N = conf.kwargs["BLOCK_N"]
-    tile_size = BLOCK_M * BLOCK_N
-    if tile_size < 2048:
-        return False
-    # Indexed max and NaN tracking keep several per-lane buffers in L1. Larger
-    # or multi-stage tiles can abort the GCU300 device during autotuning.
-    if tile_size > 16 * 1024 or conf.num_stages != 1:
-        return False
-    return True
-
-
 @libentry()
-@libtuner(
-    configs=list(filter(keep, runtime.get_tuned_config("naive_reduction"))),
-    key=["M", "N"],
-)
 @triton.jit
 def max_kernel_dim_low(
     inp,
@@ -95,9 +76,9 @@ def max_kernel_dim_low(
     out_index,
     M,
     N,
-    BLOCK_M: tl.constexpr = 16,
-    BLOCK_N: tl.constexpr = 4096,
-    num_stages: tl.constexpr = 2,
+    BLOCK_M: tl.constexpr = 4,
+    BLOCK_N: tl.constexpr = 256,
+    num_stages: tl.constexpr = 1,
 ):
     # set offset
     pid_m = tl.program_id(0)
@@ -182,10 +163,6 @@ def max_kernel_dim_low(
 
 
 @libentry()
-@libtuner(
-    configs=list(filter(keep, runtime.get_tuned_config("naive_reduction"))),
-    key=["M", "N"],
-)
 @triton.jit
 def max_kernel_dim_high(
     inp,
@@ -193,9 +170,9 @@ def max_kernel_dim_high(
     out_index,
     M,
     N,
-    BLOCK_M: tl.constexpr = 64,
-    BLOCK_N: tl.constexpr = 64,
-    num_stages: tl.constexpr = 3,
+    BLOCK_M: tl.constexpr = 256,
+    BLOCK_N: tl.constexpr = 4,
+    num_stages: tl.constexpr = 1,
 ):
     # set offset
     pid_n = tl.program_id(0)
@@ -277,10 +254,6 @@ def max_kernel_dim_high(
 
 
 @libentry()
-@libtuner(
-    configs=list(filter(keep, runtime.get_tuned_config("naive_reduction"))),
-    key=["M", "N"],
-)
 @triton.jit
 def max_kernel_dim_mid(
     inpIn,
@@ -289,9 +262,9 @@ def max_kernel_dim_mid(
     B,
     M,
     N,
-    BLOCK_M: tl.constexpr = 128,
+    BLOCK_M: tl.constexpr = 256,
     BLOCK_N: tl.constexpr = 4,
-    num_stages: tl.constexpr = 2,
+    num_stages: tl.constexpr = 1,
 ):
     pid_b = tl.program_id(1)
     pid_n = tl.program_id(0)
@@ -433,16 +406,41 @@ def max_dim(inp, dim=None, keepdim=False):
     if dim == 0:
         M = inp.shape[0]
         N = inp.numel() // M
-        grid = lambda meta: (min(triton.cdiv(N, meta["BLOCK_N"]), 24),)
+        # Indexed max and NaN tracking need several per-lane L1 buffers.
+        # Deterministic 1K-lane tiles avoid fatal GCU300 autotune candidates.
+        block_m = min(triton.next_power_of_2(M), _MAX_REDUCTION_TILE)
+        block_n = min(triton.next_power_of_2(N), _MAX_OUTPUT_TILE)
+        grid = (min(triton.cdiv(N, block_n), 24),)
         with torch_device_fn.device(inp.device):
-            max_kernel_dim_high[grid](inp, out_value, out_index, M, N)
+            max_kernel_dim_high[grid](
+                inp,
+                out_value,
+                out_index,
+                M,
+                N,
+                BLOCK_M=block_m,
+                BLOCK_N=block_n,
+                num_stages=1,
+                num_warps=1,
+            )
     elif dim == inp.ndim - 1:
         N = inp.shape[inp.ndim - 1]
         M = inp.numel() // N
-        grid = lambda meta: (min(triton.cdiv(M, meta["BLOCK_M"]), 24),)
-        # grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
+        block_m = min(triton.next_power_of_2(M), _MAX_OUTPUT_TILE)
+        block_n = min(triton.next_power_of_2(N), _MAX_REDUCTION_TILE)
+        grid = (min(triton.cdiv(M, block_m), 24),)
         with torch_device_fn.device(inp.device):
-            max_kernel_dim_low[grid](inp, out_value, out_index, M, N)
+            max_kernel_dim_low[grid](
+                inp,
+                out_value,
+                out_index,
+                M,
+                N,
+                BLOCK_M=block_m,
+                BLOCK_N=block_n,
+                num_stages=1,
+                num_warps=1,
+            )
     else:
         B = 1
         for i in range(0, dim):
@@ -452,17 +450,42 @@ def max_dim(inp, dim=None, keepdim=False):
         for i in range(dim + 1, inp.ndim):
             N *= inp.shape[i]
         if B <= N * 128:
-            grid = lambda meta: (triton.cdiv(N, meta["BLOCK_N"]), min(B, 24), 1)
+            block_m = min(triton.next_power_of_2(M), _MAX_REDUCTION_TILE)
+            block_n = min(triton.next_power_of_2(N), _MAX_OUTPUT_TILE)
+            grid = (triton.cdiv(N, block_n), min(B, 24), 1)
             with torch_device_fn.device(inp.device):
-                max_kernel_dim_mid[grid](inp, out_value, out_index, B, M, N)
+                max_kernel_dim_mid[grid](
+                    inp,
+                    out_value,
+                    out_index,
+                    B,
+                    M,
+                    N,
+                    BLOCK_M=block_m,
+                    BLOCK_N=block_n,
+                    num_stages=1,
+                    num_warps=1,
+                )
         else:
             in_reshape = inp.reshape((B, M, N))
             inp_new = dim_compress(in_reshape, {0, 2})
             M = inp_new.shape[0]
             N = inp_new.numel() // M
-            grid = lambda meta: (triton.cdiv(N, meta["BLOCK_N"]),)
+            block_m = min(triton.next_power_of_2(M), _MAX_REDUCTION_TILE)
+            block_n = min(triton.next_power_of_2(N), _MAX_OUTPUT_TILE)
+            grid = (min(triton.cdiv(N, block_n), 24),)
             with torch_device_fn.device(inp.device):
-                max_kernel_dim_high[grid](inp_new, out_value, out_index, M, N)
+                max_kernel_dim_high[grid](
+                    inp_new,
+                    out_value,
+                    out_index,
+                    M,
+                    N,
+                    BLOCK_M=block_m,
+                    BLOCK_N=block_n,
+                    num_stages=1,
+                    num_warps=1,
+                )
     if not keepdim:
         out_value = torch.squeeze(out_value, dim)
         out_index = torch.squeeze(out_index, dim)
