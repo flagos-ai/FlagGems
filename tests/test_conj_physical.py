@@ -151,4 +151,14 @@ def test_conj_physical_complex(shape, value_range):
     ref_out = torch.conj_physical(ref_input)
     res_out = flag_gems.conj_physical(input)
 
-    utils.gems_assert_close(res_out, ref_out, out_dtype, reduce_dim=1)
+    assert res_out.dtype == out_dtype
+    # Not every device implements a complex comparison kernel: the Ascend NPU
+    # rejects both isclose and equal for complex64 ("aclnnIsClose failed, error
+    # code is 161002"), so compare the real and imaginary lanes as plain
+    # float32, the same way tests/test_chalf.py does.
+    utils.gems_assert_close(
+        torch.view_as_real(res_out),
+        torch.view_as_real(ref_out),
+        torch.float32,
+        reduce_dim=1,
+    )
