@@ -41,6 +41,12 @@ def _reference_linalg_polar(inp):
     return polar_U, 0.5 * (polar_H + polar_H.mH)
 
 
+if hasattr(torch.ops.aten, "linalg_polar"):
+    TORCH_LINALG_POLAR = torch.ops.aten.linalg_polar.default
+else:
+    TORCH_LINALG_POLAR = _reference_linalg_polar
+
+
 def _assert_polar_properties(inp, U, H):
     reconstructed = U @ H
     utils.gems_assert_close(reconstructed, inp, torch.float32, atol=ATOL)
@@ -59,7 +65,7 @@ def _assert_polar_properties(inp, U, H):
 def test_linalg_polar(shape):
     inp = torch.randn(shape, dtype=torch.float32, device=flag_gems.device)
     ref_inp = utils.to_reference(inp, False)
-    _, ref_H = _reference_linalg_polar(ref_inp)
+    _, ref_H = TORCH_LINALG_POLAR(ref_inp)
 
     result_U, result_H = flag_gems.linalg_polar(inp)
 
@@ -109,7 +115,7 @@ def test_linalg_polar_noncontiguous():
 def test_linalg_polar_empty(shape):
     inp = torch.empty(shape, dtype=torch.float32, device=flag_gems.device)
     ref_inp = utils.to_reference(inp, False)
-    ref_U, ref_H = _reference_linalg_polar(ref_inp)
+    ref_U, ref_H = TORCH_LINALG_POLAR(ref_inp)
     result_U, result_H = flag_gems.linalg_polar(inp)
 
     assert result_U.shape == ref_U.shape
@@ -150,7 +156,7 @@ def test_linalg_polar_out(shape):
     inp = torch.randn(shape, dtype=torch.float32, device=flag_gems.device)
     ref_inp = utils.to_reference(inp, False)
 
-    _, ref_H = _reference_linalg_polar(ref_inp)
+    _, ref_H = TORCH_LINALG_POLAR(ref_inp)
 
     out_U = torch.empty(0, dtype=torch.float32, device=flag_gems.device)
     out_H = torch.empty(0, dtype=torch.float32, device=flag_gems.device)
