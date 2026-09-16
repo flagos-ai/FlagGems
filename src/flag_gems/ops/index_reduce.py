@@ -756,16 +756,20 @@ def _index_reduce_impl(
     return _restore_dim(out.to(inp.dtype), inp, dim)
 
 
-def index_reduce(inp, dim, index, source, reduce, *, include_self=True):
-    logger.debug("GEMS INDEX_REDUCE")
+def _index_reduce_functional(
+    inplace_impl, inp, dim, index, source, reduce, *, include_self=True
+):
     out = inp.clone(memory_format=torch.contiguous_format)
-    return index_reduce_(out, dim, index, source, reduce, include_self=include_self)
+    return inplace_impl(out, dim, index, source, reduce, include_self=include_self)
 
 
-def index_reduce_out(inp, dim, index, source, reduce, *, include_self=True, out=None):
-    logger.debug("GEMS INDEX_REDUCE_OUT")
+def _index_reduce_out(
+    inplace_impl, inp, dim, index, source, reduce, *, include_self=True, out=None
+):
     if out is None:
-        return index_reduce(inp, dim, index, source, reduce, include_self=include_self)
+        return _index_reduce_functional(
+            inplace_impl, inp, dim, index, source, reduce, include_self=include_self
+        )
     _validate_args(inp, dim, index, source, reduce)
     if out.dtype != inp.dtype:
         raise RuntimeError(
@@ -780,4 +784,25 @@ def index_reduce_out(inp, dim, index, source, reduce, *, include_self=True, out=
 
     if out.data_ptr() != inp.data_ptr() or out.stride() != inp.stride():
         out.copy_(inp)
-    return index_reduce_(out, dim, index, source, reduce, include_self=include_self)
+    return inplace_impl(out, dim, index, source, reduce, include_self=include_self)
+
+
+def index_reduce(inp, dim, index, source, reduce, *, include_self=True):
+    logger.debug("GEMS INDEX_REDUCE")
+    return _index_reduce_functional(
+        index_reduce_, inp, dim, index, source, reduce, include_self=include_self
+    )
+
+
+def index_reduce_out(inp, dim, index, source, reduce, *, include_self=True, out=None):
+    logger.debug("GEMS INDEX_REDUCE_OUT")
+    return _index_reduce_out(
+        index_reduce_,
+        inp,
+        dim,
+        index,
+        source,
+        reduce,
+        include_self=include_self,
+        out=out,
+    )

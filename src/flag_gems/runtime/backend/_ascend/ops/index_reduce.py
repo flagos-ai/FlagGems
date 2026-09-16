@@ -17,6 +17,8 @@ import logging
 import torch
 
 from flag_gems.ops.index_reduce import (
+    _index_reduce_functional,
+    _index_reduce_out,
     _index_reduce_scan_kernel,
     _reduce_id,
     _restore_dim,
@@ -62,3 +64,24 @@ def index_reduce_(inp, dim, index, source, reduce, *, include_self=True):
             False,
         )
     return _restore_dim(out.to(inp.dtype), inp, dim)
+
+
+def index_reduce(inp, dim, index, source, reduce, *, include_self=True):
+    logger.debug("GEMS_ASCEND INDEX_REDUCE")
+    return _index_reduce_functional(
+        index_reduce_, inp, dim, index, source, reduce, include_self=include_self
+    )
+
+
+def index_reduce_out(inp, dim, index, source, reduce, *, include_self=True, out=None):
+    logger.debug("GEMS_ASCEND INDEX_REDUCE_OUT")
+    return _index_reduce_out(
+        index_reduce_,
+        inp,
+        dim,
+        index,
+        source,
+        reduce,
+        include_self=include_self,
+        out=out,
+    )

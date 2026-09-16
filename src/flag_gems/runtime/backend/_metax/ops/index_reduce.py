@@ -19,6 +19,8 @@ import triton
 
 from flag_gems.ops.index_reduce import (
     _index_is_unique,
+    _index_reduce_functional,
+    _index_reduce_out,
     _index_reduce_scan_kernel,
     _index_reduce_unique_kernel,
     _reduce_id,
@@ -116,3 +118,24 @@ def index_reduce_(inp, dim, index, source, reduce, *, include_self=True):
             include_self,
         )
     return _restore_dim(inp_work, inp, dim)
+
+
+def index_reduce(inp, dim, index, source, reduce, *, include_self=True):
+    logger.debug("GEMS_METAX INDEX_REDUCE")
+    return _index_reduce_functional(
+        index_reduce_, inp, dim, index, source, reduce, include_self=include_self
+    )
+
+
+def index_reduce_out(inp, dim, index, source, reduce, *, include_self=True, out=None):
+    logger.debug("GEMS_METAX INDEX_REDUCE_OUT")
+    return _index_reduce_out(
+        index_reduce_,
+        inp,
+        dim,
+        index,
+        source,
+        reduce,
+        include_self=include_self,
+        out=out,
+    )
