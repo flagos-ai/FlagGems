@@ -24,7 +24,14 @@ FP8_GROUP_SIZE = 128
 
 
 def _fp8_available():
-    return torch.cuda.is_available() and hasattr(torch, "float8_e5m2")
+    return (
+        torch.cuda.is_available()
+        and hasattr(torch, "float8_e5m2")
+        and (
+            flag_gems.vendor_name != "nvidia"
+            or torch.cuda.get_device_capability()[0] >= 9
+        )
+    )
 
 
 def _quantize_fp8_grouped(x, group_size=FP8_GROUP_SIZE, fp8_dtype=FP8_DTYPE):
@@ -53,7 +60,7 @@ def _dequant_fp8(x_fp8, x_scale, group_size=FP8_GROUP_SIZE):
 
 @pytest.mark.topk_w8a16_fp8
 @pytest.mark.skipif(
-    getattr(flag_gems, "vendor_name", None) not in ("thead", "hygon"),
+    getattr(flag_gems, "vendor_name", None) not in ("thead", "hygon", "nvidia"),
     reason="topk_w8a16_fp8 requires an implemented backend",
 )
 @pytest.mark.skipif(not _fp8_available(), reason="required FP8 format is unavailable")
@@ -76,14 +83,15 @@ def _dequant_fp8(x_fp8, x_scale, group_size=FP8_GROUP_SIZE):
         pytest.param(
             torch.float8_e5m2,
             marks=pytest.mark.skipif(
-                flag_gems.vendor_name == "hygon", reason="Hygon supports E4M3FN only"
+                flag_gems.vendor_name in ("hygon", "nvidia"),
+                reason="Hygon and NVIDIA use E4M3FN coverage",
             ),
         ),
         pytest.param(
             torch.float8_e4m3fn,
             marks=pytest.mark.skipif(
-                flag_gems.vendor_name != "hygon",
-                reason="E4M3FN extension requires Hygon",
+                flag_gems.vendor_name not in ("hygon", "nvidia"),
+                reason="E4M3FN extension requires Hygon or NVIDIA",
             ),
         ),
     ],
@@ -112,6 +120,52 @@ def test_topk_w8a16_fp8(shape, k, largest, fp8_dtype):
     # FP8 E5M2 quantization creates many ties; index order among equal
     # values may differ from torch.topk. Check the selected values instead.
     utils.gems_assert_close(torch.gather(dequant, -1, res_index), ref_value, dtype)
+
+
+NVIDIA_ONLY = pytest.mark.skipif(
+    flag_gems.vendor_name != "nvidia" or not _fp8_available(),
+    reason="NVIDIA FP8 TopK requires compute capability >= 9.0",
+)
+
+
+@NVIDIA_ONLY
+@pytest.mark.topk_w8a16_fp8
+@pytest.mark.parametrize("shape, topk", [((4, 128), 5), ((8, 256), 16), ((2, 1024), 8)])
+@pytest.mark.parametrize("largest", [True, False])
+def test_topk_w8a16_fp8_grouped_scale_nvidia(shape, topk, largest):
+    x = torch.randn(shape, dtype=torch.bfloat16, device=flag_gems.device)
+    x_fp8, x_scale = _quantize_fp8_grouped(x, fp8_dtype=torch.float8_e4m3fn)
+    group_ids = torch.arange(shape[-1], device=x.device) // FP8_GROUP_SIZE
+    x_dequant = x_fp8.float() * x_scale.index_select(-1, group_ids).float()
+
+    ref_value = torch.topk(x_dequant, topk, dim=-1, largest=largest, sorted=True).values
+    res_value, res_index = flag_gems.topk_w8a16_fp8(
+        x_fp8, x_scale, topk, dim=-1, largest=largest, sorted=True
+    )
+
+    gathered = torch.gather(x_dequant, dim=-1, index=res_index)
+    torch.testing.assert_close(res_value.float(), ref_value, rtol=0, atol=2e-2)
+    torch.testing.assert_close(gathered, res_value.float(), rtol=0, atol=2e-2)
+
+
+@NVIDIA_ONLY
+@pytest.mark.topk_w8a16_fp8
+@pytest.mark.parametrize("shape, topk", [((4, 128), 5), ((8, 256), 16), ((2, 4096), 8)])
+def test_topk_w8a16_fp8_row_scale(shape, topk):
+    x = torch.randn(shape, dtype=torch.bfloat16, device=flag_gems.device)
+    x_fp8, x_scale = _quantize_fp8_grouped(
+        x, group_size=shape[-1], fp8_dtype=torch.float8_e4m3fn
+    )
+    x_dequant = x_fp8.float() * x_scale.float()
+
+    ref_value = torch.topk(x_dequant, topk, dim=-1, largest=True, sorted=True).values
+    res_value, res_index = flag_gems.topk_w8a16_fp8(
+        x_fp8, x_scale, topk, group_size=shape[-1]
+    )
+
+    gathered = torch.gather(x_dequant, dim=-1, index=res_index)
+    torch.testing.assert_close(res_value.float(), ref_value, rtol=0, atol=2e-2)
+    torch.testing.assert_close(gathered, res_value.float(), rtol=0, atol=2e-2)
 
 
 # Backend extensions stay in the shared operator file. PPU retains its original
