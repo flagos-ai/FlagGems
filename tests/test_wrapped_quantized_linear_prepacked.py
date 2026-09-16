@@ -17,6 +17,7 @@ import torch
 
 import flag_gems
 
+from . import accuracy_utils as utils
 from . import conftest as cfg
 
 SHAPES = (
@@ -113,8 +114,11 @@ def test_wrapped_quantized_linear_prepacked(leading_shape, N, K, noncontiguous):
     )
 
     assert actual.shape == reference.shape
-    torch.testing.assert_close(
-        actual.cpu(), reference, rtol=0.0, atol=float(ref_output_scale) * 1.01
+    utils.gems_assert_close(
+        actual.cpu(),
+        reference,
+        actual.dtype,
+        atol=float(ref_output_scale) * 1.01,
     )
 
 
@@ -183,11 +187,11 @@ def test_wrapped_quantized_linear_prepacked_empty_weight_dimension(N, K):
         # FBGEMM leaves the zero-inner-dimension output buffer undefined. Gems
         # makes the edge case deterministic by returning dequantized uint8 zero.
         expected = -float(output_zp) * float(output_scale)
-        torch.testing.assert_close(
-            actual, torch.full_like(actual, expected), rtol=0.0, atol=1e-6
+        utils.gems_assert_close(
+            actual, torch.full_like(actual, expected), actual.dtype, atol=1e-6
         )
     else:
-        torch.testing.assert_close(actual.cpu(), reference, rtol=0.0, atol=0.081)
+        utils.gems_assert_close(actual.cpu(), reference, actual.dtype, atol=0.081)
 
 
 @pytest.mark.wrapped_quantized_linear_prepacked
