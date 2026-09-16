@@ -843,6 +843,7 @@ from flag_gems.ops.rnn_tanh import rnn_tanh, rnn_tanh_data
 from flag_gems.ops.roll import roll
 from flag_gems.ops.rot90 import rot90
 from flag_gems.ops.round import round, round_, round_out
+from flag_gems.ops.rrelu_with_noise import rrelu_with_noise, rrelu_with_noise_
 from flag_gems.ops.rrelu_with_noise_backward import rrelu_with_noise_backward
 from flag_gems.ops.rrelu_with_noise_functional import rrelu_with_noise_functional
 from flag_gems.ops.rsqrt import rsqrt, rsqrt_
@@ -1993,6 +1994,8 @@ __all__ = [
     "round_",
     "round_out",
     "router_gemm",
+    "rrelu_with_noise",
+    "rrelu_with_noise_",
     "rrelu_with_noise_backward",
     "rrelu_with_noise_functional",
     "rsqrt",
