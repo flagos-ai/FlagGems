@@ -108,7 +108,7 @@ def native_group_norm(input, weight, bias, N, C, HxW, group, eps=1e-05):
     hard-fails with `out of resource: uni_sram` for HxW >= 4096, so bind a
     vendor kernel here explicitly.
     """
-    logger.debug("GEMS NATIVE_GROUP_NORM")
+    logger.debug("GEMS_KUNLUNXIN NATIVE_GROUP_NORM")
 
     group_size = triton.cdiv(C, group)
     input = input.contiguous()

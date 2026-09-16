@@ -81,10 +81,13 @@ LM_BYTES_PER_CORE = 4096
 # is the on-chip buffer, which the multi-buffer allocator replicates.
 DSA_TILE_BYTES = 32768
 DSA_ROW_BYTES = 4096
-# Square tile for the on-chip transpose. 64x64 was the only size that worked:
-# 128x128 and 32x256 both land around 120-140ms for a 2048x2048 f16 transpose
-# against 66us at 64x64.
-DSA_TRANS_TILE = 64
+# Square tile for the on-chip transpose. 2048x2048 f16 on KL3: 64 -> 34us,
+# 128 -> 15.3us, 256 -> 12.9us, 512 -> 23us, so 256 is the sweet spot and
+# beats `aten::copy_` (13.9us). The f32 curve is flat from 128 (22.4us) to 256
+# (21.5us), also ahead of `aten::copy_` (24.1us). 1-byte elements (i8, which
+# also carries bool) fault the SDNN trans kernel itself (error 719), so the
+# transpose branch keeps them out and the caller's pointwise fallback runs.
+DSA_TRANS_TILE = 256
 # Dimensions the copy addresses: two in the tile, the rest in the grid.
 MAX_COPY_RANK = 5
 
@@ -360,13 +363,22 @@ def _tle_dsa_trans_copy_kernel(
     tle.dsa.copy(val, dst, sizes=[row_tail, col_tail])
 
 
+# The env checks below are process-static, and this runs on every tle_copy call;
+# caching one bool keeps the hot path off `os.environ` (a few us per lookup).
+_TLE_DMA_AVAILABLE = None
+
+
 def tle_dma_available():
     """tle.gpu exists only on the xpu3 (KL3) cluster pipeline."""
-    if not _HAS_TLE:
-        return False
-    if os.environ.get("TRITON_ENABLE_XCN_BACKEND"):
-        return False
-    return os.environ.get("TRITON_XPU_ARCH", "3") == "3"
+    global _TLE_DMA_AVAILABLE
+    if _TLE_DMA_AVAILABLE is None:
+        if not _HAS_TLE:
+            _TLE_DMA_AVAILABLE = False
+        elif os.environ.get("TRITON_ENABLE_XCN_BACKEND"):
+            _TLE_DMA_AVAILABLE = False
+        else:
+            _TLE_DMA_AVAILABLE = os.environ.get("TRITON_XPU_ARCH", "3") == "3"
+    return _TLE_DMA_AVAILABLE
 
 
 def _byte_view(t: torch.Tensor) -> torch.Tensor:
@@ -463,6 +475,46 @@ def _dsa_tile(rows: int, cols: int, element_size: int):
     return rows_block, cols_block
 
 
+_TRANS_PLAN_CACHE = {}
+
+
+def _trans_plan_key(src_v: torch.Tensor, dst_v: torch.Tensor):
+    return (
+        driver.active.get_current_device(),
+        src_v.shape,
+        src_v.stride(),
+        dst_v.stride(),
+        src_v.dtype,
+        dst_v.dtype,
+    )
+
+
+def _trans_launch(plan_key, build, src_v, dst_v):
+    """Launch (building once on demand) a compiled transpose kernel."""
+    plan = _TRANS_PLAN_CACHE.get(plan_key)
+    if plan is None:
+        plan = build()
+        _TRANS_PLAN_CACHE[plan_key] = plan
+    kernel, grid, inner = plan
+    # plan_key[0] is the device the key was built for; re-fetching it here would
+    # be a second `current_device` round-trip on every call.
+    stream = driver.active.get_current_stream(plan_key[0])
+    kernel.run(
+        grid[0],
+        grid[1],
+        1,
+        stream,
+        kernel.function,
+        kernel.packed_metadata,
+        None,
+        None,
+        None,
+        src_v.data_ptr(),
+        dst_v.data_ptr(),
+        *inner,
+    )
+
+
 def tle_copy(src: torch.Tensor, dst: torch.Tensor) -> bool:
     """Copy `src` into `dst` with tle; False if tle cannot express it."""
     if not tle_dma_available():
@@ -474,9 +526,24 @@ def tle_copy(src: torch.Tensor, dst: torch.Tensor) -> bool:
     numel = src.numel()
     convert = src.dtype != dst.dtype
 
+    # A layout seen before is the transpose case: the plan holds the compiled
+    # kernel, the grid and the inner strides, so the rest of the analysis is
+    # skipped and only the two data pointers are new.
+    plan_key = _trans_plan_key(src_v, dst_v)
+    if plan_key in _TRANS_PLAN_CACHE:
+        _trans_launch(plan_key, None, src_v, dst_v)
+        return True
+
     if not convert and src_v.is_contiguous() and dst_v.is_contiguous():
         tile_ty = _TL_DTYPE.get(src_v.dtype)
         if tile_ty is None:
+            return False
+        # The TMA descriptor in `_tile_launch` requires a 16-byte-aligned
+        # base. A contiguous view can still start off-alignment (e.g. the
+        # rightmost block view in block_diag, whose storage offset is
+        # (row*total_cols + col) * itemsize), so let the caller's pointwise
+        # fallback handle it instead of crashing in from_tensor.
+        if src_v.data_ptr() % 16 != 0 or dst_v.data_ptr() % 16 != 0:
             return False
         block = LM_BYTES_PER_CORE // src_v.element_size() * CORE_NUM
         _tile_launch(src_v, dst_v, numel, src_v.dtype, block)
@@ -543,11 +610,19 @@ def tle_copy(src: torch.Tensor, dst: torch.Tensor) -> bool:
     # The two sides disagree about which run is contiguous: transpose the tile on
     # chip rather than reading one side per element.
     if cols > 1 and s_col != 1 and rows > 1 and s_row == 1:
+        if src_v.element_size() == 1:
+            # 1-byte elements fault the SDNN trans kernel (i8, and bool moved
+            # as int8); keep them on the caller's pointwise fallback.
+            return False
+        if convert:
+            # A dtype cast on the transposed tile raises an XDNN dtype check
+            # ("data type not matched"); the caller's pointwise fallback is
+            # correct for converting copies.
+            return False
         col_blocks = triton.cdiv(cols, DSA_TRANS_TILE)
         grid = (col_blocks * outer_numel, triton.cdiv(rows, DSA_TRANS_TILE))
-        _tle_dsa_trans_copy_kernel[grid](
-            src_v,
-            dst_v,
+        to_bool = dst.dtype == torch.bool
+        inner = (
             rows,
             cols,
             s_col,
@@ -556,15 +631,26 @@ def tle_copy(src: torch.Tensor, dst: torch.Tensor) -> bool:
             *dims[2:],
             *src_strides[2:],
             *dst_strides[2:],
-            outer_rank,
-            DSA_TRANS_TILE,
-            src_ty,
-            dst_ty,
-            convert,
-            dst.dtype == torch.bool,
-            is_sdnn=True,
-            num_stages=2,
         )
+
+        def build():
+            kernel = _tle_dsa_trans_copy_kernel.warmup(
+                src_v,
+                dst_v,
+                *inner,
+                grid=grid,
+                OUTER_RANK=outer_rank,
+                TILE=DSA_TRANS_TILE,
+                SRC_DTYPE=src_ty,
+                DST_DTYPE=dst_ty,
+                CONVERT=convert,
+                TO_BOOL=to_bool,
+                is_sdnn=True,
+                num_stages=2,
+            )
+            return (kernel, grid, inner)
+
+        _trans_launch(plan_key, build, src_v, dst_v)
         logger.debug(
             "GEMS_KUNLUNXIN TLE_COPY dsa transpose rows=%d cols=%d tile=%d rank=%d "
             "convert=%s",
