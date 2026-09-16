@@ -357,6 +357,15 @@ def test_median_direct_non_contiguous_dim0(dtype, keepdim):
     _assert_median_dim_equal(res_out, ref_out, dtype, inp=inp, dim=0, keepdim=keepdim)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "cambricon"
+    and (
+        not all(
+            hasattr(torch.Tensor, api) for api in ("refine_names", "rename", "names")
+        )
+    ),
+    reason="Not supported",
+)
 @pytest.mark.median
 @pytest.mark.parametrize("keepdim", KEEPDIM)
 def test_median_direct_named_dim0_preserves_names(keepdim):
@@ -1228,6 +1237,15 @@ def test_median_strided_nonlast_large_reduction_out(keepdim):
     )
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "cambricon"
+    and (
+        not all(
+            hasattr(torch.Tensor, api) for api in ("refine_names", "rename", "names")
+        )
+    ),
+    reason="Not supported",
+)
 @pytest.mark.median
 @pytest.mark.parametrize("keepdim", KEEPDIM)
 def test_median_strided_nonlast_named_dim_preserves_names(keepdim):
