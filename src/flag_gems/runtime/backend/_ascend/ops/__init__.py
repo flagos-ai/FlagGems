@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from .adaptive_max_pool3d import adaptive_max_pool3d
 from .addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out
 from .all import all, all_dim, all_dims
 from .amax import amax
@@ -50,6 +51,7 @@ from .full import full
 from .full_like import full_like
 from .gather import gather, gather_backward
 from .groupnorm import group_norm, group_norm_backward
+from .gru import gru, gru_data
 from .hadamard_transform import hadamard_transform
 from .hstack import hstack
 from .igammac import igammac, igammac_out
@@ -85,6 +87,7 @@ from .log_sigmoid_backward import log_sigmoid_backward, log_sigmoid_backward_out
 from .log_softmax import log_softmax, log_softmax_backward, log_softmax_out
 from .masked_fill import masked_fill, masked_fill_
 from .masked_scatter import masked_scatter, masked_scatter_
+from .masked_scatter_backward import masked_scatter_backward
 from .masked_select import masked_select
 from .matmul_bf16 import matmul_bf16
 from .matmul_int8 import matmul_int8
@@ -98,6 +101,7 @@ from .nonzero_static import nonzero_static, nonzero_static_out
 from .ones import ones
 from .ones_like import ones_like
 from .outer import outer
+from .pad_sequence import pad_sequence
 from .pairwise_distance import pairwise_distance
 from .polar import polar
 from .polygamma import polygamma_
@@ -117,6 +121,7 @@ from .replication_pad2d_backward import (
 from .resolve_neg import resolve_neg
 from .rms_norm import rms_norm
 from .rms_norm_w8a16_int8 import rms_norm_w8a16_int8
+from .rnn_tanh import rnn_tanh, rnn_tanh_data
 from .scatter import scatter, scatter_
 from .scatter_add_ import scatter_add_
 from .select_backward import select_backward
@@ -131,6 +136,7 @@ from .threshold import threshold, threshold_backward
 from .triu import triu
 from .unique import _unique2
 from .unsafe_index import unsafe_index
+from .unsafe_index_put import unsafe_index_put
 from .upsample_bicubic2d_aa import _upsample_bicubic2d_aa
 from .upsample_linear1d_backward import upsample_linear1d_backward
 from .upsample_nearest2d import upsample_nearest2d
@@ -144,6 +150,7 @@ from .zeros_like import zeros_like
 __all__ = [
     "_unique2",
     "_upsample_bicubic2d_aa",
+    "adaptive_max_pool3d",
     "addmm",
     "addmm_dtype",
     "addmm_dtype_out",
@@ -191,6 +198,8 @@ __all__ = [
     "gather_backward",
     "group_norm",
     "group_norm_backward",
+    "gru",
+    "gru_data",
     "hadamard_transform",
     "hstack",
     "igammac",
@@ -239,6 +248,7 @@ __all__ = [
     "masked_fill_",
     "masked_scatter",
     "masked_scatter_",
+    "masked_scatter_backward",
     "masked_select",
     "matmul_bf16",
     "matmul_int8",
@@ -260,6 +270,7 @@ __all__ = [
     "ones",
     "ones_like",
     "outer",
+    "pad_sequence",
     "pairwise_distance",
     "polar",
     "polygamma_",
@@ -275,6 +286,8 @@ __all__ = [
     "resolve_neg",
     "rms_norm",
     "rms_norm_w8a16_int8",
+    "rnn_tanh",
+    "rnn_tanh_data",
     "scaled_dot_product_attention",
     "scaled_dot_product_attention_backward",
     "scaled_dot_product_attention_forward",
@@ -299,6 +312,7 @@ __all__ = [
     "threshold_backward",
     "triu",
     "unsafe_index",
+    "unsafe_index_put",
     "upsample_linear1d_backward",
     "upsample_nearest2d",
     "var_mean",
