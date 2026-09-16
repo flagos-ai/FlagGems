@@ -290,7 +290,7 @@ def linalg_householder_product(A, tau):
     ``H(i) = I - tau[i] v_i v_i^T`` with ``v_i[j] = 0`` for ``j < i``,
     ``v_i[i] = 1`` and ``v_i[j] = A[j, i]`` for ``j > i`` -- the geqrf layout.
     """
-    logger.debug("GEMS LINALG_HOUSEHOLDER_PRODUCT")
+    logger.debug("GEMS_KUNLUNXIN LINALG_HOUSEHOLDER_PRODUCT")
 
     assert (
         A.dtype in _SUPPORTED_DTYPES

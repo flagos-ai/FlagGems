@@ -83,7 +83,17 @@ def _fill_diagonal(out, n, m):
 
 def eye_m(n, m, *, dtype=None, layout=torch.strided, device=None, pin_memory=None):
     """
-    Triton-based implementation of torch.eye(n, m): bulk zero-fill + diagonal write.
+    Triton-based implementation of torch.eye(n, m).
+
+    Two paths, both backend-local:
+    * Small (n*m <= 512*512): `torch.empty` + one fused full-write kernel
+      (1 on the main diagonal, 0 elsewhere).  A single launch; the previous
+      `torch.zeros` + fused path paid an extra full-write zero-fill launch
+      (the fused kernel overwrites every element anyway).
+    * Large: `torch.zeros` (near-memset bandwidth) + a tiny strided
+      diagonal-write kernel.  The fused full-write is division-bound
+      (`offs // m` per element) and is 10-30x slower than the division-free
+      zero-fill for big matrices, so the split is required.
     """
     logger.debug("GEMS_KUNLUNXIN EYE_M")
     if dtype is None:
@@ -93,6 +103,17 @@ def eye_m(n, m, *, dtype=None, layout=torch.strided, device=None, pin_memory=Non
     if layout != torch.strided:
         raise ValueError("Currently only strided layout is supported for eye_m.")
 
+    numel = n * m
+    if numel <= 512 * 512:
+        out = torch.empty(
+            (n, m), dtype=dtype, device=device, layout=layout, pin_memory=pin_memory
+        )
+        if numel <= 0:
+            return out
+        BLOCK = 1024
+        with torch_device_fn.device(out.device):
+            eye_fused_kernel[(triton.cdiv(numel, BLOCK),)](out, n, m, numel, BLOCK)
+        return out
     out = torch.zeros(
         (n, m), dtype=dtype, device=device, layout=layout, pin_memory=pin_memory
     )

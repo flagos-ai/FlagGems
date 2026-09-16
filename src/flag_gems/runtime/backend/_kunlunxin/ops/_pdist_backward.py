@@ -316,7 +316,7 @@ def _pdist_backward_inf_kernel(
 
 def _pdist_backward(grad, x, p, pdist):
     """Compute gradient of pdist forward pass."""
-    logger.debug("GEMS _PDIST_BACKWARD")
+    logger.debug("GEMS_KUNLUNXIN _PDIST_BACKWARD")
 
     assert x.ndim == 2, "pdist only supports 2D input"
     assert x.dtype == torch.float32, "_pdist_backward only supports float32"
