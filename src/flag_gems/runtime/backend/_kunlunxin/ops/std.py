@@ -1,17 +1,3 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import logging
 
 import torch
@@ -26,40 +12,53 @@ logger = logging.getLogger(__name__)
 
 
 @triton.jit
-def _std_map_kernel(X, Tmp_sum, Tmp_sum_sq, N, BLOCK_N: tl.constexpr):
+def _std_partial_sum_kernel(X, Tmp, N, CHUNK, BLOCK_N: tl.constexpr):
     pid = tl.program_id(0)
-    offset = pid * BLOCK_N + tl.arange(0, BLOCK_N)
-    mask = offset < N
-    x = tl.load(X + offset, mask=mask, other=0.0).to(tl.float32)
-    sum_val = tl.sum(x, axis=0)
-    sum_sq_val = tl.sum(x * x, axis=0)
-    tl.store(Tmp_sum + pid, sum_val)
-    tl.store(Tmp_sum_sq + pid, sum_sq_val)
+    start = pid * CHUNK
+    end = tl.minimum(start + CHUNK, N)
+    acc = tl.zeros((BLOCK_N,), dtype=tl.float32)
+    for off in range(start, end, BLOCK_N):
+        offset = off + tl.arange(0, BLOCK_N)
+        mask = offset < end
+        x = tl.load(X + offset, mask=mask, other=0.0).to(tl.float32)
+        acc += x
+    tl.store(Tmp + pid, tl.sum(acc, axis=0))
 
 
 @triton.jit
-def _std_reduce_kernel(
-    Tmp_sum, Tmp_sum_sq, Out, N, correction, BLOCK_NUM, BLOCK_SIZE: tl.constexpr
+def _std_partial_sq_kernel(X, Tmp, N, Mean, CHUNK, BLOCK_N: tl.constexpr):
+    pid = tl.program_id(0)
+    start = pid * CHUNK
+    end = tl.minimum(start + CHUNK, N)
+    mean = tl.load(Mean)
+    acc = tl.zeros((BLOCK_N,), dtype=tl.float32)
+    for off in range(start, end, BLOCK_N):
+        offset = off + tl.arange(0, BLOCK_N)
+        mask = offset < end
+        x = tl.load(X + offset, mask=mask, other=0.0).to(tl.float32)
+        d = tl.where(mask, x - mean, 0.0)
+        acc += d * d
+    tl.store(Tmp + pid, tl.sum(acc, axis=0))
+
+
+@triton.jit
+def _std_finalize_kernel(
+    Tmp, Out, N, correction, BLOCK_NUM, BLOCK_SIZE: tl.constexpr, SQRT_OUT: tl.constexpr
 ):
-    total_sum_acc = tl.zeros((BLOCK_SIZE,), dtype=tl.float32)
-    total_sum_sq_acc = tl.zeros((BLOCK_SIZE,), dtype=tl.float32)
+    total_acc = tl.zeros((BLOCK_SIZE,), dtype=tl.float32)
     for off in range(0, BLOCK_NUM, BLOCK_SIZE):
         offset = off + tl.arange(0, BLOCK_SIZE)
         mask = offset < BLOCK_NUM
-        tmp_sum_vals = tl.load(Tmp_sum + offset, mask=mask, other=0.0).to(tl.float32)
-        tmp_sum_sq_vals = tl.load(Tmp_sum_sq + offset, mask=mask, other=0.0).to(
-            tl.float32
-        )
-        total_sum_acc += tmp_sum_vals
-        total_sum_sq_acc += tmp_sum_sq_vals
-    total_sum = tl.sum(total_sum_acc, axis=0)
-    total_sum_sq = tl.sum(total_sum_sq_acc, axis=0)
-    mean = total_sum / N
-    var = (total_sum_sq / N) - (mean * mean)
-    var = var * N / tl.maximum(N - correction, 1.0)
-    safe_var = tl.maximum(var, 0.0)
-    std_dev = tl.sqrt(safe_var)
-    tl.store(Out, std_dev.to(Out.dtype.element_ty))
+        v = tl.load(Tmp + offset, mask=mask, other=0.0).to(tl.float32)
+        total_acc += v
+    total = tl.sum(total_acc, axis=0)
+    if SQRT_OUT:
+        denom = N - correction
+        var = total / tl.maximum(denom, 1e-12)
+        val = tl.sqrt(tl.maximum(var, 0.0))
+    else:
+        val = total / N
+    tl.store(Out, val.to(Out.dtype.element_ty))
 
 
 @libentry()
@@ -94,16 +93,16 @@ def _std_dim_kernel_inner(
         n_offsets = tl.arange(0, TILE_N)
         mask = n_offsets < N
         x = tl.load(X + pid_m * N + n_offsets, mask=mask, other=0.0).to(tl.float32)
-        diff = x - mean
-        sq_sum = tl.sum(tl.where(mask, diff * diff, 0.0), axis=0)
+        diff = tl.where(mask, x - mean, 0.0)
+        sq_sum = tl.sum(diff * diff, axis=0)
     else:
         sq_acc = tl.zeros((TILE_N,), dtype=tl.float32)
         for start_n in range(0, N, TILE_N):
             n_offsets = start_n + tl.arange(0, TILE_N)
             mask = n_offsets < N
             x = tl.load(X + pid_m * N + n_offsets, mask=mask, other=0.0).to(tl.float32)
-            diff = x - mean
-            sq_acc += tl.where(mask, diff * diff, 0.0)
+            diff = tl.where(mask, x - mean, 0.0)
+            sq_acc += diff * diff
         sq_sum = tl.sum(sq_acc, axis=0)
 
     denom = N - correction
@@ -134,24 +133,22 @@ def std(x, dim=None, *, correction=None, keepdim=False):
             out = torch.zeros([], device=x.device, dtype=x.dtype)
             return out.view([1] * input_ndim) if keepdim else out
 
-        BLOCK_N_MAP = 1024
-        BLOCK_NUM = triton.cdiv(N, BLOCK_N_MAP)
-        tmp_sum = torch.empty((BLOCK_NUM,), dtype=torch.float32, device=x.device)
-        tmp_sum_sq = torch.empty((BLOCK_NUM,), dtype=torch.float32, device=x.device)
-        out = torch.empty([], device=x.device, dtype=x.dtype)
+        GRID = min(triton.cdiv(N, 65536), 1024)
+        CHUNK = triton.cdiv(N, GRID)
+        BLOCK_N = 1024
         BLOCK_SIZE_REDUCE = 1024
+        xc = x.contiguous()
+        tmp = torch.empty((GRID,), dtype=torch.float32, device=x.device)
+        mean = torch.empty(1, device=x.device, dtype=torch.float32)
+        out = torch.empty([], device=x.device, dtype=x.dtype)
         with torch_device_fn.device(x.device):
-            _std_map_kernel[(BLOCK_NUM,)](
-                x.contiguous(), tmp_sum, tmp_sum_sq, N, BLOCK_N_MAP
+            _std_partial_sum_kernel[(GRID,)](xc, tmp, N, CHUNK, BLOCK_N)
+            _std_finalize_kernel[(1,)](
+                tmp, mean, N, effective_correction, GRID, BLOCK_SIZE_REDUCE, False
             )
-            _std_reduce_kernel[(1,)](
-                tmp_sum,
-                tmp_sum_sq,
-                out,
-                N,
-                effective_correction,
-                BLOCK_NUM,
-                BLOCK_SIZE_REDUCE,
+            _std_partial_sq_kernel[(GRID,)](xc, tmp, N, mean, CHUNK, BLOCK_N)
+            _std_finalize_kernel[(1,)](
+                tmp, out, N, effective_correction, GRID, BLOCK_SIZE_REDUCE, True
             )
         return out.view([1] * input_ndim) if keepdim else out
 
@@ -161,13 +158,6 @@ def std(x, dim=None, *, correction=None, keepdim=False):
         dim_list = list(dim)
     dim_list_normalized = [d % input_ndim for d in dim_list]
 
-    # Route EVERY dim reduction (single-dim AND multi-dim) through dim_compress so
-    # the reduced dims land on the trailing axis => it is always a contiguous
-    # (M, N) inner reduction (K == 1). We only ever launch the @libentry-cached
-    # _std_dim_kernel_inner. This (a) avoids the giant 2D tile + heuristic-supplied
-    # launch param IR explosion of the old _std_fused_dim_kernel path
-    # (ir-std-dev5.log = 7.7M lines) and (b) avoids the non_inner (K>1) softmax
-    # kernel, which was numerically wrong on XPU (std ~sqrt(K)x too small).
     x_view = dim_compress(x, dim_list_normalized)
     N = 1
     for d in dim_list_normalized:

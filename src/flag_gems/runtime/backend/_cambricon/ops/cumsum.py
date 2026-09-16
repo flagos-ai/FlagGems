@@ -195,7 +195,7 @@ def cumsum_blelloch(
         n_offset = col_offset + tl.arange(0, BLOCK_N)
         # Pointers to the start of the row
         offsets = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
-        mask = m_offset[:, None] < M and n_offset[None, :] < N
+        mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
         x_ptrs = inp + offsets
         y_ptrs = out + offsets
 
@@ -332,9 +332,11 @@ def cumsum_kernel_mid(
         * K
         + k_offset[None, None, :]
     )
-    mask = (m_offset[:, None, None] < M and n_offset[None, :, None] < N) and k_offset[
-        None, None, :
-    ] < K
+    mask = (
+        (m_offset[:, None, None] < M)
+        & (n_offset[None, :, None] < N)
+        & (k_offset[None, None, :] < K)
+    )
     x_ptrs = inp + offsets
     y_ptrs = out + offsets
 
@@ -348,7 +350,7 @@ def cumsum_kernel_mid(
     prefix_sum_offsets = (
         m_offset[:, None] * num_jobs_n * K + pid_n * K + k_offset[None, :]
     )
-    prefix_sum_mask = m_offset[:, None] < M and k_offset[None, :] < K
+    prefix_sum_mask = (m_offset[:, None] < M) & (k_offset[None, :] < K)
     prefix_sum_ptrs = prefix_sum + prefix_sum_offsets
     tl.store(prefix_sum_ptrs, x_block[:, BLOCK_N - 1, :], prefix_sum_mask)
 
@@ -425,9 +427,11 @@ def cumsum_kernel_result(
         * K
         + k_offset[None, None, :]
     )
-    mask = (m_offset[:, None, None] < M and n_offset[None, :, None] < N) and k_offset[
-        None, None, :
-    ] < K
+    mask = (
+        (m_offset[:, None, None] < M)
+        & (n_offset[None, :, None] < N)
+        & (k_offset[None, None, :] < K)
+    )
     x_ptrs = inp + offsets
     y_ptrs = out + offsets
 
@@ -438,7 +442,7 @@ def cumsum_kernel_result(
         sum_offsets = (
             m_offset[:, None] * num_jobs_n * K + (pid_n - 1) * K + k_offset[None, :]
         )
-        sum_mask = m_offset[:, None] < M and k_offset[None, :] < K
+        sum_mask = (m_offset[:, None] < M) & (k_offset[None, :] < K)
         sum_ptrs = prefix_sum + sum_offsets
         sum_block = tl.load(sum_ptrs, mask=sum_mask, other=0.0).to(tl.dtype(DTYPE))
         x_block += sum_block[:, None, :]

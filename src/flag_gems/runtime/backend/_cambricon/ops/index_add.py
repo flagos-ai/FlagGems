@@ -61,7 +61,7 @@ def index_add_kernel(
 
     rows_mask = rows_offsets < M
     index_mask = cols_offsets < N
-    block_mask = rows_mask and index_mask
+    block_mask = rows_mask & index_mask
 
     cur_indices = tl.load(index + cols_offsets, mask=index_mask, other=0)
     inp_off = rows_offsets * inp_len + cur_indices[None, :]

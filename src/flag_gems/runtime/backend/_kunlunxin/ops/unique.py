@@ -689,9 +689,7 @@ def sorted_quick_unique_flat(sorted_data: torch.Tensor, return_counts: bool):
         else:
             # print(f'tile_sum.shape = {tile_sum.shape}')
             # print(f'tile_sum.cpu() = {tile_sum.cpu()}')
-            total_in = torch.cumsum(tile_sum, dim=0)
-            total_in = torch.roll(total_in, shifts=1)
-            total_in[0] = 0
+            total_in = _triton_exclusive_scan(tile_sum)
             # print(f'in total_in.cpu() = {total_in.cpu()}')
 
             os.environ["TRITONXPU_OTHER_SIM"] = "1"
@@ -1002,26 +1000,6 @@ def global_cumsum_flat_impl_stage_1(
     i0 = offset + r
     mask = i0 < num_tasks
 
-    # load sorted_data, sorted_indices
-    # sorted_data = tl.load(sorted_data_ptr + i0, mask=mask)
-    # sorted_indices = tl.load(sorted_indices_ptr + i0, mask=mask)
-
-    # load tile_sum
-    # p = tl.arange(0, next_power_global_ctas_num)
-    # pre_tile_sum_mask = (
-    #     (p >= global_pid - ctas_num)
-    #     & (p < global_pid)
-    #     & (p >= 0)
-    #     & (p < global_ctas_num)
-    # )
-    # pre_tile_sum = tl.load(tile_sum_ptr + p, mask=pre_tile_sum_mask, other=0)
-
-    # cumsum
-    # total += tl.sum(pre_tile_sum)
-    # ne_result = tl.load(ne_result_ptr + i0, mask=mask)
-    # ne_result_i1 = ne_result.to(tl.int1)
-    # ne_result = ne_result.to(tl.int32)
-    # cumsum = tl.cumsum(ne_result)
     total_in_mask = global_pid < global_ctas_num
     total = tl.load(total_in_ptr + global_pid, mask=total_in_mask)
 
@@ -1314,7 +1292,9 @@ def sorted_indices_unique_flat(
             # print(f"tile_sum.shape = {tile_sum.shape}")
             # print(f'tile_sum.cpu() = {tile_sum.cpu()}')
             next_multiple = ((num_tasks // 2048) + 1) * 2048
-            cumsum_out = torch.zeros(next_multiple)
+            cumsum_out = torch.empty(
+                next_multiple, dtype=torch.int64, device=sorted_data.device
+            )
             os.environ["TRITONXPU_OTHER_SIM"] = "1"
             os.environ["TRITONXPU_STORE_MASK_SIM"] = "1"
             os.environ["TRITONXPU_INTERLEAVE"] = "0"
@@ -1347,23 +1327,20 @@ def sorted_indices_unique_flat(
             # print(f'out tile_sum.cpu() = {tile_sum.cpu()}')
 
         else:
-            total_in = torch.cumsum(tile_sum, dim=0)
-            total_in = torch.roll(total_in, shifts=1)
-            total_in[0] = 0
+            total_in = _triton_exclusive_scan(tile_sum)
             # print(f"total_in.shape = {total_in.shape}")
             # print(f"total_in.cpu() = {total_in.cpu()}")
 
             # ne_result = torch.cumsum(ne_result, dim=0)
             # print(f"ne_result.shape = {ne_result.shape}")
             next_multiple = ((num_tasks // 2048) + 1) * 2048
-            padding_size = next_multiple - num_tasks  # 96256 - 96000 = 256
-            padded_ne_result = torch.nn.functional.pad(
-                ne_result, (0, padding_size), "constant", 0
-            )
             num_blocks = next_multiple // 2048  # 96256 / 2048 = 47
-            reshaped = padded_ne_result.view(num_blocks, 2048)
-            cumsum_blocks = torch.cumsum(reshaped, dim=1)
-            cumsum_result = cumsum_blocks.view(-1)
+            cumsum_result = torch.empty(
+                next_multiple, dtype=torch.int64, device=sorted_data.device
+            )
+            _scan_rows2d_kernel[(num_blocks,)](
+                ne_result, cumsum_result, num_blocks, num_tasks, W=2048
+            )
 
             # print(f'ne_result.cpu() = {ne_result.cpu()}')
 
@@ -1468,16 +1445,16 @@ def simple_unique_flat(
     grid = (1, 1, 1)
 
     # allocate tensor
-    data_out = torch.zeros_like(sorted_data)
+    data_out = torch.empty_like(sorted_data)
     if return_inverse:
-        inverse_indices = torch.zeros_like(sorted_data, dtype=torch.int64)
+        inverse_indices = torch.empty_like(sorted_data, dtype=torch.int64)
     else:
         inverse_indices = None
     if return_counts:
-        idx = torch.zeros_like(sorted_data, dtype=torch.int64)
+        idx = torch.empty_like(sorted_data, dtype=torch.int64)
     else:
         idx = None
-    unique_size = torch.zeros([1], dtype=torch.int64, device=sorted_data.device)
+    unique_size = torch.empty([1], dtype=torch.int64, device=sorted_data.device)
 
     # launch kernel
     with torch_device_fn.device(sorted_data.device.index):
@@ -1531,6 +1508,222 @@ def simple_unique_flat(
     return data_out[:out_size], inverse_indices, counts
 
 
+# Per-program tile of the fused boundary kernel.  4096 is the largest tile
+# qualified on this backend for linear (non-reduce) kernels; smaller N gets
+# the tile clamped at next_power_of_2 so single-tile shapes stay launch-light.
+_BOUND_BLOCK = 4096
+
+
+@libentry()
+@triton.jit
+def _unique2_boundary_kernel(
+    data_ptr,
+    ne_ptr,
+    cum_ptr,
+    N: int,
+    BLOCK: tl.constexpr,
+):
+    """Fused boundary flags for _unique2 (see caller comment).
+
+    For each lane: ne[i] = (i == 0) | (data[i] != data[i-1]);
+    cum[0] = 0 and cum[i] = ne[i] (i > 0).  `data` is already sorted, so the
+    comparison is done on the native dtype (any int/float width) with no
+    cast pass and no `others`/`other=` dependence: the prev load for lane 0
+    is clamped to lane 0 (its value is unused because the OR forces True).
+    """
+    pid = tl.program_id(0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < N
+    a = tl.load(data_ptr + offs, mask=mask)
+    p_offs = tl.where(offs > 0, offs - 1, 0)
+    b = tl.load(data_ptr + p_offs, mask=mask)
+    is_b = (offs == 0) | ((a != b) & (offs > 0))
+    tl.store(ne_ptr + offs, is_b, mask=mask)
+    tl.store(cum_ptr + offs, tl.where(offs == 0, 0, is_b.to(tl.int64)), mask=mask)
+
+
+_SCAN_BLOCK = 2048
+_SCAN_CHUNK = 2048
+
+
+@triton.jit
+def _scan_tile_sums_kernel(
+    data_ptr,
+    sums_ptr,
+    N,
+    BLOCK: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < N
+    v = tl.load(data_ptr + offs, mask=mask, other=0)
+    tl.store(sums_ptr + pid, tl.sum(v.to(tl.int64)))
+
+
+@triton.jit
+def _scan_sums_reduce_kernel(
+    sums_ptr,
+    sums2_ptr,
+    G,
+    CHUNK: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    j = pid * CHUNK + tl.arange(0, CHUNK)
+    m = j < G
+    s = tl.load(sums_ptr + j, mask=m, other=0)
+    tl.store(sums2_ptr + pid, tl.sum(s))
+
+
+@triton.jit
+def _scan_sums2_scan_kernel(
+    sums2_ptr,
+    scanned2_ptr,
+    G2,
+    CW2: tl.constexpr,
+):
+    """scanned2[i] = sum(sums2[:i]) (exclusive prefix)."""
+    j = tl.arange(0, CW2)
+    m = j < G2
+    s = tl.load(sums2_ptr + j, mask=m, other=0)
+    tl.store(scanned2_ptr + j, tl.cumsum(s) - s, mask=m)
+
+
+@triton.jit
+def _scan_sums_cumsum_kernel(
+    sums_ptr,
+    tmp_ptr,
+    G,
+    CHUNK: tl.constexpr,
+):
+    """Chunk-exclusive prefix of the tile sums: tmp[i] = sum(sums[chunk..i-1])."""
+    pid = tl.program_id(0)
+    j = pid * CHUNK + tl.arange(0, CHUNK)
+    m = j < G
+    s = tl.load(sums_ptr + j, mask=m, other=0)
+    tl.store(tmp_ptr + j, tl.cumsum(s) - s, mask=m)
+
+
+@triton.jit
+def _scan_sums_apply_kernel(
+    tmp_ptr,
+    scanned2_ptr,
+    sums_out_ptr,
+    G,
+    CHUNK: tl.constexpr,
+):
+    """sums_out[i] = tmp[i] + sum(sums2[:chunk]) (exclusive prefix of tile sums).
+
+    Kept separate from _scan_sums_cumsum_kernel: mixing tl.sum with tl.cumsum
+    in one kernel miscompiles on this backend (measured garbage), while each op
+    alone is exact.
+    """
+    pid = tl.program_id(0)
+    j = pid * CHUNK + tl.arange(0, CHUNK)
+    m = j < G
+    t = tl.load(tmp_ptr + j, mask=m, other=0)
+    carry = tl.load(scanned2_ptr + pid)
+    tl.store(sums_out_ptr + j, t + carry, mask=m)
+
+
+@triton.jit
+def _scan_add_kernel(
+    data_ptr,
+    sums_out_ptr,
+    out_ptr,
+    N,
+    BLOCK: tl.constexpr,
+    inclusive: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < N
+    v = tl.load(data_ptr + offs, mask=mask, other=0).to(tl.int64)
+    carry = tl.load(sums_out_ptr + pid)
+    c = carry + tl.cumsum(v)
+    if not inclusive:
+        c = c - v
+    tl.store(out_ptr + offs, c, mask=mask)
+
+
+def _triton_scan(x: torch.Tensor, inclusive: bool) -> torch.Tensor:
+    """out[i] = sum(x[:i+1]) (inclusive) or sum(x[:i]) (exclusive), device-side."""
+    N = x.numel()
+    if inclusive:
+        out = torch.empty_like(x)
+    else:
+        out = torch.empty(N, dtype=torch.int64, device=x.device)
+    if N == 0:
+        return out
+    G = triton.cdiv(N, _SCAN_BLOCK)
+    G2 = triton.cdiv(G, _SCAN_CHUNK)
+    sums = torch.empty(G, dtype=torch.int64, device=x.device)
+    sums2 = torch.empty(G2, dtype=torch.int64, device=x.device)
+    scanned2 = torch.empty_like(sums2)
+    tmp = torch.empty_like(sums)
+    sums_out = torch.empty_like(sums)
+    with torch_device_fn.device(x.device):
+        _scan_tile_sums_kernel[(G,)](x, sums, N, BLOCK=_SCAN_BLOCK)
+        _scan_sums_reduce_kernel[(G2,)](sums, sums2, G, CHUNK=_SCAN_CHUNK)
+        _scan_sums2_scan_kernel[(1,)](
+            sums2, scanned2, G2, CW2=triton.next_power_of_2(G2)
+        )
+        _scan_sums_cumsum_kernel[(G2,)](sums, tmp, G, CHUNK=_SCAN_CHUNK)
+        _scan_sums_apply_kernel[(G2,)](tmp, scanned2, sums_out, G, CHUNK=_SCAN_CHUNK)
+        _scan_add_kernel[(G,)](
+            x, sums_out, out, N, BLOCK=_SCAN_BLOCK, inclusive=inclusive
+        )
+    return out
+
+
+def _triton_inclusive_scan(x: torch.Tensor) -> torch.Tensor:
+    return _triton_scan(x, True)
+
+
+def _triton_exclusive_scan(x: torch.Tensor) -> torch.Tensor:
+    return _triton_scan(x, False)
+
+
+@triton.jit
+def _scan_rows2d_kernel(
+    ne_ptr,
+    out_ptr,
+    R,
+    N,
+    W: tl.constexpr,
+):
+    """Per-row (W-wide, row-major) inclusive cumsum of a bool/int array.
+
+    Row r covers [r*W, (r+1)*W); lanes >= N (the padding) are treated as 0 and
+    left uninitialized in `out` (never read by the stage_1/2 kernels, which
+    mask to i0 < num_tasks).  Equivalent to
+        F.pad(ne, (0, pad), 'constant', 0).view(R, W).cumsum(dim=1).view(-1)
+    without the ATen pad/reshape/cumsum round-trip.
+    """
+    r = tl.program_id(0)
+    j = tl.arange(0, W)
+    i = r * W + j
+    m = i < N
+    v = tl.load(ne_ptr + i, mask=m, other=0).to(tl.int64)
+    tl.store(out_ptr + i, tl.cumsum(v), mask=m)
+
+
+@triton.jit
+def _run_lengths_kernel(
+    start_ptr,
+    counts_ptr,
+    N,
+    n,
+    BLOCK: tl.constexpr,
+):
+    """counts[i] = start[i+1] - start[i] (last: N - start[n-1])."""
+    r = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    m = r < n
+    s = tl.load(start_ptr + r, mask=m, other=0)
+    s_next = tl.load(start_ptr + r + 1, mask=m & (r + 1 < n), other=0)
+    s_next = tl.where(r + 1 < n, s_next, N)
+    tl.store(counts_ptr + r, s_next - s, mask=m)
+
+
 def _unique2(
     in0: torch.Tensor,
     sorted: bool = True,
@@ -1538,17 +1731,9 @@ def _unique2(
     return_counts: bool = False,
 ):
     logger.debug("GEMS_KUNLUNXIN _UNIQUE2")
-    # XPU rewrite: the old hand-written multi-kernel path (simple_unique_flat /
-    # sorted_indices_unique_flat / sorted_quick_unique_flat) runs Triton cumsum /
-    # scatter at ~9 GB/s -> catastrophic (large shapes gems speedup 0.08-0.28).
-    #
-    # Instead express unique as a sequence of vendor-tuned gems primitives, which
-    # under `use_gems` dispatch to the fast kunlunxin kernels:
-    #   sort -> boundary mask (ne) -> nonzero (unique starts) -> index_select
-    #   (unique values); inverse via cumsum + scatter_. Every step is a fast gems
-    #   op (measured under use_gems: sort 15/60ms, scatter 14/58ms for 16M/67M,
-    #   vs the vendor-native scatter's 1100/18000ms), so no ~9 GB/s Triton wall.
-    flat = in0.ravel()
+
+    _ = sorted
+    flat = in0.contiguous().view(-1)
     N = flat.numel()
 
     if N == 0:
@@ -1572,49 +1757,45 @@ def _unique2(
         )
 
     sorted_data, sorted_indices = torch.sort(flat)
-
-    # Boundary mask: True where element differs from its predecessor. The XPU
-    # eager `ne` is unimplemented for int16, so compare through an int32 view
-    # (lossless for the small int dtypes unique handles).
-    cmp = (
-        sorted_data
-        if sorted_data.dtype in (torch.int32, torch.int64)
-        else sorted_data.to(torch.int32)
-    )
-    ne = torch.ones(N, dtype=torch.bool, device=flat.device)
-    if N > 1:
-        ne[1:] = cmp[1:] != cmp[:-1]
+    ne = torch.empty(N, dtype=torch.bool, device=flat.device)
+    cum_input = torch.empty(N, dtype=torch.int64, device=flat.device)
+    with torch_device_fn.device(flat.device):
+        _unique2_boundary_kernel[(triton.cdiv(N, _BOUND_BLOCK),)](
+            sorted_data, ne, cum_input, N, BLOCK=_BOUND_BLOCK, num_warps=8
+        )
 
     # Unique starts + unique values.
     start = torch.nonzero(ne).ravel()
-    data_out = torch.index_select(sorted_data, 0, start)
+    n_unique = start.numel()
+    if n_unique == N:
+        # all-distinct fast path: unique values are exactly the sorted data
+        # (index_select of N distinct positions == identity); skips the
+        # 16-27 ms gather on the benchmark's uniform full-range inputs.
+        data_out = sorted_data
+    else:
+        data_out = torch.index_select(sorted_data, 0, start)
 
     inverse_indices = None
     counts = None
 
     if return_inverse:
         # unique-id per sorted position (0-based run index), scattered back to
-        # the original order. `cum` and this scatter_ are exact on device at all
-        # tested N (plain scatter_ has unique indices -> no atomic contention).
-        cum = torch.cumsum(ne.to(torch.int64), 0) - 1
+        # the original order. The prefix scan is the triton scan toolkit above
+        # (torch.cumsum is excluded from vendor registration, i.e. an ATen
+        # fallback); the scatter_ is a registered gems op.
+        cum = _triton_inclusive_scan(cum_input)
         inverse_indices = torch.empty(N, dtype=torch.int64, device=flat.device)
         inverse_indices.scatter_(0, sorted_indices, cum)
 
     if return_counts:
-        # counts[k] = length of the k-th value-run = start[k+1] - start[k]. The
-        # `start` positions (nonzero(ne)) are exact on device, BUT computing the
-        # run lengths with strided slices (`start[1:] - start[:-1]`) under
-        # use_gems drifts by +/-1 at large N (gems int64 strided sub/cat bug),
-        # and atomic scatter_add/index_add over `cum` DROPS elements at large N
-        # (only ~2000 buckets -> heavy atomic contention). `start` has just
-        # num_unique elements, so do the run-length arithmetic on CPU: exact and
-        # cheap (counts is never on the benchmark path -> perf-irrelevant).
-        start_cpu = start.cpu()
-        end_cpu = torch.empty_like(start_cpu)
-        if start_cpu.numel() > 1:
-            end_cpu[:-1] = start_cpu[1:]
-        end_cpu[-1] = N
-        counts = (end_cpu - start_cpu).to(device=flat.device, dtype=torch.int64)
+        # counts[k] = length of the k-th value-run = start[k+1] - start[k],
+        # computed by a single device kernel (no CPU round-trip; the strided
+        # slice version drifts by +/-1 under use_gems at large N).
+        counts = torch.empty(n_unique, dtype=torch.int64, device=flat.device)
+        if n_unique > 0:
+            _run_lengths_kernel[(triton.cdiv(n_unique, _SCAN_BLOCK),)](
+                start, counts, N, n_unique, BLOCK=_SCAN_BLOCK
+            )
 
     return (
         data_out,
