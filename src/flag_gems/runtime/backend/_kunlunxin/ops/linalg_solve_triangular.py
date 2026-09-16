@@ -417,7 +417,7 @@ def _solve_tri(A, B, unitriangular, upper):
 
 def linalg_solve_triangular(A, B, *, upper, left=True, unitriangular=False, out=None):
     """Solve A X = B (left) or X A = B (right) with triangular A on XPU."""
-    logger.debug("GEMS KUNLUNXIN LINALG_SOLVE_TRIANGULAR")
+    logger.debug("GEMS_KUNLUNXIN LINALG_SOLVE_TRIANGULAR")
     if A.dtype not in (torch.float32, torch.float64):
         raise ValueError("linalg_solve_triangular only supports float32 and float64")
     if B.dtype != A.dtype:
