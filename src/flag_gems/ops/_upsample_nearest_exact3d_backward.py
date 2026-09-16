@@ -359,7 +359,7 @@ def _upsample_nearest_exact3d_backward_grad_input(
     *,
     grad_input: torch.Tensor,
 ) -> torch.Tensor:
-    logger.debug("GEMS _UPSAMPLE_NEAREST_EXACT3D_BACKWARD.GRAD_INPUT")
+    logger.debug("GEMS _UPSAMPLE_NEAREST_EXACT3D_BACKWARD_GRAD_INPUT")
     return _upsample_nearest_exact3d_backward_impl(
         grad_output,
         output_size,
