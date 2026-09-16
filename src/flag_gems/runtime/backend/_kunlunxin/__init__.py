@@ -27,6 +27,8 @@ CUSTOMIZED_UNUSED_OPS = (
     "randperm",
     "topk",
     "unique",
+    "slice",
+    "conv_transpose1d",
 )
 
 
