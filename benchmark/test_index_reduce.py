@@ -133,6 +133,7 @@ def test_index_reduce_amin():
 
 
 @pytest.mark.index_reduce
+@_ASCEND_NATIVE_BASELINE_SKIP
 @pytest.mark.parametrize("reduce", ["prod", "mean", "amax", "amin"])
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
@@ -142,6 +143,7 @@ def test_index_reduce(reduce):
 
 
 @pytest.mark.index_reduce_out
+@_ASCEND_NATIVE_BASELINE_SKIP
 @pytest.mark.parametrize("reduce", ["prod", "mean", "amax", "amin"])
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
