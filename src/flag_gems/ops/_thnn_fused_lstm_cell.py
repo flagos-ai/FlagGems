@@ -42,11 +42,12 @@ def _thnn_fused_lstm_cell_kernel(
     has_hidden_bias: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
-    # Grid: (batch_size,)
+    # Grid: (batch_size, cdiv(hidden_size, BLOCK_SIZE))
     batch_idx = tl.program_id(0)
+    block_idx = tl.program_id(1)
 
-    # Each program (thread block) processes one batch element
-    # We use BLOCK_SIZE threads to process the hidden dimension
+    # Each program (thread block) processes a BLOCK_SIZE-wide slice of the
+    # hidden dimension for one batch element
 
     # Pointers for this batch
     ig_ptr = input_gates_ptr + batch_idx * 4 * hidden_size
@@ -57,7 +58,7 @@ def _thnn_fused_lstm_cell_kernel(
     ws_ptr = workspace_ptr + batch_idx * 4 * hidden_size
 
     # Offsets for this block
-    offsets = tl.arange(0, BLOCK_SIZE)
+    offsets = block_idx * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < hidden_size
 
     # Load cell state cx
@@ -96,27 +97,32 @@ def _thnn_fused_lstm_cell_kernel(
         # Sum gates
         g = ig + hg
 
-        # Store to workspace (needed for backward)
-        tl.store(
-            ws_ptr + gate_offset + offsets,
-            g.to(workspace_ptr.dtype.element_ty),
-            mask=mask,
-        )
-
-        # Apply activation based on gate type and store
+        # Apply activation based on gate type
         # gate_idx: 0=input, 1=forget, 2=cell, 3=output
         if gate_idx == 0:
             # Input gate - sigmoid
             i_gate = tl.sigmoid(g)
+            activated = i_gate
         elif gate_idx == 1:
             # Forget gate - sigmoid
             f_gate = tl.sigmoid(g)
+            activated = f_gate
         elif gate_idx == 2:
             # Cell gate - tanh
             g_gate = tl_extra_shim.tanh(g)
+            activated = g_gate
         else:  # gate_idx == 3
             # Output gate - sigmoid
             o_gate = tl.sigmoid(g)
+            activated = o_gate
+
+        # Store to workspace (needed for backward). The backward expects the
+        # post-activation gates, matching aten::_thnn_fused_lstm_cell.
+        tl.store(
+            ws_ptr + gate_offset + offsets,
+            activated.to(workspace_ptr.dtype.element_ty),
+            mask=mask,
+        )
 
     # Compute cy = f * cx + i * g
     cy_acc = f_gate * cx_vals + i_gate * g_gate
@@ -193,7 +199,7 @@ def _thnn_fused_lstm_cell(
     BLOCK_SIZE = max(32, min(BLOCK_SIZE, 128))
 
     # Launch kernel
-    grid = (batch_size,)
+    grid = (batch_size, triton.cdiv(hidden_size, BLOCK_SIZE))
     _thnn_fused_lstm_cell_kernel[grid](
         input_gates,
         hidden_gates,
