@@ -56,6 +56,7 @@ from flag_gems.ops._embedding_bag_dense_backward import _embedding_bag_dense_bac
 from flag_gems.ops._embedding_bag_per_sample_weights_backward import (
     _embedding_bag_per_sample_weights_backward,
 )
+from flag_gems.ops._embedding_bag_sparse_backward import _embedding_bag_sparse_backward
 from flag_gems.ops._euclidean_dist import _euclidean_dist
 from flag_gems.ops._fake_quantize_learnable_per_channel_affine import (
     _fake_quantize_learnable_per_channel_affine,
@@ -255,6 +256,7 @@ from flag_gems.ops.avg_pool3d import avg_pool3d, avg_pool3d_backward
 from flag_gems.ops.baddbmm import baddbmm, baddbmm_out
 from flag_gems.ops.baddbmm_ import baddbmm_
 from flag_gems.ops.batch_norm import batch_norm, batch_norm_backward
+from flag_gems.ops.batch_norm_backward_reduce import batch_norm_backward_reduce
 from flag_gems.ops.bernoulli import bernoulli
 from flag_gems.ops.bernoulli_ import bernoulli_
 from flag_gems.ops.bilinear import bilinear
@@ -493,6 +495,7 @@ from flag_gems.ops.greater import (
     greater_scalar,
     greater_scalar_out,
 )
+from flag_gems.ops.greater_ import greater_
 from flag_gems.ops.greater_equal import greater_equal_
 from flag_gems.ops.grid_sample import grid_sample
 from flag_gems.ops.grid_sampler_2d import grid_sampler_2d
@@ -750,6 +753,7 @@ from flag_gems.ops.ones import ones
 from flag_gems.ops.ones_like import ones_like
 from flag_gems.ops.ormqr import ormqr
 from flag_gems.ops.pad import constant_pad_nd, pad
+from flag_gems.ops.pad_sequence import pad_sequence
 from flag_gems.ops.pairwise_distance import pairwise_distance
 from flag_gems.ops.pdist import pdist
 from flag_gems.ops.per_token_group_quant_fp8 import (
@@ -818,8 +822,8 @@ from flag_gems.ops.resize_as import resize_as, resize_as_
 from flag_gems.ops.resolve_conj import resolve_conj
 from flag_gems.ops.resolve_neg import resolve_neg
 from flag_gems.ops.rms_norm import rms_norm, rms_norm_backward, rms_norm_forward
-from flag_gems.ops.rms_norm_w8a16_fp8 import rms_norm_w8a16_fp8
 from flag_gems.ops.rnn_relu import rnn_relu
+from flag_gems.ops.rnn_tanh import rnn_tanh, rnn_tanh_data
 from flag_gems.ops.roll import roll
 from flag_gems.ops.rot90 import rot90
 from flag_gems.ops.round import round, round_, round_out
@@ -913,6 +917,7 @@ from flag_gems.ops.special_erfinv import (
 )
 from flag_gems.ops.special_exp2 import special_exp2
 from flag_gems.ops.special_expit import special_expit
+from flag_gems.ops.special_expm1 import special_expm1
 from flag_gems.ops.special_gammainc import special_gammainc
 from flag_gems.ops.special_gammaincc import special_gammaincc
 from flag_gems.ops.special_gammaln import special_gammaln, special_gammaln_out
@@ -963,6 +968,14 @@ from flag_gems.ops.special_sinc import special_sinc
 from flag_gems.ops.special_softmax import special_softmax
 from flag_gems.ops.special_xlog1py import special_xlog1py
 from flag_gems.ops.special_xlogy import special_xlogy, special_xlogy_
+from flag_gems.ops.special_zeta import (
+    special_zeta,
+    special_zeta_out,
+    special_zeta_scalar_tensor,
+    special_zeta_scalar_tensor_out,
+    special_zeta_tensor_scalar,
+    special_zeta_tensor_scalar_out,
+)
 from flag_gems.ops.split_with_sizes import split_with_sizes
 from flag_gems.ops.split_with_sizes_copy import split_with_sizes_copy
 from flag_gems.ops.sqrt import sqrt, sqrt_
@@ -970,6 +983,14 @@ from flag_gems.ops.square import square, square_, square_out
 from flag_gems.ops.squeeze_copy import squeeze_copy
 from flag_gems.ops.stack import stack
 from flag_gems.ops.std import std
+from flag_gems.ops.std_mean import (
+    std_mean,
+    std_mean_correction,
+    std_mean_correction_names,
+    std_mean_correction_out,
+    std_mean_dim,
+    std_mean_names_dim,
+)
 from flag_gems.ops.sub import sub, sub_
 from flag_gems.ops.subtract_ import subtract, subtract_
 from flag_gems.ops.sum import sum, sum_dim, sum_dim_out, sum_out
@@ -993,6 +1014,7 @@ from flag_gems.ops.to import to_copy
 from flag_gems.ops.topk import topk
 from flag_gems.ops.topk_w8a16_fp8 import topk_w8a16_fp8
 from flag_gems.ops.trace import trace
+from flag_gems.ops.trace_backward import trace_backward
 from flag_gems.ops.transpose import transpose
 from flag_gems.ops.tril import tril, tril_, tril_out
 from flag_gems.ops.triu import triu, triu_
@@ -1011,6 +1033,7 @@ from flag_gems.ops.unique_consecutive import unique_consecutive
 from flag_gems.ops.unique_dim import unique_dim
 from flag_gems.ops.unsafe_chunk import unsafe_chunk
 from flag_gems.ops.unsafe_index import unsafe_index
+from flag_gems.ops.unsafe_index_put import unsafe_index_put
 from flag_gems.ops.unsafe_split_with_sizes import unsafe_split_with_sizes
 from flag_gems.ops.unsqueeze import unsqueeze, unsqueeze_
 from flag_gems.ops.upsample_bicubic2d import upsample_bicubic2d
@@ -1103,6 +1126,7 @@ __all__ = [
     "_dyn_quant_pack_4bit_weight",
     "_embedding_bag_dense_backward",
     "_embedding_bag_per_sample_weights_backward",
+    "_embedding_bag_sparse_backward",
     "_euclidean_dist",
     "_fake_quantize_learnable_per_channel_affine",
     "_fake_quantize_learnable_per_channel_affine_backward",
@@ -1282,6 +1306,7 @@ __all__ = [
     "baddbmm_out",
     "batch_norm",
     "batch_norm_backward",
+    "batch_norm_backward_reduce",
     "bernoulli",
     "bernoulli_",
     "bilinear",
@@ -1533,6 +1558,7 @@ __all__ = [
     "glu",
     "glu_backward",
     "greater",
+    "greater_",
     "greater_equal_",
     "greater_out",
     "greater_scalar",
@@ -1843,6 +1869,7 @@ __all__ = [
     "ones_like",
     "ormqr",
     "pad",
+    "pad_sequence",
     "pairwise_distance",
     "pdist",
     "per_token_group_quant_fp8",
@@ -1919,6 +1946,8 @@ __all__ = [
     "rms_norm_forward",
     "rms_norm_w8a16_fp8",
     "rnn_relu",
+    "rnn_tanh",
+    "rnn_tanh_data",
     "roll",
     "rot90",
     "round",
@@ -2023,6 +2052,7 @@ __all__ = [
     "special_erfinv_out",
     "special_exp2",
     "special_expit",
+    "special_expm1",
     "special_gammainc",
     "special_gammaincc",
     "special_gammaln",
@@ -2065,6 +2095,12 @@ __all__ = [
     "special_xlog1py",
     "special_xlogy",
     "special_xlogy_",
+    "special_zeta",
+    "special_zeta_out",
+    "special_zeta_scalar_tensor",
+    "special_zeta_scalar_tensor_out",
+    "special_zeta_tensor_scalar",
+    "special_zeta_tensor_scalar_out",
     "split_with_sizes",
     "split_with_sizes_copy",
     "sqrt",
@@ -2075,6 +2111,12 @@ __all__ = [
     "squeeze_copy",
     "stack",
     "std",
+    "std_mean",
+    "std_mean_correction",
+    "std_mean_correction_names",
+    "std_mean_correction_out",
+    "std_mean_dim",
+    "std_mean_names_dim",
     "sub",
     "sub_",
     "subtract",
@@ -2111,6 +2153,7 @@ __all__ = [
     "topk",
     "topk_w8a16_fp8",
     "trace",
+    "trace_backward",
     "transpose",
     "tril",
     "tril_",
@@ -2135,6 +2178,7 @@ __all__ = [
     "unique_dim",
     "unsafe_chunk",
     "unsafe_index",
+    "unsafe_index_put",
     "unsafe_split_with_sizes",
     "unsqueeze",
     "unsqueeze_",
