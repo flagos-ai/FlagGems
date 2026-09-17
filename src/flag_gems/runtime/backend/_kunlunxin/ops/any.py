@@ -55,13 +55,14 @@ def _acc_dtype(dt):
 
 
 def _row_tile_rows(args):
-    """行归约的 BLOCK_M：fp16 用 128，其余 64。
+    """BLOCK_M for the row reduction: 128 for fp16, 64 for everything else.
 
-    依据（node97 · do_bench 口径 · 3 趟交错 ±1% · 逐 tile 与原生 torch.any 对拍 correct）：
-    [4096,4096] 行归约把 fp16 的 BLOCK_M 从 64 提到 128，kernel 126.9µs → 94.5µs（−26%，
-    官方口径该格 127.2 → 99.7µs）；f32/bf16 维持 64（128 行会把 fp32 累积器推到 256KB，
-    反而 121/205µs vs 114/202µs）。物理口径：累积器 tile 控制在 ~128KB —— fp16 2B/lane
-    可 128 行，fp32 系 4B/lane 只能 64 行。
+    Evidence (node97, do_bench metric, 3 interleaved runs, ±1% spread; per-tile check against
+    native torch.any correct): on the [4096,4096] row reduction, raising fp16 BLOCK_M from
+    64 to 128 takes the kernel from 126.9µs to 94.5µs (−26%, 127.2 → 99.7µs for that cell
+    under the official metric); f32/bf16 stay at 64 (128 rows push the fp32 accumulator to
+    256KB and are actually slower at 121/205µs vs 114/202µs). In physical terms: keep the
+    accumulator tile at ~128KB -- fp16 at 2B/lane allows 128 rows, fp32 at 4B/lane only 64.
     """
     t = args.get("inp")
     if getattr(t, "dtype", None) == torch.float16:
@@ -220,10 +221,11 @@ def any_bool_dim_kernel_f(
 ):
     """any_bool_dim_kernel variant storing the raw reduced value (see -f note).
 
-    ⚠️ 累积用 **fp32** 而非 int32：本后端 int32 max 明显更慢 —— [4096,4096] 实测
-    120.1µs → 63.3µs（−47%，`evidence/any-dim-20260916/probes/alt_dtype_kernels.py`，
-    逐项与原生 torch.any 对拍 correct）。word ≥ 0 ⇒ fp32 表示非零保持（< 2^24 精确，
-    更大时按最近舍入仍非零），语义不变。"""
+    Note: accumulate in **fp32**, not int32: int32 max is markedly slower on this backend --
+    [4096,4096] measured 120.1µs → 63.3µs (−47%, each checked against native
+    torch.any, all correct). word ≥ 0 ⇒ the fp32 value stays
+    non-zero (< 2^24 it is exact, beyond that round-to-nearest is still non-zero), so the
+    semantics are unchanged."""
     pid = ext.program_id(0)
     rows = pid * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     inb = inw + rows * NW
@@ -417,12 +419,12 @@ def any(inp):
 @libentry()
 @triton.jit
 def any_mid_neq0_kernel(mid, out, M, BLOCK: tl.constexpr):
-    """`mid[M] -> out[M]`（bool，`v != 0`）——两段式的第二段。
+    """`mid[M] -> out[M]` (bool, `v != 0`) -- the second stage of the two-step path.
 
-    为什么不用 `(mid != 0)`：在 `use_gems()` 上下文里那是一次**嵌套的 gem 派发**
-    （本 op 内部再走一次 gem 分派），官方口径 A/B 实测 bool [4096,4096] 该格
-    64.9µs（本 kernel）vs 76.7µs（`(mid != 0)`）—— 差 ~12µs。本 kernel 只做同一个
-    逐元素判断，一次自己的发射即可。
+    Why not `(mid != 0)`: inside the `use_gems()` context that is a **nested gem dispatch**
+    (the op dispatches to a gem again internally); under the official metric the A/B on
+    bool [4096,4096] measured 64.9µs (this kernel) vs 76.7µs (`(mid != 0)`) -- ~12µs apart.
+    This kernel performs the same elementwise test in a single launch of its own.
     """
     offs = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     mask = offs < M
@@ -443,7 +445,7 @@ def _per_row_any(inp, M, N, out_shape):
     if inp.dtype == torch.bool and N % 4 == 0:
         inw = inp.reshape(-1).view(torch.int32).reshape(M, N // 4)
         if two_step:
-            # mid 随 `any_bool_dim_kernel_f` 的 fp32 累积（见该 kernel 注释）
+            # mid follows the fp32 accumulation of `any_bool_dim_kernel_f` (see that kernel's comment)
             mid = torch.empty(M, dtype=torch.float32, device=inp.device)
             out = torch.empty(M, dtype=torch.bool, device=inp.device)
             with torch_device_fn.device(inp.device):

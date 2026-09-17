@@ -27,9 +27,9 @@ logger = logging.getLogger(__name__)
 # 2026-09-14: the K>1 / N==1 / multi-dim branches used to redispatch to the
 # native (vendor) logsumexp. That is banned for metric integrity -- under the
 # official benchmark (dim=1 over 3-D shapes) the gem *became* the reference
-# implementation, so its ratio was ~1.0 by construction (documented as
-# "构造性假象" in evidence/reverse-eng/report-reduce.md). They now go through
-# a gems-side dim compression + the contiguous inner-dim kernels.
+# implementation, so its ratio was ~1.0 by construction (an artifact of how the
+# measurement was set up). They now go through a gems-side dim compression + the
+# contiguous inner-dim kernels.
 #
 # Inner-dim (K==1) reduction tiers:
 #  - N <= _MULTIROW_MAX_N:   one multirow tile kernel (N constexpr, block DMA,

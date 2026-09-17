@@ -45,18 +45,20 @@ config_ = CodeGenConfig(
 )
 @triton.jit
 def less_equal_func(x, y):
-    # x <= y <=> !(y - x < 0). 算术化实现，绕开 TritonXPU 的 vselect 掩码组装：
-    # VSelectOpConversion 把谓词掩码逐位组装（每 32 元素 ~16 条 select+or），
-    # 任何 select/compare 路径的带宽被锁死在 ~60 Gelem/s（fp16 where 365GB/s、
-    # fp32 710GB/s，2026-09-03 实测）；而 min/max/clip 是纯 VALU 指令，
-    # 接近 copy 全速（fp16 1588GB/s）。本公式全部用 fast 类指令：
+    # x <= y <=> !(y - x < 0). Arithmetic form, avoiding the TritonXPU vselect mask
+    # assembly: VSelectOpConversion assembles the predicate mask bit by bit (~16
+    # select+or per 32 elements), so any select/compare path is bandwidth-capped at
+    # ~60 Gelem/s (fp16 where 365GB/s, fp32 710GB/s, measured 2026-09-03); min/max/clip
+    # are pure VALU instructions and run close to full copy speed (fp16 1588GB/s).
+    # This formula uses only fast-class instructions:
     #   d   = y - x
-    #   neg = min(d, 0)     # d<0 时为 d，否则 0
-    #   mag = max(-neg, 0)  # d<0 时为 -d，否则 0
+    #   neg = min(d, 0)     # d when d<0, else 0
+    #   mag = max(-neg, 0)  # -d when d<0, else 0
     #   r   = 1 - min(mag * 1e38, 1)
-    # d<0 -> mag>0 -> mag*1e38 溢出为 inf -> min 取 1 -> r=0；d>=0 -> r=1。
-    # ±0 正确（d=±0 -> mag=0 -> r=1）。NaN 行为与 where 版一致（对非 0/1 输入）。
-    # 乘数 1e38 必须保持 f32（f16 下 0*inf=NaN 会破坏 d=0 分支）。
+    # d<0 -> mag>0 -> mag*1e38 overflows to inf -> min yields 1 -> r=0; d>=0 -> r=1.
+    # ±0 is correct (d=±0 -> mag=0 -> r=1). NaN behavior matches the where version
+    # (for non 0/1 inputs). The 1e38 multiplier must stay f32 (under f16, 0*inf=NaN
+    # breaks the d=0 branch).
     d = y - x
     neg = tl.minimum(d, 0.0)
     mag = tl.maximum(-neg, 0.0)
@@ -80,7 +82,7 @@ def less_equal_(A, B):
 )
 @triton.jit
 def less_equal_func_scalar(x, y):
-    # 与 tensor 路径相同的算术化实现（见 less_equal_func 注释）。
+    # Same arithmetic form as the tensor path (see the less_equal_func comment).
     d = y - x
     neg = tl.minimum(d, 0.0)
     mag = tl.maximum(-neg, 0.0)
