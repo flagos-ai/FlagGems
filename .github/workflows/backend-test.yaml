@@ -131,7 +131,7 @@ jobs:
   # iluvatar-bi-v150-1 server (whichever runner is online), since
   # the corex driver/runtime it needs is only set up inside this image.
   # Equivalent to:
-  #   docker run --rm -it --device /dev/iluvatar0 \
+  #   docker run --rm -it --device /dev/iluvatar0 --device /dev/itrctl \
   #     harbor.baai.ac.cn/flagos-base/flagos-base-iluvatar-corex4.5.0:2.1.2 bash
   # with GitHub Actions creating/starting the container and exec'ing each step.
   test-iluvatar:
@@ -139,7 +139,7 @@ jobs:
     runs-on: iluvatar-bi-v150
     container:
       image: harbor.baai.ac.cn/flagos-base/flagos-base-iluvatar-corex4.5.0:2.1.2
-      options: --device /dev/iluvatar0
+      options: --device /dev/iluvatar0 --device /dev/itrctl
     concurrency:
       group: >-
         op-test-${{ inputs.backend }}-${{ github.event.pull_request.number || github.ref }}
