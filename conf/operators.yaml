@@ -7403,6 +7403,18 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: is_strides_like_format
+  description: Checks whether the stride pattern of the input tensor matches the specified memory format.
+  for:
+  - is_strides_like_format
+  marks:
+  - is_strides_like_format_random
+  labels:
+  - aten
+  kind:
+  - Tensor
+  stages:
+  - stable: '2.2'
 - id: isclose
   description: 'Returns a new tensor with boolean elements representing if each element
     of `input`

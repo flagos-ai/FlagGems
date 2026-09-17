@@ -578,6 +578,7 @@ from flag_gems.ops.index_select_backward import index_select_backward
 from flag_gems.ops.int_mm import int_mm, int_mm_out
 from flag_gems.ops.is_nonzero import is_nonzero
 from flag_gems.ops.is_same_size import is_same_size
+from flag_gems.ops.is_strides_like_format import is_strides_like_format
 from flag_gems.ops.isclose import allclose, isclose
 from flag_gems.ops.isfinite import isfinite
 from flag_gems.ops.isin import isin
@@ -1727,6 +1728,7 @@ __all__ = [
     "int_mm_out",
     "is_nonzero",
     "is_same_size",
+    "is_strides_like_format",
     "isclose",
     "isfinite",
     "isin",
