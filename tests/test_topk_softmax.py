@@ -74,8 +74,10 @@ def test_topk_softmax(
         num_tokens, num_experts, dtype=torch.float32, device=device
     )
 
+    # vLLM reference on some backends (e.g. iluvatar) only supports int32 indices,
+    # so always use int32 for the reference call.
     vllm_weights = torch.empty(num_tokens, topk, device=device, dtype=torch.float32)
-    vllm_indices = torch.empty(num_tokens, topk, device=device, dtype=index_dtype)
+    vllm_indices = torch.empty(num_tokens, topk, device=device, dtype=torch.int32)
     vllm_token_expert = torch.empty(num_tokens, topk, device=device, dtype=torch.int32)
 
     vllm_topk_softmax(
@@ -83,12 +85,15 @@ def test_topk_softmax(
         vllm_indices,
         vllm_token_expert,
         gating_output,
-        renormalize,
     )
 
-    gems_weights = torch.empty_like(vllm_weights)
-    gems_indices = torch.empty_like(vllm_indices)
-    gems_token_expert = torch.empty_like(vllm_token_expert)
+    if renormalize:
+        vllm_weights_sum = vllm_weights.sum(dim=-1, keepdim=True)
+        vllm_weights = vllm_weights / (vllm_weights_sum + 1e-8)
+
+    gems_weights = torch.empty(num_tokens, topk, device=device, dtype=torch.float32)
+    gems_indices = torch.empty(num_tokens, topk, device=device, dtype=index_dtype)
+    gems_token_expert = torch.empty(num_tokens, topk, device=device, dtype=torch.int32)
 
     topk_softmax(
         gems_weights,
@@ -102,8 +107,8 @@ def test_topk_softmax(
         gems_weights, vllm_weights, atol=1e-5
     ), "topk_weights mismatch"
     assert torch.equal(
-        gems_indices.cpu(), vllm_indices.cpu()
-    ), "topk_indices mismatch (fp32)"
+        gems_indices.to(torch.int32).cpu(), vllm_indices.cpu()
+    ), "topk_indices mismatch"
     assert torch.equal(
         gems_token_expert.cpu(), vllm_token_expert.cpu()
     ), "token_expert_indices mismatch"
