@@ -1,0 +1,49 @@
+<!--
+ Copyright 2026 FlagOS Contributors
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+ -->
+
+{{ $bookTranslatedOnly := default false .Site.Params.BookTranslatedOnly }}
+{{ $translations := dict }}
+{{ if (eq $bookTranslatedOnly false ) }}
+  {{ range .Site.Home.Translations }}
+    {{ $translations = merge $translations (dict .Language.Lang .) }}
+  {{ end }}
+{{ end }}
+{{ range .Translations }}
+  {{ $translations = merge $translations (dict .Language.Lang .) }}
+{{ end }}
+
+<ul class="book-languages">
+  <li>
+    <input type="checkbox" id="languages" class="toggle" />
+    <label for="languages" class="flex">
+      <a role="button">
+        <img src="{{ partial "docs/icon" "translate" }}" class="book-icon" alt="{{ partial "docs/text/i18n" "Languages" }}" />
+        {{ $.Site.Language.LanguageName }}
+      </a>
+      <img src="{{ partial "docs/icon" "chevron-right" }}" class="book-icon" alt="{{ partial "docs/text/i18n" "Expand" }}" />
+    </label>
+
+    <ul>
+      {{ range .Site.Languages }}{{ with index $translations .Lang }}
+      <li>
+        <a href="{{ cond hugo.IsMultihost .Permalink .RelPermalink }}" class="flex flex-auto">
+          {{ .Language.LanguageName }}
+        </a>
+      </li>
+      {{ end }}{{ end }}
+    </ul>
+  </li>
+</ul>

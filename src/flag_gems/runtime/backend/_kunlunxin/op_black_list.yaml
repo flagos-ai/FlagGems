@@ -1,0 +1,62 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# op_black_list.yaml
+# Description: List of operators unsupported (FALSE) in the current environment
+# test based: 2026-03-03
+# Source: Operator Compatibility Test Table
+
+unsupported_operators:
+  - name: acos
+    reason: "All dtypes failed"
+
+  - name: conv1d
+    reason: "All dtypes failed"
+
+  - name: geglu
+    reason: "All dtypes failed"
+
+  - name: grouped_topk
+    reason: "All dtypes failed"
+
+  - name: masked_scatter
+    reason: "All dtypes failed"
+
+  - name: masked_scatter_
+    reason: "All dtypes failed"
+
+  - name: moe_sum
+    reason: "All dtypes failed"
+
+  - name: nll_loss2d
+    reason: "All dtypes failed"
+
+  - name: per_token_group_quant_fp8
+    reason: "All dtypes failed"
+
+  - name: reglu
+    reason: "All dtypes failed"
+
+  - name: scaled_softmax
+    reason: "All dtypes failed"
+
+  - name: swiglu
+    reason: "All dtypes failed"
+
+  - name: topk_softmax
+    reason: "All dtypes failed"
+
+summary:
+  total_unsupported: 13
+  note: "Testing is currently not required."

@@ -1,0 +1,62 @@
+<!--
+ Copyright 2026 FlagOS Contributors
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+ -->
+
+<!--
+  This is template for hugo menus, accepts Page and Menu as context
+  https://gohugo.io/variables/menus/
+-->
+{{- if .Menu -}}
+  {{- template "book-menu-hugo" . -}}
+{{- end -}}
+
+{{ define "book-menu-hugo" }}
+<ul>
+{{- range .Menu -}}
+  {{- $class := slice -}}
+  {{- with .Params.class -}}
+    {{- $class = $class | append . -}}
+  {{- end -}}
+  {{- if $.Page.IsMenuCurrent .Menu . -}}
+    {{- $class = $class | append "active" -}}
+  {{- end -}}
+  <li>
+    {{- $isRemote := (urls.Parse .URL).IsAbs -}}
+    <a href="{{ .URL }}"
+      {{- with $class }} class="{{ delimit . " " }}"{{- end -}}
+      {{- with .Title }} title="{{ . }}"{{- end -}}
+      {{- if $isRemote }} target="_blank" rel="noopener"{{- end -}}>
+      {{- .Pre -}}
+      {{- template "book-menu-title" . -}}
+      {{- .Post -}}
+    </a>
+    {{- with .Children -}}
+      {{- template "book-menu-hugo" (dict "Page" $.Page "Menu" .) -}}
+    {{- end -}}
+  </li>
+{{- end -}}
+</ul>
+{{ end }}
+
+{{ define "book-menu-title" }}
+{{- with .Params.BookIcon -}}
+  <img src="{{ partial "docs/icon" . }}" class="book-icon" alt="{{ partial "docs/text/i18n" . }}" />
+{{- end -}}
+{{- if .Name -}}
+  {{- .Name -}}
+{{- else if .Page -}}
+  {{- partial "docs/title" .Page -}}
+{{- end -}}
+{{ end }}

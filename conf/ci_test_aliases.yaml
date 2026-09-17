@@ -1,0 +1,46 @@
+# Operator test aliases
+#
+# Maps operator IDs to their actual test file names when the standard
+# naming convention (tests/test_<id>.py) does not apply.
+#
+# Common cases:
+#   - _out variants share test with the base operator
+#   - Compound operators (e.g., arange_start_step) tested in a shared file
+#   - Operators with special naming (leading underscore, etc.)
+#
+# Format:
+#   <operator_id>: <test_file_stem>  (without tests/ prefix and .py suffix)
+#
+# Example:
+#   addmm_out: test_addmm
+#   means tests/test_addmm.py covers the addmm_out operator
+
+# _out variants - share test with base operator
+addcdiv_out: test_addcdiv
+addcmul_out: test_addcmul
+addmm_out: test_addmm
+addmm_dtype_out: test_addmm
+addmv_out: test_addmv
+arccosh_out: test_acosh
+arcsin_out: test_asin
+arcsinh_out: test_asinh
+arctanh_out: test_atanh
+atan2_out: test_atan2
+alias_copy_out: test_alias_copy
+as_strided_copy_out: test_as_strided_copy
+baddbmm_out: test_baddbmm
+
+# Compound / alternative names
+arange_start_step: test_arange
+addmm_dtype: test_addmm
+all_dim: test_all
+all_dims: test_all
+any_dim: test_any
+any_dims: test_any
+and_scalar: test_bitwise_and
+and_tensor: test_bitwise_and
+arctan: test_atan
+
+# Operators tested in combined files or with different naming
+batch_norm_backward: test_batch_norm
+batch_norm_impl_index: test_batch_norm

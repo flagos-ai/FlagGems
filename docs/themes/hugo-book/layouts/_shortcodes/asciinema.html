@@ -1,0 +1,40 @@
+<!--
+ Copyright 2026 FlagOS Contributors
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+ -->
+
+{{- if not (.Page.Store.Get "asciinema") -}}
+  {{- /* Include asciinema player only first time */ -}}
+  <link rel="stylesheet" href="{{ "asciinema/asciinema-player.css" | relURL }}" />
+  {{- /* remove whitespaces */ -}}
+  <script defer src="{{ "asciinema/asciinema-player.min.js" | relURL }}"></script>
+  {{- /* remove whitespaces */ -}}
+  <script defer src="{{ "asciinema/asciinema-auto.js" | relURL }}"></script>
+  {{- .Page.Store.Set "asciinema" true -}}
+{{- end -}}
+{{- $href := (partial "docs/links/portable-image" (dict "Page" .Page "Destination" (.Get "cast"))) -}}
+{{- .Store.Set "asciinema" .Params -}}
+{{- .Store.DeleteInMap "asciinema" "cast" -}}
+{{- $attributes := partial "docs/text/mapper" (dict
+  "attributes" (dict)
+  "set" (dict
+    "id" (printf "asciinema-%d" .Ordinal)
+    "x-data-cast" $href
+    "x-data-opts" (.Store.Get "asciinema" | jsonify)
+  )
+  "merge" (dict
+    "class" (slice "asciinema" "book-asciinema")
+  )
+) -}}
+<div {{ partial "docs/html-attrs" $attributes | safeHTMLAttr }}></div>
