@@ -5,7 +5,7 @@
 # flag-gems-cpp-* wheels and are deferred to Phase 2).
 
 Name:           python3-flag-gems
-Version:        5.3.5
+Version:        5.4.0
 Release:        1%{?dist}
 Summary:        FlagGems — GPU operator library for FlagOS (Phase 1, Python-only)
 
@@ -99,6 +99,9 @@ PYTHONDONTWRITEBYTECODE=1 PYTHONSAFEPATH=1 \
 %{python3_sitelib}/__pycache__/flaggems_setup.*.pyc
 
 %changelog
+* Thu Sep 17 2026 FlagOS Contributors <contact@flagos.io> - 5.4.0-1
+- Align the packaging baseline with the 5.4.0 release line.
+
 * Thu Sep 03 2026 FlagOS Contributors <contact@flagos.io> - 5.3.5-1
 - Update to 5.3.5 (exact v5.3.5 tag base)
 - Carry pending upstream fixes: eight missing subpackage __init__.py files
