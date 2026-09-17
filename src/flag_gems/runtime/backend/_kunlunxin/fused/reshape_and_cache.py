@@ -40,15 +40,23 @@ def reshape_and_cache_kernel(
     k_scale,
     v_scale,
     n: tl.constexpr,
+    I64: tl.constexpr,
 ):
     token_idx = tl.program_id(0)
+    if I64:
+        token_idx = token_idx.to(tl.int64)
     slot_idx = tl.load(slot_mapping + token_idx)
     if slot_idx < 0:
         return
 
     block_idx = slot_idx // block_size
     block_offset = slot_idx % block_size
-    i = tl.arange(0, triton.next_power_of_2(n))
+    # int64 index arithmetic when key/value numel > 2^31:
+    # (token_idx * key_stride) must not silently wrap in int32 (t_copy lesson).
+    if I64:
+        i = tl.arange(0, triton.next_power_of_2(n)).to(tl.int64)
+    else:
+        i = tl.arange(0, triton.next_power_of_2(n))
     mask = i < n
 
     src_key_idx = token_idx * key_stride + i
@@ -101,6 +109,11 @@ def reshape_and_cache(
     value_stride = value.stride(0)
 
     grid = (num_tokens,)
+    # key/value offsets (token_idx * stride + i) must fit in int32; strided
+    # views (e.g. qkv.unbind with 3*H*K row stride) can exceed 2^31 even when
+    # numel is below it (t_copy lesson).
+    max_src = (num_tokens - 1) * max(key_stride, value_stride) + num_heads * head_size - 1
+    use_i64 = max_src > 2**31 - 1
     with torch_device_fn.device(key.device):
         reshape_and_cache_kernel[grid](
             key,
@@ -117,4 +130,5 @@ def reshape_and_cache(
             k_scale,
             v_scale,
             num_heads * head_size,
+            use_i64,
         )
