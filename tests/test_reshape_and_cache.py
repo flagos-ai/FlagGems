@@ -24,6 +24,15 @@ from . import conftest as cfg
 
 device = flag_gems.device
 
+# Try to import vllm reshape_and_cache
+try:
+    from vllm._custom_ops import reshape_and_cache as vllm_reshape_and_cache
+
+    _HAS_VLLM_RESHAPE_AND_CACHE = True
+except Exception:
+    vllm_reshape_and_cache = None
+    _HAS_VLLM_RESHAPE_AND_CACHE = False
+
 # Shape configs for QUICK_MODE
 if cfg.QUICK_MODE:
     HEAD_SIZE_LIST = [64]
@@ -151,3 +160,93 @@ def test_reshape_and_cache(
 
         torch.testing.assert_close(key_cache.cpu(), cloned_key_cache.cpu())
         torch.testing.assert_close(value_cache.cpu(), cloned_value_cache.cpu())
+
+
+@pytest.mark.reshape_and_cache
+@pytest.mark.skipif(
+    not _HAS_VLLM_RESHAPE_AND_CACHE,
+    reason="requires cuda and vllm _custom_ops.reshape_and_cache",
+)
+@pytest.mark.parametrize("num_tokens", [42])
+@pytest.mark.parametrize("num_heads", [8])
+@pytest.mark.parametrize("head_size", HEAD_SIZE_LIST)
+@pytest.mark.parametrize("block_size", BLOCK_SIZE_LIST)
+@pytest.mark.parametrize("num_blocks", NUM_BLOCKS_LIST)
+@pytest.mark.parametrize("dtype", DTYPE_LIST)
+@pytest.mark.parametrize("kv_cache_dtype", ["auto"])
+@pytest.mark.parametrize("seed", [2025])
+def test_reshape_and_cache_vllm_accuracy(
+    num_tokens: int,
+    num_heads: int,
+    head_size: int,
+    block_size: int,
+    num_blocks: int,
+    dtype: torch.dtype,
+    kv_cache_dtype: str,
+    seed: int,
+) -> None:
+    """Test FlagGems reshape_and_cache accuracy against vllm baseline."""
+    utils.init_seed(seed)
+
+    with torch.device(device):
+        # Create a random slot mapping.
+        num_slots = block_size * num_blocks
+        slot_mapping_lst = random.sample(range(num_slots), num_tokens)
+        slot_mapping = torch.tensor(slot_mapping_lst, dtype=torch.long, device=device)
+
+        qkv = torch.randn(
+            num_tokens, 3, num_heads, head_size, dtype=dtype, device=device
+        )
+        _, key, value = qkv.unbind(dim=1)
+
+        # Create the KV caches for FlagGems.
+        key_caches_gems, value_caches_gems = create_kv_caches_with_random(
+            num_blocks, block_size, 1, num_heads, head_size, kv_cache_dtype, dtype, seed
+        )
+        key_cache_gems, value_cache_gems = key_caches_gems[0], value_caches_gems[0]
+
+        # Create the KV caches for vllm (clone from gems caches for fair comparison).
+        key_cache_vllm = key_cache_gems.clone()
+        value_cache_vllm = value_cache_gems.clone()
+
+        # Using default kv_scale
+        k_scale = (key.amax() / 64.0).to(torch.float32)
+        v_scale = (value.amax() / 64.0).to(torch.float32)
+
+        # Call FlagGems reshape_and_cache kernel.
+        flag_gems.reshape_and_cache(
+            key,
+            value,
+            key_cache_gems,
+            value_cache_gems,
+            slot_mapping,
+            kv_cache_dtype,
+            k_scale,
+            v_scale,
+        )
+
+        # Call vllm reshape_and_cache kernel.
+        vllm_reshape_and_cache(
+            key,
+            value,
+            key_cache_vllm,
+            value_cache_vllm,
+            slot_mapping,
+            kv_cache_dtype,
+            k_scale,
+            v_scale,
+        )
+
+        # Compare results.
+        torch.testing.assert_close(
+            key_cache_gems.cpu(),
+            key_cache_vllm.cpu(),
+            rtol=1e-3,
+            atol=1e-3,
+        )
+        torch.testing.assert_close(
+            value_cache_gems.cpu(),
+            value_cache_vllm.cpu(),
+            rtol=1e-3,
+            atol=1e-3,
+        )
