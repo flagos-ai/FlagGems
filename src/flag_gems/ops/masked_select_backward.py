@@ -19,6 +19,9 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.ops.contiguous import contiguous
+from flag_gems.ops.copy import copy_
+from flag_gems.ops.neg import neg
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils.shape_utils import bracket_next_power_of_2
@@ -32,6 +35,7 @@ def _masked_select_backward_single_pass_kernel(
     grad_ptr,
     mask_ptr,
     out_ptr,
+    total_count_ptr,
     grad_numel,
     n_elements,
     BLOCK_SIZE: tl.constexpr,
@@ -40,9 +44,10 @@ def _masked_select_backward_single_pass_kernel(
     valid = offsets < n_elements
     selected = tl.load(mask_ptr + offsets, mask=valid, other=0).to(tl.int1)
     grad_offsets = tl.cumsum(selected.to(tl.int32), axis=0) - 1
+    tl.store(total_count_ptr, tl.sum(selected.to(tl.int32), axis=0))
     source_valid = valid & selected & (grad_offsets < grad_numel)
-    values = tl.load(grad_ptr + grad_offsets, mask=source_valid, other=0.0)
-    tl.store(out_ptr + offsets, tl.where(selected, values, 0.0), mask=valid)
+    values = tl.load(grad_ptr + grad_offsets, mask=source_valid, other=0)
+    tl.store(out_ptr + offsets, tl.where(selected, values, 0), mask=valid)
 
 
 @libentry()
@@ -51,6 +56,7 @@ def _masked_select_backward_redundant_prefix_kernel(
     grad_ptr,
     mask_ptr,
     out_ptr,
+    total_count_ptr,
     grad_numel,
     n_elements,
     num_blocks,
@@ -76,8 +82,8 @@ def _masked_select_backward_redundant_prefix_kernel(
         selected_int = selected.to(tl.int32)
         grad_offsets = grad_advance + tl.cumsum(selected_int, axis=0) - 1
         source_valid = selected & (grad_offsets < grad_numel)
-        values = tl.load(grad_ptr + grad_offsets, mask=source_valid, other=0.0)
-        tl.store(out_ptr + offsets, tl.where(selected, values, 0.0))
+        values = tl.load(grad_ptr + grad_offsets, mask=source_valid, other=0)
+        tl.store(out_ptr + offsets, tl.where(selected, values, 0))
         grad_advance += tl.sum(selected_int, axis=0)
         offsets += BLOCK_SIZE
 
@@ -86,8 +92,10 @@ def _masked_select_backward_redundant_prefix_kernel(
     selected_int = selected.to(tl.int32)
     grad_offsets = grad_advance + tl.cumsum(selected_int, axis=0) - 1
     source_valid = valid & selected & (grad_offsets < grad_numel)
-    values = tl.load(grad_ptr + grad_offsets, mask=source_valid, other=0.0)
-    tl.store(out_ptr + offsets, tl.where(selected, values, 0.0), mask=valid)
+    values = tl.load(grad_ptr + grad_offsets, mask=source_valid, other=0)
+    tl.store(out_ptr + offsets, tl.where(selected, values, 0), mask=valid)
+    if last_block_id == num_blocks - 1:
+        tl.store(total_count_ptr, grad_advance + tl.sum(selected_int, axis=0))
 
 
 @libentry()
@@ -120,12 +128,14 @@ def _masked_select_backward_count_kernel(
 @triton.jit(do_not_specialize=["num_programs"])
 def _masked_select_backward_prefix_kernel(
     part_sums_ptr,
+    total_count_ptr,
     num_programs,
     NP_BLOCK: tl.constexpr,
 ):
     offsets = tl.arange(0, NP_BLOCK)
     valid = offsets < num_programs
     counts = tl.load(part_sums_ptr + offsets, mask=valid, other=0)
+    tl.store(total_count_ptr, tl.sum(counts, axis=0))
     prefixes = tl.cumsum(counts, axis=0) - counts
     tl.store(part_sums_ptr + offsets, prefixes, mask=valid)
 
@@ -155,8 +165,8 @@ def _masked_select_backward_scatter_kernel(
         selected_int = selected.to(tl.int32)
         grad_offsets = grad_advance + tl.cumsum(selected_int, axis=0) - 1
         source_valid = selected & (grad_offsets < grad_numel)
-        values = tl.load(grad_ptr + grad_offsets, mask=source_valid, other=0.0)
-        tl.store(out_ptr + offsets, tl.where(selected, values, 0.0))
+        values = tl.load(grad_ptr + grad_offsets, mask=source_valid, other=0)
+        tl.store(out_ptr + offsets, tl.where(selected, values, 0))
         grad_advance += tl.sum(selected_int, axis=0)
         offsets += BLOCK_SIZE
 
@@ -165,20 +175,21 @@ def _masked_select_backward_scatter_kernel(
     selected_int = selected.to(tl.int32)
     grad_offsets = grad_advance + tl.cumsum(selected_int, axis=0) - 1
     source_valid = valid & selected & (grad_offsets < grad_numel)
-    values = tl.load(grad_ptr + grad_offsets, mask=source_valid, other=0.0)
+    values = tl.load(grad_ptr + grad_offsets, mask=source_valid, other=0)
     tl.store(
         out_ptr + offsets,
-        tl.where(selected, values, 0.0),
+        tl.where(selected, values, 0),
         mask=valid,
     )
 
 
-def _masked_select_backward_real(grad, mask, out):
+def _masked_select_backward_real(grad, mask, out, validate=True):
     n_elements = out.numel()
     if n_elements == 0:
         return out
 
-    grad = grad.contiguous()
+    grad = contiguous(grad)
+    total_count = torch.empty((), dtype=torch.int64, device=out.device)
     if n_elements <= 32768:
         block_size = triton.next_power_of_2(n_elements)
         num_warps = 4 if block_size < 2048 else min(16, block_size // 256)
@@ -187,11 +198,14 @@ def _masked_select_backward_real(grad, mask, out):
                 grad,
                 mask,
                 out,
+                total_count,
                 grad.numel(),
                 n_elements,
                 BLOCK_SIZE=block_size,
                 num_warps=num_warps,
             )
+        if validate and grad.numel() < n_elements and grad.numel() < total_count.item():
+            raise RuntimeError("Number of elements of source < number of ones in mask")
         return out
 
     block_size = bracket_next_power_of_2(n_elements, 128, 4096)
@@ -208,6 +222,7 @@ def _masked_select_backward_real(grad, mask, out):
                 grad,
                 mask,
                 out,
+                total_count,
                 grad.numel(),
                 n_elements,
                 num_blocks,
@@ -215,6 +230,8 @@ def _masked_select_backward_real(grad, mask, out):
                 BLOCK_SIZE=block_size,
                 num_warps=num_warps,
             )
+        if validate and grad.numel() < n_elements and grad.numel() < total_count.item():
+            raise RuntimeError("Number of elements of source < number of ones in mask")
         return out
 
     scan_block = triton.next_power_of_2(num_programs)
@@ -233,6 +250,7 @@ def _masked_select_backward_real(grad, mask, out):
         )
         _masked_select_backward_prefix_kernel[(1,)](
             part_sums,
+            total_count,
             num_programs,
             NP_BLOCK=scan_block,
             num_warps=4,
@@ -249,6 +267,8 @@ def _masked_select_backward_real(grad, mask, out):
             BLOCK_SIZE=block_size,
             num_warps=num_warps,
         )
+    if validate and grad.numel() < n_elements and grad.numel() < total_count.item():
+        raise RuntimeError("Number of elements of source < number of ones in mask")
     return out
 
 
@@ -268,26 +288,29 @@ def masked_select_backward(grad, input, mask):
         raise RuntimeError("grad, input, and mask must be on the same device")
 
     input_expanded, mask_expanded = torch.broadcast_tensors(input, mask)
-    mask_contiguous = mask_expanded.contiguous()
-    if grad.numel() < mask_contiguous.sum().item():
-        raise RuntimeError("Number of elements of source < number of ones in mask")
+    mask_contiguous = contiguous(mask_expanded)
     result = torch.empty_like(input_expanded, memory_format=torch.preserve_format)
     if result.numel() == 0:
         return result
 
     if input.is_complex():
-        grad_parts = torch.view_as_real(grad.contiguous())
+        physical_grad = grad.conj() if grad.is_conj() else grad
+        grad_parts = torch.view_as_real(physical_grad)
         real = torch.empty(
             input_expanded.shape, dtype=grad_parts.dtype, device=grad.device
         )
         imag = torch.empty_like(real)
+        _masked_select_backward_real(grad_parts[..., 0], mask_contiguous, real)
         _masked_select_backward_real(
-            grad_parts[..., 0].contiguous(), mask_contiguous, real
+            neg(grad_parts[..., 1]) if grad.is_conj() else grad_parts[..., 1],
+            mask_contiguous,
+            imag,
+            validate=False,
         )
-        _masked_select_backward_real(
-            grad_parts[..., 1].contiguous(), mask_contiguous, imag
-        )
-        contiguous_result = torch.complex(real, imag).to(input.dtype)
+        result_parts = torch.view_as_real(result)
+        copy_(result_parts[..., 0], real)
+        copy_(result_parts[..., 1], imag)
+        return result
     else:
         contiguous_result = (
             result
@@ -299,5 +322,5 @@ def masked_select_backward(grad, input, mask):
         _masked_select_backward_real(grad, mask_contiguous, contiguous_result)
 
     if contiguous_result is not result:
-        result.copy_(contiguous_result)
+        copy_(result, contiguous_result)
     return result
