@@ -154,7 +154,12 @@ from flag_gems.ops._sparse_semi_structured_mm import _sparse_semi_structured_mm
 from flag_gems.ops._thnn_differentiable_gru_cell_backward import (
     _thnn_differentiable_gru_cell_backward,
 )
+from flag_gems.ops._thnn_fused_gru_cell import (
+    _thnn_fused_gru_cell,
+    _thnn_fused_gru_cell_out,
+)
 from flag_gems.ops._thnn_fused_lstm_cell import _thnn_fused_lstm_cell
+from flag_gems.ops._thnn_fused_lstm_cell_backward import _thnn_fused_lstm_cell_backward
 from flag_gems.ops._thnn_fused_lstm_cell_backward_impl import (
     _thnn_fused_lstm_cell_backward_impl,
 )
@@ -222,6 +227,7 @@ from flag_gems.ops.alpha_dropout_ import alpha_dropout_
 from flag_gems.ops.amax import amax
 from flag_gems.ops.amin import amin, amin_
 from flag_gems.ops.aminmax import aminmax
+from flag_gems.ops.and_tensor import and_tensor
 from flag_gems.ops.angle import angle
 from flag_gems.ops.any import any, any_dim, any_dims
 from flag_gems.ops.arange import arange, arange_start
@@ -572,6 +578,7 @@ from flag_gems.ops.kron import kron
 from flag_gems.ops.kthvalue import kthvalue
 from flag_gems.ops.layernorm import layer_norm, layer_norm_backward
 from flag_gems.ops.lcm import lcm, lcm_
+from flag_gems.ops.ldexp import ldexp, ldexp_out
 from flag_gems.ops.ldl_factor_ex import ldl_factor_ex
 from flag_gems.ops.le import le, le_scalar
 from flag_gems.ops.le_ import le_, le_scalar_
@@ -883,6 +890,11 @@ from flag_gems.ops.select_backward import select_backward
 from flag_gems.ops.select_scatter import select_scatter
 from flag_gems.ops.selu import selu
 from flag_gems.ops.selu_ import selu_
+from flag_gems.ops.set_ import (
+    set_default,
+    set_source_tensor,
+    set_source_tensor_storage_offset,
+)
 from flag_gems.ops.sgn import sgn, sgn_out
 from flag_gems.ops.sgn_ import sgn_
 from flag_gems.ops.sigmoid import sigmoid, sigmoid_, sigmoid_backward
@@ -1223,7 +1235,10 @@ __all__ = [
     "_sparse_semi_structured_linear",
     "_sparse_semi_structured_mm",
     "_thnn_differentiable_gru_cell_backward",
+    "_thnn_fused_gru_cell",
+    "_thnn_fused_gru_cell_out",
     "_thnn_fused_lstm_cell",
+    "_thnn_fused_lstm_cell_backward",
     "_thnn_fused_lstm_cell_backward_impl",
     "_unique2",
     "_unsafe_masked_index",
@@ -1295,6 +1310,7 @@ __all__ = [
     "amin",
     "amin_",
     "aminmax",
+    "and_tensor",
     "angle",
     "any",
     "any_dim",
@@ -1694,6 +1710,8 @@ __all__ = [
     "layer_norm_backward",
     "lcm",
     "lcm_",
+    "ldexp",
+    "ldexp_out",
     "ldl_factor",
     "ldl_factor_ex",
     "le",
@@ -2051,6 +2069,9 @@ __all__ = [
     "select_scatter",
     "selu",
     "selu_",
+    "set_default",
+    "set_source_tensor",
+    "set_source_tensor_storage_offset",
     "sgn",
     "sgn_",
     "sgn_out",

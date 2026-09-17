@@ -7597,6 +7597,30 @@ ops:
   - Pointwise
   stages:
   - alpha: '5.4'
+- id: ldexp
+  description: Multiplies input by 2 raised to the power of other, element-wise.
+  for:
+  - ldexp.Tensor
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Pointwise
+  stages:
+  - alpha: '5.4'
+- id: ldexp_out
+  description: A variant of ldexp() that assigns the output to the out tensor.
+  for:
+  - ldexp.out
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Pointwise
+  stages:
+  - alpha: '5.4'
 - id: le
   description: Computes that `input` is less than or equal to `other` element-wise.
   for:
@@ -13127,6 +13151,40 @@ ops:
   stages:
   - beta: '5.0'
   - stable: '5.3'
+- id: set_
+  description: Reset tensor to an empty tensor with zero storage.
+  for:
+  - set_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: set_source_Tensor
+  description: Set tensor to share storage, shape, and strides with source tensor.
+  for:
+  - set_.source_Tensor
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: set_source_Tensor_storage_offset
+  description: Set tensor storage from another tensor with explicit offset, size,
+    stride.
+  for:
+  - set_.source_Tensor_storage_offset
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: sgn
   description: 'Computes the sign of each element in the input tensor, element-wise.
 
@@ -15453,10 +15511,46 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: thnn_fused_gru_cell
+  description: Computes the fused GRU cell forward pass and backward workspace.
+  for:
+  - _thnn_fused_gru_cell
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
+- id: thnn_fused_gru_cell_out
+  description: Writes the fused GRU cell output and workspace to provided tensors.
+  for:
+  - _thnn_fused_gru_cell.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: thnn_fused_lstm_cell
   description: Fused LSTM cell computation with optional input and hidden biases.
   for:
   - _thnn_fused_lstm_cell
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
+- id: thnn_fused_lstm_cell_backward
+  description: 'Computes and duplicates the input, hidden, and bias gradients produced
+    by
+
+    the fused LSTM cell backward implementation.'
+  for:
+  - _thnn_fused_lstm_cell_backward
   labels:
   - aten
   - KernelGen

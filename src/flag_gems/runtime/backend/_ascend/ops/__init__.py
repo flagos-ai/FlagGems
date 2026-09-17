@@ -139,6 +139,7 @@ from .sparse_sampled_addmm import sparse_sampled_addmm, sparse_sampled_addmm_out
 from .stack import stack
 from .swiglu import swiglu
 from .threshold import threshold, threshold_backward
+from .topk import topk
 from .triu import triu
 from .unique import _unique2
 from .unsafe_index import unsafe_index
@@ -328,6 +329,7 @@ __all__ = [
     "swiglu",
     "threshold",
     "threshold_backward",
+    "topk",
     "triu",
     "unsafe_index",
     "unsafe_index_put",

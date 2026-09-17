@@ -43,14 +43,6 @@ INIT_FILE = "src/flag_gems/__init__.py"
 
 # Patterns that map file paths to operator IDs
 OPS_FILE_RE = re.compile(r"^src/flag_gems/ops/(.+)\.py$")
-# Backend operator implementations, e.g.
-#   src/flag_gems/runtime/backend/_kunlunxin/ops/attention.py -> attention
-#   src/flag_gems/runtime/backend/_nvidia/hopper/ops/mm.py     -> mm
-# The operator id is the file stem, matching the generic ops/ convention and
-# the pytest marker each test uses.
-BACKEND_OPS_FILE_RE = re.compile(
-    r"^src/flag_gems/runtime/backend/_[^/]+/(?:[^/]+/)*ops/(.+)\.py$"
-)
 TEST_FILE_RE = re.compile(r"^tests/test_(.+)\.py$")
 
 
@@ -118,8 +110,8 @@ def derive_operators(changed_files: list[str], all_operators: dict) -> list[str]
             changed_ops.add("__operators_yaml_changed__")
             continue
 
-        # Case 2: ops source file changed (generic or backend-specific)
-        m = OPS_FILE_RE.match(filepath) or BACKEND_OPS_FILE_RE.match(filepath)
+        # Case 2: ops source file changed
+        m = OPS_FILE_RE.match(filepath)
         if m:
             stem = m.group(1)
             # Handle subdirectory ops like ops/sub/file.py -> sub/file
@@ -178,47 +170,23 @@ def main():
     parser = argparse.ArgumentParser(
         description="Derive changed operators from PR diff"
     )
-    parser.add_argument("--base", help="Base commit SHA (three-dot diff with --head)")
-    parser.add_argument("--head", help="Head commit SHA")
-    parser.add_argument(
-        "--changed-files",
-        help="Space- or newline-separated list of changed file paths, used "
-        "instead of a git diff. Handy for callers (e.g. tools/test-op.sh) that "
-        "already have the file list but not the base/head SHAs.",
-    )
-    parser.add_argument(
-        "--ops-only",
-        action="store_true",
-        help="Print only the derived operator ids (one per line) to stdout, "
-        "with no diagnostics. Intended for shell consumption.",
-    )
+    parser.add_argument("--base", required=True, help="Base commit SHA")
+    parser.add_argument("--head", required=True, help="Head commit SHA")
     args = parser.parse_args()
 
-    if args.changed_files:
-        changed_files = [f for f in args.changed_files.split() if f.strip()]
-    elif args.base and args.head:
-        changed_files = get_diff_files(args.base, args.head)
-    else:
-        parser.error("provide either --changed-files or both --base and --head")
+    print(f"Comparing {args.base}..{args.head}")
 
-    all_operators = load_operators_yaml()
-    changed_ops = derive_operators(changed_files, all_operators)
-
-    if args.ops_only:
-        # Machine-readable: just the ids, one per line.
-        for op in changed_ops:
-            print(op)
-        return
-
-    if args.base and args.head and not args.changed_files:
-        print(f"Comparing {args.base}..{args.head}")
+    changed_files = get_diff_files(args.base, args.head)
     print(f"Changed files ({len(changed_files)}):")
     for f in changed_files[:20]:
         print(f"  {f}")
     if len(changed_files) > 20:
         print(f"  ... and {len(changed_files) - 20} more")
 
+    all_operators = load_operators_yaml()
     print(f"Total operators in registry: {len(all_operators)}")
+
+    changed_ops = derive_operators(changed_files, all_operators)
     print(f"Changed operators ({len(changed_ops)}):")
     for op in changed_ops[:20]:
         print(f"  {op}")

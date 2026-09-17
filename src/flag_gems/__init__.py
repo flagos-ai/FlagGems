@@ -89,7 +89,7 @@ def torch_has_aten_overload(operator, overload):
 
 _FULL_CONFIG = (
     ("__and__.Scalar", bitwise_and_scalar),
-    ("__and__.Tensor", bitwise_and_tensor),
+    ("__and__.Tensor", and_tensor),
     ("__iand__.Scalar", __iand___scalar),
     ("__iand__.Tensor", __iand___tensor),
     ("__ilshift__.Tensor", __ilshift__),
@@ -300,7 +300,10 @@ _FULL_CONFIG = (
         "_thnn_differentiable_gru_cell_backward",
         _thnn_differentiable_gru_cell_backward,
     ),
+    ("_thnn_fused_gru_cell", _thnn_fused_gru_cell),
+    ("_thnn_fused_gru_cell.out", _thnn_fused_gru_cell_out),
     ("_thnn_fused_lstm_cell", _thnn_fused_lstm_cell),
+    ("_thnn_fused_lstm_cell_backward", _thnn_fused_lstm_cell_backward),
     ("_thnn_fused_lstm_cell_backward_impl", _thnn_fused_lstm_cell_backward_impl),
     (
         "_to_copy",
@@ -822,6 +825,8 @@ _FULL_CONFIG = (
     ("kthvalue", kthvalue),
     ("lcm", lcm),
     ("lcm_", lcm_),
+    ("ldexp.out", ldexp_out),
+    ("ldexp.Tensor", ldexp),
     ("le.Scalar", le_scalar),
     ("le.Tensor", le),
     ("le_.Scalar", le_scalar_),
@@ -1194,6 +1199,9 @@ _FULL_CONFIG = (
     ("select_scatter", select_scatter),
     ("selu", selu),
     ("selu_", selu_),
+    ("set_", set_default),
+    ("set_.source_Tensor", set_source_tensor),
+    ("set_.source_Tensor_storage_offset", set_source_tensor_storage_offset),
     ("sgn", sgn),
     ("sgn.out", sgn_out),
     ("sgn_", sgn_),
