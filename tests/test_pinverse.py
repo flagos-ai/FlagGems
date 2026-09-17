@@ -73,6 +73,15 @@ def test_pinverse_rcond():
 
 
 @pytest.mark.pinverse
+def test_pinverse_batch_above_cuda_grid_y_limit():
+    inp = torch.tensor([[2.0, 1.0], [0.0, 3.0]], device=flag_gems.device)
+    inp = inp.expand(65536, 2, 2).contiguous()
+    reference = torch.pinverse(utils.to_reference(inp))
+    result = flag_gems.pinverse(inp)
+    utils.gems_assert_close(result, reference, inp.dtype)
+
+
+@pytest.mark.pinverse
 def test_pinverse_noncontiguous():
     base = _make_well_conditioned((2, 3, 5), torch.float32, flag_gems.device)
     inp = base.transpose(-2, -1)

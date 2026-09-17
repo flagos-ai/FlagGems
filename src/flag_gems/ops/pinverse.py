@@ -20,7 +20,8 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.runtime import torch_device_fn
+from flag_gems.ops.contiguous import contiguous
+from flag_gems.runtime import device, torch_device_fn
 from flag_gems.utils import libentry
 
 from .svd import svd
@@ -51,9 +52,10 @@ def _pinverse_reconstruct_kernel(
     BLOCK_N: tl.constexpr,
     BLOCK_K: tl.constexpr,
 ):
-    tile = tl.program_id(0)
-    batch = tl.program_id(1)
     tiles_m = tl.cdiv(M, BLOCK_M)
+    tiles_per_batch = tiles_m * tl.cdiv(N, BLOCK_N)
+    batch = tl.program_id(0) // tiles_per_batch
+    tile = tl.program_id(0) % tiles_per_batch
     tile_n = tile // tiles_m
     tile_m = tile - tile_n * tiles_m
 
@@ -110,9 +112,9 @@ def pinverse(inp, rcond=1e-15):
 
     if inp.ndim < 2:
         raise RuntimeError("pinverse: expected a tensor with at least 2 dimensions")
-    if not inp.is_cuda or inp.dtype != torch.float32:
+    if inp.device.type != device.name or inp.dtype != torch.float32:
         raise NotImplementedError(
-            "FlagGems pinverse currently supports only float32 CUDA tensors"
+            f"FlagGems pinverse currently supports only float32 {device.name} tensors"
         )
     if inp.requires_grad:
         raise NotImplementedError(
@@ -128,7 +130,7 @@ def pinverse(inp, rcond=1e-15):
         return torch.empty((*inp.shape[:-2], n, m), dtype=inp.dtype, device=inp.device)
 
     if not inp.is_contiguous():
-        inp = inp.contiguous()
+        inp = contiguous(inp)
 
     result = svd(inp, some=True, compute_uv=True)
 
@@ -142,7 +144,7 @@ def pinverse(inp, rcond=1e-15):
     block_m = 16 if m <= 16 else 32
     block_n = 16 if n <= 16 else 32
     block_k = 32
-    grid = (triton.cdiv(n, block_n) * triton.cdiv(m, block_m), batch)
+    grid = (triton.cdiv(n, block_n) * triton.cdiv(m, block_m) * batch,)
     with torch_device_fn.device(inp.device):
         _pinverse_reconstruct_kernel[grid](
             u,
