@@ -1,17 +1,3 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import logging
 
 import torch
@@ -396,12 +382,6 @@ def avg_pool2d_forward_flat_constexpr_kernel(
     divisor_override,
     BLOCK_SIZE: tl.constexpr,
 ):
-    # Flat layout over (n, c, h, w) with the pooling geometry as constexpr so
-    # the per-lane decomposition and window math compile to cheap ALU (no
-    # runtime integer division) and the collect addresses stay affine.
-    # Loads are made unconditional (clamped index, only the outer tail mask)
-    # with value-level tl.where selects; masked loads with compound i1
-    # conditions are a slow path on the XPU backend.
     offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     output_mask = offsets < numel
 
@@ -600,9 +580,6 @@ def avg_pool2d_backward_flat_kernel(
     divisor_override,
     BLOCK_SIZE: tl.constexpr,
 ):
-    # Flat layout over (n, c, h, w) with the pooling geometry as constexpr so
-    # the per-lane decomposition and window math compile to cheap ALU (no
-    # runtime integer division) and the gather addresses stay affine.
     offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     input_mask = offsets < numel
 
@@ -659,8 +636,93 @@ def avg_pool2d_backward_flat_kernel(
             )
             divisor = tl.where(divisor == 0, 1.0, divisor)
 
-            # Unconditional in-bounds load (clamped index) + value-level select;
-            # masked loads with compound i1 conditions are a slow path on XPU.
+            c_h_out = tl.minimum(tl.maximum(h_out, 0), out_h - 1)
+            c_w_out = tl.minimum(tl.maximum(w_out, 0), out_w - 1)
+            grad_out_ptr = grad_output_base_ptr + c_h_out * out_w + c_w_out
+            grad_out = tl.load(grad_out_ptr, mask=input_mask, other=0.0)
+            grad_acc += tl.where(out_mask, grad_out / divisor, 0.0)
+
+    tl.store(
+        grad_input_ptr + offsets,
+        grad_acc.to(grad_input_ptr.type.element_ty),
+        mask=input_mask,
+    )
+
+
+@libentry()
+@triton.jit
+def avg_pool2d_backward_tap_kernel(
+    grad_output_ptr,
+    grad_input_ptr,
+    numel,
+    in_h: tl.constexpr,
+    in_w: tl.constexpr,
+    out_h: tl.constexpr,
+    out_w: tl.constexpr,
+    kernel_h: tl.constexpr,
+    kernel_w: tl.constexpr,
+    stride_h: tl.constexpr,
+    stride_w: tl.constexpr,
+    padding_h: tl.constexpr,
+    padding_w: tl.constexpr,
+    KH_TAPS: tl.constexpr,
+    KW_TAPS: tl.constexpr,
+    COUNT_INCLUDE_PAD: tl.constexpr,
+    divisor_override,
+    BLOCK_SIZE: tl.constexpr,
+):
+    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    input_mask = offsets < numel
+
+    w_in = offsets % in_w
+    hw_tmp = offsets // in_w
+    h_in = hw_tmp % in_h
+    nc_idx = hw_tmp // in_h
+
+    grad_output_base_ptr = grad_output_ptr + nc_idx * (out_h * out_w)
+    grad_acc = tl.zeros((BLOCK_SIZE,), dtype=tl.float32)
+
+    h_num = h_in + padding_h
+    h_base = h_num // stride_h
+    h_rem = h_num - h_base * stride_h
+    w_num = w_in + padding_w
+    w_base = w_num // stride_w
+    w_rem = w_num - w_base * stride_w
+
+    for jh in tl.static_range(0, KH_TAPS):
+        kh = h_rem + jh * stride_h
+        h_out = h_base - jh
+        h_ok = (kh < kernel_h) & (h_out >= 0) & (h_out < out_h)
+        h_start = h_out * stride_h - padding_h
+        if COUNT_INCLUDE_PAD:
+            h_lower, h_upper = -padding_h, in_h + padding_h
+        else:
+            h_lower, h_upper = 0, in_h
+        h_first = tl.maximum(h_lower - h_start, 0)
+        h_last = tl.minimum(h_upper - h_start, kernel_h)
+        h_count = tl.maximum(h_last - h_first, 0)
+        for jw in tl.static_range(0, KW_TAPS):
+            kw = w_rem + jw * stride_w
+            w_out = w_base - jw
+            out_mask = (
+                input_mask & h_ok & (kw < kernel_w) & (w_out >= 0) & (w_out < out_w)
+            )
+            w_start = w_out * stride_w - padding_w
+            if COUNT_INCLUDE_PAD:
+                w_lower, w_upper = -padding_w, in_w + padding_w
+            else:
+                w_lower, w_upper = 0, in_w
+            w_first = tl.maximum(w_lower - w_start, 0)
+            w_last = tl.minimum(w_upper - w_start, kernel_w)
+            w_count = tl.maximum(w_last - w_first, 0)
+            default_divisor = (h_count * w_count).to(tl.float32)
+            divisor = tl.where(
+                divisor_override != 0,
+                divisor_override + default_divisor * 0,
+                default_divisor,
+            )
+            divisor = tl.where(divisor == 0, 1.0, divisor)
+
             c_h_out = tl.minimum(tl.maximum(h_out, 0), out_h - 1)
             c_w_out = tl.minimum(tl.maximum(w_out, 0), out_w - 1)
             grad_out_ptr = grad_output_base_ptr + c_h_out * out_w + c_w_out
@@ -690,6 +752,7 @@ def avg_pool2d_backward(
         raise ValueError("divisor_override cannot be zero")
 
     grad_output = grad_output.contiguous()
+    input = input.contiguous()
 
     kernel_h, kernel_w, stride_h, stride_w, padding_h, padding_w = _parse_pool_params(
         kernel_size, stride, padding
@@ -698,16 +761,18 @@ def avg_pool2d_backward(
     in_n, in_c, in_h, in_w = input.shape
     out_h, out_w = grad_output.shape[2], grad_output.shape[3]
 
-    grad_input = torch.zeros_like(input)
+    grad_input = torch.empty_like(input)
 
     if grad_output.numel() == 0:
-        return grad_input
+        return torch.zeros_like(input)
 
     numel = grad_input.numel()
+    kh_taps = (kernel_h + stride_h - 1) // stride_h
+    kw_taps = (kernel_w + stride_w - 1) // stride_w
 
     grid = lambda meta: (triton.cdiv(numel, meta["BLOCK_SIZE"]),)
 
-    avg_pool2d_backward_flat_kernel[grid](
+    avg_pool2d_backward_tap_kernel[grid](
         grad_output,
         grad_input,
         numel,
@@ -721,6 +786,8 @@ def avg_pool2d_backward(
         stride_w,
         padding_h,
         padding_w,
+        KH_TAPS=kh_taps,
+        KW_TAPS=kw_taps,
         COUNT_INCLUDE_PAD=count_include_pad,
         divisor_override=divisor_override if divisor_override is not None else 0.0,
         BLOCK_SIZE=1024,

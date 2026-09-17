@@ -1,35 +1,3 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-# Kunlunxin (XPU) override of dropout / dropout_backward.
-#
-# History:
-#  - 2026-07-16: removed @triton.heuristics launch-supplied BLOCK/num_warps
-#    (per-launch recompile pathology, IR explosion); explicit Python launch
-#    config + @libentry caching.
-#  - 2026-08-13 (this round): performance round 2.
-#    * tl.philox n_rounds 10 -> 4: philox math dominates the kernel (~3.0 ms of
-#      ~4.7 ms for 16.7M fp16 elements). A fresh-compile sweep over the full
-#      benchmark matrix (12 shapes x 3 dtypes x {B512/w4, B1024/w8, B1024/w16,
-#      B2048/w16, B4096/w32}) showed n_rounds=4 + bigger tiles is the sweet
-#      spot (n_rounds=2 regresses at BLOCK=4096); mask-keep fraction stays
-#      0.5000 on 67M samples, so the RNG stays statistically uniform.
-#    * launch config for N > 65536 -> BLOCK=4096 / num_warps=32 (per-shape
-#      sweep: 4x fewer CTAs, ~1.4-2x faster on all large shapes).
-#    * NEED_MASK constexpr: when N % (BLOCK*8) == 0 the loads/stores drop the
-#      boundary mask entirely (contiguous DMA path).
-#    * y = x * scale * mask (bool multiply) instead of tl.where -> same speed
-#      in probes, keeps the mask store on the fast path.
 import logging
 
 import torch
@@ -66,7 +34,6 @@ def dropout_forward_kernel(
     c0 = (philox_offset & 0xFFFFFFFF).to(tl.uint32)
     c1 = ((philox_offset >> 32) & 0xFFFFFFFF).to(tl.uint32)
 
-    # First set of 4 random numbers
     i4_0 = tl.program_id(0) * BLOCK * 2 + tl.arange(0, BLOCK)
     c0_0 = c0 + i4_0
     _O = c0_0 * 0
@@ -76,7 +43,6 @@ def dropout_forward_kernel(
     r2 = uint_to_uniform_float(r2)
     r3 = uint_to_uniform_float(r3)
 
-    # Second set of 4 random numbers
     i4_1 = tl.program_id(0) * BLOCK * 2 + BLOCK + tl.arange(0, BLOCK)
     c0_1 = c0 + i4_1
     _O1 = c0_1 * 0
@@ -180,21 +146,17 @@ def dropout_backward_kernel(
     BLOCK: tl.constexpr,
     NEED_MASK: tl.constexpr,
 ):
-    # 2026-08-15 (perf round): the mask tensor is passed as an int8 view
-    # (bool tensor storage is i8). On XPU, loading bool (i1) and multiplying
-    # it into the float lane costs ~20-25% more than loading the same bytes
-    # as i8 and casting to the grad dtype; `m.to(dy.dtype)` stays vectorized.
     offset = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     if NEED_MASK:
         mask = offset < N
         m = tl.load(dropout_mask + offset, mask=mask, other=0)
         dy = tl.load(DY + offset, mask=mask, other=0)
-        dx = dy * m.to(dy.dtype) * scale
+        dx = dy * (m.to(tl.int32) & 1).to(dy.dtype) * scale
         tl.store(DX + offset, dx, mask=mask)
     else:
         m = tl.load(dropout_mask + offset)
         dy = tl.load(DY + offset)
-        dx = dy * m.to(dy.dtype) * scale
+        dx = dy * (m.to(tl.int32) & 1).to(dy.dtype) * scale
         tl.store(DX + offset, dx)
 
 
@@ -203,10 +165,6 @@ ROUNDS = 4
 
 
 def _dropout_launch_config(N):
-    # Explicit Python launch config (never heuristic-supplied on XPU).
-    # ROUNDS=4 philox puts the kernel cost on memory: BLOCK=4096/num_warps=32
-    # wins on every shape >= 256K elements (per-shape sweep 2026-08-13); keep
-    # the small-N configs from the old heuristic values (512/w4, 1024/w8).
     if N <= 512:
         return 512, 4
     elif N <= 1024:
@@ -218,12 +176,6 @@ def _dropout_launch_config(N):
 
 
 def _dropout_backward_launch_config(N, dtype):
-    # dropout_backward is a pure masked scale (no philox). On XPU the mask
-    # byte-load path dominates and per-CTA launch cost is significant: with
-    # the int8-view mask kernel, mid/large N prefer big 1-D tiles with few
-    # CTAs (swept 2026-08-15; fp32 needs a smaller tile than fp16/bf16 at
-    # the same element count because its 4-byte chunk is 2x the traffic).
-    # Tiny shapes keep the launch-floor config from the old heuristic.
     if N <= 65536:
         return 1024, 16
     if N <= 4 * 1024 * 1024:

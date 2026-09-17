@@ -1,0 +1,197 @@
+#include "xpu/kernel/xtdk.h"
+#include "xpu/kernel/xtdk_simd.h"
+#include "xpu/kernel/xtdk_fp16.h"
+
+// masked_fill_ (in-place, scalar value) raw payload for P800 xpu3 (cluster
+// path). One Triton program == one cluster (64 cores), 12 programs.
+//
+// Semantics: out = m ? V : x (elementwise, per-lane select), bit-exact.
+//
+// ---- per-lane select ----
+// There is no hardware select and a C++ vector ternary lowers to a SCALAR
+// (uniform) select, so the per-lane select is synthesized as the single vendor
+// masked-HOLD bitwise-and:
+//   vvand_*_mh(y, ONES, x, m) == m ? (y & ONES) : x == m ? y : x
+// with ONES the all-ones element bit pattern (a NaN value; the AND is
+// bitwise, exact for every value including -0.0, inf and NaN).
+//   * fp16/bf16 : float16x32_t (32 lanes); the select runs on the RAW
+//                 16-BIT PATTERNS (bitwise mh-vand, exact for bf16 too).
+//   * fp32      : float32x16_t (16 lanes), one mh-vand per 16 lanes.
+//
+// ---- mask (1 byte per element, bool 0x00/0x01) -> 16-bit lane masks ----
+// A 64-byte chunk of mask is loaded as one int8x64 register; each 16-byte
+// group is converted to an f32 vector of 0.0f/1.0f (vfix82float_ll/lh/hl/hh)
+// and vvneq_float32x16(., 0.0f) turns that into a 16-bit lane mask (the same
+// compare-mask primitive the lt/ne payloads produce; the f32 compare masks
+// carry garbage above bit 15, so they must be masked with 0xFFFF before
+// combination). Four 16-bit masks concatenate into the 32-bit mask for the
+// two f16x32 groups. The f16 compare (vvlt) would be the opposite polarity
+// (byte==0 selects), so the !=0 form is used.
+//
+// ---- pipeline ----
+// Double-buffered chunk structure of nan_to_num_raw.xpu (the proven twin),
+// with THREE streams (x chunk in, bool-mask chunk in, x chunk out; the
+// output cannot go in-place into the input buffer because the LM2GM of
+// chunk c-1 and the GM2LM of chunk c+1 would race on the same buffer). The
+// vendor contract requires an mfence_lm_gm() between the last LM store of a
+// chunk and the LM2GM that reads it: the loop-top fence covers the deferred
+// in-loop output DMA, and an explicit fence sits in front of the final
+// post-loop output DMA (without it the DMA may observe stale LM data in the
+// last chunk of every core); the final mfence afterwards waits for the DMA
+// to complete.
+//
+// CHUNK_BYTES: 1280 is the largest 64B-aligned chunk keeping 2 x-chunks +
+// 2 out-chunks + 2 mask-chunks (5*C bytes) under the compiler's local-memory
+// budget (nan_to_num proves 2+2x1792 = 7168B).
+
+// type codes
+#define T_F32 0
+#define T_F16 1
+#define T_BF16 2
+
+#define CHUNK_BYTES 1280
+#define NBUF 2
+// output is same-size as input (in-place), so the obuf is a full chunk.
+#define OBUF_BYTES CHUNK_BYTES
+// mask is 1 byte per element: CHUNK_BYTES/2 covers the f16/bf16 worst case
+// (esz >= 2); f32 uses CHUNK_BYTES/4.
+#define MBUF_BYTES (CHUNK_BYTES / 2)
+
+// ---------------- fp32: 64 lanes per iteration (4x f32x16) ----------------
+static __device__ __attribute__((always_inline)) void proc_f32(
+    __local__ const char *buf, __local__ const char *mbuf, __local__ char *obuf,
+    int len, int value_bits) {
+  __local__ const float *f = (__local__ const float *)buf;
+  __local__ float *o = (__local__ float *)obuf;
+  float32x16_t v_val(*(float *)&value_bits);
+  int ob = -1;
+  float32x16_t v_ones(*(float *)&ob);
+  float32x16_t vzero(0.0f);
+  int nv = len >> 6;
+  for (int v = 0; v < nv; ++v) {
+    int base = v << 6;
+    int8x64_t mm = vload_lm_int8x64_mz(mbuf + base);
+    for (int g = 0; g < 4; ++g) {
+      float32x16_t x = *(__local__ const float32x16_t *)(f + base + (g << 4));
+      float32x16_t mf;
+      if (g == 0)
+        mf = vfix82float_ll(mm);
+      else if (g == 1)
+        mf = vfix82float_lh(mm);
+      else if (g == 2)
+        mf = vfix82float_hl(mm);
+      else
+        mf = vfix82float_hh(mm);
+      int m = (int)((unsigned)vvneq_float32x16(mf, vzero) & 0xFFFFu);
+      float32x16_t r = vvand_float32x16_mh(v_val, v_ones, x, m);
+      *(__local__ float32x16_t *)(o + base + (g << 4)) = r;
+    }
+  }
+  for (int i = nv << 6; i < len; ++i)
+    if (mbuf[i]) o[i] = *(float *)&value_bits;
+}
+
+// ---------------- fp16/bf16: 64 elems per iteration (2x f16x32) ------------
+static __device__ __attribute__((always_inline)) void proc_f16(
+    __local__ const char *buf, __local__ const char *mbuf, __local__ char *obuf,
+    int len, int value_bits) {
+  __local__ const unsigned short *w = (__local__ const unsigned short *)buf;
+  __local__ unsigned short *o = (__local__ unsigned short *)obuf;
+  __half_raw hv, hones;
+  /*for bf16 `value_bits` holds the 16-bit bit pattern in the low half (host
+    sign-extends i16->i32), so the splat is built from (unsigned short)value_bits;
+    the mh-vand is bitwise so the pattern is used as-is for both f16/bf16.*/
+  hv.x = (unsigned short)value_bits;
+  hones.x = 0xFFFF;
+  float16x32_t v_v((_Float16)half(hv)), v_ones((_Float16)half(hones));
+  float32x16_t vzero(0.0f);
+  int nv = len >> 6;
+  for (int v = 0; v < nv; ++v) {
+    int base = v << 6;
+    float16x32_t x0 = vload_lm_float16x32(w + base);
+    float16x32_t x1 = vload_lm_float16x32(w + base + 32);
+    int8x64_t mm = vload_lm_int8x64_mz(mbuf + base);
+    float32x16_t mf0 = vfix82float_ll(mm);
+    float32x16_t mf1 = vfix82float_lh(mm);
+    float32x16_t mf2 = vfix82float_hl(mm);
+    float32x16_t mf3 = vfix82float_hh(mm);
+    unsigned m0 = (unsigned)vvneq_float32x16(mf0, vzero) & 0xFFFFu;
+    unsigned m1 = (unsigned)vvneq_float32x16(mf1, vzero) & 0xFFFFu;
+    unsigned m2 = (unsigned)vvneq_float32x16(mf2, vzero) & 0xFFFFu;
+    unsigned m3 = (unsigned)vvneq_float32x16(mf3, vzero) & 0xFFFFu;
+    float16x32_t r0 = vvand_float16x32_mh(v_v, v_ones, x0, (int)(m0 | (m1 << 16)));
+    float16x32_t r1 = vvand_float16x32_mh(v_v, v_ones, x1, (int)(m2 | (m3 << 16)));
+    vstore_lm_float16x32(o + base, r0);
+    vstore_lm_float16x32(o + base + 32, r1);
+  }
+  for (int i = nv << 6; i < len; ++i)
+    if (mbuf[i]) o[i] = (unsigned short)value_bits;
+}
+
+extern "C" __device__ void masked_fill_raw_(
+    _global_ptr_ char *in,     // x (in-place: out == in)
+    _global_ptr_ const char *mask, // 1 byte per element (0x00/0x01)
+    int numel, int esz, int type_code,
+    int value_bits,
+    int chunk_start, int chunk_count) {
+  int cid = core_id();
+  int ncores = core_num();
+  int chunk_elems = CHUNK_BYTES / esz;  // esz | CHUNK_BYTES, so 64B-aligned
+  int total_chunks = (numel + chunk_elems - 1) / chunk_elems;
+  int cend = chunk_start + chunk_count;
+  if (cend > total_chunks) cend = total_chunks;
+  int per = (chunk_count + ncores - 1) / ncores;
+  int c0 = chunk_start + cid * per;
+  int c1 = c0 + per;
+  if (c1 > cend) c1 = cend;
+  if (c0 >= c1) return;
+
+  __attribute__((aligned(64))) __local__ char ibuf[NBUF][CHUNK_BYTES];
+  __attribute__((aligned(64))) __local__ char obuf[NBUF][OBUF_BYTES];
+  __attribute__((aligned(64))) __local__ char mbuf[NBUF][MBUF_BYTES];
+
+  int cur = 0;
+  {
+    int len = numel - c0 * chunk_elems;
+    if (len > chunk_elems) len = chunk_elems;
+    GM2LM_ASYNC(in + (long long)c0 * CHUNK_BYTES, ibuf[0], len * esz);
+    GM2LM_ASYNC(mask + (long long)c0 * chunk_elems, mbuf[0], len);
+  }
+  int poff = -1, plen = 0;
+  for (int c = c0; c < c1; ++c) {
+    int off = c * chunk_elems;
+    int len = numel - off;
+    if (len > chunk_elems) len = chunk_elems;
+    mfence_lm_gm();
+    if (poff >= 0)
+      LM2GM_ASYNC(obuf[cur ^ 1], in + (long long)poff * esz, plen * esz);
+    if (c + 1 < c1) {
+      int nlen = numel - (c + 1) * chunk_elems;
+      if (nlen > chunk_elems) nlen = chunk_elems;
+      int nbytes = nlen * esz;
+      GM2LM_ASYNC(in + (long long)(c + 1) * CHUNK_BYTES, ibuf[cur ^ 1],
+                  nbytes);
+      GM2LM_ASYNC(mask + (long long)(c + 1) * chunk_elems, mbuf[cur ^ 1],
+                  nlen);
+    }
+    switch (type_code) {
+      case T_F32:
+        proc_f32(ibuf[cur], mbuf[cur], obuf[cur], len, value_bits);
+        break;
+      case T_F16:
+      case T_BF16:
+      default:
+        proc_f16(ibuf[cur], mbuf[cur], obuf[cur], len, value_bits);
+        break;
+    }
+    poff = off;
+    plen = len;
+    cur ^= 1;
+  }
+  // vendor contract: an mfence between the last LM stores and the output DMA
+  // that reads them, then one after for completion.
+  mfence_lm_gm();
+  if (poff >= 0)
+    LM2GM_ASYNC(obuf[cur ^ 1], in + (long long)poff * esz, plen * esz);
+  mfence_lm_gm();
+}

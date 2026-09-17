@@ -1,8 +1,3 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-
 import logging
 
 import torch
@@ -102,7 +97,7 @@ def im2col(input, kernel_size, dilation=1, padding=0, stride=1):
     total = output.numel()
     if total:
         x = x.contiguous()
-        block = 256
+        block = 2048 if total >= 4096 else 256
         with torch_device_fn.device(input.device):
             _im2col_kernel[(triton.cdiv(total, block),)](
                 x,

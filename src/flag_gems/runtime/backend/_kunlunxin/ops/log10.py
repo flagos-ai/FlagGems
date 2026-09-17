@@ -24,7 +24,7 @@ config_ = CodeGenConfig(
 @pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")], config=config_)
 @triton.jit
 def log10_func(x):
-    return tl.log(x.to(tl.float32)) / 2.302585092994046
+    return tl.log(x.to(tl.float32)) * 0.4342944819032518
 
 
 def log10(A):
@@ -32,6 +32,8 @@ def log10(A):
 
 
 def log10_(A):
+    if not A.is_floating_point():
+        raise TypeError(f"log10_ does not support dtype {A.dtype}")
     log10_func(A, out0=A)
     return A
 
