@@ -111,7 +111,77 @@ class GeneralOpRegistrar:
         return tuple(item[3]) if len(item) > 3 else ()
 
     def _normalized_config(self, item):
-        return item[0], item[1], self._extra_dispatch_keys(item)
+        key, fn = item[0], item[1]
+        return (
+            key,
+            self._resolve_live_override(key, fn),
+            self._extra_dispatch_keys(item),
+        )
+
+    def _resolve_live_override(self, key, fn):
+        # Config entries capture a function reference at import time. If that
+        # op has since been overridden on the flag_gems module (e.g. via
+        # DynamicOpOverride), prefer the live attribute so registration picks
+        # up the override instead of the stale reference.
+        #
+        # The dispatch key alone is ambiguous for naming purposes: several
+        # overloads of one op (e.g. "_softmax" and "_softmax.out") share a
+        # dispatch-key prefix but are bound to distinct functions (softmax
+        # vs. softmax_out). To avoid colliding those onto the same module
+        # attribute, look the key up in the authoritative _FULL_CONFIG to
+        # find its originally-bound function, and resolve by *that*
+        # function's own __name__.
+        import sys
+
+        module = sys.modules.get("flag_gems")
+        if module is None:
+            return fn
+
+        has_full_config = self._module_has_full_config(module)
+        original_func = self._original_func_for_key(module, key)
+
+        if original_func is None and has_full_config:
+            # _FULL_CONFIG is the authoritative source of registrable ops. If
+            # it exists on the module but doesn't contain this key, the key
+            # was never a real registration to begin with -- registering (or
+            # overriding) it is not permitted.
+            raise ValueError(
+                f"Key '{key}' was not found in flag_gems._FULL_CONFIG; "
+                "refusing to register/override an op that doesn't exist."
+            )
+
+        func_name = getattr(original_func, "__name__", None) if original_func else None
+
+        if not func_name or func_name == "<lambda>":
+            # No _FULL_CONFIG on the module at all (e.g. a synthetic config
+            # passed directly, as in unit tests), so there's nothing
+            # authoritative to check the key against. Fall back to deriving
+            # a name from the key itself; this is only reached when there is
+            # no _FULL_CONFIG to disambiguate against in the first place, so
+            # the overload-collision risk above doesn't apply here.
+            original_func = fn
+            func_name = key.split(".", 1)[0]
+            if func_name.startswith("_") and not func_name.startswith("__"):
+                func_name = func_name[1:]
+
+        current = getattr(module, func_name, None)
+        if current is not None and current is not original_func:
+            return current
+        return fn
+
+    @staticmethod
+    def _module_has_full_config(module):
+        return getattr(module, "_FULL_CONFIG", None) is not None
+
+    def _original_func_for_key(self, module, key):
+        key_to_func = getattr(self, "_full_config_key_to_func", None)
+        if key_to_func is None:
+            key_to_func = {}
+            for entry in getattr(module, "_FULL_CONFIG", None) or ():
+                if len(entry) >= 2:
+                    key_to_func.setdefault(entry[0], entry[1])
+            self._full_config_key_to_func = key_to_func
+        return key_to_func.get(key)
 
     def config_filter(self):
         self.config = [

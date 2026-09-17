@@ -21,6 +21,7 @@ import torch
 import yaml
 
 import flag_gems
+from flag_gems.cli_override import add_override_arguments, apply_overrides_from_args
 from flag_gems.runtime import torch_device_fn
 
 from . import consts
@@ -229,6 +230,9 @@ def pytest_addoption(parser):
     except ValueError:
         pass
 
+    # Add dynamic operator override options
+    add_override_arguments(parser)
+
 
 def pytest_configure(config):
     global Config  # noqa: F824
@@ -299,6 +303,15 @@ def pytest_configure(config):
         recordLogger.addHandler(handler)
         recordLogger.setLevel(logging.INFO)
         emit_record_logger("Benchmark record logger enabled")
+
+    # Apply dynamic operator overrides
+    config._override_registry = apply_overrides_from_args(config.option)
+
+
+def pytest_unconfigure(config):
+    """Cleanup: restore all overridden operators."""
+    if hasattr(config, "_override_registry"):
+        config._override_registry.restore_all()
 
 
 @pytest.fixture(scope="session", autouse=True)
