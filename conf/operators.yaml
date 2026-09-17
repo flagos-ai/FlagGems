@@ -56,6 +56,17 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: _unique
+  description: Triton kernel implementation for _unique.
+  for:
+  - _unique
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - stable: '2.1'
 - id: _weight_norm
   description: 'Reparameterizes a module''s weight tensor by decoupling its magnitude
     (g)

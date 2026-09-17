@@ -313,6 +313,7 @@ _FULL_CONFIG = (
         to_copy,
         lambda: version.parse(torch.__version__) >= version.parse("2.4"),
     ),
+    ("_unique", _unique),
     ("_unique2", _unique2),
     ("_unsafe_index", unsafe_index),
     ("_unsafe_index_put", unsafe_index_put),
