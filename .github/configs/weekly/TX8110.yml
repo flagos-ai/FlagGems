@@ -25,7 +25,7 @@ runner_labels: tx8110-flaggems-weekly
 use_container: true
 
 # Container image for this backends
-container_image: harbor.baai.ac.cn/flaggems/flaggems-test-tsingmicro-tx8110:20260915
+container_image: harbor.baai.ac.cn/flaggems/flaggems-test-tsingmicro-tx8110:20260917
 
 # Container volumes to mount for this backends
 container_volumes:

@@ -209,38 +209,6 @@ jobs:
             grep -E '(conda\.sh|conda activate|set_env\.sh|\.local/bin/env)' /root/.bashrc \
               | sed 's#\$HOME\/\.local#/root\/\.local#g' >> "$HOME/.bash_profile" || true
           fi
-          # tsingmicro: the FlagTree/LLVM env is baked into the image's
-          # /etc/profile and /root/.bashrc. A `bash --login` shell sources
-          # /etc/profile, so those exports normally apply automatically. But
-          # GitHub job containers force HOME=/github/home, so /root/.bashrc is
-          # never sourced, and if the image's /etc/profile guards additions for
-          # interactive shells only ([ "$PS1" ]) they would be skipped in CI.
-          # Append the exports to $HOME/.bash_profile so every later
-          # `bash --login` step (deps install / GPU check / run tests) has them
-          # regardless. The single-quoted lines keep ${...} literal so each
-          # login shell expands them at source time, preserving prepend order
-          # for PYTHONPATH/PATH/LD_LIBRARY_PATH.
-          if [ "${{ matrix.vendor }}" = "TsingMicro" ]; then
-            echo "[TsingMicro env] Appending FlagTree/LLVM env to $HOME/.bash_profile"
-            {
-              echo 'export TX8_DEPS_ROOT=/root/.flagtree/tsingmicro/tx8_deps'
-              echo 'export LLVM_SYSPATH=/root/.flagtree/tsingmicro/tsingmicro-llvm22'
-              echo 'export LLVM_BINARY_DIR=${LLVM_SYSPATH}/bin'
-              echo 'export PYTHONPATH=${LLVM_SYSPATH}/python_packages/mlir_core:${PYTHONPATH:-}'
-              echo 'export LD_LIBRARY_PATH=${TX8_DEPS_ROOT}/lib:${LD_LIBRARY_PATH:-}'
-              echo 'export PATH=${LLVM_BINARY_DIR}:${PATH}'
-            } >> "$HOME/.bash_profile"
-            echo "[TsingMicro env] verifying a fresh login shell after profile source"
-            bash --login -c '
-              set +e
-              echo "[TsingMicro env] TX8_DEPS_ROOT=${TX8_DEPS_ROOT:-<unset>}"
-              echo "[TsingMicro env] LLVM_SYSPATH=${LLVM_SYSPATH:-<unset>}"
-              echo "[TsingMicro env] LLVM_BINARY_DIR=${LLVM_BINARY_DIR:-<unset>}"
-              echo "[TsingMicro env] PYTHONPATH=${PYTHONPATH:-<unset>}"
-              echo "[TsingMicro env] LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-<unset>}"
-              echo "[TsingMicro env] PATH=${PATH:-<unset>}"
-            ' || true
-          fi
           # GitHub Actions job containers force HOME=/github/home. In the 910B
           # image, the Ascend/MKI libraries loaded by torch_npu derive their
           # default work path from HOME; with /github/home they can print
