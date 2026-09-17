@@ -92,6 +92,10 @@ _TLE_MIN_GEOM = {}
 _TLE_MIN_PLANS = {}
 _TLE_MIN_FLAT_LAUNCHERS = None
 _TLE_MIN_MISS = object()
+# (M, N, dtype) keys whose tle compile failed: a failed compile is re-paid on
+# every call (the plan cache above only memoizes successes, and on this triton a
+# failure leaves no cache entry behind).  See `_per_row_all` for the measurement.
+_TLE_MIN_FAILED = set()
 
 
 def _npo2(x):
@@ -619,24 +623,33 @@ def _per_row_all(inp, M, N, out_shape):
 
     See any.py `_per_row_any`: large M uses the wide-scratch two-step form to avoid
     the scalarizing 1-byte bool output store; small M stays single-kernel."""
-    # All dtypes ride the tle path: fp16/fp32 natively, bool through an int8 view
-    # and bf16 through an fp16 view (see `_tle_min_row` for why those are exact).
+    # All dtypes ride the tle path when they can: fp16/fp32 natively, bool through
+    # an int8 view and bf16 through an fp16 view (see `_tle_min_row` for why those
+    # are exact).
     #
-    # ⚠️ bool *must* ride it whenever it can: the pointer path's float branch (taken
-    # for bool whenever N % 4 != 0) reads long runs of the input as False -- a
-    # (100, 33) all-ones bool tensor comes back with ~70 % of its rows "not all"
-    # (measured 2026-09-16; the word branch at N % 4 == 0 is fine). That is a
-    # pre-existing miscompile of the masked GM bool load + `.to(fp32)`, not
-    # something the tle change introduced; the tle path replaces the vector
-    # entirely (bytes move by DMA, the conversion happens on the LM tile).
+    # ⚠️ bool must never reach the pointer kernels *as bool*: their float branch
+    # mis-loads 1-byte elements as 0 on XPU for many (M, N) -- an all-True bool
+    # (100, 33) came back 100/100 rows "not all" (uint8 broke identically;
+    # fp16/fp32/bf16 are unaffected; verified 2026-09-17) -- and the tle compile
+    # itself trips `uni_sram` for shapes like (64, 257) bool, so that fallback
+    # *is* reached on the default config.  The fallback therefore keeps bool on
+    # the int32 word path: pad N up to a multiple of 4 with True (the AND-neutral
+    # element) and view the bytes as words.
+    key = (M, N, inp.dtype)
     src_ok = inp.dtype in (torch.float16, torch.float32, torch.bfloat16, torch.bool)
     src = inp if (inp.is_contiguous() and N >= 2 and src_ok) else None
-    if _TLE_MIN_AVAILABLE and src is not None:
+    if _TLE_MIN_AVAILABLE and src is not None and key not in _TLE_MIN_FAILED:
         try:
             out = _tle_min_row(src, M, N)
             logger.debug("GEMS_KUNLUNXIN ALL_DIM tle min fast path M=%d N=%d", M, N)
             return out.reshape(out_shape)
         except Exception as exc:  # noqa: BLE001 — any gap re-uses the old path
+            # A failed compile is paid again on *every* call: (64, 257) bool
+            # measured 7.8 s / 3.5 s / 3.5 s across three calls on this tree
+            # against 4.4 s then 0.00 s on the base tree (compiled once, cached).
+            # The failure is a deterministic property of (M, N, dtype) -- remember
+            # it and skip the retry.
+            _TLE_MIN_FAILED.add(key)
             logger.debug(
                 "GEMS_KUNLUNXIN ALL_DIM tle min fast path unavailable (%s); "
                 "falling back to the pointer kernels",
@@ -644,7 +657,12 @@ def _per_row_all(inp, M, N, out_shape):
             )
     grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
     two_step = M > BLOCK_M_DEFAULT
-    if inp.dtype == torch.bool and N % 4 == 0:
+    if inp.dtype == torch.bool:
+        if N % 4 != 0:
+            npad = (N + 3) // 4 * 4
+            buf = torch.ones((M, npad), dtype=torch.bool, device=inp.device)
+            buf[:, :N] = inp.reshape(M, N)
+            inp, N = buf, npad
         inw = inp.reshape(-1).view(torch.int32).reshape(M, N // 4)
         if two_step:
             mid = torch.empty(M, dtype=torch.int32, device=inp.device)
