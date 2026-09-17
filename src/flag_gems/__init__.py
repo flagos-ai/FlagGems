@@ -629,6 +629,7 @@ _FULL_CONFIG = (
     ("elu_backward", elu_backward),
     ("embedding", embedding),
     ("embedding_backward", embedding_backward),
+    ("embedding_bag", embedding_bag),
     ("embedding_dense_backward", embedding_dense_backward),
     ("embedding_renorm_", embedding_renorm_),
     ("embedding_sparse_backward", embedding_sparse_backward),
