@@ -113,7 +113,7 @@ _TLE_AVAILABLE = _tle_available()
 
 
 @triton.jit(
-    do_not_specialize=["L", "HW", "eps", "C", "group_size", "num_groups"],
+    do_not_specialize=["L", "eps"],
     do_not_specialize_on_alignment=[
         "x_desc",
         "y_desc",
@@ -131,11 +131,11 @@ def _tle_group_norm_fused_kernel(
     mean_desc,
     rstd_desc,
     L,
-    HW,
+    HW: tl.constexpr,
     eps,
-    C,
-    group_size,
-    num_groups,
+    C: tl.constexpr,
+    group_size: tl.constexpr,
+    num_groups: tl.constexpr,
     XBLOCK: tl.constexpr,
     WT: tl.constexpr,
     CBLK: tl.constexpr,
