@@ -104,6 +104,7 @@ from .replication_pad2d_backward import (
     replication_pad2d_backward,
     replication_pad2d_backward_grad_input,
 )
+from .rrelu_with_noise import rrelu_with_noise, rrelu_with_noise_
 from .scatter import scatter, scatter_
 from .scatter_reduce import scatter_reduce, scatter_reduce_, scatter_reduce_out
 from .searchsorted import (
@@ -224,6 +225,8 @@ __all__ = [
     "repeat",
     "replication_pad2d_backward",
     "replication_pad2d_backward_grad_input",
+    "rrelu_with_noise",
+    "rrelu_with_noise_",
     "scaled_dot_product_attention",
     "scaled_dot_product_attention_backward",
     "scaled_dot_product_attention_forward",
