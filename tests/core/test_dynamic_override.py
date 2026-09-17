@@ -26,7 +26,13 @@ the CLI integration from flag_gems.cli_override, verifying:
 - pytest integration via --override and --override-config options
 """
 
+import ast
+import importlib.util
+import os
+import subprocess
+import sys
 import tempfile
+import types
 from pathlib import Path
 
 import pytest
@@ -39,6 +45,11 @@ from flag_gems.dynamic_registry import DynamicOpOverride
 # run pytest itself as a subprocess and verify the --override/--override-config
 # CLI options work end-to-end through the real pytest hooks.
 pytest_plugins = ["pytester"]
+
+# Repo root, used by TestRegistrarLiveOverrideResolution to load source
+# files as throwaway submodules of a fake `flag_gems` package, and to spawn
+# subprocess pytest runs, without requiring a GPU or a real Torch import.
+ROOT = Path(__file__).resolve().parents[2]
 
 
 # Test fixtures for custom implementations
@@ -767,6 +778,160 @@ class TestPytestIntegration:
             "-p", "no:cacheprovider", "test_no_override.py"
         )
         result.assert_outcomes(passed=1)
+
+
+def _load_submodule(monkeypatch, name, path):
+    """Load `path` as `name` and register it in sys.modules (via monkeypatch)."""
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, name, module)
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.fixture
+def fake_flag_gems(monkeypatch):
+    """A minimal stand-in `flag_gems` package (no Torch/GPU import needed).
+
+    `dynamic_registry` and `cli_override` are loaded as real submodules of
+    this fake package, so they exercise the actual production code; only
+    the top-level `flag_gems` package (and its heavy op imports) is stubbed
+    out.
+    """
+    gems = types.ModuleType("flag_gems")
+    gems.__path__ = [str(ROOT / "src/flag_gems")]
+    gems.softmax = lambda x: ("original", x)
+    monkeypatch.setitem(sys.modules, "flag_gems", gems)
+    registry = _load_submodule(
+        monkeypatch, "flag_gems.dynamic_registry", ROOT / "src/flag_gems/dynamic_registry.py"
+    )
+    cli = _load_submodule(
+        monkeypatch, "flag_gems.cli_override", ROOT / "src/flag_gems/cli_override.py"
+    )
+    return gems, registry, cli
+
+
+def _apply(cli, spec):
+    return cli.apply_overrides_from_args(
+        types.SimpleNamespace(override=[spec], override_config=None)
+    )
+
+
+class TestRegistrarLiveOverrideResolution:
+    """
+    Tests for `GeneralOpRegistrar._resolve_live_override`, which makes sure
+    that a runtime override applied via `DynamicOpOverride` is picked up
+    when the op is (re-)registered, instead of the stale reference captured
+    in the config tuple at import time.
+
+    These tests avoid importing the real `flag_gems` package (and thus a
+    GPU/Torch dependency) by loading `dynamic_registry.py` and
+    `cli_override.py` as submodules of a minimal fake `flag_gems` module,
+    and by exec'ing just the `GeneralOpRegistrar` class body from
+    `op_registrar.py` with host-only device/library stubs.
+    """
+
+    def test_pytest_parser_accepts_the_plugin(self, fake_flag_gems):
+        from _pytest.config.argparsing import Parser
+
+        fake_flag_gems[2].add_override_arguments(Parser())
+
+    def test_missing_candidate_aborts(self, fake_flag_gems, tmp_path):
+        with pytest.raises((Exception, SystemExit)):
+            _apply(fake_flag_gems[2], f'softmax:{tmp_path / "absent.py"}:run')
+
+    def test_missing_run_aborts(self, fake_flag_gems, tmp_path):
+        path = tmp_path / "candidate.py"
+        path.write_text("def another_function(x): return x\n")
+        with pytest.raises((Exception, SystemExit)):
+            _apply(fake_flag_gems[2], f"softmax:{path}:run")
+
+    def test_unknown_operator_aborts(self, fake_flag_gems, tmp_path):
+        path = tmp_path / "candidate.py"
+        path.write_text("def run(x): return x\n")
+        with pytest.raises((Exception, SystemExit)):
+            _apply(fake_flag_gems[2], f"softamx:{path}:run")
+
+    def test_existing_registration_uses_candidate(self, fake_flag_gems):
+        """Registering `_softmax` should pick up an active override for `softmax`."""
+        gems, registry_module, _ = fake_flag_gems
+        # Execute the real registrar class with host-only device/library stubs.
+        tree = ast.parse((ROOT / "src/flag_gems/runtime/op_registrar.py").read_text())
+        cls = next(
+            n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "GeneralOpRegistrar"
+        )
+        scope = {
+            "DeviceDetector": lambda: types.SimpleNamespace(
+                dispatch_key="CUDA", vendor="test", vendor_name="test"
+            ),
+            "common": types.SimpleNamespace(vendors=types.SimpleNamespace(CAMBRICON="cambricon")),
+            "backend": types.SimpleNamespace(get_unused_ops=lambda vendor: []),
+        }
+        exec(compile(ast.Module(body=[cls], type_ignores=[]), "<registrar class>", "exec"), scope)
+        config = (("_softmax", gems.softmax),)
+        registered = {}
+        library = types.SimpleNamespace(impl=lambda key, fn, device: registered.update({key: fn}))
+        candidate = lambda x: ("candidate", x)
+        with registry_module.DynamicOpOverride() as registry:
+            assert registry.override("softmax", candidate)
+            assert gems.softmax is candidate
+            scope["GeneralOpRegistrar"](config, lib=library)
+            assert registered["_softmax"] is candidate
+
+    def test_unused_candidate_makes_pytest_fail(self, tmp_path):
+        """A --override candidate that is never invoked should fail the run."""
+        candidate = tmp_path / "candidate.py"
+        candidate.write_text('def run(x): raise AssertionError("CANDIDATE WAS CALLED")\n')
+        (tmp_path / "conftest.py").write_text(
+            f"""
+import sys, types
+pkg = types.ModuleType("flag_gems")
+pkg.__path__ = [{str(ROOT / 'src/flag_gems')!r}]
+pkg.softmax = lambda x: x
+pkg.neg = lambda x: -x
+sys.modules["flag_gems"] = pkg
+from flag_gems.cli_override import apply_overrides_from_args
+
+def pytest_configure(config):
+    config._override_registry = apply_overrides_from_args(types.SimpleNamespace(
+        override=[{"softmax:" + str(candidate) + ":run"!r}], override_config=None))
+
+def pytest_unconfigure(config):
+    config._override_registry.restore_all()
+"""
+        )
+        (tmp_path / "test_other.py").write_text(
+            "import flag_gems\ndef test_other(): assert flag_gems.neg(1) == -1\n"
+        )
+        env = os.environ.copy()
+        env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
+        env.pop("PYTEST_ADDOPTS", None)
+        env.pop("PYTHONPATH", None)
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "pytest",
+                "-q",
+                "--confcutdir",
+                str(tmp_path),
+                str(tmp_path / "test_other.py"),
+            ],
+            cwd=tmp_path,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode != 0, result.stdout + result.stderr
+
+    def test_direct_call_and_restore_work(self, fake_flag_gems):
+        gems, registry_module, _ = fake_flag_gems
+        original = gems.softmax
+        candidate = lambda x: ("candidate", x)
+        with registry_module.DynamicOpOverride() as registry:
+            assert registry.override("softmax", candidate)
+            assert gems.softmax(1) == ("candidate", 1)
+        assert gems.softmax is original
 
 
 if __name__ == "__main__":

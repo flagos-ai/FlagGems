@@ -251,9 +251,97 @@ automatically restored in `pytest_unconfigure` after all tests complete.
 并在所有测试完成后在 `pytest_unconfigure` 中自动恢复。
 
 <!--
-## 5. Concurrent testing of multiple implementations
+## 5. Overrides are picked up when operators are (re-)registered
 -->
-## 5. 并发测试多个实现
+## 5. 算子被（重新）注册时会自动感知到重载
+
+<!--
+`GeneralOpRegistrar`, the class that binds each `flag_gems.<op_name>`
+implementation to its ATen dispatch key, re-resolves every config entry
+against the live `flag_gems` module before registering it. This means that
+if you apply an override *before* `flag_gems.enable()` / `only_enable()`
+runs (or before an operator is re-registered for any other reason), the
+dispatch table picks up your override instead of the reference captured in
+the module's internal config tuple at import time:
+-->
+`GeneralOpRegistrar` 是负责将每个 `flag_gems.<算子名>` 实现绑定到对应
+ATen 调度键的类，它在注册每一项配置之前，都会重新在当前的 `flag_gems`
+模块上解析一次对应的实现。这意味着，如果你在 `flag_gems.enable()` /
+`only_enable()` 运行之前（或者算子因为其他原因被重新注册之前）就应用了重载，
+调度表会使用你的重载实现，而不是模块内部配置元组在导入时捕获的那个旧引用：
+
+```python
+with DynamicOpOverride() as registry:
+    registry.override("softmax", my_softmax)
+    flag_gems.enable()  # 注册 `_softmax`（及其重载）时会使用 my_softmax
+```
+
+<!--
+To keep this resolution unambiguous, the registrar looks each dispatch key
+up in `flag_gems._FULL_CONFIG` — the authoritative source of registrable
+ops — to find the function the key was *originally* bound to, then resolves
+the live attribute by that function's name. This avoids collisions between
+overloads that share a dispatch-key prefix but bind to different functions
+(e.g. `_softmax` vs. `_softmax.out`).
+-->
+为了保证这个解析过程没有歧义，registrar 会在 `flag_gems._FULL_CONFIG`
+（也就是可注册算子的权威数据源）中查找每个调度键，找到该键最初绑定的函数，
+再根据这个函数自身的名字去解析当前生效的属性。这样可以避免共享同一个
+调度键前缀、但实际绑定到不同函数的重载互相冲突
+（例如 `_softmax` 与 `_softmax.out`）。
+
+<!--
+As a consequence, if a dispatch key passed to the registrar cannot be found
+in `flag_gems._FULL_CONFIG` at all, registration raises a `ValueError`
+rather than guessing at a name — registering (or overriding) an operator
+that was never a real registration is not allowed.
+-->
+因此，如果传给 registrar 的某个调度键在 `flag_gems._FULL_CONFIG`
+中根本查不到，注册过程会直接抛出 `ValueError`，而不会去猜测一个名字——
+功能上不允许注册（或重载）一个本来就不存在的算子。
+
+<!--
+## 6. Unused overrides fail the test run
+-->
+## 6. 未被实际调用的重载会导致测试失败
+
+<!--
+`override_from_file` (and, transitively, `override_batch_from_files` and
+`--override`/`--override-config`) wraps the loaded candidate so that
+`DynamicOpOverride` can track whether it was actually called. If
+`restore()` or `restore_all()` runs and finds that a tracked override was
+never invoked, it raises an `AssertionError` — this turns "I pointed
+`--override` at the wrong operator name (or a candidate with a typo that
+never gets exercised)" into a hard test failure instead of a silently
+useless run:
+-->
+`override_from_file`（以及间接地，`override_batch_from_files` 和
+`--override`/`--override-config`）会对加载到的候选实现进行包装，
+使得 `DynamicOpOverride` 能够追踪它是否被实际调用过。如果
+`restore()` 或 `restore_all()` 执行时发现某个被追踪的重载从未被调用过，
+就会抛出 `AssertionError`——这样可以把"`--override` 指向了错误的算子名
+（或者候选实现里有个从未被执行到的笔误）"这类问题，
+从一次悄无声息的无效运行，变成一次明确的测试失败：
+
+```shell
+pytest tests/test_softmax.py \
+    --override softmax:./candidates/softmax_v2.py:my_softmax
+# 如果 my_softmax 从未被真正调用过，整个会话会失败
+```
+
+<!--
+Overrides applied directly via the bare `registry.override(...)` call (as
+opposed to `override_from_file`) are not tracked this way, since there is
+no file-loading step to guard against typos or unreachable candidates.
+-->
+直接通过裸的 `registry.override(...)` 调用应用的重载（而不是通过
+`override_from_file`）不会被这样追踪，因为这种方式并没有文件加载这一步，
+也就不存在需要防范的笔误或无法触达的候选实现。
+
+<!--
+## 7. Concurrent testing of multiple implementations
+-->
+## 7. 并发测试多个实现
 
 <!--
 Because each `DynamicOpOverride` only ever mutates attributes of the

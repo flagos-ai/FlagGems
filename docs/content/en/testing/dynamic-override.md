@@ -164,7 +164,56 @@ pytest benchmark/test_reduction_perf.py \
 The override is applied once per test session in `pytest_configure`, and
 automatically restored in `pytest_unconfigure` after all tests complete.
 
-## 5. Concurrent testing of multiple implementations
+## 5. Overrides are picked up when operators are (re-)registered
+
+`GeneralOpRegistrar`, the class that binds each `flag_gems.<op_name>`
+implementation to its ATen dispatch key, re-resolves every config entry
+against the live `flag_gems` module before registering it. This means that
+if you apply an override *before* `flag_gems.enable()` / `only_enable()`
+runs (or before an operator is re-registered for any other reason), the
+dispatch table picks up your override instead of the reference captured in
+the module's internal config tuple at import time:
+
+```python
+with DynamicOpOverride() as registry:
+    registry.override("softmax", my_softmax)
+    flag_gems.enable()  # registers `_softmax` (and its overloads) against my_softmax
+```
+
+To keep this resolution unambiguous, the registrar looks each dispatch key
+up in `flag_gems._FULL_CONFIG` — the authoritative source of registrable
+ops — to find the function the key was *originally* bound to, then resolves
+the live attribute by that function's name. This avoids collisions between
+overloads that share a dispatch-key prefix but bind to different functions
+(e.g. `_softmax` vs. `_softmax.out`).
+
+As a consequence, if a dispatch key passed to the registrar cannot be found
+in `flag_gems._FULL_CONFIG` at all, registration raises a `ValueError`
+rather than guessing at a name — registering (or overriding) an operator
+that was never a real registration is not allowed.
+
+## 6. Unused overrides fail the test run
+
+`override_from_file` (and, transitively, `override_batch_from_files` and
+`--override`/`--override-config`) wraps the loaded candidate so that
+`DynamicOpOverride` can track whether it was actually called. If
+`restore()` or `restore_all()` runs and finds that a tracked override was
+never invoked, it raises an `AssertionError` — this turns "I pointed
+`--override` at the wrong operator name (or a candidate with a typo that
+never gets exercised)" into a hard test failure instead of a silently
+useless run:
+
+```shell
+pytest tests/test_softmax.py \
+    --override softmax:./candidates/softmax_v2.py:my_softmax
+# fails the session if `my_softmax` is never actually called
+```
+
+Overrides applied directly via the bare `registry.override(...)` call (as
+opposed to `override_from_file`) are not tracked this way, since there is
+no file-loading step to guard against typos or unreachable candidates.
+
+## 7. Concurrent testing of multiple implementations
 
 Because each `DynamicOpOverride` only ever mutates attributes of the
 already-imported `flag_gems` module *within its own process*, independent
