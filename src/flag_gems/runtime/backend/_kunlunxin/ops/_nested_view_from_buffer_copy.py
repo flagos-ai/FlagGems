@@ -4,8 +4,6 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils.tle_copy import tle_copy
-
 logger = logging.getLogger("flag_gems." + __name__)
 
 # 载荷拷贝的分块（元素数）。B=8192 是在 0.4–0.8MB 载荷上验证过的定值；未扫参。

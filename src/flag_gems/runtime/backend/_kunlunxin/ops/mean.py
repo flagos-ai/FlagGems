@@ -203,7 +203,8 @@ def mean_dim(x, dim, keepdim=False, *, dtype=None):
             except Exception as exc:  # noqa: BLE001 — any gap re-uses the old path
                 logger.debug(
                     "GEMS_KUNLUNXIN MEAN_DIM tle fast path unavailable (%s); "
-                    "falling back to dim_compress", exc
+                    "falling back to dim_compress",
+                    exc,
                 )
 
     # Compress reduced dims to the trailing dims. The permutation is

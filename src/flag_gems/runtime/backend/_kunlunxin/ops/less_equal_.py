@@ -67,7 +67,7 @@ def less_equal_(A, B):
     logger.debug("GEMS_KUNLUNXIN LESS_EQUAL_")
     os.environ["TRITONXPU_COMPARE_FUSION"] = "1"
     os.environ["TRITONXPU_FP16_FAST"] = "1"
-    res = less_equal_func(A, B, out0=A)
+    less_equal_func(A, B, out0=A)
     del os.environ["TRITONXPU_COMPARE_FUSION"]
     del os.environ["TRITONXPU_FP16_FAST"]
     return A
@@ -96,5 +96,5 @@ def less_equal_scalar_(A, B):
     # the uni_sram budget -> `out of resource: uni_sram` compile failure (fp16).
     # The sibling le_scalar / gt_scalar / less_equal_scalar deliberately omit
     # them for the same reason.
-    res = less_equal_func_scalar(A, B, out0=A)
+    less_equal_func_scalar(A, B, out0=A)
     return A

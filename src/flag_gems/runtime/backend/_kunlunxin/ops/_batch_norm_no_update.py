@@ -180,7 +180,8 @@ def _batch_norm_no_update_kernel_c(
                     x = tl.load(input_pointer + base + idx).to(tl.float32)
                     y = weight * (x - mean) * inv_std + bias
                     tl.store(
-                        output_pointer + base + idx, y.to(output_pointer.dtype.element_ty)
+                        output_pointer + base + idx,
+                        y.to(output_pointer.dtype.element_ty),
                     )
 
 

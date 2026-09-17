@@ -108,9 +108,7 @@ def _nonzero_static_count_kernel(
         flags = (real != 0) | (imag != 0)
     else:
         flags = tl.load(x_ptr + offsets) != 0
-    tl.store(
-        counts_ptr + pid, tl.sum(flags.to(tl.int32), axis=0).to(tl.int64)
-    )
+    tl.store(counts_ptr + pid, tl.sum(flags.to(tl.int32), axis=0).to(tl.int64))
 
 
 @libentry()
@@ -156,7 +154,9 @@ def _nonzero_static_write_kernel(
     destination = tl.where(
         selected,
         global_rank,
-        (size + offsets).to(tl.int64),  # coalesced dummy, within workspace (size+padded_numel)
+        (size + offsets).to(
+            tl.int64
+        ),  # coalesced dummy, within workspace (size+padded_numel)
     )
     tl.store(workspace_ptr + destination, offsets.to(tl.int64), mask=load_mask)
 
@@ -257,7 +257,9 @@ def _small_nonzero_static(input, size, fill_value, out):
             out.resize_((size, ndim))
             out.fill_(fill_value)
             return out
-        return torch.full((size, ndim), fill_value, dtype=torch.int64, device=input.device)
+        return torch.full(
+            (size, ndim), fill_value, dtype=torch.int64, device=input.device
+        )
 
     # keep BLOCK >= 64 (XPU backend min reliable block size)
     block_size = triton.next_power_of_2(max(numel, 64))
@@ -284,9 +286,7 @@ def _small_nonzero_static(input, size, fill_value, out):
             BLOCK_SIZE=block_size,
         )
     shape = tuple(input.shape) + (1,) * (6 - ndim)
-    return _finish_ndim(
-        workspace, total, input, size, ndim, out, fill_value, shape
-    )
+    return _finish_ndim(workspace, total, input, size, ndim, out, fill_value, shape)
 
 
 def _multiblock_nonzero_static(input, size, fill_value, out):
@@ -320,15 +320,22 @@ def _multiblock_nonzero_static(input, size, fill_value, out):
             x, counts, IS_COMPLEX=source.is_complex(), BLOCK_SIZE=_MULTI_BLOCK_TILE_SIZE
         )
         _nonzero_static_scan_kernel[(1,)](
-            counts, prefix, total, num_blocks=num_blocks, PREFIX_BLOCK_SIZE=prefix_block_size
+            counts,
+            prefix,
+            total,
+            num_blocks=num_blocks,
+            PREFIX_BLOCK_SIZE=prefix_block_size,
         )
         _nonzero_static_write_kernel[(num_blocks,)](
-            x, prefix, workspace, size, numel,
-            IS_COMPLEX=source.is_complex(), BLOCK_SIZE=_MULTI_BLOCK_TILE_SIZE,
+            x,
+            prefix,
+            workspace,
+            size,
+            numel,
+            IS_COMPLEX=source.is_complex(),
+            BLOCK_SIZE=_MULTI_BLOCK_TILE_SIZE,
         )
-    return _finish_ndim(
-        workspace, total, input, size, ndim, out, fill_value, shape
-    )
+    return _finish_ndim(workspace, total, input, size, ndim, out, fill_value, shape)
 
 
 def _finish_ndim(workspace, total, input, size, ndim, out, fill_value, shape):
@@ -339,9 +346,7 @@ def _finish_ndim(workspace, total, input, size, ndim, out, fill_value, shape):
     else:
         result = torch.empty((size, ndim), device=input.device, dtype=torch.int64)
         with torch_device_fn.device(input.device):
-            _nonzero_static_delinearize_kernel[
-                (triton.cdiv(size, _DELIN_BLOCK_SIZE),)
-            ](
+            _nonzero_static_delinearize_kernel[(triton.cdiv(size, _DELIN_BLOCK_SIZE),)](
                 workspace,
                 total,
                 result,
@@ -352,9 +357,7 @@ def _finish_ndim(workspace, total, input, size, ndim, out, fill_value, shape):
             )
         fill_target = result
     with torch_device_fn.device(input.device):
-        _nonzero_static_fill_tail_kernel[
-            (triton.cdiv(size * ndim, _FILL_BLOCK_SIZE),)
-        ](
+        _nonzero_static_fill_tail_kernel[(triton.cdiv(size * ndim, _FILL_BLOCK_SIZE),)](
             fill_target,
             total,
             size,

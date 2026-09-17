@@ -272,7 +272,7 @@ def matmul_bias_activation(input, weight, bias):
             numel = M * N
             relu_block = 16384
             need_mask = numel % relu_block != 0
-            relu_kernel[
-                (triton.cdiv(numel, relu_block),)
-            ](out, numel, BLOCK_SIZE=relu_block, NEED_MASK=need_mask)
+            relu_kernel[(triton.cdiv(numel, relu_block),)](
+                out, numel, BLOCK_SIZE=relu_block, NEED_MASK=need_mask
+            )
     return out
