@@ -901,6 +901,8 @@ def _mm_w8a8_fp8_block_scaled_tma_configs(pre_hook):
 
 
 def _mm_w8a8_fp8_block_scaled_splitk_tma_hook(nargs, reset_only=False):
+    # Atomic split-K must start from zero for every autotune trial.
+    nargs["C"].zero_()
     if reset_only:
         return
     block_m = nargs["BLOCK_M"]
@@ -1030,13 +1032,13 @@ def mm_w8a8_fp8_block_scaled_kernel_tma_native_v2(
     if SINGLE_K_BLOCK:
         a = a_desc.load([offset_m, 0])
         b = tl.trans(b_desc.load([offset_n, 0]))
-        acc = tl.dot(a, b, acc=acc, allow_tf32=False)
+        acc = tl.dot(a, b, acc=acc, allow_tf32=False, max_num_imprecise_acc=0)
     else:
         for k in range(0, tl.cdiv(K, BLOCK_K)):
             offset_k = (k * BLOCK_K).to(tl.int32)
             a = a_desc.load([offset_m, offset_k])
             b = tl.trans(b_desc.load([offset_n, offset_k]))
-            acc = tl.dot(a, b, acc=acc, allow_tf32=False)
+            acc = tl.dot(a, b, acc=acc, allow_tf32=False, max_num_imprecise_acc=0)
 
     acc *= a_s[:, None] * b_s[None, :]
     c_desc.store([offset_m, offset_n], acc.to(c_desc.dtype))
@@ -1108,7 +1110,7 @@ def mm_w8a8_fp8_block_scaled_kernel_splitk_tma_native_v2(
         offset_k = (k * BLOCK_K).to(tl.int32)
         a = a_desc.load([offset_m, offset_k])
         b = tl.trans(b_desc.load([offset_n, offset_k]))
-        acc = tl.dot(a, b, acc=acc, allow_tf32=False)
+        acc = tl.dot(a, b, acc=acc, allow_tf32=False, max_num_imprecise_acc=0)
 
     acc *= a_s[:, None] * b_s[None, :]
     c_ptrs = C + offs_m[:, None] * stride_cm + offs_n[None, :] * stride_cn
@@ -1879,7 +1881,7 @@ def mm_w8a8_fp8_block_scaled_kernel_load(
             (rn[None, :] < N) & (kk[:, None] < K),
             0.0,
         )
-        acc = tl.dot(a, b, acc=acc, allow_tf32=False)
+        acc = tl.dot(a, b, acc=acc, allow_tf32=False, max_num_imprecise_acc=0)
     sa = tl.load(As + rm * stride_as, rm < M, 0)
     sb = tl.load(Bs + rn * stride_bs, rn < N, 0)
     acc *= sa[:, None] * sb[None, :]
@@ -1948,9 +1950,16 @@ def _mm_w8a8_fp8_block_scaled(a, b, c, a_s, b_s, M, N, K, group_n, group_k):
             return _mm_w8a8_fp8_block_scaled_load(
                 a, b, c, a_s, b_s, M, N, K, group_n, group_k
             )
-    if hasattr(
-        triton.tools.tensor_descriptor, "TensorDescriptor"
-    ) and is_tma_compatible(a, b, N, K):
+    if (
+        hasattr(triton.tools.tensor_descriptor, "TensorDescriptor")
+        and is_tma_compatible(a, b, N, K)
+        and a.stride(1) == b.stride(1) == c.stride(1) == 1
+        and a.stride(0) > 0
+        and b.stride(0) > 0
+        and a.stride(0) % 16 == b.stride(0) % 16 == 0
+        and (c.stride(0) * c.element_size()) % 16 == 0
+        and a.data_ptr() % 16 == b.data_ptr() % 16 == c.data_ptr() % 16 == 0
+    ):
         with torch_device_fn.device(a.device):
             if M < 2048 and N < 2048 and K >= 4096 and c.dtype not in _FP8_DTYPES:
                 return _mm_w8a8_fp8_block_scaled_splitk_tma(
@@ -1960,7 +1969,10 @@ def _mm_w8a8_fp8_block_scaled(a, b, c, a_s, b_s, M, N, K, group_n, group_k):
                 a, b, c, a_s, b_s, M, N, K, group_n, group_k
             )
 
-    raise RuntimeError("Hopper mm_w8a8_fp8 path requires TMA tensor descriptors")
+    with torch_device_fn.device(a.device):
+        return _mm_w8a8_fp8_block_scaled_load(
+            a, b, c, a_s, b_s, M, N, K, group_n, group_k
+        )
 
 
 def _is_fp8_dtype(dtype: torch.dtype) -> bool:
@@ -2513,54 +2525,149 @@ def _dispatch_mm_w8a8_fp8(
     return run()
 
 
-def mm_w8a8_fp8(a, b, *, out_dtype: Optional[torch.dtype] = None):
-    device = a.device
-    # handle non-contiguous inputs if necessary
-    if a.stride(0) > 1 and a.stride(1) > 1:
-        a = a.contiguous()
-    if b.stride(0) > 1 and b.stride(1) > 1:
-        b = b.contiguous()
-    # checks constraints
-    assert a.shape[1] == b.shape[0], "incompatible dimensions"
-    M, K = a.shape
-    _, N = b.shape
-    if _should_mm_w8a8_fp8_fallback_bf16(a, b, M, N, K):
-        return _mm_w8a8_fp8_bf16_triton(a, b)
-    if _should_use_mm_w8a8_fp8_block_scaled(a, b, M, N, K):
-        a_q, b_q, a_s, b_s, group_n, group_k = (
-            _quantize_mm_w8a8_fp8_block_scaled_inputs(a, b)
-        )
-        c_dtype = out_dtype or _mm_w8a8_fp8_output_dtype(a_q.dtype)
-        c = _mm_w8a8_fp8_allocate_output(M, N, K, device, c_dtype)
-        return _dispatch_mm_w8a8_fp8_block_scaled(
-            a_q, b_q, c, a_s, b_s, M, N, K, group_n, group_k
-        )
-    a, b = _quantize_mm_w8a8_fp8_inputs(a, b)
-
-    c_dtype = out_dtype or get_higher_dtype(a.dtype, b.dtype)
-    c = _mm_w8a8_fp8_allocate_output(M, N, K, device, c_dtype)
-    return _dispatch_mm_w8a8_fp8(a, b, c, M, N, K)
+@triton.jit
+def _mm_w8a8_fp8_scaled_epilogue(
+    Acc,
+    Out,
+    Bias,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    OM: tl.constexpr,
+    ON: tl.constexpr,
+    BIAS_STRIDE: tl.constexpr,
+    HAS_BIAS: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    x = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    value = tl.load(Acc + x, x < M * N, 0.0)
+    if HAS_BIAS:
+        value += tl.load(Bias + (x % N) * BIAS_STRIDE, x < M * N, 0.0).to(tl.float32)
+    tl.store(Out + (x // N) * OM + (x % N) * ON, value, x < M * N)
 
 
-def mm_w8a8_fp8_out(a, b, *, out):
-    # handle non-contiguous inputs if necessary
-    if a.stride(0) > 1 and a.stride(1) > 1:
-        a = a.contiguous()
-    if b.stride(0) > 1 and b.stride(1) > 1:
-        b = b.contiguous()
-    # checks constraints
-    assert a.shape[1] == b.shape[0], "incompatible dimensions"
-    M, K = a.shape
-    _, N = b.shape
-    if _should_mm_w8a8_fp8_fallback_bf16(a, b, M, N, K):
-        return _mm_w8a8_fp8_bf16_triton_out(a, b, out)
-    if _should_use_mm_w8a8_fp8_block_scaled(a, b, M, N, K):
-        a_q, b_q, a_s, b_s, group_n, group_k = (
-            _quantize_mm_w8a8_fp8_block_scaled_inputs(a, b)
-        )
-        return _dispatch_mm_w8a8_fp8_block_scaled(
-            a_q, b_q, out, a_s, b_s, M, N, K, group_n, group_k
-        )
-    a, b = _quantize_mm_w8a8_fp8_inputs(a, b)
+def _mm_w8a8_fp8_scale_vector(scale, x, axis, name):
+    if not isinstance(scale, torch.Tensor) or scale.dtype != torch.float32:
+        raise TypeError(f"{name} must be a float32 tensor")
+    if scale.device != x.device:
+        raise ValueError(f"{name} must be on the same device as the inputs")
+    size = x.shape[axis]
+    if scale.numel() == 1 and scale.ndim <= 2:
+        return scale.reshape(1).expand(size)
+    shape = (size, 1) if axis == 0 else (1, size)
+    if scale.shape == (size,) or scale.shape == shape:
+        return scale.reshape(size)
+    raise ValueError(f"{name} must be a scalar, ({size},), or {shape}")
 
-    return _dispatch_mm_w8a8_fp8(a, b, out, M, N, K)
+
+def mm_w8a8_fp8(
+    input,
+    mat2,
+    scale_a,
+    scale_b,
+    bias=None,
+    scale_result=None,
+    out_dtype=None,
+    use_fast_accum=False,
+    *,
+    out=None,
+):
+    """FP8-only matmul with the torch._scaled_mm argument interface.
+
+    Input scales are required FP32 tensors: scalar or per-row A/per-column B.
+    Output defaults to input.dtype. Like CUDA torch._scaled_mm in PyTorch 2.11,
+    scale_result is validated but does not affect the result.
+    use_fast_accum is accepted; both settings retain FP32 accumulation.
+    """
+    a, b = input, mat2
+    if a.ndim != 2 or b.ndim != 2:
+        raise ValueError("mm_w8a8_fp8 expects two-dimensional inputs")
+    if out is None:
+        dtype = a.dtype if out_dtype is None else out_dtype
+        out = torch.empty((a.shape[0], b.shape[1]), device=a.device, dtype=dtype)
+    return mm_w8a8_fp8_out(
+        a, b, scale_a, scale_b, bias, scale_result, out_dtype, use_fast_accum, out=out
+    )
+
+
+def mm_w8a8_fp8_out(
+    input,
+    mat2,
+    scale_a,
+    scale_b,
+    bias=None,
+    scale_result=None,
+    out_dtype=None,
+    use_fast_accum=False,
+    *,
+    out,
+):
+    """Out variant with the same required scales and optional arguments."""
+    a, b = input, mat2
+    if a.ndim != 2 or b.ndim != 2 or a.shape[1] != b.shape[0]:
+        raise ValueError("mm_w8a8_fp8 expects compatible two-dimensional inputs")
+    if a.device != b.device or a.device != out.device:
+        raise ValueError("inputs and out must be on the same device")
+    if a.dtype not in _FP8_DTYPES or b.dtype not in _FP8_DTYPES:
+        raise TypeError("mm_w8a8_fp8 requires FP8 inputs")
+    if a.dtype == b.dtype == torch.float8_e5m2:
+        raise TypeError("Hopper does not support E5M2 x E5M2")
+    if out.dtype not in (*_FP8_DTYPES, torch.float16, torch.bfloat16, torch.float32):
+        raise TypeError("unsupported output dtype")
+    if out_dtype is not None and out_dtype != out.dtype:
+        raise ValueError("out_dtype must match out.dtype")
+    if not isinstance(use_fast_accum, bool):
+        raise TypeError("use_fast_accum must be a bool")
+    sa = _mm_w8a8_fp8_scale_vector(scale_a, a, 0, "scale_a")
+    sb = _mm_w8a8_fp8_scale_vector(scale_b, b, 1, "scale_b")
+    if scale_result is not None:
+        _mm_w8a8_fp8_scale_vector(scale_result, a, 0, "scale_result")
+        if scale_result.numel() != 1:
+            raise ValueError("scale_result must be a float32 scalar")
+    if bias is not None:
+        if out.dtype == torch.float32:
+            raise TypeError(
+                "CUDA torch._scaled_mm does not support bias with FP32 output"
+            )
+        bias_dtypes = (
+            (torch.float16, torch.bfloat16)
+            if out.dtype in _FP8_DTYPES
+            else (out.dtype,)
+        )
+        if not isinstance(bias, torch.Tensor) or bias.dtype not in bias_dtypes:
+            raise TypeError("bias has an unsupported dtype for the output")
+        if bias.device != a.device or bias.numel() != b.shape[1]:
+            raise ValueError("bias must contain N elements on the input device")
+        bias = bias.reshape(-1)
+    m, k = a.shape
+    n = b.shape[1]
+    if tuple(out.shape) != (m, n):
+        out.resize_(m, n)
+    if out.numel() == 0:
+        return out
+    if k == 0:
+        return out.zero_()
+    # Split-K must accumulate into FP32, never atomically into BF16/FP8.
+    # Apply bias/output conversion once after all partial sums are complete.
+    split_k = n < 2048 and k >= 4096
+    needs_epilogue = bias is not None or split_k
+    with torch_device_fn.device(a.device):
+        acc = (
+            torch.empty((m, n), device=a.device, dtype=torch.float32)
+            if needs_epilogue
+            else out
+        )
+        _mm_w8a8_fp8_block_scaled(a, b.T, acc, sa, sb, m, n, k, n, k)
+        if needs_epilogue:
+            _mm_w8a8_fp8_scaled_epilogue[(triton.cdiv(m * n, 512),)](
+                acc,
+                out,
+                bias,
+                m,
+                n,
+                out.stride(0),
+                out.stride(1),
+                BIAS_STRIDE=bias.stride(0) if bias is not None else 0,
+                HAS_BIAS=bias is not None,
+                BLOCK=512,
+            )
+    return out

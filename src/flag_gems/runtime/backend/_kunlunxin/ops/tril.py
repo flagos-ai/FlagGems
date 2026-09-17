@@ -1,17 +1,3 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import logging
 
 import torch
@@ -20,6 +6,8 @@ import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
+
+from ..utils.tle_copy import tle_copy
 
 logger = logging.getLogger(__name__)
 
@@ -79,29 +67,6 @@ def _tril_rows_kernel(
 
 
 @triton.jit
-def _tril_flat_kernel(
-    in_ptr,
-    out_ptr,
-    total,
-    diag,
-    M: tl.constexpr,
-    N: tl.constexpr,
-    BLOCK_SIZE: tl.constexpr,
-):
-    pid = tl.program_id(0)
-    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < total
-
-    matrix_offsets = offsets % (M * N)
-    rows = matrix_offsets // N
-    cols = matrix_offsets - rows * N
-    keep = cols <= rows + diag
-
-    x = tl.load(in_ptr + offsets, mask=mask & keep, other=0.0)
-    tl.store(out_ptr + offsets, x, mask=mask)
-
-
-@triton.jit
 def _tril_exact_row_kernel(
     in_ptr,
     out_ptr,
@@ -136,26 +101,11 @@ def _tril_exact_diag0_tile_kernel(
 
     offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)[None, :]
-    in_ptr += pid_b * (M * N) + offs_m * N
-    out_ptr += pid_b * (M * N) + offs_m * N
-
-    row_start = pid_m * BLOCK_M
-    row_end = row_start + BLOCK_M - 1
-    col_start = pid_n * BLOCK_N
-    col_end = col_start + BLOCK_N - 1
-
-    if col_start > row_end:
-        tl.store(out_ptr + offs_n, 0.0)
-        return
-
-    if col_end <= row_start:
-        x = tl.load(in_ptr + offs_n)
-        tl.store(out_ptr + offs_n, x)
-        return
-
+    mask = (offs_m < M) & (offs_n < N)
     keep = offs_n <= offs_m
-    x = tl.load(in_ptr + offs_n, mask=keep, other=0.0)
-    tl.store(out_ptr + offs_n, x)
+    offsets = pid_b * (M * N) + offs_m * N + offs_n
+    x = tl.load(in_ptr + offsets, mask=mask & keep, other=0.0)
+    tl.store(out_ptr + offsets, x, mask=mask)
 
 
 @libentry()
@@ -168,20 +118,6 @@ def _tril_flat_inplace_kernel(
     N,
     BLOCK_SIZE: tl.constexpr,
 ):
-    # In-place tril_ over a contiguous top-row prefix of one matrix.
-    #
-    # The old 2D-tile kernel (`offs_m * N + offs_n` addressing) is NOT proven
-    # contiguous by XPU OffsetAnalysis and degrades to discrete access
-    # (~1-3 GB/s, e.g. [4096,4096] took ~14ms, [10000,65536] ~543ms). The 1D-flat
-    # form (scalar-base + stride-1 arange) is provably contiguous -> block DMA.
-    # Same win as the triu.py rewrite (~10x on large shapes).
-    #
-    # pid_b pre-offsets the base pointer by pid_b * MN (a scalar), so each matrix
-    # in a batch is handled by its own grid column while the inner offsets stay a
-    # stride-1 arange. Only the first `active_total = active_rows * N` elements of
-    # each matrix are visited: rows at/below the diagonal are fully kept and never
-    # touched (true in-place). Offsets stay within [0, MN) so `off // N` is exact
-    # even for the batched case (no `% MN` needed).
     pid = tl.program_id(0)
     pid_b = tl.program_id(1)
     base = pid_b * MN
@@ -237,24 +173,12 @@ def _tril_inplace_zero_strided_tile_kernel(
     i0 = b // B1
     batch_offset = i0 * S0 + i1 * S1 + i2 * S2 + i3 * S3 + i4 * S4 + i5 * S5
 
-    offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
-    offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)[None, :]
-    mask = (offs_m < M) & (offs_n < N)
-    ptr += batch_offset + offs_m * STRIDE_M
-
-    row_start = pid_m * BLOCK_M
-    col_end = pid_n * BLOCK_N + BLOCK_N - 1
-    if col_end <= row_start + diag:
-        return
-
-    row_end = row_start + BLOCK_M - 1
-    col_start = pid_n * BLOCK_N
-    if col_start > row_end + diag:
-        tl.store(ptr + offs_n * STRIDE_N, 0.0, mask=mask)
-        return
-
-    zero = offs_n > offs_m + diag
-    tl.store(ptr + offs_n * STRIDE_N, 0.0, mask=mask & zero)
+    row = pid_m
+    first_zero_col = tl.maximum(row + diag + 1, 0)
+    offs_n = first_zero_col + pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    mask = offs_n < N
+    ptr += batch_offset + row * STRIDE_M
+    tl.store(ptr + offs_n * STRIDE_N, 0.0, mask=mask)
 
 
 @libentry()
@@ -310,6 +234,471 @@ def _tril_strided_out_tile_kernel(
     x = tl.load(in_ptr + offs_n, mask=mask, other=0.0)
     result = tl.where(keep, x, 0.0)
     tl.store(out_ptr + offs_n * STRIDE_N, result, mask=mask)
+
+
+@triton.jit
+def _tril_flat2d_kernel(
+    in_ptr,
+    out_ptr,
+    total,
+    diag,
+    N: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+    NEED_MASK: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    rows = offsets // N
+    cols = offsets - rows * N
+    keep = cols <= rows + diag
+    if NEED_MASK:
+        mask = offsets < total
+        x = tl.load(in_ptr + offsets, mask=mask, other=0.0)
+        y = tl.where(keep, x, 0.0)
+        tl.store(out_ptr + offsets, y, mask=mask)
+    else:
+        x = tl.load(in_ptr + offsets)
+        y = tl.where(keep, x, 0.0)
+        tl.store(out_ptr + offsets, y)
+
+
+@triton.jit
+def _tril_flat_batched_kernel(
+    in_ptr,
+    out_ptr,
+    total,
+    diag,
+    MN,
+    N: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+    NEED_MASK: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    matrix_offsets = offsets % MN
+    rows = matrix_offsets // N
+    cols = matrix_offsets - rows * N
+    keep = cols <= rows + diag
+    if NEED_MASK:
+        mask = offsets < total
+        x = tl.load(in_ptr + offsets, mask=mask, other=0.0)
+        y = tl.where(keep, x, 0.0)
+        tl.store(out_ptr + offsets, y, mask=mask)
+    else:
+        x = tl.load(in_ptr + offsets)
+        y = tl.where(keep, x, 0.0)
+        tl.store(out_ptr + offsets, y)
+
+
+@triton.jit
+def _tril_flat_batchgrid_kernel(
+    in_ptr,
+    out_ptr,
+    diag,
+    N: tl.constexpr,
+    MN: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+    NEED_MASK: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    pid_b = tl.program_id(1)
+    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    rows = offsets // N
+    cols = offsets - rows * N
+    keep = cols <= rows + diag
+    base = pid_b * MN
+    if NEED_MASK:
+        mask = offsets < MN
+        x = tl.load(in_ptr + base + offsets, mask=mask, other=0.0)
+        y = tl.where(keep, x, 0.0)
+        tl.store(out_ptr + base + offsets, y, mask=mask)
+    else:
+        x = tl.load(in_ptr + base + offsets)
+        y = tl.where(keep, x, 0.0)
+        tl.store(out_ptr + base + offsets, y)
+
+
+@triton.jit
+def _tril_wide_scalar_kernel(
+    in_ptr,
+    out_ptr,
+    diag,
+    MN: tl.constexpr,
+    LOG2_BPR: tl.constexpr,
+    BPR_MASK: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    pid_b = tl.program_id(1)
+    lane = tl.arange(0, BLOCK_SIZE)
+    row = pid >> LOG2_BPR
+    blk = pid & BPR_MASK
+    s = row + diag - blk * BLOCK_SIZE
+    base = pid_b * MN
+    offsets = pid * BLOCK_SIZE + lane
+    x = tl.load(in_ptr + base + offsets)
+    tl.store(out_ptr + base + offsets, tl.where(lane <= s, x, 0.0))
+
+
+@triton.jit
+def _tril_flat_pow2_kernel(
+    in_ptr,
+    out_ptr,
+    active_total,
+    diag,
+    MN,
+    LOG2N: tl.constexpr,
+    NMASK: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+    NEED_MASK: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    pid_b = tl.program_id(1)
+    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    keep = (offsets & NMASK) <= (offsets >> LOG2N) + diag
+    base = pid_b * MN
+    if NEED_MASK:
+        mask = offsets < active_total
+        x = tl.load(in_ptr + base + offsets, mask=mask, other=0.0)
+        y = tl.where(keep, x, 0.0)
+        tl.store(out_ptr + base + offsets, y, mask=mask)
+    else:
+        x = tl.load(in_ptr + base + offsets)
+        y = tl.where(keep, x, 0.0)
+        tl.store(out_ptr + base + offsets, y)
+
+
+@triton.jit
+def _tril_band_batchgrid_kernel(
+    in_ptr,
+    out_ptr,
+    active_total,
+    diag,
+    MN,
+    N: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+    NEED_MASK: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    pid_b = tl.program_id(1)
+    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    rows = offsets // N
+    cols = offsets - rows * N
+    keep = cols <= rows + diag
+    base = pid_b * MN
+    if NEED_MASK:
+        mask = offsets < active_total
+        x = tl.load(in_ptr + base + offsets, mask=mask, other=0.0)
+        y = tl.where(keep, x, 0.0)
+        tl.store(out_ptr + base + offsets, y, mask=mask)
+    else:
+        x = tl.load(in_ptr + base + offsets)
+        y = tl.where(keep, x, 0.0)
+        tl.store(out_ptr + base + offsets, y)
+
+
+@triton.jit
+def _tril_row2d_kernel(
+    in_ptr,
+    out_ptr,
+    M,
+    N,
+    diag,
+    BLOCK_N: tl.constexpr,
+    NEED_MASK: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    row = pid % M
+    base = pid * N
+    for c0 in range(0, N, BLOCK_N):
+        cols = c0 + tl.arange(0, BLOCK_N)
+        keep = cols <= row + diag
+        if NEED_MASK:
+            m = cols < N
+            x = tl.load(in_ptr + base + cols, mask=m, other=0.0)
+            tl.store(out_ptr + base + cols, tl.where(keep, x, 0.0), mask=m)
+        else:
+            x = tl.load(in_ptr + base + cols)
+            tl.store(out_ptr + base + cols, tl.where(keep, x, 0.0))
+
+
+@triton.jit
+def _tril_zero_flat_kernel(
+    ptr,
+    total,
+    BLOCK_SIZE: tl.constexpr,
+    NEED_MASK: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    if NEED_MASK:
+        mask = offsets < total
+        tl.store(ptr + offsets, 0.0, mask=mask)
+    else:
+        tl.store(ptr + offsets, 0.0)
+
+
+_BLOCK_SIZE = 16384
+_ROW_N_THRESHOLD = 2048
+_FLAT_WIDE_N = 8192
+_SMALL_TOTAL_ZERO = 1 << 20
+_BAND_MIN_TOTAL = 1 << 20
+
+
+def _vendor_copy_from(src: torch.Tensor, dst: torch.Tensor):
+    if not tle_copy(src, dst):
+        torch.ops.aten._copy_from(src, dst)
+    return dst
+
+
+def _launch_v2_flat(
+    input: torch.Tensor,
+    out: torch.Tensor,
+    diagonal: int,
+    total: int = None,
+    block_size: int = _BLOCK_SIZE,
+    num_warps: int = 8,
+):
+    if total is None:
+        total = input.numel()
+    grid = (triton.cdiv(total, block_size),)
+    need_mask = total % block_size != 0
+    with torch_device_fn.device(input.device):
+        _tril_flat2d_kernel[grid](
+            input,
+            out,
+            total,
+            int(diagonal),
+            input.shape[-1],
+            block_size,
+            need_mask,
+            num_warps=num_warps,
+        )
+    return out
+
+
+def _launch_v2_flat_batched(
+    input: torch.Tensor,
+    out: torch.Tensor,
+    diagonal: int,
+    block_size: int = _BLOCK_SIZE,
+    num_warps: int = 8,
+):
+    total = input.numel()
+    M, N = input.shape[-2:]
+    MN = M * N
+    grid = (triton.cdiv(total, block_size),)
+    need_mask = total % block_size != 0
+    with torch_device_fn.device(input.device):
+        _tril_flat_batched_kernel[grid](
+            input,
+            out,
+            total,
+            int(diagonal),
+            MN,
+            N,
+            block_size,
+            need_mask,
+            num_warps=num_warps,
+        )
+    return out
+
+
+def _launch_v2_flat_batchgrid(
+    input: torch.Tensor,
+    out: torch.Tensor,
+    diagonal: int,
+    block_size: int = _BLOCK_SIZE,
+    num_warps: int = 8,
+):
+    M, N = input.shape[-2:]
+    MN = M * N
+    batch = input.numel() // MN
+    tiles = triton.cdiv(MN, block_size)
+    need_mask = MN % block_size != 0
+    with torch_device_fn.device(input.device):
+        _tril_flat_batchgrid_kernel[(tiles, batch)](
+            input,
+            out,
+            int(diagonal),
+            N,
+            MN,
+            block_size,
+            need_mask,
+            num_warps=num_warps,
+        )
+    return out
+
+
+def _launch_v2_rows(
+    input: torch.Tensor,
+    out: torch.Tensor,
+    diagonal: int,
+    num_rows: int,
+    num_warps: int = 4,
+):
+    M, N = input.shape[-2:]
+    block_n = min(triton.next_power_of_2(N), _BLOCK_SIZE)
+    need_mask = N % block_n != 0
+    with torch_device_fn.device(input.device):
+        _tril_row2d_kernel[(num_rows,)](
+            input,
+            out,
+            M,
+            N,
+            int(diagonal),
+            block_n,
+            need_mask,
+            num_warps=num_warps,
+        )
+
+
+def _launch_v2_zero(
+    out: torch.Tensor,
+    block_size: int = _BLOCK_SIZE,
+    num_warps: int = 8,
+):
+    total = out.numel()
+    grid = (triton.cdiv(total, block_size),)
+    need_mask = total % block_size != 0
+    with torch_device_fn.device(out.device):
+        _tril_zero_flat_kernel[grid](
+            out,
+            total,
+            block_size,
+            need_mask,
+            num_warps=num_warps,
+        )
+
+
+_WIDE_SCALAR_BLOCK = _BLOCK_SIZE
+
+
+def _use_wide_scalar(N: int):
+    return _is_power_of_2(N) and N > _FLAT_WIDE_N and N >= _WIDE_SCALAR_BLOCK
+
+
+def _launch_v2_wide_scalar(
+    input: torch.Tensor,
+    out: torch.Tensor,
+    diagonal: int,
+    block_size: int = _WIDE_SCALAR_BLOCK,
+    num_warps: int = 4,
+):
+    M, N = input.shape[-2:]
+    MN = M * N
+    batch = input.numel() // MN
+    bpr = N // block_size
+    grid = (M * bpr, batch)
+    with torch_device_fn.device(input.device):
+        _tril_wide_scalar_kernel[grid](
+            input,
+            out,
+            int(diagonal),
+            MN,
+            bpr.bit_length() - 1,
+            bpr - 1,
+            block_size,
+            num_warps=num_warps,
+        )
+    return out
+
+
+def _launch_v2_pow2(
+    input: torch.Tensor,
+    out: torch.Tensor,
+    diagonal: int,
+    active_rows: int = None,
+    block_size: int = _BLOCK_SIZE,
+    num_warps: int = 4,
+):
+    M, N = input.shape[-2:]
+    MN = M * N
+    batch = input.numel() // MN
+    rows = M if active_rows is None else active_rows
+    active_total = rows * N
+    grid = (triton.cdiv(active_total, block_size), batch)
+    need_mask = active_total % block_size != 0
+    with torch_device_fn.device(input.device):
+        _tril_flat_pow2_kernel[grid](
+            input,
+            out,
+            active_total,
+            int(diagonal),
+            MN,
+            N.bit_length() - 1,
+            N - 1,
+            block_size,
+            need_mask,
+            num_warps=num_warps,
+        )
+    return out
+
+
+def _launch_v2_band_batchgrid(
+    input: torch.Tensor,
+    out: torch.Tensor,
+    diagonal: int,
+    band_lo: int,
+    block_size: int = _BLOCK_SIZE,
+    num_warps: int = 8,
+):
+    M, N = input.shape[-2:]
+    MN = M * N
+    batch = input.numel() // MN
+    active_total = band_lo * N
+    grid = (triton.cdiv(active_total, block_size), batch)
+    need_mask = active_total % block_size != 0
+    with torch_device_fn.device(input.device):
+        _tril_band_batchgrid_kernel[grid](
+            input,
+            out,
+            active_total,
+            int(diagonal),
+            MN,
+            N,
+            block_size,
+            need_mask,
+            num_warps=num_warps,
+        )
+    return out
+
+
+def _launch_v2_band(
+    input: torch.Tensor,
+    out: torch.Tensor,
+    diagonal: int,
+    band_lo: int,
+):
+    M, N = input.shape[-2:]
+    batch = input.numel() // (M * N)
+    total = band_lo * N
+    if _is_power_of_2(N):
+        if batch == 1:
+            if total > 0:
+                _launch_v2_pow2(input, out, diagonal, active_rows=band_lo)
+            if band_lo < M and input.data_ptr() != out.data_ptr():
+                _vendor_copy_from(input[band_lo:], out[band_lo:])
+            return out
+        if band_lo < M and input.data_ptr() != out.data_ptr():
+            _vendor_copy_from(input, out)
+        if total > 0:
+            _launch_v2_pow2(input, out, diagonal, active_rows=band_lo)
+        return out
+    if batch == 1:
+        if total > 0:
+            if N >= _ROW_N_THRESHOLD:
+                _launch_v2_rows(input, out, diagonal, num_rows=band_lo)
+            else:
+                _launch_v2_flat(input, out, diagonal, total)
+        if band_lo < M and input.data_ptr() != out.data_ptr():
+            _vendor_copy_from(input[band_lo:], out[band_lo:])
+        return out
+    if band_lo < M and input.data_ptr() != out.data_ptr():
+        _vendor_copy_from(input, out)
+    if total > 0:
+        _launch_v2_band_batchgrid(input, out, diagonal, band_lo)
+    return out
 
 
 def _check_input(input: torch.Tensor):
@@ -376,9 +765,6 @@ _TINY_BATCHED_TILE_MIN_BATCH = 128
 
 
 def _use_wide_exact_row(M: int, N: int, batch: int):
-    # One exact-row program covers one matrix row with BLOCK_N == N.  Use it for
-    # wide power-of-two rows where it avoids the flat kernel's div/mod indexing,
-    # but require enough row programs to keep occupancy reasonable.
     if N < _WIDE_EXACT_ROW_MIN_N or N > _WIDE_EXACT_ROW_MAX_N or not _is_power_of_2(N):
         return False
 
@@ -423,35 +809,6 @@ def _launch_tile(
             N,
             BLOCK_M=block_m,
             BLOCK_N=block_n,
-            num_warps=num_warps,
-            num_stages=num_stages,
-        )
-    return out
-
-
-def _launch_flat(
-    input: torch.Tensor,
-    out: torch.Tensor,
-    diagonal: int,
-    block_size: int = 1024,
-    num_warps: int = 4,
-    num_stages: int = 2,
-):
-    M, N = input.shape[-2:]
-    total = input.numel()
-    if total == 0:
-        return out
-
-    grid = (triton.cdiv(total, block_size),)
-    with torch_device_fn.device(input.device):
-        _tril_flat_kernel[grid](
-            input,
-            out,
-            total,
-            int(diagonal),
-            M,
-            N,
-            BLOCK_SIZE=block_size,
             num_warps=num_warps,
             num_stages=num_stages,
         )
@@ -547,6 +904,7 @@ def _launch_exact_diag0_tile(
 
 
 _INPLACE_FLAT_BLOCK = 8192
+_INPLACE_POW2_MIN_TOTAL = 1 << 17
 
 
 def _launch_tril_inplace_contiguous(
@@ -560,12 +918,12 @@ def _launch_tril_inplace_contiguous(
     if input.numel() == 0:
         return input
 
-    # Rows [active_rows, M) sit entirely at/below the diagonal -> fully kept,
-    # nothing to zero. Only the first `active_rows` rows of each matrix contain
-    # strict-upper elements that must be zeroed.
     active_rows = min(M, max(0, N - 1 - diagonal))
     if active_rows == 0:
         return input
+
+    if _is_power_of_2(N) and active_rows * N >= _INPLACE_POW2_MIN_TOTAL:
+        return _launch_v2_pow2(input, input, int(diagonal), active_rows=active_rows)
 
     MN = M * N
     active_total = active_rows * N
@@ -589,7 +947,7 @@ def _launch_tril_inplace_contiguous(
 def _launch_tril_inplace_strided(
     input: torch.Tensor,
     diagonal: int,
-    block_m: int = 16,
+    block_m: int = 1,
     block_n: int = 64,
     num_warps: int = 4,
     num_stages: int = 2,
@@ -703,110 +1061,51 @@ def _launch_tril_strided_out(
 
 def _launch_tril(input: torch.Tensor, out: torch.Tensor, diagonal: int):
     M, N = input.shape[-2:]
-    if input.numel() == 0:
+    total = input.numel()
+    if total == 0:
         return out
 
     if diagonal <= -M:
-        return _zero_out(out)
+        if total <= _SMALL_TOTAL_ZERO:
+            _launch_v2_zero(out)
+        else:
+            out.zero_()
+        return out
     if diagonal >= N - 1:
-        out.copy_(input)
+        if input.data_ptr() != out.data_ptr():
+            _vendor_copy_from(input, out)
         return out
 
     input_to_use = input if input.is_contiguous() else input.contiguous()
     batch = input_to_use.numel() // (M * N)
-    if _use_wide_exact_row(M, N, batch):
-        return _launch_exact_row(
-            input_to_use,
-            out,
-            diagonal,
-            num_warps=_wide_exact_row_warps(N),
-        )
-    if batch == 1 and M == 1024 and N == 1024 and diagonal == 0:
-        return _launch_exact_diag0_tile(
-            input_to_use,
-            out,
-            block_m=32,
-            block_n=64,
-            num_warps=4,
-        )
-    if batch >= 1 and M == 512 and N == 512 and diagonal == 0:
-        return _launch_exact_diag0_tile(
-            input_to_use,
-            out,
-            block_m=16,
-            block_n=128,
-            num_warps=4,
-        )
-    if _use_tiny_batched_tile(M, N, batch):
-        return _launch_tile(
-            input_to_use,
-            out,
-            diagonal,
-            block_m=16,
-            block_n=64,
-            num_warps=2,
-        )
-    if M <= 64 and N <= 64:
-        return _launch_rows(
-            input_to_use,
-            out,
-            diagonal,
-            block_m=2,
-            block_n=64,
-            num_warps=1,
-        )
-    if N >= 2048:
-        return _launch_flat(
-            input_to_use,
-            out,
-            diagonal,
-            block_size=4096,
-            num_warps=4,
-        )
-    if batch > 1:
-        if M >= 256 and N >= 256:
-            return _launch_tile(
+
+    band_lo = min(M, max(0, N - 1 - diagonal))
+    if band_lo < M and band_lo * N <= (M * N) // 4 and total >= _BAND_MIN_TOTAL:
+        _launch_v2_band(input_to_use, out, diagonal, band_lo)
+        return out
+
+    if _use_wide_scalar(N):
+        return _launch_v2_wide_scalar(input_to_use, out, diagonal)
+
+    if _is_power_of_2(N) and not (batch > 1 and M * N <= 4096):
+        return _launch_v2_pow2(input_to_use, out, diagonal)
+
+    if batch == 1:
+        if _use_wide_exact_row(M, N, batch):
+            return _launch_exact_row(
                 input_to_use,
                 out,
                 diagonal,
-                block_m=16,
-                block_n=64,
-                num_warps=4,
+                num_warps=_wide_exact_row_warps(N),
             )
-        return _launch_rows(
-            input_to_use,
-            out,
-            diagonal,
-            block_m=8,
-            block_n=512,
-            num_warps=1,
-        )
-    if N >= 512:
-        return _launch_tile(
-            input_to_use,
-            out,
-            diagonal,
-            block_m=64,
-            block_n=64,
-            num_warps=4,
-        )
-    if M == 256 and N == 256:
-        return _launch_rows(
-            input_to_use,
-            out,
-            diagonal,
-            block_m=8,
-            block_n=256,
-            num_warps=2,
-        )
-    return _launch_rows(
-        input_to_use,
-        out,
-        diagonal,
-        block_m=8,
-        block_n=512,
-        num_warps=1,
-    )
+        if N >= _ROW_N_THRESHOLD:
+            _launch_v2_rows(input_to_use, out, diagonal, num_rows=M)
+            return out
+        return _launch_v2_flat(input_to_use, out, diagonal)
+    if M * N <= 4096:
+        return _launch_v2_flat_batched(input_to_use, out, diagonal)
+    _launch_v2_flat_batchgrid(input_to_use, out, diagonal)
+    return out
 
 
 def tril(input: torch.Tensor, diagonal: int = 0):
@@ -837,6 +1136,153 @@ def tril_(input: torch.Tensor, diagonal: int = 0):
     return _launch_tril_inplace_strided(input, diagonal)
 
 
+_ZC_BLOCK = 8192
+_ZC_RPC = 8
+_ZC_MIN_TOTAL = 1 << 21
+_ZC_SLICE_M = 8
+
+
+def _tensors_may_overlap(a: torch.Tensor, b: torch.Tensor) -> bool:
+    if a.data_ptr() == b.data_ptr():
+        return True
+    try:
+        return bool(torch._C._overlaps(a, b))
+    except Exception:
+        a0, b0 = a.data_ptr(), b.data_ptr()
+        asz = a.numel() * a.element_size()
+        bsz = b.numel() * b.element_size()
+        return a0 < b0 + bsz and b0 < a0 + asz
+
+
+@triton.jit
+def _zc_zero_upper_storage_kernel(
+    ptr, M, N, diag, JOFF, B, NJ, BLOCK: tl.constexpr, RPC: tl.constexpr
+):
+    """Dense storage [B, N, M] (out.transpose(-2,-1) contiguous view): zero
+    [0, min(j - diag, M)) of storage row (b, j). Only rows j with j - diag > 0
+    are launched: j = JOFF + (row % NJ) with JOFF = diag + 1 (diag >= 0) or 0.
+    Single-compare lane mask (2-compare masks are ~900x slower on this XPU).
+    grid = (cdiv(M, BLOCK), cdiv(B * NJ, RPC))."""
+    i0 = tl.program_id(0) * BLOCK
+    g = tl.program_id(1)
+    for r in tl.static_range(RPC):
+        row = g * RPC + r
+        if row < B * NJ:
+            j = JOFF + (row % NJ)
+            end = tl.minimum(j - diag, M)
+            if end > i0:
+                m = tl.arange(0, BLOCK) < (end - i0)
+                tl.store(
+                    ptr + (row // NJ) * (N * M) + j * M + i0 + tl.arange(0, BLOCK),
+                    0.0,
+                    mask=m,
+                )
+
+
+@triton.jit
+def _zc_zero_upper_row_kernel(
+    ptr,
+    M,
+    N,
+    diag,
+    B,
+    BATCH_STRIDE,
+    ROW_STRIDE,
+    NI,
+    BLOCK: tl.constexpr,
+    RPC: tl.constexpr,
+):
+    """out [B, M, N] with unit col stride: zero [i + diag + 1, N) of logical row
+    (b, i). NI = min(M, N - diag - 1) = rows per batch with nonzero work.
+    Single-compare lane mask. grid = (cdiv(N, BLOCK), cdiv(B * NI, RPC))."""
+    j0 = tl.program_id(0) * BLOCK
+    g = tl.program_id(1)
+    for r in tl.static_range(RPC):
+        row = g * RPC + r
+        if row < B * NI:
+            i = row % NI
+            start = i + diag + 1
+            lo = tl.maximum(start, j0)
+            hi = tl.minimum(N, j0 + BLOCK)
+            if lo < hi:
+                m = tl.arange(0, BLOCK) < (hi - lo)
+                tl.store(
+                    ptr
+                    + (row // NI) * BATCH_STRIDE
+                    + i * ROW_STRIDE
+                    + lo
+                    + tl.arange(0, BLOCK),
+                    0.0,
+                    mask=m,
+                )
+
+
+def _launch_tril_out_copied_zero(
+    input: torch.Tensor, out: torch.Tensor, diagonal: int
+) -> bool:
+    """Copy-first + store-only-zero-upper for non-contiguous tril_out.
+
+    Returns True if the fast path was taken. The vendor native strided copy
+    (`_vendor_copy_from`) fills the whole output, then a store-only kernel
+    (no load, no vselect) zeroes the strict-upper region; measured ~2-5x
+    faster than the legacy tmp+launch_tril+copy for large matrices
+    ([4096,4096] fp16: 172us vs 500us, [10000,65536] 5.4ms vs 14.4ms).
+    Keeps the legacy path for batched-small shapes (zero pass is launch-bound
+    there) and for any aliasing/irregular layout (safety first)."""
+    M, N = input.shape[-2:]
+    transposed = out.transpose(-2, -1).is_contiguous()
+    if transposed:
+        dense = True
+    elif out.stride(-1) == 1:
+        dense = False
+    else:
+        return False
+
+    if M * N < _ZC_MIN_TOTAL and not (dense is False and M < _ZC_SLICE_M):
+        return False
+    if _tensors_may_overlap(input, out):
+        return False
+    total = input.numel()
+    if total >= (1 << 31):
+        return False
+
+    batch = total // (M * N)
+    if transposed:
+        if diagonal >= 0:
+            nj = N - 1 - diagonal
+            joff = diagonal + 1
+        else:
+            nj = N
+            joff = 0
+        grid = (triton.cdiv(M, _ZC_BLOCK), triton.cdiv(batch * nj, _ZC_RPC))
+        with torch_device_fn.device(input.device):
+            _vendor_copy_from(input, out)
+            _zc_zero_upper_storage_kernel[grid](
+                out, M, N, diagonal, joff, batch, nj, _ZC_BLOCK, _ZC_RPC, num_warps=4
+            )
+    else:
+        ni = min(M, N - 1 - diagonal)
+        if ni <= 0:
+            return False
+        grid = (triton.cdiv(N, _ZC_BLOCK), triton.cdiv(batch * ni, _ZC_RPC))
+        with torch_device_fn.device(input.device):
+            _vendor_copy_from(input, out)
+            _zc_zero_upper_row_kernel[grid](
+                out,
+                M,
+                N,
+                diagonal,
+                batch,
+                out.stride(0) if out.dim() > 2 else 0,
+                out.stride(-2),
+                ni,
+                _ZC_BLOCK,
+                _ZC_RPC,
+                num_warps=4,
+            )
+    return True
+
+
 def tril_out(input: torch.Tensor, diagonal: int = 0, *, out: torch.Tensor = None):
     logger.debug("GEMS_KUNLUNXIN TRIL_OUT")
 
@@ -864,39 +1310,14 @@ def tril_out(input: torch.Tensor, diagonal: int = 0, *, out: torch.Tensor = None
     if diagonal <= -M:
         return _zero_out(out)
     if diagonal >= N - 1:
-        out.copy_(input)
+        if input.data_ptr() != out.data_ptr():
+            _vendor_copy_from(input, out)
         return out
 
-    if _can_use_strided_out_kernel(input, out):
-        batch = input.numel() // (M * N)
-        if M <= 64 and N <= 64:
-            return _launch_tril_strided_out(
-                input,
-                out,
-                int(diagonal),
-                block_m=16,
-                block_n=64,
-                num_warps=2,
-            )
-        if batch > 1 and M >= 256 and N >= 256:
-            return _launch_tril_strided_out(
-                input,
-                out,
-                int(diagonal),
-                block_m=16,
-                block_n=64,
-                num_warps=4,
-            )
-        return _launch_tril_strided_out(
-            input,
-            out,
-            int(diagonal),
-            block_m=32,
-            block_n=64,
-            num_warps=4,
-        )
+    if _launch_tril_out_copied_zero(input, out, int(diagonal)):
+        return out
 
     tmp = _empty_contiguous_like(input)
     _launch_tril(input, tmp, int(diagonal))
-    out.copy_(tmp)
+    _vendor_copy_from(tmp, out)
     return out

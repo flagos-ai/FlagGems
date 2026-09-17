@@ -673,11 +673,36 @@ def parse_perf_data(op, result_file):
     }
 
 
+def op_marker(op):
+    """Return the pytest marker name for an operator id.
+
+    Operators whose id starts with an underscore (e.g. ``_stack``) cannot use
+    that id verbatim as a pytest marker, because ``pytest.mark._stack`` is
+    rejected by ``pytest.mark``'s attribute access. The convention is:
+
+      1. Strip the leading underscore(s): ``_stack`` -> ``stack``.
+      2. If the stripped name collides with an existing operator id (e.g. the
+         distinct ``stack`` operator), prefix it with ``underscore_`` instead:
+         ``_stack`` -> ``underscore_stack``.
+
+    Non-underscore operator ids are returned unchanged. This mirrors the markers
+    declared in the test files and enforced by
+    ``tools/ci_checks/check_operator_markers.py``.
+    """
+    if not op.startswith("_"):
+        return op
+    stripped = op.lstrip("_")
+    if stripped in CFG.all_op_ids:
+        return f"underscore_{stripped}"
+    return stripped
+
+
 def run_accuracy_q(gpu_id, op):
     """Run accuracy test for one op. Returns result dict."""
     env = get_env(str(gpu_id))
 
-    base = f'pytest -m "{op}" --record json --output accuracy_{op}.json'
+    marker = op_marker(op)
+    base = f'pytest -m "{marker}" --record json --output accuracy_{op}.json'
     if op not in CFG.skip_cpu_tests:
         base += " --ref cpu"
     if CFG.quick:
@@ -745,7 +770,11 @@ def run_benchmark_q(gpu_id, op):
     ensure_dir(op_dir)
 
     dur = time.time()
-    cmd = f'pytest -m "{op}" --level core --record json --output benchmark_{op}.json --continue-on-collection-errors'
+    marker = op_marker(op)
+    cmd = (
+        f'pytest -m "{marker}" --level core --record json '
+        f"--output benchmark_{op}.json --continue-on-collection-errors"
+    )
     code = run_cmd(op, cmd, cwd=benchmark_dir, env=env, flavor="performance")
     dur = time.time() - dur
 
@@ -1047,11 +1076,12 @@ def get_ops_to_test():
         if "NoCPU" in labels:
             skip_cpu_tests.append(op["id"])
     CFG.skip_cpu_tests = skip_cpu_tests
+    CFG.all_op_ids = {op["id"] for op in op_catalog}
 
     if OPTS.ops:
         ops = []
         for op in OPTS.ops.split(","):
-            ops.append(op.strip().lstrip("_"))
+            ops.append(op.strip())
         return ops
 
     if OPTS.op_list_file:
@@ -1068,7 +1098,7 @@ def get_ops_to_test():
             ln = ln.strip()
             if ln.startswith("#"):
                 continue
-            ops.append(ln.lstrip("_"))
+            ops.append(ln)
         return ops
 
     effective_stages = []

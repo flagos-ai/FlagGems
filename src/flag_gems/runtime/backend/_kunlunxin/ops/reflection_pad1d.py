@@ -1,17 +1,3 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import logging
 import math
 
@@ -21,58 +7,78 @@ import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 
+from ..utils.tle_copy import tle_copy
+
 logger = logging.getLogger(__name__)
 
 
-# Flat 1D kernel over the ENTIRE output (all batch rows at once).
-#
-# ROOT CAUSE of the old slowness: the previous kernel wrapped every store index
-# with `% W_out` ("modulo wrap") to avoid masked stores. On KunlunXin XPU that
-# runtime modulo defeats OffsetAnalysis, so EVERY load/store degrades to the
-# discrete per-element path (~1.2 GB/s), a ~470x penalty vs mask-based
-# contiguous stores (see reflection_pad2d_perf_fix.md). Baseline big shape
-# [32,64,2048] pad[3,5] measured ~14ms / speedup 0.002.
-#
-# Fix: flatten (b, w_out) into one linear output index `o` and store to `o`
-# directly (provably stride-1 -> block DMA). A single boolean mask
-# `o < total_out` handles the tail. Because the layout is one flat contiguous
-# buffer, the only masked-out threads sit at the very end (o >= total_out) and
-# could not corrupt a valid element even if not suppressed (and it is in fact
-# suppressed here). This removes the "adjacent batch corruption" hazard that
-# motivated the modulo wrap.
 @triton.jit
 def reflection_pad1d_kernel(
-    in_ptr, out_ptr, W_in, pad_left, W_out, total_out, BLOCK: tl.constexpr
+    in_ptr,
+    out_ptr,
+    W_in,
+    pad_left,
+    W_out,
+    total_out,
+    BLOCK: tl.constexpr,
+    NEED_MASK: tl.constexpr = True,
 ):
     pid = tl.program_id(axis=0)
     o = pid * BLOCK + tl.arange(0, BLOCK)
-    mask = o < total_out
 
-    # Decode flat output index -> (batch row, w_out)
     b = o // W_out
-    w_idx = o % W_out
+    w_idx = o - b * W_out
 
-    # Reflected width index. pad_left < W_in is validated on the host, so a
-    # single period (abs + where) is exact -- no `% (2*(W_in-1))` needed.
     x = w_idx.to(tl.int32) - pad_left
     pW = 2 * (W_in - 1)
     t = tl.abs(x)
     iw = tl.where(t < W_in, t, pW - t)
 
     in_offs = b * W_in + iw
-    vals = tl.load(in_ptr + in_offs, mask=mask)
-    tl.store(out_ptr + o, vals, mask=mask)
+    if NEED_MASK:
+        mask = o < total_out
+        vals = tl.load(in_ptr + in_offs, mask=mask)
+        tl.store(out_ptr + o, vals, mask=mask)
+    else:
+        vals = tl.load(in_ptr + in_offs)
+        tl.store(out_ptr + o, vals)
 
 
 @triton.jit
 def copy_tensor_kernel(in_ptr, out_ptr, total, BLOCK: tl.constexpr):
-    # Flat contiguous copy (no padding path). Mask-based, contiguous offsets ->
-    # block DMA, same as the padded kernel's store side.
     pid = tl.program_id(axis=0)
     o = pid * BLOCK + tl.arange(0, BLOCK)
     mask = o < total
     vals = tl.load(in_ptr + o, mask=mask)
     tl.store(out_ptr + o, vals, mask=mask)
+
+
+@triton.jit
+def pad1d_side_kernel(
+    in_ptr,
+    out_ptr,
+    W_in,
+    pad_left,
+    W_out,
+    total_side,
+    PAD: tl.constexpr,
+    SIDE: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    pid = tl.program_id(axis=0)
+    idx = pid * BLOCK + tl.arange(0, BLOCK)
+    idx_c = tl.minimum(idx, total_side - 1)
+    m = idx < total_side
+    b = idx_c // PAD
+    j = idx_c - b * PAD
+    if SIDE == 0:
+        src = pad_left - j
+        dst = b * W_out + j
+    else:
+        src = W_in - 2 - j
+        dst = b * W_out + W_in + pad_left + j
+    v = tl.load(in_ptr + b * W_in + src)
+    tl.store(out_ptr + dst, v, mask=m)
 
 
 def _launch_reflection_pad1d(input: torch.Tensor, padding, out: torch.Tensor = None):
@@ -111,12 +117,8 @@ def _launch_reflection_pad1d(input: torch.Tensor, padding, out: torch.Tensor = N
             raise ValueError("out must be on the same device as input")
         out = out.contiguous()
 
-    # BLOCK=1024 is the best all-round tile on XPU (measured sweep in the
-    # reflection_pad2d fix): small shapes avoid huge-block launch waste, and
-    # medium/large shapes still get enough work per program.
     BLOCK = 1024
 
-    # No padding: just copy
     if pad_left == 0 and pad_right == 0:
         total = B * W_in
         grid = (triton.cdiv(total, BLOCK),)
@@ -124,7 +126,6 @@ def _launch_reflection_pad1d(input: torch.Tensor, padding, out: torch.Tensor = N
             copy_tensor_kernel[grid](x, out, total, BLOCK=BLOCK)
         return out
 
-    # Validate reflection padding constraints
     if W_in < 2:
         raise ValueError(
             "input width must be at least 2 for reflection padding when padding > 0"
@@ -135,10 +136,52 @@ def _launch_reflection_pad1d(input: torch.Tensor, padding, out: torch.Tensor = N
         )
 
     total_out = B * W_out
+    if total_out >= 262144:
+        with torch_device_fn.device(x.device):
+            mid = torch.ops.aten.slice(out, -1, pad_left, pad_left + W_in)
+            if not tle_copy(x, mid):
+                torch.ops.aten._copy_from(x, mid, False)
+            if pad_left > 0:
+                tot = B * pad_left
+                pad1d_side_kernel[(triton.cdiv(tot, 1024),)](
+                    x,
+                    out,
+                    W_in,
+                    pad_left,
+                    W_out,
+                    tot,
+                    PAD=pad_left,
+                    SIDE=0,
+                    BLOCK=1024,
+                )
+            if pad_right > 0:
+                tot = B * pad_right
+                pad1d_side_kernel[(triton.cdiv(tot, 1024),)](
+                    x,
+                    out,
+                    W_in,
+                    pad_left,
+                    W_out,
+                    tot,
+                    PAD=pad_right,
+                    SIDE=1,
+                    BLOCK=1024,
+                )
+        return out
+
+    BLOCK = 256 if total_out <= 1024 else 1024
+    need_mask = (total_out % BLOCK) != 0
     grid = (triton.cdiv(total_out, BLOCK),)
     with torch_device_fn.device(x.device):
         reflection_pad1d_kernel[grid](
-            x, out, W_in, pad_left, W_out, total_out, BLOCK=BLOCK
+            x,
+            out,
+            W_in,
+            pad_left,
+            W_out,
+            total_out,
+            BLOCK=BLOCK,
+            NEED_MASK=need_mask,
         )
     return out
 
