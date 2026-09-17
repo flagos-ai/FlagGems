@@ -1,17 +1,3 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import logging
 
 import torch
@@ -23,13 +9,8 @@ from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 
-_BLOCK_SIZE = 16384
-_FLAG_BLOCK_SIZE = 8192
+_BLOCK_SIZE = 8192
 _NUM_WARPS = 8
-# Tensors with at least this many elements take the legacy pointwise path:
-# on this platform the per-lane scalar ALU math (no vectorized SIMD math for
-# elementwise ops) makes the raw-Triton pipeline ~3x slower than the native
-# path once tensors exceed a few MB of lanes.
 _LARGE_NUMEL = 2 * 1024 * 1024
 
 config_ = CodeGenConfig(
@@ -56,13 +37,21 @@ def unscale_func(value, inv_scale):
 
 
 @triton.jit
-def _unscale_kernel(
+def _unscale_flag_kernel(
     x_ptr,
     inv_scale,
+    flag_ptr,
     numel,
     BLOCK: tl.constexpr,
     NEED_MASK: tl.constexpr,
 ):
+    """One fused pass: unscale in place and publish one per-block non-finite
+    flag.  Fusing removes the second full read of the tensor (the previous
+    split unscale/flag kernels were two separate elementwise launches) and
+    cuts one launch per tensor; on the launch-bound small/medium shapes this
+    is the dominant win.  Tail lanes load ``other=0.0`` (finite) so masked-out
+    lanes never raise the flag, and ``nf & mask`` guards stores of the flag.
+    """
     pid = tl.program_id(0)
     offs = pid * BLOCK + tl.arange(0, BLOCK)
     if NEED_MASK:
@@ -75,31 +64,10 @@ def _unscale_kernel(
         tl.store(x_ptr + offs, out, mask=mask)
     else:
         tl.store(x_ptr + offs, out)
-
-
-@triton.jit
-def _non_finite_flag_kernel(
-    x_ptr,
-    flag_ptr,
-    flag_base,
-    numel,
-    BLOCK: tl.constexpr,
-    NEED_MASK: tl.constexpr,
-):
-    pid = tl.program_id(0)
-    offs = pid * BLOCK + tl.arange(0, BLOCK)
-    if NEED_MASK:
-        mask = offs < numel
-        x = tl.load(x_ptr + offs, mask=mask, other=0.0)
-    else:
-        x = tl.load(x_ptr + offs)
-    # Non-finite detection via ordered range comparisons only: NaN is not
-    # <= MAX nor >= -MAX, so it is caught as well; the unordered "x != x"
-    # idiom is NOT selectable by this backend's LLVM for fp32 and must be
-    # avoided. inf/nan survive unscaling unchanged, so testing the already
-    # scaled in-place data is equivalent to testing the original values.
     nf = ~((x <= 3.4028235e38) & (x >= -3.4028235e38))
-    tl.store(flag_ptr + (flag_base + pid), tl.max(tl.where(nf, 1.0, 0.0)))
+    if NEED_MASK:
+        nf = nf & mask
+    tl.store(flag_ptr + pid, tl.max(tl.where(nf, 1.0, 0.0)))
 
 
 @triton.jit
@@ -110,9 +78,6 @@ def _reduce_flags_kernel(flag_ptr, num_flags, found_ptr, BLOCK: tl.constexpr):
         m = offs < num_flags
         acc = tl.maximum(acc, tl.load(flag_ptr + offs, mask=m, other=0.0))
     m = tl.max(acc, axis=0)
-    # Only ever raise found_inf to 1.0 (never clear it), preserving the
-    # accumulate semantics of found_inf. Masked stores are unreliable on this
-    # backend, so the stored VALUE is conditioned instead of the mask.
     idx0 = tl.arange(0, 1)
     cur = tl.load(found_ptr + idx0)
     tl.store(found_ptr + idx0, tl.where(m > 0, 1.0, cur))
@@ -131,30 +96,20 @@ def _amp_foreach_non_finite_check_and_unscale_(tensors, found_inf, inv_scale):
         else:
             small.append(tensor)
 
-    # Fast fused path: in-place unscale + per-block non-finite flags in two
-    # elementwise launches per tensor plus one tiny op-level reduce.
-    total_blocks = sum(triton.cdiv(t.numel(), _FLAG_BLOCK_SIZE) for t in small)
+    total_blocks = sum(triton.cdiv(t.numel(), _BLOCK_SIZE) for t in small)
     if total_blocks > 0:
         flags = torch.empty(total_blocks, device=tensors[0].device, dtype=torch.float32)
         base = 0
         for tensor in small:
             n = tensor.numel()
-            nb = triton.cdiv(n, _FLAG_BLOCK_SIZE)
-            _unscale_kernel[(triton.cdiv(n, _BLOCK_SIZE),)](
+            nb = triton.cdiv(n, _BLOCK_SIZE)
+            _unscale_flag_kernel[(nb,)](
                 tensor,
                 inv_scale,
+                flags[base:],
                 n,
                 BLOCK=_BLOCK_SIZE,
                 NEED_MASK=n % _BLOCK_SIZE != 0,
-                num_warps=_NUM_WARPS,
-            )
-            _non_finite_flag_kernel[(nb,)](
-                tensor,
-                flags,
-                base,
-                n,
-                BLOCK=_FLAG_BLOCK_SIZE,
-                NEED_MASK=n % _FLAG_BLOCK_SIZE != 0,
                 num_warps=_NUM_WARPS,
             )
             base += nb
@@ -165,14 +120,12 @@ def _amp_foreach_non_finite_check_and_unscale_(tensors, found_inf, inv_scale):
             BLOCK=4096,
         )
 
-    # Huge-tensor path: the vendor-native pointwise engine beats elementwise
-    # Triton ALU once the tensors are large.
     if large:
         scale = inv_scale.item()
         has_non_finite = False
         for tensor in large:
             unscale_func(tensor, scale, out0=tensor)
-            if not torch.isfinite(tensor).all():
+            if torch.any(~torch.isfinite(tensor)):
                 has_non_finite = True
         if has_non_finite:
             found_inf.fill_(1.0)

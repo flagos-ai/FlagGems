@@ -40,6 +40,28 @@ def bitwise_or_func(x, y):
     return x | y
 
 
+def _pack_scalar_i16_to_i32(s):
+    s = int(s) & 0xFFFF
+    return s | (s << 16)
+
+
+def _pack_scalar_bool_to_i32(b):
+    v = int(b) & 0xFF
+    return v | (v << 8) | (v << 16) | (v << 24)
+
+
+def _try_view_i32(t):
+    """Flatten and view as int32. Returns None if not possible."""
+    if not t.is_contiguous():
+        return None
+    if t.numel() * t.element_size() % 4 != 0:
+        return None
+    try:
+        return t.reshape(-1).view(torch.int32)
+    except RuntimeError:
+        return None
+
+
 def bitwise_or_tensor(A, B):
     logger.debug("GEMS_KUNLUNXIN BITWISE_OR")
     return bitwise_or_func(A, B)
@@ -60,83 +82,60 @@ def bitwise_or_func_scalar(x, y):
 
 def bitwise_or_scalar(A, B):
     logger.debug("GEMS_KUNLUNXIN BITWISE_OR_SCALAR")
-    if (
-        A.dtype in (torch.bool, torch.int16)
-        and A.is_contiguous()
-        and isinstance(B, (int, bool))
-    ):
-        nbytes = A.numel() * A.element_size()
-        if nbytes > 0 and nbytes % 4 == 0:
-            scalar = int(B)
-            if A.dtype == torch.bool:
-                if type(B) is not bool:
-                    return bitwise_or_func_scalar(A, B)
-                mask = 0x01010101 if (scalar & 1) else 0
-            else:
-                s = scalar & 0xFFFF
-                mask = s | (s << 16)
-            try:
-                in_view = A.reshape(-1).view(torch.int32)
-            except RuntimeError:  # e.g. unaligned storage offset
-                return bitwise_or_func_scalar(A, B)
-            res = bitwise_or_func_scalar(in_view, mask)
-            return res.view(A.dtype).reshape(A.shape)
+    if A.dtype == torch.bool:
+        a32 = _try_view_i32(A)
+        if a32 is not None:
+            return (
+                bitwise_or_func_scalar(a32, _pack_scalar_bool_to_i32(B))
+                .view(torch.bool)
+                .reshape(A.shape)
+            )
+        return bitwise_or_func_scalar(A.view(torch.int8), int(B)).view(torch.bool)
+    if A.dtype == torch.int16:
+        a32 = _try_view_i32(A)
+        if a32 is not None:
+            return (
+                bitwise_or_func_scalar(a32, _pack_scalar_i16_to_i32(B))
+                .view(torch.int16)
+                .reshape(A.shape)
+            )
     return bitwise_or_func_scalar(A, B)
 
 
 def bitwise_or_scalar_(A, B):
     logger.debug("GEMS_KUNLUNXIN BITWISE_OR_SCALAR_")
-    if (
-        A.dtype in (torch.bool, torch.int16)
-        and A.is_contiguous()
-        and isinstance(B, (int, bool))
-    ):
-        nbytes = A.numel() * A.element_size()
-        if nbytes > 0 and nbytes % 4 == 0:
-            scalar = int(B)
-            if A.dtype == torch.bool:
-                if type(B) is not bool:
-                    return bitwise_or_func_scalar(A, B, out0=A)
-                mask = 0x01010101 if (scalar & 1) else 0
-            else:
-                s = scalar & 0xFFFF
-                mask = s | (s << 16)
-            try:
-                in_view = A.reshape(-1).view(torch.int32)
-            except RuntimeError:  # e.g. unaligned storage offset
-                return bitwise_or_func_scalar(A, B, out0=A)
-            bitwise_or_func_scalar(in_view, mask, out0=in_view)
+    if A.dtype == torch.bool:
+        a32 = _try_view_i32(A)
+        if a32 is not None:
+            bitwise_or_func_scalar(a32, _pack_scalar_bool_to_i32(B), out0=a32)
+            return A
+        bitwise_or_func_scalar(A.view(torch.int8), int(B), out0=A.view(torch.int8))
+        return A
+    if A.dtype == torch.int16:
+        a32 = _try_view_i32(A)
+        if a32 is not None:
+            bitwise_or_func_scalar(a32, _pack_scalar_i16_to_i32(B), out0=a32)
             return A
     return bitwise_or_func_scalar(A, B, out0=A)
 
 
 def bitwise_or_scalar_tensor(A, B):
     logger.debug("GEMS_KUNLUNXIN BITWISE_OR_SCALAR_TENSOR")
-    if (
-        B.dtype in (torch.bool, torch.int16)
-        and B.is_contiguous()
-        and isinstance(A, (int, bool))
-    ):
-        nbytes = B.numel() * B.element_size()
-        if nbytes > 0 and nbytes % 4 == 0:
-            scalar = int(A)
-            if B.dtype == torch.bool:
-                if type(A) is not bool:
-                    return bitwise_or_func_scalar(B, A)
-                # torch bool conversion of a scalar = low bit (verified:
-                # 2->False, 3->True, 5->True, -2->False on reference).
-                mask = 0x01010101 if (scalar & 1) else 0
-            else:
-                s = scalar & 0xFFFF
-                mask = s | (s << 16)
-            n_words = nbytes // 4
-            out = torch.empty_strided(
-                (n_words,), (1,), dtype=torch.int32, device=B.device
+    if B.dtype == torch.bool:
+        b32 = _try_view_i32(B)
+        if b32 is not None:
+            return (
+                bitwise_or_func_scalar(b32, _pack_scalar_bool_to_i32(A))
+                .view(torch.bool)
+                .reshape(B.shape)
             )
-            try:
-                in_view = B.reshape(-1).view(torch.int32)
-            except RuntimeError:  # e.g. unaligned storage offset
-                return bitwise_or_func_scalar(B, A)
-            bitwise_or_func_scalar(in_view, mask, out0=out)
-            return out.view(B.dtype).reshape(B.shape)
+        return bitwise_or_func_scalar(B.view(torch.int8), int(A)).view(torch.bool)
+    if B.dtype == torch.int16:
+        b32 = _try_view_i32(B)
+        if b32 is not None:
+            return (
+                bitwise_or_func_scalar(b32, _pack_scalar_i16_to_i32(A))
+                .view(torch.int16)
+                .reshape(B.shape)
+            )
     return bitwise_or_func_scalar(B, A)

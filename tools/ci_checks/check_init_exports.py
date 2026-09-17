@@ -37,6 +37,7 @@ def discover_init_files() -> list[Path]:
 
     Returns __init__.py files from:
       - Main package: src/flag_gems/__init__.py
+      - Generic ops: src/flag_gems/ops/__init__.py
       - Backend ops: src/flag_gems/runtime/backend/*/*/ops/__init__.py
 
     Excludes utility/helper packages (utils, fused, etc.) since they typically
@@ -53,7 +54,13 @@ def discover_init_files() -> list[Path]:
     if main_init.exists():
         files.append(main_init)
 
-    # 2. All backend ops __init__.py files
+    # 2. Generic ops init (exports every device-agnostic operator; this is the
+    # file new operators are added to, so it must be kept sorted).
+    ops_init = root / "ops" / "__init__.py"
+    if ops_init.exists():
+        files.append(ops_init)
+
+    # 3. All backend ops __init__.py files
     # Pattern: src/flag_gems/runtime/backend/_<vendor>/ops/__init__.py
     # Pattern: src/flag_gems/runtime/backend/_<vendor>/<arch>/ops/__init__.py
     backend_root = root / "runtime" / "backend"
