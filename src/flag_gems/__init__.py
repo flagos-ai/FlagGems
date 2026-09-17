@@ -470,6 +470,7 @@ _FULL_CONFIG = (
     ("baddbmm", baddbmm),
     ("baddbmm.out", baddbmm_out),
     ("baddbmm_", baddbmm_),
+    ("batch_norm_gather_stats", batch_norm_gather_stats),
     ("bernoulli", bernoulli),
     ("bernoulli_.float", bernoulli_),
     ("bilinear", bilinear),
