@@ -23,12 +23,20 @@ vendor_info = VendorDescriptor(
 )
 
 CUSTOMIZED_UNUSED_OPS = (
+    "atan2_out",
     "cumsum",
+    "grid_sampler_3d_backward",
     "randperm",
     "topk",
     "unique",
     "slice",
     "conv_transpose1d",
+    "mkldnn_rnn_layer",
+    "_linalg_eigvals",
+    "linalg_eig",
+    "linalg_eigvals",
+    "linalg_eigvals.out",
+    "linalg_eigvals_out",
 )
 
 

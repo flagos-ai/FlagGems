@@ -29,12 +29,14 @@ atan2_out: test_atan2
 alias_copy_out: test_alias_copy
 as_strided_copy_out: test_as_strided_copy
 baddbmm_out: test_baddbmm
+int_mm_out: test_int_mm
 linalg_eigvals_out: test_linalg_eigvals
 multi_margin_loss_out: test_multi_margin_loss
 nanmedian_out: test_nanmedian
 scaled_mm_out: test_scaled_mm
 searchsorted_out: test_searchsorted
 searchsorted_scalar_out: test_searchsorted
+scatter_reduce_two_out: test_scatter_reduce
 segment_reduce_out: test_segment_reduce
 special_zeta_out: test_special_zeta
 special_zeta_scalar_tensor_out: test_special_zeta
@@ -53,6 +55,8 @@ arctan: test_atan
 nanmedian_dim: test_nanmedian
 nanmedian_dim_values: test_nanmedian
 searchsorted_scalar: test_searchsorted
+scatter_reduce_two: test_scatter_reduce
+scatter_reduce_two_: test_scatter_reduce
 special_zeta_scalar_tensor: test_special_zeta
 special_zeta_tensor_scalar: test_special_zeta
 
@@ -68,8 +72,7 @@ std_mean_correction_names: test_std_mean
 std_mean_correction_out: test_std_mean
 std_mean_dim: test_std_mean
 std_mean_names_dim: test_std_mean
+tril_indices: test_triangular_indices
+triu_indices: test_triangular_indices
 upsample_bicubic2d_aa_backward: test_upsample_bicubic2d_aa
 upsample_linear1d_backward: test_upsample_linear1d
-
-# Underscore-prefixed aten op shares the base operator test file
-_adaptive_avg_pool3d_backward: test_adaptive_avg_pool3d_backward
