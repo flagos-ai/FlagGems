@@ -98,7 +98,10 @@ def test_all_dim_bool_byte_fallback(shape, monkeypatch):
     all_ops = importlib.import_module(flag_gems.all_dim.__module__)
     monkeypatch.setattr(all_ops, "_TLE_MIN_AVAILABLE", False)
     inp = torch.ones(shape, dtype=torch.bool, device=flag_gems.device)
-    ref = torch.all(inp, dim=1)
+    # The official runner drives pytest with `--ref cpu` (TO_CPU=True) and
+    # `accuracy_utils.to_cpu` asserts the reference is on cpu -- build it
+    # through `utils.to_reference` like the tests above.
+    ref = torch.all(utils.to_reference(inp), dim=1)
     with flag_gems.use_gems():
         res = torch.all(inp, dim=1)
     utils.gems_assert_equal(res, ref)
