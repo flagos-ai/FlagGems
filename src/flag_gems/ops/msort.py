@@ -19,6 +19,8 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.ops.contiguous import contiguous
+from flag_gems.ops.copy import copy_
 from flag_gems.ops.sort import sort_stable
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
@@ -131,12 +133,12 @@ def _pad_value(dtype):
 
 def _msort_contiguous(inp, out):
     if inp.ndim == 0:
-        out.copy_(inp)
+        copy_(out, inp)
         return
 
     n_rows = inp.shape[0]
     if inp.numel() == 0 or n_rows == 1:
-        out.copy_(inp)
+        copy_(out, inp)
         return
 
     # Triton's bitonic sort is fastest for the common, bounded first dimension.
@@ -152,7 +154,7 @@ def _msort_contiguous(inp, out):
                 )
         values, indices = sort_stable(radix_inp, stable=False, dim=0, descending=False)
         if inp.dtype.is_floating_point:
-            indices = indices.contiguous()
+            indices = contiguous(indices)
             with torch_device_fn.device(inp.device):
                 gather_sorted_values_kernel[(triton.cdiv(inp.numel(), 1024),)](
                     inp,
@@ -163,7 +165,7 @@ def _msort_contiguous(inp, out):
                     BLOCK_SIZE=1024,
                 )
         else:
-            out.copy_(values)
+            copy_(out, values)
         return
 
     n_cols = inp.numel() // n_rows
@@ -209,8 +211,8 @@ def msort_out(inp, *, out):
     if inp.is_contiguous() and out.is_contiguous():
         _msort_contiguous(inp, out)
     else:
-        contiguous_inp = inp.contiguous()
+        contiguous_inp = contiguous(inp)
         contiguous_out = torch.empty_like(contiguous_inp)
         _msort_contiguous(contiguous_inp, contiguous_out)
-        out.copy_(contiguous_out)
+        copy_(out, contiguous_out)
     return out
