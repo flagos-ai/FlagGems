@@ -15,10 +15,8 @@ logger = logging.getLogger(__name__)
 
 try:
     import triton.experimental.tle as tle
-    from triton.experimental.tle.raw.runtime import registry as _raw_dialects
 
-    # TLE may be installed without the XPU raw dialect.
-    _TLE_OK = "xpu3" in _raw_dialects
+    _TLE_OK = True
 except ImportError:
     tle = None
     _TLE_OK = False
@@ -37,7 +35,7 @@ _RAW_TYPE_CODE = {
 
 if _TLE_OK:
 
-    @tle.raw.dialect(name="xpu3", file=os.path.join(_HERE, "gt_raw.xpu"))
+    @tle.raw.dialect("xpu3", file=os.path.join(_HERE, "gt_raw.xpu"))
     def gt_scalar_raw(
         in_, out, numel, esz, type_code, scalar_bits, chunk_start, chunk_count
     ): ...
