@@ -1123,6 +1123,8 @@ from flag_gems.ops.zero import zero, zero_out
 from flag_gems.ops.zeros import zero_, zeros
 from flag_gems.ops.zeros_like import zeros_like
 
+argsort_stable = argsort
+
 __all__ = [
     "__iand___scalar",
     "__iand___tensor",
@@ -1323,6 +1325,7 @@ __all__ = [
     "argmax",
     "argmin",
     "argsort",
+    "argsort_stable",
     "as_strided_copy",
     "as_strided_copy_out",
     "as_strided_scatter",
