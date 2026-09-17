@@ -19,22 +19,75 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.utils import pointwise_dynamic
+from flag_gems.ops.copy import copy_
+from flag_gems.ops.neg import neg
+from flag_gems.ops.zeros_like import zeros_like
+from flag_gems.utils import pointwise_dynamic, tl_extra_shim
 from flag_gems.utils.type_utils import ELEMENTWISE_TYPE_PROMOTION_KIND, type_promotion
 
 logger = logging.getLogger(__name__)
+
+_WRAP_INTEGER_EXPONENT = tuple(map(int, torch.__version__.split(".")[:2])) >= (2, 11)
+
+
+@triton.jit
+def _ldexp_fallback(x, exponent):
+    return x * tl.exp2(exponent.to(x.dtype))
+
+
+_ldexp = getattr(tl_extra_shim, "ldexp", _ldexp_fallback)
+
+
+@triton.jit
+def _ldexp32(x, exponent):
+    bits = x.to(tl.int32, bitcast=True)
+    mantissa = bits & 0x7FFFFF
+    subnormal = ((bits & 0x7F800000) == 0) & (mantissa != 0)
+    exponent = tl.maximum(tl.minimum(exponent, 4096), -4096)
+    normal_result = _ldexp(x, exponent)
+    subnormal_result = _ldexp(mantissa.to(tl.float32), exponent - 149)
+    subnormal_result = tl.where(bits < 0, -subnormal_result, subnormal_result)
+    return tl.where(subnormal, subnormal_result, normal_result)
 
 
 @pointwise_dynamic(is_tensor=[True, True], promotion_methods=[(0, 1, "INT_TO_FLOAT")])
 @triton.jit
 def ldexp_func(x, y):
+    if y.dtype.is_int() and x.dtype.is_floating():
+        exponent = tl.maximum(tl.minimum(y, 2147483647), -2147483648).to(tl.int32)
+        return _ldexp(x.to(tl.float32), exponent)
     return x.to(tl.float32) * tl.exp2(y.to(tl.float32))
 
 
 @pointwise_dynamic(is_tensor=[True, True], promotion_methods=[(0, 1, "INT_TO_FLOAT")])
 @triton.jit
 def ldexp_fp64_func(x, y):
+    if y.dtype.is_int() and x.dtype.is_floating():
+        exponent = tl.maximum(tl.minimum(y, 2147483647), -2147483648).to(tl.int32)
+        return _ldexp(x.to(tl.float64), exponent)
     return x.to(tl.float64) * tl.exp2(y.to(tl.float64))
+
+
+@pointwise_dynamic(
+    is_tensor=[True, True, False], promotion_methods=[(0, 1, "INT_TO_FLOAT")]
+)
+@triton.jit
+def ldexp_integral_func(x, y, wrap_exponent: tl.constexpr):
+    exponent = y.to(tl.int32)
+    if not wrap_exponent:
+        exponent = tl.maximum(tl.minimum(y, 2147483647), -2147483648).to(tl.int32)
+    return _ldexp32(x.to(tl.float32), exponent)
+
+
+@pointwise_dynamic(
+    is_tensor=[True, True, False], promotion_methods=[(0, 1, "INT_TO_FLOAT")]
+)
+@triton.jit
+def ldexp_integral_fp64_func(x, y, wrap_exponent: tl.constexpr):
+    exponent = y.to(tl.int32)
+    if not wrap_exponent:
+        exponent = tl.maximum(tl.minimum(y, 2147483647), -2147483648).to(tl.int32)
+    return _ldexp(x.to(tl.float64), exponent)
 
 
 @pointwise_dynamic(
@@ -55,10 +108,9 @@ def ldexp_complex_func(xr, xi, yr, yi):
     angle = yi * 0.6931471805599453
     cos_angle = tl.cos(angle)
     sin_angle = tl.sin(angle)
-    return (
-        scale * (xr * cos_angle - xi * sin_angle),
-        scale * (xr * sin_angle + xi * cos_angle),
-    )
+    pr = scale * cos_angle
+    pi = tl.where(yi == 0, 0, scale * sin_angle)
+    return xr * pr - xi * pi, xr * pi + xi * pr
 
 
 @pointwise_dynamic(
@@ -79,10 +131,9 @@ def ldexp_complex_fp64_func(xr, xi, yr, yi):
     angle = yi * 0.693147180559945309417232121458176568
     cos_angle = tl.cos(angle)
     sin_angle = tl.sin(angle)
-    return (
-        scale * (xr * cos_angle - xi * sin_angle),
-        scale * (xr * sin_angle + xi * cos_angle),
-    )
+    pr = scale * cos_angle
+    pi = tl.where(yi == 0, 0, scale * sin_angle)
+    return xr * pr - xi * pi, xr * pi + xi * pr
 
 
 def _result_dtype(self, other):
@@ -128,7 +179,11 @@ def _validate_out(self, other, out, result_dtype):
             f"type {out.dtype}"
         )
     for operand in (self, other):
-        if operand.device == out.device and torch._C._overlaps(out, operand):
+        if (
+            operand.device == out.device
+            and operand.untyped_storage().nbytes() > 0
+            and operand.untyped_storage().data_ptr() == out.untyped_storage().data_ptr()
+        ):
             if not _is_exact_alias(out, operand):
                 raise RuntimeError(
                     "some elements of the input tensor and the written-to tensor "
@@ -138,10 +193,28 @@ def _validate_out(self, other, out, result_dtype):
 
 def _complex_parts(tensor, real_dtype):
     if tensor.is_complex():
-        parts = torch.view_as_real(tensor)
-        return parts[..., 0].to(real_dtype), parts[..., 1].to(real_dtype)
-    real = tensor.to(real_dtype)
-    return real, torch.zeros_like(real)
+        physical = tensor.conj() if tensor.is_conj() else tensor
+        parts = torch.view_as_real(physical)
+        real = torch.empty(tensor.shape, dtype=real_dtype, device=tensor.device)
+        imag = torch.empty_like(real)
+        copy_(real, parts[..., 0])
+        copy_(imag, neg(parts[..., 1]) if tensor.is_conj() else parts[..., 1])
+        return real, imag
+    real = torch.empty(tensor.shape, dtype=real_dtype, device=tensor.device)
+    copy_(real, tensor)
+    return real, zeros_like(real)
+
+
+def _copy_result(out, result):
+    if out.is_complex():
+        physical = out.conj() if out.is_conj() else out
+        parts = torch.view_as_real(physical)
+        real, imag = _complex_parts(result, parts.dtype)
+        copy_(parts[..., 0], real)
+        copy_(parts[..., 1], neg(imag) if out.is_conj() else imag)
+    else:
+        copy_(out, result)
+    return out
 
 
 def _complex_ldexp(self, other, result_dtype):
@@ -154,26 +227,52 @@ def _complex_ldexp(self, other, result_dtype):
         else ldexp_complex_func
     )
     real, imag = func(xr, xi, yr, yi)
-    return torch.complex(real, imag).to(result_dtype)
+    result = torch.empty(real.shape, dtype=result_dtype, device=real.device)
+    parts = torch.view_as_real(result)
+    copy_(parts[..., 0], real)
+    copy_(parts[..., 1], imag)
+    return result
 
 
 def _ldexp_impl(self, other, out=None):
     result_dtype = _result_dtype(self, other)
     if out is not None:
         _validate_out(self, other, out, result_dtype)
+    device = _result_device(self, other)
+    # CPU zero-dimensional operands are host scalar inputs, not device tensors
+    # that may be passed to a GPU kernel unchanged.
+    if self.device != device:
+        self = torch.tensor(self.item(), dtype=self.dtype, device=device)
+    if other.device != device:
+        other = torch.tensor(other.item(), dtype=other.dtype, device=device)
     if self.is_complex() or other.is_complex():
         result = _complex_ldexp(self, other, result_dtype)
         if out is None:
             return result
         out.resize_(result.shape)
-        out.copy_(result)
-        return out
-
-    if out is not None:
-        out.resize_(torch.broadcast_shapes(self.shape, other.shape))
+        return _copy_result(out, result)
 
     func = ldexp_fp64_func if result_dtype == torch.float64 else ldexp_func
-    return func(self, other, out0=out) if out is not None else func(self, other)
+    integral_exponent = (
+        self.is_floating_point()
+        and not other.is_floating_point()
+        and not other.is_complex()
+    )
+    if integral_exponent:
+        func = (
+            ldexp_integral_fp64_func
+            if result_dtype == torch.float64
+            else ldexp_integral_func
+        )
+    result = (
+        func(self, other, _WRAP_INTEGER_EXPONENT)
+        if integral_exponent
+        else func(self, other)
+    )
+    if out is None:
+        return result
+    out.resize_(result.shape)
+    return _copy_result(out, result)
 
 
 def ldexp(self, other):

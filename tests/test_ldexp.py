@@ -22,6 +22,70 @@ from . import conftest as cfg
 
 
 @pytest.mark.ldexp
+@pytest.mark.parametrize(
+    "dtype,exponent", [(torch.float32, 128), (torch.float64, 1024)]
+)
+def test_ldexp_integral_exponent_boundaries(dtype, exponent):
+    inp = torch.tensor(
+        [2.0 ** (-exponent + 2), 2.0 ** (-exponent + 1), 0.0, float("inf")],
+        dtype=dtype,
+        device=flag_gems.device,
+    )
+    other = torch.tensor(
+        [exponent, exponent, exponent, -exponent], dtype=torch.int64, device=inp.device
+    )
+    reference = utils.to_reference(
+        torch.tensor([4.0, 2.0, 0.0, float("inf")], dtype=dtype, device=inp.device)
+    )
+    result = flag_gems.ldexp(inp, other)
+    utils.gems_assert_equal(result, reference, equal_nan=True)
+
+
+@pytest.mark.ldexp
+@pytest.mark.parametrize("cpu_operand", ["self", "other"])
+def test_ldexp_cpu_scalar_operand(cpu_operand):
+    inp = torch.randn(17, device=flag_gems.device)
+    other = torch.randint(-3, 4, (17,), device=inp.device)
+    if cpu_operand == "self":
+        inp = torch.tensor(1.5)
+    else:
+        other = torch.tensor(3, dtype=torch.int64)
+    reference = torch.ldexp(utils.to_reference(inp), utils.to_reference(other))
+    result = flag_gems.ldexp(inp, other)
+    utils.gems_assert_close(result, reference, result.dtype)
+
+
+@pytest.mark.ldexp_out
+@pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
+def test_ldexp_real_operands_complex_out(dtype):
+    inp = torch.randn(17, device=flag_gems.device)
+    other = torch.randint(-3, 4, (17,), device=inp.device)
+    reference_input = utils.to_reference(inp)
+    reference = torch.empty(17, dtype=dtype, device=reference_input.device)
+    torch.ldexp(reference_input, utils.to_reference(other), out=reference)
+    out = torch.empty(17, dtype=dtype, device=inp.device)
+    result = flag_gems.ldexp_out(inp, other, out=out)
+    assert result is out
+    utils.gems_assert_equal(result, reference)
+
+
+@pytest.mark.ldexp
+@pytest.mark.parametrize(
+    "conj_input,conj_other", [(True, False), (False, True), (True, True)]
+)
+def test_ldexp_lazy_conjugation(conj_input, conj_other):
+    inp = torch.randn(17, dtype=torch.complex64, device=flag_gems.device)
+    other = torch.randn_like(inp)
+    if conj_input:
+        inp = inp.conj()
+    if conj_other:
+        other = other.conj()
+    reference = torch.ldexp(utils.to_reference(inp), utils.to_reference(other))
+    result = flag_gems.ldexp(inp, other)
+    utils.gems_assert_close(result, reference, inp.dtype)
+
+
+@pytest.mark.ldexp
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.ALL_FLOAT_DTYPES)
 def test_ldexp(shape, dtype):
