@@ -78,6 +78,8 @@ _TLE_FUSE_ENABLED = True
 # ("over the local-memory budget after pressure relief and vrf_budget
 # escalation"), so 256 is the empirical cap rather than a derived budget.
 _TLE_FUSE_EPC = 256
+# WIDE segment budget: tile + two accumulator copies share the registers.
+_TLE_FUSE_EPC_WIDE = 64
 # Row-width ceiling. The wide-row segment loop has no residency limit, so this
 # only guards against absurd widths (a mis-shaped view) rather than tuning.
 _TLE_FUSE_WMAX = 1 << 16
@@ -85,7 +87,7 @@ _TLE_FUSE_WMAX = 1 << 16
 # threshold the m==1 fused kernel streams [1, RB] segments instead of holding
 # the row; RB/64 is the per-core register footprint, so RB = 4096 -> 64 lanes.
 _TLE_FUSE_LOOP_WMIN = 8192
-_TLE_FUSE_LOOP_RB = 4096
+_TLE_FUSE_LOOP_RB = 2048
 
 _TLE_TL_DTYPE = {
     torch.float16: tl.float16,
@@ -194,17 +196,24 @@ def _tle_group_norm_fused_kernel(
         )
         buf_ptr = tle.gpu.local_ptr(buf, (srows, scols))
 
-        acc = tl.zeros([XBLOCK], tl.float32)
-        acc_sq = tl.zeros([XBLOCK], tl.float32)
+        # Deferred merge: accumulate the segments ELEMENT-WISE and run the
+        # cross-core reduce ONCE, after the loop, instead of once per segment.
+        # A per-segment `tl.sum` has to merge across the row's column cores
+        # every iteration (smem write + cluster barrier + read back), and that
+        # cost is what made the wide rows 5-10x slower than the split path.
+        # The 2-D accumulators cost registers instead -- [XBLOCK, RB] each,
+        # which is what the WIDE segment budget is sized for.
+        acc = tl.zeros([XBLOCK, RB], tl.float32)
+        acc_sq = tl.zeros([XBLOCK, RB], tl.float32)
         for coff in tl.range(0, WT, RB):
             tle.gpu.copy(x_desc, buf, [XBLOCK, RB], [row0, coff])
             xv = tl.load(buf_ptr).to(tl.float32)
             if TAIL:
                 xv = tl.where((coff + scols) < L, xv, 0.0)
-            acc += tl.sum(xv, 1)
-            acc_sq += tl.sum(xv * xv, 1)
-        mean = acc / L
-        var = tl.maximum(acc_sq / L - mean * mean, 0.0)
+            acc += xv
+            acc_sq += xv * xv
+        mean = tl.sum(acc, 1) / L
+        var = tl.maximum(tl.sum(acc_sq, 1) / L - mean * mean, 0.0)
         rstd = rsqrt(var + eps)
 
         if HAS_W or HAS_B:
@@ -334,11 +343,12 @@ def _tle_group_norm_fused(
     # The resident width is what it applies to, which is the whole point of
     # deciding RB first: a wide row budgets [xblock, RB] instead of
     # [xblock, WT], so xblock can still grow there.
+    # The WIDE branch keeps two [XBLOCK, RB] fp32 accumulators beside the
+    # segment tile, so its per-core register budget is roughly a third of the
+    # hold-the-row budget (see the deferred-merge comment in the kernel).
+    epc = _TLE_FUSE_EPC_WIDE if wide else _TLE_FUSE_EPC
     xblock = 1
-    while (
-        xblock * 2 <= m_grp
-        and (xblock * 2) * resident // _TLE_CORE_NUM <= _TLE_FUSE_EPC
-    ):
+    while xblock * 2 <= m_grp and (xblock * 2) * resident // _TLE_CORE_NUM <= epc:
         xblock *= 2
     # Give the grid back toward one program per cluster when rows are plentiful.
     while (
