@@ -380,6 +380,7 @@ def flash_fwd_kernel(
     page_table_ptr,
     page_table_batch_stride: tl.constexpr,
     block_size: tl.constexpr,
+    k_page_stride,
     # kernel params
     IS_EVEN_MN: tl.constexpr,
     PRE_LOAD_V: tl.constexpr,
@@ -840,6 +841,7 @@ def flash_fwd_splitkv_kernel(
     page_table_ptr,
     page_table_batch_stride: tl.constexpr,
     block_size: tl.constexpr,
+    k_page_stride,
     # kernel params
     IS_EVEN_MN: tl.constexpr,
     PRE_LOAD_V: tl.constexpr,
@@ -1173,11 +1175,13 @@ def flash_fwd_splitkv_combine_kernel(
 
 
 @triton.jit
-def virtual_to_cache(
+def virtual_to_cache_offset(
     virtual_index,
     max_virtual_index,
     page_table_ptr,
     block_size,
+    k_row_stride,
+    k_page_stride,
     boundary_check: tl.constexpr = False,
 ):
     # virtual_index is the kv sequence index in the current batch element
@@ -1190,10 +1194,10 @@ def virtual_to_cache(
             page_table_ptr + virtual_page_index,
             mask=virtual_index < max_virtual_index,
             other=0,
-        ).to(tl.int32)
+        ).to(tl.int64)
     else:
-        page_block_index = tl.load(page_table_ptr + virtual_page_index).to(tl.int32)
-    return page_block_index * block_size + page_offset
+        page_block_index = tl.load(page_table_ptr + virtual_page_index).to(tl.int64)
+    return page_block_index * k_page_stride + page_offset * k_row_stride
 
 
 @triton.jit
@@ -1207,23 +1211,34 @@ def load_from_kvcache(
     d: tl.constexpr,
     k_row_stride,
     BLOCK_K: tl.constexpr,
+    k_page_stride=0,
     boundary_check: tl.constexpr = False,
 ):
-    kvcache_idx = virtual_to_cache(
-        virtual_index, max_virtual_index, page_table_ptr, block_size, boundary_check
+    cache_offset = virtual_to_cache_offset(
+        virtual_index,
+        max_virtual_index,
+        page_table_ptr,
+        block_size,
+        k_row_stride,
+        k_page_stride,
+        boundary_check,
     )
-    k_offset = tl.arange(0, BLOCK_K)[:, None] + kvcache_idx[None, :] * k_row_stride
-    v_offset = tl.arange(0, BLOCK_K)[None, :] + kvcache_idx[:, None] * k_row_stride
+    k_offset = tl.arange(0, BLOCK_K)[:, None] + cache_offset[None, :]
+    v_offset = tl.arange(0, BLOCK_K)[None, :] + cache_offset[:, None]
     if d == BLOCK_K:
-        bK = tl.load(k_ptr_base + k_offset)
-        bV = tl.load(v_ptr_base + v_offset)
+        bK_mask = virtual_index[None, :] < max_virtual_index[None, :]
+        bV_mask = virtual_index[:, None] < max_virtual_index[:, None]
+        bK = tl.load(k_ptr_base + k_offset, mask=bK_mask, other=0.0)
+        bV = tl.load(v_ptr_base + v_offset, mask=bV_mask, other=0.0)
     else:
-        bK = tl.load(
-            k_ptr_base + k_offset, mask=tl.arange(0, BLOCK_K)[:, None] < d, other=0.0
+        bK_mask = (tl.arange(0, BLOCK_K)[:, None] < d) & (
+            virtual_index[None, :] < max_virtual_index[None, :]
         )
-        bV = tl.load(
-            v_ptr_base + v_offset, mask=tl.arange(0, BLOCK_K)[None, :] < d, other=0.0
+        bV_mask = (tl.arange(0, BLOCK_K)[None, :] < d) & (
+            virtual_index[:, None] < max_virtual_index[:, None]
         )
+        bK = tl.load(k_ptr_base + k_offset, mask=bK_mask, other=0.0)
+        bV = tl.load(v_ptr_base + v_offset, mask=bV_mask, other=0.0)
     return bK, bV
 
 
@@ -1307,6 +1322,7 @@ def flash_varlen_fwd_kernel(
     page_table_ptr,
     page_table_batch_stride: tl.constexpr,
     block_size: tl.constexpr,
+    k_page_stride,
     # kernel params
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
@@ -1428,6 +1444,7 @@ def flash_varlen_fwd_kernel(
             d,
             k_row_stride,
             BLOCK_K=BLOCK_K,
+            k_page_stride=k_page_stride,
             boundary_check=True,
         )
         S = tl.dot(bQ, bK, out_dtype=tl.float32)
@@ -1500,6 +1517,7 @@ def flash_varlen_fwd_kernel(
             d,
             k_row_stride,
             BLOCK_K=BLOCK_K,
+            k_page_stride=k_page_stride,
         )
         S = tl.dot(bQ, bK, out_dtype=tl.float32)
         S = apply_softcap(S, softcap, is_softcap)
