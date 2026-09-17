@@ -212,7 +212,10 @@ def leaky_relu_backward(grad_output, self, negative_slope=0.01, self_is_result=F
         and grad_output.is_contiguous()
         and self.is_contiguous()
         and grad_output.numel() > 0
+        and grad_output.shape == self.shape
     ):
+        # The flat kernel walks `grad_output`'s offsets for all three tensors;
+        # shapes that broadcast must go to the general kernel instead.
         return _leaky_relu_backward_flat(grad_output, self, negative_slope)
     if grad_output.numel() == 0:
         return torch.empty_like(self)
