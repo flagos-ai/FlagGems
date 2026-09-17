@@ -36,7 +36,7 @@ _RAW_TYPE_CODE = {
 
 if _TLE_OK:
 
-    @tle.raw.dialect(name="xpu3", file=os.path.join(_HERE, "ne_raw.xpu"))
+    @tle.raw.dialect(name="xpu", file=os.path.join(_HERE, "ne_raw.xpu"))
     def ne_scalar_raw(
         in_, out, numel, esz, type_code, scalar_bits, chunk_start, chunk_count
     ): ...
