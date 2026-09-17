@@ -214,8 +214,8 @@ def _broadcast_layout(vshape, vstride, x_contiguous):
 
 def _launch_gather(vshape, vstride, src, dst, n):
     ndim = len(vshape)
-    shapes = (tuple(vshape) + (1,) * (6 - ndim))
-    strided = (tuple(vstride) + (0,) * (6 - ndim))
+    shapes = tuple(vshape) + (1,) * (6 - ndim)
+    strided = tuple(vstride) + (0,) * (6 - ndim)
     grid = (triton.cdiv(n, _BCAST_BLOCK),)
     _expand_gather_kernel[grid](
         src,
@@ -247,9 +247,7 @@ def _launch_broadcast(view, out, x_contiguous):
         src_rows = a
         rep = n // src_rows
         grid = (src_rows, triton.cdiv(rep, _BCAST_BLOCK))
-        _expand_replicate_kernel[grid](
-            view, out, rep, BLOCK=_BCAST_BLOCK, num_warps=4
-        )
+        _expand_replicate_kernel[grid](view, out, rep, BLOCK=_BCAST_BLOCK, num_warps=4)
         return
     # general gather
     _launch_gather(vshape, vstride, view, out, n)
@@ -275,19 +273,21 @@ def expand_copy(x: torch.Tensor, size) -> torch.Tensor:
     # Ensure input is on the correct device
     device = x.device
 
-    # Create output tensor with target shape on the same device
-    out = torch.empty(size_tuple, dtype=x.dtype, device=device)
-
-    # Handle empty tensors
-    if out.numel() == 0:
-        return out
-
-    # Use torch.expand to get a broadcasted view with correct strides
+    # Resolve -1 / leading-dim broadcasting through the expand view first so
+    # the concrete output shape is known (torch.empty would reject -1).  This
+    # mirrors ATen: expand_copy = expand view + contiguous materialization.
     view = x.expand(size_tuple)
 
     # Ensure view is on the right device (expand preserves device)
     if view.device != device:
         view = view.to(device)
+
+    # Create output tensor with the concrete (resolved) shape on the same device
+    out = torch.empty(view.shape, dtype=x.dtype, device=device)
+
+    # Handle empty tensors
+    if out.numel() == 0:
+        return out
 
     if view.is_contiguous():
         # Same-shape (or full) copy: packed uint64 flat block-DMA when the
