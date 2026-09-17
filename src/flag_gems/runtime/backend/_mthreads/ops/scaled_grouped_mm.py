@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -6,7 +20,9 @@ import triton.language as tl
 
 from flag_gems.ops.scaled_grouped_mm import (
     _check_dims,
+    _decode_e4m3,
     _default_out_dtype,
+    _native_e4m3_dot,
     _normalize_bias,
     _normalize_scale,
     _resolve_shapes,
@@ -46,6 +62,8 @@ def _scaled_grouped_mm_kernel(
     A_IS_2D: tl.constexpr,
     B_IS_2D: tl.constexpr,
     BIAS_MODE: tl.constexpr,
+    E4M3: tl.constexpr,
+    FNUZ: tl.constexpr,
     MAX_N_TILES: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
@@ -104,6 +122,9 @@ def _scaled_grouped_mm_kernel(
         b_mask = (group_offs_k[:, None] < k_size) & (offs_n[None, :] < n_size)
         a = tl.load(a_ptrs, mask=a_mask, other=0.0)
         b = tl.load(b_ptrs, mask=b_mask, other=0.0)
+        if E4M3:
+            a = _decode_e4m3(a, FNUZ)
+            b = _decode_e4m3(b, FNUZ)
         acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
 
     if A_IS_2D and not B_IS_2D:
@@ -236,6 +257,17 @@ def scaled_grouped_mm(
     if mat2.stride(-2) > 1 and mat2.stride(-1) > 1:
         mat2 = mat2.contiguous()
 
+    e4m3 = self.dtype in tuple(
+        getattr(torch, name)
+        for name in ("float8_e4m3fn", "float8_e4m3fnuz")
+        if hasattr(torch, name)
+    )
+    fnuz = self.dtype == getattr(torch, "float8_e4m3fnuz", None)
+    e4m3 = e4m3 and not _native_e4m3_dot(self.dtype, self.device)
+    if e4m3:
+        self = self.view(torch.uint8)
+        mat2 = mat2.view(torch.uint8)
+
     out = torch.empty(out_shape, dtype=output_dtype, device=self.device)
     if out.numel() == 0:
         return out
@@ -272,6 +304,8 @@ def scaled_grouped_mm(
             A_IS_2D=a_is_2d,
             B_IS_2D=b_is_2d,
             BIAS_MODE=bias_mode,
+            E4M3=e4m3,
+            FNUZ=fnuz,
             MAX_N_TILES=max_n_tiles,
             BLOCK_M=block_m,
             BLOCK_N=block_n,
