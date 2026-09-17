@@ -128,7 +128,7 @@ _RAW_TYPE_CODE = {
 
 if _TLE_OK:
 
-    @tle.raw.dialect("xpu3", file=os.path.join(_HERE, "masked_fill_raw.xpu"))
+    @tle.raw.dialect(name="xpu3", file=os.path.join(_HERE, "masked_fill_raw.xpu"))
     def masked_fill_raw_(
         in_, mask, numel, esz, type_code, value_bits, chunk_start, chunk_count
     ): ...
