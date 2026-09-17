@@ -82,3 +82,27 @@ def test_expand_copy_same_shape(shape, dtype):
         res_out = torch.ops.aten.expand_copy(inp, shape)
 
     utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.expand_copy
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "kunlunxin",
+    reason="regression test for the kunlunxin expand_copy override (-1 sizes)",
+)
+@pytest.mark.parametrize(
+    "shape, size",
+    [
+        ((1, 512), (-1, 512)),  # -1 keeps the input dim
+        ((3, 1, 64), (-1, 5, 64)),  # -1 plus a broadcast dim
+    ],
+)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_expand_copy_negative_dim(shape, size, dtype):
+    # -1 in `size` means "keep the input dim" (ATen expand semantics).  It must
+    # be resolved through the expand view: passing it straight to torch.empty
+    # raises RuntimeError.  Regression test for the kunlunxin override's
+    # expand-before-allocate ordering (kunlunxin-only, see the skipif above).
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref = torch.ops.aten.expand_copy(utils.to_reference(inp), size)
+    res = flag_gems.expand_copy(inp, size)
+    utils.gems_assert_equal(res, ref)
