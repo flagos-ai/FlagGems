@@ -337,6 +337,8 @@ def batch_norm(
     eps=1e-05,
 ):
     logger.debug("GEMS BATCHNORM FORWARD")
+    if input.dim() < 2:
+        raise ValueError("batch_norm requires input with at least 2 dimensions")
 
     input_3d = make_3d_for_bn(input)
 
