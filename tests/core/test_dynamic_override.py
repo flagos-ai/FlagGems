@@ -337,7 +337,6 @@ def some_other_function():
     def test_concurrent_registries(self):
         """Test multiple independent registries"""
         registry1 = DynamicOpOverride()
-        registry2 = DynamicOpOverride()
 
         original_abs = flag_gems.abs
 
