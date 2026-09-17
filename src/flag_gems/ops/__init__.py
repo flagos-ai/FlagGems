@@ -158,10 +158,6 @@ from flag_gems.ops._thnn_fused_gru_cell import (
     _thnn_fused_gru_cell,
     _thnn_fused_gru_cell_out,
 )
-from flag_gems.ops._thnn_fused_gru_cell_backward import (
-    _thnn_fused_gru_cell_backward,
-    _thnn_fused_gru_cell_backward_out,
-)
 from flag_gems.ops._thnn_fused_lstm_cell import _thnn_fused_lstm_cell
 from flag_gems.ops._thnn_fused_lstm_cell_backward import _thnn_fused_lstm_cell_backward
 from flag_gems.ops._thnn_fused_lstm_cell_backward_impl import (
@@ -1054,6 +1050,10 @@ from flag_gems.ops.tan import tan, tan_
 from flag_gems.ops.tanh import tanh, tanh_, tanh_backward
 from flag_gems.ops.te_rmsnorm import te_rmsnorm_bwd, te_rmsnorm_fwd
 from flag_gems.ops.tensor_split import tensor_split
+from flag_gems.ops.thnn_fused_gru_cell_backward import (
+    _thnn_fused_gru_cell_backward,
+    _thnn_fused_gru_cell_backward_out,
+)
 from flag_gems.ops.threshold import threshold, threshold_backward
 from flag_gems.ops.threshold_ import threshold_
 from flag_gems.ops.tile import tile
