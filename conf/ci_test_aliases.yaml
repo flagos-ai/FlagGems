@@ -41,6 +41,8 @@ segment_reduce_out: test_segment_reduce
 special_zeta_out: test_special_zeta
 special_zeta_scalar_tensor_out: test_special_zeta
 special_zeta_tensor_scalar_out: test_special_zeta
+underscore_ctc_loss: test__ctc_loss
+underscore_ctc_loss_out: test__ctc_loss
 
 # Compound / alternative names
 arange_start_step: test_arange
