@@ -21,6 +21,27 @@ from flag_gems.ops.copy import _can_use_triton
 from . import accuracy_utils as utils
 
 
+def _is_float8_dtype_supported(dtype: torch.dtype) -> bool:
+
+    if flag_gems.vendor_name == "thead" and dtype == torch.float8_e4m3fn:
+        return False
+
+    dtype_name = str(dtype).split(".")[-1]
+    if not hasattr(torch, dtype_name):
+        return False
+    try:
+        t = torch.zeros(1, device=flag_gems.device, dtype=dtype)
+        return t.dtype == dtype
+    except (RuntimeError, TypeError):
+        return False
+
+
+_FLOAT8_DTYPES = []
+for _dtype in [torch.float8_e4m3fn, torch.float8_e5m2]:
+    if _is_float8_dtype_supported(_dtype):
+        _FLOAT8_DTYPES.append(_dtype)
+
+
 @pytest.mark.copy_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize(
@@ -145,6 +166,11 @@ def test_copy_inplace_dtype_fallback():
         (20, 320, 15),
         (16, 128, 64, 60),
         (16, 7, 57, 32, 29),
+        (100, 200),
+        (90, 60, 30),
+        (1000, 2001),
+        (7, 13, 17),
+        (3, 31, 61, 127),
     ],
 )
 def test_copy_inplace_float8_e8m0fnu(shape):
@@ -247,6 +273,10 @@ def test_copy_inplace_float8_e8m0fnu_to_float32():
         (torch.uint8, torch.float16),
         (torch.bool, torch.int8),
         (torch.bool, torch.uint8),
+        (torch.float32, torch.bool),
+        (torch.float16, torch.uint8),
+        (torch.int8, torch.bool),
+        (torch.uint8, torch.bool),
     ],
 )
 @pytest.mark.skipif(
@@ -354,22 +384,13 @@ def test_copy_functional_broadcast():
 
 @pytest.mark.copy_
 @pytest.mark.skipif(
-    not hasattr(torch, "float8_e4m3fn"),
-    reason="PyTorch does not support float8_e4m3fn",
+    len(_FLOAT8_DTYPES) == 0, reason="No float8 is supported in current environment"
 )
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "ascend",
-    reason="Ascend does not support float8_e4m3 and float8_e5m2 dtypes",
+    flag_gems.vendor_name == "iluvatar",
+    reason="iluvatar backend has a known Triton compiler bug with fp8 types in copy kernel",
 )
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "thead", reason="thead does not support float8_e4m3"
-)
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "iluvatar", reason="iluvatar does not support float8_e4m3"
-)
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
-)
+@pytest.mark.parametrize("dtype", _FLOAT8_DTYPES)
 @pytest.mark.parametrize(
     "shape",
     [
@@ -385,93 +406,19 @@ def test_copy_functional_broadcast():
         (16, 7, 57, 32, 29),
     ],
 )
-def test_copy_inplace_float8_e4m3(shape):
+def test_copy_functional_float8(dtype, shape):
     device = flag_gems.device
 
-    if flag_gems.vendor_name == "cambricon":
-        src_uint8 = torch.randint(0, 255, shape, dtype=torch.uint8, device="cpu").to(
-            device
-        )
-    else:
-        src_uint8 = torch.randint(0, 255, shape, dtype=torch.uint8, device=device)
+    src_uint8 = torch.randint(0, 255, shape, dtype=torch.uint8, device=device)
 
-    src = src_uint8.view(torch.float8_e4m3fn)
+    src = src_uint8.view(dtype)
     ref_src = utils.to_reference(src)
 
-    if flag_gems.vendor_name == "cambricon":
-        ref_dst = utils.to_reference(
-            torch.zeros(shape, dtype=torch.float8_e4m3fn, device="cpu").to(device)
-        )
-        res_dst = torch.zeros(shape, dtype=torch.float8_e4m3fn, device="cpu").to(device)
-    else:
-        ref_dst = utils.to_reference(
-            torch.zeros(shape, dtype=torch.float8_e4m3fn, device=device)
-        )
-        res_dst = torch.zeros(shape, dtype=torch.float8_e4m3fn, device=device)
+    template = torch.zeros(shape, dtype=dtype, device=device)
+
+    ref_dst = torch.empty_like(ref_src)
 
     ref_dst.copy_(ref_src)
-    with flag_gems.use_gems():
-        res_dst.copy_(src)
-
-    utils.gems_assert_equal(res_dst, ref_dst, equal_nan=True)
-
-
-@pytest.mark.copy_
-@pytest.mark.skipif(
-    not hasattr(torch, "float8_e5m2"),
-    reason="PyTorch does not support float8_e5m2",
-)
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "ascend",
-    reason="Ascend does not support float8_e4m3 and float8_e5m2 dtypes",
-)
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "iluvatar", reason="iluvatar does not support float8_e5m2"
-)
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
-)
-@pytest.mark.parametrize(
-    "shape",
-    [
-        (8,),
-        (4, 4),
-        (2, 3, 4),
-        (1, 2, 3, 4),
-        (1, 2, 3, 4, 5),
-        (),
-        (1024, 1024),
-        (20, 320, 15),
-        (16, 128, 64, 60),
-        (16, 7, 57, 32, 29),
-    ],
-)
-def test_copy_inplace_float8_e5m2(shape):
-    device = flag_gems.device
-
-    if flag_gems.vendor_name == "cambricon":
-        src_uint8 = torch.randint(0, 255, shape, dtype=torch.uint8, device="cpu").to(
-            device
-        )
-    else:
-        src_uint8 = torch.randint(0, 255, shape, dtype=torch.uint8, device=device)
-
-    src = src_uint8.view(torch.float8_e5m2)
-    ref_src = utils.to_reference(src)
-
-    if flag_gems.vendor_name == "cambricon":
-        ref_dst = utils.to_reference(
-            torch.zeros(shape, dtype=torch.float8_e5m2, device="cpu").to(device)
-        )
-        res_dst = torch.zeros(shape, dtype=torch.float8_e5m2, device="cpu").to(device)
-    else:
-        ref_dst = utils.to_reference(
-            torch.zeros(shape, dtype=torch.float8_e5m2, device=device)
-        )
-        res_dst = torch.zeros(shape, dtype=torch.float8_e5m2, device=device)
-
-    ref_dst.copy_(ref_src)
-    with flag_gems.use_gems():
-        res_dst.copy_(src)
+    res_dst = flag_gems.copy(template, src)
 
     utils.gems_assert_equal(res_dst, ref_dst, equal_nan=True)
