@@ -333,8 +333,6 @@ def sort_by_key(key, value, valid_bits, generator=None):
 
         portion_size = 2**30  # 2 bits reserved for mask
         num_portions = triton.cdiv(n_elements, portion_size)
-        max_portion_items = portion_size if num_portions > 1 else n_elements
-        max_tiles_per_portion = triton.cdiv(max_portion_items, BLOCK_SIZE)
 
         hist_dtype = torch.int64 if num_portions > 1 else torch.int32
         grid_hist = (triton.cdiv(n_elements, BLOCK_SIZE), bins // bins_per_sgement)
