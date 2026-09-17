@@ -110,13 +110,15 @@ _LEAKY_FLAT_TIERS = (
     (None, 16384, 8),
 )
 _LEAKY_BACKWARD_DTYPES = (torch.float16, torch.float32, torch.bfloat16)
-# GM2LM 在飞窗口（2026-09-09 D1-b 深挖，官方口径 0.552→0.688）：
-# 默认 buffer_size_limit=512 把每核单次 gm2lm_v3 卡在 512B —— BLOCK 大时被拆成多次小 DMA +
-# 每步 fence 串行，带宽低；bsl≥2048 时单次 DMA 到 2048B（IR 实证），DMA 可重叠。
-# fp16/bf16 每元素 bytes 小，需同步放大 BLOCK（每核 bytes 够大才用得上在飞窗口）。
+# GM2LM in-flight window (2026-09-09 D1-b deep dive, official metric 0.552→0.688):
+# the default buffer_size_limit=512 caps a single gm2lm_v3 per core at 512B -- with a large
+# BLOCK it is split into several small DMAs + a fence serializing each step, so bandwidth
+# is low; with bsl≥2048 a single DMA reaches 2048B (confirmed in IR) and DMAs can overlap.
+# fp16/bf16 have fewer bytes per element, so BLOCK must scale up too (the in-flight window
+# only pays off once per-core bytes are large enough).
 _LEAKY_BSL = 8192
 _LEAKY_FAT_BLOCK = 131072
-_LEAKY_FAT_MIN_NUMEL = 1 << 22  # 4M：131072 时 grid≥32，避免欠占用
+_LEAKY_FAT_MIN_NUMEL = 1 << 22  # 4M: at 131072 grid≥32, avoiding under-occupancy
 
 
 @triton.jit
@@ -167,7 +169,7 @@ def _leaky_relu_backward_flat(grad_output, self, negative_slope):
         if hi is None or n <= hi:
             block, warps = b, w
             break
-    # fp16/bf16 大 shape 放大 BLOCK（见 _LEAKY_BSL 注释）：每核 bytes 够大才吃满在飞窗口
+    # scale BLOCK up for large fp16/bf16 shapes (see _LEAKY_BSL): per-core bytes must fill the in-flight window
     if (
         grad_output.dtype in (torch.float16, torch.bfloat16)
         and n >= _LEAKY_FAT_MIN_NUMEL
