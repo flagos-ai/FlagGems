@@ -221,6 +221,13 @@ def _thnn_fused_lstm_cell_backward(grad_hy, grad_cy, cx, cy, workspace, has_bias
         return None, None, None, None, None
 
     _validate_inputs(grad_hy, grad_cy, cx, cy, workspace)
+    if workspace.dtype not in (
+        torch.float16,
+        torch.bfloat16,
+        torch.float32,
+        torch.float64,
+    ):
+        raise RuntimeError("fused LSTM backward only supports FP16/BF16/FP32/FP64")
     batch_size, hidden_size = cx.shape
     grad_gates = torch.empty_like(workspace, memory_format=torch.contiguous_format)
     grad_cx = torch.empty_like(cx, memory_format=torch.contiguous_format)

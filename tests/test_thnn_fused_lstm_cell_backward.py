@@ -21,11 +21,26 @@ from . import accuracy_utils as utils
 from . import conftest as cfg
 
 DTYPES = utils.ALL_FLOAT_DTYPES
-SHAPES = [(1, 4), (2, 17), (8, 64), (33, 129)]
+SHAPES = [(1, 4), (2, 17), (8, 64), (33, 129), (513, 129)]
 if cfg.QUICK_MODE:
     SHAPES = [(2, 17)]
 
 GRAD_MODES = [(True, True), (True, False), (False, True), (False, False)]
+
+
+@pytest.mark.thnn_fused_lstm_cell_backward
+@pytest.mark.parametrize(
+    "dtype", [torch.int32, torch.int64, torch.complex64, torch.complex128]
+)
+def test_thnn_fused_lstm_cell_backward_rejects_unsupported_dtype(dtype):
+    state = torch.zeros((2, 3), dtype=dtype, device=flag_gems.device)
+    workspace = torch.zeros((2, 12), dtype=dtype, device=flag_gems.device)
+    args = (state, state, state, state, workspace, True)
+    with torch.no_grad():
+        with pytest.raises(RuntimeError):
+            torch.ops.aten._thnn_fused_lstm_cell_backward(*_reference_args(args))
+        with pytest.raises(RuntimeError, match="only supports"):
+            flag_gems._thnn_fused_lstm_cell_backward(*args)
 
 
 def _make_args(
