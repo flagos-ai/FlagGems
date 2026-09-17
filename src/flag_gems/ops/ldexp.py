@@ -148,6 +148,13 @@ def _result_dtype(self, other):
 def _result_device(self, other):
     if self.device == other.device:
         return self.device
+    if (
+        _WRAP_INTEGER_EXPONENT
+        and self.is_floating_point()
+        and not other.is_floating_point()
+        and not other.is_complex()
+    ):
+        raise RuntimeError("Expected all tensors to be on the same device")
     if self.ndim == 0 and self.device.type == "cpu":
         return other.device
     if other.ndim == 0 and other.device.type == "cpu":

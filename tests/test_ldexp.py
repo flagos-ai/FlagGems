@@ -43,13 +43,20 @@ def test_ldexp_integral_exponent_boundaries(dtype, exponent):
 
 @pytest.mark.ldexp
 @pytest.mark.parametrize("cpu_operand", ["self", "other"])
-def test_ldexp_cpu_scalar_operand(cpu_operand):
+@pytest.mark.parametrize("exponent_dtype", [torch.int64, torch.float32])
+def test_ldexp_cpu_scalar_operand(cpu_operand, exponent_dtype):
     inp = torch.randn(17, device=flag_gems.device)
-    other = torch.randint(-3, 4, (17,), device=inp.device)
+    other = torch.randint(-3, 4, (17,), device=inp.device).to(exponent_dtype)
     if cpu_operand == "self":
         inp = torch.tensor(1.5)
     else:
-        other = torch.tensor(3, dtype=torch.int64)
+        other = torch.tensor(3, dtype=exponent_dtype)
+    try:
+        torch.ldexp(inp, other)
+    except RuntimeError:
+        with pytest.raises(RuntimeError):
+            flag_gems.ldexp(inp, other)
+        return
     reference = torch.ldexp(utils.to_reference(inp), utils.to_reference(other))
     result = flag_gems.ldexp(inp, other)
     utils.gems_assert_close(result, reference, result.dtype)
