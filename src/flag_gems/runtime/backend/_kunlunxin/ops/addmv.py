@@ -63,6 +63,7 @@ logger = logging.getLogger(__name__)
 #     ~4e-3 (bf16), ~1e-6 (fp32) -- within the accuracy-test tolerances.
 # =============================================================================
 
+
 # ---------------------------------------------------------------------------
 # Fast path: thin tl.dot matvec with a 2-D epilogue.
 # ---------------------------------------------------------------------------
@@ -146,9 +147,9 @@ def addmv_dot_kernel(
         b = tl.load(B + (m + offs_m) * stride_bm)
         acc += tl.dot(a, b[:, None], allow_tf32=False)
     # 2-D epilogue: keep the tl.dot result as [BLOCK_N, 1].
-    inp = tl.load(Inp + offset_n[:, None] * stride_in, mask=n_mask[:, None], other=0.0).to(
-        tl.float32
-    )
+    inp = tl.load(
+        Inp + offset_n[:, None] * stride_in, mask=n_mask[:, None], other=0.0
+    ).to(tl.float32)
     out_block = acc * alpha + inp * beta
     tl.store(Out + offset_n[:, None] * stride_outn, out_block, mask=n_mask[:, None])
 
@@ -219,12 +220,16 @@ def addmv_kernel(
             mask=n_mask & m_mask0,
             other=0.0,
         ).to(tl.float32)
-        b0 = tl.load(B + (m0 + offset_m) * stride_bm, mask=m_mask0, other=0.0).to(tl.float32)
-        acc += a0 * b0
-    for m in range(0, M - remainder, BLOCK_M):
-        a = tl.load(A + offset_n * stride_an + (m + offset_m) * stride_am, mask=n_mask, other=0.0).to(
+        b0 = tl.load(B + (m0 + offset_m) * stride_bm, mask=m_mask0, other=0.0).to(
             tl.float32
         )
+        acc += a0 * b0
+    for m in range(0, M - remainder, BLOCK_M):
+        a = tl.load(
+            A + offset_n * stride_an + (m + offset_m) * stride_am,
+            mask=n_mask,
+            other=0.0,
+        ).to(tl.float32)
         b = tl.load(B + (m + offset_m) * stride_bm).to(tl.float32)
         acc += a * b
 

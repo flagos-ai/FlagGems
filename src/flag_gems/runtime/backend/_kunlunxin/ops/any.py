@@ -408,7 +408,9 @@ def any(inp):
         any_elem_s1[(mid_size, 1)](inp, mid, n, block_size, buffer_size_limit=2048)
         if mid_size == 1:
             return mid.reshape([])
-        any_elem_s2[(1, 1)](mid, out, mid_size, triton.next_power_of_2(mid_size), buffer_size_limit=2048)
+        any_elem_s2[(1, 1)](
+            mid, out, mid_size, triton.next_power_of_2(mid_size), buffer_size_limit=2048
+        )
     return out
 
 
@@ -445,9 +447,7 @@ def _per_row_any(inp, M, N, out_shape):
             mid = torch.empty(M, dtype=torch.float32, device=inp.device)
             out = torch.empty(M, dtype=torch.bool, device=inp.device)
             with torch_device_fn.device(inp.device):
-                any_bool_dim_kernel_f[grid](
-                    inw, mid, M, N // 4, buffer_size_limit=2048
-                )
+                any_bool_dim_kernel_f[grid](inw, mid, M, N // 4, buffer_size_limit=2048)
                 any_mid_neq0_kernel[mid_grid](
                     mid, out, M, BLOCK=2048, buffer_size_limit=2048
                 )

@@ -383,7 +383,9 @@ def _fast_reduced(xf, yf, wf, red, n_elements, dtype, out):
         if n_tiles == 2:
             # N == 2*_TILE: split into 8 programs of _SMALL_TILE + tiny fold.
             # (2 launches; measured much faster than one CTA doing two 32768 sums.)
-            mid = torch.empty(2 * (_TILE // _SMALL_TILE), dtype=torch.float32, device=xf.device)
+            mid = torch.empty(
+                2 * (_TILE // _SMALL_TILE), dtype=torch.float32, device=xf.device
+            )
             with torch_device_fn.device(xf.device):
                 _bce_reduce_kernel[(2 * (_TILE // _SMALL_TILE),)](
                     xf, yf, mid, BLOCK=_SMALL_TILE
@@ -443,13 +445,15 @@ def _fast_reduced(xf, yf, wf, red, n_elements, dtype, out):
         with torch_device_fn.device(xf.device):
             if n_elements >= 8192:
                 _bce_reduce_single_kernel[(1,)](
-                    xf, yf, result, denom,
-                    BLOCK=n_elements, buffer_size_limit=_BUF,
+                    xf,
+                    yf,
+                    result,
+                    denom,
+                    BLOCK=n_elements,
+                    buffer_size_limit=_BUF,
                 )
             else:
-                _bce_reduce_single_kernel[(1,)](
-                    xf, yf, result, denom, BLOCK=n_elements
-                )
+                _bce_reduce_single_kernel[(1,)](xf, yf, result, denom, BLOCK=n_elements)
         return result
 
     # ---- fallback: current robust path (partial tail / weighted / N > 2^30) -

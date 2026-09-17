@@ -11,7 +11,7 @@ from flag_gems.runtime import torch_device_fn
 def _rep_pad3d_bwd_kernel(
     grad_output_ptr,
     grad_input_ptr,
-    total_in,        # D_in * H_in * W_in (per batch volume)
+    total_in,  # D_in * H_in * W_in (per batch volume)
     D_in,
     H_in,
     W_in,
@@ -118,7 +118,12 @@ def _rep_pad3d_bwd_kernel(
 
             # left boundary: row[0 .. pad_left-1] feeds w == 0
             for wl in tl.static_range(MAXW_L):
-                v = tl.load(grad_output_ptr + out_base + row_base + tl.minimum(wl, tl.maximum(W_out - 1, 0)))
+                v = tl.load(
+                    grad_output_ptr
+                    + out_base
+                    + row_base
+                    + tl.minimum(wl, tl.maximum(W_out - 1, 0))
+                )
                 sel = row_ok & wfirst & (wl < pad_left) & (wl < W_out)
                 acc += tl.where(sel, v.to(tl.float32), 0.0)
 
@@ -150,8 +155,11 @@ def _max_axis(cin, cout, pad_lo, pad_hi):
     """Max source-interval length over all coords on one axis."""
     if cin < 1:
         return 1
-    return max(1, _axis_interval(0, cin, cout, pad_lo, pad_hi),
-               _axis_interval(cin - 1, cin, cout, pad_lo, pad_hi))
+    return max(
+        1,
+        _axis_interval(0, cin, cout, pad_lo, pad_hi),
+        _axis_interval(cin - 1, cin, cout, pad_lo, pad_hi),
+    )
 
 
 def replication_pad3d_backward(

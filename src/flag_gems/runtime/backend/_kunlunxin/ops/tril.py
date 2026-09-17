@@ -674,7 +674,8 @@ def _launch_v2_flat(
             input.shape[-1],
             block_size,
             need_mask,
-            num_warps=num_warps, buffer_size_limit=8192,
+            num_warps=num_warps,
+            buffer_size_limit=8192,
         )
     return out
 
@@ -701,7 +702,8 @@ def _launch_v2_flat_batched(
             N,
             block_size,
             need_mask,
-            num_warps=num_warps, buffer_size_limit=8192,
+            num_warps=num_warps,
+            buffer_size_limit=8192,
         )
     return out
 
@@ -727,7 +729,8 @@ def _launch_v2_flat_batchgrid(
             MN,
             block_size,
             need_mask,
-            num_warps=num_warps, buffer_size_limit=8192,
+            num_warps=num_warps,
+            buffer_size_limit=8192,
         )
     return out
 
@@ -752,7 +755,8 @@ def _launch_v2_rows(
             int(diagonal),
             block_n,
             need_mask,
-            num_warps=num_warps, buffer_size_limit=8192,
+            num_warps=num_warps,
+            buffer_size_limit=8192,
         )
 
 
@@ -770,7 +774,8 @@ def _launch_v2_zero(
             total,
             block_size,
             need_mask,
-            num_warps=num_warps, buffer_size_limit=8192,
+            num_warps=num_warps,
+            buffer_size_limit=8192,
         )
 
 
@@ -804,7 +809,8 @@ def _launch_v2_wide_scalar(
             bpr.bit_length() - 1,
             bpr - 1,
             block_size,
-            num_warps=num_warps, buffer_size_limit=8192,
+            num_warps=num_warps,
+            buffer_size_limit=8192,
         )
     return out
 
@@ -845,7 +851,8 @@ def _launch_v2_pow2(
                 N - 1,
                 block_size,
                 need_mask,
-                num_warps=num_warps, buffer_size_limit=8192,
+                num_warps=num_warps,
+                buffer_size_limit=8192,
             )
         return out
     with torch_device_fn.device(input.device):
@@ -859,7 +866,8 @@ def _launch_v2_pow2(
             N - 1,
             block_size,
             need_mask,
-            num_warps=num_warps, buffer_size_limit=8192,
+            num_warps=num_warps,
+            buffer_size_limit=8192,
         )
     return out
 
@@ -888,7 +896,8 @@ def _launch_v2_band_batchgrid(
             N,
             block_size,
             need_mask,
-            num_warps=num_warps, buffer_size_limit=8192,
+            num_warps=num_warps,
+            buffer_size_limit=8192,
         )
     return out
 
@@ -1044,7 +1053,8 @@ def _launch_tile(
             N,
             BLOCK_M=block_m,
             BLOCK_N=block_n,
-            num_warps=num_warps, buffer_size_limit=8192,
+            num_warps=num_warps,
+            buffer_size_limit=8192,
             num_stages=num_stages,
         )
     return out
@@ -1075,7 +1085,8 @@ def _launch_rows(
             N,
             BLOCK_M=block_m,
             BLOCK_N=block_n,
-            num_warps=num_warps, buffer_size_limit=8192,
+            num_warps=num_warps,
+            buffer_size_limit=8192,
             num_stages=num_stages,
         )
     return out
@@ -1103,7 +1114,8 @@ def _launch_exact_row(
             M,
             N,
             BLOCK_N=N,
-            num_warps=num_warps, buffer_size_limit=8192,
+            num_warps=num_warps,
+            buffer_size_limit=8192,
             num_stages=num_stages,
         )
     return out
@@ -1132,7 +1144,8 @@ def _launch_exact_diag0_tile(
             N,
             BLOCK_M=block_m,
             BLOCK_N=block_n,
-            num_warps=num_warps, buffer_size_limit=8192,
+            num_warps=num_warps,
+            buffer_size_limit=8192,
             num_stages=num_stages,
         )
     return out
@@ -1172,7 +1185,8 @@ def _launch_tril_inplace_contiguous(
             int(diagonal),
             N,
             BLOCK_SIZE=block_size,
-            num_warps=num_warps, buffer_size_limit=8192,
+            num_warps=num_warps,
+            buffer_size_limit=8192,
             num_stages=num_stages,
         )
     return input
@@ -1233,7 +1247,8 @@ def _launch_tril_inplace_strided(
             STRIDE_N=stride_n,
             BLOCK_M=block_m,
             BLOCK_N=block_n,
-            num_warps=num_warps, buffer_size_limit=8192,
+            num_warps=num_warps,
+            buffer_size_limit=8192,
             num_stages=num_stages,
         )
     return input
@@ -1287,7 +1302,8 @@ def _launch_tril_strided_out(
             STRIDE_N=stride_n,
             BLOCK_M=block_m,
             BLOCK_N=block_n,
-            num_warps=num_warps, buffer_size_limit=8192,
+            num_warps=num_warps,
+            buffer_size_limit=8192,
             num_stages=num_stages,
         )
     return out

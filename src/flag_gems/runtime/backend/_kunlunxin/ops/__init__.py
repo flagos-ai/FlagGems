@@ -187,7 +187,6 @@ from .cosh import cosh, cosh_, cosh_out  # noqa: F401
 from .count_nonzero import count_nonzero
 from .cudnn_batch_norm import cudnn_batch_norm  # noqa: F401
 from .cudnn_batch_norm_backward import cudnn_batch_norm_backward  # noqa: F401
-from .cudnn_batch_norm import cudnn_batch_norm  # noqa: F401
 from .cudnn_convolution import cudnn_convolution  # noqa: F401
 from .cummax import cummax
 from .cummin import cummin
@@ -916,7 +915,6 @@ __all__ = [
     "exp",
     "exp2",
     "exp2_",
-    "expand_copy",
     "exp_",
     "exp_out",
     "expand_copy",
@@ -1399,7 +1397,6 @@ __all__ = [
     "sub_",
     "subtract",
     "subtract_",
-    "subtract",
     "sum",
     "sum_dim",
     "sum_dim_out",

@@ -183,7 +183,9 @@ def _tle_min_geom(M, N, itemsize, acc_itemsize):
         # Charge whichever of the input tile and the 2-D accumulator is wider: the
         # accumulator scales with the element count, so an int8 input carrying an
         # fp32 accumulator tripped uni_sram at the same tile that fp16 fit.
-        yblock = max(8, min(_npo2(N), per_buf // (xblock * max(itemsize, acc_itemsize))))
+        yblock = max(
+            8, min(_npo2(N), per_buf // (xblock * max(itemsize, acc_itemsize)))
+        )
         while yblock > N and yblock > 1:
             yblock >>= 1
         geom = (xblock, yblock, -(-M // xblock))
@@ -606,7 +608,9 @@ def all(inp):
         all_elem_s1[(mid_size, 1)](inp, mid, n, block_size, buffer_size_limit=2048)
         if mid_size == 1:
             return mid.reshape([])
-        all_elem_s2[(1, 1)](mid, out, mid_size, triton.next_power_of_2(mid_size), buffer_size_limit=2048)
+        all_elem_s2[(1, 1)](
+            mid, out, mid_size, triton.next_power_of_2(mid_size), buffer_size_limit=2048
+        )
     return out
 
 
@@ -635,7 +639,8 @@ def _per_row_all(inp, M, N, out_shape):
         except Exception as exc:  # noqa: BLE001 — any gap re-uses the old path
             logger.debug(
                 "GEMS_KUNLUNXIN ALL_DIM tle min fast path unavailable (%s); "
-                "falling back to the pointer kernels", exc
+                "falling back to the pointer kernels",
+                exc,
             )
     grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
     two_step = M > BLOCK_M_DEFAULT

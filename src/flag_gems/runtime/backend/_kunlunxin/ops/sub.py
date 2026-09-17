@@ -2,8 +2,8 @@ import logging
 
 import torch
 import triton
-
 from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
+
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
@@ -118,11 +118,6 @@ def sub_(A, B, *, alpha=1):
         return sub_func(A, B, alpha, out0=A)
     else:
         return sub_func_tensor_scalar(A, B, alpha, out0=A)
-
-
-def subtract(A, B, *, alpha=1):
-    logger.debug("GEMS_KUNLUNXIN SUBTRACT")
-    return sub(A, B, alpha=alpha)
 
 
 def subtract_(A, B, *, alpha=1):

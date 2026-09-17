@@ -164,7 +164,8 @@ def logsumexp_kernel_fused2(
         z_acc += tl.exp(a - safe_m)
     z = tl.sum(z_acc, axis=1)[:, None]
     res = tl.where(
-        m == float("-inf"), m,
+        m == float("-inf"),
+        m,
         tl.where(m == float("inf"), m, safe_m + tl.log(z)),
     )
     tl.store(output_ptr + pid, res, row_mask)
@@ -216,7 +217,8 @@ def logsumexp_kernel_chunked(
         m_row = m_new
     safe_m = tl.where(m_row == float("-inf"), 0.0, m_row)
     res = tl.where(
-        m_row == float("-inf"), m_row,
+        m_row == float("-inf"),
+        m_row,
         tl.where(m_row == float("inf"), m_row, safe_m + tl.log(z_row)),
     )
     tl.store(output_ptr + pid, res, row_mask)

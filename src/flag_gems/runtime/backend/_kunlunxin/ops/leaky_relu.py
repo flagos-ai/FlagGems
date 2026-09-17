@@ -170,7 +170,10 @@ def _leaky_relu_backward_flat(grad_output, self, negative_slope):
             block, warps = b, w
             break
     # fp16/bf16 大 shape 放大 BLOCK（见 _LEAKY_BSL 注释）：每核 bytes 够大才吃满在飞窗口
-    if grad_output.dtype in (torch.float16, torch.bfloat16) and n >= _LEAKY_FAT_MIN_NUMEL:
+    if (
+        grad_output.dtype in (torch.float16, torch.bfloat16)
+        and n >= _LEAKY_FAT_MIN_NUMEL
+    ):
         block = _LEAKY_FAT_BLOCK
     need_mask = n % block != 0
     grid = (triton.cdiv(n, block),)

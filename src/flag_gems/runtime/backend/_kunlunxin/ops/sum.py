@@ -858,7 +858,9 @@ def sum_dim(inp, dim=None, keepdim=False, *, dtype=None, scale=1.0):
     out = torch.empty(shape, dtype=out_dtype, device=inp.device)
 
     if not (
-        len(dim) == 1 and dim[0] != inp.ndim - 1 and _tle_sum_mid(inp, out, dim, N, scale)
+        len(dim) == 1
+        and dim[0] != inp.ndim - 1
+        and _tle_sum_mid(inp, out, dim, N, scale)
     ):
         _launch_sum_dim(_reduce_view(inp, dim), out, M, N, scale)
     if not keepdim:

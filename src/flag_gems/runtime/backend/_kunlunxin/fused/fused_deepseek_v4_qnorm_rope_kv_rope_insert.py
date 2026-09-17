@@ -132,12 +132,10 @@ def _qnorm_rope_kernel_2d(
 
     # partner via two affine +/-1 loads; boundary lanes (col 0 / col 511) are
     # masked out and their (garbage) value is discarded by the parity select.
-    xp1 = tl.load(
-        q_ptr + base + 1, mask=(c < HEAD_DIM - 1)[None, :], other=0.0
-    ).to(tl.float32)
-    xm1 = tl.load(
-        q_ptr + base - 1, mask=(c > 0)[None, :], other=0.0
-    ).to(tl.float32)
+    xp1 = tl.load(q_ptr + base + 1, mask=(c < HEAD_DIM - 1)[None, :], other=0.0).to(
+        tl.float32
+    )
+    xm1 = tl.load(q_ptr + base - 1, mask=(c > 0)[None, :], other=0.0).to(tl.float32)
     xp_raw = tl.where(is_odd[None, :], xm1, xp1)
     xp = (xp_raw * rsqrt_val[:, None]).to(tl.bfloat16).to(tl.float32)
 
@@ -259,9 +257,7 @@ def fused_deepseek_v4_qnorm_rope_kv_rope_insert(
     if total_q + n_insert == 0:
         return
 
-    cos_item, sin_item = _build_items(
-        cos_sin_cache, position_ids, head_dim, rope_dim
-    )
+    cos_item, sin_item = _build_items(cos_sin_cache, position_ids, head_dim, rope_dim)
 
     if total_q > 0:
         num_tokens = q.shape[0]
