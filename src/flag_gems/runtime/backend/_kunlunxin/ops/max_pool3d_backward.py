@@ -1,17 +1,3 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import logging
 
 import torch
@@ -26,18 +12,16 @@ logger = logging.getLogger(__name__)
 
 @libentry()
 @triton.jit
-def max_pool3d_backward_flat_kernel(
+def max_pool3d_backward_win_kernel(
     grad_output_ptr,
     indices_ptr,
     grad_input_ptr,
-    total,
     in_d,
     in_h,
     in_w,
     out_d,
     out_h,
     out_w,
-    # Pooling parameters
     kernel_d: tl.constexpr,
     kernel_h: tl.constexpr,
     kernel_w: tl.constexpr,
@@ -50,89 +34,90 @@ def max_pool3d_backward_flat_kernel(
     dilation_d: tl.constexpr,
     dilation_h: tl.constexpr,
     dilation_w: tl.constexpr,
-    # Tiling parameters
+    MAX_D: tl.constexpr,
+    MAX_H: tl.constexpr,
+    MAX_W: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
-    """Backward kernel for 3-D max pooling (gather, per-iteration accumulate).
+    """Backward kernel for 3-D max pooling (candidate-window gather).
 
-    Grid: (cdiv(N * C * D * H * W, BLOCK),)
-    For each input position, iterate over every kernel offset to find the
-    output positions that could have pooled it, and accumulate the gradient
-    contribution of the window whose stored index equals this input's flat
-    spatial index (d * H * W + h * W + w).
+    Grid: (cdiv(in_D * in_H * in_W, BLOCK), N * C)
+    One lane per input position; the output positions whose pooling window may
+    contain this element form the small box
+    ``[d_lo, d_hi] x [h_lo, h_hi] x [w_lo, w_hi]`` with
+    ``o_lo = max(0, ceil((pos + pad - (k-1)*dil) / s))`` and
+    ``o_hi = min(out - 1, (pos + pad) // s)``.  For each candidate we load the
+    argmax index produced by the forward pass and the upstream gradient, and
+    accumulate the gradient whose index equals this input's flat spatial index
+    (``d * H * W + h * W + w``).  A candidate whose tap does not land exactly on
+    this position can never have this position as argmax, so the index match
+    makes the gather exact.
 
-    Design constraints verified on Kunlunxin XPU (2026-08-20):
-    - runtime trip-count loops crash the backend compiler (uni_sram OOM);
-    - tl.sum over a [BLOCK, KK] window tile miscompiles for this workload
-      (where-in-reduce and masked-load variants both diverge);
-    - tl.atomic_add scatter loses updates (~1e-5 per op, seed-dependent);
-    - a fully-unrolled static kernel with `grad_acc += tl.where(...)` matches
-      the proven Kunlunxin 2-D pattern and is exact and deterministic.
+    Design constraints verified on Kunlunxin XPU (2026-08-20/2026-09-11):
+    - tl.atomic_add scatter loses updates (~1e-5 per op, seed-dependent) and is
+      slow, so every output element's contribution is accumulated in registers
+      and written with a single masked store (deterministic, race-free);
+    - compound i1-masked loads are a slow path on this backend, so candidate
+      addresses are clamped to ``[0, out-1]`` per dim (never out of the (n, c)
+      plane) and the loads stay unmasked; the ``o_* <= hi`` gates discard the
+      clamped values at value level (same pattern as the forward kernel);
+    - runtime trip-count loops crash the backend compiler, so the candidate
+      box is bounded by the constexpr ``MAX_*`` (at most 2 per dim for the
+      classic k=3/s=2 config) and fully statically unrolled.
     """
+    nc = tl.program_id(1)
     offsets = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
-    input_mask = offsets < total
     in_hw = in_h * in_w
     in_spatial = in_d * in_hw
-    nc_idx = offsets // in_spatial
-    rem = offsets % in_spatial
-    id_ = rem // in_hw
-    rem2 = rem % in_hw
-    ih = rem2 // in_w
-    iw = rem2 % in_w
-    nc_safe = tl.where(input_mask, nc_idx, 0)
-    input_flat_idx = id_ * in_hw + ih * in_w + iw
-    out_dhw = out_d * out_h * out_w
+    mask = offsets < in_spatial
+    safe = tl.where(mask, offsets, 0)
+    d = safe // in_hw
+    rem2 = safe % in_hw
+    h = rem2 // in_w
+    w = rem2 % in_w
+    my_flat = d * in_hw + h * in_w + w
 
-    grad_acc = tl.zeros((BLOCK,), dtype=tl.float32)
-    for kd in tl.static_range(0, kernel_d):
-        d_num = id_ + padding_d - kd * dilation_d
-        d_nonnegative = d_num >= 0
-        d_num_safe = tl.where(d_nonnegative, d_num, 0)
-        od = d_num_safe // stride_d
-        d_rem = d_num_safe - od * stride_d
-        for kh in tl.static_range(0, kernel_h):
-            h_num = ih + padding_h - kh * dilation_h
-            h_nonnegative = h_num >= 0
-            h_num_safe = tl.where(h_nonnegative, h_num, 0)
-            oh = h_num_safe // stride_h
-            h_rem = h_num_safe - oh * stride_h
-            for kw in tl.static_range(0, kernel_w):
-                w_num = iw + padding_w - kw * dilation_w
-                w_nonnegative = w_num >= 0
-                w_num_safe = tl.where(w_nonnegative, w_num, 0)
-                ow = w_num_safe // stride_w
-                w_rem = w_num_safe - ow * stride_w
-                valid = (
-                    input_mask
-                    & d_nonnegative
-                    & (d_rem == 0)
-                    & (od < out_d)
-                    & h_nonnegative
-                    & (h_rem == 0)
-                    & (oh < out_h)
-                    & w_nonnegative
-                    & (w_rem == 0)
-                    & (ow < out_w)
-                )
-                od_safe = tl.where(valid, od, 0)
-                oh_safe = tl.where(valid, oh, 0)
-                ow_safe = tl.where(valid, ow, 0)
-                out_offset = (
-                    nc_safe * out_dhw
-                    + od_safe * (out_h * out_w)
-                    + oh_safe * out_w
-                    + ow_safe
-                )
-                index_value = tl.load(
-                    indices_ptr + out_offset, mask=valid, other=-1
-                ).to(tl.int32)
-                match = valid & (index_value == input_flat_idx)
-                grad_value = tl.load(
-                    grad_output_ptr + out_offset, mask=valid, other=0.0
-                ).to(tl.float32)
-                grad_acc += tl.where(match, grad_value, 0.0)
+    d_lo = (d + padding_d - (kernel_d - 1) * dilation_d + stride_d - 1) // stride_d
+    d_lo = tl.maximum(d_lo, 0)
+    d_hi = (d + padding_d) // stride_d
+    d_hi = tl.minimum(d_hi, out_d - 1)
+    h_lo = (h + padding_h - (kernel_h - 1) * dilation_h + stride_h - 1) // stride_h
+    h_lo = tl.maximum(h_lo, 0)
+    h_hi = (h + padding_h) // stride_h
+    h_hi = tl.minimum(h_hi, out_h - 1)
+    w_lo = (w + padding_w - (kernel_w - 1) * dilation_w + stride_w - 1) // stride_w
+    w_lo = tl.maximum(w_lo, 0)
+    w_hi = (w + padding_w) // stride_w
+    w_hi = tl.minimum(w_hi, out_w - 1)
 
-    tl.store(grad_input_ptr + offsets, grad_acc, mask=input_mask)
+    out_hw = out_h * out_w
+    base = nc.to(tl.int64) * (out_d * out_hw)
+    gop = grad_output_ptr + base
+    iop = indices_ptr + base
+    acc = tl.zeros((BLOCK,), dtype=tl.float32)
+    for od in tl.static_range(0, MAX_D):
+        o_d = d_lo + od
+        d_ok = o_d <= d_hi
+        c_d = tl.minimum(o_d, out_d - 1)
+        for oh in tl.static_range(0, MAX_H):
+            o_h = h_lo + oh
+            h_ok = o_h <= h_hi
+            c_h = tl.minimum(o_h, out_h - 1)
+            for ow in tl.static_range(0, MAX_W):
+                o_w = w_lo + ow
+                w_ok = o_w <= w_hi
+                c_w = tl.minimum(o_w, out_w - 1)
+                o_off = c_d * out_hw + c_h * out_w + c_w
+                idx = tl.load(iop + o_off).to(tl.int32)
+                val = tl.load(gop + o_off).to(tl.float32)
+                ok = mask & d_ok & h_ok & w_ok
+                acc += tl.where(ok & (idx == my_flat), val, 0.0)
+
+    tl.store(
+        grad_input_ptr + nc.to(tl.int64) * in_spatial + offsets,
+        acc,
+        mask=mask,
+    )
 
 
 def _parse_pool3d_params(kernel_size, stride, padding, dilation):
@@ -201,16 +186,24 @@ def max_pool3d_backward(
     if grad_input.numel() == 0:
         return grad_input.to(original_dtype)
 
-    total = grad_input.numel()
-    block = 64
-    grid = (triton.cdiv(total, block),)
+    in_spatial = in_d * in_h * in_w
+    n_nc = in_n * in_c
+    max_d = ((kd - 1) * dd + sd - 1) // sd + 1
+    max_h = ((kh - 1) * dh + sh - 1) // sh + 1
+    max_w = ((kw - 1) * dw + sw - 1) // sw + 1
+    if in_spatial >= 512:
+        block = 512
+    else:
+        block = 1 << (in_spatial - 1).bit_length()
+        if block < 32:
+            block = 32
+    grid = (triton.cdiv(in_spatial, block), n_nc)
 
     with torch_device_fn.device(grad_input.device):
-        max_pool3d_backward_flat_kernel[grid](
+        max_pool3d_backward_win_kernel[grid](
             grad_output,
             indices,
             grad_input,
-            total,
             in_d,
             in_h,
             in_w,
@@ -229,8 +222,11 @@ def max_pool3d_backward(
             dd,
             dh,
             dw,
+            max_d,
+            max_h,
+            max_w,
             block,
-            num_warps=1,
+            num_warps=4,
             buffer_size_limit=2048,
             isCloseVectorization=True,
         )

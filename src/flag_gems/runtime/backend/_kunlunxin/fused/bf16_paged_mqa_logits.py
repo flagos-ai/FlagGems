@@ -1,25 +1,9 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import logging
 import sys
 
 import torch
 import triton
 import triton.language as tl
-
-from flag_gems import empty as _gems_empty
 
 logger = logging.getLogger(__name__)
 
@@ -51,19 +35,16 @@ def _mqa_logits_scores_kernel(
     d_range = tl.arange(0, 128)
     pos_range = tl.arange(0, 64)
 
-    # Load Q [H, 128] bf16 -> transpose to [128, H]
     q_base = pid_row * (H * 128)
     q_offs = q_base + h_range[:, None] * 128 + d_range[None, :]
     q_block = tl.load(q_ptr + q_offs)
     q_t = tl.trans(q_block)
 
-    # Load K [64, 128] bf16 from paged cache
     b_idx = pid_row // next_n
     phys_blk = tl.load(block_table_ptr + b_idx * stride_bt + pid_blk)
     k_offs = phys_blk * (64 * 128) + pos_range[:, None] * 128 + d_range[None, :]
     k_block = tl.load(kv_cache_ptr + k_offs)
 
-    # GEMM: K[64,128] @ Q^T[128,H] -> scores[64,H] fp32
     scores = tl.dot(k_block, q_t)
 
     tl.store(
@@ -113,7 +94,6 @@ def _mqa_logits_combine_kernel(
         acc = acc + tl.sum(scores * w[None, :], axis=1)
 
     out_base = pid_row * max_ctx + kv_pos
-    # Store (mask only the last partial block)
     if kv_pos + 64 <= ctx_len:
         tl.store(logits_ptr + out_base + pos_range, acc)
     else:
@@ -142,8 +122,9 @@ def bf16_paged_mqa_logits(
     B, next_n, H, D = q.shape
     total_tokens = B * next_n
 
-    logits = _gems_empty(
-        (total_tokens, max_context_len),
+    logits = torch.empty(
+        total_tokens,
+        max_context_len,
         dtype=logits_dtype,
         device=q.device,
     )
@@ -151,14 +132,14 @@ def bf16_paged_mqa_logits(
     if total_tokens == 0 or max_context_len == 0:
         return logits
 
-    # block_size = 64 hardcoded for both specializations
     num_kv_blocks = (max_context_len + 63) >> 6
     grid = (total_tokens, num_kv_blocks)
     stride_bt = block_table.stride(0)
 
-    # Explicit [total, max_ctx, H] fp32 scores round trip (see module docstring)
-    scores = _gems_empty(
-        (total_tokens, max_context_len, H),
+    scores = torch.empty(
+        total_tokens,
+        max_context_len,
+        H,
         dtype=torch.float32,
         device=q.device,
     )
@@ -199,7 +180,7 @@ def bf16_paged_mqa_logits(
 
 
 def _install():
-    from flag_gems.fused.bf16_paged_mqa_logits import (  # noqa: F401
+    from flag_gems.fused.bf16_paged_mqa_logits import (
         bf16_paged_mqa_logits as _generic_bf16_paged_mqa_logits,
     )
 

@@ -1,17 +1,3 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import logging
 
 import torch
@@ -42,7 +28,6 @@ _MV_DELEGATE_M = 2048
 
 def heur_block_n(args):
     N = args.get("N", 0)
-    # Use smaller BLOCK_N for more parallelism
     if N <= 64:
         return triton.next_power_of_2(N)
     elif N <= 256:
@@ -57,7 +42,6 @@ def heur_block_m(args):
     import builtins
 
     M = args.get("M", 0)
-    # Larger BLOCK_M for better memory coalescing
     return builtins.min(triton.next_power_of_2(M), 4096)
 
 
@@ -110,19 +94,15 @@ def addmv_kernel(
 
 
 def _addmv_mv(self, mat, vec, beta, alpha, out, N):
-    # Large-shape path: native-dtype vendor-mm matvec + a single fused affine
-    # combine kernel. The matvec stays in mat.dtype so fp16/bf16 use the vendor
-    # fp16/bf16 mm fast path. The affine combine is one pointwise_dynamic launch
-    # (see _addmv_combine_kernel) rather than a chain of gems-dispatched ops.
-    # Accuracy tests only exercise M<=1024 (triton path), so this branch's reduced
-    # matvec precision is never asserted.
     mv_res = mv(mat, vec).reshape(N)
-    bias = self.broadcast_to((N,))
+    bias = torch.zeros_like(mv_res) if beta == 0 else self.broadcast_to((N,))
     _addmv_combine_kernel(mv_res, bias, alpha, beta, out0=out)
     return out
 
 
 def _addmv_triton(self, mat, vec, beta, alpha, out, N, M):
+    if beta == 0:
+        self = torch.zeros_like(self)
     self = self.broadcast_to((N,))
     grid = lambda META: (triton.cdiv(N, META["BLOCK_N"]),)
     with torch_device_fn.device(mat.device):
@@ -152,6 +132,13 @@ def _addmv_impl(self, mat, vec, beta, alpha, out):
         out = torch.empty(N, device=mat.device, dtype=mat.dtype)
     else:
         assert out.shape == (N,), "Incompatible output shape"
+
+    if M == 0:
+        if beta == 0:
+            out.zero_()
+        else:
+            out.copy_(self.broadcast_to((N,)).mul(beta))
+        return out
 
     if M >= _MV_DELEGATE_M:
         return _addmv_mv(self, mat, vec, beta, alpha, out, N)

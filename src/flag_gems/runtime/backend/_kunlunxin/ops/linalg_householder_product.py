@@ -1,16 +1,3 @@
-# Copyright 2026, The FlagOS Contributors.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 """Kunlunxin (XPU) linalg_householder_product.
 
 The general implementation (``src/flag_gems/ops/linalg_householder_product.py``)
@@ -33,18 +20,22 @@ TRANSPOSED, ``W[c, r] = Q[r, c]``.  Because ``H(i)`` is symmetric,
 
     W[c, :] -= tau_i * (W[c, :] . v_i) * v_i
 
-so the reduction now runs along the LAST (contiguous) tile axis and is a plain
-2-D ``axis=1`` ``tl.sum``.  The sweep itself is driven from the host, one pair
-of launches per reflector, because a dynamic loop may not wrap the reduce.
+so the reduction now runs along the LAST (contiguous) tile axis.
 
 For the padded row length 128 -- which covers the whole accuracy and benchmark
-matrix (m <= 128) -- there is a second, much cheaper path: one program owns a
-single output column, keeps it in registers and walks every reflector inside
-the kernel.  That turns the reduction into a 1-D -> scalar ``tl.sum``, which a
-dynamic loop MAY wrap, so the whole sweep becomes a single launch instead of
-``2k`` of them (measured 4.8x - 22x faster on the benchmark shapes).  Its
-compile envelope is not monotonic in the tile width, so only the validated
-width is used; see ``_SWEEP_ROW``.
+matrix (m <= 128) -- one program owns ``CC`` output columns, keeps them in
+registers and walks every reflector inside the kernel.  The reduction is then a
+1-D -> scalar ``tl.sum``, which a dynamic loop MAY wrap, so the whole sweep is
+a single launch instead of the ``2k`` the per-step path needs.  The reflector
+vectors are rebuilt on the fly from ``A`` and ``tau`` inside the loop, so the
+separate V/U staging buffer (whose single 64x128 2-D tile costs ~112 us, about
+a third of the whole op on the benchmark shapes) is gone.  ``CC`` is selected
+by ``n`` from measured sweet spots; the compile envelope is not monotonic in
+the column count, so only CC in {1, 2, 4, 8} exist.
+
+The per-step path (``_dot_kernel`` / ``_upd_kernel``, host-driven ``2k``
+launches) remains the fallback for ``m > 128`` where the sweep has not been
+validated.
 
 Backend rules this file obeys (all previously measured on this platform, see
 harness/solution/performance/linalg_lstsq_xpu3_20260829.md):
@@ -78,40 +69,48 @@ logger = logging.getLogger(__name__)
 
 _SUPPORTED_DTYPES = (torch.float32, torch.float64)
 
-# Widest padded row a single reduction tile may span (validated on this
-# platform for the 64 x MP shape used here).
 _MAX_ROW = 8192
 
-# Every vector store writes exactly 64 contiguous elements on this backend, so
-# 64 is the granularity of every buffer row and of the c-tile.
 _LANES = 64
 
-# A square tile feeding a 2-D reduce OOMs uni_sram, and a 32-wide tile that is
-# both read and written in one kernel comes back wrong.  The reduction axis is
-# therefore padded to at least 128 while the c axis stays at 64.
 _MIN_ROW = 128
 
-# Padded row length for which the single-launch sweep below is validated.
-#
-# ``_sweep_kernel`` keeps one output column in registers and walks all
-# reflectors inside the kernel, so it replaces ``2k`` launches with one; on the
-# benchmark matrix that is 4.8x - 22x faster than the per-step path.  Its
-# compile envelope is however NOT monotonic in the tile width: measured on this
-# platform MP = 128, 1024 and 2048 build while MP = 256, 512 and 4096 all die
-# with ``uni_sram PassManager::run failed`` inside ``TritonXPUUnrollControl``,
-# and neither ``unroll_num`` nor ``buffer_size_limit`` nor ``num_warps`` moves
-# that boundary.  Since 1024/2048 building is not something that can be
-# extrapolated from, only the fully exercised MP = 128 is taken.
 _SWEEP_ROW = 128
+
+_OUT_BT = 256
+
+
+def _pick_cc(n):
+    """Output columns per sweep program, by n (validated on this platform).
+
+    The sweep cost is ~n*k reductions; sharing the v_i/u_i loads and
+    interleaving CC independent reductions amortises both, so the sweet spot
+    grows with n, but CC = 16 is *worse* again (555 us vs 310 us on
+    (128, 64)), so only CC in {1, 2, 4, 8} exist.  The q initialisation and
+    the store of the trailing CC-1 columns are pure overhead when n does not
+    fill the last program, which keeps small n on small CC.
+
+    Measured on this platform (us, speedup vs torch, fp32):
+      n=3:   cc1=17 (5.9x)  cc2=28 (3.7x)
+      n=5:   cc1=24 (4.8x)  cc2=27 (4.3x)
+      n=8:   cc2=30 (3.9x)  cc1=41 (2.8x)
+      n=16:  cc2=56 (2.2x)  cc4=59 (2.1x)
+      n=32:  cc4=114 (1.2x) cc2=176 (0.8x)
+      n=64:  cc8=317 (0.8x) cc4=394 (0.6x)
+    """
+    if n <= 5:
+        return 1
+    if n <= 16:
+        return 2
+    if n <= 32:
+        return 4
+    return 8
 
 
 def _p2(x):
     return 1 << (max(1, int(x)) - 1).bit_length()
 
 
-# ---------------------------------------------------------------------------
-# W[c, r] = Q[r, c] initialised to the first N columns of the identity.
-# ---------------------------------------------------------------------------
 @libentry()
 @triton.jit
 def _init_w_kernel(
@@ -130,13 +129,6 @@ def _init_w_kernel(
     tl.store(W + b * WB + c[:, None] * MP + r[None, :], val)
 
 
-# ---------------------------------------------------------------------------
-# V[i, r] = v_i[r]  and  U[i, r] = tau_i * v_i[r].
-#
-# tau is folded in here so that the per-step kernels take no scalar argument at
-# all: they receive V[:, i] / U[:, i] as pre-sliced tensors, which keeps the
-# libentry cache to a single entry per shape instead of one per reflector.
-# ---------------------------------------------------------------------------
 @libentry()
 @triton.jit
 def _init_v_kernel(
@@ -172,9 +164,6 @@ def _init_v_kernel(
     tl.store(U + off, v * t)
 
 
-# ---------------------------------------------------------------------------
-# S[c] = W[c, :] . v_i   -- the only reduction in the file, 2-D axis=1.
-# ---------------------------------------------------------------------------
 @libentry()
 @triton.jit
 def _dot_kernel(
@@ -190,16 +179,11 @@ def _dot_kernel(
     b = tl.program_id(0)
     c = tl.program_id(1) * BC + tl.arange(0, BC)
     r = tl.arange(0, MP)
-    # the operand that is contiguous along the reduction axis must be loaded
-    # first and multiplied from the left, otherwise the reduce is wrong.
     t = tl.load(W + b * WB + c[:, None] * MP + r[None, :])
     vt = tl.load(VI + b * VB + r[None, :] + c[:, None] * 0)
     tl.store(S + b * SB + c, tl.sum(t * vt, axis=1))
 
 
-# ---------------------------------------------------------------------------
-# W[c, r] -= S[c] * (tau_i * v_i[r])
-# ---------------------------------------------------------------------------
 @libentry()
 @triton.jit
 def _upd_kernel(
@@ -221,48 +205,170 @@ def _upd_kernel(
     tl.store(W + off, tl.load(W + off) - st * ut)
 
 
-# ---------------------------------------------------------------------------
-# Whole sweep for one output column, kept in registers.
-#
-# One program owns column c of Q, i.e. row c of W, so the reduction is a plain
-# 1-D -> scalar tl.sum and the reflector loop can live inside the kernel: the
-# rule that forbids a dynamic loop around a reduction only bites for 2-D
-# reductions.  Nothing is read back from W, so there is no read/write aliasing
-# and no need to materialise the identity first.
-# ---------------------------------------------------------------------------
 @libentry()
 @triton.jit
-def _sweep_kernel(
+def _fused_sweep_kernel(
     W,
-    V,
-    U,
+    A,
+    TAU,
     K,
     N,
     M,
     WB,
-    VB,
+    a_bs,
+    a_rs,
+    a_cs,
+    t_bs,
+    t_cs,
     MP: tl.constexpr,
 ):
     b = tl.program_id(0)
     c = tl.program_id(1)
     r = tl.arange(0, MP)
+    rc = tl.minimum(r, M - 1)
     q = tl.where((c < N) & (r < M) & (r == c), 1.0, 0.0)
     for t in range(0, K):
         i = K - 1 - t
-        v = tl.load(V + b * VB + i * MP + r)
-        u = tl.load(U + b * VB + i * MP + r)
-        q = q - tl.sum(q * v) * u
+        av = tl.load(A + b * a_bs + rc * a_rs + i * a_cs)
+        tau = tl.load(TAU + b * t_bs + i * t_cs)
+        v = tl.where(r > i, av, tl.where(r == i, 1.0, 0.0))
+        v = tl.where(r < M, v, 0.0)
+        q = q - tl.sum(q * v) * (v * tau)
     tl.store(W + b * WB + c * MP + r, q)
 
 
-# ---------------------------------------------------------------------------
-# Transpose back into a flat, contiguous output.
-#
-# A transposing STORE would write its own values correctly and corrupt an
-# unrelated allocation, so the transpose is done on the LOAD side: every
-# program writes one 64-element contiguous chunk of the flat result and gathers
-# the values it needs from W.
-# ---------------------------------------------------------------------------
+@libentry()
+@triton.jit
+def _fused_sweep_cc2_kernel(
+    W,
+    A,
+    TAU,
+    K,
+    N,
+    M,
+    WB,
+    a_bs,
+    a_rs,
+    a_cs,
+    t_bs,
+    t_cs,
+    MP: tl.constexpr,
+):
+    b = tl.program_id(0)
+    c0 = tl.program_id(1) * 2
+    r = tl.arange(0, MP)
+    rc = tl.minimum(r, M - 1)
+    q0 = tl.where((c0 < N) & (r < M) & (r == c0), 1.0, 0.0)
+    q1 = tl.where((c0 + 1 < N) & (r < M) & (r == c0 + 1), 1.0, 0.0)
+    for t in range(0, K):
+        i = K - 1 - t
+        av = tl.load(A + b * a_bs + rc * a_rs + i * a_cs)
+        tau = tl.load(TAU + b * t_bs + i * t_cs)
+        v = tl.where(r > i, av, tl.where(r == i, 1.0, 0.0))
+        v = tl.where(r < M, v, 0.0)
+        u = v * tau
+        q0 = q0 - tl.sum(q0 * v) * u
+        q1 = q1 - tl.sum(q1 * v) * u
+    tl.store(W + b * WB + c0 * MP + r, q0)
+    tl.store(W + b * WB + (c0 + 1) * MP + r, q1)
+
+
+@libentry()
+@triton.jit
+def _fused_sweep_cc4_kernel(
+    W,
+    A,
+    TAU,
+    K,
+    N,
+    M,
+    WB,
+    a_bs,
+    a_rs,
+    a_cs,
+    t_bs,
+    t_cs,
+    MP: tl.constexpr,
+):
+    b = tl.program_id(0)
+    c0 = tl.program_id(1) * 4
+    r = tl.arange(0, MP)
+    rc = tl.minimum(r, M - 1)
+    q0 = tl.where((c0 < N) & (r < M) & (r == c0), 1.0, 0.0)
+    q1 = tl.where((c0 + 1 < N) & (r < M) & (r == c0 + 1), 1.0, 0.0)
+    q2 = tl.where((c0 + 2 < N) & (r < M) & (r == c0 + 2), 1.0, 0.0)
+    q3 = tl.where((c0 + 3 < N) & (r < M) & (r == c0 + 3), 1.0, 0.0)
+    for t in range(0, K):
+        i = K - 1 - t
+        av = tl.load(A + b * a_bs + rc * a_rs + i * a_cs)
+        tau = tl.load(TAU + b * t_bs + i * t_cs)
+        v = tl.where(r > i, av, tl.where(r == i, 1.0, 0.0))
+        v = tl.where(r < M, v, 0.0)
+        u = v * tau
+        q0 = q0 - tl.sum(q0 * v) * u
+        q1 = q1 - tl.sum(q1 * v) * u
+        q2 = q2 - tl.sum(q2 * v) * u
+        q3 = q3 - tl.sum(q3 * v) * u
+    tl.store(W + b * WB + (c0 + 0) * MP + r, q0)
+    tl.store(W + b * WB + (c0 + 1) * MP + r, q1)
+    tl.store(W + b * WB + (c0 + 2) * MP + r, q2)
+    tl.store(W + b * WB + (c0 + 3) * MP + r, q3)
+
+
+@libentry()
+@triton.jit
+def _fused_sweep_cc8_kernel(
+    W,
+    A,
+    TAU,
+    K,
+    N,
+    M,
+    WB,
+    a_bs,
+    a_rs,
+    a_cs,
+    t_bs,
+    t_cs,
+    MP: tl.constexpr,
+):
+    b = tl.program_id(0)
+    c0 = tl.program_id(1) * 8
+    r = tl.arange(0, MP)
+    rc = tl.minimum(r, M - 1)
+    q0 = tl.where((c0 < N) & (r < M) & (r == c0), 1.0, 0.0)
+    q1 = tl.where((c0 + 1 < N) & (r < M) & (r == c0 + 1), 1.0, 0.0)
+    q2 = tl.where((c0 + 2 < N) & (r < M) & (r == c0 + 2), 1.0, 0.0)
+    q3 = tl.where((c0 + 3 < N) & (r < M) & (r == c0 + 3), 1.0, 0.0)
+    q4 = tl.where((c0 + 4 < N) & (r < M) & (r == c0 + 4), 1.0, 0.0)
+    q5 = tl.where((c0 + 5 < N) & (r < M) & (r == c0 + 5), 1.0, 0.0)
+    q6 = tl.where((c0 + 6 < N) & (r < M) & (r == c0 + 6), 1.0, 0.0)
+    q7 = tl.where((c0 + 7 < N) & (r < M) & (r == c0 + 7), 1.0, 0.0)
+    for t in range(0, K):
+        i = K - 1 - t
+        av = tl.load(A + b * a_bs + rc * a_rs + i * a_cs)
+        tau = tl.load(TAU + b * t_bs + i * t_cs)
+        v = tl.where(r > i, av, tl.where(r == i, 1.0, 0.0))
+        v = tl.where(r < M, v, 0.0)
+        u = v * tau
+        q0 = q0 - tl.sum(q0 * v) * u
+        q1 = q1 - tl.sum(q1 * v) * u
+        q2 = q2 - tl.sum(q2 * v) * u
+        q3 = q3 - tl.sum(q3 * v) * u
+        q4 = q4 - tl.sum(q4 * v) * u
+        q5 = q5 - tl.sum(q5 * v) * u
+        q6 = q6 - tl.sum(q6 * v) * u
+        q7 = q7 - tl.sum(q7 * v) * u
+    tl.store(W + b * WB + (c0 + 0) * MP + r, q0)
+    tl.store(W + b * WB + (c0 + 1) * MP + r, q1)
+    tl.store(W + b * WB + (c0 + 2) * MP + r, q2)
+    tl.store(W + b * WB + (c0 + 3) * MP + r, q3)
+    tl.store(W + b * WB + (c0 + 4) * MP + r, q4)
+    tl.store(W + b * WB + (c0 + 5) * MP + r, q5)
+    tl.store(W + b * WB + (c0 + 6) * MP + r, q6)
+    tl.store(W + b * WB + (c0 + 7) * MP + r, q7)
+
+
 @libentry()
 @triton.jit
 def _out_kernel(
@@ -324,22 +430,46 @@ def linalg_householder_product(A, tau):
     NP = max(_LANES, _p2(n))
     KP = max(_LANES, _p2(k))
     nb = NP // _LANES
-    BT = _LANES
+    BT = _OUT_BT
     npad = triton.cdiv(total, BT) * BT
 
     W = torch.empty((batch, NP, MP), dtype=dt, device=dev)
-    V = torch.empty((batch, KP, MP), dtype=dt, device=dev)
-    U = torch.empty((batch, KP, MP), dtype=dt, device=dev)
-    S = torch.empty((batch, NP), dtype=dt, device=dev)
     OUT = torch.empty((npad,), dtype=dt, device=dev)
-
     WB = NP * MP
-    VB = KP * MP
 
     with torch_device_fn.device(dev):
         if k == 0:
             _init_w_kernel[(batch, nb)](W, n, m, WB, BC=_LANES, MP=MP)
+        elif MP == _SWEEP_ROW:
+            cc = _pick_cc(n)
+            grid = (batch, triton.cdiv(n, cc))
+            args = (
+                W,
+                A3,
+                tau2,
+                k,
+                n,
+                m,
+                WB,
+                A3.stride(0),
+                A3.stride(1),
+                A3.stride(2),
+                tau2.stride(0),
+                tau2.stride(1),
+            )
+            if cc == 1:
+                _fused_sweep_kernel[grid](*args, MP=MP)
+            elif cc == 2:
+                _fused_sweep_cc2_kernel[grid](*args, MP=MP)
+            elif cc == 4:
+                _fused_sweep_cc4_kernel[grid](*args, MP=MP)
+            else:
+                _fused_sweep_cc8_kernel[grid](*args, MP=MP)
         else:
+            V = torch.empty((batch, KP, MP), dtype=dt, device=dev)
+            U = torch.empty((batch, KP, MP), dtype=dt, device=dev)
+            S = torch.empty((batch, NP), dtype=dt, device=dev)
+            VB = KP * MP
             _init_v_kernel[(batch, KP // _LANES)](
                 A3,
                 tau2,
@@ -356,17 +486,10 @@ def linalg_householder_product(A, tau):
                 BI=_LANES,
                 MP=MP,
             )
-            if MP == _SWEEP_ROW:
-                _sweep_kernel[(batch, n)](W, V, U, k, n, m, WB, VB, MP=MP)
-            else:
-                _init_w_kernel[(batch, nb)](W, n, m, WB, BC=_LANES, MP=MP)
-                for i in range(k - 1, -1, -1):
-                    _dot_kernel[(batch, nb)](
-                        W, V[:, i], S, WB, VB, NP, BC=_LANES, MP=MP
-                    )
-                    _upd_kernel[(batch, nb)](
-                        W, S, U[:, i], WB, NP, VB, BC=_LANES, MP=MP
-                    )
+            _init_w_kernel[(batch, nb)](W, n, m, WB, BC=_LANES, MP=MP)
+            for i in range(k - 1, -1, -1):
+                _dot_kernel[(batch, nb)](W, V[:, i], S, WB, VB, NP, BC=_LANES, MP=MP)
+                _upd_kernel[(batch, nb)](W, S, U[:, i], WB, NP, VB, BC=_LANES, MP=MP)
         _out_kernel[(triton.cdiv(total, BT),)](OUT, W, total, m * n, n, WB, MP, BT=BT)
 
     return OUT[:total].view(shape)

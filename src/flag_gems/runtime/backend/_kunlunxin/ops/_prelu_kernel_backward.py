@@ -18,8 +18,7 @@ logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 )
 @triton.jit
 def _prelu_kernel_backward_scalar_func(grad_output, x, weight):
-    # weight is a Python float; fast path (all tensor args same shape).
-    pos = (x > 0).to(x.dtype)
+    pos = tl.minimum(1.0, tl.maximum(0.0, x.to(tl.float32) * 1.0e30)).to(x.dtype)
     x_neg = tl.minimum(x, 0.0)
     grad_input = grad_output * (pos + (1.0 - pos) * weight)
     grad_weight = grad_output * x_neg * (1.0 - pos)
@@ -33,8 +32,7 @@ def _prelu_kernel_backward_scalar_func(grad_output, x, weight):
 )
 @triton.jit
 def _prelu_kernel_backward_channel_func(grad_output, x, weight):
-    # weight is a last-dim broadcastable tensor [1, ..., 1, C].
-    pos = (x > 0).to(x.dtype)
+    pos = tl.minimum(1.0, tl.maximum(0.0, x.to(tl.float32) * 1.0e30)).to(x.dtype)
     x_neg = tl.minimum(x, 0.0)
     grad_input = grad_output * (pos + (1.0 - pos) * weight)
     grad_weight = grad_output * x_neg * (1.0 - pos)
@@ -76,11 +74,9 @@ def _prelu_kernel_backward(*args, **kwargs):
 
     ndim = x.dim()
     if weight.numel() == 1:
-        # Scalar weight: kernel-argument fast path, see module docstring.
         return _prelu_kernel_backward_scalar_func(grad_output, x, float(weight))
     if ndim == 0:
         raise AssertionError("Non-scalar weight provided for a 0-dim input.")
-    # Weight matches the last dimension (per-channel PReLU): [C] -> [1, 1, C].
     C = x.shape[-1]
     if weight.numel() != C:
         raise AssertionError(
