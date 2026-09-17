@@ -16,6 +16,8 @@ import pytest
 import torch
 import torch.nn.functional as F
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -58,6 +60,7 @@ def test_native_batch_norm_legit_no_training():
         input_fn=native_batch_norm_legit_no_training_input_fn,
         op_name="native_batch_norm_legit_no_training",
         torch_op=torch_native_batch_norm_legit_no_training,
+        gems_op=flag_gems._native_batch_norm_legit_no_training,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

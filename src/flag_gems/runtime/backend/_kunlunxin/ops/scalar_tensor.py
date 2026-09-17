@@ -38,7 +38,7 @@ def scalar_tensor(s, *, dtype=None, layout=None, device=None, pin_memory=None):
 
     Both steps run on the XPU device; no CPU/ATen/native/composite fallback.
     """
-    logger.debug("GEMS SCALAR_TENSOR (kunlunxin native fill)")
+    logger.debug("GEMS_KUNLUNXIN SCALAR_TENSOR")
     out = torch.empty_strided(
         (), (), dtype=dtype, layout=layout, device=device, pin_memory=pin_memory
     )
