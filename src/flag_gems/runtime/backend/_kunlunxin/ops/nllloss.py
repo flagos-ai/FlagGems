@@ -1,17 +1,3 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import logging
 
 import torch
@@ -53,9 +39,6 @@ def nll_loss_forward_kernel(
     ignore_mask = not (tgt == ignore_index) and mask_n
 
     if wgt_ptr is None:
-        # `ignore_mask.to(tl.float32)` (arith.uitofp on a bool tile) makes
-        # TritonXPUUnrollControl fail to verify for BLOCK_N >= 256 in fp16;
-        # the explicit select is equivalent and compiles for every block.
         wgt_tgt = tl.where(ignore_mask, 1.0, 0.0)
     else:
         wgt_tgt = tl.load(wgt_ptr + tgt, mask=ignore_mask, other=0).to(tl.float32)
@@ -65,10 +48,6 @@ def nll_loss_forward_kernel(
     out = inp_tgt * wgt_tgt * -1
 
     if PADDED:
-        # Scratch buffers are over-allocated to a whole number of reduction
-        # tiles; lanes >= N already carry 0 (ignore_mask is false there), so an
-        # unmasked store zero-fills the pad and lets the reduction kernel run
-        # on fully unmasked tiles.
         tl.store(out_ptr + offsets_n, out)
         tl.store(ignore_wgt_tgt_ptr + offsets_n, wgt_tgt)
     else:
@@ -77,36 +56,8 @@ def nll_loss_forward_kernel(
             tl.store(ignore_wgt_tgt_ptr + offsets_n, wgt_tgt, mask=mask_n)
 
 
-# ---------------------------------------------------------------------------
-# Fused scalar reduction for the reduced (mean/sum) nll_loss forward paths.
-#
-# Baseline used `xpu_sum(out)` + `xpu_sum(ignore_weight_tgt)` + a gems 0-d
-# `div` (3 to 7 device launches, and the 0-d pointwise `div` alone measured
-# ~0.10-0.14 ms). This single-program kernel replaces all of them with one
-# launch: it reduces both scratch buffers and writes the final scalar loss
-# plus total_weight.
-#
-# XPU reduction constraints honored here (harness/HARNESS_SUMMARY.md 2.5/3.6):
-#   - every reduction tile is <= 8192 lanes and *fully unmasked*: the caller
-#     over-allocates the scratch buffers to `NTILES * TL` elements and the
-#     elementwise kernel zero-fills the pad (`PADDED=True`).  A masked tail
-#     tile inside this kernel was measured to silently miscompile (70/216
-#     probe cases wrong at N=10000), matching the documented restriction.
-#   - no `tl.where(...)` inside the reduction, no atomics, no runtime-loop
-#     masked loads (`tl.static_range` only).
-#   - `NTILES` is capped by the caller so the unrolled body and the live
-#     local-memory footprint stay small; larger N keeps the staged
-#     `xpu_sum` path.
-# ---------------------------------------------------------------------------
 _NLL_REDUCE_TILE = 8192
 _NLL_REDUCE_MAX_TILES = 2
-# Elementwise block for the 1d/2d forward gather.  Measured kernel-only medians
-# on XPU (fp32, do_bench): BLOCK 128/256/512 give 0.0090/0.0085/0.0116 ms at
-# N=64, 0.0229/0.0165/0.0123 ms at N=4096 and 0.0389/0.0289/0.0241 ms at
-# N=10000 - wide blocks (fewer, fatter programs) win once N passes ~1K while
-# the extra masked lanes dominate below it, hence the two-point split.
-# NOTE: blocks >= 256 only compile after replacing `ignore_mask.to(tl.float32)`
-# with an explicit `tl.where` in the kernel (see the comment there).
 _NLL_FWD_BLOCK_SMALL = 256
 _NLL_FWD_BLOCK_LARGE = 512
 _NLL_FWD_BLOCK_SWITCH = 1024
@@ -144,22 +95,66 @@ def nll_loss_reduce_kernel(
     tl.store(total_wgt_ptr, total_wgt.to(total_wgt_ptr.dtype.element_ty))
 
 
-# ---------------------------------------------------------------------------
-# Scalar `mean` finish for the *staged* (`xpu_sum`) reduced path.
-#
-# Takes the two already-reduced fp32 scalars and emits the two fp16/bf16/fp32
-# results in a single launch.  It exists for two reasons:
-#   - correctness: the quotient must be formed in fp32.  Both operands leave
-#     fp16 range long before the quotient does (`sum(loss)` past ~26k elements,
-#     `total_weight` past 65504 elements), so a fp16 division returns
-#     `inf`/`nan`/`0.0` where the true mean is a perfectly representable O(1)
-#     number.  See the header of `nll_loss2d_forward`'s reduced tail.
-#   - cost: it replaces the 0-d gems `div` plus the two 0-d `.to()` casts that
-#     an fp32-scalar division would otherwise need.  The 0-d gems `div` alone is
-#     documented at 105-139 us in this file, so this is a net win over HEAD.
-# Both loads are 0-d global scalar loads, the same form already used by
-# `nll_loss_backward_kernel` / `nll_loss2d_backward_kernel` for `total_weight`.
-# ---------------------------------------------------------------------------
+_NLL2D_PARTIAL_PROG_TILES = 4
+
+
+def _nll2d_partial_config(ntiles):
+    """`(nprog, tpp)` with `tpp` the largest divisor of `ntiles` at most
+    `_NLL2D_PARTIAL_PROG_TILES` (so `nprog * tpp == ntiles` exactly): no
+    program body is unrolled past the 4-tile fault cap and no program ever
+    touches a tile outside `[0, ntiles)`."""
+    for tpp in (_NLL2D_PARTIAL_PROG_TILES, 2, 1):
+        if ntiles % tpp == 0:
+            return ntiles // tpp, tpp
+    raise RuntimeError("unreachable")
+
+
+@libentry()
+@triton.jit
+def nll_loss2d_partial_reduce_kernel(
+    out_ptr,
+    wgt_ptr,
+    pout_ptr,
+    pwgt_ptr,
+    TPP: tl.constexpr,
+    TL: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    total_o = tl.zeros([], dtype=tl.float32)
+    total_w = tl.zeros([], dtype=tl.float32)
+    for j in tl.static_range(TPP):
+        off = (pid * TPP + j) * TL + tl.arange(0, TL)
+        o = tl.load(out_ptr + off).to(tl.float32)
+        w = tl.load(wgt_ptr + off).to(tl.float32)
+        total_o += tl.sum(o)
+        total_w += tl.sum(w)
+    tl.store(pout_ptr + pid, total_o)
+    tl.store(pwgt_ptr + pid, total_w)
+
+
+@libentry()
+@triton.jit
+def nll_loss2d_finalize_kernel(
+    pout_ptr,
+    pwgt_ptr,
+    total_out_ptr,
+    total_wgt_ptr,
+    MEAN: tl.constexpr,
+    NP: tl.constexpr,
+    nprog,
+):
+    off = tl.arange(0, NP)
+    mask = off < nprog
+    total_o = tl.sum(tl.load(pout_ptr + off, mask=mask, other=0).to(tl.float32))
+    total_w = tl.sum(tl.load(pwgt_ptr + off, mask=mask, other=0).to(tl.float32))
+    if MEAN:
+        res = total_o / total_w
+    else:
+        res = total_o
+    tl.store(total_out_ptr, res.to(total_out_ptr.dtype.element_ty))
+    tl.store(total_wgt_ptr, total_w.to(total_wgt_ptr.dtype.element_ty))
+
+
 @libentry()
 @triton.jit
 def nll_loss_scalar_mean_kernel(num_ptr, den_ptr, out_ptr, tw_ptr):
@@ -250,44 +245,11 @@ def nll_loss2d_forward_kernel(
     out_ptrs = out_ptr + offset_n * D + offset_d
     tl.store(out_ptrs, out, mask=mask_block)
 
-    if reduction == 1:
+    if reduction != 0:
         ignore_wgt_tgt_ptrs = ignore_wgt_tgt_ptr + offset_n * D + offset_d
         tl.store(ignore_wgt_tgt_ptrs, wgt_tgt, mask=mask_block)
 
 
-# ---------------------------------------------------------------------------
-# Row-tiled variant of the 2d forward gather.  Used by `nll_loss2d_forward`
-# only (grep-verified single call site); the flat kernel above stays as the
-# general fallback for shapes this one cannot serve safely.
-#
-# The flat kernel spends most of its time *outside* the (unavoidable) discrete
-# gather: with `BLOCK_ND=128` over `N*D` it launches `N*D/128` tiny programs and
-# recomputes `offset_nd % D` / `offset_nd // D` per element, which also stops
-# OffsetAnalysis from proving the target/out accesses stride-1.  Here the row
-# index is `program_id(1)` (a scalar) and `D` is `tl.constexpr`, so target/out
-# become contiguous block DMA and the div/mod disappear.  Measured on
-# `(64, 512, 512)` (the only benchmark shape that reaches this op), wrapper
-# level medians, reduction=none: fp16 0.2356 -> 0.1310, fp32 0.3096 -> 0.1035,
-# bf16 0.2591 -> 0.1188 ms.
-#
-# XPU constraints honored (harness/HARNESS_SUMMARY.md 2.3/2.4/3.6):
-#   - the tile is *exactly* `TILE_N x BLOCK_D` with `D % BLOCK_D == 0`, so
-#     there is no masked tail.  A masked tail silently miscompiles here:
-#     `BLOCK_D=1024` over `D=512` reported success while producing fp32
-#     `maxdiff=6.918`.
-#   - `BLOCK_D >= _NLL2D_MIN_BLOCK_D` (128).  Narrow inner tiles do not just
-#     return wrong values on this backend, they fault the device: `BLOCK_D=32`
-#     (with `TILE_N=2`) and `BLOCK_D=64` (with `TILE_N=8`) both raised
-#     `kl3ChannelCheckErrors error 721` -> `wait for noc idle timeout` and
-#     wedged the card (reproduced with the in-kernel `assert` removed, so the
-#     trigger is the tile width, not the assert).  128/256/512 verified clean.
-#   - `TILE_N` stays 1: `TILE_N` 2/4/8/16 at `BLOCK_D=512` are correct but
-#     slower (0.0737/0.0899/0.0911/0.1186 vs 0.0692 ms).
-#   - the `wgt_ptr is None` branch uses `tl.where` instead of
-#     `ignore_mask.to(tl.float32)`: the uitofp form makes
-#     `TritonXPUUnrollControl` fail (`OutOfResources: uni_sram`) for fp16 at
-#     `BLOCK_D=512`.  This `tl.where` is elementwise, not inside a reduction.
-# ---------------------------------------------------------------------------
 _NLL2D_MIN_BLOCK_D = 128
 _NLL2D_MAX_BLOCK_D = 512
 
@@ -327,53 +289,10 @@ def nll_loss2d_forward_tiled_kernel(
     out = inp_tgt * wgt_tgt * -1
 
     tl.store(out_ptr + flat, out)
-    if reduction == 1:
+    if reduction != 0:
         tl.store(ignore_wgt_tgt_ptr + flat, wgt_tgt)
 
 
-# ---------------------------------------------------------------------------
-# Wide flat variant of the 2d forward gather, for trailing dims too small for
-# `nll_loss2d_forward_tiled_kernel` (`D < 128`, e.g. the `(*, *, 4, 8)` shapes
-# in the benchmark matrix, where `D == 32`).
-#
-# The original flat kernel above launches `ceil(N*D / 128)` programs.  On this
-# backend the per-program cost is set by the tile's *byte* width, not by the
-# live data (renorm_ calibration: 256 B -> ~0.83 us/program, >= 1024 B -> ~0.11
-# us/program), so `BLOCK_ND=128` (256 B in fp16) is far too narrow: `N*D=131072`
-# (`(4096, 4096, 4, 8)`) means 1024 programs, and the measured per-cell minimum
-# for that cell's `reduction=none` really is 373-503 us against a 29-35 us torch
-# reference.
-#
-# Differences from the flat kernel above, all of them safe rewrites:
-#   - `D` is `tl.constexpr`, so `offset_nd % D` / `offset_nd // D` become a
-#     mask/shift instead of runtime integer div/mod.
-#   - `target`/`out`/`ignore_weight_tgt` are addressed with the flat index
-#     directly: `target_flat`/`out` are contiguous `(N, D)`, so
-#     `offset_n * D + offset_d == offset_nd` identically.  This turns three
-#     accesses that OffsetAnalysis could not prove stride-1 into contiguous
-#     block DMA.
-#   - the caller only selects this kernel when `BLOCK_ND` divides `N*D`
-#     exactly, so the kernel is *completely unmasked* on those three accesses:
-#     no `other=` (documented as not honoured on this backend even for
-#     stride-1 loads) and no masked tail store (documented to write the whole
-#     tile, i.e. up to `BLOCK_ND-1` elements past the end).  Shapes that do not
-#     divide keep the original 128-wide masked kernel unchanged.
-#   - the `wgt_ptr is None` branch uses `tl.where` rather than
-#     `ignore_mask.to(tl.float32)`; the uitofp form fails
-#     `TritonXPUUnrollControl` for BLOCK >= 256 in fp16.
-# The discrete `inp` gather keeps HEAD's exact expression and masking so the
-# (pre-existing) out-of-range `tgt*D` read behaviour for a hit `ignore_index`
-# is bit-for-bit unchanged.
-# ---------------------------------------------------------------------------
-# `BLOCK_ND = 1024` is **silently wrong** in this kernel: with fp32 input and a
-# `weight` tensor it returns an exact `0.0` for ~5-6% of the lanes (isolated
-# probe, CPU float64 oracle, mismatch == exact-zero count):
-#     M=2048   96/2048     M=4096  218/4096
-#     M=8192  456/8192     M=16384 982/16384
-# while 128 / 256 / 512 / 2048 all give 0 mismatches on the same data, and fp16
-# / bf16 are unaffected at every width.  The defect is therefore *width*
-# specific and non-monotone (the documented TritonXPU pattern), so the width is
-# taken from an explicitly verified whitelist rather than from `next_pow2`.
 _NLL2D_FLAT_BLOCKS = (2048, 512, 256, 128)
 
 
@@ -429,7 +348,7 @@ def nll_loss2d_forward_flat_kernel(
     out = inp_tgt * wgt_tgt * -1
 
     tl.store(out_ptr + offset_nd, out)
-    if reduction == 1:
+    if reduction != 0:
         tl.store(ignore_wgt_tgt_ptr + offset_nd, wgt_tgt)
 
 
@@ -459,60 +378,8 @@ def _nll2d_block_d(D):
     return block_d if block_d >= _NLL2D_MIN_BLOCK_D else None
 
 
-# ---------------------------------------------------------------------------
-# Fused scalar reduction for the *2d/nd* reduced (mean/sum) forward paths.
-#
-# Same idea (and the same kernel) as the 1d path above.  HEAD finishes the 2d
-# reduced paths on the host with `xpu_sum(out)` [+ `xpu_sum(ignore_weight_tgt)`
-# + a 0-d gems `div`] + `.to(dtype)`, i.e. 3-7 extra device launches.  Measured
-# per-cell minima over 4 benchmark rounds on XPU7 (`benchmark/test_nll_loss_nd.py
-# -m nll_loss_nd_forward`, gems latency in us) show that tail dominates every
-# reduced cell:
-#
-#   shape                 reduction=none   sum          mean
-#   (64, 64, 4, 8)        24 - 41          49 - 58      155 - 162
-#   (256, 256, 4, 8)      55 - 86          58 - 90      153 - 175
-#   (32, 128, 512)        18 - 86          82 - 181     220 - 273
-#   (64, 64, 8, 4, 8)     30 - 87          82 -  92     220 - 242
-#
-# i.e. `mean - none` is a flat +140..+170 us (the 0-d gems `div` alone is
-# documented at 105-139 us) and `sum - none` is +25..+65 us, while the torch
-# reference sits at 11-35 us for *all* of them.
-#
-# `nll_loss_reduce_kernel` needs fully unmasked reduction tiles, so the fused
-# path is only taken when the `N*D` element count is *exactly* a whole number
-# of tiles.  That is deliberately stricter than padding the scratch buffers:
-# padding would need either an extra memset launch (eating the win) or a new
-# unmasked-store mode in both 2d gather kernels.  Every 3d+ shape in the
-# official benchmark matrix has a power-of-two `N*D` (2048 / 8192 / 16384 /
-# 131072) so nothing is lost there, and non-conforming shapes keep the exact
-# HEAD `xpu_sum` path.
-#
-# Restricted to `reduction=mean` on purpose.  Two `sum` variants were measured
-# and both rejected:
-#   - making the gather kernel also write the per-element weight scratch so the
-#     weight sum would be real: (64,64,4,8) sum 49-58 -> 61-71 us,
-#     (256,256,4,8) sum 58-90 -> 78-133 us (the extra store costs more than the
-#     `xpu_sum` it saves);
-#   - reusing this two-buffer kernel with `out` handed in twice (no extra
-#     store): net 1.032x over the 30 owned `sum` cells - it wins on the tiled
-#     shapes (M=16384: 78-82 -> 51-57 us, 1.42-1.57x) but loses on the wide-flat
-#     shapes (M=2048/8192: 35-43 -> 45-52 us, 0.73-0.91x) because `xpu_sum` is
-#     multi-program while this reduce kernel is a single program.  Whole-matrix
-#     per-cell-MIN dtype-equal-weight came out at 0.5794 with it vs 0.5861
-#     without, so it was reverted.
-# `sum` therefore keeps HEAD's path byte-for-byte.
-#
-# `_NLL2D_REDUCE_MAX_TILES` must stay at 2.  Raising it to 16 so that the
-# largest benchmark cell (`N*D = 131072`) could fuse too **faults the device**:
-# fp32 `(4096, 64, 4, 8)` mean raised `kl3ChannelCheckErrors ... status=719`,
-# `cluster[11] ... reason[26] sm rdwr conflict` and
-# `Xid (PCI:0000:da:00): KL_XID_KERNEL_EXCEPTION` inside
-# `nll_loss_reduce_kernel` (dmesg kl3_dev7, 2026-08-30; the same config is
-# numerically correct in fp16).  Do not retry.
-# ---------------------------------------------------------------------------
 _NLL2D_REDUCE_TILE = 8192
-_NLL2D_REDUCE_MAX_TILES = 2
+_NLL2D_REDUCE_MAX_TILES = 4
 
 
 def _nll2d_fused_reduce(M):
@@ -521,6 +388,23 @@ def _nll2d_fused_reduce(M):
     tl_width = min(_NLL2D_REDUCE_TILE, triton.next_power_of_2(M))
     ntiles = triton.cdiv(M, tl_width)
     if ntiles > _NLL2D_REDUCE_MAX_TILES or ntiles * tl_width != M:
+        return None
+    return ntiles, tl_width
+
+
+_NLL2D_EXACT_TILE_CAP = 128
+
+
+def _nll2d_exact_tiles(M):
+    """Return `(ntiles, TL)` if `M` elements tile exactly (no padding), else
+    `None`.  This is `_nll2d_fused_reduce` without the single-program cap, so
+    the caller can choose between the one-program fused path (ntiles <=
+    `_NLL2D_REDUCE_MAX_TILES`), the grid-parallel path (ntiles <=
+    `_NLL2D_EXACT_TILE_CAP`) and keep the staged `xpu_sum` tail otherwise.
+    Both reduced paths require fully unmasked tiles, i.e. `M % TL == 0`."""
+    tl_width = min(_NLL2D_REDUCE_TILE, triton.next_power_of_2(M))
+    ntiles = triton.cdiv(M, tl_width)
+    if ntiles > _NLL2D_EXACT_TILE_CAP or ntiles * tl_width != M:
         return None
     return ntiles, tl_width
 
@@ -571,64 +455,6 @@ def nll_loss2d_backward_kernel(
     tl.store(inp_grad_ptrs, inp_grad, mask=ignore_mask)
 
 
-# ---------------------------------------------------------------------------
-# Wide flat variant of the 2d/nd backward scatter.
-#
-# `nll_loss2d_backward_kernel` above runs `ceil(N*D / 128)` programs.  A
-# component breakdown of the official matrix (wrapper-level `do_bench` minima,
-# XPU 7, us) shows the scatter kernel - not the zero fill - is what the small
-# and medium shapes spend their time on, and that the reduced paths cost about
-# twice the `reduction=none` path:
-#
-#   shape              N*D      zero_   kern(none)  kern(mean)
-#   (64, 64, 4, 8)     2048       5.0        9.5        11.3
-#   (256, 256, 4, 8)   8192       8.9       17.7        29.5
-#   (32, 128, 512)     16384      8.9       29.9        55.1
-#   (4096, 4096, 4, 8) 131072  1203.3      184.5       398.0
-#
-# The `mean`/`sum` surcharge is exactly the documented cost of loading a scalar
-# from global memory inside the kernel (0.21-0.27 us per program per load):
-# `N*D = 131072` at `BLOCK_ND = 128` is 1024 programs and the surcharge is
-# 398 - 184 = 214 us ~= 1024 * 0.21 us.  Both that surcharge and the per-program
-# tile overhead shrink linearly with the tile width, so the fix is to widen the
-# tile; the same measurement also explains why widening helps `reduction=none`
-# much less (1.5x instead of 2.5x).
-#
-# Differences from the kernel above, all of them provably equivalent rewrites:
-#   - `D` is `tl.constexpr`, so `offset_nd % D` / `offset_nd // D` are folded by
-#     the compiler instead of being runtime integer div/mod.
-#   - `target` and (for `reduction=none`) `grad_output` are addressed with the
-#     flat index directly: both are contiguous `(N, D)`, so
-#     `offset_n * D + offset_d == offset_nd` identically.  That turns two
-#     accesses OffsetAnalysis could not prove stride-1 into contiguous block
-#     DMA.
-#   - the caller only selects this kernel when `BLOCK_ND` divides `N*D`
-#     exactly, so both of those loads are *completely unmasked*: no `other=`
-#     (documented as not honoured on this backend even for stride-1 loads) and
-#     no masked tail.  Shapes that do not divide keep the original 128-wide
-#     masked kernel unchanged.
-#   - the scatter target is clamped with `safe_tgt` and the store is unmasked.
-#     This is not a relaxation, it is a fix: masked stores are documented not to
-#     be honoured on this backend, and HEAD's store address for an ignored lane
-#     is `offset_n * C * D + ignore_index * D + offset_d`, which for the default
-#     `ignore_index = -100` is *before* the buffer and for `ignore_index = 200`
-#     with `C = 64` runs past its end.  Because every `(n, d)` lane owns a
-#     unique output address, writing an explicit `0.0` to `(n, 0, d)` for an
-#     ignored lane is exactly the value `grad_input` already holds from the
-#     zero fill, so the result is unchanged while the write stays in bounds.
-#   - the weight gather uses `safe_tgt` too, which removes the equally
-#     out-of-range `wgt_ptr + ignore_index` read.  Measured cost-neutral: three
-#     variants (HEAD's `mask=ignore_mask, other=0` on the raw `tgt`, unmasked on
-#     `safe_tgt`, masked on `safe_tgt`) differ by <=2% over 24 configurations and
-#     all three give 0 mismatches against a CPU float64 oracle.
-#
-# Width whitelist: 128/256/512/1024/2048/4096/8192 were all swept against a CPU
-# float64 oracle over 5 shapes x 3 dtypes x weight{Y,N} x reduction{0,1,2}
-# (441 checks) with **0 mismatches everywhere**, i.e. this kernel does not show
-# the width-specific silent miscompile that `nll_loss2d_forward_flat_kernel`
-# has at 1024.  The whitelist below is therefore a *performance* band, and the
-# widths in it are exactly the ones that were verified.
-# ---------------------------------------------------------------------------
 _NLL2D_BWD_FLAT_BLOCKS = (4096, 1024, 512, 256, 128)
 
 
@@ -695,8 +521,6 @@ def nll_loss2d_backward_flat_kernel(
         out_grad = tl.load(out_grad_ptr).to(tl.float32)
 
     if wgt_ptr is None:
-        # `ignore_mask.to(tl.float32)` (arith.uitofp on a bool tile) fails
-        # TritonXPUUnrollControl verification for BLOCK >= 256 in fp16.
         wgt_tgt = tl.where(ignore_mask, 1.0, 0.0)
     else:
         wgt_tgt = tl.load(wgt_ptr + safe_tgt).to(tl.float32)
@@ -713,45 +537,11 @@ def nll_loss2d_backward_flat_kernel(
     tl.store(inp_grad_ptrs, inp_grad)
 
 
-# Negative Log Likelihood Loss (NLLLoss)
-#
-# This loss function is used for training classification problems with C classes.
-#
-# Parameters:
-# - input (Tensor):
-#   - Expected to contain log-probabilities for each class.
-#   - Shape can be either:
-#     - (minibatch, C) for standard classification tasks.
-#     - (minibatch, C, d1, d2, ..., dK) for K-dimensional inputs (e.g., per-pixel loss for 2D images).
-#
-# - target (Tensor):
-#   - Should contain class indices in the range [0, C-1].
-#   - If ignore_index is specified, this index can be outside the class range
-#       and will be ignored in the loss computation.
-#
-# - weight (1D Tensor, optional):
-#   - Assigns weight to each class, useful for unbalanced datasets.
-#
-# Reduction modes:
-# - 'none': returns per-sample loss (shape: (N,)).
-# - 'mean' (default): computes the mean of the weighted losses.
-# - 'sum': computes the sum of the weighted losses.
-#
-# Mathematical description:
-# - Unreduced loss:
-#   l_n = -w_y_n * x_n, where w_c = weight[c] * 1{c != ignore_index}.
-# - Reduced loss (depending on the specified reduction mode):
-#   - mean: ℓ(x, y) = (1/N) * Σ(w_y_n * l_n)
-#   - sum: ℓ(x, y) = Σ(l_n)
-
-
-# 1d & 2d tensor
 def nll_loss_forward(self, target, weight=None, reduction=1, ignore_index=-100):
     logger.debug("GEMS_KUNLUNXIN NLL_LOSS_FWD")
     assert self.ndim <= 2, "Invalid input ndim"
 
     if self.numel() == 0:
-        # Empty-input semantics (matches torch): mean->nan, none->empty(target shape), sum->0; total_weight=0
         if reduction == 0:
             loss = torch.empty(target.shape, dtype=self.dtype, device=self.device)
         elif reduction == 1:
@@ -771,10 +561,6 @@ def nll_loss_forward(self, target, weight=None, reduction=1, ignore_index=-100):
     weight = None if weight is None else weight.contiguous()
 
     BLOCK_N = _nll_fwd_block(N)
-    # Reduced (mean/sum) paths with a tile-bounded N run the fused
-    # single-launch reduction below; that needs both scratch buffers padded to
-    # a whole number of unmasked reduction tiles (and to a whole number of
-    # elementwise blocks so the pad can be written unmasked).
     fused = False
     if reduction != 0:
         TL = min(_NLL_REDUCE_TILE, triton.next_power_of_2(N))
@@ -797,21 +583,20 @@ def nll_loss_forward(self, target, weight=None, reduction=1, ignore_index=-100):
 
     with torch_device_fn.device(self.device):
         nll_loss_forward_kernel[(n_blocks, 1, 1)](
-            self,  # torch.Size([4096, 256])
-            target,  # torch.Size([4096]), tensor([174, 125, 174,  ..., 216, 171, 120])
-            weight,  # torch.Size([256])
-            out,  # torch.Size([4096])
-            ignore_weight_tgt,  # torch.Size([4096])
-            ignore_index,  # 1
-            N,  # 4096
-            C,  # 256
-            reduction,  # 0
+            self,
+            target,
+            weight,
+            out,
+            ignore_weight_tgt,
+            ignore_index,
+            N,
+            C,
+            reduction,
             BLOCK_N,
             fused,
             is_use_mask_zero=True,
         )
 
-    # redution: 0-None, 1-mean, 2-sum
     if reduction == 0:
         return out, torch.zeros([], dtype=self.dtype, device=self.device)
 
@@ -861,20 +646,6 @@ def nll_loss_backward(
     target = target.contiguous()
     weight = None if weight is None else weight.contiguous()
 
-    # The 1d/2d backward is launch-bound: the scatter kernel only touches N of
-    # the N*C outputs, so the zero-fill of grad_input dominates the wall clock
-    # on every benchmark shape.  `torch.empty_like(...).contiguous()` plus the
-    # pointwise_dynamic `zero_` costs ~0.083 ms of fixed dispatch per call on
-    # XPU, while the ops/zeros_like.py memset (grid=(12,), buffer_size_limit
-    # 2048) does the same work for ~0.045 ms and is never slower on the large
-    # shapes either.  Calling it directly (instead of `torch.zeros_like`) keeps
-    # the memset on the Kunlunxin gems kernel regardless of the dispatch state
-    # and skips one dispatcher round trip.  Measured (fp32, median of 15,
-    # XPU 7): 0.147 -> 0.103 ms at (64,64), 0.141 -> 0.099 at (4096,4096),
-    # 0.244 -> 0.207 at (1024,65536), 1.63 -> 1.53 at (10000,65536).
-    # `zeros_like` preserves `self`'s memory format, so a non-contiguous `self`
-    # still takes the old empty_like().contiguous() + zero_ route (the scatter
-    # below indexes grad_input row-major as `n * C + tgt`).
     if self.is_contiguous():
         grad_input = xpu_zeros_like(self)
     else:
@@ -898,13 +669,11 @@ def nll_loss_backward(
     return grad_input
 
 
-# 3d+ tensor
 def nll_loss2d_forward(self, target, weight=None, reduction=1, ignore_index=-100):
     logger.debug("GEMS_KUNLUNXIN NLL_LOSS2D_FWD")
     assert self.ndim >= 3, "Invalid input ndim"
 
     if self.numel() == 0:
-        # Empty-input semantics (matches torch): mean->nan, none->empty(target shape), sum->0; total_weight=0
         if reduction == 0:
             loss = torch.empty(target.shape, dtype=self.dtype, device=self.device)
         elif reduction == 1:
@@ -924,12 +693,9 @@ def nll_loss2d_forward(self, target, weight=None, reduction=1, ignore_index=-100
     weight = None if weight is None else weight.contiguous()
 
     out = torch.empty((N, D), dtype=self.dtype, device=self.device)
-    # `fused` replaces the host-side mean reduction tail (2 x xpu_sum + a 0-d
-    # gems div + 2 x .to()) with one extra launch.  Only reduction=mean takes
-    # it; see the comment on `_nll2d_fused_reduce`.
-    fused = _nll2d_fused_reduce(N * D) if reduction == 1 else None
+    exact = _nll2d_exact_tiles(N * D) if reduction != 0 else None
     ignore_weight_tgt = None
-    if reduction == 1:
+    if reduction != 0:
         ignore_weight_tgt = torch.empty((N, D), dtype=self.dtype, device=self.device)
 
     block_d = _nll2d_block_d(D)
@@ -979,82 +745,60 @@ def nll_loss2d_forward(self, target, weight=None, reduction=1, ignore_index=-100
                 is_use_mask_zero=True,
             )
 
-    # redution: 0-None, 1-mean, 2-sum
     if reduction == 0:
         output = out.reshape(target_orig_shape)
         total_weight = torch.zeros([], dtype=self.dtype, device=self.device)
         return output, total_weight
 
-    if fused is not None:
-        ntiles, tl_width = fused
+    if exact is not None:
+        ntiles, tl_width = exact
         output = torch.empty([], dtype=self.dtype, device=self.device)
         total_weight = torch.empty([], dtype=self.dtype, device=self.device)
+        wgt_buf = ignore_weight_tgt
         with torch_device_fn.device(self.device):
-            nll_loss_reduce_kernel[(1, 1, 1)](
-                out,
-                ignore_weight_tgt,
-                output,
-                total_weight,
-                True,
-                ntiles,
-                tl_width,
-            )
+            if ntiles <= _NLL2D_REDUCE_MAX_TILES:
+                nll_loss_reduce_kernel[(1, 1, 1)](
+                    out,
+                    wgt_buf,
+                    output,
+                    total_weight,
+                    reduction == 1,
+                    ntiles,
+                    tl_width,
+                )
+            else:
+                nprog, tpp = _nll2d_partial_config(ntiles)
+                pout = torch.empty((nprog,), dtype=torch.float32, device=self.device)
+                pwgt = torch.empty((nprog,), dtype=torch.float32, device=self.device)
+                nll_loss2d_partial_reduce_kernel[(nprog, 1, 1)](
+                    out,
+                    wgt_buf,
+                    pout,
+                    pwgt,
+                    tpp,
+                    tl_width,
+                )
+                nll_loss2d_finalize_kernel[(1, 1, 1)](
+                    pout,
+                    pwgt,
+                    output,
+                    total_weight,
+                    reduction == 1,
+                    triton.next_power_of_2(nprog),
+                    nprog,
+                )
         return output, total_weight
 
     if reduction == 1:
-        # Both `mean` sums must be accumulated *and divided* in fp32, never in
-        # the 16-bit input dtype.  `xpu_sum` already accumulates in fp32
-        # internally but stores the scalar back in the input dtype, so for fp16
-        # the two operands of the division saturate long before the quotient
-        # does: the quotient is a plain per-element mean (O(1), always
-        # representable) while `sum(loss)` and `total_weight` grow with `N*D`
-        # and pass fp16's 65504 max at a few 10k elements.  Measured on XPU1
-        # (fp16, log_softmax input, C=8, CPU float64 oracle):
-        #     N*D  24576 -> 2.494 (ok)          N*D  28672 -> inf   (sum(loss) inf)
-        #     N*D  65536 -> nan (both inf)      N*D 131072 -> nan
-        # and with signed (non-log_softmax) input the same shapes returned an
-        # exact `-0.0` (`sum(loss)` finite / `total_weight` inf), i.e. a silent
-        # 100% error rather than a nan.  All three gather kernels are affected
-        # identically (flat / tiled / masked), because the defect is in this
-        # host-side reduction tail, not in the gather.
-        # `dtype=` only changes the dtype of the 0-d output tensor of
-        # `xpu_sum`; the launched kernels and their count are unchanged (the
-        # staged `mid` buffer is fp32 already).  ATen does the same arithmetic:
-        # `nll_loss2d_forward` reduces in `acc_type` and only casts the
-        # quotient, and it likewise casts `total_weight` to the input dtype
-        # (so an `inf` `total_weight` for `N*D > 65504` in fp16 is faithful).
-        #
-        # Cost accounting (device-event medians on XPU1, `N*D=131072`, fp16):
-        # the two `xpu_sum` calls are 76.0 us each with an fp16 scalar out and
-        # 73.5 us with an fp32 scalar out (i.e. the fp32 scalar is *free*), a
-        # 0-d gems `div` is 13.1 us, a 0-d `.to()` is 12.2 us and the fused
-        # `nll_loss_scalar_mean_kernel` is 22.7 us.  So the naive fp32 tail
-        # (div + 2 casts = 37.6 us) would cost ~+25 us over HEAD's all-fp16
-        # tail (13.1 us, its two `.to(self.dtype)` being no-ops).  The
-        # `exact_count` shortcut below removes a whole 73 us reduction instead,
-        # which is why the fixed path ends up *faster* than HEAD rather than
-        # slower.  (The 105-139 us figure for the 0-d `div` quoted elsewhere in
-        # this file does not reproduce: it measures 13 us here.)
         acc_dtype = (
             torch.float32
             if self.dtype in (torch.float16, torch.bfloat16, torch.float32)
             else None
         )
         total_out = xpu_sum(out, dtype=acc_dtype)
-        # `total_weight` is host-known whenever every element counts, i.e. when
-        # there is no `weight` tensor *and* `ignore_index` cannot match any
-        # target.  Targets are constrained to `tgt == ignore_index or 0 <= tgt <
-        # C` (asserted in all three gather kernels), so an `ignore_index`
-        # outside `[0, C)` - the default -100 included - can never be hit and
-        # the weight sum is exactly `N*D`.  Skipping that second reduction is
-        # also what buys back the cost of doing the division in fp32.
         if weight is None and not (0 <= ignore_index < C):
             exact_count = float(N * D)
             output = (total_out / exact_count).to(self.dtype)
-            # ATen casts `total_weight` to the input dtype, so fp16 with
-            # N*D > 65504 yields `inf` (faithful; see the comment above).
-            # `torch.full` would raise inside the vendor `full` override for
-            # such a value, so pre-saturate to `inf` to match the cast.
             count_value = (
                 exact_count
                 if exact_count <= torch.finfo(self.dtype).max
@@ -1075,9 +819,6 @@ def nll_loss2d_forward(self, target, weight=None, reduction=1, ignore_index=-100
                     total_weight,
                 )
     else:
-        # `sum` keeps HEAD's path byte-for-byte: there the fp16 `inf` is the
-        # *correct* answer (the true sum itself is outside fp16 range, and the
-        # CPU/CUDA references return `inf` too).
         total_out = xpu_sum(out)
         output = total_out.to(self.dtype)
         total_weight = torch.zeros([], dtype=self.dtype, device=self.device)
@@ -1107,9 +848,6 @@ def nll_loss2d_backward(
     grad_input = torch.empty_like(self).contiguous()
     zero_(grad_input)
 
-    # `flat_block is not None` takes the wide, fully unmasked flat scatter (see
-    # the comment on `nll_loss2d_backward_flat_kernel`); everything else keeps
-    # HEAD's 128-wide masked kernel byte-for-byte.
     flat_block = _nll2d_bwd_flat_block(N * D)
     with torch_device_fn.device(self.device):
         if flat_block is not None:
@@ -1152,7 +890,6 @@ def nll_loss_nd_forward(
 ):
     logger.debug("GEMS_KUNLUNXIN NLL LOSS ND FWD")
     if input.numel() == 0:
-        # Empty-input semantics (matches torch): mean->nan, none->empty(target shape), sum->0; total_weight=0
         if reduction == 0:
             loss = torch.empty(target.shape, dtype=input.dtype, device=input.device)
         elif reduction == 1:
@@ -1205,19 +942,32 @@ def nll_loss_nd_backward(
     )
 
 
-# Combined nll_loss2d op (returns only the loss).  F.nll_loss routes every 3D+
-# input here via nll_loss_nd (CompositeImplicitAutograd), so this vendor
-# override is what the whole nll 2d/nd family actually executes.  The generic
-# KernelGen nll_loss2d (src/flag_gems/ops/nll_loss2d.py) builds its output from
-# torch.empty + raw kernels and therefore has no autograd edge to `self`, which
-# breaks torch.autograd.grad for every 3D+ nll_loss test.  Re-delegating to the
-# registered nll_loss2d_forward restores the graph: that op is autograd-visible
-# (its C++ autograd kernel builds the NllLoss2DBackward0 node and its backward
-# re-dispatches to the vendor nll_loss2d_backward), so torch.autograd.grad
-# works while the kernels stay the existing vendor ones.
+class _NllLoss2dAutograd(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, self, target, weight, reduction, ignore_index):
+        output, total_weight = nll_loss2d_forward(
+            self, target, weight, reduction, ignore_index
+        )
+        ctx.reduction = reduction
+        ctx.ignore_index = ignore_index
+        ctx.save_for_backward(self, target, weight, total_weight)
+        return output
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        self, target, weight, total_weight = ctx.saved_tensors
+        grad_input = nll_loss2d_backward(
+            grad_output,
+            self,
+            target,
+            weight=weight,
+            reduction=ctx.reduction,
+            ignore_index=ctx.ignore_index,
+            total_weight=total_weight,
+        )
+        return grad_input, None, None, None, None
+
+
 def nll_loss2d(self, target, weight=None, reduction=1, ignore_index=-100):
     logger.debug("GEMS_KUNLUNXIN NLL_LOSS2D")
-    output, _ = torch.ops.aten.nll_loss2d_forward(
-        self, target, weight, reduction, ignore_index
-    )
-    return output
+    return _NllLoss2dAutograd.apply(self, target, weight, reduction, ignore_index)

@@ -11,14 +11,67 @@ from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger(__name__)
 
-# Row pitch of the working buffer.  Vector stores on this backend always cover
-# 64 contiguous elements and ignore their mask, so the row-swap kernel -- the
-# only kernel that writes a single row -- needs a pitch of at least 64 to keep
-# its stores inside the row they address.
 _MIN_LDA = 64
-# Upper bound on the flat tile of one program.  4096 lanes were validated; a
-# 16384-lane tile of the same shape produced an illegal memory access.
 _MAX_BLK = 4096
+
+
+@libentry()
+@triton.jit
+def _det4_kernel(A, OUT, TOT: tl.constexpr):
+    """Closed-form 4x4 determinant.
+
+    The cofactor expansion is evaluated directly in registers: the matrix is
+    fetched with 16 scalar loads (one per entry; TOT == 16) and the formula
+    only does multiplies/subtracts.  There is no working-buffer store/load
+    round trip, so this path is immune to the backend's unsafe in-kernel
+    store->load reordering (the reason every other kernel is launched once per
+    step).
+    """
+    b = tle.program_id(0).to(tl.int64)
+    base = b * TOT
+    a00 = tl.load(A + base + 0)
+    a01 = tl.load(A + base + 1)
+    a02 = tl.load(A + base + 2)
+    a03 = tl.load(A + base + 3)
+    a10 = tl.load(A + base + 4)
+    a11 = tl.load(A + base + 5)
+    a12 = tl.load(A + base + 6)
+    a13 = tl.load(A + base + 7)
+    a20 = tl.load(A + base + 8)
+    a21 = tl.load(A + base + 9)
+    a22 = tl.load(A + base + 10)
+    a23 = tl.load(A + base + 11)
+    a30 = tl.load(A + base + 12)
+    a31 = tl.load(A + base + 13)
+    a32 = tl.load(A + base + 14)
+    a33 = tl.load(A + base + 15)
+    det = (
+        a00
+        * (
+            a11 * (a22 * a33 - a23 * a32)
+            - a12 * (a21 * a33 - a23 * a31)
+            + a13 * (a21 * a32 - a22 * a31)
+        )
+        - a01
+        * (
+            a10 * (a22 * a33 - a23 * a32)
+            - a12 * (a20 * a33 - a23 * a30)
+            + a13 * (a20 * a32 - a22 * a30)
+        )
+        + a02
+        * (
+            a10 * (a21 * a33 - a23 * a31)
+            - a11 * (a20 * a33 - a23 * a30)
+            + a13 * (a20 * a31 - a21 * a30)
+        )
+        - a03
+        * (
+            a10 * (a21 * a32 - a22 * a31)
+            - a11 * (a20 * a32 - a22 * a30)
+            + a12 * (a20 * a31 - a21 * a30)
+        )
+    )
+    tl.store(OUT + b, det)
 
 
 @triton.jit
@@ -28,7 +81,10 @@ def _reduce_mul(a, b):
 
 def _plan(n):
     rows = triton.next_power_of_2(n)
-    lda = max(_MIN_LDA, rows)
+    if n >= 16 and n % 8 == 0 and n * n <= _MAX_BLK:
+        lda = n
+    else:
+        lda = max(_MIN_LDA, rows)
     tot = rows * lda
     blk = min(_MAX_BLK, tot)
     return rows, lda, tot, blk, tot // blk
@@ -57,6 +113,45 @@ def _det_pack_kernel(
 
 @libentry()
 @triton.jit
+def _det_step0_kernel(SRC, W, DG, N, LDA: tl.constexpr, TOT: tl.constexpr):
+    """Elimination step K=0 with the pack fused in.
+
+    Only valid when W is a separate (padded) buffer: every read comes from SRC
+    (contiguous N*N) and W is written only, so this one launch replaces the
+    pack kernel plus step 0.  The sum-based ``akk``/``apk`` extraction is kept
+    (a scalar load of the runtime ``prow`` address races against the stores of
+    the previous launch on this backend).
+    """
+    b = tle.program_id(0).to(tl.int64)
+    base = b * TOT
+    sbase = b * N * N
+    e = tl.arange(0, TOT)
+    row = e // LDA
+    col = e % LDA
+    live = (row < N) & (col < N)
+    idx = tl.where(live, row * N + col, 0)
+    w = tl.load(SRC + sbase + idx)
+    cand = tl.where((col == 0) & (row < N), tl.abs(w), -1.0)
+    best = tl.max(cand, axis=0)
+    prow = tl.min(tl.where(cand == best, row, TOT), axis=0)
+    akk = tl.sum(tl.where((row == 0) & (col == 0), w, 0.0), axis=0)
+    apk = tl.sum(tl.where((row == prow) & (col == 0), w, 0.0), axis=0)
+    cidx = tl.where(col < N, col, 0)
+    ridx = tl.where(row < N, row, 0)
+    row_k = tl.load(SRC + sbase + cidx)
+    row_p = tl.load(SRC + sbase + prow * N + cidx)
+    col_k = tl.load(SRC + sbase + ridx * N)
+    swapped = tl.where(row == 0, row_p, tl.where(row == prow, row_k, w))
+    lcol = tl.where(row == 0, apk, tl.where(row == prow, akk, col_k))
+    safe = tl.where(apk == 0.0, 1.0, apk)
+    mult = tl.where((row > 0) & (row < N), lcol / safe, 0.0)
+    urow = tl.where(col > 0, row_p, 0.0)
+    tl.store(W + base + e, swapped - mult * urow)
+    tl.store(DG + b * LDA, tl.where(prow != 0, -apk, apk))
+
+
+@libentry()
+@triton.jit
 def _det_step_kernel(W, DG, N, K, LDA: tl.constexpr, TOT: tl.constexpr):
     """One complete elimination step for a matrix that fits in a single program.
 
@@ -66,9 +161,12 @@ def _det_step_kernel(W, DG, N, K, LDA: tl.constexpr, TOT: tl.constexpr):
     global store/load round trip (an in-kernel loop over K silently corrupted
     ~4% of the matrices from 48 matrices upward even with debug barriers).
 
-    Every non-scalar value has the identical shape [TOT]: TritonXPU refuses to
-    lower a kernel that mixes a [TM] vector with a [TM, LDA] tile, and refuses
-    a 2-D reduction inside a runtime loop.
+    The pivot search operates on a [ROWS]-shaped column gather instead of the
+    [TOT]-shaped working tile: the masked 1-D reductions over the full tile
+    were measured as the dominant cost of every step (a 512-lane ``tl.max``
+    costs ~3x a 512-lane ``tl.sum`` on this backend), so the three per-step
+    reductions run over ROWS <= 64 lanes.  Every ``tl.where``/``tl.select`` is
+    still [TOT]-shaped; only the reduction inputs are [ROWS].
     """
     b = tle.program_id(0).to(tl.int64)
     base = b * TOT
@@ -76,11 +174,13 @@ def _det_step_kernel(W, DG, N, K, LDA: tl.constexpr, TOT: tl.constexpr):
     row = e // LDA
     col = e % LDA
     w = tl.load(W + base + e)
-    cand = tl.where((col == K) & (row >= K) & (row < N), tl.abs(w), -1.0)
+    ridx = tl.arange(0, LDA)
+    col_k_sp = tl.load(W + base + ridx * LDA + K)
+    cand = tl.where((ridx >= K) & (ridx < N), tl.abs(col_k_sp), -1.0)
     best = tl.max(cand, axis=0)
-    prow = tl.min(tl.where(cand == best, row, TOT), axis=0)
-    akk = tl.sum(tl.where((row == K) & (col == K), w, 0.0), axis=0)
-    apk = tl.sum(tl.where((row == prow) & (col == K), w, 0.0), axis=0)
+    prow = tl.min(tl.where(cand == best, ridx, LDA), axis=0)
+    akk = tl.sum(tl.where(ridx == K, col_k_sp, 0.0), axis=0)
+    apk = tl.sum(tl.where(ridx == prow, col_k_sp, 0.0), axis=0)
     row_k = tl.load(W + base + K * LDA + col)
     row_p = tl.load(W + base + prow * LDA + col)
     col_k = tl.load(W + base + row * LDA + K)
@@ -158,8 +258,85 @@ def _det_reduce_kernel(DG, OUT, N, LDA: tl.constexpr):
     tl.store(OUT + b, det)
 
 
+@libentry()
+@triton.jit
+def _det_elim_kernel(
+    W0, W1, OUT, N, LDA: tl.constexpr, TOT: tl.constexpr, BLK: tl.constexpr
+):
+    """Single-launch Gaussian elimination with partial pivoting, one program
+    per matrix.
+
+    The elimination runs entirely inside the kernel (``for k in range(N)``
+    with an inner ``for c`` over BLK-lane chunks for matrices that do not fit
+    one 4096-lane block).  The workspace is double buffered: iteration k reads
+    ``W0``/``W1`` and writes the other (``is_even`` selects both the source and
+    the destination from k).  No iteration reads the buffer it writes, so the
+    backend's in-kernel store->load reordering -- which corrupted ~4% of
+    matrices in a single-buffer loop even with debug barriers -- cannot
+    surface: a reordered load only hits the buffer that is not being written
+    this iteration, and the source pointer is a function of k so the compiler
+    cannot CSE loads across iterations.
+
+    Measured on this backend the pattern is exact only when the per-iteration
+    tile is >= 1024 lanes (TOT >= 1024); smaller tiles are reordered and give
+    wrong results, so this kernel is only launched for n >= 32 (n = 8/16
+    keep the launch-per-step path).
+    """
+    b = tle.program_id(0).to(tl.int64)
+    base = b * TOT
+    ridx = tl.arange(0, LDA)
+    acc = 1.0
+    for k in range(0, N):
+        is_even = (k % 2) == 0
+        src = tl.where(is_even, W0, W1)
+        dst = tl.where(is_even, W1, W0)
+        col_k_sp = tl.load(src + base + ridx * LDA + k)
+        cand = tl.where((ridx >= k) & (ridx < N), tl.abs(col_k_sp), -1.0)
+        best = tl.max(cand, axis=0)
+        prow = tl.min(tl.where(cand == best, ridx, LDA), axis=0)
+        apk = tl.sum(tl.where(ridx == prow, col_k_sp, 0.0), axis=0)
+        akk = tl.sum(tl.where(ridx == k, col_k_sp, 0.0), axis=0)
+        safe = tl.where(apk == 0.0, 1.0, apk)
+        for c in range(0, TOT // BLK):
+            e = c * BLK + tl.arange(0, BLK)
+            row = e // LDA
+            col = e % LDA
+            w = tl.load(src + base + e)
+            row_k = tl.load(src + base + k * LDA + col)
+            row_p = tl.load(src + base + prow * LDA + col)
+            col_k = tl.load(src + base + row * LDA + k)
+            swapped = tl.where(row == k, row_p, tl.where(row == prow, row_k, w))
+            lcol = tl.where(row == k, apk, tl.where(row == prow, akk, col_k))
+            mult = tl.where(row > k, lcol / safe, 0.0)
+            urow = tl.where(col > k, row_p, 0.0)
+            tl.store(dst + base + e, swapped - mult * urow)
+        acc = acc * tl.where(prow != k, -apk, apk)
+    tl.store(OUT + b, acc)
+
+
 def _launch_det(A_work, out, batch_count, n, dtype, device):
+    if n == 4:
+        with torch_device_fn.device(device):
+            _det4_kernel[(batch_count,)](
+                A_work.view(batch_count, 16), out, TOT=16, num_warps=1
+            )
+        return
+
     rows, lda, tot, blk, nblk = _plan(n)
+    if n >= 32 and batch_count >= 2 and nblk == 1:
+        work0 = torch.empty(batch_count * tot, dtype=dtype, device=device)
+        work1 = torch.empty(batch_count * tot, dtype=dtype, device=device)
+        with torch_device_fn.device(device):
+            if rows == n and lda == n:
+                work0.view(batch_count, n, n).copy_(A_work)
+            else:
+                _det_pack_kernel[(batch_count, nblk)](
+                    A_work, work0, n, LDA=lda, BLK=blk, TOT=tot, num_warps=1
+                )
+            _det_elim_kernel[(batch_count,)](
+                work0, work1, out, n, LDA=lda, TOT=tot, BLK=blk, num_warps=2
+            )
+        return
     dg = torch.zeros(batch_count * lda, dtype=dtype, device=device)
     with torch_device_fn.device(device):
         if rows == n and lda == n:

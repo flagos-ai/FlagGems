@@ -86,13 +86,17 @@ jobs:
     if: needs.derive-changed-operators.outputs.has_changes == 'true'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
         with:
           python-version: '3.11'
       - name: Check changed test files for use_gems
         run: |
           python tools/ci_checks/check_kernelgen_tests.py \
-            --changed-files '${{ needs.derive-changed-operators.outputs.changed_files }}'
+            --changed-files '${{ needs.derive-changed-operators.outputs.changed_files }}' \
+            --base "${{ github.event.pull_request.base.sha }}" \
+            --head "${{ github.event.pull_request.head.sha }}"
 
   check-operator-markers:
     runs-on: ubuntu-latest
