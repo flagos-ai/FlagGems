@@ -38,6 +38,30 @@ def canonicalize_nan_kernel(inp, out, n_elements, BLOCK_SIZE: tl.constexpr):
 
 @libentry()
 @triton.jit
+def gather_sorted_values_kernel(
+    inp, indices, out, n_elements, n_cols, BLOCK_SIZE: tl.constexpr
+):
+    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+    rows = tl.load(indices + offsets, mask=mask, other=0)
+    values = tl.load(inp + rows * n_cols + offsets % n_cols, mask=mask)
+    tl.store(out + offsets, values, mask=mask)
+
+
+@triton.jit
+def _xor_peer(
+    x, step: tl.constexpr, BLOCK_ROWS: tl.constexpr, BLOCK_COLS: tl.constexpr
+):
+    log_rows: tl.constexpr = BLOCK_ROWS.bit_length() - 1
+    shape: tl.constexpr = [BLOCK_COLS] + [2] * log_rows
+    hypercube = tl.reshape(x, shape)
+    pair_xor = tl.xor_sum(hypercube, log_rows - step, keep_dims=True)
+    pair_xor = tl.reshape(tl.broadcast_to(pair_xor, shape), x.shape)
+    return x ^ pair_xor
+
+
+@libentry()
+@triton.jit
 def msort_kernel(
     inp,
     out,
@@ -54,17 +78,47 @@ def msort_kernel(
     values = tl.load(inp + offsets, mask=mask, other=pad_value)
 
     if inp.dtype.element_ty.is_floating():
-        nan_mask = mask & (values != values)
-        nan_count = tl.sum(nan_mask.to(tl.int32), axis=1)
-        nan_value = tl.sum(tl.where(nan_mask, values, 0.0), axis=1)
-        values = tl.where(nan_mask, float("inf"), values)
+        if inp.dtype.element_ty == tl.float64:
+            bits = values.to(tl.uint64, bitcast=True)
+            sign_bit = 0x8000000000000000
+            max_key = 0xFFFFFFFFFFFFFFFF
+        elif inp.dtype.element_ty == tl.float32:
+            bits = values.to(tl.uint32, bitcast=True)
+            sign_bit = 0x80000000
+            max_key = 0xFFFFFFFF
+        else:
+            bits = values.to(tl.uint16, bitcast=True).to(tl.uint32)
+            sign_bit = 0x8000
+            max_key = 0xFFFF
+        keys = tl.where((bits & sign_bit) != 0, (~bits) & max_key, bits ^ sign_bit)
+        keys = tl.where((values != values) | ~mask, max_key, keys)
+        original_rows = tl.broadcast_to(row_offsets[None, :], values.shape)
+        for stage in tl.static_range(1, BLOCK_ROWS.bit_length()):
+            for step in tl.static_range(stage - 1, -1, -1):
+                peer_keys = _xor_peer(keys, step, BLOCK_ROWS, BLOCK_COLS)
+                peer_rows = _xor_peer(original_rows, step, BLOCK_ROWS, BLOCK_COLS)
+                peer_bits = _xor_peer(bits, step, BLOCK_ROWS, BLOCK_COLS)
+                less = (keys < peer_keys) | (
+                    (keys == peer_keys) & (original_rows < peer_rows)
+                )
+                choose_min = ((row_offsets & (1 << stage)) == 0) == (
+                    (row_offsets & (1 << step)) == 0
+                )
+                take_peer = tl.where(choose_min[None, :], ~less, less)
+                keys = tl.where(take_peer, peer_keys, keys)
+                original_rows = tl.where(take_peer, peer_rows, original_rows)
+                bits = tl.where(take_peer, peer_bits, bits)
+        if inp.dtype.element_ty == tl.float64:
+            values = bits.to(tl.float64, bitcast=True)
+        elif inp.dtype.element_ty == tl.float32:
+            values = bits.to(tl.float32, bitcast=True)
+        else:
+            values = bits.to(tl.uint16).to(inp.dtype.element_ty, bitcast=True)
+        tl.store(out + offsets, values, mask=mask)
     else:
         values = values.to(tl.int64)
-    values = tl.sort(values, dim=1, descending=False)
-    if inp.dtype.element_ty.is_floating():
-        nan_positions = row_offsets[None, :] >= (n_rows - nan_count[:, None])
-        values = tl.where(nan_positions, nan_value[:, None], values)
-    tl.store(out + offsets, values, mask=mask)
+        values = tl.sort(values, dim=1, descending=False)
+        tl.store(out + offsets, values, mask=mask)
 
 
 def _pad_value(dtype):
@@ -96,8 +150,20 @@ def _msort_contiguous(inp, out):
                 canonicalize_nan_kernel[(triton.cdiv(inp.numel(), block_size),)](
                     inp, radix_inp, inp.numel(), BLOCK_SIZE=block_size
                 )
-        values, _ = sort_stable(radix_inp, stable=False, dim=0, descending=False)
-        out.copy_(values)
+        values, indices = sort_stable(radix_inp, stable=False, dim=0, descending=False)
+        if inp.dtype.is_floating_point:
+            indices = indices.contiguous()
+            with torch_device_fn.device(inp.device):
+                gather_sorted_values_kernel[(triton.cdiv(inp.numel(), 1024),)](
+                    inp,
+                    indices,
+                    out,
+                    inp.numel(),
+                    inp.numel() // n_rows,
+                    BLOCK_SIZE=1024,
+                )
+        else:
+            out.copy_(values)
         return
 
     n_cols = inp.numel() // n_rows

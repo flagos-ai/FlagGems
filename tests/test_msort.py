@@ -20,6 +20,51 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
+@pytest.mark.msort
+@pytest.mark.parametrize("rows", [17, 1025])
+@pytest.mark.parametrize(
+    "dtype,int_dtype,bits",
+    [
+        (
+            torch.float32,
+            torch.int32,
+            [0x7FC00001, 0x7FC00031, -0x003FFFFF, -0x003FFFCD],
+        ),
+        (
+            torch.float64,
+            torch.int64,
+            [
+                0x7FF8000000000001,
+                0x7FF8000000000031,
+                -0x0007FFFFFFFFFFFF,
+                -0x0007FFFFFFFFFFCD,
+            ],
+        ),
+    ],
+)
+def test_msort_preserves_nan_payloads(rows, dtype, int_dtype, bits):
+    inp = torch.randn(rows, 3, dtype=dtype, device=flag_gems.device)
+    payloads = torch.tensor(bits, dtype=int_dtype, device=inp.device).view(dtype)
+    inp[:4] = payloads[:, None]
+    inp[4] = float("inf")
+    inp[5] = -float("inf")
+    # Older CUDA radix-sort implementations order negative NaNs before -inf.
+    # CPU ATen provides the intended NaNs-last ordering while preserving bits.
+    reference = torch.msort(utils.to_reference(inp).cpu())
+    result = flag_gems.msort(inp).cpu()
+    torch.testing.assert_close(result, reference, atol=0, rtol=0, equal_nan=True)
+    for col in range(3):
+        actual_nan = result[:, col][torch.isnan(result[:, col])].view(int_dtype)
+        expected_nan = reference[:, col][torch.isnan(reference[:, col])].view(int_dtype)
+        torch.testing.assert_close(
+            torch.sort(actual_nan).values,
+            torch.sort(expected_nan).values,
+            atol=0,
+            rtol=0,
+        )
+        assert int(torch.signbit(result[:, col][-4:]).sum()) == 2
+
+
 def _make_input(shape, dtype):
     if dtype == torch.bool:
         return torch.randint(0, 2, shape, dtype=dtype, device=flag_gems.device)
