@@ -1,3 +1,4 @@
+import logging
 import math
 
 import torch
@@ -5,6 +6,8 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
+
+logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -63,6 +66,9 @@ def _rep_pad3d_bwd_kernel(
       zeroed with a register-level ``tl.where`` BEFORE it feeds the
       accumulator.  No masked-load result, no vector-reduction result, and no
       narrow-block store ever contributes to a result.
+
+    The runtime-loop twin ``_rep_pad3d_bwd_kernel_rt`` (used for large box
+    fanouts, see the host gate) mirrors this kernel; keep the two in sync.
     """
     pid_b = tl.program_id(0)
     pid_chunk = tl.program_id(1)
@@ -142,6 +148,115 @@ def _rep_pad3d_bwd_kernel(
     )
 
 
+@triton.jit
+def _rep_pad3d_bwd_kernel_rt(
+    grad_output_ptr,
+    grad_input_ptr,
+    total_in,  # D_in * H_in * W_in (per batch volume)
+    D_in,
+    H_in,
+    W_in,
+    pad_left,
+    pad_right,
+    pad_top,
+    pad_bottom,
+    pad_front,
+    pad_back,
+    D_out,
+    H_out,
+    W_out,
+    max_d,  # runtime box bounds (deliberately not constexpr)
+    max_h,
+    max_wl,
+    max_wr,
+    BLOCK: tl.constexpr,
+):
+    """Runtime-loop twin of ``_rep_pad3d_bwd_kernel`` (keep the two in sync).
+
+    Identical structure and identical discipline (clamped in-bounds addresses,
+    register-level ``tl.where`` invalidation, no masked-load ``other``, no
+    vector reduction) -- the only difference is that the box loops use runtime
+    ``range`` bounds instead of ``static_range``, so the compiled code stays
+    O(1) in the box size.  Used when the box fanout exceeds the cap that the
+    static form can compile on this backend (see the host gate).
+
+    Launch requirements (both validated on device -- without them the
+    vectorizer rejects the runtime-loop accumulation with a cluster-layout
+    ``vvaddf`` error):
+      - ``isCloseUnrollControl=True``
+      - ``BLOCK <= 512``
+    """
+    pid_b = tl.program_id(0)
+    pid_chunk = tl.program_id(1)
+
+    offs = pid_chunk * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < total_in
+
+    w = offs % W_in
+    h = (offs // W_in) % H_in
+    d = offs // (H_in * W_in)
+
+    dlo_raw = tl.where((d == 0) & (pad_front > 0), 0, d + pad_front)
+    dhi_raw = tl.where(d == D_in - 1, D_out - 1, d + pad_front)
+    dlo = tl.maximum(dlo_raw, 0)
+    dhi = tl.minimum(dhi_raw, D_out - 1)
+    cd = dhi - dlo + 1
+
+    hlo_raw = tl.where((h == 0) & (pad_top > 0), 0, h + pad_top)
+    hhi_raw = tl.where(h == H_in - 1, H_out - 1, h + pad_top)
+    hlo = tl.maximum(hlo_raw, 0)
+    hhi = tl.minimum(hhi_raw, H_out - 1)
+    ch = hhi - hlo + 1
+
+    wmain = w + pad_left
+    wmain_c = tl.minimum(tl.maximum(wmain, 0), tl.maximum(W_out - 1, 0))
+    wmain_ok = (wmain >= 0) & (wmain < W_out)
+    wfirst = w == 0
+    wlast = w == W_in - 1
+
+    out_base = pid_b * D_out * H_out * W_out
+    in_base = pid_b * total_in
+
+    acc = tl.zeros([BLOCK], dtype=tl.float32)
+
+    for di in range(max_d):
+        dd = dlo + di
+        dd_c = tl.minimum(dd, D_out - 1)
+        dd_ok = di < cd
+        for hi in range(max_h):
+            hh = hlo + hi
+            hh_c = tl.minimum(hh, H_out - 1)
+            hh_ok = hi < ch
+            row_ok = mask & dd_ok & hh_ok
+            row_base = dd_c * H_out * W_out + hh_c * W_out
+
+            v = tl.load(grad_output_ptr + out_base + row_base + wmain_c)
+            acc += tl.where(row_ok & wmain_ok, v.to(tl.float32), 0.0)
+
+            for wl in range(max_wl):
+                v = tl.load(
+                    grad_output_ptr
+                    + out_base
+                    + row_base
+                    + tl.minimum(wl, tl.maximum(W_out - 1, 0))
+                )
+                sel = row_ok & wfirst & (wl < pad_left) & (wl < W_out)
+                acc += tl.where(sel, v.to(tl.float32), 0.0)
+
+            for wr in range(max_wr):
+                rpos = W_out - pad_right + wr
+                rpos_c = tl.minimum(tl.maximum(rpos, 0), tl.maximum(W_out - 1, 0))
+                v = tl.load(grad_output_ptr + out_base + row_base + rpos_c)
+                sel = row_ok & wlast & (wr < pad_right) & (rpos >= 0) & (rpos < W_out)
+                acc += tl.where(sel, v.to(tl.float32), 0.0)
+
+    tl.store(
+        grad_input_ptr + in_base + offs,
+        acc.to(grad_input_ptr.dtype.element_ty),
+        mask=mask,
+    )
+
+
 def _axis_interval(coord, cin, cout, pad_lo, pad_hi):
     """Source interval for one input coord on one axis (host-side, matches kernel)."""
     lo_raw = 0 if (coord == 0 and pad_lo > 0) else coord + pad_lo
@@ -165,6 +280,7 @@ def _max_axis(cin, cout, pad_lo, pad_hi):
 def replication_pad3d_backward(
     grad_output: torch.Tensor, self: torch.Tensor, padding
 ) -> torch.Tensor:
+    logger.debug("GEMS_KUNLUNXIN REPLICATION_PAD3D_BACKWARD")
     if not isinstance(padding, (list, tuple)) or len(padding) != 6:
         raise ValueError("padding must contain six values")
     if self.dim() < 3:
@@ -206,27 +322,66 @@ def replication_pad3d_backward(
     max_h = _max_axis(h_in, h_out, pad_top, pad_bottom)
     max_wl = max(1, triton.next_power_of_2(max(pad_left, 0)))
     max_wr = max(1, triton.next_power_of_2(max(pad_right, 0)))
+    # The static kernel unrolls every lane's source box (one load per box
+    # cell).  Large boxes (small input dims + large pads) blow the XPU
+    # compiler's uni_sram budget: measured anchors -- fanout 27 / 48 compile,
+    # 125 / 441 raise "Failed to tune buffer size", compile time growing from
+    # ~40s to minutes.  Above the cap take the runtime-loop twin instead
+    # (same result, O(1) code size; it must be launched with
+    # isCloseUnrollControl=True and BLOCK<=512 -- both validated on device).
+    fanout = max_d * max_h * (1 + max_wl + max_wr)
     with torch_device_fn.device(x.device):
-        _rep_pad3d_bwd_kernel[(batch, triton.cdiv(total_in, block))](
-            grad_output,
-            grad_input,
-            total_in,
-            d_in,
-            h_in,
-            w_in,
-            pad_left,
-            pad_right,
-            pad_top,
-            pad_bottom,
-            pad_front,
-            pad_back,
-            d_out,
-            h_out,
-            w_out,
-            BLOCK=block,
-            MAXD=max_d,
-            MAXH=max_h,
-            MAXW_L=max_wl,
-            MAXW_R=max_wr,
-        )
+        if fanout > 64:
+            logger.debug(
+                "GEMS_KUNLUNXIN REPLICATION_PAD3D_BACKWARD: box fanout %d over "
+                "the cap, using the runtime-loop kernel",
+                fanout,
+            )
+            rt_block = 512
+            _rep_pad3d_bwd_kernel_rt[(batch, triton.cdiv(total_in, rt_block))](
+                grad_output,
+                grad_input,
+                total_in,
+                d_in,
+                h_in,
+                w_in,
+                pad_left,
+                pad_right,
+                pad_top,
+                pad_bottom,
+                pad_front,
+                pad_back,
+                d_out,
+                h_out,
+                w_out,
+                max_d,
+                max_h,
+                max_wl,
+                max_wr,
+                BLOCK=rt_block,
+                isCloseUnrollControl=True,
+            )
+        else:
+            _rep_pad3d_bwd_kernel[(batch, triton.cdiv(total_in, block))](
+                grad_output,
+                grad_input,
+                total_in,
+                d_in,
+                h_in,
+                w_in,
+                pad_left,
+                pad_right,
+                pad_top,
+                pad_bottom,
+                pad_front,
+                pad_back,
+                d_out,
+                h_out,
+                w_out,
+                BLOCK=block,
+                MAXD=max_d,
+                MAXH=max_h,
+                MAXW_L=max_wl,
+                MAXW_R=max_wr,
+            )
     return grad_input.reshape(x.shape)
