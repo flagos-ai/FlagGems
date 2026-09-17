@@ -14,6 +14,16 @@
 
 """
 Unit tests for dynamic operator override functionality.
+
+Tests the DynamicOpOverride class from flag_gems.dynamic_registry and
+the CLI integration from flag_gems.cli_override, verifying:
+
+- Basic override and restore operations
+- Loading implementations from files
+- Batch override operations
+- Context manager behavior
+- CLI argument parsing and application
+- pytest integration via --override and --override-config options
 """
 
 import tempfile

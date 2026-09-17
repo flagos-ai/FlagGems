@@ -111,7 +111,29 @@ class GeneralOpRegistrar:
         return tuple(item[3]) if len(item) > 3 else ()
 
     def _normalized_config(self, item):
-        return item[0], item[1], self._extra_dispatch_keys(item)
+        key, fn = item[0], item[1]
+        return key, self._resolve_live_override(key, fn), self._extra_dispatch_keys(item)
+
+    @staticmethod
+    def _resolve_live_override(key, fn):
+        # Config entries capture a function reference at import time. If that
+        # op has since been overridden on the flag_gems module (e.g. via
+        # DynamicOpOverride), prefer the live attribute so registration picks
+        # up the override instead of the stale reference.
+        import sys
+
+        attr_name = key.split(".", 1)[0]
+        if attr_name.startswith("_") and not attr_name.startswith("__"):
+            attr_name = attr_name[1:]
+
+        module = sys.modules.get("flag_gems")
+        if module is None:
+            return fn
+
+        current = getattr(module, attr_name, None)
+        if current is not None and current is not fn:
+            return current
+        return fn
 
     def config_filter(self):
         self.config = [

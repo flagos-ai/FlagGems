@@ -162,6 +162,7 @@ def apply_overrides_from_args(
                     print(f"✓ Overridden {op_name} from {filepath}:{func_name}")
                 else:
                     print(f"✗ Failed to override {op_name}", file=sys.stderr)
+                    sys.exit(1)
         except Exception as e:
             print(f"Error loading config: {e}", file=sys.stderr)
             sys.exit(1)
@@ -176,6 +177,7 @@ def apply_overrides_from_args(
                     print(f"✓ Overridden {op_name} from {filepath}:{func_name}")
                 else:
                     print(f"✗ Failed to override {op_name}", file=sys.stderr)
+                    sys.exit(1)
             except Exception as e:
                 print(f"Error parsing override spec '{spec}': {e}", file=sys.stderr)
                 sys.exit(1)

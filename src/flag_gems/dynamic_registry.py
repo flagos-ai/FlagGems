@@ -22,6 +22,7 @@ in the flag_gems module without modifying source code, enabling:
 - A/B testing of operator variants
 """
 
+import functools
 import importlib.util
 import sys
 import warnings
@@ -49,6 +50,11 @@ class DynamicOpOverride:
     def __init__(self):
         self._overrides: Dict[str, Any] = {}
         self._originals: Dict[str, Any] = {}
+        # Overrides loaded via override_from_file (i.e. the CLI/config path)
+        # are tracked so restore()/restore_all() can flag ones that were
+        # registered but never actually invoked by a test.
+        self._tracked: set = set()
+        self._call_counts: Dict[str, int] = {}
 
     def override(
         self,
@@ -76,17 +82,14 @@ class DynamicOpOverride:
             # Check if the operator exists
             if not hasattr(module, op_name):
                 warnings.warn(
-                    f"Operator '{op_name}' not found in module '{module_name}'. "
-                    f"Override will be applied but may not be effective."
+                    f"Operator '{op_name}' not found in module '{module_name}'."
                 )
+                return False
 
             # Store original implementation if not already stored
             full_name = f"{module_name}.{op_name}"
             if full_name not in self._originals:
-                if hasattr(module, op_name):
-                    self._originals[full_name] = getattr(module, op_name)
-                else:
-                    self._originals[full_name] = None
+                self._originals[full_name] = getattr(module, op_name)
 
             # Override the implementation
             setattr(module, op_name, impl_func)
@@ -154,16 +157,29 @@ class DynamicOpOverride:
             elif hasattr(module, op_name):
                 delattr(module, op_name)
 
+            was_unused = (
+                full_name in self._tracked
+                and self._call_counts.get(full_name, 0) == 0
+            )
+
             # Clean up tracking
             del self._originals[full_name]
             if full_name in self._overrides:
                 del self._overrides[full_name]
-
-            return True
+            self._tracked.discard(full_name)
+            self._call_counts.pop(full_name, None)
 
         except Exception as e:
             warnings.warn(f"Failed to restore '{op_name}': {e}")
             return False
+
+        if was_unused:
+            raise AssertionError(
+                f"Operator '{op_name}' was overridden via override_from_file "
+                f"but its candidate implementation was never invoked"
+            )
+
+        return True
 
     def restore_all(self, module_name: str = "flag_gems"):
         """
@@ -171,6 +187,11 @@ class DynamicOpOverride:
 
         Args:
             module_name: Module name (default: "flag_gems")
+
+        Raises:
+            AssertionError: If any override loaded via ``override_from_file``
+                (i.e. through the CLI/config path) was registered but never
+                actually invoked before being restored.
         """
         # Get list of ops to restore for this module
         ops_to_restore = [
@@ -179,9 +200,16 @@ class DynamicOpOverride:
             if full_name.startswith(f"{module_name}.")
         ]
 
+        unused_errors = []
         for full_name in ops_to_restore:
             op_name = full_name.split(".", 1)[1]
-            self.restore(op_name, module_name)
+            try:
+                self.restore(op_name, module_name)
+            except AssertionError as e:
+                unused_errors.append(str(e))
+
+        if unused_errors:
+            raise AssertionError("; ".join(unused_errors))
 
     def list_overrides(self) -> List[str]:
         """Return list of currently overridden operator names."""
@@ -245,7 +273,22 @@ class DynamicOpOverride:
         if impl_func is None:
             return False
 
-        return self.override(op_name, impl_func, module_name)
+        full_name = f"{module_name}.{op_name}"
+        wrapped = self._wrap_with_call_tracking(full_name, impl_func)
+
+        success = self.override(op_name, wrapped, module_name)
+        if success:
+            self._tracked.add(full_name)
+            self._call_counts[full_name] = 0
+        return success
+
+    def _wrap_with_call_tracking(self, full_name: str, impl_func: Callable) -> Callable:
+        @functools.wraps(impl_func)
+        def wrapper(*args, **kwargs):
+            self._call_counts[full_name] += 1
+            return impl_func(*args, **kwargs)
+
+        return wrapper
 
     def override_batch_from_files(
         self,
