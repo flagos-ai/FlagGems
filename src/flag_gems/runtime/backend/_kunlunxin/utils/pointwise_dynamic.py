@@ -969,10 +969,14 @@ class WrapperGenerator:
         for i in range(schema.num_input_tensors()):
             code.writeline(f"in{i}_strides = in{i}.stride()")
         if ndim > 0:
-            # a broadcast scalar has all-zero task-rank strides
+            # a broadcast scalar has all-zero task-rank strides.
+            # bool outputs (comparisons etc.) keep the pre-change tile-wide load:
+            # with a scalar operand the XPU compare lowering fails on fp16
+            # (`tt.splat` type mismatch -> uni_sram OutOfResources); arithmetic
+            # outputs keep the scalar path (the compile-time win it was added for).
             for i in range(schema.num_input_tensors()):
                 code.writeline(
-                    f"in{i}_broadcast = all(st == 0 for st in in{i}_strides)"
+                    f"in{i}_broadcast = out0.dtype != torch.bool and all(st == 0 for st in in{i}_strides)"
                 )
         for i in range(schema.num_output_tensors()):
             code.writeline(f"out{i}_strides = out{i}.stride()")
