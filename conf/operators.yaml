@@ -542,10 +542,13 @@ ops:
   stages:
   - alpha: '5.4'
 - id: addmm_activation
-  description: |
-    Performs `addmm` followed by an activation function. Computes
+  description: 'Performs `addmm` followed by an activation function. Computes
+
     `beta * input + alpha * (mat1 @ mat2)` and applies ReLU, or GELU (tanh
+
     approximation) when `use_gelu` is True.
+
+    '
   for:
   - _addmm_activation
   labels:
@@ -556,7 +559,8 @@ ops:
   stages:
   - alpha: '5.4'
 - id: addmm_activation_out
-  description: A variant of `_addmm_activation()` that assigns the output to the provided `out` parameter.
+  description: A variant of `_addmm_activation()` that assigns the output to the provided
+    `out` parameter.
   for:
   - _addmm_activation.out
   labels:
@@ -8597,9 +8601,9 @@ ops:
   stages:
   - alpha: '5.4'
 - id: linalg_tensorinv_out
-  description: |-
-    Out-of-place variant of linalg_tensorinv: computes the tensor inverse
-    and writes the result into the provided out tensor.
+  description: 'Out-of-place variant of linalg_tensorinv: computes the tensor inverse
+
+    and writes the result into the provided out tensor.'
   for:
   - linalg_tensorinv.out
   labels:
@@ -10085,8 +10089,8 @@ ops:
   stages:
   - alpha: '5.4'
 - id: multilabel_margin_loss_forward
-  description: 'Computes the forward multi-label margin loss and returns both the
-    loss and the per-class target membership mask.'
+  description: Computes the forward multi-label margin loss and returns both the loss
+    and the per-class target membership mask.
   for:
   - multilabel_margin_loss_forward
   labels:
@@ -11252,6 +11256,21 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '2.1'
+- id: pad_packed_sequence
+  description: 'Pads a packed variable-length sequence back into a dense tensor, the
+
+    inverse of packing a padded batch.
+
+    '
+  for:
+  - _pad_packed_sequence
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: pad_sequence
   description: Pads a list of variable length tensors with a given padding value and
     stacks them into a single padded batch tensor.
@@ -12538,8 +12557,7 @@ ops:
   stages:
   - beta: '5.3'
 - id: rrelu_with_noise
-  description: 'Triton kernel implementation for rrelu_with_noise
-    '
+  description: 'Triton kernel implementation for rrelu_with_noise '
   for:
   - rrelu_with_noise
   labels:
@@ -12549,8 +12567,7 @@ ops:
   stages:
   - beta: '5.4'
 - id: rrelu_with_noise_
-  description: 'Triton kernel implementation for rrelu_with_noise_
-    '
+  description: 'Triton kernel implementation for rrelu_with_noise_ '
   for:
   - rrelu_with_noise_
   labels:
@@ -14523,23 +14540,25 @@ ops:
   stages:
   - alpha: '5.4'
 - id: special_laguerre_polynomial_l
-  description: |
-    Computes the Laguerre polynomial :math:`L_n(x)` element-wise for tensor
+  description: 'Computes the Laguerre polynomial :math:`L_n(x)` element-wise for tensor
+
     and scalar x/n overloads, including destination-passing variants.
+
+    '
   for:
-    - special_laguerre_polynomial_l
-    - special_laguerre_polynomial_l.out
-    - special_laguerre_polynomial_l.x_scalar
-    - special_laguerre_polynomial_l.x_scalar_out
-    - special_laguerre_polynomial_l.n_scalar
-    - special_laguerre_polynomial_l.n_scalar_out
+  - special_laguerre_polynomial_l
+  - special_laguerre_polynomial_l.out
+  - special_laguerre_polynomial_l.x_scalar
+  - special_laguerre_polynomial_l.x_scalar_out
+  - special_laguerre_polynomial_l.n_scalar
+  - special_laguerre_polynomial_l.n_scalar_out
   labels:
-    - aten
-    - pointwise
+  - aten
+  - pointwise
   kind:
-    - Math
+  - Math
   stages:
-    - alpha: '5.4'
+  - alpha: '5.4'
 - id: special_legendre_polynomial_p
   description: 'Computes the Legendre polynomial P_n(x) of degree n for each element
     in the input tensor,
@@ -15931,17 +15950,20 @@ ops:
   stages:
   - alpha: '5.1'
 - id: transpose_copy
-  description: |
-    Returns a new contiguous tensor with the two specified dimensions swapped.
+  description: 'Returns a new contiguous tensor with the two specified dimensions
+    swapped.
+
     The result does not alias the input tensor.
+
+    '
   for:
-    - transpose_copy.int
+  - transpose_copy.int
   labels:
-    - aten
+  - aten
   kind:
-    - Tensor
+  - Tensor
   stages:
-    - alpha: '5.4'
+  - alpha: '5.4'
 - id: tril
   description: 'Returns the lower triangular part of an input matrix (or a batch of
     matrices) and
