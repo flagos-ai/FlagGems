@@ -78,6 +78,7 @@ from .linalg_matrix_rank import (
     linalg_matrix_rank_tol,
     linalg_matrix_rank_tol_out,
 )
+from .linalg_norm import linalg_norm
 from .linalg_qr import linalg_qr, linalg_qr_out
 from .linalg_solve_triangular import (
     linalg_solve_triangular,
@@ -98,6 +99,7 @@ from .mean import mean, mean_dim
 from .min import min, min_dim
 from .mm import mm, mm_out
 from .multinomial import multinomial
+from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .nansum import nansum, nansum_out
 from .nonzero_static import nonzero_static, nonzero_static_out
 from .ones import ones
@@ -135,6 +137,7 @@ from .softmax import softmax, softmax_backward, softmax_backward_out, softmax_ou
 from .sort import sort
 from .sparse_sampled_addmm import sparse_sampled_addmm, sparse_sampled_addmm_out
 from .stack import stack
+from .swiglu import swiglu
 from .threshold import threshold, threshold_backward
 from .triu import triu
 from .unique import _unique2
@@ -239,6 +242,7 @@ __all__ = [
     "linalg_matrix_rank_out",
     "linalg_matrix_rank_tol",
     "linalg_matrix_rank_tol_out",
+    "linalg_norm",
     "linalg_qr",
     "linalg_qr_out",
     "linalg_solve_triangular",
@@ -267,6 +271,10 @@ __all__ = [
     "mm",
     "mm_out",
     "multinomial",
+    "nanmedian",
+    "nanmedian_dim",
+    "nanmedian_dim_values",
+    "nanmedian_out",
     "nansum",
     "nansum_out",
     "native_layer_norm",
@@ -317,6 +325,7 @@ __all__ = [
     "sparse_sampled_addmm",
     "sparse_sampled_addmm_out",
     "stack",
+    "swiglu",
     "threshold",
     "threshold_backward",
     "triu",

@@ -14,22 +14,8 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 from . import base, consts
-
-# ``_adaptive_avg_pool3d_backward`` starts with an underscore, and
-# ``pytest.mark`` refuses to generate a marker via attribute access for such
-# names. Register it directly on the MarkGenerator so
-# ``@pytest.mark._adaptive_avg_pool3d_backward`` and ``-m
-# _adaptive_avg_pool3d_backward`` both work.
-setattr(
-    pytest.mark,
-    "_adaptive_avg_pool3d_backward",
-    MarkDecorator(
-        Mark("_adaptive_avg_pool3d_backward", (), {}, _ispytest=True), _ispytest=True
-    ),
-)
 
 # Shapes for _adaptive_avg_pool3d_backward benchmark
 ADAPTIVE_AVG_POOL3D_BACKWARD_SHAPES = [
@@ -54,7 +40,7 @@ class AdaptiveAvgPool3DBackwardBenchmark(base.Benchmark):
             yield grad, x
 
 
-@pytest.mark._adaptive_avg_pool3d_backward
+@pytest.mark.underscore_adaptive_avg_pool3d_backward
 def test_adaptive_avg_pool3d_backward():
     bench = AdaptiveAvgPool3DBackwardBenchmark(
         op_name="_adaptive_avg_pool3d_backward",
