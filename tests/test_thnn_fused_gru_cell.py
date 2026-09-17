@@ -98,6 +98,19 @@ def _assert_close(result, reference, dtype):
         utils.gems_assert_close(actual, expected, dtype)
 
 
+def _reference_out(input_gates, hidden_gates, hx, input_bias=None, hidden_bias=None):
+    if TO_CPU:
+        return _reference(input_gates, hidden_gates, hx, input_bias, hidden_bias)
+    args = tuple(
+        utils.to_reference(value) if value is not None else None
+        for value in (input_gates, hidden_gates, hx, input_bias, hidden_bias)
+    )
+    outputs = _make_noncontiguous_outputs(*hx.shape, hx.dtype)
+    return torch.ops.aten._thnn_fused_gru_cell.out(
+        *args, out0=outputs[0], out1=outputs[1]
+    )
+
+
 @pytest.mark.thnn_fused_gru_cell
 @pytest.mark.parametrize("shape", SHAPES)
 @pytest.mark.parametrize("dtype", DTYPES)
@@ -207,7 +220,7 @@ def test_accuracy_thnn_fused_gru_cell_out(dtype):
     input_gates, hidden_gates, hx = _make_inputs(batch_size, hidden_size, dtype)
     input_bias = torch.randn(3 * hidden_size, dtype=dtype, device=flag_gems.device)
     hidden_bias = torch.randn_like(input_bias)
-    reference = _reference(input_gates, hidden_gates, hx, input_bias, hidden_bias)
+    reference = _reference_out(input_gates, hidden_gates, hx, input_bias, hidden_bias)
     outputs = _make_noncontiguous_outputs(batch_size, hidden_size, dtype)
 
     result = flag_gems._thnn_fused_gru_cell_out(
@@ -227,7 +240,7 @@ def test_accuracy_thnn_fused_gru_cell_out(dtype):
 @pytest.mark.thnn_fused_gru_cell_out
 def test_accuracy_thnn_fused_gru_cell_out_resize():
     input_gates, hidden_gates, hx = _make_inputs(2, 7, torch.float32)
-    reference = _reference(input_gates, hidden_gates, hx)
+    reference = _reference_out(input_gates, hidden_gates, hx)
     outputs = tuple(torch.empty(0, device=flag_gems.device) for _ in range(2))
     result = flag_gems._thnn_fused_gru_cell_out(
         input_gates, hidden_gates, hx, out0=outputs[0], out1=outputs[1]
@@ -235,6 +248,28 @@ def test_accuracy_thnn_fused_gru_cell_out_resize():
     assert result[0] is outputs[0] and result[1] is outputs[1]
     assert tuple(outputs[0].shape) == (2, 7)
     assert tuple(outputs[1].shape) == (2, 35)
+    _assert_close(result, reference, torch.float32)
+
+
+@pytest.mark.thnn_fused_gru_cell_out
+@pytest.mark.parametrize("operand_index", range(5))
+@pytest.mark.parametrize("output_index", [0, 1])
+def test_thnn_fused_gru_cell_out_aliases_input(operand_index, output_index):
+    args = list(_make_inputs(17, 37, torch.float32))
+    args += [torch.randn(111, device=flag_gems.device) for _ in range(2)]
+    ref_args = [value.clone() for value in args]
+    ref_outputs = list(_make_noncontiguous_outputs(17, 37, torch.float32))
+    ref_outputs[output_index] = ref_args[operand_index]
+    if TO_CPU:
+        reference = _reference(*ref_args)
+    else:
+        reference = torch.ops.aten._thnn_fused_gru_cell.out(
+            *ref_args, out0=ref_outputs[0], out1=ref_outputs[1]
+        )
+    outputs = list(_make_noncontiguous_outputs(17, 37, torch.float32))
+    outputs[output_index] = args[operand_index]
+    result = flag_gems._thnn_fused_gru_cell_out(*args, out0=outputs[0], out1=outputs[1])
+    assert result[output_index] is outputs[output_index]
     _assert_close(result, reference, torch.float32)
 
 

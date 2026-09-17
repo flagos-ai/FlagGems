@@ -23,6 +23,8 @@ import triton.language as tl
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, tl_extra_shim
 
+from .copy import copy_
+
 logger = logging.getLogger(__name__)
 
 _SUPPORTED_DTYPES = (torch.float16, torch.bfloat16, torch.float32, torch.float64)
@@ -224,6 +226,14 @@ def _prepare_out(out, shape, dtype, device, name):
         out.resize_(shape)
 
 
+def _shares_storage(left, right):
+    return (
+        left.device == right.device
+        and left.untyped_storage().nbytes() > 0
+        and left.untyped_storage().data_ptr() == right.untyped_storage().data_ptr()
+    )
+
+
 def _launch_gru_cell(
     input_gates,
     hidden_gates,
@@ -308,6 +318,18 @@ def _thnn_fused_gru_cell_out(
     batch_size, hidden_size = _validate_inputs(
         input_gates, hidden_gates, hx, input_bias, hidden_bias
     )
+    if _shares_storage(out0, out1):
+        raise RuntimeError("out0 and out1 must not share storage")
+    aliases_input = any(
+        operand is not None and _shares_storage(output, operand)
+        for output in (out0, out1)
+        for operand in (input_gates, hidden_gates, hx, input_bias, hidden_bias)
+    )
+    temporary = None
+    if aliases_input:
+        temporary = _thnn_fused_gru_cell(
+            input_gates, hidden_gates, hx, input_bias, hidden_bias
+        )
     _prepare_out(
         out0,
         (batch_size, hidden_size),
@@ -322,8 +344,10 @@ def _thnn_fused_gru_cell_out(
         input_gates.device,
         "out1",
     )
-    if torch._C._overlaps(out0, out1):
-        raise RuntimeError("out0 and out1 must not overlap")
+    if temporary is not None:
+        copy_(out0, temporary[0])
+        copy_(out1, temporary[1])
+        return out0, out1
     _launch_gru_cell(
         input_gates,
         hidden_gates,
