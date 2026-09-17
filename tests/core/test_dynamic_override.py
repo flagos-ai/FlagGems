@@ -90,7 +90,9 @@ class TestDynamicOpOverride:
         x = torch.tensor([-1.0, -2.0, 3.0], device=flag_gems.device)
         result = flag_gems.abs(x)
 
-        assert hasattr(result, "_custom_marker"), "Custom implementation should be called"
+        assert hasattr(
+            result, "_custom_marker"
+        ), "Custom implementation should be called"
         assert result._custom_marker == "custom_abs_called"
 
         # Verify correctness
@@ -195,7 +197,7 @@ class TestDynamicOpOverride:
     def test_override_from_file(self):
         """Test loading implementation from a file"""
         # Create a temporary file with custom implementation
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
             f.write("""
 import torch
 
@@ -210,11 +212,7 @@ def my_custom_abs(input):
             registry = DynamicOpOverride()
 
             # Load from file
-            success = registry.override_from_file(
-                "abs",
-                temp_file,
-                "my_custom_abs"
-            )
+            success = registry.override_from_file("abs", temp_file, "my_custom_abs")
             assert success, "Should load from file successfully"
 
             # Test
@@ -256,10 +254,12 @@ def my_neg(input):
             registry = DynamicOpOverride()
 
             # Batch override
-            results = registry.override_batch_from_files({
-                "abs": (str(abs_file), "my_abs"),
-                "neg": (str(neg_file), "my_neg"),
-            })
+            results = registry.override_batch_from_files(
+                {
+                    "abs": (str(abs_file), "my_abs"),
+                    "neg": (str(neg_file), "my_neg"),
+                }
+            )
 
             assert results["abs"], "abs override should succeed"
             assert results["neg"], "neg override should succeed"
@@ -282,16 +282,14 @@ def my_neg(input):
         registry = DynamicOpOverride()
 
         success = registry.override_from_file(
-            "abs",
-            "/nonexistent/path/file.py",
-            "some_func"
+            "abs", "/nonexistent/path/file.py", "some_func"
         )
 
         assert not success, "Should fail for nonexistent file"
 
     def test_override_missing_function(self):
         """Test handling of missing function in file"""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
             f.write("""
 def some_other_function():
     pass
@@ -302,9 +300,7 @@ def some_other_function():
             registry = DynamicOpOverride()
 
             success = registry.override_from_file(
-                "abs",
-                temp_file,
-                "nonexistent_function"
+                "abs", temp_file, "nonexistent_function"
             )
 
             assert not success, "Should fail for missing function"
@@ -361,6 +357,7 @@ def some_other_function():
 
     def test_override_special_ops(self):
         """Test overriding operators with special names"""
+
         def custom_list_to_tensor(list_of_ints, dtype=None, device=None):
             """Custom implementation of _list_to_tensor"""
             result = torch.tensor(list_of_ints, dtype=dtype, device=device)
@@ -393,7 +390,9 @@ class TestCLIOverride:
         assert func_name == "softmax"
 
         # Format: op_name:filepath:func_name
-        op_name, filepath, func_name = parse_override_spec("softmax:./custom.py:my_softmax")
+        op_name, filepath, func_name = parse_override_spec(
+            "softmax:./custom.py:my_softmax"
+        )
         assert op_name == "softmax"
         assert filepath == "./custom.py"
         assert func_name == "my_softmax"
@@ -409,7 +408,9 @@ class TestCLIOverride:
         assert func_name == "softmax"
 
         # Format: op_name=filepath:func_name
-        op_name, filepath, func_name = parse_override_spec("softmax=./custom.py:my_softmax")
+        op_name, filepath, func_name = parse_override_spec(
+            "softmax=./custom.py:my_softmax"
+        )
         assert op_name == "softmax"
         assert filepath == "./custom.py"
         assert func_name == "my_softmax"
@@ -425,7 +426,7 @@ class TestCLIOverride:
         """Test loading override config from YAML file"""
         from flag_gems.cli_override import load_override_config
 
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write("""
 overrides:
   softmax:
@@ -462,7 +463,7 @@ overrides:
         """Test loading override config from JSON file"""
         from flag_gems.cli_override import load_override_config
 
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             f.write("""
 {
   "overrides": {
@@ -591,14 +592,11 @@ class TestPytestIntegration:
 
     def test_override_option_registered(self, pytester):
         """--override/--override-config/--list-overrides show up in --help."""
-        pytester.makeini(
-            f"""
+        pytester.makeini(f"""
             [pytest]
             pythonpath = {self._repo_src_path()}
-            """
-        )
-        pytester.makeconftest(
-            """
+            """)
+        pytester.makeconftest("""
             from flag_gems.cli_override import add_override_arguments, apply_overrides_from_args
 
             def pytest_addoption(parser):
@@ -610,8 +608,7 @@ class TestPytestIntegration:
             def pytest_unconfigure(config):
                 if hasattr(config, "_override_registry"):
                     config._override_registry.restore_all()
-            """
-        )
+            """)
 
         result = pytester.runpytest("--help")
         result.stdout.fnmatch_lines(["*--override=SPEC*"])
@@ -620,14 +617,11 @@ class TestPytestIntegration:
 
     def test_override_applied_through_cli(self, pytester):
         """A test file calling flag_gems.abs() sees the overridden impl."""
-        pytester.makeini(
-            f"""
+        pytester.makeini(f"""
             [pytest]
             pythonpath = {self._repo_src_path()}
-            """
-        )
-        pytester.makeconftest(
-            """
+            """)
+        pytester.makeconftest("""
             from flag_gems.cli_override import add_override_arguments, apply_overrides_from_args
 
             def pytest_addoption(parser):
@@ -639,22 +633,18 @@ class TestPytestIntegration:
             def pytest_unconfigure(config):
                 if hasattr(config, "_override_registry"):
                     config._override_registry.restore_all()
-            """
-        )
+            """)
 
-        custom_impl = pytester.makepyfile(
-            custom_abs="""
+        custom_impl = pytester.makepyfile(custom_abs="""
             import torch
 
             def my_abs(input):
                 result = torch.abs(input)
                 result._custom_marker = "from_cli_override"
                 return result
-            """
-        )
+            """)
 
-        pytester.makepyfile(
-            test_uses_override="""
+        pytester.makepyfile(test_uses_override="""
             import torch
             import flag_gems
 
@@ -662,8 +652,7 @@ class TestPytestIntegration:
                 x = torch.tensor([-1.0, -2.0], device=flag_gems.device)
                 result = flag_gems.abs(x)
                 assert getattr(result, "_custom_marker", None) == "from_cli_override"
-            """
-        )
+            """)
 
         result = pytester.runpytest(
             "-p",
@@ -675,14 +664,11 @@ class TestPytestIntegration:
 
     def test_override_config_file_applied_through_cli(self, pytester):
         """--override-config loads a YAML file and applies the overrides."""
-        pytester.makeini(
-            f"""
+        pytester.makeini(f"""
             [pytest]
             pythonpath = {self._repo_src_path()}
-            """
-        )
-        pytester.makeconftest(
-            """
+            """)
+        pytester.makeconftest("""
             from flag_gems.cli_override import add_override_arguments, apply_overrides_from_args
 
             def pytest_addoption(parser):
@@ -694,19 +680,16 @@ class TestPytestIntegration:
             def pytest_unconfigure(config):
                 if hasattr(config, "_override_registry"):
                     config._override_registry.restore_all()
-            """
-        )
+            """)
 
-        custom_impl = pytester.makepyfile(
-            custom_neg="""
+        custom_impl = pytester.makepyfile(custom_neg="""
             import torch
 
             def my_neg(input):
                 result = torch.neg(input)
                 result._custom_marker = "from_config_file"
                 return result
-            """
-        )
+            """)
 
         config_file = pytester.makefile(
             ".yaml",
@@ -718,8 +701,7 @@ class TestPytestIntegration:
             """,
         )
 
-        pytester.makepyfile(
-            test_uses_config_override="""
+        pytester.makepyfile(test_uses_config_override="""
             import torch
             import flag_gems
 
@@ -727,8 +709,7 @@ class TestPytestIntegration:
                 x = torch.tensor([1.0, -2.0], device=flag_gems.device)
                 result = flag_gems.neg(x)
                 assert getattr(result, "_custom_marker", None) == "from_config_file"
-            """
-        )
+            """)
 
         result = pytester.runpytest(
             "-p",
@@ -740,14 +721,11 @@ class TestPytestIntegration:
 
     def test_no_override_leaves_default_implementation(self, pytester):
         """Without --override, flag_gems ops run unmodified."""
-        pytester.makeini(
-            f"""
+        pytester.makeini(f"""
             [pytest]
             pythonpath = {self._repo_src_path()}
-            """
-        )
-        pytester.makeconftest(
-            """
+            """)
+        pytester.makeconftest("""
             from flag_gems.cli_override import add_override_arguments, apply_overrides_from_args
 
             def pytest_addoption(parser):
@@ -759,11 +737,9 @@ class TestPytestIntegration:
             def pytest_unconfigure(config):
                 if hasattr(config, "_override_registry"):
                     config._override_registry.restore_all()
-            """
-        )
+            """)
 
-        pytester.makepyfile(
-            test_no_override="""
+        pytester.makepyfile(test_no_override="""
             import torch
             import flag_gems
 
@@ -771,12 +747,9 @@ class TestPytestIntegration:
                 x = torch.tensor([-1.0, -2.0], device=flag_gems.device)
                 result = flag_gems.abs(x)
                 assert not hasattr(result, "_custom_marker")
-            """
-        )
+            """)
 
-        result = pytester.runpytest(
-            "-p", "no:cacheprovider", "test_no_override.py"
-        )
+        result = pytester.runpytest("-p", "no:cacheprovider", "test_no_override.py")
         result.assert_outcomes(passed=1)
 
 
@@ -803,7 +776,9 @@ def fake_flag_gems(monkeypatch):
     gems.softmax = lambda x: ("original", x)
     monkeypatch.setitem(sys.modules, "flag_gems", gems)
     registry = _load_submodule(
-        monkeypatch, "flag_gems.dynamic_registry", ROOT / "src/flag_gems/dynamic_registry.py"
+        monkeypatch,
+        "flag_gems.dynamic_registry",
+        ROOT / "src/flag_gems/dynamic_registry.py",
     )
     cli = _load_submodule(
         monkeypatch, "flag_gems.cli_override", ROOT / "src/flag_gems/cli_override.py"
@@ -858,19 +833,30 @@ class TestRegistrarLiveOverrideResolution:
         # Execute the real registrar class with host-only device/library stubs.
         tree = ast.parse((ROOT / "src/flag_gems/runtime/op_registrar.py").read_text())
         cls = next(
-            n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "GeneralOpRegistrar"
+            n
+            for n in tree.body
+            if isinstance(n, ast.ClassDef) and n.name == "GeneralOpRegistrar"
         )
         scope = {
             "DeviceDetector": lambda: types.SimpleNamespace(
                 dispatch_key="CUDA", vendor="test", vendor_name="test"
             ),
-            "common": types.SimpleNamespace(vendors=types.SimpleNamespace(CAMBRICON="cambricon")),
+            "common": types.SimpleNamespace(
+                vendors=types.SimpleNamespace(CAMBRICON="cambricon")
+            ),
             "backend": types.SimpleNamespace(get_unused_ops=lambda vendor: []),
         }
-        exec(compile(ast.Module(body=[cls], type_ignores=[]), "<registrar class>", "exec"), scope)
+        exec(
+            compile(
+                ast.Module(body=[cls], type_ignores=[]), "<registrar class>", "exec"
+            ),
+            scope,
+        )
         config = (("_softmax", gems.softmax),)
         registered = {}
-        library = types.SimpleNamespace(impl=lambda key, fn, device: registered.update({key: fn}))
+        library = types.SimpleNamespace(
+            impl=lambda key, fn, device: registered.update({key: fn})
+        )
         candidate = lambda x: ("candidate", x)
         with registry_module.DynamicOpOverride() as registry:
             assert registry.override("softmax", candidate)
@@ -881,9 +867,10 @@ class TestRegistrarLiveOverrideResolution:
     def test_unused_candidate_makes_pytest_fail(self, tmp_path):
         """A --override candidate that is never invoked should fail the run."""
         candidate = tmp_path / "candidate.py"
-        candidate.write_text('def run(x): raise AssertionError("CANDIDATE WAS CALLED")\n')
-        (tmp_path / "conftest.py").write_text(
-            f"""
+        candidate.write_text(
+            'def run(x): raise AssertionError("CANDIDATE WAS CALLED")\n'
+        )
+        (tmp_path / "conftest.py").write_text(f"""
 import sys, types
 pkg = types.ModuleType("flag_gems")
 pkg.__path__ = [{str(ROOT / 'src/flag_gems')!r}]
@@ -898,8 +885,7 @@ def pytest_configure(config):
 
 def pytest_unconfigure(config):
     config._override_registry.restore_all()
-"""
-        )
+""")
         (tmp_path / "test_other.py").write_text(
             "import flag_gems\ndef test_other(): assert flag_gems.neg(1) == -1\n"
         )

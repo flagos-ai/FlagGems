@@ -139,9 +139,7 @@ class DynamicOpOverride:
         full_name = f"{module_name}.{op_name}"
 
         if full_name not in self._originals:
-            warnings.warn(
-                f"Operator '{op_name}' was not overridden by this registry"
-            )
+            warnings.warn(f"Operator '{op_name}' was not overridden by this registry")
             return False
 
         try:
@@ -158,8 +156,7 @@ class DynamicOpOverride:
                 delattr(module, op_name)
 
             was_unused = (
-                full_name in self._tracked
-                and self._call_counts.get(full_name, 0) == 0
+                full_name in self._tracked and self._call_counts.get(full_name, 0) == 0
             )
 
             # Clean up tracking
@@ -231,7 +228,9 @@ class DynamicOpOverride:
             if not path.exists():
                 raise FileNotFoundError(f"File not found: {filepath}")
 
-            spec = importlib.util.spec_from_file_location(f"custom_impl_{path.stem}", filepath)
+            spec = importlib.util.spec_from_file_location(
+                f"custom_impl_{path.stem}", filepath
+            )
             if spec is None or spec.loader is None:
                 raise ImportError(f"Cannot load spec from {filepath}")
 

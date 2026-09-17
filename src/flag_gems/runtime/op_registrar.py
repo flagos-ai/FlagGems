@@ -112,7 +112,11 @@ class GeneralOpRegistrar:
 
     def _normalized_config(self, item):
         key, fn = item[0], item[1]
-        return key, self._resolve_live_override(key, fn), self._extra_dispatch_keys(item)
+        return (
+            key,
+            self._resolve_live_override(key, fn),
+            self._extra_dispatch_keys(item),
+        )
 
     def _resolve_live_override(self, key, fn):
         # Config entries capture a function reference at import time. If that
