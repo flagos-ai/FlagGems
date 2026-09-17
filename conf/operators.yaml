@@ -6820,6 +6820,22 @@ ops:
   - Math
   stages:
   - alpha: '5.3'
+- id: histogram
+  description: 'Compute histogram of a tensor into bins. histogram.bin_ct uses uniform
+    bins (integer count), histogram.bins_tensor uses non-uniform bins (Tensor edges).
+    Returns (hist, bin_edges).
+
+    '
+  for:
+  - histogram.bin_ct
+  - histogram.bins_tensor
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: histogramdd
   description: 'Computes D-dimensional histogram over (N, D) input tensor. Returns
     histogram tensor and list of bin edge tensors per dimension.
