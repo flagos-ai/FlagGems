@@ -8,6 +8,7 @@ import flag_gems  # noqa: E402
 from . import accuracy_utils as utils  # noqa: E402
 
 IS_ASCEND = flag_gems.vendor_name == "ascend"
+IS_THEAD = flag_gems.vendor_name == "thead"
 
 DTYPES = [
     torch.float32,
@@ -87,8 +88,20 @@ def _solve_tri_small_ops(A, B, upper=False, left=True, unitriangular=False):
 
 def _ref_solve_tri(A, B, **kwargs):
     """Correctness reference.  On ascend use the small-op combination (AI Core)
-    because torch_npu's solve_triangular runs on AI_CPU; elsewhere use the
-    torch reference."""
+    because torch_npu's solve_triangular runs on AI_CPU; on thead/PPU solve in
+    fp64 on CPU because the device fp32 trsm there carries ~2-3e-3 error vs the
+    fp64 truth at n=1024 (measured 2026-09-16, see repro_solve_tri_ppu.py),
+    which dwarfs the kernel's own ~3-6e-4 error and spuriously fails the test.
+    Elsewhere use the torch reference."""
+    if IS_THEAD:
+        # Solve in fp64 on CPU (LAPACK, accurate), then place the reference
+        # where the comparison machinery expects it: on the device in normal
+        # mode (assert_close checks device), on CPU in --ref=cpu quick mode
+        # (to_cpu asserts the ref is already CPU).
+        ref = torch.linalg.solve_triangular(
+            A.double().cpu(), B.double().cpu(), **kwargs
+        )
+        return ref if utils.TO_CPU else ref.to(A.device)
     ref_A = utils.to_reference(A)
     ref_B = utils.to_reference(B)
     if IS_ASCEND:

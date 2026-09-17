@@ -54,9 +54,6 @@ unsupported_operators:
   - name: swiglu
     reason: "All dtypes failed"
 
-  - name: topk_softmax
-    reason: "All dtypes failed"
-
 summary:
   total_unsupported: 13
   note: "Testing is currently not required."

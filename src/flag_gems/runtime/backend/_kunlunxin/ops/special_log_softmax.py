@@ -1,21 +1,3 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
-# Kunlunxin (XPU) override of `special_log_softmax`.
-#
-# `special_log_softmax(self, dim, dtype=None)` is functionally identical to
-# `log_softmax` over `dim` (with an optional output dtype cast).
 import logging
 
 import torch
@@ -28,30 +10,23 @@ from .log_softmax import log_softmax as _log_softmax_kunlunxin
 
 logger = logging.getLogger(__name__)
 
-_MULTIROW_MAX_N = 4096  # 2D [TILE_M, N] single-pass tile family
-_CHUNK_BN = 8192  # big-N chunk width (tl.sum/tl.max lane-safety bound)
-_TAIL_PIECE = 4096  # masked 1D tail pieces kept <= 4096 lanes (exact)
-# TILE_M buckets per N for the single-pass tile (probed on XPU 5).
-# Non-power-of-2 N < 64 needs TILE_M >= 64 to compile correctly; handled in
-# the dispatch below.
+_MULTIROW_MAX_N = 4096
+_CHUNK_BN = 8192
+_TAIL_PIECE = 4096
 _N_TILE_M = [(16, 64), (64, 32), (256, 32), (1024, 16), (4096, 8)]
 _NUM_WARPS = 8
 
-# --- 2026-08-30 fast paths (see the module docstring for the measurements) ---
-_BSL = 2048  # triton-xpu buffer_size_limit
-_TILE_MIN_N = 64  # below this the legacy int-key tile is not slower
-# The widest tile the fp-max kernel still compiles for is 128 KiB of input per
-# program: N=65536 works for 2-byte dtypes, fails (uni_sram) for fp32, and
-# N=131072 fails for every dtype. Anything wider goes to the chunk pipeline.
+_BSL = 2048
+_TILE_MIN_N = 64
 _TILE_MAX_BYTES = 128 * 1024
-_TILE_ELEMS_SMALL = 32768  # target tile volume for N < 1024
-_TILE_ELEMS_LARGE = 65536  # target tile volume for N >= 1024
-_BIG_BN = 512  # inner reduce width of the large-N partial
-_BIG_L = 64  # rows of the large-N partial tile (_BIG_L * _BIG_BN per program)
-_BIG_R = 64  # rows per program in the large-N combine
-_N1_BLOCK = 1024  # flat block for the N == 1 degenerate path
-_VEC_STORE_ELEMS = 64  # any vector store touches 64 contiguous elements
-_MAX_SEGMENTS = 12  # give up on the segment split past this many launches
+_TILE_ELEMS_SMALL = 32768
+_TILE_ELEMS_LARGE = 65536
+_BIG_BN = 512
+_BIG_L = 64
+_BIG_R = 64
+_N1_BLOCK = 1024
+_VEC_STORE_ELEMS = 64
+_MAX_SEGMENTS = 12
 
 
 def _is_pow2(n):
@@ -236,8 +211,6 @@ def _sls_singlepass_kernel(
         off = mo[:, None] * N + nr[None, :]
     x = tl.load(i_ptr + off).to(tl.float32)
     if PAD_N:
-        # the lanes that only exist because NB > N must not reach the reductions;
-        # the -inf fill is semantics-bearing so `other=` (ignored here) cannot do it
         live = nr[None, :] < N
         m = tl.max(tl.where(live, x, -float("inf")), 1)
         d = x - m[:, None]
@@ -341,8 +314,6 @@ def _sls_tail_partial_kernel(
     off = pid * N + no
     mask = no < N
     x = tl.load(i_ptr + off, mask=mask, other=-float("inf")).to(tl.float32)
-    # `other=` is ignored on this backend, so the out-of-range lanes hold whatever
-    # was in memory: they must be removed from both reductions explicitly.
     bits = tl.where(mask, x, -float("inf")).to(tl.uint32, bitcast=True)
     m = _decode_key(tl.max(_key_u32(bits), 0))
     safe_m = tl.where(m == -float("inf"), 0.0, m)
@@ -423,8 +394,6 @@ def _fast_forward(out, inp, M, N):
         if segments is None:
             return False
         if len(segments) == 1:
-            # single power-of-2 segment: launch straight on the tensors, the
-            # flatten + slice would cost more than this kernel takes
             _sls_n1_kernel[(M // min(_N1_BLOCK, M),)](
                 out,
                 inp,
@@ -447,7 +416,6 @@ def _fast_forward(out, inp, M, N):
         return True
 
     if not _is_pow2(N):
-        # tl.arange(0, N) mis-lowers for non-power-of-2 N on this backend.
         return False
 
     if _TILE_MIN_N <= N <= _TILE_MAX_BYTES // itemsize:
@@ -488,7 +456,6 @@ def _fast_forward(out, inp, M, N):
         blocks_per_row = N // blk
         n_partials = N // _BIG_BN
         rows_per_prog = min(_BIG_R, M & -M)
-        # scratch is over-allocated: a vector store always touches 64 elements
         pad = _VEC_STORE_ELEMS
         pm = torch.empty((M * n_partials,), dtype=torch.float32, device=inp.device)
         pz = torch.empty((M * n_partials,), dtype=torch.float32, device=inp.device)
@@ -542,15 +509,15 @@ def special_log_softmax(self, dim, dtype=None):
     for i in range(dim):
         M *= inp.shape[i]
     N = inp.shape[dim]
+
+    if N == 0 or M == 0:
+        return torch.empty_like(inp)
     K = inp.numel() // M // N
 
-    # dim not last -> reduce dim is strided; delegate to the tuned log_softmax.
     if K != 1:
         return _log_softmax_kunlunxin(inp, dim)
 
     out = torch.empty_like(inp)
-    if N == 0 or M == 0:
-        return out
 
     with torch_device_fn.device(inp.device):
         if _fast_forward(out, inp, M, N):
@@ -564,17 +531,11 @@ def special_log_softmax(self, dim, dtype=None):
                     TILE_M = tm
                     break
             if (N & (N - 1)) and N < 64:
-                TILE_M = 64  # tiny odd tiles miscompile below 64 rows
+                TILE_M = 64
             while TILE_M > M:
-                # the kernel's row-tail handling pulls the last tile's base back
-                # to M - TILE_M, so TILE_M must not exceed M (halving keeps it a
-                # power of 2, which `tl.arange` needs)
                 TILE_M //= 2
             NB = triton.next_power_of_2(N)
             if NB != N and NB < 64:
-                # a sub-64-lane block is widened to 64 lanes by the backend
-                # regardless (probe_a_arange), so ask for the 64 lanes
-                # explicitly - then every lane is clamped and gated below.
                 NB = 64
             grid = (triton.cdiv(M, TILE_M),)
             _sls_singlepass_kernel[grid](
@@ -631,7 +592,6 @@ def special_log_softmax(self, dim, dtype=None):
                     )
             if C_FULL:
                 if have_tail:
-                    # row base offsets are required when N % BN != 0
                     _sls_chunk_kernel_strided[(M * C_FULL,)](
                         pm,
                         pz,
