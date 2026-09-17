@@ -56,10 +56,20 @@ def test_var_mean(shape, dim, correction, keepdim, dtype):
     ref_var, ref_mean = torch.var_mean(
         ref_inp, dim, correction=correction, keepdim=keepdim
     )
-    with flag_gems.use_gems():
-        res_var, res_mean = torch.var_mean(
-            inp, dim, correction=correction, keepdim=keepdim
-        )
+    res_var, res_mean = flag_gems.var_mean(
+        inp, dim, correction=correction, keepdim=keepdim
+    )
 
     utils.gems_assert_close(res_mean, ref_mean, dtype)
     utils.gems_assert_close(res_var, ref_var, dtype)
+
+
+@pytest.mark.var_mean
+@pytest.mark.parametrize("shape", [(3, 257), (17, 1031)])
+def test_var_mean_multiple_rows(shape):
+    inp = torch.randn(shape, device=flag_gems.device)
+    reference = utils.to_reference(inp, True)
+    actual = flag_gems.var_mean(inp, dim=1, correction=1)
+    expected = torch.var_mean(reference, dim=1, correction=1)
+    for result, ref in zip(actual, expected):
+        utils.gems_assert_close(result, ref, torch.float32)

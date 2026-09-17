@@ -1,17 +1,3 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import logging
 
 import torch
@@ -38,50 +24,46 @@ def welford_func(mean_x, count_x, M_x, mean_y, count_y, M_y):
 
 
 @libentry()
-@triton.autotune(configs=runtime.get_tuned_config("var_mean"), key=["M", "N"])
-@triton.jit(do_not_specialize=["correction"])
-def var_welford_kernel(
+@triton.jit(do_not_specialize=["correction", "M", "N"])
+def var_mean_welford_kernel(
     X,
     Var,
+    Mean,
     M,
     N,
     correction,
-    BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    # Map the program id to the row of X it should compute.
-    pid = ext.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    # One row per program to avoid autotune correctness issues on some backends.
+    pid = ext.program_id(0)
     X = X + pid * N
     Var = Var + pid
-    row_mask = pid < M
+    Mean = Mean + pid
 
-    _mean = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
-    _acc = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
-    _count = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
+    _sum = tl.zeros([BLOCK_N], dtype=tl.float32)
     for off in range(0, N, BLOCK_N):
-        cols = off + tl.arange(0, BLOCK_N)[None, :]
-        col_mask = cols < N
-        mask = row_mask and col_mask
-
+        cols = off + tl.arange(0, BLOCK_N)
+        mask = cols < N
         x = tl.load(X + cols, mask, other=0.0).to(tl.float32)
+        _sum += x
+    mean = tl.sum(_sum) / N
 
-        count = _count + mask
-        cnt = tl.maximum(count, 1)
-        cur_mean = (_mean * _count + x) / cnt
-        _acc += (x - cur_mean) * (x - _mean) * mask
-        _mean = cur_mean
-        _count = count
-
-    mean, _, acc = tl.reduce((_mean, _count, _acc), axis=1, combine_fn=welford_func)
-    var = acc / (N - correction)
-    var = var[:, None]
-    # Write var
-    tl.store(Var, var, row_mask)
+    _acc = tl.zeros([BLOCK_N], dtype=tl.float32)
+    for off in range(0, N, BLOCK_N):
+        cols = off + tl.arange(0, BLOCK_N)
+        mask = cols < N
+        x = tl.load(X + cols, mask, other=0.0).to(tl.float32)
+        diff = tl.where(mask, x - mean, 0.0)
+        _acc += diff * diff
+    var = tl.sum(_acc) / (N - correction)
+    # Write mean / var
+    tl.store(Mean, mean)
+    tl.store(Var, var)
 
 
 @libentry()
 @triton.jit
-def var_kernel_1(
+def var_mean_kernel_1(
     X,
     Acc,
     Average,
@@ -113,11 +95,12 @@ def var_kernel_1(
 @libentry()
 @triton.heuristics(runtime.get_heuristic_config("var_mean"))
 @triton.jit(do_not_specialize=["correction"])
-def var_kernel_2(
+def var_mean_kernel_2(
     Acc,
     Average,
     Count,
     Var,
+    Mean,
     N,
     correction,
     BLOCK_NUM,
@@ -135,11 +118,12 @@ def var_kernel_2(
     mean, _, nvar = tl.reduce((average, count, acc), axis=0, combine_fn=welford_func)
 
     var = nvar / (N - correction)
+    tl.store(Mean, mean)
     tl.store(Var, var)
 
 
-def var(x, dim=None, *, correction=None, keepdim=False):
-    logger.debug("GEMS VAR")
+def var_mean(x, dim=None, *, correction=None, keepdim=False):
+    logger.debug("GEMS ILUVATAR VAR_MEAN")
     if correction is None:
         correction = 1.0
 
@@ -148,6 +132,7 @@ def var(x, dim=None, *, correction=None, keepdim=False):
         shape = [1] * x.ndim
         N = x.numel()
         var = torch.empty(shape, dtype=x.dtype, device=x.device)
+        mean = torch.empty(shape, dtype=x.dtype, device=x.device)
         BLOCK_N = 1024
         BLOCK_NUM = triton.cdiv(N, BLOCK_N)
         acc = torch.empty([BLOCK_NUM], dtype=x.dtype, device=x.device)
@@ -155,8 +140,10 @@ def var(x, dim=None, *, correction=None, keepdim=False):
         count = torch.empty([BLOCK_NUM], dtype=x.dtype, device=x.device)
 
         with torch_device_fn.device(x.device):
-            var_kernel_1[(BLOCK_NUM,)](x, acc, average, count, N, BLOCK_N=BLOCK_N)
-            var_kernel_2[(1,)](acc, average, count, var, N, correction, BLOCK_NUM)
+            var_mean_kernel_1[(BLOCK_NUM,)](x, acc, average, count, N, BLOCK_N=BLOCK_N)
+            var_mean_kernel_2[(1,)](
+                acc, average, count, var, mean, N, correction, BLOCK_NUM
+            )
     else:
         shape = list(x.shape)
         dim = [d % x.ndim for d in dim]
@@ -167,21 +154,16 @@ def var(x, dim=None, *, correction=None, keepdim=False):
             shape[i] = 1
         M = x.numel() // N
         var = torch.empty(shape, dtype=x.dtype, device=x.device)
+        mean = torch.empty(shape, dtype=x.dtype, device=x.device)
 
-        grid = lambda META: (triton.cdiv(M, META["BLOCK_M"]),)
+        BLOCK_N = 1024
+        grid = (M,)
         with torch_device_fn.device(x.device):
-            var_welford_kernel[grid](x, var, M, N, correction)
+            var_mean_welford_kernel[grid](
+                x, var, mean, M, N, correction, BLOCK_N=BLOCK_N
+            )
 
     if not keepdim:
         var = var.squeeze(dim=dim)
-    return var
-
-
-def var_dim(x, dim=None, *, correction=None, keepdim=False):
-    logger.debug("GEMS VAR_DIM")
-    return var(x, dim=dim, correction=correction, keepdim=keepdim)
-
-
-def var_correction(x, dim=None, *, correction=None, keepdim=False):
-    logger.debug("GEMS VAR_CORRECTION")
-    return var(x, dim=dim, correction=correction, keepdim=keepdim)
+        mean = mean.squeeze(dim=dim)
+    return var, mean
