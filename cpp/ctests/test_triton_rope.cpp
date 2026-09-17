@@ -155,3 +155,49 @@ INSTANTIATE_TEST_SUITE_P(RotaryEmbeddingTests,
                              std::make_tuple(8, 2048, 16, 32, torch::kBFloat16, false, false),
                              std::make_tuple(8, 1024, 64, 128, torch::kFloat32, true, false),
                              std::make_tuple(8, 2048, 128, 256, torch::kFloat32, false, false)));
+
+class RotaryEmbeddingInplaceTest : public ::testing::TestWithParam<std::tuple<int, int, int, bool, bool>> {};
+
+TEST_P(RotaryEmbeddingInplaceTest, CompareWithReference) {
+  auto [seq_len, q_heads, head_dim, rotary_interleaved, has_pos_id] = GetParam();
+  constexpr int batch_size = 2;
+  int k_heads = std::max(1, q_heads / 4);
+  int max_seq_len = std::max(seq_len, 2048);
+
+  torch::manual_seed(0);
+  torch::Device device = flag_gems::test::default_device();
+  auto options = torch::TensorOptions().device(device).dtype(torch::kFloat16);
+  torch::Tensor q = torch::randn({batch_size, seq_len, q_heads, head_dim}, options);
+  torch::Tensor k = torch::randn({batch_size, seq_len, k_heads, head_dim}, options);
+
+  c10::optional<torch::Tensor> position_ids;
+  if (has_pos_id) {
+    position_ids = torch::randint(0,
+                                  max_seq_len,
+                                  {batch_size, seq_len},
+                                  torch::TensorOptions().device(device).dtype(torch::kLong));
+  }
+
+  auto [cos, sin] = get_rope_cos_sin(max_seq_len, head_dim, torch::kFloat16, 10000.0, device);
+  auto [q_ref, k_ref] = torch_apply_rotary_pos_emb_cpp(q, k, cos, sin, position_ids, rotary_interleaved);
+  void* q_data = q.data_ptr();
+  void* k_data = k.data_ptr();
+
+  flag_gems::rotary_embedding_inplace(q, k, cos, sin, position_ids, rotary_interleaved);
+
+  EXPECT_EQ(q.data_ptr(), q_data);
+  EXPECT_EQ(k.data_ptr(), k_data);
+  auto q_result = flag_gems::accuracy_utils::gems_assert_close(q, q_ref);
+  EXPECT_TRUE(q_result.ok) << q_result.message;
+  auto k_result = flag_gems::accuracy_utils::gems_assert_close(k, k_ref);
+  EXPECT_TRUE(k_result.ok) << k_result.message;
+}
+
+INSTANTIATE_TEST_SUITE_P(RotaryEmbeddingInplaceTests,
+                         RotaryEmbeddingInplaceTest,
+                         ::testing::Values(
+                             // seq_len, q_heads, head_dim, rotary_interleaved, has_pos_id
+                             std::make_tuple(17, 8, 96, true, true),
+                             std::make_tuple(31, 8, 96, true, true),
+                             std::make_tuple(512, 2, 128, false, false),
+                             std::make_tuple(1024, 8, 128, false, true)));
