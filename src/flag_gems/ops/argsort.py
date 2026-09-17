@@ -148,11 +148,22 @@ def argsort(inp, dim=-1, descending=False):
     This is equivalent to calling torch.sort and returning only the indices.
     """
     logger.debug("GEMS ARGSORT")
+    return argsort_stable(inp, stable=True, dim=dim, descending=descending)
+
+
+def argsort_stable(inp, *, stable, dim=-1, descending=False):
+    """Returns the indices that sort a tensor along a given dimension.
+
+    Implements the ``aten::argsort.stable`` overload, where ``stable`` selects
+    whether equivalent elements keep their original order.
+    """
+    logger.debug("GEMS ARGSORT.STABLE")
     if inp.dtype in (torch.int8, torch.uint8) and device.vendor_name in (
         "ascend",
         "hygon",
         "mthreads",
     ):
+        # Counting sort; stable by construction.
         return _byte_argsort(inp, dim, descending)
-    _, indices = sort_stable(inp, stable=True, dim=dim, descending=descending)
+    _, indices = sort_stable(inp, stable=stable, dim=dim, descending=descending)
     return indices

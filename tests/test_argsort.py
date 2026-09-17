@@ -58,6 +58,30 @@ def test_accuracy_argsort(batch_size, hiddensize, descending, dtype, dim):
 
 
 @pytest.mark.argsort
+@pytest.mark.parametrize("batch_size", ARGSORT_BATCH_SIZES)
+@pytest.mark.parametrize("hiddensize", ARGSORT_HIDDEN_SIZES)
+@pytest.mark.parametrize("descending", [True, False])
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES + utils.INT_DTYPES)
+@pytest.mark.parametrize("dim", [0, -1])
+def test_accuracy_argsort_stable(batch_size, hiddensize, descending, dtype, dim):
+    """Cover the aten::argsort.stable entry point on every vendor."""
+    if not dtype.is_floating_point:
+        min_v, max_v = torch.iinfo(dtype).min, torch.iinfo(dtype).max
+        y = torch.randint(
+            min_v, max_v, (batch_size, hiddensize), dtype=dtype, device="cpu"
+        ).to(flag_gems.device)
+    else:
+        y = torch.randn((batch_size, hiddensize), dtype=dtype, device=flag_gems.device)
+
+    ref_y = utils.to_reference(y)
+    ref_index = torch.argsort(ref_y, dim=dim, stable=True, descending=descending)
+
+    res_index = flag_gems.argsort_stable(y, stable=True, dim=dim, descending=descending)
+
+    utils.gems_assert_equal(res_index, ref_index)
+
+
+@pytest.mark.argsort
 @pytest.mark.parametrize("dtype", [torch.int8, torch.uint8])
 @pytest.mark.parametrize("descending", [False, True])
 @pytest.mark.parametrize("dim", [0, -1])
