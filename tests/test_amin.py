@@ -52,12 +52,13 @@ def test_amin(shape, dim, keepdim, dtype):
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_amin_(shape, dim, keepdim, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp = utils.to_reference(inp)
+    ref_inp = utils.to_reference(inp.clone())
+    ref_out = torch.amin(ref_inp, dim=dim, keepdim=True).expand_as(ref_inp)
+    input_ptr = inp.data_ptr()
 
-    ref_out = torch.amin(ref_inp, dim=dim, keepdim=True)
-    ref_out = ref_out.expand_as(inp)
-    with flag_gems.use_gems():
-        res_out = torch.amin(inp, dim=dim, keepdim=True)
-        res_out = res_out.expand_as(inp)
+    res_out = flag_gems.amin_(inp, dim=dim, keepdim=keepdim)
 
+    assert res_out is inp
+    assert inp.data_ptr() == input_ptr
+    utils.gems_assert_equal(inp, ref_out)
     utils.gems_assert_equal(res_out, ref_out)
