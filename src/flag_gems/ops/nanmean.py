@@ -482,6 +482,10 @@ class _NanmeanAutograd(torch.autograd.Function):
             physical = grad.conj() if grad.is_conj() else grad
             parts = torch.view_as_real(physical)
             real = _mean_backward(parts[..., 0], valid, count)
+            if not ctx.input_dtype.is_complex:
+                result = torch.empty_like(valid, dtype=ctx.input_dtype)
+                copy_(result, real)
+                return result, None, None, None
             imag = _mean_backward(parts[..., 1], valid, count)
             if grad.is_conj():
                 from .neg import neg
