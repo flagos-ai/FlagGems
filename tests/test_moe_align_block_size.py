@@ -12,11 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import importlib
+
 import pytest
 import torch
 
 import flag_gems
 from flag_gems.fused.moe_align_block_size import (
+    moe_align_block_size,
+    moe_align_block_size_compact,
+    moe_align_block_size_ep_route_block,
     moe_align_block_size_singleton,
     moe_align_block_size_small_grouped,
 )
@@ -377,3 +382,439 @@ def test_accuracy_moe_align_block_size_fast_paths(fast_path):
     torch.testing.assert_close(actual[0][:num_tokens], expected[0][:num_tokens])
     torch.testing.assert_close(actual[1][:num_blocks], expected[1][:num_blocks])
     torch.testing.assert_close(actual[2], expected[2])
+
+
+@pytest.mark.moe_align_block_size
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "nvidia"
+    or not torch.cuda.is_available()
+    or torch.cuda.get_device_capability() != (9, 0),
+    reason="compact MoE alignment is currently enabled only on NVIDIA SM90",
+)
+@pytest.mark.parametrize("id_dtype", [torch.int32, torch.int64])
+@pytest.mark.parametrize(
+    ("num_experts", "topk_ids_shape", "routing", "pad_sorted_ids"),
+    [
+        (512, (64, 10), "uniform", False),
+        (512, (64, 10), "skewed", False),
+        (257, (64, 10), "uniform", False),
+        (511, (64, 10), "uniform", False),
+        (256, (1, 1), "uniform", False),
+        (512, (128, 8), "uniform", False),
+        (512, (128, 8), "skewed", False),
+        (512, (1, 641), "uniform", True),
+    ],
+)
+def test_accuracy_moe_align_block_size_compact_qwen4(
+    num_experts, topk_ids_shape, routing, pad_sorted_ids, id_dtype
+):
+    device = flag_gems.device
+    block_size = 16
+    num_routes = topk_ids_shape[0] * topk_ids_shape[1]
+
+    if routing == "uniform":
+        topk_ids = torch.randint(
+            0,
+            num_experts,
+            topk_ids_shape,
+            dtype=id_dtype,
+            device=device,
+        )
+    else:
+        # Exercise MAX_BLOCKS_PER_EXPERT by sending every route to one expert.
+        topk_ids = torch.full(topk_ids_shape, 17, dtype=id_dtype, device=device)
+
+    actual = moe_align_block_size_compact(
+        topk_ids, block_size, num_experts, pad_sorted_ids
+    )
+    selected = moe_align_block_size(
+        topk_ids,
+        block_size,
+        num_experts,
+        pad_sorted_ids=pad_sorted_ids,
+    )
+    if pad_sorted_ids:
+        assert actual[0].numel() % block_size == 0
+        assert selected[0].numel() % block_size == 0
+
+    max_num_tokens_padded = num_routes + num_experts * (block_size - 1)
+    expected = (
+        torch.empty(max_num_tokens_padded, dtype=torch.int32, device=device),
+        torch.empty(
+            max_num_tokens_padded // block_size,
+            dtype=torch.int32,
+            device=device,
+        ),
+        torch.empty(1, dtype=torch.int32, device=device),
+    )
+    torch_moe_align_block_size(
+        topk_ids,
+        num_experts,
+        block_size,
+        expected[0],
+        expected[1],
+        expected[2],
+    )
+    _synchronize()
+
+    total_tokens = expected[2].item()
+    num_blocks = total_tokens // block_size
+    for output in (actual, selected):
+        _verify_expert_level_sorting(
+            output[0],
+            expected[0],
+            expected[1],
+            block_size,
+            total_tokens,
+            num_routes,
+        )
+        torch.testing.assert_close(output[1][:num_blocks], expected[1][:num_blocks])
+        torch.testing.assert_close(output[2], expected[2])
+
+
+@pytest.mark.moe_align_block_size
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "nvidia"
+    or not torch.cuda.is_available()
+    or torch.cuda.get_device_capability() != (9, 0),
+    reason="compact MoE alignment is currently enabled only on NVIDIA SM90",
+)
+def test_qwen4_exact_dispatch_prefers_compact_when_tle_is_available(monkeypatch):
+    """The measured Qwen4 point must not regress when FlagTree exposes TLE."""
+    module = importlib.import_module("flag_gems.fused.moe_align_block_size")
+    compact = module.moe_align_block_size_compact
+    compact_launches = 0
+
+    def counted_compact(*args, **kwargs):
+        nonlocal compact_launches
+        compact_launches += 1
+        return compact(*args, **kwargs)
+
+    monkeypatch.setattr(module, "HAS_TLE", True)
+    monkeypatch.setattr(module, "moe_align_block_size_compact", counted_compact)
+    topk_ids = torch.randint(
+        0,
+        512,
+        (64, 10),
+        dtype=torch.int32,
+        device=flag_gems.device,
+    )
+    module.moe_align_block_size(topk_ids, block_size=16, num_experts=512)
+    _synchronize()
+
+    assert compact_launches == 1
+
+
+@pytest.mark.moe_align_block_size
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "nvidia"
+    or not torch.cuda.is_available()
+    or torch.cuda.get_device_capability() != (9, 0),
+    reason="Decode compact alignment is enabled only on NVIDIA SM90",
+)
+def test_compact_alignment_ignores_out_of_range_int64_experts():
+    device = flag_gems.device
+    num_experts, block_size = 512, 16
+    torch.manual_seed(20260824)
+    topk_ids = torch.randint(0, num_experts, (64, 10), dtype=torch.int64, device=device)
+    topk_ids.view(-1)[:3] = torch.tensor(
+        [-1, num_experts, 2**32 + 3], dtype=torch.int64, device=device
+    )
+
+    actual = moe_align_block_size(topk_ids, block_size, num_experts)
+    max_padded = topk_ids.numel() + num_experts * (block_size - 1)
+    expected = (
+        torch.empty(max_padded, dtype=torch.int32, device=device),
+        torch.empty(max_padded // block_size, dtype=torch.int32, device=device),
+        torch.empty(1, dtype=torch.int32, device=device),
+    )
+    torch_moe_align_block_size(
+        topk_ids,
+        num_experts,
+        block_size,
+        expected[0],
+        expected[1],
+        expected[2],
+    )
+    _synchronize()
+
+    total_tokens = int(expected[2].item())
+    num_blocks = total_tokens // block_size
+    _verify_expert_level_sorting(
+        actual[0],
+        expected[0],
+        expected[1],
+        block_size,
+        total_tokens,
+        topk_ids.numel(),
+    )
+    torch.testing.assert_close(actual[1][:num_blocks], expected[1][:num_blocks])
+    torch.testing.assert_close(actual[2], expected[2])
+
+
+@pytest.mark.moe_align_block_size
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "nvidia"
+    or not torch.cuda.is_available()
+    or torch.cuda.get_device_capability() != (9, 0),
+    reason="compact fused-MoE EP alignment is enabled only on NVIDIA SM90",
+)
+@pytest.mark.parametrize("block_size", [16, 64])
+@pytest.mark.parametrize(
+    "routing",
+    ["uniform", "all_local", "no_local", "skewed", "invalid", "int64_overflow"],
+)
+def test_accuracy_moe_align_block_size_ep(block_size, routing):
+    device = flag_gems.device
+    global_experts = 288
+    local_experts = 18
+    topk_shape = (96, 8)
+    num_routes = topk_shape[0] * topk_shape[1]
+    expert_map = torch.full((global_experts,), -1, dtype=torch.int32, device=device)
+    # Use a non-zero, contiguous global shard to exercise the global-to-local
+    # mapping instead of relying on global ID == local ID.
+    shard_begin = 7 * local_experts
+    expert_map[shard_begin : shard_begin + local_experts] = torch.arange(
+        local_experts, dtype=torch.int32, device=device
+    )
+
+    if routing == "uniform":
+        torch.manual_seed(20260824)
+        topk_ids = torch.randint(
+            0, global_experts, topk_shape, dtype=torch.int32, device=device
+        )
+    elif routing == "all_local":
+        topk_ids = (
+            torch.arange(num_routes, dtype=torch.int32, device=device)
+            .remainder(local_experts)
+            .add(shard_begin)
+            .view(topk_shape)
+        )
+    elif routing == "no_local":
+        topk_ids = torch.zeros(topk_shape, dtype=torch.int32, device=device)
+    elif routing == "skewed":
+        topk_ids = torch.zeros(topk_shape, dtype=torch.int32, device=device)
+        topk_ids[:, 0] = shard_begin + 3
+    elif routing == "invalid":
+        topk_ids = torch.full(topk_shape, -1, dtype=torch.int32, device=device)
+        topk_ids[:, 0] = shard_begin + 3
+    else:
+        topk_ids = torch.full(
+            topk_shape,
+            2**32 + shard_begin + 3,
+            dtype=torch.int64,
+            device=device,
+        )
+        topk_ids[:, 0] = shard_begin + 3
+
+    actual = moe_align_block_size(
+        topk_ids,
+        block_size,
+        global_experts,
+        expert_map,
+        ignore_invalid_experts=True,
+        local_num_experts=local_experts,
+    )
+    max_global_padded = num_routes + global_experts * (block_size - 1)
+    expected = (
+        torch.empty(max_global_padded, dtype=torch.int32, device=device),
+        torch.empty(max_global_padded // block_size, dtype=torch.int32, device=device),
+        torch.empty(1, dtype=torch.int32, device=device),
+    )
+    torch_moe_align_block_size(
+        topk_ids,
+        global_experts,
+        block_size,
+        expected[0],
+        expected[1],
+        expected[2],
+        expert_map,
+    )
+    _synchronize()
+
+    total_tokens = int(expected[2].item())
+    num_blocks = total_tokens // block_size
+    assert actual[0].numel() == num_routes + local_experts * (block_size - 1)
+    _verify_expert_level_sorting(
+        actual[0],
+        expected[0],
+        expected[1],
+        block_size,
+        total_tokens,
+        num_routes,
+    )
+    torch.testing.assert_close(actual[1][:num_blocks], expected[1][:num_blocks])
+    torch.testing.assert_close(actual[2], expected[2])
+
+
+@pytest.mark.moe_align_block_size
+def test_moe_align_block_size_rejects_noncontiguous_routing_inputs():
+    device = flag_gems.device
+    topk_ids = torch.zeros(96, 8, device=device, dtype=torch.int32)
+    with pytest.raises(ValueError, match="block_size must be positive"):
+        moe_align_block_size(topk_ids, 0, 288)
+    with pytest.raises(ValueError, match="num_experts must be positive"):
+        moe_align_block_size(topk_ids, 16, 0)
+
+    expanded_ids = torch.zeros(1, 8, device=device, dtype=torch.int32).expand(96, 8)
+    expert_map = torch.arange(288, device=device, dtype=torch.int32)
+    with pytest.raises(ValueError, match="topk_ids must be contiguous"):
+        moe_align_block_size(expanded_ids, 16, 288, expert_map)
+
+    expanded_map = torch.zeros(1, device=device, dtype=torch.int32).expand(288)
+    with pytest.raises(ValueError, match="expert_map must be contiguous"):
+        moe_align_block_size(topk_ids, 16, 288, expanded_map)
+
+
+def _route_block_reference(
+    topk_ids: torch.Tensor,
+    expert_map: torch.Tensor,
+    local_num_experts: int,
+    block_size: int,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Return the exact stable route-block layout consumed by grouped GEMM."""
+    routes = topk_ids.flatten().cpu().tolist()
+    mapping = expert_map.cpu().tolist()
+    num_routes = len(routes)
+    sorted_ids = []
+    expert_ids = []
+    for route_idx, global_expert in enumerate(routes):
+        if not 0 <= global_expert < len(mapping):
+            continue
+        local_expert = mapping[global_expert]
+        if not 0 <= local_expert < local_num_experts:
+            continue
+        sorted_ids.extend([route_idx] + [num_routes] * (block_size - 1))
+        expert_ids.append(local_expert)
+    return (
+        torch.tensor(sorted_ids, dtype=torch.int32, device=topk_ids.device),
+        torch.tensor(expert_ids, dtype=torch.int32, device=topk_ids.device),
+    )
+
+
+@pytest.mark.moe_align_block_size
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "nvidia" or not torch.cuda.is_available(),
+    reason="EP route-block alignment requires NVIDIA CUDA",
+)
+@pytest.mark.parametrize("id_dtype", [torch.int32, torch.int64])
+@pytest.mark.parametrize("map_dtype", [torch.int32, torch.int64])
+def test_moe_align_block_size_ep_route_block_safe_mapping(id_dtype, map_dtype):
+    """Remote, invalid, and repeated routes retain deterministic semantics."""
+    device = flag_gems.device
+    global_experts, local_experts, block_size = 288, 18, 16
+    shard_begin = 7 * local_experts
+    expert_map = torch.full((global_experts,), -1, dtype=map_dtype, device=device)
+    expert_map[shard_begin : shard_begin + local_experts] = torch.arange(
+        local_experts, dtype=map_dtype, device=device
+    )
+    if map_dtype == torch.int64:
+        # In-range global IDs may still map to invalid large local IDs.
+        expert_map[5] = 2**40
+        expert_map[6] = -(2**40)
+    else:
+        expert_map[5] = local_experts
+        expert_map[6] = -2
+
+    if id_dtype == torch.int64:
+        invalid_low, invalid_high = -(2**40), 2**40
+    else:
+        invalid_low, invalid_high = -1, global_experts
+    topk_ids = torch.tensor(
+        [
+            [
+                shard_begin + 3,
+                0,
+                shard_begin + 3,
+                shard_begin + 7,
+                invalid_low,
+                invalid_high,
+                5,
+                6,
+            ]
+        ],
+        dtype=id_dtype,
+        device=device,
+    )
+
+    actual = moe_align_block_size_ep_route_block(
+        topk_ids, expert_map, block_size, local_experts
+    )
+    expected_sorted, expected_experts = _route_block_reference(
+        topk_ids, expert_map, local_experts, block_size
+    )
+    _synchronize()
+
+    num_local_routes = expected_experts.numel()
+    total_tokens = num_local_routes * block_size
+    assert actual[0].numel() == topk_ids.numel() * block_size
+    assert actual[1].numel() == topk_ids.numel()
+    torch.testing.assert_close(actual[0][:total_tokens], expected_sorted)
+    torch.testing.assert_close(actual[1][:num_local_routes], expected_experts)
+    torch.testing.assert_close(
+        actual[2],
+        torch.tensor([total_tokens], dtype=torch.int32, device=device),
+    )
+
+
+@pytest.mark.moe_align_block_size
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "nvidia" or not torch.cuda.is_available(),
+    reason="CUDA Graph requires NVIDIA CUDA",
+)
+def test_moe_align_block_size_ep_route_block_cuda_graph_dynamic_routes():
+    device = flag_gems.device
+    global_experts, local_experts, block_size = 288, 18, 16
+    shard_begin = 7 * local_experts
+    expert_map = torch.full((global_experts,), -1, dtype=torch.int64, device=device)
+    expert_map[shard_begin : shard_begin + local_experts] = torch.arange(
+        local_experts, dtype=torch.int64, device=device
+    )
+    static_topk_ids = torch.zeros((1, 8), dtype=torch.int64, device=device)
+
+    # Compile before capture, then verify that replay reads route values from
+    # device memory rather than specializing on the capture-time contents.
+    moe_align_block_size_ep_route_block(
+        static_topk_ids, expert_map, block_size, local_experts
+    )
+    _synchronize()
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):
+        graph_output = moe_align_block_size_ep_route_block(
+            static_topk_ids, expert_map, block_size, local_experts
+        )
+
+    route_updates = [
+        # No local routes.
+        [0, 1, 2, 3, 4, 5, 6, 7],
+        # Remote and repeated local experts.
+        [shard_begin + 2, 0, shard_begin + 2, 287, 12, 13, 14, 15],
+        # Large invalid IDs mixed with valid local routes.
+        [2**40, shard_begin + 17, -(2**40), shard_begin, 288, -1, 0, 1],
+        # Every route is local, including repeated experts.
+        [
+            shard_begin,
+            shard_begin,
+            shard_begin + 1,
+            shard_begin + 1,
+            shard_begin + 2,
+            shard_begin + 3,
+            shard_begin + 4,
+            shard_begin + 5,
+        ],
+    ]
+    for routes in route_updates:
+        static_topk_ids.copy_(torch.tensor([routes], dtype=torch.int64, device=device))
+        graph.replay()
+        _synchronize()
+        expected_sorted, expected_experts = _route_block_reference(
+            static_topk_ids, expert_map, local_experts, block_size
+        )
+        num_local_routes = expected_experts.numel()
+        total_tokens = num_local_routes * block_size
+        torch.testing.assert_close(graph_output[0][:total_tokens], expected_sorted)
+        torch.testing.assert_close(graph_output[1][:num_local_routes], expected_experts)
+        torch.testing.assert_close(
+            graph_output[2],
+            torch.tensor([total_tokens], dtype=torch.int32, device=device),
+        )
