@@ -32,12 +32,25 @@ else:
     DIM_LIST = [0, -1]
 
 
-@pytest.mark.weight_norm
+# ``_weight_norm`` is a distinct operator from ``weight_norm``. Its id cannot be
+# used verbatim as a pytest marker, for two independent reasons:
+#
+#  1. pytest rejects the attribute form outright: MarkGenerator.__getattr__
+#     raises ``AttributeError("Marker name must NOT start with underscore")``.
+#  2. check_operator_markers derives the required marker from the operator id by
+#     stripping the leading underscore and -- because ``weight_norm`` is already
+#     a registered operator id, so the stripped name would collide -- prefixing
+#     ``underscore_``, giving ``underscore_weight_norm``. Its AST scan accepts
+#     only a literal ``pytest.mark.<that name>`` attribute, so hand-building a
+#     MarkDecorator to dodge (1) would read as "no marker" and fail the gate.
+#
+# Hence ``underscore_weight_norm``, mirroring op_marker() in tools/run_tests.py.
+@pytest.mark.underscore_weight_norm
 # @pytest.mark.skip(reason="Issue #2860: fails assertion")
 @pytest.mark.parametrize("shape", WEIGHT_NORM_SHAPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_weight_norm(shape, dtype, dim):
+def test_underscore_weight_norm(shape, dtype, dim):
     if flag_gems.vendor_name == "cambricon":
         torch.manual_seed(42)
         torch.mlu.manual_seed_all(42)
@@ -54,8 +67,8 @@ def test_weight_norm(shape, dtype, dim):
 
     ref_v = utils.to_reference(v, True)
     ref_g = utils.to_reference(g, True)
-    ref_w_out = torch._weight_norm(ref_v, ref_g, dim)
-    res_w_out = flag_gems.weight_norm(v, g, dim)
+    ref_w_out = torch.ops.aten._weight_norm(ref_v, ref_g, dim)
+    res_w_out = flag_gems._weight_norm(v, g, dim)
     utils.gems_assert_close(res_w_out, ref_w_out, dtype, reduce_dim=reduce_size)
 
     res_w_grad = torch.randn(shape, dtype=dtype, device=flag_gems.device)
