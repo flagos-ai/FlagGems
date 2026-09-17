@@ -357,6 +357,13 @@ median_dim_values:
     - [[8, 64, 384, 64], 2, false]
   shape_desc: "input shape or [input shape, dim, keepdim]"
 
+IntMMBenchmark:
+  shapes:
+    - [32, 256, 256]
+    - [64, 1024, 1024]
+    - [256, 2048, 2048]
+  shape_desc: "M, N, K"
+
 BlasBenchmark:
   shapes:
     - [2, 384, 384, 384]
@@ -983,3 +990,13 @@ adaptive_max_pool3d:
     - [[2, 8, 16, 32, 32], [4, 16, 16]]
     - [[1, 16, 7, 12, 12], [3, 6, 6]]
   shape_desc: "[input_shape, output_size]"
+
+swiglu:
+  shapes:
+    - [4, 32]
+    - [256, 128]
+    - [8192, 128]
+    - [15000, 128]
+    - [2560, 2048]
+    - [15000, 2048]
+  shape_desc: "M, 2H (last dim is split in half)"

@@ -59,10 +59,13 @@ from .hadamard_transform import hadamard_transform
 from .index_add import index_add, index_add_
 from .index_copy_ import index_copy, index_copy_
 from .index_select_backward import index_select_backward
+from .int_mm import int_mm, int_mm_out
 from .isin import isin
 from .lcm import lcm, lcm_
 from .linalg_ldl_factor import ldl_factor
+from .linalg_lstsq import linalg_lstsq
 from .linalg_matrix_norm import linalg_matrix_norm, linalg_matrix_norm_out
+from .linalg_matrix_power import linalg_matrix_power, linalg_matrix_power_out
 from .linalg_solve_triangular import (
     linalg_solve_triangular,
     linalg_solve_triangular_out,
@@ -81,6 +84,7 @@ from .median import median_dim, median_dim_values
 from .mm import mm
 from .mm_w8a8_int8 import mm_w8a8_int8, mm_w8a8_int8_out
 from .mul import mul, mul_
+from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .nansum import nansum, nansum_out
 from .nll_loss_backward import heur_block_n, nll_loss_backward
 from .pad_sequence import pad_sequence
@@ -169,12 +173,17 @@ __all__ = [
     "index_copy",
     "index_copy_",
     "index_select_backward",
+    "int_mm",
+    "int_mm_out",
     "isin",
     "lcm",
     "lcm_",
     "ldl_factor",
+    "linalg_lstsq",
     "linalg_matrix_norm",
     "linalg_matrix_norm_out",
+    "linalg_matrix_power",
+    "linalg_matrix_power_out",
     "linalg_solve_triangular",
     "linalg_solve_triangular_out",
     "log_normal_",
@@ -191,6 +200,10 @@ __all__ = [
     "mm_w8a8_int8_out",
     "mul",
     "mul_",
+    "nanmedian",
+    "nanmedian_dim",
+    "nanmedian_dim_values",
+    "nanmedian_out",
     "nansum",
     "nansum_out",
     "nll_loss_backward",
