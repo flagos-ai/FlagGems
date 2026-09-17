@@ -162,6 +162,20 @@ def test_nanquantile_dim_none_keepdim_shape(tensor_q, use_out):
 
 
 @pytest.mark.nanquantile
+@pytest.mark.parametrize("valid_count", [0, 1])
+def test_nanquantile_maximum_reduction_one_valid(valid_count):
+    # Exercise the binary-search upper bound through the complete public path.
+    size = 1 << 24
+    inp = torch.full((size,), float("nan"), device=flag_gems.device)
+    if valid_count:
+        inp[0] = 13.0
+    q = torch.tensor([0.0, 0.5, 1.0], device=inp.device)
+    reference = torch.nanquantile(utils.to_reference(inp), utils.to_reference(q))
+    result = flag_gems.nanquantile(inp, q)
+    utils.gems_assert_equal(result, reference, equal_nan=True)
+
+
+@pytest.mark.nanquantile
 @pytest.mark.parametrize("size", [1025, 2049])
 def test_nanquantile_large_q_is_tiled(size):
     inp = _input((2, size), torch.float32)

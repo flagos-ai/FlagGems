@@ -20,6 +20,9 @@ import triton
 import triton.language as tl
 from torch import Tensor
 
+from flag_gems.ops.contiguous import contiguous
+from flag_gems.ops.copy import copy_
+from flag_gems.ops.sort import sort_stable
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, tl_extra_shim
 from flag_gems.utils import triton_lang_extension as ext
@@ -30,6 +33,17 @@ INTERPOLATION_METHODS = ("linear", "lower", "higher", "nearest", "midpoint")
 INTERPOLATION_CODES = {name: code for code, name in enumerate(INTERPOLATION_METHODS)}
 MAX_BITONIC_SIZE = 2048
 MAX_REDUCTION_SIZE = 1 << 24
+
+
+@libentry()
+@triton.jit
+def _sort_keys_kernel(inp, keys, n_elements, BLOCK_SIZE: tl.constexpr):
+    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+    values = tl.load(inp + offsets, mask=mask)
+    tl.store(
+        keys + offsets, tl.where(values == values, values, float("nan")), mask=mask
+    )
 
 
 @libentry()
@@ -51,7 +65,10 @@ def _nanquantile_bitonic_kernel(
     values = tl.load(inp + row * reduction_size + cols, mask=valid_col, other=0.0)
     valid_value = valid_col & (values == values)
     sortable = tl.where(valid_value, values, float("inf"))
-    sorted_values = tl.sort(sortable, descending=False)
+    if BLOCK_M == 1:
+        sorted_values = sortable
+    else:
+        sorted_values = tl.sort(sortable, descending=False)
     valid_count = tl.sum(valid_value.to(tl.int32), axis=0)
 
     q_offsets = ext.program_id(1) * BLOCK_Q + tl.arange(0, BLOCK_Q)
@@ -142,7 +159,8 @@ def _nanquantile_gather_kernel(
     # each row without materializing a full-size mask or count tensor.
     low = tl.zeros((BLOCK_N,), dtype=tl.int64)
     high = tl.full((BLOCK_N,), reduction_size, dtype=tl.int64)
-    for _ in tl.static_range(24):
+    # Searching an inclusive [0, 2**24] interval needs up to 25 steps.
+    for _ in tl.static_range(25):
         middle = (low + high) // 2
         probe = tl.load(
             sorted_inp + row_offsets * reduction_size + middle,
@@ -237,7 +255,7 @@ def _nanquantile_impl(
     original_ndim = inp.ndim
     dim_was_none = dim is None
     if dim_was_none:
-        reduced = inp.ravel()
+        reduced = contiguous(inp).view(-1)
         dim = 0
     else:
         if inp.ndim == 0:
@@ -248,7 +266,7 @@ def _nanquantile_impl(
         else:
             reduced = torch.movedim(inp, dim, -1)
             dim %= inp.ndim
-            reduced = reduced.contiguous()
+            reduced = contiguous(reduced)
 
     q_is_tensor = isinstance(q, torch.Tensor)
     q_is_scalar = not q_is_tensor or q.dim() == 0
@@ -259,7 +277,7 @@ def _nanquantile_impl(
                 f"quantile() q must be in the range [0, 1] but got {q_value}"
             )
         q = torch.tensor(q_value, dtype=inp.dtype, device=inp.device)
-    q_contiguous = q.contiguous().reshape(-1)
+    q_contiguous = contiguous(q).reshape(-1)
     if q_is_tensor and q_contiguous.numel():
         block_size = 256
         with torch_device_fn.device(inp.device):
@@ -312,13 +330,7 @@ def _nanquantile_impl(
         internal = torch.empty(internal_shape, dtype=inp.dtype, device=inp.device)
 
     if q_size:
-        if reduction_size == 1:
-            single_value = reduced
-            if interpolation in ("linear", "midpoint"):
-                weight = 0.0 if interpolation == "linear" else 0.5
-                single_value = reduced + (reduced - reduced) * weight
-            internal.copy_(single_value.expand_as(internal))
-        else:
+        if reduction_size:
             with torch_device_fn.device(inp.device):
                 if reduction_size <= MAX_BITONIC_SIZE:
                     block_m = triton.next_power_of_2(reduction_size)
@@ -335,7 +347,13 @@ def _nanquantile_impl(
                         num_warps=min(16, max(4, block_m // 256)),
                     )
                 else:
-                    sorted_values, _ = reduced.sort(dim=-1)
+                    keys = torch.empty_like(reduced)
+                    _sort_keys_kernel[(triton.cdiv(reduced.numel(), 1024),)](
+                        reduced, keys, reduced.numel(), BLOCK_SIZE=1024
+                    )
+                    sorted_values, _ = sort_stable(
+                        keys, stable=False, dim=-1, descending=False
+                    )
                     grid = lambda meta: (
                         triton.cdiv(q_size, meta["BLOCK_Q"]),
                         triton.cdiv(n_rows, meta["BLOCK_N"]),
@@ -361,7 +379,7 @@ def _nanquantile_impl(
         if direct_out:
             return out
         out.resize_(result.shape)
-        out.copy_(result)
+        copy_(out, result)
         return out
     return result
 
