@@ -1,17 +1,3 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import logging
 
 import torch
@@ -20,6 +6,7 @@ import triton.language as tl
 from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 
 from flag_gems.runtime import torch_device_fn
+from flag_gems.utils.shape_utils import heuristics_for_num_warps, volume
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
@@ -65,10 +52,6 @@ def fill_scalar(input, value):
 
 
 def fill_scalar_out(input, value, *, out=None):
-    # The generic ops/fill.py fill_scalar_out routes through a NO-config
-    # pointwise kernel whose store is judged discrete (lm2gm offsetState=-1) on
-    # XPU -> ~0.002-0.003 speedup on large shapes. Reuse the kunlunxin-tuned
-    # fill_scalar_func (prefer_1d_tile) so the write is a contiguous block DMA.
     logger.debug("GEMS_KUNLUNXIN FILL_SCALAR_OUT")
     if out is None:
         return fill_scalar(input, value)
@@ -90,15 +73,19 @@ def fill_tensor(input, value):
         return fill_tensor_func(input, value, out0=out)
 
 
+@triton.jit
+def _fill_tensor_out_kernel(out_ptr, n_elements, value, BLOCK_SIZE: tl.constexpr):
+    pid = tl.program_id(0)
+    offs = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offs < n_elements
+    tl.store(
+        out_ptr + offs,
+        tl.full([BLOCK_SIZE], value, dtype=out_ptr.dtype.element_ty),
+        mask=mask,
+    )
+
+
 def fill_tensor_out(input, value, *, out=None):
-    # fill.Tensor_out fills `out` with a single 0-dim `value`. The generic
-    # ops/fill.py routes a cuda value through fill_tensor_func (`return value`),
-    # which broadcasts a 0-dim (stride-0) tensor read: on XPU that scalar-load
-    # per element defeats the block DMA and is CATASTROPHIC (measured 74ms for a
-    # (4096,4096) fill vs 0.07ms for a pure write) -> the IR dump
-    # ir-fill_tensor_out-dev0.log shows 1110 modules / 1389 kernel recompiles.
-    # Since value is 0-dim, this is semantically identical to fill.Scalar_out;
-    # read it once and reuse the fast tl.full pure-write fill_scalar_func.
     logger.debug("GEMS_KUNLUNXIN FILL_TENSOR_OUT")
     if out is None:
         return fill_tensor(input, value)
@@ -106,7 +93,22 @@ def fill_tensor_out(input, value, *, out=None):
         raise RuntimeError(
             f"fill_ only supports 0-dimension value tensor but got tensor with {value.ndim} dimensions."
         )
-    return fill_scalar_out(input, value.item(), out=out)
+    N = volume(input.shape)
+    if N == 0:
+        return out
+    grid_fn = (12, 1, 1)
+    block_size = triton.next_power_of_2(triton.cdiv(N, 12))
+    num_warps = heuristics_for_num_warps(block_size)
+    with torch_device_fn.device(input.device):
+        _fill_tensor_out_kernel[grid_fn](
+            out,
+            N,
+            value.item(),
+            BLOCK_SIZE=block_size,
+            num_warps=num_warps,
+            isCloseDtypeConvert=True,
+        )
+    return out
 
 
 def fill_tensor_(self, value):

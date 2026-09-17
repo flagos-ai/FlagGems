@@ -3403,6 +3403,16 @@ ops:
   - Quantization
   stages:
   - beta: '5.3'
+- id: cross
+  description: Computes the cross product of two 3-dimensional vectors along a dimension of size 3.
+  for:
+  - cross
+  labels:
+  - aten
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.4'
 - id: cross_entropy_loss
   description: Computes the cross entropy loss between input logits and target.
   for:
@@ -3415,6 +3425,16 @@ ops:
   stages:
   - stable: '2.0'
   - removed: '3.0'
+- id: cross_out
+  description: A variant of `cross` that allows the output to be assigned to `out`.
+  for:
+  - cross.out
+  labels:
+  - aten
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.4'
 - id: ctc_loss
   description: Connectionist Temporal Classification loss for sequence-to-sequence
     models.
@@ -4072,6 +4092,17 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '1.0'
+- id: dropout_
+  description: The in-place version of dropout (`aten::dropout_`).
+  for:
+  - dropout_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: dsplit
   description: 'Split a tensor along the third axis (depth-wise). Pure layout operation
     returning zero-copy views.
@@ -4324,6 +4355,20 @@ ops:
   - KernelGen
   kind:
   - Math
+  stages:
+  - alpha: '5.4'
+- id: embedding_sparse_backward
+  description: |
+    Calculates the sparse gradient of the weight matrix for an embedding
+    layer during backpropagation, returning an uncoalesced sparse COO tensor.
+  for:
+  - embedding_sparse_backward
+  labels:
+  - aten
+  - KernelGen
+  - NoCPU
+  kind:
+  - NeuralNetwork
   stages:
   - alpha: '5.4'
 - id: empty
@@ -5597,6 +5642,18 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: fractional_max_pool3d
+  description: |
+    Applies 3D fractional max pooling over an input signal composed of several input planes.
+  for:
+  - fractional_max_pool3d
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: frexp
   description: Return mantissa and exponent of input, such that x = mantissa * 2^exponent,
     with mantissa in (-1, 1).
@@ -6736,6 +6793,20 @@ ops:
   - Math
   stages:
   - alpha: '5.3'
+- id: histogramdd
+  description: 'Computes D-dimensional histogram over (N, D) input tensor. Returns
+    histogram tensor and list of bin edge tensors per dimension.
+
+    '
+  for:
+  - histogramdd
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Reduction
+  stages:
+  - alpha: '5.4'
 - id: hsplit
   description: 'Split a tensor into multiple sub-tensors horizontally (column-wise).
 
@@ -7236,6 +7307,27 @@ ops:
   - stable: '2.2'
   - removed: '3.0'
   - beta: '5.3'
+- id: int_mm
+  description: Performs matrix multiplication of two two-dimensional int8 tensors
+    and returns a contiguous int32 tensor.
+  for:
+  - _int_mm
+  labels:
+  - aten
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.4'
+- id: int_mm_out
+  description: A variant of `_int_mm` that writes the int32 result into `out`.
+  for:
+  - _int_mm.out
+  labels:
+  - aten
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.4'
 - id: irshift
   description: Triton kernel implementation for __irshift__.
   for:
@@ -7497,6 +7589,30 @@ ops:
     result in-place.
   for:
   - lcm_
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Pointwise
+  stages:
+  - alpha: '5.4'
+- id: ldexp
+  description: Multiplies input by 2 raised to the power of other, element-wise.
+  for:
+  - ldexp.Tensor
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Pointwise
+  stages:
+  - alpha: '5.4'
+- id: ldexp_out
+  description: A variant of ldexp() that assigns the output to the out tensor.
+  for:
+  - ldexp.out
   labels:
   - aten
   - pointwise
@@ -9270,6 +9386,20 @@ ops:
   - Tensor
   stages:
   - stable: '2.1'
+- id: masked_softmax_backward
+  description: |
+    Computes the input gradient of a masked softmax: masked positions are
+    zeroed and the remaining positions follow the standard softmax backward
+    formula output * (grad_output - sum(output * grad_output over dim)).
+  for:
+    - _masked_softmax_backward
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - NeuralNetwork
+  stages:
+    - alpha: '5.4'
 - id: matmul_bias_activation
   description: Fused matrix multiplication with bias addition and ReLU activation.
   for:
@@ -10202,6 +10332,17 @@ ops:
   description: Out variant of batch normalization with running statistics.
   for:
   - _native_batch_norm_legit.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
+- id: native_channel_shuffle
+  description: Divides the channels into groups and rearranges each group.
+  for:
+  - native_channel_shuffle
   labels:
   - aten
   - KernelGen
@@ -12263,6 +12404,28 @@ ops:
   - Math
   stages:
   - beta: '5.3'
+- id: rrelu_with_noise
+  description: 'Triton kernel implementation for rrelu_with_noise
+    '
+  for:
+  - rrelu_with_noise
+  labels:
+  - aten
+  kind:
+  - NeuralNetwork
+  stages:
+  - beta: '5.4'
+- id: rrelu_with_noise_
+  description: 'Triton kernel implementation for rrelu_with_noise_
+    '
+  for:
+  - rrelu_with_noise_
+  labels:
+  - aten
+  kind:
+  - NeuralNetwork
+  stages:
+  - beta: '5.4'
 - id: rrelu_with_noise_backward
   description: 'Computes the gradient of the Randomized Leaky ReLU (RReLU) activation
     function with respect to
@@ -12988,6 +13151,40 @@ ops:
   stages:
   - beta: '5.0'
   - stable: '5.3'
+- id: set_
+  description: Reset tensor to an empty tensor with zero storage.
+  for:
+  - set_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: set_source_Tensor
+  description: Set tensor to share storage, shape, and strides with source tensor.
+  for:
+  - set_.source_Tensor
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: set_source_Tensor_storage_offset
+  description: Set tensor storage from another tensor with explicit offset, size,
+    stride.
+  for:
+  - set_.source_Tensor_storage_offset
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: sgn
   description: 'Computes the sign of each element in the input tensor, element-wise.
 
@@ -13341,6 +13538,32 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '5.0'
+- id: slice_copy
+  description: |
+    Performs the same operation as `torch.slice`, but all output tensors are freshly
+    created instead of aliasing the input. Returns a new tensor containing the
+    selected slice of `self` along the given dimension.
+  for:
+  - slice_copy.Tensor
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
+- id: slice_copy_out
+  description: |
+    A variant of `slice_copy()` that assigns the output to an `out` tensor.
+  for:
+  - slice_copy.Tensor_out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: slice_scatter
   description: 'Embeds the values of the `src` tensor into `input` at the given dimension.
 
@@ -13355,6 +13578,21 @@ ops:
   - Tensor
   stages:
   - stable: '2.2'
+- id: slogdet
+  description: |
+    Computes the sign and natural logarithm of the absolute value of the
+    determinant of a square matrix (or a batch of square matrices) using LU
+    decomposition with partial pivoting. This is the public alias for
+    `torch.linalg.slogdet`.
+  for:
+  - slogdet
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.4'
 - id: smooth_l1_loss
   description: Compute the smooth L1 loss between input and target tensors.
   for:
@@ -13379,6 +13617,19 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.3'
+- id: sobol_engine_ff_
+  description: Fast-forward Sobol quasi-random number generator state by n steps using
+    Gray code.
+  for:
+  - _sobol_engine_ff_
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: soft_margin_loss
   description: Compute the soft margin loss.
   for:
@@ -15260,10 +15511,46 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: thnn_fused_gru_cell
+  description: Computes the fused GRU cell forward pass and backward workspace.
+  for:
+  - _thnn_fused_gru_cell
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
+- id: thnn_fused_gru_cell_out
+  description: Writes the fused GRU cell output and workspace to provided tensors.
+  for:
+  - _thnn_fused_gru_cell.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: thnn_fused_lstm_cell
   description: Fused LSTM cell computation with optional input and hidden biases.
   for:
   - _thnn_fused_lstm_cell
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
+- id: thnn_fused_lstm_cell_backward
+  description: 'Computes and duplicates the input, hidden, and bias gradients produced
+    by
+
+    the fused LSTM cell backward implementation.'
+  for:
+  - _thnn_fused_lstm_cell_backward
   labels:
   - aten
   - KernelGen

@@ -14,25 +14,11 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
-
-# ``_adaptive_avg_pool3d_backward`` starts with an underscore, and
-# ``pytest.mark`` refuses to generate a marker via attribute access for such
-# names. Register it directly on the MarkGenerator so
-# ``@pytest.mark._adaptive_avg_pool3d_backward`` and ``-m
-# _adaptive_avg_pool3d_backward`` both work.
-setattr(
-    pytest.mark,
-    "_adaptive_avg_pool3d_backward",
-    MarkDecorator(
-        Mark("_adaptive_avg_pool3d_backward", (), {}, _ispytest=True), _ispytest=True
-    ),
-)
 
 if cfg.QUICK_MODE:
     FLOAT_DTYPES = [torch.float32]
@@ -66,7 +52,7 @@ ADAPTIVE_AVG_POOL3D_SHAPES = [
 ]
 
 
-@pytest.mark._adaptive_avg_pool3d_backward
+@pytest.mark.underscore_adaptive_avg_pool3d_backward
 @pytest.mark.parametrize("shape", ADAPTIVE_AVG_POOL3D_SHAPES)
 @pytest.mark.parametrize("output_size", ADAPTIVE_AVG_POOL3D_OUTPUT_SIZES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)

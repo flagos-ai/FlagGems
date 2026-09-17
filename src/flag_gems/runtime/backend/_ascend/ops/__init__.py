@@ -99,6 +99,7 @@ from .mean import mean, mean_dim
 from .min import min, min_dim
 from .mm import mm, mm_out
 from .multinomial import multinomial
+from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .nansum import nansum, nansum_out
 from .nonzero_static import nonzero_static, nonzero_static_out
 from .ones import ones
@@ -136,7 +137,9 @@ from .softmax import softmax, softmax_backward, softmax_backward_out, softmax_ou
 from .sort import sort
 from .sparse_sampled_addmm import sparse_sampled_addmm, sparse_sampled_addmm_out
 from .stack import stack
+from .swiglu import swiglu
 from .threshold import threshold, threshold_backward
+from .topk import topk
 from .triu import triu
 from .unique import _unique2
 from .unsafe_index import unsafe_index
@@ -269,6 +272,10 @@ __all__ = [
     "mm",
     "mm_out",
     "multinomial",
+    "nanmedian",
+    "nanmedian_dim",
+    "nanmedian_dim_values",
+    "nanmedian_out",
     "nansum",
     "nansum_out",
     "native_layer_norm",
@@ -319,8 +326,10 @@ __all__ = [
     "sparse_sampled_addmm",
     "sparse_sampled_addmm_out",
     "stack",
+    "swiglu",
     "threshold",
     "threshold_backward",
+    "topk",
     "triu",
     "unsafe_index",
     "unsafe_index_put",
