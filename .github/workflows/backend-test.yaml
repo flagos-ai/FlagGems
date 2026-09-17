@@ -130,16 +130,19 @@ jobs:
   # Iluvatar runs inside a container on whichever iluvatar-bi-v150-* server
   # this repo has access to. Different repos share this workflow file but
   # each can only reach one of the two physical machines, so the runner
-  # label is read from the repository variable ILUVATAR_RUNNER_LABEL
-  # (e.g. iluvatar-bi-v150-0 or iluvatar-bi-v150-1) instead of being
-  # hardcoded here.
+  # label is derived from github.repository (which resolves to the base repo
+  # even for fork PRs, unlike vars/secrets which are withheld from forks):
+  # FlagGems uses iluvatar-bi-v150-0, FlagGems-vllm uses iluvatar-bi-v150-1.
   # Equivalent to:
   #   docker run --rm -it --device /dev/iluvatar0 --device /dev/itrctl \
   #     harbor.baai.ac.cn/flagos-base/flagos-base-iluvatar-corex4.5.0:2.1.2 bash
   # with GitHub Actions creating/starting the container and exec'ing each step.
   test-iluvatar:
     if: ${{ inputs.backend == 'iluvatar' }}
-    runs-on: ${{ vars.ILUVATAR_RUNNER_LABEL }}
+    runs-on: >-
+      ${{ github.repository == 'flagos-ai/FlagGems-vllm'
+          && 'iluvatar-bi-v150-1'
+          || 'iluvatar-bi-v150-0' }}
     container:
       image: harbor.baai.ac.cn/flagos-base/flagos-base-iluvatar-corex4.5.0:2.1.2
       options: --device /dev/iluvatar0 --device /dev/itrctl
