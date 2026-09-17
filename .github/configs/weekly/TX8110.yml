@@ -33,6 +33,7 @@ container_volumes:
   - /lib/modules:/lib/modules
   - /sys:/sys
   - /etc/localtime:/etc/localtime:ro
+  - /mnt/nvme_data:/mnt/nvme_data
   - /data:/data
   - /home:/home
 
@@ -62,4 +63,4 @@ test_env:
 gpu_check_script: tools/gpu_check_tsingmicro.sh
 
 # Output base directory for this backends
-output_base_dir: /data/flaggems/weekly
+output_base_dir: /mnt/nvme_data/flaggems/weekly
