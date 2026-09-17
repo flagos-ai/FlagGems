@@ -150,6 +150,7 @@ _FULL_CONFIG = (
     ("_cudnn_rnn_backward", cudnn_rnn_backward),
     ("_cummax_helper", _cummax_helper),
     ("_cummin_helper", _cummin_helper),
+    ("_dimV", _dimV, None, (SPARSE_DISPATCH_KEY,)),
     ("_dirichlet_grad", _dirichlet_grad, lambda: _HAS_MAP_ELEMENTWISE),
     ("_dyn_quant_matmul_4bit", _dyn_quant_matmul_4bit),
     ("_dyn_quant_pack_4bit_weight", _dyn_quant_pack_4bit_weight),
