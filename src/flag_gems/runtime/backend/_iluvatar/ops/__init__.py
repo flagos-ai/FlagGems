@@ -50,6 +50,7 @@ from .log_normal_ import log_normal_
 from .matmul_bf16 import matmul_bf16
 from .matmul_int8 import matmul_int8
 from .mm import mm, mm_out
+from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .narrow_copy import narrow_copy
 from .nonzero_numpy import nonzero_numpy
 from .pad_sequence import pad_sequence
@@ -124,6 +125,10 @@ __all__ = [
     "matmul_int8",
     "mm",
     "mm_out",
+    "nanmedian",
+    "nanmedian_dim",
+    "nanmedian_dim_values",
+    "nanmedian_out",
     "narrow_copy",
     "nonzero_numpy",
     "pad_sequence",

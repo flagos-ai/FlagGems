@@ -21,6 +21,7 @@ from .any import any, any_dim, any_dims
 from .arange import arange, arange_start
 from .argmin import argmin
 from .argsort import argsort
+from .avg_pool2d import avg_pool2d_backward
 from .batch_norm import batch_norm, batch_norm_backward
 from .bucketize import bucketize
 from .celu import celu
@@ -70,6 +71,7 @@ from .min import min, min_dim
 from .mish import mish, mish_
 from .mode import mode
 from .mul import mul, mul_
+from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .nonzero_numpy import nonzero_numpy
 from .norm import norm, norm_scalar, norm_scalaropt_dim
 from .normal import normal_
@@ -79,6 +81,7 @@ from .ones_like import ones_like
 from .pad import constant_pad_nd, pad
 from .permute_copy import permute_copy
 from .prod import prod, prod_dim
+from .quantile import quantile
 from .rand import rand
 from .rand_like import rand_like
 from .randn import randn
@@ -122,6 +125,7 @@ __all__ = [
     "arange_start",
     "argmin",
     "argsort",
+    "avg_pool2d_backward",
     "batch_norm",
     "batch_norm_backward",
     "bucketize",
@@ -185,6 +189,10 @@ __all__ = [
     "mode",
     "mul",
     "mul_",
+    "nanmedian",
+    "nanmedian_dim",
+    "nanmedian_dim_values",
+    "nanmedian_out",
     "nonzero_numpy",
     "norm",
     "norm_scalar",
@@ -197,6 +205,7 @@ __all__ = [
     "permute_copy",
     "prod",
     "prod_dim",
+    "quantile",
     "rand",
     "rand_like",
     "randn",
