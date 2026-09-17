@@ -27,6 +27,7 @@ from .isin import isin
 from .kthvalue import kthvalue
 from .layernorm import layer_norm, layer_norm_backward
 from .lgamma_ import lgamma, lgamma_
+from .linalg_lstsq import linalg_lstsq
 from .linalg_matrix_exp import linalg_matrix_exp, linalg_matrix_exp_out
 from .linalg_matrix_power import linalg_matrix_power, linalg_matrix_power_out
 from .linalg_qr import linalg_qr, linalg_qr_out
@@ -47,6 +48,7 @@ from .matmul_int8 import matmul_int8
 from .min import min, min_dim
 from .mm import mm, mm_out
 from .mvlgamma_ import mvlgamma_
+from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .nansum import nansum, nansum_out
 from .new_ones import new_ones
 from .nonzero import nonzero
@@ -60,6 +62,7 @@ from .renorm import renorm, renorm_
 from .repeat import repeat
 from .repeat_interleave import repeat_interleave_self_tensor
 from .resolve_conj import resolve_conj
+from .rms_norm_w8a16_fp8 import rms_norm_w8a16_fp8
 from .rsqrt import rsqrt, rsqrt_
 from .sigmoid import sigmoid
 from .silu import silu
@@ -124,6 +127,7 @@ __all__ = [
     "layer_norm_backward",
     "lgamma",
     "lgamma_",
+    "linalg_lstsq",
     "linalg_matrix_exp",
     "linalg_matrix_exp_out",
     "linalg_matrix_power",
@@ -153,6 +157,10 @@ __all__ = [
     "mm",
     "mm_out",
     "mvlgamma_",
+    "nanmedian",
+    "nanmedian_dim",
+    "nanmedian_dim_values",
+    "nanmedian_out",
     "nansum",
     "nansum_out",
     "new_ones",
@@ -169,6 +177,7 @@ __all__ = [
     "repeat",
     "repeat_interleave_self_tensor",
     "resolve_conj",
+    "rms_norm_w8a16_fp8",
     "rsqrt",
     "rsqrt_",
     "sigmoid",

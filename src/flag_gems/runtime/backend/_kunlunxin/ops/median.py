@@ -1,17 +1,3 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import logging
 import math
 from collections import namedtuple
@@ -185,15 +171,6 @@ def median_key_info_chunk_kernel(
     KEY_BITS: tl.constexpr,
     PREORDERED: tl.constexpr,
 ):
-    # grid: M * NCHUNK_FULL; each program handles one CHUNK-sized slice of one
-    # row.  NCHUNK (total slices incl. tail) is used for the keybuf row-wide
-    # stride and slot layout; NCHUNK_FULL (slices that are full CHUNKs) is the
-    # number of programs per row, so the row is pid // NCHUNK_FULL.  The
-    # keybuf/offset address uses the chunk-major position (row, chunk_ordinal)
-    # within a (M, NCHUNK, CHUNK) layout: the tail chunk of a row sits at
-    # row*NCHUNK*CHUNK + (NCHUNK-1)*CHUNK, which must stay disjoint from the
-    # next row's full chunks, so full-slice kernels address via
-    # (row * NCHUNK + chunk) * CHUNK rather than pid * CHUNK.
     pid = ext.program_id(0)
     row = pid // NCHUNK_FULL
     chunk = pid % NCHUNK_FULL
@@ -220,14 +197,9 @@ def median_key_info_chunk_kernel(
         vals_hi = tl.load(inp + row * N + offsets, mask=mask, other=max_fill)
         keys_lo = _median_keys(vals_lo, KEY_BITS)
         keys_hi = _median_keys(vals_hi, KEY_BITS)
-    # keybuf layout: (M, NCHUNK, CHUNK); pad lanes keep the wrapper's
-    # all-ones-key sentinel (only the last chunk of a row has pads).
     tl.store(keybuf + slot * CHUNK + cols, keys, mask=mask)
     cidx = row * BLOCK_R + chunk
     if not PREORDERED and vals.dtype.is_floating():
-        # NaN first-index must be computed before the uint32 min/max
-        # reductions below (XPU miscompile otherwise, see the single-block
-        # key info kernel).  Pack = global index, sentinel = 0x7FFFFFFF.
         nan = mask & _median_is_nan(vals)
         local_first = tl.min(tl.where(nan, cols, CHUNK), axis=0)
         pack = tl.where(local_first < CHUNK, local_first + chunk * CHUNK, 2147483647)
@@ -252,7 +224,6 @@ def median_count_chunk_kernel(
     BLOCK_R: tl.constexpr,
     CHUNK: tl.constexpr,
 ):
-    # grid: M * NCHUNK_FULL; count keys <= mid within one full slice.
     pid = ext.program_id(0)
     row = pid // NCHUNK_FULL
     chunk = pid % NCHUNK_FULL
@@ -275,8 +246,6 @@ def median_update_step_kernel(
     KEY_BITS: tl.constexpr,
     FIRST: tl.constexpr,
 ):
-    # grid: (M); one binary-search step from the per-row total count.
-    # FIRST only materializes the initial mid.
     pid = ext.program_id(0)
     lo_v = tl.load(lo + pid)
     hi_v = tl.load(hi + pid)
@@ -314,8 +283,6 @@ def median_key_info_partial_kernel(
     KEY_BITS: tl.constexpr,
     PREORDERED: tl.constexpr,
 ):
-    # grid: (M); handles the leftover tail of a row (last slice), which is
-    # at most a full CHUNK but here never padded to a power of two.
     pid = ext.program_id(0)
     cols = tl.arange(0, BLOCK_P)
     offsets = START + cols
@@ -367,7 +334,6 @@ def median_count_partial_kernel(
     TAIL_BASE: tl.constexpr,
     BLOCK_P: tl.constexpr,
 ):
-    # grid: (M); count keys <= mid within the leftover tail slice.
     pid = ext.program_id(0)
     cols = tl.arange(0, BLOCK_P)
     mask = cols < PARTIAL
@@ -392,7 +358,6 @@ def median_select_partial_kernel(
     TAIL_BASE: tl.constexpr,
     BLOCK_P: tl.constexpr,
 ):
-    # grid: (M); find the earliest matching key within the tail slice.
     pid = ext.program_id(0)
     cols = tl.arange(0, BLOCK_P)
     mask = cols < PARTIAL
@@ -414,8 +379,6 @@ def median_row_reduce_kernel(
     BLOCK_N: tl.constexpr,
     MODE: tl.constexpr,
 ):
-    # grid: M; MODE 0 = min, 1 = max, 2 = sum (int32).
-    # OTHER is the masked-lane fill (max-key for min, 0 for max/sum).
     pid = ext.program_id(0)
     cols = tl.arange(0, BLOCK_N)
     mask = cols < NCHUNK
@@ -441,9 +404,6 @@ def median_select_chunk_kernel(
     BLOCK_R: tl.constexpr,
     CHUNK: tl.constexpr,
 ):
-    # grid: M * NCHUNK_FULL; find the earliest matching key within one slice.
-    # chunk_first is encoded as the GLOBAL index (chunk*CHUNK + local),
-    # or 0x7FFFFFFF when the slice has no match.
     pid = ext.program_id(0)
     row = pid // NCHUNK_FULL
     chunk = pid % NCHUNK_FULL
@@ -478,10 +438,6 @@ def median_merge_select_chunk_kernel(
     BLOCK_N: tl.constexpr,
     CHUNK: tl.constexpr,
 ):
-    # grid: (M); pick the earliest matching key over all slices, and for
-    # float rows the earliest NaN position.  chunk_first/chunk_nan hold
-    # GLOBAL positions (chunk*CHUNK + local) or CHUNK when absent, so the
-    # row-wide minimum directly yields the requested index.
     pid = ext.program_id(0)
     cc = tl.arange(0, BLOCK_N)
     mask = cc < NCHUNK
@@ -502,6 +458,7 @@ def median_merge_select_chunk_kernel(
         rval = tl.where(has_nan, float("nan"), rval)
     else:
         rval = tl.load(inp + pid * N + ridx, mask=ridx < N, other=0)
+        rval = tl.where(has_nan, 0, rval)
     tl.store(out_values + pid, rval)
     tl.store(out_indices + pid, ridx.to(tl.int64))
 
@@ -544,16 +501,8 @@ def median_key_info_kernel(
         vals_hi = tl.load(inp + pid * N + cols, mask=mask, other=max_fill)
         keys_lo = _median_keys(vals_lo, KEY_BITS)
         keys_hi = _median_keys(vals_hi, KEY_BITS)
-    # Only the first N lanes are written; pad lanes keep the all-ones-key
-    # sentinel installed by the wrapper, so the binary-search count/select
-    # stages never observe uninitialized torch.empty memory (masked tail
-    # loads are unreliable on XPU and leak pad lanes into reductions).
     tl.store(keybuf + pid * BLOCK_N + cols, keys, mask=mask)
     if not PREORDERED and vals.dtype.is_floating():
-        # Computed before the uint32 min/max reductions below: on XPU a
-        # preceding tl.min/tl.max over keys_lo/keys_hi (uint32) corrupts
-        # this subsequent int32 where-min result (miscompile), yielding
-        # wrong NaN first-indices.
         nan = mask & _median_is_nan(vals)
         has_nan = tl.max(nan.to(tl.int32), axis=0) != 0
         first_nan = tl.min(tl.where(nan, cols, BLOCK_N), axis=0)
@@ -586,8 +535,6 @@ def median_count_le_kernel(
         mid = lo_v + ((hi_v - lo_v) // 2)
     else:
         mid = ((lo_v.to(tl.int64) + hi_v.to(tl.int64)) // 2).to(tl.uint32)
-    # Pad lanes hold the all-ones key sentinel, so they never satisfy
-    # keys <= mid and can be summed unconditionally.
     le = tl.sum((keys_v <= mid).to(tl.int32), axis=0)
     go_left = le > TARGET
     active = lo_v < hi_v
@@ -611,12 +558,6 @@ def median_key_search_kernel(
     KEY_BITS: tl.constexpr,
     PREORDERED: tl.constexpr,
 ):
-    # Fused power-of-two-row variant: the row is loaded exactly once (no
-    # pad lanes) and the full binary search runs inside the kernel on the
-    # register-held key vector, so the 32 count scans collapse to a single
-    # global-read pass. Selection semantics (lower median, first index,
-    # first-NaN precedence) match the split info/count/select kernels
-    # exactly, so results are bit-identical to the legacy path.
     pid = ext.program_id(0)
     cols = tl.arange(0, BLOCK_N)
     pad = cols >= N
@@ -627,29 +568,17 @@ def median_key_search_kernel(
         else:
             keys = tl.load(inp + pid * N + cols, mask=~pad, other=0xFFFFFFFF)
     else:
-        # Pad lanes use the dtype's maximum value so their keys sit at (or
-        # above) the top of the real key range: they never affect min/lo,
-        # mimic a duplicate of the max (count-inert below the median) and
-        # never match the selected key during the select stage.
         if is_float:
             vals = tl.load(inp + pid * N + cols, mask=~pad, other=float("inf"))
         else:
             max_fill = get_dtype_max(inp.dtype.element_ty)
             vals = tl.load(inp + pid * N + cols, mask=~pad, other=max_fill)
         keys = _median_keys(vals, KEY_BITS)
-    # Masked tail loads leak neighboring-row memory on XPU, so the pad
-    # lanes are re-sanitized in-register to the all-ones key sentinel:
-    # it never satisfies keys <= mid, never selects as a match, and is
-    # never the min, so the binary search is inert to it.
     if KEY_BITS == 64:
         keys = tl.where(pad, 0xFFFFFFFFFFFFFFFF, keys)
     else:
         keys = tl.where(pad, 0xFFFFFFFF, keys)
     if (not PREORDERED) and is_float:
-        # NaN bookkeeping must precede the uint32 min/max reductions (XPU
-        # miscompile ordering constraint from median_key_info_kernel).
-        # Pad lanes can leak NaN values from Neighboring rows, so the
-        # NaN mask is restricted to the real lanes.
         nan = (~pad) & _median_is_nan(vals)
         has_nan = tl.max(nan.to(tl.int32), axis=0) != 0
         first_nan = tl.min(tl.where(nan, cols, BLOCK_N), axis=0)
@@ -701,6 +630,7 @@ def median_select_kernel(
         rval = tl.where(has_nan, float("nan"), rval)
     else:
         rval = tl.load(inp + pid * N + ridx, mask=ridx < N, other=0)
+        rval = tl.where(has_nan, 0, rval)
     tl.store(out_values + pid, rval)
     tl.store(out_indices + pid, ridx.to(tl.int64))
 
@@ -810,19 +740,9 @@ def _median_key_select(rows, N):
     if block_n > KEY_BLOCK_LIMIT:
         return _median_key_select_chunked(rows, N, key_bits)
     if key_bits == 64 and block_n > 16384:
-        # The fused in-kernel 64-iteration binary-search loop miscompiles on
-        # XPU once the row block reaches 32768 lanes: tl.sum inside the loop
-        # then counts every lane (le > target always), so the search converges
-        # to the row minimum for int64 keys (always top-half) and for float64
-        # rows whose order-keys sit in the top half (negative-heavy data).
-        # The chunked path runs one single-shot count kernel per host-side
-        # bisection step, which is exact at any width, so route 64-bit-key
-        # rows wider than 16384 there (tail-only single chunk).
         return _median_key_select_chunked(rows, N, key_bits)
     block_n = max(64, block_n)
     key_dtype = torch.uint64 if key_bits == 64 else torch.uint32
-    # Pre-fill pad lanes with the all-ones key sentinel (deterministic);
-    # the kernel only overwrites the first N lanes.
     keybuf = torch.full(
         (M, block_n),
         -1,
@@ -839,9 +759,6 @@ def _median_key_select(rows, N):
     if rows.dtype == torch.bool:
         work = rows.to(torch.uint8)
     elif rows.dtype == torch.int64:
-        # Two's complement: a single sign-bit flip gives a strictly
-        # monotone key order (unlike _order_keys64, which is the
-        # IEEE-float transform and inverts negatives).
         sign_bit = torch.tensor(-(1 << 63), dtype=torch.int64, device=rows.device)
         work = (rows.view(torch.int64) ^ sign_bit).view(torch.uint64)
     elif preordered:
@@ -857,16 +774,9 @@ def _median_key_select(rows, N):
         nan_flags = nanf.any(dim=1).to(torch.int32).contiguous()
         nan_firsts = nanf.to(torch.int64).argmax(dim=1).to(torch.int32).contiguous()
     else:
-        # The select kernel reads these for every row; leave them
-        # deterministic (0 = "no NaN") instead of torch.empty garbage.
         nan_flags.zero_()
         nan_firsts.zero_()
 
-    # Fused path: the whole binary search runs in one kernel over the
-    # register-held key vector (single global-read pass), replacing the
-    # legacy key_info + 32 count launches. Selection semantics (lower
-    # median, first index, first-NaN precedence) are identical, so select
-    # results are bit-identical to the legacy loop.
     with torch_device_fn.device(work.device):
         median_key_search_kernel[(M,)](
             work,
@@ -1013,10 +923,6 @@ def _median_key_select_chunked(rows, N, key_bits):
         )
         target = (N - 1) // 2
 
-        # Host-loop binary search.  Bulk D2H copies are rejected by the
-        # Kunlunxin to/copy overrides, so the small per-row state is read
-        # with scalar .item() (bitcast via f32 for uint32) and the mids are
-        # pushed back with a tiny scalar-store kernel.
         def _u32_of(t, i):
             if key_bits == 64:
                 return int(t.view(torch.int64)[i].item()) & 0xFFFFFFFFFFFFFFFF
@@ -1161,8 +1067,6 @@ def _median_dim_impl(inp, dim, keepdim, out=None):
         values = torch.empty(compute_shape, dtype=inp.dtype, device=inp.device)
         indices = torch.empty(compute_shape, dtype=torch.long, device=inp.device)
     else:
-        # Native ATen semantics: out containers are resized to the result
-        # shape (callers may pass e.g. a (1,) buffer for a (7,) result).
         values, indices = out
         if tuple(values.shape) != tuple(compute_shape):
             values = values.resize_(compute_shape)
@@ -1176,12 +1080,8 @@ def _median_dim_impl(inp, dim, keepdim, out=None):
         return MedianResult(values=values, indices=indices)
 
     with torch_device_fn.device(inp.device):
-        # bool is handled through the key-select path too (0/1 keys); the
-        # dedicated loop-based bool kernel is unreliable for N > 1024.
         rows = _reduction_rows(inp, dim, M, N)
         out_values, out_indices = _median_key_select(rows, N)
-        # Native copy engine write-backs (handle broadcasting and strided out
-        # containers; avoid nesting the registered copy_ override).
         torch.ops.aten._copy_from(out_values, values, False)
         torch.ops.aten._copy_from(out_indices, indices, False)
 
@@ -1196,8 +1096,6 @@ def _median_flat_impl(inp, out=None):
     if inp.numel() == 0:
         result = _empty_flat_result(inp)
         if out is not None:
-            # Write back through the native copy engine (never overridden by
-            # gems), not Tensor.copy_, to avoid nesting the registered copy_.
             torch.ops.aten._copy_from(result, out, False)
             return out
         return result
@@ -1213,8 +1111,6 @@ def _median_flat_impl(inp, out=None):
 
 def median(inp):
     logger.debug("GEMS_KUNLUNXIN MEDIAN")
-    # Complex is only acceptable for the empty-input case (torch returns an
-    # empty complex result); non-empty complex raises NotImplementedError.
     if inp.numel() != 0:
         _check_supported_dtype(inp)
     return _median_flat_impl(inp)
@@ -1249,8 +1145,6 @@ def median_dim(inp, dim=-1, keepdim=False):
     _check_supported_dtype(inp)
     dim_res, dim_was_name = _resolve_dim_name(inp, dim)
     if dim_was_name:
-        # Named-tensor ops (movedim etc.) are unsupported on this backend;
-        # compute on the unnamed tensor and re-attach names on the result.
         names = list(inp.names)
         result = _median_dim_impl(inp.rename(None), dim_res, keepdim)
         if keepdim:
