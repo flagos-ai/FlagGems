@@ -5,8 +5,10 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.ops.copy import copy_
+from flag_gems.ops.sum import sum_dim
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import dim_compress, libentry
+from flag_gems.utils import dim_compress, libentry, pointwise_dynamic
 from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
@@ -161,8 +163,8 @@ def _dim_block_n(args):
 
 
 def _dim_block_k(M, K):
-    num_sms = torch.cuda.get_device_properties(
-        torch.cuda.current_device()
+    num_sms = torch_device_fn.get_device_properties(
+        torch_device_fn.current_device()
     ).multi_processor_count
     target_waves = 4 if M <= 4 else 2
     target_blocks = target_waves * num_sms
@@ -171,7 +173,13 @@ def _dim_block_k(M, K):
 
 
 @libentry()
-@triton.heuristics(values={"BLOCK_N": _dim_block_n})
+@triton.heuristics(
+    values={
+        "BLOCK_N": lambda args: max(
+            1, triton.next_power_of_2(min(args["N"], 4096 // args["BLOCK_K"]))
+        )
+    }
+)
 @triton.jit
 def nanmean_dim_non_inner_kernel(
     inp,
@@ -361,15 +369,135 @@ def nanmean_dim(inp, dim=None, keepdim=False, *, dtype=None):
     return out if keepdim else _squeeze_dims(out, dims)
 
 
-def _nanmean_autograd(inp, dim, keepdim, dtype):
-    dims = _normalize_dims(dim, inp.ndim)
-    if inp.ndim > 0 and len(dims) == 0:
-        dims = list(range(inp.ndim))
-    dims = tuple(dims)
-    valid = ~torch.isnan(inp)
-    total = torch.where(valid, inp, 0).sum(dim=dims, keepdim=keepdim, dtype=dtype)
-    count = valid.sum(dim=dims, keepdim=keepdim)
+@pointwise_dynamic(
+    is_tensor=[True, True, False, False, False],
+    num_outputs=3,
+    promotion_methods=[(0, 1, "DEFAULT")] * 3,
+)
+@triton.jit
+def _masked_parts(
+    real,
+    imag,
+    real_output: tl.constexpr,
+    conjugated: tl.constexpr,
+    complex_input: tl.constexpr,
+):
+    valid = real == real
+    real_valid = valid
+    if complex_input:
+        valid = valid & (imag == imag)
+    if not real_output:
+        real_valid = valid
+    if conjugated:
+        imag = -imag
+    if not complex_input:
+        imag = tl.full(real.shape, 0, real.dtype)
+    return tl.where(real_valid, real, 0), tl.where(valid, imag, 0), valid.to(real.dtype)
+
+
+@pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
+@triton.jit
+def _mean_divide(total, count):
     return total / count
+
+
+@pointwise_dynamic(promotion_methods=[(0, 1, 2, "DEFAULT")])
+@triton.jit
+def _mean_backward(grad, valid, count):
+    # Multiplication follows division: an all-NaN slice must yield NaN gradients.
+    return (grad / count) * valid
+
+
+def _assemble_complex(real, imag, dtype):
+    result = torch.empty(real.shape, device=real.device, dtype=dtype)
+    parts = torch.view_as_real(result)
+    copy_(parts[..., 0], real)
+    copy_(parts[..., 1], imag)
+    return result
+
+
+def _masked_input_parts(inp, dtype):
+    real_dtype = (
+        torch.float64 if dtype in (torch.float64, torch.complex128) else torch.float32
+    )
+    real = torch.empty(inp.shape, dtype=real_dtype, device=inp.device)
+    imag = torch.empty_like(real)
+    valid = torch.empty_like(real)
+    if inp.is_complex():
+        physical = inp.conj() if inp.is_conj() else inp
+        parts = torch.view_as_real(physical)
+        xr, xi = parts[..., 0], parts[..., 1]
+    else:
+        xr, xi = inp, inp
+    _masked_parts(
+        xr,
+        xi,
+        not dtype.is_complex,
+        inp.is_conj(),
+        inp.is_complex(),
+        out0=real,
+        out1=imag,
+        out2=valid,
+    )
+    return real, imag, valid
+
+
+def _complex_mean(inp, dim, keepdim, dtype):
+    dim = _normalize_dims(dim, inp.ndim)
+    real, imag, valid = _masked_input_parts(inp, dtype)
+    count = sum_dim(valid, dim=dim, keepdim=keepdim)
+    real = _mean_divide(sum_dim(real, dim=dim, keepdim=keepdim), count)
+    if not dtype.is_complex:
+        result = torch.empty_like(real, dtype=dtype)
+        copy_(result, real)
+        return result
+    imag = _mean_divide(sum_dim(imag, dim=dim, keepdim=keepdim), count)
+    return _assemble_complex(real, imag, dtype)
+
+
+class _NanmeanAutograd(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, inp, dim, keepdim, dtype):
+        dtype = dtype or inp.dtype
+        dims = _normalize_dims(dim, inp.ndim)
+        if not dims:
+            dims = list(range(inp.ndim))
+        ctx.dims = dims
+        ctx.keepdim = keepdim
+        ctx.input_dtype = inp.dtype
+        _, _, valid = _masked_input_parts(inp, dtype)
+        count = sum_dim(valid, dim=dims, keepdim=True)
+        ctx.save_for_backward(valid, count)
+        if inp.is_complex() or dtype.is_complex:
+            return _complex_mean(inp, dim, keepdim, dtype)
+        return nanmean(inp.detach(), dim, keepdim, dtype=dtype)
+
+    @staticmethod
+    def backward(ctx, grad):
+        valid, count = ctx.saved_tensors
+        if not ctx.keepdim:
+            for dim in sorted(ctx.dims):
+                grad = grad.unsqueeze(dim)
+        if grad.is_complex():
+            physical = grad.conj() if grad.is_conj() else grad
+            parts = torch.view_as_real(physical)
+            real = _mean_backward(parts[..., 0], valid, count)
+            imag = _mean_backward(parts[..., 1], valid, count)
+            if grad.is_conj():
+                from .neg import neg
+
+                imag = neg(imag)
+            result = _assemble_complex(real, imag, ctx.input_dtype)
+        else:
+            result = torch.empty_like(valid, dtype=ctx.input_dtype)
+            if ctx.input_dtype.is_complex:
+                real = _mean_backward(grad, valid, count)
+                from flag_gems.ops.zeros_like import zeros_like
+
+                result = _assemble_complex(real, zeros_like(real), ctx.input_dtype)
+            else:
+                _mean_backward(grad, valid, count, out0=result)
+        return result, None, None, None
 
 
 def nanmean(inp, dim=None, keepdim=False, *, dtype=None):
@@ -385,38 +513,10 @@ def nanmean(inp, dim=None, keepdim=False, *, dtype=None):
             f"a floating point or complex dtype. Got: {dtype}"
         )
     complex_output = dtype is not None and dtype.is_complex
+    if inp.requires_grad and torch.is_grad_enabled():
+        return _NanmeanAutograd.apply(inp, dim, keepdim, dtype)
     if inp.is_complex() or complex_output:
-        if inp.is_complex():
-            real_part = inp.real
-            imag_part = inp.imag
-            valid = ~(torch.isnan(real_part) | torch.isnan(imag_part))
-        else:
-            real_part = inp
-            imag_part = torch.zeros_like(inp)
-            valid = ~torch.isnan(inp)
-        factor = valid.detach().sum(dim=dim, keepdim=keepdim)
-        real_dtype = (
-            torch.float64
-            if dtype in (torch.float64, torch.complex128)
-            else torch.float32
-        )
-        real_mask = (
-            ~torch.isnan(real_part)
-            if dtype is not None and not dtype.is_complex
-            else valid
-        )
-        real_sum = torch.where(real_mask, real_part, 0).sum(
-            dim=dim, keepdim=keepdim, dtype=real_dtype
-        )
-        real_mean = real_sum / factor
-        if dtype is not None and not dtype.is_complex:
-            return real_mean.to(dtype)
-        imag_sum = torch.where(valid, imag_part, 0).sum(
-            dim=dim, keepdim=keepdim, dtype=real_dtype
-        )
-        return torch.complex(real_mean, imag_sum / factor).to(dtype or inp.dtype)
-    if inp.requires_grad:
-        return _nanmean_autograd(inp, dim, keepdim, dtype)
+        return _complex_mean(inp, dim, keepdim, dtype or inp.dtype)
     if dim is None:
         result = _nanmean_global(inp, dtype=dtype)
         if keepdim:
@@ -429,6 +529,10 @@ def nanmean_out(inp, dim=None, keepdim=False, *, dtype=None, out=None):
     logger.debug("GEMS NANMEAN_OUT")
     if out is None:
         raise RuntimeError("nanmean(): missing required out tensor")
+    if torch.is_grad_enabled() and (inp.requires_grad or out.requires_grad):
+        raise RuntimeError(
+            "nanmean(): functions with out= arguments don't support automatic differentiation"
+        )
     if out.device != inp.device:
         raise RuntimeError(
             "nanmean: expected result tensor to be on the same device as input"
@@ -441,5 +545,10 @@ def nanmean_out(inp, dim=None, keepdim=False, *, dtype=None, out=None):
     result = nanmean(inp, dim=dim, keepdim=keepdim, dtype=dtype or out.dtype)
     if out.shape != result.shape:
         out.resize_(result.shape)
-    out.copy_(result)
+    if out.is_complex():
+        out_parts = torch.view_as_real(out)
+        result_parts = torch.view_as_real(result)
+        copy_(out_parts, result_parts)
+    else:
+        copy_(out, result)
     return out

@@ -9515,6 +9515,17 @@ ops:
     ignoring `NaN` values.'
   for:
   - nanmean
+  labels:
+  - aten
+  - Reduction
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: nanmean_out
+  description: Computes the mean of non-NaN values into the supplied output tensor.
+  for:
   - nanmean.out
   labels:
   - aten

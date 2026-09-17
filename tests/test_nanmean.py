@@ -292,6 +292,50 @@ def test_nanmean_complex_and_autograd():
 
 @pytest.mark.nanmean
 @pytest.mark.parametrize("keepdim", [False, True])
+def test_nanmean_backward_all_nan_slice(keepdim):
+    inp = torch.tensor(
+        [[float("nan"), float("nan")], [1.0, float("nan")]],
+        device=flag_gems.device,
+        requires_grad=True,
+    )
+    reference_input = utils.to_reference(inp.detach(), True).requires_grad_(True)
+    result = flag_gems.nanmean(inp, dim=1, keepdim=keepdim)
+    reference = torch.nanmean(reference_input, dim=1, keepdim=keepdim)
+    result.backward(torch.ones_like(result))
+    reference.backward(torch.ones_like(reference))
+    utils.gems_assert_close(inp.grad, reference_input.grad, inp.dtype, equal_nan=True)
+
+
+@pytest.mark.nanmean_out
+def test_nanmean_out_rejects_autograd():
+    inp = torch.randn(3, 4, device=flag_gems.device, requires_grad=True)
+    reference_input = utils.to_reference(inp.detach(), True).requires_grad_(True)
+    with pytest.raises(RuntimeError):
+        torch.nanmean(
+            reference_input, dim=1, out=torch.empty(3, device=reference_input.device)
+        )
+    with pytest.raises(RuntimeError):
+        flag_gems.nanmean_out(inp, dim=1, out=torch.empty(3, device=inp.device))
+
+
+@pytest.mark.nanmean
+@pytest.mark.skipif(
+    cfg.TO_CPU, reason="native CPU nanmean does not support complex inputs"
+)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_nanmean_complex_input_real_dtype(dtype):
+    inp = torch.tensor(
+        [2 + complex(0, float("nan")), 3 + 4j, complex(float("nan"), 1)],
+        dtype=torch.complex64,
+        device=flag_gems.device,
+    )
+    reference = torch.nanmean(utils.to_reference(inp), dtype=dtype)
+    result = flag_gems.nanmean(inp, dtype=dtype)
+    utils.gems_assert_close(result, reference, dtype, equal_nan=True)
+
+
+@pytest.mark.nanmean
+@pytest.mark.parametrize("keepdim", [False, True])
 def test_nanmean_backward_dim(keepdim):
     inp = _nan_input((5, 7), torch.float32, flag_gems.device).requires_grad_(True)
     ref_inp = utils.to_reference(inp.detach(), True).requires_grad_(True)
