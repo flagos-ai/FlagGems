@@ -101,6 +101,25 @@ def test_logdet_fp64_large_batch_4x4_nonfinite():
 
 @pytest.mark.logdet
 @pytest.mark.skipif(not utils.fp64_is_supported, reason="FP64 is not supported")
+@pytest.mark.parametrize("case", ["permuted_inf", "ill_conditioned"])
+def test_logdet_fp64_large_batch_4x4_stable_lu(case):
+    inp = torch.eye(4, dtype=torch.float64, device=flag_gems.device)
+    if case == "permuted_inf":
+        inp[0, 0] = float("inf")
+        inp = inp[[1, 2, 0, 3]]
+    else:
+        inp.fill_(1.0)
+        inp[1, 1] += 1e-7
+        inp[2, 2] += 1e-7
+        inp[3, 3] += 1e-7
+    inp = inp.repeat(4096, 1, 1)
+    reference = torch.logdet(utils.to_reference(inp))
+    result = flag_gems.logdet(inp)
+    utils.gems_assert_close(result, reference, torch.float64, equal_nan=True)
+
+
+@pytest.mark.logdet
+@pytest.mark.skipif(not utils.fp64_is_supported, reason="FP64 is not supported")
 def test_logdet_fp64_large_batch_4x4_pathological():
     inp = torch.eye(4, dtype=torch.float64, device=flag_gems.device).repeat(4096, 1, 1)
     inp[:1366, 3, 3] = 1e-200

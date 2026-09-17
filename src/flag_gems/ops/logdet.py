@@ -24,6 +24,8 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 
+from .contiguous import contiguous
+
 logger = logging.getLogger(__name__)
 
 _REGISTER_TILE_LIMIT = 32
@@ -66,9 +68,14 @@ def _logdet_register_kernel(
         multiplier = tl.where(rows > k, column / safe_pivot, 0.0)
         pivot_row_values = row_p
         update_mask = (rows[:, None] > k) & (cols[None, :] > k)
+        update = tl.where(
+            multiplier[:, None] == 0.0,
+            0.0,
+            multiplier[:, None] * pivot_row_values[None, :],
+        )
         work = tl.where(
             update_mask,
-            work - multiplier[:, None] * pivot_row_values[None, :],
+            work - update,
             work,
         )
 
@@ -219,13 +226,6 @@ def logdet(inp):
         return torch.zeros(batch_shape, dtype=inp.dtype, device=inp.device)
     if batch_count == 0:
         return torch.empty(batch_shape, dtype=inp.dtype, device=inp.device)
-    if inp.dtype == torch.float64 and batch_count >= 4096 and n == 4:
-        inp_contiguous = inp.contiguous().reshape(batch_count, 4, 4)
-        out = torch.empty(batch_count, dtype=inp.dtype, device=inp.device)
-        with torch_device_fn.device(inp.device):
-            _logdet_4x4_kernel[(batch_count,)](inp_contiguous, out, num_warps=1)
-        return out.reshape(batch_shape)
-
     fp64_unsupported = inp.dtype == torch.float64 and n > 16
     if n > _REGISTER_TILE_LIMIT or fp64_unsupported:
         raise RuntimeError(
@@ -233,7 +233,7 @@ def logdet(inp):
             "the Triton kernel"
         )
 
-    inp_contiguous = inp.contiguous().reshape(batch_count, n, n)
+    inp_contiguous = contiguous(inp).reshape(batch_count, n, n)
     out = torch.empty(batch_count, dtype=inp.dtype, device=inp.device)
     block_n = max(2, triton.next_power_of_2(n))
     num_warps = min(8, max(1, (block_n * block_n * inp.element_size()) // 4096))
