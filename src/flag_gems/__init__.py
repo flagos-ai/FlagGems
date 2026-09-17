@@ -138,6 +138,7 @@ _FULL_CONFIG = (
     ("_convert_weight_to_int4pack", _convert_weight_to_int4pack),
     ("_convolution_double_backward", _convolution_double_backward),
     ("_convolution_mode", _convolution_mode),
+    ("_cslt_sparse_mm", _cslt_sparse_mm),
     ("_cudnn_attention_forward", cudnn_attention_forward),
     ("_cudnn_rnn_backward", cudnn_rnn_backward),
     ("_cummax_helper", _cummax_helper),
@@ -323,6 +324,14 @@ _FULL_CONFIG = (
     ("_upsample_lanczos2d_aa", _upsample_lanczos2d_aa),
     ("_upsample_lanczos2d_aa.out", _upsample_lanczos2d_aa_out),
     ("_upsample_lanczos2d_aa.vec", _upsample_lanczos2d_aa_vec),
+    (
+        "_upsample_lanczos2d_aa_backward",
+        upsample_lanczos2d_aa_backward,
+    ),
+    (
+        "_upsample_lanczos2d_aa_backward.grad_input",
+        upsample_lanczos2d_aa_backward_grad_input,
+    ),
     ("_upsample_nearest_exact1d", _upsample_nearest_exact1d),
     ("_upsample_nearest_exact1d_backward", _upsample_nearest_exact1d_backward),
     (
@@ -352,6 +361,11 @@ _FULL_CONFIG = (
     ),
     ("_weight_norm_interface", weight_norm_interface),
     ("_weight_norm_interface_backward", weight_norm_interface_backward),
+    ("_wrapped_linear_prepack", _wrapped_linear_prepack),
+    (
+        "_wrapped_quantized_linear_prepacked",
+        _wrapped_quantized_linear_prepacked,
+    ),
     ("abs", abs),
     ("abs_", abs_),
     ("absolute", absolute),
@@ -673,6 +687,7 @@ _FULL_CONFIG = (
         "fake_quantize_per_tensor_affine_cachemask_backward",
         fake_quantize_per_tensor_affine_cachemask_backward,
     ),
+    ("feature_alpha_dropout", feature_alpha_dropout),
     ("feature_dropout", feature_dropout),
     ("feature_dropout_", feature_dropout_),
     ("fft_irfftn", fft_irfftn),
