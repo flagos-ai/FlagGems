@@ -20,6 +20,8 @@ import triton.language as tl
 from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 from triton.runtime import driver
 
+from flag_gems.runtime import torch_device_fn
+
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
@@ -173,7 +175,7 @@ def _flat_where_self(c, a, b, out, out_provided):
         return None
     # The launcher is bound per device, and the fast path launches on the current
     # one; the generated wrapper covers the general case with a device guard.
-    if a.device.index != torch.cuda.current_device():
+    if a.device.index != torch_device_fn.current_device():
         return None
     launchers = _flat_launchers()
     if launchers is None:  # triton without the launcher cache: correct, just slower
