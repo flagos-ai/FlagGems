@@ -34,6 +34,7 @@ from flag_gems.ops._batch_norm_impl_index_backward import (
     _batch_norm_impl_index_backward,
 )
 from flag_gems.ops._batch_norm_no_update import _batch_norm_no_update
+from flag_gems.ops._batch_norm_with_update import _batch_norm_with_update
 from flag_gems.ops._batch_norm_with_update_functional import (
     _batch_norm_with_update_functional,
 )
@@ -1177,6 +1178,7 @@ __all__ = [
     "_batch_norm_impl_index",
     "_batch_norm_impl_index_backward",
     "_batch_norm_no_update",
+    "_batch_norm_with_update",
     "_batch_norm_with_update_functional",
     "_cdist_backward",
     "_cdist_forward",
