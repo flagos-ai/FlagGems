@@ -5,6 +5,8 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.ops.contiguous import contiguous
+from flag_gems.ops.copy import copy_
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
@@ -109,8 +111,8 @@ def _orgqr_impl(input, tau, out):
     if out.numel() == 0:
         return out
 
-    input_work = input.reshape(batch_size, m, n).contiguous()
-    tau_work = tau.reshape(batch_size, k).contiguous()
+    input_work = contiguous(input).view(batch_size, m, n)
+    tau_work = contiguous(tau).view(batch_size, k)
 
     if input_work.data_ptr() == out.data_ptr():
         preserved_input = torch.empty_like(input_work)
@@ -125,7 +127,11 @@ def _orgqr_impl(input, tau, out):
         input_work = preserved_input
 
     copy_back = False
-    if input.ndim == 2:
+    if out.dtype != input.dtype:
+        # Reflectors must be applied in input precision. Cast only the final Q.
+        out_work = torch.empty((batch_size, m, n), dtype=input.dtype, device=out.device)
+        copy_back = True
+    elif input.ndim == 2:
         out_work = out.unsqueeze(0)
     else:
         try:
@@ -134,7 +140,7 @@ def _orgqr_impl(input, tau, out):
             # Flattening arbitrary batch strides may require a copy. Compute
             # in a workspace and explicitly write back to the provided out.
             out_work = torch.empty(
-                (batch_size, m, n), dtype=out.dtype, device=out.device
+                (batch_size, m, n), dtype=input.dtype, device=out.device
             )
             copy_back = True
 
@@ -157,7 +163,7 @@ def _orgqr_impl(input, tau, out):
             BLOCK_N=block_n,
         )
         if copy_back:
-            out.copy_(out_work.view(out.shape))
+            copy_(out, out_work.view(out.shape))
     return out
 
 

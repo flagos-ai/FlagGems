@@ -109,6 +109,38 @@ def test_orgqr_out_multiple_noncontiguous_batch_dimensions(dtype, layout):
 
 
 @pytest.mark.orgqr_out
+@pytest.mark.skipif(not utils.fp64_is_supported, reason="FP64 is not supported")
+@pytest.mark.parametrize("output_dtype", [torch.float32, torch.float16])
+@pytest.mark.parametrize("nonflattenable", [False, True])
+def test_orgqr_out_casts_only_final_result(output_dtype, nonflattenable):
+    matrix = torch.randn((2, 3, 31, 19), dtype=torch.float64, device=flag_gems.device)
+    input, tau = torch.geqrf(matrix)
+    ref_input, ref_tau = utils.to_reference(input), utils.to_reference(tau)
+    if nonflattenable:
+        out = torch.empty(
+            (3, 2, 31, 19), dtype=output_dtype, device=input.device
+        ).transpose(0, 1)
+        ref_out = torch.empty(
+            (3, 2, 31, 19), dtype=output_dtype, device=ref_input.device
+        ).transpose(0, 1)
+    else:
+        out = torch.empty(matrix.shape, dtype=output_dtype, device=input.device)
+        ref_out = torch.empty(matrix.shape, dtype=output_dtype, device=ref_input.device)
+    original_pointer, original_stride = out.data_ptr(), out.stride()
+    reference = torch.orgqr(ref_input, ref_tau, out=ref_out)
+    result = flag_gems.orgqr_out(input, tau, out=out)
+    assert result is out and result.data_ptr() == original_pointer
+    assert result.stride() == original_stride
+    actual, expected = utils.to_cpu(result, reference), reference
+    precision = torch.finfo(output_dtype)
+    # Allow one final-output ULP, including CPU half-cast double rounding;
+    # repeated low-precision reflector updates exceed this bound.
+    torch.testing.assert_close(
+        actual, expected, rtol=precision.eps, atol=precision.tiny * precision.eps
+    )
+
+
+@pytest.mark.orgqr_out
 def test_orgqr_out_stride_alias_dtype_and_device_contract():
     input, tau = make_reflectors((7, 5), torch.float32)
     ref_input = utils.to_reference(input)

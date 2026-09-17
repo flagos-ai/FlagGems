@@ -10916,6 +10916,16 @@ ops:
     Alias for torch.linalg.householder_product.'
   for:
   - orgqr
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.4'
+- id: orgqr_out
+  description: Computes the Householder matrix product into the supplied output tensor.
+  for:
   - orgqr.out
   labels:
   - aten
