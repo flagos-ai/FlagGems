@@ -188,7 +188,10 @@ def test_wrapped_quantized_linear_prepacked_empty_weight_dimension(N, K):
         # makes the edge case deterministic by returning dequantized uint8 zero.
         expected = -float(output_zp) * float(output_scale)
         utils.gems_assert_close(
-            actual, torch.full_like(actual, expected), actual.dtype, atol=1e-6
+            actual,
+            utils.to_reference(torch.full_like(actual, expected)),
+            actual.dtype,
+            atol=1e-6,
         )
     else:
         utils.gems_assert_close(actual.cpu(), reference, actual.dtype, atol=0.081)
