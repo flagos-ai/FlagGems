@@ -29,6 +29,8 @@ try:
 except ImportError:
     HAS_VLLM_FUSED_MOE = False
 
+print(HAS_VLLM_FUSED_MOE)
+
 
 def _dispatch_fused_moe_kernel_config():
     return {
