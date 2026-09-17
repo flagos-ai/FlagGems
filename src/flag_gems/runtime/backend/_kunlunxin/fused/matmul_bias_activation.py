@@ -1,27 +1,3 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-# Kunlunxin(XPU) backend override for the fused matmul+bias+ReLU operator.
-#
-# The generic `flag_gems.fused.matmul_bias_activation` kernel (BLOCK_K=32,
-# 1D bias broadcast `bias[None, :]`) fails to lower on XPU inside
-# `ConvertTritonSDNNToLLVM` (compile error, all shapes/dtypes fail).
-# This override reuses the structure proven in `_kunlunxin/ops/addmm.py`:
-#   256/128 tiles + GROUP_M swizzle, dtype-dependent BLOCK_SIZE_K (fp16 -> 256,
-#   bf16/fp32 -> 128), masked K-loop loads with other=0.0, fp32 accumulation,
-#   epilogue bias load as a full 2D tile + ReLU.
-
 import logging
 
 import torch
@@ -50,7 +26,6 @@ def heur_block_n(args):
 
 
 def heur_block_k(args):
-    # The wrapper passes BLOCK_K_CHOICE (fp16 -> 256, else 128).
     if args.get("BLOCK_K_CHOICE", 128) == 256:
         return 256
     return 128
@@ -84,8 +59,7 @@ def matmul_bias_activation_kernel(
     stride_ak,
     stride_bk,
     stride_bn,
-    stride_im,
-    stride_in,
+    stride_bias,
     stride_cm,
     stride_cn,
     BLOCK_SIZE_M: tl.constexpr,
@@ -97,7 +71,6 @@ def matmul_bias_activation_kernel(
     pid = ext.program_id(0)
     grid_m = tl.cdiv(M, BLOCK_SIZE_M)
     grid_n = tl.cdiv(N, BLOCK_SIZE_N)
-    # re-order program ID for better L2 reuse along the N dimension
     width = GROUP_M * grid_n
     group_id = pid // width
     group_size = min(grid_m - group_id * GROUP_M, GROUP_M)
@@ -130,41 +103,11 @@ def matmul_bias_activation_kernel(
     offs_cn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
     c_ptrs = c_ptr + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :]
     c_mask = (offs_cm[:, None] < M) & (offs_cn[None, :] < N)
-    i_ptrs = i_ptr + stride_im * offs_cm[:, None] + stride_in * offs_cn[None, :]
-    bias = tl.load(i_ptrs, mask=c_mask, other=0.0)
+    bias = tl.load(i_ptr + offs_cn * stride_bias, mask=offs_cn < N, other=0.0)
 
-    accumulator = accumulator + bias
-    # NOTE: a ReLU (or any compare/abs/select) fused directly on the
-    # fp32 tile right after tl.dot crashes the XPU compiler inside
-    # `ConvertTritonSDNNToLLVM` (isolated with the same kernel body: add/mul
-    # epilogue compiles, maximum/where/abs/minimum all fail). The ReLU is
-    # therefore applied by a dedicated pointwise kernel afterwards.
-    # Let tl.store convert to the output pointer dtype.
+    accumulator = accumulator + bias[None, :]
+    accumulator = tl.maximum(accumulator, 0.0)
     tl.store(c_ptrs, accumulator, mask=c_mask)
-
-
-@triton.jit
-def relu_kernel(
-    x_ptr,
-    numel,
-    BLOCK_SIZE: tl.constexpr,
-    NEED_MASK: tl.constexpr,
-):
-    # Flat 1D pass over a contiguous tensor. The previous 2D-tile
-    # (BLOCK 128x128 masked) version ran at ~2.5 GB/s on XPU (13.5ms on
-    # 4096^2 fp16); a flat strided-1 pass with NEED_MASK specialization is
-    # ~175x faster (~0.08ms, same as the vendor pointwise relu).
-    pid = tl.program_id(0)
-    offs = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    if NEED_MASK:
-        mask = offs < numel
-        x = tl.load(x_ptr + offs, mask=mask, other=0.0)
-        x = tl.maximum(x, 0.0)
-        tl.store(x_ptr + offs, x, mask=mask)
-    else:
-        x = tl.load(x_ptr + offs)
-        x = tl.maximum(x, 0.0)
-        tl.store(x_ptr + offs, x)
 
 
 def matmul_bias_activation(input, weight, bias):
@@ -192,7 +135,6 @@ def matmul_bias_activation(input, weight, bias):
     if bias.dim() > 1:
         bias = bias.reshape(-1)
     out = torch.empty((M, N), device=input.device, dtype=input.dtype)
-    bias = bias.broadcast_to(out.shape)
 
     block_k_choice = 256 if input.dtype == torch.float16 else 128
     with torch_device_fn.device(input.device):
@@ -212,17 +154,10 @@ def matmul_bias_activation(input, weight, bias):
             weight.stride(0),
             weight.stride(1),
             bias.stride(0),
-            bias.stride(1),
             out.stride(0),
             out.stride(1),
             GROUP_M=8,
             BLOCK_K_CHOICE=block_k_choice,
             num_stages=3,
-        )
-        numel = M * N
-        relu_block = 16384
-        need_mask = numel % relu_block != 0
-        relu_kernel[(triton.cdiv(numel, relu_block),)](
-            out, numel, BLOCK_SIZE=relu_block, NEED_MASK=need_mask
         )
     return out

@@ -1315,6 +1315,15 @@ def _fallback_erfc(x):
     return 1.0 - tl.math.erf(x)
 
 
+@triton.jit
+def _fallback_rcp_rn(x):
+    # Correctly-rounded reciprocal, used when a backend's libdevice lacks a
+    # native rcp_rn (e.g. the Ascend CANN backend). x is expected to already
+    # be fp32/fp64; casting 1.0 to x's dtype keeps the division from widening
+    # to fp64, which is what the callers of rcp_rn rely on.
+    return (1.0).to(x.dtype) / x
+
+
 _FALLBACK_SYMBOLS = {
     "pow": _fallback_pow,
     "asin": _fallback_asin,
@@ -1328,6 +1337,7 @@ _FALLBACK_SYMBOLS = {
     "log2": _fallback_log2,
     "nextafter": _fallback_nextafter,
     "normcdfinv": _fallback_normcdfinv,
+    "rcp_rn": _fallback_rcp_rn,
     "sinpi": _fallback_sinpi,
     "y0": _fallback_y0,
     "y1": _fallback_y1,
@@ -1396,6 +1406,7 @@ tl_extra_shim = _patch_missing_symbols(
         "nextafter",
         "normcdfinv",
         "pow",
+        "rcp_rn",
         "rint",
         "rsqrt",
         "silu",

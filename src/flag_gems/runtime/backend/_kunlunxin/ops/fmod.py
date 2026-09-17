@@ -2,6 +2,7 @@ import logging
 
 import triton
 import triton.language as tl
+import triton.language.extra.xpu.libdevice as xpu
 from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
@@ -23,11 +24,7 @@ config_ = CodeGenConfig(
 
 @triton.jit
 def _fmod(x, y):
-    x64 = x.to(tl.float64)
-    y64 = y.to(tl.float64)
-    quotient = x64 / y64
-    quotient = tl.where(quotient >= 0, tl.floor(quotient), -tl.floor(-quotient))
-    return x64 - y64 * quotient
+    return xpu.fmod(x, y)
 
 
 @pointwise_dynamic(

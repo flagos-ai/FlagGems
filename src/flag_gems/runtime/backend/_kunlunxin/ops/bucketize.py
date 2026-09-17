@@ -1,20 +1,3 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Kunlunxin (XPU) override of bucketize.
-#
-# Root cause: the generic binary-search kernel
-# (flag_gems/ops/bucketize.py) trips the XPU MLIR backend:
-#   error: 'arith.addi' op requires the same type for all operands
-#   -> PassManager::run failed / OutOfResources.
-# The mixed-width int arithmetic inside the `(lo + hi) // 2` binary search
-# does not lower on XPU (62 fp16/bf16/fp32 + int32 + boundary cases fail).
-#
-# Fix: replace the binary search with a straight linear scan over the
-# boundaries (they are tiny -- <= 32 in the suite and sorted ascending).
-# For each boundary we accumulate a `tl.where` count; no mixed-int divide,
-# no data-dependent loop bound, so XPU codegen is happy.
-#   right=False : idx = #{ b : b <  v }
-#   right=True  : idx = #{ b : b <= v }
 import logging
 
 import torch
@@ -25,6 +8,23 @@ from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger(__name__)
+
+_SMALL_N_BOUNDARIES = 8
+_boundary_cache = {}
+
+
+def _host_boundaries(boundaries):
+    """Host-side f32 values of `boundaries` with a version-guarded memo."""
+    key = (boundaries.data_ptr(), boundaries.numel(), boundaries.dtype)
+    version = boundaries._version
+    entry = _boundary_cache.get(key)
+    if entry is not None and entry[0] == version:
+        return entry[1]
+    values = [float(x) for x in boundaries.reshape(-1).cpu().tolist()]
+    _boundary_cache[key] = (version, values, boundaries)
+    if len(_boundary_cache) > 64:
+        _boundary_cache.pop(next(iter(_boundary_cache)))
+    return values
 
 
 @libentry()
@@ -55,6 +55,75 @@ def bucketize_kernel(
     tl.store(out_ptr + offsets, idx.to(tl.int64), mask=mask)
 
 
+@libentry()
+@triton.jit
+def bucketize_kernel_small(
+    inp_ptr,
+    out_ptr,
+    n_elements,
+    b0,
+    b1,
+    b2,
+    b3,
+    b4,
+    b5,
+    b6,
+    b7,
+    N_BOUNDARIES: tl.constexpr,
+    right: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+    NEED_MASK: tl.constexpr,
+):
+    pid = tle.program_id(0)
+    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    if NEED_MASK:
+        mask = offsets < n_elements
+        v = tl.load(inp_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+    else:
+        v = tl.load(inp_ptr + offsets).to(tl.float32)
+
+    idx = tl.zeros([BLOCK_SIZE], dtype=tl.int32)
+    if N_BOUNDARIES > 0:
+        idx += (b0 <= v).to(tl.int32) if right else (b0 < v).to(tl.int32)
+    if N_BOUNDARIES > 1:
+        idx += (b1 <= v).to(tl.int32) if right else (b1 < v).to(tl.int32)
+    if N_BOUNDARIES > 2:
+        idx += (b2 <= v).to(tl.int32) if right else (b2 < v).to(tl.int32)
+    if N_BOUNDARIES > 3:
+        idx += (b3 <= v).to(tl.int32) if right else (b3 < v).to(tl.int32)
+    if N_BOUNDARIES > 4:
+        idx += (b4 <= v).to(tl.int32) if right else (b4 < v).to(tl.int32)
+    if N_BOUNDARIES > 5:
+        idx += (b5 <= v).to(tl.int32) if right else (b5 < v).to(tl.int32)
+    if N_BOUNDARIES > 6:
+        idx += (b6 <= v).to(tl.int32) if right else (b6 < v).to(tl.int32)
+    if N_BOUNDARIES > 7:
+        idx += (b7 <= v).to(tl.int32) if right else (b7 < v).to(tl.int32)
+
+    if NEED_MASK:
+        tl.store(out_ptr + offsets, idx.to(tl.int64), mask=mask)
+    else:
+        tl.store(out_ptr + offsets, idx.to(tl.int64))
+
+
+def _pick_block_config(n_elements):
+    """Pick (BLOCK_SIZE, num_warps, need_mask) for the scalar-boundary kernel.
+
+    XPU is much faster on unmasked loads/stores, so prefer the largest
+    candidate block that divides n exactly; when n is not block-aligned
+    (e.g. 10000) fall back to a small masked block.
+    """
+    if n_elements < 8192:
+        if n_elements % 2048 == 0:
+            return 2048, 4, False
+        return 1024, 4, True
+    if n_elements % 8192 == 0:
+        return 8192, 8, False
+    if n_elements % 4096 == 0:
+        return 4096, 8, False
+    return 2048, 4, n_elements % 2048 != 0
+
+
 def bucketize(input, boundaries, *, out_int32=False, right=False):
     logger.debug("GEMS_KUNLUNXIN BUCKETIZE")
     output_dtype = torch.int32 if out_int32 else torch.int64
@@ -71,21 +140,37 @@ def bucketize(input, boundaries, *, out_int32=False, right=False):
     output_flat = output.flatten()
     boundaries = boundaries.contiguous()
 
-    BLOCK_SIZE = 1024
-    grid = (triton.cdiv(n_elements, BLOCK_SIZE), 1, 1)
-
-    bucketize_kernel[grid](
-        input_flat,
-        boundaries,
-        output_flat,
-        n_elements,
-        n_boundaries,
-        right,
-        BLOCK_SIZE,
-        num_warps=1,
-        buffer_size_limit=2048,
-        isCloseVectorization=True,
-    )
+    if n_boundaries <= _SMALL_N_BOUNDARIES:
+        block_size, num_warps, need_mask = _pick_block_config(n_elements)
+        grid = (triton.cdiv(n_elements, block_size), 1, 1)
+        host_bounds = list(_host_boundaries(boundaries))
+        host_bounds += [0.0] * (_SMALL_N_BOUNDARIES - n_boundaries)
+        bucketize_kernel_small[grid](
+            input_flat,
+            output_flat,
+            n_elements,
+            *host_bounds,
+            N_BOUNDARIES=n_boundaries,
+            right=right,
+            BLOCK_SIZE=block_size,
+            NEED_MASK=need_mask,
+            num_warps=num_warps,
+        )
+    else:
+        BLOCK_SIZE = 1024
+        grid = (triton.cdiv(n_elements, BLOCK_SIZE), 1, 1)
+        bucketize_kernel[grid](
+            input_flat,
+            boundaries,
+            output_flat,
+            n_elements,
+            n_boundaries,
+            right,
+            BLOCK_SIZE,
+            num_warps=1,
+            buffer_size_limit=2048,
+            isCloseVectorization=True,
+        )
 
     output = output.reshape(input.shape)
     if out_int32:
