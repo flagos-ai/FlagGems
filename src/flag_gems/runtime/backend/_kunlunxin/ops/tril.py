@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import logging
+import os
 
 import torch
 import triton
@@ -22,6 +23,12 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
+# 2026-09-17 · tril_out v2「内存载荷掩码因子」（where_self 同族：条件来自内存载荷、不来自
+# arange 派生 → 绕开 MakeRangeOp 卡点；无 i1、无 select）。实测 balanced ≈0.63 → 0.826。
+# 回退口：TRILOUT_MEMMASK=0。因子 = f(shape, dtype, diag) 的常量缓冲，按 key 有界缓存。
+_TRIL_MEMMASK = os.environ.get("TRILOUT_MEMMASK", "1") == "1"
+_TRIL_MMASK_CACHE = {}
+_TRIL_MMASK_CACHE_MAX = 8
 
 
 @triton.jit
@@ -461,6 +468,79 @@ def _tril_flat_pow2_kernel(
         tl.store(out_ptr + base + offsets, y)
 
 
+# ---- v2 内存载荷掩码因子（2026-09-17 · trilout-ablation-20260917） -----------------------------
+@triton.jit
+def _tril_mask_gen_kernel(
+    fac_ptr,
+    n,
+    diag,
+    LOG2N: tl.constexpr,
+    NMASK: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    # v2: 形状→常量因子的一次性生成（写 1.0/0.0；允许走慢路径，摊销后不计时）。
+    pid = tl.program_id(0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    m = offs < n
+    keep = (offs & NMASK) <= ((offs >> LOG2N) + diag)
+    v = tl.where(keep, 1.0, 0.0)
+    tl.store(fac_ptr + offs, v.to(fac_ptr.dtype.element_ty), mask=m)
+
+
+@triton.jit
+def _tril_flat_pow2_kernel_mmask(
+    in_ptr,
+    out_ptr,
+    fac_ptr,
+    active_total,
+    MN,
+    LOG2N: tl.constexpr,
+    NMASK: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+    NEED_MASK: tl.constexpr,
+):
+    # v2: 因子来自内存载荷（非 arange 派生）；数据乘法替代 where/select。
+    pid = tl.program_id(0)
+    pid_b = tl.program_id(1)
+    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    base = pid_b * MN
+    f = tl.load(fac_ptr + offsets)
+    if NEED_MASK:
+        mask = offsets < active_total
+        x = tl.load(in_ptr + base + offsets, mask=mask, other=0.0)
+        tl.store(out_ptr + base + offsets, x * f, mask=mask)
+    else:
+        x = tl.load(in_ptr + base + offsets)
+        tl.store(out_ptr + base + offsets, x * f)
+
+
+def _tril_mmask_get(M, N, diag, dtype, device):
+    # v2: 模块级 shape→常量因子缓存（与 where_self 的 plan/key 缓存同族；一次性生成）。
+    key = (M, N, diag, dtype)
+    fac = _TRIL_MMASK_CACHE.get(key)
+    if fac is None or fac.device != device:
+        n = M * N
+        # 尾部按最大 BLOCK（32768）补齐：主 kernel 的 f 载入不设掩码
+        # （掩码加载在本后端更慢）；补齐后 offsets 上界
+        # ≤ cdiv(n,BLOCK)*BLOCK ≤ n_pad，无越界读；尾部垃圾值只参与被掩码
+        # 丢弃 lane 的乘算，不会落盘。
+        n_pad = ((n + 32767) // 32768) * 32768
+        fac = torch.empty(n_pad, dtype=dtype, device=device)
+        BLOCK = 16384
+        grid = (triton.cdiv(n, BLOCK),)
+        with torch_device_fn.device(device):
+            _tril_mask_gen_kernel[grid](
+                fac, n, diag, N.bit_length() - 1, N - 1, BLOCK, num_warps=4
+            )
+        while len(_TRIL_MMASK_CACHE) >= _TRIL_MMASK_CACHE_MAX:
+            _TRIL_MMASK_CACHE.pop(next(iter(_TRIL_MMASK_CACHE)))
+        _TRIL_MMASK_CACHE[key] = fac
+    return fac
+
+
+# ---- /v2 ------------------------------------------------------------------------------------
+
+
 @triton.jit
 def _tril_band_batchgrid_kernel(
     in_ptr,
@@ -751,6 +831,23 @@ def _launch_v2_pow2(
         block_size = 32768
     grid = (triton.cdiv(active_total, block_size), batch)
     need_mask = active_total % block_size != 0
+    # v2 路径（默认开；`TRILOUT_MEMMASK=0` 回退原路径；仅 pow2 全矩阵生效）。
+    if _TRIL_MEMMASK and active_rows is None and (N & (N - 1)) == 0:
+        fac = _tril_mmask_get(M, N, int(diagonal), input.dtype, input.device)
+        with torch_device_fn.device(input.device):
+            _tril_flat_pow2_kernel_mmask[grid](
+                input,
+                out,
+                fac,
+                active_total,
+                MN,
+                N.bit_length() - 1,
+                N - 1,
+                block_size,
+                need_mask,
+                num_warps=num_warps, buffer_size_limit=8192,
+            )
+        return out
     with torch_device_fn.device(input.device):
         _tril_flat_pow2_kernel[grid](
             input,
