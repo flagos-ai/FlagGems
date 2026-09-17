@@ -74,12 +74,14 @@ dependencies = [
 
 [project.optional-dependencies]
 
+# --- BEGIN auto-generated from backends.yaml ---
 ascend-cann850 = [
     "torch==2.9.0+cpu",
     "torch-npu==2.9.0",
     "decorator==5.1.1",
     "attrs==24.2.0",
     "psutil==6.0.0",
+    "flagtree==0.6.0+ascend3.2",
 ]
 
 ascend-cann900 = [
@@ -88,6 +90,7 @@ ascend-cann900 = [
     "decorator==5.2.1",
     "attrs==25.3.0",
     "psutil==7.0.0",
+    "flagtree==0.6.1+ascend3.5",
 ]
 
 cambricon-neuware443 = [
@@ -96,6 +99,7 @@ cambricon-neuware443 = [
     "torch-mlu==1.29.2+torch2.7.1",
     "torch-mlu-ops==1.8.0+torch2.7.1",
     "numpy==2.2.6",
+    "triton==3.2.0+mlu1.7.2",
 ]
 
 cambricon-neuware472 = [
@@ -104,15 +108,7 @@ cambricon-neuware472 = [
     "torch==2.11.0+cpu",
     "torch-mlu==1.33.1+torch2.11.0",
     "torch-mlu-ops==1.12.1+torch2.11.0",
-]
-
-enflame-tops1910 = [
-    "pyefml==1.9.10",
-    "torch==2.10.0+cpu",
-    "torchaudio==2.10.0+cpu",
-    "torchvision==0.25.0+cpu",
-    "torch-gcu==2.10.0+3.7.20260408",
-    "flash-attn==2.7.2+torch.2.10.0.gcu.3.4.20260506",
+    "triton==3.4.0+mlu2.1.1",
 ]
 
 enflame-tops1106 = [
@@ -127,17 +123,31 @@ enflame-tops1106 = [
     "flash-attn==2.7.2+torch.2.11.0.gcu.3.8.20260706",
     "tops-extension==3.6.20260529+torch.2.11.0",
     "topstx==1.10.6",
+    "flagtree==0.6.1+enflame3.6",
+]
+
+enflame-tops1910 = [
+    "pyefml==1.9.10",
+    "torch==2.10.0+cpu",
+    "torchaudio==2.10.0+cpu",
+    "torchvision==0.25.0+cpu",
+    "torch-gcu==2.10.0+3.7.20260408",
+    "flash-attn==2.7.2+torch.2.10.0.gcu.3.4.20260506",
+    "flagtree==0.6.0+enflame3.6",
 ]
 
 hygon = [
     "torch==2.9.0+das.opt1.dtk2604",
+    "flash_attn==2.8.3+das.opt1.dtk2604.torch290",
+    "flagtree==0.6.1+hcu3.6",
 ]
 
 iluvatar = [
-    "torch==2.7.1+corex.4.4.0",
-    "torchaudio==2.7.1+corex.4.4.0",
-    "torchvision==0.22.1+corex.4.4.0",
+    "torch==2.10.0+corex.4.5.0.20260804",
+    "torchaudio==2.10.0+corex.4.5.0.20260804",
+    "torchvision==0.25.0+corex.4.5.0.20260804",
     "numpy<2",
+    "flagtree==0.6.1+iluvatar3.6",
 ]
 
 kunlunxin = [
@@ -156,6 +166,7 @@ kunlunxin = [
     "torch_xray==2.0.4",
     "xformers==0.0.29+1e7a8ec.d20260114",
     "xmlir==1.0.0.1",
+    "flagtree==0.5.1+xpu3.0",
 ]
 
 metax-maca3810 = [
@@ -168,35 +179,41 @@ metax-maca3810 = [
     "torch==2.10.0+metax3.8.1.0",
     "torchcodec==0.6.0+metax3.8.1.0",
     "torchaudio==2.4.1+metax3.8.1.0",
-    "torchvision==0.25.0+metax3.8.1.0"
+    "torchvision==0.25.0+metax3.8.1.0",
+    "flagtree==0.6.1+metax3.6",
 ]
 
 mthreads-musa436 = [
     "torch==2.9.0+musa.4.3.6",
     "torch_musa==2.9.0",
     "mkl==2024.0.0",
+    "flagtree==0.6.0+mthreads3.6",
 ]
 
 mthreads-musa520 = [
     "torch==2.9.1+musa5.2.0",
     "torch_musa==2.9.1",
     "mkl==2024.0.0",
+    "flagtree==0.6.0+mthreads3.6",
 ]
 
 nvidia-cuda128 = [
     "torch==2.10.0+cu128",
     "torchaudio==2.10.0+cu128",
     "torchvision==0.25.0+cu128",
+    "flagtree==0.6.1",
 ]
 
 nvidia-cuda133 = [
     "torch==2.11.0+cu130",
     "torchaudio==2.11.0+cu130",
     "torchvision==0.26.0+cu130",
+    "flagtree==0.6.1",
 ]
 
 spacemit = [
     "torch==2.8.0+spacemit.0",
+    "triton==3.6.0+spacemit.a5",
 ]
 
 sunrise = [
@@ -204,12 +221,13 @@ sunrise = [
     "torchaudio==2.11.0+cpu",
     "torchvision==0.26.0+cpu",
     "torch-ptpu==0.2.3+torch2.11",
+    "triton==3.6.0.1+git0a5cfb35",
 ]
 
 thead = [
     "torch==2.9.0+ppu2.0.0.oe",
+    "triton==3.5.0+ppu2.0.0.oe",
 ]
-
 
 tsingmicro = [
     "torch==2.7.0+cpu",
@@ -217,7 +235,9 @@ tsingmicro = [
     "torchaudio==2.7.0+cpu",
     "torch_txda==0.1.0+20260615.37ba6bbd",
     "txops==0.1.0+20260508.60287151",
+    "flagtree==0.5.0.post20260612+git705a4064",
 ]
+# --- END auto-generated from backends.yaml ---
 
 # Test packages
 test = [
@@ -240,6 +260,7 @@ test = [
 example = [
     "transformers>=4.40.2",
 ]
+
 
 # C++ wrapped operators, distributed as per-vendor native extension packages.
 # `pip install flag-gems[cpp-cuda]` pulls in the matching native wheel, which
