@@ -31,6 +31,7 @@ def i0_kernel(x_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
     mask = offsets < n_elements
 
+    # Preserve input precision while evaluating the polynomial in fp32.
     x = tl.load(x_ptr + offsets, mask=mask, other=0)
     x_f32 = x.to(tl.float32)
     ax = tl.abs(x_f32)
@@ -75,7 +76,8 @@ def i0_kernel(x_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
     use_small = ax <= 3.75
     res = tl.where(use_small, p_small, res_big)
 
-    # Store result; Triton will cast to the dtype of out_ptr as needed
+    # ATen rounds the result to the input dtype before casting to the out dtype.
+    res = res.to(x.dtype)
     tl.store(out_ptr + offsets, res, mask=mask)
 
 
@@ -90,14 +92,10 @@ def _launch_i0(out: torch.Tensor, x: torch.Tensor):
     x_in = x
     out_in = out
 
-    # Ensure floating point compute
+    # Ensure floating point compute (matches torch.i0, which promotes integer
+    # inputs to the default floating point dtype before evaluation).
     if not x_in.is_floating_point():
         x_in = x_in.to(torch.get_default_dtype())
-
-    # Cast input to match the desired output dtype if needed
-    # (Compute will be done in fp32 inside kernel; store will cast to out dtype)
-    if x_in.dtype != out_in.dtype:
-        x_in = x_in.to(out_in.dtype)
 
     x_contig = x_in.contiguous()
     out_was_noncontig = not out_in.is_contiguous()
