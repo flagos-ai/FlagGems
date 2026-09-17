@@ -51,21 +51,18 @@ def test_remainder(shape, dtype):
     ref_inp2 = utils.to_reference(inp2, False)
 
     ref_out = ref_inp1 % ref_inp2
-    with flag_gems.use_gems():
-        res_out = inp1 % inp2
+    res_out = flag_gems.remainder(inp1, inp2)
 
     utils.gems_assert_equal(res_out, ref_out)
 
     for d in inp2.flatten()[:2]:
         d = d.item()
         ref_out = ref_inp1 % d
-        with flag_gems.use_gems():
-            res_out = inp1 % d
+        res_out = flag_gems.remainder(inp1, d)
         utils.gems_assert_equal(res_out, ref_out)
 
         ref_out = d % ref_inp1
-        with flag_gems.use_gems():
-            res_out = d % inp1
+        res_out = flag_gems.remainder(d, inp1)
         utils.gems_assert_equal(res_out, ref_out)
 
 
@@ -86,8 +83,7 @@ def test_remainder_(shape, dtype):
 
     ref_out = ref_inp1.remainder_(ref_inp2)
 
-    with flag_gems.use_gems():
-        res_out = inp1.remainder_(inp2)
+    res_out = flag_gems.remainder_(inp1, inp2)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -96,8 +92,7 @@ def test_remainder_(shape, dtype):
         d = d.item()
         ref_out = ref_inp1.remainder_(d)
 
-        with flag_gems.use_gems():
-            res_out = inp1.remainder_(d)
+        res_out = flag_gems.remainder_(inp1, d)
         utils.gems_assert_equal(res_out, ref_out)
 
 
@@ -113,8 +108,7 @@ def test_remainder_scalar(shape, dtype, scalar):
     ref_inp = utils.to_reference(inp, False)
     ref_out = torch.remainder(ref_inp, scalar)
 
-    with flag_gems.use_gems():
-        res_out = torch.remainder(inp, scalar)
+    res_out = flag_gems.remainder(inp, scalar)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -144,8 +138,7 @@ def test_remainder_scalar_(shape, dtype):
     ref_inp = utils.to_reference(inp.clone(), False)
     ref_out = ref_inp.remainder_(scalar)
 
-    with flag_gems.use_gems():
-        res_out = inp.remainder_(scalar)
+    res_out = flag_gems.remainder_(inp, scalar)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -168,7 +161,19 @@ def test_remainder_scalar_tensor(shape, dtype):
 
     scalar = 7
     ref_out = torch.remainder(torch.tensor(scalar, dtype=dtype), ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.remainder(scalar, inp)
+    res_out = flag_gems.remainder(scalar, inp)
 
     utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.remainder_scalar
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("scalar", utils.SCALARS)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_remainder_scalar_float(shape, scalar, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    divisor = scalar if scalar != 0 else 1.0
+    ref_inp = utils.to_reference(inp)
+    ref_out = torch.remainder(ref_inp, divisor)
+    res_out = flag_gems.remainder(inp, divisor)
+    utils.gems_assert_close(res_out, ref_out, dtype)
