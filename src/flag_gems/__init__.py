@@ -28,7 +28,6 @@ from flag_gems.modules import *  # noqa: F403
 from flag_gems.ops import *  # noqa: F403
 from flag_gems.ops import range as range_op
 from flag_gems.ops._dirichlet_grad import _HAS_MAP_ELEMENTWISE
-from flag_gems.ops.argsort import argsort_stable  # noqa: F401
 from flag_gems.patches import *  # noqa: F403
 from flag_gems.patches import patch_empty_vllm  # noqa: F401
 from flag_gems.runtime import flagtune

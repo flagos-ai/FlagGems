@@ -156,10 +156,3 @@ def argsort(inp, dim=-1, descending=False):
         return _byte_argsort(inp, dim, descending)
     _, indices = sort_stable(inp, stable=True, dim=dim, descending=descending)
     return indices
-
-
-def argsort_stable(inp, *, stable, dim=-1, descending=False):
-    """Implements the ``aten::argsort.stable`` overload."""
-    logger.debug("GEMS ARGSORT_STABLE")
-    _, indices = sort_stable(inp, stable=stable, dim=dim, descending=descending)
-    return indices
