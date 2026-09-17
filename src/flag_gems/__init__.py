@@ -209,6 +209,7 @@ _FULL_CONFIG = (
         None,
         (AUTOGRAD_DISPATCH_KEY,),
     ),
+    ("_has_same_storage_numel", _has_same_storage_numel),
     ("_index_put_impl_", _index_put_impl_),
     (
         "_int_mm",
