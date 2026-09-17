@@ -16,19 +16,17 @@ import os
 
 import pytest
 import torch
-import triton
 import yaml
 
 import flag_gems
 
 from . import base, consts
-from .conftest import Config
 
 _MM_W8A8_FP8_OUT_CACHE = {}
 _MM_W8A8_FP8_OUT_CACHE_MAX_ENTRIES = 8
 
 
-def _mm_w8a8_fp8_out_cached(a, b):
+def _mm_w8a8_fp8_out_cached(a, b, scale_a, scale_b):
     out_dtype = torch.bfloat16
     device_index = a.device.index if a.device.index is not None else -1
     key = (device_index, a.shape[0], b.shape[1], out_dtype)
@@ -41,7 +39,7 @@ def _mm_w8a8_fp8_out_cached(a, b):
     else:
         _MM_W8A8_FP8_OUT_CACHE.pop(key)
         _MM_W8A8_FP8_OUT_CACHE[key] = out
-    return flag_gems.mm_w8a8_fp8_out(a, b, out=out)
+    return flag_gems.mm_w8a8_fp8_out(a, b, scale_a, scale_b, out=out)
 
 
 def mm_w8a8_fp8_input_fn(b, m, n, k, cur_dtype, device, b_column_major):
@@ -50,7 +48,20 @@ def mm_w8a8_fp8_input_fn(b, m, n, k, cur_dtype, device, b_column_major):
         weight = torch.randn([n, k], dtype=torch.float32, device=device).t()
     else:
         weight = torch.randn([k, n], dtype=torch.float32, device=device)
-    yield a.to(cur_dtype), weight.to(cur_dtype)
+    # Quantization and scale preparation stay outside the timed calls.
+    scale_a = torch.full(
+        (1,),
+        0.5,
+        dtype=torch.float32,
+        device=device,
+    )
+    scale_b = torch.full(
+        (1,),
+        1.5,
+        dtype=torch.float32,
+        device=device,
+    )
+    yield a.to(cur_dtype), weight.to(cur_dtype), scale_a, scale_b
 
 
 class MmW8A8Fp8Benchmark(base.BlasBenchmark):
@@ -58,18 +69,6 @@ class MmW8A8Fp8Benchmark(base.BlasBenchmark):
         # Keep row-major A and column-major B for both benchmark paths.
         for b, m, n, k in self.shapes:
             yield from self.input_fn(b, m, n, k, dtype, self.device, True)
-
-    def get_latency(self, op, *args, **kwargs):
-        if op is not self.torch_op:
-            # Populate descriptor, output, and autotune caches before capture.
-            for _ in range(2):
-                op(*args, **kwargs)
-            torch.cuda.synchronize()
-        return triton.testing.do_bench_cudagraph(
-            lambda: op(*args, **kwargs),
-            rep=Config.repetition,
-            return_mode="median",
-        )
 
     def set_shapes(self, shape_file_path=None):
         super().set_shapes(shape_file_path)
@@ -92,15 +91,14 @@ class MmW8A8Fp8Benchmark(base.BlasBenchmark):
 @pytest.mark.mm_w8a8_fp8
 def test_mm_w8a8_fp8():
     if not hasattr(flag_gems, "mm_w8a8_fp8_out"):
-        pytest.skip("mm_w8a8_fp8 benchmark requires the Hopper W8A8 backend")
-    scale = torch.ones((), dtype=torch.float32, device=flag_gems.device)
+        pytest.skip("mm_w8a8_fp8 benchmark requires a supported FP8 backend")
 
-    def torch_fp8_mm(a, b):
+    def torch_fp8_mm(a, b, scale_a, scale_b):
         return torch._scaled_mm(
             a,
             b,
-            scale,
-            scale,
+            scale_a,
+            scale_b,
             out_dtype=torch.bfloat16,
             use_fast_accum=False,
         )
@@ -109,7 +107,11 @@ def test_mm_w8a8_fp8():
         input_fn=mm_w8a8_fp8_input_fn,
         op_name="mm_w8a8_fp8",
         torch_op=torch_fp8_mm,
-        dtypes=consts.FP8_DTYPES,
+        dtypes=(
+            [torch.float8_e4m3fn]
+            if flag_gems.vendor_name == "mthreads"
+            else consts.FP8_DTYPES
+        ),
     )
     bench.set_gems(_mm_w8a8_fp8_out_cached)
     bench.run()

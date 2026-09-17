@@ -1,6 +1,6 @@
 # Copyright 2026 FlagOS Contributors
-#
 # Licensed under the Apache License, Version 2.0 (the "License");
+#
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
@@ -55,7 +55,7 @@ permissions:
 
 jobs:
   test:
-    if: ${{ inputs.backend != 'iluvatar' }}
+    if: ${{ inputs.backend != 'iluvatar' && inputs.backend != 'kunlunxin' }}
     runs-on: ${{ inputs.runner_label }}
     concurrency:
       group: >-
@@ -86,18 +86,63 @@ jobs:
           source .venv/bin/activate
           tools/test-op.sh ${{ inputs.pr_id }}
 
-  # Iluvatar runs inside a container on the iluvatar-bi-v150-0 server, since
-  # the corex driver/runtime it needs is only set up inside this image.
+  # Kunlunxin runs inside a container on the klx-p800-1 server, since the XPU
+  # driver/runtime it needs is only set up inside this image.
   # Equivalent to:
-  #   docker run --rm -it --device /dev/iluvatar0 \
+  #   docker run --rm -it \
+  #     harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin-xre5.37.1:2.1.2 bash
+  # with GitHub Actions creating/starting the container and exec'ing each step.
+  test-kunlunxin:
+    if: ${{ inputs.backend == 'kunlunxin' }}
+    runs-on: klx-p800-1
+    container:
+      image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin-xre5.37.1:2.1.2
+      options: --device /dev/xpu0 --device /dev/xpuctrl
+    concurrency:
+      group: >-
+        op-test-${{ inputs.backend }}-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        continue-on-error: true
+      - uses: ./.github/actions/checkout-retry
+      - uses: ./.github/actions/setup-flaggems
+        with:
+          backend: ${{ inputs.backend }}
+          gpu_check_script: ${{ inputs.gpu_check_script }}
+
+      - name: Test alpha ops
+        if: ${{ inputs.test_script != '' }}
+        env:
+          CHANGED_FILES: ${{ inputs.changed_files }}
+        shell: bash
+        run: |
+          bash ${{ inputs.test_script }} ${{ inputs.backend }} ${{ inputs.pr_id }}
+      - name: Run backend tests
+        if: ${{ inputs.test_script == '' }}
+        shell: bash
+        env:
+          CHANGED_FILES: ${{ inputs.changed_files }}
+        run: |
+          source .venv/bin/activate
+          tools/test-op.sh ${{ inputs.pr_id }}
+
+  # Iluvatar runs inside a container on whichever iluvatar-bi-v150-* server
+  # this repo has access to. Different repos share this workflow file but
+  # each can only reach one of the two physical machines, so the runner
+  # label is read from the repository variable ILUVATAR_RUNNER_LABEL
+  # (e.g. iluvatar-bi-v150-0 or iluvatar-bi-v150-1) instead of being
+  # hardcoded here.
+  # Equivalent to:
+  #   docker run --rm -it --device /dev/iluvatar0 --device /dev/itrctl \
   #     harbor.baai.ac.cn/flagos-base/flagos-base-iluvatar-corex4.5.0:2.1.2 bash
   # with GitHub Actions creating/starting the container and exec'ing each step.
   test-iluvatar:
     if: ${{ inputs.backend == 'iluvatar' }}
-    runs-on: iluvatar-bi-v150-0
+    runs-on: ${{ vars.ILUVATAR_RUNNER_LABEL }}
     container:
       image: harbor.baai.ac.cn/flagos-base/flagos-base-iluvatar-corex4.5.0:2.1.2
-      options: --device /dev/iluvatar0
+      options: --device /dev/iluvatar0 --device /dev/itrctl
     concurrency:
       group: >-
         op-test-${{ inputs.backend }}-${{ github.event.pull_request.number || github.ref }}

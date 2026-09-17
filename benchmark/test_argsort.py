@@ -26,7 +26,15 @@ class ArgsortBenchmark(base.GenericBenchmark2DOnly):
 
 
 def _input_fn(shape, dtype, device):
-    inp = utils.generate_tensor_input(shape, dtype, device)
+    if dtype in (torch.int8, torch.uint8):
+        low, high = (-128, 128) if dtype == torch.int8 else (0, 256)
+        inp = torch.randint(low, high, shape, dtype=dtype, device="cpu").to(device)
+    elif dtype == torch.int64:
+        inp = torch.randint(-(2**60), 2**60, shape, dtype=dtype, device="cpu").to(
+            device
+        )
+    else:
+        inp = utils.generate_tensor_input(shape, dtype, device)
     yield inp, {"dim": -1, "descending": False},
 
 
@@ -39,6 +47,7 @@ def test_argsort():
         input_fn=_input_fn,
         op_name="argsort",
         torch_op=torch.argsort,
-        dtypes=consts.INT_DTYPES + consts.FLOAT_DTYPES,
+        dtypes=consts.INT_DTYPES + consts.FLOAT_DTYPES + consts.EXTRA_INT_DTYPES,
     )
+    bench.set_gems(flag_gems.argsort)
     bench.run()

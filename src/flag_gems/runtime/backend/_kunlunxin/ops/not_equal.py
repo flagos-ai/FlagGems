@@ -1,3 +1,4 @@
+import functools
 import logging
 import math
 import os
@@ -7,9 +8,106 @@ import triton
 import triton.language as tl
 from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 
+from flag_gems.runtime import torch_device_fn
+
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
+
+try:
+    import triton.experimental.tle as tle
+
+    _TLE_OK = True
+except ImportError:
+    tle = None
+    _TLE_OK = False
+
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_NCLUSTER = 12
+_RAW_MAX_ELEMS = 2**31 - 1
+_RAW_CHUNK_BYTES = 2048
+_SMALL_SCALAR_LIMIT = 65536
+
+_RAW_TYPE_CODE = {
+    torch.float32: 0,
+    torch.float16: 1,
+    torch.bfloat16: 2,
+}
+
+if _TLE_OK:
+
+    @tle.raw.dialect("xpu3", file=os.path.join(_HERE, "ne_raw.xpu"))
+    def ne_scalar_raw(
+        in_, out, numel, esz, type_code, scalar_bits, chunk_start, chunk_count
+    ): ...
+
+    @triton.jit(
+        do_not_specialize=["numel", "esz", "type_code", "scalar_bits", "chunk_count"]
+    )
+    def ne_scalar_raw_kernel(In, Out, numel, esz, type_code, scalar_bits, chunk_count):
+        pid = tl.program_id(0)
+        tle.raw.call(
+            ne_scalar_raw,
+            (
+                In,
+                Out,
+                numel,
+                esz,
+                type_code,
+                scalar_bits,
+                pid * chunk_count,
+                chunk_count,
+            ),
+        )
+
+
+def _view_u8(t):
+    """Byte view of a tensor; works for 0-dim tensors too."""
+    if t.dim() == 0:
+        return t.view(1).view(torch.uint8)
+    return t.view(torch.uint8)
+
+
+@functools.lru_cache(maxsize=1024)
+def _scalar_bits(B, dtype):
+    """The scalar promoted to `dtype`, as a sign-extended int32 bit pattern.
+
+    Matches torch.not_equal's type promotion: the python float scalar is
+    converted to the tensor's dtype and compared in that dtype. Cached: the
+    dtype conversion costs a couple of microseconds on the host, which is
+    directly visible on launch-bound small shapes.
+    """
+    if dtype == torch.float32:
+        return int(torch.tensor(B, dtype=torch.float32).view(torch.int32).item())
+    return int(torch.tensor(B, dtype=dtype).view(torch.int16).item())
+
+
+def _raw_not_equal_scalar(A, B):
+    """not_equal(A, scalar) via the raw payload, or None when it does not apply.
+
+    Only the contiguous case in the supported float dtypes is handled;
+    anything else falls back to the pointwise scalar kernel below.
+    """
+    if not _TLE_OK or not A.is_contiguous():
+        return None
+    type_code = _RAW_TYPE_CODE.get(A.dtype)
+    if type_code is None:
+        return None
+    M = A.numel()
+    if M == 0 or M > _RAW_MAX_ELEMS:
+        return None
+    esz = A.element_size()
+    s_bits = _scalar_bits(B, A.dtype)
+    out = torch.empty(A.shape, dtype=torch.bool, device=A.device)
+    chunk_elems = _RAW_CHUNK_BYTES // esz
+    total_chunks = (M + chunk_elems - 1) // chunk_elems
+    per = (total_chunks + _NCLUSTER - 1) // _NCLUSTER
+    with torch_device_fn.device(A.device):
+        ne_scalar_raw_kernel[(_NCLUSTER,)](
+            _view_u8(A), _view_u8(out), M, esz, type_code, s_bits, per
+        )
+    return out
+
 
 config_ = CodeGenConfig(
     512,
@@ -55,7 +153,6 @@ def not_equal(A, B):
     return res
 
 
-# ---------------------------------------------------------------------------
 _NOT_EQUAL_TENSOR_TILE_SMALL = 2048
 _NOT_EQUAL_TENSOR_SMALL_MAX = 16384
 _NOT_EQUAL_TENSOR_TILE_MID = 8192
@@ -98,9 +195,6 @@ def _not_equal_tensor_fast(A, B, numel, TILE):
                 isCloseMemoryAsync=False,
             )
         else:
-            # non-multiple of the bucket (e.g. (1024,1) with TILE=2048): a
-            # single block with a real tail mask. The mask covers genuine
-            # elements only.
             not_equal_tensor_fast_kernel[(triton.cdiv(numel, TILE),)](
                 A,
                 B,
@@ -130,15 +224,6 @@ def not_equal_func_scalar(x, y):
 
 def not_equal_scalar(A, B):
     logger.debug("GEMS_KUNLUNXIN NOT_EQUAL_SCALAR")
-    # not_equal.Scalar is an exact alias of ne.Scalar (`torch.not_equal` ==
-    # `torch.ne`; same ATen semantics: a != b element-wise, NaN-aware). The
-    # generic scalar-compare path (not_equal_func_scalar) materializes
-    # `arith.cmpf -> i1 -> bool store` per lane, which the XPU backend lowers
-    # to the same i1 slow path that doomed the closed ne_scalar (baseline
-    # 2026-08-14, XPU 7: 17.6ms vs 1.09ms on [10000,65536]). Take the closed
-    # ne_scalar fast path below (same two-stage saturating recipe,
-    # `harness/solution/performance/not_equal_scalar_perf.md`) whenever
-    # applicable; generic path otherwise, behavior unchanged.
     numel = A.numel()
     dtype = A.dtype
     if (
@@ -146,10 +231,6 @@ def not_equal_scalar(A, B):
         and dtype in (torch.float16, torch.float32, torch.bfloat16)
         and numel >= _NOT_EQUAL_SCALAR_MASKED_MIN
     ):
-        # Only build the wrapped scalar (a `torch.tensor(...).item()`
-        # roundtrip, ~3us host) for candidate sizes; the small-shape generic
-        # path below must stay free of host overhead (measured 0.49-0.82x
-        # regression on (64,64)/(10000,1)/(100,1,100) when it ran every call).
         s = float(B)
         wrapped = torch.tensor(s, dtype=dtype).item()
         if math.isfinite(wrapped):
@@ -157,20 +238,11 @@ def not_equal_scalar(A, B):
                 numel % _NOT_EQUAL_SCALAR_FAST_TILE == 0
                 and numel >= _NOT_EQUAL_SCALAR_FAST_TILE * _NOT_EQUAL_SCALAR_MIN_GRID
             ):
-                # exact-multiple flat tiles (grid >= MIN_GRID): no mask, no
-                # i1 -- a saturating fp32 store + vendor bool conversion.
                 return _not_equal_scalar_fast(
                     A, float(wrapped), (numel // _NOT_EQUAL_SCALAR_FAST_TILE,)
                 )
             if numel % _NOT_EQUAL_SCALAR_FAST_TILE != 0:
-                # non-multiple mid sizes (e.g. 2.56M, [10000,256]): flat
-                # tiles with a real tail mask. The mask is genuine (tail
-                # elements), so the masked-memory path is the only penalty.
                 return _not_equal_scalar_fast_masked(A, float(wrapped), numel)
-    # Like ne_scalar / gt_scalar, the scalar path must NOT set
-    # TRITONXPU_COMPARE_FUSION / TRITONXPU_FP16_FAST: for tensor-vs-scalar the
-    # fusion env vars make the compiler emit an fp16 compare that trips
-    # `arith.cmpf same-type` and overflows uni_sram -> compile failure.
     res = not_equal_func_scalar(A, B)
     return res
 
@@ -202,9 +274,6 @@ def _not_equal_scalar_fast(A, scalar, grid):
         unroll_num=16,
         isCloseMemoryAsync=False,
     )
-    # ``torch.ops.aten._copy_from`` is an explicit ATen fallback (forbidden);
-    # ``to(torch.bool)`` lowers to the same vendor fp32->bool conversion
-    # (measured 0.048ms vs 0.049ms on 16M elements, XPU 4).
     return out32.to(torch.bool)
 
 
@@ -235,7 +304,4 @@ def _not_equal_scalar_fast_masked(A, scalar, numel):
         unroll_num=16,
         isCloseMemoryAsync=False,
     )
-    # ``torch.ops.aten._copy_from`` is an explicit ATen fallback (forbidden);
-    # ``to(torch.bool)`` lowers to the same vendor fp32->bool conversion
-    # (measured 0.048ms vs 0.049ms on 16M elements, XPU 4).
     return out32.to(torch.bool)

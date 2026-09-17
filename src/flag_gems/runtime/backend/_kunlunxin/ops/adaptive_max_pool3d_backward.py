@@ -1,17 +1,3 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import logging
 
 import torch
@@ -29,7 +15,7 @@ logger = logging.getLogger(__name__)
 def _adaptive_max_pool3d_backward_recompute_indices_kernel(
     input_ptr,
     index_out_ptr,
-    n_elems,  # in_n * in_c * out_d * out_h * out_w
+    n_elems,
     in_d,
     in_h,
     in_w,
@@ -53,7 +39,6 @@ def _adaptive_max_pool3d_backward_recompute_indices_kernel(
     oh = rem2 // out_w
     ow = rem2 % out_w
 
-    # Adaptive window: start = floor(o * in / out), end = ceil((o + 1) * in / out).
     d_start = (od * in_d) // out_d
     d_end = tl.minimum(((od + 1) * in_d + out_d - 1) // out_d, in_d)
     h_start = (oh * in_h) // out_h
@@ -67,10 +52,6 @@ def _adaptive_max_pool3d_backward_recompute_indices_kernel(
     acc_val = tl.full((BLOCK,), float("-inf"), dtype=tl.float32)
     acc_idx = tl.full((BLOCK,), -1, dtype=tl.int32)
 
-    # Rolled loops (compile-time constant bounds) instead of tl.static_range:
-    # the XPU unroll control pass (TritonXPUUnrollControl) fails with uni_sram
-    # OOR when the window scan is fully unrolled for large ratios
-    # (e.g. in=8/out=1 gives 9^3 = 729 bodies).
     for kd in range(0, WIN_D):
         d = d_start + kd
         d_ok = d < d_end
@@ -98,9 +79,9 @@ def _adaptive_max_pool3d_backward_recompute_indices_kernel(
 @triton.jit
 def _adaptive_max_pool3d_backward_gather_kernel(
     grad_output_ptr,
-    indices_ptr,  # recomputed int32 indices, layout (n, c, out_d, out_h, out_w)
+    indices_ptr,
     grad_input_ptr,
-    n_elems,  # in_n * in_c * in_d * in_h * in_w
+    n_elems,
     in_d,
     in_h,
     in_w,
@@ -139,11 +120,6 @@ def _adaptive_max_pool3d_backward_gather_kernel(
     iop = indices_ptr + nc * out_per_nc
 
     acc = tl.zeros((BLOCK,), dtype=tl.float32)
-    # Small static bounds (MAX_* <= 2 whenever out <= in, the only legal
-    # adaptive-pool configuration): fully unrolled bodies let the compiler
-    # issue all candidate loads up front (ILP), matching the proven
-    # Kunlunxin ``max_pool3d_backward_flat_kernel`` pattern.  The recompute
-    # kernel above stays rolled because its window bound can reach 9^3 bodies.
     for od in tl.static_range(0, MAX_D):
         o_d = d_min + od
         d_ok = o_d < d_max
