@@ -216,7 +216,7 @@ def _chol_blocked(work, batch, n):
 
 def linalg_cholesky(A, upper=False):
     """Cholesky decomposition of a symmetric positive-definite matrix."""
-    logger.debug("KUNLUNXIN LINALG_CHOLESKY")
+    logger.debug("GEMS_KUNLUNXIN LINALG_CHOLESKY")
     assert A.dtype in (
         torch.float32,
         torch.float64,

@@ -1,0 +1,246 @@
+#include "xpu/kernel/xtdk.h"
+#include "xpu/kernel/xtdk_simd.h"
+#include "xpu/kernel/xtdk_fp16.h"
+
+// nan_to_num (in-place) raw payload for P800 xpu3 (cluster path). One
+// Triton program == one cluster (64 cores), 12 programs.
+//
+// Semantics: out = isnan(x) ? nan : (x == +inf ? posinf : (x == -inf ?
+// neginf : x)), with all four values in the input dtype.
+//
+// ---- per-lane select ----
+// There is no hardware select and a C++ vector ternary lowers to a SCALAR
+// (uniform) select, so a per-lane select is synthesized as the single vendor
+// masked-HOLD bitwise-and: vvand_*_mh(y, ONES, x, m) == m ? (y & ONES) : x
+// == m ? y : x, with ONES the all-ones element bit pattern (a NaN value;
+// the AND is bitwise, exact for every value including -0.0).
+//   * fp16 : float16x32_t (32 lanes)  - masks vvneq_*/vveq_* (32-bit)
+//   * bf16 : the select runs on the RAW 16-BIT PATTERNS as float16x32_t
+//            (bitwise mh-vand), while the detection runs in the f32 domain
+//            (bf16 widens to f32 without rounding, so vvneq_float32x16(x,x)
+//            and vveq_float32x16(x, +-inf_f32) are exact); the 32-bit mask
+//            is assembled from the two f32x16 half-masks (lanes 0-15 / 16-31).
+//            NOTE: the vendor bf16x32 arithmetic builtins (__builtin_xpu2_
+//            *_bf_*) only exist on xpu2 and raise an illegal instruction on
+//            xpu3, so no bf16x32 op may be used.
+//   * fp32 : float32x16_t (16 lanes) - masks MUST be & 0xFFFF (the x16
+//            carries garbage above bit 15).
+// Detection by value:
+//   m_nan  = vvneq(x, x)       (NaN is the only self-unequal value)
+//   m_pinf = vveq(x, +inf)
+//   m_ninf = vveq(x, -inf)
+// The +inf/-inf comparison constants are the fixed IEEE patterns of the
+// input dtype (0x7C00/0xFC00 fp16, 0x7F800000/0xFF800000 fp32; for bf16 the
+// widened f32 forms 0x7F800000/0xFF800000) -- the input's +/-inf bit pattern
+// is unique, so value-compare is exact.
+//
+// ---- pipeline ----
+// Double-buffered chunk structure of ne_raw.xpu (the proven twin). The
+// vendor contract requires an mfence_lm_gm() between the last LM store of a
+// chunk and the LM2GM that reads it: the loop-top fence covers the deferred
+// in-loop output DMA, and an explicit fence sits in front of the final
+// post-loop output DMA (without it the DMA may observe stale LM data in the
+// last chunk of every core - observed as the trailing 32 lanes being
+// zeroed/stale; the race is nondeterministic and the final mfence afterwards
+// waits for the DMA to complete before the kernel exits).
+
+// type codes
+#define T_F32 0
+#define T_F16 1
+#define T_BF16 2
+
+#define CHUNK_BYTES 1792
+#define NBUF 2
+// output is same-size as input (no 1-byte bool expansion), so the obuf is a
+// full chunk.
+#define OBUF_BYTES CHUNK_BYTES
+
+// ---------------- fp32: 16 lanes per compare ----------------
+static __device__ __attribute__((always_inline)) void proc_f32(
+    const char *buf, int len, int nan_bits, int pinf_bits, int ninf_bits,
+    char *obuf) {
+  __local__ const float *f = (__local__ const float *)buf;
+  __local__ float *o = (__local__ float *)obuf;
+  float nv = *(const float *)&nan_bits;
+  float pv = *(const float *)&pinf_bits;
+  float mv = *(const float *)&ninf_bits;
+  int pib = 0x7F800000, nib = (int)0xFF800000u, ob = -1;
+  float32x16_t v_nan(nv), v_pinf(pv), v_ninf(mv);
+  float32x16_t v_posinf(*(float *)&pib), v_neginf(*(float *)&nib);
+  float32x16_t v_ones(*(float *)&ob);
+  int nv_ = len >> 4;
+  for (int v = 0; v < nv_; ++v) {
+    float32x16_t x = *(__local__ const float32x16_t *)(f + (v << 4));
+    int m_nan = vvneq_float32x16(x, x) & 0xFFFF;
+    int m_pinf = vveq_float32x16(x, v_posinf) & 0xFFFF;
+    int m_ninf = vveq_float32x16(x, v_neginf) & 0xFFFF;
+    float32x16_t r = vvand_float32x16_mh(v_nan, v_ones, x, m_nan);
+    r = vvand_float32x16_mh(v_pinf, v_ones, r, m_pinf);
+    r = vvand_float32x16_mh(v_ninf, v_ones, r, m_ninf);
+    *(__local__ float32x16_t *)(o + (v << 4)) = r;
+  }
+  for (int i = nv_ << 4; i < len; ++i) {
+    float xv = f[i], rv = xv;
+    if (xv != xv)
+      rv = nv;
+    else if (xv == *(float *)&pib)
+      rv = pv;
+    else if (xv == *(float *)&nib)
+      rv = mv;
+    o[i] = rv;
+  }
+}
+
+// ---------------- fp16: 32 lanes per compare ----------------
+static __device__ __attribute__((always_inline)) void proc_f16(
+    const char *buf, int len, int nan_bits, int pinf_bits, int ninf_bits,
+    char *obuf) {
+  __local__ const _Float16 *f = (__local__ const _Float16 *)buf;
+  __local__ _Float16 *o = (__local__ _Float16 *)obuf;
+  __half_raw hn, hp, hm, ho, hpi, hni;
+  hn.x = (unsigned short)nan_bits;
+  hp.x = (unsigned short)pinf_bits;
+  hm.x = (unsigned short)ninf_bits;
+  ho.x = (unsigned short)0xFFFF;
+  hpi.x = (unsigned short)0x7C00;
+  hni.x = (unsigned short)0xFC00;
+  float16x32_t v_nan((_Float16)half(hn)), v_pinf((_Float16)half(hp)),
+      v_ninf((_Float16)half(hm)), v_ones((_Float16)half(ho)),
+      v_posinf((_Float16)half(hpi)), v_neginf((_Float16)half(hni));
+  int nv_ = len >> 5;
+  for (int v = 0; v < nv_; ++v) {
+    float16x32_t x = *(__local__ const float16x32_t *)(f + (v << 5));
+    int m_nan = vvneq_float16x32(x, x);
+    int m_pinf = vveq_float16x32(x, v_posinf);
+    int m_ninf = vveq_float16x32(x, v_neginf);
+    float16x32_t r = vvand_float16x32_mh(v_nan, v_ones, x, m_nan);
+    r = vvand_float16x32_mh(v_pinf, v_ones, r, m_pinf);
+    r = vvand_float16x32_mh(v_ninf, v_ones, r, m_ninf);
+    *(__local__ float16x32_t *)(o + (v << 5)) = r;
+  }
+  for (int i = nv_ << 5; i < len; ++i) {
+    _Float16 xv = f[i], rv = xv;
+    if (xv != xv)
+      rv = (_Float16)half(hn);
+    else if (xv == (_Float16)half(hpi))
+      rv = (_Float16)half(hp);
+    else if (xv == (_Float16)half(hni))
+      rv = (_Float16)half(hm);
+    o[i] = rv;
+  }
+}
+
+// ---------------- bf16: 32 lanes, f32 compares + bitwise 16-bit select ----
+static __device__ __attribute__((always_inline)) void proc_bf16(
+    const char *buf, int len, int nan_bits, int pinf_bits, int ninf_bits,
+    char *obuf) {
+  const unsigned short *w = (const unsigned short *)buf;
+  int pib = 0x7F800000, nib = (int)0xFF800000u;
+  float32x16_t v_posinf(*(float *)&pib), v_neginf(*(float *)&nib);
+  __half_raw hn, hp, hm, ho;
+  hn.x = (unsigned short)nan_bits;  // bf16 replacement patterns (bit-preserving)
+  hp.x = (unsigned short)pinf_bits;
+  hm.x = (unsigned short)ninf_bits;
+  ho.x = (unsigned short)0xFFFF;
+  float16x32_t v_nan((_Float16)half(hn)), v_pinf((_Float16)half(hp)),
+      v_ninf((_Float16)half(hm)), v_ones((_Float16)half(ho));
+  int16x32_t pad(0);
+  int nv_ = len >> 5;
+  for (int v = 0; v < nv_; ++v) {
+    int base = v << 5;
+    // bf16 -> f32 widening (exact): 32 bf16 -> two ORDERED f32 vectors.
+    int16x32_t vbf16 = vload_lm_int16x32(w + base);
+    float32x16_t vl, vh;
+    __asm__("vmerge_l.hf %0, %1, %2" : "=&v"(vl) : "v"(pad), "v"(vbf16));
+    __asm__("vmerge_h.hf %0, %1, %2" : "=&v"(vh) : "v"(pad), "v"(vbf16));
+    // 32-bit lane mask: bit i <-> bf16 lane i (vl = lanes 0-15, vh = 16-31);
+    // the x16 masks must be trimmed to 16 bits first.
+    int m_nan = (vvneq_float32x16(vl, vl) & 0xFFFF) |
+                ((vvneq_float32x16(vh, vh) & 0xFFFF) << 16);
+    int m_pinf = (vveq_float32x16(vl, v_posinf) & 0xFFFF) |
+                 ((vveq_float32x16(vh, v_posinf) & 0xFFFF) << 16);
+    int m_ninf = (vveq_float32x16(vl, v_neginf) & 0xFFFF) |
+                 ((vveq_float32x16(vh, v_neginf) & 0xFFFF) << 16);
+    // select on the raw 16-bit patterns via the fp16 mh-vand (bitwise).
+    float16x32_t x = vload_lm_float16x32(w + base);
+    float16x32_t r = vvand_float16x32_mh(v_nan, v_ones, x, m_nan);
+    r = vvand_float16x32_mh(v_pinf, v_ones, r, m_pinf);
+    r = vvand_float16x32_mh(v_ninf, v_ones, r, m_ninf);
+    vstore_lm_float16x32((void *)((unsigned short *)obuf + base), r);
+  }
+  unsigned short *o = (unsigned short *)obuf;
+  for (int i = nv_ << 5; i < len; ++i) {
+    unsigned short xv = w[i], rv = xv;
+    if ((xv & 0x7FFF) > 0x7F80)
+      rv = (unsigned short)nan_bits;
+    else if (xv == 0x7F80)
+      rv = (unsigned short)pinf_bits;
+    else if (xv == 0xFF80)
+      rv = (unsigned short)ninf_bits;
+    o[i] = rv;
+  }
+}
+
+extern "C" __device__ void nan_to_num_raw_(
+    _global_ptr_ const char *in,
+    _global_ptr_ char *out,
+    int numel, int esz, int type_code,
+    int nan_bits, int pinf_bits, int ninf_bits,
+    int chunk_start, int chunk_count) {
+  int cid = core_id();
+  int ncores = core_num();
+  int chunk_elems = CHUNK_BYTES / esz;
+  int total_chunks = (numel + chunk_elems - 1) / chunk_elems;
+  int cend = chunk_start + chunk_count;
+  if (cend > total_chunks) cend = total_chunks;
+  int per = (chunk_count + ncores - 1) / ncores;
+  int c0 = chunk_start + cid * per;
+  int c1 = c0 + per;
+  if (c1 > cend) c1 = cend;
+  if (c0 >= c1) return;
+
+  __attribute__((aligned(64))) __local__ char buf[NBUF][CHUNK_BYTES];
+  __attribute__((aligned(64))) __local__ char obuf[NBUF][OBUF_BYTES];
+
+  int cur = 0;
+  {
+    int len = numel - c0 * chunk_elems;
+    if (len > chunk_elems) len = chunk_elems;
+    GM2LM_ASYNC(in + (long long)c0 * CHUNK_BYTES, buf[0], len * esz);
+  }
+  int poff = -1, plen = 0;
+  for (int c = c0; c < c1; ++c) {
+    int off = c * chunk_elems;
+    int len = numel - off;
+    if (len > chunk_elems) len = chunk_elems;
+    mfence_lm_gm();
+    if (poff >= 0)
+      LM2GM_ASYNC(obuf[cur ^ 1], out + (long long)poff * esz, plen * esz);
+    if (c + 1 < c1) {
+      int nlen = numel - (c + 1) * chunk_elems;
+      if (nlen > chunk_elems) nlen = chunk_elems;
+      GM2LM_ASYNC(in + (long long)(c + 1) * CHUNK_BYTES, buf[cur ^ 1],
+                  nlen * esz);
+    }
+    switch (type_code) {
+      case T_F32:
+        proc_f32(buf[cur], len, nan_bits, pinf_bits, ninf_bits, obuf[cur]);
+        break;
+      case T_F16:
+        proc_f16(buf[cur], len, nan_bits, pinf_bits, ninf_bits, obuf[cur]);
+        break;
+      default:
+        proc_bf16(buf[cur], len, nan_bits, pinf_bits, ninf_bits, obuf[cur]);
+        break;
+    }
+    poff = off;
+    plen = len;
+    cur ^= 1;
+  }
+  // vendor contract: an mfence between the last LM stores and the output DMA
+  // that reads them, then one after for completion.
+  mfence_lm_gm();
+  if (poff >= 0)
+    LM2GM_ASYNC(obuf[cur ^ 1], out + (long long)poff * esz, plen * esz);
+  mfence_lm_gm();
+}
