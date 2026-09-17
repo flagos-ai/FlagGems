@@ -3435,6 +3435,21 @@ ops:
   - LinearAlg
   stages:
   - alpha: '5.4'
+- id: cslt_sparse_mm
+  description: Triton implementation of aten._cslt_sparse_mm; decodes the cuSPARSELt
+    2:4 structured-sparse compressed blob back to dense and runs a tiled dense matmul,
+    supporting alpha, bias, and transpose_result. The compressed layout is architecture
+    specific, so this decoder targets the Hopper swizzle and is only registered on
+    compute capability 9.x; other architectures keep using the native cuSPARSELt op.
+  for:
+  - _cslt_sparse_mm
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: ctc_loss
   description: Connectionist Temporal Classification loss for sequence-to-sequence
     models.
@@ -4914,6 +4929,18 @@ ops:
   - KernelGen
   kind:
   - Math
+  stages:
+  - alpha: '5.4'
+- id: feature_alpha_dropout
+  description: Applies alpha dropout independently to each feature map, preserving
+    the self-normalizing properties of SELU activations.
+  for:
+  - feature_alpha_dropout
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
   stages:
   - alpha: '5.4'
 - id: feature_dropout
@@ -8431,6 +8458,28 @@ ops:
   - LinearAlg
   stages:
   - beta: '5.4'
+- id: linalg_polar
+  description: Computes the right polar decomposition A = U @ H.
+  for:
+  - linalg_polar
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.4'
+- id: linalg_polar_out
+  description: Writes the right polar decomposition into U and H output tensors.
+  for:
+  - linalg_polar.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.4'
 - id: linalg_qr
   description: Computes the QR decomposition of a matrix (or a batch of matrices)
     via a blocked Householder algorithm with a TSQR fast path for tall-skinny inputs.
@@ -8961,6 +9010,18 @@ ops:
   - KernelGen
   kind:
   - Math
+  stages:
+  - alpha: '5.4'
+- id: logdet
+  description: Computes the logarithm of the determinant of a square matrix or batch
+    of square matrices.
+  for:
+  - logdet
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
   stages:
   - alpha: '5.4'
 - id: logical_and
@@ -10148,6 +10209,32 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: nanmean
+  description: 'Computes the mean of all non-`NaN` elements along the specified dimensions,
+
+    ignoring `NaN` values.'
+  for:
+  - nanmean
+  labels:
+  - aten
+  - Reduction
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: nanmean_out
+  description: Computes the mean of non-NaN values into the supplied output tensor.
+  for:
+  - nanmean.out
+  labels:
+  - aten
+  - Reduction
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: nanmedian
   description: Returns the median of the values in `input`, ignoring `NaN` values.
   for:
@@ -10199,6 +10286,52 @@ ops:
   - LinearAlg
   stages:
   - beta: '5.4'
+- id: nanquantile
+  description: |
+    Computes the q-th quantiles of each row of the `input` tensor along the
+    dimension `dim`, ignoring `NaN` values.
+  for:
+  - nanquantile
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
+- id: nanquantile_out
+  description: Tensor-q out overload of `nanquantile`.
+  for:
+  - nanquantile.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
+- id: nanquantile_scalar
+  description: Scalar-q overload of `nanquantile`.
+  for:
+  - nanquantile.scalar
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
+- id: nanquantile_scalar_out
+  description: Scalar-q out overload of `nanquantile`.
+  for:
+  - nanquantile.scalar_out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: nansum
   description: 'Returns the sum of all elements in the `input` tensor, treating `NaN`
     values as zero.
@@ -15522,6 +15655,28 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: thnn_fused_gru_cell_backward
+  description: Computes gradients for a fused GRU cell.
+  for:
+  - _thnn_fused_gru_cell_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
+- id: thnn_fused_gru_cell_backward_out
+  description: Writes fused GRU cell gradients to caller-provided tensors.
+  for:
+  - _thnn_fused_gru_cell_backward.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: thnn_fused_gru_cell_out
   description: Writes the fused GRU cell output and workspace to provided tensors.
   for:
@@ -16311,6 +16466,28 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: upsample_lanczos2d_aa_backward
+  description: Compute the input gradient for antialiased Lanczos-3 2D resizing.
+  for:
+  - _upsample_lanczos2d_aa_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
+- id: upsample_lanczos2d_aa_backward_grad_input
+  description: Out variant of antialiased Lanczos-3 2D resize backward.
+  for:
+  - _upsample_lanczos2d_aa_backward.grad_input
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: upsample_lanczos2d_aa_out
   description: An out variant of `_upsample_lanczos2d_aa()`.
   for:
@@ -16819,6 +16996,29 @@ ops:
   stages:
   - alpha: '2.1'
   - stable: '2.2'
+- id: wrapped_linear_prepack
+  description: Quantizes and packs a linear weight and bias for the paired wrapped
+    quantized linear operator.
+  for:
+  - _wrapped_linear_prepack
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Quantization
+  stages:
+  - alpha: '5.4'
+- id: wrapped_quantized_linear_prepacked
+  description: Applies a quantized linear operation using a weight produced by wrapped_linear_prepack.
+  for:
+  - _wrapped_quantized_linear_prepacked
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Quantization
+  stages:
+  - alpha: '5.4'
 - id: xlogy
   description: Computes `input * log(other)` element-wise, returning zero where `input`
     is zero (following PyTorch's `xlogy` semantics).
