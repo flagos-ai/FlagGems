@@ -62,6 +62,7 @@ from .renorm import renorm, renorm_
 from .repeat import repeat
 from .repeat_interleave import repeat_interleave_self_tensor
 from .resolve_conj import resolve_conj
+from .rms_norm_w8a16_fp8 import rms_norm_w8a16_fp8
 from .rsqrt import rsqrt, rsqrt_
 from .sigmoid import sigmoid
 from .silu import silu
@@ -176,6 +177,7 @@ __all__ = [
     "repeat",
     "repeat_interleave_self_tensor",
     "resolve_conj",
+    "rms_norm_w8a16_fp8",
     "rsqrt",
     "rsqrt_",
     "sigmoid",
