@@ -83,7 +83,13 @@ def logsumexp_kernel_multirow(
     else:
         inp = tl.load(input_ptr + offsets).to(tl.float32)
     bits = inp.to(tl.uint32, bitcast=True)
-    key = tl.where(bits < 0x80000000, bits | 0x80000000, bits ^ 0xFFFFFFFF)
+    # Order-preserving key via bit ops only -- a tile-wide `tl.where` here
+    # scalarizes (vselect expands to per-lane select chains) and costs ~40%
+    # end-to-end on this backend. The int32 arithmetic shift supplies the
+    # all-ones mask for negatives, giving the exact same encoding:
+    # non-negatives -> bits | 0x80000000, negatives -> ~bits.
+    neg = (bits.to(tl.int32, bitcast=True) >> 31).to(tl.uint32, bitcast=True)
+    key = bits ^ (0x80000000 | (neg & 0x7FFFFFFF))
     m_key = tl.max(key, axis=1)
     bits_m = tl.where(m_key < 0x80000000, m_key ^ 0xFFFFFFFF, m_key ^ 0x80000000)
     m = bits_m.to(tl.float32, bitcast=True)
@@ -248,7 +254,9 @@ def logsumexp_kernel_partial(
     else:
         a = tl.load(input_ptr + offsets).to(tl.float32)
     bits = a.to(tl.uint32, bitcast=True)
-    key = tl.where(bits < 0x80000000, bits | 0x80000000, bits ^ 0xFFFFFFFF)
+    # Same select-free key construction as `logsumexp_kernel_multirow`.
+    neg = (bits.to(tl.int32, bitcast=True) >> 31).to(tl.uint32, bitcast=True)
+    key = bits ^ (0x80000000 | (neg & 0x7FFFFFFF))
     m_key = tl.max(key, axis=1)
     bits_m = tl.where(m_key < 0x80000000, m_key ^ 0xFFFFFFFF, m_key ^ 0x80000000)
     m = bits_m.to(tl.float32, bitcast=True)
