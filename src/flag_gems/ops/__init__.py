@@ -949,6 +949,7 @@ from flag_gems.ops.sparse_sampled_addmm import (
     sparse_sampled_addmm,
     sparse_sampled_addmm_out,
 )
+from flag_gems.ops.spdiags import spdiags
 from flag_gems.ops.special_airy_ai import special_airy_ai, special_airy_ai_out
 from flag_gems.ops.special_bessel_j0 import special_bessel_j0
 from flag_gems.ops.special_bessel_j1 import special_bessel_j1
@@ -2155,6 +2156,7 @@ __all__ = [
     "sort_stable",
     "sparse_sampled_addmm",
     "sparse_sampled_addmm_out",
+    "spdiags",
     "special_airy_ai",
     "special_airy_ai_out",
     "special_bessel_j0",
