@@ -1,0 +1,218 @@
+#include "xpu/kernel/xtdk.h"
+#include "xpu/kernel/xtdk_simd.h"
+#include "xpu/kernel/xtdk_fp16.h"
+
+// greater_scalar (torch.greater(A, scalar), i.e. x > s) raw payload for P800
+// xpu3 (cluster path). One Triton program == one cluster (64 cores), 12
+// programs.
+//
+// Why a raw payload: the compiler cannot vectorize a tensor-vs-scalar float
+// compare. CoreTiling hands the pointwise scalar kernel 8 elements/core/
+// iteration (below the f32 vector width of 16), so `arith.cmpf` stays
+// scalarized (~600us on 16M elements; TRITONXPU_VEC_REPORT shows the closure
+// vetoed with keyState=Conflict -- the i1 compare result pins Scalar while the
+// store wants Vector). The only compiler fast path is a tensor-vs-tensor
+// compare, which materializes a full-size broadcast (extra 32MB write + read
+// -> 82us, speedup ~0.43 on [4096,4096] fp16). This payload instead streams
+// the input once per core with fine-grained pipelined DMA and compares with
+// the hardware vector-lt intrinsics -- the same memory footprint as the ATen
+// reference.
+//
+// Pipeline (the decisive lever): each core owns a contiguous range of
+// CHUNK_BYTES-aligned chunks. Per iteration, after an mfence that drains the
+// previous round, the core issues the PREVIOUS chunk's LM2GM and the NEXT
+// chunk's GM2LM back to back, then computes the current chunk -- so both DMA
+// directions overlap the compare instead of serializing with it. Empirically
+// the period collapses from (in + out + compute) to ~max(in, compute)
+// (measured on the not_equal twin of this payload; same structure).
+//
+// Semantics match torch.greater: the scalar is promoted to the input dtype
+// on the host and compared in that dtype (ATen's promotion). x > s is
+// evaluated as the ordered compare s < x, so NaN > s -> False (IEEE ordered
+// compare on either side).
+//   * fp32 : svlt_float32x16 (16 lanes) -> 16-bit mask -> 16 bytes
+//   * fp16 : svlt_float16x32 (32 lanes) -> 32-bit mask -> 32 bytes
+//   * bf16 : vmerge.hf bf16->f32 widening (the vendor xdnn
+//            `vload2_lm(bfloat16*)` recipe) -> two ORDERED f32 vectors ->
+//            svlt_float32x16 on both, masks concatenated -> 32 bytes.
+//            NOTE: the sv*_float32x16 masks carry garbage above the lane
+//            count (bit 16+), so they MUST be masked before any wide bit
+//            manipulation.
+// The mask -> bool bytes expansion uses one 32-bit multiply per 4 bytes
+// (expand4); the 64-bit 8-byte variant needs a 64-bit multiply, which this
+// scalar unit emulates at ~10x the cost of the whole compare.
+
+// type codes
+#define T_F32 0
+#define T_F16 1
+#define T_BF16 2
+
+#define CHUNK_BYTES 2048
+#define NBUF 2
+// obuf holds 1 byte per input element; float inputs are >= 2 bytes/element,
+// so CHUNK_BYTES/2 covers the worst case.
+#define OBUF_BYTES (CHUNK_BYTES / 2)
+
+// Expand a 4-bit mask into 4 bytes (byte k = bit k) with one 32-bit multiply.
+// (The 8-bit/64-bit variant needs a 64-bit multiply, which this scalar unit
+// emulates and costs ~10x more than the whole compare.)
+static __device__ __attribute__((always_inline)) unsigned expand4(unsigned b) {
+  return (b * 0x00204081u) & 0x01010101u;
+}
+
+static __device__ __attribute__((always_inline)) void store32bytes(
+    __local__ char *obuf, unsigned m) {
+  *(__local__ unsigned *)(obuf + 0) = expand4(m & 0xfu);
+  *(__local__ unsigned *)(obuf + 4) = expand4((m >> 4) & 0xfu);
+  *(__local__ unsigned *)(obuf + 8) = expand4((m >> 8) & 0xfu);
+  *(__local__ unsigned *)(obuf + 12) = expand4((m >> 12) & 0xfu);
+  *(__local__ unsigned *)(obuf + 16) = expand4((m >> 16) & 0xfu);
+  *(__local__ unsigned *)(obuf + 20) = expand4((m >> 20) & 0xfu);
+  *(__local__ unsigned *)(obuf + 24) = expand4((m >> 24) & 0xfu);
+  *(__local__ unsigned *)(obuf + 28) = expand4((m >> 28) & 0xfu);
+}
+
+// 16 bytes for the fp32 path.
+static __device__ __attribute__((always_inline)) void store16bytes(
+    __local__ char *obuf, unsigned m) {
+  *(__local__ unsigned *)(obuf + 0) = expand4(m & 0xfu);
+  *(__local__ unsigned *)(obuf + 4) = expand4((m >> 4) & 0xfu);
+  *(__local__ unsigned *)(obuf + 8) = expand4((m >> 8) & 0xfu);
+  *(__local__ unsigned *)(obuf + 12) = expand4((m >> 12) & 0xfu);
+}
+
+// ---------------- fp32: 16 lanes per compare ----------------
+static __device__ __attribute__((always_inline)) void proc_f32(
+    __local__ const char *buf, int len, int scalar_bits, __local__ char *obuf) {
+  __local__ const float *f = (__local__ const float *)buf;
+  float s = *(float *)&scalar_bits;
+  int nv = len >> 4;
+  for (int v = 0; v < nv; ++v) {
+    // greater(x, s) == (s < x): ordered scalar-vs-vector lt
+    unsigned m = (unsigned)svlt_float32x16(
+                     s, *(__local__ const float32x16_t *)(f + (v << 4))) &
+                 0xFFFFu;
+    store16bytes(obuf + (v << 4), m);
+  }
+  for (int i = nv << 4; i < len; ++i)
+    obuf[i] = f[i] > s ? 1 : 0;
+}
+
+// ---------------- fp16: 32 lanes per compare ----------------
+static __device__ __attribute__((always_inline)) void proc_f16(
+    __local__ const char *buf, int len, int scalar_bits, __local__ char *obuf) {
+  __local__ const _Float16 *f = (__local__ const _Float16 *)buf;
+  __half_raw hr;
+  hr.x = (unsigned short)scalar_bits;
+  half s(hr);
+  int nv = len >> 5;
+  for (int v = 0; v < nv; ++v) {
+    // greater(x, s) == (s < x): ordered scalar-vs-vector lt
+    unsigned m = (unsigned)svlt_float16x32(
+        s, *(__local__ const float16x32_t *)(f + (v << 5)));
+    store32bytes(obuf + (v << 5), m);
+  }
+  for (int i = nv << 5; i < len; ++i)
+    obuf[i] = (f[i] > (_Float16)s) ? 1 : 0;
+}
+
+// ---------------- bf16: vmerge bf16->f32, compare as f32 ----------------
+static __device__ __attribute__((always_inline)) void proc_bf16(
+    __local__ const char *buf, int len, int scalar_bits, __local__ char *obuf) {
+  __local__ const unsigned short *w = (__local__ const unsigned short *)buf;
+  // scalar as f32 bits: bf16 bits stored in the low 16 bits of scalar_bits
+  unsigned sbits = ((unsigned)(unsigned short)scalar_bits) << 16;
+  float s = *(float *)&sbits;
+  int nv = len >> 5;
+  for (int v = 0; v < nv; ++v) {
+    int base = v << 5;
+    // bf16 -> f32 widening via the vmerge.hf instruction (the vendor xdnn
+    // `vload2_lm(bfloat16*)` recipe): 32 bf16 become two ORDERED f32 vectors
+    // (elements 0-15 / 16-31), so the two compare masks concatenate directly
+    // -- no hi/lo split and no bit-deposit interleave. (The even/odd shift
+    // variant is the vendor's `vload2_lm_unordered`, i.e. what this payload
+    // used before; it needs a mask interleave and measured ~30us slower.)
+    int16x32_t vbf16 = vload_lm_int16x32(w + base);
+    int16x32_t pad(0);
+    float32x16_t vl, vh;
+    __asm__("vmerge_l.hf %0, %1, %2" : "=&v"(vl) : "v"(pad), "v"(vbf16));
+    __asm__("vmerge_h.hf %0, %1, %2" : "=&v"(vh) : "v"(pad), "v"(vbf16));
+    unsigned m0 = (unsigned)svlt_float32x16(s, vl) & 0xFFFFu;
+    unsigned m1 = (unsigned)svlt_float32x16(s, vh) & 0xFFFFu;
+    store32bytes(obuf + base, m0 | (m1 << 16));
+  }
+  for (int i = nv << 5; i < len; ++i) {
+    unsigned bits = ((unsigned)w[i]) << 16;
+    float fv = *(float *)&bits;
+    obuf[i] = fv > s ? 1 : 0;
+  }
+}
+
+extern "C" __device__ void gt_scalar_raw(
+    _global_ptr_ const char *in,
+    _global_ptr_ char *out,
+    int numel, int esz, int type_code,
+    int scalar_bits,
+    int chunk_start, int chunk_count) {
+  int cid = core_id();
+  int ncores = core_num();
+  int chunk_elems = CHUNK_BYTES / esz;  // esz | CHUNK_BYTES, so 64B-aligned
+  int total_chunks = (numel + chunk_elems - 1) / chunk_elems;
+  int cend = chunk_start + chunk_count;
+  if (cend > total_chunks) cend = total_chunks;
+  // contiguous aligned chunk block per core: every GM2LM/LM2GM starts at a
+  // multiple of CHUNK_BYTES in GM (misaligned DMA sources run several times
+  // slower) and both directions are single wide transfers.
+  int per = (chunk_count + ncores - 1) / ncores;
+  int c0 = chunk_start + cid * per;
+  int c1 = c0 + per;
+  if (c1 > cend) c1 = cend;
+  if (c0 >= c1) return;
+
+  // flat double-buffered chunk pipeline. The next input chunk is issued after
+  // the fence, and the previous chunk's output DMA is issued right after it,
+  // so both in-flight transfers overlap the compare of the current chunk; the
+  // fence at the top of each iteration drains the round before the buffers it
+  // protects are rewritten.
+  __attribute__((aligned(64))) __local__ char buf[NBUF][CHUNK_BYTES];
+  __attribute__((aligned(64))) __local__ char obuf[NBUF][OBUF_BYTES];
+
+  int cur = 0;
+  {
+    int len = numel - c0 * chunk_elems;
+    if (len > chunk_elems) len = chunk_elems;
+    GM2LM_ASYNC(in + (long long)c0 * CHUNK_BYTES, buf[0], len * esz);
+  }
+  int poff = -1, plen = 0;
+  for (int c = c0; c < c1; ++c) {
+    int off = c * chunk_elems;          // element offset, CHUNK_BYTES-aligned
+    int len = numel - off;
+    if (len > chunk_elems) len = chunk_elems;
+    mfence_lm_gm();  // drain the previous round (in-DMA + older out-DMA)
+    if (poff >= 0)
+      LM2GM_ASYNC(obuf[cur ^ 1], out + poff, plen);  // overlaps proc below
+    if (c + 1 < c1) {
+      int nlen = numel - (c + 1) * chunk_elems;
+      if (nlen > chunk_elems) nlen = chunk_elems;
+      GM2LM_ASYNC(in + (long long)(c + 1) * CHUNK_BYTES, buf[cur ^ 1],
+                  nlen * esz);
+    }
+    switch (type_code) {
+      case T_F32:
+        proc_f32(buf[cur], len, scalar_bits, obuf[cur]);
+        break;
+      case T_F16:
+        proc_f16(buf[cur], len, scalar_bits, obuf[cur]);
+        break;
+      default:
+        proc_bf16(buf[cur], len, scalar_bits, obuf[cur]);
+        break;
+    }
+    poff = off;
+    plen = len;
+    cur ^= 1;
+  }
+  if (poff >= 0)
+    LM2GM_ASYNC(obuf[cur ^ 1], out + poff, plen);
+  mfence_lm_gm();
+}
