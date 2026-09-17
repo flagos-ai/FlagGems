@@ -20,8 +20,12 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.ops.copy import copy_
+from flag_gems.ops.neg import neg
+from flag_gems.ops.sum import sum as gems_sum
+from flag_gems.ops.zeros_like import zeros_like
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry, tl_extra_shim
+from flag_gems.utils import libentry, pointwise_dynamic, tl_extra_shim
 
 logger = logging.getLogger(__name__)
 
@@ -178,6 +182,88 @@ def _poisson_nll_loss_final_kernel(
     tl.store(output_ptr, total)
 
 
+@pointwise_dynamic(
+    is_tensor=[True, True, True, True, False, False, False, False],
+    num_outputs=2,
+    promotion_methods=[(0, 1, 2, 3, "DEFAULT")] * 2,
+)
+@triton.jit
+def _complex_loss(
+    xr,
+    xi,
+    yr,
+    yi,
+    eps,
+    log_input: tl.constexpr,
+    full: tl.constexpr,
+    complex_input: tl.constexpr,
+):
+    if log_input:
+        ex = tl_extra_shim.exp(xr)
+        real = ex * tl_extra_shim.cos(xi) - (yr * xr - yi * xi)
+        imag = ex * tl_extra_shim.sin(xi) - (yr * xi + yi * xr)
+    else:
+        shifted = xr + eps
+        if complex_input:
+            scale = tl.maximum(tl.abs(shifted), tl.abs(xi))
+            safe_scale = tl.where(scale == 0, 1, scale)
+            a, b = shifted / safe_scale, xi / safe_scale
+            lr = tl_extra_shim.log(safe_scale) + 0.5 * tl_extra_shim.log(a * a + b * b)
+            li = tl_extra_shim.atan2(xi, shifted)
+        else:
+            lr = tl_extra_shim.log(shifted)
+            li = tl.full(xr.shape, 0, xr.dtype)
+        real = xr - (yr * lr - yi * li)
+        imag = xi - (yr * li + yi * lr)
+    if full:
+        stirling = (
+            yr * tl_extra_shim.log(yr)
+            - yr
+            + 0.5 * tl_extra_shim.log(2.0 * math.pi * yr)
+        )
+        real += tl.where(yr > 1, stirling, 0)
+    return real, imag
+
+
+@pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, "DEFAULT")])
+@triton.jit
+def _divide_count(value, count):
+    return value / count
+
+
+def _complex_parts(value, dtype):
+    real = torch.empty(value.shape, dtype=dtype, device=value.device)
+    if value.is_complex():
+        physical = value.conj() if value.is_conj() else value
+        parts = torch.view_as_real(physical)
+        copy_(real, parts[..., 0])
+        imag = torch.empty_like(real)
+        copy_(imag, parts[..., 1])
+        if value.is_conj():
+            imag = neg(imag)
+    else:
+        copy_(real, value)
+        imag = zeros_like(real)
+    return real, imag
+
+
+def _complex_poisson(input, target, dtype, log_input, full, eps, reduction):
+    real_dtype = torch.float64 if dtype == torch.complex128 else torch.float32
+    xr, xi = _complex_parts(input, real_dtype)
+    yr, yi = _complex_parts(target, real_dtype)
+    real, imag = _complex_loss(xr, xi, yr, yi, eps, log_input, full, input.is_complex())
+    if reduction in (1, 2):
+        count = real.numel()
+        real, imag = gems_sum(real), gems_sum(imag)
+        if reduction == 1:
+            real, imag = _divide_count(real, count), _divide_count(imag, count)
+    output = torch.empty(real.shape, dtype=dtype, device=input.device)
+    parts = torch.view_as_real(output)
+    copy_(parts[..., 0], real)
+    copy_(parts[..., 1], imag)
+    return output
+
+
 def _result_dtype(input, target):
     if input.dtype == torch.bool and target.dtype == torch.bool:
         raise RuntimeError("Subtraction with two bool tensors is not supported")
@@ -224,6 +310,10 @@ def poisson_nll_loss(input, target, log_input, full, eps, reduction):
         raise RuntimeError("input and target must be on the same device")
     if full and target.dtype == torch.bool:
         raise RuntimeError("Subtraction with a bool target is not supported")
+    if not log_input and input.dtype == torch.bool:
+        raise RuntimeError("Subtraction with a bool input is not supported")
+    if full and target.is_complex():
+        raise RuntimeError("Comparisons with a complex target are not supported")
     dtype = _result_dtype(input, target)
     output_shape, input_strides, target_strides = _broadcast_metadata(input, target)
     n_elements = math.prod(output_shape)
@@ -233,6 +323,9 @@ def poisson_nll_loss(input, target, log_input, full, eps, reduction):
             return torch.empty(output_shape, dtype=dtype, device=input.device)
         value = 0.0 if reduction == 2 else float("nan")
         return torch.full((), value, dtype=dtype, device=input.device)
+
+    if dtype.is_complex:
+        return _complex_poisson(input, target, dtype, log_input, full, eps, reduction)
 
     output = torch.empty(
         output_shape if reduction not in (1, 2) else (),

@@ -147,6 +147,76 @@ def test_poisson_nll_loss_mixed_dtype_exceptions():
 
 
 @pytest.mark.poisson_nll_loss
+@pytest.mark.parametrize("full", [False, True])
+@pytest.mark.parametrize("reduction", [0, 1, 2])
+def test_poisson_nll_loss_bool_input_nonlog_rejected(full, reduction):
+    inp = torch.ones((2, 3), dtype=torch.bool, device=flag_gems.device)
+    target = torch.ones((1, 3), device=flag_gems.device)
+    with pytest.raises(RuntimeError):
+        torch.ops.aten.poisson_nll_loss(
+            utils.to_reference(inp),
+            utils.to_reference(target),
+            False,
+            full,
+            1e-8,
+            reduction,
+        )
+    with pytest.raises(RuntimeError):
+        flag_gems.poisson_nll_loss(inp, target, False, full, 1e-8, reduction)
+
+
+@pytest.mark.poisson_nll_loss
+@pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
+@pytest.mark.parametrize("log_input", [False, True])
+@pytest.mark.parametrize("reduction", [0, 1, 2])
+@pytest.mark.parametrize(
+    "case", ["broadcast_conjugate", "large", "empty", "real_input", "real_target"]
+)
+def test_poisson_nll_loss_complex(dtype, log_input, reduction, case):
+    if dtype == torch.complex128 and not utils.fp64_is_supported:
+        pytest.skip("FP64 is not supported")
+    shape = (65537,) if case == "large" else (0, 3) if case == "empty" else (3, 7)
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    target = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    if case == "broadcast_conjugate":
+        inp = inp.T.conj()
+        target = target[:1].T.conj()
+    elif case == "real_input":
+        inp = inp.real.abs() + 0.5
+    elif case == "real_target":
+        target = target.real.abs() + 0.5
+    full = case == "real_target"
+    reference = torch.ops.aten.poisson_nll_loss(
+        utils.to_reference(inp),
+        utils.to_reference(target),
+        log_input,
+        full,
+        1e-8,
+        reduction,
+    )
+    result = flag_gems.poisson_nll_loss(inp, target, log_input, full, 1e-8, reduction)
+    assert result.dtype == reference.dtype
+    utils.gems_assert_close(
+        result,
+        reference,
+        dtype,
+        equal_nan=True,
+        reduce_dim=max(inp.numel(), 1) if reduction in (1, 2) else 1,
+    )
+
+
+@pytest.mark.poisson_nll_loss
+def test_poisson_nll_loss_complex_target_full_rejected():
+    inp = torch.ones(3, dtype=torch.complex64, device=flag_gems.device)
+    with pytest.raises(RuntimeError):
+        torch.ops.aten.poisson_nll_loss(
+            utils.to_reference(inp), utils.to_reference(inp), True, True, 1e-8, 0
+        )
+    with pytest.raises(RuntimeError):
+        flag_gems.poisson_nll_loss(inp, inp, True, True, 1e-8, 0)
+
+
+@pytest.mark.poisson_nll_loss
 def test_poisson_nll_loss_invalid_broadcast():
     input = torch.ones((2, 3), device=flag_gems.device)
     target = torch.ones((4, 3), device=flag_gems.device)
