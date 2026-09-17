@@ -796,6 +796,7 @@ _FULL_CONFIG = (
     ("histogramdd", histogramdd, None, ["CompositeImplicitAutograd"]),
     ("hsplit.array", hsplit),
     ("hsplit.int", hsplit),
+    ("hspmm", hspmm, None, ["SparseCUDA"]),
     ("hstack", hstack),
     ("huber_loss", huber_loss),
     ("huber_loss.out", huber_loss_out),
