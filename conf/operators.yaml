@@ -66,6 +66,20 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: _has_same_storage_numel
+  description: 'Returns True if the two tensors have the same number of elements in
+    their underlying storages.
+
+    '
+  for:
+  - _has_same_storage_numel
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: _linalg_slogdet
   description: 'Computes the sign and natural logarithm of the absolute value of the
 
