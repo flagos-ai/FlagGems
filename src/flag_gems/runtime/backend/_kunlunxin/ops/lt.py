@@ -14,11 +14,17 @@ from ..utils.pointwise_dynamic import pointwise_dynamic
 
 try:
     import triton.experimental.tle as tle
+    from triton.experimental.tle.raw.runtime import registry as _TLE_RAW_REGISTRY
 
-    _TLE_OK = True
 except ImportError:
     tle = None
-    _TLE_OK = False
+    _TLE_RAW_DIALECT = None
+else:
+    _TLE_RAW_DIALECT = next(
+        (name for name in ("xpu", "xpu3") if name in _TLE_RAW_REGISTRY), None
+    )
+
+_TLE_OK = _TLE_RAW_DIALECT is not None
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _NCLUSTER = 12
@@ -34,7 +40,7 @@ _RAW_TYPE_CODE = {
 
 if _TLE_OK:
 
-    @tle.raw.dialect(name="xpu", file=os.path.join(_HERE, "lt_raw.xpu"))
+    @tle.raw.dialect(name=_TLE_RAW_DIALECT, file=os.path.join(_HERE, "lt_raw.xpu"))
     def lt_scalar_raw(
         in_, out, numel, esz, type_code, scalar_bits, chunk_start, chunk_count
     ): ...
