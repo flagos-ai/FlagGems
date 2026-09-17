@@ -69,7 +69,13 @@ def test_ldexp_real_operands_complex_out(dtype):
     other = torch.randint(-3, 4, (17,), device=inp.device)
     reference_input = utils.to_reference(inp)
     reference = torch.empty(17, dtype=dtype, device=reference_input.device)
-    torch.ldexp(reference_input, utils.to_reference(other), out=reference)
+    if cfg.TO_CPU:
+        # PyTorch 2.11 CPU integer-exponent out kernels assert internally when
+        # casting a real result to complex; validate the values via functional
+        # ldexp plus the output cast. CUDA still exercises the native overload.
+        reference = torch.ldexp(reference_input, utils.to_reference(other)).to(dtype)
+    else:
+        torch.ldexp(reference_input, utils.to_reference(other), out=reference)
     out = torch.empty(17, dtype=dtype, device=inp.device)
     result = flag_gems.ldexp_out(inp, other, out=out)
     assert result is out
