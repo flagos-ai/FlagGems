@@ -254,3 +254,68 @@ def test_ldexp_rejects_expanding_self_():
     other = torch.ones((3, 7), dtype=torch.int32, device=flag_gems.device)
     with pytest.raises(RuntimeError):
         flag_gems.ldexp_(self, other)
+
+
+@pytest.mark.ldexp_
+def test_ldexp_mixed_precision_extreme_exponent_():
+    self = torch.tensor(
+        [2.0**-126, 2.0**-127, 0.0, float("inf")], device=flag_gems.device
+    )
+    other = torch.tensor(
+        [128, 128, 1024, -1024], dtype=torch.float64, device=self.device
+    )
+    reference = _functional_reference(
+        utils.to_reference(self), utils.to_reference(other)
+    )
+    result = flag_gems.ldexp_(self, other)
+    utils.gems_assert_equal(result, reference, equal_nan=True)
+
+
+@pytest.mark.ldexp_
+def test_ldexp_int64_exponent_outside_int32_range_():
+    self = torch.tensor([1.0] * 6, device=flag_gems.device)
+    other = torch.tensor(
+        [2**32, 2**32 + 1, -(2**32), -(2**32) - 1, 2**31, -(2**31) - 1],
+        dtype=torch.int64,
+        device=self.device,
+    )
+    reference = _functional_reference(
+        utils.to_reference(self), utils.to_reference(other)
+    )
+    result = flag_gems.ldexp_(self, other)
+    utils.gems_assert_equal(result, reference, equal_nan=True)
+
+
+@pytest.mark.ldexp_
+@pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
+@pytest.mark.parametrize("conjugated", [False, True])
+def test_ldexp_complex_integral_extremes_(dtype, conjugated):
+    self = torch.tensor(
+        [
+            complex(0, 1),
+            complex(1, float("inf")),
+            complex(float("inf"), 0),
+            complex(1e-30, 1e-30),
+        ],
+        dtype=dtype,
+        device=flag_gems.device,
+    )
+    if conjugated:
+        self = self.conj()
+    other = torch.tensor([128, 0, 0, 128], dtype=torch.int64, device=self.device)
+    reference = _functional_reference(
+        utils.to_reference(self), utils.to_reference(other)
+    )
+    result = flag_gems.ldexp_(self, other)
+    utils.gems_assert_close(result, reference, dtype, equal_nan=True)
+
+
+@pytest.mark.ldexp_
+def test_ldexp_conjugated_complex_exponent_():
+    self = torch.randn(17, dtype=torch.complex64, device=flag_gems.device).conj()
+    other = torch.randn_like(self).conj()
+    reference = _functional_reference(
+        utils.to_reference(self, True), utils.to_reference(other, True)
+    )
+    result = flag_gems.ldexp_(self, other)
+    utils.gems_assert_close(result, reference, self.dtype, equal_nan=True)

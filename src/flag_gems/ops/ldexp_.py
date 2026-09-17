@@ -19,6 +19,9 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.ops.copy import copy_
+from flag_gems.ops.neg import neg
+from flag_gems.ops.zeros_like import zeros_like
 from flag_gems.utils import pointwise_dynamic, tl_extra_shim
 from flag_gems.utils.shape_utils import MemOverlap, has_internal_overlapping
 
@@ -34,6 +37,8 @@ _ldexp = getattr(tl_extra_shim, "ldexp", _ldexp_fallback)
 
 logger = logging.getLogger(__name__)
 
+_WRAP_INTEGER_EXPONENT = tuple(map(int, torch.__version__.split(".")[:2])) >= (2, 11)
+
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
@@ -47,17 +52,21 @@ def ldexp_inplace_fp64_func(x, other):
     return x.to(tl.float64) * _exp2(other.to(tl.float64))
 
 
-@pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
+@pointwise_dynamic(is_tensor=[True, True, False], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
-def ldexp_inplace_integral_func(x, other):
-    exponent = tl.maximum(tl.minimum(other, 2147483647), -2147483648).to(tl.int32)
+def ldexp_inplace_integral_func(x, other, wrap_exponent: tl.constexpr):
+    exponent = other.to(tl.int32)
+    if not wrap_exponent:
+        exponent = tl.maximum(tl.minimum(other, 2147483647), -2147483648).to(tl.int32)
     return _ldexp(x.to(tl.float32), exponent)
 
 
-@pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
+@pointwise_dynamic(is_tensor=[True, True, False], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
-def ldexp_inplace_integral_fp64_func(x, other):
-    exponent = tl.maximum(tl.minimum(other, 2147483647), -2147483648).to(tl.int32)
+def ldexp_inplace_integral_fp64_func(x, other, wrap_exponent: tl.constexpr):
+    exponent = other.to(tl.int32)
+    if not wrap_exponent:
+        exponent = tl.maximum(tl.minimum(other, 2147483647), -2147483648).to(tl.int32)
     return _ldexp(x.to(tl.float64), exponent)
 
 
@@ -79,10 +88,9 @@ def ldexp_inplace_complex_func(xr, xi, yr, yi):
     angle = yi * 0.6931471805599453
     cos_angle = tl.cos(angle)
     sin_angle = tl.sin(angle)
-    return (
-        scale * (xr * cos_angle - xi * sin_angle),
-        scale * (xr * sin_angle + xi * cos_angle),
-    )
+    pr = scale * cos_angle
+    pi = tl.where(yi == 0, 0, scale * sin_angle)
+    return xr * pr - xi * pi, xr * pi + xi * pr
 
 
 @pointwise_dynamic(
@@ -103,10 +111,9 @@ def ldexp_inplace_complex_fp64_func(xr, xi, yr, yi):
     angle = yi * 0.693147180559945309417232121458176568
     cos_angle = tl.cos(angle)
     sin_angle = tl.sin(angle)
-    return (
-        scale * (xr * cos_angle - xi * sin_angle),
-        scale * (xr * sin_angle + xi * cos_angle),
-    )
+    pr = scale * cos_angle
+    pi = tl.where(yi == 0, 0, scale * sin_angle)
+    return xr * pr - xi * pi, xr * pi + xi * pr
 
 
 @pointwise_dynamic(
@@ -119,11 +126,10 @@ def ldexp_inplace_complex_fp64_func(xr, xi, yr, yi):
 )
 @triton.jit
 def ldexp_inplace_complex_integral_func(xr, xi, other):
-    exponent = tl.maximum(tl.minimum(other, 2147483647), -2147483648).to(tl.int32)
-    return (
-        _ldexp(xr.to(tl.float32), exponent),
-        _ldexp(xi.to(tl.float32), exponent),
-    )
+    xr = xr.to(tl.float32)
+    xi = xi.to(tl.float32)
+    scale = _exp2(other.to(tl.float32))
+    return xr * scale - xi * 0.0, xr * 0.0 + xi * scale
 
 
 @pointwise_dynamic(
@@ -136,11 +142,10 @@ def ldexp_inplace_complex_integral_func(xr, xi, other):
 )
 @triton.jit
 def ldexp_inplace_complex_integral_fp64_func(xr, xi, other):
-    exponent = tl.maximum(tl.minimum(other, 2147483647), -2147483648).to(tl.int32)
-    return (
-        _ldexp(xr.to(tl.float64), exponent),
-        _ldexp(xi.to(tl.float64), exponent),
-    )
+    xr = xr.to(tl.float64)
+    xi = xi.to(tl.float64)
+    scale = _exp2(other.to(tl.float64))
+    return xr * scale - xi * 0.0, xr * 0.0 + xi * scale
 
 
 def _result_dtype(self, other):
@@ -155,35 +160,49 @@ def _result_dtype(self, other):
 
 def _complex_parts(tensor, real_dtype):
     if tensor.is_complex():
-        parts = torch.view_as_real(tensor)
-        return parts[..., 0].to(real_dtype), parts[..., 1].to(real_dtype)
-    real = tensor.to(real_dtype)
-    return real, torch.zeros_like(real)
+        physical = tensor.conj() if tensor.is_conj() else tensor
+        parts = torch.view_as_real(physical)
+        real = torch.empty(tensor.shape, dtype=real_dtype, device=tensor.device)
+        imag = torch.empty_like(real)
+        copy_(real, parts[..., 0])
+        copy_(imag, neg(parts[..., 1]) if tensor.is_conj() else parts[..., 1])
+        return real, imag
+    real = torch.empty(tensor.shape, dtype=real_dtype, device=tensor.device)
+    copy_(real, tensor)
+    return real, zeros_like(real)
+
+
+def _write_complex(self, real, imag):
+    physical = self.conj() if self.is_conj() else self
+    output = torch.view_as_real(physical)
+    copy_(output[..., 0], real)
+    copy_(output[..., 1], neg(imag) if self.is_conj() else imag)
 
 
 def _ldexp_complex_(self, other):
-    real_dtype = torch.float64 if self.dtype == torch.complex128 else torch.float32
+    promoted = _result_dtype(self, other)
+    real_dtype = torch.float64 if promoted == torch.complex128 else torch.float32
     xr, xi = _complex_parts(self, real_dtype)
     yr, yi = _complex_parts(other, real_dtype)
-    output = torch.view_as_real(self)
     func = (
         ldexp_inplace_complex_fp64_func
-        if self.dtype == torch.complex128
+        if promoted == torch.complex128
         else ldexp_inplace_complex_func
     )
-    func(xr, xi, yr, yi, out0=output[..., 0], out1=output[..., 1])
+    real, imag = func(xr, xi, yr, yi)
+    _write_complex(self, real, imag)
 
 
 def _ldexp_complex_integral_(self, other):
     real_dtype = torch.float64 if self.dtype == torch.complex128 else torch.float32
     xr, xi = _complex_parts(self, real_dtype)
-    output = torch.view_as_real(self)
     func = (
         ldexp_inplace_complex_integral_fp64_func
         if self.dtype == torch.complex128
         else ldexp_inplace_complex_integral_func
     )
-    func(xr, xi, other, out0=output[..., 0], out1=output[..., 1])
+    real, imag = func(xr, xi, other)
+    _write_complex(self, real, imag)
 
 
 def _is_exact_alias(left, right):
@@ -204,10 +223,20 @@ def ldexp_(self, other):
         )
     if (
         self.device == other.device
-        and torch._C._overlaps(self, other)
+        and self.untyped_storage().nbytes() > 0
+        and self.untyped_storage().data_ptr() == other.untyped_storage().data_ptr()
         and not _is_exact_alias(self, other)
     ):
-        other = other.clone()
+        temporary = torch.empty_like(other)
+        if other.is_complex():
+            real, imag = _complex_parts(
+                other,
+                torch.float64 if other.dtype == torch.complex128 else torch.float32,
+            )
+            _write_complex(temporary, real, imag)
+        else:
+            copy_(temporary, other)
+        other = temporary
 
     result_dtype = _result_dtype(self, other)
     if not torch.can_cast(result_dtype, self.dtype):
@@ -233,14 +262,17 @@ def ldexp_(self, other):
         if integral_exponent:
             func = (
                 ldexp_inplace_integral_fp64_func
-                if self.dtype == torch.float64
+                if result_dtype == torch.float64
                 else ldexp_inplace_integral_func
             )
         else:
             func = (
                 ldexp_inplace_fp64_func
-                if self.dtype == torch.float64
+                if result_dtype == torch.float64
                 else ldexp_inplace_func
             )
-        func(self, other, out0=self)
+        if integral_exponent:
+            func(self, other, _WRAP_INTEGER_EXPONENT, out0=self)
+        else:
+            func(self, other, out0=self)
     return self
