@@ -14,6 +14,9 @@
 
 from torch_musa import current_device, get_device_capability
 
+from ._amp_foreach_non_finite_check_and_unscale_ import (
+    _amp_foreach_non_finite_check_and_unscale_,
+)
 from ._conj import _conj
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
@@ -360,6 +363,7 @@ if get_device_capability(current_device())[0] >= 3:
             "_masked_scale",
             "_functional_sym_constrain_range_for_size",
             "diagonal_scatter",
+            "_amp_foreach_non_finite_check_and_unscale_",
         ]
     )
 
