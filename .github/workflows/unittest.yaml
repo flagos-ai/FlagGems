@@ -32,6 +32,13 @@ jobs:
     runs-on: basic-runner-cpu
     container:
       image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
+    # The self-hosted runner injects an auth-required proxy (407) that breaks
+    # the container; it can reach GitHub directly, so clear the proxy vars.
+    env:
+      HTTP_PROXY: ''
+      HTTPS_PROXY: ''
+      http_proxy: ''
+      https_proxy: ''
     concurrency:
       group: unit-test-${{ (github.event.pull_request && contains(github.event.pull_request.title, 'KernelGen')) && 'kg' || github.run_id }}
       cancel-in-progress: false
@@ -195,6 +202,13 @@ jobs:
     runs-on: basic-runner-cpu
     container:
       image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
+    # The self-hosted runner injects an auth-required proxy (407) that breaks
+    # the container; it can reach GitHub directly, so clear the proxy vars.
+    env:
+      HTTP_PROXY: ''
+      HTTPS_PROXY: ''
+      http_proxy: ''
+      https_proxy: ''
     needs:
       - preprocess
       - cpp-op
