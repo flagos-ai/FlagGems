@@ -29,11 +29,11 @@ else:
 @pytest.mark.upsample_nearest_exact1d
 @pytest.mark.parametrize("shape", UPSAMPLE_NEAREST1D_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-@pytest.mark.parametrize("factor", [2, 3])
+@pytest.mark.parametrize("factor", [2, 3, 1.5, 2.5])
 def test_accuracy__upsample_nearest_exact1d(shape, dtype, factor):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_x = utils.to_reference(x)
-    out_size = [shape[-1] * factor]
+    out_size = [int(shape[-1] * factor)]
 
     ref_out = torch.ops.aten._upsample_nearest_exact1d(ref_x, out_size, None)
     with flag_gems.use_gems():
