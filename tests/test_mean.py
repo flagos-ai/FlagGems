@@ -128,8 +128,9 @@ def test_mean_dim_full_reduction(dim, keepdim, dtype):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.mean(ref_inp, dim, keepdim)
-    with flag_gems.use_gems():
-        res_out = torch.mean(inp, dim, keepdim)
+    # Call the kernel directly -- tests must not wrap calls in flag_gems.use_gems()
+    # (CI check-kernelgen-tests).
+    res_out = flag_gems.mean_dim(inp, dim, keepdim)
 
     assert res_out.shape == ref_out.shape, (res_out.shape, ref_out.shape)
     utils.gems_assert_close(res_out, ref_out, dtype)
@@ -151,8 +152,11 @@ def test_mean_dim_empty_reduction(shape, dim, keepdim, dtype):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.mean(ref_inp, dim, keepdim)
-    with flag_gems.use_gems():
-        res_out = torch.mean(inp, dim, keepdim)
+    # Call the kernel directly -- tests must not wrap calls in flag_gems.use_gems()
+    # (CI check-kernelgen-tests).  aten normalises a scalar `dim` to a list
+    # before the override runs, so do it here too.
+    dims = [dim] if isinstance(dim, int) else dim
+    res_out = flag_gems.mean_dim(inp, dims, keepdim)
 
     assert res_out.shape == ref_out.shape, (res_out.shape, ref_out.shape)
     assert torch.isnan(res_out).all(), "empty reduction must produce NaNs like torch"
@@ -167,8 +171,9 @@ def test_mean_empty_tensor(shape, dtype):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.mean(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.mean(inp)
+    # Call the kernel directly -- tests must not wrap calls in flag_gems.use_gems()
+    # (CI check-kernelgen-tests).
+    res_out = flag_gems.mean(inp)
 
     assert res_out.shape == ref_out.shape, (res_out.shape, ref_out.shape)
     assert torch.isnan(res_out).all()
