@@ -1378,6 +1378,7 @@ __all__ = [
     "square",
     "square_",
     "square_out",
+    "squeeze_copy",
     "stack",
     "std",
     "sub",
