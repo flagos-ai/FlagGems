@@ -6,6 +6,7 @@
 #
 #     http://www.apache.org/licenses/LICENSE-2.0
 
+import os
 from typing import Any, Optional
 
 import numpy as np
@@ -326,6 +327,97 @@ def invoke_kunlunxin_fused_moe_kernel(
     )
 
 
+# ---------------------------------------------------------------------------
+# [0919 C-168] on-device padded->slot routing table.
+#
+# The host decoder below round-trips the padded routing arrays through the
+# CPU on every call (2x blocking D2H + numpy decode + H2D): measured ~90us
+# standalone and ~190us inside the full op on the core bench shapes, versus
+# ~15us for one device kernel on the same shapes. The table is a pure
+# function of (sorted_token_ids, expert_ids, align): for every position p
+# with 0 <= sids[p] < numel, slot sids[p] maps to expert eids[blk[p]] where
+# blk[p] = p // align (same formula as the host decoder; duplicates resolve
+# last-wins on the host decoder, any-wins here -- both only arise for
+# malformed align output). Unwritten slots keep the -1 sentinel.
+# FG_MOE_DISPATCH_HOSTDECODE=1 restores the host decoder (A/B, rollback).
+#
+# Note: the block table is precomputed (cached) because a runtime scalar
+# integer division (`offs // align`) in the kernel is miscompiled by the
+# current XPU backend (arith.divsi type mismatch / wrong result); the table
+# is content-constant, so caching carries no staleness risk.
+# ---------------------------------------------------------------------------
+_PADDED_TABLE_BLOCK = 1024
+_DEVICE_DECODE = os.environ.get("FG_MOE_DISPATCH_HOSTDECODE", "0") != "1"
+_BLK_TABLE_CACHE = {}
+
+
+def _blk_table(p, align, device):
+    key = (p, align, str(device))
+    t = _BLK_TABLE_CACHE.get(key)
+    if t is None:
+        t = torch.arange(p, device=device, dtype=torch.int32) // align
+        if len(_BLK_TABLE_CACHE) >= 64:
+            _BLK_TABLE_CACHE.clear()
+        _BLK_TABLE_CACHE[key] = t
+    return t
+
+
+@triton.jit(
+    do_not_specialize=["numel", "e_numel", "P"],
+)
+def _padded_slot_experts_kernel(
+    sids_ptr,
+    eids_ptr,
+    blk_ptr,
+    out_ptr,
+    numel,
+    e_numel,
+    P,
+    BLOCK: tl.constexpr,
+):
+    offs = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    m = offs < P
+    s = tl.load(sids_ptr + offs, mask=m, other=-1)
+    blk = tl.load(blk_ptr + offs, mask=m, other=0)
+    ok = m & (s >= 0) & (s < numel) & (blk < e_numel)
+    e = tl.load(eids_ptr + blk, mask=ok, other=-1)
+    tl.store(out_ptr + s, e, mask=ok)
+
+
+def _slot_experts_device(sorted_token_ids, expert_ids, align, numel, device):
+    """Device-side decoder (see note above). None when it cannot apply, so the
+    caller falls back to the host decoder."""
+    sids = sorted_token_ids.detach().reshape(-1)
+    eids = expert_ids.detach().reshape(-1)
+    if not (sids.is_cuda and eids.is_cuda):
+        return None
+    if sids.dtype != torch.int32:
+        sids = sids.to(torch.int32)
+    if eids.dtype != torch.int32:
+        eids = eids.to(torch.int32)
+    sids = sids.contiguous()
+    eids = eids.contiguous()
+    p = sids.numel()
+    if p == 0 or numel <= 0 or align <= 0:
+        return None
+    blk = _blk_table(p, align, device)
+    out = torch.full((numel,), -1, device=device, dtype=torch.int32)
+    grid = (triton.cdiv(p, _PADDED_TABLE_BLOCK),)
+    _padded_slot_experts_kernel[grid](
+        sids,
+        eids,
+        blk,
+        out,
+        numel,
+        eids.numel(),
+        p,
+        BLOCK=_PADDED_TABLE_BLOCK,
+        num_warps=1,
+        num_stages=1,
+    )
+    return out
+
+
 def _padded_to_slot_experts(sorted_token_ids, expert_ids, config, numel, device):
     """Decode moe_align_block_size padded arrays into the direct-routing
     slot->expert table (int32, [numel]). Returns None when the arrays cannot be
@@ -400,12 +492,23 @@ def dispatch_kunlunxin_fused_moe_kernel(
     if A.dtype in (torch.bfloat16, torch.float16) and B_bias is None and not FUSE_SILU:
         # Restructure only for the validated acceleration profile (bf16, no
         # bias, no fused silu); everything else keeps the legacy padded launch.
-        try:
-            slot_experts = _padded_to_slot_experts(
-                sorted_token_ids, expert_ids, config, numel, A.device
-            )
-        except Exception:
-            slot_experts = None
+        # [0919 C-168] prefer the on-device decoder (no per-call D2H round
+        # trip); FG_MOE_DISPATCH_HOSTDECODE=1 restores the host decoder.
+        align = int(config["BLOCK_SIZE_M"])
+        if _DEVICE_DECODE and align > 0:
+            try:
+                slot_experts = _slot_experts_device(
+                    sorted_token_ids, expert_ids, align, numel, A.device
+                )
+            except Exception:
+                slot_experts = None
+        if slot_experts is None:
+            try:
+                slot_experts = _padded_to_slot_experts(
+                    sorted_token_ids, expert_ids, config, numel, A.device
+                )
+            except Exception:
+                slot_experts = None
 
     if slot_experts is not None:
         invoke_kunlunxin_fused_moe_kernel(
