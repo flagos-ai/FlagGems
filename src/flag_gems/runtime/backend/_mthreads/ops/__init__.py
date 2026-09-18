@@ -77,7 +77,7 @@ from .histc import histc
 from .im2col import im2col
 from .index_add import index_add, index_add_
 from .index_copy import index_copy
-from .index_copy_ import index_copy, index_copy_
+from .index_copy_ import index_copy_
 from .index_put import _index_put_impl_, index_put, index_put_
 from .index_select import index_select
 from .int_mm import int_mm, int_mm_out
@@ -94,7 +94,6 @@ from .linear import linear
 from .log import log
 from .log2_ import log2_
 from .log10 import log10, log10_, log10_out
-from .log10_ import log10_
 from .log_normal_ import log_normal_
 from .log_softmax import (
     log_softmax,
@@ -107,7 +106,6 @@ from .max_pool2d_with_indices_backward import max_pool2d_with_indices_backward
 from .median import median, median_dim, median_dim_values, median_out
 from .min import min, min_dim
 from .mish import mish, mish_
-from .mish_ import mish_
 from .mode import mode
 from .mul import mul, mul_
 from .mvlgamma import mvlgamma
@@ -167,9 +165,17 @@ from .zeros_like import zeros_like
 
 __all__ = [
     "_adaptive_avg_pool2d_backward",
+    "_amp_foreach_non_finite_check_and_unscale_",
     "_conj",
+    "_functional_sym_constrain_range_for_size",
     "_index_put_impl_",
+    "_masked_scale",
+    "_thnn_fused_lstm_cell_backward_impl",
     "_unique2",
+    "_upsample_bilinear2d_aa",
+    "_upsample_nearest_exact2d_backward",
+    "adaptive_max_pool3d_backward",
+    "addmv_",
     "all",
     "all_dim",
     "all_dims",
@@ -181,15 +187,19 @@ __all__ = [
     "arange_start",
     "arctan2",
     "arctan2_",
+    "arctan_",
     "argmin",
     "argsort",
+    "atan2",
+    "atan2_",
     "avg_pool2d_backward",
     "batch_norm",
     "batch_norm_backward",
     "bucketize",
     "celu",
-    "celu_",
     "channel_shuffle",
+    "cholesky_inverse",
+    "clip_",
     "constant_pad_nd",
     "conv2d",
     "conv_transpose1d",
@@ -197,6 +207,8 @@ __all__ = [
     "conv_transpose2d",
     "copy_",
     "cudnn_convolution",
+    "deg2rad_",
+    "diagonal_scatter",
     "div_mode",
     "div_mode_",
     "dropout",
@@ -205,6 +217,7 @@ __all__ = [
     "erfinv_",
     "expand_copy",
     "feature_dropout_",
+    "fix",
     "flip",
     "floor_divide",
     "floor_divide_",
@@ -227,6 +240,12 @@ __all__ = [
     "int_mm",
     "int_mm_out",
     "isin",
+    "kthvalue",
+    "lcm",
+    "lcm_",
+    "ldl_factor_ex",
+    "lift_fresh",
+    "lift_out",
     "linalg_cholesky",
     "linalg_ldl_solve",
     "linear",
@@ -234,6 +253,7 @@ __all__ = [
     "log10",
     "log10_",
     "log10_out",
+    "log2_",
     "log_normal_",
     "log_softmax",
     "log_softmax_backward",
@@ -253,6 +273,7 @@ __all__ = [
     "mode",
     "mul",
     "mul_",
+    "mvlgamma",
     "nanmedian",
     "nanmedian_dim",
     "nanmedian_dim_values",
@@ -265,11 +286,13 @@ __all__ = [
     "one_hot",
     "ones",
     "ones_like",
+    "ormqr",
     "pad",
     "permute_copy",
     "prod",
     "prod_dim",
     "quantile",
+    "rad2deg_",
     "rand",
     "rand_like",
     "randn",
@@ -288,6 +311,7 @@ __all__ = [
     "scatter_reduce",
     "scatter_reduce_",
     "scatter_reduce_out",
+    "silu_backward",
     "softplus_backward",
     "sort",
     "sort_stable",
@@ -299,6 +323,7 @@ __all__ = [
     "special_multigammaln",
     "special_round",
     "special_round_out",
+    "square_",
     "tile",
     "topk_w8a16_fp8",
     "true_divide",
@@ -367,6 +392,34 @@ if get_device_capability(current_device())[0] >= 3:
             "diagonal_scatter",
             "_amp_foreach_non_finite_check_and_unscale_",
             "adaptive_max_pool3d_backward",
+            "_amp_foreach_non_finite_check_and_unscale_",
+            "_functional_sym_constrain_range_for_size",
+            "_masked_scale",
+            "_thnn_fused_lstm_cell_backward_impl",
+            "_upsample_bilinear2d_aa",
+            "_upsample_nearest_exact2d_backward",
+            "adaptive_max_pool3d_backward",
+            "addmv_",
+            "arctan_",
+            "atan2",
+            "atan2_",
+            "cholesky_inverse",
+            "clip_",
+            "deg2rad_",
+            "diagonal_scatter",
+            "fix",
+            "kthvalue",
+            "lcm",
+            "lcm_",
+            "lift_fresh",
+            "lift_out",
+            "ldl_factor_ex",
+            "log2_",
+            "mvlgamma",
+            "ormqr",
+            "rad2deg_",
+            "silu_backward",
+            "square_",
         ]
     )
 
