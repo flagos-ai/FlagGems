@@ -29,6 +29,18 @@ atan2_out: test_atan2
 alias_copy_out: test_alias_copy
 as_strided_copy_out: test_as_strided_copy
 baddbmm_out: test_baddbmm
+int_mm_out: test_int_mm
+linalg_eigvals_out: test_linalg_eigvals
+multi_margin_loss_out: test_multi_margin_loss
+nanmedian_out: test_nanmedian
+scaled_mm_out: test_scaled_mm
+searchsorted_out: test_searchsorted
+searchsorted_scalar_out: test_searchsorted
+scatter_reduce_two_out: test_scatter_reduce
+segment_reduce_out: test_segment_reduce
+special_zeta_out: test_special_zeta
+special_zeta_scalar_tensor_out: test_special_zeta
+special_zeta_tensor_scalar_out: test_special_zeta
 
 # Compound / alternative names
 arange_start_step: test_arange
@@ -37,10 +49,30 @@ all_dim: test_all
 all_dims: test_all
 any_dim: test_any
 any_dims: test_any
-and_scalar: test_bitwise_and
+and_scalar: test_bitwise_and_scalar
 and_tensor: test_bitwise_and
 arctan: test_atan
+nanmedian_dim: test_nanmedian
+nanmedian_dim_values: test_nanmedian
+searchsorted_scalar: test_searchsorted
+scatter_reduce_two: test_scatter_reduce
+scatter_reduce_two_: test_scatter_reduce
+special_zeta_scalar_tensor: test_special_zeta
+special_zeta_tensor_scalar: test_special_zeta
 
 # Operators tested in combined files or with different naming
 batch_norm_backward: test_batch_norm
-batch_norm_impl_index: test_batch_norm
+multi_margin_loss_backward: test_multi_margin_loss
+multi_margin_loss_backward_out: test_multi_margin_loss
+segment_reduce_backward: test_segment_reduce
+segment_reduce_backward_out: test_segment_reduce
+special_chebyshev_polynomial_t_out: test_special_chebyshev_polynomial_t
+std_mean_correction: test_std_mean
+std_mean_correction_names: test_std_mean
+std_mean_correction_out: test_std_mean
+std_mean_dim: test_std_mean
+std_mean_names_dim: test_std_mean
+tril_indices: test_triangular_indices
+triu_indices: test_triangular_indices
+upsample_bicubic2d_aa_backward: test_upsample_bicubic2d_aa
+upsample_linear1d_backward: test_upsample_linear1d

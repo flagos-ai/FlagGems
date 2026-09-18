@@ -13,12 +13,12 @@ from .broadcast_to import broadcast_to
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
 from .conv_depthwise2d import _conv_depthwise2d
 from .conv_transpose1d import conv_transpose1d, conv_transpose1d_output_size
-from .dist import dist
 from .exponential_ import exponential_
 from .full import full
 from .full_like import full_like
 from .greater_equal import greater_equal_
 from .groupnorm import group_norm
+from .gru import gru, gru_data
 from .hadamard_transform import hadamard_transform
 from .index import index
 from .index_put import index_put, index_put_
@@ -27,6 +27,10 @@ from .isin import isin
 from .kthvalue import kthvalue
 from .layernorm import layer_norm, layer_norm_backward
 from .lgamma_ import lgamma, lgamma_
+from .linalg_lstsq import linalg_lstsq
+from .linalg_matrix_exp import linalg_matrix_exp, linalg_matrix_exp_out
+from .linalg_matrix_power import linalg_matrix_power, linalg_matrix_power_out
+from .linalg_qr import linalg_qr, linalg_qr_out
 from .linalg_solve_triangular import (
     linalg_solve_triangular,
     linalg_solve_triangular_out,
@@ -44,6 +48,7 @@ from .matmul_int8 import matmul_int8
 from .min import min, min_dim
 from .mm import mm, mm_out
 from .mvlgamma_ import mvlgamma_
+from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .nansum import nansum, nansum_out
 from .new_ones import new_ones
 from .nonzero import nonzero
@@ -57,8 +62,11 @@ from .renorm import renorm, renorm_
 from .repeat import repeat
 from .repeat_interleave import repeat_interleave_self_tensor
 from .resolve_conj import resolve_conj
+from .rms_norm_w8a16_fp8 import rms_norm_w8a16_fp8
 from .rsqrt import rsqrt, rsqrt_
+from .segment_reduce import segment_reduce, segment_reduce_out
 from .sigmoid import sigmoid
+from .silu import silu
 from .special_bessel_j0 import special_bessel_j0, special_bessel_j0_out
 from .special_chebyshev_polynomial_u import special_chebyshev_polynomial_u
 from .special_chebyshev_polynomial_w import (
@@ -102,12 +110,13 @@ __all__ = [
     "cholesky_solve_out",
     "conv_transpose1d",
     "conv_transpose1d_output_size",
-    "dist",
     "exponential_",
     "full",
     "full_like",
     "greater_equal_",
     "group_norm",
+    "gru",
+    "gru_data",
     "hadamard_transform",
     "index",
     "index_put",
@@ -119,6 +128,13 @@ __all__ = [
     "layer_norm_backward",
     "lgamma",
     "lgamma_",
+    "linalg_lstsq",
+    "linalg_matrix_exp",
+    "linalg_matrix_exp_out",
+    "linalg_matrix_power",
+    "linalg_matrix_power_out",
+    "linalg_qr",
+    "linalg_qr_out",
     "linalg_solve_triangular",
     "linalg_solve_triangular_out",
     "linalg_svdvals",
@@ -129,19 +145,23 @@ __all__ = [
     "logical_or_",
     "lt_",
     "lt_scalar_",
+    "masked_fill",
+    "masked_fill_",
     "masked_scatter",
     "masked_scatter_",
+    "masked_scatter_backward",
     "masked_scatter_impl",
     "matmul_bf16",
     "matmul_int8",
-    "masked_fill",
-    "masked_fill_",
-    "masked_scatter_backward",
-    "min_dim",
     "min",
+    "min_dim",
     "mm",
     "mm_out",
     "mvlgamma_",
+    "nanmedian",
+    "nanmedian_dim",
+    "nanmedian_dim_values",
+    "nanmedian_out",
     "nansum",
     "nansum_out",
     "new_ones",
@@ -158,9 +178,13 @@ __all__ = [
     "repeat",
     "repeat_interleave_self_tensor",
     "resolve_conj",
+    "rms_norm_w8a16_fp8",
     "rsqrt",
     "rsqrt_",
+    "segment_reduce",
+    "segment_reduce_out",
     "sigmoid",
+    "silu",
     "special_bessel_j0",
     "special_bessel_j0_out",
     "special_chebyshev_polynomial_u",

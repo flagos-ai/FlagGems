@@ -1,6 +1,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -32,11 +34,7 @@ def test_native_batch_norm_legit_functional():
         input_fn=native_batch_norm_legit_functional_input_fn,
         op_name="native_batch_norm_legit_functional",
         torch_op=torch.ops.aten._native_batch_norm_legit_functional.default,
+        gems_op=flag_gems._native_batch_norm_legit_functional,
         dtypes=consts.FLOAT_DTYPES,
     )
-    from flag_gems.ops._native_batch_norm_legit_functional import (
-        _native_batch_norm_legit_functional as gems_bn,
-    )
-
-    bench.set_gems(gems_bn)
     bench.run()

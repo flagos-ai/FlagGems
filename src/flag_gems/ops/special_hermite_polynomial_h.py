@@ -26,45 +26,30 @@ logger = logging.getLogger(__name__)
 
 # Shared H_n(x) computation for degree n in [0, 9].
 # Physicist's Hermite polynomial: H_0(x)=1, H_1(x)=2x,
-# H_{n+1}(x) = 2*x*H_n(x) - H_{n-1}(x).
-# Evaluated in float32 for numerical stability.
+# H_m(x) = 2*x*H_{m-1}(x) - 2*(m-1)*H_{m-2}(x).
+# Computed in the input's own precision (float32/float64) using the same
+# three-term recurrence as PyTorch to avoid precision loss and reduce the
+# catastrophic cancellation of the expanded-polynomial form.
 @triton.jit
 def _hermite_Hn(x, n_int):
-    xf = x.to(tl.float32)
+    two_x = 2.0 * x
 
-    # H_0(x) = 1
-    h0: tl.float32 = 1.0
+    # H_0(x) = 1 (kept as a tensor in x's dtype so selection stays elementwise)
+    h0 = 0.0 * x + 1.0
     # H_1(x) = 2*x
-    h1: tl.float32 = 2.0 * xf
-    # H_2(x) = 4*x^2 - 2
-    x2 = xf * xf
-    h2: tl.float32 = 4.0 * x2 - 2.0
-    # H_3(x) = 8*x^3 - 12*x
-    x3 = x2 * xf
-    h3: tl.float32 = 8.0 * x3 - 12.0 * xf
-    # H_4(x) = 16*x^4 - 48*x^2 + 12
-    x4 = x2 * x2
-    h4: tl.float32 = 16.0 * x4 - 48.0 * x2 + 12.0
-    # H_5(x) = 32*x^5 - 160*x^3 + 120*x
-    x5 = x4 * xf
-    h5: tl.float32 = 32.0 * x5 - 160.0 * x3 + 120.0 * xf
-    # H_6(x) = 64*x^6 - 480*x^4 + 720*x^2 - 120
-    x6 = x3 * x3
-    h6: tl.float32 = 64.0 * x6 - 480.0 * x4 + 720.0 * x2 - 120.0
-    # H_7(x) = 128*x^7 - 1344*x^5 + 3360*x^3 - 1680*x
-    x7 = x6 * xf
-    h7: tl.float32 = 128.0 * x7 - 1344.0 * x5 + 3360.0 * x3 - 1680.0 * xf
-    # H_8(x) = 256*x^8 - 3584*x^6 + 13440*x^4 - 13440*x^2 + 1680
-    x8 = x4 * x4
-    h8: tl.float32 = 256.0 * x8 - 3584.0 * x6 + 13440.0 * x4 - 13440.0 * x2 + 1680.0
-    # H_9(x) = 512*x^9 - 9216*x^7 + 48384*x^5 - 80640*x^3 + 30240*x
-    x9 = x8 * xf
-    h9: tl.float32 = (
-        512.0 * x9 - 9216.0 * x7 + 48384.0 * x5 - 80640.0 * x3 + 30240.0 * xf
-    )
+    h1 = two_x
+    # H_m(x) = 2*x*H_{m-1}(x) - 2*(m-1)*H_{m-2}(x)
+    h2 = two_x * h1 - 2.0 * h0
+    h3 = two_x * h2 - 4.0 * h1
+    h4 = two_x * h3 - 6.0 * h2
+    h5 = two_x * h4 - 8.0 * h3
+    h6 = two_x * h5 - 10.0 * h4
+    h7 = two_x * h6 - 12.0 * h5
+    h8 = two_x * h7 - 14.0 * h6
+    h9 = two_x * h8 - 16.0 * h7
 
     # Select H_n based on padded-n value (n_int in [0, 9])
-    result: tl.float32 = h0
+    result = h0
     result = tl.where(n_int == 1, h1, result)
     result = tl.where(n_int == 2, h2, result)
     result = tl.where(n_int == 3, h3, result)

@@ -20,12 +20,17 @@ from .amax import amax
 from .any import any, any_dim, any_dims
 from .arange import arange, arange_start
 from .argmin import argmin
+from .argsort import argsort
+from .avg_pool2d import avg_pool2d_backward
 from .batch_norm import batch_norm, batch_norm_backward
 from .bucketize import bucketize
 from .celu import celu
 from .channel_shuffle import channel_shuffle
 from .conv2d import conv2d
 from .conv_transpose1d import conv_transpose1d, conv_transpose1d_output_size
+from .conv_transpose2d import conv_transpose2d
+from .copy import copy_
+from .cudnn_convolution import cudnn_convolution
 from .div import (
     div_mode,
     div_mode_,
@@ -48,6 +53,8 @@ from .index_add import index_add, index_add_
 from .index_copy_ import index_copy, index_copy_
 from .index_put import _index_put_impl_, index_put, index_put_
 from .index_select import index_select
+from .int_mm import int_mm, int_mm_out
+from .isin import isin
 from .linalg_cholesky import linalg_cholesky
 from .linear import linear
 from .log import log
@@ -65,6 +72,7 @@ from .min import min, min_dim
 from .mish import mish, mish_
 from .mode import mode
 from .mul import mul, mul_
+from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .nonzero_numpy import nonzero_numpy
 from .norm import norm, norm_scalar, norm_scalaropt_dim
 from .normal import normal_
@@ -74,6 +82,7 @@ from .ones_like import ones_like
 from .pad import constant_pad_nd, pad
 from .permute_copy import permute_copy
 from .prod import prod, prod_dim
+from .quantile import quantile
 from .rand import rand
 from .rand_like import rand_like
 from .randn import randn
@@ -88,7 +97,9 @@ from .repeat_interleave import (
     repeat_interleave_tensor,
 )
 from .resolve_conj import resolve_conj
+from .rms_norm_w8a16_fp8 import rms_norm_w8a16_fp8
 from .round_ import round_
+from .scatter_reduce import scatter_reduce, scatter_reduce_, scatter_reduce_out
 from .softplus_backward import softplus_backward
 from .sort import sort, sort_stable
 from .special_gammainc import special_gammainc
@@ -102,31 +113,43 @@ from .zeros_like import zeros_like
 
 __all__ = [
     "_conj",
-    "amax",
+    "_index_put_impl_",
+    "_unique2",
     "all",
     "all_dim",
     "all_dims",
+    "amax",
     "any",
     "any_dim",
     "any_dims",
     "arange",
     "arange_start",
     "argmin",
+    "argsort",
+    "avg_pool2d_backward",
     "batch_norm",
     "batch_norm_backward",
     "bucketize",
     "celu",
-    # "celu_",
+    "celu_",
     "channel_shuffle",
+    "constant_pad_nd",
     "conv2d",
     "conv_transpose1d",
     "conv_transpose1d_output_size",
+    "conv_transpose2d",
+    "copy_",
+    "cudnn_convolution",
+    "div_mode",
+    "div_mode_",
     "dropout",
     "dropout_backward",
     "erfinv",
     "erfinv_",
     "feature_dropout_",
     "flip",
+    "floor_divide",
+    "floor_divide_",
     "fmod_",
     "fmod_scalar_",
     "fmod_tensor_",
@@ -140,8 +163,10 @@ __all__ = [
     "index_copy_",
     "index_put",
     "index_put_",
-    "_index_put_impl_",
     "index_select",
+    "int_mm",
+    "int_mm_out",
+    "isin",
     "linalg_cholesky",
     "linear",
     "log",
@@ -166,6 +191,10 @@ __all__ = [
     "mode",
     "mul",
     "mul_",
+    "nanmedian",
+    "nanmedian_dim",
+    "nanmedian_dim_values",
+    "nanmedian_out",
     "nonzero_numpy",
     "norm",
     "norm_scalar",
@@ -174,11 +203,11 @@ __all__ = [
     "one_hot",
     "ones",
     "ones_like",
-    "constant_pad_nd",
     "pad",
     "permute_copy",
     "prod",
     "prod_dim",
+    "quantile",
     "rand",
     "rand_like",
     "randn",
@@ -191,7 +220,11 @@ __all__ = [
     "repeat_interleave_self_tensor",
     "repeat_interleave_tensor",
     "resolve_conj",
+    "rms_norm_w8a16_fp8",
     "round_",
+    "scatter_reduce",
+    "scatter_reduce_",
+    "scatter_reduce_out",
     "softplus_backward",
     "sort",
     "sort_stable",
@@ -200,11 +233,6 @@ __all__ = [
     "true_divide",
     "true_divide_",
     "true_divide_out",
-    "div_mode",
-    "div_mode_",
-    "floor_divide",
-    "floor_divide_",
-    "_unique2",
     "trunc",
     "trunc_",
     "upsample_linear1d_backward",
@@ -237,3 +265,8 @@ if get_device_capability(current_device())[0] >= 3:
             "tanh",
         ]
     )
+
+if get_device_capability(current_device()) >= (3, 1):
+    from .mm_w8a8_fp8 import mm_w8a8_fp8, mm_w8a8_fp8_out  # noqa: F401
+
+    __all__.extend(["mm_w8a8_fp8", "mm_w8a8_fp8_out"])
