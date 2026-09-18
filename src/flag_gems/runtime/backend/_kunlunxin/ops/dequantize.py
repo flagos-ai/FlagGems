@@ -22,8 +22,6 @@ from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
-_quantized_lib = None  # keep reference alive to prevent GC
-
 _config = CodeGenConfig(
     512,
     (65536, 65536, 65536),
@@ -66,22 +64,3 @@ def dequantize(a):
         raw = raw.contiguous()
 
     return dequantize_func(raw, zero_point, scale)
-
-
-def _register_quantized_dequantize():
-    """Register the XPU dequantize for the QuantizedCUDA dispatch key."""
-    global _quantized_lib
-    if _quantized_lib is not None:
-        return
-    try:
-        _quantized_lib = torch.library.Library("aten", "IMPL")
-        _quantized_lib.impl("dequantize.self", dequantize, "QuantizedCUDA")
-        _quantized_lib.impl("dequantize", dequantize, "QuantizedCUDA")
-        logger.debug("FlagGems Kunlunxin: registered QuantizedCUDA dequantize override")
-    except Exception as e:
-        logger.warning(
-            f"GEMS_KL3 failed to register dequantize QuantizedCUDA override: {e}"
-        )
-
-
-_register_quantized_dequantize()
