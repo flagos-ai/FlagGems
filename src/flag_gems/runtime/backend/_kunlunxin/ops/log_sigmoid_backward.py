@@ -51,7 +51,7 @@ def log_sigmoid_backward(grad_output, self, buffer):
 
 
 def log_sigmoid_backward_out(grad_output, self, buffer, *, grad_input):
-    logger.debug("GEMS_KUNLUNXIN LOG_SIGMOID BACKWARD OUT")
+    logger.debug("GEMS_KUNLUNXIN LOG_SIGMOID_BACKWARD_OUT")
 
     # Always go through the tuned pointwise kernel (out0=grad_input writes in
     # place). The previous dedicated contiguous kernel launched one 1024-element
