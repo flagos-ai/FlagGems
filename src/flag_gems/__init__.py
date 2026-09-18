@@ -26,7 +26,6 @@ from flag_gems.fused import *  # noqa: F403
 from flag_gems.logging_utils import setup_flaggems_logging, teardown_flaggems_logging
 from flag_gems.modules import *  # noqa: F403
 from flag_gems.ops import *  # noqa: F403
-from flag_gems.ops import range as range_op
 from flag_gems.ops._dirichlet_grad import _HAS_MAP_ELEMENTWISE
 from flag_gems.patches import *  # noqa: F403
 from flag_gems.patches import patch_empty_vllm  # noqa: F401
@@ -382,6 +381,7 @@ _FULL_CONFIG = (
         "adaptive_avg_pool3d_backward.grad_input",
         adaptive_avg_pool3d_backward_grad_input,
     ),
+    ("adaptive_max_pool1d", adaptive_max_pool1d),
     ("adaptive_max_pool2d", adaptive_max_pool2d),
     ("adaptive_max_pool2d_backward", adaptive_max_pool2d_backward),
     ("adaptive_max_pool3d", adaptive_max_pool3d),
@@ -594,6 +594,7 @@ _FULL_CONFIG = (
     ("deg2rad_", deg2rad_),
     ("dequantize", dequantize),
     ("dequantize.self", dequantize, None, (QUANTIZED_DISPATCH_KEY,)),
+    ("det", det),
     ("diag", diag),
     ("diag_embed", diag_embed),
     ("diagonal_backward", diagonal_backward),
@@ -790,6 +791,7 @@ _FULL_CONFIG = (
     ("hash_tensor", hash_tensor),
     ("heaviside", heaviside),
     ("heaviside_", heaviside_),
+    ("hinge_embedding_loss", hinge_embedding_loss),
     ("histc", histc),
     # histogramdd is CompositeImplicitAutograd; a plain 2-tuple would let the native
     # decomposition run and use_gems() would silently no-op (false pass).
@@ -1147,7 +1149,17 @@ _FULL_CONFIG = (
     ("randn", randn),
     ("randn_like", randn_like),
     ("randperm", randperm),
-    ("range", range_op),
+    ("range", range),
+    (
+        "real",
+        real,
+        None,
+        (
+            (backend_info.dispatch_key, real_device),
+            (CONJUGATE_DISPATCH_KEY, real_conjugate),
+            (AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),
+        ),
+    ),
     ("reciprocal", reciprocal),
     ("reciprocal_", reciprocal_),
     ("reflection_pad1d", reflection_pad1d),
@@ -1301,6 +1313,8 @@ _FULL_CONFIG = (
     ("special_gammaln.out", special_gammaln_out),
     ("special_hermite_polynomial_h", special_hermite_polynomial_h),
     ("special_hermite_polynomial_h.n_scalar", special_hermite_polynomial_h),
+    ("special_i0", special_i0),
+    ("special_i0.out", special_i0_out),
     ("special_i0e", special_i0e),
     ("special_i0e.out", special_i0e_out),
     ("special_i1", special_i1),
@@ -1405,6 +1419,7 @@ _FULL_CONFIG = (
     ("sum_to_size", sum_to_size),
     ("svd", svd),
     ("sym_constrain_range", sym_constrain_range),
+    ("sym_numel", sym_numel),
     ("sym_size", sym_size),
     ("sym_storage_offset", sym_storage_offset),
     ("sym_stride", sym_stride),
