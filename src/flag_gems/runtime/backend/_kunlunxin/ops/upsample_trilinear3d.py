@@ -11,25 +11,10 @@ logger = logging.getLogger(__name__)
 device = device.name
 
 
-# NOTE (kunlunxin/XPU): flat 1D grid over ALL output elements (decode nc from
-# the flat index, no inner loop) exposes full program-level parallelism.
-# XPU perf pass 2026-08-17 (XPU 7): geometry (OD/OH/OW/ID/IH/IW) is
-# tl.constexpr so the per-lane div/mod chain (ow=%OW, oh=(//OW)%OH, od=//(OW*OH),
-# nc=//(OD*OH*OW)) strength-reduces to constant arithmetic instead of generic
-# vector integer divides; the 8 corner indices are clamped before use, which
-# makes every interpolation load in-bounds for ANY decoded lane, so the loads
-# drop the mask (masked-memory path is penalized on XPU, see upsample family
-# rpm: nearest2d/bilinear2d_aa use the same clamp + unmasked pattern); the
-# tail store is guarded by a NEED_MASK constexpr only when total_out does not
-# divide BLOCK_SIZE. The residual gap to torch is the XPU discrete-gather wall
-# (8 data-dependent neighbour loads), same structural ceiling as
-# grid_sample / reflection_pad2d; torch runs a fused vendor kernel.
 @triton.jit
 def upsample_trilinear3d_kernel(
     ptr_o,
     ptr_i,
-    NC,
-    total_out,
     scale_d,
     scale_h,
     scale_w,
@@ -45,25 +30,18 @@ def upsample_trilinear3d_kernel(
     SAME_D: tl.constexpr,
     SAME_H: tl.constexpr,
     SAME_W: tl.constexpr,
-    BLOCK_SIZE: tl.constexpr,
+    BX: tl.constexpr,
     USE_INT32_IDX: tl.constexpr,
-    NEED_MASK: tl.constexpr,
 ):
-    if USE_INT32_IDX:
-        pid = tl.program_id(axis=0)
-    else:
-        pid = tl.program_id(axis=0).to(tl.int64)
+    row = tl.program_id(axis=0)
+    if not USE_INT32_IDX:
+        row = row.to(tl.int64)
+    oh = row % OH
+    od = (row // OH) % OD
+    nc = row // (OH * OD)
 
-    idx = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-
-    total_spatial = OD * OH * OW
-    sp = idx % total_spatial
-    ow = sp % OW
-    oh = (sp // OW) % OH
-    od = sp // (OW * OH)
-    # Tail lanes beyond total_out may decode nc >= NC; clamping keeps the
-    # (unmasked) corner loads in-bounds -- the store is masked instead.
-    nc = tl.minimum(idx // total_spatial, NC - 1)
+    ow = tl.arange(0, BX)
+    mask = ow < OW
 
     if SAME_D:
         src_d = od.to(tl.float32)
@@ -103,23 +81,19 @@ def upsample_trilinear3d_kernel(
     spatial_in_stride = ID * IH * IW
     base = nc * spatial_in_stride
 
-    o000 = base + id0 * d_stride_in + ih0 * h_stride_in + iw0
-    o001 = base + id0 * d_stride_in + ih0 * h_stride_in + iw1
-    o010 = base + id0 * d_stride_in + ih1 * h_stride_in + iw0
-    o011 = base + id0 * d_stride_in + ih1 * h_stride_in + iw1
-    o100 = base + id1 * d_stride_in + ih0 * h_stride_in + iw0
-    o101 = base + id1 * d_stride_in + ih0 * h_stride_in + iw1
-    o110 = base + id1 * d_stride_in + ih1 * h_stride_in + iw0
-    o111 = base + id1 * d_stride_in + ih1 * h_stride_in + iw1
+    b00 = base + id0 * d_stride_in + ih0 * h_stride_in
+    b01 = base + id0 * d_stride_in + ih1 * h_stride_in
+    b10 = base + id1 * d_stride_in + ih0 * h_stride_in
+    b11 = base + id1 * d_stride_in + ih1 * h_stride_in
 
-    x000 = tl.load(ptr_i + o000).to(tl.float32)
-    x001 = tl.load(ptr_i + o001).to(tl.float32)
-    x010 = tl.load(ptr_i + o010).to(tl.float32)
-    x011 = tl.load(ptr_i + o011).to(tl.float32)
-    x100 = tl.load(ptr_i + o100).to(tl.float32)
-    x101 = tl.load(ptr_i + o101).to(tl.float32)
-    x110 = tl.load(ptr_i + o110).to(tl.float32)
-    x111 = tl.load(ptr_i + o111).to(tl.float32)
+    x000 = tl.load(ptr_i + b00 + iw0).to(tl.float32)
+    x001 = tl.load(ptr_i + b00 + iw1).to(tl.float32)
+    x010 = tl.load(ptr_i + b01 + iw0).to(tl.float32)
+    x011 = tl.load(ptr_i + b01 + iw1).to(tl.float32)
+    x100 = tl.load(ptr_i + b10 + iw0).to(tl.float32)
+    x101 = tl.load(ptr_i + b10 + iw1).to(tl.float32)
+    x110 = tl.load(ptr_i + b11 + iw0).to(tl.float32)
+    x111 = tl.load(ptr_i + b11 + iw1).to(tl.float32)
 
     c000 = x000 * ww0 + x001 * tw
     c001 = x010 * ww0 + x011 * tw
@@ -131,10 +105,7 @@ def upsample_trilinear3d_kernel(
 
     out = front * wd0 + back * td
 
-    if NEED_MASK:
-        tl.store(ptr_o + idx, out, mask=idx < total_out)
-    else:
-        tl.store(ptr_o + idx, out)
+    tl.store(ptr_o + row * OW + ow, out, mask=mask)
 
 
 def upsample_trilinear3d(
@@ -180,16 +151,14 @@ def upsample_trilinear3d(
         return out
 
     total_out = NC * OD * OH * OW
-    BLOCK_SIZE = 4096
-    need_mask = total_out % BLOCK_SIZE != 0
-    grid = (triton.cdiv(total_out, BLOCK_SIZE),)
+    BX = 1 << max(0, (OW - 1).bit_length())
+    grid = (NC * OD * OH,)
+    num_warps = min(8, max(1, BX // 64))
 
     with torch_device_fn.device(self.device):
         upsample_trilinear3d_kernel[grid](
             out,
             inp,
-            NC,
-            total_out,
             scale_d,
             scale_h,
             scale_w,
@@ -205,10 +174,9 @@ def upsample_trilinear3d(
             SAME_D=(OD == ID),
             SAME_H=(OH == IH),
             SAME_W=(OW == IW),
-            BLOCK_SIZE=BLOCK_SIZE,
-            USE_INT32_IDX=(total_out + BLOCK_SIZE <= (2**31 - 1)),
-            NEED_MASK=need_mask,
-            num_warps=8,
+            BX=BX,
+            USE_INT32_IDX=(total_out + BX <= (2**31 - 1)),
+            num_warps=num_warps,
         )
 
     return out
