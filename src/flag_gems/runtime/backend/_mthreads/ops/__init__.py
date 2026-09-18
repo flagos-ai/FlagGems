@@ -26,6 +26,7 @@ from .any import any, any_dim, any_dims
 from .arange import arange, arange_start
 from .arctan2 import arctan2
 from .arctan2_ import arctan2_
+from .arctan_ import arctan_
 from .argmin import argmin
 from .argsort import argsort
 from .atan2 import atan2
@@ -350,6 +351,7 @@ if get_device_capability(current_device())[0] >= 3:
             "feature_dropout",
             "lcm",
             "rad2deg_",
+            "arctan_",
         ]
     )
 
