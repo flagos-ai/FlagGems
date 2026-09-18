@@ -63,8 +63,13 @@ def _swiglu_process_tile(
     x_b = tl.load(input_b_ptr + input_offset, mask=mask, other=0.0)
     x_a_f = x_a.to(tl.float32)
     sig = 1.0 / (1.0 + math.exp(-x_a_f))
-    t = (x_a_f * sig).to(x_a.dtype)
-    out = t * x_b
+    if x_a.dtype == tl.bfloat16:
+        # bf16 vector multiply is emulated on the vector core; staying in fp32
+        # and rounding once is cheaper than rounding to bf16 in between.
+        out = (x_a_f * sig * x_b.to(tl.float32)).to(x_a.dtype)
+    else:
+        t = (x_a_f * sig).to(x_a.dtype)
+        out = t * x_b
 
     output_offset = offs_m[:, None] * output_stride_m + offs_h[None, :]
     # dsa.copy writes the whole tile without masking, so it is only
@@ -173,8 +178,22 @@ def swiglu(input_tensor: torch.Tensor, quantizer: Optional[Any] = None) -> torch
     input_a, input_b = torch.split(input_2d, H, dim=1)
     output_2d = torch.empty(M, H, device=input_a.device, dtype=input_a.dtype)
 
-    TILE_SIZE_M = min(triton.next_power_of_2(M), 32)
-    TILE_SIZE_H = min(triton.next_power_of_2(H), 256)
+    # Tile shape follows the row width: long rows want longer contiguous
+    # column segments (fewer row jumps per tile), short rows want more rows
+    # per tile so each DMA moves more bytes. Keep the tile at ~8K elements
+    # (larger tiles exceed UB and fail to compile).
+    if H >= 8192:
+        TILE_SIZE_M = min(triton.next_power_of_2(M), 16)
+        TILE_SIZE_H = min(triton.next_power_of_2(H), 512)
+    else:
+        TILE_SIZE_H = min(triton.next_power_of_2(H), 256)
+        tile_m_cap = min(max(16, 8192 // TILE_SIZE_H), 128)
+        # Bigger tiles must leave enough tiles per core: with too few, the
+        # tail imbalance (some cores get 5 tiles, others 4) outweighs the
+        # larger DMA transfers.
+        if triton.cdiv(M, tile_m_cap) < num_cores * 8:
+            tile_m_cap = 32
+        TILE_SIZE_M = min(triton.next_power_of_2(M), tile_m_cap)
     if M * H < 256 * 64:
         num_cores = 1
     # Split the cores over M first; when M alone still cannot fill them,
