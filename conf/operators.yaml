@@ -6806,6 +6806,18 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: hinge_embedding_loss
+  description: Compute the hinge embedding loss.
+  for:
+  - hinge_embedding_loss
+  labels:
+  - aten
+  - nn.functional
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: histc
   description: 'Computes the histogram of a tensor, binning each element into equal-width
     bins.
@@ -11822,6 +11834,18 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: real
+  description: |
+    Returns the real component of a complex tensor as a zero-copy view. For
+    non-complex tensors, returns the input tensor unchanged.
+  for:
+    - real
+  labels:
+    - aten
+  kind:
+    - Tensor
+  stages:
+    - alpha: '5.4'
 - id: reciprocal
   description: Returns a new tensor with the reciprocal of the elements of `input`.
   for:
