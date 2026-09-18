@@ -420,6 +420,7 @@ from .nansum import nansum, nansum_out
 from .narrow import narrow  # noqa: F401
 from .narrow_copy import narrow_copy
 from .native_batch_norm import native_batch_norm
+from .native_batch_norm_legit_no_training import native_batch_norm_legit_no_training
 from .native_dropout_backward import native_dropout_backward
 from .native_group_norm import native_group_norm
 from .native_layer_norm import native_layer_norm
@@ -1146,6 +1147,7 @@ __all__ = [
     "nansum_out",
     "narrow_copy",
     "native_batch_norm",
+    "native_batch_norm_legit_no_training",
     "native_dropout_backward",
     "native_group_norm",
     "native_layer_norm",
