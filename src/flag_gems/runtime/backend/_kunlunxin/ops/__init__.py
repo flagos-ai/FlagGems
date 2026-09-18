@@ -364,6 +364,7 @@ from .log_softmax import (
 )
 from .logaddexp import logaddexp, logaddexp_out
 from .logaddexp2 import logaddexp2, logaddexp2_out
+from .logaddexp2_out import logaddexp2_out
 from .logcumsumexp import logcumsumexp, logcumsumexp_out
 from .logical_and import logical_and, logical_and_
 from .logical_not import logical_not, logical_not_
