@@ -204,6 +204,14 @@ def invoke_kunlunxin_moe_sum(input: torch.Tensor, output: torch.Tensor) -> None:
     )
 
 
+# C-156: the launcher passes raw pointers and the xblas moe_fc_fusion path
+# reads the int32 routing arrays asynchronously after the launch call returns.
+# The int64->int32 casts below create temporaries that would be freed at
+# return, exposing a use-after-free window (observed as sequence-dependent
+# garbage on large-M Mixtral/DeepSeek runs). Retain the last few calls' arrays.
+_M156_KEEPALIVE = []
+
+
 def invoke_kunlunxin_fused_moe_kernel(
     A: torch.Tensor,
     B: torch.Tensor,
@@ -230,6 +238,9 @@ def invoke_kunlunxin_fused_moe_kernel(
         expert_ids = expert_ids.to(torch.int32)
     if num_tokens_post_padded.dtype != torch.int32:
         num_tokens_post_padded = num_tokens_post_padded.to(torch.int32)
+    _M156_KEEPALIVE.append((sorted_token_ids, expert_ids, num_tokens_post_padded))
+    if len(_M156_KEEPALIVE) > 8:
+        del _M156_KEEPALIVE[0 : len(_M156_KEEPALIVE) - 8]
     n_out = B.size(1) // 2 if FUSE_SILU else B.size(1)
     num_routes = C.size(0) * C.size(1) if direct_routing else sorted_token_ids.numel()
     block_size_n = 4
