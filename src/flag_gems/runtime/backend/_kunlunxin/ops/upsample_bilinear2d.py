@@ -20,7 +20,6 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import device, torch_device_fn
-from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
 device = device.name
@@ -30,100 +29,76 @@ device = device.name
 def upsample_bilinear2d_kernel(
     ptr_o,
     ptr_i,
+    total,
     OH,
     OW,
     IH,
     IW,
-    reciprocal_scale_h,
-    reciprocal_scale_w,
-    N: tl.constexpr,
-    C: tl.constexpr,
-    ALIGN_CORNERS: tl.constexpr,
-    BX: tl.constexpr,
+    scale_h,
+    bias_h,
+    scale_w,
+    bias_w,
+    BLOCK_SIZE: tl.constexpr,
 ):
-    row = ext.program_id(axis=0)
-    oh = row % OH
-    nc = row // OH
-    c = nc % C
-    n = nc // C
+    # Flat 1D grid over the whole [N*C, OH, OW] output. The store index is the
+    # raw `o = pid * BLOCK + arange`, provably stride-1, so the store lowers to a
+    # contiguous block DMA (same reasoning as upsample_linear1d on this backend).
+    #
+    # The generic kernel instead used a 2D (OW, OH) grid and walked N*C inside
+    # the kernel with `for n: for c:`. Each program then issued 4 * N * C gather
+    # loads over the whole input - up to 24576 planes for the (128, 192, 42, 51)
+    # test shape - which drives the NoC into `wait for noc idle timeout` and
+    # wedges the card (the whole 120-case marker died on the 1220s watchdog).
+    pid = tl.program_id(0)
+    o = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = o < total
 
-    ow = tl.arange(0, BX)
-    mask = ow < OW
+    nc_oh = o // OW
+    ow = o - nc_oh * OW
+    nc = nc_oh // OH
+    oh = nc_oh - nc * OH
 
-    # Compute the source coordinates (ATen area_pixel_compute_source_index).
-    if ALIGN_CORNERS:
-        # When align_corners is True, map corners to corners:
-        # real = oh * (IH - 1) / (OH - 1), 0 when OH == 1.
-        real_h = tl.where(
-            OH > 1,
-            oh.to(tl.float32) * (IH - 1) / (OH - 1),
-            0.0,
-        )
-        real_w = tl.where(
-            OW > 1,
-            ow.to(tl.float32) * (IW - 1) / (OW - 1),
-            0.0,
-        )
-    else:
-        # When align_corners is False: real = (oh + 0.5) * scale - 0.5.
-        real_h = (oh.to(tl.float32) + 0.5) * reciprocal_scale_h - 0.5
-        real_w = (ow.to(tl.float32) + 0.5) * reciprocal_scale_w - 0.5
+    # aten maps the destination pixel centre back onto the source grid. Clamping
+    # the source position to [0, I-1] is equivalent to aten's
+    # `offset = (idx < I - 1) ? 1 : 0`: once the position saturates both
+    # neighbours coincide and the two weights sum to 1.
+    src_h = tl.maximum(0.0, tl.minimum(oh.to(tl.float32) * scale_h + bias_h, IH - 1.0))
+    src_w = tl.maximum(0.0, tl.minimum(ow.to(tl.float32) * scale_w + bias_w, IW - 1.0))
 
-    # Clamp to valid range.
-    real_h = tl.maximum(real_h, 0.0)
-    real_w = tl.maximum(real_w, 0.0)
-
-    # Top-left corner of the 2x2 region.
-    h0 = tl.minimum(real_h.to(tl.int32), IH - 1)
-    w0 = tl.minimum(real_w.to(tl.int32), IW - 1)
+    # src is non-negative here, so int truncation equals floor.
+    h0 = src_h.to(tl.int32)
+    w0 = src_w.to(tl.int32)
     h1 = tl.minimum(h0 + 1, IH - 1)
     w1 = tl.minimum(w0 + 1, IW - 1)
 
-    # Interpolation weights, clamped to [0, 1].
-    h_weight = real_h - h0.to(tl.float32)
-    w_weight = real_w - w0.to(tl.float32)
-    h_weight = tl.maximum(tl.minimum(h_weight, 1.0), 0.0)
-    w_weight = tl.maximum(tl.minimum(w_weight, 1.0), 0.0)
+    th = src_h - h0.to(tl.float32)
+    tw = src_w - w0.to(tl.float32)
 
-    base = (n * C + c) * (IH * IW)
-    off_00 = base + h0 * IW + w0
-    off_01 = base + h0 * IW + w1
-    off_10 = base + h1 * IW + w0
-    off_11 = base + h1 * IW + w1
+    row0 = (nc * IH + h0) * IW
+    row1 = (nc * IH + h1) * IW
+    x00 = tl.load(ptr_i + row0 + w0, mask=mask, other=0.0).to(tl.float32)
+    x01 = tl.load(ptr_i + row0 + w1, mask=mask, other=0.0).to(tl.float32)
+    x10 = tl.load(ptr_i + row1 + w0, mask=mask, other=0.0).to(tl.float32)
+    x11 = tl.load(ptr_i + row1 + w1, mask=mask, other=0.0).to(tl.float32)
 
-    data_00 = tl.load(ptr_i + off_00, mask=mask, other=0.0)
-    data_01 = tl.load(ptr_i + off_01, mask=mask, other=0.0)
-    data_10 = tl.load(ptr_i + off_10, mask=mask, other=0.0)
-    data_11 = tl.load(ptr_i + off_11, mask=mask, other=0.0)
+    top = x00 * (1.0 - tw) + x01 * tw
+    bot = x10 * (1.0 - tw) + x11 * tw
+    result = top * (1.0 - th) + bot * th
 
-    w00 = (1.0 - h_weight) * (1.0 - w_weight)
-    w01 = (1.0 - h_weight) * w_weight
-    w10 = h_weight * (1.0 - w_weight)
-    w11 = h_weight * w_weight
-
-    result = (
-        data_00.to(tl.float32) * w00
-        + data_01.to(tl.float32) * w01
-        + data_10.to(tl.float32) * w10
-        + data_11.to(tl.float32) * w11
-    )
-    result = result.to(data_00.dtype)
-
-    # Store index row*OW + ow is affine/stride-1 in the lanes -> block DMA.
-    tl.store(ptr_o + row * OW + ow, result, mask=mask)
+    tl.store(ptr_o + o, result.to(ptr_o.dtype.element_ty), mask=mask)
 
 
-def _bilinear_reciprocal_scale(src_size, dst_size, align_corners, scale):
+def bilinear_scale_bias(src_size, dst_size, align_corners, scale):
+    """Return (scale, bias) so that src_pos = dst_index * scale + bias."""
     if align_corners:
         if dst_size > 1:
-            return (src_size - 1) / (dst_size - 1)
-        else:
-            return 0.0
+            return (src_size - 1) / (dst_size - 1), 0.0
+        return 0.0, 0.0
+    if scale is not None and scale > 0:
+        reciprocal_scale = 1.0 / scale
     else:
-        if scale is not None and scale > 0:
-            return 1.0 / scale
-        else:
-            return src_size / dst_size
+        reciprocal_scale = src_size / dst_size
+    return reciprocal_scale, 0.5 * reciprocal_scale - 0.5
 
 
 def upsample_bilinear2d(
@@ -141,28 +116,29 @@ def upsample_bilinear2d(
     OH, OW = output_size
     N, C, IH, IW = input.shape
 
-    reciprocal_scale_h = _bilinear_reciprocal_scale(IH, OH, align_corners, scales_h)
-    reciprocal_scale_w = _bilinear_reciprocal_scale(IW, OW, align_corners, scales_w)
+    scale_h, bias_h = bilinear_scale_bias(IH, OH, align_corners, scales_h)
+    scale_w, bias_w = bilinear_scale_bias(IW, OW, align_corners, scales_w)
 
+    inp = input.contiguous()
     output = torch.empty((N, C, OH, OW), device=input.device, dtype=input.dtype)
-    # Row-grid: one program per output row; BX covers the full row (padded to a
-    # power of two, masked tail).
-    block_size = triton.next_power_of_2(OW) if OW > 0 else 1
-    grid = (N * C * OH,)
+
+    total = N * C * OH * OW
+    BLOCK_SIZE = 4096
+    grid = (triton.cdiv(total, BLOCK_SIZE),)
 
     with torch_device_fn.device(input.device):
         upsample_bilinear2d_kernel[grid](
             output,
-            input,
+            inp,
+            total,
             OH,
             OW,
             IH,
             IW,
-            reciprocal_scale_h,
-            reciprocal_scale_w,
-            N,
-            C,
-            align_corners,
-            BX=block_size,
+            scale_h,
+            bias_h,
+            scale_w,
+            bias_w,
+            BLOCK_SIZE=BLOCK_SIZE,
         )
     return output
