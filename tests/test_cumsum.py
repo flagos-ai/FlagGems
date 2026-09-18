@@ -73,13 +73,12 @@ def test_cumsum(shape, dtype):
         with flag_gems.use_gems():
             res_out = torch.cumsum(inp, dim=dim)
 
-    # we should use ref's output type, since cumsum of int dtype results in int64
-    if flag_gems.vendor_name in ["cambricon", "enflame", "tsingmicro"]:
-        check_dtype = dtype
-    elif dtype in utils.INT_DTYPES:
-        check_dtype = ref_out.dtype
-    else:
-        check_dtype = dtype
+    # Derive the check dtype transparently from the operator's own output
+    # instead of special-casing vendor backends by name (issue #2807). On the
+    # NVIDIA backend integer/boolean inputs are promoted to int64 (matching
+    # torch.cumsum), which is still asserted through res_out.dtype; vendors
+    # whose cumsum keeps the input dtype are compared in that dtype.
+    check_dtype = res_out.dtype
 
     utils.gems_assert_close(res_out, ref_out, check_dtype, reduce_dim=shape[dim])
 
