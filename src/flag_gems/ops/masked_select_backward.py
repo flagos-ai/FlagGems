@@ -272,6 +272,33 @@ def _masked_select_backward_real(grad, mask, out, validate=True):
     return out
 
 
+def _broadcast_views(input, mask):
+    ndim = max(input.ndim, mask.ndim)
+    input_shape = (1,) * (ndim - input.ndim) + tuple(input.shape)
+    mask_shape = (1,) * (ndim - mask.ndim) + tuple(mask.shape)
+    input_strides = (0,) * (ndim - input.ndim) + tuple(input.stride())
+    mask_strides = (0,) * (ndim - mask.ndim) + tuple(mask.stride())
+    shape = []
+    for left, right in zip(input_shape, mask_shape):
+        if left == right or right == 1:
+            shape.append(left)
+        elif left == 1:
+            shape.append(right)
+        else:
+            raise RuntimeError("input and mask shapes cannot be broadcast together")
+    input_strides = tuple(
+        0 if size == 1 and output != 1 else stride
+        for size, output, stride in zip(input_shape, shape, input_strides)
+    )
+    mask_strides = tuple(
+        0 if size == 1 and output != 1 else stride
+        for size, output, stride in zip(mask_shape, shape, mask_strides)
+    )
+    # as_strided only constructs metadata. The Gems contiguous kernel reads
+    # the mask using these strides, including zero strides for broadcast axes.
+    return input.as_strided(shape, input_strides), mask.as_strided(shape, mask_strides)
+
+
 def masked_select_backward(grad, input, mask):
     logger.debug("GEMS MASKED_SELECT_BACKWARD")
 
@@ -287,7 +314,7 @@ def masked_select_backward(grad, input, mask):
     if grad.device != input.device or mask.device != input.device:
         raise RuntimeError("grad, input, and mask must be on the same device")
 
-    input_expanded, mask_expanded = torch.broadcast_tensors(input, mask)
+    input_expanded, mask_expanded = _broadcast_views(input, mask)
     mask_contiguous = contiguous(mask_expanded)
     result = torch.empty_like(input_expanded, memory_format=torch.preserve_format)
     if result.numel() == 0:

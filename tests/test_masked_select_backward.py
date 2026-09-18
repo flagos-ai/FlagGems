@@ -118,6 +118,45 @@ def test_accuracy_masked_select_backward_preserves_layout(layout):
 
 
 @pytest.mark.masked_select_backward
+@pytest.mark.parametrize(
+    "input_shape,mask_shape",
+    [
+        ((), (3, 5)),
+        ((2, 1, 5), (3, 1)),
+        ((0, 3), (1, 3)),
+        ((2, 3), ()),
+    ],
+)
+def test_masked_select_backward_broadcast_metadata(input_shape, mask_shape):
+    inp = torch.randn(input_shape, device=flag_gems.device)
+    mask = torch.rand(mask_shape, device=flag_gems.device) < 0.5
+    count = int(torch.broadcast_tensors(inp, mask)[1].sum())
+    grad = torch.randn(count, device=flag_gems.device)
+    _assert_matches_reference(grad, inp, mask)
+
+
+@pytest.mark.masked_select_backward
+def test_masked_select_backward_broadcast_nonzero_storage_offset():
+    inp = torch.randn((4, 5), device=flag_gems.device)[1:2]
+    mask = (torch.rand((5, 4), device=flag_gems.device) < 0.5)[:, 1:].T
+    grad = torch.randn(int(mask.sum()), device=flag_gems.device)
+    _assert_matches_reference(grad, inp, mask)
+
+
+@pytest.mark.masked_select_backward
+def test_masked_select_backward_incompatible_broadcast():
+    inp = torch.randn((2, 3), device=flag_gems.device)
+    mask = torch.ones((4, 3), dtype=torch.bool, device=flag_gems.device)
+    grad = torch.ones(12, device=flag_gems.device)
+    with pytest.raises(RuntimeError):
+        torch.ops.aten.masked_select_backward(
+            utils.to_reference(grad), utils.to_reference(inp), utils.to_reference(mask)
+        )
+    with pytest.raises(RuntimeError):
+        flag_gems.masked_select_backward(grad, inp, mask)
+
+
+@pytest.mark.masked_select_backward
 def test_accuracy_masked_select_backward_noncontiguous_inputs():
     inp = torch.randn((67, 65), device=flag_gems.device)
     mask = (torch.rand((65, 67), device=flag_gems.device) < 0.5).T
