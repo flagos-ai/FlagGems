@@ -19,6 +19,7 @@ from ._scaled_dot_product_fused_attention_overrideable import (
 )
 from ._unsafe_masked_index_put_accumulate import _unsafe_masked_index_put_accumulate
 from ._upsample_nearest_exact2d_backward import _upsample_nearest_exact2d_backward
+from .adaptive_max_pool2d_backward import adaptive_max_pool2d_backward
 from .adaptive_max_pool3d_backward import adaptive_max_pool3d_backward
 from .addmm_ import addmm_
 from .addmv_ import addmv_
@@ -87,6 +88,7 @@ __all__ = [
     "_scaled_dot_product_fused_attention_overrideable",
     "_unsafe_masked_index_put_accumulate",
     "_upsample_nearest_exact2d_backward",
+    "adaptive_max_pool2d_backward",
     "adaptive_max_pool3d_backward",
     "addmm_",
     "addmv_",
