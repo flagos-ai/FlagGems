@@ -780,6 +780,7 @@ _FULL_CONFIG = (
     ("greater_equal_.Tensor", greater_equal_),
     ("grid_sample", grid_sample),
     ("grid_sampler_2d", grid_sampler_2d),
+    ("grid_sampler_2d_backward", grid_sampler_2d_backward),
     ("grid_sampler_3d", grid_sampler_3d),
     ("grid_sampler_3d_backward", grid_sampler_3d_backward),
     ("gru.data", gru_data),
