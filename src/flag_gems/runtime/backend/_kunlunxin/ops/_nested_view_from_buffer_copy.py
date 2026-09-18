@@ -127,17 +127,18 @@ def _nested_view_from_buffer_copy(
             _pad_offsets_kernel[(1,)](
                 offsets, full_offsets[num_components:], 0, offsets.stride(0)
             )
-        from torch.nested._internal.nested_tensor import (
-            nested_view_from_values_offsets_lengths,
-        )
+        # Build the jagged view directly, with the same primitive upstream's
+        # `_nested_view_from_jagged` gem uses -- calling
+        # `nested_view_from_values_offsets_lengths` would dispatch back into the
+        # `torch._nested_view_from_jagged` operator.
+        from torch.nested._internal.nested_tensor import NestedTensor
 
-        return nested_view_from_values_offsets_lengths(
+        return NestedTensor(
             values,
             full_offsets,
-            nested_size[:, 0],
-            ragged_idx=1,
-            min_seqlen=None,
-            max_seqlen=None,
+            lengths=nested_size[:, 0],
+            _ragged_idx=1,
+            _metadata_cache={},
         )
 
     # Generic fallback: per-component as_strided views of a snapshot copy.
