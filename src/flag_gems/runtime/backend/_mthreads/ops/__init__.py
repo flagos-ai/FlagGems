@@ -79,6 +79,7 @@ from .linalg_ldl_factor_ex import ldl_factor_ex
 from .linalg_ldl_solve import linalg_ldl_solve
 from .linear import linear
 from .log import log
+from .log2_ import log2_
 from .log10 import log10, log10_, log10_out
 from .log_normal_ import log_normal_
 from .log_softmax import (
@@ -340,6 +341,7 @@ if get_device_capability(current_device())[0] >= 3:
             "deg2rad_",
             "clip_",
             "silu_backward",
+            "log2_",
         ]
     )
 
