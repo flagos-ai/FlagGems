@@ -161,6 +161,11 @@ def lcm(self, other):
 def lcm_(self, other):
     """In-place version of lcm."""
     logger.debug("GEMS_HYGON LCM_")
+    # In-place fast path: aten.lcm.out is not overridden by gems, so it runs the
+    # native kernel writing directly into self -- no extra tensor, no copy_.
+    if self.dtype == other.dtype and self.shape == other.shape:
+        torch.ops.aten.lcm.out(self, other, out=self)
+        return self
     result = lcm(self, other)
     self.copy_(result)
     return self

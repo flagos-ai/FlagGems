@@ -159,14 +159,23 @@ def main():
         print("Checking required fields for all operators...")
         all_errors.extend(check_required_fields(ops))
 
-    # Sort order check disabled until existing data is fixed
-    # all_errors.extend(check_sort_order(ops))
+    # Enable sort order check
+    sort_errors = check_sort_order(ops)
+    all_errors.extend(sort_errors)
 
     if all_errors:
         print(f"\n❌ Found {len(all_errors)} issue(s):\n")
         for err in all_errors:
             print(f"::error::{err}")
             print(f"  • {err}")
+
+        # If there are sort errors, show fix command
+        if sort_errors:
+            print("\n💡 To fix sorting issues, run:")
+            print("   python tools/ci_checks/sort_exports.py --fix")
+            print("   git add conf/operators.yaml")
+            print("   git commit -m 'fix: sort operators.yaml'")
+
         sys.exit(1)
     else:
         print("✅ All checks passed.")

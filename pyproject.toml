@@ -276,7 +276,7 @@ flaggems-flagtune-compare = "flag_gems.flagtune.cli.compare:main"
 
 [tool.setuptools_scm]
 write_to = "src/flag_gems/_version.py"
-version_scheme = "no-guess-dev"
+version_scheme = "only-version"
 
 [tool.uv]
 
