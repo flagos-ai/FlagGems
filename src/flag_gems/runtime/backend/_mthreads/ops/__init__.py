@@ -76,6 +76,7 @@ from .grid_sampler_3d_backward import grid_sampler_3d_backward
 from .histc import histc
 from .im2col import im2col
 from .index_add import index_add, index_add_
+from .index_copy import index_copy
 from .index_copy_ import index_copy, index_copy_
 from .index_put import _index_put_impl_, index_put, index_put_
 from .index_select import index_select
