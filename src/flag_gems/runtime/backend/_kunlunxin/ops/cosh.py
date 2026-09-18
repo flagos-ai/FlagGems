@@ -78,7 +78,7 @@ def cosh(x, *, out=None):
 
 
 def cosh_(x):
-    logger.debug("GEMS_KUNLUNXIN COSH INPLACE")
+    logger.debug("GEMS_KUNLUNXIN COSH_")
     cosh_func(x, out0=x)
     return x
 
