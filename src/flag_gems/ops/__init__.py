@@ -152,6 +152,7 @@ from flag_gems.ops._sobol_engine_ff_ import _sobol_engine_ff_
 from flag_gems.ops._sparse_semi_structured_addmm import _sparse_semi_structured_addmm
 from flag_gems.ops._sparse_semi_structured_linear import _sparse_semi_structured_linear
 from flag_gems.ops._sparse_semi_structured_mm import _sparse_semi_structured_mm
+from flag_gems.ops._standard_gamma import standard_gamma
 from flag_gems.ops._thnn_differentiable_gru_cell_backward import (
     _thnn_differentiable_gru_cell_backward,
 )
@@ -2257,6 +2258,7 @@ __all__ = [
     "square_out",
     "squeeze_copy",
     "stack",
+    "standard_gamma",
     "std",
     "std_mean",
     "std_mean_correction",
