@@ -350,6 +350,14 @@ class KernelGenerator:
                             f"in{i}_stride_order{j}: tl.constexpr" for j in range(ndim)
                         )
                         code.writeline(f"{stride_order_args}, # stride order for in{i}")
+                    else:
+                        # Per-dim broadcast flags so the kernel knows which
+                        # dims are broadcast without relying on stride==0
+                        # (which bishengir / Ascend MLIR rejects).
+                        bcast_args = _cs(
+                            f"in{i}_is_bcast{j}: tl.constexpr" for j in range(ndim)
+                        )
+                        code.writeline(f"{bcast_args}, # broadcast flags for in{i}")
 
                 # strides for outputs
                 for i in range(schema.num_output_tensors()):
@@ -418,6 +426,9 @@ class KernelGenerator:
                 for i in range(schema.num_input_tensors()):
                     stride_args = _cs(f"in{i}_stride{j}: int" for j in range(ndim))
                     code.writeline(f"{stride_args}, # strides for in{i}")
+                    # Per-dim broadcast flags (1d_tile path, int type)
+                    bcast_args = _cs(f"in{i}_is_bcast{j}: int" for j in range(ndim))
+                    code.writeline(f"{bcast_args}, # broadcast flags for in{i}")
 
                 # strides for outputs
                 for i in range(schema.num_output_tensors()):
@@ -509,8 +520,28 @@ class KernelGenerator:
         # loads
         code.writeline("# loads")
         for i in range(schema.num_input_tensors()):
-            strides = _tuple_content(tuple(f"in{i}_stride{j}" for j in range(ndim)))
             import flag_gems
+
+            # For each dim, if stride==0 (broadcast), replace with safe values
+            # so that backends like bishengir (Ascend) never see stride=0 in
+            # make_block_ptr.  Since strides are tl.constexpr the conditions
+            # are resolved at compile time and dead branches are eliminated.
+            bptr_shape_parts = []
+            bptr_stride_parts = []
+            bptr_offset_parts = []
+            bptr_bs_parts = []
+            for j in range(ndim):
+                s_j = f"in{i}_stride{j}"
+                bptr_shape_parts.append(f"(1 if {s_j} == 0 else s{j})")
+                bptr_stride_parts.append(f"(1 if {s_j} == 0 else {s_j})")
+                bptr_offset_parts.append(
+                    f"(tl.zeros([1], dtype=tl.int32) if {s_j} == 0 else offset{j})"
+                )
+                bptr_bs_parts.append(f"(1 if {s_j} == 0 else tile_size{j})")
+            bptr_shape = _tuple_content(tuple(bptr_shape_parts))
+            bptr_strides = _tuple_content(tuple(bptr_stride_parts))
+            bptr_offsets = _tuple_content(tuple(bptr_offset_parts))
+            bptr_bs = _tuple_content(tuple(bptr_bs_parts))
 
             if flag_gems.vendor_name == "spacemit":
                 order = _tuple_content(tuple(f"{ndim - j - 1}" for j in range(ndim)))
@@ -520,7 +551,7 @@ class KernelGenerator:
                 )
             code.writeline(
                 f"in{i}_bptr = tl.make_block_ptr("
-                f"in{i}_ptr, ({shape}), ({strides}), ({offsets}), ({tile_sizes}), order=({order}))"
+                f"in{i}_ptr, ({bptr_shape}), ({bptr_strides}), ({bptr_offsets}), ({bptr_bs}), order=({order}))"
             )
             code.writeline(
                 f"in{i} = tl.load(in{i}_bptr, boundary_check=({order})).to(in{i}_ptr.type.element_ty) "
@@ -597,10 +628,16 @@ class KernelGenerator:
         code.writeline(f"mask = {mask_combine}")
 
         # loads
+        # For broadcast dims the wrapper passes stride>=1 (never 0) and
+        # sets the companion ``in{i}_is_bcast{j}`` flag to 1.  The kernel
+        # uses the flag (tl.constexpr) to zero-out the offset term so that
+        # all indices in that dim map to position 0, reproducing the
+        # broadcast semantics without exposing stride=0 to the MLIR layer
+        # (which bishengir / Ascend rejects).
         code.writeline("# loads")
         for i in range(schema.num_input_tensors()):
             offsets = tuple(
-                f"offsets{j}{_broadcast_vec(j, ndim)} * in{i}_stride{j}"
+                f"offsets{j}{_broadcast_vec(j, ndim)} * (0 if in{i}_is_bcast{j} else in{i}_stride{j})"
                 for j in range(ndim)
             )
             offset_combine = " + ".join(offsets)
@@ -722,9 +759,17 @@ class KernelGenerator:
         code.newline()
 
         # loads
+        # For broadcast dims the wrapper passes stride>=1 (never 0) and
+        # sets the companion ``in{i}_is_bcast{j}`` flag to 1.  The kernel
+        # multiplies offset by 0 for broadcast dims so all indices map to
+        # position 0.  In the 1d-tile path strides and flags are ``int``,
+        # so the branch is evaluated at runtime (negligible cost).
         code.writeline("# loads")
         for i in range(schema.num_input_tensors()):
-            offsets = tuple(f"i{j} * in{i}_stride{j}" for j in range(ndim))
+            offsets = tuple(
+                f"i{j} * (0 if in{i}_is_bcast{j} else in{i}_stride{j})"
+                for j in range(ndim)
+            )
             offset_combine = " + ".join(offsets)
             code.writeline(
                 f"in{i} = tl.load(in{i}_ptr + {offset_combine}, mask=mask).to(in{i}_ptr.type.element_ty)"
@@ -992,14 +1037,24 @@ class WrapperGenerator:
 
                 if ndim > 0:
                     for i in range(schema.num_input_tensors()):
-                        s = ", ".join(f"in{i}_strides[{j}]" for j in range(ndim))
-                        code.writeline(f"{s}, # stride for in{i}")
-                        if not with_block_pointer:
-                            continue
-                        order = ", ".join(
-                            f"in{i}_stride_order[{j}]" for j in range(ndim)
-                        )
-                        code.writeline(f"{order}, # stride order for in{i}")
+                        if with_block_pointer:
+                            s = ", ".join(f"in{i}_strides[{j}]" for j in range(ndim))
+                            code.writeline(f"{s}, # stride for in{i}")
+                            order = ", ".join(
+                                f"in{i}_stride_order[{j}]" for j in range(ndim)
+                            )
+                            code.writeline(f"{order}, # stride order for in{i}")
+                        else:
+                            # Replace stride=0 with 1 so MLIR never sees
+                            # zero strides, and pass broadcast flags.
+                            s = ", ".join(
+                                f"in{i}_strides[{j}] or 1" for j in range(ndim)
+                            )
+                            code.writeline(f"{s}, # stride for in{i}")
+                            bcast = ", ".join(
+                                f"int(in{i}_strides[{j}] == 0)" for j in range(ndim)
+                            )
+                            code.writeline(f"{bcast}, # broadcast flags for in{i}")
 
                     for i in range(schema.num_output_tensors()):
                         s = ", ".join(f"out{i}_strides[{j}]" for j in range(ndim))
@@ -1052,8 +1107,14 @@ class WrapperGenerator:
 
                 if ndim > 0:
                     for i in range(schema.num_input_tensors()):
-                        s = ", ".join(f"in{i}_strides[{j}]" for j in range(ndim))
+                        # Replace stride=0 with 1 so MLIR never sees
+                        # zero strides, and pass broadcast flags.
+                        s = ", ".join(f"in{i}_strides[{j}] or 1" for j in range(ndim))
                         code.writeline(f"{s}, # stride for in{i}")
+                        bcast = ", ".join(
+                            f"int(in{i}_strides[{j}] == 0)" for j in range(ndim)
+                        )
+                        code.writeline(f"{bcast}, # broadcast flags for in{i}")
                     for i in range(schema.num_output_tensors()):
                         s = ", ".join(f"out{i}_strides[{j}]" for j in range(ndim))
                         code.writeline(f"{s}, # stride for out{i}")
