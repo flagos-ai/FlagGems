@@ -315,6 +315,7 @@ from .isinf import isinf
 from .isnan import isnan
 from .isneginf import isneginf, isneginf_out
 from .isposinf import isposinf
+from .ixor import ixor
 from .kron import kron
 from .kthvalue import kthvalue
 from .layernorm import layer_norm, layer_norm_backward
@@ -997,6 +998,7 @@ __all__ = [
     "isneginf",
     "isneginf_out",
     "isposinf",
+    "ixor",
     "kron",
     "kthvalue",
     "layer_norm",
