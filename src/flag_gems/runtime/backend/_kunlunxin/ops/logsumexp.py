@@ -452,10 +452,10 @@ def _reduce_inner(inp, rows, N):
             R = rows * C_full
             TILE_R = 32
             need_mask = 1 if R % TILE_R else 0
-            full_view = torch.ops.aten.slice(inp, 1, 0, C_full * BN)
+            full_view = inp[:, : C_full * BN]
             # reshape may copy only when the slice is non-contiguous (tail
             # cases with N % BN != 0); the aligned path is a null-op view.
-            flat = torch.ops.aten.reshape(full_view, (R, BN))
+            flat = full_view.reshape(R, BN)
             grid = (triton.cdiv(R, TILE_R), 1, 1)
             logsumexp_kernel_partial[grid](
                 mrow,
@@ -486,7 +486,7 @@ def _reduce_inner(inp, rows, N):
             zrow = torch.zeros((rows, TILE_C), dtype=torch.float32, device=inp.device)
         if TAIL:
             # tail slice view: [rows, TAIL] strided by N (no copy)
-            tail_view = torch.ops.aten.slice(inp, 1, C_full * BN, N)
+            tail_view = inp[:, C_full * BN : N]
             mtail = torch.empty((rows,), dtype=torch.float32, device=inp.device)
             ztail = torch.empty_like(mtail)
             _reduce_tail_partials(mtail, ztail, tail_view, rows, N, TAIL)
