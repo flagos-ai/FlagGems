@@ -21,6 +21,9 @@ import torch
 
 import flag_gems
 
+# Re-export the case types alongside the existing benchmark report types.
+from .cases import BenchmarkCaseList, BenchmarkCasePlan, BenchmarkCaseSpec  # noqa: F401
+
 FLOAT_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
 INT_DTYPES = [torch.int16, torch.int32]
 BOOL_DTYPES = [torch.bool]
@@ -92,6 +95,7 @@ def model_shapes():
 
 @dataclass
 class BenchmarkMetrics:
+    case_id: Optional[str] = None
     # Legacy shape information for backward compatibility
     # This field corresponds to the 'size' field in the previous version's benchmark.
     legacy_shape: Optional[int] = None
@@ -118,6 +122,7 @@ class BenchmarkMetrics:
 
 
 ALL_AVAILABLE_METRICS = set(map(lambda x: x.name, fields(BenchmarkMetrics))) - {
+    "case_id",
     "legacy_shape",
     "shape_detail",
 }
@@ -225,6 +230,9 @@ class BenchmarkResult:
             f"\nOperator: {self.op_name}  Performance Test (dtype={self.dtype}, mode={self.mode},"
             f"level={self.level})\n"
         )
+        native_baseline_skip_reason = getattr(self, "native_baseline_skip_reason", None)
+        if native_baseline_skip_reason:
+            header_title += f"Native baseline: N/A ({native_baseline_skip_reason})\n"
         col_names = [
             f"{'Status':<10}",
             f"{'Torch Latency (ms)':>20}",
@@ -304,6 +312,9 @@ class BenchmarkResult:
 
         # Convert to dict and handle tuple serialization for shape_detail
         result_dict = asdict(self)
+        native_baseline_skip_reason = getattr(self, "native_baseline_skip_reason", None)
+        if native_baseline_skip_reason:
+            result_dict["native_baseline_skip_reason"] = native_baseline_skip_reason
         return json.dumps(result_dict, default=custom_json_encoder)
 
     def to_dict(self) -> dict:
