@@ -55,6 +55,7 @@ from .nonzero_numpy import nonzero_numpy
 from .reflection_pad3d_backward import reflection_pad3d_backward
 from .renorm import renorm, renorm_
 from .repeat import repeat
+from .replication_pad2d import replication_pad2d
 from .replication_pad3d_backward import replication_pad3d_backward
 from .rms_norm_w8a16_fp8 import rms_norm_w8a16_fp8
 from .scatter_reduce_ import scatter_reduce, scatter_reduce_, scatter_reduce_out
@@ -134,6 +135,7 @@ __all__ = [
     "renorm",
     "renorm_",
     "repeat",
+    "replication_pad2d",
     "replication_pad3d_backward",
     "rms_norm_w8a16_fp8",
     "scatter_reduce",
