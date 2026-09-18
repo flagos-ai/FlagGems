@@ -104,6 +104,7 @@ from .softplus_backward import softplus_backward
 from .sort import sort, sort_stable
 from .special_gammainc import special_gammainc
 from .tile import tile
+from .topk_w8a16_fp8 import topk_w8a16_fp8
 from .trunc import trunc, trunc_
 from .unique import _unique2
 from .upsample_linear1d_backward import upsample_linear1d_backward
@@ -230,6 +231,7 @@ __all__ = [
     "sort_stable",
     "special_gammainc",
     "tile",
+    "topk_w8a16_fp8",
     "true_divide",
     "true_divide_",
     "true_divide_out",
