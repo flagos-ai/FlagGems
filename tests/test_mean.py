@@ -113,3 +113,63 @@ def test_mean_dim_large_innerdim(shape, dim, keepdim, dtype):
         res_out = torch.mean(inp, dim, keepdim)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+# Boundary cases added with the 2026-09-18 semantics fix: `dim=None` /
+# `dim=()` / `dim=[]` are full reductions (keepdim -> [1]*ndim, otherwise the
+# 0-d scalar), and an empty reduction domain / empty tensor must return NaNs
+# like torch instead of dividing by zero.
+@pytest.mark.mean_dim
+@pytest.mark.parametrize("dim", [None, (), []])
+@pytest.mark.parametrize("keepdim", [True, False])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_mean_dim_full_reduction(dim, keepdim, dtype):
+    inp = torch.randn((4, 8, 16), dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp, True)
+
+    ref_out = torch.mean(ref_inp, dim, keepdim)
+    with flag_gems.use_gems():
+        res_out = torch.mean(inp, dim, keepdim)
+
+    assert res_out.shape == ref_out.shape, (res_out.shape, ref_out.shape)
+    utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+EMPTY_MEAN_CASES = [
+    ((0, 3), 0),        # empty reduction domain, leading axis
+    ((3, 0), 1),        # empty reduction domain, trailing axis
+    ((0, 4, 0), [0, 2]),  # multi-axis, empty reduction domain
+]
+
+
+@pytest.mark.mean_dim
+@pytest.mark.parametrize("shape, dim", EMPTY_MEAN_CASES)
+@pytest.mark.parametrize("keepdim", [True, False])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_mean_dim_empty_reduction(shape, dim, keepdim, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp, True)
+
+    ref_out = torch.mean(ref_inp, dim, keepdim)
+    with flag_gems.use_gems():
+        res_out = torch.mean(inp, dim, keepdim)
+
+    assert res_out.shape == ref_out.shape, (res_out.shape, ref_out.shape)
+    assert torch.isnan(res_out).all(), "empty reduction must produce NaNs like torch"
+    utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+
+
+@pytest.mark.mean
+@pytest.mark.parametrize("shape", [(0,), (0, 3)])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_mean_empty_tensor(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp, True)
+
+    ref_out = torch.mean(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.mean(inp)
+
+    assert res_out.shape == ref_out.shape, (res_out.shape, ref_out.shape)
+    assert torch.isnan(res_out).all()
+    utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)

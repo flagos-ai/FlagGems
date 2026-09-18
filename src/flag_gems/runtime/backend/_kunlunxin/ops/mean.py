@@ -58,6 +58,11 @@ def mean(inp, *, dtype=None):
     M = inp.numel()
     if dtype is None:
         dtype = inp.dtype
+    if M == 0:
+        # torch returns NaN for the mean of an empty tensor (verified against
+        # CPU torch); `get_block_size_1d(0)` is not a defined launch config on
+        # this backend and the scalar kernel would divide 0 by 0.
+        return torch.full([], float("nan"), dtype=dtype, device=inp.device)
     BLOCK_SIZE = get_block_size_1d(M, inp.element_size())
     out = torch.empty([], dtype=dtype, device=inp.device)
 
@@ -165,14 +170,31 @@ def mean_dim(x, dim, keepdim=False, *, dtype=None):
 
     if dtype is None:
         dtype = x.dtype
-    if dim is None:
+    if dim is None or dim == () or dim == []:
+        # `dim == ()` / `dim == []` behave like `dim is None` in torch: a full
+        # reduction. keepdim then returns the (1,)*ndim shape, and without it
+        # the 0-d scalar that `mean` already produces.
         out = mean(x, dtype=dtype)
-        if not keepdim:
+        if keepdim:
             out = out.reshape([1] * x.ndim)
         return out
 
     shape = list(x.shape)
     dim = [d % x.ndim for d in dim]
+
+    # Empty reduction domain (e.g. a (0, 3) input reduced over dim=0): torch
+    # returns a NaN-filled tensor of the reduced shape (verified against CPU
+    # torch), and the `M = x.numel() // N` below would divide by zero. Guard
+    # before dim_compress / any launch so zero-sized inputs never reach the
+    # copy or kernel paths.
+    _N_reduced = 1
+    for _i in dim:
+        _N_reduced *= shape[_i]
+    if _N_reduced == 0:
+        out_shape = [1 if _i in dim else s for _i, s in enumerate(shape)]
+        if not keepdim:
+            out_shape = [s for _i, s in enumerate(out_shape) if _i not in dim]
+        return torch.full(out_shape, float("nan"), dtype=dtype, device=x.device)
 
     # --- TLE fast path (D-022) -----------------------------------------------
     # A single-axis reduce over a contiguous TLE-supported dtype does not need
