@@ -138,6 +138,7 @@ def _tle_group_norm_fused_kernel(
     TAIL: tl.constexpr,
     HAS_W: tl.constexpr,
     HAS_B: tl.constexpr,
+    SM_STATS: tl.constexpr,
 ):
     """Whole group norm for one tile of group-rows, the tle_layernorm way.
 
@@ -242,11 +243,29 @@ def _tle_group_norm_fused_kernel(
                     yv = yv + tl.load(tle.gpu.local_ptr(b_smem, (ch,))).to(CDT)
             tl.store(buf_ptr, yv.to(IN_DTYPE))
             tle.gpu.copy(buf, y_desc, [XBLOCK, RB], [row0, coff])
+        # mean/rstd leave through CLUSTER-SHARED SM, not a per-core LM strip. The
+        # LM route makes all 64 cores issue a sub-cache-line s_lm2gm into the same
+        # GM line and they serialise on it: measured +9.6us for a [16] f32 row and
+        # +22us for f16, against +0.1-0.8us once one core sends the whole row
+        # (sm_gather_task/strip_store_cost.py). SM honours a local_ptr index, so
+        # every core can drop its lane in, and copy_l2g out of an smem buffer
+        # coalesces the writeback into >= 64-byte chunks. SM_STATS is off for
+        # bf16: XPU3 cannot select a bf16 store into SM (the mirror of the bf16
+        # SM load gap), and unlike the load side an f16 container does not help
+        # -- InstCombine in the O3 pass before llc folds the bitcast away -- so
+        # that dtype stays on the LM strip until the XPU LLVM backend grows the
+        # pattern.
         m_lmem = tle.gpu.alloc(
-            [XBLOCK], dtype=OUT_DTYPE, layout=None, scope=tle.gpu.lmem
+            [XBLOCK],
+            dtype=OUT_DTYPE,
+            layout=None,
+            scope=tle.gpu.smem if SM_STATS else tle.gpu.lmem,
         )
         r_lmem = tle.gpu.alloc(
-            [XBLOCK], dtype=OUT_DTYPE, layout=None, scope=tle.gpu.lmem
+            [XBLOCK],
+            dtype=OUT_DTYPE,
+            layout=None,
+            scope=tle.gpu.smem if SM_STATS else tle.gpu.lmem,
         )
         tl.store(tle.gpu.local_ptr(m_lmem, (rid,)), mean.to(OUT_DTYPE))
         tl.store(tle.gpu.local_ptr(r_lmem, (rid,)), rstd.to(OUT_DTYPE))
@@ -376,11 +395,20 @@ def _tle_group_norm_fused_kernel(
             a_lmem = tle.gpu.alloc(
                 [XBLOCK, WT], dtype=IN_DTYPE, layout=None, scope=tle.gpu.lmem
             )
+            # Cluster-shared SM, for the coalescing reason documented in the WIDE
+            # leg above: a [XBLOCK] LM strip writeback costs ~10us (f32) / ~22us
+            # (f16) in cross-cluster cache-line contention, an SM one ~0.1-0.8us.
             m_lmem = tle.gpu.alloc(
-                [XBLOCK], dtype=OUT_DTYPE, layout=None, scope=tle.gpu.lmem
+                [XBLOCK],
+                dtype=OUT_DTYPE,
+                layout=None,
+                scope=tle.gpu.smem if SM_STATS else tle.gpu.lmem,
             )
             r_lmem = tle.gpu.alloc(
-                [XBLOCK], dtype=OUT_DTYPE, layout=None, scope=tle.gpu.lmem
+                [XBLOCK],
+                dtype=OUT_DTYPE,
+                layout=None,
+                scope=tle.gpu.smem if SM_STATS else tle.gpu.lmem,
             )
             a_ptr = tle.gpu.local_ptr(a_lmem, (rows, cols))
             if TAIL:
@@ -542,6 +570,7 @@ def _tle_group_norm_fused(
         WT != L,
         has_w,
         has_b,
+        tl_dtype != tl.bfloat16,
         isCloseCoreTiling=False,
     )
     logger.debug(
@@ -635,6 +664,13 @@ def native_group_norm(input, weight, bias, N, C, HxW, group, eps=1e-05):
     bias = None if bias is None else bias.contiguous()
 
     y = torch.empty_like(input)
+    # Returned in the INPUT dtype, like the generic op and groupnorm.py, because
+    # tests/test_group_norm.py asserts the container dtype through
+    # gems_assert_close. That used to cost ~20us of a 30us fp16/bf16 kernel (the
+    # narrow writeback scaled with the ELEMENT size, so 2-byte stats were twice
+    # as expensive as 4-byte ones); the SM writeback below removes the whole
+    # penalty for fp16/fp32, and bf16 still pays it only because its SM store
+    # cannot be selected yet.
     mean = torch.empty((N, group), dtype=input.dtype, device=input.device)
     rstd = torch.empty((N, group), dtype=input.dtype, device=input.device)
 
