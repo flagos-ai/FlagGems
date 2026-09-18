@@ -70,6 +70,7 @@ AUTOGRAD_DISPATCH_KEY = torch._C.DispatchKey.Autograd.name
 CONJUGATE_DISPATCH_KEY = torch._C.DispatchKey.Conjugate.name
 QUANTIZED_CUDA_DISPATCH_KEY = torch._C.DispatchKey.QuantizedCUDA.name
 SPARSE_CSR_DISPATCH_KEY = "SparseCsr" + backend_info.dispatch_key
+SPARSE_DISPATCH_KEY = "Sparse" + backend_info.dispatch_key
 QUANTIZED_DISPATCH_KEY = "Quantized" + backend_info.dispatch_key
 
 
@@ -1390,6 +1391,8 @@ _FULL_CONFIG = (
     ("square.out", square_out),
     ("square_", square_),
     ("squeeze_copy", squeeze_copy),
+    ("sspaddmm", sspaddmm, None, (SPARSE_DISPATCH_KEY,)),
+    ("sspaddmm.out", sspaddmm_out, None, (SPARSE_DISPATCH_KEY,)),
     ("stack", stack),
     ("std.correction", std),
     (
