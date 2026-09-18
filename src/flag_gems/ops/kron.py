@@ -123,7 +123,14 @@ def kron_kernel_for_batch_size_1(
 
     a = tl.load(a_ptr + a_idx, mask=mask)
     b = tl.load(b_ptr + b_idx, mask=mask)
-    c = a * b
+    # Multiply fp16/bf16 in fp32 so the product is correctly rounded back to the
+    # narrow output dtype on store. The AMD GPU's native bf16 multiply is not
+    # correctly-rounded against a fp32 reference, so bf16 a*b otherwise drifts by
+    # 1 ULP; fp32/fp64/integer/bool inputs keep their native multiply.
+    if a.dtype == tl.float16 or a.dtype == tl.bfloat16:
+        c = a.to(tl.float32) * b.to(tl.float32)
+    else:
+        c = a * b
 
     c_idx = offs_m[:, None] * c_stride_0 + offs_n[None, :] * c_stride_1
     tl.store(c_ptr + c_idx, c, mask=mask)
@@ -185,7 +192,14 @@ def kron_kernel(
 
     a = tl.load(a_ptr + a_idx, mask=mask)
     b = tl.load(b_ptr + b_idx, mask=mask)
-    c = a * b
+    # Multiply fp16/bf16 in fp32 so the product is correctly rounded back to the
+    # narrow output dtype on store. The AMD GPU's native bf16 multiply is not
+    # correctly-rounded against a fp32 reference, so bf16 a*b otherwise drifts by
+    # 1 ULP; fp32/fp64/integer/bool inputs keep their native multiply.
+    if a.dtype == tl.float16 or a.dtype == tl.bfloat16:
+        c = a.to(tl.float32) * b.to(tl.float32)
+    else:
+        c = a * b
 
     c_idx = (
         batch_id * c_batch_stride
@@ -224,10 +238,21 @@ def calculate_batch_indices_kernel(
     tl.store(batch_indices_ptr + b_store_offset, b_idx)
 
 
+def _scalar_mul(a, b):
+    # Scalar/0-dim operands skip the kron kernels and use a plain torch multiply.
+    # For fp16/bf16 the GPU's native multiply is not correctly-rounded, so do the
+    # product in fp32 and round back to the promoted narrow dtype (matches the
+    # kernel path); other dtypes keep their native multiply.
+    out_dtype = torch.promote_types(a.dtype, b.dtype)
+    if out_dtype in (torch.float16, torch.bfloat16):
+        return (a.to(torch.float32) * b.to(torch.float32)).to(out_dtype)
+    return a * b
+
+
 def kron(A, B):
     logger.debug("GEMS KRON")
     if A.dim() == 0 and B.dim() == 0:
-        return A * B
+        return _scalar_mul(A, B)
 
     if A.numel() == 0 or B.numel() == 0:
         A_prepared, B_prepared, out_shape = prepare_tensor_for_kron(A, B)
@@ -235,9 +260,9 @@ def kron(A, B):
         return torch.empty(out_shape, device=A.device, dtype=output_dtype)
 
     if A.dim() == 0:
-        return A.unsqueeze(0) * B
+        return _scalar_mul(A.unsqueeze(0), B)
     if B.dim() == 0:
-        return A * B.unsqueeze(0)
+        return _scalar_mul(A, B.unsqueeze(0))
 
     A_prepared, B_prepared, out_shape = prepare_tensor_for_kron(A, B)
     M1, N1 = A_prepared.shape[-2:]
