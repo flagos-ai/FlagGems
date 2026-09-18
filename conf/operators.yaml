@@ -9596,6 +9596,17 @@ ops:
     - NeuralNetwork
   stages:
     - alpha: '5.4'
+- id: matmul_backward
+  description: Computes gradients for matrix multiplication backward pass.
+  for:
+  - matmul_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.4'
 - id: matmul_bias_activation
   description: Fused matrix multiplication with bias addition and ReLU activation.
   for:
