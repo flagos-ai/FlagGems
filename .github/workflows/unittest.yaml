@@ -44,6 +44,11 @@ jobs:
     env:
       HTTP_PROXY: ''
       HTTPS_PROXY: ''
+      # Trust the workspace for git (dubious-ownership guard); the get-pr-id
+      # step runs `git log` on push events. See rule-check.yaml for details.
+      GIT_CONFIG_COUNT: '1'
+      GIT_CONFIG_KEY_0: safe.directory
+      GIT_CONFIG_VALUE_0: '*'
     concurrency:
       group: unit-test-${{ (github.event.pull_request && contains(github.event.pull_request.title, 'KernelGen')) && 'kg' || github.run_id }}
       cancel-in-progress: false

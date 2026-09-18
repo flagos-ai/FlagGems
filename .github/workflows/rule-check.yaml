@@ -42,6 +42,14 @@ concurrency:
 env:
   HTTP_PROXY: ''
   HTTPS_PROXY: ''
+  # checkout registers the workspace as a safe git directory only in a
+  # throwaway HOME; the check scripts (derive_changed_operators, etc.) then run
+  # git with HOME=/github/home and git rejects the dir as dubious ownership
+  # ("fatal: not a git repository"). Trust it for every git call in the job via
+  # git's env-based config so we don't need a setup step in each of the 9 jobs.
+  GIT_CONFIG_COUNT: '1'
+  GIT_CONFIG_KEY_0: safe.directory
+  GIT_CONFIG_VALUE_0: '*'
 
 jobs:
   derive-changed-operators:
