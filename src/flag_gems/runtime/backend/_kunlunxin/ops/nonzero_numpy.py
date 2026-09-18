@@ -66,6 +66,59 @@ def _nznp_count_tail_kernel(inp, counts, n_elements, n_main, slot, BLOCK: tl.con
 
 
 @libentry()
+@triton.jit
+def _nznp_count_full_masked_kernel(inp, counts, MASK: tl.constexpr, BLOCK: tl.constexpr):
+    # Same as _nznp_count_full_kernel but the input is an integer reinterpret of
+    # a float tensor; the sign bit is cleared so -0.0 counts as zero (identical
+    # to `w != 0`) while the compare itself stays an integer `!= 0` (cmpf was
+    # ~2x slower than int compare for the float dtypes).
+    pid = ext.program_id(0)
+    cols = pid * BLOCK + tl.arange(0, BLOCK)
+    w = tl.load(inp + cols)
+    tl.store(counts + pid, tl.sum(((w & MASK) != 0).to(tl.int32), axis=0).to(tl.int64))
+
+
+@libentry()
+@triton.jit(do_not_specialize=["n_elements", "n_main", "slot"])
+def _nznp_count_tail_masked_kernel(
+    inp, counts, n_elements, n_main, slot, MASK: tl.constexpr, BLOCK: tl.constexpr
+):
+    cols = n_main + tl.arange(0, BLOCK)
+    last = n_elements - 1
+    cclamp = tl.minimum(cols, last)
+    ok = (cols < n_elements).to(tl.int32)
+    w = tl.load(inp + cclamp)
+    tl.store(
+        counts + slot,
+        tl.sum(((w & MASK) != 0).to(tl.int32) * ok, axis=0).to(tl.int64),
+    )
+
+
+@libentry()
+@triton.jit
+def _nznp_clean_2d_pow2_kernel(
+    ids,
+    bases,
+    outd,
+    log2_cols: tl.constexpr,
+    DIM: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    # 2-D power-of-two clean block: replace the generic `(idx // stride_d) %
+    # size_d` int64 div/mod with a shift (dim 0) or mask (dim 1).
+    pid = ext.program_id(0)
+    blk = tl.load(ids + pid)
+    base = tl.load(bases + pid)
+    lanes = tl.arange(0, BLOCK)
+    idx = blk * BLOCK + lanes
+    if DIM == 0:
+        coord = idx >> log2_cols
+    else:
+        coord = idx & ((1 << log2_cols) - 1)
+    tl.store(outd + base + lanes.to(tl.int64), coord.to(tl.int64))
+
+
+@libentry()
 @triton.jit(do_not_specialize=["stride_d", "size_d"])
 def _nznp_clean_dim_kernel(
     ids,
@@ -193,21 +246,49 @@ def _nznp_block_counts(flat, n_elements):
     rem = n_elements - n_full * block
     n_blocks = n_full + (1 if rem else 0)
     counts = torch.empty(n_blocks, dtype=torch.int64, device=dev)
+    # Float dtypes: reinterpret as integer and count with the sign bit cleared,
+    # so -0.0 counts as zero (identical to `w != 0`) while the compare becomes an
+    # integer `!= 0` (the cmpf path was ~2x slower on this backend).
+    view = flat
+    mask = None
+    if flat.dtype == torch.float32:
+        view = flat.view(torch.int32)
+        mask = 0x7FFFFFFF
+    elif flat.dtype in (torch.float16, torch.bfloat16):
+        view = flat.view(torch.int16)
+        mask = 0x7FFF
     with torch_device_fn.device(dev):
         if n_full > 0:
-            _nznp_count_full_kernel[(n_full,)](
-                flat, counts, BLOCK=block, num_warps=_NZNP_WARPS
-            )
+            if mask is None:
+                _nznp_count_full_kernel[(n_full,)](
+                    view, counts, BLOCK=block, num_warps=_NZNP_WARPS
+                )
+            else:
+                _nznp_count_full_masked_kernel[(n_full,)](
+                    view, counts, MASK=mask, BLOCK=block, num_warps=_NZNP_WARPS
+                )
         if rem > 0:
-            _nznp_count_tail_kernel[(1,)](
-                flat,
-                counts,
-                n_elements,
-                n_full * block,
-                n_full,
-                BLOCK=block,
-                num_warps=_NZNP_WARPS,
-            )
+            if mask is None:
+                _nznp_count_tail_kernel[(1,)](
+                    view,
+                    counts,
+                    n_elements,
+                    n_full * block,
+                    n_full,
+                    BLOCK=block,
+                    num_warps=_NZNP_WARPS,
+                )
+            else:
+                _nznp_count_tail_masked_kernel[(1,)](
+                    view,
+                    counts,
+                    n_elements,
+                    n_full * block,
+                    n_full,
+                    MASK=mask,
+                    BLOCK=block,
+                    num_warps=_NZNP_WARPS,
+                )
     return n_full, rem, counts.cpu()
 
 
@@ -248,19 +329,37 @@ def _nznp_compact(inp, n_elements, n_full, rem, counts_h, total):
         dirty_bases = bases_h[dirty_h].to(dev)
     tail_base = int(bases_h[n_full].item()) if rem > 0 else 0
 
+    # 2-D power-of-two last dim: clean blocks can compute the coordinate with a
+    # shift (dim 0) or mask (dim 1) instead of the generic int64 div/mod.
+    use_2d_pow2 = (
+        ndim == 2 and inp.shape[1] > 0 and (inp.shape[1] & (inp.shape[1] - 1)) == 0
+    )
+    log2_cols = inp.shape[1].bit_length() - 1 if use_2d_pow2 else 0
+
     with torch_device_fn.device(dev):
         for d in range(ndim):
             outd = out.select(0, d)
             if clean_ids is not None:
-                _nznp_clean_dim_kernel[(clean_ids.numel(),)](
-                    clean_ids,
-                    clean_bases,
-                    outd,
-                    src_strides[d],
-                    inp.shape[d],
-                    BLOCK=block,
-                    num_warps=_NZNP_WARPS,
-                )
+                if use_2d_pow2:
+                    _nznp_clean_2d_pow2_kernel[(clean_ids.numel(),)](
+                        clean_ids,
+                        clean_bases,
+                        outd,
+                        log2_cols,
+                        DIM=d,
+                        BLOCK=block,
+                        num_warps=_NZNP_WARPS,
+                    )
+                else:
+                    _nznp_clean_dim_kernel[(clean_ids.numel(),)](
+                        clean_ids,
+                        clean_bases,
+                        outd,
+                        src_strides[d],
+                        inp.shape[d],
+                        BLOCK=block,
+                        num_warps=_NZNP_WARPS,
+                    )
             if dirty_ids is not None:
                 _nznp_dirty_dim_kernel[(dirty_ids.numel(),)](
                     flat,

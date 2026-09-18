@@ -530,6 +530,61 @@ def _softmax_chunk_split(output, inp, M, N):
 
 
 _SM_CHUNK_SPLIT_MAX_N = 8192 * 1024
+_SM_WIDE_TILE = 16384
+_SM_WIDE_MIN_N = 32768
+
+
+@libentry()
+@triton.jit
+def softmax_kernel_wide(
+    output_ptr,
+    input_ptr,
+    M,
+    N,
+    TILE_N: tl.constexpr,
+):
+    """Wide-row forward: same two-pass online max/sum-exp math as the
+    `softmax_kernel_inner` multi-tile branch, but with a fixed large TILE_N
+    (16384) so a wide row needs fewer serial tile iterations. Only dispatched
+    when N % TILE_N == 0 (no masked tail), avoiding the unreliable >4096-lane
+    masked load on this XPU."""
+    pid_m = ext.program_id(0)
+    input_ptr += pid_m * N
+    output_ptr += pid_m * N
+
+    m = tl.full([TILE_N], value=float("-inf"), dtype=tl.float32)
+    z = tl.full([TILE_N], value=0.0, dtype=tl.float32)
+
+    previous_multiple = prev_multiple_of(N, TILE_N)
+    for start_n in range(0, previous_multiple, TILE_N):
+        n_offsets = start_n + tl.arange(0, TILE_N)
+        inp = tl.load(input_ptr + n_offsets)
+        m_new = tl.maximum(m, inp)
+        all_neg_inf = m_new == float("-inf")
+        z = tl.where(all_neg_inf, z, z * tl.exp(m - m_new) + tl.exp(inp - m_new))
+        m = m_new
+    for start_n in range(previous_multiple, N, TILE_N):
+        n_offsets = start_n + tl.arange(0, TILE_N)
+        inp = tl.load(input_ptr + n_offsets)
+        m_new = tl.maximum(m, inp)
+        all_neg_inf = m_new == float("-inf")
+        z = tl.where(all_neg_inf, z, z * tl.exp(m - m_new) + tl.exp(inp - m_new))
+        m = m_new
+
+    m_reduced = tl.max(m, 0)
+    z = tl.sum(z * tl.exp(m - m_reduced), 0)
+    m = m_reduced
+
+    for start_n in range(0, previous_multiple, TILE_N):
+        n_offsets = start_n + tl.arange(0, TILE_N)
+        inp = tl.load(input_ptr + n_offsets)
+        o = tl.exp(inp - m) / z
+        tl.store(output_ptr + n_offsets, o)
+    for start_n in range(previous_multiple, N, TILE_N):
+        n_offsets = start_n + tl.arange(0, TILE_N)
+        inp = tl.load(input_ptr + n_offsets)
+        o = tl.exp(inp - m) / z
+        tl.store(output_ptr + n_offsets, o)
 
 
 def _softmax_forward_launch(output, inp, M, N):
@@ -572,6 +627,17 @@ def _softmax_forward_launch(output, inp, M, N):
     if N > _SM_MR_MAX_N:
         if M * (N // _SM_CHUNK_BN) < 1024 or M == 1:
             _softmax_chunk_split(output, inp, M, N)
+        elif N % _SM_WIDE_TILE == 0 and N > _SM_WIDE_MIN_N:
+            grid = (M, 1, 1)
+            softmax_kernel_wide[grid](
+                output,
+                inp,
+                M,
+                N,
+                TILE_N=_SM_WIDE_TILE,
+                num_warps=8,
+                buffer_size_limit=2048,
+            )
         else:
             grid = (M, 1, 1)
             softmax_kernel_inner[grid](
@@ -1107,6 +1173,16 @@ def softmax_backward_out(grad_output, output, dim, input_dtype, *, grad_input):
             f"_softmax_backward_data.out: expected out dtype {input_dtype}, "
             f"got {grad_input.dtype}"
         )
+    # softmax over a reduction dim of size 1 has an exactly-zero gradient, and
+    # torch's native XPU `_softmax_backward_data.out` short-circuits to zero here.
+    # The functional `softmax_backward` keeps the normal formula (its test is
+    # checked against the CPU reference, which does not short-circuit), but the
+    # `.out` variant skips the tiny-row kernel and zeroes the buffer directly,
+    # matching the native `.out` short-circuit and avoiding the launch-bound
+    # transpose/copy path for K > 1 (e.g. [100, 1, 100]).
+    if output.shape[dim % output.ndim] == 1:
+        zero_(grad_input)
+        return grad_input
     result = softmax_backward(
         grad_output,
         output,
