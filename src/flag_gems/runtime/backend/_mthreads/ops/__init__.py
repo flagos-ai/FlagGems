@@ -133,6 +133,7 @@ from .special_gammainc import special_gammainc
 from .special_multigammaln import special_multigammaln
 from .special_round import special_round
 from .special_round_out import special_round_out
+from .square_ import square_
 from .tile import tile
 from .topk_w8a16_fp8 import topk_w8a16_fp8
 from .trunc import trunc, trunc_
@@ -317,20 +318,21 @@ if get_device_capability(current_device())[0] >= 3:
             "gelu",
             "mm",
             "tanh",
-    "atan2",
-    "kthvalue",
-    "mvlgamma",
-    "atan2_",
-    "_upsample_nearest_exact2d_backward",
-    "_upsample_bilinear2d_aa",
-    "ldl_factor_ex",
-    "_thnn_fused_lstm_cell_backward_impl",
-    "lift_out",
-    "lcm_",
-    "lift_fresh",
-    "addmv_",
-    "ormqr",
-    "cholesky_inverse",
+            "atan2",
+            "kthvalue",
+            "mvlgamma",
+            "atan2_",
+            "_upsample_nearest_exact2d_backward",
+            "_upsample_bilinear2d_aa",
+            "ldl_factor_ex",
+            "_thnn_fused_lstm_cell_backward_impl",
+            "lift_out",
+            "lcm_",
+            "lift_fresh",
+            "addmv_",
+            "ormqr",
+            "cholesky_inverse",
+            "square_",
         ]
     )
 
