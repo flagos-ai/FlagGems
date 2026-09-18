@@ -84,5 +84,5 @@ def cosh_(x):
 
 
 def cosh_out(x, *, out=None):
-    logger.debug("GEMS_KUNLUNXIN COSH OUT")
+    logger.debug("GEMS_KUNLUNXIN COSH_OUT")
     return cosh(x, out=out)
