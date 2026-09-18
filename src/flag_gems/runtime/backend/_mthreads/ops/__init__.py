@@ -72,6 +72,7 @@ from .index_select import index_select
 from .int_mm import int_mm, int_mm_out
 from .isin import isin
 from .kthvalue import kthvalue
+from .lcm import lcm
 from .lcm_ import lcm_
 from .lift_fresh import lift_fresh
 from .lift_out import lift_out
@@ -346,6 +347,7 @@ if get_device_capability(current_device())[0] >= 3:
             "log2_",
             "fix",
             "feature_dropout",
+            "lcm",
         ]
     )
 
