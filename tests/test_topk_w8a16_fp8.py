@@ -62,7 +62,8 @@ def _dequant_fp8(x_fp8, x_scale, group_size=FP8_GROUP_SIZE):
 
 @pytest.mark.topk_w8a16_fp8
 @pytest.mark.skipif(
-    getattr(flag_gems, "vendor_name", None) not in ("thead", "hygon", "nvidia"),
+    getattr(flag_gems, "vendor_name", None)
+    not in ("thead", "hygon", "mthreads", "nvidia"),
     reason="topk_w8a16_fp8 requires an implemented backend",
 )
 @pytest.mark.skipif(not _fp8_available(), reason="required FP8 format is unavailable")
@@ -170,11 +171,11 @@ def test_topk_w8a16_fp8_row_scale(shape, topk):
     torch.testing.assert_close(gathered, res_value.float(), rtol=0, atol=2e-2)
 
 
-# Backend extensions stay in the shared operator file. PPU retains its original
+# E4M3FN extensions stay in the shared operator file. PPU retains its original
 # E5M2/BF16 coverage until these additional contracts are supported there.
-HYGON_ONLY = pytest.mark.skipif(
+E4M3_ONLY = pytest.mark.skipif(
     flag_gems.vendor_name not in ("hygon", "mthreads"),
-    reason="Hygon/Moore Threads FP8 extensions",
+    reason="E4M3FN FP8 extensions require Hygon or Moore Threads",
 )
 
 
@@ -219,7 +220,7 @@ def _check_topk(
     return values, indices
 
 
-@HYGON_ONLY
+@E4M3_ONLY
 @pytest.mark.topk_w8a16_fp8
 @pytest.mark.parametrize("fp8_dtype", [torch.float8_e4m3fn])
 @pytest.mark.parametrize("out_dtype", [torch.float16, torch.bfloat16])
@@ -242,7 +243,7 @@ def test_topk_fp8_edges(shape, k, group_size, largest, out_dtype, fp8_dtype):
     _check_topk(q, scale, k, group_size, out_dtype, largest, sorted=False)
 
 
-@HYGON_ONLY
+@E4M3_ONLY
 @pytest.mark.topk_w8a16_fp8
 @pytest.mark.parametrize("fp8_dtype", [torch.float8_e4m3fn])
 @pytest.mark.parametrize("largest", [True, False])
@@ -253,7 +254,7 @@ def test_topk_fp8_all_encodings(fp8_dtype, largest, k):
     _check_topk(q, scale, k, largest=largest)
 
 
-@HYGON_ONLY
+@E4M3_ONLY
 @pytest.mark.topk_w8a16_fp8
 @pytest.mark.parametrize("shape,k", [((0, 128), 3), ((3, 0), 0), ((2, 128), 0)])
 def test_topk_fp8_empty(shape, k):
@@ -262,7 +263,7 @@ def test_topk_fp8_empty(shape, k):
     _check_topk(q, s, k)
 
 
-@HYGON_ONLY
+@E4M3_ONLY
 @pytest.mark.topk_w8a16_fp8
 def test_topk_fp8_strides_graph_and_ties():
     raw = (
@@ -306,7 +307,7 @@ def test_topk_fp8_strides_graph_and_ties():
             )
 
 
-@HYGON_ONLY
+@E4M3_ONLY
 @pytest.mark.topk_w8a16_fp8
 def test_topk_fp8_validation():
     q = torch.zeros((2, 128), device=flag_gems.device).to(torch.float8_e4m3fn)
@@ -331,7 +332,7 @@ def test_topk_fp8_validation():
         flag_gems.topk_w8a16_fp8(q, s.cpu(), 1)
 
 
-@HYGON_ONLY
+@E4M3_ONLY
 @pytest.mark.topk_w8a16_fp8
 @pytest.mark.parametrize("n,k", [(4097, 32), (32769, 256)])
 @pytest.mark.parametrize("largest", [True, False])
@@ -342,7 +343,7 @@ def test_topk_fp8_partition_tails(n, k, largest):
     _check_topk(q, scale, k, largest=largest)
 
 
-@HYGON_ONLY
+@E4M3_ONLY
 @pytest.mark.topk_w8a16_fp8
 @pytest.mark.parametrize(
     "scale_value",
