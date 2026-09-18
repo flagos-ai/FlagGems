@@ -309,17 +309,33 @@ def _tle_group_norm_fused_kernel(
             a1 = tle.gpu.alloc(
                 [XBLOCK, WT], dtype=IN_DTYPE, layout=None, scope=tle.gpu.lmem
             )
+            # Per-beat stats buffers: SM when the coalesced writeback is
+            # available, LM otherwise. The scope has to be spelled out at every
+            # alloc -- binding it to a local (`S = smem if ... else lmem`) makes
+            # triton try to convert the scope object to a tensor.
             m0 = tle.gpu.alloc(
-                [XBLOCK], dtype=OUT_DTYPE, layout=None, scope=tle.gpu.lmem
+                [XBLOCK],
+                dtype=OUT_DTYPE,
+                layout=None,
+                scope=tle.gpu.smem if SM_STATS else tle.gpu.lmem,
             )
             r0 = tle.gpu.alloc(
-                [XBLOCK], dtype=OUT_DTYPE, layout=None, scope=tle.gpu.lmem
+                [XBLOCK],
+                dtype=OUT_DTYPE,
+                layout=None,
+                scope=tle.gpu.smem if SM_STATS else tle.gpu.lmem,
             )
             m1 = tle.gpu.alloc(
-                [XBLOCK], dtype=OUT_DTYPE, layout=None, scope=tle.gpu.lmem
+                [XBLOCK],
+                dtype=OUT_DTYPE,
+                layout=None,
+                scope=tle.gpu.smem if SM_STATS else tle.gpu.lmem,
             )
             r1 = tle.gpu.alloc(
-                [XBLOCK], dtype=OUT_DTYPE, layout=None, scope=tle.gpu.lmem
+                [XBLOCK],
+                dtype=OUT_DTYPE,
+                layout=None,
+                scope=tle.gpu.smem if SM_STATS else tle.gpu.lmem,
             )
             a0_ptr = tle.gpu.local_ptr(a0, (rows, cols))
             a1_ptr = tle.gpu.local_ptr(a1, (rows, cols))
