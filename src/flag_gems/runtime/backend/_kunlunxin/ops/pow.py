@@ -194,57 +194,6 @@ def _pick_pow_block(n_elements):
     return 16384, 8, True
 
 
-@triton.jit
-def pow_scalar_fast_kernel(x_ptr, out_ptr, lnb, BLOCK: tl.constexpr):
-    pid = ext.program_id(0)
-    offset = pid * BLOCK + tl.arange(0, BLOCK)
-    y = tl.load(x_ptr + offset).to(tl.float32)
-    r = tl.exp2(y * lnb)
-    tl.store(out_ptr + offset, r.to(out_ptr.dtype.element_ty))
-
-
-@triton.jit
-def pow_scalar_fast_kernel_masked(x_ptr, out_ptr, n_elements, lnb, BLOCK: tl.constexpr):
-    pid = ext.program_id(0)
-    offset = pid * BLOCK + tl.arange(0, BLOCK)
-    mask = offset < n_elements
-    y = tl.load(x_ptr + offset, mask=mask, other=0.0).to(tl.float32)
-    r = tl.exp2(y * lnb)
-    tl.store(out_ptr + offset, r.to(out_ptr.dtype.element_ty), mask=mask)
-
-
-def _launch_pow_scalar_fast(x, out, lnb):
-    n_elements = x.numel()
-    if n_elements == 0:
-        return
-    block_size, num_warps, masked = _pick_pow_block(n_elements)
-    if masked:
-        grid = (triton.cdiv(n_elements, block_size),)
-        pow_scalar_fast_kernel_masked[grid](
-            x,
-            out,
-            n_elements,
-            lnb,
-            BLOCK=block_size,
-            num_warps=num_warps,
-            unroll_num=UNROLL_NUM,
-            buffer_size_limit=BUFFER_SIZE_LIMIT,
-            isCloseMemoryAsync=IS_CLOSE_MEMORY_ASYNC,
-        )
-    else:
-        grid = (n_elements // block_size,)
-        pow_scalar_fast_kernel[grid](
-            x,
-            out,
-            lnb,
-            BLOCK=block_size,
-            num_warps=num_warps,
-            unroll_num=UNROLL_NUM,
-            buffer_size_limit=BUFFER_SIZE_LIMIT,
-            isCloseMemoryAsync=IS_CLOSE_MEMORY_ASYNC,
-        )
-
-
 def pow_scalar(A, exponent):
     logger.debug("GEMS_KUNLUNXIN POW_SCALAR")
     base = A.item() if hasattr(A, "item") else float(A)
