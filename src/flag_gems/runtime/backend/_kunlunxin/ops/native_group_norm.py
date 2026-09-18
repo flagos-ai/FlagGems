@@ -88,6 +88,21 @@ _TLE_FUSE_WMAX = 1 << 16
 # the row; RB/64 is the per-core register footprint, so RB = 4096 -> 64 lanes.
 _TLE_FUSE_LOOP_WMIN = 8192
 _TLE_FUSE_LOOP_RB = 2048
+# Row-block pipelining (hold-the-row path only). A program takes RITER row
+# blocks instead of one and double-buffers them, so block i+1's GM read is in
+# flight while block i is normalized -- the same DMA/compute overlap the
+# hand-written XDNN kernel gets from its triple-buffered affine pass, but across
+# ROW BLOCKS rather than column segments, so the input is still read exactly
+# once (a column-segment two-pass has to re-read it).
+# The lever it buys is per-core RESIDENCY: RITER row blocks at XBLOCK rows each
+# do the work one block of XBLOCK*RITER rows would, at 1/RITER of the register
+# footprint, without changing the program count. _TLE_FUSE_EPC_PIPE is the
+# per-core element count the split aims for. It is a FLOOR, not a target, and
+# measured: 64 gives mean 0.68x of aten on the core benchmark set, 32 gives
+# 0.54x -- below 64 elements/core the tiles stop paying for their own loop
+# (the (16,16,128) fp16 config blew up 40x at 32), so the halving stops there.
+_TLE_FUSE_EPC_PIPE = 64
+_TLE_FUSE_RITER_MAX = 8
 
 _TLE_TL_DTYPE = {
     torch.float16: tl.float16,
@@ -110,6 +125,83 @@ def _tle_available():
 
 
 _TLE_AVAILABLE = _tle_available()
+
+
+@triton.jit
+def _tle_group_norm_chan(
+    r_off,
+    rid,
+    cols,
+    HW: tl.constexpr,
+    group_size: tl.constexpr,
+    num_groups: tl.constexpr,
+    CBLK: tl.constexpr,
+    TAIL: tl.constexpr,
+):
+    """Channel index of every column of a `[XBLOCK, WT]` block of group-rows.
+
+    Within a group-row, column j belongs to channel `group*group_size + j // HxW`,
+    and the group differs per row -- `r_off` (the block's first group-row) is the
+    only thing that changes between blocks, which is what lets the pipelined leg
+    reuse this for each of its blocks.
+    """
+    grp = (r_off + rid) % num_groups
+    ch = grp[:, None] * group_size + (cols // HW)
+    if TAIL:
+        # A padding column j >= L computes ch one PAST the [CBLK] smem buffer
+        # and the OOB read faults the card; valid columns always have
+        # ch <= C-1 <= CBLK-1, so the clamp only redirects discards.
+        ch = tl.minimum(ch, CBLK - 1)
+    return ch
+
+
+@triton.jit
+def _tle_group_norm_block(
+    a_ptr,
+    m_ptr,
+    r_ptr,
+    w_ptr,
+    b_ptr,
+    cols,
+    L,
+    eps,
+    IN_DTYPE: tl.constexpr,
+    OUT_DTYPE: tl.constexpr,
+    CDT: tl.constexpr,
+    TAIL: tl.constexpr,
+    HAS_W: tl.constexpr,
+    HAS_B: tl.constexpr,
+):
+    """Whole group norm for ONE resident row block, in place in `a_ptr`.
+
+    `a_ptr` is a `[XBLOCK, WT]` lmem tile already filled from GM; on return it
+    holds y and `m_ptr`/`r_ptr` hold the block's mean/rstd. `w_ptr`/`b_ptr` are
+    the smem weight/bias gathers for this block's channel map (built by the
+    caller from `_tle_group_norm_chan`): the buffers themselves cannot cross a
+    `triton.jit` call boundary -- a memdesc has no frontend type -- but a
+    `local_ptr` can, which is also how test_tle_layernorm hands its staged
+    weights to a shared compute helper.
+    """
+    x = tl.load(a_ptr)
+    xf = x.to(tl.float32)
+    if TAIL:  # padding columns must not pollute the reduce
+        xf = tl.where(cols < L, xf, 0.0)
+    mean = tl.sum(xf, 1) / L
+    var = tl.maximum(tl.sum(xf * xf, 1) / L - mean * mean, 0.0)
+    rstd = rsqrt(var + eps)
+    # Affine in the compute dtype CDT, which is the NATIVE input dtype: XPU3 has
+    # fp16 vector ops, and bf16 gets its f32 detour inserted implicitly by
+    # tle-dtype-convert. Only the reduce above is pinned to f32, for accumulation
+    # precision. Spelling the upcast here explicitly is what made fp16 lag fp32.
+    xc = x.to(CDT)
+    y = (xc - mean[:, None].to(CDT)) * rstd[:, None].to(CDT)
+    if HAS_W:
+        y = y * tl.load(w_ptr).to(CDT)
+    if HAS_B:
+        y = y + tl.load(b_ptr).to(CDT)
+    tl.store(a_ptr, y.to(IN_DTYPE))
+    tl.store(m_ptr, mean.to(OUT_DTYPE))
+    tl.store(r_ptr, rstd.to(OUT_DTYPE))
 
 
 @triton.jit(
@@ -141,6 +233,7 @@ def _tle_group_norm_fused_kernel(
     CBLK: tl.constexpr,
     RB: tl.constexpr,
     WIDE: tl.constexpr,
+    RITER: tl.constexpr,
     IN_DTYPE: tl.constexpr,
     OUT_DTYPE: tl.constexpr,
     CDT: tl.constexpr,
@@ -243,54 +336,164 @@ def _tle_group_norm_fused_kernel(
                     yv = yv + tl.load(tle.gpu.local_ptr(b_smem, (ch,))).to(CDT)
             tl.store(buf_ptr, yv.to(IN_DTYPE))
             tle.gpu.copy(buf, y_desc, [XBLOCK, RB], [row0, coff])
-    else:
-        a_lmem = tle.gpu.alloc(
-            [XBLOCK, WT], dtype=IN_DTYPE, layout=None, scope=tle.gpu.lmem
+        m_lmem = tle.gpu.alloc(
+            [XBLOCK], dtype=OUT_DTYPE, layout=None, scope=tle.gpu.lmem
         )
-        a_ptr = tle.gpu.local_ptr(a_lmem, (rows, cols))
-        tle.gpu.copy(x_desc, a_lmem, [XBLOCK, WT], [row0, 0])
-        x = tl.load(a_ptr)
-        xf = x.to(tl.float32)
-        if TAIL:  # padding columns must not pollute the reduce
-            xf = tl.where(cols < L, xf, 0.0)
-        mean = tl.sum(xf, 1) / L
-        var = tl.maximum(tl.sum(xf * xf, 1) / L - mean * mean, 0.0)
-        rstd = rsqrt(var + eps)
-        # Affine in the compute dtype CDT: NATIVE for fp16/fp32 (XPU3 has fp16
-        # vector ops), only f32 for bf16 (no bf16 vector instruction). Only the
-        # reduce is forced to f32 for accumulation precision. This drops the
-        # self-inflicted fp16 -> f32 upcast/downcast that made fp16 lag fp32.
-        xc = x.to(CDT)
-        y = (xc - mean[:, None].to(CDT)) * rstd[:, None].to(CDT)
-        if HAS_W or HAS_B:
-            grp = (row0 + rid) % num_groups
-            ch = grp[:, None] * group_size + (cols // HW)
-            if TAIL:
-                # A padding column j >= L computes ch one PAST the [CBLK] smem
-                # buffer and the OOB read faults the card; valid columns always
-                # have ch <= C-1 <= CBLK-1, so clamp only redirects discards.
-                ch = tl.minimum(ch, CBLK - 1)
-            if HAS_W:
-                w_smem = tle.gpu.alloc(
-                    [CBLK], dtype=IN_DTYPE, layout=None, scope=tle.gpu.smem
+        r_lmem = tle.gpu.alloc(
+            [XBLOCK], dtype=OUT_DTYPE, layout=None, scope=tle.gpu.lmem
+        )
+        tl.store(tle.gpu.local_ptr(m_lmem, (rid,)), mean.to(OUT_DTYPE))
+        tl.store(tle.gpu.local_ptr(r_lmem, (rid,)), rstd.to(OUT_DTYPE))
+        tle.gpu.copy(m_lmem, mean_desc, [XBLOCK], [row0])
+        tle.gpu.copy(r_lmem, rstd_desc, [XBLOCK], [row0])
+    else:
+        # Weight/bias staging is common to both legs below and must happen ONCE,
+        # before any pipelined prefetch: the smem copy carries its own
+        # mfence(7)+barrier pair (the scope ignores `sync=`), and that fence
+        # drains any in-flight DMA -- staging after a prefetch would cancel the
+        # overlap it was issued for. Both buffers are always allocated so the
+        # block helper can take them unconditionally; only the present ones are
+        # filled (the launcher hands a dummy tensor for the absent one).
+        w_smem = tle.gpu.alloc([CBLK], dtype=IN_DTYPE, layout=None, scope=tle.gpu.smem)
+        b_smem = tle.gpu.alloc([CBLK], dtype=IN_DTYPE, layout=None, scope=tle.gpu.smem)
+        if HAS_W:
+            tle.gpu.copy(W, w_smem, [C], [0])
+        if HAS_B:
+            tle.gpu.copy(B, b_smem, [C], [0])
+        if RITER > 1:
+            # ---- double-buffered row blocks -------------------------------
+            # One program takes RITER blocks of XBLOCK rows and runs them two
+            # per beat against two alternating tiles, so block i+1's GM read is
+            # in flight while block i is normalized and block i-1 is written
+            # back. Three things here are forced rather than chosen:
+            #   * the 2x unroll is MANDATORY -- a memdesc handle cannot be
+            #     selected by a runtime `it % 2`, so the two buffers have to be
+            #     two allocs and the loop two half beats;
+            #   * `dma_wait()` is a global, non-counting fence, so it goes AFTER
+            #     the compute it is meant to overlap; fencing right after the
+            #     prefetch re-serializes the loop;
+            #   * only the row tiles are double-buffered. The [XBLOCK] mean/rstd
+            #     strips are per-beat (m0/m1) because their copy-out is in
+            #     flight across the beat boundary too.
+            base = pid * (XBLOCK * RITER)
+            PAIRS: tl.constexpr = RITER // 2
+            LASTROW: tl.constexpr = (RITER - 1) * XBLOCK
+            a0 = tle.gpu.alloc(
+                [XBLOCK, WT], dtype=IN_DTYPE, layout=None, scope=tle.gpu.lmem
+            )
+            a1 = tle.gpu.alloc(
+                [XBLOCK, WT], dtype=IN_DTYPE, layout=None, scope=tle.gpu.lmem
+            )
+            m0 = tle.gpu.alloc(
+                [XBLOCK], dtype=OUT_DTYPE, layout=None, scope=tle.gpu.lmem
+            )
+            r0 = tle.gpu.alloc(
+                [XBLOCK], dtype=OUT_DTYPE, layout=None, scope=tle.gpu.lmem
+            )
+            m1 = tle.gpu.alloc(
+                [XBLOCK], dtype=OUT_DTYPE, layout=None, scope=tle.gpu.lmem
+            )
+            r1 = tle.gpu.alloc(
+                [XBLOCK], dtype=OUT_DTYPE, layout=None, scope=tle.gpu.lmem
+            )
+            a0_ptr = tle.gpu.local_ptr(a0, (rows, cols))
+            a1_ptr = tle.gpu.local_ptr(a1, (rows, cols))
+            m0_ptr = tle.gpu.local_ptr(m0, (rid,))
+            r0_ptr = tle.gpu.local_ptr(r0, (rid,))
+            m1_ptr = tle.gpu.local_ptr(m1, (rid,))
+            r1_ptr = tle.gpu.local_ptr(r1, (rid,))
+            tle.gpu.copy(x_desc, a0, [XBLOCK, WT], [base, 0], sync=False)
+            tle.gpu.dma_wait()
+            for it in range(0, PAIRS):
+                b0 = base + (2 * it) * XBLOCK
+                b1 = b0 + XBLOCK
+                # The last prefetch runs past the program's blocks; clamp it
+                # onto the final block (one redundant read, no wrong result).
+                b2 = base + tl.minimum((2 * it + 2) * XBLOCK, LASTROW)
+                # ---- half beat A: prefetch b1 -> a1, compute a0 (block b0) --
+                tle.gpu.copy(x_desc, a1, [XBLOCK, WT], [b1, 0], sync=False)
+                ch0 = _tle_group_norm_chan(
+                    b0, rid, cols, HW, group_size, num_groups, CBLK, TAIL
                 )
-                tle.gpu.copy(W, w_smem, [C], [0])
-                y = y * tl.load(tle.gpu.local_ptr(w_smem, (ch,))).to(CDT)
-            if HAS_B:
-                b_smem = tle.gpu.alloc(
-                    [CBLK], dtype=IN_DTYPE, layout=None, scope=tle.gpu.smem
+                _tle_group_norm_block(
+                    a0_ptr,
+                    m0_ptr,
+                    r0_ptr,
+                    tle.gpu.local_ptr(w_smem, (ch0,)),
+                    tle.gpu.local_ptr(b_smem, (ch0,)),
+                    cols,
+                    L,
+                    eps,
+                    IN_DTYPE,
+                    OUT_DTYPE,
+                    CDT,
+                    TAIL,
+                    HAS_W,
+                    HAS_B,
                 )
-                tle.gpu.copy(B, b_smem, [C], [0])
-                y = y + tl.load(tle.gpu.local_ptr(b_smem, (ch,))).to(CDT)
-        tl.store(a_ptr, y.to(IN_DTYPE))
-        tle.gpu.copy(a_lmem, y_desc, [XBLOCK, WT], [row0, 0])
-
-    m_lmem = tle.gpu.alloc([XBLOCK], dtype=OUT_DTYPE, layout=None, scope=tle.gpu.lmem)
-    r_lmem = tle.gpu.alloc([XBLOCK], dtype=OUT_DTYPE, layout=None, scope=tle.gpu.lmem)
-    tl.store(tle.gpu.local_ptr(m_lmem, (rid,)), mean.to(OUT_DTYPE))
-    tl.store(tle.gpu.local_ptr(r_lmem, (rid,)), rstd.to(OUT_DTYPE))
-    tle.gpu.copy(m_lmem, mean_desc, [XBLOCK], [row0])
-    tle.gpu.copy(r_lmem, rstd_desc, [XBLOCK], [row0])
+                tle.gpu.copy(a0, y_desc, [XBLOCK, WT], [b0, 0], sync=False)
+                tle.gpu.copy(m0, mean_desc, [XBLOCK], [b0], sync=False)
+                tle.gpu.copy(r0, rstd_desc, [XBLOCK], [b0], sync=False)
+                tle.gpu.dma_wait()
+                # ---- half beat B: prefetch b2 -> a0, compute a1 (block b1) --
+                tle.gpu.copy(x_desc, a0, [XBLOCK, WT], [b2, 0], sync=False)
+                ch1 = _tle_group_norm_chan(
+                    b1, rid, cols, HW, group_size, num_groups, CBLK, TAIL
+                )
+                _tle_group_norm_block(
+                    a1_ptr,
+                    m1_ptr,
+                    r1_ptr,
+                    tle.gpu.local_ptr(w_smem, (ch1,)),
+                    tle.gpu.local_ptr(b_smem, (ch1,)),
+                    cols,
+                    L,
+                    eps,
+                    IN_DTYPE,
+                    OUT_DTYPE,
+                    CDT,
+                    TAIL,
+                    HAS_W,
+                    HAS_B,
+                )
+                tle.gpu.copy(a1, y_desc, [XBLOCK, WT], [b1, 0], sync=False)
+                tle.gpu.copy(m1, mean_desc, [XBLOCK], [b1], sync=False)
+                tle.gpu.copy(r1, rstd_desc, [XBLOCK], [b1], sync=False)
+                tle.gpu.dma_wait()
+        else:
+            a_lmem = tle.gpu.alloc(
+                [XBLOCK, WT], dtype=IN_DTYPE, layout=None, scope=tle.gpu.lmem
+            )
+            m_lmem = tle.gpu.alloc(
+                [XBLOCK], dtype=OUT_DTYPE, layout=None, scope=tle.gpu.lmem
+            )
+            r_lmem = tle.gpu.alloc(
+                [XBLOCK], dtype=OUT_DTYPE, layout=None, scope=tle.gpu.lmem
+            )
+            a_ptr = tle.gpu.local_ptr(a_lmem, (rows, cols))
+            tle.gpu.copy(x_desc, a_lmem, [XBLOCK, WT], [row0, 0])
+            ch = _tle_group_norm_chan(
+                row0, rid, cols, HW, group_size, num_groups, CBLK, TAIL
+            )
+            _tle_group_norm_block(
+                a_ptr,
+                tle.gpu.local_ptr(m_lmem, (rid,)),
+                tle.gpu.local_ptr(r_lmem, (rid,)),
+                tle.gpu.local_ptr(w_smem, (ch,)),
+                tle.gpu.local_ptr(b_smem, (ch,)),
+                cols,
+                L,
+                eps,
+                IN_DTYPE,
+                OUT_DTYPE,
+                CDT,
+                TAIL,
+                HAS_W,
+                HAS_B,
+            )
+            tle.gpu.copy(a_lmem, y_desc, [XBLOCK, WT], [row0, 0])
+            tle.gpu.copy(m_lmem, mean_desc, [XBLOCK], [row0])
+            tle.gpu.copy(r_lmem, rstd_desc, [XBLOCK], [row0])
 
 
 def _tle_group_norm_fused(
@@ -366,6 +569,28 @@ def _tle_group_norm_fused(
     # >= coreNum, so the [xblock, resident] tile always tiles.
     grid = (-(-m_grp // xblock),)
 
+    # Row-block pipelining: halve xblock and double the blocks per program, which
+    # leaves the PROGRAM COUNT (and with it the wave count on 8 clusters)
+    # untouched while cutting the per-core resident footprint in half and putting
+    # block i+1's GM read in flight behind block i's compute. Two hard gates:
+    # divisibility (the pipelined loop has no tail-block protection), and a
+    # xblock floor of 2 -- xblock == 1 makes the [1, WT] tile LargeN, whose row
+    # reduce goes cross-core through smem plus a cluster barrier, and paying that
+    # barrier RITER times per program is exactly the trade this is trying to
+    # avoid. Only the hold-the-row leg pipelines: the WIDE leg's residency is
+    # already the segment, not the row.
+    riter = 1
+    if not wide:
+        while (
+            xblock > 2
+            and riter * 2 <= _TLE_FUSE_RITER_MAX
+            and (xblock // 2) * resident // _TLE_CORE_NUM >= _TLE_FUSE_EPC_PIPE
+            and m_grp % ((xblock // 2) * (riter * 2)) == 0
+        ):
+            xblock //= 2
+            riter *= 2
+        grid = (m_grp // (xblock * riter),) if riter > 1 else grid
+
     has_w = weight is not None
     has_b = bias is not None
     dummy = (
@@ -399,6 +624,7 @@ def _tle_group_norm_fused(
         _npo2(C),
         rb,
         wide,
+        riter,
         tl_dtype,
         tl_dtype,
         cdt,
@@ -409,12 +635,13 @@ def _tle_group_norm_fused(
     )
     logger.debug(
         "GEMS_KUNLUNXIN NATIVE_GROUP_NORM tle FUSED m_grp=%d L=%d tile=%dx%d "
-        "wide=%d grid=%d",
+        "wide=%d riter=%d grid=%d",
         m_grp,
         L,
         xblock,
         WT,
         wide,
+        riter,
         grid[0],
     )
     return True
