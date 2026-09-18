@@ -36,8 +36,15 @@ def ref_fp8_mqa_logits(
     )
     mask = mask_lo & mask_hi
 
-    score = torch.einsum("mhd,nd->hmn", q, k)
-    logits = (score.relu() * weights.unsqueeze(-1).transpose(0, 1)).sum(dim=0)
+    # logits[m, n] = sum_h relu(q[m,h,:] @ k[n,:]) * weights[m,h].
+    # Accumulate head-by-head so we never materialize the [H, S, SKV] score
+    # tensor (its fp32 peak is ~8.6 GiB at the largest test shapes and OOMs
+    # the GPU; issue #2353). Per-iteration peak is a single [S, SKV] block.
+    S, H, _ = q.shape
+    logits = torch.zeros((S, seq_len_kv), dtype=torch.float32, device="cuda")
+    for h in range(H):
+        score_h = torch.einsum("md,nd->mn", q[:, h, :], k)
+        logits += score_h.relu() * weights[:, h].unsqueeze(-1)
     logits = logits.masked_fill(~mask, float("-inf"))
 
     cost = mask.sum()
