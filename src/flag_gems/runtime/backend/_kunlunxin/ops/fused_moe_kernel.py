@@ -248,6 +248,25 @@ def invoke_kunlunxin_fused_moe_kernel(
     block_size_k = min(max_block_size_k, triton.next_power_of_2(B.size(2)))
     while B.size(2) % block_size_k != 0:
         block_size_k //= 2
+    # Large-K projections must keep the unrolled (n_offset x k_block) body
+    # count within the SDNN per-core stack budget: the ELF KERNEL_STACK_SIZE
+    # grows with the body count and the pipeline rejects kernels past 8000 B
+    # ("Failed to tune buffer size"; measured 8224 B at 56 bodies, passing at
+    # 28). Widen the K tile (power-of-two divisors of K only, up to 512),
+    # then shrink the N tile until the product fits. Small-K shapes keep the
+    # legacy geometry untouched.
+    while (
+        (B.size(2) // block_size_k) * block_size_n > 32
+        and block_size_k < 512
+        and B.size(2) % (block_size_k * 2) == 0
+    ):
+        block_size_k *= 2
+    while (
+        (B.size(2) // block_size_k) * block_size_n > 32
+        and block_size_n > 1
+        and triton.cdiv(n_out, block_size_n // 2) <= 65535
+    ):
+        block_size_n //= 2
     n_blocks = triton.cdiv(n_out, block_size_n)
     align_block_size_m = config["BLOCK_SIZE_M"]
     grid = (num_routes, n_blocks)
