@@ -25,6 +25,7 @@ import pytest
 import yaml
 
 import flag_gems
+from flag_gems.cli_override import add_override_arguments, apply_overrides_from_args
 
 BUILTIN_MARKS = {
     "filterwarnings",
@@ -95,6 +96,9 @@ def pytest_addoption(parser):
     except ValueError:
         pass
 
+    # Add dynamic operator override options
+    add_override_arguments(parser)
+
 
 def pytest_configure(config):
     global RECORD_LOG
@@ -132,6 +136,9 @@ def pytest_configure(config):
             format="[%(levelname)s] %(message)s",
         )
 
+    # Apply dynamic operator overrides
+    config._override_registry = apply_overrides_from_args(config.option)
+
 
 def pytest_runtest_teardown(item, nextitem):
     if not RECORD_LOG:
@@ -159,6 +166,12 @@ def pytest_runtest_teardown(item, nextitem):
 def pytest_sessionfinish(session, exitstatus):
     if RECORD_LOG:
         logging.info(json.dumps(RUNTEST_INFO, indent=2))
+
+
+def pytest_unconfigure(config):
+    """Cleanup: restore all overridden operators."""
+    if hasattr(config, "_override_registry"):
+        config._override_registry.restore_all()
 
 
 @pytest.hookimpl(tryfirst=True)

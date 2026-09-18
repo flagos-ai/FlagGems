@@ -1,11 +1,3 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-
 from typing import Any, Optional
 
 import torch
@@ -120,7 +112,7 @@ def _fused_moe_routed_gemm_kernel(
         tl.store(
             c_ptr + token * stride_cm + offs_n * stride_cn,
             accumulator,
-            mask=offs_n < n_out,
+            mask=valid_route & (offs_n < n_out),
         )
 
 
@@ -193,7 +185,6 @@ def invoke_kunlunxin_fused_moe_kernel(
     n_out = B.size(1) // 2 if FUSE_SILU else B.size(1)
     num_routes = C.size(0) * C.size(1) if direct_routing else sorted_token_ids.numel()
     block_size_n = 4
-    # Wide N tiles stall XPU lowering for the 7168-wide DeepSeek projection.
     max_block_size_n = 8 if B.size(2) >= 7168 else 64
     program_count = num_routes * triton.cdiv(n_out, block_size_n)
     while block_size_n < max_block_size_n and (
