@@ -20,7 +20,6 @@ never imports libentry or takes ownership of ordinary tuner caches.
 
 from __future__ import annotations
 
-import logging
 import math
 from contextlib import contextmanager
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Type
@@ -28,8 +27,7 @@ from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Type
 import triton
 
 from flag_gems import runtime
-
-logger = logging.getLogger(__name__)
+from flag_gems.flagtune.reporting.status import exception_reason, print_status
 
 _FLAGTUNE_PROPOSER_POOL: Dict[Any, Any] = {}
 _FLAGTUNE_VARIANT_INFO_POOL: Dict[Any, Any] = {}
@@ -37,6 +35,7 @@ _FLAGTUNE_AVAILABILITY: Optional[Tuple[bool, Optional[BaseException]]] = None
 # One AUTO failure disables the affected operator variant in this process.
 _COST_MODEL_DISABLED_OPS: set[tuple[Optional[str], Optional[str]]] = set()
 _COST_MODEL_IDENTITIES: Dict[Any, Any] = {}
+_MODEL_LOAD_STARTED: set[Any] = set()
 
 
 def is_auto_disabled(op_id: Optional[str], variant: Optional[str] = None) -> bool:
@@ -123,6 +122,9 @@ def ensure_proposer(identity: Any):
     """Cache the proposer and variant by complete identity and model version."""
     from triton.flagtune.runtime.proposer import load_model_bundle, make_config_proposer
 
+    if identity not in _MODEL_LOAD_STARTED:
+        _MODEL_LOAD_STARTED.add(identity)
+        print_status("Model loading", identity=identity)
     loaded = load_model_bundle(
         identity.op_id,
         identity.variant,
@@ -138,6 +140,7 @@ def ensure_proposer(identity: Any):
             dtype_key=identity.dtype_key,
         )
         _FLAGTUNE_VARIANT_INFO_POOL[cache_key] = loaded.variant
+        print_status("Model loaded", identity=identity, version=loaded.model_version)
     return _FLAGTUNE_PROPOSER_POOL[cache_key], _FLAGTUNE_VARIANT_INFO_POOL[cache_key]
 
 
@@ -376,22 +379,26 @@ def run_policy(
                 self._flagtune_strict_benchmark = previous_strict
     except flagtune_error_types() as exc:
         if intent_required:
+            print_status(
+                "REQUIRED Cost Model failed",
+                identity=_COST_MODEL_IDENTITIES.get(identity_key, identity_key),
+                phase=phase,
+                reason=exception_reason(exc),
+                action="raising; no fallback",
+            )
             raise
         if disabled_key not in _COST_MODEL_DISABLED_OPS:
             _COST_MODEL_DISABLED_OPS.add(disabled_key)
             fallback_mode = runtime.resolve_tuning_mode(
                 op_name, supports_cost_model=False
             )
-            logger.warning(
-                "FlagTune AUTO Cost Model disabled for operator %s on all devices "
-                "and variants in this process; failed identity=%s; "
-                "falling back to %s tuning; phase=%s; reason=%s: %s",
-                op_id,
-                _COST_MODEL_IDENTITIES.get(identity_key, identity_key),
-                fallback_mode.value,
-                phase,
-                type(exc).__name__,
-                exc,
+            print_status(
+                "AUTO fallback",
+                identity=_COST_MODEL_IDENTITIES.get(identity_key, identity_key),
+                phase=phase,
+                reason=exception_reason(exc),
+                fallback_mode=fallback_mode.value,
+                action="AUTO disabled for this variant in this process until restart",
             )
     else:
         return default_policy(self, bench_fn, candidates, args, kwargs)

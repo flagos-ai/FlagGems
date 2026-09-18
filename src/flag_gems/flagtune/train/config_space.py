@@ -1,4 +1,4 @@
-"""Shared resolution of runtime-owned FlagTune candidate spaces."""
+"""Resolve runtime-owned FlagTune candidate spaces for training collection."""
 
 from __future__ import annotations
 
@@ -6,7 +6,30 @@ import hashlib
 import json
 from typing import Any, Optional
 
+_MM_RUNTIME_OPS = {
+    "nvidia": {
+        "general_tma": "mm_general_tma",
+        "gemv": "gemv",
+        "splitk": "mm_splitk",
+        "splitk_two_step": "mm_splitk_two_step",
+        "splitk_two_step_partial": "mm_splitk_two_step",
+        "tma_transposed_direct": "mm_tma_transposed_direct",
+    },
+    "metax": {
+        "metax_general": "mm",
+        "metax_nn": "mm_nn",
+        "metax_nt": "mm_nt",
+        "metax_gemv": "gemv",
+        "metax_gemv_k_parallel": "gemv_k_parallel",
+        "metax_gemv_k_parallel_partial": "gemv_k_parallel",
+        "metax_splitk": "mm_splitk",
+        "metax_splitk_two_step": "mm_splitk_two_step",
+        "metax_splitk_two_step_partial": "mm_splitk_two_step",
+    },
+}
+
 _RUNTIME_OPS = {
+    "flaggems/mm": _MM_RUNTIME_OPS,
     "flaggems/mul": {
         "scalar": "mul",
         "broadcast_2d": "mul_broadcast_2d",
@@ -60,6 +83,11 @@ def runtime_configs_for_variant(
     else:
         platform_name = platform_text
     expand_yaml_path = yaml_path
+    if expand_yaml_path is None and op_id == "flaggems/mm":
+        from flag_gems.flagtune.train.route.common import backend_module
+
+        backend = backend_module("mm", platform_name)
+        expand_yaml_path = getattr(backend, "EXPAND_CONFIG_FILENAME", None)
 
     op_name = runtime_op_name_for_variant(op_id, variant, platform_name)
     if op_name is None:

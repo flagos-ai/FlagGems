@@ -71,6 +71,7 @@ from flag_gems.flagtune.cli.pretune import (  # noqa: E402
     load_shape_records,
     parse_max_shapes,
     parse_sort,
+    planner_benchmark_shape,
     sanitize_db_url,
     select_shape_records,
     visible_device_tokens,
@@ -82,10 +83,6 @@ from flag_gems.flagtune.collection.scheduler import (  # noqa: E402
     DEFAULT_BENCHMARK_WARMUP_MS,
     BenchmarkError,
     run_shape_config_benchmarks,
-)
-from flag_gems.flagtune.config_space import (  # noqa: E402
-    runtime_configs_for_variant,
-    runtime_configs_hash,
 )
 from flag_gems.flagtune.contracts.operator import (  # noqa: E402
     OperatorConfigError,
@@ -102,6 +99,10 @@ from flag_gems.flagtune.reporting.schema import (  # noqa: E402
     SCHEMA_VERSION,
     pretune_json_row,
     rounded_ms,
+)
+from flag_gems.flagtune.train.config_space import (  # noqa: E402
+    runtime_configs_for_variant,
+    runtime_configs_hash,
 )
 
 DEFAULT_OUTPUT_ROOT = PROJECT_ROOT / "flagtune-train-output"
@@ -428,7 +429,7 @@ def _collection_group_key(
     platform_key: Optional[str],
 ) -> str:
     """Build the final ranker group identity before collection batching."""
-    payload = record.to_benchmark_shape()
+    payload = planner_benchmark_shape(record, spec, platform_key)
     values = payload.get("values") if isinstance(payload, Mapping) else None
     if not isinstance(values, Mapping):
         values = payload
@@ -806,6 +807,11 @@ def run_main(args: argparse.Namespace) -> int:
             requested_variant,
             sort_spec,
             args.max_shapes,
+            {
+                "platform_key": getattr(context, "vendor_name", "unknown"),
+                "dtypes": args.dtypes,
+                "planner_output": True,
+            },
         )
     except PretuneError as exc:
         raise TrainError(str(exc)) from exc
@@ -945,7 +951,11 @@ def run_main(args: argparse.Namespace) -> int:
                 batch = run_shape_config_benchmarks(
                     [
                         (
-                            record.to_benchmark_shape(),
+                            planner_benchmark_shape(
+                                record,
+                                spec,
+                                getattr(context, "vendor_name", None),
+                            ),
                             configs,
                         )
                         for record in records

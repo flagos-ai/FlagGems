@@ -58,7 +58,7 @@ def test_training_cli_requires_config_and_variant():
             "--shape-config",
             "shapes.yaml",
             "--flagtune-config",
-            "mm_flagtune_configs.yaml",
+            "mm_hopper_flagtune_configs.yaml",
             "--variant",
             "general_tma",
             "--model-version",
@@ -82,7 +82,7 @@ def test_training_cli_requires_config_and_variant():
             "--shape-config",
             "shapes.yaml",
             "--flagtune-config",
-            "mm_flagtune_configs.yaml",
+            "mm_hopper_flagtune_configs.yaml",
             "--variant",
             "general_tma",
             "--model-version",
@@ -99,7 +99,7 @@ def test_training_cli_requires_config_and_variant():
             "--shape-config",
             "shapes.yaml",
             "--flagtune-config",
-            "mm_flagtune_configs.yaml",
+            "mm_hopper_flagtune_configs.yaml",
             "--variant",
             "general_tma",
             "--model-version",
@@ -122,7 +122,7 @@ def test_training_cli_rejects_unsafe_variant():
             "--shape-config",
             "shapes.yaml",
             "--flagtune-config",
-            "mm_flagtune_configs.yaml",
+            "mm_hopper_flagtune_configs.yaml",
             "--variant",
             "../outside",
             "--model-version",
@@ -142,7 +142,7 @@ def test_training_cli_rejects_negative_progress_interval():
             "--shape-config",
             "shapes.yaml",
             "--flagtune-config",
-            "mm_flagtune_configs.yaml",
+            "mm_hopper_flagtune_configs.yaml",
             "--variant",
             "general_tma",
             "--model-version",
@@ -212,6 +212,7 @@ def _run_training_with_results(mod, monkeypatch, tmp_path, results, exported):
         get_variant=lambda _name: variant,
     )
     spec = SimpleNamespace(
+        op_id="flaggems/mm",
         operator_info=operator_info,
         source_sha256="sha256",
         shape=SimpleNamespace(identity=("M",)),
@@ -219,6 +220,7 @@ def _run_training_with_results(mod, monkeypatch, tmp_path, results, exported):
     context = SimpleNamespace(
         visible_device_count=1,
         backend_name="cuda",
+        vendor_name="nvidia",
         device_names=("NVIDIA H20-3e",),
         device_architectures=("sm90",),
     )
@@ -232,6 +234,17 @@ def _run_training_with_results(mod, monkeypatch, tmp_path, results, exported):
     run_dir.mkdir()
 
     monkeypatch.setattr(mod, "load_operator_benchmark_spec", lambda _path: spec)
+
+    def fake_runtime_configs(op_id, variant_name, *, platform):
+        assert (op_id, variant_name, platform) == (
+            "flaggems/mm",
+            "general_tma",
+            "nvidia",
+        )
+        return [SimpleNamespace(kwargs={"BLOCK": 16}, num_warps=4, num_stages=2)]
+
+    # Candidate resolution must not probe the CI host's actual backend/YAML.
+    monkeypatch.setattr(mod, "runtime_configs_for_variant", fake_runtime_configs)
     monkeypatch.setattr(
         mod, "load_shape_records", lambda _path, _spec: [Record(), Record()]
     )
@@ -607,6 +620,7 @@ def test_generic_config_timing_serialization_uses_triton_quantile_order():
             "latency_p50_ms": 1.2,
             "latency_p20_ms": 1.0,
             "latency_p80_ms": None,
+            "latency_scope": "public_kernel",
             "status": "ok",
         }
     ]
