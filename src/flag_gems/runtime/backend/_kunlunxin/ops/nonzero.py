@@ -510,30 +510,6 @@ def _sparse_result(inp, inp_ndim, n_elements, num_nonzeros, as_tuple):
 
 @libentry()
 @triton.jit
-def nonzero_dense_dimmajor_kernel(
-    out,
-    n_elements: tl.constexpr,
-    shape,
-    ndim: tl.constexpr,
-    BLOCK_SIZE: tl.constexpr,
-):
-    # DENSE (no zeros): dim-major output [ndim, N]. One lane per element, each dim
-    # written to a contiguous run out[dim*N + offset] -> stride-1 store per dim.
-    pid = ext.program_id(0)
-    offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    # Clamp tail lanes because masked stores are not reliable on this backend.
-    # Redundant lanes rewrite the final valid coordinate with the same value.
-    offset_c = tl.minimum(offset, n_elements - 1)
-    idx_flat = offset_c
-    for dim in range(ndim - 1, -1, -1):
-        dim_size = tl.load(shape + dim)
-        remainder = idx_flat % dim_size
-        idx_flat //= dim_size
-        tl.store(out + dim * n_elements + offset_c, remainder)
-
-
-@libentry()
-@triton.jit
 def _metadata_kernel(out, value: tl.constexpr, index: tl.constexpr):
     tl.store(out + index, value)
 
