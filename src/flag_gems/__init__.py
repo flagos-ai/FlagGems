@@ -1458,6 +1458,8 @@ _FULL_CONFIG = (
     ("trace_backward", trace_backward),
     ("transpose.int", transpose),
     ("transpose_copy.int", transpose_copy),
+    ("trapezoid.dx", trapz),
+    ("trapz.dx", trapz),
     ("tril", tril),
     ("tril.out", tril_out),
     ("tril_", tril_),
