@@ -121,6 +121,19 @@ class TunedConfigLoader(object):
                 for w in ranges["w"]
             ]
 
+        if op_name == "mv_reduce":
+            return [
+                triton.Config(
+                    {"BLOCK": block},
+                    num_stages=s,
+                    num_warps=w,
+                    pre_hook=pre_hook,
+                )
+                for block in ranges["BLOCK"]
+                for s in ranges["s"]
+                for w in ranges["w"]
+            ]
+
         if op_name == "addmm":
             return [
                 triton.Config(
@@ -160,7 +173,7 @@ class TunedConfigLoader(object):
                 for w in ranges["w"]
             ]
 
-        if op_name == "mv":
+        if op_name in ("mv", "mv_row", "mv_column"):
             return [
                 triton.Config(
                     {
@@ -948,6 +961,9 @@ class TunedConfigLoader(object):
             "mv": self._build_single_expand_spec(
                 "mv", expand_yaml_path=self._get_expand_config_path("mv")
             ),
+            "mv_row": self._build_single_expand_spec("mv_row"),
+            "mv_column": self._build_single_expand_spec("mv_column"),
+            "mv_reduce": self._build_single_expand_spec("mv_reduce"),
             "mul": self._build_single_expand_spec(
                 "mul", expand_yaml_path=self._get_expand_config_path("mul")
             ),

@@ -149,3 +149,37 @@ def test_topk_radix_tle_large_fp32_k256_correctness():
 
     utils.gems_assert_close(res_value, ref_value, torch.float32)
     utils.gems_assert_equal(res_index, ref_index)
+
+
+# Ascend DSA topk (ported from FlagTree): 2D fp32, largest=True only, direct
+# call without use_gems (torch.topk stays dispatched to torch_npu).
+@pytest.mark.topk
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend", reason="Ascend DSA topk required"
+)
+@pytest.mark.parametrize(
+    "m, n, k",
+    [
+        (4, 128, 5),
+        (64, 64, 5),
+        (10000, 256, 5),
+        (8, 4096, 64),
+        (2, 4096, 128),
+        (4, 8192, 512),
+        (64, 16384, 256),
+        (8, 32768, 4096),
+        (128, 131072, 4096),
+    ],
+)
+def test_topk_ascend_dsa(m, n, k):
+    x = torch.rand((m, n), dtype=torch.float32, device=flag_gems.device)
+    ref_value, ref_index = torch.topk(utils.to_reference(x), k, dim=-1)
+
+    res_value, res_index = flag_gems.topk(x, k)
+
+    utils.gems_assert_close(res_value, ref_value, torch.float32)
+    utils.gems_assert_equal(res_index.to(torch.int64), ref_index)
+    # Consistency: values must match the input at the returned indices.
+    utils.gems_assert_equal(
+        x.gather(1, res_index.to(torch.int64)), res_value.to(torch.float32)
+    )

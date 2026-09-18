@@ -16,17 +16,25 @@
 
 Activation is 16-bit (FP16/BF16). Weight is grouped INT8 plus per-group scale
 because the current CANN/Triton-Ascend data-movement path cannot load FP8
-weights from GM into UB. The default group size is 128.
+weights from GM into UB. The default group size is 128. The group count is
+``ceil(N / group_size)``; a final partial group is supported on every path.
 
 Dispatch:
-- Power-of-two N <= 4096: 1D kernel with BLOCK_M rows so INT8 weight +
-  scale are loaded once per program and reused. Mid-size M uses
-  BLOCK_M=8; small and very large M use BLOCK_M=2 (higher occupancy).
-- Power-of-two N <= 8192: 1D row kernel. Full-row BLOCK_M overflows
-  Ascend UB by a few hundred bytes. Scale is loaded uniquely and
-  broadcast via reshape (no ``cols // group_size`` gather, no ``(G, 128)``
-  FP32 2D tile — that layout has a 512B row stride and conflicts on UB).
-- Otherwise: tiled 1D kernel (GROUPS_PER_TILE=64) to stay in UB
+- Power-of-two N <= 4096 with ``N % group_size == 0``: 1D kernel with BLOCK_M
+  rows so INT8 weight + scale are loaded once per program and reused. Mid-size
+  M uses BLOCK_M=8; small and very large M use BLOCK_M=2 (higher occupancy).
+- Power-of-two N <= 8192 with ``N % group_size == 0``: 1D row kernel.
+  Full-row BLOCK_M overflows Ascend UB by a few hundred bytes. Scale is loaded
+  uniquely and broadcast via reshape (no ``cols // group_size`` gather, no
+  ``(G, 128)`` FP32 2D tile — that layout has a 512B row stride and conflicts
+  on UB).
+- Power-of-two GROUP_SIZE (ragged or not): tiled 1D kernel
+  (GROUPS_PER_TILE chosen so the tile stays <= 8192 elements) to stay in UB.
+  The group loop uses ``ceil(N / GROUP_SIZE)`` so the final partial group is
+  processed with column masks.
+- Non-power-of-two GROUP_SIZE: gather kernel. The reshape broadcast cannot
+  express odd group sizes, so the per-column scale is gathered with
+  ``cols // GROUP_SIZE`` (scalar path, correctness first).
 """
 
 import logging
@@ -227,7 +235,9 @@ def rms_norm_int8_w8a16_grouped_tiled_kernel(
 ):
     pid = ext.program_id(0)
     TILE_N: tl.constexpr = GROUPS_PER_TILE * GROUP_SIZE
-    num_groups = N // GROUP_SIZE
+    # ``ceil`` so a final partial group is still visited; its scale is loaded
+    # and the out-of-range columns are covered by the existing masks.
+    num_groups = tl.cdiv(N, GROUP_SIZE)
 
     acc = 0.0
     for g0 in range(0, num_groups, GROUPS_PER_TILE):
@@ -257,6 +267,40 @@ def rms_norm_int8_w8a16_grouped_tiled_kernel(
         tl.store(out_ptr + pid * N + cols, y, mask=mask)
 
 
+@libentry()
+@triton.jit(do_not_specialize=["eps"])
+def rms_norm_int8_w8a16_gather_kernel(
+    out_ptr,
+    in_ptr,
+    w_ptr,
+    w_scale_ptr,
+    N,
+    eps,
+    TILE_N: tl.constexpr,
+    GROUP_SIZE: tl.constexpr,
+):
+    pid = ext.program_id(0)
+    # Non-power-of-two GROUP_SIZE cannot use the reshape broadcast. Gather the
+    # per-column scale (scalar-bound on Ascend; only odd group sizes land here).
+    acc = tl.zeros((TILE_N,), dtype=tl.float32)
+    for start_n in range(0, N, TILE_N):
+        n_offsets = start_n + tl.arange(0, TILE_N)
+        mask = n_offsets < N
+        x = tl.load(in_ptr + pid * N + n_offsets, mask=mask, other=0.0).to(tl.float32)
+        acc += x * x
+    rrms = 1 / tl.sqrt(tl.sum(acc) / N + eps)
+
+    for start_n in range(0, N, TILE_N):
+        n_offsets = start_n + tl.arange(0, TILE_N)
+        mask = n_offsets < N
+        x = tl.load(in_ptr + pid * N + n_offsets, mask=mask, other=0.0).to(tl.float32)
+        group_ids = n_offsets // GROUP_SIZE
+        w = tl.load(w_ptr + n_offsets, mask=mask, other=0.0).to(tl.float32)
+        w_scale = tl.load(w_scale_ptr + group_ids, mask=mask, other=0.0).to(tl.float32)
+        y = x * rrms * w * w_scale
+        tl.store(out_ptr + pid * N + n_offsets, y, mask=mask)
+
+
 def rms_norm_w8a16_int8(
     x, normalized_shape, weight_int8, weight_scale, eps=1e-5, group_size=128
 ):
@@ -264,28 +308,31 @@ def rms_norm_w8a16_int8(
     dim = x.ndim - len(normalized_shape)
     M = math.prod(x.shape[:dim])
     N = math.prod(normalized_shape)
-    if N % group_size != 0:
+    if N <= 0 or group_size <= 0:
         raise ValueError(
-            f"normalized_shape product {N} must be divisible by group_size={group_size}"
+            f"normalized_shape product {N} and group_size={group_size} must be positive"
         )
+    num_groups = (N + group_size - 1) // group_size
     if weight_int8.dtype != torch.int8:
         raise TypeError(
             f"Ascend W8A16 RMSNorm expects INT8 weight, got {weight_int8.dtype}"
         )
-    if weight_scale.numel() != N // group_size:
+    if weight_scale.numel() != num_groups:
         raise ValueError(
-            f"weight_scale numel {weight_scale.numel()} != {N // group_size} groups"
+            f"weight_scale numel {weight_scale.numel()} != {num_groups} groups "
+            f"(ceil({N}/{group_size}))"
         )
     x = x.contiguous()
     weight_q = weight_int8.contiguous()
     weight_scale = weight_scale.contiguous()
     y = torch.empty(x.shape, device=x.device, dtype=x.dtype)
-    num_groups = N // group_size
     with torch_device_fn.device(x.device):
-        # Power-of-two N <= 8192: contiguous 1D load + unique scale broadcast.
-        # Do not gather on ``cols // group_size`` (~97% scalar) and do not use
-        # a ``(G, 128)`` FP32 2D tile (512B row stride, UB bank conflict).
-        if N <= 4096 and N == triton.next_power_of_2(N):
+        # Power-of-two N <= 8192 with an exact group division: contiguous 1D
+        # load + unique scale broadcast. Do not gather on
+        # ``cols // group_size`` (~97% scalar) and do not use a ``(G, 128)``
+        # FP32 2D tile (512B row stride, UB bank conflict). An exact division
+        # of a power-of-two N implies a power-of-two GROUP_SIZE/NUM_GROUPS.
+        if N <= 4096 and N == triton.next_power_of_2(N) and N % group_size == 0:
             # BLOCK_M=8 is best for a few hundred rows; BLOCK_M=2 wins on
             # tiny M (occupancy) and large M (more programs, same reuse).
             if 256 <= M < 1024:
@@ -308,7 +355,7 @@ def rms_norm_w8a16_int8(
                 block_m,
                 num_warps=num_warps,
             )
-        elif N <= 8192 and N == triton.next_power_of_2(N):
+        elif N <= 8192 and N == triton.next_power_of_2(N) and N % group_size == 0:
             rms_norm_int8_w8a16_kernel[M,](
                 y,
                 x,
@@ -321,8 +368,10 @@ def rms_norm_w8a16_int8(
                 num_groups,
                 num_warps=4,
             )
-        else:
-            # 128*128 grouped tile overflows Ascend UB; 64*128 1D tiles are safe.
+        elif group_size & (group_size - 1) == 0 and group_size <= 8192:
+            # Ragged last group is handled in-kernel; the tile stays <= 8192
+            # elements (128*128 grouped tile overflows Ascend UB).
+            groups_per_tile = max(1, 8192 // group_size)
             rms_norm_int8_w8a16_grouped_tiled_kernel[M,](
                 y,
                 x,
@@ -331,7 +380,21 @@ def rms_norm_w8a16_int8(
                 N,
                 eps,
                 GROUP_SIZE=group_size,
-                GROUPS_PER_TILE=64,
+                GROUPS_PER_TILE=groups_per_tile,
+                num_warps=4,
+            )
+        else:
+            # Non-power-of-two (or oversized) GROUP_SIZE: gather the scale.
+            rms_norm_int8_w8a16_gather_kernel[M,](
+                y,
+                x,
+                weight_q,
+                weight_scale,
+                N,
+                eps,
+                # 8192-wide tiles in the gather path overflow Ascend UB.
+                TILE_N=4096,
+                GROUP_SIZE=group_size,
                 num_warps=4,
             )
     return y

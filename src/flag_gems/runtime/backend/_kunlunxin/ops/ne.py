@@ -11,7 +11,6 @@ from flag_gems.ops.ne_ import ne_ as _generic_ne_
 from flag_gems.ops.ne_ import ne_scalar_ as _generic_ne_scalar_
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
-from .not_equal import _SMALL_SCALAR_LIMIT, _raw_not_equal_scalar
 
 logger = logging.getLogger(__name__)
 
@@ -59,10 +58,6 @@ def ne_func_scalar(x, y):
 
 def ne_scalar(A, B):
     logger.debug("GEMS_KUNLUNXIN NE_SCALAR")
-    if A.numel() >= _SMALL_SCALAR_LIMIT:
-        raw_out = _raw_not_equal_scalar(A, B)
-        if raw_out is not None:
-            return raw_out
     numel = A.numel()
     dtype = A.dtype
     if A.is_contiguous() and dtype in (torch.float16, torch.float32, torch.bfloat16):

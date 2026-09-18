@@ -21,6 +21,7 @@ from .any import any, any_dim, any_dims
 from .arange import arange, arange_start
 from .argmin import argmin
 from .argsort import argsort
+from .avg_pool2d import avg_pool2d_backward
 from .batch_norm import batch_norm, batch_norm_backward
 from .bucketize import bucketize
 from .celu import celu
@@ -28,6 +29,7 @@ from .channel_shuffle import channel_shuffle
 from .conv2d import conv2d
 from .conv_transpose1d import conv_transpose1d, conv_transpose1d_output_size
 from .conv_transpose2d import conv_transpose2d
+from .copy import copy_
 from .cudnn_convolution import cudnn_convolution
 from .div import (
     div_mode,
@@ -80,6 +82,7 @@ from .ones_like import ones_like
 from .pad import constant_pad_nd, pad
 from .permute_copy import permute_copy
 from .prod import prod, prod_dim
+from .quantile import quantile
 from .rand import rand
 from .rand_like import rand_like
 from .randn import randn
@@ -101,6 +104,7 @@ from .softplus_backward import softplus_backward
 from .sort import sort, sort_stable
 from .special_gammainc import special_gammainc
 from .tile import tile
+from .topk_w8a16_fp8 import topk_w8a16_fp8
 from .trunc import trunc, trunc_
 from .unique import _unique2
 from .upsample_linear1d_backward import upsample_linear1d_backward
@@ -123,6 +127,7 @@ __all__ = [
     "arange_start",
     "argmin",
     "argsort",
+    "avg_pool2d_backward",
     "batch_norm",
     "batch_norm_backward",
     "bucketize",
@@ -134,6 +139,7 @@ __all__ = [
     "conv_transpose1d",
     "conv_transpose1d_output_size",
     "conv_transpose2d",
+    "copy_",
     "cudnn_convolution",
     "div_mode",
     "div_mode_",
@@ -202,6 +208,7 @@ __all__ = [
     "permute_copy",
     "prod",
     "prod_dim",
+    "quantile",
     "rand",
     "rand_like",
     "randn",
@@ -224,6 +231,7 @@ __all__ = [
     "sort_stable",
     "special_gammainc",
     "tile",
+    "topk_w8a16_fp8",
     "true_divide",
     "true_divide_",
     "true_divide_out",

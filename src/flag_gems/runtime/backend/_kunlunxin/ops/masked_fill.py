@@ -1,19 +1,34 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 import logging
 import math
-import os
 
 import torch
 import triton
 import triton.language as tl
 from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 
-from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import broadcastable_to
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
+# ---------------------------------------------------------------------------
+# Generic pointwise path (fallback for non-contiguous inputs, broadcastable
+# masks, tensor values and tiny shapes). Tuned on XPU: isCloseVectorization
+# keeps the mixed i1-mask/dtype tl.where vectorized.
 _config = CodeGenConfig(
     512,
     (65536, 65536, 65536),
@@ -37,6 +52,33 @@ def masked_fill_kernel(inp, expand_mask, value):
     return tl.where(expand_mask, value, inp)
 
 
+# Small/mid flat shapes (single-CTA trap region): the generated autoGrid path
+# launches ONE CTA for N<=2048*64=131072 (pointwise_dynamic.py:884-896), which
+# serializes the whole fill on a single cluster. A hand-written constexpr
+# monolithic kernel at grid=12 (= P800 cluster_num, full machine) with
+# BLOCK=next_power_of_2(cdiv(N, 12)) measures 16-55% faster than the generated
+# single-CTA launch in 8192<=N<=131072 (probe10, do_bench median):
+#   N=8192: 6.59/6.15us vs wrapper 6.90/6.76 (fp16/fp32)
+#   N=10000: 6.76/6.54 vs 8.04/7.75
+#   N=65536: 8.43/8.32 vs 15.45/14.87
+#   N=131072: 11.22/10.69 vs 25.20/23.19
+# Below 8192 the single-CTA generated kernel is already at the launch floor
+# (N=4096: mono 7.07 vs wrapper 6.34) and above 131072 the generated 12-CTA
+# path's block-DMA pipelining wins decisively (N>=262144: mono 1.0-2.8x slower),
+# so this kernel is used strictly inside the trap region.
+@triton.jit(do_not_specialize=["value"])
+def masked_fill_small_kernel(
+    inp_ptr, mask_ptr, value, out_ptr, num_tasks: tl.constexpr, BLOCK: tl.constexpr
+):
+    pid = tl.program_id(0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    in_bounds = offs < num_tasks
+    m = tl.load(mask_ptr + offs, mask=in_bounds, other=0)
+    x = tl.load(inp_ptr + offs, mask=in_bounds, other=0.0)
+    r = tl.where(m != 0, value, x)
+    tl.store(out_ptr + offs, r, mask=in_bounds)
+
+
 @pointwise_dynamic(
     is_tensor=[True, True, True],
     promotion_methods=[(0, "NO_OPMATH")],
@@ -47,6 +89,20 @@ def masked_fill_tensor_value_kernel(inp, expand_mask, value):
     return tl.where(expand_mask, value, inp)
 
 
+# ---------------------------------------------------------------------------
+# Flat fast path (scalar value, contiguous fp16/bf16/fp32, numel >= gate).
+#
+# XPU 6 probe (2026-08-14, 268435456-elem shapes): the bottleneck is NOT the
+# bool mask read (mask-reduced to bytes reads fine; a no-select kernel reading
+# the mask == plain copy) and NOT the allocation. It is the per-lane `sel`
+# that `tl.where(bool_mask, value, x)` lowers to: measured ~5x the fp32 copy
+# time for the same traffic, and the select-with-splat is even worse. The
+# cheapest exact form found is a select in the integer view of the data,
+#   r = xi + (V - xi) * m                (m = mask byte 0/1 -> int view)
+# which is bit-identical to where(mask, V(pattern), x) with 2-3x less per
+# lane work: measured +1.6x fp16 / +1.3x fp32 over the pointwise path on all
+# mid/large benchmark shapes, no regression on small shapes (gated below
+# _FAST_MIN_NUMEL where the pointwise path stays).
 _FAST_TILE = 131072
 _FAST_MIN_NUMEL = 1 << 20
 _FAST_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
@@ -107,94 +163,6 @@ def _masked_fill_fast(inp, mask, value, out):
     return out
 
 
-try:
-    import triton.experimental.tle as tle
-
-    _TLE_OK = True
-except ImportError:
-    tle = None
-    _TLE_OK = False
-
-_HERE = os.path.dirname(os.path.abspath(__file__))
-_NCLUSTER = 12
-_RAW_MAX_ELEMS = 2**31 - 1
-_RAW_CHUNK_BYTES = 1280
-
-_RAW_TYPE_CODE = {
-    torch.float32: 0,
-    torch.float16: 1,
-    torch.bfloat16: 2,
-}
-
-if _TLE_OK:
-
-    @tle.raw.dialect("xpu3", file=os.path.join(_HERE, "masked_fill_raw.xpu"))
-    def masked_fill_raw_(
-        in_, mask, numel, esz, type_code, value_bits, chunk_start, chunk_count
-    ): ...
-
-    @triton.jit(
-        do_not_specialize=[
-            "numel",
-            "esz",
-            "type_code",
-            "value_bits",
-            "chunk_count",
-        ]
-    )
-    def masked_fill_raw_kernel(
-        In, Mask, numel, esz, type_code, value_bits, chunk_count
-    ):
-        pid = tl.program_id(0)
-        tle.raw.call(
-            masked_fill_raw_,
-            (
-                In,
-                Mask,
-                numel,
-                esz,
-                type_code,
-                value_bits,
-                pid * chunk_count,
-                chunk_count,
-            ),
-        )
-
-
-def _raw_masked_fill_(inp, mask, value):
-    """In-place masked_fill_ via the raw payload, or None when it does not
-    apply (non-contiguous / broadcast mask / unsupported dtype / empty)."""
-    if not _TLE_OK or not inp.is_contiguous() or not mask.is_contiguous():
-        return None
-    type_code = _RAW_TYPE_CODE.get(inp.dtype)
-    if type_code is None:
-        return None
-    if tuple(mask.shape) != tuple(inp.shape):
-        return None
-    M = inp.numel()
-    if M == 0 or M > _RAW_MAX_ELEMS:
-        return None
-    value_bits = _fast_bits(value, inp.dtype)
-    esz = inp.element_size()
-    chunk_elems = _RAW_CHUNK_BYTES // esz
-    total_chunks = (M + chunk_elems - 1) // chunk_elems
-    per = (total_chunks + _NCLUSTER - 1) // _NCLUSTER
-    with torch_device_fn.device(inp.device):
-        masked_fill_raw_kernel[(_NCLUSTER,)](
-            inp.view(torch.uint8),
-            mask.view(torch.uint8),
-            M,
-            esz,
-            type_code,
-            value_bits,
-            per,
-        )
-    return inp
-
-
-_RAW_MIN_ELEMS = 65536
-
-
 def _use_fast_path(inp, mask, value):
     if torch.is_tensor(value):
         return False
@@ -237,8 +205,29 @@ def masked_fill(inp, mask, value):
         return _masked_fill_fast(inp, mask, value, out)
 
     if inp.is_contiguous() and tuple(mask.shape) == tuple(inp.shape):
+        # Common case (mask matches inp): one flat stride-1 pass, which is
+        # what the tuned 1D config accelerates.
         mask = mask.contiguous()
-        kernel(inp.view(-1), mask.view(-1), value, out0=out.view(-1))
+        flat_in = inp.view(-1)
+        flat_mask = mask.view(-1)
+        flat_out = out.view(-1)
+        num_tasks = flat_in.numel()
+        if kernel is masked_fill_kernel and 8192 <= num_tasks <= 131072:
+            # Single-CTA trap region: use the full-machine monolithic kernel.
+            block = triton.next_power_of_2(triton.cdiv(num_tasks, 12))
+            masked_fill_small_kernel[(12,)](
+                flat_in,
+                flat_mask,
+                value,
+                flat_out,
+                num_tasks,
+                BLOCK=block,
+                num_warps=4,
+                buffer_size_limit=4096,
+                isCloseVectorization=True,
+            )
+        else:
+            kernel(flat_in, flat_mask, value, out0=flat_out)
     else:
         expand_mask = mask.expand(inp.shape)
         kernel.instantiate(inp.ndim)
@@ -271,15 +260,33 @@ def masked_fill_(inp, mask, value):
         return inp
 
     if _use_fast_path(inp, mask, value):
-        if inp.numel() >= _RAW_MIN_ELEMS:
-            raw_out = _raw_masked_fill_(inp, mask, value)
-            if raw_out is not None:
-                return raw_out
         return _masked_fill_fast(inp, mask, value, inp)
 
     if inp.is_contiguous() and tuple(mask.shape) == tuple(inp.shape):
         mask = mask.contiguous()
-        kernel(inp.view(-1), mask.view(-1), value, out0=inp.view(-1))
+        flat_in = inp.view(-1)
+        flat_mask = mask.view(-1)
+        num_tasks = flat_in.numel()
+        if kernel is masked_fill_kernel and 8192 <= num_tasks <= 131072:
+            # Same single-CTA trap-region rule as out-of-place masked_fill: the
+            # generated autoGrid path would launch ONE CTA here, while the
+            # monolithic kernel fills the machine with 12 CTAs. In-place is
+            # safe: every program loads its disjoint tile before storing it,
+            # and out_ptr aliases flat_in element-for-element.
+            block = triton.next_power_of_2(triton.cdiv(num_tasks, 12))
+            masked_fill_small_kernel[(12,)](
+                flat_in,
+                flat_mask,
+                value,
+                flat_in,
+                num_tasks,
+                BLOCK=block,
+                num_warps=4,
+                buffer_size_limit=4096,
+                isCloseVectorization=True,
+            )
+        else:
+            kernel(flat_in, flat_mask, value, out0=flat_in)
     else:
         expand_mask = mask.expand(inp.shape)
         kernel.instantiate(inp.ndim)
