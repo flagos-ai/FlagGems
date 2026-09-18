@@ -129,6 +129,7 @@ from .rnn_tanh import rnn_tanh, rnn_tanh_data
 from .scatter import scatter, scatter_
 from .scatter_add_ import scatter_add_
 from .scatter_reduce import scatter_reduce, scatter_reduce_, scatter_reduce_out
+from .segment_reduce import _segment_reduce_backward, _segment_reduce_backward_out
 from .select_backward import select_backward
 from .select_scatter import select_scatter
 from .silu import silu, silu_
@@ -155,6 +156,8 @@ from .zeros import zeros
 from .zeros_like import zeros_like
 
 __all__ = [
+    "_segment_reduce_backward",
+    "_segment_reduce_backward_out",
     "_unique2",
     "_upsample_bicubic2d_aa",
     "adaptive_max_pool3d",

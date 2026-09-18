@@ -21,6 +21,7 @@ import torch
 import yaml
 
 import flag_gems
+from flag_gems.cli_override import add_override_arguments, apply_overrides_from_args
 from flag_gems.runtime import torch_device_fn
 
 from . import consts
@@ -44,6 +45,7 @@ BUILTIN_MARKS = (
 )
 REGISTERED_MARKS = []
 TEST_RESULTS = {}
+CASE_LISTS = []
 REPORT_FILE = "benchmark_result.json"
 
 
@@ -54,6 +56,10 @@ def update_result(op, data):
     TEST_RESULTS.setdefault(op, {})
     TEST_RESULTS[op].setdefault("details", [])
     TEST_RESULTS[op]["details"].append(data)
+
+
+def update_case_list(data):
+    CASE_LISTS.append(data)
 
 
 def emit_record_logger(message: str) -> None:
@@ -94,6 +100,11 @@ class BenchConfig:
         self.user_desired_metrics = None
         self.shape_file = os.path.join(os.path.dirname(__file__), "core_shapes.yaml")
         self.query = False
+        self.list_cases = False
+        self.case_ids = None
+        self.current_nodeid = None
+        self.available_case_ids = set()
+        self.executed_case_ids = set()
         self.parallel = 0
         self.mm_layout = None
 
@@ -137,6 +148,18 @@ def pytest_addoption(parser):
 
     parser.addoption(
         "--query", action="store_true", default=False, help="Enable query mode"
+    )
+
+    parser.addoption(
+        "--list-cases",
+        action="store_true",
+        help="Write tensor-free workload descriptions to --output; do not benchmark.",
+    )
+    parser.addoption(
+        "--case-id",
+        action="append",
+        default=None,
+        help="Benchmark only this exact workload ID. May be repeated.",
     )
 
     parser.addoption(
@@ -229,6 +252,9 @@ def pytest_addoption(parser):
     except ValueError:
         pass
 
+    # Add dynamic operator override options
+    add_override_arguments(parser)
+
 
 def pytest_configure(config):
     global Config  # noqa: F824
@@ -236,6 +262,8 @@ def pytest_configure(config):
     global REGISTERED_MARKS
 
     Config = BenchConfig()
+    CASE_LISTS.clear()
+    TEST_RESULTS.clear()
 
     REGISTERED_MARKS = {
         marker.split(":")[0].strip() for marker in config.getini("markers")
@@ -247,6 +275,18 @@ def pytest_configure(config):
     Config.mode = consts.BenchMode(mode_value)
 
     Config.query = config.getoption("--query")
+    Config.list_cases = config.getoption("--list-cases")
+    Config.case_ids = config.getoption("--case-id")
+    if Config.list_cases and Config.case_ids is not None:
+        raise pytest.UsageError("--list-cases cannot be combined with --case-id.")
+    if Config.query and (Config.list_cases or Config.case_ids is not None):
+        raise pytest.UsageError(
+            "--query cannot be combined with case listing/selection."
+        )
+    if Config.case_ids is not None and len(Config.case_ids) != len(
+        set(Config.case_ids)
+    ):
+        raise pytest.UsageError("Duplicate --case-id values are not allowed.")
 
     level_value = config.getoption("--level")
     Config.bench_level = consts.BenchLevel(level_value)
@@ -272,7 +312,7 @@ def pytest_configure(config):
 
     Config.parallel = int(config.getoption("--parallel") or 0)
     Config.mm_layout = config.getoption("--mm-layout")
-    if Config.record_json:
+    if Config.record_json or Config.list_cases:
         Config.output = config.getoption("--output")
         REPORT_FILE = Config.output
 
@@ -300,6 +340,15 @@ def pytest_configure(config):
         recordLogger.setLevel(logging.INFO)
         emit_record_logger("Benchmark record logger enabled")
 
+    # Apply dynamic operator overrides
+    config._override_registry = apply_overrides_from_args(config.option)
+
+
+def pytest_unconfigure(config):
+    """Cleanup: restore all overridden operators."""
+    if hasattr(config, "_override_registry"):
+        config._override_registry.restore_all()
+
 
 @pytest.fixture(scope="session", autouse=True)
 def setup_once(request):
@@ -308,15 +357,22 @@ def setup_once(request):
 
 
 @pytest.fixture(scope="function", autouse=True)
-def clear_function_cache():
-    yield
-    torch_device_fn.empty_cache()
+def clear_function_cache(request):
+    previous_nodeid = Config.current_nodeid
+    Config.current_nodeid = request.node.nodeid
+    try:
+        yield
+    finally:
+        Config.current_nodeid = previous_nodeid
+        if not Config.list_cases:
+            torch_device_fn.empty_cache()
 
 
 @pytest.fixture(scope="module", autouse=True)
 def clear_module_cache():
     yield
-    torch_device_fn.empty_cache()
+    if not Config.list_cases:
+        torch_device_fn.empty_cache()
 
 
 @pytest.fixture()
@@ -403,6 +459,17 @@ def pytest_runtest_logreport(report):
 
 def pytest_terminal_summary(terminalreporter, exitstatus, config):
     """Combine and dump the result into JSON."""
+    if Config.list_cases:
+        with open(REPORT_FILE, "w") as f:
+            json.dump(
+                {
+                    "schema_version": "flaggems.benchmark-case-list/v2",
+                    "benchmarks": CASE_LISTS,
+                },
+                f,
+                indent=2,
+            )
+        return
     if not Config.record_json:
         return
 
@@ -415,6 +482,26 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
 
     with open(REPORT_FILE, "w") as f:
         json.dump(data, f, indent=2, default=str)
+
+
+def pytest_sessionfinish(session, exitstatus):
+    if Config is None or Config.case_ids is None:
+        return
+    requested = set(Config.case_ids)
+    unknown = sorted(requested - Config.available_case_ids)
+    not_executed = sorted(requested - Config.executed_case_ids)
+    if unknown or not_executed:
+        reporter = session.config.pluginmanager.get_plugin("terminalreporter")
+        if reporter:
+            reporter.write_line(
+                f"FlagGems case selection failed: unknown={unknown}; not_executed={not_executed}"
+            )
+        # Preserve interrupts, configuration failures and internal errors.
+        if session.exitstatus in (
+            pytest.ExitCode.OK,
+            pytest.ExitCode.NO_TESTS_COLLECTED,
+        ):
+            session.exitstatus = pytest.ExitCode.TESTS_FAILED
 
 
 def pytest_collection_modifyitems(session, config, items):

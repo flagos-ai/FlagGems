@@ -8,7 +8,6 @@ import triton.language as tl
 from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
-from .greater import _RAW_SMALL_SCALAR_LIMIT, _raw_greater_scalar
 
 logger = logging.getLogger(__name__)
 
@@ -56,10 +55,6 @@ def gt_func_scalar(x, y):
 
 def gt_scalar(A, B):
     logger.debug("GEMS_KUNLUNXIN GT_SCALAR")
-    if A.numel() >= _RAW_SMALL_SCALAR_LIMIT:
-        raw_out = _raw_greater_scalar(A, B)
-        if raw_out is not None:
-            return raw_out
     numel = A.numel()
     dtype = A.dtype
     if (
