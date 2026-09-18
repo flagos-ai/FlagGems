@@ -31,7 +31,7 @@ jobs:
   preprocess:
     runs-on: basic-runner-cpu
     container:
-      image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.1
+      image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
     concurrency:
       group: unit-test-${{ (github.event.pull_request && contains(github.event.pull_request.title, 'KernelGen')) && 'kg' || github.run_id }}
       cancel-in-progress: false
@@ -194,7 +194,7 @@ jobs:
   unittest-required:
     runs-on: basic-runner-cpu
     container:
-      image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.1
+      image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
     needs:
       - preprocess
       - cpp-op
