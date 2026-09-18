@@ -66,6 +66,7 @@ from .special_chebyshev_polynomial_w import (
     special_chebyshev_polynomial_w,
     special_chebyshev_polynomial_w_out,
 )
+from .special_erfc import special_erfc
 from .special_erfinv import special_erfinv, special_erfinv_, special_erfinv_out
 from .special_gammainc import special_gammainc
 from .special_gammaln import special_gammaln
@@ -149,6 +150,7 @@ __all__ = [
     "special_chebyshev_polynomial_u",
     "special_chebyshev_polynomial_w",
     "special_chebyshev_polynomial_w_out",
+    "special_erfc",
     "special_erfinv",
     "special_erfinv_",
     "special_erfinv_out",
