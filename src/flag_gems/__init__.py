@@ -634,6 +634,7 @@ _FULL_CONFIG = (
     ("dequantize", dequantize),
     ("dequantize.self", dequantize, None, (QUANTIZED_DISPATCH_KEY,)),
     ("det", det),
+    ("detach_copy", detach_copy),
     ("diag", diag),
     ("diag_embed", diag_embed),
     ("diagonal_backward", diagonal_backward),

@@ -3965,6 +3965,18 @@ ops:
   - LinearAlg
   stages:
   - alpha: '5.5'
+- id: detach_copy
+  description: Returns a tensor with the same values as `self` in freshly allocated
+    memory, detached from the autograd graph (equivalent to `self.detach().clone()`).
+  for:
+  - detach_copy
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: dgeglu
   description: 'Gaussian Error Gated Linear Unit with GELU activation instead of sigmoid
     function.
