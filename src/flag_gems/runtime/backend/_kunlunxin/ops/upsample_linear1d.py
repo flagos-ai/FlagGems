@@ -29,8 +29,12 @@ def upsample_linear1d_kernel(
     input_ptr,
     output_ptr,
     total,
-    W_in,
+    C,
     W_out,
+    W_in,
+    stride_n,
+    stride_c,
+    stride_w,
     scale,
     bias,
     BLOCK_SIZE: tl.constexpr,
@@ -53,6 +57,8 @@ def upsample_linear1d_kernel(
 
     nc = o // W_out
     w = o - nc * W_out
+    n = nc // C
+    c = nc - n * C
 
     src = w.to(tl.float32) * scale + bias
 
@@ -67,9 +73,13 @@ def upsample_linear1d_kernel(
     w0 = 1.0 - t
     w1 = t
 
-    base_in = nc * W_in
-    x0 = tl.load(input_ptr + base_in + lower, mask=mask, other=0.0)
-    x1 = tl.load(input_ptr + base_in + upper, mask=mask, other=0.0)
+    # Read the input through its own strides instead of materialising a
+    # contiguous copy: torch's copy_ hits `invalid device function` on this
+    # backend for any strided source, which killed all 6 non-contiguous
+    # boundary cases.
+    base_in = n * stride_n + c * stride_c
+    x0 = tl.load(input_ptr + base_in + lower * stride_w, mask=mask, other=0.0)
+    x1 = tl.load(input_ptr + base_in + upper * stride_w, mask=mask, other=0.0)
 
     x0_f = x0.to(tl.float32)
     x1_f = x1.to(tl.float32)
@@ -102,7 +112,7 @@ def upsample_linear1d(
         ), "scales must be specified if output_size is not provided."
         W_out = int(math.floor(W_in * scales))
 
-    inp = self.contiguous().view(NC, W_in)
+    stride_n, stride_c, stride_w = self.stride()
     out = torch.empty((NC, W_out), device=self.device, dtype=self.dtype)
 
     if align_corners:
@@ -126,11 +136,15 @@ def upsample_linear1d(
 
     with torch_device_fn.device(self.device):
         upsample_linear1d_kernel[grid](
-            inp,
+            self,
             out,
             total,
-            W_in,
+            C,
             W_out,
+            W_in,
+            stride_n,
+            stride_c,
+            stride_w,
             scale_val,
             bias_val,
             BLOCK_SIZE=BLOCK_SIZE,
