@@ -9488,6 +9488,21 @@ ops:
   - Tensor
   stages:
   - stable: '2.1'
+- id: masked_select_backward
+  description: 'Backward of `masked_select` with respect to `input`. Scatters the compact
+
+    gradient into a zero tensor at the True mask positions after broadcasting
+
+    `input` and `mask` to a common shape.'
+  for:
+  - masked_select_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: masked_softmax_backward
   description: |
     Computes the input gradient of a masked softmax: masked positions are
