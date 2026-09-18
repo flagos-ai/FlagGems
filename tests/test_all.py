@@ -102,8 +102,9 @@ def test_all_dim_bool_byte_fallback(shape, monkeypatch):
     # `accuracy_utils.to_cpu` asserts the reference is on cpu -- build it
     # through `utils.to_reference` like the tests above.
     ref = torch.all(utils.to_reference(inp), dim=1)
-    with flag_gems.use_gems():
-        res = torch.all(inp, dim=1)
+    # Call the kernel directly -- tests must not wrap calls in flag_gems.use_gems()
+    # (CI check-kernelgen-tests).
+    res = flag_gems.all_dim(inp, dim=1)
     utils.gems_assert_equal(res, ref)
 
 
