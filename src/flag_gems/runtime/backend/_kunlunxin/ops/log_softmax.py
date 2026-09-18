@@ -139,21 +139,9 @@ def prev_multiple_of(a, b):
     return tl.cdiv(a, b) * b - b
 
 
-# N above which the single-load 2D multirow tile no longer fits sram; fall back
-# to the per-row online kernel.
-MULTIROW_MAX_N = 8192
-
-
 def _prev_pow2(x):
     x = max(1, int(x))
     return 1 << (x.bit_length() - 1)
-
-
-def _multirow_tile_m(N):
-    # Pack several rows per program so the [TILE_M, N] tile is one contiguous
-    # block DMA. TILE_M is capped at 16: with masked tail rows a larger TILE_M
-    # (e.g. 32) hits an XPU codegen bug that corrupts valid rows.
-    return min(16, _prev_pow2(max(1, MULTIROW_MAX_N // N)))
 
 
 # ------------------------  forward -------------------------------
@@ -998,122 +986,6 @@ def log_softmax_backward_kernel_multirow_tail(
     scale = tl.sum(og, 1)
     ig = og - tl.exp(o) * scale[:, None]
     tl.store(in_grad_ptr + offsets, ig, mask=mask)
-
-
-# large-N staged split reduction: the per-row two-pass kernel serializes the
-# whole row in one program (grid=(M,)) and re-reads out_grad, which on XPU only
-# reaches ~200-330 GB/s for 16384-wide rows. Replace it with the same 2D split
-# pattern as any_row_stage1/2 (fully parallel over the N axis):
-#   stage1: grid (M, CHUNKS) reduce each contiguous 8192-chunk of out_grad to a
-#           fp32 partial[m, c];
-#   stage2: grid (M,) reduce the per-row partials into scale[M];
-#   stage3: grid (M, CHUNKS) flat in_grad = out_grad - exp(out) * scale[row].
-# Every block reduce stays <= 8192 lanes (the XPU-safe tl.sum bound), so no
-# wide 16384 register accumulator is ever materialized.
-BWD_STAGED_TILE_N = 8192
-
-
-@libentry()
-@triton.jit
-def log_softmax_backward_kernel_stage1(
-    out_grad_ptr,
-    partial_ptr,
-    N,
-    N_CHUNKS,
-    BLOCK_N: tl.constexpr,
-):
-    pid_m = ext.program_id(0)
-    pid_c = ext.program_id(1)
-    offset = pid_c * BLOCK_N + tl.arange(0, BLOCK_N)
-    mask = offset < N
-    og = tl.load(out_grad_ptr + pid_m * N + offset, mask=mask, other=0.0).to(tl.float32)
-    tl.store(partial_ptr + pid_m * N_CHUNKS + pid_c, tl.sum(og, 0))
-
-
-@libentry()
-@triton.jit
-def log_softmax_backward_kernel_stage2(
-    partial_ptr,
-    scale_ptr,
-    N_CHUNKS,
-    BLOCK_MID: tl.constexpr,
-):
-    pid_m = ext.program_id(0)
-    offset = tl.arange(0, BLOCK_MID)
-    p = tl.load(
-        partial_ptr + pid_m * N_CHUNKS + offset,
-        mask=offset < N_CHUNKS,
-        other=0.0,
-    )
-    tl.store(scale_ptr + pid_m, tl.sum(p, 0))
-
-
-@libentry()
-@triton.jit
-def log_softmax_backward_kernel_stage3(
-    out_ptr,
-    out_grad_ptr,
-    in_grad_ptr,
-    scale_ptr,
-    N,
-    BLOCK_N: tl.constexpr,
-):
-    pid_m = ext.program_id(0)
-    pid_c = ext.program_id(1)
-    offset = pid_c * BLOCK_N + tl.arange(0, BLOCK_N)
-    mask = offset < N
-    scale = tl.load(scale_ptr + pid_m).to(tl.float32)
-    og = tl.load(out_grad_ptr + pid_m * N + offset, mask=mask, other=0.0).to(tl.float32)
-    o = tl.load(out_ptr + pid_m * N + offset, mask=mask, other=0.0).to(tl.float32)
-    ig = og - tl.exp(o) * scale
-    tl.store(in_grad_ptr + pid_m * N + offset, ig, mask=mask)
-
-
-def _backward_launch_staged(output, grad_output, in_grad, M, N):
-    n_chunks = triton.cdiv(N, BWD_STAGED_TILE_N)
-    scale = torch.empty((M,), dtype=torch.float32, device=grad_output.device)
-    if n_chunks == 1:
-        # single 8192 chunk: stage1 writes the per-row scale directly
-        log_softmax_backward_kernel_stage1[(M, 1)](
-            grad_output,
-            scale,
-            N,
-            1,
-            BLOCK_N=BWD_STAGED_TILE_N,
-            buffer_size_limit=2048,
-            num_warps=8,
-        )
-    else:
-        partial = torch.empty(
-            (M, n_chunks), dtype=torch.float32, device=grad_output.device
-        )
-        log_softmax_backward_kernel_stage1[(M, n_chunks)](
-            grad_output,
-            partial,
-            N,
-            n_chunks,
-            BLOCK_N=BWD_STAGED_TILE_N,
-            buffer_size_limit=2048,
-            num_warps=8,
-        )
-        log_softmax_backward_kernel_stage2[(M,)](
-            partial,
-            scale,
-            n_chunks,
-            BLOCK_MID=triton.next_power_of_2(n_chunks),
-            buffer_size_limit=2048,
-            num_warps=8,
-        )
-    log_softmax_backward_kernel_stage3[(M, n_chunks)](
-        output,
-        grad_output,
-        in_grad,
-        scale,
-        N,
-        BLOCK_N=BWD_STAGED_TILE_N,
-        buffer_size_limit=2048,
-        num_warps=8,
-    )
 
 
 def _forward_launch(out, inp, M, N, K=1):
