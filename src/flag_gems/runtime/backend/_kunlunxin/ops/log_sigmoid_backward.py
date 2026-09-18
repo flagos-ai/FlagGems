@@ -44,7 +44,7 @@ def log_sigmoid_backward_kernel(grad_output, self):
 
 
 def log_sigmoid_backward(grad_output, self, buffer):
-    logger.debug("GEMS_KUNLUNXIN LOG_SIGMOID BACKWARD")
+    logger.debug("GEMS_KUNLUNXIN LOG_SIGMOID_BACKWARD")
 
     del buffer
     return log_sigmoid_backward_kernel(grad_output, self)
