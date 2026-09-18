@@ -65,6 +65,23 @@ def test_msort_preserves_nan_payloads(rows, dtype, int_dtype, bits):
         assert int(torch.signbit(result[:, col][-4:]).sum()) == 2
 
 
+@pytest.mark.msort_out
+@pytest.mark.parametrize("rows", [17, 512, 513, 1025])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64, torch.int64])
+@pytest.mark.parametrize("view_alias", [False, True])
+def test_msort_out_alias_across_sort_paths(rows, dtype, view_alias):
+    # Many columns and rows force multiple programs in both sorting paths.
+    inp = _make_input((rows, 129), dtype)
+    reference_input = utils.to_reference(inp).clone()
+    reference = torch.msort(reference_input, out=reference_input)
+    out = inp.view_as(inp) if view_alias else inp
+    pointer, strides = out.data_ptr(), out.stride()
+    result = flag_gems.msort_out(inp, out=out)
+    assert result is out and result.data_ptr() == pointer
+    assert result.stride() == strides
+    utils.gems_assert_equal(result, reference)
+
+
 def _make_input(shape, dtype):
     if dtype == torch.bool:
         return torch.randint(0, 2, shape, dtype=dtype, device=flag_gems.device)

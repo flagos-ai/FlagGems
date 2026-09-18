@@ -205,6 +205,14 @@ def msort_out(inp, *, out):
         raise RuntimeError(
             f"Expected out tensor to have device {inp.device}, but got {out.device} instead"
         )
+    if (
+        inp.numel()
+        and inp.untyped_storage().data_ptr() == out.untyped_storage().data_ptr()
+    ):
+        # Preserve all source values before resize or any cross-program stores.
+        source = torch.empty(inp.shape, dtype=inp.dtype, device=inp.device)
+        copy_(source, inp)
+        inp = source
     if out.shape != inp.shape:
         out.resize_(inp.shape)
 
