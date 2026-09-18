@@ -21,6 +21,7 @@ from ._unsafe_masked_index_put_accumulate import _unsafe_masked_index_put_accumu
 from ._upsample_nearest_exact2d_backward import _upsample_nearest_exact2d_backward
 from .adaptive_max_pool3d_backward import adaptive_max_pool3d_backward
 from .addmm_ import addmm_
+from .addmv_ import addmv_
 from .broadcast_tensors import broadcast_tensors
 from .broadcast_to import broadcast_to
 from .conv_transpose1d import conv_transpose1d, conv_transpose1d_output_size
@@ -82,6 +83,7 @@ __all__ = [
     "_upsample_nearest_exact2d_backward",
     "adaptive_max_pool3d_backward",
     "addmm_",
+    "addmv_",
     "broadcast_tensors",
     "broadcast_to",
     "conv_transpose1d",
@@ -110,11 +112,14 @@ __all__ = [
     "log_sigmoid_backward",
     "log_sigmoid_backward_out",
     "make_3d_for_bn",
+    "matmul_bias_activation",
+    "max_pool3d_with_indices_backward",
     "mm",
     "mm_out",
     "mm_w8a8_int8",
     "mm_w8a8_int8_out",
     "mv",
+    "mvlgamma",
     "nll_loss_backward",
     "nonzero_numpy",
     "reflection_pad3d_backward",
@@ -142,7 +147,4 @@ __all__ = [
     "tile",
     "topk_w8a16_fp8",
     "unbind_copy",
-    "mvlgamma",
-    "max_pool3d_with_indices_backward",
-    "matmul_bias_activation",
 ]
