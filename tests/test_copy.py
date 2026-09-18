@@ -22,31 +22,25 @@ from . import accuracy_utils as utils
 
 
 def _is_float8_dtype_supported(dtype: torch.dtype) -> bool:
+    if str(flag_gems.device).startswith("cuda"):
+        device_index = 0
+        if isinstance(flag_gems.device, str) and ":" in flag_gems.device:
+            device_index = int(flag_gems.device.split(":")[1])
 
-    if flag_gems.vendor_name == "thead" and dtype == torch.float8_e4m3fn:
-        return False
-
-    dtype_name = str(dtype).split(".")[-1]
-    if not hasattr(torch, dtype_name):
-        return False
+        cap = torch.cuda.get_device_capability(device_index)
+        if dtype in (torch.float8_e4m3fn, torch.float8_e5m2) and cap[0] < 9:
+            return False
     try:
         t = torch.zeros(1, device=flag_gems.device, dtype=dtype)
         return t.dtype == dtype
     except (RuntimeError, TypeError):
         return False
-    if flag_gems.device.type == "cuda":
-        cap = torch.cuda.get_device_capability(flag_gems.device)
-        if dtype == torch.float8_e4m3fn and cap[0] < 9:
-            return False
-        if dtype == torch.float8_e5m2 and cap[0] < 9:
-            return False
-
-    return True
 
 
 _FLOAT8_DTYPES = []
-for _dtype in [torch.float8_e4m3fn, torch.float8_e5m2]:
-    if _is_float8_dtype_supported(_dtype):
+for _dtype_name in ["float8_e4m3fn", "float8_e5m2"]:
+    _dtype = getattr(torch, _dtype_name, None)
+    if _dtype is not None and _is_float8_dtype_supported(_dtype):
         _FLOAT8_DTYPES.append(_dtype)
 
 
@@ -390,13 +384,9 @@ def test_copy_functional_broadcast():
     utils.gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.copy_
+@pytest.mark.copy
 @pytest.mark.skipif(
     len(_FLOAT8_DTYPES) == 0, reason="No float8 is supported in current environment"
-)
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "iluvatar",
-    reason="iluvatar backend has a known Triton compiler bug with fp8 types in copy kernel",
 )
 @pytest.mark.parametrize("dtype", _FLOAT8_DTYPES)
 @pytest.mark.parametrize(
@@ -429,4 +419,4 @@ def test_copy_functional_float8(dtype, shape):
     ref_dst.copy_(ref_src)
     res_dst = flag_gems.copy(template, src)
 
-    utils.gems_assert_equal(res_dst, ref_dst, equal_nan=True)
+    utils.gems_assert_equal(res_dst.view(torch.uint8), ref_dst.view(torch.uint8))
