@@ -7681,6 +7681,40 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: kaiser_window
+  description: Computes the Kaiser window function.
+  for:
+  - kaiser_window
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: kaiser_window_beta
+  description: A variant of kaiser_window() that takes an explicit periodic flag and
+    beta shape parameter.
+  for:
+  - kaiser_window.beta
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: kaiser_window_periodic
+  description: A variant of kaiser_window() that takes an explicit periodic flag.
+  for:
+  - kaiser_window.periodic
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: kron
   description: Computes the Kronecker product of `input` and `other`.
   for:
