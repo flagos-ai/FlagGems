@@ -68,6 +68,7 @@ registrar = GeneralOpRegistrar
 current_work_registrar = None
 AUTOGRAD_DISPATCH_KEY = torch._C.DispatchKey.Autograd.name
 CONJUGATE_DISPATCH_KEY = torch._C.DispatchKey.Conjugate.name
+QUANTIZED_CUDA_DISPATCH_KEY = torch._C.DispatchKey.QuantizedCUDA.name
 SPARSE_CSR_DISPATCH_KEY = "SparseCsr" + backend_info.dispatch_key
 QUANTIZED_DISPATCH_KEY = "Quantized" + backend_info.dispatch_key
 
@@ -381,6 +382,7 @@ _FULL_CONFIG = (
         "adaptive_avg_pool3d_backward.grad_input",
         adaptive_avg_pool3d_backward_grad_input,
     ),
+    ("adaptive_max_pool1d", adaptive_max_pool1d),
     ("adaptive_max_pool2d", adaptive_max_pool2d),
     ("adaptive_max_pool2d_backward", adaptive_max_pool2d_backward),
     ("adaptive_max_pool3d", adaptive_max_pool3d),
@@ -593,6 +595,7 @@ _FULL_CONFIG = (
     ("deg2rad_", deg2rad_),
     ("dequantize", dequantize),
     ("dequantize.self", dequantize, None, (QUANTIZED_DISPATCH_KEY,)),
+    ("det", det),
     ("diag", diag),
     ("diag_embed", diag_embed),
     ("diagonal_backward", diagonal_backward),
@@ -789,6 +792,7 @@ _FULL_CONFIG = (
     ("hash_tensor", hash_tensor),
     ("heaviside", heaviside),
     ("heaviside_", heaviside_),
+    ("hinge_embedding_loss", hinge_embedding_loss),
     ("histc", histc),
     # histogramdd is CompositeImplicitAutograd; a plain 2-tuple would let the native
     # decomposition run and use_gems() would silently no-op (false pass).
@@ -1137,6 +1141,18 @@ _FULL_CONFIG = (
     ("quantized_gru.data", quantized_gru_data),
     ("quantized_gru.input", quantized_gru_input),
     ("quantized_lstm.input", quantized_lstm),
+    (
+        "quantized_max_pool3d",
+        quantized_max_pool3d,
+        None,
+        (QUANTIZED_CUDA_DISPATCH_KEY,),
+    ),
+    (
+        "quantized_max_pool3d.out",
+        quantized_max_pool3d_out,
+        None,
+        (QUANTIZED_CUDA_DISPATCH_KEY,),
+    ),
     ("rad2deg", rad2deg),
     ("rad2deg_", rad2deg_),
     ("rand", rand),
@@ -1310,6 +1326,8 @@ _FULL_CONFIG = (
     ("special_gammaln.out", special_gammaln_out),
     ("special_hermite_polynomial_h", special_hermite_polynomial_h),
     ("special_hermite_polynomial_h.n_scalar", special_hermite_polynomial_h),
+    ("special_i0", special_i0),
+    ("special_i0.out", special_i0_out),
     ("special_i0e", special_i0e),
     ("special_i0e.out", special_i0e_out),
     ("special_i1", special_i1),
@@ -1414,6 +1432,7 @@ _FULL_CONFIG = (
     ("sum_to_size", sum_to_size),
     ("svd", svd),
     ("sym_constrain_range", sym_constrain_range),
+    ("sym_numel", sym_numel),
     ("sym_size", sym_size),
     ("sym_storage_offset", sym_storage_offset),
     ("sym_stride", sym_stride),
