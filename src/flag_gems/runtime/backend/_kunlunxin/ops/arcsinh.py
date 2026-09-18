@@ -71,5 +71,5 @@ def arcsinh_(x):
 
 
 def arcsinh_out(x, *, out=None):
-    logger.debug("GEMS_KUNLUNXIN ARCSINH OUT")
+    logger.debug("GEMS_KUNLUNXIN ARCSINH_OUT")
     return arcsinh(x, out=out)
