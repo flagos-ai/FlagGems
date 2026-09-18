@@ -29,7 +29,9 @@ on:
 
 jobs:
   preprocess:
-    runs-on: ubuntu-latest
+    runs-on: basic-runner-cpu
+    container:
+      image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.1
     concurrency:
       group: unit-test-${{ (github.event.pull_request && contains(github.event.pull_request.title, 'KernelGen')) && 'kg' || github.run_id }}
       cancel-in-progress: false
@@ -190,7 +192,9 @@ jobs:
   # individual jobs) as the required status check in branch protection
   # rules, otherwise skipped jobs block merges forever.
   unittest-required:
-    runs-on: ubuntu-latest
+    runs-on: basic-runner-cpu
+    container:
+      image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.1
     needs:
       - preprocess
       - cpp-op
