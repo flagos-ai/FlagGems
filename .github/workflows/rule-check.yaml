@@ -33,15 +33,14 @@ concurrency:
 # The self-hosted runner injects a proxy into the container that requires
 # auth (returns 407) and breaks it. The container can reach GitHub directly,
 # so clear the proxy vars to bypass it.
-# Clear the runner-injected 407 proxy. octokit-style tooling reads the
-# uppercase pair, curl/git the lowercase; a single env map cannot hold both
-# (keys are case-insensitive). The uppercase pair goes here (workflow env,
-# for step processes); the lowercase pair goes in each job's container env
-# (injected into the container process environment, which is what the git
-# subprocess spawned by actions/checkout actually reads).
+# The runner injects an auth-required 407 proxy into the container; GitHub is
+# reachable directly. Setting the proxy vars to '' fails (an empty container
+# env renders as `docker create -e "https_proxy"`, passing the host value
+# through), so bypass the proxy for every host with no_proxy=*, honored by
+# octokit's proxy-from-env, curl and git. Lowercase no_proxy wins in
+# proxy-from-env (set per container below); NO_PROXY here covers step processes.
 env:
-  HTTP_PROXY: ''
-  HTTPS_PROXY: ''
+  NO_PROXY: '*'
   # checkout registers the workspace as a safe git directory only in a
   # throwaway HOME; the check scripts (derive_changed_operators, etc.) then run
   # git with HOME=/github/home and git rejects the dir as dubious ownership
@@ -57,8 +56,7 @@ jobs:
     container:
       image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
       env:
-        http_proxy: ''
-        https_proxy: ''
+        no_proxy: '*'
     outputs:
       changed_operators: ${{ steps.derive.outputs.changed_operators }}
       changed_files: ${{ steps.derive.outputs.changed_files }}
@@ -81,8 +79,7 @@ jobs:
     container:
       image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
       env:
-        http_proxy: ''
-        https_proxy: ''
+        no_proxy: '*'
     needs: derive-changed-operators
     if: needs.derive-changed-operators.outputs.has_changes == 'true'
     steps:
@@ -99,8 +96,7 @@ jobs:
     container:
       image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
       env:
-        http_proxy: ''
-        https_proxy: ''
+        no_proxy: '*'
     needs: derive-changed-operators
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -112,8 +108,7 @@ jobs:
     container:
       image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
       env:
-        http_proxy: ''
-        https_proxy: ''
+        no_proxy: '*'
     needs: derive-changed-operators
     if: needs.derive-changed-operators.outputs.has_changes == 'true'
     steps:
@@ -132,8 +127,7 @@ jobs:
     container:
       image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
       env:
-        http_proxy: ''
-        https_proxy: ''
+        no_proxy: '*'
     needs: derive-changed-operators
     if: needs.derive-changed-operators.outputs.has_changes == 'true'
     steps:
@@ -150,8 +144,7 @@ jobs:
     container:
       image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
       env:
-        http_proxy: ''
-        https_proxy: ''
+        no_proxy: '*'
     needs: derive-changed-operators
     if: needs.derive-changed-operators.outputs.has_changes == 'true'
     steps:
@@ -171,8 +164,7 @@ jobs:
     container:
       image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
       env:
-        http_proxy: ''
-        https_proxy: ''
+        no_proxy: '*'
     needs: derive-changed-operators
     if: needs.derive-changed-operators.outputs.has_changes == 'true'
     steps:
@@ -189,8 +181,7 @@ jobs:
     container:
       image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
       env:
-        http_proxy: ''
-        https_proxy: ''
+        no_proxy: '*'
     needs: derive-changed-operators
     if: needs.derive-changed-operators.outputs.has_changes == 'true'
     steps:
@@ -211,8 +202,7 @@ jobs:
     container:
       image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
       env:
-        http_proxy: ''
-        https_proxy: ''
+        no_proxy: '*'
     needs:
       - derive-changed-operators
       - check-operators-yaml

@@ -30,20 +30,20 @@ on:
 jobs:
   preprocess:
     runs-on: basic-runner-cpu
-    # The self-hosted runner injects an auth-required proxy (407) that breaks
-    # the container; it can reach GitHub directly, so clear the proxy vars.
-    # octokit reads the uppercase pair, curl/git the lowercase; a single env
-    # map cannot hold both (keys are case-insensitive), so split them across
-    # the job env (uppercase, for step processes) and the container env
-    # (lowercase, injected into the container environment).
+    # The self-hosted runner injects an auth-required proxy (407) into the
+    # container (as HTTP_PROXY/HTTPS_PROXY); the container reaches GitHub
+    # directly. Setting the proxy vars to '' does NOT work: an empty container
+    # env renders as `docker create -e "https_proxy"` (no value), which just
+    # passes the host's value through. Instead bypass the proxy for every host
+    # with no_proxy=*, which octokit's proxy-from-env and curl both honor.
+    # no_proxy (lowercase) takes precedence in proxy-from-env, so set it in the
+    # container env; NO_PROXY in the job env covers the step process too.
     container:
       image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
       env:
-        http_proxy: ''
-        https_proxy: ''
+        no_proxy: '*'
     env:
-      HTTP_PROXY: ''
-      HTTPS_PROXY: ''
+      NO_PROXY: '*'
       # Trust the workspace for git (dubious-ownership guard); the get-pr-id
       # step runs `git log` on push events. See rule-check.yaml for details.
       GIT_CONFIG_COUNT: '1'
@@ -210,16 +210,13 @@ jobs:
   # rules, otherwise skipped jobs block merges forever.
   unittest-required:
     runs-on: basic-runner-cpu
-    # Clear the runner-injected 407 proxy: uppercase via job env (step
-    # processes), lowercase via container env (see preprocess for details).
+    # Bypass the runner-injected 407 proxy for every host (see preprocess).
     container:
       image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
       env:
-        http_proxy: ''
-        https_proxy: ''
+        no_proxy: '*'
     env:
-      HTTP_PROXY: ''
-      HTTPS_PROXY: ''
+      NO_PROXY: '*'
     needs:
       - preprocess
       - cpp-op

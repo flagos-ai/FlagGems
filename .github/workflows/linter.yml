@@ -27,15 +27,14 @@ on:
       - reopened
       - synchronize
 
-# The self-hosted runner injects an auth-required proxy (407) that breaks the
-# container; it can reach GitHub directly, so clear the proxy vars. octokit
-# reads the uppercase pair, curl/git the lowercase; a single env map cannot
-# hold both (keys are case-insensitive). Uppercase goes in the workflow env
-# (step processes); lowercase in the container env (the git subprocess spawned
-# by actions/checkout reads the container process environment).
+# The runner injects an auth-required 407 proxy into the container; GitHub is
+# reachable directly. Setting the proxy vars to '' fails (an empty container
+# env renders as `docker create -e "https_proxy"`, passing the host value
+# through), so bypass the proxy for every host with no_proxy=*, honored by
+# git/curl. Lowercase wins in proxy-from-env (set per container below);
+# NO_PROXY here covers step processes.
 env:
-  HTTP_PROXY: ''
-  HTTPS_PROXY: ''
+  NO_PROXY: '*'
 
 jobs:
   code-style:
@@ -48,8 +47,7 @@ jobs:
     container:
       image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
       env:
-        http_proxy: ''
-        https_proxy: ''
+        no_proxy: '*'
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
     # checkout marks the repo safe only in a throwaway HOME; pre-commit runs
