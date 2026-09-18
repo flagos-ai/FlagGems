@@ -43,6 +43,7 @@ from ._pdist_backward import _pdist_backward
 from ._pdist_forward import _pdist_forward, pdist
 from ._prelu_kernel import _prelu_kernel  # noqa: F401
 from ._prelu_kernel_backward import _prelu_kernel_backward  # noqa: F401
+from ._scaled_dot_product_cudnn_attention import _scaled_dot_product_cudnn_attention
 from ._scaled_dot_product_fused_attention_overrideable import (
     _scaled_dot_product_fused_attention_overrideable,
 )
@@ -692,6 +693,7 @@ __all__ = [
     "_resize_output",
     "_resize_output_",
     "_safe_softmax",
+    "_scaled_dot_product_cudnn_attention",
     "_scaled_dot_product_fused_attention_overrideable",
     "_segment_reduce_backward",
     "_segment_reduce_backward_out",
@@ -1552,3 +1554,21 @@ def _patch_adaptive_max_pool3d_aten():
 
 
 _patch_adaptive_max_pool3d_aten()
+
+
+# Mirror the two routed attention ops into flag_gems.ops as well: official
+# benchmark files access flag_gems.ops.<op> directly, while the test suite uses
+# the flag_gems.<op> alias (backend-replaced at SpecRegistrar time, which is when
+# this module is first imported by the loader).
+def _mirror_routed_attn_ops():
+    import sys as _sys
+
+    _fgops = _sys.modules.get("flag_gems.ops")
+    if _fgops is not None:
+        _fgops._scaled_dot_product_cudnn_attention = _scaled_dot_product_cudnn_attention
+        _fgops._scaled_dot_product_fused_attention_overrideable = (
+            _scaled_dot_product_fused_attention_overrideable
+        )
+
+
+_mirror_routed_attn_ops()
