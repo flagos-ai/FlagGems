@@ -118,6 +118,7 @@ from flag_gems.ops._native_batch_norm_legit_no_training import (
 )
 from flag_gems.ops._native_multi_head_attention import _native_multi_head_attention
 from flag_gems.ops._nested_from_padded_tensor import _nested_from_padded_tensor
+from flag_gems.ops._nested_select_backward import _nested_select_backward
 from flag_gems.ops._nested_sum_backward import _nested_sum_backward
 from flag_gems.ops._nested_tensor_from_mask_left_aligned import (
     _nested_tensor_from_mask_left_aligned,
@@ -933,7 +934,7 @@ from flag_gems.ops.set_ import (
 from flag_gems.ops.sgn import sgn, sgn_out
 from flag_gems.ops.sgn_ import sgn_
 from flag_gems.ops.sigmoid import sigmoid, sigmoid_, sigmoid_backward
-from flag_gems.ops.sign import sign, sign_out
+from flag_gems.ops.sign import sign, sign_, sign_out
 from flag_gems.ops.signbit import signbit, signbit_out
 from flag_gems.ops.silu import silu, silu_, silu_backward
 from flag_gems.ops.sin import sin, sin_
@@ -1116,7 +1117,7 @@ from flag_gems.ops.unflatten import unflatten
 from flag_gems.ops.unfold import unfold
 from flag_gems.ops.unfold_backward import unfold_backward
 from flag_gems.ops.unfold_copy import unfold_copy
-from flag_gems.ops.uniform import uniform_
+from flag_gems.ops.uniform import uniform, uniform_
 from flag_gems.ops.unique import _unique2
 from flag_gems.ops.unique_consecutive import unique_consecutive
 from flag_gems.ops.unique_dim import unique_dim
@@ -1257,6 +1258,7 @@ __all__ = [
     "_native_batch_norm_legit_out",
     "_native_multi_head_attention",
     "_nested_from_padded_tensor",
+    "_nested_select_backward",
     "_nested_sum_backward",
     "_nested_tensor_from_mask_left_aligned",
     "_nested_view_from_buffer_copy",
@@ -2155,6 +2157,7 @@ __all__ = [
     "sigmoid_",
     "sigmoid_backward",
     "sign",
+    "sign_",
     "sign_out",
     "signbit",
     "signbit_out",
@@ -2348,6 +2351,7 @@ __all__ = [
     "unfold",
     "unfold_backward",
     "unfold_copy",
+    "uniform",
     "uniform_",
     "unique_consecutive",
     "unique_dim",

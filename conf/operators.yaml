@@ -10730,6 +10730,20 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: nested_select_backward
+  description: |
+    Triton kernel implementation for the backward of nested tensor `select`
+    along the batch dimension. Scatters the gradient of the selected
+    component into a zero buffer with the same nested structure as the input.
+  for:
+  - _nested_select_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: nested_sum_backward
   description: 'Triton kernel implementation for `_nested_sum_backward`, the backward
     of
@@ -13548,6 +13562,20 @@ ops:
     '
   for:
   - sign
+  labels:
+  - aten
+  - KernelGen
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: sign_
+  description: |
+    The in-place version of `sign()`, writing the element-wise sign back
+    into the input tensor.
+  for:
+  - sign_
   labels:
   - aten
   - KernelGen
@@ -16415,6 +16443,18 @@ ops:
   - KernelGen
   kind:
   - Tensor
+  stages:
+  - alpha: '5.4'
+- id: uniform
+  description: Returns a new tensor filled with numbers sampled from the continuous uniform distribution.
+  for:
+  - uniform
+  labels:
+  - aten
+  - KernelGen
+  - skip_precision_check
+  kind:
+  - Distribution
   stages:
   - alpha: '5.4'
 - id: uniform_
