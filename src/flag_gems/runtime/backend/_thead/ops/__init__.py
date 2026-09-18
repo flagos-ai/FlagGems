@@ -14,6 +14,7 @@
 
 
 from ._conv_depthwise2d import _conv_depthwise2d
+from ._flash_attention_forward import _flash_attention_forward
 from ._resize_output_ import _resize_output_
 from ._scaled_dot_product_fused_attention_overrideable import (
     _scaled_dot_product_fused_attention_overrideable,
@@ -89,6 +90,7 @@ from .unbind_copy import unbind_copy
 
 __all__ = [
     "_conv_depthwise2d",
+    "_flash_attention_forward",
     "_resize_output_",
     "_scaled_dot_product_fused_attention_overrideable",
     "_unsafe_masked_index_put_accumulate",
