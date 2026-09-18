@@ -68,6 +68,6 @@ def log2(A, *, out=None):
 
 
 def log2_(A):
-    logger.debug("GEMS_KUNLUNXIN LOG2 INPLACE")
+    logger.debug("GEMS_KUNLUNXIN LOG2_")
     log2_func(A, out0=A)
     return A
