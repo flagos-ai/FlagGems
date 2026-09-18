@@ -112,6 +112,7 @@ from .pad import constant_pad_nd, pad
 from .permute_copy import permute_copy
 from .prod import prod, prod_dim
 from .quantile import quantile
+from .rad2deg_ import rad2deg_
 from .rand import rand
 from .rand_like import rand_like
 from .randn import randn
@@ -348,6 +349,7 @@ if get_device_capability(current_device())[0] >= 3:
             "fix",
             "feature_dropout",
             "lcm",
+            "rad2deg_",
         ]
     )
 
