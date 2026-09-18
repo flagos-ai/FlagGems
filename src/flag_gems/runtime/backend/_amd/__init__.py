@@ -43,7 +43,6 @@ ARCH_MAP = {
 CUSTOMIZED_UNUSED_OPS = (
     "add",
     "cos",
-    "cumsum",
 )
 
 
