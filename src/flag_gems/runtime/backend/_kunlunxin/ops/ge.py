@@ -59,50 +59,12 @@ def ge_scalar(A, B):
     if A.is_contiguous() and dtype in (torch.float16, torch.float32, torch.bfloat16):
         s = float(B)
         if math.isfinite(s) and s == float(torch.tensor(s, dtype=dtype).item()):
-            raw = _ge_scalar_raw(A, s, dtype)
-            if raw is not None:
-                return raw
             if numel >= _GE_SCALAR_FAST_TILE and numel % _GE_SCALAR_FAST_TILE == 0:
                 return _ge_scalar_fast(A, s, (numel // _GE_SCALAR_FAST_TILE,))
             if numel >= _GE_SCALAR_MASKED_MIN and numel % _GE_SCALAR_FAST_TILE != 0:
                 return _ge_scalar_fast_masked(A, s, numel)
     res = ge_func_scalar(A, B)
     return res
-
-
-_GE_SCALAR_RAW_MIN = 1 << 24
-_GE_SCALAR_MIN_NORM = 1.1754943508222875e-38
-
-
-def _ge_scalar_raw(A, s, dtype):
-    """ge(A, scalar) via the vendor comparison payloads, or None."""
-    if A.numel() < _GE_SCALAR_RAW_MIN:
-        return None
-    from .greater import _raw_greater_scalar
-    from .lt import _raw_lt_scalar
-
-    if dtype == torch.float16:
-        pred_s = float(
-            torch.tensor(s, dtype=dtype)
-            .nextafter(torch.tensor(float("-inf"), dtype=dtype))
-            .item()
-        )
-        return _raw_greater_scalar(A, pred_s)
-    if s == 0.0 or abs(s) >= _GE_SCALAR_MIN_NORM:
-        s_eff = (
-            -_GE_SCALAR_MIN_NORM
-            if s == 0.0
-            else float(
-                torch.tensor(s, dtype=dtype)
-                .nextafter(torch.tensor(float("-inf"), dtype=dtype))
-                .item()
-            )
-        )
-        return _raw_greater_scalar(A, s_eff)
-    out = _raw_lt_scalar(A, s)
-    if out is None:
-        return None
-    return torch.logical_not(out)
 
 
 _GE_SCALAR_FAST_TILE = 131072

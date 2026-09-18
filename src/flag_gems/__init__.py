@@ -26,7 +26,6 @@ from flag_gems.fused import *  # noqa: F403
 from flag_gems.logging_utils import setup_flaggems_logging, teardown_flaggems_logging
 from flag_gems.modules import *  # noqa: F403
 from flag_gems.ops import *  # noqa: F403
-from flag_gems.ops import range as range_op
 from flag_gems.ops._dirichlet_grad import _HAS_MAP_ELEMENTWISE
 from flag_gems.patches import *  # noqa: F403
 from flag_gems.patches import patch_empty_vllm  # noqa: F401
@@ -88,7 +87,7 @@ def torch_has_aten_overload(operator, overload):
 
 
 _FULL_CONFIG = (
-    ("__and__.Scalar", bitwise_and_scalar),
+    ("__and__.Scalar", and_scalar),
     ("__and__.Tensor", and_tensor),
     ("__iand__.Scalar", __iand___scalar),
     ("__iand__.Tensor", __iand___tensor),
@@ -138,6 +137,7 @@ _FULL_CONFIG = (
     ("_convert_weight_to_int4pack", _convert_weight_to_int4pack),
     ("_convolution_double_backward", _convolution_double_backward),
     ("_convolution_mode", _convolution_mode),
+    ("_cslt_sparse_mm", _cslt_sparse_mm),
     ("_cudnn_attention_forward", cudnn_attention_forward),
     ("_cudnn_rnn_backward", cudnn_rnn_backward),
     ("_cummax_helper", _cummax_helper),
@@ -302,6 +302,8 @@ _FULL_CONFIG = (
     ),
     ("_thnn_fused_gru_cell", _thnn_fused_gru_cell),
     ("_thnn_fused_gru_cell.out", _thnn_fused_gru_cell_out),
+    ("_thnn_fused_gru_cell_backward", _thnn_fused_gru_cell_backward),
+    ("_thnn_fused_gru_cell_backward.out", _thnn_fused_gru_cell_backward_out),
     ("_thnn_fused_lstm_cell", _thnn_fused_lstm_cell),
     ("_thnn_fused_lstm_cell_backward", _thnn_fused_lstm_cell_backward),
     ("_thnn_fused_lstm_cell_backward_impl", _thnn_fused_lstm_cell_backward_impl),
@@ -323,6 +325,14 @@ _FULL_CONFIG = (
     ("_upsample_lanczos2d_aa", _upsample_lanczos2d_aa),
     ("_upsample_lanczos2d_aa.out", _upsample_lanczos2d_aa_out),
     ("_upsample_lanczos2d_aa.vec", _upsample_lanczos2d_aa_vec),
+    (
+        "_upsample_lanczos2d_aa_backward",
+        upsample_lanczos2d_aa_backward,
+    ),
+    (
+        "_upsample_lanczos2d_aa_backward.grad_input",
+        upsample_lanczos2d_aa_backward_grad_input,
+    ),
     ("_upsample_nearest_exact1d", _upsample_nearest_exact1d),
     ("_upsample_nearest_exact1d_backward", _upsample_nearest_exact1d_backward),
     (
@@ -352,6 +362,11 @@ _FULL_CONFIG = (
     ),
     ("_weight_norm_interface", weight_norm_interface),
     ("_weight_norm_interface_backward", weight_norm_interface_backward),
+    ("_wrapped_linear_prepack", _wrapped_linear_prepack),
+    (
+        "_wrapped_quantized_linear_prepacked",
+        _wrapped_quantized_linear_prepacked,
+    ),
     ("abs", abs),
     ("abs_", abs_),
     ("absolute", absolute),
@@ -366,6 +381,7 @@ _FULL_CONFIG = (
         "adaptive_avg_pool3d_backward.grad_input",
         adaptive_avg_pool3d_backward_grad_input,
     ),
+    ("adaptive_max_pool1d", adaptive_max_pool1d),
     ("adaptive_max_pool2d", adaptive_max_pool2d),
     ("adaptive_max_pool2d_backward", adaptive_max_pool2d_backward),
     ("adaptive_max_pool3d", adaptive_max_pool3d),
@@ -578,6 +594,7 @@ _FULL_CONFIG = (
     ("deg2rad_", deg2rad_),
     ("dequantize", dequantize),
     ("dequantize.self", dequantize, None, (QUANTIZED_DISPATCH_KEY,)),
+    ("det", det),
     ("diag", diag),
     ("diag_embed", diag_embed),
     ("diagonal_backward", diagonal_backward),
@@ -673,6 +690,7 @@ _FULL_CONFIG = (
         "fake_quantize_per_tensor_affine_cachemask_backward",
         fake_quantize_per_tensor_affine_cachemask_backward,
     ),
+    ("feature_alpha_dropout", feature_alpha_dropout),
     ("feature_dropout", feature_dropout),
     ("feature_dropout_", feature_dropout_),
     ("fft_irfftn", fft_irfftn),
@@ -773,6 +791,7 @@ _FULL_CONFIG = (
     ("hash_tensor", hash_tensor),
     ("heaviside", heaviside),
     ("heaviside_", heaviside_),
+    ("hinge_embedding_loss", hinge_embedding_loss),
     ("histc", histc),
     # histogramdd is CompositeImplicitAutograd; a plain 2-tuple would let the native
     # decomposition run and use_gems() would silently no-op (false pass).
@@ -905,6 +924,8 @@ _FULL_CONFIG = (
     ("linalg_multi_dot.out", linalg_multi_dot_out),
     ("linalg_norm", linalg_norm),
     ("linalg_norm.ord_str", linalg_norm),
+    ("linalg_polar", linalg_polar),
+    ("linalg_polar.out", linalg_polar_out),
     ("linalg_qr", linalg_qr),
     ("linalg_qr.out", linalg_qr_out),
     ("linalg_slogdet", linalg_slogdet),
@@ -944,6 +965,7 @@ _FULL_CONFIG = (
     ("logaddexp2.out", logaddexp2_out),
     ("logcumsumexp", logcumsumexp),
     ("logcumsumexp.out", logcumsumexp_out),
+    ("logdet", logdet),
     ("logical_and", logical_and),
     ("logical_and_", logical_and_),
     ("logical_not", logical_not),
@@ -1028,10 +1050,16 @@ _FULL_CONFIG = (
     ("mvlgamma_", mvlgamma_),
     ("nan_to_num", nan_to_num),
     ("nan_to_num_", nan_to_num_),
+    ("nanmean", nanmean),
+    ("nanmean.out", nanmean_out),
     ("nanmedian", nanmedian),
     ("nanmedian.dim", nanmedian_dim),
     ("nanmedian.dim_values", nanmedian_dim_values),
     ("nanmedian.out", nanmedian_out),
+    ("nanquantile", nanquantile),
+    ("nanquantile.out", nanquantile_out),
+    ("nanquantile.scalar", nanquantile_scalar),
+    ("nanquantile.scalar_out", nanquantile_scalar_out),
     ("nansum", nansum),
     ("nansum.out", nansum_out),
     ("narrow", narrow),
@@ -1121,7 +1149,17 @@ _FULL_CONFIG = (
     ("randn", randn),
     ("randn_like", randn_like),
     ("randperm", randperm),
-    ("range", range_op),
+    ("range", range),
+    (
+        "real",
+        real,
+        None,
+        (
+            (backend_info.dispatch_key, real_device),
+            (CONJUGATE_DISPATCH_KEY, real_conjugate),
+            (AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),
+        ),
+    ),
     ("reciprocal", reciprocal),
     ("reciprocal_", reciprocal_),
     ("reflection_pad1d", reflection_pad1d),
@@ -1275,6 +1313,8 @@ _FULL_CONFIG = (
     ("special_gammaln.out", special_gammaln_out),
     ("special_hermite_polynomial_h", special_hermite_polynomial_h),
     ("special_hermite_polynomial_h.n_scalar", special_hermite_polynomial_h),
+    ("special_i0", special_i0),
+    ("special_i0.out", special_i0_out),
     ("special_i0e", special_i0e),
     ("special_i0e.out", special_i0e_out),
     ("special_i1", special_i1),
@@ -1379,6 +1419,7 @@ _FULL_CONFIG = (
     ("sum_to_size", sum_to_size),
     ("svd", svd),
     ("sym_constrain_range", sym_constrain_range),
+    ("sym_numel", sym_numel),
     ("sym_size", sym_size),
     ("sym_storage_offset", sym_storage_offset),
     ("sym_stride", sym_stride),
