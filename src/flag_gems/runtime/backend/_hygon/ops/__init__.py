@@ -88,10 +88,6 @@ from .linalg_ldl_factor import ldl_factor, linalg_ldl_factor
 from .linalg_lstsq import linalg_lstsq
 from .linalg_matrix_norm import linalg_matrix_norm, linalg_matrix_norm_out
 from .linalg_matrix_power import linalg_matrix_power, linalg_matrix_power_out
-=======
-from .linalg_ldl_factor import ldl_factor, linalg_ldl_factor
-from .linalg_matrix_norm import linalg_matrix_norm
->>>>>>> 5f913a32 (Add Hygon operator: linalg_ldl_factor (#556))
 from .linalg_solve_triangular import (
     linalg_solve_triangular,
     linalg_solve_triangular_out,
