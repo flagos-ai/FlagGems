@@ -188,10 +188,18 @@ class SQLPersistantModel(PersistantModel):
         name: str,
         engine: sqlalchemy.engine.Engine,
     ) -> Optional[Type[Base]]:
+        # Only reflect the single requested table instead of the whole database.
+        # The old automap_base().prepare(engine) reflected every table + index,
+        # which is O(total_tables) and became a dominant host-side cost as the
+        # cache grew to thousands of tables (each new autotune shape adds one).
+        if not sqlalchemy.inspect(engine).has_table(name):
+            return None
+        metadata = sqlalchemy.MetaData()
+        sqlalchemy.Table(name, metadata, autoload_with=engine)
         AutoBase: sqlalchemy.ext.automap.AutomapBase = (
-            sqlalchemy.ext.automap.automap_base()
+            sqlalchemy.ext.automap.automap_base(metadata=metadata)
         )
-        AutoBase.prepare(engine)
+        AutoBase.prepare()
         ModelCls: Optional[Type[Base]] = AutoBase.classes.get(name)
         return ModelCls
 
