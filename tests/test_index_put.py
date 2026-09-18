@@ -341,3 +341,45 @@ def test_index_put_mixed_none_and_tensor(input_shape, indices_config, dtype):
 
     out = flag_gems.index_put(inp, indices, values, accumulate)
     utils.gems_assert_close(out, ref_out, dtype)
+
+
+
+@pytest.mark.index_put_
+def test_index_put__large_strided_offset():
+    """Offsets beyond int32 must not wrap before pointer arithmetic."""
+    stride0 = 102400
+    row = (2**31 + stride0 - 1) // stride0
+    storage_bytes = row * stride0 + 1
+    free_memory, _ = torch.cuda.mem_get_info()
+    if free_memory < storage_bytes + 512 * 2**20:
+        pytest.skip("requires at least 2.5 GiB of free device memory")
+
+    # uint8 keeps the backing storage near 2 GiB. The production
+    # failure uses float32 with the same stride and offset boundary.
+    inp = torch.empty_strided(
+        (row + 1, 1),
+        (stride0, 1),
+        dtype=torch.uint8,
+        device=flag_gems.device,
+    )
+    index = torch.tensor(
+        [row], dtype=torch.int32, device=flag_gems.device
+    )
+    ref_value = torch.tensor(
+        [17], dtype=torch.uint8, device=flag_gems.device
+    )
+    value = torch.tensor(
+        [93], dtype=torch.uint8, device=flag_gems.device
+    )
+
+    try:
+        inp.index_put_((index,), ref_value, accumulate=False)
+        torch.cuda.synchronize()
+        torch.testing.assert_close(inp[index], ref_value.unsqueeze(0))
+
+        flag_gems.index_put_(inp, (index,), value, accumulate=False)
+        torch.cuda.synchronize()
+        torch.testing.assert_close(inp[index], value.unsqueeze(0))
+    finally:
+        del inp
+        torch.cuda.empty_cache()
