@@ -22,12 +22,14 @@ from . import base
 GROUP_SIZE = 128
 FP8_DTYPE = (
     torch.float8_e4m3fn
-    if flag_gems.vendor_name in ("hygon", "nvidia")
+    if flag_gems.vendor_name in ("hygon", "mthreads", "nvidia")
     else torch.float8_e5m2
 )
 
 
 def _fp8_available():
+    if flag_gems.device == "musa":
+        return torch.musa.is_available() and hasattr(torch, "float8_e4m3fn")
     return (
         torch.cuda.is_available()
         and hasattr(torch, "float8_e5m2")
@@ -116,7 +118,8 @@ class TopKFp8W8A16Benchmark(base.Benchmark):
 
 @pytest.mark.topk_w8a16_fp8
 @pytest.mark.skipif(
-    getattr(flag_gems, "vendor_name", None) not in ("thead", "hygon", "nvidia"),
+    getattr(flag_gems, "vendor_name", None)
+    not in ("thead", "hygon", "mthreads", "nvidia"),
     reason="topk_w8a16_fp8 requires an implemented backend",
 )
 @pytest.mark.skipif(not _fp8_available(), reason="required FP8 format is unavailable")

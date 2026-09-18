@@ -32,6 +32,7 @@ from .linear_backward import linear_backward
 from .log_normal_ import log_normal_, log_normal_heur_block, log_normal_heur_num_warps
 from .log_sigmoid_backward import log_sigmoid_backward, log_sigmoid_backward_out
 from .mm import mm, mm_out
+from .mm_w8a8_int8 import mm_w8a8_int8, mm_w8a8_int8_out
 from .mv import mv
 from .nll_loss_backward import nll_loss_backward
 from .nonzero_numpy import nonzero_numpy
@@ -89,6 +90,8 @@ __all__ = [
     "make_3d_for_bn",
     "mm",
     "mm_out",
+    "mm_w8a8_int8",
+    "mm_w8a8_int8_out",
     "mv",
     "nll_loss_backward",
     "nonzero_numpy",

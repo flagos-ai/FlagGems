@@ -112,8 +112,6 @@ def _std_dim_kernel_inner(
 
 
 def _std_dim_dispatch(out, x_contiguous, M, N, K, effective_correction):
-    # Every dim reduction is routed through dim_compress => K is always 1 and we
-    # only use the verified-correct inner kernel.
     with torch_device_fn.device(x_contiguous.device):
         grid = (M, 1, 1)
         _std_dim_kernel_inner[grid](out, x_contiguous, M, N, effective_correction)
@@ -133,9 +131,9 @@ def std(x, dim=None, *, correction=None, keepdim=False):
             out = torch.zeros([], device=x.device, dtype=x.dtype)
             return out.view([1] * input_ndim) if keepdim else out
 
-        GRID = min(triton.cdiv(N, 65536), 1024)
+        GRID = min(max(triton.cdiv(N, 16384), 256), 1024)
         CHUNK = triton.cdiv(N, GRID)
-        BLOCK_N = 1024
+        BLOCK_N = 4096
         BLOCK_SIZE_REDUCE = 1024
         xc = x.contiguous()
         tmp = torch.empty((GRID,), dtype=torch.float32, device=x.device)
