@@ -1,8 +1,6 @@
 import logging
 
-from flag_gems.runtime.backend._kunlunxin.ops.matmuladd import (  # noqa: F401
-    matmuladd,
-)
+from flag_gems.runtime.backend._kunlunxin.ops.matmuladd import matmuladd  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
