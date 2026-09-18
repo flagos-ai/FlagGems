@@ -48,6 +48,7 @@ from .conv_transpose2d import conv_transpose2d
 from .copy import copy_
 from .cudnn_convolution import cudnn_convolution
 from .deg2rad_ import deg2rad_
+from .diagonal_scatter import diagonal_scatter
 from .div import (
     div_mode,
     div_mode_,
@@ -358,6 +359,7 @@ if get_device_capability(current_device())[0] >= 3:
             "arctan_",
             "_masked_scale",
             "_functional_sym_constrain_range_for_size",
+            "diagonal_scatter",
         ]
     )
 
