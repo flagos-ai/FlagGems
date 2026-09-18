@@ -1,11 +1,30 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+
 from typing import Any, Optional
 
+import numpy as np
 import torch
 import triton
 import triton.language as tl
 
 
-@triton.jit
+@triton.jit(
+    do_not_specialize=[
+        "fg_num_tokens",
+        "fg_top_k",
+        "fg_num_experts",
+        "fg_fuse_silu",
+        "fg_mul_routed_weight",
+        "fg_direct_routing",
+        "fg_has_bias",
+    ]
+)
 def _fused_moe_routed_gemm_kernel(
     a_ptr,
     b_ptr,
@@ -36,6 +55,13 @@ def _fused_moe_routed_gemm_kernel(
     ALIGN_BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
     BLOCK_SIZE_N: tl.constexpr,
+    fg_num_tokens,
+    fg_top_k,
+    fg_num_experts,
+    fg_fuse_silu,
+    fg_mul_routed_weight,
+    fg_direct_routing,
+    fg_has_bias,
 ):
     route = tl.program_id(0)
     n_start = tl.program_id(1) * BLOCK_SIZE_N
@@ -109,10 +135,22 @@ def _fused_moe_routed_gemm_kernel(
         if MUL_ROUTED_WEIGHT:
             accumulator *= routed_weight
 
+        # fg_* metadata liveness: always-true mask terms keep the params in
+        # the launcher ABI (the XPU launch-table handler reads them from
+        # kernelParams; triton drops unused args from the generated launcher).
+        meta_ok = (
+            (fg_num_tokens >= 0)
+            & (fg_top_k >= 0)
+            & (fg_num_experts >= 0)
+            & (fg_fuse_silu >= 0)
+            & (fg_mul_routed_weight >= 0)
+            & (fg_direct_routing >= 0)
+            & (fg_has_bias >= 0)
+        )
         tl.store(
             c_ptr + token * stride_cm + offs_n * stride_cn,
             accumulator,
-            mask=valid_route & (offs_n < n_out),
+            mask=valid_route & (offs_n < n_out) & meta_ok,
         )
 
 
@@ -182,9 +220,20 @@ def invoke_kunlunxin_fused_moe_kernel(
     direct_routing: bool = False,
     routed_weight_on_input: bool = False,
 ) -> None:
+    # int64 topk_ids -> "*i64" launcher signature (unmapped in the XPU
+    # type_mapping); cast to int32 for a deterministic "*int32" (type=3)
+    # read by the launch-table handler's D2H metadata pass. Lossless for
+    # expert ids.
+    if sorted_token_ids.dtype != torch.int32:
+        sorted_token_ids = sorted_token_ids.to(torch.int32)
+    if expert_ids.dtype != torch.int32:
+        expert_ids = expert_ids.to(torch.int32)
+    if num_tokens_post_padded.dtype != torch.int32:
+        num_tokens_post_padded = num_tokens_post_padded.to(torch.int32)
     n_out = B.size(1) // 2 if FUSE_SILU else B.size(1)
     num_routes = C.size(0) * C.size(1) if direct_routing else sorted_token_ids.numel()
     block_size_n = 4
+    # Wide N tiles stall XPU lowering for the 7168-wide DeepSeek projection.
     max_block_size_n = 8 if B.size(2) >= 7168 else 64
     program_count = num_routes * triton.cdiv(n_out, block_size_n)
     while block_size_n < max_block_size_n and (
@@ -193,9 +242,9 @@ def invoke_kunlunxin_fused_moe_kernel(
         block_size_n *= 2
         program_count = num_routes * triton.cdiv(n_out, block_size_n)
     if direct_routing and FUSE_SILU:
-        max_block_size_k = 256
+        max_block_size_k = 128
     else:
-        max_block_size_k = 1024
+        max_block_size_k = 128
     block_size_k = min(max_block_size_k, triton.next_power_of_2(B.size(2)))
     while B.size(2) % block_size_k != 0:
         block_size_k //= 2
@@ -232,6 +281,13 @@ def invoke_kunlunxin_fused_moe_kernel(
         ALIGN_BLOCK_SIZE_M=align_block_size_m,
         BLOCK_SIZE_K=block_size_k,
         BLOCK_SIZE_N=block_size_n,
+        fg_num_tokens=A.size(0),
+        fg_top_k=top_k,
+        fg_num_experts=B.size(0),
+        fg_fuse_silu=1 if FUSE_SILU else 0,
+        fg_mul_routed_weight=1 if mul_routed_weight else 0,
+        fg_direct_routing=1 if direct_routing else 0,
+        fg_has_bias=1 if B_bias is not None else 0,
         num_warps=1,
         num_stages=1,
         isCloseVectorization=True,
@@ -240,28 +296,51 @@ def invoke_kunlunxin_fused_moe_kernel(
     )
 
 
+def _padded_to_slot_experts(sorted_token_ids, expert_ids, config, numel, device):
+    """Decode moe_align_block_size padded arrays into the direct-routing
+    slot->expert table (int32, [numel]). Returns None when the arrays cannot be
+    trusted (caller falls back to the raw padded launch)."""
+    align = int(config["BLOCK_SIZE_M"])
+    if align <= 0:
+        return None
+    sids = sorted_token_ids.detach().reshape(-1).to(torch.int32).cpu().numpy()
+    eids = expert_ids.detach().reshape(-1).to(torch.int32).cpu().numpy()
+    valid = sids < numel
+    pos = np.nonzero(valid)[0]
+    if pos.size != numel:
+        return None  # duplicated / missing slots -> untrusted
+    blk = pos // align
+    if blk.max() >= eids.size:
+        return None  # expert_ids shorter than the used region -> untrusted
+    out = np.full((numel,), -1, dtype=np.int32)
+    out[sids[valid].astype(np.int64)] = eids[blk]
+    if (out < 0).any():
+        return None
+    return torch.from_numpy(out).to(device=device, dtype=torch.int32)
+
+
 def dispatch_kunlunxin_fused_moe_kernel(
     A: torch.Tensor,
     B: torch.Tensor,
     C: torch.Tensor,
-    A_scale: Optional[torch.Tensor],
-    B_scale: Optional[torch.Tensor],
-    B_zp: Optional[torch.Tensor],
-    topk_weights: Optional[torch.Tensor],
+    A_scale,
+    B_scale,
+    B_zp,
+    topk_weights,
     sorted_token_ids: torch.Tensor,
     expert_ids: torch.Tensor,
     num_tokens_post_padded: torch.Tensor,
     mul_routed_weight: bool,
     top_k: int,
-    config: dict[str, Any],
+    config,
     compute_type: tl.dtype,
     use_fp8_w8a8: bool,
     use_int8_w8a8: bool,
     use_int8_w8a16: bool,
     use_int4_w4a16: bool,
     per_channel_quant: bool,
-    block_shape: Optional[list[int]] = None,
-    B_bias: Optional[torch.Tensor] = None,
+    block_shape=None,
+    B_bias=None,
     FUSE_SILU: bool = False,
     direct_sum: bool = False,
     out_top_k: int = 1,
@@ -285,6 +364,40 @@ def dispatch_kunlunxin_fused_moe_kernel(
             "Kunlunxin dispatch_fused_moe_kernel supports only unquantized routed GEMM"
         )
 
+    # Padded -> direct-equivalent restructure (see _padded_to_slot_experts).
+    numel = A.size(0) * top_k
+    slot_experts = None
+    if A.dtype in (torch.bfloat16, torch.float16) and B_bias is None and not FUSE_SILU:
+        # Restructure only for the validated acceleration profile (bf16, no
+        # bias, no fused silu); everything else keeps the legacy padded launch.
+        try:
+            slot_experts = _padded_to_slot_experts(
+                sorted_token_ids, expert_ids, config, numel, A.device
+            )
+        except Exception:
+            slot_experts = None
+
+    if slot_experts is not None:
+        invoke_kunlunxin_fused_moe_kernel(
+            A,
+            B,
+            C,
+            B_bias,
+            None,
+            slot_experts,
+            slot_experts,
+            slot_experts,
+            False,
+            top_k,
+            config,
+            FUSE_SILU=FUSE_SILU,
+            direct_routing=True,
+        )
+        if mul_routed_weight and topk_weights is not None:
+            C.mul_(topk_weights.to(C.dtype).unsqueeze(-1))
+        return
+
+    # Fallback: original padded launch (correct, unaccelerated).
     invoke_kunlunxin_fused_moe_kernel(
         A,
         B,
