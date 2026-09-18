@@ -1075,6 +1075,7 @@ _FULL_CONFIG = (
     ("native_group_norm_backward", group_norm_backward),
     ("native_layer_norm", native_layer_norm),
     ("native_layer_norm_backward", layer_norm_backward),
+    ("native_norm", native_norm),
     ("ne.Scalar", ne_scalar),
     ("ne.Tensor", ne),
     ("ne_.Scalar", ne_scalar_),

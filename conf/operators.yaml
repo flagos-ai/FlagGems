@@ -10572,6 +10572,18 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: native_norm
+  description: Computes the p-norm over all elements of the input tensor, reducing to a scalar.
+  for:
+  - native_norm
+  labels:
+  - aten
+  - KernelGen
+  - reduction
+  kind:
+  - Reduction
+  stages:
+  - alpha: '5.4'
 - id: ne
   description: Computes that `input` is not equal to `other` element-wise.
   for:
