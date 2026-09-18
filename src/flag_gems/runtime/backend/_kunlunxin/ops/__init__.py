@@ -143,6 +143,7 @@ from .bitwise_xor import (
     xor_scalar_,
     xor_scalar_tensor,
 )
+from .bitwise_xor_tensor_ import bitwise_xor_tensor_
 from .block_diag import block_diag  # noqa: F401
 from .bmm import bmm, bmm_out
 from .broadcast_tensors import broadcast_tensors
