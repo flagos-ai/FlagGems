@@ -60,7 +60,7 @@ def log2_func(x):
 
 
 def log2(A, *, out=None):
-    logger.debug("GEMS_KUNLUNXIN LOG2 FORWARD")
+    logger.debug("GEMS_KUNLUNXIN LOG2")
     if out is None:
         return log2_func(A)
     log2_func(A, out0=out)
