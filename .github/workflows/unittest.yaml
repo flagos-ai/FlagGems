@@ -35,8 +35,6 @@ jobs:
     # The self-hosted runner injects an auth-required proxy (407) that breaks
     # the container; it can reach GitHub directly, so clear the proxy vars.
     env:
-      HTTP_PROXY: ''
-      HTTPS_PROXY: ''
       http_proxy: ''
       https_proxy: ''
     concurrency:
@@ -205,8 +203,6 @@ jobs:
     # The self-hosted runner injects an auth-required proxy (407) that breaks
     # the container; it can reach GitHub directly, so clear the proxy vars.
     env:
-      HTTP_PROXY: ''
-      HTTPS_PROXY: ''
       http_proxy: ''
       https_proxy: ''
     needs:

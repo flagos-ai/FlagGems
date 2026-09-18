@@ -34,8 +34,6 @@ concurrency:
 # auth (returns 407) and breaks it. The container can reach GitHub directly,
 # so clear the proxy vars to bypass it.
 env:
-  HTTP_PROXY: ''
-  HTTPS_PROXY: ''
   http_proxy: ''
   https_proxy: ''
 
