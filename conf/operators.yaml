@@ -8700,6 +8700,22 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: linalg_tensorsolve
+  description: 'Computes the solution X to the system tensordot(A, X) = B by flattening
+    A
+
+    into a square matrix and solving the resulting linear system.
+
+    '
+  for:
+  - linalg_tensorsolve
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.4'
 - id: linalg_vander
   description: Computes the Vandermonde matrix of a given vector.
   for:

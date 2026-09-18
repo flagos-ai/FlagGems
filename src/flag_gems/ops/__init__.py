@@ -660,6 +660,10 @@ from flag_gems.ops.linalg_solve_triangular import (
 from flag_gems.ops.linalg_svd import linalg_svd
 from flag_gems.ops.linalg_svdvals import linalg_svdvals
 from flag_gems.ops.linalg_tensorinv import linalg_tensorinv, linalg_tensorinv_out
+from flag_gems.ops.linalg_tensorsolve import (
+    linalg_tensorsolve,
+    linalg_tensorsolve_out,
+)
 from flag_gems.ops.linalg_vander import linalg_vander
 from flag_gems.ops.linalg_vecdot import linalg_vecdot, linalg_vecdot_out
 from flag_gems.ops.linear import linear
@@ -1844,6 +1848,8 @@ __all__ = [
     "linalg_svdvals",
     "linalg_tensorinv",
     "linalg_tensorinv_out",
+    "linalg_tensorsolve",
+    "linalg_tensorsolve_out",
     "linalg_vander",
     "linalg_vecdot",
     "linalg_vecdot_out",
