@@ -65,6 +65,7 @@ from .special_chebyshev_polynomial_w import (
 from .special_erfinv import special_erfinv, special_erfinv_, special_erfinv_out
 from .special_gammainc import special_gammainc
 from .special_gammaln import special_gammaln
+from .special_gammaln_out import special_gammaln_out
 from .special_hermite_polynomial_h import (
     special_hermite_polynomial_h,
     special_hermite_polynomial_h_tensor_tensor,
@@ -143,6 +144,7 @@ __all__ = [
     "special_erfinv_out",
     "special_gammainc",
     "special_gammaln",
+    "special_gammaln_out",
     "special_hermite_polynomial_h",
     "special_hermite_polynomial_h_tensor_tensor",
     "special_legendre_polynomial_p",
