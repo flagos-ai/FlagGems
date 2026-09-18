@@ -26,7 +26,6 @@ from flag_gems.fused import *  # noqa: F403
 from flag_gems.logging_utils import setup_flaggems_logging, teardown_flaggems_logging
 from flag_gems.modules import *  # noqa: F403
 from flag_gems.ops import *  # noqa: F403
-from flag_gems.ops import range as range_op
 from flag_gems.ops._dirichlet_grad import _HAS_MAP_ELEMENTWISE
 from flag_gems.patches import *  # noqa: F403
 from flag_gems.patches import patch_empty_vllm  # noqa: F401
@@ -69,7 +68,9 @@ registrar = GeneralOpRegistrar
 current_work_registrar = None
 AUTOGRAD_DISPATCH_KEY = torch._C.DispatchKey.Autograd.name
 CONJUGATE_DISPATCH_KEY = torch._C.DispatchKey.Conjugate.name
+QUANTIZED_CUDA_DISPATCH_KEY = torch._C.DispatchKey.QuantizedCUDA.name
 SPARSE_CSR_DISPATCH_KEY = "SparseCsr" + backend_info.dispatch_key
+SPARSE_DISPATCH_KEY = "Sparse" + backend_info.dispatch_key
 QUANTIZED_DISPATCH_KEY = "Quantized" + backend_info.dispatch_key
 
 
@@ -88,7 +89,7 @@ def torch_has_aten_overload(operator, overload):
 
 
 _FULL_CONFIG = (
-    ("__and__.Scalar", bitwise_and_scalar),
+    ("__and__.Scalar", and_scalar),
     ("__and__.Tensor", and_tensor),
     ("__iand__.Scalar", __iand___scalar),
     ("__iand__.Tensor", __iand___tensor),
@@ -118,7 +119,6 @@ _FULL_CONFIG = (
         "_amp_foreach_non_finite_check_and_unscale_",
         _amp_foreach_non_finite_check_and_unscale_,
     ),
-    ("_amp_update_scale_", _amp_update_scale_),
     ("_assert_async", _assert_async),
     ("_batch_norm_impl_index", _batch_norm_impl_index),
     ("_batch_norm_impl_index_backward", _batch_norm_impl_index_backward),
@@ -216,6 +216,7 @@ _FULL_CONFIG = (
     ("_is_all_true", _is_all_true),
     ("_jagged_to_padded_dense_forward", _jagged_to_padded_dense_forward),
     ("_linalg_eigvals", _linalg_eigvals),
+    ("_linalg_slogdet", _linalg_slogdet),
     ("_list_to_tensor", _list_to_tensor),
     ("_log_softmax", log_softmax),
     ("_log_softmax.out", log_softmax_out),
@@ -223,7 +224,9 @@ _FULL_CONFIG = (
     ("_log_softmax_backward_data.out", log_softmax_backward_out),
     ("_make_dep_token", _make_dep_token),
     ("_masked_scale", _masked_scale),
+    ("_masked_softmax", _masked_softmax),
     ("_masked_softmax_backward", _masked_softmax_backward),
+    ("_mixed_dtypes_linear", mixed_dtypes_linear),
     ("_native_batch_norm_legit", _native_batch_norm_legit),
     ("_native_batch_norm_legit.no_stats", _native_batch_norm_legit_no_stats),
     (
@@ -241,11 +244,16 @@ _FULL_CONFIG = (
     ),
     ("_native_multi_head_attention", _native_multi_head_attention),
     ("_nested_from_padded_tensor", _nested_from_padded_tensor),
+    ("_nested_select_backward", _nested_select_backward),
     ("_nested_sum_backward", _nested_sum_backward),
     ("_nested_tensor_from_mask_left_aligned", _nested_tensor_from_mask_left_aligned),
     ("_nested_view_from_buffer_copy", _nested_view_from_buffer_copy),
     ("_nested_view_from_jagged", _nested_view_from_jagged),
     ("_nested_view_from_jagged_copy", _nested_view_from_jagged_copy),
+    # _pad_circular is a CompositeImplicitAutograd op; it decomposes before
+    # reaching the backend key, so we must also register the CompositeImplicitAutograd
+    # key for use_gems() to intercept it instead of silently running the decomposition.
+    ("_pad_circular", _pad_circular, None, ["CompositeImplicitAutograd"]),
     ("_padded_dense_to_jagged_forward", _padded_dense_to_jagged_forward),
     ("_pdist_backward", _pdist_backward),
     ("_pdist_forward", _pdist_forward),
@@ -297,6 +305,7 @@ _FULL_CONFIG = (
     ("_sparse_semi_structured_addmm", _sparse_semi_structured_addmm),
     ("_sparse_semi_structured_linear", _sparse_semi_structured_linear),
     ("_sparse_semi_structured_mm", _sparse_semi_structured_mm),
+    ("_standard_gamma_grad", standard_gamma_grad),
     (
         "_thnn_differentiable_gru_cell_backward",
         _thnn_differentiable_gru_cell_backward,
@@ -313,6 +322,7 @@ _FULL_CONFIG = (
         to_copy,
         lambda: version.parse(torch.__version__) >= version.parse("2.4"),
     ),
+    ("_transformer_encoder_layer_fwd", _transformer_encoder_layer_fwd),
     ("_unique2", _unique2),
     ("_unsafe_index", unsafe_index),
     ("_unsafe_index_put", unsafe_index_put),
@@ -382,6 +392,7 @@ _FULL_CONFIG = (
         "adaptive_avg_pool3d_backward.grad_input",
         adaptive_avg_pool3d_backward_grad_input,
     ),
+    ("adaptive_max_pool1d", adaptive_max_pool1d),
     ("adaptive_max_pool2d", adaptive_max_pool2d),
     ("adaptive_max_pool2d_backward", adaptive_max_pool2d_backward),
     ("adaptive_max_pool3d", adaptive_max_pool3d),
@@ -470,6 +481,7 @@ _FULL_CONFIG = (
     ("baddbmm", baddbmm),
     ("baddbmm.out", baddbmm_out),
     ("baddbmm_", baddbmm_),
+    ("batch_norm_gather_stats_with_counts", batch_norm_gather_stats_with_counts),
     ("bernoulli", bernoulli),
     ("bernoulli_.float", bernoulli_),
     ("bilinear", bilinear),
@@ -571,6 +583,7 @@ _FULL_CONFIG = (
     ("cosh.out", cosh_out),
     ("cosh_", cosh_),
     ("cosine_embedding_loss", cosine_embedding_loss),
+    ("cosine_similarity", cosine_similarity),
     ("count_nonzero", count_nonzero),
     ("cov", cov),
     ("cross", cross),
@@ -594,6 +607,7 @@ _FULL_CONFIG = (
     ("deg2rad_", deg2rad_),
     ("dequantize", dequantize),
     ("dequantize.self", dequantize, None, (QUANTIZED_DISPATCH_KEY,)),
+    ("det", det),
     ("diag", diag),
     ("diag_embed", diag_embed),
     ("diagonal_backward", diagonal_backward),
@@ -690,6 +704,7 @@ _FULL_CONFIG = (
         fake_quantize_per_tensor_affine_cachemask_backward,
     ),
     ("feature_alpha_dropout", feature_alpha_dropout),
+    ("feature_alpha_dropout_", feature_alpha_dropout_),
     ("feature_dropout", feature_dropout),
     ("feature_dropout_", feature_dropout_),
     ("fft_irfftn", fft_irfftn),
@@ -790,6 +805,7 @@ _FULL_CONFIG = (
     ("hash_tensor", hash_tensor),
     ("heaviside", heaviside),
     ("heaviside_", heaviside_),
+    ("hinge_embedding_loss", hinge_embedding_loss),
     ("histc", histc),
     # histogramdd is CompositeImplicitAutograd; a plain 2-tuple would let the native
     # decomposition run and use_gems() would silently no-op (false pass).
@@ -838,12 +854,14 @@ _FULL_CONFIG = (
     ("isneginf", isneginf),
     ("isneginf.out", isneginf_out),
     ("isposinf", isposinf),
+    ("isreal", isreal),
     ("kron", kron),
     ("kthvalue", kthvalue),
     ("lcm", lcm),
     ("lcm_", lcm_),
     ("ldexp.out", ldexp_out),
     ("ldexp.Tensor", ldexp),
+    ("ldexp_", ldexp_),
     ("le.Scalar", le_scalar),
     ("le.Tensor", le),
     ("le_.Scalar", le_scalar_),
@@ -1101,6 +1119,7 @@ _FULL_CONFIG = (
     ("norm", norm),
     ("norm.Scalar", norm_scalar),
     ("norm.ScalarOpt_dim", norm_scalaropt_dim),
+    ("norm_except_dim", norm_except_dim),
     ("normal.float_Tensor", normal_float_tensor),
     ("normal.Tensor_float", normal_tensor_float),
     ("normal.Tensor_Tensor", normal_tensor_tensor),
@@ -1118,10 +1137,12 @@ _FULL_CONFIG = (
     ("pairwise_distance", pairwise_distance),
     ("pdist", pdist),
     ("permute_copy", permute_copy),
+    ("pinverse", pinverse, None, (AUTOGRAD_DISPATCH_KEY,)),
     ("pixel_shuffle", pixel_shuffle),
     ("pixel_unshuffle", pixel_unshuffle),
     ("pixel_unshuffle.out", pixel_unshuffle_out),
     ("poisson", poisson),
+    ("poisson_nll_loss", poisson_nll_loss),
     ("polar", polar),
     ("polygamma", polygamma),
     ("polygamma.out", polygamma_out),
@@ -1138,6 +1159,18 @@ _FULL_CONFIG = (
     ("quantized_gru.data", quantized_gru_data),
     ("quantized_gru.input", quantized_gru_input),
     ("quantized_lstm.input", quantized_lstm),
+    (
+        "quantized_max_pool3d",
+        quantized_max_pool3d,
+        None,
+        (QUANTIZED_CUDA_DISPATCH_KEY,),
+    ),
+    (
+        "quantized_max_pool3d.out",
+        quantized_max_pool3d_out,
+        None,
+        (QUANTIZED_CUDA_DISPATCH_KEY,),
+    ),
     ("rad2deg", rad2deg),
     ("rad2deg_", rad2deg_),
     ("rand", rand),
@@ -1147,7 +1180,17 @@ _FULL_CONFIG = (
     ("randn", randn),
     ("randn_like", randn_like),
     ("randperm", randperm),
-    ("range", range_op),
+    ("range", range),
+    (
+        "real",
+        real,
+        None,
+        (
+            (backend_info.dispatch_key, real_device),
+            (CONJUGATE_DISPATCH_KEY, real_conjugate),
+            (AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),
+        ),
+    ),
     ("reciprocal", reciprocal),
     ("reciprocal_", reciprocal_),
     ("reflection_pad1d", reflection_pad1d),
@@ -1236,6 +1279,7 @@ _FULL_CONFIG = (
     ("sigmoid_backward", sigmoid_backward),
     ("sign", sign),
     ("sign.out", sign_out),
+    ("sign_", sign_),
     ("signbit", signbit),
     ("signbit.out", signbit_out),
     ("silu", silu),
@@ -1301,6 +1345,8 @@ _FULL_CONFIG = (
     ("special_gammaln.out", special_gammaln_out),
     ("special_hermite_polynomial_h", special_hermite_polynomial_h),
     ("special_hermite_polynomial_h.n_scalar", special_hermite_polynomial_h),
+    ("special_i0", special_i0),
+    ("special_i0.out", special_i0_out),
     ("special_i0e", special_i0e),
     ("special_i0e.out", special_i0e_out),
     ("special_i1", special_i1),
@@ -1362,6 +1408,8 @@ _FULL_CONFIG = (
     ("square.out", square_out),
     ("square_", square_),
     ("squeeze_copy", squeeze_copy),
+    ("sspaddmm", sspaddmm, None, (SPARSE_DISPATCH_KEY,)),
+    ("sspaddmm.out", sspaddmm_out, None, (SPARSE_DISPATCH_KEY,)),
     ("stack", stack),
     ("std.correction", std),
     (
@@ -1405,6 +1453,7 @@ _FULL_CONFIG = (
     ("sum_to_size", sum_to_size),
     ("svd", svd),
     ("sym_constrain_range", sym_constrain_range),
+    ("sym_numel", sym_numel),
     ("sym_size", sym_size),
     ("sym_storage_offset", sym_storage_offset),
     ("sym_stride", sym_stride),
@@ -1421,6 +1470,8 @@ _FULL_CONFIG = (
     ("tanh_", tanh_),
     ("tanh_backward", tanh_backward),
     ("tensor_split", tensor_split),
+    ("tensordot", tensordot),
+    ("tensordot.out", tensordot_out),
     ("threshold", threshold),
     ("threshold_", threshold_),
     ("threshold_backward", threshold_backward),
@@ -1451,6 +1502,7 @@ _FULL_CONFIG = (
     ("unfold", unfold),
     ("unfold_backward", unfold_backward),
     ("unfold_copy", unfold_copy),
+    ("uniform", uniform),
     ("uniform_", uniform_),
     ("unique_consecutive", unique_consecutive),
     ("unique_dim", unique_dim),
@@ -1465,6 +1517,11 @@ _FULL_CONFIG = (
     ("upsample_nearest1d", upsample_nearest1d),
     ("upsample_nearest2d", upsample_nearest2d),
     ("upsample_nearest3d", upsample_nearest3d),
+    ("upsample_nearest3d_backward", upsample_nearest3d_backward),
+    (
+        "upsample_nearest3d_backward.grad_input",
+        upsample_nearest3d_backward_grad_input,
+    ),
     ("upsample_trilinear3d", upsample_trilinear3d),
     ("upsample_trilinear3d_backward", upsample_trilinear3d_backward),
     ("value_selecting_reduction_backward", value_selecting_reduction_backward),
