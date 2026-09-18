@@ -1346,6 +1346,23 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: argsort_stable
+  description: 'Returns the indices that sort a tensor along a given dimension in
+    ascending order by value.
+
+    This is a variant of `argsort()` where `stable` is set to True to preserve the
+    order of equivalent elements.
+
+    '
+  for:
+  - argsort.stable
+  labels:
+  - aten
+  - skip_precision_check
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: as_strided_copy
   description: 'Creates a contiguous copy of an `as_strided` view of the input tensor.
 
