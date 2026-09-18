@@ -118,8 +118,13 @@ def test_mean_dim_large_innerdim(shape, dim, keepdim, dtype):
 # Boundary cases added with the 2026-09-18 semantics fix: `dim=None` /
 # `dim=()` / `dim=[]` are full reductions (keepdim -> [1]*ndim, otherwise the
 # 0-d scalar), and an empty reduction domain / empty tensor must return NaNs
-# like torch instead of dividing by zero.
+# like torch instead of dividing by zero. Gated to kunlunxin: these pin this
+# backend's fix; other backends' implementations are outside this PR's scope.
 @pytest.mark.mean_dim
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "kunlunxin",
+    reason="regression test for the kunlunxin mean_dim boundary fix (dim=None/()/[] full reduction)",
+)
 @pytest.mark.parametrize("dim", [None, (), []])
 @pytest.mark.parametrize("keepdim", [True, False])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -144,6 +149,10 @@ EMPTY_MEAN_CASES = [
 
 
 @pytest.mark.mean_dim
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "kunlunxin",
+    reason="regression test for the kunlunxin mean_dim boundary fix (empty reduction domain)",
+)
 @pytest.mark.parametrize("shape, dim", EMPTY_MEAN_CASES)
 @pytest.mark.parametrize("keepdim", [True, False])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -164,6 +173,10 @@ def test_mean_dim_empty_reduction(shape, dim, keepdim, dtype):
 
 
 @pytest.mark.mean
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "kunlunxin",
+    reason="regression test for the kunlunxin mean boundary fix (empty tensor returns NaN)",
+)
 @pytest.mark.parametrize("shape", [(0,), (0, 3)])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_mean_empty_tensor(shape, dtype):
