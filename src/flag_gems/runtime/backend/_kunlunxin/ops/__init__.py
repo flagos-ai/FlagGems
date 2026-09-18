@@ -316,6 +316,7 @@ from .isnan import isnan
 from .isneginf import isneginf, isneginf_out
 from .isposinf import isposinf
 from .ixor import ixor
+from .jagged_to_padded_dense_forward import jagged_to_padded_dense_forward
 from .kron import kron
 from .kthvalue import kthvalue
 from .layernorm import layer_norm, layer_norm_backward
@@ -1001,6 +1002,7 @@ __all__ = [
     "isneginf_out",
     "isposinf",
     "ixor",
+    "jagged_to_padded_dense_forward",
     "kron",
     "kthvalue",
     "layer_norm",
