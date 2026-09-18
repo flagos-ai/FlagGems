@@ -67,10 +67,6 @@ def less_equal_scalar(A, B):
         and float(B) == float(torch.tensor(float(B), dtype=dtype).item())
     ):
         s = float(B)
-        if math.isfinite(s):
-            raw = _less_equal_scalar_raw(A, s, dtype)
-            if raw is not None:
-                return raw
         if (
             numel >= _LESS_EQUAL_SCALAR_FAST_TILE
             and numel % _LESS_EQUAL_SCALAR_FAST_TILE == 0
@@ -85,36 +81,6 @@ def less_equal_scalar(A, B):
             return _less_equal_scalar_fast_masked(A, s, numel)
     res = less_equal_func_scalar(A, B)
     return res
-
-
-_LESS_EQUAL_SCALAR_MIN_NORM = 1.1754943508222875e-38
-
-
-def _less_equal_scalar_raw(A, s, dtype):
-    """less_equal(A, scalar) via the vendor single-pass payload, or None."""
-    if A.numel() == 0:
-        return None
-    from .lt import _raw_lt_scalar
-
-    if dtype == torch.float16:
-        pred_s = float(
-            torch.tensor(s, dtype=dtype)
-            .nextafter(torch.tensor(float("inf"), dtype=dtype))
-            .item()
-        )
-        return _raw_lt_scalar(A, pred_s)
-    if s == 0.0 or abs(s) >= _LESS_EQUAL_SCALAR_MIN_NORM:
-        s_eff = (
-            _LESS_EQUAL_SCALAR_MIN_NORM
-            if s == 0.0
-            else float(
-                torch.tensor(s, dtype=dtype)
-                .nextafter(torch.tensor(float("inf"), dtype=dtype))
-                .item()
-            )
-        )
-        return _raw_lt_scalar(A, s_eff)
-    return None
 
 
 _LESS_EQUAL_SCALAR_FAST_TILE = 131072

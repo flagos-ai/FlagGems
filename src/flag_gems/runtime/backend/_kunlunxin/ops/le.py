@@ -67,47 +67,12 @@ def le_scalar(A, B):
         and float(B) == float(torch.tensor(float(B), dtype=dtype).item())
     ):
         s = float(B)
-        if math.isfinite(s):
-            raw = _le_scalar_raw(A, s, dtype)
-            if raw is not None:
-                return raw
         if numel >= _LE_SCALAR_FAST_TILE and numel % _LE_SCALAR_FAST_TILE == 0:
             return _le_scalar_fast(A, s, (numel // _LE_SCALAR_FAST_TILE,))
         if numel >= _LE_SCALAR_MASKED_MIN and numel % _LE_SCALAR_FAST_TILE != 0:
             return _le_scalar_fast_masked(A, s, numel)
     res = le_func_scalar(A, B)
     return res
-
-
-_LE_SCALAR_RAW_MIN = 1 << 24
-_LE_SCALAR_MIN_NORM = 1.1754943508222875e-38
-
-
-def _le_scalar_raw(A, s, dtype):
-    """le(A, scalar) via the vendor single-pass payload, or None."""
-    if A.numel() < _LE_SCALAR_RAW_MIN:
-        return None
-    from .lt import _raw_lt_scalar
-
-    if dtype == torch.float16:
-        pred_s = float(
-            torch.tensor(s, dtype=dtype)
-            .nextafter(torch.tensor(float("inf"), dtype=dtype))
-            .item()
-        )
-        return _raw_lt_scalar(A, pred_s)
-    if s == 0.0 or abs(s) >= _LE_SCALAR_MIN_NORM:
-        s_eff = (
-            _LE_SCALAR_MIN_NORM
-            if s == 0.0
-            else float(
-                torch.tensor(s, dtype=dtype)
-                .nextafter(torch.tensor(float("inf"), dtype=dtype))
-                .item()
-            )
-        )
-        return _raw_lt_scalar(A, s_eff)
-    return None
 
 
 _LE_SCALAR_FAST_TILE = 131072
