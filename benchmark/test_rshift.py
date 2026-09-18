@@ -73,7 +73,7 @@ class RshiftScalarOutBenchmark(base.Benchmark):
             yield value, 3, {"out": out}
 
 
-@pytest.mark.rshift
+@pytest.mark.rshift_tensor
 def test_rshift():
     bench = RshiftBenchmark(
         op_name="rshift",
@@ -83,7 +83,7 @@ def test_rshift():
     bench.run()
 
 
-@pytest.mark.rshift
+@pytest.mark.rshift_scalar
 def test_rshift_scalar():
     bench = RshiftScalarBenchmark(
         op_name="rshift_scalar",
@@ -93,7 +93,7 @@ def test_rshift_scalar():
     bench.run()
 
 
-@pytest.mark.rshift_out
+@pytest.mark.rshift_tensor_out
 def test_rshift_tensor_out():
     bench = RshiftOutBenchmark(
         op_name="rshift_tensor_out",
@@ -103,7 +103,7 @@ def test_rshift_tensor_out():
     bench.run()
 
 
-@pytest.mark.rshift_out
+@pytest.mark.rshift_scalar_out
 def test_rshift_scalar_out():
     bench = RshiftScalarOutBenchmark(
         op_name="rshift_scalar_out",

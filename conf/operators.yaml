@@ -12458,11 +12458,38 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
-- id: rshift
-  description: Applies a bitwise right shift to an integer tensor with a tensor or
-    scalar shift value.
+- id: rshift_scalar
+  description: Applies a bitwise right shift to an integer tensor with a scalar shift
+    value.
   for:
   - __rshift__.Scalar
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: rshift_scalar_out
+  description: 'A variant of `rshift()` that assigns the output to the given `out`
+    parameter, with a scalar shift value.
+
+    '
+  for:
+  - __rshift__.Scalar_out
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: rshift_tensor
+  description: Applies a bitwise right shift to an integer tensor with a tensor shift
+    value.
+  for:
   - __rshift__.Tensor
   labels:
   - aten
@@ -12472,13 +12499,12 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
-- id: rshift_out
+- id: rshift_tensor_out
   description: 'A variant of `rshift()` that assigns the output to the given `out`
-    parameter.
+    parameter, with a tensor shift value.
 
     '
   for:
-  - __rshift__.Scalar_out
   - __rshift__.Tensor_out
   labels:
   - aten

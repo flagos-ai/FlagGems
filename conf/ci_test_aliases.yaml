@@ -61,6 +61,10 @@ special_zeta_scalar_tensor: test_special_zeta
 special_zeta_tensor_scalar: test_special_zeta
 
 # Operators tested in combined files or with different naming
+rshift_scalar: test_rshift
+rshift_tensor: test_rshift
+rshift_scalar_out: test_rshift
+rshift_tensor_out: test_rshift
 batch_norm_backward: test_batch_norm
 multi_margin_loss_backward: test_multi_margin_loss
 multi_margin_loss_backward_out: test_multi_margin_loss
