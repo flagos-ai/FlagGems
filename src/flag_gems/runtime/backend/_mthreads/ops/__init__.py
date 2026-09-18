@@ -41,6 +41,7 @@ from .conv_transpose1d import conv_transpose1d, conv_transpose1d_output_size
 from .conv_transpose2d import conv_transpose2d
 from .copy import copy_
 from .cudnn_convolution import cudnn_convolution
+from .deg2rad_ import deg2rad_
 from .div import (
     div_mode,
     div_mode_,
@@ -333,6 +334,7 @@ if get_device_capability(current_device())[0] >= 3:
             "ormqr",
             "cholesky_inverse",
             "square_",
+            "deg2rad_",
         ]
     )
 
