@@ -223,6 +223,11 @@ def calculate_batch_indices_kernel(
     pid = tl.program_id(axis=0)
 
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    # batch_indices holds batch_size * 2 entries with batch_size == out_batch0 *
+    # out_batch1. Without this mask the tail lanes of the last block (offset >=
+    # batch_size) store past the buffer, corrupting adjacent GPU allocations and
+    # causing non-deterministic failures in unrelated tests.
+    mask = offset < out_batch0 * out_batch1
 
     out_indice1 = offset % out_batch1
     remaining = offset // out_batch1
@@ -234,8 +239,8 @@ def calculate_batch_indices_kernel(
 
     a_store_offset = 2 * offset
     b_store_offset = 2 * offset + 1
-    tl.store(batch_indices_ptr + a_store_offset, a_idx)
-    tl.store(batch_indices_ptr + b_store_offset, b_idx)
+    tl.store(batch_indices_ptr + a_store_offset, a_idx, mask=mask)
+    tl.store(batch_indices_ptr + b_store_offset, b_idx, mask=mask)
 
 
 def _scalar_mul(a, b):
