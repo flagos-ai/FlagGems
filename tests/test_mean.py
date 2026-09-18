@@ -137,8 +137,8 @@ def test_mean_dim_full_reduction(dim, keepdim, dtype):
 
 
 EMPTY_MEAN_CASES = [
-    ((0, 3), 0),        # empty reduction domain, leading axis
-    ((3, 0), 1),        # empty reduction domain, trailing axis
+    ((0, 3), 0),  # empty reduction domain, leading axis
+    ((3, 0), 1),  # empty reduction domain, trailing axis
     ((0, 4, 0), [0, 2]),  # multi-axis, empty reduction domain
 ]
 
