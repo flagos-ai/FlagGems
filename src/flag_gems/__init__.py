@@ -290,6 +290,10 @@ _FULL_CONFIG = (
     ("_segment_reduce_backward", _segment_reduce_backward),
     ("_segment_reduce_backward.out", _segment_reduce_backward_out),
     ("_sobol_engine_ff_", _sobol_engine_ff_),
+    (
+        "_sobol_engine_initialize_state_",
+        _sobol_engine_initialize_state_,
+    ),
     ("_softmax", softmax),
     ("_softmax.out", softmax_out),
     ("_softmax_backward_data", softmax_backward),
