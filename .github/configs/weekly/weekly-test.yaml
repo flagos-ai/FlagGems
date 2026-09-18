@@ -34,3 +34,5 @@ backends:
     enabled: true
   P800:
     enabled: true
+  W7900D:
+    enabled: true

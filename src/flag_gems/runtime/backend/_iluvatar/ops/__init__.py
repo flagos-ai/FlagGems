@@ -34,7 +34,10 @@ from .hadamard_transform import hadamard_transform
 from .histc import histc
 from .index_select_backward import index_select_backward
 from .linalg_cholesky import linalg_cholesky
-from .linalg_matrix_norm import linalg_matrix_norm
+from .linalg_lstsq import linalg_lstsq
+from .linalg_matrix_norm import linalg_matrix_norm, linalg_matrix_norm_out
+from .linalg_matrix_power import linalg_matrix_power, linalg_matrix_power_out
+from .linalg_norm import linalg_norm
 from .linalg_qr import linalg_qr, linalg_qr_out
 from .linalg_solve_triangular import (
     linalg_solve_triangular,
@@ -46,15 +49,19 @@ from .log_normal_ import log_normal_
 from .matmul_bf16 import matmul_bf16
 from .matmul_int8 import matmul_int8
 from .mm import mm, mm_out
+from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .narrow_copy import narrow_copy
 from .nonzero_numpy import nonzero_numpy
+from .pad_sequence import pad_sequence
 from .permute_copy import permute_copy
+from .randperm import randperm
 from .renorm_ import renorm_
 from .repeat import repeat
 from .repeat_interleave import repeat_interleave_self_int
 from .resolve_neg import resolve_neg
 from .scatter_add import scatter_add_
 from .softplus import softplus_backward
+from .sort import sort, sort_stable
 from .sparse_sampled_addmm import sparse_sampled_addmm, sparse_sampled_addmm_out
 from .special_chebyshev_polynomial_w import (
     special_chebyshev_polynomial_w,
@@ -101,7 +108,12 @@ __all__ = [
     "histc",
     "index_select_backward",
     "linalg_cholesky",
+    "linalg_lstsq",
     "linalg_matrix_norm",
+    "linalg_matrix_norm_out",
+    "linalg_matrix_power",
+    "linalg_matrix_power_out",
+    "linalg_norm",
     "linalg_qr",
     "linalg_qr_out",
     "linalg_solve_triangular",
@@ -113,9 +125,15 @@ __all__ = [
     "matmul_int8",
     "mm",
     "mm_out",
+    "nanmedian",
+    "nanmedian_dim",
+    "nanmedian_dim_values",
+    "nanmedian_out",
     "narrow_copy",
     "nonzero_numpy",
+    "pad_sequence",
     "permute_copy",
+    "randperm",
     "renorm_",
     "repeat",
     "repeat_interleave_self_int",
@@ -123,6 +141,8 @@ __all__ = [
     "run",
     "scatter_add_",
     "softplus_backward",
+    "sort",
+    "sort_stable",
     "sparse_sampled_addmm",
     "sparse_sampled_addmm_out",
     "special_chebyshev_polynomial_w",
