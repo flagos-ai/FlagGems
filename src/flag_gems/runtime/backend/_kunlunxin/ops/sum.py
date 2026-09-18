@@ -610,8 +610,9 @@ def _tle_fold(inp, part, B, N, K, nblock, kblock, scale=1.0):
         _TLE_TL_DTYPE[c.dtype],
         # A one-row tile cannot be rotated at all, and neither can one whose per-core
         # slice is under a vector wide (see _TLE_FOLD_MIN_STAGE_BYTES) -- both fail in
-        # the same lowering. The second stage is the only NBLOCK == 1 caller and it is
-        # ~3% of the work, so it runs synchronous.
+        # the same lowering. Those callers are the NBLOCK == 1 ones (the second stage,
+        # and the first stage when no power-of-two block divides N); they are a small
+        # share of the work, so they run synchronous.
         (
             _TLE_FOLD_STAGES
             if nblock > 1
@@ -693,23 +694,13 @@ def _tle_sum_mid(inp, out, dims, N, scale=1.0):
     nblock = _TLE_FOLD_TILE // kblock
     while nblock > 1 and (N % nblock or nblock >= N):
         nblock >>= 1
-    if nblock < 2:
-        # No power-of-two block divides N (N prime, N=7), and the reduction axis cannot
-        # take the shift trick -- overlapping rows would be counted twice. Run one pass
-        # with NBLOCK == 1 instead: the accumulator is then the whole result, so this
-        # stage writes `out` directly and there is no second stage. One row per transfer
-        # makes it DMA-issue bound, but it is correct and it keeps every dtype off the
-        # pointer fallback.
-        with torch_device_fn.device(inp.device):
-            _tle_fold(inp, out, B, N, K, 1, kblock, scale)
-        logger.debug(
-            "GEMS_KUNLUNXIN SUM_DIM tle fold single-pass B=%d N=%d K=%d tile=1x%d",
-            B,
-            N,
-            K,
-            kblock,
-        )
-        return True
+    # NBLOCK == 1 when no power-of-two block divides N (N prime, N = 7): the reduction
+    # axis cannot take the shift trick -- overlapping rows would be counted twice. One
+    # row per transfer makes that stage DMA-issue bound, and it used to skip the second
+    # fold by writing `out` directly with SCALE applied. That store is exactly the
+    # `(acc * SCALE).to(<16-bit>)` shape that corrupts the last lanes of a 256-element
+    # block (mean_dim bf16 flake, 2026-09-18), so NBLOCK == 1 now runs the same two
+    # folds as every other shape: SCALE only ever lands on the fp32 partials.
     acc_dtype = _resolve_acc_dtype(inp.dtype)
     part = torch.empty((nblock, B, K), dtype=acc_dtype, device=inp.device)
     plane = B * K
@@ -725,8 +716,8 @@ def _tle_sum_mid(inp, out, dims, N, scale=1.0):
     while kblock2 > 1 and (kblock2 > plane or plane // kblock2 < 4):
         kblock2 >>= 1
     with torch_device_fn.device(inp.device):
-        _tle_fold(inp, part, B, N, K, nblock, kblock)
-        _tle_fold(part, out, 1, nblock, plane, 1, kblock2, scale)
+        _tle_fold(inp, part, B, N, K, nblock, kblock, scale)
+        _tle_fold(part, out, 1, nblock, plane, 1, kblock2)
     logger.debug(
         "GEMS_KUNLUNXIN SUM_DIM tle fold B=%d N=%d K=%d tile=%dx%d then %dx%d",
         B,
