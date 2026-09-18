@@ -30,9 +30,33 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+# The self-hosted runner injects a proxy into the container that requires
+# auth (returns 407) and breaks it. The container can reach GitHub directly,
+# so clear the proxy vars to bypass it.
+# The runner injects an auth-required 407 proxy into the container; GitHub is
+# reachable directly. Setting the proxy vars to '' fails (an empty container
+# env renders as `docker create -e "https_proxy"`, passing the host value
+# through), so bypass the proxy for every host with no_proxy=*, honored by
+# octokit's proxy-from-env, curl and git. Lowercase no_proxy wins in
+# proxy-from-env (set per container below); NO_PROXY here covers step processes.
+env:
+  NO_PROXY: '*'
+  # checkout registers the workspace as a safe git directory only in a
+  # throwaway HOME; the check scripts (derive_changed_operators, etc.) then run
+  # git with HOME=/github/home and git rejects the dir as dubious ownership
+  # ("fatal: not a git repository"). Trust it for every git call in the job via
+  # git's env-based config so we don't need a setup step in each of the 9 jobs.
+  GIT_CONFIG_COUNT: '1'
+  GIT_CONFIG_KEY_0: safe.directory
+  GIT_CONFIG_VALUE_0: '*'
+
 jobs:
   derive-changed-operators:
-    runs-on: ubuntu-latest
+    runs-on: basic-runner-cpu
+    container:
+      image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
+      env:
+        no_proxy: '*'
     outputs:
       changed_operators: ${{ steps.derive.outputs.changed_operators }}
       changed_files: ${{ steps.derive.outputs.changed_files }}
@@ -41,128 +65,132 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
-        with:
-          python-version: '3.11'
       - name: Install dependencies
         run: pip install pyyaml
       - name: Derive changed operators
         id: derive
         run: |
-          python tools/ci_checks/derive_changed_operators.py \
+          python3 tools/ci_checks/derive_changed_operators.py \
             --base "${{ github.event.pull_request.base.sha }}" \
             --head "${{ github.event.pull_request.head.sha }}"
 
   check-operators-yaml:
-    runs-on: ubuntu-latest
+    runs-on: basic-runner-cpu
+    container:
+      image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
+      env:
+        no_proxy: '*'
     needs: derive-changed-operators
     if: needs.derive-changed-operators.outputs.has_changes == 'true'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
-        with:
-          python-version: '3.11'
       - name: Install dependencies
         run: pip install pyyaml
       - name: Check operators.yaml
         run: |
-          python tools/ci_checks/check_operators_yaml.py \
+          python3 tools/ci_checks/check_operators_yaml.py \
             --operators '${{ needs.derive-changed-operators.outputs.changed_operators }}'
 
   check-init-exports:
-    runs-on: ubuntu-latest
+    runs-on: basic-runner-cpu
+    container:
+      image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
+      env:
+        no_proxy: '*'
     needs: derive-changed-operators
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
-        with:
-          python-version: '3.11'
       - name: Check __init__.py exports and registry
         run: python tools/ci_checks/check_init_exports.py
 
   check-kernelgen-tests:
-    runs-on: ubuntu-latest
+    runs-on: basic-runner-cpu
+    container:
+      image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
+      env:
+        no_proxy: '*'
     needs: derive-changed-operators
     if: needs.derive-changed-operators.outputs.has_changes == 'true'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
-        with:
-          python-version: '3.11'
       - name: Check changed test files for use_gems
         run: |
-          python tools/ci_checks/check_kernelgen_tests.py \
+          python3 tools/ci_checks/check_kernelgen_tests.py \
             --changed-files '${{ needs.derive-changed-operators.outputs.changed_files }}' \
             --base "${{ github.event.pull_request.base.sha }}" \
             --head "${{ github.event.pull_request.head.sha }}"
 
   check-operator-markers:
-    runs-on: ubuntu-latest
+    runs-on: basic-runner-cpu
+    container:
+      image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
+      env:
+        no_proxy: '*'
     needs: derive-changed-operators
     if: needs.derive-changed-operators.outputs.has_changes == 'true'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
-        with:
-          python-version: '3.11'
       - name: Install dependencies
         run: pip install pyyaml
       - name: Check operator test files and markers
         run: |
-          python tools/ci_checks/check_operator_markers.py \
+          python3 tools/ci_checks/check_operator_markers.py \
             --operators '${{ needs.derive-changed-operators.outputs.changed_operators }}'
 
   check-aten-operators:
-    runs-on: ubuntu-latest
+    runs-on: basic-runner-cpu
+    container:
+      image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
+      env:
+        no_proxy: '*'
     needs: derive-changed-operators
     if: needs.derive-changed-operators.outputs.has_changes == 'true'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
-        with:
-          python-version: '3.11'
       - name: Install dependencies
         run: pip install pyyaml
       - name: Check aten operator names
         run: |
-          python tools/ci_checks/check_aten_operators.py \
+          python3 tools/ci_checks/check_aten_operators.py \
             --operators '${{ needs.derive-changed-operators.outputs.changed_operators }}'
 
   # --- Warning-only checks (Phase 3) ---
   # These emit ::warning annotations but always exit 0
 
   check-api-logs:
-    runs-on: ubuntu-latest
+    runs-on: basic-runner-cpu
+    container:
+      image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
+      env:
+        no_proxy: '*'
     needs: derive-changed-operators
     if: needs.derive-changed-operators.outputs.has_changes == 'true'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
-        with:
-          python-version: '3.11'
       - name: Install dependencies
         run: pip install pyyaml
       - name: Check API logging convention
         run: |
-          python tools/ci_checks/check_api_logs.py \
+          python3 tools/ci_checks/check_api_logs.py \
             --operators '${{ needs.derive-changed-operators.outputs.changed_operators }}'
 
   check-benchmark-coverage:
-    runs-on: ubuntu-latest
+    runs-on: basic-runner-cpu
+    container:
+      image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
+      env:
+        no_proxy: '*'
     needs: derive-changed-operators
     if: needs.derive-changed-operators.outputs.has_changes == 'true'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
-        with:
-          python-version: '3.11'
       - name: Install dependencies
         run: pip install pyyaml
       - name: Check benchmark coverage
         run: |
-          python tools/ci_checks/check_performance_reference.py \
+          python3 tools/ci_checks/check_performance_reference.py \
             --operators '${{ needs.derive-changed-operators.outputs.changed_operators }}'
 
   # Gate job: aggregates the required checks above, which are skipped for
@@ -170,7 +198,11 @@ jobs:
   # as the required status check in branch protection rules, otherwise
   # skipped checks block merges forever.
   rule-check-required:
-    runs-on: ubuntu-latest
+    runs-on: basic-runner-cpu
+    container:
+      image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
+      env:
+        no_proxy: '*'
     needs:
       - derive-changed-operators
       - check-operators-yaml
