@@ -18,17 +18,20 @@ import torch
 from . import base, consts, utils
 
 
-def input_fn(shape, dtype, device):
+def norm_except_dim_input_fn(shape, dtype, device):
     inp = utils.generate_tensor_input(shape, dtype, device)
-    yield inp, {"return_inverse": True, "return_counts": False}
+    # pow=2, dim=0 are the torch defaults; yield the tensor alone so the norm
+    # keeps the leading dim and reduces the rest.
+    yield inp,
 
 
-@pytest.mark.unique_consecutive
-def test_unique_consecutive():
+@pytest.mark.norm_except_dim
+def test_norm_except_dim():
     bench = base.GenericBenchmark2DOnly(
-        input_fn=input_fn,
-        op_name="unique_consecutive",
-        torch_op=torch.unique_consecutive,
+        input_fn=norm_except_dim_input_fn,
+        op_name="norm_except_dim",
+        torch_op=torch.norm_except_dim,
         dtypes=consts.FLOAT_DTYPES,
     )
+
     bench.run()

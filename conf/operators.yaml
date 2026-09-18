@@ -39,6 +39,23 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: _linalg_slogdet
+  description: 'Computes the sign and natural logarithm of the absolute value of the
+
+    determinant of a square matrix using LU decomposition with partial
+
+    pivoting, returning the intermediate LU factorization and pivot buffer.
+
+    '
+  for:
+  - _linalg_slogdet
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.4'
 - id: _reshape_alias
   description: 'Creates a view of the input tensor with the given size and stride,
 
@@ -3391,6 +3408,21 @@ ops:
   - KernelGen
   kind:
   - NeuralNetwork
+  stages:
+  - alpha: '5.4'
+- id: cosine_similarity
+  description: |
+    Computes the cosine similarity between x1 and x2 along dim, broadcasting the
+    inputs to a common shape first. Returns <x1, x2> / (max(||x1||_2, eps) *
+    max(||x2||_2, eps)) reduced over dim, with eps guarding against zero norms.
+  for:
+  - cosine_similarity
+  labels:
+  - aten
+  - nn.functional
+  - KernelGen
+  kind:
+  - Reduction
   stages:
   - alpha: '5.4'
 - id: count_nonzero
@@ -9550,6 +9582,21 @@ ops:
   - Tensor
   stages:
   - stable: '2.1'
+- id: masked_softmax
+  description: |
+    Apply a softmax over `dim` while excluding positions where the boolean
+    mask is True. mask_type selects how the mask broadcasts: 2 for an
+    elementwise mask, 1 for a (B, L) attention padding mask, and 0 for an
+    (L, L) source mask.
+  for:
+  - _masked_softmax
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: masked_softmax_backward
   description: |
     Computes the input gradient of a masked softmax: masked positions are
@@ -9678,6 +9725,18 @@ ops:
     '
   for:
   - max_pool2d_with_indices_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
+- id: max_pool3d
+  description: Applies a 3D max pooling over an input signal composed of several input
+    planes.
+  for:
+  - max_pool3d
   labels:
   - aten
   - KernelGen
@@ -9971,6 +10030,25 @@ ops:
   - pointwise
   kind:
   - NeuralNetwork
+  stages:
+  - alpha: '5.4'
+- id: mixed_dtypes_linear
+  description: 'Weight-only quantized matrix multiplication (CUTLASS fpA_intB semantics).
+
+    Computes out = activation(input @ dequant(weight) + bias) where weight is uint8
+
+    (int8 mode: (u-128)*scale or packed int4 mode: (u-8)*scale). Bias and activation
+
+    are optional.
+
+    '
+  for:
+  - _mixed_dtypes_linear
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
   stages:
   - alpha: '5.4'
 - id: mkldnn_rnn_layer
@@ -11078,6 +11156,21 @@ ops:
   - Reduction
   stages:
   - alpha: '5.4'
+- id: norm_except_dim
+  description: 'Computes the p-norm of a tensor over all dimensions except the given
+    one, keeping that dimension so the result broadcasts against the input.
+
+    '
+  for:
+  - norm_except_dim
+  labels:
+  - aten
+  - KernelGen
+  - reduction
+  kind:
+  - Reduction
+  stages:
+  - alpha: '5.4'
 - id: norm_scalar
   description: A variant of `norm` that computes the norm over all elements.
   for:
@@ -11369,6 +11462,21 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '2.1'
+- id: pad_circular
+  description: |
+    Pads the last one to three dimensions of an N-D tensor using circular
+    (periodic wrap-around) boundary values. Negative padding crops.
+    This is an IR representation, not a public API.
+  for:
+  - _pad_circular
+  labels:
+  - aten
+  - IR
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: pad_sequence
   description: Pads a list of variable length tensors with a given padding value and
     stacks them into a single padded batch tensor.
@@ -11483,6 +11591,17 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: pinverse
+  description: Computes the pseudoinverse of a matrix.
+  for:
+  - pinverse
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.4'
 - id: pixel_shuffle
   description: Rearranges elements in a tensor to a new tensor of different shape.
   for:
@@ -11538,6 +11657,18 @@ ops:
   - Math
   stages:
   - beta: '5.3'
+- id: poisson_nll_loss
+  description: Computes the Poisson negative log likelihood loss.
+  for:
+  - poisson_nll_loss
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  - Reduction
+  stages:
+  - alpha: '5.4'
 - id: polar
   description: 'Constructs a complex tensor whose elements are Cartesian coordinates
     corresponding to
@@ -15366,6 +15497,17 @@ ops:
   - MoE
   kind:
   - NeuralNetwork
+  stages:
+  - alpha: '5.4'
+- id: standard_gamma_grad
+  description: Triton kernel implementation for _standard_gamma_grad.
+  for:
+  - _standard_gamma_grad
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
   stages:
   - alpha: '5.4'
 - id: std
