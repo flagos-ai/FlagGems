@@ -77,6 +77,7 @@ from .special_hermite_polynomial_h import (
 from .special_legendre_polynomial_p import special_legendre_polynomial_p
 from .special_multigammaln import special_multigammaln
 from .special_round import special_round
+from .special_round_out import special_round_out
 from .special_shifted_chebyshev_polynomial_w import (
     special_shifted_chebyshev_polynomial_w,
 )
@@ -159,6 +160,7 @@ __all__ = [
     "special_legendre_polynomial_p",
     "special_multigammaln",
     "special_round",
+    "special_round_out",
     "special_shifted_chebyshev_polynomial_w",
     "tile",
     "topk_w8a16_fp8",
