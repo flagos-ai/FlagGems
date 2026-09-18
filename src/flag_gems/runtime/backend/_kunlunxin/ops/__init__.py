@@ -451,6 +451,7 @@ from .ones_like import ones_like
 from .ormqr import ormqr
 from .pad import constant_pad_nd, pad
 from .pairwise_distance import pairwise_distance
+from .pdist_forward import pdist_forward
 from .per_token_group_quant_fp8 import SUPPORTED_FP8_DTYPE, per_token_group_quant_fp8
 from .permute_copy import permute_copy
 from .pixel_unshuffle import pixel_unshuffle, pixel_unshuffle_out
@@ -1174,6 +1175,7 @@ __all__ = [
     "pad",
     "pairwise_distance",
     "pdist",
+    "pdist_forward",
     "per_token_group_quant_fp8",
     "permute_copy",
     "pixel_unshuffle",
