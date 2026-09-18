@@ -29,6 +29,7 @@ from .channel_shuffle import channel_shuffle
 from .conv2d import conv2d
 from .conv_transpose1d import conv_transpose1d, conv_transpose1d_output_size
 from .conv_transpose2d import conv_transpose2d
+from .copy import copy_
 from .cudnn_convolution import cudnn_convolution
 from .div import (
     div_mode,
@@ -137,6 +138,7 @@ __all__ = [
     "conv_transpose1d",
     "conv_transpose1d_output_size",
     "conv_transpose2d",
+    "copy_",
     "cudnn_convolution",
     "div_mode",
     "div_mode_",
