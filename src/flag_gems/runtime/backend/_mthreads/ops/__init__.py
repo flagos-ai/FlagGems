@@ -92,6 +92,7 @@ from .max_pool2d_with_indices_backward import max_pool2d_with_indices_backward
 from .median import median, median_dim, median_dim_values, median_out
 from .min import min, min_dim
 from .mish import mish, mish_
+from .mish_ import mish_
 from .mode import mode
 from .mul import mul, mul_
 from .mvlgamma import mvlgamma
