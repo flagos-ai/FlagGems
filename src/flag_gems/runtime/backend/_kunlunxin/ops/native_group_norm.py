@@ -143,6 +143,7 @@ def _tle_group_norm_fused_kernel(
     WIDE: tl.constexpr,
     IN_DTYPE: tl.constexpr,
     OUT_DTYPE: tl.constexpr,
+    CDT: tl.constexpr,
     TAIL: tl.constexpr,
     HAS_W: tl.constexpr,
     HAS_B: tl.constexpr,
@@ -230,16 +231,16 @@ def _tle_group_norm_fused_kernel(
                 tle.gpu.copy(B, b_smem, [C], [0])
         for coff in tl.range(0, WT, RB):
             tle.gpu.copy(x_desc, buf, [XBLOCK, RB], [row0, coff])
-            xv = tl.load(buf_ptr).to(tl.float32)
-            yv = (xv - mean[:, None]) * rstd[:, None]
+            xv = tl.load(buf_ptr).to(CDT)
+            yv = (xv - mean[:, None].to(CDT)) * rstd[:, None].to(CDT)
             if HAS_W or HAS_B:
                 ch = grp[:, None] * group_size + ((coff + scols) // HW)
                 if TAIL:
                     ch = tl.minimum(ch, CBLK - 1)
                 if HAS_W:
-                    yv = yv * tl.load(tle.gpu.local_ptr(w_smem, (ch,))).to(tl.float32)
+                    yv = yv * tl.load(tle.gpu.local_ptr(w_smem, (ch,))).to(CDT)
                 if HAS_B:
-                    yv = yv + tl.load(tle.gpu.local_ptr(b_smem, (ch,))).to(tl.float32)
+                    yv = yv + tl.load(tle.gpu.local_ptr(b_smem, (ch,))).to(CDT)
             tl.store(buf_ptr, yv.to(IN_DTYPE))
             tle.gpu.copy(buf, y_desc, [XBLOCK, RB], [row0, coff])
     else:
@@ -248,37 +249,39 @@ def _tle_group_norm_fused_kernel(
         )
         a_ptr = tle.gpu.local_ptr(a_lmem, (rows, cols))
         tle.gpu.copy(x_desc, a_lmem, [XBLOCK, WT], [row0, 0])
-        x = tl.load(a_ptr).to(tl.float32)
+        x = tl.load(a_ptr)
+        xf = x.to(tl.float32)
         if TAIL:  # padding columns must not pollute the reduce
-            x = tl.where(cols < L, x, 0.0)
-        mean = tl.sum(x, 1) / L
-        var = tl.maximum(tl.sum(x * x, 1) / L - mean * mean, 0.0)
+            xf = tl.where(cols < L, xf, 0.0)
+        mean = tl.sum(xf, 1) / L
+        var = tl.maximum(tl.sum(xf * xf, 1) / L - mean * mean, 0.0)
         rstd = rsqrt(var + eps)
-        y = (x - mean[:, None]) * rstd[:, None]
+        # Affine in the compute dtype CDT: NATIVE for fp16/fp32 (XPU3 has fp16
+        # vector ops), only f32 for bf16 (no bf16 vector instruction). Only the
+        # reduce is forced to f32 for accumulation precision. This drops the
+        # self-inflicted fp16 -> f32 upcast/downcast that made fp16 lag fp32.
+        xc = x.to(CDT)
+        y = (xc - mean[:, None].to(CDT)) * rstd[:, None].to(CDT)
         if HAS_W or HAS_B:
             grp = (row0 + rid) % num_groups
             ch = grp[:, None] * group_size + (cols // HW)
             if TAIL:
-                # WT is the npo2 padding of L, and the gather has no mask: a
-                # padding column j >= L computes ch = grp*group_size + j//HW
-                # one PAST the [CBLK] smem buffer (e.g. (16,16,8,48): CBLK 16,
-                # padding j//48 = 2 -> ch 16) and the out-of-bounds SM read
-                # faults the card. Valid columns always have ch <= C-1 <=
-                # CBLK-1, so clamping to CBLK-1 only redirects the discarded
-                # padding lanes.
+                # A padding column j >= L computes ch one PAST the [CBLK] smem
+                # buffer and the OOB read faults the card; valid columns always
+                # have ch <= C-1 <= CBLK-1, so clamp only redirects discards.
                 ch = tl.minimum(ch, CBLK - 1)
             if HAS_W:
                 w_smem = tle.gpu.alloc(
                     [CBLK], dtype=IN_DTYPE, layout=None, scope=tle.gpu.smem
                 )
                 tle.gpu.copy(W, w_smem, [C], [0])
-                y = y * tl.load(tle.gpu.local_ptr(w_smem, (ch,))).to(tl.float32)
+                y = y * tl.load(tle.gpu.local_ptr(w_smem, (ch,))).to(CDT)
             if HAS_B:
                 b_smem = tle.gpu.alloc(
                     [CBLK], dtype=IN_DTYPE, layout=None, scope=tle.gpu.smem
                 )
                 tle.gpu.copy(B, b_smem, [C], [0])
-                y = y + tl.load(tle.gpu.local_ptr(b_smem, (ch,))).to(tl.float32)
+                y = y + tl.load(tle.gpu.local_ptr(b_smem, (ch,))).to(CDT)
         tl.store(a_ptr, y.to(IN_DTYPE))
         tle.gpu.copy(a_lmem, y_desc, [XBLOCK, WT], [row0, 0])
 
@@ -372,6 +375,11 @@ def _tle_group_norm_fused(
     )
     w_t = weight if has_w else dummy
     b_t = bias if has_b else dummy
+    # Affine compute dtype: the native input dtype for ALL of fp16/fp32/bf16.
+    # bf16 needs no explicit f32 detour -- triton/tle-dtype-convert inserts the
+    # bf16<->f32 conversion implicitly (XPU3 has no bf16 vector op). Only the
+    # reduce is pinned to f32 for accumulation precision.
+    cdt = tl_dtype
 
     _tle_group_norm_fused_kernel[grid](
         TensorDescriptor.from_tensor(input.view(m_grp, L), [xblock, WT]),
@@ -393,6 +401,7 @@ def _tle_group_norm_fused(
         wide,
         tl_dtype,
         tl_dtype,
+        cdt,
         WT != L,
         has_w,
         has_b,
