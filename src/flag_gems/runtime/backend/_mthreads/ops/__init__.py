@@ -345,6 +345,7 @@ if get_device_capability(current_device())[0] >= 3:
             "silu_backward",
             "log2_",
             "fix",
+            "feature_dropout",
         ]
     )
 
