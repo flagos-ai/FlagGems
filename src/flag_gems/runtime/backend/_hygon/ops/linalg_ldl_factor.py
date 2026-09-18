@@ -183,3 +183,8 @@ def run(self, *, hermitian=False):
 
 # Alias for FlagGems import convention
 linalg_ldl_factor = run
+
+# Backward-compatible alias: the generic layer registers this op under the
+# symbol ldl_factor (see flag_gems/__init__.py _FULL_CONFIG), so the backend
+# must expose that name for the override to take effect.
+ldl_factor = run
