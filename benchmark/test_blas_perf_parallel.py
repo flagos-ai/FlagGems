@@ -1081,7 +1081,7 @@ def _mm_w8a8_fp8_output_dtype(a):
     return torch.bfloat16
 
 
-def _mm_w8a8_fp8_out_cached(a, b):
+def _mm_w8a8_fp8_out_cached(a, b, scale_a, scale_b):
     out_dtype = _mm_w8a8_fp8_output_dtype(a)
     device_index = a.device.index if a.device.index is not None else -1
     key = (device_index, a.shape[0], b.shape[1], out_dtype)
@@ -1094,15 +1094,36 @@ def _mm_w8a8_fp8_out_cached(a, b):
     else:
         _MM_W8A8_FP8_OUT_CACHE.pop(key)
         _MM_W8A8_FP8_OUT_CACHE[key] = out
-    return flag_gems.mm_w8a8_fp8_out(a, b, out=out)
+    return flag_gems.mm_w8a8_fp8_out(a, b, scale_a, scale_b, out=out)
+
+
+def mm_w8a8_fp8_input_fn(b, m, n, k, cur_dtype, device, b_column_major):
+    a = torch.randn((m, k), dtype=torch.float32, device=device).to(cur_dtype)
+    weight = torch.randn((n, k), dtype=torch.float32, device=device).to(cur_dtype).t()
+    # Prepare FP8 inputs and external scales before either path is timed.
+    scale_a = torch.full((1,), 0.5, dtype=torch.float32, device=device)
+    scale_b = torch.full((1,), 1.5, dtype=torch.float32, device=device)
+    yield a, weight, scale_a, scale_b
 
 
 class ParallelMmW8A8Fp8Benchmark(ParallelBlasBenchmark):
     SHAPE_CONFIG_KEYS = ("mm",)
 
+    def should_forward_parallel_dtype(self, dtype_name):
+        # The CLI excludes FP8; each worker uses the same single FP8 dtype.
+        return False
+
+    def get_input_iter(self, cur_dtype):
+        # torch._scaled_mm requires row-major A and column-major B on CUDA.
+        for b, m, n, k in self.shapes:
+            yield from self.input_fn(b, m, n, k, cur_dtype, self.device, True)
+
+    def get_parallel_metric_group_size(self, shape):
+        return 1
+
     def get_latency(self, op, *args, **kwargs):
         if op is not self.torch_op:
-            # Populate prequantization, descriptor, output, and autotune caches
+            # Populate descriptor, output, and autotune caches
             # before CUDA Graph capture so replay measures the FP8 GEMM only.
             for _ in range(2):
                 op(*args, **kwargs)
@@ -1562,11 +1583,26 @@ def test_blas_benchmark(op_name, torch_op, input_fn, bench_cls):
 def test_mm_w8a8_fp8():
     if not hasattr(flag_gems, "mm_w8a8_fp8_out"):
         pytest.skip("mm_w8a8_fp8 benchmark requires the Hopper W8A8 backend")
+
+    def torch_fp8_mm(a, b, scale_a, scale_b):
+        return torch._scaled_mm(
+            a,
+            b,
+            scale_a,
+            scale_b,
+            out_dtype=_mm_w8a8_fp8_output_dtype(a),
+            use_fast_accum=False,
+        )
+
     bench = ParallelMmW8A8Fp8Benchmark(
-        input_fn=mm_input_fn,
+        input_fn=mm_w8a8_fp8_input_fn,
         op_name="mm_w8a8_fp8",
-        torch_op=torch.Tensor.mm,
-        dtypes=FLOAT_DTYPES,
+        torch_op=torch_fp8_mm,
+        dtypes=(
+            [torch.float8_e4m3fn]
+            if flag_gems.vendor_name == "mthreads"
+            else consts.FP8_DTYPES
+        ),
     )
     bench.set_gems(_mm_w8a8_fp8_out_cached)
     bench.run()

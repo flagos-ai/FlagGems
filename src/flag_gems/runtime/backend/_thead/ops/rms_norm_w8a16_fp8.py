@@ -350,11 +350,22 @@ def _get_dequant_weight(x, weight_q, weight_scale, group_size):
         _LAST_DEQUANT_WEIGHT = entry
         return entry[4]
 
-    dequant_weight = (
-        (weight_q.float().reshape(-1, group_size) * weight_scale.float().reshape(-1, 1))
-        .reshape(-1)
-        .to(x.dtype)
-    )
+    numel = weight_q.numel()
+    if numel % group_size == 0:
+        dequant_weight = (
+            (
+                weight_q.float().reshape(-1, group_size)
+                * weight_scale.float().reshape(-1, 1)
+            )
+            .reshape(-1)
+            .to(x.dtype)
+        )
+    else:
+        # The ragged final group keeps reshape(-1, group_size) inapplicable.
+        dequant_weight = (
+            weight_q.float()
+            * weight_scale.float().repeat_interleave(group_size)[:numel]
+        ).to(x.dtype)
     weight_ref = weakref.ref(
         weight_q, lambda dead_ref: _remove_dequant_weight(key, dead_ref)
     )
@@ -466,6 +477,10 @@ def _launch_rms_norm(y, x, w, scale, M, N, eps, group_size):
 def rms_norm_w8a16_fp8(
     x, normalized_shape, weight_q, weight_scale, eps=1e-5, group_size=128
 ):
+    # Zero normalized rows produce an empty output without a kernel launch,
+    # since a zero-sized grid is not meaningful to launch.
+    if x.numel() == 0:
+        return torch.empty_like(x)
     entry = _LAST_DEQUANT_WEIGHT
     if entry is not None and x.is_contiguous():
         try:
@@ -505,19 +520,17 @@ def rms_norm_w8a16_fp8(
     dim = x.ndim - len(normalized_shape)
     M = math.prod(x.shape[:dim])
     N = math.prod(normalized_shape)
-    if N % group_size != 0:
-        raise ValueError(
-            f"normalized_shape product {N} must be divisible by group_size={group_size}"
-        )
     if _FP8_DTYPE is None or weight_q.dtype != _FP8_DTYPE:
         raise TypeError(
             f"PPU W8A16 RMSNorm expects float8_e4m3fn weight, got {weight_q.dtype}"
         )
     if weight_q.numel() != N:
         raise ValueError(f"weight_q numel {weight_q.numel()} != {N} elements")
-    if weight_scale.numel() != N // group_size:
+    # The final group may be ragged, so scales count up to a partial group.
+    num_groups = -(-N // group_size)
+    if weight_scale.numel() != num_groups:
         raise ValueError(
-            f"weight_scale numel {weight_scale.numel()} != {N // group_size} groups"
+            f"weight_scale numel {weight_scale.numel()} != {num_groups} groups"
         )
     if not x.is_contiguous():
         x = x.contiguous()
