@@ -24,6 +24,8 @@ from .avg_pool3d import avg_pool3d_backward
 from .broadcast_tensors import broadcast_tensors
 from .broadcast_to import broadcast_to
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
+from .conv1d import conv1d
+from .conv2d import conv2d
 from .conv_depthwise2d import _conv_depthwise2d
 from .conv_transpose1d import conv_transpose1d
 from .diagonal_scatter import diagonal_scatter
@@ -97,6 +99,8 @@ __all__ = [
     "broadcast_to",
     "cholesky_solve",
     "cholesky_solve_out",
+    "conv1d",
+    "conv2d",
     "conv_transpose1d",
     "diagonal_scatter",
     "div_mode",
