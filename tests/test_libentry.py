@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import gc
 import importlib
 import importlib.util
 import inspect
@@ -22,6 +23,7 @@ import sqlite3
 import sys
 import threading
 import time
+import weakref
 from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
@@ -2186,6 +2188,70 @@ def test_benchmark_config_reuses_kernel_context_and_bypasses_caches(
     }
     assert tuner.do_bench is tuner.original_do_bench
     assert tuner.nargs is None
+
+
+def test_kernel_arguments_are_retained_weakly():
+    """Retaining a call's context must not retain its tensors.
+
+    ``LibTuner.run`` stores the argument tuple of the call it just ran so a
+    later ``benchmark_config`` can replay it. Stored strongly, that made every
+    tuned operator pin the tensors of its most recent call for the rest of the
+    process: for a diffusion model that is hundreds of MiB per card, none of it
+    reachable by the caller and none of it reclaimable.
+    """
+    tensor = torch.zeros(4, device=device.name)
+    kept = libentry_mod._weak_kernel_arg(tensor)
+
+    assert isinstance(kept, weakref.ref), "a tensor argument must be held weakly"
+    assert kept() is tensor
+    resolved = libentry_mod._resolve_weak_kernel_args((kept,))
+    assert resolved[0] is tensor
+    del resolved
+
+    del tensor
+    gc.collect()
+
+    assert kept() is None, "dropping the caller's reference must free the tensor"
+    assert (
+        libentry_mod._resolve_weak_kernel_args((kept,)) is None
+    ), "a dead weakly-held argument means there is no replayable context"
+
+
+def test_weak_retention_leaves_non_tensor_arguments_alone():
+    """Scalars, flags and constexpr strings are kept as they are."""
+    kept = libentry_mod._weak_kernel_arg(32)
+    assert kept == 32
+    assert libentry_mod._resolve_weak_kernel_args((kept, "text")) == (32, "text")
+    assert libentry_mod._resolve_weak_kernel_args(None) is None
+    assert libentry_mod._resolve_weak_kernel_args({"M": 32}) == {"M": 32}
+
+
+def test_run_does_not_pin_its_kernel_arguments(monkeypatch):
+    """End to end: a launch leaves the tensor reclaimable."""
+    configs = [triton.Config({"BLOCK": 8})]
+
+    @libtuner(configs=configs, key=["n_elements"])
+    @triton.jit
+    def retention_kernel(x_ptr, n_elements, BLOCK: tl.constexpr):
+        offsets = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+        mask = offsets < n_elements
+        tl.store(x_ptr + offsets, tl.load(x_ptr + offsets, mask=mask), mask=mask)
+
+    tuner = retention_kernel
+    # Only the launch is stubbed; the retention under test happens before it.
+    monkeypatch.setattr(tuner.fn, "run", lambda *args, **kwargs: None)
+
+    tensor = torch.zeros(8, device=device.name)
+    tuner.run(tensor, 8)
+
+    stored = tuner._last_benchmark_args
+    assert isinstance(stored[0], weakref.ref)
+    assert stored[0]() is tensor
+    assert stored[1] == 8
+
+    del tensor
+    gc.collect()
+    assert stored[0]() is None
 
 
 @pytest.mark.skipif(
