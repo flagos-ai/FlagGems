@@ -143,6 +143,7 @@ from .threshold import threshold, threshold_backward
 from .topk import topk
 from .triu import triu
 from .unique import _unique2
+from .unique_dim import unique_dim
 from .unsafe_index import unsafe_index
 from .unsafe_index_put import unsafe_index_put
 from .upsample_bicubic2d_aa import _upsample_bicubic2d_aa
@@ -334,6 +335,7 @@ __all__ = [
     "threshold_backward",
     "topk",
     "triu",
+    "unique_dim",
     "unsafe_index",
     "unsafe_index_put",
     "upsample_linear1d_backward",

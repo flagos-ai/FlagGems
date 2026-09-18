@@ -836,6 +836,10 @@ from flag_gems.ops.quantized_gru import (
     quantized_gru_input,
 )
 from flag_gems.ops.quantized_lstm import quantized_lstm
+from flag_gems.ops.quantized_max_pool3d import (
+    quantized_max_pool3d,
+    quantized_max_pool3d_out,
+)
 from flag_gems.ops.rad2deg import rad2deg, rad2deg_
 from flag_gems.ops.rand import rand
 from flag_gems.ops.rand_like import rand_like
@@ -2021,6 +2025,8 @@ __all__ = [
     "quantized_gru_impl",
     "quantized_gru_input",
     "quantized_lstm",
+    "quantized_max_pool3d",
+    "quantized_max_pool3d_out",
     "rad2deg",
     "rad2deg_",
     "rand",
