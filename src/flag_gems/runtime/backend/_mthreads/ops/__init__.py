@@ -125,6 +125,7 @@ from .resolve_conj import resolve_conj
 from .rms_norm_w8a16_fp8 import rms_norm_w8a16_fp8
 from .round_ import round_
 from .scatter_reduce import scatter_reduce, scatter_reduce_, scatter_reduce_out
+from .silu_backward import silu_backward
 from .softplus_backward import softplus_backward
 from .sort import sort, sort_stable
 from .special_bessel_j0 import special_bessel_j0
@@ -337,6 +338,7 @@ if get_device_capability(current_device())[0] >= 3:
             "square_",
             "deg2rad_",
             "clip_",
+            "silu_backward",
         ]
     )
 
