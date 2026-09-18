@@ -37,6 +37,7 @@ LDS, so the RDNA4 candidates would be a poor fit for them.
 ARCH_MAP = {
     "gfx1200": "rdna4",
     "gfx1201": "rdna4",
+    "gfx950": "cdna4",
 }
 
 CUSTOMIZED_UNUSED_OPS = (
