@@ -33,15 +33,24 @@ concurrency:
 # The self-hosted runner injects a proxy into the container that requires
 # auth (returns 407) and breaks it. The container can reach GitHub directly,
 # so clear the proxy vars to bypass it.
+# Clear the runner-injected 407 proxy. octokit-style tooling reads the
+# uppercase pair, curl/git the lowercase; a single env map cannot hold both
+# (keys are case-insensitive). The uppercase pair goes here (workflow env,
+# for step processes); the lowercase pair goes in each job's container env
+# (injected into the container process environment, which is what the git
+# subprocess spawned by actions/checkout actually reads).
 env:
-  http_proxy: ''
-  https_proxy: ''
+  HTTP_PROXY: ''
+  HTTPS_PROXY: ''
 
 jobs:
   derive-changed-operators:
     runs-on: basic-runner-cpu
     container:
       image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
+      env:
+        http_proxy: ''
+        https_proxy: ''
     outputs:
       changed_operators: ${{ steps.derive.outputs.changed_operators }}
       changed_files: ${{ steps.derive.outputs.changed_files }}
@@ -63,6 +72,9 @@ jobs:
     runs-on: basic-runner-cpu
     container:
       image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
+      env:
+        http_proxy: ''
+        https_proxy: ''
     needs: derive-changed-operators
     if: needs.derive-changed-operators.outputs.has_changes == 'true'
     steps:
@@ -78,6 +90,9 @@ jobs:
     runs-on: basic-runner-cpu
     container:
       image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
+      env:
+        http_proxy: ''
+        https_proxy: ''
     needs: derive-changed-operators
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -88,6 +103,9 @@ jobs:
     runs-on: basic-runner-cpu
     container:
       image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
+      env:
+        http_proxy: ''
+        https_proxy: ''
     needs: derive-changed-operators
     if: needs.derive-changed-operators.outputs.has_changes == 'true'
     steps:
@@ -105,6 +123,9 @@ jobs:
     runs-on: basic-runner-cpu
     container:
       image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
+      env:
+        http_proxy: ''
+        https_proxy: ''
     needs: derive-changed-operators
     if: needs.derive-changed-operators.outputs.has_changes == 'true'
     steps:
@@ -120,6 +141,9 @@ jobs:
     runs-on: basic-runner-cpu
     container:
       image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
+      env:
+        http_proxy: ''
+        https_proxy: ''
     needs: derive-changed-operators
     if: needs.derive-changed-operators.outputs.has_changes == 'true'
     steps:
@@ -138,6 +162,9 @@ jobs:
     runs-on: basic-runner-cpu
     container:
       image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
+      env:
+        http_proxy: ''
+        https_proxy: ''
     needs: derive-changed-operators
     if: needs.derive-changed-operators.outputs.has_changes == 'true'
     steps:
@@ -153,6 +180,9 @@ jobs:
     runs-on: basic-runner-cpu
     container:
       image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
+      env:
+        http_proxy: ''
+        https_proxy: ''
     needs: derive-changed-operators
     if: needs.derive-changed-operators.outputs.has_changes == 'true'
     steps:
@@ -172,6 +202,9 @@ jobs:
     runs-on: basic-runner-cpu
     container:
       image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
+      env:
+        http_proxy: ''
+        https_proxy: ''
     needs:
       - derive-changed-operators
       - check-operators-yaml

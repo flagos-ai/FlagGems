@@ -30,13 +30,20 @@ on:
 jobs:
   preprocess:
     runs-on: basic-runner-cpu
-    container:
-      image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
     # The self-hosted runner injects an auth-required proxy (407) that breaks
     # the container; it can reach GitHub directly, so clear the proxy vars.
+    # octokit reads the uppercase pair, curl/git the lowercase; a single env
+    # map cannot hold both (keys are case-insensitive), so split them across
+    # the job env (uppercase, for step processes) and the container env
+    # (lowercase, injected into the container environment).
+    container:
+      image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
+      env:
+        http_proxy: ''
+        https_proxy: ''
     env:
-      http_proxy: ''
-      https_proxy: ''
+      HTTP_PROXY: ''
+      HTTPS_PROXY: ''
     concurrency:
       group: unit-test-${{ (github.event.pull_request && contains(github.event.pull_request.title, 'KernelGen')) && 'kg' || github.run_id }}
       cancel-in-progress: false
@@ -198,13 +205,16 @@ jobs:
   # rules, otherwise skipped jobs block merges forever.
   unittest-required:
     runs-on: basic-runner-cpu
+    # Clear the runner-injected 407 proxy: uppercase via job env (step
+    # processes), lowercase via container env (see preprocess for details).
     container:
       image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
-    # The self-hosted runner injects an auth-required proxy (407) that breaks
-    # the container; it can reach GitHub directly, so clear the proxy vars.
+      env:
+        http_proxy: ''
+        https_proxy: ''
     env:
-      http_proxy: ''
-      https_proxy: ''
+      HTTP_PROXY: ''
+      HTTPS_PROXY: ''
     needs:
       - preprocess
       - cpp-op

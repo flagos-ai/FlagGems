@@ -27,12 +27,15 @@ on:
       - reopened
       - synchronize
 
-# The self-hosted runner injects a proxy into the container that requires
-# auth (returns 407) and breaks it. The container can reach GitHub directly,
-# so clear the proxy vars to bypass it.
+# The self-hosted runner injects an auth-required proxy (407) that breaks the
+# container; it can reach GitHub directly, so clear the proxy vars. octokit
+# reads the uppercase pair, curl/git the lowercase; a single env map cannot
+# hold both (keys are case-insensitive). Uppercase goes in the workflow env
+# (step processes); lowercase in the container env (the git subprocess spawned
+# by actions/checkout reads the container process environment).
 env:
-  http_proxy: ''
-  https_proxy: ''
+  HTTP_PROXY: ''
+  HTTPS_PROXY: ''
 
 jobs:
   code-style:
@@ -44,6 +47,15 @@ jobs:
     runs-on: basic-runner-cpu
     container:
       image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
+      env:
+        http_proxy: ''
+        https_proxy: ''
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+    # checkout marks the repo safe only in a throwaway HOME; pre-commit runs
+    # with HOME=/github/home and git rejects the dir as dubious ownership.
+    # Register it in the persistent global config pre-commit actually reads.
+    - name: Mark workspace as a safe git directory
+      shell: bash
+      run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
     - uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd  # v3.0.1
