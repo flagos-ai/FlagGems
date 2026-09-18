@@ -157,17 +157,16 @@ def test_scaled_mm(M, N, K, case):
 
     ref = _reference_scaled_mm(mat1, mat2, scale_a, scale_b, bias, out_dtype)
     scale_result = torch.tensor([2.0], device=flag_gems.device)
-    with flag_gems.use_gems():
-        res = torch._scaled_mm(
-            mat1,
-            mat2,
-            scale_a,
-            scale_b,
-            bias=bias,
-            scale_result=scale_result,
-            out_dtype=out_dtype,
-            use_fast_accum=True,
-        )
+    res = flag_gems.scaled_mm(
+        mat1,
+        mat2,
+        scale_a,
+        scale_b,
+        bias=bias,
+        scale_result=scale_result,
+        out_dtype=out_dtype,
+        use_fast_accum=True,
+    )
 
     target_dtype = out_dtype or dtype
     _assert_scaled_mm_close(res, ref, target_dtype, reduce_dim=K)
@@ -197,18 +196,17 @@ def test_scaled_mm_out(case):
     out = torch.empty((M, N), dtype=target_dtype, device=flag_gems.device)
 
     ref = _reference_scaled_mm(mat1, mat2, scale_a, scale_b, bias, out_dtype)
-    with flag_gems.use_gems():
-        ret = torch.ops.aten._scaled_mm.out(
-            mat1,
-            mat2,
-            scale_a,
-            scale_b,
-            bias=bias,
-            scale_result=None,
-            out_dtype=out_dtype,
-            use_fast_accum=False,
-            out=out,
-        )
+    ret = flag_gems.scaled_mm_out(
+        mat1,
+        mat2,
+        scale_a,
+        scale_b,
+        bias=bias,
+        scale_result=None,
+        out_dtype=out_dtype,
+        use_fast_accum=False,
+        out=out,
+    )
 
     assert ret is out
     _assert_scaled_mm_close(out, ref, target_dtype, reduce_dim=K)
