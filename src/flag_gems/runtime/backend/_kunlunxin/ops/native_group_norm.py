@@ -1,20 +1,13 @@
 import logging
-import os
 
 import torch
 import triton
+import triton.experimental.tle.language as tle
 import triton.language as tl
+from triton.tools.tensor_descriptor import TensorDescriptor
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import tl_extra_shim
-
-try:
-    import triton.experimental.tle.language as tle
-    from triton.tools.tensor_descriptor import TensorDescriptor
-
-    _HAS_TLE = True
-except ImportError:  # triton without the XPU tile-language extension
-    _HAS_TLE = False
 
 logger = logging.getLogger("flag_gems.ops.native_group_norm")
 rsqrt = tl_extra_shim.rsqrt
@@ -66,13 +59,7 @@ _TLE_CLUSTERS = 8
 # The SM computed-index gather this kernel needs is CORRECT as of the
 # tritonxpu-tle-core-tiling fixes (anchor scan skipping [M,1] row-vector
 # candidates, the cyclic 1D make_range, the bf16 SM load) -- see
-# sm_gather_task/HANDOFF.md for the chain. What remains is a ROUTING decision:
-# the SM weight/bias gather is a scalar per-register chain, so fusion only pays
-# on an unpadded narrow row with few groups (measured: (4,16,64,4) 2.0-2.3x,
-# (16,16,64) 0.9x, ties elsewhere; 0.2-0.6x on wide or padded rows). The two
-# route constants below select that corner; everything else takes the split
-# path.
-_TLE_FUSE_ENABLED = True
+# sm_gather_task/HANDOFF.md for the chain.
 # Per-core element ceiling for the fused kernel's resident tile. Measured: at
 # 512 elements/core the (16,16,1024) / (32,32,32,32) configs stopped compiling
 # ("over the local-memory budget after pressure relief and vrf_budget
@@ -113,95 +100,6 @@ _TLE_TL_DTYPE = {
 
 def _npo2(x):
     return 1 << (x - 1).bit_length() if x > 1 else 1
-
-
-def _tle_available():
-    """`tle.gpu` exists only on the xpu3 (KL3) cluster pipeline."""
-    if not _HAS_TLE:
-        return False
-    if os.environ.get("TRITON_ENABLE_XCN_BACKEND"):
-        return False
-    return os.environ.get("TRITON_XPU_ARCH", "3") == "3"
-
-
-_TLE_AVAILABLE = _tle_available()
-
-
-@triton.jit
-def _tle_group_norm_chan(
-    r_off,
-    rid,
-    cols,
-    HW: tl.constexpr,
-    group_size: tl.constexpr,
-    num_groups: tl.constexpr,
-    CBLK: tl.constexpr,
-    TAIL: tl.constexpr,
-):
-    """Channel index of every column of a `[XBLOCK, WT]` block of group-rows.
-
-    Within a group-row, column j belongs to channel `group*group_size + j // HxW`,
-    and the group differs per row -- `r_off` (the block's first group-row) is the
-    only thing that changes between blocks, which is what lets the pipelined leg
-    reuse this for each of its blocks.
-    """
-    grp = (r_off + rid) % num_groups
-    ch = grp[:, None] * group_size + (cols // HW)
-    if TAIL:
-        # A padding column j >= L computes ch one PAST the [CBLK] smem buffer
-        # and the OOB read faults the card; valid columns always have
-        # ch <= C-1 <= CBLK-1, so the clamp only redirects discards.
-        ch = tl.minimum(ch, CBLK - 1)
-    return ch
-
-
-@triton.jit
-def _tle_group_norm_block(
-    a_ptr,
-    m_ptr,
-    r_ptr,
-    w_ptr,
-    b_ptr,
-    cols,
-    L,
-    eps,
-    IN_DTYPE: tl.constexpr,
-    OUT_DTYPE: tl.constexpr,
-    CDT: tl.constexpr,
-    TAIL: tl.constexpr,
-    HAS_W: tl.constexpr,
-    HAS_B: tl.constexpr,
-):
-    """Whole group norm for ONE resident row block, in place in `a_ptr`.
-
-    `a_ptr` is a `[XBLOCK, WT]` lmem tile already filled from GM; on return it
-    holds y and `m_ptr`/`r_ptr` hold the block's mean/rstd. `w_ptr`/`b_ptr` are
-    the smem weight/bias gathers for this block's channel map (built by the
-    caller from `_tle_group_norm_chan`): the buffers themselves cannot cross a
-    `triton.jit` call boundary -- a memdesc has no frontend type -- but a
-    `local_ptr` can, which is also how test_tle_layernorm hands its staged
-    weights to a shared compute helper.
-    """
-    x = tl.load(a_ptr)
-    xf = x.to(tl.float32)
-    if TAIL:  # padding columns must not pollute the reduce
-        xf = tl.where(cols < L, xf, 0.0)
-    mean = tl.sum(xf, 1) / L
-    var = tl.maximum(tl.sum(xf * xf, 1) / L - mean * mean, 0.0)
-    rstd = rsqrt(var + eps)
-    # Affine in the compute dtype CDT, which is the NATIVE input dtype: XPU3 has
-    # fp16 vector ops, and bf16 gets its f32 detour inserted implicitly by
-    # tle-dtype-convert. Only the reduce above is pinned to f32, for accumulation
-    # precision. Spelling the upcast here explicitly is what made fp16 lag fp32.
-    xc = x.to(CDT)
-    y = (xc - mean[:, None].to(CDT)) * rstd[:, None].to(CDT)
-    if HAS_W:
-        y = y * tl.load(w_ptr).to(CDT)
-    if HAS_B:
-        y = y + tl.load(b_ptr).to(CDT)
-    tl.store(a_ptr, y.to(IN_DTYPE))
-    tl.store(m_ptr, mean.to(OUT_DTYPE))
-    tl.store(r_ptr, rstd.to(OUT_DTYPE))
 
 
 @triton.jit(
@@ -300,10 +198,18 @@ def _tle_group_norm_fused_kernel(
         acc = tl.zeros([XBLOCK, RB], tl.float32)
         acc_sq = tl.zeros([XBLOCK, RB], tl.float32)
         for coff in tl.range(0, WT, RB):
+            # Only a segment that runs past L can be short, and only then is the
+            # buffer worth clearing -- every other iteration overwrites it whole.
+            # Zero-fill rather than `tl.where` on the loaded value: sum.py:217
+            # records that the mask "returns wrong numbers in bf16 and blows the
+            # LM budget in f16 at every tile size", and it also costs a live
+            # [XBLOCK, RB] f32 beside two f32 accumulators that are already what
+            # caps this leg (_TLE_FUSE_EPC_WIDE = 64, a third of the row budget).
+            if TAIL:
+                if coff + RB > L:
+                    tl.store(buf_ptr, tl.zeros([XBLOCK, RB], IN_DTYPE))
             tle.gpu.copy(x_desc, buf, [XBLOCK, RB], [row0, coff])
             xv = tl.load(buf_ptr).to(tl.float32)
-            if TAIL:
-                xv = tl.where((coff + scols) < L, xv, 0.0)
             acc += xv
             acc_sq += xv * xv
         mean = tl.sum(acc, 1) / L
@@ -402,6 +308,14 @@ def _tle_group_norm_fused_kernel(
             r0_ptr = tle.gpu.local_ptr(r0, (rid,))
             m1_ptr = tle.gpu.local_ptr(m1, (rid,))
             r1_ptr = tle.gpu.local_ptr(r1, (rid,))
+            # The pad is re-zeroed before EVERY refill, not once: the tiles are
+            # reused each beat and normalized in place, so the previous beat's y
+            # is sitting in those columns. Each zero sits immediately before the
+            # async copy that refills that buffer -- the DMA lowering fences
+            # before its transfer, so the store is visible, and the preceding
+            # `dma_wait` has already retired that buffer's write-back.
+            if TAIL:
+                tl.store(a0_ptr, tl.zeros([XBLOCK, WT], IN_DTYPE))
             tle.gpu.copy(x_desc, a0, [XBLOCK, WT], [base, 0], sync=False)
             tle.gpu.dma_wait()
             for it in range(0, PAIRS):
@@ -411,51 +325,49 @@ def _tle_group_norm_fused_kernel(
                 # onto the final block (one redundant read, no wrong result).
                 b2 = base + tl.minimum((2 * it + 2) * XBLOCK, LASTROW)
                 # ---- half beat A: prefetch b1 -> a1, compute a0 (block b0) --
+                if TAIL:
+                    tl.store(a1_ptr, tl.zeros([XBLOCK, WT], IN_DTYPE))
                 tle.gpu.copy(x_desc, a1, [XBLOCK, WT], [b1, 0], sync=False)
-                ch0 = _tle_group_norm_chan(
-                    b0, rid, cols, HW, group_size, num_groups, CBLK, TAIL
-                )
-                _tle_group_norm_block(
-                    a0_ptr,
-                    m0_ptr,
-                    r0_ptr,
-                    tle.gpu.local_ptr(w_smem, (ch0,)),
-                    tle.gpu.local_ptr(b_smem, (ch0,)),
-                    cols,
-                    L,
-                    eps,
-                    IN_DTYPE,
-                    OUT_DTYPE,
-                    CDT,
-                    TAIL,
-                    HAS_W,
-                    HAS_B,
-                )
+                ch0 = ((b0 + rid) % num_groups)[:, None] * group_size + cols // HW
+                if TAIL:
+                    ch0 = tl.minimum(ch0, CBLK - 1)
+                x0 = tl.load(a0_ptr)
+                xf0 = x0.to(tl.float32)
+                mean0 = tl.sum(xf0, 1) / L
+                var0 = tl.maximum(tl.sum(xf0 * xf0, 1) / L - mean0 * mean0, 0.0)
+                rstd0 = rsqrt(var0 + eps)
+                y0 = (x0.to(CDT) - mean0[:, None].to(CDT)) * rstd0[:, None].to(CDT)
+                if HAS_W:
+                    y0 = y0 * tl.load(tle.gpu.local_ptr(w_smem, (ch0,))).to(CDT)
+                if HAS_B:
+                    y0 = y0 + tl.load(tle.gpu.local_ptr(b_smem, (ch0,))).to(CDT)
+                tl.store(a0_ptr, y0.to(IN_DTYPE))
+                tl.store(m0_ptr, mean0.to(OUT_DTYPE))
+                tl.store(r0_ptr, rstd0.to(OUT_DTYPE))
                 tle.gpu.copy(a0, y_desc, [XBLOCK, WT], [b0, 0], sync=False)
                 tle.gpu.copy(m0, mean_desc, [XBLOCK], [b0], sync=False)
                 tle.gpu.copy(r0, rstd_desc, [XBLOCK], [b0], sync=False)
                 tle.gpu.dma_wait()
                 # ---- half beat B: prefetch b2 -> a0, compute a1 (block b1) --
+                if TAIL:
+                    tl.store(a0_ptr, tl.zeros([XBLOCK, WT], IN_DTYPE))
                 tle.gpu.copy(x_desc, a0, [XBLOCK, WT], [b2, 0], sync=False)
-                ch1 = _tle_group_norm_chan(
-                    b1, rid, cols, HW, group_size, num_groups, CBLK, TAIL
-                )
-                _tle_group_norm_block(
-                    a1_ptr,
-                    m1_ptr,
-                    r1_ptr,
-                    tle.gpu.local_ptr(w_smem, (ch1,)),
-                    tle.gpu.local_ptr(b_smem, (ch1,)),
-                    cols,
-                    L,
-                    eps,
-                    IN_DTYPE,
-                    OUT_DTYPE,
-                    CDT,
-                    TAIL,
-                    HAS_W,
-                    HAS_B,
-                )
+                ch1 = ((b1 + rid) % num_groups)[:, None] * group_size + cols // HW
+                if TAIL:
+                    ch1 = tl.minimum(ch1, CBLK - 1)
+                x1 = tl.load(a1_ptr)
+                xf1 = x1.to(tl.float32)
+                mean1 = tl.sum(xf1, 1) / L
+                var1 = tl.maximum(tl.sum(xf1 * xf1, 1) / L - mean1 * mean1, 0.0)
+                rstd1 = rsqrt(var1 + eps)
+                y1 = (x1.to(CDT) - mean1[:, None].to(CDT)) * rstd1[:, None].to(CDT)
+                if HAS_W:
+                    y1 = y1 * tl.load(tle.gpu.local_ptr(w_smem, (ch1,))).to(CDT)
+                if HAS_B:
+                    y1 = y1 + tl.load(tle.gpu.local_ptr(b_smem, (ch1,))).to(CDT)
+                tl.store(a1_ptr, y1.to(IN_DTYPE))
+                tl.store(m1_ptr, mean1.to(OUT_DTYPE))
+                tl.store(r1_ptr, rstd1.to(OUT_DTYPE))
                 tle.gpu.copy(a1, y_desc, [XBLOCK, WT], [b1, 0], sync=False)
                 tle.gpu.copy(m1, mean_desc, [XBLOCK], [b1], sync=False)
                 tle.gpu.copy(r1, rstd_desc, [XBLOCK], [b1], sync=False)
@@ -471,26 +383,25 @@ def _tle_group_norm_fused_kernel(
                 [XBLOCK], dtype=OUT_DTYPE, layout=None, scope=tle.gpu.lmem
             )
             a_ptr = tle.gpu.local_ptr(a_lmem, (rows, cols))
+            if TAIL:
+                tl.store(a_ptr, tl.zeros([XBLOCK, WT], IN_DTYPE))
             tle.gpu.copy(x_desc, a_lmem, [XBLOCK, WT], [row0, 0])
-            ch = _tle_group_norm_chan(
-                row0, rid, cols, HW, group_size, num_groups, CBLK, TAIL
-            )
-            _tle_group_norm_block(
-                a_ptr,
-                tle.gpu.local_ptr(m_lmem, (rid,)),
-                tle.gpu.local_ptr(r_lmem, (rid,)),
-                tle.gpu.local_ptr(w_smem, (ch,)),
-                tle.gpu.local_ptr(b_smem, (ch,)),
-                cols,
-                L,
-                eps,
-                IN_DTYPE,
-                OUT_DTYPE,
-                CDT,
-                TAIL,
-                HAS_W,
-                HAS_B,
-            )
+            ch = ((row0 + rid) % num_groups)[:, None] * group_size + cols // HW
+            if TAIL:
+                ch = tl.minimum(ch, CBLK - 1)
+            x = tl.load(a_ptr)
+            xf = x.to(tl.float32)
+            mean = tl.sum(xf, 1) / L
+            var = tl.maximum(tl.sum(xf * xf, 1) / L - mean * mean, 0.0)
+            rstd = rsqrt(var + eps)
+            y = (x.to(CDT) - mean[:, None].to(CDT)) * rstd[:, None].to(CDT)
+            if HAS_W:
+                y = y * tl.load(tle.gpu.local_ptr(w_smem, (ch,))).to(CDT)
+            if HAS_B:
+                y = y + tl.load(tle.gpu.local_ptr(b_smem, (ch,))).to(CDT)
+            tl.store(a_ptr, y.to(IN_DTYPE))
+            tl.store(tle.gpu.local_ptr(m_lmem, (rid,)), mean.to(OUT_DTYPE))
+            tl.store(tle.gpu.local_ptr(r_lmem, (rid,)), rstd.to(OUT_DTYPE))
             tle.gpu.copy(a_lmem, y_desc, [XBLOCK, WT], [row0, 0])
             tle.gpu.copy(m_lmem, mean_desc, [XBLOCK], [row0])
             tle.gpu.copy(r_lmem, rstd_desc, [XBLOCK], [row0])
@@ -657,8 +568,6 @@ def _tle_native_group_norm(
     invariant (PyTorch's group_norm rejects C % group != 0 at the ATen layer),
     so no ragged-group gate is needed here.
     """
-    if not _TLE_AVAILABLE:
-        return False
     if input.dtype not in _TLE_TL_DTYPE:
         return False
     tl_dtype = _TLE_TL_DTYPE[input.dtype]
@@ -666,7 +575,7 @@ def _tle_native_group_norm(
     lrow = group_size * HxW
 
     with torch_device_fn.device(input.device):
-        if _TLE_FUSE_ENABLED and _tle_group_norm_fused(
+        if _tle_group_norm_fused(
             input,
             y,
             weight,
@@ -708,12 +617,11 @@ def native_group_norm(input, weight, bias, N, C, HxW, group, eps=1e-05):
     vendor kernel here explicitly.
 
     There is deliberately no GM-pointer fallback: like sum.py, this vendor
-    operator is written for the KL3 tle pipeline and only exists there
-    (`_tle_available` gates the arch). A second GM implementation would be a
-    slower duplicate of the same math with none of the DMA -- it previously
-    existed only to serve shapes the tle kernel could not tile, and with the
-    m == 1 LargeN tiling and the in-kernel wide-row segment loop there are no
-    such shapes left.
+    operator is written for the KL3 tle pipeline and only exists there. A second
+    GM implementation would be a slower duplicate of the same math with none of
+    the DMA -- it previously existed only to serve shapes the tle kernel could
+    not tile, and with the m == 1 LargeN tiling and the in-kernel wide-row
+    segment loop there are no such shapes left.
     """
     # The test asserts on the GENERIC spelling ("GEMS NATIVE_GROUP_NORM"), which
     # "GEMS_KUNLUNXIN NATIVE_GROUP_NORM" does not contain -- that mismatch alone
