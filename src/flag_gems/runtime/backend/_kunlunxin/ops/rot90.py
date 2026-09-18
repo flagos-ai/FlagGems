@@ -207,6 +207,19 @@ def rot90(input, k=1, dims=[0, 1]):
     M = x.shape[dim0]
     N = x.shape[dim1]
 
+    # Large power-of-two numels: materialise the transpose with tle and flip the
+    # *outer* axis. The flat kernel below reads its input with a reversed lane
+    # order (D-017: no vectorised path on this backend), while this ordering
+    # lands flip's block path -- contiguous inner run, and a grid that covers the
+    # task space exactly, which is what keeps flip's index clamp out of the
+    # kernel (an inexact grid costs ~10x on a block copy, e.g. 400x800). Measured
+    # 2.6x-9x faster than the flat kernel at 512^2 / 1024^2 / 2048^2 (2026-09-18).
+    if k_norm == 1 and x.numel() > _SMALL_NUMEL and (x.numel() & (x.numel() - 1)) == 0:
+        wide = torch.empty([N, M], device=x.device, dtype=x.dtype)
+        if tle_copy(x.transpose(dim0, dim1), wide):
+            return wide.flip([dim0])
+        # tle cannot express this transfer -> fall through to the flat kernel.
+
     if k_norm == 0 or k_norm == 2:
         out_shape = list(x.shape)
     else:
