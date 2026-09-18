@@ -70,7 +70,7 @@ def cosh_func(x):
 
 
 def cosh(x, *, out=None):
-    logger.debug("GEMS_KUNLUNXIN COSH FORWARD")
+    logger.debug("GEMS_KUNLUNXIN COSH")
     if out is None:
         return cosh_func(x)
     cosh_func(x, out0=out)
