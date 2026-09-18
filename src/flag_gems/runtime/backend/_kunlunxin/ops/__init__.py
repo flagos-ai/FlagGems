@@ -612,6 +612,7 @@ from .special_xlog1py import special_xlog1py
 from .split_with_sizes_copy import split_with_sizes_copy  # noqa: F401
 from .sqrt import sqrt, sqrt_
 from .square import square, square_, square_out
+from .square_ import square_
 from .squeeze_copy import squeeze_copy  # noqa: F401
 from .stack import stack
 from .std import std
