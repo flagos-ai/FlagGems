@@ -141,6 +141,7 @@ from .stack import stack
 from .swiglu import swiglu
 from .threshold import threshold, threshold_backward
 from .topk import topk
+from .topk_w8a16_fp8 import topk_w8a16_fp8
 from .triu import triu
 from .unique import _unique2
 from .unique_dim import unique_dim
@@ -334,6 +335,7 @@ __all__ = [
     "threshold",
     "threshold_backward",
     "topk",
+    "topk_w8a16_fp8",
     "triu",
     "unique_dim",
     "unsafe_index",
