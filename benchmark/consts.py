@@ -21,6 +21,9 @@ import torch
 
 import flag_gems
 
+# Re-export the case types alongside the existing benchmark report types.
+from .cases import BenchmarkCaseList, BenchmarkCasePlan, BenchmarkCaseSpec  # noqa: F401
+
 FLOAT_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
 INT_DTYPES = [torch.int16, torch.int32]
 BOOL_DTYPES = [torch.bool]
@@ -92,6 +95,7 @@ def model_shapes():
 
 @dataclass
 class BenchmarkMetrics:
+    case_id: Optional[str] = None
     # Legacy shape information for backward compatibility
     # This field corresponds to the 'size' field in the previous version's benchmark.
     legacy_shape: Optional[int] = None
@@ -118,6 +122,7 @@ class BenchmarkMetrics:
 
 
 ALL_AVAILABLE_METRICS = set(map(lambda x: x.name, fields(BenchmarkMetrics))) - {
+    "case_id",
     "legacy_shape",
     "shape_detail",
 }

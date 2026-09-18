@@ -252,6 +252,21 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.1'
+- id: adaptive_max_pool1d
+  description: 'Applies a one-dimensional adaptive max pooling over an input signal,
+
+    returning both the pooled values and the selected input indices.
+
+    '
+  for:
+  - adaptive_max_pool1d
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: adaptive_max_pool2d
   description: 'Applies two-dimensional adaptive max pooling and returns both pooled
     values
@@ -3779,6 +3794,20 @@ ops:
   - NeuralNetwork
   stages:
   - beta: '5.3'
+- id: det
+  description: 'Computes the determinant of a square matrix via LU decomposition with
+    partial pivoting. Equivalent to linalg.det.
+
+    '
+  for:
+  - det
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.4'
 - id: dgeglu
   description: 'Gaussian Error Gated Linear Unit with GELU activation instead of sigmoid
     function.
@@ -6804,6 +6833,18 @@ ops:
   - KernelGen
   kind:
   - Math
+  stages:
+  - alpha: '5.4'
+- id: hinge_embedding_loss
+  description: Compute the hinge embedding loss.
+  for:
+  - hinge_embedding_loss
+  labels:
+  - aten
+  - nn.functional
+  - KernelGen
+  kind:
+  - NeuralNetwork
   stages:
   - alpha: '5.4'
 - id: histc
@@ -11822,6 +11863,18 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: real
+  description: |
+    Returns the real component of a complex tensor as a zero-copy view. For
+    non-complex tensors, returns the input tensor unchanged.
+  for:
+    - real
+  labels:
+    - aten
+  kind:
+    - Tensor
+  stages:
+    - alpha: '5.4'
 - id: reciprocal
   description: Returns a new tensor with the reciprocal of the elements of `input`.
   for:
@@ -14426,6 +14479,36 @@ ops:
   - KernelGen
   stages:
   - alpha: '5.1'
+- id: special_i0
+  description: 'Computes the zeroth order modified Bessel function of the first kind
+
+    for each element of `input`.
+
+    '
+  for:
+  - special_i0
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: special_i0_out
+  description: 'A variant of `special_i0()` with output saved to provided `out`.
+
+    '
+  for:
+  - special_i0.out
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: special_i0e
   description: 'Computes the exponentially scaled zeroth order modified Bessel function
 
@@ -15373,6 +15456,19 @@ ops:
     symbolic tracing to provide bounds information.
   for:
   - sym_constrain_range
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
+- id: sym_numel
+  description: Returns the total number of elements of the input tensor.
+  for:
+  - sym_numel
+  marks:
+  - sym_numel
   labels:
   - aten
   - KernelGen
