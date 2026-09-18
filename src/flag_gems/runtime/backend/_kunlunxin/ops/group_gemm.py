@@ -527,7 +527,7 @@ def grouped_mm_kernel(
 
 
 def group_gemm(group_A, group_B, group_C, offs_table, alpha=1, beta=0):
-    logger.debug("GEMS GROUP_GEMM")
+    logger.debug("GEMS_KUNLUNXIN GROUP_GEMM")
     A_addrs = []
     B_addrs = []
     C_addrs = []
