@@ -56,6 +56,17 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: _transformer_encoder_layer_fwd
+  description: Triton kernel implementation for _transformer_encoder_layer_fwd.
+  for:
+  - _transformer_encoder_layer_fwd
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: _weight_norm
   description: 'Reparameterizes a module''s weight tensor by decoupling its magnitude
     (g)
@@ -7581,6 +7592,21 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: isreal
+  description: |
+    Tests whether each element is real, i.e. whether its imaginary part is
+    zero, and returns a bool tensor. Real-valued dtypes are always True; for
+    complex dtypes the imaginary component is compared against an exact zero
+    (a negative zero counts as zero).
+  for:
+  - isreal
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: ixor
   description: 'Computes the bitwise XOR of input tensors or a tensor and a scalar
     (inplace).
@@ -7687,6 +7713,18 @@ ops:
   - KernelGen
   kind:
   - Pointwise
+  stages:
+  - alpha: '5.4'
+- id: ldexp_
+  description: In-place version of `ldexp`.
+  for:
+  - ldexp_
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Math
   stages:
   - alpha: '5.4'
 - id: ldexp_out
@@ -15788,6 +15826,28 @@ ops:
   - Math
   stages:
   - alpha: '5.3'
+- id: tensordot
+  description: Triton kernel implementation for tensordot.
+  for:
+  - tensordot
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.4'
+- id: tensordot_out
+  description: A variant of tensordot() that writes the result into the out tensor.
+  for:
+  - tensordot.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.4'
 - id: thnn_differentiable_gru_cell_backward
   description: Computes differentiable gradients for a fused GRU cell.
   for:

@@ -164,6 +164,7 @@ from flag_gems.ops._thnn_fused_lstm_cell_backward import _thnn_fused_lstm_cell_b
 from flag_gems.ops._thnn_fused_lstm_cell_backward_impl import (
     _thnn_fused_lstm_cell_backward_impl,
 )
+from flag_gems.ops._transformer_encoder_layer_fwd import _transformer_encoder_layer_fwd
 from flag_gems.ops._unsafe_masked_index import _unsafe_masked_index
 from flag_gems.ops._unsafe_masked_index_put_accumulate import (
     _unsafe_masked_index_put_accumulate,
@@ -589,11 +590,13 @@ from flag_gems.ops.isinf import isinf
 from flag_gems.ops.isnan import isnan
 from flag_gems.ops.isneginf import isneginf, isneginf_out
 from flag_gems.ops.isposinf import isposinf
+from flag_gems.ops.isreal import isreal
 from flag_gems.ops.kron import kron
 from flag_gems.ops.kthvalue import kthvalue
 from flag_gems.ops.layernorm import layer_norm, layer_norm_backward
 from flag_gems.ops.lcm import lcm, lcm_
 from flag_gems.ops.ldexp import ldexp, ldexp_out
+from flag_gems.ops.ldexp_ import ldexp_
 from flag_gems.ops.ldl_factor_ex import ldl_factor_ex
 from flag_gems.ops.le import le, le_scalar
 from flag_gems.ops.le_ import le_, le_scalar_
@@ -1083,6 +1086,7 @@ from flag_gems.ops.tan import tan, tan_
 from flag_gems.ops.tanh import tanh, tanh_, tanh_backward
 from flag_gems.ops.te_rmsnorm import te_rmsnorm_bwd, te_rmsnorm_fwd
 from flag_gems.ops.tensor_split import tensor_split
+from flag_gems.ops.tensordot import tensordot, tensordot_out
 from flag_gems.ops.thnn_fused_gru_cell_backward import (
     _thnn_fused_gru_cell_backward,
     _thnn_fused_gru_cell_backward_out,
@@ -1283,6 +1287,7 @@ __all__ = [
     "_thnn_fused_lstm_cell",
     "_thnn_fused_lstm_cell_backward",
     "_thnn_fused_lstm_cell_backward_impl",
+    "_transformer_encoder_layer_fwd",
     "_unique2",
     "_unsafe_masked_index",
     "_unsafe_masked_index_put_accumulate",
@@ -1755,6 +1760,7 @@ __all__ = [
     "isneginf",
     "isneginf_out",
     "isposinf",
+    "isreal",
     "kron",
     "kthvalue",
     "layer_norm",
@@ -1762,6 +1768,7 @@ __all__ = [
     "lcm",
     "lcm_",
     "ldexp",
+    "ldexp_",
     "ldexp_out",
     "ldl_factor",
     "ldl_factor_ex",
@@ -2304,6 +2311,8 @@ __all__ = [
     "te_rmsnorm_bwd",
     "te_rmsnorm_fwd",
     "tensor_split",
+    "tensordot",
+    "tensordot_out",
     "threshold",
     "threshold_",
     "threshold_backward",
