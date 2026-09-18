@@ -137,7 +137,6 @@ from .bitwise_xor import (
     bitwise_xor_scalar_,
     bitwise_xor_scalar_tensor,
     bitwise_xor_tensor,
-    bitwise_xor_tensor_,
     xor,
     xor_,
     xor_scalar,
@@ -225,7 +224,7 @@ from .empty import empty  # noqa: F401
 from .empty_permuted import empty_permuted  # noqa: F401
 from .eq import eq, eq_, eq_scalar, eq_scalar_
 from .erf import erf, erf_, special_erf
-from .erfc import erfc, erfc_, special_erfc  # noqa: F401
+from .erfc import erfc, erfc_  # noqa: F401
 from .erfinv import erfinv
 from .erfinv_ import erfinv_  # noqa: F401
 from .exp import exp, exp_, exp_out
@@ -367,7 +366,7 @@ from .log_softmax import (
     log_softmax_out,
 )
 from .logaddexp import logaddexp, logaddexp_out
-from .logaddexp2 import logaddexp2, logaddexp2_out
+from .logaddexp2 import logaddexp2
 from .logaddexp2_out import logaddexp2_out
 from .logcumsumexp import logcumsumexp, logcumsumexp_out
 from .logical_and import logical_and, logical_and_
@@ -580,7 +579,7 @@ from .special_erfinv import special_erfinv, special_erfinv_, special_erfinv_out
 from .special_exp2 import special_exp2
 from .special_gammainc import special_gammainc
 from .special_gammaincc import special_gammaincc
-from .special_gammaln import special_gammaln, special_gammaln_out
+from .special_gammaln import special_gammaln
 from .special_gammaln_out import special_gammaln_out
 from .special_hermite_polynomial_h import special_hermite_polynomial_h
 from .special_i0e import special_i0e, special_i0e_out
@@ -616,7 +615,7 @@ from .special_shifted_chebyshev_polynomial_w import (
 from .special_xlog1py import special_xlog1py
 from .split_with_sizes_copy import split_with_sizes_copy  # noqa: F401
 from .sqrt import sqrt, sqrt_
-from .square import square, square_, square_out
+from .square import square, square_out
 from .square_ import square_
 from .squeeze_copy import squeeze_copy  # noqa: F401
 from .stack import stack
