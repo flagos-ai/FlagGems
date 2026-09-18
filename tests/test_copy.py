@@ -34,6 +34,14 @@ def _is_float8_dtype_supported(dtype: torch.dtype) -> bool:
         return t.dtype == dtype
     except (RuntimeError, TypeError):
         return False
+    if flag_gems.device.type == "cuda":
+        cap = torch.cuda.get_device_capability(flag_gems.device)
+        if dtype == torch.float8_e4m3fn and cap[0] < 9:
+            return False
+        if dtype == torch.float8_e5m2 and cap[0] < 9:
+            return False
+
+    return True
 
 
 _FLOAT8_DTYPES = []
