@@ -56,6 +56,17 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: _transformer_encoder_layer_fwd
+  description: Triton kernel implementation for _transformer_encoder_layer_fwd.
+  for:
+  - _transformer_encoder_layer_fwd
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: _weight_norm
   description: 'Reparameterizes a module''s weight tensor by decoupling its magnitude
     (g)
@@ -4972,6 +4983,18 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: feature_alpha_dropout_
+  description: Applies feature alpha dropout to the input tensor in-place while preserving
+    the self-normalizing properties of SELU activations.
+  for:
+  - feature_alpha_dropout_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: feature_dropout
   description: 'Applies feature dropout to the `input` tensor. Randomly zeroes out
     entire channels of the `input` tensor with probability `p`.
@@ -7569,6 +7592,21 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: isreal
+  description: |
+    Tests whether each element is real, i.e. whether its imaginary part is
+    zero, and returns a bool tensor. Real-valued dtypes are always True; for
+    complex dtypes the imaginary component is compared against an exact zero
+    (a negative zero counts as zero).
+  for:
+  - isreal
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: ixor
   description: 'Computes the bitwise XOR of input tensors or a tensor and a scalar
     (inplace).
@@ -7675,6 +7713,18 @@ ops:
   - KernelGen
   kind:
   - Pointwise
+  stages:
+  - alpha: '5.4'
+- id: ldexp_
+  description: In-place version of `ldexp`.
+  for:
+  - ldexp_
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Math
   stages:
   - alpha: '5.4'
 - id: ldexp_out
@@ -15228,6 +15278,30 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: sspaddmm
+  description: Triton kernel implementation for sspaddmm.
+  for:
+  - sspaddmm
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: sspaddmm_out
+  description: 'A variant of sspaddmm() that writes the result into the out tensor.
+
+    '
+  for:
+  - sspaddmm.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: stack
   description: Concatenates a sequence of tensors along a new dimension.
   for:
@@ -15752,6 +15826,28 @@ ops:
   - Math
   stages:
   - alpha: '5.3'
+- id: tensordot
+  description: Triton kernel implementation for tensordot.
+  for:
+  - tensordot
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.4'
+- id: tensordot_out
+  description: A variant of tensordot() that writes the result into the out tensor.
+  for:
+  - tensordot.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.4'
 - id: thnn_differentiable_gru_cell_backward
   description: Computes differentiable gradients for a fused GRU cell.
   for:
@@ -16705,6 +16801,28 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '5.0'
+- id: upsample_nearest3d_backward
+  description: Triton kernel implementation for upsample_nearest3d_backward.
+  for:
+  - upsample_nearest3d_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
+- id: upsample_nearest3d_backward_grad_input
+  description: An out variant of `upsample_nearest3d_backward()`.
+  for:
+  - upsample_nearest3d_backward.grad_input
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: upsample_nearest_exact1d
   description: 'Increases the length of a 1D tensor using nearest-neighbor interpolation,
 
