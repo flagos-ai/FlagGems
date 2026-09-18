@@ -785,7 +785,6 @@ layer_norm_persistent:
   warps:
   - 4
   - 8
-  - 16
 layer_norm_loop:
 - gen: true
   param_map:

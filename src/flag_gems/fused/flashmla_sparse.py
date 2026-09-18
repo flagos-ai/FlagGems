@@ -42,8 +42,7 @@ TLE_FLASHMLA_PREFILL_WORKER_NUM_WARPS = 4
 
 @triton.autotune(
     configs=[
-        triton.Config({"BK": 64, "BH": 64}, num_warps=8, num_stages=2),
-        triton.Config({"BK": 64, "BH": 64}, num_warps=8, num_stages=4),
+        triton.Config({"BK": 32, "BH": 16}, num_warps=4, num_stages=1),
     ],
     key=["SQ", "HQ", "DQK", "SKV", "TOPK", "HAVE_ATTN_SINK", "HAVE_TOPK_LENGTH"],
 )
