@@ -24,6 +24,8 @@ FP8_GROUP_SIZE = 128
 
 
 def _fp8_available():
+    if flag_gems.device == "musa":
+        return torch.musa.is_available() and hasattr(torch, "float8_e4m3fn")
     return (
         torch.cuda.is_available()
         and hasattr(torch, "float8_e5m2")
@@ -83,15 +85,15 @@ def _dequant_fp8(x_fp8, x_scale, group_size=FP8_GROUP_SIZE):
         pytest.param(
             torch.float8_e5m2,
             marks=pytest.mark.skipif(
-                flag_gems.vendor_name in ("hygon", "nvidia"),
-                reason="Hygon and NVIDIA use E4M3FN coverage",
+                flag_gems.vendor_name in ("hygon", "mthreads", "nvidia"),
+                reason="Hygon, MThreads and NVIDIA use E4M3FN coverage",
             ),
         ),
         pytest.param(
             torch.float8_e4m3fn,
             marks=pytest.mark.skipif(
-                flag_gems.vendor_name not in ("hygon", "nvidia"),
-                reason="E4M3FN extension requires Hygon or NVIDIA",
+                flag_gems.vendor_name not in ("hygon", "mthreads", "nvidia"),
+                reason="E4M3FN extension requires Hygon, MThreads or NVIDIA",
             ),
         ),
     ],
@@ -171,8 +173,17 @@ def test_topk_w8a16_fp8_row_scale(shape, topk):
 # Backend extensions stay in the shared operator file. PPU retains its original
 # E5M2/BF16 coverage until these additional contracts are supported there.
 HYGON_ONLY = pytest.mark.skipif(
-    flag_gems.vendor_name != "hygon", reason="Hygon FP8 extensions"
+    flag_gems.vendor_name not in ("hygon", "mthreads"),
+    reason="Hygon/Moore Threads FP8 extensions",
 )
+
+
+def _device_api():
+    return torch.musa if flag_gems.device == "musa" else torch.cuda
+
+
+def _byte_arange(size):
+    return torch.arange(size, dtype=torch.uint8).to(flag_gems.device)
 
 
 def _cpu_dequant(q, scale, group_size, out_dtype):
@@ -237,11 +248,7 @@ def test_topk_fp8_edges(shape, k, group_size, largest, out_dtype, fp8_dtype):
 @pytest.mark.parametrize("largest", [True, False])
 @pytest.mark.parametrize("k", [1, 17, 256])
 def test_topk_fp8_all_encodings(fp8_dtype, largest, k):
-    q = (
-        torch.arange(256, dtype=torch.uint8, device=flag_gems.device)
-        .view(fp8_dtype)
-        .reshape(1, 256)
-    )
+    q = _byte_arange(256).view(fp8_dtype).reshape(1, 256)
     scale = torch.tensor([[1.0, -2.0]], device=q.device)
     _check_topk(q, scale, k, largest=largest)
 
@@ -267,14 +274,18 @@ def test_topk_fp8_strides_graph_and_ties():
     q = raw[::2, ::2].view(torch.float8_e4m3fn)
     scale = torch.ones((4, 6), device=q.device)[::2, ::2]
     _check_topk(q, scale, 17)
-    stream = torch.cuda.Stream()
-    stream.wait_stream(torch.cuda.current_stream())
-    with torch.cuda.stream(stream):
+    device_api = _device_api()
+    stream = device_api.Stream()
+    stream.wait_stream(device_api.current_stream())
+    with device_api.stream(stream):
         for _ in range(3):
             flag_gems.topk_w8a16_fp8(q, scale, 17)
-    torch.cuda.current_stream().wait_stream(stream)
-    graph = torch.cuda.CUDAGraph()
-    with torch.cuda.graph(graph):
+    device_api.current_stream().wait_stream(stream)
+    graph_type = (
+        device_api.MUSAGraph if flag_gems.device == "musa" else device_api.CUDAGraph
+    )
+    graph = graph_type()
+    with device_api.graph(graph):
         v, i = flag_gems.topk_w8a16_fp8(q, scale, 17)
     for change in (0, 1, 2):
         if change == 0:
@@ -339,11 +350,7 @@ def test_topk_fp8_partition_tails(n, k, largest):
 )
 @pytest.mark.parametrize("out_dtype", [torch.bfloat16, torch.float16])
 def test_topk_fp8_single_group_scales(scale_value, out_dtype):
-    q = (
-        torch.arange(256, device=flag_gems.device, dtype=torch.uint8)
-        .reshape(2, 128)
-        .view(torch.float8_e4m3fn)
-    )
+    q = _byte_arange(256).reshape(2, 128).view(torch.float8_e4m3fn)
     scale = torch.full((2, 1), scale_value, device=q.device)
     for largest in (True, False):
         _check_topk(q, scale, 17, out_dtype=out_dtype, largest=largest)
