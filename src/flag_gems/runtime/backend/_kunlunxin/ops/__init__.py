@@ -176,6 +176,7 @@ from .conv1d import conv1d
 from .conv2d import conv2d
 from .conv3d import conv3d
 from .conv_depthwise2d import _conv_depthwise2d
+from .conv_transpose1d import conv_transpose1d
 from .conv_transpose2d import conv_transpose2d
 from .copy import copy, copy_
 from .copysign import copysign, copysign_out
@@ -839,6 +840,7 @@ __all__ = [
     "conv1d",
     "conv2d",
     "conv3d",
+    "conv_transpose1d",
     "conv_transpose2d",
     "copy",
     "copy_",
