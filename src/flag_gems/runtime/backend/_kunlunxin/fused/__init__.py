@@ -34,7 +34,12 @@ from .matmul_bias_activation import matmul_bias_activation
 from .matmuladd import matmuladd
 from .mhc_bwd import mhc_bwd  # noqa: F401  (import triggers _install)
 from .mhc_pre import mhc_pre  # noqa: F401  (import triggers _install)
-from .moe_align_block_size import moe_align_block_size, moe_align_block_size_triton
+from .moe_align_block_size import (
+    moe_align_block_size,
+    moe_align_block_size_singleton,
+    moe_align_block_size_small_grouped,
+    moe_align_block_size_triton,
+)
 from .outer import outer
 from .reglu import dreglu, reglu
 from .reshape_and_cache import reshape_and_cache
@@ -79,6 +84,8 @@ __all__ = [
     "concat_and_cache_mla",
     "reshape_and_cache",
     "moe_align_block_size",
+    "moe_align_block_size_singleton",
+    "moe_align_block_size_small_grouped",
     "moe_align_block_size_triton",
     "reshape_and_cache_flash",
     "flash_mla_sparse_fwd",
