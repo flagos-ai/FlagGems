@@ -4100,6 +4100,20 @@ ops:
   stages:
   - beta: '5.0'
   - stable: '5.3'
+- id: dim
+  description: 'Returns the number of dimensions (rank) of a tensor: a pure metadata
+    query independent of layout, dtype and stored data.
+
+    '
+  for:
+  - dim
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: dirichlet_grad
   description: 'Computes the reparameterized-gradient of the Dirichlet distribution
     with respect

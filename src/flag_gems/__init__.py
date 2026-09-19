@@ -642,6 +642,12 @@ _FULL_CONFIG = (
     ("diff", diff),
     ("digamma", digamma),
     ("digamma_", digamma_),
+    # aten::dim is not a dispatcher operator on this build (it is a JIT
+    # primitive plus a Python Tensor method; probes: probe1..probe14 in the
+    # run dir). A device-key registration is unreachable dead code, so the
+    # entry registers no extra dispatch key and the implementation is tested
+    # through its direct call path, mirroring the can_cast investigation.
+    ("dim", dim),
     ("dist", dist),
     ("div.out", true_divide_out),
     ("div.Scalar", true_divide),
