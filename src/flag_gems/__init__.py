@@ -197,6 +197,8 @@ _FULL_CONFIG = (
         None,
         (AUTOGRAD_DISPATCH_KEY,),
     ),
+    ("_histogramdd_from_bin_tensors", _histogramdd_from_bin_tensors),
+    ("_histogramdd_from_bin_tensors.out", _histogramdd_from_bin_tensors_out),
     ("_index_put_impl_", _index_put_impl_),
     (
         "_int_mm",
