@@ -1056,8 +1056,6 @@ class Conv2d(torch.autograd.Function):
         return grad_x, grad_w, grad_b, None, None, None, None
 
 
-
-
 def _d2(v):
     return v if isinstance(v, (tuple, list)) else (v, v)
 
