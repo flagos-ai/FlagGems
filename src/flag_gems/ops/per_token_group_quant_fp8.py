@@ -19,10 +19,9 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.runtime import torch_device_fn
-from flag_gems.utils.device_info import get_device_capability
+from flag_gems.utils.device_info import kernel_supports_fp8_e4m3
 
-if torch_device_fn.is_available() and get_device_capability() >= (9, 0):
+if kernel_supports_fp8_e4m3():
     SUPPORTED_FP8_DTYPE = torch.float8_e4m3fn
 else:
     SUPPORTED_FP8_DTYPE = torch.float32
@@ -60,7 +59,7 @@ def _per_token_group_quant_fp8(
 
     y = tl.load(y_ptr + cols, mask=mask, other=0.0).to(tl.float32)
     _absmax = tl.maximum(tl.max(tl.abs(y)), eps)
-    y_s = _absmax / fp8_max
+    y_s = _absmax * (1.0 / fp8_max)
 
     if scale_ue8m0:
         y_s = tl.exp2(tl.ceil(tl.log2(tl.maximum(tl.abs(y_s), 1e-10))))
@@ -101,7 +100,7 @@ def _per_token_group_quant_fp8_colmajor(
 
     y = tl.load(y_ptr + cols, mask=mask, other=0.0).to(tl.float32)
     _absmax = tl.maximum(tl.max(tl.abs(y)), eps)
-    y_s = _absmax / fp8_max
+    y_s = _absmax * (1.0 / fp8_max)
 
     if scale_ue8m0:
         y_s = tl.exp2(tl.ceil(tl.log2(tl.maximum(tl.abs(y_s), 1e-10))))
@@ -149,7 +148,7 @@ def _per_token_group_quant_fp8_vec(
 
     y = tl.load(y_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
     _absmax = tl.maximum(tl.max(tl.abs(y), axis=1), eps)
-    y_s = _absmax / fp8_max
+    y_s = _absmax * (1.0 / fp8_max)
 
     if scale_ue8m0:
         y_s = tl.exp2(tl.ceil(tl.log2(tl.maximum(tl.abs(y_s), 1e-10))))
@@ -201,7 +200,7 @@ def _per_token_group_quant_fp8_colmajor_vec(
 
     y = tl.load(y_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
     _absmax = tl.maximum(tl.max(tl.abs(y), axis=1), eps)
-    y_s = _absmax / fp8_max
+    y_s = _absmax * (1.0 / fp8_max)
 
     if scale_ue8m0:
         y_s = tl.exp2(tl.ceil(tl.log2(tl.maximum(tl.abs(y_s), 1e-10))))

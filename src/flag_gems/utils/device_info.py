@@ -69,6 +69,25 @@ def get_device_capability() -> tuple[int, int]:
         return (0, 0)
 
 
+# Vendors whose triton ports can cast/store float8_e4m3fn inside kernels even
+# though the capability they report is below (9, 0) — that threshold is an
+# NVIDIA sm_90-ism and does not translate to other capability scales.
+# Verified per vendor: metax C550 / MACA 3.8.1 / triton 3.6.0+metax.
+_FP8_E4M3_KERNEL_VENDORS = frozenset({"metax"})
+
+
+@lru_cache(maxsize=1)
+def kernel_supports_fp8_e4m3() -> bool:
+    """Whether triton kernels can cast and store float8_e4m3fn on this device."""
+    if not torch_device_fn.is_available():
+        return False
+    from flag_gems.runtime import device
+
+    if device.vendor_name != "nvidia":
+        return device.vendor_name in _FP8_E4M3_KERNEL_VENDORS
+    return get_device_capability() >= (9, 0)
+
+
 @lru_cache(maxsize=1)
 def get_device_info() -> DeviceInfo:
     props = get_device_properties()

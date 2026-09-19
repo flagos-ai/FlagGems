@@ -48,9 +48,6 @@ unsupported_operators:
   - name: nll_loss2d
     reason: "All dtypes failed"
 
-  - name: per_token_group_quant_fp8
-    reason: "All dtypes failed"
-
   - name: reglu
     reason: "All dtypes failed"
 
@@ -76,5 +73,5 @@ unsupported_operators:
     reason: "All dtypes failed"
 
 summary:
-  total_unsupported: 19
+  total_unsupported: 18
   note: "Testing is currently not required."
