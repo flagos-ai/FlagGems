@@ -17,7 +17,6 @@ import logging
 import torch
 import triton
 import triton.language as tl
-import triton.language.extra.libdevice as libdevice
 
 logger = logging.getLogger(__name__)
 _I16_MIN_LUT_CACHE = {}
@@ -25,7 +24,37 @@ _I16_MIN_LUT_CACHE = {}
 
 @triton.jit
 def _ctz(x):
-    return libdevice.ffs(x) - 1
+    # Count trailing zeros of x (callers guarantee x != 0). Pure-Triton binary
+    # search over the low bits — libdevice.ffs is not provided by the HIP/AMD
+    # backend. Compute in int64 so the same code covers int32 and int64 inputs
+    # (trailing-zero count is unchanged by widening a positive value).
+    y = x.to(tl.int64)
+    zero = y - y
+    one = zero + 1
+    n = zero
+    m = (one << 32) - one
+    s = (y & m) == zero
+    n = tl.where(s, n + 32, n)
+    y = tl.where(s, y >> 32, y)
+    m = (one << 16) - one
+    s = (y & m) == zero
+    n = tl.where(s, n + 16, n)
+    y = tl.where(s, y >> 16, y)
+    m = (one << 8) - one
+    s = (y & m) == zero
+    n = tl.where(s, n + 8, n)
+    y = tl.where(s, y >> 8, y)
+    m = (one << 4) - one
+    s = (y & m) == zero
+    n = tl.where(s, n + 4, n)
+    y = tl.where(s, y >> 4, y)
+    m = (one << 2) - one
+    s = (y & m) == zero
+    n = tl.where(s, n + 2, n)
+    y = tl.where(s, y >> 2, y)
+    s = (y & one) == zero
+    n = tl.where(s, n + 1, n)
+    return n.to(tl.int32)
 
 
 @triton.jit
