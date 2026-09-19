@@ -1160,6 +1160,7 @@ _FULL_CONFIG = (
     ("prelu", prelu),
     ("prod", prod),
     ("prod.dim_int", prod_dim),
+    ("put_", put_),
     ("quantile", quantile),
     ("quantized_gru.data", quantized_gru_data),
     ("quantized_gru.input", quantized_gru_input),
