@@ -11959,6 +11959,19 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.5'
+- id: quantized_gru_cell
+  description: |
+    Triton kernel implementation for the fused quantized GRU cell.
+  for:
+  - quantized_gru_cell
+  labels:
+  - aten
+  - KernelGen
+  - NoCPU
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: quantized_lstm
   description: Applies a multi-layer quantized LSTM over an input sequence. Takes
     the input sequence, initial hidden and cell states, and per-layer quantized weights,
