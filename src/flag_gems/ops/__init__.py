@@ -595,6 +595,7 @@ from flag_gems.ops.index_put import _index_put_impl_, index_put, index_put_
 from flag_gems.ops.index_reduce import index_reduce, index_reduce_, index_reduce_out
 from flag_gems.ops.index_select import index_select
 from flag_gems.ops.index_select_backward import index_select_backward
+from flag_gems.ops.inner import inner
 from flag_gems.ops.int_mm import int_mm, int_mm_out
 from flag_gems.ops.is_nonzero import is_nonzero
 from flag_gems.ops.is_same_size import is_same_size
@@ -1778,6 +1779,7 @@ __all__ = [
     "index_reduce_out",
     "index_select",
     "index_select_backward",
+    "inner",
     "int_mm",
     "int_mm_out",
     "is_nonzero",

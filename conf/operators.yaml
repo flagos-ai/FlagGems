@@ -7460,6 +7460,18 @@ ops:
   - Quantization
   stages:
   - beta: '5.3'
+- id: inner
+  description: Computes the inner product of two tensors by contracting their last
+    dimension, keeping the leading dimensions of each operand per-side without broadcasting.
+  for:
+  - inner
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: inplace_fused_experts
   description: This operator writes output directly to `hidden_states`.
   for:
