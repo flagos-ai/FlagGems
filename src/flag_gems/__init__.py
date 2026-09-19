@@ -1245,6 +1245,8 @@ _FULL_CONFIG = (
     ("round", round),
     ("round.out", round_out),
     ("round_", round_),
+    ("row_stack", row_stack),
+    ("row_stack.out", row_stack_out),
     ("rrelu_with_noise", rrelu_with_noise),
     ("rrelu_with_noise_", rrelu_with_noise_),
     ("rrelu_with_noise_backward", rrelu_with_noise_backward),
