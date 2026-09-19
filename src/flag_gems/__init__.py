@@ -1530,6 +1530,7 @@ _FULL_CONFIG = (
     ("upsample_trilinear3d", upsample_trilinear3d),
     ("upsample_trilinear3d_backward", upsample_trilinear3d_backward),
     ("value_selecting_reduction_backward", value_selecting_reduction_backward),
+    ("vander", vander),
     ("var", var),
     ("var.correction", var_correction),
     ("var.dim", var_dim),
