@@ -860,6 +860,10 @@ from flag_gems.ops.quantized_gru import (
     quantized_gru_input,
 )
 from flag_gems.ops.quantized_lstm import quantized_lstm
+from flag_gems.ops.quantized_max_pool1d import (
+    quantized_max_pool1d,
+    quantized_max_pool1d_out,
+)
 from flag_gems.ops.quantized_max_pool3d import (
     quantized_max_pool3d,
     quantized_max_pool3d_out,
@@ -2074,6 +2078,8 @@ __all__ = [
     "quantized_gru_impl",
     "quantized_gru_input",
     "quantized_lstm",
+    "quantized_max_pool1d",
+    "quantized_max_pool1d_out",
     "quantized_max_pool3d",
     "quantized_max_pool3d_out",
     "rad2deg",

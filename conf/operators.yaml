@@ -11972,6 +11972,29 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: quantized_max_pool1d
+  description: Applies 1D max pooling over a per-tensor quantized tensor.
+  for:
+  - quantized_max_pool1d
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
+- id: quantized_max_pool1d_out
+  description: |
+    A variant of quantized_max_pool1d() that writes the result into the out tensor.
+  for:
+  - quantized_max_pool1d.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: quantized_max_pool3d
   description: Applies 3D max pooling over a per-tensor quantized quint8 tensor.
   for:

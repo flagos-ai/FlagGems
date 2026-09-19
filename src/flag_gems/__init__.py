@@ -1165,6 +1165,18 @@ _FULL_CONFIG = (
     ("quantized_gru.input", quantized_gru_input),
     ("quantized_lstm.input", quantized_lstm),
     (
+        "quantized_max_pool1d",
+        quantized_max_pool1d,
+        None,
+        (QUANTIZED_CUDA_DISPATCH_KEY,),
+    ),
+    (
+        "quantized_max_pool1d.out",
+        quantized_max_pool1d_out,
+        None,
+        (QUANTIZED_CUDA_DISPATCH_KEY,),
+    ),
+    (
         "quantized_max_pool3d",
         quantized_max_pool3d,
         None,
