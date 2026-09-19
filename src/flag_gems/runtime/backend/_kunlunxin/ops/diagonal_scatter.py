@@ -13,6 +13,7 @@
 # limitations under the License.
 import logging
 
+import torch
 import triton
 import triton.language as tl
 
