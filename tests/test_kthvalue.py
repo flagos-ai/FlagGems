@@ -23,6 +23,17 @@ from . import accuracy_utils as utils
 KTHVALUE_K_VALUES = [1, 2, 4]
 
 
+def _unique_along_dim(shape, dim, dtype, device):
+    # Distinct values along the reduction dim so kthvalue has no ties. With ties,
+    # GPU and CPU pick different (equally valid) indices, so an exact index
+    # comparison against the CPU reference spuriously fails even though the op is
+    # correct. Mirrors test_topk, which permutes unique values for the same
+    # reason. argsort of noise yields a per-slice permutation of 0..dim_size-1,
+    # exactly representable in float32 for the dim sizes used here.
+    noise = torch.randn(shape, device=device)
+    return noise.argsort(dim=dim).to(dtype)
+
+
 @pytest.mark.kthvalue
 @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES)
 @pytest.mark.parametrize("k", KTHVALUE_K_VALUES)
@@ -32,7 +43,7 @@ KTHVALUE_K_VALUES = [1, 2, 4]
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test_kthvalue(shape, k, dim, keepdim, dtype):
     """Test kthvalue accuracy with float32"""
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp = _unique_along_dim(shape, dim, dtype, flag_gems.device)
     ref_inp = utils.to_reference(inp)
 
     dim_size = shape[dim]
@@ -59,7 +70,7 @@ def test_kthvalue(shape, k, dim, keepdim, dtype):
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test_kthvalue_default_dim(shape, k, dtype):
     """Test kthvalue with default dim (last dimension)"""
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp = _unique_along_dim(shape, -1, dtype, flag_gems.device)
     ref_inp = utils.to_reference(inp)
 
     dim_size = shape[-1]
