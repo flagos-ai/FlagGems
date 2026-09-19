@@ -323,6 +323,14 @@ HEURISTICS_CONFIGS = {
     "layer_norm_persistent": {
         "BLOCK_ROW_SIZE": layer_norm_heur_block_row_size,
     },
+    "layer_norm_backward_fused": {
+        "MIN_ELEMENTS": lambda _args: 1024 * 1024,
+        "MAX_RESIDENT_N": lambda _args: 512,
+        "TILE_ELEMENTS": lambda _args: 4096,
+        "MAX_BLOCK_M": lambda _args: 256,
+        "PROGRAM_WAVES": lambda _args: 1,
+        "DIRECT_LOWP_ATOMIC": lambda _args: False,
+    },
     "batch_norm": {
         "BLOCK_M": batch_norm_heur_block_m,
         "BLOCK_N": batch_norm_heur_block_n,

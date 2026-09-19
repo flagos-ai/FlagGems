@@ -20,6 +20,7 @@ import triton
 import triton.language as tl
 
 from flag_gems import runtime
+from flag_gems.ops.layernorm import _launch_fused_layer_norm_backward
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
@@ -101,27 +102,25 @@ def layer_norm_persistent_kernel_multiline(
     TILE_M: tl.constexpr,
     TILE_N: tl.constexpr,
 ):
-    # Map the program id to the row of X and Y it should compute.
-    pid = ext.program_id(0)
-    m_offsets = pid * TILE_M + tl.arange(0, TILE_M)
-    m_mask = m_offsets < M
+    # Keep the original multiline launch grouping while each program uses the
+    # one-dimensional layout supported by the MetaX lowering pipeline.
+    pid = ext.program_id(0) * TILE_M + ext.program_id(1)
+    m_mask = pid < M
 
-    n_offsets = tl.arange(0, TILE_N)[None, :]
+    n_offsets = tl.arange(0, TILE_N)
     n_mask = n_offsets < N
-    mask = m_mask[:, None] & n_mask
+    mask = m_mask & n_mask
 
-    x = tl.load(in_ptr + m_offsets[:, None] * N + n_offsets, mask, other=0.0).to(
-        tl.float32
-    )
-    m = tl.sum(x, axis=1) / N
-    d = x - m[:, None]  # deviation
+    x = tl.load(in_ptr + pid * N + n_offsets, mask, other=0.0).to(tl.float32)
+    m = tl.sum(x) / N
+    d = x - m  # deviation
     s = tl.where(mask, d * d, 0)
-    sum_square = tl.sum(s, axis=1)  # sum of square of deviation
+    sum_square = tl.sum(s)  # sum of square of deviation
     var = sum_square / N
     rstd = tl.math.rsqrt(var + eps)
 
-    tl.store(out_mean_ptr + m_offsets, m, mask=m_mask)
-    tl.store(out_rstd_ptr + m_offsets, rstd, mask=m_mask)
+    tl.store(out_mean_ptr + pid, m, mask=m_mask)
+    tl.store(out_rstd_ptr + pid, rstd, mask=m_mask)
 
     if weight_ptr is None:
         w = 1
@@ -131,9 +130,9 @@ def layer_norm_persistent_kernel_multiline(
         b = 0
     else:
         b = tl.load(bias_ptr + n_offsets, mask=n_mask)
-    out = (x - m[:, None]) * rstd[:, None] * w + b
+    out = (x - m) * rstd * w + b
 
-    tl.store(out_ptr + m_offsets[:, None] * N + n_offsets, out, mask=mask)
+    tl.store(out_ptr + pid * N + n_offsets, out, mask=mask)
 
 
 @libentry()
@@ -361,7 +360,7 @@ def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
         if N <= 128:
             TILE_N = triton.next_power_of_2(N)
             TILE_M = triton.cdiv(1024, TILE_N)
-            grid = (triton.cdiv(M, TILE_M), 1, 1)
+            grid = (triton.cdiv(M, TILE_M), TILE_M, 1)
             layer_norm_persistent_kernel_multiline[grid](
                 input,
                 y,
@@ -425,8 +424,22 @@ def layer_norm_backward(
     weight = None if weight is None else weight.contiguous()
     bias = None if bias is None else bias.contiguous()
 
-    M = input.shape[0]
-    N = input.numel() // M
+    N = math.prod(normalized_shape)
+    M = input.numel() // N
+
+    fused_grads = _launch_fused_layer_norm_backward(
+        grad_out,
+        input,
+        mean,
+        rstd,
+        weight,
+        bias,
+        output_mask,
+        M,
+        N,
+    )
+    if fused_grads is not None:
+        return fused_grads
 
     if output_mask[0]:
         in_grad = torch.empty_like(input)
@@ -441,9 +454,9 @@ def layer_norm_backward(
     if output_mask[1] is False and output_mask[2] is False:
         return in_grad, None, None
 
-    grid = lambda meta: (triton.cdiv(N, meta["BLOCK_COL_SIZE"]), 1, 1)
     weight_grad = torch.empty_like(weight) if output_mask[1] else None
     bias_grad = torch.empty_like(bias) if output_mask[2] else None
+    grid = lambda meta: (triton.cdiv(N, meta["BLOCK_COL_SIZE"]), 1, 1)
     with torch_device_fn.device(input.device):
         weight_bias_backward_kernel[grid](
             grad_out, input, mean, rstd, weight_grad, bias_grad, M, N

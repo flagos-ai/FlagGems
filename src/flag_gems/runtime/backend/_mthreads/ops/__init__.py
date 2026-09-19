@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import importlib.util
+
 from torch_musa import current_device, get_device_capability
 
 from ._conj import _conj
@@ -55,6 +57,7 @@ from .index_put import _index_put_impl_, index_put, index_put_
 from .index_select import index_select
 from .int_mm import int_mm, int_mm_out
 from .isin import isin
+from .layernorm import layer_norm_backward
 from .linalg_cholesky import linalg_cholesky
 from .linear import linear
 from .log import log
@@ -108,9 +111,13 @@ from .topk_w8a16_fp8 import topk_w8a16_fp8
 from .trunc import trunc, trunc_
 from .unique import _unique2
 from .upsample_linear1d_backward import upsample_linear1d_backward
-from .w8a8_block_fp8_matmul import w8a8_block_fp8_matmul
 from .zeros import zero_, zeros
 from .zeros_like import zeros_like
+
+# Older MUSA Triton releases do not provide tensor descriptor support.
+_HAS_TENSOR_DESCRIPTOR = (
+    importlib.util.find_spec("triton.tools.tensor_descriptor") is not None
+)
 
 __all__ = [
     "_conj",
@@ -168,6 +175,7 @@ __all__ = [
     "int_mm",
     "int_mm_out",
     "isin",
+    "layer_norm_backward",
     "linalg_cholesky",
     "linear",
     "log",
@@ -238,35 +246,42 @@ __all__ = [
     "trunc",
     "trunc_",
     "upsample_linear1d_backward",
-    "w8a8_block_fp8_matmul",
     "zero_",
     "zeros",
     "zeros_like",
 ]
 
 
+if _HAS_TENSOR_DESCRIPTOR:
+    from .w8a8_block_fp8_matmul import w8a8_block_fp8_matmul  # noqa: F401
+
+    __all__.append("w8a8_block_fp8_matmul")
+
+
 if get_device_capability(current_device())[0] >= 3:
-    from .addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out  # noqa: F401
-    from .baddbmm import baddbmm, baddbmm_out  # noqa: F401
-    from .bmm import bmm  # noqa: F401
     from .gelu import gelu  # noqa: F401
-    from .mm import mm  # noqa: F401
     from .tanh import tanh  # noqa: F401
 
-    __all__.extend(
-        [
-            "addmm",
-            "addmm_dtype",
-            "addmm_dtype_out",
-            "addmm_out",
-            "baddbmm",
-            "baddbmm_out",
-            "bmm",
-            "gelu",
-            "mm",
-            "tanh",
-        ]
-    )
+    __all__.extend(["gelu", "tanh"])
+
+    if _HAS_TENSOR_DESCRIPTOR:
+        from .addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out  # noqa: F401
+        from .baddbmm import baddbmm, baddbmm_out  # noqa: F401
+        from .bmm import bmm  # noqa: F401
+        from .mm import mm  # noqa: F401
+
+        __all__.extend(
+            [
+                "addmm",
+                "addmm_dtype",
+                "addmm_dtype_out",
+                "addmm_out",
+                "baddbmm",
+                "baddbmm_out",
+                "bmm",
+                "mm",
+            ]
+        )
 
 if get_device_capability(current_device()) >= (3, 1):
     from .mm_w8a8_fp8 import mm_w8a8_fp8, mm_w8a8_fp8_out  # noqa: F401
