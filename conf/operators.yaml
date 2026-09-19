@@ -56,6 +56,20 @@ ops:
   - LinearAlg
   stages:
   - alpha: '5.5'
+- id: _pin_memory
+  description: 'Copies a strided CPU tensor into page-locked host memory for asynchronous
+    transfer to an accelerator.
+
+    '
+  for:
+  - _pin_memory
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: _reshape_alias
   description: 'Creates a view of the input tensor with the given size and stride,
 
@@ -11635,6 +11649,20 @@ ops:
   description: Creates and returns a copy of x with permuted dimensions.
   for:
   - permute_copy
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
+- id: pin_memory
+  description: 'Public entry that pins a strided CPU tensor into page-locked host
+    memory; delegates to _pin_memory.
+
+    '
+  for:
+  - pin_memory
   labels:
   - aten
   - KernelGen
