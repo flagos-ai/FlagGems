@@ -1353,6 +1353,11 @@ def _patch_missing_symbols(module, names):
         if name == "nearbyint" and hasattr(module, "rint"):
             setattr(module, name, module.rint)
             continue
+        # The HIP/AMD libdevice is the mirror case: it exposes nearbyint but not
+        # rint (which otherwise fails to lower). They share round-to-nearest-even.
+        if name == "rint" and hasattr(module, "nearbyint"):
+            setattr(module, name, module.nearbyint)
+            continue
         # Prefer the pure-triton fallback over borrowing from another backend's
         # libdevice.  This loop only runs for symbols the vendor's own libdevice
         # lacks, so a candidate match necessarily comes from a *foreign* module
