@@ -67,3 +67,51 @@ def test_stack():
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
+
+
+class UnderscoreStackBenchmark(base.Benchmark):
+    # stack creates 3 inputs + 1 output (4x one input's memory). Cap to avoid OOM.
+    MAX_ELEMENTS = 2**29
+
+    def __init__(self, *args, input_fn, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.input_fn = input_fn
+
+    def init_user_config(self):
+        super().init_user_config()
+        # Filter out shapes whose total element count would OOM given stack's
+        # 3-input + 1-output memory amplification.
+        self.shapes = [s for s in self.shapes if math.prod(s) <= self.MAX_ELEMENTS]
+
+    def get_input_iter(self, dtype) -> Generator:
+        for shape in self.shapes:
+            yield from self.input_fn(shape, dtype, self.device)
+
+    def set_more_shapes(self):
+        more_shapes_2d = [(1024, 2**i) for i in range(1, 11, 4)]
+        more_shapes_3d = [(64, 64, 2**i) for i in range(0, 8, 4)]
+        return more_shapes_2d + more_shapes_3d
+
+
+def _underscore_input_fn(shape, dtype, device):
+    inp1 = utils.generate_tensor_input(shape, dtype, device)
+    inp2 = utils.generate_tensor_input(shape, dtype, device)
+    inp3 = utils.generate_tensor_input(shape, dtype, device)
+    yield [inp1, inp2, inp3], {"dim": 0},
+
+    if base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
+        yield [inp1, inp2, inp3], {"dim": -1},
+
+
+@pytest.mark.underscore_stack
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test__stack():
+    bench = StackBenchmark(
+        op_name="_stack",
+        input_fn=_underscore_input_fn,
+        torch_op=torch._stack,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
