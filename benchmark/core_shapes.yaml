@@ -371,6 +371,34 @@ median_dim_values:
     - [[8, 64, 384, 64], 2, false]
   shape_desc: "input shape or [input shape, dim, keepdim]"
 
+# The unary _foreach_* family is keyed by benchmark class rather than by
+# operator name: the sixty registered operators share one executor and one
+# shape policy, and base.Benchmark.set_shapes already falls back to the class
+# name through the MRO when an operator name is absent here. Listing each
+# operator instead would mean sixty identical blocks, and any omission would
+# fall through to the shared `Benchmark` default of 1024**3 elements, which at
+# sixteen tensors per call reserves 64 GiB per dtype.
+ForeachOpsBenchmark:
+  shapes:
+    - [256, 256]
+    - [512, 512]
+    - [1024, 1024]
+  shape_desc: "M, N (per tensor, list of 16)"
+
+ForeachUnaryBenchmark:
+  shapes:
+    - [256, 256]
+    - [512, 512]
+    - [1024, 1024]
+  shape_desc: "M, N (per tensor, list of 16)"
+
+ForeachUnaryListLengthBenchmark:
+  shapes:
+    - [64]
+    - [1024]
+    - [65536]
+  shape_desc: "N (per tensor, list of 1/16/128)"
+
 IntMMBenchmark:
   shapes:
     - [32, 256, 256]
