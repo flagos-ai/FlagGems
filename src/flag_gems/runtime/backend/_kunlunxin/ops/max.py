@@ -97,11 +97,14 @@ def max_kernel_2d_pk(
         a = tl.load(inp + cols[None, :])
         if KIND == 0:
             # order-preserving key: negative floats flip all bits, positive
-            # floats flip the sign bit only; NaN becomes the largest key and
-            # -inf the smallest, matching the family NaN semantics.
+            # floats flip the sign bit only. Canonicalize every NaN bit pattern
+            # to the same largest key so NaN wins and the packed index selects
+            # the first NaN; -inf remains the smallest key.
             u = a.to(tl.float32).to(tl.uint32, bitcast=True)
+            is_nan = (u & 0x7FFFFFFF) > 0x7F800000
             key = tl.where(u < 0x80000000, u ^ 0x80000000, u ^ 0xFFFFFFFF)
             key64 = key.to(tl.int64)
+            key64 = tl.where(is_nan, 0xFFFFFFFF, key64)
         elif KIND == 2:
             # int64 values use a 34-bit two's-complement window for the value
             # key (64 - 30 index bits = 34); order-preserving for |v| < 2^33,

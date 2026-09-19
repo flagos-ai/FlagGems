@@ -26,9 +26,11 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry, libtuner
 from flag_gems.utils import triton_lang_extension as tle
 from flag_gems.utils.limits import get_dtype_min
+from flag_gems.utils.shape_utils import can_use_int32_index
 
 TOTAL_CORE_NUM = 16
 F32_INT_MAX = (1 << 24) - 1
+GRID_Y_LIMIT = 65535
 _MAX_COL_TILE = 2048
 
 
@@ -64,6 +66,9 @@ def max_kernel_1(
     min_value = get_dtype_min(inp.type.element_ty)
     inp_val = tl.load(inp_ptrs, mask=mask, other=min_value)
     max_val = tl.max(inp_val)
+    if inp.type.element_ty.is_floating():
+        has_nan = tl.max((mask & (inp_val != inp_val)).to(tl.int32), axis=0) != 0
+        max_val = tl.where(has_nan, float("nan"), max_val)
     mid_ptr = mid + pid
     tl.store(mid_ptr, max_val)
 
@@ -77,6 +82,9 @@ def max_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
     min_value = get_dtype_min(mid.type.element_ty)
     mid_val = tl.load(mid_ptrs, mask=mask, other=min_value)
     max_val = tl.max(mid_val)
+    if mid.type.element_ty.is_floating():
+        has_nan = tl.max((mask & (mid_val != mid_val)).to(tl.int32), axis=0) != 0
+        max_val = tl.where(has_nan, float("nan"), max_val)
     tl.store(out, max_val)
 
 
@@ -102,13 +110,35 @@ def max_kernel_gsl(
         if row < M:
             result_value = tl.full((), min_value, dtype=acc_type)
             result_index = tl.zeros((), dtype=tl.int64)
+            if dtype.is_floating():
+                result_has_nan = tl.zeros((), dtype=tl.int1)
             for i in range(0, N, BLOCK_N):
                 n_offset = i + tl.arange(0, BLOCK_N)
                 offset = row * N + n_offset
                 mask = n_offset < N
                 inp_vals = tl.load(inp + offset, mask=mask, other=min_value)
-                max_value, max_index = tl.max(inp_vals, axis=0, return_indices=True)
+                max_value, max_index = tl.max(
+                    inp_vals,
+                    axis=0,
+                    return_indices=True,
+                    return_indices_tie_break_left=True,
+                )
                 update_mask = max_value > result_value
+                if dtype.is_floating():
+                    nan_i32 = (mask & (inp_vals != inp_vals)).to(tl.int32)
+                    has_nan_i32, first_nan = tl.max(
+                        nan_i32,
+                        axis=0,
+                        return_indices=True,
+                        return_indices_tie_break_left=True,
+                    )
+                    has_nan = has_nan_i32 != 0
+
+                    take_nan = has_nan & ~result_has_nan
+                    update_mask &= ~has_nan & ~result_has_nan
+                    result_value = tl.where(take_nan, float("nan"), result_value)
+                    result_index = tl.where(take_nan, i + first_nan, result_index)
+                    result_has_nan |= has_nan
                 result_value = tl.where(update_mask, max_value, result_value)
                 result_index = tl.where(update_mask, i + max_index, result_index)
             tl.store(out_value + row, result_value)
@@ -127,10 +157,16 @@ def max_kernel(
     out_index,
     M,
     N,
+    K,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
+    INT64_INDEX: tl.constexpr = False,
 ):
     pid_m = tle.program_id(0)
+    pid_k = tle.program_id(1)
+    if INT64_INDEX:
+        pid_m = pid_m.to(tl.int64)
+        pid_k = pid_k.to(tl.int64)
     m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
 
     dtype = inp.type.element_ty
@@ -138,19 +174,42 @@ def max_kernel(
     min_value = get_dtype_min(dtype)
     result_value = tl.full([BLOCK_M], value=min_value, dtype=acc_type)
     result_index = tl.zeros([BLOCK_M], dtype=tl.int64)
+    if dtype.is_floating():
+        result_has_nan = tl.zeros([BLOCK_M], dtype=tl.int1)
     for i in range(0, N, BLOCK_N):
         n_offset = i + tl.arange(0, BLOCK_N)
-        offset = m_offset[:, None] * N + n_offset[None, :]
+        offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
         mask = m_offset[:, None] < M and n_offset[None, :] < N
         inp_ptrs = inp + offset
         inp_vals = tl.load(inp_ptrs, mask=mask, other=min_value)
-        max_value, max_index = tl.max(inp_vals, axis=1, return_indices=True)
+        max_value, max_index = tl.max(
+            inp_vals,
+            axis=1,
+            return_indices=True,
+            return_indices_tie_break_left=True,
+        )
         update_mask = max_value > result_value
+        if dtype.is_floating():
+            nan_i32 = (mask & (inp_vals != inp_vals)).to(tl.int32)
+            has_nan_i32, first_nan = tl.max(
+                nan_i32,
+                axis=1,
+                return_indices=True,
+                return_indices_tie_break_left=True,
+            )
+            has_nan = has_nan_i32 != 0
+
+            take_nan = has_nan & ~result_has_nan
+            update_mask &= ~has_nan & ~result_has_nan
+            result_value = tl.where(take_nan, float("nan"), result_value)
+            result_index = tl.where(take_nan, i + first_nan, result_index)
+            result_has_nan |= has_nan
         result_value = tl.where(update_mask, max_value, result_value)
         result_index = tl.where(update_mask, i + max_index, result_index)
     mask1 = m_offset < M
-    tl.store(out_value + m_offset, result_value, mask=mask1)
-    tl.store(out_index + m_offset, result_index, mask=mask1)
+    out_offset = m_offset * K + pid_k
+    tl.store(out_value + out_offset, result_value, mask=mask1)
+    tl.store(out_index + out_offset, result_index, mask=mask1)
 
 
 def _launch_max_dim_last(
@@ -221,8 +280,14 @@ def max_dim(inp, dim=None, keepdim=False):
     shape = list(inp.shape)
     dim = dim % inp.ndim
     n = shape[dim]
+    if n == 0:
+        raise IndexError(f"max(): Expected reduction dim {dim} to have non-zero size.")
     shape[dim] = 1
-    use_fast = inp.is_contiguous() and _is_reduce_last_dim(dim, inp.ndim)
+    is_contiguous = inp.is_contiguous()
+    use_fast = is_contiguous and _is_reduce_last_dim(dim, inp.ndim)
+    # The GSL scalar reduction can return a mismatched index for int32 inputs.
+    # Keep the contiguous layout, but route int32 through the tiled kernel.
+    use_gsl = use_fast and inp.dtype != torch.int32
 
     out_value = torch.empty(shape, dtype=inp.dtype, device=inp.device)
     out_index = torch.empty(shape, dtype=torch.int64, device=inp.device)
@@ -231,20 +296,35 @@ def max_dim(inp, dim=None, keepdim=False):
         out_value = torch.squeeze(out_value, dim)
         out_index = torch.squeeze(out_index, dim)
 
-    if not use_fast:
-        inp = dim_compress(inp, dim)
-    m = inp.numel() // n
-
-    if m == 0 or n == 0:
+    if inp.numel() == 0:
         Max_out = namedtuple("max", ["values", "indices"])
         return Max_out(values=out_value, indices=out_index)
 
     with torch_device_fn.device(inp.device):
-        if use_fast:
+        if use_gsl:
             _launch_max_dim_last(inp, out_value, out_index, n)
         else:
-            grid = lambda meta: (triton.cdiv(m, meta["BLOCK_M"]),)
-            max_kernel[grid](inp, out_value, out_index, m, n)
+            if is_contiguous:
+                m = math.prod(inp.shape[:dim])
+                k = inp.numel() // m // n
+                if k > GRID_Y_LIMIT:
+                    inp = dim_compress(inp, dim)
+                    m = inp.numel() // n
+                    k = 1
+            else:
+                inp = dim_compress(inp, dim)
+                m = inp.numel() // n
+                k = 1
+            grid = lambda meta: (triton.cdiv(m, meta["BLOCK_M"]), k)
+            max_kernel[grid](
+                inp,
+                out_value,
+                out_index,
+                m,
+                n,
+                k,
+                INT64_INDEX=not can_use_int32_index(inp),
+            )
 
     Max_out = namedtuple("max", ["values", "indices"])
     return Max_out(values=out_value, indices=out_index)
