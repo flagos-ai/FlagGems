@@ -864,6 +864,7 @@ from flag_gems.ops.quantized_max_pool3d import (
     quantized_max_pool3d,
     quantized_max_pool3d_out,
 )
+from flag_gems.ops.quantized_rnn_relu_cell import quantized_rnn_relu_cell
 from flag_gems.ops.rad2deg import rad2deg, rad2deg_
 from flag_gems.ops.rand import rand
 from flag_gems.ops.rand_like import rand_like
@@ -2076,6 +2077,7 @@ __all__ = [
     "quantized_lstm",
     "quantized_max_pool3d",
     "quantized_max_pool3d_out",
+    "quantized_rnn_relu_cell",
     "rad2deg",
     "rad2deg_",
     "rand",
