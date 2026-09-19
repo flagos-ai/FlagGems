@@ -1245,6 +1245,17 @@ _FULL_CONFIG = (
     ("round", round),
     ("round.out", round_out),
     ("round_", round_),
+    # Column-compressed (CSC/BSC) sparse tensors dispatch under the backend's
+    # SparseCsr* key rather than the dense device key, so the kernel is
+    # registered there as well. SPARSE_CSR_DISPATCH_KEY is backend-derived, so
+    # non-CUDA backends select this implementation too.
+    ("row_indices_copy", row_indices_copy, None, (SPARSE_CSR_DISPATCH_KEY,)),
+    (
+        "row_indices_copy.out",
+        row_indices_copy_out,
+        None,
+        (SPARSE_CSR_DISPATCH_KEY,),
+    ),
     ("rrelu_with_noise", rrelu_with_noise),
     ("rrelu_with_noise_", rrelu_with_noise_),
     ("rrelu_with_noise_backward", rrelu_with_noise_backward),
