@@ -1164,6 +1164,7 @@ _FULL_CONFIG = (
     ("quantized_gru.data", quantized_gru_data),
     ("quantized_gru.input", quantized_gru_input),
     ("quantized_lstm.input", quantized_lstm),
+    ("quantized_lstm_cell", quantized_lstm_cell),
     (
         "quantized_max_pool3d",
         quantized_max_pool3d,

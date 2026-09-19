@@ -11967,6 +11967,17 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: quantized_lstm_cell
+  description: Triton kernel implementation for quantized_lstm_cell.
+  for:
+  - quantized_lstm_cell
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: quantized_max_pool3d
   description: Applies 3D max pooling over a per-tensor quantized quint8 tensor.
   for:
