@@ -1176,6 +1176,7 @@ _FULL_CONFIG = (
         None,
         (QUANTIZED_CUDA_DISPATCH_KEY,),
     ),
+    ("quantized_rnn_tanh_cell", quantized_rnn_tanh_cell),
     ("rad2deg", rad2deg),
     ("rad2deg_", rad2deg_),
     ("rand", rand),
