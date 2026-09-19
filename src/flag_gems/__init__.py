@@ -115,6 +115,8 @@ _FULL_CONFIG = (
     ("_add_relu_.Tensor", _add_relu_),
     ("_addmm_activation", _addmm_activation),
     ("_addmm_activation.out", _addmm_activation_out),
+    ("_aminmax", _aminmax),
+    ("_aminmax.out", _aminmax_out),
     (
         "_amp_foreach_non_finite_check_and_unscale_",
         _amp_foreach_non_finite_check_and_unscale_,

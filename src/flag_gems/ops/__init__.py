@@ -23,6 +23,7 @@ from flag_gems.ops._adaptive_avg_pool2d_backward import _adaptive_avg_pool2d_bac
 from flag_gems.ops._add_relu import _add_relu
 from flag_gems.ops._add_relu_ import _add_relu_
 from flag_gems.ops._addmm_activation import _addmm_activation, _addmm_activation_out
+from flag_gems.ops._aminmax import _aminmax, _aminmax_out
 from flag_gems.ops._amp_foreach_non_finite_check_and_unscale_ import (
     _amp_foreach_non_finite_check_and_unscale_,
 )
@@ -1211,6 +1212,8 @@ __all__ = [
     "_add_relu_",
     "_addmm_activation",
     "_addmm_activation_out",
+    "_aminmax",
+    "_aminmax_out",
     "_amp_foreach_non_finite_check_and_unscale_",
     "_amp_update_scale_",
     "_assert_async",
