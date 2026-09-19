@@ -33,7 +33,6 @@ Usage:
 
 import argparse
 import ast
-import re
 import sys
 from pathlib import Path
 
@@ -61,30 +60,85 @@ def sort_python_all(file_path: Path, fix: bool = False, dry_run: bool = False) -
 
     source = file_path.read_text()
 
-    # Match __all__ = [ ... ]
-    # Use MULTILINE and DOTALL to handle multi-line lists
-    pattern = r"^(__all__\s*=\s*\[)(.*?)(^\])"
-    match = re.search(pattern, source, re.MULTILINE | re.DOTALL)
+    # Locate the module-level `__all__ = [...]` assignment via AST instead of a
+    # regex. A DOTALL regex that looks for the next line-leading "]" can swallow
+    # unrelated code (e.g. all the intervening imports) when a file contains more
+    # than one `__all__` definition, such as an empty `__all__ = []` placeholder
+    # followed later by the real list. Parsing with ast pins the exact node.
+    try:
+        tree = ast.parse(source)
+    except SyntaxError as exc:
+        print(f"❌ {file_path}: cannot parse ({exc})")
+        return False
 
-    if not match:
-        # No __all__ found, that's fine
+    all_nodes = [
+        node
+        for node in tree.body
+        if isinstance(node, ast.Assign)
+        and any(isinstance(t, ast.Name) and t.id == "__all__" for t in node.targets)
+        and isinstance(node.value, ast.List)
+    ]
+
+    if not all_nodes:
+        # No __all__ list found, that's fine
         return True
 
-    prefix = match.group(1)  # "__all__ = ["
-    content = match.group(2)  # the items
-    suffix = match.group(3)  # "]"
+    if len(all_nodes) > 1:
+        # Multiple `__all__ = [...]` definitions collapse to whichever runs last
+        # at import time and are almost always a mistake. Refuse to rewrite so we
+        # never guess wrong and clobber code between them.
+        lines_at = ", ".join(str(n.lineno) for n in all_nodes)
+        print(
+            f"❌ {file_path}: found {len(all_nodes)} `__all__` list definitions "
+            f"(lines {lines_at}); expected exactly one. Skipping to avoid data loss."
+        )
+        return False
 
-    # Extract all string items (handles both " and ')
-    items = re.findall(r'["\']([^"\']+)["\']', content)
+    node = all_nodes[0]
+    items = [
+        elt.value
+        for elt in node.value.elts
+        if isinstance(elt, ast.Constant) and isinstance(elt.value, str)
+    ]
+
+    # Boundaries of the `__all__ = [ ... ]` statement (1-indexed inclusive).
+    node_start = node.lineno - 1
+    node_end = node.end_lineno - 1
+    prefix = "__all__ = ["
+    suffix = "]"
 
     if not items:
         return True
 
+    # Remove duplicates while preserving order, then sort by casefold
+    seen = set()
+    unique_items = []
+    duplicates = []
+    for item in items:
+        if item in seen:
+            duplicates.append(item)
+        else:
+            seen.add(item)
+            unique_items.append(item)
+
     # Sort by casefold
-    sorted_items = sorted(items, key=str.casefold)
+    sorted_items = sorted(unique_items, key=str.casefold)
 
     if items == sorted_items:
-        return True  # Already sorted
+        return True  # Already sorted and no duplicates
+
+    if not fix:
+        print(f"❌ {file_path}: __all__ is not sorted by casefold")
+        if duplicates:
+            print(
+                f"   Found {len(duplicates)} duplicate(s): {', '.join(set(duplicates))}"
+            )
+        # Show first mismatch
+        for i, (actual, expected) in enumerate(zip(unique_items, sorted_items)):
+            if actual != expected:
+                print(f"   Position {i}: got '{actual}', expected '{expected}'")
+                break
+        return False
 
     if not fix:
         print(f"❌ {file_path}: __all__ is not sorted by casefold")
@@ -95,14 +149,14 @@ def sort_python_all(file_path: Path, fix: bool = False, dry_run: bool = False) -
                 break
         return False
 
-    # Detect indent and quote style from existing items
-    lines = content.strip().split("\n")
+    # Detect indent and quote style from the existing __all__ block
+    source_lines = source.split("\n")
+    block_lines = source_lines[node_start : node_end + 1]
     quote = '"'
     indent = 4  # default
-    for line in lines:
+    for line in block_lines[1:]:  # skip the `__all__ = [` line itself
         stripped = line.strip()
-        if stripped:
-            # Use lines with leading whitespace for indent detection
+        if stripped and stripped != "]":
             if line != line.lstrip():
                 indent = len(line) - len(line.lstrip())
             quote = '"' if '"' in stripped else "'"
@@ -110,22 +164,30 @@ def sort_python_all(file_path: Path, fix: bool = False, dry_run: bool = False) -
 
     indent_str = " " * indent
 
-    # Rebuild the __all__ content
-    new_items_lines = [f"{indent_str}{quote}{item}{quote}," for item in sorted_items]
-    new_content = "\n" + "\n".join(new_items_lines) + "\n"
+    # Rebuild only the `__all__ = [ ... ]` statement, replacing it in place by
+    # line range so nothing outside the assignment can be touched.
+    new_block = [prefix]
+    new_block += [f"{indent_str}{quote}{item}{quote}," for item in sorted_items]
+    new_block.append(suffix)
 
-    new_source = (
-        source[: match.start()] + prefix + new_content + suffix + source[match.end() :]
+    new_source = "\n".join(
+        source_lines[:node_start] + new_block + source_lines[node_end + 1 :]
     )
 
     if dry_run:
-        print(f"Would sort {file_path}: {len(items)} items")
+        msg = f"Would sort {file_path}: {len(unique_items)} items"
+        if duplicates:
+            msg += f" (removing {len(duplicates)} duplicate(s))"
+        print(msg)
         print(f"  First item: '{sorted_items[0]}'")
         print(f"  Last item: '{sorted_items[-1]}'")
         return False
 
     file_path.write_text(new_source)
-    print(f"✅ {file_path}: sorted {len(items)} items in __all__")
+    msg = f"✅ {file_path}: sorted {len(sorted_items)} items in __all__"
+    if duplicates:
+        msg += f" (removed {len(duplicates)} duplicate(s): {', '.join(sorted(set(duplicates)))})"
+    print(msg)
     return False
 
 
@@ -333,6 +395,51 @@ def sort_full_config(file_path: Path, fix: bool = False, dry_run: bool = False) 
     return True
 
 
+def discover_init_files() -> list[Path]:
+    """Discover all __init__.py files that should be checked.
+
+    Same logic as check_init_exports.py for consistency.
+    """
+    root = Path("src/flag_gems")
+    if not root.exists():
+        return []
+
+    files = []
+
+    # 1. Main package init (contains _FULL_CONFIG)
+    main_init = root / "__init__.py"
+    if main_init.exists():
+        files.append(main_init)
+
+    # 2. Generic ops init (exports every device-agnostic operator; this is the
+    # file new operators are added to, so it must be kept sorted).
+    ops_init = root / "ops" / "__init__.py"
+    if ops_init.exists():
+        files.append(ops_init)
+
+    # 3. All backend ops __init__.py files
+    backend_root = root / "runtime" / "backend"
+    if backend_root.exists():
+        for vendor_dir in backend_root.iterdir():
+            if not vendor_dir.is_dir() or not vendor_dir.name.startswith("_"):
+                continue
+
+            # Check vendor-level ops/
+            vendor_ops_init = vendor_dir / "ops" / "__init__.py"
+            if vendor_ops_init.exists():
+                files.append(vendor_ops_init)
+
+            # Check architecture-level ops/
+            for arch_dir in vendor_dir.iterdir():
+                if not arch_dir.is_dir():
+                    continue
+                arch_ops_init = arch_dir / "ops" / "__init__.py"
+                if arch_ops_init.exists():
+                    files.append(arch_ops_init)
+
+    return sorted(files)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Sort __all__ exports and operators.yaml by casefold"
@@ -355,7 +462,7 @@ def main():
     parser.add_argument(
         "--files",
         nargs="+",
-        help="Specific files to process (default: all known files)",
+        help="Specific files to process (default: auto-discover all __init__.py + operators.yaml)",
     )
 
     args = parser.parse_args()
@@ -370,12 +477,11 @@ def main():
     if args.files:
         files_to_check = [Path(f) for f in args.files]
     else:
-        # Default: all known files
-        files_to_check = [
-            Path("src/flag_gems/__init__.py"),
-            Path("src/flag_gems/ops/__init__.py"),
-            Path("conf/operators.yaml"),
-        ]
+        # Auto-discover all __init__.py files + operators.yaml
+        files_to_check = discover_init_files()
+        files_to_check.append(Path("conf/operators.yaml"))
+
+    print(f"Processing {len(files_to_check)} file(s)...\n")
 
     all_sorted = True
 
@@ -387,8 +493,8 @@ def main():
         else:
             # Sort __all__
             sorted_ok = sort_python_all(file_path, fix=args.fix, dry_run=args.dry_run)
-            # Also sort _FULL_CONFIG if this is __init__.py
-            if file_path.name == "__init__.py":
+            # Also sort _FULL_CONFIG if this is the main __init__.py
+            if str(file_path) == "src/flag_gems/__init__.py":
                 config_sorted = sort_full_config(
                     file_path, fix=args.fix, dry_run=args.dry_run
                 )

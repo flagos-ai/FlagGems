@@ -1,151 +1,174 @@
-# Copyright 2026, The FlagOS Contributors.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-import logging
-
 import torch
 import triton
 import triton.language as tl
 
-from flag_gems.ops.special_shifted_chebyshev_polynomial_u import (
-    shifted_chebyshev_polynomial_u_kernel,
-    shifted_chebyshev_polynomial_u_kernel_scalar_n,
-)
-from flag_gems.utils import libentry, tl_extra_shim
-
-logger = logging.getLogger(__name__)
-
-# On DCU the hardware v_sin_f32 instruction is ~2x faster than the libdevice
-# sinf for this kernel's workload and stays within this op's f32 accuracy
-# budget (tests use atol=5e-3). The generic implementation in
-# flag_gems/ops/special_shifted_chebyshev_polynomial_u.py uses libdevice sin
-# for portability; this Hygon override uses the hardware instruction.
-#
-# NB: AMD's v_sin_f32 computes sin(2*pi*x) -- the argument is in turns, not
-# radians -- so scale by 1/(2*pi) first.
-_INV_2PI: float = 0.15915494309189535
+_MAX_ND = 8
+_BLOCK = 2048
+_NUM_WARPS = 8
 
 
 @triton.jit
-def _hw_sin(x):
-    return tl.inline_asm_elementwise(
-        "v_sin_f32 $0, $1",
-        "=v,v",
-        [x * 0.15915494309189535],
-        dtype=tl.float32,
-        is_pure=True,
-        pack=1,
-    )
+def _cheb_u_body(x, n):
+    """U*_n(x) = U_n(2x - 1), elementwise, dynamic masked recurrence.
+
+    U*_0 = 1, U*_1 = 4x - 2, U*_n = (4x - 2) * U*_{n-1} - U*_{n-2}; n < 0 -> 0.
+    x is fp32 compute; n is int32 (already truncated toward zero).
+    """
+    a = 4.0 * x - 2.0
+    nmax = tl.max(n, axis=0)
+    npos = tl.maximum(n, 0)
+    u1 = tl.where(n == 0, 1.0, a)
+    u0 = u1 * 0.0 + 1.0
+    for i in range(2, nmax + 1):
+        nu = a * u1 - u0
+        u0 = u1
+        u1 = tl.where(i <= npos, nu, u1)
+    return tl.where(n < 0, 0.0, u1)
 
 
 @triton.jit
-def _cheby_u_math_hygon(x_f32, n_f32):
-    # Same formula and boundary handling as the generic implementation:
-    # U_n^*(x) = sin((n+1) * acos(2x-1)) / sin(acos(2x-1))
-    x_shifted = x_f32 * 2.0 - 1.0
-    x_shifted = tl.where(x_shifted > 1.0, 1.0, x_shifted)
-    x_shifted = tl.where(x_shifted < -1.0, -1.0, x_shifted)
-
-    acos_val = tl_extra_shim.acos(x_shifted)
-    sin_acos = _hw_sin(acos_val)
-
-    near_boundary = tl.abs(sin_acos) < 1e-6
-    n_mod_2 = n_f32 - 2.0 * tl_extra_shim.floor(n_f32 / 2.0)
-    is_odd = tl.abs(n_mod_2 - 1.0) < 0.5
-    boundary_val = tl.where(
-        x_shifted < 0.0, tl.where(is_odd, -1.0 - n_f32, n_f32 + 1.0), n_f32 + 1.0
-    )
-
-    numerator = _hw_sin((n_f32 + 1.0) * acos_val)
-    result = numerator / sin_acos
-    return tl.where(near_boundary, boundary_val, result)
-
-
-@libentry()
-@triton.jit
-def _cheby_u_tt_kernel_hygon(
+def _shifted_cheb_u_direct(
     x_ptr,
     n_ptr,
     out_ptr,
-    n_elements,
-    BLOCK_SIZE: tl.constexpr,
+    numel,
+    X_IS_FP64: tl.constexpr,
+    BLOCK: tl.constexpr,
 ):
     pid = tl.program_id(0)
-    offs = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offs < n_elements
-    x = tl.load(x_ptr + offs, mask=mask, other=0.0).to(tl.float32)
-    n = tl.load(n_ptr + offs, mask=mask, other=0.0).to(tl.float32)
-    r = _cheby_u_math_hygon(x, n)
-    tl.store(out_ptr + offs, r.to(out_ptr.dtype.element_ty), mask=mask)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < numel
+    x = tl.load(x_ptr + offs, mask=mask, other=0.0)
+    n = tl.load(n_ptr + offs, mask=mask, other=0).to(tl.int32)
+    if X_IS_FP64:
+        xc = x
+    else:
+        xc = x.to(tl.float32)
+    r = _cheb_u_body(xc, n)
+    if X_IS_FP64:
+        tl.store(out_ptr + offs, r, mask=mask)
+    else:
+        tl.store(out_ptr + offs, r.to(x.dtype), mask=mask, cache_modifier=".cs")
 
 
-@libentry()
 @triton.jit
-def _cheby_u_ts_kernel_hygon(
+def _shifted_cheb_u_bcast(
     x_ptr,
+    n_ptr,
     out_ptr,
-    n_scalar,
-    n_elements,
-    BLOCK_SIZE: tl.constexpr,
+    dims_ptr,
+    sx_ptr,
+    sn_ptr,
+    sp_ptr,
+    numel,
+    X_IS_FP64: tl.constexpr,
+    BLOCK: tl.constexpr,
 ):
     pid = tl.program_id(0)
-    offs = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offs < n_elements
-    x = tl.load(x_ptr + offs, mask=mask, other=0.0).to(tl.float32)
-    n = tl.full([BLOCK_SIZE], 0.0, tl.float32) + n_scalar
-    r = _cheby_u_math_hygon(x, n)
-    tl.store(out_ptr + offs, r.to(out_ptr.dtype.element_ty), mask=mask)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < numel
+    ar = tl.arange(0, 8)
+    dims = tl.load(dims_ptr + ar)
+    sx = tl.load(sx_ptr + ar)
+    sn = tl.load(sn_ptr + ar)
+    sp = tl.load(sp_ptr + ar)
+    coord = (offs[:, None] // sp[None, :]) % dims[None, :]
+    xo = tl.sum(coord * sx[None, :], axis=1)
+    no = tl.sum(coord * sn[None, :], axis=1)
+    x = tl.load(x_ptr + xo, mask=mask, other=0.0)
+    n = tl.load(n_ptr + no, mask=mask, other=0).to(tl.int32)
+    if X_IS_FP64:
+        xc = x
+    else:
+        xc = x.to(tl.float32)
+    r = _cheb_u_body(xc, n)
+    if X_IS_FP64:
+        tl.store(out_ptr + offs, r, mask=mask)
+    else:
+        tl.store(out_ptr + offs, r.to(x.dtype), mask=mask, cache_modifier=".cs")
 
 
-def _cheby_u_can_fast(x, n):
-    return x.is_contiguous() and (
-        not isinstance(n, torch.Tensor)
-        or (n.is_contiguous() and n.numel() == x.numel())
-    )
+def _bcast_strides(shape, t):
+    nd = len(shape)
+    tshape = t.shape
+    tstride = t.stride()
+    pad = nd - len(tshape)
+    res = [0] * nd
+    for d in range(nd):
+        td = d - pad
+        if td < 0:
+            continue
+        if tshape[td] == shape[d]:
+            res[d] = int(tstride[td])
+        else:
+            res[d] = 0
+    return res
 
 
-def _cheby_u_fast_hygon(x, n, out):
-    n_elements = x.numel()
-    grid = (triton.cdiv(n_elements, 4096),)
-    if isinstance(n, torch.Tensor):
-        _cheby_u_tt_kernel_hygon[grid](
-            x, n, out, n_elements, BLOCK_SIZE=4096, num_warps=8
+def run(x, n):
+    if not isinstance(n, torch.Tensor):
+        n = torch.tensor(n, dtype=torch.int64, device=x.device)
+    xshape = x.shape
+    nshape = n.shape
+    if xshape == nshape:
+        shape = xshape
+        numel = x.numel()
+        simple = x.is_contiguous() and n.is_contiguous()
+    else:
+        shape = torch.broadcast_shapes(xshape, nshape)
+        numel = 1
+        for s in shape:
+            numel *= int(s)
+        simple = False
+    out = torch.empty(shape, dtype=x.dtype, device=x.device)
+    if numel == 0:
+        return out
+    if simple:
+        grid = (triton.cdiv(numel, _BLOCK),)
+        _shifted_cheb_u_direct[grid](
+            x,
+            n,
+            out,
+            numel,
+            X_IS_FP64=x.dtype == torch.float64,
+            BLOCK=_BLOCK,
+            num_warps=_NUM_WARPS,
         )
     else:
-        _cheby_u_ts_kernel_hygon[grid](
-            x, out, float(n), n_elements, BLOCK_SIZE=4096, num_warps=8
+        nd = len(shape)
+        if nd > _MAX_ND:
+            raise ValueError(f"more than {_MAX_ND} dims not supported")
+        sx = _bcast_strides(shape, x)
+        sn = _bcast_strides(shape, n)
+        dims = [1] * _MAX_ND
+        for d in range(nd):
+            dims[d] = int(shape[d])
+        sp = [1] * _MAX_ND
+        acc = 1
+        for d in range(_MAX_ND - 1, -1, -1):
+            sp[d] = acc
+            acc *= dims[d]
+        dev = x.device
+        dims_t = torch.tensor(dims, dtype=torch.int32, device=dev)
+        sx_t = torch.tensor(sx, dtype=torch.int32, device=dev)
+        sn_t = torch.tensor(sn, dtype=torch.int32, device=dev)
+        sp_t = torch.tensor(sp, dtype=torch.int32, device=dev)
+        grid = (triton.cdiv(numel, _BLOCK),)
+        _shifted_cheb_u_bcast[grid](
+            x,
+            n,
+            out,
+            dims_t,
+            sx_t,
+            sn_t,
+            sp_t,
+            numel,
+            X_IS_FP64=x.dtype == torch.float64,
+            BLOCK=_BLOCK,
+            num_warps=_NUM_WARPS,
         )
     return out
 
 
-def special_shifted_chebyshev_polynomial_u(x, n):
-    logger.debug("GEMS_HYGON SPECIAL_SHIFTED_CHEBYSHEV_POLYNOMIAL_U")
-    if x.dtype not in (torch.float32,):
-        raise ValueError(f"Unsupported dtype {x.dtype}, only float32 is supported")
-    if _cheby_u_can_fast(x, n):
-        return _cheby_u_fast_hygon(x, n, torch.empty_like(x))
-    if not isinstance(n, torch.Tensor):
-        return shifted_chebyshev_polynomial_u_kernel_scalar_n(x, n)
-    return shifted_chebyshev_polynomial_u_kernel(x, n)
-
-
-def special_shifted_chebyshev_polynomial_u_(x, n):
-    logger.debug("GEMS_HYGON SPECIAL_SHIFTED_CHEBYSHEV_POLYNOMIAL_U_")
-    if x.dtype not in (torch.float32,):
-        raise ValueError(f"Unsupported dtype {x.dtype}, only float32 is supported")
-    if _cheby_u_can_fast(x, n):
-        return _cheby_u_fast_hygon(x, n, x)
-    if not isinstance(n, torch.Tensor):
-        return shifted_chebyshev_polynomial_u_kernel_scalar_n(x, n, out0=x)
-    return shifted_chebyshev_polynomial_u_kernel(x, n, out0=x)
+# Alias for FlagGems import convention
+special_shifted_chebyshev_polynomial_u = run
