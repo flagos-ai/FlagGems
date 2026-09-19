@@ -1161,6 +1161,8 @@ _FULL_CONFIG = (
     ("prod", prod),
     ("prod.dim_int", prod_dim),
     ("quantile", quantile),
+    ("quantize_per_channel", quantize_per_channel),
+    ("quantize_per_channel.out", quantize_per_channel_out),
     ("quantized_gru.data", quantized_gru_data),
     ("quantized_gru.input", quantized_gru_input),
     ("quantized_lstm.input", quantized_lstm),
