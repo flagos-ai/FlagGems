@@ -88,11 +88,7 @@ def float_power_tensor_tensor(A, exponent):
 
 def float_power_tensor_tensor_(A, exponent):
     logger.debug("GEMS FLOAT_POWER_TENSOR_TENSOR_")
-    if (
-        A.shape == exponent.shape
-        and A.is_contiguous()
-        and exponent.is_contiguous()
-    ):
+    if A.shape == exponent.shape and A.is_contiguous() and exponent.is_contiguous():
         return _float_power_inplace_fast(A, exponent)
     return float_power_func(A, exponent, out0=A)
 

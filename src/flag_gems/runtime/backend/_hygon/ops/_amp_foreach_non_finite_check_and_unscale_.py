@@ -54,10 +54,10 @@ def _get_meta_slot(device):
     if ring is None:
         ring = []
         for _ in range(8):
-            pinned = torch.empty(2 * _META_SLOT_TENSORS, dtype=torch.int64,
-                                 pin_memory=True)
-            dev = torch.empty(2 * _META_SLOT_TENSORS, dtype=torch.int64,
-                              device=device)
+            pinned = torch.empty(
+                2 * _META_SLOT_TENSORS, dtype=torch.int64, pin_memory=True
+            )
+            dev = torch.empty(2 * _META_SLOT_TENSORS, dtype=torch.int64, device=device)
             # The event guards the pinned buffer: synchronizing an event that
             # was never recorded is a no-op, so slots are born ready.
             ring.append([pinned, dev, torch.cuda.Event()])
@@ -278,8 +278,9 @@ def _amp_foreach_non_finite_check_and_unscale_(
             # Chunked by metadata slot capacity (and the 65535-program limit
             # of grid axis 1).
             for start in range(0, len(group), _META_SLOT_TENSORS):
-                _launch_fused_group(group[start : start + _META_SLOT_TENSORS],
-                                    inv_scale, found_inf)
+                _launch_fused_group(
+                    group[start : start + _META_SLOT_TENSORS], inv_scale, found_inf
+                )
         else:
             for tensor in group:
                 _launch_single(tensor, inv_scale, found_inf)

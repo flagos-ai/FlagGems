@@ -33,9 +33,7 @@ def block_diag_fused_strided_kernel(
     col_block = col // BLOCK_COLS
     diagonal = row_block == col_block
     src_off = (
-        row_block * input_stride
-        + (row % BLOCK_ROWS) * BLOCK_COLS
-        + col % BLOCK_COLS
+        row_block * input_stride + (row % BLOCK_ROWS) * BLOCK_COLS + col % BLOCK_COLS
     )
     value = tl.load(base_ptr + src_off, mask=out_mask & diagonal, other=0.0)
     tl.store(out_ptr + offs, value, mask=out_mask)
