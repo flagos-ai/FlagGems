@@ -55,7 +55,7 @@ ops:
   kind:
   - LinearAlg
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: _reshape_alias
   description: 'Creates a view of the input tensor with the given size and stride,
 
@@ -83,7 +83,7 @@ ops:
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: _weight_norm
   description: 'Reparameterizes a module''s weight tensor by decoupling its magnitude
     (g)
@@ -294,7 +294,7 @@ ops:
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: adaptive_max_pool2d
   description: 'Applies two-dimensional adaptive max pooling and returns both pooled
     values
@@ -597,7 +597,7 @@ ops:
   kind:
   - BLAS
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: addmm_activation_out
   description: A variant of `_addmm_activation()` that assigns the output to the provided `out` parameter.
   for:
@@ -608,7 +608,7 @@ ops:
   kind:
   - BLAS
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: addmm_dtype
   description: 'A variant of `addmm` that allows the dtype of the output tensor to
     be specified.
@@ -3424,7 +3424,7 @@ ops:
   kind:
   - Reduction
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: count_nonzero
   description: 'Counts the number of non-zero values in the tensor `input` along the
     given `dim`.
@@ -3482,7 +3482,7 @@ ops:
   kind:
   - LinearAlg
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: cross_entropy_loss
   description: Computes the cross entropy loss between input logits and target.
   for:
@@ -3504,7 +3504,7 @@ ops:
   kind:
   - LinearAlg
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: cslt_sparse_mm
   description: Triton implementation of aten._cslt_sparse_mm; decodes the cuSPARSELt
     2:4 structured-sparse compressed blob back to dense and runs a tiled dense matmul,
@@ -3519,7 +3519,7 @@ ops:
   kind:
   - Tensor
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: ctc_loss
   description: Connectionist Temporal Classification loss for sequence-to-sequence
     models.
@@ -3862,7 +3862,7 @@ ops:
   kind:
   - LinearAlg
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: dgeglu
   description: 'Gaussian Error Gated Linear Unit with GELU activation instead of sigmoid
     function.
@@ -4201,7 +4201,7 @@ ops:
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: dsplit
   description: 'Split a tensor along the third axis (depth-wise). Pure layout operation
     returning zero-copy views.
@@ -4428,7 +4428,7 @@ ops:
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: embedding_dense_backward
   description: Calculates the gradient of the weight matrix for a dense embedding
     layer during backpropagation.
@@ -4469,7 +4469,7 @@ ops:
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: empty
   description: Tensor factory operator — verifies dtype inference for newly allocated
     tensors.
@@ -4835,7 +4835,7 @@ ops:
   kind:
   - Math
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: fake_quantize_learnable_per_channel_affine_backward
   description: 'Triton kernel implementation for `_fake_quantize_learnable_per_channel_affine_backward`,
 
@@ -4964,7 +4964,7 @@ ops:
   kind:
   - Quantization
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: fake_quantize_per_tensor_affine_cachemask_backward
   description: 'Computes the gradient for fake_quantize_per_tensor_affine_cachemask
     by multiplying the incoming
@@ -4994,7 +4994,7 @@ ops:
   kind:
   - Quantization
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: fake_quantize_per_tensor_affine_cachemask_tensor_qparams
   description: 'Fake-quantizes `input` per-tensor with affine mapping given by `scale`
     and
@@ -5026,7 +5026,7 @@ ops:
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: feature_alpha_dropout_
   description: Applies feature alpha dropout to the input tensor in-place while preserving
     the self-normalizing properties of SELU activations.
@@ -5038,7 +5038,7 @@ ops:
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: feature_dropout
   description: 'Applies feature dropout to the `input` tensor. Randomly zeroes out
     entire channels of the `input` tensor with probability `p`.
@@ -5776,7 +5776,7 @@ ops:
   kind:
   - Math
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: frexp
   description: Return mantissa and exponent of input, such that x = mantissa * 2^exponent,
     with mantissa in (-1, 1).
@@ -5990,7 +5990,7 @@ ops:
   kind:
   - Tensor
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: fused_moving_avg_obs_fq_helper
   description: Fused moving-average observer with fake-quantize for QAT; updates running
     min/max, recomputes scale/zero_point, and fake-quantizes the input for both per-tensor
@@ -6316,7 +6316,7 @@ ops:
   kind:
   - Math
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: greater_equal_
   description: The in-place version of `greater_equal()`, which is an alias for `ge()`.
   for:
@@ -6390,7 +6390,7 @@ ops:
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: grid_sampler_3d
   description: Given an `input` and a flow-field `grid` in 3D, computes the `output`
     using `input` values and pixel locations from `grid` with trilinear or nearest
@@ -6549,7 +6549,7 @@ ops:
   kind:
   - Math
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: hamming_window_periodic
   description: A variant of hamming_window() that takes an explicit periodic flag.
   for:
@@ -6560,7 +6560,7 @@ ops:
   kind:
   - Math
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: hamming_window_periodic_alpha
   description: A variant of hamming_window() that takes an explicit periodic flag and
     alpha parameter.
@@ -6572,7 +6572,7 @@ ops:
   kind:
   - Math
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: hamming_window_periodic_alpha_beta
   description: A variant of hamming_window() that takes an explicit periodic flag,
     alpha, and beta parameters.
@@ -6584,7 +6584,7 @@ ops:
   kind:
   - Math
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: hardshrink
   description: 'Applies the hard shrinkage function element-wise: returns x if |x|
     > lambd, else 0.
@@ -6959,7 +6959,7 @@ ops:
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: histc
   description: 'Computes the histogram of a tensor, binning each element into equal-width
     bins.
@@ -6987,7 +6987,7 @@ ops:
   kind:
   - Reduction
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: hsplit
   description: 'Split a tensor into multiple sub-tensors horizontally (column-wise).
 
@@ -7151,7 +7151,7 @@ ops:
   kind:
   - Math
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: iand_tensor
   description: The in-place version of bitwise and operation for two tensors.
   for:
@@ -7162,7 +7162,7 @@ ops:
   kind:
   - Math
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: igamma
   description: Computes the regularized lower incomplete gamma function element-wise.
   for:
@@ -7391,7 +7391,7 @@ ops:
   kind:
   - Tensor
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: index_reduce_
   description: 'Accumulates the elements of `source` into `input` at the indices specified
 
@@ -7420,7 +7420,7 @@ ops:
   kind:
   - Tensor
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: index_select
   description: 'Returns a new tensor which indexes the `input` tensor along dimension
     `dim`
@@ -7498,7 +7498,7 @@ ops:
   kind:
   - BLAS
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: int_mm_out
   description: A variant of `_int_mm` that writes the int32 result into `out`.
   for:
@@ -7508,7 +7508,7 @@ ops:
   kind:
   - BLAS
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: irshift
   description: Triton kernel implementation for __irshift__.
   for:
@@ -7556,7 +7556,7 @@ ops:
   kind:
   - Tensor
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: isclose
   description: 'Returns a new tensor with boolean elements representing if each element
     of `input`
@@ -7696,7 +7696,7 @@ ops:
   kind:
   - Math
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: ixor
   description: 'Computes the bitwise XOR of input tensors or a tensor and a scalar
     (inplace).
@@ -7804,7 +7804,7 @@ ops:
   kind:
   - Pointwise
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: ldexp_
   description: In-place version of `ldexp`.
   for:
@@ -7816,7 +7816,7 @@ ops:
   kind:
   - Math
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: ldexp_out
   description: A variant of ldexp() that assigns the output to the out tensor.
   for:
@@ -7828,7 +7828,7 @@ ops:
   kind:
   - Pointwise
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: le
   description: Computes that `input` is less than or equal to `other` element-wise.
   for:
@@ -8124,7 +8124,7 @@ ops:
   kind:
   - LinearAlg
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: linalg_cholesky
   description: 'Computes the Cholesky decomposition of a symmetric positive-definite
     matrix A
@@ -8150,7 +8150,7 @@ ops:
   kind:
   - LinearAlg
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: linalg_cross
   description: Computes the cross product of two 3-dimensional vectors along a specified
     dimension.
@@ -8238,7 +8238,7 @@ ops:
   kind:
   - Math
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: linalg_householder_product
   description: Compute the matrix product of Householder matrices from QR decomposition.
   for:
@@ -8381,6 +8381,8 @@ ops:
   - aten
   kind:
   - Math
+  stages:
+  - alpha: '5.4'
 - id: linalg_lu_out
   description: 'Out-of-place version of linalg_lu. Supports calling
 
@@ -8438,7 +8440,8 @@ ops:
   kind:
   - LinearAlg
   stages:
-  - beta: '5.4'
+  - alpha: '5.4'
+  - beta: '5.5'
 - id: linalg_matrix_norm_out
   description: 'Out-of-place version of linalg_matrix_norm,
 
@@ -8460,7 +8463,7 @@ ops:
   kind:
   - LinearAlg
   stages:
-  - beta: '5.4'
+  - beta: '5.5'
 - id: linalg_matrix_power
   description: 'Computes the n-th power of a square matrix using binary exponentiation.
 
@@ -8608,7 +8611,7 @@ ops:
   kind:
   - LinearAlg
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: linalg_multi_dot_out
   description: Writes the optimally ordered product of a matrix chain to a provided
     output tensor.
@@ -8620,7 +8623,7 @@ ops:
   kind:
   - LinearAlg
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: linalg_norm
   description: 'Computes a vector or matrix norm, mirroring torch.linalg.norm dispatch.
 
@@ -8649,7 +8652,7 @@ ops:
   kind:
   - LinearAlg
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: linalg_polar_out
   description: Writes the right polar decomposition into U and H output tensors.
   for:
@@ -8660,7 +8663,7 @@ ops:
   kind:
   - LinearAlg
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: linalg_qr
   description: Computes the QR decomposition of a matrix (or a batch of matrices)
     via a blocked Householder algorithm with a TSQR fast path for tall-skinny inputs.
@@ -8713,7 +8716,7 @@ ops:
   kind:
   - LinearAlg
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: linalg_solve_triangular
   description: 'Solves a triangular system of linear equations with a unique solution,
     returning
@@ -8776,7 +8779,7 @@ ops:
   kind:
   - Math
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: linalg_tensorinv_out
   description: |-
     Out-of-place variant of linalg_tensorinv: computes the tensor inverse
@@ -8789,7 +8792,7 @@ ops:
   kind:
   - Math
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: linalg_vander
   description: Computes the Vandermonde matrix of a given vector.
   for:
@@ -8800,7 +8803,7 @@ ops:
   kind:
   - Math
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: linalg_vecdot
   description: Computes the dot product of two vectors along a specified dimension.
   for:
@@ -8874,6 +8877,8 @@ ops:
   - aten
   - KernelGen
   - IR
+  stages:
+  - alpha: '5.4'
 - id: log
   description: Returns a new tensor with the natural logarithm of the elements of
     `input`.
@@ -9204,7 +9209,7 @@ ops:
   kind:
   - LinearAlg
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: logical_and
   description: 'Computes the element-wise logical AND of the given `input` tensors.
 
@@ -9642,7 +9647,7 @@ ops:
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: masked_softmax_backward
   description: |
     Computes the input gradient of a masked softmax: masked positions are
@@ -9656,7 +9661,7 @@ ops:
   kind:
     - NeuralNetwork
   stages:
-    - alpha: '5.4'
+    - alpha: '5.5'
 - id: matmul_bias_activation
   description: Fused matrix multiplication with bias addition and ReLU activation.
   for:
@@ -9789,7 +9794,7 @@ ops:
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: max_pool3d_backward
   description: The backward version of `max_pool2d_with_indices()`.
   for:
@@ -10096,7 +10101,7 @@ ops:
   kind:
   - BLAS
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: mkldnn_rnn_layer
   description: 'Applies a single-layer unidirectional LSTM (oneDNN mkldnn_rnn_layer,
     mode=2)
@@ -10160,7 +10165,7 @@ ops:
   kind:
   - BLAS
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: mm_w8a8_int8_out
   description: A variant of mm_w8a8_int8 with caller-owned output.
   for:
@@ -10170,7 +10175,7 @@ ops:
   kind:
   - BLAS
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: mode
   description: Returns a namedtuple (values, indices) where values is the mode value
     of each row of the input tensor in the given dimension dim, i.e. a value which
@@ -10277,7 +10282,7 @@ ops:
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: multi_margin_loss_backward
   description: Computes the input gradient of the multi-class margin loss.
   for:
@@ -10288,7 +10293,7 @@ ops:
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: multi_margin_loss_backward_out
   description: Writes the multi-class margin-loss gradient into grad_input.
   for:
@@ -10299,7 +10304,7 @@ ops:
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: multi_margin_loss_out
   description: Writes the multi-class margin loss into the provided output tensor.
   for:
@@ -10310,7 +10315,7 @@ ops:
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: multilabel_margin_loss_forward
   description: 'Computes the forward multi-label margin loss and returns both the
     loss and the per-class target membership mask.'
@@ -10449,7 +10454,7 @@ ops:
   kind:
   - Math
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: nanmean_out
   description: Computes the mean of non-NaN values into the supplied output tensor.
   for:
@@ -10461,7 +10466,7 @@ ops:
   kind:
   - Math
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: nanmedian
   description: Returns the median of the values in `input`, ignoring `NaN` values.
   for:
@@ -10525,7 +10530,7 @@ ops:
   kind:
   - Tensor
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: nanquantile_out
   description: Tensor-q out overload of `nanquantile`.
   for:
@@ -10536,7 +10541,7 @@ ops:
   kind:
   - Tensor
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: nanquantile_scalar
   description: Scalar-q overload of `nanquantile`.
   for:
@@ -10547,7 +10552,7 @@ ops:
   kind:
   - Tensor
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: nanquantile_scalar_out
   description: Scalar-q out overload of `nanquantile`.
   for:
@@ -10558,7 +10563,7 @@ ops:
   kind:
   - Tensor
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: nansum
   description: 'Returns the sum of all elements in the `input` tensor, treating `NaN`
     values as zero.
@@ -10709,7 +10714,7 @@ ops:
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: native_dropout_backward
   description: The backward case of `dropout()`.
   for:
@@ -10757,7 +10762,7 @@ ops:
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: ne
   description: Computes that `input` is not equal to `other` element-wise.
   for:
@@ -10867,7 +10872,7 @@ ops:
   kind:
   - Tensor
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: nested_sum_backward
   description: 'Triton kernel implementation for `_nested_sum_backward`, the backward
     of
@@ -11216,7 +11221,7 @@ ops:
   kind:
   - Reduction
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: norm_scalar
   description: A variant of `norm` that computes the norm over all elements.
   for:
@@ -11522,7 +11527,7 @@ ops:
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: pad_sequence
   description: Pads a list of variable length tensors with a given padding value and
     stacks them into a single padded batch tensor.
@@ -11536,7 +11541,7 @@ ops:
   - Utility
   - NeuralNetwork
   stages:
-  - beta: '5.4'
+  - beta: '5.5'
 - id: padded_dense_to_jagged_forward
   description: 'Converts padded dense storage to a one- to five-level jagged tensor.
 
@@ -11548,7 +11553,7 @@ ops:
   kind:
   - Tensor
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: pairwise_distance
   description: 'Computes the pairwise distance between input vectors, or between columns
     of input matrices.
@@ -11647,7 +11652,7 @@ ops:
   kind:
   - BLAS
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: pixel_shuffle
   description: Rearranges elements in a tensor to a new tensor of different shape.
   for:
@@ -11714,7 +11719,7 @@ ops:
   - NeuralNetwork
   - Reduction
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: polar
   description: 'Constructs a complex tensor whose elements are Cartesian coordinates
     corresponding to
@@ -11953,7 +11958,7 @@ ops:
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: quantized_lstm
   description: Applies a multi-layer quantized LSTM over an input sequence. Takes
     the input sequence, initial hidden and cell states, and per-layer quantized weights,
@@ -11977,7 +11982,7 @@ ops:
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: quantized_max_pool3d_out
   description: |
     A variant of quantized_max_pool3d() that writes the result into the out tensor.
@@ -11989,7 +11994,7 @@ ops:
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: rad2deg
   description: 'Converts each element from angles in radians to degrees.
 
@@ -12150,7 +12155,7 @@ ops:
   kind:
     - Tensor
   stages:
-    - alpha: '5.4'
+    - alpha: '5.5'
 - id: reciprocal
   description: Returns a new tensor with the reciprocal of the elements of `input`.
   for:
@@ -12786,7 +12791,7 @@ ops:
   kind:
   - NeuralNetwork
   stages:
-  - beta: '5.4'
+  - beta: '5.5'
   name:
   - rnn_tanh
   source:
@@ -12801,7 +12806,7 @@ ops:
   kind:
   - NeuralNetwork
   stages:
-  - beta: '5.4'
+  - beta: '5.5'
   name:
   - rnn_tanh
   source:
@@ -12876,7 +12881,7 @@ ops:
   kind:
   - NeuralNetwork
   stages:
-  - beta: '5.4'
+  - beta: '5.5'
 - id: rrelu_with_noise_
   description: 'Triton kernel implementation for rrelu_with_noise_
     '
@@ -12887,7 +12892,7 @@ ops:
   kind:
   - NeuralNetwork
   stages:
-  - beta: '5.4'
+  - beta: '5.5'
 - id: rrelu_with_noise_backward
   description: 'Computes the gradient of the Randomized Leaky ReLU (RReLU) activation
     function with respect to
@@ -13380,7 +13385,7 @@ ops:
   kind:
   - Reduction
   stages:
-  - alpha: '5.3'
+  - alpha: '5.5'
 - id: scatter_reduce_two_
   description: 'A specific low-level ATen operator primarily encountered during model
     compilation
@@ -13412,7 +13417,7 @@ ops:
   kind:
   - Reduction
   stages:
-  - alpha: '5.3'
+  - alpha: '5.5'
 - id: scatter_src
   description: 'Writes all values from the tensor `src` into provided tensor at the
     indices
@@ -13623,7 +13628,7 @@ ops:
   kind:
   - Math
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: set_source_Tensor
   description: Set tensor to share storage, shape, and strides with source tensor.
   for:
@@ -13634,7 +13639,7 @@ ops:
   kind:
   - Math
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: set_source_Tensor_storage_offset
   description: Set tensor storage from another tensor with explicit offset, size,
     stride.
@@ -13646,7 +13651,7 @@ ops:
   kind:
   - Math
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: sgn
   description: 'Computes the sign of each element in the input tensor, element-wise.
 
@@ -13760,7 +13765,7 @@ ops:
   kind:
   - Math
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: sign_out
   description: 'Out-variant of sign. Writes the element-wise sign to the `out` tensor.
 
@@ -14027,7 +14032,7 @@ ops:
   kind:
   - Tensor
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: slice_copy_out
   description: |
     A variant of `slice_copy()` that assigns the output to an `out` tensor.
@@ -14039,7 +14044,7 @@ ops:
   kind:
   - Tensor
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: slice_scatter
   description: 'Embeds the values of the `src` tensor into `input` at the given dimension.
 
@@ -14068,7 +14073,7 @@ ops:
   kind:
   - LinearAlg
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: smooth_l1_loss
   description: Compute the smooth L1 loss between input and target tensors.
   for:
@@ -14105,7 +14110,7 @@ ops:
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: soft_margin_loss
   description: Compute the soft margin loss.
   for:
@@ -14350,7 +14355,7 @@ ops:
   kind:
   - BLAS
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: sparse_semi_structured_mm
   description: 'Performs a sparse semi-structured matrix multiplication of a dense
     matrix with a 2:4 sparsity pattern against a dense matrix.
@@ -14363,6 +14368,8 @@ ops:
   - KernelGen
   kind:
   - BLAS
+  stages:
+  - alpha: '5.4'
 - id: special_airy_ai
   description: 'Computes the Airy function Ai(x) for each element of the input tensor.
 
@@ -14468,7 +14475,7 @@ ops:
   kind:
   - Math
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: special_chebyshev_polynomial_t_out
   description: 'A variant of `special_chebyshev_polynomial_t()` with output saved
     to
@@ -14484,7 +14491,7 @@ ops:
   kind:
   - Math
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: special_chebyshev_polynomial_u
   description: 'Computes the Chebyshev polynomial of the second kind U_n(x) for each
     element
@@ -14575,7 +14582,7 @@ ops:
   kind:
   - Math
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: special_erf
   description: 'Computes the error function of `input` element-wise.
 
@@ -14701,7 +14708,7 @@ ops:
   kind:
   - Math
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: special_gammainc
   description: 'Computes the regularized lower incomplete gamma function P(a, x) element-wise.
 
@@ -14784,7 +14791,7 @@ ops:
   kind:
   - Math
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: special_i0_out
   description: 'A variant of `special_i0()` with output saved to provided `out`.
 
@@ -14798,7 +14805,7 @@ ops:
   kind:
   - Math
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: special_i0e
   description: 'Computes the exponentially scaled zeroth order modified Bessel function
 
@@ -14912,7 +14919,7 @@ ops:
   kind:
     - Math
   stages:
-    - alpha: '5.4'
+    - alpha: '5.5'
 - id: special_legendre_polynomial_p
   description: 'Computes the Legendre polynomial P_n(x) of degree n for each element
     in the input tensor,
@@ -15238,6 +15245,8 @@ ops:
   - KernelGen
   kind:
   - Math
+  stages:
+  - alpha: '5.4'
 - id: special_shifted_chebyshev_polynomial_v
   description: 'Computes the shifted Chebyshev polynomial of the third kind V_n^*(x).
 
@@ -15343,7 +15352,7 @@ ops:
   kind:
   - Math
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: special_zeta_out
   description: Tensor/tensor variant of `special_zeta` that writes to `out`.
   for:
@@ -15354,7 +15363,7 @@ ops:
   kind:
   - Math
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: special_zeta_scalar_tensor
   description: Variant of `special_zeta` whose first argument is a scalar.
   for:
@@ -15365,7 +15374,7 @@ ops:
   kind:
   - Math
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: special_zeta_scalar_tensor_out
   description: Scalar/tensor variant of `special_zeta` that writes to `out`.
   for:
@@ -15376,7 +15385,7 @@ ops:
   kind:
   - Math
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: special_zeta_tensor_scalar
   description: Variant of `special_zeta` whose second argument is a scalar.
   for:
@@ -15387,7 +15396,7 @@ ops:
   kind:
   - Math
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: special_zeta_tensor_scalar_out
   description: Tensor/scalar variant of `special_zeta` that writes to `out`.
   for:
@@ -15398,7 +15407,7 @@ ops:
   kind:
   - Math
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: split_with_sizes
   description: 'Splits a tensor into sub-tensors along a given dimension,
 
@@ -15505,7 +15514,7 @@ ops:
   kind:
   - Math
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: sspaddmm_out
   description: 'A variant of sspaddmm() that writes the result into the out tensor.
 
@@ -15518,7 +15527,7 @@ ops:
   kind:
   - Math
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: stack
   description: Concatenates a sequence of tensors along a new dimension.
   for:
@@ -15555,7 +15564,7 @@ ops:
   kind:
   - Math
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: std
   description: 'Calculates the standard deviation over the dimensions specified by
     `dim`.
@@ -15583,7 +15592,7 @@ ops:
   kind:
   - Reduction
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: std_mean_correction
   description: 'Calculates the standard deviation and mean over selected dimensions,
     using an optional degrees-of-freedom correction.
@@ -15597,7 +15606,7 @@ ops:
   kind:
   - Reduction
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: std_mean_correction_names
   description: 'Named-dimension variant of `std_mean` with an optional degrees-of-freedom
     correction.
@@ -15611,7 +15620,7 @@ ops:
   kind:
   - Reduction
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: std_mean_correction_out
   description: Out-tensor variant of `std_mean` with a degrees-of-freedom correction.
   for:
@@ -15622,7 +15631,7 @@ ops:
   kind:
   - Reduction
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: std_mean_dim
   description: 'Calculates the standard deviation and mean over selected dimensions,
     using the legacy `unbiased` argument.
@@ -15636,7 +15645,7 @@ ops:
   kind:
   - Reduction
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: std_mean_names_dim
   description: 'Named-dimension variant of `std_mean` using the legacy `unbiased`
     argument.
@@ -15650,7 +15659,7 @@ ops:
   kind:
   - Reduction
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: sub
   description: Subtracts `other`, scaled by `alpha`, from the `input` tensor.
   for:
@@ -15800,7 +15809,7 @@ ops:
   kind:
   - Tensor
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: sym_size
   description: 'Returns the size of the input tensor as a list of integers.
 
@@ -15852,7 +15861,7 @@ ops:
   kind:
   - Tensor
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: t_copy
   description: Transpose a 2D tensor into a new tensor with contiguous memory layout.
   for:
@@ -15911,7 +15920,7 @@ ops:
   kind:
   - Tensor
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: take_along_dim_out
   description: 'Out-variant of take_along_dim that writes the gathered result into
     the
@@ -15927,7 +15936,7 @@ ops:
   kind:
   - Tensor
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: take_out
   description: 'Out-variant of take. Writes the gathered elements into the `out` tensor,
 
@@ -16064,7 +16073,7 @@ ops:
   kind:
   - BLAS
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: tensordot_out
   description: A variant of tensordot() that writes the result into the out tensor.
   for:
@@ -16075,7 +16084,7 @@ ops:
   kind:
   - BLAS
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: thnn_differentiable_gru_cell_backward
   description: Computes differentiable gradients for a fused GRU cell.
   for:
@@ -16097,7 +16106,7 @@ ops:
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: thnn_fused_gru_cell_backward
   description: Computes gradients for a fused GRU cell.
   for:
@@ -16108,7 +16117,7 @@ ops:
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: thnn_fused_gru_cell_backward_out
   description: Writes fused GRU cell gradients to caller-provided tensors.
   for:
@@ -16119,7 +16128,7 @@ ops:
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: thnn_fused_gru_cell_out
   description: Writes the fused GRU cell output and workspace to provided tensors.
   for:
@@ -16130,7 +16139,7 @@ ops:
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: thnn_fused_lstm_cell
   description: Fused LSTM cell computation with optional input and hidden biases.
   for:
@@ -16155,7 +16164,7 @@ ops:
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: thnn_fused_lstm_cell_backward_impl
   description: 'Computes gradients for the fused LSTM cell operation (_thnn_fused_lstm_cell).
 
@@ -16355,7 +16364,7 @@ ops:
   kind:
   - BLAS
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: transpose
   description: 'Returns a view of the original tensor with its two dimensions swapped.
 
@@ -16384,7 +16393,7 @@ ops:
   kind:
     - Tensor
   stages:
-    - alpha: '5.4'
+    - alpha: '5.5'
 - id: tril
   description: 'Returns the lower triangular part of an input matrix (or a batch of
     matrices) and
@@ -16424,7 +16433,7 @@ ops:
   kind:
   - Tensor
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: tril_out
   description: 'A variant of `tril()` that explicitly assigns the output to the `out`
     parameter.
@@ -16485,7 +16494,7 @@ ops:
   kind:
   - Tensor
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: true_divide
   description: Performs element-wise true division between two tensors.
   for:
@@ -16644,7 +16653,7 @@ ops:
   kind:
   - Distribution
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: uniform_
   description: Fills `self` tensor with numbers sampled from the continuous uniform
     distribution.
@@ -16750,7 +16759,7 @@ ops:
   kind:
   - Tensor
   stages:
-  - beta: '5.4'
+  - beta: '5.5'
 - id: unsafe_masked_index
   description: Gathers elements from self at given indices where mask is True, filling
     unmasked positions with a scalar value.
@@ -16931,7 +16940,7 @@ ops:
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: upsample_lanczos2d_aa_backward_grad_input
   description: Out variant of antialiased Lanczos-3 2D resize backward.
   for:
@@ -16942,7 +16951,7 @@ ops:
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: upsample_lanczos2d_aa_out
   description: An out variant of `_upsample_lanczos2d_aa()`.
   for:
@@ -17051,7 +17060,7 @@ ops:
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: upsample_nearest3d_backward_grad_input
   description: An out variant of `upsample_nearest3d_backward()`.
   for:
@@ -17062,7 +17071,7 @@ ops:
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: upsample_nearest_exact1d
   description: 'Increases the length of a 1D tensor using nearest-neighbor interpolation,
 
@@ -17151,7 +17160,7 @@ ops:
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: upsample_nearest_exact3d_backward_grad_input
   description: A variant of `_upsample_nearest_exact3d_backward()` that writes into
     the provided `grad_input` tensor.
@@ -17163,7 +17172,7 @@ ops:
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: upsample_trilinear3d
   description: Upsamples the input (NCDHW) using trilinear interpolation.
   for:
@@ -17190,7 +17199,7 @@ ops:
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: value_selecting_reduction_backward
   description: 'Computes the gradient of a value-selecting reduction (such as `max.dim`
 
@@ -17323,7 +17332,7 @@ ops:
   kind:
   - Tensor
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: vstack
   description: Stack tensors in sequence vertically (row wise).
   for:
@@ -17408,7 +17417,7 @@ ops:
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: weight_norm_interface
   description: 'Apply weight normalization to neural network layers, decoupling the
     magnitued
@@ -17484,7 +17493,7 @@ ops:
   kind:
   - Quantization
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: wrapped_quantized_linear_prepacked
   description: Applies a quantized linear operation using a weight produced by wrapped_linear_prepack.
   for:
@@ -17495,7 +17504,7 @@ ops:
   kind:
   - Quantization
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: xlogy
   description: Computes `input * log(other)` element-wise, returning zero where `input`
     is zero (following PyTorch's `xlogy` semantics).

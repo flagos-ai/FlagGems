@@ -20,7 +20,6 @@ import triton
 import triton.language as tl
 
 from flag_gems.ops.mish import mish as default_mish
-from flag_gems.ops.mish import mish_ as default_mish_
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, tl_extra_shim
 
@@ -102,12 +101,3 @@ def mish(A):
 
     out = torch.empty_like(A)
     return _launch_mish(A, out, dtype_size)
-
-
-def mish_(A):
-    logger.debug("GEMS_MTHREADS MISH_")
-    use_triton, dtype_size = _use_triton_kernel(A)
-    if not use_triton:
-        return default_mish_(A)
-
-    return _launch_mish(A, A, dtype_size)
