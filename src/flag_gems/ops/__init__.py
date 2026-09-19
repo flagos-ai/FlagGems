@@ -854,6 +854,10 @@ from flag_gems.ops.pow import (
 from flag_gems.ops.prelu import prelu
 from flag_gems.ops.prod import prod, prod_dim
 from flag_gems.ops.quantile import quantile
+from flag_gems.ops.quantized_batch_norm import (
+    quantized_batch_norm,
+    quantized_batch_norm_out,
+)
 from flag_gems.ops.quantized_gru import (
     quantized_gru_data,
     quantized_gru_impl,
@@ -2070,6 +2074,8 @@ __all__ = [
     "prod",
     "prod_dim",
     "quantile",
+    "quantized_batch_norm",
+    "quantized_batch_norm_out",
     "quantized_gru_data",
     "quantized_gru_impl",
     "quantized_gru_input",

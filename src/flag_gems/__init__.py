@@ -70,6 +70,7 @@ AUTOGRAD_DISPATCH_KEY = torch._C.DispatchKey.Autograd.name
 CONJUGATE_DISPATCH_KEY = torch._C.DispatchKey.Conjugate.name
 QUANTIZED_CUDA_DISPATCH_KEY = torch._C.DispatchKey.QuantizedCUDA.name
 SPARSE_CSR_DISPATCH_KEY = "SparseCsr" + backend_info.dispatch_key
+QUANTIZED_CUDA_DISPATCH_KEY = torch._C.DispatchKey.QuantizedCUDA.name
 SPARSE_DISPATCH_KEY = "Sparse" + backend_info.dispatch_key
 QUANTIZED_DISPATCH_KEY = "Quantized" + backend_info.dispatch_key
 
@@ -1161,6 +1162,18 @@ _FULL_CONFIG = (
     ("prod", prod),
     ("prod.dim_int", prod_dim),
     ("quantile", quantile),
+    (
+        "quantized_batch_norm",
+        quantized_batch_norm,
+        None,
+        (QUANTIZED_CUDA_DISPATCH_KEY,),
+    ),
+    (
+        "quantized_batch_norm.out",
+        quantized_batch_norm_out,
+        None,
+        (QUANTIZED_CUDA_DISPATCH_KEY,),
+    ),
     ("quantized_gru.data", quantized_gru_data),
     ("quantized_gru.input", quantized_gru_input),
     ("quantized_lstm.input", quantized_lstm),
