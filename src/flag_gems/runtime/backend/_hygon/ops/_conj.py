@@ -96,8 +96,7 @@ def _u64_view(t: torch.Tensor) -> torch.Tensor:
         return t.view(torch.int64)
     n_i64 = t.numel() * t.element_size() // 8
     u64 = torch.empty(0, dtype=torch.int64, device=t.device)
-    u64.set_(t.untyped_storage(), t.storage_offset() * t.element_size() // 8,
-             (n_i64,))
+    u64.set_(t.untyped_storage(), t.storage_offset() * t.element_size() // 8, (n_i64,))
     return u64
 
 
@@ -111,15 +110,18 @@ def _conj(input: torch.Tensor) -> torch.Tensor:
     # pass instead of resolve_conj + conj_physical (two passes).
     if input.is_conj():
         if input.is_contiguous() and (input.numel() * input.element_size()) % 8 == 0:
-            output = torch.empty(input.shape, dtype=input.dtype,
-                                 device=input.device)
+            output = torch.empty(input.shape, dtype=input.dtype, device=input.device)
             in_u64 = _u64_view(input)
             out_u64 = output.view(torch.int64)
             n = in_u64.numel()
             block = _block_size(n)
             grid = (triton.cdiv(n, block),)
             _conj_kernel_u64[grid](
-                in_u64, out_u64, n, FLIP=0, BLOCK_SIZE=block,
+                in_u64,
+                out_u64,
+                n,
+                FLIP=0,
+                BLOCK_SIZE=block,
                 num_warps=NUM_WARPS,
             )
             return output
@@ -138,7 +140,11 @@ def _conj(input: torch.Tensor) -> torch.Tensor:
         block = _block_size(n)
         grid = (triton.cdiv(n, block),)
         _conj_kernel_u64[grid](
-            in_u64, out_u64, n, FLIP=1, BLOCK_SIZE=block,
+            in_u64,
+            out_u64,
+            n,
+            FLIP=1,
+            BLOCK_SIZE=block,
             num_warps=NUM_WARPS,
         )
     elif src.dtype == torch.complex128:
@@ -148,7 +154,11 @@ def _conj(input: torch.Tensor) -> torch.Tensor:
         block = _block_size(n)
         grid = (triton.cdiv(n, block),)
         _conj_kernel_u64[grid](
-            in_u64, out_u64, n, FLIP=2, BLOCK_SIZE=block,
+            in_u64,
+            out_u64,
+            n,
+            FLIP=2,
+            BLOCK_SIZE=block,
             num_warps=NUM_WARPS,
         )
     else:
