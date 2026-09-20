@@ -1,44 +1,65 @@
 import logging
 
 import torch
+import triton
 
 from flag_gems.runtime import torch_device_fn
 
-from .logsumexp import _reduce_inner
+from ..utils.tle_copy import tle_copy
+from .copy import copy_ as _vendor_copy_
+from .logsumexp import _MULTIROW_MAX_N, _reduce_inner
 
 logger = logging.getLogger(__name__)
 
-# special_logsumexp (kunlunxin / XPU override).
-#
-# torch.special.logsumexp is numerically identical to torch.logsumexp:
-# log(sum(exp(x), dim)) with a max-shift for stability. kunlunxin did NOT
-# override it, so it fell to the generic ops/special_logsumexp.py, whose two
-# @triton.heuristics(softmax_*) kernels recompile per shape (IR explosion, the
-# 22K-line ir-special_logsumexp-dev1.log) and run the inner reduction with a
-# streaming online-logsumexp loop that is catastrophically slow on XPU
-# ([4096,4096] dim=1 gems 9.18ms vs torch 0.17ms -> speedup 0.019).
-#
-# The proven kunlunxin `logsumexp` override already solved the exact same
-# reduction: inner-dim (K==1) uses the fast constexpr-N multirow tile
-# (`_reduce_inner`, block DMA, @libentry -> compiles once); middle-dim (K>1) and
-# N==1 defer to the vendor's native fused kernel (a Triton middle reduction on
-# XPU is a dead end -- transpose+contiguous can't reach the vendor copy once
-# gems overrides copy_, and a strided reduce overflows uni_sram / mis-computes).
-# The benchmark always narrows dim=1 of a 2D tensor -> K==1 fast path.
-#
-# We reuse `_reduce_inner` from the logsumexp override verbatim and only differ
-# in the native fallback op (aten.special_logsumexp).
 
-_FALLBACK_KEYSET = torch._C.DispatchKeySet(
-    torch._C.DispatchKey.CompositeImplicitAutograd
-)
+def _dma_copy(src, dst):
+    if not tle_copy(src, dst):
+        _vendor_copy_(dst, src)
 
 
-def _native_special_logsumexp(inp, dim, keepdim):
-    """Reach PyTorch's native (vendor) special_logsumexp, bypassing gems."""
-    return torch.ops.aten.special_logsumexp.default.redispatch(
-        _FALLBACK_KEYSET, inp, dim, keepdim
-    )
+def _reduce_inner_any_n(inp, rows, N):
+    if N <= _MULTIROW_MAX_N and (N & (N - 1)) != 0:
+        P = triton.next_power_of_2(N)
+        padded = torch.full(
+            (rows, P), float("-inf"), dtype=inp.dtype, device=inp.device
+        )
+        _dma_copy(inp.reshape(rows, N), torch.as_strided(padded, (rows, N), (P, 1)))
+        return _reduce_inner(padded, rows, P)
+    return _reduce_inner(inp, rows, N)
+
+
+def _single_dim_reduce(inp, dim, keepdim):
+    n = inp.ndim
+    N = inp.shape[dim]
+    M = 1
+    for i in range(dim):
+        M *= inp.shape[i]
+    K = 1
+    for i in range(dim + 1, n):
+        K *= inp.shape[i]
+
+    if K == 1:
+        inp = inp.contiguous()
+        shape = list(inp.shape)
+        shape[dim] = 1
+        with torch_device_fn.device(inp.device):
+            out = _reduce_inner_any_n(inp, M, N).view(shape)
+        if not keepdim:
+            out = out.squeeze(dim)
+        return out
+
+    perm = [i for i in range(n) if i != dim] + [dim]
+    src = inp.permute(perm)
+    buf = torch.empty(src.shape, dtype=inp.dtype, device=inp.device)
+
+    _dma_copy(src, buf)
+
+    res = _reduce_inner_any_n(buf.reshape(M * K, N), M * K, N).view(M, K)
+    if keepdim:
+        shape = list(inp.shape)
+        shape[dim] = 1
+        return res.view(shape)
+    return res
 
 
 def special_logsumexp(inp, dim, keepdim=False):
@@ -46,37 +67,16 @@ def special_logsumexp(inp, dim, keepdim=False):
 
     if isinstance(dim, (list, tuple)):
         if len(dim) == 0:
-            return inp.clone()
-        if len(dim) != 1:
-            # Multi-dim reduction: the vendor's native kernel beats a sequence
-            # of Triton reductions on this XPU.
-            return _native_special_logsumexp(inp, list(dim), keepdim)
-        dim = dim[0]
+            dim = list(range(inp.ndim))
+
+        out = inp
+        for d in dim:
+            out = _single_dim_reduce(out, d % inp.ndim, True)
+        if not keepdim:
+            dset = {d % inp.ndim for d in dim}
+            shape = [s for i, s in enumerate(out.shape) if i not in dset]
+            out = out.view(shape)
+        return out
 
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
-    dim = dim % inp.ndim
-
-    N = inp.shape[dim]
-    K = 1
-    for i in range(dim + 1, inp.ndim):
-        K *= inp.shape[i]
-
-    # Middle-dim reduction (K > 1) or a size-1 reduction: defer to the native
-    # vendor kernel (same rationale as the logsumexp override).
-    if K > 1 or N == 1:
-        return _native_special_logsumexp(inp, [dim], keepdim)
-
-    # K == 1: innermost-dim reduction -> fast contiguous Triton multirow tile.
-    M = 1
-    for i in range(dim):
-        M *= inp.shape[i]
-    inp = inp.contiguous()
-    shape = list(inp.shape)
-    shape[dim] = 1
-
-    with torch_device_fn.device(inp.device):
-        out = _reduce_inner(inp, M, N).view(shape)
-
-    if not keepdim:
-        out = out.squeeze(dim=dim)
-    return out
+    return _single_dim_reduce(inp, dim % inp.ndim, keepdim)

@@ -219,6 +219,20 @@ float_power_:
     - [1024, 65536]
   shape_desc: "(B), M, N"
 
+trunc:
+  shapes:
+    - [4096, 4096]
+    - [64, 512, 512]
+    - [1024, 65536]
+  shape_desc: "(B), M, N"
+
+trunc_:
+  shapes:
+    - [4096, 4096]
+    - [64, 512, 512]
+    - [1024, 65536]
+  shape_desc: "(B), M, N"
+
 gcd:
   shapes:
     - [65536]
@@ -322,6 +336,19 @@ median:
     - [4, 8, 16, 8]
   shape_desc: "input shape"
 
+median_out:
+  shapes:
+    - [2]
+    - [64]
+    - [65]
+    - [128]
+    - [256]
+    - [257]
+    - [1024]
+    - [4096]
+    - [4, 8, 16, 8]
+  shape_desc: "input shape"
+
 median_dim:
   shapes:
     - [1536, 640]
@@ -332,6 +359,24 @@ median_dim:
     - [[640, 1536], 0, false]
     - [[8, 64, 384, 64], 2, false]
   shape_desc: "input shape or [input shape, dim, keepdim]"
+
+median_dim_values:
+  shapes:
+    - [1536, 640]
+    - [144, 8192]
+    - [768, 1536]
+    - [32, 384, 128]
+    - [[32, 384, 128], 1, false]
+    - [[640, 1536], 0, false]
+    - [[8, 64, 384, 64], 2, false]
+  shape_desc: "input shape or [input shape, dim, keepdim]"
+
+IntMMBenchmark:
+  shapes:
+    - [32, 256, 256]
+    - [64, 1024, 1024]
+    - [256, 2048, 2048]
+  shape_desc: "M, N, K"
 
 BlasBenchmark:
   shapes:
@@ -483,6 +528,15 @@ weight_norm:
     - [512, 512]
     - [1024, 1024]
 
+# Same shapes as weight_norm: the fused reduction allocates several
+# intermediates per input, so DEFAULT_SHAPES' (1024, 1024, 1024) entry
+# (4 GiB per float32 tensor) OOMs when the GPU is shared.
+_weight_norm:
+  shapes:
+    - [64, 64]
+    - [512, 512]
+    - [1024, 1024]
+
 # MetaX C550: reduced shapes to avoid 32-bit pointer limitation in MacaLauncher
 group_norm:
   shapes:
@@ -578,6 +632,18 @@ huber_loss:
     - [3072, 49152]
     - [3072, 65536]
   shape_desc: "M, N"
+
+# O(N*C^2): keep the class axis representative without inheriting the generic
+# 4096x4096 and 1024x65536 cases, which are not practical for this operator.
+multilabel_margin_loss_forward:
+  shapes:
+    - [8, 128]
+    - [32, 256]
+    - [16, 512]
+    - [8, 1024]
+    - [2, 2048]
+    - [1, 4096]
+  shape_desc: "N, C"
 
 # default 4d-only shapes
 GenericBenchmark4DOnly:
@@ -947,3 +1013,13 @@ adaptive_max_pool3d:
     - [[2, 8, 16, 32, 32], [4, 16, 16]]
     - [[1, 16, 7, 12, 12], [3, 6, 6]]
   shape_desc: "[input_shape, output_size]"
+
+swiglu:
+  shapes:
+    - [4, 32]
+    - [256, 128]
+    - [8192, 128]
+    - [15000, 128]
+    - [2560, 2048]
+    - [15000, 2048]
+  shape_desc: "M, 2H (last dim is split in half)"
