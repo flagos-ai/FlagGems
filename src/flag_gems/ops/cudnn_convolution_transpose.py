@@ -18,6 +18,8 @@
 import logging
 
 import torch
+import torch.nn.functional  # noqa: F401
+import torch.nn.grad  # noqa: F401
 import triton
 import triton.language as tl
 
@@ -67,18 +69,18 @@ def conv_transpose2d_kernel(
     in_c,
     input_height,
     input_width,
-    out_c,
-    weight_c,
     weight_height,
     weight_width,
     out_height,
     out_width,
+    in_c_per_group,
+    out_c_per_group,
     input_n_stride,
     input_c_stride,
     input_height_stride,
     input_width_stride,
-    weight_n_stride,
-    weight_c_stride,
+    weight_ic_stride,
+    weight_oc_stride,
     weight_height_stride,
     weight_width_stride,
     output_n_stride,
@@ -91,127 +93,91 @@ def conv_transpose2d_kernel(
     padding_width: tl.constexpr,
     dilation_height: tl.constexpr,
     dilation_width: tl.constexpr,
-    output_padding_height: tl.constexpr,
-    output_padding_width: tl.constexpr,
     groups: tl.constexpr,
     BLOCK_NI_HO_WO: tl.constexpr,
     BLOCK_CI: tl.constexpr,
     BLOCK_CO: tl.constexpr,
 ):
+    # Transpose convolution as a gather: for each output pixel (ho, wo) and
+    # output channel oc,
+    #   out[n, oc, ho, wo] = sum_{ic, kh, kw} in[n, ic, ih, iw] * W[ic, oc, kh, kw]
+    # where the input pixel that feeds (ho, wo) through tap (kh, kw) is
+    #   ih = (ho + pad_h - kh*dil_h) / stride_h   (only when divisible & in range)
+    # The transpose-conv weight layout is (in_c, out_c/groups, kH, kW) and the
+    # weight is NOT spatially flipped.
     pid_ni_ho_wo = tl.program_id(0)
     pid_co = tl.program_id(1)
     pid_group = tl.program_id(2)
 
-    # Calculate in_n, output_height, output_width values in kernel
     ni_ho_wo_offset = pid_ni_ho_wo * BLOCK_NI_HO_WO + tl.arange(0, BLOCK_NI_HO_WO)
     ni_ho_offset = ni_ho_wo_offset // out_width
-    in_n_point_value = ni_ho_offset // out_height
-    output_height_point_value = ni_ho_offset % out_height
-    output_width_point_value = ni_ho_wo_offset % out_width
+    ni = ni_ho_offset // out_height
+    ho = ni_ho_offset % out_height
+    wo = ni_ho_wo_offset % out_width
 
-    # For conv transpose: input channels become output channels, and vice versa
-    # Weight shape is (in_c, out_c/groups, kH, kW) for transpose
-    out_per_group_c = out_c // groups
-
-    # Load the input and weight pointers
-    # For conv transpose: the weight is (in_c, out_c_per_group, kH, kW)
-    output_c_offset = pid_co * BLOCK_CO + tl.arange(0, BLOCK_CO)
-
-    # Input pointer: (n, in_c, h, w)
-    input_pointer += (
-        input_n_stride * in_n_point_value + input_c_stride * pid_group * weight_c
-    )[:, None]
-
-    # Weight pointer: (in_c, out_c_per_group, kH, kW)
-    # For conv transpose, we need to flip the weight in the backward pass
-    # But here we directly compute the transpose convolution
-    weight_pointer += (
-        weight_n_stride * pid_group * out_per_group_c
-        + (weight_n_stride * output_c_offset)[None, :]
-    )
+    # within-group output channel index
+    co = pid_co * BLOCK_CO + tl.arange(0, BLOCK_CO)
 
     accum = tl.zeros((BLOCK_NI_HO_WO, BLOCK_CO), dtype=tl.float32)
 
-    BLOCK_CI_COUNT = (weight_c + BLOCK_CI - 1) // BLOCK_CI
+    BLOCK_CI_COUNT = (in_c_per_group + BLOCK_CI - 1) // BLOCK_CI
     for hwk in range(weight_height * weight_width * BLOCK_CI_COUNT):
         c = (hwk % BLOCK_CI_COUNT) * BLOCK_CI
         hw = hwk // BLOCK_CI_COUNT
-        h = hw // weight_width
-        w = hw % weight_width
+        kh = hw // weight_width
+        kw = hw % weight_width
 
-        input_c_offset = c + tl.arange(0, BLOCK_CI)
+        ci = c + tl.arange(0, BLOCK_CI)  # within-group input channel
+        in_ch = pid_group * in_c_per_group + ci  # absolute input channel
 
-        # For conv transpose, the input position calculation is different
-        # We calculate which input positions contribute to this output position
-        # h_input = (h_out - h * dilation + padding) / stride
-        # This is equivalent to computing the convolution with flipped kernel
+        num_h = ho + padding_height - kh * dilation_height
+        num_w = wo + padding_width - kw * dilation_width
+        ih = num_h // stride_height
+        iw = num_w // stride_width
+        valid_h = (num_h % stride_height == 0) & (ih >= 0) & (ih < input_height)
+        valid_w = (num_w % stride_width == 0) & (iw >= 0) & (iw < input_width)
+        pos_valid = valid_h & valid_w & (ni < in_n)
 
-        # Conv transpose: output position comes from input position plus kernel offset
-        input_height_offset = (
-            output_height_point_value - h * dilation_height + padding_height
-        ) // stride_height
-        input_width_offset = (
-            output_width_point_value - w * dilation_width + padding_width
-        ) // stride_width
-
-        # Check if the computed input position is valid
-        input_height_offset = (
-            output_height_point_value * stride_height
-            + h * dilation_height
-            - padding_height
-        )
-        input_width_offset = (
-            output_width_point_value * stride_width + w * dilation_width - padding_width
-        )
-
+        # input[ni, in_ch, ih, iw] -> (BLOCK_NI_HO_WO, BLOCK_CI)
         curr_input_pointer = (
             input_pointer
-            + (input_c_stride * input_c_offset)[None, :]
-            + (input_height_stride * input_height_offset)[:, None]
-            + (input_width_stride * input_width_offset)[:, None]
+            + (input_n_stride * ni)[:, None]
+            + (input_c_stride * in_ch)[None, :]
+            + (input_height_stride * ih)[:, None]
+            + (input_width_stride * iw)[:, None]
         )
+        input_mask = pos_valid[:, None] & (ci < in_c_per_group)[None, :]
 
-        # Weight: flip both spatial dimensions
-        flipped_h = weight_height - 1 - h
-        flipped_w = weight_width - 1 - w
+        # weight[in_ch, co, kh, kw] -> (BLOCK_CI, BLOCK_CO); no spatial flip
         curr_weight_pointer = (
             weight_pointer
-            + (weight_c_stride * input_c_offset)[:, None]
-            + (weight_height_stride * flipped_h)
-            + (weight_width_stride * flipped_w)
+            + (weight_ic_stride * in_ch)[:, None]
+            + (weight_oc_stride * co)[None, :]
+            + weight_height_stride * kh
+            + weight_width_stride * kw
         )
+        weight_mask = (ci < in_c_per_group)[:, None] & (co < out_c_per_group)[None, :]
 
-        input_mask = (
-            (in_n_point_value < in_n)[:, None]
-            & (input_c_offset < weight_c)[None, :]
-            & (0 <= input_height_offset)[:, None]
-            & (input_height_offset < input_height)[:, None]
-            & (0 <= input_width_offset)[:, None]
-            & (input_width_offset < input_width)[:, None]
-        )
-        weight_mask = (input_c_offset < weight_c)[:, None] & (
-            output_c_offset < out_per_group_c
-        )[None, :]
-
-        input_block = tl.load(curr_input_pointer, mask=input_mask)
-        weight_block = tl.load(curr_weight_pointer, mask=weight_mask)
+        input_block = tl.load(curr_input_pointer, mask=input_mask, other=0.0)
+        weight_block = tl.load(curr_weight_pointer, mask=weight_mask, other=0.0)
 
         accum += tl.dot(input_block, weight_block, allow_tf32=False)
 
+    out_ch = pid_group * out_c_per_group + co
     output_pointer += (
-        (output_n_stride * in_n_point_value)[:, None]
-        + (output_c_stride * (pid_group * out_per_group_c + output_c_offset))[None, :]
-        + (output_height_stride * output_height_point_value)[:, None]
-        + (output_width_stride * output_width_point_value)[:, None]
+        (output_n_stride * ni)[:, None]
+        + (output_c_stride * out_ch)[None, :]
+        + (output_height_stride * ho)[:, None]
+        + (output_width_stride * wo)[:, None]
     )
     output_mask = (
-        (in_n_point_value < in_n)[:, None]
-        & (output_c_offset < out_per_group_c)[None, :]
-        & (output_height_point_value < out_height)[:, None]
-        & (output_width_point_value < out_width)[:, None]
+        (ni < in_n)[:, None]
+        & (co < out_c_per_group)[None, :]
+        & (ho < out_height)[:, None]
+        & (wo < out_width)[:, None]
     )
 
-    tl.store(output_pointer, accum, mask=output_mask)
+    tl.store(output_pointer, accum.to(output_pointer.dtype.element_ty), mask=output_mask)
 
 
 class CudnnConvolutionTranspose(torch.autograd.Function):
@@ -270,14 +236,16 @@ class CudnnConvolutionTranspose(torch.autograd.Function):
             dilation_height = dilation_width = dilation
 
         in_n, in_c, input_height, input_width = input.shape
-        out_c, weight_c, weight_height, weight_width = weight.shape
-
-        # For conv transpose: weight shape is (out_c, in_c, kH, kW)
-        # We need to transpose to (in_c, out_c/groups, kH, kW) for the computation
-        assert in_c == weight_c * groups, (
-            f"Incompatible input channels {in_c} and weight {weight_c}"
-            f" with groups {groups}"
+        # Transpose-conv weight layout is (in_c, out_c/groups, kH, kW).
+        w_in_c, out_c_per_group, weight_height, weight_width = weight.shape
+        assert w_in_c == in_c, (
+            f"Incompatible input channels {in_c} and weight in-channels {w_in_c}"
         )
+        assert in_c % groups == 0, (
+            f"Input channels {in_c} not divisible by groups {groups}"
+        )
+        in_c_per_group = in_c // groups
+        out_c = out_c_per_group * groups
 
         out_height = conv_transpose2d_output_size(
             input_height,
@@ -303,44 +271,31 @@ class CudnnConvolutionTranspose(torch.autograd.Function):
             dtype=output_dtype,
         )
 
-        # Transpose weight from (out_c, in_c, kH, kW) to (in_c, out_c/groups, kH, kW)
-        # This is needed because the conv_transpose2d_kernel expects weights in this format
-        if groups == 1:
-            weight_T = weight.transpose(0, 1).contiguous()
-        else:
-            # For grouped convolution transpose, we need special handling
-            weight_reshaped = weight.reshape(
-                groups, out_c // groups, weight_c, weight_height, weight_width
-            )
-            weight_T = (
-                weight_reshaped.transpose(1, 2)
-                .reshape(in_c, out_c // groups, weight_height, weight_width)
-                .contiguous()
-            )
+        weight_c = weight.contiguous()
 
         # Grid configuration
         grid = lambda META: (
             triton.cdiv(in_n * out_height * out_width, META["BLOCK_NI_HO_WO"]),
-            triton.cdiv(int(out_c // groups), META["BLOCK_CO"]),
+            triton.cdiv(int(out_c_per_group), META["BLOCK_CO"]),
             groups,
         )
 
         conv_transpose2d_kernel[grid](
             input,
-            weight_T,
+            weight_c,
             output,
             in_n,
             in_c,
             input_height,
             input_width,
-            out_c,
-            weight_c,
             weight_height,
             weight_width,
             out_height,
             out_width,
+            in_c_per_group,
+            out_c_per_group,
             *input.stride(),
-            *weight_T.stride(),
+            *weight_c.stride(),
             *output.stride(),
             stride_height,
             stride_width,
@@ -348,8 +303,6 @@ class CudnnConvolutionTranspose(torch.autograd.Function):
             padding_width,
             dilation_height,
             dilation_width,
-            output_padding_height,
-            output_padding_width,
             groups=groups,
             BLOCK_NI_HO_WO=16,
             BLOCK_CI=32,
@@ -372,55 +325,34 @@ class CudnnConvolutionTranspose(torch.autograd.Function):
         logger.debug("GEMS CUDNN_CONV_TRANSPOSE VJP")
         input, weight = ctx.saved_tensors
 
-        stride_height, stride_width = ctx.stride
-        padding_height, padding_width = ctx.padding
-        output_padding_height, output_padding_width = ctx.output_padding
-        dilation_height, dilation_width = ctx.dilation
+        stride = ctx.stride
+        padding = ctx.padding
+        dilation = ctx.dilation
         groups = ctx.groups
 
-        out_c, weight_c, weight_height, weight_width = ctx.weight_info
-        in_n, in_c, input_height, input_width = ctx.input_info
-
-        # The backward of conv transpose is regular conv
-        # with flipped weights and adjusted parameters
-        revert_padding_height = dilation_height * (weight_height - 1) - padding_height
-        revert_padding_width = dilation_width * (weight_width - 1) - padding_width
-
-        # Flip the weight
-        weight_flip = torch.flip(weight, dims=[2, 3]).contiguous()
-
-        # Transpose weight for grouped conv
-        if groups != 1:
-            weight_flip = weight_flip.reshape(
-                groups, out_c // groups, weight_c, weight_height, weight_width
-            )
-            weight_flip = (
-                weight_flip.transpose(1, 2)
-                .reshape(in_c, out_c // groups, weight_height, weight_width)
-                .contiguous()
-            )
-        else:
-            weight_flip = weight_flip.transpose(0, 1).contiguous()
-
-        # Compute input gradient using regular conv
+        # Transpose convolution is the adjoint of a plain convolution that uses
+        # the same weight W (layout (in_c, out_c/groups, kH, kW)):
+        #     conv_transpose2d(x, W) == conv2d^T(x, W)
+        # Hence its input-grad is a plain conv2d and its weight-grad is exactly
+        # torch's own conv2d weight-grad with input and grad_output swapped.
         grad_input = torch.nn.functional.conv2d(
             grad_output,
-            weight_flip,
-            stride=stride_height,
-            padding=(revert_padding_height, revert_padding_width),
-            dilation=(dilation_height, dilation_width),
+            weight,
+            stride=stride,
+            padding=padding,
+            dilation=dilation,
             groups=groups,
         )
 
-        # Compute weight gradient
-        grad_weight = torch.nn.functional.conv2d(
-            input.transpose(0, 1),
-            grad_output.transpose(0, 1),
-            stride=stride_height,
-            padding=padding_height,
-            dilation=dilation_height,
+        grad_weight = torch.nn.grad.conv2d_weight(
+            grad_output,
+            weight.shape,
+            input,
+            stride=stride,
+            padding=padding,
+            dilation=dilation,
             groups=groups,
-        ).transpose(0, 1)
+        )
 
         return (
             grad_input,
