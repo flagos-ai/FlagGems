@@ -12,206 +12,159 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
 import torch
 import triton
 import triton.language as tl
 
+# tanh: prefer the backend-neutral libdevice entry, with fallbacks for older
+# triton layouts.
+try:
+    from triton.language.extra import libdevice as _libdevice
 
-@triton.jit
-def _lstm_cell_bwd_loop(
-    grad_hy_ptr,
-    grad_cy_ptr,
-    cx_ptr,
-    cy_ptr,
-    ws_ptr,
-    gig_ptr,
-    gcx_ptr,
-    gbias_ptr,
-    batch,
-    H: tl.constexpr,
-    BLOCK: tl.constexpr,
-    has_bias: tl.constexpr,
-):
-    offs = tl.arange(0, BLOCK)
-    mask = offs < H
-    acc_i = tl.zeros((BLOCK,), dtype=tl.float32)
-    acc_f = tl.zeros((BLOCK,), dtype=tl.float32)
-    acc_g = tl.zeros((BLOCK,), dtype=tl.float32)
-    acc_o = tl.zeros((BLOCK,), dtype=tl.float32)
-    for b in range(0, batch):
-        row = b * H
-        ws_row = b * 4 * H
-        i = tl.load(ws_ptr + ws_row + offs, mask=mask, other=0.0).to(tl.float32)
-        f = tl.load(ws_ptr + ws_row + H + offs, mask=mask, other=0.0).to(tl.float32)
-        g = tl.load(ws_ptr + ws_row + 2 * H + offs, mask=mask, other=0.0).to(tl.float32)
-        o = tl.load(ws_ptr + ws_row + 3 * H + offs, mask=mask, other=0.0).to(tl.float32)
-        cyv = tl.load(cy_ptr + row + offs, mask=mask, other=0.0).to(tl.float32)
-        ghy = tl.load(grad_hy_ptr + row + offs, mask=mask, other=0.0).to(tl.float32)
-        gcy = tl.load(grad_cy_ptr + row + offs, mask=mask, other=0.0).to(tl.float32)
-        cxv = tl.load(cx_ptr + row + offs, mask=mask, other=0.0).to(tl.float32)
+    _tanh = _libdevice.tanh
+except Exception:  # pragma: no cover
+    try:
+        from triton.language.extra.cuda import libdevice as _libdevice_cuda
 
-        tanh_cy = tl.extra.libdevice.tanh(cyv)
-        dcy = gcy + ghy * o * (1.0 - tanh_cy * tanh_cy)
-
-        dz_i = dcy * g * i * (1.0 - i)
-        dz_f = dcy * cxv * f * (1.0 - f)
-        dz_g = dcy * i * (1.0 - g * g)
-        dz_o = ghy * tanh_cy * o * (1.0 - o)
-
-        goff = ws_row + offs
-        tl.store(gig_ptr + goff, dz_i.to(gig_ptr.dtype.element_ty), mask=mask)
-        tl.store(gig_ptr + goff + H, dz_f.to(gig_ptr.dtype.element_ty), mask=mask)
-        tl.store(gig_ptr + goff + 2 * H, dz_g.to(gig_ptr.dtype.element_ty), mask=mask)
-        tl.store(gig_ptr + goff + 3 * H, dz_o.to(gig_ptr.dtype.element_ty), mask=mask)
-        tl.store(
-            gcx_ptr + row + offs, (dcy * f).to(gcx_ptr.dtype.element_ty), mask=mask
-        )
-
-        if has_bias:
-            acc_i += dz_i
-            acc_f += dz_f
-            acc_g += dz_g
-            acc_o += dz_o
-
-    if has_bias:
-        tl.store(gbias_ptr + offs, acc_i.to(gbias_ptr.dtype.element_ty), mask=mask)
-        tl.store(gbias_ptr + H + offs, acc_f.to(gbias_ptr.dtype.element_ty), mask=mask)
-        tl.store(
-            gbias_ptr + 2 * H + offs, acc_g.to(gbias_ptr.dtype.element_ty), mask=mask
-        )
-        tl.store(
-            gbias_ptr + 3 * H + offs, acc_o.to(gbias_ptr.dtype.element_ty), mask=mask
-        )
+        _tanh = _libdevice_cuda.tanh
+    except Exception:  # pragma: no cover
+        _tanh = tl.math.tanh
 
 
 @triton.jit
-def _lstm_cell_bwd_vec(
-    grad_hy_ptr,
-    grad_cy_ptr,
-    cx_ptr,
-    cy_ptr,
-    ws_ptr,
-    gig_ptr,
-    gcx_ptr,
-    gbias_ptr,
-    BATCH: tl.constexpr,
-    H: tl.constexpr,
-    CHUNK: tl.constexpr,
-    has_bias: tl.constexpr,
-):
-    BLOCK: tl.constexpr = CHUNK * H
-    e = tl.arange(0, BLOCK)
-    h = e % H
-    r = e // H  # row index within a chunk
-    acc_i = tl.zeros((BLOCK,), dtype=tl.float32)
-    acc_f = tl.zeros((BLOCK,), dtype=tl.float32)
-    acc_g = tl.zeros((BLOCK,), dtype=tl.float32)
-    acc_o = tl.zeros((BLOCK,), dtype=tl.float32)
-    for c in tl.static_range(0, BATCH, CHUNK):
-        b = c + r
-        mask = b < BATCH
-        row = b * H + h
-        ws_row = b * 4 * H + h
-
-        i = tl.load(ws_ptr + ws_row, mask=mask, other=0.0).to(tl.float32)
-        f = tl.load(ws_ptr + ws_row + H, mask=mask, other=0.0).to(tl.float32)
-        g = tl.load(ws_ptr + ws_row + 2 * H, mask=mask, other=0.0).to(tl.float32)
-        o = tl.load(ws_ptr + ws_row + 3 * H, mask=mask, other=0.0).to(tl.float32)
-        cyv = tl.load(cy_ptr + row, mask=mask, other=0.0).to(tl.float32)
-        ghy = tl.load(grad_hy_ptr + row, mask=mask, other=0.0).to(tl.float32)
-        gcy = tl.load(grad_cy_ptr + row, mask=mask, other=0.0).to(tl.float32)
-        cxv = tl.load(cx_ptr + row, mask=mask, other=0.0).to(tl.float32)
-
-        tanh_cy = tl.extra.libdevice.tanh(cyv)
-        dcy = gcy + ghy * o * (1.0 - tanh_cy * tanh_cy)
-
-        dz_i = dcy * g * i * (1.0 - i)
-        dz_f = dcy * cxv * f * (1.0 - f)
-        dz_g = dcy * i * (1.0 - g * g)
-        dz_o = ghy * tanh_cy * o * (1.0 - o)
-
-        tl.store(gig_ptr + ws_row, dz_i.to(gig_ptr.dtype.element_ty), mask=mask)
-        tl.store(gig_ptr + ws_row + H, dz_f.to(gig_ptr.dtype.element_ty), mask=mask)
-        tl.store(gig_ptr + ws_row + 2 * H, dz_g.to(gig_ptr.dtype.element_ty), mask=mask)
-        tl.store(gig_ptr + ws_row + 3 * H, dz_o.to(gig_ptr.dtype.element_ty), mask=mask)
-        tl.store(gcx_ptr + row, (dcy * f).to(gcx_ptr.dtype.element_ty), mask=mask)
-
-        if has_bias:
-            acc_i += dz_i
-            acc_f += dz_f
-            acc_g += dz_g
-            acc_o += dz_o
-
-    if has_bias:
-        bi = tl.sum(tl.reshape(acc_i, (CHUNK, H)), axis=0)
-        bf = tl.sum(tl.reshape(acc_f, (CHUNK, H)), axis=0)
-        bg = tl.sum(tl.reshape(acc_g, (CHUNK, H)), axis=0)
-        bo = tl.sum(tl.reshape(acc_o, (CHUNK, H)), axis=0)
-        boffs = tl.arange(0, H)
-        bmask = boffs < H
-        tl.store(gbias_ptr + boffs, bi.to(gbias_ptr.dtype.element_ty), mask=bmask)
-        tl.store(gbias_ptr + H + boffs, bf.to(gbias_ptr.dtype.element_ty), mask=bmask)
-        tl.store(
-            gbias_ptr + 2 * H + boffs, bg.to(gbias_ptr.dtype.element_ty), mask=bmask
-        )
-        tl.store(
-            gbias_ptr + 3 * H + boffs, bo.to(gbias_ptr.dtype.element_ty), mask=bmask
-        )
+def _ld(ptr, offs, mask, MASKED: tl.constexpr):
+    if MASKED:
+        return tl.load(ptr + offs, mask=mask, other=0.0)
+    return tl.load(ptr + offs)
 
 
-def _is_pow2(x):
-    return x > 0 and (x & (x - 1)) == 0
-
-
-def run(grad_hy, grad_cy, cx, cy, workspace, has_bias):
-    batch = cx.shape[0]
-    H = cx.shape[1]
-    has_bias_bool = (
-        bool(has_bias.item()) if torch.is_tensor(has_bias) else bool(has_bias)
-    )
-
-    gig = torch.empty_like(workspace)
-    gcx = torch.empty_like(cx)
-    gbias = torch.empty(4 * H, dtype=workspace.dtype, device=workspace.device)
-
-    if _is_pow2(batch) and _is_pow2(H):
-        CHUNK = max(1, min(batch, 256 // H))
-        num_warps = max(1, min(16, (CHUNK * H) // 32))
-        _lstm_cell_bwd_vec[(1,)](
-            grad_hy,
-            grad_cy,
-            cx,
-            cy,
-            workspace,
-            gig,
-            gcx,
-            gbias,
-            BATCH=batch,
-            H=H,
-            CHUNK=CHUNK,
-            has_bias=has_bias_bool,
-            num_warps=num_warps,
-        )
+@triton.jit
+def _st(ptr, offs, val, mask, MASKED: tl.constexpr):
+    if MASKED:
+        tl.store(ptr + offs, val, mask=mask)
     else:
-        BLOCK = triton.next_power_of_2(H)
-        num_warps = 1 if BLOCK <= 32 else 2
-        _lstm_cell_bwd_loop[(1,)](
+        tl.store(ptr + offs, val)
+
+
+@triton.jit
+def _lstm_bwd_fused_kernel(
+    grad_hy_ptr,
+    grad_cy_ptr,
+    cx_ptr,
+    cy_ptr,
+    workspace_ptr,
+    grad_gates_ptr,
+    grad_cx_ptr,
+    grad_bias_ptr,
+    N,
+    H: tl.constexpr,
+    N2: tl.constexpr,
+    CH: tl.constexpr,
+    MASKED: tl.constexpr,
+):
+    """Fused LSTM-cell backward in one kernel.
+
+    grid = ceil(H / CH).  Program ``pid`` owns hidden columns
+    ``[pid*CH, (pid+1)*CH)`` of every batch row.  For each (batch, hidden)
+    element it loads the four gate activations from the workspace (layout
+    ``[i, f, g, o]`` slabs of ``H`` contiguous columns per row), computes the
+    chain-rule gate gradients and ``grad_cx`` in fp32, stores them, and
+    accumulates the per-column sums over the batch dimension in registers so
+    the bias gradient needs no second kernel, no atomics, and no memset.
+
+    ``H``, ``N2``, ``CH``, ``MASKED`` are compile-time: H is a power of two in
+    every benchmark shape, so the row-stride products fold to shifts, and the
+    ``MASKED=False`` specialization drops all mask predicates.
+    """
+    pid = tl.program_id(0)
+    h = pid * CH + tl.arange(0, CH)
+    r = tl.arange(0, N2)
+    rr = r[:, None]
+    hh = h[None, :]
+
+    if MASKED:
+        m2 = (r < N)[:, None] & (h < H)[None, :]
+    else:
+        m2 = None
+
+    ws = rr * (4 * H) + hh
+    i_gate = _ld(workspace_ptr, ws, m2, MASKED).to(tl.float32)
+    f_gate = _ld(workspace_ptr, ws + H, m2, MASKED).to(tl.float32)
+    g_gate = _ld(workspace_ptr, ws + 2 * H, m2, MASKED).to(tl.float32)
+    o_gate = _ld(workspace_ptr, ws + 3 * H, m2, MASKED).to(tl.float32)
+
+    e = rr * H + hh
+    ghy = _ld(grad_hy_ptr, e, m2, MASKED).to(tl.float32)
+    gcy = _ld(grad_cy_ptr, e, m2, MASKED).to(tl.float32)
+    cxv = _ld(cx_ptr, e, m2, MASKED).to(tl.float32)
+    cyv = _ld(cy_ptr, e, m2, MASKED).to(tl.float32)
+
+    tanh_cy = _tanh(cyv)
+    d_cy = ghy * o_gate * (1.0 - tanh_cy * tanh_cy) + gcy
+
+    grad_i = d_cy * g_gate * i_gate * (1.0 - i_gate)
+    grad_f = d_cy * cxv * f_gate * (1.0 - f_gate)
+    grad_g = d_cy * i_gate * (1.0 - g_gate * g_gate)
+    grad_o = ghy * tanh_cy * o_gate * (1.0 - o_gate)
+    grad_cx = d_cy * f_gate
+
+    out_ty = grad_gates_ptr.dtype.element_ty
+    g0 = rr * (4 * H) + hh
+    _st(grad_gates_ptr, g0, grad_i.to(out_ty), m2, MASKED)
+    _st(grad_gates_ptr, g0 + H, grad_f.to(out_ty), m2, MASKED)
+    _st(grad_gates_ptr, g0 + 2 * H, grad_g.to(out_ty), m2, MASKED)
+    _st(grad_gates_ptr, g0 + 3 * H, grad_o.to(out_ty), m2, MASKED)
+    _st(grad_cx_ptr, e, grad_cx.to(grad_cx_ptr.dtype.element_ty), m2, MASKED)
+
+    b_ty = grad_bias_ptr.dtype.element_ty
+    cm = (h < H) if MASKED else None
+    _st(grad_bias_ptr, h, tl.sum(grad_i, axis=0).to(b_ty), cm, MASKED)
+    _st(grad_bias_ptr, H + h, tl.sum(grad_f, axis=0).to(b_ty), cm, MASKED)
+    _st(grad_bias_ptr, 2 * H + h, tl.sum(grad_g, axis=0).to(b_ty), cm, MASKED)
+    _st(grad_bias_ptr, 3 * H + h, tl.sum(grad_o, axis=0).to(b_ty), cm, MASKED)
+
+
+def _thnn_fused_lstm_cell_backward_impl(grad_hy, grad_cy, cx, cy, workspace, has_bias):
+    N, H = cx.shape
+    dtype = grad_hy.dtype
+    device = grad_hy.device
+
+    # grad_input_gates and grad_biases share one allocation; grad_cx is a
+    # second.  The kernel writes them at disjoint offsets.
+    gates_elems = N * (4 * H)
+    buf = torch.empty((gates_elems + max(4 * H, 1)), dtype=dtype, device=device)
+    grad_input_gates = buf[:gates_elems].view(N, 4 * H)
+    bias_buf = buf[gates_elems:]
+    grad_cx = torch.empty_like(cx)
+
+    if N > 0 and H > 0:
+        N2 = triton.next_power_of_2(N)
+        # Target ~64 elements per program (2/thread with one warp): CH =
+        # 64//N2.  For batch==1 this grows the chunk to H (one program per
+        # row), which two independent A/Bs measured slightly faster than the
+        # capped variant on the (1,64) tile.
+        CH = min(H, 64 // N2)
+        MASKED = (N != N2) or (H % CH != 0)
+        grid = (triton.cdiv(H, CH),)
+        _lstm_bwd_fused_kernel[grid](
             grad_hy,
             grad_cy,
             cx,
             cy,
             workspace,
-            gig,
-            gcx,
-            gbias,
-            batch,
+            grad_input_gates,
+            grad_cx,
+            bias_buf,
+            N,
             H=H,
-            BLOCK=BLOCK,
-            has_bias=has_bias_bool,
-            num_warps=num_warps,
+            N2=N2,
+            CH=CH,
+            MASKED=MASKED,
+            num_warps=1,
         )
 
-    if not has_bias_bool:
-        gbias = torch.empty(0, dtype=workspace.dtype, device=workspace.device)
-    return gig, gcx, gbias
+    if has_bias:
+        grad_biases = bias_buf
+    else:
+        grad_biases = torch.empty(0, dtype=dtype, device=device)
+    return grad_input_gates, grad_cx, grad_biases

@@ -46,6 +46,7 @@ from backend_utils import VendorDescriptor
 
 vendor_info = VendorDescriptor(
     vendor_name="thead",
+    tle_enabled=True,
     # PPU uses CUDA-compatible API, accessed via torch.cuda
     device_name="cuda",
     # PPU device management tool (similar to nvidia-smi)
