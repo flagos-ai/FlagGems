@@ -121,6 +121,7 @@ def test_addmm_beta_zero_ignores_bias(dtype):
     utils.gems_assert_close(result, ref_out, dtype, reduce_dim=K)
 
 
+@pytest.mark.addmm_vector_bias
 @pytest.mark.addmm
 @_addmm_layout_bias_only
 @pytest.mark.parametrize("M, N, K", VECTOR_BIAS_MNK_SHAPES)
@@ -167,6 +168,7 @@ def test_addmm_scalar_bias(dtype, b_column_major):
     utils.gems_assert_close(result, ref_out, dtype, reduce_dim=K)
 
 
+@pytest.mark.addmm_vector_bias
 @pytest.mark.addmm
 @_addmm_layout_bias_only
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -247,6 +249,7 @@ def test_addmm_out_beta_zero_ignores_bias(dtype):
     utils.gems_assert_close(out, ref_out, dtype, reduce_dim=K)
 
 
+@pytest.mark.addmm_out_vector_bias
 @pytest.mark.addmm_out
 @_addmm_layout_bias_only
 @pytest.mark.parametrize("M, N, K", VECTOR_BIAS_MNK_SHAPES)

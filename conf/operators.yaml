@@ -606,6 +606,28 @@ ops:
   - BLAS
   stages:
   - stable: '4.0'
+- id: addmm_out_vector_bias
+  description: A variant of `addmm_out` that exercises the vector bias (1-D `input`)
+    broadcast path of the `out` overload.
+  for:
+  - addmm.out
+  labels:
+  - aten
+  kind:
+  - BLAS
+  stages:
+  - beta: '5.4'
+- id: addmm_vector_bias
+  description: A variant of `addmm` that exercises the vector bias (1-D `input`)
+    broadcast path.
+  for:
+  - addmm
+  labels:
+  - aten
+  kind:
+  - BLAS
+  stages:
+  - beta: '5.4'
 - id: addmv
   description: 'Performs a matrix-vector product of the matrix `mat` and the vector
     `vec`.
@@ -3448,6 +3470,18 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: ctc_loss_backward
+  description: The backward computation of `ctc_loss()`, exercised through the
+    autograd of the forward operator.
+  for:
+  - ctc_loss.Tensor
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - beta: '5.4'
 - id: cudnn_attention_forward
   description: 'Forward kernel for cuDNN attention, computing scaled dot-product
 
@@ -5836,6 +5870,48 @@ ops:
   - Attention
   - vLLM
   - DeepSeekV4
+  kind:
+  - NeuralNetwork
+  stages:
+  - beta: '5.4'
+- id: fused_marlin_moe_w4a16_int4
+  description: Fused MoE with GPTQ INT4 (uint4b8) W4A16 weights in plain row-major
+    layout; Triton wna16 fused-dequant GEMM with SwiGLU activation, aligned with
+    vLLM's fused_marlin_moe call signature.
+  for:
+  - flag_gems.fused.fused_marlin_moe.fused_marlin_moe
+  labels:
+  - fused
+  - vLLM
+  - MoE
+  kind:
+  - NeuralNetwork
+  stages:
+  - beta: '5.4'
+- id: fused_marlin_moe_w4a16_mxfp4
+  description: Fused MoE with MXFP4 (E2M1) W4A16 weights packed two codes per byte
+    and E8M0 scales; Triton wna16 fused-dequant GEMM with SwiGLU activation,
+    aligned with vLLM's fused_marlin_moe call signature.
+  for:
+  - flag_gems.fused.fused_marlin_moe.fused_marlin_moe
+  labels:
+  - fused
+  - vLLM
+  - MoE
+  kind:
+  - NeuralNetwork
+  stages:
+  - beta: '5.4'
+- id: fused_marlin_moe_w8a16_int8
+  description: Fused MoE with GPTQ INT8 (uint8b128) W8A16 weights; Triton wna16
+    fused-dequant GEMM with SwiGLU activation, aligned with vLLM's fused_marlin_moe
+    call signature.
+  for:
+  - flag_gems.fused.fused_marlin_moe.fused_marlin_moe
+  labels:
+  - fused
+  - vLLM
+  - MoE
   kind:
   - NeuralNetwork
   stages:
@@ -8333,6 +8409,16 @@ ops:
   - LinearAlg
   stages:
   - beta: '5.4'
+- id: linalg_matrix_rank_hermitian
+  description: Computes numerical matrix rank of a Hermitian matrix (hermitian=True).
+  for:
+  - linalg_matrix_rank
+  labels:
+  - aten
+  kind:
+  - LinearAlg
+  stages:
+  - beta: '5.4'
 - id: linalg_matrix_rank_out
   description: Computes numerical matrix rank using a scalar tolerance and an output
     tensor.
@@ -9267,6 +9353,19 @@ ops:
   stages:
   - alpha: '5.0'
   - beta: '5.3'
+- id: margin_ranking_loss_backward
+  description: The backward computation of `margin_ranking_loss()`, exercised through
+    the autograd of the forward operator.
+  for:
+  - margin_ranking_loss
+  labels:
+  - aten
+  - nn.functional
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - beta: '5.4'
 - id: masked_fill
   description: Fills elements of given tensor with `value` where `mask` is True.
   for:
@@ -9850,6 +9949,17 @@ ops:
   stages:
   - stable: '3.0'
   cpp: '4.0'
+- id: mm_self_transpose
+  description: Multiplies a transposed view with its base tensor (`mm(inp, inp.t())`),
+    exercising the column-major B operand path of `mm`.
+  for:
+  - mm
+  labels:
+  - aten
+  kind:
+  - BLAS
+  stages:
+  - beta: '5.4'
 - id: mm_w8a8_fp8
   description: Dynamically quantizes BF16 activations and weights to FP8 E4M3, computes
     their matrix product with FP8 Tensor Cores, and applies FP32 scales.
@@ -15650,6 +15760,8 @@ ops:
   stages:
   - stable: '2.1'
 - id: to_copy
+  description: Copies a tensor to a different dtype, layout, device, or memory
+    format, exposed as the low-level `_to_copy` aten operator.
   for:
   - _to_copy
   condition:

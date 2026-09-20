@@ -76,7 +76,7 @@ class RshiftScalarOutBenchmark(base.Benchmark):
 @pytest.mark.rshift_tensor
 def test_rshift():
     bench = RshiftBenchmark(
-        op_name="rshift",
+        op_name="rshift_tensor",
         torch_op=torch.ops.aten.__rshift__.Tensor,
         dtypes=consts.INT_DTYPES + consts.EXTRA_INT_DTYPES,
     )
