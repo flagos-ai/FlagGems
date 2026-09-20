@@ -188,7 +188,7 @@ def test_fused_experts_impl_int8_w8a16():
     specialised WNA16 kernels not available via the generic Triton path).
     """
     bench = FusedMoEINT8W8A16Benchmark(
-        op_name="fused_moe_int8_w8a16_gems_vs_bf16_deq",
+        op_name="fused_experts_impl",
         torch_op=_vllm_fused_moe_int8_w8a16_wrapper,
         dtypes=[torch.bfloat16],
     )

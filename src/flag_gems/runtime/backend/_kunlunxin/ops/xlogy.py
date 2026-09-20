@@ -1,17 +1,3 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import logging
 import math
 
@@ -29,13 +15,8 @@ logger = logging.getLogger(__name__)
 
 _PROMOTION = ELEMENTWISE_TYPE_PROMOTION_KIND.INT_TO_FLOAT
 
-# n >= _GATE uses the select-free fast body (see module docstring).
 _GATE = 1_048_576
 
-# Tuned 12-CTA CodeGenConfig (log.py recipe) for the large-shape fast body:
-# the raw-pointer fast path below is SFU/throttle-bound on the 2.56M..16.7M
-# shapes (largest power-of-two tile divisor is only 4096), while this config
-# measures 1.03-1.46x on the full large-shape range (probe evidence, 2026-09-04).
 config_ = CodeGenConfig(
     512,
     (65536, 65536, 65536),
@@ -63,20 +44,9 @@ _MASKED_FALLBACK_BLOCK = 8192
 
 
 def _pick_block(n_elements):
-    # Tile buckets sweep-measured on XPU for the erfc/erf pointwise kernel
-    # family (identical 2-load / select / store shape, see
-    # harness/solution/performance/erfc_perf.md).  num_warps is a no-op on
-    # this backend; buckets are chosen on tile width alone.  Unmasked runs
-    # when the shape divides the tile exactly (masked memory path on XPU
-    # costs ~2x); every benchmark shape divides its bucket.
     if n_elements >= 16_777_216 and n_elements % 65536 == 0:
         return 65536, 16, False
     if n_elements >= 1_048_576:
-        # Large-mid range (1M .. 16.7M): use the largest power-of-two tile
-        # (<= 32768) that divides n exactly, so the unmasked (vector) memory
-        # path applies.  Benchmark shapes here (2.56M, 8.4M) are not all
-        # divisible by 32768 (2.56M = 2^12 * 5^4); the masked fallback below
-        # measures ~2x slower on XPU (0.44x vs ~0.9x on 2.56M fp32).
         for tile in (32768, 16384, 8192, 4096, 2048):
             if n_elements % tile == 0:
                 return tile, 4, False
@@ -85,11 +55,6 @@ def _pick_block(n_elements):
     if n_elements <= 65_536:
         return MIN_BLOCK, 4, True
     return _MASKED_FALLBACK_BLOCK, 4, True
-
-
-# ---------------------------------------------------------------------------
-# tensor x tensor
-# ---------------------------------------------------------------------------
 
 
 @triton.jit
@@ -107,10 +72,6 @@ def xlogy_kernel(
     x = tl.load(x_ptr + offset, mask=mask, other=0).to(tl.float32)
     y = tl.load(y_ptr + offset, mask=mask, other=1).to(tl.float32)
     if EXACT:
-        # PyTorch aten precedence: NaN if y is NaN; 0 if x == 0; else
-        # x * log(y).  The y-NaN check uses the fp32 bit pattern (exact
-        # IEEE-754 identity), avoiding the unordered compare (v16f32 setuo)
-        # the XPU LLVM backend cannot select.
         prod = x * tl.log(y)
         res = tl.where(x == 0.0, 0.0, prod)
         y_bits = y.to(tl.int32, bitcast=True)
@@ -118,7 +79,6 @@ def xlogy_kernel(
         res = tl.where(y_nan, float("nan"), res)
         tl.store(out_ptr + offset, res.to(out_ptr.dtype.element_ty), mask=mask)
     else:
-        # Fast body: no select on the SFU (log) result (see module doc).
         res = x * tl.log(y)
         tl.store(out_ptr + offset, res.to(out_ptr.dtype.element_ty), mask=mask)
 
@@ -145,11 +105,6 @@ def xlogy_kernel_unmasked(
     else:
         res = x * tl.log(y)
         tl.store(out_ptr + offset, res.to(out_ptr.dtype.element_ty))
-
-
-# ---------------------------------------------------------------------------
-# tensor x scalar  (y is a runtime scalar per launch)
-# ---------------------------------------------------------------------------
 
 
 @triton.jit
@@ -202,13 +157,6 @@ def xlogy_tensor_scalar_kernel_unmasked(
         tl.store(out_ptr + offset, res.to(out_ptr.dtype.element_ty))
 
 
-# 0D/1-element-tensor variants: y is loaded from device memory inside the
-# kernel instead of being passed as a host argument.  That avoids the
-# device->host sync of `float(y_val)` on every call (measured ~50-90us on
-# XPU), which dominated the small-shape latency.  They are only dispatched
-# when n < _GATE, where the EXACT body is correct for every y, so the value
-# never has to be inspected on the host.  (Mirror of the
-# xlogy_scalar_tensor_ptr_kernel* kernels below; see the module docstring.)
 @triton.jit
 def xlogy_tensor_scalar_ptr_kernel(
     x_ptr,
@@ -257,11 +205,6 @@ def xlogy_tensor_scalar_ptr_kernel_unmasked(
     else:
         res = x * tl.log(y)
         tl.store(out_ptr + offset, res.to(out_ptr.dtype.element_ty))
-
-
-# ---------------------------------------------------------------------------
-# scalar x tensor  (x is a runtime scalar per launch)
-# ---------------------------------------------------------------------------
 
 
 @triton.jit
@@ -369,13 +312,10 @@ def _exact_tensor_tensor(n_elements):
 
 
 def _exact_tensor_scalar(n_elements, y_val):
-    # Fast body x*log(y) is exact for all x iff y is finite and > 0
-    # (0*log(y) -> 0, and no x can produce a different result).
     return n_elements < _GATE or not (0.0 < y_val and math.isfinite(y_val))
 
 
 def _exact_scalar_tensor(n_elements, x_val):
-    # Fast body x*log(y) is exact for all y iff x != 0.
     return n_elements < _GATE or x_val == 0.0
 
 
@@ -384,7 +324,6 @@ def _launch(x, y, out):
     if n_elements == 0:
         return
     if n_elements >= _GATE:
-        # Large shapes: 12-CTA pointwise fast body (see module docstring).
         _xlogy_fast(x, y, out0=out)
         return
     block_size, num_warps, masked = _pick_block(n_elements)
@@ -423,10 +362,6 @@ def _launch_tensor_scalar(x, out, y_val):
     if n_elements == 0:
         return
     if isinstance(y_val, torch.Tensor) and y_val.numel() == 1 and n_elements < _GATE:
-        # 0D/1-element tensor scalar: load the value in-kernel (see the ptr
-        # kernels above).  n < _GATE forces the EXACT body, which is correct
-        # for every y, so the value never needs to be read on the host and the
-        # per-call device->host sync of `float(y_val)` is avoided.
         block_size, num_warps, masked = _pick_block(n_elements)
         if masked:
             grid = (triton.cdiv(n_elements, block_size),)
@@ -493,10 +428,6 @@ def _launch_scalar_tensor(y, out, x_val):
     if n_elements == 0:
         return
     if isinstance(x_val, torch.Tensor) and x_val.numel() == 1 and n_elements < _GATE:
-        # 0D/1-element tensor scalar: load the value in-kernel (see the ptr
-        # kernels above).  n < _GATE forces the EXACT body, which is correct
-        # for every x, so the value never needs to be read on the host and the
-        # per-call device->host sync of `float(x_val)` is avoided.
         block_size, num_warps, masked = _pick_block(n_elements)
         if masked:
             grid = (triton.cdiv(n_elements, block_size),)
@@ -558,7 +489,6 @@ def _launch_scalar_tensor(y, out, x_val):
         )
 
 
-# aten::xlogy.Tensor
 def xlogy(self, other):
     logger.debug("GEMS_KUNLUNXIN XLOGY")
     x = self.contiguous()
@@ -569,7 +499,6 @@ def xlogy(self, other):
     return out
 
 
-# aten::xlogy.OutTensor
 def xlogy_out(self, other, out):
     logger.debug("GEMS_KUNLUNXIN XLOGY_OUT")
     x = self.contiguous()
@@ -578,7 +507,6 @@ def xlogy_out(self, other, out):
     return out
 
 
-# aten::xlogy_.Tensor (in-place)
 def xlogy_(self, other):
     logger.debug("GEMS_KUNLUNXIN XLOGY_")
     x = self.contiguous()
@@ -589,7 +517,6 @@ def xlogy_(self, other):
     return self
 
 
-# aten::xlogy.Scalar_Other
 def xlogy_tensor_scalar(self, other):
     logger.debug("GEMS_KUNLUNXIN XLOGY_TENSOR_SCALAR")
     x = self.contiguous()
@@ -599,7 +526,6 @@ def xlogy_tensor_scalar(self, other):
     return out
 
 
-# aten::xlogy.OutScalar_Other
 def xlogy_tensor_scalar_out(self, other, out):
     logger.debug("GEMS_KUNLUNXIN XLOGY_TENSOR_SCALAR_OUT")
     x = self.contiguous()
@@ -607,7 +533,6 @@ def xlogy_tensor_scalar_out(self, other, out):
     return out
 
 
-# aten::xlogy_.Scalar_Other (in-place)
 def xlogy_tensor_scalar_(self, other):
     logger.debug("GEMS_KUNLUNXIN XLOGY_TENSOR_SCALAR_")
     x = self.contiguous()
@@ -617,7 +542,6 @@ def xlogy_tensor_scalar_(self, other):
     return self
 
 
-# aten::xlogy.Scalar_Self
 def xlogy_scalar_tensor(self, other):
     logger.debug("GEMS_KUNLUNXIN XLOGY_SCALAR_TENSOR")
     y = other.contiguous()
@@ -627,7 +551,6 @@ def xlogy_scalar_tensor(self, other):
     return out
 
 
-# aten::xlogy.OutScalar_Self
 def xlogy_scalar_tensor_out(self, other, out):
     logger.debug("GEMS_KUNLUNXIN XLOGY_SCALAR_TENSOR_OUT")
     y = other.contiguous()
