@@ -49,6 +49,15 @@ from typing import (
 import triton
 
 try:
+    # OutOfResources is a TritonError, NOT a RuntimeError, so it is not caught by
+    # a bare `except RuntimeError` during config benchmarking. Catch it too so an
+    # over-large config (e.g. one exceeding the LDS/shared-memory limit) is
+    # pruned instead of crashing the whole tuning run.
+    from triton.runtime.errors import OutOfResources as _TritonOutOfResources
+except Exception:  # pragma: no cover - older/newer triton layouts
+    _TritonOutOfResources = ()
+
+try:
     import triton.flagtune  # noqa: F401
 except ModuleNotFoundError as exc:
     if exc.name != "triton.flagtune":
@@ -1023,7 +1032,7 @@ class LibTuner(triton.runtime.Autotuner):
                     if ret is None:
                         try:
                             ret = self._bench(*args, config=config, **kwargs)
-                        except RuntimeError as e:
+                        except (RuntimeError, _TritonOutOfResources) as e:
                             if getattr(self, "_flagtune_strict_benchmark", False):
                                 raise
                             # A config whose COMPILE raises a plain RuntimeError
@@ -1110,11 +1119,42 @@ class LibTuner(triton.runtime.Autotuner):
             self.shared_config_pre_hook(full_nargs)
         elif config.pre_hook is not None:
             config.pre_hook(full_nargs)
-        ret = self.fn.run(
-            *args,
-            **kwargs,
-            **config.all_kwargs(),
-        )
+        try:
+            ret = self.fn.run(
+                *args,
+                **kwargs,
+                **config.all_kwargs(),
+            )
+        except _TritonOutOfResources:
+            # The selected config exceeds a hardware limit (e.g. LDS/shared
+            # memory) on this device. Some selection paths (single-config, cost
+            # model, cached result) never launch the kernel during tuning, so
+            # the limit only surfaces here. Retry the remaining configs,
+            # smallest first, and keep the first one that fits.
+            def _cfg_size(c):
+                blocks = 1
+                for k, v in c.kwargs.items():
+                    if isinstance(v, int) and "BLOCK" in k.upper():
+                        blocks *= max(1, v)
+                return (getattr(c, "num_stages", 1) or 1, blocks)
+
+            ret = None
+            for alt in sorted(self.configs, key=_cfg_size):
+                if alt is config:
+                    continue
+                try:
+                    if alt.pre_hook is not None:
+                        alt.pre_hook(
+                            {**self.nargs, **kwargs, **alt.all_kwargs()}
+                        )
+                    ret = self.fn.run(*args, **kwargs, **alt.all_kwargs())
+                    config = alt
+                    self.best_config = alt
+                    break
+                except _TritonOutOfResources:
+                    continue
+            if ret is None:
+                raise
         self.nargs = None
         return ret
 
