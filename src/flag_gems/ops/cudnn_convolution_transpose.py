@@ -177,7 +177,9 @@ def conv_transpose2d_kernel(
         & (wo < out_width)[:, None]
     )
 
-    tl.store(output_pointer, accum.to(output_pointer.dtype.element_ty), mask=output_mask)
+    tl.store(
+        output_pointer, accum.to(output_pointer.dtype.element_ty), mask=output_mask
+    )
 
 
 class CudnnConvolutionTranspose(torch.autograd.Function):
@@ -238,12 +240,12 @@ class CudnnConvolutionTranspose(torch.autograd.Function):
         in_n, in_c, input_height, input_width = input.shape
         # Transpose-conv weight layout is (in_c, out_c/groups, kH, kW).
         w_in_c, out_c_per_group, weight_height, weight_width = weight.shape
-        assert w_in_c == in_c, (
-            f"Incompatible input channels {in_c} and weight in-channels {w_in_c}"
-        )
-        assert in_c % groups == 0, (
-            f"Input channels {in_c} not divisible by groups {groups}"
-        )
+        assert (
+            w_in_c == in_c
+        ), f"Incompatible input channels {in_c} and weight in-channels {w_in_c}"
+        assert (
+            in_c % groups == 0
+        ), f"Input channels {in_c} not divisible by groups {groups}"
         in_c_per_group = in_c // groups
         out_c = out_c_per_group * groups
 

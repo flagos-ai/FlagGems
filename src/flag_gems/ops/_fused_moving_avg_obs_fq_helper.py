@@ -113,9 +113,7 @@ def _qparams(
 
         both = (mn < 0.0) & (mx > 0.0)
         if SYM:
-            sc_sym = tl.maximum(
-                _div_rn(-mn, -qmnf), _div_rn(mx, qmxf)
-            )
+            sc_sym = tl.maximum(_div_rn(-mn, -qmnf), _div_rn(mx, qmxf))
             sc_sym = tl.where(sc_sym == 0.0, 0.1, sc_sym)
             z_sym = _rint((qmnf + qmxf) / 2.0)
             sc = tl.where(both, sc_sym, sc)

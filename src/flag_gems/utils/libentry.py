@@ -1144,9 +1144,7 @@ class LibTuner(triton.runtime.Autotuner):
                     continue
                 try:
                     if alt.pre_hook is not None:
-                        alt.pre_hook(
-                            {**self.nargs, **kwargs, **alt.all_kwargs()}
-                        )
+                        alt.pre_hook({**self.nargs, **kwargs, **alt.all_kwargs()})
                     ret = self.fn.run(*args, **kwargs, **alt.all_kwargs())
                     config = alt
                     self.best_config = alt
