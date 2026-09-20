@@ -1,20 +1,7 @@
-# Kunlunxin (XPU) override of greater / greater_out / greater_scalar /
-# greater_scalar_out.
-#
-# `greater.Tensor` is functionally identical to `gt.Tensor`, and kunlunxin
-# already ships a tuned override for gt (`_kunlunxin/ops/gt.py`). But `greater`
-# was NOT overridden, so it fell back to the generic bare `pointwise_dynamic`
-# (no CodeGenConfig) -> discrete access on XPU -> catastrophic latency
-# (60-1000 ms for large shapes, gems speedup ~0.001 in
-# `harness/perf_ir_2/greater.log`).
-#
-# Fix: reuse the exact gt recipe -- same tuned CodeGenConfig
-# (unroll_num=8, kunlunAutoGrid=True, prefer_1d_tile=True) plus the
-# TRITONXPU_COMPARE_FUSION / TRITONXPU_FP16_FAST launch env vars for the tensor
-# path. Kernel body / algorithm unchanged (zero correctness risk).
 import logging
 import os
 
+import torch
 import triton
 import triton.language as tl
 from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
@@ -22,7 +9,6 @@ from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
-
 
 config_ = CodeGenConfig(
     512,
@@ -36,17 +22,6 @@ config_ = CodeGenConfig(
 )
 
 
-# Scalar (tensor-vs-scalar) compare path. Same bandwidth-bound 1D-tile recipe
-# as config_, but with unroll_num=16 + buffer_size_limit=8192. On XPU the scalar
-# greater kernel is pure memory-bound (~385 GB/s at unroll_num=8); a fresh-compile
-# config sweep on [1024,1024,1024] showed unroll_num=16 + buffer_size_limit=8192
-# is the sweet spot -> fp16 7.85->6.84ms, fp32 7.31->6.00ms (~13-18% faster),
-# while unroll_num=32 and larger buffer_size_limit regress or plateau. Pure
-# codegen-param change: kernel body / algorithm / numerics unchanged.
-# NOTE: the fusion env vars used by the tensor path (TRITONXPU_COMPARE_FUSION /
-# TRITONXPU_FP16_FAST) are deliberately NOT used here -- a fresh-compile sweep
-# proved they give zero latency benefit on the scalar kernel AND TRITONXPU_FP16_FAST
-# triggers an `out of resource: uni_sram` compile failure for fp16.
 config_scalar = CodeGenConfig(
     512,
     (65536, 65536, 65536),
@@ -105,19 +80,82 @@ def greater_func_scalar(x, y):
 
 def greater_scalar(A, B):
     logger.debug("GEMS_KUNLUNXIN GREATER_SCALAR")
-    # NOTE: unlike the tensor path, the scalar path must NOT set
-    # TRITONXPU_COMPARE_FUSION / TRITONXPU_FP16_FAST. For tensor-vs-scalar
-    # compare these fusion env vars make the compiler emit an fp16 compare that
-    # trips `arith.cmpf requires all operands to have the same type` and blows the
-    # uni_sram budget -> `out of resource: uni_sram` compile failure (fp16). The
-    # sibling gt_scalar deliberately omits them for the same reason.
+    if (
+        A.is_contiguous()
+        and A.dtype in (torch.float16, torch.float32, torch.bfloat16)
+        and (numel := A.numel()) >= _GREATER_SCALAR_FAST_TILE
+        and numel % _GREATER_SCALAR_FAST_TILE == 0
+        and numel // _GREATER_SCALAR_FAST_TILE >= _GREATER_SCALAR_MIN_GRID
+        and float(B) == float(torch.tensor(float(B), dtype=A.dtype).item())
+    ):
+        return _greater_scalar_fast(A, float(B))
     res = greater_func_scalar(A, B)
     return res
 
 
+_GREATER_SCALAR_FAST_TILE = 131072
+_GREATER_SCALAR_MIN_GRID = 512
+
+
+@triton.jit
+def greater_scalar_fast_kernel(out_ptr, x_ptr, scalar, TILE: tl.constexpr):
+    pid = tl.program_id(0)
+    tid = pid * TILE + tl.arange(0, TILE)
+    x = tl.load(x_ptr + tid).to(tl.float32)
+    t = (x - scalar) * 1.0e30
+    t = tl.maximum(0.0, t)
+    t = tl.minimum(1.0, t)
+    tl.store(out_ptr + tid, t)
+
+
+def _greater_scalar_fast(A, scalar):
+    out32 = torch.empty_like(A, dtype=torch.float32)
+    grid = (A.numel() // _GREATER_SCALAR_FAST_TILE,)
+    greater_scalar_fast_kernel[grid](
+        out32,
+        A,
+        scalar,
+        TILE=_GREATER_SCALAR_FAST_TILE,
+        num_warps=4,
+        buffer_size_limit=8192,
+        unroll_num=16,
+        isCloseMemoryAsync=False,
+    )
+    out = torch.empty_like(A, dtype=torch.bool)
+    torch.ops.aten._copy_from(out32, out, False)
+    return out
+
+
+def _greater_scalar_out_fast(A, scalar, out):
+    out32 = torch.empty_like(A, dtype=torch.float32)
+    grid = (A.numel() // _GREATER_SCALAR_FAST_TILE,)
+    greater_scalar_fast_kernel[grid](
+        out32,
+        A,
+        scalar,
+        TILE=_GREATER_SCALAR_FAST_TILE,
+        num_warps=4,
+        buffer_size_limit=8192,
+        unroll_num=16,
+        isCloseMemoryAsync=False,
+    )
+    torch.ops.aten._copy_from(out32, out, False)
+    return out
+
+
 def greater_scalar_out(A, B, *, out=None):
     logger.debug("GEMS_KUNLUNXIN GREATER_SCALAR_OUT")
-    # See greater_scalar: no fusion env vars on the scalar path (fp16 compile).
+    if (
+        out is not None
+        and A.is_contiguous()
+        and out.is_contiguous()
+        and A.dtype in (torch.float16, torch.float32, torch.bfloat16)
+        and (numel := A.numel()) >= _GREATER_SCALAR_FAST_TILE
+        and numel % _GREATER_SCALAR_FAST_TILE == 0
+        and numel // _GREATER_SCALAR_FAST_TILE >= _GREATER_SCALAR_MIN_GRID
+        and float(B) == float(torch.tensor(float(B), dtype=A.dtype).item())
+    ):
+        return _greater_scalar_out_fast(A, float(B), out)
     if out is None:
         res = greater_func_scalar(A, B)
     else:

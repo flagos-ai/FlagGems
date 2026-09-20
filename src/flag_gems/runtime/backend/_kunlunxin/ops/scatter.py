@@ -56,8 +56,17 @@ def generate_scatter_kernel(
 
     code.writeline("def heur_block(args):")
     with code.indent():
+        # BOUNDED BLOCK: the kernel materializes BLOCK-element offset vectors
+        # (inp_offsets / cur_idx / mod). The old unbounded
+        # next_power_of_2(cdiv(cdiv(N, 12), 4)) is the UNBOUNDED-BLOCK
+        # anti-pattern (same family as gather): for large N it produces
+        # BLOCK up to 2^20, a giant tile expanded per element in
+        # ConvertTritonXPUToLLVM, and grid = cdiv(N, BLOCK * LOOP) collapses
+        # to a handful of programs -> severe under-parallelization.
+        # Cap at 4096 to keep tiles small and the grid wide.
         code.writeline(
-            'return triton.next_power_of_2(triton.cdiv(triton.cdiv(args["N"], 12), 4))'
+            "return min("
+            'triton.next_power_of_2(triton.cdiv(triton.cdiv(args["N"], 12), 4)), 4096)'
         )  # LOOP = 4
     code.newline()
     code.newline()
