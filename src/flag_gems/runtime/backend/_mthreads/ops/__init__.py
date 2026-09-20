@@ -66,7 +66,7 @@ from .dropout import dropout, dropout_backward
 from .erfinv import erfinv
 from .erfinv_ import erfinv_
 from .expand_copy import expand_copy
-from .feature_dropout import feature_dropout
+from .feature_dropout import feature_dropout, feature_dropout_
 from .fix import fix
 from .flip import flip
 from .fmod_ import fmod_, fmod_scalar_, fmod_tensor_
@@ -218,6 +218,7 @@ __all__ = [
     "erfinv_",
     "expand_copy",
     "feature_dropout",
+    "feature_dropout_",
     "fix",
     "flip",
     "floor_divide",
