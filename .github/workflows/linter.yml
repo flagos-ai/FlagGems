@@ -48,4 +48,16 @@ jobs:
     - name: Mark workspace as a safe git directory
       shell: bash
       run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+    - name: Ensure full working tree
+      shell: bash
+      run: |
+        # basic-runner-cpu reuses its _work dir across jobs. A prior job's
+        # sparse checkout leaves skip-worktree bits behind that the next
+        # checkout's "sparse-checkout disable" can't clear, so tracked files
+        # stay absent on disk even though checkout reports success (pre-commit
+        # then can't see the files it must lint). Clear any skip-worktree bits
+        # and force-restore the full tree. Harmless no-op when clean.
+        git sparse-checkout disable 2>/dev/null || true
+        git ls-files -z | xargs -0 -r git update-index --no-skip-worktree
+        git checkout --force HEAD -- .
     - uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd  # v3.0.1
