@@ -751,6 +751,61 @@ class TestPytestIntegration:
         result = pytester.runpytest("-p", "no:cacheprovider", "test_no_override.py")
         result.assert_outcomes(passed=1)
 
+    @pytest.mark.parametrize("configuration", ["cli", "yaml", "json"])
+    def test_missing_operator_is_available_during_collection(
+        self, pytester, monkeypatch, configuration
+    ):
+        monkeypatch.delattr(flag_gems, "sparse_csr_tensor", raising=False)
+        pytester.makeini(f"[pytest]\npythonpath = {self._repo_src_path()}\n")
+        pytester.makeconftest("""
+            import flag_gems
+            from flag_gems.cli_override import add_override_arguments, apply_overrides_from_args
+
+            def pytest_addoption(parser):
+                add_override_arguments(parser)
+
+            def pytest_configure(config):
+                config._override_registry = apply_overrides_from_args(config.option)
+
+            def pytest_unconfigure(config):
+                config._override_registry.restore_all()
+                assert not hasattr(flag_gems, "sparse_csr_tensor")
+            """)
+        candidate = pytester.makepyfile(candidate="def run(value): return value + 3")
+        pytester.makepyfile(test_candidate="""
+            import flag_gems
+
+            assert callable(flag_gems.sparse_csr_tensor)
+
+            def test_direct_call():
+                assert flag_gems.sparse_csr_tensor(4) == 7
+            """)
+        if configuration == "cli":
+            option = f"--override=sparse_csr_tensor:{candidate}:run"
+        else:
+            import json
+
+            # JSON is also valid YAML, so both suffixes exercise config dispatch.
+            config = pytester.makefile(
+                f".{configuration}",
+                overrides=json.dumps(
+                    {
+                        "overrides": {
+                            "sparse_csr_tensor": {
+                                "file": str(candidate),
+                                "function": "run",
+                            }
+                        }
+                    }
+                ),
+            )
+            option = f"--override-config={config}"
+        result = pytester.runpytest(
+            "-p", "no:cacheprovider", option, "test_candidate.py"
+        )
+        result.assert_outcomes(passed=1)
+        assert result.ret == 0
+
 
 def _load_submodule(monkeypatch, name, path):
     """Load `path` as `name` and register it in sys.modules (via monkeypatch)."""
@@ -820,11 +875,17 @@ class TestRegistrarLiveOverrideResolution:
         with pytest.raises((Exception, SystemExit)):
             _apply(fake_flag_gems[2], f"softmax:{path}:run")
 
-    def test_unknown_operator_aborts(self, fake_flag_gems, tmp_path):
+    def test_unknown_unused_operator_fails_and_is_removed(
+        self, fake_flag_gems, tmp_path
+    ):
+        gems, _, cli = fake_flag_gems
         path = tmp_path / "candidate.py"
         path.write_text("def run(x): return x\n")
-        with pytest.raises((Exception, SystemExit)):
-            _apply(fake_flag_gems[2], f"softamx:{path}:run")
+        registry = _apply(cli, f"softamx:{path}:run")
+        with pytest.raises(AssertionError, match="never invoked"):
+            registry.restore_all()
+        assert not hasattr(gems, "softamx")
+        assert registry.list_overrides() == []
 
     def test_existing_registration_uses_candidate(self, fake_flag_gems):
         """Registering `_softmax` should pick up an active override for `softmax`."""
@@ -863,7 +924,8 @@ class TestRegistrarLiveOverrideResolution:
             scope["GeneralOpRegistrar"](config, lib=library)
             assert registered["_softmax"] is candidate
 
-    def test_unused_candidate_makes_pytest_fail(self, tmp_path):
+    @pytest.mark.parametrize("operator", ["softmax", "sparse_csr_tensor", "softamx"])
+    def test_unused_candidate_makes_pytest_fail(self, tmp_path, operator):
         """A --override candidate that is never invoked should fail the run."""
         candidate = tmp_path / "candidate.py"
         candidate.write_text(
@@ -880,7 +942,7 @@ from flag_gems.cli_override import apply_overrides_from_args
 
 def pytest_configure(config):
     config._override_registry = apply_overrides_from_args(types.SimpleNamespace(
-        override=[{"softmax:" + str(candidate) + ":run"!r}], override_config=None))
+        override=[{f"{operator}:{candidate}:run"!r}], override_config=None))
 
 def pytest_unconfigure(config):
     config._override_registry.restore_all()
@@ -908,6 +970,7 @@ def pytest_unconfigure(config):
             text=True,
         )
         assert result.returncode != 0, result.stdout + result.stderr
+        assert "never invoked" in result.stdout + result.stderr
 
     def test_direct_call_and_restore_work(self, fake_flag_gems):
         gems, registry_module, _ = fake_flag_gems
@@ -917,6 +980,88 @@ def pytest_unconfigure(config):
             assert registry.override("softmax", candidate)
             assert gems.softmax(1) == ("candidate", 1)
         assert gems.softmax is original
+
+
+class TestUnimplementedOperatorOverride:
+    @pytest.mark.parametrize("original_kind", ["missing", "none", "callable"])
+    def test_repeated_override_restores_original_state(
+        self, fake_flag_gems, original_kind
+    ):
+        gems, registry_module, _ = fake_flag_gems
+        original = (
+            (lambda value: ("original", value)) if original_kind == "callable" else None
+        )
+        if original_kind != "missing":
+            gems.sparse_csr_tensor = original
+
+        with registry_module.DynamicOpOverride() as registry:
+            assert registry.override(
+                "sparse_csr_tensor", lambda value: ("first", value)
+            )
+            assert gems.sparse_csr_tensor(1) == ("first", 1)
+            assert registry.override(
+                "sparse_csr_tensor", lambda value: ("second", value)
+            )
+            assert gems.sparse_csr_tensor(2) == ("second", 2)
+
+        if original_kind == "missing":
+            assert not hasattr(gems, "sparse_csr_tensor")
+        else:
+            assert gems.sparse_csr_tensor is original
+        assert registry.list_overrides() == []
+
+    def test_exception_restores_existing_and_removes_added_operator(
+        self, fake_flag_gems
+    ):
+        gems, registry_module, _ = fake_flag_gems
+        original = gems.softmax
+        with pytest.raises(RuntimeError, match="test failed"):
+            with registry_module.DynamicOpOverride() as registry:
+                assert all(
+                    registry.override_batch(
+                        {
+                            "softmax": lambda value: value + 1,
+                            "sparse_csr_tensor": lambda value: value + 2,
+                        }
+                    ).values()
+                )
+                assert gems.softmax(1) == 2
+                assert gems.sparse_csr_tensor(1) == 3
+                raise RuntimeError("test failed")
+        assert gems.softmax is original
+        assert not hasattr(gems, "sparse_csr_tensor")
+
+    @pytest.mark.parametrize("configuration", ["cli", "yaml", "json"])
+    def test_file_candidate_for_missing_operator(
+        self, fake_flag_gems, tmp_path, configuration
+    ):
+        gems, _, cli = fake_flag_gems
+        candidate = tmp_path / "candidate.py"
+        candidate.write_text("def run(value): return value + 3\n")
+        args = types.SimpleNamespace(override=None, override_config=None)
+        if configuration == "cli":
+            args.override = [f"sparse_csr_tensor:{candidate}:run"]
+        else:
+            import json
+
+            config = tmp_path / f"overrides.{configuration}"
+            payload = {
+                "overrides": {
+                    "sparse_csr_tensor": {"file": str(candidate), "function": "run"}
+                }
+            }
+            if configuration == "yaml":
+                import yaml
+
+                config.write_text(yaml.safe_dump(payload))
+            else:
+                config.write_text(json.dumps(payload))
+            args.override_config = str(config)
+
+        with cli.apply_overrides_from_args(args) as registry:
+            assert gems.sparse_csr_tensor(4) == 7
+            assert registry.list_overrides() == ["flag_gems.sparse_csr_tensor"]
+        assert not hasattr(gems, "sparse_csr_tensor")
 
 
 if __name__ == "__main__":
