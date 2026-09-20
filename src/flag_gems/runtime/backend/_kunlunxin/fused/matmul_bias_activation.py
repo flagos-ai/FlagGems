@@ -110,7 +110,7 @@ def matmul_bias_activation(input, weight, bias):
     M, K = input.shape
     _, N = weight.shape
 
-    logger.debug("GEMS MATMUL_BIAS_ACTIVATION")
+    logger.debug("GEMS_KUNLUNXIN MATMUL_BIAS_ACTIVATION")
     if input.stride(0) > 1 and input.stride(1) > 1:
         input = input.contiguous()
     if weight.stride(0) > 1 and weight.stride(1) > 1:
