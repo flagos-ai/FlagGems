@@ -27,15 +27,9 @@ on:
       - reopened
       - synchronize
 
-# The runner injects an auth-required 407 proxy into the container; GitHub is
-# reachable directly. Setting the proxy vars to '' fails (an empty container
-# env renders as `docker create -e "https_proxy"`, passing the host value
-# through), so bypass the proxy for every host with no_proxy=*, honored by
-# git/curl. Lowercase wins in proxy-from-env (set per container below);
-# NO_PROXY here covers step processes.
-env:
-  NO_PROXY: '*'
-
+# The job container runs with the host network (options: --network host below)
+# so it uses the host's own network stack and proxy setup to reach GitHub,
+# instead of the runner-injected in-container proxy.
 jobs:
   code-style:
     permissions:
@@ -46,8 +40,7 @@ jobs:
     runs-on: basic-runner-cpu
     container:
       image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
-      env:
-        no_proxy: '*'
+      options: --network host
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
     # checkout marks the repo safe only in a throwaway HOME; pre-commit runs

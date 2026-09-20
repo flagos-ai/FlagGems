@@ -30,17 +30,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
-# The self-hosted runner injects a proxy into the container that requires
-# auth (returns 407) and breaks it. The container can reach GitHub directly,
-# so clear the proxy vars to bypass it.
-# The runner injects an auth-required 407 proxy into the container; GitHub is
-# reachable directly. Setting the proxy vars to '' fails (an empty container
-# env renders as `docker create -e "https_proxy"`, passing the host value
-# through), so bypass the proxy for every host with no_proxy=*, honored by
-# octokit's proxy-from-env, curl and git. Lowercase no_proxy wins in
-# proxy-from-env (set per container below); NO_PROXY here covers step processes.
+# The job containers run with the host network (options: --network host per
+# container below) so they use the host's own network stack and proxy setup to
+# reach GitHub, instead of the runner-injected in-container proxy.
 env:
-  NO_PROXY: '*'
   # checkout registers the workspace as a safe git directory only in a
   # throwaway HOME; the check scripts (derive_changed_operators, etc.) then run
   # git with HOME=/github/home and git rejects the dir as dubious ownership
@@ -55,8 +48,7 @@ jobs:
     runs-on: basic-runner-cpu
     container:
       image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
-      env:
-        no_proxy: '*'
+      options: --network host
     outputs:
       changed_operators: ${{ steps.derive.outputs.changed_operators }}
       changed_files: ${{ steps.derive.outputs.changed_files }}
@@ -78,8 +70,7 @@ jobs:
     runs-on: basic-runner-cpu
     container:
       image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
-      env:
-        no_proxy: '*'
+      options: --network host
     needs: derive-changed-operators
     if: needs.derive-changed-operators.outputs.has_changes == 'true'
     steps:
@@ -95,8 +86,7 @@ jobs:
     runs-on: basic-runner-cpu
     container:
       image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
-      env:
-        no_proxy: '*'
+      options: --network host
     needs: derive-changed-operators
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -107,8 +97,7 @@ jobs:
     runs-on: basic-runner-cpu
     container:
       image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
-      env:
-        no_proxy: '*'
+      options: --network host
     needs: derive-changed-operators
     if: needs.derive-changed-operators.outputs.has_changes == 'true'
     steps:
@@ -126,8 +115,7 @@ jobs:
     runs-on: basic-runner-cpu
     container:
       image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
-      env:
-        no_proxy: '*'
+      options: --network host
     needs: derive-changed-operators
     if: needs.derive-changed-operators.outputs.has_changes == 'true'
     steps:
@@ -143,8 +131,7 @@ jobs:
     runs-on: basic-runner-cpu
     container:
       image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
-      env:
-        no_proxy: '*'
+      options: --network host
     needs: derive-changed-operators
     if: needs.derive-changed-operators.outputs.has_changes == 'true'
     steps:
@@ -163,8 +150,7 @@ jobs:
     runs-on: basic-runner-cpu
     container:
       image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
-      env:
-        no_proxy: '*'
+      options: --network host
     needs: derive-changed-operators
     if: needs.derive-changed-operators.outputs.has_changes == 'true'
     steps:
@@ -180,8 +166,7 @@ jobs:
     runs-on: basic-runner-cpu
     container:
       image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
-      env:
-        no_proxy: '*'
+      options: --network host
     needs: derive-changed-operators
     if: needs.derive-changed-operators.outputs.has_changes == 'true'
     steps:
@@ -201,8 +186,7 @@ jobs:
     runs-on: basic-runner-cpu
     container:
       image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
-      env:
-        no_proxy: '*'
+      options: --network host
     needs:
       - derive-changed-operators
       - check-operators-yaml

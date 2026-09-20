@@ -30,20 +30,13 @@ on:
 jobs:
   preprocess:
     runs-on: basic-runner-cpu
-    # The self-hosted runner injects an auth-required proxy (407) into the
-    # container (as HTTP_PROXY/HTTPS_PROXY); the container reaches GitHub
-    # directly. Setting the proxy vars to '' does NOT work: an empty container
-    # env renders as `docker create -e "https_proxy"` (no value), which just
-    # passes the host's value through. Instead bypass the proxy for every host
-    # with no_proxy=*, which octokit's proxy-from-env and curl both honor.
-    # no_proxy (lowercase) takes precedence in proxy-from-env, so set it in the
-    # container env; NO_PROXY in the job env covers the step process too.
+    # The job container runs with the host network (options: --network host) so
+    # it uses the host's own network stack and proxy setup to reach GitHub,
+    # instead of the runner-injected in-container proxy.
     container:
       image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
-      env:
-        no_proxy: '*'
+      options: --network host
     env:
-      NO_PROXY: '*'
       # Trust the workspace for git (dubious-ownership guard); the get-pr-id
       # step runs `git log` on push events. See rule-check.yaml for details.
       GIT_CONFIG_COUNT: '1'
@@ -210,13 +203,10 @@ jobs:
   # rules, otherwise skipped jobs block merges forever.
   unittest-required:
     runs-on: basic-runner-cpu
-    # Bypass the runner-injected 407 proxy for every host (see preprocess).
+    # Use the host network to reach GitHub (see preprocess).
     container:
       image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
-      env:
-        no_proxy: '*'
-    env:
-      NO_PROXY: '*'
+      options: --network host
     needs:
       - preprocess
       - cpp-op
