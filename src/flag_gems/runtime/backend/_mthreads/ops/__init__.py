@@ -66,7 +66,7 @@ from .dropout import dropout, dropout_backward
 from .erfinv import erfinv
 from .erfinv_ import erfinv_
 from .expand_copy import expand_copy
-from .feature_dropout import feature_dropout_
+from .feature_dropout import feature_dropout
 from .fix import fix
 from .flip import flip
 from .fmod_ import fmod_, fmod_scalar_, fmod_tensor_
@@ -105,7 +105,8 @@ from .max import max, max_dim
 from .max_pool2d_with_indices_backward import max_pool2d_with_indices_backward
 from .median import median, median_dim, median_dim_values, median_out
 from .min import min, min_dim
-from .mish import mish, mish_
+from .mish import mish
+from .mish_ import mish_
 from .mode import mode
 from .mul import mul, mul_
 from .mvlgamma import mvlgamma
@@ -216,7 +217,7 @@ __all__ = [
     "erfinv",
     "erfinv_",
     "expand_copy",
-    "feature_dropout_",
+    "feature_dropout",
     "fix",
     "flip",
     "floor_divide",
@@ -383,7 +384,6 @@ if get_device_capability(current_device())[0] >= 3:
             "silu_backward",
             "log2_",
             "fix",
-            "feature_dropout",
             "lcm",
             "rad2deg_",
             "arctan_",
