@@ -5055,17 +5055,6 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.3'
-- id: feature_dropout_
-  description: The in-place version of `feature_dropout()`.
-  for:
-  - feature_dropout_
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - NeuralNetwork
-  stages:
-  - alpha: '5.3'
 - id: fft_irfftn
   description: Computes the N-dimensional inverse of torch.fft.rfftn.
   for:
