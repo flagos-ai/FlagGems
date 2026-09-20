@@ -1423,6 +1423,28 @@ class LibEntry(triton.KernelInterface):
         else:
             self.lock = multiprocessing.Lock()
         self.signature = fn.signature
+        self._tensor_spec_fn = self._resolve_tensor_spec_fn()
+
+    @staticmethod
+    def _resolve_tensor_spec_fn():
+        # On backends whose pointer specialization depends on tensor size (AMD
+        # and hygon mark tensors <2GB so their pointers use 32-bit buffer-op
+        # addressing), that specialization must be part of the kernel cache key.
+        # Otherwise a kernel compiled for a <2GB tensor is wrongly reused for a
+        # >2GB tensor and its 32-bit offset overflows.
+        vendor = device.vendor_name
+        backend = None
+        try:
+            if vendor == "amd":
+                from triton.backends.amd.compiler import HIPBackend as backend
+            elif vendor == "hygon" and hasattr(triton.backends, "hcu"):
+                from triton.backends.hcu.compiler import HIPBackend as backend
+        except ImportError:
+            backend = None
+        if backend is None:
+            return None
+        fn = getattr(backend, "get_tensor_specialization", None)
+        return fn if callable(fn) else None
 
     @staticmethod
     def _contains_flagtune_tuner(fn):
@@ -1458,22 +1480,10 @@ class LibEntry(triton.KernelInterface):
     def key(self, spec_args, dns_args, const_args):
         def spec_arg(arg):
             if hasattr(arg, "data_ptr"):
-                if device.vendor_name == "hygon" and hasattr(triton.backends, "hcu"):
-                    try:
-                        from triton.backends.hcu.compiler import HIPBackend
-                    except ImportError:
-                        tensor_spec = None
-                    else:
-                        tensor_spec = getattr(
-                            HIPBackend, "get_tensor_specialization", None
-                        )
-                    if callable(tensor_spec):
-                        return (
-                            arg.dtype,
-                            arg.data_ptr() % self.divisibility == 0,
-                            tensor_spec(arg),
-                        )
-                return (arg.dtype, arg.data_ptr() % self.divisibility == 0)
+                base = (arg.dtype, arg.data_ptr() % self.divisibility == 0)
+                if self._tensor_spec_fn is not None:
+                    return base + (self._tensor_spec_fn(arg),)
+                return base
             return (type(arg), arg)
 
         def dns_arg(arg):
