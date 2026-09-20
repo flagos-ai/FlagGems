@@ -83,6 +83,7 @@ from flag_gems.ops._functional_sym_constrain_range import (
 from flag_gems.ops._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
+from flag_gems.ops._fused_adagrad_ import _fused_adagrad_
 from flag_gems.ops._fused_adam import _fused_adam, _fused_adam_
 from flag_gems.ops._fused_moving_avg_obs_fq_helper import (
     _fused_moving_avg_obs_fq_helper,
@@ -92,6 +93,7 @@ from flag_gems.ops._fused_rms_norm import (
     _fused_rms_norm_backward,
     _fused_rms_norm_forward,
 )
+from flag_gems.ops._fused_sgd_ import _fused_sgd_, _fused_sgd__tensor_lr
 from flag_gems.ops._has_compatible_shallow_copy_type import (
     _has_compatible_shallow_copy_type,
 )
@@ -1251,12 +1253,15 @@ __all__ = [
     "_functional_assert_async",
     "_functional_sym_constrain_range",
     "_functional_sym_constrain_range_for_size",
+    "_fused_adagrad_",
     "_fused_adam",
     "_fused_adam_",
     "_fused_moving_avg_obs_fq_helper",
     "_fused_rms_norm",
     "_fused_rms_norm_backward",
     "_fused_rms_norm_forward",
+    "_fused_sgd_",
+    "_fused_sgd__tensor_lr",
     "_has_compatible_shallow_copy_type",
     "_index_put_impl_",
     "_is_all_true",

@@ -649,6 +649,28 @@ ops:
   - BLAS
   stages:
   - stable: '4.0'
+- id: addmm_out_vector_bias
+  description: A variant of `addmm_out` that exercises the vector bias (1-D `input`)
+    broadcast path of the `out` overload.
+  for:
+  - addmm.out
+  labels:
+  - aten
+  kind:
+  - BLAS
+  stages:
+  - beta: '5.4'
+- id: addmm_vector_bias
+  description: A variant of `addmm` that exercises the vector bias (1-D `input`)
+    broadcast path.
+  for:
+  - addmm
+  labels:
+  - aten
+  kind:
+  - BLAS
+  stages:
+  - beta: '5.4'
 - id: addmv
   description: 'Performs a matrix-vector product of the matrix `mat` and the vector
     `vec`.
@@ -3533,6 +3555,18 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: ctc_loss_backward
+  description: The backward computation of `ctc_loss()`, exercised through the
+    autograd of the forward operator.
+  for:
+  - ctc_loss.Tensor
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - beta: '5.4'
 - id: cudnn_attention_forward
   description: 'Forward kernel for cuDNN attention, computing scaled dot-product
 
@@ -5864,6 +5898,17 @@ ops:
   - Tensor
   stages:
   - beta: '5.0'
+- id: fused_adagrad_
+  description: The in-place version of `fused_adagrad()`.
+  for:
+  - _fused_adagrad_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: fused_adam
   description: Fused Adam optimizer step with optional AdamW weight decay, AMSGrad,
     and gradient maximize support.
@@ -5959,6 +6004,48 @@ ops:
   - Attention
   - vLLM
   - DeepSeekV4
+  kind:
+  - NeuralNetwork
+  stages:
+  - beta: '5.4'
+- id: fused_marlin_moe_w4a16_int4
+  description: Fused MoE with GPTQ INT4 (uint4b8) W4A16 weights in plain row-major
+    layout; Triton wna16 fused-dequant GEMM with SwiGLU activation, aligned with
+    vLLM's fused_marlin_moe call signature.
+  for:
+  - flag_gems.fused.fused_marlin_moe.fused_marlin_moe
+  labels:
+  - fused
+  - vLLM
+  - MoE
+  kind:
+  - NeuralNetwork
+  stages:
+  - beta: '5.4'
+- id: fused_marlin_moe_w4a16_mxfp4
+  description: Fused MoE with MXFP4 (E2M1) W4A16 weights packed two codes per byte
+    and E8M0 scales; Triton wna16 fused-dequant GEMM with SwiGLU activation,
+    aligned with vLLM's fused_marlin_moe call signature.
+  for:
+  - flag_gems.fused.fused_marlin_moe.fused_marlin_moe
+  labels:
+  - fused
+  - vLLM
+  - MoE
+  kind:
+  - NeuralNetwork
+  stages:
+  - beta: '5.4'
+- id: fused_marlin_moe_w8a16_int8
+  description: Fused MoE with GPTQ INT8 (uint8b128) W8A16 weights; Triton wna16
+    fused-dequant GEMM with SwiGLU activation, aligned with vLLM's fused_marlin_moe
+    call signature.
+  for:
+  - flag_gems.fused.fused_marlin_moe.fused_marlin_moe
+  labels:
+  - fused
+  - vLLM
+  - MoE
   kind:
   - NeuralNetwork
   stages:
@@ -6062,6 +6149,21 @@ ops:
   - KernelGen
   kind:
   - NeuralNetwork
+  stages:
+  - alpha: '5.4'
+- id: fused_sgd_
+  description: |
+    The in-place version of `fused_sgd()`. Covers both the default overload and
+    `_fused_sgd_.tensor_lr`, which takes the learning rate as a tensor so a
+    scheduler can update it without a host round-trip; both share one kernel.
+  for:
+  - _fused_sgd_
+  - _fused_sgd_.tensor_lr
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
   stages:
   - alpha: '5.4'
 - id: gather
@@ -8544,6 +8646,16 @@ ops:
   - LinearAlg
   stages:
   - beta: '5.4'
+- id: linalg_matrix_rank_hermitian
+  description: Computes numerical matrix rank of a Hermitian matrix (hermitian=True).
+  for:
+  - linalg_matrix_rank
+  labels:
+  - aten
+  kind:
+  - LinearAlg
+  stages:
+  - beta: '5.4'
 - id: linalg_matrix_rank_out
   description: Computes numerical matrix rank using a scalar tolerance and an output
     tensor.
@@ -9514,6 +9626,19 @@ ops:
   stages:
   - alpha: '5.0'
   - beta: '5.3'
+- id: margin_ranking_loss_backward
+  description: The backward computation of `margin_ranking_loss()`, exercised through
+    the autograd of the forward operator.
+  for:
+  - margin_ranking_loss
+  labels:
+  - aten
+  - nn.functional
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - beta: '5.4'
 - id: masked_fill
   description: Fills elements of given tensor with `value` where `mask` is True.
   for:
@@ -10143,6 +10268,17 @@ ops:
   stages:
   - stable: '3.0'
   cpp: '4.0'
+- id: mm_self_transpose
+  description: Multiplies a transposed view with its base tensor (`mm(inp, inp.t())`),
+    exercising the column-major B operand path of `mm`.
+  for:
+  - mm
+  labels:
+  - aten
+  kind:
+  - BLAS
+  stages:
+  - beta: '5.4'
 - id: mm_w8a8_fp8
   description: Dynamically quantizes BF16 activations and weights to FP8 E4M3, computes
     their matrix product with FP8 Tensor Cores, and applies FP32 scales.
@@ -12925,11 +13061,38 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
-- id: rshift
-  description: Applies a bitwise right shift to an integer tensor with a tensor or
-    scalar shift value.
+- id: rshift_scalar
+  description: Applies a bitwise right shift to an integer tensor with a scalar shift
+    value.
   for:
   - __rshift__.Scalar
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: rshift_scalar_out
+  description: 'A variant of `rshift()` that assigns the output to the given `out`
+    parameter, with a scalar shift value.
+
+    '
+  for:
+  - __rshift__.Scalar_out
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: rshift_tensor
+  description: Applies a bitwise right shift to an integer tensor with a tensor shift
+    value.
+  for:
   - __rshift__.Tensor
   labels:
   - aten
@@ -12939,13 +13102,12 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
-- id: rshift_out
+- id: rshift_tensor_out
   description: 'A variant of `rshift()` that assigns the output to the given `out`
-    parameter.
+    parameter, with a tensor shift value.
 
     '
   for:
-  - __rshift__.Scalar_out
   - __rshift__.Tensor_out
   labels:
   - aten
@@ -16231,6 +16393,8 @@ ops:
   stages:
   - stable: '2.1'
 - id: to_copy
+  description: Copies a tensor to a different dtype, layout, device, or memory
+    format, exposed as the low-level `_to_copy` aten operator.
   for:
   - _to_copy
   condition:
