@@ -41,7 +41,9 @@ else:
     tle = None
 
 HAS_TLE_EXTRACT_TILE = HAS_TLE and not IS_ASCEND and hasattr(tle, "extract_tile")
-HAS_TLE_EXTRACT_SLICE = IS_ASCEND and hasattr(getattr(tle, "dsa", None), "extract_slice")
+HAS_TLE_EXTRACT_SLICE = IS_ASCEND and hasattr(
+    getattr(tle, "dsa", None), "extract_slice"
+)
 
 
 def _next_pow2(x: int) -> int:
@@ -213,7 +215,9 @@ if HAS_TLE_EXTRACT_SLICE:
     @lru_cache(maxsize=None)
     def _glu_ascend_num_cores(device_index):
         try:
-            props = triton.runtime.driver.active.utils.get_device_properties(device_index)
+            props = triton.runtime.driver.active.utils.get_device_properties(
+                device_index
+            )
             num_cores = int(props["num_vectorcore"])
             if num_cores <= 0:
                 raise ValueError("num_vectorcore must be positive")
@@ -244,7 +248,6 @@ if HAS_TLE_EXTRACT_SLICE:
         # The timer returns one aggregate, not per-launch quantiles. Repeat
         # that score to satisfy the autotuner's requested result shape.
         return [latency for _ in quantiles]
-
 
     @triton.autotune(
         configs=[
