@@ -27,6 +27,9 @@ on:
       - reopened
       - synchronize
 
+# The runner injects the host's proxy (HTTP_PROXY/HTTPS_PROXY) into the job
+# container; the host proxy reaches GitHub, so we leave it in place and add no
+# proxy overrides (no no_proxy=*, no --network host).
 jobs:
   code-style:
     permissions:
@@ -34,10 +37,27 @@ jobs:
     concurrency:
       group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
-    runs-on: ubuntu-latest
+    runs-on: basic-runner-cpu
+    container:
+      image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-    - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
-      with:
-        python-version: '3.11'
+    # checkout marks the repo safe only in a throwaway HOME; pre-commit runs
+    # with HOME=/github/home and git rejects the dir as dubious ownership.
+    # Register it in the persistent global config pre-commit actually reads.
+    - name: Mark workspace as a safe git directory
+      shell: bash
+      run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+    - name: Ensure full working tree
+      shell: bash
+      run: |
+        # basic-runner-cpu reuses its _work dir across jobs. A prior job's
+        # sparse checkout leaves skip-worktree bits behind that the next
+        # checkout's "sparse-checkout disable" can't clear, so tracked files
+        # stay absent on disk even though checkout reports success (pre-commit
+        # then can't see the files it must lint). Clear any skip-worktree bits
+        # and force-restore the full tree. Harmless no-op when clean.
+        git sparse-checkout disable 2>/dev/null || true
+        git ls-files -z | xargs -0 -r git update-index --no-skip-worktree
+        git checkout --force HEAD -- .
     - uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd  # v3.0.1
