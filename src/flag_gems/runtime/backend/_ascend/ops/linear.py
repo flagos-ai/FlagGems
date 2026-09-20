@@ -23,7 +23,6 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.runtime.backend._ascend import heuristics_config_utils as _hcu
 from flag_gems.utils import libentry, libtuner
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -33,6 +32,7 @@ logger = logging.getLogger(__name__)
 # Generic tiled GEMM is extremely inefficient for autoregressive
 # decode where M == 1. Use a vector reduction kernel instead.
 # ============================================================
+
 
 @libentry()
 @triton.jit
@@ -52,10 +52,7 @@ def linear_gemv_kernel(
 ):
     pid_n = tl.program_id(0)
 
-    offs_n = (
-        pid_n * BLOCK_N
-        + tl.arange(0, BLOCK_N)
-    )
+    offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
     offs_k = tl.arange(0, BLOCK_K)
 
     acc = tl.zeros(
@@ -76,19 +73,13 @@ def linear_gemv_kernel(
         )
 
         w = tl.load(
-            weight_ptr
-            + offs_n[:, None] * stride_wn
-            + k[None, :] * stride_wk,
-            mask=(
-                (offs_n[:, None] < N)
-                & (k[None, :] < K)
-            ),
+            weight_ptr + offs_n[:, None] * stride_wn + k[None, :] * stride_wk,
+            mask=((offs_n[:, None] < N) & (k[None, :] < K)),
             other=0.0,
         )
 
         acc += tl.sum(
-            w.to(tl.float32)
-            * x[None, :].to(tl.float32),
+            w.to(tl.float32) * x[None, :].to(tl.float32),
             axis=1,
         )
 
@@ -103,9 +94,7 @@ def linear_gemv_kernel(
 
     tl.store(
         output_ptr + offs_n,
-        acc.to(
-            output_ptr.dtype.element_ty
-        ),
+        acc.to(output_ptr.dtype.element_ty),
         mask=offs_n < N,
     )
 
@@ -126,6 +115,7 @@ def linear_gemv_kernel(
 # - walk across N in vector chunks
 # - output and bias remain 1-D vectors
 # ============================================================
+
 
 @libentry()
 @triton.jit
@@ -149,21 +139,11 @@ def linear_add_bias_kernel(
         0,
         tl.cdiv(N, BLOCK_N),
     ):
-        cols = (
-            nb * BLOCK_N
-            + offs
-        )
+        cols = nb * BLOCK_N + offs
 
-        mask = (
-            (row < M)
-            & (cols < N)
-        )
+        mask = (row < M) & (cols < N)
 
-        out_ptrs = (
-            output_ptr
-            + row * stride_om
-            + cols * stride_on
-        )
+        out_ptrs = output_ptr + row * stride_om + cols * stride_on
 
         out = tl.load(
             out_ptrs,
@@ -200,14 +180,13 @@ def linear_add_bias_kernel(
 # Layout / scheduling follows Ascend mm.
 # ============================================================
 
+
 @libentry()
 @libtuner(
     configs=runtime.get_tuned_config("mm"),
     key=["M", "N", "K"],
 )
-@triton.heuristics(
-    _hcu.HEURISTICS_CONFIGS["mm"]
-)
+@triton.heuristics(_hcu.HEURISTICS_CONFIGS["mm"])
 @triton.jit
 def linear_kernel(
     input_ptr,
@@ -247,63 +226,36 @@ def linear_kernel(
     group_id = pid // width
 
     group_size = min(
-        grid_m
-        - group_id * GROUP_M,
+        grid_m - group_id * GROUP_M,
         GROUP_M,
     )
 
-    pid_m = (
-        group_id * GROUP_M
-        + pid % group_size
+    pid_m = group_id * GROUP_M + pid % group_size
+
+    pid_n = (pid % width) // group_size
+
+    offs_m = pid_m * BLOCK_M + tl.arange(
+        0,
+        BLOCK_M,
     )
 
-    pid_n = (
-        pid % width
-    ) // group_size
-
-    offs_m = (
-        pid_m * BLOCK_M
-        + tl.arange(
-            0,
-            BLOCK_M,
-        )
+    offs_n = pid_n * BLOCK_N + tl.arange(
+        0,
+        BLOCK_N,
     )
 
-    offs_n = (
-        pid_n * BLOCK_N
-        + tl.arange(
-            0,
-            BLOCK_N,
-        )
+    offs_k = pid_z * BLOCK_K + tl.arange(
+        0,
+        BLOCK_K,
     )
 
-    offs_k = (
-        pid_z * BLOCK_K
-        + tl.arange(
-            0,
-            BLOCK_K,
-        )
-    )
-
-    input_ptrs = (
-        input_ptr
-        + offs_m[:, None]
-        * stride_im
-        + offs_k[None, :]
-        * stride_ik
-    )
+    input_ptrs = input_ptr + offs_m[:, None] * stride_im + offs_k[None, :] * stride_ik
 
     # weight is physically [N, K].
     #
     # Construct logical [K, N]
     # tiles directly through strides.
-    weight_ptrs = (
-        weight_ptr
-        + offs_k[:, None]
-        * stride_wk
-        + offs_n[None, :]
-        * stride_wn
-    )
+    weight_ptrs = weight_ptr + offs_k[:, None] * stride_wk + offs_n[None, :] * stride_wn
 
     acc = tl.zeros(
         (
@@ -323,64 +275,35 @@ def linear_kernel(
         if EVEN_K:
             a = tl.load(
                 input_ptrs,
-                mask=(
-                    offs_m < M
-                )[:, None],
+                mask=(offs_m < M)[:, None],
                 other=0.0,
             )
 
             b = tl.load(
                 weight_ptrs,
-                mask=(
-                    offs_n < N
-                )[None, :],
+                mask=(offs_n < N)[None, :],
                 other=0.0,
             )
 
         else:
-            k_remaining = (
-                K
-                - k
-                * BLOCK_K
-                * SPLIT_K
-            )
+            k_remaining = K - k * BLOCK_K * SPLIT_K
 
             a = tl.load(
                 input_ptrs,
-                mask=(
-                    (
-                        offs_m < M
-                    )[:, None]
-                    & (
-                        offs_k[None, :]
-                        < k_remaining
-                    )
-                ),
+                mask=((offs_m < M)[:, None] & (offs_k[None, :] < k_remaining)),
                 other=0.0,
             )
 
             b = tl.load(
                 weight_ptrs,
-                mask=(
-                    (
-                        offs_k[:, None]
-                        < k_remaining
-                    )
-                    & (
-                        offs_n < N
-                    )[None, :]
-                ),
+                mask=((offs_k[:, None] < k_remaining) & (offs_n < N)[None, :]),
                 other=0.0,
             )
 
         if a.dtype != b.dtype:
-            a = a.to(
-                output_ptr.dtype.element_ty
-            )
+            a = a.to(output_ptr.dtype.element_ty)
 
-            b = b.to(
-                output_ptr.dtype.element_ty
-            )
+            b = b.to(output_ptr.dtype.element_ty)
 
         acc += tl.dot(
             a,
@@ -389,38 +312,15 @@ def linear_kernel(
             allow_tf32=False,
         )
 
-        input_ptrs += (
-            BLOCK_K
-            * SPLIT_K
-            * stride_ik
-        )
+        input_ptrs += BLOCK_K * SPLIT_K * stride_ik
 
-        weight_ptrs += (
-            BLOCK_K
-            * SPLIT_K
-            * stride_wk
-        )
+        weight_ptrs += BLOCK_K * SPLIT_K * stride_wk
 
-    acc = acc.to(
-        output_ptr.dtype.element_ty
-    )
+    acc = acc.to(output_ptr.dtype.element_ty)
 
-    output_ptrs = (
-        output_ptr
-        + offs_m[:, None]
-        * stride_om
-        + offs_n[None, :]
-        * stride_on
-    )
+    output_ptrs = output_ptr + offs_m[:, None] * stride_om + offs_n[None, :] * stride_on
 
-    output_mask = (
-        (
-            offs_m < M
-        )[:, None]
-        & (
-            offs_n < N
-        )[None, :]
-    )
+    output_mask = (offs_m < M)[:, None] & (offs_n < N)[None, :]
 
     if SPLIT_K == 1:
         tl.store(
@@ -442,18 +342,14 @@ def linear(
     weight,
     bias=None,
 ):
-    logger.debug(
-        "GEMS_ASCEND LINEAR"
-    )
+    logger.debug("GEMS_ASCEND LINEAR")
 
     original_shape = input.shape
 
     K = original_shape[-1]
     N = weight.shape[0]
 
-    assert weight.shape[1] == K, (
-        "incompatible dimensions"
-    )
+    assert weight.shape[1] == K, "incompatible dimensions"
 
     M = input.numel() // K
 
@@ -464,18 +360,10 @@ def linear(
 
     # Match Ascend mm handling of
     # unsupported non-contiguous layouts.
-    if (
-        input_flat.stride(0) > 1
-        and input_flat.stride(1) > 1
-    ):
-        input_flat = (
-            input_flat.contiguous()
-        )
+    if input_flat.stride(0) > 1 and input_flat.stride(1) > 1:
+        input_flat = input_flat.contiguous()
 
-    if (
-        weight.stride(0) > 1
-        and weight.stride(1) > 1
-    ):
+    if weight.stride(0) > 1 and weight.stride(1) > 1:
         weight = weight.contiguous()
 
     output = torch.empty(
@@ -501,17 +389,11 @@ def linear(
             ),
         )
 
-        with torch_device_fn.device(
-            input.device
-        ):
+        with torch_device_fn.device(input.device):
             linear_gemv_kernel[grid](
                 input_flat,
                 weight,
-                (
-                    bias
-                    if bias is not None
-                    else weight
-                ),
+                (bias if bias is not None else weight),
                 output,
                 N,
                 K,
@@ -549,9 +431,7 @@ def linear(
             ),
         )
 
-        with torch_device_fn.device(
-            input.device
-        ):
+        with torch_device_fn.device(input.device):
             linear_kernel[grid](
                 input_flat,
                 weight,
@@ -577,12 +457,8 @@ def linear(
 
             bias_grid = (M,)
 
-            with torch_device_fn.device(
-                input.device
-            ):
-                linear_add_bias_kernel[
-                    bias_grid
-                ](
+            with torch_device_fn.device(input.device):
+                linear_add_bias_kernel[bias_grid](
                     output,
                     bias,
                     M,
