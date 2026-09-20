@@ -57,7 +57,7 @@ def fused_experts_impl(
     w1_bias: Optional[torch.Tensor] = None,
     w2_bias: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
-    logger.debug("GEMS_KUNLUNXIN FUSED EXPERTS IMPL")
+    logger.debug("GEMS_KUNLUNXIN FUSED_EXPERTS_IMPL")
     # inplace=True writes the routed result back into hidden_states at the end
     # (mirrors inplace_fused_experts; native strided copy avoids re-entering
     # the registered copy_ override).
