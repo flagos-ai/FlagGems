@@ -38,19 +38,26 @@ export UV_LINK_MODE="${UV_LINK_MODE:-copy}"
 verify_triton_install() {
   python - <<'PY'
 import importlib.metadata as md
+import site
 import sys
 
+# Restrict the search to the venv's own site-packages. A global compiler
+# side dir (e.g. /opt/flagtree, added to PYTHONPATH by base-image profile
+# scripts) can otherwise shadow the venv install and get inspected instead.
+venv_site_packages = site.getsitepackages()[0]
+
 for name in ("flagtree", "triton"):
-    try:
-        dist = md.distribution(name)
+    for dist in md.Distribution.discover(name=name, path=[venv_site_packages]):
         break
-    except md.PackageNotFoundError:
+    else:
         continue
+    break
 else:
-    print("no triton/flagtree metadata found")
+    print("no triton/flagtree metadata found in venv site-packages")
     sys.exit(1)
 
-missing = [str(f) for f in (dist.files or []) if not f.locate().exists()]
+files = dist.files or []
+missing = [str(f) for f in files if not f.locate().exists()]
 if missing:
     print(f"{len(missing)} recorded file(s) missing, e.g. {missing[:5]}")
     sys.exit(1)
@@ -259,6 +266,7 @@ if [ "${COMPILER}" = "flagtree" ]; then
         break
       fi
       printf " ${RED}[incomplete]${NC}, cleaning cache and retrying ...\n"
+      uv pip uninstall flagtree 2>/dev/null || true
       uv cache clean flagtree 2>/dev/null || true
       rm -rf "${SITE_PACKAGES}/triton"
       [ "${attempt}" = 3 ] && { printf "FlagTree install"; fail; }
@@ -279,6 +287,7 @@ if [ "${COMPILER}" = "triton" ] && [ -n "${TRITON_PKGS}" ]; then
       break
     fi
     printf " ${RED}[incomplete]${NC}, cleaning cache and retrying ...\n"
+    uv pip uninstall triton 2>/dev/null || true
     uv cache clean triton 2>/dev/null || true
     rm -rf "${SITE_PACKAGES}/triton"
     [ "${attempt}" = 3 ] && { printf "Triton install"; fail; }
