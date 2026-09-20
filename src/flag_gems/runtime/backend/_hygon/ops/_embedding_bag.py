@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import logging
+import threading
 
 import torch
 import triton
@@ -21,12 +22,78 @@ import triton.language as tl
 from flag_gems.ops._embedding_bag import _embedding_bag_forward_kernel as _generic_entry
 from flag_gems.ops._embedding_bag import _embedding_bag_impl as _generic_impl
 from flag_gems.utils import libentry
+from flag_gems.utils.triton_version_utils import _triton_version_at_least
 
 logger = logging.getLogger(__name__)
 _shared_forward_jit = _generic_entry.jit_function
+# Compiled launchers use this full-argument ABI in HCU Triton 3.6.
+_CACHE_LAUNCHERS = _triton_version_at_least(3, 6) and not _triton_version_at_least(3, 7)
+_MAX_CACHED_LAUNCHERS = 128
 
 
-@libentry()
+class _HygonKernelLauncher:
+    """Avoid repeated Python argument processing on the HCU 3.6 launch path."""
+
+    def __init__(self, jit_function):
+        self.pointer_count = next(
+            i
+            for i, parameter in enumerate(jit_function.params)
+            if parameter.is_constexpr
+        )
+        # Cached binaries must also accept new alignments and storage extents.
+        self.jit_function = triton.jit(
+            debug=True,
+            do_not_specialize=[
+                parameter.name
+                for parameter in jit_function.params[: self.pointer_count]
+            ],
+        )(jit_function.fn)
+        self.fn = self.jit_function
+        self.cache = {}
+        self.lock = threading.Lock()
+
+    def __getitem__(self, grid):
+        def launch(*args, **options):
+            pointers = args[: self.pointer_count]
+            key = (
+                pointers[0].device,
+                tuple(
+                    pointer.dtype if pointer is not None else None
+                    for pointer in pointers
+                ),
+                args[self.pointer_count :],
+                tuple(options.items()),
+                grid,
+            )
+            cached = self.cache.get(key)
+            if cached is None:
+                with self.lock:
+                    cached = self.cache.get(key)
+                    if cached is None:
+                        compiled = self.jit_function[grid](*args, **options)
+                        suffix = tuple(
+                            options.get(parameter.name, parameter.default)
+                            for parameter in self.jit_function.params[len(args) :]
+                        )
+                        if len(self.cache) >= _MAX_CACHED_LAUNCHERS:
+                            self.cache.pop(next(iter(self.cache)))
+                        self.cache[key] = (compiled[(grid + (1, 1))[:3]], suffix)
+                        return
+            cached[0](*args, *cached[1])
+
+        return launch
+
+
+def _hygon_entry():
+    return _HygonKernelLauncher if _CACHE_LAUNCHERS else libentry()
+
+
+_generic_forward = (
+    _HygonKernelLauncher(_shared_forward_jit) if _CACHE_LAUNCHERS else _generic_entry
+)
+
+
+@_hygon_entry()
 @triton.jit(debug=True)
 def _hygon_embedding_bag_forward_kernel(
     weight,
@@ -100,6 +167,32 @@ def _hygon_embedding_bag_forward_kernel(
     )
 
 
+def _embedding_bag(
+    weight,
+    indices,
+    offsets,
+    scale_grad_by_freq=False,
+    mode=0,
+    sparse=False,
+    per_sample_weights=None,
+    include_last_offset=False,
+    padding_idx=-1,
+):
+    logger.debug("GEMS_HYGON _EMBEDDING_BAG")
+    return _generic_impl(
+        weight,
+        indices,
+        offsets,
+        scale_grad_by_freq,
+        mode,
+        sparse,
+        per_sample_weights,
+        include_last_offset,
+        padding_idx,
+        _kernel=_generic_forward,
+    )
+
+
 def _embedding_bag_forward_only(
     weight,
     indices,
@@ -112,7 +205,7 @@ def _embedding_bag_forward_only(
     padding_idx=-1,
 ):
     logger.debug("GEMS_HYGON _EMBEDDING_BAG_FORWARD_ONLY")
-    kernel = block_config = None
+    kernel, block_config = _generic_forward, None
     if (
         weight.dtype == torch.float64
         and weight.ndim == 2

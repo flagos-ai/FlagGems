@@ -414,7 +414,6 @@ def _embedding_bag_impl(
             # work and register pressure. Keep the ordinary path for small bags.
             if (
                 runtime_device.vendor_name == "nvidia"
-                and forward_only
                 and weight.dtype == torch.float64
                 and bags >= 128
             ):

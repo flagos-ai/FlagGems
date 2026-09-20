@@ -14,6 +14,7 @@
 
 import logging
 
+import torch
 import triton
 import triton.language as tl
 
@@ -487,6 +488,38 @@ def _embedding_bag(
         block_config = (2, 1024, 128, 4)
     elif medium:
         block_config = (4 if mode == 2 else 8, 256, 128, 4)
+    # Smaller metadata tiles let regular bags use the checked ownership hint.
+    # Irregular offsets retain the kernel's binary-search mapping path.
+    if weight.dtype == torch.float32:
+        if wide:
+            mapping_hint = True
+            block_config = (
+                8 if mode == 2 else 2,
+                1024,
+                min(128, triton.next_power_of_2(max(average, 1))),
+                4,
+            )
+        elif medium:
+            mapping_hint = True
+            block_config = (
+                8,
+                256,
+                min(128, triton.next_power_of_2(max(average, 1))),
+                4,
+            )
+        elif (
+            weight.ndim == 2
+            and 0 < bags <= 32
+            and weight.shape[1] <= 64
+            and average <= 8
+        ):
+            mapping_hint = True
+            block_config = (
+                4 if average <= 4 else 8,
+                min(64, triton.next_power_of_2(max(weight.shape[1], 1))),
+                triton.next_power_of_2(max(average, 1)),
+                4,
+            )
     return _embedding_bag_impl(
         weight,
         indices,

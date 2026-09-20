@@ -34,12 +34,13 @@ from flag_gems.ops._embedding_bag_backward import (
     _embedding_bag_backward_impl,
 )
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry
+
+from ._embedding_bag import _hygon_entry
 
 logger = logging.getLogger(__name__)
 
 
-@libentry()
+@_hygon_entry()
 @triton.jit
 def _eb_backward_init_packed(
     acc,  # accumulator buffer
@@ -58,7 +59,7 @@ def _eb_backward_init_packed(
     )
 
 
-@libentry()
+@_hygon_entry()
 @triton.jit(debug=True)
 def _eb_backward_validate_packed(
     indices,
@@ -111,7 +112,7 @@ def _eb_backward_validate_packed(
     )
 
 
-@libentry()
+@_hygon_entry()
 @triton.jit
 def _eb_backward_chunk_offsets_packed(
     chunks,
@@ -126,7 +127,7 @@ def _eb_backward_chunk_offsets_packed(
     )
 
 
-@libentry()
+@_hygon_entry()
 @triton.jit
 def _eb_backward_scatter_packed(
     grad,  # output gradient
@@ -166,7 +167,7 @@ def _eb_backward_scatter_packed(
     )
 
 
-@libentry()
+@_hygon_entry()
 @triton.jit
 def _eb_backward_finish_packed(
     acc,  # accumulator buffer
@@ -185,7 +186,7 @@ def _eb_backward_finish_packed(
     )
 
 
-@libentry()
+@_hygon_entry()
 @triton.jit
 def _eb_backward_sparse_packed(
     grad,  # output gradient
@@ -291,7 +292,7 @@ def _validate_max(
     )
 
 
-@libentry()
+@_hygon_entry()
 @triton.jit(debug=True)
 def max_owned_tiles(
     grad,  # output gradient
@@ -421,7 +422,7 @@ def _compute_max_owned(
     return output
 
 
-@libentry()
+@_hygon_entry()
 @triton.jit(debug=True)
 def _max_initialize(
     indices,
@@ -484,7 +485,7 @@ def _segment_tail(left_key, left_tail, right_key, right_tail):
     )
 
 
-@libentry()
+@_hygon_entry()
 @triton.jit
 def max_sort_segments(
     grad,  # output gradient
@@ -607,7 +608,7 @@ def _compute_max_sort(
 _max_sort_segments_body = max_sort_segments.fn
 
 
-@libentry()
+@_hygon_entry()
 @triton.jit(debug=True)
 def max_fused_sort(
     grad,  # output gradient
@@ -698,7 +699,7 @@ def _compute_max_segmented(
     return output
 
 
-@libentry()
+@_hygon_entry()
 @triton.jit
 def max_scatter_direct(
     grad,  # output gradient

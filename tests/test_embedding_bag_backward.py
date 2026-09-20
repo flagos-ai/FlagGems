@@ -36,6 +36,7 @@ from .test_embedding_bag import (
     _inputs,
     _mark_invalid_call,
     _run_isolated_error,
+    _unaligned_copy,
 )
 
 
@@ -171,6 +172,47 @@ def test_embedding_bag_backward(
     else:
         assert result.layout == torch.strided
     _check_backward_result(result, expected, dtype, 7)
+
+
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "hygon", reason="Hygon cached-launch pointer alignment"
+)
+@pytest.mark.embedding_bag_backward
+@pytest.mark.parametrize("dtype", DTYPES)
+@pytest.mark.parametrize("mode", [0, 1, 2])
+@pytest.mark.parametrize(
+    "sparse,frequency", [(False, False), (False, True), (True, False)]
+)
+def test_embedding_bag_backward_hygon_alignment(dtype, mode, sparse, frequency):
+    weight, indices, offsets = _inputs(
+        [1, 2, 1, 0, 2, 2, 5], [0, 0, 3, 3], dtype, torch.int64, 33
+    )
+    output, mapping, sizes, maximum = _embedding_bag(
+        weight, indices, offsets, False, mode, sparse, None, False, 0
+    )
+    grad = torch.randn_like(output)
+    inputs = (grad, indices, offsets, mapping, sizes, maximum)
+    shifted = tuple(_unaligned_copy(tensor) for tensor in inputs)
+    shifted[0].add_(0.125)
+    for grad, indices, offsets, mapping, sizes, maximum in (inputs, shifted):
+        result = _embedding_bag_backward(
+            grad,
+            indices,
+            offsets,
+            mapping,
+            sizes,
+            maximum,
+            8,
+            frequency,
+            mode,
+            sparse,
+            None,
+            0,
+        )
+        expected = _backward_oracle(
+            grad, indices, mapping, sizes, maximum, 8, mode, frequency, sparse, 0
+        )
+        _check_backward_result(result, expected, dtype, indices.numel())
 
 
 @pytest.mark.embedding_bag_backward

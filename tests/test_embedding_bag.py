@@ -359,6 +359,119 @@ def test_embedding_bag_native_abi(op, include_last, mode, padding):
         torch.testing.assert_close(result.cpu(), reference.cpu())
 
 
+def _unaligned_copy(tensor):
+    storage = torch.empty(tensor.numel() + 1, dtype=tensor.dtype, device=tensor.device)
+    result = storage[1:].view(tensor.shape)
+    result.copy_(tensor)
+    return result
+
+
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "hygon", reason="Hygon cached-launch pointer alignment"
+)
+@pytest.mark.embedding_bag
+@pytest.mark.embedding_bag_forward_only
+@pytest.mark.parametrize("op", [_embedding_bag, _embedding_bag_forward_only])
+@pytest.mark.parametrize("dtype", DTYPES)
+@pytest.mark.parametrize("mode", [0, 1, 2])
+def test_embedding_bag_hygon_alignment(op, dtype, mode):
+    inputs = _inputs([1, 2, 1, 0, 2, 2, 5], [0, 0, 3, 3], dtype, torch.int64, 33)
+    shifted = tuple(_unaligned_copy(tensor) for tensor in inputs)
+    shifted[0].add_(0.75)
+    # Same metadata, different pointers, alignment and values after warmup.
+    for weight, indices, offsets in (inputs, shifted):
+        args = (weight, indices, offsets, False, mode, False, None, False, 0)
+        expected = getattr(torch.ops.aten, op.__name__).default(*args)
+        actual = op(*args)
+        for result, reference in zip(actual, expected):
+            torch.testing.assert_close(result, reference)
+
+
+def _check_tuned_forward(
+    bags, dim, bag_length, mode, weighted, include_last, dtype, index_dtype
+):
+    weight = torch.randn((8, dim * 2), dtype=dtype, device=flag_gems.device)[:, ::2]
+    weight[2] = weight[1]
+    if mode == 2:
+        weight[1, 0] = float("nan")
+        weight[3, 1] = float("inf")
+        weight[:, 2] = float("-inf")
+        weight[:, 3] = -1
+        weight[1, 3], weight[2, 3] = -0.0, 0.0
+    indices = torch.arange(bags * bag_length, device=weight.device) % 8
+    indices = indices.to(index_dtype)
+    indices[3 * bag_length : 4 * bag_length] = 0
+    offsets = torch.arange(
+        0,
+        indices.numel() + int(include_last),
+        bag_length,
+        dtype=index_dtype,
+        device=weight.device,
+    )
+    offsets[1] = 0  # An empty bag followed by a double-length bag.
+    psw = torch.randn_like(indices, dtype=weight.dtype) if weighted else None
+    args = (weight, indices, offsets, False, mode, False, psw, include_last, 0)
+    # Native MUSA requires contiguous weights; Gems still receives the view.
+    reference_args = (
+        (weight.contiguous(), *args[1:])
+        if flag_gems.vendor_name == "mthreads"
+        else args
+    )
+    for op in (_embedding_bag, _embedding_bag_forward_only):
+        expected = getattr(torch.ops.aten, op.__name__).default(*reference_args)
+        actual = op(*args)
+        for index, (result, reference) in enumerate(zip(actual, expected)):
+            assert result.shape == reference.shape
+            if index == 2:
+                result, reference = result[:bags], reference[:bags]
+            torch.testing.assert_close(result, reference, equal_nan=True)
+
+
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "nvidia", reason="NVIDIA large-bag float64 specialization"
+)
+@pytest.mark.embedding_bag
+@pytest.mark.embedding_bag_forward_only
+@pytest.mark.parametrize("dim,bag_length", [(64, 64), (128, 8), (256, 32), (513, 8)])
+@pytest.mark.parametrize(
+    "mode,weighted", [(0, False), (1, False), (2, False), (0, True)]
+)
+@pytest.mark.parametrize("include_last", [False, True])
+def test_embedding_bag_large_float64(dim, bag_length, mode, weighted, include_last):
+    # At least 128 bags are required to enter the tuned FP64 launch paths.
+    _check_tuned_forward(
+        128,
+        dim,
+        bag_length,
+        mode,
+        weighted,
+        include_last,
+        torch.float64,
+        torch.int32 if include_last else torch.int64,
+    )
+
+
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "mthreads", reason="Mthreads float32 launch specialization"
+)
+@pytest.mark.embedding_bag
+@pytest.mark.embedding_bag_forward_only
+@pytest.mark.parametrize(
+    "bags,dim,bag_length", [(8, 16, 4), (32, 64, 8), (128, 256, 32), (128, 513, 8)]
+)
+@pytest.mark.parametrize(
+    "mode,weighted", [(0, False), (1, False), (2, False), (0, True)]
+)
+@pytest.mark.parametrize("include_last", [False, True])
+def test_embedding_bag_mthreads_launch(
+    bags, dim, bag_length, mode, weighted, include_last
+):
+    # Native MUSA's public entry requires int64 auxiliary tensors.
+    _check_tuned_forward(
+        bags, dim, bag_length, mode, weighted, include_last, torch.float32, torch.int64
+    )
+
+
 @pytest.mark.embedding_bag
 @pytest.mark.embedding_bag_forward_only
 @pytest.mark.parametrize("op", [_embedding_bag, _embedding_bag_forward_only])
