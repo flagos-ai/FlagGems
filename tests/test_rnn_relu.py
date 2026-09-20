@@ -25,11 +25,6 @@ RNN_HIDDEN_SIZES = [8, 16]
 pytestmark = pytest.mark.rnn_relu
 
 
-def _rnn_relu(*args):
-    gems_op = flag_gems.testing.resolve_gems_op("rnn_relu", flag_gems.rnn_relu)
-    return gems_op(*args)
-
-
 @pytest.mark.skipif(
     cfg.TO_CPU or flag_gems.device != "cuda" or not torch.cuda.is_available(),
     reason="Triton kernel is CUDA-only",
@@ -67,9 +62,11 @@ def test_rnn_relu(seq_len, batch_size, input_size, hidden_size, dtype, batch_fir
         ref_input, ref_hx, ref_params, True, 1, 0.0, False, False, batch_first
     )
 
-    res_out = _rnn_relu(
-        input_tensor, hx, params, True, 1, 0.0, False, False, batch_first
-    )
+    # Run FlagGems implementation (via torch dispatch)
+    with flag_gems.use_gems():
+        res_out = torch.rnn_relu(
+            input_tensor, hx, params, True, 1, 0.0, False, False, batch_first
+        )
 
     # Compare outputs
     utils.gems_assert_close(res_out[0], ref_out[0], dtype)
@@ -92,6 +89,8 @@ def test_rnn_relu_direct_wrapper(
 ):
     """Direct wrapper smoke test: call flag_gems.ops.rnn_relu.rnn_relu directly
     and compare against PyTorch's native rnn_relu (float64 reference)."""
+    from flag_gems.ops.rnn_relu import rnn_relu as gems_rnn_relu
+
     if batch_first:
         input_tensor = torch.randn(
             batch_size, seq_len, input_size, dtype=dtype, device=flag_gems.device
@@ -107,7 +106,7 @@ def test_rnn_relu_direct_wrapper(
     hx = torch.randn(1, batch_size, hidden_size, dtype=dtype, device=flag_gems.device)
 
     # Run direct wrapper call
-    out, hidden = _rnn_relu(
+    out, hidden = gems_rnn_relu(
         input_tensor, hx, params, True, 1, 0.0, False, False, batch_first
     )
 
@@ -137,6 +136,8 @@ def test_rnn_relu_direct_wrapper(
 def test_rnn_relu_direct_backward():
     """Direct wrapper backward: compare gradients against native PyTorch recomputation."""
     from flag_gems.ops.rnn_relu import _params_unpack
+    from flag_gems.ops.rnn_relu import rnn_relu as gems_rnn_relu
+
     seq, batch, input_size, hidden_size = 4, 2, 8, 8
     dtype = torch.float32
 
@@ -152,7 +153,7 @@ def test_rnn_relu_direct_backward():
     inp_g = inp_data.detach().clone().requires_grad_(True)
     hx_g = hx_data.detach().clone().requires_grad_(True)
     params_g = tuple(p.detach().clone().requires_grad_(True) for p in params_data)
-    out_g, hid_g = _rnn_relu(
+    out_g, hid_g = gems_rnn_relu(
         inp_g, hx_g, params_g, True, 1, 0.0, True, False, False
     )
     (out_g.sum() + hid_g.sum()).backward()
@@ -188,6 +189,8 @@ def test_rnn_relu_direct_backward():
 @pytest.mark.parametrize("hidden_size", [128, 256, 512])
 def test_rnn_relu_large_hidden(hidden_size):
     """Regression: hidden_size previously had chunk-level read-after-write bug."""
+    from flag_gems.ops.rnn_relu import rnn_relu as gems_rnn_relu
+
     seq, batch, input_size = 3, 1, 16
     dtype = torch.float32
 
@@ -199,7 +202,7 @@ def test_rnn_relu_large_hidden(hidden_size):
     params = tuple(p.detach() for p in rnn._flat_weights)
 
     ref = torch.rnn_relu(inp, hx, params, True, 1, 0.0, False, False, False)
-    out_gems = _rnn_relu(inp, hx, params, True, 1, 0.0, False, False, False)
+    out_gems = gems_rnn_relu(inp, hx, params, True, 1, 0.0, False, False, False)
 
     atol = 2e-3
     utils.gems_assert_close(out_gems[0], ref[0], dtype, atol=atol)

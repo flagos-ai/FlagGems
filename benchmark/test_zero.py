@@ -26,22 +26,6 @@ class ZeroBenchmark(base.Benchmark):
             inp = utils.generate_tensor_input(shape, dtype, self.device)
             yield inp,
 
-    def get_case_iter(self, dtype) -> Generator:
-        for ordinal, shape in enumerate(self.shapes):
-            yield self._case_from_plan(
-                dtype,
-                ordinal,
-                base.BenchmarkCasePlan(
-                    shape={"input": shape},
-                    builder_args=(shape, 0),
-                ),
-            )
-
-    def build_inputs(self, case):
-        shape = case.builder_args[0].builder_args[0]
-        inp = utils.generate_tensor_input(shape, case.dtype, self.device)
-        return inp,
-
 
 @pytest.mark.zero
 def test_zero():

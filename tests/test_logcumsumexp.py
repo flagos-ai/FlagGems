@@ -26,13 +26,6 @@ LOGCUMSUMEXP_SHAPES = (
 )
 
 
-def _logcumsumexp(inp, dim, *, dtype=None):
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "logcumsumexp", flag_gems.logcumsumexp
-    )
-    return gems_op(inp, dim, dtype=dtype)
-
-
 @pytest.mark.logcumsumexp
 @pytest.mark.parametrize("shape", LOGCUMSUMEXP_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -46,7 +39,8 @@ def test_logcumsumexp(shape, dtype):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.logcumsumexp(ref_inp, dim=dim)
-    res_out = _logcumsumexp(inp, dim)
+    with flag_gems.use_gems():
+        res_out = torch.logcumsumexp(inp, dim=dim)
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=shape[dim])
 

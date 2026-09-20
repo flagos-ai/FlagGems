@@ -20,11 +20,6 @@ import flag_gems
 from .accuracy_utils import DISTRIBUTION_SHAPES, FLOAT_DTYPES, to_reference
 
 
-def _poisson(input, generator=None):
-    gems_op = flag_gems.testing.resolve_gems_op("poisson", flag_gems.poisson)
-    return gems_op(input, generator)
-
-
 @pytest.mark.poisson
 @pytest.mark.parametrize("shape", DISTRIBUTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -32,7 +27,8 @@ def test_poisson(shape, dtype):
     lam = 5.0
     inp = torch.full(size=shape, fill_value=lam, dtype=dtype, device=flag_gems.device)
 
-    res_out = _poisson(inp)
+    with flag_gems.use_gems():
+        res_out = torch.poisson(inp)
 
     ref_out = to_reference(res_out)
     mean = torch.mean(ref_out.to(torch.float32))
@@ -49,7 +45,8 @@ def test_poisson(shape, dtype):
 def test_poisson_varying_rates(shape, dtype):
     inp = torch.rand(size=shape, dtype=dtype, device=flag_gems.device) * 10 + 1
 
-    res_out = _poisson(inp)
+    with flag_gems.use_gems():
+        res_out = torch.poisson(inp)
 
     assert (res_out >= 0).all()
     assert torch.isfinite(res_out).all()
@@ -62,7 +59,8 @@ def test_poisson_large_lambda(shape, dtype):
     lam = 50.0
     inp = torch.full(size=shape, fill_value=lam, dtype=dtype, device=flag_gems.device)
 
-    res_out = _poisson(inp)
+    with flag_gems.use_gems():
+        res_out = torch.poisson(inp)
 
     ref_out = to_reference(res_out)
     mean = torch.mean(ref_out.to(torch.float32))
@@ -79,6 +77,7 @@ def test_poisson_zero_rate(dtype):
     shape = (1000,)
     inp = torch.zeros(size=shape, dtype=dtype, device=flag_gems.device)
 
-    res_out = _poisson(inp)
+    with flag_gems.use_gems():
+        res_out = torch.poisson(inp)
 
     assert (res_out == 0).all()

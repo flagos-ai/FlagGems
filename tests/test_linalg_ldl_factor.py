@@ -35,11 +35,8 @@ def test_linalg_ldl_factor(shape, dtype, hermitian):
     ref_A = utils.to_reference(A)
 
     ref_LD, ref_pivots = torch.linalg.ldl_factor(ref_A, hermitian=hermitian)
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "linalg_ldl_factor",
-        flag_gems.ldl_factor,
-    )
-    res_LD, res_pivots = gems_op(A, hermitian=hermitian)
+    with flag_gems.use_gems():
+        res_LD, res_pivots = torch.linalg.ldl_factor(A, hermitian=hermitian)
 
     utils.gems_assert_close(res_LD, ref_LD, dtype)
     utils.gems_assert_equal(res_pivots, ref_pivots)

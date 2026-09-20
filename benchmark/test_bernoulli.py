@@ -44,22 +44,13 @@ def bernoulli_input_fn(shape, cur_dtype, device):
     yield torch.rand(shape, dtype=cur_dtype, device=device),
 
 
-def bernoulli_case_fn(shape, dtype):
-    del dtype
-    yield base.BenchmarkCasePlan(
-        shape={"input": shape},
-        builder_args=(shape, 0),
-    )
-
-
 @pytest.mark.bernoulli
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_bernoulli():
     bench = base.GenericBenchmark(
-        case_fn=bernoulli_case_fn,
-        build_inputs_fn=base.build_inputs_from_generic_input_fn(bernoulli_input_fn),
+        input_fn=bernoulli_input_fn,
         op_name="bernoulli",
         torch_op=torch.bernoulli,
         dtypes=consts.FLOAT_DTYPES,

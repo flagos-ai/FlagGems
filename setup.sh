@@ -23,6 +23,48 @@ NC='\033[0m'
 ok()   { printf " ${GREEN}[OK]${NC}\n"; }
 fail() { printf " ${RED}[FAILED]${NC}\n"; exit 1; }
 
+# Force uv to copy files into the venv instead of hardlinking from the cache.
+# In CI the uv cache and the venv often live on different filesystems, where
+# hardlinking silently falls back and can leave a partially-populated package
+# (dist-info written, files missing). Copying is deterministic.
+export UV_LINK_MODE="${UV_LINK_MODE:-copy}"
+
+# Verify that the installed Triton/FlagTree package is actually complete.
+# uv's exit code only tells us it wrote the dist-info; it does not catch a
+# truncated install where files listed in RECORD never landed on disk. That
+# leaves `import triton` degraded to an empty namespace package (no
+# triton.Config). We check both: every recorded file exists, and the package
+# imports with its real API surface.
+verify_triton_install() {
+  python - <<'PY'
+import importlib.metadata as md
+import sys
+
+for name in ("flagtree", "triton"):
+    try:
+        dist = md.distribution(name)
+        break
+    except md.PackageNotFoundError:
+        continue
+else:
+    print("no triton/flagtree metadata found")
+    sys.exit(1)
+
+missing = [str(f) for f in (dist.files or []) if not f.locate().exists()]
+if missing:
+    print(f"{len(missing)} recorded file(s) missing, e.g. {missing[:5]}")
+    sys.exit(1)
+
+import triton
+
+if triton.__file__ is None or not hasattr(triton, "Config"):
+    print(f"triton import incomplete (__file__={triton.__file__})")
+    sys.exit(1)
+
+print("triton install verified OK")
+PY
+}
+
 BACKENDS_YAML="src/flag_gems/backends.yaml"
 
 # ── Validate argument ─────────────────────────────────────────
@@ -69,7 +111,7 @@ else
   ARCH=$(uname -m)
   mkdir -p "$HOME/.local/bin"
   curl -sSf "${UV_MIRROR}/uv-${ARCH}-${UV_VERSION}-linux-gnu.tar.gz" \
-    | tar xz -C "$HOME/.local/bin" 2>/dev/null \
+    | tar xz --strip-components=1 -C "$HOME/.local/bin" 2>/dev/null \
     || { curl -LsSf https://astral.sh/uv/install.sh | sh; }
   command -v uv &>/dev/null || { printf "uv installation"; fail; }
   printf "Installed $(uv --version)"
@@ -80,7 +122,8 @@ fi
 
 # ── Install Python via uv ────────────────────────────────────
 printf "Installing Python ${PYTHON_VERSION} ..."
-uv python install "${PYTHON_VERSION}" --python-preference only-managed -q || fail
+UV_PYTHON_INSTALL_MIRROR="https://mirror.nju.edu.cn/github-release/astral-sh/python-build-standalone" \
+    uv python install "${PYTHON_VERSION}" --python-preference only-managed -q || fail
 ok
 
 # ── Create virtual environment ────────────────────────────────
@@ -203,12 +246,23 @@ if [ -z "${COMPILER}" ]; then
   fi
 fi
 
+SITE_PACKAGES="$(python -c 'import site; print(site.getsitepackages()[0])')"
+
 if [ "${COMPILER}" = "flagtree" ]; then
   if [ -n "${FLAGTREE_PKGS}" ]; then
-    printf "Installing FlagTree ..."
-    uv pip uninstall triton
-    uv pip install -q ${FLAGTREE_PKGS} --default-index "${FLAGOS_PYPI}" || fail
-    ok
+    uv pip uninstall triton 2>/dev/null || true
+    for attempt in 1 2 3; do
+      printf "Installing FlagTree (attempt ${attempt}) ..."
+      if uv pip install -q --reinstall ${FLAGTREE_PKGS} \
+           --default-index "${FLAGOS_PYPI}" && verify_triton_install; then
+        ok
+        break
+      fi
+      printf " ${RED}[incomplete]${NC}, cleaning cache and retrying ...\n"
+      uv cache clean flagtree 2>/dev/null || true
+      rm -rf "${SITE_PACKAGES}/triton"
+      [ "${attempt}" = 3 ] && { printf "FlagTree install"; fail; }
+    done
   else
     echo "Error: COMPILER=flagtree but FlagTree is not available for '${BACKEND}'."
     exit 1
@@ -216,10 +270,19 @@ if [ "${COMPILER}" = "flagtree" ]; then
 fi
 
 if [ "${COMPILER}" = "triton" ] && [ -n "${TRITON_PKGS}" ]; then
-  printf "Installing Triton ..."
-  uv pip uninstall flagtree
-  uv pip install -q ${TRITON_PKGS} --default-index "${FLAGOS_PYPI}" || fail
-  ok
+  uv pip uninstall flagtree 2>/dev/null || true
+  for attempt in 1 2 3; do
+    printf "Installing Triton (attempt ${attempt}) ..."
+    if uv pip install -q --reinstall ${TRITON_PKGS} \
+         --default-index "${FLAGOS_PYPI}" && verify_triton_install; then
+      ok
+      break
+    fi
+    printf " ${RED}[incomplete]${NC}, cleaning cache and retrying ...\n"
+    uv cache clean triton 2>/dev/null || true
+    rm -rf "${SITE_PACKAGES}/triton"
+    [ "${attempt}" = 3 ] && { printf "Triton install"; fail; }
+  done
 elif [ "${COMPILER}" = "triton" ] && [ -z "${TRITON_PKGS}" ]; then
   echo "Error: COMPILER=triton but no triton packages configured for '${BACKEND}'"
   exit 1

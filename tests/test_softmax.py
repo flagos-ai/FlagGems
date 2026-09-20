@@ -50,8 +50,8 @@ def test_softmax(shape, dtype, dim, neg_inf):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.nn.functional.softmax(ref_inp, dim=dim)
-    gems_op = flag_gems.testing.resolve_gems_op("softmax", flag_gems.softmax)
-    res_out = gems_op(inp, dim=dim)
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.softmax(inp, dim=dim)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
@@ -126,13 +126,6 @@ def test_softmax_backward_out(shape, dtype, dim, neg_inf):
 @pytest.mark.parametrize("dim", DIM_LIST)
 @pytest.mark.parametrize("neg_inf", [True, False])
 def test_softmax_backward(shape, dtype, dim, neg_inf):
-    if shape[dim] == 1 and flag_gems.vendor_name == "kunlunxin":
-        pytest.skip(
-            "Issue #2851: XPU _softmax_backward_data short-circuits to zero when reduction dim "
-            "is 1, while the Triton kernel computes normally with synthetic inputs, "
-            "causing a mismatch that does not reflect a real correctness issue."
-        )
-
     res_grad = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     if neg_inf:
         res_grad = torch.where(res_grad < 0.0, float("-inf"), res_grad)

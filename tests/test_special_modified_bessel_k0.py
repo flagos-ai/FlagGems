@@ -17,10 +17,8 @@ def test_special_modified_bessel_k0(shape, dtype):
     inp = torch.rand(shape, dtype=dtype, device=flag_gems.device) + 0.1
     ref_inp = utils.to_reference(inp, True)
     ref_out = torch.special.modified_bessel_k0(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "special_modified_bessel_k0", flag_gems.special_modified_bessel_k0
-    )
-    res_out = gems_op(inp)
+    with flag_gems.use_gems():
+        res_out = torch.special.modified_bessel_k0(inp)
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 

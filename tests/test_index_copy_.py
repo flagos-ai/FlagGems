@@ -39,10 +39,8 @@ def test_index_copy(shape, dim, dtype):
     ref_src = to_reference(src)
     ref_index = to_reference(index)
     ref_out = torch.index_copy(ref_inp, dim, ref_index, ref_src)
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "index_copy", flag_gems.index_copy
-    )
-    res_out = gems_op(inp, dim, index, src)
+    with flag_gems.use_gems():
+        res_out = torch.index_copy(inp, dim, index, src)
     gems_assert_close(res_out, ref_out, dtype=dtype, reduce_dim=dim)
 
 
@@ -61,8 +59,6 @@ def test_index_copy_(shape, dim, dtype):
     ref_src = to_reference(src)
     ref_index = to_reference(index)
     ref_inp.index_copy_(dim, ref_index, ref_src)
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "index_copy_", flag_gems.index_copy_
-    )
-    gems_op(inp, dim, index, src)
+    with flag_gems.use_gems():
+        inp.index_copy_(dim, index, src)
     gems_assert_close(inp, ref_inp, dtype=dtype, reduce_dim=dim)

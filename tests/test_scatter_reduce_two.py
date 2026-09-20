@@ -23,14 +23,7 @@ from .accuracy_utils import gems_assert_close, to_reference
 from .conftest import QUICK_MODE
 
 
-def _scatter_reduce_(*args, **kwargs):
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "scatter_reduce_", flag_gems.scatter_reduce_
-    )
-    return gems_op(*args, **kwargs)
-
-
-@pytest.mark.scatter_reduce_
+@pytest.mark.scatter_reduce_two_
 @pytest.mark.parametrize(
     "src_shape", [(32, 8, 4)] if QUICK_MODE else [(128, 16, 4), (256, 32, 8)]
 )
@@ -65,6 +58,6 @@ def test_scatter_reduce_two_(src_shape, inp_shape, dim, dtype, reduce):
     ref_index = to_reference(index)
     ref_src = to_reference(src, upcast=True)
     ref_out = ref_inp.scatter_reduce_(dim, ref_index, ref_src, reduce=reduce)
-    res_out = _scatter_reduce_(inp, dim, index, src, reduce)
+    res_out = flag_gems.scatter_reduce_(inp, dim, index, src, reduce=reduce)
 
     gems_assert_close(res_out, ref_out, dtype)

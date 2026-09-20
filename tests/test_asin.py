@@ -28,8 +28,8 @@ def test_asin(shape, dtype):
     ref_inp = utils.to_reference(res_inp, True)
 
     ref_out = torch.asin(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("asin", flag_gems.asin)
-    res_out = gems_op(res_inp)
+    with flag_gems.use_gems():
+        res_out = torch.asin(res_inp)
     ref_out = ref_out.to(res_out.dtype)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
@@ -43,8 +43,8 @@ def test_asin_(shape, dtype):
     ref_inp = utils.to_reference(inp.clone(), True)
 
     ref_out = torch.asin_(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("asin_", flag_gems.asin_)
-    res_out = gems_op(inp)
+    with flag_gems.use_gems():
+        res_out = torch.asin_(inp)
 
     ref_out = ref_out.to(res_out.dtype)
     ref_inp = ref_inp.to(inp.dtype)

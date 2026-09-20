@@ -16,11 +16,8 @@ def test_binary_cross_entropy_with_logits(shape, dtype):
     ref_target = utils.to_reference(target, True)
 
     ref_out = torch.binary_cross_entropy_with_logits(ref_inp, ref_target, reduction=0)
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "binary_cross_entropy_with_logits",
-        flag_gems.binary_cross_entropy_with_logits,
-    )
-    res_out = gems_op(inp, target, reduction=0)
+    with flag_gems.use_gems():
+        res_out = torch.binary_cross_entropy_with_logits(inp, target, reduction=0)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -35,11 +32,8 @@ def test_binary_cross_entropy_with_logits_mean(shape, dtype):
     ref_target = utils.to_reference(target, True)
 
     ref_out = torch.binary_cross_entropy_with_logits(ref_inp, ref_target, reduction=1)
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "binary_cross_entropy_with_logits",
-        flag_gems.binary_cross_entropy_with_logits,
-    )
-    res_out = gems_op(inp, target, reduction=1)
+    with flag_gems.use_gems():
+        res_out = torch.binary_cross_entropy_with_logits(inp, target, reduction=1)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -54,11 +48,8 @@ def test_binary_cross_entropy_with_logits_sum(shape, dtype):
     ref_target = utils.to_reference(target, True)
 
     ref_out = torch.binary_cross_entropy_with_logits(ref_inp, ref_target, reduction=2)
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "binary_cross_entropy_with_logits",
-        flag_gems.binary_cross_entropy_with_logits,
-    )
-    res_out = gems_op(inp, target, reduction=2)
+    with flag_gems.use_gems():
+        res_out = torch.binary_cross_entropy_with_logits(inp, target, reduction=2)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -77,13 +68,10 @@ def test_binary_cross_entropy_with_logits_weight(shape, dtype):
     ref_out = torch.binary_cross_entropy_with_logits(
         ref_inp, ref_target, weight=ref_weight, reduction=0
     )
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "binary_cross_entropy_with_logits",
-        flag_gems.binary_cross_entropy_with_logits,
-    )
-    res_out = gems_op(
-        inp, target, weight=weight, reduction=0
-    )
+    with flag_gems.use_gems():
+        res_out = torch.binary_cross_entropy_with_logits(
+            inp, target, weight=weight, reduction=0
+        )
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -102,12 +90,9 @@ def test_binary_cross_entropy_with_logits_pos_weight(shape, dtype):
     ref_out = torch.binary_cross_entropy_with_logits(
         ref_inp, ref_target, pos_weight=ref_pos_weight, reduction=0
     )
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "binary_cross_entropy_with_logits",
-        flag_gems.binary_cross_entropy_with_logits,
-    )
-    res_out = gems_op(
-        inp, target, pos_weight=pos_weight, reduction=0
-    )
+    with flag_gems.use_gems():
+        res_out = torch.binary_cross_entropy_with_logits(
+            inp, target, pos_weight=pos_weight, reduction=0
+        )
 
     utils.gems_assert_close(res_out, ref_out, dtype)

@@ -34,10 +34,7 @@ LSTM_SHAPES = [
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_thnn_fused_lstm_cell_backward_impl(shape, dtype):
     """Test accuracy for _thnn_fused_lstm_cell_backward_impl."""
-    if (
-        flag_gems.vendor_name in {"ascend", "cambricon"}
-        and dtype == torch.bfloat16
-    ):
+    if flag_gems.vendor_name == "cambricon" and dtype == torch.bfloat16:
         pytest.skip("Issue #5254: Not supported")
     batch_size, hidden_size = shape
     dev = flag_gems.device
@@ -62,11 +59,10 @@ def test_thnn_fused_lstm_cell_backward_impl(shape, dtype):
     ref_out = torch.ops.aten._thnn_fused_lstm_cell_backward_impl(
         grad_hy, grad_cy, cx, cy, workspace, True
     )
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "thnn_fused_lstm_cell_backward_impl",
-        flag_gems._thnn_fused_lstm_cell_backward_impl,
-    )
-    res_out = gems_op(grad_hy, grad_cy, cx, cy, workspace, True)
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten._thnn_fused_lstm_cell_backward_impl(
+            grad_hy, grad_cy, cx, cy, workspace, True
+        )
 
     # Compare outputs — ref_out order: (grad_input_gates, grad_cx, grad_biases)
     for i, (ref, res) in enumerate(zip(ref_out, res_out)):

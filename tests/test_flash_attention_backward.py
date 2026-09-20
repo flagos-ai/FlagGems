@@ -412,28 +412,29 @@ def test_scaled_dot_product_cudnn_attention_backward(
     ref_dK = ref_dK_bhsd.permute(0, 2, 1, 3).contiguous()
     ref_dV = ref_dV_bhsd.permute(0, 2, 1, 3).contiguous()
 
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "scaled_dot_product_cudnn_attention_backward",
-        flag_gems._scaled_dot_product_cudnn_attention_backward,
-    )
-    dQ_bhsd, dK_bhsd, dV_bhsd = gems_op(
-        dOut_bhsd,
-        Q_bhsd,
-        K_bhsd,
-        V_bhsd,
-        out_bhsd,
-        lse,
-        philox_seed,
-        philox_offset,
-        attn_bias,
-        None,
-        None,
-        q_seq_len,
-        kv_seq_len,
-        0.0,
-        is_causal,
-        scale=scale,
-    )
+    with flag_gems.use_gems():
+        (
+            dQ_bhsd,
+            dK_bhsd,
+            dV_bhsd,
+        ) = torch.ops.aten._scaled_dot_product_cudnn_attention_backward(
+            dOut_bhsd,
+            Q_bhsd,
+            K_bhsd,
+            V_bhsd,
+            out_bhsd,
+            lse,
+            philox_seed,
+            philox_offset,
+            attn_bias,
+            None,
+            None,
+            q_seq_len,
+            kv_seq_len,
+            0.0,
+            is_causal,
+            scale=scale,
+        )
 
     dQ = dQ_bhsd.permute(0, 2, 1, 3).contiguous()
     dK = dK_bhsd.permute(0, 2, 1, 3).contiguous()

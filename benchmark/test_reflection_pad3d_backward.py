@@ -57,41 +57,6 @@ class ReflectionPad3dBackwardBenchmark(base.Benchmark):
             )
             yield grad_output, x, padding
 
-    def get_case_iter(self, dtype):
-        for ordinal, config in enumerate(self.shapes):
-            shape, padding = config
-            n, c, depth, height, width = shape
-            pad_d0, pad_d1, pad_h0, pad_h1, pad_w0, pad_w1 = padding
-            grad_shape = (
-                n,
-                c,
-                depth + pad_d0 + pad_d1,
-                height + pad_h0 + pad_h1,
-                width + pad_w0 + pad_w1,
-            )
-            yield self._case_from_plan(
-                dtype,
-                ordinal,
-                base.BenchmarkCasePlan(
-                    shape={"grad_output": grad_shape, "input": shape},
-                    params={"padding": padding},
-                    builder_args=(config, 0),
-                ),
-            )
-
-    def build_inputs(self, case):
-        shape, padding = case.builder_args[0].builder_args[0]
-        N, C, D, H, W = shape
-        pad_d0, pad_d1, pad_h0, pad_h1, pad_w0, pad_w1 = padding
-        D_out = D + pad_d0 + pad_d1
-        H_out = H + pad_h0 + pad_h1
-        W_out = W + pad_w0 + pad_w1
-        x = torch.randn(shape, dtype=case.dtype, device=self.device)
-        grad_output = torch.ones(
-            (N, C, D_out, H_out, W_out), dtype=case.dtype, device=self.device
-        )
-        return grad_output, x, padding
-
 
 @pytest.mark.reflection_pad3d_backward
 def test_reflection_pad3d_backward():

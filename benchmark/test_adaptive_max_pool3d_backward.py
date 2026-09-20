@@ -41,32 +41,6 @@ class AdaptiveMaxPool3dBackwardBenchmark(base.Benchmark):
             grad_output = torch.ones_like(_)
             yield grad_output, x, indices
 
-    def get_case_iter(self, dtype):
-        for ordinal, shape in enumerate(self.shapes):
-            output_size = (shape[2] // 2, shape[3] // 2, shape[4] // 2)
-            output_shape = (shape[0], shape[1], *output_size)
-            yield self._case_from_plan(
-                dtype,
-                ordinal,
-                base.BenchmarkCasePlan(
-                    shape={
-                        "grad_output": output_shape,
-                        "input": shape,
-                        "indices": output_shape,
-                    },
-                    params={"output_size": output_size},
-                    builder_args=(shape, output_size),
-                ),
-            )
-
-    def build_inputs(self, case):
-        shape, output_size = case.builder_args[0].builder_args
-        x = torch.randn(shape, dtype=case.dtype, device=self.device)
-        output, indices = torch.nn.functional.adaptive_max_pool3d(
-            x, output_size=output_size, return_indices=True
-        )
-        return torch.ones_like(output), x, indices
-
 
 @pytest.mark.adaptive_max_pool3d_backward
 def test_adaptive_max_pool3d_backward():

@@ -25,26 +25,16 @@ class SvdBenchmark(base.GenericBenchmark2DOnly):
         return SVD_BENCHMARK_SHAPES
 
 
-def svd_input_fn(shape, cur_dtype, device):
-    del cur_dtype
-    m, n = shape
-    inp = torch.randn([m, n], dtype=torch.float32, device=device)
-    yield inp,
-
-
-def svd_case_fn(shape, dtype):
-    del dtype
-    yield base.BenchmarkCasePlan(
-        shape={"input": shape},
-        builder_args=(shape, 0),
-    )
-
-
 @pytest.mark.linalg_svdvals
 def test_linalg_svdvals():
+    def svd_input_fn(shape, cur_dtype, device):
+        m, n = shape
+        # Only float32 is supported for SVD on CUDA
+        inp = torch.randn([m, n], dtype=torch.float32, device=device)
+        yield inp,
+
     bench = SvdBenchmark(
-        case_fn=svd_case_fn,
-        build_inputs_fn=base.build_inputs_from_generic_input_fn(svd_input_fn),
+        input_fn=svd_input_fn,
         op_name="linalg_svdvals",
         torch_op=torch.linalg.svdvals,
         # Only float32 for SVD on CUDA (PyTorch limitation)

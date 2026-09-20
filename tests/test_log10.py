@@ -42,8 +42,8 @@ def test_log10_(shape, dtype):
     ref_inp = utils.to_reference(inp.clone(), True)
 
     ref_out = torch.log10_(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("log10_", flag_gems.log10_)
-    res_out = gems_op(inp)
+    with flag_gems.use_gems():
+        res_out = torch.log10_(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 

@@ -28,8 +28,8 @@ def test_log1p(shape, dtype):
     inp = torch.rand(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
     ref_out = torch.log1p(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("log1p", flag_gems.log1p)
-    res_out = gems_op(inp)
+    with flag_gems.use_gems():
+        res_out = torch.log1p(inp)
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 

@@ -61,14 +61,10 @@ def test_unsafe_masked_index_put_accumulate(shape, dtype):
     ref_idx_tuple = _flat_to_per_dim_indices(ref_flat_indices.clone(), inp_shape)
     idx_tuple = _flat_to_per_dim_indices(flat_indices, inp_shape)
 
-    ref_out = torch._unsafe_masked_index_put_accumulate(
-        ref_inp, ref_mask.clone(), ref_idx_tuple, ref_values
-    )
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "unsafe_masked_index_put_accumulate",
-        flag_gems._unsafe_masked_index_put_accumulate,
-    )
-    res_out = gems_op(inp.clone(), mask, idx_tuple, values)
+    op = torch._unsafe_masked_index_put_accumulate
+    ref_out = op(ref_inp, ref_mask.clone(), ref_idx_tuple, ref_values)
+    with flag_gems.use_gems():
+        res_out = op(inp.clone(), mask, idx_tuple, values)
 
     atol = 1e-2 if dtype in (torch.float16, torch.bfloat16) else 5e-3
     utils.gems_assert_close(res_out, ref_out, dtype, atol=atol)

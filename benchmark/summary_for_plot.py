@@ -131,7 +131,6 @@ def parse_log(log_file_path: str) -> List[BenchmarkResult]:
                 level=data["level"],
                 result=[
                     BenchmarkMetrics(
-                        case_id=metric.get("case_id"),
                         legacy_shape=metric.get("legacy_shape"),
                         shape_detail=metric.get("shape_detail", []),
                         latency_base=metric.get("latency_base"),
@@ -180,7 +179,6 @@ def parse_log_to_dict(log_file_path: str) -> Dict[int, Any]:
                 level,
                 result=[
                     BenchmarkMetrics(
-                        case_id=metric.get("case_id"),
                         legacy_shape=metric.get("legacy_shape"),
                         shape_detail=metric.get("shape_detail", []),
                         latency_base=metric.get("latency_base"),

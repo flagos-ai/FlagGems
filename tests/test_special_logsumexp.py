@@ -30,11 +30,8 @@ def test_special_logsumexp(shape, dtype, dim, keepdim):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.special.logsumexp(ref_inp, dim=dim, keepdim=keepdim)
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "special_logsumexp",
-        flag_gems.special_logsumexp,
-    )
-    res_out = gems_op(inp, dim=dim, keepdim=keepdim)
+    with flag_gems.use_gems():
+        res_out = torch.special.logsumexp(inp, dim=dim, keepdim=keepdim)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -50,11 +47,8 @@ def test_special_logsumexp_multi_dim(shape, dtype, dims, keepdim):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.special.logsumexp(ref_inp, dim=dims, keepdim=keepdim)
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "special_logsumexp",
-        flag_gems.special_logsumexp,
-    )
-    res_out = gems_op(inp, dim=dims, keepdim=keepdim)
+    with flag_gems.use_gems():
+        res_out = torch.special.logsumexp(inp, dim=dims, keepdim=keepdim)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -72,11 +66,8 @@ def test_special_logsumexp_single_element(dtype):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.special.logsumexp(ref_inp, dim=0)
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "special_logsumexp",
-        flag_gems.special_logsumexp,
-    )
-    res_out = gems_op(inp, dim=0)
+    with flag_gems.use_gems():
+        res_out = torch.special.logsumexp(inp, dim=0)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -93,11 +84,8 @@ def test_special_logsumexp_large_values(dtype):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.special.logsumexp(ref_inp, dim=1)
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "special_logsumexp",
-        flag_gems.special_logsumexp,
-    )
-    res_out = gems_op(inp, dim=1)
+    with flag_gems.use_gems():
+        res_out = torch.special.logsumexp(inp, dim=1)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -116,11 +104,8 @@ def test_special_logsumexp_negative_large_values(dtype):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.special.logsumexp(ref_inp, dim=1)
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "special_logsumexp",
-        flag_gems.special_logsumexp,
-    )
-    res_out = gems_op(inp, dim=1)
+    with flag_gems.use_gems():
+        res_out = torch.special.logsumexp(inp, dim=1)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -136,11 +121,8 @@ def test_special_logsumexp_all_negative_inf(dtype):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.special.logsumexp(ref_inp, dim=1)
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "special_logsumexp",
-        flag_gems.special_logsumexp,
-    )
-    res_out = gems_op(inp, dim=1)
+    with flag_gems.use_gems():
+        res_out = torch.special.logsumexp(inp, dim=1)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -156,11 +138,8 @@ def test_special_logsumexp_zeros(dtype):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.special.logsumexp(ref_inp, dim=1)
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "special_logsumexp",
-        flag_gems.special_logsumexp,
-    )
-    res_out = gems_op(inp, dim=1)
+    with flag_gems.use_gems():
+        res_out = torch.special.logsumexp(inp, dim=1)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -178,10 +157,7 @@ def test_special_logsumexp_extreme_mixed(dtype):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.special.logsumexp(ref_inp, dim=1)
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "special_logsumexp",
-        flag_gems.special_logsumexp,
-    )
-    res_out = gems_op(inp, dim=1)
+    with flag_gems.use_gems():
+        res_out = torch.special.logsumexp(inp, dim=1)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

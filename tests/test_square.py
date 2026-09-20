@@ -43,8 +43,8 @@ def test_square_(shape, dtype):
     ref_inp = utils.to_reference(inp.clone())
 
     ref_out = torch.square_(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("square_", flag_gems.square_)
-    res_out = gems_op(inp)
+    with flag_gems.use_gems():
+        res_out = torch.square_(inp)
 
     utils.gems_assert_equal(res_out, ref_out)
 

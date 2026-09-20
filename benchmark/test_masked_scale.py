@@ -45,30 +45,6 @@ class MaskedScaleBenchmark(base.Benchmark):
         shape = list(args[0].shape)
         return torch.tensor(shape).prod().item()
 
-    def get_case_iter(self, dtype) -> Generator:
-        for ordinal, shape in enumerate(self.shapes):
-            yield self._case_from_plan(
-                dtype,
-                ordinal,
-                base.BenchmarkCasePlan(
-                    shape={"input": shape, "mask": shape},
-                    params={"scale": 2.0, "mask_dtype": "torch.uint8"},
-                    builder_args=(shape, 0),
-                ),
-            )
-
-    def build_inputs(self, case):
-        shape = case.builder_args[0].builder_args[0]
-        inp = utils.generate_tensor_input(shape, case.dtype, self.device)
-        if flag_gems.vendor_name == "cambricon":
-            mask = torch.randint(0, 2, shape, dtype=torch.uint8, device="cpu").to(
-                self.device
-            )
-        else:
-            mask = torch.randint(0, 2, shape, dtype=torch.uint8, device=self.device)
-        scale = 2.0
-        return inp, mask, scale
-
 
 # _masked_scale only supports float32 on most backends.
 # CUDA reference does not support float16/bf16 for this private op.

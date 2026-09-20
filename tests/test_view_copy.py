@@ -39,13 +39,6 @@ else:
     ]
 
 
-def _view_copy(x, size):
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "view_copy", flag_gems.view_copy
-    )
-    return gems_op(x, size)
-
-
 @pytest.mark.view_copy
 @pytest.mark.parametrize("source_shape, target_shape", VIEW_COPY_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -55,6 +48,7 @@ def test_view_copy(source_shape, target_shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.view_copy(ref_inp, target_shape)
-    res_out = _view_copy(inp, target_shape)
+    with flag_gems.use_gems():
+        res_out = torch.view_copy(inp, target_shape)
 
     utils.gems_assert_equal(res_out, ref_out)

@@ -31,26 +31,6 @@ class DiagonalScatterBenchmark(base.Benchmark):
             src = torch.randn(diag.shape, dtype=cur_dtype, device=self.device)
             yield inp, src, 0, -2, -1
 
-    def get_case_iter(self, dtype):
-        for ordinal, shape in enumerate(self.shapes):
-            diagonal_shape = shape[:-2] + (min(shape[-2:]),)
-            yield self._case_from_plan(
-                dtype,
-                ordinal,
-                base.BenchmarkCasePlan(
-                    shape={"input": shape, "src": diagonal_shape},
-                    params={"offset": 0, "dim1": -2, "dim2": -1},
-                    builder_args=(shape, 0),
-                ),
-            )
-
-    def build_inputs(self, case):
-        shape = case.builder_args[0].builder_args[0]
-        inp = torch.randn(shape, dtype=case.dtype, device=self.device)
-        diag = torch.diagonal(inp, 0, -2, -1)
-        src = torch.randn(diag.shape, dtype=case.dtype, device=self.device)
-        return inp, src, 0, -2, -1
-
 
 @pytest.mark.diagonal_scatter
 def test_diagonal_scatter():

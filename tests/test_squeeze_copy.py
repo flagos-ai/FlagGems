@@ -5,13 +5,6 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-
-def _squeeze_copy(x):
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "squeeze_copy", flag_gems.squeeze_copy
-    )
-    return gems_op(x)
-
 # Dedicated shapes that exercise squeeze_copy semantics (removing size-1
 # dimensions). The generic POINTWISE_SHAPES only has one case that actually
 # triggers a squeeze, so these explicitly cover interleaved/leading/trailing
@@ -33,5 +26,6 @@ def test_squeeze_copy(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
     ref_out = torch.squeeze_copy(ref_inp)
-    res_out = _squeeze_copy(inp)
+    with flag_gems.use_gems():
+        res_out = torch.squeeze_copy(inp)
     utils.gems_assert_equal(res_out, ref_out)

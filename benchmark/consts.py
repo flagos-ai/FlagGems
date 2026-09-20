@@ -13,13 +13,16 @@
 # limitations under the License.
 
 import itertools
-from dataclasses import asdict, dataclass, field, fields
+from dataclasses import asdict, dataclass, fields
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 import torch
 
 import flag_gems
+
+# Re-export the case types alongside the existing benchmark report types.
+from .cases import BenchmarkCaseList, BenchmarkCasePlan, BenchmarkCaseSpec  # noqa: F401
 
 FLOAT_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
 INT_DTYPES = [torch.int16, torch.int32]
@@ -92,10 +95,7 @@ def model_shapes():
 
 @dataclass
 class BenchmarkMetrics:
-    # Stable identity assigned by the benchmark case provider.
     case_id: Optional[str] = None
-    # Candidate route selected outside the measured interval. This is report
-    # metadata, not a benchmark metric.
     candidate_source: Optional[str] = None
     # Legacy shape information for backward compatibility
     # This field corresponds to the 'size' field in the previous version's benchmark.
@@ -209,59 +209,6 @@ class OperationAttribute:
         return self.__dict__
 
 
-@dataclass(frozen=True)
-class BenchmarkCasePlan:
-    """Tensor-free description produced by the case planning stage."""
-
-    shape: Dict[str, Any]
-    params: Dict[str, Any] = field(default_factory=dict)
-    builder_args: Tuple[Any, ...] = field(default_factory=tuple, repr=False)
-
-
-@dataclass(frozen=True)
-class BenchmarkCaseSpec:
-    """Lightweight description of one benchmark case.
-
-    ``builder_args`` are private runner state. They are intentionally excluded
-    from the JSON case-list contract and are only consumed when the case is
-    selected for execution.
-    """
-
-    case_id: str
-    ordinal: int
-    dtype: torch.dtype
-    shape: Dict[str, Any]
-    params: Dict[str, Any] = field(default_factory=dict)
-    builder_args: Tuple[Any, ...] = field(default_factory=tuple, repr=False)
-
-    def to_dict(self) -> dict:
-        return {
-            "case_id": self.case_id,
-            "ordinal": self.ordinal,
-            "dtype": str(self.dtype),
-            "shape": self.shape,
-            "params": self.params,
-        }
-
-
-@dataclass(frozen=True)
-class BenchmarkCaseList:
-    op_name: str
-    level: str
-    cases: Tuple[BenchmarkCaseSpec, ...]
-    phase: str = "timing"
-    schema_version: str = "flaggems.benchmark-case-list/v2"
-
-    def to_dict(self) -> dict:
-        return {
-            "schema_version": self.schema_version,
-            "op_name": self.op_name,
-            "phase": self.phase,
-            "level": self.level,
-            "cases": [case.to_dict() for case in self.cases],
-        }
-
-
 def custom_json_encoder(obj):
     if isinstance(obj, torch.dtype):
         return str(obj)
@@ -285,6 +232,9 @@ class BenchmarkResult:
             f"\nOperator: {self.op_name}  Performance Test (dtype={self.dtype}, mode={self.mode},"
             f"level={self.level})\n"
         )
+        native_baseline_skip_reason = getattr(self, "native_baseline_skip_reason", None)
+        if native_baseline_skip_reason:
+            header_title += f"Native baseline: N/A ({native_baseline_skip_reason})\n"
         col_names = [
             f"{'Status':<10}",
             f"{'Torch Latency (ms)':>20}",
@@ -364,6 +314,9 @@ class BenchmarkResult:
 
         # Convert to dict and handle tuple serialization for shape_detail
         result_dict = asdict(self)
+        native_baseline_skip_reason = getattr(self, "native_baseline_skip_reason", None)
+        if native_baseline_skip_reason:
+            result_dict["native_baseline_skip_reason"] = native_baseline_skip_reason
         return json.dumps(result_dict, default=custom_json_encoder)
 
     def to_dict(self) -> dict:

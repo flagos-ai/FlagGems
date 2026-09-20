@@ -23,13 +23,6 @@ from . import accuracy_utils as utils
 SYM_STRIDE_SHAPES = [(2, 3), (10, 20, 30), (5, 10), (100,), (1, 2, 3, 4)]
 
 
-def _sym_stride(inp):
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "sym_stride", flag_gems.sym_stride
-    )
-    return gems_op(inp)
-
-
 @pytest.mark.sym_stride
 @pytest.mark.parametrize("shape", SYM_STRIDE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -39,7 +32,8 @@ def test_sym_stride(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.ops.aten.sym_stride(ref_inp)
-    res_out = _sym_stride(inp)
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.sym_stride(inp)
 
     # Compare stride results (convert to tensors for gems_assert_equal)
     utils.gems_assert_equal(torch.tensor(res_out), torch.tensor(ref_out))

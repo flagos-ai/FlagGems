@@ -18,26 +18,16 @@ import torch
 from . import base, consts
 
 
-def logcumsumexp_case_fn(shape, dtype):
-    del dtype
-    yield base.BenchmarkCasePlan(
-        shape={"input": shape},
-        params={"dim": 1},
-        builder_args=(shape,),
-    )
-
-
-def logcumsumexp_build_inputs_fn(plan, dtype, device):
-    inp = torch.randn(plan.builder_args[0], dtype=dtype, device=device)
-    return inp, 1
+def logcumsumexp_input_fn(shape, cur_dtype, device):
+    inp = torch.randn(shape, dtype=cur_dtype, device=device)
+    yield inp, 1
 
 
 @pytest.mark.logcumsumexp
 def test_logcumsumexp():
     bench = base.GenericBenchmark2DOnly(
         op_name="logcumsumexp",
-        case_fn=logcumsumexp_case_fn,
-        build_inputs_fn=logcumsumexp_build_inputs_fn,
+        input_fn=logcumsumexp_input_fn,
         torch_op=torch.logcumsumexp,
         dtypes=consts.FLOAT_DTYPES,
     )

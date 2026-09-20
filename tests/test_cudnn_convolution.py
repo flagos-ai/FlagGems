@@ -35,58 +35,6 @@ else:
     FLOAT_DTYPES = [torch.float16, torch.float32]
 
 
-def _reference_cudnn_convolution(
-    inp,
-    weight,
-    *,
-    padding,
-    stride,
-    dilation,
-    groups,
-    benchmark,
-    deterministic,
-    allow_tf32,
-):
-    if flag_gems.vendor_name == "ascend":
-        convolution = {
-            3: torch.conv1d,
-            4: torch.conv2d,
-            5: torch.conv3d,
-        }[inp.dim()]
-        return convolution(
-            inp,
-            weight,
-            None,
-            stride=stride,
-            padding=padding,
-            dilation=dilation,
-            groups=groups,
-        )
-    # Iluvatar's native cudnn_convolution cannot select an algorithm for 1D
-    # inputs, although conv1d implements the same no-bias reference semantics.
-    if flag_gems.vendor_name == "iluvatar" and inp.dim() == 3:
-        return torch.conv1d(
-            inp,
-            weight,
-            None,
-            stride=stride,
-            padding=padding,
-            dilation=dilation,
-            groups=groups,
-        )
-    return torch.cudnn_convolution(
-        inp,
-        weight,
-        padding=padding,
-        stride=stride,
-        dilation=dilation,
-        groups=groups,
-        benchmark=benchmark,
-        deterministic=deterministic,
-        allow_tf32=allow_tf32,
-    )
-
-
 @pytest.mark.cudnn_convolution
 @pytest.mark.skipif(
     flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
@@ -102,7 +50,7 @@ def test_cudnn_convolution_2d(
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     weight = torch.randn(kernel, dtype=dtype, device=flag_gems.device)
 
-    ref_out = _reference_cudnn_convolution(
+    ref_out = torch.cudnn_convolution(
         inp,
         weight,
         padding=[padding, padding],
@@ -114,20 +62,18 @@ def test_cudnn_convolution_2d(
         allow_tf32=False,
     )
 
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "cudnn_convolution", flag_gems.cudnn_convolution
-    )
-    res_out = gems_op(
-        inp,
-        weight,
-        padding=[padding, padding],
-        stride=[stride, stride],
-        dilation=[dilation, dilation],
-        groups=groups,
-        benchmark=False,
-        deterministic=False,
-        allow_tf32=False,
-    )
+    with flag_gems.use_gems():
+        res_out = torch.cudnn_convolution(
+            inp,
+            weight,
+            padding=[padding, padding],
+            stride=[stride, stride],
+            dilation=[dilation, dilation],
+            groups=groups,
+            benchmark=False,
+            deterministic=False,
+            allow_tf32=False,
+        )
 
     gems_assert_close(res_out.cpu(), ref_out.cpu(), dtype)
 
@@ -156,7 +102,7 @@ def test_cudnn_convolution_1d(shape, kernel, stride, padding, dtype, monkeypatch
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     weight = torch.randn(kernel, dtype=dtype, device=flag_gems.device)
 
-    ref_out = _reference_cudnn_convolution(
+    ref_out = torch.cudnn_convolution(
         inp,
         weight,
         padding=[padding],
@@ -168,20 +114,18 @@ def test_cudnn_convolution_1d(shape, kernel, stride, padding, dtype, monkeypatch
         allow_tf32=False,
     )
 
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "cudnn_convolution", flag_gems.cudnn_convolution
-    )
-    res_out = gems_op(
-        inp,
-        weight,
-        padding=[padding],
-        stride=[stride],
-        dilation=[1],
-        groups=1,
-        benchmark=False,
-        deterministic=False,
-        allow_tf32=False,
-    )
+    with flag_gems.use_gems():
+        res_out = torch.cudnn_convolution(
+            inp,
+            weight,
+            padding=[padding],
+            stride=[stride],
+            dilation=[1],
+            groups=1,
+            benchmark=False,
+            deterministic=False,
+            allow_tf32=False,
+        )
 
     gems_assert_close(res_out.cpu(), ref_out.cpu(), dtype)
 
@@ -212,7 +156,7 @@ def test_cudnn_convolution_3d(
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     weight = torch.randn(kernel, dtype=dtype, device=flag_gems.device)
 
-    ref_out = _reference_cudnn_convolution(
+    ref_out = torch.cudnn_convolution(
         inp,
         weight,
         padding=[padding, padding, padding],
@@ -224,19 +168,17 @@ def test_cudnn_convolution_3d(
         allow_tf32=False,
     )
 
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "cudnn_convolution", flag_gems.cudnn_convolution
-    )
-    res_out = gems_op(
-        inp,
-        weight,
-        padding=[padding, padding, padding],
-        stride=[stride, stride, stride],
-        dilation=[dilation, dilation, dilation],
-        groups=groups,
-        benchmark=False,
-        deterministic=False,
-        allow_tf32=False,
-    )
+    with flag_gems.use_gems():
+        res_out = torch.cudnn_convolution(
+            inp,
+            weight,
+            padding=[padding, padding, padding],
+            stride=[stride, stride, stride],
+            dilation=[dilation, dilation, dilation],
+            groups=groups,
+            benchmark=False,
+            deterministic=False,
+            allow_tf32=False,
+        )
 
     gems_assert_close(res_out.cpu(), ref_out.cpu(), dtype)

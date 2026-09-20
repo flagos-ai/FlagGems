@@ -68,8 +68,8 @@ def test_bernoulli_various_p(shape, dtype, p):
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_bernoulli(shape, dtype):
     inp = torch.rand(shape, dtype=dtype, device=flag_gems.device)
-    gems_op = flag_gems.testing.resolve_gems_op("bernoulli", flag_gems.bernoulli)
-    res_out = gems_op(inp)
+    with flag_gems.use_gems():
+        res_out = torch.bernoulli(inp)
 
     # Check that all values are 0 or 1
     assert ((res_out == 0) | (res_out == 1)).all()

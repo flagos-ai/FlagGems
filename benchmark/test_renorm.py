@@ -44,27 +44,6 @@ class RenormBenchmark(base.Benchmark):
             maxnorm = 1.0
             yield x, p, dim, maxnorm
 
-    def get_case_iter(self, dtype):
-        for ordinal, shape in enumerate(self.shapes):
-            dim = 1 if len(shape) > 1 else 0
-            yield self._case_from_plan(
-                dtype,
-                ordinal,
-                base.BenchmarkCasePlan(
-                    shape={"input": shape},
-                    params={"p": 2.0, "dim": dim, "maxnorm": 1.0},
-                    builder_args=(shape, 0),
-                ),
-            )
-
-    def build_inputs(self, case):
-        shape = case.builder_args[0].builder_args[0]
-        x = torch.randn(shape, dtype=case.dtype, device=self.device)
-        p = 2.0
-        dim = 1 if len(shape) > 1 else 0
-        maxnorm = 1.0
-        return x, p, dim, maxnorm
-
 
 @pytest.mark.renorm
 @pytest.mark.skipif(

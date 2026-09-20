@@ -27,8 +27,8 @@ def test_new_ones(shape, dtype):
     inp = torch.empty(size=shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
     ref_out = ref_inp.new_ones(shape)
-    gems_op = flag_gems.testing.resolve_gems_op("new_ones", flag_gems.new_ones)
-    res_out = gems_op(inp, shape)
+    with flag_gems.use_gems():
+        res_out = inp.new_ones(shape)
     utils.gems_assert_equal(res_out, ref_out)
 
 
@@ -40,6 +40,6 @@ def test_new_ones_different_size(shape, dtype):
     ref_inp = utils.to_reference(inp)
     size = (2, 3)
     ref_out = ref_inp.new_ones(size)
-    gems_op = flag_gems.testing.resolve_gems_op("new_ones", flag_gems.new_ones)
-    res_out = gems_op(inp, size)
+    with flag_gems.use_gems():
+        res_out = inp.new_ones(size)
     utils.gems_assert_equal(res_out, ref_out)

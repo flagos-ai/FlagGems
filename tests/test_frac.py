@@ -28,7 +28,7 @@ def test_frac(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.frac(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("frac", flag_gems.frac)
-    res_out = gems_op(inp)
+    with flag_gems.use_gems():
+        res_out = torch.frac(inp)
 
     utils.gems_assert_equal(res_out, ref_out)

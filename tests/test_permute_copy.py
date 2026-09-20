@@ -41,9 +41,7 @@ def test_permute_copy(shape_dims, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.permute_copy(ref_inp, dims)
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "permute_copy", flag_gems.permute_copy
-    )
-    res_out = gems_op(inp, dims)
+    with flag_gems.use_gems():
+        res_out = torch.permute_copy(inp, dims)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

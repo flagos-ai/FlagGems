@@ -19,15 +19,6 @@ def linalg_ldl_factor_ex_input_fn(shape, cur_dtype, device):
     yield (a @ a.mT + torch.eye(n, dtype=cur_dtype, device=device) * 0.1,)
 
 
-def linalg_ldl_factor_ex_case_fn(shape, dtype):
-    del dtype
-    yield base.BenchmarkCasePlan(
-        shape={"input": shape},
-        params={"matrix_intent": "symmetric_positive_definite"},
-        builder_args=(shape, 0),
-    )
-
-
 class LinalgLdlFactorExBenchmark(base.GenericBenchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = LDL_FACTOR_EX_SHAPES
@@ -39,10 +30,7 @@ def test_linalg_ldl_factor_ex():
     bench = LinalgLdlFactorExBenchmark(
         op_name="linalg_ldl_factor_ex",
         torch_op=torch.linalg.ldl_factor_ex,
-        case_fn=linalg_ldl_factor_ex_case_fn,
-        build_inputs_fn=base.build_inputs_from_generic_input_fn(
-            linalg_ldl_factor_ex_input_fn
-        ),
+        input_fn=linalg_ldl_factor_ex_input_fn,
         # PyTorch linalg_ldl_factor_ex only supports float32 on CUDA.
         dtypes=[torch.float32],
     )

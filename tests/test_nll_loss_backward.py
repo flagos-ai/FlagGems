@@ -32,13 +32,6 @@ else:
 random.seed(time.time() // 100)
 
 
-def _nll_loss_backward(*args, **kwargs):
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "nll_loss_backward", flag_gems.nll_loss_backward
-    )
-    return gems_op(*args, **kwargs)
-
-
 @pytest.mark.nll_loss_backward
 @pytest.mark.parametrize("reduction", ["mean", "none", "sum"])
 @pytest.mark.parametrize("weight", [True, False])
@@ -46,8 +39,6 @@ def _nll_loss_backward(*args, **kwargs):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("ignore_index", [1, 200, -100])
 def test_nll_loss_backward(shape, dtype, ignore_index, reduction, weight):
-    if len(shape) > 2:
-        pytest.skip("3D+ inputs exercise nll_loss2d_backward, not nll_loss_backward")
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
@@ -71,28 +62,16 @@ def test_nll_loss_backward(shape, dtype, ignore_index, reduction, weight):
     ref_out = torch.nn.functional.nll_loss(
         ref_inp, ref_target, ref_weight, reduction=reduction, ignore_index=ignore_index
     )
-    out_grad = torch.randn(
-        target.shape if reduction == "none" else (),
-        dtype=dtype,
-        device=flag_gems.device,
-    )
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.nll_loss(
+            inp, target, weight, reduction=reduction, ignore_index=ignore_index
+        )
+
+    out_grad = torch.randn_like(res_out)
     ref_grad = utils.to_reference(out_grad, True)
     (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
 
-    valid_target = target != ignore_index
-    if weight is None:
-        total_weight = valid_target.sum().to(dtype)
-    else:
-        total_weight = weight[target[valid_target]].sum()
-    reduction_value = {"none": 0, "mean": 1, "sum": 2}[reduction]
-    res_in_grad = _nll_loss_backward(
-        out_grad,
-        inp,
-        target,
-        weight,
-        reduction_value,
-        ignore_index,
-        total_weight,
-    )
+    with flag_gems.use_gems():
+        (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
 
     utils.gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=shape[dim])

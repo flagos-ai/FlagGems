@@ -29,8 +29,8 @@ def test_acosh(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.acosh(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("acosh", flag_gems.acosh)
-    res_out = gems_op(inp)
+    with flag_gems.use_gems():
+        res_out = torch.acosh(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -43,7 +43,7 @@ def test_acosh_(shape, dtype):
     ref_inp = utils.to_reference(inp.clone())
 
     ref_out = torch.acosh_(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("acosh_", flag_gems.acosh_)
-    res_out = gems_op(inp)
+    with flag_gems.use_gems():
+        res_out = torch.acosh_(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

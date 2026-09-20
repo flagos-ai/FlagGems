@@ -36,24 +36,6 @@ class BroadcastToBenchmark(base.Benchmark):
             x = base.generate_tensor_input(src_shape, dtype, self.device)
             yield (x, target_shape)
 
-    def get_case_iter(self, dtype):
-        for ordinal, shape_pair in enumerate(self.shapes):
-            src_shape, target_shape = shape_pair
-            yield self._case_from_plan(
-                dtype,
-                ordinal,
-                base.BenchmarkCasePlan(
-                    shape={"input": src_shape, "output": target_shape},
-                    params={"size": target_shape},
-                    builder_args=(shape_pair, 0),
-                ),
-            )
-
-    def build_inputs(self, case):
-        src_shape, target_shape = case.builder_args[0].builder_args[0]
-        x = base.generate_tensor_input(src_shape, case.dtype, self.device)
-        return (x, target_shape)
-
 
 @pytest.mark.broadcast_to
 def test_broadcast_to():

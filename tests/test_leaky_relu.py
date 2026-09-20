@@ -29,8 +29,8 @@ def test_leaky_relu(shape, dtype):
 
     negative_slope = 0.01
     ref_out = torch.nn.functional.leaky_relu(ref_inp, negative_slope=negative_slope)
-    gems_op = flag_gems.testing.resolve_gems_op("leaky_relu", flag_gems.leaky_relu)
-    res_out = gems_op(res_inp, negative_slope=negative_slope)
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.leaky_relu(res_inp, negative_slope=negative_slope)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -44,10 +44,10 @@ def test_leaky_relu_(shape, dtype):
 
     negative_slope = 0.01
     ref_out = torch.nn.functional.leaky_relu_(ref_inp, negative_slope=negative_slope)
-    gems_op = flag_gems.testing.resolve_gems_op("leaky_relu_", flag_gems.leaky_relu_)
-    res_out = gems_op(
-        res_inp, negative_slope=negative_slope
-    )
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.leaky_relu_(
+            res_inp, negative_slope=negative_slope
+        )
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 

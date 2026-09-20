@@ -25,10 +25,8 @@ def test_linalg_ldl_factor_ex(shape, dtype):
     ref_A = utils.to_reference(A)
 
     ref_out = torch.linalg.ldl_factor_ex(ref_A)
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "linalg_ldl_factor_ex", flag_gems.ldl_factor_ex
-    )
-    res_out = gems_op(A)
+    with flag_gems.use_gems():
+        res_out = torch.linalg.ldl_factor_ex(A)
 
     # Compare LD matrices
     utils.gems_assert_close(res_out[0], ref_out[0], dtype)

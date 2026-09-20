@@ -32,13 +32,6 @@ def _reference_bucketize(inp, boundaries, **kwargs):
     return torch.bucketize(ref_inp, ref_boundaries, **kwargs)
 
 
-def _bucketize(*args, **kwargs):
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "bucketize", flag_gems.bucketize
-    )
-    return gems_op(*args, **kwargs)
-
-
 @pytest.mark.bucketize
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -48,7 +41,8 @@ def test_bucketize(shape, dtype):
 
     ref_out = _reference_bucketize(inp, boundaries)
 
-    res_out = _bucketize(inp, boundaries)
+    with flag_gems.use_gems():
+        res_out = torch.bucketize(inp, boundaries)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -62,7 +56,8 @@ def test_bucketize_right(shape, dtype):
 
     ref_out = _reference_bucketize(inp, boundaries, right=True)
 
-    res_out = _bucketize(inp, boundaries, right=True)
+    with flag_gems.use_gems():
+        res_out = torch.bucketize(inp, boundaries, right=True)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -76,7 +71,8 @@ def test_bucketize_int32(shape, dtype):
 
     ref_out = _reference_bucketize(inp, boundaries, out_int32=True)
 
-    res_out = _bucketize(inp, boundaries, out_int32=True)
+    with flag_gems.use_gems():
+        res_out = torch.bucketize(inp, boundaries, out_int32=True)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -114,6 +110,7 @@ def test_bucketize_boundary_cases(right, boundary_values, boundary_dtype):
 
     ref_out = _reference_bucketize(inp, boundaries, right=right)
 
-    res_out = _bucketize(inp, boundaries, right=right)
+    with flag_gems.use_gems():
+        res_out = torch.bucketize(inp, boundaries, right=right)
 
     utils.gems_assert_equal(res_out, ref_out)

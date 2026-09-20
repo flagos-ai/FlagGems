@@ -42,13 +42,10 @@ def test_upsample_bilinear2d_aa(dtype, shape, scale, align_corners):
     ref_out = torch.ops.aten._upsample_bilinear2d_aa(
         ref_i, output_size=output_size, align_corners=align_corners
     )
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "upsample_bilinear2d_aa",
-        flag_gems._upsample_bilinear2d_aa,
-    )
-    res_out = gems_op(
-        input, output_size=output_size, align_corners=align_corners
-    )
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten._upsample_bilinear2d_aa(
+            input, output_size=output_size, align_corners=align_corners
+        )
 
     def span(scale):
         support = 2 if (scale >= 1.0) else 2.0 / scale

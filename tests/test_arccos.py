@@ -28,8 +28,8 @@ def test_arccos(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.arccos(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("arccos", flag_gems.arccos)
-    res_out = gems_op(inp)
+    with flag_gems.use_gems():
+        res_out = torch.arccos(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype, True)
 
@@ -42,8 +42,8 @@ def test_arccos_(shape, dtype):
     ref_inp = utils.to_reference(inp.clone())
 
     ref_out = ref_inp.arccos_()
-    gems_op = flag_gems.testing.resolve_gems_op("arccos_", flag_gems.arccos_)
-    res_out = gems_op(inp)
+    with flag_gems.use_gems():
+        res_out = inp.arccos_()
 
     utils.gems_assert_close(res_out, ref_out, dtype, True)
     utils.gems_assert_close(inp, ref_inp, dtype, True)

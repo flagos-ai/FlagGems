@@ -24,13 +24,6 @@ from . import accuracy_utils as utils
 device = flag_gems.device
 
 
-def _new_full(*args, **kwargs):
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "new_full", flag_gems.new_full
-    )
-    return gems_op(*args, **kwargs)
-
-
 @pytest.mark.new_full
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize(
@@ -46,20 +39,30 @@ def test_new_full(shape, dtype, xdtype, fill_value):
     inp = torch.empty(size=shape, dtype=dtype, device=device)
     ref_inp = utils.to_reference(inp)
 
-    special_value = isinstance(fill_value, float) and (
+    # without dtype: output dtype inherits from self (dtype), skip if dtype doesn't support inf/nan
+    if isinstance(fill_value, float) and (
         math.isinf(fill_value) or math.isnan(fill_value)
-    )
-    implicit_supported = not special_value or dtype in utils.ALL_FLOAT_DTYPES
-    explicit_supported = not special_value or xdtype in utils.ALL_FLOAT_DTYPES
-    if not implicit_supported and not explicit_supported:
-        pytest.skip("inf/nan fill values require a floating output dtype")
+    ):
+        if dtype not in utils.ALL_FLOAT_DTYPES:
+            # Skipping inf/nan test for non-float dtypes
+            return
 
-    if implicit_supported:
-        ref_out = ref_inp.new_full(shape, fill_value)
-        res_out = _new_full(inp, shape, fill_value)
-        utils.gems_assert_equal(res_out, ref_out, equal_nan=True)
+    ref_out = ref_inp.new_full(shape, fill_value)
+    with flag_gems.use_gems():
+        res_out = inp.new_full(shape, fill_value)
 
-    if explicit_supported:
-        ref_out = ref_inp.new_full(shape, fill_value, dtype=xdtype)
-        res_out = _new_full(inp, shape, fill_value, dtype=xdtype)
-        utils.gems_assert_equal(res_out, ref_out, equal_nan=True)
+    utils.gems_assert_equal(res_out, ref_out, equal_nan=True)
+
+    # with dtype: output dtype is xdtype, skip if xdtype doesn't support inf/nan
+    if isinstance(fill_value, float) and (
+        math.isinf(fill_value) or math.isnan(fill_value)
+    ):
+        if xdtype not in utils.ALL_FLOAT_DTYPES:
+            # Skipping inf/nan test for non-float dtypes
+            return
+
+    ref_out = ref_inp.new_full(shape, fill_value, dtype=xdtype)
+    with flag_gems.use_gems():
+        res_out = inp.new_full(shape, fill_value, dtype=xdtype)
+
+    utils.gems_assert_equal(res_out, ref_out, equal_nan=True)

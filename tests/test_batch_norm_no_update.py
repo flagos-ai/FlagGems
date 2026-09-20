@@ -66,23 +66,20 @@ def test_batch_norm_no_update(shape, dtype, affine):
         eps=eps,
     )
 
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "batch_norm_no_update",
-        flag_gems._batch_norm_no_update,
-    )
-    (
-        res_out,
-        res_save_mean,
-        res_save_var,
-        res_reserved,
-    ) = gems_op(
-        inp,
-        weight,
-        bias,
-        running_mean,
-        running_var,
-        0.1,
-        eps,
-    )
+    with flag_gems.use_gems():
+        (
+            res_out,
+            res_save_mean,
+            res_save_var,
+            res_reserved,
+        ) = torch.ops.aten._batch_norm_no_update(
+            inp,
+            weight,
+            bias,
+            running_mean,
+            running_var,
+            0.1,
+            eps,
+        )
 
     utils.gems_assert_close(res_out, ref_out, dtype)

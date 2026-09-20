@@ -107,7 +107,6 @@ def alpha_dropout_forward_kernel(
 def alpha_dropout(input, p=0.5, train=True):
     UNROLL = 4
     logger.debug("GEMS ALPHA_DROPOUT FORWARD")
-    p = float(p)
     if not train or p == 0:
         return input.clone()
     if p == 1:

@@ -28,8 +28,8 @@ def test_floor(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.floor(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("floor", flag_gems.floor)
-    res_out = gems_op(inp)
+    with flag_gems.use_gems():
+        res_out = torch.floor(inp)
 
     utils.gems_assert_equal(res_out, ref_out)
 

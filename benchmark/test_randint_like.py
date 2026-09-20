@@ -20,19 +20,9 @@ import flag_gems
 from . import base, consts
 
 
-def _case_fn(shape, dtype):
-    del dtype
-    yield base.BenchmarkCasePlan(
-        shape={"input": shape},
-        params={"high": 10},
-        builder_args=(shape,),
-    )
-
-
-def _build_inputs_fn(plan, dtype, device):
-    shape = plan.builder_args[0]
+def _input_fn(shape, dtype, device):
     inp = torch.randn(shape, dtype=dtype, device=device)
-    return {"input": inp, "high": plan.params["high"]},
+    yield {"input": inp, "high": 10},
 
 
 @pytest.mark.randint_like
@@ -42,8 +32,7 @@ def _build_inputs_fn(plan, dtype, device):
 def test_randint_like():
     bench = base.GenericBenchmark(
         op_name="randint_like",
-        case_fn=_case_fn,
-        build_inputs_fn=_build_inputs_fn,
+        input_fn=_input_fn,
         torch_op=torch.randint_like,
         dtypes=consts.FLOAT_DTYPES,
     )

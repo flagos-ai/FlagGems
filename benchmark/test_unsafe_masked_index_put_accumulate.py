@@ -61,37 +61,6 @@ class UnsafeMaskedIndexPutAccumulateBenchmark(base.Benchmark):
             idx_tuple = _flat_to_per_dim_indices(flat_indices, inp_shape)
             yield inp, mask, idx_tuple, values
 
-    def get_case_iter(self, dtype):
-        for ordinal, config in enumerate(self.shapes):
-            inp_shape, mask_shape, indices_shape, values_shape = config
-            yield self._case_from_plan(
-                dtype,
-                ordinal,
-                base.BenchmarkCasePlan(
-                    shape={
-                        "input": inp_shape,
-                        "mask": mask_shape,
-                        "indices": [indices_shape] * len(inp_shape),
-                        "values": values_shape,
-                    },
-                    params={"mask_dtype": "torch.int32"},
-                    builder_args=(config, 0),
-                ),
-            )
-
-    def build_inputs(self, case):
-        inp_shape, mask_shape, indices_shape, values_shape = case.builder_args[0].builder_args[0]
-        inp = torch.randn(inp_shape, dtype=case.dtype, device=self.device)
-        mask = torch.randint(
-            0, 2, mask_shape, dtype=torch.int32, device=self.device
-        )
-        flat_indices = torch.randint(
-            0, max(inp.numel(), 1), indices_shape, device=self.device
-        )
-        values = torch.randn(values_shape, dtype=case.dtype, device=self.device)
-        idx_tuple = _flat_to_per_dim_indices(flat_indices, inp_shape)
-        return inp, mask, idx_tuple, values
-
 
 @pytest.mark.unsafe_masked_index_put_accumulate
 def test_unsafe_masked_index_put_accumulate():

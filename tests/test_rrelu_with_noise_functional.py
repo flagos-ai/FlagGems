@@ -45,13 +45,10 @@ def test_rrelu_with_noise_functional(shape, dtype):
     ref_out, ref_noise_out = torch.ops.aten.rrelu_with_noise_functional(
         ref_inp, ref_noise, lower, upper, training, None
     )
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "rrelu_with_noise_functional",
-        flag_gems.rrelu_with_noise_functional,
-    )
-    res_out, res_noise_out = gems_op(
-        inp, noise, lower, upper, training, None
-    )
+    with flag_gems.use_gems():
+        res_out, res_noise_out = torch.ops.aten.rrelu_with_noise_functional(
+            inp, noise, lower, upper, training, None
+        )
 
     # Compare output tensors
     utils.gems_assert_close(res_out, ref_out, dtype)

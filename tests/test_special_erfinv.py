@@ -31,11 +31,8 @@ def test_special_erfinv(shape, dtype):
         ref_out = torch.ops.aten.special_erfinv(ref_x.float()).to(dtype)
     else:
         ref_out = torch.ops.aten.special_erfinv(ref_x)
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "special_erfinv",
-        flag_gems.special_erfinv,
-    )
-    act_out = gems_op(x)
+    with flag_gems.use_gems():
+        act_out = torch.ops.aten.special_erfinv(x)
     utils.gems_assert_close(act_out, ref_out, dtype)
 
 

@@ -67,10 +67,9 @@ def test_adaptive_max_pool3d_backward(shape, output_size, dtype):
     ref_out = torch.ops.aten.adaptive_max_pool3d_backward(
         ref_grad_output, ref_inp, ref_indices
     )
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "adaptive_max_pool3d_backward",
-        flag_gems.adaptive_max_pool3d_backward,
-    )
-    res_out = gems_op(grad_output, inp, res_indices)
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.adaptive_max_pool3d_backward(
+            grad_output, inp, res_indices
+        )
 
     utils.gems_assert_close(res_out, ref_out, dtype)

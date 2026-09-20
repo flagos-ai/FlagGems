@@ -23,21 +23,9 @@ def _input_fn(shape, dtype, device):
     yield inp, shape, 3.1415926  # self, size, fill_value
 
 
-def _case_fn(shape, dtype):
-    del dtype
-    yield base.BenchmarkCasePlan(
-        shape={"self": shape},
-        params={"size": shape, "fill_value": 3.1415926},
-        builder_args=(shape, 0),
-    )
-
-
 @pytest.mark.new_full
 def test_new_full():
     bench = base.GenericBenchmark(
-        op_name="new_full",
-        case_fn=_case_fn,
-        build_inputs_fn=base.build_inputs_from_generic_input_fn(_input_fn),
-        torch_op=torch.Tensor.new_full,
+        op_name="new_full", input_fn=_input_fn, torch_op=torch.Tensor.new_full
     )
     bench.run()

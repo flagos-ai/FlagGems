@@ -18,19 +18,8 @@ import torch
 from . import base, consts
 
 
-def empty_case_fn(shape, dtype):
-    del dtype
-    yield base.BenchmarkCasePlan(
-        shape={"size": shape},
-        builder_args=(shape,),
-    )
-
-
-def empty_build_inputs_fn(plan, dtype, device):
-    del dtype, device
-    # Keep ``size`` as one public ABI argument instead of flattening the shape
-    # tuple into multiple positional arguments.
-    return (plan.builder_args[0],)
+def empty_input_fn(shape, dtype, device):
+    yield shape
 
 
 def empty_permuted_input_fn(shape, dtype, device):
@@ -56,7 +45,6 @@ def test_empty():
         op_name="empty",
         torch_op=torch.empty,
         dtypes=consts.FLOAT_DTYPES,
-        case_fn=empty_case_fn,
-        build_inputs_fn=empty_build_inputs_fn,
+        input_fn=empty_input_fn,
     )
     bench.run()

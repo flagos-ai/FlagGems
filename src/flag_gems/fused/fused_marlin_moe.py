@@ -16,8 +16,47 @@
 """
 Fused Marlin MoE for FlagGems.
 
-Aligns the interface of vLLM v0.20.0:
+Aligns the *call signature* of vLLM v0.20.0:
     vllm/model_executor/layers/fused_moe/fused_marlin_moe.py :: fused_marlin_moe
+
+WEIGHT LAYOUT -- NOT the vLLM Marlin layout
+-------------------------------------------
+This op does NOT consume Marlin-repacked weights. Do NOT pass the output of vLLM's
+`gptq_marlin_repack` / `gptq_marlin_moe_repack` / `marlin_quantize` (or
+`marlin_permute_scales`): the two layouts are different permutations of the same
+quantized codes and are not interchangeable.
+
+What IS expected is the plain row-major GPTQ layout, i.e. `nn.Linear.weight`
+orientation `(out_features, in_features)` with the reduction dim packed:
+
+    quant                 w1                       w2                  scale dtype
+    INT4 (uint4b8)        (E, 2*I, K//2)  uint8    (E, K, I//2) uint8  == act dtype
+    INT8 (uint8b128)      (E, 2*I, K)     uint8    (E, K, I)    uint8  == act dtype
+    MXFP4 (fp4_e2m1)      (E, 2*I, K//2)  uint8    (E, K, I//2) uint8  float8_e8m0fnu
+
+    w1_scale: (E, 2*I, K//group_size)      w2_scale: (E, K, I//group_size)
+
+  - INT4 / MXFP4 pack two codes per byte along the reduction dim:
+    byte[n, k//2] holds k even in the LOW nibble and k odd in the HIGH nibble
+    (`packed = q[:, 1::2] * 16 + q[:, ::2]`).
+  - Scales are un-permuted, one column per group along the reduction dim.
+  - K = hidden_size, I = intermediate_size, E = num_experts.
+
+For comparison, vLLM Marlin stores w1 as `(E, K//16, 2*I*16//pack)` int32 after a
+16x16 tile + mma-fragment permutation, and w1_scale as `(E, K//gs, 2*I)` with a
+64-column `scale_perm` shuffle. Neither is accepted here.
+
+For vLLM integration: vLLM cannot call this op as a drop-in replacement. Its
+weight-processing step (`process_weights_after_loading`) must be patched to skip
+the Marlin repack and pack as the benchmark helpers do:
+
+    benchmark/test_fused_marlin_moe_w4a16_int4.py  :: _wna16_quantize_per_expert
+    benchmark/test_fused_marlin_moe_w8a16_int8.py  :: _wna16_quantize_per_expert_int8
+    benchmark/test_fused_marlin_moe_w4a16_mxfp4.py :: _mxfp4_quantize_per_expert
+
+Each file also keeps the sibling `_marlin_*` helper that builds vLLM's layout
+from the same source weights, so the two conversions can be compared side by side.
+-------------------------------------------
 
 PHASE 2 (this file): bypass `fused_experts_impl`'s dequant-then-FP16-GEMM
 shortcut and dispatch directly to the wna16 Triton kernel
@@ -2416,7 +2455,18 @@ def fused_marlin_moe(
     clamp_limit: Optional[float] = None,
     group_size: int = 128,
 ) -> torch.Tensor:
-    """Phase-2 entry point: dispatch to local wna16-using impl."""
+    """Phase-2 entry point: dispatch to local wna16-using impl.
+
+    NOTE: the signature mirrors vLLM's ``fused_marlin_moe``, but the weight and
+    scale tensors must be in the plain row-major GPTQ layout described in the
+    module docstring, NOT the Marlin-repacked layout vLLM holds after
+    ``process_weights_after_loading`` (``gptq_marlin_moe_repack`` /
+    ``marlin_moe_permute_scales``). The two layouts are different permutations
+    of the same codes; feeding Marlin-format tensors here will fail on a shape
+    assertion or, worse, silently compute garbage. See the ``_wna16_*`` /
+    ``_mxfp4_*`` helpers in ``benchmark/test_fused_marlin_moe_*.py`` for how to
+    produce the expected layout.
+    """
     # ---- MVP guardrails --------------------------------------------------
     if quant_type_id not in _SUPPORTED_QUANT_TYPES:
         raise NotImplementedError(

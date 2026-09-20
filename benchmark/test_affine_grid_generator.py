@@ -41,27 +41,6 @@ class AffineGridBenchmark(base.Benchmark):
             align_corners = False
             yield theta, size, align_corners
 
-    def get_case_iter(self, dtype):
-        for ordinal, shape in enumerate(self.shapes):
-            n, h, w = shape
-            yield self._case_from_plan(
-                dtype,
-                ordinal,
-                base.BenchmarkCasePlan(
-                    shape={"theta": (n, 2, 3)},
-                    params={"size": [n, 3, h, w], "align_corners": False},
-                    builder_args=(shape, 0),
-                ),
-            )
-
-    def build_inputs(self, case):
-        shape = case.builder_args[0].builder_args[0]
-        N, H, W = shape
-        theta = torch.randn((N, 2, 3), dtype=case.dtype, device=self.device)
-        size = [N, 3, H, W]
-        align_corners = False
-        return theta, size, align_corners
-
 
 @pytest.mark.affine_grid_generator
 def test_affine_grid_generator():

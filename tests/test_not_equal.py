@@ -20,13 +20,6 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
-def _not_equal(*args, **kwargs):
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "not_equal", flag_gems.not_equal
-    )
-    return gems_op(*args, **kwargs)
-
-
 @pytest.mark.not_equal
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -37,7 +30,8 @@ def test_accuracy_not_equal(shape, dtype):
     ref_inp2 = utils.to_reference(inp2)
 
     ref_out = torch.not_equal(ref_inp1, ref_inp2)
-    res_out = _not_equal(inp1, inp2)
+    with flag_gems.use_gems():
+        res_out = torch.not_equal(inp1, inp2)
 
     utils.gems_assert_equal(res_out, ref_out)
 

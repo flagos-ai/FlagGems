@@ -47,10 +47,7 @@ def test_fractional_max_pool2d(shape, kernel_size, output_size, dtype):
         _random_samples=ref_random_samples,
     )
 
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "fractional_max_pool2d", flag_gems.fractional_max_pool2d
-    )
-    res_out, res_indices = gems_op(
+    res_out, res_indices = flag_gems.fractional_max_pool2d(
         inp,
         kernel_size=kernel_size,
         output_size=output_size,

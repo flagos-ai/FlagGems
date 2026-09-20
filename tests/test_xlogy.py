@@ -20,11 +20,6 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
-def _xlogy(*args, **kwargs):
-    gems_op = flag_gems.testing.resolve_gems_op("xlogy", flag_gems.xlogy)
-    return gems_op(*args, **kwargs)
-
-
 @pytest.mark.xlogy
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -37,7 +32,8 @@ def test_xlogy(shape, dtype):
     ref_y = utils.to_reference(y, True)
     ref_out = torch.xlogy(ref_x, ref_y)
 
-    res_out = _xlogy(x, y)
+    with flag_gems.use_gems():
+        res_out = torch.xlogy(x, y)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -76,7 +72,8 @@ def test_xlogy_special_values(dtype):
     ref_y = utils.to_reference(y, True)
     ref_out = torch.xlogy(ref_x, ref_y)
 
-    res_out = _xlogy(x, y)
+    with flag_gems.use_gems():
+        res_out = torch.xlogy(x, y)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 

@@ -45,38 +45,6 @@ class LSTMCellBenchmark(base.Benchmark):
             )
             yield input_gates, hidden_gates, cx
 
-    def get_case_iter(self, dtype):
-        for ordinal, shape in enumerate(self.shapes):
-            batch_size, hidden_size = shape
-            gates_shape = (batch_size, 4 * hidden_size)
-            yield self._case_from_plan(
-                dtype,
-                ordinal,
-                base.BenchmarkCasePlan(
-                    shape={
-                        "input_gates": gates_shape,
-                        "hidden_gates": gates_shape,
-                        "cx": (batch_size, hidden_size),
-                    },
-                    params={"input_bias": None, "hidden_bias": None},
-                    builder_args=(shape, 0),
-                ),
-            )
-
-    def build_inputs(self, case):
-        shape = case.builder_args[0].builder_args[0]
-        batch_size, hidden_size = shape
-        input_gates = torch.randn(
-            batch_size, 4 * hidden_size, dtype=case.dtype, device=self.device
-        )
-        hidden_gates = torch.randn(
-            batch_size, 4 * hidden_size, dtype=case.dtype, device=self.device
-        )
-        cx = torch.randn(
-            batch_size, hidden_size, dtype=case.dtype, device=self.device
-        )
-        return input_gates, hidden_gates, cx
-
 
 @pytest.mark.thnn_fused_lstm_cell
 def test_thnn_fused_lstm_cell():

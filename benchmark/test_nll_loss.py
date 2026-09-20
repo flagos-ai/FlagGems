@@ -30,44 +30,11 @@ def nll_loss_input_fn(shape, cur_dtype, device):
         yield inp, target, {"weight": weight, "ignore_index": 1, "reduction": "none"}
 
 
-def nll_loss_case_fn(shape, dtype):
-    del dtype
-    target_shape = list(shape)
-    del target_shape[1]
-    yield base.BenchmarkCasePlan(
-        shape={"input": shape, "target": target_shape},
-        builder_args=(shape, False),
-    )
-    if base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
-        yield base.BenchmarkCasePlan(
-            shape={
-                "input": shape,
-                "target": target_shape,
-                "weight": (shape[1],),
-            },
-            params={"ignore_index": 1, "reduction": "none"},
-            builder_args=(shape, True),
-        )
-
-
-def materialize_nll_loss_case(plan, dtype, device):
-    shape, with_weight = plan.builder_args
-    inp = utils.generate_tensor_input(shape, dtype, device)
-    target_shape = list(shape)
-    del target_shape[1]
-    target = torch.randint(0, shape[-1], target_shape, device=device)
-    if not with_weight:
-        return inp, target
-    weight = torch.randn(shape[1], dtype=dtype, device=device)
-    return inp, target, {"weight": weight, **plan.params}
-
-
 @pytest.mark.nll_loss_forward
 def test_nll_loss_forward():
     bench = base.GenericBenchmark2DOnly(
         op_name="nll_loss_forward",
-        case_fn=nll_loss_case_fn,
-        build_inputs_fn=materialize_nll_loss_case,
+        input_fn=nll_loss_input_fn,
         torch_op=torch.nn.functional.nll_loss,
         dtypes=consts.FLOAT_DTYPES,
     )
@@ -78,8 +45,7 @@ def test_nll_loss_forward():
 def test_nll_loss_backward():
     bench = base.GenericBenchmark2DOnly(
         op_name="nll_loss_backward",
-        case_fn=nll_loss_case_fn,
-        build_inputs_fn=materialize_nll_loss_case,
+        input_fn=nll_loss_input_fn,
         torch_op=torch.nn.functional.nll_loss,
         dtypes=consts.FLOAT_DTYPES,
         is_backward=True,

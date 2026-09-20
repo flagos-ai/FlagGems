@@ -42,7 +42,7 @@ def test_selu_(shape, dtype):
     ref_inp = utils.to_reference(inp.clone())
 
     ref_out = torch.ops.aten.selu_(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("selu_", flag_gems.selu_)
-    res_out = gems_op(inp)
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.selu_(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

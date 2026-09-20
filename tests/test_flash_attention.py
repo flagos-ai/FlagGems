@@ -140,16 +140,13 @@ def gems_flash_fwd(
     q = q.transpose(1, 2)
     k = k.transpose(1, 2)
     v = v.transpose(1, 2)
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "flash_attention_forward", flag_gems.flash_attention_forward
-    )
     (
         out,
         lse,
         seed,
         offset,
         debug_softmax,
-    ) = gems_op(
+    ) = flag_gems.flash_attention_forward(
         q,
         k,
         v,

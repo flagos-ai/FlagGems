@@ -20,16 +20,9 @@ import flag_gems
 from . import base, consts
 
 
-def _case_fn(shape, dtype):
-    del dtype
-    yield base.BenchmarkCasePlan(
-        shape={"input": shape},
-        builder_args=(shape,),
-    )
-
-
-def _build_inputs_fn(plan, dtype, device):
-    return (torch.rand(plan.builder_args[0], dtype=dtype, device=device),)
+def _input_fn(shape, dtype, device):
+    inp = torch.rand(shape, dtype=dtype, device=device)
+    yield (inp,)
 
 
 @pytest.mark.poisson
@@ -40,8 +33,7 @@ def test_poisson():
     bench = base.GenericBenchmark2DOnly(
         op_name="poisson",
         torch_op=torch.poisson,
-        case_fn=_case_fn,
-        build_inputs_fn=_build_inputs_fn,
+        input_fn=_input_fn,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

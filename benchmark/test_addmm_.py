@@ -15,8 +15,6 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base, consts
 
 
@@ -36,7 +34,6 @@ def test_addmm_(monkeypatch):
         op_name="addmm_",
         input_fn=_input_fn,
         torch_op=lambda bias, mat1, mat2: bias.addmm_(mat1, mat2),
-        gems_op=flag_gems.addmm_,
         dtypes=consts.FLOAT_DTYPES,
     )
 

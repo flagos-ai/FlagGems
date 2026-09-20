@@ -29,8 +29,8 @@ def test_clamp_max(shape, max, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.clamp_max(ref_inp, max)
-    gems_op = flag_gems.testing.resolve_gems_op("clamp_max", flag_gems.clamp_max)
-    res_out = gems_op(inp, max)
+    with flag_gems.use_gems():
+        res_out = torch.clamp_max(inp, max)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -44,7 +44,7 @@ def test_clamp_max_(shape, max, dtype):
     ref_inp = utils.to_reference(inp.clone())
 
     ref_out = ref_inp.clamp_max_(max)
-    gems_op = flag_gems.testing.resolve_gems_op("clamp_max_", flag_gems.clamp_max_)
-    res_out = gems_op(inp, max)
+    with flag_gems.use_gems():
+        res_out = inp.clamp_max_(max)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

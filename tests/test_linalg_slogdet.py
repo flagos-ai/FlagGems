@@ -41,16 +41,13 @@ def test_linalg_slogdet(shape, dtype):
     ref_out = torch.linalg.slogdet(ref_A)
 
     # Compute with FlagGems
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "linalg_slogdet",
-        flag_gems.linalg_slogdet,
-    )
-    res_sign, res_logabsdet = gems_op(A)
+    with flag_gems.use_gems():
+        res_out = torch.linalg.slogdet(A)
 
     # Compare sign
-    utils.gems_assert_close(res_sign, ref_out.sign, dtype)
+    utils.gems_assert_close(res_out.sign, ref_out.sign, dtype)
 
     # Compare logabsdet (more tolerant for floating point)
     utils.gems_assert_close(
-        res_logabsdet, ref_out.logabsdet, dtype, reduce_dim=shape[-1]
+        res_out.logabsdet, ref_out.logabsdet, dtype, reduce_dim=shape[-1]
     )

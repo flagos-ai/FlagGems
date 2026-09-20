@@ -20,11 +20,6 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
-def _digamma_(self):
-    gems_op = flag_gems.testing.resolve_gems_op("digamma_", flag_gems.digamma_)
-    return gems_op(self)
-
-
 @pytest.mark.digamma_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -33,6 +28,7 @@ def test_digamma_(shape, dtype):
     ref_inp = utils.to_reference(inp.clone())
 
     ref_out = ref_inp.digamma_()
-    res_out = _digamma_(inp)
+    with flag_gems.use_gems():
+        res_out = inp.digamma_()
 
     utils.gems_assert_close(res_out, ref_out, dtype)

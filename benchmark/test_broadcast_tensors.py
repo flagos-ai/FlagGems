@@ -23,37 +23,19 @@ class BroadcastTensorsBenchmark(base.Benchmark):
         ]
 
     def get_input_iter(self, dtype) -> Generator:
-        for case in self.get_case_iter(dtype):
-            yield self.build_inputs(case)
-
-    def supports_cases(self) -> bool:
-        return type(self).get_input_iter is BroadcastTensorsBenchmark.get_input_iter
-
-    def get_case_iter(self, dtype) -> Generator:
-        for ordinal, shape in enumerate(self.shapes):
+        for shape in self.shapes:
+            # Produce two tensors with different shapes that require actual broadcasting
             if len(shape) >= 2:
                 shape_a = list(shape)
                 shape_a[0] = 1
                 shape_b = list(shape)
                 shape_b[1] = 1
-                input_shapes = (tuple(shape_a), tuple(shape_b))
+                inp1 = utils.generate_tensor_input(tuple(shape_a), dtype, self.device)
+                inp2 = utils.generate_tensor_input(tuple(shape_b), dtype, self.device)
             else:
-                input_shapes = (shape, (1,))
-            yield self._case_from_plan(
-                dtype,
-                ordinal,
-                base.BenchmarkCasePlan(
-                    shape={"inputs": input_shapes, "output": shape},
-                    builder_args=input_shapes,
-                ),
-            )
-
-    def build_inputs(self, case):
-        plan = case.builder_args[0]
-        shape_a, shape_b = plan.builder_args
-        inp1 = utils.generate_tensor_input(shape_a, case.dtype, self.device)
-        inp2 = utils.generate_tensor_input(shape_b, case.dtype, self.device)
-        return inp1, inp2
+                inp1 = utils.generate_tensor_input(shape, dtype, self.device)
+                inp2 = utils.generate_tensor_input((1,), dtype, self.device)
+            yield inp1, inp2
 
 
 @pytest.mark.broadcast_tensors

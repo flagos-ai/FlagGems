@@ -901,6 +901,81 @@ def test_qparams_rejects_zero_tiny_scale():
     cases._assert_pair((6e-5, 0), (6e-5, 0))
 
 
+def test_direct_candidate_override_restores_after_failure(monkeypatch):
+    default = lambda value: value
+    first = lambda value: value + 1
+    second = lambda value: value + 2
+    monkeypatch.setattr(flag_gems, "validation_candidate", default, raising=False)
+    with testing.override_gems_op("validation_candidate", first):
+        with pytest.raises(RuntimeError, match="candidate failed"):
+            with testing.override_gems_op("validation_candidate", second):
+                assert testing.resolve_gems_op("validation_candidate") is second
+                raise RuntimeError("candidate failed")
+        assert testing.resolve_gems_op("validation_candidate") is first
+    assert testing.resolve_gems_op("validation_candidate") is default
+
+
+@pytest.mark.parametrize("profile", [False, True])
+def test_candidate_replay_preserves_master_case_contract(
+    bench_config, monkeypatch, profile
+):
+    from benchmark.conftest import BenchConfig
+    from benchmark.consts import BenchLevel
+
+    config = BenchConfig()
+    config.current_nodeid = "benchmark/test_validation.py::test_replay"
+    config.bench_level = BenchLevel.CORE
+    monkeypatch.setattr(bench_config, "Config", config)
+    materialized = []
+    calls = []
+
+    def build(plan, dtype, device):
+        materialized.append(plan.shape["input"])
+        return (torch.ones(plan.shape["input"], dtype=dtype),)
+
+    bench = bench_config.GenericBenchmark(
+        op_name="validation_replay",
+        torch_op=lambda *args: pytest.fail("native reference invoked"),
+        gems_op=lambda value: calls.append(
+            testing.current_gems_op_case("validation_replay")
+        ),
+        case_fn=lambda shape, dtype: iter(
+            [bench_config.BenchmarkCasePlan(shape={"input": shape})]
+        ),
+        build_inputs_fn=build,
+        dtypes=[torch.float32],
+    )
+    bench.shapes = [(2,), (3,)]
+    monkeypatch.setattr(bench, "init_user_config", lambda: None)
+    monkeypatch.setattr(
+        bench, "_measure_input", lambda *args, **kwargs: pytest.fail("timing invoked")
+    )
+    events = []
+    monkeypatch.setattr(
+        bench, "_external_profiler_start", lambda: events.append("start")
+    )
+    monkeypatch.setattr(bench, "_external_profiler_stop", lambda: events.append("stop"))
+    ids = [case.case_id for case in bench.list_cases().cases]
+    assert materialized == []
+
+    if profile:
+        config.profile_only = True
+        config.profile_warmup = 2
+        config.profile_iterations = 3
+        config.case_ids = [ids[1]]
+        assert bench.run() == [ids[1]]
+        assert calls == [ids[1]] * 5
+        assert materialized == [(3,), (3,)]
+        assert events == ["start", "stop"]
+    else:
+        config.preflight_only = True
+        assert bench.run() == ids
+        assert calls == ids
+        assert materialized == [(2,), (3,)]
+        assert events == []
+    assert testing.current_gems_op_case() is None
+
+
 def test_add_batch_dim_rejects_copied_storage():
     from tests import test__add_batch_dim as cases
 

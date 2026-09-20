@@ -31,33 +31,6 @@ class RreluWithNoiseFunctionalBenchmark(base.UnaryPointwiseBenchmark):
             generator = None
             yield inp, noise, lower, upper, training, generator
 
-    def get_case_iter(self, dtype: torch.dtype) -> Generator:
-        for ordinal, shape in enumerate(self.shapes):
-            yield self._case_from_plan(
-                dtype,
-                ordinal,
-                base.BenchmarkCasePlan(
-                    shape={"input": shape, "noise": shape},
-                    params={
-                        "lower": 0.125,
-                        "upper": 1.0 / 3.0,
-                        "training": True,
-                        "generator": None,
-                    },
-                    builder_args=(shape, 0),
-                ),
-            )
-
-    def build_inputs(self, case):
-        shape = case.builder_args[0].builder_args[0]
-        inp = utils.generate_tensor_input(shape, case.dtype, self.device)
-        noise = torch.rand_like(inp)
-        lower = 0.125
-        upper = 1.0 / 3.0
-        training = True
-        generator = None
-        return inp, noise, lower, upper, training, generator
-
 
 @pytest.mark.rrelu_with_noise_functional
 def test_rrelu_with_noise_functional():

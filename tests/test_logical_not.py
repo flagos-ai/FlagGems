@@ -61,8 +61,8 @@ def test_logical_not_(shape, dtype):
 
     ref_inp = utils.to_reference(inp.clone())
     ref_out = ref_inp.logical_not_()
-    gems_op = flag_gems.testing.resolve_gems_op("logical_not_", flag_gems.logical_not_)
-    res_out = gems_op(inp)
+    with flag_gems.use_gems():
+        res_out = inp.logical_not_()
 
     utils.gems_assert_equal(res_out, ref_out)
     utils.gems_assert_equal(inp, ref_inp)

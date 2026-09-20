@@ -25,21 +25,12 @@ def xlogy_input_fn(shape, dtype, device):
     yield inp1, inp2
 
 
-def xlogy_case_fn(shape, dtype):
-    del dtype
-    yield base.BenchmarkCasePlan(
-        shape={"input": shape, "other": shape},
-        builder_args=(shape, 0),
-    )
-
-
 @pytest.mark.xlogy
 def test_xlogy():
     bench = base.GenericBenchmark(
         op_name="xlogy",
         torch_op=torch.xlogy,
-        case_fn=xlogy_case_fn,
-        build_inputs_fn=base.build_inputs_from_generic_input_fn(xlogy_input_fn),
+        input_fn=xlogy_input_fn,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

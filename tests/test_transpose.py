@@ -30,13 +30,6 @@ TRANSPOSE_SHAPES = [
 ]
 
 
-def _transpose(inp, dim0, dim1):
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "transpose", flag_gems.transpose
-    )
-    return gems_op(inp, dim0, dim1)
-
-
 @pytest.mark.transpose
 @pytest.mark.parametrize("shape", TRANSPOSE_SHAPES)
 @pytest.mark.parametrize("dim_pair", TRANSPOSE_DIM_PAIRS)
@@ -62,7 +55,8 @@ def test_transpose(shape, dim_pair, dtype):
         pytest.skip(f"dim pair {dim_pair} out of range for {ndim}D tensor")
 
     ref_out = torch.ops.aten.transpose.int(ref_inp, dim0, dim1)
-    res_out = _transpose(inp, dim0, dim1)
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.transpose.int(inp, dim0, dim1)
 
     utils.gems_assert_equal(res_out, ref_out)
     # transpose.int returns a view: verify shape/strides match aten.
@@ -87,7 +81,8 @@ def test_transpose_same_dim(shape, dim0, dim1, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.ops.aten.transpose.int(ref_inp, dim0, dim1)
-    res_out = _transpose(inp, dim0, dim1)
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.transpose.int(inp, dim0, dim1)
 
     utils.gems_assert_equal(res_out, ref_out)
     assert res_out.shape == ref_out.shape
@@ -117,7 +112,8 @@ def test_transpose_non_contiguous(shape, dtype):
         ref_inp = ref_base
 
     ref_out = torch.ops.aten.transpose.int(ref_inp, 0, -1)
-    res_out = _transpose(inp, 0, -1)
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.transpose.int(inp, 0, -1)
 
     utils.gems_assert_equal(res_out, ref_out)
     assert res_out.shape == ref_out.shape
@@ -135,5 +131,5 @@ def test_transpose_non_contiguous(shape, dtype):
 )
 def test_transpose_invalid_dims(shape, dim0, dim1):
     inp = torch.randn(shape, device=flag_gems.device)
-    with pytest.raises(IndexError):
-        _transpose(inp, dim0, dim1)
+    with flag_gems.use_gems(), pytest.raises(IndexError):
+        torch.ops.aten.transpose.int(inp, dim0, dim1)

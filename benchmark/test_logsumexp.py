@@ -18,26 +18,15 @@ import torch
 from . import base, consts, utils
 
 
-def _case_fn(shape, dtype):
-    del dtype
-    yield base.BenchmarkCasePlan(
-        shape={"input": shape},
-        params={"dim": 1},
-        builder_args=(shape,),
-    )
-
-
-def _build_inputs_fn(plan, dtype, device):
-    shape = plan.builder_args[0]
+def _input_fn(shape, dtype, device):
     inp = utils.generate_tensor_input(shape, dtype, device)
-    return inp, plan.params["dim"]
+    yield inp, 1
 
 
 @pytest.mark.logsumexp
 def test_logsumexp():
     bench = base.GenericBenchmarkExcluse1D(
-        case_fn=_case_fn,
-        build_inputs_fn=_build_inputs_fn,
+        input_fn=_input_fn,
         op_name="logsumexp",
         torch_op=torch.logsumexp,
         dtypes=consts.FLOAT_DTYPES,

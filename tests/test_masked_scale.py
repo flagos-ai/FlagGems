@@ -45,10 +45,7 @@ def test_masked_scale(shape, dtype):
         ref_mask.to(torch.bool), ref_inp * scale, torch.zeros_like(ref_inp)
     )
 
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "masked_scale",
-        flag_gems._masked_scale,
-    )
-    res_out = gems_op(inp, mask, scale)
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten._masked_scale(inp, mask, scale)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

@@ -24,20 +24,10 @@ def _input_fn(shape, dtype, device):
     yield inp, 0.5, True
 
 
-def _case_fn(shape, dtype):
-    del dtype
-    yield base.BenchmarkCasePlan(
-        shape={"input": shape},
-        params={"p": 0.5, "train": True},
-        builder_args=(shape, 0),
-    )
-
-
 @pytest.mark.alpha_dropout
 def test_alpha_dropout():
     bench = base.GenericBenchmarkExcluse1D(
-        case_fn=_case_fn,
-        build_inputs_fn=base.build_inputs_from_generic_input_fn(_input_fn),
+        input_fn=_input_fn,
         op_name="alpha_dropout",
         torch_op=torch.alpha_dropout,
         dtypes=consts.FLOAT_DTYPES,

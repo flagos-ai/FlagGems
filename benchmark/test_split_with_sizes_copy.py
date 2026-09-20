@@ -46,36 +46,6 @@ class SplitWithSizesCopyBenchmark(base.Benchmark):
             ]
             yield inp, split_sizes, 0  # dim=0
 
-    def get_case_iter(self, dtype):
-        for ordinal, shape in enumerate(self.shapes):
-            dim_size = shape[0]
-            split_sizes = [
-                dim_size // 4,
-                dim_size // 4,
-                dim_size - 2 * (dim_size // 4),
-            ]
-            output_shapes = [(size,) + shape[1:] for size in split_sizes]
-            yield self._case_from_plan(
-                dtype,
-                ordinal,
-                base.BenchmarkCasePlan(
-                    shape={"input": shape, "outputs": output_shapes},
-                    params={"split_sizes": split_sizes, "dim": 0},
-                    builder_args=(shape, 0),
-                ),
-            )
-
-    def build_inputs(self, case):
-        shape = case.builder_args[0].builder_args[0]
-        inp = torch.randn(shape, dtype=case.dtype, device=self.device)
-        dim_size = shape[0]
-        split_sizes = [
-            dim_size // 4,
-            dim_size // 4,
-            dim_size - 2 * (dim_size // 4),
-        ]
-        return inp, split_sizes, 0
-
 
 @pytest.mark.split_with_sizes_copy
 def test_split_with_sizes_copy():

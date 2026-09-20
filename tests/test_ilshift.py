@@ -28,11 +28,6 @@ INPLACE_BITWISE_SHAPES = [
 ]
 
 
-def _ilshift(self, other):
-    gems_op = flag_gems.testing.resolve_gems_op("ilshift", flag_gems.__ilshift__)
-    return gems_op(self, other)
-
-
 @pytest.mark.ilshift
 @pytest.mark.parametrize("shapes", INPLACE_BITWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.ALL_INT_DTYPES + [torch.uint8])
@@ -49,5 +44,6 @@ def test_ilshift(shapes, dtype):
     ref_b = utils.to_reference(res_b)
 
     ref_a.__ilshift__(ref_b)
-    _ilshift(res_a, res_b)
+    with flag_gems.use_gems():
+        res_a.__ilshift__(res_b)
     utils.gems_assert_close(res_a, ref_a, dtype)

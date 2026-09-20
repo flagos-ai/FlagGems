@@ -1,20 +1,8 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import logging
+import math
 import os
 
+import torch
 import triton
 import triton.language as tl
 from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
@@ -66,26 +54,78 @@ def ge_func_scalar(x, y):
 
 def ge_scalar(A, B):
     logger.debug("GEMS_KUNLUNXIN GE_SCALAR")
+    numel = A.numel()
+    dtype = A.dtype
+    if A.is_contiguous() and dtype in (torch.float16, torch.float32, torch.bfloat16):
+        s = float(B)
+        if math.isfinite(s) and s == float(torch.tensor(s, dtype=dtype).item()):
+            if numel >= _GE_SCALAR_FAST_TILE and numel % _GE_SCALAR_FAST_TILE == 0:
+                return _ge_scalar_fast(A, s, (numel // _GE_SCALAR_FAST_TILE,))
+            if numel >= _GE_SCALAR_MASKED_MIN and numel % _GE_SCALAR_FAST_TILE != 0:
+                return _ge_scalar_fast_masked(A, s, numel)
     res = ge_func_scalar(A, B)
     return res
 
 
-# greater_equal_ is the in-place alias of ge_ (out = (x >= y) written back into
-# x). It was NOT overridden by kunlunxin, so it fell to the generic
-# ops/greater_equal.py which calls the generic ops/ge.py::ge_func -- a bare
-# `@pointwise_dynamic` with NO CodeGenConfig -> discrete / launch-bound slow
-# path. Baseline (IR ir-greater_equal_-dev0): large shapes ~0.005-0.011
-# ([64,64,65536] gems ~5.2s), total avg gems speedup ~0.0797.
-#
-# Fix: a dedicated tuned pointwise_dynamic that writes in place (out0=A).
-# CRITICAL: this in-place variant must NOT reuse ge's config_ -- ge's config has
-# `isCloseMemoryAsync=False` (async memory copy ON), and with in-place aliasing
-# (input tensor == output tensor) the async double-buffered copy path deadlocks
-# the device ("noc idle timeout" hang, confirmed on device 6). The out-of-place
-# ge is fine because its output is a fresh bool tensor (no aliasing). So use a
-# config with the DEFAULT isCloseMemoryAsync (True = async closed), mirroring the
-# proven in-place bool op logical_and_. Body returns tl.where(...,1,0) (int 0/1)
-# which stores cleanly into A's original fp16/bf16/fp32 dtype.
+_GE_SCALAR_FAST_TILE = 131072
+_GE_SCALAR_MASKED_MIN = 1 << 20
+
+
+@triton.jit
+def ge_scalar_fast_kernel(out_ptr, x_ptr, scalar, TILE: tl.constexpr):
+    pid = tl.program_id(0)
+    tid = pid * TILE + tl.arange(0, TILE)
+    x = tl.load(x_ptr + tid).to(tl.float32)
+    t = (scalar - x) * 1.0e38
+    tl.store(out_ptr + tid, tl.maximum(0.0, 1.0 - t))
+
+
+def _ge_scalar_fast(A, scalar, grid):
+    out32 = torch.empty_like(A, dtype=torch.float32)
+    ge_scalar_fast_kernel[grid](
+        out32,
+        A,
+        scalar,
+        TILE=_GE_SCALAR_FAST_TILE,
+        num_warps=4,
+        buffer_size_limit=8192,
+        unroll_num=16,
+        isCloseMemoryAsync=False,
+    )
+    out = torch.empty_like(A, dtype=torch.bool)
+    torch.ops.aten._copy_from(out32, out, False)
+    return out
+
+
+@triton.jit
+def ge_scalar_fast_masked_kernel(out_ptr, x_ptr, scalar, numel, TILE: tl.constexpr):
+    pid = tl.program_id(0)
+    tid = pid * TILE + tl.arange(0, TILE)
+    mask = tid < numel
+    x = tl.load(x_ptr + tid, mask=mask).to(tl.float32)
+    t = (scalar - x) * 1.0e38
+    tl.store(out_ptr + tid, tl.maximum(0.0, 1.0 - t), mask=mask)
+
+
+def _ge_scalar_fast_masked(A, scalar, numel):
+    out32 = torch.empty_like(A, dtype=torch.float32)
+    grid = (math.ceil(numel / _GE_SCALAR_FAST_TILE),)
+    ge_scalar_fast_masked_kernel[grid](
+        out32,
+        A,
+        scalar,
+        numel,
+        TILE=_GE_SCALAR_FAST_TILE,
+        num_warps=4,
+        buffer_size_limit=8192,
+        unroll_num=16,
+        isCloseMemoryAsync=False,
+    )
+    out = torch.empty_like(A, dtype=torch.bool)
+    torch.ops.aten._copy_from(out32, out, False)
+    return out
+
+
 config_inplace_ = CodeGenConfig(
     512,
     (65536, 65536, 65536),
@@ -97,10 +137,13 @@ config_inplace_ = CodeGenConfig(
 )
 
 
-@pointwise_dynamic(promotion_methods=[(0, 1, "ALWAYS_BOOL")], config=config_inplace_)
+@pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")], config=config_inplace_)
 @triton.jit
 def greater_equal_func_(x, y):
-    return tl.where(x.to(tl.float32) >= y.to(tl.float32), 1, 0)
+    t = (y - x) * 1.0e30
+    t = tl.maximum(0.0, t)
+    t = tl.minimum(1.0, t)
+    return 1.0 - t
 
 
 def greater_equal_(A, B):

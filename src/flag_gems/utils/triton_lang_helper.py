@@ -70,6 +70,15 @@ def _fallback_pow(x, exponent):
 
 
 @triton.jit
+def _fallback_asin(x):
+    # asin(x) == atan(x / sqrt(1 - x*x)); used when a backend's libdevice lacks a
+    # native asin (e.g. the sunrise tang fork). Borrowing the symbol is not enough
+    # there: it exists at the Python level but lowers to None, so the kernel fails
+    # to compile with "cannot convert None ... to tensor".
+    return tl.extra.libdevice.atan(x / tl.sqrt(1.0 - x * x))
+
+
+@triton.jit
 def _fallback_tanh(x):
     return 2.0 / (1.0 + tl.exp(-2.0 * x)) - 1.0
 
@@ -88,6 +97,29 @@ def _fallback_erfinv(x):
     for _ in range(2):
         y = y - (tl.math.erf(y) - abs_x) / (two_over_sqrt_pi * tl.math.exp(-y * y))
     return tl.where(x >= 0.0, y, -y)
+
+
+@triton.jit
+def _fallback_normcdfinv(p):
+    # Inverse of the standard normal CDF, used when a backend's libdevice lacks
+    # a native normcdfinv (e.g. the hip-based hygon fork).  Composed from
+    # _fallback_erfinv via ndtri(p) = sqrt(2) * erfinv(2p - 1), then polished
+    # with Newton iterations on Phi(x) = 0.5 * (1 + erf(x / sqrt(2))).
+    # special_ndtri.py notes the unpolished composition drifts to ~1.3e-05 abs
+    # error in float32; the refinement below brings it back near libdevice
+    # accuracy.  phi -> 0 as |x| -> inf, so the Newton step degenerates (0/0)
+    # for lanes where p is at/near 0 or 1 -- keep the erfinv estimate there.
+    x = 1.4142135623730951 * _fallback_erfinv(2.0 * p - 1.0)
+    # _fallback_erfinv hits 0/0 (-> nan) at the exact endpoints, where
+    # erfinv(+-1) is infinite; restore the exact values PyTorch/libdevice give.
+    x = tl.where(p == 0.0, float("-inf"), x)
+    x = tl.where(p == 1.0, float("inf"), x)
+    for _ in range(3):
+        phi = 0.3989422804014327 * tl.exp(-0.5 * x * x)  # 1 / sqrt(2*pi)
+        cdf = 0.5 * (1.0 + tl.math.erf(0.7071067811865476 * x))
+        step = tl.where((phi > 0.0) & (cdf == cdf), (cdf - p) / phi, 0.0)
+        x = x - step
+    return x
 
 
 @triton.jit
@@ -191,6 +223,49 @@ def _fallback_log2(x):
     # every backend.  Paired with exp2 in ops/pairwise_distance.py to compute
     # x**p, so it must be a true base-2 logarithm.
     return tl.log(x) * 1.4426950408889634  # 1 / ln(2)
+
+
+@triton.jit
+def _fallback_lgamma(x):
+    # Lanczos approximation with reflection for x < 0.5.  This uses only core
+    # Triton math operations so vendor forks whose libdevice does not expose
+    # lgamma (for example Sunrise's tang backend) can still import and compile
+    # operators which reference tl_extra_shim.lgamma.
+    x = x.to(tl.float32)
+    reflect = x < 0.5
+    y = tl.where(reflect, 1.0 - x, x)
+    z = y - 1.0
+    a = 0.9999999999998099
+    a += 676.5203681218851 / (z + 1.0)
+    a += -1259.1392167224028 / (z + 2.0)
+    a += 771.3234287776531 / (z + 3.0)
+    a += -176.6150291621406 / (z + 4.0)
+    a += 12.507343278686905 / (z + 5.0)
+    a += -0.13857109526572012 / (z + 6.0)
+    a += 9.984369578019572e-6 / (z + 7.0)
+    a += 1.5056327351493116e-7 / (z + 8.0)
+    t = z + 7.5
+    result = 0.9189385332046727 + (z + 0.5) * tl.log(t) - t + tl.log(a)
+
+    pi = 3.141592653589793
+    # Reduce the sine argument around the nearest integer.  Direct evaluation
+    # of sin(pi*x) loses precision near distant negative poles, while some
+    # backends also flush very small sin arguments around zero.  A short Taylor
+    # expansion is accurate in that latter range and uses only core arithmetic.
+    reduced = x - tl.floor(x + 0.5)
+    angle = pi * reduced
+    angle2 = angle * angle
+    sin_taylor = angle * (1.0 - angle2 / 6.0 + angle2 * angle2 / 120.0)
+    sin_pi_x = tl.where(tl.abs(angle) < 0.01, sin_taylor, tl.sin(angle))
+    reflected = tl.log(pi) - tl.log(tl.abs(sin_pi_x)) - result
+    result = tl.where(reflect, reflected, result)
+
+    # The reflection formula's finite-precision sin(pi*x) is not exactly zero
+    # at negative integers, so mark Gamma's poles explicitly.  lgamma(+/-inf)
+    # is +inf; NaNs naturally propagate through the approximation.
+    is_pole = (x <= 0.0) & (x == tl.floor(x))
+    result = tl.where(is_pole | (tl.abs(x) == float("inf")), float("inf"), result)
+    return result
 
 
 @triton.jit
@@ -1240,16 +1315,29 @@ def _fallback_erfc(x):
     return 1.0 - tl.math.erf(x)
 
 
+@triton.jit
+def _fallback_rcp_rn(x):
+    # Correctly-rounded reciprocal, used when a backend's libdevice lacks a
+    # native rcp_rn (e.g. the Ascend CANN backend). x is expected to already
+    # be fp32/fp64; casting 1.0 to x's dtype keeps the division from widening
+    # to fp64, which is what the callers of rcp_rn rely on.
+    return (1.0).to(x.dtype) / x
+
+
 _FALLBACK_SYMBOLS = {
     "pow": _fallback_pow,
+    "asin": _fallback_asin,
     "tanh": _fallback_tanh,
     "erfc": _fallback_erfc,
     "erfinv": _fallback_erfinv,
     "floor": _fallback_floor,
     "j0": _fallback_j0,
     "j1": _fallback_j1,
+    "lgamma": _fallback_lgamma,
     "log2": _fallback_log2,
     "nextafter": _fallback_nextafter,
+    "normcdfinv": _fallback_normcdfinv,
+    "rcp_rn": _fallback_rcp_rn,
     "sinpi": _fallback_sinpi,
     "y0": _fallback_y0,
     "y1": _fallback_y1,
@@ -1259,6 +1347,11 @@ _FALLBACK_SYMBOLS = {
 def _patch_missing_symbols(module, names):
     for name in names:
         if hasattr(module, name):
+            continue
+        # Some CPU libdevice implementations expose rint but omit nearbyint.
+        # FlagGems only needs their shared round-to-nearest-even value semantics.
+        if name == "nearbyint" and hasattr(module, "rint"):
+            setattr(module, name, module.rint)
             continue
         # Prefer the pure-triton fallback over borrowing from another backend's
         # libdevice.  This loop only runs for symbols the vendor's own libdevice
@@ -1282,6 +1375,7 @@ tl_extra_shim = _patch_missing_symbols(
     tl_extra_shim,
     (
         "acos",
+        "asin",
         "atan",
         "j0",
         "j1",
@@ -1308,8 +1402,11 @@ tl_extra_shim = _patch_missing_symbols(
         "lgamma",
         "log",
         "log2",
+        "nearbyint",
         "nextafter",
+        "normcdfinv",
         "pow",
+        "rcp_rn",
         "rint",
         "rsqrt",
         "silu",

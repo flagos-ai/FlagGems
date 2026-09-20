@@ -35,8 +35,8 @@ def test_zero(shape, dtype):
     act_x = x.clone()
 
     ref_out = torch.ops.aten.zero(ref_x)
-    gems_op = flag_gems.testing.resolve_gems_op("zero", flag_gems.zero)
-    act_out = gems_op(act_x)
+    with flag_gems.use_gems():
+        act_out = torch.ops.aten.zero(act_x)
 
     utils.gems_assert_close(act_out, ref_out, dtype)
 

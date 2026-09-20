@@ -22,8 +22,6 @@ import torch
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 
-
-_REGISTERED_OP_OVERRIDE_LOCK = RLock()
 _GEMS_OP_OVERRIDE_LOCK = RLock()
 _GEMS_OP_OVERRIDES = {}
 _MISSING = object()
@@ -60,9 +58,7 @@ def override_gems_op(operator: str, replacement: Callable) -> Iterator[Callable]
                 _GEMS_OP_OVERRIDES[operator] = previous
 
 
-def resolve_gems_op(
-    operator: str, default: Optional[Callable] = None
-) -> Callable:
+def resolve_gems_op(operator: str, default: Optional[Callable] = None) -> Callable:
     """Resolve an override or the operator's normal direct FlagGems callable."""
 
     _validate_gems_op(operator, default)
@@ -112,64 +108,6 @@ def current_gems_op_case(operator: Optional[str] = None) -> Optional[str]:
     if operator is not None and operator != current_operator:
         return None
     return case_id
-
-
-@contextmanager
-def override_registered_op(
-    operator: str, replacement: Callable
-) -> Iterator[Callable]:
-    """Temporarily replace exactly one registered operator implementation.
-
-    Kept for standalone dispatcher smoke tests and compatibility with archived
-    candidates. KernelGen's evaluation path uses ``override_gems_op`` only.
-    """
-
-    if not isinstance(operator, str) or not operator:
-        raise ValueError("operator must be a non-empty registration key.")
-    if not callable(replacement):
-        raise TypeError("replacement must be callable.")
-
-    import flag_gems as package
-
-    with _REGISTERED_OP_OVERRIDE_LOCK:
-        active_registrar = getattr(package, "current_work_registrar", None)
-        if active_registrar is not None:
-            raise RuntimeError(
-                "override_registered_op must be entered before flag_gems.use_gems()."
-            )
-
-        old_config = package._FULL_CONFIG
-        matches = [
-            (index, item)
-            for index, item in enumerate(old_config)
-            if item and item[0] == operator
-        ]
-        if len(matches) != 1:
-            raise ValueError(
-                f"Expected exactly one registration for '{operator}', "
-                f"found {len(matches)}."
-            )
-
-        index, old_entry = matches[0]
-        new_entry = (old_entry[0], replacement, *old_entry[2:])
-        new_config = list(old_config)
-        new_config[index] = new_entry
-
-        old_by_func = package.FULL_CONFIG_BY_FUNC
-        new_by_func = {
-            name: [
-                new_entry if entry is old_entry else entry for entry in entries
-            ]
-            for name, entries in old_by_func.items()
-        }
-
-        package._FULL_CONFIG = tuple(new_config)
-        package.FULL_CONFIG_BY_FUNC = new_by_func
-        try:
-            yield replacement
-        finally:
-            package._FULL_CONFIG = old_config
-            package.FULL_CONFIG_BY_FUNC = old_by_func
 
 
 if runtime.device.vendor_name == "kunlunxin":

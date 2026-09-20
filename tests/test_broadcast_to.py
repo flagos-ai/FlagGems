@@ -43,10 +43,8 @@ def test_broadcast_to(dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.broadcast_to(ref_inp, target_shape)
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "broadcast_to", flag_gems.broadcast_to
-    )
-    res_out = gems_op(inp, target_shape)
+    with flag_gems.use_gems():
+        res_out = torch.broadcast_to(inp, target_shape)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -59,9 +57,7 @@ def test_broadcast_to_shapes(src_shape, target_shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.broadcast_to(ref_inp, target_shape)
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "broadcast_to", flag_gems.broadcast_to
-    )
-    res_out = gems_op(inp, target_shape)
+    with flag_gems.use_gems():
+        res_out = torch.broadcast_to(inp, target_shape)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

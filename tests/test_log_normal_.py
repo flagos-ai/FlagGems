@@ -34,8 +34,8 @@ def test_log_normal_(shape, dtype):
     mean_param = 1.0
     std_param = 2.0
     x = torch.empty(size=shape, dtype=dtype, device=flag_gems.device)
-    gems_op = flag_gems.testing.resolve_gems_op("log_normal_", flag_gems.log_normal_)
-    gems_op(x, mean_param, std_param)
+    with flag_gems.use_gems():
+        x.log_normal_(mean_param, std_param)
     x_res = utils.to_reference(x)
     # All values should be positive (log-normal is always positive)
     assert (x_res > 0).all()

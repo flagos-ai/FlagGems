@@ -20,21 +20,11 @@ import flag_gems
 from . import base, consts, utils
 
 
-def _case_fn(shape, dtype):
-    del dtype
-    yield base.BenchmarkCasePlan(
-        shape={"inputs": [shape, shape, shape]},
-        params={"dim": 0},
-        builder_args=(shape,),
-    )
-
-
-def _build_inputs_fn(plan, dtype, device):
-    shape = plan.builder_args[0]
+def _input_fn(shape, dtype, device):
     inp1 = utils.generate_tensor_input(shape, dtype, device)
     inp2 = utils.generate_tensor_input(shape, dtype, device)
     inp3 = utils.generate_tensor_input(shape, dtype, device)
-    return [inp1, inp2, inp3], {"dim": plan.params["dim"]}
+    yield [inp1, inp2, inp3], {"dim": 0}
 
 
 @pytest.mark.concatenate
@@ -45,8 +35,7 @@ def test_concatenate():
     bench = base.GenericBenchmark(
         op_name="concatenate",
         torch_op=torch.concatenate,
-        case_fn=_case_fn,
-        build_inputs_fn=_build_inputs_fn,
+        input_fn=_input_fn,
         dtypes=consts.FLOAT_DTYPES + consts.INT_DTYPES,
     )
     bench.run()

@@ -29,20 +29,6 @@ def _input_fn(shape, cur_dtype, device):
         yield inp, {"shifts": 1, "dims": 0}
 
 
-def _case_fn(shape, dtype):
-    del dtype
-    params = (
-        {"shifts": (1, 2), "dims": (0, 1)}
-        if len(shape) > 1
-        else {"shifts": 1, "dims": 0}
-    )
-    yield base.BenchmarkCasePlan(
-        shape={"input": shape},
-        params=params,
-        builder_args=(shape, 0),
-    )
-
-
 @pytest.mark.roll
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
@@ -50,8 +36,7 @@ def _case_fn(shape, dtype):
 def test_roll():
     bench = base.GenericBenchmark(
         op_name="roll",
-        case_fn=_case_fn,
-        build_inputs_fn=base.build_inputs_from_generic_input_fn(_input_fn),
+        input_fn=_input_fn,
         torch_op=torch.roll,
         dtypes=consts.FLOAT_DTYPES + consts.INT_DTYPES,
     )

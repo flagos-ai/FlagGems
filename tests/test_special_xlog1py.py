@@ -6,13 +6,6 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
-def _special_xlog1py(A, B):
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "special_xlog1py", flag_gems.special_xlog1py
-    )
-    return gems_op(A, B)
-
-
 @pytest.mark.special_xlog1py
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -24,7 +17,8 @@ def test_special_xlog1py(shape, dtype):
     ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = torch.ops.aten.special_xlog1py(ref_inp1, ref_inp2)
-    res_out = _special_xlog1py(inp1, inp2)
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.special_xlog1py(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -40,7 +34,8 @@ def test_special_xlog1py_x_zero(dtype):
     ref_y = utils.to_reference(y, True)
     ref_out = torch.ops.aten.special_xlog1py(ref_x, ref_y)
 
-    res_out = _special_xlog1py(x, y)
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.special_xlog1py(x, y)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -56,7 +51,8 @@ def test_special_xlog1py_y_nan(dtype):
     ref_y = utils.to_reference(y, True)
     ref_out = torch.ops.aten.special_xlog1py(ref_x, ref_y)
 
-    res_out = _special_xlog1py(x, y)
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.special_xlog1py(x, y)
 
     assert torch.isnan(res_out).all(), "Expected all-NaN output when y is NaN"
     assert torch.isnan(ref_out).all(), "Reference should also produce NaN"

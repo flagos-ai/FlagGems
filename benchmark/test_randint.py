@@ -20,16 +20,9 @@ import flag_gems
 from . import base, consts
 
 
-def randint_case_fn(shape, dtype):
-    yield base.BenchmarkCasePlan(
-        shape={"size": shape},
-        params={"high": 100, "dtype": str(dtype), "device": "target"},
-        builder_args=(shape,),
-    )
-
-
-def randint_build_inputs_fn(plan, dtype, device):
-    return 100, plan.builder_args[0], {"dtype": dtype, "device": device}
+def randint_input_fn(shape, dtype, device):
+    high = 100
+    yield high, shape
 
 
 class RandintBenchmark(base.GenericBenchmarkExcluse1D):
@@ -44,8 +37,7 @@ class RandintBenchmark(base.GenericBenchmarkExcluse1D):
 )
 def test_randint():
     bench = RandintBenchmark(
-        case_fn=randint_case_fn,
-        build_inputs_fn=randint_build_inputs_fn,
+        input_fn=randint_input_fn,
         op_name="randint",
         torch_op=torch.randint,
         dtypes=consts.INT_DTYPES,

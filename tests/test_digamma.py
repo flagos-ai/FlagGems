@@ -28,7 +28,7 @@ def test_digamma(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.digamma(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("digamma", flag_gems.digamma)
-    res_out = gems_op(inp)
+    with flag_gems.use_gems():
+        res_out = torch.digamma(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

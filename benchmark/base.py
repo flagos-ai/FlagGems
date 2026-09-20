@@ -375,62 +375,6 @@ class Benchmark:
             elapsed += value
         return sum(measured) / len(measured)
 
-    def get_latency(self, op, *args, **kwargs):
-        if self.fresh_inputs:
-            return self._get_fresh_input_latency(op, args, kwargs)
-        fn, xs = self._make_invocation(op, *args, **kwargs)
-        if Config.mode == consts.BenchMode.OPERATOR:
-            n_warm, n_rep = get_iter_count(fn)
-            for i in range(n_warm):
-                fn()
-            torch_device_fn.synchronize()
-            start = time.time()
-            for i in range(n_rep):
-                fn()
-            torch_device_fn.synchronize()
-            end = time.time()
-            latency = (end - start) / n_rep * 1000
-        elif Config.mode == consts.BenchMode.KERNEL:
-            if vendor_name == "ascend":
-                do_bench = triton.backends.ascend.testing.do_bench_npu
-                latency = do_bench(
-                    fn,
-                    # do_bench_npu requires iterations, rather than duration
-                    # warmup=Config.warm_up,
-                    # active=Config.repetition,
-                )
-            else:
-                do_bench = triton.testing.do_bench
-                latency = do_bench(
-                    fn,
-                    warmup=Config.warm_up,
-                    rep=Config.repetition,
-                    return_mode="median",
-                    grad_to_none=xs if self.is_backward else None,
-                )
-        elif Config.mode == consts.BenchMode.WRAPPER:
-            n_warm, n_rep = get_iter_count(fn)
-            for i in range(n_warm):
-                fn()
-            torch_device_fn.synchronize()
-            start = time.time()
-            for i in range(n_rep):
-                fn()
-            end = time.time()
-            latency = (end - start) / n_rep * 1000
-        elif Config.mode == consts.BenchMode.CUDAGRAPH:
-            do_bench_cudagraph = triton.testing.do_bench_cudagraph
-            latency = do_bench_cudagraph(
-                fn,
-                rep=Config.repetition,
-                return_mode="median",
-                grad_to_none=xs if self.is_backward else None,
-            )
-        else:
-            raise ValueError("Undefined Value of Benchmark Mode.")
-        # average latency in ms
-        return latency
-
     def _resolve_direct_gems_op(self):
         try:
             op = flag_gems.testing.resolve_gems_op(self.op_name, self.gems_op)
@@ -523,230 +467,6 @@ class Benchmark:
                 if profile:
                     self._external_profiler_stop()
 
-    def get_gbps(self, args, latency=None):
-        # """Return the dynamic input iterator for each Operator."""
-        raise NotImplementedError(
-            "Each Benchmark must implement its own input iterator."
-        )
-
-    def get_tflops(self, op, *args, **kwargs):
-        """This method is currently not really implemented and serves as a placeholder.
-        A proper implementation will be developed in the future."""
-        from torch.utils.flop_counter import FlopCounterMode
-
-        fn = lambda: op(*args, **kwargs)
-        with FlopCounterMode(display=False) as flop_counter:
-            fn()
-        return flop_counter.get_total_flops()
-
-    def get_input_iter(self, dtype) -> Generator:
-        """Return the dynamic input iterator for each Operator."""
-        raise NotImplementedError(
-            "Each Benchmark must implement its own input iterator."
-        )
-
-    def supports_cases(self) -> bool:
-        return (
-            type(self).get_case_iter is not Benchmark.get_case_iter
-            and type(self).build_inputs is not Benchmark.build_inputs
-        )
-
-    def _case_id(self, dtype, ordinal: int) -> str:
-        nodeid = getattr(Config, "current_nodeid", None)
-        if not nodeid:
-            raise RuntimeError("Benchmark case IDs require an active pytest nodeid.")
-        dtype_name = str(dtype).removeprefix("torch.")
-        local_id = f"{Config.bench_level.value}::{dtype_name}::{ordinal}"
-        return f"{nodeid}::{local_id}"
-
-    def _case_from_plan(
-        self, dtype, ordinal: int, plan: BenchmarkCasePlan
-    ) -> BenchmarkCaseSpec:
-        return BenchmarkCaseSpec(
-            case_id=self._case_id(dtype, ordinal),
-            ordinal=ordinal,
-            dtype=dtype,
-            shape=plan.shape,
-            params=plan.params,
-            builder_args=(plan,),
-        )
-
-    def get_case_iter(self, dtype) -> Generator:
-        """Return lightweight cases without allocating their tensor inputs."""
-        raise NotImplementedError(
-            f"{type(self).__name__} does not provide benchmark cases."
-        )
-
-    def build_inputs(self, case: BenchmarkCaseSpec):
-        """Build the exact legacy input tuple for one selected case."""
-        raise NotImplementedError(
-            f"{type(self).__name__} cannot materialize benchmark case specs."
-        )
-
-    def _collect_cases(self) -> Tuple[BenchmarkCaseSpec, ...]:
-        if not self.supports_cases():
-            raise ValueError(
-                f"Operator '{self.op_name}' does not support case listing yet."
-            )
-        return tuple(
-            case for dtype in self.to_bench_dtypes for case in self.get_case_iter(dtype)
-        )
-
-    def list_cases(self, initialize: bool = True) -> BenchmarkCaseList:
-        if initialize:
-            self.init_user_config()
-        return BenchmarkCaseList(
-            op_name=self.op_name,
-            level=Config.bench_level.value,
-            cases=self._collect_cases(),
-        )
-
-    def get_inputs(self, dtype):
-        if self._input_iter is None:
-            self._input_iter = self.get_input_iter(dtype)
-
-        try:
-            return next(self._input_iter)
-        except StopIteration:
-            return None
-
-    def unpack_to_args_kwargs(self, input_tuple: Tuple[Any, ...]):
-        args = []
-        kwargs = {}
-        for item in input_tuple:
-            if (
-                isinstance(item, torch.Tensor)
-                or isinstance(item, (int, float, str))
-                or item is None
-                or isinstance(item, (list, tuple))
-                or isinstance(item, torch.dtype)
-            ):
-                args.append(item)
-            elif isinstance(item, dict):
-                kwargs.update(item)
-        if self.is_backward:
-            args = [
-                (
-                    a.clone().requires_grad_()
-                    if torch.is_tensor(a) and torch.is_floating_point(a)
-                    else a
-                )
-                for a in args
-            ]
-        return args, kwargs
-
-    def _measure_input(self, input, case_id: Optional[str] = None):
-        metric = BenchmarkMetrics(case_id=case_id)
-        try:
-            args, kwargs = self.unpack_to_args_kwargs(input)
-            metric.shape_detail = self.record_shapes(*args, **kwargs)
-            if "latency_base" in self.to_bench_metrics:
-                metric.latency_base = self.get_latency(self.torch_op, *args, **kwargs)
-            if "latency" in self.to_bench_metrics:
-                gems_op, candidate_source = self._resolve_direct_gems_op()
-                if gems_op is not None:
-                    metric.candidate_source = candidate_source
-                    with flag_gems.testing.gems_op_case(self.op_name, case_id):
-                        metric.latency = self.get_latency(gems_op, *args, **kwargs)
-                elif self.op_name == "zero_":
-                    with flag_gems.use_gems():
-                        metric.latency = self.get_latency(
-                            self.torch_op, *args, **kwargs
-                        )
-                else:
-                    # Exclude FlagGems zero_ to avoid clear-cache overhead in do_bench.
-                    with flag_gems.use_gems(exclude=["zero_"]):
-                        metric.latency = self.get_latency(
-                            self.torch_op, *args, **kwargs
-                        )
-            if "speedup" in self.to_bench_metrics:
-                metric.speedup = metric.latency_base / metric.latency
-
-            if "gbps" in self.to_bench_metrics:
-                metric.gbps_base = self.get_gbps(args, latency=metric.latency_base)
-                metric.gbps = self.get_gbps(args, latency=metric.latency)
-
-            if "tflops" in self.to_bench_metrics:
-                metric.tflops = (
-                    self.get_tflops(self.torch_op, *args, **kwargs)
-                    / metric.latency
-                    / 1e12
-                    * 1e3
-                )
-        except Exception as e:
-            metric.error_msg = str(e)
-            pytest.fail(str(e))
-        finally:
-            gc.collect()
-        return metric
-
-    def _emit_result(self, dtype, metrics):
-        result = BenchmarkResult(
-            level=Config.bench_level.value,
-            op_name=self.op_name,
-            dtype=str(dtype),
-            mode=Config.mode.value,
-            result=metrics,
-        )
-        print(result)
-        update_result(self.op_name, asdict(result))
-        emit_record_logger(result.to_json())
-        return result
-
-    def _run_legacy(self):
-        results = []
-        for dtype in self.to_bench_dtypes:
-            metrics = []
-            input_iter = self.get_input_iter(dtype)
-            while True:
-                try:
-                    input = next(input_iter)
-                except StopIteration:
-                    break
-                except Exception as e:
-                    print(
-                        f"\033[31mFAILED\033[0m: Operator={self.op_name} "
-                        f"dtype={dtype} err=<<<{e}>>>"
-                    )
-                    pytest.fail(str(e))
-                metrics.append(self._measure_input(input))
-            results.append(self._emit_result(dtype, metrics))
-        return results
-
-    def _run_cases(self, case_ids: Optional[Collection[str]]):
-        cases = self._collect_cases()
-        available_ids = [case.case_id for case in cases]
-        if len(available_ids) != len(set(available_ids)):
-            raise ValueError(f"Operator '{self.op_name}' generated duplicate case IDs.")
-
-        select_all = case_ids is None
-        selected = set(case_ids or [])
-        Config.available_case_ids.update(available_ids)
-
-        results = []
-        executed = []
-        for dtype in self.to_bench_dtypes:
-            metrics = []
-            for case in cases:
-                if case.dtype != dtype or (
-                    not select_all and case.case_id not in selected
-                ):
-                    continue
-                try:
-                    input = self.build_inputs(case)
-                except Exception as e:
-                    print(
-                        f"\033[31mFAILED\033[0m: Operator={self.op_name} "
-                        f"case_id={case.case_id} err=<<<{e}>>>"
-                    )
-                    pytest.fail(str(e))
-                metrics.append(self._measure_input(input, case_id=case.case_id))
-                executed.append(case.case_id)
-            if metrics:
-                results.append(self._emit_result(dtype, metrics))
-        Config.executed_case_ids.update(executed)
-        return results
-
     def _run_candidate_cases(
         self,
         case_ids: Optional[Collection[str]],
@@ -807,6 +527,309 @@ class Benchmark:
             executed.append(case.case_id)
         Config.executed_case_ids.update(executed)
         return executed
+
+    def get_latency(self, op, *args, **kwargs):
+        if self.fresh_inputs:
+            return self._get_fresh_input_latency(op, args, kwargs)
+        fn, xs = self._make_invocation(op, *args, **kwargs)
+        if Config.mode == consts.BenchMode.OPERATOR:
+            n_warm, n_rep = get_iter_count(fn)
+            for i in range(n_warm):
+                fn()
+            torch_device_fn.synchronize()
+            start = time.time()
+            for i in range(n_rep):
+                fn()
+            torch_device_fn.synchronize()
+            end = time.time()
+            latency = (end - start) / n_rep * 1000
+        elif Config.mode == consts.BenchMode.KERNEL:
+            if vendor_name == "ascend":
+                do_bench = triton.backends.ascend.testing.do_bench_npu
+                latency = do_bench(
+                    fn,
+                    # do_bench_npu requires iterations, rather than duration
+                    # warmup=Config.warm_up,
+                    # active=Config.repetition,
+                )
+            else:
+                do_bench = triton.testing.do_bench
+                latency = do_bench(
+                    fn,
+                    warmup=Config.warm_up,
+                    rep=Config.repetition,
+                    return_mode="median",
+                    grad_to_none=xs if self.is_backward else None,
+                )
+        elif Config.mode == consts.BenchMode.WRAPPER:
+            n_warm, n_rep = get_iter_count(fn)
+            for i in range(n_warm):
+                fn()
+            torch_device_fn.synchronize()
+            start = time.time()
+            for i in range(n_rep):
+                fn()
+            end = time.time()
+            latency = (end - start) / n_rep * 1000
+        elif Config.mode == consts.BenchMode.CUDAGRAPH:
+            do_bench_cudagraph = triton.testing.do_bench_cudagraph
+            latency = do_bench_cudagraph(
+                fn,
+                rep=Config.repetition,
+                return_mode="median",
+                grad_to_none=xs if self.is_backward else None,
+            )
+        else:
+            raise ValueError("Undefined Value of Benchmark Mode.")
+        # average latency in ms
+        return latency
+
+    def get_gbps(self, args, latency=None):
+        # """Return the dynamic input iterator for each Operator."""
+        raise NotImplementedError(
+            "Each Benchmark must implement its own input iterator."
+        )
+
+    def get_tflops(self, op, *args, **kwargs):
+        """This method is currently not really implemented and serves as a placeholder.
+        A proper implementation will be developed in the future."""
+        from torch.utils.flop_counter import FlopCounterMode
+
+        fn = lambda: op(*args, **kwargs)
+        with FlopCounterMode(display=False) as flop_counter:
+            fn()
+        return flop_counter.get_total_flops()
+
+    def get_input_iter(self, dtype) -> Generator:
+        """Return the dynamic input iterator for each Operator."""
+        raise NotImplementedError(
+            "Each Benchmark must implement its own input iterator."
+        )
+
+    def get_inputs(self, dtype):
+        if self._input_iter is None:
+            self._input_iter = self.get_input_iter(dtype)
+
+        try:
+            return next(self._input_iter)
+        except StopIteration:
+            return None
+
+    def unpack_to_args_kwargs(self, input_tuple: Tuple[Any, ...]):
+        args = []
+        kwargs = {}
+        for item in input_tuple:
+            if (
+                isinstance(item, torch.Tensor)
+                or isinstance(item, (int, float, str))
+                or item is None
+                or isinstance(item, (list, tuple))
+                or isinstance(item, torch.dtype)
+            ):
+                args.append(item)
+            elif isinstance(item, dict):
+                kwargs.update(item)
+        if self.is_backward:
+            args = [
+                (
+                    a.clone().requires_grad_()
+                    if torch.is_tensor(a) and torch.is_floating_point(a)
+                    else a
+                )
+                for a in args
+            ]
+        return args, kwargs
+
+    def supports_cases(self) -> bool:
+        return (
+            type(self).get_case_iter is not Benchmark.get_case_iter
+            and type(self).build_inputs is not Benchmark.build_inputs
+        )
+
+    def _case_id(self, dtype, ordinal: int) -> str:
+        nodeid = getattr(Config, "current_nodeid", None)
+        if not nodeid:
+            raise RuntimeError("Benchmark case IDs require an active pytest nodeid.")
+        dtype_name = str(dtype).removeprefix("torch.")
+        local_id = f"{Config.bench_level.value}::{dtype_name}::{ordinal}"
+        return f"{nodeid}::{local_id}"
+
+    def _case_from_plan(
+        self, dtype, ordinal: int, plan: BenchmarkCasePlan
+    ) -> BenchmarkCaseSpec:
+        return BenchmarkCaseSpec(
+            case_id=self._case_id(dtype, ordinal),
+            ordinal=ordinal,
+            dtype=dtype,
+            shape=plan.shape,
+            params=plan.params,
+            builder_args=(plan,),
+        )
+
+    def get_case_iter(self, dtype) -> Generator:
+        """Return lightweight cases without allocating their tensor inputs."""
+        raise NotImplementedError(
+            f"{type(self).__name__} does not provide benchmark cases."
+        )
+
+    def build_inputs(self, case: BenchmarkCaseSpec):
+        """Build the exact legacy input tuple for one selected case."""
+        raise NotImplementedError(
+            f"{type(self).__name__} cannot materialize benchmark case specs."
+        )
+
+    def _collect_cases(self) -> Tuple[BenchmarkCaseSpec, ...]:
+        if not self.supports_cases():
+            raise ValueError(
+                f"Operator '{self.op_name}' does not support case listing yet."
+            )
+        cases = tuple(
+            case for dtype in self.to_bench_dtypes for case in self.get_case_iter(dtype)
+        )
+        ids = [case.case_id for case in cases]
+        if len(ids) != len(set(ids)):
+            raise ValueError(f"Operator '{self.op_name}' generated duplicate case IDs.")
+        return cases
+
+    def list_cases(self, initialize: bool = True) -> BenchmarkCaseList:
+        if initialize:
+            self.init_user_config()
+        return BenchmarkCaseList(
+            op_name=self.op_name,
+            level=Config.bench_level.value,
+            cases=self._collect_cases(),
+        )
+
+    def _emit_result(self, dtype, metrics):
+        result = BenchmarkResult(
+            level=Config.bench_level.value,
+            op_name=self.op_name,
+            dtype=str(dtype),
+            mode=Config.mode.value,
+            result=metrics,
+        )
+        if Config.native_baseline_skip_reason:
+            result.native_baseline_skip_reason = Config.native_baseline_skip_reason
+        print(result)
+        result_dict = asdict(result)
+        if Config.native_baseline_skip_reason:
+            result_dict["native_baseline_skip_reason"] = (
+                Config.native_baseline_skip_reason
+            )
+        update_result(self.op_name, result_dict)
+        emit_record_logger(result.to_json())
+        return result
+
+    def _run_legacy(self):
+        results = []
+        for dtype in self.to_bench_dtypes:
+            metrics = []
+            input_iter = self.get_input_iter(dtype)
+            while True:
+                try:
+                    input = next(input_iter)
+                except StopIteration:
+                    break
+                except Exception as e:
+                    print(
+                        f"\033[31mFAILED\033[0m: Operator={self.op_name} "
+                        f"dtype={dtype} err=<<<{e}>>>"
+                    )
+                    pytest.fail(str(e))
+                metrics.append(self._measure_input(input))
+            results.append(self._emit_result(dtype, metrics))
+        return results
+
+    def _run_cases(self, case_ids: Optional[Collection[str]]):
+        cases = self._collect_cases()
+        available_ids = [case.case_id for case in cases]
+
+        select_all = case_ids is None
+        selected = set(case_ids or [])
+        Config.available_case_ids.update(available_ids)
+
+        results = []
+        executed = []
+        for dtype in self.to_bench_dtypes:
+            metrics = []
+            for case in cases:
+                if case.dtype != dtype or (
+                    not select_all and case.case_id not in selected
+                ):
+                    continue
+                try:
+                    input = self.build_inputs(case)
+                except Exception as e:
+                    print(
+                        f"\033[31mFAILED\033[0m: Operator={self.op_name} "
+                        f"case_id={case.case_id} err=<<<{e}>>>"
+                    )
+                    pytest.fail(str(e))
+                metrics.append(self._measure_input(input, case_id=case.case_id))
+                executed.append(case.case_id)
+            if metrics:
+                results.append(self._emit_result(dtype, metrics))
+        Config.executed_case_ids.update(executed)
+        return results
+
+    def _measure_input(self, input, case_id=None):
+        metric = BenchmarkMetrics(case_id=case_id)
+        try:
+            args, kwargs = self.unpack_to_args_kwargs(input)
+            metric.shape_detail = self.record_shapes(*args, **kwargs)
+            if "latency_base" in self.to_bench_metrics and not Config.skip_native:
+                metric.latency_base = self.get_latency(self.torch_op, *args, **kwargs)
+            if "latency" in self.to_bench_metrics:
+                gems_op, candidate_source = self._resolve_direct_gems_op()
+                if gems_op is not None:
+                    metric.candidate_source = candidate_source
+                    with flag_gems.testing.gems_op_case(self.op_name, case_id):
+                        metric.latency = self.get_latency(gems_op, *args, **kwargs)
+                elif self.op_name == "zero_":
+                    with flag_gems.use_gems():
+                        metric.latency = self.get_latency(
+                            self.torch_op, *args, **kwargs
+                        )
+                else:
+                    # Exclude FlagGems zero_ to avoid clear-cache overhead in do_bench.
+                    with flag_gems.use_gems(exclude=["zero_"]):
+                        metric.latency = self.get_latency(
+                            self.torch_op, *args, **kwargs
+                        )
+            if "speedup" in self.to_bench_metrics:
+                if Config.skip_native:
+                    if metric.latency_base is not None and metric.latency is not None:
+                        metric.speedup = metric.latency_base / metric.latency
+                else:
+                    metric.speedup = metric.latency_base / metric.latency
+
+            if "gbps" in self.to_bench_metrics:
+                if Config.skip_native:
+                    if metric.latency_base is not None:
+                        metric.gbps_base = self.get_gbps(
+                            args, latency=metric.latency_base
+                        )
+                    if metric.latency is not None:
+                        metric.gbps = self.get_gbps(args, latency=metric.latency)
+                else:
+                    metric.gbps_base = self.get_gbps(args, latency=metric.latency_base)
+                    metric.gbps = self.get_gbps(args, latency=metric.latency)
+
+            if "tflops" in self.to_bench_metrics:
+                metric.tflops = (
+                    self.get_tflops(self.torch_op, *args, **kwargs)
+                    / metric.latency
+                    / 1e12
+                    * 1e3
+                )
+                # utilization = metric.tflops / metric.latency / 1e12 * 1e3
+        except (RuntimeError, Exception) as e:
+            metric.error_msg = str(e)
+            pytest.fail(str(e))  # raise exception again
+        finally:
+            gc.collect()
+
+        return metric
 
     def run(self, case_ids: Optional[Collection[str]] = None):
         if Config.query:
@@ -1017,9 +1040,13 @@ class UnaryReductionBenchmark(Benchmark):
         more_shapes_3d = [(64, 2**i, 64) for i in range(0, 15, 4)]
         return more_shapes_1d + more_shapes_2d + more_shapes_3d
 
-    def get_input_iter(self, dtype) -> Generator:
-        for case in self.get_case_iter(dtype):
-            yield self.build_inputs(case)
+    def get_input_iter(self, cur_dtype) -> Generator:
+        for shape in self.shapes:
+            inp = generate_tensor_input(shape, cur_dtype, self.device)
+            if inp.ndim > 1:
+                yield inp, 1
+            else:
+                yield inp,
 
     def supports_cases(self) -> bool:
         if (
@@ -1081,8 +1108,10 @@ class TexGluBenchmark(Benchmark):
 
 class TexGluForwardBenchmark(TexGluBenchmark):
     def get_input_iter(self, dtype):
-        for case in self.get_case_iter(dtype):
-            yield self.build_inputs(case)
+        for shape in self.shapes:
+            x = generate_tensor_input(shape, dtype, self.device)
+            # TE GLU APIs typically accept (input, quantizer).
+            yield (x, None)
 
     def supports_cases(self) -> bool:
         if (
@@ -1117,8 +1146,15 @@ class TexGluForwardBenchmark(TexGluBenchmark):
 
 class TexGluBackwardBenchmark(TexGluBenchmark):
     def get_input_iter(self, dtype):
-        for case in self.get_case_iter(dtype):
-            yield self.build_inputs(case)
+        for shape in self.shapes:
+            inp = generate_tensor_input(shape, dtype, self.device)
+
+            out_shape = list(shape)
+            out_shape[-1] = out_shape[-1] // 2
+
+            grad_out = torch.randn(out_shape, dtype=dtype, device=self.device)
+
+            yield grad_out, inp, None
 
     def supports_cases(self) -> bool:
         if (
@@ -1168,8 +1204,12 @@ class BlasBenchmark(Benchmark):
         self.input_fn = input_fn
 
     def get_input_iter(self, dtype) -> Generator:
-        for case in self.get_case_iter(dtype):
-            yield self.build_inputs(case)
+        for b, m, n, k in self.shapes:
+            yield from self.input_fn(b, m, n, k, dtype, self.device, False)
+
+        if Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
+            for b, m, n, k in self.shapes:
+                yield from self.input_fn(b, m, n, k, dtype, self.device, True)
 
     def supports_cases(self) -> bool:
         # Subclasses that replace the standard BLAS case loop must provide
@@ -1262,8 +1302,10 @@ class BinaryPointwiseBenchmark(Benchmark):
         return special_shapes_2d + shapes_3d
 
     def get_input_iter(self, dtype) -> Generator:
-        for case in self.get_case_iter(dtype):
-            yield self.build_inputs(case)
+        for shape in self.shapes:
+            inp1 = generate_tensor_input(shape, dtype, self.device)
+            inp2 = generate_tensor_input(shape, dtype, self.device)
+            yield inp1, inp2
 
     def supports_cases(self) -> bool:
         if (
@@ -1308,9 +1350,11 @@ class ScalarBinaryPointwiseBenchmark(Benchmark):
         shapes_3d = [(64, 64, 2**i) for i in range(0, 20, 4)]
         return special_shapes_2d + shapes_3d
 
-    def get_input_iter(self, dtype) -> Generator:
-        for case in self.get_case_iter(dtype):
-            yield self.build_inputs(case)
+    def get_input_iter(self, cur_dtype) -> Generator:
+        for shape in self.shapes:
+            inp1 = 0.001  # Scalar input
+            inp2 = generate_tensor_input(shape, cur_dtype, self.device)
+            yield inp1, inp2
 
     def supports_cases(self) -> bool:
         if (
@@ -1357,9 +1401,10 @@ class UnaryPointwiseBenchmark(Benchmark):
         sp_shapes_3d = [(64, 64, 2**i) for i in range(0, 15, 4)]
         return special_shapes_2d + sp_shapes_3d
 
-    def get_input_iter(self, dtype) -> Generator:
-        for case in self.get_case_iter(dtype):
-            yield self.build_inputs(case)
+    def get_input_iter(self, cur_dtype) -> Generator:
+        for shape in self.shapes:
+            inp = generate_tensor_input(shape, cur_dtype, self.device)
+            yield inp,
 
     def supports_cases(self) -> bool:
         if (
@@ -1391,9 +1436,11 @@ class UnaryPointwiseBenchmark(Benchmark):
 
 
 class UnaryPointwiseOutBenchmark(UnaryPointwiseBenchmark):
-    def get_input_iter(self, dtype) -> Generator:
-        for case in self.get_case_iter(dtype):
-            yield self.build_inputs(case)
+    def get_input_iter(self, cur_dtype) -> Generator:
+        for shape in self.shapes:
+            inp = generate_tensor_input(shape, cur_dtype, self.device)
+            out = torch.empty_like(inp)
+            yield inp, {"out": out}
 
     def supports_cases(self) -> bool:
         if (
@@ -1478,52 +1525,3 @@ def binary_input_fn(shape, cur_dtype, device):
 
 def unary_input_fn(shape, cur_dtype, device):
     yield generate_tensor_input(shape, cur_dtype, device),
-
-
-def binary_case_fn(shape, dtype):
-    del dtype
-    yield BenchmarkCasePlan(
-        shape={"inputs": [shape, shape]},
-        builder_args=(shape,),
-    )
-
-
-def build_inputs_binary_case(plan, dtype, device):
-    shape = plan.builder_args[0]
-    inp1 = generate_tensor_input(shape, dtype, device)
-    inp2 = generate_tensor_input(shape, dtype, device)
-    return inp1, inp2
-
-
-def unary_case_fn(shape, dtype):
-    del dtype
-    yield BenchmarkCasePlan(
-        shape={"input": shape},
-        builder_args=(shape,),
-    )
-
-
-def build_inputs_unary_case(plan, dtype, device):
-    shape = plan.builder_args[0]
-    return (generate_tensor_input(shape, dtype, device),)
-
-
-def build_inputs_from_generic_input_fn(input_fn):
-    """Adapt a one-case GenericBenchmark input factory as stage two.
-
-    The corresponding case planner stores ``(shape, input_index)`` in
-    ``BenchmarkCasePlan.builder_args``. This helper is intended for migrations
-    that preserve an existing tensor-construction function; case metadata still
-    comes exclusively from the tensor-free planner.
-    """
-
-    def materialize(plan, dtype, device):
-        shape, input_index = plan.builder_args
-        for index, input in enumerate(input_fn(shape, dtype, device)):
-            if index == input_index:
-                return input
-        raise ValueError(
-            f"Input factory did not produce case index {input_index} for {shape}."
-        )
-
-    return materialize

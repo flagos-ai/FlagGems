@@ -21,6 +21,7 @@ import torch
 import yaml
 
 import flag_gems
+from flag_gems.cli_override import add_override_arguments, apply_overrides_from_args
 from flag_gems.runtime import torch_device_fn
 
 from . import consts
@@ -42,6 +43,8 @@ BUILTIN_MARKS = (
     "tryfirst",
     "trylast",
 )
+BENCHMARK_CONTROL_MARKS = ("skip_native",)
+NON_OPERATOR_MARKS = BUILTIN_MARKS + BENCHMARK_CONTROL_MARKS
 REGISTERED_MARKS = []
 TEST_RESULTS = {}
 CASE_LISTS = []
@@ -99,20 +102,117 @@ class BenchConfig:
         self.user_desired_metrics = None
         self.shape_file = os.path.join(os.path.dirname(__file__), "core_shapes.yaml")
         self.query = False
-        self.parallel = 0
-        self.list_cases = False
-        self.case_ids = None
         self.preflight_only = False
         self.profile_only = False
         self.profile_warmup = 10
         self.profile_iterations = 1
+        self.list_cases = False
+        self.case_ids = None
         self.current_nodeid = None
         self.available_case_ids = set()
         self.executed_case_ids = set()
-        self.output = REPORT_FILE
+        self.parallel = 0
+        self.mm_layout = None
+        self.skip_native = False
+        self.native_baseline_skip_reason = None
+
+
+def _get_native_baseline_skip_reason(marker, current_vendor):
+    if marker.args:
+        raise pytest.UsageError(
+            "skip_native only accepts the keyword arguments 'vendors' and 'reason'"
+        )
+
+    unexpected = set(marker.kwargs) - {"vendors", "reason"}
+    if unexpected:
+        raise pytest.UsageError(
+            f"skip_native got unexpected argument(s): {', '.join(sorted(unexpected))}"
+        )
+
+    vendors = marker.kwargs.get("vendors")
+    if isinstance(vendors, str):
+        vendors = (vendors,)
+    elif isinstance(vendors, (list, tuple, set, frozenset)):
+        vendors = tuple(vendors)
+    else:
+        raise pytest.UsageError(
+            "skip_native requires 'vendors' to be a vendor name or a collection of vendor names"
+        )
+
+    if not vendors or not all(
+        isinstance(vendor, str) and vendor.strip() for vendor in vendors
+    ):
+        raise pytest.UsageError(
+            "skip_native requires at least one non-empty vendor name"
+        )
+
+    reason = marker.kwargs.get("reason")
+    if not isinstance(reason, str) or not reason.strip():
+        raise pytest.UsageError("skip_native requires a non-empty 'reason'")
+
+    normalized_vendors = {vendor.strip().lower() for vendor in vendors}
+    if current_vendor.lower() not in normalized_vendors:
+        return None
+    return reason.strip()
+
+
+def _deactivate_inactive_native_marker(item, current_vendor):
+    marker = item.get_closest_marker("skip_native")
+    if marker is None:
+        return
+
+    try:
+        reason = _get_native_baseline_skip_reason(marker, current_vendor)
+    except pytest.UsageError:
+        # Keep invalid markers visible so the setup fixture reports the error.
+        return
+
+    if reason is not None:
+        return
+
+    for node in reversed(item.listchain()):
+        if marker in node.own_markers:
+            node.own_markers.remove(marker)
+            return
 
 
 def pytest_addoption(parser):
+    parser.addoption(
+        "--preflight-only",
+        action="store_true",
+        default=False,
+        help=(
+            "Materialize every selected benchmark case and invoke only the "
+            "FlagGems implementation once, without reference or timing."
+        ),
+    )
+
+    parser.addoption(
+        "--profile-only",
+        action="store_true",
+        default=False,
+        help=(
+            "Replay exactly one --case-id using only the FlagGems implementation "
+            "for an external profiler."
+        ),
+    )
+
+    parser.addoption(
+        "--profile-warmup",
+        action="store",
+        type=int,
+        default=10,
+        help="Candidate-only warmup invocation count for --profile-only.",
+    )
+
+    parser.addoption(
+        "--profile-iterations",
+        action="store",
+        type=int,
+        default=1,
+        help="Candidate-only captured invocation count for --profile-only.",
+    )
+
     parser.addoption(
         (
             "--mode" if vendor_name != "kunlunxin" else "--fg_mode"
@@ -156,51 +256,13 @@ def pytest_addoption(parser):
     parser.addoption(
         "--list-cases",
         action="store_true",
-        default=False,
-        help="List benchmark cases without materializing inputs or running operators.",
+        help="Write tensor-free workload descriptions to --output; do not benchmark.",
     )
-
     parser.addoption(
         "--case-id",
         action="append",
         default=None,
-        help="Run only the benchmark case with this exact ID. May be repeated.",
-    )
-
-    parser.addoption(
-        "--preflight-only",
-        action="store_true",
-        default=False,
-        help=(
-            "Materialize every selected benchmark case and invoke only the "
-            "FlagGems implementation once, without reference or timing."
-        ),
-    )
-
-    parser.addoption(
-        "--profile-only",
-        action="store_true",
-        default=False,
-        help=(
-            "Replay exactly one --case-id using only the FlagGems implementation "
-            "for an external profiler."
-        ),
-    )
-
-    parser.addoption(
-        "--profile-warmup",
-        action="store",
-        type=int,
-        default=10,
-        help="Candidate-only warmup invocation count for --profile-only.",
-    )
-
-    parser.addoption(
-        "--profile-iterations",
-        action="store",
-        type=int,
-        default=1,
-        help="Candidate-only captured invocation count for --profile-only.",
+        help="Benchmark only this exact workload ID. May be repeated.",
     )
 
     parser.addoption(
@@ -272,6 +334,18 @@ def pytest_addoption(parser):
         ),
     )
 
+    parser.addoption(
+        "--mm-layout",
+        action="store",
+        default=None,
+        choices=["nn", "nt", "both"],
+        help=(
+            "Select the B layout for the MM benchmark: nn uses row-major B, "
+            "nt uses column-major B, and both runs both layouts. By default, "
+            "core runs nn while comprehensive runs both."
+        ),
+    )
+
     try:
         parser.addoption(
             "--collect-marks",
@@ -281,13 +355,23 @@ def pytest_addoption(parser):
     except ValueError:
         pass
 
+    # Add dynamic operator override options
+    add_override_arguments(parser)
+
 
 def pytest_configure(config):
     global Config  # noqa: F824
     global REPORT_FILE
     global REGISTERED_MARKS
 
+    config.addinivalue_line(
+        "markers",
+        "skip_native(vendors, reason): skip the native benchmark baseline for selected vendors",
+    )
+
     Config = BenchConfig()
+    CASE_LISTS.clear()
+    TEST_RESULTS.clear()
 
     REGISTERED_MARKS = {
         marker.split(":")[0].strip() for marker in config.getini("markers")
@@ -305,7 +389,17 @@ def pytest_configure(config):
     Config.profile_only = config.getoption("--profile-only")
     Config.profile_warmup = config.getoption("--profile-warmup")
     Config.profile_iterations = config.getoption("--profile-iterations")
-
+    if Config.list_cases and Config.case_ids is not None:
+        raise pytest.UsageError("--list-cases cannot be combined with --case-id.")
+    if Config.query and (
+        Config.list_cases
+        or Config.case_ids is not None
+        or Config.preflight_only
+        or Config.profile_only
+    ):
+        raise pytest.UsageError(
+            "--query cannot be combined with case listing/selection."
+        )
     if Config.case_ids is not None and len(Config.case_ids) != len(
         set(Config.case_ids)
     ):
@@ -327,12 +421,8 @@ def pytest_configure(config):
         raise pytest.UsageError(
             "--preflight-only always runs every timing case and cannot use --case-id."
         )
-    if Config.profile_only and (
-        Config.case_ids is None or len(Config.case_ids) != 1
-    ):
-        raise pytest.UsageError(
-            "--profile-only requires exactly one --case-id."
-        )
+    if Config.profile_only and (Config.case_ids is None or len(Config.case_ids) != 1):
+        raise pytest.UsageError("--profile-only requires exactly one --case-id.")
     if Config.profile_warmup < 0:
         raise pytest.UsageError("--profile-warmup must be non-negative.")
     if Config.profile_iterations < 1:
@@ -361,6 +451,7 @@ def pytest_configure(config):
     Config.record_json = config.getoption("--record") == "json"
 
     Config.parallel = int(config.getoption("--parallel") or 0)
+    Config.mm_layout = config.getoption("--mm-layout")
     if Config.record_json or Config.list_cases:
         Config.output = config.getoption("--output")
         REPORT_FILE = Config.output
@@ -389,6 +480,15 @@ def pytest_configure(config):
         recordLogger.setLevel(logging.INFO)
         emit_record_logger("Benchmark record logger enabled")
 
+    # Apply dynamic operator overrides
+    config._override_registry = apply_overrides_from_args(config.option)
+
+
+def pytest_unconfigure(config):
+    """Cleanup: restore all overridden operators."""
+    if hasattr(config, "_override_registry"):
+        config._override_registry.restore_all()
+
 
 @pytest.fixture(scope="session", autouse=True)
 def setup_once(request):
@@ -404,13 +504,34 @@ def clear_function_cache(request):
         yield
     finally:
         Config.current_nodeid = previous_nodeid
-        torch_device_fn.empty_cache()
+        if not Config.list_cases:
+            torch_device_fn.empty_cache()
+
+
+@pytest.fixture(scope="function", autouse=True)
+def configure_native_baseline(request):
+    Config.skip_native = False
+    Config.native_baseline_skip_reason = None
+    marker = request.node.get_closest_marker("skip_native")
+    reason = (
+        _get_native_baseline_skip_reason(marker, vendor_name)
+        if marker is not None
+        else None
+    )
+    Config.skip_native = reason is not None
+    Config.native_baseline_skip_reason = reason
+    try:
+        yield
+    finally:
+        Config.skip_native = False
+        Config.native_baseline_skip_reason = None
 
 
 @pytest.fixture(scope="module", autouse=True)
 def clear_module_cache():
     yield
-    torch_device_fn.empty_cache()
+    if not Config.list_cases:
+        torch_device_fn.empty_cache()
 
 
 @pytest.fixture()
@@ -420,7 +541,7 @@ def extract_and_log_op_attributes(request):
 
     # Extract the 'recommended_shapes' attribute from the pytest marker decoration.
     for mark in request.node.iter_markers():
-        if mark.name in BUILTIN_MARKS:
+        if mark.name in NON_OPERATOR_MARKS:
             continue
         op_specified_shapes = mark.kwargs.get("recommended_shapes")
         shape_desc = mark.kwargs.get("shape_desc", "M, N")
@@ -461,8 +582,8 @@ def pytest_runtest_makereport(item, call):
     out = yield
     report = out.get_result()
     all_marks = [mark.name for mark in item.iter_markers()]
-    # exclude builtin marks
-    marks = [mark for mark in all_marks if mark not in BUILTIN_MARKS]
+    # exclude pytest and benchmark control marks
+    marks = [mark for mark in all_marks if mark not in NON_OPERATOR_MARKS]
     # Assume the first mark is the operator's ID
     opid = marks[0] if marks else item.nodeid
     # Set the operator ID for the next function to use
@@ -498,14 +619,16 @@ def pytest_runtest_logreport(report):
 def pytest_terminal_summary(terminalreporter, exitstatus, config):
     """Combine and dump the result into JSON."""
     if Config.list_cases:
-        data = {
-            "schema_version": "flaggems.benchmark-case-list/v2",
-            "benchmarks": CASE_LISTS,
-        }
         with open(REPORT_FILE, "w") as f:
-            json.dump(data, f, indent=2, default=str)
+            json.dump(
+                {
+                    "schema_version": "flaggems.benchmark-case-list/v2",
+                    "benchmarks": CASE_LISTS,
+                },
+                f,
+                indent=2,
+            )
         return
-
     if not Config.record_json:
         return
 
@@ -521,21 +644,27 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
 
 
 def pytest_sessionfinish(session, exitstatus):
-    del exitstatus
     if Config is None or Config.case_ids is None:
         return
     requested = set(Config.case_ids)
-    missing = sorted(requested - Config.available_case_ids)
+    unknown = sorted(requested - Config.available_case_ids)
     not_executed = sorted(requested - Config.executed_case_ids)
-    if not missing and not not_executed:
-        return
-    details = []
-    if missing:
-        details.append("unknown=" + ", ".join(missing))
-    if not_executed:
-        details.append("not_executed=" + ", ".join(not_executed))
-    print("FlagGems case selection failed: " + "; ".join(details))
-    session.exitstatus = pytest.ExitCode.TESTS_FAILED
+    if unknown or not_executed:
+        reporter = session.config.pluginmanager.get_plugin("terminalreporter")
+        if reporter:
+            reporter.write_line(
+                f"FlagGems case selection failed: unknown={unknown}; not_executed={not_executed}"
+            )
+        # Preserve interrupts, configuration failures and internal errors.
+        if session.exitstatus in (
+            pytest.ExitCode.OK,
+            pytest.ExitCode.NO_TESTS_COLLECTED,
+        ):
+            session.exitstatus = pytest.ExitCode.TESTS_FAILED
+
+
+def pytest_itemcollected(item):
+    _deactivate_inactive_native_marker(item, vendor_name)
 
 
 def pytest_collection_modifyitems(session, config, items):
@@ -559,7 +688,7 @@ def pytest_collection_modifyitems(session, config, items):
         op_marks = [
             mark.name
             for mark in all_marks
-            if mark.name not in BUILTIN_MARKS and mark.name not in REGISTERED_MARKS
+            if mark.name not in NON_OPERATOR_MARKS and mark.name not in REGISTERED_MARKS
         ]
 
         data["marks"] = op_marks

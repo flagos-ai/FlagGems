@@ -58,43 +58,13 @@ def _input_fn(shape, dtype, device):
     )
 
 
-def _case_fn(shape, dtype):
-    del dtype
-    (
-        batch,
-        channels,
-        input_h,
-        input_w,
-        kernel_h,
-        kernel_w,
-        stride,
-        padding,
-        dilation,
-    ) = shape
-    yield base.BenchmarkCasePlan(
-        shape={
-            "input": (batch, channels, input_h, input_w),
-            "weight": (channels, 1, kernel_h, kernel_w),
-        },
-        params={
-            "kernel_size": [kernel_h, kernel_w],
-            "bias": None,
-            "stride": [stride, stride],
-            "padding": [padding, padding],
-            "dilation": [dilation, dilation],
-        },
-        builder_args=(shape, 0),
-    )
-
-
 @pytest.mark.conv_depthwise2d
 def test_conv_depthwise2d():
     torch.backends.cudnn.allow_tf32 = False
 
     bench = ConvDepthwise2DBenchmark(
         op_name="conv_depthwise2d",
-        case_fn=_case_fn,
-        build_inputs_fn=base.build_inputs_from_generic_input_fn(_input_fn),
+        input_fn=_input_fn,
         torch_op=torch.ops.aten._conv_depthwise2d,
         gems_op=flag_gems._conv_depthwise2d,
         dtypes=consts.FLOAT_DTYPES,

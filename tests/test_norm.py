@@ -14,11 +14,6 @@ DIMS_LIST = [0, 1, [0, 1], [1, 0]]
 KEEPDIM_DIMS = list(zip([True, False] * 2, DIMS_LIST))
 
 
-def _norm(*args, **kwargs):
-    gems_op = flag_gems.testing.resolve_gems_op("norm", flag_gems.norm)
-    return gems_op(*args, **kwargs)
-
-
 @pytest.mark.norm
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("ord", [2, float("inf"), -float("inf"), 0, 1])
@@ -28,7 +23,8 @@ def test_norm(shape, ord, dtype):
     ref_inp = to_reference(inp, True)
 
     ref_out = torch.norm(ref_inp, ord)
-    res_out = _norm(inp, ord)
+    with flag_gems.use_gems():
+        res_out = torch.norm(inp, ord)
 
     gems_assert_close(res_out, ref_out, dtype)
 

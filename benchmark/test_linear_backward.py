@@ -44,36 +44,6 @@ class LinearBackwardBenchmark(base.Benchmark):
             )
             yield input, grad_output, weight, (True, True, True)
 
-    def get_case_iter(self, dtype):
-        for ordinal, (batch, in_features) in enumerate(self.shapes):
-            out_features = in_features * 2
-            shape = (batch, in_features)
-            yield self._case_from_plan(
-                dtype,
-                ordinal,
-                base.BenchmarkCasePlan(
-                    shape={
-                        "input": shape,
-                        "grad_output": (batch, out_features),
-                        "weight": (out_features, in_features),
-                    },
-                    params={"output_mask": (True, True, True)},
-                    builder_args=((batch, in_features), 0),
-                ),
-            )
-
-    def build_inputs(self, case):
-        batch, in_features = case.builder_args[0].builder_args[0]
-        out_features = in_features * 2
-        input = torch.randn(batch, in_features, dtype=case.dtype, device=self.device)
-        weight = torch.randn(
-            out_features, in_features, dtype=case.dtype, device=self.device
-        )
-        grad_output = torch.randn(
-            batch, out_features, dtype=case.dtype, device=self.device
-        )
-        return input, grad_output, weight, (True, True, True)
-
 
 @pytest.mark.linear_backward
 def test_linear_backward():

@@ -30,28 +30,12 @@ class NarrowBenchmark(base.Benchmark):
         self.shapes = NARROW_SHAPES
 
     def get_input_iter(self, dtype):
-        for case in self.get_case_iter(dtype):
-            yield self.build_inputs(case)
-
-    def get_case_iter(self, dtype):
-        for ordinal, shape in enumerate(self.shapes):
+        for shape in self.shapes:
+            inp = torch.randn(shape, dtype=dtype, device=self.device)
             dim = 0
             start = shape[dim] // 4
             length = shape[dim] // 2
-            yield self._case_from_plan(
-                dtype,
-                ordinal,
-                base.BenchmarkCasePlan(
-                    shape={"input": shape},
-                    params={"dim": dim, "start": start, "length": length},
-                    builder_args=(shape, dim, start, length),
-                ),
-            )
-
-    def build_inputs(self, case):
-        shape, dim, start, length = case.builder_args[0].builder_args
-        inp = torch.randn(shape, dtype=case.dtype, device=self.device)
-        return inp, dim, start, length
+            yield inp, dim, start, length
 
 
 @pytest.mark.narrow

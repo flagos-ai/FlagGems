@@ -28,8 +28,8 @@ def test_mish(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.ops.aten.mish(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("mish", flag_gems.mish)
-    res_out = gems_op(inp)
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.mish(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -42,8 +42,8 @@ def test_mish_(shape, dtype):
     ref_inp = utils.to_reference(inp.clone())
 
     ref_out = torch.ops.aten.mish_(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("mish_", flag_gems.mish_)
-    res_out = gems_op(inp)
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.mish_(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 

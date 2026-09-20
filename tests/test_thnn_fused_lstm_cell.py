@@ -63,11 +63,10 @@ def test_thnn_fused_lstm_cell(shape, dtype):
     ref_hy = o_ref * torch.tanh(ref_cy)
 
     # Compute with FlagGems
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "thnn_fused_lstm_cell",
-        flag_gems._thnn_fused_lstm_cell,
-    )
-    res_hy, res_cy, res_workspace = gems_op(input_gates, hidden_gates, cx)
+    with flag_gems.use_gems():
+        res_hy, res_cy, res_workspace = torch.ops.aten._thnn_fused_lstm_cell(
+            input_gates, hidden_gates, cx
+        )
 
     # Use looser tolerance for float16/bfloat16 due to accumulated errors from multiple ops
     atol = (
@@ -116,13 +115,10 @@ def test_thnn_fused_lstm_cell_with_bias(shape, dtype):
     ref_hy = o_ref * torch.tanh(ref_cy)
 
     # Compute with FlagGems
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "thnn_fused_lstm_cell",
-        flag_gems._thnn_fused_lstm_cell,
-    )
-    res_hy, res_cy, res_workspace = gems_op(
-        input_gates, hidden_gates, cx, input_bias, hidden_bias
-    )
+    with flag_gems.use_gems():
+        res_hy, res_cy, res_workspace = torch.ops.aten._thnn_fused_lstm_cell(
+            input_gates, hidden_gates, cx, input_bias, hidden_bias
+        )
 
     # Use looser tolerance for float16/bfloat16 due to accumulated errors from multiple ops
     atol = (

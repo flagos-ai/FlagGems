@@ -28,8 +28,8 @@ def test_arcsin(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.arcsin(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("arcsin", flag_gems.arcsin)
-    res_out = gems_op(inp)
+    with flag_gems.use_gems():
+        res_out = torch.arcsin(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype, True)
 
@@ -42,8 +42,8 @@ def test_arcsin_(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.arcsin(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("arcsin_", flag_gems.arcsin_)
-    res_out = gems_op(inp)
+    with flag_gems.use_gems():
+        res_out = torch.arcsin_(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype, True)
     utils.gems_assert_close(inp, ref_out, dtype, True)
@@ -76,8 +76,8 @@ def test_arcsin_boundaries_and_out_of_domain(dtype):
     ref_values = utils.to_reference(values)
 
     ref_out = torch.arcsin(ref_values)
-    gems_op = flag_gems.testing.resolve_gems_op("arcsin", flag_gems.arcsin)
-    res_out = gems_op(values)
+    with flag_gems.use_gems():
+        res_out = torch.arcsin(values)
 
     utils.gems_assert_close(res_out, ref_out, dtype, True)
     assert torch.isnan(res_out[-2:]).all()
@@ -92,9 +92,9 @@ def test_arcsin_empty_and_scalar(dtype):
     ref_empty = utils.to_reference(empty)
     ref_scalar = utils.to_reference(scalar)
 
-    gems_op = flag_gems.testing.resolve_gems_op("arcsin", flag_gems.arcsin)
-    res_empty = gems_op(empty)
-    res_scalar = gems_op(scalar)
+    with flag_gems.use_gems():
+        res_empty = torch.arcsin(empty)
+        res_scalar = torch.arcsin(scalar)
 
     utils.gems_assert_close(res_empty, torch.arcsin(ref_empty), dtype, True)
     utils.gems_assert_close(res_scalar, torch.arcsin(ref_scalar), dtype, True)

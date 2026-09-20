@@ -20,13 +20,6 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
-def _less_equal(*args, **kwargs):
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "less_equal", flag_gems.less_equal
-    )
-    return gems_op(*args, **kwargs)
-
-
 @pytest.mark.less_equal
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -37,7 +30,8 @@ def test_less_equal(shape, dtype):
     ref_inp2 = utils.to_reference(inp2)
 
     ref_out = torch.less_equal(ref_inp1, ref_inp2)
-    res_out = _less_equal(inp1, inp2)
+    with flag_gems.use_gems():
+        res_out = torch.less_equal(inp1, inp2)
 
     utils.gems_assert_equal(res_out, ref_out)
 

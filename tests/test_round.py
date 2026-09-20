@@ -52,8 +52,8 @@ def test_round_(shape, dtype):
     ref_inp = utils.to_reference(inp.clone())
 
     ref_out = torch.round_(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("round_", flag_gems.round_)
-    res_out = gems_op(inp)
+    with flag_gems.use_gems():
+        res_out = inp.round_()
 
     utils.gems_assert_equal(res_out, ref_out)
 

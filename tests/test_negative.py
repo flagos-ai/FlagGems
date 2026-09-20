@@ -28,7 +28,7 @@ def test_negative(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.negative(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("negative", flag_gems.negative)
-    res_out = gems_op(inp)
+    with flag_gems.use_gems():
+        res_out = torch.negative(inp)
 
     utils.gems_assert_equal(res_out, ref_out)

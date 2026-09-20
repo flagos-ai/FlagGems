@@ -23,13 +23,6 @@ from . import accuracy_utils as utils
 NARROW_COPY_SHAPES = [(16, 32, 64), (32, 64), (64,)]
 
 
-def _narrow_copy(*args):
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "narrow_copy", flag_gems.narrow_copy
-    )
-    return gems_op(*args)
-
-
 @pytest.mark.narrow_copy
 @pytest.mark.parametrize("shape", NARROW_COPY_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -44,7 +37,8 @@ def test_narrow_copy(shape, dtype):
             for length in [1, dim_size // 4, dim_size // 2]:
                 if start + length <= dim_size:
                     ref_out = torch.narrow_copy(ref_inp, dim, start, length)
-                    res_out = _narrow_copy(inp, dim, start, length)
+                    with flag_gems.use_gems():
+                        res_out = torch.narrow_copy(inp, dim, start, length)
                     utils.gems_assert_equal(res_out, ref_out)
 
 
@@ -57,7 +51,8 @@ def test_narrow_copy_negative_start(dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.narrow_copy(ref_inp, 1, -8, 4)
-    res_out = _narrow_copy(inp, 1, -8, 4)
+    with flag_gems.use_gems():
+        res_out = torch.narrow_copy(inp, 1, -8, 4)
     utils.gems_assert_equal(res_out, ref_out)
 
 
@@ -70,7 +65,8 @@ def test_narrow_copy_full_slice(dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.narrow_copy(ref_inp, 0, 0, 4)
-    res_out = _narrow_copy(inp, 0, 0, 4)
+    with flag_gems.use_gems():
+        res_out = torch.narrow_copy(inp, 0, 0, 4)
     utils.gems_assert_equal(res_out, ref_out)
 
 
@@ -82,5 +78,6 @@ def test_narrow_copy_1d(dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.narrow_copy(ref_inp, 0, 10, 20)
-    res_out = _narrow_copy(inp, 0, 10, 20)
+    with flag_gems.use_gems():
+        res_out = torch.narrow_copy(inp, 0, 10, 20)
     utils.gems_assert_equal(res_out, ref_out)

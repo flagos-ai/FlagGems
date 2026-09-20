@@ -97,6 +97,7 @@ def split_plan(shape, dim, itemsize):
     return ARCH_SOFTMAX._split_plan(m, n, itemsize, 0)
 
 
+@pytest.mark.softmax
 @pytest.mark.parametrize("itemsize", ITEMSIZES)
 @pytest.mark.parametrize("shape, dim", SPLIT_SHAPES)
 def test_rdna4_softmax_gate_engages(shape, dim, itemsize):
@@ -113,6 +114,7 @@ def test_rdna4_softmax_gate_engages(shape, dim, itemsize):
     assert m * plan <= ARCH_SOFTMAX._BLOCKS_PER_CU * cu
 
 
+@pytest.mark.softmax
 @pytest.mark.parametrize("itemsize", ITEMSIZES)
 @pytest.mark.parametrize("shape, dim", GENERIC_SHAPES)
 def test_rdna4_softmax_gate_defers(shape, dim, itemsize):
@@ -121,6 +123,7 @@ def test_rdna4_softmax_gate_defers(shape, dim, itemsize):
     ), f"{shape} dim={dim} should fall through to the generic implementation"
 
 
+@pytest.mark.softmax
 def test_rdna4_softmax_gate_limits_follow_element_width():
     """Pin both limits from both sides, for both element widths.
 
@@ -167,14 +170,15 @@ def test_rdna4_softmax(shape, dim, dtype):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.nn.functional.softmax(ref_inp, dim=dim)
-    gems_op = flag_gems.testing.resolve_gems_op("softmax", flag_gems.softmax)
-    res_out = gems_op(inp, dim=dim)
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.softmax(inp, dim=dim)
 
     utils.gems_assert_close(
         res_out, ref_out, dtype, equal_nan=True, reduce_dim=shape[dim]
     )
 
 
+@pytest.mark.softmax
 @pytest.mark.parametrize("shape, dim", SPLIT_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_rdna4_softmax_out(shape, dim, dtype):
@@ -200,8 +204,8 @@ def test_rdna4_softmax_half_to_float(dtype):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.nn.functional.softmax(ref_inp, dim=dim)
-    gems_op = flag_gems.testing.resolve_gems_op("softmax", flag_gems.softmax)
-    res_out = gems_op(inp, dim, True)
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten._softmax(inp, dim, True)
 
     assert res_out.dtype is torch.float32
     utils.gems_assert_close(
@@ -243,8 +247,8 @@ def test_rdna4_softmax_neg_inf(dtype):
         ref_inp = utils.to_reference(inp, True)
 
         ref_out = torch.nn.functional.softmax(ref_inp, dim=dim)
-        gems_op = flag_gems.testing.resolve_gems_op("softmax", flag_gems.softmax)
-        res_out = gems_op(inp, dim=dim)
+        with flag_gems.use_gems():
+            res_out = torch.nn.functional.softmax(inp, dim=dim)
 
         assert split_plan(shape, dim, itemsize_of(dtype)) is not None, name
         utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True, reduce_dim=n)
@@ -275,8 +279,8 @@ def test_rdna4_softmax_at_row_cap(dtype):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.nn.functional.softmax(ref_inp, dim=-1)
-    gems_op = flag_gems.testing.resolve_gems_op("softmax", flag_gems.softmax)
-    res_out = gems_op(inp, dim=-1)
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.softmax(inp, dim=-1)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True, reduce_dim=n)
 
@@ -293,8 +297,8 @@ def test_rdna4_softmax_non_contiguous():
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.nn.functional.softmax(ref_inp, dim=dim)
-    gems_op = flag_gems.testing.resolve_gems_op("softmax", flag_gems.softmax)
-    res_out = gems_op(inp, dim=dim)
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.softmax(inp, dim=dim)
 
     utils.gems_assert_close(
         res_out, ref_out, torch.float32, equal_nan=True, reduce_dim=n

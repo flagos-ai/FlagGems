@@ -51,22 +51,6 @@ class IsAllTrueBenchmark(base.Benchmark):
             inp = torch.randint(0, 2, shape, dtype=torch.bool, device=self.device)
             yield inp,
 
-    def get_case_iter(self, dtype) -> Generator:
-        for ordinal, shape in enumerate(self.shapes):
-            yield self._case_from_plan(
-                dtype,
-                ordinal,
-                base.BenchmarkCasePlan(
-                    shape={"input": shape},
-                    builder_args=(shape, 0),
-                ),
-            )
-
-    def build_inputs(self, case):
-        shape = case.builder_args[0].builder_args[0]
-        inp = torch.randint(0, 2, shape, dtype=torch.bool, device=self.device)
-        return inp,
-
 
 @pytest.mark.is_all_true
 def test_is_all_true():

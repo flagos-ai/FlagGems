@@ -42,8 +42,8 @@ def test_expm1_(shape, dtype):
     ref_inp = utils.to_reference(inp.clone(), True)
 
     ref_out = torch.expm1_(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("expm1_", flag_gems.expm1_)
-    res_out = gems_op(inp)
+    with flag_gems.use_gems():
+        res_out = torch.expm1_(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 

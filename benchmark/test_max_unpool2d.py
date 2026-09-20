@@ -49,33 +49,6 @@ class MaxUnpool2dBenchmark(base.Benchmark):
         pooled, indices, output_size = args
         return pooled.numel()
 
-    def get_case_iter(self, dtype):
-        for ordinal, shape in enumerate(self.shapes):
-            n, c, h, w = shape
-            pooled_shape = (n, c, h // 2, w // 2)
-            yield self._case_from_plan(
-                dtype,
-                ordinal,
-                base.BenchmarkCasePlan(
-                    shape={
-                        "pooled": pooled_shape,
-                        "indices": pooled_shape,
-                        "output": shape,
-                    },
-                    params={"kernel_size": 2, "stride": 2, "output_size": [h, w]},
-                    builder_args=(shape, 0),
-                ),
-            )
-
-    def build_inputs(self, case):
-        shape = case.builder_args[0].builder_args[0]
-        n, c, h, w = shape
-        x = torch.randn(shape, dtype=case.dtype, device=self.device)
-        pool = torch.nn.MaxPool2d(2, stride=2, return_indices=True)
-        pooled, indices = pool(x.contiguous())
-        output_size = [h, w]
-        return pooled, indices.to(torch.int64), output_size
-
 
 @pytest.mark.max_unpool2d
 def test_max_unpool2d():

@@ -77,8 +77,8 @@ def test_mvlgamma_(shape, dtype, p):
     ref_inp = utils.to_reference(inp.clone())
 
     ref_out = ref_inp.mvlgamma_(p)
-    gems_op = flag_gems.testing.resolve_gems_op("mvlgamma_", flag_gems.mvlgamma_)
-    res_out = gems_op(inp, p)
+    with flag_gems.use_gems():
+        res_out = inp.mvlgamma_(p)
 
     # Use relaxed tolerance for float16 due to lgamma precision limitations
     atol = 1e-2 if dtype == torch.float16 else 1e-4

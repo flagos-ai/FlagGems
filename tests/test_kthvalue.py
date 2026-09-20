@@ -38,19 +38,15 @@ def test_kthvalue(shape, k, dim, keepdim, dtype):
     dim_size = shape[dim]
     if k < 1 or k > dim_size:
         with pytest.raises(RuntimeError, match="selected number k out of range"):
-            gems_op = flag_gems.testing.resolve_gems_op(
-                "kthvalue", flag_gems.kthvalue
-            )
-            gems_op(inp, k, dim=dim, keepdim=keepdim)
-        with pytest.raises(RuntimeError, match="selected number k out of range"):
             torch.kthvalue(ref_inp, k, dim=dim, keepdim=keepdim)
+        with pytest.raises(RuntimeError, match="selected number k out of range"):
+            with flag_gems.use_gems():
+                torch.kthvalue(inp, k, dim=dim, keepdim=keepdim)
         return
 
     ref_values, ref_indices = torch.kthvalue(ref_inp, k, dim=dim, keepdim=keepdim)
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "kthvalue", flag_gems.kthvalue
-    )
-    res_values, res_indices = gems_op(inp, k, dim=dim, keepdim=keepdim)
+    with flag_gems.use_gems():
+        res_values, res_indices = torch.kthvalue(inp, k, dim=dim, keepdim=keepdim)
 
     utils.gems_assert_close(res_values, ref_values, dtype)
     utils.gems_assert_equal(res_indices, ref_indices)
@@ -69,19 +65,15 @@ def test_kthvalue_default_dim(shape, k, dtype):
     dim_size = shape[-1]
     if k < 1 or k > dim_size:
         with pytest.raises(RuntimeError, match="selected number k out of range"):
-            gems_op = flag_gems.testing.resolve_gems_op(
-                "kthvalue", flag_gems.kthvalue
-            )
-            gems_op(inp, k)
-        with pytest.raises(RuntimeError, match="selected number k out of range"):
             torch.kthvalue(ref_inp, k)
+        with pytest.raises(RuntimeError, match="selected number k out of range"):
+            with flag_gems.use_gems():
+                torch.kthvalue(inp, k)
         return
 
     ref_values, ref_indices = torch.kthvalue(ref_inp, k)
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "kthvalue", flag_gems.kthvalue
-    )
-    res_values, res_indices = gems_op(inp, k)
+    with flag_gems.use_gems():
+        res_values, res_indices = torch.kthvalue(inp, k)
 
     utils.gems_assert_close(res_values, ref_values, dtype)
     utils.gems_assert_equal(res_indices, ref_indices)
@@ -101,12 +93,10 @@ def test_kthvalue_invalid_dim(shape, dim):
     ref_inp = utils.to_reference(inp)
 
     with pytest.raises(IndexError, match="Dimension out of range"):
-        gems_op = flag_gems.testing.resolve_gems_op(
-            "kthvalue", flag_gems.kthvalue
-        )
-        gems_op(inp, 1, dim=dim)
-    with pytest.raises(IndexError, match="Dimension out of range"):
         torch.kthvalue(ref_inp, 1, dim=dim)
+    with pytest.raises(IndexError, match="Dimension out of range"):
+        with flag_gems.use_gems():
+            torch.kthvalue(inp, 1, dim=dim)
 
 
 @pytest.mark.kthvalue
@@ -115,9 +105,7 @@ def test_kthvalue_empty_tensor():
     ref_inp = utils.to_reference(inp)
 
     with pytest.raises(IndexError, match="Expected reduction dim"):
-        gems_op = flag_gems.testing.resolve_gems_op(
-            "kthvalue", flag_gems.kthvalue
-        )
-        gems_op(inp, 1, dim=1)
-    with pytest.raises(IndexError, match="Expected reduction dim"):
         torch.kthvalue(ref_inp, 1, dim=1)
+    with pytest.raises(IndexError, match="Expected reduction dim"):
+        with flag_gems.use_gems():
+            torch.kthvalue(inp, 1, dim=1)

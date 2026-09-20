@@ -16,7 +16,7 @@ def test_lcm(shape, dtype):
     ref_inp2 = utils.to_reference(inp2)
 
     ref_out = torch.lcm(ref_inp1, ref_inp2)
-    gems_op = flag_gems.testing.resolve_gems_op("lcm", flag_gems.lcm)
-    res_out = gems_op(inp1, inp2)
+    with flag_gems.use_gems():
+        res_out = torch.lcm(inp1, inp2)
 
     utils.gems_assert_equal(res_out, ref_out)

@@ -35,24 +35,6 @@ class ChannelShuffleBenchmark(base.Benchmark):
             x = torch.randn(shape, dtype=cur_dtype, device=self.device)
             yield x, groups
 
-    def get_case_iter(self, dtype):
-        for ordinal, shape_config in enumerate(self.shapes):
-            shape, groups = shape_config
-            yield self._case_from_plan(
-                dtype,
-                ordinal,
-                base.BenchmarkCasePlan(
-                    shape={"input": shape},
-                    params={"groups": groups},
-                    builder_args=(shape_config, 0),
-                ),
-            )
-
-    def build_inputs(self, case):
-        shape, groups = case.builder_args[0].builder_args[0]
-        x = torch.randn(shape, dtype=case.dtype, device=self.device)
-        return x, groups
-
 
 @pytest.mark.channel_shuffle
 def test_channel_shuffle():

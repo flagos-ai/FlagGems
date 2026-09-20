@@ -23,22 +23,12 @@ def _input_fn(shape, cur_dtype, device):
     yield 5, 1, 10, dep_token
 
 
-def _case_fn(shape, dtype):
-    del dtype
-    yield base.BenchmarkCasePlan(
-        shape={"dep_token": shape},
-        params={"size": 5, "min": 1, "max": 10},
-        builder_args=(shape, 0),
-    )
-
-
 @pytest.mark.functional_sym_constrain_range_for_size
 def test_functional_sym_constrain_range_for_size():
     bench = base.GenericBenchmark(
         op_name="functional_sym_constrain_range_for_size",
         torch_op=torch.ops.aten._functional_sym_constrain_range_for_size,
         dtypes=consts.FLOAT_DTYPES,
-        case_fn=_case_fn,
-        build_inputs_fn=base.build_inputs_from_generic_input_fn(_input_fn),
+        input_fn=_input_fn,
     )
     bench.run()

@@ -26,28 +26,11 @@ class TransposeBenchmark(base.Benchmark):
         self.shapes = TRANSPOSE_SHAPES
 
     def get_input_iter(self, dtype):
-        for case in self.get_case_iter(dtype):
-            yield self.build_inputs(case)
-
-    def get_case_iter(self, dtype):
-        for ordinal, shape in enumerate(self.shapes):
+        for shape in self.shapes:
+            inp = torch.randn(shape, dtype=dtype, device=self.device)
             # Swap first and last dimensions for every shape.
-            dim0 = 0
-            dim1 = len(shape) - 1
-            yield self._case_from_plan(
-                dtype,
-                ordinal,
-                base.BenchmarkCasePlan(
-                    shape={"input": shape},
-                    params={"dim0": dim0, "dim1": dim1},
-                    builder_args=(shape, dim0, dim1),
-                ),
-            )
-
-    def build_inputs(self, case):
-        shape, dim0, dim1 = case.builder_args[0].builder_args
-        inp = torch.randn(shape, dtype=case.dtype, device=self.device)
-        return inp, dim0, dim1
+            ndim = inp.dim()
+            yield inp, 0, ndim - 1
 
 
 @pytest.mark.transpose

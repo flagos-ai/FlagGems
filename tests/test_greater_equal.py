@@ -20,13 +20,6 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
-def _greater_equal_(*args, **kwargs):
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "greater_equal_", flag_gems.greater_equal_
-    )
-    return gems_op(*args, **kwargs)
-
-
 @pytest.mark.greater_equal
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -68,7 +61,8 @@ def test_greater_equal_(shape, dtype):
     ref_inp2 = utils.to_reference(inp2.clone())
 
     ref_out = ref_inp1.greater_equal_(ref_inp2)
-    res_out = _greater_equal_(inp1, inp2)
+    with flag_gems.use_gems():
+        res_out = inp1.greater_equal_(inp2)
 
     utils.gems_assert_equal(res_out, ref_out)
     utils.gems_assert_equal(inp1, ref_inp1)

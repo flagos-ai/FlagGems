@@ -52,10 +52,7 @@ def test_euclidean_dist(shape, dtype):
     ref_inp2 = utils.to_reference(inp2)
 
     ref_out = torch._euclidean_dist(ref_inp1, ref_inp2)
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "euclidean_dist",
-        flag_gems._euclidean_dist,
-    )
-    res_out = gems_op(inp1, inp2)
+    with flag_gems.use_gems():
+        res_out = torch._euclidean_dist(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

@@ -38,7 +38,7 @@ def test_rot90(shape, dtype, k):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.rot90(ref_inp, k, [0, 1])
-    gems_op = flag_gems.testing.resolve_gems_op("rot90", flag_gems.rot90)
-    res_out = gems_op(inp, k, [0, 1])
+    with flag_gems.use_gems():
+        res_out = torch.rot90(inp, k, [0, 1])
 
     utils.gems_assert_equal(res_out, ref_out)

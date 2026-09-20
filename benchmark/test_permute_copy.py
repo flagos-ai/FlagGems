@@ -35,25 +35,6 @@ class PermuteCopyBenchmark(base.Benchmark):
             x = torch.randn(shape, dtype=cur_dtype, device=self.device)
             yield x, dims
 
-    def get_case_iter(self, dtype):
-        for ordinal, config in enumerate(self.shapes):
-            shape, dims = config
-            output_shape = tuple(shape[dim] for dim in dims)
-            yield self._case_from_plan(
-                dtype,
-                ordinal,
-                base.BenchmarkCasePlan(
-                    shape={"input": shape, "output": output_shape},
-                    params={"dims": dims},
-                    builder_args=(config, 0),
-                ),
-            )
-
-    def build_inputs(self, case):
-        shape, dims = case.builder_args[0].builder_args[0]
-        x = torch.randn(shape, dtype=case.dtype, device=self.device)
-        return x, dims
-
 
 @pytest.mark.permute_copy
 def test_permute_copy():

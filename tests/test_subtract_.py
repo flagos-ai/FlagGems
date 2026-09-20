@@ -21,13 +21,6 @@ from . import accuracy_utils as utils
 from .accuracy_utils import SCALARS
 
 
-def _subtract_(*args, **kwargs):
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "subtract_", flag_gems.subtract_
-    )
-    return gems_op(*args, **kwargs)
-
-
 @pytest.mark.subtract
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("alpha", SCALARS)
@@ -56,7 +49,8 @@ def test_subtract_(shape, alpha, dtype):
     ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = ref_inp1.subtract_(ref_inp2, alpha=alpha)
-    res_out = _subtract_(inp1, inp2, alpha=alpha)
+    with flag_gems.use_gems():
+        res_out = inp1.subtract_(inp2, alpha=alpha)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
     utils.gems_assert_close(inp1, ref_inp1, dtype)

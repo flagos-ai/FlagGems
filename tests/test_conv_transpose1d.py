@@ -41,13 +41,6 @@ else:
     PADDINGS = [0, 1]
 
 
-def _conv_transpose1d(*args, **kwargs):
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "conv_transpose1d", flag_gems.conv_transpose1d
-    )
-    return gems_op(*args, **kwargs)
-
-
 @pytest.mark.conv_transpose1d
 @pytest.mark.parametrize("shape, kernel", SHAPE_CONV_TRANSPOSE1D)
 @pytest.mark.parametrize("stride", STRIDES)
@@ -62,7 +55,7 @@ def test_conv_transpose1d(shape, kernel, stride, padding, dtype, monkeypatch):
         ref_inp, ref_weight, bias=None, stride=stride, padding=padding, dilation=1
     )
 
-    res_out = _conv_transpose1d(
+    res_out = flag_gems.conv_transpose1d(
         inp, weight, bias=None, stride=stride, padding=padding, dilation=1
     )
     in_channels = kernel[0]
@@ -95,7 +88,7 @@ def test_conv_transpose1d_bias(shape, kernel, stride, padding, dtype, monkeypatc
         ref_inp, ref_weight, bias=ref_bias, stride=stride, padding=padding, dilation=1
     )
 
-    res_out = _conv_transpose1d(
+    res_out = flag_gems.conv_transpose1d(
         inp, weight, bias=bias, stride=stride, padding=padding, dilation=1
     )
     in_channels = kernel[0]
@@ -137,7 +130,7 @@ def test_conv_transpose1d_groups(
         groups=groups,
     )
 
-    res_out = _conv_transpose1d(
+    res_out = flag_gems.conv_transpose1d(
         inp,
         weight,
         bias=None,

@@ -32,7 +32,7 @@ def test_conj(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch._conj(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("conj", flag_gems._conj)
-    res_out = gems_op(inp)
+    with flag_gems.use_gems():
+        res_out = torch._conj(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

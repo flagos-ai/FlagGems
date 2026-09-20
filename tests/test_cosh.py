@@ -42,8 +42,8 @@ def test_cosh_(shape, dtype):
     ref_inp = utils.to_reference(inp.clone(), True)
 
     ref_out = torch.cosh_(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("cosh_", flag_gems.cosh_)
-    res_out = gems_op(inp)
+    with flag_gems.use_gems():
+        res_out = torch.cosh_(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 

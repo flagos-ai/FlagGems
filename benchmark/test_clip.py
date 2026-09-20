@@ -26,30 +26,10 @@ def _input_fn(shape, dtype, device):
         yield inp, -0.5, None
 
 
-def _case_fn(shape, dtype):
-    del dtype
-    bounds = [(-0.5, 0.5)]
-    if base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
-        bounds.extend([(None, 0.5), (-0.5, None)])
-    for minimum, maximum in bounds:
-        yield base.BenchmarkCasePlan(
-            shape={"input": shape},
-            params={"min": minimum, "max": maximum},
-            builder_args=(shape, minimum, maximum),
-        )
-
-
-def _build_inputs_fn(plan, dtype, device):
-    shape, minimum, maximum = plan.builder_args
-    inp = utils.generate_tensor_input(shape, dtype, device)
-    return inp, minimum, maximum
-
-
 @pytest.mark.clip
 def test_clip():
     bench = base.GenericBenchmark(
-        case_fn=_case_fn,
-        build_inputs_fn=_build_inputs_fn,
+        input_fn=_input_fn,
         op_name="clip",
         torch_op=torch.clip,
         dtypes=consts.FLOAT_DTYPES,
@@ -60,8 +40,7 @@ def test_clip():
 @pytest.mark.clip_
 def test_clip_inplace():
     bench = base.GenericBenchmark(
-        case_fn=_case_fn,
-        build_inputs_fn=_build_inputs_fn,
+        input_fn=_input_fn,
         op_name="clip_",
         torch_op=torch.clip_,
         dtypes=consts.FLOAT_DTYPES,

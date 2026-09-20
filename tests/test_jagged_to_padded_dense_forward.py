@@ -21,16 +21,6 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
-def _jagged_to_padded_dense_forward(
-    values, offsets, max_lengths, padding_value=0.0
-):
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "jagged_to_padded_dense_forward",
-        flag_gems._jagged_to_padded_dense_forward,
-    )
-    return gems_op(values, offsets, max_lengths, padding_value)
-
-
 @pytest.mark.jagged_to_padded_dense_forward
 @pytest.mark.parametrize("batch_size", [1, 8, 32, 128])
 @pytest.mark.parametrize("max_length", [8, 16, 32, 128])
@@ -58,9 +48,10 @@ def test_jagged_to_padded_dense_forward(batch_size, max_length, dtype):
     )
 
     # GEMS implementation
-    res_out = _jagged_to_padded_dense_forward(
-        values, [offsets], [max_length], 0.0
-    )
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten._jagged_to_padded_dense_forward(
+            values, [offsets], [max_length], 0.0
+        )
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -87,8 +78,9 @@ def test_jagged_to_padded_dense_forward_padding(batch_size, max_length, padding_
         ref_values, [ref_offsets], [max_length], padding_value
     )
 
-    res_out = _jagged_to_padded_dense_forward(
-        values, [offsets], [max_length], padding_value
-    )
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten._jagged_to_padded_dense_forward(
+            values, [offsets], [max_length], padding_value
+        )
 
     utils.gems_assert_close(res_out, ref_out, torch.float32)

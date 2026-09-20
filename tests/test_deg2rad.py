@@ -28,8 +28,8 @@ def test_deg2rad(shape, dtype):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.deg2rad(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("deg2rad", flag_gems.deg2rad)
-    res_out = gems_op(inp)
+    with flag_gems.use_gems():
+        res_out = torch.deg2rad(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -42,8 +42,8 @@ def test_deg2rad_(shape, dtype):
     ref_inp = utils.to_reference(inp, True)
 
     ref_inp.deg2rad_()
-    gems_op = flag_gems.testing.resolve_gems_op("deg2rad_", flag_gems.deg2rad_)
-    gems_op(inp)
+    with flag_gems.use_gems():
+        inp.deg2rad_()
 
     utils.gems_assert_close(inp, ref_inp, dtype)
 

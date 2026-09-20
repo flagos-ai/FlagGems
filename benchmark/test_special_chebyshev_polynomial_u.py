@@ -12,21 +12,11 @@ def _input_fn(shape, dtype, device):
     yield x, n
 
 
-def _case_fn(shape, dtype):
-    del dtype
-    yield base.BenchmarkCasePlan(
-        shape={"input": shape},
-        params={"n": 3},
-        builder_args=(shape, 0),
-    )
-
-
 # torch.special.chebyshev_polynomial_u only supports float32
 @pytest.mark.special_chebyshev_polynomial_u
 def test_special_chebyshev_polynomial_u():
     bench = base.GenericBenchmarkExcluse1D(
-        case_fn=_case_fn,
-        build_inputs_fn=base.build_inputs_from_generic_input_fn(_input_fn),
+        input_fn=_input_fn,
         op_name="special_chebyshev_polynomial_u",
         # torch.special.chebyshev_polynomial_u only supports float32 on CPU/CUDA
         dtypes=[torch.float32],

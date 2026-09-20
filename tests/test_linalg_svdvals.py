@@ -51,12 +51,15 @@ def test_linalg_svdvals(M, N, dtype):
     ref_A = utils.to_reference(A, True)
 
     ref_out = torch.linalg.svdvals(ref_A)
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "linalg_svdvals", flag_gems.linalg_svdvals
-    )
-    res_out = gems_op(A)
+    res_out = flag_gems.linalg_svdvals(A)
 
     utils.gems_assert_close(res_out, ref_out, dtype, atol=SVD_ATOL)
+
+    # Verify dispatch via use_gems()
+    with flag_gems.use_gems():
+        gems_out = torch.ops.aten.linalg_svdvals(A)
+    utils.gems_assert_close(gems_out, ref_out, dtype, atol=SVD_ATOL)
+
 
 @pytest.mark.linalg_svdvals
 @pytest.mark.parametrize("M, N", SVD_SHAPES)
@@ -74,10 +77,7 @@ def test_linalg_svdvals_batch(M, N, dtype):
     ref_A = utils.to_reference(A, True)
 
     ref_out = torch.linalg.svdvals(ref_A)
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "linalg_svdvals", flag_gems.linalg_svdvals
-    )
-    res_out = gems_op(A)
+    res_out = flag_gems.linalg_svdvals(A)
 
     utils.gems_assert_close(res_out, ref_out, dtype, atol=SVD_ATOL)
 
@@ -98,9 +98,6 @@ def test_linalg_svdvals_non_contiguous(M, N, dtype):
     ref_A = utils.to_reference(A, True)
 
     ref_out = torch.linalg.svdvals(ref_A)
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "linalg_svdvals", flag_gems.linalg_svdvals
-    )
-    res_out = gems_op(A)
+    res_out = flag_gems.linalg_svdvals(A)
 
     utils.gems_assert_close(res_out, ref_out, dtype, atol=SVD_ATOL)

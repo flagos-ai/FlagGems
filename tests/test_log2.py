@@ -28,8 +28,8 @@ def test_log2(shape, dtype):
 
     ref_inp = utils.to_reference(inp, True)
     ref_out = torch.log2(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("log2", flag_gems.log2)
-    res_out = gems_op(inp)
+    with flag_gems.use_gems():
+        res_out = torch.log2(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -42,7 +42,7 @@ def test_log2_(shape, dtype):
     ref_inp = utils.to_reference(inp.clone(), True)
 
     ref_out = ref_inp.log2_()
-    gems_op = flag_gems.testing.resolve_gems_op("log2_", flag_gems.log2_)
-    res_out = gems_op(inp)
+    with flag_gems.use_gems():
+        res_out = inp.log2_()
 
     utils.gems_assert_close(res_out, ref_out, dtype)

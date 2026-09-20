@@ -33,11 +33,6 @@ EMPTY_PERMUTED_LAYOUTS = [
 ]
 
 
-def _empty(size, **kwargs):
-    gems_op = flag_gems.testing.resolve_gems_op("empty", flag_gems.empty)
-    return gems_op(size, **kwargs)
-
-
 @pytest.mark.empty_permuted
 @pytest.mark.parametrize("shape,physical_layout", EMPTY_PERMUTED_LAYOUTS)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -70,7 +65,8 @@ def test_empty_permuted(shape, physical_layout, dtype, caplog):
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_empty(shape, dtype):
     expected_dev = "cpu" if cfg.TO_CPU else device
-    res_out = _empty(shape, dtype=dtype, device=flag_gems.device)
+    with flag_gems.use_gems():
+        res_out = torch.empty(*shape, dtype=dtype, device=flag_gems.device)
 
     ref_out = torch.zeros(*shape, dtype=dtype, device=expected_dev)
     ref_out = utils.to_reference(ref_out, True)
@@ -82,7 +78,8 @@ def test_empty_default_dtype():
     # Tests empty() with default dtype (not explicitly specified) to verify
     # proper dtype inference when only shape and device are given.
     expected_dev = "cpu" if cfg.TO_CPU else device
-    res_out = _empty((10, 20), device=flag_gems.device)
+    with flag_gems.use_gems():
+        res_out = torch.empty(10, 20, device=flag_gems.device)
 
     ref_out = torch.zeros(10, 20, device=expected_dev)
     ref_out = utils.to_reference(ref_out, True)

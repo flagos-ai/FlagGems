@@ -26,14 +26,6 @@ def _input_fn(shape, cur_dtype, device):
     yield inp, boundaries
 
 
-def _case_fn(shape, dtype):
-    del dtype
-    yield base.BenchmarkCasePlan(
-        shape={"input": shape, "boundaries": (5,)},
-        builder_args=(shape, 0),
-    )
-
-
 @pytest.mark.bucketize
 def test_bucketize_perf():
     if flag_gems.vendor_name == "mthreads":
@@ -43,8 +35,7 @@ def test_bucketize_perf():
 
     bench = base.GenericBenchmark(
         op_name="bucketize",
-        case_fn=_case_fn,
-        build_inputs_fn=base.build_inputs_from_generic_input_fn(_input_fn),
+        input_fn=_input_fn,
         torch_op=torch.bucketize,
         dtypes=dtypes,
     )

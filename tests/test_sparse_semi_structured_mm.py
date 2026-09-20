@@ -42,11 +42,8 @@ def test_sparse_semi_structured_mm(shape, dtype):
     ref_out = _sparse_semi_structured_mm_ref(ref_mat1, ref_meta, ref_mat2)
 
     # GEMS implementation
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "sparse_semi_structured_mm",
-        flag_gems._sparse_semi_structured_mm,
-    )
-    res_out = gems_op(mat1, mat1_meta, mat2)
+    with flag_gems.use_gems():
+        res_out = flag_gems._sparse_semi_structured_mm(mat1, mat1_meta, mat2)
 
     # Use more permissive tolerance for this operator due to numerical precision differences
     # between reference and Triton implementations

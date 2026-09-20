@@ -106,6 +106,10 @@ def any_kernel_2(mid, out, MID_SIZE, BLOCK_MID: tl.constexpr):
 def any(inp):
     logger.debug("GEMS ANY")
     n_elements = inp.numel()
+
+    if n_elements == 0:
+        return torch.tensor(False, dtype=torch.bool, device=inp.device)
+
     block_size = triton.next_power_of_2(math.ceil(math.sqrt(n_elements)))
     mid_size = triton.cdiv(n_elements, block_size)
     block_mid = triton.next_power_of_2(mid_size)

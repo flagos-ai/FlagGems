@@ -1,3 +1,5 @@
+import random
+
 import pytest
 import torch
 
@@ -24,8 +26,8 @@ class IndexSelectBackwardBenchmark(base.GenericBenchmark):
 
 
 def _input_fn(shape, dtype, device):
-    # Deterministic choice keeps case listing and selected execution identical.
-    dim = sum(shape) % len(shape)
+    # Randomly choose dim
+    dim = random.randint(0, len(shape) - 1)
     index_len = shape[dim]
     dim_size_out = index_len + 8  # Make output larger
     self_sizes = list(shape)
@@ -36,19 +38,6 @@ def _input_fn(shape, dtype, device):
     index = torch.randint(0, dim_size_out, (index_len,), device=device)
 
     yield (grad, self_sizes, dim, index)
-
-
-def _case_fn(shape, dtype):
-    del dtype
-    dim = sum(shape) % len(shape)
-    index_len = shape[dim]
-    self_sizes = list(shape)
-    self_sizes[dim] = index_len + 8
-    yield base.BenchmarkCasePlan(
-        shape={"grad": shape, "index": (index_len,), "output": tuple(self_sizes)},
-        params={"self_sizes": tuple(self_sizes), "dim": dim},
-        builder_args=(shape, 0),
-    )
 
 
 def _get_gbps(args, latency):
@@ -65,8 +54,7 @@ def test_index_select_backward():
     bench = IndexSelectBackwardBenchmark(
         op_name="index_select_backward",
         torch_op=torch.ops.aten.index_select_backward,
-        case_fn=_case_fn,
-        build_inputs_fn=base.build_inputs_from_generic_input_fn(_input_fn),
+        input_fn=_input_fn,
         dtypes=consts.FLOAT_DTYPES,
         get_gbps=_get_gbps,
     )

@@ -33,11 +33,8 @@ def test_special_shifted_chebyshev_polynomial_u(shape, dtype):
     ref_n = n.to(ref_x.device).to(ref_x.dtype)
 
     ref_out = torch.special.shifted_chebyshev_polynomial_u(ref_x, ref_n)
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "special_shifted_chebyshev_polynomial_u",
-        flag_gems.special_shifted_chebyshev_polynomial_u,
-    )
-    res_out = gems_op(x, n)
+    with flag_gems.use_gems():
+        res_out = torch.special.shifted_chebyshev_polynomial_u(x, n)
 
     # Use larger tolerance for float32 due to trigonometric function precision
     utils.gems_assert_close(res_out, ref_out, dtype, atol=5e-3)
@@ -55,11 +52,8 @@ def test_special_shifted_chebyshev_polynomial_u_scalar_n(shape, dtype):
     ref_x = utils.to_reference(x, True)
 
     ref_out = torch.special.shifted_chebyshev_polynomial_u(ref_x, n)
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "special_shifted_chebyshev_polynomial_u",
-        flag_gems.special_shifted_chebyshev_polynomial_u,
-    )
-    res_out = gems_op(x, n)
+    with flag_gems.use_gems():
+        res_out = torch.special.shifted_chebyshev_polynomial_u(x, n)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 

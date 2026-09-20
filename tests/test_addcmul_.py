@@ -51,8 +51,8 @@ def test_addcmul_(self_shape, t1_shape, t2_shape, dtype, value):
     inp1 = inp.clone()
     t1_copy = t1.clone()
     t2_copy = t2.clone()
-    gems_op = flag_gems.testing.resolve_gems_op("addcmul_", flag_gems.addcmul_)
-    res_out = gems_op(inp1, t1_copy, t2_copy, value=value)
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.addcmul_(inp1, t1_copy, t2_copy, value=value)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
     utils.gems_assert_close(inp1, ref_inp, dtype)

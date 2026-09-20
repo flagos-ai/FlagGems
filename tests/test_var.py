@@ -55,8 +55,8 @@ def test_accuracy_var(shape, correction, keepdim, dtype):
 
     ref_inp = utils.to_reference(inp)
 
-    gems_op = flag_gems.testing.resolve_gems_op("var", flag_gems.var)
-    res_out = gems_op(inp, correction=correction, keepdim=keepdim)
+    with flag_gems.use_gems():
+        res_out = torch.var(inp, correction=correction, keepdim=keepdim)
 
     ref_out = torch.var(ref_inp, correction=correction, keepdim=keepdim)
 

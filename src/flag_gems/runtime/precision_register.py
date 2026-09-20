@@ -204,10 +204,23 @@ class PrecisionCheckRegister(GeneralOpRegistrar):
             raise ValueError("Library instance is not provided.")
 
         wrapped_fn = _wrap_op_with_precision_check(key, fn)
+        wrapped_dispatch_keys = []
+        for dispatch_spec in extra_dispatch_keys:
+            if isinstance(dispatch_spec, tuple) and len(dispatch_spec) == 2:
+                dispatch_key, dispatch_fn = dispatch_spec
+                if dispatch_fn is not torch.library.fallthrough_kernel:
+                    dispatch_fn = _wrap_op_with_precision_check(key, dispatch_fn)
+                wrapped_dispatch_keys.append((dispatch_key, dispatch_fn))
+            else:
+                wrapped_dispatch_keys.append(dispatch_spec)
+
+        device_fn, dispatch_impls = self._resolve_dispatch_impls(
+            wrapped_fn, wrapped_dispatch_keys
+        )
 
         device_key = self.reg_key
         self.all_ops.append(fn.__name__)
         self.all_keys.append(key)
-        self.lib.impl(key, wrapped_fn, device_key)
-        for dispatch_key in extra_dispatch_keys:
-            self.lib.impl(key, wrapped_fn, dispatch_key)
+        self.lib.impl(key, device_fn, device_key)
+        for dispatch_key, dispatch_fn in dispatch_impls:
+            self.lib.impl(key, dispatch_fn, dispatch_key)

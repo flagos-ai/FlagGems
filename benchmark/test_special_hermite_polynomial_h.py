@@ -28,24 +28,6 @@ def test_special_hermite_polynomial_h():
                 inp2 = torch.randint(0, 10, shape, device=self.device).to(dtype)
                 yield inp1, inp2
 
-        def get_case_iter(self, dtype):
-            for ordinal, shape in enumerate(self.shapes):
-                yield self._case_from_plan(
-                    dtype,
-                    ordinal,
-                    base.BenchmarkCasePlan(
-                        shape={"input": shape, "n": shape},
-                        params={"n_range": [0, 9]},
-                        builder_args=(shape, 0),
-                    ),
-                )
-
-        def build_inputs(self, case):
-            shape = case.builder_args[0].builder_args[0]
-            inp1 = base.generate_tensor_input(shape, case.dtype, self.device)
-            inp2 = torch.randint(0, 10, shape, device=self.device).to(case.dtype)
-            return inp1, inp2
-
     bench = _HermiteBenchmark(
         op_name="special_hermite_polynomial_h",
         torch_op=torch.special.hermite_polynomial_h,

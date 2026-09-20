@@ -21,13 +21,27 @@ import flag_gems
 
 from . import base, consts, utils
 
+SILU_GRID_BALANCE_SHAPES = [
+    (1024, 131073),
+    (64, 64, 40961),
+    (1024, 262145),
+    (64, 64, 81921),
+    (1024, 393217),
+    (64, 64, 131073),
+]
+
+
+class SiluBenchmark(base.UnaryPointwiseBenchmark):
+    def set_more_shapes(self):
+        return super().set_more_shapes() + SILU_GRID_BALANCE_SHAPES
+
 
 @pytest.mark.silu
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_silu():
-    bench = base.UnaryPointwiseBenchmark(
+    bench = SiluBenchmark(
         op_name="silu", torch_op=torch.nn.functional.silu, dtypes=consts.FLOAT_DTYPES
     )
     bench.run()
@@ -38,7 +52,7 @@ def test_silu():
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_silu_inplace():
-    bench = base.UnaryPointwiseBenchmark(
+    bench = SiluBenchmark(
         op_name="silu_",
         torch_op=lambda a: torch.nn.functional.silu(a, inplace=True),
         dtypes=consts.FLOAT_DTYPES,
@@ -53,23 +67,6 @@ class SiluBackwardBenchmark(base.UnaryPointwiseBenchmark):
             inp = utils.generate_tensor_input(shape, dtype, self.device)
             grad_out = torch.randn_like(inp)
             yield grad_out, inp
-
-    def get_case_iter(self, dtype: torch.dtype) -> Generator:
-        for ordinal, shape in enumerate(self.shapes):
-            yield self._case_from_plan(
-                dtype,
-                ordinal,
-                base.BenchmarkCasePlan(
-                    shape={"grad_output": shape, "input": shape},
-                    builder_args=(shape, 0),
-                ),
-            )
-
-    def build_inputs(self, case):
-        shape = case.builder_args[0].builder_args[0]
-        inp = utils.generate_tensor_input(shape, case.dtype, self.device)
-        grad_out = torch.randn_like(inp)
-        return grad_out, inp
 
 
 @pytest.mark.silu_backward

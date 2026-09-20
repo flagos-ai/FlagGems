@@ -25,23 +25,13 @@ def _input_fn(shape, dtype, device):
     yield inp, {"bins": 100, "min": 0, "max": 10}
 
 
-def _case_fn(shape, dtype):
-    del dtype
-    yield base.BenchmarkCasePlan(
-        shape={"input": shape},
-        params={"bins": 100, "min": 0, "max": 10},
-        builder_args=(shape, 0),
-    )
-
-
 @pytest.mark.histc
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_histc():
     bench = base.GenericBenchmark2DOnly(
-        case_fn=_case_fn,
-        build_inputs_fn=base.build_inputs_from_generic_input_fn(_input_fn),
+        input_fn=_input_fn,
         op_name="histc",
         torch_op=torch.histc,
         dtypes=[torch.float32],

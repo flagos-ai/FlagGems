@@ -20,11 +20,8 @@ def test_special_shifted_chebyshev_polynomial_v(shape, dtype):
     ref_n = n.to(ref_x.device)
 
     ref_out = torch.special.shifted_chebyshev_polynomial_v(ref_x, ref_n)
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "special_shifted_chebyshev_polynomial_v",
-        flag_gems.special_shifted_chebyshev_polynomial_v,
-    )
-    res_out = gems_op(x, n.to(x.device))
+    with flag_gems.use_gems():
+        res_out = torch.special.shifted_chebyshev_polynomial_v(x, n.to(x.device))
 
     # Use a relaxed atol because the recurrence-based computation accumulates
     # float32 rounding errors for higher-degree polynomials.
@@ -43,11 +40,8 @@ def test_special_shifted_chebyshev_polynomial_v_scalar_n(shape, dtype):
     ref_x = utils.to_reference(x, True)
 
     ref_out = torch.special.shifted_chebyshev_polynomial_v(ref_x, n)
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "special_shifted_chebyshev_polynomial_v",
-        flag_gems.special_shifted_chebyshev_polynomial_v,
-    )
-    res_out = gems_op(x, n)
+    with flag_gems.use_gems():
+        res_out = torch.special.shifted_chebyshev_polynomial_v(x, n)
 
     utils.gems_assert_close(res_out, ref_out, dtype, atol=5e-3)
 
@@ -60,14 +54,8 @@ def test_special_shifted_chebyshev_polynomial_v_out_of_range_tensor(shape, dtype
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     n = torch.full(shape, 16, device="cpu").to(torch.int32)
 
-    gems_op = flag_gems.testing.resolve_gems_op(
-
-        "special_shifted_chebyshev_polynomial_v",
-
-        flag_gems.special_shifted_chebyshev_polynomial_v,
-
-    )
-    res_out = gems_op(x, n.to(x.device))
+    with flag_gems.use_gems():
+        res_out = torch.special.shifted_chebyshev_polynomial_v(x, n.to(x.device))
 
     expected = torch.zeros(res_out.shape, dtype=res_out.dtype)
     utils.gems_assert_close(res_out.cpu(), expected, dtype, atol=0.0)
@@ -83,14 +71,8 @@ def test_special_shifted_chebyshev_polynomial_v_out_of_range_scalar(
     """Verify that scalar n outside [0, 15] returns 0.0 (kernel guards with arithmetic masking)."""
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
-    gems_op = flag_gems.testing.resolve_gems_op(
-
-        "special_shifted_chebyshev_polynomial_v",
-
-        flag_gems.special_shifted_chebyshev_polynomial_v,
-
-    )
-    res_out = gems_op(x, bad_n)
+    with flag_gems.use_gems():
+        res_out = torch.special.shifted_chebyshev_polynomial_v(x, bad_n)
 
     expected = torch.zeros(res_out.shape, dtype=res_out.dtype)
     utils.gems_assert_close(res_out.cpu(), expected, dtype, atol=0.0)

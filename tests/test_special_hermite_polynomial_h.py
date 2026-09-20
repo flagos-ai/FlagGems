@@ -20,13 +20,6 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
-def _hermite_polynomial_h(*args):
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "special_hermite_polynomial_h", flag_gems.special_hermite_polynomial_h
-    )
-    return gems_op(*args)
-
-
 @pytest.mark.special_hermite_polynomial_h
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 # special.hermite_polynomial_h reference only supports float32 and float64
@@ -38,17 +31,16 @@ def test_special_hermite_polynomial_h(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     n = torch.randint(0, 10, (1,), device=flag_gems.device).squeeze()
 
-    ref_inp = utils.to_reference(inp, True)
+    # Compare against PyTorch in the same dtype: gems replicates PyTorch's
+    # in-dtype recurrence, so no float64 upcast is used for the reference.
+    ref_inp = utils.to_reference(inp)
 
-    ref_out = torch.special.hermite_polynomial_h(ref_inp, utils.to_reference(n, True))
-    res_out = _hermite_polynomial_h(inp, n)
+    ref_out = torch.special.hermite_polynomial_h(ref_inp, utils.to_reference(n))
+    res_out = flag_gems.special_hermite_polynomial_h(inp, n)
 
-    # Hermite polynomials use float32 intermediates, so per-dtype tolerances
-    # are needed to account for accumulated floating-point errors.
-    if dtype == torch.float32:
-        utils.gems_assert_close(res_out, ref_out, dtype, atol=500.0)
-    else:
-        utils.gems_assert_close(res_out, ref_out, dtype, atol=1000.0)
+    # gems uses the same in-dtype recurrence as PyTorch, so results match the
+    # reference to default precision for both float32 and float64.
+    utils.gems_assert_close(res_out, ref_out, dtype)
 
 
 @pytest.mark.special_hermite_polynomial_h
@@ -62,16 +54,15 @@ def test_special_hermite_polynomial_h_scalar(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     n = 9
 
-    ref_inp = utils.to_reference(inp, True)
+    # Compare against PyTorch in the same dtype (no float64 upcast).
+    ref_inp = utils.to_reference(inp)
 
     ref_out = torch.special.hermite_polynomial_h(ref_inp, n)
-    res_out = _hermite_polynomial_h(inp, n)
+    res_out = flag_gems.special_hermite_polynomial_h(inp, n)
 
-    # n=9 produces the largest Hermite polynomial values; relax tolerance.
-    if dtype == torch.float32:
-        utils.gems_assert_close(res_out, ref_out, dtype, atol=500.0)
-    else:
-        utils.gems_assert_close(res_out, ref_out, dtype, atol=1000.0)
+    # gems uses the same in-dtype recurrence as PyTorch, so results match the
+    # reference to default precision for both float32 and float64.
+    utils.gems_assert_close(res_out, ref_out, dtype)
 
 
 @pytest.mark.special_hermite_polynomial_h
@@ -83,14 +74,14 @@ def test_special_hermite_polynomial_h_out_of_range(dtype):
     inp = torch.randn(4, 4, dtype=dtype, device=flag_gems.device)
 
     with pytest.raises(ValueError, match="only supports n"):
-        _hermite_polynomial_h(inp, 10)
+        flag_gems.special_hermite_polynomial_h(inp, 10)
     with pytest.raises(ValueError, match="only supports n"):
-        _hermite_polynomial_h(inp, -1)
+        flag_gems.special_hermite_polynomial_h(inp, -1)
 
     # Verify that tensor n with values >= 10 raises ValueError
     with pytest.raises(ValueError, match="only supports n"):
         n_bad = torch.tensor(10, dtype=torch.int32, device=flag_gems.device)
-        _hermite_polynomial_h(inp, n_bad)
+        flag_gems.special_hermite_polynomial_h(inp, n_bad)
     with pytest.raises(ValueError, match="only supports n"):
         n_bad = torch.tensor(-1, dtype=torch.int32, device=flag_gems.device)
-        _hermite_polynomial_h(inp, n_bad)
+        flag_gems.special_hermite_polynomial_h(inp, n_bad)

@@ -105,7 +105,7 @@ def amin(inp, dim=None, keepdim=False):
         torch.float16,
         torch.bfloat16,
     ), "amin only supports float dtypes"
-    if dim is None or (not isinstance(dim, int) and len(dim) == 0):
+    if dim is None or len(dim) == 0:
         M = inp.numel()
         block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
         mid_size = triton.cdiv(M, block_size)

@@ -29,7 +29,7 @@ def test_frac_(shape, dtype):
     ref_inp = utils.to_reference(inp.clone())
 
     ref_out = ref_inp.frac_()
-    gems_op = flag_gems.testing.resolve_gems_op("frac_", flag_gems.frac_)
-    res_out = gems_op(inp)
+    with flag_gems.use_gems():
+        res_out = inp.frac_()
 
     utils.gems_assert_equal(res_out, ref_out)

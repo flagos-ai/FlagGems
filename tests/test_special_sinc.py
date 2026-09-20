@@ -14,7 +14,7 @@ def test_special_sinc(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.special.sinc(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("special_sinc", flag_gems.special_sinc)
-    res_out = gems_op(inp)
+    with flag_gems.use_gems():
+        res_out = torch.special.sinc(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

@@ -23,13 +23,6 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import conftest as cfg
 
-
-def _scatter_(*args, **kwargs):
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "scatter_", flag_gems.scatter_
-    )
-    return gems_op(*args, **kwargs)
-
 if cfg.QUICK_MODE:
     FLOAT_DTYPES = [torch.float32]
     SOURCE_SHAPES = [(32, 8, 4)]
@@ -317,7 +310,7 @@ def test_scatter_src_(src_shape, inp_shape, dim, dtype):
     utils.gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.scatter_legacy_reduce_
+@pytest.mark.scatter_reduce_
 @pytest.mark.parametrize("src_shape", SOURCE_SHAPES)
 @pytest.mark.parametrize("inp_shape", INPUT_SHAPES)
 @pytest.mark.parametrize("dim", [0, 1, 2])
@@ -352,12 +345,13 @@ def test_scatter_reduce_add_(src_shape, inp_shape, dim, dtype):
     ref_index = utils.to_reference(index)
     ref_src = utils.to_reference(src, upcast=True)
     ref_out = ref_inp.clone().scatter_(dim, ref_index, ref_src, reduce="add")
-    res_out = _scatter_(inp.clone(), dim, index, src, reduce="add")
+    with flag_gems.use_gems():
+        res_out = inp.clone().scatter_(dim, index, src, reduce="add")
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.scatter_legacy_reduce_
+@pytest.mark.scatter_reduce_
 @pytest.mark.parametrize("src_shape", SOURCE_SHAPES)
 @pytest.mark.parametrize("inp_shape", INPUT_SHAPES)
 @pytest.mark.parametrize("dim", [0, 1, 2])
@@ -389,6 +383,7 @@ def test_scatter_reduce_multiply_(src_shape, inp_shape, dim, dtype):
     ref_index = utils.to_reference(index)
     ref_src = utils.to_reference(src)
     ref_out = ref_inp.clone().scatter_(dim, ref_index, ref_src, reduce="multiply")
-    res_out = _scatter_(inp.clone(), dim, index, src, reduce="multiply")
+    with flag_gems.use_gems():
+        res_out = inp.clone().scatter_(dim, index, src, reduce="multiply")
 
     utils.gems_assert_close(res_out, ref_out, dtype)

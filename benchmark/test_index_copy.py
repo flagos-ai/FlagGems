@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import math
+
 import pytest
 import torch
 
@@ -21,6 +23,22 @@ from . import base, consts, utils
 
 
 class IndexCopyBenchmark(base.GenericBenchmark):
+    # Maximum number of elements per input tensor to avoid OOM.
+    # For 1-D shapes the input generator builds an int64 index with half the
+    # elements of the input, and torch.randperm's internal sort workspace
+    # drives peak memory to ~24x the input size in bytes. With 2**26 elements
+    # peak stays below ~1.5 GiB (float32) while still dropping the two
+    # 2**30-element "from perf" shapes in DEFAULT_SHAPES.
+    MAX_ELEMENTS = 2**26
+
+    def set_shapes(self, shape_file_path=None):
+        super().set_shapes(shape_file_path)
+        # Filter out shapes that would cause OOM with the int64 index tensor.
+        self.shapes = [
+            shape for shape in self.shapes if math.prod(shape) <= self.MAX_ELEMENTS
+        ]
+        self.shapes += [(1, 2), (4096, 256), (200, 40999, 3)]
+
     def set_more_shapes(self):
         return [(1, 2), (4096, 256), (200, 40999, 3)]
 
@@ -43,31 +61,13 @@ def _tensor_input_fn(shape, dtype, device):
     yield inp, dim, index, src
 
 
-def _case_fn(shape, dtype):
-    del dtype
-    dim = 0 if len(shape) == 1 else 1
-    index_len = max(shape[dim] // 2, 1)
-    src_shape = list(shape)
-    src_shape[dim] = index_len
-    yield base.BenchmarkCasePlan(
-        shape={
-            "input": shape,
-            "index": (index_len,),
-            "source": tuple(src_shape),
-        },
-        params={"dim": dim},
-        builder_args=(shape, 0),
-    )
-
-
 @pytest.mark.index_copy
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_index_copy():
     bench = IndexCopyBenchmark(
-        case_fn=_case_fn,
-        build_inputs_fn=base.build_inputs_from_generic_input_fn(_tensor_input_fn),
+        input_fn=_tensor_input_fn,
         op_name="index_copy",
         torch_op=torch.index_copy,
         dtypes=consts.FLOAT_DTYPES,
@@ -81,8 +81,7 @@ def test_index_copy():
 )
 def test_index_copy_():
     bench = IndexCopyBenchmark(
-        case_fn=_case_fn,
-        build_inputs_fn=base.build_inputs_from_generic_input_fn(_tensor_input_fn),
+        input_fn=_tensor_input_fn,
         op_name="index_copy_",
         torch_op=torch.Tensor.index_copy_,
         dtypes=consts.FLOAT_DTYPES,

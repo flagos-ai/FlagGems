@@ -42,37 +42,6 @@ class Im2colBenchmark(base.Benchmark):
             x = torch.randn(shape, dtype=dtype, device=device)
             yield x, kernel_size, dilation, padding, stride
 
-    def get_case_iter(self, dtype):
-        ordinal = 0
-        for shape in self.shapes:
-            for config_index, (kernel_size, dilation, padding, stride) in enumerate(
-                IM2COL_CONFIGS
-            ):
-                yield self._case_from_plan(
-                    dtype,
-                    ordinal,
-                    base.BenchmarkCasePlan(
-                        shape={"input": shape},
-                        params={
-                            "kernel_size": kernel_size,
-                            "dilation": dilation,
-                            "padding": padding,
-                            "stride": stride,
-                        },
-                        builder_args=(shape, config_index),
-                    ),
-                )
-                ordinal += 1
-
-    def build_inputs(self, case):
-        shape, config_index = case.builder_args[0].builder_args
-        for index, input in enumerate(
-            self.im2col_input_fn(shape, case.dtype, self.device)
-        ):
-            if index == config_index:
-                return input
-        raise ValueError(f"Unknown im2col config index: {config_index}")
-
 
 @pytest.mark.im2col
 def test_im2col():

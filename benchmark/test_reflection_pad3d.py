@@ -41,29 +41,6 @@ class ReflectionPad3dBenchmark(base.Benchmark):
         for config in self.shapes:
             yield from _input_fn(config, dtype, self.device)
 
-    def get_case_iter(self, dtype):
-        for ordinal, config in enumerate(self.shapes):
-            shape, padding = config
-            pad_l, pad_r, pad_t, pad_b, pad_f, pad_ba = padding
-            output_shape = shape[:-3] + (
-                shape[-3] + pad_f + pad_ba,
-                shape[-2] + pad_t + pad_b,
-                shape[-1] + pad_l + pad_r,
-            )
-            yield self._case_from_plan(
-                dtype,
-                ordinal,
-                base.BenchmarkCasePlan(
-                    shape={"input": shape, "output": output_shape},
-                    params={"padding": list(padding)},
-                    builder_args=(config, 0),
-                ),
-            )
-
-    def build_inputs(self, case):
-        config = case.builder_args[0].builder_args[0]
-        return next(_input_fn(config, case.dtype, self.device))
-
 
 @pytest.mark.reflection_pad3d
 def test_reflection_pad3d():
@@ -104,29 +81,6 @@ class ReflectionPad3dOutBenchmark(base.Benchmark):
     def get_input_iter(self, dtype):
         for config in self.shapes:
             yield from _input_fn_out(config, dtype, self.device)
-
-    def get_case_iter(self, dtype):
-        for ordinal, config in enumerate(self.shapes):
-            shape, padding = config
-            pad_l, pad_r, pad_t, pad_b, pad_f, pad_ba = padding
-            output_shape = shape[:-3] + (
-                shape[-3] + pad_f + pad_ba,
-                shape[-2] + pad_t + pad_b,
-                shape[-1] + pad_l + pad_r,
-            )
-            yield self._case_from_plan(
-                dtype,
-                ordinal,
-                base.BenchmarkCasePlan(
-                    shape={"input": shape, "out": output_shape},
-                    params={"padding": list(padding)},
-                    builder_args=(config, 0),
-                ),
-            )
-
-    def build_inputs(self, case):
-        config = case.builder_args[0].builder_args[0]
-        return next(_input_fn_out(config, case.dtype, self.device))
 
 
 @pytest.mark.reflection_pad3d_out

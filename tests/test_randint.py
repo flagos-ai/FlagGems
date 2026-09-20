@@ -20,19 +20,15 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
-def _randint(high, size, **kwargs):
-    gems_op = flag_gems.testing.resolve_gems_op("randint", flag_gems.randint)
-    return gems_op(high, size, **kwargs)
-
-
 @pytest.mark.randint
 @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
 @pytest.mark.parametrize("dtype", utils.ALL_INT_DTYPES)
 def test_randint(shape, dtype):
     high = 100
-    res_out = _randint(
-        high=high, size=shape, dtype=dtype, device=flag_gems.device
-    )
+    with flag_gems.use_gems():
+        res_out = torch.randint(
+            high=high, size=shape, dtype=dtype, device=flag_gems.device
+        )
     assert res_out.shape == shape
     assert res_out.dtype == dtype
     assert (res_out >= 0).all()

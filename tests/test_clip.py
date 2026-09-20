@@ -62,7 +62,7 @@ def test_accuracy_clip_(shape, maxi, mini, isnone, dtype):
     ref_inp = to_reference(inp.clone())
 
     ref_out = torch.clip_(ref_inp, min=mini, max=maxi)
-    gems_op = flag_gems.testing.resolve_gems_op("clip_", flag_gems.clip_)
-    res_out = gems_op(inp, mini=mini, maxi=maxi)
+    with flag_gems.use_gems():
+        res_out = torch.clip_(inp, min=mini, max=maxi)
 
     gems_assert_equal(res_out, ref_out)

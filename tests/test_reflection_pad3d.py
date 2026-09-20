@@ -20,13 +20,6 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
-def _reflection_pad3d(*args, **kwargs):
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "reflection_pad3d", flag_gems.reflection_pad3d
-    )
-    return gems_op(*args, **kwargs)
-
-
 @pytest.mark.reflection_pad3d
 @pytest.mark.parametrize(
     # 5D shapes: (N, C, D, H, W) covering small/medium volumes
@@ -54,7 +47,8 @@ def test_reflection_pad3d(shape, dtype, padding):
     ref_x = utils.to_reference(x, True)
     ref_out = torch.ops.aten.reflection_pad3d(ref_x, padding)
 
-    act_out = _reflection_pad3d(x, padding)
+    with flag_gems.use_gems():
+        act_out = flag_gems.reflection_pad3d(x, padding)
 
     utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
 
@@ -76,7 +70,8 @@ def test_reflection_pad3d_list_padding(padding):
     ref_x = utils.to_reference(x.clone())
     ref_out = torch.ops.aten.reflection_pad3d(ref_x, padding)
 
-    act_out = _reflection_pad3d(x, padding)
+    with flag_gems.use_gems():
+        act_out = flag_gems.reflection_pad3d(x, padding)
 
     utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
 
@@ -92,7 +87,8 @@ def test_reflection_pad3d_empty_padding():
     ref_x = utils.to_reference(x.clone())
     ref_out = torch.ops.aten.reflection_pad3d(ref_x, padding)
 
-    act_out = _reflection_pad3d(x, padding)
+    with flag_gems.use_gems():
+        act_out = flag_gems.reflection_pad3d(x, padding)
 
     utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
 
@@ -114,7 +110,8 @@ def test_reflection_pad3d_4d_input(padding):
     ref_x = utils.to_reference(x.clone())
     ref_out = torch.ops.aten.reflection_pad3d(ref_x, padding)
 
-    act_out = _reflection_pad3d(x, padding)
+    with flag_gems.use_gems():
+        act_out = flag_gems.reflection_pad3d(x, padding)
 
     utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
 

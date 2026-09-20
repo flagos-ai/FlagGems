@@ -43,10 +43,8 @@ def test_broadcast_tensors(shape, dtype):
     ref_inp2 = utils.to_reference(inp2)
 
     ref_out = torch.broadcast_tensors(ref_inp1, ref_inp2)
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "broadcast_tensors", flag_gems.broadcast_tensors
-    )
-    res_out = gems_op(inp1, inp2)
+    with flag_gems.use_gems():
+        res_out = torch.broadcast_tensors(inp1, inp2)
 
     # Compare each tensor in the list
     assert len(res_out) == len(ref_out)
@@ -68,10 +66,8 @@ def test_broadcast_tensors_three_inputs(shape, dtype):
     ref_inp3 = utils.to_reference(inp3)
 
     ref_out = torch.broadcast_tensors(ref_inp1, ref_inp2, ref_inp3)
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "broadcast_tensors", flag_gems.broadcast_tensors
-    )
-    res_out = gems_op(inp1, inp2, inp3)
+    with flag_gems.use_gems():
+        res_out = torch.broadcast_tensors(inp1, inp2, inp3)
 
     # Compare each tensor in the list
     assert len(res_out) == len(ref_out)

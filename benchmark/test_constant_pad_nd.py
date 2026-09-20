@@ -30,31 +30,13 @@ def _input_fn(shape, dtype, device):
     yield inp, {"pad": pad, "value": value}
 
 
-def _case_fn(shape, dtype):
-    del dtype
-    rng = random.Random(",".join(map(str, shape)))
-    pad = [rng.randint(0, 10) for _ in range(len(shape) * 2)]
-    yield base.BenchmarkCasePlan(
-        shape={"input": shape},
-        params={"pad": pad, "value": 1.5},
-        builder_args=(shape, pad),
-    )
-
-
-def _build_inputs_fn(plan, dtype, device):
-    shape, pad = plan.builder_args
-    inp = torch.randn(shape, device=device, dtype=dtype)
-    return inp, {"pad": pad, "value": plan.params["value"]}
-
-
 @pytest.mark.constant_pad_nd
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_constant_pad_nd():
     bench = base.GenericBenchmark(
-        case_fn=_case_fn,
-        build_inputs_fn=_build_inputs_fn,
+        input_fn=_input_fn,
         op_name="constant_pad_nd",
         torch_op=torch.constant_pad_nd,
         dtypes=consts.FLOAT_DTYPES,

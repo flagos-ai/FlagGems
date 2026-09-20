@@ -55,10 +55,8 @@ def test_index_select_backward(shape, dtype):
         for i, idx in enumerate(ref_index.tolist()):
             ref_out[:, :, idx] += ref_grad[:, :, i]
 
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "index_select_backward", flag_gems.index_select_backward
-    )
-    res_out = gems_op(grad, self_sizes, dim, index)
+    with flag_gems.use_gems():
+        res_out = flag_gems.index_select_backward(grad, self_sizes, dim, index)
 
     utils.gems_assert_close(res_out, ref_out.to(dtype), dtype)
 
@@ -80,9 +78,7 @@ def test_index_select_backward_1d(dtype):
     for i, idx in enumerate(ref_index.tolist()):
         ref_out[idx] += ref_grad[i]
 
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "index_select_backward", flag_gems.index_select_backward
-    )
-    res_out = gems_op(grad, self_sizes, dim, index)
+    with flag_gems.use_gems():
+        res_out = flag_gems.index_select_backward(grad, self_sizes, dim, index)
 
     utils.gems_assert_close(res_out, ref_out.to(dtype), dtype)

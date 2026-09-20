@@ -31,26 +31,10 @@ class UnsafeViewBenchmark(base.Benchmark):
         self.shapes = UNSAFE_VIEW_SHAPES
 
     def get_input_iter(self, cur_dtype):
-        for case in self.get_case_iter(cur_dtype):
-            yield self.build_inputs(case)
-
-    def get_case_iter(self, cur_dtype):
-        for ordinal, shape in enumerate(self.shapes):
+        for shape in self.shapes:
+            inp = torch.randn(shape, dtype=cur_dtype, device=self.device)
             new_shape = (shape[0] * shape[1],)
-            yield self._case_from_plan(
-                cur_dtype,
-                ordinal,
-                base.BenchmarkCasePlan(
-                    shape={"input": shape, "output": new_shape},
-                    params={"size": new_shape},
-                    builder_args=(shape, new_shape),
-                ),
-            )
-
-    def build_inputs(self, case):
-        shape, new_shape = case.builder_args[0].builder_args
-        inp = torch.randn(shape, dtype=case.dtype, device=self.device)
-        return inp, new_shape
+            yield inp, new_shape
 
 
 @pytest.mark.unsafe_view

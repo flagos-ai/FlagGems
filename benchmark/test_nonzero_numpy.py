@@ -26,8 +26,7 @@ from . import base, consts
 )
 def test_nonzero_numpy():
     bench = base.GenericBenchmark2DOnly(
-        case_fn=base.unary_case_fn,
-        build_inputs_fn=base.build_inputs_unary_case,
+        input_fn=base.unary_input_fn,
         op_name="nonzero_numpy",
         torch_op=torch.ops.aten.nonzero_numpy,
         dtypes=consts.FLOAT_DTYPES + consts.INT_DTYPES + consts.BOOL_DTYPES,

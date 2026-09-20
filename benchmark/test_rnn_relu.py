@@ -41,49 +41,14 @@ def rnn_relu_input_fn(shape, dtype, device):
 
 
 class RnnReluBenchmark(base.GenericBenchmark):
-    SHAPES = [
-        (16, 4, 32),
-        (32, 8, 64),
-        (64, 16, 128),
-    ]
-
     def get_input_iter(self, dtype) -> Generator:
-        for shape in self.SHAPES:
+        shapes = [
+            (16, 4, 32),
+            (32, 8, 64),
+            (64, 16, 128),
+        ]
+        for shape in shapes:
             yield from self.input_fn(shape, dtype, self.device)
-
-    def get_case_iter(self, dtype) -> Generator:
-        for ordinal, shape in enumerate(self.SHAPES):
-            seq_len, batch_size, input_size = shape
-            hidden_size = input_size
-            yield self._case_from_plan(
-                dtype,
-                ordinal,
-                base.BenchmarkCasePlan(
-                    shape={
-                        "input": (seq_len, batch_size, input_size),
-                        "hx": (1, batch_size, hidden_size),
-                        "params": [
-                            (hidden_size, input_size),
-                            (hidden_size, hidden_size),
-                            (hidden_size,),
-                            (hidden_size,),
-                        ],
-                    },
-                    params={
-                        "has_biases": True,
-                        "num_layers": 1,
-                        "dropout": 0.0,
-                        "train": False,
-                        "bidirectional": False,
-                        "batch_first": False,
-                    },
-                    builder_args=(shape, 0),
-                ),
-            )
-
-    def build_inputs(self, case):
-        shape, _ = case.builder_args[0].builder_args
-        return next(rnn_relu_input_fn(shape, case.dtype, self.device))
 
 
 @pytest.mark.rnn_relu

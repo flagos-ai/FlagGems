@@ -35,13 +35,6 @@ else:
     ]
 
 
-def _tensor_split(inp, indices_or_sections, dim=0):
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "tensor_split", flag_gems.tensor_split
-    )
-    return gems_op(inp, indices_or_sections, dim=dim)
-
-
 @pytest.mark.tensor_split
 @pytest.mark.parametrize("shape", TENSOR_SPLIT_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -54,7 +47,8 @@ def test_tensor_split_by_int(shape, dtype):
     sections = 3
     ref_out = torch.tensor_split(ref_inp, sections, dim=0)
 
-    res_out = _tensor_split(inp, sections, dim=0)
+    with flag_gems.use_gems():
+        res_out = torch.tensor_split(inp, sections, dim=0)
 
     # Compare number of outputs
     assert len(res_out) == len(ref_out)
@@ -76,7 +70,8 @@ def test_tensor_split_by_list(shape, dtype):
     indices = [shape[0] // 3, shape[0] * 2 // 3]
     ref_out = torch.tensor_split(ref_inp, indices, dim=0)
 
-    res_out = _tensor_split(inp, indices, dim=0)
+    with flag_gems.use_gems():
+        res_out = torch.tensor_split(inp, indices, dim=0)
 
     # Compare number of outputs
     assert len(res_out) == len(ref_out)
@@ -101,7 +96,8 @@ def test_tensor_split_dim(shape, dtype):
     sections = 2
     ref_out = torch.tensor_split(ref_inp, sections, dim=1)
 
-    res_out = _tensor_split(inp, sections, dim=1)
+    with flag_gems.use_gems():
+        res_out = torch.tensor_split(inp, sections, dim=1)
 
     # Compare number of outputs
     assert len(res_out) == len(ref_out)
@@ -124,7 +120,8 @@ def test_tensor_split_uneven(dtype):
     sections = 3
     ref_out = torch.tensor_split(ref_inp, sections, dim=0)
 
-    res_out = _tensor_split(inp, sections, dim=0)
+    with flag_gems.use_gems():
+        res_out = torch.tensor_split(inp, sections, dim=0)
 
     # Compare number of outputs
     assert len(res_out) == len(ref_out)

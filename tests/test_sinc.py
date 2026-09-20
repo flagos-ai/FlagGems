@@ -28,8 +28,8 @@ def test_sinc(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.sinc(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("sinc", flag_gems.sinc)
-    res_out = gems_op(inp)
+    with flag_gems.use_gems():
+        res_out = torch.sinc(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -42,8 +42,8 @@ def test_sinc_(shape, dtype):
     ref_inp = utils.to_reference(inp.clone())
 
     ref_out = ref_inp.sinc_()
-    gems_op = flag_gems.testing.resolve_gems_op("sinc_", flag_gems.sinc_)
-    res_out = gems_op(inp)
+    with flag_gems.use_gems():
+        res_out = inp.sinc_()
 
     utils.gems_assert_close(res_out, ref_out, dtype)
     utils.gems_assert_close(inp, ref_inp, dtype)

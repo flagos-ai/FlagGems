@@ -47,28 +47,6 @@ class LdlFactorBenchmark(base.Benchmark):
     def get_gems_input_iter(self, cur_dtype):
         return self.get_input_iter(cur_dtype)
 
-    def get_case_iter(self, dtype):
-        for ordinal, shape in enumerate(self.shapes):
-            yield self._case_from_plan(
-                dtype,
-                ordinal,
-                base.BenchmarkCasePlan(
-                    shape={"input": shape},
-                    params={"matrix_intent": "symmetric_positive_definite"},
-                    builder_args=(shape, 0),
-                ),
-            )
-
-    def build_inputs(self, case):
-        shape = case.builder_args[0].builder_args[0]
-        n = shape[0]
-        A = torch.randn(shape, dtype=case.dtype, device=self.device)
-        A = (
-            A @ A.transpose(-2, -1)
-            + torch.eye(n, dtype=case.dtype, device=self.device) * n
-        )
-        return (A,)
-
 
 @pytest.mark.linalg_ldl_factor
 def test_linalg_ldl_factor():

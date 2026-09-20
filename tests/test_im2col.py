@@ -42,7 +42,7 @@ def test_im2col(shape, dtype, kernel_size, dilation, padding, stride):
     ref_x = utils.to_reference(x)
 
     ref_out = torch.ops.aten.im2col(ref_x, kernel_size, dilation, padding, stride)
-    gems_op = flag_gems.testing.resolve_gems_op("im2col", flag_gems.im2col)
-    act_out = gems_op(x, kernel_size, dilation, padding, stride)
+    with flag_gems.use_gems():
+        act_out = torch.ops.aten.im2col(x, kernel_size, dilation, padding, stride)
 
     utils.gems_assert_close(act_out, ref_out, dtype=dtype)

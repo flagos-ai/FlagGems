@@ -42,10 +42,8 @@ def test_is_all_true(shape, kind):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch._is_all_true(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "is_all_true", flag_gems._is_all_true
-    )
-    res_out = gems_op(inp)
+    with flag_gems.use_gems():
+        res_out = torch._is_all_true(inp)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -58,9 +56,7 @@ def test_accuracy_is_all_true_empty(shape):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch._is_all_true(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "is_all_true", flag_gems._is_all_true
-    )
-    res_out = gems_op(inp)
+    with flag_gems.use_gems():
+        res_out = torch._is_all_true(inp)
 
     utils.gems_assert_equal(res_out, ref_out)

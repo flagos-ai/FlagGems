@@ -138,19 +138,17 @@ def test_avg_pool3d_backward(
         divisor_override,
     )
 
-    gems_op = flag_gems.testing.resolve_gems_op(
-        "avg_pool3d_backward", flag_gems.avg_pool3d_backward
-    )
-    res_inp_grad = gems_op(
-        out_grad,
-        inp,
-        kernel_size,
-        stride,
-        padding,
-        ceil_mode,
-        count_include_pad,
-        divisor_override,
-    )
+    with flag_gems.use_gems():
+        res_inp_grad = torch.ops.aten.avg_pool3d_backward(
+            out_grad,
+            inp,
+            kernel_size,
+            stride,
+            padding,
+            ceil_mode,
+            count_include_pad,
+            divisor_override,
+        )
     # 3D backward accumulates over kernel_d * kernel_h * kernel_w elements per
     # input position. With stride < kernel, each input can receive gradient
     # contributions from many overlapping output windows, amplifying fp error.

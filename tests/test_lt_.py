@@ -20,11 +20,6 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
-def _lt_(*args, **kwargs):
-    gems_op = flag_gems.testing.resolve_gems_op("lt_", flag_gems.lt_)
-    return gems_op(*args, **kwargs)
-
-
 @pytest.mark.lt_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -36,7 +31,8 @@ def test_lt_(shape, dtype):
     ref_inp2 = utils.to_reference(inp2, True)
     ref_out = ref_inp1.lt_(ref_inp2)
 
-    res_out = _lt_(inp1, inp2)
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.lt_.Tensor(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
     assert res_out is inp1

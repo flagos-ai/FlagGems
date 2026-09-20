@@ -17,7 +17,6 @@ import torch
 
 from . import base, consts
 
-
 _NODEID = "benchmark/test_case_api.py::test_case_api"
 
 
@@ -99,66 +98,6 @@ def test_selected_case_materializes_exactly_once(monkeypatch):
     assert len(materialized) == 1
     assert materialized[0][0] == 16
     assert results[0][1][0].case_id == _case_id("core::float16::1")
-
-
-def test_preflight_runs_every_case_once_without_measurement(monkeypatch):
-    materialized = []
-    invocations = []
-    benchmark = _make_benchmark(materialized)
-    benchmark.set_gems(lambda *args: invocations.append(args))
-    monkeypatch.setattr(base.Config, "bench_level", consts.BenchLevel.CORE)
-    monkeypatch.setattr(base.torch_device_fn, "synchronize", lambda: None)
-    monkeypatch.setattr(
-        benchmark,
-        "_measure_input",
-        lambda *args, **kwargs: pytest.fail("preflight entered timing"),
-    )
-
-    executed = benchmark._run_candidate_cases(None)
-
-    assert executed == [
-        _case_id("core::float16::0"),
-        _case_id("core::float16::1"),
-    ]
-    assert len(materialized) == 2
-    assert invocations == [(4, 8, 16), (4, 8, 16)]
-
-
-def test_profile_runs_only_selected_candidate_case(monkeypatch):
-    materialized = []
-    events = []
-    benchmark = _make_benchmark(materialized)
-    benchmark.set_gems(lambda *args: events.append(("candidate", args)))
-    monkeypatch.setattr(base.Config, "bench_level", consts.BenchLevel.CORE)
-    monkeypatch.setattr(base.torch_device_fn, "synchronize", lambda: None)
-    monkeypatch.setattr(
-        benchmark,
-        "_external_profiler_start",
-        lambda: events.append(("start", None)),
-    )
-    monkeypatch.setattr(
-        benchmark,
-        "_external_profiler_stop",
-        lambda: events.append(("stop", None)),
-    )
-
-    executed = benchmark._run_candidate_cases(
-        [_case_id("core::float16::1")], warmup=2, iterations=3, profile=True
-    )
-
-    assert executed == [_case_id("core::float16::1")]
-    # Warmup and profiler capture intentionally use independent inputs so an
-    # in-place candidate cannot corrupt the state recorded by the profiler.
-    assert len(materialized) == 2
-    assert [event[0] for event in events] == [
-        "candidate",
-        "candidate",
-        "start",
-        "candidate",
-        "candidate",
-        "candidate",
-        "stop",
-    ]
 
 
 def test_case_selection_ignores_ids_owned_by_other_pytest_nodes(monkeypatch):
@@ -407,6 +346,103 @@ def test_custom_family_loop_is_supported_after_two_stage_migration(monkeypatch):
 
     assert benchmark.supports_cases()
     assert materialized == []
-    assert [case.case_id for case in case_list.cases] == [
-        _case_id("core::float16::0")
+    assert [case.case_id for case in case_list.cases] == [_case_id("core::float16::0")]
+
+
+@pytest.mark.parametrize(
+    "benchmark_cls",
+    [
+        base.UnaryReductionBenchmark,
+        base.BinaryPointwiseBenchmark,
+        base.ScalarBinaryPointwiseBenchmark,
+        base.UnaryPointwiseBenchmark,
+        base.UnaryPointwiseOutBenchmark,
+        base.TexGluForwardBenchmark,
+        base.TexGluBackwardBenchmark,
+    ],
+)
+def test_family_builders_preserve_legacy_inputs(monkeypatch, benchmark_cls):
+    benchmark = benchmark_cls(op_name="equivalence", torch_op=lambda *args: args)
+    benchmark.device = "cpu"
+    benchmark.shapes = [(4, 8), (2, 16)]
+    monkeypatch.setattr(base.Config, "bench_level", consts.BenchLevel.CORE)
+    torch.manual_seed(42)
+    original = list(benchmark.get_input_iter(torch.float32))
+    torch.manual_seed(42)
+    rebuilt = [
+        benchmark.build_inputs(case) for case in benchmark.get_case_iter(torch.float32)
     ]
+
+    def compare(left, right):
+        if isinstance(left, torch.Tensor):
+            assert left.shape == right.shape and left.dtype == right.dtype
+            # Out buffers are uninitialized; compare their metadata separately.
+            torch.testing.assert_close(left, right, rtol=0, atol=0)
+        elif isinstance(left, dict):
+            assert left.keys() == right.keys()
+            for key in left:
+                assert left[key].shape == right[key].shape
+                assert left[key].dtype == right[key].dtype
+        elif isinstance(left, (list, tuple)):
+            assert len(left) == len(right)
+            for a, b in zip(left, right):
+                compare(a, b)
+        else:
+            assert left == right
+
+    compare(original, rebuilt)
+
+
+def test_duplicate_generated_ids_fail_during_listing(monkeypatch):
+    benchmark = _make_benchmark([])
+    monkeypatch.setattr(benchmark, "init_user_config", lambda: None)
+    case = next(benchmark.get_case_iter(torch.float16))
+    monkeypatch.setattr(benchmark, "get_case_iter", lambda dtype: iter([case, case]))
+    with pytest.raises(ValueError, match="duplicate case IDs"):
+        benchmark.list_cases()
+
+
+@pytest.mark.parametrize("count", [0, 2])
+def test_blas_factory_must_match_one_planned_case(count):
+    benchmark = _make_benchmark([])
+    benchmark.input_fn = lambda *args: iter([(1,)] * count)
+    case = next(benchmark.get_case_iter(torch.float16))
+    with pytest.raises(ValueError, match="no inputs|exactly one"):
+        benchmark.build_inputs(case)
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"case_fn": lambda *args: iter(())},
+        {"build_inputs_fn": lambda *args: ()},
+        {
+            "input_fn": lambda *args: iter(()),
+            "case_fn": lambda *args: iter(()),
+            "build_inputs_fn": lambda *args: (),
+        },
+    ],
+)
+def test_generic_rejects_incomplete_or_mixed_provider(kwargs):
+    with pytest.raises(ValueError):
+        base.GenericBenchmark(op_name="invalid", torch_op=lambda *args: args, **kwargs)
+
+
+def test_listing_run_never_builds_or_measures(monkeypatch, tmp_path):
+    shapes = tmp_path / "shapes.yaml"
+    shapes.write_text("softmax:\n  shapes: [[4, 8], [8, 16]]\n")
+    benchmark = base.UnaryReductionBenchmark(op_name="softmax", torch_op=torch.softmax)
+    monkeypatch.setattr(base.Config, "shape_file", str(shapes))
+    monkeypatch.setattr(base.Config, "list_cases", True)
+    monkeypatch.setattr(base.Config, "bench_level", consts.BenchLevel.CORE)
+    monkeypatch.setattr(base.Config, "case_ids", None)
+    monkeypatch.setattr(base.Config, "query", False)
+    monkeypatch.setattr(base.Config, "user_desired_dtypes", [torch.float32])
+    monkeypatch.setattr(
+        benchmark, "build_inputs", lambda *args: pytest.fail("input constructed")
+    )
+    monkeypatch.setattr(
+        benchmark, "_measure_input", lambda *args: pytest.fail("timing invoked")
+    )
+    result = benchmark.run()
+    assert len(result.cases) == 2

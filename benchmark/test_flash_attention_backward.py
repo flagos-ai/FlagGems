@@ -664,36 +664,6 @@ def cudnn_attn_bwd_input_fn(config, dtype, device):
     )
 
 
-def cudnn_attn_bwd_case_fn(config, dtype):
-    del dtype
-    batch, num_heads, seq_len, head_size, is_causal, has_bias = config
-    if _is_unsafe_decode_causal(seq_len, is_causal):
-        return
-    tensor_shape = (batch, num_heads, seq_len, head_size)
-    yield base.BenchmarkCasePlan(
-        shape={
-            "grad_output": tensor_shape,
-            "q": tensor_shape,
-            "k": tensor_shape,
-            "v": tensor_shape,
-            "output": tensor_shape,
-            "logsumexp": (batch, num_heads, seq_len),
-            "attn_bias": (
-                (batch, num_heads, seq_len, seq_len) if has_bias else None
-            ),
-        },
-        params={
-            "max_q": seq_len,
-            "max_k": seq_len,
-            "dropout_p": 0.0,
-            "is_causal": is_causal,
-            "scale": 1.0 / math.sqrt(head_size),
-            "has_bias": has_bias,
-        },
-        builder_args=(config, 0),
-    )
-
-
 def _cudnn_attn_bwd_aten(
     dOut_bhsd,
     Q_bhsd,
@@ -776,8 +746,7 @@ def _cudnn_attn_bwd_gems(
 def test_perf_scaled_dot_product_cudnn_attention_backward():
     bench = CudnnAttentionBackwardBenchmark(
         op_name="scaled_dot_product_cudnn_attention_backward",
-        case_fn=cudnn_attn_bwd_case_fn,
-        build_inputs_fn=base.build_inputs_from_generic_input_fn(cudnn_attn_bwd_input_fn),
+        input_fn=cudnn_attn_bwd_input_fn,
         torch_op=_cudnn_attn_bwd_aten,
         dtypes=[torch.float16, torch.bfloat16],
     )

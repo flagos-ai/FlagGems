@@ -32,31 +32,13 @@ def _scalar_input_fn(shape, dtype, device):
     yield inp1, 0.5
 
 
-def _tensor_case_fn(shape, dtype):
-    del dtype
-    yield base.BenchmarkCasePlan(
-        shape={"input": shape, "other": shape},
-        builder_args=(shape, 0),
-    )
-
-
-def _scalar_case_fn(shape, dtype):
-    del dtype
-    yield base.BenchmarkCasePlan(
-        shape={"input": shape},
-        params={"other": 0.5},
-        builder_args=(shape, 0),
-    )
-
-
 @pytest.mark.fmod_tensor
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_fmod_tensor():
     bench = base.GenericBenchmark(
-        case_fn=_tensor_case_fn,
-        build_inputs_fn=base.build_inputs_from_generic_input_fn(_tensor_input_fn),
+        input_fn=_tensor_input_fn,
         op_name="fmod_tensor",
         torch_op=torch.fmod,
         dtypes=consts.FLOAT_DTYPES,
@@ -70,8 +52,7 @@ def test_fmod_tensor():
 )
 def test_fmod_scalar():
     bench = base.GenericBenchmark(
-        case_fn=_scalar_case_fn,
-        build_inputs_fn=base.build_inputs_from_generic_input_fn(_scalar_input_fn),
+        input_fn=_scalar_input_fn,
         op_name="fmod_scalar",
         torch_op=torch.fmod,
         dtypes=consts.FLOAT_DTYPES,
@@ -85,8 +66,7 @@ def test_fmod_scalar():
 )
 def test_fmod_tensor_():
     bench = base.GenericBenchmark(
-        case_fn=_tensor_case_fn,
-        build_inputs_fn=base.build_inputs_from_generic_input_fn(_tensor_input_fn),
+        input_fn=_tensor_input_fn,
         op_name="fmod_tensor_",
         torch_op=torch.Tensor.fmod_,
         dtypes=consts.FLOAT_DTYPES,
@@ -101,8 +81,7 @@ def test_fmod_tensor_():
 )
 def test_fmod_scalar_():
     bench = base.GenericBenchmark(
-        case_fn=_scalar_case_fn,
-        build_inputs_fn=base.build_inputs_from_generic_input_fn(_scalar_input_fn),
+        input_fn=_scalar_input_fn,
         op_name="fmod_scalar_",
         torch_op=torch.Tensor.fmod_,
         dtypes=consts.FLOAT_DTYPES,

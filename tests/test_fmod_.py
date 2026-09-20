@@ -20,11 +20,6 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
-def _fmod_(*args, **kwargs):
-    gems_op = flag_gems.testing.resolve_gems_op("fmod_", flag_gems.fmod_)
-    return gems_op(*args, **kwargs)
-
-
 @pytest.mark.fmod_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 # fmod only supports float32 due to integer division semantics
@@ -40,7 +35,8 @@ def test_fmod_(shape, dtype):
     ref_inp2 = utils.to_reference(inp2)
 
     ref_out = ref_inp1.fmod_(ref_inp2)
-    res_out = _fmod_(inp, inp2)
+    with flag_gems.use_gems():
+        res_out = inp.fmod_(inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype, atol=2.0)
     utils.gems_assert_close(inp, ref_out, dtype, atol=2.0)
@@ -49,5 +45,6 @@ def test_fmod_(shape, dtype):
     for d in inp2.flatten()[:2]:
         ref_d = utils.to_reference(d, False)
         ref_out = ref_inp1.fmod_(ref_d)
-        res_out = _fmod_(inp.clone(), d)
+        with flag_gems.use_gems():
+            res_out = inp.clone().fmod_(d)
         utils.gems_assert_close(res_out, ref_out, dtype, atol=2.0)

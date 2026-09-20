@@ -17,7 +17,7 @@ def test_lcm_(shape, dtype):
     ref_inp2 = utils.to_reference(inp2)
 
     ref_out = ref_inp1.lcm_(ref_inp2)
-    gems_op = flag_gems.testing.resolve_gems_op("lcm_", flag_gems.lcm_)
-    res_out = gems_op(inp1, inp2)
+    with flag_gems.use_gems():
+        res_out = inp1.lcm_(inp2)
 
     utils.gems_assert_equal(res_out, ref_out)
