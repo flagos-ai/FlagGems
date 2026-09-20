@@ -738,7 +738,6 @@ masked_fill:
   warps:
   - 4
   - 8
-  - 16
 all:
 - gen: true
   param_map:

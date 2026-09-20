@@ -553,6 +553,12 @@ from flag_gems.ops.hadamard_transform import (
     hadamard_transform_28N,
     hadamard_transform_40N,
 )
+from flag_gems.ops.hamming_window import (
+    hamming_window,
+    hamming_window_periodic,
+    hamming_window_periodic_alpha,
+    hamming_window_periodic_alpha_beta,
+)
 from flag_gems.ops.hardshrink import hardshrink, hardshrink_out
 from flag_gems.ops.hardsigmoid import hardsigmoid, hardsigmoid_out
 from flag_gems.ops.hardsigmoid_ import hardsigmoid_
@@ -725,6 +731,7 @@ from flag_gems.ops.max_pool2d_with_indices import (
     max_pool2d_with_indices,
     max_pool2d_with_indices_backward,
 )
+from flag_gems.ops.max_pool3d import max_pool3d
 from flag_gems.ops.max_pool3d_with_indices import (
     max_pool3d_backward,
     max_pool3d_with_indices,
@@ -1717,6 +1724,10 @@ __all__ = [
     "hadamard_transform_20N",
     "hadamard_transform_28N",
     "hadamard_transform_40N",
+    "hamming_window",
+    "hamming_window_periodic",
+    "hamming_window_periodic_alpha",
+    "hamming_window_periodic_alpha_beta",
     "hardshrink",
     "hardshrink_out",
     "hardsigmoid",
@@ -1931,6 +1942,7 @@ __all__ = [
     "max_pool2d_backward",
     "max_pool2d_with_indices",
     "max_pool2d_with_indices_backward",
+    "max_pool3d",
     "max_pool3d_backward",
     "max_pool3d_with_indices",
     "max_pool3d_with_indices_backward",
