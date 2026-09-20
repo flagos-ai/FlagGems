@@ -29,18 +29,13 @@ on:
 
 jobs:
   preprocess:
-    runs-on: basic-runner-cpu
-    # The runner injects the host's proxy (HTTP_PROXY/HTTPS_PROXY) into the job
-    # container; the host proxy reaches GitHub, so we leave it in place and add
-    # no proxy overrides (no no_proxy=*, no --network host).
-    container:
-      image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
-    env:
-      # Trust the workspace for git (dubious-ownership guard); the get-pr-id
-      # step runs `git log` on push events. See rule-check.yaml for details.
-      GIT_CONFIG_COUNT: '1'
-      GIT_CONFIG_KEY_0: safe.directory
-      GIT_CONFIG_VALUE_0: '*'
+    # Runs on GitHub-hosted ubuntu-latest: this job only computes metadata via
+    # the GitHub API and git (changed files, PR labels, backend matrix), needs
+    # no self-hosted hardware, and avoids the injected-proxy environment where
+    # wait-for-triage's octokit cannot tunnel HTTPS to api.github.com. Downstream
+    # jobs are unaffected — needs/runs-on are decoupled, so they still schedule
+    # onto the self-hosted runners (jiuding, h20, basic-runner-cpu).
+    runs-on: ubuntu-latest
     concurrency:
       group: unit-test-${{ (github.event.pull_request && contains(github.event.pull_request.title, 'KernelGen')) && 'kg' || github.run_id }}
       cancel-in-progress: false
@@ -52,21 +47,6 @@ jobs:
     steps:
       - id: changed-files
         uses: tj-actions/changed-files@9426d40962ed5378910ee2e21d5f8c6fcbf2dd96  # v47.0.6
-      # DIAGNOSTIC (temporary): does the injected proxy tunnel to api.github.com?
-      # curl uses a standard HTTP CONNECT tunnel. If api.github.com works here,
-      # the proxy is fine and wait-for-triage's octokit is the culprit (fixing
-      # the proxy won't help — must replace the action). If it fails the same
-      # way, the proxy doesn't allow api.github.com and ops fixing it WILL help.
-      # github.com is tested alongside as the known-good control (git works).
-      - id: proxy-probe
-        shell: bash
-        run: |
-          echo "=== env proxy ==="; env | grep -iE "proxy" || true
-          for host in https://github.com https://api.github.com; do
-            echo "=== curl -sv -o /dev/null $host ==="
-            curl -sv -o /dev/null --max-time 30 "$host" 2>&1 | sed -e 's/Authorization: .*/Authorization: [redacted]/' | tail -25 || echo "curl exit=$?"
-            echo
-          done
       - id: wait-for-triage
         uses: ArcticLampyrid/action-wait-for-workflow@ff297b23789206858260877c4b83026d90c6db8c  # v1.3.0
         with:
