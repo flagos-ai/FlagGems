@@ -48,4 +48,23 @@ jobs:
     - name: Mark workspace as a safe git directory
       shell: bash
       run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+    # DIAGNOSTIC (temporary): pin down why pre-commit reports
+    # ".pre-commit-config.yaml is not a file" — is the cwd wrong, or has the
+    # file actually gone missing after checkout? Prints cwd, workspace, and the
+    # config's presence right before pre-commit runs.
+    - name: Diagnose pre-commit-config presence
+      shell: bash
+      run: |
+        echo "PWD=$(pwd)"
+        echo "GITHUB_WORKSPACE=$GITHUB_WORKSPACE"
+        echo "HOME=$HOME"
+        echo "--- ls -la pwd ---"
+        ls -la .
+        echo "--- config in cwd ---"
+        ls -la ./.pre-commit-config.yaml || echo "MISSING in cwd"
+        echo "--- config in GITHUB_WORKSPACE ---"
+        ls -la "$GITHUB_WORKSPACE/.pre-commit-config.yaml" || echo "MISSING in workspace"
+        echo "--- git status ---"
+        git -C "$GITHUB_WORKSPACE" rev-parse HEAD || true
+        git -C "$GITHUB_WORKSPACE" status --porcelain=v1 | head -20 || true
     - uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd  # v3.0.1
