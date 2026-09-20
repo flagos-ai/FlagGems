@@ -76,16 +76,23 @@ def batch_norm_with_update_kernel(
     output_batch_stride,
     output_feat_stride,
     output_spatial_stride,
+    weight_stride,
+    bias_stride,
+    running_mean_stride,
+    running_var_stride,
     momentum,
     eps,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
+    IS_FP64: tl.constexpr = False,
 ):
     feat_pid = tl.program_id(axis=0)
 
     # Training mode: compute batch statistics and update running stats.
-    mean = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
-    var = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+    # Accumulate in FP64 for FP64 inputs, FP32 otherwise.
+    ACC_DTYPE = tl.float64 if IS_FP64 else tl.float32
+    mean = tl.zeros((BLOCK_M, BLOCK_N), dtype=ACC_DTYPE)
+    var = tl.zeros((BLOCK_M, BLOCK_N), dtype=ACC_DTYPE)
     cnt = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.int32)
 
     m_num_steps = tl.cdiv(batch_dim, BLOCK_M)
@@ -107,7 +114,7 @@ def batch_norm_with_update_kernel(
             )
 
             mask = batch_mask[:, None] & spatial_mask[None, :]
-            curr_input = tl.load(curr_input_pointer, mask=mask).to(tl.float32)
+            curr_input = tl.load(curr_input_pointer, mask=mask).to(ACC_DTYPE)
 
             # Use the per-lane valid count as the denominator. A global tile
             # index would over-count lanes that are masked out in earlier
@@ -124,14 +131,17 @@ def batch_norm_with_update_kernel(
     var = tl.sum(var + cnt * (mean - final_mean) * (mean - final_mean)) / (
         batch_dim * spatial_dim
     )
-    inv_std = tl.math.rsqrt(var + eps)
+    if IS_FP64:
+        inv_std = 1.0 / tl.sqrt(var + eps)
+    else:
+        inv_std = tl.math.rsqrt(var + eps)
     mean = final_mean
 
     tl.store(feat_pid + mean_pointer, mean)
     tl.store(feat_pid + inv_std_pointer, inv_std)
 
-    running_mean_pointer += feat_pid
-    running_var_pointer += feat_pid
+    running_mean_pointer += feat_pid * running_mean_stride
+    running_var_pointer += feat_pid * running_var_stride
 
     running_mean = tl.load(running_mean_pointer)
     running_var = tl.load(running_var_pointer)
@@ -144,13 +154,13 @@ def batch_norm_with_update_kernel(
     )
 
     if weight_pointer:
-        weight = tl.load(feat_pid + weight_pointer).to(tl.float32)
+        weight = tl.load(feat_pid * weight_stride + weight_pointer).to(ACC_DTYPE)
     else:
-        weight = 1.0
+        weight = tl.full((), 1.0, dtype=ACC_DTYPE)
     if bias_pointer:
-        bias = tl.load(feat_pid + bias_pointer).to(tl.float32)
+        bias = tl.load(feat_pid * bias_stride + bias_pointer).to(ACC_DTYPE)
     else:
-        bias = 0.0
+        bias = tl.full((), 0.0, dtype=ACC_DTYPE)
 
     for m_step in range(0, tl.cdiv(batch_dim, BLOCK_M)):
         for n_step in range(0, tl.cdiv(spatial_dim, BLOCK_N)):
@@ -175,12 +185,12 @@ def batch_norm_with_update_kernel(
 
             curr_input = tl.load(
                 curr_input_pointer, mask=batch_mask[:, None] & spatial_mask[None, :]
-            ).to(tl.float32)
+            ).to(ACC_DTYPE)
             output = weight * (curr_input - mean) * inv_std + bias
 
             tl.store(
                 curr_output_pointer,
-                output,
+                output.to(output_pointer.dtype.element_ty),
                 mask=batch_mask[:, None] & spatial_mask[None, :],
             )
 
@@ -207,12 +217,41 @@ def _batch_norm_with_update(
     batch_dim, feat_dim, spatial_dim = input_3d.shape
     output = torch.empty_like(input_3d)
 
-    # ATen returns accumulation-dtype statistics (FP32 for FP16/BF16 inputs).
-    mean = torch.empty(feat_dim, device=input.device, dtype=torch.float32)
-    inv_std = torch.empty(feat_dim, device=input.device, dtype=torch.float32)
+    if running_mean is None or running_var is None:
+        raise RuntimeError(
+            "_batch_norm_with_update expects running_mean and running_var to be specified."
+        )
 
-    running_mean_arg = input if running_mean is None else running_mean
-    running_var_arg = input if running_var is None else running_var
+    # ATen returns accumulation-dtype statistics: FP64 for FP64 inputs,
+    # FP32 otherwise.
+    is_fp64 = input.dtype == torch.float64
+    acc_dtype = torch.float64 if is_fp64 else torch.float32
+    mean = torch.empty(feat_dim, device=input.device, dtype=acc_dtype)
+    inv_std = torch.empty(feat_dim, device=input.device, dtype=acc_dtype)
+
+    # reserve is an empty uint8 tensor used by cuDNN paths; unused here.
+    reserve = torch.empty((0,), dtype=torch.uint8, device=input.device)
+
+    # The kernel indexes these 1-D tensors by feature id, so a length other
+    # than feat_dim would read or write outside their storage.
+    for name, param in (
+        ("weight", weight),
+        ("bias", bias),
+        ("running_mean", running_mean),
+        ("running_var", running_var),
+    ):
+        if param is not None and param.numel() != feat_dim:
+            raise RuntimeError(
+                f"_batch_norm_with_update expects {name} to have {feat_dim} elements, "
+                f"but got {param.numel()}."
+            )
+
+    # Empty batch or spatial dimensions carry no elements to normalize; the
+    # statistics are zeroed instead of returning uninitialized memory.
+    if batch_dim == 0 or spatial_dim == 0:
+        mean.zero_()
+        inv_std.zero_()
+        return output.view_as(input), mean, inv_std, reserve
 
     # Launches 1D grid where each program operates over one feature.
     with torch_device_fn.device(input.device):
@@ -223,20 +262,22 @@ def _batch_norm_with_update(
             mean,
             inv_std,
             output,
-            running_mean_arg,
-            running_var_arg,
+            running_mean,
+            running_var,
             batch_dim,
             spatial_dim,
             *input_3d.stride(),
             *output.stride(),
+            weight.stride(0) if weight is not None else 1,
+            bias.stride(0) if bias is not None else 1,
+            running_mean.stride(0),
+            running_var.stride(0),
             momentum,
             eps,
+            IS_FP64=is_fp64,
         )
 
     # save_invstd is 1/sqrt(var + eps), matching PyTorch's convention.
     save_invstd = inv_std
-
-    # reserve is an empty uint8 tensor used by cuDNN paths; unused here.
-    reserve = torch.empty((0,), dtype=torch.uint8, device=input.device)
 
     return output.view_as(input), mean, save_invstd, reserve
