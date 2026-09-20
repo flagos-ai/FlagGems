@@ -62,6 +62,15 @@ def _try_view_i32(t):
         return None
 
 
+# Packing bool/int16 into int32 gives 4x/2x fewer elements, which is a large win
+# on big, bandwidth-bound tensors.  On small, latency-bound tensors the extra
+# reshape/view wrapping around the kernel dominates and a kernel on the natural
+# element view is markedly faster (measured out-of-place: bool [64,64] 0.37 ->
+# ~1.1x, int16 similar; the packed path only pulls ahead once the tensor is large
+# enough to amortise that wrapping).  Only pack above this element count.
+_PACK_MIN_NUMEL = 1 << 18
+
+
 def bitwise_or_tensor(A, B):
     logger.debug("GEMS_KUNLUNXIN BITWISE_OR")
     return bitwise_or_func(A, B)
@@ -83,22 +92,24 @@ def bitwise_or_func_scalar(x, y):
 def bitwise_or_scalar(A, B):
     logger.debug("GEMS_KUNLUNXIN BITWISE_OR_SCALAR")
     if A.dtype == torch.bool:
-        a32 = _try_view_i32(A)
-        if a32 is not None:
-            return (
-                bitwise_or_func_scalar(a32, _pack_scalar_bool_to_i32(B))
-                .view(torch.bool)
-                .reshape(A.shape)
-            )
+        if A.numel() >= _PACK_MIN_NUMEL:
+            a32 = _try_view_i32(A)
+            if a32 is not None:
+                return (
+                    bitwise_or_func_scalar(a32, _pack_scalar_bool_to_i32(B))
+                    .view(torch.bool)
+                    .reshape(A.shape)
+                )
         return bitwise_or_func_scalar(A.view(torch.int8), int(B)).view(torch.bool)
     if A.dtype == torch.int16:
-        a32 = _try_view_i32(A)
-        if a32 is not None:
-            return (
-                bitwise_or_func_scalar(a32, _pack_scalar_i16_to_i32(B))
-                .view(torch.int16)
-                .reshape(A.shape)
-            )
+        if A.numel() >= _PACK_MIN_NUMEL:
+            a32 = _try_view_i32(A)
+            if a32 is not None:
+                return (
+                    bitwise_or_func_scalar(a32, _pack_scalar_i16_to_i32(B))
+                    .view(torch.int16)
+                    .reshape(A.shape)
+                )
     return bitwise_or_func_scalar(A, B)
 
 

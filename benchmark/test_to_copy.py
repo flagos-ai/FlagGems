@@ -96,7 +96,7 @@ def test_to_copy():
                 continue
 
             bench = ToCopyBenchmark(
-                op_name=f"to_copy_{src_dtype}_to_{dst_dtype}",
+                op_name="to_copy",
                 torch_op=torch.ops.aten._to_copy,
                 dtypes=[dst_dtype],
                 src_dtype=src_dtype,
@@ -106,7 +106,7 @@ def test_to_copy():
     for src_dtype in float_dtypes:
         for dst_dtype in int_dtypes:
             bench = ToCopyBenchmark(
-                op_name=f"to_copy_{src_dtype}_to_{dst_dtype}",
+                op_name="to_copy",
                 torch_op=torch.ops.aten._to_copy,
                 dtypes=[dst_dtype],
                 src_dtype=src_dtype,
@@ -116,7 +116,7 @@ def test_to_copy():
     for src_dtype in float_dtypes:
         for dst_dtype in uint_dtypes:
             bench = ToCopyBenchmark(
-                op_name=f"to_copy_{src_dtype}_to_{dst_dtype}",
+                op_name="to_copy",
                 torch_op=torch.ops.aten._to_copy,
                 dtypes=[dst_dtype],
                 src_dtype=src_dtype,
@@ -126,7 +126,7 @@ def test_to_copy():
     for src_dtype in int_dtypes:
         for dst_dtype in float_dtypes:
             bench = ToCopyBenchmark(
-                op_name=f"to_copy_{src_dtype}_to_{dst_dtype}",
+                op_name="to_copy",
                 torch_op=torch.ops.aten._to_copy,
                 dtypes=[dst_dtype],
                 src_dtype=src_dtype,
@@ -138,7 +138,7 @@ def test_to_copy():
             if src_dtype == dst_dtype:
                 continue
             bench = ToCopyBenchmark(
-                op_name=f"to_copy_{src_dtype}_to_{dst_dtype}",
+                op_name="to_copy",
                 torch_op=torch.ops.aten._to_copy,
                 dtypes=[dst_dtype],
                 src_dtype=src_dtype,

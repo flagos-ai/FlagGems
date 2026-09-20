@@ -199,6 +199,7 @@ def test_mm_kernel_general_host_tma_vllm_column_major_weight_compile_error():
 
 
 @pytest.mark.mm
+@pytest.mark.mm_self_transpose
 @pytest.mark.parametrize("M, K", MK_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_mm_self_transpose(M, K, dtype):

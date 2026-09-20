@@ -29,6 +29,8 @@ import warnings
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
 
+_MISSING = object()
+
 
 class DynamicOpOverride:
     """
@@ -65,6 +67,10 @@ class DynamicOpOverride:
         """
         Override an operator implementation in the specified module.
 
+        Operators without a public implementation are added temporarily and
+        removed by restore(). Existing attributes are restored to their exact
+        original value, including None.
+
         Args:
             op_name: Operator name (e.g., "softmax", "rms_norm", "linalg_matrix_exp")
             impl_func: New implementation function
@@ -79,17 +85,10 @@ class DynamicOpOverride:
                 __import__(module_name)
             module = sys.modules[module_name]
 
-            # Check if the operator exists
-            if not hasattr(module, op_name):
-                warnings.warn(
-                    f"Operator '{op_name}' not found in module '{module_name}'."
-                )
-                return False
-
             # Store original implementation if not already stored
             full_name = f"{module_name}.{op_name}"
             if full_name not in self._originals:
-                self._originals[full_name] = getattr(module, op_name)
+                self._originals[full_name] = getattr(module, op_name, _MISSING)
 
             # Override the implementation
             setattr(module, op_name, impl_func)
@@ -150,7 +149,7 @@ class DynamicOpOverride:
             module = sys.modules[module_name]
             original = self._originals[full_name]
 
-            if original is not None:
+            if original is not _MISSING:
                 setattr(module, op_name, original)
             elif hasattr(module, op_name):
                 delattr(module, op_name)
