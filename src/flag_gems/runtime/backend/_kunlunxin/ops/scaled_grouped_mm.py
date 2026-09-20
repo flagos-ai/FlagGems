@@ -499,7 +499,7 @@ def scaled_grouped_mm(
     out_dtype=None,
     use_fast_accum=False,
 ):
-    logger.debug("GEMS SCALED_GROUPED_MM")
+    logger.debug("GEMS_KUNLUNXIN SCALED_GROUPED_MM")
     if scale_result is not None:
         raise RuntimeError("scale_result is not supported for scaled_grouped_mm")
 
