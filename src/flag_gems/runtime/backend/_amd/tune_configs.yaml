@@ -307,6 +307,27 @@ addmm:
       BLOCK_SIZE_K: 32
     num_stages: 5
     num_warps: 2
+  # Small low-LDS configs so shapes fit gfx1100/RDNA3's 64KB shared memory;
+  # the addmm+activation kernel needs more smem than a plain GEMM, so even the
+  # stages=5 tiles above can exceed the limit for some shapes.
+  - META:
+      BLOCK_SIZE_M: 64
+      BLOCK_SIZE_N: 64
+      BLOCK_SIZE_K: 32
+    num_stages: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE_M: 64
+      BLOCK_SIZE_N: 32
+      BLOCK_SIZE_K: 32
+    num_stages: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE_M: 32
+      BLOCK_SIZE_N: 64
+      BLOCK_SIZE_K: 32
+    num_stages: 2
+    num_warps: 4
 cross_entropy_loss:
   - META:
       BLOCK_C: 256
