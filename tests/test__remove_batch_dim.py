@@ -91,8 +91,7 @@ def test__remove_batch_dim(shape, out_dim, batch_size, level, dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten._remove_batch_dim(ref_inp, level, batch_size, out_dim)
-    gems_op = flag_gems.testing.resolve_gems_op("_remove_batch_dim")
-    res_out = gems_op(inp, level, batch_size, out_dim)
+    res_out = flag_gems._remove_batch_dim(inp, level, batch_size, out_dim)
 
     tu.assert_result_equal(res_out, ref_out)
 
@@ -106,8 +105,7 @@ def test__remove_batch_dim_value_ranges(shape, dtype, value_range):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten._remove_batch_dim(ref_inp, 0, batch_size, out_dim)
-    gems_op = flag_gems.testing.resolve_gems_op("_remove_batch_dim")
-    res_out = gems_op(inp, 0, batch_size, out_dim)
+    res_out = flag_gems._remove_batch_dim(inp, 0, batch_size, out_dim)
 
     tu.assert_result_equal(res_out, ref_out)
 
@@ -120,8 +118,7 @@ def test__remove_batch_dim_value_ranges_broadcast(dtype, value_range):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten._remove_batch_dim(ref_inp, 0, batch_size, out_dim)
-    gems_op = flag_gems.testing.resolve_gems_op("_remove_batch_dim")
-    res_out = gems_op(inp, 0, batch_size, out_dim)
+    res_out = flag_gems._remove_batch_dim(inp, 0, batch_size, out_dim)
 
     tu.assert_result_equal(res_out, ref_out)
 
@@ -138,8 +135,7 @@ def test__remove_batch_dim_non_contiguous(shape, out_dim, batch_size, level, dty
     assert not inp.is_contiguous()
 
     ref_out = torch.ops.aten._remove_batch_dim(ref_inp, level, batch_size, out_dim)
-    gems_op = flag_gems.testing.resolve_gems_op("_remove_batch_dim")
-    res_out = gems_op(inp, level, batch_size, out_dim)
+    res_out = flag_gems._remove_batch_dim(inp, level, batch_size, out_dim)
 
     tu.assert_result_equal(res_out, ref_out)
 
@@ -162,8 +158,7 @@ def test__remove_batch_dim_nan_inf(dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten._remove_batch_dim(ref_inp, 0, 4, 0)
-    gems_op = flag_gems.testing.resolve_gems_op("_remove_batch_dim")
-    res_out = gems_op(inp, 0, 4, 0)
+    res_out = flag_gems._remove_batch_dim(inp, 0, 4, 0)
 
     tu.assert_result_equal(res_out, ref_out)
 
@@ -185,8 +180,7 @@ def test__remove_batch_dim_backward(shape, out_dim, batch_size, dtype):
     ref_inp.requires_grad_(True)
 
     ref_out = torch.ops.aten._remove_batch_dim(ref_inp, level, batch_size, out_dim)
-    gems_op = flag_gems.testing.resolve_gems_op("_remove_batch_dim")
-    res_out = gems_op(inp, level, batch_size, out_dim)
+    res_out = flag_gems._remove_batch_dim(inp, level, batch_size, out_dim)
     tu.assert_result_equal(res_out, ref_out)
 
     res_grad = torch.autograd.grad(res_out, inp, grad_out)[0]
@@ -200,9 +194,8 @@ def test__remove_batch_dim_rejects_non_broadcastable_batch_size():
     inp = tu.make_input(torch.float32, (2, 19, 7), ["-1", "1"])
     with pytest.raises(RuntimeError):
         torch.ops.aten._remove_batch_dim(inp, 0, 3, 1)
-    gems_op = flag_gems.testing.resolve_gems_op("_remove_batch_dim")
     with pytest.raises(RuntimeError):
-        gems_op(inp, 0, 3, 1)
+        flag_gems._remove_batch_dim(inp, 0, 3, 1)
 
 
 @pytest.mark._remove_batch_dim
@@ -210,18 +203,16 @@ def test__remove_batch_dim_rejects_negative_batch_size():
     inp = tu.make_input(torch.float32, (2, 19, 7), ["-1", "1"])
     with pytest.raises(RuntimeError):
         torch.ops.aten._remove_batch_dim(inp, 0, -1, 0)
-    gems_op = flag_gems.testing.resolve_gems_op("_remove_batch_dim")
     with pytest.raises(RuntimeError):
-        gems_op(inp, 0, -1, 0)
+        flag_gems._remove_batch_dim(inp, 0, -1, 0)
 
 
 @pytest.mark._remove_batch_dim
 def test__remove_batch_dim_rejects_non_tensor():
     with pytest.raises(RuntimeError):
         torch.ops.aten._remove_batch_dim(3.14, 0, 1, 0)
-    gems_op = flag_gems.testing.resolve_gems_op("_remove_batch_dim")
-    with pytest.raises((RuntimeError, TypeError, ValueError, AttributeError)):
-        gems_op(3.14, 0, 1, 0)
+    with pytest.raises((RuntimeError, TypeError, ValueError)):
+        flag_gems._remove_batch_dim(3.14, 0, 1, 0)
 
 
 @pytest.mark._remove_batch_dim
@@ -232,11 +223,8 @@ def test__remove_batch_dim_rejects_non_tensor():
 def test__remove_batch_dim_special_scenarios(dtype, scenario):
     inp = tu.make_special_input(dtype, scenario)
     reference = tu.to_reference(inp)
-    candidate = flag_gems.testing.resolve_gems_op(
-        "_remove_batch_dim", getattr(flag_gems, "_remove_batch_dim", None)
-    )
     expected = torch.ops.aten._remove_batch_dim(reference, 0, 4, 0)
-    actual = candidate(inp, 0, 4, 0)
+    actual = flag_gems._remove_batch_dim(inp, 0, 4, 0)
     tu.assert_result_equal(actual, expected)
 
 
@@ -252,8 +240,7 @@ def test__remove_batch_dim_batched(batch_dim, out_dim, level, dtype):
     batch_size = inp.size(batch_dim)
 
     ref_out = torch.ops.aten._remove_batch_dim(ref_batched, level, batch_size, out_dim)
-    gems_op = flag_gems.testing.resolve_gems_op("_remove_batch_dim")
-    res_out = gems_op(batched, level, batch_size, out_dim)
+    res_out = flag_gems._remove_batch_dim(batched, level, batch_size, out_dim)
 
     tu.assert_result_equal(res_out, ref_out)
     assert res_out.stride() == ref_out.stride()
@@ -268,9 +255,8 @@ def test__remove_batch_dim_other_level(dtype):
     ref_inp = tu.to_reference(inp)
     batched = torch.ops.aten._add_batch_dim(inp, 0, 0)
     ref_batched = torch.ops.aten._add_batch_dim(ref_inp, 0, 0)
-    gems_op = flag_gems.testing.resolve_gems_op("_remove_batch_dim")
     ref_out = torch.ops.aten._remove_batch_dim(ref_batched, 1, 2, 0)
-    res_out = gems_op(batched, 1, 2, 0)
+    res_out = flag_gems._remove_batch_dim(batched, 1, 2, 0)
 
     assert torch._C._functorch.is_legacy_batchedtensor(res_out)
     ref_physical = torch.ops.aten._remove_batch_dim(ref_out, 0, 3, 0)

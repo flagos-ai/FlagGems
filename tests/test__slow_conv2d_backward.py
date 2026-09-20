@@ -190,8 +190,9 @@ def test__slow_conv2d_backward_value_ranges(case, value_range, dtype):
         upcast=not tu.is_extreme_range(value_range),
     )
 
-    gems_op = flag_gems.testing.resolve_gems_op("_slow_conv2d_backward")
-    res = gems_op(grad_output, inp, weight, kernel_size, stride, padding, _FULL_MASK)
+    res = flag_gems._slow_conv2d_backward(
+        grad_output, inp, weight, kernel_size, stride, padding, _FULL_MASK
+    )
 
     in_reduce_dim, out_reduce_dim = _reduction_dims(
         inp_shape, weight_shape, stride, padding
@@ -211,8 +212,9 @@ def test__slow_conv2d_backward_output_mask_full(case, dtype):
         inp, weight, grad_output, kernel_size, stride, padding, _FULL_MASK
     )
 
-    gems_op = flag_gems.testing.resolve_gems_op("_slow_conv2d_backward")
-    res = gems_op(grad_output, inp, weight, kernel_size, stride, padding, _FULL_MASK)
+    res = flag_gems._slow_conv2d_backward(
+        grad_output, inp, weight, kernel_size, stride, padding, _FULL_MASK
+    )
 
     in_reduce_dim, out_reduce_dim = _reduction_dims(
         inp_shape, weight_shape, stride, padding
@@ -233,8 +235,9 @@ def test__slow_conv2d_backward_grad_input_only(case, dtype):
         inp, weight, grad_output, kernel_size, stride, padding, mask
     )
 
-    gems_op = flag_gems.testing.resolve_gems_op("_slow_conv2d_backward")
-    res = gems_op(grad_output, inp, weight, kernel_size, stride, padding, mask)
+    res = flag_gems._slow_conv2d_backward(
+        grad_output, inp, weight, kernel_size, stride, padding, mask
+    )
 
     in_reduce_dim, out_reduce_dim = _reduction_dims(
         inp_shape, weight_shape, stride, padding
@@ -255,8 +258,9 @@ def test__slow_conv2d_backward_grad_weight_only(case, dtype):
         inp, weight, grad_output, kernel_size, stride, padding, mask
     )
 
-    gems_op = flag_gems.testing.resolve_gems_op("_slow_conv2d_backward")
-    res = gems_op(grad_output, inp, weight, kernel_size, stride, padding, mask)
+    res = flag_gems._slow_conv2d_backward(
+        grad_output, inp, weight, kernel_size, stride, padding, mask
+    )
 
     in_reduce_dim, out_reduce_dim = _reduction_dims(
         inp_shape, weight_shape, stride, padding
@@ -277,8 +281,9 @@ def test__slow_conv2d_backward_grad_bias_only(case, dtype):
         inp, weight, grad_output, kernel_size, stride, padding, mask
     )
 
-    gems_op = flag_gems.testing.resolve_gems_op("_slow_conv2d_backward")
-    res = gems_op(grad_output, inp, weight, kernel_size, stride, padding, mask)
+    res = flag_gems._slow_conv2d_backward(
+        grad_output, inp, weight, kernel_size, stride, padding, mask
+    )
 
     in_reduce_dim, out_reduce_dim = _reduction_dims(
         inp_shape, weight_shape, stride, padding
@@ -299,8 +304,9 @@ def test__slow_conv2d_backward_mixed_mask(case, mask, dtype):
         inp, weight, grad_output, kernel_size, stride, padding, mask
     )
 
-    gems_op = flag_gems.testing.resolve_gems_op("_slow_conv2d_backward")
-    res = gems_op(grad_output, inp, weight, kernel_size, stride, padding, mask)
+    res = flag_gems._slow_conv2d_backward(
+        grad_output, inp, weight, kernel_size, stride, padding, mask
+    )
 
     in_reduce_dim, out_reduce_dim = _reduction_dims(
         inp_shape, weight_shape, stride, padding
@@ -342,8 +348,7 @@ def test__slow_conv2d_backward_grad_input_out(case, dtype):
     res_grad_bias = torch.full(
         (weight_shape[0],), 7.0, dtype=dtype, device=flag_gems.device
     )
-    gems_op = flag_gems.testing.resolve_gems_op("_slow_conv2d_backward")
-    res = gems_op(
+    res = flag_gems._slow_conv2d_backward(
         grad_output,
         inp,
         weight,
@@ -396,8 +401,7 @@ def test__slow_conv2d_backward_output_mask_out(case, dtype):
     res_out0 = torch.full_like(inp, 7.0)
     res_out1 = torch.full_like(weight, 7.0)
     res_out2 = torch.full((weight_shape[0],), 7.0, dtype=dtype, device=flag_gems.device)
-    gems_op = flag_gems.testing.resolve_gems_op("_slow_conv2d_backward")
-    res = gems_op(
+    res = flag_gems._slow_conv2d_backward(
         grad_output,
         inp,
         weight,
@@ -448,8 +452,9 @@ def test__slow_conv2d_backward_backward(case, dtype):
         allow_unused=True,
     )
 
-    gems_op = flag_gems.testing.resolve_gems_op("_slow_conv2d_backward")
-    res = gems_op(grad_output, inp, weight, kernel_size, stride, padding, _FULL_MASK)
+    res = flag_gems._slow_conv2d_backward(
+        grad_output, inp, weight, kernel_size, stride, padding, _FULL_MASK
+    )
 
     in_reduce_dim, out_reduce_dim = _reduction_dims(
         inp_shape, weight_shape, stride, padding
@@ -478,8 +483,9 @@ def test__slow_conv2d_backward_nan_inf(dtype, scenario, special_arg):
         inp, weight, grad_output, kernel_size, stride, padding, _FULL_MASK
     )
 
-    gems_op = flag_gems.testing.resolve_gems_op("_slow_conv2d_backward")
-    res = gems_op(grad_output, inp, weight, kernel_size, stride, padding, _FULL_MASK)
+    res = flag_gems._slow_conv2d_backward(
+        grad_output, inp, weight, kernel_size, stride, padding, _FULL_MASK
+    )
 
     in_reduce_dim, out_reduce_dim = _reduction_dims(
         (2, 3, 5, 5), (2, 3, 3, 3), stride, padding
@@ -504,9 +510,10 @@ def test__slow_conv2d_backward_negative_invalid_config(case):
         )
 
     # The candidate must reject the same invalid arguments.
-    gems_op = flag_gems.testing.resolve_gems_op("_slow_conv2d_backward")
     with pytest.raises((TypeError, ValueError, RuntimeError)):
-        gems_op(grad_output, inp, weight, kernel_size, stride, padding, _FULL_MASK)
+        flag_gems._slow_conv2d_backward(
+            grad_output, inp, weight, kernel_size, stride, padding, _FULL_MASK
+        )
 
 
 @pytest.mark._slow_conv2d_backward
@@ -521,9 +528,10 @@ def test__slow_conv2d_backward_negative_non_float_dtype(dtype):
             grad_output, inp, weight, (3, 3), (1, 1), (0, 0), _FULL_MASK
         )
 
-    gems_op = flag_gems.testing.resolve_gems_op("_slow_conv2d_backward")
     with pytest.raises((TypeError, ValueError, RuntimeError)):
-        gems_op(grad_output, inp, weight, (3, 3), (1, 1), (0, 0), _FULL_MASK)
+        flag_gems._slow_conv2d_backward(
+            grad_output, inp, weight, (3, 3), (1, 1), (0, 0), _FULL_MASK
+        )
 
 
 @pytest.mark._slow_conv2d_backward
@@ -537,9 +545,10 @@ def test__slow_conv2d_backward_negative_non_4d_grad_output():
             grad_output, inp, weight, (3, 3), (1, 1), (0, 0), _FULL_MASK
         )
 
-    gems_op = flag_gems.testing.resolve_gems_op("_slow_conv2d_backward")
     with pytest.raises((TypeError, ValueError, RuntimeError)):
-        gems_op(grad_output, inp, weight, (3, 3), (1, 1), (0, 0), _FULL_MASK)
+        flag_gems._slow_conv2d_backward(
+            grad_output, inp, weight, (3, 3), (1, 1), (0, 0), _FULL_MASK
+        )
 
 
 @pytest.mark._slow_conv2d_backward
@@ -569,9 +578,10 @@ def test__slow_conv2d_backward_negative_scalar_param(scalar_param):
             grad_output, inp, weight, args[0], args[1], args[2], _FULL_MASK
         )
 
-    gems_op = flag_gems.testing.resolve_gems_op("_slow_conv2d_backward")
     with pytest.raises((TypeError, ValueError, RuntimeError)):
-        gems_op(grad_output, inp, weight, args[0], args[1], args[2], _FULL_MASK)
+        flag_gems._slow_conv2d_backward(
+            grad_output, inp, weight, args[0], args[1], args[2], _FULL_MASK
+        )
 
 
 @pytest.fixture(autouse=True)

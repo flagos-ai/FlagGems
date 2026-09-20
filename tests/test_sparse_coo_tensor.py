@@ -160,10 +160,11 @@ def _call_reference(indices, values, size, dtype):
 
 def _call_candidate(indices, values, size, dtype, **extra):
     # Match the reference overload: size=None selects size inference.
-    call = flag_gems.testing.resolve_gems_op("sparse_coo_tensor")
     if size is None:
-        return call(indices, values, dtype=dtype, device=indices.device, **extra)
-    return call(
+        return flag_gems.sparse_coo_tensor(
+            indices, values, dtype=dtype, device=indices.device, **extra
+        )
+    return flag_gems.sparse_coo_tensor(
         indices, values, list(size), dtype=dtype, device=indices.device, **extra
     )
 
@@ -184,8 +185,9 @@ def test_sparse_coo_tensor_size(case, dtype):
     ref_out = torch.ops.aten.sparse_coo_tensor(
         list(size), dtype=dtype, device=ref_device
     )
-    gems_op = flag_gems.testing.resolve_gems_op("sparse_coo_tensor")
-    res_out = gems_op(list(size), dtype=dtype, device=flag_gems.device)
+    res_out = flag_gems.sparse_coo_tensor(
+        list(size), dtype=dtype, device=flag_gems.device
+    )
 
     _assert_coo_structure(res_out, ref_out, size, 0, dtype, len(size), 0)
     tu.assert_result_equal(res_out._values(), ref_out._values())
@@ -201,8 +203,7 @@ def test_sparse_coo_tensor_size_out(case, dtype):
     out = _make_out_buffer(size, dtype, flag_gems.device, nnz=2)
 
     ref_ret = torch.ops.aten.sparse_coo_tensor.size_out(list(size), out=ref_out)
-    gems_op = flag_gems.testing.resolve_gems_op("sparse_coo_tensor")
-    res_ret = gems_op(list(size), out=out)
+    res_ret = flag_gems.sparse_coo_tensor(list(size), out=out)
 
     assert res_ret is out
     _assert_coo_structure(res_ret, ref_ret, size, 0, dtype, len(size), 0)
@@ -416,23 +417,25 @@ def test_sparse_coo_tensor_negative_size():
 def test_sparse_coo_tensor_negative_size_only_size():
     ref_device = _reference_device()
 
-    gems_op = flag_gems.testing.resolve_gems_op("sparse_coo_tensor")
     _assert_rejected(
         lambda: torch.ops.aten.sparse_coo_tensor(
             [-2, 3], dtype=torch.float32, device=ref_device
         ),
-        lambda: gems_op([-2, 3], dtype=torch.float32, device=flag_gems.device),
+        lambda: flag_gems.sparse_coo_tensor(
+            [-2, 3], dtype=torch.float32, device=flag_gems.device
+        ),
     )
 
 
 @pytest.mark.sparse_coo_tensor_negative
 def test_sparse_coo_tensor_negative_non_integer_size():
-    gems_op = flag_gems.testing.resolve_gems_op("sparse_coo_tensor")
     _assert_rejected(
         lambda: torch.ops.aten.sparse_coo_tensor(
             [2.5, 3], dtype=torch.float32, device=_reference_device()
         ),
-        lambda: gems_op([2.5, 3], dtype=torch.float32, device=flag_gems.device),
+        lambda: flag_gems.sparse_coo_tensor(
+            [2.5, 3], dtype=torch.float32, device=flag_gems.device
+        ),
     )
 
 
@@ -545,8 +548,7 @@ def test_sparse_coo_tensor_size_out_negative_shape():
         [4, 5], dtype=torch.float32, device=flag_gems.device
     )
 
-    gems_op = flag_gems.testing.resolve_gems_op("sparse_coo_tensor")
     _assert_rejected(
         lambda: torch.ops.aten.sparse_coo_tensor.size_out([2, 3], out=ref_out),
-        lambda: gems_op([2, 3], out=out),
+        lambda: flag_gems.sparse_coo_tensor([2, 3], out=out),
     )

@@ -130,8 +130,7 @@ def test__empty_per_channel_affine_quantized(
         device=ref_device,
     )
 
-    gems_op = flag_gems.testing.resolve_gems_op("_empty_per_channel_affine_quantized")
-    res_out = gems_op(
+    res_out = flag_gems._empty_per_channel_affine_quantized(
         shape,
         scales=scales,
         zero_points=zero_points,
@@ -166,8 +165,7 @@ def test__empty_per_channel_affine_quantized_metadata_value_ranges(
         device=ref_device,
     )
 
-    gems_op = flag_gems.testing.resolve_gems_op("_empty_per_channel_affine_quantized")
-    res_out = gems_op(
+    res_out = flag_gems._empty_per_channel_affine_quantized(
         shape,
         scales=scales,
         zero_points=zero_points,
@@ -227,8 +225,7 @@ def test__empty_per_channel_affine_quantized_out(
         dtype=quantized_dtype,
         device=flag_gems.device,
     )
-    gems_op = flag_gems.testing.resolve_gems_op("_empty_per_channel_affine_quantized")
-    res_ret = gems_op(
+    res_ret = flag_gems._empty_per_channel_affine_quantized(
         shape, scales=scales, zero_points=zero_points, axis=axis, out=act_out_buf
     )
     assert res_ret is act_out_buf
@@ -257,8 +254,7 @@ def test__empty_per_channel_affine_quantized_nan_inf_scales(shape, scenario):
         device=ref_device,
     )
 
-    gems_op = flag_gems.testing.resolve_gems_op("_empty_per_channel_affine_quantized")
-    res_out = gems_op(
+    res_out = flag_gems._empty_per_channel_affine_quantized(
         shape,
         scales=scales,
         zero_points=zero_points,
@@ -293,8 +289,7 @@ def test__empty_per_channel_affine_quantized_fp64_scales_preserved():
         device=ref_device,
     )
 
-    gems_op = flag_gems.testing.resolve_gems_op("_empty_per_channel_affine_quantized")
-    res_out = gems_op(
+    res_out = flag_gems._empty_per_channel_affine_quantized(
         shape,
         scales=scales,
         zero_points=zero_points,
@@ -325,9 +320,8 @@ def test__empty_per_channel_affine_quantized_negative_invalid_dtype(invalid_dtyp
             dtype=invalid_dtype,
             device=ref_device,
         )
-    gems_op = flag_gems.testing.resolve_gems_op("_empty_per_channel_affine_quantized")
     with pytest.raises((RuntimeError, TypeError)):
-        gems_op(
+        flag_gems._empty_per_channel_affine_quantized(
             shape,
             scales=scales,
             zero_points=zero_points,
@@ -354,9 +348,8 @@ def test__empty_per_channel_affine_quantized_negative_non_float_scales(scale_dty
             dtype=torch.quint8,
             device=ref_device,
         )
-    gems_op = flag_gems.testing.resolve_gems_op("_empty_per_channel_affine_quantized")
     with pytest.raises((RuntimeError, TypeError)):
-        gems_op(
+        flag_gems._empty_per_channel_affine_quantized(
             shape,
             scales=scales,
             zero_points=zero_points,
@@ -390,9 +383,8 @@ def test__empty_per_channel_affine_quantized_negative_metadata_length_mismatch(
             dtype=torch.quint8,
             device=ref_device,
         )
-    gems_op = flag_gems.testing.resolve_gems_op("_empty_per_channel_affine_quantized")
     with pytest.raises((RuntimeError, TypeError)):
-        gems_op(
+        flag_gems._empty_per_channel_affine_quantized(
             shape,
             scales=scales,
             zero_points=zero_points,

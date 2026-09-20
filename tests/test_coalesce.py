@@ -141,8 +141,7 @@ def test_coalesce(case, dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.coalesce(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("coalesce")
-    res_out = gems_op(inp)
+    res_out = flag_gems.coalesce(inp)
 
     _assert_coalesced(res_out, ref_out, dtype)
     # Coalescing returns a fresh tensor and must not mutate the input.
@@ -160,8 +159,7 @@ def test_coalesce_coalesced_input(case, dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.coalesce(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("coalesce")
-    res_out = gems_op(inp)
+    res_out = flag_gems.coalesce(inp)
 
     _assert_coalesced(res_out, ref_out, dtype)
     # Per the Tensor(a) alias annotation, coalesce returns the (coalesced)
@@ -178,8 +176,7 @@ def test_coalesce_value_ranges(value_range, dtype, case):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.coalesce(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("coalesce")
-    res_out = gems_op(inp)
+    res_out = flag_gems.coalesce(inp)
 
     _assert_coalesced(res_out, ref_out, dtype)
     assert res_out is not inp
@@ -206,8 +203,7 @@ def test_coalesce_nan_inf(case, dtype, scenario):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.coalesce(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("coalesce")
-    res_out = gems_op(inp)
+    res_out = flag_gems.coalesce(inp)
 
     _assert_coalesced(res_out, ref_out, dtype, equal_nan=True)
     assert res_out is not inp
@@ -219,9 +215,8 @@ def test_coalesce_rejects_dense_input():
     inp = torch.randn(4, 4, dtype=torch.float32, device=flag_gems.device)
     with pytest.raises(RuntimeError):
         torch.ops.aten.coalesce(inp)
-    gems_op = flag_gems.testing.resolve_gems_op("coalesce")
     with pytest.raises((NotImplementedError, RuntimeError, TypeError)):
-        gems_op(inp)
+        flag_gems.coalesce(inp)
 
 
 @pytest.mark.coalesce
@@ -230,9 +225,8 @@ def test_coalesce_rejects_csr_input():
     inp = inp.to_sparse_csr()
     with pytest.raises(RuntimeError):
         torch.ops.aten.coalesce(inp)
-    gems_op = flag_gems.testing.resolve_gems_op("coalesce")
     with pytest.raises((NotImplementedError, RuntimeError, TypeError)):
-        gems_op(inp)
+        flag_gems.coalesce(inp)
 
 
 @pytest.mark.coalesce
@@ -242,6 +236,5 @@ def test_coalesce_rejects_fp8_input():
     inp = torch.sparse_coo_tensor(indices, values, (4,), device=flag_gems.device)
     with pytest.raises(RuntimeError):
         torch.ops.aten.coalesce(inp)
-    gems_op = flag_gems.testing.resolve_gems_op("coalesce")
     with pytest.raises((NotImplementedError, RuntimeError, TypeError)):
-        gems_op(inp)
+        flag_gems.coalesce(inp)

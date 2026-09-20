@@ -66,8 +66,7 @@ def test__dim_arange_value_ranges(shape, dim, value_range, dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten._dim_arange(ref_inp, dim)
-    gems_op = flag_gems.testing.resolve_gems_op("_dim_arange")
-    res_out = gems_op(inp, dim)
+    res_out = flag_gems._dim_arange(inp, dim)
 
     _assert_arange_result(res_out, ref_out, inp)
 
@@ -85,8 +84,7 @@ def test__dim_arange_non_contiguous(view_case, value_range, dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten._dim_arange(ref_inp, dim)
-    gems_op = flag_gems.testing.resolve_gems_op("_dim_arange")
-    res_out = gems_op(inp, dim)
+    res_out = flag_gems._dim_arange(inp, dim)
 
     _assert_arange_result(res_out, ref_out, inp)
 
@@ -101,8 +99,7 @@ def test__dim_arange_nan_inf(dtype, scenario):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten._dim_arange(ref_inp, 1)
-    gems_op = flag_gems.testing.resolve_gems_op("_dim_arange")
-    res_out = gems_op(inp, 1)
+    res_out = flag_gems._dim_arange(inp, 1)
 
     _assert_arange_result(res_out, ref_out, inp)
 
@@ -114,8 +111,7 @@ def test__dim_arange_no_autograd(dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten._dim_arange(ref_inp, 1)
-    gems_op = flag_gems.testing.resolve_gems_op("_dim_arange")
-    res_out = gems_op(inp, 1)
+    res_out = flag_gems._dim_arange(inp, 1)
 
     _assert_arange_result(res_out, ref_out, inp)
     assert res_out.grad_fn is None
@@ -130,11 +126,10 @@ def test__dim_arange_rejects_out_of_range_dim():
         torch.ops.aten._dim_arange(inp, 2)
     with pytest.raises(IndexError):
         torch.ops.aten._dim_arange(inp, -3)
-    gems_op = flag_gems.testing.resolve_gems_op("_dim_arange")
     with pytest.raises((IndexError, RuntimeError)):
-        gems_op(inp, 2)
+        flag_gems._dim_arange(inp, 2)
     with pytest.raises((IndexError, RuntimeError)):
-        gems_op(inp, -3)
+        flag_gems._dim_arange(inp, -3)
 
 
 @pytest.mark._dim_arange
@@ -142,9 +137,8 @@ def test__dim_arange_rejects_zero_dim_like():
     inp = tu.make_input(torch.float32, (), ["-1", "1"])
     with pytest.raises(IndexError):
         torch.ops.aten._dim_arange(inp, 0)
-    gems_op = flag_gems.testing.resolve_gems_op("_dim_arange")
     with pytest.raises((IndexError, RuntimeError)):
-        gems_op(inp, 0)
+        flag_gems._dim_arange(inp, 0)
 
 
 @pytest.mark._dim_arange
@@ -152,6 +146,5 @@ def test__dim_arange_rejects_non_integer_dim():
     inp = tu.make_input(torch.float32, (4,), ["-1", "1"])
     with pytest.raises(RuntimeError):
         torch.ops.aten._dim_arange(inp, 1.5)
-    gems_op = flag_gems.testing.resolve_gems_op("_dim_arange")
     with pytest.raises((TypeError, ValueError, RuntimeError)):
-        gems_op(inp, 1.5)
+        flag_gems._dim_arange(inp, 1.5)

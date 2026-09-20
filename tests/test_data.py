@@ -58,8 +58,7 @@ def test_data(shape, dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.data(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("data")
-    res_out = gems_op(inp)
+    res_out = flag_gems.data(inp)
 
     _assert_alias_semantics(res_out, ref_out, inp)
 
@@ -73,8 +72,7 @@ def test_data_value_ranges(shape, value_range, dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.data(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("data")
-    res_out = gems_op(inp)
+    res_out = flag_gems.data(inp)
 
     _assert_alias_semantics(res_out, ref_out, inp)
 
@@ -92,8 +90,7 @@ def test_data_non_contiguous(layout, shape, dtype):
     assert not inp.is_contiguous()
 
     ref_out = torch.ops.aten.data(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("data")
-    res_out = gems_op(inp)
+    res_out = flag_gems.data(inp)
 
     _assert_alias_semantics(res_out, ref_out, inp)
 
@@ -109,8 +106,7 @@ def test_data_special_values(dtype):
     ref_inp = tu.to_reference(values)
 
     ref_out = torch.ops.aten.data(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("data")
-    res_out = gems_op(values)
+    res_out = flag_gems.data(values)
 
     assert res_out.data_ptr() == values.data_ptr()
     # nan must compare equal to nan (the op must not sanitize it).
@@ -124,8 +120,7 @@ def test_data_mutation(shape, dtype):
     inp = tu.make_input(dtype, shape, ["-1", "1"])
     ref_inp = tu.to_reference(inp)
 
-    gems_op = flag_gems.testing.resolve_gems_op("data")
-    res_out = gems_op(inp)
+    res_out = flag_gems.data(inp)
     ref_out = torch.ops.aten.data(ref_inp)
 
     res_out.add_(1.0)
@@ -146,8 +141,7 @@ def test_data_autograd_detach(shape, dtype):
         ref_inp.requires_grad_(True)
 
     ref_out = torch.ops.aten.data(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("data")
-    res_out = gems_op(inp)
+    res_out = flag_gems.data(inp)
 
     _assert_alias_semantics(res_out, ref_out, inp)
 
@@ -156,14 +150,13 @@ def test_data_autograd_detach(shape, dtype):
 def test_data_rejects_non_tensor():
     with pytest.raises((RuntimeError, TypeError)):
         torch.ops.aten.data(3.14)
-    gems_op = flag_gems.testing.resolve_gems_op("data")
-    with pytest.raises((TypeError, ValueError, RuntimeError, AttributeError)):
-        gems_op(3.14)
+    with pytest.raises((TypeError, ValueError, RuntimeError)):
+        flag_gems.data(3.14)
 
     with pytest.raises((RuntimeError, TypeError)):
         torch.ops.aten.data("not-a-tensor")
-    with pytest.raises((TypeError, ValueError, RuntimeError, AttributeError)):
-        gems_op("not-a-tensor")
+    with pytest.raises((TypeError, ValueError, RuntimeError)):
+        flag_gems.data("not-a-tensor")
 
 
 @pytest.mark.data
@@ -172,9 +165,8 @@ def test_data_rejects_extra_arguments():
     ref_inp = tu.to_reference(inp)
     with pytest.raises((TypeError, RuntimeError)):
         torch.ops.aten.data(ref_inp, ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("data")
-    with pytest.raises((TypeError, ValueError, RuntimeError, AttributeError)):
-        gems_op(inp, inp)
+    with pytest.raises((TypeError, ValueError, RuntimeError)):
+        flag_gems.data(inp, inp)
 
 
 @pytest.mark.data
@@ -184,11 +176,8 @@ def test_data_rejects_extra_arguments():
 def test_data_special_scenarios(dtype, scenario):
     inp = tu.make_special_input(dtype, scenario)
     reference = tu.to_reference(inp)
-    candidate = flag_gems.testing.resolve_gems_op(
-        "data", getattr(flag_gems, "data", None)
-    )
     expected = torch.ops.aten.data(reference)
-    actual = candidate(inp)
+    actual = flag_gems.data(inp)
     tu.assert_result_equal(actual, expected)
 
 
@@ -201,8 +190,7 @@ def test_data_independent_version_counter(initial_mutations):
         inp.add_(1)
         ref_inp.add_(1)
     input_version = inp._version
-    gems_op = flag_gems.testing.resolve_gems_op("data")
-    res_out = gems_op(inp)
+    res_out = flag_gems.data(inp)
     ref_out = torch.ops.aten.data(ref_inp)
     assert res_out._version == ref_out._version
 

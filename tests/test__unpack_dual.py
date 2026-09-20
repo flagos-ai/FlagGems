@@ -72,13 +72,12 @@ def test__unpack_dual_dual_tensor(shape, dtype):
     ref_primal = tu.to_reference(primal)
     ref_tangent = tu.to_reference(tangent)
 
-    gems_op = flag_gems.testing.resolve_gems_op("_unpack_dual")
     with dual_level() as level:
         ref_dual = torch.ops.aten._make_dual(ref_primal, ref_tangent, level)
         ref_primal_out, ref_tangent_out = torch.ops.aten._unpack_dual(ref_dual, level)
 
         dual = torch.ops.aten._make_dual(primal, tangent, level)
-        res_primal_out, res_tangent_out = gems_op(dual, level)
+        res_primal_out, res_tangent_out = flag_gems._unpack_dual(dual, level)
 
         # A dual tensor created with a tangent must yield a tensor tangent, not
         # None.
@@ -98,13 +97,12 @@ def test__unpack_dual_dual_tensor_value_ranges(shape, value_range, dtype):
     ref_primal = tu.to_reference(primal)
     ref_tangent = tu.to_reference(tangent)
 
-    gems_op = flag_gems.testing.resolve_gems_op("_unpack_dual")
     with dual_level() as level:
         ref_dual = torch.ops.aten._make_dual(ref_primal, ref_tangent, level)
         ref_primal_out, ref_tangent_out = torch.ops.aten._unpack_dual(ref_dual, level)
 
         dual = torch.ops.aten._make_dual(primal, tangent, level)
-        res_primal_out, res_tangent_out = gems_op(dual, level)
+        res_primal_out, res_tangent_out = flag_gems._unpack_dual(dual, level)
 
         assert isinstance(res_tangent_out, torch.Tensor)
         tu.assert_result_equal(res_primal_out, ref_primal_out)
@@ -121,8 +119,7 @@ def test__unpack_dual_plain_tensor(shape, level, dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_primal_out, _ = torch.ops.aten._unpack_dual(ref_inp, level)
-    gems_op = flag_gems.testing.resolve_gems_op("_unpack_dual")
-    res_primal_out, res_tangent_out = gems_op(inp, level)
+    res_primal_out, res_tangent_out = flag_gems._unpack_dual(inp, level)
 
     assert res_tangent_out is None
     tu.assert_result_equal(res_primal_out, ref_primal_out)
@@ -138,8 +135,7 @@ def test__unpack_dual_plain_tensor_value_ranges(shape, value_range, dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_primal_out, _ = torch.ops.aten._unpack_dual(ref_inp, 0)
-    gems_op = flag_gems.testing.resolve_gems_op("_unpack_dual")
-    res_primal_out, res_tangent_out = gems_op(inp, 0)
+    res_primal_out, res_tangent_out = flag_gems._unpack_dual(inp, 0)
 
     assert res_tangent_out is None
     tu.assert_result_equal(res_primal_out, ref_primal_out)
@@ -159,13 +155,12 @@ def test__unpack_dual_non_contiguous(shape, dtype):
     ref_tangent = tu.to_reference(tangent)
     assert not primal.is_contiguous()
 
-    gems_op = flag_gems.testing.resolve_gems_op("_unpack_dual")
     with dual_level() as level:
         ref_dual = torch.ops.aten._make_dual(ref_primal, ref_tangent, level)
         ref_primal_out, ref_tangent_out = torch.ops.aten._unpack_dual(ref_dual, level)
 
         dual = torch.ops.aten._make_dual(primal, tangent, level)
-        res_primal_out, res_tangent_out = gems_op(dual, level)
+        res_primal_out, res_tangent_out = flag_gems._unpack_dual(dual, level)
 
         assert res_primal_out.stride() == ref_primal_out.stride()
         assert res_primal_out.storage_offset() == ref_primal_out.storage_offset()
@@ -183,13 +178,12 @@ def test__unpack_dual_mutation(shape, dtype):
     tangent = tu.make_input(dtype, shape, ["-1", "1"])
     ref_tangent = tu.to_reference(tangent)
 
-    gems_op = flag_gems.testing.resolve_gems_op("_unpack_dual")
     with dual_level() as level:
         ref_dual = torch.ops.aten._make_dual(ref_primal, ref_tangent, level)
         ref_primal_out, _ = torch.ops.aten._unpack_dual(ref_dual, level)
 
         dual = torch.ops.aten._make_dual(primal, tangent, level)
-        res_primal_out, _ = gems_op(dual, level)
+        res_primal_out, _ = flag_gems._unpack_dual(dual, level)
 
         ref_primal_out.fill_(2.5)
         res_primal_out.fill_(2.5)
@@ -211,13 +205,12 @@ def test__unpack_dual_special_values(dtype):
     tangent = torch.ones_like(values)
     ref_tangent = tu.to_reference(tangent)
 
-    gems_op = flag_gems.testing.resolve_gems_op("_unpack_dual")
     with dual_level() as level:
         ref_dual = torch.ops.aten._make_dual(ref_primal, ref_tangent, level)
         ref_primal_out, ref_tangent_out = torch.ops.aten._unpack_dual(ref_dual, level)
 
         dual = torch.ops.aten._make_dual(values, tangent, level)
-        res_primal_out, res_tangent_out = gems_op(dual, level)
+        res_primal_out, res_tangent_out = flag_gems._unpack_dual(dual, level)
 
         utils.gems_assert_equal(res_primal_out, ref_primal_out, equal_nan=True)
         utils.gems_assert_equal(res_tangent_out, ref_tangent_out, equal_nan=True)
@@ -238,13 +231,12 @@ def test__unpack_dual_empty(shape, dtype):
     ref_primal = tu.to_reference(primal)
     ref_tangent = tu.to_reference(tangent)
 
-    gems_op = flag_gems.testing.resolve_gems_op("_unpack_dual")
     with dual_level() as level:
         ref_dual = torch.ops.aten._make_dual(ref_primal, ref_tangent, level)
         ref_primal_out, ref_tangent_out = torch.ops.aten._unpack_dual(ref_dual, level)
 
         dual = torch.ops.aten._make_dual(primal, tangent, level)
-        res_primal_out, res_tangent_out = gems_op(dual, level)
+        res_primal_out, res_tangent_out = flag_gems._unpack_dual(dual, level)
 
         tu.assert_result_equal(res_primal_out, ref_primal_out)
         tu.assert_result_equal(res_tangent_out, ref_tangent_out)
@@ -259,9 +251,8 @@ def test__unpack_dual_rejects_non_tensor():
     # lookup, triton input validation or a dispatcher cast), so accept the
     # plausible Python failure modes; the point is that it must fail rather
     # than silently accept the scalar.
-    gems_op = flag_gems.testing.resolve_gems_op("_unpack_dual")
-    with pytest.raises((TypeError, ValueError, RuntimeError, AttributeError)):
-        gems_op(3.14, 0)
+    with pytest.raises((TypeError, ValueError, RuntimeError)):
+        flag_gems._unpack_dual(3.14, 0)
 
 
 @pytest.mark._unpack_dual
@@ -271,9 +262,8 @@ def test__unpack_dual_rejects_non_int_level():
 
     with pytest.raises(RuntimeError):
         torch.ops.aten._unpack_dual(ref_inp, 1.5)
-    gems_op = flag_gems.testing.resolve_gems_op("_unpack_dual")
-    with pytest.raises((TypeError, ValueError, RuntimeError, AttributeError)):
-        gems_op(inp, 1.5)
+    with pytest.raises((TypeError, ValueError, RuntimeError)):
+        flag_gems._unpack_dual(inp, 1.5)
 
 
 @pytest.mark._unpack_dual
@@ -292,9 +282,8 @@ def test__unpack_dual_rejects_inactive_level(dtype, bad_level):
 
         with pytest.raises(RuntimeError):
             torch.ops.aten._unpack_dual(ref_dual, inactive)
-        gems_op = flag_gems.testing.resolve_gems_op("_unpack_dual")
-        with pytest.raises((TypeError, ValueError, RuntimeError, AttributeError)):
-            gems_op(dual, inactive)
+        with pytest.raises((TypeError, ValueError, RuntimeError)):
+            flag_gems._unpack_dual(dual, inactive)
 
 
 @pytest.mark._unpack_dual
@@ -304,15 +293,12 @@ def test__unpack_dual_rejects_inactive_level(dtype, bad_level):
 def test__unpack_dual_special_scenarios(dtype, scenario):
     inp = tu.make_special_input(dtype, scenario)
     reference = tu.to_reference(inp)
-    candidate = flag_gems.testing.resolve_gems_op(
-        "_unpack_dual", getattr(flag_gems, "_unpack_dual", None)
-    )
     tangent = tu.make_special_input(dtype, scenario)
     ref_tangent = tu.to_reference(tangent)
     with torch.autograd.forward_ad.dual_level() as level:
         ref_dual = torch.ops.aten._make_dual(reference, ref_tangent, level)
         dual = torch.ops.aten._make_dual(inp, tangent, level)
-        actual = candidate(dual, level)
+        actual = flag_gems._unpack_dual(dual, level)
         expected = torch.ops.aten._unpack_dual(ref_dual, level)
         for actual_part, expected_part in zip(actual, expected):
             tu.assert_result_equal(actual_part, expected_part)

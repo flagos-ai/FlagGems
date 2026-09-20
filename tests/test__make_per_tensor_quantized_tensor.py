@@ -130,8 +130,7 @@ def test__make_per_tensor_quantized_tensor_value_ranges(shape, dtype, value_rang
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten._make_per_tensor_quantized_tensor(ref_inp, 0.5, -3)
-    gems_op = flag_gems.testing.resolve_gems_op("_make_per_tensor_quantized_tensor")
-    res_out = gems_op(inp, 0.5, -3)
+    res_out = flag_gems._make_per_tensor_quantized_tensor(inp, 0.5, -3)
 
     _assert_quant_metadata(res_out, ref_out)
     # The input is only read; it must be untouched.
@@ -150,8 +149,7 @@ def test__make_per_tensor_quantized_tensor_qparams(shape, dtype, scale, zero_poi
     ref_out = torch.ops.aten._make_per_tensor_quantized_tensor(
         ref_inp, scale, zero_point
     )
-    gems_op = flag_gems.testing.resolve_gems_op("_make_per_tensor_quantized_tensor")
-    res_out = gems_op(inp, scale, zero_point)
+    res_out = flag_gems._make_per_tensor_quantized_tensor(inp, scale, zero_point)
 
     _assert_quant_metadata(res_out, ref_out)
     tu.assert_result_equal(inp, ref_inp)
@@ -165,8 +163,7 @@ def test__make_per_tensor_quantized_tensor_boundary_values(dtype, pattern):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten._make_per_tensor_quantized_tensor(ref_inp, 0.5, -3)
-    gems_op = flag_gems.testing.resolve_gems_op("_make_per_tensor_quantized_tensor")
-    res_out = gems_op(inp, 0.5, -3)
+    res_out = flag_gems._make_per_tensor_quantized_tensor(inp, 0.5, -3)
 
     _assert_quant_metadata(res_out, ref_out)
     tu.assert_result_equal(inp, ref_inp)
@@ -180,8 +177,7 @@ def test__make_per_tensor_quantized_tensor_non_finite_scale(dtype, scale):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten._make_per_tensor_quantized_tensor(ref_inp, scale, 0)
-    gems_op = flag_gems.testing.resolve_gems_op("_make_per_tensor_quantized_tensor")
-    res_out = gems_op(inp, scale, 0)
+    res_out = flag_gems._make_per_tensor_quantized_tensor(inp, scale, 0)
 
     _assert_quant_metadata(res_out, ref_out)
     tu.assert_result_equal(inp, ref_inp)
@@ -196,8 +192,7 @@ def test__make_per_tensor_quantized_tensor_non_contiguous(dtype):
     ref_inp = ref_base[:, ::2]
 
     ref_out = torch.ops.aten._make_per_tensor_quantized_tensor(ref_inp, 0.5, -3)
-    gems_op = flag_gems.testing.resolve_gems_op("_make_per_tensor_quantized_tensor")
-    res_out = gems_op(inp, 0.5, -3)
+    res_out = flag_gems._make_per_tensor_quantized_tensor(inp, 0.5, -3)
 
     _assert_quant_metadata(res_out, ref_out)
     tu.assert_result_equal(inp, ref_inp)
@@ -228,8 +223,7 @@ def test__make_per_tensor_quantized_tensor_out_value_ranges(shape, dtype, value_
         scale=1.0,
         zero_point=0,
     )
-    gems_op = flag_gems.testing.resolve_gems_op("_make_per_tensor_quantized_tensor")
-    res_out = gems_op(inp, 0.5, -3, out=act_out_buf)
+    res_out = flag_gems._make_per_tensor_quantized_tensor(inp, 0.5, -3, out=act_out_buf)
     assert res_out is act_out_buf
 
     _assert_quant_metadata(res_out, ref_out)
@@ -259,8 +253,9 @@ def test__make_per_tensor_quantized_tensor_out_qparams(dtype, scale, zero_point)
         scale=1.0,
         zero_point=0,
     )
-    gems_op = flag_gems.testing.resolve_gems_op("_make_per_tensor_quantized_tensor")
-    res_out = gems_op(inp, scale, zero_point, out=act_out_buf)
+    res_out = flag_gems._make_per_tensor_quantized_tensor(
+        inp, scale, zero_point, out=act_out_buf
+    )
     assert res_out is act_out_buf
 
     _assert_quant_metadata(res_out, ref_out)
@@ -274,9 +269,8 @@ def test__make_per_tensor_quantized_tensor_rejects_non_storage_dtype(dtype):
     ref_inp = tu.to_reference(inp)
     with pytest.raises(RuntimeError):
         torch.ops.aten._make_per_tensor_quantized_tensor(ref_inp, 0.1, 0)
-    gems_op = flag_gems.testing.resolve_gems_op("_make_per_tensor_quantized_tensor")
     with pytest.raises((TypeError, ValueError, NotImplementedError, RuntimeError)):
-        gems_op(inp, 0.1, 0)
+        flag_gems._make_per_tensor_quantized_tensor(inp, 0.1, 0)
 
 
 @pytest.mark._make_per_tensor_quantized_tensor_out
@@ -292,9 +286,8 @@ def test__make_per_tensor_quantized_tensor_out_rejects_non_quantized_buffer(dtyp
         )
 
     act_buf = torch.empty((2, 3), dtype=torch.float32, device=flag_gems.device)
-    gems_op = flag_gems.testing.resolve_gems_op("_make_per_tensor_quantized_tensor")
     with pytest.raises((TypeError, ValueError, NotImplementedError, RuntimeError)):
-        gems_op(inp, 0.1, 0, out=act_buf)
+        flag_gems._make_per_tensor_quantized_tensor(inp, 0.1, 0, out=act_buf)
 
 
 @pytest.mark._make_per_tensor_quantized_tensor_out
@@ -322,9 +315,8 @@ def test__make_per_tensor_quantized_tensor_out_rejects_wrong_quantized_dtype(dty
         scale=1.0,
         zero_point=0,
     )
-    gems_op = flag_gems.testing.resolve_gems_op("_make_per_tensor_quantized_tensor")
     with pytest.raises((TypeError, ValueError, NotImplementedError, RuntimeError)):
-        gems_op(inp, 0.1, 0, out=act_buf)
+        flag_gems._make_per_tensor_quantized_tensor(inp, 0.1, 0, out=act_buf)
 
 
 @pytest.mark._make_per_tensor_quantized_tensor_out
@@ -341,6 +333,5 @@ def test__make_per_tensor_quantized_tensor_out_rejects_shape_mismatch():
     )
     with pytest.raises((NotImplementedError, RuntimeError)):
         torch.ops.aten._make_per_tensor_quantized_tensor.out(inp, 0.5, 0, out=buf)
-    gems_op = flag_gems.testing.resolve_gems_op("_make_per_tensor_quantized_tensor")
     with pytest.raises((TypeError, ValueError, NotImplementedError, RuntimeError)):
-        gems_op(inp, 0.5, 0, out=buf)
+        flag_gems._make_per_tensor_quantized_tensor(inp, 0.5, 0, out=buf)

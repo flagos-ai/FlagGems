@@ -87,8 +87,7 @@ def test__neg_view_copy(shape, dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten._neg_view_copy(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("_neg_view_copy")
-    res_out = gems_op(inp)
+    res_out = flag_gems._neg_view_copy(inp)
 
     _assert_copy_semantics(res_out, ref_out, inp, ref_inp)
 
@@ -101,8 +100,7 @@ def test__neg_view_copy_value_ranges(shape, dtype, value_range):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten._neg_view_copy(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("_neg_view_copy")
-    res_out = gems_op(inp)
+    res_out = flag_gems._neg_view_copy(inp)
 
     _assert_copy_semantics(res_out, ref_out, inp, ref_inp)
 
@@ -120,8 +118,7 @@ def test__neg_view_copy_out(shape, dtype):
     out = torch.full(shape, 7, dtype=dtype, device=flag_gems.device)
 
     torch.ops.aten._neg_view_copy.out(ref_inp, out=ref_out)
-    gems_op = flag_gems.testing.resolve_gems_op("_neg_view_copy")
-    res_ret = gems_op(inp, out=out)
+    res_ret = flag_gems._neg_view_copy(inp, out=out)
 
     # The .out variant must write into and return the caller's buffer itself.
     assert res_ret is out
@@ -139,8 +136,7 @@ def test__neg_view_copy_out_value_ranges(shape, dtype, value_range):
     out = torch.full(shape, 7, dtype=dtype, device=flag_gems.device)
 
     torch.ops.aten._neg_view_copy.out(ref_inp, out=ref_out)
-    gems_op = flag_gems.testing.resolve_gems_op("_neg_view_copy")
-    res_ret = gems_op(inp, out=out)
+    res_ret = flag_gems._neg_view_copy(inp, out=out)
 
     assert res_ret is out
     _assert_copy_semantics(res_ret, ref_out, inp, ref_inp)
@@ -155,8 +151,7 @@ def test__neg_view_copy_special_values(dtype, scenario):
     ref_inp = tu.to_reference(values)
 
     ref_out = torch.ops.aten._neg_view_copy(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("_neg_view_copy")
-    res_out = gems_op(values)
+    res_out = flag_gems._neg_view_copy(values)
 
     tu.assert_result_equal(res_out, ref_out)
     # Exact numerical equality does not distinguish the signs of zero.
@@ -179,8 +174,7 @@ def test__neg_view_copy_non_contiguous(shape, dtype):
     assert not inp.is_contiguous()
 
     ref_out = torch.ops.aten._neg_view_copy(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("_neg_view_copy")
-    res_out = gems_op(inp)
+    res_out = flag_gems._neg_view_copy(inp)
 
     _assert_copy_semantics(res_out, ref_out, inp, ref_inp)
 
@@ -195,8 +189,7 @@ def test__neg_view_copy_empty(shape, dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten._neg_view_copy(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("_neg_view_copy")
-    res_out = gems_op(inp)
+    res_out = flag_gems._neg_view_copy(inp)
 
     _assert_copy_semantics(res_out, ref_out, inp, ref_inp)
 
@@ -213,8 +206,7 @@ def test__neg_view_copy_backward(shape, dtype):
     ref_out = torch.ops.aten._neg_view_copy(ref_inp)
     ref_in_grad = torch.autograd.grad(ref_out, ref_inp, grad_outputs=ref_grad)[0]
 
-    gems_op = flag_gems.testing.resolve_gems_op("_neg_view_copy")
-    res_out = gems_op(inp)
+    res_out = flag_gems._neg_view_copy(inp)
     _assert_copy_semantics(res_out, ref_out, inp, ref_inp)
 
     assert res_out.requires_grad
@@ -228,15 +220,13 @@ def test__neg_view_copy_rejects_unsupported_dtypes(dtype):
     inp = torch.zeros(4, dtype=dtype, device=flag_gems.device)
     with pytest.raises(RuntimeError):
         torch.ops.aten._neg_view_copy(inp)
-    gems_op = flag_gems.testing.resolve_gems_op("_neg_view_copy")
     with pytest.raises((TypeError, ValueError, RuntimeError)):
-        gems_op(inp)
+        flag_gems._neg_view_copy(inp)
 
 
 @pytest.mark._neg_view_copy
 def test__neg_view_copy_rejects_non_tensor():
     with pytest.raises(RuntimeError):
         torch.ops.aten._neg_view_copy(3.14)
-    gems_op = flag_gems.testing.resolve_gems_op("_neg_view_copy")
     with pytest.raises((TypeError, ValueError, RuntimeError)):
-        gems_op(3.14)
+        flag_gems._neg_view_copy(3.14)

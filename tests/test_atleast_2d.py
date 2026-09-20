@@ -63,8 +63,7 @@ def test_atleast_2d_value_ranges(shape, dtype, value_range):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.atleast_2d(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("atleast_2d")
-    res_out = gems_op(inp)
+    res_out = flag_gems.atleast_2d(inp)
 
     assert isinstance(res_out, torch.Tensor)
     assert res_out.device == inp.device
@@ -94,8 +93,7 @@ def test_atleast_2d_shape_metadata(shape, expected):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.atleast_2d(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("atleast_2d")
-    res_out = gems_op(inp)
+    res_out = flag_gems.atleast_2d(inp)
 
     assert tuple(res_out.shape) == expected
     assert res_out.data_ptr() == inp.data_ptr()
@@ -124,8 +122,7 @@ def test_atleast_2d_sequence(shape, dtype, value_range):
     ref_inp = [tu.to_reference(t) for t in inp]
 
     ref_out = torch.ops.aten.atleast_2d.Sequence(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("atleast_2d")
-    res_out = gems_op(inp)
+    res_out = flag_gems.atleast_2d(inp)
 
     assert isinstance(res_out, (list, tuple))
     assert len(res_out) == len(ref_out)
@@ -139,8 +136,7 @@ def test_atleast_2d_sequence_empty():
     # A Tensor[] input may legitimately be empty: the reference returns an
     # empty list, and the candidate must return an empty list too.
     ref_out = torch.ops.aten.atleast_2d.Sequence([])
-    gems_op = flag_gems.testing.resolve_gems_op("atleast_2d")
-    res_out = gems_op([])
+    res_out = flag_gems.atleast_2d([])
     assert len(res_out) == len(ref_out)
 
 
@@ -166,8 +162,7 @@ def test_atleast_2d_nan_inf(shape, dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.atleast_2d(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("atleast_2d")
-    res_out = gems_op(inp)
+    res_out = flag_gems.atleast_2d(inp)
 
     assert res_out.data_ptr() == inp.data_ptr()
     tu.assert_result_equal(res_out, ref_out)
@@ -182,8 +177,7 @@ def test_atleast_2d_complex(shape, dtype, value_range):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.atleast_2d(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("atleast_2d")
-    res_out = gems_op(inp)
+    res_out = flag_gems.atleast_2d(inp)
 
     assert res_out.data_ptr() == inp.data_ptr()
     tu.assert_result_equal(res_out, ref_out)
@@ -207,8 +201,7 @@ def test_atleast_2d_backward(shape, dtype):
     ref_grad = tu.to_reference(grad)
     ref_in_grad = torch.autograd.grad(ref_out, ref_inp, grad_outputs=ref_grad)[0]
 
-    gems_op = flag_gems.testing.resolve_gems_op("atleast_2d")
-    res_out = gems_op(inp)
+    res_out = flag_gems.atleast_2d(inp)
     tu.assert_result_equal(res_out, ref_out)
 
     assert res_out.requires_grad
@@ -227,11 +220,10 @@ def test_atleast_2d_rejects_non_tensor():
             [torch.zeros(2, device=flag_gems.device), 3.14]
         )
 
-    gems_op = flag_gems.testing.resolve_gems_op("atleast_2d")
     with pytest.raises((TypeError, ValueError, RuntimeError)):
-        gems_op(3.14)
+        flag_gems.atleast_2d(3.14)
     with pytest.raises((TypeError, ValueError, RuntimeError)):
-        gems_op([torch.zeros(2, device=flag_gems.device), 3.14])
+        flag_gems.atleast_2d([torch.zeros(2, device=flag_gems.device), 3.14])
 
 
 @pytest.mark.atleast_2d
@@ -241,9 +233,8 @@ def test_atleast_2d_rejects_non_tensor():
 def test_atleast_2d_special_scenarios(dtype, scenario):
     inp = tu.make_special_input(dtype, scenario)
     ref_inp = tu.to_reference(inp)
-    gems_op = flag_gems.testing.resolve_gems_op("atleast_2d")
 
     ref_out = torch.ops.aten.atleast_2d(ref_inp)
-    res_out = gems_op(inp)
+    res_out = flag_gems.atleast_2d(inp)
 
     tu.assert_result_equal(res_out, ref_out)

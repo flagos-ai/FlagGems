@@ -100,8 +100,7 @@ def test_dstack(shape_set, dtype):
     ref_inp = [tu.to_reference(t) for t in inp]
 
     ref_out = torch.ops.aten.dstack(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("dstack")
-    res_out = gems_op(inp)
+    res_out = flag_gems.dstack(inp)
 
     _assert_dstack_output(res_out, ref_out)
 
@@ -114,8 +113,7 @@ def test_dstack_value_ranges(shape_set, dtype, value_range):
     ref_inp = [tu.to_reference(t) for t in inp]
 
     ref_out = torch.ops.aten.dstack(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("dstack")
-    res_out = gems_op(inp)
+    res_out = flag_gems.dstack(inp)
 
     tu.assert_result_equal(res_out, ref_out)
 
@@ -132,8 +130,7 @@ def test_dstack_out(shape_set, dtype):
     ref_ret = torch.ops.aten.dstack.out(ref_inp, out=ref_out)
 
     out = torch.empty(ref_shape, dtype=dtype, device=inp[0].device)
-    gems_op = flag_gems.testing.resolve_gems_op("dstack")
-    res_ret = gems_op(inp, out=out)
+    res_ret = flag_gems.dstack(inp, out=out)
 
     # The .out variant must return the out tensor itself (alias semantics).
     assert res_ret.data_ptr() == out.data_ptr()
@@ -149,8 +146,7 @@ def test_dstack_empty_inputs(shape_set, dtype):
     ref_inp = [tu.to_reference(t) for t in inp]
 
     ref_out = torch.ops.aten.dstack(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("dstack")
-    res_out = gems_op(inp)
+    res_out = flag_gems.dstack(inp)
 
     _assert_dstack_output(res_out, ref_out)
 
@@ -165,8 +161,7 @@ def test_dstack_nan_inf(dtype, scenario):
     ref_inp = [tu.to_reference(t) for t in inp]
 
     ref_out = torch.ops.aten.dstack(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("dstack")
-    res_out = gems_op(inp)
+    res_out = flag_gems.dstack(inp)
 
     tu.assert_result_equal(res_out, ref_out)
 
@@ -181,8 +176,7 @@ def test_dstack_complex(dtype):
     ref_inp = [tu.to_reference(t) for t in inp]
 
     ref_out = torch.ops.aten.dstack(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("dstack")
-    res_out = gems_op(inp)
+    res_out = flag_gems.dstack(inp)
 
     _assert_dstack_output(res_out, ref_out)
 
@@ -204,8 +198,7 @@ def test_dstack_backward(shape_set, dtype):
     ref_grad = tu.to_reference(grad)
     ref_in_grads = torch.autograd.grad(ref_out, ref_inp, grad_outputs=ref_grad)
 
-    gems_op = flag_gems.testing.resolve_gems_op("dstack")
-    res_out = gems_op(inp)
+    res_out = flag_gems.dstack(inp)
     tu.assert_result_equal(res_out, ref_out)
 
     assert res_out.requires_grad
@@ -218,9 +211,8 @@ def test_dstack_backward(shape_set, dtype):
 def test_dstack_empty_list():
     with pytest.raises(RuntimeError):
         torch.ops.aten.dstack([])
-    gems_op = flag_gems.testing.resolve_gems_op("dstack")
     with pytest.raises((TypeError, ValueError, RuntimeError)):
-        gems_op([])
+        flag_gems.dstack([])
 
 
 @pytest.mark.dstack_negative
@@ -238,15 +230,13 @@ def test_dstack_mismatched_shapes(shape_set):
 
     with pytest.raises(RuntimeError):
         torch.ops.aten.dstack(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("dstack")
     with pytest.raises((TypeError, ValueError, RuntimeError)):
-        gems_op(inp)
+        flag_gems.dstack(inp)
 
 
 @pytest.mark.dstack_negative
 def test_dstack_rejects_non_tensor():
     with pytest.raises(RuntimeError):
         torch.ops.aten.dstack([torch.zeros(2, device=flag_gems.device), 3.14])
-    gems_op = flag_gems.testing.resolve_gems_op("dstack")
     with pytest.raises((TypeError, ValueError, RuntimeError)):
-        gems_op([torch.zeros(2, device=flag_gems.device), 3.14])
+        flag_gems.dstack([torch.zeros(2, device=flag_gems.device), 3.14])

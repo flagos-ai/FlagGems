@@ -103,8 +103,7 @@ def test__indices_layouts(case, dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten._indices(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("_indices")
-    res_out = gems_op(inp)
+    res_out = flag_gems._indices(inp)
 
     _assert_result(res_out, ref_out, inp, ref_inp)
 
@@ -121,8 +120,7 @@ def test__indices_spec_shapes_value_ranges(shape, value_range, dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten._indices(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("_indices")
-    res_out = gems_op(inp)
+    res_out = flag_gems._indices(inp)
 
     _assert_result(res_out, ref_out, inp, ref_inp)
 
@@ -137,8 +135,7 @@ def test__indices_value_ranges(case, value_range, dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten._indices(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("_indices")
-    res_out = gems_op(inp)
+    res_out = flag_gems._indices(inp)
 
     _assert_result(res_out, ref_out, inp, ref_inp)
 
@@ -153,8 +150,7 @@ def test__indices_empty(dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten._indices(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("_indices")
-    res_out = gems_op(inp)
+    res_out = flag_gems._indices(inp)
 
     _assert_result(res_out, ref_out, inp, ref_inp)
 
@@ -169,8 +165,7 @@ def test__indices_empty_hybrid(dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten._indices(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("_indices")
-    res_out = gems_op(inp)
+    res_out = flag_gems._indices(inp)
 
     _assert_result(res_out, ref_out, inp, ref_inp)
 
@@ -186,8 +181,7 @@ def test__indices_uncoalesced(dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten._indices(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("_indices")
-    res_out = gems_op(inp)
+    res_out = flag_gems._indices(inp)
 
     _assert_result(res_out, ref_out, inp, ref_inp)
 
@@ -205,8 +199,7 @@ def test__indices_explicit_zeros(dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten._indices(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("_indices")
-    res_out = gems_op(inp)
+    res_out = flag_gems._indices(inp)
 
     _assert_result(res_out, ref_out, inp, ref_inp)
     assert res_out.shape == (2, 3)
@@ -226,8 +219,7 @@ def test__indices_full_storage(dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten._indices(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("_indices")
-    res_out = gems_op(inp)
+    res_out = flag_gems._indices(inp)
 
     _assert_result(res_out, ref_out, inp, ref_inp)
 
@@ -243,8 +235,7 @@ def test__indices_nan_inf_values_ignored(dtype, scenario):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten._indices(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("_indices")
-    res_out = gems_op(inp)
+    res_out = flag_gems._indices(inp)
 
     _assert_result(res_out, ref_out, inp, ref_inp)
 
@@ -254,11 +245,8 @@ def test__indices_dense_raises():
     inp = tu.make_input(torch.float32, (4, 4), ["-1", "1"])
     with pytest.raises(NotImplementedError):
         torch.ops.aten._indices(tu.to_reference(inp))
-    gems_op = flag_gems.testing.resolve_gems_op("_indices")
-    with pytest.raises(
-        (NotImplementedError, RuntimeError, TypeError, ValueError, AttributeError)
-    ):
-        gems_op(inp)
+    with pytest.raises((NotImplementedError, RuntimeError, TypeError, ValueError)):
+        flag_gems._indices(inp)
 
 
 @pytest.mark._indices
@@ -271,19 +259,13 @@ def test__indices_csr_raises():
     )
     with pytest.raises(NotImplementedError):
         torch.ops.aten._indices(tu.to_reference(inp))
-    gems_op = flag_gems.testing.resolve_gems_op("_indices")
-    with pytest.raises(
-        (NotImplementedError, RuntimeError, TypeError, ValueError, AttributeError)
-    ):
-        gems_op(inp)
+    with pytest.raises((NotImplementedError, RuntimeError, TypeError, ValueError)):
+        flag_gems._indices(inp)
 
 
 @pytest.mark._indices
 def test__indices_rejects_non_tensor():
     with pytest.raises(RuntimeError):
         torch.ops.aten._indices(3.14)
-    gems_op = flag_gems.testing.resolve_gems_op("_indices")
-    with pytest.raises(
-        (TypeError, ValueError, RuntimeError, NotImplementedError, AttributeError)
-    ):
-        gems_op(3.14)
+    with pytest.raises((TypeError, ValueError, RuntimeError, NotImplementedError)):
+        flag_gems._indices(3.14)

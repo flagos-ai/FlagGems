@@ -257,8 +257,7 @@ def test_crow_indices_copy_index_layouts(
     inp = _make_index_layout(case, batch_shape, dense_shape, dtype, index_dtype)
     ref_inp = tu.to_reference(inp)
     ref_out = torch.ops.aten.crow_indices_copy(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("crow_indices_copy")
-    res_out = gems_op(inp)
+    res_out = flag_gems.crow_indices_copy(inp)
     _assert_copy_semantics(res_out, ref_out, inp, ref_inp)
 
 
@@ -274,8 +273,7 @@ def test_crow_indices_copy_out_index_layouts(
     out = torch.full_like(inp.crow_indices(), -1)
     ref_out = torch.full_like(ref_inp.crow_indices(), -1)
     torch.ops.aten.crow_indices_copy(ref_inp, out=ref_out)
-    gems_op = flag_gems.testing.resolve_gems_op("crow_indices_copy")
-    res_ret = gems_op(inp, out=out)
+    res_ret = flag_gems.crow_indices_copy(inp, out=out)
     assert res_ret is out
     _assert_copy_semantics(out, ref_out, inp, ref_inp)
 
@@ -289,8 +287,7 @@ def test_crow_indices_copy(case, dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.crow_indices_copy(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("crow_indices_copy")
-    res_out = gems_op(inp)
+    res_out = flag_gems.crow_indices_copy(inp)
 
     _assert_copy_semantics(res_out, ref_out, inp, ref_inp)
 
@@ -310,8 +307,7 @@ def test_crow_indices_copy_out(case, dtype):
     )
 
     torch.ops.aten.crow_indices_copy.out(ref_inp, out=ref_out)
-    gems_op = flag_gems.testing.resolve_gems_op("crow_indices_copy")
-    res_ret = gems_op(inp, out=out)
+    res_ret = flag_gems.crow_indices_copy(inp, out=out)
 
     # The .out variant must write into and return the out tensor itself.
     assert res_ret is out
@@ -327,8 +323,7 @@ def test_crow_indices_copy_spec_shapes(case, dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.crow_indices_copy(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("crow_indices_copy")
-    res_out = gems_op(inp)
+    res_out = flag_gems.crow_indices_copy(inp)
 
     _assert_copy_semantics(res_out, ref_out, inp, ref_inp)
 
@@ -348,8 +343,7 @@ def test_crow_indices_copy_out_spec_shapes(case, dtype):
     )
 
     torch.ops.aten.crow_indices_copy.out(ref_inp, out=ref_out)
-    gems_op = flag_gems.testing.resolve_gems_op("crow_indices_copy")
-    res_ret = gems_op(inp, out=out)
+    res_ret = flag_gems.crow_indices_copy(inp, out=out)
 
     assert res_ret is out
     _assert_copy_semantics(out, ref_out, inp, ref_inp)
@@ -365,8 +359,7 @@ def test_crow_indices_copy_value_ranges(case, value_range, dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.crow_indices_copy(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("crow_indices_copy")
-    res_out = gems_op(inp)
+    res_out = flag_gems.crow_indices_copy(inp)
 
     _assert_copy_semantics(res_out, ref_out, inp, ref_inp)
 
@@ -387,8 +380,7 @@ def test_crow_indices_copy_out_value_ranges(case, value_range, dtype):
     )
 
     torch.ops.aten.crow_indices_copy.out(ref_inp, out=ref_out)
-    gems_op = flag_gems.testing.resolve_gems_op("crow_indices_copy")
-    res_ret = gems_op(inp, out=out)
+    res_ret = flag_gems.crow_indices_copy(inp, out=out)
 
     assert res_ret is out
     _assert_copy_semantics(out, ref_out, inp, ref_inp)
@@ -401,8 +393,7 @@ def test_crow_indices_copy_empty_bsr(dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.crow_indices_copy(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("crow_indices_copy")
-    res_out = gems_op(inp)
+    res_out = flag_gems.crow_indices_copy(inp)
 
     _assert_copy_semantics(res_out, ref_out, inp, ref_inp)
 
@@ -416,8 +407,7 @@ def test_crow_indices_copy_out_empty_bsr(dtype):
     ref_out = torch.full((3,), -1, dtype=torch.long, device=ref_inp.device)
 
     torch.ops.aten.crow_indices_copy.out(ref_inp, out=ref_out)
-    gems_op = flag_gems.testing.resolve_gems_op("crow_indices_copy")
-    res_ret = gems_op(inp, out=out)
+    res_ret = flag_gems.crow_indices_copy(inp, out=out)
 
     assert res_ret is out
     _assert_copy_semantics(out, ref_out, inp, ref_inp)
@@ -439,8 +429,7 @@ def test_crow_indices_copy_unchecked_uncoalesced(dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.crow_indices_copy(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("crow_indices_copy")
-    res_out = gems_op(inp)
+    res_out = flag_gems.crow_indices_copy(inp)
 
     _assert_copy_semantics(res_out, ref_out, inp, ref_inp)
 
@@ -454,8 +443,7 @@ def test_crow_indices_copy_out_unchecked_uncoalesced(dtype):
     ref_out = torch.full((5,), -1, dtype=torch.long, device=ref_inp.device)
 
     torch.ops.aten.crow_indices_copy.out(ref_inp, out=ref_out)
-    gems_op = flag_gems.testing.resolve_gems_op("crow_indices_copy")
-    res_ret = gems_op(inp, out=out)
+    res_ret = flag_gems.crow_indices_copy(inp, out=out)
 
     assert res_ret is out
     _assert_copy_semantics(out, ref_out, inp, ref_inp)
@@ -480,8 +468,7 @@ def test_crow_indices_copy_nan_inf_values(dtype, scenario):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.crow_indices_copy(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("crow_indices_copy")
-    res_out = gems_op(inp)
+    res_out = flag_gems.crow_indices_copy(inp)
 
     _assert_copy_semantics(res_out, ref_out, inp, ref_inp)
 
@@ -497,8 +484,7 @@ def test_crow_indices_copy_out_nan_inf_values(dtype, scenario):
     ref_out = torch.full((4,), -1, dtype=torch.long, device=ref_inp.device)
 
     torch.ops.aten.crow_indices_copy.out(ref_inp, out=ref_out)
-    gems_op = flag_gems.testing.resolve_gems_op("crow_indices_copy")
-    res_ret = gems_op(inp, out=out)
+    res_ret = flag_gems.crow_indices_copy(inp, out=out)
 
     assert res_ret is out
     _assert_copy_semantics(out, ref_out, inp, ref_inp)
@@ -509,9 +495,8 @@ def test_crow_indices_copy_negative_dense():
     inp = tu.make_input(torch.float32, (3, 4), ["-1", "1"])
     with pytest.raises((RuntimeError, TypeError)):
         torch.ops.aten.crow_indices_copy(tu.to_reference(inp))
-    gems_op = flag_gems.testing.resolve_gems_op("crow_indices_copy")
     with pytest.raises((RuntimeError, TypeError)):
-        gems_op(inp)
+        flag_gems.crow_indices_copy(inp)
 
 
 @pytest.mark.crow_indices_copy
@@ -524,9 +509,8 @@ def test_crow_indices_copy_negative_csc():
     )
     with pytest.raises((RuntimeError, TypeError)):
         torch.ops.aten.crow_indices_copy(tu.to_reference(inp))
-    gems_op = flag_gems.testing.resolve_gems_op("crow_indices_copy")
     with pytest.raises((RuntimeError, TypeError)):
-        gems_op(inp)
+        flag_gems.crow_indices_copy(inp)
 
 
 @pytest.mark.crow_indices_copy
@@ -536,18 +520,16 @@ def test_crow_indices_copy_negative_coo():
     inp = torch.sparse_coo_tensor(indices, values, (3, 3), device=flag_gems.device)
     with pytest.raises((NotImplementedError, RuntimeError, TypeError)):
         torch.ops.aten.crow_indices_copy(tu.to_reference(inp))
-    gems_op = flag_gems.testing.resolve_gems_op("crow_indices_copy")
     with pytest.raises((NotImplementedError, RuntimeError, TypeError)):
-        gems_op(inp)
+        flag_gems.crow_indices_copy(inp)
 
 
 @pytest.mark.crow_indices_copy
 def test_crow_indices_copy_negative_non_tensor():
     with pytest.raises((RuntimeError, TypeError)):
         torch.ops.aten.crow_indices_copy(3.14)
-    gems_op = flag_gems.testing.resolve_gems_op("crow_indices_copy")
     with pytest.raises((TypeError, ValueError, RuntimeError)):
-        gems_op(3.14)
+        flag_gems.crow_indices_copy(3.14)
 
 
 @pytest.mark.crow_indices_copy_out
@@ -556,9 +538,8 @@ def test_crow_indices_copy_out_negative_dense():
     out = torch.empty(5, dtype=torch.long, device=flag_gems.device)
     with pytest.raises((RuntimeError, TypeError)):
         torch.ops.aten.crow_indices_copy.out(tu.to_reference(inp), out=out)
-    gems_op = flag_gems.testing.resolve_gems_op("crow_indices_copy")
     with pytest.raises((RuntimeError, TypeError)):
-        gems_op(inp, out=out)
+        flag_gems.crow_indices_copy(inp, out=out)
 
 
 @pytest.mark.crow_indices_copy_out
@@ -572,9 +553,8 @@ def test_crow_indices_copy_out_negative_csc():
     out = torch.empty(5, dtype=torch.long, device=flag_gems.device)
     with pytest.raises((RuntimeError, TypeError)):
         torch.ops.aten.crow_indices_copy.out(tu.to_reference(inp), out=out)
-    gems_op = flag_gems.testing.resolve_gems_op("crow_indices_copy")
     with pytest.raises((RuntimeError, TypeError)):
-        gems_op(inp, out=out)
+        flag_gems.crow_indices_copy(inp, out=out)
 
 
 @pytest.mark.crow_indices_copy_out
@@ -585,9 +565,8 @@ def test_crow_indices_copy_out_negative_coo():
     out = torch.empty(5, dtype=torch.long, device=flag_gems.device)
     with pytest.raises((NotImplementedError, RuntimeError, TypeError)):
         torch.ops.aten.crow_indices_copy.out(tu.to_reference(inp), out=out)
-    gems_op = flag_gems.testing.resolve_gems_op("crow_indices_copy")
     with pytest.raises((NotImplementedError, RuntimeError, TypeError)):
-        gems_op(inp, out=out)
+        flag_gems.crow_indices_copy(inp, out=out)
 
 
 @pytest.mark.crow_indices_copy_out
@@ -598,6 +577,5 @@ def test_crow_indices_copy_out_negative_wrong_dtype():
     ref_out = torch.empty(6, dtype=torch.float32, device=ref_inp.device)
     with pytest.raises(RuntimeError):
         torch.ops.aten.crow_indices_copy.out(ref_inp, out=ref_out)
-    gems_op = flag_gems.testing.resolve_gems_op("crow_indices_copy")
     with pytest.raises((RuntimeError, TypeError)):
-        gems_op(inp, out=out)
+        flag_gems.crow_indices_copy(inp, out=out)

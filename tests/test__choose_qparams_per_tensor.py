@@ -121,8 +121,7 @@ def test__choose_qparams_per_tensor_value_ranges(
     ref_inp = tu.to_reference(inp)
 
     ref_pair = torch.ops.aten._choose_qparams_per_tensor(ref_inp, reduce_range)
-    gems_op = flag_gems.testing.resolve_gems_op("_choose_qparams_per_tensor")
-    res_pair = gems_op(inp, reduce_range)
+    res_pair = flag_gems._choose_qparams_per_tensor(inp, reduce_range)
 
     _assert_pair(res_pair, ref_pair)
 
@@ -136,8 +135,7 @@ def test__choose_qparams_per_tensor_tiny_scale(values, reduce_range):
     ref_inp = tu.to_reference(inp)
 
     ref_pair = torch.ops.aten._choose_qparams_per_tensor(ref_inp, reduce_range)
-    gems_op = flag_gems.testing.resolve_gems_op("_choose_qparams_per_tensor")
-    res_pair = gems_op(inp, reduce_range)
+    res_pair = flag_gems._choose_qparams_per_tensor(inp, reduce_range)
 
     _assert_pair(res_pair, ref_pair)
 
@@ -151,8 +149,7 @@ def test__choose_qparams_per_tensor_constant(value, dtype, reduce_range):
     ref_inp = tu.to_reference(inp)
 
     ref_pair = torch.ops.aten._choose_qparams_per_tensor(ref_inp, reduce_range)
-    gems_op = flag_gems.testing.resolve_gems_op("_choose_qparams_per_tensor")
-    res_pair = gems_op(inp, reduce_range)
+    res_pair = flag_gems._choose_qparams_per_tensor(inp, reduce_range)
 
     _assert_pair(res_pair, ref_pair)
 
@@ -164,8 +161,7 @@ def test__choose_qparams_per_tensor_inf(reduce_range):
     ref_inp = tu.to_reference(inp)
 
     ref_pair = torch.ops.aten._choose_qparams_per_tensor(ref_inp, reduce_range)
-    gems_op = flag_gems.testing.resolve_gems_op("_choose_qparams_per_tensor")
-    res_pair = gems_op(inp, reduce_range)
+    res_pair = flag_gems._choose_qparams_per_tensor(inp, reduce_range)
 
     _assert_pair(res_pair, ref_pair)
 
@@ -182,8 +178,7 @@ def test__choose_qparams_per_tensor_non_contiguous(layout, dtype, reduce_range):
 
     ref_inp = tu.to_reference(inp)
     ref_pair = torch.ops.aten._choose_qparams_per_tensor(ref_inp, reduce_range)
-    gems_op = flag_gems.testing.resolve_gems_op("_choose_qparams_per_tensor")
-    res_pair = gems_op(inp, reduce_range)
+    res_pair = flag_gems._choose_qparams_per_tensor(inp, reduce_range)
 
     _assert_pair(res_pair, ref_pair)
 
@@ -196,8 +191,7 @@ def test__choose_qparams_per_tensor_default_reduce_range(dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_pair = torch.ops.aten._choose_qparams_per_tensor(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("_choose_qparams_per_tensor")
-    res_pair = gems_op(inp)
+    res_pair = flag_gems._choose_qparams_per_tensor(inp)
 
     _assert_pair(res_pair, ref_pair)
 
@@ -211,9 +205,8 @@ def test__choose_qparams_per_tensor_rejects_nan():
 
     with pytest.raises(RuntimeError):
         torch.ops.aten._choose_qparams_per_tensor(ref_inp, False)
-    gems_op = flag_gems.testing.resolve_gems_op("_choose_qparams_per_tensor")
-    with pytest.raises((TypeError, ValueError, RuntimeError, AttributeError)):
-        gems_op(inp, False)
+    with pytest.raises((TypeError, ValueError, RuntimeError)):
+        flag_gems._choose_qparams_per_tensor(inp, False)
 
 
 @pytest.mark._choose_qparams_per_tensor
@@ -223,9 +216,8 @@ def test__choose_qparams_per_tensor_rejects_empty():
 
     with pytest.raises(RuntimeError):
         torch.ops.aten._choose_qparams_per_tensor(ref_inp, False)
-    gems_op = flag_gems.testing.resolve_gems_op("_choose_qparams_per_tensor")
-    with pytest.raises((TypeError, ValueError, RuntimeError, AttributeError)):
-        gems_op(inp, False)
+    with pytest.raises((TypeError, ValueError, RuntimeError)):
+        flag_gems._choose_qparams_per_tensor(inp, False)
 
 
 @pytest.mark._choose_qparams_per_tensor
@@ -235,9 +227,8 @@ def test__choose_qparams_per_tensor_rejects_complex():
 
     with pytest.raises(RuntimeError):
         torch.ops.aten._choose_qparams_per_tensor(ref_inp, False)
-    gems_op = flag_gems.testing.resolve_gems_op("_choose_qparams_per_tensor")
-    with pytest.raises((TypeError, ValueError, RuntimeError, AttributeError)):
-        gems_op(inp, False)
+    with pytest.raises((TypeError, ValueError, RuntimeError)):
+        flag_gems._choose_qparams_per_tensor(inp, False)
 
 
 @pytest.mark._choose_qparams_per_tensor
@@ -247,15 +238,13 @@ def test__choose_qparams_per_tensor_rejects_fp8():
 
     with pytest.raises(RuntimeError):
         torch.ops.aten._choose_qparams_per_tensor(ref_inp, False)
-    gems_op = flag_gems.testing.resolve_gems_op("_choose_qparams_per_tensor")
-    with pytest.raises((TypeError, ValueError, RuntimeError, AttributeError)):
-        gems_op(inp, False)
+    with pytest.raises((TypeError, ValueError, RuntimeError)):
+        flag_gems._choose_qparams_per_tensor(inp, False)
 
 
 @pytest.mark._choose_qparams_per_tensor
 def test__choose_qparams_per_tensor_rejects_non_tensor():
     with pytest.raises((RuntimeError, TypeError)):
         torch.ops.aten._choose_qparams_per_tensor(3.14, False)
-    gems_op = flag_gems.testing.resolve_gems_op("_choose_qparams_per_tensor")
-    with pytest.raises((TypeError, ValueError, RuntimeError, AttributeError)):
-        gems_op(3.14, False)
+    with pytest.raises((TypeError, ValueError, RuntimeError)):
+        flag_gems._choose_qparams_per_tensor(3.14, False)

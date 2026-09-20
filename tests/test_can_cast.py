@@ -57,8 +57,7 @@ def _assert_result(res_out, ref_out):
 @pytest.mark.parametrize("to_dtype", _CAN_CAST_DTYPES)
 def test_can_cast(from_dtype, to_dtype):
     ref_out = torch.ops.aten.can_cast(from_dtype, to_dtype)
-    gems_op = flag_gems.testing.resolve_gems_op("can_cast")
-    res_out = gems_op(from_dtype, to_dtype)
+    res_out = flag_gems.can_cast(from_dtype, to_dtype)
 
     _assert_result(res_out, ref_out)
 
@@ -70,9 +69,8 @@ def test_can_cast_rejects_non_scalartype_from(bad_arg):
         torch.ops.aten.can_cast(bad_arg, torch.float32)
     # A plain-Python candidate naturally raises TypeError/ValueError (or an
     # AttributeError) for the same inputs, which is equally acceptable.
-    gems_op = flag_gems.testing.resolve_gems_op("can_cast")
-    with pytest.raises((TypeError, ValueError, RuntimeError, AttributeError)):
-        gems_op(bad_arg, torch.float32)
+    with pytest.raises((TypeError, ValueError, RuntimeError)):
+        flag_gems.can_cast(bad_arg, torch.float32)
 
 
 @pytest.mark.can_cast
@@ -80,6 +78,5 @@ def test_can_cast_rejects_non_scalartype_from(bad_arg):
 def test_can_cast_rejects_non_scalartype_to(bad_arg):
     with pytest.raises(RuntimeError):
         torch.ops.aten.can_cast(torch.float32, bad_arg)
-    gems_op = flag_gems.testing.resolve_gems_op("can_cast")
-    with pytest.raises((TypeError, ValueError, RuntimeError, AttributeError)):
-        gems_op(torch.float32, bad_arg)
+    with pytest.raises((TypeError, ValueError, RuntimeError)):
+        flag_gems.can_cast(torch.float32, bad_arg)

@@ -92,8 +92,7 @@ def test_sparse_mask_value_ranges(shape, value_range, dtype):
     ref_mask = tu.to_reference(mask)
 
     ref_out = torch.ops.aten.sparse_mask(ref_inp, ref_mask)
-    gems_op = flag_gems.testing.resolve_gems_op("sparse_mask")
-    res_out = gems_op(inp, mask)
+    res_out = flag_gems.sparse_mask(inp, mask)
 
     _assert_masked(res_out, ref_out)
     # The gather must not mutate either operand: the reference was computed on
@@ -114,8 +113,7 @@ def test_sparse_mask_sparse_self(shape, dtype):
     ref_mask = tu.to_reference(mask)
 
     ref_out = torch.ops.aten.sparse_mask(ref_inp, ref_mask)
-    gems_op = flag_gems.testing.resolve_gems_op("sparse_mask")
-    res_out = gems_op(inp, mask)
+    res_out = flag_gems.sparse_mask(inp, mask)
 
     _assert_masked(res_out, ref_out)
 
@@ -133,8 +131,7 @@ def test_sparse_mask_non_contiguous(base_shape, shape, dtype):
     ref_mask = tu.to_reference(mask)
 
     ref_out = torch.ops.aten.sparse_mask(ref_inp, ref_mask)
-    gems_op = flag_gems.testing.resolve_gems_op("sparse_mask")
-    res_out = gems_op(inp, mask)
+    res_out = flag_gems.sparse_mask(inp, mask)
 
     _assert_masked(res_out, ref_out)
 
@@ -152,8 +149,7 @@ def test_sparse_mask_out(shape, dtype):
     ref_out = torch.empty_like(ref_mask, dtype=dtype)
 
     torch.ops.aten.sparse_mask.out(ref_inp, ref_mask, out=ref_out)
-    gems_op = flag_gems.testing.resolve_gems_op("sparse_mask")
-    res_ret = gems_op(inp, mask, out=out)
+    res_ret = flag_gems.sparse_mask(inp, mask, out=out)
 
     assert res_ret is out
     _assert_masked(res_ret, ref_out)
@@ -180,8 +176,7 @@ def test_sparse_mask_nan_inf(shape, dtype, scenario):
     ref_mask = tu.to_reference(mask)
 
     ref_out = torch.ops.aten.sparse_mask(ref_inp, ref_mask)
-    gems_op = flag_gems.testing.resolve_gems_op("sparse_mask")
-    res_out = gems_op(inp, mask)
+    res_out = flag_gems.sparse_mask(inp, mask)
 
     _assert_masked(res_out, ref_out)
 
@@ -204,8 +199,7 @@ def test_sparse_mask_backward(shape, dtype):
     ref_out = torch.ops.aten.sparse_mask(ref_inp, ref_mask)
     ref_in_grad = torch.autograd.grad(ref_out, ref_inp, grad_outputs=ref_grad_out)[0]
 
-    gems_op = flag_gems.testing.resolve_gems_op("sparse_mask")
-    res_out = gems_op(inp, mask)
+    res_out = flag_gems.sparse_mask(inp, mask)
     _assert_masked(res_out, ref_out)
 
     # The candidate must retain the reference's autograd behavior.
@@ -223,9 +217,8 @@ def test_sparse_mask_shape_mismatch():
             tu.to_reference(self_t),
             tu.to_reference(mask),
         )
-    gems_op = flag_gems.testing.resolve_gems_op("sparse_mask")
     with pytest.raises((TypeError, ValueError, RuntimeError)):
-        gems_op(self_t, mask)
+        flag_gems.sparse_mask(self_t, mask)
 
 
 @pytest.mark.sparse_mask_negative
@@ -237,6 +230,5 @@ def test_sparse_mask_rejects_dense_mask():
             tu.to_reference(self_t),
             tu.to_reference(dense_mask),
         )
-    gems_op = flag_gems.testing.resolve_gems_op("sparse_mask")
     with pytest.raises((TypeError, ValueError, RuntimeError)):
-        gems_op(self_t, dense_mask)
+        flag_gems.sparse_mask(self_t, dense_mask)

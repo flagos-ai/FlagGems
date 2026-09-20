@@ -87,8 +87,7 @@ def test__nested_tensor_storage_offsets(num_tensors, num_dims, dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten._nested_tensor_storage_offsets(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("_nested_tensor_storage_offsets")
-    res_out = gems_op(inp)
+    res_out = flag_gems._nested_tensor_storage_offsets(inp)
 
     _assert_offsets(res_out, ref_out)
 
@@ -105,8 +104,7 @@ def test__nested_tensor_storage_offsets_ragged_non_zero_dim(dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten._nested_tensor_storage_offsets(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("_nested_tensor_storage_offsets")
-    res_out = gems_op(inp)
+    res_out = flag_gems._nested_tensor_storage_offsets(inp)
 
     _assert_offsets(res_out, ref_out)
 
@@ -124,8 +122,7 @@ def test__nested_tensor_storage_offsets_uniform(dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten._nested_tensor_storage_offsets(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("_nested_tensor_storage_offsets")
-    res_out = gems_op(inp)
+    res_out = flag_gems._nested_tensor_storage_offsets(inp)
 
     _assert_offsets(res_out, ref_out)
 
@@ -143,8 +140,7 @@ def test__nested_tensor_storage_offsets_with_empty_components(dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten._nested_tensor_storage_offsets(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("_nested_tensor_storage_offsets")
-    res_out = gems_op(inp)
+    res_out = flag_gems._nested_tensor_storage_offsets(inp)
 
     _assert_offsets(res_out, ref_out)
 
@@ -158,8 +154,7 @@ def test__nested_tensor_storage_offsets_non_contiguous(dtype):
     assert inp.is_nested
 
     ref_out = torch.ops.aten._nested_tensor_storage_offsets(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("_nested_tensor_storage_offsets")
-    res_out = gems_op(inp)
+    res_out = flag_gems._nested_tensor_storage_offsets(inp)
 
     _assert_offsets(res_out, ref_out)
 
@@ -173,8 +168,7 @@ def test__nested_tensor_storage_offsets_value_ranges(dtype, value_range):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten._nested_tensor_storage_offsets(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("_nested_tensor_storage_offsets")
-    res_out = gems_op(inp)
+    res_out = flag_gems._nested_tensor_storage_offsets(inp)
 
     _assert_offsets(res_out, ref_out)
 
@@ -198,8 +192,7 @@ def test__nested_tensor_storage_offsets_nan_inf(dtype, scenario):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten._nested_tensor_storage_offsets(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("_nested_tensor_storage_offsets")
-    res_out = gems_op(inp)
+    res_out = flag_gems._nested_tensor_storage_offsets(inp)
 
     _assert_offsets(res_out, ref_out)
 
@@ -211,6 +204,5 @@ def test__nested_tensor_storage_offsets_non_nested_raises(dtype):
     ref_inp = tu.to_reference(inp)
     with pytest.raises((NotImplementedError, RuntimeError, TypeError, ValueError)):
         torch.ops.aten._nested_tensor_storage_offsets(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("_nested_tensor_storage_offsets")
     with pytest.raises((NotImplementedError, RuntimeError, TypeError, ValueError)):
-        gems_op(inp)
+        flag_gems._nested_tensor_storage_offsets(inp)

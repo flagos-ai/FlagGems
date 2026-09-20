@@ -63,8 +63,7 @@ def test__shape_as_tensor_value_ranges(shape, value_range, dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten._shape_as_tensor(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("_shape_as_tensor")
-    res_out = gems_op(inp)
+    res_out = flag_gems._shape_as_tensor(inp)
 
     _assert_result(res_out, ref_out, inp)
 
@@ -78,8 +77,7 @@ def test__shape_as_tensor_empty(shape, value_range, dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten._shape_as_tensor(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("_shape_as_tensor")
-    res_out = gems_op(inp)
+    res_out = flag_gems._shape_as_tensor(inp)
 
     _assert_result(res_out, ref_out, inp)
 
@@ -97,8 +95,7 @@ def test__shape_as_tensor_non_contiguous(view_case, value_range, dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten._shape_as_tensor(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("_shape_as_tensor")
-    res_out = gems_op(inp)
+    res_out = flag_gems._shape_as_tensor(inp)
 
     _assert_result(res_out, ref_out, inp)
 
@@ -113,8 +110,7 @@ def test__shape_as_tensor_nan_inf(dtype, scenario):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten._shape_as_tensor(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("_shape_as_tensor")
-    res_out = gems_op(inp)
+    res_out = flag_gems._shape_as_tensor(inp)
 
     _assert_result(res_out, ref_out, inp)
 
@@ -126,8 +122,7 @@ def test__shape_as_tensor_ignores_autograd(shape):
     ref_inp = tu.to_reference(inp.detach())
 
     ref_out = torch.ops.aten._shape_as_tensor(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("_shape_as_tensor")
-    res_out = gems_op(inp)
+    res_out = flag_gems._shape_as_tensor(inp)
 
     assert not res_out.requires_grad
     _assert_result(res_out, ref_out, inp.detach())
@@ -138,6 +133,5 @@ def test__shape_as_tensor_rejects_non_tensor_input():
     for bad in (5, [1, 2, 3], "abc", 3.14):
         with pytest.raises(RuntimeError):
             torch.ops.aten._shape_as_tensor(bad)
-        gems_op = flag_gems.testing.resolve_gems_op("_shape_as_tensor")
-        with pytest.raises((TypeError, ValueError, RuntimeError, AttributeError)):
-            gems_op(bad)
+        with pytest.raises((TypeError, ValueError, RuntimeError)):
+            flag_gems._shape_as_tensor(bad)

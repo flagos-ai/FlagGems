@@ -168,8 +168,7 @@ def test_sparse_bsr_tensor_crow_col_value_size(case, dtype, value_range):
     ref_out = torch.ops.aten.sparse_bsr_tensor(
         ref_crow, ref_col, ref_values, list(size), dtype=dtype, device=ref_crow.device
     )
-    gems_op = flag_gems.testing.resolve_gems_op("sparse_bsr_tensor")
-    res_out = gems_op(
+    res_out = flag_gems.sparse_bsr_tensor(
         crow_t, col_t, values, list(size), dtype=dtype, device=crow_t.device
     )
 
@@ -203,8 +202,7 @@ def test_sparse_bsr_tensor_crow_col_value_size_batched(case, dtype, value_range)
     ref_out = torch.ops.aten.sparse_bsr_tensor(
         ref_crow, ref_col, ref_values, list(size), dtype=dtype, device=ref_crow.device
     )
-    gems_op = flag_gems.testing.resolve_gems_op("sparse_bsr_tensor")
-    res_out = gems_op(
+    res_out = flag_gems.sparse_bsr_tensor(
         crow_t, col_t, values, list(size), dtype=dtype, device=crow_t.device
     )
 
@@ -232,8 +230,7 @@ def test_sparse_bsr_tensor_crow_col_value_size_empty(case, dtype):
     ref_out = torch.ops.aten.sparse_bsr_tensor(
         ref_crow, ref_col, ref_values, list(size), dtype=dtype, device=ref_crow.device
     )
-    gems_op = flag_gems.testing.resolve_gems_op("sparse_bsr_tensor")
-    res_out = gems_op(
+    res_out = flag_gems.sparse_bsr_tensor(
         crow_t, col_t, values, list(size), dtype=dtype, device=crow_t.device
     )
 
@@ -261,8 +258,9 @@ def test_sparse_bsr_tensor_crow_col_value(case, dtype, value_range):
     ref_out = torch.ops.aten.sparse_bsr_tensor(
         ref_crow, ref_col, ref_values, dtype=dtype, device=ref_crow.device
     )
-    gems_op = flag_gems.testing.resolve_gems_op("sparse_bsr_tensor")
-    res_out = gems_op(crow_t, col_t, values, dtype=dtype, device=crow_t.device)
+    res_out = flag_gems.sparse_bsr_tensor(
+        crow_t, col_t, values, dtype=dtype, device=crow_t.device
+    )
 
     _assert_bsr_structure(res_out, size, block, nnz, dtype)
     utils.gems_assert_equal(res_out, ref_out)
@@ -290,8 +288,7 @@ def test_sparse_bsr_tensor_shape_levels(case, dtype, value_range):
     ref_out = torch.ops.aten.sparse_bsr_tensor(
         ref_crow, ref_col, ref_values, list(size), dtype=dtype, device=ref_crow.device
     )
-    gems_op = flag_gems.testing.resolve_gems_op("sparse_bsr_tensor")
-    res_out = gems_op(
+    res_out = flag_gems.sparse_bsr_tensor(
         crow_t, col_t, values, list(size), dtype=dtype, device=crow_t.device
     )
 
@@ -321,8 +318,7 @@ def test_sparse_bsr_tensor_nan_inf_values(dtype, scenario):
         dtype=dtype,
         device=ref_values.device,
     )
-    gems_op = flag_gems.testing.resolve_gems_op("sparse_bsr_tensor")
-    res_out = gems_op(
+    res_out = flag_gems.sparse_bsr_tensor(
         torch.tensor([0, 2, 4], dtype=torch.long, device=flag_gems.device),
         torch.tensor([0, 1, 0, 1], dtype=torch.long, device=flag_gems.device),
         values,
@@ -366,8 +362,7 @@ def test_sparse_bsr_tensor_boundary_values(dtype):
         dtype=dtype,
         device=ref_values.device,
     )
-    gems_op = flag_gems.testing.resolve_gems_op("sparse_bsr_tensor")
-    res_out = gems_op(
+    res_out = flag_gems.sparse_bsr_tensor(
         torch.tensor([0, 2, 4], dtype=torch.long, device=flag_gems.device),
         torch.tensor([0, 1, 0, 1], dtype=torch.long, device=flag_gems.device),
         values,
@@ -400,9 +395,8 @@ def test_sparse_bsr_tensor_rejects_dtype_mismatch():
             dtype=torch.float32,
             device=ref_crow.device,
         )
-    gems_op = flag_gems.testing.resolve_gems_op("sparse_bsr_tensor")
     with pytest.raises((TypeError, ValueError, NotImplementedError, RuntimeError)):
-        gems_op(
+        flag_gems.sparse_bsr_tensor(
             crow_t, col_t, values, list(size), dtype=torch.float32, device=crow_t.device
         )
 
@@ -423,9 +417,10 @@ def test_sparse_bsr_tensor_rejects_missing_dtype(dtype):
         torch.ops.aten.sparse_bsr_tensor(
             ref_crow, ref_col, ref_values, list(size), device=ref_crow.device
         )
-    gems_op = flag_gems.testing.resolve_gems_op("sparse_bsr_tensor")
     with pytest.raises((TypeError, ValueError, NotImplementedError, RuntimeError)):
-        gems_op(crow_t, col_t, values, list(size), device=crow_t.device)
+        flag_gems.sparse_bsr_tensor(
+            crow_t, col_t, values, list(size), device=crow_t.device
+        )
 
 
 @pytest.mark.sparse_bsr_tensor
@@ -450,9 +445,8 @@ def test_sparse_bsr_tensor_rejects_device_mismatch():
             dtype=torch.float32,
             device=crow_t.device,
         )
-    gems_op = flag_gems.testing.resolve_gems_op("sparse_bsr_tensor")
     with pytest.raises((TypeError, ValueError, NotImplementedError, RuntimeError)):
-        gems_op(
+        flag_gems.sparse_bsr_tensor(
             crow_t,
             col_t,
             cpu_values,
@@ -478,6 +472,7 @@ def test_sparse_bsr_tensor_rejects_missing_device():
         torch.ops.aten.sparse_bsr_tensor(
             crow_t, col_t, values, list(size), dtype=torch.float32
         )
-    gems_op = flag_gems.testing.resolve_gems_op("sparse_bsr_tensor")
     with pytest.raises((TypeError, ValueError, NotImplementedError, RuntimeError)):
-        gems_op(crow_t, col_t, values, list(size), dtype=torch.float32)
+        flag_gems.sparse_bsr_tensor(
+            crow_t, col_t, values, list(size), dtype=torch.float32
+        )

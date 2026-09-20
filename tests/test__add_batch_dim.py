@@ -71,8 +71,7 @@ def test__add_batch_dim(shape, batch_dim, level, dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten._add_batch_dim(ref_inp, batch_dim, level)
-    gems_op = flag_gems.testing.resolve_gems_op("_add_batch_dim")
-    res_out = gems_op(inp, batch_dim, level)
+    res_out = flag_gems._add_batch_dim(inp, batch_dim, level)
 
     _assert_batched_view(res_out, ref_out, inp, ref_inp, batch_dim, level)
 
@@ -88,8 +87,7 @@ def test__add_batch_dim_value_ranges(shape, dtype, value_range):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten._add_batch_dim(ref_inp, batch_dim, level)
-    gems_op = flag_gems.testing.resolve_gems_op("_add_batch_dim")
-    res_out = gems_op(inp, batch_dim, level)
+    res_out = flag_gems._add_batch_dim(inp, batch_dim, level)
 
     _assert_batched_view(res_out, ref_out, inp, ref_inp, batch_dim, level)
 
@@ -106,8 +104,7 @@ def test__add_batch_dim_non_contiguous(shape, batch_dim, level, dtype):
     assert not inp.is_contiguous()
 
     ref_out = torch.ops.aten._add_batch_dim(ref_inp, batch_dim, level)
-    gems_op = flag_gems.testing.resolve_gems_op("_add_batch_dim")
-    res_out = gems_op(inp, batch_dim, level)
+    res_out = flag_gems._add_batch_dim(inp, batch_dim, level)
 
     _assert_batched_view(res_out, ref_out, inp, ref_inp, batch_dim, level)
 
@@ -122,8 +119,7 @@ def test__add_batch_dim_nan_inf(dtype, scenario):
     batch_dim, level = 0, 0
 
     ref_out = torch.ops.aten._add_batch_dim(ref_inp, batch_dim, level)
-    gems_op = flag_gems.testing.resolve_gems_op("_add_batch_dim")
-    res_out = gems_op(inp, batch_dim, level)
+    res_out = flag_gems._add_batch_dim(inp, batch_dim, level)
 
     _assert_batched_view(res_out, ref_out, inp, ref_inp, batch_dim, level)
 
@@ -133,9 +129,8 @@ def test__add_batch_dim_rejects_0dim_input():
     inp = tu.make_input(torch.float32, (), ["-1", "1"])
     with pytest.raises(RuntimeError):
         torch.ops.aten._add_batch_dim(inp, 0, 0)
-    gems_op = flag_gems.testing.resolve_gems_op("_add_batch_dim")
     with pytest.raises(RuntimeError):
-        gems_op(inp, 0, 0)
+        flag_gems._add_batch_dim(inp, 0, 0)
 
 
 @pytest.mark._add_batch_dim
@@ -143,15 +138,13 @@ def test__add_batch_dim_rejects_negative_level():
     inp = tu.make_input(torch.float32, (4, 5), ["-1", "1"])
     with pytest.raises(RuntimeError):
         torch.ops.aten._add_batch_dim(inp, 1, -1)
-    gems_op = flag_gems.testing.resolve_gems_op("_add_batch_dim")
     with pytest.raises(RuntimeError):
-        gems_op(inp, 1, -1)
+        flag_gems._add_batch_dim(inp, 1, -1)
 
 
 @pytest.mark._add_batch_dim
 def test__add_batch_dim_rejects_non_tensor():
     with pytest.raises(RuntimeError):
         torch.ops.aten._add_batch_dim(3.14, 0, 0)
-    gems_op = flag_gems.testing.resolve_gems_op("_add_batch_dim")
-    with pytest.raises((TypeError, ValueError, AttributeError, RuntimeError)):
-        gems_op(3.14, 0, 0)
+    with pytest.raises((TypeError, ValueError, RuntimeError)):
+        flag_gems._add_batch_dim(3.14, 0, 0)

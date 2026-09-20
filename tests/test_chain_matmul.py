@@ -60,8 +60,7 @@ def test_chain_matmul(shapes, value_range, dtype):
     ref_inp = [tu.to_reference(m) for m in inp]
 
     ref_out = torch.ops.aten.chain_matmul(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("chain_matmul")
-    res_out = gems_op(inp)
+    res_out = flag_gems.chain_matmul(inp)
 
     assert res_out.is_contiguous()
     tu.assert_result_close(res_out, ref_out.to(dtype))
@@ -76,8 +75,7 @@ def test_chain_matmul_non_contiguous(shapes, dtype):
     ref_inp = [tu.to_reference(m) for m in inp]
 
     ref_out = torch.ops.aten.chain_matmul(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("chain_matmul")
-    res_out = gems_op(inp)
+    res_out = flag_gems.chain_matmul(inp)
 
     tu.assert_result_close(res_out, ref_out.to(dtype))
 
@@ -98,8 +96,7 @@ def test_chain_matmul_out(shapes, value_range, dtype):
     )
 
     torch.ops.aten.chain_matmul.out(ref_inp, out=ref_out)
-    gems_op = flag_gems.testing.resolve_gems_op("chain_matmul")
-    res_ret = gems_op(inp, out=out)
+    res_ret = flag_gems.chain_matmul(inp, out=out)
 
     # The .out overload must write into and return the caller's buffer.
     assert res_ret is out
@@ -122,8 +119,7 @@ def test_chain_matmul_nan_inf(dtype, scenario):
     ref_inp = [tu.to_reference(m) for m in inp]
 
     ref_out = torch.ops.aten.chain_matmul(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("chain_matmul")
-    res_out = gems_op(inp)
+    res_out = flag_gems.chain_matmul(inp)
 
     tu.assert_result_close(res_out, ref_out)
 
@@ -147,8 +143,7 @@ def test_chain_matmul_backward(shapes, dtype):
     ref_grads = torch.autograd.grad(ref_out, ref_inp, grad_outputs=ref_grad)
 
     # The candidate forward must match the native-dtype reference...
-    gems_op = flag_gems.testing.resolve_gems_op("chain_matmul")
-    res_out = gems_op(inp)
+    res_out = flag_gems.chain_matmul(inp)
     tu.assert_result_close(res_out, ref_out.to(dtype))
 
     assert res_out.requires_grad
@@ -163,18 +158,16 @@ def test_chain_matmul_backward(shapes, dtype):
 def test_chain_matmul_rejects_empty_list():
     with pytest.raises(RuntimeError):
         torch.ops.aten.chain_matmul([])
-    gems_op = flag_gems.testing.resolve_gems_op("chain_matmul")
     with pytest.raises((TypeError, ValueError, RuntimeError)):
-        gems_op([])
+        flag_gems.chain_matmul([])
 
 
 @pytest.mark.chain_matmul_negative
 def test_chain_matmul_rejects_non_tensor():
     with pytest.raises((RuntimeError, TypeError)):
         torch.ops.aten.chain_matmul(3.14)
-    gems_op = flag_gems.testing.resolve_gems_op("chain_matmul")
     with pytest.raises((TypeError, ValueError, RuntimeError)):
-        gems_op(3.14)
+        flag_gems.chain_matmul(3.14)
 
 
 @pytest.mark.chain_matmul_negative
@@ -182,9 +175,8 @@ def test_chain_matmul_rejects_1d_matrix():
     inp = [tu.make_input(torch.float32, (4,), ["-1", "1"])]
     with pytest.raises(RuntimeError):
         torch.ops.aten.chain_matmul(inp)
-    gems_op = flag_gems.testing.resolve_gems_op("chain_matmul")
     with pytest.raises((TypeError, ValueError, RuntimeError)):
-        gems_op(inp)
+        flag_gems.chain_matmul(inp)
 
 
 @pytest.mark.chain_matmul_negative
@@ -193,9 +185,8 @@ def test_chain_matmul_rejects_3d_tensor():
     inp = [matrix, matrix]
     with pytest.raises(RuntimeError):
         torch.ops.aten.chain_matmul(inp)
-    gems_op = flag_gems.testing.resolve_gems_op("chain_matmul")
     with pytest.raises((TypeError, ValueError, RuntimeError)):
-        gems_op(inp)
+        flag_gems.chain_matmul(inp)
 
 
 @pytest.mark.chain_matmul_negative
@@ -206,9 +197,8 @@ def test_chain_matmul_rejects_mismatched_dims():
     ]
     with pytest.raises(RuntimeError):
         torch.ops.aten.chain_matmul(inp)
-    gems_op = flag_gems.testing.resolve_gems_op("chain_matmul")
     with pytest.raises((TypeError, ValueError, RuntimeError)):
-        gems_op(inp)
+        flag_gems.chain_matmul(inp)
 
 
 @pytest.mark.chain_matmul_negative
@@ -224,9 +214,8 @@ def test_chain_matmul_rejects_int_dtype():
     # On the accelerator the integer addmm is not implemented.
     with pytest.raises(RuntimeError):
         torch.ops.aten.chain_matmul(inp)
-    gems_op = flag_gems.testing.resolve_gems_op("chain_matmul")
     with pytest.raises((TypeError, ValueError, RuntimeError)):
-        gems_op(inp)
+        flag_gems.chain_matmul(inp)
 
 
 @pytest.mark.chain_matmul_out_negative
@@ -241,6 +230,5 @@ def test_chain_matmul_out_rejects_wrong_dtype():
 
     with pytest.raises(RuntimeError):
         torch.ops.aten.chain_matmul.out(ref_inp, out=ref_bad)
-    gems_op = flag_gems.testing.resolve_gems_op("chain_matmul")
     with pytest.raises((TypeError, ValueError, RuntimeError)):
-        gems_op(inp, out=res_bad)
+        flag_gems.chain_matmul(inp, out=res_bad)

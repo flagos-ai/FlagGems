@@ -112,8 +112,7 @@ def test__dimI_coo(case, dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten._dimI(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("_dimI")
-    res_out = gems_op(inp)
+    res_out = flag_gems._dimI(inp)
 
     _assert_result(res_out, ref_out)
     # Pure metadata query: the input layout is untouched.
@@ -132,8 +131,7 @@ def test__dimI_shape_value_range_grid(shape, value_range, dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten._dimI(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("_dimI")
-    res_out = gems_op(inp)
+    res_out = flag_gems._dimI(inp)
 
     _assert_result(res_out, ref_out)
     assert inp.dense_dim() == 0
@@ -149,8 +147,7 @@ def test__dimI_hybrid_value_ranges(case, value_range, dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten._dimI(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("_dimI")
-    res_out = gems_op(inp)
+    res_out = flag_gems._dimI(inp)
 
     _assert_result(res_out, ref_out)
     assert inp.sparse_dim() + inp.dense_dim() == len(shape)
@@ -165,8 +162,7 @@ def test__dimI_hybrid_dense_dim_zero(case, dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten._dimI(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("_dimI")
-    res_out = gems_op(inp)
+    res_out = flag_gems._dimI(inp)
 
     _assert_result(res_out, ref_out)
     assert inp.sparse_dim() + inp.dense_dim() == len(shape)
@@ -180,8 +176,7 @@ def test__dimI_empty(dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten._dimI(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("_dimI")
-    res_out = gems_op(inp)
+    res_out = flag_gems._dimI(inp)
 
     _assert_result(res_out, ref_out)
 
@@ -194,8 +189,7 @@ def test__dimI_empty_hybrid(shape, sparse_dim, dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten._dimI(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("_dimI")
-    res_out = gems_op(inp)
+    res_out = flag_gems._dimI(inp)
 
     _assert_result(res_out, ref_out)
     assert inp.dense_dim() == len(shape) - sparse_dim
@@ -210,8 +204,7 @@ def test__dimI_single_entry(dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten._dimI(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("_dimI")
-    res_out = gems_op(inp)
+    res_out = flag_gems._dimI(inp)
 
     _assert_result(res_out, ref_out)
 
@@ -227,8 +220,7 @@ def test__dimI_uncoalesced(dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten._dimI(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("_dimI")
-    res_out = gems_op(inp)
+    res_out = flag_gems._dimI(inp)
 
     _assert_result(res_out, ref_out)
 
@@ -244,8 +236,7 @@ def test__dimI_nan_inf_values_ignored(dtype, scenario):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten._dimI(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("_dimI")
-    res_out = gems_op(inp)
+    res_out = flag_gems._dimI(inp)
 
     _assert_result(res_out, ref_out)
 
@@ -265,9 +256,8 @@ def test__dimI_dense_raises():
     inp = tu.make_input(torch.float32, (4, 4), ["-1", "1"])
     with pytest.raises(NotImplementedError):
         torch.ops.aten._dimI(tu.to_reference(inp))
-    gems_op = flag_gems.testing.resolve_gems_op("_dimI")
     with pytest.raises(_NEGATIVE_EXC):
-        gems_op(inp)
+        flag_gems._dimI(inp)
 
 
 @pytest.mark._dimI
@@ -280,15 +270,13 @@ def test__dimI_csr_raises():
     )
     with pytest.raises(NotImplementedError):
         torch.ops.aten._dimI(tu.to_reference(inp))
-    gems_op = flag_gems.testing.resolve_gems_op("_dimI")
     with pytest.raises(_NEGATIVE_EXC):
-        gems_op(inp)
+        flag_gems._dimI(inp)
 
 
 @pytest.mark._dimI
 def test__dimI_rejects_non_tensor():
     with pytest.raises(RuntimeError):
         torch.ops.aten._dimI(3.14)
-    gems_op = flag_gems.testing.resolve_gems_op("_dimI")
     with pytest.raises(_NEGATIVE_EXC):
-        gems_op(3.14)
+        flag_gems._dimI(3.14)

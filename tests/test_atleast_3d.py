@@ -44,8 +44,7 @@ def test_atleast_3d(shape, dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.atleast_3d(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("atleast_3d")
-    res_out = gems_op(inp)
+    res_out = flag_gems.atleast_3d(inp)
 
     tu.assert_result_equal(res_out, ref_out)
     # A view/identity op must alias its input (Tensor(a)).
@@ -61,8 +60,7 @@ def test_atleast_3d_value_ranges(shape, dtype, value_range):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.atleast_3d(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("atleast_3d")
-    res_out = gems_op(inp)
+    res_out = flag_gems.atleast_3d(inp)
 
     tu.assert_result_equal(res_out, ref_out)
     assert res_out.data_ptr() == inp.data_ptr()
@@ -83,8 +81,7 @@ def test_atleast_3d_sequence(shape, dtype):
     ref_inp = [tu.to_reference(t) for t in inp]
 
     ref_out = torch.ops.aten.atleast_3d.Sequence(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("atleast_3d")
-    res_out = gems_op(inp)
+    res_out = flag_gems.atleast_3d(inp)
 
     assert len(res_out) == len(ref_out) == 4
     for res, ref, src in zip(res_out, ref_out, inp):
@@ -107,8 +104,7 @@ def test_atleast_3d_sequence_value_ranges(dtype, value_range):
     ref_inp = [tu.to_reference(t) for t in inp]
 
     ref_out = torch.ops.aten.atleast_3d.Sequence(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("atleast_3d")
-    res_out = gems_op(inp)
+    res_out = flag_gems.atleast_3d(inp)
 
     assert len(res_out) == len(ref_out) == 3
     for res, ref, src in zip(res_out, ref_out, inp):
@@ -121,8 +117,7 @@ def test_atleast_3d_sequence_empty():
     # An empty Tensor[] is legitimate: the reference returns an empty list and
     # the candidate must do the same (atleast_3d.Sequence([]) does not raise).
     ref_out = torch.ops.aten.atleast_3d.Sequence([])
-    gems_op = flag_gems.testing.resolve_gems_op("atleast_3d")
-    res_out = gems_op([])
+    res_out = flag_gems.atleast_3d([])
     assert len(res_out) == len(ref_out)
 
 
@@ -150,8 +145,7 @@ def test_atleast_3d_nan_inf(dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.atleast_3d(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("atleast_3d")
-    res_out = gems_op(inp)
+    res_out = flag_gems.atleast_3d(inp)
 
     tu.assert_result_equal(res_out, ref_out)
     assert res_out.data_ptr() == inp.data_ptr()
@@ -164,8 +158,7 @@ def test_atleast_3d_complex(dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.atleast_3d(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("atleast_3d")
-    res_out = gems_op(inp)
+    res_out = flag_gems.atleast_3d(inp)
 
     tu.assert_result_equal(res_out, ref_out)
     assert res_out.data_ptr() == inp.data_ptr()
@@ -189,8 +182,7 @@ def test_atleast_3d_backward(shape, dtype):
     ref_grad = tu.to_reference(grad)
     ref_in_grad = torch.autograd.grad(ref_out, ref_inp, grad_outputs=ref_grad)[0]
 
-    gems_op = flag_gems.testing.resolve_gems_op("atleast_3d")
-    res_out = gems_op(inp)
+    res_out = flag_gems.atleast_3d(inp)
     tu.assert_result_equal(res_out, ref_out)
 
     assert res_out.requires_grad
@@ -210,13 +202,11 @@ def test_atleast_3d_rejects_non_tensor():
             [torch.zeros(2, device=flag_gems.device), 3.14]
         )
 
-    gems_op = flag_gems.testing.resolve_gems_op("atleast_3d")
     with pytest.raises((TypeError, ValueError, RuntimeError)):
-        gems_op(3.14)
+        flag_gems.atleast_3d(3.14)
 
-    gems_seq_op = flag_gems.testing.resolve_gems_op("atleast_3d")
     with pytest.raises((TypeError, ValueError, RuntimeError)):
-        gems_seq_op([torch.zeros(2, device=flag_gems.device), 3.14])
+        flag_gems.atleast_3d([torch.zeros(2, device=flag_gems.device), 3.14])
 
 
 @pytest.mark.atleast_3d
@@ -226,9 +216,8 @@ def test_atleast_3d_rejects_non_tensor():
 def test_atleast_3d_special_scenarios(dtype, scenario):
     inp = tu.make_special_input(dtype, scenario)
     ref_inp = tu.to_reference(inp)
-    gems_op = flag_gems.testing.resolve_gems_op("atleast_3d")
 
     ref_out = torch.ops.aten.atleast_3d(ref_inp)
-    res_out = gems_op(inp)
+    res_out = flag_gems.atleast_3d(inp)
 
     tu.assert_result_equal(res_out, ref_out)

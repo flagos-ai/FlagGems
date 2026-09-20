@@ -329,13 +329,11 @@ def test_operator_collection_does_not_probe_runtime(module_path, monkeypatch):
 def test_combinations_missing_candidate_cannot_pass_against_reference(monkeypatch):
     from . import test_combinations as cases
 
-    missing = Mock(side_effect=LookupError("candidate missing"))
-    monkeypatch.setattr(testing, "resolve_gems_op", missing)
-    with pytest.raises(LookupError, match="candidate missing"):
+    monkeypatch.delattr(flag_gems, "combinations", raising=False)
+    with pytest.raises(AttributeError, match="combinations"):
         cases.test_combinations_spec_shapes_value_ranges(
             (4,), ["0", "1"], torch.float32
         )
-    missing.assert_called_once()
 
 
 def test_version_input_error_does_not_retry_with_another_range(monkeypatch):
@@ -382,7 +380,8 @@ def test_sparse_storage_operations_reject_small_value_changes(operator):
             ((4, 5), 2, 3, (6, 5), 2, 0), torch.float32
         ),
     }
-    with testing.override_gems_op(operator, corrupted):
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(flag_gems, operator, corrupted, raising=False)
         with pytest.raises(AssertionError):
             checks[operator]()
 
@@ -395,7 +394,8 @@ def test_sparse_copy_rejects_changed_coalesced_flag():
         result._coalesced_(not result.is_coalesced())
         return result
 
-    with testing.override_gems_op("copy_sparse_to_sparse_", corrupted):
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(flag_gems, "copy_sparse_to_sparse_", corrupted, raising=False)
         with pytest.raises(AssertionError):
             cases.test_copy_sparse_to_sparse_(((4, 5), 2, 3), torch.float32, False)
 
@@ -425,7 +425,8 @@ def test_sparse_constructors_reject_small_storage_changes(layout):
             bsc._BSC_CASES[0], torch.float32, torch.int64
         ),
     }
-    with testing.override_gems_op(operator, corrupted):
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(flag_gems, operator, corrupted, raising=False)
         with pytest.raises(AssertionError):
             checks[layout]()
 
@@ -441,7 +442,8 @@ def test_csc_candidate_cannot_change_reference_through_shared_inputs(component):
             row.copy_((row + 1) % 4)
         return torch.ops.aten.sparse_csc_tensor(ccol, row, values, *args, **kwargs)
 
-    with testing.override_gems_op("sparse_csc_tensor", corrupted):
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(flag_gems, "sparse_csc_tensor", corrupted, raising=False)
         with pytest.raises(AssertionError):
             cases.test_sparse_csc_tensor(
                 (4, 4), 4, torch.float32, torch.int64, ["0", "1"]
@@ -455,7 +457,8 @@ def test_version_rejects_nonintegral_tensor_results(value):
     def invalid(inp):
         return torch.tensor(value, device=inp.device)
 
-    with testing.override_gems_op("_version", invalid):
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(flag_gems, "_version", invalid, raising=False)
         with pytest.raises(AssertionError):
             cases.test__version_fresh((4,), torch.float32)
 
@@ -469,7 +472,8 @@ def test_version_accepts_integral_tensor_results(dtype):
             torch.ops.aten._version(inp), dtype=dtype, device=inp.device
         )
 
-    with testing.override_gems_op("_version", valid):
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(flag_gems, "_version", valid, raising=False)
         cases.test__version_fresh((4,), torch.float32)
 
 
@@ -480,7 +484,10 @@ def test_new_zeros_rejects_input_aliases(source):
     def aliased(self_t, other_t, **kwargs):
         return (self_t if source == "self" else other_t).view_as(other_t)
 
-    with testing.override_gems_op("_new_zeros_with_same_feature_meta", aliased):
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(
+            flag_gems, "_new_zeros_with_same_feature_meta", aliased, raising=False
+        )
         with pytest.raises(AssertionError):
             cases.test__new_zeros_with_same_feature_meta_value_ranges(
                 (4, 5), (4, 5), 0, ["0", "0"], torch.float32
@@ -498,7 +505,10 @@ def test_new_zeros_rejects_input_mutation(source):
         (self_t if source == "self" else other_t).fill_(float("nan"))
         return result
 
-    with testing.override_gems_op("_new_zeros_with_same_feature_meta", mutated):
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(
+            flag_gems, "_new_zeros_with_same_feature_meta", mutated, raising=False
+        )
         with pytest.raises(AssertionError):
             cases.test__new_zeros_with_same_feature_meta(
                 (4, 5), (4, 5), 0, torch.float32
@@ -513,7 +523,10 @@ def test_new_zeros_checks_output_device_with_cpu_reference(monkeypatch):
     def wrong_device(*args, **kwargs):
         return torch.ops.aten._new_zeros_with_same_feature_meta(*args, **kwargs).cpu()
 
-    with testing.override_gems_op("_new_zeros_with_same_feature_meta", wrong_device):
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(
+            flag_gems, "_new_zeros_with_same_feature_meta", wrong_device, raising=False
+        )
         with pytest.raises(AssertionError):
             cases.test__new_zeros_with_same_feature_meta(
                 (4, 5), (4, 5), 0, torch.float32
@@ -528,7 +541,13 @@ def test_new_zeros_rejects_spurious_autograd():
             *args, **kwargs
         ).requires_grad_()
 
-    with testing.override_gems_op("_new_zeros_with_same_feature_meta", differentiable):
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(
+            flag_gems,
+            "_new_zeros_with_same_feature_meta",
+            differentiable,
+            raising=False,
+        )
         with pytest.raises(AssertionError):
             cases.test__new_zeros_with_same_feature_meta(
                 (4, 5), (4, 5), 0, torch.float32
@@ -543,7 +562,10 @@ def test_new_zeros_out_preserves_storage_outside_the_view():
         out.as_strided((storage_size,), (1,), 0).zero_()
         return out
 
-    with testing.override_gems_op("_new_zeros_with_same_feature_meta", overwritten):
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(
+            flag_gems, "_new_zeros_with_same_feature_meta", overwritten, raising=False
+        )
         with pytest.raises(AssertionError):
             cases.test__new_zeros_with_same_feature_meta_out_layouts(
                 (4, 10), (10, 2), 0, torch.float32
@@ -582,7 +604,8 @@ def test_bool_metadata_rejects_container_results(
         shape = (1,) if result_kind == "vector" else (1, 1)
         return torch.full(shape, value, dtype=torch.bool, device=flag_gems.device)
 
-    with testing.override_gems_op(operator, invalid):
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(flag_gems, operator, invalid, raising=False)
         with pytest.raises(AssertionError):
             getattr(cases, test_name)(*args)
 
@@ -595,7 +618,8 @@ def test_bool_metadata_accepts_scalar_bool_tensors(operator, test_name, args):
         value = getattr(torch.ops.aten, operator)(*inputs)
         return torch.tensor(value, dtype=torch.bool, device=flag_gems.device)
 
-    with testing.override_gems_op(operator, valid):
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(flag_gems, operator, valid, raising=False)
         getattr(cases, test_name)(*args)
 
 
@@ -606,7 +630,8 @@ def test_quantization_params_reject_boolean_zero_point():
         scale, zero_point = torch.ops.aten._choose_qparams_per_tensor(inp, reduce_range)
         return scale, bool(zero_point)
 
-    with testing.override_gems_op("_choose_qparams_per_tensor", invalid):
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(flag_gems, "_choose_qparams_per_tensor", invalid, raising=False)
         with pytest.raises(AssertionError):
             cases.test__choose_qparams_per_tensor_constant(0.0, torch.float32, False)
 
@@ -636,7 +661,8 @@ def test_quantized_factories_preserve_metadata_input_dtypes(operator, changed_in
         value.data = value.to(dtype)
         return result
 
-    with testing.override_gems_op(operator, rewritten):
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(flag_gems, operator, rewritten, raising=False)
         with pytest.raises(AssertionError):
             if operator == "_empty_per_channel_affine_quantized":
                 cases.test__empty_per_channel_affine_quantized(
@@ -663,7 +689,8 @@ def test_quantized_factory_special_cases_check_output_device(test_name, value):
             *args, **dict(kwargs, device="cpu")
         )
 
-    with testing.override_gems_op("_empty_affine_quantized", wrong_device):
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(flag_gems, "_empty_affine_quantized", wrong_device, raising=False)
         with pytest.raises(AssertionError):
             getattr(cases, test_name)((2, 3), torch.qint8, value)
 
@@ -678,7 +705,8 @@ def test_negative_view_checks_stored_values_without_materialization(dtype, toggl
         stored.view(torch.uint8).bitwise_xor_(1)
         return torch.ops.aten._neg_view(inp)
 
-    with testing.override_gems_op("_neg_view", corrupted):
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(flag_gems, "_neg_view", corrupted, raising=False)
         with pytest.raises(AssertionError):
             if toggle:
                 cases.test__neg_view_toggle((4, 5), dtype)
@@ -698,7 +726,8 @@ def test_negative_view_requires_exact_sign_flip_gradient():
         def backward(ctx, grad):
             return -grad + 1e-6
 
-    with testing.override_gems_op("_neg_view", BiasedGradient.apply):
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(flag_gems, "_neg_view", BiasedGradient.apply, raising=False)
         with pytest.raises(AssertionError):
             cases.test__neg_view_backward((4, 5), torch.float32)
 
@@ -709,7 +738,8 @@ def test_negative_view_requires_aliasing_for_empty_inputs():
     def copied(inp):
         return torch.ops.aten._neg_view(torch.empty_like(inp))
 
-    with testing.override_gems_op("_neg_view", copied):
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(flag_gems, "_neg_view", copied, raising=False)
         with pytest.raises(AssertionError):
             cases.test__neg_view((0,), torch.float32)
 
@@ -721,7 +751,8 @@ def test_negative_view_checks_result_before_mutating_it():
         inp.zero_()
         return torch.ops.aten._neg_view(inp)
 
-    with testing.override_gems_op("_neg_view", corrupted):
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(flag_gems, "_neg_view", corrupted, raising=False)
         with pytest.raises(AssertionError):
             cases.test__neg_view_mutation((4, 5), torch.float32)
 
@@ -743,7 +774,8 @@ def test_gather_backward_cases_reject_small_forward_errors(operator, args):
     def corrupted(*args, **kwargs):
         return getattr(torch.ops.aten, operator)(*args, **kwargs) + 1e-6
 
-    with testing.override_gems_op(operator, corrupted):
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(flag_gems, operator, corrupted, raising=False)
         with pytest.raises(AssertionError):
             getattr(cases, f"test_{operator}_backward")(*args)
 
@@ -762,7 +794,8 @@ def test_diagflat_rejects_small_gradient_errors():
         def backward(ctx, grad):
             return torch.ops.aten.diag(grad, ctx.offset).reshape(ctx.shape) + 1e-6, None
 
-    with testing.override_gems_op("diagflat", CorruptedGradient.apply):
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(flag_gems, "diagflat", CorruptedGradient.apply, raising=False)
         with pytest.raises(AssertionError):
             cases.test_diagflat_backward((3, 4), 1, torch.float32)
 
@@ -785,11 +818,9 @@ def test_diagflat_rejects_small_gradient_errors():
 )
 def test_negative_cases_require_a_candidate(monkeypatch, operator, case_name, args):
     cases = importlib.import_module(f".test_{operator}", package=__package__)
-    missing = Mock(side_effect=LookupError("candidate missing"))
-    monkeypatch.setattr(testing, "resolve_gems_op", missing)
-    with pytest.raises(LookupError, match="candidate missing"):
+    monkeypatch.delattr(flag_gems, operator, raising=False)
+    with pytest.raises(AttributeError, match=operator):
         getattr(cases, case_name)(*args)
-    missing.assert_called_once()
 
 
 @pytest.mark.parametrize(
@@ -808,7 +839,8 @@ def test_atleast_backward_rejects_constant_gradient(operator, shape):
         def backward(ctx, grad):
             return torch.ones_like(grad).reshape(ctx.shape)
 
-    with testing.override_gems_op(operator, ConstantGradient.apply):
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(flag_gems, operator, ConstantGradient.apply, raising=False)
         with pytest.raises(AssertionError):
             getattr(cases, f"test_{operator}_backward")(shape, torch.float32)
 
@@ -816,7 +848,8 @@ def test_atleast_backward_rejects_constant_gradient(operator, shape):
 def test_detach_copy_rejects_an_implemented_backward():
     from . import test_detach_copy as cases
 
-    with testing.override_gems_op("detach_copy", lambda inp: inp.clone()):
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(flag_gems, "detach_copy", lambda inp: inp.clone(), raising=False)
         with pytest.raises(pytest.fail.Exception, match="DID NOT RAISE"):
             cases.test_detach_copy_no_backward((3, 4), torch.float32)
 
@@ -829,7 +862,8 @@ def test_nested_metadata_stays_on_cpu_with_cpu_reference(operator, monkeypatch):
     def misplaced(inp):
         return getattr(torch.ops.aten, operator)(inp).to(inp.device)
 
-    with testing.override_gems_op(operator, misplaced):
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(flag_gems, operator, misplaced, raising=False)
         with pytest.raises(AssertionError):
             getattr(cases, f"test_{operator}_nan_inf_values")(torch.float32, "nan")
 
@@ -851,7 +885,8 @@ def test_compressed_indices_reject_widened_index_dtype(operator):
     def widened(inp):
         return getattr(torch.ops.aten, operator)(inp).to(torch.int64)
 
-    with testing.override_gems_op(operator, widened):
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(flag_gems, operator, widened, raising=False)
         with pytest.raises(AssertionError):
             getattr(cases, f"test_{operator}_index_layouts")(
                 cases._INDEX_LAYOUT_CASES[0], (), (), torch.float32, torch.int32
@@ -880,7 +915,8 @@ def test_combinations_nonreducing_backward_rejects_small_errors(n, r, with_repla
                 )
             return grad.reshape(ctx.shape) + 1e-6, None, None
 
-    with testing.override_gems_op("combinations", CorruptedGradient.apply):
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(flag_gems, "combinations", CorruptedGradient.apply, raising=False)
         with pytest.raises(AssertionError):
             cases.test_combinations_backward(n, r, with_replacement, torch.float32)
 
@@ -888,7 +924,13 @@ def test_combinations_nonreducing_backward_rejects_small_errors(n, r, with_repla
 def test_combinations_zero_r_rejects_a_gradient_connection():
     from . import test_combinations as cases
 
-    with testing.override_gems_op("combinations", lambda inp, r, replacement: inp[:0]):
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(
+            flag_gems,
+            "combinations",
+            lambda inp, r, replacement: inp[:0],
+            raising=False,
+        )
         with pytest.raises(AssertionError):
             cases.test_combinations_zero_r_no_autograd(8, False, torch.float32)
 
@@ -982,7 +1024,8 @@ def test_add_batch_dim_rejects_copied_storage():
     def copied(inp, dim, level):
         return torch.ops.aten._add_batch_dim(tu.to_reference(inp), dim, level)
 
-    with flag_gems.testing.override_gems_op("_add_batch_dim", copied):
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(flag_gems, "_add_batch_dim", copied, raising=False)
         with pytest.raises(AssertionError):
             cases.test__add_batch_dim((3, 5), 0, 0, torch.float32)
 
@@ -994,7 +1037,8 @@ def test_remove_batch_dim_exercises_batched_input():
         assert not torch._C._functorch.is_legacy_batchedtensor(inp), "batched input"
         return torch.ops.aten._remove_batch_dim(inp, *args)
 
-    with flag_gems.testing.override_gems_op("_remove_batch_dim", plain_only):
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(flag_gems, "_remove_batch_dim", plain_only, raising=False)
         with pytest.raises(AssertionError, match="batched input"):
             cases.test__remove_batch_dim_batched(1, 2, 0, torch.float32)
 
@@ -1002,9 +1046,13 @@ def test_remove_batch_dim_exercises_batched_input():
 def test_fw_primal_rejects_retained_tangent():
     from tests import test__fw_primal as cases
 
-    with flag_gems.testing.override_gems_op(
-        "_fw_primal", lambda inp, level: torch.ops.aten.alias(inp)
-    ):
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(
+            flag_gems,
+            "_fw_primal",
+            lambda inp, level: torch.ops.aten.alias(inp),
+            raising=False,
+        )
         with pytest.raises(AssertionError):
             cases.test__fw_primal_dual((3, 5), torch.float32)
 
@@ -1012,7 +1060,8 @@ def test_fw_primal_rejects_retained_tangent():
 def test_data_rejects_shared_version_counter():
     from tests import test_data as cases
 
-    with flag_gems.testing.override_gems_op("data", lambda inp: inp.detach()):
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(flag_gems, "data", lambda inp: inp.detach(), raising=False)
         with pytest.raises(AssertionError):
             cases.test_data_independent_version_counter(0)
 
@@ -1103,9 +1152,10 @@ def test_convolution_precision_restored_on_failure(module_name):
 def test_special_value_sparse_fixtures_have_valid_indices(operator):
     cases = importlib.import_module(f"tests.test_{operator}")
     with torch.sparse.check_sparse_tensor_invariants():
-        with flag_gems.testing.override_gems_op(
-            operator, getattr(torch.ops.aten, operator)
-        ):
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr(
+                flag_gems, operator, getattr(torch.ops.aten, operator), raising=False
+            )
             getattr(cases, f"test_{operator}_nan_inf_values")(torch.float32, "nan")
 
 
@@ -1113,9 +1163,13 @@ def test_csr_fixture_tables_have_valid_indices():
     from tests import test_sparse_csr_tensor as cases
 
     with torch.sparse.check_sparse_tensor_invariants():
-        with flag_gems.testing.override_gems_op(
-            "sparse_csr_tensor", torch.ops.aten.sparse_csr_tensor
-        ):
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr(
+                flag_gems,
+                "sparse_csr_tensor",
+                torch.ops.aten.sparse_csr_tensor,
+                raising=False,
+            )
             for case in cases._CSR_2D_CASES:
                 cases.test_sparse_csr_tensor_crow_col_value_size(
                     case, torch.float32, ["-1", "1"]

@@ -59,8 +59,9 @@ def test__efficientzerotensor_zero_fill(shape, dtype):
         shape, dtype=dtype, device=_reference_device()
     )
 
-    gems_op = flag_gems.testing.resolve_gems_op("_efficientzerotensor")
-    res_out = gems_op(shape, dtype=dtype, device=flag_gems.device)
+    res_out = flag_gems._efficientzerotensor(
+        shape, dtype=dtype, device=flag_gems.device
+    )
 
     assert res_out.shape == ref_out.shape == torch.Size(shape)
     assert res_out.dtype == ref_out.dtype == dtype
@@ -81,8 +82,9 @@ def test__efficientzerotensor_zero_size(shape, dtype):
         shape, dtype=dtype, device=_reference_device()
     )
 
-    gems_op = flag_gems.testing.resolve_gems_op("_efficientzerotensor")
-    res_out = gems_op(shape, dtype=dtype, device=flag_gems.device)
+    res_out = flag_gems._efficientzerotensor(
+        shape, dtype=dtype, device=flag_gems.device
+    )
 
     assert res_out.shape == ref_out.shape == torch.Size(shape)
     assert res_out.dtype == ref_out.dtype == dtype
@@ -101,8 +103,7 @@ def test__efficientzerotensor_out_range(shape, dtype, value_range):
 
     ref_out = torch.ops.aten._efficientzerotensor.out(shape, out=ref_buf)
 
-    gems_op = flag_gems.testing.resolve_gems_op("_efficientzerotensor")
-    res_out = gems_op(shape, out=act_buf)
+    res_out = flag_gems._efficientzerotensor(shape, out=act_buf)
     assert res_out is act_buf
 
     assert res_out.shape == ref_out.shape == torch.Size(shape)
@@ -121,8 +122,7 @@ def test__efficientzerotensor_out_overwrites(shape, dtype):
 
     ref_out = torch.ops.aten._efficientzerotensor.out(shape, out=ref_buf)
 
-    gems_op = flag_gems.testing.resolve_gems_op("_efficientzerotensor")
-    res_out = gems_op(shape, out=act_buf)
+    res_out = flag_gems._efficientzerotensor(shape, out=act_buf)
     assert res_out is act_buf
 
     assert res_out.shape == ref_out.shape == torch.Size(shape)
@@ -136,9 +136,10 @@ def test__efficientzerotensor_rejects_negative_size():
         torch.ops.aten._efficientzerotensor(
             (-1,), dtype=torch.float32, device=flag_gems.device
         )
-    gems_op = flag_gems.testing.resolve_gems_op("_efficientzerotensor")
     with pytest.raises((TypeError, ValueError, RuntimeError)):
-        gems_op((-1,), dtype=torch.float32, device=flag_gems.device)
+        flag_gems._efficientzerotensor(
+            (-1,), dtype=torch.float32, device=flag_gems.device
+        )
 
 
 @pytest.mark._efficientzerotensor
@@ -147,9 +148,10 @@ def test__efficientzerotensor_rejects_non_integer_size():
         torch.ops.aten._efficientzerotensor(
             (2.5,), dtype=torch.float32, device=flag_gems.device
         )
-    gems_op = flag_gems.testing.resolve_gems_op("_efficientzerotensor")
     with pytest.raises((TypeError, ValueError, RuntimeError)):
-        gems_op((2.5,), dtype=torch.float32, device=flag_gems.device)
+        flag_gems._efficientzerotensor(
+            (2.5,), dtype=torch.float32, device=flag_gems.device
+        )
 
 
 @pytest.mark._efficientzerotensor
@@ -161,9 +163,8 @@ def test__efficientzerotensor_rejects_non_strided_layout():
             layout=torch.sparse_coo,
             device=flag_gems.device,
         )
-    gems_op = flag_gems.testing.resolve_gems_op("_efficientzerotensor")
     with pytest.raises((TypeError, ValueError, NotImplementedError, RuntimeError)):
-        gems_op(
+        flag_gems._efficientzerotensor(
             (2, 3),
             dtype=torch.float32,
             layout=torch.sparse_coo,

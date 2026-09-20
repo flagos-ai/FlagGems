@@ -96,8 +96,7 @@ def test__neg_view(shape, dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten._neg_view(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("_neg_view")
-    res_out = gems_op(inp)
+    res_out = flag_gems._neg_view(inp)
 
     _assert_view_semantics(res_out, ref_out, inp)
     _assert_values_equal(res_out, ref_out)
@@ -112,8 +111,7 @@ def test__neg_view_value_ranges(shape, dtype, value_range):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten._neg_view(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("_neg_view")
-    res_out = gems_op(inp)
+    res_out = flag_gems._neg_view(inp)
 
     _assert_view_semantics(res_out, ref_out, inp)
     _assert_values_equal(res_out, ref_out)
@@ -127,8 +125,7 @@ def test__neg_view_unmaterializable_dtypes(shape, dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten._neg_view(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("_neg_view")
-    res_out = gems_op(inp)
+    res_out = flag_gems._neg_view(inp)
 
     _assert_view_semantics(res_out, ref_out, inp)
     assert res_out.is_neg()
@@ -148,8 +145,7 @@ def test__neg_view_non_contiguous(shape, dtype):
     assert not inp.is_contiguous()
 
     ref_out = torch.ops.aten._neg_view(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("_neg_view")
-    res_out = gems_op(inp)
+    res_out = flag_gems._neg_view(inp)
 
     _assert_view_semantics(res_out, ref_out, inp)
     _assert_values_equal(res_out, ref_out)
@@ -169,8 +165,7 @@ def test__neg_view_toggle(shape, dtype):
     assert inp.is_neg()
 
     ref_out = torch.ops.aten._neg_view(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("_neg_view")
-    res_out = gems_op(inp)
+    res_out = flag_gems._neg_view(inp)
 
     _assert_view_semantics(res_out, ref_out, base)
     _assert_values_equal(res_out, ref_out)
@@ -186,8 +181,7 @@ def test__neg_view_special_values(dtype, scenario):
     ref_inp = tu.to_reference(values)
 
     ref_out = torch.ops.aten._neg_view(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("_neg_view")
-    res_out = gems_op(values)
+    res_out = flag_gems._neg_view(values)
 
     _assert_view_semantics(res_out, ref_out, values)
     tu.assert_result_equal(res_out, ref_out)
@@ -205,8 +199,7 @@ def test__neg_view_mutation(shape, dtype):
     inp = tu.make_input(dtype, shape, ["-1", "1"])
     ref_inp = tu.to_reference(inp)
 
-    gems_op = flag_gems.testing.resolve_gems_op("_neg_view")
-    res_out = gems_op(inp)
+    res_out = flag_gems._neg_view(inp)
     ref_out = torch.ops.aten._neg_view(ref_inp)
 
     _assert_view_semantics(res_out, ref_out, inp)
@@ -229,8 +222,7 @@ def test__neg_view_fp8_special_values(dtype, scenario):
     inp = tu.make_special_input(dtype, scenario)
     ref_inp = tu.to_reference(inp)
     ref_out = torch.ops.aten._neg_view(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("_neg_view")
-    res_out = gems_op(inp)
+    res_out = flag_gems._neg_view(inp)
 
     _assert_view_semantics(res_out, ref_out, inp)
     _assert_values_equal(res_out, ref_out)
@@ -253,8 +245,7 @@ def test__neg_view_backward(shape, dtype):
     ref_out = torch.ops.aten._neg_view(ref_inp)
     ref_in_grad = torch.autograd.grad(ref_out, ref_inp, grad_outputs=ref_grad)[0]
 
-    gems_op = flag_gems.testing.resolve_gems_op("_neg_view")
-    res_out = gems_op(inp)
+    res_out = flag_gems._neg_view(inp)
     _assert_view_semantics(res_out, ref_out, inp)
     _assert_values_equal(res_out, ref_out)
 
@@ -267,6 +258,5 @@ def test__neg_view_backward(shape, dtype):
 def test__neg_view_rejects_non_tensor():
     with pytest.raises(RuntimeError):
         torch.ops.aten._neg_view(3.14)
-    gems_op = flag_gems.testing.resolve_gems_op("_neg_view")
     with pytest.raises((TypeError, ValueError, RuntimeError)):
-        gems_op(3.14)
+        flag_gems._neg_view(3.14)

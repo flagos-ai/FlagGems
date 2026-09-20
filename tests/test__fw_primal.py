@@ -74,8 +74,7 @@ def test__fw_primal(shape, value_range, dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten._fw_primal(ref_inp, 0)
-    gems_op = flag_gems.testing.resolve_gems_op("_fw_primal")
-    res_out = gems_op(inp, 0)
+    res_out = flag_gems._fw_primal(inp, 0)
 
     tu.assert_result_equal(res_out, ref_out)
     _assert_view_semantics(res_out, ref_out, inp)
@@ -90,8 +89,7 @@ def test__fw_primal_level(shape, level, dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten._fw_primal(ref_inp, level)
-    gems_op = flag_gems.testing.resolve_gems_op("_fw_primal")
-    res_out = gems_op(inp, level)
+    res_out = flag_gems._fw_primal(inp, level)
 
     tu.assert_result_equal(res_out, ref_out)
     _assert_view_semantics(res_out, ref_out, inp)
@@ -109,8 +107,7 @@ def test__fw_primal_non_contiguous(shape, level, dtype):
     assert not inp.is_contiguous()
 
     ref_out = torch.ops.aten._fw_primal(ref_inp, level)
-    gems_op = flag_gems.testing.resolve_gems_op("_fw_primal")
-    res_out = gems_op(inp, level)
+    res_out = flag_gems._fw_primal(inp, level)
 
     tu.assert_result_equal(res_out, ref_out)
     _assert_view_semantics(res_out, ref_out, inp)
@@ -126,8 +123,7 @@ def test__fw_primal_mutation(shape, dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten._fw_primal(ref_inp, 0)
-    gems_op = flag_gems.testing.resolve_gems_op("_fw_primal")
-    res_out = gems_op(inp, 0)
+    res_out = flag_gems._fw_primal(inp, 0)
 
     if dtype == torch.bool:
         res_out.fill_(True)
@@ -153,8 +149,7 @@ def test__fw_primal_special_values(dtype):
     ref_inp = tu.to_reference(values)
 
     ref_out = torch.ops.aten._fw_primal(ref_inp, 0)
-    gems_op = flag_gems.testing.resolve_gems_op("_fw_primal")
-    res_out = gems_op(values, 0)
+    res_out = flag_gems._fw_primal(values, 0)
 
     _assert_view_semantics(res_out, ref_out, values)
     utils.gems_assert_equal(res_out, ref_out, equal_nan=True)
@@ -170,8 +165,7 @@ def test__fw_primal_empty(shape, dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten._fw_primal(ref_inp, 0)
-    gems_op = flag_gems.testing.resolve_gems_op("_fw_primal")
-    res_out = gems_op(inp, 0)
+    res_out = flag_gems._fw_primal(inp, 0)
 
     tu.assert_result_equal(res_out, ref_out)
     _assert_view_semantics(res_out, ref_out, inp)
@@ -187,8 +181,7 @@ def test__fw_primal_backward(shape, dtype):
     ref_grad = tu.to_reference(grad)
 
     ref_out = torch.ops.aten._fw_primal(ref_inp, 0)
-    gems_op = flag_gems.testing.resolve_gems_op("_fw_primal")
-    res_out = gems_op(inp, 0)
+    res_out = flag_gems._fw_primal(inp, 0)
     tu.assert_result_equal(res_out, ref_out)
 
     ref_in_grad = torch.autograd.grad(ref_out, ref_inp, grad_outputs=ref_grad)[0]
@@ -200,9 +193,8 @@ def test__fw_primal_backward(shape, dtype):
 def test__fw_primal_rejects_non_tensor():
     with pytest.raises(RuntimeError):
         torch.ops.aten._fw_primal(3.14, 0)
-    gems_op = flag_gems.testing.resolve_gems_op("_fw_primal")
-    with pytest.raises((TypeError, ValueError, RuntimeError, AttributeError)):
-        gems_op(3.14, 0)
+    with pytest.raises((TypeError, ValueError, RuntimeError)):
+        flag_gems._fw_primal(3.14, 0)
 
 
 @pytest.mark._fw_primal
@@ -212,9 +204,8 @@ def test__fw_primal_rejects_non_int_level():
 
     with pytest.raises(RuntimeError):
         torch.ops.aten._fw_primal(ref_inp, 1.5)
-    gems_op = flag_gems.testing.resolve_gems_op("_fw_primal")
-    with pytest.raises((TypeError, ValueError, RuntimeError, AttributeError)):
-        gems_op(inp, 1.5)
+    with pytest.raises((TypeError, ValueError, RuntimeError)):
+        flag_gems._fw_primal(inp, 1.5)
 
 
 @pytest.mark._fw_primal
@@ -224,9 +215,8 @@ def test__fw_primal_rejects_missing_level():
 
     with pytest.raises(RuntimeError):
         torch.ops.aten._fw_primal(ref_inp)
-    gems_op = flag_gems.testing.resolve_gems_op("_fw_primal")
-    with pytest.raises((TypeError, ValueError, RuntimeError, AttributeError)):
-        gems_op(inp)
+    with pytest.raises((TypeError, ValueError, RuntimeError)):
+        flag_gems._fw_primal(inp)
 
 
 @pytest.mark._fw_primal
@@ -236,11 +226,8 @@ def test__fw_primal_rejects_missing_level():
 def test__fw_primal_special_scenarios(dtype, scenario):
     inp = tu.make_special_input(dtype, scenario)
     reference = tu.to_reference(inp)
-    candidate = flag_gems.testing.resolve_gems_op(
-        "_fw_primal", getattr(flag_gems, "_fw_primal", None)
-    )
     expected = torch.ops.aten._fw_primal(reference, 0)
-    actual = candidate(inp, 0)
+    actual = flag_gems._fw_primal(inp, 0)
     tu.assert_result_equal(actual, expected)
 
 
@@ -252,13 +239,12 @@ def test__fw_primal_dual(shape, dtype):
     tangent = torch.ones_like(primal)
     ref_primal = tu.to_reference(primal)
     ref_tangent = tu.to_reference(tangent)
-    gems_op = flag_gems.testing.resolve_gems_op("_fw_primal")
 
     with torch.autograd.forward_ad.dual_level() as level:
         inp = torch.autograd.forward_ad.make_dual(primal, tangent)
         ref_inp = torch.autograd.forward_ad.make_dual(ref_primal, ref_tangent)
         ref_out = torch.ops.aten._fw_primal(ref_inp, level)
-        res_out = gems_op(inp, level)
+        res_out = flag_gems._fw_primal(inp, level)
 
         tu.assert_result_equal(res_out, ref_out)
         _assert_view_semantics(res_out, ref_out, inp)

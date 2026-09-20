@@ -65,8 +65,7 @@ def test_combinations_spec_shapes_value_ranges(shape, value_range, dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.combinations(ref_inp, 2, False)
-    gems_op = flag_gems.testing.resolve_gems_op("combinations")
-    res_out = gems_op(inp, 2, False)
+    res_out = flag_gems.combinations(inp, 2, False)
 
     tu.assert_result_equal(res_out, ref_out)
 
@@ -81,8 +80,7 @@ def test_combinations_shapes_r_replacement(shape, r, with_replacement, dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.combinations(ref_inp, r, with_replacement)
-    gems_op = flag_gems.testing.resolve_gems_op("combinations")
-    res_out = gems_op(inp, r, with_replacement)
+    res_out = flag_gems.combinations(inp, r, with_replacement)
 
     tu.assert_result_equal(res_out, ref_out)
 
@@ -96,8 +94,7 @@ def test_combinations_empty_input(r, with_replacement, dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.combinations(ref_inp, r, with_replacement)
-    gems_op = flag_gems.testing.resolve_gems_op("combinations")
-    res_out = gems_op(inp, r, with_replacement)
+    res_out = flag_gems.combinations(inp, r, with_replacement)
 
     tu.assert_result_equal(res_out, ref_out)
 
@@ -111,8 +108,7 @@ def test_combinations_r_boundaries(r, with_replacement, dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.combinations(ref_inp, r, with_replacement)
-    gems_op = flag_gems.testing.resolve_gems_op("combinations")
-    res_out = gems_op(inp, r, with_replacement)
+    res_out = flag_gems.combinations(inp, r, with_replacement)
 
     tu.assert_result_equal(res_out, ref_out)
 
@@ -126,8 +122,7 @@ def test_combinations_non_contiguous(dtype):
     ref_inp = ref_base[::2]
 
     ref_out = torch.ops.aten.combinations(ref_inp, 2, False)
-    gems_op = flag_gems.testing.resolve_gems_op("combinations")
-    res_out = gems_op(inp, 2, False)
+    res_out = flag_gems.combinations(inp, 2, False)
 
     tu.assert_result_equal(res_out, ref_out)
 
@@ -141,8 +136,7 @@ def test_combinations_nan_inf(dtype, scenario):
     ref_inp = tu.to_reference(values)
 
     ref_out = torch.ops.aten.combinations(ref_inp, 2, False)
-    gems_op = flag_gems.testing.resolve_gems_op("combinations")
-    res_out = gems_op(values, 2, False)
+    res_out = flag_gems.combinations(values, 2, False)
 
     tu.assert_result_equal(res_out, ref_out)
 
@@ -153,8 +147,7 @@ def test_combinations_does_not_mutate_input(dtype):
     inp = tu.make_input(dtype, (16,), ["-1", "1"])
     before = tu.to_reference(inp)
 
-    gems_op = flag_gems.testing.resolve_gems_op("combinations")
-    gems_op(inp, 2, False)
+    flag_gems.combinations(inp, 2, False)
 
     tu.assert_result_equal(inp, before)
 
@@ -172,8 +165,7 @@ def test_combinations_backward(n, r, with_replacement, dtype):
     ref_grad = tu.to_reference(grad)
     ref_in_grad = torch.autograd.grad(ref_out, ref_inp, grad_outputs=ref_grad)[0]
 
-    gems_op = flag_gems.testing.resolve_gems_op("combinations")
-    res_out = gems_op(inp, r, with_replacement)
+    res_out = flag_gems.combinations(inp, r, with_replacement)
     tu.assert_result_equal(res_out, ref_out)
 
     assert res_out.requires_grad
@@ -193,8 +185,7 @@ def test_combinations_zero_r_no_autograd(n, with_replacement, dtype):
     inp = tu.make_input(dtype, (n,), ["-1", "1"]).requires_grad_()
     ref_inp = tu.to_reference(inp)
     ref_out = torch.ops.aten.combinations(ref_inp, 0, with_replacement)
-    gems_op = flag_gems.testing.resolve_gems_op("combinations")
-    res_out = gems_op(inp, 0, with_replacement)
+    res_out = flag_gems.combinations(inp, 0, with_replacement)
     tu.assert_result_equal(res_out, ref_out)
     assert not res_out.requires_grad
     assert res_out.grad_fn is None
@@ -209,9 +200,8 @@ def test_combinations_raises_on_non_1d(shape, dtype):
 
     with pytest.raises(RuntimeError):
         torch.ops.aten.combinations(ref_inp, 2, False)
-    gems_op = flag_gems.testing.resolve_gems_op("combinations")
     with pytest.raises((RuntimeError, TypeError, ValueError, IndexError)):
-        gems_op(inp, 2, False)
+        flag_gems.combinations(inp, 2, False)
 
 
 @pytest.mark.combinations
@@ -221,9 +211,8 @@ def test_combinations_raises_on_negative_r():
 
     with pytest.raises(RuntimeError):
         torch.ops.aten.combinations(ref_inp, -1, False)
-    gems_op = flag_gems.testing.resolve_gems_op("combinations")
     with pytest.raises((RuntimeError, TypeError, ValueError, IndexError)):
-        gems_op(inp, -1, False)
+        flag_gems.combinations(inp, -1, False)
 
 
 @pytest.mark.combinations
@@ -233,6 +222,5 @@ def test_combinations_raises_on_non_int_r():
 
     with pytest.raises(RuntimeError):
         torch.ops.aten.combinations(ref_inp, 2.0, False)
-    gems_op = flag_gems.testing.resolve_gems_op("combinations")
     with pytest.raises((RuntimeError, TypeError, ValueError, IndexError)):
-        gems_op(inp, 2.0, False)
+        flag_gems.combinations(inp, 2.0, False)
