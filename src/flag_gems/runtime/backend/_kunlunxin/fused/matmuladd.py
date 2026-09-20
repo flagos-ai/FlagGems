@@ -44,7 +44,21 @@ logger = logging.getLogger(__name__)
     warmup=5,
     rep=10,
 )
-@triton.jit
+@triton.jit(
+    do_not_specialize=[
+        "M",
+        "N",
+        "K",
+        "stride_am",
+        "stride_ak",
+        "stride_bk",
+        "stride_bn",
+        "stride_cm",
+        "stride_cn",
+        "stride_bias_m",
+        "stride_bias_n",
+    ]
+)
 def matmuladd_kernel(
     a_ptr,
     b_ptr,
