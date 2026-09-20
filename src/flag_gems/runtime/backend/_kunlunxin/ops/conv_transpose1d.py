@@ -67,7 +67,7 @@ def conv_transpose1d(
     groups=1,
     dilation=1,
 ):
-    logger.debug("GEMS CONV_TRANSPOSE1D (kunlunxin <- 2D composition)")
+    logger.debug("GEMS_KUNLUNXIN CONV_TRANSPOSE1D")
     from flag_gems.runtime.backend._kunlunxin.ops.conv_transpose2d import (
         conv_transpose2d as _klx_conv_transpose2d,
     )

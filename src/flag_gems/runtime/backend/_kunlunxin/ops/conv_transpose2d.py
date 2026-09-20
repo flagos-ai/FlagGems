@@ -222,7 +222,7 @@ def conv_transpose2d(
     groups=1,
     dilation=1,
 ):
-    logger.debug("GEMS CONV_TRANSPOSE2D (kunlunxin vendor binding)")
+    logger.debug("GEMS_KUNLUNXIN CONV_TRANSPOSE2D")
 
     from flag_gems.ops.conv_transpose2d import (
         _unsupported_conv_transpose2d,
