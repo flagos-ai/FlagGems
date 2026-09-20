@@ -26,9 +26,16 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems import runtime
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
+
+# tf32x3 is an NVIDIA tensor-core precision; other backends (e.g. AMD) only
+# accept ieee/bf16x3/bf16x6, so fall back to full-precision ieee there.
+_DOT_PRECISION = tl.constexpr(
+    "tf32x3" if runtime.device.vendor_name == "nvidia" else "ieee"
+)
 
 _TRITON_DIRECT_LOWP_DTYPES = (torch.float16, torch.bfloat16)
 
@@ -482,7 +489,7 @@ def _conv_transpose2d_direct_kernel(
                         accum += tl.dot(
                             input_block,
                             weight_block,
-                            input_precision="tf32x3",
+                            input_precision=_DOT_PRECISION,
                         )
 
     output_offsets = (
@@ -602,7 +609,7 @@ def _conv_transpose2d_stride2_pad1_3x3_kernel(
                 accum += tl.dot(
                     input_block,
                     weight_block,
-                    input_precision="tf32x3",
+                    input_precision=_DOT_PRECISION,
                 )
 
     output_offsets = (
@@ -732,7 +739,7 @@ def _conv_transpose2d_residue_kernel(
                         accum += tl.dot(
                             input_block,
                             weight_block,
-                            input_precision="tf32x3",
+                            input_precision=_DOT_PRECISION,
                         )
 
     output_offsets = n[:, None] * output_channels + co_offsets[None, :]
@@ -933,7 +940,7 @@ def _conv_transpose2d_residue_static_kernel(
                         accum += tl.dot(
                             input_block,
                             weight_block,
-                            input_precision="tf32x3",
+                            input_precision=_DOT_PRECISION,
                         )
 
     output_offsets = n[:, None] * output_channels + co_offsets[None, :]
@@ -1054,7 +1061,7 @@ def _conv_transpose2d_scatter_no_overlap_kernel(
         accum += tl.dot(
             input_block,
             weight_block,
-            input_precision="tf32x3",
+            input_precision=_DOT_PRECISION,
         )
 
     if has_bias:
@@ -1141,7 +1148,7 @@ def _conv_transpose2d_1x1_kernel(
             mask=ci_mask[:, None] & co_mask[None, :],
             other=0.0,
         )
-        accum += tl.dot(input_block, weight_block, input_precision="tf32x3")
+        accum += tl.dot(input_block, weight_block, input_precision=_DOT_PRECISION)
 
     output_offsets = n[:, None] * output_channels + co_offsets[None, :]
     output_offsets = (output_offsets * input_height + ih[:, None]) * input_width

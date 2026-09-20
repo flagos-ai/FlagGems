@@ -19,9 +19,16 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems import runtime
 from flag_gems.utils import libentry, libtuner, tl_extra_shim
 
 logger = logging.getLogger(__name__)
+
+# tf32x3 is an NVIDIA tensor-core precision; other backends (e.g. AMD) only
+# accept ieee/bf16x3/bf16x6, so fall back to full-precision ieee there.
+_DOT_PRECISION = tl.constexpr(
+    "tf32x3" if runtime.device.vendor_name == "nvidia" else "ieee"
+)
 
 # Dequantized weights keyed by (params object, device, dtype). The weights are
 # constant, so unpacking them once per params object keeps the host copy out of
@@ -195,10 +202,10 @@ def quantized_lstm_step_kernel(
 
         # tf32x3 gives near-fp32 accuracy for fp32 inputs on tensor cores;
         # ignored for fp16/bf16 which use their native tensor core path.
-        acc_i += tl.dot(x_tile, tl.trans(w_i), input_precision="tf32x3")
-        acc_f += tl.dot(x_tile, tl.trans(w_f), input_precision="tf32x3")
-        acc_g += tl.dot(x_tile, tl.trans(w_g), input_precision="tf32x3")
-        acc_o += tl.dot(x_tile, tl.trans(w_o), input_precision="tf32x3")
+        acc_i += tl.dot(x_tile, tl.trans(w_i), input_precision=_DOT_PRECISION)
+        acc_f += tl.dot(x_tile, tl.trans(w_f), input_precision=_DOT_PRECISION)
+        acc_g += tl.dot(x_tile, tl.trans(w_g), input_precision=_DOT_PRECISION)
+        acc_o += tl.dot(x_tile, tl.trans(w_o), input_precision=_DOT_PRECISION)
 
     # K-loop 2: h_prev @ w_hh.T, reducing over hidden_size.
     for k in range(0, tl.cdiv(hidden_size, BLOCK_K)):
@@ -242,10 +249,10 @@ def quantized_lstm_step_kernel(
             other=0.0,
         )
 
-        acc_i += tl.dot(h_tile, tl.trans(wh_i), input_precision="tf32x3")
-        acc_f += tl.dot(h_tile, tl.trans(wh_f), input_precision="tf32x3")
-        acc_g += tl.dot(h_tile, tl.trans(wh_g), input_precision="tf32x3")
-        acc_o += tl.dot(h_tile, tl.trans(wh_o), input_precision="tf32x3")
+        acc_i += tl.dot(h_tile, tl.trans(wh_i), input_precision=_DOT_PRECISION)
+        acc_f += tl.dot(h_tile, tl.trans(wh_f), input_precision=_DOT_PRECISION)
+        acc_g += tl.dot(h_tile, tl.trans(wh_g), input_precision=_DOT_PRECISION)
+        acc_o += tl.dot(h_tile, tl.trans(wh_o), input_precision=_DOT_PRECISION)
 
     if HAS_BIAS:
         acc_i += tl.load(b_ih_ptr + offs_n, mask=n_mask, other=0.0).to(tl.float32)[
