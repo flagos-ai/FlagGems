@@ -315,6 +315,23 @@ def some_other_function():
         success = registry.restore("abs")
         assert not success, "Should fail when operator wasn't overridden"
 
+    def test_override_op_not_in_repo(self):
+        """Overriding an op that doesn't exist yet should add it, not fail"""
+        registry = DynamicOpOverride()
+        assert not hasattr(flag_gems, "totally_new_op")
+
+        success = registry.override("totally_new_op", custom_abs_impl)
+        assert success, "Override should succeed even for a brand-new op name"
+
+        x = torch.tensor([-1.0, -2.0], device=flag_gems.device)
+        result = flag_gems.totally_new_op(x)
+        assert hasattr(result, "_custom_marker")
+
+        # Restoring should remove the attribute entirely, since it never
+        # existed on flag_gems before the override.
+        registry.restore("totally_new_op")
+        assert not hasattr(flag_gems, "totally_new_op")
+
     def test_operator_with_kwargs(self):
         """Test overriding operators with keyword arguments"""
         registry = DynamicOpOverride()
@@ -820,11 +837,20 @@ class TestRegistrarLiveOverrideResolution:
         with pytest.raises((Exception, SystemExit)):
             _apply(fake_flag_gems[2], f"softmax:{path}:run")
 
-    def test_unknown_operator_aborts(self, fake_flag_gems, tmp_path):
+    def test_unknown_operator_is_added(self, fake_flag_gems, tmp_path):
+        """An op not currently exposed by flag_gems should be added, not rejected."""
+        gems, _, cli = fake_flag_gems
+        assert not hasattr(gems, "softamx")
+
         path = tmp_path / "candidate.py"
         path.write_text("def run(x): return x\n")
-        with pytest.raises((Exception, SystemExit)):
-            _apply(fake_flag_gems[2], f"softamx:{path}:run")
+        registry = _apply(cli, f"softamx:{path}:run")
+
+        assert hasattr(gems, "softamx")
+        assert gems.softamx(1) == 1
+
+        registry.restore_all()
+        assert not hasattr(gems, "softamx")
 
     def test_existing_registration_uses_candidate(self, fake_flag_gems):
         """Registering `_softmax` should pick up an active override for `softmax`."""

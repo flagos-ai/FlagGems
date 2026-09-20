@@ -29,6 +29,10 @@ import warnings
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
 
+# Sentinel marking that an overridden attribute did not previously exist on
+# the module, so restore() knows to delattr it instead of restoring a value.
+_MISSING = object()
+
 
 class DynamicOpOverride:
     """
@@ -72,6 +76,12 @@ class DynamicOpOverride:
 
         Returns:
             True if override succeeded, False otherwise
+
+        Note:
+            If ``op_name`` doesn't already exist on the module, it is added
+            as a new attribute rather than rejected. ``restore()`` removes
+            it again (via ``delattr``) so the module is left as it was
+            found.
         """
         try:
             # Import the module
@@ -79,17 +89,18 @@ class DynamicOpOverride:
                 __import__(module_name)
             module = sys.modules[module_name]
 
-            # Check if the operator exists
-            if not hasattr(module, op_name):
-                warnings.warn(
-                    f"Operator '{op_name}' not found in module '{module_name}'."
-                )
-                return False
-
-            # Store original implementation if not already stored
+            # Store original implementation if not already stored. Ops that
+            # don't exist yet are registered as new attributes; _MISSING
+            # records that so restore() can delattr instead of restoring a
+            # bogus value.
             full_name = f"{module_name}.{op_name}"
             if full_name not in self._originals:
-                self._originals[full_name] = getattr(module, op_name)
+                self._originals[full_name] = getattr(module, op_name, _MISSING)
+                if self._originals[full_name] is _MISSING:
+                    warnings.warn(
+                        f"Operator '{op_name}' not found in module "
+                        f"'{module_name}'; adding it as a new attribute."
+                    )
 
             # Override the implementation
             setattr(module, op_name, impl_func)
@@ -150,10 +161,11 @@ class DynamicOpOverride:
             module = sys.modules[module_name]
             original = self._originals[full_name]
 
-            if original is not None:
+            if original is _MISSING:
+                if hasattr(module, op_name):
+                    delattr(module, op_name)
+            else:
                 setattr(module, op_name, original)
-            elif hasattr(module, op_name):
-                delattr(module, op_name)
 
             was_unused = (
                 full_name in self._tracked and self._call_counts.get(full_name, 0) == 0
