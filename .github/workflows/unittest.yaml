@@ -54,12 +54,14 @@ jobs:
         uses: tj-actions/changed-files@9426d40962ed5378910ee2e21d5f8c6fcbf2dd96  # v47.0.6
       - id: wait-for-triage
         uses: ArcticLampyrid/action-wait-for-workflow@ff297b23789206858260877c4b83026d90c6db8c  # v1.3.0
-        # This action is built for Node 20; the runner defaults to Node 24,
-        # under which its octokit/undici call fails "Request was cancelled".
-        # Pin it back to Node 20 to test whether that runtime mismatch (not the
-        # injected proxy) is the cause.
+        # DEBUG (temporary): "Request was cancelled" — pin down whether octokit
+        # fails connecting to the injected proxy, reaching api.github.com, or is
+        # cancelled after the request goes out. NODE_DEBUG prints low-level
+        # socket/TLS/HTTP (target host:port, connect errors); ACTIONS_STEP_DEBUG
+        # adds action-level detail. Revert once diagnosed.
         env:
-          ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: 'true'
+          NODE_DEBUG: 'http,net,tls,https'
+          ACTIONS_STEP_DEBUG: 'true'
         with:
           workflow: .github/workflows/triage.yaml
       - id: get-pr-id
