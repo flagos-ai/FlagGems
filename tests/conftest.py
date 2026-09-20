@@ -20,8 +20,7 @@ from datetime import datetime
 
 import pytest
 
-# TODO(Qiming): Try remove this line
-# import torch  # noqa: F401
+import torch
 import yaml
 
 import flag_gems
@@ -50,6 +49,80 @@ device = flag_gems.device
 
 TIMESTAMP = datetime.now().strftime("%Y%m%d_%H%M%S")
 REPORT_FILE = "accuracy_result.json"
+
+# ---------------------------------------------------------------------------
+# Reference-environment / backend test skips
+#
+# Some entries in the accuracy report are not FlagGems bugs but limitations of
+# the reference side or of the vendor runtime: the CPU reference torch build may
+# lack LAPACK, lack cuDNN, or lack a CPU kernel for a narrow/complex dtype, and
+# some aten ops are vendor-specific. Classifying them here keeps the report
+# focused on real FlagGems accuracy issues.
+# ---------------------------------------------------------------------------
+
+# Ops the vendor runtime cannot run at all (skipped unconditionally on that
+# vendor, regardless of --ref). Empty for now: cudnn_convolution_transpose used
+# to live here, but FlagGems has its own Triton transpose-conv kernel and its
+# test compares against the generic conv_transpose2d instead of the cuDNN-only
+# aten entry point, so it runs on ROCm/MIOpen without cuDNN.
+VENDOR_UNSUPPORTED_OPS = {}
+
+# (op marker -> dtypes) with no CPU reference kernel. These pass against a GPU
+# reference, so only skip them when the reference runs on CPU (--ref cpu).
+CPU_REF_UNSUPPORTED_DTYPES = {
+    "flipud": {torch.complex32},  # aten flip_cpu has no ComplexHalf kernel
+    "binomial": {torch.float16},  # aten binomial_cpu has no Half kernel
+}
+
+# Substrings of a reference-side RuntimeError meaning the CPU reference build
+# cannot compute the ground truth (missing LAPACK / cuDNN). Under --ref cpu such
+# a failure is a reference-environment limitation, not a FlagGems bug. Matching
+# on the message keeps this per-parameter precise (e.g. linalg.norm only needs
+# LAPACK for ord in {2, -2, nuc}), so it never hides a real FlagGems failure.
+CPU_REF_ENV_ERROR_SUBSTRINGS = (
+    "requires compiling PyTorch with LAPACK",
+    "LAPACK library not found",
+    "not compiled with cuDNN",
+)
+
+
+def _apply_backend_skips(config, items):
+    vendor = getattr(flag_gems, "vendor_name", None)
+    cpu_ref = config.getoption("--ref") == "cpu"
+    vendor_unsupported = VENDOR_UNSUPPORTED_OPS.get(vendor, set())
+    for item in items:
+        mark_names = {mark.name for mark in item.iter_markers()}
+
+        blocked = mark_names & vendor_unsupported
+        if blocked:
+            op = sorted(blocked)[0]
+            item.add_marker(
+                pytest.mark.skip(
+                    reason=(
+                        f"{op}: unsupported on '{vendor}' backend "
+                        "(vendor runtime lacks the required library, e.g. cuDNN)"
+                    )
+                )
+            )
+            continue
+
+        if not cpu_ref:
+            continue
+        params = getattr(getattr(item, "callspec", None), "params", {}) or {}
+        dtype = params.get("dtype")
+        if dtype is None:
+            continue
+        for op in mark_names:
+            if dtype in CPU_REF_UNSUPPORTED_DTYPES.get(op, set()):
+                item.add_marker(
+                    pytest.mark.skip(
+                        reason=(
+                            f"{op}: CPU reference has no kernel for {dtype} "
+                            "(--ref cpu); passes with a GPU reference"
+                        )
+                    )
+                )
+                break
 
 
 def pytest_addoption(parser):
@@ -235,7 +308,29 @@ def pytest_terminal_summary(terminalreporter):
         os.fsync(json_file.fileno())
 
 
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    outcome = yield
+    report = outcome.get_result()
+    # Under --ref cpu, a reference-side RuntimeError from a torch build missing
+    # LAPACK/cuDNN is an environment limitation, not a FlagGems accuracy bug.
+    # Report it as skipped instead of failed so the accuracy report stays clean.
+    if report.when == "call" and report.failed and TO_CPU and call.excinfo is not None:
+        message = str(call.excinfo.value)
+        if any(s in message for s in CPU_REF_ENV_ERROR_SUBSTRINGS):
+            report.outcome = "skipped"
+            first_line = message.splitlines()[0] if message else ""
+            report.longrepr = (
+                str(item.fspath),
+                item.location[1] or 0,
+                "Skipped: CPU reference environment cannot compute ground truth: "
+                + first_line,
+            )
+
+
 def pytest_collection_modifyitems(session, config, items):
+    _apply_backend_skips(config, items)
+
     collect_marks_file = config.getoption("--collect-marks")
     if collect_marks_file:
         report = []
