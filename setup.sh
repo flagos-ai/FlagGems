@@ -29,6 +29,10 @@ fail() { printf " ${RED}[FAILED]${NC}\n"; exit 1; }
 # (dist-info written, files missing). Copying is deterministic.
 export UV_LINK_MODE="${UV_LINK_MODE:-copy}"
 
+# Default uv HTTP timeout (30s) is too tight on flaky networks and causes
+# spurious download failures. Give it more headroom.
+export UV_HTTP_TIMEOUT="${UV_HTTP_TIMEOUT:-120}"
+
 # Verify that the installed Triton/FlagTree package is actually complete.
 # uv's exit code only tells us it wrote the dist-info; it does not catch a
 # truncated install where files listed in RECORD never landed on disk. That
@@ -320,6 +324,7 @@ ok
 # So that `source .venv/bin/activate` sets up the full environment.
 printf "Writing environment to .venv/bin/activate ..."
 python3 -c "
+import os
 import yaml
 
 cfg = yaml.safe_load(open('${BACKENDS_YAML}'))
@@ -332,8 +337,17 @@ lines.append('# --- FlagGems environment (${BACKEND}) ---')
 for k, v in b.get('env', {}).items():
     lines.append(f'export {k}={v}')
 
+repo_root = os.getcwd()
+helper = os.path.join(repo_root, 'tools', 'source_env_bash.sh')
+
 for script in b.get('env_source', []):
-    lines.append(f'[ -f {script} ] && source {script} || true')
+    # Vendor scripts (e.g. the hygon DTK env.sh) locate themselves via the
+    # bash-only \${BASH_SOURCE[0]}, which resolves incorrectly when the
+    # script is sourced transitively (activate -> env.sh) instead of run
+    # directly, silently pointing LD_LIBRARY_PATH etc. at the wrong tree.
+    # Route through tools/source_env_bash.sh, which sources it under a
+    # clean bash and re-exports only the resulting diff.
+    lines.append(f'[ -f {script} ] && eval \"\$(bash {helper} {script})\" || true')
 
 lines.append('# --- end FlagGems environment ---')
 
