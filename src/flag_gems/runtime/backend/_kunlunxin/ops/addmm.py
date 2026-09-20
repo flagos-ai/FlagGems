@@ -247,6 +247,10 @@ def addmm(bias, mat1, mat2, *, beta=1.0, alpha=1.0):
     mat1 = mat1.contiguous()
     # mat2 = mat2.contiguous()
     out = torch.empty((M, N), device=mat1.device, dtype=mat1.dtype)
+    # PyTorch ignores bias (including NaN/Inf) when beta is zero; feed an
+    # explicit zero bias so the kernel's bias * beta term stays neutral.
+    if beta == 0:
+        bias = torch.zeros_like(out)
     bias = _bias_with_unit_inner_stride(bias, out.shape)
 
     block_k_choice = 256 if mat1.dtype == torch.float16 else 128
@@ -299,6 +303,10 @@ def addmm_out(bias, mat1, mat2, *, beta=1.0, alpha=1.0, out=None):
         assert out.shape == (M, N), "Incompatible output shape"
 
     mat1 = mat1.contiguous()
+    # PyTorch ignores bias (including NaN/Inf) when beta is zero; feed an
+    # explicit zero bias so the kernel's bias * beta term stays neutral.
+    if beta == 0:
+        bias = torch.zeros_like(out)
     bias = _bias_with_unit_inner_stride(bias, out.shape)
 
     block_k_choice = 256 if mat1.dtype == torch.float16 else 128
@@ -376,6 +384,10 @@ def addmm_dtype_out(bias, mat1, mat2, out_dtype, *, beta=1, alpha=1, out):
     M, K = mat1.shape
     _, N = mat2.shape
     mat1 = mat1.contiguous()
+    # PyTorch ignores bias (including NaN/Inf) when beta is zero; feed an
+    # explicit zero bias so the kernel's bias * beta term stays neutral.
+    if beta == 0:
+        bias = torch.zeros_like(out)
     bias = _bias_with_unit_inner_stride(bias, out.shape)
     block_k_choice = 256 if mat1.dtype == torch.float16 else 128
     grid = lambda META: (
