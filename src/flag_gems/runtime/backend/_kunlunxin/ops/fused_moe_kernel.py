@@ -6,6 +6,7 @@
 #
 #     http://www.apache.org/licenses/LICENSE-2.0
 
+import logging
 import os
 from typing import Any, Optional
 
@@ -13,6 +14,8 @@ import numpy as np
 import torch
 import triton
 import triton.language as tl
+
+logger = logging.getLogger(__name__)
 
 
 @triton.jit(
@@ -185,6 +188,7 @@ def _moe_sum_kernel(
 
 
 def invoke_kunlunxin_moe_sum(input: torch.Tensor, output: torch.Tensor) -> None:
+    logger.debug("GEMS_KUNLUNXIN MOE_SUM")
     block_size = 128
     grid = (input.size(0), triton.cdiv(input.size(2), block_size))
     _moe_sum_kernel[grid](
@@ -229,6 +233,7 @@ def invoke_kunlunxin_fused_moe_kernel(
     direct_routing: bool = False,
     routed_weight_on_input: bool = False,
 ) -> None:
+    logger.debug("GEMS_KUNLUNXIN INVOKE_FUSED_MOE_KERNEL")
     # int64 topk_ids -> "*i64" launcher signature (unmapped in the XPU
     # type_mapping); cast to int32 for a deterministic "*int32" (type=3)
     # read by the launch-table handler's D2H metadata pass. Lossless for
@@ -467,6 +472,7 @@ def dispatch_kunlunxin_fused_moe_kernel(
     direct_sum: bool = False,
     out_top_k: int = 1,
 ) -> None:
+    logger.debug("GEMS_KUNLUNXIN DISPATCH_FUSED_MOE_KERNEL")
     del compute_type
     unsupported = (
         A_scale is not None
