@@ -30,12 +30,11 @@ on:
 jobs:
   preprocess:
     runs-on: basic-runner-cpu
-    # The job container runs with the host network (options: --network host) so
-    # it uses the host's own network stack and proxy setup to reach GitHub,
-    # instead of the runner-injected in-container proxy.
+    # The runner injects the host's proxy (HTTP_PROXY/HTTPS_PROXY) into the job
+    # container; the host proxy reaches GitHub, so we leave it in place and add
+    # no proxy overrides (no no_proxy=*, no --network host).
     container:
       image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
-      options: --network host
     env:
       # Trust the workspace for git (dubious-ownership guard); the get-pr-id
       # step runs `git log` on push events. See rule-check.yaml for details.
@@ -203,10 +202,9 @@ jobs:
   # rules, otherwise skipped jobs block merges forever.
   unittest-required:
     runs-on: basic-runner-cpu
-    # Use the host network to reach GitHub (see preprocess).
+    # Uses the runner-injected host proxy to reach GitHub (see preprocess).
     container:
       image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
-      options: --network host
     needs:
       - preprocess
       - cpp-op

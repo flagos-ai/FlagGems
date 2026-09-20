@@ -30,9 +30,11 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
-# The job containers run with the host network (options: --network host per
-# container below) so they use the host's own network stack and proxy setup to
-# reach GitHub, instead of the runner-injected in-container proxy.
+# The runner injects the host's proxy (HTTP_PROXY/HTTPS_PROXY) into every job
+# container; the host proxy reaches GitHub, so we leave it in place and add no
+# proxy overrides. (Do NOT set no_proxy=* — that disables the working proxy;
+# and --network host is rejected because the runner already attaches a
+# user-defined network to the container.)
 env:
   # checkout registers the workspace as a safe git directory only in a
   # throwaway HOME; the check scripts (derive_changed_operators, etc.) then run
@@ -48,7 +50,6 @@ jobs:
     runs-on: basic-runner-cpu
     container:
       image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
-      options: --network host
     outputs:
       changed_operators: ${{ steps.derive.outputs.changed_operators }}
       changed_files: ${{ steps.derive.outputs.changed_files }}
@@ -70,7 +71,6 @@ jobs:
     runs-on: basic-runner-cpu
     container:
       image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
-      options: --network host
     needs: derive-changed-operators
     if: needs.derive-changed-operators.outputs.has_changes == 'true'
     steps:
@@ -86,7 +86,6 @@ jobs:
     runs-on: basic-runner-cpu
     container:
       image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
-      options: --network host
     needs: derive-changed-operators
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -97,7 +96,6 @@ jobs:
     runs-on: basic-runner-cpu
     container:
       image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
-      options: --network host
     needs: derive-changed-operators
     if: needs.derive-changed-operators.outputs.has_changes == 'true'
     steps:
@@ -115,7 +113,6 @@ jobs:
     runs-on: basic-runner-cpu
     container:
       image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
-      options: --network host
     needs: derive-changed-operators
     if: needs.derive-changed-operators.outputs.has_changes == 'true'
     steps:
@@ -131,7 +128,6 @@ jobs:
     runs-on: basic-runner-cpu
     container:
       image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
-      options: --network host
     needs: derive-changed-operators
     if: needs.derive-changed-operators.outputs.has_changes == 'true'
     steps:
@@ -150,7 +146,6 @@ jobs:
     runs-on: basic-runner-cpu
     container:
       image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
-      options: --network host
     needs: derive-changed-operators
     if: needs.derive-changed-operators.outputs.has_changes == 'true'
     steps:
@@ -166,7 +161,6 @@ jobs:
     runs-on: basic-runner-cpu
     container:
       image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
-      options: --network host
     needs: derive-changed-operators
     if: needs.derive-changed-operators.outputs.has_changes == 'true'
     steps:
@@ -186,7 +180,6 @@ jobs:
     runs-on: basic-runner-cpu
     container:
       image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
-      options: --network host
     needs:
       - derive-changed-operators
       - check-operators-yaml
