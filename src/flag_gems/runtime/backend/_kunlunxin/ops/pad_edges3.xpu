@@ -1,0 +1,46 @@
+#include "xpu/kernel/xtdk.h"
+
+// Batched + grid-parallel reflected edges for reflection_pad1d.
+// Distributes B rows across BOTH the grid (pid/npid = clusters) AND cores
+// (cid/ncores) so many DMA engines run concurrently, matching triton's
+// grid parallelism. Per row: 2 contiguous GM2LM reads + in-LM reverse +
+// 2 contiguous LM2GM writes (no per-element tiny DMAs).
+// out[b,k]               = in[b, pad_left-k]   k in [0,pad_left)
+// out[b,W_in+pad_left+j] = in[b, W_in-2-j]     j in [0,pad_right)
+extern "C" __device__ void pad_edges3(_global_ptr_ char* out,
+                                      _global_ptr_ const char* in,
+                                      int B, int W_in, int W_out,
+                                      int pad_left, int pad_right, int es,
+                                      int pid, int npid) {
+  int cid = core_id();
+  int ncores = core_num();
+  int gstart = pid * ncores + cid;   // global worker index
+  int gstride = npid * ncores;       // total workers
+  char rbuf[64];
+  char wbuf[64];
+  for (int b = gstart; b < B; b += gstride) {
+    _global_ptr_ const char* rin = in + (long)b * W_in * es;
+    _global_ptr_ char* rout = out + (long)b * W_out * es;
+
+    if (pad_left > 0) {
+      GM2LM(rin + (long)1 * es, rbuf, pad_left * es);   // in[1..pad_left]
+      for (int k = 0; k < pad_left; ++k) {
+        int s = (pad_left - 1 - k) * es;
+        int d = k * es;
+        for (int t = 0; t < es; ++t) wbuf[d + t] = rbuf[s + t];
+      }
+      LM2GM(wbuf, rout, pad_left * es);                 // out[0..pad_left)
+    }
+
+    if (pad_right > 0) {
+      GM2LM(rin + (long)(W_in - 1 - pad_right) * es, rbuf, pad_right * es);
+      for (int j = 0; j < pad_right; ++j) {
+        int s = (pad_right - 1 - j) * es;
+        int d = j * es;
+        for (int t = 0; t < es; ++t) wbuf[d + t] = rbuf[s + t];
+      }
+      LM2GM(wbuf, rout + (long)(W_in + pad_left) * es, pad_right * es);
+    }
+  }
+  mfence();
+}
