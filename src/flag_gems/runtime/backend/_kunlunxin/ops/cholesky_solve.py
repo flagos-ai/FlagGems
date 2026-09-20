@@ -566,7 +566,7 @@ def cholesky_solve(B, L, upper=False, *, _out=None):
     Returns:
         X: solution tensor of shape (*, N, nrhs)
     """
-    logger.debug("GEMS CHOLESKY_SOLVE (kunlunxin)")
+    logger.debug("GEMS_KUNLUNXIN CHOLESKY_SOLVE")
     if B.is_complex() or L.is_complex():
         raise RuntimeError(
             "cholesky_solve: complex inputs are not supported on this backend"
@@ -640,7 +640,7 @@ def cholesky_solve(B, L, upper=False, *, _out=None):
 
 def cholesky_solve_out(B, L, upper=False, *, out):
     """Out variant with direct writes for the common compatible case."""
-    logger.debug("GEMS CHOLESKY_SOLVE_OUT (kunlunxin)")
+    logger.debug("GEMS_KUNLUNXIN CHOLESKY_SOLVE_OUT")
     _check_cholesky_solve_out(B, out)
     if _can_write_cholesky_solve_out_direct(B, L, out):
         return cholesky_solve(B, L, upper=upper, _out=out)
