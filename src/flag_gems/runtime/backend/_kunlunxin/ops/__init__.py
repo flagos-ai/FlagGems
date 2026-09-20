@@ -58,6 +58,7 @@ from .absolute import absolute, absolute_
 from .acos import acos, acos_
 from .acosh import acosh, acosh_  # noqa: F401
 from .adaptive_avg_pool2d import adaptive_avg_pool2d
+from .adaptive_avg_pool2d_backward import _adaptive_avg_pool2d_backward
 from .adaptive_max_pool2d import adaptive_max_pool2d
 from .adaptive_max_pool2d_backward import adaptive_max_pool2d_backward
 from .adaptive_max_pool3d import adaptive_max_pool3d
@@ -693,6 +694,7 @@ from .zeros_like import zeros_like
 
 __all__ = [
     "__irshift__",
+    "_adaptive_avg_pool2d_backward",
     "_amp_foreach_non_finite_check_and_unscale_",
     "_assert_async",
     "_batch_norm_impl_index",
