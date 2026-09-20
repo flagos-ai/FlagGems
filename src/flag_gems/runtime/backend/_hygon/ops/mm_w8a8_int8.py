@@ -16,11 +16,16 @@
 
 import torch
 import triton
-import triton.experimental.tle.language as tle
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
+from flag_gems.utils.triton_version_utils import HAS_TLE
+
+if HAS_TLE:
+    import triton.experimental.tle.language as tle
+else:
+    tle = None
 
 _FLOATS = (torch.float16, torch.bfloat16, torch.float32)
 

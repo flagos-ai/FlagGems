@@ -41,6 +41,7 @@ segment_reduce_out: test_segment_reduce
 special_zeta_out: test_special_zeta
 special_zeta_scalar_tensor_out: test_special_zeta
 special_zeta_tensor_scalar_out: test_special_zeta
+tensordot_out: test_tensordot
 
 # Compound / alternative names
 arange_start_step: test_arange
