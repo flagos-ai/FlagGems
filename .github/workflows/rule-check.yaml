@@ -58,6 +58,20 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           fetch-depth: 0
+      - name: Ensure full working tree
+        shell: bash
+        run: |
+          # basic-runner-cpu reuses its _work dir across jobs. A prior job's
+          # sparse checkout (e.g. unittest preprocess fetching only
+          # .github/backends.json) leaves skip-worktree bits behind; the next
+          # checkout's "sparse-checkout disable" runs after it unsets
+          # extensions.worktreeConfig, so it can't clear them and tracked files
+          # (tools/ci_checks/*.py) stay absent even though checkout reports
+          # success and `git log` shows the right HEAD. Clear any skip-worktree
+          # bits and force-restore the full tree. Harmless no-op when clean.
+          git sparse-checkout disable 2>/dev/null || true
+          git ls-files -z | xargs -0 -r git update-index --no-skip-worktree
+          git checkout --force HEAD -- .
       - name: Install dependencies
         run: pip install pyyaml
       - name: Derive changed operators
@@ -75,6 +89,14 @@ jobs:
     if: needs.derive-changed-operators.outputs.has_changes == 'true'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - name: Ensure full working tree
+        shell: bash
+        run: |
+          # See derive-changed-operators: recover from inherited sparse-checkout
+          # state in the reused runner workspace. Harmless no-op when clean.
+          git sparse-checkout disable 2>/dev/null || true
+          git ls-files -z | xargs -0 -r git update-index --no-skip-worktree
+          git checkout --force HEAD -- .
       - name: Install dependencies
         run: pip install pyyaml
       - name: Check operators.yaml
@@ -89,6 +111,14 @@ jobs:
     needs: derive-changed-operators
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - name: Ensure full working tree
+        shell: bash
+        run: |
+          # See derive-changed-operators: recover from inherited sparse-checkout
+          # state in the reused runner workspace. Harmless no-op when clean.
+          git sparse-checkout disable 2>/dev/null || true
+          git ls-files -z | xargs -0 -r git update-index --no-skip-worktree
+          git checkout --force HEAD -- .
       - name: Check __init__.py exports and registry
         run: python tools/ci_checks/check_init_exports.py
 
@@ -102,6 +132,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           fetch-depth: 0
+      - name: Ensure full working tree
+        shell: bash
+        run: |
+          # See derive-changed-operators: recover from inherited sparse-checkout
+          # state in the reused runner workspace. Harmless no-op when clean.
+          git sparse-checkout disable 2>/dev/null || true
+          git ls-files -z | xargs -0 -r git update-index --no-skip-worktree
+          git checkout --force HEAD -- .
       - name: Check changed test files for use_gems
         run: |
           python3 tools/ci_checks/check_kernelgen_tests.py \
@@ -117,6 +155,14 @@ jobs:
     if: needs.derive-changed-operators.outputs.has_changes == 'true'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - name: Ensure full working tree
+        shell: bash
+        run: |
+          # See derive-changed-operators: recover from inherited sparse-checkout
+          # state in the reused runner workspace. Harmless no-op when clean.
+          git sparse-checkout disable 2>/dev/null || true
+          git ls-files -z | xargs -0 -r git update-index --no-skip-worktree
+          git checkout --force HEAD -- .
       - name: Install dependencies
         run: pip install pyyaml
       - name: Check operator test files and markers
@@ -132,6 +178,14 @@ jobs:
     if: needs.derive-changed-operators.outputs.has_changes == 'true'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - name: Ensure full working tree
+        shell: bash
+        run: |
+          # See derive-changed-operators: recover from inherited sparse-checkout
+          # state in the reused runner workspace. Harmless no-op when clean.
+          git sparse-checkout disable 2>/dev/null || true
+          git ls-files -z | xargs -0 -r git update-index --no-skip-worktree
+          git checkout --force HEAD -- .
       - name: Install dependencies
         run: pip install pyyaml
       - name: Check aten operator names
@@ -150,6 +204,14 @@ jobs:
     if: needs.derive-changed-operators.outputs.has_changes == 'true'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - name: Ensure full working tree
+        shell: bash
+        run: |
+          # See derive-changed-operators: recover from inherited sparse-checkout
+          # state in the reused runner workspace. Harmless no-op when clean.
+          git sparse-checkout disable 2>/dev/null || true
+          git ls-files -z | xargs -0 -r git update-index --no-skip-worktree
+          git checkout --force HEAD -- .
       - name: Install dependencies
         run: pip install pyyaml
       - name: Check API logging convention
@@ -165,6 +227,14 @@ jobs:
     if: needs.derive-changed-operators.outputs.has_changes == 'true'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - name: Ensure full working tree
+        shell: bash
+        run: |
+          # See derive-changed-operators: recover from inherited sparse-checkout
+          # state in the reused runner workspace. Harmless no-op when clean.
+          git sparse-checkout disable 2>/dev/null || true
+          git ls-files -z | xargs -0 -r git update-index --no-skip-worktree
+          git checkout --force HEAD -- .
       - name: Install dependencies
         run: pip install pyyaml
       - name: Check benchmark coverage
