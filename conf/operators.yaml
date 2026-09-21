@@ -17269,6 +17269,28 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '2.2'
+- id: upsample_nearest2d_backward
+  description: Deterministic backward for legacy 2D nearest-neighbor interpolation.
+  for:
+  - upsample_nearest2d_backward
+  labels:
+  - aten
+  - Reduction
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
+- id: upsample_nearest2d_backward_grad_input
+  description: Preallocated-output overload of upsample_nearest2d_backward.
+  for:
+  - upsample_nearest2d_backward.grad_input
+  labels:
+  - aten
+  - Reduction
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: upsample_nearest3d
   description: 'Performs 3D nearest-neighbor interpolation to increase the spatial
     size of volumetric data,
