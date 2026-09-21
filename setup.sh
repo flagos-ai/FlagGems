@@ -40,7 +40,7 @@ export UV_HTTP_TIMEOUT="${UV_HTTP_TIMEOUT:-120}"
 # triton.Config). We check both: every recorded file exists, and the package
 # imports with its real API surface.
 verify_triton_install() {
-  TORCH_DEVICE_BACKEND_AUTOLOAD=0 python - <<'PY'
+  python - <<'PY'
 import importlib.metadata as md
 import site
 import sys
@@ -66,6 +66,10 @@ if missing:
     print(f"{len(missing)} recorded file(s) missing, e.g. {missing[:5]}")
     sys.exit(1)
 
+# Match FlagGems' runtime import order. Some vendor Triton backends import the
+# torch device plugin while Triton itself is still initializing; importing
+# Triton first can therefore create a circular import through torch._dynamo.
+import torch
 import triton
 
 if triton.__file__ is None or not hasattr(triton, "Config"):
