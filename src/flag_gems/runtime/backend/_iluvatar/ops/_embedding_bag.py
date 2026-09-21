@@ -179,6 +179,26 @@ def _check_corex_error(error, count, finish=None):
         )
 
 
+@libentry()
+@triton.jit
+def _embedding_bag_check_flags_native(
+    error,
+    count: tl.constexpr,  # number of error flags
+    block: tl.constexpr,  # error reduction block size
+):
+    lane = tl.arange(0, block)
+    bad = tl.full((), 0, tl.int32)
+    for base in range(0, count, block):
+        code = tl.load(error + base + lane, base + lane < count, other=0)
+        bad |= tl.max(code, 0)
+    tl.device_assert(bad == 0, "embedding_bag: invalid index or offset")
+
+
+def _check_native_error(error, count):
+    with torch_device_fn.device(error.device):
+        _embedding_bag_check_flags_native[(1,)](error, count, 256, debug=True)
+
+
 def _embedding_bag(
     weight,
     indices,
@@ -201,8 +221,10 @@ def _embedding_bag(
         per_sample_weights,
         include_last_offset,
         padding_idx,
-        _async_assert=_USE_DEVICE_ASSERT,
-        _check_error=_check_corex_error,
+        # Keep assertion control flow out of the mapping/output kernel on IX.
+        _async_assert=False,
+        _launch_kwargs={"debug": False},
+        _check_error=_check_native_error if _USE_DEVICE_ASSERT else _check_corex_error,
     )
 
 
@@ -229,6 +251,8 @@ def _embedding_bag_forward_only(
         include_last_offset,
         padding_idx,
         forward_only=True,
-        _async_assert=_USE_DEVICE_ASSERT,
-        _check_error=_check_corex_error,
+        # Keep assertion control flow out of the mapping/output kernel on IX.
+        _async_assert=False,
+        _launch_kwargs={"debug": False},
+        _check_error=_check_native_error if _USE_DEVICE_ASSERT else _check_corex_error,
     )
