@@ -246,6 +246,21 @@ def __getattr__(name):
 register_flagtune_op("mm", default=False, description="matrix multiplication")
 register_flagtune_op("bmm", default=False, description="batched matrix multiplication")
 register_flagtune_op(
+    "mv_row",
+    default=False,
+    description="matrix-vector multiplication over a row-major matrix",
+)
+register_flagtune_op(
+    "mv_column",
+    default=False,
+    description="matrix-vector multiplication over a column-major matrix",
+)
+register_flagtune_op(
+    "mv_reduce",
+    default=False,
+    description="split-K partial reduction for matrix-vector multiplication",
+)
+register_flagtune_op(
     "addmm",
     default=False,
     description="matrix multiplication with bias",

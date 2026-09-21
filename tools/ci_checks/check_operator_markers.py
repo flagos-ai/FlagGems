@@ -90,6 +90,26 @@ def find_test_file(op_id: str, aliases: dict[str, str]) -> Path | None:
     return None
 
 
+def expected_marker(op_id: str, all_op_ids: set) -> str:
+    """Return the pytest marker name expected for an operator id.
+
+    Convention:
+      1. Non-underscore ids use the id verbatim.
+      2. Ids with a leading underscore drop it (``_stack`` -> ``stack``).
+      3. If the stripped name collides with an existing operator id (e.g. the
+         distinct ``stack`` operator), the ``underscore_`` prefix is used
+         instead (``_stack`` -> ``underscore_stack``).
+
+    This mirrors op_marker() in tools/run_tests.py.
+    """
+    if not op_id.startswith("_"):
+        return op_id
+    stripped = op_id.lstrip("_")
+    if stripped in all_op_ids:
+        return f"underscore_{stripped}"
+    return stripped
+
+
 def check_marker_in_file(filepath: Path, op_id: str) -> bool:
     """Check if the test file has at least one @pytest.mark.<op_id> decorator."""
     try:
@@ -149,6 +169,7 @@ def main():
         sys.exit(0)
 
     all_operators = load_operators_yaml()
+    all_op_ids = set(all_operators)
     aliases = load_aliases()
     if aliases:
         print(f"Loaded {len(aliases)} test aliases")
@@ -179,8 +200,11 @@ def main():
             )
             continue
 
-        # Rule 2: Test file must have the operator marker
-        has_marker = check_marker_in_file(test_file, op_id)
+        # Rule 2: Test file must have the operator marker.
+        # For underscore ops the marker follows the naming convention
+        # (see expected_marker), e.g. _stack -> underscore_stack.
+        marker = expected_marker(op_id, all_op_ids)
+        has_marker = check_marker_in_file(test_file, marker)
         if not has_marker:
             # For inplace variants (e.g., abs_), also accept base marker
             if op_id.endswith("_"):
@@ -190,7 +214,7 @@ def main():
         if not has_marker:
             errors.append(
                 f"Operator '{op_id}': test file {test_file} has no "
-                f"@pytest.mark.{op_id} decorator"
+                f"@pytest.mark.{marker} decorator"
             )
 
     if errors:

@@ -212,7 +212,7 @@ def test_fp8_fp4_mega_moe_vllm():
 @pytest.mark.fp8_fp4_mega_moe
 def test_fp8_fp4_mega_moe_torch_ref():
     bench = FP8FP4MegaMoEBenchmark(
-        op_name="fp8_fp4_mega_moe_torch_ref",
+        op_name="fp8_fp4_mega_moe",
         torch_op=_torch_ref_wrapper,
         gems_op=_gems_wrapper,
         dtypes=[torch.bfloat16],

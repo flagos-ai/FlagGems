@@ -189,6 +189,15 @@ linalg_matrix_norm:
     - [8, 4, 32, 32]
   shape_desc: "(*B), M, N"
 
+linalg_matrix_norm_out:
+  shapes:
+    - [256, 512]
+    - [2, 2048]
+    - [4, 32, 64]
+    - [16, 2, 2048]
+    - [8, 4, 32, 32]
+  shape_desc: "(*B), M, N"
+
 log10:
   shapes:
     - [4096, 4096]
@@ -214,6 +223,20 @@ float_power_:
   shapes:
     - [1048576]
     - [64, 64]
+    - [4096, 4096]
+    - [64, 512, 512]
+    - [1024, 65536]
+  shape_desc: "(B), M, N"
+
+trunc:
+  shapes:
+    - [4096, 4096]
+    - [64, 512, 512]
+    - [1024, 65536]
+  shape_desc: "(B), M, N"
+
+trunc_:
+  shapes:
     - [4096, 4096]
     - [64, 512, 512]
     - [1024, 65536]
@@ -356,6 +379,13 @@ median_dim_values:
     - [[640, 1536], 0, false]
     - [[8, 64, 384, 64], 2, false]
   shape_desc: "input shape or [input shape, dim, keepdim]"
+
+IntMMBenchmark:
+  shapes:
+    - [32, 256, 256]
+    - [64, 1024, 1024]
+    - [256, 2048, 2048]
+  shape_desc: "M, N, K"
 
 BlasBenchmark:
   shapes:
@@ -502,6 +532,15 @@ TensorRepeatBenchmark:
   shape_desc: "(B), M, N"
 
 weight_norm:
+  shapes:
+    - [64, 64]
+    - [512, 512]
+    - [1024, 1024]
+
+# Same shapes as weight_norm: the fused reduction allocates several
+# intermediates per input, so DEFAULT_SHAPES' (1024, 1024, 1024) entry
+# (4 GiB per float32 tensor) OOMs when the GPU is shared.
+_weight_norm:
   shapes:
     - [64, 64]
     - [512, 512]
@@ -983,3 +1022,13 @@ adaptive_max_pool3d:
     - [[2, 8, 16, 32, 32], [4, 16, 16]]
     - [[1, 16, 7, 12, 12], [3, 6, 6]]
   shape_desc: "[input_shape, output_size]"
+
+swiglu:
+  shapes:
+    - [4, 32]
+    - [256, 128]
+    - [8192, 128]
+    - [15000, 128]
+    - [2560, 2048]
+    - [15000, 2048]
+  shape_desc: "M, 2H (last dim is split in half)"
