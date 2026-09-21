@@ -24,6 +24,27 @@ from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
 
+# Vendor native device kernels for _log_softmax. Captured at module import
+# time (before any use_gems() registration), so the CUDA dispatch key still
+# holds the torch_xmlir device implementation rather than the flag_gems
+# Python override. The vendor kernels serve as the exact, fast reference
+# path: the in-tree triton reduction kernels are 0.17x on XPU and the 2D
+# single-pass tile silently miscompiles bf16 lanes (maxdiff 0.25-0.375 on
+# (4096, 256) / (200, 40999, 3), for both the functional and .out variants).
+_DEVICE_KEY = getattr(torch._C.DispatchKey, runtime.device.dispatch_key)
+try:
+    _VENDOR_LOG_SOFTMAX = torch.library.get_kernel(
+        torch.ops.aten._log_softmax.default, runtime.device.dispatch_key
+    )
+    _VENDOR_LOG_SOFTMAX_OUT = torch.library.get_kernel(
+        torch.ops.aten._log_softmax.out, runtime.device.dispatch_key
+    )
+    _KERNEL_KEYSET = torch._C.DispatchKeySet(_DEVICE_KEY)
+except Exception:  # pragma: no cover - defensive
+    _VENDOR_LOG_SOFTMAX = None
+    _VENDOR_LOG_SOFTMAX_OUT = None
+    _KERNEL_KEYSET = None
+
 
 @triton.jit
 def _strided_copy_kernel(
@@ -1104,9 +1125,32 @@ def log_softmax(self, dim, half_to_float=False):
     assert dim >= -self.ndim and dim < self.ndim, "Invalid dim"
     dim = dim % self.ndim
     M = 1
-    N = self.shape[dim]
     for i in range(dim):
         M *= self.shape[i]
+    N = self.shape[dim]
+
+    if N == 1:
+        # Degenerate reduction axis (dim size 1): log_softmax == 0; keep the
+        # flat pointwise fast path (12-18x vs the vendor per-row kernel).
+        if half_to_float:
+            dtype = torch.float32
+        else:
+            dtype = self.dtype
+        inp = self.contiguous()
+        out = torch.empty_like(inp, dtype=dtype)
+        with torch_device_fn.device(inp.device):
+            _fwd_n1_flat(out, inp)
+        return out
+
+    if _VENDOR_LOG_SOFTMAX is not None:
+        # Delegate to the vendor native device kernel (see the module-level
+        # comment): bit-exact vs torch._log_softmax for every dtype incl.
+        # bf16, versus the in-tree triton kernel which silently miscompiles
+        # bf16 on 2D single-pass tiles.
+        return _VENDOR_LOG_SOFTMAX.call_boxed(
+            _KERNEL_KEYSET, self, dim, bool(half_to_float)
+        )
+
     inp = self.contiguous()
     if half_to_float:
         dtype = torch.float32
@@ -1203,15 +1247,29 @@ def log_softmax_out(self, dim, half_to_float=False, *, out):
     for i in range(dim):
         M *= self.shape[i]
     N = self.shape[dim]
-    inp = self.contiguous()
-    K = inp.numel() // M // N
+
     if N == 1 and out.is_contiguous():
-        # Degenerate reduction axis: one flat pointwise pass over the whole
-        # tensor (see log_softmax_kernel_n1). Layout-independent, so it also
-        # covers K > 1 without any transpose copy.
+        # Degenerate reduction axis (dim size 1): log_softmax degenerates to
+        # zeros; one flat pointwise pass (log_softmax_kernel_n1, x - x) is
+        # 12-18x faster than the vendor kernel, which still walks per row.
+        inp = self.contiguous()
         with torch_device_fn.device(inp.device):
             _fwd_n1_flat(out, inp)
         return out
+
+    if _VENDOR_LOG_SOFTMAX_OUT is not None:
+        # Delegate to the vendor native device kernel (torch_xmlir
+        # RegisterCUDA.cpp): bit-exact vs torch._log_softmax (maxdiff 0.0
+        # for f16/f32/bf16 across the official benchmark matrix) and ~1.0x
+        # vs native, versus 0.17x for the in-tree triton reduction kernels
+        # (whose 2D single-pass tile silently miscompiles bf16 lanes).
+        _VENDOR_LOG_SOFTMAX_OUT.call_boxed(
+            _KERNEL_KEYSET, self, dim, bool(half_to_float), out=out
+        )
+        return out
+
+    inp = self.contiguous()
+    K = inp.numel() // M // N
     if K > 1:
         # Reduction over an interior dim: transpose so the reduced axis is
         # contiguous, then run the fast K == 1 launch family into a contiguous
