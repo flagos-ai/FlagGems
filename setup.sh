@@ -23,6 +23,59 @@ NC='\033[0m'
 ok()   { printf " ${GREEN}[OK]${NC}\n"; }
 fail() { printf " ${RED}[FAILED]${NC}\n"; exit 1; }
 
+# Force uv to copy files into the venv instead of hardlinking from the cache.
+# In CI the uv cache and the venv often live on different filesystems, where
+# hardlinking silently falls back and can leave a partially-populated package
+# (dist-info written, files missing). Copying is deterministic.
+export UV_LINK_MODE="${UV_LINK_MODE:-copy}"
+
+# Default uv HTTP timeout (30s) is too tight on flaky networks and causes
+# spurious download failures. Give it more headroom.
+export UV_HTTP_TIMEOUT="${UV_HTTP_TIMEOUT:-120}"
+
+# Verify that the installed Triton/FlagTree package is actually complete.
+# uv's exit code only tells us it wrote the dist-info; it does not catch a
+# truncated install where files listed in RECORD never landed on disk. That
+# leaves `import triton` degraded to an empty namespace package (no
+# triton.Config). We check both: every recorded file exists, and the package
+# imports with its real API surface.
+verify_triton_install() {
+  python - <<'PY'
+import importlib.metadata as md
+import site
+import sys
+
+# Restrict the search to the venv's own site-packages. A global compiler
+# side dir (e.g. /opt/flagtree, added to PYTHONPATH by base-image profile
+# scripts) can otherwise shadow the venv install and get inspected instead.
+venv_site_packages = site.getsitepackages()[0]
+
+for name in ("flagtree", "triton"):
+    for dist in md.Distribution.discover(name=name, path=[venv_site_packages]):
+        break
+    else:
+        continue
+    break
+else:
+    print("no triton/flagtree metadata found in venv site-packages")
+    sys.exit(1)
+
+files = dist.files or []
+missing = [str(f) for f in files if not f.locate().exists()]
+if missing:
+    print(f"{len(missing)} recorded file(s) missing, e.g. {missing[:5]}")
+    sys.exit(1)
+
+import triton
+
+if triton.__file__ is None or not hasattr(triton, "Config"):
+    print(f"triton import incomplete (__file__={triton.__file__})")
+    sys.exit(1)
+
+print("triton install verified OK")
+PY
+}
+
 BACKENDS_YAML="src/flag_gems/backends.yaml"
 
 # ── Validate argument ─────────────────────────────────────────
@@ -204,12 +257,24 @@ if [ -z "${COMPILER}" ]; then
   fi
 fi
 
+SITE_PACKAGES="$(python -c 'import site; print(site.getsitepackages()[0])')"
+
 if [ "${COMPILER}" = "flagtree" ]; then
   if [ -n "${FLAGTREE_PKGS}" ]; then
-    printf "Installing FlagTree ..."
-    uv pip uninstall triton
-    uv pip install -q ${FLAGTREE_PKGS} --default-index "${FLAGOS_PYPI}" || fail
-    ok
+    uv pip uninstall triton 2>/dev/null || true
+    for attempt in 1 2 3; do
+      printf "Installing FlagTree (attempt ${attempt}) ..."
+      if uv pip install -q --reinstall ${FLAGTREE_PKGS} \
+           --default-index "${FLAGOS_PYPI}" --index "${MIRROR}" && verify_triton_install; then
+        ok
+        break
+      fi
+      printf " ${RED}[incomplete]${NC}, cleaning cache and retrying ...\n"
+      uv pip uninstall flagtree 2>/dev/null || true
+      uv cache clean flagtree 2>/dev/null || true
+      rm -rf "${SITE_PACKAGES}/triton"
+      [ "${attempt}" = 3 ] && { printf "FlagTree install"; fail; }
+    done
   else
     echo "Error: COMPILER=flagtree but FlagTree is not available for '${BACKEND}'."
     exit 1
@@ -217,10 +282,20 @@ if [ "${COMPILER}" = "flagtree" ]; then
 fi
 
 if [ "${COMPILER}" = "triton" ] && [ -n "${TRITON_PKGS}" ]; then
-  printf "Installing Triton ..."
-  uv pip uninstall flagtree
-  uv pip install -q ${TRITON_PKGS} --default-index "${FLAGOS_PYPI}" || fail
-  ok
+  uv pip uninstall flagtree 2>/dev/null || true
+  for attempt in 1 2 3; do
+    printf "Installing Triton (attempt ${attempt}) ..."
+    if uv pip install -q --reinstall ${TRITON_PKGS} \
+         --default-index "${FLAGOS_PYPI}" --index "${MIRROR}" && verify_triton_install; then
+      ok
+      break
+    fi
+    printf " ${RED}[incomplete]${NC}, cleaning cache and retrying ...\n"
+    uv pip uninstall triton 2>/dev/null || true
+    uv cache clean triton 2>/dev/null || true
+    rm -rf "${SITE_PACKAGES}/triton"
+    [ "${attempt}" = 3 ] && { printf "Triton install"; fail; }
+  done
 elif [ "${COMPILER}" = "triton" ] && [ -z "${TRITON_PKGS}" ]; then
   echo "Error: COMPILER=triton but no triton packages configured for '${BACKEND}'"
   exit 1
@@ -249,6 +324,7 @@ ok
 # So that `source .venv/bin/activate` sets up the full environment.
 printf "Writing environment to .venv/bin/activate ..."
 python3 -c "
+import os
 import yaml
 
 cfg = yaml.safe_load(open('${BACKENDS_YAML}'))
@@ -261,8 +337,17 @@ lines.append('# --- FlagGems environment (${BACKEND}) ---')
 for k, v in b.get('env', {}).items():
     lines.append(f'export {k}={v}')
 
+repo_root = os.getcwd()
+helper = os.path.join(repo_root, 'tools', 'source_env_bash.sh')
+
 for script in b.get('env_source', []):
-    lines.append(f'[ -f {script} ] && source {script} || true')
+    # Vendor scripts (e.g. the hygon DTK env.sh) locate themselves via the
+    # bash-only \${BASH_SOURCE[0]}, which resolves incorrectly when the
+    # script is sourced transitively (activate -> env.sh) instead of run
+    # directly, silently pointing LD_LIBRARY_PATH etc. at the wrong tree.
+    # Route through tools/source_env_bash.sh, which sources it under a
+    # clean bash and re-exports only the resulting diff.
+    lines.append(f'[ -f {script} ] && eval \"\$(bash {helper} {script})\" || true')
 
 lines.append('# --- end FlagGems environment ---')
 

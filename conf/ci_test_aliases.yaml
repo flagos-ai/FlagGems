@@ -46,6 +46,8 @@ tensordot_out: test_tensordot
 # Compound / alternative names
 arange_start_step: test_arange
 addmm_dtype: test_addmm
+addmm_out_vector_bias: test_addmm
+addmm_vector_bias: test_addmm
 all_dim: test_all
 all_dims: test_all
 any_dim: test_any
@@ -58,10 +60,23 @@ nanmedian_dim_values: test_nanmedian
 searchsorted_scalar: test_searchsorted
 scatter_reduce_two: test_scatter_reduce
 scatter_reduce_two_: test_scatter_reduce
+bmm_w8a8_fp8: test_bmm
+flash_attn_varlen_opt_func: test_flash_attn_varlen_func
+gru_data: test_gru
+list_to_tensor: test__list_to_tensor
+linalg_matrix_norm_out: test_linalg_matrix_norm
+linalg_matrix_rank_hermitian: test_linalg_matrix_rank
+ctc_loss_backward: test_ctc_loss
+margin_ranking_loss_backward: test_margin_ranking_loss
+mm_self_transpose: test_mm
 special_zeta_scalar_tensor: test_special_zeta
 special_zeta_tensor_scalar: test_special_zeta
 
 # Operators tested in combined files or with different naming
+rshift_scalar: test_rshift
+rshift_tensor: test_rshift
+rshift_scalar_out: test_rshift
+rshift_tensor_out: test_rshift
 batch_norm_backward: test_batch_norm
 multi_margin_loss_backward: test_multi_margin_loss
 multi_margin_loss_backward_out: test_multi_margin_loss
