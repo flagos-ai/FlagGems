@@ -1,7 +1,6 @@
 import logging
 import os
 
-import torch
 import triton
 import triton.language as tl
 from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
