@@ -126,16 +126,7 @@ def count_kernel(
     GRID_N: tl.constexpr,
     R_PAD: tl.constexpr,
 ):
-    # NOTE(kunlunxin): the histogram is written *bin-major* (all GRID_N block
-    # counters of bin 0, then bin 1, ...) with a per-row pitch of R_PAD.  In
-    # that layout the exclusive scan over the whole row is exactly
-    #     global_offsets[b, i] = sum_{j<i} total[j] + sum_{b'<b} counts[b', i]
-    # i.e. the value `scatter_kernel` needs, so a single contiguous 1D scan
-    # (bin_prefix_kernel) replaces the previous host-side chain of
-    # sum_dim + 2x cumsum + broadcast/clone + add.
-    # GRID_N / R_PAD are constexpr on purpose: they remove the runtime cdiv and
-    # the runtime div/mod on `pid`, and adding them as *runtime* i32 scalars is
-    # a known 15-30x launch-cost cliff on this backend.
+
     pid = tl.program_id(0)
 
     row_idx = pid // GRID_N
@@ -171,16 +162,6 @@ def bin_prefix_kernel(
     R_PAD: tl.constexpr,  # padded row pitch, multiple of TILE
     TILE: tl.constexpr,
 ):
-    """One program per row: exclusive scan of the bin-major histogram.
-
-    Loads and stores are *unmasked* on purpose -- the caller allocates
-    M * R_PAD elements and R_PAD is a multiple of TILE, so every lane of every
-    tile stays inside this row's own padded slice.  That side-steps both the
-    masked-store granule behaviour and `other=` contamination on this backend;
-    the padding lanes are neutralised with an explicit `tl.where` instead.
-    The carry follows the shape of cumsum_chunk_kernel in cumsum.py (vector
-    carry + tl.sum), which is the proven in-loop 1D scan pattern here.
-    """
     row = tl.program_id(0)
     base = row * R_PAD
     carry = tl.zeros([TILE], tl.int32)
@@ -226,24 +207,6 @@ def scatter_kernel(
     bfe_mask = num_bins - 1
     key = (val_u >> bit_offset) & bfe_mask
 
-    # NOTE(kunlunxin): store masks are NOT honoured for data-dependent (scatter)
-    # addresses on this backend -- every lane of the tile performs its write.
-    # The previous form
-    #     local_rank = tl.cumsum(bin_mask.to(tl.int32), axis=0) - 1
-    #     tl.store(x_out_ptr + row_start + global_start + local_rank, val,
-    #              mask=bin_mask)
-    # therefore (a) wrote *out of bounds* at `global_start - 1` from every lane
-    # that precedes the first match of a bin (local_rank == -1; quantified with
-    # canary buffers in harness/probe/unique2_masked_scatter_probe.py -> one OOB
-    # element per tile, reported by the driver as "axi wresp error" / status 700)
-    # and (b) let every inactive lane after a match re-write the slot of the
-    # previous match with its own value, silently corrupting the sorted output.
-    # Fix: keep a per-lane destination, default it to a lane-unique scratch slot
-    # in front of the output buffer (the caller over-allocates BLOCK_N elements
-    # and passes a suffix view, so negative offsets in [-BLOCK_N, -1] are legal
-    # and unique per lane), select the real destination with tl.where, and issue
-    # a single *unmasked* store per lane.  Also avoid `bool.to(int32)`, which
-    # trips triton_xpu.convert_layout at large BLOCK.
     lane = tl.arange(0, BLOCK_N)
     dest_idx = (lane - BLOCK_N).to(tl.int64)
 
@@ -288,30 +251,6 @@ def radix_sort_low_mem(arr, k_bits=4, descending=False):
     arr = arr.reshape(-1, N)
     M = arr.shape[0]
 
-    # NOTE(kunlunxin): BLOCK_N is the per-program tile of the count/scatter
-    # passes.  512 leaves the discrete-scatter pass launch-bound: measured on
-    # XPU 2 for torch.sort of 16,777,216 int32 elements, 512 -> 1876 ms,
-    # 1024 -> 1247 ms, 2048 -> 764 ms, 4096 -> 590 ms.  8192 is *not* usable --
-    # it is the same speed as 4096 but silently mis-sorts (values_ok=False), so
-    # 4096 is the largest qualified tile.  Qualified with
-    # harness/probe/unique2_sort_validate.py (290/290: 8 dtypes x 17 shapes x
-    # asc/desc + constant inputs) and unique2_sort_sweep.py (exact and index
-    # permutation clean at N = 1M .. 167.8M).
-    #
-    # NOTE(kunlunxin, sort_stable 2026-08-30): a *fixed* 4096 is only right for
-    # long rows.  count/scatter cost tracks the padded row length
-    # ceil(N / BLOCK_N) * BLOCK_N (every masked-off lane still pays the 16-bin
-    # loop), so a 4096 tile makes a 64-wide row 64x more expensive than it needs
-    # to be.  Measured on XPU 5 (fp32, median of 7, candidate chain):
-    #   N=64    B=64 2.72 ms | 128 7.72 | 256 8.09 | 512 8.95 | 4096 11.94
-    #   N=256   B=256 11.33  | 128 16.16 | 64 26.08 | 512 30.40 | 4096 41.71
-    #   N=512   B=512 55.35  | 256 77.33 | 1024 140.67 | 4096 158.87
-    #   N=1024  B=1024 67.87 | 512 93.31 | 2048 143.89 | 4096 161.03
-    #   N=4096  B=4096 441.8 | 2048 611.8 | 1024 929.6 | 512 1364.2
-    #   N=131072/262144: 4096 is the best of {512,1024,2048,4096}
-    # i.e. the optimum is next_pow2(N) clamped to [64, 4096] on every shape
-    # measured.  64 is the floor because a <= 32-lane tile is mis-lowered here,
-    # 4096 the ceiling because 8192 silently mis-sorts (see above).
     _env_block_n = os.environ.get("GEMS_XPU_RADIX_BLOCK_N")
     if _env_block_n:
         BLOCK_N = int(_env_block_n)
@@ -320,14 +259,6 @@ def radix_sort_low_mem(arr, k_bits=4, descending=False):
     grid_n = triton.cdiv(N, BLOCK_N)
     grid = (M * grid_n,)
 
-    # NOTE(kunlunxin): scatter_kernel parks every inactive lane of a tile on a
-    # lane-unique scratch slot at `dest - BLOCK_N` (store masks are ignored for
-    # scatter addresses on this backend, see the comment there).  Allocate the
-    # ping-pong buffers with a BLOCK_N-element head pad plus a 256-element tail
-    # pad (masked *affine* stores on this backend touch a full 64-element
-    # granule, and init_sort_buffers_kernel runs a 256-lane masked tile) and hand
-    # the kernels a contiguous suffix view, so those writes stay inside our own
-    # allocation instead of clobbering the neighbouring one.
     _HEAD_PAD = BLOCK_N
     _TAIL_PAD = 256
     _keepalive = []
@@ -359,14 +290,6 @@ def radix_sort_low_mem(arr, k_bits=4, descending=False):
     num_passes = (num_bits + k_bits - 1) // k_bits
     num_bins = 2**k_bits
 
-    # NOTE(kunlunxin): the per-pass histogram lives in a bin-major [M, R_PAD]
-    # buffer so that its exclusive prefix sum (bin_prefix_kernel, one program
-    # per row) *is* the scatter destination table.  This replaces the previous
-    # per-pass host chain sum_dim + cumsum + cumsum + broadcast_to().clone()
-    # + add, which allocated three int64 tensors of M*grid_n*num_bins elements
-    # per pass (vendor `cumsum` promotes int32 -> int64) and, when grid_n was
-    # small, degenerated into scan_then_fan with a 1-wide scan tile.
-    # R_PAD is a multiple of TILE so bin_prefix_kernel needs no masking at all.
     r = num_bins * grid_n
     tile_r = max(64, min(4096, triton.next_power_of_2(r)))
     r_pad = triton.cdiv(r, tile_r) * tile_r
@@ -507,12 +430,7 @@ def sort(inp, dim=-1, descending=False):
                 indices, inp.numel(), 1, BLOCK_SIZE=256
             )
         return inp, indices
-    # NOTE(kunlunxin): the bitonic argsort path (sort_kernel) mis-sorts /
-    # faults the device on XPU (unrolled compare-and-swap chain, ~hundreds of
-    # where-ops over BLOCK_SIZE lanes → miscompile + device kernel exception),
-    # so every non-trivial size goes through the stable radix chain here
-    # (identical to sort_stable); reference semantics of torch.sort with
-    # stable=True are preserved and radix is stable by construction.
+
     return sort_stable(inp, stable=True, dim=dim, descending=descending)
 
 
