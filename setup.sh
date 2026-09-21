@@ -40,7 +40,12 @@ export UV_HTTP_TIMEOUT="${UV_HTTP_TIMEOUT:-120}"
 # triton.Config). We check both: every recorded file exists, and the package
 # imports with its real API surface.
 verify_triton_install() {
-  FLAGGEMS_VERIFY_BACKEND="${BACKEND}" python - <<'PY'
+  local torch_backend_autoload=0
+  if [[ "${BACKEND}" == ascend-* ]]; then
+    torch_backend_autoload=1
+  fi
+  TORCH_DEVICE_BACKEND_AUTOLOAD="${torch_backend_autoload}" \
+    FLAGGEMS_VERIFY_BACKEND="${BACKEND}" python - <<'PY'
 import importlib.metadata as md
 import os
 import site
@@ -73,8 +78,6 @@ if missing:
 # this install check, so keep their automatic loading disabled here.
 if os.environ["FLAGGEMS_VERIFY_BACKEND"].startswith("ascend-"):
     import torch
-else:
-    os.environ["TORCH_DEVICE_BACKEND_AUTOLOAD"] = "0"
 import triton
 
 if triton.__file__ is None or not hasattr(triton, "Config"):
