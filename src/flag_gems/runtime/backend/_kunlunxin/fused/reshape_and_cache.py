@@ -112,7 +112,9 @@ def reshape_and_cache(
     # key/value offsets (token_idx * stride + i) must fit in int32; strided
     # views (e.g. qkv.unbind with 3*H*K row stride) can exceed 2^31 even when
     # numel is below it (t_copy lesson).
-    max_src = (num_tokens - 1) * max(key_stride, value_stride) + num_heads * head_size - 1
+    max_src = (
+        (num_tokens - 1) * max(key_stride, value_stride) + num_heads * head_size - 1
+    )
     use_i64 = max_src > 2**31 - 1
     with torch_device_fn.device(key.device):
         reshape_and_cache_kernel[grid](
