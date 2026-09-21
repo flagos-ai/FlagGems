@@ -10922,7 +10922,7 @@ ops:
   kind:
   - LinearAlg
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: orgqr_out
   description: Computes the Householder matrix product into the supplied output tensor.
   for:
@@ -10933,7 +10933,7 @@ ops:
   kind:
   - LinearAlg
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: ormqr
   description: 'Computes the matrix-matrix multiplication of a product of Householder
     matrices
