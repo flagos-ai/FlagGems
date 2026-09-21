@@ -41,3 +41,14 @@ CUSTOMIZED_UNUSED_OPS = (
 
 
 __all__ = ["*"]
+
+
+# Reference-side monkey patches (ported from the _sunrise backend template,
+# 2026-09-04): try the original aten op first and fall back to a CPU reference
+# only on NotImplementedError while outside flag_gems.use_gems(). This repairs
+# the reference side of official tests on this platform, where ops like
+# aten::_flash_attention_forward / aten::_conv_depthwise2d /
+# aten::cudnn_convolution have no usable kernel.
+from . import monkey_patch as _monkey_patch  # noqa: E402
+
+_monkey_patch.apply_kunlunxin_monkey_patches()

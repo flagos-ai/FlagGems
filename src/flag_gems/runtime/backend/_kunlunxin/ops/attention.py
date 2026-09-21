@@ -1143,41 +1143,54 @@ def efficient_attention_backward(
     window_size=None,
     shared_storage_dqdkdv=False,
 ):
-    """Kunlunxin implementation of ATen's dense efficient-attention backward."""
-    assert bias is None and not bias_requires_grad, "attention bias is unsupported"
-    assert dropout_p == 0.0, "dropout is unsupported"
-    assert (
-        cu_seqlens_q is None and cu_seqlens_k is None
-    ), "varlen attention is unsupported"
-    assert num_splits_key is None, "split-key attention is unsupported"
-    assert window_size is None, "windowed attention is unsupported"
-    assert not shared_storage_dqdkdv, "shared gradient storage is unsupported"
+    """Kunlunxin efficient-attention backward via the xfa binding."""
+    logger.debug("GEMS_KUNLUNXIN EFFICIENT_ATTENTION_BACKWARD (binding)")
+    if bias is not None or bias_requires_grad:
+        raise NotImplementedError(
+            "kunlunxin efficient-attention backward binding: "
+            "attention bias is not supported"
+        )
+    if dropout_p != 0.0:
+        raise NotImplementedError(
+            "kunlunxin efficient-attention backward binding: dropout unsupported"
+        )
+    if cu_seqlens_q is not None or cu_seqlens_k is not None:
+        raise NotImplementedError(
+            "kunlunxin efficient-attention backward binding: varlen unsupported"
+        )
+    if num_splits_key not in (None, 0):
+        raise NotImplementedError(
+            "kunlunxin efficient-attention backward binding: split-key unsupported"
+        )
+    if shared_storage_dqdkdv:
+        raise NotImplementedError(
+            "kunlunxin efficient-attention backward binding: "
+            "shared gradient storage unsupported"
+        )
+    if window_size is not None:
+        raise NotImplementedError(
+            "kunlunxin efficient-attention backward binding: window unsupported"
+        )
+    if custom_mask_type not in (0, 1):
+        raise NotImplementedError(
+            "kunlunxin efficient-attention backward binding: mask types 0/1 only"
+        )
 
-    if custom_mask_type == 0:
-        is_causal = False
-    elif custom_mask_type == 1:
-        is_causal = True
-    else:
-        raise ValueError(f"unsupported custom_mask_type: {custom_mask_type}")
-
-    q_len = query.shape[1]
-    sm_scale = 1.0 / math.sqrt(query.shape[-1]) if scale is None else scale
-    d_query, d_key, d_value = _staged_attention_backward(
-        grad_out_.permute(0, 2, 1, 3).contiguous(),
-        query.permute(0, 2, 1, 3).contiguous(),
-        key.permute(0, 2, 1, 3).contiguous(),
-        value.permute(0, 2, 1, 3).contiguous(),
-        out.permute(0, 2, 1, 3).contiguous(),
-        logsumexp[:, :, :q_len].contiguous(),
-        sm_scale,
-        is_causal,
+    is_causal = custom_mask_type == 1
+    query = query.contiguous()
+    key = key.contiguous()
+    value = value.contiguous()
+    grad_out = grad_out_.contiguous()
+    out_c = out.contiguous()
+    head_dim = query.shape[-1]
+    sm_scale = 1.0 / math.sqrt(head_dim) if scale is None else float(scale)
+    lse = logsumexp[:, :, : query.shape[1]].contiguous()
+    if lse.dtype != torch.float32:
+        lse = lse.float()
+    dq, dk, dv = _eff_bwd_launch(
+        grad_out, query, key, value, out_c, lse, sm_scale, is_causal
     )
-    return (
-        d_query.permute(0, 2, 1, 3).contiguous(),
-        d_key.permute(0, 2, 1, 3).contiguous(),
-        d_value.permute(0, 2, 1, 3).contiguous(),
-        None,
-    )
+    return dq, dk, dv, None
 
 
 class ScaleDotProductAttention(torch.autograd.Function):
@@ -1344,7 +1357,7 @@ def scaled_dot_product_attention(
 
 
 def scaled_dot_product_efficient_attention_backward(
-    grad_out,
+    grad_out_,
     query,
     key,
     value,
@@ -1359,39 +1372,43 @@ def scaled_dot_product_efficient_attention_backward(
     *,
     scale=None,
 ):
-    need_dq, need_dk, need_dv, need_dbias = grad_input_mask
+    """Kunlunxin sdp-efficient backward via the xfa binding (BHSD interface)."""
+    logger.debug(
+        "GEMS_KUNLUNXIN SCALED_DOT_PRODUCT_EFFICIENT_ATTENTION_BACKWARD (binding)"
+    )
+    if attn_bias is not None:
+        raise NotImplementedError(
+            "kunlunxin sdp-efficient backward binding: "
+            "attention bias is not supported"
+        )
     if dropout_p != 0.0:
         raise NotImplementedError(
-            "Kunlunxin efficient attention backward does not support dropout"
+            "kunlunxin sdp-efficient backward binding: dropout unsupported"
         )
-    if attn_bias is not None or need_dbias:
-        raise NotImplementedError(
-            "Kunlunxin efficient attention backward does not support attention bias"
-        )
-
-    # The native efficient-attention LSE is already in the primitive's BHS layout.
-    logsumexp_base2 = logsumexp.contiguous()
-    dq, dk, dv = scaled_dot_product_attention_backward(
-        grad_out.contiguous(),
-        query.contiguous(),
-        key.contiguous(),
-        value.contiguous(),
-        out.contiguous(),
-        logsumexp_base2,
-        dropout_p=dropout_p,
-        is_causal=is_causal,
-        scale=scale,
+    need_dq, need_dk, need_dv, need_dbias = grad_input_mask
+    grad_out = grad_out_.permute(0, 2, 1, 3).contiguous()
+    query_c = query.permute(0, 2, 1, 3).contiguous()
+    key_c = key.permute(0, 2, 1, 3).contiguous()
+    value_c = value.permute(0, 2, 1, 3).contiguous()
+    out_c = out.permute(0, 2, 1, 3).contiguous()
+    head_dim = query.shape[-1]
+    sm_scale = 1.0 / math.sqrt(head_dim) if scale is None else float(scale)
+    lse = logsumexp.contiguous()
+    if lse.dtype != torch.float32:
+        lse = lse.float()
+    dq, dk, dv = _eff_bwd_launch(
+        grad_out, query_c, key_c, value_c, out_c, lse, sm_scale, is_causal
     )
-    dbias = None
+    dq = dq.permute(0, 2, 1, 3).contiguous()
+    dk = dk.permute(0, 2, 1, 3).contiguous()
+    dv = dv.permute(0, 2, 1, 3).contiguous()
     if not need_dq:
         dq = torch.zeros_like(query)
     if not need_dk:
         dk = torch.zeros_like(key)
     if not need_dv:
         dv = torch.zeros_like(value)
-    if not need_dbias:
-        dbias = None
-    return dq, dk, dv, dbias
+    return dq, dk, dv, None
 
 
 _LOG2E = tl.constexpr(1.4426950408889634)
@@ -1925,3 +1942,118 @@ def flash_attn_varlen_func(
         )
 
     return (out, softmax_lse) if return_softmax_lse else out
+
+
+# ============================================================================
+# [effbwd 2026-09-18] Efficient-attention BACKWARD family via the XPU
+# launch-table binding. Dense (B, S, H, D) contiguous inputs are dispatched to
+# xfa mha_varlen_bwd by the C handler (third_party/xpu/device/xpu3/
+# launch_extra.cpp: handle_mha_bwd / launch_mha_bwd_kernel). The carrier kernel
+# below is never actually executed: the launch table intercepts it by name. If
+# the handler honestly falls back (INT_MIN) the carrier body poisons dQ with
+# NaN so a missed binding can never look like a valid result.
+# The reference side (test-time calls outside use_gems) is served by the
+# backend monkey_patch CPU reference; nothing here changes that.
+# ============================================================================
+
+
+@triton.jit
+def _sdpa_bwd(
+    DOUT,
+    Q,
+    K,
+    V,
+    OUT,
+    LSE,
+    DQ,
+    DK,
+    DV,
+    SCALE,
+    BATCH: tl.constexpr,
+    Q_CTX: tl.constexpr,
+    KV_CTX: tl.constexpr,
+    HEAD_NUM: tl.constexpr,
+    HEAD_NUM_K: tl.constexpr,
+    HEAD_DIM: tl.constexpr,
+    IS_CAUSAL: tl.constexpr,
+):
+    # Poison-only fallback body (see file-header note).
+    if tl.program_id(0) == 0:
+        tl.store(
+            DQ + tl.arange(0, 1),
+            tl.full((1,), float("nan"), DQ.dtype.element_ty),
+        )
+
+
+def _eff_bwd_launch(
+    grad_out,
+    query,
+    key,
+    value,
+    out,
+    lse,
+    sm_scale,
+    is_causal,
+):
+    """Launch the bound backward carrier on (B, S, H, D) contiguous inputs."""
+    batch, q_len, q_heads, head_dim = query.shape
+    kv_len = key.shape[1]
+    kv_heads = key.shape[2]
+    dq = torch.empty_like(query)
+    if is_causal and q_len < kv_len:
+        # [C-189 2026-09-20] Rectangular causal (q < kv): the device kernel
+        # anchors the causal diagonal at the bottom-right while this op family
+        # (and its reference) uses the top-left alignment.  On the first
+        # q_len keys both alignments coincide (square problem) and the keys
+        # beyond q_len are never attended, so run the backward on the key
+        # prefix and zero the tail gradients.
+        key_pref = key[:, :q_len].contiguous()
+        value_pref = value[:, :q_len].contiguous()
+        dk_pref = torch.empty_like(key_pref)
+        dv_pref = torch.empty_like(value_pref)
+        _sdpa_bwd[(1,)](
+            grad_out,
+            query,
+            key_pref,
+            value_pref,
+            out,
+            lse,
+            dq,
+            dk_pref,
+            dv_pref,
+            float(sm_scale),
+            BATCH=batch,
+            Q_CTX=q_len,
+            KV_CTX=q_len,
+            HEAD_NUM=q_heads,
+            HEAD_NUM_K=kv_heads,
+            HEAD_DIM=head_dim,
+            IS_CAUSAL=True,
+        )
+        dk = torch.zeros_like(key)
+        dv = torch.zeros_like(value)
+        dk[:, :q_len] = dk_pref
+        dv[:, :q_len] = dv_pref
+        return dq, dk, dv
+    dk = torch.empty_like(key)
+    dv = torch.empty_like(value)
+    _sdpa_bwd[(1,)](
+        grad_out,
+        query,
+        key,
+        value,
+        out,
+        lse,
+        dq,
+        dk,
+        dv,
+        float(sm_scale),
+        BATCH=batch,
+        Q_CTX=q_len,
+        KV_CTX=kv_len,
+        HEAD_NUM=q_heads,
+        HEAD_NUM_K=kv_heads,
+        HEAD_DIM=head_dim,
+        IS_CAUSAL=bool(is_causal),
+    )
+    return dq, dk, dv
