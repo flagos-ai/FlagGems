@@ -91,9 +91,7 @@ def pow_tt_fast_kernel(x_ptr, e_ptr, out_ptr, BLOCK: tl.constexpr):
 
 
 @triton.jit
-def pow_tt_fast_kernel_masked(
-    x_ptr, e_ptr, out_ptr, n_elements, BLOCK: tl.constexpr
-):
+def pow_tt_fast_kernel_masked(x_ptr, e_ptr, out_ptr, n_elements, BLOCK: tl.constexpr):
     pid = ext.program_id(0)
     offset = pid * BLOCK + tl.arange(0, BLOCK)
     mask = offset < n_elements
