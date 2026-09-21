@@ -119,8 +119,15 @@ _LEAKY_BACKWARD_DTYPES = (torch.float16, torch.float32, torch.bfloat16)
 # fp16/bf16 have fewer bytes per element, so BLOCK must scale up too (the in-flight window
 # only pays off once per-core bytes are large enough).
 _LEAKY_BSL = 8192
-_LEAKY_FAT_BLOCK = 131072
-_LEAKY_FAT_MIN_NUMEL = 1 << 22  # 4M: at 131072 grid≥32, avoiding under-occupancy
+# Fat BLOCK for large fp16/bf16 shapes (2026-09-21 floor probe, official metric):
+# with the in-flight window filled (bsl 8192), the residual wall is the fp32->bf16
+# store conversion (no single-instruction cvt; lowering emits <16 x i32> + vand.u.mz,
+# full/cvt2 ~= 1.007 -- i.e. store-conversion is the floor, not launch or DMA).
+# At 131072 a 16.7M tensor is only 128 programs, which under-fills the cores; 65536
+# gives 256 programs and sits on the store-conversion floor full (bf16 ~1.33x /
+# fp16 ~1.10x vs the 131072 baseline, correctness preserved -- same flat body).
+_LEAKY_FAT_BLOCK = 65536
+_LEAKY_FAT_MIN_NUMEL = 1 << 22  # 4M: at 65536 grid>=64, keeping every core fed
 
 
 @triton.jit
