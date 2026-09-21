@@ -143,7 +143,7 @@ def _embedding_bag_sparse_mean(
 
 @libentry()
 @triton.jit
-def _legacy_offset2bag(
+def _ascend_offset2bag(
     offsets,
     mapping,
     num_indices: tl.constexpr,
@@ -380,14 +380,15 @@ def _launch_ascend_backward(kernel, packed_kernel, grid, pointers, metadata, **o
             metadata[13],
             128,
         )
-    if _LEGACY_TRITON and kernel is _eb_backward_validate and not metadata[13]:
+    if kernel is _eb_backward_validate and not metadata[13]:
+        # CANN 9.1 also rejects the validator's reduction-controlled search loop.
         # Reuse the existing disjoint mapping allocation after host validation.
         # The fixed-step search is the one already used by the forward kernel;
         # invalid offsets are still reported by the unchanged validator.
         n, b = metadata[1:3]
         mapping = pointers[5]
         if n:
-            _legacy_offset2bag[(triton.cdiv(n, 128),)](
+            _ascend_offset2bag[(triton.cdiv(n, 128),)](
                 pointers[1], mapping, n, b, metadata[8], b.bit_length(), 128
             )
         pointers = (*pointers[:2], mapping, *pointers[3:])

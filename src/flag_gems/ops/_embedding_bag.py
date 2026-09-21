@@ -22,9 +22,12 @@ from flag_gems.runtime import device as runtime_device
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils.triton_version_utils import _triton_version_at_least
 
 logger = logging.getLogger(__name__)
-_USE_DEVICE_ASSERT = runtime_device.vendor_name in ("nvidia", "hygon")
+_USE_DEVICE_ASSERT = runtime_device.vendor_name in ("nvidia", "hygon") or (
+    runtime_device.vendor_name == "iluvatar" and _triton_version_at_least(3, 6)
+)
 
 
 @libentry()

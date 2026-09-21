@@ -19,10 +19,12 @@ import triton
 import triton.language as tl
 
 from flag_gems.ops._embedding_bag_backward import (
+    _USE_DEVICE_ASSERT,
     _eb_backward_finish,
     _eb_backward_validate,
     _eb_backward_validate_body,
     _embedding_bag_backward_impl,
+    _launch_backward,
 )
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
@@ -230,7 +232,7 @@ def _embedding_bag_backward(
     padding_idx=-1,
 ):
     logger.debug("GEMS_ILUVATAR _EMBEDDING_BAG_BACKWARD")
-    launcher = _BackwardLaunch()
+    launcher = _launch_backward if _USE_DEVICE_ASSERT else _BackwardLaunch()
     result = _embedding_bag_backward_impl(
         grad,
         indices,
@@ -247,8 +249,8 @@ def _embedding_bag_backward(
         device_assert_enabled=True,
         fused_init_enabled=True,
         launch_fn=launcher,
-        max_fn=_compute_max,
+        max_fn=None if _USE_DEVICE_ASSERT else _compute_max,
     )
-    if not sparse:
+    if not sparse and not _USE_DEVICE_ASSERT:
         launcher.check()
     return result

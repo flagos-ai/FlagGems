@@ -23,11 +23,14 @@ from flag_gems.ops.cumsum import cumsum
 from flag_gems.runtime import device as runtime_device
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
+from flag_gems.utils.triton_version_utils import _triton_version_at_least
 
 logger = logging.getLogger(__name__)
 
 # These capabilities are deliberately independent for backend integration.
-_USE_DEVICE_ASSERT = runtime_device.vendor_name == "nvidia"
+_USE_DEVICE_ASSERT = runtime_device.vendor_name == "nvidia" or (
+    runtime_device.vendor_name == "iluvatar" and _triton_version_at_least(3, 6)
+)
 _USE_FUSED_INIT = runtime_device.vendor_name == "nvidia"
 _USE_PACKED_META = runtime_device.vendor_name == "nvidia"
 
