@@ -730,6 +730,7 @@ from flag_gems.ops.masked_fill import masked_fill, masked_fill_
 from flag_gems.ops.masked_scatter import masked_scatter, masked_scatter_
 from flag_gems.ops.masked_scatter_backward import masked_scatter_backward
 from flag_gems.ops.masked_select import masked_select
+from flag_gems.ops.masked_select_backward import masked_select_backward
 from flag_gems.ops.matrix_exp_backward import matrix_exp_backward
 from flag_gems.ops.max import max, max_dim
 from flag_gems.ops.max_pool1d import max_pool1d
@@ -1123,6 +1124,9 @@ from flag_gems.ops.tanh import tanh, tanh_, tanh_backward
 from flag_gems.ops.te_rmsnorm import te_rmsnorm_bwd, te_rmsnorm_fwd
 from flag_gems.ops.tensor_split import tensor_split
 from flag_gems.ops.tensordot import tensordot, tensordot_out
+from flag_gems.ops.thnn_differentiable_lstm_cell_backward import (
+    _thnn_differentiable_lstm_cell_backward,
+)
 from flag_gems.ops.thnn_fused_gru_cell_backward import (
     _thnn_fused_gru_cell_backward,
     _thnn_fused_gru_cell_backward_out,
@@ -1161,6 +1165,10 @@ from flag_gems.ops.unsqueeze import unsqueeze, unsqueeze_
 from flag_gems.ops.upsample_bicubic2d import upsample_bicubic2d
 from flag_gems.ops.upsample_bicubic2d_aa import _upsample_bicubic2d_aa
 from flag_gems.ops.upsample_bicubic2d_aa_backward import _upsample_bicubic2d_aa_backward
+from flag_gems.ops.upsample_bicubic2d_backward import (
+    upsample_bicubic2d_backward,
+    upsample_bicubic2d_backward_grad_input,
+)
 from flag_gems.ops.upsample_bilinear2d import upsample_bilinear2d
 from flag_gems.ops.upsample_bilinear2d_backward import (
     upsample_bilinear2d_backward,
@@ -1333,6 +1341,7 @@ __all__ = [
     "_sparse_semi_structured_linear",
     "_sparse_semi_structured_mm",
     "_thnn_differentiable_gru_cell_backward",
+    "_thnn_differentiable_lstm_cell_backward",
     "_thnn_fused_gru_cell",
     "_thnn_fused_gru_cell_backward",
     "_thnn_fused_gru_cell_backward_out",
@@ -1967,6 +1976,7 @@ __all__ = [
     "masked_scatter_",
     "masked_scatter_backward",
     "masked_select",
+    "masked_select_backward",
     "matrix_exp_backward",
     "max",
     "max_dim",
@@ -2431,6 +2441,8 @@ __all__ = [
     "unsqueeze",
     "unsqueeze_",
     "upsample_bicubic2d",
+    "upsample_bicubic2d_backward",
+    "upsample_bicubic2d_backward_grad_input",
     "upsample_bilinear2d",
     "upsample_bilinear2d_backward",
     "upsample_bilinear2d_backward_grad_input",

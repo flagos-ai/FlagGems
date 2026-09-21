@@ -9830,6 +9830,21 @@ ops:
   - Tensor
   stages:
   - stable: '2.1'
+- id: masked_select_backward
+  description: 'Backward of `masked_select` with respect to `input`. Scatters the compact
+
+    gradient into a zero tensor at the True mask positions after broadcasting
+
+    `input` and `mask` to a common shape.'
+  for:
+  - masked_select_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: masked_softmax
   description: |
     Apply a softmax over `dim` while excluding positions where the boolean
@@ -16418,6 +16433,19 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: thnn_differentiable_lstm_cell_backward
+  description: 'Computes the differentiable backward pass for an LSTM cell, returning
+
+    gradients for the input gates, hidden gates, cell state, and optional biases.'
+  for:
+  - _thnn_differentiable_lstm_cell_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: thnn_fused_gru_cell
   description: Computes the fused GRU cell forward pass and backward workspace.
   for:
@@ -17205,6 +17233,28 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '5.0'
+- id: upsample_bicubic2d_backward
+  description: Computes non-antialiased bicubic interpolation gradients using deterministic gather.
+  for:
+  - upsample_bicubic2d_backward
+  labels:
+  - aten
+  - Reduction
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
+- id: upsample_bicubic2d_backward_grad_input
+  description: Writes non-antialiased bicubic interpolation gradients to grad_input.
+  for:
+  - upsample_bicubic2d_backward.grad_input
+  labels:
+  - aten
+  - Reduction
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: upsample_bilinear2d
   description: 'Upsamples the input, using bilinear mode.
 

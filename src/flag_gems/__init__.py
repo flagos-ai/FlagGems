@@ -316,6 +316,10 @@ _FULL_CONFIG = (
         "_thnn_differentiable_gru_cell_backward",
         _thnn_differentiable_gru_cell_backward,
     ),
+    (
+        "_thnn_differentiable_lstm_cell_backward",
+        _thnn_differentiable_lstm_cell_backward,
+    ),
     ("_thnn_fused_gru_cell", _thnn_fused_gru_cell),
     ("_thnn_fused_gru_cell.out", _thnn_fused_gru_cell_out),
     ("_thnn_fused_gru_cell_backward", _thnn_fused_gru_cell_backward),
@@ -1025,6 +1029,7 @@ _FULL_CONFIG = (
     ("masked_scatter_", masked_scatter_),
     ("masked_scatter_backward", masked_scatter_backward),
     ("masked_select", masked_select),
+    ("masked_select_backward", masked_select_backward),
     ("matrix_exp_backward", matrix_exp_backward),
     ("max", max),
     ("max.dim", max_dim),
@@ -1542,6 +1547,8 @@ _FULL_CONFIG = (
     ("unsqueeze", unsqueeze),
     ("unsqueeze_", unsqueeze_),
     ("upsample_bicubic2d", upsample_bicubic2d),
+    ("upsample_bicubic2d_backward", upsample_bicubic2d_backward),
+    ("upsample_bicubic2d_backward.grad_input", upsample_bicubic2d_backward_grad_input),
     ("upsample_bilinear2d", upsample_bilinear2d),
     ("upsample_bilinear2d_backward", upsample_bilinear2d_backward),
     (
