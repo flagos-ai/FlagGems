@@ -898,6 +898,7 @@ from flag_gems.ops.repeat_interleave import (
     repeat_interleave_tensor,
 )
 from flag_gems.ops.replication_pad1d import replication_pad1d, replication_pad1d_out
+from flag_gems.ops.replication_pad1d_backward import replication_pad1d_backward
 from flag_gems.ops.replication_pad2d import replication_pad2d, replication_pad2d_out
 from flag_gems.ops.replication_pad2d_backward import (
     replication_pad2d_backward,
@@ -916,6 +917,7 @@ from flag_gems.ops.rnn_tanh import rnn_tanh, rnn_tanh_data
 from flag_gems.ops.roll import roll
 from flag_gems.ops.rot90 import rot90
 from flag_gems.ops.round import round, round_, round_out
+from flag_gems.ops.row_indices import row_indices
 from flag_gems.ops.rrelu_with_noise import rrelu_with_noise, rrelu_with_noise_
 from flag_gems.ops.rrelu_with_noise_backward import rrelu_with_noise_backward
 from flag_gems.ops.rrelu_with_noise_functional import rrelu_with_noise_functional
@@ -2124,6 +2126,7 @@ __all__ = [
     "repeat_interleave_self_tensor",
     "repeat_interleave_tensor",
     "replication_pad1d",
+    "replication_pad1d_backward",
     "replication_pad1d_out",
     "replication_pad2d",
     "replication_pad2d_backward",
@@ -2150,6 +2153,7 @@ __all__ = [
     "round_",
     "round_out",
     "router_gemm",
+    "row_indices",
     "rrelu_with_noise",
     "rrelu_with_noise_",
     "rrelu_with_noise_backward",
