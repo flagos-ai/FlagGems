@@ -40,8 +40,9 @@ export UV_HTTP_TIMEOUT="${UV_HTTP_TIMEOUT:-120}"
 # triton.Config). We check both: every recorded file exists, and the package
 # imports with its real API surface.
 verify_triton_install() {
-  python - <<'PY'
+  FLAGGEMS_VERIFY_BACKEND="${BACKEND}" python - <<'PY'
 import importlib.metadata as md
+import os
 import site
 import sys
 
@@ -66,10 +67,14 @@ if missing:
     print(f"{len(missing)} recorded file(s) missing, e.g. {missing[:5]}")
     sys.exit(1)
 
-# Match FlagGems' runtime import order. Some vendor Triton backends import the
-# torch device plugin while Triton itself is still initializing; importing
-# Triton first can therefore create a circular import through torch._dynamo.
-import torch
+# FlagTree's Ascend backend imports torch_npu while Triton is initializing.
+# Preload it through torch to avoid a circular import through torch._dynamo.
+# Other vendor plugins may need driver libraries that are unavailable during
+# this install check, so keep their automatic loading disabled here.
+if os.environ["FLAGGEMS_VERIFY_BACKEND"].startswith("ascend-"):
+    import torch
+else:
+    os.environ["TORCH_DEVICE_BACKEND_AUTOLOAD"] = "0"
 import triton
 
 if triton.__file__ is None or not hasattr(triton, "Config"):
