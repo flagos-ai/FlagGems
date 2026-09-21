@@ -19,16 +19,19 @@ import flag_gems
 
 from . import base, consts
 
-
-def _native_scaled_grouped_mm_benchmark_available():
-    if not hasattr(torch, "_scaled_grouped_mm"):
-        return False
-    if flag_gems.device != "cuda" or not torch.cuda.is_available():
-        return False
-    if not hasattr(torch, "float8_e4m3fn"):
-        return False
-    major, minor = torch.cuda.get_device_capability()
-    return major * 10 + minor >= 89
+# These skips describe the currently validated runtime stacks, not every device
+# from these vendors. Revisit them when native support is added to those stacks.
+_NATIVE_UNSUPPORTED = {
+    "kunlunxin": "current XPU runtime routes native FP8/FP16 grouped MM to an unimplemented CPU fallback",
+    "ascend": "CANN 9.0 has no native aten::_scaled_grouped_mm PrivateUse1 kernel",
+    "hygon": "current DTK native grouped MM rejects the tested architecture",
+    "metax": "MACA 3.8.1 reports grouped mm is not supported on your system",
+    "thead": "current CI native grouped MM rejects the tested architecture",
+    "tsingmicro": "current TXDA native grouped MM falls back to unsupported CPU",
+    "iluvatar": "BI-V150/CoreX 4.4 does not support native grouped MM",
+    "sunrise": "current CI reports native torch._scaled_grouped_mm unavailable",
+    "enflame": "current CI reports native torch._scaled_grouped_mm unavailable",
+}
 
 
 class ScaledGroupedMMBenchmark(base.Benchmark):
@@ -62,25 +65,25 @@ class ScaledGroupedMMBenchmark(base.Benchmark):
                 m_per_group,
                 m_per_group + groups,
                 dtype=torch.int32,
-                device=flag_gems.device,
+                device="cpu",
             )
             offs = torch.cumsum(sizes, dim=0).to(torch.int32)
             M = int(offs[-1].item())
 
-            mat_a = torch.randn((M, K), dtype=torch.float32, device=flag_gems.device)
-            mat_b = torch.randn(
-                (groups, N, K), dtype=torch.float32, device=flag_gems.device
-            )
-            mat_a = (mat_a * 0.25).to(dtype)
-            mat_b = (mat_b * 0.25).to(dtype).transpose(-1, -2)
+            mat_a = torch.randn((M, K), dtype=torch.float32, device="cpu")
+            mat_b = torch.randn((groups, N, K), dtype=torch.float32, device="cpu")
+            mat_a = (mat_a * 0.25).to(dtype).to(flag_gems.device)
+            mat_b = (mat_b * 0.25).to(dtype).to(flag_gems.device).transpose(-1, -2)
             out_dtype = torch.bfloat16
 
-            scale_a = torch.linspace(0.75, 1.25, M, device=flag_gems.device)
-            scale_b = torch.linspace(
-                1.25, 0.75, groups * N, device=flag_gems.device
-            ).reshape(groups, N)
+            scale_a = torch.linspace(0.75, 1.25, M, device="cpu").to(flag_gems.device)
+            scale_b = (
+                torch.linspace(1.25, 0.75, groups * N, device="cpu")
+                .to(flag_gems.device)
+                .reshape(groups, N)
+            )
             yield mat_a, mat_b, scale_a, scale_b, {
-                "offs": offs,
+                "offs": offs.to(flag_gems.device),
                 "bias": None,
                 "out_dtype": out_dtype,
                 "use_fast_accum": False,
@@ -101,8 +104,16 @@ class ScaledGroupedMMBenchmark(base.Benchmark):
 
 @pytest.mark.scaled_grouped_mm
 @pytest.mark.skipif(
-    not _native_scaled_grouped_mm_benchmark_available(),
-    reason="native torch._scaled_grouped_mm benchmark requires CUDA FP8 on SM89+.",
+    flag_gems.vendor_name in _NATIVE_UNSUPPORTED,
+    reason=_NATIVE_UNSUPPORTED.get(flag_gems.vendor_name, "native baseline available"),
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "nvidia"
+    and (
+        not torch.cuda.is_available()
+        or torch.cuda.get_device_capability()[0] not in (9, 10)
+    ),
+    reason="NVIDIA native scaled grouped MM requires SM9x or SM10x",
 )
 def test_scaled_grouped_mm_benchmark():
     bench = ScaledGroupedMMBenchmark()

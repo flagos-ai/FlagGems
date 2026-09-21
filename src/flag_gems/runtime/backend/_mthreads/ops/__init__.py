@@ -140,6 +140,7 @@ from .replication_pad2d import replication_pad2d
 from .resolve_conj import resolve_conj
 from .rms_norm_w8a16_fp8 import rms_norm_w8a16_fp8
 from .round_ import round_
+from .scaled_grouped_mm import scaled_grouped_mm
 from .scatter_reduce import scatter_reduce, scatter_reduce_, scatter_reduce_out
 from .silu_backward import silu_backward
 from .softplus_backward import softplus_backward
@@ -310,6 +311,7 @@ __all__ = [
     "resolve_conj",
     "rms_norm_w8a16_fp8",
     "round_",
+    "scaled_grouped_mm",
     "scatter_reduce",
     "scatter_reduce_",
     "scatter_reduce_out",
