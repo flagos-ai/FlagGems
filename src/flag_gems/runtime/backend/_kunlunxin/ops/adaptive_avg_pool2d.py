@@ -10,13 +10,19 @@ from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
 
-# Windows with an exact integer input/output ratio are handled by a dedicated
-# row-reduction kernel (contiguous 2D tile loads + in-kernel axis-1 sum, no
-# per-lane integer division and no masked accumulate chain). The cap keeps the
-# fully-unrolled tile count bounded; beyond it the XPU backend's buffer-size
-# tuning fails on huge static unrolls (observed with a 57x57 window / 3249
-# unrolled iterations -> "Failed to tune buffer size").
 INT_KERNEL_MAX_UNROLL = 65536
+
+
+@libentry()
+@triton.jit
+def _adaptive_avg_pool2d_plane_kernel(input, output, HW, VEC: tl.constexpr):
+    program_id = ext.program_id(0)
+    base = input + program_id * HW
+    acc = tl.zeros((VEC,), dtype=tl.float32)
+    for off in range(0, HW, VEC):
+        idx = off + tl.arange(0, VEC)
+        acc += tl.load(base + idx, mask=idx < HW, other=0.0).to(tl.float32)
+    tl.store(output + program_id, tl.sum(acc) / HW)
 
 
 @libentry()
@@ -107,8 +113,19 @@ def adaptive_avg_pool2d(input, output_size):
     if output.numel() == 0:
         return output
 
-    output_rows = output.numel() // output_width  # N * C * OH programs
+    output_rows = output.numel() // output_width
     with torch_device_fn.device(input.device):
+        if output_height == 1 and output_width == 1 and input_contiguous.size(-1) > 0:
+            planes = output.numel()
+            _adaptive_avg_pool2d_plane_kernel[(planes,)](
+                input_contiguous,
+                output,
+                input_height * input_width,
+                VEC=min(triton.next_power_of_2(input_height * input_width), 8192),
+                isCloseVectorization=True,
+                buffer_size_limit=2048,
+            )
+            return output
         if (
             output_height > 0
             and output_width > 0

@@ -9,6 +9,7 @@ pytestmark = pytest.mark.filterwarnings(
     "ignore:Warning only once for all operators.*:UserWarning"
 )
 
+
 # torch.linalg.lstsq has no kernel on every backend. On Ascend it falls back to
 # the CPU -- measured 1417.9 ms at 512x512 against 1306.5 ms for the same call
 # on CPU, a ratio of 1.09 -- so timing it there measures CPU LAPACK and yields
@@ -17,12 +18,59 @@ pytestmark = pytest.mark.filterwarnings(
 # from QR the way the kernel itself computes it and keep the comparison
 # like-for-like. Same reason benchmark/test_polygamma.py composes its baseline.
 #
-# gems_op must also be passed explicitly: with a composed torch_op the harness
+# Hygon needs the same composition for only HALF its cases. Its torch reports
+# device "cuda" (runtime/backend/_hygon/__init__.py sets device_name="cuda") but
+# is compiled without cuSOLVER, and its lstsq kernel turns the m < n branch into
+# a raise:
+#
+#     torch.linalg.lstsq: only overdetermined systems (input.size(-2) >=
+#     input.size(-1)) are allowed on CUDA. Please rebuild with cuSOLVER.
+#
+# so the wide half of the suite cannot have a torch baseline at all, and
+# benchmark/base.py turns that exception into a pytest.fail at the first wide
+# case -- (8, 16, 512) -- aborting the run before any wide number is measured.
+# m >= n on the same build is served by MAGMA and works, so this is NOT "no
+# device lstsq here" (the Ascend case): only m < n is composed, the rest keeps
+# the real torch baseline. The full shape list stays too -- the composition is
+# cheap on a device whose QR is native, which is why _SHAPES_DEVICE drops the
+# large cases for the fully-composed Ascend path and not for this one.
+#
+# Which case a platform is in is a property of the TORCH BUILD, not the vendor
+# name: tests/test_linalg_lstsq.py records a Hygon development box whose torch
+# solves the wide cases fine while the Hygon CI image raises. So ask the build
+# -- one 2x3 solve at import -- instead of matching on the device name.
+def _torch_lstsq_refuses_wide() -> bool:
+    """True when this build's torch.linalg.lstsq raises for m < n on the device."""
+    if flag_gems.device == "cpu":
+        return False
+    try:
+        torch.linalg.lstsq(
+            torch.randn(2, 3, device=flag_gems.device),
+            torch.randn(2, device=flag_gems.device),
+            driver="gels",
+        )
+    except RuntimeError:  # "only overdetermined systems ... rebuild with cuSOLVER"
+        return True
+    return False
+
+
+# torch.linalg.lstsq is not a device kernel here at all, and it degrades by
+# silently falling back to the CPU rather than raising -- no probe can see
+# that, so this half stays a name check.
+_DEVICE_REF = flag_gems.device not in ("cuda", "cpu")
+# ... while the device kernel exists and only refuses the wide half (Hygon).
+_COMPOSE_WIDE = (not _DEVICE_REF) and _torch_lstsq_refuses_wide()
+# Either way the reference is no longer plain torch.linalg.lstsq, so the gems
+# side must be handed over explicitly: with a composed torch_op the harness
 # would otherwise time the gems side by re-running that composition under
 # use_gems, which never reaches this operator. flag_gems.linalg_lstsq is the
 # right handle -- SpecOpRegistrar rebinds that symbol to the vendor override at
-# import, so it is the Ascend kernel on Ascend.
-_DEVICE_REF = flag_gems.device not in ("cuda", "cpu")
+# import, so it is the Ascend kernel on Ascend and the Hygon kernel on Hygon.
+_COMPOSED_REF = _DEVICE_REF or _COMPOSE_WIDE
+
+LINALG_LSTSQ_DTYPE = [torch.float32]
+if flag_gems.runtime.device.support_fp64:
+    LINALG_LSTSQ_DTYPE += [torch.float64]
 
 
 def _lstsq_via_qr(A, b, driver="gels"):
@@ -68,6 +116,24 @@ def _lstsq_via_qr(A, b, driver="gels"):
         W = torch.linalg.solve_triangular(R.transpose(-1, -2), B, upper=False)
         X = torch.matmul(Q, W)
     return X.squeeze(-1) if vec else X
+
+
+def _lstsq_ref(A, b, driver="gels"):
+    """torch.linalg.lstsq where the device build has it, composition where not.
+
+    Only reached on a build whose own lstsq refuses m < n (_COMPOSE_WIDE), i.e.
+    Hygon's cuSOLVER-less torch. The tall and square cases still call the real
+    torch kernel there, so they keep a baseline that says what the device can
+    do rather than what our own algorithm costs.
+
+    The two branches do NOT return the same thing -- torch's named tuple for
+    m >= n, the bare solution tensor for m < n, exactly as _lstsq_via_qr already
+    returns on Ascend. The harness only times the call and never reads the
+    result; anything that needs the tuple must not come through here.
+    """
+    if A.shape[-2] < A.shape[-1]:
+        return _lstsq_via_qr(A, b, driver)
+    return torch.linalg.lstsq(A, b, driver=driver)
 
 
 # Shapes the CUDA path benchmarks. Every regime the operator supports.
@@ -141,16 +207,20 @@ class LstsqBenchmark(base.Benchmark):
 def test_linalg_lstsq():
     bench = LstsqBenchmark(
         op_name="linalg_lstsq",
-        torch_op=_lstsq_via_qr if _DEVICE_REF else torch.linalg.lstsq,
+        torch_op=(
+            _lstsq_via_qr
+            if _DEVICE_REF
+            else (_lstsq_ref if _COMPOSE_WIDE else torch.linalg.lstsq)
+        ),
         gems_op=(
             (lambda A, b, **kw: flag_gems.linalg_lstsq(A, b, driver="gels"))
-            if _DEVICE_REF
+            if _COMPOSED_REF
             else None
         ),
         # gels supports float32/float64 only; fp16/bf16 are not supported by
         # PyTorch's reference, and complex is outside the native path. float64
         # is dropped where the backend has no kernel for it -- on Ascend the
         # device has no float64 unit, so the operator raises there by design.
-        dtypes=[torch.float32] if _DEVICE_REF else [torch.float32, torch.float64],
+        dtypes=LINALG_LSTSQ_DTYPE,
     )
     bench.run()

@@ -1,16 +1,3 @@
-# Copyright 2026, The FlagOS Contributors.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 """Kunlunxin (XPU) linalg_lstsq.
 
 The general implementation keeps a whole Householder QR tile in registers and
@@ -64,21 +51,10 @@ logger = logging.getLogger(__name__)
 
 _SUPPORTED_DTYPES = (torch.float32, torch.float64)
 
-# Largest padded row length a single reduction tile may span. 8192 is the
-# widest validated on XPU 3; beyond it the reduce is untested, so those shapes
-# raise NotImplementedError rather than risk a silent miscompile.
 _MAX_ROW = 8192
 
-# EVERY vector store on this backend writes exactly 64 contiguous elements,
-# whatever length was asked for (measured: a 1-, 8- or 32-lane store all touch
-# 64 slots; only a 0-d store touches one). So every tile row, every per-batch
-# vector and every RHS block is a multiple of 64 wide, and the c-tile is exactly
-# 64 rows so that neighbouring programs cannot overwrite each other's results.
 _LANES = 64
 
-# Floors on the padded tile extents. A 32-element-wide tile that is both read
-# and written in one kernel comes back wrong on this backend (validated:
-# 32 bad, 64 and 128 good), so every working buffer is padded to at least this.
 _MIN_ROW = 64
 _MIN_COL = 64
 
@@ -87,13 +63,6 @@ def _p2(x):
     return 1 << (max(1, int(x)) - 1).bit_length()
 
 
-# ---------------------------------------------------------------------------
-# One Householder step of the QR of the working matrix W.
-#
-# W is the TRANSPOSE of the matrix being factored: W[c, r] = M[r, c], shape
-# (batch, NCP, MP).  Row c of W is column c of M, so "the pivot column" is a
-# contiguous row of W and every reduction runs over the LAST axis.
-# ---------------------------------------------------------------------------
 @libentry()
 @triton.jit
 def _mk_v_kernel(
@@ -177,7 +146,6 @@ def _scal_kernel(
     tl.store(DIAG + b * NP + J, alpha)
     prev = tl.load(RMAX + b * 2 + (J % 2))
     tl.store(RMAX + b * 2 + ((J + 1) % 2), tl.maximum(prev, tl.abs(alpha)))
-    # v[J] = x_J - alpha completes the reflector
     tl.store(V + b * MP + J, xj - alpha)
 
 
@@ -294,17 +262,6 @@ def _scale_kernel(SRC, FAC, DST, J, NP, KP: tl.constexpr):
     tl.store(DST + b * KP + k, tl.load(FAC + b * NP + J) * tl.load(SRC + b * KP + k))
 
 
-# ---------------------------------------------------------------------------
-# Triangular solve, shared by both paths.
-#
-# COLUMN-oriented, not the usual dot-product form: after each unknown is found
-# the remaining right-hand side is updated by a rank-1 axpy.  That is not a
-# style choice -- the dot-product form has to write the new unknown into a
-# STRIDED slot of the solution matrix, and a strided store on this backend
-# writes its value to the right address AND garbage to unrelated allocations
-# (verified: it corrupted a neighbouring tensor 2.5 KB away).  Column-oriented,
-# every store is contiguous and every reduce disappears.
-# ---------------------------------------------------------------------------
 @libentry()
 @triton.jit
 def _solve_step_kernel(
@@ -365,9 +322,6 @@ def _res_kernel(T, RES, KP: tl.constexpr, MP: tl.constexpr):
     tl.store(RES + b * KP + k, tl.sum(t * t, axis=1))
 
 
-# ---------------------------------------------------------------------------
-# host drivers
-# ---------------------------------------------------------------------------
 def _qr_sweep(W, NCP, MP, NP, nsteps, batch, dt, dev, keep_reflectors):
     """Householder QR of the matrix whose transpose is W. Returns (DIAG, RMAX).
 
@@ -421,7 +375,6 @@ def _lstsq_tall(A, B, rcond):
     with torch_device_fn.device(dev):
         DIAG, RMAX, _, _ = _qr_sweep(W, NCP, MP, NP, n, batch, dt, dev, False)
 
-        # RHS[k, i] starts as C[i, k] = W[n+k, i], which is a plain slice.
         RHS = W[:, n : n + KP, :NP].contiguous()
         XS = torch.zeros((batch, NP, KP), dtype=dt, device=dev)
         XI = torch.zeros((batch, KP), dtype=dt, device=dev)
@@ -431,7 +384,6 @@ def _lstsq_tall(A, B, rcond):
             _solve_step_kernel[(batch,)](
                 RHS, XI, XS, DIAG, RMAX, rcond, i, n, NW=NP, KP=KP
             )
-            # R[j, i] == W[i, j]: the update coefficient is a ROW of W.
             _rowcpy_kernel[(batch,)](W, RROW, NCP * MP, i, LD=MP, NW=NP)
             _upd_kernel[(batch, 1)](RHS, XI, RROW, 0, NCP=KP, MP=NP, BC=KP)
 
@@ -456,8 +408,8 @@ def _lstsq_wide(A, B, rcond):
     dt, dev = A.dtype, A.device
 
     KP = max(_LANES, _p2(nrhs))
-    MP = max(_MIN_ROW, _p2(n))  # padded row length = rows of A^T
-    NRP = max(_MIN_COL, _p2(m))  # padded rows of W = columns of A^T
+    MP = max(_MIN_ROW, _p2(n))
+    NRP = max(_MIN_COL, _p2(m))
     MIP = NRP
 
     W = torch.zeros((batch, NRP, MP), dtype=dt, device=dev)
@@ -466,8 +418,6 @@ def _lstsq_wide(A, B, rcond):
     with torch_device_fn.device(dev):
         DIAG, RMAX, VS, BETAS = _qr_sweep(W, NRP, MP, NRP, m, batch, dt, dev, True)
 
-        # forward substitution R^T y = b: the coefficient matrix is L[c, i] =
-        # W[c, i], so the update coefficient is a COLUMN of W.
         RHS = torch.zeros((batch, KP, MIP), dtype=dt, device=dev)
         RHS[:, :nrhs, :m] = B.transpose(-1, -2)
         YS = torch.zeros((batch, MIP, KP), dtype=dt, device=dev)
@@ -480,7 +430,6 @@ def _lstsq_wide(A, B, rcond):
             _colcpy_kernel[(batch,)](W, COL, NRP * MP, c, LD=MP, NW=MIP)
             _upd_kernel[(batch, 1)](RHS, YI, COL, 0, NCP=KP, MP=MIP, BC=KP)
 
-        # x = Q y = H_0 .. H_{m-1} [y; 0]
         Z = torch.zeros((batch, KP, MP), dtype=dt, device=dev)
         Z[:, :nrhs, :m] = YS[:, :m, :nrhs].transpose(-1, -2)
         DOT = torch.zeros((batch, KP), dtype=dt, device=dev)
@@ -496,6 +445,20 @@ def _lstsq_wide(A, B, rcond):
     return Z[:, :nrhs, :n].transpose(-1, -2).contiguous()
 
 
+def _fallback(A, b, rcond, driver):
+    """Reference path for inputs outside the native scope (a padded row wider
+    than the validated reduction tile, or a malformed batch/RHS shape). Routed
+    through CPU so it does not re-enter this override."""
+    res = torch.linalg.lstsq(A.cpu(), b.cpu(), rcond=rcond, driver=driver)
+    dev = A.device
+    return (
+        res.solution.to(dev),
+        res.residuals.to(dev),
+        res.rank.to(dev),
+        res.singular_values.to(dev),
+    )
+
+
 def _empty_rank_sv(A):
     return (
         torch.empty(0, dtype=torch.int64, device=A.device),
@@ -506,57 +469,36 @@ def _empty_rank_sv(A):
 def linalg_lstsq(A, b, rcond=None, driver=None):
     logger.debug("GEMS_KUNLUNXIN LINALG_LSTSQ")
 
-    # torch's CUDA gels backend rejects any other driver; raise likewise rather
-    # than silently computing a result torch would refuse.
     if driver not in (None, "gels"):
         raise RuntimeError(
             "torch.linalg.lstsq: `driver` other than `gels` is not supported on CUDA"
         )
 
-    if A.is_complex() or A.dtype not in _SUPPORTED_DTYPES:
-        # No Triton kernel for this dtype on this backend. Raise rather than
-        # route through a CPU fallback; the accuracy suite's _gems_supports()
-        # keys off this exception to skip unsupported dtypes.
+    if A.dtype not in _SUPPORTED_DTYPES or A.is_complex():
         raise NotImplementedError(
-            f"Kunlunxin linalg_lstsq only supports real {_SUPPORTED_DTYPES} "
-            f"inputs, got {A.dtype}"
+            f"linalg_lstsq: {A.dtype} is not supported on this device"
         )
     if A.dim() < 2 or b.dim() < 1:
-        raise RuntimeError(
-            "torch.linalg.lstsq: A must be at least 2-dimensional and b at "
-            "least 1-dimensional"
-        )
+        return _fallback(A, b, rcond, driver)
 
     m, n = A.shape[-2], A.shape[-1]
 
-    # RHS classification, matching torch.linalg.lstsq exactly: a VECTOR rhs has
-    # one fewer dim than A and must match A.shape[:-1] exactly; a MATRIX rhs has
-    # the same ndim and broadcasts its batch dims. Anything else torch rejects.
     dim_diff = A.dim() - b.dim()
     if dim_diff == 1 and tuple(b.shape) == tuple(A.shape[:-1]):
         vector_rhs, b2 = True, b.unsqueeze(-1)
     elif dim_diff == 0:
         vector_rhs, b2 = False, b
     else:
-        raise RuntimeError(
-            "torch.linalg.lstsq: A and b are not broadcastable "
-            f"(A.dim()={A.dim()} vs b.dim()={b.dim()})"
-        )
+        return _fallback(A, b, rcond, driver)
     if b2.shape[-2] != m:
-        raise RuntimeError(
-            "torch.linalg.lstsq: A and b must have the same number of rows"
-        )
+        return _fallback(A, b, rcond, driver)
     nrhs = b2.shape[-1]
 
     try:
         batch_shape = torch.broadcast_shapes(A.shape[:-2], b2.shape[:-2])
     except RuntimeError:
-        raise RuntimeError(
-            "torch.linalg.lstsq: batch dimensions of A and b are not " "broadcastable"
-        ) from None
+        return _fallback(A, b, rcond, driver)
 
-    # degenerate dims are shape-determined; LAPACK ?gels quick-returns on any
-    # zero dim and zeroes its buffer, so both solution and residuals are zeros.
     if m == 0 or n == 0 or nrhs == 0:
         solution = torch.zeros((*batch_shape, n, nrhs), dtype=A.dtype, device=A.device)
         if vector_rhs:
@@ -571,12 +513,7 @@ def linalg_lstsq(A, b, rcond=None, driver=None):
         return solution, residuals, rank, singular_values
 
     if max(_p2(m), _p2(n)) > _MAX_ROW:
-        # No kernel for padded rows wider than the validated reduction tile;
-        # raise rather than fall back to a CPU reference.
-        raise NotImplementedError(
-            f"Kunlunxin linalg_lstsq: padded rows wider than {_MAX_ROW} are "
-            "not implemented on this backend"
-        )
+        return _fallback(A, b, rcond, driver)
 
     Af = A.expand(*batch_shape, m, n).reshape(-1, m, n).contiguous()
     Bf = b2.expand(*batch_shape, m, nrhs).reshape(-1, m, nrhs).contiguous()
@@ -593,8 +530,6 @@ def linalg_lstsq(A, b, rcond=None, driver=None):
     if vector_rhs:
         solution = solution.squeeze(-1)
 
-    # torch returns residuals only when m > n; note it squeezes the SOLUTION for
-    # a vector b but keeps residuals at shape (*, nrhs).
     if m > n:
         residuals = RES.reshape(*batch_shape, nrhs)
     else:
