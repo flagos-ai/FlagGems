@@ -36,7 +36,12 @@ BuildRequires:  pyproject-rpm-macros
 %endif
 # setuptools-scm resolves the version (no .git in the source tarball,
 # hence the SETUPTOOLS_SCM_PRETEND_VERSION export in %%build)
-BuildRequires:  python3-setuptools_scm >= 8
+# No version floor here: rpm resolves this against the rpm database, and
+# openEuler 24.03 ships 7.1.0, so a >= 8 floor is unsatisfiable there no
+# matter what is pip-installed. The build container raises the Python-level
+# version when the distro's is too old (see Dockerfile.rpm), which is what
+# pyproject.toml's setuptools-scm>=8.0 actually needs.
+BuildRequires:  python3-setuptools_scm
 
 # Filter the auto-generated Requires for: torch + numpy/pyyaml/sqlalchemy/packaging.
 # Reason: torch: distro version is CPU-only. numpy/pyyaml/sqlalchemy/packaging: distro has them but FlagGems pyproject uses == pins that distro versions do not match; we Require them below without a version constraint instead.
