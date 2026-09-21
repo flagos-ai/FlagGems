@@ -291,6 +291,7 @@ from flag_gems.ops.baddbmm import baddbmm, baddbmm_out
 from flag_gems.ops.baddbmm_ import baddbmm_
 from flag_gems.ops.batch_norm import batch_norm, batch_norm_backward
 from flag_gems.ops.batch_norm_backward_reduce import batch_norm_backward_reduce
+from flag_gems.ops.batch_norm_gather_stats import batch_norm_gather_stats
 from flag_gems.ops.batch_norm_gather_stats_with_counts import (
     batch_norm_gather_stats_with_counts,
 )
@@ -599,6 +600,7 @@ from flag_gems.ops.index_put import _index_put_impl_, index_put, index_put_
 from flag_gems.ops.index_reduce import index_reduce, index_reduce_, index_reduce_out
 from flag_gems.ops.index_select import index_select
 from flag_gems.ops.index_select_backward import index_select_backward
+from flag_gems.ops.inner import inner
 from flag_gems.ops.int_mm import int_mm, int_mm_out
 from flag_gems.ops.inverse import inverse
 from flag_gems.ops.is_nonzero import is_nonzero
@@ -728,6 +730,7 @@ from flag_gems.ops.masked_fill import masked_fill, masked_fill_
 from flag_gems.ops.masked_scatter import masked_scatter, masked_scatter_
 from flag_gems.ops.masked_scatter_backward import masked_scatter_backward
 from flag_gems.ops.masked_select import masked_select
+from flag_gems.ops.masked_select_backward import masked_select_backward
 from flag_gems.ops.matrix_exp_backward import matrix_exp_backward
 from flag_gems.ops.max import max, max_dim
 from flag_gems.ops.max_pool1d import max_pool1d
@@ -866,6 +869,10 @@ from flag_gems.ops.quantized_gru import (
     quantized_gru_input,
 )
 from flag_gems.ops.quantized_lstm import quantized_lstm
+from flag_gems.ops.quantized_max_pool1d import (
+    quantized_max_pool1d,
+    quantized_max_pool1d_out,
+)
 from flag_gems.ops.quantized_max_pool3d import (
     quantized_max_pool3d,
     quantized_max_pool3d_out,
@@ -919,6 +926,7 @@ from flag_gems.ops.roll import roll
 from flag_gems.ops.rot90 import rot90
 from flag_gems.ops.round import round, round_, round_out
 from flag_gems.ops.row_indices import row_indices
+from flag_gems.ops.row_stack import row_stack, row_stack_out
 from flag_gems.ops.rrelu_with_noise import rrelu_with_noise, rrelu_with_noise_
 from flag_gems.ops.rrelu_with_noise_backward import rrelu_with_noise_backward
 from flag_gems.ops.rrelu_with_noise_functional import rrelu_with_noise_functional
@@ -970,6 +978,7 @@ from flag_gems.ops.slice_backward import slice_backward
 from flag_gems.ops.slice_copy import slice_copy, slice_copy_out
 from flag_gems.ops.slice_scatter import slice_scatter
 from flag_gems.ops.slogdet import slogdet
+from flag_gems.ops.smm import smm
 from flag_gems.ops.smooth_l1_loss import (
     smooth_l1_loss,
     smooth_l1_loss_backward,
@@ -1116,6 +1125,9 @@ from flag_gems.ops.tanh import tanh, tanh_, tanh_backward
 from flag_gems.ops.te_rmsnorm import te_rmsnorm_bwd, te_rmsnorm_fwd
 from flag_gems.ops.tensor_split import tensor_split
 from flag_gems.ops.tensordot import tensordot, tensordot_out
+from flag_gems.ops.thnn_differentiable_lstm_cell_backward import (
+    _thnn_differentiable_lstm_cell_backward,
+)
 from flag_gems.ops.thnn_fused_gru_cell_backward import (
     _thnn_fused_gru_cell_backward,
     _thnn_fused_gru_cell_backward_out,
@@ -1155,6 +1167,10 @@ from flag_gems.ops.upsample_bicubic2d import upsample_bicubic2d
 from flag_gems.ops.upsample_bicubic2d_aa import _upsample_bicubic2d_aa
 from flag_gems.ops.upsample_bicubic2d_aa_backward import _upsample_bicubic2d_aa_backward
 from flag_gems.ops.upsample_bilinear2d import upsample_bilinear2d
+from flag_gems.ops.upsample_bilinear2d_backward import (
+    upsample_bilinear2d_backward,
+    upsample_bilinear2d_backward_grad_input,
+)
 from flag_gems.ops.upsample_lanczos2d_aa import (
     _upsample_lanczos2d_aa,
     _upsample_lanczos2d_aa_out,
@@ -1164,6 +1180,10 @@ from flag_gems.ops.upsample_linear1d import upsample_linear1d
 from flag_gems.ops.upsample_linear1d_backward import upsample_linear1d_backward
 from flag_gems.ops.upsample_nearest1d import upsample_nearest1d
 from flag_gems.ops.upsample_nearest2d import upsample_nearest2d
+from flag_gems.ops.upsample_nearest2d_backward import (
+    upsample_nearest2d_backward,
+    upsample_nearest2d_backward_grad_input,
+)
 from flag_gems.ops.upsample_nearest3d import upsample_nearest3d
 from flag_gems.ops.upsample_nearest3d_backward import (
     upsample_nearest3d_backward,
@@ -1318,6 +1338,7 @@ __all__ = [
     "_sparse_semi_structured_linear",
     "_sparse_semi_structured_mm",
     "_thnn_differentiable_gru_cell_backward",
+    "_thnn_differentiable_lstm_cell_backward",
     "_thnn_fused_gru_cell",
     "_thnn_fused_gru_cell_backward",
     "_thnn_fused_gru_cell_backward_out",
@@ -1454,6 +1475,7 @@ __all__ = [
     "batch_norm",
     "batch_norm_backward",
     "batch_norm_backward_reduce",
+    "batch_norm_gather_stats",
     "batch_norm_gather_stats_with_counts",
     "bernoulli",
     "bernoulli_",
@@ -1792,6 +1814,7 @@ __all__ = [
     "index_reduce_out",
     "index_select",
     "index_select_backward",
+    "inner",
     "int_mm",
     "int_mm_out",
     "inverse",
@@ -1950,6 +1973,7 @@ __all__ = [
     "masked_scatter_",
     "masked_scatter_backward",
     "masked_select",
+    "masked_select_backward",
     "matrix_exp_backward",
     "max",
     "max_dim",
@@ -2091,6 +2115,8 @@ __all__ = [
     "quantized_gru_impl",
     "quantized_gru_input",
     "quantized_lstm",
+    "quantized_max_pool1d",
+    "quantized_max_pool1d_out",
     "quantized_max_pool3d",
     "quantized_max_pool3d_out",
     "rad2deg",
@@ -2157,6 +2183,8 @@ __all__ = [
     "round_out",
     "router_gemm",
     "row_indices",
+    "row_stack",
+    "row_stack_out",
     "rrelu_with_noise",
     "rrelu_with_noise_",
     "rrelu_with_noise_backward",
@@ -2224,6 +2252,7 @@ __all__ = [
     "slice_copy_out",
     "slice_scatter",
     "slogdet",
+    "smm",
     "smooth_l1_loss",
     "smooth_l1_loss_backward",
     "smooth_l1_loss_out",
@@ -2412,12 +2441,16 @@ __all__ = [
     "unsqueeze_",
     "upsample_bicubic2d",
     "upsample_bilinear2d",
+    "upsample_bilinear2d_backward",
+    "upsample_bilinear2d_backward_grad_input",
     "upsample_lanczos2d_aa_backward",
     "upsample_lanczos2d_aa_backward_grad_input",
     "upsample_linear1d",
     "upsample_linear1d_backward",
     "upsample_nearest1d",
     "upsample_nearest2d",
+    "upsample_nearest2d_backward",
+    "upsample_nearest2d_backward_grad_input",
     "upsample_nearest3d",
     "upsample_nearest3d_backward",
     "upsample_nearest3d_backward_grad_input",

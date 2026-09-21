@@ -70,6 +70,7 @@ AUTOGRAD_DISPATCH_KEY = torch._C.DispatchKey.Autograd.name
 CONJUGATE_DISPATCH_KEY = torch._C.DispatchKey.Conjugate.name
 QUANTIZED_CUDA_DISPATCH_KEY = torch._C.DispatchKey.QuantizedCUDA.name
 SPARSE_CSR_DISPATCH_KEY = "SparseCsr" + backend_info.dispatch_key
+SPARSE_CUDA_DISPATCH_KEY = torch._C.DispatchKey.SparseCUDA.name
 SPARSE_DISPATCH_KEY = "Sparse" + backend_info.dispatch_key
 QUANTIZED_DISPATCH_KEY = "Quantized" + backend_info.dispatch_key
 
@@ -315,6 +316,10 @@ _FULL_CONFIG = (
         "_thnn_differentiable_gru_cell_backward",
         _thnn_differentiable_gru_cell_backward,
     ),
+    (
+        "_thnn_differentiable_lstm_cell_backward",
+        _thnn_differentiable_lstm_cell_backward,
+    ),
     ("_thnn_fused_gru_cell", _thnn_fused_gru_cell),
     ("_thnn_fused_gru_cell.out", _thnn_fused_gru_cell_out),
     ("_thnn_fused_gru_cell_backward", _thnn_fused_gru_cell_backward),
@@ -486,6 +491,7 @@ _FULL_CONFIG = (
     ("baddbmm", baddbmm),
     ("baddbmm.out", baddbmm_out),
     ("baddbmm_", baddbmm_),
+    ("batch_norm_gather_stats", batch_norm_gather_stats),
     ("batch_norm_gather_stats_with_counts", batch_norm_gather_stats_with_counts),
     ("bernoulli", bernoulli),
     ("bernoulli_.float", bernoulli_),
@@ -851,6 +857,7 @@ _FULL_CONFIG = (
     ("index_reduce_", index_reduce_),
     ("index_select", index_select),
     ("index_select_backward", index_select_backward),
+    ("inner", inner),
     ("inverse", inverse),
     ("is_nonzero", is_nonzero),
     ("is_same_size", is_same_size),
@@ -1022,6 +1029,7 @@ _FULL_CONFIG = (
     ("masked_scatter_", masked_scatter_),
     ("masked_scatter_backward", masked_scatter_backward),
     ("masked_select", masked_select),
+    ("masked_select_backward", masked_select_backward),
     ("matrix_exp_backward", matrix_exp_backward),
     ("max", max),
     ("max.dim", max_dim),
@@ -1173,6 +1181,18 @@ _FULL_CONFIG = (
     ("quantized_gru.input", quantized_gru_input),
     ("quantized_lstm.input", quantized_lstm),
     (
+        "quantized_max_pool1d",
+        quantized_max_pool1d,
+        None,
+        (QUANTIZED_CUDA_DISPATCH_KEY,),
+    ),
+    (
+        "quantized_max_pool1d.out",
+        quantized_max_pool1d_out,
+        None,
+        (QUANTIZED_CUDA_DISPATCH_KEY,),
+    ),
+    (
         "quantized_max_pool3d",
         quantized_max_pool3d,
         None,
@@ -1255,6 +1275,8 @@ _FULL_CONFIG = (
     ("round.out", round_out),
     ("round_", round_),
     ("row_indices", row_indices, None, (AUTOGRAD_DISPATCH_KEY,)),
+    ("row_stack", row_stack),
+    ("row_stack.out", row_stack_out),
     ("rrelu_with_noise", rrelu_with_noise),
     ("rrelu_with_noise_", rrelu_with_noise_),
     ("rrelu_with_noise_backward", rrelu_with_noise_backward),
@@ -1312,6 +1334,7 @@ _FULL_CONFIG = (
     ("slice_copy.Tensor_out", slice_copy_out),
     ("slice_scatter", slice_scatter),
     ("slogdet", slogdet),
+    ("smm", smm, None, (SPARSE_CUDA_DISPATCH_KEY,)),
     ("smooth_l1_loss", smooth_l1_loss),
     ("smooth_l1_loss.out", smooth_l1_loss_out),
     ("smooth_l1_loss_backward", smooth_l1_loss_backward),
@@ -1527,10 +1550,17 @@ _FULL_CONFIG = (
     ("unsqueeze_", unsqueeze_),
     ("upsample_bicubic2d", upsample_bicubic2d),
     ("upsample_bilinear2d", upsample_bilinear2d),
+    ("upsample_bilinear2d_backward", upsample_bilinear2d_backward),
+    (
+        "upsample_bilinear2d_backward.grad_input",
+        upsample_bilinear2d_backward_grad_input,
+    ),
     ("upsample_linear1d", upsample_linear1d),
     ("upsample_linear1d_backward", upsample_linear1d_backward),
     ("upsample_nearest1d", upsample_nearest1d),
     ("upsample_nearest2d", upsample_nearest2d),
+    ("upsample_nearest2d_backward", upsample_nearest2d_backward),
+    ("upsample_nearest2d_backward.grad_input", upsample_nearest2d_backward_grad_input),
     ("upsample_nearest3d", upsample_nearest3d),
     ("upsample_nearest3d_backward", upsample_nearest3d_backward),
     (
