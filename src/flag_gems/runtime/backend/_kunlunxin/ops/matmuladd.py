@@ -89,7 +89,27 @@ autotune_decorator = triton.heuristics(
 
 @libentry()
 @autotune_decorator
-@triton.jit(do_not_specialize=["alpha", "beta"])
+@triton.jit(
+    # alpha/beta stay unspecialized (they are the kernels' tuning knobs), and
+    # so do the runtime dims / strides: a runtime scalar equal to 1 is folded
+    # into a constant and dropped from the launcher argument sequence, which
+    # collapses the positional layout the XPU handlers decode (upstream #6415).
+    do_not_specialize=[
+        "alpha",
+        "beta",
+        "M",
+        "N",
+        "K",
+        "stride_am",
+        "stride_ak",
+        "stride_bk",
+        "stride_bn",
+        "stride_im",
+        "stride_in",
+        "stride_cm",
+        "stride_cn",
+    ]
+)
 def matmuladd_kernel(
     a_ptr,
     b_ptr,

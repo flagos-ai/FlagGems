@@ -104,7 +104,25 @@ autotune_decorator = triton.heuristics(
 
 @libentry()
 @autotune_decorator
-@triton.jit
+@triton.jit(
+    # Keep the GEMM runtime dims / strides out of the launcher's constant
+    # specialization: a runtime scalar equal to 1 gets folded into a constant
+    # and dropped from the launcher argument sequence, which collapses the
+    # positional layout the XPU handlers decode (upstream #6415).
+    do_not_specialize=[
+        "M",
+        "N",
+        "K",
+        "stride_am",
+        "stride_ak",
+        "stride_bk",
+        "stride_bn",
+        "stride_im",
+        "stride_in",
+        "stride_cm",
+        "stride_cn",
+    ]
+)
 def matmul_bias_activation_kernel(
     a_ptr,
     b_ptr,
