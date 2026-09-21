@@ -3,11 +3,36 @@ ARG BASE_IMAGE_VERSION=43
 
 FROM ${BASE_IMAGE}:${BASE_IMAGE_VERSION}
 
+# pyproject-rpm-macros exists on Fedora/EL9+ but not openEuler 24.03;
+# install it opportunistically so the image builds either way. The spec
+# detects it at parse time and falls back to a plain pip build without it.
 RUN dnf install -y \
-    rpm-build rpmdevtools pyproject-rpm-macros \
+    rpm-build rpmdevtools \
     python3-devel python3-setuptools python3-wheel python3-pip \
     python3-setuptools_scm \
+    && (dnf install -y pyproject-rpm-macros \
+        || echo "pyproject-rpm-macros unavailable; spec uses pip fallback") \
     && dnf clean all
+
+# pyproject.toml declares setuptools-scm>=8.0; openEuler 24.03 ships 7.1.0.
+# Upgrade only when the distro version is too old (a no-op on Fedora).
+# --prefix /usr overwrites the distro module in place: python drops
+# /usr/local from sys.path inside rpmbuild (RPM_BUILD_ROOT detection), so a
+# default pip install would be invisible to %build.
+RUN python3 -c "import importlib.metadata as m, sys; \
+        sys.exit(0 if int(m.version('setuptools-scm').split('.')[0]) >= 8 else 1)" \
+    || { python3 -m pip install --no-cache-dir --prefix /usr "setuptools-scm>=8.0" \
+         && rm -rf /usr/lib/python3*/site-packages/setuptools_scm-7.*.dist-info; }
+
+# openEuler images define %dist as empty (official .oe* tags are injected by
+# EulerMaker); reconstruct it so local/CI builds get distro-tagged Release
+# fields like official packages.
+RUN if [ -z "$(rpm --eval '%{?dist}')" ]; then \
+        . /etc/os-release && \
+        case "${ID}" in \
+            openEuler) echo "%dist .oe$(echo "${VERSION_ID}" | tr -d '.')" >> /root/.rpmmacros ;; \
+        esac; \
+    fi
 
 RUN rpmdev-setuptree
 

@@ -1,92 +1,66 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
 import triton
-import triton.language as tl
+from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 
-from flag_gems.runtime import torch_device_fn
+from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
-_QINT_ALIAS = {
-    torch.qint8: (torch.int8, False),
-    torch.quint8: (torch.int8, True),
-    torch.qint32: (torch.int32, False),
-}
+_config = CodeGenConfig(
+    512,
+    (65536, 65536, 65536),
+    32,
+    True,
+    prefer_1d_tile=True,
+    buffer_size_limit=4096,
+    isCloseVectorization=True,
+    kunlunAutoGrid=True,
+    unroll_num=16,
+)
 
-_BLOCK = 8192
 
-
+@pointwise_dynamic(
+    is_tensor=[True, False, False],
+    promotion_methods=[(0, "INT_TO_FLOAT")],
+    num_outputs=1,
+    config=_config,
+)
 @triton.jit
-def _dequantize_kernel(
-    x_ptr,
-    out_ptr,
-    scale,
-    zero_point,
-    n_elements,
-    UNSIGNED: tl.constexpr,
-    BLOCK: tl.constexpr,
-):
-    offsets = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
-    raw = tl.load(x_ptr + offsets, mask=offsets < n_elements)
-    values = raw.to(tl.int32).to(tl.float32)
-    if UNSIGNED:
-        values = tl.where(values < 0.0, values + 256.0, values)
-    tl.store(out_ptr + offsets, (values - zero_point) * scale)
+def dequantize_func(inp, zero_point, scale):
+    return (inp - zero_point) * scale
 
 
-def _int_repr_view(inp: torch.Tensor, int_dtype: torch.dtype) -> torch.Tensor:
-    """Reinterpret a quantized tensor's storage as its integer representation.
-
-    ``Tensor.int_repr()`` has no working QuantizedCUDA kernel on this platform
-    (it raises ``CUDA error: invalid device function``), so the integer payload
-    is obtained by re-typing the very same device storage. This is pure metadata
-    work: no copy, no host round trip, no ATen compute kernel.
-    """
-    view = torch.empty(0, dtype=int_dtype, device=inp.device)
-    view.set_(
-        inp.untyped_storage(),
-        inp.storage_offset(),
-        tuple(inp.shape),
-        tuple(inp.stride()),
-    )
-    return view
-
-
-def dequantize(input: torch.Tensor) -> torch.Tensor:
+def dequantize(a):
+    """Dequantize a quantized tensor (qint8/quint8/qint32) to float32 on XPU."""
     logger.debug("GEMS_KUNLUNXIN DEQUANTIZE")
-    if not input.is_quantized:
-        raise RuntimeError("dequantize expects a quantized tensor")
-    if input.qscheme() not in (torch.per_tensor_affine, torch.per_tensor_symmetric):
-        raise NotImplementedError(
-            "Kunlunxin dequantize supports per-tensor quantization only."
-        )
-    if input.dtype not in _QINT_ALIAS:
-        raise NotImplementedError(
-            f"Kunlunxin dequantize does not support {input.dtype}."
-        )
 
-    int_dtype, unsigned = _QINT_ALIAS[input.dtype]
-    int_repr = _int_repr_view(input, int_dtype)
-    if not int_repr.is_contiguous():
-        int_repr = int_repr.contiguous()
+    scale = float(a.q_scale())
+    zero_point = int(a.q_zero_point())
 
-    n_elements = int_repr.numel()
-    if n_elements == 0:
-        return torch.empty(input.shape, dtype=torch.float32, device=input.device)
+    if a.numel() == 0:
+        return torch.empty(a.shape, dtype=torch.float32, device=a.device)
 
-    BLOCK = _BLOCK
-    n_tiles = triton.cdiv(n_elements, BLOCK)
-    padded = torch.empty(n_tiles * BLOCK, dtype=torch.float32, device=input.device)
+    # `a.int_repr()` has no kernel in the XPU build; use a zero-copy int8 view
+    # of the quantized storage instead. The arithmetic stays in the kernel.
+    raw = torch.empty(0, dtype=torch.int8, device=a.device)
+    raw.set_(a.untyped_storage(), a.storage_offset(), a.size(), a.stride())
+    if not raw.is_contiguous():
+        raw = raw.contiguous()
 
-    with torch_device_fn.device(input.device):
-        _dequantize_kernel[(n_tiles,)](
-            int_repr,
-            padded,
-            float(input.q_scale()),
-            int(input.q_zero_point()),
-            n_elements,
-            UNSIGNED=unsigned,
-            BLOCK=BLOCK,
-        )
-    return padded[:n_elements].view(input.shape)
+    return dequantize_func(raw, zero_point, scale)

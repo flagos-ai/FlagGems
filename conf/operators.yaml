@@ -649,6 +649,28 @@ ops:
   - BLAS
   stages:
   - stable: '4.0'
+- id: addmm_out_vector_bias
+  description: A variant of `addmm_out` that exercises the vector bias (1-D `input`)
+    broadcast path of the `out` overload.
+  for:
+  - addmm.out
+  labels:
+  - aten
+  kind:
+  - BLAS
+  stages:
+  - beta: '5.4'
+- id: addmm_vector_bias
+  description: A variant of `addmm` that exercises the vector bias (1-D `input`)
+    broadcast path.
+  for:
+  - addmm
+  labels:
+  - aten
+  kind:
+  - BLAS
+  stages:
+  - beta: '5.4'
 - id: addmv
   description: 'Performs a matrix-vector product of the matrix `mat` and the vector
     `vec`.
@@ -3533,6 +3555,18 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: ctc_loss_backward
+  description: The backward computation of `ctc_loss()`, exercised through the
+    autograd of the forward operator.
+  for:
+  - ctc_loss.Tensor
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - beta: '5.4'
 - id: cudnn_attention_forward
   description: 'Forward kernel for cuDNN attention, computing scaled dot-product
 
@@ -5864,6 +5898,17 @@ ops:
   - Tensor
   stages:
   - beta: '5.0'
+- id: fused_adagrad_
+  description: The in-place version of `fused_adagrad()`.
+  for:
+  - _fused_adagrad_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: fused_adam
   description: Fused Adam optimizer step with optional AdamW weight decay, AMSGrad,
     and gradient maximize support.
@@ -5959,6 +6004,48 @@ ops:
   - Attention
   - vLLM
   - DeepSeekV4
+  kind:
+  - NeuralNetwork
+  stages:
+  - beta: '5.4'
+- id: fused_marlin_moe_w4a16_int4
+  description: Fused MoE with GPTQ INT4 (uint4b8) W4A16 weights in plain row-major
+    layout; Triton wna16 fused-dequant GEMM with SwiGLU activation, aligned with
+    vLLM's fused_marlin_moe call signature.
+  for:
+  - flag_gems.fused.fused_marlin_moe.fused_marlin_moe
+  labels:
+  - fused
+  - vLLM
+  - MoE
+  kind:
+  - NeuralNetwork
+  stages:
+  - beta: '5.4'
+- id: fused_marlin_moe_w4a16_mxfp4
+  description: Fused MoE with MXFP4 (E2M1) W4A16 weights packed two codes per byte
+    and E8M0 scales; Triton wna16 fused-dequant GEMM with SwiGLU activation,
+    aligned with vLLM's fused_marlin_moe call signature.
+  for:
+  - flag_gems.fused.fused_marlin_moe.fused_marlin_moe
+  labels:
+  - fused
+  - vLLM
+  - MoE
+  kind:
+  - NeuralNetwork
+  stages:
+  - beta: '5.4'
+- id: fused_marlin_moe_w8a16_int8
+  description: Fused MoE with GPTQ INT8 (uint8b128) W8A16 weights; Triton wna16
+    fused-dequant GEMM with SwiGLU activation, aligned with vLLM's fused_marlin_moe
+    call signature.
+  for:
+  - flag_gems.fused.fused_marlin_moe.fused_marlin_moe
+  labels:
+  - fused
+  - vLLM
+  - MoE
   kind:
   - NeuralNetwork
   stages:
@@ -6064,6 +6151,21 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: fused_sgd_
+  description: |
+    The in-place version of `fused_sgd()`. Covers both the default overload and
+    `_fused_sgd_.tensor_lr`, which takes the learning rate as a tensor so a
+    scheduler can update it without a host round-trip; both share one kernel.
+  for:
+  - _fused_sgd_
+  - _fused_sgd_.tensor_lr
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: gather
   description: Gathers values along an axis specified by `dim`.
   for:
@@ -6095,6 +6197,23 @@ ops:
   - KernelGen
   kind:
   - Math
+  stages:
+  - alpha: '5.4'
+- id: gather_sparse_backward
+  description: 'Backward of `gather()` producing a sparse (COO) gradient w.r.t. `self`.
+    Each entry of the flattened `grad`/`index` contributes one non-zero at the
+    gather position `index[..., ]` along `dim` (the other coordinates are the
+    unraveled index of the entry). The result is an uncoalesced sparse COO
+    tensor of size `self.size()`.
+
+    '
+  for:
+  - _gather_sparse_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
   stages:
   - alpha: '5.4'
 - id: gcd
@@ -7509,6 +7628,22 @@ ops:
   - BLAS
   stages:
   - alpha: '5.5'
+- id: inverse
+  description: |
+    Computes the inverse of a square matrix, batched over the leading dimensions
+    and equivalent to torch.inverse. Small real matrices use a fused pivoted
+    Gauss-Jordan Triton kernel; larger real matrices and complex inputs are
+    delegated to the vendor (cuSOLVER) inverse.
+  for:
+  - inverse
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.4'
+
 - id: irshift
   description: Triton kernel implementation for __irshift__.
   for:
@@ -8544,6 +8679,16 @@ ops:
   - LinearAlg
   stages:
   - beta: '5.4'
+- id: linalg_matrix_rank_hermitian
+  description: Computes numerical matrix rank of a Hermitian matrix (hermitian=True).
+  for:
+  - linalg_matrix_rank
+  labels:
+  - aten
+  kind:
+  - LinearAlg
+  stages:
+  - beta: '5.4'
 - id: linalg_matrix_rank_out
   description: Computes numerical matrix rank using a scalar tolerance and an output
     tensor.
@@ -9484,6 +9629,21 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: lu_with_info
+  description: |
+    Computes a compact LU factorization with partial pivoting of a matrix,
+    returning the packed LU matrix, the 1-indexed pivots and an info tensor
+    that reports the first singular diagonal of U (0 on success). This is the
+    deprecated `torch._lu_with_info` interface mirrored on `linalg.lu_factor_ex`.
+  for:
+  - _lu_with_info
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.4'
 - id: make_dep_token
   description: 'Creates a scalar tensor as a dependency token for TorchScript tracing
 
@@ -9514,6 +9674,19 @@ ops:
   stages:
   - alpha: '5.0'
   - beta: '5.3'
+- id: margin_ranking_loss_backward
+  description: The backward computation of `margin_ranking_loss()`, exercised through
+    the autograd of the forward operator.
+  for:
+  - margin_ranking_loss
+  labels:
+  - aten
+  - nn.functional
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - beta: '5.4'
 - id: masked_fill
   description: Fills elements of given tensor with `value` where `mask` is True.
   for:
@@ -10143,6 +10316,17 @@ ops:
   stages:
   - stable: '3.0'
   cpp: '4.0'
+- id: mm_self_transpose
+  description: Multiplies a transposed view with its base tensor (`mm(inp, inp.t())`),
+    exercising the column-major B operand path of `mm`.
+  for:
+  - mm
+  labels:
+  - aten
+  kind:
+  - BLAS
+  stages:
+  - beta: '5.4'
 - id: mm_w8a8_fp8
   description: Dynamically quantizes BF16 activations and weights to FP8 E4M3, computes
     their matrix product with FP8 Tensor Cores, and applies FP32 scales.
@@ -12522,6 +12706,19 @@ ops:
   stages:
   - beta: '5.0'
   - stable: '5.4'
+- id: replication_pad1d_backward
+  description: 'Computes the gradient of replication_pad1d.
+
+    '
+  for:
+  - replication_pad1d_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: replication_pad1d_out
   description: A variant of `replication_pad1d` that assigns the output to the `out`
     tensor.
@@ -12871,6 +13068,17 @@ ops:
   - Math
   stages:
   - beta: '5.3'
+- id: row_indices
+  description: Returns the row indices of a column-compressed (CSC or BSC) sparse tensor.
+  for:
+  - row_indices
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: rrelu_with_noise
   description: 'Triton kernel implementation for rrelu_with_noise
     '
@@ -12925,11 +13133,38 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
-- id: rshift
-  description: Applies a bitwise right shift to an integer tensor with a tensor or
-    scalar shift value.
+- id: rshift_scalar
+  description: Applies a bitwise right shift to an integer tensor with a scalar shift
+    value.
   for:
   - __rshift__.Scalar
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: rshift_scalar_out
+  description: 'A variant of `rshift()` that assigns the output to the given `out`
+    parameter, with a scalar shift value.
+
+    '
+  for:
+  - __rshift__.Scalar_out
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: rshift_tensor
+  description: Applies a bitwise right shift to an integer tensor with a tensor shift
+    value.
+  for:
   - __rshift__.Tensor
   labels:
   - aten
@@ -12939,13 +13174,12 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
-- id: rshift_out
+- id: rshift_tensor_out
   description: 'A variant of `rshift()` that assigns the output to the given `out`
-    parameter.
+    parameter, with a tensor shift value.
 
     '
   for:
-  - __rshift__.Scalar_out
   - __rshift__.Tensor_out
   labels:
   - aten
@@ -16231,6 +16465,8 @@ ops:
   stages:
   - stable: '2.1'
 - id: to_copy
+  description: Copies a tensor to a different dtype, layout, device, or memory
+    format, exposed as the low-level `_to_copy` aten operator.
   for:
   - _to_copy
   condition:
@@ -16940,6 +17176,28 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: upsample_bilinear2d_backward
+  description: Computes gradients of bilinear interpolation without anti-aliasing.
+  for:
+  - upsample_bilinear2d_backward
+  labels:
+  - aten
+  - Reduction
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
+- id: upsample_bilinear2d_backward_grad_input
+  description: Writes bilinear interpolation gradients into a supplied tensor.
+  for:
+  - upsample_bilinear2d_backward.grad_input
+  labels:
+  - aten
+  - Reduction
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: upsample_lanczos2d_aa
   description: Resizes a 4D image tensor with antialiased Lanczos-3 interpolation.
   for:
@@ -17055,6 +17313,28 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '2.2'
+- id: upsample_nearest2d_backward
+  description: Deterministic backward for legacy 2D nearest-neighbor interpolation.
+  for:
+  - upsample_nearest2d_backward
+  labels:
+  - aten
+  - Reduction
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
+- id: upsample_nearest2d_backward_grad_input
+  description: Preallocated-output overload of upsample_nearest2d_backward.
+  for:
+  - upsample_nearest2d_backward.grad_input
+  labels:
+  - aten
+  - Reduction
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: upsample_nearest3d
   description: 'Performs 3D nearest-neighbor interpolation to increase the spatial
     size of volumetric data,
