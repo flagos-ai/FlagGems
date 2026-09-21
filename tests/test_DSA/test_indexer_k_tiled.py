@@ -18,9 +18,12 @@ import numpy as np
 import pytest
 import torch
 
-from flag_gems.fused.DSA.indexer_k_tiled import (
-    triton_lighting_indexer_k_tiled_interface,
-)
+try:  # prefer the backend specialization when the runtime exposes it
+    from flag_gems import triton_lighting_indexer_k_tiled_interface
+except ImportError:
+    from flag_gems.fused.DSA.indexer_k_tiled import (
+        triton_lighting_indexer_k_tiled_interface,
+    )
 
 from .torch_src.fp8_lighting_indexer import (
     ref_fp8_mqa_logits,  # , mqa_attn_return_logits_interface
@@ -66,8 +69,8 @@ def assert_close_inf(
             a_finite_val = a_finite[coord].item()
             b_finite_val = b_finite[coord].item()
             idx_val = idx.tolist()[0]
-            ks_val = ks[idx_val]
-            ke_val = ke[idx_val]
+            ks_val = ks[idx_val] if ks is not None else None
+            ke_val = ke[idx_val] if ke is not None else None
             display_error_message(
                 f"  Position {coord}: "
                 f"a={a_val:.6f} (finite={a_finite_val}), "
@@ -96,7 +99,7 @@ def assert_close_inf(
     b = b.masked_fill(~b_finite, 0)
     correlation = compute_correlation(a, b, tensor_name)
     difference = 1.0 - correlation
-    if not (0 <= difference <= tolerance):
+    if not (difference <= tolerance):  # fp noise can push corr slightly above 1
         display_error_message(f"{tensor_name} Error: {difference}")
         if should_raise:
             assert False
@@ -163,9 +166,6 @@ def reference_lighting_indexer_implementation(q, kv, weights, ks, ke):
     )
 
 
-@pytest.mark.skip(
-    "#2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
-)
 @pytest.mark.triton_lighting_indexer_k_tiled_interface
 @pytest.mark.parametrize("seq_len_q", [1024, 2048, 4096])
 @pytest.mark.parametrize("seq_len_kv", [2048, 4096, 8192])
