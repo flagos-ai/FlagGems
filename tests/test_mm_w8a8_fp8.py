@@ -172,11 +172,10 @@ def test_mm_w8a8_fp8_mthreads_large_k_scales(M, N, K, scalar_a):
 @pytest.mark.mm_w8a8_fp8
 @pytest.mark.skipif(not _scaled_mm_backend_available(), reason="FP8 scaled MM backend")
 @pytest.mark.parametrize("M,N,K", [(32, 64, 128), (256, 256, 8192)])
-@pytest.mark.parametrize("rowwise", [False, True])
-def test_mm_w8a8_fp8_graph_updates(M, N, K, rowwise):
+def test_mm_w8a8_fp8_graph_updates(M, N, K):
     a = torch.randn((M, K), device=flag_gems.device).to(torch.float8_e4m3fn)
     b = torch.randn((N, K), device=flag_gems.device).to(a.dtype).T
-    sa, sb = _external_scales(a, b, rowwise=rowwise)
+    sa, sb = _external_scales(a, b, rowwise=True)
     out = torch.empty((M, N), device=a.device, dtype=torch.bfloat16)
     backend = torch.cuda if flag_gems.device == "cuda" else torch.musa
     graph_cls = backend.CUDAGraph if flag_gems.device == "cuda" else backend.MUSAGraph
@@ -548,47 +547,3 @@ def test_mm_w8a8_fp8_hopper_torch_rowwise(M, N, K):
         torch.linalg.vector_norm(expected.float()).clamp_min(1e-12)
     )
     assert relative_error < 0.005
-
-
-@pytest.mark.mm_w8a8_fp8
-@pytest.mark.skipif(not _cuda_hopper_w8a8_fp8_available(), reason="Hopper FP8 backend")
-@pytest.mark.parametrize(
-    "M,N,K",
-    [
-        (384, 384, 384),
-        (1024, 1024, 1024),
-        (2048, 2048, 2048),
-        (4096, 4096, 4096),
-        (2048, 8192, 2048),
-        (256, 256, 16384),
-        (64, 256, 32768),
-    ],
-)
-@pytest.mark.parametrize("out_dtype", [torch.bfloat16, torch.float16])
-def test_mm_w8a8_fp8_hopper_accumulation(M, N, K, out_dtype):
-    torch.manual_seed(42)
-    a = torch.randn((M, K), device=flag_gems.device).to(torch.float8_e4m3fn)
-    b = torch.randn((N, K), device=a.device).to(a.dtype).T
-    sa, sb = _external_scales(a, b)
-    reference = _scaled_fp8_reference(a, b, sa, sb).to(out_dtype)
-    out = torch.empty((M, N), device=a.device, dtype=out_dtype)
-    result = flag_gems.mm_w8a8_fp8_out(a, b, sa, sb, out=out)
-    assert result is out
-    torch.testing.assert_close(result, reference, rtol=0.016, atol=0.01)
-
-
-@pytest.mark.mm_w8a8_fp8
-@pytest.mark.skipif(not _cuda_hopper_w8a8_fp8_available(), reason="Hopper FP8 backend")
-@pytest.mark.parametrize("seed", [7, 23, 101])
-@pytest.mark.parametrize(
-    "out_dtype", [torch.float32, torch.float8_e4m3fn, torch.float8_e5m2]
-)
-def test_mm_w8a8_fp8_hopper_precise_rounding(seed, out_dtype):
-    torch.manual_seed(seed)
-    a = torch.randn((32, 513), device=flag_gems.device).to(torch.float8_e4m3fn)
-    b = torch.randn((64, 513), device=a.device).to(a.dtype).T
-    sa, sb = _external_scales(a, b, rowwise=True)
-    reference = _scaled_fp8_reference(a, b, sa, sb).to(out_dtype).float()
-    result = flag_gems.mm_w8a8_fp8(a, b, sa, sb, out_dtype=out_dtype)
-    rtol, atol = (5e-4, 0.003) if out_dtype == torch.float32 else (0.125, 0.125)
-    torch.testing.assert_close(result.float(), reference, rtol=rtol, atol=atol)

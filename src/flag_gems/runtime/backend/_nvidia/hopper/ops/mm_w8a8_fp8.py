@@ -157,7 +157,7 @@ def _mm_w8a8_fp8_tma(
     for kk in range(tl.cdiv(K, BK)):
         a = A.load([pm * BM, kk * BK])
         b = B.load([pn * BN, kk * BK]).T
-        acc = tl.dot(a, b, acc=acc, max_num_imprecise_acc=32)
+        acc = tl.dot(a, b, acc=acc)
     acc = acc * sa[:, None] * sb[None, :]
     C.store([pm * BM, pn * BN], acc.to(C.dtype))
 

@@ -245,21 +245,26 @@ mm_w8a8_fp8_block_scaled:
       num_warps: warps
     block_m:
       - 64
+      - 128
     block_n:
       - 64
       - 32
       - 128
+      - 256
     block_k:
       - 64
       - 32
       - 128
+      - 256
     group_m:
       - 16
     stages:
       - 3
       - 2
+      - 4
     warps:
       - 4
+      - 8
   - strategy:
      M: default
      N: default
