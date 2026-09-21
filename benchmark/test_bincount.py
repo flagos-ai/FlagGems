@@ -63,7 +63,7 @@ def bincount_weighted_input_fn(shape, dtype, device):
 def test_bincount_weighted():
     bench = base.GenericBenchmark(
         input_fn=bincount_weighted_input_fn,
-        op_name="bincount_weighted",
+        op_name="bincount",
         torch_op=torch.bincount,
         dtypes=consts.FLOAT_DTYPES,
     )
