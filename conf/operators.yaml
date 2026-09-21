@@ -15844,7 +15844,7 @@ ops:
   kind:
   - Math
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: thnn_fused_gru_cell
   description: Computes the fused GRU cell forward pass and backward workspace.
   for:
