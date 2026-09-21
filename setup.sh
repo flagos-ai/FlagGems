@@ -40,7 +40,7 @@ export UV_HTTP_TIMEOUT="${UV_HTTP_TIMEOUT:-120}"
 # triton.Config). We check both: every recorded file exists, and the package
 # imports with its real API surface.
 verify_triton_install() {
-  python - <<'PY'
+  TORCH_DEVICE_BACKEND_AUTOLOAD=0 python - <<'PY'
 import importlib.metadata as md
 import site
 import sys
