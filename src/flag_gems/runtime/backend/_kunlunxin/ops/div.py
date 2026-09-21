@@ -365,6 +365,9 @@ def true_divide_(A, B):
             return true_div_func_tensor_scalar_cfg(A, B, out0=A)
         return true_div_func_tensor_scalar(A, B, out0=A)
 
+divide = true_divide
+true_divide_tensor_ = true_divide_
+
 
 @triton.jit
 def _trunc_q(q):
