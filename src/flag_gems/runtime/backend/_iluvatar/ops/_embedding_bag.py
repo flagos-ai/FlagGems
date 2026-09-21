@@ -25,6 +25,7 @@ from triton.runtime.cache import get_cache_manager
 from flag_gems.ops._embedding_bag import _embedding_bag_impl as _generic_impl
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
+from flag_gems.utils.triton_version_utils import _triton_version_at_least
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +83,7 @@ def _corex_assert_library():
 
 
 @triton.jit
-def _embedding_bag_corex_assert(code):
+def _embedding_bag_corex_assert_legacy(code):
     # CoreX 4.4 lowers tl.device_assert to printf only. Call the SDK's actual
     # assertion routine through Triton's existing external-library linker.
     empty: tl.constexpr = ""
@@ -94,6 +95,29 @@ def _embedding_bag_corex_assert(code):
         _COREX_ASSERT_SYMBOLS.value,
         is_pure=pure.value,
     )
+
+
+@tlcore.extern
+def _embedding_bag_corex_assert_modern(code, _semantic=None):
+    # Keep the argument list in Python: newer JITs lower list literals to a
+    # Triton tuple, while extern_elementwise requires a Python list with copy().
+    return tlcore.extern_elementwise(
+        "",
+        "",
+        [code],
+        {(tl.int32,): ("flaggems_corex_assert", tl.int32)},
+        is_pure=False,
+        _semantic=_semantic,
+    )
+
+
+# CoreX 3.1's dependency scanner requires the JIT helper; FlagTree 3.6 accepts
+# external builtins and needs Python-side construction of the argument list.
+_embedding_bag_corex_assert = (
+    _embedding_bag_corex_assert_modern
+    if _triton_version_at_least(3, 6)
+    else _embedding_bag_corex_assert_legacy
+)
 
 
 @libentry()

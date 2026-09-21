@@ -66,6 +66,10 @@ if missing:
     print(f"{len(missing)} recorded file(s) missing, e.g. {missing[:5]}")
     sys.exit(1)
 
+# Initialize Torch's device extensions before Triton loads its backends.
+# Otherwise Ascend's backend imports Torch while Triton is partially initialized,
+# and torch_npu's Dynamo import accesses triton.language before it exists.
+import torch
 import triton
 
 if triton.__file__ is None or not hasattr(triton, "Config"):

@@ -79,6 +79,9 @@ if name in ('test_embedding_bag_invalid_values', 'test_embedding_bag_invalid_aft
 getattr(suite, name)(*args)
 """
     env = dict(os.environ, TRITON_DEBUG="0")
+    # CI may expose the source tree through pytest's pythonpath configuration
+    # rather than an editable install. Preserve that path in the fresh process.
+    env["PYTHONPATH"] = os.pathsep.join(sys.path)
     env[_ERROR_CHILD] = "1"
     result = subprocess.run(
         [sys.executable, "-c", code, json.dumps((test_name, args))],
