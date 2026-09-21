@@ -150,12 +150,21 @@ def _tle_min_row_kernel(
     a_lmem = tle.gpu.alloc(
         [XBLOCK, YBLOCK], dtype=IN_DTYPE, layout=None, scope=tle.gpu.lmem
     )
-    c_lmem = tle.gpu.alloc([XBLOCK], dtype=tl.int8, layout=None, scope=tle.gpu.lmem)
+    # The `[XBLOCK]` result row must be staged in cluster-shared SM, not in an
+    # LM strip: the writeback is 1 byte per row (narrower than a cache line), and
+    # on KL3 that costs a cross-cluster contention penalty on one 64B GM line
+    # (~19us of a 30us norm kernel; see triton docs/xpu3/how_to_write_norm).
+    # SM is cluster-shared AND its local_ptr honours the index we pass (the LM
+    # one drops it and hands back only this core's slice -- verified by the norm
+    # case study), so every core drops its own lane in and the writeback leaves
+    # as one contiguous `emitCoalescedSM2GM`. Needs the toolchain commit
+    # `3d1cdb00` ("support copy_l2g out of a scope=smem buffer, coalesced").
+    c_smem = tle.gpu.alloc([XBLOCK], dtype=tl.int8, layout=None, scope=tle.gpu.smem)
 
     row_ids = tl.broadcast_to(tl.arange(0, XBLOCK)[:, None], (XBLOCK, YBLOCK))
     col_ids = tl.broadcast_to(tl.arange(0, YBLOCK)[None, :], (XBLOCK, YBLOCK))
     a_ptrs = tle.gpu.local_ptr(a_lmem, (row_ids, col_ids))
-    c_ptrs = tle.gpu.local_ptr(c_lmem, (tl.arange(0, XBLOCK),))
+    c_ptrs = tle.gpu.local_ptr(c_smem, (tl.arange(0, XBLOCK),))
 
     inf = float("inf")
     acc = tl.full([XBLOCK, YBLOCK], inf, ACC_DTYPE)
@@ -167,7 +176,7 @@ def _tle_min_row_kernel(
         acc = tl.minimum(acc, tl.abs(tl.load(a_ptrs)).to(ACC_DTYPE))
     r = tl.min(acc, axis=1)
     tl.store(c_ptrs, (r != 0).to(tl.int8))
-    tle.gpu.copy(c_lmem, c_desc, [XBLOCK], [row_off])
+    tle.gpu.copy(c_smem, c_desc, [XBLOCK], [row_off])
 
 
 def _tle_min_geom(M, N, itemsize, acc_itemsize):
@@ -430,7 +439,11 @@ def all_bool_dim_kernel_f(
 
 
 # ---- global (all elements reduced to a single bool): two-stage ----
-_GLOBAL_CHUNKS = (256, 128, 64, 32, 16, 8, 4, 2, 1)
+# 512 leads: it makes stage-1 grid = cdiv(512, 64) = 8 = one program per KL3 cluster,
+# the "one program per cluster" optimum. Measured on 1M (dev2, warmup=500): stage total
+# 26.5/27.2/26.7us (fp16/fp32/bf16) at 512 against 29.3/29.7/29.4us at 256 (~+9%). 256
+# uses only 4 clusters; 1024 oversubscribes (31-32us). buffer_size_limit is inert here.
+_GLOBAL_CHUNKS = (512, 256, 128, 64, 32, 16, 8, 4, 2, 1)
 
 
 def _pick_chunks(n):
@@ -457,6 +470,12 @@ def all_global_s1(
     BLOCK_N: tl.constexpr,
     ACC: tl.constexpr,
 ):
+    """Per-chunk min|.| -> one int32 word per chunk (1 = every element non-zero).
+
+    int32, not int8/bool: a 1-byte GM store scalarizes on this stack (measured
+    53.6us against 18.4us for the same 4-byte store, i.e. the trap documented at
+    `_per_row_all`), while stage 2 over integer partials is what is cheap.
+    """
     pid = ext.program_id(0)
     rows = pid * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     inb = inp + rows * C
@@ -469,17 +488,22 @@ def all_global_s1(
         a = tl.load(inb + cols, mask, other=float("inf")).to(ACC)
         acc = tl.minimum(acc, tl.abs(a))
     r = tl.reduce(acc, axis=1, combine_fn=_min2)[:, None]
-    tl.store(midb, r, row_mask)
+    tl.store(midb, (r != 0).to(tl.int32), row_mask)
 
 
 @libentry()
 @triton.jit
-def all_global_s2(mid, out, P, BLOCK: tl.constexpr, ACC: tl.constexpr):
+def all_global_s2(mid, out, P, BLOCK: tl.constexpr):
+    """All of the chunk predicates: `min` over the 0/1 words == 1.
+
+    `other=1` is the neutral element of that min (the AND identity), so padded
+    lanes of the last block can never force a false.
+    """
     offs = tl.arange(0, BLOCK)
     mask = offs < P
-    a = tl.load(mid + offs, mask=mask, other=0.0).to(ACC)
+    a = tl.load(mid + offs, mask=mask, other=1)
     r = tl.reduce(a, axis=0, combine_fn=_min2)
-    tl.store(out, r != 0)
+    tl.store(out, r == 1)
 
 
 @libentry()
@@ -521,6 +545,13 @@ def _global_all(inp):
     n = inp.numel()
     out = torch.empty_strided((), (), dtype=torch.bool, device=inp.device)
 
+    if inp.dtype == torch.bfloat16:
+        # "is this element +/-0" is a property of the 15 non-sign bits, which both
+        # formats lay out identically -- a bf16 is zero exactly when its fp16
+        # reinterpretation is (same trick as `_tle_min_row`). bf16's conversion
+        # lowering costs ~2-3x on this path; measured 1.93x / 3.16x on n = 1M / 4M.
+        inp = inp.view(torch.float16)
+
     if inp.dtype == torch.bool and n % 4 == 0:
         view = inp.reshape(-1).view(torch.int32)
         nw = view.numel()
@@ -541,15 +572,20 @@ def _global_all(inp):
     p = _pick_chunks(n)
     c = n // p
     acc = _acc_dtype(inp.dtype)
-    mid = torch.empty((p,), dtype=torch.float32, device=inp.device)
+    # int32 partials, not fp32: the same two-stage shape measured 26.6us (fp32)
+    # against 22.0us (int32) on 1M -- stage-1 pays nothing for the integer store
+    # (18.0 vs 18.4us) while stage-2 drops from 9.8us to 5.4us, purely because the
+    # reduce is over an integer type. Both stages carry the same predicate as
+    # before, so the result is unchanged.
+    mid = torch.empty((p,), dtype=torch.int32, device=inp.device)
     with torch_device_fn.device(inp.device):
         all_global_s1[(triton.cdiv(p, BLOCK_M_DEFAULT), 1)](
             inp.reshape(p, c), mid, p, c, ACC=acc, buffer_size_limit=2048
         )
         if p == 1:
-            return (mid[0] != 0).reshape([])
+            return (mid[0] == 1).reshape([])
         all_global_s2[(1, 1)](
-            mid, out, p, triton.next_power_of_2(p), ACC=acc, buffer_size_limit=2048
+            mid, out, p, triton.next_power_of_2(p), buffer_size_limit=2048
         )
     return out
 
