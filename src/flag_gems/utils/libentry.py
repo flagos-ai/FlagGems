@@ -1110,6 +1110,22 @@ class LibTuner(triton.runtime.Autotuner):
             self.shared_config_pre_hook(full_nargs)
         elif config.pre_hook is not None:
             config.pre_hook(full_nargs)
+
+        # Workaround for Issue #6420: after auto-tuning benchmark on Iluvatar
+        # BI-V150, the compiled kernel objects cached during benchmark produce
+        # incorrect results when re-executed (cubin binary is verified
+        # identical; the issue is in the GPU function handle layer). Clear
+        # only kernel_cache and kernel_key_cache to force a fresh loadBinary
+        # for the best config, while preserving binder/backend/target to
+        # avoid unnecessary reconstruction overhead.
+        if not used_cached_result and device.vendor_name == "iluvatar":
+            jit_fn = getattr(self.fn, "fn", None)
+            if jit_fn is not None and hasattr(jit_fn, "device_caches"):
+                for _entry in jit_fn.device_caches.values():
+                    if isinstance(_entry, tuple) and len(_entry) >= 2:
+                        _entry[0].clear()  # kernel_cache
+                        _entry[1].clear()  # kernel_key_cache
+
         ret = self.fn.run(
             *args,
             **kwargs,
