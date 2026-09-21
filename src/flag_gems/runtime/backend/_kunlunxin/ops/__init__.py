@@ -171,6 +171,7 @@ from .clamp import (
 from .clip import clip, clip_
 from .col2im import col2im
 from .concatenate import concatenate
+from .conj_physical import conj_physical
 from .conj_physical_ import conj_physical_  # noqa: F401
 from .contiguous import contiguous
 from .conv1d import conv1d
@@ -291,7 +292,8 @@ from .hardtanh_backward import hardtanh_backward  # noqa: F401
 from .heaviside_ import heaviside_  # noqa: F401
 from .histc import histc
 from .hstack import hstack
-from .hypot import hypot, hypot_
+from .hypot import hypot
+from .hypot_ import hypot_
 from .igamma_ import igamma_  # noqa: F401
 from .igammac import igammac, igammac_out
 from .igammac_ import igammac_
@@ -847,6 +849,7 @@ __all__ = [
     "clip_",
     "col2im",
     "concatenate",
+    "conj_physical",
     "constant_pad_nd",
     "contiguous",
     "conv1d",
