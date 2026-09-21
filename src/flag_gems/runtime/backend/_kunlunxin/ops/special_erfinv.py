@@ -12,8 +12,12 @@ logger = logging.getLogger(__name__)
 @libentry()
 @triton.jit(do_not_specialize=["n_elements"])
 def _special_erfinv_kernel_xpu(
-    x_ptr, out_ptr, n_elements,
-    BLOCK: tl.constexpr, TILES_PER_CTA: tl.constexpr, ONE_TILE: tl.constexpr,
+    x_ptr,
+    out_ptr,
+    n_elements,
+    BLOCK: tl.constexpr,
+    TILES_PER_CTA: tl.constexpr,
+    ONE_TILE: tl.constexpr,
 ):
     # XPU specialization of the erfinv rational polynomial (ported from
     # upstream PR #6063).

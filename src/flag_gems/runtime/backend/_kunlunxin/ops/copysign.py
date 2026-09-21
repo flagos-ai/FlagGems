@@ -20,6 +20,7 @@ import triton.language as tl
 from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 
 from flag_gems.utils import libentry
+
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
@@ -124,7 +125,13 @@ def copysign_bit_func(input, other):
 @libentry()
 @triton.jit(do_not_specialize=["num_tasks"])
 def _copysign_kernel(
-    A, B, OUT, num_tasks, TILE: tl.constexpr, TILES_PER_CTA: tl.constexpr, ONE_TILE: tl.constexpr
+    A,
+    B,
+    OUT,
+    num_tasks,
+    TILE: tl.constexpr,
+    TILES_PER_CTA: tl.constexpr,
+    ONE_TILE: tl.constexpr,
 ):
     ity = A.type.element_ty
     num_bits: tl.constexpr = ity.primitive_bitwidth
