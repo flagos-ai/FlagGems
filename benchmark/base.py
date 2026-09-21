@@ -88,6 +88,7 @@ class Benchmark:
     DEFAULT_SHAPES = consts.DEFAULT_SHAPES
     DEFAULT_SHAPE_DESC = "M, N"
     DEFAULT_SHAPE_FILES = "core_shapes.yaml"
+    EPS = 1e-7
     """
     the base class for the operations benchmark
     """
@@ -563,9 +564,13 @@ class Benchmark:
             if "speedup" in self.to_bench_metrics:
                 if Config.skip_native:
                     if metric.latency_base is not None and metric.latency is not None:
-                        metric.speedup = metric.latency_base / metric.latency
+                        metric.speedup = (metric.latency_base + self.EPS) / (
+                            metric.latency + self.EPS
+                        )
                 else:
-                    metric.speedup = metric.latency_base / metric.latency
+                    metric.speedup = (metric.latency_base + self.EPS) / (
+                        metric.latency + self.EPS
+                    )
 
             if "gbps" in self.to_bench_metrics:
                 if Config.skip_native:
