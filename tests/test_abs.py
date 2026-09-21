@@ -46,3 +46,27 @@ def test_abs_(shape, dtype):
         res_out = torch.abs_(inp)
 
     utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.abs
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_abs_edge_cases(dtype):
+    vals = [
+        0.0,
+        -0.0,
+        1.0,
+        -1.0,
+        10.0,
+        -10.0,
+        float("inf"),
+        float("-inf"),
+        float("nan"),
+    ]
+    inp = torch.tensor(vals, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp)
+
+    ref_out = torch.abs(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.abs(inp)
+
+    utils.gems_assert_equal(res_out, ref_out, equal_nan=True)
