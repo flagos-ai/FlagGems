@@ -1064,6 +1064,8 @@ _FULL_CONFIG = (
     ("mode", mode),
     ("mse_loss", mse_loss),
     ("mse_loss_backward", mse_loss_backward),
+    ("msort", msort),
+    ("msort.out", msort_out),
     ("mul.Tensor", mul),
     ("mul_.Tensor", mul_),
     ("multi_margin_loss", multi_margin_loss),
@@ -1188,6 +1190,18 @@ _FULL_CONFIG = (
     (
         "quantized_max_pool1d.out",
         quantized_max_pool1d_out,
+        None,
+        (QUANTIZED_CUDA_DISPATCH_KEY,),
+    ),
+    (
+        "quantized_max_pool2d",
+        quantized_max_pool2d,
+        None,
+        (QUANTIZED_CUDA_DISPATCH_KEY,),
+    ),
+    (
+        "quantized_max_pool2d.out",
+        quantized_max_pool2d_out,
         None,
         (QUANTIZED_CUDA_DISPATCH_KEY,),
     ),

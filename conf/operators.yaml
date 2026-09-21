@@ -10472,6 +10472,28 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: msort
+  description: Sorts each column of the input tensor in ascending order.
+  for:
+  - msort
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
+- id: msort_out
+  description: Writes the column-wise sorted values into the provided output tensor.
+  for:
+  - msort.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: mul
   description: Multiplies `input` by `other`.
   for:
@@ -12211,6 +12233,32 @@ ops:
     A variant of quantized_max_pool1d() that writes the result into the out tensor.
   for:
   - quantized_max_pool1d.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
+- id: quantized_max_pool2d
+  description: |
+    Triton kernel implementation for quantized_max_pool2d. Applies 2D max pooling
+    over a quantized input tensor by pooling the underlying integer
+    representation.
+  for:
+  - quantized_max_pool2d
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
+- id: quantized_max_pool2d_out
+  description: |
+    A variant of quantized_max_pool2d() that writes the result into the out tensor.
+  for:
+  - quantized_max_pool2d.out
   labels:
   - aten
   - KernelGen
