@@ -32,6 +32,7 @@ from .attention import (
 from .baddbmm import baddbmm
 from .bmm import bmm
 from .cat import cat, cat_out
+from .concat import concat
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
 from .count_nonzero import count_nonzero
 from .cummax import cummax
@@ -167,6 +168,7 @@ __all__ = [
     "baddbmm",
     "bmm",
     "cat",
+    "concat",
     "cat_out",
     "cholesky_solve",
     "cholesky_solve_out",
