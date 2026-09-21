@@ -40,7 +40,7 @@ export UV_HTTP_TIMEOUT="${UV_HTTP_TIMEOUT:-120}"
 # triton.Config). We check both: every recorded file exists, and the package
 # imports with its real API surface.
 verify_triton_install() {
-  python - <<'PY'
+  python - "${VENDOR}" <<'PY'
 import importlib.metadata as md
 import site
 import sys
@@ -66,10 +66,12 @@ if missing:
     print(f"{len(missing)} recorded file(s) missing, e.g. {missing[:5]}")
     sys.exit(1)
 
-# Initialize Torch's device extensions before Triton loads its backends.
-# Otherwise Ascend's backend imports Torch while Triton is partially initialized,
-# and torch_npu's Dynamo import accesses triton.language before it exists.
-import torch
+# Ascend's backend imports Torch while Triton is partially initialized, and
+# torch_npu's Dynamo import accesses triton.language before it exists. Initialize
+# Torch first only on Ascend; other vendors may not have runtime libraries ready
+# at this compiler-install verification stage.
+if sys.argv[1] == "ascend":
+    import torch
 import triton
 
 if triton.__file__ is None or not hasattr(triton, "Config"):
