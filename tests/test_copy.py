@@ -22,13 +22,15 @@ from . import accuracy_utils as utils
 
 
 def _is_float8_dtype_supported(dtype: torch.dtype) -> bool:
+    if dtype is None:
+        return False
     if str(flag_gems.device).startswith("cuda"):
         device_index = 0
         if isinstance(flag_gems.device, str) and ":" in flag_gems.device:
             device_index = int(flag_gems.device.split(":")[1])
 
         cap = torch.cuda.get_device_capability(device_index)
-        if dtype in (torch.float8_e4m3fn, torch.float8_e5m2) and cap[0] < 9:
+        if cap[0] < 8 or (cap[0] == 8 and cap[1] < 9):
             return False
     try:
         t = torch.zeros(1, device=flag_gems.device, dtype=dtype)
@@ -407,7 +409,7 @@ def test_copy_functional_broadcast():
 def test_copy_functional_float8(dtype, shape):
     device = flag_gems.device
 
-    src_uint8 = torch.randint(0, 255, shape, dtype=torch.uint8, device=device)
+    src_uint8 = torch.randint(0, 256, shape, dtype=torch.uint8, device=device)
 
     src = src_uint8.view(dtype)
     ref_src = utils.to_reference(src)
