@@ -9647,7 +9647,7 @@ ops:
   kind:
   - Tensor
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: masked_softmax
   description: |
     Apply a softmax over `dim` while excluding positions where the boolean
