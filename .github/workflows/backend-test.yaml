@@ -103,13 +103,28 @@ jobs:
         op-test-${{ inputs.backend }}-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - id: bootstrap_checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         continue-on-error: true
-      - uses: ./.github/actions/checkout-retry
-      - uses: ./.github/actions/setup-flaggems
-        with:
-          backend: ${{ inputs.backend }}
-          gpu_check_script: ${{ inputs.gpu_check_script }}
+      # Some container runners do not expose the container checkout at the
+      # host path used to resolve local actions. Retry with the external action
+      # only when the bootstrap checkout actually failed.
+      - if: steps.bootstrap_checkout.outcome == 'failure'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      # Keep the container job independent of host-side local-action lookup.
+      - name: Setup FlagGems
+        shell: bash
+        run: ./setup.sh ${{ inputs.backend }}
+
+      - name: Check GPU availability
+        if: inputs.gpu_check_script != ''
+        shell: bash
+        run: |
+          source .venv/bin/activate
+          GPU_OUTPUT=$(bash ${{ inputs.gpu_check_script }})
+          echo "$GPU_OUTPUT"
+          AVAILABLE_GPUS=$(echo "$GPU_OUTPUT" | grep "^Available GPUs:" | cut -d: -f2 | tr -d ' ')
+          echo "AVAILABLE_GPUS=${AVAILABLE_GPUS}" >> "$GITHUB_ENV"
 
       - name: Test alpha ops
         if: ${{ inputs.test_script != '' }}
