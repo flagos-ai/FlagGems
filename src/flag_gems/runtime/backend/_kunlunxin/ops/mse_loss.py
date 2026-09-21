@@ -33,14 +33,17 @@ logger = logging.getLogger(__name__)
 @libentry()
 @triton.jit
 def kernel_1(inp, target, mid, M, BLOCK_SIZE: tl.constexpr, reduction: tl.constexpr):
+    # Full lane-blocks only, grid = M // BLOCK_SIZE: every lane is in-bounds,
+    # so the loads are plain and unconditional. Keep it that way: on this
+    # backend a masked load does not reliably keep out-of-range lanes out of
+    # the reduction (verified with NaN/garbage padding behind the tensor),
+    # and a `tl.minimum`-clamped load address miscompiles into an actual
+    # out-of-bounds access (device fault). The remainder is reduced by
+    # kernel_1_tail below, without masks either.
     pid = ext.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    inp_ptrs = inp + offset
-    target_ptrs = target + offset
-    mask = offset < M
-
-    inp_val = tl.load(inp_ptrs, mask=mask, other=0).to(tl.float32)
-    target_val = tl.load(target_ptrs, mask=mask, other=0).to(tl.float32)
+    inp_val = tl.load(inp + offset).to(tl.float32)
+    target_val = tl.load(target + offset).to(tl.float32)
     sub = inp_val - target_val
     pow_val = sub * sub
     # Reduction.MEAN.value: 1 Reduction.SUM.value: 2
@@ -50,6 +53,39 @@ def kernel_1(inp, target, mid, M, BLOCK_SIZE: tl.constexpr, reduction: tl.conste
         sum_val = tl.sum(pow_val)
     mid_ptr = mid + pid
     tl.store(mid_ptr, sum_val)
+
+
+@libentry()
+@triton.jit
+def kernel_1_tail(
+    inp,
+    target,
+    mid,
+    M,
+    base,
+    n_keep,
+    g,
+    BLOCK_SIZE: tl.constexpr,
+    reduction: tl.constexpr,
+):
+    # Reduces the window [M - BLOCK_SIZE, M) -- the last full lane-block,
+    # entirely in-bounds. Its trailing `n_keep` lanes are the elements past
+    # the full blocks; the leading (BLOCK_SIZE - n_keep) lanes were already
+    # counted by kernel_1 and are zeroed BY VALUE (tl.where selects values,
+    # never addresses). This is exact for any tensor and never reads out of
+    # range.
+    lane = tl.arange(0, BLOCK_SIZE)
+    inp_val = tl.load(inp + base + lane).to(tl.float32)
+    target_val = tl.load(target + base + lane).to(tl.float32)
+    sub = inp_val - target_val
+    pow_val = sub * sub
+    pow_val = tl.where(lane >= BLOCK_SIZE - n_keep, pow_val, 0.0)
+    # Reduction.MEAN.value: 1 Reduction.SUM.value: 2
+    if reduction == 1:
+        sum_val = tl.sum(pow_val) / M
+    else:
+        sum_val = tl.sum(pow_val)
+    tl.store(mid + g, sum_val)
 
 
 @libentry()
@@ -80,12 +116,13 @@ def kernel_1_unmasked_v2(
 @libentry()
 @triton.jit
 def kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
+    # `mid` has BLOCK_MID slots but only the first `mid_size` hold partials;
+    # the padding lanes are dropped BY VALUE before the sum -- a value
+    # predicate, never an address mask on the load (see the note in kernel_1).
     offset = tl.arange(0, BLOCK_MID)
-    mid_ptrs = mid + offset
-    mask = offset < mid_size
-    mid_val = tl.load(mid_ptrs, mask=mask, other=0).to(tl.float32)
-    sum_val = tl.sum(mid_val)
-    tl.store(out, sum_val)
+    mid_val = tl.load(mid + offset).to(tl.float32)
+    mid_val = tl.where(offset < mid_size, mid_val, 0.0)
+    tl.store(out, tl.sum(mid_val))
 
 
 @pointwise_dynamic(is_tensor=[True, True], promotion_methods=[(0, "DEFAULT")])
@@ -125,17 +162,18 @@ def mse_loss(inp, target, reduction=Reduction.MEAN.value):
     if (M > _FULL_BLOCK) and (M % _FULL_BLOCK == 0):
         # Fully divisible by the 32768-lane tile: the unmasked stage-1 path
         # skips the masked-memory penalty entirely (3-4x on the large shapes).
-        # Non-divisible tensors keep the legacy masked path (masked tails at
-        # nonzero bases were probed unreliable on XPU, so they are not
-        # re-tiled here).
+        # Non-divisible tensors take the legacy path below, which reduces
+        # full blocks unmasked and handles the remainder with a single
+        # in-bounds window program (kernel_1_tail).
         mid_size = M // _FULL_BLOCK
         if mid_size <= _MAX_MID:
             block_mid = triton.next_power_of_2(mid_size)
-            mid = torch.empty((mid_size,), dtype=torch.float32, device=inp.device)
+            mid = torch.empty((block_mid,), dtype=torch.float32, device=inp.device)
             out = torch.empty([], dtype=dtype, device=inp.device)
-            # stage-2 masks when mid_size is not a power of two
-            # (e.g. [10000, 65536] -> mid_size=20000 -> BLOCK_MID=32768),
-            # so masked `other` handling needs the same env as the legacy path.
+            # `mid` is given BLOCK_MID slots: stage 2 reduces the whole tile
+            # and drops the padding lanes by value (mid_size is not
+            # necessarily a power of two, e.g. [10000, 65536] -> 20000 ->
+            # BLOCK_MID 32768).
             os.environ["TRITONXPU_OTHER_SIM"] = "1"
             with torch_device_fn.device(inp.device):
                 kernel_1_unmasked_v2[(mid_size,)](
@@ -156,25 +194,43 @@ def mse_loss(inp, target, reduction=Reduction.MEAN.value):
         # mid grid would exceed the stage-2 ceiling; fall through to the
         # legacy path, which grows stage-1 blocks to keep mid_size <= 32768.
 
-    # Legacy path (unchanged from the shipped kunlunxin op): masked stage-1
-    # blocks sized by get_block_size_1d, fp32 mid accumulation, masked
-    # stage-2. TRITONXPU_OTHER_SIM makes masked loads apply `other` via an
-    # explicit where (the XPU lowering otherwise ignores `other`).
+    # Legacy path: stage-1 blocks sized by get_block_size_1d, fp32 mid
+    # accumulation. Stage 1 is fully unmasked: full blocks via kernel_1 and
+    # one in-bounds window program for the remainder (kernel_1_tail); the
+    # mid padding lanes are dropped by value in kernel_2.
     mid_size = triton.cdiv(M, block_size)
     if mid_size > _MAX_MID:
         block_size = triton.next_power_of_2(triton.cdiv(M, _MAX_MID))
         mid_size = triton.cdiv(M, block_size)
+    n_full = M // block_size
+    rem = M - n_full * block_size
+    mid_size = n_full + (1 if rem else 0)
     block_mid = triton.next_power_of_2(mid_size)
 
-    mid = torch.empty((mid_size,), dtype=torch.float32, device=inp.device)
+    # BLOCK_MID slots: stage 2 sums the whole tile and drops the padding
+    # lanes by value, so the slots past `mid_size` must be readable.
+    mid = torch.empty((block_mid,), dtype=torch.float32, device=inp.device)
     out = torch.empty([], dtype=dtype, device=inp.device)
 
     os.environ["TRITONXPU_OTHER_SIM"] = "1"
 
     with torch_device_fn.device(inp.device):
-        kernel_1[(mid_size, 1, 1)](
+        kernel_1[(n_full, 1, 1)](
             inp, target, mid, M, block_size, reduction, buffer_size_limit=2048
         )
+        if rem:
+            kernel_1_tail[(1, 1, 1)](
+                inp,
+                target,
+                mid,
+                M,
+                M - block_size,
+                rem,
+                n_full,
+                block_size,
+                reduction,
+                buffer_size_limit=2048,
+            )
         if mid_size == 1:
             if "TRITONXPU_OTHER_SIM" in os.environ:
                 del os.environ["TRITONXPU_OTHER_SIM"]
