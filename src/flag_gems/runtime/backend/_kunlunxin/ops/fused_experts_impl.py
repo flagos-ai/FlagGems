@@ -57,11 +57,10 @@ def fused_experts_impl(
     w1_bias: Optional[torch.Tensor] = None,
     w2_bias: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
-    logger.debug("GEMS_KUNLUNXIN FUSED EXPERTS IMPL")
-    if inplace:
-        raise NotImplementedError(
-            "Kunlunxin fused_experts_impl supports out-of-place only"
-        )
+    logger.debug("GEMS_KUNLUNXIN FUSED_EXPERTS_IMPL")
+    # inplace=True writes the routed result back into hidden_states at the end
+    # (mirrors inplace_fused_experts; native strided copy avoids re-entering
+    # the registered copy_ override).
     if activation != "silu":
         raise NotImplementedError("Kunlunxin fused_experts_impl supports SiLU only")
 
@@ -112,27 +111,67 @@ def fused_experts_impl(
 
     config = {"BLOCK_SIZE_M": 16}
 
-    intermediate = torch.empty(
-        (num_tokens, top_k, intermediate_size),
-        dtype=hidden_states.dtype,
-        device=hidden_states.device,
+    use_xblas_struct = (
+        not apply_router_weight_on_input and w1_bias is None and w2_bias is None
     )
-    invoke_kunlunxin_fused_moe_kernel(
-        hidden_states,
-        w1,
-        intermediate,
-        w1_bias,
-        topk_weights if apply_router_weight_on_input else None,
-        topk_ids,
-        topk_ids,
-        topk_ids,
-        False,
-        top_k,
-        config,
-        FUSE_SILU=True,
-        direct_routing=True,
-        routed_weight_on_input=apply_router_weight_on_input,
-    )
+    if use_xblas_struct:
+        # Plain-GEMM structure: GEMM1 into an [M, topk, 2I] scratch, then
+        # torch SwiGLU and the routed weights as separate steps, then a plain
+        # GEMM2.  The launch-table binding for this kernel profile can only
+        # hand the plain calls to the vendor fused-MoE entry (it cannot apply
+        # routed-weight / activation epilogues and drops bias), so the epilogue
+        # work rides the torch steps instead; the triton fallback computes the
+        # same math through FUSE_SILU=False / weights=None.
+        intermediate13 = torch.empty(
+            (num_tokens, top_k, gate_up_size),
+            dtype=hidden_states.dtype,
+            device=hidden_states.device,
+        )
+        invoke_kunlunxin_fused_moe_kernel(
+            hidden_states,
+            w1,
+            intermediate13,
+            None,
+            None,
+            topk_ids,
+            topk_ids,
+            topk_ids,
+            False,
+            top_k,
+            config,
+            FUSE_SILU=False,
+            direct_routing=True,
+        )
+        # w13 rows [0, I) = gate, [I, 2I) = up (kernel FUSE_SILU layout).
+        # SwiGLU is evaluated in fp32 and rounded once on store, mirroring the
+        # fused kernel's fp32 accumulator; per-op bf16 rounding here would add
+        # several ULPs on top of the GEMM noise and trip the accuracy suite's
+        # absolute tolerance on small-magnitude outputs.
+        gate = intermediate13[..., :intermediate_size].float()
+        up = intermediate13[..., intermediate_size:].float()
+        intermediate = ((gate * torch.sigmoid(gate)) * up).to(hidden_states.dtype)
+    else:
+        intermediate = torch.empty(
+            (num_tokens, top_k, intermediate_size),
+            dtype=hidden_states.dtype,
+            device=hidden_states.device,
+        )
+        invoke_kunlunxin_fused_moe_kernel(
+            hidden_states,
+            w1,
+            intermediate,
+            w1_bias,
+            topk_weights if apply_router_weight_on_input else None,
+            topk_ids,
+            topk_ids,
+            topk_ids,
+            False,
+            top_k,
+            config,
+            FUSE_SILU=True,
+            direct_routing=True,
+            routed_weight_on_input=apply_router_weight_on_input,
+        )
 
     routed_output = torch.empty(
         (num_tokens, top_k, hidden_size),
@@ -144,19 +183,33 @@ def fused_experts_impl(
         w2,
         routed_output,
         w2_bias,
-        None if apply_router_weight_on_input else topk_weights,
+        (
+            None
+            if use_xblas_struct
+            else None if apply_router_weight_on_input else topk_weights
+        ),
         topk_ids,
         topk_ids,
         topk_ids,
-        not apply_router_weight_on_input,
+        (False if use_xblas_struct else not apply_router_weight_on_input),
         1,
         config,
         FUSE_SILU=False,
         direct_routing=True,
     )
+    if use_xblas_struct:
+        # Apply the routed weights after GEMM2 (the reference rounds the
+        # weighted product, not the activation): the epilogue is unavailable in
+        # moe_fc_fusion, so the multiply rides the same torch step here.
+        routed_output = routed_output * topk_weights.to(routed_output.dtype).unsqueeze(
+            -1
+        )
 
     output = torch.empty_like(hidden_states)
     invoke_kunlunxin_moe_sum(routed_output, output)
+    if inplace:
+        torch.ops.aten._copy_from(output, hidden_states, False)
+        return hidden_states
     return output
 
 
@@ -259,3 +312,14 @@ def outplace_fused_experts(
         w1_bias=w1_bias,
         w2_bias=w2_bias,
     )
+
+
+# Route the flag_gems-level MoE entry points to this implementation as well
+# (the generic chain's moe_align / moe_sum hit triton 3.6 compile walls).
+# Runs at import time AFTER the defs above; the dispatch hijack at the top of
+# this file already replaced flag_gems.dispatch_fused_moe_kernel.
+_fg_mod = sys.modules["flag_gems"]
+_fg_mod.fused_experts_impl = fused_experts_impl
+_fg_mod.inplace_fused_experts = inplace_fused_experts
+_fg_mod.outplace_fused_experts = outplace_fused_experts
+_fg_mod.moe_sum = invoke_kunlunxin_moe_sum
