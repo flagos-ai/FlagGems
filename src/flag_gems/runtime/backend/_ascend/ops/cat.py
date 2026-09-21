@@ -18,10 +18,7 @@ def _cat_copy_flat_kernel(
     OUTPUT_OFFSET: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
-    offsets = (
-        tl.program_id(0) * BLOCK_SIZE
-        + tl.arange(0, BLOCK_SIZE)
-    )
+    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < n_elements
 
     values = tl.load(
@@ -48,10 +45,7 @@ def _cat_copy_strided_kernel(
     CAT_OFFSET: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
-    offsets = (
-        tl.program_id(0) * BLOCK_SIZE
-        + tl.arange(0, BLOCK_SIZE)
-    )
+    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < n_elements
 
     inner_idx = offsets % INNER_SIZE
@@ -61,14 +55,8 @@ def _cat_copy_strided_kernel(
     outer_idx = tmp // INPUT_CAT_SIZE
 
     output_offsets = (
-        (
-            outer_idx * OUTPUT_CAT_SIZE
-            + CAT_OFFSET
-            + cat_idx
-        )
-        * INNER_SIZE
-        + inner_idx
-    )
+        outer_idx * OUTPUT_CAT_SIZE + CAT_OFFSET + cat_idx
+    ) * INNER_SIZE + inner_idx
 
     values = tl.load(
         input_ptr + offsets,
@@ -84,9 +72,7 @@ def _cat_copy_strided_kernel(
 
 def _prepare_cat_inputs(A, dim):
     if len(A) == 0:
-        raise RuntimeError(
-            "torch.cat(): expected a non-empty list of Tensors"
-        )
+        raise RuntimeError("torch.cat(): expected a non-empty list of Tensors")
 
     device = A[0].device
     dtype = A[0].dtype
@@ -104,8 +90,7 @@ def _prepare_cat_inputs(A, dim):
 
     if not (-ndim <= dim < ndim):
         raise IndexError(
-            f"Dimension out of range "
-            f"(expected [-{ndim}, {ndim - 1}], got {dim})"
+            f"Dimension out of range " f"(expected [-{ndim}, {ndim - 1}], got {dim})"
         )
 
     dim %= ndim
@@ -115,13 +100,9 @@ def _prepare_cat_inputs(A, dim):
 
     for tensor_idx, shape in enumerate(shapes):
         if len(shape) != len(base):
-            raise RuntimeError(
-                "Tensors must have same number of dimensions"
-            )
+            raise RuntimeError("Tensors must have same number of dimensions")
 
-        for axis, (expected, actual) in enumerate(
-            zip(base, shape)
-        ):
+        for axis, (expected, actual) in enumerate(zip(base, shape)):
             if axis == dim:
                 continue
 
@@ -145,7 +126,7 @@ def _cat_fill_triton(out, A, dim):
     BLOCK_SIZE = 256
 
     output_cat_size = out.shape[dim]
-    inner_size = math.prod(out.shape[dim + 1:])
+    inner_size = math.prod(out.shape[dim + 1 :])
 
     cat_offset = 0
 
@@ -162,9 +143,7 @@ def _cat_fill_triton(out, A, dim):
 
             n_elements = a.numel()
 
-            grid = (
-                triton.cdiv(n_elements, BLOCK_SIZE),
-            )
+            grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
 
             if dim == 0:
                 output_offset = cat_offset * inner_size
@@ -199,9 +178,7 @@ def cat(
     ],
     dim: int = 0,
 ):
-    A, dim, device, dtype, out_shape = (
-        _prepare_cat_inputs(A, dim)
-    )
+    A, dim, device, dtype, out_shape = _prepare_cat_inputs(A, dim)
 
     if len(A) == 0:
         return torch.empty(
@@ -233,9 +210,7 @@ def cat_out(
     *,
     out: torch.Tensor,
 ):
-    A, dim, device, dtype, out_shape = (
-        _prepare_cat_inputs(A, dim)
-    )
+    A, dim, device, dtype, out_shape = _prepare_cat_inputs(A, dim)
 
     out.resize_(out_shape)
 

@@ -18,7 +18,6 @@ from typing import List, Tuple, Union
 
 import torch
 
-
 logger = logging.getLogger(__name__)
 
 
