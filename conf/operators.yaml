@@ -10130,7 +10130,7 @@ ops:
   kind:
   - Math
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: msort_out
   description: Writes the column-wise sorted values into the provided output tensor.
   for:
@@ -10141,7 +10141,7 @@ ops:
   kind:
   - Math
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: mul
   description: Multiplies `input` by `other`.
   for:
