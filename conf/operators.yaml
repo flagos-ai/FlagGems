@@ -7611,6 +7611,22 @@ ops:
   - BLAS
   stages:
   - alpha: '5.5'
+- id: inverse
+  description: |
+    Computes the inverse of a square matrix, batched over the leading dimensions
+    and equivalent to torch.inverse. Small real matrices use a fused pivoted
+    Gauss-Jordan Triton kernel; larger real matrices and complex inputs are
+    delegated to the vendor (cuSOLVER) inverse.
+  for:
+  - inverse
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.4'
+
 - id: irshift
   description: Triton kernel implementation for __irshift__.
   for:
