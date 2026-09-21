@@ -26,10 +26,7 @@ def _concat_copy_flat_kernel(
     OUTPUT_OFFSET: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
-    offsets = (
-        tl.program_id(0) * BLOCK_SIZE
-        + tl.arange(0, BLOCK_SIZE)
-    )
+    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
 
     mask = offsets < n_elements
 
@@ -57,10 +54,7 @@ def _concat_copy_strided_kernel(
     CAT_OFFSET: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
-    offsets = (
-        tl.program_id(0) * BLOCK_SIZE
-        + tl.arange(0, BLOCK_SIZE)
-    )
+    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
 
     mask = offsets < n_elements
 
@@ -72,14 +66,8 @@ def _concat_copy_strided_kernel(
     outer_idx = tmp // INPUT_CAT_SIZE
 
     output_offsets = (
-        (
-            outer_idx * OUTPUT_CAT_SIZE
-            + CAT_OFFSET
-            + cat_idx
-        )
-        * INNER_SIZE
-        + inner_idx
-    )
+        outer_idx * OUTPUT_CAT_SIZE + CAT_OFFSET + cat_idx
+    ) * INNER_SIZE + inner_idx
 
     value = tl.load(
         input_ptr + offsets,
@@ -95,9 +83,7 @@ def _concat_copy_strided_kernel(
 
 def _prepare_inputs(A, dim):
     if len(A) == 0:
-        raise RuntimeError(
-            "torch.cat(): expected a non-empty list of Tensors"
-        )
+        raise RuntimeError("torch.cat(): expected a non-empty list of Tensors")
 
     tensors = list(A)
 
@@ -105,10 +91,7 @@ def _prepare_inputs(A, dim):
     dtype = tensors[0].dtype
 
     # PyTorch cat allows 1-D empty tensors with shape (0,)
-    tensors = [
-        t for t in tensors
-        if t.shape != torch.Size([0])
-    ]
+    tensors = [t for t in tensors if t.shape != torch.Size([0])]
 
     if len(tensors) == 0:
         return tensors, 0, device, dtype, [0]
@@ -116,9 +99,7 @@ def _prepare_inputs(A, dim):
     ndim = tensors[0].ndim
 
     if ndim == 0:
-        raise RuntimeError(
-            "zero-dimensional tensor cannot be concatenated"
-        )
+        raise RuntimeError("zero-dimensional tensor cannot be concatenated")
 
     if not (-ndim <= dim < ndim):
         raise IndexError(
@@ -135,19 +116,13 @@ def _prepare_inputs(A, dim):
         shape = list(t.shape)
 
         if t.device != device:
-            raise RuntimeError(
-                "Expected all tensors to be on the same device"
-            )
+            raise RuntimeError("Expected all tensors to be on the same device")
 
         if t.dtype != dtype:
-            raise RuntimeError(
-                "Expected all tensors to have the same dtype"
-            )
+            raise RuntimeError("Expected all tensors to have the same dtype")
 
         if len(shape) != ndim:
-            raise RuntimeError(
-                "Tensors must have same number of dimensions"
-            )
+            raise RuntimeError("Tensors must have same number of dimensions")
 
         for axis in range(ndim):
             if axis == dim:
@@ -164,10 +139,7 @@ def _prepare_inputs(A, dim):
 
     out_shape = base_shape.copy()
 
-    out_shape[dim] = sum(
-        t.shape[dim]
-        for t in tensors
-    )
+    out_shape[dim] = sum(t.shape[dim] for t in tensors)
 
     return tensors, dim, device, dtype, out_shape
 
@@ -204,9 +176,7 @@ def concat(
 
     output_cat_size = out.shape[dim]
 
-    inner_size = math.prod(
-        out.shape[dim + 1 :]
-    )
+    inner_size = math.prod(out.shape[dim + 1 :])
 
     cat_offset = 0
 
@@ -235,9 +205,7 @@ def concat(
             # dim=0 maps the entire tensor to one contiguous
             # output interval.
             if dim == 0:
-                output_offset = (
-                    cat_offset * inner_size
-                )
+                output_offset = cat_offset * inner_size
 
                 _concat_copy_flat_kernel[grid](
                     a,
