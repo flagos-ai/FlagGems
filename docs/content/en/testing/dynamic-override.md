@@ -72,6 +72,18 @@ registry.restore("softmax")     # restore a single operator
 registry.restore_all()          # or restore everything at once
 ```
 
+Operators that do not yet have a public FlagGems implementation can also be
+injected. For example, `registry.override("sparse_csr_tensor", candidate)` makes
+`flag_gems.sparse_csr_tensor(...)` call the candidate even when that attribute
+did not previously exist. On restoration, newly added attributes are removed;
+existing attributes are restored to their original values, including `None`.
+The same behavior applies to `--override` and `--override-config`.
+
+Adding a public callable does not add an ATen dispatcher registration. Tests
+for these operators must call `flag_gems.<op_name>(...)` directly. File-loaded
+candidates still fail cleanup if they were never invoked, including candidates
+installed under a misspelled operator name.
+
 ## 2. Loading an implementation from a standalone file
 
 Rather than defining the replacement inline, `override_from_file` loads a

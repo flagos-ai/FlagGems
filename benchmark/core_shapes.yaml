@@ -189,6 +189,15 @@ linalg_matrix_norm:
     - [8, 4, 32, 32]
   shape_desc: "(*B), M, N"
 
+linalg_matrix_norm_out:
+  shapes:
+    - [256, 512]
+    - [2, 2048]
+    - [4, 32, 64]
+    - [16, 2, 2048]
+    - [8, 4, 32, 32]
+  shape_desc: "(*B), M, N"
+
 log10:
   shapes:
     - [4096, 4096]
