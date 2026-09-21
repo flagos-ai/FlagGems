@@ -68,9 +68,9 @@ if missing:
 
 # Ascend's backend imports Torch while Triton is partially initialized, and
 # torch_npu's Dynamo import accesses triton.language before it exists. Initialize
-# Torch first only on Ascend; other vendors may not have runtime libraries ready
+# Torch first on Ascend and NVIDIA; other vendors may lack runtime libraries
 # at this compiler-install verification stage.
-if sys.argv[1] == "ascend":
+if sys.argv[1] in ("ascend", "nvidia"):
     import torch
 import triton
 
