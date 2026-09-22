@@ -602,16 +602,15 @@ def test_cudnn_convolution_interface(shape, kernel, groups, dtype):
     ndim = inp.ndim - 2
     pad, strd, dil = [1] * ndim, [1] * ndim, [1] * ndim
 
-    with flag_gems.use_gems():
-        base = torch.cudnn_convolution(
-            inp, weight, pad, strd, dil, groups, False, False, False
-        )
-        flagged = torch.cudnn_convolution(
-            inp, weight, pad, strd, dil, groups, True, True, True
-        )
-        again = torch.cudnn_convolution(
-            inp, weight, pad, strd, dil, groups, False, False, False
-        )
+    base = flag_gems.cudnn_convolution(
+        inp, weight, pad, strd, dil, groups, False, False, False
+    )
+    flagged = flag_gems.cudnn_convolution(
+        inp, weight, pad, strd, dil, groups, True, True, True
+    )
+    again = flag_gems.cudnn_convolution(
+        inp, weight, pad, strd, dil, groups, False, False, False
+    )
 
     # benchmark / deterministic / allow_tf32 are accepted for interface
     # compatibility only; neither implementation selects an algorithm on them.
