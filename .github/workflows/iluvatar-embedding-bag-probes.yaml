@@ -36,8 +36,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - name: Check out the pinned operator from upstream (attempt 1)
-        id: operator-checkout
-        timeout-minutes: 3
+        id: operator-checkout-1
+        timeout-minutes: 5
         continue-on-error: true
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -46,8 +46,42 @@ jobs:
           fetch-depth: 1
           path: operator-source
       - name: Check out the pinned operator from upstream (attempt 2)
-        if: ${{ !cancelled() && steps.operator-checkout.outcome == 'failure' }}
-        timeout-minutes: 3
+        id: operator-checkout-2
+        if: ${{ !cancelled() && steps.operator-checkout-1.outcome == 'failure' }}
+        timeout-minutes: 5
+        continue-on-error: true
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          repository: flagos-ai/FlagGems
+          ref: 4e217249418ae762f5ed0315da96b5427167cc74
+          fetch-depth: 1
+          path: operator-source
+      - name: Check out the pinned operator from upstream (attempt 3)
+        id: operator-checkout-3
+        if: ${{ !cancelled() && steps.operator-checkout-2.outcome == 'failure' }}
+        timeout-minutes: 5
+        continue-on-error: true
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          repository: flagos-ai/FlagGems
+          ref: 4e217249418ae762f5ed0315da96b5427167cc74
+          fetch-depth: 1
+          path: operator-source
+      - name: Check out the pinned operator from upstream (attempt 4)
+        id: operator-checkout-4
+        if: ${{ !cancelled() && steps.operator-checkout-3.outcome == 'failure' }}
+        timeout-minutes: 5
+        continue-on-error: true
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          repository: flagos-ai/FlagGems
+          ref: 4e217249418ae762f5ed0315da96b5427167cc74
+          fetch-depth: 1
+          path: operator-source
+      - name: Check out the pinned operator from upstream (attempt 5)
+        id: operator-checkout-5
+        if: ${{ !cancelled() && steps.operator-checkout-4.outcome == 'failure' }}
+        timeout-minutes: 5
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           repository: flagos-ai/FlagGems
