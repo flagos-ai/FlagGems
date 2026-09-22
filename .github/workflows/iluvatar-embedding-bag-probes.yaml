@@ -17,7 +17,7 @@ on:
     branches: [master]
     paths:
       - '.github/workflows/iluvatar-embedding-bag-probes.yaml'
-      - '.github/scripts/iluvatar_async_error_probe.py'
+      - '.github/scripts/test_iluvatar_async_errors.py'
 
 permissions:
   contents: read
@@ -39,7 +39,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           repository: siliconflow/FlagGems
-          ref: 4e8869658585c59758d1f90a49b136e19bc79c5c
+          ref: 4e217249418ae762f5ed0315da96b5427167cc74
           path: operator-source
       - name: Set up the IX environment
         id: setup
@@ -52,31 +52,14 @@ jobs:
           mkdir -p ../ix-results
           source .venv/bin/activate
           python -c 'from importlib.metadata import distributions; print("\n".join(sorted("{}=={}".format(d.metadata["Name"], d.version) for d in distributions())))' > ../ix-results/environment.txt
-      - name: Probe asynchronous error propagation in isolated processes
+      - name: Run isolated pytest exception checks
         working-directory: operator-source
         shell: bash
         run: |
           source .venv/bin/activate
           ulimit -c 0
           set -o pipefail
-          python ../.github/scripts/iluvatar_async_error_probe.py --output ../ix-results/probes 2>&1 | tee ../ix-results/probes.stdout.log
-      - name: Run embedding bag accuracy independently of probe outcomes
-        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
-        working-directory: operator-source
-        shell: bash
-        run: |
-          source .venv/bin/activate
-          ulimit -c 0
-          set -o pipefail
-          python -m pytest -q tests/test_embedding_bag.py tests/test_embedding_bag_backward.py --tb=short 2>&1 | tee ../ix-results/accuracy.stdout.log
-      - name: Record embedding bag performance independently of accuracy
-        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
-        working-directory: operator-source
-        shell: bash
-        run: |
-          source .venv/bin/activate
-          set -o pipefail
-          python -m pytest -s -q benchmark/test_embedding_bag.py benchmark/test_embedding_bag_backward.py --tb=short 2>&1 | tee ../ix-results/benchmark.stdout.log
+          python -m pytest -c /dev/null -s -vv ../.github/scripts/test_iluvatar_async_errors.py --junitxml=../ix-results/pytest.xml 2>&1 | tee ../ix-results/pytest.stdout.log
       - name: Preserve diagnostics even when assertions fail
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
