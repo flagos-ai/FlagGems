@@ -61,7 +61,11 @@ if _TLE_GPU_OK:
 
     @triton.jit
     def block_diag_tlegpu_kernel(
-        src_desc, out_desc, BR: tl.constexpr, BC: tl.constexpr, RT: tl.constexpr,
+        src_desc,
+        out_desc,
+        BR: tl.constexpr,
+        BC: tl.constexpr,
+        RT: tl.constexpr,
         DTYPE: tl.constexpr,
     ):
         """grid (n, block_rows // RT): each program stages an RT x BC row slab
@@ -335,16 +339,10 @@ def block_diag(*tensors):
                 )
             src2d = staging.view(total_rows, block_cols)
 
-            out = torch.empty(
-                (total_rows, total_cols), dtype=dtype0, device=device
-            )
+            out = torch.empty((total_rows, total_cols), dtype=dtype0, device=device)
             out_numel = total_rows * total_cols
-            src_desc = TensorDescriptor.from_tensor(
-                src2d, block_shape=[rt, block_cols]
-            )
-            out_desc = TensorDescriptor.from_tensor(
-                out, block_shape=[rt, block_cols]
-            )
+            src_desc = TensorDescriptor.from_tensor(src2d, block_shape=[rt, block_cols])
+            out_desc = TensorDescriptor.from_tensor(out, block_shape=[rt, block_cols])
             with torch_device_fn.device(device):
                 _zero_fill_kernel[
                     ((out_numel + _ZERO_FILL_BLOCK - 1) // _ZERO_FILL_BLOCK,)
@@ -387,9 +385,7 @@ def block_diag(*tensors):
             # under use_gems(), and per-row pointer loads inside the row
             # kernel serialize on XPU because of synchronous scalar loads.
             ptrs = _get_ptrs_tensor(tensors, device)
-            staging = torch.empty(
-                n * block_numel, dtype=dtype0, device=device
-            )
+            staging = torch.empty(n * block_numel, dtype=dtype0, device=device)
             stage_grid = (
                 n,
                 (block_numel + _STAGE_BLOCK - 1) // _STAGE_BLOCK,
