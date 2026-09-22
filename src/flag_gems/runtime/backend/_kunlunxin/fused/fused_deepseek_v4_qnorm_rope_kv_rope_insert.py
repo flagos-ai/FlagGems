@@ -67,6 +67,7 @@ inside the test tolerance ``ATOL_Q = 5.12e-2``.
 
 import logging
 
+import flag_gems
 import torch  # noqa: F401
 import triton
 import triton.language as tl
@@ -202,6 +203,35 @@ def _kv_rope_insert_kernel(
             tl.store(k_cache_ptr + cache_off + offs, out.to(tl.bfloat16))
 
 
+# ``pair`` is a pure function of ``(head_dim, rope_dim)`` -- the same 512-entry
+# lane -> cos/sin-column map on every call -- so it is built once per
+# shape/device and reused.  Building it is two host-side kernel launches
+# (measured 124 us with torch, 238 us through the FlagGems ops), which is 2/3
+# of the entire op at N=1: caching it is worth more than the launches cost.
+_PAIR_CACHE: dict = {}
+
+
+def _pair_index(head_dim, rope_dim, device):
+    """Constant GPT-J lane -> ``cos_sin_cache`` column map for one shape/device."""
+    key = (device.type, device.index, head_dim, rope_dim)
+    pair = _PAIR_CACHE.get(key)
+    if pair is None:
+        half_rope = rope_dim // 2
+        nope_dim = head_dim - rope_dim
+        # Go through FlagGems' own ``arange`` / ``clamp`` (resolved by the
+        # runtime to this backend's implementations) rather than torch's: this
+        # file lives inside the library whose ops override those very aten
+        # kernels, so a ``torch.*`` call here would bypass our own
+        # implementation -- see contribution/overview.md section 5.
+        pair = flag_gems.clamp(
+            (flag_gems.arange(head_dim, device=device) - nope_dim) // 2,
+            0,
+            half_rope - 1,
+        )
+        _PAIR_CACHE[key] = pair
+    return pair
+
+
 def _build_items(cos_sin_cache, position_ids, head_dim, rope_dim):
     """Pre-expand cos/sin into per-token, per-lane ``[N, HEAD_DIM]`` tables.
 
@@ -211,13 +241,7 @@ def _build_items(cos_sin_cache, position_ids, head_dim, rope_dim):
     cos/sin lookup into a contiguous affine load.
     """
     half_rope = rope_dim // 2
-    nope_dim = head_dim - rope_dim
-    device = cos_sin_cache.device
-    pair = torch.clamp(
-        (torch.arange(head_dim, device=device) - nope_dim) // 2,
-        0,
-        half_rope - 1,
-    )
+    pair = _pair_index(head_dim, rope_dim, cos_sin_cache.device)
     cs_tok = cos_sin_cache[position_ids]  # [N, rope_dim] fp32
     cos_item = cs_tok[:, :half_rope][:, pair].contiguous()  # [N, HEAD_DIM]
     sin_item = cs_tok[:, half_rope:][:, pair].contiguous()  # [N, HEAD_DIM]
