@@ -48,8 +48,8 @@ from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
 
-# dtype codes handed to the kernel (plain int runtime args, so the heuristics
-# below can branch on the input dtype the same way matmuladd does).
+# dtype codes handed to the kernel (plain int runtime args, so _tile_config
+# can branch on the input dtype the same way matmuladd does).
 _FP16, _BF16, _FP32 = 0, 1, 2
 
 
@@ -57,53 +57,23 @@ def _dtype_code(dtype):
     return {torch.float16: _FP16, torch.bfloat16: _BF16, torch.float32: _FP32}[dtype]
 
 
-# Tile heuristics (P800 / XPU3, swept on the official core shapes, same
-# decision rules as matmuladd -- see its header comment for the evidence).
-def heur_block_m(args):
-    if args["M"] <= 512:
-        return 128
-    return 256
-
-
-def heur_block_n(args):
-    if args["N"] <= 512:
-        return 128
-    if args.get("DTYPE_CODE", _FP16) == _BF16:
-        return 256
-    return 512
-
-
-def heur_block_k(args):
-    if args.get("DTYPE_CODE", _FP16) == _FP16:
-        return 256
-    return 128
-
-
-def heur_warps(args):
-    if args["M"] <= 512 and args["N"] <= 512:
-        return 4
-    if args.get("DTYPE_CODE", _FP16) == _FP32:
-        return 16
-    return 8
-
-
-def heur_stages(args):
-    return 3
-
-
-autotune_decorator = triton.heuristics(
-    {
-        "BLOCK_SIZE_M": heur_block_m,
-        "BLOCK_SIZE_N": heur_block_n,
-        "BLOCK_SIZE_K": heur_block_k,
-        "num_warps": heur_warps,
-        "num_stages": heur_stages,
-    }
-)
+def _tile_config(M, N, dtype):
+    """(BLOCK_M, BLOCK_N, BLOCK_K, num_warps) for the rules above."""
+    code = _dtype_code(dtype)
+    bm = 128 if M <= 512 else 256
+    if N <= 512:
+        bn = 128
+    else:
+        bn = 256 if code == _BF16 else 512
+    bk = 256 if code == _FP16 else 128
+    if M <= 512 and N <= 512:
+        warps = 4
+    else:
+        warps = 16 if code == _FP32 else 8
+    return bm, bn, bk, warps
 
 
 @libentry()
-@autotune_decorator
 @triton.jit(
     # Keep the GEMM runtime dims / strides out of the launcher's constant
     # specialization: a runtime scalar equal to 1 gets folded into a constant
@@ -260,9 +230,8 @@ def matmul_bias_activation(input, weight, bias):
     bias = bias.broadcast_to((M, N)).contiguous()
 
     fuse_relu = _fuse_relu(M, N, input.dtype)
-    grid = lambda META: (
-        triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]),
-    )
+    bm, bn, bk, warps = _tile_config(M, N, input.dtype)
+    grid = (triton.cdiv(M, bm) * triton.cdiv(N, bn),)
     with torch_device_fn.device(input.device):
         matmul_bias_activation_kernel[grid](
             input,
@@ -280,11 +249,14 @@ def matmul_bias_activation(input, weight, bias):
             bias.stride(1),
             out.stride(0),
             out.stride(1),
+            BLOCK_SIZE_M=bm,
+            BLOCK_SIZE_N=bn,
+            BLOCK_SIZE_K=bk,
             GROUP_M=8,
             DTYPE_CODE=_dtype_code(input.dtype),
             FUSE_RELU=fuse_relu,
-            # NOTE: do NOT pass num_stages here; the heuristics decorator
-            # supplies it (same rationale as addmm/matmuladd).
+            num_warps=warps,
+            num_stages=3,
         )
         if not fuse_relu:
             numel = M * N
