@@ -5721,6 +5721,7 @@ ops:
   kind:
   - Math
   stages:
+  - alpha: '5.4'
 - id: frobenius_norm
   description: |
     Computes the Frobenius norm (L2 norm) of a tensor over specified dimensions.
@@ -5733,8 +5734,7 @@ ops:
   kind:
   - Reduction
   stages:
-  - alpha: '5.4'
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: full
   description: 'Creates a tensor of size `size` filled with `fill_value`.
 
