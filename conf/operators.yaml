@@ -1409,7 +1409,7 @@ ops:
   kind:
   - Tensor
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: as_strided_copy
   description: 'Creates a contiguous copy of an `as_strided` view of the input tensor.
 
