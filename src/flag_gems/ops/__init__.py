@@ -625,6 +625,7 @@ from flag_gems.ops.index_select_backward import index_select_backward
 from flag_gems.ops.inner import inner
 from flag_gems.ops.int_mm import int_mm, int_mm_out
 from flag_gems.ops.inverse import inverse
+from flag_gems.ops.ior_scalar import ior_scalar
 from flag_gems.ops.is_nonzero import is_nonzero
 from flag_gems.ops.is_same_size import is_same_size
 from flag_gems.ops.isclose import allclose, isclose
@@ -1882,6 +1883,7 @@ __all__ = [
     "int_mm",
     "int_mm_out",
     "inverse",
+    "ior_scalar",
     "is_nonzero",
     "is_same_size",
     "isclose",
