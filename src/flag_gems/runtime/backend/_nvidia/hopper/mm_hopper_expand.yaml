@@ -297,6 +297,7 @@ mm_w8a8_fp8_block_scaled_splitk:
     stages:
       - 2
       - 3
+      - 4
     warps:
       - 4
   - strategy:
