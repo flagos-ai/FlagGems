@@ -34,6 +34,7 @@ from flag_gems.ops._batch_norm_impl_index_backward import (
     _batch_norm_impl_index_backward,
 )
 from flag_gems.ops._batch_norm_no_update import _batch_norm_no_update
+from flag_gems.ops._batch_norm_with_update import _batch_norm_with_update
 from flag_gems.ops._batch_norm_with_update_functional import (
     _batch_norm_with_update_functional,
 )
@@ -50,6 +51,7 @@ from flag_gems.ops._convert_weight_to_int4pack import _convert_weight_to_int4pac
 from flag_gems.ops._convolution_double_backward import _convolution_double_backward
 from flag_gems.ops._convolution_mode import _convolution_mode
 from flag_gems.ops._cslt_sparse_mm import _cslt_sparse_mm
+from flag_gems.ops._ctc_loss import _ctc_loss, _ctc_loss_out
 from flag_gems.ops._cummax_helper import _cummax_helper
 from flag_gems.ops._cummin_helper import _cummin_helper
 from flag_gems.ops._dirichlet_grad import _dirichlet_grad
@@ -397,6 +399,7 @@ from flag_gems.ops.cudnn_attention_forward import cudnn_attention_forward
 from flag_gems.ops.cudnn_batch_norm_backward import cudnn_batch_norm_backward
 from flag_gems.ops.cudnn_convolution import cudnn_convolution
 from flag_gems.ops.cudnn_convolution_transpose import cudnn_convolution_transpose
+from flag_gems.ops.cudnn_rnn import cudnn_rnn
 from flag_gems.ops.cudnn_rnn_backward import cudnn_rnn_backward
 from flag_gems.ops.cummax import cummax, cummaxmin_backward
 from flag_gems.ops.cummin import cummin
@@ -1204,6 +1207,7 @@ from flag_gems.ops.upsample_trilinear3d_backward import upsample_trilinear3d_bac
 from flag_gems.ops.value_selecting_reduction_backward import (
     value_selecting_reduction_backward,
 )
+from flag_gems.ops.vander import vander
 from flag_gems.ops.var import var, var_correction, var_dim
 from flag_gems.ops.var_mean import var_mean
 from flag_gems.ops.vdot import vdot
@@ -1256,6 +1260,7 @@ __all__ = [
     "_batch_norm_impl_index",
     "_batch_norm_impl_index_backward",
     "_batch_norm_no_update",
+    "_batch_norm_with_update",
     "_batch_norm_with_update_functional",
     "_cdist_backward",
     "_cdist_forward",
@@ -1272,6 +1277,8 @@ __all__ = [
     "_convolution_double_backward",
     "_convolution_mode",
     "_cslt_sparse_mm",
+    "_ctc_loss",
+    "_ctc_loss_out",
     "_cummax_helper",
     "_cummin_helper",
     "_dirichlet_grad",
@@ -1595,6 +1602,7 @@ __all__ = [
     "cudnn_batch_norm_backward",
     "cudnn_convolution",
     "cudnn_convolution_transpose",
+    "cudnn_rnn",
     "cudnn_rnn_backward",
     "cummax",
     "cummaxmin_backward",
@@ -2473,6 +2481,7 @@ __all__ = [
     "upsample_trilinear3d",
     "upsample_trilinear3d_backward",
     "value_selecting_reduction_backward",
+    "vander",
     "var",
     "var_correction",
     "var_dim",
