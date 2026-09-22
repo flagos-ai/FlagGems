@@ -42,27 +42,18 @@ class NestedViewFromBufferCopyBenchmark(base.Benchmark):
     def get_input_iter(self, cur_dtype):
         for buffer_size, sizes, strides, offsets in self.shapes:
             buffer = torch.randn(buffer_size, dtype=cur_dtype, device=self.device)
-            sizes_t = torch.tensor(sizes, dtype=torch.int64, device=self.device)
-            strides_t = torch.tensor(strides, dtype=torch.int64, device=self.device)
-            offsets_t = torch.tensor(offsets, dtype=torch.int64, device=self.device)
+            # sizes/strides/offsets stay on the host: the native implementation
+            # reads them host-side, and device-resident metadata segfaults.
+            sizes_t = torch.tensor(sizes, dtype=torch.int64)
+            strides_t = torch.tensor(strides, dtype=torch.int64)
+            offsets_t = torch.tensor(offsets, dtype=torch.int64)
             yield buffer, sizes_t, strides_t, offsets_t
 
     def get_tflops(self, op, *args, **kwargs):
         return 0.0
 
 
-# aten::_nested_view_from_buffer_copy segfaults the whole process on CUDA
-# (its native impl dereferences the sizes/strides/offsets data pointers
-# host-side without a device check), and a try/except probe cannot guard
-# against a crash that takes the process down, so the test is skipped.
-_ATEN_CUDA_SUPPORTED = False
-
-
 @pytest.mark.nested_view_from_buffer_copy
-@pytest.mark.skipif(
-    not _ATEN_CUDA_SUPPORTED,
-    reason="aten::_nested_view_from_buffer_copy segfaults on CUDA in stock PyTorch; no native baseline available",
-)
 @pytest.mark.parametrize(
     "dtype",
     consts.FLOAT_DTYPES,
