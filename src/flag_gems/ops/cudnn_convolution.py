@@ -184,6 +184,7 @@ def _depthwise_conv_kernel(
     D,
     H,
     W,
+    MULT,
     OD,
     OH,
     OW,
@@ -226,7 +227,11 @@ def _depthwise_conv_kernel(
     # unit depth (and unit trailing width for 1D), so only the 3D addressing
     # exists here.
     pid_sp = tl.program_id(0)
-    c = tl.program_id(1)
+    oc = tl.program_id(1)
+    # A depthwise conv repeats each input channel across MULT consecutive output
+    # channels, so output channel ``oc`` reads input channel ``oc // MULT``.
+    # With MULT == 1 (the plain depthwise case) this is the identity.
+    ic = oc // MULT
 
     sp_off = pid_sp * BLOCK_SP + tl.arange(0, BLOCK_SP)
 
@@ -246,7 +251,7 @@ def _depthwise_conv_kernel(
     # vector.
     sp_ok = n < N
     iw0 = ow * SW - PW
-    base = input_ptr + c * in_c_stride + n * in_n_stride + iw0 * in_w_stride
+    base = input_ptr + ic * in_c_stride + n * in_n_stride + iw0 * in_w_stride
 
     acc = tl.zeros((BLOCK_SP,), dtype=tl.float32)
     for kd in tl.static_range(KD):
@@ -263,7 +268,7 @@ def _depthwise_conv_kernel(
                 x = tl.load(p, mask=in_mask, other=0.0).to(tl.float32)
                 w = tl.load(
                     weight_ptr
-                    + c * w_c_stride
+                    + oc * w_c_stride
                     + kd * w_d_stride
                     + kh * w_h_stride
                     + kw * w_w_stride
@@ -273,7 +278,7 @@ def _depthwise_conv_kernel(
 
     tl.store(
         output_ptr
-        + c * out_c_stride
+        + oc * out_c_stride
         + n * out_n_stride
         + od * out_d_stride
         + oh * out_h_stride
@@ -319,9 +324,12 @@ def _depthwise_conv(input, weight, padding, stride, dilation, ndim):
     w_s = weight.stride()
     out_s = output.stride()
 
-    # Depthwise means groups == C_in and weight.shape[1] == 1, so the output
-    # channel count equals the input channel count and channel c maps to c.
-    grid = lambda meta: (triton.cdiv(N * OD * OH * OW, meta["BLOCK_SP"]), C)
+    # Depthwise means groups == C_in and weight.shape[1] == 1, so each input
+    # channel owns MULT = OC // C consecutive output channels. Grid over the
+    # output channels; the kernel maps oc back to its input channel. Assuming
+    # MULT == 1 here would leave every output channel past the first C unwritten.
+    mult = OC // C
+    grid = lambda meta: (triton.cdiv(N * OD * OH * OW, meta["BLOCK_SP"]), OC)
     _depthwise_conv_kernel[grid](
         input,
         weight,
@@ -330,6 +338,7 @@ def _depthwise_conv(input, weight, padding, stride, dilation, ndim):
         D,
         H,
         W,
+        mult,
         OD,
         OH,
         OW,

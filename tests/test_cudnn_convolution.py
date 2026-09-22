@@ -145,14 +145,17 @@ CHANNEL_SHAPES_2D = [
     ((2, 17, 8, 8), (8, 17, 3, 3), 1),  # just past _MIN_DOT_K
     ((2, 8, 8, 8), (3, 8, 3, 3), 1),  # C_out < C_in
     ((2, 8, 8, 8), (1, 8, 3, 3), 1),  # C_out == 1
+    ((2, 4, 8, 8), (8, 1, 3, 3), 4),  # depthwise, channel multiplier 2
 ]
 
 # The same boundaries in 1D and 3D, where the channel count is the reduction
 # length of a differently-shaped kernel rather than of the 2D one.
 CHANNEL_SHAPES_1D_3D = [
     ((2, 1, 16), (4, 1, 3), 1),
+    ((2, 4, 16), (8, 1, 3), 4),  # 1D depthwise, channel multiplier 2
     ((2, 15, 16), (8, 15, 3), 1),
     ((1, 1, 5, 5, 5), (2, 1, 3, 3, 3), 1),
+    ((1, 4, 5, 5, 5), (8, 1, 3, 3, 3), 4),  # 3D depthwise, channel multiplier 2
     ((1, 15, 5, 5, 5), (4, 15, 3, 3, 3), 1),
 ]
 
@@ -536,6 +539,8 @@ NON_CONTIGUOUS_CASES = [
     ((2, 4, 12, 12), 4, (3, 3), 1, "strided_channel"),
     ((2, 8, 12, 12), 4, (3, 3), 2, "strided_channel"),
     ((4, 3, 16), 6, (3,), 1, "strided_spatial"),
+    # strided_channel halves C to 4, so groups=4 multiplies each of them 2x
+    ((2, 8, 12, 12), 8, (3, 3), 4, "strided_channel"),
 ]
 
 
