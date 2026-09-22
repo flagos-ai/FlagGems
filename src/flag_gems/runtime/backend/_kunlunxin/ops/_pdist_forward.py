@@ -37,11 +37,11 @@ def _pdist_forward_kernel(
     if P_IS_INF:
         distance = tl.max(difference, axis=0)
     elif P == 0.0:
-        distance = 0.0
-        for column in tl.static_range(M):
-            lhs_value = tl.load(input + i * M + column).to(tl.float32)
-            rhs_value = tl.load(input + j * M + column).to(tl.float32)
-            distance += tl.where(lhs_value != rhs_value, 1.0, 0.0)
+        # Vectorized Hamming distance: comparing a cluster-layout tensor against
+        # a Python float literal breaks arith.cmpf legalization on XPU, and the
+        # per-column tl.static_range(M) loop exhausts buffer size for large M.
+        # Compare two tensors (same layout) and sum.
+        distance = tl.sum((lhs != rhs).to(tl.float32), axis=0)
     elif P == 1.0:
         distance = tl.sum(difference, axis=0)
     elif P == 2.0:

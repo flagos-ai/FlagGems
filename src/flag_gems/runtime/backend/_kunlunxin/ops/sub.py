@@ -83,7 +83,6 @@ def sub(A, B, *, alpha=1):
     elif isinstance(B, torch.Tensor):
         return sub_func_scalar_tensor(A, B, alpha)
     else:
-        # Both scalar
         return torch.tensor(A - B * alpha)
 
 

@@ -37,7 +37,7 @@ else:
     ]
 
 
-@pytest.mark.skip(reason="Issue #4586: operator not working as expected.")
+# @pytest.mark.skip(reason="Issue #4586: operator not working as expected.")
 @pytest.mark.affine_grid_generator
 @pytest.mark.parametrize("shape", AFFINE_GRID_SHAPES)
 # affine_grid kernel uses float32 internally; Half precision causes mismatch
@@ -51,8 +51,9 @@ def test_affine_grid_generator(shape, dtype, align_corners):
     ref_theta = utils.to_reference(theta)
 
     ref_out = torch.affine_grid_generator(ref_theta, size, align_corners)
-    with flag_gems.use_gems():
-        res_out = torch.affine_grid_generator(theta, size, align_corners)
+    # with flag_gems.use_gems():
+    #     res_out = torch.affine_grid_generator(theta, size, align_corners)
+    res_out = flag_gems.affine_grid_generator(theta, size, align_corners)
 
     # PyTorch CUDA's affine_grid_generator has known float32 precision issues
     # compared to its CPU implementation; when the reference is on CUDA,
