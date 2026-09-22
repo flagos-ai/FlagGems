@@ -62,7 +62,10 @@ def _npu_complete_kernel_latency(fn, warmup=5, active=30, profile_dir=None):
     # Account for the complete, repeated kernel sequence on both sides.
     with tempfile.TemporaryDirectory(prefix="embedding-bag-profile-") as temporary:
         directory = Path(profile_dir) if profile_dir is not None else Path(temporary)
-        triton.backends.ascend.testing.do_bench_npu(
+        # Newer Triton defaults to mspti, which does not export a CSV trace.
+        testing = triton.backends.ascend.testing
+        profiler = getattr(testing, "do_bench_npu_profiler", testing.do_bench_npu)
+        profiler(
             fn, warmup=warmup, active=active, prof_dir=str(directory), keep_res=True
         )
         files = list(directory.rglob("kernel_details.csv"))
