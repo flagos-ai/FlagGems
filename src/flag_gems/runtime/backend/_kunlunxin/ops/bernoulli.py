@@ -47,10 +47,9 @@ def bernoulli_kernel(
     BLOCK: tl.constexpr,
     ROUNDS: tl.constexpr,
 ):
-    # Main path: the first NMAIN programs each process BLOCK*4 consecutive
-    # elements that are fully in-bounds (NMAIN*BLOCK*4 == N for the callers
-    # that use the branchless kernel; for the combined kernel the main branch
-    # only covers the full blocks). No masks -> contiguous block DMA.
+    # Main path: every program processes a BLOCK*4 chunk that is fully
+    # in-bounds (the caller only dispatches here when N % (BLOCK*4) == 0), so
+    # loads/stores are unmasked -> contiguous block DMA.
     philox_seed = philox_seed.to(tl.int64)
     philox_offset = philox_offset.to(tl.int64)
     i4 = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
@@ -71,10 +70,17 @@ def bernoulli_kernel(
     p1 = tl.load(x_ptr + off_1)
     p2 = tl.load(x_ptr + off_2)
     p3 = tl.load(x_ptr + off_3)
-    tl.store(out_ptr + off_0, tl.where(u0 < p0, 1.0, 0.0))
-    tl.store(out_ptr + off_1, tl.where(u1 < p1, 1.0, 0.0))
-    tl.store(out_ptr + off_2, tl.where(u2 < p2, 1.0, 0.0))
-    tl.store(out_ptr + off_3, tl.where(u3 < p3, 1.0, 0.0))
+    # NOTE(kunlunxin): emit the 0/1 output as an int1->f32 cast rather than a
+    # tl.where(select, 1.0, 0.0). On the XPU triton backend an unmasked store
+    # of a comparison-derived *select* value is miscompiled for fp32 and raises
+    # an on-device kernel exception (kl3ChannelCheckErrors, status=719); the
+    # cast form lowers to a plain convert and runs correctly at full speed
+    # (an always-true mask would also work but costs ~1.4x on the
+    # masked-memory path). Same value semantics: 1.0 iff u < p else 0.0.
+    tl.store(out_ptr + off_0, (u0 < p0).to(tl.float32))
+    tl.store(out_ptr + off_1, (u1 < p1).to(tl.float32))
+    tl.store(out_ptr + off_2, (u2 < p2).to(tl.float32))
+    tl.store(out_ptr + off_3, (u3 < p3).to(tl.float32))
 
 
 @triton.jit(do_not_specialize=["philox_seed", "philox_offset", "N"])
