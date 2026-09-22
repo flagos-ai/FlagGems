@@ -17,6 +17,7 @@ import logging
 import torch
 
 from ._conj import _conj
+from .resolve_conj import resolve_conj
 
 logger = logging.getLogger(__name__)
 
@@ -30,5 +31,5 @@ def conj_physical(input: torch.Tensor) -> torch.Tensor:
     # first, since torch.view_as_real() (used by _conj) rejects unresolved
     # conj views.
     if input.is_conj():
-        input = input.resolve_conj()
+        input = resolve_conj(input)
     return _conj(input)
