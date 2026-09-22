@@ -35,24 +35,53 @@ jobs:
       cancel-in-progress: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-      - name: Check out the exact failing operator revision from PR 6501
+      - name: Check out the pinned operator from upstream (attempt 1)
+        id: operator-checkout
+        timeout-minutes: 3
+        continue-on-error: true
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
-          repository: siliconflow/FlagGems
+          repository: flagos-ai/FlagGems
           ref: 4e217249418ae762f5ed0315da96b5427167cc74
+          fetch-depth: 1
+          path: operator-source
+      - name: Check out the pinned operator from upstream (attempt 2)
+        if: ${{ !cancelled() && steps.operator-checkout.outcome == 'failure' }}
+        timeout-minutes: 3
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          repository: flagos-ai/FlagGems
+          ref: 4e217249418ae762f5ed0315da96b5427167cc74
+          fetch-depth: 1
           path: operator-source
       - name: Set up the IX environment
         id: setup
+        timeout-minutes: 15
         working-directory: operator-source
         shell: bash
         run: |
           # Use mainline setup, not the historical change in the operator PR.
+          test "$(git rev-parse HEAD)" = 4e217249418ae762f5ed0315da96b5427167cc74
           cp ../setup.sh setup.sh
-          ./setup.sh iluvatar
           mkdir -p ../ix-results
+          # Bound setup's optional history fetches without modifying setup.sh.
+          # Its existing fallback chain tolerates a fetch timeout/nonzero exit.
+          git() {
+            if [[ "${1:-}" == fetch ]]; then
+              printf 'Diagnostic setup: git fetch limited to 60 seconds\n'
+              timeout --kill-after=10s 60s "$(type -P git)" "$@"
+            else
+              command git "$@"
+            fi
+          }
+          export -f git
+          set -o pipefail
+          ./setup.sh iluvatar 2>&1 | tee ../ix-results/setup.stdout.log
+          unset -f git
           source .venv/bin/activate
           python -c 'from importlib.metadata import distributions; print("\n".join(sorted("{}=={}".format(d.metadata["Name"], d.version) for d in distributions())))' > ../ix-results/environment.txt
       - name: Run isolated pytest exception checks
+        timeout-minutes: 15
         working-directory: operator-source
         shell: bash
         run: |
