@@ -8430,7 +8430,7 @@ ops:
   kind:
   - LinearAlg
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: linalg_ldl_factor
   description: 'Computes the compact LDL factorization of a Hermitian or symmetric
     matrix.
