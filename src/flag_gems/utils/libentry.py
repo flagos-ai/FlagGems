@@ -24,6 +24,7 @@ import os
 import sys
 import threading
 import time
+import weakref
 from abc import abstractmethod
 from collections import OrderedDict
 from contextlib import contextmanager
@@ -158,6 +159,73 @@ def _infer_tensor_dtypes(values: Iterable[Any]) -> Tuple[Any, ...]:
         ):
             dtypes.append(value.base.dtype)
     return tuple(dtypes)
+
+
+def _holds_device_memory(value: Any) -> bool:
+    """True for kernel arguments whose lifetime is tied to device memory.
+
+    Same two shapes ``_infer_tensor_dtypes`` recognizes: a ``torch.Tensor``, and
+    a Triton ``TensorDescriptor``, which is a view onto one through ``.base``.
+    Anything else a kernel is called with -- ints, flags, constexpr strings --
+    is cheap to keep and has no lifetime to disturb.
+    """
+    try:
+        import torch
+    except ImportError:
+        return False
+
+    if isinstance(value, torch.Tensor):
+        return True
+
+    try:
+        from triton.tools.tensor_descriptor import TensorDescriptor
+    except ImportError:
+        return False
+    return isinstance(value, TensorDescriptor)
+
+
+def _weak_kernel_arg(value: Any) -> Any:
+    """Retain a kernel argument without extending the life of its tensors.
+
+    ``LibTuner.run`` keeps the arguments of the call it just ran so a later
+    ``benchmark_config`` can replay it.  Holding tensors strongly there makes a
+    kernel launch outlive the caller's own reference to its inputs: every tuned
+    operator then pins the arguments of its most recent call for the rest of the
+    process, and the pinned size is the largest activation that operator ever
+    saw.  For a diffusion model that is hundreds of MiB per card, none of it
+    reachable by the user and none of it reclaimable.
+    """
+    if not _holds_device_memory(value):
+        return value
+    try:
+        return weakref.ref(value)
+    except TypeError:
+        return value
+
+
+def _resolve_weak_kernel_args(stored: Any) -> Any:
+    """Rebuild a replay context stored by ``_weak_kernel_arg``.
+
+    Returns ``None`` when any weakly-held tensor has since been freed, which
+    ``benchmark_config`` already reports as a missing prior context -- the
+    honest answer, since a replay of dead tensors could not have been timed
+    meaningfully anyway.
+    """
+    if stored is None:
+        return None
+    if isinstance(stored, dict):
+        resolved = {key: _deref(value) for key, value in stored.items()}
+        values = resolved.values()
+    else:
+        resolved = tuple(_deref(value) for value in stored)
+        values = resolved
+    if any(value is None for value in values):
+        return None
+    return resolved
+
+
+def _deref(value: Any) -> Any:
+    return value() if isinstance(value, weakref.ref) else value
 
 
 def _descriptor_cache_key(arg):
@@ -855,9 +923,11 @@ class LibTuner(triton.runtime.Autotuner):
             benchmark_retries: Optional replay sample count override.
             quantiles: Quantiles returned in caller-specified order.
             args: Optional low-level kernel arguments. When omitted, reuse the
-                most recent arguments captured by :meth:`run`.
+                most recent arguments captured by :meth:`run`, provided their
+                tensors are still alive.
             meta: Optional low-level kernel keyword arguments. When omitted,
-                reuse the most recent metadata captured by :meth:`run`.
+                reuse the most recent metadata captured by :meth:`run`, provided
+                its tensors are still alive.
 
         Returns:
             Fresh timing samples in milliseconds and in ``quantiles`` order.
@@ -865,7 +935,11 @@ class LibTuner(triton.runtime.Autotuner):
         Raises:
             ValueError: If durations or quantiles are invalid.
             RuntimeError: If no prior kernel context is available and explicit
-                ``args``/``meta`` were not provided.
+                ``args``/``meta`` were not provided, or if the arguments of that
+                prior call have since been freed. :meth:`run` retains them
+                weakly (``_weak_kernel_arg``) so that launching a kernel does not
+                pin its inputs for the lifetime of the process; a replay needs
+                the caller to keep them alive across the two calls.
 
         Implementation:
             The method temporarily installs an explicit Triton ``do_bench``
@@ -889,12 +963,12 @@ class LibTuner(triton.runtime.Autotuner):
         benchmark_args = (
             tuple(args)
             if args is not None
-            else getattr(self, "_last_benchmark_args", None)
+            else _resolve_weak_kernel_args(getattr(self, "_last_benchmark_args", None))
         )
         benchmark_meta = (
             dict(meta)
             if meta is not None
-            else getattr(self, "_last_benchmark_meta", None)
+            else _resolve_weak_kernel_args(getattr(self, "_last_benchmark_meta", None))
         )
         if benchmark_args is None or benchmark_meta is None:
             raise RuntimeError(
@@ -988,8 +1062,14 @@ class LibTuner(triton.runtime.Autotuner):
         exhaustive_collection = run_mode is LibTunerRunMode.EXHAUSTIVE_COLLECTION
         if hasattr(self, "seen_tuned_metas"):
             self.seen_tuned_metas = {}  # flagtree aabs: deduplicate tuned meta
-        self._last_benchmark_args = tuple(args)
-        self._last_benchmark_meta = dict(kwargs)
+        # Retained so benchmark_config() can replay this call without the caller
+        # passing args again. Tensor arguments are held weakly -- see
+        # _weak_kernel_arg -- so that keeping the context does not keep the
+        # tensors alive.
+        self._last_benchmark_args = tuple(_weak_kernel_arg(arg) for arg in args)
+        self._last_benchmark_meta = {
+            key: _weak_kernel_arg(value) for key, value in kwargs.items()
+        }
         # `arg_names` corresponds to the arguments of the `JITFunction`'s signature,
         # so please make sure the orders of `arg_names` and `args` match.
         self.nargs = dict(zip(self.arg_names, args))
