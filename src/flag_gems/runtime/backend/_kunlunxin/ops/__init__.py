@@ -244,6 +244,7 @@ from .fill import (
     fill_tensor_,
     fill_tensor_out,
 )
+from .flash_attention_backward import flash_attention_backward  # noqa: F401
 from .flip import flip
 from .float_power_ import (  # noqa: F401  (registered via _FULL_CONFIG)
     float_power_scalar_tensor,
@@ -922,6 +923,7 @@ __all__ = [
     "fill_tensor",
     "fill_tensor_",
     "fill_tensor_out",
+    "flash_attention_backward",
     "flash_attention_forward",
     "flash_attn_varlen_func",
     "flip",
