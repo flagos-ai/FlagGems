@@ -53,6 +53,7 @@ from flag_gems.ops._cslt_sparse_mm import _cslt_sparse_mm
 from flag_gems.ops._cummax_helper import _cummax_helper
 from flag_gems.ops._cummin_helper import _cummin_helper
 from flag_gems.ops._dirichlet_grad import _dirichlet_grad
+from flag_gems.ops._dyn_quant_matmul_4bit import _dyn_quant_matmul_4bit
 from flag_gems.ops._dyn_quant_pack_4bit_weight import _dyn_quant_pack_4bit_weight
 from flag_gems.ops._embedding_bag_dense_backward import _embedding_bag_dense_backward
 from flag_gems.ops._embedding_bag_per_sample_weights_backward import (
@@ -1274,6 +1275,7 @@ __all__ = [
     "_cummax_helper",
     "_cummin_helper",
     "_dirichlet_grad",
+    "_dyn_quant_matmul_4bit",
     "_dyn_quant_pack_4bit_weight",
     "_embedding_bag_dense_backward",
     "_embedding_bag_per_sample_weights_backward",

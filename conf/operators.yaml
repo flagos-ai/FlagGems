@@ -4327,6 +4327,16 @@ ops:
   - Math
   stages:
   - beta: '5.3'
+- id: dyn_quant_matmul_4bit
+  description: Dynamic per-row INT8 activation and signed INT4 weight matrix multiplication.
+  for:
+  - _dyn_quant_matmul_4bit
+  labels:
+  - aten
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.4'
 - id: dyn_quant_pack_4bit_weight
   description: 'Packs dynamic 4-bit quantized weights, scale/zero values, and optional
     bias
