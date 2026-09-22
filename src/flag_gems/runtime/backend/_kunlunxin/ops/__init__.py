@@ -158,7 +158,6 @@ from ._jagged_to_padded_dense_forward import (  # noqa: F401
     _jagged_to_padded_dense_forward,
 )
 from ._masked_scale import _masked_scale  # noqa: F401
-from ._native_batch_norm_legit_functional import _native_batch_norm_legit_functional
 from ._native_batch_norm_legit_no_training import _native_batch_norm_legit_no_training
 from ._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
 from ._nested_view_from_jagged_copy import _nested_view_from_jagged_copy
@@ -611,6 +610,10 @@ from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian
 from .nansum import nansum, nansum_out
 from .narrow_copy import narrow_copy
 from .native_batch_norm import native_batch_norm
+from .native_batch_norm_legit_functional import (
+    _native_batch_norm_legit_functional,
+    native_batch_norm_legit_functional,
+)
 from .native_batch_norm_legit_no_training import native_batch_norm_legit_no_training
 from .native_channel_shuffle import native_channel_shuffle
 from .native_dropout_backward import native_dropout_backward
@@ -1532,6 +1535,7 @@ __all__ = [
     "nansum_out",
     "narrow_copy",
     "native_batch_norm",
+    "native_batch_norm_legit_functional",
     "native_batch_norm_legit_no_training",
     "native_channel_shuffle",
     "native_dropout_backward",
