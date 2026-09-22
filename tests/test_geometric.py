@@ -26,8 +26,7 @@ from . import accuracy_utils as utils
 def test_geometric_(shape, dtype):
     p = 0.5
     x = torch.empty(size=shape, dtype=dtype, device=flag_gems.device)
-    with flag_gems.use_gems():
-        x.geometric_(p)
+    flag_gems.geometric_(x, p)
 
     # Check that all values are positive integers (>= 1)
     positive_mask = (x >= 1).float().to(dtype)
@@ -47,8 +46,7 @@ def test_geometric_(shape, dtype):
 @pytest.mark.parametrize("p", [0.1, 0.3, 0.5, 0.7, 0.9])
 def test_geometric_various_p(shape, dtype, p):
     x = torch.empty(size=shape, dtype=dtype, device=flag_gems.device)
-    with flag_gems.use_gems():
-        x.geometric_(p)
+    flag_gems.geometric_(x, p)
 
     # Check that all values are positive integers (>= 1)
     positive_mask = (x >= 1).float().to(dtype)
@@ -68,8 +66,7 @@ def test_geometric_various_p(shape, dtype, p):
 def test_geometric(shape, dtype):
     p = 0.5
     x = torch.empty(size=shape, dtype=dtype, device=flag_gems.device)
-    with flag_gems.use_gems():
-        y = torch.ops.aten.geometric(x, p)
+    y = flag_gems.geometric(x, p)
 
     # Check that the output is a new tensor
     assert y is not x
@@ -90,11 +87,10 @@ def _check_backend_distribution(inplace, dtype, p):
     # Include a masked tail and enough samples to check both mean and variance.
     x = torch.empty((262147,), device=flag_gems.device, dtype=dtype)
     generator = torch.Generator(device=x.device).manual_seed(12345)
-    with flag_gems.use_gems():
-        if inplace:
-            y = x.geometric_(p, generator=generator)
-        else:
-            y = torch.ops.aten.geometric(x, p, generator=generator)
+    if inplace:
+        y = flag_gems.geometric_(x, p, generator=generator)
+    else:
+        y = flag_gems.geometric(x, p, generator=generator)
     values = y.cpu().float()
     assert torch.isfinite(values).all()
     assert (values >= 1).all()
@@ -119,12 +115,11 @@ def _check_backend_layout_and_generator(inplace, layout):
     before = gen.get_state().clone()
 
     def sample():
-        with flag_gems.use_gems():
-            return (
-                x.geometric_(0.3, generator=gen)
-                if inplace
-                else torch.ops.aten.geometric(x, 0.3, generator=gen)
-            )
+        return (
+            flag_gems.geometric_(x, 0.3, generator=gen)
+            if inplace
+            else flag_gems.geometric(x, 0.3, generator=gen)
+        )
 
     y = sample()
     saved = y.cpu().clone()
@@ -147,11 +142,11 @@ def _check_backend_layout_and_generator(inplace, layout):
 
 def _check_backend_invalid_p(inplace, p):
     x = torch.empty((17,), device=flag_gems.device)
-    with flag_gems.use_gems(), pytest.raises(RuntimeError, match="p"):
+    with pytest.raises(RuntimeError, match="p"):
         if inplace:
-            x.geometric_(p)
+            flag_gems.geometric_(x, p)
         else:
-            torch.ops.aten.geometric(x, p)
+            flag_gems.geometric(x, p)
 
 
 @pytest.mark.geometric
