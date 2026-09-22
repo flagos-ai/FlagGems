@@ -261,7 +261,7 @@ def block_diag(*tensors):
         tensors = tuple(tensors[0])
 
     if len(tensors) == 0:
-        return torch.tensor([])
+        return torch.empty((1, 0))
 
     n = len(tensors)
 
