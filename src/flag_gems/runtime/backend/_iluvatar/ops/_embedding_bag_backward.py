@@ -24,11 +24,12 @@ from flag_gems.ops._embedding_bag_backward import (
     _eb_backward_validate,
     _eb_backward_validate_body,
     _embedding_bag_backward_impl,
+    _launch_backward,
 )
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
-from ._embedding_bag import _check_corex_error, _check_native_error
+from ._embedding_bag import _check_corex_error
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +40,7 @@ class _BackwardLaunch:
         self.finish = None
 
     def __call__(self, kernel, packed_kernel, grid, pointers, metadata, **options):
-        if kernel is _eb_backward_finish and not _USE_DEVICE_ASSERT:
+        if kernel is _eb_backward_finish:
             self.finish = (pointers, metadata)
             return None
         if kernel is _eb_backward_validate:
@@ -52,10 +53,7 @@ class _BackwardLaunch:
 
     def check(self):
         if self.error is not None:
-            if _USE_DEVICE_ASSERT:
-                _check_native_error(self.error, self.error.numel())
-            else:
-                _check_corex_error(self.error, self.error.numel(), self.finish)
+            _check_corex_error(self.error, self.error.numel(), self.finish)
 
 
 @libentry()
@@ -234,7 +232,10 @@ def _embedding_bag_backward(
     padding_idx=-1,
 ):
     logger.debug("GEMS_ILUVATAR _EMBEDDING_BAG_BACKWARD")
-    launcher = _BackwardLaunch()
+    # CoreX 4.5 can print a device assertion without reporting an error to
+    # Torch, even when it is the last launch. Use the generic error-flag read
+    # on modern Triton so invalid inputs reliably raise a Python exception.
+    launcher = _launch_backward if _USE_DEVICE_ASSERT else _BackwardLaunch()
     result = _embedding_bag_backward_impl(
         grad,
         indices,
@@ -248,11 +249,11 @@ def _embedding_bag_backward(
         sparse,
         per_sample_weights,
         padding_idx,
-        device_assert_enabled=True,
+        device_assert_enabled=not _USE_DEVICE_ASSERT,
         fused_init_enabled=True,
         launch_fn=launcher,
         max_fn=None if _USE_DEVICE_ASSERT else _compute_max,
     )
-    if not sparse:
+    if not sparse and not _USE_DEVICE_ASSERT:
         launcher.check()
     return result

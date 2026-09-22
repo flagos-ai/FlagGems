@@ -40,7 +40,7 @@ export UV_HTTP_TIMEOUT="${UV_HTTP_TIMEOUT:-120}"
 # triton.Config). We check both: every recorded file exists, and the package
 # imports with its real API surface.
 verify_triton_install() {
-  python - "${VENDOR}" <<'PY'
+  python - <<'PY'
 import importlib.metadata as md
 import site
 import sys
@@ -66,18 +66,19 @@ if missing:
     print(f"{len(missing)} recorded file(s) missing, e.g. {missing[:5]}")
     sys.exit(1)
 
-# Ascend's backend imports Torch while Triton is partially initialized, and
-# torch_npu's Dynamo import accesses triton.language before it exists. Initialize
-# Torch first on Ascend and NVIDIA; other vendors may lack runtime libraries
-# at this compiler-install verification stage.
-if sys.argv[1] in ("ascend", "nvidia"):
-    import torch  # noqa: F401
+# On ascend, triton's backend package imports torch/torch_npu as a side
+# effect (for its do_bench_npu helper) while triton itself is still
+# mid-import. torch_npu's import in turn reaches back into triton.language,
+# which doesn't exist on the triton module yet -> circular-import
+# AttributeError. Fully importing torch/torch_npu first, standalone, means
+# that reentrant import is a cheap no-op (modules already initialized)
+# instead of a reentrant partial import.
+import torch  # noqa: F401
 
-if sys.argv[1] == "ascend":
-    try:
-        import torch_npu  # noqa: F401
-    except ImportError:
-        pass
+try:
+    import torch_npu  # noqa: F401
+except ImportError:
+    pass
 
 import triton
 
