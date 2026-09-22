@@ -120,6 +120,7 @@ from .ones_like import ones_like
 from .ormqr import ormqr
 from .pad import constant_pad_nd, pad
 from .permute_copy import permute_copy
+from .polar import polar
 from .prod import prod, prod_dim
 from .quantile import quantile
 from .rad2deg_ import rad2deg_
@@ -292,6 +293,7 @@ __all__ = [
     "ormqr",
     "pad",
     "permute_copy",
+    "polar",
     "prod",
     "prod_dim",
     "quantile",
