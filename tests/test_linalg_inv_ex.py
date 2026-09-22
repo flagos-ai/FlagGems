@@ -68,7 +68,7 @@ def test_linalg_inv_ex(shape, dtype, check_errors):
     ref_A = utils.to_reference(A)
 
     ref_result = torch.linalg.inv_ex(ref_A, check_errors=check_errors)
-    res_result = torch.linalg.inv_ex(A, check_errors=check_errors)
+    res_result = flag_gems.linalg_inv_ex(A, check_errors=check_errors)
 
     n = shape[-1]
 
@@ -105,7 +105,7 @@ def test_linalg_inv_ex_singular(shape, dtype):
     for i in range(n - 1):
         A[i, i] = 1.0
 
-    res_result = torch.linalg.inv_ex(A)
+    res_result = flag_gems.linalg_inv_ex(A)
 
     # info should be non-zero for singular matrix
     assert res_result.info != 0
@@ -124,4 +124,4 @@ def test_linalg_inv_ex_check_errors(dtype):
         A[i, i] = 1.0
 
     with pytest.raises(torch.linalg.LinAlgError):
-        torch.linalg.inv_ex(A, check_errors=True)
+        flag_gems.linalg_inv_ex(A, check_errors=True)
