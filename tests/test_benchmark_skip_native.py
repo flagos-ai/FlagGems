@@ -51,6 +51,20 @@ def test_skip_native_marker_ignores_other_vendors():
 
 
 @pytest.mark.parametrize(
+    ("vendor", "expected_option"),
+    [
+        ("ascend", "--fg_mode"),
+        ("kunlunxin", "--fg_mode"),
+        ("nvidia", "--mode"),
+    ],
+)
+def test_benchmark_mode_option_avoids_vendor_pytest_conflicts(
+    vendor, expected_option
+):
+    assert benchmark_conftest.benchmark_mode_option(vendor) == expected_option
+
+
+@pytest.mark.parametrize(
     "marker",
     [
         _marker("ascend", reason=SKIP_REASON),

@@ -32,7 +32,7 @@ import flag_gems
 
 from . import consts
 from .base import Benchmark, GenericBenchmark2DOnly
-from .conftest import Config, emit_record_logger
+from .conftest import Config, MODE_OPTION, emit_record_logger
 from .consts import (
     COMPLEX_DTYPES,
     DEFAULT_METRICS,
@@ -883,13 +883,12 @@ class ParallelBenchmarkMixin:
         finally:
             tmp_result_file.close()
 
-        mode_arg = "--fg_mode" if flag_gems.vendor_name == "kunlunxin" else "--mode"
         cmd = [
             sys.executable,
             "-m",
             "pytest",
             node_id,
-            mode_arg,
+            MODE_OPTION,
             Config.mode.value,
             "--level",
             Config.bench_level.value,

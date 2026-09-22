@@ -32,6 +32,16 @@ recordLogger = logging.getLogger("flag_gems_benchmark")
 recordLogger.propagate = False
 Config = None
 
+
+def benchmark_mode_option(vendor):
+    # Ascend/Triton environments may already define pytest's generic --mode.
+    # Keep the benchmark option isolated, as is already done for Kunlunxin.
+    """Return the benchmark mode option that is safe for the selected vendor."""
+    return "--fg_mode" if vendor in {"ascend", "kunlunxin"} else "--mode"
+
+
+MODE_OPTION = benchmark_mode_option(vendor_name)
+
 BUILTIN_MARKS = (
     "parametrize",
     "skip",
@@ -174,9 +184,7 @@ def _deactivate_inactive_native_marker(item, current_vendor):
 
 def pytest_addoption(parser):
     parser.addoption(
-        (
-            "--mode" if vendor_name != "kunlunxin" else "--fg_mode"
-        ),  # TODO: fix pytest-* common --mode args
+        MODE_OPTION,
         action="store",
         default="kernel",
         required=False,
@@ -337,9 +345,7 @@ def pytest_configure(config):
         marker.split(":")[0].strip() for marker in config.getini("markers")
     }
 
-    mode_value = config.getoption(
-        "--mode" if vendor_name != "kunlunxin" else "--fg_mode"
-    )
+    mode_value = config.getoption(MODE_OPTION)
     Config.mode = consts.BenchMode(mode_value)
 
     Config.query = config.getoption("--query")

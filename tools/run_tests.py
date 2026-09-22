@@ -475,6 +475,13 @@ def get_env(gpu_ids):
     return env
 
 
+def benchmark_mode_option(vendor):
+    # Keep Ascend/Kunlunxin away from generic --mode options registered by
+    # vendor-specific pytest plugins.
+    """Return the benchmark mode option that is safe for the selected vendor."""
+    return "--fg_mode" if vendor in {"ascend", "kunlunxin"} else "--mode"
+
+
 def run_cmd(op, cmd, cwd=None, env=None, timeout=1800, flavor=None):
     stdout = subprocess.DEVNULL
     stderr = subprocess.DEVNULL
@@ -809,6 +816,7 @@ def run_accuracy_q(gpu_id, op):
 def run_benchmark_q(gpu_id, op):
     """Run benchmark for one op. Returns result dict."""
     env = get_env(str(gpu_id))
+    vendor = ENV_INFO.get("flag_gems", {}).get("vendor", "")
 
     benchmark_dir = ROOT / "benchmark"
     result_file = benchmark_dir / f"benchmark_{op}.json"
@@ -820,8 +828,9 @@ def run_benchmark_q(gpu_id, op):
 
     dur = time.time()
     marker = op_marker(op)
+    mode_option = benchmark_mode_option(vendor)
     cmd = (
-        f'pytest -m "{marker}" --level core --record json '
+        f'pytest -m "{marker}" {mode_option} kernel --level core --record json '
         f"--output benchmark_{op}.json --continue-on-collection-errors"
     )
     code = run_cmd(op, cmd, cwd=benchmark_dir, env=env, flavor="performance")
