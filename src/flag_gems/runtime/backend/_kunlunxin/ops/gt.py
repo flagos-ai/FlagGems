@@ -53,8 +53,8 @@ def _bf16_as_fp16_key(B):
     if not math.isfinite(fb):
         return False, 0.0
     u32 = struct.unpack("<I", struct.pack("<f", fb))[0]
-    u16 = ((u32 + 0x7FFF + ((u32 >> 16) & 1)) >> 16) & 0xFFFF   # RNE f32->bf16 bits
-    if (u16 & 0x7C00) == 0x7C00:            # fp16 exp all-ones => inf/nan reinterpret
+    u16 = ((u32 + 0x7FFF + ((u32 >> 16) & 1)) >> 16) & 0xFFFF  # RNE f32->bf16 bits
+    if (u16 & 0x7C00) == 0x7C00:  # fp16 exp all-ones => inf/nan reinterpret
         return False, 0.0
     return True, struct.unpack("<e", struct.pack("<H", u16))[0]
 
@@ -89,6 +89,7 @@ def gt(A, B):
     del os.environ["TRITONXPU_FP16_FAST"]
     return res
 
+
 config_scalar_bigtile_ = CodeGenConfig(
     1024,
     (65536, 65536, 65536),
@@ -100,6 +101,7 @@ config_scalar_bigtile_ = CodeGenConfig(
     buffer_size_limit=16384,
     unroll_num=16,
 )
+
 
 @pointwise_dynamic(
     is_tensor=[True, False],
@@ -154,8 +156,13 @@ def _gt_scalar_small(A, wrapped):
     out = torch.empty(numel, dtype=torch.int8, device=A.device)
     TILE = triton.next_power_of_2(numel)
     gt_scalar_small_kernel[(1,)](
-        out, A.reshape(-1), wrapped, numel, TILE=TILE,
-        num_warps=4, isCloseMemoryAsync=False,
+        out,
+        A.reshape(-1),
+        wrapped,
+        numel,
+        TILE=TILE,
+        num_warps=4,
+        isCloseMemoryAsync=False,
     )
     return out.view(torch.bool).reshape(A.shape)
 
@@ -174,9 +181,15 @@ def _gt_scalar_tiled(A, wrapped):
     out = torch.empty(numel, dtype=torch.int8, device=A.device)
     grid = (triton.cdiv(numel, _GT_SCALAR_MID_TILE),)
     gt_scalar_tile_kernel[grid](
-        out, A.reshape(-1), wrapped, numel, TILE=_GT_SCALAR_MID_TILE,
-        num_warps=4, isCloseMemoryAsync=False,
-        buffer_size_limit=_GT_SCALAR_MID_BSL, unroll_num=_GT_SCALAR_MID_UNROLL,
+        out,
+        A.reshape(-1),
+        wrapped,
+        numel,
+        TILE=_GT_SCALAR_MID_TILE,
+        num_warps=4,
+        isCloseMemoryAsync=False,
+        buffer_size_limit=_GT_SCALAR_MID_BSL,
+        unroll_num=_GT_SCALAR_MID_UNROLL,
     )
     return out.view(torch.bool).reshape(A.shape)
 
@@ -242,70 +255,6 @@ def gt_scalar(A, B):
     return res
 
 
-_GT_SCALAR_FAST_TILE = 131072
-_GT_SCALAR_MIN_GRID = 128
-_GT_SCALAR_MASKED_MIN = 1 << 20
-
-
-@triton.jit
-def gt_scalar_fast_kernel(out_ptr, x_ptr, scalar, TILE: tl.constexpr):
-    pid = tl.program_id(0)
-    tid = pid * TILE + tl.arange(0, TILE)
-    x = tl.load(x_ptr + tid).to(tl.float32)
-    t = (x - scalar) * 1.0e30
-    t = tl.maximum(0.0, t)
-    t = tl.minimum(1.0, t)
-    tl.store(out_ptr + tid, t)
-
-
-def _gt_scalar_fast(A, scalar, grid):
-    out32 = torch.empty_like(A, dtype=torch.float32)
-    gt_scalar_fast_kernel[grid](
-        out32,
-        A,
-        scalar,
-        TILE=_GT_SCALAR_FAST_TILE,
-        num_warps=4,
-        buffer_size_limit=8192,
-        unroll_num=16,
-        isCloseMemoryAsync=False,
-    )
-    out = torch.empty_like(A, dtype=torch.bool)
-    torch.ops.aten._copy_from(out32, out, False)
-    return out
-
-
-@triton.jit
-def gt_scalar_fast_masked_kernel(out_ptr, x_ptr, scalar, numel, TILE: tl.constexpr):
-    pid = tl.program_id(0)
-    tid = pid * TILE + tl.arange(0, TILE)
-    mask = tid < numel
-    x = tl.load(x_ptr + tid, mask=mask).to(tl.float32)
-    t = (x - scalar) * 1.0e30
-    t = tl.maximum(0.0, t)
-    t = tl.minimum(1.0, t)
-    tl.store(out_ptr + tid, t, mask=mask)
-
-
-def _gt_scalar_fast_masked(A, scalar, numel):
-    out32 = torch.empty_like(A, dtype=torch.float32)
-    grid = (math.ceil(numel / _GT_SCALAR_FAST_TILE),)
-    gt_scalar_fast_masked_kernel[grid](
-        out32,
-        A,
-        scalar,
-        numel,
-        TILE=_GT_SCALAR_FAST_TILE,
-        num_warps=4,
-        buffer_size_limit=8192,
-        unroll_num=16,
-        isCloseMemoryAsync=False,
-    )
-    out = torch.empty_like(A, dtype=torch.bool)
-    torch.ops.aten._copy_from(out32, out, False)
-    return out
-
-
 config_inplace_ = CodeGenConfig(
     512,
     (65536, 65536, 65536),
@@ -355,7 +304,7 @@ def gt_scalar_(A, B):
     if (
         A.is_contiguous()
         and A.dtype in (torch.float16, torch.float32, torch.bfloat16)
-        and float(B) == float(torch.tensor(float(B), dtype=A.dtype).item())
+        and float(B) == _wrap_to_dtype(B, A.dtype)[1]
     ):
         if (
             A.dtype in (torch.float16, torch.float32)

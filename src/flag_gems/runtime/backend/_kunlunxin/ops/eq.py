@@ -71,6 +71,7 @@ def _wrap_bf16_as_fp16(B):
     v = struct.unpack("<e", struct.pack("<H", u16))[0]
     return math.isfinite(v), float(v)
 
+
 config_ = CodeGenConfig(
     512,
     (65536, 65536, 65536),
@@ -106,6 +107,7 @@ def eq(A, B):
     del os.environ["TRITONXPU_FP16_FAST"]
     return res
 
+
 config_scalar_bigtile_ = CodeGenConfig(
     1024,
     (65536, 65536, 65536),
@@ -117,6 +119,7 @@ config_scalar_bigtile_ = CodeGenConfig(
     buffer_size_limit=16384,
     unroll_num=16,
 )
+
 
 @pointwise_dynamic(
     is_tensor=[True, False],
@@ -161,8 +164,13 @@ def _eq_scalar_small(A, wrapped):
     out = torch.empty(numel, dtype=torch.int8, device=A.device)
     TILE = triton.next_power_of_2(numel)
     eq_scalar_small_kernel[(1,)](
-        out, A.reshape(-1), wrapped, numel, TILE=TILE,
-        num_warps=4, isCloseMemoryAsync=False,
+        out,
+        A.reshape(-1),
+        wrapped,
+        numel,
+        TILE=TILE,
+        num_warps=4,
+        isCloseMemoryAsync=False,
     )
     return out.view(torch.bool).reshape(A.shape)
 
@@ -211,9 +219,15 @@ def _eq_scalar_tiled(A, wrapped):
     out = torch.empty(numel, dtype=torch.int8, device=A.device)
     grid = (triton.cdiv(numel, _EQ_SCALAR_MID_TILE),)
     eq_scalar_tile_kernel[grid](
-        out, A.reshape(-1), wrapped, numel, TILE=_EQ_SCALAR_MID_TILE,
-        num_warps=4, isCloseMemoryAsync=False,
-        buffer_size_limit=_EQ_SCALAR_MID_BSL, unroll_num=_EQ_SCALAR_MID_UNROLL,
+        out,
+        A.reshape(-1),
+        wrapped,
+        numel,
+        TILE=_EQ_SCALAR_MID_TILE,
+        num_warps=4,
+        isCloseMemoryAsync=False,
+        buffer_size_limit=_EQ_SCALAR_MID_BSL,
+        unroll_num=_EQ_SCALAR_MID_UNROLL,
     )
     return out.view(torch.bool).reshape(A.shape)
 
@@ -307,99 +321,6 @@ def eq_scalar(A, B):
     del os.environ["TRITONXPU_COMPARE_FUSION"]
     del os.environ["TRITONXPU_FP16_FAST"]
     return res
-
-
-# ---------------------------------------------------------------------------
-# eq_scalar fast paths (fp16/fp32/bf16, contiguous, finite wrapped scalar).
-#
-# Why: like the gt/lt/greater scalar family, the generic scalar-compare path
-# (pointwise_dynamic 1d-tile codegen) always materializes
-# `arith.cmpf -> i1 -> bool store` per lane. On XPU the i1 compare alone is a
-# per-lane slow path (~10-20x): measured with a where(x==s) kernel, the same
-# flat tile in fp32 saturating arithmetic is 8-15x faster than the i1 variant
-# on [10000,65536] (probe 2026-08-13, XPU 1).
-#
-# Equality cannot use the gt/lt `max(0, min(1, (x-s)*K))` shape because x==s
-# has no natural gap direction; instead we saturate the *distance*:
-#   t = min(1, |x - s| * 2^149-ish)   -> 0.0 when x == s, 1.0 when x != s
-#   out = max(0, 1 - t)                -> 1.0 when equal, 0.0 otherwise
-# SCALE = 1e30 * 1e15: every representable fp16/bf16/fp32 gap (min 2^-149
-# subnormal spacing) saturates t to exactly 1.0, while a zero difference
-# stays exactly 0.0. subnormal-vs-zero gaps are exact (power-of-two scaling),
-# +-0 == +-0 -> True, NaN input -> False (the trailing max(0, 1-t) maps the
-# NaN from |NaN - s| to 0; on bf16 the naive 1 - min(1, NaN) yields NaN and
-# NaN converts to True, hence max(0, .) is required).
-#
-# The tensored scalar passed to the kernel is float(wrapped) -- the scalar
-# rounded to the input dtype -- which is bit-identical to torch's wrapped
-# scalar for the comparison (benchmark 0.001 in fp16/bf16/fp32 is admitted).
-# The +/-inf corner (x = s = +/-inf -> True) requires a wrapped scalar of
-# +/-inf: those scalars are rejected above by math.isfinite, keeping the
-# exact generic compare path. NaN scalars also stay generic.
-#
-# Second stage: fp32 -> bool via `torch.ops.aten._copy_from` (NOT registered
-# by gems, so it always reaches the vendor's native conversion kernel;
-# measured ~1.97 ms on [10000,65536] fp16, vs the generic path's 15.9 ms).
-_EQ_SCALAR_FAST_TILE = 131072
-_EQ_SCALAR_MIN_GRID = 128
-_EQ_SCALAR_MASKED_MIN = 1 << 20
-
-
-@triton.jit
-def eq_scalar_fast_kernel(out_ptr, x_ptr, scalar, TILE: tl.constexpr):
-    pid = tl.program_id(0)
-    tid = pid * TILE + tl.arange(0, TILE)
-    x = tl.load(x_ptr + tid).to(tl.float32)
-    d = tl.abs(x - scalar)
-    t = tl.minimum(1.0, d * 1.0e30 * 1.0e15)
-    tl.store(out_ptr + tid, tl.maximum(0.0, 1.0 - t))
-
-
-def _eq_scalar_fast(A, scalar, grid):
-    out32 = torch.empty_like(A, dtype=torch.float32)
-    eq_scalar_fast_kernel[grid](
-        out32,
-        A,
-        scalar,
-        TILE=_EQ_SCALAR_FAST_TILE,
-        num_warps=4,
-        buffer_size_limit=8192,
-        unroll_num=16,
-        isCloseMemoryAsync=False,
-    )
-    out = torch.empty_like(A, dtype=torch.bool)
-    torch.ops.aten._copy_from(out32, out, False)
-    return out
-
-
-@triton.jit
-def eq_scalar_fast_masked_kernel(out_ptr, x_ptr, scalar, numel, TILE: tl.constexpr):
-    pid = tl.program_id(0)
-    tid = pid * TILE + tl.arange(0, TILE)
-    mask = tid < numel
-    x = tl.load(x_ptr + tid, mask=mask).to(tl.float32)
-    d = tl.abs(x - scalar)
-    t = tl.minimum(1.0, d * 1.0e30 * 1.0e15)
-    tl.store(out_ptr + tid, tl.maximum(0.0, 1.0 - t), mask=mask)
-
-
-def _eq_scalar_fast_masked(A, scalar, numel):
-    out32 = torch.empty_like(A, dtype=torch.float32)
-    grid = (math.ceil(numel / _EQ_SCALAR_FAST_TILE),)
-    eq_scalar_fast_masked_kernel[grid](
-        out32,
-        A,
-        scalar,
-        numel,
-        TILE=_EQ_SCALAR_FAST_TILE,
-        num_warps=4,
-        buffer_size_limit=8192,
-        unroll_num=16,
-        isCloseMemoryAsync=False,
-    )
-    out = torch.empty_like(A, dtype=torch.bool)
-    torch.ops.aten._copy_from(out32, out, False)
-    return out
 
 
 # ---------------------------------------------------------------------------
@@ -527,9 +448,9 @@ def eq_scalar_(A, B):
     if (
         A.is_contiguous()
         and dtype in (torch.float16, torch.float32, torch.bfloat16)
-        and float(B) == float(torch.tensor(float(B), dtype=dtype).item())
+        and float(B) == _wrap_to_dtype(B, dtype)[1]
     ):
-        wrapped = float(torch.tensor(float(B), dtype=dtype).item())
+        wrapped = _wrap_to_dtype(B, dtype)[1]
         if math.isfinite(wrapped):
             if (
                 dtype in (torch.float16, torch.float32)
