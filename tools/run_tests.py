@@ -475,11 +475,12 @@ def get_env(gpu_ids):
     return env
 
 
-def benchmark_mode_option(vendor):
-    # Keep Ascend/Kunlunxin away from generic --mode options registered by
-    # vendor-specific pytest plugins.
-    """Return the benchmark mode option that is safe for the selected vendor."""
-    return "--fg_mode" if vendor in {"ascend", "kunlunxin"} else "--mode"
+def benchmark_mode_args(vendor):
+    """Return explicit mode arguments for vendors that need them."""
+
+    # Ascend may have a vendor pytest plugin that also defines --mode. Keep
+    # this workaround scoped to Ascend; other vendors retain their commands.
+    return " --fg_mode kernel" if vendor == "ascend" else ""
 
 
 def run_cmd(op, cmd, cwd=None, env=None, timeout=1800, flavor=None):
@@ -828,9 +829,9 @@ def run_benchmark_q(gpu_id, op):
 
     dur = time.time()
     marker = op_marker(op)
-    mode_option = benchmark_mode_option(vendor)
     cmd = (
-        f'pytest -m "{marker}" {mode_option} kernel --level core --record json '
+        f'pytest -m "{marker}"{benchmark_mode_args(vendor)} '
+        f"--level core --record json "
         f"--output benchmark_{op}.json --continue-on-collection-errors"
     )
     code = run_cmd(op, cmd, cwd=benchmark_dir, env=env, flavor="performance")
