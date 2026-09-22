@@ -37,8 +37,9 @@ export UV_HTTP_TIMEOUT="${UV_HTTP_TIMEOUT:-120}"
 # uv's exit code only tells us it wrote the dist-info; it does not catch a
 # truncated install where files listed in RECORD never landed on disk. That
 # leaves `import triton` degraded to an empty namespace package (no
-# triton.Config). We check both: every recorded file exists, and the package
-# imports with its real API surface.
+# triton.Config). We check every recorded file and the package's static API
+# surface without initializing vendor drivers. Ascend additionally gets a
+# real import check after its torch/torch_npu circular-import workaround.
 verify_triton_install() {
   local torch_backend_autoload=0
   if [[ "${BACKEND}" == ascend-* ]]; then
@@ -46,10 +47,12 @@ verify_triton_install() {
   fi
   TORCH_DEVICE_BACKEND_AUTOLOAD="${torch_backend_autoload}" \
     FLAGGEMS_VERIFY_BACKEND="${BACKEND}" python - <<'PY'
+import ast
 import importlib.metadata as md
 import os
 import site
 import sys
+from pathlib import Path
 
 # Restrict the search to the venv's own site-packages. A global compiler
 # side dir (e.g. /opt/flagtree, added to PYTHONPATH by base-image profile
@@ -66,10 +69,48 @@ else:
     print("no triton/flagtree metadata found in venv site-packages")
     sys.exit(1)
 
-files = dist.files or []
+files = dist.files
+if not files:
+    print(f"{dist.metadata['Name']} has no installed-file RECORD")
+    sys.exit(1)
+
 missing = [str(f) for f in files if not f.locate().exists()]
 if missing:
     print(f"{len(missing)} recorded file(s) missing, e.g. {missing[:5]}")
+    sys.exit(1)
+
+size_mismatches = []
+for entry in files:
+    path = Path(entry.locate())
+    if entry.size is not None and path.is_file() and path.stat().st_size != entry.size:
+        size_mismatches.append(str(entry))
+if size_mismatches:
+    print(f"{len(size_mismatches)} recorded file size mismatch(es), e.g. {size_mismatches[:5]}")
+    sys.exit(1)
+
+recorded_paths = {str(entry).replace("\\", "/") for entry in files}
+if not any(path.endswith("triton/__init__.py") for path in recorded_paths):
+    print("installed-file RECORD does not contain triton/__init__.py")
+    sys.exit(1)
+
+triton_init = Path(venv_site_packages) / "triton" / "__init__.py"
+if not triton_init.is_file() or triton_init.stat().st_size == 0:
+    print(f"triton package initializer missing or empty: {triton_init}")
+    sys.exit(1)
+
+try:
+    init_tree = ast.parse(triton_init.read_text(encoding="utf-8"), filename=str(triton_init))
+except (OSError, SyntaxError) as exc:
+    print(f"invalid triton package initializer: {exc}")
+    sys.exit(1)
+
+exports_config = any(
+    isinstance(node, ast.ImportFrom)
+    and any(alias.name == "Config" for alias in node.names)
+    for node in init_tree.body
+)
+if not exports_config:
+    print("triton package initializer does not export Config")
     sys.exit(1)
 
 # On ascend, triton's backend package imports torch/torch_npu as a side
@@ -89,11 +130,11 @@ if os.environ["FLAGGEMS_VERIFY_BACKEND"].startswith("ascend-"):
     except ImportError:
         pass
 
-import triton
+    import triton
 
-if triton.__file__ is None or not hasattr(triton, "Config"):
-    print(f"triton import incomplete (__file__={triton.__file__})")
-    sys.exit(1)
+    if triton.__file__ is None or not hasattr(triton, "Config"):
+        print(f"triton import incomplete (__file__={triton.__file__})")
+        sys.exit(1)
 
 print("triton install verified OK")
 PY
