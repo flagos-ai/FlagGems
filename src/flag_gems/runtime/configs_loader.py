@@ -14,6 +14,7 @@
 
 import copy
 import inspect
+import itertools
 import os
 import warnings
 
@@ -156,6 +157,25 @@ class TunedConfigLoader(object):
                 for block_m in ranges["BLOCK_M"]
                 for block_n in ranges["BLOCK_N"]
                 for block_k in ranges["BLOCK_K"]
+                for s in ranges["s"]
+                for w in ranges["w"]
+            ]
+
+        if op_name == "mv_hygon":
+            return [
+                triton.Config(
+                    {
+                        "BLOCK_N": block_n,
+                        "BLOCK_M": block_m,
+                        "LOOP_STAGES": loop_stages,
+                    },
+                    num_stages=s,
+                    num_warps=w,
+                    pre_hook=pre_hook,
+                )
+                for block_n in ranges["BLOCK_N"]
+                for block_m in ranges["BLOCK_M"]
+                for loop_stages in ranges["LOOP_STAGES"]
                 for s in ranges["s"]
                 for w in ranges["w"]
             ]
@@ -661,6 +681,14 @@ class TunedConfigLoader(object):
             ),
             "mv": self._build_single_expand_spec(
                 "mv", expand_yaml_path=self._get_expand_config_path("mv")
+            ),
+            # Hygon's MV tuner includes the three input strides in its cache
+            # key. Use a separate expand contract so generic MV backends keep
+            # their existing two-key FlagTune schema.
+            "mv_hygon": self._build_single_expand_spec(
+                "mv_hygon",
+                yaml_op_name="mv",
+                expand_yaml_path=self._get_expand_config_path("mv"),
             ),
             "mul": self._build_single_expand_spec(
                 "mul", expand_yaml_path=self._get_expand_config_path("mul")
