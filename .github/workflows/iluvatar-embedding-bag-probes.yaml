@@ -56,7 +56,6 @@ jobs:
           path: operator-source
       - name: Set up the IX environment
         id: setup
-        timeout-minutes: 15
         working-directory: operator-source
         shell: bash
         run: |
