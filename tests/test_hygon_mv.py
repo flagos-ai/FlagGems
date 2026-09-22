@@ -108,7 +108,6 @@ def test_hygon_mv(M, N, dtype):
     ref_vector = utils.to_reference(vector, True)
 
     ref_out = torch.mv(ref_matrix, ref_vector)
-    with flag_gems.use_gems():
-        res_out = torch.mv(matrix, vector)
+    res_out = flag_gems.mv(matrix, vector)
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=M)
