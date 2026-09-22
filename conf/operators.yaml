@@ -1726,6 +1726,18 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.5'
+- id: batch_norm_gather_stats
+  description: Triton kernel implementation for gathering per-device batch normalization
+    statistics into global mean and inverse standard deviation.
+  for:
+  - batch_norm_gather_stats
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: batch_norm_gather_stats_with_counts
   description: |
     Triton kernel implementation for gathering per-device batch normalization statistics with per-segment counts into global mean and inverse standard deviation.
@@ -7579,6 +7591,18 @@ ops:
   - Quantization
   stages:
   - beta: '5.3'
+- id: inner
+  description: Computes the inner product of two tensors by contracting their last
+    dimension, keeping the leading dimensions of each operand per-side without broadcasting.
+  for:
+  - inner
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5.0'
 - id: inplace_fused_experts
   description: This operator writes output directly to `hidden_states`.
   for:
@@ -9806,6 +9830,21 @@ ops:
   - Tensor
   stages:
   - stable: '2.1'
+- id: masked_select_backward
+  description: 'Backward of `masked_select` with respect to `input`. Scatters the compact
+
+    gradient into a zero tensor at the True mask positions after broadcasting
+
+    `input` and `mask` to a common shape.'
+  for:
+  - masked_select_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: masked_softmax
   description: |
     Apply a softmax over `dim` while excluding positions where the boolean
@@ -10433,6 +10472,28 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: msort
+  description: Sorts each column of the input tensor in ascending order.
+  for:
+  - msort
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
+- id: msort_out
+  description: Writes the column-wise sorted values into the provided output tensor.
+  for:
+  - msort.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: mul
   description: Multiplies `input` by `other`.
   for:
@@ -12156,6 +12217,55 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: quantized_max_pool1d
+  description: Applies 1D max pooling over a per-tensor quantized tensor.
+  for:
+  - quantized_max_pool1d
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
+- id: quantized_max_pool1d_out
+  description: |
+    A variant of quantized_max_pool1d() that writes the result into the out tensor.
+  for:
+  - quantized_max_pool1d.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
+- id: quantized_max_pool2d
+  description: |
+    Triton kernel implementation for quantized_max_pool2d. Applies 2D max pooling
+    over a quantized input tensor by pooling the underlying integer
+    representation.
+  for:
+  - quantized_max_pool2d
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
+- id: quantized_max_pool2d_out
+  description: |
+    A variant of quantized_max_pool2d() that writes the result into the out tensor.
+  for:
+  - quantized_max_pool2d.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: quantized_max_pool3d
   description: Applies 3D max pooling over a per-tensor quantized quint8 tensor.
   for:
@@ -13077,6 +13187,30 @@ ops:
   - KernelGen
   kind:
   - Math
+  stages:
+  - alpha: '5.4'
+- id: row_stack
+  description: |
+    Stack tensors in sequence vertically (row wise). Alias of vstack.
+  for:
+  - row_stack
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
+- id: row_stack_out
+  description: |
+    A variant of row_stack() that writes the result into the out tensor.
+  for:
+  - row_stack.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
   stages:
   - alpha: '5.4'
 - id: rrelu_with_noise
@@ -14308,6 +14442,23 @@ ops:
   - LinearAlg
   stages:
   - alpha: '5.5'
+- id: smm
+  description: |
+    Performs a matrix multiplication of the sparse (COO) matrix `self` with the
+    dense matrix `mat` using a fused Triton kernel. The sparse operand is
+    materialized to dense, the product is computed with `tl.dot`, and the COO
+    output (indices + values) is written directly to match `torch.smm`
+    semantics: every row that appears in the sparse input contributes all
+    output columns.
+  for:
+  - smm
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: smooth_l1_loss
   description: Compute the smooth L1 loss between input and target tensors.
   for:
@@ -15788,6 +15939,17 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: standard_gamma
+  description: Triton kernel implementation for _standard_gamma.
+  for:
+  - _standard_gamma
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: standard_gamma_grad
   description: Triton kernel implementation for _standard_gamma_grad.
   for:
@@ -16330,6 +16492,19 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: thnn_differentiable_lstm_cell_backward
+  description: 'Computes the differentiable backward pass for an LSTM cell, returning
+
+    gradients for the input gates, hidden gates, cell state, and optional biases.'
+  for:
+  - _thnn_differentiable_lstm_cell_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: thnn_fused_gru_cell
   description: Computes the fused GRU cell forward pass and backward workspace.
   for:
@@ -17117,6 +17292,28 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '5.0'
+- id: upsample_bicubic2d_backward
+  description: Computes non-antialiased bicubic interpolation gradients using deterministic gather.
+  for:
+  - upsample_bicubic2d_backward
+  labels:
+  - aten
+  - Reduction
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
+- id: upsample_bicubic2d_backward_grad_input
+  description: Writes non-antialiased bicubic interpolation gradients to grad_input.
+  for:
+  - upsample_bicubic2d_backward.grad_input
+  labels:
+  - aten
+  - Reduction
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: upsample_bilinear2d
   description: 'Upsamples the input, using bilinear mode.
 
@@ -17150,6 +17347,28 @@ ops:
   labels:
   - aten
   - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
+- id: upsample_bilinear2d_backward
+  description: Computes gradients of bilinear interpolation without anti-aliasing.
+  for:
+  - upsample_bilinear2d_backward
+  labels:
+  - aten
+  - Reduction
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
+- id: upsample_bilinear2d_backward_grad_input
+  description: Writes bilinear interpolation gradients into a supplied tensor.
+  for:
+  - upsample_bilinear2d_backward.grad_input
+  labels:
+  - aten
+  - Reduction
   kind:
   - NeuralNetwork
   stages:
@@ -17269,6 +17488,28 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '2.2'
+- id: upsample_nearest2d_backward
+  description: Deterministic backward for legacy 2D nearest-neighbor interpolation.
+  for:
+  - upsample_nearest2d_backward
+  labels:
+  - aten
+  - Reduction
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
+- id: upsample_nearest2d_backward_grad_input
+  description: Preallocated-output overload of upsample_nearest2d_backward.
+  for:
+  - upsample_nearest2d_backward.grad_input
+  labels:
+  - aten
+  - Reduction
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: upsample_nearest3d
   description: 'Performs 3D nearest-neighbor interpolation to increase the spatial
     size of volumetric data,
