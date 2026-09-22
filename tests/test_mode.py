@@ -30,6 +30,28 @@ else:
     KEEPDIM = [True, False]
 
 
+MTHREADS_NATIVE_MODE_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "mthreads",
+    reason=(
+        "MThreads native torch.mode raises 'MUSA error: misaligned address' "
+        "during repeated benchmarking for FP16/BF16/INT16 at shapes "
+        "(64, 64), (256, 256), and (1024, 1024); skip these dtypes "
+        "pending a native backend fix."
+    ),
+)
+
+
+def _mode_dtype_params(dtypes):
+    return [
+        (
+            pytest.param(dtype, marks=MTHREADS_NATIVE_MODE_SKIP)
+            if dtype in (torch.float16, torch.bfloat16, torch.int16)
+            else dtype
+        )
+        for dtype in dtypes
+    ]
+
+
 def _assert_mode_matches(inp, dim, keepdim):
     normalized_dim = dim % inp.ndim
     ref_inp = inp.cpu()
@@ -60,7 +82,8 @@ def _assert_mode_matches(inp, dim, keepdim):
 @pytest.mark.parametrize("keepdim", KEEPDIM)
 @pytest.mark.parametrize("dim", DIM_LIST)
 @pytest.mark.parametrize(
-    "dtype", FLOAT_DTYPES + utils.ALL_INT_DTYPES + [torch.int8, torch.uint8]
+    "dtype",
+    _mode_dtype_params(FLOAT_DTYPES + utils.ALL_INT_DTYPES + [torch.int8, torch.uint8]),
 )
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
@@ -136,3 +159,54 @@ def test_mode_byte_boundaries(dtype, dim, keepdim, case, repeat_factor):
     if dim == 0:
         inp = inp.t()
     _assert_mode_matches(inp, dim, keepdim)
+
+
+@pytest.mark.mode
+@pytest.mark.parametrize(
+    "dtype",
+    _mode_dtype_params(
+        [
+            torch.float16,
+            torch.float32,
+            torch.bfloat16,
+            torch.int16,
+            torch.int32,
+            torch.int64,
+        ]
+    ),
+)
+@pytest.mark.parametrize("width", [63, 129, 1025, 4097])
+@pytest.mark.parametrize("dim", [0, -1])
+def test_mode_run_boundaries(dtype, width, dim):
+    # Tied runs, extrema, padding and runs spanning the scan tile boundary.
+    if dtype.is_floating_point:
+        low, high = -float("inf"), float("inf")
+    else:
+        low, high = torch.iinfo(dtype).min, torch.iinfo(dtype).max
+    data = torch.full((3, width), high, dtype=dtype)
+    data[0, : width // 2] = low
+    data[1, ::2] = low
+    data[2, :] = low
+    inp = data.to(flag_gems.device)
+    if dim == 0:
+        inp = inp.t()
+    _assert_mode_matches(inp, dim, False)
+
+
+@pytest.mark.mode
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend",
+    reason="Ascend regression for predecessor loads after changing shapes",
+)
+def test_mode_ascend_int32_shape_sequence():
+    # Same-process shape changes exposed a masked predecessor load outside
+    # the row; running only the largest shape did not reproduce the failure.
+    for shape in [(64, 64), (256, 256), (1024, 1024), (4096, 4096), (1024, 65536)]:
+        inp = torch.randint(
+            -100,
+            100,
+            shape,
+            dtype=torch.int32,
+            generator=torch.Generator().manual_seed(42),
+        ).to(flag_gems.device)
+        _assert_mode_matches(inp, -1, False)

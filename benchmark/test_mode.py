@@ -19,8 +19,31 @@ import flag_gems
 
 from . import base, consts, utils
 
+MODE_DTYPES = [
+    pytest.param(
+        dtype,
+        marks=pytest.mark.skipif(
+            flag_gems.vendor_name == "mthreads"
+            and dtype in (torch.float16, torch.bfloat16, torch.int16),
+            reason=(
+                "MThreads native torch.mode raises 'MUSA error: misaligned address' "
+                "during repeated benchmarking for FP16/BF16/INT16 at shapes "
+                "(64, 64), (256, 256), and (1024, 1024); skip these dtypes "
+                "pending a native backend fix."
+            ),
+        ),
+    )
+    for dtype in consts.INT_DTYPES + consts.FLOAT_DTYPES
+]
+
 
 class ModeBenchmark(base.GenericBenchmark2DOnly):
+    def set_dtypes(self, user_desired_dtypes):
+        dtype = self.dtypes[0]
+        if user_desired_dtypes and dtype not in user_desired_dtypes:
+            pytest.skip(f"{dtype} was not selected by --dtypes")
+        self.to_bench_dtypes = [dtype]
+
     def set_more_shapes(self):
         return [(1024, 1), (1024, 512), (16, 128 * 1024), (8, 256 * 1024)]
 
@@ -31,14 +54,15 @@ def _input_fn(shape, dtype, device):
 
 
 @pytest.mark.mode
+@pytest.mark.parametrize("dtype", MODE_DTYPES)
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
-def test_perf_mode():
+def test_perf_mode(dtype):
     bench = ModeBenchmark(
         input_fn=_input_fn,
         op_name="mode",
         torch_op=torch.mode,
-        dtypes=consts.INT_DTYPES + consts.FLOAT_DTYPES,
+        dtypes=[dtype],
     )
     bench.run()
