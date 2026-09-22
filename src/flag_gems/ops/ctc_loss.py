@@ -98,14 +98,14 @@ def _ctc_loss_forward_kernel(
     target_safe_index = tl.where(target_mask, target_index, 0)
 
     if TARGET_1D:
-        target_base = tl.full((), 0, tl.int64)
-        for prev_batch in tl.range(0, N):
-            target_base += tl.load(
-                target_lengths + prev_batch,
-                mask=prev_batch < batch,
-                other=0,
-            )
-        target_origin = target_base
+        # NOTE(XPU): the previous prefix-sum loop relied on `other=0` for the
+        # `prev_batch >= batch` lanes. On the Kunlunxin backend masked loads are
+        # lowered to a contiguous DMA that drops `other`, so target_base summed
+        # ALL batch lengths instead of the prior ones, overshooting into the
+        # concatenated `targets` buffer -> OOB GM read -> NOC IDLE (soft reset).
+        # target_offsets already holds the host-computed exclusive prefix sum
+        # (cumsum - lengths), identical in value, so read it directly.
+        target_origin = tl.load(target_offsets + batch)
         target_ptrs = targets + target_origin + target_safe_index
     else:
         target_origin = batch * MAX_TARGET
