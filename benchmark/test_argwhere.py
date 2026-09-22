@@ -17,11 +17,7 @@
 import pytest
 import torch
 
-from . import base, utils
-
-# argwhere benefits mainly from large half-precision tensors where Triton
-# prefix-sum compaction outperforms torch's CUB path
-ARGWHERE_DTYPES = [torch.float16, torch.bfloat16]
+from . import base, consts, utils
 
 
 @pytest.mark.argwhere
@@ -30,6 +26,6 @@ def test_argwhere():
         input_fn=utils.unary_input_fn,
         op_name="argwhere",
         torch_op=torch.argwhere,
-        dtypes=ARGWHERE_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

@@ -35,6 +35,6 @@ def test_argwhere(shape, dtype):
     ref_inp = utils.to_reference(inp, False)
 
     ref_out = torch.argwhere(ref_inp)
-    res_out = torch.argwhere(inp)
+    res_out = flag_gems.argwhere(inp)
 
     utils.gems_assert_equal(res_out, ref_out)
