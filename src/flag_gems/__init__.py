@@ -502,6 +502,7 @@ _FULL_CONFIG = (
     ("baddbmm_", baddbmm_),
     ("batch_norm_gather_stats", batch_norm_gather_stats),
     ("batch_norm_gather_stats_with_counts", batch_norm_gather_stats_with_counts),
+    ("batch_norm_update_stats", batch_norm_update_stats),
     ("bernoulli", bernoulli),
     ("bernoulli_.float", bernoulli_),
     ("bilinear", bilinear),
