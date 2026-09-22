@@ -73,6 +73,7 @@ special_zeta_scalar_tensor: test_special_zeta
 special_zeta_tensor_scalar: test_special_zeta
 
 # Operators tested in combined files or with different naming
+embedding_bag_forward_only: test_embedding_bag
 rshift_scalar: test_rshift
 rshift_tensor: test_rshift
 rshift_scalar_out: test_rshift

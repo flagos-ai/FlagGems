@@ -12,15 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Example for multi-backend ops.
+from ._embedding_bag_backward import _embedding_bag_backward
 
-
-from .add import add
-from .gelu import gelu
-
-__all__ = [
-    "add",
-    "gelu",
-]
-"""
+__all__ = ["_embedding_bag_backward"]

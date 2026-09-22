@@ -18,6 +18,8 @@ from ._amp_foreach_non_finite_check_and_unscale_ import (
     _amp_foreach_non_finite_check_and_unscale_,
 )
 from ._conj import _conj
+from ._embedding_bag import _embedding_bag, _embedding_bag_forward_only
+from ._embedding_bag_backward import _embedding_bag_backward
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
@@ -170,6 +172,9 @@ __all__ = [
     "_adaptive_avg_pool2d_backward",
     "_amp_foreach_non_finite_check_and_unscale_",
     "_conj",
+    "_embedding_bag",
+    "_embedding_bag_backward",
+    "_embedding_bag_forward_only",
     "_functional_sym_constrain_range_for_size",
     "_index_put_impl_",
     "_masked_scale",
