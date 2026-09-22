@@ -1647,6 +1647,7 @@ def enable(
             global `aten_lib` (IMPL mode).
         unused: Which ops to skip. Supported forms:
             - list/tuple/set of function names (e.g., ["masked_fill", "mul"]).
+              "unique" is an alias for "_unique2" (the dim=None path).
             - str path to a YAML file ending with .yml/.yaml containing an
               `exclude:` list.
             - "default" or None: auto-load vendor/arch-specific
@@ -1686,6 +1687,7 @@ def only_enable(
             global `aten_lib` (IMPL mode).
         include: Which ops to register. Supported forms:
             - list/tuple/set of function names (e.g., ["rms_norm", "softmax"]).
+              "unique" is an alias for "_unique2" (the dim=None path).
             - str path to a YAML file ending with .yml/.yaml (expects a list or
               an `include:` key).
             - "default" or None: auto-load vendor/arch-specific

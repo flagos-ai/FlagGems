@@ -17,6 +17,14 @@ import warnings
 from . import backend, common, error
 from .backend.device_finder import DeviceDetector
 
+# Legacy selection names map to existing implementations, not new ATen schemas.
+# ``unique`` denotes the dim=None path; ``unique_dim`` remains independent.
+_OP_NAME_ALIASES = {"unique": "_unique2"}
+
+
+def _normalize_op_names(names):
+    return list(dict.fromkeys(_OP_NAME_ALIASES.get(name, name) for name in names))
+
 
 class GeneralOpRegistrar:
     def __init__(
@@ -48,7 +56,7 @@ class GeneralOpRegistrar:
         self.cpp_patched_ops = set(cpp_patched_ops or [])
 
         if user_include_ops:
-            self.include_ops = list(user_include_ops or [])
+            self.include_ops = _normalize_op_names(user_include_ops)
             self.exclude_ops = []
             self.config = config
             self.extract_include_config()
@@ -57,7 +65,7 @@ class GeneralOpRegistrar:
             self.for_each()
         else:
             self.vendor_unused_ops_list = self.get_vendor_unused_op()
-            self.exclude_ops = (
+            self.exclude_ops = _normalize_op_names(
                 list(user_exclude_ops or []) + self.vendor_unused_ops_list
             )
             self.config = config
