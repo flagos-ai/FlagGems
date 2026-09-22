@@ -1,0 +1,86 @@
+# Copyright 2026 FlagOS Contributors
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: Iluvatar embedding bag diagnostics
+on:
+  pull_request:
+    branches: [master]
+    paths:
+      - '.github/workflows/iluvatar-embedding-bag-probes.yaml'
+      - '.github/scripts/iluvatar_async_error_probe.py'
+
+permissions:
+  contents: read
+
+jobs:
+  ix-diagnostics:
+    if: github.head_ref == 'ci/iluvatar-embedding-bag-probes'
+    runs-on: iluvatar-bi-v150-0
+    timeout-minutes: 45
+    container:
+      image: harbor.baai.ac.cn/flagos-base/flagos-base-iluvatar-corex4.5.0:2.1.2
+      options: --device /dev/iluvatar0 --device /dev/itrctl --shm-size=256g --ulimit memlock=-1 --ulimit stack=67108864
+    concurrency:
+      group: ix-embedding-bag-probes-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - name: Check out the exact failing operator revision from PR 6501
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          repository: siliconflow/FlagGems
+          ref: 4e8869658585c59758d1f90a49b136e19bc79c5c
+          path: operator-source
+      - name: Set up the IX environment
+        id: setup
+        working-directory: operator-source
+        shell: bash
+        run: |
+          # Use mainline setup, not the historical change in the operator PR.
+          cp ../setup.sh setup.sh
+          ./setup.sh iluvatar
+          mkdir -p ../ix-results
+          source .venv/bin/activate
+          uv pip freeze > ../ix-results/environment.txt
+      - name: Probe asynchronous error propagation in isolated processes
+        working-directory: operator-source
+        shell: bash
+        run: |
+          source .venv/bin/activate
+          ulimit -c 0
+          set -o pipefail
+          python ../.github/scripts/iluvatar_async_error_probe.py --output ../ix-results/probes 2>&1 | tee ../ix-results/probes.stdout.log
+      - name: Run embedding bag accuracy independently of probe outcomes
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        working-directory: operator-source
+        shell: bash
+        run: |
+          source .venv/bin/activate
+          ulimit -c 0
+          set -o pipefail
+          python -m pytest -q tests/test_embedding_bag.py tests/test_embedding_bag_backward.py --tb=short 2>&1 | tee ../ix-results/accuracy.stdout.log
+      - name: Record embedding bag performance independently of accuracy
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        working-directory: operator-source
+        shell: bash
+        run: |
+          source .venv/bin/activate
+          set -o pipefail
+          python -m pytest -s -q benchmark/test_embedding_bag.py benchmark/test_embedding_bag_backward.py --tb=short 2>&1 | tee ../ix-results/benchmark.stdout.log
+      - name: Preserve diagnostics even when assertions fail
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: ix-embedding-bag-${{ github.run_id }}
+          path: ix-results/
+          if-no-files-found: warn
