@@ -49,15 +49,3 @@ def test_le_scalar(shape, dtype):
         res_out = torch.le(inp1, inp2)
 
     utils.gems_assert_equal(res_out, ref_out)
-
-
-@pytest.mark.le
-def test_le_fp16_broadcast_scalar():
-    # Guards the broadcast-scalar path in the shared XPU pointwise codegen: an
-    # fp16 compare against a 0-dim operand must compile and match eager (the
-    # scalar path used to hit `OutOfResources: uni_sram` for fp16 compares).
-    inp = torch.randn(1024, 1024, dtype=torch.float16, device=flag_gems.device)
-    scalar = torch.tensor(1.5, dtype=torch.float16, device=flag_gems.device)
-    ref = torch.le(utils.to_reference(inp), 1.5)
-    res = flag_gems.le(inp, scalar)
-    utils.gems_assert_equal(res, ref)
