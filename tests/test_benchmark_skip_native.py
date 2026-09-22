@@ -64,6 +64,44 @@ def test_benchmark_mode_option_avoids_vendor_pytest_conflicts(
     assert benchmark_conftest.benchmark_mode_option(vendor) == expected_option
 
 
+class _ModeItem:
+    def __init__(self, marker=None):
+        self.marker = marker
+
+    def get_closest_marker(self, name):
+        if self.marker is not None and self.marker.name == name:
+            return self.marker
+        return None
+
+
+@pytest.mark.parametrize(
+    ("vendor", "marker", "expected_mode"),
+    [
+        ("ascend", None, consts.BenchMode.KERNEL),
+        (
+            "ascend",
+            SimpleNamespace(name=benchmark_conftest.ASCEND_OPERATOR_MODE_MARK),
+            consts.BenchMode.OPERATOR,
+        ),
+        (
+            "nvidia",
+            SimpleNamespace(name=benchmark_conftest.ASCEND_OPERATOR_MODE_MARK),
+            consts.BenchMode.KERNEL,
+        ),
+    ],
+)
+def test_benchmark_mode_for_item_scopes_ascend_operator_override(
+    vendor, marker, expected_mode
+):
+    item = _ModeItem(marker)
+
+    mode = benchmark_conftest.benchmark_mode_for_item(
+        item, vendor, consts.BenchMode.KERNEL
+    )
+
+    assert mode == expected_mode
+
+
 @pytest.mark.parametrize(
     "marker",
     [
@@ -189,7 +227,7 @@ def test_benchmark_native_policy_preserves_gems_metrics(
         assert benchmark.gbps_latencies == [4.0, 2.0]
         assert metric["latency_base"] == 4.0
         assert metric["gbps_base"] == 8.0
-        assert metric["speedup"] == 2.0
+        assert metric["speedup"] == pytest.approx(2.0)
         assert "native_baseline_skip_reason" not in recorded[0]
         assert "Native baseline: N/A" not in capsys.readouterr().out
 

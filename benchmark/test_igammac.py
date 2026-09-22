@@ -19,14 +19,13 @@ import torch
 import flag_gems
 
 from . import base, consts
-from .conftest import Config
 
 VENDOR = flag_gems.vendor_name
 
 # On ascend the general KERNEL-mode do_bench_npu is unreliable; use operator
 # (end-to-end) timing mode (same as det/lu_factor/linalg_solve_triangular).
 if VENDOR == "ascend":
-    Config.mode = consts.BenchMode.OPERATOR
+    pytestmark = pytest.mark.ascend_operator_mode
 
 _IGAMMAC_DTYPES = [
     torch.float32,

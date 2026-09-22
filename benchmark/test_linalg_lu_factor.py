@@ -6,7 +6,6 @@ import torch
 import flag_gems
 
 from . import base, consts
-from .conftest import Config
 
 DEVICE = flag_gems.device
 VENDOR = flag_gems.vendor_name
@@ -23,7 +22,7 @@ else:
     _PIVOT_VALUES = [True]
 
 if VENDOR == "ascend":
-    Config.mode = consts.BenchMode.OPERATOR
+    pytestmark = pytest.mark.ascend_operator_mode
 
 LINALG_LU_FACTOR_SHAPE = [
     [16, 16],

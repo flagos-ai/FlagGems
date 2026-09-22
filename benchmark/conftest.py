@@ -41,6 +41,15 @@ def benchmark_mode_option(vendor):
 
 
 MODE_OPTION = benchmark_mode_option(vendor_name)
+ASCEND_OPERATOR_MODE_MARK = "ascend_operator_mode"
+
+
+def benchmark_mode_for_item(item, current_vendor, requested_mode):
+    if current_vendor == "ascend" and item.get_closest_marker(
+        ASCEND_OPERATOR_MODE_MARK
+    ):
+        return consts.BenchMode.OPERATOR
+    return requested_mode
 
 BUILTIN_MARKS = (
     "parametrize",
@@ -92,6 +101,7 @@ def emit_record_logger(message: str) -> None:
 
 class BenchConfig:
     def __init__(self):
+        self.requested_mode = consts.BenchMode.KERNEL
         self.mode = consts.BenchMode.KERNEL
         self.bench_level = consts.BenchLevel.COMPREHENSIVE
         self.warm_up = consts.DEFAULT_WARMUP_TIME
@@ -336,6 +346,10 @@ def pytest_configure(config):
         "markers",
         "skip_native(vendors, reason): skip the native benchmark baseline for selected vendors",
     )
+    config.addinivalue_line(
+        "markers",
+        "ascend_operator_mode: use operator timing mode for this benchmark on Ascend",
+    )
 
     Config = BenchConfig()
     CASE_LISTS.clear()
@@ -346,7 +360,8 @@ def pytest_configure(config):
     }
 
     mode_value = config.getoption(MODE_OPTION)
-    Config.mode = consts.BenchMode(mode_value)
+    Config.requested_mode = consts.BenchMode(mode_value)
+    Config.mode = Config.requested_mode
 
     Config.query = config.getoption("--query")
     Config.list_cases = config.getoption("--list-cases")
@@ -440,6 +455,17 @@ def clear_function_cache(request):
         Config.current_nodeid = previous_nodeid
         if not Config.list_cases:
             torch_device_fn.empty_cache()
+
+
+@pytest.fixture(scope="function", autouse=True)
+def configure_benchmark_mode(request):
+    Config.mode = benchmark_mode_for_item(
+        request.node, vendor_name, Config.requested_mode
+    )
+    try:
+        yield
+    finally:
+        Config.mode = Config.requested_mode
 
 
 @pytest.fixture(scope="function", autouse=True)

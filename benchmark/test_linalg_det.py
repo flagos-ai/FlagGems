@@ -7,13 +7,12 @@ import flag_gems
 from flag_gems import linalg_det, linalg_det_out
 
 from . import base, consts
-from .conftest import Config
 
 VENDOR = flag_gems.vendor_name
 
 
 if VENDOR == "ascend":
-    Config.mode = consts.BenchMode.OPERATOR
+    pytestmark = pytest.mark.ascend_operator_mode
 
 
 def _small_ops_det(A):
