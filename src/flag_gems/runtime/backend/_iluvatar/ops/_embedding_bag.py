@@ -179,18 +179,23 @@ def _check_corex_error(error, count, finish=None):
         )
 
 
-@libentry()
+# Keep the assertion launch on Triton's JIT path, matching the CoreX 4.5
+# asynchronous-error probe. Do not use libentry's cached CompiledKernel launch.
 @triton.jit
 def _embedding_bag_check_flags_native(
     error,
     count: tl.constexpr,  # number of error flags
     block: tl.constexpr,  # error reduction block size
 ):
-    lane = tl.arange(0, block)
-    bad = tl.full((), 0, tl.int32)
-    for base in range(0, count, block):
-        code = tl.load(error + base + lane, base + lane < count, other=0)
-        bad |= tl.max(code, 0)
+    if count == 1:
+        # Match the scalar load/assert sequence verified by the IX probe.
+        bad = tl.load(error)
+    else:
+        lane = tl.arange(0, block)
+        bad = tl.full((), 0, tl.int32)
+        for base in range(0, count, block):
+            code = tl.load(error + base + lane, base + lane < count, other=0)
+            bad |= tl.max(code, 0)
     tl.device_assert(bad == 0, "embedding_bag: invalid index or offset")
 
 
