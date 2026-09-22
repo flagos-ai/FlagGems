@@ -1741,6 +1741,24 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '3.0'
+- id: batch_norm_backward_elemt
+  description: 'Compute the per-element gradient for batch normalization backward
+    pass.
+
+    Given pre-computed channel statistics (sum_dy, sum_dy_xmu), produces
+
+    grad_input without reduction.
+
+    '
+  for:
+  - batch_norm_backward_elemt
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: batch_norm_backward_reduce
   description: Triton kernel implementation for batch normalization backward reduce
     stage.

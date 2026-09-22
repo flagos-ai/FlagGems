@@ -500,6 +500,7 @@ _FULL_CONFIG = (
     ("baddbmm", baddbmm),
     ("baddbmm.out", baddbmm_out),
     ("baddbmm_", baddbmm_),
+    ("batch_norm_backward_elemt", batch_norm_backward_elemt),
     ("batch_norm_gather_stats", batch_norm_gather_stats),
     ("batch_norm_gather_stats_with_counts", batch_norm_gather_stats_with_counts),
     ("bernoulli", bernoulli),
