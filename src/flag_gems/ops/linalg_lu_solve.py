@@ -27,107 +27,89 @@ from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
-LU_SOLVE_RHS_BLOCK = 32
+LU_SOLVE_AUTOTUNE_CONFIGS = [
+    triton.Config({"BLOCK_RHS": block_rhs}, num_warps=1, num_stages=1)
+    for block_rhs in (1, 2, 4, 8, 16, 32)
+]
 
 
 @libentry()
-@triton.jit(
-    do_not_specialize=[
-        "n",
-        "nrhs",
-        "lu_batch_stride",
-        "lu_row_stride",
-        "lu_col_stride",
-        "piv_batch_stride",
-        "piv_row_stride",
-        "x_batch_stride",
-        "x_row_stride",
-        "x_col_stride",
-    ]
-)
+@triton.autotune(configs=LU_SOLVE_AUTOTUNE_CONFIGS, key=["N", "nrhs"])
+@triton.jit
 def linalg_lu_solve_kernel(
     LU,
     pivots,
     X,
-    n,
-    nrhs,
-    lu_batch_stride,
-    lu_row_stride,
-    lu_col_stride,
-    piv_batch_stride,
-    piv_row_stride,
-    x_batch_stride,
-    x_row_stride,
-    x_col_stride,
-    BLOCK_K: tl.constexpr,
+    N: tl.constexpr,
+    nrhs: tl.constexpr,
+    batch_stride_lu,
+    stride_lu_row,
+    stride_lu_col,
+    batch_stride_piv,
+    stride_piv_row,
+    batch_stride_x,
+    stride_x_row,
+    stride_x_col,
+    BLOCK_RHS: tl.constexpr,
 ):
     """
-    Fused kernel: pivot permutation + forward substitution (L) + backward substitution (U).
-    Each program handles one batch element and one block of RHS columns.
+    Fused kernel: pivot permutation + forward substitution (L) + backward
+    substitution (U).  Each program handles one batch element and one tile
+    of RHS columns.
+
+    N is declared constexpr so Triton unrolls all loops at compile time,
+    enabling register promotion and eliminating loop-control overhead.
     """
     batch_idx = tl.program_id(0)
-    block_idx = tl.program_id(1)
+    rhs_tile_idx = tl.program_id(1)
 
-    col_start = block_idx * BLOCK_K
-    cols = col_start + tl.arange(0, BLOCK_K)
+    cols = rhs_tile_idx * BLOCK_RHS + tl.arange(0, BLOCK_RHS)
     col_mask = cols < nrhs
 
-    lu_base = LU + batch_idx * lu_batch_stride
-    piv_base = pivots + batch_idx * piv_batch_stride
-    x_base = X + batch_idx * x_batch_stride
-    col_offsets = cols * x_col_stride
+    lu_base = LU + batch_idx * batch_stride_lu
+    piv_base = pivots + batch_idx * batch_stride_piv
+    x_base = X + batch_idx * batch_stride_x
+    col_offsets = cols * stride_x_col
 
     # Step 1: Apply pivot permutation (forward order)
-    i = 0
-    while i < n:
-        p = tl.load(piv_base + i * piv_row_stride).to(tl.int32)
-        p = p - 1
+    for i in range(N):
+        p = tl.load(piv_base + i * stride_piv_row).to(tl.int32)
+        p = p - 1  # pivots are 1-indexed in PyTorch
         if p != i:
-            row_i_ptr = x_base + i * x_row_stride + col_offsets
-            row_p_ptr = x_base + p * x_row_stride + col_offsets
+            row_i_ptr = x_base + i * stride_x_row + col_offsets
+            row_p_ptr = x_base + p * stride_x_row + col_offsets
             xi = tl.load(row_i_ptr, mask=col_mask, other=0.0)
             xp = tl.load(row_p_ptr, mask=col_mask, other=0.0)
             tl.store(row_i_ptr, xp, mask=col_mask)
             tl.store(row_p_ptr, xi, mask=col_mask)
-        i += 1
 
-    # Step 2: Forward substitution - solve Ly = Pb
-    # L has unit diagonal, lower triangular stored below diagonal in LU
-    i = 1
-    while i < n:
-        row_i_ptr = x_base + i * x_row_stride + col_offsets
-        xi = tl.load(row_i_ptr, mask=col_mask, other=0.0)
-
-        j = 0
-        while j < i:
-            lij = tl.load(lu_base + i * lu_row_stride + j * lu_col_stride)
-            row_j_ptr = x_base + j * x_row_stride + col_offsets
-            xj = tl.load(row_j_ptr, mask=col_mask, other=0.0)
+    # Step 2: Forward substitution — solve Ly = Pb
+    # L has unit diagonal; lower triangular entries below diagonal in LU
+    for i in range(N):
+        xi = tl.load(x_base + i * stride_x_row + col_offsets, mask=col_mask)
+        for j in range(i):
+            lij = tl.load(lu_base + i * stride_lu_row + j * stride_lu_col)
+            xj = tl.load(x_base + j * stride_x_row + col_offsets, mask=col_mask)
             xi = xi - lij * xj
-            j += 1
+        tl.store(x_base + i * stride_x_row + col_offsets, xi, mask=col_mask)
 
-        tl.store(row_i_ptr, xi, mask=col_mask)
-        i += 1
-
-    # Step 3: Backward substitution - solve Ux = y
-    # U is upper triangular stored on and above diagonal in LU
-    i = n - 1
-    while i >= 0:
-        row_i_ptr = x_base + i * x_row_stride + col_offsets
-        xi = tl.load(row_i_ptr, mask=col_mask, other=0.0)
-
-        j = i + 1
-        while j < n:
-            uij = tl.load(lu_base + i * lu_row_stride + j * lu_col_stride)
-            row_j_ptr = x_base + j * x_row_stride + col_offsets
-            xj = tl.load(row_j_ptr, mask=col_mask, other=0.0)
+    # Step 3: Backward substitution — solve Ux = y
+    # U is upper triangular on and above diagonal in LU
+    for i in range(N - 1, -1, -1):
+        xi = tl.load(x_base + i * stride_x_row + col_offsets, mask=col_mask)
+        for j in range(i + 1, N):
+            uij = tl.load(lu_base + i * stride_lu_row + j * stride_lu_col)
+            xj = tl.load(x_base + j * stride_x_row + col_offsets, mask=col_mask)
             xi = xi - uij * xj
-            j += 1
-
-        uii = tl.load(lu_base + i * lu_row_stride + i * lu_col_stride)
-        xi = xi / uii
-        tl.store(row_i_ptr, xi, mask=col_mask)
-        i -= 1
+        # Fast reciprocal with Newton refinement (avoids expensive division)
+        diag = tl.load(lu_base + i * stride_lu_row + i * stride_lu_col)
+        inv_diag = 1.0 / diag
+        inv_diag = inv_diag * (2.0 - diag * inv_diag)
+        tl.store(
+            x_base + i * stride_x_row + col_offsets,
+            xi * inv_diag,
+            mask=col_mask,
+        )
 
 
 def linalg_lu_solve(LU, pivots, B, *, left=True, adjoint=False):
@@ -165,23 +147,7 @@ def linalg_lu_solve(LU, pivots, B, *, left=True, adjoint=False):
     piv_work = pivots.reshape(batch, n).contiguous()
     X = B.reshape(batch, n, nrhs).clone()
 
-    # Choose block size based on nrhs
-    if nrhs <= 8:
-        block_k = 8
-    elif nrhs <= 16:
-        block_k = 16
-    else:
-        block_k = 32
-
-    # Tune num_warps: 1 warp for very small problems to reduce scheduling overhead
-    if n <= 8:
-        num_warps = 1
-    elif n <= 32:
-        num_warps = 1
-    else:
-        num_warps = 4
-
-    grid = (batch, triton.cdiv(nrhs, block_k))
+    grid = (batch, triton.cdiv(nrhs, 32))
 
     with torch.no_grad():
         linalg_lu_solve_kernel[grid](
@@ -198,8 +164,6 @@ def linalg_lu_solve(LU, pivots, B, *, left=True, adjoint=False):
             X.stride(0),
             X.stride(1),
             X.stride(2),
-            BLOCK_K=block_k,
-            num_warps=num_warps,
         )
 
     return X.reshape(B.shape)

@@ -29,7 +29,8 @@ LU_SOLVE_SHAPES = [
     (32, 32),
 ]
 
-# LU solve supports float32/float64
+# LU solve only supports float32/float64 (torch.linalg.lu_factor does not
+# accept half-precision inputs), so we cannot use consts.FLOAT_DTYPES here.
 fp64_is_supported = flag_gems.runtime.device.support_fp64
 
 LU_SOLVE_DTYPES = [torch.float32]
