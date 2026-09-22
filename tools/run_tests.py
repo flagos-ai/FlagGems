@@ -637,47 +637,121 @@ def parse_perf_data(op, result_file):
 
     bench_res = {}
     records = data.get("details", [])
+    if not any(item.get("native_baseline_skip_reason") for item in records):
+        for item in records:
+            dtype = consts.DTYPE_MAP.get(item["dtype"], item["dtype"])
+            details = {}
+            total = 0.0
+            count = 0
+            for res in item.get("result", []):
+                shape = str(res.get("shape_detail", "Unknown")).replace(" ", "")
+                details.setdefault(shape, {})
+                details[shape]["base"] = res.get("latency_base", 0.0)
+                details[shape]["gems"] = res.get("latency", 0.0)
+                speedup = res.get("speedup", 0.0)
+                details[shape]["speedup"] = speedup
+                count += 1
+                total += speedup
+
+            if details:
+                bench_res[dtype] = {
+                    "result": "OK",
+                    "details": details,
+                    "speedup": total / count,
+                }
+            else:
+                bench_res[dtype] = {
+                    "result": "Unknown",
+                    "details": {},
+                    "speedup": 0,
+                }
+
+        return {
+            "status": result.title(),
+            "data": bench_res,
+            "test_case": data.get("test_case", "Unknown"),
+        }
+
+    native_baseline_skip_reasons = []
+    speedup_totals = {}
+    speedup_counts = {}
 
     for item in records:
         dtype = consts.DTYPE_MAP.get(item["dtype"], item["dtype"])
-        details = {}
-        total = 0.0
-        count = 0
+        skip_reason = item.get("native_baseline_skip_reason")
+        if skip_reason and skip_reason not in native_baseline_skip_reasons:
+            native_baseline_skip_reasons.append(skip_reason)
+        dtype_result = bench_res.setdefault(
+            dtype,
+            {
+                "result": "Unknown",
+                "details": {},
+                "speedup": None,
+            },
+        )
+        details = dtype_result["details"]
         for res in item.get("result", []):
             shape = str(res.get("shape_detail", "Unknown")).replace(" ", "")
             details.setdefault(shape, {})
-            details[shape]["base"] = res.get("latency_base", 0.0)
-            details[shape]["gems"] = res.get("latency", 0.0)
-            speedup = res.get("speedup", 0.0)
+            details[shape]["base"] = res.get("latency_base")
+            details[shape]["gems"] = res.get("latency")
+            speedup = res.get("speedup")
             details[shape]["speedup"] = speedup
-            count += 1
-            total += speedup
+            if isinstance(speedup, (int, float)):
+                speedup_counts[dtype] = speedup_counts.get(dtype, 0) + 1
+                speedup_totals[dtype] = speedup_totals.get(dtype, 0.0) + speedup
 
         if details:
-            bench_res[dtype] = {
-                "result": "OK",
-                "details": details,
-                "speedup": total / count,
-            }
-        else:
-            bench_res[dtype] = {
-                "result": "Unknown",
-                "details": {},
-                "speedup": 0,
-            }
+            dtype_result["result"] = "OK"
 
-    return {
+    for dtype, dtype_result in bench_res.items():
+        count = speedup_counts.get(dtype, 0)
+        dtype_result["speedup"] = (
+            speedup_totals.get(dtype, 0.0) / count if count else None
+        )
+
+    parsed_result = {
         "status": result.title(),
         "data": bench_res,
         "test_case": data.get("test_case", "Unknown"),
     }
+    if native_baseline_skip_reasons:
+        parsed_result["native_baseline_skip_reason"] = "; ".join(
+            native_baseline_skip_reasons
+        )
+    return parsed_result
+
+
+def op_marker(op):
+    """Return the pytest marker name for an operator id.
+
+    Operators whose id starts with an underscore (e.g. ``_stack``) cannot use
+    that id verbatim as a pytest marker, because ``pytest.mark._stack`` is
+    rejected by ``pytest.mark``'s attribute access. The convention is:
+
+      1. Strip the leading underscore(s): ``_stack`` -> ``stack``.
+      2. If the stripped name collides with an existing operator id (e.g. the
+         distinct ``stack`` operator), prefix it with ``underscore_`` instead:
+         ``_stack`` -> ``underscore_stack``.
+
+    Non-underscore operator ids are returned unchanged. This mirrors the markers
+    declared in the test files and enforced by
+    ``tools/ci_checks/check_operator_markers.py``.
+    """
+    if not op.startswith("_"):
+        return op
+    stripped = op.lstrip("_")
+    if stripped in CFG.all_op_ids:
+        return f"underscore_{stripped}"
+    return stripped
 
 
 def run_accuracy_q(gpu_id, op):
     """Run accuracy test for one op. Returns result dict."""
     env = get_env(str(gpu_id))
 
-    base = f'pytest -m "{op}" --record json --output accuracy_{op}.json'
+    marker = op_marker(op)
+    base = f'pytest -m "{marker}" --record json --output accuracy_{op}.json'
     if op not in CFG.skip_cpu_tests:
         base += " --ref cpu"
     if CFG.quick:
@@ -745,7 +819,11 @@ def run_benchmark_q(gpu_id, op):
     ensure_dir(op_dir)
 
     dur = time.time()
-    cmd = f'pytest -m "{op}" --level core --record json --output benchmark_{op}.json --continue-on-collection-errors'
+    marker = op_marker(op)
+    cmd = (
+        f'pytest -m "{marker}" --level core --record json '
+        f"--output benchmark_{op}.json --continue-on-collection-errors"
+    )
     code = run_cmd(op, cmd, cwd=benchmark_dir, env=env, flavor="performance")
     dur = time.time() - dur
 
@@ -1047,11 +1125,12 @@ def get_ops_to_test():
         if "NoCPU" in labels:
             skip_cpu_tests.append(op["id"])
     CFG.skip_cpu_tests = skip_cpu_tests
+    CFG.all_op_ids = {op["id"] for op in op_catalog}
 
     if OPTS.ops:
         ops = []
         for op in OPTS.ops.split(","):
-            ops.append(op.strip().lstrip("_"))
+            ops.append(op.strip())
         return ops
 
     if OPTS.op_list_file:
@@ -1068,7 +1147,7 @@ def get_ops_to_test():
             ln = ln.strip()
             if ln.startswith("#"):
                 continue
-            ops.append(ln.lstrip("_"))
+            ops.append(ln)
         return ops
 
     effective_stages = []

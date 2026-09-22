@@ -1,126 +1,236 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-import logging
+import math
 from typing import List, Tuple, Union
 
 import torch
+import triton
+import triton.language as tl
 
-logger = logging.getLogger(__name__)
-
-
-def cat(
-    A: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]], dim: int = 0
-) -> torch.Tensor:
-    logger.debug("GEMS_ASCEND CAT")
-
-    device = A[0].device
-    dtype = A[0].dtype
-    A = list(A)
-    for i in range(len(A) - 1, -1, -1):
-        if A[i].shape == torch.Size([0]):
-            A.pop(i)
-    if len(A) == 0:
-        return torch.tensor([], device=device, dtype=dtype)
-    if len(A) == 1:
-        return A[0]
-
-    assert dim >= -A[0].ndim and dim < A[0].ndim, f"Invalid dim: {dim}"
-    dim = dim % A[0].ndim
-
-    inp_shapes = [list(_.shape) for _ in A]
-    inp0_shape = inp_shapes[0]
-    for s in inp_shapes[1:]:
-        if len(s) != len(inp0_shape):
-            raise RuntimeError(
-                f"Tensors must have same number of dimensions: got {len(inp0_shape)} and {len(s)}"
-            )
-    for tensor_idx, inp_shape in enumerate(inp_shapes):
-        for idx, (common_length, length) in enumerate(zip(inp0_shape, inp_shape)):
-            if idx == dim:
-                continue
-            elif length != common_length:
-                raise RuntimeError(
-                    f"Sizes of tensors must match except in dimension {dim}. "
-                    f"Expected size {common_length} but got size {length} for tensor number "
-                    f"{tensor_idx} in the list"
-                )
-
-    out_shape = list(inp0_shape)
-    out_shape[dim] = sum(s[dim] for s in inp_shapes)
-    out = torch.empty(out_shape, dtype=A[0].dtype, device=A[0].device)
-    _cat_fill(out, A, dim)
-    return out
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
 
 
-def _cat_fill(out, A, dim):
-    idx = [slice(None)] * out.ndim
-    offset = 0
-    for a in A:
-        a = a.contiguous()
-        idx[dim] = slice(offset, offset + a.shape[dim])
-        out[tuple(idx)] = a
-        offset += a.shape[dim]
+@libentry()
+@triton.jit
+def _cat_copy_flat_kernel(
+    input_ptr,
+    output_ptr,
+    n_elements,
+    OUTPUT_OFFSET: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+
+    values = tl.load(
+        input_ptr + offsets,
+        mask=mask,
+    )
+
+    tl.store(
+        output_ptr + OUTPUT_OFFSET + offsets,
+        values,
+        mask=mask,
+    )
 
 
-def cat_out(
-    A: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]],
-    dim: int = 0,
-    *,
-    out: torch.Tensor,
-) -> torch.Tensor:
-    logger.debug("GEMS_ASCEND CAT_OUT")
+@libentry()
+@triton.jit
+def _cat_copy_strided_kernel(
+    input_ptr,
+    output_ptr,
+    n_elements,
+    INNER_SIZE: tl.constexpr,
+    INPUT_CAT_SIZE: tl.constexpr,
+    OUTPUT_CAT_SIZE: tl.constexpr,
+    CAT_OFFSET: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
 
+    inner_idx = offsets % INNER_SIZE
+    tmp = offsets // INNER_SIZE
+
+    cat_idx = tmp % INPUT_CAT_SIZE
+    outer_idx = tmp // INPUT_CAT_SIZE
+
+    output_offsets = (
+        outer_idx * OUTPUT_CAT_SIZE + CAT_OFFSET + cat_idx
+    ) * INNER_SIZE + inner_idx
+
+    values = tl.load(
+        input_ptr + offsets,
+        mask=mask,
+    )
+
+    tl.store(
+        output_ptr + output_offsets,
+        values,
+        mask=mask,
+    )
+
+
+def _prepare_cat_inputs(A, dim):
     if len(A) == 0:
         raise RuntimeError("torch.cat(): expected a non-empty list of Tensors")
 
+    device = A[0].device
+    dtype = A[0].dtype
+
     A = list(A)
+
     for i in range(len(A) - 1, -1, -1):
         if A[i].shape == torch.Size([0]):
             A.pop(i)
+
     if len(A) == 0:
-        out.resize_(0)
-        return out
-    if len(A) == 1:
-        t = A[0]
-        out.resize_(t.shape)
-        out.copy_(t)
-        return out
+        return A, dim, device, dtype, [0]
 
-    assert dim >= -A[0].ndim and dim < A[0].ndim, f"Invalid dim: {dim}"
-    dim = dim % A[0].ndim
+    ndim = A[0].ndim
 
-    inp_shapes = [list(_.shape) for _ in A]
-    inp0_shape = inp_shapes[0]
-    for s in inp_shapes[1:]:
-        if len(s) != len(inp0_shape):
-            raise RuntimeError(
-                f"Tensors must have same number of dimensions: got {len(inp0_shape)} and {len(s)}"
-            )
-    for tensor_idx, inp_shape in enumerate(inp_shapes):
-        for idx, (common_length, length) in enumerate(zip(inp0_shape, inp_shape)):
-            if idx == dim:
+    if not (-ndim <= dim < ndim):
+        raise IndexError(
+            f"Dimension out of range " f"(expected [-{ndim}, {ndim - 1}], got {dim})"
+        )
+
+    dim %= ndim
+
+    shapes = [list(t.shape) for t in A]
+    base = shapes[0]
+
+    for tensor_idx, shape in enumerate(shapes):
+        if len(shape) != len(base):
+            raise RuntimeError("Tensors must have same number of dimensions")
+
+        for axis, (expected, actual) in enumerate(zip(base, shape)):
+            if axis == dim:
                 continue
-            elif length != common_length:
+
+            if expected != actual:
                 raise RuntimeError(
-                    f"Sizes of tensors must match except in dimension {dim}. "
-                    f"Expected size {common_length} but got size {length} for tensor number "
-                    f"{tensor_idx} in the list"
+                    "Sizes of tensors must match except "
+                    f"in dimension {dim}: expected {expected}, "
+                    f"got {actual} for tensor {tensor_idx}"
                 )
 
-    out_shape = list(inp0_shape)
-    out_shape[dim] = sum(s[dim] for s in inp_shapes)
+    out_shape = list(base)
+    out_shape[dim] = sum(s[dim] for s in shapes)
+
+    return A, dim, device, dtype, out_shape
+
+
+def _cat_fill_triton(out, A, dim):
+    if len(A) == 0 or out.numel() == 0:
+        return
+
+    BLOCK_SIZE = 256
+
+    output_cat_size = out.shape[dim]
+    inner_size = math.prod(out.shape[dim + 1 :])
+
+    cat_offset = 0
+
+    with torch_device_fn.device(out.device):
+        for a in A:
+            input_cat_size = a.shape[dim]
+
+            if a.numel() == 0:
+                cat_offset += input_cat_size
+                continue
+
+            if not a.is_contiguous():
+                a = a.contiguous()
+
+            n_elements = a.numel()
+
+            grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
+
+            if dim == 0:
+                output_offset = cat_offset * inner_size
+
+                _cat_copy_flat_kernel[grid](
+                    a,
+                    out,
+                    n_elements,
+                    OUTPUT_OFFSET=output_offset,
+                    BLOCK_SIZE=BLOCK_SIZE,
+                )
+
+            else:
+                _cat_copy_strided_kernel[grid](
+                    a,
+                    out,
+                    n_elements,
+                    INNER_SIZE=inner_size,
+                    INPUT_CAT_SIZE=input_cat_size,
+                    OUTPUT_CAT_SIZE=output_cat_size,
+                    CAT_OFFSET=cat_offset,
+                    BLOCK_SIZE=BLOCK_SIZE,
+                )
+
+            cat_offset += input_cat_size
+
+
+def cat(
+    A: Union[
+        Tuple[torch.Tensor, ...],
+        List[torch.Tensor],
+    ],
+    dim: int = 0,
+):
+    A, dim, device, dtype, out_shape = _prepare_cat_inputs(A, dim)
+
+    if len(A) == 0:
+        return torch.empty(
+            out_shape,
+            device=device,
+            dtype=dtype,
+        )
+
+    if len(A) == 1:
+        return A[0]
+
+    out = torch.empty(
+        out_shape,
+        dtype=dtype,
+        device=device,
+    )
+
+    _cat_fill_triton(out, A, dim)
+
+    return out
+
+
+def cat_out(
+    A: Union[
+        Tuple[torch.Tensor, ...],
+        List[torch.Tensor],
+    ],
+    dim: int = 0,
+    *,
+    out: torch.Tensor,
+):
+    A, dim, device, dtype, out_shape = _prepare_cat_inputs(A, dim)
+
     out.resize_(out_shape)
-    _cat_fill(out, A, dim)
+
+    if len(A) == 0:
+        return out
+
+    if len(A) == 1:
+        out.copy_(A[0])
+        return out
+
+    if out.is_contiguous():
+        _cat_fill_triton(out, A, dim)
+    else:
+        tmp = torch.empty(
+            out_shape,
+            dtype=out.dtype,
+            device=out.device,
+        )
+
+        _cat_fill_triton(tmp, A, dim)
+        out.copy_(tmp)
+
     return out

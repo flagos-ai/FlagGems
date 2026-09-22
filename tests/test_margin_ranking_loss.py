@@ -73,6 +73,7 @@ REDUCTION_MAP = {0: "none", 1: "mean", 2: "sum"}
 
 
 @pytest.mark.margin_ranking_loss
+@pytest.mark.margin_ranking_loss_backward
 @pytest.mark.parametrize("shape", MARGIN_RANKING_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("margin", MARGIN_RANKING_MARGINS)

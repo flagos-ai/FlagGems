@@ -12,24 +12,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from .add_rms_norm import add_rms_norm
 from .beam_search_score import beam_search_score, beam_search_score_
+from .bin_topk import bucket_sort_topk_xpu  # noqa: F401  (import triggers _install)
 from .bincount import bincount
 from .concat_and_cache_mla import concat_and_cache_mla
 from .cross_entropy_loss import cross_entropy_loss
-from .flash_mla import flash_mla
+from .flashmla_sparse import flash_mla_sparse_fwd
 from .fused_add_rms_norm import fused_add_rms_norm
-
-# fused_deepseek_v4_qnorm_rope_kv_rope_insert vendor kernel (XPU): the generic
-# kernel neither compiles (reduction inside a `while` grid-stride loop aborts
-# ConvertTritonXPUToLLVM) nor is numerically safe here (its 32-lane stride-2
-# scatter stores spill a 64-element block into the next row).
 from .fused_deepseek_v4_qnorm_rope_kv_rope_insert import (
     fused_deepseek_v4_qnorm_rope_kv_rope_insert,
 )
 from .geglu import dgeglu, geglu
 from .gelu_and_mul import gelu_and_mul
+from .hc_head_fused_kernel import (  # noqa: F401  (import triggers _install)
+    hc_head_fused_kernel,
+)
+from .hc_split_sinkhorn import hc_split_sinkhorn
 from .instance_norm import instance_norm
 from .matmul_bias_activation import matmul_bias_activation
+from .matmuladd import matmuladd
+from .mhc_bwd import mhc_bwd  # noqa: F401  (import triggers _install)
+from .mhc_pre import mhc_pre  # noqa: F401  (import triggers _install)
 from .moe_align_block_size import moe_align_block_size, moe_align_block_size_triton
 from .outer import outer
 from .reglu import dreglu, reglu
@@ -45,6 +49,9 @@ from .silu_and_mul_with_clamp import (
 )
 from .skip_layernorm import skip_layer_norm
 from .sparse_attention import sparse_attn_triton
+from .sparse_mla import (  # noqa: F401  (import triggers _install)
+    triton_sparse_mla_fwd_interface,
+)
 from .swiglu import dswiglu, swiglu
 from .topk_softmax import topk_softmax
 from .weight_norm import weight_norm
@@ -53,8 +60,10 @@ __all__ = [
     "apply_rotary_pos_emb",
     "beam_search_score",
     "beam_search_score_",
+    "bf16_paged_mqa_logits",
     "skip_layer_norm",
     "fused_add_rms_norm",
+    "add_rms_norm",
     "silu_and_mul",
     "silu_and_mul_out",
     "silu_and_mul_with_clamp",
@@ -62,6 +71,7 @@ __all__ = [
     "geglu",
     "dgeglu",
     "gelu_and_mul",
+    "hc_split_sinkhorn",
     "cross_entropy_loss",
     "outer",
     "instance_norm",
@@ -71,13 +81,14 @@ __all__ = [
     "moe_align_block_size",
     "moe_align_block_size_triton",
     "reshape_and_cache_flash",
-    "flash_mla",
+    "flash_mla_sparse_fwd",
     "topk_softmax",
     "rwkv_ka_fusion",
     "rwkv_mm_sparsity",
     "dreglu",
     "reglu",
     "matmul_bias_activation",
+    "matmuladd",
     "sparse_attn_triton",
     "swiglu",
     "dswiglu",

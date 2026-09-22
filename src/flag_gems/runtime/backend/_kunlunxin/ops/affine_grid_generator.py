@@ -259,7 +259,7 @@ def affine_grid_generator_batched_kernel(
 def affine_grid_generator(
     theta: torch.Tensor, size: torch.Size, align_corners: bool
 ) -> torch.Tensor:
-    logger.debug("GEMS AFFINE_GRID_GENERATOR")
+    logger.debug("GEMS_KUNLUNXIN AFFINE_GRID_GENERATOR")
 
     if len(size) == 4:
         n, _, h, w = size
