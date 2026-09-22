@@ -51,7 +51,7 @@ jobs:
           ./setup.sh iluvatar
           mkdir -p ../ix-results
           source .venv/bin/activate
-          uv pip freeze > ../ix-results/environment.txt
+          python -c 'from importlib.metadata import distributions; print("\n".join(sorted("{}=={}".format(d.metadata["Name"], d.version) for d in distributions())))' > ../ix-results/environment.txt
       - name: Probe asynchronous error propagation in isolated processes
         working-directory: operator-source
         shell: bash
