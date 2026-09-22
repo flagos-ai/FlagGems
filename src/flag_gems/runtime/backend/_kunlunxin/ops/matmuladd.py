@@ -103,9 +103,16 @@ def matmuladd_kernel(
     BLOCK_SIZE_K: tl.constexpr,
     GROUP_M: tl.constexpr,
     DTYPE_CODE,
+    ALIGNED: tl.constexpr,
 ):
     # Same GEMM structure as the kunlunxin addmm kernel: 1-D grid with GROUP_M
     # swizzle, masked K loop, fp32 accumulator.
+    if ALIGNED:
+        # do_not_specialize took the divisibility hints away; give them back
+        # when the host verified M/N/K are multiples of 16 (mask elision).
+        tl.assume(M % 16 == 0)
+        tl.assume(N % 16 == 0)
+        tl.assume(K % 16 == 0)
     pid = ext.program_id(0)
     if GROUP_M > 1:
         grid_m = tl.cdiv(M, BLOCK_SIZE_M)
@@ -206,6 +213,7 @@ def matmuladd(input, other, bias):
             BLOCK_SIZE_K=bk,
             GROUP_M=8,
             DTYPE_CODE=_dtype_code(input.dtype),
+            ALIGNED=(M % 16 == 0 and N % 16 == 0 and K % 16 == 0),
             num_warps=warps,
             num_stages=3,
         )

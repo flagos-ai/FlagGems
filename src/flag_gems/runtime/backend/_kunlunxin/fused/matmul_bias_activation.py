@@ -115,9 +115,16 @@ def matmul_bias_activation_kernel(
     GROUP_M: tl.constexpr,
     DTYPE_CODE,
     FUSE_RELU: tl.constexpr,
+    ALIGNED: tl.constexpr,
 ):
     # Same GEMM structure as the kunlunxin addmm/matmuladd kernel: 1-D grid
     # with GROUP_M swizzle, masked K loop, fp32 accumulator.
+    if ALIGNED:
+        # do_not_specialize took the divisibility hints away; give them back
+        # when the host verified M/N/K are multiples of 16 (mask elision).
+        tl.assume(M % 16 == 0)
+        tl.assume(N % 16 == 0)
+        tl.assume(K % 16 == 0)
     pid = ext.program_id(0)
     grid_m = tl.cdiv(M, BLOCK_SIZE_M)
     grid_n = tl.cdiv(N, BLOCK_SIZE_N)
@@ -255,6 +262,7 @@ def matmul_bias_activation(input, weight, bias):
             GROUP_M=8,
             DTYPE_CODE=_dtype_code(input.dtype),
             FUSE_RELU=fuse_relu,
+            ALIGNED=(M % 16 == 0 and N % 16 == 0 and K % 16 == 0),
             num_warps=warps,
             num_stages=3,
         )
