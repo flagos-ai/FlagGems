@@ -84,7 +84,7 @@ def _case_fn(shape, dtype):
         layout = getattr(torch, layout.removeprefix("torch."))
     yield base.BenchmarkCasePlan(
         shape={"input": shape_},
-        params={"nnz": nnz, "layout": layout},
+        params={"nnz": nnz, "layout": str(layout)},
         builder_args=(layout, shape_, nnz),
     )
 
