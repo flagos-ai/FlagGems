@@ -3567,6 +3567,18 @@ ops:
   - NeuralNetwork
   stages:
     - alpha: '5.4'
+- id: ctc_loss_backward
+  description: The backward computation of `ctc_loss()`, exercised through the
+    autograd of the forward operator.
+  for:
+  - ctc_loss.Tensor
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - beta: '5.4'
 - id: cudnn_attention_backward
   description: 'Backward kernel for cuDNN attention, computing gradients of query,
 
@@ -3584,18 +3596,6 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
-- id: ctc_loss_backward
-  description: The backward computation of `ctc_loss()`, exercised through the
-    autograd of the forward operator.
-  for:
-  - ctc_loss.Tensor
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - NeuralNetwork
-  stages:
-  - beta: '5.4'
 - id: cudnn_attention_forward
   description: 'Forward kernel for cuDNN attention, computing scaled dot-product
 

@@ -551,9 +551,9 @@ def _flash_attn_backward_bhsd(
     dOut = dOut.contiguous()
     L = L.contiguous()
     if has_bias:
-        attn_bias = _normalize_attn_bias(
-            attn_bias, Batch, H_q, SeqLen_q, SeqLen_k
-        ).contiguous()
+        # Keep the stride-0 expanded view: the kernels index the bias through
+        # its strides, so broadcast dimensions need no materialization.
+        attn_bias = _normalize_attn_bias(attn_bias, Batch, H_q, SeqLen_q, SeqLen_k)
 
     bias_ptr = attn_bias if has_bias else Q
     dQ = torch.empty_like(Q)
@@ -858,9 +858,9 @@ def _flash_attn_backward_bhsd_dual_dim(
     dOut = dOut.contiguous()
     L = L.contiguous()
     if has_bias:
-        attn_bias = _normalize_attn_bias(
-            attn_bias, Batch, H_q, SeqLen_q, SeqLen_k
-        ).contiguous()
+        # Keep the stride-0 expanded view: the kernels index the bias through
+        # its strides, so broadcast dimensions need no materialization.
+        attn_bias = _normalize_attn_bias(attn_bias, Batch, H_q, SeqLen_q, SeqLen_k)
 
     bias_ptr = attn_bias if has_bias else Q
     dQ = torch.empty_like(Q)
@@ -1031,10 +1031,9 @@ def cudnn_attention_backward(
 
     is_dropout = dropout_p > 0.0
     rng_tuple = _parse_philox(philox_seed, philox_offset) if is_dropout else None
-    use_varlen = (cum_seq_q is not None) and (cum_seq_k is not None)
-
-    if use_varlen:
-        # Varlen inputs are not yet supported; reject before kernel launch.
+    # Reject if either bound is given: a one-sided cum_seq would otherwise be
+    # silently ignored and fall through to the dense path.
+    if (cum_seq_q is not None) or (cum_seq_k is not None):
         raise NotImplementedError(
             "cudnn_attention_backward: varlen is not yet supported"
         )
@@ -1066,8 +1065,6 @@ def cudnn_attention_backward(
         value,
         out,
         lse,
-        cu_seq_q=cum_seq_q if use_varlen else None,
-        cu_seq_k=cum_seq_k if use_varlen else None,
         max_seqlen_q=int(max_q),
         max_seqlen_k=int(max_k),
         is_dropout=is_dropout,
