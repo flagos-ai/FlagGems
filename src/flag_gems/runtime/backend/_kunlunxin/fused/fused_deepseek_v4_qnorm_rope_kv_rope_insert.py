@@ -67,10 +67,11 @@ inside the test tolerance ``ATOL_Q = 5.12e-2``.
 
 import logging
 
-import flag_gems
 import torch  # noqa: F401
 import triton
 import triton.language as tl
+
+import flag_gems
 
 logger = logging.getLogger(__name__)
 
