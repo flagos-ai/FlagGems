@@ -105,20 +105,25 @@ jobs:
     steps:
       - id: bootstrap_checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          path: checkout-${{ github.run_id }}-${{ github.run_attempt }}
         continue-on-error: true
-      # Some container runners do not expose the container checkout at the
-      # host path used to resolve local actions. Retry with the external action
-      # only when the bootstrap checkout actually failed.
+      # Use a per-run checkout directory because some persistent container
+      # runners leave the root workspace dirty or mount a different host path.
       - if: steps.bootstrap_checkout.outcome == 'failure'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          path: checkout-${{ github.run_id }}-${{ github.run_attempt }}
       # Keep the container job independent of host-side local-action lookup.
       - name: Setup FlagGems
         shell: bash
+        working-directory: checkout-${{ github.run_id }}-${{ github.run_attempt }}
         run: ./setup.sh ${{ inputs.backend }}
 
       - name: Check GPU availability
         if: inputs.gpu_check_script != ''
         shell: bash
+        working-directory: checkout-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           source .venv/bin/activate
           GPU_OUTPUT=$(bash ${{ inputs.gpu_check_script }})
@@ -131,11 +136,13 @@ jobs:
         env:
           CHANGED_FILES: ${{ inputs.changed_files }}
         shell: bash
+        working-directory: checkout-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           bash ${{ inputs.test_script }} ${{ inputs.backend }} ${{ inputs.pr_id }}
       - name: Run backend tests
         if: ${{ inputs.test_script == '' }}
         shell: bash
+        working-directory: checkout-${{ github.run_id }}-${{ github.run_attempt }}
         env:
           CHANGED_FILES: ${{ inputs.changed_files }}
         run: |
