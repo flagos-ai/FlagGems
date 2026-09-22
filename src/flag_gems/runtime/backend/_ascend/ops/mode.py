@@ -20,6 +20,7 @@ import triton
 import triton.language as tl
 
 from flag_gems.ops.mode import _mode_byte, _mode_sort
+from flag_gems.ops.sort import convert_to_uint_preverse_order
 from flag_gems.ops.topk import _get_iinfo_val
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
@@ -122,6 +123,89 @@ def _mode_sorted(
         tl.store(out_indices + row, index)
 
 
+@libentry()
+@triton.jit
+def _mode_histogram16(X, H, M: tl.constexpr, N: tl.constexpr, B: tl.constexpr):
+    nt = tl.cdiv(N, B)
+    per = tl.cdiv(M * nt, tl.num_programs(0))
+    c = tl.arange(0, B)
+    for tile in range(
+        tl.program_id(0) * per, tl.minimum((tl.program_id(0) + 1) * per, M * nt)
+    ):
+        row = tile // nt
+        p = tile % nt * B + c
+        x = tl.load(X + row * N + p, p < N, other=0)
+        if X.dtype.element_ty.is_floating():
+            x = tl.where(x == 0, 0.0, x).to(X.dtype.element_ty)
+        # Mask after promotion: uint16 conversion may sign-extend on Ascend.
+        key = convert_to_uint_preverse_order(x, False).to(tl.int32) & 65535
+        if X.dtype.element_ty.is_floating():
+            is_nan = x != x
+            tl.atomic_add(H + row * 65536 + key, 1, (p < N) & ~is_nan, sem="relaxed")
+            # NaNs do not form equal-value runs in the sorting implementation.
+            tl.atomic_max(H + row * 65536 + key, 1, (p < N) & is_nan, sem="relaxed")
+        else:
+            tl.atomic_add(H + row * 65536 + key, 1, p < N, sem="relaxed")
+
+
+@libentry()
+@triton.jit
+def _mode_histogram16_select(H, V, M: tl.constexpr, B: tl.constexpr):
+    per = tl.cdiv(M, tl.num_programs(0))
+    c = tl.arange(0, B)
+    for row in range(
+        tl.program_id(0) * per, tl.minimum((tl.program_id(0) + 1) * per, M)
+    ):
+        best_count = 0
+        best_key = 0
+        for start in range(0, 65536, B):
+            k = start + c
+            count = tl.load(H + row * 65536 + k)
+            most = tl.max(count, 0)
+            local = tl.min(tl.where(count == most, c.to(tl.float32), float(B)), 0).to(
+                tl.int32
+            )
+            best_key = tl.where(most > best_count, start + local, best_key)
+            best_count = tl.maximum(best_count, most)
+        if V.dtype.element_ty.is_floating():
+            bits = tl.where((best_key & 32768) != 0, best_key ^ 32768, ~best_key).to(
+                tl.uint16
+            )
+        else:
+            bits = (best_key ^ 32768).to(tl.uint16)
+        value = bits.to(V.dtype.element_ty, bitcast=True)
+        tl.store(V + row, value)
+
+
+@libentry()
+@triton.jit
+def _mode_find_indices_blocked(
+    X, V, IPtr, M: tl.constexpr, N: tl.constexpr, B: tl.constexpr
+):
+    per = tl.cdiv(M, tl.num_programs(0))
+    c = tl.arange(0, B)
+    for row in range(
+        tl.program_id(0) * per, tl.minimum((tl.program_id(0) + 1) * per, M)
+    ):
+        value = tl.load(V + row)
+        if X.dtype.element_ty == tl.float16 or X.dtype.element_ty == tl.bfloat16:
+            value = value.to(tl.float32)
+        chosen = N
+        block = 0
+        while (block < tl.cdiv(N, B)) & (chosen == N):
+            p = block * B + c
+            x = tl.load(X + row * N + p, p < N, other=0)
+            if X.dtype.element_ty == tl.float16 or X.dtype.element_ty == tl.bfloat16:
+                x = x.to(tl.float32)
+            matches = (p < N) & ((x == value) | ((x != x) & (value != value)))
+            local = tl.min(tl.where(matches, c.to(tl.float32), float(B)), 0).to(
+                tl.int32
+            )
+            chosen = tl.where(local < B, block * B + local, chosen)
+            block += 1
+        tl.store(IPtr + row, chosen)
+
+
 def mode(inp, dim=-1, keepdim=False):
     logger.debug("GEMS_ASCEND MODE")
     assert -inp.ndim <= dim < inp.ndim, "Invalid dim"
@@ -143,6 +227,27 @@ def mode(inp, dim=-1, keepdim=False):
                 _mode_find_indices[(min(rows, CORE_NUM),)](
                     x, values, indices, rows, n, triton.next_power_of_2(n)
                 )
+            elif n >= 256 and inp.dtype in (torch.float16, torch.bfloat16, torch.int16):
+                # Bound the histogram workspace to 64 MiB regardless of row count.
+                flat_x = x.reshape(rows, n)
+                flat_values = values.reshape(-1)
+                flat_indices = indices.reshape(-1)
+                counts = torch.empty(
+                    (min(rows, 256), 65536), device=x.device, dtype=torch.int32
+                )
+                for start in range(0, rows, 256):
+                    batch_rows = min(256, rows - start)
+                    batch_x = flat_x[start : start + batch_rows]
+                    batch_values = flat_values[start : start + batch_rows]
+                    batch_indices = flat_indices[start : start + batch_rows]
+                    counts.zero_()
+                    _mode_histogram16[(CORE_NUM,)](batch_x, counts, batch_rows, n, 1024)
+                    _mode_histogram16_select[(min(batch_rows, CORE_NUM),)](
+                        counts, batch_values, batch_rows, 1024
+                    )
+                    _mode_find_indices_blocked[(min(batch_rows, CORE_NUM),)](
+                        batch_x, batch_values, batch_indices, batch_rows, n, 512
+                    )
             else:
                 sorted_values, sorted_indices = _mode_sort(x, dim=-1)
                 _mode_sorted[(min(rows, CORE_NUM),)](
