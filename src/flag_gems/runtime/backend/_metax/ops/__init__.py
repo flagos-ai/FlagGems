@@ -113,6 +113,7 @@ from .special_shifted_chebyshev_polynomial_w import (
 )
 from .tanh import tanh
 from .to_copy import to_copy
+from .topk_w8a16_fp8 import topk_w8a16_fp8
 from .unique import _unique2
 from .unsafe_masked_index_put_accumulate import _unsafe_masked_index_put_accumulate
 from .upsample_linear1d import upsample_linear1d
@@ -270,6 +271,7 @@ __all__ = [
     "special_shifted_chebyshev_polynomial_w",
     "tanh",
     "to_copy",
+    "topk_w8a16_fp8",
     "upsample_linear1d",
     "upsample_nearest2d",
     "weight_int8pack_mm",

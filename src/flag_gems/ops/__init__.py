@@ -34,6 +34,7 @@ from flag_gems.ops._batch_norm_impl_index_backward import (
     _batch_norm_impl_index_backward,
 )
 from flag_gems.ops._batch_norm_no_update import _batch_norm_no_update
+from flag_gems.ops._batch_norm_with_update import _batch_norm_with_update
 from flag_gems.ops._batch_norm_with_update_functional import (
     _batch_norm_with_update_functional,
 )
@@ -50,6 +51,7 @@ from flag_gems.ops._convert_weight_to_int4pack import _convert_weight_to_int4pac
 from flag_gems.ops._convolution_double_backward import _convolution_double_backward
 from flag_gems.ops._convolution_mode import _convolution_mode
 from flag_gems.ops._cslt_sparse_mm import _cslt_sparse_mm
+from flag_gems.ops._ctc_loss import _ctc_loss, _ctc_loss_out
 from flag_gems.ops._cummax_helper import _cummax_helper
 from flag_gems.ops._cummin_helper import _cummin_helper
 from flag_gems.ops._dirichlet_grad import _dirichlet_grad
@@ -142,6 +144,7 @@ from flag_gems.ops._reshape_alias import _reshape_alias
 from flag_gems.ops._resize_output import _resize_output
 from flag_gems.ops._resize_output_ import _resize_output_
 from flag_gems.ops._safe_softmax import _safe_softmax
+from flag_gems.ops._sample_dirichlet import _sample_dirichlet
 from flag_gems.ops._scaled_dot_product_attention_math import (
     _scaled_dot_product_attention_math,
 )
@@ -175,6 +178,7 @@ from flag_gems.ops._thnn_fused_lstm_cell_backward import _thnn_fused_lstm_cell_b
 from flag_gems.ops._thnn_fused_lstm_cell_backward_impl import (
     _thnn_fused_lstm_cell_backward_impl,
 )
+from flag_gems.ops._transform_bias_rescale_qkv import _transform_bias_rescale_qkv
 from flag_gems.ops._transformer_encoder_layer_fwd import _transformer_encoder_layer_fwd
 from flag_gems.ops._unsafe_masked_index import _unsafe_masked_index
 from flag_gems.ops._unsafe_masked_index_put_accumulate import (
@@ -398,6 +402,7 @@ from flag_gems.ops.cudnn_attention_forward import cudnn_attention_forward
 from flag_gems.ops.cudnn_batch_norm_backward import cudnn_batch_norm_backward
 from flag_gems.ops.cudnn_convolution import cudnn_convolution
 from flag_gems.ops.cudnn_convolution_transpose import cudnn_convolution_transpose
+from flag_gems.ops.cudnn_rnn import cudnn_rnn
 from flag_gems.ops.cudnn_rnn_backward import cudnn_rnn_backward
 from flag_gems.ops.cummax import cummax, cummaxmin_backward
 from flag_gems.ops.cummin import cummin
@@ -734,7 +739,9 @@ from flag_gems.ops.masked_scatter import masked_scatter, masked_scatter_
 from flag_gems.ops.masked_scatter_backward import masked_scatter_backward
 from flag_gems.ops.masked_select import masked_select
 from flag_gems.ops.masked_select_backward import masked_select_backward
+from flag_gems.ops.matmul_backward import matmul_backward
 from flag_gems.ops.matrix_exp_backward import matrix_exp_backward
+from flag_gems.ops.matrix_power import matrix_power, matrix_power_out
 from flag_gems.ops.max import max, max_dim
 from flag_gems.ops.max_pool1d import max_pool1d
 from flag_gems.ops.max_pool2d_with_indices import (
@@ -1006,6 +1013,7 @@ from flag_gems.ops.sparse_sampled_addmm import (
     sparse_sampled_addmm,
     sparse_sampled_addmm_out,
 )
+from flag_gems.ops.spdiags import spdiags
 from flag_gems.ops.special_airy_ai import special_airy_ai, special_airy_ai_out
 from flag_gems.ops.special_bessel_j0 import special_bessel_j0
 from flag_gems.ops.special_bessel_j1 import special_bessel_j1
@@ -1149,6 +1157,7 @@ from flag_gems.ops.trace import trace
 from flag_gems.ops.trace_backward import trace_backward
 from flag_gems.ops.transpose import transpose
 from flag_gems.ops.transpose_copy import transpose_copy
+from flag_gems.ops.trapz import trapz
 from flag_gems.ops.triangular_indices import tril_indices, triu_indices
 from flag_gems.ops.tril import tril, tril_, tril_out
 from flag_gems.ops.triu import triu, triu_
@@ -1205,6 +1214,7 @@ from flag_gems.ops.upsample_trilinear3d_backward import upsample_trilinear3d_bac
 from flag_gems.ops.value_selecting_reduction_backward import (
     value_selecting_reduction_backward,
 )
+from flag_gems.ops.vander import vander
 from flag_gems.ops.var import var, var_correction, var_dim
 from flag_gems.ops.var_mean import var_mean
 from flag_gems.ops.vdot import vdot
@@ -1257,6 +1267,7 @@ __all__ = [
     "_batch_norm_impl_index",
     "_batch_norm_impl_index_backward",
     "_batch_norm_no_update",
+    "_batch_norm_with_update",
     "_batch_norm_with_update_functional",
     "_cdist_backward",
     "_cdist_forward",
@@ -1273,6 +1284,8 @@ __all__ = [
     "_convolution_double_backward",
     "_convolution_mode",
     "_cslt_sparse_mm",
+    "_ctc_loss",
+    "_ctc_loss_out",
     "_cummax_helper",
     "_cummin_helper",
     "_dirichlet_grad",
@@ -1338,6 +1351,7 @@ __all__ = [
     "_resize_output",
     "_resize_output_",
     "_safe_softmax",
+    "_sample_dirichlet",
     "_scaled_dot_product_attention_math",
     "_scaled_dot_product_cudnn_attention",
     "_scaled_dot_product_efficient_attention",
@@ -1358,6 +1372,7 @@ __all__ = [
     "_thnn_fused_lstm_cell",
     "_thnn_fused_lstm_cell_backward",
     "_thnn_fused_lstm_cell_backward_impl",
+    "_transform_bias_rescale_qkv",
     "_transformer_encoder_layer_fwd",
     "_unique2",
     "_unsafe_masked_index",
@@ -1597,6 +1612,7 @@ __all__ = [
     "cudnn_batch_norm_backward",
     "cudnn_convolution",
     "cudnn_convolution_transpose",
+    "cudnn_rnn",
     "cudnn_rnn_backward",
     "cummax",
     "cummaxmin_backward",
@@ -1987,7 +2003,10 @@ __all__ = [
     "masked_scatter_backward",
     "masked_select",
     "masked_select_backward",
+    "matmul_backward",
     "matrix_exp_backward",
+    "matrix_power",
+    "matrix_power_out",
     "max",
     "max_dim",
     "max_pool1d",
@@ -2286,6 +2305,7 @@ __all__ = [
     "sort_stable",
     "sparse_sampled_addmm",
     "sparse_sampled_addmm_out",
+    "spdiags",
     "special_airy_ai",
     "special_airy_ai_out",
     "special_bessel_j0",
@@ -2425,6 +2445,7 @@ __all__ = [
     "trace_backward",
     "transpose",
     "transpose_copy",
+    "trapz",
     "tril",
     "tril_",
     "tril_indices",
@@ -2475,6 +2496,7 @@ __all__ = [
     "upsample_trilinear3d",
     "upsample_trilinear3d_backward",
     "value_selecting_reduction_backward",
+    "vander",
     "var",
     "var_correction",
     "var_dim",
