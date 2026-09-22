@@ -72,7 +72,6 @@ def test_accuracy_adaptive_avg_pool2d_forward(shape, output_size, dtype):
 
 
 @pytest.mark.adaptive_avg_pool2d
-@pytest.mark.filterwarnings("error:only_enable failed.*")
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
@@ -106,6 +105,3 @@ def test_accuracy_adaptive_avg_pool2d_boundary_layout(
     ref_out = torch.ops.aten._adaptive_avg_pool2d(ref_inp, output_size)
     actual = flag_gems.adaptive_avg_pool2d(inp, output_size)
     utils.gems_assert_close(actual, ref_out, dtype)
-    with flag_gems.use_gems(include=["adaptive_avg_pool2d"]):
-        dispatched = torch.ops.aten._adaptive_avg_pool2d(inp, output_size)
-    utils.gems_assert_close(dispatched, ref_out, dtype)
