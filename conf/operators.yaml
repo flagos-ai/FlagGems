@@ -10472,6 +10472,28 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: msort
+  description: Sorts each column of the input tensor in ascending order.
+  for:
+  - msort
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
+- id: msort_out
+  description: Writes the column-wise sorted values into the provided output tensor.
+  for:
+  - msort.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: mul
   description: Multiplies `input` by `other`.
   for:
@@ -12211,6 +12233,32 @@ ops:
     A variant of quantized_max_pool1d() that writes the result into the out tensor.
   for:
   - quantized_max_pool1d.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
+- id: quantized_max_pool2d
+  description: |
+    Triton kernel implementation for quantized_max_pool2d. Applies 2D max pooling
+    over a quantized input tensor by pooling the underlying integer
+    representation.
+  for:
+  - quantized_max_pool2d
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
+- id: quantized_max_pool2d_out
+  description: |
+    A variant of quantized_max_pool2d() that writes the result into the out tensor.
+  for:
+  - quantized_max_pool2d.out
   labels:
   - aten
   - KernelGen
@@ -15891,6 +15939,17 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: standard_gamma
+  description: Triton kernel implementation for _standard_gamma.
+  for:
+  - _standard_gamma
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: standard_gamma_grad
   description: Triton kernel implementation for _standard_gamma_grad.
   for:
@@ -17233,6 +17292,28 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '5.0'
+- id: upsample_bicubic2d_backward
+  description: Computes non-antialiased bicubic interpolation gradients using deterministic gather.
+  for:
+  - upsample_bicubic2d_backward
+  labels:
+  - aten
+  - Reduction
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
+- id: upsample_bicubic2d_backward_grad_input
+  description: Writes non-antialiased bicubic interpolation gradients to grad_input.
+  for:
+  - upsample_bicubic2d_backward.grad_input
+  labels:
+  - aten
+  - Reduction
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: upsample_bilinear2d
   description: 'Upsamples the input, using bilinear mode.
 

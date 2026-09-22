@@ -72,12 +72,23 @@ if missing:
     print(f"{len(missing)} recorded file(s) missing, e.g. {missing[:5]}")
     sys.exit(1)
 
-# FlagTree's Ascend backend imports torch_npu while Triton is initializing.
-# Preload it through torch to avoid a circular import through torch._dynamo.
-# Other vendor plugins may need driver libraries that are unavailable during
-# this install check, so keep their automatic loading disabled here.
+# On ascend, triton's backend package imports torch/torch_npu as a side
+# effect (for its do_bench_npu helper) while triton itself is still
+# mid-import. torch_npu's import in turn reaches back into triton.language,
+# which doesn't exist on the triton module yet -> circular-import
+# AttributeError. Fully importing torch/torch_npu first, standalone, means
+# that reentrant import is a cheap no-op (modules already initialized)
+# instead of a reentrant partial import.
+# Keep this Ascend-only: other vendor plugins can require driver libraries
+# that are not available until their setup has completed.
 if os.environ["FLAGGEMS_VERIFY_BACKEND"].startswith("ascend-"):
-    import torch
+    import torch  # noqa: F401
+
+    try:
+        import torch_npu  # noqa: F401
+    except ImportError:
+        pass
+
 import triton
 
 if triton.__file__ is None or not hasattr(triton, "Config"):
