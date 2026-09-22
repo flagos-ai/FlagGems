@@ -1188,6 +1188,12 @@ def _tle_flat(x, out, dtype):
     """
     if not _TLE_GPU_OK or dtype not in _TLE_NORM_DTYPE:
         return False
+    # dtype promotion (e.g. vector_norm(x_fp16, 2, dtype=torch.float32)) would
+    # build the input descriptor from x.dtype while the LM buffer is allocated
+    # as `dtype`, so tle.gpu.copy would see mismatched element types -- bail
+    # out to _l2_flat (which accumulates in f32), same as _l2_trailing_dim.
+    if dtype != x.dtype:
+        return False
     n = x.numel()
     if n <= _TLE_FLAT_SINGLE_MAX:
         # Single-launch small flat L2: ONE program streams [1, YBLOCK] tiles
