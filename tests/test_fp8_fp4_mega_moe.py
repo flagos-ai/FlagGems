@@ -32,7 +32,15 @@ from flag_gems.fused.fp8_fp4_mega_moe import (
     fp8_fp4_mega_moe_torch_ref,
 )
 
+from . import accuracy_utils as utils
 from .accuracy_utils import gems_assert_close, to_reference
+
+FP8_DTYPES = [torch.float8_e4m3fn] if utils.fp8_is_supported else []
+
+pytestmark = pytest.mark.skipif(
+    not FP8_DTYPES,
+    reason="kunlunxin does not support FP8 (no FP8 hardware)",
+)
 
 device = flag_gems.device
 
