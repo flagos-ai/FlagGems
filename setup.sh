@@ -71,7 +71,14 @@ if missing:
 # Torch first on Ascend and NVIDIA; other vendors may lack runtime libraries
 # at this compiler-install verification stage.
 if sys.argv[1] in ("ascend", "nvidia"):
-    import torch
+    import torch  # noqa: F401
+
+if sys.argv[1] == "ascend":
+    try:
+        import torch_npu  # noqa: F401
+    except ImportError:
+        pass
+
 import triton
 
 if triton.__file__ is None or not hasattr(triton, "Config"):
