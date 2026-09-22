@@ -21,18 +21,27 @@ import flag_gems
 
 from . import base
 
-# LU Solve benchmark shapes: (n, k)
+# LU Solve benchmark shapes: (n, k). Sizes up to 32 exercise the
+# register-resident gather kernel; 33 and above exercise the blocked kernel,
+# including a non-multiple of its 32-row diagonal block and narrow-RHS cases
+# where the 16-wide tl.dot tile is padded.
 LU_SOLVE_SHAPES = [
     (4, 4),
     (8, 8),
     (16, 16),
     (32, 32),
+    (33, 16),
+    (48, 32),
+    (64, 1),
+    (64, 64),
+    (128, 128),
+    (256, 64),
 ]
+
+fp64_is_supported = flag_gems.runtime.device.support_fp64
 
 # LU solve only supports float32/float64 (torch.linalg.lu_factor does not
 # accept half-precision inputs), so we cannot use consts.FLOAT_DTYPES here.
-fp64_is_supported = flag_gems.runtime.device.support_fp64
-
 LU_SOLVE_DTYPES = [torch.float32]
 if fp64_is_supported:
     LU_SOLVE_DTYPES.append(torch.float64)

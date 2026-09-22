@@ -21,16 +21,23 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-# Test shapes: (n, k) pairs
+# Test shapes: (n, k) pairs. Sizes through 32 take the register-resident
+# kernel; larger ones take the blocked kernel, including n values that are not
+# a multiple of its diagonal block (48, 100) and RHS widths narrower than or
+# straddling the blocked tile width.
 LU_SOLVE_SHAPES = [
     (4, 4),
     (8, 8),
     (16, 16),
     (32, 32),
+    (33, 16),
+    (48, 15),
     (64, 64),
+    (100, 40),
     (128, 128),
     (32, 7),
     (16, 1),
+    (64, 1),
 ]
 
 # LU solve supports float32/float64
