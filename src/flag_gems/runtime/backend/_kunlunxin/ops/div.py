@@ -366,6 +366,10 @@ def true_divide_(A, B):
         return true_div_func_tensor_scalar(A, B, out0=A)
 
 
+divide = true_divide
+true_divide_tensor_ = true_divide_
+
+
 @triton.jit
 def _trunc_q(q):
     # Truncate a fp32 quotient toward zero without the slow `xpu_trunc`
