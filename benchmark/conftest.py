@@ -459,6 +459,10 @@ def clear_function_cache(request):
 
 @pytest.fixture(scope="function", autouse=True)
 def configure_benchmark_mode(request):
+    if vendor_name != "ascend":
+        yield
+        return
+
     Config.mode = benchmark_mode_for_item(
         request.node, vendor_name, Config.requested_mode
     )
