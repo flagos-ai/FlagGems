@@ -47,3 +47,4 @@ docs/benchmark/
 # Packaging build outputs (packaging/{debian,rpm} helpers)
 debian-packages/
 rpm-packages/
+work/*
