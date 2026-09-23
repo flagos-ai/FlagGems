@@ -1,17 +1,3 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import logging
 
 import torch
@@ -22,26 +8,10 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, tl_extra_shim
 from flag_gems.utils import triton_lang_extension as ext
 
-# The accuracy test asserts on the generic logger name; native_layer_norm.py
-# does the same thing for the same reason.
 logger = logging.getLogger("flag_gems.ops.native_group_norm")
 rsqrt = tl_extra_shim.rsqrt
 
 
-# One program per (n, group).  A group is `group_size` channels x HW
-# CONTIGUOUS elements, so both the reduction and the affine write can live in
-# the SAME program: the flat 1D reduce over [base, base + group_size*HW) keeps
-# mean/rstd in registers and the normalize walks the group ONE CHANNEL AT A
-# TIME (`GROUP_SIZE` is constexpr so the channel loop unrolls statically),
-# loading a SCALAR weight/bias per channel -> contiguous HW block DMA, no
-# per-element `idx // HW` gather.
-#
-# groupnorm.py splits these two phases into two @libentry kernels, which costs
-# a second launch of the SAME grid (N*group).  These shapes are launch bound
-# (grid=128 costs ~65us of the ~135us total), so folding the phases into one
-# kernel removes half of that, and for fp16/bf16 it also removes the fp32
-# mean/rstd scratch pair: mean/rstd never round-trip through memory, so there
-# is no precision loss on reload and no second store.
 @libentry()
 @triton.jit(do_not_specialize=["eps"])
 def native_group_norm_kernel(
@@ -108,7 +78,7 @@ def native_group_norm(input, weight, bias, N, C, HxW, group, eps=1e-05):
     hard-fails with `out of resource: uni_sram` for HxW >= 4096, so bind a
     vendor kernel here explicitly.
     """
-    logger.debug("GEMS NATIVE_GROUP_NORM")
+    logger.debug("GEMS_KUNLUNXIN NATIVE_GROUP_NORM")
 
     group_size = triton.cdiv(C, group)
     input = input.contiguous()
@@ -120,7 +90,8 @@ def native_group_norm(input, weight, bias, N, C, HxW, group, eps=1e-05):
     rstd = torch.empty((N, group), dtype=input.dtype, device=input.device)
 
     grid = (N * group,)
-    block_hw = min(triton.next_power_of_2(HxW), 1024)
+    num_elements = group_size * HxW
+    block_hw = min(8192, max(1024, triton.next_power_of_2(num_elements)))
     with torch_device_fn.device(input.device):
         native_group_norm_kernel[grid](
             input,

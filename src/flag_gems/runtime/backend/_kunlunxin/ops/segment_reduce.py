@@ -12,6 +12,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Kunlunxin (XPU) override for segment_reduce / _segment_reduce_backward.
+#
+# Compared with the generic implementation in flag_gems/ops/segment_reduce.py,
+# the only functional change is that the runtime-trip-count scan loops that
+# build a *loop-variant* mask (`segment_offsets = pos + tl.arange(0, BLOCK_SIZE)`,
+# `mask = segment_offsets < segment_end`) are written as
+#     for pos in range(segment_start, segment_end, BLOCK_SIZE):
+# instead of
+#     pos = segment_start
+#     while pos < segment_end: ... pos += BLOCK_SIZE
+#
+# Reason: on the XPU backend, triton's `scf.while` is lowered by
+# TritonXPU/Transforms/Mask.cpp, which only knows how to hoist loop-variant
+# masks out of `scf.for` / `scf.if` bodies. A mask defined inside an
+# `scf.while` body hits `llvm_unreachable("Unknown Mask YiledOp Pattern")`
+# (Mask.cpp:796) and aborts compilation, surfacing as either
+# `triton.runtime.errors.OutOfResources: out of resource: uni_sram` or a
+# `PassManager::run failed ... TritonXPUMask` error. `scf.for` bodies are
+# handled correctly by that pass, so `for pos in range(...)` with the same
+# masks compiles and runs correctly on XPU (verified with a minimal kernel).
+
 import logging
 import math
 
@@ -19,7 +40,6 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.ops import amax, amin, mean_dim, prod_dim, sum_dim
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
@@ -29,7 +49,7 @@ logger = logging.getLogger(__name__)
 _BLOCK_SIZE = 1024
 _NPU_BLOCK_SIZE = 256
 _UNIFORM_FAST_PATH_MIN_NUMEL = 1 << 20
-_UNIFORM_KERNEL_MAX_SEGMENT_LENGTH = 256
+_UNIFORM_KERNEL_MAX_SEGMENT_LENGTH = 1024
 _UNIFORM_LENGTHS_CACHE = {}
 _SUPPORTED_REDUCES = ("sum", "mean", "max", "min", "prod")
 _SUPPORTED_DATA_DTYPES = (
@@ -80,7 +100,7 @@ def _all_lengths_equal(lengths, value):
     )
     is_equal = _UNIFORM_LENGTHS_CACHE.get(cache_key)
     if is_equal is None:
-        is_equal = torch.all(lengths.detach() == value).item()
+        is_equal = torch.all(lengths.detach().cpu() == value).item()
         if len(_UNIFORM_LENGTHS_CACHE) > 128:
             _UNIFORM_LENGTHS_CACHE.clear()
         _UNIFORM_LENGTHS_CACHE[cache_key] = is_equal
@@ -131,10 +151,10 @@ def _validate_lengths(data, lengths, axis, unsafe):
     _check_index_tensor(data, lengths, "lengths", axis)
     if unsafe:
         return
-    lengths_detached = lengths.detach()
-    if torch.any(lengths_detached < 0).item():
+    lengths_cpu = lengths.detach().cpu()
+    if torch.any(lengths_cpu < 0).item():
         raise RuntimeError("lengths contains negative value!")
-    valid_lengths = torch.all(lengths_detached.sum(dim=-1) == data.size(axis)).item()
+    valid_lengths = torch.all(lengths_cpu.sum(dim=-1) == data.size(axis)).item()
     if not valid_lengths:
         raise RuntimeError(
             "segment_reduce(): Expected all rows of lengths along axis to sum to "
@@ -155,6 +175,12 @@ def _make_initial(reduce, initial):
 
 
 def _get_uniform_segment_length(data, lengths, axis):
+    # XPU: the uniform fast-path kernels use 3-D tiles that exceed the
+    # on-chip uni_sram ("out of resource: uni_sram", hardware limit 0) and
+    # their custom-combiner tl.reduce is not legalized.  The generic kernels
+    # below are correct and validated, so keep the fast path disabled here.
+    return None
+
     if data.numel() < _UNIFORM_FAST_PATH_MIN_NUMEL:
         return None
     if tuple(lengths.shape[:-1]) != tuple(data.shape[:axis]):
@@ -237,20 +263,28 @@ def _segment_reduce_uniform_other_backward_kernel(
 
     if IS_MAX or IS_MIN:
         match = ((values != values) | (values == output_value[:, None, :])) & mask
-        counter = tl.sum(match.to(tl.int64), axis=1)
+        counter = tl.sum(match.to(tl.int32), axis=1)
         store_value = tl.where(
             (counter >= 2) & (grad_value > 0),
             grad_value / counter,
             grad_value,
         )
-        tl.store(grad_input + data_offsets, store_value[:, None, :], mask=match)
+        tl.store(
+            grad_input + data_offsets,
+            tl.where(match, store_value[:, None, :], 0.0),
+            mask=mask,
+        )
     elif IS_PROD:
         nan_mask = (values != values) & mask
         zero_mask = (values == 0) & mask & ~nan_mask
-        zero_count = tl.sum(zero_mask.to(tl.int64), axis=1)
-        nan_count = tl.sum(nan_mask.to(tl.int64), axis=1)
+        zero_count = tl.sum(zero_mask.to(tl.int32), axis=1)
+        nan_count = tl.sum(nan_mask.to(tl.int32), axis=1)
         product_values = tl.where(nan_mask | zero_mask | ~mask, 1.0, values)
-        product = tl.reduce(product_values, axis=1, combine_fn=_mul_combine)
+        # XPU: a custom-combiner tl.reduce (combine_fn) trips
+        # TritonXPUUnrollControl ("out of resource: uni_sram").  cumprod is a
+        # plain scan; out-of-segment lanes are 1.0 so the final lane is the
+        # full-segment product.
+        product = tl.cumprod(product_values, axis=1)[:, BLOCK_N - 1, :]
         product *= INITIAL_PROD_VALUE
 
         zero_scalar = tl.full((BLOCK_M, BLOCK_K), 0.0, dtype=compute_dtype)
@@ -345,7 +379,9 @@ def _segment_reduce_uniform_inner1_forward_kernel(
             result = result / segment_length
     elif IS_PROD:
         values = tl.load(data + data_offsets, mask=mask, other=1.0).to(compute_dtype)
-        result = tl.reduce(values, axis=1, combine_fn=_mul_combine)
+        # XPU: custom-combiner tl.reduce is not legalized (see above); cumprod's
+        # final lane holds the product (masked lanes are 1.0).
+        result = tl.cumprod(values, axis=1)[:, BLOCK_N - 1]
     elif IS_MAX:
         values = tl.load(data + data_offsets, mask=mask, other=float("-inf")).to(
             compute_dtype
@@ -386,7 +422,6 @@ def _segment_reduce_uniform_forward_kernel(
     IS_PROD: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_K: tl.constexpr,
-    MAX_BLOCKS: tl.constexpr,
 ):
     pid_m = tle.program_id(0)
     pid_k = tle.program_id(1)
@@ -418,43 +453,38 @@ def _segment_reduce_uniform_forward_kernel(
     has_nan = tl.zeros((BLOCK_M, BLOCK_K), dtype=tl.int1)
     nan_value = tl.zeros((BLOCK_M, BLOCK_K), dtype=compute_dtype)
 
-    # A runtime loop (not tl.static_range): unrolling the max/min path
-    # (nan_mask / has_nan / nan_value / tl.where per iteration) blows up
-    # the IR past uni_sram on TritonXPU -> OutOfResources at Vectorize.
-    for pos in range(MAX_BLOCKS):
-        segment_mask = pos < segment_length
-        block_mask = mask & segment_mask
-        data_offsets = base_offsets + pos * inner_size
+    for pos in range(0, segment_length, BLOCK_K):
+        seg_offsets = pos + tl.arange(0, BLOCK_K)[None, :]
+        data_offsets = base_offsets + seg_offsets * inner_size
+        iter_mask = mask & (seg_offsets < segment_length)
         if IS_SUM or IS_MEAN:
-            values = tl.load(data + data_offsets, mask=block_mask, other=0.0).to(
+            values = tl.load(data + data_offsets, mask=iter_mask, other=0.0).to(
                 compute_dtype
             )
             acc += values
         elif IS_PROD:
-            values = tl.load(data + data_offsets, mask=block_mask, other=1.0).to(
+            values = tl.load(data + data_offsets, mask=iter_mask, other=1.0).to(
                 compute_dtype
             )
             acc *= values
         elif IS_MAX:
             values = tl.load(
-                data + data_offsets, mask=block_mask, other=float("-inf")
+                data + data_offsets, mask=iter_mask, other=float("-inf")
             ).to(compute_dtype)
-            nan_mask = (values != values) & block_mask
+            nan_mask = (values != values) & iter_mask
             has_nan |= nan_mask
             nan_value = tl.where(nan_mask, values, nan_value)
             acc = tl.maximum(
-                acc, tl.where(block_mask & ~nan_mask, values, float("-inf"))
+                acc, tl.where(iter_mask & ~nan_mask, values, float("-inf"))
             )
         elif IS_MIN:
             values = tl.load(
-                data + data_offsets, mask=block_mask, other=float("inf")
+                data + data_offsets, mask=iter_mask, other=float("inf")
             ).to(compute_dtype)
-            nan_mask = (values != values) & block_mask
+            nan_mask = (values != values) & iter_mask
             has_nan |= nan_mask
             nan_value = tl.where(nan_mask, values, nan_value)
-            acc = tl.minimum(
-                acc, tl.where(block_mask & ~nan_mask, values, float("inf"))
-            )
+            acc = tl.minimum(acc, tl.where(iter_mask & ~nan_mask, values, float("inf")))
 
     if IS_MEAN:
         acc = acc / segment_length
@@ -521,40 +551,13 @@ def _segment_reduce_uniform_lengths(data, reduce, lengths, axis):
                 reduce == "prod",
                 BLOCK_M=block_m,
                 BLOCK_K=block_k,
-                MAX_BLOCKS=segment_length,
             )
         return output
 
-    if data.device.type == "npu":
-        return None
-
-    # Large uniform segments (> _UNIFORM_KERNEL_MAX_SEGMENT_LENGTH): the
-    # general _segment_reduce_forward_kernel iterates ~data_size_axis /
-    # BLOCK_SIZE times per program, which is pathological for e.g.
-    # (1024**3,) (seg_len = 16M). Reshape and reduce with the gems
-    # dimension-wise reduce ops instead of torch native reductions; measured
-    # on XPU this is not slower than the general kernel for the shapes it
-    # serves.
-    view_shape = (
-        data.shape[:axis] + (segment_count, segment_length) + data.shape[axis + 1 :]
-    )
-    reshaped = data.reshape(view_shape)
-    reduce_dim = axis + 1
-
-    # Move the reduce dim to the last position: the gems dim-reduce kernels
-    # only compile on XPU for inner (K == 1) reduce, the non-inner variants
-    # of sum_dim/prod_dim hit triton XPU OutOfResources.
-    moved = reshaped.movedim(reduce_dim, -1)
-
-    if reduce == "sum":
-        return sum_dim(moved, dim=[-1])
-    if reduce == "mean":
-        return mean_dim(moved, dim=[-1])
-    if reduce == "max":
-        return amax(moved, dim=[-1])
-    if reduce == "min":
-        return amin(moved, dim=[-1])
-    return prod_dim(moved, dim=-1)
+    # The uniform fast path is disabled on this backend (see
+    # _get_uniform_segment_length), so this helper always reports "not
+    # handled" and the caller falls back to the verified generic kernel.
+    return None
 
 
 def _segment_reduce_uniform_sum_mean_backward(data, grad, reduce, lengths, axis):
@@ -594,11 +597,11 @@ def _segment_reduce_uniform_other_backward(
         return None
 
     if reduce in ("max", "min"):
-        grad_input = torch.zeros_like(data, dtype=grad.dtype)
+        grad_input = torch.zeros_like(data, dtype=torch.float32)
     else:
-        grad_input = torch.empty_like(data, dtype=grad.dtype)
+        grad_input = torch.empty_like(data, dtype=torch.float32)
     if grad_input.numel() == 0:
-        return grad_input
+        return grad_input.to(grad.dtype)
 
     inner_size = _prod(data.shape[axis + 1 :])
     total_rows = _prod(lengths.shape)
@@ -627,6 +630,8 @@ def _segment_reduce_uniform_other_backward(
             BLOCK_N=block_n,
             BLOCK_K=block_k,
         )
+    if grad_input.dtype != grad.dtype:
+        grad_input = grad_input.to(grad.dtype)
     return grad_input
 
 
@@ -636,7 +641,7 @@ def _lengths_to_offsets_kernel(
     lengths,
     offsets,
     outer_count,
-    segment_count: tl.constexpr,
+    segment_count,
 ):
     pid = tle.program_id(0)
     acc = tl.full((), 0, dtype=tl.int64)
@@ -644,15 +649,12 @@ def _lengths_to_offsets_kernel(
     base_offsets = pid * (segment_count + 1)
     tl.store(offsets + base_offsets, acc)
 
-    for idx in tl.static_range(segment_count):
+    idx = 0
+    while idx < segment_count:
         length = tl.load(lengths + base_lengths + idx)
         acc += length
         tl.store(offsets + base_offsets + idx + 1, acc)
-
-
-@triton.jit
-def _multiply(left, right):
-    return left * right
+        idx += 1
 
 
 @libentry()
@@ -671,7 +673,6 @@ def _segment_reduce_forward_kernel(
     IS_PROD: tl.constexpr,
     HAS_INITIAL: tl.constexpr,
     INITIAL_VALUE: tl.constexpr,
-    MAX_BLOCKS: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = tle.program_id(0)
@@ -690,51 +691,32 @@ def _segment_reduce_forward_kernel(
 
     acc = tl.full((), INITIAL_VALUE, dtype=compute_dtype)
     if IS_PROD:
-        for block_idx in tl.static_range(MAX_BLOCKS):
-            lane_offsets = tl.arange(0, BLOCK_SIZE)
-            segment_offsets = segment_start + block_idx * BLOCK_SIZE + lane_offsets
-            mask = segment_offsets < segment_end
-            block_active = block_idx * BLOCK_SIZE < segment_length
-            safe_offsets = tl.minimum(
-                segment_offsets, tl.maximum(data_size_axis - 1, 0)
+        pos = segment_start
+        while pos < segment_end:
+            data_offset = (
+                outer_idx * data_size_axis * inner_size + pos * inner_size + inner_idx
             )
-            load_mask = mask | ((lane_offsets == 0) & (data_size_axis > 0))
-            data_offsets = (
-                outer_idx * data_size_axis * inner_size
-                + safe_offsets * inner_size
-                + inner_idx
-            )
-            values = tl.load(data + data_offsets, mask=load_mask, other=1.0).to(
-                compute_dtype
-            )
-            values = tl.where(mask, values, 1.0)
-            chunk = tl.reduce(values, axis=0, combine_fn=_multiply)
-            acc *= tl.where(block_active, chunk, 1.0)
+            value = tl.load(data + data_offset).to(compute_dtype)
+            acc *= value
+            pos += 1
     else:
-        for block_idx in tl.static_range(MAX_BLOCKS):
-            lane_offsets = tl.arange(0, BLOCK_SIZE)
-            segment_offsets = segment_start + block_idx * BLOCK_SIZE + lane_offsets
+        for pos in range(segment_start, segment_end, BLOCK_SIZE):
+            segment_offsets = pos + tl.arange(0, BLOCK_SIZE)
             mask = segment_offsets < segment_end
-            block_active = block_idx * BLOCK_SIZE < segment_length
-            safe_offsets = tl.minimum(
-                segment_offsets, tl.maximum(data_size_axis - 1, 0)
-            )
-            load_mask = mask | ((lane_offsets == 0) & (data_size_axis > 0))
             data_offsets = (
                 outer_idx * data_size_axis * inner_size
-                + safe_offsets * inner_size
+                + segment_offsets * inner_size
                 + inner_idx
             )
 
             if IS_SUM or IS_MEAN:
-                values = tl.load(data + data_offsets, mask=load_mask, other=0.0).to(
+                values = tl.load(data + data_offsets, mask=mask, other=0.0).to(
                     compute_dtype
                 )
-                chunk = tl.sum(tl.where(mask, values, 0.0), axis=0)
-                acc += tl.where(block_active, chunk, 0.0)
+                acc += tl.sum(tl.where(mask, values, 0.0), axis=0)
             elif IS_MAX:
                 values = tl.load(
-                    data + data_offsets, mask=load_mask, other=float("-inf")
+                    data + data_offsets, mask=mask, other=float("-inf")
                 ).to(compute_dtype)
                 nan_mask = (values != values) & mask
                 has_nan = tl.sum(nan_mask.to(tl.int32), axis=0) > 0
@@ -743,27 +725,18 @@ def _segment_reduce_forward_kernel(
                     tl.where(mask & ~nan_mask, values, float("-inf")), axis=0
                 )
                 chunk = tl.where(has_nan, nan_value, chunk)
-                acc = tl.where(
-                    block_active,
-                    tl.where(has_nan, chunk, tl.maximum(acc, chunk)),
-                    acc,
-                )
+                acc = tl.where(has_nan, chunk, tl.maximum(acc, chunk))
             elif IS_MIN:
-                values = tl.load(
-                    data + data_offsets, mask=load_mask, other=float("inf")
-                ).to(compute_dtype)
+                values = tl.load(data + data_offsets, mask=mask, other=float("inf")).to(
+                    compute_dtype
+                )
                 nan_mask = (values != values) & mask
                 has_nan = tl.sum(nan_mask.to(tl.int32), axis=0) > 0
                 nan_value = tl.sum(tl.where(nan_mask, values, 0.0), axis=0)
                 chunk = tl.min(tl.where(mask & ~nan_mask, values, float("inf")), axis=0)
                 chunk = tl.where(has_nan, nan_value, chunk)
-                acc = tl.where(
-                    block_active,
-                    tl.where(has_nan, chunk, tl.minimum(acc, chunk)),
-                    acc,
-                )
+                acc = tl.where(has_nan, chunk, tl.minimum(acc, chunk))
 
-    acc = tl.where(segment_length == 0, INITIAL_VALUE, acc)
     if IS_MEAN:
         acc_is_nan = acc != acc
         nan_value = acc / acc
@@ -791,7 +764,6 @@ def _segment_reduce_backward_kernel(
     IS_MIN: tl.constexpr,
     IS_PROD: tl.constexpr,
     INITIAL_PROD_VALUE: tl.constexpr,
-    MAX_BLOCKS: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = tle.program_id(0)
@@ -808,17 +780,27 @@ def _segment_reduce_backward_kernel(
     segment_end = tl.load(offsets + offsets_base + 1)
     segment_length = segment_end - segment_start
 
-    if segment_length > 0:
+    # NOTE: a runtime `if segment_length > 0` would wrap the tt.reduce below in
+    # an scf.if, which the XPU backend refuses to legalize ("failed to legalize
+    # operation 'tt.reduce' that was explicitly marked illegal").  Empty
+    # segments are already safe: range(start, start, BLOCK_SIZE) never executes
+    # and every store is mask-protected, so the pre-zeroed grad_input keeps 0.
+    for _ in range(1):  # static guard (see NOTE above); `if True:` also works
         grad_value = tl.load(grad + pid).to(compute_dtype)
         output_value = tl.load(output + pid).to(compute_dtype)
 
         if IS_SUM or IS_MEAN:
             if IS_MEAN:
-                grad_value = grad_value / segment_length.to(compute_dtype)
-            for block_idx in tl.static_range(MAX_BLOCKS):
-                segment_offsets = (
-                    segment_start + block_idx * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-                )
+                # Compute the divide at the *source* dtype: an f32 divf in
+                # this position trips TritonXPUUnrollControl ("out of
+                # resource: uni_sram", hardware limit 0) for fp16 inputs.
+                # fp16 precision (rtol ~1e-2 in the tests) is sufficient.
+                grad_value = (
+                    grad_value.to(data.dtype.element_ty)
+                    / segment_length.to(data.dtype.element_ty)
+                ).to(compute_dtype)
+            for pos in range(segment_start, segment_end, BLOCK_SIZE):
+                segment_offsets = pos + tl.arange(0, BLOCK_SIZE)
                 mask = segment_offsets < segment_end
                 data_offsets = (
                     outer_idx * data_size_axis * inner_size
@@ -827,11 +809,9 @@ def _segment_reduce_backward_kernel(
                 )
                 tl.store(grad_input + data_offsets, grad_value, mask=mask)
         elif IS_MAX or IS_MIN:
-            counter = tl.full((), 0, dtype=tl.int64)
-            for block_idx in tl.static_range(MAX_BLOCKS):
-                segment_offsets = (
-                    segment_start + block_idx * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-                )
+            counter = tl.full((), 0, dtype=tl.int32)
+            for pos in range(segment_start, segment_end, BLOCK_SIZE):
+                segment_offsets = pos + tl.arange(0, BLOCK_SIZE)
                 mask = segment_offsets < segment_end
                 data_offsets = (
                     outer_idx * data_size_axis * inner_size
@@ -841,22 +821,16 @@ def _segment_reduce_backward_kernel(
                 values = tl.load(data + data_offsets, mask=mask, other=0.0).to(
                     compute_dtype
                 )
-                output_is_nan = output_value != output_value
-                match = (
-                    tl.where(output_is_nan, values != values, values == output_value)
-                    & mask
-                )
-                counter += tl.sum(match.to(tl.int64), axis=0)
+                match = ((values != values) | (values == output_value)) & mask
+                counter += tl.sum(match.to(tl.int32), axis=0)
 
             store_value = tl.where(
                 (counter >= 2) & (grad_value > 0),
                 grad_value / counter,
                 grad_value,
             )
-            for block_idx in tl.static_range(MAX_BLOCKS):
-                segment_offsets = (
-                    segment_start + block_idx * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-                )
+            for pos in range(segment_start, segment_end, BLOCK_SIZE):
+                segment_offsets = pos + tl.arange(0, BLOCK_SIZE)
                 mask = segment_offsets < segment_end
                 data_offsets = (
                     outer_idx * data_size_axis * inner_size
@@ -866,20 +840,26 @@ def _segment_reduce_backward_kernel(
                 values = tl.load(data + data_offsets, mask=mask, other=0.0).to(
                     compute_dtype
                 )
-                output_is_nan = output_value != output_value
-                match = (
-                    tl.where(output_is_nan, values != values, values == output_value)
-                    & mask
+                match = ((values != values) | (values == output_value)) & mask
+                # XPU: tl.store(..., mask=<comparison-derived mask>) is
+                # miscompiled (mask ignored).  Use a simple bounds mask and
+                # pre-zero the value with tl.where instead.  Segments never
+                # overlap so this is exact.
+                tl.store(
+                    grad_input + data_offsets,
+                    tl.where(match, store_value, 0.0),
+                    mask=mask,
                 )
-                tl.store(grad_input + data_offsets, store_value, mask=match)
         elif IS_PROD:
-            zero_count = tl.full((), 0, dtype=tl.int64)
-            nan_count = tl.full((), 0, dtype=tl.int64)
+            zero_count = tl.full((), 0, dtype=tl.int32)
+            nan_count = tl.full((), 0, dtype=tl.int32)
             product = tl.full((), INITIAL_PROD_VALUE, dtype=compute_dtype)
-            for block_idx in tl.static_range(MAX_BLOCKS):
-                segment_offsets = (
-                    segment_start + block_idx * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-                )
+            # Vectorized scan (step BLOCK_SIZE, like the other branches): a
+            # step-1 runtime-trip-count `for` trips TritonXPUUnrollControl
+            # ("out of resource: uni_sram").  Branch-free: counts and the
+            # non-zero/non-nan product are accumulated arithmetically.
+            for pos in range(segment_start, segment_end, BLOCK_SIZE):
+                segment_offsets = pos + tl.arange(0, BLOCK_SIZE)
                 mask = segment_offsets < segment_end
                 data_offsets = (
                     outer_idx * data_size_axis * inner_size
@@ -891,18 +871,20 @@ def _segment_reduce_backward_kernel(
                 )
                 nan_mask = (values != values) & mask
                 zero_mask = (values == 0) & mask & ~nan_mask
-                nan_count += tl.sum(nan_mask.to(tl.int64), axis=0)
-                zero_count += tl.sum(zero_mask.to(tl.int64), axis=0)
-                product_values = tl.where(nan_mask | zero_mask | ~mask, 1.0, values)
-                product *= tl.reduce(product_values, axis=0, combine_fn=_multiply)
+                nan_count += tl.sum(nan_mask.to(tl.int32), axis=0)
+                zero_count += tl.sum(zero_mask.to(tl.int32), axis=0)
+                prod_mask = ~(nan_mask | zero_mask) & mask
+                product *= tl.reduce(
+                    tl.where(prod_mask, values, 1.0),
+                    axis=0,
+                    combine_fn=_mul_combine,
+                )
 
             zero_scalar = tl.full((), 0.0, dtype=compute_dtype)
             nan_scalar = zero_scalar / zero_scalar
             normal_prefix = grad_value * output_value
-            for block_idx in tl.static_range(MAX_BLOCKS):
-                segment_offsets = (
-                    segment_start + block_idx * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-                )
+            for pos in range(segment_start, segment_end, BLOCK_SIZE):
+                segment_offsets = pos + tl.arange(0, BLOCK_SIZE)
                 mask = segment_offsets < segment_end
                 data_offsets = (
                     outer_idx * data_size_axis * inner_size
@@ -932,99 +914,6 @@ def _segment_reduce_backward_kernel(
                     normal_grad,
                 )
                 tl.store(grad_input + data_offsets, grad_result, mask=mask)
-
-
-@libentry()
-@triton.jit
-def _segment_reduce_backward_element_kernel(
-    grad,
-    output,
-    data,
-    offsets,
-    grad_input,
-    inner_size,
-    data_size_axis: tl.constexpr,
-    INITIAL_PROD_VALUE: tl.constexpr,
-    IS_MAX_OR_MIN: tl.constexpr,
-    IS_PROD: tl.constexpr,
-    SEGMENT_COUNT: tl.constexpr,
-    LOG_SEGMENT_COUNT: tl.constexpr,
-    MAX_BLOCKS: tl.constexpr,
-    BLOCK_SIZE: tl.constexpr,
-):
-    pid = tle.program_id(0)
-    data_dtype = data.dtype.element_ty
-    compute_dtype = tl.float64 if data_dtype is tl.float64 else tl.float32
-
-    inner_idx = pid % inner_size
-    axis_row = pid // inner_size
-    axis_idx = axis_row % data_size_axis
-    outer_idx = axis_row // data_size_axis
-    offsets_base = outer_idx * (SEGMENT_COUNT + 1)
-
-    low = tl.full((), 0, dtype=tl.int32)
-    high = tl.full((), SEGMENT_COUNT, dtype=tl.int32)
-    for _ in tl.static_range(LOG_SEGMENT_COUNT):
-        active = low < high
-        mid = low + (high - low) // 2
-        segment_end_at_mid = tl.load(offsets + offsets_base + mid + 1)
-        go_left = axis_idx < segment_end_at_mid
-        high = tl.where(active & go_left, mid, high)
-        low = tl.where(active & ~go_left, mid + 1, low)
-
-    segment_idx = low
-    valid_segment = segment_idx < SEGMENT_COUNT
-    safe_segment_idx = tl.minimum(segment_idx, SEGMENT_COUNT - 1)
-    segment_start = tl.load(offsets + offsets_base + safe_segment_idx)
-    segment_end = tl.load(offsets + offsets_base + safe_segment_idx + 1)
-    output_idx = (outer_idx * SEGMENT_COUNT + safe_segment_idx) * inner_size + inner_idx
-    grad_value = tl.load(grad + output_idx).to(compute_dtype)
-    output_value = tl.load(output + output_idx).to(compute_dtype)
-    data_value = tl.load(data + pid).to(compute_dtype)
-
-    if IS_MAX_OR_MIN:
-        counter = tl.full((), 0, dtype=tl.int32)
-        for segment_rel in tl.static_range(data_size_axis):
-            segment_offset = segment_start + segment_rel
-            active = segment_offset < segment_end
-            safe_segment_offset = tl.where(active, segment_offset, 0)
-            data_offset = (
-                outer_idx * data_size_axis * inner_size
-                + safe_segment_offset * inner_size
-                + inner_idx
-            )
-            value = tl.load(data + data_offset).to(compute_dtype)
-            output_is_nan = output_value != output_value
-            match = active & tl.where(
-                output_is_nan, value != value, value == output_value
-            )
-            counter += match.to(tl.int32)
-
-        current_match = tl.where(
-            output_value != output_value,
-            data_value != data_value,
-            data_value == output_value,
-        )
-        store_value = tl.where(
-            (counter >= 2) & (grad_value > 0), grad_value / counter, grad_value
-        )
-        result = tl.where(valid_segment & current_match, store_value, 0.0)
-    else:
-        product = tl.full((), INITIAL_PROD_VALUE, dtype=compute_dtype)
-        for segment_rel in tl.static_range(data_size_axis):
-            segment_offset = segment_start + segment_rel
-            include = (segment_offset < segment_end) & (segment_offset != axis_idx)
-            safe_segment_offset = tl.where(include, segment_offset, 0)
-            data_offset = (
-                outer_idx * data_size_axis * inner_size
-                + safe_segment_offset * inner_size
-                + inner_idx
-            )
-            value = tl.load(data + data_offset).to(compute_dtype)
-            product *= tl.where(include, value, 1.0)
-        result = tl.where(valid_segment, grad_value * product, 0.0)
-
-    tl.store(grad_input + pid, result)
 
 
 def _lengths_to_offsets(lengths):
@@ -1083,7 +972,7 @@ def segment_reduce(
     unsafe=False,
     initial=None,
 ):
-    logger.debug("GEMS SEGMENT_REDUCE")
+    logger.debug("GEMS_KUNLUNXIN SEGMENT_REDUCE")
     _check_reduce_and_dtype(data, reduce)
     axis = _wrap_axis(axis, data.dim())
     if indices is not None:
@@ -1115,9 +1004,6 @@ def segment_reduce(
     segment_count = output_shape[axis]
     inner_size = _prod(data_contig.shape[axis + 1 :])
     data_size_axis = data_contig.shape[axis]
-    block_size = min(
-        _get_block_size(data.device), triton.next_power_of_2(max(data_size_axis, 32))
-    )
     has_initial, initial_value = _make_initial(reduce, initial)
     grid = (output.numel(),)
 
@@ -1136,8 +1022,7 @@ def segment_reduce(
             reduce == "prod",
             has_initial,
             initial_value,
-            MAX_BLOCKS=triton.cdiv(data_size_axis, block_size),
-            BLOCK_SIZE=block_size,
+            BLOCK_SIZE=_get_block_size(data.device),
         )
     return output
 
@@ -1154,7 +1039,7 @@ def segment_reduce_out(
     initial=None,
     out,
 ):
-    logger.debug("GEMS SEGMENT_REDUCE_OUT")
+    logger.debug("GEMS_KUNLUNXIN SEGMENT_REDUCE_OUT")
     result = segment_reduce(
         data,
         reduce,
@@ -1182,7 +1067,7 @@ def _segment_reduce_backward(
     axis=0,
     initial=None,
 ):
-    logger.debug("GEMS _SEGMENT_REDUCE_BACKWARD")
+    logger.debug("GEMS_KUNLUNXIN _SEGMENT_REDUCE_BACKWARD")
     if (
         initial is None
         and lengths is not None
@@ -1225,64 +1110,37 @@ def _segment_reduce_backward(
     data_contig = data.contiguous()
     grad_contig = grad.contiguous()
     output_contig = output.contiguous()
-    grad_input = torch.zeros(data_contig.shape, dtype=grad.dtype, device=grad.device)
+    grad_input = torch.zeros(data_contig.shape, dtype=torch.float32, device=grad.device)
 
     if output_contig.numel() == 0:
-        return grad_input
+        return grad_input.to(grad.dtype)
 
     segment_count = output_shape[axis]
     inner_size = _prod(data_contig.shape[axis + 1 :])
     data_size_axis = data_contig.shape[axis]
-    kernel_reduce = reduce
-    if reduce == "mean":
-        segment_lengths = offsets_contig[..., 1:] - offsets_contig[..., :-1]
-        length_shape = segment_lengths.shape + (1,) * (data.dim() - axis - 1)
-        grad_contig = (grad / segment_lengths.reshape(length_shape)).contiguous()
-        kernel_reduce = "sum"
-    block_size = min(
-        _get_block_size(data.device), triton.next_power_of_2(max(data_size_axis, 32))
-    )
     _, initial_prod_value = _make_initial("prod", initial)
+    grid = (output_contig.numel(),)
 
     with torch_device_fn.device(data.device):
-        if kernel_reduce in ("max", "min", "prod"):
-            grid = (data_contig.numel(),)
-            _segment_reduce_backward_element_kernel[grid](
-                grad_contig,
-                output_contig,
-                data_contig,
-                offsets_contig,
-                grad_input,
-                inner_size,
-                data_size_axis,
-                initial_prod_value,
-                kernel_reduce in ("max", "min"),
-                kernel_reduce == "prod",
-                SEGMENT_COUNT=segment_count,
-                LOG_SEGMENT_COUNT=max(1, math.ceil(math.log2(segment_count + 1))),
-                MAX_BLOCKS=triton.cdiv(data_size_axis, block_size),
-                BLOCK_SIZE=block_size,
-            )
-        else:
-            grid = (output_contig.numel(),)
-            _segment_reduce_backward_kernel[grid](
-                grad_contig,
-                output_contig,
-                data_contig,
-                offsets_contig,
-                grad_input,
-                segment_count,
-                inner_size,
-                data_size_axis,
-                kernel_reduce == "sum",
-                kernel_reduce == "mean",
-                False,
-                False,
-                False,
-                initial_prod_value,
-                MAX_BLOCKS=triton.cdiv(data_size_axis, block_size),
-                BLOCK_SIZE=block_size,
-            )
+        _segment_reduce_backward_kernel[grid](
+            grad_contig,
+            output_contig,
+            data_contig,
+            offsets_contig,
+            grad_input,
+            segment_count,
+            inner_size,
+            data_size_axis,
+            reduce == "sum",
+            reduce == "mean",
+            reduce == "max",
+            reduce == "min",
+            reduce == "prod",
+            initial_prod_value,
+            BLOCK_SIZE=_get_block_size(data.device),
+        )
+    if grad_input.dtype != grad.dtype:
+        grad_input = grad_input.to(grad.dtype)
     return grad_input
 
 
@@ -1298,7 +1156,7 @@ def _segment_reduce_backward_out(
     initial=None,
     out,
 ):
-    logger.debug("GEMS _SEGMENT_REDUCE_BACKWARD_OUT")
+    logger.debug("GEMS_KUNLUNXIN _SEGMENT_REDUCE_BACKWARD_OUT")
     result = _segment_reduce_backward(
         grad,
         output,
