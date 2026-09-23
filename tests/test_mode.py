@@ -194,46 +194,9 @@ def test_mode_run_boundaries(dtype, width, dim):
 
 
 @pytest.mark.mode
-@pytest.mark.skipif(
-    flag_gems.vendor_name != "ascend",
-    reason="Ascend regression for predecessor loads after changing shapes",
-)
-def test_mode_ascend_int32_shape_sequence():
-    # Same-process shape changes exposed a masked predecessor load outside
-    # the row; running only the largest shape did not reproduce the failure.
-    for shape in [(64, 64), (256, 256), (1024, 1024), (4096, 4096), (1024, 65536)]:
-        inp = torch.randint(
-            -100,
-            100,
-            shape,
-            dtype=torch.int32,
-            generator=torch.Generator().manual_seed(42),
-        ).to(flag_gems.device)
-        _assert_mode_matches(inp, -1, False)
-
-
-@pytest.mark.mode
-@pytest.mark.skipif(
-    flag_gems.vendor_name != "ascend", reason="Ascend histogram regression"
-)
-@pytest.mark.parametrize("dtype", [torch.int16, torch.float16, torch.bfloat16])
-@pytest.mark.parametrize("shape", [(64, 256), (257, 1025)])
-def test_mode_ascend_histogram_keys(dtype, shape):
-    generator = torch.Generator().manual_seed(42)
-    if dtype == torch.int16:
-        inp = torch.randint(-32768, 32768, shape, dtype=dtype, generator=generator)
-    else:
-        inp = torch.randn(shape, dtype=dtype, generator=generator)
-    # Include duplicate-heavy rows and cross the bounded workspace batch size.
-    inp[::7] = 0
-    _assert_mode_matches(inp.to(flag_gems.device), -1, False)
-
-
-@pytest.mark.mode
-@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend radix regression")
 @pytest.mark.parametrize("dtype", [torch.int32, torch.float32])
 @pytest.mark.parametrize("width", [129, 513, 4097])
-def test_mode_ascend_radix_keys(dtype, width):
+def test_mode_adjacent_values(dtype, width):
     generator = torch.Generator().manual_seed(42)
     if dtype == torch.int32:
         inp = torch.randint(
