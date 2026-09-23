@@ -5,7 +5,7 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-PAD_SEQUENCE_DTYPE = utils.FLOAT_DTYPES
+PAD_SEQUENCE_DTYPE = [] + utils.FLOAT_DTYPES
 if flag_gems.runtime.device.support_fp64:
     PAD_SEQUENCE_DTYPE += [torch.float64]
 
