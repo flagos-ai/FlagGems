@@ -227,3 +227,27 @@ def test_mode_ascend_histogram_keys(dtype, shape):
     # Include duplicate-heavy rows and cross the bounded workspace batch size.
     inp[::7] = 0
     _assert_mode_matches(inp.to(flag_gems.device), -1, False)
+
+
+@pytest.mark.mode
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend radix regression")
+@pytest.mark.parametrize("dtype", [torch.int32, torch.float32])
+@pytest.mark.parametrize("width", [129, 513, 4097])
+def test_mode_ascend_radix_keys(dtype, width):
+    generator = torch.Generator().manual_seed(42)
+    if dtype == torch.int32:
+        inp = torch.randint(
+            -(2**31), 2**31, (7, width), dtype=dtype, generator=generator
+        )
+        low, high = 2**24, 2**24 + 1
+    else:
+        inp = torch.randn((7, width), generator=generator)
+        low = 1.0
+        high = torch.nextafter(torch.tensor(low), torch.tensor(float("inf"))).item()
+    # Adjacent keys must remain distinct, including integers beyond FP32 precision.
+    inp[0, ::2] = low
+    inp[0, 1::2] = high
+    inp[1] = high
+    inp[2, ::2] = 0
+    inp[2, 1::2] = -0.0
+    _assert_mode_matches(inp.to(flag_gems.device), -1, False)

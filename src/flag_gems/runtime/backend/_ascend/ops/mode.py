@@ -118,9 +118,10 @@ def _mode_sorted(
             best_count = tl.maximum(best_count, most)
             carry = tl.max(tl.where(p < N, starts, 0), 0)
         value = tl.load(X + row * N + best_pos)
-        index = tl.load(IX + row * N + best_pos)
         tl.store(V + row, value)
-        tl.store(out_indices + row, index)
+        if IX is not None:
+            index = tl.load(IX + row * N + best_pos)
+            tl.store(out_indices + row, index)
 
 
 @libentry()
@@ -206,6 +207,97 @@ def _mode_find_indices_blocked(
         tl.store(IPtr + row, chosen)
 
 
+@libentry()
+@triton.jit
+def _mode_radix_histogram(
+    X,
+    H,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    NT: tl.constexpr,
+    SHIFT: tl.constexpr,
+    R: tl.constexpr,
+    B: tl.constexpr,
+):
+    total = M * NT
+    per = tl.cdiv(total, tl.num_programs(0))
+    for tile in range(
+        tl.program_id(0) * per, tl.minimum((tl.program_id(0) + 1) * per, total)
+    ):
+        row = tile // NT
+        col = (tile - row * NT) * B + tl.arange(0, B)
+        x = tl.load(X + row * N + col, col < N, other=0)
+        key = ((convert_to_uint_preverse_order(x, False) >> SHIFT) & (R - 1)).to(
+            tl.int32
+        )
+        bins = tl.arange(0, R)
+        hits = (key[None, :] == bins[:, None]) & (col[None, :] < N)
+        counts = tl.sum(hits.to(tl.int32), 1)
+        tl.store(H + row * R * NT + bins * NT + (tile - row * NT), counts)
+
+
+@libentry()
+@triton.jit
+def _mode_radix_prefix(H, P, M: tl.constexpr, S: tl.constexpr, B: tl.constexpr):
+    per = tl.cdiv(M, tl.num_programs(0))
+    c = tl.arange(0, B)
+    for row in range(
+        tl.program_id(0) * per, tl.minimum((tl.program_id(0) + 1) * per, M)
+    ):
+        base = 0
+        for block in range(tl.cdiv(S, B)):
+            pos = block * B + c
+            h = tl.load(H + row * S + pos, pos < S, other=0)
+            h2 = tl.trans(tl.reshape(h, (B // 32, 32)))
+            q = tl.cumsum(h2, 0)
+            totals = tl.sum(h2, 0)
+            carry = tl.cumsum(totals, 0) - totals
+            p = tl.reshape(tl.trans(q + carry[None, :]), (B,)) - h + base
+            tl.store(P + row * S + pos, p, pos < S)
+            base += tl.sum(h, 0)
+
+
+@libentry()
+@triton.jit
+def _mode_radix_scatter(
+    X,
+    Y,
+    P,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    NT: tl.constexpr,
+    SHIFT: tl.constexpr,
+    R: tl.constexpr,
+    B: tl.constexpr,
+):
+    total = M * NT
+    per = tl.cdiv(total, tl.num_programs(0))
+    for tile in range(
+        tl.program_id(0) * per, tl.minimum((tl.program_id(0) + 1) * per, total)
+    ):
+        row = tile // NT
+        col = (tile - row * NT) * B + tl.arange(0, B)
+        x = tl.load(X + row * N + col, col < N, other=0)
+        key = ((convert_to_uint_preverse_order(x, False) >> SHIFT) & (R - 1)).to(
+            tl.int32
+        )
+        bins = tl.arange(0, R)
+        hits = (key[None, :] == bins[:, None]) & (col[None, :] < N)
+        # Scan the folded, non-innermost axis to avoid a scalar prefix loop.
+        folded = tl.trans(tl.reshape(hits.to(tl.int32), (R, B // 32, 32)), (2, 0, 1))
+        sums = tl.sum(folded, 0)
+        carry = tl.cumsum(sums, 1) - sums
+        ranks = (
+            tl.reshape(
+                tl.trans(tl.cumsum(folded, 0) + carry[None, :, :], (1, 2, 0)), (R, B)
+            )
+            - 1
+        )
+        offsets = tl.load(P + row * R * NT + bins * NT + (tile - row * NT))
+        pos = tl.sum(tl.where(hits, ranks + offsets[:, None], 0), 0)
+        tl.store(Y + row * N + pos, x, col < N)
+
+
 def mode(inp, dim=-1, keepdim=False):
     logger.debug("GEMS_ASCEND MODE")
     assert -inp.ndim <= dim < inp.ndim, "Invalid dim"
@@ -248,6 +340,35 @@ def mode(inp, dim=-1, keepdim=False):
                     _mode_find_indices_blocked[(min(batch_rows, CORE_NUM),)](
                         batch_x, batch_values, batch_indices, batch_rows, n, 512
                     )
+            elif inp.dtype in (torch.int32, torch.float32) and n < (1 << 30):
+                # Stable radix passes need only values; recover indices once below.
+                block = 512
+                bins = 16
+                tiles = triton.cdiv(n, block)
+                histogram = torch.empty(
+                    (rows, bins, tiles), device=x.device, dtype=torch.int32
+                )
+                prefix = torch.empty_like(histogram)
+                source = x
+                target = torch.empty_like(x)
+                scratch = torch.empty_like(x)
+                for shift in range(0, 32, 4):
+                    _mode_radix_histogram[(min(rows * tiles, CORE_NUM),)](
+                        source, histogram, rows, n, tiles, shift, bins, block
+                    )
+                    _mode_radix_prefix[(min(rows, CORE_NUM),)](
+                        histogram, prefix, rows, bins * tiles, 1024
+                    )
+                    _mode_radix_scatter[(min(rows * tiles, CORE_NUM),)](
+                        source, target, prefix, rows, n, tiles, shift, bins, block
+                    )
+                    source, target = target, scratch if shift == 0 else source
+                _mode_sorted[(min(rows, CORE_NUM),)](
+                    source, None, values, None, rows, n, 512
+                )
+                _mode_find_indices_blocked[(min(rows, CORE_NUM),)](
+                    x, values, indices, rows, n, 512
+                )
             else:
                 sorted_values, sorted_indices = _mode_sort(x, dim=-1)
                 _mode_sorted[(min(rows, CORE_NUM),)](
