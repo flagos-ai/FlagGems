@@ -192,6 +192,22 @@ def _tle_min_geom(M, N, itemsize, acc_itemsize):
             xblock = 512 if M > 64 else 256
         else:
             xblock = min(512, max(128, _npo2(-(-M // 8))))
+        # 2026-09-23 两条实测修正（同窗口 ABBA n=5，正控自检通过；见
+        # evidence/all-dim-backend-20260922/launch-cost/geom-grid-sweep-20260923/ §8）：
+        # ① **tile 不得比 M 还宽** —— M=64 时旧值给 256，等于拿 4 倍于数据的 tile 空转；
+        #    贴合成 64 后 (64,64) f16 **9388 → 6321 ns（1.485×）**，是这三格级收益的主项。
+        #    （§3.18「几何逐字无差」不矛盾：那条比的是 256 vs 512，**两者都远大于 M**。）
+        # ② 大 `row_bytes` 且 **M ≥ 4096** 时 **128 优于 512**：`(4096,4096)` f16 1.082× / f32 1.138×。
+        #    ⚠️ 「段长越长越好」是**错的** —— 4KB/8KB 段分别掉到 0.69× / 0.35×。
+        #    ⚠️ **`M >= 4096` 这个限定是实测加上的**：同一改动在 **M=2048** 上
+        #    `(2048,4096)` / `(2048,2048)` × {f16,f32} **四格全部负收益**（0.897–0.931×，
+        #    方向一致 ⇒ 非噪声；基线用**旧公式值 256** 算的，不是已被本改动改过的当前值）
+        #    ⇒ ② 是**单形状的经验最优**，只在 M≥4096 成立，别推广。
+        #    ① 则相反，有原理性理由（tile 不得比 M 宽，与 M 无关地成立）。
+        #    证据见 `evidence/all-dim-backend-20260922/launch-cost/geom-grid-sweep-20260923/` §8/§9。
+        xblock = min(xblock, _npo2(M))
+        if row_bytes > 2048 and M >= 4096:
+            xblock = min(xblock, 128)
         per_buf = 131072
         # Charge whichever of the input tile and the 2-D accumulator is wider: the
         # accumulator scales with the element count, so an int8 input carrying an
@@ -479,7 +495,12 @@ def all_global_s1(
     pid = ext.program_id(0)
     rows = pid * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     inb = inp + rows * C
-    midb = mid + rows
+    # Stride the partials by 16 words (64 B) so no two cores land in the same cache
+    # line: with the plain `mid + rows`, 64 cores each write a 4-byte word into one
+    # 64 B line and KL3 charges a cross-cluster contention penalty (measured ~5 us
+    # per kernel: 18.2 -> 13.1 us at the near-empty point, 27.3 -> 22.3 us at
+    # C=2048 -- the same trap the row kernel dodges by staging its writeback in SM).
+    midb = mid + rows * 16
     row_mask = rows < P
     acc = tl.full([BLOCK_M, BLOCK_N], float("inf"), ACC)
     for off in range(0, C, BLOCK_N):
@@ -501,9 +522,53 @@ def all_global_s2(mid, out, P, BLOCK: tl.constexpr):
     """
     offs = tl.arange(0, BLOCK)
     mask = offs < P
-    a = tl.load(mid + offs, mask=mask, other=1)
+    a = tl.load(mid + offs * 16, mask=mask, other=1)  # stride matches all_global_s1
     r = tl.reduce(a, axis=0, combine_fn=_min2)
     tl.store(out, r == 1)
+
+
+@libentry()
+@triton.jit
+def all_global_flat_s1(inp, mid, CHUNK, BLOCK: tl.constexpr, ACC: tl.constexpr):
+    """一维**连续** stage-1（对比 `all_global_s1` 的 2-D 跨行 load）。
+
+    调用方保证 `grid*CHUNK == N` 且 `CHUNK % BLOCK == 0` ⇒ **无需掩码**
+    （原 2-D 路径的 `mask = row_mask and (cols < C)` 在实际派发下恒为真，
+    但编译器不知道，白付掩码 + `other=` 的代价）。
+
+    ⚠️ `BLOCK` 必须按 dtype 分档，**不能一刀切**：实测 1M 上
+    `BLOCK=16384` 对 f16/bf16 是 1.20–1.26×，但 f32 的 `[16384]` fp32 累加器 = 64 KB
+    撑不住、反而 0.79×；f32 的甜点是 8192。32768 两档都更差。见
+    `evidence/all-dim-backend-20260922/launch-cost/dimnone-flat-20260923/` §7。
+    """
+    pid = ext.program_id(0)
+    base = pid * CHUNK
+    offs0 = tl.arange(0, BLOCK)
+    acc = tl.full([BLOCK], float("inf"), ACC)
+    for off in range(0, CHUNK, BLOCK):
+        v = tl.load(inp + base + off + offs0)
+        acc = tl.minimum(acc, tl.abs(v).to(ACC))
+    r = tl.min(acc, axis=0)
+    # partials 步距 16 word —— 与 all_global_s1 同口径（64 核不挤同一条 64B 行）
+    tl.store(mid + pid * 16, (r != 0).to(tl.int32))
+
+
+_FLAT_GRID = 8
+
+
+def _flat_plan(n, itemsize):
+    """一维连续 stage-1 的 `(grid, BLOCK)`；**不适用时返回 None**（退回原 2-D 路径）。
+
+    只做最保守的准入：`grid | n` 且 `BLOCK | (n // grid)`，两者都满足才免掩码。
+    不满足就走原路径 —— 不为它加掩码分支（那会把收益不明地混进来）。
+    """
+    if n % _FLAT_GRID:
+        return None
+    chunk = n // _FLAT_GRID
+    block = 16384 if itemsize <= 2 else 8192
+    if chunk % block:
+        return None
+    return _FLAT_GRID, block
 
 
 @libentry()
@@ -569,6 +634,25 @@ def _global_all(inp):
             )
         return out
 
+    plan = _flat_plan(n, inp.element_size())
+    if plan is not None:
+        grid, block = plan
+        acc = _acc_dtype(inp.dtype)
+        mid = torch.empty((grid * 16,), dtype=torch.int32, device=inp.device)
+        with torch_device_fn.device(inp.device):
+            all_global_flat_s1[(grid, 1)](
+                inp.reshape(-1),
+                mid,
+                n // grid,
+                BLOCK=block,
+                ACC=acc,
+                buffer_size_limit=2048,
+            )
+            all_global_s2[(1, 1)](
+                mid, out, grid, triton.next_power_of_2(grid), buffer_size_limit=2048
+            )
+        return out
+
     p = _pick_chunks(n)
     c = n // p
     acc = _acc_dtype(inp.dtype)
@@ -577,7 +661,9 @@ def _global_all(inp):
     # (18.0 vs 18.4us) while stage-2 drops from 9.8us to 5.4us, purely because the
     # reduce is over an integer type. Both stages carry the same predicate as
     # before, so the result is unchanged.
-    mid = torch.empty((p,), dtype=torch.int32, device=inp.device)
+    # 16x: the partials are strided by 16 words so no two cores share a cache line
+    # on the store (see all_global_s1).
+    mid = torch.empty((p * 16,), dtype=torch.int32, device=inp.device)
     with torch_device_fn.device(inp.device):
         all_global_s1[(triton.cdiv(p, BLOCK_M_DEFAULT), 1)](
             inp.reshape(p, c), mid, p, c, ACC=acc, buffer_size_limit=2048
