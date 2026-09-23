@@ -306,6 +306,7 @@ def rnn_relu_kernel_forward(
             input_size,
             hidden_size,
             batch_first,
+            isCloseCoreTiling=True,
         )
 
     return output, hidden
