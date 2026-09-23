@@ -276,6 +276,11 @@ register_flagtune_op(
     description="MXFP4 fused Marlin MoE GEMM with SiLU",
 )
 register_flagtune_op(
+    "silu_and_mul_with_clamp",
+    default=False,
+    description="fused SiLU, multiplication and clamp (forward and backward)",
+)
+register_flagtune_op(
     "mul",
     default=False,
     description="elementwise multiplication",

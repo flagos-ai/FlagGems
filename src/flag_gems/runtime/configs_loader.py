@@ -679,6 +679,30 @@ class TunedConfigLoader(object):
                 for w in ranges["w"]
             ]
 
+        if op_name in (
+            "silu_and_mul_with_clamp_linear",
+            "silu_and_mul_with_clamp_2d",
+            "silu_and_mul_with_clamp_nd",
+            "silu_and_mul_with_clamp_backward_linear",
+            "silu_and_mul_with_clamp_backward_2d",
+            "silu_and_mul_with_clamp_backward_nd",
+        ):
+            return [
+                triton.Config(
+                    {
+                        "BLOCK_SIZE": block,
+                        **({"UNMASKED": unmasked} if "UNMASKED" in ranges else {}),
+                    },
+                    num_stages=stage,
+                    num_warps=warps,
+                    pre_hook=pre_hook,
+                )
+                for block in ranges["BLOCK_SIZE"]
+                for stage in ranges["s"]
+                for warps in ranges["w"]
+                for unmasked in ranges.get("UNMASKED", [False])
+            ]
+
         if op_name in ("mul", "mul_broadcast_2d"):
             return [
                 triton.Config(
