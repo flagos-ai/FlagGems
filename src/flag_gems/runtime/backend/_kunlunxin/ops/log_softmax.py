@@ -26,26 +26,122 @@ logger = logging.getLogger(__name__)
 
 
 @triton.jit
+def _strided_copy_kernel(
+    dst,
+    src,
+    N,
+    D0,
+    D1,
+    D2,
+    D3,
+    D4,
+    D5,
+    D6,
+    D7,
+    SS0,
+    SS1,
+    SS2,
+    SS3,
+    SS4,
+    SS5,
+    SS6,
+    SS7,
+    DS0,
+    DS1,
+    DS2,
+    DS3,
+    DS4,
+    DS5,
+    DS6,
+    DS7,
+    BLOCK: tl.constexpr,
+):
+    # Elementwise same-shape strided copy: dst[i] = src[i] over the logical
+    # index space (dims D0..D7 outermost-first, front-padded with 1s). No
+    # native copy_/copy primitives: every lane's source/destination offset is
+    # computed from the two stride vectors.
+    pid = tl.program_id(axis=0)
+    offs = pid.to(tl.int64) * BLOCK + tl.arange(0, BLOCK).to(tl.int64)
+    mask = offs < N
+    idx = offs
+    i7 = idx % D7
+    idx = idx // D7
+    i6 = idx % D6
+    idx = idx // D6
+    i5 = idx % D5
+    idx = idx // D5
+    i4 = idx % D4
+    idx = idx // D4
+    i3 = idx % D3
+    idx = idx // D3
+    i2 = idx % D2
+    idx = idx // D2
+    i1 = idx % D1
+    i0 = idx // D1
+    s_off = (
+        i0 * SS0
+        + i1 * SS1
+        + i2 * SS2
+        + i3 * SS3
+        + i4 * SS4
+        + i5 * SS5
+        + i6 * SS6
+        + i7 * SS7
+    )
+    d_off = (
+        i0 * DS0
+        + i1 * DS1
+        + i2 * DS2
+        + i3 * DS3
+        + i4 * DS4
+        + i5 * DS5
+        + i6 * DS6
+        + i7 * DS7
+    )
+    vals = tl.load(src + s_off, mask=mask)
+    tl.store(dst + d_off, vals, mask=mask)
+
+
+def _strided_copy(dst, src):
+    # Same-shape strided copy without native copy_/copy: the gems copy_
+    # override is wedged out of this path (its tle kernel is unreliable on
+    # strided/transposed operands), so all offset math happens in the kernel
+    # from the two stride vectors.
+    assert tuple(dst.shape) == tuple(src.shape), "shape mismatch"
+    n = dst.numel()
+    if n:
+        dims = list(src.shape)
+        ss = list(src.stride())
+        ds = list(dst.stride())
+        pad = 8 - len(dims)
+        assert pad >= 0, "strided copy supports up to 8 dims"
+        dims = [1] * pad + dims
+        ss = [0] * pad + ss
+        ds = [0] * pad + ds
+        BLOCK = 1024
+        grid = (triton.cdiv(n, BLOCK),)
+        with torch_device_fn.device(dst.device):
+            _strided_copy_kernel[grid](
+                dst,
+                src,
+                n,
+                *dims,
+                *ss,
+                *ds,
+                BLOCK=BLOCK,
+            )
+    return dst
+
+
+@triton.jit
 def prev_multiple_of(a, b):
     # the largest x<a that x%b ==0
     return tl.cdiv(a, b) * b - b
 
 
-# N above which the single-load 2D multirow tile no longer fits sram; fall back
-# to the per-row online kernel.
-MULTIROW_MAX_N = 8192
-
-
 def _prev_pow2(x):
     x = max(1, int(x))
     return 1 << (x.bit_length() - 1)
-
-
-def _multirow_tile_m(N):
-    # Pack several rows per program so the [TILE_M, N] tile is one contiguous
-    # block DMA. TILE_M is capped at 16: with masked tail rows a larger TILE_M
-    # (e.g. 32) hits an XPU codegen bug that corrupts valid rows.
-    return min(16, _prev_pow2(max(1, MULTIROW_MAX_N // N)))
 
 
 # ------------------------  forward -------------------------------
@@ -892,122 +988,6 @@ def log_softmax_backward_kernel_multirow_tail(
     tl.store(in_grad_ptr + offsets, ig, mask=mask)
 
 
-# large-N staged split reduction: the per-row two-pass kernel serializes the
-# whole row in one program (grid=(M,)) and re-reads out_grad, which on XPU only
-# reaches ~200-330 GB/s for 16384-wide rows. Replace it with the same 2D split
-# pattern as any_row_stage1/2 (fully parallel over the N axis):
-#   stage1: grid (M, CHUNKS) reduce each contiguous 8192-chunk of out_grad to a
-#           fp32 partial[m, c];
-#   stage2: grid (M,) reduce the per-row partials into scale[M];
-#   stage3: grid (M, CHUNKS) flat in_grad = out_grad - exp(out) * scale[row].
-# Every block reduce stays <= 8192 lanes (the XPU-safe tl.sum bound), so no
-# wide 16384 register accumulator is ever materialized.
-BWD_STAGED_TILE_N = 8192
-
-
-@libentry()
-@triton.jit
-def log_softmax_backward_kernel_stage1(
-    out_grad_ptr,
-    partial_ptr,
-    N,
-    N_CHUNKS,
-    BLOCK_N: tl.constexpr,
-):
-    pid_m = ext.program_id(0)
-    pid_c = ext.program_id(1)
-    offset = pid_c * BLOCK_N + tl.arange(0, BLOCK_N)
-    mask = offset < N
-    og = tl.load(out_grad_ptr + pid_m * N + offset, mask=mask, other=0.0).to(tl.float32)
-    tl.store(partial_ptr + pid_m * N_CHUNKS + pid_c, tl.sum(og, 0))
-
-
-@libentry()
-@triton.jit
-def log_softmax_backward_kernel_stage2(
-    partial_ptr,
-    scale_ptr,
-    N_CHUNKS,
-    BLOCK_MID: tl.constexpr,
-):
-    pid_m = ext.program_id(0)
-    offset = tl.arange(0, BLOCK_MID)
-    p = tl.load(
-        partial_ptr + pid_m * N_CHUNKS + offset,
-        mask=offset < N_CHUNKS,
-        other=0.0,
-    )
-    tl.store(scale_ptr + pid_m, tl.sum(p, 0))
-
-
-@libentry()
-@triton.jit
-def log_softmax_backward_kernel_stage3(
-    out_ptr,
-    out_grad_ptr,
-    in_grad_ptr,
-    scale_ptr,
-    N,
-    BLOCK_N: tl.constexpr,
-):
-    pid_m = ext.program_id(0)
-    pid_c = ext.program_id(1)
-    offset = pid_c * BLOCK_N + tl.arange(0, BLOCK_N)
-    mask = offset < N
-    scale = tl.load(scale_ptr + pid_m).to(tl.float32)
-    og = tl.load(out_grad_ptr + pid_m * N + offset, mask=mask, other=0.0).to(tl.float32)
-    o = tl.load(out_ptr + pid_m * N + offset, mask=mask, other=0.0).to(tl.float32)
-    ig = og - tl.exp(o) * scale
-    tl.store(in_grad_ptr + pid_m * N + offset, ig, mask=mask)
-
-
-def _backward_launch_staged(output, grad_output, in_grad, M, N):
-    n_chunks = triton.cdiv(N, BWD_STAGED_TILE_N)
-    scale = torch.empty((M,), dtype=torch.float32, device=grad_output.device)
-    if n_chunks == 1:
-        # single 8192 chunk: stage1 writes the per-row scale directly
-        log_softmax_backward_kernel_stage1[(M, 1)](
-            grad_output,
-            scale,
-            N,
-            1,
-            BLOCK_N=BWD_STAGED_TILE_N,
-            buffer_size_limit=2048,
-            num_warps=8,
-        )
-    else:
-        partial = torch.empty(
-            (M, n_chunks), dtype=torch.float32, device=grad_output.device
-        )
-        log_softmax_backward_kernel_stage1[(M, n_chunks)](
-            grad_output,
-            partial,
-            N,
-            n_chunks,
-            BLOCK_N=BWD_STAGED_TILE_N,
-            buffer_size_limit=2048,
-            num_warps=8,
-        )
-        log_softmax_backward_kernel_stage2[(M,)](
-            partial,
-            scale,
-            n_chunks,
-            BLOCK_MID=triton.next_power_of_2(n_chunks),
-            buffer_size_limit=2048,
-            num_warps=8,
-        )
-    log_softmax_backward_kernel_stage3[(M, n_chunks)](
-        output,
-        grad_output,
-        in_grad,
-        scale,
-        N,
-        BLOCK_N=BWD_STAGED_TILE_N,
-        buffer_size_limit=2048,
-        num_warps=8,
-    )
-
-
 def _forward_launch(out, inp, M, N, K=1):
     if K == 1:
         if N <= FWD_MULTIROW_MAX_N:
@@ -1238,36 +1218,32 @@ def log_softmax_out(self, dim, half_to_float=False, *, out):
         # scratch and mirror it back through a transposed view of out. The
         # K > 1 per-row kernel (contiguous load + stride-K scatter store) is
         # 18-43x slower on XPU than transpose + fast path + transposed copy.
-        # Both transposes go through aten._copy_from (the native strided copy)
-        # on purpose: `Tensor.contiguous()` is a gems-registered op, so inside
-        # `flag_gems.use_gems()` it becomes a gems strided pointwise copy that
-        # costs 2444 ms on (100, 65536, 100) fp16 versus 1.5 ms for the native
-        # copy (probed on XPU 7, 2026-08-29).
+        # The transposes use the dedicated strided-copy kernel: a generic
+        # `contiguous()` copy via the gems pointwise path costs 2444 ms on
+        # (100, 65536, 100) fp16 (probed on XPU 7, 2026-08-29), and native
+        # `_copy_from` is not used for this backend.
         inp_t = torch.empty((M * K, N), dtype=inp.dtype, device=inp.device)
-        torch.ops.aten._copy_from(
-            inp.view(M, N, K).transpose(1, 2), inp_t.view(M, K, N), False
-        )
+        _strided_copy(inp_t.view(M, K, N), inp.view(M, N, K).transpose(1, 2))
         tmp = torch.empty((M * K, N), dtype=dtype, device=inp.device)
         with torch_device_fn.device(inp.device):
             _forward_launch(tmp, inp_t, M * K, N)
         src = tmp.view(M, K, N).transpose(1, 2)
         if out.is_contiguous():
-            torch.ops.aten._copy_from(src, out.view(M, N, K), False)
+            _strided_copy(out.view(M, N, K), src)
         else:
             scratch = torch.empty((M, N, K), dtype=dtype, device=out.device)
-            torch.ops.aten._copy_from(src, scratch, False)
-            torch.ops.aten._copy_from(scratch.view(self.shape), out, False)
+            _strided_copy(scratch, src)
+            _strided_copy(out, scratch.view(self.shape))
         return out
     if not out.is_contiguous():
         # The launch kernels write flat (M, N, K)-contiguous offsets; a
         # strided out (e.g. a slice view) would be corrupted. Compute into a
-        # contiguous scratch, then mirror the result with the native strided
-        # copy (gems never overrides _copy_from), instead of the registered
-        # copy_ override.
+        # contiguous scratch, then mirror the result with the strided-copy
+        # kernel instead of the registered copy_ override.
         tmp = torch.empty(self.shape, dtype=dtype, device=self.device)
         with torch_device_fn.device(inp.device):
             _forward_launch(tmp, inp, M, N, K)
-        torch.ops.aten._copy_from(tmp, out, False)
+        _strided_copy(out, tmp)
         return out
     with torch_device_fn.device(inp.device):
         _forward_launch(out, inp, M, N, K)
@@ -1276,8 +1252,37 @@ def log_softmax_out(self, dim, half_to_float=False, *, out):
 
 def log_softmax_backward_out(grad_output, output, dim, input_dtype, *, out):
     logger.debug("GEMS_KUNLUNXIN LOG_SOFTMAX_BACKWARD_OUT")
-    res = log_softmax_backward(grad_output, output, dim, input_dtype)
-    if tuple(out.shape) != tuple(res.shape):
-        out.resize_(res.shape)
-    out.copy_(res)
+
+    assert dim >= -output.ndim and dim < output.ndim, "Invalid dim"
+    dim = dim % output.ndim
+    M = 1
+    N = output.shape[dim]
+    for i in range(dim):
+        M *= output.shape[i]
+
+    if tuple(out.shape) != tuple(output.shape):
+        out.resize_(output.shape)
+    if out.dtype != input_dtype:
+        raise RuntimeError(
+            f"_log_softmax_backward_data.out: expected out dtype {input_dtype}, got {out.dtype}"
+        )
+
+    K = output.numel() // M // N
+    if K == 1 and out.is_contiguous():
+        # Fast path: reduction over the last (contiguous) dim, the common
+        # benchmark/tests case. Write directly into `out` so the .out variant
+        # pays the same single-kernel cost as the functional variant (no extra
+        # copy). The per-row kernels pre-offset the base pointers by pid*N and
+        # store stride-1, so a contiguous [M, N] output is required here.
+        grad_output_c = grad_output.contiguous()
+        output_c = output.contiguous()
+        with torch_device_fn.device(out.device):
+            _backward_launch(output_c, grad_output_c, out, M, N)
+        return out
+
+    # Interior dim (K>1) or non-contiguous out: reuse the functional variant and
+    # write back via the strided-copy kernel (gems overrides copy_, so a plain
+    # copy_ here would recurse into the override).
+    in_grad = log_softmax_backward(grad_output, output, dim, input_dtype)
+    _strided_copy(out, in_grad)
     return out

@@ -1,16 +1,4 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+import torch
 import triton
 import triton.language as tl
 
@@ -24,6 +12,7 @@ def _index_copy_rank1(
     index,
     src,
     n_elements,
+    inp_size0,
     inp_stride0,
     src_stride0,
     BLOCK: tl.constexpr,
@@ -31,6 +20,10 @@ def _index_copy_rank1(
     offsets = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     mask = offsets < n_elements
     indices = tl.load(index + offsets, mask=mask, other=0)
+    tl.device_assert(
+        (~mask) | ((indices >= 0) & (indices < inp_size0)),
+        "index value out of bounds: 0 <= index < self.size(dim)",
+    )
     src_values = tl.load(src + offsets * src_stride0, mask=mask)
     tl.store(inp + indices * inp_stride0, src_values, mask=mask)
 
@@ -43,6 +36,7 @@ def _index_copy_rank2(
     src,
     n_elements,
     dim,
+    inp_size_dim,
     inp_shape0,
     inp_shape1,
     inp_stride0,
@@ -58,6 +52,10 @@ def _index_copy_rank2(
     coord1 = offsets % src_shape1
     index_coord = tl.where(dim == 0, coord0, coord1)
     indices = tl.load(index + index_coord, mask=mask, other=0)
+    tl.device_assert(
+        (~mask) | ((indices >= 0) & (indices < inp_size_dim)),
+        "index value out of bounds: 0 <= index < self.size(dim)",
+    )
     out_coord0 = tl.where(dim == 0, indices, coord0)
     out_coord1 = tl.where(dim == 1, indices, coord1)
     src_offset = coord0 * src_stride0 + coord1 * src_stride1
@@ -68,12 +66,28 @@ def _index_copy_rank2(
 
 @libentry()
 @triton.jit
+def _clone_contig(inp, out, n_elements, BLOCK: tl.constexpr):
+    """Bounded-tile flat block-DMA copy for contiguous same-dtype tensors.
+
+    Backs the out-of-place ``index_copy`` (``torch.index_copy``) clone step:
+    the original input must be copied to a fresh output before indexing, and a
+    fixed bounded tile with a full grid keeps every access a contiguous block
+    DMA (same pattern as ``_copy_flat_kernel`` in ``ops/copy.py``).
+    """
+    offsets = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    mask = offsets < n_elements
+    tl.store(out + offsets, tl.load(inp + offsets, mask=mask), mask=mask)
+
+
+@libentry()
+@triton.jit
 def _index_copy_rank3(
     inp,
     index,
     src,
     n_elements,
     dim,
+    inp_size_dim,
     inp_shape0,
     inp_shape1,
     inp_shape2,
@@ -95,6 +109,10 @@ def _index_copy_rank3(
     coord2 = remainder % src_shape2
     index_coord = tl.where(dim == 0, coord0, tl.where(dim == 1, coord1, coord2))
     indices = tl.load(index + index_coord, mask=mask, other=0)
+    tl.device_assert(
+        (~mask) | ((indices >= 0) & (indices < inp_size_dim)),
+        "index value out of bounds: 0 <= index < self.size(dim)",
+    )
     out_coord0 = tl.where(dim == 0, indices, coord0)
     out_coord1 = tl.where(dim == 1, indices, coord1)
     out_coord2 = tl.where(dim == 2, indices, coord2)
@@ -108,6 +126,7 @@ def _index_copy_rank3(
 
 def _validate(inp, dim, index, src):
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
+    dim %= inp.ndim
     assert index.numel() == src.size(
         dim
     ), "The dimth dimension of source must have the same size as the length of index"
@@ -117,15 +136,17 @@ def _validate(inp, dim, index, src):
     assert all(
         (inp.size(i) == src.size(i)) or i == dim for i in range(inp.ndim)
     ), "src.size(d) == self.size(d) for all dimensions d != dim"
-    assert bool(
-        ((0 <= index) & (index < inp.size(dim))).all()
-    ), "0 <= index < self.size(dim)"
+    if index.numel() > 0:
+        assert bool(
+            ((0 <= index) & (index < inp.size(dim))).all()
+        ), "0 <= index < self.size(dim)"
 
 
 def index_copy_(inp, dim, index, src):
-    assert -inp.ndim <= dim < inp.ndim, "Invalid dim"
-    dim %= inp.ndim
     _validate(inp, dim, index, src)
+    if index.numel() == 0 or src.numel() == 0:
+        return inp
+    dim %= inp.ndim
     n_elements = src.numel()
     block = 4096
     grid = (triton.cdiv(n_elements, block),)
@@ -135,6 +156,7 @@ def index_copy_(inp, dim, index, src):
             index,
             src,
             n_elements,
+            inp.size(0),
             inp.stride(0),
             src.stride(0),
             BLOCK=block,
@@ -147,6 +169,7 @@ def index_copy_(inp, dim, index, src):
             src,
             n_elements,
             dim,
+            inp.size(dim),
             inp.size(0),
             inp.size(1),
             inp.stride(0),
@@ -164,6 +187,7 @@ def index_copy_(inp, dim, index, src):
             src,
             n_elements,
             dim,
+            inp.size(dim),
             inp.size(0),
             inp.size(1),
             inp.size(2),
@@ -181,3 +205,17 @@ def index_copy_(inp, dim, index, src):
     else:
         raise NotImplementedError("Kunlunxin index_copy_ supports ranks 1 through 3")
     return inp
+
+
+def index_copy(inp, dim, index, src):
+    _validate(inp, dim, index, src)
+    out = torch.empty_like(inp, memory_format=torch.contiguous_format)
+    n_elements = inp.numel()
+    if n_elements > 0:
+        if inp.is_contiguous():
+            _clone_contig[(triton.cdiv(n_elements, 256),)](
+                inp, out, n_elements, BLOCK=256, num_warps=4
+            )
+        else:
+            torch.ops.aten._copy_from(inp, out, False)
+    return index_copy_(out, dim, index, src)
