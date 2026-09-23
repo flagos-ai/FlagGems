@@ -13,6 +13,8 @@ import triton.language as tl
 
 from flag_gems.utils import libentry
 
+from .pad import pad as _klx_pad
+
 logger = logging.getLogger(__name__)
 
 
@@ -1068,7 +1070,8 @@ def _square_pad_conv2d(input, weight, bias, stride, padding, dilation, groups):
     ih = input.shape[-2]
     iw = input.shape[-1]
     m = max(ih, iw)
-    xp = torch.nn.functional.pad(input, (0, m - iw, 0, m - ih))
+    # zero-pad via the backend's own implementation
+    xp = _klx_pad(input, (0, m - iw, 0, m - ih))
     out = Conv2d.apply(xp, weight, bias, stride, padding, dilation, groups)
     if isinstance(padding, str):
         if padding == "same":
