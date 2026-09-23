@@ -20,7 +20,7 @@ import torch
 import flag_gems
 from flag_gems import det
 
-from . import base, consts
+from . import base
 
 VENDOR = flag_gems.vendor_name
 

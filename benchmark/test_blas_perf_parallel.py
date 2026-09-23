@@ -32,7 +32,7 @@ import flag_gems
 
 from . import consts
 from .base import Benchmark, GenericBenchmark2DOnly
-from .conftest import Config, MODE_OPTION, emit_record_logger
+from .conftest import MODE_OPTION, Config, emit_record_logger
 from .consts import (
     COMPLEX_DTYPES,
     DEFAULT_METRICS,

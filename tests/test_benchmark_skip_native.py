@@ -58,9 +58,7 @@ def test_skip_native_marker_ignores_other_vendors():
         ("nvidia", "--mode"),
     ],
 )
-def test_benchmark_mode_option_avoids_vendor_pytest_conflicts(
-    vendor, expected_option
-):
+def test_benchmark_mode_option_avoids_vendor_pytest_conflicts(vendor, expected_option):
     assert benchmark_conftest.benchmark_mode_option(vendor) == expected_option
 
 

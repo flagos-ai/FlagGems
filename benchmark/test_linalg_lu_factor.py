@@ -5,7 +5,7 @@ import torch
 
 import flag_gems
 
-from . import base, consts
+from . import base
 
 DEVICE = flag_gems.device
 VENDOR = flag_gems.vendor_name

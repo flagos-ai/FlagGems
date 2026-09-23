@@ -51,6 +51,7 @@ def benchmark_mode_for_item(item, current_vendor, requested_mode):
         return consts.BenchMode.OPERATOR
     return requested_mode
 
+
 BUILTIN_MARKS = (
     "parametrize",
     "skip",

@@ -6,7 +6,7 @@ import torch
 import flag_gems
 from flag_gems import linalg_det, linalg_det_out
 
-from . import base, consts
+from . import base
 
 VENDOR = flag_gems.vendor_name
 
