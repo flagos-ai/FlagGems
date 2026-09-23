@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from ._dyn_quant_matmul_4bit import _dyn_quant_matmul_4bit
 from .adaptive_max_pool3d import adaptive_max_pool3d
 from .addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out
 from .all import all, all_dim, all_dims
@@ -33,6 +34,7 @@ from .baddbmm import baddbmm
 from .bmm import bmm
 from .cat import cat, cat_out
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
+from .concat import concat
 from .count_nonzero import count_nonzero
 from .cummax import cummax
 from .cummin import cummin
@@ -62,6 +64,7 @@ from .index import index
 from .index_add import index_add, index_add_
 from .index_copy_ import index_copy, index_copy_
 from .index_fill import index_fill, index_fill_
+from .index_reduce import index_reduce, index_reduce_, index_reduce_out
 from .index_select import index_select
 from .isin import isin
 from .layernorm import layer_norm, native_layer_norm
@@ -165,6 +168,7 @@ from .zeros import zeros
 from .zeros_like import zeros_like
 
 __all__ = [
+    "_dyn_quant_matmul_4bit",
     "_segment_reduce_backward",
     "_segment_reduce_backward_out",
     "_unique2",
@@ -192,6 +196,7 @@ __all__ = [
     "cat_out",
     "cholesky_solve",
     "cholesky_solve_out",
+    "concat",
     "count_nonzero",
     "cummax",
     "cummin",
@@ -233,6 +238,9 @@ __all__ = [
     "index_copy_",
     "index_fill",
     "index_fill_",
+    "index_reduce",
+    "index_reduce_",
+    "index_reduce_out",
     "index_select",
     "isin",
     "layer_norm",
