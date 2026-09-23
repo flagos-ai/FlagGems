@@ -81,6 +81,9 @@ rshift_scalar_out: test_rshift
 rshift_tensor_out: test_rshift
 batch_norm_backward: test_batch_norm
 cumprod_backward: test_cumprod
+erfinv: test_erfinv_
+max_pool2d_with_indices: test_max_pool2d
+max_pool3d_backward: test_max_pool3d
 multi_margin_loss_backward: test_multi_margin_loss
 multi_margin_loss_backward_out: test_multi_margin_loss
 segment_reduce_backward: test_segment_reduce
