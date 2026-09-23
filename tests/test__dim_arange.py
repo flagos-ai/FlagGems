@@ -16,22 +16,11 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
 from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
-
-# ``_dim_arange`` starts with an underscore, and ``pytest.mark`` refuses to
-# generate a marker via attribute access for such names. Register it directly
-# on the MarkGenerator so ``@pytest.mark._dim_arange`` and ``-m _dim_arange``
-# both work.
-setattr(
-    pytest.mark,
-    "_dim_arange",
-    MarkDecorator(Mark("_dim_arange", (), {}, _ispytest=True), _ispytest=True),
-)
 
 # Shapes cover: 1-D/2-D/3-D/4-D tensors, the exact-path power-of-two sizes used
 # by the implementation (256/1024/65536/131072), the masked fallback path, an
@@ -45,7 +34,7 @@ if QUICK_MODE:
     TENSOR_SHAPES = [(2, 3, 4)]
 
 
-@pytest.mark._dim_arange
+@pytest.mark.dim_arange
 @pytest.mark.parametrize("n", DIM_ARANGE_SHAPES)
 @pytest.mark.parametrize("dim", [-1, 0])
 def test_accuracy__dim_arange(n, dim):
@@ -59,7 +48,7 @@ def test_accuracy__dim_arange(n, dim):
     utils.gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark._dim_arange
+@pytest.mark.dim_arange
 @pytest.mark.parametrize("shape", TENSOR_SHAPES)
 def test_accuracy__dim_arange_multi_dim(shape):
     # Only the extent of ``dim`` matters; the tensor values are irrelevant.
@@ -78,7 +67,7 @@ def test_accuracy__dim_arange_multi_dim(shape):
     utils.gems_assert_equal(res_neg, ref_neg)
 
 
-@pytest.mark._dim_arange
+@pytest.mark.dim_arange
 def test_accuracy__dim_arange_empty():
     # Empty extent along the selected dim yields an empty 1-D output.
     like = torch.randn(0, 4, device=flag_gems.device)
@@ -91,7 +80,7 @@ def test_accuracy__dim_arange_empty():
     utils.gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark._dim_arange
+@pytest.mark.dim_arange
 def test_accuracy__dim_arange_error_behavior():
     # Out-of-range and 0-dim inputs must follow the ATen reference errors.
     like = torch.randn(3, 4, device=flag_gems.device)
