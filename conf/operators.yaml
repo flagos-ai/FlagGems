@@ -27,6 +27,32 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.1'
+- id: _aminmax
+  description: 'Computes the minimum and maximum values of the `input` tensor.
+
+    '
+  for:
+  - _aminmax
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Reduction
+  stages:
+  - alpha: '5.5'
+- id: _aminmax_out
+  description: 'A variant of _aminmax() that writes the result into the out tensor.
+
+    '
+  for:
+  - _aminmax.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Reduction
+  stages:
+  - alpha: '5.5'
 - id: _ctc_loss
   description: 'Computes the CTC loss and the alpha lattice used by its backward pass.
 
@@ -100,6 +126,30 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: _saturate_weight_to_fp16
+  description: Triton kernel implementation for _saturate_weight_to_fp16.
+  for:
+  - _saturate_weight_to_fp16
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
+- id: _stack
+  description: |
+    Concatenates a sequence of tensors along a new dimension. This is the
+    internal `_stack` implementation that mirrors `stack`.
+  for:
+  - _stack
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: _transformer_encoder_layer_fwd
   description: Triton kernel implementation for _transformer_encoder_layer_fwd.
   for:
@@ -3829,6 +3879,22 @@ ops:
   - Math
   stages:
   - beta: '5.3'
+- id: cumprod_backward
+  description: |
+    Backward pass for `cumprod`. Given the output gradient, the forward input and the forward
+    output, computes the gradient with respect to the input. Zero elements along the reduction
+    dimension are handled explicitly: the reverse cumulative sum of `grad * output` divided by
+    `input` gives the gradient for non-zero positions, while the first zero position uses a
+    modified cumulative product. Accumulation is performed in float32 for numerical stability.
+  for:
+  - cumprod_backward
+  labels:
+  - aten
+  - Reduction
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5.0'
 - id: cumsum
   destination: Returns the cumulative sum of elements of `input` in the dimension
     `dim`.
@@ -4501,6 +4567,20 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '3.0'
+- id: embedding_bag
+  description: 'Compute sums, means, or maxes of bags of embeddings, without instantiating
+    the intermediate embeddings.
+
+    '
+  for:
+  - embedding_bag
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: embedding_bag_dense_backward
   description: 'Computes the gradient for the backward pass of embedding_bag in dense
     mode.
@@ -11108,6 +11188,18 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.5'
+- id: native_norm
+  description: Computes the p-norm over all elements of the input tensor, reducing
+    to a scalar.
+  for:
+  - native_norm
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Reduction
+  stages:
+  - alpha: '5.5.0'
 - id: ne
   description: Computes that `input` is not equal to `other` element-wise.
   for:
@@ -11664,6 +11756,22 @@ ops:
   - Distribution
   stages:
   - stable: '2.1'
+- id: normal_functional
+  description: |
+    Returns a fresh tensor of random numbers drawn from a normal distribution
+    parameterized by a float mean and a float std. This is the out-of-place
+    functional variant of normal_ (aten::normal_functional).
+  for:
+  - normal_functional
+  labels:
+  - aten
+  - KernelGen
+  - pointwise
+  - skip_precision_check
+  kind:
+  - Distribution
+  stages:
+  - alpha: '5.5.0'
 - id: normal_tensor_float
   description: 'Returns a tensor of random numbers drawn from separate normal distributions
 
@@ -13241,6 +13349,22 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: rms_norm_w8a16_int8
+  description: 'Applies Root Mean Square Layer Normalization to BF16 activations using
+
+    group-wise INT8 weights and per-group scales.
+
+    '
+  for:
+  - None
+  labels:
+  - NoCPU
+  - Normalization
+  - Quantization
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: rnn_relu
   description: Triton kernel implementation for rnn_relu.
   for:
@@ -14686,6 +14810,21 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.5'
+- id: sobol_engine_initialize_state_
+  description: |
+    Initializes Sobol quasi-random number generator state with direction numbers.
+    This is a low-level operation that fills a (dimension, 30) state tensor with
+    pre-computed Sobol direction numbers used for generating low-discrepancy sequences.
+  for:
+  - _sobol_engine_initialize_state_
+  labels:
+  - aten
+  - pointwise
+  - random
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5.0'
 - id: soft_margin_loss
   description: Compute the soft margin loss.
   for:
@@ -17086,6 +17225,30 @@ ops:
   - BLAS
   stages:
   - beta: '5.3'
+- id: trilinear
+  description: Computes the trilinear product (3-way tensor product) via a Triton
+    elementwise-product kernel followed by summation over sumdim.
+  for:
+  - _trilinear
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
+- id: trilinear_out
+  description: A variant of `_trilinear()` that explicitly assigns the output to the
+    `out` parameter.
+  for:
+  - _trilinear.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: triton_lighting_indexer_k_tiled_interface
   description: Part of FP8 MQA framework. It is currently not exposed as an operator
     for use.
@@ -17226,6 +17389,20 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: underscore_sobol_engine_draw
+  description: 'Generates quasi-random Sobol sequence points. XOR-based algorithm
+    using Gray code for low-discrepancy sampling.
+
+    '
+  for:
+  - _sobol_engine_draw
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Distribution
+  stages:
+  - alpha: '5.5.0'
 - id: unflatten
   description: Expand a single dimension into multiple dimensions (inverse of flatten).
   for:
@@ -17701,6 +17878,31 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '5.0'
+- id: upsample_nearest1d_backward
+  description: Triton kernel implementation for upsample_nearest1d_backward.
+  for:
+  - upsample_nearest1d_backward
+  labels:
+  - aten
+  - KernelGen
+  - Reduction
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
+- id: upsample_nearest1d_backward_grad_input
+  description: A variant of `upsample_nearest1d_backward()` that writes the result
+    into the `grad_input` tensor.
+  for:
+  - upsample_nearest1d_backward.grad_input
+  labels:
+  - aten
+  - KernelGen
+  - Reduction
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: upsample_nearest2d
   description: 'Upsamples the `input`, using nearest neighbours'' pixel values. The
     input has to be 4 dimensional.

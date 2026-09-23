@@ -54,7 +54,7 @@ except ModuleNotFoundError as exc:
     if exc.name != "triton.flagtune":
         raise
     _HAS_FLAGTREE_FLAGTUNE = False
-    from flag_gems.flagtune.runtime._benchmark_protocol import (
+    from flag_gems.flagtune.offline.runtime.benchmark_protocol import (
         BenchmarkMode,
         BenchmarkProtocol,
         resolve_benchmarker,
@@ -68,7 +68,7 @@ else:
     )
 
 from flag_gems import runtime
-from flag_gems.flagtune import cost_model
+from flag_gems.flagtune.inference import cost_model
 from flag_gems.runtime import device, torch_device_fn
 from flag_gems.runtime.backend import _state
 from flag_gems.utils.code_cache import config_cache_dir
