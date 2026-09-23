@@ -64,9 +64,7 @@ def lt_scalar(A, B):
         wrapped = float(torch.tensor(float(B), dtype=dtype).item())
         if math.isfinite(wrapped):
             tile = (
-                _LT_SCALAR_TILE_F32
-                if dtype == torch.float32
-                else _LT_SCALAR_TILE_HALF
+                _LT_SCALAR_TILE_F32 if dtype == torch.float32 else _LT_SCALAR_TILE_HALF
             )
             # fp16 has a native vector compare; a bf16 value within the fp16
             # range widens to fp16 losslessly (7-bit mantissa is a subset of

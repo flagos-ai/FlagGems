@@ -149,10 +149,7 @@ def not_equal_scalar(A, B):
             use_half = dtype == torch.float16 or (
                 dtype == torch.bfloat16 and abs(wrapped) <= _FP16_MAX
             )
-            if (
-                numel % tile == 0
-                and numel >= tile * _NOT_EQUAL_SCALAR_MIN_GRID
-            ):
+            if numel % tile == 0 and numel >= tile * _NOT_EQUAL_SCALAR_MIN_GRID:
                 return _not_equal_scalar_fast(
                     A, wrapped, tile, (numel // tile,), use_half
                 )
@@ -239,9 +236,7 @@ def _restore_compare_env(prev):
 
 def _not_equal_scalar_fast(A, scalar, tile, grid, use_half):
     out = torch.empty_like(A, dtype=torch.bool)
-    kernel = (
-        not_equal_scalar_half_kernel if use_half else not_equal_scalar_fast_kernel
-    )
+    kernel = not_equal_scalar_half_kernel if use_half else not_equal_scalar_fast_kernel
     prev = _set_compare_env()
     try:
         kernel[grid](

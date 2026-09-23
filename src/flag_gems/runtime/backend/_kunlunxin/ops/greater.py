@@ -212,7 +212,10 @@ def _greater_scalar_out_cmp(A, scalar, out, tile, use_half, numel):
                 greater_scalar_half_kernel if use_half else greater_scalar_cmp_kernel
             )
             kernel[grid](
-                out.view(torch.uint8), A, scalar, TILE=tile,
+                out.view(torch.uint8),
+                A,
+                scalar,
+                TILE=tile,
                 **_GREATER_SCALAR_LAUNCH_OPTS,
             )
         else:
@@ -223,7 +226,11 @@ def _greater_scalar_out_cmp(A, scalar, out, tile, use_half, numel):
                 else greater_scalar_cmp_masked_kernel
             )
             kernel[grid](
-                out.view(torch.uint8), A, scalar, numel, TILE=tile,
+                out.view(torch.uint8),
+                A,
+                scalar,
+                numel,
+                TILE=tile,
                 **_GREATER_SCALAR_LAUNCH_OPTS,
             )
     finally:
