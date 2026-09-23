@@ -103,6 +103,21 @@ jobs:
         op-test-${{ inputs.backend }}-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
     steps:
+      # klx-p800-1 reuses its workspace across jobs. Stale skip-worktree bits
+      # (e.g. on _kunlunxin backend op files) make `git checkout --force` refuse
+      # to overwrite them, aborting checkout and breaking the local
+      # checkout-retry action. Clear the residue before checkout. Harmless no-op
+      # on a clean or freshly-cloned workspace.
+      - name: Reset reused workspace
+        shell: bash
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE" 2>/dev/null || true
+          cd "$GITHUB_WORKSPACE" 2>/dev/null || exit 0
+          [ -d .git ] || exit 0
+          git sparse-checkout disable 2>/dev/null || true
+          git ls-files -z | xargs -0 -r git update-index --no-skip-worktree 2>/dev/null || true
+          git reset --hard HEAD 2>/dev/null || true
+          git clean -ffdx 2>/dev/null || true
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         continue-on-error: true
       - uses: ./.github/actions/checkout-retry

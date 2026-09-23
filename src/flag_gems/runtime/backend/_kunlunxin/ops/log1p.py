@@ -20,6 +20,7 @@
 # fp32 large shapes >=1.0). log(1+x) is more vectorization-sensitive than cos.
 import logging
 
+import torch
 import triton
 import triton.language as tl
 from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
@@ -49,6 +50,8 @@ def log1p_func(x):
 
 def log1p(A):
     logger.debug("GEMS_KUNLUNXIN LOG1P")
+    if A.is_floating_point() and A.is_contiguous():
+        return log1p_func(A, out0=torch.empty_like(A))
     return log1p_func(A)
 
 

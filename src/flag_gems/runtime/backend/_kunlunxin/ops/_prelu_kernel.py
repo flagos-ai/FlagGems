@@ -30,17 +30,29 @@
 #    family on this backend).
 import logging
 
+import torch
 import triton
 import triton.language as tl
+from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
+_prelu_kernel_config = CodeGenConfig(
+    512,
+    (65536, 65536, 65536),
+    32,
+    True,
+    prefer_1d_tile=True,
+    kunlunAutoGrid=True,
+)
+
 
 @pointwise_dynamic(
     is_tensor=[True, True],
     promotion_methods=[(0, 1, "DEFAULT")],
+    config=_prelu_kernel_config,
 )
 @triton.jit
 def _prelu_kernel_func(x, weight):
@@ -50,4 +62,6 @@ def _prelu_kernel_func(x, weight):
 
 def _prelu_kernel(A, B):
     logger.debug("GEMS_KUNLUNXIN _PRELU_KERNEL")
+    if A.is_floating_point() and A.dtype == B.dtype and A.shape == B.shape:
+        return _prelu_kernel_func(A, B, out0=torch.empty_like(A))
     return _prelu_kernel_func(A, B)
