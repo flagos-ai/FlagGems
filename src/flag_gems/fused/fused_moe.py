@@ -2142,6 +2142,10 @@ def fused_experts_impl(
             not is_embedded_config
             and direct_sum_supported
             and tokens_in_chunk >= MOE_DIRECT_SUM_MIN_TOKENS
+            # Multiple experts would atomically accumulate into the output
+            # dtype in an unspecified order. Keep the fixed-order FP32
+            # moe_sum reduction for top-k > 1, including large prefills.
+            and top_k_num == 1
             and expert_map is None
             and not apply_router_weight_on_input
         )

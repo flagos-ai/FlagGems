@@ -27,6 +27,7 @@ from flag_gems.logging_utils import setup_flaggems_logging, teardown_flaggems_lo
 from flag_gems.modules import *  # noqa: F403
 from flag_gems.ops import *  # noqa: F403
 from flag_gems.ops._dirichlet_grad import _HAS_MAP_ELEMENTWISE
+from flag_gems.ops._upsample_nearest_exact2d import _upsample_nearest_exact2d_out
 from flag_gems.patches import *  # noqa: F403
 from flag_gems.patches import patch_empty_vllm  # noqa: F401
 from flag_gems.runtime import flagtune
@@ -116,6 +117,8 @@ _FULL_CONFIG = (
     ("_add_relu_.Tensor", _add_relu_),
     ("_addmm_activation", _addmm_activation),
     ("_addmm_activation.out", _addmm_activation_out),
+    ("_aminmax", _aminmax),
+    ("_aminmax.out", _aminmax_out),
     (
         "_amp_foreach_non_finite_check_and_unscale_",
         _amp_foreach_non_finite_check_and_unscale_,
@@ -277,6 +280,7 @@ _FULL_CONFIG = (
     ("_resize_output_", _resize_output_),
     ("_safe_softmax", _safe_softmax),
     ("_sample_dirichlet", _sample_dirichlet),
+    ("_saturate_weight_to_fp16", _saturate_weight_to_fp16),
     (
         "_scaled_dot_product_attention_math",
         _scaled_dot_product_attention_math,
@@ -315,7 +319,12 @@ _FULL_CONFIG = (
     ("_scaled_mm.out", scaled_mm_out, lambda: torch_ge("2.5")),
     ("_segment_reduce_backward", _segment_reduce_backward),
     ("_segment_reduce_backward.out", _segment_reduce_backward_out),
+    ("_sobol_engine_draw", underscore_sobol_engine_draw),
     ("_sobol_engine_ff_", _sobol_engine_ff_),
+    (
+        "_sobol_engine_initialize_state_",
+        _sobol_engine_initialize_state_,
+    ),
     ("_softmax", softmax),
     ("_softmax.out", softmax_out),
     ("_softmax_backward_data", softmax_backward),
@@ -324,6 +333,7 @@ _FULL_CONFIG = (
     ("_sparse_semi_structured_linear", _sparse_semi_structured_linear),
     ("_sparse_semi_structured_mm", _sparse_semi_structured_mm),
     ("_spdiags", spdiags),
+    ("_stack", _stack),
     ("_standard_gamma", standard_gamma),
     ("_standard_gamma_grad", standard_gamma_grad),
     (
@@ -348,6 +358,8 @@ _FULL_CONFIG = (
     ),
     ("_transform_bias_rescale_qkv", _transform_bias_rescale_qkv),
     ("_transformer_encoder_layer_fwd", _transformer_encoder_layer_fwd),
+    ("_trilinear", _trilinear),
+    ("_trilinear.out", _trilinear_out),
     ("_unique2", _unique2),
     ("_unsafe_index", unsafe_index),
     ("_unsafe_index_put", unsafe_index_put),
@@ -376,6 +388,7 @@ _FULL_CONFIG = (
         _upsample_nearest_exact1d_backward_grad_input,
     ),
     ("_upsample_nearest_exact2d", _upsample_nearest_exact2d),
+    ("_upsample_nearest_exact2d.out", _upsample_nearest_exact2d_out),
     ("_upsample_nearest_exact2d_backward", _upsample_nearest_exact2d_backward),
     ("_upsample_nearest_exact3d", _upsample_nearest_exact3d),
     (
@@ -624,6 +637,7 @@ _FULL_CONFIG = (
     ("cummin", cummin),
     ("cumprod", cumprod),
     ("cumprod_", cumprod_),
+    ("cumprod_backward", cumprod_backward),
     ("cumsum", cumsum),
     ("cumsum.out", cumsum_out),
     ("cumsum_", cumsum_),
@@ -675,6 +689,7 @@ _FULL_CONFIG = (
     ("elu_backward", elu_backward),
     ("embedding", embedding),
     ("embedding_backward", embedding_backward),
+    ("embedding_bag", embedding_bag),
     ("embedding_dense_backward", embedding_dense_backward),
     ("embedding_renorm_", embedding_renorm_),
     ("embedding_sparse_backward", embedding_sparse_backward),
@@ -850,6 +865,7 @@ _FULL_CONFIG = (
     ("huber_loss", huber_loss),
     ("huber_loss.out", huber_loss_out),
     ("hypot", hypot),
+    ("hypot.out", hypot_out),
     ("hypot_", hypot_),
     ("i0", i0),
     ("i0.out", i0_out),
@@ -1133,6 +1149,7 @@ _FULL_CONFIG = (
     ("native_group_norm_backward", group_norm_backward),
     ("native_layer_norm", native_layer_norm),
     ("native_layer_norm_backward", layer_norm_backward),
+    ("native_norm", native_norm),
     ("ne.Scalar", ne_scalar),
     ("ne.Tensor", ne),
     ("ne_.Scalar", ne_scalar_),
@@ -1167,6 +1184,7 @@ _FULL_CONFIG = (
     ("normal.Tensor_float", normal_tensor_float),
     ("normal.Tensor_Tensor", normal_tensor_tensor),
     ("normal_", normal_),
+    ("normal_functional", normal_functional),
     ("not_equal.Scalar", not_equal_scalar),
     ("not_equal.Tensor", not_equal),
     ("nuclear_norm", nuclear_norm),
@@ -1598,6 +1616,11 @@ _FULL_CONFIG = (
     ("upsample_linear1d", upsample_linear1d),
     ("upsample_linear1d_backward", upsample_linear1d_backward),
     ("upsample_nearest1d", upsample_nearest1d),
+    ("upsample_nearest1d_backward", upsample_nearest1d_backward),
+    (
+        "upsample_nearest1d_backward.grad_input",
+        upsample_nearest1d_backward_grad_input,
+    ),
     ("upsample_nearest2d", upsample_nearest2d),
     ("upsample_nearest2d_backward", upsample_nearest2d_backward),
     ("upsample_nearest2d_backward.grad_input", upsample_nearest2d_backward_grad_input),
