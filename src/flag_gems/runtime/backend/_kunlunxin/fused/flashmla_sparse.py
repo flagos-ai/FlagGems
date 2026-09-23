@@ -47,8 +47,8 @@ import triton.language as tl
 # Tile sizes. 64 is the smallest value that is safe on this backend
 # (BLOCK_N == 16 does not compile, 32 silently corrupts pointwise tiles, and 2D
 # tiles with a row pitch < 64 silently overwrite following rows).
-_BT = 64  # topk tile
-_BD = 64  # d tile used by the gather kernel
+_BT = 128  # topk tile (c209 exp1)
+_BS = 512  # softmax tile (c209 exp2)
 _BH = 64  # head tile
 _BDV = 256  # value-dim tile used by the PV matmul
 
@@ -100,35 +100,6 @@ def _valid_mask(
 
 
 @triton.jit
-def _gather_kv_dt(
-    kv,
-    indices,
-    topk_length,
-    gkv_dt,  # [SQ, DQK, TP], d-major (topk contiguous)
-    stride_kvn,
-    stride_tm,
-    SKV,
-    TOPK,
-    TP: tl.constexpr,
-    DQK: tl.constexpr,
-    HAVE_TOPK_LENGTH: tl.constexpr,
-    BT: tl.constexpr,
-    BD: tl.constexpr,
-):
-    i_sq = tl.program_id(0).to(tl.int64)
-    i_t = tl.program_id(1)
-    i_d = tl.program_id(2)
-    offs_t = i_t * BT + tl.arange(0, BT)
-    offs_d = i_d * BD + tl.arange(0, BD)
-    ids, _ = _load_ids(
-        indices, topk_length, i_sq, offs_t, stride_tm, SKV, TOPK, HAVE_TOPK_LENGTH
-    )
-    # [BD, BT] tile: outer stride 1 (d contiguous in kv), inner stride stride_kvn
-    v = tl.load(kv + offs_d[:, None] + ids[None, :] * stride_kvn)
-    tl.store(gkv_dt + i_sq * DQK * TP + offs_d[:, None] * TP + offs_t[None, :], v)
-
-
-@triton.jit
 def _gather_kv_td(
     kv,
     indices,
@@ -160,7 +131,7 @@ def _gather_kv_td(
 @triton.jit
 def _qk_logits(
     q,
-    gkv_dt,
+    gkv_t,  # [SQ, TOPK, DQK], t-major gathered kv
     logits,  # [SQ, HQ, TP] float32
     stride_qm,
     stride_qh,
@@ -181,14 +152,14 @@ def _qk_logits(
     offs_d = tl.arange(0, DP)
 
     qb = tl.load(q + i_sq * stride_qm + offs_h[:, None] * stride_qh + offs_d[None, :])
-    kb = tl.load(gkv_dt + i_sq * DQK * TP + offs_d[:, None] * TP + offs_t[None, :])
+    kb = tl.load(gkv_t + i_sq * TP * DQK + offs_t[None, :] * DQK + offs_d[:, None])
     acc = tl.dot(qb, kb, out_dtype=tl.float32)
     if TD > 0:
         offs_td = DP + tl.arange(0, TD)
         qt = tl.load(
             q + i_sq * stride_qm + offs_h[:, None] * stride_qh + offs_td[None, :]
         )
-        kt = tl.load(gkv_dt + i_sq * DQK * TP + offs_td[:, None] * TP + offs_t[None, :])
+        kt = tl.load(gkv_t + i_sq * TP * DQK + offs_t[None, :] * DQK + offs_td[:, None])
         acc = tl.dot(qt, kt, acc, out_dtype=tl.float32)
 
     tl.store(
@@ -318,7 +289,6 @@ def _pv_matmul(
         acc.to(tl.bfloat16),
     )
 
-
 def flash_mla_sparse_fwd(
     q: torch.Tensor,
     kv: torch.Tensor,
@@ -364,13 +334,13 @@ def flash_mla_sparse_fwd(
         lse.fill_(float("inf"))
         return output, max_logits, lse
 
+
     DP = 512
     TD = DQK - DP
     # over-allocate topk to a whole tile so every store below is unmasked
     TP = triton.cdiv(TOPK, _BT) * _BT
     NT = TP // _BT
 
-    gkv_dt = torch.empty((SQ, DQK, TP), device=q.device, dtype=q.dtype)
     gkv_td = torch.empty((SQ, TP, DQK), device=q.device, dtype=q.dtype)
     valid = torch.empty((SQ, TP), device=q.device, dtype=torch.float32)
     logits = torch.empty((SQ, HQ, TP), device=q.device, dtype=torch.float32)
@@ -387,11 +357,12 @@ def flash_mla_sparse_fwd(
         topk_length is not None,
         _BT,
     )
-    _gather_kv_dt[(SQ, NT, DQK // _BD)](
-        kv,
+    _BTT = 64  # td-gather t tile (>=64: smaller tiles silently corrupt)
+    _gather_kv_td[(SQ, TP // _BTT)](
+        kv.view(-1),
         indices,
         topk_length,
-        gkv_dt,
+        gkv_td.view(-1),
         kv.stride(0),
         indices.stride(0),
         SKV,
@@ -399,27 +370,28 @@ def flash_mla_sparse_fwd(
         TP,
         DQK,
         topk_length is not None,
-        _BT,
-        _BD,
+        _BTT,
+        DP,
     )
-    _gather_kv_td[(SQ, NT, DQK // _BD)](
-        kv,
-        indices,
-        topk_length,
-        gkv_td,
-        kv.stride(0),
-        indices.stride(0),
-        SKV,
-        TOPK,
-        TP,
-        DQK,
-        topk_length is not None,
-        _BT,
-        _BD,
-    )
+    if TD > 0:
+        _gather_kv_td[(SQ, TP // _BTT)](
+            kv.view(-1)[DP:],
+            indices,
+            topk_length,
+            gkv_td.view(-1)[DP:],
+            kv.stride(0),
+            indices.stride(0),
+            SKV,
+            TOPK,
+            TP,
+            DQK,
+            topk_length is not None,
+            _BTT,
+            TD,
+        )
     _qk_logits[(SQ, HQ // _BH, NT)](
         q,
-        gkv_dt,
+        gkv_td,
         logits,
         q.stride(0),
         q.stride(1),
@@ -431,6 +403,7 @@ def flash_mla_sparse_fwd(
         _BH,
         _BT,
     )
+    _softmax_tile = _BS if TP % _BS == 0 else _BT
     _softmax_stats[(SQ, HQ)](
         logits,
         valid,
@@ -442,10 +415,10 @@ def flash_mla_sparse_fwd(
         max_logits.stride(0),
         lse.stride(0),
         TP,
-        NT,
+        TP // _softmax_tile,
         HQ,
         attn_sink is not None,
-        _BT,
+        _softmax_tile,
     )
     _pv_matmul[(SQ, HQ // _BH, DV // _BDV)](
         probs,
