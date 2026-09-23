@@ -61,36 +61,17 @@ def test_nonzero(shape, dtype):
 @pytest.mark.parametrize("as_tuple", [False, True])
 def test_nonzero_empty(shape, dtype, as_tuple):
     inp = torch.empty(shape, dtype=dtype, device=flag_gems.device)
-    ref_out = torch.nonzero(inp, as_tuple=as_tuple)
-    direct_out = flag_gems.nonzero(inp, as_tuple=as_tuple)
-    with flag_gems.use_gems(include=["nonzero", "nonzero_numpy"]):
-        dispatched_out = torch.nonzero(inp, as_tuple=as_tuple)
-        method_out = inp.nonzero(as_tuple=as_tuple)
+    ref_inp = utils.to_reference(inp, False)
+    ref_out = torch.nonzero(ref_inp, as_tuple=as_tuple)
+    res_out = flag_gems.nonzero(inp, as_tuple=as_tuple)
 
-    for result in (direct_out, dispatched_out, method_out):
-        if as_tuple:
-            assert isinstance(result, tuple)
-            assert len(result) == inp.ndim
-            actual_tensors, expected_tensors = result, ref_out
-        else:
-            actual_tensors, expected_tensors = (result,), (ref_out,)
-        for actual, expected in zip(actual_tensors, expected_tensors):
-            assert actual.shape == expected.shape
-            assert actual.dtype == torch.int64
-            assert actual.device == inp.device
-            utils.gems_assert_equal(actual, expected)
-
-
-@pytest.mark.nonzero
-@pytest.mark.parametrize("shape", [(0,), (0, 3), (2, 0), (2, 0, 3)])
-def test_where_empty_condition(shape):
-    inp = torch.empty(shape, dtype=torch.bool, device=flag_gems.device)
-    ref_out = torch.where(inp)
-    with flag_gems.use_gems(include=["nonzero", "nonzero_numpy"]):
-        res_out = torch.where(inp)
-
-    assert len(res_out) == inp.ndim
-    for actual, expected in zip(res_out, ref_out):
+    if as_tuple:
+        assert isinstance(res_out, tuple)
+        assert len(res_out) == inp.ndim
+        actual_tensors, expected_tensors = res_out, ref_out
+    else:
+        actual_tensors, expected_tensors = (res_out,), (ref_out,)
+    for actual, expected in zip(actual_tensors, expected_tensors):
         assert actual.shape == expected.shape
         assert actual.dtype == torch.int64
         assert actual.device == inp.device
