@@ -265,9 +265,7 @@ def _adaptive_avg_pool2d_backward_flat_kernel(
             window_size = window_h * (end_w - start_w).to(tl.float32)
             grad_out_val = tl.load(grad_output_base + safe_oh * OUT_W + safe_ow)
 
-            grad_acc += tl.where(
-                active, grad_out_val.to(tl.float32) / window_size, 0.0
-            )
+            grad_acc += tl.where(active, grad_out_val.to(tl.float32) / window_size, 0.0)
 
     if NEED_MASK:
         mask = offs < total
