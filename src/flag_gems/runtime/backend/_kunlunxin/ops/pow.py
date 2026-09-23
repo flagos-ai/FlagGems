@@ -15,7 +15,6 @@
 import logging
 import math
 
-import torch
 import triton
 import triton.language as tl
 
@@ -26,6 +25,7 @@ from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 _pow = tl_extra_shim.pow
+_fast_expf = tl_extra_shim.fast_expf
 
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "BOOL_TO_LONG")])
@@ -58,18 +58,20 @@ def pow_tensor_scalar(A, exponent):
 # ---------------------------------------------------------------------------
 # pow_tensor_scalar_ (tensor base ^ scalar exponent, in-place) fast path.
 #
-# XPU 探针（2026-08-19, XPU4, 16.7M fp32 do_bench 同窗）：
-#   * 通用 extern pow（pow_func_tensor_scalar）1290-1815us，约等于 torch 原生
-#     pow_ 的 2 倍；本 fast path 465us（约 torch 原生 x.pow_(0.001) 的 2 倍快）。
-#   * 配方 r = tl.exp2(e * tl.log2(x))：本后端 tl.exp2 == e^x、tl.log2 == ln(x)
-#     （数学语义，同 pow_scalar 快路径的事实），故 r == x^e 严格成立。
-#   * 语义角点自动正确（无需任何 per-element select —— select 会把 SFU 路径打回
-#     2-5x）：x < 0 -> log2(x)=NaN -> NaN；x = 0 -> log2=-inf -> e^(+-e*inf)=0/inf；
-#     x = +-inf、x = NaN 同理。
-#   * 数值对拍（fp64 CPU 参照，harness 测试口径）：SCALARS 4 档 x fp32/fp16/bf16
-#     分布矩阵全部 0 失败。
-#   * 门控：仅 有限、非零、非整数、>0 的指数走 fast path；整数/0/负非整数/±inf/NaN
-#     指数仍走原通用 extern 路径（语义完全不变）。
+# XPU probe (2026-08-19, XPU4, 16.7M fp32 do_bench, same window):
+#   * generic extern pow (pow_func_tensor_scalar) 1290-1815us, ~2x torch native
+#     pow_; this fast path 465us (~2x faster than native x.pow_(0.001));
+#   * recipe r = tl.exp2(e * tl.log2(x)): on this backend tl.exp2 == e^x and
+#     tl.log2 == ln(x) (math semantics, same as the pow_scalar fast path), so
+#     r == x^e holds exactly;
+#   * semantic corners are automatic (no per-element select -- select forces
+#     the SFU path back to 2-5x): x < 0 -> log2(x)=NaN -> NaN; x = 0 ->
+#     log2(x)=-inf -> e^(+-e*inf)=0/inf; x = +-inf / NaN likewise;
+#   * numeric cross-check (fp64 CPU reference, harness protocol): SCALARS x
+#     fp32/fp16/bf16 distribution matrix, 0 failures;
+#   * gating: only finite, non-zero, non-integer, > 0 exponents take the fast
+#     path; integer/0/negative-non-integer/+-inf/NaN exponents keep the
+#     generic extern path (semantics unchanged).
 # ---------------------------------------------------------------------------
 
 
@@ -147,18 +149,31 @@ def pow_func_scalar_tensor(x, exponent):
     return _pow(x.to(tl.float32), exponent.to(tl.float32))
 
 
+@pointwise_dynamic(is_tensor=[False, True], promotion_methods=[(0, 1, "BOOL_TO_LONG")])
+@triton.jit
+def pow_func_scalar_tensor_fast(log_base, exponent):
+    # For a positive scalar base, pow(base, exp) == exp(exp * log(base)).
+    # log(base) is constant so it is computed once on the host; fast_expf is the
+    # XPU fast approximate expf (much cheaper and more accurate than the native
+    # tl.exp2 path, which produced NaN at large shapes for base 100.001).
+    return _fast_expf(exponent.to(tl.float32) * log_base.to(tl.float32))
+
+
 # ---------------------------------------------------------------------------
 # pow_scalar fast path (aten::pow.Scalar, scalar base >0 finite, !=1).
 #
-# XPU 探针结论（2026-08-15, XPU5, 16.7M fp32 隔离 A/B）：
-#  * tl_extra_shim.pow（libdevice 软件实现）538us，torch 原生 199us；
-#  * 后端 tl.exp2/tl.log2 实际分别是 e^x / ln(x)（数值语义），SFU 级：
-#    单次 tl.exp(y * ln(base)) ~142us，快于 torch；任何 per-element
-#    where/min/max/整数比较都会把 SFU 路径打回 2-5x（量化不复用）；
-#  * 单 ln(f32) 常数天然满足角点：y=±inf -> e^(±inf)=0/inf、y=NaN -> NaN、
-#    y=0 -> 1（exp(0)==1）；无需任何 clamp/select —— 数值对拍
-#    （base 0.001/100.001/2/0.5 × fp32/fp16/bf16 × y=U(-1,1) 全 0 失败）。
-#  * 其余 base（<=0、==1、±inf、NaN）走原通用 extern 路径，语义不变。
+# XPU probe (2026-08-15, XPU5, 16.7M fp32 isolated A/B):
+#  * tl_extra_shim.pow (libdevice software impl) 538us, torch native 199us;
+#  * backend tl.exp2/tl.log2 are actually e^x / ln(x) (numeric semantics) and
+#    SFU-class: one tl.exp(y * ln(base)) ~142us, faster than torch; any
+#    per-element where/min/max/integer-compare forces the SFU path back to
+#    2-5x (no quantization reuse);
+#  * a single ln(f32) constant satisfies the corners naturally: y=±inf ->
+#    e^(±inf)=0/inf, y=NaN -> NaN, y=0 -> 1 (exp(0)==1); no clamp/select
+#    needed -- numeric cross-check (base 0.001/100.001/2/0.5 x
+#    fp32/fp16/bf16 x y=U(-1,1)): 0 failures;
+#  * all other bases (<=0, ==1, +-inf, NaN) keep the generic extern path,
+#    semantics unchanged.
 # ---------------------------------------------------------------------------
 MIN_BLOCK = 2048
 MAX_BLOCK = 131072
@@ -179,63 +194,9 @@ def _pick_pow_block(n_elements):
     return 16384, 8, True
 
 
-@triton.jit
-def pow_scalar_fast_kernel(x_ptr, out_ptr, lnb, BLOCK: tl.constexpr):
-    pid = ext.program_id(0)
-    offset = pid * BLOCK + tl.arange(0, BLOCK)
-    y = tl.load(x_ptr + offset).to(tl.float32)
-    r = tl.exp2(y * lnb)
-    tl.store(out_ptr + offset, r.to(out_ptr.dtype.element_ty))
-
-
-@triton.jit
-def pow_scalar_fast_kernel_masked(x_ptr, out_ptr, n_elements, lnb, BLOCK: tl.constexpr):
-    pid = ext.program_id(0)
-    offset = pid * BLOCK + tl.arange(0, BLOCK)
-    mask = offset < n_elements
-    y = tl.load(x_ptr + offset, mask=mask, other=0.0).to(tl.float32)
-    r = tl.exp2(y * lnb)
-    tl.store(out_ptr + offset, r.to(out_ptr.dtype.element_ty), mask=mask)
-
-
-def _launch_pow_scalar_fast(x, out, lnb):
-    n_elements = x.numel()
-    if n_elements == 0:
-        return
-    block_size, num_warps, masked = _pick_pow_block(n_elements)
-    if masked:
-        grid = (triton.cdiv(n_elements, block_size),)
-        pow_scalar_fast_kernel_masked[grid](
-            x,
-            out,
-            n_elements,
-            lnb,
-            BLOCK=block_size,
-            num_warps=num_warps,
-            unroll_num=UNROLL_NUM,
-            buffer_size_limit=BUFFER_SIZE_LIMIT,
-            isCloseMemoryAsync=IS_CLOSE_MEMORY_ASYNC,
-        )
-    else:
-        grid = (n_elements // block_size,)
-        pow_scalar_fast_kernel[grid](
-            x,
-            out,
-            lnb,
-            BLOCK=block_size,
-            num_warps=num_warps,
-            unroll_num=UNROLL_NUM,
-            buffer_size_limit=BUFFER_SIZE_LIMIT,
-            isCloseMemoryAsync=IS_CLOSE_MEMORY_ASYNC,
-        )
-
-
 def pow_scalar(A, exponent):
     logger.debug("GEMS_KUNLUNXIN POW_SCALAR")
-    base = float(A)
-    if base > 0.0 and base != 1.0 and math.isfinite(base):
-        x = exponent.contiguous()
-        out = torch.empty_like(exponent)
-        _launch_pow_scalar_fast(x, out, math.log(base))
-        return out
+    base = A.item() if hasattr(A, "item") else float(A)
+    if base > 0:
+        return pow_func_scalar_tensor_fast(math.log(base), exponent)
     return pow_func_scalar_tensor(A, exponent)

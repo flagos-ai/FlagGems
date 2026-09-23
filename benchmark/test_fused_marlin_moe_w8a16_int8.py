@@ -237,7 +237,7 @@ def _gems_call_int8(
     )
 
 
-@pytest.mark.fused_marlin_moe
+@pytest.mark.fused_marlin_moe_w8a16_int8
 @pytest.mark.skipif(
     not HAS_VLLM_FUSED_MARLIN_MOE, reason="vllm not installed; baseline unavailable"
 )

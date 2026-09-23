@@ -101,6 +101,16 @@ registry.restore("softmax")     # 恢复单个算子
 registry.restore_all()          # 或者一次性恢复所有算子
 ```
 
+尚未提供公开 FlagGems 实现的算子也可以注入。例如，调用
+`registry.override("sparse_csr_tensor", candidate)` 后，即使此前不存在该属性，
+`flag_gems.sparse_csr_tensor(...)` 也会调用候选实现。恢复时会删除临时新增的属性；
+原本存在的属性则恢复原值，包括 `None`。`--override` 和 `--override-config`
+同样支持这种用法。
+
+新增公开 callable 不会自动添加 ATen dispatcher 注册。这类算子的测试需要直接调用
+`flag_gems.<op_name>(...)`。通过文件加载的候选若一次也没有被调用，清理时仍会报错，
+包括注入时拼错算子名的情况。
+
 <!--
 ## 2. Loading an implementation from a standalone file
 -->

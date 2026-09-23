@@ -331,31 +331,16 @@ def unsafe_index_put_impl(inp, indices, values, accumulate=False):
     ]
     # step 1: index preprocessing
     processed_indices = []
-    for pos, idx in enumerate(indices):
+    for idx in indices:
         if idx is None:
             processed_indices.append(None)
-        elif idx.dtype in (torch.bool, torch.uint8):
-            # aten accepts bool and (deprecated) uint8 indices as masks; every
-            # mask dim must match the input dim at the mask's position in the
-            # index list. Expand the mask into explicit integer indices.
-            bad_dim = next(
-                (
-                    i
-                    for i in range(idx.ndim)
-                    if pos + i >= inp.ndim or idx.shape[i] != inp.shape[pos + i]
-                ),
-                None,
-            )
-            if bad_dim is not None:
-                raise IndexError(
-                    f"The shape of the mask {list(idx.shape)} at index {bad_dim} does not match "
-                    f"the shape of the indexed tensor {list(inp.shape)} at index {pos + bad_dim}"
-                )
+        elif idx.dtype in (torch.bool, torch.int8):
+            # Expand bool masks into explicit integer indices
             processed_indices.extend(idx.nonzero(as_tuple=True))
-        elif torch.is_tensor(idx) and idx.dtype in (torch.int32, torch.int64):
+        elif torch.is_tensor(idx):
             processed_indices.append(idx)
         else:
-            raise IndexError(
+            raise TypeError(
                 "tensors used as indices must be long, int, byte or bool tensors"
             )
 

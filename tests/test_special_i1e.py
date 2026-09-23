@@ -20,6 +20,22 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
+# The active implementation may be the generic one (flag_gems.ops.special_i1e,
+# logging "GEMS ...") or a vendor-specific override registered under
+# flag_gems.runtime.backend._<vendor>.ops (logging "GEMS_<VENDOR> ..."), so
+# derive the logger name and expected prefix from the resolved function
+# instead of hardcoding either.
+def _gems_log_prefix(fn):
+    module = fn.__module__
+    if module.startswith("flag_gems.runtime.backend."):
+        return f"GEMS_{flag_gems.vendor_name.upper()}"
+    return "GEMS"
+
+
+_SPECIAL_I1E_LOGGER = flag_gems.special_i1e.__module__
+_SPECIAL_I1E_OUT_LOGGER = flag_gems.special_i1e_out.__module__
+
+
 @pytest.mark.special_i1e
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -27,10 +43,10 @@ def test_special_i1e(shape, dtype, caplog):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp, True)
     ref_out = torch.special.i1e(ref_inp)
-    with caplog.at_level("DEBUG", logger="flag_gems.ops.special_i1e"):
+    with caplog.at_level("DEBUG", logger=_SPECIAL_I1E_LOGGER):
         with flag_gems.use_gems():
             res_out = torch.special.i1e(inp)
-    assert "GEMS SPECIAL_I1E" in caplog.text
+    assert f"{_gems_log_prefix(flag_gems.special_i1e)} SPECIAL_I1E" in caplog.text
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
@@ -45,10 +61,11 @@ def test_special_i1e_out(shape, dtype, caplog):
     torch.ops.aten.special_i1e.out(ref_inp, out=ref_out)
 
     out = torch.empty_like(inp)
-    with caplog.at_level("DEBUG", logger="flag_gems.ops.special_i1e"):
+    with caplog.at_level("DEBUG", logger=_SPECIAL_I1E_OUT_LOGGER):
         with flag_gems.use_gems():
             res_out = torch.ops.aten.special_i1e.out(inp, out=out)
 
-    assert "GEMS SPECIAL_I1E_OUT" in caplog.text
+    expected_prefix = _gems_log_prefix(flag_gems.special_i1e_out)
+    assert f"{expected_prefix} SPECIAL_I1E_OUT" in caplog.text
     assert res_out is out
     utils.gems_assert_close(res_out, ref_out, dtype)
