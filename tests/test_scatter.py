@@ -153,6 +153,86 @@ def test_scatter_add_(src_shape, inp_shape, dim, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.scatter_add_
+@pytest.mark.parametrize(
+    "layout",
+    [
+        "broadcast_index",
+        "index_row_slice",
+        "index_col_slice",
+        "index_transpose",
+        "src_row_slice",
+        "src_col_slice",
+        "out_row_slice",
+        "out_col_slice",
+    ],
+)
+@pytest.mark.parametrize("dim", [0, 1])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_scatter_add_2d_noncontiguous(layout, dim, dtype):
+    rows, cols, nodes = 64, 24, 32
+    index_shape = (rows, cols)
+    inp_shape = (nodes, cols) if dim == 0 else (rows, nodes)
+
+    index = torch.arange(rows * cols, device=flag_gems.device).reshape(index_shape)
+    index = index % nodes
+    src = torch.ones(index_shape, dtype=dtype, device=flag_gems.device)
+    inp = torch.zeros(inp_shape, dtype=dtype, device=flag_gems.device)
+    untouched = None
+
+    if layout == "broadcast_index":
+        if dim == 0:
+            index = (torch.arange(rows, device=flag_gems.device) % nodes).view(rows, 1)
+        else:
+            index = (torch.arange(cols, device=flag_gems.device) % nodes).view(1, cols)
+        index = index.expand(index_shape)
+    elif layout == "index_row_slice":
+        index = torch.arange(rows * 2 * cols, device=flag_gems.device)
+        index = (index.reshape(rows * 2, cols) % nodes)[::2, :]
+    elif layout == "index_col_slice":
+        index = torch.arange(rows * cols * 2, device=flag_gems.device)
+        index = (index.reshape(rows, cols * 2) % nodes)[:, ::2]
+    elif layout == "index_transpose":
+        index = torch.arange(cols * rows, device=flag_gems.device)
+        index = (index.reshape(cols, rows) % nodes).transpose(0, 1)
+    elif layout == "src_row_slice":
+        src = torch.ones((rows * 2, cols), dtype=dtype, device=flag_gems.device)[::2, :]
+    elif layout == "src_col_slice":
+        src = torch.ones((rows, cols * 2), dtype=dtype, device=flag_gems.device)[:, ::2]
+    elif layout == "out_row_slice":
+        inp_base = torch.zeros(
+            (inp_shape[0] * 2, inp_shape[1]), dtype=dtype, device=flag_gems.device
+        )
+        inp = inp_base[::2, :]
+        untouched = inp_base[1::2, :]
+    elif layout == "out_col_slice":
+        inp_base = torch.zeros(
+            (inp_shape[0], inp_shape[1] * 2), dtype=dtype, device=flag_gems.device
+        )
+        inp = inp_base[:, ::2]
+        untouched = inp_base[:, 1::2]
+    else:
+        raise AssertionError(layout)
+
+    ref_inp = utils.to_reference(inp, upcast=True)
+    ref_index = utils.to_reference(index)
+    ref_src = utils.to_reference(src, upcast=True)
+    ref_out = ref_inp.scatter_add_(dim, ref_index, ref_src)
+    data_ptr = inp.data_ptr()
+    stride = inp.stride()
+
+    with flag_gems.use_gems():
+        res_out = inp.scatter_add_(dim, index, src)
+
+    assert res_out is inp
+    assert res_out.data_ptr() == data_ptr
+    assert res_out.stride() == stride
+    utils.gems_assert_close(res_out, ref_out, dtype)
+    if untouched is not None:
+        untouched_ref = utils.to_reference(torch.zeros_like(untouched))
+        utils.gems_assert_equal(untouched, untouched_ref)
+
+
 @pytest.mark.scatter_add
 @pytest.mark.parametrize("src_shape", SOURCE_SHAPES)
 @pytest.mark.parametrize("inp_shape", INPUT_SHAPES)
