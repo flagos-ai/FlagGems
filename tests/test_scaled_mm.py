@@ -12,203 +12,344 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
+from functools import lru_cache
+from itertools import product
+
 import pytest
 import torch
-from packaging import version
+import triton
+import triton.language as tl
 
 import flag_gems
+from flag_gems.runtime import torch_device_fn
 
-from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
 
-pytestmark = pytest.mark.skipif(
-    flag_gems.vendor_name in ["ascend"],
-    reason="https://github.com/flagos-ai/FlagGems/issues/3387",
+logger = logging.getLogger(__name__)
+FP8_NAMES = ("float8_e4m3fn", "float8_e5m2", "float8_e4m3fnuz", "float8_e5m2fnuz")
+# output dtype, scaling scheme, bias. Matrix inputs are always FP8.
+CONFIGS = (
+    (torch.float16, "scalar", True),
+    (torch.bfloat16, "scalar", True),
+    (torch.float32, "scalar", False),
+    (torch.bfloat16, "rowwise", True),
+    (None, "scalar", False),
 )
 
-if QUICK_MODE:
-    SCALED_MM_SHAPES = [(16, 16, 16)]
-else:
-    SCALED_MM_SHAPES = [
-        (16, 16, 16),
-        (17, 31, 32),
-        (64, 48, 80),
-    ]
+
+@triton.jit
+def _convert_probe(X, Y, N: tl.constexpr, BLOCK: tl.constexpr):
+    i = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    x = tl.load(X + i, i < N, other=0.0).to(tl.float32)
+    tl.store(Y + i, x, i < N)
 
 
-def _float8_dtypes():
-    if (
-        flag_gems.vendor_name != "nvidia"
-        or flag_gems.device != "cuda"
-        or not torch.cuda.is_available()
+@triton.jit
+def _dot_probe(A, B, C):
+    m = tl.arange(0, 16)
+    n = tl.arange(0, 16)
+    k = tl.arange(0, 32)
+    a = tl.load(A + m[:, None] * 32 + k[None, :]).to(tl.float16)
+    b = tl.load(B + k[:, None] * 16 + n[None, :]).to(tl.float16)
+    tl.store(C + m[:, None] * 16 + n[None, :], tl.dot(a, b))
+
+
+def _device_key():
+    return str(flag_gems.device), torch_device_fn.current_device()
+
+
+def _unsupported_reason(exc):
+    text = str(exc)
+    # Resource exhaustion and device faults are not evidence of dtype support.
+    if any(
+        s in text.lower()
+        for s in ("out of memory", "device-side assert", "illegal memory")
     ):
-        return []
-    major, minor = torch.cuda.get_device_capability()
-    if major * 10 + minor < 89:
-        return []
-    return [torch.float8_e4m3fn] if hasattr(torch, "float8_e4m3fn") else []
-
-
-def _scaled_mm_cases():
-    cases = [
-        (torch.float16, None, "scalar", False),
-        (torch.float16, torch.float32, "rowwise_2d", True),
-        (torch.float32, torch.float16, "rowwise_1d", True),
-    ]
-    if flag_gems.runtime.device.support_bf16:
-        cases.append((torch.bfloat16, torch.float32, "rowwise_2d", False))
-    for dtype in _float8_dtypes():
-        cases.extend(
-            [
-                (dtype, None, "scalar", False),
-                (dtype, torch.float16, "rowwise_1d", True),
-                (dtype, torch.float32, "rowwise_2d", True),
-            ]
+        raise exc
+    if not any(
+        s in text.lower()
+        for s in (
+            "not support",
+            "doesn't support",
+            "unsupported",
+            "not implement",
+            "cannot convert",
+            "cannot cast",
+            "only support",
+            "has no attribute",
+            "divisible",
+            "expected b.dtype",
+            "not_supported",
         )
-    return cases
+    ):
+        raise exc
+    return f"{type(exc).__name__}: {text[-1600:]}"
 
 
-def _case_id(case):
-    dtype, out_dtype, scale_mode, use_bias = case
-    out_name = "default" if out_dtype is None else str(out_dtype).split(".")[-1]
-    return f"{str(dtype).split('.')[-1]}-{out_name}-{scale_mode}-bias_{use_bias}"
-
-
-def _is_float8(dtype):
-    return dtype in _float8_dtypes()
-
-
-def _make_matrix(shape, dtype):
-    base = torch.randn(shape, dtype=torch.float32, device=flag_gems.device) * 0.25
+@lru_cache(None)
+def _dtype_reason(dtype, device_key, output=False):
+    device, index = device_key
     try:
-        return base.to(dtype)
-    except RuntimeError as exc:
-        pytest.skip(f"{dtype} is not supported on {flag_gems.device}: {exc}")
+        with torch_device_fn.device(index):
+            # CPU quantization avoids requiring an unrelated vendor cast operator.
+            cpu = ((torch.arange(512).float() % 13 - 6) / 16).reshape(16, 32)
+            a = cpu.to(dtype).to(device)
+            y = torch.empty_like(cpu, device=device)
+            _convert_probe[(2,)](a, y, 511, 256)
+            torch_device_fn.synchronize()
+            torch.testing.assert_close(
+                y.cpu().flatten()[:511],
+                cpu.to(dtype).float().flatten()[:511],
+                rtol=0,
+                atol=0,
+            )
+            if output:
+                _convert_probe[(2,)](y, a, 511, 256)
+                torch_device_fn.synchronize()
+                torch.testing.assert_close(
+                    a.cpu().float().flatten()[:511],
+                    cpu.to(dtype).float().flatten()[:511],
+                    rtol=0,
+                    atol=0,
+                )
+            else:
+                b = cpu.t().contiguous().to(dtype).to(device)
+                c = torch.empty((16, 16), dtype=torch.float32, device=device)
+                _dot_probe[(1,)](a, b, c)
+                torch_device_fn.synchronize()
+                torch.testing.assert_close(
+                    c.cpu(),
+                    cpu.to(dtype).float() @ cpu.t().to(dtype).float(),
+                    rtol=1e-4,
+                    atol=1e-4,
+                )
+    except Exception as exc:
+        reason = _unsupported_reason(exc)
+        logger.info(
+            "FP8 feature check failed: device=%s dtype=%s output=%s reason=%s",
+            device_key,
+            dtype,
+            output,
+            reason,
+        )
+        return reason
+    return None
 
 
-def _make_scales(rows, cols, mode):
+def dtype_reason(dtype, output=False):
+    return _dtype_reason(dtype, _device_key(), output)
+
+
+def cases():
+    dtypes = [getattr(torch, name) for name in FP8_NAMES if hasattr(torch, name)]
+    return [
+        (a, b, out, mode, bias)
+        for a, b in product(dtypes, repeat=2)
+        for out, mode, bias in CONFIGS
+    ]
+
+
+def case_id(case):
+    return "-".join(str(x).replace("torch.", "") for x in case)
+
+
+def case_reason(case):
+    a, b, out, _, _ = case
+    reason = dtype_reason(a) or dtype_reason(b)
+    if reason is None and out is None:
+        reason = dtype_reason(a, output=True)
+    return reason
+
+
+def make_inputs(case, shape, layout="column", fast=False, scale_result=None):
+    a_dtype, b_dtype, out_dtype, mode, has_bias = case
+    M, N, K = shape
+    # Seed locally, without changing the application's global RNG state.
+    gen = torch.Generator().manual_seed(2026)
+    a = (torch.randn((M, K), generator=gen) * 0.25).to(a_dtype).to(flag_gems.device)
+    b = (torch.randn((K, N), generator=gen) * 0.25).to(b_dtype)
+    if layout == "column":
+        b = b.t().contiguous().t()
+    b = b.to(flag_gems.device)
     if mode == "scalar":
-        return (
-            torch.tensor([0.75], dtype=torch.float32, device=flag_gems.device),
-            torch.tensor([1.25], dtype=torch.float32, device=flag_gems.device),
-        )
-
-    scale_a = torch.linspace(0.75, 1.25, rows, device=flag_gems.device)
-    scale_b = torch.linspace(1.25, 0.75, cols, device=flag_gems.device)
-    if mode == "rowwise_2d":
-        return scale_a.reshape(rows, 1), scale_b.reshape(1, cols)
-
-    return scale_a, scale_b
-
-
-def _scale_for_output(scale, rows, cols, is_left_scale):
-    if scale.numel() == 1:
-        return scale
-    if scale.ndim == 1:
-        if is_left_scale and scale.shape[0] == rows:
-            return scale.reshape(rows, 1)
-        if not is_left_scale and scale.shape[0] == cols:
-            return scale.reshape(1, cols)
-    return scale
-
-
-def _reference_scaled_mm(mat1, mat2, scale_a, scale_b, bias, out_dtype):
-    rows = mat1.shape[0]
-    cols = mat2.shape[1]
-    ref_mat1 = utils.to_reference(mat1, True)
-    ref_mat2 = utils.to_reference(mat2, True)
-    ref_scale_a = utils.to_reference(scale_a, True)
-    ref_scale_b = utils.to_reference(scale_b, True)
-
-    ref = ref_mat1.mm(ref_mat2)
-    ref = ref * _scale_for_output(ref_scale_a, rows, cols, True)
-    ref = ref * _scale_for_output(ref_scale_b, rows, cols, False)
-    if bias is not None:
-        ref = ref + utils.to_reference(bias, True)
-    return ref.to(out_dtype or mat1.dtype)
-
-
-def _assert_scaled_mm_close(res, ref, dtype, reduce_dim):
-    if _is_float8(dtype):
-        res = res.float().cpu() if utils.TO_CPU else res.float()
-        ref = ref.float() if utils.TO_CPU else ref.to(res.device).float()
-        torch.testing.assert_close(res, ref, atol=1.25e-1, rtol=5e-1)
-        return
-    ref = ref if utils.TO_CPU else ref.to(flag_gems.device)
-    utils.gems_assert_close(res, ref, dtype, reduce_dim=reduce_dim)
-
-
-@pytest.mark.skipif(
-    version.parse(torch.__version__) < version.parse("2.5"),
-    reason="aten._scaled_mm is unavailable before torch 2.5",
-)
-@pytest.mark.scaled_mm
-@pytest.mark.parametrize("M, N, K", SCALED_MM_SHAPES)
-@pytest.mark.parametrize("case", _scaled_mm_cases(), ids=_case_id)
-def test_scaled_mm(M, N, K, case):
-    dtype, out_dtype, scale_mode, use_bias = case
-    mat1 = _make_matrix((M, K), dtype)
-    mat2 = _make_matrix((K, N), dtype)
-    scale_a, scale_b = _make_scales(M, N, scale_mode)
+        sa = torch.tensor([0.75], device=flag_gems.device)
+        sb = torch.tensor([1.25], device=flag_gems.device)
+    else:
+        sa = torch.linspace(0.5, 1.0, M).reshape(M, 1).to(flag_gems.device)
+        sb = torch.linspace(1.0, 1.5, N).reshape(1, N).to(flag_gems.device)
     bias = None
-    if use_bias:
-        bias_dtype = out_dtype or (torch.float32 if _is_float8(dtype) else dtype)
-        bias = _make_matrix((N,), bias_dtype)
-
-    ref = _reference_scaled_mm(mat1, mat2, scale_a, scale_b, bias, out_dtype)
-    scale_result = torch.tensor([2.0], device=flag_gems.device)
-    with flag_gems.use_gems():
-        res = torch._scaled_mm(
-            mat1,
-            mat2,
-            scale_a,
-            scale_b,
-            bias=bias,
-            scale_result=scale_result,
-            out_dtype=out_dtype,
-            use_fast_accum=True,
+    if has_bias:
+        bias = (
+            (torch.randn((N,), generator=gen) * 0.1).to(out_dtype).to(flag_gems.device)
         )
+    return (a, b, sa, sb), dict(
+        bias=bias, scale_result=scale_result, out_dtype=out_dtype, use_fast_accum=fast
+    )
 
-    target_dtype = out_dtype or dtype
-    _assert_scaled_mm_close(res, ref, target_dtype, reduce_dim=K)
+
+def comparison_tolerance(dtype):
+    if str(dtype).removeprefix("torch.") in FP8_NAMES:
+        return 0.125
+    return 0.02 if dtype == torch.bfloat16 else 0.002
 
 
-@pytest.mark.skipif(
-    version.parse(torch.__version__) < version.parse("2.5"),
-    reason="aten._scaled_mm.out is unavailable before torch 2.5",
+SHAPES = (
+    [(16, 16, 16)]
+    if QUICK_MODE
+    else [
+        (16, 16, 16),
+        (32, 32, 32),
+        (17, 31, 80),
+        (64, 128, 128),
+        (128, 128, 128),
+        (512, 512, 512),
+    ]
 )
+
+
+def _params():
+    result = []
+    for case in cases():
+        reason = case_reason(case)
+        marks = [pytest.mark.skip(reason=f"FP8 capability: {reason}")] if reason else []
+        result.append(pytest.param(case, id=case_id(case), marks=marks))
+    return result
+
+
+CASES = _params()
+
+
+def golden(args, kwargs):
+    a, b, sa, sb = args
+    result = a.cpu().float() @ b.cpu().float()
+    result = result * sa.cpu() * sb.cpu()
+    if kwargs["bias"] is not None and a.shape[1] > 0:
+        result += kwargs["bias"].cpu().float()
+    # ATen GPU _scaled_mm currently ignores scale_result (unlike its CPU kernel).
+    return result.to(kwargs["out_dtype"] or a.dtype)
+
+
+def _check(case, shape, layout, fast, use_out):
+    args, kwargs = make_inputs(case, shape, layout=layout, fast=fast)
+    expected = golden(args, kwargs)
+    if use_out:
+        out = torch.empty(
+            (shape[1], shape[0]), dtype=expected.dtype, device=flag_gems.device
+        ).t()
+        actual = flag_gems.scaled_mm_out(*args, **kwargs, out=out)
+        assert actual is out
+    else:
+        actual = flag_gems.scaled_mm(*args, **kwargs)
+    assert actual.dtype == expected.dtype
+    tol = comparison_tolerance(expected.dtype)
+    torch.testing.assert_close(
+        actual.cpu().float(), expected.float(), rtol=tol, atol=tol
+    )
+
+
+@pytest.mark.scaled_mm
+@pytest.mark.parametrize("case", CASES)
+@pytest.mark.parametrize("shape", SHAPES)
+@pytest.mark.parametrize("layout,fast", [("column", False), ("row", True)])
+def test_scaled_mm(case, shape, layout, fast):
+    _check(case, shape, layout, fast, False)
+
+
 @pytest.mark.scaled_mm_out
-@pytest.mark.parametrize(
-    "case",
-    [
-        (torch.float16, torch.float32, "rowwise_2d", True),
-        *_scaled_mm_cases()[-1:],
-    ],
-    ids=_case_id,
-)
-def test_scaled_mm_out(case):
-    dtype, out_dtype, scale_mode, use_bias = case
-    M, N, K = SCALED_MM_SHAPES[0]
-    mat1 = _make_matrix((M, K), dtype)
-    mat2 = _make_matrix((K, N), dtype)
-    scale_a, scale_b = _make_scales(M, N, scale_mode)
-    bias = _make_matrix((1, N), out_dtype) if use_bias else None
-    target_dtype = out_dtype or dtype
-    out = torch.empty((M, N), dtype=target_dtype, device=flag_gems.device)
+@pytest.mark.parametrize("case", CASES)
+@pytest.mark.parametrize("shape", SHAPES)
+def test_scaled_mm_out(case, shape):
+    _check(case, shape, "column", False, True)
 
-    ref = _reference_scaled_mm(mat1, mat2, scale_a, scale_b, bias, out_dtype)
-    with flag_gems.use_gems():
-        ret = torch.ops.aten._scaled_mm.out(
-            mat1,
-            mat2,
-            scale_a,
-            scale_b,
-            bias=bias,
-            scale_result=None,
-            out_dtype=out_dtype,
-            use_fast_accum=False,
-            out=out,
+
+@pytest.mark.scaled_mm
+@pytest.mark.parametrize("case", CASES)
+@pytest.mark.parametrize("shape", [(0, 16, 32), (16, 0, 32), (16, 16, 0)])
+def test_scaled_mm_empty(case, shape):
+    args, kwargs = make_inputs(case, shape)
+    actual = flag_gems.scaled_mm(*args, **kwargs)
+    torch.testing.assert_close(
+        actual.cpu().float(), golden(args, kwargs).float(), rtol=0.02, atol=0.02
+    )
+
+
+@pytest.mark.scaled_mm
+@pytest.mark.parametrize("case", CASES)
+def test_scaled_mm_schema(case):
+    args, kwargs = make_inputs(case, (16, 16, 32))
+    with pytest.raises(RuntimeError, match="Float32"):
+        flag_gems.scaled_mm(args[0], args[1], args[2].half(), args[3], **kwargs)
+    with pytest.raises(RuntimeError, match="float scalar"):
+        flag_gems.scaled_mm(
+            *args,
+            **{**kwargs, "scale_result": torch.ones(2, device=flag_gems.device)},
+        )
+    actual = flag_gems.scaled_mm(
+        *args,
+        **{**kwargs, "scale_result": torch.tensor([2.0], device=flag_gems.device)},
+    )
+    tol = comparison_tolerance(actual.dtype)
+    torch.testing.assert_close(
+        actual.cpu().float(), golden(args, kwargs).float(), rtol=tol, atol=tol
+    )
+
+
+@pytest.mark.scaled_mm
+def test_scaled_mm_fast_route(monkeypatch):
+    import importlib
+
+    module = importlib.import_module("flag_gems.ops.scaled_mm")
+    case = (torch.float8_e4m3fn, torch.float8_e4m3fn, torch.bfloat16, "scalar", True)
+    reason = case_reason(case)
+    if reason:
+        pytest.skip(reason)
+    calls = []
+    original = module._csmm
+
+    def tracked(*args):
+        calls.append(True)
+        return original(*args)
+
+    monkeypatch.setattr(module, "_csmm", tracked)
+    for layout in ("column", "row"):
+        args, kwargs = make_inputs(case, (32, 32, 32), layout)
+        expected_fast = (
+            layout == "column"
+            and flag_gems.vendor_name == "nvidia"
+            and torch.cuda.get_device_capability()[0] == 9
+        )
+        calls.clear()
+        actual = module.scaled_mm(*args, **kwargs)
+        assert bool(calls) == expected_fast
+        torch.testing.assert_close(
+            actual.cpu().float(), golden(args, kwargs).float(), rtol=0.02, atol=0.002
         )
 
-    assert ret is out
-    _assert_scaled_mm_close(out, ref, target_dtype, reduce_dim=K)
+
+@pytest.mark.scaled_mm
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "mthreads", reason="MThreads descriptor cache"
+)
+def test_scaled_mm_descriptor_dtype_switch():
+    dtypes = (torch.float8_e4m3fn, torch.float8_e5m2)
+    for dtype in dtypes:
+        reason = dtype_reason(dtype)
+        if reason:
+            pytest.skip(reason)
+    # Keep shape, strides and output dtype identical while switching input
+    # encodings, including switching back to a previously compiled encoding.
+    for dtype in (*dtypes, dtypes[0]):
+        case = (dtype, dtype, torch.bfloat16, "scalar", True)
+        args, kwargs = make_inputs(case, (512, 512, 512))
+        expected = golden(args, kwargs)
+        actual = flag_gems.scaled_mm(*args, **kwargs)
+        torch.testing.assert_close(
+            actual.cpu().float(), expected.float(), rtol=0.02, atol=0.02
+        )
+        out = torch.empty_like(actual)
+        actual = flag_gems.scaled_mm_out(*args, **kwargs, out=out)
+        assert actual is out
+        torch.testing.assert_close(
+            actual.cpu().float(), expected.float(), rtol=0.02, atol=0.02
+        )

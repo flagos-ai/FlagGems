@@ -13793,12 +13793,7 @@ ops:
   stages:
   - beta: '5.4'
 - id: scaled_mm
-  description: 'Performs a scaled matrix multiplication. The result of `self @ mat2`
-    is
-
-    multiplied by `scale_a` and `scale_b`, then an optional bias is added.
-
-    '
+  description: Scaled FP8 matrix multiplication with FP32 scales and optional bias.
   for:
   - _scaled_mm
   labels:
