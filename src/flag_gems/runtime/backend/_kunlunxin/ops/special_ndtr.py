@@ -12,6 +12,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Kunlunxin( XPU ) ndtr(x) = 0.5 * erfc(-x / sqrt(2)) = 0.5 * (1 - erf(-x/sqrt(2))).
+#
+# The generic flag_gems/ops/special_ndtr.py routes ndtr through
+# tl.math.erf -> extern `_ZN3xpu4erfEf` (XPU software libdevice-style
+# implementation), which measures ~73x slower than torch-native on 16.7M+
+# element tiles (baseline Gems Speedup ~= 0.0137x on (4096, 4096) fp32,
+# 41.2ms vs 0.565ms).  This override reuses the exact odd polynomial
+# u*P(u^2) already validated in _kunlunxin/ops/erf.py (LSQ fit on
+# t in [0, 9], deg-12 in t, fp32 Horner max abs err 3.7e-5 on [0, 3.0] and
+# hard saturation at |u| > 3) with u = -x/sqrt(2):
+#   x >  3*sqrt(2) : erf(-x/sqrt2) saturates to -1 => ndtr = 1.0
+#   x < -3*sqrt(2) : erf(-x/sqrt2) saturates to +1 => ndtr = 0.0
+#   else           : 0.5 * (1 + (x/sqrt2) * P(x^2/2))
+# Dense-grid check vs torch.special.ndtr on [-20, 20]: max |diff| 1.79e-5,
+# 0.18x of the fp32 test tolerance (atol 1e-4 + rtol 1.3e-6*|ref|); fp16/bf16
+# compute in fp32 and round once at store, matching the reference path.
+# There is no transcendental at all (no exp), only FMA/dp2a-friendly Horner,
+# matching the design that made the erfc kernel ~2.9x faster than torch-native
+# on the generic path (this op ~73x on the baseline extern-erf path).
+# NaN/Inf semantics: comparisons are false for NaN so the polynomial
+# propagates NaN; +/-Inf saturate to 1.0 / 0.0 exactly like torch.
+
 import logging
 
 import torch
