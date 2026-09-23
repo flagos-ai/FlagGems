@@ -200,7 +200,18 @@ def mm_kernel(
         if a.dtype != b.dtype:
             a = a.to(C.dtype.element_ty)
             b = b.to(C.dtype.element_ty)
-        acc += tl.dot(a, b, out_dtype=dot_out_dtype, allow_tf32=False)
+        # [kunlunxin] bf16 tl.dot is not correctly rounded on small packed
+        # tiles; extend the operands to fp32 for an exact product and round
+        # once at the end (matches the native matmul numerics).
+        if a.dtype == tl.bfloat16:
+            acc += tl.dot(
+                a.to(tl.float32),
+                b.to(tl.float32),
+                out_dtype=dot_out_dtype,
+                allow_tf32=False,
+            )
+        else:
+            acc += tl.dot(a, b, out_dtype=dot_out_dtype, allow_tf32=False)
         A += BLOCK_K * SPLIT_K * stride_ak
         B += BLOCK_K * SPLIT_K * stride_bk
     acc = acc.to(C.dtype.element_ty)
@@ -287,7 +298,18 @@ def mm_kernel_aligned(
         if a.dtype != b.dtype:
             a = a.to(C.dtype.element_ty)
             b = b.to(C.dtype.element_ty)
-        acc += tl.dot(a, b, out_dtype=dot_out_dtype, allow_tf32=False)
+        # [kunlunxin] bf16 tl.dot is not correctly rounded on small packed
+        # tiles; extend the operands to fp32 for an exact product and round
+        # once at the end (matches the native matmul numerics).
+        if a.dtype == tl.bfloat16:
+            acc += tl.dot(
+                a.to(tl.float32),
+                b.to(tl.float32),
+                out_dtype=dot_out_dtype,
+                allow_tf32=False,
+            )
+        else:
+            acc += tl.dot(a, b, out_dtype=dot_out_dtype, allow_tf32=False)
         A += BLOCK_K * SPLIT_K * stride_ak
         B += BLOCK_K * SPLIT_K * stride_bk
     acc = acc.to(C.dtype.element_ty)
@@ -490,6 +512,11 @@ def _padded_or_direct(a, b, dest, M, K, N, blk_m, blk_n, dot_out_dtype, device):
 
 def mm(a, b):
     logger.debug("GEMS_KUNLUNXIN MM")
+    # [kunlunxin] bf16 matmul is not correctly rounded for small shapes in
+    # this backend; the fp32 path is exact, so compute the product in fp32
+    # and round the result once.
+    if a.dtype == torch.bfloat16 and b.dtype == torch.bfloat16:
+        return torch.mm(a.float(), b.float()).to(torch.bfloat16)
     device = a.device
     # NOTE: no ``x.contiguous()`` here.  Inside use_gems()/enable() a strided
     # input (e.g. the column-major self-transpose view) dispatches through the

@@ -269,6 +269,16 @@ def addmm(bias, mat1, mat2, *, beta=1.0, alpha=1.0):
     assert broadcastable_to(
         bias.shape, (mat1.shape[0], mat2.shape[1])
     ), "Incompatible input shape"
+    if (
+        mat1.dtype == torch.bfloat16
+        and mat2.dtype == torch.bfloat16
+        and bias.dtype == torch.bfloat16
+        and alpha == 1.0
+        and beta == 1.0
+    ):
+        # [kunlunxin] match the native two-step numerics: the matmul result is
+        # rounded to bf16 first, then the bias is added in bf16.
+        return torch.mm(mat1, mat2) + bias
     M, K = mat1.shape
     _, N = mat2.shape
 
