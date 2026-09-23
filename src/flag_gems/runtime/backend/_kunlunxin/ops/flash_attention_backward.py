@@ -29,6 +29,9 @@ import torch
 import triton
 import triton.language as tl
 
+from .contiguous import contiguous
+from .to import to_copy
+
 logger = logging.getLogger(__name__)
 
 __all__ = ["flash_attention_backward"]
@@ -149,9 +152,9 @@ def flash_attention_backward(
     # The upstream logsumexp is a non-contiguous [B, H, S] view of a [B, S, H]
     # ordered buffer; the bound kernel reads it as dense [B, H, S]. Materialize
     # it before launching (same convention as the efficient-attention family).
-    lse = logsumexp[:, :, : query.shape[1]].contiguous()
+    lse = contiguous(logsumexp[:, :, : query.shape[1]])
     if lse.dtype != torch.float32:
-        lse = lse.float()
+        lse = to_copy(lse, dtype=torch.float32)
     dq, dk, dv = _fab_bwd_launch(
         grad_out,
         query,
