@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from ._dyn_quant_matmul_4bit import _dyn_quant_matmul_4bit
+from .adaptive_max_pool3d import adaptive_max_pool3d
 from .addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out
 from .all import all, all_dim, all_dims
 from .amax import amax
@@ -32,6 +34,7 @@ from .baddbmm import baddbmm
 from .bmm import bmm
 from .cat import cat, cat_out
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
+from .concat import concat
 from .count_nonzero import count_nonzero
 from .cummax import cummax
 from .cummin import cummin
@@ -39,6 +42,7 @@ from .cumsum import cumsum, normed_cumsum
 from .diag import diag
 from .diag_embed import diag_embed
 from .diagonal import diagonal_backward
+from .diff import diff
 from .dist import dist
 from .dot import dot
 from .embedding import embedding
@@ -48,14 +52,19 @@ from .fill import fill_scalar, fill_scalar_, fill_tensor, fill_tensor_
 from .flip import flip
 from .full import full
 from .full_like import full_like
+from .fused_adam_ import fused_adam_
 from .gather import gather, gather_backward
+from .grouped_matmul import grouped_matmul
 from .groupnorm import group_norm, group_norm_backward
+from .gru import gru, gru_data
 from .hadamard_transform import hadamard_transform
 from .hstack import hstack
+from .igammac import igammac, igammac_out
 from .index import index
 from .index_add import index_add, index_add_
 from .index_copy_ import index_copy, index_copy_
 from .index_fill import index_fill, index_fill_
+from .index_reduce import index_reduce, index_reduce_, index_reduce_out
 from .index_select import index_select
 from .isin import isin
 from .layernorm import layer_norm, native_layer_norm
@@ -66,18 +75,28 @@ from .linalg_lu import linalg_lu, linalg_lu_out
 from .linalg_lu_factor import linalg_lu_factor, linalg_lu_factor_out
 from .linalg_lu_factor_ex import linalg_lu_factor_ex, linalg_lu_factor_ex_out
 from .linalg_matrix_exp import linalg_matrix_exp, linalg_matrix_exp_out
+from .linalg_matrix_norm import linalg_matrix_norm, linalg_matrix_norm_out
 from .linalg_matrix_power import linalg_matrix_power, linalg_matrix_power_out
+from .linalg_matrix_rank import (
+    linalg_matrix_rank,
+    linalg_matrix_rank_out,
+    linalg_matrix_rank_tol,
+    linalg_matrix_rank_tol_out,
+)
+from .linalg_norm import linalg_norm
 from .linalg_qr import linalg_qr, linalg_qr_out
 from .linalg_solve_triangular import (
     linalg_solve_triangular,
     linalg_solve_triangular_out,
 )
+from .linear import linear
 from .linspace import linspace
 from .log_normal import log_normal
 from .log_sigmoid_backward import log_sigmoid_backward, log_sigmoid_backward_out
 from .log_softmax import log_softmax, log_softmax_backward, log_softmax_out
 from .masked_fill import masked_fill, masked_fill_
 from .masked_scatter import masked_scatter, masked_scatter_
+from .masked_scatter_backward import masked_scatter_backward
 from .masked_select import masked_select
 from .matmul_bf16 import matmul_bf16
 from .matmul_int8 import matmul_int8
@@ -86,11 +105,13 @@ from .mean import mean, mean_dim
 from .min import min, min_dim
 from .mm import mm, mm_out
 from .multinomial import multinomial
+from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .nansum import nansum, nansum_out
 from .nonzero_static import nonzero_static, nonzero_static_out
 from .ones import ones
 from .ones_like import ones_like
 from .outer import outer
+from .pad_sequence import pad_sequence
 from .pairwise_distance import pairwise_distance
 from .polar import polar
 from .polygamma import polygamma_
@@ -110,8 +131,12 @@ from .replication_pad2d_backward import (
 from .resolve_neg import resolve_neg
 from .rms_norm import rms_norm
 from .rms_norm_w8a16_int8 import rms_norm_w8a16_int8
+from .rnn_tanh import rnn_tanh, rnn_tanh_data
+from .rrelu_with_noise import rrelu_with_noise, rrelu_with_noise_
 from .scatter import scatter, scatter_
 from .scatter_add_ import scatter_add_
+from .scatter_reduce import scatter_reduce, scatter_reduce_, scatter_reduce_out
+from .segment_reduce import _segment_reduce_backward, _segment_reduce_backward_out
 from .select_backward import select_backward
 from .select_scatter import select_scatter
 from .silu import silu, silu_
@@ -119,11 +144,18 @@ from .slice_scatter import slice_scatter
 from .softmax import softmax, softmax_backward, softmax_backward_out, softmax_out
 from .sort import sort
 from .sparse_sampled_addmm import sparse_sampled_addmm, sparse_sampled_addmm_out
+from .special_erfinv import special_erfinv
 from .stack import stack
+from .swiglu import swiglu
+from .thnn_fused_lstm_cell import thnn_fused_lstm_cell
 from .threshold import threshold, threshold_backward
+from .topk import topk
 from .triu import triu
 from .unique import _unique2
+from .unique_dim import unique_dim
 from .unsafe_index import unsafe_index
+from .unsafe_index_put import unsafe_index_put
+from .unsafe_masked_index import unsafe_masked_index
 from .upsample_bicubic2d_aa import _upsample_bicubic2d_aa
 from .upsample_linear1d_backward import upsample_linear1d_backward
 from .upsample_nearest2d import upsample_nearest2d
@@ -131,12 +163,17 @@ from .var_mean import var_mean
 from .vector_norm import vector_norm
 from .vstack import vstack
 from .where import where_scalar_other, where_scalar_self, where_self, where_self_out
+from .zero import zero
 from .zeros import zeros
 from .zeros_like import zeros_like
 
 __all__ = [
+    "_dyn_quant_matmul_4bit",
+    "_segment_reduce_backward",
+    "_segment_reduce_backward_out",
     "_unique2",
     "_upsample_bicubic2d_aa",
+    "adaptive_max_pool3d",
     "addmm",
     "addmm_dtype",
     "addmm_dtype_out",
@@ -159,6 +196,7 @@ __all__ = [
     "cat_out",
     "cholesky_solve",
     "cholesky_solve_out",
+    "concat",
     "count_nonzero",
     "cummax",
     "cummin",
@@ -166,6 +204,7 @@ __all__ = [
     "diag",
     "diag_embed",
     "diagonal_backward",
+    "diff",
     "dist",
     "dot",
     "embedding",
@@ -180,12 +219,18 @@ __all__ = [
     "flip",
     "full",
     "full_like",
+    "fused_adam_",
     "gather",
     "gather_backward",
     "group_norm",
     "group_norm_backward",
+    "grouped_matmul",
+    "gru",
+    "gru_data",
     "hadamard_transform",
     "hstack",
+    "igammac",
+    "igammac_out",
     "index",
     "index_add",
     "index_add_",
@@ -193,6 +238,9 @@ __all__ = [
     "index_copy_",
     "index_fill",
     "index_fill_",
+    "index_reduce",
+    "index_reduce_",
+    "index_reduce_out",
     "index_select",
     "isin",
     "layer_norm",
@@ -209,12 +257,20 @@ __all__ = [
     "linalg_lu_out",
     "linalg_matrix_exp",
     "linalg_matrix_exp_out",
+    "linalg_matrix_norm",
+    "linalg_matrix_norm_out",
     "linalg_matrix_power",
     "linalg_matrix_power_out",
+    "linalg_matrix_rank",
+    "linalg_matrix_rank_out",
+    "linalg_matrix_rank_tol",
+    "linalg_matrix_rank_tol_out",
+    "linalg_norm",
     "linalg_qr",
     "linalg_qr_out",
     "linalg_solve_triangular",
     "linalg_solve_triangular_out",
+    "linear",
     "linspace",
     "log_normal",
     "log_sigmoid_backward",
@@ -226,6 +282,7 @@ __all__ = [
     "masked_fill_",
     "masked_scatter",
     "masked_scatter_",
+    "masked_scatter_backward",
     "masked_select",
     "matmul_bf16",
     "matmul_int8",
@@ -238,6 +295,10 @@ __all__ = [
     "mm",
     "mm_out",
     "multinomial",
+    "nanmedian",
+    "nanmedian_dim",
+    "nanmedian_dim_values",
+    "nanmedian_out",
     "nansum",
     "nansum_out",
     "native_layer_norm",
@@ -247,6 +308,7 @@ __all__ = [
     "ones",
     "ones_like",
     "outer",
+    "pad_sequence",
     "pairwise_distance",
     "polar",
     "polygamma_",
@@ -262,6 +324,10 @@ __all__ = [
     "resolve_neg",
     "rms_norm",
     "rms_norm_w8a16_int8",
+    "rnn_tanh",
+    "rnn_tanh_data",
+    "rrelu_with_noise",
+    "rrelu_with_noise_",
     "scaled_dot_product_attention",
     "scaled_dot_product_attention_backward",
     "scaled_dot_product_attention_forward",
@@ -269,6 +335,9 @@ __all__ = [
     "scatter",
     "scatter_",
     "scatter_add_",
+    "scatter_reduce",
+    "scatter_reduce_",
+    "scatter_reduce_out",
     "select_backward",
     "select_scatter",
     "silu",
@@ -281,11 +350,18 @@ __all__ = [
     "sort",
     "sparse_sampled_addmm",
     "sparse_sampled_addmm_out",
+    "special_erfinv",
     "stack",
+    "swiglu",
+    "thnn_fused_lstm_cell",
     "threshold",
     "threshold_backward",
+    "topk",
     "triu",
+    "unique_dim",
     "unsafe_index",
+    "unsafe_index_put",
+    "unsafe_masked_index",
     "upsample_linear1d_backward",
     "upsample_nearest2d",
     "var_mean",
@@ -295,6 +371,7 @@ __all__ = [
     "where_scalar_self",
     "where_self",
     "where_self_out",
+    "zero",
     "zeros",
     "zeros_like",
 ]

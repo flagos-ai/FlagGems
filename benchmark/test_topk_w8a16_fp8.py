@@ -21,12 +21,23 @@ from . import base
 
 GROUP_SIZE = 128
 FP8_DTYPE = (
-    torch.float8_e4m3fn if flag_gems.vendor_name == "hygon" else torch.float8_e5m2
+    torch.float8_e4m3fn
+    if flag_gems.vendor_name in ("hygon", "mthreads", "nvidia")
+    else torch.float8_e5m2
 )
 
 
 def _fp8_available():
-    return torch.cuda.is_available() and hasattr(torch, "float8_e5m2")
+    if flag_gems.device == "musa":
+        return torch.musa.is_available() and hasattr(torch, "float8_e4m3fn")
+    return (
+        torch.cuda.is_available()
+        and hasattr(torch, "float8_e5m2")
+        and (
+            flag_gems.vendor_name != "nvidia"
+            or torch.cuda.get_device_capability()[0] >= 9
+        )
+    )
 
 
 def _quantize_fp8_grouped(x, group_size=GROUP_SIZE):
@@ -53,17 +64,17 @@ def _dequant_fp8(x_fp8, x_scale, group_size=GROUP_SIZE):
     return dequant.reshape(*leading, padded)[..., :n].to(x_scale.dtype)
 
 
-def _torch_topk_w8a16(x_fp8, x_scale, k, dequant):
+def _torch_topk_w8a16(x_fp8, x_scale, k, dequant, group_size):
     return torch.topk(dequant, k, dim=-1, largest=True, sorted=True)
 
 
-def _gems_bf16_topk(x_fp8, x_scale, k, dequant):
+def _gems_bf16_topk(x_fp8, x_scale, k, dequant, group_size):
     return flag_gems.topk(dequant, k, dim=-1, largest=True, sorted=True)
 
 
-def _gems_topk_w8a16(x_fp8, x_scale, k, dequant):
+def _gems_topk_w8a16(x_fp8, x_scale, k, dequant, group_size):
     return flag_gems.topk_w8a16_fp8(
-        x_fp8, x_scale, k, dim=-1, largest=True, sorted=True
+        x_fp8, x_scale, k, dim=-1, largest=True, sorted=True, group_size=group_size
     )
 
 
@@ -71,6 +82,16 @@ class TopKFp8W8A16Benchmark(base.Benchmark):
     DEFAULT_SHAPE_DESC = "M, N, K"
 
     def set_shapes(self, shape_file_path=None):
+        if flag_gems.vendor_name == "nvidia":
+            self.shapes = [
+                (4, 128, 8),
+                (8, 256, 16),
+                (64, 1024, 32),
+                (64, 4096, 64),
+                (64, 8192, 128),
+                (128, 32768, 256),
+            ]
+            return
         self.shapes = [
             (64, 128, 8),
             (256, 256, 8),
@@ -85,18 +106,27 @@ class TopKFp8W8A16Benchmark(base.Benchmark):
         for m, n, k in self.shapes:
             torch.manual_seed(5966)
             x = torch.randn((m, n), dtype=dtype, device=self.device)
-            x_fp8, x_scale = _quantize_fp8_grouped(x)
-            dequant = _dequant_fp8(x_fp8, x_scale)
-            yield x_fp8, x_scale, k, dequant
+            group_size = n if flag_gems.vendor_name == "nvidia" else GROUP_SIZE
+            x_fp8, x_scale = _quantize_fp8_grouped(x, group_size=group_size)
+            dequant = (
+                x
+                if flag_gems.vendor_name == "nvidia"
+                else _dequant_fp8(x_fp8, x_scale, group_size=group_size)
+            )
+            yield x_fp8, x_scale, k, dequant, group_size
 
 
 @pytest.mark.topk_w8a16_fp8
 @pytest.mark.skipif(
-    getattr(flag_gems, "vendor_name", None) not in ("thead", "hygon"),
+    getattr(flag_gems, "vendor_name", None)
+    not in ("thead", "hygon", "mthreads", "nvidia", "metax"),
     reason="topk_w8a16_fp8 requires an implemented backend",
 )
 @pytest.mark.skipif(not _fp8_available(), reason="required FP8 format is unavailable")
-@pytest.mark.parametrize("baseline", ["torch", "flaggems"])
+@pytest.mark.parametrize(
+    "baseline",
+    ["torch"] if flag_gems.vendor_name == "nvidia" else ["torch", "flaggems"],
+)
 def test_topk_w8a16_fp8(baseline):
     bench = TopKFp8W8A16Benchmark(
         op_name="topk_w8a16_fp8",
