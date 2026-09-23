@@ -182,7 +182,7 @@ def flagtune(include=None):
 def _include_from_env():
     include = os.environ.get(FLAGTUNE_INCLUDE_ENV)
     if include is None:
-        return get_default_flagtune_include()
+        return frozenset()
     try:
         return _normalize_include(include)
     except (TypeError, ValueError) as err:
@@ -201,10 +201,9 @@ def resolve_tuning_mode(op_name, *, supports_cost_model=False):
 
     ``USE_FLAGTUNE=0`` selects the default config space. ``USE_FLAGTUNE=1``
     enables Expanded tuning for an unadapted operator and Cost Model tuning for
-    an adapted operator. With neither switch set, unadapted operators use the
-    registry's default include list and adapted operators default to Cost Model.
-    An explicit ``FLAGTUNE_INCLUDE`` or ``flagtune(include=...)`` replaces that
-    list, including an empty list to disable per-operator selection. An
+    an adapted operator. With neither switch set, unadapted operators default to
+    Default and adapted operators default to Cost Model. ``FLAGTUNE_INCLUDE``
+    applies the same capability-based selection to individual operators. An
     adapted operator uses Expanded only when ``USE_FLAGTUNE_COST_MODEL=0``. If
     a model cannot be loaded, the policy handles AUTO fallback. Mode resolution
     is deliberately independent of device discovery and model availability.
@@ -246,7 +245,7 @@ def __getattr__(name):
 
 register_flagtune_op("mm", default=False, description="matrix multiplication")
 register_flagtune_op(
-    "mm_w8a8_fp8", default=True, description="FP8 W8A8 matrix multiplication"
+    "mm_w8a8_fp8", default=False, description="FP8 W8A8 matrix multiplication"
 )
 register_flagtune_op("bmm", default=False, description="batched matrix multiplication")
 register_flagtune_op(
