@@ -697,7 +697,6 @@ _FULL_CONFIG = (
     ("embedding_dense_backward", embedding_dense_backward),
     ("embedding_renorm_", embedding_renorm_),
     ("embedding_sparse_backward", embedding_sparse_backward),
-    ("empty.memory_format", empty),
     ("empty_permuted", empty_permuted),
     ("eq.Scalar", eq_scalar),
     ("eq.Tensor", eq),
@@ -1669,6 +1668,13 @@ _FULL_CONFIG = (
     ("zeros", zeros),
     ("zeros_like", zeros_like),
 )
+
+# aten's torch.empty returns uninitialized memory, whereas FlagGems' empty
+# zero-fills. Registering it is only needed on AMD, where the uninitialized
+# path made test_empty flaky; gate it to the AMD backend so other vendors do
+# not pay an extra zero-fill kernel on every torch.empty under use_gems.
+if vendor_name == "amd":
+    _FULL_CONFIG = _FULL_CONFIG + (("empty.memory_format", empty),)
 
 # Cache mapping from function name -> list of _FULL_CONFIG entries for quick lookup
 FULL_CONFIG_BY_FUNC = {}
