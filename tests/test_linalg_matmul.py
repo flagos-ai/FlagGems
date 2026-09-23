@@ -146,6 +146,17 @@ def test_linalg_matmul_complex(dtype):
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_linalg_matmul_grad(shape1, shape2, dtype):
     """Gradients of both inputs match native matmul for all dim/broadcast cases"""
+    # the backward recomputes the product through cuBLAS; keep TF32 off so
+    # fp32 gradients stay within the tolerance against the fp64 reference
+    matmul_tf32 = torch.backends.cuda.matmul.allow_tf32
+    torch.backends.cuda.matmul.allow_tf32 = False
+    try:
+        _test_linalg_matmul_grad(shape1, shape2, dtype)
+    finally:
+        torch.backends.cuda.matmul.allow_tf32 = matmul_tf32
+
+
+def _test_linalg_matmul_grad(shape1, shape2, dtype):
     mat1 = torch.randn(shape1, dtype=dtype, device=flag_gems.device)
     mat2 = torch.randn(shape2, dtype=dtype, device=flag_gems.device)
     ref_mat1 = utils.to_reference(mat1, True).requires_grad_(True)
@@ -185,6 +196,16 @@ def test_linalg_matmul_grad(shape1, shape2, dtype):
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_linalg_matmul_double_grad(dtype):
     """Higher-order gradients flow through the recomputed backward"""
+    # keep TF32 off so fp32 gradients stay within tolerance vs the fp64 ref
+    matmul_tf32 = torch.backends.cuda.matmul.allow_tf32
+    torch.backends.cuda.matmul.allow_tf32 = False
+    try:
+        _test_linalg_matmul_double_grad(dtype)
+    finally:
+        torch.backends.cuda.matmul.allow_tf32 = matmul_tf32
+
+
+def _test_linalg_matmul_double_grad(dtype):
     mat1 = torch.randn((4, 5), dtype=dtype, device=flag_gems.device)
     mat2 = torch.randn((5, 6), dtype=dtype, device=flag_gems.device)
     ref_mat1 = utils.to_reference(mat1, True).requires_grad_(True)
