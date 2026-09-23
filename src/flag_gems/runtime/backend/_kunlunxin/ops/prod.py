@@ -1,0 +1,396 @@
+import logging
+
+import torch
+import triton
+import triton.language as tl
+
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
+from flag_gems.utils import triton_lang_extension as ext
+
+logger = logging.getLogger(__name__)
+
+
+_REDUCE_BLOCK = 8192
+_TREE16_BLOCK = 512
+_FAST_BN_FP16 = (1024, 256, 512, 128, 64, 32, 16)
+_FAST_BN_FP32 = (512, 256, 1024, 128, 64, 32, 16)
+_FAST_BM_FP16 = (128, 64, 32, 256, 16, 8, 4, 2, 1)
+_FAST_BM_FP32 = (64, 128, 32, 256, 16, 8, 4, 2, 1)
+
+
+@triton.jit
+def reduce_mul(a, b):
+    return a * b
+
+
+def _pick_fast_tile(M, N, is_fp32):
+    """Return (BLOCK_M, BLOCK_N) with M % BLOCK_M == 0 and N % BLOCK_N == 0, so
+    the whole reduction runs mask-free, or None."""
+    bns = _FAST_BN_FP32 if is_fp32 else _FAST_BN_FP16
+    bms = _FAST_BM_FP32 if is_fp32 else _FAST_BM_FP16
+    bn = next((b for b in bns if N % b == 0), None)
+    if bn is None:
+        return None
+    bm = next((m for m in bms if M % m == 0), None)
+    if bm is None:
+        return None
+    return bm, bn
+
+
+def _tree16(dt):
+    return dt == torch.float16
+
+
+def _work_dtype(dt):
+    return torch.float32 if dt.is_floating_point else torch.int64
+
+
+@libentry()
+@triton.jit
+def prod_row2d(
+    inp,
+    out,
+    M,
+    N,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    NEED_MASK: tl.constexpr,
+    ACC32: tl.constexpr,
+    TREE16: tl.constexpr = False,
+):
+    pid = ext.program_id(0)
+    rows = pid * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    inp = inp + rows * N
+    out = out + rows
+    row_mask = rows < M
+
+    if ACC32:
+        acc = tl.full([BLOCK_M, 1], value=1.0, dtype=tl.float32)
+        for off in range(0, N, BLOCK_N):
+            cols = off + tl.arange(0, BLOCK_N)[None, :]
+            if TREE16:
+                if NEED_MASK:
+                    mask = row_mask and (cols < N)
+                    a = tl.load(inp + cols, mask, other=1.0)
+                else:
+                    a = tl.load(inp + cols)
+                blk = tl.reduce(a, axis=1, combine_fn=reduce_mul)[:, None]
+                acc = acc * blk.to(tl.float32)
+            else:
+                if NEED_MASK:
+                    mask = row_mask and (cols < N)
+                    a = tl.load(inp + cols, mask, other=1.0).to(tl.float32)
+                else:
+                    a = tl.load(inp + cols).to(tl.float32)
+                blk = tl.reduce(a, axis=1, combine_fn=reduce_mul)[:, None]
+                acc = acc * blk
+    else:
+        acc = tl.full([BLOCK_M, 1], value=1, dtype=tl.int64)
+        for off in range(0, N, BLOCK_N):
+            cols = off + tl.arange(0, BLOCK_N)[None, :]
+            if NEED_MASK:
+                mask = row_mask and (cols < N)
+                a = tl.load(inp + cols, mask, other=1).to(tl.int64)
+            else:
+                a = tl.load(inp + cols).to(tl.int64)
+            blk = tl.reduce(a, axis=1, combine_fn=reduce_mul)[:, None]
+            acc = acc * blk
+    if NEED_MASK:
+        tl.store(out, acc, row_mask)
+    else:
+        tl.store(out, acc)
+
+
+@libentry()
+@triton.jit
+def prod_mid_block(inp, mid, BLOCK: tl.constexpr, ACC32: tl.constexpr):
+    pid = ext.program_id(0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    if ACC32:
+        v = tl.load(inp + offs).to(tl.float32)
+    else:
+        v = tl.load(inp + offs).to(tl.int64)
+    p = tl.reduce(v, axis=0, combine_fn=reduce_mul)
+    tl.store(mid + pid, p)
+
+
+@libentry()
+@triton.jit
+def prod_tailk(inp, out, START, WIDTH: tl.constexpr, ACC32: tl.constexpr):
+    offs = START + tl.arange(0, WIDTH)
+    if ACC32:
+        v = tl.load(inp + offs).to(tl.float32)
+    else:
+        v = tl.load(inp + offs).to(tl.int64)
+    p = tl.reduce(v, axis=0, combine_fn=reduce_mul)
+    tl.store(out, p)
+
+
+@libentry()
+@triton.jit
+def prod_final_mask(inp, out, n, WIDTH: tl.constexpr, ACC32: tl.constexpr):
+    offs = tl.arange(0, WIDTH)
+    mask = offs < n
+    if ACC32:
+        v = tl.load(inp + offs, mask=mask, other=1.0).to(tl.float32)
+    else:
+        v = tl.load(inp + offs, mask=mask, other=1).to(tl.int64)
+    p = tl.reduce(v, axis=0, combine_fn=reduce_mul)
+    tl.store(out, p)
+
+
+def _bm_tail(tr):
+    b = 1
+    while tr % (b * 2) == 0:
+        b *= 2
+    return b
+
+
+@libentry()
+@triton.jit
+def prod_dim_chunk(
+    inp,
+    part,
+    N,
+    B0,
+    C0,
+    C: tl.constexpr,
+    CHUNK: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    c = ext.program_id(0)
+    mb = ext.program_id(1)
+    rows = (mb * BLOCK_M + tl.arange(0, BLOCK_M)).to(tl.int32)[:, None]
+    inp = inp + rows * N + B0 + c * CHUNK
+    acc = tl.full([BLOCK_M, 1], value=1.0, dtype=tl.float32)
+    for off in range(0, CHUNK, BLOCK_N):
+        cols = off + tl.arange(0, BLOCK_N)[None, :]
+        a = tl.load(inp + cols).to(tl.float32)
+        blk = tl.reduce(a, axis=1, combine_fn=reduce_mul)[:, None]
+        acc = acc * blk
+    tl.store(part + rows * C + C0 + c, acc)
+
+
+@libentry()
+@triton.jit
+def prod_dim_single(
+    inp,
+    out,
+    N,
+    CHUNK: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    mb = ext.program_id(1)
+    rows = (mb * BLOCK_M + tl.arange(0, BLOCK_M)).to(tl.int32)[:, None]
+    inp = inp + rows * N
+    acc = tl.full([BLOCK_M, 1], value=1.0, dtype=tl.float32)
+    for off in range(0, CHUNK, BLOCK_N):
+        cols = off + tl.arange(0, BLOCK_N)[None, :]
+        a = tl.load(inp + cols).to(tl.float32)
+        blk = tl.reduce(a, axis=1, combine_fn=reduce_mul)[:, None]
+        acc = acc * blk
+    tl.store(out + rows, acc)
+
+
+def _pow2_decomp(r):
+    parts = []
+    while r:
+        p = 1 << (r.bit_length() - 1)
+        parts.append(p)
+        r -= p
+    return parts
+
+
+def _reduce_partials(data, n, out, device, acc32):
+    """Staged product of `n` fp32/int partials -> scalar `out`, mask-free
+    (tails pow2-decomposed; final pad of 1.0s)."""
+    with torch_device_fn.device(device):
+        while n > _REDUCE_BLOCK:
+            k = n // _REDUCE_BLOCK
+            r = n - k * _REDUCE_BLOCK
+            chunks = _pow2_decomp(r)
+            sz = k + len(chunks)
+            midn = torch.empty((sz,), dtype=data.dtype, device=device)
+            if k:
+                prod_mid_block[(k, 1)](
+                    data, midn, _REDUCE_BLOCK, acc32, buffer_size_limit=2048
+                )
+            pos = k * _REDUCE_BLOCK
+            for i, w in enumerate(chunks):
+                prod_tailk[(1, 1)](
+                    data,
+                    midn[k + i : k + i + 1],
+                    pos,
+                    w,
+                    acc32,
+                    buffer_size_limit=2048,
+                )
+                pos += w
+            data = midn
+            n = sz
+        width = triton.next_power_of_2(n)
+        prod_final_mask[(1, 1)](data, out, n, width, acc32, buffer_size_limit=2048)
+
+
+def _prod_flat(inp, out, device):
+    numel = inp.numel()
+    block = _REDUCE_BLOCK
+    rows = numel // block
+    res = numel - rows * block
+    is_fp32 = inp.dtype == torch.float32
+    acc32 = inp.dtype.is_floating_point
+    tree16 = _tree16(inp.dtype)
+    wdt = _work_dtype(inp.dtype)
+    with torch_device_fn.device(device):
+        if rows:
+            tile = _pick_fast_tile(rows, block, is_fp32)
+            bm = tile[0] if tile else 2
+            if tree16:
+                bn = _TREE16_BLOCK
+            else:
+                bn = 512
+            chunks = _pow2_decomp(res) if res else []
+            mid = torch.empty((rows + len(chunks),), dtype=wdt, device=device)
+            prod_row2d[(max(rows // bm, 1), 1)](
+                inp,
+                mid,
+                rows,
+                block,
+                bm,
+                bn,
+                False,
+                acc32,
+                tree16,
+                buffer_size_limit=2048,
+            )
+            pos = rows * block
+            for i, w in enumerate(chunks):
+                prod_tailk[(1, 1)](
+                    inp,
+                    mid[rows + i : rows + i + 1],
+                    pos,
+                    w,
+                    acc32,
+                    buffer_size_limit=2048,
+                )
+                pos += w
+        else:
+            chunks = _pow2_decomp(res)
+            mid = torch.empty((len(chunks),), dtype=wdt, device=device)
+            pos = 0
+            for i, w in enumerate(chunks):
+                prod_tailk[(1, 1)](
+                    inp, mid[i : i + 1], pos, w, acc32, buffer_size_limit=2048
+                )
+                pos += w
+        _reduce_partials(mid, mid.numel(), out, device, acc32)
+
+
+def prod(inp, *, dtype=None):
+    logger.debug("GEMS_KUNLUNXIN PROD")
+    if dtype is None:
+        dtype = torch.int64 if not inp.dtype.is_floating_point else inp.dtype
+    numel = inp.numel()
+    out = torch.empty([], dtype=dtype, device=inp.device)
+    if numel == 0:
+        out.fill_(1)
+        return out
+    if numel == 1:
+        with torch_device_fn.device(inp.device):
+            torch.ops.aten._copy_from(inp.reshape([]), out, False)
+        return out
+    with torch_device_fn.device(inp.device):
+        _prod_flat(inp, out, inp.device)
+    return out
+
+
+def prod_dim(inp, dim=None, keepdim=False, *, dtype=None):
+    logger.debug("GEMS_KUNLUNXIN PROD_DIM")
+    assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
+    if dtype is None:
+        dtype = torch.int64 if not inp.dtype.is_floating_point else inp.dtype
+    shape = list(inp.shape)
+    d = dim % inp.ndim
+    N = shape[d]
+    M = 1
+    for s in shape[:d]:
+        M *= s
+    K = 1
+    for s in shape[d + 1 :]:
+        K *= s
+
+    out_shape = shape.copy()
+    out_shape[d] = 1
+    out = torch.empty(out_shape, dtype=dtype, device=inp.device)
+    if M == 0 or K == 0:
+        if not keepdim:
+            out = torch.squeeze(out, d)
+        return out
+    if N == 0:
+        out.fill_(1)
+        if not keepdim:
+            out = torch.squeeze(out, d)
+        return out
+    if N == 1:
+        with torch_device_fn.device(inp.device):
+            torch.ops.aten._copy_from(inp, out, False)
+        if not keepdim:
+            out = torch.squeeze(out, d)
+        return out
+
+    order = [i for i in range(inp.dim()) if i != d] + [d]
+    view = inp.permute(order)
+    if view.is_contiguous():
+        src = view
+    else:
+        src = torch.empty(list(view.shape), dtype=inp.dtype, device=inp.device)
+        with torch_device_fn.device(inp.device):
+            torch.ops.aten._copy_from(view, src, False)
+
+    rows = M * K
+    out_flat = out.reshape(rows)
+    is_fp32 = dtype == torch.float32
+    acc32 = dtype.is_floating_point
+    tree16 = False
+    with torch_device_fn.device(inp.device):
+        tile = _pick_fast_tile(rows, N, is_fp32)
+        if tile is not None and (not tree16 or N % _TREE16_BLOCK == 0):
+            bm, bn = tile
+            if tree16:
+                bn = _TREE16_BLOCK
+            prod_row2d[(max(rows // bm, 1), 1)](
+                src,
+                out_flat,
+                rows,
+                N,
+                bm,
+                bn,
+                False,
+                acc32,
+                tree16,
+                buffer_size_limit=2048,
+            )
+        else:
+            bn = min(triton.next_power_of_2(N), _REDUCE_BLOCK)
+            if tree16:
+                bn = min(bn, _TREE16_BLOCK)
+            bm = triton.next_power_of_2(min(triton.cdiv(rows, 12), 65536 // bn))
+            grid = (triton.cdiv(rows, bm),)
+            prod_row2d[grid](
+                src,
+                out_flat,
+                rows,
+                N,
+                bm,
+                bn,
+                True,
+                acc32,
+                tree16,
+                buffer_size_limit=2048,
+            )
+    if not keepdim:
+        out = torch.squeeze(out, d)
+    return out

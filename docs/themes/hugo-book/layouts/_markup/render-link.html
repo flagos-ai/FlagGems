@@ -1,0 +1,6 @@
+{{- $destination := .Destination -}}
+{{- if .Page.Site.Params.BookPortableLinks -}}
+  {{- $destination = partial "docs/links/portable-link" . -}}
+{{- end -}}
+<a href="{{ $destination | safeURL }}"{{ with .Title}} title="{{ . }}"{{ end }}>{{ .Text | safeHTML }}</a>
+{{- /**/ -}}

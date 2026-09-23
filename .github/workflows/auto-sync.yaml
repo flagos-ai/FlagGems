@@ -1,0 +1,49 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: Sync to remote site
+on:
+
+  workflow_dispatch:
+
+  # Note: use 'push' because we want to cover both manual push
+  # and PR merge events.
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    strategy:
+      matrix:
+        include:
+          - job_name: sync-to-gitcode
+            remote: gitcode.com
+            repository: FlagGems
+            branch: master
+          - job_name: sync-to-gitlink
+            remote: code.gitlink.org.cn
+            repository: FlagGems
+            branch: master
+    name: ${{ matrix.job_name }}
+    uses: flagos-ai/build-infra/.github/workflows/sync-to-remote.yaml@main
+    with:
+      remote: ${{ matrix.remote }}
+      repository: ${{ matrix.repository }}
+      branch: ${{ matrix.branch }}
+    secrets:
+      GITCODE_SSH_KEY: ${{ secrets.GITCODE_SSH_KEY }}

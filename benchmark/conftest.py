@@ -1,0 +1,629 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import json
+import logging
+import os
+
+import pytest
+import torch
+import yaml
+
+import flag_gems
+from flag_gems.cli_override import add_override_arguments, apply_overrides_from_args
+from flag_gems.runtime import torch_device_fn
+
+from . import consts
+
+device = flag_gems.device
+vendor_name = flag_gems.vendor_name
+recordLogger = logging.getLogger("flag_gems_benchmark")
+recordLogger.propagate = False
+Config = None
+
+BUILTIN_MARKS = (
+    "parametrize",
+    "skip",
+    "skipif",
+    "xfail",
+    "usefixtures",
+    "filterwarnings",
+    "timeout",
+    "tryfirst",
+    "trylast",
+)
+BENCHMARK_CONTROL_MARKS = ("skip_native",)
+NON_OPERATOR_MARKS = BUILTIN_MARKS + BENCHMARK_CONTROL_MARKS
+REGISTERED_MARKS = []
+TEST_RESULTS = {}
+CASE_LISTS = []
+REPORT_FILE = "benchmark_result.json"
+
+
+def update_result(op, data):
+    if not Config.record_json:
+        return
+
+    TEST_RESULTS.setdefault(op, {})
+    TEST_RESULTS[op].setdefault("details", [])
+    TEST_RESULTS[op]["details"].append(data)
+
+
+def update_case_list(data):
+    CASE_LISTS.append(data)
+
+
+def emit_record_logger(message: str) -> None:
+    if not Config.record_log:
+        return
+
+    if recordLogger.handlers:
+        handler = recordLogger.handlers[0]
+        if getattr(handler, "stream", None) is None:
+            handler.acquire()
+            try:
+                handler.stream = handler._open()
+            finally:
+                handler.release()
+
+    recordLogger.info(message)
+
+
+class BenchConfig:
+    def __init__(self):
+        self.mode = consts.BenchMode.KERNEL
+        self.bench_level = consts.BenchLevel.COMPREHENSIVE
+        self.warm_up = consts.DEFAULT_WARMUP_TIME
+        self.repetition = consts.DEFAULT_ITER_TIME
+
+        # Speed Up Benchmark Test, Big Shape Will Cause Timeout
+        if vendor_name == "kunlunxin":
+            self.warm_up = 1
+            self.repetition = 1
+
+        if vendor_name == "tsingmicro":
+            self.warm_up = 1
+            self.repetition = 1
+
+        self.record_log = False
+        self.record_json = False
+        self.user_desired_dtypes = None
+        self.user_desired_metrics = None
+        self.shape_file = os.path.join(os.path.dirname(__file__), "core_shapes.yaml")
+        self.query = False
+        self.list_cases = False
+        self.case_ids = None
+        self.current_nodeid = None
+        self.available_case_ids = set()
+        self.executed_case_ids = set()
+        self.parallel = 0
+        self.mm_layout = None
+        self.skip_native = False
+        self.native_baseline_skip_reason = None
+
+
+def _get_native_baseline_skip_reason(marker, current_vendor):
+    if marker.args:
+        raise pytest.UsageError(
+            "skip_native only accepts the keyword arguments 'vendors' and 'reason'"
+        )
+
+    unexpected = set(marker.kwargs) - {"vendors", "reason"}
+    if unexpected:
+        raise pytest.UsageError(
+            f"skip_native got unexpected argument(s): {', '.join(sorted(unexpected))}"
+        )
+
+    vendors = marker.kwargs.get("vendors")
+    if isinstance(vendors, str):
+        vendors = (vendors,)
+    elif isinstance(vendors, (list, tuple, set, frozenset)):
+        vendors = tuple(vendors)
+    else:
+        raise pytest.UsageError(
+            "skip_native requires 'vendors' to be a vendor name or a collection of vendor names"
+        )
+
+    if not vendors or not all(
+        isinstance(vendor, str) and vendor.strip() for vendor in vendors
+    ):
+        raise pytest.UsageError(
+            "skip_native requires at least one non-empty vendor name"
+        )
+
+    reason = marker.kwargs.get("reason")
+    if not isinstance(reason, str) or not reason.strip():
+        raise pytest.UsageError("skip_native requires a non-empty 'reason'")
+
+    normalized_vendors = {vendor.strip().lower() for vendor in vendors}
+    if current_vendor.lower() not in normalized_vendors:
+        return None
+    return reason.strip()
+
+
+def _deactivate_inactive_native_marker(item, current_vendor):
+    marker = item.get_closest_marker("skip_native")
+    if marker is None:
+        return
+
+    try:
+        reason = _get_native_baseline_skip_reason(marker, current_vendor)
+    except pytest.UsageError:
+        # Keep invalid markers visible so the setup fixture reports the error.
+        return
+
+    if reason is not None:
+        return
+
+    for node in reversed(item.listchain()):
+        if marker in node.own_markers:
+            node.own_markers.remove(marker)
+            return
+
+
+def pytest_addoption(parser):
+    parser.addoption(
+        (
+            "--mode" if vendor_name != "kunlunxin" else "--fg_mode"
+        ),  # TODO: fix pytest-* common --mode args
+        action="store",
+        default="kernel",
+        required=False,
+        choices=[mode.value for mode in consts.BenchMode],
+        help=(
+            "Specify how to measure latency, 'kernel' for device kernel, "
+            "'operator' for end2end operator, 'wrapper' for runtime wrapper, "
+            "or 'cudagraph' for CUDA Graph captured execution."
+        ),
+    )
+
+    parser.addoption(
+        "--level",
+        action="store",
+        default="comprehensive",
+        required=False,
+        choices=[level.value for level in consts.BenchLevel],
+        help="Specify the benchmark level: comprehensive, or core.",
+    )
+
+    parser.addoption(
+        "--warmup",
+        default=consts.DEFAULT_WARMUP_TIME,
+        help="Time(ms) of warmup runs before benchmark run.",
+    )
+
+    parser.addoption(
+        "--iter",
+        default=consts.DEFAULT_ITER_TIME,
+        help="Time(ms) of reps for each benchmark run.",
+    )
+
+    parser.addoption(
+        "--query", action="store_true", default=False, help="Enable query mode"
+    )
+
+    parser.addoption(
+        "--list-cases",
+        action="store_true",
+        help="Write tensor-free workload descriptions to --output; do not benchmark.",
+    )
+    parser.addoption(
+        "--case-id",
+        action="append",
+        default=None,
+        help="Benchmark only this exact workload ID. May be repeated.",
+    )
+
+    parser.addoption(
+        "--metrics",
+        action="append",
+        default=None,
+        required=False,
+        choices=consts.ALL_AVAILABLE_METRICS,
+        help=(
+            "Specify the metrics we want to benchmark. "
+            "If not specified, the metric items will vary according to the specified operation's category and name."
+        ),
+    )
+
+    parser.addoption(
+        "--dtypes",
+        action="append",
+        default=None,
+        required=False,
+        choices=[
+            str(ele).split(".")[-1]
+            for ele in consts.FLOAT_DTYPES
+            + consts.INT_DTYPES
+            + consts.BOOL_DTYPES
+            + [torch.cfloat]
+        ],
+        help=(
+            "Specify the data types for benchmarks. "
+            "If not specified, the dtype items will vary according to the specified operation's category and name."
+        ),
+    )
+
+    parser.addoption(
+        "--shape_file",
+        action="store",
+        default=os.path.join(os.path.dirname(__file__), "core_shapes.yaml"),
+        required=False,
+        help="Specify the shape file name for benchmarks. If not specified, a default shape list will be used.",
+    )
+
+    try:
+        parser.addoption(
+            "--record",
+            action="store",
+            default="none",
+            required=False,
+            choices=["none", "log", "json"],
+            help="Benchmark info recorded in log/json files or not",
+        )
+        parser.addoption(
+            "--output",
+            default=REPORT_FILE,
+            help="Path to report file for JSON output",
+        )
+    except ValueError:
+        # Mixed test+benchmark pytest runs may already register --record in
+        # tests/conftest.py. Reuse the existing option in that case.
+        pass
+
+    parser.addoption(
+        "--parallel",
+        action="store",
+        type=int,
+        default=0,
+        help=(
+            "Enable multi-GPU parallel benchmark execution across shapes. "
+            "Example: --parallel 8 means using GPU 0~7 in parallel. "
+            "Default 0 means serial execution."
+        ),
+    )
+
+    parser.addoption(
+        "--mm-layout",
+        action="store",
+        default=None,
+        choices=["nn", "nt", "both"],
+        help=(
+            "Select the B layout for the MM benchmark: nn uses row-major B, "
+            "nt uses column-major B, and both runs both layouts. By default, "
+            "core runs nn while comprehensive runs both."
+        ),
+    )
+
+    try:
+        parser.addoption(
+            "--collect-marks",
+            default=None,
+            help="Collect the tests with marker information and write to the specified file",
+        )
+    except ValueError:
+        pass
+
+    # Add dynamic operator override options
+    add_override_arguments(parser)
+
+
+def pytest_configure(config):
+    global Config  # noqa: F824
+    global REPORT_FILE
+    global REGISTERED_MARKS
+
+    config.addinivalue_line(
+        "markers",
+        "skip_native(vendors, reason): skip the native benchmark baseline for selected vendors",
+    )
+
+    Config = BenchConfig()
+    CASE_LISTS.clear()
+    TEST_RESULTS.clear()
+
+    REGISTERED_MARKS = {
+        marker.split(":")[0].strip() for marker in config.getini("markers")
+    }
+
+    mode_value = config.getoption(
+        "--mode" if vendor_name != "kunlunxin" else "--fg_mode"
+    )
+    Config.mode = consts.BenchMode(mode_value)
+
+    Config.query = config.getoption("--query")
+    Config.list_cases = config.getoption("--list-cases")
+    Config.case_ids = config.getoption("--case-id")
+    if Config.list_cases and Config.case_ids is not None:
+        raise pytest.UsageError("--list-cases cannot be combined with --case-id.")
+    if Config.query and (Config.list_cases or Config.case_ids is not None):
+        raise pytest.UsageError(
+            "--query cannot be combined with case listing/selection."
+        )
+    if Config.case_ids is not None and len(Config.case_ids) != len(
+        set(Config.case_ids)
+    ):
+        raise pytest.UsageError("Duplicate --case-id values are not allowed.")
+
+    level_value = config.getoption("--level")
+    Config.bench_level = consts.BenchLevel(level_value)
+
+    warmup_value = config.getoption("--warmup")
+    Config.warm_up = int(warmup_value)
+
+    iter_value = config.getoption("--iter")
+    Config.repetition = int(iter_value)
+
+    types_str = config.getoption("--dtypes")
+    dtypes = [getattr(torch, dtype) for dtype in types_str] if types_str else types_str
+    Config.user_desired_dtypes = dtypes
+
+    metrics = config.getoption("--metrics")
+    Config.user_desired_metrics = metrics
+
+    shape_file_str = config.getoption("--shape_file")
+    Config.shape_file = shape_file_str
+
+    Config.record_log = config.getoption("--record") == "log"
+    Config.record_json = config.getoption("--record") == "json"
+
+    Config.parallel = int(config.getoption("--parallel") or 0)
+    Config.mm_layout = config.getoption("--mm-layout")
+    if Config.record_json or Config.list_cases:
+        Config.output = config.getoption("--output")
+        REPORT_FILE = Config.output
+
+    if Config.record_log:
+        cmd_args = [
+            arg.replace(".py", "").replace("=", "_").replace("/", "_")
+            for arg in config.invocation_params.args
+        ]
+
+        log_file = "result_{}.log".format("_".join(cmd_args)).replace("_-", "-")
+
+        for h in list(recordLogger.handlers):
+            recordLogger.removeHandler(h)
+            try:
+                h.close()
+            except Exception as e:
+                import warnings
+
+                warnings.warn(f"Failed to close handler: {e}")
+
+        handler = logging.FileHandler(log_file, mode="w", encoding="utf-8", delay=False)
+        handler.setLevel(logging.INFO)
+        handler.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
+        recordLogger.addHandler(handler)
+        recordLogger.setLevel(logging.INFO)
+        emit_record_logger("Benchmark record logger enabled")
+
+    # Apply dynamic operator overrides
+    config._override_registry = apply_overrides_from_args(config.option)
+
+
+def pytest_unconfigure(config):
+    """Cleanup: restore all overridden operators."""
+    if hasattr(config, "_override_registry"):
+        config._override_registry.restore_all()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def setup_once(request):
+    if request.config.getoption("--query"):
+        print("\nThis is query mode; all benchmark functions will be skipped.")
+
+
+@pytest.fixture(scope="function", autouse=True)
+def clear_function_cache(request):
+    previous_nodeid = Config.current_nodeid
+    Config.current_nodeid = request.node.nodeid
+    try:
+        yield
+    finally:
+        Config.current_nodeid = previous_nodeid
+        if not Config.list_cases:
+            torch_device_fn.empty_cache()
+
+
+@pytest.fixture(scope="function", autouse=True)
+def configure_native_baseline(request):
+    Config.skip_native = False
+    Config.native_baseline_skip_reason = None
+    marker = request.node.get_closest_marker("skip_native")
+    reason = (
+        _get_native_baseline_skip_reason(marker, vendor_name)
+        if marker is not None
+        else None
+    )
+    Config.skip_native = reason is not None
+    Config.native_baseline_skip_reason = reason
+    try:
+        yield
+    finally:
+        Config.skip_native = False
+        Config.native_baseline_skip_reason = None
+
+
+@pytest.fixture(scope="module", autouse=True)
+def clear_module_cache():
+    yield
+    if not Config.list_cases:
+        torch_device_fn.empty_cache()
+
+
+@pytest.fixture()
+def extract_and_log_op_attributes(request):
+    print("")
+    op_attributes = []
+
+    # Extract the 'recommended_shapes' attribute from the pytest marker decoration.
+    for mark in request.node.iter_markers():
+        if mark.name in NON_OPERATOR_MARKS:
+            continue
+        op_specified_shapes = mark.kwargs.get("recommended_shapes")
+        shape_desc = mark.kwargs.get("shape_desc", "M, N")
+        rec_core_shapes = consts.get_recommended_shapes(mark.name, op_specified_shapes)
+
+        if rec_core_shapes:
+            attri = consts.OperationAttribute(
+                op_name=mark.name,
+                recommended_core_shapes=rec_core_shapes,
+                shape_desc=shape_desc,
+            )
+            print(attri)
+            op_attributes.append(attri.to_dict())
+
+    if request.config.getoption("--query"):
+        # Skip the real benchmark functions
+        pytest.skip("Skipping benchmark due to the query parameter.")
+
+    yield
+    if Config.record_log and op_attributes:
+        emit_record_logger(json.dumps(op_attributes, indent=2))
+
+
+def get_reason(report):
+    """Get reason for skipped or failed test."""
+
+    if hasattr(report.longrepr, "reprcrash"):
+        return report.longrepr.reprcrash.message
+
+    if isinstance(report.longrepr, tuple):
+        return report.longrepr[2]
+
+    return str(report.longrepr)
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    out = yield
+    report = out.get_result()
+    all_marks = [mark.name for mark in item.iter_markers()]
+    # exclude pytest and benchmark control marks
+    marks = [mark for mark in all_marks if mark not in NON_OPERATOR_MARKS]
+    # Assume the first mark is the operator's ID
+    opid = marks[0] if marks else item.nodeid
+    # Set the operator ID for the next function to use
+    report.opid = opid
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_runtest_logreport(report):
+    if not Config.record_json:
+        return
+
+    op = report.opid
+    TEST_RESULTS.setdefault(op, {})
+
+    if report.when == "setup":
+        if report.outcome == "skipped":
+            reason = get_reason(report)
+            TEST_RESULTS[op]["result"] = "skipped"
+            TEST_RESULTS[op]["reason"] = reason
+            TEST_RESULTS[op]["test_case"] = report.nodeid
+
+    elif report.when == "call":
+        TEST_RESULTS[op]["result"] = report.outcome
+        TEST_RESULTS[op]["test_case"] = report.nodeid
+
+        if report.outcome in ["skipped", "failed"]:
+            reason = get_reason(report)
+            TEST_RESULTS[op]["reason"] = reason
+        else:
+            TEST_RESULTS[op]["reason"] = None
+
+
+def pytest_terminal_summary(terminalreporter, exitstatus, config):
+    """Combine and dump the result into JSON."""
+    if Config.list_cases:
+        with open(REPORT_FILE, "w") as f:
+            json.dump(
+                {
+                    "schema_version": "flaggems.benchmark-case-list/v2",
+                    "benchmarks": CASE_LISTS,
+                },
+                f,
+                indent=2,
+            )
+        return
+    if not Config.record_json:
+        return
+
+    data = TEST_RESULTS
+    if os.path.exists(REPORT_FILE):
+        with open(REPORT_FILE, "r") as f:
+            existing_data = json.load(f)
+        existing_data.update(TEST_RESULTS)
+        data = existing_data
+
+    with open(REPORT_FILE, "w") as f:
+        json.dump(data, f, indent=2, default=str)
+
+
+def pytest_sessionfinish(session, exitstatus):
+    if Config is None or Config.case_ids is None:
+        return
+    requested = set(Config.case_ids)
+    unknown = sorted(requested - Config.available_case_ids)
+    not_executed = sorted(requested - Config.executed_case_ids)
+    if unknown or not_executed:
+        reporter = session.config.pluginmanager.get_plugin("terminalreporter")
+        if reporter:
+            reporter.write_line(
+                f"FlagGems case selection failed: unknown={unknown}; not_executed={not_executed}"
+            )
+        # Preserve interrupts, configuration failures and internal errors.
+        if session.exitstatus in (
+            pytest.ExitCode.OK,
+            pytest.ExitCode.NO_TESTS_COLLECTED,
+        ):
+            session.exitstatus = pytest.ExitCode.TESTS_FAILED
+
+
+def pytest_itemcollected(item):
+    _deactivate_inactive_native_marker(item, vendor_name)
+
+
+def pytest_collection_modifyitems(session, config, items):
+    collect_marks_file = config.getoption("--collect-marks")
+    if not collect_marks_file:
+        return
+
+    report = []
+    for item in items:
+        data = {}
+
+        # Collect some general information
+        if item.cls:
+            data["class"] = item.cls.__name__
+        data["test_case"] = item.name
+        if item.originalname:
+            data["function"] = item.originalname
+        data["file"] = item.location[0]
+
+        all_marks = list(item.iter_markers())
+        op_marks = [
+            mark.name
+            for mark in all_marks
+            if mark.name not in NON_OPERATOR_MARKS and mark.name not in REGISTERED_MARKS
+        ]
+
+        data["marks"] = op_marks
+        report.append(data)
+
+    with open(collect_marks_file, "w") as f:
+        yaml.dump(report, f, indent=2)
+
+    # Skip all tests
+    items.clear()

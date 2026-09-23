@@ -1,0 +1,16 @@
+{{- $attributes := partial "docs/text/mapper" (dict
+  "attributes" (cond .IsNamedParams .Params dict)
+  "merge" (dict
+    "class" "mermaid"
+  )
+) -}}
+<pre {{ partial "docs/html-attrs" $attributes | safeHTMLAttr }}>
+  {{- .Inner | htmlEscape | safeHTML -}}
+</pre>
+{{- if not (.Page.Store.Get "mermaid") -}}
+  {{- /* Include mermaid only first time */ -}}
+  {{- with resources.Get "mermaid.json" | minify -}}
+  <script src="{{ "mermaid.min.js" | relURL }}" onload="mermaid.initialize({{ .Content | safeJS }})"></script>
+  {{- end -}}
+  {{- .Page.Store.Set "mermaid" true -}}
+{{- end -}}

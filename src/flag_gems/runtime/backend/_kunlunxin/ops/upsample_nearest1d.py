@@ -1,0 +1,118 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import logging
+from typing import Optional, Tuple
+
+import torch
+import triton
+import triton.language as tl
+
+from flag_gems import runtime
+from flag_gems.runtime import device, torch_device_fn
+
+device = device.name
+logger = logging.getLogger(__name__)
+
+
+@triton.autotune(
+    configs=runtime.get_tuned_config("upsample_nearest1d"), key=["N", "C", "OL"]
+)
+@triton.heuristics(runtime.get_heuristic_config("upsample_nearest1d"))
+@triton.jit
+def upsample_nearest1d_kernel(
+    ptr_o,
+    ptr_i,
+    N,
+    C,
+    OL,
+    IL,
+    reciprocal_scale_l,
+    BLOCK_SIZE: tl.constexpr,
+    SAME_L: tl.constexpr,
+    USE_INT32_IDX: tl.constexpr,
+):
+    if USE_INT32_IDX:
+        pid = tl.program_id(axis=0)
+    else:
+        pid = tl.program_id(axis=0).to(tl.int64)
+    idx = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    nc = idx // OL
+    ol = idx % OL
+    if SAME_L:
+        il = ol
+    else:
+        il = tl.minimum(
+            tl.math.floor(ol.to(tl.float32) * reciprocal_scale_l).to(tl.int32), IL - 1
+        )
+
+    mask = idx < N * C * OL
+    data = tl.load(ptr_i + nc * IL + il, mask=mask)
+    tl.store(ptr_o + idx, data, mask=mask)
+
+
+def upsample_nearest1d(
+    input: torch.Tensor,
+    output_size: Optional[Tuple[int]] = None,
+    scales: Optional[float] = None,
+) -> torch.Tensor:
+    logger.debug("GEMS_KUNLUNXIN UPSAMPLE_NEAREST1D")
+    assert input.device.type == device
+    assert input.ndim == 3, "The ndim of input must be 3"
+    assert (
+        output_size is not None or scales is not None
+    ), "Either output_size or scales should be defined."
+
+    OL = output_size[0] if output_size is not None else int(input.shape[2] * scales)
+    N, C, IL = input.shape
+
+    if scales is not None:
+        reciprocal_scale_l = float(
+            torch.tensor(1.0 / scales, dtype=torch.float32).item()
+        )
+    else:
+        # Use float32 division to match PyTorch's behavior
+        reciprocal_scale_l = float(
+            (
+                torch.tensor(IL, dtype=torch.float32)
+                / torch.tensor(OL, dtype=torch.float32)
+            ).item()
+        )
+
+    # allocate output
+    output = torch.empty((N, C, OL), device=input.device, dtype=input.dtype)
+
+    if OL == 2 * IL:
+        # Exact 2x upsampling: out[2j] = out[2j+1] = in[j] (the nearest floor
+        # index with scale IL/OL == 0.5 is exact in float32). Two strided
+        # native copies avoid the per-element div/mod gather kernel and the
+        # index-kernel launch anomaly observed on XPU.
+        torch.ops.aten._copy_from(input, output[:, :, 0::2], False)
+        torch.ops.aten._copy_from(input, output[:, :, 1::2], False)
+        return output
+
+    total_threads = N * C * OL
+    grid = lambda meta: (triton.cdiv(total_threads, meta["BLOCK_SIZE"]),)
+
+    with torch_device_fn.device(input.device):
+        upsample_nearest1d_kernel[grid](
+            output,
+            input,
+            N,
+            C,
+            OL,
+            IL,
+            reciprocal_scale_l,
+        )
+    return output

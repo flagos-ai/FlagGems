@@ -1,0 +1,420 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import pytest
+import torch
+
+import flag_gems
+
+from . import accuracy_utils as utils
+
+pytestmark = pytest.mark.skipif(
+    flag_gems.vendor_name == "kunlunxin",
+    reason="Issue #4253: nanmedian accuracy failure on Kunlunxin",
+)
+
+EXTRA_INT_DTYPES = [torch.int8, torch.uint8]
+ASCEND_UNSUPPORTED_REFERENCE_DTYPES = (torch.bfloat16, torch.float64)
+
+
+def _filter_reference_supported(dtypes):
+    if flag_gems.vendor_name == "ascend" and not utils.TO_CPU:
+        return [
+            dtype
+            for dtype in dtypes
+            if dtype not in ASCEND_UNSUPPORTED_REFERENCE_DTYPES
+        ]
+    return dtypes
+
+
+NANMEDIAN_DTYPES = _filter_reference_supported(
+    utils.ALL_FLOAT_DTYPES + EXTRA_INT_DTYPES + utils.ALL_INT_DTYPES
+)
+FLOAT_DTYPES = _filter_reference_supported(utils.ALL_FLOAT_DTYPES)
+LARGE_RADIX_DTYPES = _filter_reference_supported(
+    [
+        torch.float16,
+        torch.float32,
+        torch.bfloat16,
+        torch.int32,
+        torch.int8,
+        torch.uint8,
+    ]
+)
+
+
+def _make_input(shape, dtype, with_nan=True):
+    if dtype is torch.uint8:
+        inp = torch.randint(0, 256, shape, dtype=dtype, device="cpu").to(
+            flag_gems.device
+        )
+    elif not dtype.is_floating_point:
+        low, high = (-128, 128) if dtype == torch.int8 else (-100, 101)
+        inp = torch.randint(low, high, shape, dtype=dtype, device="cpu").to(
+            flag_gems.device
+        )
+    else:
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        if with_nan and inp.numel() > 0:
+            inp.reshape(-1)[::7] = float("nan")
+    return inp
+
+
+def _assert_nanmedian_values(res, ref, dtype):
+    if dtype.is_floating_point:
+        utils.gems_assert_close(res, ref, dtype, equal_nan=True)
+    else:
+        utils.gems_assert_equal(res, ref)
+
+
+def _assert_nanmedian_indices_valid(inp, values, indices, dim, keepdim, dtype):
+    dim = dim % inp.ndim
+    if indices.numel() == 0:
+        return
+
+    assert torch.all(indices >= 0)
+    assert torch.all(indices < inp.shape[dim])
+
+    gather_indices = indices if keepdim else indices.unsqueeze(dim)
+    if flag_gems.vendor_name == "kunlunxin" and dtype in (torch.uint8, torch.int16):
+        # Kunlunxin gather does not support this validation dtype/index pair.
+        gathered = torch.gather(
+            utils.to_reference(inp), dim, utils.to_reference(gather_indices)
+        )
+    else:
+        gathered = torch.gather(inp, dim, gather_indices)
+    if not keepdim:
+        gathered = gathered.squeeze(dim)
+
+    _assert_nanmedian_values(gathered, utils.to_reference(values), dtype)
+
+
+@pytest.mark.nanmedian
+@pytest.mark.parametrize("shape", [(), (1,), (17,), (4, 33), (2, 3, 129)])
+@pytest.mark.parametrize("dtype", NANMEDIAN_DTYPES)
+def test_nanmedian(shape, dtype):
+    inp = _make_input(shape, dtype)
+    ref_inp = utils.to_reference(inp)
+    ref = torch.nanmedian(ref_inp)
+
+    res = flag_gems.nanmedian(inp)
+
+    _assert_nanmedian_values(res, ref, dtype)
+
+
+@pytest.mark.nanmedian
+@pytest.mark.parametrize("dtype", [torch.float32, torch.int32])
+def test_nanmedian_large_flat(dtype):
+    inp = _make_input((1024, 1024), dtype)
+    ref_inp = utils.to_reference(inp)
+    ref = torch.nanmedian(ref_inp)
+
+    res = flag_gems.nanmedian(inp)
+
+    _assert_nanmedian_values(res, ref, dtype)
+
+
+@pytest.mark.nanmedian
+@pytest.mark.nanmedian_out
+def test_nanmedian_hygon_flat_above_block_limit():
+    inp = _make_input((16, 131072), torch.float16)
+    ref_inp = utils.to_reference(inp)
+    ref = torch.nanmedian(ref_inp)
+    out = torch.empty((), dtype=inp.dtype, device=inp.device)
+
+    res = flag_gems.nanmedian(inp)
+    out_res = flag_gems.nanmedian_out(inp, out=out)
+
+    _assert_nanmedian_values(res, ref, inp.dtype)
+    assert out_res is out
+    _assert_nanmedian_values(out, ref, inp.dtype)
+
+
+@pytest.mark.nanmedian_dim
+@pytest.mark.parametrize(
+    ("shape", "dim"),
+    [((7,), 0), ((4, 33), 0), ((4, 33), -1), ((2, 3, 129), 1), ((2, 3, 1031), -1)],
+)
+@pytest.mark.parametrize("keepdim", [False, True])
+@pytest.mark.parametrize("dtype", NANMEDIAN_DTYPES)
+def test_nanmedian_dim(shape, dim, keepdim, dtype):
+    inp = _make_input(shape, dtype)
+    ref_inp = utils.to_reference(inp)
+    ref = torch.nanmedian(ref_inp, dim=dim, keepdim=keepdim)
+
+    res = flag_gems.nanmedian_dim(inp, dim=dim, keepdim=keepdim)
+
+    _assert_nanmedian_values(res.values, ref.values, dtype)
+    _assert_nanmedian_indices_valid(inp, res.values, res.indices, dim, keepdim, dtype)
+
+
+@pytest.mark.nanmedian_dim
+@pytest.mark.parametrize("dtype", LARGE_RADIX_DTYPES)
+def test_nanmedian_large_radix_path(dtype):
+    inp = _make_input((4, 8192), dtype)
+    ref_inp = utils.to_reference(inp)
+    ref = torch.nanmedian(ref_inp, dim=-1)
+
+    res = flag_gems.nanmedian_dim(inp, dim=-1)
+
+    _assert_nanmedian_values(res.values, ref.values, dtype)
+    _assert_nanmedian_indices_valid(inp, res.values, res.indices, -1, False, dtype)
+
+
+@pytest.mark.nanmedian_dim
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_nanmedian_all_nan_rows(dtype):
+    inp = torch.tensor(
+        [[float("nan"), float("nan")], [float("nan"), 1.0], [2.0, float("nan")]],
+        dtype=dtype,
+        device=flag_gems.device,
+    )
+    ref_inp = utils.to_reference(inp)
+    ref = torch.nanmedian(ref_inp, dim=1)
+
+    res = flag_gems.nanmedian_dim(inp, dim=1)
+
+    _assert_nanmedian_values(res.values, ref.values, dtype)
+    _assert_nanmedian_indices_valid(inp, res.values, res.indices, 1, False, dtype)
+
+
+@pytest.mark.nanmedian_dim
+@pytest.mark.parametrize("dtype", NANMEDIAN_DTYPES)
+def test_nanmedian_non_contiguous(dtype):
+    inp = _make_input((5, 7, 3), dtype).transpose(0, 1)
+    ref_inp = utils.to_reference(inp)
+    ref = torch.nanmedian(ref_inp, dim=1)
+
+    res = flag_gems.nanmedian_dim(inp, dim=1)
+
+    _assert_nanmedian_values(res.values, ref.values, dtype)
+    _assert_nanmedian_indices_valid(inp, res.values, res.indices, 1, False, dtype)
+
+
+@pytest.mark.nanmedian_out
+@pytest.mark.parametrize("dtype", NANMEDIAN_DTYPES)
+def test_nanmedian_out(dtype):
+    inp = _make_input((4, 33), dtype)
+    ref_inp = utils.to_reference(inp)
+    ref_out = torch.empty((), dtype=dtype, device=ref_inp.device)
+    torch.ops.aten.nanmedian.out(ref_inp, out=ref_out)
+    out = torch.empty((), dtype=dtype, device=flag_gems.device)
+
+    res = flag_gems.nanmedian_out(inp, out=out)
+
+    assert res is out
+    _assert_nanmedian_values(out, ref_out, dtype)
+
+
+@pytest.mark.nanmedian_dim_values
+@pytest.mark.parametrize("dtype", NANMEDIAN_DTYPES)
+def test_nanmedian_dim_values(dtype):
+    inp = _make_input((4, 33), dtype)
+    ref_inp = utils.to_reference(inp)
+    ref_values = torch.empty((4,), dtype=dtype, device=ref_inp.device)
+    ref_indices = torch.empty((4,), dtype=torch.long, device=ref_inp.device)
+    torch.nanmedian(ref_inp, dim=1, out=(ref_values, ref_indices))
+
+    out_values = torch.empty((4,), dtype=dtype, device=flag_gems.device)
+    out_indices = torch.empty((4,), dtype=torch.long, device=flag_gems.device)
+
+    res = flag_gems.nanmedian_dim_values(
+        inp,
+        dim=1,
+        values=out_values,
+        indices=out_indices,
+    )
+
+    assert res.values is out_values
+    assert res.indices is out_indices
+    _assert_nanmedian_values(out_values, ref_values, dtype)
+    _assert_nanmedian_indices_valid(inp, out_values, out_indices, 1, False, dtype)
+
+
+@pytest.mark.nanmedian_dim_values
+@pytest.mark.parametrize("dtype", [torch.int8, torch.uint8, torch.int16, torch.int32])
+def test_nanmedian_dim_values_large_int(dtype):
+    inp = _make_input((4, 8192), dtype)
+    ref_inp = utils.to_reference(inp)
+    ref_values = torch.empty((4,), dtype=dtype, device=ref_inp.device)
+    ref_indices = torch.empty((4,), dtype=torch.long, device=ref_inp.device)
+    torch.nanmedian(ref_inp, dim=1, out=(ref_values, ref_indices))
+
+    out_values = torch.empty((4,), dtype=dtype, device=flag_gems.device)
+    out_indices = torch.empty((4,), dtype=torch.long, device=flag_gems.device)
+
+    res = flag_gems.nanmedian_dim_values(
+        inp,
+        dim=1,
+        values=out_values,
+        indices=out_indices,
+    )
+
+    assert res.values is out_values
+    assert res.indices is out_indices
+    _assert_nanmedian_values(out_values, ref_values, dtype)
+    _assert_nanmedian_indices_valid(inp, out_values, out_indices, 1, False, dtype)
+
+
+@pytest.mark.nanmedian_dim_values
+def test_nanmedian_dim_values_non_contiguous_out():
+    inp = _make_input((4, 1031), torch.float32)
+    ref = torch.nanmedian(utils.to_reference(inp), dim=1)
+    values_storage = torch.full(
+        (8,), -1.0, dtype=torch.float32, device=flag_gems.device
+    )
+    indices_storage = torch.full((8,), -1, dtype=torch.long, device=flag_gems.device)
+    out_values = values_storage[::2]
+    out_indices = indices_storage[::2]
+
+    res = flag_gems.nanmedian_dim_values(
+        inp,
+        dim=1,
+        values=out_values,
+        indices=out_indices,
+    )
+
+    assert res.values is out_values
+    assert res.indices is out_indices
+    _assert_nanmedian_values(out_values, ref.values, torch.float32)
+    _assert_nanmedian_indices_valid(
+        inp, out_values, out_indices, 1, False, torch.float32
+    )
+    # Interleaved slots outside the out views must retain their sentinel values.
+    utils.gems_assert_equal(
+        values_storage[1::2],
+        utils.to_reference(torch.full_like(values_storage[1::2], -1.0)),
+    )
+    utils.gems_assert_equal(
+        indices_storage[1::2],
+        utils.to_reference(torch.full_like(indices_storage[1::2], -1)),
+    )
+
+
+@pytest.mark.nanmedian
+@pytest.mark.parametrize(
+    "dtype",
+    [torch.float32, torch.int8, torch.uint8, torch.int16, torch.int32, torch.int64],
+)
+def test_nanmedian_empty(dtype):
+    inp = torch.empty((0,), dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp)
+    ref = torch.nanmedian(ref_inp)
+
+    res = flag_gems.nanmedian(inp)
+
+    _assert_nanmedian_values(res, ref, dtype)
+
+
+@pytest.mark.nanmedian_out
+@pytest.mark.parametrize(
+    "dtype",
+    [torch.float32, torch.int8, torch.uint8, torch.int16, torch.int32, torch.int64],
+)
+def test_nanmedian_out_empty(dtype):
+    inp = torch.empty((0,), dtype=dtype, device=flag_gems.device)
+    ref = torch.nanmedian(utils.to_reference(inp))
+    out = torch.full((), 1, dtype=dtype, device=flag_gems.device)
+    res = flag_gems.nanmedian_out(inp, out=out)
+    assert res is out
+    _assert_nanmedian_values(res, ref, dtype)
+
+
+@pytest.mark.nanmedian_dim
+@pytest.mark.parametrize("dtype", [torch.float32, torch.int32, torch.int8, torch.uint8])
+def test_nanmedian_dim_empty(dtype):
+    inp = torch.empty((2, 0), dtype=dtype, device=flag_gems.device)
+    with pytest.raises(IndexError):
+        flag_gems.nanmedian_dim(inp, dim=1)
+
+    inp = torch.empty((2, 0), dtype=dtype, device=flag_gems.device)
+    ref = torch.nanmedian(utils.to_reference(inp), dim=0)
+    res = flag_gems.nanmedian_dim(inp, dim=0)
+    _assert_nanmedian_values(res.values, ref.values, dtype)
+    utils.gems_assert_equal(res.indices, ref.indices)
+
+
+@pytest.mark.nanmedian
+def test_nanmedian_bool_unsupported():
+    inp = torch.tensor([True, False], device=flag_gems.device)
+    with pytest.raises(NotImplementedError):
+        flag_gems.nanmedian(inp)
+
+
+@pytest.mark.nanmedian
+@pytest.mark.parametrize("dtype", EXTRA_INT_DTYPES)
+@pytest.mark.parametrize("length", [16, 17, 131073])
+@pytest.mark.parametrize("case", ["mixed", "equal"])
+def test_nanmedian_byte_boundaries(dtype, length, case):
+    inp = _byte_boundary_input(dtype, length, case)
+    ref = torch.nanmedian(utils.to_reference(inp))
+    res = flag_gems.nanmedian(inp)
+    assert res.dtype == dtype
+    utils.gems_assert_equal(res, ref)
+
+
+@pytest.mark.nanmedian_out
+@pytest.mark.parametrize("dtype", EXTRA_INT_DTYPES)
+@pytest.mark.parametrize("length", [16, 17, 131073])
+@pytest.mark.parametrize("case", ["mixed", "equal"])
+def test_nanmedian_out_byte_boundaries(dtype, length, case):
+    inp = _byte_boundary_input(dtype, length, case)
+    ref = torch.nanmedian(utils.to_reference(inp))
+    out = torch.empty((), dtype=dtype, device=flag_gems.device)
+    res = flag_gems.nanmedian_out(inp, out=out)
+    assert res is out
+    utils.gems_assert_equal(res, ref)
+
+
+def _byte_boundary_input(dtype, length, case):
+    low, high = torch.iinfo(dtype).min, torch.iinfo(dtype).max
+    middle = -1 if dtype == torch.int8 else 128
+    data = [high, low, middle, 0, high, low] if case == "mixed" else [high]
+    return (
+        torch.tensor(data, dtype=dtype)
+        .repeat((length + len(data) - 1) // len(data))[:length]
+        .to(flag_gems.device)
+    )
+
+
+@pytest.mark.nanmedian_dim
+@pytest.mark.parametrize("dtype", EXTRA_INT_DTYPES)
+@pytest.mark.parametrize("length", [16, 17, 129])
+@pytest.mark.parametrize("keepdim", [False, True])
+@pytest.mark.parametrize("case", ["mixed", "equal"])
+def test_nanmedian_dim_byte_boundaries(dtype, length, keepdim, case):
+    inp = _byte_boundary_input(dtype, length, case).repeat(2, 1)
+    ref = torch.nanmedian(utils.to_reference(inp), dim=-1, keepdim=keepdim)
+    res = flag_gems.nanmedian_dim(inp, dim=-1, keepdim=keepdim)
+    _assert_nanmedian_values(res.values, ref.values, dtype)
+    _assert_nanmedian_indices_valid(inp, res.values, res.indices, -1, keepdim, dtype)
+
+
+@pytest.mark.nanmedian_dim_values
+@pytest.mark.parametrize("dtype", EXTRA_INT_DTYPES)
+@pytest.mark.parametrize("length", [16, 17, 129])
+@pytest.mark.parametrize("keepdim", [False, True])
+@pytest.mark.parametrize("case", ["mixed", "equal"])
+def test_nanmedian_dim_values_byte_boundaries(dtype, length, keepdim, case):
+    inp = _byte_boundary_input(dtype, length, case).repeat(2, 1)
+    ref = torch.nanmedian(utils.to_reference(inp), dim=-1, keepdim=keepdim)
+    values = torch.empty(ref.values.shape, dtype=dtype, device=flag_gems.device)
+    indices = torch.empty(ref.indices.shape, dtype=torch.long, device=flag_gems.device)
+    res = flag_gems.nanmedian_dim_values(
+        inp, dim=-1, keepdim=keepdim, values=values, indices=indices
+    )
+    assert res.values is values
+    assert res.indices is indices
+    _assert_nanmedian_values(values, ref.values, dtype)
+    _assert_nanmedian_indices_valid(inp, values, indices, -1, keepdim, dtype)
