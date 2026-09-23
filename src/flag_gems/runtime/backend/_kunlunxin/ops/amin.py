@@ -90,6 +90,18 @@ if _HAS_TLE:
             torch.float32: _os.path.join(_PAY_OBJ, "amin_mid_f32.o"),
             torch.bfloat16: _os.path.join(_PAY_OBJ, "amin_mid_bf16.o"),
         }
+        # -- 2D last-dim FUSED row-min + in-place broadcast writeback --
+        _ROWFILL_XPU = {
+            torch.float16: _os.path.join(_PAY_OBJ, "amin_rowfill_f16.o"),
+            torch.float32: _os.path.join(_PAY_OBJ, "amin_rowfill_f32.o"),
+            torch.bfloat16: _os.path.join(_PAY_OBJ, "amin_rowfill_bf16.o"),
+        }
+        # -- 3D middle-dim FUSED column-min + in-place broadcast writeback --
+        _MIDFILL_XPU = {
+            torch.float16: _os.path.join(_PAY_OBJ, "amin_midfill_f16.o"),
+            torch.float32: _os.path.join(_PAY_OBJ, "amin_midfill_f32.o"),
+            torch.bfloat16: _os.path.join(_PAY_OBJ, "amin_midfill_bf16.o"),
+        }
 
         # -- 1D flat: part (each core min-reduces a slice) + final (core0 folds) --
         @_tle_ext.raw.dialect("xpu3", object=_FLAT_XPU, arch=3)
@@ -138,6 +150,24 @@ if _HAS_TLE:
         def amin_mid_part_f32(inp, part, outer, mid, inner, nseg, ncores): ...
         @_tle_ext.raw.dialect("xpu3", object=_MIDPART_XPU[torch.bfloat16], arch=3)
         def amin_mid_part_bf16(inp, part, outer, mid, inner, nseg, ncores): ...
+
+        # -- 2D last-dim FUSED row-min + in-place broadcast fill (one launch,
+        #    no separate copy pass; inp is both source and destination) --
+        @_tle_ext.raw.dialect("xpu3", object=_ROWFILL_XPU[torch.float16], arch=3)
+        def amin_rowfill_f16_t(inp, rows, N, ncores): ...
+        @_tle_ext.raw.dialect("xpu3", object=_ROWFILL_XPU[torch.float32], arch=3)
+        def amin_rowfill_f32_t(inp, rows, N, ncores): ...
+        @_tle_ext.raw.dialect("xpu3", object=_ROWFILL_XPU[torch.bfloat16], arch=3)
+        def amin_rowfill_bf16_t(inp, rows, N, ncores): ...
+
+        # -- 3D middle-dim FUSED column-min + in-place broadcast fill (one launch,
+        #    no separate copy pass; inp is both source and destination) --
+        @_tle_ext.raw.dialect("xpu3", object=_MIDFILL_XPU[torch.float16], arch=3)
+        def amin_midfill_f16(inp, outer, mid, inner, ncores): ...
+        @_tle_ext.raw.dialect("xpu3", object=_MIDFILL_XPU[torch.float32], arch=3)
+        def amin_midfill_f32(inp, outer, mid, inner, ncores): ...
+        @_tle_ext.raw.dialect("xpu3", object=_MIDFILL_XPU[torch.bfloat16], arch=3)
+        def amin_midfill_bf16(inp, outer, mid, inner, ncores): ...
 
         @triton.jit(do_not_specialize=["total", "ncores"])
         def _raw_flat_part_f16(Inp, Part, total, ncores):
@@ -198,6 +228,26 @@ if _HAS_TLE:
         def _raw_midpart_bf16(Inp, Part, outer, mid, inner, nseg, ncores):
             tle.raw.call(amin_mid_part_bf16, (Inp, Part, outer, mid, inner, nseg, ncores))
 
+        @triton.jit(do_not_specialize=["rows", "N", "ncores"])
+        def _raw_rowfill_f16(Inp, rows, N, ncores):
+            tle.raw.call(amin_rowfill_f16_t, (Inp, rows, N, ncores))
+        @triton.jit(do_not_specialize=["rows", "N", "ncores"])
+        def _raw_rowfill_f32(Inp, rows, N, ncores):
+            tle.raw.call(amin_rowfill_f32_t, (Inp, rows, N, ncores))
+        @triton.jit(do_not_specialize=["rows", "N", "ncores"])
+        def _raw_rowfill_bf16(Inp, rows, N, ncores):
+            tle.raw.call(amin_rowfill_bf16_t, (Inp, rows, N, ncores))
+
+        @triton.jit(do_not_specialize=["outer", "mid", "inner", "ncores"])
+        def _raw_midfill_f16(Inp, outer, mid, inner, ncores):
+            tle.raw.call(amin_midfill_f16, (Inp, outer, mid, inner, ncores))
+        @triton.jit(do_not_specialize=["outer", "mid", "inner", "ncores"])
+        def _raw_midfill_f32(Inp, outer, mid, inner, ncores):
+            tle.raw.call(amin_midfill_f32, (Inp, outer, mid, inner, ncores))
+        @triton.jit(do_not_specialize=["outer", "mid", "inner", "ncores"])
+        def _raw_midfill_bf16(Inp, outer, mid, inner, ncores):
+            tle.raw.call(amin_midfill_bf16, (Inp, outer, mid, inner, ncores))
+
         _RAW_FLAT = {
             torch.float16: (_raw_flat_part_f16, _raw_flat_final_f16),
             torch.float32: (_raw_flat_part_f32, _raw_flat_final_f32),
@@ -223,6 +273,16 @@ if _HAS_TLE:
             torch.float32: _raw_midpart_f32,
             torch.bfloat16: _raw_midpart_bf16,
         }
+        _RAW_ROWFILL = {
+            torch.float16: _raw_rowfill_f16,
+            torch.float32: _raw_rowfill_f32,
+            torch.bfloat16: _raw_rowfill_bf16,
+        }
+        _RAW_MIDFILL = {
+            torch.float16: _raw_midfill_f16,
+            torch.float32: _raw_midfill_f32,
+            torch.bfloat16: _raw_midfill_bf16,
+        }
         _HAS_RAW = True
     except Exception:  # pragma: no cover - environment without tle.raw
         _HAS_RAW = False
@@ -238,6 +298,25 @@ _RAW_FLAT_MIN_NUMEL = 1 << 20  # engage raw 1D at/above ~1M elements
 _RAW_FLAT_1CLU_MAX = 1 << 21  # <=2M: single-cluster single-launch wins (no 2nd
 #   launch floor); above this the 2-pass multi-cluster is faster (bandwidth).
 _RAW_MID_2PASS_MIN_MID = 128  # split mid into segments above this
+_ROWFILL_MAX_N = 1 << 20  # fused in-place row-min+fill validated up to 1M cols
+# Above these per-dtype numels the fused single-launch rowfill loses to the
+# SPLIT path: our amin() reduce + native IMPLICIT broadcast copy_(result_keepdim).
+# The benchmark's torch ref writes back with implicit broadcast copy_ (fill-like,
+# ~free); matching it (instead of the fused self-written LM2GM fill or an
+# expand_as strided gather) makes the writeback ~free so gems latency approaches
+# reduce-only.  fp32's per-byte reduce is slower so it crosses over earlier.
+_ROWFILL_SPLIT_NUMEL = {
+    torch.float16: 1 << 24,
+    torch.float32: 1 << 22,
+    torch.bfloat16: 1 << 24,
+}
+# Fused in-place 3D middle-dim column-min+fill wins only for SMALL mid (outer=64
+# caps the outer-split kernel at a single cluster; large mid then serializes the
+# whole mid*inner block per core and loses to the amin()+copy split which spreads
+# mid across all 12 clusters).  Per-dtype crossover from amin_midfill_probe3:
+# fp16/fp32 win through mid=64 (lose at 128); bf16's widen path only wins at the
+# degenerate mid<=1, and regresses hard by mid=16, so keep its threshold tiny.
+_MIDFILL_MAX_MID = {torch.float16: 64, torch.float32: 64, torch.bfloat16: 8}
 
 
 def _raw_grid_for_flat(numel):
@@ -337,6 +416,56 @@ def _amin_raw_rows(src, out, M, N):
         return False
 
 
+def _amin_inplace_rowfill(inp, M, N):
+    """FUSED 2D last-dim in-place amin_: one raw kernel reads each row, reduces
+    to its min, and broadcast-fills the min back over all N positions -- no
+    separate reduction buffer and no second broadcast-copy pass.  Measured 1.3-
+    2x faster than the (raw reduce + native copy) split for moderate/large N;
+    for huge N (>=~1<<20) native torch reduce out-bandwidths the streaming fill,
+    so the caller keeps that shape on the split path.  Returns True on success."""
+    dt = inp.dtype
+    if not _HAS_RAW or dt not in _RAW_ROWFILL:
+        return False
+    if N <= 1:
+        return False
+    try:
+        fn = _RAW_ROWFILL[dt]
+        g = _raw_grid_for_rows(M, N, inp.element_size())
+        nc = g * 64
+        # Same over-parallelization guard as _amin_raw_rows: when g*64 >= rows
+        # and N is small, batch ~4 rows/core to avoid tiny-transfer DMA
+        # descriptor serialization.
+        if nc >= M and N <= 512:
+            nc = max(16, (M + 3) // 4)
+            g = (nc + 63) // 64
+        fn[(g,)](inp, M, N, nc)
+        return True
+    except Exception as e:  # pragma: no cover - defensive fallback
+        logger.debug("raw amin rowfill path failed, falling back: %s", e)
+        return False
+
+
+def _amin_inplace_midfill(inp, outer, mid, inner):
+    """FUSED 3D middle-dim in-place amin_: one raw kernel column-min-reduces the
+    (mid,inner) block for each outer slice and broadcast-fills the result back
+    over all mid rows -- no separate reduction buffer, no second copy pass.  Only
+    profitable for small mid (see _MIDFILL_MAX_MID); the caller keeps large mid on
+    the amin()+copy split (which spreads mid across all clusters).  Returns True
+    on success."""
+    dt = inp.dtype
+    if not _HAS_RAW or dt not in _RAW_MIDFILL:
+        return False
+    try:
+        fn = _RAW_MIDFILL[dt]
+        g = min(12, max(1, (outer + 63) // 64))
+        nc = g * 64
+        fn[(g,)](inp, outer, mid, inner, nc)
+        return True
+    except Exception as e:  # pragma: no cover - defensive fallback
+        logger.debug("raw amin midfill path failed, falling back: %s", e)
+        return False
+
+
 def _flat_via_rows_R(numel, elem_size):
     """Pick a row count R to fold a 1D full-reduce into a 2D (R, numel/R)
     row-min (multi-cluster pass1) + a tiny flat pass2.  A single-cluster flat
@@ -403,6 +532,12 @@ _FULL_REDUCTION_BLOCK_SIZE = 8192
 _FLAT_CHUNK = 32768
 _FLAT_ROW_WIDTH = 8192
 _FLAT_CHUNK_MAX_NUMEL = 1 << 26
+# Above this numel the scalar broadcast writeback is bandwidth-bound, so the
+# fast fill_ path (~2TB/s) beats the stride-0 expand copy_ (~700GBPS).  Below
+# it fill_'s fixed per-call overhead (~30us) dominates and regresses the small
+# flat shapes (e.g. 1M dropped 0.64->0.24), so keep copy_ there.  Crossover
+# measured ~16M on P800.
+_FLAT_FILL_MIN_NUMEL = 1 << 25
 _BLOCK_N_MAX = 8192
 
 
@@ -889,6 +1024,17 @@ def amin_(inp, dim=None, keepdim=False):
             for i in range(0, inp.dim()):
                 shape[i] = 1
             out = torch.empty(shape, dtype=dtype, device=inp.device)
+        # Prefer the raw XTDK flat reduction (single-cluster single-launch for
+        # <=2M, tuned two-pass above) -- same fast path amin() uses for dim=None.
+        # Falls back to the staged / 2-kernel Triton reductions if unavailable.
+        flat = inp.reshape(-1)
+        with torch_device_fn.device(inp.device):
+            if _amin_raw_flat(flat, out.reshape([]), M):
+                if M >= _FLAT_FILL_MIN_NUMEL:
+                    inp.fill_(out.reshape(()))
+                else:
+                    inp.copy_(out if out.shape == inp.shape else out.expand_as(inp))
+                return inp
         # For very large numel the amin_kernel_1/2 pair collapses the whole
         # partial buffer in a single program (BLOCK_MID = next_pow2(mid_size)),
         # which is catastrophic (e.g. numel=1<<30 measured ~0.08x).  Reuse the
@@ -897,7 +1043,7 @@ def amin_(inp, dim=None, keepdim=False):
         if M >= _FLAT_CHUNK_MAX_NUMEL:
             with torch_device_fn.device(inp.device):
                 _amin_flat(inp.reshape(-1), out.reshape([]), inp.device)
-            inp.copy_(out if out.shape == inp.shape else out.expand_as(inp))
+            inp.fill_(out.reshape(()))
             return inp
         block_size = get_block_size_1d(M, inp.element_size())
         mid_size = triton.cdiv(M, block_size)
@@ -916,6 +1062,57 @@ def amin_(inp, dim=None, keepdim=False):
         inp.copy_(out if out.shape == inp.shape else out.expand_as(inp))
         return inp
     else:
+        # FUSED fast path: reducing the last dim of a contiguous tensor is a
+        # per-row min broadcast back over that row -- do it in one raw kernel
+        # (reduce + in-place fill) instead of amin()+copy_.  Measured 1.3-2x
+        # over the split for moderate N; validated bit-exact.  Only when a single
+        # trailing dim is reduced, the tensor is contiguous, and N is within the
+        # tested range; otherwise fall through to the generic reduce+copy.
+        ndim = inp.dim()
+        norm = sorted((d % ndim) for d in dim)
+        if (
+            len(norm) == 1
+            and norm[0] == ndim - 1
+            and inp.dtype in _RAW_ROWFILL
+            and inp.is_contiguous()
+        ):
+            N = inp.shape[-1]
+            M = inp.numel() // N if N > 0 else 0
+            if 1 < N <= _ROWFILL_MAX_N and M > 0 and (
+                inp.numel() < _ROWFILL_SPLIT_NUMEL[inp.dtype]
+            ):
+                with torch_device_fn.device(inp.device):
+                    if _amin_inplace_rowfill(inp, M, N):
+                        return inp
+        # FUSED fast path: reducing a genuine interior (middle) dim of a
+        # contiguous tensor is a per-column min broadcast back over that dim --
+        # fuse reduce + in-place fill in one raw kernel.  Only for small mid and
+        # inner<=64 (kernel LM/accumulator budget); large mid loses the
+        # single-cluster occupancy race and stays on the reduce+copy split.
+        if (
+            len(norm) == 1
+            and 0 < norm[0] < ndim - 1
+            and inp.dtype in _RAW_MIDFILL
+            and inp.is_contiguous()
+        ):
+            d = norm[0]
+            shp = inp.shape
+            mid = shp[d]
+            inner = 1
+            for s in shp[d + 1 :]:
+                inner *= s
+            outer = inp.numel() // (mid * inner) if mid * inner > 0 else 0
+            if (
+                0 < inner <= 64
+                and 0 < mid <= _MIDFILL_MAX_MID[inp.dtype]
+                and outer > 0
+            ):
+                with torch_device_fn.device(inp.device):
+                    if _amin_inplace_midfill(inp, outer, mid, inner):
+                        return inp
         result = amin(inp, dim=dim, keepdim=True)
-        inp.copy_(result if result.shape == inp.shape else result.expand_as(inp))
+        # IMPLICIT broadcast writeback: copy_ from the [.,1,.] keepdim result hits
+        # the native fill-like fast path (~free), matching the benchmark torch ref.
+        # An explicit expand_as view would force the slow stride-0 gather path.
+        inp.copy_(result)
         return inp
