@@ -24,11 +24,21 @@ import triton.language.extra.libdevice as libdevice
 logger = logging.getLogger(__name__)
 
 
-@triton.jit
-def _div_rn(a, b):
-    # Round-to-nearest division. libdevice.div_rn does not lower on the HIP/AMD
-    # backend; fp32 '/' already rounds to nearest even, which is equivalent.
-    return a / b
+# libdevice.div_rn does not lower on the HIP/AMD backend, so fall back to '/'
+# there (for fp32 it lowers to the same IEEE round-to-nearest-even division).
+# Every other backend keeps the exact div_rn intrinsic, so their behavior is
+# byte-for-byte unchanged.
+if torch.version.hip is not None:
+
+    @triton.jit
+    def _div_rn(a, b):
+        return a / b
+
+else:
+
+    @triton.jit
+    def _div_rn(a, b):
+        return libdevice.div_rn(a, b)
 
 
 @triton.jit
