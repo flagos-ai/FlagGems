@@ -12,16 +12,172 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from collections import OrderedDict
+from copy import deepcopy
+from pathlib import Path
+
 import torch
 import triton
 import triton.language as tl
 from triton.tools.tensor_descriptor import TensorDescriptor
 
+from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry
+from flag_gems.utils import libentry, libtuner
+from flag_gems.utils.triton_version_utils import HAS_TLE
+
+_CONFIG_YAML = str(
+    Path(__file__).resolve().parent.parent / "mm_w8a8_fp8" / "config.yaml"
+)
+_TUNE_KEY = [
+    "M",
+    "N",
+    "K",
+    "AM",
+    "AK",
+    "BK_STRIDE",
+    "BN_STRIDE",
+    "DESCRIPTOR",
+    "SPLIT_K",
+]
+_WS_LAUNCH_CACHE = OrderedDict()
+
+
+def _launch_ws_tuned(kernel, grid, args):
+    """Cache compiled launch metadata, while keeping tuning and tensor data live."""
+    tuner = kernel.fn
+    if getattr(tuner._run_mode, "value", "normal") != "normal":
+        _WS_LAUNCH_CACHE.clear()
+        return kernel[grid](*args, enable_backend_opt=True)
+    kernel._apply_flagtune()
+    key = [
+        kernel,
+        tuner._flagtune_selection_token,
+        id(tuner.configs),
+        tuner.configs_hash,
+        tuner._benchmark_protocol,
+    ]
+    for arg in args:
+        if isinstance(arg, TensorDescriptor):
+            key.append(
+                (
+                    arg.base.dtype,
+                    arg.base.device,
+                    tuple(arg.shape),
+                    tuple(arg.strides),
+                    arg.base.data_ptr() % 16,
+                )
+            )
+        elif isinstance(arg, torch.Tensor):
+            key.append(
+                (
+                    arg.dtype,
+                    arg.device,
+                    tuple(arg.shape),
+                    tuple(arg.stride()),
+                    arg.data_ptr() % 16,
+                )
+            )
+        else:
+            key.append(arg)
+    key = tuple(key)
+    cached = _WS_LAUNCH_CACHE.get(key)
+    if cached is None:
+        compiled, meta = kernel[grid](*args, enable_backend_opt=True)
+        tail = tuple(
+            meta[name] for name in tuple(kernel.signature.parameters)[len(args) :]
+        )
+        cached = (compiled, meta, tail, (tuple(grid(meta)) + (1, 1))[:3])
+        _WS_LAUNCH_CACHE[key] = cached
+        if len(_WS_LAUNCH_CACHE) > 128:
+            _WS_LAUNCH_CACHE.popitem(last=False)
+    else:
+        _WS_LAUNCH_CACHE.move_to_end(key)
+        compiled, meta, tail, launch_grid = cached
+        args[0].block_shape = [meta["BM"], meta["BK"]]
+        args[1].block_shape = [meta["BN"], meta["BK"]]
+        if "FRAGMENTED" in meta:
+            args[2].block_shape = [max(32, meta["BN"] // 4), meta["BK"]]
+        compiled[launch_grid](*args, *tail)
+    return cached[:2]
+
+
+def _set_descriptor_blocks(args):
+    if args["DESCRIPTOR"]:
+        args["A"].block_shape = [args["BLOCK_M"], args["BLOCK_K"]]
+        args["B"].block_shape = [args["BLOCK_N"], args["BLOCK_K"]]
+
+
+def _prune_configs(configs, named_args, **kwargs):
+    args = {**named_args, **kwargs}
+    m, n, k = args["M"], args["N"], args["K"]
+    candidates = []
+    for config in configs:
+        meta = config.kwargs
+        bm, bn, bk = (meta[x] for x in ("BLOCK_M", "BLOCK_N", "BLOCK_K"))
+        if bm > max(16, triton.next_power_of_2(m)) or bn > max(
+            64, triton.next_power_of_2(n)
+        ):
+            continue
+        if bk > max(32, triton.next_power_of_2(k)):
+            continue
+        if min(m, n) >= 128 and k >= 256 and bm < 32:
+            continue
+        if not args["DESCRIPTOR"]:
+            # Large TME tiles do not help the masked-load path. Keep its
+            # established geometry and tune K blocking and pipeline depth.
+            load_m = min(64, max(16, triton.next_power_of_2(m)))
+            load_n = min(128, max(64, triton.next_power_of_2(n)))
+            if k <= 128 or m <= 32:
+                load_n = 64
+            if k >= 2048 and m <= 128 and n <= 512:
+                load_m, load_n = (16 if m <= 64 else 32), 64
+            if (bm, bn, config.num_warps) != (load_m, load_n, 4):
+                continue
+            # Deep pipelines on unaligned K pitches cause pathological
+            # compilation in this backend; retain its bounded two-stage path.
+            if k % 16 and (
+                bk != max(32, min(256, triton.next_power_of_2(k)))
+                or config.num_stages > 2
+            ):
+                continue
+        if k <= 128 and (
+            config.num_stages != 1 or bk != max(32, triton.next_power_of_2(k))
+        ):
+            continue
+        if config.num_stages > triton.cdiv(k, bk * args["SPLIT_K"]) + 1:
+            continue
+        if meta["PERSISTENT"] and (
+            not args["DESCRIPTOR"]
+            or args["SPLIT_K"] != 1
+            or bm * bn < 65536
+            or triton.cdiv(m, bm) * triton.cdiv(n, bn) < 2 * args["NUM_SMS"]
+        ):
+            continue
+        # FlagTree's automatic block adjustment mutates candidate Configs.
+        # Keep the YAML space intact for subsequent, differently sized inputs.
+        candidates.append(deepcopy(config))
+    return candidates
+
+
+_DEFAULT_CONFIGS = runtime.ops_get_configs(
+    "mm_w8a8_fp8_musa_default", yaml_path=_CONFIG_YAML, pre_hook=_set_descriptor_blocks
+)
 
 
 @libentry()
+@libtuner(
+    configs=_DEFAULT_CONFIGS,
+    key=_TUNE_KEY,
+    strategy=["default"] * len(_TUNE_KEY),
+    warmup=5,
+    rep=10,
+    prune_configs_by={"early_config_prune": _prune_configs},
+    flagtune_op_name="mm_w8a8_fp8",
+    flagtune_expand_op_name="mm_w8a8_fp8_musa",
+    flagtune_yaml_path=_CONFIG_YAML,
+    flagtune_pre_hook=_set_descriptor_blocks,
+)
 @triton.jit
 def mm_w8a8_fp8_kernel(
     A,
@@ -40,6 +196,7 @@ def mm_w8a8_fp8_kernel(
     BN_STRIDE: tl.constexpr,
     CM: tl.constexpr,
     CN: tl.constexpr,
+    NUM_SMS: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     BLOCK_K: tl.constexpr,
@@ -51,59 +208,69 @@ def mm_w8a8_fp8_kernel(
     BIAS_STRIDE: tl.constexpr,
     HAS_SR: tl.constexpr,
     SR_STRIDE: tl.constexpr,
+    GROUP_M: tl.constexpr,
+    PERSISTENT: tl.constexpr,
 ):
-    pid = tl.program_id(0)
     grid_m = tl.cdiv(M, BLOCK_M)
     grid_n = tl.cdiv(N, BLOCK_N)
-    group = pid // (8 * grid_n)
-    group_m = tl.minimum(8, grid_m - group * 8)
-    pm = group * 8 + pid % group_m
-    pn = pid % (8 * grid_n) // group_m
-    rm = pm * BLOCK_M + tl.arange(0, BLOCK_M)
-    rn = pn * BLOCK_N + tl.arange(0, BLOCK_N)
-    rk = tl.arange(0, BLOCK_K)
-    split = tl.program_id(1)
-    acc = tl.zeros((BLOCK_M, BLOCK_N), tl.float32)
-    for block in range(split, tl.cdiv(K, BLOCK_K), SPLIT_K):
-        if DESCRIPTOR:
-            a = tl.load_tensor_descriptor(A, [pm * BLOCK_M, block * BLOCK_K])
-            bt = tl.load_tensor_descriptor(B, [pn * BLOCK_N, block * BLOCK_K])
-        else:
-            k = block * BLOCK_K + rk
-            a = tl.load(
-                A + rm[:, None].to(tl.int64) * AM + k[None, :].to(tl.int64) * AK,
-                (rm[:, None] < M) & (k[None, :] < K),
-                0.0,
-            )
-            bt = tl.load(
-                B
-                + rn[:, None].to(tl.int64) * BN_STRIDE
-                + k[None, :].to(tl.int64) * BK_STRIDE,
-                (rn[:, None] < N) & (k[None, :] < K),
-                0.0,
-            )
-        acc = tl.dot(a, tl.trans(bt), acc)
-    if SA_STRIDE == 0:
-        acc *= tl.load(SA)
-    else:
-        acc *= tl.load(SA + rm * SA_STRIDE, rm < M, 0.0)[:, None]
-    if SB_STRIDE == 0:
-        acc *= tl.load(SB)
-    else:
-        acc *= tl.load(SB + rn * SB_STRIDE, rn < N, 0.0)[None, :]
-    if SPLIT_K > 1:
-        ptr = C + split * M * N + rm[:, None] * N + rn[None, :]
-        tl.store(ptr, acc, (rm[:, None] < M) & (rn[None, :] < N))
-    else:
-        if HAS_BIAS:
-            acc += tl.load(Bias + rn * BIAS_STRIDE, rn < N, 0.0)[None, :].to(tl.float32)
-        if HAS_SR:
-            if SR_STRIDE == 0:
-                acc /= tl.load(SR)
+    first = tl.program_id(0)
+    count = tl.cdiv(grid_m * grid_n - first, NUM_SMS) if PERSISTENT else 1
+    for tile in range(count):
+        pid = first + tile * NUM_SMS
+        group = pid // (GROUP_M * grid_n)
+        group_m = tl.minimum(GROUP_M, grid_m - group * GROUP_M)
+        pm = group * GROUP_M + pid % group_m
+        pn = pid % (GROUP_M * grid_n) // group_m
+        rm = pm * BLOCK_M + tl.arange(0, BLOCK_M)
+        rn = pn * BLOCK_N + tl.arange(0, BLOCK_N)
+        rk = tl.arange(0, BLOCK_K)
+        split = tl.program_id(1) if SPLIT_K > 1 else 0
+        acc = tl.zeros((BLOCK_M, BLOCK_N), tl.float32)
+        for block in tl.range(split, tl.cdiv(K, BLOCK_K), SPLIT_K):
+            if DESCRIPTOR:
+                a = tl.load_tensor_descriptor(A, [pm * BLOCK_M, block * BLOCK_K])
+                bt = tl.load_tensor_descriptor(B, [pn * BLOCK_N, block * BLOCK_K])
             else:
-                acc /= tl.load(SR + rm * SR_STRIDE, rm < M, 1.0)[:, None]
-        ptr = C + rm[:, None].to(tl.int64) * CM + rn[None, :].to(tl.int64) * CN
-        tl.store(ptr, acc, (rm[:, None] < M) & (rn[None, :] < N))
+                k = block * BLOCK_K + rk
+                a = tl.load(
+                    A + rm[:, None].to(tl.int64) * AM + k[None, :].to(tl.int64) * AK,
+                    (rm[:, None] < M) & (k[None, :] < K),
+                    0.0,
+                )
+                bt = tl.load(
+                    B
+                    + rn[:, None].to(tl.int64) * BN_STRIDE
+                    + k[None, :].to(tl.int64) * BK_STRIDE,
+                    (rn[:, None] < N) & (k[None, :] < K),
+                    0.0,
+                )
+            acc = tl.dot(a, tl.trans(bt), acc)
+        if SA_STRIDE == 0:
+            acc *= tl.load(SA)
+        else:
+            acc *= tl.load(SA + rm * SA_STRIDE, rm < M, 0.0)[:, None]
+        if SB_STRIDE == 0:
+            acc *= tl.load(SB)
+        else:
+            acc *= tl.load(SB + rn * SB_STRIDE, rn < N, 0.0)[None, :]
+        if SPLIT_K > 1:
+            ptr = C + split * M * N + rm[:, None] * N + rn[None, :]
+            tl.store(ptr, acc, (rm[:, None] < M) & (rn[None, :] < N))
+        else:
+            if HAS_BIAS:
+                acc += tl.load(Bias + rn * BIAS_STRIDE, rn < N, 0.0)[None, :].to(
+                    tl.float32
+                )
+            if HAS_SR:
+                if SR_STRIDE == 0:
+                    acc /= tl.load(SR)
+                else:
+                    acc /= tl.load(SR + rm * SR_STRIDE, rm < M, 1.0)[:, None]
+            if CM >= 0 and CN >= 0 and (M - 1) * CM + (N - 1) * CN < 2147483648:
+                ptr = C + rm[:, None] * CM + rn[None, :] * CN
+            else:
+                ptr = C + rm[:, None].to(tl.int64) * CM + rn[None, :].to(tl.int64) * CN
+            tl.store(ptr, acc, (rm[:, None] < M) & (rn[None, :] < N))
 
 
 @libentry()
@@ -138,41 +305,25 @@ def _reduce_split_k(
     tl.store(C + (x // N).to(tl.int64) * CM + (x % N).to(tl.int64) * CN, acc, x < M * N)
 
 
-def _select_config(m, n, k, descriptor):
-    if k <= 128:
-        return (
-            min(64, max(16, triton.next_power_of_2(m))),
-            64,
-            max(32, triton.next_power_of_2(k)),
-            1,
-            1,
-        )
+def _select_split_k(m, n, k, descriptor):
     if k >= 2048 and m <= 128 and n <= 512:
         # Increase CTA count only for skinny grids. Partial sums stay in FP32.
         bm = 16 if m <= 64 else 32
         tiles = triton.cdiv(m, bm) * triton.cdiv(n, 64)
-        split = min(
+        return min(
             32,
             triton.next_power_of_2(triton.cdiv(120, tiles)),
             triton.next_power_of_2(triton.cdiv(k, 256)),
         )
-        return bm, 64, 256, 2, split
     if descriptor and k >= 8192 and m <= 512 and m * n <= 512 * 1024:
         # Bound workspace/reduction traffic while filling underoccupied TME
         # grids. Wider M tiles amortize loads when a full tile is available.
         bm = min(64 if n <= 512 else 128, max(32, triton.next_power_of_2(m)))
         bn = 64 if m <= 64 else 128
-        bk = 256 if bm <= 64 else 128
         tiles = triton.cdiv(m, bm) * triton.cdiv(n, bn)
         target_ctas = 128 if m <= 64 else 64
-        split = min(16, triton.next_power_of_2(triton.cdiv(target_ctas, tiles)))
-        if split > 1:
-            return bm, bn, bk, 2 if bk == 256 else 3, split
-    if m <= 32:
-        return max(16, triton.next_power_of_2(m)), 64, 128, 3, 1
-    if descriptor and m >= 512 and n >= 1024:
-        return 128, 128, 128, 2 if k <= 2048 else 3, 1
-    return 64, 128, 256, 2, 1
+        return min(16, triton.next_power_of_2(triton.cdiv(target_ctas, tiles)))
+    return 1
 
 
 def _launch(a, b, out, sa, sb, sa_stride, sb_stride, bias, sr, sr_stride):
@@ -192,10 +343,55 @@ def _launch(a, b, out, sa, sb, sa_stride, sb_stride, bias, sr, sr_stride):
         and b.data_ptr() % 16 == 0
         and k >= 16
     )
-    bm, bn, bk, stages, split = _select_config(m, n, k, descriptor)
+    split = _select_split_k(m, n, k, descriptor)
+    if (
+        HAS_TLE
+        and descriptor
+        and split == 1
+        and min(m, n, k) >= 64
+        and (k < 2048 or (m >= 128 and n >= 256))
+        and sa_stride == sb_stride == 0
+        and bias is None
+        and sr is None
+        and out.dtype == torch.bfloat16
+        and out.is_contiguous()
+    ):
+        from ._mm_w8a8_fp8_ws import fragmented_kernel, ws_multi_kernel
+
+        aa = TensorDescriptor(a, [m, k], list(a.stride()), [64, 64])
+        bb = TensorDescriptor(b, [n, k], [b.stride(1), b.stride(0)], [64, 64])
+
+        # Medium dense tiles can avoid a third CTA wave with an N=128+32 split.
+        # FlagTune compares this geometry with the original equal-width layout.
+        if 1536 <= min(m, n) and max(m, n) <= 3072 and 1024 <= k <= 2048:
+            bsmall = TensorDescriptor(b, [n, k], [b.stride(1), b.stride(0)], [32, 64])
+
+            def fragmented_grid(meta):
+                tn = (
+                    meta["BN"] + meta["BN"] // 4
+                    if meta["FRAGMENTED"]
+                    else meta["BN"] * meta["NC"]
+                )
+                return (triton.cdiv(m, meta["BM"]) * triton.cdiv(n, tn),)
+
+            _launch_ws_tuned(
+                fragmented_kernel,
+                fragmented_grid,
+                (aa, bb, bsmall, out, sa, sb, m, n, k),
+            )
+            return out
+
+        def ws_grid(meta):
+            return (
+                triton.cdiv(m, meta["BM"]) * triton.cdiv(n, meta["BN"] * meta["NC"]),
+            )
+
+        _launch_ws_tuned(ws_multi_kernel, ws_grid, (aa, bb, out, sa, sb, m, n, k))
+        return out
     if descriptor:
-        aa = TensorDescriptor(a, [m, k], list(a.stride()), [bm, bk])
-        bb = TensorDescriptor(b, [n, k], [b.stride(1), b.stride(0)], [bn, bk])
+        # The config pre-hook installs the actual tile before every launch.
+        aa = TensorDescriptor(a, [m, k], list(a.stride()), [16, 32])
+        bb = TensorDescriptor(b, [n, k], [b.stride(1), b.stride(0)], [64, 32])
     else:
         aa, bb = a, b
     partial = (
@@ -209,7 +405,22 @@ def _launch(a, b, out, sa, sb, sa_stride, sb_stride, bias, sr, sr_stride):
         HAS_SR=sr is not None,
         SR_STRIDE=sr_stride,
     )
-    mm_w8a8_fp8_kernel[(triton.cdiv(m, bm) * triton.cdiv(n, bn), split)](
+    # SQMMA instruction scheduling improves dense TME tiles on S5000.
+    compiler_options = {"enable_backend_opt": True} if descriptor else {}
+    num_sms = torch_device_fn.get_device_properties(a.device).multi_processor_count
+
+    def grid(meta):
+        tiles = triton.cdiv(m, meta["BLOCK_M"]) * triton.cdiv(n, meta["BLOCK_N"])
+        return (min(num_sms, tiles) if meta["PERSISTENT"] else tiles, split)
+
+    kernel = mm_w8a8_fp8_kernel
+    if k == 0:
+        # There is only an epilogue to execute. Bypass the autotuner, whose
+        # automatic block adjustment would otherwise shrink BLOCK_K to zero.
+        kernel = kernel.fn.fn
+        compiler_options.update(_DEFAULT_CONFIGS[0].all_kwargs())
+
+    kernel[grid](
         aa,
         bb,
         partial,
@@ -226,16 +437,13 @@ def _launch(a, b, out, sa, sb, sa_stride, sb_stride, bias, sr, sr_stride):
         b.stride(1),
         out.stride(0),
         out.stride(1),
-        BLOCK_M=bm,
-        BLOCK_N=bn,
-        BLOCK_K=bk,
+        num_sms,
         SPLIT_K=split,
         DESCRIPTOR=descriptor,
         SA_STRIDE=sa_stride,
         SB_STRIDE=sb_stride,
         **epilogue,
-        num_warps=4,
-        num_stages=stages,
+        **compiler_options,
     )
     if split > 1:
         _reduce_split_k[(triton.cdiv(m * n, 512),)](
