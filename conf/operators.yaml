@@ -9940,6 +9940,17 @@ ops:
     - NeuralNetwork
   stages:
     - alpha: '5.5'
+- id: matmul_backward
+  description: Computes gradients for matrix multiplication backward pass.
+  for:
+  - matmul_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.5'
 - id: matmul_bias_activation
   description: Fused matrix multiplication with bias addition and ReLU activation.
   for:
@@ -9972,6 +9983,29 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: matrix_power
+  description: Triton kernel implementation for matrix_power.
+  for:
+  - matrix_power
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
+- id: matrix_power_out
+  description: An out variant of `matrix_power()` that writes the result into a
+    pre-allocated output tensor.
+  for:
+  - matrix_power.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: max
   description: Returns the maximum value of all elements in the `input` tensor.
   for:
@@ -11202,6 +11236,20 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: nested_tensor_from_mask
+  description: |
+    Builds a nested tensor from a padded dense tensor of shape (N, L, D) and a
+    boolean padding mask of shape (N, L), using the mask to determine the ragged
+    length of each component.
+  for:
+    - _nested_tensor_from_mask
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Tensor
+  stages:
+    - alpha: '5.5.0'
 - id: nested_tensor_from_mask_left_aligned
   description: 'Checks whether a 3D tensor `t` (N * L * D) combined with a 2D boolean
     padding
@@ -11220,6 +11268,20 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: nested_tensor_softmax_with_shape
+  description: |
+    Computes softmax over the last dimension of nested-tensor attention scores,
+    deriving the per-batch sequence length from the query tensor's nested shape
+    and masking the out-of-range entries to zero.
+  for:
+  - _nested_tensor_softmax_with_shape
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5.0'
 - id: nested_view_from_buffer_copy
   description: 'Creates a nested tensor from a flat buffer using component sizes,
     strides,
@@ -11756,6 +11818,30 @@ ops:
   - Tensor
   stages:
   - stable: '2.1'
+- id: orgqr
+  description: 'Computes the first n columns of a product of Householder matrices.
+
+    Alias for torch.linalg.householder_product.'
+  for:
+  - orgqr
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.5'
+- id: orgqr_out
+  description: Computes the Householder matrix product into the supplied output tensor.
+  for:
+  - orgqr.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.5'
 - id: ormqr
   description: 'Computes the matrix-matrix multiplication of a product of Householder
     matrices
@@ -11839,6 +11925,19 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.5'
+- id: pad_packed_sequence
+  description: |
+    Pads a packed batch of variable length sequences back into a dense
+    (T, B, *) tensor together with the per-batch-element sequence lengths.
+  for:
+  - _pad_packed_sequence
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5.0'
 - id: pad_sequence
   description: Pads a list of variable length tensors with a given padding value and
     stacks them into a single padded batch tensor.
@@ -13477,6 +13576,17 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.3'
+- id: sample_dirichlet
+  description: Draws samples from a Dirichlet distribution parameterized by alpha.
+  for:
+  - _sample_dirichlet
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: scalar_tensor
   description: 'Creates a 0-dimensional (scalar) tensor from a Python numeric value.
 
@@ -13545,6 +13655,20 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: scaled_dot_product_attention_math_for_mps
+  description: 'Computes scaled dot-product attention using the math-based implementation
+    for the MPS backend.
+
+    '
+  for:
+  - _scaled_dot_product_attention_math_for_mps
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5.0'
 - id: scaled_dot_product_cudnn_attention
   description: 'Computes scaled dot product attention using the cuDNN attention API
 
@@ -14821,6 +14945,18 @@ ops:
   - BLAS
   stages:
   - alpha: '5.4'
+- id: spdiags
+  description: Triton kernel implementation for _spdiags that builds a sparse matrix
+    from diagonals.
+  for:
+  - _spdiags
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: special_airy_ai
   description: 'Computes the Airy function Ai(x) for each element of the input tensor.
 
@@ -16842,6 +16978,17 @@ ops:
   - BLAS
   stages:
   - alpha: '5.5'
+- id: transform_bias_rescale_qkv
+  description: Triton kernel implementation for _transform_bias_rescale_qkv.
+  for:
+  - _transform_bias_rescale_qkv
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: transpose
   description: 'Returns a view of the original tensor with its two dimensions swapped.
 
@@ -16869,6 +17016,21 @@ ops:
     - aten
   kind:
     - Tensor
+  stages:
+    - alpha: '5.5'
+- id: trapz
+  description: |
+    Computes the trapezoidal rule along a dimension using constant spacing dx.
+    Integrates the input tensor along the specified dimension using the
+    trapezoidal rule with uniform spacing.
+  for:
+    - trapezoid.dx
+    - trapz.dx
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Math
   stages:
     - alpha: '5.5'
 - id: tril

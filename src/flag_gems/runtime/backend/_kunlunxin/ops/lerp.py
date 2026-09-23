@@ -14,6 +14,7 @@
 
 import logging
 
+import torch
 import triton
 import triton.language as tl
 from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
@@ -47,6 +48,15 @@ config_ = CodeGenConfig(
     unroll_num=8,
 )
 
+config_scalar_ = CodeGenConfig(
+    512,
+    (65536, 65536, 65536),
+    32,
+    True,
+    prefer_1d_tile=True,
+    kunlunAutoGrid=True,
+)
+
 
 @pointwise_dynamic(
     is_tensor=[True, True, True],
@@ -70,6 +80,7 @@ def lerp_tensor_kernel(input, end, weight):
     is_tensor=[True, True, False],
     dtypes=[None, None, float],
     promotion_methods=[(0, 1, "DEFAULT")],
+    config=config_scalar_,
 )
 @triton.jit(do_not_specialize=["weight"])
 def lerp_scalar_kernel_head(input, end, weight):
@@ -83,6 +94,7 @@ def lerp_scalar_kernel_head(input, end, weight):
     is_tensor=[True, True, False],
     dtypes=[None, None, float],
     promotion_methods=[(0, 1, "DEFAULT")],
+    config=config_scalar_,
 )
 @triton.jit(do_not_specialize=["weight"])
 def lerp_scalar_kernel_tail(input, end, weight):
@@ -103,13 +115,39 @@ def lerp_tensor_(input, end, weight):
     return lerp_tensor_kernel(input, end, weight, out0=input)
 
 
+def _reuse_input_as_out0(input, end):
+    """True iff the `lerp.Scalar` result is provably a same-dtype, same-shape
+    tensor -- i.e. we may pre-allocate `out0 = torch.empty_like(input)` and skip
+    `pointwise_dynamic.prepare_args`' per-call result-dtype inference plus the
+    output allocation.
+
+    The promotion of `lerp.Scalar` is `promotion_methods=[(0, 1, "DEFAULT")]` over
+    the TWO tensor operands (`input`, `end`), so
+      * result dtype == input.dtype  REQUIRES  input.dtype == end.dtype  (a mixed
+        pair would promote to a WIDER dtype, and handing `empty_like(input)` as
+        `out0` would silently truncate the result);
+      * result shape == input.shape  REQUIRES  input.shape == end.shape  (a
+        broadcasting pair such as input=(64,1) x end=(64,64) yields (64,64), and
+        `empty_like(input)` would silently produce the WRONG shape);
+      * contiguity keeps the `out0` fast path (which flattens to a 1d
+        `numel`-element task space) a valid flat view of both operands.
+
+    Any single mismatch falls back to the original no-`out0` path.
+    """
+    return (
+        input.dtype == end.dtype
+        and input.shape == end.shape
+        and input.is_contiguous()
+        and end.is_contiguous()
+    )
+
+
 def lerp_scalar(input, end, weight):
     logger.debug("GEMS_KUNLUNXIN LERP_SCALAR")
-    if weight < 0.5:
-        out = lerp_scalar_kernel_head(input, end, weight)
-    else:
-        out = lerp_scalar_kernel_tail(input, end, weight)
-    return out
+    kernel = lerp_scalar_kernel_head if weight < 0.5 else lerp_scalar_kernel_tail
+    if _reuse_input_as_out0(input, end):
+        return kernel(input, end, weight, out0=torch.empty_like(input))
+    return kernel(input, end, weight)
 
 
 def lerp_scalar_(input, end, weight):

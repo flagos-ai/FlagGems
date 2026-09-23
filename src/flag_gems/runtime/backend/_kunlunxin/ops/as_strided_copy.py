@@ -34,6 +34,15 @@ _MAX_SMALL_STRIDE = 4
 _SMALL_NUMEL = 65536
 _STRIDE_BLOCK = 4096
 
+# Element types the XPU constexpr-stride lowering rejects. Giving such a view a
+# *compile-time* inner stride makes the backend pick a gather lowering that only
+# accepts I16/FP16/BF16/I32/FP32 and abort compilation ("Only support
+# I16/FP16/BF16/I32/FP32 in VGather!" -> RuntimeError), while the generic kernels
+# (runtime stride, element-wise path) handle them correctly. bool and the float8
+# types are not affected (bool is lowered through a different route; float8 never
+# reaches these kernels because `_can_use_triton` rejects it).
+_BYTE_INT_DTYPES = (torch.int8, torch.uint8)
+
 
 @libentry()
 @triton.jit
@@ -204,6 +213,8 @@ def _try_fast_copy(view: torch.Tensor, out: torch.Tensor) -> bool:
     # pattern is provable. Guard against pathological bandwidth waste on large
     # tensors with a large stride (e.g. a full-matrix transpose).
     if S > _MAX_SMALL_STRIDE and n > _SMALL_NUMEL:
+        return False
+    if view.dtype in _BYTE_INT_DTYPES:
         return False
 
     if not outer_s:

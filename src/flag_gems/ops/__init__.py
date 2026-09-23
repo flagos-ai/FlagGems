@@ -129,13 +129,18 @@ from flag_gems.ops._native_multi_head_attention import _native_multi_head_attent
 from flag_gems.ops._nested_from_padded_tensor import _nested_from_padded_tensor
 from flag_gems.ops._nested_select_backward import _nested_select_backward
 from flag_gems.ops._nested_sum_backward import _nested_sum_backward
+from flag_gems.ops._nested_tensor_from_mask import _nested_tensor_from_mask
 from flag_gems.ops._nested_tensor_from_mask_left_aligned import (
     _nested_tensor_from_mask_left_aligned,
+)
+from flag_gems.ops._nested_tensor_softmax_with_shape import (
+    _nested_tensor_softmax_with_shape,
 )
 from flag_gems.ops._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
 from flag_gems.ops._nested_view_from_jagged import _nested_view_from_jagged
 from flag_gems.ops._nested_view_from_jagged_copy import _nested_view_from_jagged_copy
 from flag_gems.ops._pad_circular import _pad_circular
+from flag_gems.ops._pad_packed_sequence import _pad_packed_sequence
 from flag_gems.ops._pdist_backward import _pdist_backward
 from flag_gems.ops._pdist_forward import _pdist_forward
 from flag_gems.ops._prelu_kernel import _prelu_kernel
@@ -144,8 +149,12 @@ from flag_gems.ops._reshape_alias import _reshape_alias
 from flag_gems.ops._resize_output import _resize_output
 from flag_gems.ops._resize_output_ import _resize_output_
 from flag_gems.ops._safe_softmax import _safe_softmax
+from flag_gems.ops._sample_dirichlet import _sample_dirichlet
 from flag_gems.ops._scaled_dot_product_attention_math import (
     _scaled_dot_product_attention_math,
+)
+from flag_gems.ops._scaled_dot_product_attention_math_for_mps import (
+    _scaled_dot_product_attention_math_for_mps,
 )
 from flag_gems.ops._scaled_dot_product_cudnn_attention import (
     _scaled_dot_product_cudnn_attention,
@@ -177,6 +186,7 @@ from flag_gems.ops._thnn_fused_lstm_cell_backward import _thnn_fused_lstm_cell_b
 from flag_gems.ops._thnn_fused_lstm_cell_backward_impl import (
     _thnn_fused_lstm_cell_backward_impl,
 )
+from flag_gems.ops._transform_bias_rescale_qkv import _transform_bias_rescale_qkv
 from flag_gems.ops._transformer_encoder_layer_fwd import _transformer_encoder_layer_fwd
 from flag_gems.ops._unsafe_masked_index import _unsafe_masked_index
 from flag_gems.ops._unsafe_masked_index_put_accumulate import (
@@ -736,7 +746,9 @@ from flag_gems.ops.masked_scatter import masked_scatter, masked_scatter_
 from flag_gems.ops.masked_scatter_backward import masked_scatter_backward
 from flag_gems.ops.masked_select import masked_select
 from flag_gems.ops.masked_select_backward import masked_select_backward
+from flag_gems.ops.matmul_backward import matmul_backward
 from flag_gems.ops.matrix_exp_backward import matrix_exp_backward
+from flag_gems.ops.matrix_power import matrix_power, matrix_power_out
 from flag_gems.ops.max import max, max_dim
 from flag_gems.ops.max_pool1d import max_pool1d
 from flag_gems.ops.max_pool2d_with_indices import (
@@ -840,6 +852,7 @@ from flag_gems.ops.nuclear_norm import nuclear_norm
 from flag_gems.ops.one_hot import one_hot
 from flag_gems.ops.ones import ones
 from flag_gems.ops.ones_like import ones_like
+from flag_gems.ops.orgqr import orgqr, orgqr_out
 from flag_gems.ops.ormqr import ormqr
 from flag_gems.ops.pad import constant_pad_nd, pad
 from flag_gems.ops.pad_sequence import pad_sequence
@@ -1008,6 +1021,7 @@ from flag_gems.ops.sparse_sampled_addmm import (
     sparse_sampled_addmm,
     sparse_sampled_addmm_out,
 )
+from flag_gems.ops.spdiags import spdiags
 from flag_gems.ops.special_airy_ai import special_airy_ai, special_airy_ai_out
 from flag_gems.ops.special_bessel_j0 import special_bessel_j0
 from flag_gems.ops.special_bessel_j1 import special_bessel_j1
@@ -1151,6 +1165,7 @@ from flag_gems.ops.trace import trace
 from flag_gems.ops.trace_backward import trace_backward
 from flag_gems.ops.transpose import transpose
 from flag_gems.ops.transpose_copy import transpose_copy
+from flag_gems.ops.trapz import trapz
 from flag_gems.ops.triangular_indices import tril_indices, triu_indices
 from flag_gems.ops.tril import tril, tril_, tril_out
 from flag_gems.ops.triu import triu, triu_
@@ -1330,11 +1345,14 @@ __all__ = [
     "_nested_from_padded_tensor",
     "_nested_select_backward",
     "_nested_sum_backward",
+    "_nested_tensor_from_mask",
     "_nested_tensor_from_mask_left_aligned",
+    "_nested_tensor_softmax_with_shape",
     "_nested_view_from_buffer_copy",
     "_nested_view_from_jagged",
     "_nested_view_from_jagged_copy",
     "_pad_circular",
+    "_pad_packed_sequence",
     "_padded_dense_to_jagged_forward",
     "_pdist_backward",
     "_pdist_forward",
@@ -1344,7 +1362,9 @@ __all__ = [
     "_resize_output",
     "_resize_output_",
     "_safe_softmax",
+    "_sample_dirichlet",
     "_scaled_dot_product_attention_math",
+    "_scaled_dot_product_attention_math_for_mps",
     "_scaled_dot_product_cudnn_attention",
     "_scaled_dot_product_efficient_attention",
     "_scaled_dot_product_flash_attention",
@@ -1364,6 +1384,7 @@ __all__ = [
     "_thnn_fused_lstm_cell",
     "_thnn_fused_lstm_cell_backward",
     "_thnn_fused_lstm_cell_backward_impl",
+    "_transform_bias_rescale_qkv",
     "_transformer_encoder_layer_fwd",
     "_unique2",
     "_unsafe_masked_index",
@@ -1993,7 +2014,10 @@ __all__ = [
     "masked_scatter_backward",
     "masked_select",
     "masked_select_backward",
+    "matmul_backward",
     "matrix_exp_backward",
+    "matrix_power",
+    "matrix_power_out",
     "max",
     "max_dim",
     "max_pool1d",
@@ -2104,6 +2128,8 @@ __all__ = [
     "one_hot",
     "ones",
     "ones_like",
+    "orgqr",
+    "orgqr_out",
     "ormqr",
     "pad",
     "pad_sequence",
@@ -2292,6 +2318,7 @@ __all__ = [
     "sort_stable",
     "sparse_sampled_addmm",
     "sparse_sampled_addmm_out",
+    "spdiags",
     "special_airy_ai",
     "special_airy_ai_out",
     "special_bessel_j0",
@@ -2431,6 +2458,7 @@ __all__ = [
     "trace_backward",
     "transpose",
     "transpose_copy",
+    "trapz",
     "tril",
     "tril_",
     "tril_indices",
