@@ -43,6 +43,7 @@ special_zeta_out: test_special_zeta
 special_zeta_scalar_tensor_out: test_special_zeta
 special_zeta_tensor_scalar_out: test_special_zeta
 tensordot_out: test_tensordot
+upsample_nearest1d_backward_grad_input: test_upsample_nearest1d_backward
 
 # Compound / alternative names
 arange_start_step: test_arange
@@ -79,6 +80,7 @@ rshift_tensor: test_rshift
 rshift_scalar_out: test_rshift
 rshift_tensor_out: test_rshift
 batch_norm_backward: test_batch_norm
+cumprod_backward: test_cumprod
 multi_margin_loss_backward: test_multi_margin_loss
 multi_margin_loss_backward_out: test_multi_margin_loss
 segment_reduce_backward: test_segment_reduce

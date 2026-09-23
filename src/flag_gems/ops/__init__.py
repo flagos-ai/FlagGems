@@ -23,6 +23,7 @@ from flag_gems.ops._adaptive_avg_pool2d_backward import _adaptive_avg_pool2d_bac
 from flag_gems.ops._add_relu import _add_relu
 from flag_gems.ops._add_relu_ import _add_relu_
 from flag_gems.ops._addmm_activation import _addmm_activation, _addmm_activation_out
+from flag_gems.ops._aminmax import _aminmax, _aminmax_out
 from flag_gems.ops._amp_foreach_non_finite_check_and_unscale_ import (
     _amp_foreach_non_finite_check_and_unscale_,
 )
@@ -150,6 +151,7 @@ from flag_gems.ops._resize_output import _resize_output
 from flag_gems.ops._resize_output_ import _resize_output_
 from flag_gems.ops._safe_softmax import _safe_softmax
 from flag_gems.ops._sample_dirichlet import _sample_dirichlet
+from flag_gems.ops._saturate_weight_to_fp16 import _saturate_weight_to_fp16
 from flag_gems.ops._scaled_dot_product_attention_math import (
     _scaled_dot_product_attention_math,
 )
@@ -169,6 +171,9 @@ from flag_gems.ops._scaled_dot_product_fused_attention_overrideable import (
     _scaled_dot_product_fused_attention_overrideable,
 )
 from flag_gems.ops._sobol_engine_ff_ import _sobol_engine_ff_
+from flag_gems.ops._sobol_engine_initialize_state_ import (
+    _sobol_engine_initialize_state_,
+)
 from flag_gems.ops._sparse_semi_structured_addmm import _sparse_semi_structured_addmm
 from flag_gems.ops._sparse_semi_structured_linear import _sparse_semi_structured_linear
 from flag_gems.ops._sparse_semi_structured_mm import _sparse_semi_structured_mm
@@ -413,7 +418,7 @@ from flag_gems.ops.cudnn_rnn import cudnn_rnn
 from flag_gems.ops.cudnn_rnn_backward import cudnn_rnn_backward
 from flag_gems.ops.cummax import cummax, cummaxmin_backward
 from flag_gems.ops.cummin import cummin
-from flag_gems.ops.cumprod import cumprod, cumprod_
+from flag_gems.ops.cumprod import cumprod, cumprod_, cumprod_backward
 from flag_gems.ops.cumsum import cumsum, cumsum_out, normed_cumsum
 from flag_gems.ops.cumsum_ import cumsum_
 from flag_gems.ops.cumulative_trapezoid import cumulative_trapezoid
@@ -442,6 +447,7 @@ from flag_gems.ops.dropout_ import dropout_
 from flag_gems.ops.dsplit import dsplit
 from flag_gems.ops.elu import elu, elu_, elu_backward
 from flag_gems.ops.embedding import embedding, embedding_backward
+from flag_gems.ops.embedding_bag import embedding_bag
 from flag_gems.ops.embedding_dense_backward import embedding_dense_backward
 from flag_gems.ops.embedding_renorm_ import embedding_renorm_
 from flag_gems.ops.embedding_sparse_backward import embedding_sparse_backward
@@ -819,6 +825,7 @@ from flag_gems.ops.native_channel_shuffle import native_channel_shuffle
 from flag_gems.ops.native_dropout_backward import native_dropout_backward
 from flag_gems.ops.native_group_norm import native_group_norm
 from flag_gems.ops.native_layer_norm import native_layer_norm
+from flag_gems.ops.native_norm import native_norm
 from flag_gems.ops.ne import ne, ne_scalar
 from flag_gems.ops.ne_ import ne_, ne_scalar_
 from flag_gems.ops.neg import neg, neg_
@@ -846,6 +853,7 @@ from flag_gems.ops.normal import (
     normal_tensor_float,
     normal_tensor_tensor,
 )
+from flag_gems.ops.normal_functional import normal_functional
 from flag_gems.ops.not_equal import not_equal, not_equal_scalar
 from flag_gems.ops.not_equal_ import not_equal_, not_equal_scalar_
 from flag_gems.ops.nuclear_norm import nuclear_norm
@@ -1174,6 +1182,7 @@ from flag_gems.ops.true_divide_ import true_divide_, true_divide_tensor_
 from flag_gems.ops.trunc_ import trunc, trunc_
 from flag_gems.ops.unbind import unbind
 from flag_gems.ops.unbind_copy import unbind_copy
+from flag_gems.ops.underscore_sobol_engine_draw import underscore_sobol_engine_draw
 from flag_gems.ops.unflatten import unflatten
 from flag_gems.ops.unfold import unfold
 from flag_gems.ops.unfold_backward import unfold_backward
@@ -1207,6 +1216,10 @@ from flag_gems.ops.upsample_lanczos2d_aa import (
 from flag_gems.ops.upsample_linear1d import upsample_linear1d
 from flag_gems.ops.upsample_linear1d_backward import upsample_linear1d_backward
 from flag_gems.ops.upsample_nearest1d import upsample_nearest1d
+from flag_gems.ops.upsample_nearest1d_backward import (
+    upsample_nearest1d_backward,
+    upsample_nearest1d_backward_grad_input,
+)
 from flag_gems.ops.upsample_nearest2d import upsample_nearest2d
 from flag_gems.ops.upsample_nearest2d_backward import (
     upsample_nearest2d_backward,
@@ -1269,6 +1282,8 @@ __all__ = [
     "_add_relu_",
     "_addmm_activation",
     "_addmm_activation_out",
+    "_aminmax",
+    "_aminmax_out",
     "_amp_foreach_non_finite_check_and_unscale_",
     "_amp_update_scale_",
     "_assert_async",
@@ -1363,6 +1378,7 @@ __all__ = [
     "_resize_output_",
     "_safe_softmax",
     "_sample_dirichlet",
+    "_saturate_weight_to_fp16",
     "_scaled_dot_product_attention_math",
     "_scaled_dot_product_attention_math_for_mps",
     "_scaled_dot_product_cudnn_attention",
@@ -1372,6 +1388,7 @@ __all__ = [
     "_segment_reduce_backward",
     "_segment_reduce_backward_out",
     "_sobol_engine_ff_",
+    "_sobol_engine_initialize_state_",
     "_sparse_semi_structured_addmm",
     "_sparse_semi_structured_linear",
     "_sparse_semi_structured_mm",
@@ -1630,6 +1647,7 @@ __all__ = [
     "cummin",
     "cumprod",
     "cumprod_",
+    "cumprod_backward",
     "cumsum",
     "cumsum_",
     "cumsum_out",
@@ -1662,6 +1680,7 @@ __all__ = [
     "elu_backward",
     "embedding",
     "embedding_backward",
+    "embedding_bag",
     "embedding_dense_backward",
     "embedding_renorm_",
     "embedding_sparse_backward",
@@ -2088,6 +2107,7 @@ __all__ = [
     "native_dropout_backward",
     "native_group_norm",
     "native_layer_norm",
+    "native_norm",
     "ne",
     "ne_",
     "ne_scalar",
@@ -2117,6 +2137,7 @@ __all__ = [
     "norm_scalaropt_dim",
     "normal_",
     "normal_float_tensor",
+    "normal_functional",
     "normal_tensor_float",
     "normal_tensor_tensor",
     "normed_cumsum",
@@ -2475,6 +2496,7 @@ __all__ = [
     "trunc_",
     "unbind",
     "unbind_copy",
+    "underscore_sobol_engine_draw",
     "unflatten",
     "unfold",
     "unfold_backward",
@@ -2500,6 +2522,8 @@ __all__ = [
     "upsample_linear1d",
     "upsample_linear1d_backward",
     "upsample_nearest1d",
+    "upsample_nearest1d_backward",
+    "upsample_nearest1d_backward_grad_input",
     "upsample_nearest2d",
     "upsample_nearest2d_backward",
     "upsample_nearest2d_backward_grad_input",

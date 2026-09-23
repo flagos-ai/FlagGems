@@ -4,6 +4,7 @@ import torch
 torch.backends.cuda.matmul.allow_tf32 = False
 
 import flag_gems  # noqa: E402
+from flag_gems.utils import get_device_properties  # noqa: E402
 
 from . import accuracy_utils as utils  # noqa: E402
 
@@ -109,6 +110,50 @@ def _ref_solve_tri(A, B, **kwargs):
     return torch.linalg.solve_triangular(ref_A, ref_B, **kwargs)
 
 
+def _grid_programs(batch_shape, k):
+    """Programs the diagonal-block kernel launches for one block.
+
+    One work item per (column slice, batch); the column slice is SLIDE_SIZE=64
+    wide, matching the backend's SLIDE_SIZE.
+    """
+    batch = 1
+    for s in batch_shape:
+        batch *= s
+    return ((k + 63) // 64) * batch
+
+
+def _core_count():
+    try:
+        return int(get_device_properties().multi_processor_count)
+    except Exception:  # noqa: BLE001
+        return 0
+
+
+# The diagonal-block kernel solves its rows serially and orders the
+# store -> load read-after-write with tl.debug_barrier().  That ordering only
+# holds while every program has its own core and runs to completion; a grid
+# larger than the core count is scheduled in waves and a later row's load reads
+# X before the earlier row's store has landed.  Measured on Ascend910B4 (40
+# vector cores): grid 40 is bit-stable, grid 41 is not, and the bad runs differ
+# from each other.  The backend folds the surplus work items into an in-kernel
+# loop, so the grid stays at or below the core count; these shapes pin that,
+# each reaching the grid along a different axis.
+_OVER_CORE_CASES = [
+    ((128,), 64, 4),  # grid 128, the batch axis alone exceeds the cores
+    ((8,), 64, 512),  # grid 64, the column-slice axis does
+    ((1,), 64, 4096),  # grid 64, reachable with no batch dimension at all
+    ((64,), 128, 128),  # grid 128, multi-block, so the update loop runs too
+    # The shape from the original report (a/b=[4,32,64,64], grid 128).  Kept
+    # separately from ((128,), 64, 4) even though both reach grid 128: here k
+    # equals SLIDE_SIZE, so every lane of the column slice is active, whereas
+    # k=4 masks all but four of them.
+    ((4, 32), 64, 64),
+]
+
+_CORES = _core_count()
+_MAX_CASE_GRID = max(_grid_programs(b, k) for b, _, k in _OVER_CORE_CASES)
+
+
 @pytest.mark.linalg_solve_triangular
 @pytest.mark.parametrize("n", [1, 4, 8, 16, 32, 64, 128, 256, 512])
 @pytest.mark.parametrize("k", [1, 3, 16])
@@ -198,6 +243,78 @@ def test_batched(batch_shape, n, k, upper, dtype):
     res_out = flag_gems.linalg_solve_triangular(A, B, upper=upper)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.linalg_solve_triangular
+@pytest.mark.parametrize("batch_shape", [(3,), (2, 4)])
+@pytest.mark.parametrize("n", [128, 192])
+@pytest.mark.parametrize("k", [4, 64])
+@pytest.mark.parametrize("upper", [False, True])
+@pytest.mark.parametrize("dtype", DTYPES)
+def test_batched_multiblock(batch_shape, n, k, upper, dtype):
+    """Batched with n > BLOCK_SIZE, so the per-batch update loop between
+    diagonal blocks actually runs.
+
+    test_batched above tops out at n=32, which is a single diagonal block, so
+    the batched multi-block path -- the mm update and the in-place subtract for
+    every batch -- was never exercised.  The batch is kept small here so the
+    launch grid stays inside the core count and this stays a test of the
+    multi-block path rather than of the grid cap.
+    """
+    shape_A = batch_shape + (n, n)
+    shape_B = batch_shape + (n, k)
+    A = _make_triangular(
+        shape_A, dtype, flag_gems.device, upper=upper, unitriangular=False
+    )
+    B = torch.randn(shape_B, dtype=dtype, device=flag_gems.device)
+
+    ref_out = _ref_solve_tri(A, B, upper=upper)
+
+    res_out = flag_gems.linalg_solve_triangular(A, B, upper=upper)
+
+    utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.linalg_solve_triangular
+@pytest.mark.parametrize("batch_shape,n,k", _OVER_CORE_CASES)
+@pytest.mark.parametrize("upper", [False, True])
+@pytest.mark.skipif(
+    _MAX_CASE_GRID <= _CORES,
+    reason="device has more cores than the largest case grid; nothing to pin.",
+)
+def test_grid_above_core_count(batch_shape, n, k, upper):
+    """The solve must stay exact and reproducible with a grid past the cores.
+
+    Regression test for the diagonal-block kernel reading an X row whose store
+    had not landed: it returned wrong values, differently on every run, once the
+    launch grid exceeded the core count.  Both halves matter -- the residual
+    catches a consistently wrong answer, the repeat check catches the
+    run-dependent one, which a single pass could miss.
+    """
+    dtype = torch.float32
+    A = _make_triangular(
+        batch_shape + (n, n), dtype, flag_gems.device, upper=upper, unitriangular=False
+    )
+    B = torch.randn(batch_shape + (n, k), dtype=dtype, device=flag_gems.device)
+
+    runs = [
+        flag_gems.linalg_solve_triangular(A, B, upper=upper).cpu() for _ in range(4)
+    ]
+    for i, other in enumerate(runs[1:], start=2):
+        assert torch.equal(
+            runs[0], other
+        ), f"solve_triangular is not deterministic: run {i} differs from run 1"
+
+    X = runs[0]
+    Ad = A.cpu().double()
+    Bd = B.cpu().double()
+    ref = torch.linalg.solve_triangular(Ad, Bd, upper=upper)
+    assert torch.allclose(
+        X.double(), ref, atol=1e-3, rtol=1e-3
+    ), f"max |X - X_ref| = {(X.double() - ref).abs().max().item()}"
+
+    residual = (Ad @ X.double() - Bd).abs().max().item()
+    assert residual < 1e-3, f"residual too large: {residual}"
 
 
 @pytest.mark.linalg_solve_triangular_out
