@@ -20,7 +20,7 @@ import triton.language as tl
 from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import dim_compress, libentry
+from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
 from ..utils.block_size_utils import get_block_size_1d
@@ -66,6 +66,11 @@ def heur_n_block_size(args):
 @triton.jit
 def reduce_any(a, b):
     return a or b
+
+
+@triton.jit
+def reduce_or_i32(a, b):
+    return a | b
 
 
 @libentry()
@@ -238,6 +243,77 @@ def any_kernel_2(mid, out, MID_SIZE, BLOCK_MID: tl.constexpr):
 
 @libentry()
 @triton.jit
+def any_row_word_stage1_kernel(
+    in_ptr,
+    mid,
+    N_WORDS,
+    N_CHUNKS,
+    BLOCK_W: tl.constexpr,
+    MAG: tl.constexpr,
+    NEED_MASK: tl.constexpr,
+    DIRECT: tl.constexpr,
+    RAW_I32: tl.constexpr,
+):
+    """Per-row stage 1 on the int32-word bitmap (see `any_word_stage1`).
+
+    Same idiom as the global-any fast path: OR-reduce the packed int32 words of
+    one row.  `OR_w (w & MAG) == (OR_w w) & MAG`, so a zero result means every
+    element of every reduced word was zero -- no per-element fcmp/i1 convert and
+    no i1 OR-tree, which is markedly faster on XPU (`any_row_stage1_kernel`
+    below is the slow i1 variant; the select+`tl.max` variant is ~2.8x slower).
+
+    `MAG` clears the sign bits of each packed float lane (`0x7fff7fff` for
+    16-bit elements, `0x7fffffff` for 32-bit, `-1` for integers/bool where a
+    zero word already means "all elements zero"), so a `-0.0` lane still reads
+    as zero and the result stays bit-exact with the elementwise `!= 0` test.
+
+    `NEED_MASK` is False whenever `N_WORDS % BLOCK_W == 0`; the runtime
+    `off < N_WORDS` predicate otherwise defeats the widest vectorisation on
+    XPU and costs ~2x on the very case this fixes.
+
+    `DIRECT` writes the finished result straight into `out` (the single-chunk
+    case, `mid` is the output then) and skips the stage-2 launch, which is a
+    pure fixed cost of ~90 us here -- larger than the reduction itself.
+
+    `RAW_I32` keeps the raw int32 OR (instead of a bool) so the caller can
+    split one word back into its 4 packed bytes (the 1-byte-dtype path, where
+    the word axis groups a *kept* axis and each byte is a separate output).
+    """
+    pid_m = ext.program_id(0)
+    pid_c = ext.program_id(1)
+    off = pid_c * BLOCK_W + tl.arange(0, BLOCK_W)
+    if NEED_MASK:
+        w = tl.load(in_ptr + pid_m * N_WORDS + off, mask=off < N_WORDS, other=0)
+    else:
+        w = tl.load(in_ptr + pid_m * N_WORDS + off)
+    m = tl.reduce(w & MAG, axis=0, combine_fn=reduce_or_i32)
+    if DIRECT:
+        if RAW_I32:
+            tl.store(mid + pid_m, m)
+        else:
+            tl.store(mid + pid_m, m != 0)
+    else:
+        tl.store(mid + pid_m * N_CHUNKS + pid_c, m)
+
+
+@libentry()
+@triton.jit
+def any_row_word_stage2_kernel(
+    mid, out, MID_N, BLOCK_MID: tl.constexpr, RAW_I32: tl.constexpr
+):
+    """Stage 2: fold the per-chunk int32 flags of one row into a bool."""
+    pid_m = ext.program_id(0)
+    off = tl.arange(0, BLOCK_MID)
+    val = tl.load(mid + pid_m * MID_N + off, mask=off < MID_N, other=0)
+    m = tl.reduce(val, axis=0, combine_fn=reduce_or_i32)
+    if RAW_I32:
+        tl.store(out + pid_m, m)
+    else:
+        tl.store(out + pid_m, m != 0)
+
+
+@libentry()
+@triton.jit
 def any_row_stage1_kernel(inp, mid, N, N_CHUNKS, BLOCK_N: tl.constexpr):
     pid_m = ext.program_id(0)
     pid_c = ext.program_id(1)
@@ -261,9 +337,93 @@ def any_row_stage2_kernel(mid, out, MID_N, BLOCK_MID: tl.constexpr):
     tl.store(out + pid_m, any_val)
 
 
-def _any_dims_reduce(inp, M, N, out_shape):
+_ROW_WORD_MAX = 32768
+
+
+def _row_word_mag(dtype, elem_size):
+    """Sign-clearing mask for the packed lanes of one int32 word, or None when
+    the word bitmap cannot be made bit-exact with an elementwise `!= 0`.
+
+    A raw `word != 0` test is exact for integer/bool payloads (the only zero
+    pattern is all-zero bits) but not for floats, where `-0.0` has the sign bit
+    set; masking the sign bit of every lane restores exactness.  `-1` is the
+    no-op mask for the integer/bool case."""
+    is_fp = dtype.is_floating_point
+    if callable(is_fp):  # torch.dtype exposes it as a property in most builds
+        is_fp = is_fp()
+    if is_fp:
+        if elem_size == 4:
+            return 0x7FFFFFFF
+        if elem_size == 2:
+            return 0x7FFF7FFF
+        return None  # f8 / f64: lane packing / sign layout not handled here
+    if elem_size in (1, 2, 4):
+        return -1
+    return None
+
+
+def _any_dims_reduce(inp, M, N, out_shape, raw_i32=False):
     """Reduce a contiguous [M, N] view over its N axis (per row), returning a bool
-    tensor of shape `out_shape` (reduced dims already collapsed to 1)."""
+    tensor of shape `out_shape` (reduced dims already collapsed to 1).
+
+    With `raw_i32` the per-row OR is returned as a raw int32 tensor of shape
+    [M] instead of a bool (used by the 1-byte-dtype path, where each byte of
+    the word is a distinct output)."""
+    elem_size = inp.element_size()
+    mag = (
+        _row_word_mag(inp.dtype, elem_size)
+        if inp.is_contiguous() and inp.data_ptr() % 4 == 0
+        else None
+    )
+    if mag is not None and (N * elem_size) % 4 == 0:
+        n_words = N * elem_size // 4
+        BLOCK_W = min(triton.next_power_of_2(n_words), _ROW_WORD_MAX)
+        n_chunks = triton.cdiv(n_words, BLOCK_W)
+        need_mask = n_words % BLOCK_W != 0
+        view = inp.reshape(-1).view(torch.uint8).view(torch.int32).reshape(M, n_words)
+        out = torch.empty(
+            M, dtype=torch.int32 if raw_i32 else torch.bool, device=inp.device
+        )
+        if n_chunks == 1:
+            with torch_device_fn.device(inp.device):
+                any_row_word_stage1_kernel[(M, 1)](
+                    view,
+                    out,
+                    n_words,
+                    1,
+                    BLOCK_W=BLOCK_W,
+                    MAG=mag,
+                    NEED_MASK=need_mask,
+                    DIRECT=True,
+                    RAW_I32=raw_i32,
+                    buffer_size_limit=2048,
+                )
+            return out.reshape(out_shape)
+        mid = torch.empty((M, n_chunks), dtype=torch.int32, device=inp.device)
+        with torch_device_fn.device(inp.device):
+            any_row_word_stage1_kernel[(M, n_chunks)](
+                view,
+                mid,
+                n_words,
+                n_chunks,
+                BLOCK_W=BLOCK_W,
+                MAG=mag,
+                NEED_MASK=need_mask,
+                DIRECT=False,
+                RAW_I32=raw_i32,
+                buffer_size_limit=2048,
+            )
+            any_row_word_stage2_kernel[(M,)](
+                mid,
+                out,
+                n_chunks,
+                BLOCK_MID=triton.next_power_of_2(n_chunks),
+                RAW_I32=raw_i32,
+                buffer_size_limit=2048,
+            )
+        return out.reshape(out_shape)
+
+    # generic i1 OR-tree path (any byte alignment / layout / dtype)
     BLOCK_N = 8192
     n_chunks = triton.cdiv(N, BLOCK_N)
     out = torch.empty(M, dtype=torch.bool, device=inp.device)
@@ -330,6 +490,41 @@ def any(inp):
     return out
 
 
+def _permute_contig(permuted):
+    """Materialise a strided permute view as a contiguous tensor.
+
+    Uses this file's tle idiom instead of `Tensor.contiguous()`: under
+    `use_gems` a `contiguous()` on a permuted view dispatches to the vendor
+    copy_, which moves it at ~1.4 GB/s (22.9 ms for the 33.5 MB
+    (64,512,512) any_dims case), while tle_copy expresses the same transpose
+    directly at ~880 GB/s (0.038 ms)."""
+    new_shape = tuple(permuted.shape)
+    strides = [1] * len(new_shape)
+    for i in range(len(new_shape) - 2, -1, -1):
+        strides[i] = strides[i + 1] * new_shape[i + 1]
+    # empty_strided is not registered by gems -> native allocator.
+    dst = torch.empty_strided(
+        new_shape,
+        tuple(strides),
+        dtype=permuted.dtype,
+        device=permuted.device,
+    )
+    if tle_copy(permuted, dst):
+        return dst
+    try:
+        _any_permute_copy_pw(permuted, out0=dst)
+        return dst
+    except Exception:  # noqa: BLE001
+        logger.warning(
+            "GEMS_KUNLUNXIN ANY: tle/pointwise permute copy failed for "
+            "shape=%s strides=%s dtype=%s; using contiguous()",
+            tuple(permuted.shape),
+            permuted.stride(),
+            permuted.dtype,
+        )
+    return permuted.contiguous()
+
+
 def _move_dim_last_contig(inp, dim):
     if dim == inp.ndim - 1 and inp.is_contiguous():
         return inp
@@ -337,22 +532,69 @@ def _move_dim_last_contig(inp, dim):
     permuted = inp.permute(order)
     if permuted.is_contiguous():
         return permuted
-    new_shape = tuple(permuted.shape)
-    strides = [1] * len(new_shape)
-    for i in range(len(new_shape) - 2, -1, -1):
-        strides[i] = strides[i + 1] * new_shape[i + 1]
-    # empty_strided is not registered by gems -> native allocator/copy.
-    dst = torch.empty_strided(
-        new_shape, tuple(strides), dtype=inp.dtype, device=inp.device
-    )
-    # `permuted` is a strided permute view of `inp`; tle takes it as a TMA tile
-    # when the permutation keeps the innermost axis contiguous and otherwise
-    # transposes a tile on chip (see permute_copy). The pointwise kernel keeps
-    # whatever tle cannot express -- no `torch.ops.aten._copy_from`, which
-    # bypasses gems and dispatches to the vendor fallback.
-    if not tle_copy(permuted, dst):
-        _any_permute_copy_pw(permuted, out0=dst)
-    return dst
+    return _permute_contig(permuted)
+
+
+def _dims_last_contig(inp, dims):
+    """Drop-in replacement for the shared `utils.dim_compress`.
+
+    Same layout (batch dims first in their original order, reduced dims last
+    sorted by descending stride, materialised contiguous), so the output is
+    bit-identical to `dim_compress`, but the copy goes through `_permute_contig`
+    (tle) instead of `Tensor.contiguous()`. The shared helper cannot be changed
+    here -- it is used by many other operators -- and its `.contiguous()` is the
+    22.9 ms/1.4 GB/s part of the (64,512,512) any_dims regression.
+
+    The descending-stride order is load-bearing for throughput as well: it is
+    what makes the tle transpose land on the fast path (an ascending order for
+    the 3D reduced-prefix case was measured at 8.05 ms)."""
+    dset = set(dims)
+    order = [i for i in range(inp.ndim) if i not in dset]
+    order += sorted(dims, key=lambda i: inp.stride()[i], reverse=True)
+    permuted = inp.permute(order)
+    if permuted.is_contiguous():
+        return permuted
+    return _permute_contig(permuted)
+
+
+def _byte_word_compress(inp, dims):
+    """1-byte-input variant of `_dims_last_contig` (see it for the layout).
+
+    `tle_copy` refuses 1-byte-element transposes (its SDNN trans kernel faults
+    on them -- see `tle_copy`), so a 1-byte `_permute_contig` drops to the
+    pointwise kernel, measured at ~3.1 ms for the (64,512,512) dim=[0,1] case
+    versus 0.038 ms for the same transpose in a 4-byte dtype.  Viewing the
+    innermost (contiguous) axis as int32 words makes it a 4-byte transpose
+    again -- the same trick the reduce already uses on the *reduced* axis.
+
+    The innermost axis is always the last one.  When it is a *reduced* axis,
+    packing four of its elements into a word is harmless (`word != 0` still
+    means "some element non-zero"), so the word tensor feeds
+    `_any_dims_reduce` unchanged.  When it is a *kept* axis -- the
+    (64,512,512) dim=[0,1] case -- a word's four bytes are four distinct
+    outputs, so the reduce must return the raw int32 OR and the caller splits
+    it byte-wise: exact, because an int32 OR is a per-byte-position OR, and
+    because the innermost kept axis varies fastest, `view(uint8)` reproduces
+    the flat output order exactly.
+
+    Returns `(word_tensor, expand)` or None when the word view is not
+    expressible (leaving the caller on the generic path).
+    """
+    if inp.element_size() != 1 or inp.ndim == 0 or not inp.is_contiguous():
+        return None
+    last = inp.ndim - 1
+    if inp.shape[last] % 4 != 0 or inp.storage_offset() % 4 != 0:
+        return None
+    if _row_word_mag(inp.dtype, 1) is None:
+        return None
+    words = inp.view(torch.int32)
+    dset = set(dims)
+    order = [i for i in range(words.ndim) if i not in dset]
+    order += sorted(dims, key=lambda i: words.stride()[i], reverse=True)
+    permuted = words.permute(order)
+    if not permuted.is_contiguous():
+        permuted = _permute_contig(permuted)
+    return permuted, last not in dset
 
 
 def any_dim(inp, dim=None, keepdim=False):
@@ -424,18 +666,39 @@ def any_dims(inp, dim=None, keepdim=False):
 
     shape = list(inp.shape)
     dim = [d % inp.ndim for d in dim]
-    inp = dim_compress(inp, dim)
-    N = 1
+    n_red = 1
     for i in dim:
-        N *= shape[i]
-        shape[i] = 1
-    M = inp.numel() // N
-
-    if M == 1:
-        res = any(inp)
-        out = res.reshape(shape)
+        n_red *= shape[i]
+    byte_words = (
+        _byte_word_compress(inp, dim)
+        if inp.numel() > 0 and n_red > 0 and inp.numel() // n_red > 1
+        else None
+    )
+    if byte_words is not None:
+        words, expand = byte_words
+        shape1 = list(shape)
+        for i in dim:
+            shape1[i] = 1
+        n_red_w = n_red if expand else n_red // 4
+        M = words.numel() // n_red_w
+        if expand:
+            o = _any_dims_reduce(words, M, n_red_w, [M], raw_i32=True)
+            out = (o.view(torch.uint8) != 0).reshape(shape1)
+        else:
+            out = _any_dims_reduce(words, M, n_red_w, shape1)
     else:
-        out = _any_dims_reduce(inp, M, N, shape)
+        inp = _dims_last_contig(inp, dim)
+        N = 1
+        for i in dim:
+            N *= shape[i]
+            shape[i] = 1
+        M = inp.numel() // N
+
+        if M == 1:
+            res = any(inp)
+            out = res.reshape(shape)
+        else:
+            out = _any_dims_reduce(inp, M, N, shape)
 
     if not keepdim:
         out = out.squeeze(dim=dim)
