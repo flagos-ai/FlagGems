@@ -32,6 +32,10 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils.device_info import get_sm_count
 
+from .cat import cat
+from .mm import mm
+from .stack import stack
+
 logger = logging.getLogger(__name__)
 
 BIAS_NONE = 0
@@ -420,7 +424,7 @@ def _scaled_grouped_mm_fallback(
     if a_is_2d and not b_is_2d:
         for group_idx in range(num_groups):
             m_start, m_end = starts[group_idx], starts[group_idx + 1]
-            chunk = mat_a[m_start:m_end].float().mm(mat_b[group_idx].float())
+            chunk = mm(mat_a[m_start:m_end].float(), mat_b[group_idx].float())
             chunk_bias = None
             if bias is not None:
                 chunk_bias = bias if bias.dim() == 1 else bias[group_idx]
@@ -433,12 +437,12 @@ def _scaled_grouped_mm_fallback(
                     out_dtype,
                 )
             )
-        return torch.cat(out_chunks, dim=0)
+        return cat(out_chunks, dim=0)
 
     if not a_is_2d and b_is_2d:
         for group_idx in range(num_groups):
             n_start, n_end = starts[group_idx], starts[group_idx + 1]
-            chunk = mat_a[group_idx].float().mm(mat_b[:, n_start:n_end].float())
+            chunk = mm(mat_a[group_idx].float(), mat_b[:, n_start:n_end].float())
             chunk_bias = bias[n_start:n_end] if bias is not None else None
             out_chunks.append(
                 _scale_and_add_bias(
@@ -449,14 +453,14 @@ def _scaled_grouped_mm_fallback(
                     out_dtype,
                 )
             )
-        return torch.cat(out_chunks, dim=1)
+        return cat(out_chunks, dim=1)
 
     if a_is_2d and b_is_2d:
         scale_a = scale_a.reshape(num_groups, mat_a.shape[0])
         scale_b = scale_b.reshape(num_groups, mat_b.shape[1])
         for group_idx in range(num_groups):
             k_start, k_end = starts[group_idx], starts[group_idx + 1]
-            chunk = mat_a[:, k_start:k_end].float().mm(mat_b[k_start:k_end].float())
+            chunk = mm(mat_a[:, k_start:k_end].float(), mat_b[k_start:k_end].float())
             chunk_bias = None
             if bias is not None:
                 chunk_bias = bias if bias.dim() == 1 else bias[group_idx]
@@ -469,10 +473,10 @@ def _scaled_grouped_mm_fallback(
                     out_dtype,
                 )
             )
-        return torch.stack(out_chunks, dim=0)
+        return stack(out_chunks, dim=0)
 
     for group_idx in range(num_groups):
-        chunk = mat_a[group_idx].float().mm(mat_b[group_idx].float())
+        chunk = mm(mat_a[group_idx].float(), mat_b[group_idx].float())
         chunk_bias = None
         if bias is not None:
             chunk_bias = bias if bias.dim() == 1 else bias[group_idx]
@@ -485,7 +489,7 @@ def _scaled_grouped_mm_fallback(
                 out_dtype,
             )
         )
-    return torch.stack(out_chunks, dim=0)
+    return stack(out_chunks, dim=0)
 
 
 def scaled_grouped_mm(
