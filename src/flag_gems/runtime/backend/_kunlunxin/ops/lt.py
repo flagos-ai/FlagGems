@@ -166,10 +166,22 @@ def lt_(A, B):
     return A
 
 
+config_scalar_inplace_ = CodeGenConfig(
+    512,
+    (65536, 65536, 65536),
+    32,
+    True,
+    prefer_1d_tile=True,
+    kunlunAutoGrid=True,
+    unroll_num=8,
+    buffer_size_limit=4096,
+)
+
+
 @pointwise_dynamic(
     is_tensor=[True, False],
     promotion_methods=[(0, 1, "DEFAULT")],
-    config=config_inplace_,
+    config=config_scalar_inplace_,
 )
 @triton.jit
 def lt_func_scalar_(x, y):

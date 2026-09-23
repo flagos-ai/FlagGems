@@ -150,23 +150,32 @@ def _nonzero_static_multiblock_count_kernel(
 
 @libentry()
 @triton.jit
-def _nonzero_static_multiblock_write_kernel(
+def _nonzero_static_multiblock_scatter_kernel(
     x_ptr,
     counts_ptr,
     prefix_ptr,
-    workspace_ptr,
+    nz_ptr,
     size: tl.constexpr,
     numel: tl.constexpr,
-    ndim: tl.constexpr,
-    D0: tl.constexpr,
-    D1: tl.constexpr,
-    D2: tl.constexpr,
-    D3: tl.constexpr,
-    D4: tl.constexpr,
-    D5: tl.constexpr,
     IS_COMPLEX: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
+    """Compact the linear index of every selected element into ``nz``.
+
+    Only ONE int64 is stored per lane (the linear index) instead of ``ndim``
+    coordinate values: on this backend every store with a data-dependent
+    address is a per-lane scalar store (~1.15 ns/lane), while a store whose
+    address the compiler can prove is stride-1 is block-DMA (~0.012 ns/lane).
+    The store *count* therefore has to be minimised, and the coordinate
+    expansion is deferred to the fully affine assemble kernel.
+
+    Store masks are NOT honoured by this backend (a masked store lowers to an
+    address-select, all lanes still store), so instead of masking, every
+    non-selected lane writes its own index into a unique per-(program, lane)
+    sink slot in ``[size, size + num_blocks * BLOCK_SIZE)``.  The slots must
+    stay unique -- colliding scatter addresses cost an order of magnitude more
+    than distinct ones.
+    """
     pid = tl.program_id(0)
     offsets = tl.arange(0, BLOCK_SIZE)
     linear = pid * BLOCK_SIZE + offsets
@@ -177,60 +186,112 @@ def _nonzero_static_multiblock_write_kernel(
         flags = (real != 0) | (imag != 0)
     else:
         flags = tl.load(x_ptr + linear, mask=mask, other=0) != 0
-    valid = (linear < numel) & flags
+    valid = mask & flags
     local_rank = tl.cumsum(valid.to(tl.int32), axis=0) - 1
-    prefix = tl.load(prefix_ptr + pid) - tl.load(counts_ptr + pid)
-    selected = valid & (prefix + local_rank < size)
+    base = tl.load(prefix_ptr + pid) - tl.load(counts_ptr + pid)
+    selected = valid & (base + local_rank < size)
     destination = tl.where(
         selected,
-        prefix + local_rank,
+        base + local_rank,
         size + pid * BLOCK_SIZE + offsets,
     ).to(tl.int64)
+    tl.store(nz_ptr + destination, linear.to(tl.int64))
+
+
+@libentry()
+@triton.jit
+def _nonzero_static_multiblock_assemble_kernel(
+    nz_ptr,
+    count_ptr,
+    out_ptr,
+    fill_value,
+    size: tl.constexpr,
+    ndim: tl.constexpr,
+    D0: tl.constexpr,
+    D1: tl.constexpr,
+    D2: tl.constexpr,
+    D3: tl.constexpr,
+    D4: tl.constexpr,
+    D5: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    """Expand the compacted linear indices into ``[size, ndim]`` coordinates.
+
+    Both the load and the stores are affine in ``tl.arange`` (rows outside
+    ``[0, size)`` are redirected to a trailing sink), so this kernel is block
+    DMA traffic; rows past the last nonzero are filled with ``fill_value``.
+    """
+    pid = tl.program_id(0)
+    offsets = tl.arange(0, BLOCK_SIZE)
+    rows = pid * BLOCK_SIZE + offsets
+    valid_count = tl.minimum(tl.load(count_ptr), size)
+    keep = rows < valid_count
+    destination = tl.where(rows < size, rows, size + offsets).to(tl.int64)
+    linear = tl.load(nz_ptr + tl.where(keep, rows, 0))
 
     if ndim == 1:
-        c0 = linear
-        tl.store(workspace_ptr + destination, c0)
+        tl.store(out_ptr + destination, tl.where(keep, linear, fill_value))
     if ndim == 2:
-        c0 = linear // D1
-        c1 = linear % D1
-        tl.store(workspace_ptr + destination * 2, c0)
-        tl.store(workspace_ptr + destination * 2 + 1, c1)
+        tl.store(out_ptr + destination * 2, tl.where(keep, linear // D1, fill_value))
+        tl.store(out_ptr + destination * 2 + 1, tl.where(keep, linear % D1, fill_value))
     if ndim == 3:
         d12 = D1 * D2
         rem = linear % d12
-        tl.store(workspace_ptr + destination * 3, linear // d12)
-        tl.store(workspace_ptr + destination * 3 + 1, rem // D2)
-        tl.store(workspace_ptr + destination * 3 + 2, rem % D2)
+        tl.store(out_ptr + destination * 3, tl.where(keep, linear // d12, fill_value))
+        tl.store(out_ptr + destination * 3 + 1, tl.where(keep, rem // D2, fill_value))
+        tl.store(out_ptr + destination * 3 + 2, tl.where(keep, rem % D2, fill_value))
     if ndim == 4:
         d123 = D1 * D2 * D3
         d23 = D2 * D3
         rem = linear % d123
-        tl.store(workspace_ptr + destination * 4, linear // d123)
-        tl.store(workspace_ptr + destination * 4 + 1, rem // d23)
-        tl.store(workspace_ptr + destination * 4 + 2, (rem % d23) // D3)
-        tl.store(workspace_ptr + destination * 4 + 3, rem % D3)
+        tl.store(out_ptr + destination * 4, tl.where(keep, linear // d123, fill_value))
+        tl.store(out_ptr + destination * 4 + 1, tl.where(keep, rem // d23, fill_value))
+        tl.store(
+            out_ptr + destination * 4 + 2,
+            tl.where(keep, (rem % d23) // D3, fill_value),
+        )
+        tl.store(out_ptr + destination * 4 + 3, tl.where(keep, rem % D3, fill_value))
     if ndim == 5:
         d1234 = D1 * D2 * D3 * D4
         d234 = D2 * D3 * D4
         d34 = D3 * D4
         rem = linear % d1234
-        tl.store(workspace_ptr + destination * 5, linear // d1234)
-        tl.store(workspace_ptr + destination * 5 + 1, rem // d234)
-        tl.store(workspace_ptr + destination * 5 + 2, (rem % d234) // d34)
-        tl.store(workspace_ptr + destination * 5 + 3, (rem % d34) // D4)
-        tl.store(workspace_ptr + destination * 5 + 4, rem % D4)
+        tl.store(out_ptr + destination * 5, tl.where(keep, linear // d1234, fill_value))
+        tl.store(out_ptr + destination * 5 + 1, tl.where(keep, rem // d234, fill_value))
+        tl.store(
+            out_ptr + destination * 5 + 2,
+            tl.where(keep, (rem % d234) // d34, fill_value),
+        )
+        tl.store(
+            out_ptr + destination * 5 + 3,
+            tl.where(keep, (rem % d34) // D4, fill_value),
+        )
+        tl.store(out_ptr + destination * 5 + 4, tl.where(keep, rem % D4, fill_value))
     if ndim == 6:
         d12345 = D1 * D2 * D3 * D4 * D5
         d2345 = D2 * D3 * D4 * D5
         d345 = D3 * D4 * D5
         d45 = D4 * D5
         rem = linear % d12345
-        tl.store(workspace_ptr + destination * 6, linear // d12345)
-        tl.store(workspace_ptr + destination * 6 + 1, rem // d2345)
-        tl.store(workspace_ptr + destination * 6 + 2, (rem % d2345) // d345)
-        tl.store(workspace_ptr + destination * 6 + 3, (rem % d345) // d45)
-        tl.store(workspace_ptr + destination * 6 + 4, (rem % d45) // D5)
-        tl.store(workspace_ptr + destination * 6 + 5, rem % D5)
+        tl.store(
+            out_ptr + destination * 6, tl.where(keep, linear // d12345, fill_value)
+        )
+        tl.store(
+            out_ptr + destination * 6 + 1, tl.where(keep, rem // d2345, fill_value)
+        )
+        tl.store(
+            out_ptr + destination * 6 + 2,
+            tl.where(keep, (rem % d2345) // d345, fill_value),
+        )
+        tl.store(
+            out_ptr + destination * 6 + 3,
+            tl.where(keep, (rem % d345) // d45, fill_value),
+        )
+        tl.store(
+            out_ptr + destination * 6 + 4,
+            tl.where(keep, (rem % d45) // D5, fill_value),
+        )
+        tl.store(out_ptr + destination * 6 + 5, tl.where(keep, rem % D5, fill_value))
 
 
 def _multiblock_nonzero_static(input, size, fill_value, out):
@@ -245,12 +306,21 @@ def _multiblock_nonzero_static(input, size, fill_value, out):
         x = torch.view_as_real(source).reshape(-1)
     else:
         x = source
-    padded_numel = num_blocks * _MULTI_BLOCK_TILE_SIZE
-    workspace = torch.empty(
-        (size + padded_numel, ndim), device=input.device, dtype=torch.int64
+    shape = tuple(input.shape) + (1,) * (6 - ndim)
+
+    # nz[:size] holds the compacted linear index of every selected element and
+    # each non-selected lane parks in its own unique sink slot in
+    # [size, size + num_blocks * TILE).  Only rows [0, size) of `workspace` are
+    # returned; the trailing _FILL_BLOCK_SIZE rows are the assemble sink.
+    nz = torch.empty(
+        (size + num_blocks * _MULTI_BLOCK_TILE_SIZE,),
+        device=input.device,
+        dtype=torch.int64,
     )
     counts = torch.empty((num_blocks,), device=input.device, dtype=torch.int64)
-    shape = tuple(input.shape) + (1,) * (6 - ndim)
+    workspace = torch.empty(
+        (size + _FILL_BLOCK_SIZE, ndim), device=input.device, dtype=torch.int64
+    )
     with torch_device_fn.device(input.device):
         _nonzero_static_multiblock_count_kernel[(num_blocks,)](
             x,
@@ -260,25 +330,27 @@ def _multiblock_nonzero_static(input, size, fill_value, out):
             BLOCK_SIZE=_MULTI_BLOCK_TILE_SIZE,
         )
         prefix = flag_gems.cumsum(counts, dim=0)
-        _nonzero_static_multiblock_write_kernel[(num_blocks,)](
+        _nonzero_static_multiblock_scatter_kernel[(num_blocks,)](
             x,
             counts,
             prefix,
-            workspace,
+            nz,
             size,
             numel,
-            ndim,
-            *shape,
             IS_COMPLEX=source.is_complex(),
             BLOCK_SIZE=_MULTI_BLOCK_TILE_SIZE,
         )
         if size:
-            _nonzero_static_fill_tail_kernel[(triton.cdiv(size, _FILL_BLOCK_SIZE),)](
-                workspace,
+            _nonzero_static_multiblock_assemble_kernel[
+                (triton.cdiv(size, _FILL_BLOCK_SIZE),)
+            ](
+                nz,
                 prefix[-1],
+                workspace,
                 fill_value,
                 size,
                 ndim,
+                *shape,
                 BLOCK_SIZE=_FILL_BLOCK_SIZE,
             )
     result = workspace[:size]

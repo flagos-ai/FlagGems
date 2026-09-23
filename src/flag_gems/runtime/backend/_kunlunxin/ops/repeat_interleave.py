@@ -19,6 +19,58 @@ def copy_func(x):
     return x
 
 
+@triton.jit
+def repeat_interleave_self_int_kernel(
+    in_ptr,
+    out_ptr,
+    numel,
+    S1: tl.constexpr,
+    S2: tl.constexpr,
+    S3: tl.constexpr,
+    S4: tl.constexpr,
+    S5: tl.constexpr,
+    IS0: tl.constexpr,
+    IS1: tl.constexpr,
+    IS2: tl.constexpr,
+    IS3: tl.constexpr,
+    IS4: tl.constexpr,
+    IS5: tl.constexpr,
+    ISD: tl.constexpr,
+    OSD: tl.constexpr,
+    SDR: tl.constexpr,
+    R: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    # One program handles BLOCK consecutive *output* elements (contiguous
+    # stores, which the XPU backend can vectorize); dims beyond ndim are size
+    # 1 / stride 0 so a fixed 6-wide chain covers any input rank.
+    # p is decomposed by the OUTPUT shapes (S0..S5 = S0..S_{n-1}, padded with
+    # 1). The input offset of output index (i_0..i_{n-1}) is
+    #   sum_j i_j * IS_j + (i_D // R - i_D) * ISD
+    # with i_D = (p // OSD) % SDR (SDR = size of the output along `dim`,
+    # OSD = the output's c-contiguous stride along `dim`).
+    pid = ext.program_id(0)
+    p = pid * BLOCK + tl.arange(0, BLOCK)
+    m = p < numel
+    t = p
+    i5 = t % S5
+    t = t // S5
+    i4 = t % S4
+    t = t // S4
+    i3 = t % S3
+    t = t // S3
+    i2 = t % S2
+    t = t // S2
+    i1 = t % S1
+    t = t // S1
+    i0 = t
+    base = i0 * IS0 + i1 * IS1 + i2 * IS2 + i3 * IS3 + i4 * IS4 + i5 * IS5
+    iD = (p // OSD) % SDR
+    in_off = base + (iD // R - iD) * ISD
+    val = tl.load(in_ptr + in_off, mask=m)
+    tl.store(out_ptr + p, val, mask=m)
+
+
 def repeat_interleave_self_int(inp, repeats, dim=None, *, output_size=None):
     logger.debug("GEMS_KUNLUNXIN REPEAT_INTERLEAVE_SELF_INT")
     if dim is None:
@@ -31,8 +83,6 @@ def repeat_interleave_self_int(inp, repeats, dim=None, *, output_size=None):
                     -inp.ndim, inp.ndim - 1, dim
                 )
             )
-    if not inp.is_contiguous():
-        inp = inp.contiguous()
     inp_shape = list(inp.shape)
     inp_stride = list(inp.stride())
     output_shape = list(inp.shape)
@@ -52,6 +102,35 @@ def repeat_interleave_self_int(inp, repeats, dim=None, *, output_size=None):
     output = torch.empty(output_shape, dtype=inp.dtype, device=inp.device)
 
     if repeats == 0:
+        return output
+
+    if (not inp.is_contiguous()) and len(inp_shape) <= 6:
+        # Non-contiguous inputs: the broadcast copy below lowers the 0-stride
+        # view into the XPU tiled local-memory path (gm2lm/lm2gm with a
+        # 512-thread cluster), which miscompiles on XPU for some non-contiguous
+        # shapes (illegal memory access / wrong values). Use a dedicated kernel
+        # that iterates the output space with contiguous stores instead.
+        n = len(inp_shape)
+        is_pad = (inp_stride + [0] * (6 - n))[:6]
+        o_strides = c_contiguous_stride(output_shape)
+        osd = o_strides[dim]
+        sdr = output_shape[dim]
+        numel = output.numel()
+        BLOCK = 2048
+        grid = (triton.cdiv(numel, BLOCK),)
+        repeat_interleave_self_int_kernel[grid](
+            inp,
+            output,
+            numel,
+            *((output_shape + [1] * (6 - n))[:6])[1:],
+            *is_pad,
+            is_pad[dim],
+            osd,
+            sdr,
+            repeats,
+            BLOCK,
+            num_warps=8,
+        )
         return output
 
     in_view_stride = inp_stride[: dim + 1] + [0] + inp_stride[dim + 1 :]
@@ -123,6 +202,14 @@ def repeat_interleave_self_tensor_kernel(
     BLOCK_I: tl.constexpr,
     NEED_MASK: tl.constexpr,
 ):
+    # Input-side decomposition: one program handles one input row (o, i).
+    # The row is loaded ONCE and stored r_i times to the r_i consecutive
+    # output rows [start, start + r_i); start = cumsum[i] - r_i. This
+    # replaces the index-materialize + gather approach: the store side is
+    # moved r_i times anyway, but the LOAD side is done once per input row
+    # (outer*D loads of `inner` instead of rsum loads), and building the
+    # mapping needs only cumsum (no index tensor, no .item() sync beyond
+    # the single rsum host read).
     pid = ext.program_id(axis=0)
     if pid < outer * D:
         o = pid // D
@@ -191,6 +278,8 @@ def repeat_interleave_self_tensor(inp, repeats, dim=None, *, output_size=None):
         inner *= s
 
     if inner == 1:
+        # Indexed dim is the innermost: genuine per-element gather. Fall back
+        # to the index-select path (materialized index + vendor index_select).
         indices = repeat_interleave_tensor(repeats)
         return torch.index_select(inp, dim, indices)
 
@@ -199,6 +288,9 @@ def repeat_interleave_self_tensor(inp, repeats, dim=None, *, output_size=None):
     out_shape = inp_shape[:dim] + [rsum] + inp_shape[dim + 1 :]
     out = torch.empty(out_shape, dtype=inp.dtype, device=inp.device)
 
+    # BLOCK_I: cap at 4096 (measured sweet spot on XPU); floor at 64 (narrow
+    # vector stores below 64 elements per instruction are unreliable in
+    # TritonXPU; masked path covers inner < 64).
     block_i = min(max(triton.next_power_of_2(inner), 64), 4096)
     need_mask = inner % block_i != 0
     grid = (outer * D,)

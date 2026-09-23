@@ -17,7 +17,7 @@ config_ = CodeGenConfig(
     prefer_1d_tile=True,
     buffer_size_limit=4096,
     isCloseVectorization=False,
-    kunlunAutoGrid=False,
+    kunlunAutoGrid=True,
     unroll_num=8,
 )
 
@@ -33,6 +33,8 @@ def leaky_relu_kernel(x, negative_slope):
 
 def leaky_relu(A, negative_slope=0.01):
     logger.debug("GEMS_KUNLUNXIN LEAKY_RELU")
+    if A.is_floating_point() and type(negative_slope) in (int, float):
+        return leaky_relu_kernel(A, negative_slope, out0=torch.empty_like(A))
     return leaky_relu_kernel(A, negative_slope)
 
 
