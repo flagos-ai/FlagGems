@@ -67,6 +67,32 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.5'
+- id: _ctc_loss_backward
+  description: 'Computes the gradient of the CTC loss with respect to log_probs.
+
+    '
+  for:
+  - _ctc_loss_backward
+  - _ctc_loss_backward.Tensor
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
+- id: _ctc_loss_backward_out
+  description: A variant of `_ctc_loss_backward` that allows the output to be assigned
+    to `out`.
+  for:
+  - _ctc_loss_backward.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: _ctc_loss_out
   description: A variant of `_ctc_loss` that allows the outputs to be assigned to
     `out`.
@@ -130,6 +156,19 @@ ops:
   description: Triton kernel implementation for _saturate_weight_to_fp16.
   for:
   - _saturate_weight_to_fp16
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
+- id: _stack
+  description: |
+    Concatenates a sequence of tensors along a new dimension. This is the
+    internal `_stack` implementation that mirrors `stack`.
+  for:
+  - _stack
   labels:
   - aten
   - KernelGen
@@ -3642,7 +3681,7 @@ ops:
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.4'
+    - alpha: '5.4'
 - id: ctc_loss_backward
   description: The backward computation of `ctc_loss()`, exercised through the
     autograd of the forward operator.
@@ -3655,6 +3694,23 @@ ops:
   - NeuralNetwork
   stages:
   - beta: '5.4'
+- id: cudnn_attention_backward
+  description: 'Backward kernel for cuDNN attention, computing gradients of query,
+
+    key, and value from the cuDNN attention forward pass.  Uses a BHSD-native
+    two-kernel design that eliminates the BHSD-BSHD permute+contiguous overhead.
+
+    '
+  for:
+  - _cudnn_attention_backward
+  labels:
+  - aten
+  - NoCPU
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: cudnn_attention_forward
   description: 'Forward kernel for cuDNN attention, computing scaled dot-product
 
@@ -8691,6 +8747,17 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: linalg_matmul
+  description: Triton kernel implementation for linalg_matmul.
+  for:
+  - linalg.matmul
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.4'
 - id: linalg_matrix_exp
   description: Computes the matrix exponential of a square matrix via scaling-and-squaring
     with an optimized Taylor polynomial approximation of degree 18.
@@ -13336,6 +13403,22 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: rms_norm_w8a16_int8
+  description: 'Applies Root Mean Square Layer Normalization to BF16 activations using
+
+    group-wise INT8 weights and per-group scales.
+
+    '
+  for:
+  - None
+  labels:
+  - NoCPU
+  - Normalization
+  - Quantization
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: rnn_relu
   description: Triton kernel implementation for rnn_relu.
   for:
@@ -17191,6 +17274,30 @@ ops:
   - BLAS
   stages:
   - beta: '5.3'
+- id: trilinear
+  description: Computes the trilinear product (3-way tensor product) via a Triton
+    elementwise-product kernel followed by summation over sumdim.
+  for:
+  - _trilinear
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
+- id: trilinear_out
+  description: A variant of `_trilinear()` that explicitly assigns the output to the
+    `out` parameter.
+  for:
+  - _trilinear.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: triton_lighting_indexer_k_tiled_interface
   description: Part of FP8 MQA framework. It is currently not exposed as an operator
     for use.

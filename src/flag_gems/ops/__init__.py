@@ -53,6 +53,7 @@ from flag_gems.ops._convolution_double_backward import _convolution_double_backw
 from flag_gems.ops._convolution_mode import _convolution_mode
 from flag_gems.ops._cslt_sparse_mm import _cslt_sparse_mm
 from flag_gems.ops._ctc_loss import _ctc_loss, _ctc_loss_out
+from flag_gems.ops._ctc_loss_backward import _ctc_loss_backward, _ctc_loss_backward_out
 from flag_gems.ops._cummax_helper import _cummax_helper
 from flag_gems.ops._cummin_helper import _cummin_helper
 from flag_gems.ops._dirichlet_grad import _dirichlet_grad
@@ -177,6 +178,7 @@ from flag_gems.ops._sobol_engine_initialize_state_ import (
 from flag_gems.ops._sparse_semi_structured_addmm import _sparse_semi_structured_addmm
 from flag_gems.ops._sparse_semi_structured_linear import _sparse_semi_structured_linear
 from flag_gems.ops._sparse_semi_structured_mm import _sparse_semi_structured_mm
+from flag_gems.ops._stack import _stack
 from flag_gems.ops._standard_gamma import standard_gamma
 from flag_gems.ops._standard_gamma_grad import standard_gamma_grad
 from flag_gems.ops._thnn_differentiable_gru_cell_backward import (
@@ -410,6 +412,7 @@ from flag_gems.ops.count_nonzero import count_nonzero
 from flag_gems.ops.cov import cov
 from flag_gems.ops.cross import cross, cross_out
 from flag_gems.ops.ctc_loss import ctc_loss
+from flag_gems.ops.cudnn_attention_backward import cudnn_attention_backward
 from flag_gems.ops.cudnn_attention_forward import cudnn_attention_forward
 from flag_gems.ops.cudnn_batch_norm_backward import cudnn_batch_norm_backward
 from flag_gems.ops.cudnn_convolution import cudnn_convolution
@@ -674,6 +677,7 @@ from flag_gems.ops.linalg_lu_factor_ex import (
     linalg_lu_factor_ex,
     linalg_lu_factor_ex_out,
 )
+from flag_gems.ops.linalg_matmul import linalg_matmul
 from flag_gems.ops.linalg_matrix_exp import linalg_matrix_exp, linalg_matrix_exp_out
 from flag_gems.ops.linalg_matrix_norm import linalg_matrix_norm, linalg_matrix_norm_out
 from flag_gems.ops.linalg_matrix_power import (
@@ -1176,6 +1180,7 @@ from flag_gems.ops.transpose_copy import transpose_copy
 from flag_gems.ops.trapz import trapz
 from flag_gems.ops.triangular_indices import tril_indices, triu_indices
 from flag_gems.ops.tril import tril, tril_, tril_out
+from flag_gems.ops.trilinear import _trilinear, _trilinear_out
 from flag_gems.ops.triu import triu, triu_
 from flag_gems.ops.true_divide import true_divide, true_divide_tensor
 from flag_gems.ops.true_divide_ import true_divide_, true_divide_tensor_
@@ -1308,6 +1313,8 @@ __all__ = [
     "_convolution_mode",
     "_cslt_sparse_mm",
     "_ctc_loss",
+    "_ctc_loss_backward",
+    "_ctc_loss_backward_out",
     "_ctc_loss_out",
     "_cummax_helper",
     "_cummin_helper",
@@ -1392,6 +1399,7 @@ __all__ = [
     "_sparse_semi_structured_addmm",
     "_sparse_semi_structured_linear",
     "_sparse_semi_structured_mm",
+    "_stack",
     "_thnn_differentiable_gru_cell_backward",
     "_thnn_differentiable_lstm_cell_backward",
     "_thnn_fused_gru_cell",
@@ -1403,6 +1411,8 @@ __all__ = [
     "_thnn_fused_lstm_cell_backward_impl",
     "_transform_bias_rescale_qkv",
     "_transformer_encoder_layer_fwd",
+    "_trilinear",
+    "_trilinear_out",
     "_unique2",
     "_unsafe_masked_index",
     "_unsafe_masked_index_put_accumulate",
@@ -1636,6 +1646,7 @@ __all__ = [
     "cross",
     "cross_out",
     "ctc_loss",
+    "cudnn_attention_backward",
     "cudnn_attention_forward",
     "cudnn_batch_norm_backward",
     "cudnn_convolution",
@@ -1944,6 +1955,7 @@ __all__ = [
     "linalg_lu_factor_ex_out",
     "linalg_lu_factor_out",
     "linalg_lu_out",
+    "linalg_matmul",
     "linalg_matrix_exp",
     "linalg_matrix_exp_out",
     "linalg_matrix_norm",
