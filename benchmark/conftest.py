@@ -109,6 +109,12 @@ class BenchConfig:
         self.executed_case_ids = set()
         self.parallel = 0
         self.mm_layout = None
+        self.profile_only = False
+        self.preflight_only = False
+        self.preflight_records = []
+        self.profile_warmup = 10
+        self.profile_iterations = 1
+        self.override_registry = None
         self.skip_native = False
         self.native_baseline_skip_reason = None
 
@@ -224,6 +230,18 @@ def pytest_addoption(parser):
         default=None,
         help="Benchmark only this exact workload ID. May be repeated.",
     )
+    parser.addoption(
+        "--profile-only",
+        action="store_true",
+        help="Replay exactly one case with candidate-only profiling.",
+    )
+    parser.addoption(
+        "--preflight-only",
+        action="store_true",
+        help="Run each selected candidate case once and synchronize; no timing or correctness comparison.",
+    )
+    parser.addoption("--profile-warmup", type=int, default=10)
+    parser.addoption("--profile-iterations", type=int, default=1)
 
     parser.addoption(
         "--metrics",
@@ -345,6 +363,18 @@ def pytest_configure(config):
     Config.query = config.getoption("--query")
     Config.list_cases = config.getoption("--list-cases")
     Config.case_ids = config.getoption("--case-id")
+    Config.profile_only = config.getoption("--profile-only")
+    Config.preflight_only = config.getoption("--preflight-only")
+    Config.profile_warmup = config.getoption("--profile-warmup")
+    Config.profile_iterations = config.getoption("--profile-iterations")
+    if Config.preflight_only and (
+        Config.profile_only or Config.list_cases or Config.query
+    ):
+        raise pytest.UsageError(
+            "--preflight-only cannot be combined with --profile-only, --list-cases or --query."
+        )
+    if Config.preflight_only and config.getoption("--parallel"):
+        raise pytest.UsageError("--preflight-only does not support --parallel.")
     if Config.list_cases and Config.case_ids is not None:
         raise pytest.UsageError("--list-cases cannot be combined with --case-id.")
     if Config.query and (Config.list_cases or Config.case_ids is not None):
@@ -355,6 +385,14 @@ def pytest_configure(config):
         set(Config.case_ids)
     ):
         raise pytest.UsageError("Duplicate --case-id values are not allowed.")
+    if Config.profile_only and (Config.case_ids is None or len(Config.case_ids) != 1):
+        raise pytest.UsageError("--profile-only requires exactly one --case-id.")
+    if Config.profile_only and Config.list_cases:
+        raise pytest.UsageError("--profile-only cannot be combined with --list-cases.")
+    if Config.profile_warmup < 0 or Config.profile_iterations < 1:
+        raise pytest.UsageError(
+            "profile warmup must be non-negative and iterations positive"
+        )
 
     level_value = config.getoption("--level")
     Config.bench_level = consts.BenchLevel(level_value)
@@ -410,6 +448,7 @@ def pytest_configure(config):
 
     # Apply dynamic operator overrides
     config._override_registry = apply_overrides_from_args(config.option)
+    Config.override_registry = config._override_registry
 
 
 def pytest_unconfigure(config):
@@ -546,6 +585,18 @@ def pytest_runtest_logreport(report):
 
 def pytest_terminal_summary(terminalreporter, exitstatus, config):
     """Combine and dump the result into JSON."""
+    if Config.preflight_only:
+        if Config.record_json:
+            with open(REPORT_FILE, "w") as f:
+                json.dump(
+                    {
+                        "schema_version": "flaggems.preflight/v1",
+                        "records": Config.preflight_records,
+                    },
+                    f,
+                    indent=2,
+                )
+        return
     if Config.list_cases:
         with open(REPORT_FILE, "w") as f:
             json.dump(
@@ -572,6 +623,12 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
 
 
 def pytest_sessionfinish(session, exitstatus):
+    if Config is not None and Config.preflight_only:
+        incomplete = not Config.preflight_records or any(
+            record["status"] != "passed" for record in Config.preflight_records
+        )
+        if incomplete and session.exitstatus == pytest.ExitCode.OK:
+            session.exitstatus = pytest.ExitCode.TESTS_FAILED
     if Config is None or Config.case_ids is None:
         return
     requested = set(Config.case_ids)
