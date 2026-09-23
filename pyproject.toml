@@ -225,8 +225,8 @@ sunrise = [
 ]
 
 thead = [
-    "torch==2.9.0+ppu2.0.0.oe",
-    "triton==3.5.0+ppu2.0.0.oe",
+    "torch==2.10.0",
+    "flagtree==0.6.2a2+ppu3.6",
 ]
 
 tsingmicro = [

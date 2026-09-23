@@ -102,8 +102,16 @@ fi
 VENDOR=$(echo "${BACKEND}" | sed 's/-[^-]*$//')
 [ "${VENDOR}" = "${BACKEND}" ] && VENDOR="${BACKEND}"
 PYPI_BASE=$(grep '^pypi_base:' "$BACKENDS_YAML" | sed 's/^pypi_base: *"//;s/"$//')
-FLAGOS_PYPI=$(echo "${PYPI_BASE}" | sed "s/{vendor}/${VENDOR}/")
 MIRROR=$(grep '^mirror:' "$BACKENDS_YAML" | sed 's/^mirror: *"//;s/"$//')
+
+# Per-backend "index:" overrides the derived vendor index (see backends.yaml).
+BACKEND_INDEX=$(awk "/^  ${BACKEND}:/{found=1; next} found && /^  [a-z]/{exit} found && /^    index:/{print; exit}" "$BACKENDS_YAML" \
+  | sed 's/^    index: *"//;s/"$//')
+if [ -n "${BACKEND_INDEX}" ]; then
+  FLAGOS_PYPI="${BACKEND_INDEX}"
+else
+  FLAGOS_PYPI=$(echo "${PYPI_BASE}" | sed "s/{vendor}/${VENDOR}/")
+fi
 
 printf "Backend: ${BACKEND} (vendor: ${VENDOR})"
 ok
