@@ -102,16 +102,8 @@ fi
 VENDOR=$(echo "${BACKEND}" | sed 's/-[^-]*$//')
 [ "${VENDOR}" = "${BACKEND}" ] && VENDOR="${BACKEND}"
 PYPI_BASE=$(grep '^pypi_base:' "$BACKENDS_YAML" | sed 's/^pypi_base: *"//;s/"$//')
+FLAGOS_PYPI=$(echo "${PYPI_BASE}" | sed "s/{vendor}/${VENDOR}/")
 MIRROR=$(grep '^mirror:' "$BACKENDS_YAML" | sed 's/^mirror: *"//;s/"$//')
-
-# Per-backend "index:" overrides the derived vendor index (see backends.yaml).
-BACKEND_INDEX=$(awk "/^  ${BACKEND}:/{found=1; next} found && /^  [a-z]/{exit} found && /^    index:/{print; exit}" "$BACKENDS_YAML" \
-  | sed 's/^    index: *"//;s/"$//')
-if [ -n "${BACKEND_INDEX}" ]; then
-  FLAGOS_PYPI="${BACKEND_INDEX}"
-else
-  FLAGOS_PYPI=$(echo "${PYPI_BASE}" | sed "s/{vendor}/${VENDOR}/")
-fi
 
 printf "Backend: ${BACKEND} (vendor: ${VENDOR})"
 ok
@@ -198,7 +190,23 @@ for item in b.get('triton_post_install', []):
     if isinstance(item, str):
         triton_post.append(item)
 print(f'TRITON_POST_INSTALL=\"{\" \".join(triton_post)}\"')
+
+print(f'TORCH_PKG=\"{b.get(\"torch\", \"\")}\"')
+print(f'TORCH_INDEX=\"{b.get(\"torch_index\", \"\")}\"')
 ")
+
+# ── Install torch from its own index (optional) ──────────────
+# Some vendors (e.g. thead) publish torch on a dedicated index that is not
+# the vendor's flagos-pypi mirror. Install it separately, with --no-deps so
+# the resolver used for `.[backend]` below never has to reconcile two
+# incompatible indexes for the same dependency.
+if [ -n "${TORCH_PKG}" ]; then
+  printf "Installing torch [${TORCH_PKG}] ..."
+  uv pip install -q --no-deps "${TORCH_PKG}" \
+    --index "${TORCH_INDEX:-$FLAGOS_PYPI}" \
+    || fail
+  ok
+fi
 
 # ── C++ extensions ───────────────────────────────────────────
 # Set ENABLE_CPP=1 to build C++ wrapped operators.

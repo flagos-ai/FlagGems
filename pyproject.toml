@@ -225,7 +225,6 @@ sunrise = [
 ]
 
 thead = [
-    "torch==2.10.0",
     "flagtree==0.6.2a2+ppu3.6",
 ]
 

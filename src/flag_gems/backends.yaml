@@ -23,7 +23,13 @@
 #
 # The PyPI index URL is auto-generated:
 #   pypi_base.format(vendor=<derived_vendor>)
-# Override per-backend with an explicit "index:" field if needed.
+#
+# "torch:" / "torch_index:" — use when a backend's torch build lives on a
+# different index than the vendor's flagos-pypi mirror (e.g. thead). torch
+# is installed as its own step in setup.sh, with --no-deps, before
+# `.[backend]` is resolved against flagos-pypi — otherwise a single
+# `uv pip install` would have to satisfy torch and the rest of the backend's
+# deps (e.g. flagtree) from the same index, and one of them 404s.
 #
 # cmake_backend: maps to FLAGGEMS_BACKEND in CMakeLists.txt.
 # Only present for backends that support C++ extensions.
@@ -302,11 +308,12 @@ backends:
     python: "3.12"
     flagtree: flagtree==0.6.2a2+ppu3.6
     triton: triton==3.5.0+ppu2.0.0.oe
-    index: "https://pkg.flytiger-eco.com/artifactory/api/pypi/pypi_index/simple"
     env_source:
       - /usr/local/PPU_SDK/envsetup.sh
-    deps:
-      - torch==2.10.0
+    # torch is published on a separate vendor index (not flagos-pypi-thead),
+    # so it is installed as its own step in setup.sh instead of via deps:.
+    torch: torch==2.10.0
+    torch_index: "https://pkg.flytiger-eco.com/artifactory/api/pypi/pypi_index/simple"
 
   tsingmicro:
     python: "3.10"
