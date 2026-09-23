@@ -16,23 +16,10 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
 from . import accuracy_utils as utils
-
-# ``_has_same_storage_numel`` starts with an underscore, and ``pytest.mark``
-# refuses to generate a marker via attribute access for such names. Register
-# it directly on the MarkGenerator so ``@pytest.mark._has_same_storage_numel``
-# and ``-m _has_same_storage_numel`` both work.
-setattr(
-    pytest.mark,
-    "_has_same_storage_numel",
-    MarkDecorator(
-        Mark("_has_same_storage_numel", (), {}, _ispytest=True), _ispytest=True
-    ),
-)
 
 # The op compares whole-storage element counts (nbytes // itemsize), so
 # coverage is driven by storage relationships rather than shapes: identical
@@ -41,7 +28,7 @@ setattr(
 # reinterpretations of the same bytes.
 
 
-@pytest.mark._has_same_storage_numel
+@pytest.mark.has_same_storage_numel
 def test__has_same_storage_numel_same_tensors():
     a = torch.randn(2, 3, 4, device=flag_gems.device)
     ref_a = utils.to_reference(a)
@@ -55,7 +42,7 @@ def test__has_same_storage_numel_same_tensors():
     ) == torch.ops.aten._has_same_storage_numel(ref_a, ref_a)
 
 
-@pytest.mark._has_same_storage_numel
+@pytest.mark.has_same_storage_numel
 def test__has_same_storage_numel_different_tensors_same_shape():
     a = torch.randn(2, 3, device=flag_gems.device)
     b = torch.randn(2, 3, device=flag_gems.device)
@@ -68,7 +55,7 @@ def test__has_same_storage_numel_different_tensors_same_shape():
     assert res_out == ref_out
 
 
-@pytest.mark._has_same_storage_numel
+@pytest.mark.has_same_storage_numel
 def test__has_same_storage_numel_view_of_same_storage():
     # nbytes covers the WHOLE storage, so a narrow view compares equal to its
     # base even though the shapes differ. The reference view must be derived
@@ -85,7 +72,7 @@ def test__has_same_storage_numel_view_of_same_storage():
     assert res_out == ref_out
 
 
-@pytest.mark._has_same_storage_numel
+@pytest.mark.has_same_storage_numel
 def test__has_same_storage_numel_as_strided_views():
     a = torch.randn(8, device=flag_gems.device)
     b = torch.as_strided(a, (4,), (1,), 1)
@@ -107,7 +94,7 @@ def test__has_same_storage_numel_as_strided_views():
     ) == torch.ops.aten._has_same_storage_numel(ref_c, ref_d)
 
 
-@pytest.mark._has_same_storage_numel
+@pytest.mark.has_same_storage_numel
 def test__has_same_storage_numel_different_dtypes():
     # Same shape, distinct storages: both True under whole-storage semantics.
     a = torch.randn(4, device=flag_gems.device, dtype=torch.float32)
@@ -130,7 +117,7 @@ def test__has_same_storage_numel_different_dtypes():
     assert res_out == ref_out
 
 
-@pytest.mark._has_same_storage_numel
+@pytest.mark.has_same_storage_numel
 def test__has_same_storage_numel_different_shapes_different_storages():
     a = torch.randn(3, device=flag_gems.device)
     b = torch.randn(7, device=flag_gems.device)
@@ -143,7 +130,7 @@ def test__has_same_storage_numel_different_shapes_different_storages():
     assert res_out == ref_out
 
 
-@pytest.mark._has_same_storage_numel
+@pytest.mark.has_same_storage_numel
 def test__has_same_storage_numel_empty_tensors():
     e1 = torch.empty(0, device=flag_gems.device)
     e2 = torch.empty(0, device=flag_gems.device)
@@ -164,7 +151,7 @@ def test__has_same_storage_numel_empty_tensors():
     assert res_out == ref_out
 
 
-@pytest.mark._has_same_storage_numel
+@pytest.mark.has_same_storage_numel
 def test__has_same_storage_numel_non_contiguous():
     # Transpose view shares storage with its base despite different strides.
     a = torch.randn(8, 2, device=flag_gems.device)
@@ -185,7 +172,7 @@ def test__has_same_storage_numel_non_contiguous():
     assert res_out == ref_out
 
 
-@pytest.mark._has_same_storage_numel
+@pytest.mark.has_same_storage_numel
 def test__has_same_storage_numel_chunk_views():
     base = torch.randn(10, device=flag_gems.device)
     c1, c2 = torch.chunk(base, 2)
@@ -199,7 +186,7 @@ def test__has_same_storage_numel_chunk_views():
     ) == torch.ops.aten._has_same_storage_numel(ref_base, ref_c1)
 
 
-@pytest.mark._has_same_storage_numel
+@pytest.mark.has_same_storage_numel
 @pytest.mark.parametrize(
     "dtype", utils.FLOAT_DTYPES + utils.INT_DTYPES + utils.BOOL_TYPES
 )
@@ -222,7 +209,7 @@ def test__has_same_storage_numel_dtype_sweep(dtype):
     ) == torch.ops.aten._has_same_storage_numel(ref_a, ref_view)
 
 
-@pytest.mark._has_same_storage_numel
+@pytest.mark.has_same_storage_numel
 def test__has_same_storage_numel_dispatch_stability():
     # Repeated calls must stay stable and unrelated dispatches in between must
     # not disturb the routing (cross-op interference).
