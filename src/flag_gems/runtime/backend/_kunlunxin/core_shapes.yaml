@@ -73,6 +73,13 @@ single_dim_shapes: &single_dim_shapes
     - [65536]
   shape_desc: "M"
 
+cdist_backward:
+  shapes:
+    - [2, 16, 32]
+    - [4, 32, 64]
+    - [8, 64, 128]
+  shape_desc: "batch, n1, dim"
+
 vdot:
   <<: *single_dim_shapes
 

@@ -46,6 +46,7 @@ from ._prelu_kernel_backward import _prelu_kernel_backward  # noqa: F401
 from ._scaled_dot_product_fused_attention_overrideable import (
     _scaled_dot_product_fused_attention_overrideable,
 )
+from ._thnn_fused_lstm_cell import _thnn_fused_lstm_cell
 from ._thnn_fused_lstm_cell_backward_impl import _thnn_fused_lstm_cell_backward_impl
 from ._unsafe_masked_index_put_accumulate import _unsafe_masked_index_put_accumulate
 from ._upsample_bilinear2d_aa import _upsample_bilinear2d_aa  # noqa: F401
@@ -291,7 +292,7 @@ from .hardtanh_backward import hardtanh_backward  # noqa: F401
 from .heaviside_ import heaviside_  # noqa: F401
 from .histc import histc
 from .hstack import hstack
-from .hypot import hypot, hypot_
+from .hypot import hypot, hypot_, hypot_out
 from .igamma_ import igamma_  # noqa: F401
 from .igammac import igammac, igammac_out
 from .igammac_ import igammac_
@@ -651,6 +652,10 @@ from .upsample_nearest1d import upsample_nearest1d
 from .upsample_nearest2d import upsample_nearest2d
 from .upsample_nearest3d import upsample_nearest3d
 from .upsample_nearest_exact1d import upsample_nearest_exact1d
+from .upsample_nearest_exact2d import (
+    _upsample_nearest_exact2d,
+    _upsample_nearest_exact2d_out,
+)
 from .upsample_nearest_exact2d_backward import upsample_nearest_exact2d_backward
 from .upsample_trilinear3d import upsample_trilinear3d
 from .var import var, var_correction, var_dim
@@ -707,12 +712,15 @@ __all__ = [
     "_scaled_dot_product_fused_attention_overrideable",
     "_segment_reduce_backward",
     "_segment_reduce_backward_out",
+    "_thnn_fused_lstm_cell",
     "_thnn_fused_lstm_cell_backward_impl",
     "_unique2",
     "_unsafe_masked_index_put_accumulate",
     "_upsample_bicubic2d_aa",
     "_upsample_bicubic2d_aa_backward",
+    "_upsample_nearest_exact2d",
     "_upsample_nearest_exact2d_backward",
+    "_upsample_nearest_exact2d_out",
     "_upsample_nearest_exact3d",
     "_weight_norm",
     "abs",
@@ -982,6 +990,7 @@ __all__ = [
     "hstack",
     "hypot",
     "hypot_",
+    "hypot_out",
     "igammac",
     "igammac_",
     "igammac_out",
