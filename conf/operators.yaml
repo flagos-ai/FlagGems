@@ -1753,6 +1753,19 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.5'
+- id: batch_norm_elemt
+  description: |
+    Applies the elementwise Batch Normalization transform using precomputed
+    per-channel mean and inverse standard deviation: out = (input - mean) * invstd * weight + bias.
+  for:
+  - batch_norm_elemt
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: batch_norm_gather_stats
   description: Triton kernel implementation for gathering per-device batch normalization
     statistics into global mean and inverse standard deviation.
