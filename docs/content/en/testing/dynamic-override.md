@@ -254,6 +254,32 @@ maintaining separate copies of the operator source tree.
 > overrode. Prefer one registry per process/test session, scoped with the
 > `with` statement, to keep behavior predictable.
 
+## Candidate-only profiling and external capture
+
+`--profile-only --case-id <id>` replays exactly one case from `--list-cases`. FlagGems constructs the inputs, runs `--profile-warmup` calls and synchronizes, then runs `--profile-iterations` calls and a final synchronization inside an optional capture context. It does not call the correctness reference or collect benchmark latency.
+
+An embedding evaluator supplies a pytest plugin object explicitly; no module-path environment variable, dynamic import of the evaluator, or special `__main__` convention is required:
+
+```python
+from contextlib import contextmanager
+import pytest
+
+class CapturePlugin:
+    @pytest.hookimpl
+    @contextmanager
+    def pytest_flaggems_profile_scope(self, backend, case_id):
+        # backend is the FlagGems vendor name; validate backend/case_id here.
+        start_capture()
+        try:
+            yield
+        finally:
+            stop_capture()
+
+pytest.main(pytest_args, plugins=[CapturePlugin()])
+```
+
+The benchmark conftest registers this first-result hook. It returns a context manager, not the result of running the candidate. Without a provider (or when providers return None), standalone pytest performs ordinary candidate-only replay without external capture. An evaluator that requires capture must independently verify that its plugin was actually entered and completed; pytest success alone is insufficient. The external evaluator owns compiler/profiler preparation, completion markers and artifacts; FlagGems has no dependency on KGS. Use a separate process for each benchmark session rather than concurrent `pytest.main()` calls in one process.
+
 ## Candidate-only preflight
 
 Ordinary correctness and benchmark execution also use `--override`. Each correctness JSON case records `candidate_calls` observed during its test call phase. A benchmark marks `candidate_source: override` only after actually invoking the injected callable; the original `torch_op` is still timed separately as the baseline. A passing pytest session is not a substitute for candidate coverage checks. When all correctness cases are skipped, overrides are restored without an unused-candidate error; this is not correctness success, and KGS preserves `ALL_SKIP` while running applicable benchmarks.

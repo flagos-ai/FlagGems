@@ -55,7 +55,7 @@ permissions:
 
 jobs:
   test:
-    if: ${{ inputs.backend != 'iluvatar' && inputs.backend != 'kunlunxin' && inputs.backend != 'thead' }}
+    if: ${{ inputs.backend != 'iluvatar' && inputs.backend != 'kunlunxin' }}
     runs-on: ${{ inputs.runner_label }}
     concurrency:
       group: >-
@@ -118,48 +118,6 @@ jobs:
           git ls-files -z | xargs -0 -r git update-index --no-skip-worktree 2>/dev/null || true
           git reset --hard HEAD 2>/dev/null || true
           git clean -ffdx 2>/dev/null || true
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-        continue-on-error: true
-      - uses: ./.github/actions/checkout-retry
-      - uses: ./.github/actions/setup-flaggems
-        with:
-          backend: ${{ inputs.backend }}
-          gpu_check_script: ${{ inputs.gpu_check_script }}
-
-      - name: Test alpha ops
-        if: ${{ inputs.test_script != '' }}
-        env:
-          CHANGED_FILES: ${{ inputs.changed_files }}
-        shell: bash
-        run: |
-          bash ${{ inputs.test_script }} ${{ inputs.backend }} ${{ inputs.pr_id }}
-      - name: Run backend tests
-        if: ${{ inputs.test_script == '' }}
-        shell: bash
-        env:
-          CHANGED_FILES: ${{ inputs.changed_files }}
-        run: |
-          source .venv/bin/activate
-          tools/test-op.sh ${{ inputs.pr_id }}
-
-  # THead runs inside a container on the flagcicd-810e runner, since the PPU
-  # driver/runtime it needs is only set up inside this image.
-  # Equivalent to:
-  #   docker run --rm -it --device=/dev/alixpu_ctl --device=/dev/alixpu \
-  #     --shm-size=256g --ulimit memlock=-1 --ulimit stack=67108864 \
-  #     pkg.flytiger-eco.com/docker_release/llm:v2.1.1-pytorch2.10.0-ubuntu24.04-cuda13.0-py312 bash
-  # with GitHub Actions creating/starting the container and exec'ing each step.
-  test-thead:
-    if: ${{ inputs.backend == 'thead' }}
-    runs-on: flagcicd-810e
-    container:
-      image: pkg.flytiger-eco.com/docker_release/llm:v2.1.1-pytorch2.10.0-ubuntu24.04-cuda13.0-py312
-      options: --device=/dev/alixpu_ctl --device=/dev/alixpu --shm-size=256g --ulimit memlock=-1 --ulimit stack=67108864
-    concurrency:
-      group: >-
-        op-test-${{ inputs.backend }}-${{ github.event.pull_request.number || github.ref }}
-      cancel-in-progress: true
-    steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         continue-on-error: true
       - uses: ./.github/actions/checkout-retry

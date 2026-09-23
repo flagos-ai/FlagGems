@@ -48,11 +48,13 @@ from flag_gems.ops._compute_linear_combination import (
 )
 from flag_gems.ops._conj import _conj
 from flag_gems.ops._conj_copy import _conj_copy, _conj_copy_out
+from flag_gems.ops._conj_physical import _conj_physical, _conj_physical_out
 from flag_gems.ops._convert_weight_to_int4pack import _convert_weight_to_int4pack
 from flag_gems.ops._convolution_double_backward import _convolution_double_backward
 from flag_gems.ops._convolution_mode import _convolution_mode
 from flag_gems.ops._cslt_sparse_mm import _cslt_sparse_mm
 from flag_gems.ops._ctc_loss import _ctc_loss, _ctc_loss_out
+from flag_gems.ops._ctc_loss_backward import _ctc_loss_backward, _ctc_loss_backward_out
 from flag_gems.ops._cummax_helper import _cummax_helper
 from flag_gems.ops._cummin_helper import _cummin_helper
 from flag_gems.ops._dirichlet_grad import _dirichlet_grad
@@ -108,6 +110,7 @@ from flag_gems.ops._jagged_to_padded_dense_forward import (
 )
 from flag_gems.ops._linalg_eigvals import _linalg_eigvals
 from flag_gems.ops._linalg_slogdet import _linalg_slogdet
+from flag_gems.ops._linalg_svd import _linalg_svd
 from flag_gems.ops._list_to_tensor import _list_to_tensor
 from flag_gems.ops._lu_with_info import _lu_with_info
 from flag_gems.ops._make_dep_token import _make_dep_token
@@ -144,6 +147,7 @@ from flag_gems.ops._pad_circular import _pad_circular
 from flag_gems.ops._pad_packed_sequence import _pad_packed_sequence
 from flag_gems.ops._pdist_backward import _pdist_backward
 from flag_gems.ops._pdist_forward import _pdist_forward
+from flag_gems.ops._pin_memory import _pin_memory
 from flag_gems.ops._prelu_kernel import _prelu_kernel
 from flag_gems.ops._prelu_kernel_backward import _prelu_kernel_backward
 from flag_gems.ops._reshape_alias import _reshape_alias
@@ -875,6 +879,7 @@ from flag_gems.ops.per_token_group_quant_fp8 import (
     per_token_group_quant_fp8,
 )
 from flag_gems.ops.permute_copy import permute_copy
+from flag_gems.ops.pin_memory import pin_memory
 from flag_gems.ops.pinverse import pinverse
 from flag_gems.ops.pixel_shuffle import pixel_shuffle
 from flag_gems.ops.pixel_unshuffle import pixel_unshuffle, pixel_unshuffle_out
@@ -1306,12 +1311,16 @@ __all__ = [
     "_conj",
     "_conj_copy",
     "_conj_copy_out",
+    "_conj_physical",
+    "_conj_physical_out",
     "_conv_depthwise2d",
     "_convert_weight_to_int4pack",
     "_convolution_double_backward",
     "_convolution_mode",
     "_cslt_sparse_mm",
     "_ctc_loss",
+    "_ctc_loss_backward",
+    "_ctc_loss_backward_out",
     "_ctc_loss_out",
     "_cummax_helper",
     "_cummin_helper",
@@ -1348,6 +1357,7 @@ __all__ = [
     "_jagged_to_padded_dense_forward",
     "_linalg_eigvals",
     "_linalg_slogdet",
+    "_linalg_svd",
     "_list_to_tensor",
     "_lu_with_info",
     "_make_dep_token",
@@ -1375,6 +1385,7 @@ __all__ = [
     "_padded_dense_to_jagged_forward",
     "_pdist_backward",
     "_pdist_forward",
+    "_pin_memory",
     "_prelu_kernel",
     "_prelu_kernel_backward",
     "_reshape_alias",
@@ -2167,6 +2178,7 @@ __all__ = [
     "pdist",
     "per_token_group_quant_fp8",
     "permute_copy",
+    "pin_memory",
     "pinverse",
     "pixel_shuffle",
     "pixel_unshuffle",

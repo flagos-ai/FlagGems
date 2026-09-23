@@ -47,7 +47,7 @@ def runner(monkeypatch):
         "torch_device_fn",
         SimpleNamespace(synchronize=lambda: events.append("sync")),
     )
-    monkeypatch.setattr(base, "profile_capture_scope", fail)
+    config.profile_hook = fail
     bench = base.Benchmark("example", torch_op=fail, gems_op=fail)
     monkeypatch.setattr(bench, "init_user_config", lambda: None)
     monkeypatch.setattr(bench, "supports_cases", lambda: True)
@@ -198,7 +198,7 @@ def test_profile_still_uses_shared_candidate_resolution(runner, monkeypatch):
         yield
         events.append("stop")
 
-    monkeypatch.setattr(base, "profile_capture_scope", capture)
+    config.profile_hook = capture
     bench.run()
     assert events == [
         ("candidate", 0),
@@ -209,6 +209,67 @@ def test_profile_still_uses_shared_candidate_resolution(runner, monkeypatch):
         "stop",
     ]
     assert config.preflight_records == []
+
+
+@pytest.mark.parametrize("provider", [False, True])
+@pytest.mark.parametrize("candidate_fails", [False, True])
+def test_pytest_profile_plugin_dispatch(runner, provider, candidate_fails):
+    bench, config, events = runner
+    config.preflight_only = False
+    config.profile_only = True
+    config.case_ids = ["case-0"]
+    config.profile_warmup = 1
+    config.profile_iterations = 2
+    manager = pytest.PytestPluginManager()
+    conftest.pytest_addhooks(manager)
+
+    class Plugin:
+        @pytest.hookimpl
+        @contextmanager
+        def pytest_flaggems_profile_scope(self, backend, case_id):
+            assert backend == base.vendor_name
+            assert case_id == "case-0"
+            events.append("capture")
+            try:
+                yield
+            finally:
+                events.append("stop")
+
+    if provider:
+        manager.register(Plugin())
+    config.profile_hook = manager.hook.pytest_flaggems_profile_scope
+    calls = []
+
+    def candidate(value):
+        calls.append(value)
+        events.append(("candidate", value))
+        if candidate_fails and len(calls) == 2:
+            raise ValueError("candidate failed inside capture")
+
+    config.override_registry = SimpleNamespace(get_override=lambda name: candidate)
+    if candidate_fails:
+        with pytest.raises(ValueError, match="inside capture"):
+            bench.run()
+        assert config.executed_case_ids == set()
+        assert events == [
+            ("candidate", 0),
+            "sync",
+            *(["capture"] if provider else []),
+            ("candidate", 0),
+            *(["stop"] if provider else []),
+        ]
+    else:
+        bench.run()
+        assert config.executed_case_ids == {"case-0"}
+        assert events == [
+            ("candidate", 0),
+            "sync",
+            *(["capture"] if provider else []),
+            ("candidate", 0),
+            ("candidate", 0),
+            "sync",
+            *(["stop"] if provider else []),
+        ]
 
 
 def test_benchmark_times_reference_and_live_override_separately(monkeypatch, runner):

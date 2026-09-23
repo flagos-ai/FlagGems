@@ -400,6 +400,14 @@ maintaining separate copies of the operator source tree.
 > 建议每个进程/测试会话只使用一个 registry，并通过 `with`
 > 语句限定其作用范围，以保持行为的可预测性。
 
+## Candidate-only profiling 与外部采集
+
+`--profile-only --case-id <id>` 精确重放 `--list-cases` 中的一个 case。FlagGems 构造输入、执行 `--profile-warmup` 次预热并同步，然后在可选的采集 context 中执行 `--profile-iterations` 次候选调用及最后同步；不运行 correctness reference 或 benchmark latency 计时。
+
+外部执行器通过 `pytest.main(pytest_args, plugins=[plugin])` 显式传入插件对象。插件实现 `pytest_flaggems_profile_scope(backend, case_id)` 并返回 context manager；`backend` 是 FlagGems vendor 名称。context 的进入/退出负责开始/结束采集，并应通过 `finally` 保证候选异常时也清理。benchmark conftest 注册 first-result hookspec，默认没有插件（或插件返回 None）时只做普通 candidate-only 重放，不执行外部采集。
+
+这条接口不需要环境变量指定模块、动态导入执行器或依赖 `__main__`。需要采集的执行器必须自行核对插件实际进入且完成，不能只凭 pytest 退出 0 判定成功；编译器/profiler 准备、completion marker 和产物仍由执行器负责。FlagGems 不依赖 KGS。每个 benchmark session 使用独立进程，不在一个进程中并发调用多个 `pytest.main()`。
+
 ## Candidate-only Preflight
 
 普通 correctness/benchmark 同样使用 `--override`。正确性 JSON 的每个 pytest case 带有 `candidate_calls`，记录该 case 的测试调用阶段内实际调用的候选次数；benchmark 只有真正调用过注入候选才写入 `candidate_source: override`，baseline 仍单独调用原始 `torch_op`。不要用 pytest 整体通过代替候选覆盖检查。正确性 case 全部 skip 时仅恢复 override，不因零调用额外报错；这并不代表正确性通过，KGS 会保留 `ALL_SKIP` 语义并继续适用的 benchmark。
