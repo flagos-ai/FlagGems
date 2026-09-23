@@ -180,7 +180,7 @@ metax-maca3810 = [
     "torchcodec==0.6.0+metax3.8.1.0",
     "torchaudio==2.4.1+metax3.8.1.0",
     "torchvision==0.25.0+metax3.8.1.0",
-    "flagtree==0.6.1+metax3.6",
+    "flagtree==0.7.0rc3+metax3.6",
 ]
 
 mthreads-musa436 = [
