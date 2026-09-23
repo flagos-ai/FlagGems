@@ -253,3 +253,23 @@ maintaining separate copies of the operator source tree.
 > `restore_all()` on one registry only restores the operators it itself
 > overrode. Prefer one registry per process/test session, scoped with the
 > `with` statement, to keep behavior predictable.
+
+## Candidate-only preflight
+
+Ordinary correctness and benchmark execution also use `--override`. Each correctness JSON case records `candidate_calls` observed during its test call phase. A benchmark marks `candidate_source: override` only after actually invoking the injected callable; the original `torch_op` is still timed separately as the baseline. A passing pytest session is not a substitute for candidate coverage checks. When all correctness cases are skipped, overrides are restored without an unused-candidate error; this is not correctness success, and KGS preserves `ALL_SKIP` while running applicable benchmarks.
+
+`benchmark/` supports `--preflight-only`: reuse case enumeration and input construction, invoke the selected candidate once per case, then synchronize the device. It does not run the correctness reference, benchmark warmup/timing, or speedup calculations. One invocation means one Python operator call; compilation or autotuning inside the candidate may still launch several kernels. Passing means executable, not numerically correct or faster.
+
+From the FlagGems checkout root, check every core case for `addmm_`:
+
+```bash
+python -m pytest -q benchmark/test_addmm_.py --level core \
+  --preflight-only --override addmm_:/path/candidate.py:run \
+  --record json --output /tmp/preflight.json
+```
+
+Without `--case-id`, all enumerated cases are checked. Repeat `--case-id <id>` to select a subset using IDs from `--list-cases` on the same checkout. Without an override, preflight checks the current Gems implementation. Benchmarks without case enumeration fail explicitly instead of falling back to a full benchmark.
+
+The JSON report uses `schema_version: flaggems.preflight/v1`. Each entry in `records` contains `operator`, `nodeid`, `case_id`, whether an `override` was used, invocation `count`, and `status` (`passed`/`failed`), with an optional `error`. No latency or speedup is reported. Each run replaces the report instead of merging old results. Consumers must check the pytest exit code, complete expected-case coverage, and successful candidate injection; an empty report is not success.
+
+This mode cannot be combined with `--profile-only`, `--list-cases`, `--query`, or nonzero `--parallel`. Unknown/unexecuted explicit case IDs, empty case plans, all-skipped runs, and candidate failures cannot pass. Continue to use `tests/` for correctness, ordinary `benchmark/` for timing, and `--profile-only` for profiling.
