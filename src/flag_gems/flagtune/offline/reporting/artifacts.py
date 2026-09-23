@@ -46,7 +46,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-from flag_gems.flagtune.reporting.schema import (
+from flag_gems.flagtune.offline.reporting.schema import (
     pretune_csv_fieldnames,
     pretune_csv_row,
     pretune_json_row,

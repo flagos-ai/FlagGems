@@ -325,7 +325,8 @@ from .lcm import lcm, lcm_
 from .le import le, le_, le_scalar
 from .leaky_relu import leaky_relu, leaky_relu_, leaky_relu_backward, leaky_relu_out
 from .lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
-from .less_equal import less_equal, less_equal_, less_equal_scalar, less_equal_scalar_
+from .less_equal import less_equal, less_equal_scalar
+from .less_equal_ import less_equal_, less_equal_scalar_
 from .lgamma import lgamma, lgamma_
 from .lift_fresh import lift_fresh  # noqa: F401
 from .lift_fresh_copy import lift_fresh_copy
@@ -386,6 +387,7 @@ from .masked_scatter_backward import masked_scatter_backward
 from .masked_select import masked_select
 from .matmul_bf16 import matmul_bf16
 from .matmul_int8 import matmul_int8
+from .matmuladd import matmuladd
 from .max import max, max_dim
 from .max_pool2d_with_indices import (
     max_pool2d_backward,
@@ -578,6 +580,7 @@ from .special_erfc import special_erfc
 from .special_erfcx import special_erfcx
 from .special_erfinv import special_erfinv, special_erfinv_, special_erfinv_out
 from .special_exp2 import special_exp2
+from .special_expit import special_expit
 from .special_gammainc import special_gammainc
 from .special_gammaincc import special_gammaincc
 from .special_gammaln import special_gammaln
@@ -1110,6 +1113,7 @@ __all__ = [
     "masked_select",
     "matmul_bf16",
     "matmul_int8",
+    "matmuladd",
     "max",
     "max_dim",
     "max_pool2d_backward",

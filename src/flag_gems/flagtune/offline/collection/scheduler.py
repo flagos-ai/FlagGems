@@ -69,7 +69,7 @@ from pathlib import Path
 from typing import Any, Mapping, Optional, Sequence
 
 MODULE_PATH = Path(__file__).resolve()
-PROJECT_ROOT = MODULE_PATH.parents[4]
+PROJECT_ROOT = MODULE_PATH.parents[5]
 SOURCE_ROOT = PROJECT_ROOT / "src"
 if str(SOURCE_ROOT) not in sys.path:
     sys.path.insert(0, str(SOURCE_ROOT))
@@ -141,8 +141,10 @@ def _prepare_tasks(
     """Convert user cases to indexed, JSON-serializable executor payloads."""
     if not shape_configs:
         raise BenchmarkError("shape_configs must contain at least one case")
-    from flag_gems.flagtune.contracts.operator import load_operator_benchmark_spec
-    from flag_gems.flagtune.runtime.executor import prepare_benchmark_case
+    from flag_gems.flagtune.offline.contracts.operator import (
+        load_operator_benchmark_spec,
+    )
+    from flag_gems.flagtune.offline.runtime.executor import prepare_benchmark_case
 
     try:
         spec = load_operator_benchmark_spec(operator_config)
@@ -321,7 +323,7 @@ def _run_worker(args: argparse.Namespace) -> int:
     """
     os.environ["FLAGGEMS_DB_URL"] = args.database_url
 
-    from flag_gems.flagtune.runtime.device import probe_flagtune_environment
+    from flag_gems.flagtune.offline.runtime.device import probe_flagtune_environment
 
     environment = probe_flagtune_environment()
     if environment.runtime.backend != args.device_backend:
@@ -335,7 +337,7 @@ def _run_worker(args: argparse.Namespace) -> int:
             f"device, got {environment.device_count}"
         )
     environment.runtime.set_device(0)
-    from flag_gems.flagtune.runtime.executor import (
+    from flag_gems.flagtune.offline.runtime.executor import (
         BenchmarkWorker,
         describe_benchmark_case,
     )
@@ -365,7 +367,7 @@ def _run_worker(args: argparse.Namespace) -> int:
                 result["task_index"] = task.task_index
                 print(
                     f"worker={args.worker_id} case={describe_benchmark_case(task.payload)} "
-                    "status=ok",
+                    f"status={result['status']}",
                     flush=True,
                 )
             except Exception as exc:
@@ -757,7 +759,9 @@ def run_shape_config_benchmarks(
     if latency_trials <= 0:
         raise BenchmarkError("latency_trials must be positive")
     config_path = Path(operator_config).expanduser().resolve()
-    from flag_gems.flagtune.contracts.operator import load_operator_benchmark_spec
+    from flag_gems.flagtune.offline.contracts.operator import (
+        load_operator_benchmark_spec,
+    )
 
     input_count = len(load_operator_benchmark_spec(config_path).benchmark.tensors)
     if len(requested) == 1:
@@ -771,7 +775,7 @@ def run_shape_config_benchmarks(
     work_path = Path(work_dir).expanduser().resolve()
     work_path.mkdir(parents=True, exist_ok=True)
 
-    from flag_gems.flagtune.runtime.device import probe_flagtune_environment
+    from flag_gems.flagtune.offline.runtime.device import probe_flagtune_environment
 
     try:
         environment = probe_flagtune_environment()

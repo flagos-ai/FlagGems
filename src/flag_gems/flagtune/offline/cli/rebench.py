@@ -72,7 +72,7 @@ from pathlib import Path
 from typing import Any, Mapping, Optional, Sequence
 
 SCRIPT_PATH = Path(__file__).resolve()
-PROJECT_ROOT = SCRIPT_PATH.parents[4]
+PROJECT_ROOT = SCRIPT_PATH.parents[5]
 SOURCE_ROOT = PROJECT_ROOT / "src"
 if str(SOURCE_ROOT) not in sys.path:
     sys.path.insert(0, str(SOURCE_ROOT))
@@ -308,7 +308,7 @@ def _rewrite_latency(
     trials: int,
 ) -> dict[str, str]:
     """Copy one Pretune row with its latency columns replaced."""
-    from flag_gems.flagtune.reporting.schema import format_ms
+    from flag_gems.flagtune.offline.reporting.schema import format_ms
 
     updated = dict(row)
     p20, p50, p80 = quantiles
@@ -391,9 +391,9 @@ def measure_all(
         machine state three times, while a repeated full sweep re-samples each
         shape minutes apart and is what actually exposes drift.
     """
-    from flag_gems.flagtune.contracts.operator import OperatorConfigError
-    from flag_gems.flagtune.runtime.device import DeviceProbeError
-    from flag_gems.flagtune.runtime.executor import (
+    from flag_gems.flagtune.offline.contracts.operator import OperatorConfigError
+    from flag_gems.flagtune.offline.runtime.device import DeviceProbeError
+    from flag_gems.flagtune.offline.runtime.executor import (
         BenchmarkExecutionError,
         BenchmarkWorker,
         prepare_benchmark_case,
@@ -490,7 +490,7 @@ def summarize(
         range to compare against, so ``regression_confirmed`` is ``None`` rather
         than trivially true for every row below the threshold.
     """
-    from flag_gems.flagtune.reporting.schema import rounded_derived, rounded_ms
+    from flag_gems.flagtune.offline.reporting.schema import rounded_derived, rounded_ms
 
     confirmable = sweeps >= 2
     rows: list[dict[str, Any]] = []
@@ -678,12 +678,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         raise RebenchError("--noise-floor-ms must be non-negative")
 
     pinned = _pin_single_device(args.device)
-    from flag_gems.flagtune.cli.pretune import PretuneError, load_shape_records
-    from flag_gems.flagtune.contracts.operator import (
+    from flag_gems.flagtune.offline.cli.pretune import PretuneError, load_shape_records
+    from flag_gems.flagtune.offline.contracts.operator import (
         OperatorConfigError,
         load_operator_benchmark_spec,
     )
-    from flag_gems.flagtune.runtime.device import (
+    from flag_gems.flagtune.offline.runtime.device import (
         DeviceProbeError,
         probe_flagtune_environment,
     )

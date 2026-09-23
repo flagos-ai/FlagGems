@@ -20,6 +20,7 @@ vendor_info = VendorDescriptor(
     device_query_cmd="xpu-smi",
     triton_extra_name="xpu",
     fp64_enabled=False,
+    fp8_enabled=False,
 )
 
 CUSTOMIZED_UNUSED_OPS = (

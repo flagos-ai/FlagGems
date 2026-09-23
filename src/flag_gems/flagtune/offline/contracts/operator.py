@@ -38,6 +38,7 @@ from typing import Any, Mapping, Optional, Sequence
 
 from triton.flagtune.contract.expressions import (
     CompiledExpression,
+    Literal,
     SafeExpressionError,
     SymbolRef,
     compile_expression,
@@ -70,8 +71,9 @@ _FIELD_KEYS = {
     "aliases",
     "role",
 }
-_TENSOR_KEYS = {"factory", "shape", "dtype"}
+_TENSOR_KEYS = {"factory", "shape", "dtype", "layout"}
 _FACTORIES = {"randn", "zeros", "ones", "empty"}
+_TENSOR_LAYOUTS = {"contiguous", "transposed_2d"}
 _PUBLIC_OPERATOR_OVERRIDES: dict[str, str] = {}
 
 
@@ -464,6 +466,7 @@ class TensorSpec:
     shape: tuple[CompiledExpression, ...]
     shape_ref: Optional[SymbolRef]
     dtype: str
+    layout: CompiledExpression
 
 
 @dataclass(frozen=True)
@@ -516,6 +519,7 @@ class OperatorBenchmarkSpec:
     operator_info: Any
     shape: ShapeSchema
     dispatch_order: tuple[str, ...]
+    explicit_variant_selection: bool
     benchmark: BenchmarkSpec
 
     @property
@@ -842,7 +846,43 @@ def _parse_benchmark(
             raise OperatorConfigError(
                 f"{location}.tensors.{name} supports only dtype=runtime"
             )
-        tensors.append(TensorSpec(name, factory, tuple(dims), shape_ref, dtype))
+        try:
+            raw_layout = tensor.get("layout", {"literal": "contiguous"})
+            # Older FlagTree parsers reject literal mappings with allow_calls=False.
+            # Construct layout literals directly; the allowlist below validates them.
+            if isinstance(raw_layout, Mapping) and set(raw_layout) == {"literal"}:
+                layout = Literal(raw_layout["literal"])
+            else:
+                layout = compile_expression(
+                    raw_layout,
+                    symbols=set(shape.fields),
+                    operations={},
+                    location=f"{location}.tensors.{name}.layout",
+                    allow_calls=False,
+                )
+        except SafeExpressionError as exc:
+            raise OperatorConfigError(str(exc)) from exc
+        if isinstance(layout, SymbolRef):
+            layout_field = shape.fields[layout.name]
+            if (
+                layout_field.type_name != "str"
+                or not layout_field.choices
+                or not set(layout_field.choices) <= _TENSOR_LAYOUTS
+            ):
+                raise OperatorConfigError(
+                    f"{location}.tensors.{name}.layout field must be a string "
+                    f"with choices drawn from {sorted(_TENSOR_LAYOUTS)}"
+                )
+        elif (
+            not isinstance(layout, Literal)
+            or not isinstance(layout.value, str)
+            or layout.value not in _TENSOR_LAYOUTS
+        ):
+            raise OperatorConfigError(
+                f"{location}.tensors.{name}.layout must be one of "
+                f"{sorted(_TENSOR_LAYOUTS)}"
+            )
+        tensors.append(TensorSpec(name, factory, tuple(dims), shape_ref, dtype, layout))
     if not tensors:
         raise OperatorConfigError(f"{location}.tensors must not be empty")
 
@@ -965,7 +1005,7 @@ def load_operator_benchmark_spec(path: str | Path) -> OperatorBenchmarkSpec:
         raise OperatorConfigError(f"config.pretune has unknown keys: {sorted(unknown)}")
     shape = _parse_shape(pretune.get("shape"), "config.pretune.shape")
     dispatch = _mapping(pretune.get("dispatch"), "config.pretune.dispatch")
-    unknown = set(dispatch) - {"policy", "order"}
+    unknown = set(dispatch) - {"policy", "order", "explicit_variant_selection"}
     if unknown:
         raise OperatorConfigError(
             f"config.pretune.dispatch has unknown keys: {sorted(unknown)}"
@@ -978,9 +1018,19 @@ def load_operator_benchmark_spec(path: str | Path) -> OperatorBenchmarkSpec:
     if not isinstance(raw_order, list):
         raise OperatorConfigError("config.pretune.dispatch.order must be a list")
     order = tuple(_name(item, "config.pretune.dispatch.order") for item in raw_order)
-    if len(set(order)) != len(order) or set(order) != set(operator_info.variants):
+    dispatch_variants = {
+        name
+        for name, info in operator_info.variants.items()
+        if getattr(info, "stage", "public") != "partial"
+    }
+    if len(set(order)) != len(order) or set(order) != dispatch_variants:
         raise OperatorConfigError(
             "config.pretune.dispatch.order must list every variant exactly once"
+        )
+    explicit_variant_selection = dispatch.get("explicit_variant_selection", False)
+    if not isinstance(explicit_variant_selection, bool):
+        raise OperatorConfigError(
+            "config.pretune.dispatch.explicit_variant_selection must be boolean"
         )
     benchmark = _parse_benchmark(
         pretune.get("benchmark"),
@@ -994,6 +1044,7 @@ def load_operator_benchmark_spec(path: str | Path) -> OperatorBenchmarkSpec:
         operator_info,
         shape,
         order,
+        explicit_variant_selection,
         benchmark,
     )
 
@@ -1033,7 +1084,7 @@ def initialize_planning_context(
         import triton
 
         import flag_gems
-        from flag_gems.flagtune.runtime.device import probe_flagtune_environment
+        from flag_gems.flagtune.offline.runtime.device import probe_flagtune_environment
         from flag_gems.runtime.backend import _state
 
         resolve_public_operator(flag_gems, spec.op_id)

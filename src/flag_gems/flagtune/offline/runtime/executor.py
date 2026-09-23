@@ -52,6 +52,8 @@ from ..contracts.operator import (
     resolve_public_operator,
 )
 from ..contracts.records import ShapeRecord
+from ..train.route.common import make_recipe_id
+from ..train.route.resolver import has_route_resolver, resolve_route, tuning_variant
 
 
 class BenchmarkExecutionError(RuntimeError):
@@ -62,6 +64,51 @@ class BenchmarkExecutionError(RuntimeError):
     be serialized by :meth:`BenchmarkWorker.failure_result` when fail-fast mode
     is disabled.
     """
+
+
+def _public_metadata(variant: str) -> dict[str, str]:
+    """Default metadata for legacy non-routed public operators only."""
+    return {
+        "route_variant": variant,
+        "tuning_variant": variant,
+        "stage": "public",
+        "latency_scope": "public_kernel",
+    }
+
+
+def _model_dtypes_for_result(
+    variant: str,
+    input_dtypes: Sequence[str],
+    output_dtypes: Sequence[str],
+    captured_arguments: Mapping[str, Any],
+    *,
+    stage: str,
+) -> list[str]:
+    """Return dtype roles for the model identity, not just public I/O.
+
+    Partial MM tuners reuse the public Triton function with its third pointer
+    named ``C`` even though it is the FP32 workspace ``P``.  Keep public
+    ``output_dtypes`` unchanged for reporting, but identify partial models as
+    A/B/P and reject a non-FP32 workspace early.
+    """
+    # Stage comes from the authoritative resolved route. Do not infer it again
+    # from a public alias or a tuner name: those may describe different stages.
+    if stage != "partial":
+        return [*input_dtypes, *output_dtypes]
+    workspace = captured_arguments.get("P")
+    if workspace is None:
+        workspace = captured_arguments.get("C")
+    workspace_dtype = getattr(workspace, "dtype", None)
+    if workspace_dtype is None:
+        raise BenchmarkExecutionError(
+            f"partial variant {variant!r} did not expose its FP32 workspace"
+        )
+    normalized = normalize_dtype_name(workspace_dtype)
+    if normalized != "float32":
+        raise BenchmarkExecutionError(
+            f"partial variant {variant!r} workspace must be FP32, got {normalized}"
+        )
+    return [*input_dtypes, normalized]
 
 
 def _jsonable(value: Any) -> Any:
@@ -167,12 +214,21 @@ def _raw_case(shape: Any) -> dict[str, Any]:
                 "values": dict(lowered["values"]),
                 "count": lowered.get("count"),
                 "variant": lowered.get("variant"),
+                "route": lowered.get("route"),
+                "dynamic_inputs": lowered.get("dynamic_inputs"),
                 "source_index": lowered.get("source_index"),
                 "selected_index": lowered.get("selected_index"),
             }
         if "shape" in lowered:
             nested = _raw_case(lowered["shape"])
-            for name in ("count", "variant", "source_index", "selected_index"):
+            for name in (
+                "count",
+                "variant",
+                "route",
+                "dynamic_inputs",
+                "source_index",
+                "selected_index",
+            ):
                 if name in lowered:
                     nested[name] = lowered[name]
             return nested
@@ -180,6 +236,8 @@ def _raw_case(shape: Any) -> dict[str, Any]:
             "values": dict(shape),
             "count": lowered.get("count"),
             "variant": lowered.get("variant"),
+            "route": lowered.get("route"),
+            "dynamic_inputs": lowered.get("dynamic_inputs"),
             "source_index": lowered.get("source_index"),
             "selected_index": lowered.get("selected_index"),
         }
@@ -229,9 +287,10 @@ def prepare_benchmark_case(
     """
     raw = _raw_case(shape)
     if "sequence" in raw:
-        if len(raw["sequence"]) != len(spec.shape.identity):
+        if len(raw["sequence"]) > len(spec.shape.identity):
             raise BenchmarkExecutionError(
-                f"case[{task_index}] sequence must have {len(spec.shape.identity)} values"
+                f"case[{task_index}] sequence must have at most "
+                f"{len(spec.shape.identity)} values"
             )
         raw_values = dict(zip(spec.shape.identity, raw["sequence"]))
     else:
@@ -251,12 +310,17 @@ def prepare_benchmark_case(
             values,
             f"case[{task_index}].{spec.shape.count_field}",
         )
-    variant = raw.get("variant") or spec.resolve_variant(values)
-    if variant not in spec.operator_info.variants:
+    tensor_routed = has_route_resolver(spec.op_id)
+    variant = (
+        (raw.get("variant") or "")
+        if tensor_routed
+        else (raw.get("variant") or spec.resolve_variant(values))
+    )
+    if variant and variant not in spec.operator_info.variants:
         raise BenchmarkExecutionError(
             f"case[{task_index}] has unknown variant {variant!r}"
         )
-    if not spec.operator_info.variants[variant].matches(values):
+    if not tensor_routed and not spec.operator_info.variants[variant].matches(values):
         raise BenchmarkExecutionError(
             f"case[{task_index}] shape is ineligible for variant {variant!r}"
         )
@@ -276,6 +340,8 @@ def prepare_benchmark_case(
         "values": values,
         "count": count,
         "variant": str(variant),
+        "route": raw.get("route"),
+        "dynamic_inputs": raw.get("dynamic_inputs") or {},
         "configs": prepared_configs,
     }
 
@@ -296,7 +362,9 @@ def describe_benchmark_case(payload: Mapping[str, Any]) -> str:
     return ",".join(str(value) for value in payload["values"].values())
 
 
-def _serialize_config_timings(timings: Any) -> list[dict[str, Any]]:
+def _serialize_config_timings(
+    timings: Any, *, latency_scope: str = "public_kernel"
+) -> list[dict[str, Any]]:
     """Convert LibTuner per-config quantiles into stable result records.
 
     Args:
@@ -339,6 +407,7 @@ def _serialize_config_timings(timings: Any) -> list[dict[str, Any]]:
                 "latency_p50_ms": converted[0],
                 "latency_p20_ms": converted[1],
                 "latency_p80_ms": converted[2],
+                "latency_scope": latency_scope,
                 "status": "ok" if converted[0] is not None else "nonfinite",
             }
         )
@@ -394,7 +463,7 @@ class BenchmarkWorker:
         import triton
 
         import flag_gems
-        from flag_gems.flagtune.runtime.device import probe_flagtune_environment
+        from flag_gems.flagtune.offline.runtime.device import probe_flagtune_environment
 
         self.spec = load_operator_benchmark_spec(config_path)
         if device_runtime is None:
@@ -409,7 +478,7 @@ class BenchmarkWorker:
         self.device_runtime = device_runtime
         self._triton_module = triton
         self.operator = resolve_public_operator(flag_gems, self.spec.op_id)
-        self.base_states: dict[tuple[str, str], tuple[list[Any], list[Any]]] = {}
+        self.base_states: dict[tuple[Any, ...], tuple[list[Any], list[Any]]] = {}
 
     def _find_tuner(self, variant: str) -> tuple[Any, Any]:
         """Find the unique LibEntry/tuner pair for a configured variant.
@@ -434,7 +503,7 @@ class BenchmarkWorker:
 
         try:
             return find_flagtune_benchmark_target(
-                self.operator, self.spec.op_id, variant
+                self.operator, self.spec.op_id, tuning_variant(self.spec, variant)
             )
         except RuntimeError as exc:
             raise BenchmarkExecutionError(
@@ -521,24 +590,109 @@ class BenchmarkWorker:
             tensor.name: dtype
             for tensor, dtype in zip(self.spec.benchmark.tensors, dtypes)
         }
-        active_tensor_names = set(self.spec.benchmark.input_tensor_names_for(variant))
+        # MM public inputs are operator-level recipes, independent of the
+        # route that will be resolved from these actual tensors.
+        active_tensor_names = set(
+            self.spec.benchmark.tensor_names
+            if has_route_resolver(self.spec.op_id)
+            else self.spec.benchmark.input_tensor_names_for(variant)
+        )
         tensors = {}
         for tensor in self.spec.benchmark.tensors:
             if tensor.name not in active_tensor_names:
                 continue
             if tensor.shape_ref is not None:
                 raw_shape = evaluate_compiled(tensor.shape_ref, values, {})
+                # Optional tensor recipes (for example MUL's rhs) are absent
+                # for scalar routes and must not be allocated.
+                if raw_shape is None or (
+                    raw_shape == () and values.get("has_rhs") == 0
+                ):
+                    continue
                 shape = tuple(int(dimension) for dimension in raw_shape)
             else:
                 shape = tuple(
                     int(evaluate_compiled(dim, values, {})) for dim in tensor.shape
                 )
-            tensors[tensor.name] = self.device_runtime.make_tensor(
+            layout = evaluate_compiled(tensor.layout, values, {})
+            if layout not in {"contiguous", "transposed_2d"}:
+                raise BenchmarkExecutionError(
+                    f"unsupported tensor layout {layout!r} for {tensor.name!r}"
+                )
+            if layout == "transposed_2d" and len(shape) != 2:
+                raise BenchmarkExecutionError(
+                    f"transposed_2d tensor {tensor.name!r} requires a two-dimensional shape"
+                )
+            allocation_shape = (
+                tuple(reversed(shape)) if layout == "transposed_2d" else shape
+            )
+            value = self.device_runtime.make_tensor(
                 tensor.factory,
-                shape,
+                allocation_shape,
                 dtype=dtype_by_tensor[tensor.name],
             )
+            tensors[tensor.name] = (
+                value.transpose(0, 1) if layout == "transposed_2d" else value
+            )
         return tensors
+
+    def _resolve_runtime_route(
+        self,
+        values: Mapping[str, Any],
+        tensors: Mapping[str, Any],
+        variant: str,
+    ) -> tuple[str, dict[str, Any]]:
+        """Resolve a registered route from this benchmark's actual tensors.
+
+        Resolution happens before any variant-specific tuner lookup. The
+        returned tuning variant is authoritative; ``variant`` is only used by
+        operators without a resolver, which retain contract-driven dispatch.
+        """
+        if not has_route_resolver(self.spec.op_id):
+            return variant, _public_metadata(variant)
+        try:
+            gpu = self.device_runtime.metadata(0)
+            route = resolve_route(
+                self.spec.op_id,
+                tensors,
+                runtime_context={
+                    "platform_key": gpu["platform_key"],
+                    "recipe": dict(values),
+                },
+            )
+        except (KeyError, RuntimeError, ValueError, AttributeError) as exc:
+            raise BenchmarkExecutionError(
+                f"{self.spec.op_id} route resolution failed for shape "
+                f"{dict(values)!r}: {exc}"
+            ) from exc
+        resolved_tuner = str(route.get("tuning_variant") or "")
+        if route.get("adapted"):
+            if resolved_tuner in self.spec.operator_info.variants:
+                return resolved_tuner, route
+            # Contracts may expose a public alias or its lowered stage name.
+            # Match the binding, never silently choose a different kernel.
+            matches = [
+                name
+                for name in self.spec.operator_info.variants
+                if tuning_variant(self.spec, name) == resolved_tuner
+            ]
+            if len(matches) != 1:
+                raise BenchmarkExecutionError(
+                    f"route {resolved_tuner!r} has {len(matches)} contract bindings"
+                )
+            return matches[0], route
+        return str(route.get("physical_route") or ""), route
+
+    @staticmethod
+    def _payload_with_runtime_route(
+        payload: Mapping[str, Any], variant: str, route: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        """Copy a task payload with the executor-selected model identity."""
+        resolved = dict(payload)
+        resolved["variant"] = variant
+        resolved["route"] = dict(route)
+        resolved["dynamic_inputs"] = dict(route.get("dynamic_inputs", {}))
+        return resolved
 
     def _invoke(self, tensors: Mapping[str, Any], variant: str) -> Any:
         """Invoke the configured public operator with positional tensor inputs.
@@ -744,8 +898,31 @@ class BenchmarkWorker:
         variant = str(payload["variant"])
         recipe_dtypes = [normalize_dtype_name(name) for name in dtype_names]
         torch_dtypes = [self.device_runtime.dtype(name) for name in recipe_dtypes]
+        tensors = self._make_tensors(values, torch_dtypes, variant)
+        variant, route_meta = self._resolve_runtime_route(values, tensors, variant)
+        if (
+            has_route_resolver(self.spec.op_id)
+            and payload.get("variant")
+            and (
+                tuning_variant(self.spec, str(payload["variant"]))
+                != tuning_variant(self.spec, variant)
+            )
+        ):
+            raise BenchmarkExecutionError(
+                "explicit configs target a different resolved route"
+            )
+        payload = self._payload_with_runtime_route(payload, variant, route_meta)
+        if not route_meta.get("adapted", True):
+            raise BenchmarkExecutionError(
+                "route has no adapted Cost Model: "
+                f"{route_meta.get('physical_route')!r}"
+            )
         kernel, tuner = self._find_tuner(variant)
-        identity = (self.spec.op_id, variant)
+        identity = (
+            self.spec.op_id,
+            tuning_variant(self.spec, variant),
+            tuple(recipe_dtypes),
+        )
         if identity not in self.base_states:
             tuner.apply_flagtune()
             self.base_states[identity] = (list(tuner.configs), list(tuner.strategy))
@@ -758,7 +935,6 @@ class BenchmarkWorker:
                 self._make_configs([config_records[label] for label in labels], tuner),
             )
         )
-        tensors = self._make_tensors(values, torch_dtypes, variant)
 
         from flag_gems.utils.libentry import clear_libentry_dispatch_cache
 
@@ -866,40 +1042,93 @@ class BenchmarkWorker:
         variant = str(payload["variant"])
         recipe_dtypes = [normalize_dtype_name(name) for name in dtype_names]
         torch_dtypes = [self.device_runtime.dtype(name) for name in recipe_dtypes]
-        dtype_by_tensor = dict(zip(self.spec.benchmark.tensor_names, recipe_dtypes))
-        input_dtypes = [
-            dtype_by_tensor[name]
-            for name in self.spec.benchmark.input_tensor_names_for(variant)
-        ]
-        kernel, tuner = self._find_tuner(variant)
-        identity = (self.spec.op_id, variant)
-        if identity not in self.base_states:
-            tuner.apply_flagtune()
-            self.base_states[identity] = (list(tuner.configs), list(tuner.strategy))
-        base_configs, base_strategy = self.base_states[identity]
-        config_records = payload.get("configs")
-        active_configs = (
-            base_configs
-            if config_records is None
-            else self._make_configs(config_records, tuner)
-        )
-        tuner._set_configs_and_strategy(active_configs, base_strategy)
         from flag_gems.utils.libentry import (
             LibTunerRunMode,
             clear_libentry_dispatch_cache,
         )
 
-        clear_libentry_dispatch_cache(kernel)
         try:
             selected_run_mode = LibTunerRunMode(tuning_run_mode)
         except ValueError as exc:
             raise BenchmarkExecutionError(
                 f"unsupported LibTuner run mode {tuning_run_mode!r}"
             ) from exc
+        tensors = self._make_tensors(values, torch_dtypes, variant)
+        requested_variant = variant
+        self._active_payload = payload
+        self._resolved_payload = None
+        variant, route_meta = self._resolve_runtime_route(values, tensors, variant)
+        payload = self._payload_with_runtime_route(payload, variant, route_meta)
+        self._resolved_payload = payload
+        filtered = (
+            has_route_resolver(self.spec.op_id)
+            and requested_variant
+            and (
+                tuning_variant(self.spec, requested_variant)
+                != tuning_variant(self.spec, variant)
+            )
+        )
+        if not route_meta.get("adapted", True) or filtered:
+            return self.skipped_result(
+                payload,
+                dtype_names=dtype_names,
+                gpu_token=gpu_token,
+                worker_id=worker_id,
+                reason=(
+                    (
+                        "route excluded by variant filter: "
+                        if filtered
+                        else "route has no adapted Cost Model: "
+                    )
+                    + f"{route_meta.get('physical_route')!r}"
+                ),
+            )
+        kernel, tuner = self._find_tuner(variant)
+        dtype_by_tensor = dict(zip(self.spec.benchmark.tensor_names, recipe_dtypes))
+        input_dtypes = [
+            dtype_by_tensor[name]
+            for name in self.spec.benchmark.input_tensor_names_for(variant)
+        ]
+        identity = (
+            self.spec.op_id,
+            tuning_variant(self.spec, variant),
+            tuple(recipe_dtypes),
+        )
+        if identity not in self.base_states:
+            tuner.apply_flagtune()
+            self.base_states[identity] = (list(tuner.configs), list(tuner.strategy))
+        base_configs, base_strategy = self.base_states[identity]
+        config_records = payload.get("configs")
+        if (
+            has_route_resolver(self.spec.op_id)
+            and tuning_run_mode == "exhaustive_collection"
+        ):
+            # The candidate domain is selected only after real-tensor routing.
+            # Never reuse a parent-side domain from an unrelated route.
+            from ..train.config_space import runtime_configs_for_variant
+
+            config_records = runtime_configs_for_variant(
+                self.spec.op_id,
+                variant,
+                platform=self.device_runtime.metadata(0)["platform_key"],
+            )
+            if config_records is None:
+                raise BenchmarkExecutionError(
+                    "route has no runtime-owned candidate domain: "
+                    f"{self.spec.op_id}/{variant}"
+                )
+            if not config_records:
+                raise BenchmarkExecutionError(f"empty candidate domain for {variant}")
+            config_records = [config_to_record(config) for config in config_records]
+        active_configs = (
+            base_configs
+            if config_records is None
+            else self._make_configs(config_records, tuner)
+        )
+        tuner._set_configs_and_strategy(active_configs, base_strategy)
+        clear_libentry_dispatch_cache(kernel)
         for attr in ("bench_time", "configs_timings", "best_config"):
             tuner.__dict__.pop(attr, None)
-
-        tensors = self._make_tensors(values, torch_dtypes, variant)
         self.device_runtime.synchronize()
         first_start = time.perf_counter()
         progress_interval = _progress_interval()
@@ -969,7 +1198,9 @@ class BenchmarkWorker:
         benchmark_success_count = int(getattr(tuner, "benchmark_success_count", 0))
         benchmark_cache_hit_count = int(getattr(tuner, "benchmark_cache_hit_count", 0))
         timings = getattr(tuner, "configs_timings", None)
-        config_timings = _serialize_config_timings(timings)
+        config_timings = _serialize_config_timings(
+            timings, latency_scope=route_meta["latency_scope"]
+        )
         if config_records is not None and not config_timings:
             raise BenchmarkExecutionError(
                 "explicit-config benchmark produced no per-config timings; use a fresh "
@@ -1008,6 +1239,34 @@ class BenchmarkWorker:
             latency_source = "libtuner_selected_config_fresh"
             reported_latency_trials = latency_trials
         timed_config_count = len(timings) if isinstance(timings, Mapping) else None
+        captured_args = getattr(tuner, "_last_benchmark_args", ())
+        captured_meta = getattr(tuner, "_last_benchmark_meta", {})
+        if route_meta["stage"] == "partial":
+            partial_value = None
+            for name, value in zip(getattr(tuner, "arg_names", ()), captured_args):
+                if name in {"P", "C"} and hasattr(value, "dtype"):
+                    partial_value = value
+                    break
+            if (
+                partial_value is not None
+                and normalize_dtype_name(partial_value.dtype) != "float32"
+            ):
+                raise BenchmarkExecutionError(
+                    f"partial workspace must be FP32, got {partial_value.dtype}"
+                )
+        captured_arguments = {
+            **dict(zip(getattr(tuner, "arg_names", ()), captured_args)),
+            **dict(captured_meta),
+        }
+        variant_info = getattr(self.spec, "operator_info", None)
+        variant_info = (
+            variant_info.variants.get(variant) if variant_info is not None else None
+        )
+        model_inputs = {
+            name: _jsonable(captured_arguments[name])
+            for name in getattr(variant_info, "input_names", ())
+            if name in captured_arguments
+        }
         if config_records is not None:
             print(
                 f"worker={worker_id} case={describe_benchmark_case(payload)} "
@@ -1022,7 +1281,17 @@ class BenchmarkWorker:
             raise BenchmarkExecutionError(
                 "public operator returned no tensor output for dtype identity"
             )
-        ordered_dtypes = [*input_dtypes, *output_dtypes]
+        model_dtypes = _model_dtypes_for_result(
+            variant,
+            input_dtypes,
+            output_dtypes,
+            captured_arguments,
+            stage=route_meta["stage"],
+        )
+        route_meta = dict(route_meta)
+        dynamic_inputs = payload.get("dynamic_inputs") or route_meta.get(
+            "dynamic_inputs", {}
+        )
         device_name = self.device_runtime.descriptor.device_name
         gpu = self.device_runtime.metadata(0)
         return {
@@ -1031,13 +1300,18 @@ class BenchmarkWorker:
             "op_id": self.spec.op_id,
             "op_name": self.spec.public_operator_name,
             "variant": variant,
+            "route_variant": route_meta.get("route_variant", variant),
+            "tuning_variant": route_meta.get("tuning_variant", variant),
+            "stage": route_meta.get("stage", "public"),
+            "latency_scope": route_meta.get("latency_scope", "public_kernel"),
             "shape": shape,
             "shape_key": ",".join(str(value) for value in shape),
             **values,
             "Count": payload.get("count"),
             "input_dtypes": input_dtypes,
             "output_dtypes": output_dtypes,
-            "dtype_key": make_dtype_key(ordered_dtypes),
+            "dtype_key": make_dtype_key(model_dtypes),
+            "model_dtypes": model_dtypes,
             "gpu": gpu_token,
             "gpu_name": device_name,
             "platform_key": gpu["platform_key"],
@@ -1061,9 +1335,22 @@ class BenchmarkWorker:
             "benchmark_protocol": resolved_protocol.as_dict(),
             "candidate_config_count": len(active_configs),
             "timed_config_count": timed_config_count,
+            "model_inputs": model_inputs,
             "benchmark_cache_hit_count": benchmark_cache_hit_count,
             "benchmark_success_count": benchmark_success_count,
             "best_config": config_to_record(best_config),
+            "recipe_id": make_recipe_id(
+                self.spec.op_id,
+                gpu["platform_key"],
+                values,
+                input_dtypes,
+                output_dtypes,
+                variant,
+                dynamic_inputs,
+                route_variant=route_meta.get("route_variant"),
+            ),
+            "route": dict(route_meta),
+            "dynamic_inputs": dict(dynamic_inputs),
             "config_timings": config_timings if config_records is not None else None,
             "error": "",
         }
@@ -1095,6 +1382,8 @@ class BenchmarkWorker:
             This method does not log, retry, or suppress the exception by itself.
             The subprocess loop calls it only when batch fail-fast is disabled.
         """
+        if payload is getattr(self, "_active_payload", None):
+            payload = getattr(self, "_resolved_payload", None) or payload
         values = dict(payload["values"])
         variant = str(payload["variant"])
         recipe_dtypes = [normalize_dtype_name(name) for name in dtype_names]
@@ -1105,6 +1394,25 @@ class BenchmarkWorker:
         ]
         shape = [values[name] for name in self.spec.shape.identity]
         configs = payload.get("configs")
+        route_meta = payload.get("route")
+        if not isinstance(route_meta, Mapping):
+            # A failure before routing has no known execution stage. Do not
+            # manufacture a successful route from a requested variant name.
+            route_meta = (
+                {
+                    "route_variant": None,
+                    "tuning_variant": None,
+                    "stage": None,
+                    "latency_scope": None,
+                    "adapted": False,
+                    "reason": "route unresolved",
+                }
+                if has_route_resolver(self.spec.op_id)
+                else _public_metadata(variant)
+            )
+        dynamic_inputs = payload.get("dynamic_inputs") or route_meta.get(
+            "dynamic_inputs", {}
+        )
         device_name = self.device_runtime.descriptor.device_name
         gpu = self.device_runtime.metadata(0)
         return {
@@ -1113,6 +1421,10 @@ class BenchmarkWorker:
             "op_id": self.spec.op_id,
             "op_name": self.spec.public_operator_name,
             "variant": payload["variant"],
+            "route_variant": route_meta.get("route_variant", variant),
+            "tuning_variant": route_meta.get("tuning_variant", variant),
+            "stage": route_meta.get("stage", "public"),
+            "latency_scope": route_meta.get("latency_scope", "public_kernel"),
             "shape": shape,
             "shape_key": ",".join(str(value) for value in shape),
             **values,
@@ -1142,8 +1454,41 @@ class BenchmarkWorker:
             "benchmark_cache_hit_count": None,
             "benchmark_success_count": None,
             "best_config": None,
+            "recipe_id": make_recipe_id(
+                self.spec.op_id,
+                gpu["platform_key"],
+                values,
+                input_dtypes,
+                [],
+                payload["variant"],
+                dynamic_inputs,
+                route_variant=route_meta.get("route_variant"),
+            ),
+            "route": dict(route_meta),
+            "dynamic_inputs": dict(dynamic_inputs),
             "config_timings": None,
             "error": "".join(
                 traceback.format_exception(type(exc), exc, exc.__traceback__)
             ),
         }
+
+    def skipped_result(
+        self,
+        payload: Mapping[str, Any],
+        *,
+        dtype_names: Sequence[str],
+        gpu_token: str,
+        worker_id: int,
+        reason: str,
+    ) -> dict[str, Any]:
+        """Serialize one route mismatch without treating it as benchmark failure."""
+        result = self.failure_result(
+            payload,
+            dtype_names=dtype_names,
+            gpu_token=gpu_token,
+            worker_id=worker_id,
+            exc=BenchmarkExecutionError(reason),
+        )
+        result["status"] = "skipped"
+        result["error"] = reason
+        return result

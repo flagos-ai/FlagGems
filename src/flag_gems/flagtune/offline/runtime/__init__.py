@@ -12,9 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""GPU-worker execution adapters for FlagGems FlagTune workflows.
+"""GPU-worker execution adapters for offline FlagGems FlagTune workflows.
 
 Runtime code converts validated workload descriptions into tensors and calls
 trusted public operators.  Scheduling, process ownership, and SQLite merging
-are deliberately kept in :mod:`flag_gems.flagtune.collection`.
+are deliberately kept in :mod:`flag_gems.flagtune.offline.collection`.
 """

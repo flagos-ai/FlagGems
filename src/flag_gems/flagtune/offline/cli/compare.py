@@ -35,12 +35,12 @@ from pathlib import Path
 from typing import Any, Mapping, Optional, Sequence
 
 SCRIPT_PATH = Path(__file__).resolve()
-PROJECT_ROOT = SCRIPT_PATH.parents[4]
+PROJECT_ROOT = SCRIPT_PATH.parents[5]
 SOURCE_ROOT = PROJECT_ROOT / "src"
 if str(SOURCE_ROOT) not in sys.path:
     sys.path.insert(0, str(SOURCE_ROOT))
 
-from flag_gems.flagtune.reporting.schema import (  # noqa: E402
+from flag_gems.flagtune.offline.reporting.schema import (  # noqa: E402
     SCHEMA_VERSION,
     format_derived,
     format_ms,

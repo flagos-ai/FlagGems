@@ -1,4 +1,18 @@
-"""Shared resolution of runtime-owned FlagTune candidate spaces."""
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Resolve runtime-owned FlagTune candidate spaces for training collection."""
 
 from __future__ import annotations
 
@@ -6,7 +20,30 @@ import hashlib
 import json
 from typing import Any, Optional
 
+_MM_RUNTIME_OPS = {
+    "nvidia": {
+        "general_tma": "mm_general_tma",
+        "gemv": "gemv",
+        "splitk": "mm_splitk",
+        "splitk_two_step": "mm_splitk_two_step",
+        "splitk_two_step_partial": "mm_splitk_two_step",
+        "tma_transposed_direct": "mm_tma_transposed_direct",
+    },
+    "metax": {
+        "metax_general": "mm",
+        "metax_nn": "mm_nn",
+        "metax_nt": "mm_nt",
+        "metax_gemv": "gemv",
+        "metax_gemv_k_parallel": "gemv_k_parallel",
+        "metax_gemv_k_parallel_partial": "gemv_k_parallel",
+        "metax_splitk": "mm_splitk",
+        "metax_splitk_two_step": "mm_splitk_two_step",
+        "metax_splitk_two_step_partial": "mm_splitk_two_step",
+    },
+}
+
 _RUNTIME_OPS = {
+    "flaggems/mm": _MM_RUNTIME_OPS,
     "flaggems/mul": {
         "scalar": "mul",
         "broadcast_2d": "mul_broadcast_2d",
@@ -60,6 +97,11 @@ def runtime_configs_for_variant(
     else:
         platform_name = platform_text
     expand_yaml_path = yaml_path
+    if expand_yaml_path is None and op_id == "flaggems/mm":
+        from flag_gems.flagtune.offline.train.route.common import backend_module
+
+        backend = backend_module("mm", platform_name)
+        expand_yaml_path = getattr(backend, "EXPAND_CONFIG_FILENAME", None)
 
     op_name = runtime_op_name_for_variant(op_id, variant, platform_name)
     if op_name is None:

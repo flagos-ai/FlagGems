@@ -14,7 +14,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Command-line collection and XGBoost-ranker training for one FlagTune variant.
+"""Command-line collection and XGBoost-ranker training for FlagTune models.
+
+Operators with a registered tensor route resolver accept unpartitioned shapes.
+Workers resolve the route before binding the tuner and candidate space; fitting
+and export are then grouped by platform, operator, tuning variant, and dtype.
+For those operators ``--variant`` is an optional post-resolution filter. Other
+operators retain the single-variant contract-driven workflow described below.
 
 This offline tool benchmarks the complete or sampled runtime Expanded + Default
 candidate space for one YAML variant, appends measurements to streaming JSONL,
@@ -60,13 +66,13 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping, Optional, Sequence
 
 SCRIPT_PATH = Path(__file__).resolve()
-PROJECT_ROOT = SCRIPT_PATH.parents[4]
+PROJECT_ROOT = SCRIPT_PATH.parents[5]
 SOURCE_ROOT = PROJECT_ROOT / "src"
 if str(SOURCE_ROOT) not in sys.path:
     sys.path.insert(0, str(SOURCE_ROOT))
 
-from flag_gems.flagtune.cli.pretune import (  # noqa: E402
-    PretuneError,
+from flag_gems.flagtune.offline.cli.pretune import PretuneError  # noqa: E402
+from flag_gems.flagtune.offline.cli.pretune import (  # noqa: E402
     environment_snapshot,
     load_shape_records,
     parse_max_shapes,
@@ -75,7 +81,7 @@ from flag_gems.flagtune.cli.pretune import (  # noqa: E402
     select_shape_records,
     visible_device_tokens,
 )
-from flag_gems.flagtune.collection.scheduler import (  # noqa: E402
+from flag_gems.flagtune.offline.collection.scheduler import (  # noqa: E402
     DEFAULT_BENCHMARK_ITERATIONS_MS,
     DEFAULT_BENCHMARK_MODE,
     DEFAULT_BENCHMARK_RETRIES,
@@ -83,25 +89,25 @@ from flag_gems.flagtune.collection.scheduler import (  # noqa: E402
     BenchmarkError,
     run_shape_config_benchmarks,
 )
-from flag_gems.flagtune.config_space import (  # noqa: E402
-    runtime_configs_for_variant,
-    runtime_configs_hash,
-)
-from flag_gems.flagtune.contracts.operator import (  # noqa: E402
+from flag_gems.flagtune.offline.contracts.operator import (  # noqa: E402
     OperatorConfigError,
     initialize_planning_context,
     load_operator_benchmark_spec,
 )
-from flag_gems.flagtune.reporting.artifacts import (  # noqa: E402
+from flag_gems.flagtune.offline.reporting.artifacts import (  # noqa: E402
     PretuneIOError,
     make_run_dir,
     remove_intermediate_artifacts,
     write_manifest,
 )
-from flag_gems.flagtune.reporting.schema import (  # noqa: E402
+from flag_gems.flagtune.offline.reporting.schema import (  # noqa: E402
     SCHEMA_VERSION,
     pretune_json_row,
     rounded_ms,
+)
+from flag_gems.flagtune.offline.train.config_space import (  # noqa: E402
+    runtime_configs_for_variant,
+    runtime_configs_hash,
 )
 
 DEFAULT_OUTPUT_ROOT = PROJECT_ROOT / "flagtune-train-output"
@@ -149,8 +155,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--variant",
-        required=True,
-        help="Variant name selecting one model from --flagtune-config.",
+        help="Optional legacy route filter; routed operators resolve in workers.",
     )
     parser.add_argument(
         "--model-version",
@@ -309,7 +314,7 @@ def validate_args(args: argparse.Namespace) -> None:
             raise TrainError(f"--{name.replace('_', '-')} must be positive")
     if args.subsample > 1 or args.colsample_bytree > 1:
         raise TrainError("--subsample and --colsample-bytree must not exceed 1")
-    if not args.variant.strip() or "/" in args.variant:
+    if args.variant is not None and (not args.variant.strip() or "/" in args.variant):
         raise TrainError("--variant must be a non-empty single-segment name")
     try:
         from triton.flagtune.contract.archive import validate_model_version
@@ -373,16 +378,6 @@ def _progress(total: int, enabled: bool) -> Any:
     return _FallbackProgress()
 
 
-def _chunks(values: Sequence[Any], size: int) -> Iterable[Sequence[Any]]:
-    """Yield non-empty, order-preserving slices of at most ``size`` values.
-
-    The caller validates ``size`` as positive. Slices retain references to the
-    original objects, limiting parent memory while benchmark payloads are built.
-    """
-    for start in range(0, len(values), size):
-        yield values[start : start + size]
-
-
 def _grouped_chunks(
     values: Sequence[Any], size: int, key: Any
 ) -> Iterable[Sequence[Any]]:
@@ -423,9 +418,7 @@ def _grouped_chunks(
 
 def _collection_group_key(
     record: Any,
-    spec: Any,
     variant_info: Any,
-    platform_key: Optional[str],
 ) -> str:
     """Build the final ranker group identity before collection batching."""
     payload = record.to_benchmark_shape()
@@ -775,6 +768,16 @@ def run_main(args: argparse.Namespace) -> int:
         config_path = Path(args.flagtune_config).expanduser().resolve()
         spec = load_operator_benchmark_spec(config_path)
         operator_info = spec.operator_info
+        from flag_gems.flagtune.offline.train.route.resolver import has_route_resolver
+
+        if has_route_resolver(operator_info.op_id):
+            from flag_gems.flagtune.offline.train.routed import run_routed_training
+
+            return run_routed_training(args, spec, training_api=sys.modules[__name__])
+        if args.variant is None:
+            raise TrainError(
+                "--variant is required for operators without a route resolver"
+            )
         variant_info = operator_info.get_variant(args.variant)
         op_id = operator_info.op_id
         requested_variant = variant_info.name
@@ -806,6 +809,10 @@ def run_main(args: argparse.Namespace) -> int:
             requested_variant,
             sort_spec,
             args.max_shapes,
+            {
+                "platform_key": getattr(context, "vendor_name", "unknown"),
+                "dtypes": args.dtypes,
+            },
         )
     except PretuneError as exc:
         raise TrainError(str(exc)) from exc
@@ -928,9 +935,7 @@ def run_main(args: argparse.Namespace) -> int:
     try:
         grouped_batch_key = lambda record: _collection_group_key(  # noqa: E731
             record,
-            spec,
             variant_info,
-            getattr(context, "vendor_name", None),
         )
         for batch_index, records in enumerate(
             _grouped_chunks(selected, shape_batch_size, grouped_batch_key)
@@ -943,13 +948,7 @@ def run_main(args: argparse.Namespace) -> int:
             )
             try:
                 batch = run_shape_config_benchmarks(
-                    [
-                        (
-                            record.to_benchmark_shape(),
-                            configs,
-                        )
-                        for record in records
-                    ],
+                    [(record.to_benchmark_shape(), configs) for record in records],
                     operator_config=config_path,
                     dtypes=args.dtypes,
                     warmup=args.warmup,

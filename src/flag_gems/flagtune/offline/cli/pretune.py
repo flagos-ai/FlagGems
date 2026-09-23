@@ -68,16 +68,16 @@ from dataclasses import dataclass, replace
 from datetime import datetime
 from decimal import ROUND_FLOOR, Decimal
 from pathlib import Path
-from typing import Any, Optional, Sequence, Union
+from typing import Any, Mapping, Optional, Sequence, Union
 from urllib.parse import urlsplit, urlunsplit
 
 SCRIPT_PATH = Path(__file__).resolve()
-PROJECT_ROOT = SCRIPT_PATH.parents[4]
+PROJECT_ROOT = SCRIPT_PATH.parents[5]
 SOURCE_ROOT = PROJECT_ROOT / "src"
 if str(SOURCE_ROOT) not in sys.path:
     sys.path.insert(0, str(SOURCE_ROOT))
 
-from flag_gems.flagtune.collection.scheduler import (  # noqa: E402
+from flag_gems.flagtune.offline.collection.scheduler import (  # noqa: E402
     DEFAULT_BENCHMARK_ITERATIONS_MS,
     DEFAULT_BENCHMARK_MODE,
     DEFAULT_BENCHMARK_RETRIES,
@@ -89,17 +89,17 @@ from flag_gems.flagtune.collection.scheduler import (  # noqa: E402
     parse_sqlite_url,
     run_shape_config_benchmarks,
 )
-from flag_gems.flagtune.contracts.operator import (  # noqa: E402
+from flag_gems.flagtune.offline.contracts.operator import (  # noqa: E402
     OperatorBenchmarkSpec,
     OperatorConfigError,
     initialize_planning_context,
     load_operator_benchmark_spec,
 )
-from flag_gems.flagtune.contracts.records import (  # noqa: E402
+from flag_gems.flagtune.offline.contracts.records import (  # noqa: E402
     PlanningContext,
     ShapeRecord,
 )
-from flag_gems.flagtune.reporting.artifacts import (  # noqa: E402
+from flag_gems.flagtune.offline.reporting.artifacts import (  # noqa: E402
     PretuneIOError,
     combine_logs,
     load_shape_config,
@@ -108,7 +108,14 @@ from flag_gems.flagtune.reporting.artifacts import (  # noqa: E402
     write_manifest,
     write_outputs,
 )
-from flag_gems.flagtune.reporting.schema import SCHEMA_VERSION  # noqa: E402
+from flag_gems.flagtune.offline.reporting.schema import SCHEMA_VERSION  # noqa: E402
+from flag_gems.flagtune.offline.train.route.mm import (  # noqa: E402
+    make_recipe_id,
+    recipe_layout_metadata,
+)
+from flag_gems.flagtune.offline.train.route.resolver import (  # noqa: E402
+    has_route_resolver,
+)
 
 DEFAULT_OUTPUT_ROOT = PROJECT_ROOT / "flagtune-pretune-output"
 STRATEGY_ENV_NAMES = (
@@ -133,6 +140,132 @@ STRATEGY_ENV_NAMES = (
 
 class PretuneError(RuntimeError):
     """Report a user-facing planning, validation, or execution error."""
+
+
+def _dtype_recipe(args_dtypes: str, tensor_count: int) -> list[str]:
+    """Expand the CLI dtype shorthand to one entry per tensor recipe."""
+    values = [item.strip() for item in str(args_dtypes).split(",") if item.strip()]
+    if len(values) == 1:
+        values *= tensor_count
+    return values[:tensor_count]
+
+
+def _write_recipe_manifests(
+    run_dir: Path,
+    rows: Sequence[Mapping[str, Any]],
+    selected: Sequence[ShapeRecord],
+    spec: OperatorBenchmarkSpec,
+    context: PlanningContext,
+    args_dtypes: str,
+) -> dict[str, int]:
+    """Persist stable recipe and route identities for audit/compare stages."""
+    dtypes = _dtype_recipe(args_dtypes, len(spec.benchmark.tensors))
+    row_by_selected = {
+        int(row.get("selected_index")): row
+        for row in rows
+        if row.get("selected_index") is not None
+    }
+    platform_key = str(getattr(context, "vendor_name", "unknown"))
+    route_counts = {"adapted": 0, "planned_skip": 0, "failed": 0, "route_drift": 0}
+    recipe_path = run_dir / "recipe_manifest.jsonl"
+    route_path = run_dir / "route_manifest.jsonl"
+    with (
+        recipe_path.open("w", encoding="utf-8") as recipes,
+        route_path.open("w", encoding="utf-8") as routes,
+    ):
+        for record in selected:
+            selected_key = (
+                record.selected_index if record.selected_index is not None else -1
+            )
+            row = row_by_selected.get(selected_key, {})
+            route = row.get("route")
+            if not isinstance(route, Mapping):
+                variant = str(row.get("variant") or record.variant or "")
+                if has_route_resolver(spec.op_id):
+                    route = {
+                        "platform": platform_key,
+                        "physical_route": None,
+                        "route_variant": None,
+                        "tuning_variant": None,
+                        "cost_model_variant": None,
+                        "stage": None,
+                        "latency_scope": None,
+                        "dynamic_inputs": {},
+                        "adapted": False,
+                        "reason": "route unresolved",
+                    }
+                else:
+                    route = {
+                        "platform": platform_key,
+                        "physical_route": variant,
+                        "route_variant": variant,
+                        "tuning_variant": variant,
+                        "cost_model_variant": variant,
+                        "stage": "public",
+                        "latency_scope": "public_kernel",
+                        "dynamic_inputs": {},
+                        "adapted": True,
+                    }
+            recipe_id = row.get("recipe_id") or make_recipe_id(
+                spec.op_id,
+                str(route.get("platform") or platform_key),
+                record.values,
+                dtypes,
+                row.get("output_dtypes") or [],
+                row.get("variant") or record.variant,
+                route.get("dynamic_inputs", {}),
+            )
+            physical = route.get("physical_route")
+            adapted = bool(route.get("adapted"))
+            status = row.get("status", "planned")
+            if status == "failed":
+                route_counts["failed"] += 1
+            elif row.get("route_drift"):
+                route_counts["route_drift"] += 1
+            elif adapted:
+                route_counts["adapted"] += 1
+            else:
+                route_counts["planned_skip"] += 1
+            recipe = {
+                "recipe_id": recipe_id,
+                "input_row_index": row.get("source_index", record.source_index),
+                "source_shape_index": record.source_index,
+                "selected_index": record.selected_index,
+                "op_id": spec.op_id,
+                "variant": row.get("variant") or record.variant,
+                "values": dict(record.values),
+                "input_dtypes": row.get("input_dtypes") or dtypes,
+                "output_dtypes": row.get("output_dtypes") or [],
+                "platform": route.get("platform") or platform_key,
+                **recipe_layout_metadata(record.values),
+                "status": status,
+            }
+            recipes.write(json.dumps(recipe, sort_keys=True, allow_nan=False) + "\n")
+            routes.write(
+                json.dumps(
+                    {
+                        "recipe_id": recipe_id,
+                        "source_shape_index": record.source_index,
+                        "input_row_index": row.get("source_index", record.source_index),
+                        "physical_route": physical,
+                        "cost_model_variant": route.get("cost_model_variant"),
+                        "route_variant": route.get("route_variant") or physical,
+                        "tuning_variant": route.get("tuning_variant"),
+                        "stage": route.get("stage"),
+                        "latency_scope": route.get("latency_scope"),
+                        "dynamic_inputs": route.get("dynamic_inputs", {}),
+                        **recipe_layout_metadata(record.values),
+                        "adapted": adapted,
+                        "route_drift": bool(row.get("route_drift")),
+                        "status": status,
+                        "reason": row.get("error") or route.get("reason", ""),
+                    },
+                    sort_keys=True,
+                    allow_nan=False,
+                )
+                + "\n"
+            )
+    return route_counts
 
 
 @dataclass(frozen=True)
@@ -386,6 +519,7 @@ def select_shape_records(
     requested_variant: Optional[str],
     sort_spec: SortSpec,
     max_shapes: Optional[Union[int, str]],
+    runtime_context: Optional[Mapping[str, Any]] = None,
 ) -> list[ShapeRecord]:
     """Resolve variants, filter, sort, limit, and index shape records.
 
@@ -407,7 +541,18 @@ def select_shape_records(
     selected = []
     for record in records:
         try:
-            variant = spec.resolve_variant(record.values)
+            if has_route_resolver(spec.op_id):
+                # A requested MM variant is only a worker-side filter. Shape
+                # metadata alone cannot determine the backend's tensor route.
+                variant = requested_variant
+            elif requested_variant is None or not getattr(
+                spec, "explicit_variant_selection", False
+            ):
+                variant = spec.resolve_variant(record.values)
+            elif operator_info.variants[requested_variant].matches(record.values):
+                variant = requested_variant
+            else:
+                continue
         except (RuntimeError, ValueError) as exc:
             raise PretuneError(str(exc)) from exc
         if requested_variant is None or variant == requested_variant:
@@ -599,6 +744,10 @@ def run_main(args: argparse.Namespace) -> int:
         requested_variant,
         sort_spec,
         args.max_shapes,
+        {
+            "platform_key": getattr(context, "vendor_name", "unknown"),
+            "dtypes": args.dtypes,
+        },
     )
     if context.visible_device_count <= 0:
         raise PretuneError("no visible devices")
@@ -652,9 +801,13 @@ def run_main(args: argparse.Namespace) -> int:
         for row in rows
         if isinstance((protocol := row.get("benchmark_protocol")), dict)
     }
-    failed_rows = sum(row.get("status") != "ok" for row in rows)
+    failed_rows = sum(row.get("status") not in {"ok", "skipped"} for row in rows)
+    skipped_rows = sum(row.get("status") == "skipped" for row in rows)
     missing_rows = len(selected) - len(rows)
     write_outputs(run_dir, rows, spec.shape.identity)
+    route_counts = _write_recipe_manifests(
+        run_dir, rows, selected, spec, context, args.dtypes
+    )
     cached_count = sum(int(row.get("benchmark_cache_hit_count") or 0) for row in rows)
     measured_count = sum(int(row.get("benchmark_success_count") or 0) for row in rows)
     failed = (
@@ -674,6 +827,7 @@ def run_main(args: argparse.Namespace) -> int:
             f"workers={workers}",
             f"worker_returncodes={batch.worker_returncodes}",
             f"failed_rows={failed_rows}",
+            f"skipped_rows={skipped_rows}",
             f"missing_rows={missing_rows}",
             f"database_merge={json.dumps(batch.database_merge, sort_keys=True)}",
         ],
@@ -728,8 +882,13 @@ def run_main(args: argparse.Namespace) -> int:
             "public_op_name": operator_name,
             "requested_variant": requested_variant,
             "variant_counts": {
-                name: sum(record.variant == name for record in selected)
-                for name in context.operator_variants
+                name: sum(
+                    row.get("variant") == name and row.get("status") == "ok"
+                    for row in rows
+                )
+                for name in sorted(
+                    {row.get("variant") for row in rows if row.get("status") == "ok"}
+                )
             },
             "sort": sort_spec.mode,
             "random_seed": sort_spec.seed,
@@ -738,6 +897,7 @@ def run_main(args: argparse.Namespace) -> int:
         "benchmark_summary": {
             "result_row_count": len(rows),
             "failed_row_count": failed_rows,
+            "skipped_row_count": skipped_rows,
             "missing_row_count": missing_rows,
             "cached_count": cached_count,
             "measured_count": measured_count,
@@ -748,6 +908,7 @@ def run_main(args: argparse.Namespace) -> int:
             "gpu_tokens": tokens[:workers],
             "gpu_names": list(context.device_names),
             "device_architectures": list(context.device_architectures),
+            "route_counts": route_counts,
             "database_merge": batch.database_merge,
             "database_merge_error": batch.database_merge_error,
             "database_shards": [str(path) for path in batch.database_shards],
@@ -759,6 +920,8 @@ def run_main(args: argparse.Namespace) -> int:
             "pretune_csv": str(run_dir / "pretune.csv"),
             "pretune_jsonl": str(run_dir / "pretune.jsonl"),
             "pretune_log": str(run_dir / "pretune.log"),
+            "recipe_manifest": str(run_dir / "recipe_manifest.jsonl"),
+            "route_manifest": str(run_dir / "route_manifest.jsonl"),
         },
         "retention": {
             "keep_intermediate_files": bool(args.keep_intermediate_files),
