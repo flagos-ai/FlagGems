@@ -65,7 +65,7 @@ def and_tensor(self, other):
     take a single flat launch that skips the ``pointwise_dynamic`` host-side
     preparation, which dominates latency at that size.
     """
-    logger.debug("GEMS AND")
+    logger.debug("GEMS_KUNLUNXIN AND_TENSOR")
     if _use_flat_path(self, other):
         numel = self.numel()
         out = torch.empty_like(self)

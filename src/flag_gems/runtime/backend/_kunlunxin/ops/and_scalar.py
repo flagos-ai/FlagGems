@@ -38,7 +38,7 @@ def and_scalar(self, other):
     otherwise sub-par int16 path. The AND mask ``s | (s << 16)`` applies the
     scalar identically to both packed lanes, so the result is bit-exact.
     """
-    logger.debug("GEMS AND SCALAR")
+    logger.debug("GEMS_KUNLUNXIN AND_SCALAR")
     if (
         isinstance(self, torch.Tensor)
         and self.dtype == torch.int16
