@@ -1154,8 +1154,20 @@ class LibTuner(triton.runtime.Autotuner):
                         blocks *= max(1, v)
                 return (getattr(c, "num_stages", 1) or 1, blocks)
 
+            # Honor early_config_prune so the retry never picks a config the
+            # user's prune hook already ruled out; fall back to all configs if
+            # pruning is unset or fails.
+            candidate_configs = self.configs
+            if getattr(self, "early_config_prune", None) is not None:
+                try:
+                    pruned = self.early_config_prune(self.configs, self.nargs, **kwargs)
+                    if pruned:
+                        candidate_configs = pruned
+                except Exception:
+                    candidate_configs = self.configs
+
             ret = None
-            for alt in sorted(self.configs, key=_cfg_size):
+            for alt in sorted(candidate_configs, key=_cfg_size):
                 if alt is config:
                     continue
                 try:

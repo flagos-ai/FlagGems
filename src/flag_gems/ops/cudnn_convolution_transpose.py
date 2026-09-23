@@ -329,14 +329,33 @@ class CudnnConvolutionTranspose(torch.autograd.Function):
 
         stride = ctx.stride
         padding = ctx.padding
+        output_padding = ctx.output_padding
         dilation = ctx.dilation
         groups = ctx.groups
 
         # Transpose convolution is the adjoint of a plain convolution that uses
         # the same weight W (layout (in_c, out_c/groups, kH, kW)):
         #     conv_transpose2d(x, W) == conv2d^T(x, W)
-        # Hence its input-grad is a plain conv2d and its weight-grad is exactly
-        # torch's own conv2d weight-grad with input and grad_output swapped.
+        # so its input-grad is a plain conv2d and its weight-grad is torch's own
+        # conv2d weight-grad with input and grad_output swapped.
+        #
+        # output_padding extends the output by a strip on the bottom/right. When
+        # output_padding < stride the conv2d below already absorbs it (its stride
+        # floor maps the extended output back to the input size), and the strip
+        # carries real gradient, so it must NOT be cropped. When
+        # output_padding >= stride (only reachable when dilation > stride, e.g.
+        # stride=1/dilation=2/output_padding=1) the strip falls outside every
+        # input position, carries no gradient, and would otherwise cause a size
+        # mismatch, so crop it off grad_output before the adjoint.
+        op_h, op_w = output_padding
+        stride_h, stride_w = stride
+        crop_h = op_h if op_h >= stride_h else 0
+        crop_w = op_w if op_w >= stride_w else 0
+        if crop_h:
+            grad_output = grad_output[..., : grad_output.shape[-2] - crop_h, :]
+        if crop_w:
+            grad_output = grad_output[..., : grad_output.shape[-1] - crop_w]
+
         grad_input = torch.nn.functional.conv2d(
             grad_output,
             weight,
