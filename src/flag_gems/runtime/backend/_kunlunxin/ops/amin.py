@@ -172,18 +172,23 @@ if _HAS_TLE:
         @triton.jit(do_not_specialize=["total", "ncores"])
         def _raw_flat_part_f16(Inp, Part, total, ncores):
             tle.raw.call(amin_flat_part_f16, (Inp, Part, total, ncores))
+
         @triton.jit(do_not_specialize=["np"])
         def _raw_flat_final_f16(Part, Out, np):
             tle.raw.call(amin_flat_final_f16, (Part, Out, np))
+
         @triton.jit(do_not_specialize=["total", "ncores"])
         def _raw_flat_part_f32(Inp, Part, total, ncores):
             tle.raw.call(amin_flat_part_f32, (Inp, Part, total, ncores))
+
         @triton.jit(do_not_specialize=["np"])
         def _raw_flat_final_f32(Part, Out, np):
             tle.raw.call(amin_flat_final_f32, (Part, Out, np))
+
         @triton.jit(do_not_specialize=["total", "ncores"])
         def _raw_flat_part_bf16(Inp, Part, total, ncores):
             tle.raw.call(amin_flat_part_bf16, (Inp, Part, total, ncores))
+
         @triton.jit(do_not_specialize=["np"])
         def _raw_flat_final_bf16(Part, Out, np):
             tle.raw.call(amin_flat_final_bf16, (Part, Out, np))
@@ -191,9 +196,11 @@ if _HAS_TLE:
         @triton.jit(do_not_specialize=["total"])
         def _raw_flat1c_f16(Inp, Out, total):
             tle.raw.call(amin_flat1c_f16, (Inp, Out, total))
+
         @triton.jit(do_not_specialize=["total"])
         def _raw_flat1c_f32(Inp, Out, total):
             tle.raw.call(amin_flat1c_f32, (Inp, Out, total))
+
         @triton.jit(do_not_specialize=["total"])
         def _raw_flat1c_bf16(Inp, Out, total):
             tle.raw.call(amin_flat1c_bf16, (Inp, Out, total))
@@ -201,9 +208,11 @@ if _HAS_TLE:
         @triton.jit(do_not_specialize=["rows", "N", "ncores"])
         def _raw_rows_f16(Inp, Out, rows, N, ncores):
             tle.raw.call(amin_rows_f16_t, (Inp, Out, rows, N, ncores))
+
         @triton.jit(do_not_specialize=["rows", "N", "ncores"])
         def _raw_rows_f32(Inp, Out, rows, N, ncores):
             tle.raw.call(amin_rows_f32_t, (Inp, Out, rows, N, ncores))
+
         @triton.jit(do_not_specialize=["rows", "N", "ncores"])
         def _raw_rows_bf16(Inp, Out, rows, N, ncores):
             tle.raw.call(amin_rows_bf16_t, (Inp, Out, rows, N, ncores))
@@ -211,29 +220,41 @@ if _HAS_TLE:
         @triton.jit(do_not_specialize=["outer", "mid", "inner", "ncores"])
         def _raw_mid_f16(Inp, Out, outer, mid, inner, ncores):
             tle.raw.call(amin_mid_f16, (Inp, Out, outer, mid, inner, ncores))
+
         @triton.jit(do_not_specialize=["outer", "mid", "inner", "ncores"])
         def _raw_mid_f32(Inp, Out, outer, mid, inner, ncores):
             tle.raw.call(amin_mid_f32, (Inp, Out, outer, mid, inner, ncores))
+
         @triton.jit(do_not_specialize=["outer", "mid", "inner", "ncores"])
         def _raw_mid_bf16(Inp, Out, outer, mid, inner, ncores):
             tle.raw.call(amin_mid_bf16, (Inp, Out, outer, mid, inner, ncores))
 
         @triton.jit(do_not_specialize=["outer", "mid", "inner", "nseg", "ncores"])
         def _raw_midpart_f16(Inp, Part, outer, mid, inner, nseg, ncores):
-            tle.raw.call(amin_mid_part_f16, (Inp, Part, outer, mid, inner, nseg, ncores))
+            tle.raw.call(
+                amin_mid_part_f16, (Inp, Part, outer, mid, inner, nseg, ncores)
+            )
+
         @triton.jit(do_not_specialize=["outer", "mid", "inner", "nseg", "ncores"])
         def _raw_midpart_f32(Inp, Part, outer, mid, inner, nseg, ncores):
-            tle.raw.call(amin_mid_part_f32, (Inp, Part, outer, mid, inner, nseg, ncores))
+            tle.raw.call(
+                amin_mid_part_f32, (Inp, Part, outer, mid, inner, nseg, ncores)
+            )
+
         @triton.jit(do_not_specialize=["outer", "mid", "inner", "nseg", "ncores"])
         def _raw_midpart_bf16(Inp, Part, outer, mid, inner, nseg, ncores):
-            tle.raw.call(amin_mid_part_bf16, (Inp, Part, outer, mid, inner, nseg, ncores))
+            tle.raw.call(
+                amin_mid_part_bf16, (Inp, Part, outer, mid, inner, nseg, ncores)
+            )
 
         @triton.jit(do_not_specialize=["rows", "N", "ncores"])
         def _raw_rowfill_f16(Inp, rows, N, ncores):
             tle.raw.call(amin_rowfill_f16_t, (Inp, rows, N, ncores))
+
         @triton.jit(do_not_specialize=["rows", "N", "ncores"])
         def _raw_rowfill_f32(Inp, rows, N, ncores):
             tle.raw.call(amin_rowfill_f32_t, (Inp, rows, N, ncores))
+
         @triton.jit(do_not_specialize=["rows", "N", "ncores"])
         def _raw_rowfill_bf16(Inp, rows, N, ncores):
             tle.raw.call(amin_rowfill_bf16_t, (Inp, rows, N, ncores))
@@ -241,9 +262,11 @@ if _HAS_TLE:
         @triton.jit(do_not_specialize=["outer", "mid", "inner", "ncores"])
         def _raw_midfill_f16(Inp, outer, mid, inner, ncores):
             tle.raw.call(amin_midfill_f16, (Inp, outer, mid, inner, ncores))
+
         @triton.jit(do_not_specialize=["outer", "mid", "inner", "ncores"])
         def _raw_midfill_f32(Inp, outer, mid, inner, ncores):
             tle.raw.call(amin_midfill_f32, (Inp, outer, mid, inner, ncores))
+
         @triton.jit(do_not_specialize=["outer", "mid", "inner", "ncores"])
         def _raw_midfill_bf16(Inp, outer, mid, inner, ncores):
             tle.raw.call(amin_midfill_bf16, (Inp, outer, mid, inner, ncores))
@@ -598,8 +621,9 @@ def amin_rows_kernel(inp, out, M, NW, BLOCK_M: tl.constexpr, BLOCK_N: tl.constex
 
 
 @triton.jit
-def amin_tle_row_kernel(a_desc, c_desc, N, XBLOCK: tl.constexpr,
-                        YBLOCK: tl.constexpr, DTYPE: tl.constexpr):
+def amin_tle_row_kernel(
+    a_desc, c_desc, N, XBLOCK: tl.constexpr, YBLOCK: tl.constexpr, DTYPE: tl.constexpr
+):
     """tle.gpu coalesced-DMA row-MIN of a [M, N] contiguous matrix along axis=1.
     Each program owns XBLOCK rows (XBLOCK a multiple of core_num=64 => rows are
     core-local, so tl.min(axis=1) needs no cross-core reduce), streams the N
@@ -957,7 +981,9 @@ def amin(inp, dim=None, keepdim=False):
             elif inner == 1 and 1 < N <= _RAW_ROW_MAX_N:
                 out = torch.empty(shape, dtype=dtype, device=inp.device)
                 with torch_device_fn.device(inp.device):
-                    if _amin_raw_rows(inp.reshape(outer, N), out.reshape(outer), outer, N):
+                    if _amin_raw_rows(
+                        inp.reshape(outer, N), out.reshape(outer), outer, N
+                    ):
                         if not keepdim:
                             out = out.squeeze(dim=dim)
                         return out
@@ -1078,8 +1104,10 @@ def amin_(inp, dim=None, keepdim=False):
         ):
             N = inp.shape[-1]
             M = inp.numel() // N if N > 0 else 0
-            if 1 < N <= _ROWFILL_MAX_N and M > 0 and (
-                inp.numel() < _ROWFILL_SPLIT_NUMEL[inp.dtype]
+            if (
+                1 < N <= _ROWFILL_MAX_N
+                and M > 0
+                and (inp.numel() < _ROWFILL_SPLIT_NUMEL[inp.dtype])
             ):
                 with torch_device_fn.device(inp.device):
                     if _amin_inplace_rowfill(inp, M, N):
@@ -1102,11 +1130,7 @@ def amin_(inp, dim=None, keepdim=False):
             for s in shp[d + 1 :]:
                 inner *= s
             outer = inp.numel() // (mid * inner) if mid * inner > 0 else 0
-            if (
-                0 < inner <= 64
-                and 0 < mid <= _MIDFILL_MAX_MID[inp.dtype]
-                and outer > 0
-            ):
+            if 0 < inner <= 64 and 0 < mid <= _MIDFILL_MAX_MID[inp.dtype] and outer > 0:
                 with torch_device_fn.device(inp.device):
                     if _amin_inplace_midfill(inp, outer, mid, inner):
                         return inp
