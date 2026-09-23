@@ -11236,6 +11236,20 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: nested_tensor_from_mask
+  description: |
+    Builds a nested tensor from a padded dense tensor of shape (N, L, D) and a
+    boolean padding mask of shape (N, L), using the mask to determine the ragged
+    length of each component.
+  for:
+    - _nested_tensor_from_mask
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Tensor
+  stages:
+    - alpha: '5.5.0'
 - id: nested_tensor_from_mask_left_aligned
   description: 'Checks whether a 3D tensor `t` (N * L * D) combined with a 2D boolean
     padding
@@ -11254,6 +11268,20 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: nested_tensor_softmax_with_shape
+  description: |
+    Computes softmax over the last dimension of nested-tensor attention scores,
+    deriving the per-batch sequence length from the query tensor's nested shape
+    and masking the out-of-range entries to zero.
+  for:
+  - _nested_tensor_softmax_with_shape
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5.0'
 - id: nested_view_from_buffer_copy
   description: 'Creates a nested tensor from a flat buffer using component sizes,
     strides,
@@ -11790,6 +11818,30 @@ ops:
   - Tensor
   stages:
   - stable: '2.1'
+- id: orgqr
+  description: 'Computes the first n columns of a product of Householder matrices.
+
+    Alias for torch.linalg.householder_product.'
+  for:
+  - orgqr
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.5'
+- id: orgqr_out
+  description: Computes the Householder matrix product into the supplied output tensor.
+  for:
+  - orgqr.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.5'
 - id: ormqr
   description: 'Computes the matrix-matrix multiplication of a product of Householder
     matrices
@@ -11873,6 +11925,19 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.5'
+- id: pad_packed_sequence
+  description: |
+    Pads a packed batch of variable length sequences back into a dense
+    (T, B, *) tensor together with the per-batch-element sequence lengths.
+  for:
+  - _pad_packed_sequence
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5.0'
 - id: pad_sequence
   description: Pads a list of variable length tensors with a given padding value and
     stacks them into a single padded batch tensor.
@@ -13590,6 +13655,20 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: scaled_dot_product_attention_math_for_mps
+  description: 'Computes scaled dot-product attention using the math-based implementation
+    for the MPS backend.
+
+    '
+  for:
+  - _scaled_dot_product_attention_math_for_mps
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5.0'
 - id: scaled_dot_product_cudnn_attention
   description: 'Computes scaled dot product attention using the cuDNN attention API
 

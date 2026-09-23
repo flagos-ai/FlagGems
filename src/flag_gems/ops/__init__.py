@@ -129,13 +129,18 @@ from flag_gems.ops._native_multi_head_attention import _native_multi_head_attent
 from flag_gems.ops._nested_from_padded_tensor import _nested_from_padded_tensor
 from flag_gems.ops._nested_select_backward import _nested_select_backward
 from flag_gems.ops._nested_sum_backward import _nested_sum_backward
+from flag_gems.ops._nested_tensor_from_mask import _nested_tensor_from_mask
 from flag_gems.ops._nested_tensor_from_mask_left_aligned import (
     _nested_tensor_from_mask_left_aligned,
+)
+from flag_gems.ops._nested_tensor_softmax_with_shape import (
+    _nested_tensor_softmax_with_shape,
 )
 from flag_gems.ops._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
 from flag_gems.ops._nested_view_from_jagged import _nested_view_from_jagged
 from flag_gems.ops._nested_view_from_jagged_copy import _nested_view_from_jagged_copy
 from flag_gems.ops._pad_circular import _pad_circular
+from flag_gems.ops._pad_packed_sequence import _pad_packed_sequence
 from flag_gems.ops._pdist_backward import _pdist_backward
 from flag_gems.ops._pdist_forward import _pdist_forward
 from flag_gems.ops._prelu_kernel import _prelu_kernel
@@ -147,6 +152,9 @@ from flag_gems.ops._safe_softmax import _safe_softmax
 from flag_gems.ops._sample_dirichlet import _sample_dirichlet
 from flag_gems.ops._scaled_dot_product_attention_math import (
     _scaled_dot_product_attention_math,
+)
+from flag_gems.ops._scaled_dot_product_attention_math_for_mps import (
+    _scaled_dot_product_attention_math_for_mps,
 )
 from flag_gems.ops._scaled_dot_product_cudnn_attention import (
     _scaled_dot_product_cudnn_attention,
@@ -844,6 +852,7 @@ from flag_gems.ops.nuclear_norm import nuclear_norm
 from flag_gems.ops.one_hot import one_hot
 from flag_gems.ops.ones import ones
 from flag_gems.ops.ones_like import ones_like
+from flag_gems.ops.orgqr import orgqr, orgqr_out
 from flag_gems.ops.ormqr import ormqr
 from flag_gems.ops.pad import constant_pad_nd, pad
 from flag_gems.ops.pad_sequence import pad_sequence
@@ -1336,11 +1345,14 @@ __all__ = [
     "_nested_from_padded_tensor",
     "_nested_select_backward",
     "_nested_sum_backward",
+    "_nested_tensor_from_mask",
     "_nested_tensor_from_mask_left_aligned",
+    "_nested_tensor_softmax_with_shape",
     "_nested_view_from_buffer_copy",
     "_nested_view_from_jagged",
     "_nested_view_from_jagged_copy",
     "_pad_circular",
+    "_pad_packed_sequence",
     "_padded_dense_to_jagged_forward",
     "_pdist_backward",
     "_pdist_forward",
@@ -1352,6 +1364,7 @@ __all__ = [
     "_safe_softmax",
     "_sample_dirichlet",
     "_scaled_dot_product_attention_math",
+    "_scaled_dot_product_attention_math_for_mps",
     "_scaled_dot_product_cudnn_attention",
     "_scaled_dot_product_efficient_attention",
     "_scaled_dot_product_flash_attention",
@@ -2115,6 +2128,8 @@ __all__ = [
     "one_hot",
     "ones",
     "ones_like",
+    "orgqr",
+    "orgqr_out",
     "ormqr",
     "pad",
     "pad_sequence",

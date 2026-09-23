@@ -27,6 +27,7 @@ from flag_gems.logging_utils import setup_flaggems_logging, teardown_flaggems_lo
 from flag_gems.modules import *  # noqa: F403
 from flag_gems.ops import *  # noqa: F403
 from flag_gems.ops._dirichlet_grad import _HAS_MAP_ELEMENTWISE
+from flag_gems.ops._upsample_nearest_exact2d import _upsample_nearest_exact2d_out
 from flag_gems.patches import *  # noqa: F403
 from flag_gems.patches import patch_empty_vllm  # noqa: F401
 from flag_gems.runtime import flagtune
@@ -259,11 +260,14 @@ _FULL_CONFIG = (
     ("_nested_from_padded_tensor", _nested_from_padded_tensor),
     ("_nested_select_backward", _nested_select_backward),
     ("_nested_sum_backward", _nested_sum_backward),
+    ("_nested_tensor_from_mask", _nested_tensor_from_mask),
     ("_nested_tensor_from_mask_left_aligned", _nested_tensor_from_mask_left_aligned),
+    ("_nested_tensor_softmax_with_shape", _nested_tensor_softmax_with_shape),
     ("_nested_view_from_buffer_copy", _nested_view_from_buffer_copy),
     ("_nested_view_from_jagged", _nested_view_from_jagged),
     ("_nested_view_from_jagged_copy", _nested_view_from_jagged_copy),
     ("_pad_circular", _pad_circular, None, ["CompositeImplicitAutograd"]),
+    ("_pad_packed_sequence", _pad_packed_sequence),
     ("_padded_dense_to_jagged_forward", _padded_dense_to_jagged_forward),
     ("_pdist_backward", _pdist_backward),
     ("_pdist_forward", _pdist_forward),
@@ -277,6 +281,10 @@ _FULL_CONFIG = (
     (
         "_scaled_dot_product_attention_math",
         _scaled_dot_product_attention_math,
+    ),
+    (
+        "_scaled_dot_product_attention_math_for_mps",
+        _scaled_dot_product_attention_math_for_mps,
     ),
     ("_scaled_dot_product_cudnn_attention", _scaled_dot_product_cudnn_attention),
     (
@@ -369,6 +377,7 @@ _FULL_CONFIG = (
         _upsample_nearest_exact1d_backward_grad_input,
     ),
     ("_upsample_nearest_exact2d", _upsample_nearest_exact2d),
+    ("_upsample_nearest_exact2d.out", _upsample_nearest_exact2d_out),
     ("_upsample_nearest_exact2d_backward", _upsample_nearest_exact2d_backward),
     ("_upsample_nearest_exact3d", _upsample_nearest_exact3d),
     (
@@ -837,6 +846,7 @@ _FULL_CONFIG = (
     ("huber_loss", huber_loss),
     ("huber_loss.out", huber_loss_out),
     ("hypot", hypot),
+    ("hypot.out", hypot_out),
     ("hypot_", hypot_),
     ("i0", i0),
     ("i0.out", i0_out),
@@ -1160,6 +1170,8 @@ _FULL_CONFIG = (
     ("one_hot", one_hot),
     ("ones", ones),
     ("ones_like", ones_like),
+    ("orgqr", orgqr),
+    ("orgqr.out", orgqr_out),
     ("ormqr", ormqr),
     ("outer", outer),
     ("pad", pad),
