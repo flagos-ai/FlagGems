@@ -36,11 +36,15 @@ AFFINE_GRID_BACKWARD_3D_SHAPES = [
     (2, 4, 8, 16),
 ]
 
+AFFINE_GRID_BACKWARD_DTYPES = [torch.float32]
+if utils.fp64_is_supported:
+    AFFINE_GRID_BACKWARD_DTYPES.append(torch.float64)
+
 
 @pytest.mark.affine_grid_generator_backward
 @pytest.mark.parametrize("shape", AFFINE_GRID_BACKWARD_2D_SHAPES)
-# float32 only: kernel uses float32 internal accumulation; half causes mismatch
-@pytest.mark.parametrize("dtype", [torch.float32])
+# fp16/bf16 are skipped: too few mantissa bits for the H*W*2 reduction
+@pytest.mark.parametrize("dtype", AFFINE_GRID_BACKWARD_DTYPES)
 @pytest.mark.parametrize("align_corners", [False, True])
 def test_affine_grid_generator_backward_2d(shape, dtype, align_corners):
     N, H, W = shape
@@ -61,8 +65,8 @@ def test_affine_grid_generator_backward_2d(shape, dtype, align_corners):
 
 @pytest.mark.affine_grid_generator_backward
 @pytest.mark.parametrize("shape", AFFINE_GRID_BACKWARD_3D_SHAPES)
-# float32 only: kernel uses float32 internal accumulation; half causes mismatch
-@pytest.mark.parametrize("dtype", [torch.float32])
+# fp16/bf16 are skipped: too few mantissa bits for the D*H*W*3 reduction
+@pytest.mark.parametrize("dtype", AFFINE_GRID_BACKWARD_DTYPES)
 @pytest.mark.parametrize("align_corners", [False, True])
 def test_affine_grid_generator_backward_3d(shape, dtype, align_corners):
     N, D, H, W = shape
