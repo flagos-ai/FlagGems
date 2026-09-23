@@ -293,11 +293,16 @@ def nll_loss2d_forward_tiled_kernel(
         tl.store(ignore_wgt_tgt_ptr + flat, wgt_tgt)
 
 
-_NLL2D_FLAT_BLOCKS = (2048, 512, 256, 128)
+_NLL2D_FLAT_BLOCKS = (2048, 1024, 512, 256, 128)
 
 
 def _nll2d_flat_cap(M):
     """Measured best `BLOCK_ND` band for the wide flat kernel.
+
+    The wide flat kernel is a plain 1-D tile; on this backend only tile widths
+    that are `<= 64` or a multiple of 1024 map onto the vectorised load path, so
+    512-wide tiles behave like the (1 x 512) tiled kernel while 1024/2048-wide
+    tiles are ~2x faster (see `nll_loss2d_forward` for the crossover data).
 
     Wrapper-level `do_bench` minima over 3 interleaved rounds, `weight=None`
     (the weight-gather cells are bimodal and unusable for tuning), block cap
@@ -307,12 +312,17 @@ def _nll2d_flat_cap(M):
       M=8192    68.2/55.0  35.6/29.7  26.0/20.5   19.2/15.1   [14.9/14.8] 21.8/21.6  35.5/35.4  61.9/61.3
       M=131072  425/375    223/194    150/135     113/98       96.8/90.3 *89.9/88.8* 94.9/94.4  117/116
 
-    The optimum grows with `M` (more parallelism needed) but a single tile that
-    covers all of `M` is always bad (M=8192 @ 8192 -> 61 us vs 14.9 us @ 1024).
-    The M=8192 optimum (1024, in brackets) is *not* usable - see
-    `_NLL2D_FLAT_BLOCKS` - so 512 is taken there instead.
+    A single tile covering all of `M` is always bad (M=8192 @ 8192 -> 61 us vs
+    14.9 us @ 1024), and the optimum grows with `M`.  Interleaved re-measurement
+    of the 1024/2048 blocks (fp16 mean-time, us) gives the band breaks used
+    below: 2048:512, 4096:512/1024, 8192:1024, 16384:2048, 32768:1024/2048,
+    65536:2048, 131072:2048, 524288:2048.
     """
-    return 512 if M <= 65536 else 2048
+    if M <= 2048:
+        return 512
+    if M <= 8192:
+        return 1024
+    return 2048
 
 
 @libentry()
@@ -537,6 +547,154 @@ def nll_loss2d_backward_flat_kernel(
     tl.store(inp_grad_ptrs, inp_grad)
 
 
+@triton.jit(do_not_specialize=["ignore_index"])
+def _nll_fwd_plain_kernel(
+    inp_ptr,
+    tgt_ptr,
+    wgt_ptr,
+    out_ptr,
+    ignore_wgt_tgt_ptr,
+    ignore_index,
+    N,
+    C,
+    reduction: tl.constexpr = 1,
+    BLOCK_N: tl.constexpr = 128,
+    PADDED: tl.constexpr = False,
+):
+    pid_n = tl.program_id(0)
+    offsets_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+
+    mask_n = offsets_n < N
+
+    tgt = tl.load(tgt_ptr + offsets_n, mask=mask_n, other=0)
+    assert (tgt == ignore_index) or (tgt >= 0 and tgt < C), "Invalid target value"
+    ignore_mask = not (tgt == ignore_index) and mask_n
+
+    if wgt_ptr is None:
+        wgt_tgt = tl.where(ignore_mask, 1.0, 0.0)
+    else:
+        wgt_tgt = tl.load(wgt_ptr + tgt, mask=ignore_mask, other=0).to(tl.float32)
+
+    inp_tgt_ptrs = inp_ptr + offsets_n * C + tgt
+    inp_tgt = tl.load(inp_tgt_ptrs, mask=ignore_mask, other=0).to(tl.float32)
+    out = inp_tgt * wgt_tgt * -1
+
+    if PADDED:
+        tl.store(out_ptr + offsets_n, out)
+        tl.store(ignore_wgt_tgt_ptr + offsets_n, wgt_tgt)
+    else:
+        tl.store(out_ptr + offsets_n, out, mask=mask_n)
+        if reduction != 0:
+            tl.store(ignore_wgt_tgt_ptr + offsets_n, wgt_tgt, mask=mask_n)
+
+
+@triton.jit
+def _nll_fwd_plain_reduce_kernel(
+    out_ptr,
+    wgt_ptr,
+    total_out_ptr,
+    total_wgt_ptr,
+    MEAN: tl.constexpr,
+    NTILES: tl.constexpr,
+    TL: tl.constexpr,
+):
+    total_o = tl.zeros([], dtype=tl.float32)
+    total_wgt = tl.zeros([], dtype=tl.float32)
+    for i in tl.static_range(NTILES):
+        off = i * TL + tl.arange(0, TL)
+        o = tl.load(out_ptr + off).to(tl.float32)
+        w = tl.load(wgt_ptr + off).to(tl.float32)
+        total_o += tl.sum(o)
+        total_wgt += tl.sum(w)
+
+    if MEAN:
+        res = total_o / total_wgt
+    else:
+        res = total_o
+    tl.store(total_out_ptr, res.to(total_out_ptr.dtype.element_ty))
+    tl.store(total_wgt_ptr, total_wgt.to(total_wgt_ptr.dtype.element_ty))
+
+
+@triton.jit(do_not_specialize=["ignore_index"])
+def _nll2d_fwd_plain_flat_kernel(
+    inp_ptr,
+    tgt_ptr,
+    wgt_ptr,
+    out_ptr,
+    ignore_wgt_tgt_ptr,
+    ignore_index,
+    C,
+    reduction: tl.constexpr,
+    D: tl.constexpr,
+    BLOCK_ND: tl.constexpr,
+):
+    pid_nd = tl.program_id(0)
+    offset_nd = pid_nd * BLOCK_ND + tl.arange(0, BLOCK_ND)
+
+    tgt = tl.load(tgt_ptr + offset_nd)
+    assert (tgt == ignore_index) or (tgt >= 0 and tgt < C), "Invalid target value"
+    ignore_mask = tgt != ignore_index
+
+    if wgt_ptr is None:
+        wgt_tgt = tl.where(ignore_mask, 1.0, 0.0)
+    else:
+        wgt_tgt = tl.load(wgt_ptr + tgt, mask=ignore_mask, other=0).to(tl.float32)
+
+    offset_d = offset_nd % D
+    offset_n = offset_nd // D
+    inp_tgt_ptrs = inp_ptr + offset_n * C * D + tgt * D + offset_d
+    inp_tgt = tl.load(inp_tgt_ptrs, mask=ignore_mask, other=0).to(tl.float32)
+    out = inp_tgt * wgt_tgt * -1
+
+    tl.store(out_ptr + offset_nd, out)
+    if reduction != 0:
+        tl.store(ignore_wgt_tgt_ptr + offset_nd, wgt_tgt)
+
+
+@triton.jit
+def _nll2d_fwd_plain_partial_reduce_kernel(
+    out_ptr,
+    wgt_ptr,
+    pout_ptr,
+    pwgt_ptr,
+    TPP: tl.constexpr,
+    TL: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    total_o = tl.zeros([], dtype=tl.float32)
+    total_w = tl.zeros([], dtype=tl.float32)
+    for j in tl.static_range(TPP):
+        off = (pid * TPP + j) * TL + tl.arange(0, TL)
+        o = tl.load(out_ptr + off).to(tl.float32)
+        w = tl.load(wgt_ptr + off).to(tl.float32)
+        total_o += tl.sum(o)
+        total_w += tl.sum(w)
+    tl.store(pout_ptr + pid, total_o)
+    tl.store(pwgt_ptr + pid, total_w)
+
+
+@triton.jit
+def _nll2d_fwd_plain_finalize_kernel(
+    pout_ptr,
+    pwgt_ptr,
+    total_out_ptr,
+    total_wgt_ptr,
+    MEAN: tl.constexpr,
+    NP: tl.constexpr,
+    nprog,
+):
+    off = tl.arange(0, NP)
+    mask = off < nprog
+    total_o = tl.sum(tl.load(pout_ptr + off, mask=mask, other=0).to(tl.float32))
+    total_w = tl.sum(tl.load(pwgt_ptr + off, mask=mask, other=0).to(tl.float32))
+    if MEAN:
+        res = total_o / total_w
+    else:
+        res = total_o
+    tl.store(total_out_ptr, res.to(total_out_ptr.dtype.element_ty))
+    tl.store(total_wgt_ptr, total_w.to(total_wgt_ptr.dtype.element_ty))
+
+
 def nll_loss_forward(self, target, weight=None, reduction=1, ignore_index=-100):
     logger.debug("GEMS_KUNLUNXIN NLL_LOSS_FWD")
     assert self.ndim <= 2, "Invalid input ndim"
@@ -582,7 +740,7 @@ def nll_loss_forward(self, target, weight=None, reduction=1, ignore_index=-100):
         n_blocks = triton.cdiv(N, BLOCK_N)
 
     with torch_device_fn.device(self.device):
-        nll_loss_forward_kernel[(n_blocks, 1, 1)](
+        _nll_fwd_plain_kernel[(n_blocks, 1, 1)](
             self,
             target,
             weight,
@@ -604,7 +762,7 @@ def nll_loss_forward(self, target, weight=None, reduction=1, ignore_index=-100):
         output = torch.empty([], dtype=self.dtype, device=self.device)
         total_weight = torch.empty([], dtype=self.dtype, device=self.device)
         with torch_device_fn.device(self.device):
-            nll_loss_reduce_kernel[(1, 1, 1)](
+            _nll_fwd_plain_reduce_kernel[(1, 1, 1)](
                 out,
                 ignore_weight_tgt,
                 output,
@@ -699,10 +857,10 @@ def nll_loss2d_forward(self, target, weight=None, reduction=1, ignore_index=-100
         ignore_weight_tgt = torch.empty((N, D), dtype=self.dtype, device=self.device)
 
     block_d = _nll2d_block_d(D)
-    flat_block = None if block_d is not None else _nll2d_flat_block(N * D)
+    flat_block = _nll2d_flat_block(N * D)
     with torch_device_fn.device(self.device):
         if flat_block is not None:
-            nll_loss2d_forward_flat_kernel[((N * D) // flat_block, 1, 1)](
+            _nll2d_fwd_plain_flat_kernel[((N * D) // flat_block, 1, 1)](
                 self_flat,
                 target_flat,
                 weight,
@@ -757,7 +915,7 @@ def nll_loss2d_forward(self, target, weight=None, reduction=1, ignore_index=-100
         wgt_buf = ignore_weight_tgt
         with torch_device_fn.device(self.device):
             if ntiles <= _NLL2D_REDUCE_MAX_TILES:
-                nll_loss_reduce_kernel[(1, 1, 1)](
+                _nll_fwd_plain_reduce_kernel[(1, 1, 1)](
                     out,
                     wgt_buf,
                     output,
@@ -770,7 +928,7 @@ def nll_loss2d_forward(self, target, weight=None, reduction=1, ignore_index=-100
                 nprog, tpp = _nll2d_partial_config(ntiles)
                 pout = torch.empty((nprog,), dtype=torch.float32, device=self.device)
                 pwgt = torch.empty((nprog,), dtype=torch.float32, device=self.device)
-                nll_loss2d_partial_reduce_kernel[(nprog, 1, 1)](
+                _nll2d_fwd_plain_partial_reduce_kernel[(nprog, 1, 1)](
                     out,
                     wgt_buf,
                     pout,
@@ -778,7 +936,7 @@ def nll_loss2d_forward(self, target, weight=None, reduction=1, ignore_index=-100
                     tpp,
                     tl_width,
                 )
-                nll_loss2d_finalize_kernel[(1, 1, 1)](
+                _nll2d_fwd_plain_finalize_kernel[(1, 1, 1)](
                     pout,
                     pwgt,
                     output,
@@ -786,6 +944,7 @@ def nll_loss2d_forward(self, target, weight=None, reduction=1, ignore_index=-100
                     reduction == 1,
                     triton.next_power_of_2(nprog),
                     nprog,
+                    is_use_mask_zero=True,
                 )
         return output, total_weight
 

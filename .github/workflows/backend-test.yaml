@@ -97,12 +97,27 @@ jobs:
     runs-on: klx-p800-1
     container:
       image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin-xre5.37.1:2.1.2
-      options: --device /dev/xpu0 --device /dev/xpuctrl
+      options: --device /dev/xpu0 --device /dev/xpuctrl --shm-size=256g --ulimit memlock=-1 --ulimit stack=67108864
     concurrency:
       group: >-
         op-test-${{ inputs.backend }}-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
     steps:
+      # klx-p800-1 reuses its workspace across jobs. Stale skip-worktree bits
+      # (e.g. on _kunlunxin backend op files) make `git checkout --force` refuse
+      # to overwrite them, aborting checkout and breaking the local
+      # checkout-retry action. Clear the residue before checkout. Harmless no-op
+      # on a clean or freshly-cloned workspace.
+      - name: Reset reused workspace
+        shell: bash
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE" 2>/dev/null || true
+          cd "$GITHUB_WORKSPACE" 2>/dev/null || exit 0
+          [ -d .git ] || exit 0
+          git sparse-checkout disable 2>/dev/null || true
+          git ls-files -z | xargs -0 -r git update-index --no-skip-worktree 2>/dev/null || true
+          git reset --hard HEAD 2>/dev/null || true
+          git clean -ffdx 2>/dev/null || true
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         continue-on-error: true
       - uses: ./.github/actions/checkout-retry
@@ -131,6 +146,7 @@ jobs:
   # driver/runtime it needs is only set up inside this image.
   # Equivalent to:
   #   docker run --rm -it --device=/dev/alixpu_ctl --device=/dev/alixpu \
+  #     --shm-size=256g --ulimit memlock=-1 --ulimit stack=67108864 \
   #     pkg.flytiger-eco.com/docker_release/llm:v2.1.1-pytorch2.10.0-ubuntu24.04-cuda13.0-py312 bash
   # with GitHub Actions creating/starting the container and exec'ing each step.
   test-thead:
@@ -138,7 +154,7 @@ jobs:
     runs-on: flagcicd-810e
     container:
       image: pkg.flytiger-eco.com/docker_release/llm:v2.1.1-pytorch2.10.0-ubuntu24.04-cuda13.0-py312
-      options: --device=/dev/alixpu_ctl --device=/dev/alixpu
+      options: --device=/dev/alixpu_ctl --device=/dev/alixpu --shm-size=256g --ulimit memlock=-1 --ulimit stack=67108864
     concurrency:
       group: >-
         op-test-${{ inputs.backend }}-${{ github.event.pull_request.number || github.ref }}
@@ -176,6 +192,7 @@ jobs:
   # FlagGems uses iluvatar-bi-v150-0, FlagGems-vllm uses iluvatar-bi-v150-1.
   # Equivalent to:
   #   docker run --rm -it --device /dev/iluvatar0 --device /dev/itrctl \
+  #     --shm-size=256g --ulimit memlock=-1 --ulimit stack=67108864 \
   #     harbor.baai.ac.cn/flagos-base/flagos-base-iluvatar-corex4.5.0:2.1.2 bash
   # with GitHub Actions creating/starting the container and exec'ing each step.
   test-iluvatar:
@@ -186,7 +203,7 @@ jobs:
           || 'iluvatar-bi-v150-0' }}
     container:
       image: harbor.baai.ac.cn/flagos-base/flagos-base-iluvatar-corex4.5.0:2.1.2
-      options: --device /dev/iluvatar0 --device /dev/itrctl
+      options: --device /dev/iluvatar0 --device /dev/itrctl --shm-size=256g --ulimit memlock=-1 --ulimit stack=67108864
     concurrency:
       group: >-
         op-test-${{ inputs.backend }}-${{ github.event.pull_request.number || github.ref }}
