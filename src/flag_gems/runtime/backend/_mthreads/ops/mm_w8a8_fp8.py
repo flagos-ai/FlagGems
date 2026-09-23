@@ -50,55 +50,45 @@ def _launch_ws_tuned(kernel, grid, args):
         _WS_LAUNCH_CACHE.clear()
         return kernel[grid](*args, enable_backend_opt=True)
     kernel._apply_flagtune()
-    key = [
+    a, b = args[0], args[1]
+    out, sa, sb, m, n, k = args[-6:]
+    # The caller validates aligned E4M3 descriptors, scalar FP32 scales and a
+    # contiguous BF16 output. Only runtime layout and pointer specialization vary.
+    key = (
         kernel,
         tuner._flagtune_selection_token,
         id(tuner.configs),
         tuner.configs_hash,
         tuner._benchmark_protocol,
-    ]
-    for arg in args:
-        if isinstance(arg, TensorDescriptor):
-            key.append(
-                (
-                    arg.base.dtype,
-                    arg.base.device,
-                    tuple(arg.shape),
-                    tuple(arg.strides),
-                    arg.base.data_ptr() % 16,
-                )
-            )
-        elif isinstance(arg, torch.Tensor):
-            key.append(
-                (
-                    arg.dtype,
-                    arg.device,
-                    tuple(arg.shape),
-                    tuple(arg.stride()),
-                    arg.data_ptr() % 16,
-                )
-            )
-        else:
-            key.append(arg)
-    key = tuple(key)
+        a.base.device,
+        m,
+        n,
+        k,
+        tuple(a.strides),
+        tuple(b.strides),
+        out.data_ptr() % 16,
+        sa.data_ptr() % 16,
+        sb.data_ptr() % 16,
+    )
     cached = _WS_LAUNCH_CACHE.get(key)
     if cached is None:
         compiled, meta = kernel[grid](*args, enable_backend_opt=True)
         tail = tuple(
             meta[name] for name in tuple(kernel.signature.parameters)[len(args) :]
         )
-        cached = (compiled, meta, tail, (tuple(grid(meta)) + (1, 1))[:3])
+        launch_grid = (tuple(grid(meta)) + (1, 1))[:3]
+        cached = (compiled, meta, tail, compiled[launch_grid])
         _WS_LAUNCH_CACHE[key] = cached
         if len(_WS_LAUNCH_CACHE) > 128:
             _WS_LAUNCH_CACHE.popitem(last=False)
     else:
         _WS_LAUNCH_CACHE.move_to_end(key)
-        compiled, meta, tail, launch_grid = cached
+        compiled, meta, tail, launch = cached
         args[0].block_shape = [meta["BM"], meta["BK"]]
         args[1].block_shape = [meta["BN"], meta["BK"]]
         if "FRAGMENTED" in meta:
             args[2].block_shape = [max(32, meta["BN"] // 4), meta["BK"]]
-        compiled[launch_grid](*args, *tail)
+        launch(*args, *tail)
     return cached[:2]
 
 
