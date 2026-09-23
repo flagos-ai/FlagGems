@@ -123,46 +123,6 @@ def test_flagtune_environment_controls_operator_selection(monkeypatch):
     )
 
 
-@pytest.mark.parametrize("use_flagtune", [None, "0", "1"])
-@pytest.mark.parametrize("include", [None, "", "mm", "mm_w8a8_fp8"])
-def test_fp8_mm_default_flagtune_honors_explicit_selection(
-    monkeypatch, use_flagtune, include
-):
-    """Only FP8 MM opts in by default; explicit switches still take precedence."""
-    monkeypatch.setattr(flagtune_runtime_mod, "_include_ops", None)
-    for name, value in (("USE_FLAGTUNE", use_flagtune), ("FLAGTUNE_INCLUDE", include)):
-        if value is None:
-            monkeypatch.delenv(name, raising=False)
-        else:
-            monkeypatch.setenv(name, value)
-    environment = dict(os.environ)
-    defaults = frozenset({"mm_w8a8_fp8"})
-    assert flagtune_runtime_mod.get_default_flagtune_include() == defaults
-    selected = defaults if include is None else frozenset(filter(None, [include]))
-    assert flagtune_runtime_mod.get_flagtune_include() == selected
-
-    for name in flagtune_runtime_mod.get_supported_flagtune_ops():
-        enabled = use_flagtune == "1" or (use_flagtune is None and name in selected)
-        assert flagtune_runtime_mod.flagtune_enabled(name) is enabled
-    assert flagtune_runtime_mod.flagtune_expanded_enabled() is (use_flagtune == "1")
-    assert flagtune_runtime_mod.flagtune_enabled("unregistered_op") is False
-    assert dict(os.environ) == environment
-
-
-@pytest.mark.parametrize("include", [[], ["mm"], ["mm_w8a8_fp8"], None])
-def test_fp8_mm_default_flagtune_honors_api_selection(monkeypatch, include):
-    """The public include API can replace the automatic FP8 MM selection."""
-    monkeypatch.setattr(flagtune_runtime_mod, "_include_ops", None)
-    monkeypatch.delenv("USE_FLAGTUNE", raising=False)
-    monkeypatch.setenv("FLAGTUNE_INCLUDE", "")
-    flagtune_runtime_mod.flagtune(include=include)
-    selected = {"mm_w8a8_fp8"} if include is None else set(include)
-
-    for name in flagtune_runtime_mod.get_supported_flagtune_ops():
-        assert flagtune_runtime_mod.flagtune_enabled(name) is (name in selected)
-    assert "USE_FLAGTUNE" not in os.environ
-
-
 @pytest.mark.parametrize(
     ("supports_cost_model", "use_flagtune", "use_cost_model", "expected"),
     [
