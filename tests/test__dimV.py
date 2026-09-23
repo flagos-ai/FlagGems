@@ -16,21 +16,11 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
 from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
-
-# ``_dimV`` starts with an underscore, and ``pytest.mark`` refuses to
-# generate a marker via attribute access for such names. Register it directly
-# on the MarkGenerator so ``@pytest.mark._dimV`` and ``-m _dimV`` both work.
-setattr(
-    pytest.mark,
-    "_dimV",
-    MarkDecorator(Mark("_dimV", (), {}, _ispytest=True), _ispytest=True),
-)
 
 # _dimV is a layout-metadata query returning a plain int; the result is
 # independent of dtype and stored data. Coverage is driven by sparse COO
@@ -90,7 +80,7 @@ def _coo_cases(shape):
     ]
 
 
-@pytest.mark._dimV
+@pytest.mark.dimV
 @pytest.mark.parametrize("shape", SPARSE_DIM_SIZES)
 def test_accuracy__dimV_coo(shape):
     for name, sparse in _coo_cases(shape):
@@ -104,7 +94,7 @@ def test_accuracy__dimV_coo(shape):
         assert res_out == ref_out, f"{name}: {res_out} != {ref_out}"
 
 
-@pytest.mark._dimV
+@pytest.mark.dimV
 @pytest.mark.parametrize("shape", SPARSE_DIM_SIZES)
 def test_accuracy__dimV_matches_indices_formula(shape):
     # Pinned formula from the verified semantics: _dimV == dim() -
@@ -114,7 +104,7 @@ def test_accuracy__dimV_matches_indices_formula(shape):
     assert flag_gems._dimV(sparse) == utils.to_reference(sparse)._dimV()
 
 
-@pytest.mark._dimV
+@pytest.mark.dimV
 @pytest.mark.parametrize("layout", ["strided", "csr", "csc"])
 def test_accuracy__dimV_unsupported_layouts_raise(layout):
     t = torch.randn(2, 3, device=flag_gems.device)
@@ -134,7 +124,7 @@ def test_accuracy__dimV_unsupported_layouts_raise(layout):
         flag_gems._dimV(inp)
 
 
-@pytest.mark._dimV
+@pytest.mark.dimV
 def test_accuracy__dimV_dispatch_stability():
     # The registration is on the Sparse dispatch key; exercise the
     # dispatcher-routed path repeatedly (a recursion bug or stale state would
