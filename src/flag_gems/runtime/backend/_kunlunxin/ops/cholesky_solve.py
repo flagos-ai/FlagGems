@@ -41,10 +41,32 @@ import triton.language as tl
 
 from flag_gems.utils import libentry
 
+from .contiguous import contiguous
+
 logger = logging.getLogger(__name__)
 
 _SINGLE_BLOCK_MAX_N = 128
 _SPLIT_HEAD = 128
+
+
+def _broadcast_shapes(*shapes):
+    """Host-side broadcast of shape tuples (equivalent of torch.broadcast_shapes)."""
+    rank = max(len(shape) for shape in shapes)
+    padded = [(1,) * (rank - len(shape)) + tuple(shape) for shape in shapes]
+    out = []
+    for dims in zip(*padded):
+        dim = 1
+        for value in dims:
+            if value == 1:
+                continue
+            if dim == 1:
+                dim = value
+            elif value != dim:
+                raise RuntimeError(
+                    "shape mismatch: objects cannot be broadcast to a single shape"
+                )
+        out.append(dim)
+    return tuple(out)
 
 
 def _check_cholesky_solve_out(B: torch.Tensor, out: torch.Tensor) -> None:
@@ -603,7 +625,7 @@ def cholesky_solve(B, L, upper=False, *, _out=None):
         batch_shape = B_batch
     else:
         try:
-            batch_shape = torch.broadcast_shapes(B_batch, L_batch)
+            batch_shape = _broadcast_shapes(B_batch, L_batch)
         except RuntimeError as exc:
             raise ValueError(
                 f"B and L batch dimensions are not broadcastable: "
@@ -620,10 +642,10 @@ def cholesky_solve(B, L, upper=False, *, _out=None):
         L = L.mT
         effective_upper = not upper
     else:
-        L = L.contiguous()
+        L = contiguous(L)
         effective_upper = upper
     if not B.is_contiguous():
-        B = B.contiguous()
+        B = contiguous(B)
     X = torch.empty_like(B) if _out is None else _out
     batch_size = 1
     for dim in batch_shape:
