@@ -33,8 +33,10 @@ from flag_gems.utils import libentry, libtuner
 from flag_gems.utils.device_info import get_sm_count
 
 from .cat import cat
+from .contiguous import contiguous
 from .mm import mm
 from .stack import stack
+from .to import to_copy
 
 logger = logging.getLogger(__name__)
 
@@ -309,7 +311,7 @@ def _check_offsets(offs, need_offsets, num_groups):
             raise RuntimeError(
                 f"offs length must match the group count, got {offs.numel()} and {num_groups}"
             )
-        return offs.contiguous()
+        return contiguous(offs)
 
     if offs is not None:
         raise RuntimeError("offs must be None when both inputs are 3D")
@@ -366,12 +368,12 @@ def _normalize_scale(scale, mat, *, dim, num_groups, scale_multiplier, name):
         expected = mat.shape[dim] * scale_multiplier
         if scale.dim() != 1 or scale.numel() != expected:
             raise RuntimeError(f"{name} must be a 1D tensor with length {expected}")
-        return scale.reshape(expected).contiguous()
+        return contiguous(scale.reshape(expected))
 
     expected_shape = (num_groups, mat.shape[1 + dim])
     if scale.dim() != 2 or tuple(scale.shape) != expected_shape:
         raise RuntimeError(f"{name} must have shape {expected_shape}")
-    return scale.contiguous()
+    return contiguous(scale)
 
 
 def _normalize_bias(bias, *, a_is_2d, b_is_2d, num_groups, N):
@@ -379,11 +381,11 @@ def _normalize_bias(bias, *, a_is_2d, b_is_2d, num_groups, N):
         return None, BIAS_NONE
 
     if bias.dim() == 1 and bias.numel() == N:
-        return bias.contiguous(), BIAS_VECTOR
+        return contiguous(bias), BIAS_VECTOR
 
     can_use_grouped_bias = not (b_is_2d and not a_is_2d)
     if can_use_grouped_bias and bias.numel() == num_groups * N:
-        return bias.reshape(num_groups, N).contiguous(), BIAS_GROUPED
+        return contiguous(bias.reshape(num_groups, N)), BIAS_GROUPED
 
     expected = f"({N},)"
     if can_use_grouped_bias:
@@ -401,7 +403,12 @@ def _scale_and_add_bias(out, scale_a, scale_b, bias, out_dtype):
     out = out * scale_a * scale_b
     if bias is not None:
         out = out + bias
-    return out.to(out_dtype)
+    return to_copy(out, dtype=out_dtype)
+
+
+def _f32(t):
+    """fp32 view for the composed fallback (backend cast entry point)."""
+    return to_copy(t, dtype=torch.float32)
 
 
 def _scaled_grouped_mm_fallback(
@@ -424,7 +431,7 @@ def _scaled_grouped_mm_fallback(
     if a_is_2d and not b_is_2d:
         for group_idx in range(num_groups):
             m_start, m_end = starts[group_idx], starts[group_idx + 1]
-            chunk = mm(mat_a[m_start:m_end].float(), mat_b[group_idx].float())
+            chunk = mm(_f32(mat_a[m_start:m_end]), _f32(mat_b[group_idx]))
             chunk_bias = None
             if bias is not None:
                 chunk_bias = bias if bias.dim() == 1 else bias[group_idx]
@@ -442,7 +449,7 @@ def _scaled_grouped_mm_fallback(
     if not a_is_2d and b_is_2d:
         for group_idx in range(num_groups):
             n_start, n_end = starts[group_idx], starts[group_idx + 1]
-            chunk = mm(mat_a[group_idx].float(), mat_b[:, n_start:n_end].float())
+            chunk = mm(_f32(mat_a[group_idx]), _f32(mat_b[:, n_start:n_end]))
             chunk_bias = bias[n_start:n_end] if bias is not None else None
             out_chunks.append(
                 _scale_and_add_bias(
@@ -460,7 +467,7 @@ def _scaled_grouped_mm_fallback(
         scale_b = scale_b.reshape(num_groups, mat_b.shape[1])
         for group_idx in range(num_groups):
             k_start, k_end = starts[group_idx], starts[group_idx + 1]
-            chunk = mm(mat_a[:, k_start:k_end].float(), mat_b[k_start:k_end].float())
+            chunk = mm(_f32(mat_a[:, k_start:k_end]), _f32(mat_b[k_start:k_end]))
             chunk_bias = None
             if bias is not None:
                 chunk_bias = bias if bias.dim() == 1 else bias[group_idx]
@@ -476,7 +483,7 @@ def _scaled_grouped_mm_fallback(
         return stack(out_chunks, dim=0)
 
     for group_idx in range(num_groups):
-        chunk = mm(mat_a[group_idx].float(), mat_b[group_idx].float())
+        chunk = mm(_f32(mat_a[group_idx]), _f32(mat_b[group_idx]))
         chunk_bias = None
         if bias is not None:
             chunk_bias = bias if bias.dim() == 1 else bias[group_idx]
@@ -556,9 +563,9 @@ def scaled_grouped_mm(
         )
 
     if self.stride(-2) > 1 and self.stride(-1) > 1:
-        self = self.contiguous()
+        self = contiguous(self)
     if mat2.stride(-2) > 1 and mat2.stride(-1) > 1:
-        mat2 = mat2.contiguous()
+        mat2 = contiguous(mat2)
 
     out = torch.empty(out_shape, dtype=output_dtype, device=self.device)
     if out.numel() == 0:
