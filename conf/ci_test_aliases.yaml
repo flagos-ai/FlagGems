@@ -95,6 +95,7 @@ std_mean_correction_out: test_std_mean
 std_mean_dim: test_std_mean
 std_mean_names_dim: test_std_mean
 tril_indices: test_triangular_indices
+trilinear_out: test_trilinear
 triu_indices: test_triangular_indices
 upsample_bicubic2d_aa_backward: test_upsample_bicubic2d_aa
 upsample_bicubic2d_backward_grad_input: test_upsample_bicubic2d_backward
