@@ -229,6 +229,13 @@ def _launch_gather(vshape, vstride, src, dst, n):
     )
 
 
+# Alias kept for the on-device callers that import `_launch_bcast` from here
+# (hypot / lift_out / xlogy / squeeze_copy): same contract, same 6-D
+# decomposition and block size as `_launch_gather`, only the index width
+# differs (int32 here vs int64 upstream).
+_launch_bcast = _launch_gather
+
+
 def _launch_broadcast(view, out, x_contiguous):
     """Dispatch a broadcast (stride-0) expand to the cheapest correct kernel."""
     vshape = tuple(view.shape)
