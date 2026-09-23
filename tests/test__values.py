@@ -16,21 +16,11 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
 from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
-
-# ``_values`` starts with an underscore, and ``pytest.mark`` refuses to
-# generate a marker via attribute access for such names. Register it directly
-# on the MarkGenerator so ``@pytest.mark._values`` and ``-m _values`` both work.
-setattr(
-    pytest.mark,
-    "_values",
-    MarkDecorator(Mark("_values", (), {}, _ispytest=True), _ispytest=True),
-)
 
 
 def _make_coo_plain(device, dtype=torch.float32):
@@ -74,7 +64,7 @@ if QUICK_MODE:
     ]
 
 
-@pytest.mark._values
+@pytest.mark.values
 @pytest.mark.parametrize(
     "name, make",
     COO_CASES,
@@ -97,7 +87,7 @@ def test_accuracy__values_coo(name, make, dtype):
     assert res_out.data_ptr() == inp._values().data_ptr()
 
 
-@pytest.mark._values
+@pytest.mark.values
 def test__values_mutation_through_view():
     # Writing through the returned view must be visible through the native
     # ``_values`` accessor and vice versa: proves a real alias, not a copy.
@@ -115,7 +105,7 @@ def test__values_mutation_through_view():
     utils.gems_assert_equal(inp.to_dense(), ref_inp.to_dense())
 
 
-@pytest.mark._values
+@pytest.mark.values
 def test__values_strided_raises():
     # ATen implements _values only for sparse COO: the dispatcher raises
     # NotImplementedError for strided (dense) tensors. The registered
@@ -131,7 +121,7 @@ def test__values_strided_raises():
         flag_gems._values(inp)
 
 
-@pytest.mark._values
+@pytest.mark.values
 def test__values_sparse_compressed():
     # Verify natively whether aten::_values supports the sparse compressed
     # layouts; on this torch build it does not (SparseCsr* backends have no
@@ -160,7 +150,7 @@ def test__values_sparse_compressed():
         flag_gems._values(dense.to_sparse_csc())
 
 
-@pytest.mark._values
+@pytest.mark.values
 def test__values_dispatch_stability():
     # Repeated calls and cross-op interference must stay stable: the impl
     # delegates below the autograd key, so repeated dispatch never recurses and
