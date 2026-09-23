@@ -45,7 +45,17 @@ def _resize_output_(inp: torch.Tensor, size, device):
     if not isinstance(size, tuple):
         size = tuple(size)
 
-    if inp.device != torch.device(device):
+    requested = torch.device(device)
+    # ``torch.device("cuda")`` carries no index and means "the current CUDA
+    # device".  The benchmark harness passes exactly ``flag_gems.device``
+    # ("cuda") while the tensor lives on ``cuda:N``, so an index-less device is
+    # matched by type; only an explicitly indexed device has to match
+    # index-for-index.
+    if requested.index is None:
+        same_device = requested.type == inp.device.type
+    else:
+        same_device = requested == inp.device
+    if not same_device:
         raise RuntimeError(
             f"_resize_output_: device mismatch, input tensor is on {inp.device} "
             f"but the requested device is {device}"

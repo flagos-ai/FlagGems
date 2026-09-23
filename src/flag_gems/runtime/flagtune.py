@@ -244,6 +244,9 @@ def __getattr__(name):
 
 
 register_flagtune_op("mm", default=False, description="matrix multiplication")
+register_flagtune_op(
+    "mm_w8a8_fp8", default=False, description="FP8 W8A8 matrix multiplication"
+)
 register_flagtune_op("bmm", default=False, description="batched matrix multiplication")
 register_flagtune_op(
     "mv_row",
