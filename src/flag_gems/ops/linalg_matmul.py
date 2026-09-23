@@ -9,31 +9,70 @@ from flag_gems.ops.mm import mm
 logger = logging.getLogger(__name__)
 
 
-def linalg_matmul(input, other):
-    """Matrix product of two tensors.
+class LinalgMatmulFunction(torch.autograd.Function):
+    """Autograd for linalg_matmul.
 
-    The behavior depends on the dimensionality of the inputs:
-    - If both inputs are 2D, performs regular matrix multiplication: (M, K) @ (K, N) -> (M, N)
-    - If both inputs are 3D (batched), performs batched matrix multiplication:
-      (B, M, K) @ (B, K, N) -> (B, M, N)
-    - Batch dims are broadcast against each other, and 1D inputs are folded
-      into the product per torch.matmul semantics.
-
-    This is an alias for torch.linalg.matmul.
+    Forward → shape manipulation plus the Triton mm/bmm kernels.
+    Backward → recompute the product in native PyTorch under
+    torch.enable_grad, then take gradients with torch.autograd.grad,
+    so 1-D folding and batch-dim broadcasting follow native matmul
+    gradient semantics.
     """
-    logger.debug("GEMS LINALG_MATMUL")
 
-    # matmul is only defined for floating point and complex dtypes; reject
-    # integral inputs with an error matching the ATen CUDA backend instead of
-    # letting them fail inside the Triton kernel with a compilation error.
-    if not input.is_floating_point() and not input.is_complex():
-        raise NotImplementedError(
-            f"linalg_matmul not implemented for '{input.dtype}' on this device"
+    @staticmethod
+    def forward(ctx, input, other):
+        # matmul is only defined for floating point dtypes; reject integral
+        # and complex inputs with errors matching the ATen CUDA backend
+        # instead of letting them fail inside the Triton kernel.
+        if not input.is_floating_point():
+            raise NotImplementedError(
+                f"linalg_matmul not implemented for '{input.dtype}' on this device"
+            )
+        if not other.is_floating_point():
+            raise NotImplementedError(
+                f"linalg_matmul not implemented for '{other.dtype}' on this device"
+            )
+        if input.dtype != other.dtype:
+            raise RuntimeError(
+                f"expected mat1 and mat2 to have the same dtype, but got: "
+                f"{input.dtype} != {other.dtype}"
+            )
+
+        ctx.save_for_backward(input, other)
+        return _linalg_matmul_forward(input, other)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        input, other = ctx.saved_tensors
+        orig_dtype = input.dtype
+        # run the backward in fp32 for half-precision inputs to preserve
+        # gradient precision
+        compute_dtype = (
+            torch.float32
+            if orig_dtype in (torch.float16, torch.bfloat16)
+            else orig_dtype
         )
-    if not other.is_floating_point() and not other.is_complex():
-        raise NotImplementedError(
-            f"linalg_matmul not implemented for '{other.dtype}' on this device"
+        # the enable_grad block builds a graph for the recomputed forward, so
+        # higher-order gradients flow through this backward as well
+        with torch.enable_grad():
+            input = input.detach().to(compute_dtype).requires_grad_(True)
+            other = other.detach().to(compute_dtype).requires_grad_(True)
+            output = torch.matmul(input, other)
+            grad_input, grad_other = torch.autograd.grad(
+                output,
+                (input, other),
+                grad_output.to(compute_dtype),
+                create_graph=torch.is_grad_enabled(),
+                allow_unused=True,
+            )
+        return (
+            None if grad_input is None else grad_input.to(orig_dtype),
+            None if grad_other is None else grad_other.to(orig_dtype),
         )
+
+
+def _linalg_matmul_forward(input, other):
+    logger.debug("GEMS LINALG_MATMUL")
 
     # Fold 1D inputs into 2D per torch.matmul semantics:
     # (K,) @ (K, N) -> (N,) and (M, K) @ (K,) -> (M,), (K,) @ (K,) -> scalar
@@ -69,8 +108,14 @@ def linalg_matmul(input, other):
     for s in bshape:
         nbatch *= s
     if nbatch == 0:
-        # empty batch: no kernel launch (grid of 0 is invalid), just an empty output
-        return torch.empty(bshape + (M, N), dtype=input.dtype, device=input.device)
+        # empty batch: no kernel launch (grid of 0 is invalid), just an empty
+        # output with the folded 1-D dims restored
+        out = torch.empty(bshape + (M, N), dtype=input.dtype, device=input.device)
+        if fold_first:
+            out = out.squeeze(-2)
+        if fold_last:
+            out = out.squeeze(-1)
+        return out
     out = bmm(a.reshape(nbatch, M, K), b.reshape(nbatch, K, N))
     out = out.reshape(bshape + (M, N))
     if fold_first:
@@ -78,3 +123,18 @@ def linalg_matmul(input, other):
     if fold_last:
         out = out.squeeze(-1)
     return out
+
+
+def linalg_matmul(input, other):
+    """Matrix product of two tensors.
+
+    The behavior depends on the dimensionality of the inputs:
+    - If both inputs are 2D, performs regular matrix multiplication: (M, K) @ (K, N) -> (M, N)
+    - If both inputs are 3D (batched), performs batched matrix multiplication:
+      (B, M, K) @ (B, K, N) -> (B, M, N)
+    - Batch dims are broadcast against each other, and 1D inputs are folded
+      into the product per torch.matmul semantics.
+
+    This is an alias for torch.linalg.matmul.
+    """
+    return LinalgMatmulFunction.apply(input, other)

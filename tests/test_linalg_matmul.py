@@ -71,6 +71,18 @@ def test_linalg_matmul_3d(M, N, K, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
 
 
+# (shape of mat1, shape of mat2) covering zero-sized cases:
+# empty batch with folded 1-D dims, empty 2-D, empty K
+LINALG_MATMUL_ZERO_SIZED_SHAPES = [
+    ((5,), (0, 5, 6)),  # (K,) @ (0, K, N) -> (0, N)
+    ((0, 2, 5), (5,)),  # (0, M, K) @ (K,) -> (0, M)
+    ((0, 2, 5), (0, 5, 6)),  # (0, M, K) @ (0, K, N) -> (0, M, N)
+    ((1, 0, 2, 5), (0, 5, 6)),  # empty broadcast batch -> (0, 2, 6)
+    ((0, 5), (5, 6)),  # (0, K) @ (K, N) -> (0, N)
+    ((2, 5), (0, 5, 6)),  # (M, K) @ (0, K, N) -> (0, M, N)
+]
+
+
 @pytest.mark.linalg_matmul
 @pytest.mark.parametrize("shape1, shape2", LINALG_MATMUL_BROADCAST_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -88,3 +100,110 @@ def test_linalg_matmul_broadcast(shape1, shape2, dtype):
     res_out = flag_gems.linalg_matmul(mat1, mat2)
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=shape1[-1])
+
+
+@pytest.mark.linalg_matmul
+@pytest.mark.parametrize("shape1, shape2", LINALG_MATMUL_ZERO_SIZED_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_linalg_matmul_zero_sized(shape1, shape2, dtype):
+    """Test zero-sized inputs: output shape must match native matmul"""
+    mat1 = torch.randn(shape1, dtype=dtype, device=flag_gems.device)
+    mat2 = torch.randn(shape2, dtype=dtype, device=flag_gems.device)
+    ref_mat1 = utils.to_reference(mat1, True)
+    ref_mat2 = utils.to_reference(mat2, True)
+
+    ref_out = torch.linalg.matmul(ref_mat1, ref_mat2)
+    res_out = flag_gems.linalg_matmul(mat1, mat2)
+
+    assert res_out.shape == ref_out.shape
+    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=shape1[-1])
+
+
+@pytest.mark.linalg_matmul
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_linalg_matmul_mixed_dtype(dtype):
+    """Mixed-dtype inputs are rejected, matching native matmul"""
+    mat1 = torch.randn((4, 5), dtype=dtype, device=flag_gems.device)
+    other_dtype = torch.float32 if dtype != torch.float32 else torch.float16
+    mat2 = torch.randn((5, 6), dtype=other_dtype, device=flag_gems.device)
+
+    with pytest.raises(RuntimeError, match="same dtype"):
+        flag_gems.linalg_matmul(mat1, mat2)
+
+
+@pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
+def test_linalg_matmul_complex(dtype):
+    """Complex inputs raise NotImplementedError (Triton kernels don't support them)"""
+    mat1 = torch.randn((4, 5), dtype=dtype, device=flag_gems.device)
+    mat2 = torch.randn((5, 6), dtype=dtype, device=flag_gems.device)
+
+    with pytest.raises(NotImplementedError, match="not implemented"):
+        flag_gems.linalg_matmul(mat1, mat2)
+
+
+@pytest.mark.linalg_matmul
+@pytest.mark.parametrize("shape1, shape2", LINALG_MATMUL_BROADCAST_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_linalg_matmul_grad(shape1, shape2, dtype):
+    """Gradients of both inputs match native matmul for all dim/broadcast cases"""
+    mat1 = torch.randn(shape1, dtype=dtype, device=flag_gems.device)
+    mat2 = torch.randn(shape2, dtype=dtype, device=flag_gems.device)
+    ref_mat1 = utils.to_reference(mat1, True).requires_grad_(True)
+    ref_mat2 = utils.to_reference(mat2, True).requires_grad_(True)
+    mat1 = mat1.requires_grad_(True)
+    mat2 = mat2.requires_grad_(True)
+
+    ref_out = torch.linalg.matmul(ref_mat1, ref_mat2)
+    res_out = flag_gems.linalg_matmul(mat1, mat2)
+
+    out_grad = torch.randn_like(res_out)
+    ref_grad = utils.to_reference(out_grad, True)
+
+    ref_grad1, ref_grad2 = torch.autograd.grad(
+        ref_out, (ref_mat1, ref_mat2), ref_grad, allow_unused=True
+    )
+    res_grad1, res_grad2 = torch.autograd.grad(
+        res_out, (mat1, mat2), out_grad, allow_unused=True
+    )
+
+    # gradient reductions run over N (grad1) / M (grad2) and the broadcast
+    # batch; scale the tolerance by the full reduction extent
+    nbatch = 1
+    for s in torch.broadcast_shapes(shape1[:-2], shape2[:-2]):
+        nbatch *= s
+    M = shape1[-2] if len(shape1) >= 2 else 1
+    N = shape2[-1] if len(shape2) >= 2 else 1
+
+    # 1D inputs produce scalar/1D outputs whose grads may be None when unused
+    if ref_grad1 is not None and res_grad1 is not None:
+        utils.gems_assert_close(res_grad1, ref_grad1, dtype, reduce_dim=nbatch * N)
+    if ref_grad2 is not None and res_grad2 is not None:
+        utils.gems_assert_close(res_grad2, ref_grad2, dtype, reduce_dim=nbatch * M)
+
+
+@pytest.mark.linalg_matmul
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_linalg_matmul_double_grad(dtype):
+    """Higher-order gradients flow through the recomputed backward"""
+    mat1 = torch.randn((4, 5), dtype=dtype, device=flag_gems.device)
+    mat2 = torch.randn((5, 6), dtype=dtype, device=flag_gems.device)
+    ref_mat1 = utils.to_reference(mat1, True).requires_grad_(True)
+    ref_mat2 = utils.to_reference(mat2, True).requires_grad_(True)
+    mat1 = mat1.requires_grad_(True)
+    mat2 = mat2.requires_grad_(True)
+
+    ref_loss = torch.linalg.matmul(ref_mat1, ref_mat2).square().sum()
+    res_loss = flag_gems.linalg_matmul(mat1, mat2).square().sum()
+
+    ref_grad1, ref_grad2 = torch.autograd.grad(
+        ref_loss, (ref_mat1, ref_mat2), create_graph=True
+    )
+    res_grad1, res_grad2 = torch.autograd.grad(
+        res_loss, (mat1, mat2), create_graph=True
+    )
+
+    ref_dd = torch.autograd.grad(ref_grad1.sum(), ref_mat1, allow_unused=True)[0]
+    res_dd = torch.autograd.grad(res_grad1.sum(), mat1, allow_unused=True)[0]
+
+    # gradient of grad wrt mat1 is 2 * mat1; compare against the reference
+    utils.gems_assert_close(res_dd, ref_dd, dtype)
