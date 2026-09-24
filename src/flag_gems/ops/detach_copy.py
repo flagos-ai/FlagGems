@@ -69,6 +69,14 @@ def detach_copy(self: torch.Tensor) -> torch.Tensor:
     """
     logger.debug("GEMS DETACH_COPY")
     n = self.numel()
+    if self.dtype.is_complex:
+        # Triton cannot load/store complex pointers (no dtype mapping for
+        # complex64/complex128 in the current Triton version): dispatching a
+        # complex tensor into the kernels below fails with KeyError. Native
+        # aten::detach_copy supports complex inputs natively, so route them
+        # below the autograd key before any Triton kernel is entered.
+        with torch._C._AutoDispatchBelowAutograd():
+            return torch.ops.aten.detach_copy(self)
     if self.is_contiguous():
         out = torch.empty_like(self)
         if n == 0:

@@ -3976,7 +3976,7 @@ ops:
   kind:
   - Tensor
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: dgeglu
   description: 'Gaussian Error Gated Linear Unit with GELU activation instead of sigmoid
     function.
