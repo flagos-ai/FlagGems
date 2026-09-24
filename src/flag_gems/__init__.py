@@ -821,7 +821,6 @@ _FULL_CONFIG = (
     ("fractional_max_pool2d_backward", fractional_max_pool2d_backward),
     ("fractional_max_pool3d", fractional_max_pool3d),
     ("fractional_max_pool3d_backward", fractional_max_pool3d_backward),
-    ("frexp", frexp),
     ("frexp.Tensor", frexp),
     ("full", full),
     ("full_like", full_like),
