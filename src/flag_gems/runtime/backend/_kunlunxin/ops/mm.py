@@ -24,6 +24,8 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
+from .to import to_copy  # [call-fix 2026-09-24] in-tree direct call
+
 logger = logging.getLogger(__name__)
 
 
@@ -515,8 +517,14 @@ def mm(a, b):
     # [kunlunxin] bf16 matmul is not correctly rounded for small shapes in
     # this backend; the fp32 path is exact, so compute the product in fp32
     # and round the result once.
+    # [call-fix 2026-09-24] the fp32 detour goes through the backend's own
+    # kernels by direct import (to_copy for the operand/rounding casts, this
+    # same mm for the fp32 product) instead of the torch.mm shortcut.
     if a.dtype == torch.bfloat16 and b.dtype == torch.bfloat16:
-        return torch.mm(a.float(), b.float()).to(torch.bfloat16)
+        af = to_copy(a, dtype=torch.float32)
+        bf = to_copy(b, dtype=torch.float32)
+        c = mm(af, bf)
+        return to_copy(c, dtype=torch.bfloat16)
     device = a.device
     # NOTE: no ``x.contiguous()`` here.  Inside use_gems()/enable() a strided
     # input (e.g. the column-major self-transpose view) dispatches through the
