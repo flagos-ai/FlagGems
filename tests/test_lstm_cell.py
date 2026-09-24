@@ -242,6 +242,22 @@ def test_lstm_cell_negative_hx_length():
 
 
 @pytest.mark.lstm_cell
+@pytest.mark.parametrize(
+    "shape", tu.selected_cases([(1024, 1024, 64)], quick=[(2, 19, 7)])
+)
+@pytest.mark.parametrize(
+    "dtype",
+    [dtype for dtype in SUPPORTED_DTYPES if dtype in (torch.float16, torch.bfloat16)],
+)
+def test_lstm_cell_negative_input_bias_only(shape, dtype):
+    # Native CUDA lstm_cell requires b_hh when b_ih is present.
+    inp, hx, w_ih, w_hh = _operands(shape, dtype, ["-1", "1"])
+    b_ih = tu.make_input(dtype, (w_ih.shape[0],), ["-1", "1"])
+    with pytest.raises(RuntimeError):
+        flag_gems.lstm_cell(inp, hx, w_ih, w_hh, b_ih)
+
+
+@pytest.mark.lstm_cell
 def test_lstm_cell_negative_bias_rank():
     inp, hx, w_ih, w_hh = _operands((3, 8, 4), torch.float32, ["-1", "1"])
     bad_b_ih = tu.make_input(torch.float32, (2, w_ih.shape[0]), ["-1", "1"])

@@ -165,10 +165,11 @@ SPECIAL_CASES = tu.selected_cases(tu.special_value_cases(FLOAT_DTYPES), quick=[]
 FP8_SPECIAL_CASES = tu.selected_cases(tu.special_value_cases(FP8_DTYPES), quick=[])
 
 VIEW_STATE_CASES = tu.selected_cases(
-    [
-        (torch.float32, "strided"),
-        (torch.complex128, "strided"),
-        (torch.complex128, "conj_offset"),
+    [(torch.float32, "strided")]
+    + [
+        (dtype, state)
+        for dtype in COMPLEX_DTYPES
+        for state in ("strided", "conj_offset")
     ],
     quick=[],
 )

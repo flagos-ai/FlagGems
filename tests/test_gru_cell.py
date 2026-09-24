@@ -107,7 +107,10 @@ _STRIDED_LAYOUTS = tu.selected_cases(
 
 @pytest.mark.gru_cell
 @pytest.mark.parametrize("base_shape,rows,cols", _STRIDED_LAYOUTS)
-@pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
+@pytest.mark.parametrize(
+    "dtype",
+    [dtype for dtype in GRU_CELL_DTYPES if dtype in (torch.float32, torch.bfloat16)],
+)
 def test_gru_cell_strided_input(base_shape, rows, cols, dtype):
     base = tu.make_input(dtype, base_shape, ["-1", "1"])
     inp = base[rows, cols]

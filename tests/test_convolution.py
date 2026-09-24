@@ -43,6 +43,7 @@ if utils.fp64_is_supported:
 
 _PARAM_INPUT_SHAPE = (20, 320, 15)
 _PARAM_DTYPE = torch.bfloat16
+_NEGATIVE_PARAM_SHAPES = tu.selected_cases([_PARAM_INPUT_SHAPE], quick=[(2, 19, 7)])
 _PARAM_CASES = tu.selected_cases(
     [
         ((32, 320, 3), 1, 1, 1, 1),
@@ -315,32 +316,35 @@ def test_convolution_special_values(dtype, scenario):
     tu.assert_result_close(res_out, ref_out)
 
 
-def _conv_inputs():
-    inp = tu.make_input(torch.float32, (2, 4, 12), ["-1", "1"])
-    weight = tu.make_input(torch.float32, (6, 4, 3), ["-1", "1"])
+def _conv_inputs(input_shape):
+    inp = tu.make_input(_PARAM_DTYPE, input_shape, ["-1", "1"])
+    weight = tu.make_input(_PARAM_DTYPE, (6, input_shape[1], 3), ["-1", "1"])
     return inp, weight
 
 
 @pytest.mark.convolution
 @pytest.mark.parametrize("padding", [-1, -2])
-def test_convolution_negative_padding(padding):
-    inp, weight = _conv_inputs()
+@pytest.mark.parametrize("input_shape", _NEGATIVE_PARAM_SHAPES)
+def test_convolution_negative_padding(padding, input_shape):
+    inp, weight = _conv_inputs(input_shape)
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems.convolution(inp, weight, None, (1,), (padding,), (1,), False, (0,), 1)
 
 
 @pytest.mark.convolution
 @pytest.mark.parametrize("stride", [0, -1])
-def test_convolution_non_positive_stride(stride):
-    inp, weight = _conv_inputs()
+@pytest.mark.parametrize("input_shape", _NEGATIVE_PARAM_SHAPES)
+def test_convolution_non_positive_stride(stride, input_shape):
+    inp, weight = _conv_inputs(input_shape)
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems.convolution(inp, weight, None, (stride,), (1,), (1,), False, (0,), 1)
 
 
 @pytest.mark.convolution
 @pytest.mark.parametrize("dilation", [0, -1])
-def test_convolution_non_positive_dilation(dilation):
-    inp, weight = _conv_inputs()
+@pytest.mark.parametrize("input_shape", _NEGATIVE_PARAM_SHAPES)
+def test_convolution_non_positive_dilation(dilation, input_shape):
+    inp, weight = _conv_inputs(input_shape)
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems.convolution(
             inp, weight, None, (1,), (1,), (dilation,), False, (0,), 1
@@ -349,8 +353,9 @@ def test_convolution_non_positive_dilation(dilation):
 
 @pytest.mark.convolution
 @pytest.mark.parametrize("groups", [0, -1])
-def test_convolution_non_positive_groups(groups):
-    inp, weight = _conv_inputs()
+@pytest.mark.parametrize("input_shape", _NEGATIVE_PARAM_SHAPES)
+def test_convolution_non_positive_groups(groups, input_shape):
+    inp, weight = _conv_inputs(input_shape)
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems.convolution(inp, weight, None, (1,), (1,), (1,), False, (0,), groups)
 
@@ -373,9 +378,10 @@ def test_convolution_channel_mismatch():
 
 
 @pytest.mark.convolution
-def test_convolution_groups_not_divisible():
-    inp = tu.make_input(torch.float32, (2, 4, 12), ["-1", "1"])
-    weight = tu.make_input(torch.float32, (6, 3, 3), ["-1", "1"])
+@pytest.mark.parametrize("input_shape", _NEGATIVE_PARAM_SHAPES)
+def test_convolution_groups_not_divisible(input_shape):
+    inp = tu.make_input(_PARAM_DTYPE, input_shape, ["-1", "1"])
+    weight = tu.make_input(_PARAM_DTYPE, (6, input_shape[1] // 3, 3), ["-1", "1"])
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems.convolution(inp, weight, None, (1,), (1,), (1,), False, (0,), 3)
 
@@ -389,11 +395,15 @@ def test_convolution_kernel_larger_than_input():
 
 
 @pytest.mark.convolution
-def test_convolution_output_padding_not_smaller_than_stride():
-    inp = tu.make_input(torch.float32, (2, 4, 12), ["-1", "1"])
-    weight = tu.make_input(torch.float32, (4, 6, 3), ["-1", "1"])
+@pytest.mark.parametrize("input_shape", _NEGATIVE_PARAM_SHAPES)
+@pytest.mark.parametrize("output_padding", [-1, 1, 2])
+def test_convolution_invalid_output_padding(input_shape, output_padding):
+    inp = tu.make_input(_PARAM_DTYPE, input_shape, ["-1", "1"])
+    weight = tu.make_input(_PARAM_DTYPE, (input_shape[1], 6, 3), ["-1", "1"])
     with pytest.raises((RuntimeError, TypeError)):
-        flag_gems.convolution(inp, weight, None, (1,), (1,), (1,), True, (2,), 1)
+        flag_gems.convolution(
+            inp, weight, None, (1,), (1,), (1,), True, (output_padding,), 1
+        )
 
 
 @pytest.mark.convolution
@@ -407,7 +417,7 @@ def test_convolution_bias_length_mismatch():
 
 @pytest.mark.convolution
 def test_convolution_non_tensor_input():
-    inp, weight = _conv_inputs()
+    inp, weight = _conv_inputs((2, 4, 12))
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems.convolution(
             inp.tolist(), weight, None, (1,), (1,), (1,), False, (0,), 1
