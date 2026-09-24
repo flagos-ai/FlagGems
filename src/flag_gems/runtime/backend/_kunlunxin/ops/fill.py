@@ -125,7 +125,9 @@ def fill_tensor_out(input, value, *, out=None):
     num_warps = heuristics_for_num_warps(block_size)
     with torch_device_fn.device(input.device):
         _fill_tensor_out_kernel[grid_fn](
-            out, N, value.item(),
+            out,
+            N,
+            value.item(),
             BLOCK_SIZE=block_size,
             num_warps=num_warps,
             isCloseDtypeConvert=True,
