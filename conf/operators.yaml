@@ -4405,17 +4405,6 @@ ops:
   stages:
   - alpha: '5.0'
   - beta: '5.3'
-- id: dunder_ior_tensor
-  description: The in-place version of bitwise or operation for tensor and scalar.
-  for:
-  - __ior__.Tensor
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Math
-  stages:
-  - beta: '5.3'
 - id: dunder_or_scalar
   description: The scalar version of `dunder_or_tensor`.
   for:
@@ -7804,9 +7793,21 @@ ops:
   - alpha: '5.4'
 
 - id: ior_scalar
-  description: The scalar version of `dunder_ior_tensor`.
+  description: The scalar version of `ior_tensor`.
   for:
   - __ior__.Scalar
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - beta: '5.3'
+
+- id: ior_tensor
+  description: The in-place version of bitwise or operation for two tensors.
+  for:
+  - __ior__.Tensor
   labels:
   - aten
   - KernelGen
