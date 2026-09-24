@@ -177,20 +177,34 @@ ops:
   - BLAS
   stages:
   - alpha: '5.5'
-- id: _pin_memory
-  description: 'Copies a strided CPU tensor into page-locked host memory for asynchronous
-    transfer to an accelerator.
+- id: _logcumsumexp
+  description: 'Returns the log of the cumulative sum of exponentials of elements along a
+    dimension, computed in a numerically stable way. Underscored variant of
+    `torch.logcumsumexp`.
 
     '
   for:
-  - _pin_memory
+  - _logcumsumexp
   labels:
   - aten
   - KernelGen
   kind:
-  - Tensor
+  - Math
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
+- id: _logcumsumexp_out
+  description: 'A variant of `_logcumsumexp` that assigns the output to the `out` tensor.
+
+    '
+  for:
+  - _logcumsumexp.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: _reshape_alias
   description: 'Creates a view of the input tensor with the given size and stride,
 
@@ -7371,6 +7385,34 @@ ops:
   - Reduction
   stages:
   - alpha: '5.5'
+- id: histogramdd_from_bin_cts
+  description: 'Computes a multi-dimensional histogram of the values in a tensor using a
+    sequence of per-dimension bin counts (equal-width bins).
+
+    '
+  for:
+  - _histogramdd_from_bin_cts
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Reduction
+  stages:
+  - alpha: '5.4'
+- id: histogramdd_from_bin_cts_out
+  description: 'A variant of `_histogramdd_from_bin_cts()` that assigns the output to
+    the given `out` parameter.
+
+    '
+  for:
+  - _histogramdd_from_bin_cts.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Reduction
+  stages:
+  - alpha: '5.4'
 - id: hsplit
   description: 'Split a tensor into multiple sub-tensors horizontally (column-wise).
 
