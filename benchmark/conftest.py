@@ -15,6 +15,7 @@
 import json
 import logging
 import os
+from pathlib import Path
 
 import pytest
 import torch
@@ -25,6 +26,8 @@ from flag_gems.cli_override import add_override_arguments, apply_overrides_from_
 from flag_gems.runtime import torch_device_fn
 
 from . import consts
+from .profile_hook import ProfileHooks
+from .reference import reference_report, validate_reference_options
 
 device = flag_gems.device
 vendor_name = flag_gems.vendor_name
@@ -109,6 +112,15 @@ class BenchConfig:
         self.executed_case_ids = set()
         self.parallel = 0
         self.mm_layout = None
+        self.profile_only = False
+        self.preflight_only = False
+        self.preflight_records = []
+        self.reference_only = False
+        self.reference_records = []
+        self.profile_warmup = 10
+        self.profile_iterations = 1
+        self.profile_hook = None
+        self.override_registry = None
         self.skip_native = False
         self.native_baseline_skip_reason = None
 
@@ -174,6 +186,12 @@ def _deactivate_inactive_native_marker(item, current_vendor):
 
 def pytest_addoption(parser):
     parser.addoption(
+        "--reference-only",
+        action="store_true",
+        default=False,
+        help="Run original benchmark baseline only; no candidate or timing.",
+    )
+    parser.addoption(
         (
             "--mode" if vendor_name != "kunlunxin" else "--fg_mode"
         ),  # TODO: fix pytest-* common --mode args
@@ -191,10 +209,10 @@ def pytest_addoption(parser):
     parser.addoption(
         "--level",
         action="store",
-        default="comprehensive",
+        default=None,
         required=False,
         choices=[level.value for level in consts.BenchLevel],
-        help="Specify the benchmark level: comprehensive, or core.",
+        help="Benchmark level: reference-only defaults to core; other modes default to comprehensive.",
     )
 
     parser.addoption(
@@ -224,6 +242,18 @@ def pytest_addoption(parser):
         default=None,
         help="Benchmark only this exact workload ID. May be repeated.",
     )
+    parser.addoption(
+        "--profile-only",
+        action="store_true",
+        help="Replay exactly one case with candidate-only profiling.",
+    )
+    parser.addoption(
+        "--preflight-only",
+        action="store_true",
+        help="Run each selected candidate case once and synchronize; no timing or correctness comparison.",
+    )
+    parser.addoption("--profile-warmup", type=int, default=10)
+    parser.addoption("--profile-iterations", type=int, default=1)
 
     parser.addoption(
         "--metrics",
@@ -319,6 +349,10 @@ def pytest_addoption(parser):
     add_override_arguments(parser)
 
 
+def pytest_addhooks(pluginmanager):
+    pluginmanager.add_hookspecs(ProfileHooks)
+
+
 def pytest_configure(config):
     global Config  # noqa: F824
     global REPORT_FILE
@@ -330,6 +364,7 @@ def pytest_configure(config):
     )
 
     Config = BenchConfig()
+    Config.reference_only = validate_reference_options(config)
     CASE_LISTS.clear()
     TEST_RESULTS.clear()
 
@@ -345,6 +380,18 @@ def pytest_configure(config):
     Config.query = config.getoption("--query")
     Config.list_cases = config.getoption("--list-cases")
     Config.case_ids = config.getoption("--case-id")
+    Config.profile_only = config.getoption("--profile-only")
+    Config.preflight_only = config.getoption("--preflight-only")
+    Config.profile_warmup = config.getoption("--profile-warmup")
+    Config.profile_iterations = config.getoption("--profile-iterations")
+    if Config.preflight_only and (
+        Config.profile_only or Config.list_cases or Config.query
+    ):
+        raise pytest.UsageError(
+            "--preflight-only cannot be combined with --profile-only, --list-cases or --query."
+        )
+    if Config.preflight_only and config.getoption("--parallel"):
+        raise pytest.UsageError("--preflight-only does not support --parallel.")
     if Config.list_cases and Config.case_ids is not None:
         raise pytest.UsageError("--list-cases cannot be combined with --case-id.")
     if Config.query and (Config.list_cases or Config.case_ids is not None):
@@ -355,8 +402,20 @@ def pytest_configure(config):
         set(Config.case_ids)
     ):
         raise pytest.UsageError("Duplicate --case-id values are not allowed.")
+    if Config.profile_only and (Config.case_ids is None or len(Config.case_ids) != 1):
+        raise pytest.UsageError("--profile-only requires exactly one --case-id.")
+    if Config.profile_only and Config.list_cases:
+        raise pytest.UsageError("--profile-only cannot be combined with --list-cases.")
+    if Config.profile_warmup < 0 or Config.profile_iterations < 1:
+        raise pytest.UsageError(
+            "profile warmup must be non-negative and iterations positive"
+        )
+
+    Config.profile_hook = config.hook.pytest_flaggems_profile_scope
 
     level_value = config.getoption("--level")
+    if level_value is None:
+        level_value = "core" if Config.reference_only else "comprehensive"
     Config.bench_level = consts.BenchLevel(level_value)
 
     warmup_value = config.getoption("--warmup")
@@ -383,6 +442,9 @@ def pytest_configure(config):
     if Config.record_json or Config.list_cases:
         Config.output = config.getoption("--output")
         REPORT_FILE = Config.output
+    if Config.reference_only:
+        Config.record_json = True
+        REPORT_FILE = config.getoption("--output") or "reference_result.json"
 
     if Config.record_log:
         cmd_args = [
@@ -410,6 +472,7 @@ def pytest_configure(config):
 
     # Apply dynamic operator overrides
     config._override_registry = apply_overrides_from_args(config.option)
+    Config.override_registry = config._override_registry
 
 
 def pytest_unconfigure(config):
@@ -520,6 +583,18 @@ def pytest_runtest_makereport(item, call):
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_runtest_logreport(report):
+    if Config.reference_only:
+        if report.outcome in {"failed", "skipped"}:
+            Config.reference_records.append(
+                {
+                    "nodeid": report.nodeid,
+                    "operator": report.opid,
+                    "status": "FAILED" if report.failed else "SKIP",
+                    "reason": get_reason(report),
+                    "pytest_phase": report.when,
+                }
+            )
+        return
     if not Config.record_json:
         return
 
@@ -546,6 +621,26 @@ def pytest_runtest_logreport(report):
 
 def pytest_terminal_summary(terminalreporter, exitstatus, config):
     """Combine and dump the result into JSON."""
+    if Config.reference_only:
+        with open(REPORT_FILE, "w") as output:
+            json.dump(
+                reference_report(Config.reference_records, exitstatus=exitstatus),
+                output,
+                indent=2,
+            )
+        return
+    if Config.preflight_only:
+        if Config.record_json:
+            with open(REPORT_FILE, "w") as f:
+                json.dump(
+                    {
+                        "schema_version": "flaggems.preflight/v1",
+                        "records": Config.preflight_records,
+                    },
+                    f,
+                    indent=2,
+                )
+        return
     if Config.list_cases:
         with open(REPORT_FILE, "w") as f:
             json.dump(
@@ -572,11 +667,30 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
 
 
 def pytest_sessionfinish(session, exitstatus):
+    if Config is not None and Config.reference_only:
+        if reference_report(Config.reference_records)["status"] in {
+            "UNSUPPORTED",
+            "FAILED",
+            "NO_CASES",
+        }:
+            if session.exitstatus == pytest.ExitCode.OK:
+                session.exitstatus = pytest.ExitCode.TESTS_FAILED
+    if Config is not None and Config.preflight_only:
+        incomplete = not Config.preflight_records or any(
+            record["status"] != "passed" for record in Config.preflight_records
+        )
+        if incomplete and session.exitstatus == pytest.ExitCode.OK:
+            session.exitstatus = pytest.ExitCode.TESTS_FAILED
     if Config is None or Config.case_ids is None:
         return
     requested = set(Config.case_ids)
     unknown = sorted(requested - Config.available_case_ids)
-    not_executed = sorted(requested - Config.executed_case_ids)
+    skipped = (
+        {r.get("case_id") for r in Config.reference_records if r["status"] == "SKIP"}
+        if Config.reference_only
+        else set()
+    )
+    not_executed = sorted(requested - Config.executed_case_ids - skipped)
     if unknown or not_executed:
         reporter = session.config.pluginmanager.get_plugin("terminalreporter")
         if reporter:
@@ -596,6 +710,14 @@ def pytest_itemcollected(item):
 
 
 def pytest_collection_modifyitems(session, config, items):
+    if Config.reference_only:
+        correctness_root = Path(__file__).resolve().parents[1] / "tests"
+        if any(
+            Path(item.path).resolve().is_relative_to(correctness_root) for item in items
+        ):
+            raise pytest.UsageError(
+                "--reference-only is for benchmark only; run correctness pytest separately"
+            )
     collect_marks_file = config.getoption("--collect-marks")
     if not collect_marks_file:
         return

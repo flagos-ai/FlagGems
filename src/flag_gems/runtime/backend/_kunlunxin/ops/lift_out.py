@@ -15,49 +15,75 @@
 import logging
 
 import torch
-import triton  # noqa: F401
-import triton.language as tl  # noqa: F401
-from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 
-from ..utils.pointwise_dynamic import pointwise_dynamic
+from flag_gems.ops.as_strided_copy import _launch_as_strided_copy
+
 from ..utils.tle_copy import tle_copy
+from .expand_copy import _launch_bcast
 
 logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
-config_ = CodeGenConfig(
-    512,
-    (65536, 65536, 65536),
-    32,
-    True,
-    prefer_1d_tile=True,
-    buffer_size_limit=4096,
-    kunlunAutoGrid=True,
-)
+# The flat gather kernel behind `_launch_bcast` addresses 6 dimensions; a
+# deeper layout takes the rank-general strided copy instead.
+_MAX_FLAT_DIM = 6
 
 
-@pointwise_dynamic(is_tensor=[True], promotion_methods=[(0, "DEFAULT")], config=config_)
-@triton.jit
-def lift_out_func(x):
-    return x
+def _tle_tile_copy(src, dst):
+    """The flat, contiguous, same-dtype transfer, when tle can serve it.
+
+    `tle_copy` only reaches its `tle.gpu` tile path for that layout. Its strided,
+    transposed and dtype-converting paths are built on `tle.dsa`, which this
+    triton does not ship, and reaching them raises `AttributeError` instead of
+    the documented `return False` -- the caller's fallback would never run. So
+    the transfer is only offered to tle when its own tile-path precondition
+    holds (same dtype, both sides contiguous); alignment and dtype support stay
+    tle's call, and a `False` from it means the fallback takes over.
+    """
+    if src.dtype != dst.dtype or not src.is_contiguous() or not dst.is_contiguous():
+        return False
+    return tle_copy(src, dst)
 
 
 def lift_out(A, *, out=None):
     """Implements aten::lift.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!).
 
     Copies ``A`` into ``out`` and returns ``out``. A lift is a pure move, so it
-    rides the proven copy-family recipe (same as ``alias_copy`` / ``copy_``):
-    tle takes the whole transfer when it can (a TMA tile for contiguous
-    same-dtype copies, an SDNN 2D row transfer for strided or broadcast layouts,
-    with the dtype cast folded in), and the pointwise copy kernel keeps
-    everything tle cannot express. The old ``torch.ops.aten._copy_from`` call is
-    gone: it bypassed gems and dispatched straight to the vendor engine.
+    rides the copy-family recipe (same as ``alias_copy`` / ``copy_``): tle takes
+    the whole transfer for the layout it can express, and gems' own Triton
+    kernels do the rest -- a real-stride move through ``A``'s and ``out``'s own
+    strides, at any alignment.  ``aten::_copy_from`` is not used (gems
+    operators may not delegate their work to it).
     """
     logger.debug("GEMS_KUNLUNXIN LIFT_OUT")
     if out is None:
         out = torch.empty_like(A, memory_format=torch.contiguous_format)
+    # `out=` contract, matching the sibling `alias_copy_out`: refuse a mismatched
+    # destination loudly instead of writing a flat run into it. ATen's
+    # `_resize_output` would resize `out` instead, but the gems `resize_`
+    # override resets `storage_offset`, so this backend refuses rather than
+    # resizes; a flat write into an equal-element-count destination of a
+    # different shape used to be accepted and silently returned `out` under its
+    # own shape.
+    if A.dtype != out.dtype:
+        raise RuntimeError("lift_out: dtype of input and output must match.")
+    if list(A.shape) != list(out.shape):
+        raise RuntimeError(
+            "lift_out: input and output must have the same shape, but got "
+            f"{tuple(A.shape)} and {tuple(out.shape)}."
+        )
+    if A.device != out.device:
+        raise RuntimeError("lift_out: input and output must be on the same device.")
     if out.numel() == 0:
         return out
-    if tle_copy(A, out):
+    if _tle_tile_copy(A, out):
         return out
-    lift_out_func(A, out0=out)
+    # Strided fallback.  A contiguous destination keeps the flat, block-tiled
+    # gather (`_launch_bcast`, the kernel behind `expand_copy`), which decodes
+    # the flat index against `A`'s real strides -- a transposed / stepped /
+    # narrowed source therefore needs no layout normalisation.  Otherwise the
+    # destination is written through its own strides by the gems strided copy.
+    if out.is_contiguous() and A.dim() <= _MAX_FLAT_DIM:
+        _launch_bcast(A.shape, A.stride(), A, out, out.numel())
+    else:
+        _launch_as_strided_copy(A, out)
     return out

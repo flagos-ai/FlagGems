@@ -1,5 +1,16 @@
 %global debug_package %{nil}
 
+# Distros that ship pyproject-rpm-macros (Fedora, EL9+) build via the
+# %%pyproject_* macro family -- that path is unchanged. Distros without it
+# (openEuler 24.03, EL8-family) fall back to a plain pip wheel/install build.
+# Capability-detected at parse time, so the build container must have its
+# python toolchain installed before rpmbuild runs.
+%if %{defined pyproject_wheel}
+%global has_pyproject_macros 1
+%else
+%global has_pyproject_macros 0
+%endif
+
 # FlagGems Phase 1: pure Python wheel (upstream setuptools backend; the
 # C++ operators live in the separate cpp/ tree as per-vendor
 # flag-gems-cpp-* wheels and are deferred to Phase 2).
@@ -20,10 +31,17 @@ BuildRequires:  python3-devel
 BuildRequires:  python3-setuptools >= 64
 BuildRequires:  python3-wheel
 BuildRequires:  python3-pip
+%if %{has_pyproject_macros}
 BuildRequires:  pyproject-rpm-macros
+%endif
 # setuptools-scm resolves the version (no .git in the source tarball,
 # hence the SETUPTOOLS_SCM_PRETEND_VERSION export in %%build)
-BuildRequires:  python3-setuptools_scm >= 8
+# No version floor here: rpm resolves this against the rpm database, and
+# openEuler 24.03 ships 7.1.0, so a >= 8 floor is unsatisfiable there no
+# matter what is pip-installed. The build container raises the Python-level
+# version when the distro's is too old (see Dockerfile.rpm), which is what
+# pyproject.toml's setuptools-scm>=8.0 actually needs.
+BuildRequires:  python3-setuptools_scm
 
 # Filter the auto-generated Requires for: torch + numpy/pyyaml/sqlalchemy/packaging.
 # Reason: torch: distro version is CPU-only. numpy/pyyaml/sqlalchemy/packaging: distro has them but FlagGems pyproject uses == pins that distro versions do not match; we Require them below without a version constraint instead.
@@ -69,12 +87,21 @@ extensions).
 %build
 # The source tarball carries no .git metadata; pin the scm version.
 export SETUPTOOLS_SCM_PRETEND_VERSION=%{version}
+%if %{has_pyproject_macros}
 %pyproject_wheel
+%else
+%{__python3} -m pip wheel --no-deps --no-build-isolation --wheel-dir dist .
+%endif
 
 %install
-%pyproject_install
 export SETUPTOOLS_SCM_PRETEND_VERSION=%{version}
+%if %{has_pyproject_macros}
+%pyproject_install
 %pyproject_save_files flag_gems flaggems_tests flaggems_benchmark
+%else
+%{__python3} -m pip install --no-deps --no-index --no-warn-script-location \
+    --root %{buildroot} --prefix /usr dist/*.whl
+%endif
 
 %check
 # Smoke find_spec test — verifies module lands at expected sitelib path.
@@ -88,7 +115,15 @@ PYTHONDONTWRITEBYTECODE=1 PYTHONSAFEPATH=1 \
     PYTHONPATH=%{buildroot}%{python3_sitearch}:%{buildroot}%{python3_sitelib} \
     python3 -c "import importlib.util; s = importlib.util.find_spec('flag_gems'); assert s and s.origin, 'flag_gems not findable'; print('OK: flag_gems at', s.origin)"
 
+%if %{has_pyproject_macros}
 %files -f %{pyproject_files}
+%else
+%files
+%{python3_sitelib}/flag_gems/
+%{python3_sitelib}/flaggems_tests/
+%{python3_sitelib}/flaggems_benchmark/
+%{python3_sitelib}/flag_gems-%{version}.dist-info/
+%endif
 %license LICENSE
 %{_bindir}/flaggems-setup
 # New in 5.3.5: the FlagTune CLIs (train/compare/pretune) and the top-level

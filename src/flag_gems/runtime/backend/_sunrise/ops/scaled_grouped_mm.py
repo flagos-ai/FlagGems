@@ -4,6 +4,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.ops.scaled_grouped_mm import _decode_e4m3, _native_e4m3_dot
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils.device_info import get_sm_count
@@ -69,6 +70,8 @@ def scaled_grouped_mm_kernel(
     A_IS_2D: tl.constexpr,
     B_IS_2D: tl.constexpr,
     BIAS_MODE: tl.constexpr,
+    E4M3: tl.constexpr,
+    FNUZ: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     BLOCK_K: tl.constexpr,
@@ -150,6 +153,9 @@ def scaled_grouped_mm_kernel(
                     )
                     a = tl.load(a_ptrs, mask=a_mask, other=0.0)
                     b = tl.load(b_ptrs, mask=b_mask, other=0.0)
+                    if E4M3:
+                        a = _decode_e4m3(a, FNUZ)
+                        b = _decode_e4m3(b, FNUZ)
                     acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
 
                 if A_IS_2D:
@@ -516,6 +522,17 @@ def scaled_grouped_mm(
     if mat2.stride(-2) > 1 and mat2.stride(-1) > 1:
         mat2 = mat2.contiguous()
 
+    e4m3 = self.dtype in tuple(
+        getattr(torch, name)
+        for name in ("float8_e4m3fn", "float8_e4m3fnuz")
+        if hasattr(torch, name)
+    )
+    fnuz = self.dtype == getattr(torch, "float8_e4m3fnuz", None)
+    e4m3 = e4m3 and not _native_e4m3_dot(self.dtype, self.device)
+    if e4m3:
+        self = self.view(torch.uint8)
+        mat2 = mat2.view(torch.uint8)
+
     out = torch.empty(out_shape, dtype=output_dtype, device=self.device)
     if out.numel() == 0:
         return out
@@ -560,5 +577,7 @@ def scaled_grouped_mm(
             A_IS_2D=a_is_2d,
             B_IS_2D=b_is_2d,
             BIAS_MODE=bias_mode,
+            E4M3=e4m3,
+            FNUZ=fnuz,
         )
     return out
