@@ -196,42 +196,44 @@ def repeat_interleave_self_tensor_kernel(
     cumsum,
     repeats,
     D,
-    outer,
     rsum,
     inner,
     BLOCK_I: tl.constexpr,
     NEED_MASK: tl.constexpr,
 ):
-    # Input-side decomposition: one program handles one input row (o, i).
-    # The row is loaded ONCE and stored r_i times to the r_i consecutive
-    # output rows [start, start + r_i); start = cumsum[i] - r_i. This
-    # replaces the index-materialize + gather approach: the store side is
-    # moved r_i times anyway, but the LOAD side is done once per input row
-    # (outer*D loads of `inner` instead of rsum loads), and building the
-    # mapping needs only cumsum (no index tensor, no .item() sync beyond
+    # Input-side decomposition: one program handles one (o, j, chunk) tile.
+    # The tile is loaded ONCE and stored r_j times to the r_j consecutive
+    # output rows [start, start + r_j); start = cumsum[j] - r_j. This replaces
+    # the index-materialize + gather approach: the store side is moved r_j
+    # times anyway, but the LOAD side is done once per input tile
+    # (outer*D*chunks loads of BLOCK_I instead of rsum loads), and building
+    # the mapping needs only cumsum (no index tensor, no .item() sync beyond
     # the single rsum host read).
-    pid = ext.program_id(axis=0)
-    if pid < outer * D:
-        o = pid // D
-        i = pid % D
-        r = tl.load(repeats + i)
-        tl.device_assert(r >= 0, "repeats can not be negative")
-        start = tl.load(cumsum + i) - r
-        base_in = pid * inner
-        base_out = (o * rsum + start) * inner
-        if NEED_MASK:
-            for c in range(0, inner, BLOCK_I):
-                cols = c + tl.arange(0, BLOCK_I)
-                m = cols < inner
-                v = tl.load(inp + base_in + cols, mask=m, other=0)
-                for rep in range(0, r):
-                    tl.store(out + base_out + rep * inner + cols, v, mask=m)
-        else:
-            for c in range(0, inner, BLOCK_I):
-                cols = c + tl.arange(0, BLOCK_I)
-                v = tl.load(inp + base_in + cols)
-                for rep in range(0, r):
-                    tl.store(out + base_out + rep * inner + cols, v)
+    # 3D grid = (D, outer, chunks): the inner (contiguous) dim is split across
+    # programs instead of being serial-looped inside one program. With
+    # grid=(outer*D,) a large `inner` leaves too few programs and each one
+    # serializes over inner/BLOCK_I chunks (few programs + large per-thread
+    # serial work). Separate program_id axes also avoid the flat-grid
+    # pid//D / pid%D in-kernel division, which the XPU OffsetAnalysis
+    # miscompiles for pid>=12.
+    j = ext.program_id(axis=0)  # index along the repeat dim (0..D-1)
+    o = ext.program_id(axis=1)  # index along the flattened outer dims
+    ck = ext.program_id(axis=2)  # chunk index over the inner dim
+    r = tl.load(repeats + j)
+    tl.device_assert(r >= 0, "repeats can not be negative")
+    start = tl.load(cumsum + j) - r
+    base_in = (o * D + j) * inner
+    base_out = (o * rsum + start) * inner
+    cols = ck * BLOCK_I + tl.arange(0, BLOCK_I)
+    if NEED_MASK:
+        m = cols < inner
+        v = tl.load(inp + base_in + cols, mask=m, other=0)
+        for rep in range(0, r):
+            tl.store(out + base_out + rep * inner + cols, v, mask=m)
+    else:
+        v = tl.load(inp + base_in + cols)
+        for rep in range(0, r):
+            tl.store(out + base_out + rep * inner + cols, v)
 
 
 def repeat_interleave_self_tensor(inp, repeats, dim=None, *, output_size=None):
@@ -288,24 +290,25 @@ def repeat_interleave_self_tensor(inp, repeats, dim=None, *, output_size=None):
     out_shape = inp_shape[:dim] + [rsum] + inp_shape[dim + 1 :]
     out = torch.empty(out_shape, dtype=inp.dtype, device=inp.device)
 
-    # BLOCK_I: cap at 4096 (measured sweet spot on XPU); floor at 64 (narrow
-    # vector stores below 64 elements per instruction are unreliable in
-    # TritonXPU; masked path covers inner < 64).
-    block_i = min(max(triton.next_power_of_2(inner), 64), 4096)
+    # BLOCK_I: cap at 32768; floor at 64 (narrow vector stores below 64
+    # elements per instruction are unreliable in TritonXPU; the masked path
+    # covers inner < 64). The inner dim is split into `chunks` programs so a
+    # large `inner` does not collapse the grid to one program per row.
+    block_i = min(max(triton.next_power_of_2(inner), 64), 32768)
     need_mask = inner % block_i != 0
-    grid = (outer * D,)
+    chunks = triton.cdiv(inner, block_i)
+    grid = (D, outer, chunks)
     repeat_interleave_self_tensor_kernel[grid](
         inp,
         out,
         cumsum,
         repeats,
         D,
-        outer,
         rsum,
         inner,
         BLOCK_I=block_i,
         NEED_MASK=need_mask,
         num_warps=8,
-        buffer_size_limit=4096,
+        buffer_size_limit=8192,
     )
     return out
