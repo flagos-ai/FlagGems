@@ -21,8 +21,8 @@ import torch
 # import torch.nn.functional as F
 import triton
 import triton.language as tl
-from flag_gems.config import use_c_extension
 
+from flag_gems.config import use_c_extension
 from flag_gems.runtime import torch_device_fn
 
 from .cat import cat

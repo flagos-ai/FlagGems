@@ -16,10 +16,10 @@ import math
 
 import pytest
 import torch
-from flag_gems.utils.random_utils import set_philox_state
 
 import flag_gems
 from flag_gems.runtime import torch_device_fn
+from flag_gems.utils.random_utils import set_philox_state
 
 from . import base
 

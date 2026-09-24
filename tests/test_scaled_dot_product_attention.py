@@ -15,10 +15,10 @@
 import numpy as np
 import pytest
 import torch
-from flag_gems.utils import random_utils
 
 import flag_gems
 from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import random_utils
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
