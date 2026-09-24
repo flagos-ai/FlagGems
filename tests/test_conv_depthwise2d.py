@@ -71,8 +71,7 @@ def test_conv_depthwise2d(
         dilation,
     )
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._conv_depthwise2d(
-            inp, weight, kernel, bias_tensor, stride, padding, dilation
-        )
+    res_out = flag_gems._conv_depthwise2d(
+        inp, weight, kernel, bias_tensor, stride, padding, dilation
+    )
     utils.gems_assert_close(res_out, ref_out, dtype)

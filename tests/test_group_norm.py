@@ -61,17 +61,16 @@ def test_native_group_norm(shape, num_groups, dtype, affine, caplog):
     )
 
     with caplog.at_level("DEBUG", logger="flag_gems.ops.native_group_norm"):
-        with flag_gems.use_gems():
-            result = torch.ops.aten.native_group_norm.default(
-                inp,
-                weight,
-                bias,
-                batch_count,
-                channel_count,
-                spatial_size,
-                num_groups,
-                eps,
-            )
+        result = flag_gems.native_group_norm(
+            inp,
+            weight,
+            bias,
+            batch_count,
+            channel_count,
+            spatial_size,
+            num_groups,
+            eps,
+        )
 
     assert "GEMS NATIVE_GROUP_NORM" in caplog.text
     assert len(result) == len(ref_result) == 3
@@ -117,10 +116,16 @@ def test_group_norm(N, C, H, W, num_groups, dtype, wb_none):
         ref_inp, num_groups, weight=ref_weight, bias=ref_bias, eps=eps
     )
 
-    with flag_gems.use_gems():
-        res_out = torch.group_norm(
-            res_inp, num_groups, weight=res_weight, bias=res_bias, eps=eps
-        )
+    res_out, _, _ = flag_gems.group_norm(
+        res_inp,
+        res_weight,
+        res_bias,
+        N,
+        C,
+        H * W,
+        num_groups,
+        eps,
+    )
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -182,23 +187,22 @@ def test_group_norm_backward(N, C, H, W, num_groups, dtype, wb_none):
         num_groups,
         output_mask,
     )
-    with flag_gems.use_gems():
-        (
-            res_in_grad,
-            res_weight_grad,
-            res_bias_grad,
-        ) = torch.ops.aten.native_group_norm_backward(
-            res_grad,
-            res_inp,
-            res_mean,
-            res_rstd,
-            res_weight,
-            N,
-            C,
-            HxW,
-            num_groups,
-            output_mask,
-        )
+    (
+        res_in_grad,
+        res_weight_grad,
+        res_bias_grad,
+    ) = flag_gems.group_norm_backward(
+        res_grad,
+        res_inp,
+        res_mean,
+        res_rstd,
+        res_weight,
+        N,
+        C,
+        HxW,
+        num_groups,
+        output_mask,
+    )
     utils.gems_assert_close(
         res_in_grad, ref_in_grad, dtype, reduce_dim=group_size * HxW
     )

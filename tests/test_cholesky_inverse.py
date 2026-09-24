@@ -40,9 +40,7 @@ def test_cholesky_inverse(shape, dtype):
     ref_L = utils.to_reference(L)
 
     ref_out = torch.cholesky_inverse(ref_L, upper=False)
-
-    with flag_gems.use_gems():
-        res_out = torch.cholesky_inverse(L, upper=False)
+    res_out = flag_gems.cholesky_inverse(L, upper=False)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -56,9 +54,7 @@ def test_cholesky_inverse_upper(shape, dtype):
     ref_U = utils.to_reference(U)
 
     ref_out = torch.cholesky_inverse(ref_U, upper=True)
-
-    with flag_gems.use_gems():
-        res_out = torch.cholesky_inverse(U, upper=True)
+    res_out = flag_gems.cholesky_inverse(U, upper=True)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -71,8 +67,6 @@ def test_cholesky_inverse_batch(shape, dtype):
     ref_L = utils.to_reference(L)
 
     ref_out = torch.cholesky_inverse(ref_L, upper=False)
-
-    with flag_gems.use_gems():
-        res_out = torch.cholesky_inverse(L, upper=False)
+    res_out = flag_gems.cholesky_inverse(L, upper=False)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

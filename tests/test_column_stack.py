@@ -62,8 +62,7 @@ def test_column_stack(shape, dtype):
     ref_inp = [utils.to_reference(_) for _ in inp]
 
     ref_out = torch.column_stack(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.column_stack(inp)
+    res_out = flag_gems.column_stack(inp)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -77,8 +76,7 @@ def test_column_stack_out(shape, dtype):
 
     ref_out = torch.column_stack(ref_inp)
     res_out = torch.empty_like(ref_out, device=flag_gems.device)
-    with flag_gems.use_gems():
-        torch.column_stack(inp, out=res_out)
+    flag_gems.column_stack_out(inp, out=res_out)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -90,5 +88,4 @@ def test_exception_column_stack(shape, dtype):
     inp = _make_inputs(shape, dtype)
 
     with pytest.raises(RuntimeError):
-        with flag_gems.use_gems():
-            _ = torch.column_stack(inp)
+        _ = flag_gems.column_stack(inp)

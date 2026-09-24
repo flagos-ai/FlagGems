@@ -56,8 +56,7 @@ def test_accuracy_adaptive_avg_pool1d_forward(shape, output_size, dtype, caplog)
 
     ref_out = torch.ops.aten.adaptive_avg_pool1d(ref_inp, [output_size])
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.adaptive_avg_pool1d(inp, [output_size])
+    res_out = flag_gems.adaptive_avg_pool1d(inp, [output_size])
 
     utils.gems_assert_close(res_out, ref_out, dtype)
     assert "GEMS ADAPTIVE_AVG_POOL1D" in caplog.text

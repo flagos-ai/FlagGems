@@ -26,8 +26,7 @@ from . import accuracy_utils as utils
 def test_geometric_(shape, dtype):
     p = 0.5
     x = torch.empty(size=shape, dtype=dtype, device=flag_gems.device)
-    with flag_gems.use_gems():
-        x.geometric_(p)
+    flag_gems.geometric_(x, p)
 
     # Check that all values are positive integers (>= 1)
     positive_mask = (x >= 1).float().to(dtype)
@@ -47,8 +46,7 @@ def test_geometric_(shape, dtype):
 @pytest.mark.parametrize("p", [0.1, 0.3, 0.5, 0.7, 0.9])
 def test_geometric_various_p(shape, dtype, p):
     x = torch.empty(size=shape, dtype=dtype, device=flag_gems.device)
-    with flag_gems.use_gems():
-        x.geometric_(p)
+    flag_gems.geometric_(x, p)
 
     # Check that all values are positive integers (>= 1)
     positive_mask = (x >= 1).float().to(dtype)
@@ -68,8 +66,7 @@ def test_geometric_various_p(shape, dtype, p):
 def test_geometric(shape, dtype):
     p = 0.5
     x = torch.empty(size=shape, dtype=dtype, device=flag_gems.device)
-    with flag_gems.use_gems():
-        y = torch.ops.aten.geometric(x, p)
+    y = flag_gems.geometric(x, p)
 
     # Check that the output is a new tensor
     assert y is not x

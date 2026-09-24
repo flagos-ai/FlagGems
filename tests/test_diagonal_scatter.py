@@ -30,8 +30,7 @@ def test_diagonal_scatter(shape, dtype):
     ref_src = utils.to_reference(src)
 
     ref_out = torch.diagonal_scatter(ref_inp, ref_src, 0, -2, -1)
-    with flag_gems.use_gems():
-        res_out = torch.diagonal_scatter(inp, src, 0, -2, -1)
+    res_out = flag_gems.diagonal_scatter(inp, src, 0, -2, -1)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -49,8 +48,7 @@ def test_diagonal_scatter_offset(shape, dtype):
     ref_src = utils.to_reference(src)
 
     ref_out = torch.diagonal_scatter(ref_inp, ref_src, 1, -2, -1)
-    with flag_gems.use_gems():
-        res_out = torch.diagonal_scatter(inp, src, 1, -2, -1)
+    res_out = flag_gems.diagonal_scatter(inp, src, 1, -2, -1)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -68,8 +66,7 @@ def test_diagonal_scatter_negative_offset(shape, dtype):
     ref_src = utils.to_reference(src)
 
     ref_out = torch.diagonal_scatter(ref_inp, ref_src, -1, -2, -1)
-    with flag_gems.use_gems():
-        res_out = torch.diagonal_scatter(inp, src, -1, -2, -1)
+    res_out = flag_gems.diagonal_scatter(inp, src, -1, -2, -1)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -96,8 +93,7 @@ def test_diagonal_scatter_non_last_dims(shape, dim1, dim2, dtype):
     ref_src = utils.to_reference(src)
 
     ref_out = torch.diagonal_scatter(ref_inp, ref_src, 0, dim1, dim2)
-    with flag_gems.use_gems():
-        res_out = torch.diagonal_scatter(inp, src, 0, dim1, dim2)
+    res_out = flag_gems.diagonal_scatter(inp, src, 0, dim1, dim2)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -115,8 +111,7 @@ def test_diagonal_scatter_large_offset(dtype):
     ref_src = utils.to_reference(src)
 
     ref_out = torch.diagonal_scatter(ref_inp, ref_src, offset, -2, -1)
-    with flag_gems.use_gems():
-        res_out = torch.diagonal_scatter(inp, src, offset, -2, -1)
+    res_out = flag_gems.diagonal_scatter(inp, src, offset, -2, -1)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -133,8 +128,7 @@ def test_diagonal_scatter_non_square(dtype):
     ref_src = utils.to_reference(src)
 
     ref_out = torch.diagonal_scatter(ref_inp, ref_src, 0, -2, -1)
-    with flag_gems.use_gems():
-        res_out = torch.diagonal_scatter(inp, src, 0, -2, -1)
+    res_out = flag_gems.diagonal_scatter(inp, src, 0, -2, -1)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -147,7 +141,6 @@ def test_diagonal_scatter_non_square(dtype):
     ref_src = utils.to_reference(src)
 
     ref_out = torch.diagonal_scatter(ref_inp, ref_src, 0, -2, -1)
-    with flag_gems.use_gems():
-        res_out = torch.diagonal_scatter(inp, src, 0, -2, -1)
+    res_out = flag_gems.diagonal_scatter(inp, src, 0, -2, -1)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

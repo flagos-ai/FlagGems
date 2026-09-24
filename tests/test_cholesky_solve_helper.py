@@ -49,7 +49,6 @@ def test_cholesky_solve_helper(rhs_shape, factor_shape, upper, dtype):
     ref_factor = utils.to_reference(factor)
     expected = torch.ops.aten._cholesky_solve_helper(ref_rhs, ref_factor, upper)
 
-    with flag_gems.use_gems():
-        actual = torch.ops.aten._cholesky_solve_helper(rhs, factor, upper)
+    actual = flag_gems._cholesky_solve_helper(rhs, factor, upper)
 
     utils.gems_assert_close(actual, expected, dtype, reduce_dim=rhs_shape[-2])

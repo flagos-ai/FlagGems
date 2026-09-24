@@ -28,8 +28,7 @@ def test_arctan(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.arctan(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.arctan(inp)
+    res_out = flag_gems.arctan(inp)
 
     ref_out = ref_out.to(res_out.dtype)
     utils.gems_assert_close(res_out, ref_out, dtype)
@@ -43,8 +42,7 @@ def test_arctan_(shape, dtype):
     ref_inp = utils.to_reference(inp.clone())
 
     ref_out = torch.arctan_(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.arctan_(inp)
+    res_out = flag_gems.arctan_(inp)
 
     ref_out = ref_out.to(res_out.dtype)
     utils.gems_assert_close(res_out, ref_out, dtype)

@@ -31,6 +31,5 @@ def test_isfinite(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.isfinite(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.isfinite(inp)
+    res_out = flag_gems.isfinite(inp)
     utils.gems_assert_equal(res_out, ref_out)

@@ -48,8 +48,7 @@ def test_gather(inp_shape, dim, dtype):
             inp_shape[:2], dtype=torch.long, device=flag_gems.device
         )
         with pytest.raises(IndexError):
-            with flag_gems.use_gems():
-                torch.gather(mismatch_inp, 0, mismatch_index)
+            flag_gems.gather(mismatch_inp, 0, mismatch_index)
 
     inp = torch.randn(
         inp_shape, dtype=dtype, device=flag_gems.device, requires_grad=True
@@ -90,8 +89,7 @@ def test_gather(inp_shape, dim, dtype):
     ref_grad = utils.to_reference(out_grad)
 
     (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
-    with flag_gems.use_gems():
-        (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
+    (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
 
     res_in_grad = utils.to_reference(res_in_grad)
     utils.gems_assert_equal(res_in_grad, ref_in_grad)
@@ -137,7 +135,6 @@ def test_gather_backward(inp_shape, dim, dtype, duplicate_indices):
         ref_grad, ref_inp, dim, ref_index, False
     )
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.gather_backward.default(grad, inp, dim, index, False)
+    res_out = flag_gems.gather_backward(grad, inp, dim, index, False)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

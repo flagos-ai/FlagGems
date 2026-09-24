@@ -64,8 +64,7 @@ def test_index_add(shape, dim, dtype):
     ref_src = utils.to_reference(src)
     ref_index = utils.to_reference(index)
     ref_out = torch.index_add(ref_inp, dim, ref_index, ref_src, alpha=alpha)
-    with flag_gems.use_gems():
-        res_out = torch.index_add(inp, dim, index, src, alpha=alpha)
+    res_out = flag_gems.index_add(inp, dim, index, src, alpha=alpha)
 
     utils.gems_assert_close(res_out, ref_out, dtype=dtype, reduce_dim=dim)
 
@@ -83,8 +82,7 @@ def test_index_add_contiguous_suffix(shape, dim, dtype):
     ref_src = utils.to_reference(src)
     ref_index = utils.to_reference(index)
     ref_out = torch.index_add(ref_inp, dim, ref_index, ref_src, alpha=alpha)
-    with flag_gems.use_gems():
-        res_out = torch.index_add(inp, dim, index, src, alpha=alpha)
+    res_out = flag_gems.index_add(inp, dim, index, src, alpha=alpha)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -108,8 +106,7 @@ def test_index_add_(shape, dim, dtype):
     ref_src = utils.to_reference(src)
     ref_index = utils.to_reference(index)
     ref_inp.index_add_(dim, ref_index, ref_src, alpha=alpha)
-    with flag_gems.use_gems():
-        inp.index_add_(dim, index, src, alpha=alpha)
+    flag_gems.index_add_(inp, dim, index, src, alpha=alpha)
 
     utils.gems_assert_close(inp, ref_inp, dtype=dtype, reduce_dim=dim)
 
@@ -127,8 +124,7 @@ def test_index_add_inplace_contiguous_suffix(shape, dim, dtype):
     ref_src = utils.to_reference(src)
     ref_index = utils.to_reference(index)
     ref_inp.index_add_(dim, ref_index, ref_src, alpha=alpha)
-    with flag_gems.use_gems():
-        inp.index_add_(dim, index, src, alpha=alpha)
+    flag_gems.index_add_(inp, dim, index, src, alpha=alpha)
 
     utils.gems_assert_equal(inp, ref_inp)
 
@@ -144,13 +140,10 @@ def test_index_add_invalid_index(inplace):
     index = torch.tensor([0, shape[dim]], device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
 
-    with (
-        flag_gems.use_gems(),
-        pytest.raises(AssertionError, match=r"0 <= index < self\.size\(dim\)"),
-    ):
+    with pytest.raises(AssertionError, match=r"0 <= index < self\.size\(dim\)"):
         if inplace:
-            inp.index_add_(dim, index, src)
+            flag_gems.index_add_(inp, dim, index, src)
         else:
-            torch.index_add(inp, dim, index, src)
+            flag_gems.index_add(inp, dim, index, src)
 
     utils.gems_assert_equal(inp, ref_inp)

@@ -38,7 +38,6 @@ def test_addcdiv_(shape, dtype):
     v = float(np.float32(random.random()))
 
     ref_out = ref_inp.addcdiv_(ref_t1, ref_t2, value=v)
-    with flag_gems.use_gems():
-        res_out = res_inp.addcdiv_(t1, t2, value=v)
+    res_out = flag_gems.addcdiv_(res_inp, t1, t2, value=v)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

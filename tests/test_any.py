@@ -49,8 +49,7 @@ def test_any(shape, dtype, kind):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.any(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.any(inp)
+    res_out = flag_gems.any(inp)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -66,8 +65,7 @@ def test_any_dims(shape, dim, keepdim, dtype, kind):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.any(ref_inp, dim=dim, keepdim=keepdim)
-    with flag_gems.use_gems():
-        res_out = torch.any(inp, dim=dim, keepdim=keepdim)
+    res_out = flag_gems.any_dims(inp, dim=dim, keepdim=keepdim)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -88,7 +86,6 @@ def test_any_dim(shape, dtype, keepdim, dim, kind):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.any(ref_inp, dim=dim, keepdim=keepdim)
-    with flag_gems.use_gems():
-        res_out = torch.any(inp, dim=dim, keepdim=keepdim)
+    res_out = flag_gems.any_dim(inp, dim=dim, keepdim=keepdim)
 
     utils.gems_assert_equal(res_out, ref_out)

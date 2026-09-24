@@ -70,8 +70,7 @@ def test_accuracy_histc(shape, bins, dtype):
     )
     ref_inp = to_reference(inp)
     ref_out = torch.histc(ref_inp, bins=bins, min=0, max=0)
-    with flag_gems.use_gems():
-        res_out = torch.histc(inp, bins=bins, min=0, max=0)
+    res_out = flag_gems.histc(inp, bins=bins, min=0, max=0)
     gems_assert_close(res_out, ref_out, dtype)
 
 
@@ -85,6 +84,5 @@ def test_accuracy_histc_with_range(shape, bins, dtype):
     )
     ref_inp = to_reference(inp)
     ref_out = torch.histc(ref_inp, bins=bins, min=0, max=10)
-    with flag_gems.use_gems():
-        res_out = torch.histc(inp, bins=bins, min=0, max=10)
+    res_out = flag_gems.histc(inp, bins=bins, min=0, max=10)
     gems_assert_close(res_out, ref_out, dtype)

@@ -67,10 +67,7 @@ def test_native_layer_norm(shape, normalized_shape, dtype, affine, caplog):
     )
 
     with caplog.at_level("DEBUG", logger="flag_gems.ops.native_layer_norm"):
-        with flag_gems.use_gems():
-            result = torch.ops.aten.native_layer_norm.default(
-                inp, normalized_shape, weight, bias, eps
-            )
+        result = flag_gems.native_layer_norm(inp, normalized_shape, weight, bias, eps)
 
     assert "GEMS NATIVE_LAYER_NORM" in caplog.text
     assert len(result) == len(ref_result) == 3
@@ -107,14 +104,13 @@ def test_layer_norm(shape, dtype, wb_none):
         bias=ref_bias,
         eps=eps,
     )
-    with flag_gems.use_gems():
-        res_out = torch.layer_norm(
-            res_inp,
-            shape[1:],
-            weight=res_weight,
-            bias=res_bias,
-            eps=eps,
-        )
+    res_out, _, _ = flag_gems.layer_norm(
+        res_inp,
+        shape[1:],
+        weight=res_weight,
+        bias=res_bias,
+        eps=eps,
+    )
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -138,14 +134,13 @@ def test_native_layer_norm_statistics(shape, dtype):
         ref_bias,
         1e-5,
     )
-    with flag_gems.use_gems():
-        res_out, res_mean, res_rstd = torch.ops.aten.native_layer_norm(
-            res_inp,
-            normalized_shape,
-            res_weight,
-            res_bias,
-            1e-5,
-        )
+    res_out, res_mean, res_rstd = flag_gems.native_layer_norm(
+        res_inp,
+        normalized_shape,
+        res_weight,
+        res_bias,
+        1e-5,
+    )
 
     reduce_dim = math.prod(normalized_shape)
     utils.gems_assert_close(res_out, ref_out, dtype)
@@ -202,21 +197,20 @@ def test_layer_norm_backward(monkeypatch, shape, dtype, wb_none):
         ref_bias,
         output_mask,
     )
-    with flag_gems.use_gems():
-        (
-            res_in_grad,
-            res_weight_grad,
-            res_bias_grad,
-        ) = torch.ops.aten.native_layer_norm_backward(
-            res_grad,
-            res_inp,
-            normalized_shape,
-            res_mean,
-            res_rstd,
-            res_weight,
-            res_bias,
-            output_mask,
-        )
+    (
+        res_in_grad,
+        res_weight_grad,
+        res_bias_grad,
+    ) = flag_gems.layer_norm_backward(
+        res_grad,
+        res_inp,
+        normalized_shape,
+        res_mean,
+        res_rstd,
+        res_weight,
+        res_bias,
+        output_mask,
+    )
 
     utils.gems_assert_close(res_in_grad, ref_in_grad, dtype)
     if not wb_none:

@@ -70,19 +70,18 @@ def test_native_batch_norm_legit_no_training(shape, dtype, affine):
         eps,
     )
 
-    with flag_gems.use_gems():
-        (
-            res_out,
-            res_save_mean,
-            res_save_var,
-        ) = torch.ops.aten._native_batch_norm_legit_no_training.default(
-            inp,
-            weight,
-            bias,
-            running_mean,
-            running_var,
-            0.1,
-            eps,
-        )
+    (
+        res_out,
+        res_save_mean,
+        res_save_var,
+    ) = flag_gems._native_batch_norm_legit_no_training(
+        inp,
+        weight,
+        bias,
+        running_mean,
+        running_var,
+        0.1,
+        eps,
+    )
 
     utils.gems_assert_close(res_out, ref_out, dtype)

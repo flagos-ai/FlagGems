@@ -28,8 +28,7 @@ def test_abs(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.abs(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.abs(inp)
+    res_out = flag_gems.abs(inp)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -42,7 +41,6 @@ def test_abs_(shape, dtype):
     ref_inp = utils.to_reference(inp.clone())
 
     ref_out = torch.abs_(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.abs_(inp)
+    res_out = flag_gems.abs_(inp)
 
     utils.gems_assert_equal(res_out, ref_out)

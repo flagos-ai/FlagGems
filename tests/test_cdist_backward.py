@@ -46,7 +46,6 @@ def test_cdist_backward(shape, dtype):
     res_cdist = ref_cdist.clone().to(flag_gems.device)
 
     ref_out = torch.ops.aten._cdist_backward(ref_grad, ref_x1, ref_x2, p, ref_cdist)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._cdist_backward(res_grad, res_x1, res_x2, p, res_cdist)
+    res_out = flag_gems._cdist_backward(res_grad, res_x1, res_x2, p, res_cdist)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

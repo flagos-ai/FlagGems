@@ -50,13 +50,10 @@ def test_cummax(shape, dtype):
     ref_inp = utils.to_reference(inp, True)
     ref_out = torch.cummax(ref_inp, dim=dim)
 
-    with flag_gems.use_gems():
-        res_out = torch.cummax(inp, dim=dim)
+    res_values, res_indices = flag_gems.cummax(inp, dim=dim)
 
-    utils.gems_assert_close(
-        res_out.values, ref_out.values, dtype, reduce_dim=shape[dim]
-    )
-    utils.gems_assert_equal(res_out.indices, ref_out.indices)
+    utils.gems_assert_close(res_values, ref_out.values, dtype, reduce_dim=shape[dim])
+    utils.gems_assert_equal(res_indices, ref_out.indices)
 
 
 @pytest.mark.cummax
@@ -81,13 +78,12 @@ def test_cummax_with_nan(shape, dtype, nan_ratio):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.cummax(ref_inp, dim=dim)
-    with flag_gems.use_gems():
-        res_out = torch.cummax(inp, dim=dim)
+    res_values, res_indices = flag_gems.cummax(inp, dim=dim)
 
     utils.gems_assert_close(
-        res_out.values, ref_out.values, dtype, reduce_dim=shape[dim], equal_nan=True
+        res_values, ref_out.values, dtype, reduce_dim=shape[dim], equal_nan=True
     )
-    utils.gems_assert_equal(res_out.indices, ref_out.indices)
+    utils.gems_assert_equal(res_indices, ref_out.indices)
 
 
 @pytest.mark.cummaxmin_backward
@@ -112,7 +108,6 @@ def test_cummaxmin_backward(shape, dtype, reduce_op):
     ref_out = torch.zeros(shape, dtype=ref_grad.dtype, device=ref_grad.device)
     ref_out.scatter_add_(dim if dim >= 0 else dim + inp.ndim, ref_indices, ref_grad)
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.cummaxmin_backward(grad, inp, indices, dim)
+    res_out = flag_gems.cummaxmin_backward(grad, inp, indices, dim)
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=shape[dim])

@@ -1871,6 +1871,8 @@ ops:
   - beta: '5.3'
 - id: batch_norm
   description: An internal operator used for implementing the `BatchNorm` functionality.
+  for:
+  - native_batch_norm
   labels:
   - aten
   kind:
@@ -4027,7 +4029,7 @@ ops:
   stages:
   - alpha: '5.5.0'
 - id: cumsum
-  destination: Returns the cumulative sum of elements of `input` in the dimension
+  description: Returns the cumulative sum of elements of `input` in the dimension
     `dim`.
   for:
   - cumsum
@@ -4049,7 +4051,7 @@ ops:
   stages:
   - alpha: '5.4'
 - id: cumsum_out
-  destination: 'Returns the cumulative sum of elements of `input` in the dimension
+  description: 'Returns the cumulative sum of elements of `input` in the dimension
     `dim`.
 
     It is a variant of `cumsum()`.
@@ -6799,6 +6801,8 @@ ops:
 - id: group_norm
   description: An internal IR for applying Group Normalization for last certain number
     of dimensions.
+  for:
+  - native_group_norm
   labels:
   - aten
   - Reduction
@@ -8296,6 +8300,8 @@ ops:
 - id: layer_norm
   description: An internal IR for applying Layer Normalization for last certain number
     of dimensions.
+  for:
+  - native_layer_norm
   labels:
   - aten
   kind:

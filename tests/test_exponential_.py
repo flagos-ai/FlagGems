@@ -28,8 +28,7 @@ from . import accuracy_utils as utils
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_exponential_(shape, dtype):
     x = torch.empty(size=shape, dtype=dtype, device=flag_gems.device)
-    with flag_gems.use_gems():
-        x.exponential_()
+    flag_gems.exponential_(x)
 
     assert x.min() > 0
 
@@ -42,8 +41,7 @@ def test_exponential_fast(shape, dtype):
     lambd = 1.0
     mean_tol = 0.05
     var_tol = 0.05
-    with flag_gems.use_gems():
-        x.exponential_()
+    flag_gems.exponential_(x)
 
     x_res = utils.to_reference(x)
     mean_res = torch.mean(x_res.to(torch.float32)).to(dtype)

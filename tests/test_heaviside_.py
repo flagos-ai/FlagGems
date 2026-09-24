@@ -45,8 +45,7 @@ def test_heaviside_(shape, dtype, values_kind, zero_fraction):
     ref_out = torch.ops.aten.heaviside_(ref_self, ref_values)
 
     act_self = self_input.clone()
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.heaviside_(act_self, values)
+    res_out = flag_gems.heaviside_(act_self, values)
 
     # In-place: result and mutated self both match the reference.
     utils.gems_assert_close(res_out, ref_out, dtype)

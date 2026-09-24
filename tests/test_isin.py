@@ -48,30 +48,26 @@ def test_accuracy_isin(shape, dtype, assume_unique, invert):
     ref_inp1 = utils.to_reference(inp1, False)
     ref_inp2 = utils.to_reference(inp2, False)
 
-    with flag_gems.use_gems():
-        res_out = torch.isin(inp1, inp2, assume_unique=assume_unique, invert=invert)
+    res_out = flag_gems.isin(inp1, inp2, assume_unique=assume_unique, invert=invert)
     ref_out = torch.isin(ref_inp1, ref_inp2, assume_unique=assume_unique, invert=invert)
 
     utils.gems_assert_equal(res_out, ref_out)
 
     inp1_s = inp1.ravel()[0].item()
-    with flag_gems.use_gems():
-        res1_out = torch.isin(inp1_s, inp2, assume_unique=assume_unique, invert=invert)
+    res1_out = flag_gems.isin(inp1_s, inp2, assume_unique=assume_unique, invert=invert)
     ref1_out = torch.isin(inp1_s, ref_inp2, assume_unique=assume_unique, invert=invert)
 
     utils.gems_assert_equal(res1_out, ref1_out)
 
     inp2_s = inp2.ravel()[0].item()
-    with flag_gems.use_gems():
-        res2_out = torch.isin(inp1, inp2_s, assume_unique=assume_unique, invert=invert)
+    res2_out = flag_gems.isin(inp1, inp2_s, assume_unique=assume_unique, invert=invert)
     ref2_out = torch.isin(ref_inp1, inp2_s, assume_unique=assume_unique, invert=invert)
 
     utils.gems_assert_equal(res2_out, ref2_out)
 
     inp0 = torch.tensor([], device=flag_gems.device)
     ref_inp0 = utils.to_reference(inp0, False)
-    with flag_gems.use_gems():
-        res0_out = torch.isin(inp0, inp2, assume_unique=assume_unique, invert=invert)
+    res0_out = flag_gems.isin(inp0, inp2, assume_unique=assume_unique, invert=invert)
     ref0_out = torch.isin(
         ref_inp0, ref_inp2, assume_unique=assume_unique, invert=invert
     )
@@ -99,10 +95,9 @@ def test_accuracy_isin_scalar_tensor(shape, dtype, assume_unique, invert):
 
     ref_inp2 = utils.to_reference(inp2, False)
 
-    with flag_gems.use_gems():
-        res_out = torch.isin(
-            scalar_val, inp2, assume_unique=assume_unique, invert=invert
-        )
+    res_out = flag_gems.isin(
+        scalar_val, inp2, assume_unique=assume_unique, invert=invert
+    )
     ref_out = torch.isin(
         scalar_val, ref_inp2, assume_unique=assume_unique, invert=invert
     )
@@ -131,7 +126,6 @@ def test_accuracy_isin_tensor_scalar(shape, dtype, assume_unique, invert):
     ref_inp1 = utils.to_reference(inp1, False)
 
     ref_out = torch.isin(ref_inp1, inp2_s, assume_unique=assume_unique, invert=invert)
-    with flag_gems.use_gems():
-        res_out = torch.isin(inp1, inp2_s, assume_unique=assume_unique, invert=invert)
+    res_out = flag_gems.isin(inp1, inp2_s, assume_unique=assume_unique, invert=invert)
 
     utils.gems_assert_equal(res_out, ref_out)

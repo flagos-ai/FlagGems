@@ -48,8 +48,9 @@ def test_accuracy_fake_quantize_per_channel_affine_cachemask(
         quant_min,
         quant_max,
     )
-    with flag_gems.use_gems():
-        output, mask = ATEN_OP(input, scale, zero_point, axis, quant_min, quant_max)
+    output, mask = flag_gems.fake_quantize_per_channel_affine_cachemask(
+        input, scale, zero_point, axis, quant_min, quant_max
+    )
 
     gems_assert_close(output, ref_output, dtype=dtype)
     gems_assert_equal(mask, ref_mask)
@@ -69,8 +70,9 @@ def test_accuracy_fake_quantize_per_channel_affine_cachemask_half_to_even():
     ref_output, ref_mask = ATEN_OP(
         to_reference(input), to_reference(scale), to_reference(zero_point), 1, -128, 127
     )
-    with flag_gems.use_gems():
-        output, mask = ATEN_OP(input, scale, zero_point, 1, -128, 127)
+    output, mask = flag_gems.fake_quantize_per_channel_affine_cachemask(
+        input, scale, zero_point, 1, -128, 127
+    )
 
     gems_assert_equal(output, ref_output)
     gems_assert_equal(mask, ref_mask)
@@ -85,8 +87,9 @@ def test_accuracy_fake_quantize_per_channel_affine_cachemask_noncontiguous():
     ref_output, ref_mask = ATEN_OP(
         to_reference(input), to_reference(scale), to_reference(zero_point), 1, -128, 127
     )
-    with flag_gems.use_gems():
-        output, mask = ATEN_OP(input, scale, zero_point, 1, -128, 127)
+    output, mask = flag_gems.fake_quantize_per_channel_affine_cachemask(
+        input, scale, zero_point, 1, -128, 127
+    )
 
     gems_assert_close(output, ref_output, dtype=torch.float32)
     gems_assert_equal(mask, ref_mask)
@@ -103,17 +106,16 @@ def test_accuracy_fake_quantize_per_channel_affine_cachemask_out():
     out0 = torch.empty_like(input)
     out1 = torch.empty_like(input, dtype=torch.bool)
 
-    with flag_gems.use_gems():
-        output, mask = ATEN_OP.out(
-            input,
-            scale,
-            zero_point,
-            1,
-            -128,
-            127,
-            out0=out0,
-            out1=out1,
-        )
+    output, mask = flag_gems.fake_quantize_per_channel_affine_cachemask_out(
+        input,
+        scale,
+        zero_point,
+        1,
+        -128,
+        127,
+        out0=out0,
+        out1=out1,
+    )
 
     assert output is out0
     assert mask is out1
@@ -127,8 +129,9 @@ def test_accuracy_fake_quantize_per_channel_affine_cachemask_empty():
     scale = torch.empty(0, dtype=torch.float32, device=flag_gems.device)
     zero_point = torch.empty(0, dtype=torch.int32, device=flag_gems.device)
 
-    with flag_gems.use_gems():
-        output, mask = ATEN_OP(input, scale, zero_point, 1, 0, 255)
+    output, mask = flag_gems.fake_quantize_per_channel_affine_cachemask(
+        input, scale, zero_point, 1, 0, 255
+    )
 
     assert output.shape == input.shape
     assert output.dtype == input.dtype

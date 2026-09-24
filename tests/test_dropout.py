@@ -102,7 +102,6 @@ def test_native_dropout_backward(shape, p, dtype):
     scale = 1.0 / (1.0 - p)
 
     ref_in_grad = torch.ops.aten.native_dropout_backward(ref_grad, ref_mask, scale)
-    with flag_gems.use_gems():
-        res_in_grad = torch.ops.aten.native_dropout_backward(res_grad, res_mask, scale)
+    res_in_grad = flag_gems.native_dropout_backward(res_grad, res_mask, scale)
 
     utils.gems_assert_close(res_in_grad, ref_in_grad, dtype)

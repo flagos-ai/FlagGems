@@ -60,8 +60,7 @@ def test_addmm_(M, N, K, scalar, dtype):
     alpha = beta = scalar
 
     ref_out1 = ref_inp1.addmm_(ref_mat1, ref_mat2, alpha=alpha, beta=beta)
-    with flag_gems.use_gems():
-        res_out1 = inp1.addmm_(mat1, mat2, alpha=alpha, beta=beta)
+    res_out1 = flag_gems.addmm_(inp1, mat1, mat2, alpha=alpha, beta=beta)
 
     utils.gems_assert_close(res_out1, ref_out1, dtype, reduce_dim=K)
     utils.gems_assert_close(inp1, ref_out1, dtype, reduce_dim=K)

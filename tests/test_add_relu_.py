@@ -18,8 +18,7 @@ def test_add_relu__tensor(shape, alpha, dtype):
 
     # Reference: relu(self + alpha * other), materialized on the reference path.
     ref_out = torch.relu(ref_inp1 + alpha * ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch._add_relu_(inp1, inp2, alpha=alpha)
+    res_out = flag_gems._add_relu_(inp1, inp2, alpha=alpha)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
     # ``inp1`` is the in-place buffer; it must match the computed result too.

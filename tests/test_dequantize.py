@@ -46,8 +46,7 @@ def test_dequantize(shape, scale, zero_point):
     ref_out = torch.dequantize(ref_q_tensor)
 
     # GEMS dequantize
-    with flag_gems.use_gems():
-        res_out = torch.dequantize(q_tensor)
+    res_out = flag_gems.dequantize(q_tensor)
 
     # Output is always float32
     utils.gems_assert_close(res_out, ref_out, dtype=torch.float32)

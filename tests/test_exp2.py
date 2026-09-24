@@ -29,8 +29,7 @@ def test_special_exp2(shape, dtype, caplog):
 
     ref_out = torch.ops.aten.special_exp2(ref_inp)
     with caplog.at_level("DEBUG", logger="flag_gems.ops.special_exp2"):
-        with flag_gems.use_gems():
-            res_out = torch.ops.aten.special_exp2(inp)
+        res_out = flag_gems.special_exp2(inp)
 
     assert "GEMS SPECIAL_EXP2" in caplog.text
     utils.gems_assert_close(res_out, ref_out, dtype)
@@ -44,8 +43,7 @@ def test_exp2(shape, dtype):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.exp2(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.exp2(inp)
+    res_out = flag_gems.exp2(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -58,7 +56,6 @@ def test_exp2_(shape, dtype):
     ref_inp = utils.to_reference(inp.clone(), True)
 
     ref_out = torch.exp2_(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.exp2_(inp)
+    res_out = flag_gems.exp2_(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
