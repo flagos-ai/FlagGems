@@ -13683,6 +13683,29 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: row_indices_copy
+  description: Returns the row indices of a column-compressed (CSC or BSC) sparse tensor as a contiguous strided tensor.
+  for:
+  - row_indices_copy
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
+- id: row_indices_copy_out
+  description: |
+    A variant of row_indices_copy() that writes the result into the out tensor.
+  for:
+  - row_indices_copy.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: row_stack
   description: |
     Stack tensors in sequence vertically (row wise). Alias of vstack.

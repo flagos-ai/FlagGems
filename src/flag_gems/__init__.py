@@ -1343,6 +1343,13 @@ _FULL_CONFIG = (
     ("round.out", round_out),
     ("round_", round_),
     ("row_indices", row_indices, None, (AUTOGRAD_DISPATCH_KEY,)),
+    ("row_indices_copy", row_indices_copy, None, (SPARSE_CSR_DISPATCH_KEY,)),
+    (
+        "row_indices_copy.out",
+        row_indices_copy_out,
+        None,
+        (SPARSE_CSR_DISPATCH_KEY,),
+    ),
     ("row_stack", row_stack),
     ("row_stack.out", row_stack_out),
     ("rrelu_with_noise", rrelu_with_noise),
