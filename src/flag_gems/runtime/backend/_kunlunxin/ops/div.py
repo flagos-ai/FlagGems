@@ -366,6 +366,10 @@ def true_divide_(A, B):
         return true_div_func_tensor_scalar(A, B, out0=A)
 
 
+divide = true_divide
+true_divide_tensor_ = true_divide_
+
+
 @triton.jit
 def _trunc_q(q):
     # Truncate a fp32 quotient toward zero without the slow `xpu_trunc`
@@ -505,10 +509,11 @@ def _int_floordiv(x, y):
     # whereas in Pytorch x // 0 returns -1 if x >=0 and -2 if x < 0
     # but this special case is coalesced into the c1 and c2 check so
     # there's extra handling.
+    q = x // y
     r = x % y
     c1 = r != 0
     c2 = (x < 0) ^ (y < 0)
-    return tl.where(c1 & c2, x // y - 1, x // y)
+    return tl.where(c1 & c2, q - 1, q)
 
 
 # floor_divide must be consistent with python/numpy/torch: floor(x/y) on the
@@ -685,6 +690,39 @@ def rem_st_cfg(x, y):
     return _remainder(x, y)
 
 
+def _fold_scalar_into_tensor_dtype(value, dtype):
+    """Reproduce ATen's "wrapped number" fold for the scalar operand.
+
+    ``aten::remainder.Scalar_Tensor`` converts the Python scalar with
+    ``Scalar::to<T>()`` (a C-style truncating conversion) *before* the kernel
+    runs, so ``300 % <int8 tensor>`` really computes ``44 % y``. The shared
+    pointwise generator instead keeps the scalar in a wide integer type and
+    truncates only when storing to the (narrower) output dtype, which silently
+    disagrees with ATen for any scalar that does not fit the tensor dtype.
+    Verified on XPU (aten CPU oracle): int8 300/130, int16 40000/32768,
+    int32 +/-2**40/2**31 all returned the wide-scalar result.
+
+    Python ``bool`` is folded to ``int`` as well: the generated scalar kernel
+    carries ``do_not_specialize=["val0"]``, so a ``bool`` first argument binds
+    ``val0`` to ``i1`` and aborts with ``CompilationError`` (ATen returns the
+    ``True % y`` result).
+    """
+    if isinstance(value, bool):
+        value = int(value)
+    if (
+        isinstance(value, int)
+        and not dtype.is_floating_point
+        and not dtype.is_complex
+        and dtype != torch.bool
+    ):
+        info = torch.iinfo(dtype)
+        mod = 1 << info.bits
+        value &= mod - 1
+        if info.min < 0 and value > info.max:
+            value -= mod
+    return value
+
+
 def remainder(A, B):
     logger.debug("GEMS_KUNLUNXIN FLOOR_DIVIDE")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
@@ -696,6 +734,7 @@ def remainder(A, B):
             return rem_ts_cfg(A, B)
         return rem_ts(A, B)
     elif isinstance(B, torch.Tensor):
+        A = _fold_scalar_into_tensor_dtype(A, B.dtype)
         if B.numel() >= REMAINDER_CFG_THRESHOLD:
             return rem_st_cfg(A, B)
         return rem_st(A, B)

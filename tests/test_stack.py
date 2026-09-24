@@ -61,3 +61,80 @@ def test_stack(shape, dim, dtype):
         res_out = torch.stack(inp, dim)
 
     utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.underscore_stack
+@pytest.mark.parametrize("shape", utils.STACK_SHAPES)
+@pytest.mark.parametrize("dim", utils.STACK_DIM_LIST)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES + utils.INT_DTYPES)
+def test__stack(shape, dim, dtype):
+    if dtype in utils.FLOAT_DTYPES:
+        inp = [torch.randn(s, dtype=dtype, device=flag_gems.device) for s in shape]
+    else:
+        inp = [
+            torch.randint(low=0, high=0x7FFF, size=s, dtype=dtype, device="cpu").to(
+                flag_gems.device
+            )
+            for s in shape
+        ]
+
+    ref_inp = [utils.to_reference(_) for _ in inp]
+    ref_out = torch._stack(ref_inp, dim)
+
+    res_out = flag_gems._stack(inp, dim)
+
+    utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.underscore_stack
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test__stack_dim_out_of_range(dtype):
+    inp = [torch.randn(3, 4, dtype=dtype, device=flag_gems.device) for _ in range(2)]
+    with pytest.raises(IndexError):
+        flag_gems._stack(inp, 4)
+
+
+@pytest.mark.underscore_stack
+@pytest.mark.parametrize("shape", utils.STACK_SHAPES)
+@pytest.mark.parametrize("dim", utils.STACK_DIM_LIST)
+@pytest.mark.parametrize("dtype", utils.COMPLEX_DTYPES)
+def test__stack_complex(shape, dim, dtype):
+    inp = [torch.randn(s, dtype=dtype, device=flag_gems.device) for s in shape]
+
+    ref_inp = [utils.to_reference(_) for _ in inp]
+    ref_out = torch._stack(ref_inp, dim)
+
+    res_out = flag_gems._stack(inp, dim)
+
+    utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.underscore_stack
+def test__stack_dim_out_of_range_single_input():
+    # With a single tensor the per-entry loop never runs; an out-of-range dim
+    # must still be rejected (matches ATen).
+    inp = [torch.randn(3, 4, dtype=torch.float32, device=flag_gems.device)]
+    with pytest.raises(IndexError):
+        flag_gems._stack(inp, 4)
+
+
+@pytest.mark.underscore_stack
+@pytest.mark.parametrize("shape", utils.STACK_SHAPES)
+@pytest.mark.parametrize("dim", utils.STACK_DIM_LIST)
+def test__stack_zero_sized(shape, dim):
+    # ``shape`` is a list of per-tensor shapes; make the trailing dimension
+    # zero so the output has zero volume while strides stay non-zero.
+    zero_shape = list(shape[0])
+    zero_shape[-1] = 0
+    inp = [
+        torch.empty(zero_shape, dtype=torch.float32, device=flag_gems.device)
+        for _ in range(3)
+    ]
+
+    ref_inp = [utils.to_reference(_) for _ in inp]
+    ref_out = torch._stack(ref_inp, dim)
+
+    res_out = flag_gems._stack(inp, dim)
+
+    assert res_out.shape == ref_out.shape
+    assert res_out.numel() == 0

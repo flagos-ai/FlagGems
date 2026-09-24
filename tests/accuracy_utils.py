@@ -26,6 +26,7 @@ from .conftest import QUICK_MODE, TO_CPU
 fp64_is_supported = flag_gems.runtime.device.support_fp64
 bf16_is_supported = flag_gems.runtime.device.support_bf16
 int64_is_supported = flag_gems.runtime.device.support_int64
+fp8_is_supported = flag_gems.runtime.device.support_fp8
 
 
 def TestForwardOnly():
