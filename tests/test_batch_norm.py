@@ -220,3 +220,88 @@ def test_batch_norm_backward(shape, dtype, affine):
         utils.gems_assert_close(
             res_bias_grad, ref_bias_grad, dtype, reduce_dim=reduce_dim
         )
+
+
+@pytest.mark.native_batch_norm
+@pytest.mark.parametrize("shape", [(4, 3, 8, 8), (2, 4, 16)])
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("affine", [True, False])
+def test_native_batch_norm_no_running_stats(shape, dtype, affine):
+    channel_count = shape[1]
+
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    original = utils.to_reference(inp).clone()
+
+    weight = (
+        torch.randn(channel_count, dtype=dtype, device=flag_gems.device)
+        if affine
+        else None
+    )
+    bias = torch.randn_like(weight) if affine else None
+
+    ref_result = torch.ops.aten.native_batch_norm.default(
+        utils.to_reference(inp, True),
+        utils.to_reference(weight, True),
+        utils.to_reference(bias, True),
+        None,
+        None,
+        True,
+        0.1,
+        1e-5,
+    )
+
+    with flag_gems.use_gems():
+        result = torch.ops.aten.native_batch_norm.default(
+            inp,
+            weight,
+            bias,
+            None,
+            None,
+            True,
+            0.1,
+            1e-5,
+        )
+
+    for actual, expected in zip(result, ref_result):
+        utils.gems_assert_close(actual, expected, dtype)
+
+    utils.gems_assert_equal(inp, original)
+
+
+@pytest.mark.native_batch_norm
+@pytest.mark.parametrize("missing", ["mean", "var"])
+def test_native_batch_norm_mismatched_running_stats(missing):
+    channel_count = 3
+    inp = torch.randn(
+        (4, channel_count, 8, 8),
+        dtype=torch.float32,
+        device=flag_gems.device,
+    )
+
+    running_mean = torch.zeros(
+        channel_count, dtype=torch.float32, device=flag_gems.device
+    )
+    running_var = torch.ones(
+        channel_count, dtype=torch.float32, device=flag_gems.device
+    )
+
+    if missing == "mean":
+        running_mean = None
+    else:
+        running_var = None
+
+    with flag_gems.use_gems():
+        with pytest.raises(
+            ValueError,
+            match="running_mean and running_var must either both be None or neither be None",
+        ):
+            torch.ops.aten.native_batch_norm.default(
+                inp,
+                None,
+                None,
+                running_mean,
+                running_var,
+                True,
+                0.1,
+                1e-5,
+            )
