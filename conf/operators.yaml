@@ -27,6 +27,60 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.1'
+- id: _aminmax
+  description: 'Computes the minimum and maximum values of the `input` tensor.
+
+    '
+  for:
+  - _aminmax
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Reduction
+  stages:
+  - alpha: '5.5'
+- id: _aminmax_out
+  description: 'A variant of _aminmax() that writes the result into the out tensor.
+
+    '
+  for:
+  - _aminmax.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Reduction
+  stages:
+  - alpha: '5.5'
+- id: _conj_physical
+  description: 'Computes the element-wise conjugate of the given `input` tensor as
+    a physical (non-view) tensor. For non-complex dtypes the input is returned unchanged.
+
+    '
+  for:
+  - _conj_physical
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
+- id: _conj_physical_out
+  description: 'A variant of `_conj_physical()` that writes the result into the `out`
+    tensor.
+
+    '
+  for:
+  - _conj_physical.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: _ctc_loss
   description: 'Computes the CTC loss and the alpha lattice used by its backward pass.
 
@@ -34,6 +88,32 @@ ops:
   for:
   - _ctc_loss
   - _ctc_loss.Tensor
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
+- id: _ctc_loss_backward
+  description: 'Computes the gradient of the CTC loss with respect to log_probs.
+
+    '
+  for:
+  - _ctc_loss_backward
+  - _ctc_loss_backward.Tensor
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
+- id: _ctc_loss_backward_out
+  description: A variant of `_ctc_loss_backward` that allows the output to be assigned
+    to `out`.
+  for:
+  - _ctc_loss_backward.out
   labels:
   - aten
   - KernelGen
@@ -83,6 +163,34 @@ ops:
   - LinearAlg
   stages:
   - alpha: '5.5'
+- id: _linalg_svd
+  description: 'Computes the singular value decomposition (SVD) of a matrix; the private
+    primitive backing torch.linalg.svd and torch.linalg.svdvals.
+
+    '
+  for:
+  - _linalg_svd
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.5'
+- id: _pin_memory
+  description: 'Copies a strided CPU tensor into page-locked host memory for asynchronous
+    transfer to an accelerator.
+
+    '
+  for:
+  - _pin_memory
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: _reshape_alias
   description: 'Creates a view of the input tensor with the given size and stride,
 
@@ -100,6 +208,30 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: _saturate_weight_to_fp16
+  description: Triton kernel implementation for _saturate_weight_to_fp16.
+  for:
+  - _saturate_weight_to_fp16
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
+- id: _stack
+  description: |
+    Concatenates a sequence of tensors along a new dimension. This is the
+    internal `_stack` implementation that mirrors `stack`.
+  for:
+  - _stack
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: _transformer_encoder_layer_fwd
   description: Triton kernel implementation for _transformer_encoder_layer_fwd.
   for:
@@ -1741,6 +1873,24 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '3.0'
+- id: batch_norm_backward_elemt
+  description: 'Compute the per-element gradient for batch normalization backward
+    pass.
+
+    Given pre-computed channel statistics (sum_dy, sum_dy_xmu), produces
+
+    grad_input without reduction.
+
+    '
+  for:
+  - batch_norm_backward_elemt
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: batch_norm_backward_reduce
   description: Triton kernel implementation for batch normalization backward reduce
     stage.
@@ -3605,7 +3755,7 @@ ops:
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.4'
+    - alpha: '5.4'
 - id: ctc_loss_backward
   description: The backward computation of `ctc_loss()`, exercised through the
     autograd of the forward operator.
@@ -3618,6 +3768,23 @@ ops:
   - NeuralNetwork
   stages:
   - beta: '5.4'
+- id: cudnn_attention_backward
+  description: 'Backward kernel for cuDNN attention, computing gradients of query,
+
+    key, and value from the cuDNN attention forward pass.  Uses a BHSD-native
+    two-kernel design that eliminates the BHSD-BSHD permute+contiguous overhead.
+
+    '
+  for:
+  - _cudnn_attention_backward
+  labels:
+  - aten
+  - NoCPU
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: cudnn_attention_forward
   description: 'Forward kernel for cuDNN attention, computing scaled dot-product
 
@@ -3829,6 +3996,22 @@ ops:
   - Math
   stages:
   - beta: '5.3'
+- id: cumprod_backward
+  description: |
+    Backward pass for `cumprod`. Given the output gradient, the forward input and the forward
+    output, computes the gradient with respect to the input. Zero elements along the reduction
+    dimension are handled explicitly: the reverse cumulative sum of `grad * output` divided by
+    `input` gives the gradient for non-zero positions, while the first zero position uses a
+    modified cumulative product. Accumulation is performed in float32 for numerical stability.
+  for:
+  - cumprod_backward
+  labels:
+  - aten
+  - Reduction
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5.0'
 - id: cumsum
   destination: Returns the cumulative sum of elements of `input` in the dimension
     `dim`.
@@ -4339,17 +4522,6 @@ ops:
   stages:
   - alpha: '5.0'
   - beta: '5.3'
-- id: dunder_ior_scalar
-  description: The scalar version of `dunder_ior_tensor`.
-  for:
-  - __ior__.Scalar
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Math
-  stages:
-  - beta: '5.3'
 - id: dunder_ior_tensor
   description: The in-place version of bitwise or operation for tensor and scalar.
   for:
@@ -4501,6 +4673,20 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '3.0'
+- id: embedding_bag
+  description: 'Compute sums, means, or maxes of bags of embeddings, without instantiating
+    the intermediate embeddings.
+
+    '
+  for:
+  - embedding_bag
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: embedding_bag_dense_backward
   description: 'Computes the gradient for the backward pass of embedding_bag in dense
     mode.
@@ -7201,6 +7387,23 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: hspmm
+  description: 'Performs a matrix multiplication of a sparse COO tensor with a dense
+    tensor.
+
+    Returns an uncoalesced sparse COO tensor with the same number of specified elements
+    as the input sparse tensor.
+
+    '
+  for:
+  - hspmm
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.5.0'
 - id: hstack
   description: 'Stack tensors in sequence horizontally (column wise). This is equivalent
     to concatenation
@@ -7734,6 +7937,18 @@ ops:
   stages:
   - alpha: '5.4'
 
+- id: ior_scalar
+  description: The scalar version of `dunder_ior_tensor`.
+  for:
+  - __ior__.Scalar
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - beta: '5.3'
+
 - id: irshift
   description: Triton kernel implementation for __irshift__.
   for:
@@ -7952,6 +8167,40 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: kaiser_window
+  description: Computes the Kaiser window function.
+  for:
+  - kaiser_window
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5.0'
+- id: kaiser_window_beta
+  description: A variant of kaiser_window() that takes an explicit periodic flag and
+    beta shape parameter.
+  for:
+  - kaiser_window.beta
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5.0'
+- id: kaiser_window_periodic
+  description: A variant of kaiser_window() that takes an explicit periodic flag.
+  for:
+  - kaiser_window.periodic
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5.0'
 - id: kron
   description: Computes the Kronecker product of `input` and `other`.
   for:
@@ -8475,6 +8724,18 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: linalg_inv_ex
+  description: Compute the inverse of a square matrix using LU factorization with
+    partial pivoting.
+  for:
+  - linalg_inv_ex
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.5'
 - id: linalg_ldl_factor
   description: 'Computes the compact LDL factorization of a Hermitian or symmetric
     matrix.
@@ -8622,6 +8883,17 @@ ops:
   - aten
   kind:
   - Math
+  stages:
+  - alpha: '5.4'
+- id: linalg_matmul
+  description: Triton kernel implementation for linalg_matmul.
+  for:
+  - linalg.matmul
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
   stages:
   - alpha: '5.4'
 - id: linalg_matrix_exp
@@ -11108,6 +11380,18 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.5'
+- id: native_norm
+  description: Computes the p-norm over all elements of the input tensor, reducing
+    to a scalar.
+  for:
+  - native_norm
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Reduction
+  stages:
+  - alpha: '5.5.0'
 - id: ne
   description: Computes that `input` is not equal to `other` element-wise.
   for:
@@ -11664,6 +11948,22 @@ ops:
   - Distribution
   stages:
   - stable: '2.1'
+- id: normal_functional
+  description: |
+    Returns a fresh tensor of random numbers drawn from a normal distribution
+    parameterized by a float mean and a float std. This is the out-of-place
+    functional variant of normal_ (aten::normal_functional).
+  for:
+  - normal_functional
+  labels:
+  - aten
+  - KernelGen
+  - pointwise
+  - skip_precision_check
+  kind:
+  - Distribution
+  stages:
+  - alpha: '5.5.0'
 - id: normal_tensor_float
   description: 'Returns a tensor of random numbers drawn from separate normal distributions
 
@@ -12052,6 +12352,20 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: pin_memory
+  description: 'Public entry that pins a strided CPU tensor into page-locked host
+    memory; delegates to _pin_memory.
+
+    '
+  for:
+  - pin_memory
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: pinverse
   description: Computes the pseudoinverse of a matrix.
   for:
@@ -12343,6 +12657,32 @@ ops:
   - stable: '2.0'
   labels:
   - aten
+- id: put
+  description: |
+    Copies the elements of `source` into `self` at the flattened (row-major)
+    positions given by `index`. When `accumulate` is `True`, the values are
+    added to the existing elements of `self` instead of overwriting them.
+  for:
+  - put
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
+- id: put_out
+  description: |
+    A variant of `put()` that writes the result into the `out` tensor.
+  for:
+  - put.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: quantile
   description: Computes the q-th quantiles of each row of the `input` tensor along
     the dimension `dim`.
@@ -12354,6 +12694,33 @@ ops:
   - Tensor
   stages:
   - stable: '2.2'
+- id: quantize_per_tensor
+  description: |
+    Quantizes a float32 tensor to a quantized tensor (torch.quint8 / qint8 / qint32)
+    with the given scale and zero point, using round-half-to-even rounding and
+    clamping to the representable integer range.
+  for:
+  - quantize_per_tensor
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
+- id: quantize_per_tensor_out
+  description: |
+    A variant of `quantize_per_tensor()` that writes the result into the `out`
+    quantized tensor. Computed with the same Triton kernel as the base variant.
+  for:
+  - quantize_per_tensor.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: quantized_gru
   description: 'Quantized GRU (Gated Recurrent Unit) implementation using Triton fused
     gate kernel for efficient RNN inference.
@@ -13241,6 +13608,22 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: rms_norm_w8a16_int8
+  description: 'Applies Root Mean Square Layer Normalization to BF16 activations using
+
+    group-wise INT8 weights and per-group scales.
+
+    '
+  for:
+  - None
+  labels:
+  - NoCPU
+  - Normalization
+  - Quantization
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: rnn_relu
   description: Triton kernel implementation for rnn_relu.
   for:
@@ -13354,6 +13737,29 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: row_indices_copy
+  description: Returns the row indices of a column-compressed (CSC or BSC) sparse tensor as a contiguous strided tensor.
+  for:
+  - row_indices_copy
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
+- id: row_indices_copy_out
+  description: |
+    A variant of row_indices_copy() that writes the result into the out tensor.
+  for:
+  - row_indices_copy.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: row_stack
   description: |
     Stack tensors in sequence vertically (row wise). Alias of vstack.
@@ -14686,6 +15092,21 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.5'
+- id: sobol_engine_initialize_state_
+  description: |
+    Initializes Sobol quasi-random number generator state with direction numbers.
+    This is a low-level operation that fills a (dimension, 30) state tensor with
+    pre-computed Sobol direction numbers used for generating low-discrepancy sequences.
+  for:
+  - _sobol_engine_initialize_state_
+  labels:
+  - aten
+  - pointwise
+  - random
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5.0'
 - id: soft_margin_loss
   description: Compute the soft margin loss.
   for:
@@ -17086,6 +17507,30 @@ ops:
   - BLAS
   stages:
   - beta: '5.3'
+- id: trilinear
+  description: Computes the trilinear product (3-way tensor product) via a Triton
+    elementwise-product kernel followed by summation over sumdim.
+  for:
+  - _trilinear
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
+- id: trilinear_out
+  description: A variant of `_trilinear()` that explicitly assigns the output to the
+    `out` parameter.
+  for:
+  - _trilinear.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: triton_lighting_indexer_k_tiled_interface
   description: Part of FP8 MQA framework. It is currently not exposed as an operator
     for use.
@@ -17226,6 +17671,20 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: underscore_sobol_engine_draw
+  description: 'Generates quasi-random Sobol sequence points. XOR-based algorithm
+    using Gray code for low-discrepancy sampling.
+
+    '
+  for:
+  - _sobol_engine_draw
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Distribution
+  stages:
+  - alpha: '5.5.0'
 - id: unflatten
   description: Expand a single dimension into multiple dimensions (inverse of flatten).
   for:
@@ -17701,6 +18160,31 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '5.0'
+- id: upsample_nearest1d_backward
+  description: Triton kernel implementation for upsample_nearest1d_backward.
+  for:
+  - upsample_nearest1d_backward
+  labels:
+  - aten
+  - KernelGen
+  - Reduction
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
+- id: upsample_nearest1d_backward_grad_input
+  description: A variant of `upsample_nearest1d_backward()` that writes the result
+    into the `grad_input` tensor.
+  for:
+  - upsample_nearest1d_backward.grad_input
+  labels:
+  - aten
+  - KernelGen
+  - Reduction
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: upsample_nearest2d
   description: 'Upsamples the `input`, using nearest neighbours'' pixel values. The
     input has to be 4 dimensional.
