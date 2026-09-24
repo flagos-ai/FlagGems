@@ -784,7 +784,7 @@ ops:
   kind:
   - Tensor
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: affine_grid_generator
   description: 'Generates a 2D or 3D flow field (sampling grid), given a batch of
     affine matrices theta.
