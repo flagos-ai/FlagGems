@@ -26,9 +26,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils.triton_version_utils import HAS_TLE
 
-_CONFIG_YAML = str(
-    Path(__file__).resolve().parent.parent / "mm_w8a8_fp8" / "config.yaml"
-)
+_CONFIG_YAML = str(Path(__file__).resolve().parent.parent / "tune_configs.yaml")
 _TUNE_KEY = [
     "M",
     "N",

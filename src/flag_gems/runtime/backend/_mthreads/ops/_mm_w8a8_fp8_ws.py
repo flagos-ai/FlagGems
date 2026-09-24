@@ -12,7 +12,7 @@ import triton.language as tl
 from flag_gems import runtime
 from flag_gems.utils import libentry, libtuner
 
-_CONFIG_YAML = str(Path(__file__).resolve().parent.parent / "mm_w8a8_fp8/config.yaml")
+_CONFIG_YAML = str(Path(__file__).resolve().parent.parent / "tune_configs.yaml")
 
 
 def _set_blocks(args):

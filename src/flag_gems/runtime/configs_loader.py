@@ -889,6 +889,9 @@ class TunedConfigLoader(object):
         return None
 
     def _build_expand_registry(self):
+        musa_yaml = os.path.join(
+            os.path.dirname(__file__), "backend", "_mthreads", "tune_configs.yaml"
+        )
         return {
             **{
                 name: {
@@ -905,7 +908,7 @@ class TunedConfigLoader(object):
                         "SPLIT_K",
                     ],
                     "default_strategy": ["default"] * 9,
-                    "expand_yaml_path": None,
+                    "expand_yaml_path": musa_yaml,
                 }
                 for name in ("mm_w8a8_fp8_musa", "mm_w8a8_fp8_musa_default")
             },
@@ -913,7 +916,7 @@ class TunedConfigLoader(object):
                 name: {
                     "key": ["M", "N", "K"],
                     "default_strategy": ["default"] * 3,
-                    "expand_yaml_path": None,
+                    "expand_yaml_path": musa_yaml,
                 }
                 for name in (
                     "mm_w8a8_fp8_musa_ws",
@@ -1357,6 +1360,18 @@ class TunedConfigLoader(object):
         current_op_configs = self._get_op_configs(op_name)
         if not current_op_configs:
             return []
+
+        if self.device.vendor_name == "mthreads" and op_name in (
+            "mm_w8a8_fp8_musa",
+            "mm_w8a8_fp8_musa_default",
+            "mm_w8a8_fp8_musa_ws",
+            "mm_w8a8_fp8_musa_ws_default",
+            "mm_w8a8_fp8_musa_ws_fragmented",
+            "mm_w8a8_fp8_musa_ws_fragmented_default",
+        ):
+            # These spaces share tune_configs.yaml but require the resource
+            # pruning in their builders, not an unbounded Cartesian product.
+            return self.ops_get_configs(op_name)
 
         configs = []
 
