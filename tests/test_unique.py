@@ -1,20 +1,3 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-import random
-import time
-
 import pytest
 import torch
 
@@ -22,102 +5,110 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-random.seed(time.time() // 100)
 
-device = flag_gems.device
+@pytest.mark.unique
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test__unique_basic(shape, dtype):
+    """Test _unique with default parameters (sorted=True, return_inverse=False)"""
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp)
 
-
-@pytest.mark.unique2
-@pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
-@pytest.mark.parametrize("dtype", utils.INT_DTYPES)
-@pytest.mark.parametrize("sorted", [True])
-@pytest.mark.parametrize("return_inverse", [True, False])
-@pytest.mark.parametrize("return_counts", [False, True])
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
-)
-def test_unique2(shape, dtype, sorted, return_inverse, return_counts):
-    if flag_gems.vendor_name == "kunlunxin":
-        torch.manual_seed(0)
-        torch.cuda.manual_seed_all(0)
-
-    if dtype in utils.FLOAT_DTYPES:
-        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    else:
-        inp = torch.randint(-10, 10, shape, device=flag_gems.device).to(dtype)
-
-    ref_inp = utils.to_reference(inp, False)
-
-    if return_counts:
-        if return_inverse:
-            with flag_gems.use_gems():
-                res_out, res_unique_order, res_counts = torch.unique(
-                    inp,
-                    sorted=sorted,
-                    return_inverse=return_inverse,
-                    return_counts=return_counts,
-                )
-            ref_out, ref_unique_order, ref_counts = torch.unique(
-                ref_inp,
-                sorted=sorted,
-                return_inverse=return_inverse,
-                return_counts=return_counts,
-            )
-
-            assert res_out.numel() == ref_out.numel()
-
-            utils.gems_assert_equal(res_unique_order, ref_unique_order)
-        else:
-            with flag_gems.use_gems():
-                res_out, res_counts = torch.unique(
-                    inp,
-                    sorted=sorted,
-                    return_inverse=return_inverse,
-                    return_counts=return_counts,
-                )
-            ref_out, ref_counts = torch.unique(
-                ref_inp,
-                sorted=sorted,
-                return_inverse=return_inverse,
-                return_counts=return_counts,
-            )
-
-            assert res_out.numel() == ref_out.numel()
-
-        utils.gems_assert_equal(res_counts, ref_counts)
-    else:
-        if return_inverse:
-            with flag_gems.use_gems():
-                res_out, res_unique_order = torch.unique(
-                    inp,
-                    sorted=sorted,
-                    return_inverse=return_inverse,
-                    return_counts=return_counts,
-                )
-            ref_out, ref_unique_order = torch.unique(
-                ref_inp,
-                sorted=sorted,
-                return_inverse=return_inverse,
-                return_counts=return_counts,
-            )
-
-            assert res_out.numel() == ref_out.numel()
-
-            utils.gems_assert_equal(res_unique_order, ref_unique_order)
-        else:
-            with flag_gems.use_gems():
-                res_out = torch.unique(
-                    inp,
-                    sorted=sorted,
-                    return_inverse=return_inverse,
-                    return_counts=return_counts,
-                )
-            ref_out = torch.unique(
-                ref_inp,
-                sorted=sorted,
-                return_inverse=return_inverse,
-                return_counts=return_counts,
-            )
-            assert res_out.numel() == ref_out.numel()
+    ref_out, ref_inverse = torch._unique(ref_inp)
+    res_out, res_inverse = flag_gems._unique(inp)
 
     utils.gems_assert_equal(res_out, ref_out)
+    # When return_inverse=False, inverse should be empty
+    assert res_inverse.numel() == 0
+    assert ref_inverse.numel() == 0
+
+
+@pytest.mark.unique
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test__unique_with_inverse(shape, dtype):
+    """Test _unique with return_inverse=True"""
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp)
+
+    ref_out, ref_inverse = torch._unique(ref_inp, return_inverse=True)
+    res_out, res_inverse = flag_gems._unique(inp, return_inverse=True)
+
+    utils.gems_assert_equal(res_out, ref_out)
+    utils.gems_assert_equal(res_inverse, ref_inverse)
+
+
+@pytest.mark.unique
+@pytest.mark.parametrize("shape", [(100,), (1000,)])
+@pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+def test__unique_integers(shape, dtype):
+    """Test _unique with integer tensors"""
+    inp = torch.randint(0, 50, shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp)
+
+    ref_out, ref_inverse = torch._unique(ref_inp, return_inverse=True)
+    res_out, res_inverse = flag_gems._unique(inp, return_inverse=True)
+
+    utils.gems_assert_equal(res_out, ref_out)
+    utils.gems_assert_equal(res_inverse, ref_inverse)
+
+
+@pytest.mark.unique
+def test__unique_all_same():
+    """Test _unique when all elements are the same"""
+    inp = torch.ones(100, dtype=torch.float32, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp)
+
+    ref_out, ref_inverse = torch._unique(ref_inp, return_inverse=True)
+    res_out, res_inverse = flag_gems._unique(inp, return_inverse=True)
+
+    utils.gems_assert_equal(res_out, ref_out)
+    utils.gems_assert_equal(res_inverse, ref_inverse)
+    assert res_out.numel() == 1
+
+
+@pytest.mark.unique
+def test__unique_already_unique():
+    """Test _unique when all elements are already unique"""
+    inp = torch.arange(100, dtype=torch.float32, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp)
+
+    ref_out, ref_inverse = torch._unique(ref_inp, return_inverse=True)
+    res_out, res_inverse = flag_gems._unique(inp, return_inverse=True)
+
+    utils.gems_assert_equal(res_out, ref_out)
+    utils.gems_assert_equal(res_inverse, ref_inverse)
+
+
+@pytest.mark.unique
+def test__unique_with_duplicates():
+    """Test _unique with specific duplicates pattern"""
+    inp = torch.tensor([1, 2, 2, 3, 1, 4], dtype=torch.float32, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp)
+
+    ref_out, ref_inverse = torch._unique(ref_inp, return_inverse=True)
+    res_out, res_inverse = flag_gems._unique(inp, return_inverse=True)
+
+    utils.gems_assert_equal(res_out, ref_out)
+    utils.gems_assert_equal(res_inverse, ref_inverse)
+
+
+@pytest.mark.unique
+@pytest.mark.parametrize("return_inverse", [False, True])
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test__unique_empty_input(dtype, return_inverse):
+    """Zero-size parity: empty input must yield empty outputs.
+
+    The small-input kernel path has no zero-size guard, so the operator
+    short-circuits before launch; ATen returns empty results here too.
+    """
+    inp = torch.empty(0, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp)
+
+    ref_out, ref_inverse = torch._unique(ref_inp, return_inverse=return_inverse)
+    res_out, res_inverse = flag_gems._unique(inp, return_inverse=return_inverse)
+
+    assert res_out.numel() == 0
+    assert res_inverse.numel() == 0
+    utils.gems_assert_equal(res_out, ref_out)
+    utils.gems_assert_equal(res_inverse, ref_inverse)

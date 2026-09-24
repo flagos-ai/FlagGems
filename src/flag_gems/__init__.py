@@ -370,6 +370,7 @@ _FULL_CONFIG = (
     ("_transformer_encoder_layer_fwd", _transformer_encoder_layer_fwd),
     ("_trilinear", _trilinear),
     ("_trilinear.out", _trilinear_out),
+    ("_unique", _unique),
     ("_unique2", _unique2),
     ("_unsafe_index", unsafe_index),
     ("_unsafe_index_put", unsafe_index_put),

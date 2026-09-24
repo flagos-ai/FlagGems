@@ -17763,6 +17763,17 @@ ops:
   - Distribution
   stages:
   - stable: '2.1'
+- id: unique
+  description: Triton kernel implementation for _unique.
+  for:
+  - _unique
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: unique2
   description: Returns the unique elements of the input tensor. This is an internal
     PyTorch function.

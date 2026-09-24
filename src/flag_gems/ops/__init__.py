@@ -198,6 +198,7 @@ from flag_gems.ops._thnn_fused_lstm_cell_backward_impl import (
 )
 from flag_gems.ops._transform_bias_rescale_qkv import _transform_bias_rescale_qkv
 from flag_gems.ops._transformer_encoder_layer_fwd import _transformer_encoder_layer_fwd
+from flag_gems.ops._unique import _unique
 from flag_gems.ops._unsafe_masked_index import _unsafe_masked_index
 from flag_gems.ops._unsafe_masked_index_put_accumulate import (
     _unsafe_masked_index_put_accumulate,
@@ -1435,6 +1436,7 @@ __all__ = [
     "_transformer_encoder_layer_fwd",
     "_trilinear",
     "_trilinear_out",
+    "_unique",
     "_unique2",
     "_unsafe_masked_index",
     "_unsafe_masked_index_put_accumulate",
