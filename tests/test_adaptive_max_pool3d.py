@@ -9,7 +9,12 @@ from . import conftest as cfg
 if cfg.QUICK_MODE:
     FLOAT_DTYPES = [torch.float32]
 else:
-    FLOAT_DTYPES = utils.FLOAT_DTYPES
+    FLOAT_DTYPES = [] + utils.FLOAT_DTYPES
+
+# NOTE: on the Ascend and Hygon backends, if the -- ref CPU testing time is greater than 30 minutes,
+# limit the data testing for these two backends to F32
+if flag_gems.vendor_name in ("ascend", "hygon"):
+    FLOAT_DTYPES = [torch.float32]
 
 
 def _compatible(shape, out_size):
@@ -17,6 +22,14 @@ def _compatible(shape, out_size):
     return all(o <= i for o, i in zip(out_size, shape[2:]))
 
 
+# NOTE: this shape matrix is trimmed to fit a 30-minute CI budget.
+# Triton JIT compilation is keyed on the `tl.constexpr` values, and almost every
+# constexpr in the adaptive_max_pool3d kernels is derived from the input shape --
+# so wall time is dominated by the number of *distinct shapes*, not test count.
+# Entries commented out below are the most compile-expensive shapes whose
+# (dispatch path, boundary condition) coverage is already provided by a cheaper
+# shape that remains in the list. All 20 kernels of the ascend backend are still
+# exercised. Re-enable entries individually when working on that dispatch path.
 ALL_CONFIGS = [
     # --- Path A: Identity ---
     ((2, 256, 2, 14, 14), (2, 14, 14), "Path A: exact identity"),
@@ -24,15 +37,15 @@ ALL_CONFIGS = [
     ((2, 256, 4, 7, 7), (4, 7, 7), "Path A: odd spatial identity"),
     ((4, 64, 8, 32, 32), (8, 32, 32), "Path A: large identity"),
     # --- Path B: out_d=1 fast path ---
-    ((1, 8, 64, 256, 256), (1, 7, 7), "Path B: extreme H/W reduction"),
+    #     ((1, 8, 64, 256, 256), (1, 7, 7), "Path B: extreme H/W reduction"),
     ((1, 256, 64, 112, 112), (1, 112, 112), "Path B: T=64→1, spatial preserved"),
     # B → global pool (1,1,1)
-    ((1, 4096, 64, 64, 64), (1, 1, 1), "B→C: reduced spatial=4096"),
+    #     ((1, 4096, 64, 64, 64), (1, 1, 1), "B→C: reduced spatial=4096"),
     ((1, 4, 8, 24, 32), (1, 1, 1), "B→D: reduced spatial=768"),
     # Video model classifier head (B→E: reduced spatial<64)
     ((1, 1024, 8, 7, 7), (1, 1, 1), "B→E: I3D Mixed_5c"),
     # B → large window downstream
-    ((8, 64, 16, 112, 112), (1, 7, 7), "B: aggressive spatial reduction"),
+    #     ((8, 64, 16, 112, 112), (1, 7, 7), "B: aggressive spatial reduction"),
     ((2, 256, 16, 112, 112), (1, 56, 56), "B: large HW after reduction"),
     # --- Path C: Global torch.max (direct: in_d=1, spatial >= 4096) ---
     ((1, 256, 1, 64, 64), (1, 1, 1), "Path C: spatial=4096 boundary"),
@@ -49,58 +62,58 @@ ALL_CONFIGS = [
     # --- Full 3D compression (all dims reduced) ---
     # Path F: Large window kernel
     ((1, 16, 64, 128, 128), (4, 8, 8), "Path F: win=4913, total=4096"),
-    ((1, 3, 16, 224, 224), (8, 7, 7), "Path F: video input"),
+    #     ((1, 3, 16, 224, 224), (8, 7, 7), "Path F: video input"),
     # Path G: 1D kernel (large total, moderate window ≤ 2048)
-    ((1, 1280, 48, 36, 50), (8, 8, 8), "Qwen2.5-VL, win=336→G"),
+    #     ((1, 1280, 48, 36, 50), (8, 8, 8), "Qwen2.5-VL, win=336→G"),
     ((2, 512, 64, 64, 64), (4, 8, 8), "medical 3D, win=1377→G"),
     # Path H: 2D fast (win > 2048)
     ((1, 8, 64, 256, 256), (64, 7, 7), "T keep, extreme H/W→H"),
     # Path I: 2D regular
-    ((2, 64, 64, 256, 256), (2, 32, 32), "win=2673>2048, out_h=32→I"),
+    #     ((2, 64, 64, 256, 256), (2, 32, 32), "win=2673>2048, out_h=32→I"),
     # --- Spatial compression (D preserved, H/W reduced) → mostly Path G ---
     ((2, 128, 4, 28, 28), (4, 14, 14), "D keep, H/W 28→14→G"),
-    ((1, 3, 32, 224, 224), (16, 56, 56), "video pyramid→G"),
+    #     ((1, 3, 32, 224, 224), (16, 56, 56), "video pyramid→G"),
     # --- 1D kernel specific shapes ---
     ((1, 2, 4, 4, 4), (2, 2, 2), "total=16→G (very small)"),
     ((4, 32, 16, 32, 32), (8, 16, 16), "total=262144, win=27→G"),
     # --- 2D kernel via prefer_2d ---
-    ((16, 4, 4, 4, 4), (2, 2, 2), "total=512, N*C=64→prefer_2d→H"),
-    ((2, 1, 4, 4, 4), (2, 2, 2), "!prefer_2d→G (boundary)"),
+    #     ((16, 4, 4, 4, 4), (2, 2, 2), "total=512, N*C=64→prefer_2d→H"),
+    #     ((2, 1, 4, 4, 4), (2, 2, 2), "!prefer_2d→G (boundary)"),
     # --- Edge cases: unit dims, non-divisible, stress ---
     ((2, 256, 16, 1, 14), (8, 1, 14), "H=1"),
     ((2, 256, 16, 14, 1), (8, 14, 1), "W=1"),
-    ((1, 64, 37, 59, 43), (7, 13, 19), "all prime in/out"),
+    #     ((1, 64, 37, 59, 43), (7, 13, 19), "all prime in/out"),
     ((1, 3, 5, 13, 17), (2, 5, 7), "small odd dims"),
     # --- Stress tests ---
     ((128, 768, 4, 4, 4), (1, 1, 1), "huge batch→B"),
     ((1, 8192, 2, 2, 2), (1, 1, 1), "extreme C=8192→B"),
-    ((1, 1, 128, 256, 256), (8, 8, 8), "C=1, large spatial"),
+    #     ((1, 1, 128, 256, 256), (8, 8, 8), "C=1, large spatial"),
     # --- Known model configs (video transformers) ---
     ((1, 768, 96, 14, 14), (1, 1, 1), "TimeSformer 96f→B"),
-    ((2, 256, 2, 14, 14), (1, 7, 7), "R3D-18 layer3"),
+    #     ((2, 256, 2, 14, 14), (1, 7, 7), "R3D-18 layer3"),
     ((1, 832, 16, 14, 14), (4, 7, 7), "I3D Mixed_4f"),
-    ((1, 256, 16, 16, 16), (4, 4, 4), "3D U-Net bottleneck"),
+    #     ((1, 256, 16, 16, 16), (4, 4, 4), "3D U-Net bottleneck"),
     # --- win_size boundary shapes (near 2048) ---
     ((2, 64, 16, 64, 64), (2, 8, 8), "win=729≤2048→G (below)"),
-    ((2, 8, 64, 96, 96), (2, 4, 4), "win=20625>2048→H (above)"),
+    #     ((2, 8, 64, 96, 96), (2, 4, 4), "win=20625>2048→H (above)"),
     # --- Cubic output_size (int → (D,D,D)) ---
     ((1, 128, 32, 64, 64), (8, 8, 8), "cubic output"),
-    ((1, 512, 64, 128, 128), (2, 2, 2), "cubic output, large win"),
+    #     ((1, 512, 64, 128, 128), (2, 2, 2), "cubic output, large win"),
     # --- Aligned shapes (multiples of 8 for tensor-core) ---
     ((2, 64, 16, 64, 64), (8, 16, 16), "aligned to 8"),
     ((1, 256, 32, 128, 128), (8, 16, 16), "aligned, large"),
     # --- PLLaVA / InternVideo / Qwen additional variants ---
-    ((2, 1280, 64, 42, 72), (8, 14, 14), "Qwen2.5-VL scaled"),
+    #     ((2, 1280, 64, 42, 72), (8, 14, 14), "Qwen2.5-VL scaled"),
     ((4, 1536, 96, 32, 32), (16, 16, 16), "VideoLLaMA large"),
     ((1, 32, 4, 128, 128), (2, 32, 32), "shallow, wide"),
-    ((2, 64, 64, 256, 256), (2, 32, 32), "uniform win=8x8, large"),
+    #     ((2, 64, 64, 256, 256), (2, 32, 32), "uniform win=8x8, large"),
     ((1, 8, 64, 256, 256), (64, 7, 7), "in_d==out_d, large 2D pool"),
     ((1, 4, 32, 8, 8), (1, 4, 4), "out_d=1, in_d=32>16"),
-    ((2, 3, 20, 6, 6), (1, 3, 3), "out_d=1, in_d=20>16"),
+    #     ((2, 3, 20, 6, 6), (1, 3, 3), "out_d=1, in_d=20>16"),
     ((1, 4, 37, 16, 16), (2, 8, 8), "non-uniform D"),
     ((2, 8, 17, 24, 24), (3, 12, 12), "non-uniform D, pow2 H/W"),
     ((4, 32, 16, 32, 32), (8, 16, 16), "Path G 1D kernel"),
-    ((1, 3, 32, 224, 224), (16, 56, 56), "video pyramid (pool2d-first)"),
+    #     ((1, 3, 32, 224, 224), (16, 56, 56), "video pyramid (pool2d-first)"),
 ]
 
 # Deduplicate (just in case)

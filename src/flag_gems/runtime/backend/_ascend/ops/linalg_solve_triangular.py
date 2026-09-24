@@ -19,6 +19,13 @@ Design (v0.2, see version log 2026_08_27_linalg_solve_triangular_v0_2_log.md):
     (trsm_diag_single_kernel) using tl.debug_barrier() after every row store to
     order the within-kernel read-after-write (validated stable on triton-ascend
     3.2.0; see P1 experiment 1 in the log).
+
+    That ordering only holds while the launch grid fits in the concurrently
+    scheduled programs, so the grid is capped at the vector-core count and the
+    surplus (column slice, batch) work items are folded into an in-kernel loop.
+    Without the cap a large batched or wide-RHS solve ran the row loop against
+    a stale X and returned wrong values in a run-dependent pattern; see
+    _num_cores for the measurements.
   - GEMM updates use the ascend mm (runtime/backend/_ascend/ops/mm.py), which
     works on NPU (avoids the generic mm's SPLIT_K issue) and is contribution
     compliant.  The update subtraction is a dedicated Triton kernel (sub2d).
@@ -29,12 +36,13 @@ Design (v0.2, see version log 2026_08_27_linalg_solve_triangular_v0_2_log.md):
 """
 
 import logging
+from functools import lru_cache
 
 import torch
 import triton
 import triton.language as tl
 
-from flag_gems.utils import libentry
+from flag_gems.utils import get_device_properties, libentry
 
 from .mm import mm as _mm
 
@@ -42,6 +50,29 @@ logger = logging.getLogger(__name__)
 
 BLOCK_SIZE: tl.constexpr = 64
 SLIDE_SIZE: tl.constexpr = 64
+
+# Fallback for the vector-core count when the device properties are unavailable.
+_DEFAULT_CORES = 40
+
+
+@lru_cache(maxsize=1)
+def _num_cores():
+    """Vector-core count, the number of programs that run concurrently.
+
+    The diagonal-block kernel below orders its serial row loop with a
+    store -> tl.debug_barrier() -> load round trip through global memory.  That
+    ordering only holds while every program gets its own core and runs to
+    completion; once the grid exceeds the core count the extra programs are
+    scheduled in a second wave and a later row's load reads X before the earlier
+    row's store has retired, so the solve returns wrong values in a
+    run-dependent pattern.  Measured on Ascend910B4 (vector_core_num=40): a grid
+    of 40 programs is bit-stable, a grid of 41 is not, for every shape tested.
+    """
+    try:
+        cores = int(getattr(get_device_properties(), "multi_processor_count", 0) or 0)
+    except Exception:  # noqa: BLE001
+        cores = 0
+    return cores if cores > 0 else _DEFAULT_CORES
 
 
 @libentry()
@@ -56,71 +87,87 @@ def trsm_diag_single_kernel(
     stride_a,
     stride_batch_x,
     stride_x,
+    n_col,
+    n_batch,
     UNIT: tl.constexpr,
     UPPER: tl.constexpr,
     SLIDE_SIZE: tl.constexpr,
 ):
     """Solve one triangular diagonal block with a single kernel launch.
 
-    One program per (column slice, batch).  Rows are solved serially inside the
-    kernel; a tl.debug_barrier() after each row store orders the subsequent
+    One work item per (column slice, batch).  Rows are solved serially inside
+    the kernel; a tl.debug_barrier() after each row store orders the subsequent
     row loads (the plain store->load read-after-write was measured as an
     intermittent race on triton-ascend, the barrier makes it deterministic).
+
+    The work items are independent, so they are flattened onto a 1-D grid and a
+    program walks its share of them.  The grid is capped at the core count by
+    the caller: past that the barrier stops ordering the row loop (see
+    _num_cores), and folding the surplus items into the loop is what keeps the
+    launch correct without changing any arithmetic.
     """
-    pid_col = tl.program_id(0)
-    pid_batch = tl.program_id(1)
-
-    A_ptr += pid_batch * stride_batch_a
-    X_ptr += pid_batch * stride_batch_x
-
-    col_start = pid_col * SLIDE_SIZE
-    col_offs = col_start + tl.arange(0, SLIDE_SIZE)
-    col_mask = col_offs < k
+    pid = tl.program_id(0)
+    n_prog = tl.num_programs(0)
 
     block_rows = row_end - row_start
 
-    for i_idx in range(block_rows):
-        if not UPPER:
-            actual_i = row_start + i_idx
-        else:
-            actual_i = row_end - 1 - i_idx
+    for item in range(pid, n_col * n_batch, n_prog):
+        pid_col = item % n_col
+        pid_batch = item // n_col
 
-        x_vals = tl.load(
-            X_ptr + actual_i * stride_x + col_offs, mask=col_mask, other=0.0
-        )
+        a_b = A_ptr + pid_batch * stride_batch_a
+        x_b = X_ptr + pid_batch * stride_batch_x
 
-        if UPPER:
-            for p_idx in range(i_idx):
-                actual_p = row_end - 1 - p_idx
-                a_val = tl.load(A_ptr + actual_i * stride_a + actual_p)
-                xp_vals = tl.load(
-                    X_ptr + actual_p * stride_x + col_offs,
-                    mask=col_mask,
-                    other=0.0,
-                )
-                x_vals = x_vals - a_val * xp_vals
-        else:
-            for p_idx in range(i_idx):
-                actual_p = row_start + p_idx
-                a_val = tl.load(A_ptr + actual_i * stride_a + actual_p)
-                xp_vals = tl.load(
-                    X_ptr + actual_p * stride_x + col_offs,
-                    mask=col_mask,
-                    other=0.0,
-                )
-                x_vals = x_vals - a_val * xp_vals
+        col_start = pid_col * SLIDE_SIZE
+        col_offs = col_start + tl.arange(0, SLIDE_SIZE)
+        col_mask = col_offs < k
 
-        if not UNIT:
-            a_diag = tl.load(A_ptr + actual_i * stride_a + actual_i)
-            x_vals = x_vals / a_diag
+        for i_idx in range(block_rows):
+            if not UPPER:
+                actual_i = row_start + i_idx
+            else:
+                actual_i = row_end - 1 - i_idx
 
-        tl.store(X_ptr + actual_i * stride_x + col_offs, x_vals, mask=col_mask)
-        tl.debug_barrier()
+            x_vals = tl.load(
+                x_b + actual_i * stride_x + col_offs, mask=col_mask, other=0.0
+            )
+
+            if UPPER:
+                for p_idx in range(i_idx):
+                    actual_p = row_end - 1 - p_idx
+                    a_val = tl.load(a_b + actual_i * stride_a + actual_p)
+                    xp_vals = tl.load(
+                        x_b + actual_p * stride_x + col_offs,
+                        mask=col_mask,
+                        other=0.0,
+                    )
+                    x_vals = x_vals - a_val * xp_vals
+            else:
+                for p_idx in range(i_idx):
+                    actual_p = row_start + p_idx
+                    a_val = tl.load(a_b + actual_i * stride_a + actual_p)
+                    xp_vals = tl.load(
+                        x_b + actual_p * stride_x + col_offs,
+                        mask=col_mask,
+                        other=0.0,
+                    )
+                    x_vals = x_vals - a_val * xp_vals
+
+            if not UNIT:
+                a_diag = tl.load(a_b + actual_i * stride_a + actual_i)
+                x_vals = x_vals / a_diag
+
+            tl.store(x_b + actual_i * stride_x + col_offs, x_vals, mask=col_mask)
+            tl.debug_barrier()
 
 
 def _solve_diag_block(A, X, k, row_start, row_end, upper, unitriangular):
     batch = A.shape[0]
-    grid = (triton.cdiv(k, SLIDE_SIZE), batch)
+    n_col = triton.cdiv(k, SLIDE_SIZE)
+    # Cap at the core count: beyond it the in-kernel barrier stops ordering the
+    # serial row loop (see _num_cores), so the surplus work items are folded
+    # into the kernel's item loop instead of onto the grid.
+    grid = (min(n_col * batch, _num_cores()),)
     trsm_diag_single_kernel[grid](
         A,
         X,
@@ -131,6 +178,8 @@ def _solve_diag_block(A, X, k, row_start, row_end, upper, unitriangular):
         A.stride(1),
         X.stride(0),
         X.stride(1),
+        n_col,
+        batch,
         unitriangular,
         upper,
         SLIDE_SIZE=SLIDE_SIZE,
