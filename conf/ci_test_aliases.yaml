@@ -16,6 +16,8 @@
 #   means tests/test_addmm.py covers the addmm_out operator
 
 # _out variants - share test with base operator
+_ctc_loss_backward_out: test__ctc_loss_backward
+_ctc_loss_out: test__ctc_loss
 addcdiv_out: test_addcdiv
 addcmul_out: test_addcmul
 addmm_out: test_addmm
@@ -42,10 +44,13 @@ special_zeta_out: test_special_zeta
 special_zeta_scalar_tensor_out: test_special_zeta
 special_zeta_tensor_scalar_out: test_special_zeta
 tensordot_out: test_tensordot
+upsample_nearest1d_backward_grad_input: test_upsample_nearest1d_backward
 
 # Compound / alternative names
 arange_start_step: test_arange
 addmm_dtype: test_addmm
+addmm_out_vector_bias: test_addmm
+addmm_vector_bias: test_addmm
 all_dim: test_all
 all_dims: test_all
 any_dim: test_any
@@ -58,11 +63,28 @@ nanmedian_dim_values: test_nanmedian
 searchsorted_scalar: test_searchsorted
 scatter_reduce_two: test_scatter_reduce
 scatter_reduce_two_: test_scatter_reduce
+bmm_w8a8_fp8: test_bmm
+flash_attn_varlen_opt_func: test_flash_attn_varlen_func
+gru_data: test_gru
+list_to_tensor: test__list_to_tensor
+linalg_matrix_norm_out: test_linalg_matrix_norm
+linalg_matrix_rank_hermitian: test_linalg_matrix_rank
+ctc_loss_backward: test_ctc_loss
+margin_ranking_loss_backward: test_margin_ranking_loss
+mm_self_transpose: test_mm
 special_zeta_scalar_tensor: test_special_zeta
 special_zeta_tensor_scalar: test_special_zeta
 
 # Operators tested in combined files or with different naming
+rshift_scalar: test_rshift
+rshift_tensor: test_rshift
+rshift_scalar_out: test_rshift
+rshift_tensor_out: test_rshift
 batch_norm_backward: test_batch_norm
+cumprod_backward: test_cumprod
+erfinv: test_erfinv_
+max_pool2d_with_indices: test_max_pool2d
+max_pool3d_backward: test_max_pool3d
 multi_margin_loss_backward: test_multi_margin_loss
 multi_margin_loss_backward_out: test_multi_margin_loss
 segment_reduce_backward: test_segment_reduce
@@ -74,6 +96,10 @@ std_mean_correction_out: test_std_mean
 std_mean_dim: test_std_mean
 std_mean_names_dim: test_std_mean
 tril_indices: test_triangular_indices
+trilinear_out: test_trilinear
 triu_indices: test_triangular_indices
 upsample_bicubic2d_aa_backward: test_upsample_bicubic2d_aa
+upsample_bicubic2d_backward_grad_input: test_upsample_bicubic2d_backward
+upsample_bilinear2d_backward_grad_input: test_upsample_bilinear2d_backward
 upsample_linear1d_backward: test_upsample_linear1d
+upsample_nearest2d_backward_grad_input: test_upsample_nearest2d_backward

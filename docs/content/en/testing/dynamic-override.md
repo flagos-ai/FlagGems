@@ -72,6 +72,18 @@ registry.restore("softmax")     # restore a single operator
 registry.restore_all()          # or restore everything at once
 ```
 
+Operators that do not yet have a public FlagGems implementation can also be
+injected. For example, `registry.override("sparse_csr_tensor", candidate)` makes
+`flag_gems.sparse_csr_tensor(...)` call the candidate even when that attribute
+did not previously exist. On restoration, newly added attributes are removed;
+existing attributes are restored to their original values, including `None`.
+The same behavior applies to `--override` and `--override-config`.
+
+Adding a public callable does not add an ATen dispatcher registration. Tests
+for these operators must call `flag_gems.<op_name>(...)` directly. File-loaded
+candidates still fail cleanup if they were never invoked, including candidates
+installed under a misspelled operator name.
+
 ## 2. Loading an implementation from a standalone file
 
 Rather than defining the replacement inline, `override_from_file` loads a
@@ -241,3 +253,49 @@ maintaining separate copies of the operator source tree.
 > `restore_all()` on one registry only restores the operators it itself
 > overrode. Prefer one registry per process/test session, scoped with the
 > `with` statement, to keep behavior predictable.
+
+## Candidate-only profiling and external capture
+
+`--profile-only --case-id <id>` replays exactly one case from `--list-cases`. FlagGems constructs the inputs, runs `--profile-warmup` calls and synchronizes, then runs `--profile-iterations` calls and a final synchronization inside an optional capture context. It does not call the correctness reference or collect benchmark latency.
+
+An embedding evaluator supplies a pytest plugin object explicitly; no module-path environment variable, dynamic import of the evaluator, or special `__main__` convention is required:
+
+```python
+from contextlib import contextmanager
+import pytest
+
+class CapturePlugin:
+    @pytest.hookimpl
+    @contextmanager
+    def pytest_flaggems_profile_scope(self, backend, case_id):
+        # backend is the FlagGems vendor name; validate backend/case_id here.
+        start_capture()
+        try:
+            yield
+        finally:
+            stop_capture()
+
+pytest.main(pytest_args, plugins=[CapturePlugin()])
+```
+
+The benchmark conftest registers this first-result hook. It returns a context manager, not the result of running the candidate. Without a provider (or when providers return None), standalone pytest performs ordinary candidate-only replay without external capture. An evaluator that requires capture must independently verify that its plugin was actually entered and completed; pytest success alone is insufficient. The external evaluator owns compiler/profiler preparation, completion markers and artifacts; FlagGems has no dependency on KGS. Use a separate process for each benchmark session rather than concurrent `pytest.main()` calls in one process.
+
+## Candidate-only preflight
+
+Ordinary correctness and benchmark execution also use `--override`. Each correctness JSON case records `candidate_calls` observed during its test call phase. A benchmark marks `candidate_source: override` only after actually invoking the injected callable; the original `torch_op` is still timed separately as the baseline. A passing pytest session is not a substitute for candidate coverage checks. When all correctness cases are skipped, overrides are restored without an unused-candidate error; this is not correctness success, and KGS preserves `ALL_SKIP` while running applicable benchmarks.
+
+`benchmark/` supports `--preflight-only`: reuse case enumeration and input construction, invoke the selected candidate once per case, then synchronize the device. It does not run the correctness reference, benchmark warmup/timing, or speedup calculations. One invocation means one Python operator call; compilation or autotuning inside the candidate may still launch several kernels. Passing means executable, not numerically correct or faster.
+
+From the FlagGems checkout root, check every core case for `addmm_`:
+
+```bash
+python -m pytest -q benchmark/test_addmm_.py --level core \
+  --preflight-only --override addmm_:/path/candidate.py:run \
+  --record json --output /tmp/preflight.json
+```
+
+Without `--case-id`, all enumerated cases are checked. Repeat `--case-id <id>` to select a subset using IDs from `--list-cases` on the same checkout. Without an override, preflight checks the current Gems implementation. Benchmarks without case enumeration fail explicitly instead of falling back to a full benchmark.
+
+The JSON report uses `schema_version: flaggems.preflight/v1`. Each entry in `records` contains `operator`, `nodeid`, `case_id`, whether an `override` was used, invocation `count`, and `status` (`passed`/`failed`), with an optional `error`. No latency or speedup is reported. Each run replaces the report instead of merging old results. Consumers must check the pytest exit code, complete expected-case coverage, and successful candidate injection; an empty report is not success.
+
+This mode cannot be combined with `--profile-only`, `--list-cases`, `--query`, or nonzero `--parallel`. Unknown/unexecuted explicit case IDs, empty case plans, all-skipped runs, and candidate failures cannot pass. Continue to use `tests/` for correctness, ordinary `benchmark/` for timing, and `--profile-only` for profiling.

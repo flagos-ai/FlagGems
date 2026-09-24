@@ -132,7 +132,7 @@ def test_moe_align_block_size_triton():
 @pytest.mark.moe_align_block_size_triton
 def test_moe_align_block_size_fast_paths():
     bench = MoeAlignBlockSizeFastPathBenchmark(
-        op_name="moe_align_block_size_fast_paths",
+        op_name="moe_align_block_size_triton",
         input_fn=_fast_path_input_fn,
         torch_op=_standard_align,
         dtypes=[torch.int32],

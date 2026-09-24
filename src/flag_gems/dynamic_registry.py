@@ -29,6 +29,8 @@ import warnings
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
 
+_MISSING = object()
+
 
 class DynamicOpOverride:
     """
@@ -65,6 +67,10 @@ class DynamicOpOverride:
         """
         Override an operator implementation in the specified module.
 
+        Operators without a public implementation are added temporarily and
+        removed by restore(). Existing attributes are restored to their exact
+        original value, including None.
+
         Args:
             op_name: Operator name (e.g., "softmax", "rms_norm", "linalg_matrix_exp")
             impl_func: New implementation function
@@ -79,17 +85,10 @@ class DynamicOpOverride:
                 __import__(module_name)
             module = sys.modules[module_name]
 
-            # Check if the operator exists
-            if not hasattr(module, op_name):
-                warnings.warn(
-                    f"Operator '{op_name}' not found in module '{module_name}'."
-                )
-                return False
-
             # Store original implementation if not already stored
             full_name = f"{module_name}.{op_name}"
             if full_name not in self._originals:
-                self._originals[full_name] = getattr(module, op_name)
+                self._originals[full_name] = getattr(module, op_name, _MISSING)
 
             # Override the implementation
             setattr(module, op_name, impl_func)
@@ -150,7 +149,7 @@ class DynamicOpOverride:
             module = sys.modules[module_name]
             original = self._originals[full_name]
 
-            if original is not None:
+            if original is not _MISSING:
                 setattr(module, op_name, original)
             elif hasattr(module, op_name):
                 delattr(module, op_name)
@@ -178,12 +177,16 @@ class DynamicOpOverride:
 
         return True
 
-    def restore_all(self, module_name: str = "flag_gems"):
+    def restore_all(
+        self, module_name: str = "flag_gems", *, allow_unused: bool = False
+    ):
         """
         Restore all overridden operators in the specified module.
 
         Args:
             module_name: Module name (default: "flag_gems")
+            allow_unused: Only for a test session whose cases were all skipped;
+                restore implementations without requiring an invocation.
 
         Raises:
             AssertionError: If any override loaded via ``override_from_file``
@@ -205,12 +208,20 @@ class DynamicOpOverride:
             except AssertionError as e:
                 unused_errors.append(str(e))
 
-        if unused_errors:
+        if unused_errors and not allow_unused:
             raise AssertionError("; ".join(unused_errors))
 
     def list_overrides(self) -> List[str]:
         """Return list of currently overridden operator names."""
         return list(self._overrides.keys())
+
+    def call_counts(self) -> Dict[str, int]:
+        """Snapshot actual invocations of file-injected implementations."""
+        return dict(self._call_counts)
+
+    def get_override(self, op_name: str, module_name: str = "flag_gems"):
+        """Return the live callable for benchmark-owned candidate invocation."""
+        return self._overrides.get(f"{module_name}.{op_name}")
 
     def load_impl_from_file(self, filepath: str, func_name: str) -> Optional[Callable]:
         """
