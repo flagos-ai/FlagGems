@@ -33,7 +33,8 @@ else:
 @pytest.mark.parametrize("hiddensize", ARGSORT_HIDDEN_SIZES)
 @pytest.mark.parametrize("descending", [True, False])
 @pytest.mark.parametrize(
-    "dtype", utils.FLOAT_DTYPES + utils.INT_DTYPES + [torch.int8, torch.uint8]
+    "dtype",
+    utils.FLOAT_DTYPES + utils.INT_DTYPES + [torch.int8, torch.uint8, torch.int64],
 )
 @pytest.mark.parametrize("dim", [0, -1])
 def test_accuracy_argsort(batch_size, hiddensize, descending, dtype, dim):
@@ -85,10 +86,6 @@ def test_argsort_byte_boundaries(dtype, descending, dim, length, noncontiguous):
 
 
 @pytest.mark.argsort
-@pytest.mark.skipif(
-    flag_gems.vendor_name != "mthreads",
-    reason="Regression coverage for MThreads stable argsort kernels",
-)
 @pytest.mark.parametrize(
     "dtype",
     [
@@ -103,7 +100,7 @@ def test_argsort_byte_boundaries(dtype, descending, dim, length, noncontiguous):
 @pytest.mark.parametrize("length", [17, 2048, 2049, 9333])
 @pytest.mark.parametrize("descending", [False, True])
 @pytest.mark.parametrize("dim", [0, -1])
-def test_argsort_mthreads_stable_extrema(dtype, length, descending, dim):
+def test_argsort_stable_extrema(dtype, length, descending, dim):
     if dtype.is_floating_point:
         data = [
             float("nan"),
@@ -115,6 +112,10 @@ def test_argsort_mthreads_stable_extrema(dtype, length, descending, dim):
             1.0,
             1.0,
             -1.0,
+            torch.finfo(dtype).tiny / 2,
+            -torch.finfo(dtype).tiny / 2,
+            torch.finfo(dtype).tiny * torch.finfo(dtype).eps,
+            -torch.finfo(dtype).tiny * torch.finfo(dtype).eps,
         ]
     else:
         limits = torch.iinfo(dtype)
@@ -136,4 +137,85 @@ def test_argsort_mthreads_stable_extrema(dtype, length, descending, dim):
         stable=True,
     ).to(ref_inp.device)
     result = flag_gems.argsort(inp, dim=dim, descending=descending)
+    assert result.dtype == torch.int64
+    assert result.shape == inp.shape
+    utils.gems_assert_equal(result, ref)
+
+
+@pytest.mark.argsort
+@pytest.mark.parametrize("dtype", [torch.float32, torch.int64])
+@pytest.mark.parametrize("descending", [False, True])
+@pytest.mark.parametrize(
+    "shape, dim",
+    [((), -1), ((), 0), ((0,), 0), ((0, 3), -1), ((2, 0, 3), 1)],
+)
+def test_argsort_scalar_empty(dtype, descending, shape, dim):
+    inp = torch.zeros(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp)
+    ref = torch.argsort(ref_inp.cpu(), dim=dim, descending=descending, stable=True).to(
+        ref_inp.device
+    )
+    result = flag_gems.argsort(inp, dim=dim, descending=descending)
+    assert result.dtype == torch.int64
+    assert result.shape == inp.shape
+    assert result.device == inp.device
+    utils.gems_assert_equal(result, ref)
+
+
+@pytest.mark.argsort
+@pytest.mark.parametrize(
+    "shape, dim",
+    [
+        ((), -2),
+        ((), 1),
+        ((0,), -2),
+        ((0,), 1),
+        ((2, 0, 3), -4),
+        ((2, 0, 3), 3),
+        ((2, 3), -3),
+        ((2, 3), 2),
+    ],
+)
+def test_argsort_invalid_dim(shape, dim):
+    inp = torch.empty(shape, dtype=torch.int64, device=flag_gems.device)
+    with pytest.raises(IndexError):
+        torch.argsort(inp.cpu(), dim=dim, stable=True)
+    with pytest.raises(IndexError):
+        flag_gems.argsort(inp, dim=dim)
+
+
+@pytest.mark.argsort
+@pytest.mark.parametrize("dtype", [torch.float32, torch.int64])
+@pytest.mark.parametrize("descending", [False, True])
+@pytest.mark.parametrize("length, dim", [(19, 0), (19, 1), (2049, -1)])
+def test_argsort_strided_3d(dtype, descending, length, dim):
+    if dtype.is_floating_point:
+        data = [float("nan"), -float("inf"), -0.0, 0.0, float("inf"), 1.0, 1.0]
+    else:
+        limits = torch.iinfo(dtype)
+        data = [
+            limits.min,
+            limits.max,
+            2**60,
+            2**60 + 1,
+            -(2**60),
+            -(2**60) - 1,
+            0,
+            0,
+        ]
+    pattern = torch.tensor(data, dtype=dtype)
+    positions = torch.arange(6 * (2 * length + 1), dtype=torch.int64)
+    base = pattern[positions % len(data)].reshape(2, 3, 2 * length + 1)
+    # Slice after the device transfer so it cannot make the tested view contiguous.
+    inp = base.to(flag_gems.device)[:, :, 1::2].transpose(0, 1)
+    assert not inp.is_contiguous()
+    assert inp.storage_offset() > 0
+    ref_inp = utils.to_reference(inp)
+    ref = torch.argsort(ref_inp.cpu(), dim=dim, descending=descending, stable=True).to(
+        ref_inp.device
+    )
+    result = flag_gems.argsort(inp, dim=dim, descending=descending)
+    assert result.dtype == torch.int64
+    assert result.shape == inp.shape
+    assert result.device == inp.device
     utils.gems_assert_equal(result, ref)

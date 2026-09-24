@@ -23,6 +23,7 @@ from .any import any, any_dim, any_dims
 from .arange import arange, arange_start
 from .argmax import argmax
 from .argmin import argmin
+from .argsort import argsort
 from .attention import (
     ScaleDotProductAttention,
     flash_attention_forward,
@@ -193,6 +194,7 @@ __all__ = [
     "arange_start",
     "argmax",
     "argmin",
+    "argsort",
     "baddbmm",
     "bmm",
     "cat",
