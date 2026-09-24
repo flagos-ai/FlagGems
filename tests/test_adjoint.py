@@ -41,7 +41,7 @@ def _make_input(shape, dtype, device):
     if dtype == torch.bool:
         return torch.randint(0, 2, shape, device=device).bool()
     if dtype.is_complex:
-        return torch.randn(shape, device=device).to(dtype)
+        return torch.randn(shape, dtype=dtype, device=device)
     if dtype in (torch.int64, torch.int32, torch.int16):
         inp = torch.randint(-100, 100, shape, device=device)
         return inp.to(dtype) if dtype != torch.int64 else inp
