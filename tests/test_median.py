@@ -85,8 +85,15 @@ def _assert_indices_select_values(inp, dim, values, indices, *, keepdim, equal_n
 
     dim = dim % inp.ndim
     gather_indices = indices if keepdim else indices.unsqueeze(dim)
-    gathered = torch.gather(inp, dim, gather_indices)
-    expected = values if keepdim else values.unsqueeze(dim)
+    try:
+        gathered = torch.gather(inp, dim, gather_indices)
+        expected = values if keepdim else values.unsqueeze(dim)
+    except RuntimeError:
+        # Some vendor backends have no gather kernel for (integer value dtype,
+        # int64 index) pairs. This is a test-side reference computation only, so
+        # redo it on the host rather than reporting the operator as failed.
+        gathered = torch.gather(inp.cpu(), dim, gather_indices.cpu())
+        expected = (values if keepdim else values.unsqueeze(dim)).cpu()
     flag_gems.testing.assert_equal(gathered, expected, equal_nan=equal_nan)
 
 
@@ -421,17 +428,30 @@ def test_median_extra_no_dim_dtypes(dtype):
     utils.gems_assert_equal(res_out, ref_out)
 
 
+def _host_bool_median(inp):
+    """Value-only median of a bool tensor, computed on the host.
+
+    A no-dim bool median carries no indices, so the lower median of the
+    flattened tensor is a complete oracle.  It stands in for the eager
+    reference, which is not always available: a backend that redirects
+    unimplemented operators to CPU lands on PyTorch's missing
+    "median_cpu ... Bool" kernel.
+    """
+    flat = inp.detach().to("cpu").reshape(-1)
+    return torch.sort(flat).values[(flat.numel() - 1) // 2]
+
+
 @pytest.mark.median
 def test_median_bool_no_dim():
     if torch.device(flag_gems.device).type != "cuda":
         pytest.skip("bool median no-dim is CUDA-specific in native PyTorch")
 
     inp = torch.tensor([True, False, True], device=flag_gems.device)
-    ref_out = torch.median(inp)
+    ref_out = _host_bool_median(inp)
     res_out = gems_median(inp)
 
     assert res_out.dtype == ref_out.dtype
-    assert res_out.device == ref_out.device
+    assert res_out.device == inp.device
     assert res_out.item() == ref_out.item()
 
 
@@ -441,11 +461,11 @@ def test_median_bool_no_dim_full_registration():
         pytest.skip("bool median no-dim is CUDA-specific in native PyTorch")
 
     inp = torch.tensor([True, False, True, False, True], device=flag_gems.device)
-    ref_out = torch.median(inp)
+    ref_out = _host_bool_median(inp)
     res_out = gems_median(inp)
 
     assert res_out.dtype == ref_out.dtype
-    assert res_out.device == ref_out.device
+    assert res_out.device == inp.device
     assert res_out.item() == ref_out.item()
 
 
@@ -457,11 +477,11 @@ def test_median_bool_no_dim_large(width):
 
     vals = torch.arange(width, device=flag_gems.device)
     inp = (vals * 37) % 5 < 3
-    ref_out = torch.median(inp)
+    ref_out = _host_bool_median(inp)
     res_out = gems_median(inp)
 
     assert res_out.dtype == ref_out.dtype
-    assert res_out.device == ref_out.device
+    assert res_out.device == inp.device
     assert res_out.item() == ref_out.item()
 
 
@@ -473,11 +493,11 @@ def test_median_bool_no_dim_beyond_old_flat_limit():
     width = 1024 * 1024 + 1
     vals = torch.arange(width, device=flag_gems.device)
     inp = vals % 5 < 3
-    ref_out = torch.median(inp)
+    ref_out = _host_bool_median(inp)
     res_out = gems_median(inp)
 
     assert res_out.dtype == ref_out.dtype
-    assert res_out.device == ref_out.device
+    assert res_out.device == inp.device
     assert res_out.item() == ref_out.item()
 
 
@@ -570,15 +590,20 @@ def test_median_empty_output_unsupported_dtype(shape, dim, dtype):
         pytest.skip("empty-output bool/complex median semantics differ on CPU")
 
     inp = torch.empty(shape, dtype=dtype, device=flag_gems.device)
-    ref_out = torch.median(inp, dim=dim)
     res_out = gems_median_dim(inp, dim=dim)
 
-    assert tuple(res_out.values.shape) == tuple(ref_out.values.shape)
-    assert tuple(res_out.indices.shape) == tuple(ref_out.indices.shape)
-    assert res_out.values.dtype == ref_out.values.dtype
-    assert res_out.indices.dtype == ref_out.indices.dtype
-    assert res_out.values.device == ref_out.values.device
-    assert res_out.indices.device == ref_out.indices.device
+    # An empty output has no element to reduce, so the dtype restriction that
+    # makes bool/complex median unsupported on a non-empty reduction does not
+    # apply.  The eager reference is not available on every backend, so assert
+    # the contract directly: values keep the input dtype, indices are int64,
+    # both keep the input device and the input shape minus `dim`.
+    expected_shape = tuple(size for index, size in enumerate(shape) if index != dim)
+    assert tuple(res_out.values.shape) == expected_shape
+    assert tuple(res_out.indices.shape) == expected_shape
+    assert res_out.values.dtype == dtype
+    assert res_out.indices.dtype == torch.int64
+    assert res_out.values.device == inp.device
+    assert res_out.indices.device == inp.device
 
 
 @pytest.mark.median
@@ -732,7 +757,10 @@ def test_median_extended_lastdim_width(dtype):
 def test_median_lastdim_sort_unique_exact_index(dtype, width):
     rank = (width - 1) // 2
     first = torch.arange(width, dtype=dtype, device=flag_gems.device)
-    second = torch.arange(width, dtype=dtype, device=flag_gems.device).roll(7)
+    # `roll` has no kernel for every integer dtype on some vendor backends; this
+    # is test input construction, so build the rolled row on the host and move
+    # it over.
+    second = torch.arange(width, dtype=dtype).roll(7).to(flag_gems.device)
     inp = torch.stack((first, second))
     expected_indices = torch.tensor([rank, (rank + 7) % width], device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
@@ -1058,7 +1086,16 @@ def test_median_f16_key_select_signed_zero_index_bits(dtype, width):
     _assert_median_dim_equal(
         res_out, ref_out, dtype, exact_indices=False, inp=inp, dim=1
     )
-    gathered = torch.gather(inp, 1, res_out.indices.unsqueeze(1)).reshape(-1)
+    try:
+        gathered = torch.gather(inp, 1, res_out.indices.unsqueeze(1)).reshape(-1)
+    except RuntimeError:
+        # vendor gather has no (integer dtype, int64 index) kernel; this is a
+        # test-side reference computation, so redo it on the host.
+        gathered = (
+            torch.gather(inp.cpu(), 1, res_out.indices.cpu().unsqueeze(1))
+            .reshape(-1)
+            .to(inp.device)
+        )
     flag_gems.testing.assert_equal(
         torch.signbit(gathered), torch.signbit(res_out.values)
     )
@@ -1315,7 +1352,10 @@ def test_median_int_lastdim_select_boundaries(dtype, width):
 def test_median_int_lastdim_select_unique_exact_index(dtype, width):
     rank = (width - 1) // 2
     first = torch.arange(width, dtype=dtype, device=flag_gems.device)
-    second = torch.arange(width, dtype=dtype, device=flag_gems.device).roll(7)
+    # `roll` has no kernel for every integer dtype on some vendor backends; this
+    # is test input construction, so build the rolled row on the host and move
+    # it over.
+    second = torch.arange(width, dtype=dtype).roll(7).to(flag_gems.device)
     inp = torch.stack((first, second))
     expected_indices = torch.tensor([rank, (rank + 7) % width], device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
