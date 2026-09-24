@@ -656,6 +656,12 @@ _FULL_CONFIG = (
     ("deg2rad", deg2rad),
     ("deg2rad.out", deg2rad_out),
     ("deg2rad_", deg2rad_),
+    (
+        "dense_dim",
+        dense_dim,
+        None,
+        (SPARSE_DISPATCH_KEY, SPARSE_CSR_DISPATCH_KEY),
+    ),
     ("dequantize", dequantize),
     ("dequantize.self", dequantize, None, (QUANTIZED_DISPATCH_KEY,)),
     ("det", det),
