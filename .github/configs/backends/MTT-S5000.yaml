@@ -13,7 +13,7 @@
 # limitations under the License.
 
 # FlagGems backends Configuration
-# This file defines environment settings for weekly testing
+# This file defines environment settings for operator testing
 name: MTT-S5000
 vendor: MThreads
 
@@ -48,7 +48,7 @@ container_options: >-
 # GPUs to test for this backends
 test_gpus: "0,1,2,3,4,5,6,7"
 
-# Extra environment variables injected only into the "Run weekly tests" step
+# Extra environment variables injected only into the "Run ops tests" step
 test_env:
   PIP_CACHE_DIR: /root/.cache/pip
   FLAGTREE_BACKEND: mthreads

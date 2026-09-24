@@ -13,63 +13,46 @@
 # limitations under the License.
 
 # FlagGems backends Configuration
-# This file defines environment settings for weekly testing
-name: BI-V150
-vendor: Iluvatar
+# This file defines environment settings for operator testing
+name: MLU590-M9DE
+vendor: Cambricon
 
 
 # Runner labels for this backends (self-hosted)
-runner_labels: v150-flaggems-weekly
+runner_labels: mlu590-m9de-flaggems-weekly
 
 # Use container or not for this backends
 use_container: true
 
 # Container image for this backends
-container_image: harbor.baai.ac.cn/flagos-app/vllm0.24.0-iluvatar-corex4.5.0:2.2.0-0.3.0rc2.post2
+container_image: harbor.baai.ac.cn/flaggems/cambricon-flaggems-test-mlu590-m9de-triton3-2-1:20260618
 
 # Container volumes to mount for this backends
 container_volumes:
-  - /data:/data
-  - /lib/modules:/lib/modules
-  - /dev:/dev
-  - /etc/localtime:/etc/localtime:ro
+  - /usr/bin/cnmon:/usr/bin/cnmon
+  - /etc/hosts:/etc/hosts
+  - /cambricon:/cambricon
   - /home:/home
+  - /data:/data
   - /tmp:/tmp
 
 # Container options for this backends
 container_options: >-
-  --ipc=host
+  --cap-add=SYS_PTRACE
   --privileged
-  --shm-size=256g
-  --security-opt seccomp=unconfined
-  --device /dev/itrctl
-  --device /dev/iluvatar0
-  --device /dev/iluvatar1
-  --device /dev/iluvatar2
-  --device /dev/iluvatar3
-  --device /dev/iluvatar4
-  --device /dev/iluvatar5
-  --device /dev/iluvatar6
-  --device /dev/iluvatar7
-  --device /dev/iluvatar8
-  --device /dev/iluvatar9
-  --device /dev/iluvatar10
-  --device /dev/iluvatar11
-  --device /dev/iluvatar12
-  --device /dev/iluvatar13
-  --device /dev/iluvatar14
-  --device /dev/iluvatar15
-  --workdir=/root
+  --shm-size=32g
+  --workdir=/cambricon
+  --device=/dev/cambricon_ctl
 
 # GPUs to test for this backends
-test_gpus: "0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15"
+test_gpus: "0,1,2,3,4,5,6,7"
 
-# Extra environment variables injected only into the "Run weekly tests" step
+# Extra environment variables injected only into the "Run ops tests" step
 test_env:
   PIP_CACHE_DIR: /root/.cache/pip
 
 # GPU availability check script for this backend
-gpu_check_script: tools/gpu_check_iluvatar.sh
+gpu_check_script: tools/gpu_check_cambricon.sh
 
 # Output base directory for this backends
 output_base_dir: /data/flaggems/weekly

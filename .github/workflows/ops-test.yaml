@@ -12,13 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Weekly full-range test workflow
+# Full-range operator test workflow
 #
 #
-# Main config: .github/configs/weekly/weekly-test.yaml
-# Per-backend config: .github/configs/weekly/<NAME>.yml
+# Main config: .github/configs/backends/weekly-test.yaml
+# Per-backend config: .github/configs/backends/<NAME>.yaml
 # vendors: Nvidia,MThreads,KunLunXin,Iluvatar,Ascend,Hygon,Metax,THead,Cambricon,AMD
-name: weekly
+name: ops-test
 
 permissions:
   contents: read
@@ -46,10 +46,6 @@ on:
         description: 'Leave empty to send Feishu notifications. Enter any value to skip the Send Feishu notification step.'
         required: false
         default: ''
-
-  schedule:
-    # Wednesday and Saturday 21:30 Beijing time = 13:30 UTC
-    - cron: '30 13 * * 3,6'
 
 defaults:
   run:
@@ -79,7 +75,7 @@ jobs:
       - id: build-matrix
         shell: python3 {0}
         env:
-          # Optional workflow_dispatch inputs; empty for scheduled runs.
+          # Optional workflow_dispatch inputs; empty for default runs.
           BRANCH_INPUT: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.branch || '' }}
           VENDORS_INPUT: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.vendors || '' }}
           OPS_INPUT: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.ops || '' }}
@@ -91,7 +87,7 @@ jobs:
           import yaml
 
           checkout_ref = os.environ.get('BRANCH_INPUT', '').strip() or 'master'
-          with open('.github/configs/weekly/weekly-test.yaml') as f:
+          with open('.github/configs/backends/weekly-test.yaml') as f:
               main = yaml.safe_load(f)
 
           # Parse optional vendor filter (case-insensitive). Empty -> all.
@@ -106,7 +102,7 @@ jobs:
           for name, cfg in main['backends'].items():
               if not cfg.get('enabled'):
                   continue
-              with open(f'.github/configs/weekly/{name}.yml') as f:
+              with open(f'.github/configs/backends/{name}.yaml') as f:
                   backend = yaml.safe_load(f)
               if vendors_filter and backend.get('vendor', '').lower() not in vendors_filter:
                   continue
@@ -139,11 +135,11 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.prepare.outputs.matrix_container) }}
     concurrency:
-      group: weekly-test-${{ matrix.name }}
+      group: ops-test-${{ matrix.name }}
       cancel-in-progress: true
     runs-on: ${{ matrix.runner_labels }}
     # Whole-job timeout, evaluated per vendor. This is the ONLY timeout for the
-    # test run: the "Run weekly tests" step has no step-level timeout, so it is
+    # test run: the "Run ops tests" step has no step-level timeout, so it is
     # bounded solely by this value (a step-level timeout can never extend a step
     # beyond its enclosing job, and omitting it avoids configuring the limit
     # twice). Ascend (910B) runs the full operator suite in ~15h so it gets 24h.
@@ -280,19 +276,19 @@ jobs:
           echo "[GPU check] Available GPUs: ${AVAILABLE_GPUS}"
           echo "AVAILABLE_GPUS=${AVAILABLE_GPUS}" >> $GITHUB_ENV
 
-      # Run weekly tests.
+      # Run ops tests.
       # OPS is provided by the prepare job: "all" (scheduled runs or an empty
       # "ops" input) runs every operator stage via --stages all; otherwise it
       # runs only the selected operators via --ops <list>.
-      - name: Run weekly tests
+      - name: Run ops tests
         env: ${{ fromJSON(matrix.test_env) }}
         shell: bash --login -e -o pipefail {0}
         run: |
-          echo "[Run weekly tests] Running on backend: ${{ matrix.name }} (vendor: ${{ matrix.vendor }})"
-          echo "[Run weekly tests] Test output directory: ${OUTPUT_DIR}"
-          echo "[Run weekly tests] Test GPUs: ${AVAILABLE_GPUS}"
-          echo "[Run weekly tests] Test date: ${DATE}"
-          echo "[Run weekly tests] Test ops: ${{ needs.prepare.outputs.ops }}"
+          echo "[Run ops tests] Running on backend: ${{ matrix.name }} (vendor: ${{ matrix.vendor }})"
+          echo "[Run ops tests] Test output directory: ${OUTPUT_DIR}"
+          echo "[Run ops tests] Test GPUs: ${AVAILABLE_GPUS}"
+          echo "[Run ops tests] Test date: ${DATE}"
+          echo "[Run ops tests] Test ops: ${{ needs.prepare.outputs.ops }}"
           # remove cache to avoid potential issues with stale files
           rm -rf ~/.triton/cache && rm -rf ~/.flaggems
           # run tests with specified GPUs and output directory
@@ -319,14 +315,14 @@ jobs:
 
       - name: Package results
         run: |
-          ARCHIVE="${{ matrix.output_base_dir }}/weekly-${{ matrix.name }}-${DATE}.tar.gz"
+          ARCHIVE="${{ matrix.output_base_dir }}/ops-test-${{ matrix.name }}-${DATE}.tar.gz"
           tar -czf "${ARCHIVE}" -C "$(dirname "${OUTPUT_DIR}")" "$(basename "${OUTPUT_DIR}")"
           echo "ARCHIVE=${ARCHIVE}" >> "$GITHUB_ENV"
 
       # - name: Upload artifact
       #   uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
       #   with:
-      #     name: weekly-${{ matrix.name }}-${{ needs.prepare.outputs.date }}
+      #     name: ops-test-${{ matrix.name }}-${{ needs.prepare.outputs.date }}
       #     path: ${{ env.ARCHIVE }}
 
       - name: Publish results to op-monitor
@@ -374,11 +370,11 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.prepare.outputs.matrix_native) }}
     concurrency:
-      group: weekly-test-${{ matrix.name }}
+      group: ops-test-${{ matrix.name }}
       cancel-in-progress: true
     runs-on: ${{ matrix.runner_labels }}
     # See test-container: single per-vendor, job-level timeout (Ascend 24h,
-    # others 18h); the "Run weekly tests" step has no step-level timeout.
+    # others 18h); the "Run ops tests" step has no step-level timeout.
     timeout-minutes: 1080
     env:
       DATE: ${{ needs.prepare.outputs.date }}
@@ -430,18 +426,18 @@ jobs:
           echo "[GPU check] Available GPUs: ${AVAILABLE_GPUS}"
           echo "AVAILABLE_GPUS=${AVAILABLE_GPUS}" >> $GITHUB_ENV
 
-      # Run weekly tests.
+      # Run ops tests.
       # OPS is provided by the prepare job: "all" (scheduled runs or an empty
       # "ops" input) runs every operator stage via --stages all; otherwise it
       # runs only the selected operators via --ops <list>.
-      - name: Run weekly tests
+      - name: Run ops tests
         env: ${{ fromJSON(matrix.test_env) }}
         run: |
-          echo "[Run weekly tests] Running on backend: ${{ matrix.name }} (vendor: ${{ matrix.vendor }})"
-          echo "[Run weekly tests] Test output directory: ${OUTPUT_DIR}"
-          echo "[Run weekly tests] Test GPUs: ${AVAILABLE_GPUS}"
-          echo "[Run weekly tests] Test date: ${DATE}"
-          echo "[Run weekly tests] Test ops: ${{ needs.prepare.outputs.ops }}"
+          echo "[Run ops tests] Running on backend: ${{ matrix.name }} (vendor: ${{ matrix.vendor }})"
+          echo "[Run ops tests] Test output directory: ${OUTPUT_DIR}"
+          echo "[Run ops tests] Test GPUs: ${AVAILABLE_GPUS}"
+          echo "[Run ops tests] Test date: ${DATE}"
+          echo "[Run ops tests] Test ops: ${{ needs.prepare.outputs.ops }}"
           # remove cache to avoid potential issues with stale files
           rm -rf ~/.triton/cache && rm -rf ~/.flaggems
           # run tests with specified GPUs and output directory
@@ -464,14 +460,14 @@ jobs:
 
       - name: Package results
         run: |
-          ARCHIVE="${{ matrix.output_base_dir }}/weekly-${{ matrix.name }}-${DATE}.tar.gz"
+          ARCHIVE="${{ matrix.output_base_dir }}/ops-test-${{ matrix.name }}-${DATE}.tar.gz"
           tar -czf "${ARCHIVE}" -C "$(dirname "${OUTPUT_DIR}")" "$(basename "${OUTPUT_DIR}")"
           echo "ARCHIVE=${ARCHIVE}" >> "$GITHUB_ENV"
 
       # - name: Upload artifact
       #   uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
       #   with:
-      #     name: weekly-${{ matrix.name }}-${{ needs.prepare.outputs.date }}
+      #     name: ops-test-${{ matrix.name }}-${{ needs.prepare.outputs.date }}
       #     path: ${{ env.ARCHIVE }}
 
       - name: Publish results to op-monitor

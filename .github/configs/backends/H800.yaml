@@ -13,24 +13,47 @@
 # limitations under the License.
 
 # FlagGems backends Configuration
-# This file defines environment settings for weekly testing
-name: PPU-ZW810E
-vendor: THead
+# This file defines environmentsettings for operator testing
+name: H800
+vendor: Nvidia
+
 
 # Runner labels for this backends (self-hosted)
-runner_labels: 810e-flaggems-weekly
+runner_labels: h800-flaggems-weekly
 
 # Use container or not for this backends
-use_container: false
+use_container: true
 
 # Container image for this backends
-# container_image: baai-cp-registry.cn-wulanchabu.cr.aliyuncs.com/flagos/flagos:vllm-qwen3-next-0528
+container_image: harbor.baai.ac.cn/flagos-app/vllm0.24.0-nvidia-cuda13.3:2.2.0-0.3.0rc2.post2
+
+# Container volumes to mount for this backends
+container_volumes:
+  - /data:/data
+  - /home:/home
+  - /tmp:/tmp
+
+# Container options for this backends
+container_options: >-
+  --uts=host
+  --ipc=host
+  --user 0
+  --security-opt=seccomp=unconfined
+  --privileged
+  --ulimit=stack=67108864
+  --ulimit=memlock=-1
+  --shm-size=32G
+  --gpus all
 
 # GPUs to test for this backends
-test_gpus: "0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15"
+test_gpus: "0,1,2,3,4,5,6,7"
+
+# Extra environment variables injected only into the "Run ops tests" step
+test_env:
+  PIP_CACHE_DIR: /root/.cache/pip
 
 # GPU availability check script for this backend
-gpu_check_script: tools/gpu_check_thead.sh
+gpu_check_script: tools/gpu_check_nvidia.sh
 
 # Output base directory for this backends
-output_base_dir: /home/flaggems/weekly
+output_base_dir: /data/flaggems/weekly
