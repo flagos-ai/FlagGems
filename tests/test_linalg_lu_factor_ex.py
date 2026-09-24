@@ -89,10 +89,58 @@ def _make_singular_input(shape, device, dtype):
     return A
 
 
+def _make_zero_pivot_input(shape, pos, device, dtype):
+    """Diagonal matrix with an exactly-zero entry at ``pos`` along the diagonal.
+
+    ``_make_singular_input`` above only ever places the zero pivot at the *last*
+    elimination step, where nothing trails it -- which is why the NaN that the
+    first/middle positions used to produce went unnoticed.  Here the zero is
+    placed exactly, and the trailing submatrix is deliberately non-empty so the
+    contamination has somewhere to spread.
+    """
+    k = min(shape[-2], shape[-1])
+    zero_at = {"first": 0, "middle": k // 2, "last": k - 1}[pos]
+
+    diag = torch.arange(1, k + 1, dtype=dtype, device=device) + 1.0
+    diag[zero_at] = 0.0
+    mat = torch.zeros(shape, dtype=dtype, device=device)
+    idx = torch.arange(k, device=device)
+    mat[..., idx, idx] = diag
+    return mat, zero_at
+
+
 # ---------------------------------------------------------------------------
 # Manual Python reference implementation for Ascend
 # (matches the pattern in test_linalg_lu_factor.py)
 # ---------------------------------------------------------------------------
+
+
+def _assert_matches_aten_lu(res_lu, ref_lu, dtype, reduce_dim=1):
+    """Cross-check against the local ATen factor, when its answer is usable.
+
+    Duplicated from ``test_linalg_lu_factor.py`` (the two LU test modules keep
+    their own copies of the shared helpers); keep the two in sync.
+
+    An exactly-zero pivot makes ATen's own value build-dependent rather than
+    contractual: for a non-pivoted LU PyTorch cleans the result with
+    ``nan_to_num_(x, 0, +inf, -inf)`` (``aten/src/ATen/native/cuda/linalg/
+    BatchLinearAlgebraLib.cpp``, a workaround for cuSOLVER returning NaN where
+    MAGMA returns 0), which maps a NaN pivot column to zeros but leaves a ``±inf``
+    one untouched.  Whether the degenerate entries come out NaN or inf is decided
+    by the platform's own solver -- cuSOLVER (nvidia) emits NaN, giving the zeros
+    FlagGems matches, while a solver that divides by the zero pivot emits ``±inf``
+    and keeps it (observed on iluvatar).
+
+    The whole tensor has to be dropped, not just the non-finite entries: the
+    ``±inf`` propagates through ATen's own rank-1 update (``inf - inf = NaN``,
+    which the same cleanup then turns into a 0), so ATen also ends up with
+    *finite but wrong* values past the zero pivot.  Measured on iluvatar, 6 of
+    the 9 entries disagreed while only the first row -- the one before any
+    update -- matched.  Masking by ``isfinite`` would still fail on those.
+    """
+    if not bool(torch.isfinite(ref_lu).all()):
+        return
+    utils.gems_assert_close(res_lu, ref_lu, dtype, reduce_dim=reduce_dim)
 
 
 def _swap_rows(lu, i, pivot_row):
@@ -235,8 +283,7 @@ def test_linalg_lu_factor_ex(shape, dtype, pivot):
         ref_out = namedtuple("_RefResult", ["LU", "pivots", "info"])(
             ref_lu, ref_pivots, ref_info
         )
-    with flag_gems.use_gems():
-        res_out = torch.linalg.lu_factor_ex(inp, pivot=pivot)
+    res_out = flag_gems.linalg_lu_factor_ex(inp, pivot=pivot)
 
     batch_shape = inp.shape[:-2]
     m, n = inp.shape[-2], inp.shape[-1]
@@ -286,8 +333,7 @@ def test_linalg_lu_factor_ex_check_errors(shape, dtype, pivot):
         ref_out = namedtuple("_RefResult", ["LU", "pivots", "info"])(
             ref_lu, ref_pivots, ref_info
         )
-    with flag_gems.use_gems():
-        res_out = torch.linalg.lu_factor_ex(inp, pivot=pivot, check_errors=True)
+    res_out = flag_gems.linalg_lu_factor_ex(inp, pivot=pivot, check_errors=True)
 
     # Both should have info == 0 for well-conditioned input
     assert torch.all(res_out.info == 0)
@@ -310,11 +356,57 @@ def test_linalg_lu_factor_ex_singular(shape, dtype):
         ref_out = namedtuple("_RefResult", ["LU", "pivots", "info"])(
             ref_lu, ref_pivots, ref_info
         )
-    with flag_gems.use_gems():
-        res_out = torch.linalg.lu_factor_ex(inp, pivot=True, check_errors=False)
+    res_out = flag_gems.linalg_lu_factor_ex(inp, pivot=True, check_errors=False)
 
     # The last diagonal element should be zero, so info should indicate the position
     utils.gems_assert_equal(res_out.info, ref_out.info)
+
+
+@pytest.mark.linalg_lu_factor_ex
+@pytest.mark.parametrize("shape", [(8, 8), (64, 32), (128, 128)])
+@pytest.mark.parametrize("pos", ["first", "middle", "last"])
+@pytest.mark.parametrize("dtype", _TEST_DTYPES)
+@pytest.mark.parametrize("pivot", _PIVOT_VALUES)
+def test_linalg_lu_factor_ex_zero_pivot(shape, pos, dtype, pivot):
+    """A zero pivot before the last step must still yield the right ``info``.
+
+    Regression test: an exactly-zero pivot made the kernels compute
+    ``0/0 = NaN`` for the sub-diagonal column (``tl.where`` evaluates both
+    branches), and the rank-1 update spread it over the whole trailing
+    submatrix.  Two things broke at once -- the factor became NaN, and since
+    the blocked path derives ``info`` by scanning the diagonal of the finished
+    factor, the reported position became the position of the first NaN instead
+    of the zero pivot (ATen reported 3 and 61 where gems reported 1).
+    """
+    inp, zero_at = _make_zero_pivot_input(shape, pos, flag_gems.device, dtype)
+    ref_inp = utils.to_reference(inp)
+
+    # Only ``pivot=True``: ATen's ``pivot=False`` branch is the one that cleans up
+    # a result its own solver already contaminated, and on iluvatar the damage
+    # reached everything -- see the note on the cross-checks below.
+    if flag_gems.vendor_name != "ascend" and pivot:
+        ref_out = torch.linalg.lu_factor_ex(ref_inp, pivot=pivot, check_errors=False)
+
+    res_out = flag_gems.linalg_lu_factor_ex(inp, pivot=pivot, check_errors=False)
+
+    # The regression: no NaN anywhere, so the factor past the zero pivot is
+    # intact and the diagonal scan sees the real zero pivot.  ``info`` is pinned
+    # to the value the input implies, which is what this test is about -- no
+    # reference needed, and stronger than agreeing with one.
+    assert not torch.isnan(res_out.LU).any(), "zero pivot contaminated the factor"
+    assert not torch.isinf(res_out.LU).any()
+    assert (res_out.info == zero_at + 1).all()
+
+    if flag_gems.vendor_name != "ascend" and pivot:
+        # ``pivot=False`` is excluded from all three cross-checks, ``info``
+        # included: on iluvatar ATen reported ``info == 0`` for a zero pivot in
+        # the last position -- where the factor plainly holds one, and numbers
+        # 128 here -- while the same call on nvidia reports 128.  ``getrf``'s
+        # info is no more portable than its values once a degenerate pivot is in
+        # play, so the absolute assertion above is the reference.
+        utils.gems_assert_equal(res_out.info, ref_out.info)
+        utils.gems_assert_equal(res_out.pivots, ref_out.pivots)
+        _assert_matches_aten_lu(res_out.LU, ref_out.LU, dtype)
 
 
 @pytest.mark.linalg_lu_factor_ex
@@ -324,9 +416,8 @@ def test_linalg_lu_factor_ex_check_errors_raises(shape, dtype):
     """Test that check_errors=True raises RuntimeError for singular matrices."""
     inp = _make_singular_input(shape, flag_gems.device, dtype)
 
-    with flag_gems.use_gems():
-        with pytest.raises(RuntimeError, match="lu_factor_ex"):
-            torch.linalg.lu_factor_ex(inp, pivot=True, check_errors=True)
+    with pytest.raises(RuntimeError, match="lu_factor_ex"):
+        flag_gems.linalg_lu_factor_ex(inp, pivot=True, check_errors=True)
 
 
 @pytest.mark.linalg_lu_factor_ex_out
@@ -369,8 +460,7 @@ def test_linalg_lu_factor_ex_out(shape, dtype, pivot):
     )
     res_info_out = torch.empty(batch_shape, dtype=torch.int32, device=inp.device)
     out = (res_LU_out, res_pivots_out, res_info_out)
-    with flag_gems.use_gems():
-        res_out = torch.linalg.lu_factor_ex(inp, pivot=pivot, out=out)
+    res_out = flag_gems.linalg_lu_factor_ex_out(inp, pivot=pivot, out=out)
 
     # Verify outputs are the same objects (in-place write)
     assert res_out.LU is res_LU_out

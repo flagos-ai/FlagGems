@@ -33,6 +33,7 @@ def split_copy_kernel(
     split_dim: tl.constexpr,
     dim_prod_pre: tl.constexpr,
     dim_prod_post: tl.constexpr,
+    split_start: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
     """Kernel to copy a split from input to output tensor."""
@@ -56,10 +57,11 @@ def split_copy_kernel(
     split_idx = (idx // dim_prod_post) % dim_size_output
     post_idx = idx % dim_prod_post
 
-    # Compute input index
-    # The split dimension offset is already accounted for in the output tensor layout
+    # Compute input index, advancing by this split's start along the split dim
     input_idx = (
-        pre_idx * dim_size_input * dim_prod_post + split_idx * dim_prod_post + post_idx
+        pre_idx * dim_size_input * dim_prod_post
+        + (split_start + split_idx) * dim_prod_post
+        + post_idx
     )
 
     # Load from input and store to output
@@ -78,7 +80,7 @@ def tensor_split(
     This implementation uses Triton kernels to copy data to the output tensors.
     Note: Unlike torch.tensor_split which returns views, this returns copies.
     """
-    logger.debug("GEMS tensor_split")
+    logger.debug("GEMS TENSOR_SPLIT")
 
     # Validate input
     if not isinstance(input, torch.Tensor):
@@ -217,6 +219,7 @@ def tensor_split(
             dim,  # split_dim
             dim_prod_pre,
             dim_prod_post,
+            current_dim_idx,  # start offset of this split along split_dim
             BLOCK_SIZE=BLOCK_SIZE,
         )
 

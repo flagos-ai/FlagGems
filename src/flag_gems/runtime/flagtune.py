@@ -150,21 +150,6 @@ def _use_flagtune_setting_from_env():
     return _optional_binary_environment(USE_FLAGTUNE_ENV)
 
 
-def _expanded_from_env():
-    """Return whether the legacy switch explicitly enables FlagTune."""
-    return _use_flagtune_setting_from_env() is True
-
-
-def flagtune_expanded_enabled():
-    """Return whether global expanded search is enabled.
-
-    This intentionally excludes per-operator include-list selection. It keeps
-    decorators that recognize only ``USE_FLAGTUNE=1`` on their exact global
-    enable semantics.
-    """
-    return _expanded_from_env()
-
-
 def flagtune(include=None):
     """Enable runtime FlagTune for selected operators.
 
@@ -233,14 +218,6 @@ def flagtune_enabled(op_name):
     return (
         resolve_tuning_mode(op_name, supports_cost_model=False) is TuningMode.EXPANDED
     )
-
-
-def __getattr__(name):
-    if name == "SUPPORTED_FLAGTUNE_OPS":
-        return get_supported_flagtune_ops()
-    if name == "DEFAULT_FLAGTUNE_INCLUDE":
-        return get_default_flagtune_include()
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 register_flagtune_op("mm", default=False, description="matrix multiplication")
@@ -319,17 +296,13 @@ register_flagtune_op(
     description="W8A8 block FP8 batched matrix multiplication",
 )
 
-# DEFAULT_FLAGTUNE_INCLUDE and SUPPORTED_FLAGTUNE_OPS are provided by __getattr__.
-__all__ = [  # noqa: F822
-    "DEFAULT_FLAGTUNE_INCLUDE",
+__all__ = [
     "FLAGTUNE_INCLUDE_ENV",
     "FlagTuneOpSpec",
-    "SUPPORTED_FLAGTUNE_OPS",
     "TuningMode",
     "USE_FLAGTUNE_COST_MODEL_ENV",
     "USE_FLAGTUNE_ENV",
     "flagtune",
-    "flagtune_expanded_enabled",
     "flagtune_enabled",
     "get_default_flagtune_include",
     "get_flagtune_include",

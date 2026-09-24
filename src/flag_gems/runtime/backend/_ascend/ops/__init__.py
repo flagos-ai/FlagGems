@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from ._dyn_quant_matmul_4bit import _dyn_quant_matmul_4bit
+from .adaptive_avg_pool2d import adaptive_avg_pool2d
 from .adaptive_max_pool3d import adaptive_max_pool3d
 from .addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out
 from .all import all, all_dim, all_dims
@@ -91,6 +92,7 @@ from .linalg_solve_triangular import (
 )
 from .linear import linear
 from .linspace import linspace
+from .log_ import log_
 from .log_normal import log_normal
 from .log_sigmoid_backward import log_sigmoid_backward, log_sigmoid_backward_out
 from .log_softmax import log_softmax, log_softmax_backward, log_softmax_out
@@ -173,6 +175,7 @@ __all__ = [
     "_segment_reduce_backward_out",
     "_unique2",
     "_upsample_bicubic2d_aa",
+    "adaptive_avg_pool2d",
     "adaptive_max_pool3d",
     "addmm",
     "addmm_dtype",
@@ -272,6 +275,7 @@ __all__ = [
     "linalg_solve_triangular_out",
     "linear",
     "linspace",
+    "log_",
     "log_normal",
     "log_sigmoid_backward",
     "log_sigmoid_backward_out",
