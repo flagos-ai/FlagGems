@@ -46,5 +46,5 @@ def test_and_tensor(shape, dtype, caplog):
     with caplog.at_level("DEBUG", logger="flag_gems.ops.and_tensor"):
         res_out = flag_gems.and_tensor(inp1, inp2)
 
-    assert "GEMS AND" in caplog.text
+    assert f"{utils.gems_log_prefix(flag_gems.and_tensor)} AND" in caplog.text
     utils.gems_assert_equal(res_out, ref_out)

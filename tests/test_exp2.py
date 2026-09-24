@@ -32,7 +32,9 @@ def test_special_exp2(shape, dtype, caplog):
         with flag_gems.use_gems():
             res_out = torch.ops.aten.special_exp2(inp)
 
-    assert "GEMS SPECIAL_EXP2" in caplog.text
+    assert (
+        f"{utils.gems_log_prefix(flag_gems.special_exp2)} SPECIAL_EXP2" in caplog.text
+    )
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
