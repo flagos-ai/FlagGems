@@ -40,7 +40,6 @@ from .consts import (
     check_metric_dependencies,
     model_shapes,
 )
-from .profile_hook import profile_capture_scope
 
 torch_backend_device = flag_gems.runtime.torch_backend_device
 torch_device_fn = flag_gems.runtime.torch_device_fn
@@ -622,7 +621,12 @@ class Benchmark:
                     warmup_fn()
                 torch_device_fn.synchronize()
                 capture_fn = lambda: op(*capture_args, **capture_kwargs)
-                with profile_capture_scope(backend=vendor_name, case_id=case.case_id):
+                scope = (
+                    Config.profile_hook(backend=vendor_name, case_id=case.case_id)
+                    if Config.profile_hook is not None
+                    else None
+                )
+                with scope if scope is not None else nullcontext():
                     for _ in range(Config.profile_iterations):
                         capture_fn()
                     torch_device_fn.synchronize()

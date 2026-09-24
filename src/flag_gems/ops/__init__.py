@@ -48,6 +48,7 @@ from flag_gems.ops._compute_linear_combination import (
 )
 from flag_gems.ops._conj import _conj
 from flag_gems.ops._conj_copy import _conj_copy, _conj_copy_out
+from flag_gems.ops._conj_physical import _conj_physical, _conj_physical_out
 from flag_gems.ops._convert_weight_to_int4pack import _convert_weight_to_int4pack
 from flag_gems.ops._convolution_double_backward import _convolution_double_backward
 from flag_gems.ops._convolution_mode import _convolution_mode
@@ -109,6 +110,7 @@ from flag_gems.ops._jagged_to_padded_dense_forward import (
 )
 from flag_gems.ops._linalg_eigvals import _linalg_eigvals
 from flag_gems.ops._linalg_slogdet import _linalg_slogdet
+from flag_gems.ops._linalg_svd import _linalg_svd
 from flag_gems.ops._list_to_tensor import _list_to_tensor
 from flag_gems.ops._lu_with_info import _lu_with_info
 from flag_gems.ops._make_dep_token import _make_dep_token
@@ -145,6 +147,7 @@ from flag_gems.ops._pad_circular import _pad_circular
 from flag_gems.ops._pad_packed_sequence import _pad_packed_sequence
 from flag_gems.ops._pdist_backward import _pdist_backward
 from flag_gems.ops._pdist_forward import _pdist_forward
+from flag_gems.ops._pin_memory import _pin_memory
 from flag_gems.ops._prelu_kernel import _prelu_kernel
 from flag_gems.ops._prelu_kernel_backward import _prelu_kernel_backward
 from flag_gems.ops._reshape_alias import _reshape_alias
@@ -311,6 +314,7 @@ from flag_gems.ops.avg_pool3d import avg_pool3d, avg_pool3d_backward
 from flag_gems.ops.baddbmm import baddbmm, baddbmm_out
 from flag_gems.ops.baddbmm_ import baddbmm_
 from flag_gems.ops.batch_norm import batch_norm, batch_norm_backward
+from flag_gems.ops.batch_norm_backward_elemt import batch_norm_backward_elemt
 from flag_gems.ops.batch_norm_backward_reduce import batch_norm_backward_reduce
 from flag_gems.ops.batch_norm_gather_stats import batch_norm_gather_stats
 from flag_gems.ops.batch_norm_gather_stats_with_counts import (
@@ -605,6 +609,7 @@ from flag_gems.ops.hinge_embedding_loss import hinge_embedding_loss
 from flag_gems.ops.histc import histc
 from flag_gems.ops.histogramdd import histogramdd
 from flag_gems.ops.hsplit import hsplit
+from flag_gems.ops.hspmm import hspmm
 from flag_gems.ops.hstack import hstack
 from flag_gems.ops.huber_loss import huber_loss, huber_loss_out
 from flag_gems.ops.hypot import hypot, hypot_out
@@ -627,6 +632,7 @@ from flag_gems.ops.index_select_backward import index_select_backward
 from flag_gems.ops.inner import inner
 from flag_gems.ops.int_mm import int_mm, int_mm_out
 from flag_gems.ops.inverse import inverse
+from flag_gems.ops.ior_scalar import ior_scalar
 from flag_gems.ops.is_nonzero import is_nonzero
 from flag_gems.ops.is_same_size import is_same_size
 from flag_gems.ops.isclose import allclose, isclose
@@ -637,6 +643,11 @@ from flag_gems.ops.isnan import isnan
 from flag_gems.ops.isneginf import isneginf, isneginf_out
 from flag_gems.ops.isposinf import isposinf
 from flag_gems.ops.isreal import isreal
+from flag_gems.ops.kaiser_window import (
+    kaiser_window,
+    kaiser_window_beta,
+    kaiser_window_periodic,
+)
 from flag_gems.ops.kron import kron
 from flag_gems.ops.kthvalue import kthvalue
 from flag_gems.ops.layernorm import layer_norm, layer_norm_backward
@@ -668,6 +679,7 @@ from flag_gems.ops.linalg_det import linalg_det, linalg_det_out
 from flag_gems.ops.linalg_eig import linalg_eig
 from flag_gems.ops.linalg_eigvals import linalg_eigvals, linalg_eigvals_out
 from flag_gems.ops.linalg_householder_product import linalg_householder_product
+from flag_gems.ops.linalg_inv_ex import linalg_inv_ex
 from flag_gems.ops.linalg_ldl_factor import ldl_factor
 from flag_gems.ops.linalg_ldl_solve import linalg_ldl_solve
 from flag_gems.ops.linalg_lstsq import linalg_lstsq
@@ -876,6 +888,7 @@ from flag_gems.ops.per_token_group_quant_fp8 import (
     per_token_group_quant_fp8,
 )
 from flag_gems.ops.permute_copy import permute_copy
+from flag_gems.ops.pin_memory import pin_memory
 from flag_gems.ops.pinverse import pinverse
 from flag_gems.ops.pixel_shuffle import pixel_shuffle
 from flag_gems.ops.pixel_unshuffle import pixel_unshuffle, pixel_unshuffle_out
@@ -892,7 +905,12 @@ from flag_gems.ops.pow import (
 )
 from flag_gems.ops.prelu import prelu
 from flag_gems.ops.prod import prod, prod_dim
+from flag_gems.ops.put import put, put_out
 from flag_gems.ops.quantile import quantile
+from flag_gems.ops.quantize_per_tensor import (
+    quantize_per_tensor,
+    quantize_per_tensor_out,
+)
 from flag_gems.ops.quantized_gru import (
     quantized_gru_data,
     quantized_gru_impl,
@@ -960,6 +978,7 @@ from flag_gems.ops.roll import roll
 from flag_gems.ops.rot90 import rot90
 from flag_gems.ops.round import round, round_, round_out
 from flag_gems.ops.row_indices import row_indices
+from flag_gems.ops.row_indices_copy import row_indices_copy, row_indices_copy_out
 from flag_gems.ops.row_stack import row_stack, row_stack_out
 from flag_gems.ops.rrelu_with_noise import rrelu_with_noise, rrelu_with_noise_
 from flag_gems.ops.rrelu_with_noise_backward import rrelu_with_noise_backward
@@ -1307,6 +1326,8 @@ __all__ = [
     "_conj",
     "_conj_copy",
     "_conj_copy_out",
+    "_conj_physical",
+    "_conj_physical_out",
     "_conv_depthwise2d",
     "_convert_weight_to_int4pack",
     "_convolution_double_backward",
@@ -1351,6 +1372,7 @@ __all__ = [
     "_jagged_to_padded_dense_forward",
     "_linalg_eigvals",
     "_linalg_slogdet",
+    "_linalg_svd",
     "_list_to_tensor",
     "_lu_with_info",
     "_make_dep_token",
@@ -1378,6 +1400,7 @@ __all__ = [
     "_padded_dense_to_jagged_forward",
     "_pdist_backward",
     "_pdist_forward",
+    "_pin_memory",
     "_prelu_kernel",
     "_prelu_kernel_backward",
     "_reshape_alias",
@@ -1540,6 +1563,7 @@ __all__ = [
     "baddbmm_out",
     "batch_norm",
     "batch_norm_backward",
+    "batch_norm_backward_elemt",
     "batch_norm_backward_reduce",
     "batch_norm_gather_stats",
     "batch_norm_gather_stats_with_counts",
@@ -1855,6 +1879,7 @@ __all__ = [
     "histc",
     "histogramdd",
     "hsplit",
+    "hspmm",
     "hstack",
     "huber_loss",
     "huber_loss_out",
@@ -1888,6 +1913,7 @@ __all__ = [
     "int_mm",
     "int_mm_out",
     "inverse",
+    "ior_scalar",
     "is_nonzero",
     "is_same_size",
     "isclose",
@@ -1899,6 +1925,9 @@ __all__ = [
     "isneginf_out",
     "isposinf",
     "isreal",
+    "kaiser_window",
+    "kaiser_window_beta",
+    "kaiser_window_periodic",
     "kron",
     "kthvalue",
     "layer_norm",
@@ -1947,6 +1976,7 @@ __all__ = [
     "linalg_eigvals",
     "linalg_eigvals_out",
     "linalg_householder_product",
+    "linalg_inv_ex",
     "linalg_ldl_solve",
     "linalg_lstsq",
     "linalg_lu",
@@ -2170,6 +2200,7 @@ __all__ = [
     "pdist",
     "per_token_group_quant_fp8",
     "permute_copy",
+    "pin_memory",
     "pinverse",
     "pixel_shuffle",
     "pixel_unshuffle",
@@ -2188,7 +2219,11 @@ __all__ = [
     "prelu",
     "prod",
     "prod_dim",
+    "put",
+    "put_out",
     "quantile",
+    "quantize_per_tensor",
+    "quantize_per_tensor_out",
     "quantized_gru_data",
     "quantized_gru_impl",
     "quantized_gru_input",
@@ -2263,6 +2298,8 @@ __all__ = [
     "round_out",
     "router_gemm",
     "row_indices",
+    "row_indices_copy",
+    "row_indices_copy_out",
     "row_stack",
     "row_stack_out",
     "rrelu_with_noise",

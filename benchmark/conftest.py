@@ -25,6 +25,7 @@ from flag_gems.cli_override import add_override_arguments, apply_overrides_from_
 from flag_gems.runtime import torch_device_fn
 
 from . import consts
+from .profile_hook import ProfileHooks
 
 device = flag_gems.device
 vendor_name = flag_gems.vendor_name
@@ -114,6 +115,7 @@ class BenchConfig:
         self.preflight_records = []
         self.profile_warmup = 10
         self.profile_iterations = 1
+        self.profile_hook = None
         self.override_registry = None
         self.skip_native = False
         self.native_baseline_skip_reason = None
@@ -337,6 +339,10 @@ def pytest_addoption(parser):
     add_override_arguments(parser)
 
 
+def pytest_addhooks(pluginmanager):
+    pluginmanager.add_hookspecs(ProfileHooks)
+
+
 def pytest_configure(config):
     global Config  # noqa: F824
     global REPORT_FILE
@@ -393,6 +399,8 @@ def pytest_configure(config):
         raise pytest.UsageError(
             "profile warmup must be non-negative and iterations positive"
         )
+
+    Config.profile_hook = config.hook.pytest_flaggems_profile_scope
 
     level_value = config.getoption("--level")
     Config.bench_level = consts.BenchLevel(level_value)
