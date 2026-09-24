@@ -1622,7 +1622,7 @@ ops:
   kind:
   - Tensor
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: avg_pool1d
   description: 'Applies 1D average-pooling operation in kL regions by step size sL
     steps.

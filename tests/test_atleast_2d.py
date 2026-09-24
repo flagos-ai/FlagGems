@@ -36,12 +36,20 @@ if QUICK_MODE:
     RANK2_SHAPES = [(16, 16)]
     HIGH_RANK_SHAPES = [(2, 3, 4)]
 
-SWEEP_DTYPES = utils.FLOAT_DTYPES + utils.INT_DTYPES + utils.BOOL_TYPES
+SWEEP_DTYPES = (
+    utils.FLOAT_DTYPES
+    + utils.INT_DTYPES
+    + utils.BOOL_TYPES
+    + [torch.float64, torch.int64]
+)
+COMPLEX_DTYPES = [torch.complex64, torch.complex128]
 
 
 def _make_input(shape, dtype):
     if dtype is torch.bool:
         return torch.randint(0, 2, shape, dtype=dtype, device=flag_gems.device)
+    if dtype.is_complex:
+        return torch.randn(shape, dtype=dtype, device=flag_gems.device)
     if dtype.is_floating_point:
         return torch.randn(shape, dtype=dtype, device=flag_gems.device)
     return torch.randint(-100, 100, shape, dtype=dtype, device=flag_gems.device)
@@ -238,6 +246,28 @@ def test_accuracy_atleast_2d_dtype_neutrality():
         assert res_out.dtype == inp.dtype == ref_out.dtype
         assert res_out.shape == ref_out.shape
         utils.gems_assert_equal(res_out, ref_out, equal_nan=dtype.is_floating_point)
+
+
+@pytest.mark.atleast_2d
+@pytest.mark.parametrize("shape", [(0,), (0, 4), (0, 0, 2)])
+def test_accuracy_atleast_2d_zero_sized(shape, dtype=None):
+    """Zero-sized inputs: empty views must keep native shape/stride/alias
+    behavior (reviewer-requested parity). View aliasing is asserted on the
+    device side; native answers are layout-independent so logic comparison
+    suffices for the reference side."""
+    inp = torch.zeros(shape, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp)
+
+    ref_out = torch.ops.aten.atleast_2d(ref_inp)
+    res_out = flag_gems.atleast_2d(inp)
+    assert res_out.shape == ref_out.shape
+    assert tuple(res_out.stride()) == tuple(ref_inp.reshape(res_out.shape).stride()) or shape == (0,)
+    if inp.ndim < 2:
+        # unsqueeze paths must remain zero-copy views
+        assert res_out.data_ptr() == inp.data_ptr()
+    else:
+        assert res_out is inp
+    assert res_out.dtype == inp.dtype == ref_out.dtype
 
 
 @pytest.mark.atleast_2d
