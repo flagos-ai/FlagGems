@@ -218,6 +218,8 @@ _FULL_CONFIG = (
         None,
         (AUTOGRAD_DISPATCH_KEY,),
     ),
+    ("_histogramdd_from_bin_cts", _histogramdd_from_bin_cts),
+    ("_histogramdd_from_bin_cts.out", _histogramdd_from_bin_cts_out),
     ("_index_put_impl_", _index_put_impl_),
     (
         "_int_mm",
@@ -244,6 +246,8 @@ _FULL_CONFIG = (
     ("_log_softmax.out", log_softmax_out),
     ("_log_softmax_backward_data", log_softmax_backward),
     ("_log_softmax_backward_data.out", log_softmax_backward_out),
+    ("_logcumsumexp", _logcumsumexp),
+    ("_logcumsumexp.out", _logcumsumexp_out),
     ("_lu_with_info", _lu_with_info),
     ("_make_dep_token", _make_dep_token),
     ("_masked_scale", _masked_scale),

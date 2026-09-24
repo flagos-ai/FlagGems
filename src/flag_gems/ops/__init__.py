@@ -104,6 +104,10 @@ from flag_gems.ops._gather_sparse_backward import _gather_sparse_backward
 from flag_gems.ops._has_compatible_shallow_copy_type import (
     _has_compatible_shallow_copy_type,
 )
+from flag_gems.ops._histogramdd_from_bin_cts import (
+    _histogramdd_from_bin_cts,
+    _histogramdd_from_bin_cts_out,
+)
 from flag_gems.ops._is_all_true import _is_all_true
 from flag_gems.ops._jagged_to_padded_dense_forward import (
     _jagged_to_padded_dense_forward,
@@ -112,6 +116,7 @@ from flag_gems.ops._linalg_eigvals import _linalg_eigvals
 from flag_gems.ops._linalg_slogdet import _linalg_slogdet
 from flag_gems.ops._linalg_svd import _linalg_svd
 from flag_gems.ops._list_to_tensor import _list_to_tensor
+from flag_gems.ops._logcumsumexp import _logcumsumexp, _logcumsumexp_out
 from flag_gems.ops._lu_with_info import _lu_with_info
 from flag_gems.ops._make_dep_token import _make_dep_token
 from flag_gems.ops._masked_scale import _masked_scale
@@ -1368,6 +1373,8 @@ __all__ = [
     "_fused_sgd__tensor_lr",
     "_gather_sparse_backward",
     "_has_compatible_shallow_copy_type",
+    "_histogramdd_from_bin_cts",
+    "_histogramdd_from_bin_cts_out",
     "_index_put_impl_",
     "_is_all_true",
     "_jagged_to_padded_dense_forward",
@@ -1375,6 +1382,8 @@ __all__ = [
     "_linalg_slogdet",
     "_linalg_svd",
     "_list_to_tensor",
+    "_logcumsumexp",
+    "_logcumsumexp_out",
     "_lu_with_info",
     "_make_dep_token",
     "_masked_scale",
