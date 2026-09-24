@@ -5,8 +5,7 @@ import torch
 
 import flag_gems
 
-from . import base, consts
-from .conftest import Config
+from . import base
 
 DEVICE = flag_gems.device
 VENDOR = flag_gems.vendor_name
@@ -21,9 +20,6 @@ if DEVICE == "cuda":
     _PIVOT_VALUES = [True, False]
 else:
     _PIVOT_VALUES = [True]
-
-if VENDOR == "ascend":
-    Config.mode = consts.BenchMode.OPERATOR
 
 LINALG_LU_FACTOR_SHAPE = [
     [16, 16],
@@ -153,7 +149,6 @@ else:
 class LinalgLuFactorBenchmark(base.Benchmark):
     DEFAULT_SHAPE_DESC = "input shape, pivot"
     DEFAULT_DTYPES = _TEST_DTYPES
-    # mode = base.Config.mode if VENDOR != "ascend" else consts.BenchMode.OPERATOR
 
     def get_input_iter(self, dtype):
         for inp_shape in LINALG_LU_FACTOR_SHAPE:
