@@ -7,17 +7,6 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
-# The active implementation may be the generic one (logging "GEMS ...") or a
-# vendor-specific override registered under flag_gems.runtime.backend._<vendor>.ops
-# (logging "GEMS_<VENDOR> ..."); derive the expected prefix from the resolved
-# function instead of hardcoding the vendor.
-def _gems_log_prefix(fn):
-    module = fn.__module__
-    if module.startswith("flag_gems.runtime.backend."):
-        return f"GEMS_{flag_gems.vendor_name.upper()}"
-    return "GEMS"
-
-
 @pytest.mark.special_gammaincc
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 # The igammac kernel does not support Half/BFloat16
@@ -34,7 +23,7 @@ def test_special_gammaincc(shape, dtype, caplog):
         with flag_gems.use_gems():
             res_out = torch.ops.aten.special_gammaincc(inp1, inp2)
 
-    expected_prefix = _gems_log_prefix(flag_gems.special_gammaincc)
+    expected_prefix = utils.gems_log_prefix(flag_gems.special_gammaincc)
     assert f"{expected_prefix} SPECIAL_GAMMAINCC" in caplog.text
     utils.gems_assert_close(res_out, ref_out, dtype)
     # special_gammaincc is out-of-place: inputs must stay unmodified

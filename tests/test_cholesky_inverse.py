@@ -22,6 +22,20 @@ CHOLESKY_INVERSE_BATCH_SHAPES = [
 ]
 
 
+# cholesky_inverse only supports float32/float64. On the Kunlunxin XPU backend a
+# float64 request is silently downgraded to float32, so it can never match a
+# true-fp64 reference; skip fp64 on that backend only. Every other vendor keeps
+# running float64 exactly as before.
+_SKIP_FP64_ON_KUNLUNXIN = pytest.mark.skipif(
+    flag_gems.runtime.device.vendor_name == "kunlunxin",
+    reason="Kunlunxin XPU has no real float64 (silently downgraded to float32)",
+)
+CHOLESKY_INVERSE_DTYPES = [
+    torch.float32,
+    pytest.param(torch.float64, marks=_SKIP_FP64_ON_KUNLUNXIN),
+]
+
+
 def _make_positive_definite(shape, dtype, device):
     """Create a positive-definite matrix and return its Cholesky factor."""
     n = shape[-1]
@@ -34,7 +48,7 @@ def _make_positive_definite(shape, dtype, device):
 @pytest.mark.cholesky_inverse
 @pytest.mark.parametrize("shape", CHOLESKY_INVERSE_SHAPES)
 # cholesky_inverse only supports float32/float64
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("dtype", CHOLESKY_INVERSE_DTYPES)
 def test_cholesky_inverse(shape, dtype):
     L = _make_positive_definite(shape, dtype, flag_gems.device)
     ref_L = utils.to_reference(L)
@@ -49,7 +63,7 @@ def test_cholesky_inverse(shape, dtype):
 
 @pytest.mark.cholesky_inverse
 @pytest.mark.parametrize("shape", CHOLESKY_INVERSE_SHAPES[:3])
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("dtype", CHOLESKY_INVERSE_DTYPES)
 def test_cholesky_inverse_upper(shape, dtype):
     L = _make_positive_definite(shape, dtype, flag_gems.device)
     U = L.transpose(-2, -1).contiguous()
@@ -65,7 +79,7 @@ def test_cholesky_inverse_upper(shape, dtype):
 
 @pytest.mark.cholesky_inverse
 @pytest.mark.parametrize("shape", CHOLESKY_INVERSE_BATCH_SHAPES)
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("dtype", CHOLESKY_INVERSE_DTYPES)
 def test_cholesky_inverse_batch(shape, dtype):
     L = _make_positive_definite(shape, dtype, flag_gems.device)
     ref_L = utils.to_reference(L)

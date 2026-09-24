@@ -44,7 +44,10 @@ def test_adaptive_max_pool1d_accuracy(shape, output_size, dtype, caplog):
         res_out, res_indices = flag_gems.adaptive_max_pool1d(inp, output_size)
 
     # Verify dispatch
-    assert "GEMS ADAPTIVE_MAX_POOL1D" in caplog.text
+    assert (
+        f"{utils.gems_log_prefix(flag_gems.adaptive_max_pool1d)} ADAPTIVE_MAX_POOL1D"
+        in caplog.text
+    )
 
     # Verify output values
     utils.gems_assert_close(res_out, ref_out, dtype)

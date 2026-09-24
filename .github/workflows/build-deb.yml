@@ -6,16 +6,14 @@ on:
       - 'v*'
   pull_request:
     branches: [master]
+    # Only what changes the package. Source changes are covered by
+    # this repository's own tests; a .deb or .rpm built on a source PR
+    # has no consumer, and building one for every operator PR is the
+    # bulk of this workflow's runs. Releases still build from the tag
+    # above, and a build can be requested by hand at any time.
     paths:
       - 'packaging/debian/**'
-      - 'src/**'
-      - 'include/**'
-      - 'lib/**'
-      - 'cmake/**'
-      - 'conf/**'
-      - 'CMakeLists.txt'
-      - 'pyproject.toml'
-      - 'tools/setup_nvidia.sh'
+      - 'packaging/verify-installed-package.py'
       - '.github/workflows/build-deb.yml'
   workflow_dispatch:
 

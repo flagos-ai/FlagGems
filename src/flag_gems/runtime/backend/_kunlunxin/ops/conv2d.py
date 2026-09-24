@@ -13,6 +13,8 @@ import triton.language as tl
 
 from flag_gems.utils import libentry
 
+from .pad import pad as _klx_pad
+
 logger = logging.getLogger(__name__)
 
 
@@ -1056,6 +1058,39 @@ class Conv2d(torch.autograd.Function):
         return grad_x, grad_w, grad_b, None, None, None, None
 
 
+def _d2(v):
+    return v if isinstance(v, (tuple, list)) else (v, v)
+
+
+def _square_pad_conv2d(input, weight, bias, stride, padding, dilation, groups):
+    """XPU xhpc conv2d_fusion only accepts square spatial inputs (smaller
+    dims are silently rejected by the launch-table handler).  Pad the smaller
+    spatial dim with zeros, run the square conv, and crop the tail of the
+    output so only positions computed from real windows remain."""
+    ih = input.shape[-2]
+    iw = input.shape[-1]
+    m = max(ih, iw)
+    # zero-pad via the backend's own implementation
+    xp = _klx_pad(input, (0, m - iw, 0, m - ih))
+    out = Conv2d.apply(xp, weight, bias, stride, padding, dilation, groups)
+    if isinstance(padding, str):
+        if padding == "same":
+            return out[..., :ih, :iw]
+        ph = pw = 0
+    else:
+        ph, pw = _d2(padding)
+    sh, sw = _d2(stride)
+    dh, dw = _d2(dilation)
+    kh, kw = weight.shape[-2], weight.shape[-1]
+    oh = (ih + 2 * ph - dh * (kh - 1) - 1) // sh + 1
+    ow = (iw + 2 * pw - dw * (kw - 1) - 1) // sw + 1
+    return out[..., :oh, :ow]
+
+
 def conv2d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
+    if input.shape[-2] != input.shape[-1]:
+        return _square_pad_conv2d(
+            input, weight, bias, stride, padding, dilation, groups
+        )
     logger.debug("GEMS_KUNLUNXIN CONV2D")
     return Conv2d.apply(input, weight, bias, stride, padding, dilation, groups)
