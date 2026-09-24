@@ -3,171 +3,256 @@ import logging
 import torch
 import triton
 import triton.language as tl
-from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 
-config_ = CodeGenConfig(
-    512,
-    (65536, 65536, 65536),
-    32,
-    True,
-    prefer_1d_tile=True,
-    buffer_size_limit=2048,
-    isCloseVectorization=True,
-    kunlunAutoGrid=True,
-    unroll_num=8,
-)
+BF16_EXP = 0x7F80
+BF16_FRAC = 0x007F
 
 
-@pointwise_dynamic(
-    is_tensor=[True, True],
-    promotion_methods=[(0, 1, "DEFAULT")],
-    config=config_,
-)
+@pointwise_dynamic(is_tensor=[True, True], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
-def _nextafter_fp16_kernel(input, other):
-    x = input.to(tl.float32)
-    y = other.to(tl.float32)
-    is_nan = (x != x) | (y != y)
-    is_equal = x == y
-    is_zero = x == 0.0
-    abs_x = tl.abs(x)
-    is_infinite = abs_x > 65504.0
-    toward_up = y > x
-    moving_toward_zero = ((x > 0.0) & ~toward_up) | ((x < 0.0) & toward_up)
+def nextafter_func(input, other):
+    # kunlunxin override of the generic bit-manipulation nextafter:
+    #  * the generic fp16/bf16 branch assumes uint16 arithmetic stays 16-bit,
+    #    but this triton build promotes it to int32, so the final uint16
+    #    bitcast raises "Cannot bitcast data-type of size 32 to 16";
+    #  * the generic fp32 branch calls libdevice nextafter, which the XPU
+    #    elfconv toolchain fails to convert (xpu3-elfconv exit 1);
+    #  * ORing an integer-derived boolean with a float-compare boolean makes
+    #    the XPU triton compiler exit(1) silently after SYMBOL_REWRITE;
+    #  * a bf16<->uint16 bitcast inside the kernel trips an LLVM assertion
+    #    ("Invalid cast!", Instructions.cpp:3720) - bf16 is therefore routed
+    #    through a fp16 view (same width, same bit patterns) by the wrapper,
+    #    with the bf16 exponent/fraction masks passed as constexpr.
+    # The kernel itself is fully integer: ordering is decided with the
+    # sign-magnitude key transform, NaN/equal/zero-cross tests are integer
+    # bit tests, and the result is assembled with nested tl.where.
+    dtype = input.dtype
+    if tl.constexpr(dtype == tl.float16):
+        sign_mask = 0x8000
+        cross_const = 0x8001
+        zero_minus = 0x8000
 
-    x_bits = x.to(tl.int32, bitcast=True)
-    abs_bits = x_bits & 0x7FFFFFFF
-    exponent = ((abs_bits >> 23) & 0xFF) - 127
-    spacing_bits = (exponent - 10 + 127) << 23
-    spacing = spacing_bits.to(tl.float32, bitcast=True)
-    is_power_of_two = (abs_bits & 0x7FFFFF) == 0
-    spacing = tl.where(abs_x < 6.103515625e-05, 5.960464477539063e-08, spacing)
-    spacing = tl.where(
-        moving_toward_zero & is_power_of_two & (abs_x > 6.103515625e-05),
-        spacing * 0.5,
-        spacing,
-    )
-    stepped = x + tl.where(toward_up, spacing, -spacing)
-    zero_result = tl.where(y > 0.0, 5.960464477539063e-08, -5.960464477539063e-08)
-    infinite_result = tl.where(x > 0.0, 65504.0, -65504.0)
-    result = tl.where(is_zero, zero_result, stepped)
-    result = tl.where(is_infinite & ~is_equal, infinite_result, result)
-    result = tl.where(is_equal, y, result)
-    return tl.where(is_nan, x + y, result).to(input.dtype)
+        x_int = input.to(tl.uint16, bitcast=True).to(tl.int32)
+        y_int = other.to(tl.uint16, bitcast=True).to(tl.int32)
+
+        xnan = ((x_int & 0x7C00) == 0x7C00) & ((x_int & 0x03FF) != 0)
+        ynan = ((y_int & 0x7C00) == 0x7C00) & ((y_int & 0x03FF) != 0)
+
+        is_equal = x_int == y_int
+        is_positive = ((x_int & sign_mask) == 0).to(tl.int32)
+        x_is_zero = (x_int == 0).to(tl.int32)
+        x_is_zm = (x_int == zero_minus).to(tl.int32)
+
+        # sign-magnitude -> monotone integer key (keys stay in [0, 0xFFFF]):
+        #   negative u: key = 0xFFFF - u;  positive u: key = u + 0x8000
+        kx = tl.where(x_int & sign_mask != 0, 0xFFFF - x_int, x_int + 0x8000)
+        ky = tl.where(y_int & sign_mask != 0, 0xFFFF - y_int, y_int + 0x8000)
+        is_going_up = (kx < ky).to(tl.int32)
+
+        # direction: for positive floats a larger bit pattern is a larger
+        # value; for negative floats it is the other way round.
+        inc = (is_going_up * 2 - 1) * (is_positive * 2 - 1)
+
+        # +0 going down wraps to 0x8001 (largest negative subnormal);
+        # -0 going up wraps to 0x0001 (smallest positive subnormal).
+        # Detected with int arithmetic instead of boolean algebra (the two
+        # cases are mutually exclusive, so the sum is 0/1).
+        zc = (
+            is_positive * (1 - is_going_up) * x_is_zero
+            + (1 - is_positive) * is_going_up * x_is_zm
+        )
+
+        # NaN propagates (x-NaN keeps x, y-NaN yields y's NaN bits);
+        # equal operands return input unchanged.
+        r = tl.where(
+            xnan,
+            x_int,
+            tl.where(
+                ynan,
+                y_int,
+                tl.where(
+                    is_equal,
+                    x_int,
+                    tl.where(zc == 1, x_int + cross_const, x_int + inc),
+                ),
+            ),
+        )
+        r16 = r.to(tl.uint16)
+        return r16.to(input.dtype, bitcast=True)
+    elif tl.constexpr(dtype == tl.float64):
+        # float64: same algorithm on the int64 bit pattern.
+        exp_mask = 9218868437227405312  # 0x7FF0000000000000
+        frac_mask = 4503599627370495  # 0x000FFFFFFFFFFFFF
+        sign_bit = -9223372036854775808  # 0x8000000000000000 (INT64_MIN)
+        cross_const = -9223372036854775807  # 0x8000000000000001
+        zero_minus = -9223372036854775808  # 0x8000000000000000
+
+        x_int = input.to(tl.int64, bitcast=True)
+        y_int = other.to(tl.int64, bitcast=True)
+
+        xnan = ((x_int & exp_mask) == exp_mask) & ((x_int & frac_mask) != 0)
+        ynan = ((y_int & exp_mask) == exp_mask) & ((y_int & frac_mask) != 0)
+
+        is_equal = x_int == y_int
+        is_positive = ((x_int & sign_bit) == 0).to(tl.int32)
+        x_is_zero = (x_int == 0).to(tl.int32)
+        x_is_zm = (x_int == zero_minus).to(tl.int32)
+
+        # sign-magnitude -> monotone signed int64 key
+        kx = tl.where(x_int < 0, (~x_int) ^ sign_bit, x_int)
+        ky = tl.where(y_int < 0, (~y_int) ^ sign_bit, y_int)
+        is_going_up = (kx < ky).to(tl.int32)
+
+        inc = (is_going_up * 2 - 1) * (is_positive * 2 - 1)
+
+        zc = (
+            is_positive * (1 - is_going_up) * x_is_zero
+            + (1 - is_positive) * is_going_up * x_is_zm
+        )
+
+        r = tl.where(
+            xnan,
+            x_int,
+            tl.where(
+                ynan,
+                y_int,
+                tl.where(
+                    is_equal,
+                    x_int,
+                    tl.where(zc == 1, x_int + cross_const, x_int + inc),
+                ),
+            ),
+        )
+        return r.to(input.dtype, bitcast=True)
+    else:
+        # float32: same algorithm on the int32 bit pattern (two's complement).
+        exp_mask = 2139095040  # 0x7F800000
+        frac_mask = 8388607  # 0x007FFFFF
+        sign_bit = -2147483648  # 0x80000000 (INT_MIN)
+        cross_const = -2147483647  # 0x80000001
+        zero_minus = -2147483648  # 0x80000000
+
+        x_int = input.to(tl.int32, bitcast=True)
+        y_int = other.to(tl.int32, bitcast=True)
+
+        xnan = ((x_int & exp_mask) == exp_mask) & ((x_int & frac_mask) != 0)
+        ynan = ((y_int & exp_mask) == exp_mask) & ((y_int & frac_mask) != 0)
+
+        is_equal = x_int == y_int
+        is_positive = ((x_int & sign_bit) == 0).to(tl.int32)
+        x_is_zero = (x_int == 0).to(tl.int32)
+        x_is_zm = (x_int == zero_minus).to(tl.int32)
+
+        # sign-magnitude -> monotone *signed* key:
+        #   negative (x_int < 0): key = ~x_int ^ INT_MIN;  positive: key = x_int
+        kx = tl.where(x_int < 0, (~x_int) ^ sign_bit, x_int)
+        ky = tl.where(y_int < 0, (~y_int) ^ sign_bit, y_int)
+        is_going_up = (kx < ky).to(tl.int32)
+
+        inc = (is_going_up * 2 - 1) * (is_positive * 2 - 1)
+
+        zc = (
+            is_positive * (1 - is_going_up) * x_is_zero
+            + (1 - is_positive) * is_going_up * x_is_zm
+        )
+
+        r = tl.where(
+            xnan,
+            x_int,
+            tl.where(
+                ynan,
+                y_int,
+                tl.where(
+                    is_equal,
+                    x_int,
+                    tl.where(zc == 1, x_int + cross_const, x_int + inc),
+                ),
+            ),
+        )
+        return r.to(input.dtype, bitcast=True)
 
 
-@pointwise_dynamic(
-    is_tensor=[True, True],
-    promotion_methods=[(0, 1, "DEFAULT")],
-    config=config_,
-)
+@pointwise_dynamic(is_tensor=[True, True], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
-def _nextafter_bf16_kernel(input, other):
-    x = input.to(tl.float32)
-    y = other.to(tl.float32)
-    is_nan = (x != x) | (y != y)
-    is_equal = x == y
-    is_zero = x == 0.0
-    abs_x = tl.abs(x)
-    is_infinite = abs_x > 3.3895313892515355e38
-    toward_up = y > x
-    moving_toward_zero = ((x > 0.0) & ~toward_up) | ((x < 0.0) & toward_up)
+def nextafter_func_bf16(input, other):
+    # Same algorithm as nextafter_func but with the bfloat16 NaN masks; the
+    # wrapper feeds bf16 tensors through a fp16 view (identical bit layout)
+    # because a kernel-side bf16 bitcast asserts inside the XPU LLVM pass.
+    dtype = input.dtype
+    if tl.constexpr(dtype == tl.float16):
+        sign_mask = 0x8000
+        cross_const = 0x8001
+        zero_minus = 0x8000
 
-    x_bits = x.to(tl.int32, bitcast=True)
-    abs_bits = x_bits & 0x7FFFFFFF
-    exponent = ((abs_bits >> 23) & 0xFF) - 127
-    spacing_exponent = exponent - 7
-    normal_spacing_bits = (spacing_exponent + 127) << 23
-    subnormal_spacing_bits = 1 << tl.maximum(spacing_exponent + 149, 0)
-    spacing_bits = tl.where(
-        spacing_exponent >= -126, normal_spacing_bits, subnormal_spacing_bits
-    )
-    spacing = spacing_bits.to(tl.float32, bitcast=True)
-    is_power_of_two = (abs_bits & 0x7FFFFF) == 0
-    spacing = tl.where(abs_x < 1.1754943508222875e-38, 9.183549615799121e-41, spacing)
-    spacing = tl.where(
-        moving_toward_zero & is_power_of_two & (abs_x > 1.1754943508222875e-38),
-        spacing * 0.5,
-        spacing,
-    )
-    stepped = x + tl.where(toward_up, spacing, -spacing)
-    zero_result = tl.where(y > 0.0, 9.183549615799121e-41, -9.183549615799121e-41)
-    infinite_result = tl.where(x > 0.0, 3.3895313892515355e38, -3.3895313892515355e38)
-    result = tl.where(is_zero, zero_result, stepped)
-    result = tl.where(is_infinite & ~is_equal, infinite_result, result)
-    result = tl.where(is_equal, y, result)
-    return tl.where(is_nan, x + y, result).to(input.dtype)
+        x_int = input.to(tl.uint16, bitcast=True).to(tl.int32)
+        y_int = other.to(tl.uint16, bitcast=True).to(tl.int32)
 
+        xnan = ((x_int & 0x7F80) == 0x7F80) & ((x_int & 0x007F) != 0)
+        ynan = ((y_int & 0x7F80) == 0x7F80) & ((y_int & 0x007F) != 0)
 
-@pointwise_dynamic(
-    is_tensor=[True, True],
-    promotion_methods=[(0, 1, "DEFAULT")],
-    config=config_,
-)
-@triton.jit
-def _nextafter_fp32_kernel(input, other):
-    x = input.to(tl.float32)
-    y = other.to(tl.float32)
-    x_bits = x.to(tl.int32, bitcast=True)
-    y_bits = y.to(tl.int32, bitcast=True)
-    x_abs = x_bits & 0x7FFFFFFF
-    y_abs = y_bits & 0x7FFFFFFF
+        is_equal = x_int == y_int
+        is_positive = ((x_int & sign_mask) == 0).to(tl.int32)
+        x_is_zero = (x_int == 0).to(tl.int32)
+        x_is_zm = (x_int == zero_minus).to(tl.int32)
 
-    # Everything is decided on the raw IEEE-754 bit pattern.  The XPU FPU
-    # flushes subnormal operands to zero (FTZ) in floating-point arithmetic
-    # AND comparisons, so `x + spacing`, `x == 0.0` and `x < y` are all wrong
-    # for subnormal inputs (|x| < 2^-126) or subnormal spacings (|x| < 2^-103).
-    # Sign-magnitude integer stepping (bits +/- 1) is exact for every finite
-    # non-zero value: for positive x a larger bit pattern is a larger float,
-    # for negative x it is reversed.
-    is_nan = (x_abs > 0x7F800000) | (y_abs > 0x7F800000)
-    is_zero = x_abs == 0
-    is_infinite = x_abs == 0x7F800000
-    is_equal = (x_bits == y_bits) | ((x_abs | y_abs) == 0)
-    x_negative = x_bits < 0  # int32 sign-bit test (no FPU involved)
-    y_negative = y_bits < 0
-    toward_up = (
-        (~x_negative & ~y_negative & (y_bits > x_bits))
-        | (x_negative & y_negative & (y_bits < x_bits))
-        | (x_negative & ~y_negative)
-    )
-    inc = tl.where(x_negative, tl.where(toward_up, -1, 1), tl.where(toward_up, 1, -1))
-    stepped = (x_bits + inc).to(tl.float32, bitcast=True)
-    minimum = (x_bits * 0 + 1).to(tl.float32, bitcast=True)
-    zero_result = tl.where(y_negative, -minimum, minimum)
-    infinite_result = tl.where(
-        x_negative, -3.4028234663852886e38, 3.4028234663852886e38
-    )
-    result = tl.where(is_zero, zero_result, stepped)
-    result = tl.where(is_infinite & ~is_equal, infinite_result, result)
-    result = tl.where(is_equal, y, result)
-    return tl.where(is_nan, x + y, result)
+        kx = tl.where(x_int & sign_mask != 0, 0xFFFF - x_int, x_int + 0x8000)
+        ky = tl.where(y_int & sign_mask != 0, 0xFFFF - y_int, y_int + 0x8000)
+        is_going_up = (kx < ky).to(tl.int32)
 
+        inc = (is_going_up * 2 - 1) * (is_positive * 2 - 1)
 
-def _kernel_for(dtype):
-    if dtype == torch.float16:
-        return _nextafter_fp16_kernel
-    if dtype == torch.bfloat16:
-        return _nextafter_bf16_kernel
-    if dtype == torch.float32:
-        return _nextafter_fp32_kernel
-    raise NotImplementedError(
-        f"Kunlunxin nextafter only supports float16, bfloat16, and float32; got {dtype}."
-    )
+        zc = (
+            is_positive * (1 - is_going_up) * x_is_zero
+            + (1 - is_positive) * is_going_up * x_is_zm
+        )
+
+        r = tl.where(
+            xnan,
+            x_int,
+            tl.where(
+                ynan,
+                y_int,
+                tl.where(
+                    is_equal,
+                    x_int,
+                    tl.where(zc == 1, x_int + cross_const, x_int + inc),
+                ),
+            ),
+        )
+        r16 = r.to(tl.uint16)
+        return r16.to(input.dtype, bitcast=True)
+    else:
+        return input
 
 
 def nextafter(input, other, *, out=None):
     logger.debug("GEMS_KUNLUNXIN NEXTAFTER")
-    kernel = _kernel_for(input.dtype)
+    if input.dtype == torch.bfloat16:
+        # kernel-side bf16 bitcast is broken (LLVM "Invalid cast!" assert);
+        # run the same-width fp16 view through the bf16-mask kernel instead.
+        oth = other.view(torch.float16)
+        if out is not None:
+            nextafter_func_bf16(
+                input.view(torch.float16), oth, out0=out.view(torch.float16)
+            )
+            return out
+        return nextafter_func_bf16(input.view(torch.float16), oth).view(torch.bfloat16)
     if out is not None:
-        return kernel(input, other, out0=out)
-    return kernel(input, other)
+        return nextafter_func(input, other, out0=out)
+    return nextafter_func(input, other)
 
 
 def nextafter_(input, other):
     logger.debug("GEMS_KUNLUNXIN NEXTAFTER_")
-    return _kernel_for(input.dtype)(input, other, out0=input)
+    if input.dtype == torch.bfloat16:
+        nextafter_func_bf16(
+            input.view(torch.float16),
+            other.view(torch.float16),
+            out0=input.view(torch.float16),
+        )
+        return input
+    return nextafter_func(input, other, out0=input)
