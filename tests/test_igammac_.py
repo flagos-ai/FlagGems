@@ -23,7 +23,8 @@ def test_special_gammaincc(shape, dtype, caplog):
         with flag_gems.use_gems():
             res_out = torch.ops.aten.special_gammaincc(inp1, inp2)
 
-    assert "GEMS SPECIAL_GAMMAINCC" in caplog.text
+    expected_prefix = utils.gems_log_prefix(flag_gems.special_gammaincc)
+    assert f"{expected_prefix} SPECIAL_GAMMAINCC" in caplog.text
     utils.gems_assert_close(res_out, ref_out, dtype)
     # special_gammaincc is out-of-place: inputs must stay unmodified
     utils.gems_assert_close(inp1, ref_inp1, dtype)

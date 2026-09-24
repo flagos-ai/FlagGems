@@ -30,7 +30,7 @@ if HAS_FLAGTREE_ARCHIVE:
     )
     from triton.flagtune.contract.identity import ModelIdentity  # noqa: E402
 
-    from flag_gems.flagtune.cli.package import (  # noqa: E402
+    from flag_gems.flagtune.offline.cli.package import (  # noqa: E402
         PackageAssemblyError,
         assemble_platform_package,
     )
