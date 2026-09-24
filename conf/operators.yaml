@@ -177,20 +177,34 @@ ops:
   - BLAS
   stages:
   - alpha: '5.5'
-- id: _pin_memory
-  description: 'Copies a strided CPU tensor into page-locked host memory for asynchronous
-    transfer to an accelerator.
+- id: _logcumsumexp
+  description: 'Returns the log of the cumulative sum of exponentials of elements along a
+    dimension, computed in a numerically stable way. Underscored variant of
+    `torch.logcumsumexp`.
 
     '
   for:
-  - _pin_memory
+  - _logcumsumexp
   labels:
   - aten
   - KernelGen
   kind:
-  - Tensor
+  - Math
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
+- id: _logcumsumexp_out
+  description: 'A variant of `_logcumsumexp` that assigns the output to the `out` tensor.
+
+    '
+  for:
+  - _logcumsumexp.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: _reshape_alias
   description: 'Creates a view of the input tensor with the given size and stride,
 
@@ -7001,6 +7015,21 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: hardshrink_backward
+  description: |
+    Computes the gradient of the Hard Shrink activation function with respect to its input
+    during backpropagation. The gradient is passed through where the input magnitude is
+    strictly greater than the threshold lambd, and is zero elsewhere.
+  for:
+  - hardshrink_backward
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5.0'
 - id: hardshrink_out
   description: 'Out-variant of hardshrink. Writes the element-wise result into the
     `out` tensor.
@@ -7387,6 +7416,34 @@ ops:
   - Reduction
   stages:
   - alpha: '5.5'
+- id: histogramdd_from_bin_cts
+  description: 'Computes a multi-dimensional histogram of the values in a tensor using a
+    sequence of per-dimension bin counts (equal-width bins).
+
+    '
+  for:
+  - _histogramdd_from_bin_cts
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Reduction
+  stages:
+  - alpha: '5.4'
+- id: histogramdd_from_bin_cts_out
+  description: 'A variant of `_histogramdd_from_bin_cts()` that assigns the output to
+    the given `out` parameter.
+
+    '
+  for:
+  - _histogramdd_from_bin_cts.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Reduction
+  stages:
+  - alpha: '5.4'
 - id: hsplit
   description: 'Split a tensor into multiple sub-tensors horizontally (column-wise).
 
@@ -7876,6 +7933,21 @@ ops:
   - Quantization
   stages:
   - beta: '5.3'
+- id: infinitely_differentiable_gelu_backward
+  description: The smooth (erf-based) GELU gradient used by higher-order autograd,
+    computed as `grad * (0.5 * erf(x / sqrt(2)) + 0.5 + x * exp(-x * x / 2) / sqrt(2
+    * pi))`.
+  for:
+  - infinitely_differentiable_gelu_backward
+  labels:
+  - aten
+  - Activation
+  - pointwise
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5.0'
 - id: inner
   description: Computes the inner product of two tensors by contracting their last
     dimension, keeping the leading dimensions of each operand per-side without broadcasting.
@@ -8239,6 +8311,21 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: l1_loss
+  description: |
+    Compute the L1 loss between input and target tensors, i.e. the element-wise
+    absolute difference, with optional none/mean/sum reduction.
+  for:
+  - l1_loss
+  labels:
+  - aten
+  - pointwise
+  - nn.functional
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5.0'
 - id: layer_norm
   description: An internal IR for applying Layer Normalization for last certain number
     of dimensions.
@@ -9233,6 +9320,21 @@ ops:
     '
   for:
   - linalg_solve
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.5'
+- id: linalg_solve_ex
+  description: |
+    Solves a linear system AX = B via fused LU decomposition with partial pivoting
+    and forward/backward substitution in a single Triton kernel. Returns (result, info)
+    where info indicates singularity status.
+  for:
+  - linalg_solve_ex
+  - _linalg_solve_ex
   labels:
   - aten
   - KernelGen
@@ -11582,6 +11684,18 @@ ops:
   - Tensor
   stages:
   - alpha: '5.5.0'
+- id: nested_to_padded_tensor
+  description: Converts a nested (ragged) tensor into a padded dense tensor, filling
+    unoccupied positions with a scalar padding value.
+  for:
+  - nested_to_padded_tensor
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5.0'
 - id: nested_view_from_buffer_copy
   description: 'Creates a nested tensor from a flat buffer using component sizes,
     strides,
@@ -12241,6 +12355,22 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.5'
+- id: pad_enum
+  description: |
+    Integer-mode dispatcher backing torch.nn.functional.pad. Pads an N-D
+    tensor where `mode` is an integer enum (0 reflect, 1 replicate,
+    2 circular, 3 constant); `value` is only used for constant padding.
+  for:
+  - _pad_enum
+  labels:
+  - aten
+  - pointwise
+  - nn.functional
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5.0'
 - id: pad_packed_sequence
   description: |
     Pads a packed batch of variable length sequences back into a dense
@@ -12368,6 +12498,21 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: philox_normal_
+  description: |
+    Fills the tensor in place with samples from a normal distribution with
+    the given mean and std, drawn from a stateless Philox RNG stream
+    identified by the (seed, offset) pair in `key`.
+  for:
+  - _philox_normal_
+  labels:
+  - aten
+  - KernelGen
+  - pointwise
+  kind:
+  - Distribution
+  stages:
+  - alpha: '5.5.0'
 - id: pin_memory
   description: 'Public entry that pins a strided CPU tensor into page-locked host
     memory; delegates to _pin_memory.
@@ -13184,6 +13329,22 @@ ops:
   stages:
   - beta: '5.0'
   - stable: '5.3'
+- id: relu6_
+  description: |
+    In-place version of `relu6()`. Applies the element-wise function
+    `f(x)=min(max(0,x),6)` to the input tensor and stores the result back
+    into it.
+  for:
+  - relu6_
+  labels:
+  - aten
+  - pointwise
+  - Activation
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5.0'
 - id: relu_
   description: This is the in-place version of `relu()`.
   for:
@@ -13800,6 +13961,23 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: rrelu_
+  description: |
+    In-place Randomized Leaky ReLU (RReLU). Applies RReLU in place: positive
+    inputs are passed through unchanged, while negative inputs are multiplied
+    by a slope. During training the slope is sampled uniformly from
+    [lower, upper] per element, and at evaluation time the constant slope
+    (lower + upper) / 2 is used.
+  for:
+  - rrelu_
+  labels:
+  - aten
+  - KernelGen
+  - pointwise
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5.0'
 - id: rrelu_with_noise
   description: 'Triton kernel implementation for rrelu_with_noise
     '
@@ -14214,6 +14392,22 @@ ops:
   - NeuralNetwork
   stages:
   - beta: '5.4'
+- id: scaled_grouped_mm_v2
+  description: |
+    Recipe-driven grouped scaled matrix multiply: a stack of per-group GEMMs
+    whose operands carry per-row (RowWise) or per-tensor (TensorWise) decoding
+    scales, with the jagged dimension described by an int32 `offs` tensor.
+    Backs quantized Mixture-of-Experts layers.
+  for:
+  - _scaled_grouped_mm_v2
+  labels:
+  - aten
+  - KernelGen
+  - MoE
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5.0'
 - id: scaled_mm
   description: 'Performs a scaled matrix multiplication. The result of `self @ mat2`
     is
@@ -15237,6 +15431,22 @@ ops:
   stages:
   - beta: '5.0'
   - stable: '5.3'
+- id: softshrink_backward
+  description: |
+    Computes the gradient of the `softshrink` activation. Gradients flow through
+    only where the magnitude of the original input exceeds `lambd`; elsewhere
+    the gradient is zero.
+  for:
+  - softshrink_backward
+  labels:
+  - aten
+  - nn.functional
+  - Activation
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5.0'
 - id: softshrink_out
   description: 'This is a variant of `softshrink` that supports an output tensor.
 
