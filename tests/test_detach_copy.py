@@ -51,7 +51,7 @@ def _gen_input(shape, dtype):
 @pytest.mark.detach_copy
 @pytest.mark.parametrize("shape", SHAPES)
 @pytest.mark.parametrize(
-    "dtype", utils.FLOAT_DTYPES + utils.INT_DTYPES + utils.BOOL_TYPES
+    "dtype", utils.FLOAT_DTYPES + utils.INT_DTYPES + utils.BOOL_TYPES + [torch.complex64, torch.complex128]
 )
 def test_accuracy_detach_copy(shape, dtype):
     inp = _gen_input(shape, dtype)
