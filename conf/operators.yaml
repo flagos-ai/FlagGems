@@ -53,6 +53,34 @@ ops:
   - Reduction
   stages:
   - alpha: '5.5'
+- id: _conj_physical
+  description: 'Computes the element-wise conjugate of the given `input` tensor as
+    a physical (non-view) tensor. For non-complex dtypes the input is returned unchanged.
+
+    '
+  for:
+  - _conj_physical
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
+- id: _conj_physical_out
+  description: 'A variant of `_conj_physical()` that writes the result into the `out`
+    tensor.
+
+    '
+  for:
+  - _conj_physical.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: _ctc_loss
   description: 'Computes the CTC loss and the alpha lattice used by its backward pass.
 
@@ -60,6 +88,32 @@ ops:
   for:
   - _ctc_loss
   - _ctc_loss.Tensor
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
+- id: _ctc_loss_backward
+  description: 'Computes the gradient of the CTC loss with respect to log_probs.
+
+    '
+  for:
+  - _ctc_loss_backward
+  - _ctc_loss_backward.Tensor
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
+- id: _ctc_loss_backward_out
+  description: A variant of `_ctc_loss_backward` that allows the output to be assigned
+    to `out`.
+  for:
+  - _ctc_loss_backward.out
   labels:
   - aten
   - KernelGen
@@ -109,6 +163,34 @@ ops:
   - LinearAlg
   stages:
   - alpha: '5.5'
+- id: _linalg_svd
+  description: 'Computes the singular value decomposition (SVD) of a matrix; the private
+    primitive backing torch.linalg.svd and torch.linalg.svdvals.
+
+    '
+  for:
+  - _linalg_svd
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.5'
+- id: _pin_memory
+  description: 'Copies a strided CPU tensor into page-locked host memory for asynchronous
+    transfer to an accelerator.
+
+    '
+  for:
+  - _pin_memory
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: _reshape_alias
   description: 'Creates a view of the input tensor with the given size and stride,
 
@@ -1791,6 +1873,24 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '3.0'
+- id: batch_norm_backward_elemt
+  description: 'Compute the per-element gradient for batch normalization backward
+    pass.
+
+    Given pre-computed channel statistics (sum_dy, sum_dy_xmu), produces
+
+    grad_input without reduction.
+
+    '
+  for:
+  - batch_norm_backward_elemt
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: batch_norm_backward_reduce
   description: Triton kernel implementation for batch normalization backward reduce
     stage.
@@ -7298,6 +7398,23 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: hspmm
+  description: 'Performs a matrix multiplication of a sparse COO tensor with a dense
+    tensor.
+
+    Returns an uncoalesced sparse COO tensor with the same number of specified elements
+    as the input sparse tensor.
+
+    '
+  for:
+  - hspmm
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.5.0'
 - id: hstack
   description: 'Stack tensors in sequence horizontally (column wise). This is equivalent
     to concatenation
@@ -8049,6 +8166,40 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: kaiser_window
+  description: Computes the Kaiser window function.
+  for:
+  - kaiser_window
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5.0'
+- id: kaiser_window_beta
+  description: A variant of kaiser_window() that takes an explicit periodic flag and
+    beta shape parameter.
+  for:
+  - kaiser_window.beta
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5.0'
+- id: kaiser_window_periodic
+  description: A variant of kaiser_window() that takes an explicit periodic flag.
+  for:
+  - kaiser_window.periodic
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5.0'
 - id: kron
   description: Computes the Kronecker product of `input` and `other`.
   for:
@@ -8572,6 +8723,18 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: linalg_inv_ex
+  description: Compute the inverse of a square matrix using LU factorization with
+    partial pivoting.
+  for:
+  - linalg_inv_ex
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.5'
 - id: linalg_ldl_factor
   description: 'Computes the compact LDL factorization of a Hermitian or symmetric
     matrix.
@@ -12181,6 +12344,20 @@ ops:
   description: Creates and returns a copy of x with permuted dimensions.
   for:
   - permute_copy
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
+- id: pin_memory
+  description: 'Public entry that pins a strided CPU tensor into page-locked host
+    memory; delegates to _pin_memory.
+
+    '
+  for:
+  - pin_memory
   labels:
   - aten
   - KernelGen

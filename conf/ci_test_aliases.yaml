@@ -16,6 +16,7 @@
 #   means tests/test_addmm.py covers the addmm_out operator
 
 # _out variants - share test with base operator
+_ctc_loss_backward_out: test__ctc_loss_backward
 _ctc_loss_out: test__ctc_loss
 addcdiv_out: test_addcdiv
 addcmul_out: test_addcmul
