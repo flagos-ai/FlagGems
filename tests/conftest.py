@@ -251,6 +251,21 @@ def pytest_terminal_summary(terminalreporter):
         os.fsync(json_file.fileno())
 
 
+@pytest.hookimpl(tryfirst=True)
+def pytest_pycollect_makeitem(collector, name, obj):
+    # An empty quick parameter set represents zero cases. Pytest would otherwise
+    # manufacture a skipped item for each combination of the other parameters.
+    if not collector.config.getoption("--quick") or not name.startswith("test_"):
+        return None
+    for mark in getattr(obj, "pytestmark", ()):
+        if mark.name != "parametrize":
+            continue
+        values = mark.args[1] if len(mark.args) > 1 else mark.kwargs.get("argvalues")
+        if isinstance(values, (list, tuple)) and not values:
+            return []
+    return None
+
+
 def pytest_collection_modifyitems(session, config, items):
     collect_marks_file = config.getoption("--collect-marks")
     if collect_marks_file:
