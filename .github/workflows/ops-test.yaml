@@ -15,7 +15,7 @@
 # Full-range operator test workflow
 #
 #
-# Main config: .github/configs/backends/weekly-test.yaml
+# Main config: .github/configs/backends/config.yaml
 # Per-backend config: .github/configs/backends/<NAME>.yaml
 # vendors: Nvidia,MThreads,KunLunXin,Iluvatar,Ascend,Hygon,Metax,THead,Cambricon,AMD
 name: ops-test
@@ -87,7 +87,7 @@ jobs:
           import yaml
 
           checkout_ref = os.environ.get('BRANCH_INPUT', '').strip() or 'master'
-          with open('.github/configs/backends/weekly-test.yaml') as f:
+          with open('.github/configs/backends/config.yaml') as f:
               main = yaml.safe_load(f)
 
           # Parse optional vendor filter (case-insensitive). Empty -> all.
@@ -289,6 +289,7 @@ jobs:
           echo "[Run ops tests] Test GPUs: ${AVAILABLE_GPUS}"
           echo "[Run ops tests] Test date: ${DATE}"
           echo "[Run ops tests] Test ops: ${{ needs.prepare.outputs.ops }}"
+          mkdir -p "${OUTPUT_DIR}"
           # remove cache to avoid potential issues with stale files
           rm -rf ~/.triton/cache && rm -rf ~/.flaggems
           # run tests with specified GPUs and output directory
@@ -316,6 +317,7 @@ jobs:
       - name: Package results
         run: |
           ARCHIVE="${{ matrix.output_base_dir }}/ops-test-${{ matrix.name }}-${DATE}.tar.gz"
+          mkdir -p "${OUTPUT_DIR}" "$(dirname "${ARCHIVE}")"
           tar -czf "${ARCHIVE}" -C "$(dirname "${OUTPUT_DIR}")" "$(basename "${OUTPUT_DIR}")"
           echo "ARCHIVE=${ARCHIVE}" >> "$GITHUB_ENV"
 
@@ -438,6 +440,7 @@ jobs:
           echo "[Run ops tests] Test GPUs: ${AVAILABLE_GPUS}"
           echo "[Run ops tests] Test date: ${DATE}"
           echo "[Run ops tests] Test ops: ${{ needs.prepare.outputs.ops }}"
+          mkdir -p "${OUTPUT_DIR}"
           # remove cache to avoid potential issues with stale files
           rm -rf ~/.triton/cache && rm -rf ~/.flaggems
           # run tests with specified GPUs and output directory
@@ -461,6 +464,7 @@ jobs:
       - name: Package results
         run: |
           ARCHIVE="${{ matrix.output_base_dir }}/ops-test-${{ matrix.name }}-${DATE}.tar.gz"
+          mkdir -p "${OUTPUT_DIR}" "$(dirname "${ARCHIVE}")"
           tar -czf "${ARCHIVE}" -C "$(dirname "${OUTPUT_DIR}")" "$(basename "${OUTPUT_DIR}")"
           echo "ARCHIVE=${ARCHIVE}" >> "$GITHUB_ENV"
 
