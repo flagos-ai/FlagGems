@@ -76,6 +76,8 @@ from .all import all, all_dim, all_dims
 from .amax import amax
 from .amin import amin, amin_
 from .aminmax import aminmax
+from .and_scalar import and_scalar
+from .and_tensor import and_tensor
 from .angle import angle
 from .any import any, any_dim, any_dims
 from .apply_repetition_penalties import apply_repetition_penalties
@@ -764,6 +766,8 @@ __all__ = [
     "amin",
     "amin_",
     "aminmax",
+    "and_scalar",
+    "and_tensor",
     "angle",
     "any",
     "any_dim",

@@ -4,6 +4,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
 
 
 def _make_spectrum_input(shape, singular_values, seed=0):
@@ -189,3 +190,189 @@ def test_linalg_svd_orthonormal(shape, dtype):
         reconstructed, ref_inp, reconstructed.dtype, atol=RECONSTRUCTION_ATOL
     )
     _assert_orthonormal(res_vh.mH)
+
+
+# ---------------------------------------------------------------------------
+# aten::_linalg_svd / aten::_linalg_svd.out
+#
+# The private primitive that torch.linalg.svd (compute_uv True) and
+# torch.linalg.svdvals (compute_uv False) decompose into. The operator ids stay
+# `_linalg_svd` / `_linalg_svd_out`, and pytest refuses to build a marker from
+# an attribute starting with an underscore, so the markers are spelled
+# `underscore_linalg_svd` / `underscore_linalg_svd_out`. The tests live in this
+# file (rather than a separate test__linalg_svd.py) because the op shares its
+# helpers, shapes and tolerances with the bare `linalg_svd` above.
+# ---------------------------------------------------------------------------
+
+
+# aten::_linalg_svd is the private primitive that torch.linalg.svd (compute_uv
+# True) and torch.linalg.svdvals (compute_uv False) decompose into, so calling
+# flag_gems._linalg_svd directly exercises the registered kernel.
+@pytest.mark.underscore_linalg_svd
+@pytest.mark.parametrize("dtype", LINALG_SVD_DTYPES)
+@pytest.mark.parametrize("shape", LINALG_SVD_SHAPES)
+def test__linalg_svd_full_matrices(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp, False)
+
+    ref_u, ref_s, ref_vh = torch.linalg.svd(ref_inp, full_matrices=True)
+    res_u, res_s, res_vh = flag_gems._linalg_svd(inp, full_matrices=True)
+
+    _assert_same_shape(res_u, ref_u)
+    _assert_same_shape(res_s, ref_s)
+    _assert_same_shape(res_vh, ref_vh)
+
+    # Singular values and the reconstruction A = U diag(S) Vh are gauge
+    # invariant, so they are the robust correctness checks for general inputs.
+    # Per-vector orthonormality of U/Vh is only well-posed for well-separated
+    # singular values; it is exercised in the orthonormal test below.
+    utils.gems_assert_close(res_s, ref_s, res_s.dtype, atol=SINGULAR_VALUE_ATOL)
+    reconstructed = _reconstruct(res_u, res_s, res_vh)
+    utils.gems_assert_close(
+        reconstructed, ref_inp, reconstructed.dtype, atol=RECONSTRUCTION_ATOL
+    )
+
+
+@pytest.mark.underscore_linalg_svd
+@pytest.mark.parametrize("dtype", LINALG_SVD_DTYPES)
+@pytest.mark.parametrize("shape", LINALG_SVD_REDUCED_SHAPES)
+def test__linalg_svd_reduced(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp, False)
+
+    ref_u, ref_s, ref_vh = torch.linalg.svd(ref_inp, full_matrices=False)
+    res_u, res_s, res_vh = flag_gems._linalg_svd(inp, full_matrices=False)
+
+    _assert_same_shape(res_u, ref_u)
+    _assert_same_shape(res_s, ref_s)
+    _assert_same_shape(res_vh, ref_vh)
+
+    utils.gems_assert_close(res_s, ref_s, res_s.dtype, atol=SINGULAR_VALUE_ATOL)
+    reconstructed = _reconstruct(res_u, res_s, res_vh)
+    utils.gems_assert_close(
+        reconstructed, ref_inp, reconstructed.dtype, atol=RECONSTRUCTION_ATOL
+    )
+
+
+@pytest.mark.underscore_linalg_svd
+@pytest.mark.parametrize("dtype", LINALG_SVD_DTYPES)
+@pytest.mark.parametrize("shape", LINALG_SVD_BATCH_SHAPES)
+def test__linalg_svd_batched(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp, False)
+
+    ref_u, ref_s, ref_vh = torch.linalg.svd(ref_inp, full_matrices=False)
+    res_u, res_s, res_vh = flag_gems._linalg_svd(inp, full_matrices=False)
+
+    _assert_same_shape(res_u, ref_u)
+    _assert_same_shape(res_s, ref_s)
+    _assert_same_shape(res_vh, ref_vh)
+
+    utils.gems_assert_close(res_s, ref_s, res_s.dtype, atol=SINGULAR_VALUE_ATOL)
+    reconstructed = _reconstruct(res_u, res_s, res_vh)
+    utils.gems_assert_close(
+        reconstructed, ref_inp, reconstructed.dtype, atol=RECONSTRUCTION_ATOL
+    )
+
+
+@pytest.mark.underscore_linalg_svd
+@pytest.mark.parametrize("dtype", LINALG_SVD_DTYPES)
+@pytest.mark.parametrize("shape", LINALG_SVD_REDUCED_SHAPES)
+def test__linalg_svd_compute_uv_false(shape, dtype):
+    # torch.linalg.svdvals routes through aten::_linalg_svd with compute_uv
+    # False, which materializes only the singular values (U/Vh are empty).
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp, False)
+
+    ref_s = torch.linalg.svdvals(ref_inp)
+    _, res_s, _ = flag_gems._linalg_svd(inp, compute_uv=False)
+
+    _assert_same_shape(res_s, ref_s)
+    utils.gems_assert_close(res_s, ref_s, res_s.dtype, atol=SINGULAR_VALUE_ATOL)
+
+
+@pytest.mark.underscore_linalg_svd
+@pytest.mark.parametrize("dtype", LINALG_SVD_DTYPES)
+@pytest.mark.parametrize("shape", LINALG_SVD_ORTHONORMAL_SHAPES)
+def test__linalg_svd_orthonormal(shape, dtype):
+    # Drive the orthonormality check with a controlled, well-separated spectrum
+    # (mirrors the ill-conditioned spectrum test in tests/test_svd.py) so the
+    # singular vectors are uniquely determined.
+    #
+    # Only Vh is checked for orthonormality. The Triton SVD kernel computes V
+    # from a stable symmetric eigendecomposition, but forms U as A @ V @
+    # diag(1/S); dividing by the small trailing singular values amplifies
+    # floating-point error in U's trailing columns by 1/sigma_min, so U's gram
+    # matrix is borderline against the 2e-2 tolerance and hardware dependent.
+    # U's correctness is already covered by the reconstruction check below
+    # (U diag(S) Vh == A), which is gauge invariant and robust.
+    k = min(shape[-2:])
+    singular_values = torch.logspace(0, -3, steps=k).tolist()
+    inp = _make_spectrum_input(shape, singular_values, seed=7)
+    ref_inp = utils.to_reference(inp, False)
+
+    ref_u, ref_s, ref_vh = torch.linalg.svd(ref_inp, full_matrices=False)
+    res_u, res_s, res_vh = flag_gems._linalg_svd(inp, full_matrices=False)
+
+    _assert_same_shape(res_u, ref_u)
+    _assert_same_shape(res_s, ref_s)
+    _assert_same_shape(res_vh, ref_vh)
+
+    utils.gems_assert_close(res_s, ref_s, res_s.dtype, atol=SINGULAR_VALUE_ATOL)
+    reconstructed = _reconstruct(res_u, res_s, res_vh)
+    utils.gems_assert_close(
+        reconstructed, ref_inp, reconstructed.dtype, atol=RECONSTRUCTION_ATOL
+    )
+    _assert_orthonormal(res_vh.mH)
+
+
+@pytest.mark.underscore_linalg_svd
+@pytest.mark.skipif(
+    cfg.TO_CPU, reason="the driver= contract is CUDA-only; a CPU reference rejects all"
+)
+@pytest.mark.parametrize("driver", ["gesvd", "gesvda", "gesdd", "bogus", "", "GESVD"])
+def test__linalg_svd_driver(driver):
+    """The ``driver`` argument is validated like native, though it is otherwise unused.
+
+    cuSOLVER accepts only ``gesvd``/``gesvda`` (``gesdd`` is rejected for
+    ``_linalg_svd``) and rejects anything else with a RuntimeError naming the
+    driver. The Triton kernels have no driver concept, so a valid driver only
+    has to be accepted; silently dropping an *invalid* one would compute a
+    result where native raises.
+
+    The expected outcome depends on the device the reference runs on, so this
+    cannot be checked against a CPU reference: the CPU backend rejects the
+    ``driver=`` keyword itself ("only supported on CUDA inputs with cuSOLVER")
+    for *every* value, including the two that are valid on CUDA.
+    """
+    inp = torch.randn(8, 8, dtype=torch.float32, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp, False)
+
+    ref_err = None
+    try:
+        torch.ops.aten._linalg_svd(ref_inp, False, True, driver=driver)
+    except RuntimeError as e:
+        ref_err = str(e)
+
+    if ref_err is None:
+        # A valid driver still has to produce the correct factors.
+        res_u, res_s, res_vh = flag_gems._linalg_svd(
+            inp, full_matrices=False, driver=driver
+        )
+        ref_u, ref_s, ref_vh = torch.linalg.svd(ref_inp, full_matrices=False)
+        utils.gems_assert_close(res_s, ref_s, res_s.dtype, atol=SINGULAR_VALUE_ATOL)
+        return
+
+    with pytest.raises(RuntimeError) as exc_info:
+        flag_gems._linalg_svd(inp, full_matrices=False, driver=driver)
+    assert str(exc_info.value) == ref_err
+    assert "unknown svd driver" in str(exc_info.value)
+
+
+@pytest.mark.underscore_linalg_svd
+def test__linalg_svd_driver_checked_before_dtype():
+    """An unknown driver is reported for a non-float32 input too, as native does."""
+    inp = torch.randn(8, 8, dtype=torch.float16, device=flag_gems.device)
+
+    with pytest.raises(RuntimeError, match="unknown svd driver"):
+        flag_gems._linalg_svd(inp, full_matrices=False, driver="bogus")
