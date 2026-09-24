@@ -6757,6 +6757,23 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '3.0'
+- id: grouped_matmul
+  description: 'Grouped matrix multiplication on Ascend NPUs, mirroring ``torch_npu.npu_grouped_matmul``.
+
+    Computes ``Y[group] = X[group] @ Weight[group]`` for Mixture-of-Experts (MoE)
+    models, where ``x`` is ``[M, K]``, ``weight`` is ``[G, K, N]`` and ``group_list``
+    holds either cumulative group ends (type 0) or per-group row counts (type 1).
+
+    '
+  for:
+  - grouped_matmul
+  labels:
+  - NoCPU
+  - MoE
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.5'
 - id: grouped_mm
   description: 'Grouped matrix multiply is a functional operator designed to accelerate
     Mixture-of-Experts (MoE) models
