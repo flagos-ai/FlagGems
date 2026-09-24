@@ -372,12 +372,52 @@ def nonzero(inp, *, as_tuple=False):
         return out
 
 
+@libentry()
+@triton.jit
+def nonzero_dense_2d_pow2_kernel(
+    out,
+    n_out,
+    log2_cols: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    # DENSE 2-D fast path for a power-of-two last dim. The output is row-major
+    # [numel, 2]; lane j -> i = j >> 1, d = j & 1, then row = i >> log2_cols and
+    # col = i & (2**log2_cols - 1). No integer div/mod at all: the per-lane
+    # int64 `//`/`%` in the generic dense kernel was the ~123 GB/s cliff.
+    pid = ext.program_id(0)
+    j = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE).to(tl.int64)
+    mask = j < n_out
+    i = j >> 1
+    d = j & 1
+    col_mask = (1 << log2_cols) - 1
+    coord = tl.where(d == 0, i >> log2_cols, i & col_mask)
+    tl.store(out + j, coord, mask=mask)
+
+
+def _is_pow2(n):
+    return n > 0 and (n & (n - 1)) == 0
+
+
 def _dense_result(inp, num_nonzeros, as_tuple):
     inp_ndim = inp.ndim
     n_out = num_nonzeros * inp_ndim
     out = torch.empty(num_nonzeros, inp_ndim, dtype=torch.int64, device=inp.device)
     if n_out > 0:
-        if inp_ndim <= 8:
+        if inp_ndim == 2 and _is_pow2(inp.shape[1]):
+            log2_cols = inp.shape[1].bit_length() - 1
+            block = min(
+                _DENSE_TILE_CAP,
+                max(64, triton.next_power_of_2(min(n_out, _DENSE_TILE_CAP))),
+            )
+            grid = (triton.cdiv(n_out, block),)
+            with torch_device_fn.device(inp.device):
+                nonzero_dense_2d_pow2_kernel[grid](
+                    out,
+                    n_out,
+                    log2_cols,
+                    BLOCK_SIZE=block,
+                )
+        elif inp_ndim <= 8:
             block = (
                 min(
                     _DENSE_TILE_CAP,

@@ -95,20 +95,28 @@ _SCAN_MAX = 32768
 
 @libentry()
 @triton.jit
+def _msb_zero_kernel(out_ptr, BLOCK: tl.constexpr):
+    """Contiguous zero fill of ``[0, BLOCK)``, covering the ``[count, numel)`` tail."""
+    lane = tl.arange(0, BLOCK)
+    tl.store(out_ptr + lane, tl.zeros([BLOCK], dtype=tl.float32))
+
+
+@libentry()
+@triton.jit
 def _msb_single_kernel(
     grad_ptr,
     mask_ptr,
     out_ptr,
     N: tl.constexpr,
-    NUMEL: tl.constexpr,
     SCRATCH: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
     """One-launch compaction for ``max(N, NUMEL) <= BLOCK``.
 
-    Two unmasked stores with provably disjoint address sets:
-    ``[0, count)`` receives the compacted gradient, ``[count, NUMEL)`` receives
-    zeros, and every lane that owns neither is parked in the scratch tail.
+    A single unmasked discrete store: ``[0, count)`` receives the compacted
+    gradient and inactive lanes are parked in the scratch tail.  The zero fill
+    of ``[count, numel)`` is a separate contiguous store (``_msb_zero_kernel``):
+    a second discrete store in the same program is not honoured on this backend.
     """
     lane = tl.arange(0, BLOCK)
     valid = lane < N
@@ -118,14 +126,9 @@ def _msb_single_kernel(
     active = valid & (m != 0)
     ones = tl.where(active, 1, 0)
     pos = tl.cumsum(ones, axis=0) - 1
-    total = tl.sum(ones, axis=0)
 
     tgt = tl.where(active, pos, SCRATCH + lane)
     tl.store(out_ptr + tgt, g)
-
-    pad = (lane >= total) & (lane < NUMEL)
-    ztgt = tl.where(pad, lane, SCRATCH + BLOCK + lane)
-    tl.store(out_ptr + ztgt, tl.zeros([BLOCK], dtype=tl.float32))
 
 
 @libentry()
@@ -256,12 +259,12 @@ def masked_scatter_backward(grad_output, mask, sizes):
         if max(n, numel) <= _SP_MAX:
             block = max(64, triton.next_power_of_2(max(n, numel)))
             out = torch.empty(numel + 2 * block, dtype=dtype, device=device)
+            _msb_zero_kernel[(1,)](out, BLOCK=block)
             _msb_single_kernel[(1,)](
                 grad_flat,
                 mask_flat,
                 out,
                 N=n,
-                NUMEL=numel,
                 SCRATCH=numel,
                 BLOCK=block,
             )
