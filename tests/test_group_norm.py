@@ -73,7 +73,10 @@ def test_native_group_norm(shape, num_groups, dtype, affine, caplog):
                 eps,
             )
 
-    assert "GEMS NATIVE_GROUP_NORM" in caplog.text
+    assert (
+        f"{utils.gems_log_prefix(flag_gems.native_group_norm)} NATIVE_GROUP_NORM"
+        in caplog.text
+    )
     assert len(result) == len(ref_result) == 3
     reduce_dim = (channel_count // num_groups) * spatial_size
     for actual, expected in zip(result, ref_result):

@@ -25,6 +25,8 @@ weight: 30
 -->
 # 使用动态算子重载进行测试
 
+如果尚未生成候选，只需要验证 benchmark 的原始 baseline 能否运行，使用独立的 [reference-only 模式](reference-only.md)；它与 override 互斥，不执行 correctness reference，也不替代本章的候选正确性验证。
+
 <!--
 Most accuracy tests in `tests/` call *FlagGems* operators directly, for
 example `flag_gems.softmax(x)` or `flag_gems._list_to_tensor(...)`. When you

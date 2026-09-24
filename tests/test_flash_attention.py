@@ -249,7 +249,10 @@ def test__flash_attention_forward(
                 scale=scale,
             )
 
-    assert "GEMS _FLASH_ATTENTION_FORWARD" in caplog.text
+    assert (
+        f"{utils.gems_log_prefix(flag_gems._flash_attention_forward)} _FLASH_ATTENTION_FORWARD"
+        in caplog.text
+    )
     assert len(result) == 5
     utils.gems_assert_close(result[0], ref_out, dtype)
     utils.gems_assert_close(result[1], ref_lse, torch.float)

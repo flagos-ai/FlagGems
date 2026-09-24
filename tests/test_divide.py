@@ -34,5 +34,5 @@ def test_divide(shape, dtype, caplog):
         with flag_gems.use_gems():
             res_out = torch.ops.aten.divide.Tensor(inp1, inp2)
 
-    assert "GEMS DIVIDE" in caplog.text
+    assert f"{utils.gems_log_prefix(flag_gems.divide)} DIVIDE" in caplog.text
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)

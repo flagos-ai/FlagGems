@@ -84,7 +84,10 @@ def test_native_batch_norm(shape, dtype, affine, caplog):
                 1e-5,
             )
 
-    assert "GEMS NATIVE_BATCH_NORM" in caplog.text
+    assert (
+        f"{utils.gems_log_prefix(flag_gems.native_batch_norm)} NATIVE_BATCH_NORM"
+        in caplog.text
+    )
     assert len(result) == len(ref_result) == 3
     reduce_dim = math.prod(shape) // channel_count
     utils.gems_assert_close(result[0], ref_result[0], dtype, reduce_dim=reduce_dim)
