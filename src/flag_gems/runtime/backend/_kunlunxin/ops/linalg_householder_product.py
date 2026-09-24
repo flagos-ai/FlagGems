@@ -1,59 +1,70 @@
-"""Kunlunxin (XPU) linalg_householder_product.
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
-The general implementation (``src/flag_gems/ops/linalg_householder_product.py``)
-keeps ``Q`` as an ``[m, n]`` tile and reduces the reflector against it with
-``tl.sum(v[:, None] * q_block, axis=0)`` inside a loop whose bound ``K`` is a
-runtime value.  Both halves of that are unusable on TritonXPU:
+"""Kunlunxin/XPU implementation of ``torch.linalg.householder_product``.
 
-* a 2-D ``axis=0`` reduction is not lowered ("axis must not be 0 for 2D+
-  shapes, consider manually transpose"), and
-* a dynamic loop wrapped around a 2-D reduction always exhausts ``uni_sram``.
+Q = H(0) * H(1) * ... * H(K-1),  H(i) = I - tau[i] * v(i) * v(i)^T,
+v(i) = [0 .. 0 1 A[i+1, i] .. A[M-1, i]]   (output of torch.geqrf).
 
-so every single case of ``tests/test_linalg_householder_product.py`` dies with
-``OutOfResources: uni_sram PassManager::run failed`` -- including the smallest
-``(4, 3)`` one, i.e. it is a structural compile failure, not a tile-size issue.
+Why the generic implementation does not compile on XPU
+------------------------------------------------------
+The generic ``flag_gems.ops.linalg_householder_product`` keeps a
+[BLOCK_M, BLOCK_N] 2-D register tile and computes
+``dots = tl.sum(v[:, None] * q_block, axis=0)``.  ``TritonXPULegalize``
+rejects every 2D+ ``tt.reduce`` on axis 0 with ``shape[0] > 1``
+("axis must not be 0 for 2D+ shapes", triton
+``third_party/xpu/lib/Dialect/TritonXPU/Transforms/Legalize.cpp``) and the
+suggested workaround (``tt.trans``) cannot be lowered on XPU at all.  On top
+of that, the generic kernel's K-loop is an ``scf.for`` whose body stores the
+Q tile to global and loads it back on the next iteration; a dynamic loop
+that loads and stores the same buffer is miscompiled by the XPU backend
+(verified in isolation: plain ``Q = Q*2+1`` outside a dynamic loop is exact,
+inside one the results are garbage).
 
-This backend-local version keeps the same algorithm (``Q <- H(i) Q`` for
-``i = k-1 .. 0`` starting from ``I[:, :n]``) but stores the accumulator
-TRANSPOSED, ``W[c, r] = Q[r, c]``.  Because ``H(i)`` is symmetric,
-``Q <- H(i) Q`` becomes ``W <- W H(i)``, i.e.
+Implementation strategy
+-----------------------
+1. **Column-per-program one-shot kernel** (M <= _ONE_SHOT_M): each program
+   owns one output column ``Q[:, col]`` as a 1-D register vector.  The only
+   reduction ``dots = tl.sum(v * q)`` is a 1-D (scalar) reduction, the update
+   ``q -= tau_k * dots * v`` is elementwise, and Q is written exactly once
+   (a single masked store).  A and tau are only *read*; Q is never read back,
+   so the store/load miscompilation cannot occur.
+2. **3-kernel-per-k fallback** (M > _ONE_SHOT_M): the m dimension is split
+   into NBLK blocks of BLOCK_M lanes (a single program cannot hold more than
+   _ONE_SHOT_M lanes of a column).  For each k: kernel A computes per-block
+   partial dot products (loads only), kernel B reduces them to the scalar
+   ``dots``, kernel C updates and stores the Q block (load-then-store, no
+   store-before-load within a program).  Q is initialised with ``torch.eye``
+   on the host; K launches per batch element.
 
-    W[c, :] -= tau_i * (W[c, :] . v_i) * v_i
-
-so the reduction now runs along the LAST (contiguous) tile axis.
-
-For the padded row length 128 -- which covers the whole accuracy and benchmark
-matrix (m <= 128) -- one program owns ``CC`` output columns, keeps them in
-registers and walks every reflector inside the kernel.  The reduction is then a
-1-D -> scalar ``tl.sum``, which a dynamic loop MAY wrap, so the whole sweep is
-a single launch instead of the ``2k`` the per-step path needs.  The reflector
-vectors are rebuilt on the fly from ``A`` and ``tau`` inside the loop, so the
-separate V/U staging buffer (whose single 64x128 2-D tile costs ~112 us, about
-a third of the whole op on the benchmark shapes) is gone.  ``CC`` is selected
-by ``n`` from measured sweet spots; the compile envelope is not monotonic in
-the column count, so only CC in {1, 2, 4, 8} exist.
-
-The per-step path (``_dot_kernel`` / ``_upd_kernel``, host-driven ``2k``
-launches) remains the fallback for ``m > 128`` where the sweep has not been
-validated.
-
-Backend rules this file obeys (all previously measured on this platform, see
-harness/solution/performance/linalg_lstsq_xpu3_20260829.md):
-
-* masked stores are NOT honoured (the whole tile is written) and every vector
-  store touches exactly 64 contiguous elements whatever length was asked for
-  => every buffer is padded so that all stores are unmasked, 64-element
-  aligned and a multiple of 64 wide; the result is produced through an
-  over-allocated flat buffer of which only the first ``numel`` elements are
-  handed out.
-* masked loads and ``other=`` are unreliable => all loads are unmasked, with
-  out-of-range lanes clamped to a legal address and neutralised by the padding
-  (zeros) they read.
-* a 1-D vector broadcast into a tile that is then stored is silently wrong
-  once the broadcast axis exceeds 128 elements => both rank-1 operands arrive
-  as stride-0 duplicated-address 2-D loads.
-* a square tile feeding a 2-D reduce exhausts uni_sram => the reduction tile is
-  always 64 rows by >= 128 columns.
+XPU-specific details
+--------------------
+- Loads use clamped row indices (``tl.minimum(rows, M - 1)``) instead of
+  ``mask=``: a masked load still issues the memory access on XPU, so the
+  address itself must be legal; the out-of-range contribution is zeroed by a
+  ``tl.where`` (the ``v`` selector and the ``tl.where(msk, qb, 0.0)``).
+- Stores keep an affine ``mask=`` (row < M): affine masked stores are handled
+  correctly on XPU (only data-dependent/gather addresses silently drop the
+  mask), and this keeps the non-power-of-two M tails in place.
+- ``isCloseUnrollControl=True`` skips ``TritonXPUUnrollControl``, which
+  tiles the K-loop body without re-typing the loop-carried register tensor
+  (``arith.mulf``/``arith.cmpi`` verification failure) — same fix as
+  ``searchsorted.py``.
+- ``torch.geqrf`` on XPU returns ``h`` in column-major layout
+  (``stride == (1, m)``); the launcher always materialises a contiguous
+  row-major copy (``A.unsqueeze(0).contiguous()`` as the generic does), so
+  ``stride_row == n`` and all kernel indexing is row-major.
 """
 
 import logging
@@ -62,345 +73,253 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
-logger = logging.getLogger(__name__)
-
-_SUPPORTED_DTYPES = (torch.float32, torch.float64)
-
-_MAX_ROW = 8192
-
-_LANES = 64
-
-_MIN_ROW = 128
-
-_SWEEP_ROW = 128
-
-_OUT_BT = 256
+# One-shot path: M <= _ONE_SHOT_M keeps the whole Q column in registers
+# (verified correct on XPU for BLOCK_M up to 8192; beyond that the kernel
+# miscompiles).  Above it the 3-kernel-per-k fallback takes over.
+_ONE_SHOT_M = 8192
+_BLOCKED_BLOCK_M = 512
 
 
-def _pick_cc(n):
-    """Output columns per sweep program, by n (validated on this platform).
+@triton.jit
+def _householder_product_column_kernel(
+    A,
+    tau,
+    Q,
+    M,
+    N,
+    K,
+    a_batch_stride,
+    q_batch_stride,
+    tau_batch_stride,
+    stride_row,
+    BLOCK_M: tl.constexpr,
+):
+    """One program per (batch, column); the Q column lives in registers.
 
-    The sweep cost is ~n*k reductions; sharing the v_i/u_i loads and
-    interleaving CC independent reductions amortises both, so the sweet spot
-    grows with n, but CC = 16 is *worse* again (555 us vs 310 us on
-    (128, 64)), so only CC in {1, 2, 4, 8} exist.  The q initialisation and
-    the store of the trailing CC-1 columns are pure overhead when n does not
-    fill the last program, which keeps small n on small CC.
-
-    Measured on this platform (us, speedup vs torch, fp32):
-      n=3:   cc1=17 (5.9x)  cc2=28 (3.7x)
-      n=5:   cc1=24 (4.8x)  cc2=27 (4.3x)
-      n=8:   cc2=30 (3.9x)  cc1=41 (2.8x)
-      n=16:  cc2=56 (2.2x)  cc4=59 (2.1x)
-      n=32:  cc4=114 (1.2x) cc2=176 (0.8x)
-      n=64:  cc8=317 (0.8x) cc4=394 (0.6x)
+    ``BLOCK_M`` is a power of two >= M (the launcher guarantees it); lanes
+    [M, BLOCK_M) are initialised to 0, never selected into ``v``, and masked
+    out of the final store.
     """
-    if n <= 5:
-        return 1
-    if n <= 16:
-        return 2
-    if n <= 32:
-        return 4
-    return 8
+    pid_batch = tl.program_id(0)
+    col = tl.program_id(1)
+
+    rows = tl.arange(0, BLOCK_M)
+    row_mask = rows < M
+    safe_rows = tl.minimum(rows, M - 1)
+
+    a_base = A + pid_batch * a_batch_stride
+    q_base = Q + pid_batch * q_batch_stride
+    tau_base = tau + pid_batch * tau_batch_stride
+
+    # Q[:, col] starts as I[:, col] = (rows == col ? 1 : 0).
+    q_vec = tl.where(rows == col, 1.0, 0.0).to(A.dtype.element_ty)
+
+    # Only reflectors k <= col affect column col: v_k[col] == 0 exactly for
+    # k > col (v_k is zero above its index), so H_k e_col = e_col exactly and
+    # the trailing no-ops can be dropped.  This halves the k-iterations.
+    k_upper = tl.minimum(col, K - 1)
+    for k_idx in range(k_upper, -1, -1):
+        tau_k = tl.load(tau_base + k_idx)
+        # v(i) = e_i + sum_{j>i} A[j, i] * e_j; rows >= M contribute 0.
+        a_col = tl.load(a_base + safe_rows * stride_row + k_idx)
+        v = tl.where(
+            rows == k_idx,
+            1.0,
+            tl.where(row_mask & (rows > k_idx), a_col, 0.0),
+        )
+        dots = tl.sum(v * q_vec)  # 1-D (scalar) reduction: XPU-safe
+        q_vec = q_vec - tau_k * (dots * v)
+
+    q_ptrs = q_base + rows * stride_row + col
+    tl.store(q_ptrs, q_vec, mask=row_mask)
 
 
-def _p2(x):
-    return 1 << (max(1, int(x)) - 1).bit_length()
-
-
-@libentry()
 @triton.jit
-def _init_w_kernel(
-    W,
-    N,
-    M,
-    WB,
-    BC: tl.constexpr,
-    MP: tl.constexpr,
-):
-    b = tl.program_id(0)
-    c = tl.program_id(1) * BC + tl.arange(0, BC)
-    r = tl.arange(0, MP)
-    keep = (c[:, None] < N) & (r[None, :] < M)
-    val = tl.where(keep & (c[:, None] == r[None, :]), 1.0, 0.0)
-    tl.store(W + b * WB + c[:, None] * MP + r[None, :], val)
-
-
-@libentry()
-@triton.jit
-def _init_v_kernel(
+def _lhp_partial_dot_kernel(
     A,
-    TAU,
-    V,
-    U,
-    K,
+    Q,
+    PD,
     M,
-    a_bs,
-    a_rs,
-    a_cs,
-    t_bs,
-    t_cs,
-    VB,
-    BI: tl.constexpr,
-    MP: tl.constexpr,
+    NBLK,
+    a_batch_stride,
+    q_batch_stride,
+    k_idx,
+    stride_row,
+    col_stride,
+    BLOCK_M: tl.constexpr,
 ):
-    b = tl.program_id(0)
-    i = tl.program_id(1) * BI + tl.arange(0, BI)
-    r = tl.arange(0, MP)
-    ic = tl.minimum(i, K - 1)
-    rc = tl.minimum(r, M - 1)
-    a = tl.load(A + b * a_bs + rc[None, :] * a_rs + ic[:, None] * a_cs)
-    t = tl.load(TAU + b * t_bs + ic[:, None] * t_cs + r[None, :] * 0)
-    keep = (i[:, None] < K) & (r[None, :] < M)
-    v = tl.where(
-        r[None, :] > i[:, None], a, tl.where(r[None, :] == i[:, None], 1.0, 0.0)
+    """Kernel A (large-M path): per (batch, m-block, column) partial dots.
+
+    Loads only (A column k and the current Q block), writes a single scalar
+    to the partial-dot buffer.  Grid: (batch, NBLK, n).
+    """
+    pid_batch = tl.program_id(0)
+    mb = tl.program_id(1)
+    col = tl.program_id(2)
+    rows = tl.arange(0, BLOCK_M)
+    r = mb * BLOCK_M + rows
+    msk = r < M
+    safe_r = tl.minimum(r, M - 1)
+
+    a_base = A + pid_batch * a_batch_stride
+    q_base = Q + pid_batch * q_batch_stride
+    a_col = tl.load(a_base + safe_r * stride_row + k_idx)
+    v = tl.where(r == k_idx, 1.0, tl.where(msk & (r > k_idx), a_col, 0.0))
+    qb = tl.load(q_base + safe_r * stride_row + col)
+    qb = tl.where(msk, qb, 0.0)
+    s = tl.sum(v * qb)
+    tl.store(PD + (pid_batch * NBLK + mb) * col_stride + col, s)
+
+
+@triton.jit
+def _lhp_reduce_kernel(
+    PD,
+    D,
+    NBLK,
+    col_stride,
+    BLOCK_N: tl.constexpr,
+):
+    """Kernel B (large-M path): dots = sum over m-blocks of the partial dots.
+
+    Grid: (batch, n).  BLOCK_N is a power of two >= NBLK.
+    """
+    pid_batch = tl.program_id(0)
+    col = tl.program_id(1)
+    offs = tl.arange(0, BLOCK_N)
+    p = tl.load(
+        PD + pid_batch * NBLK * col_stride + offs * col_stride + col,
+        mask=offs < NBLK,
+        other=0.0,
     )
-    v = tl.where(keep, v, 0.0)
-    off = b * VB + i[:, None] * MP + r[None, :]
-    tl.store(V + off, v)
-    tl.store(U + off, v * t)
+    s = tl.sum(p)
+    tl.store(D + pid_batch * col_stride + col, s)
 
 
-@libentry()
 @triton.jit
-def _dot_kernel(
-    W,
-    VI,
-    S,
-    WB,
-    VB,
-    SB,
-    BC: tl.constexpr,
-    MP: tl.constexpr,
-):
-    b = tl.program_id(0)
-    c = tl.program_id(1) * BC + tl.arange(0, BC)
-    r = tl.arange(0, MP)
-    t = tl.load(W + b * WB + c[:, None] * MP + r[None, :])
-    vt = tl.load(VI + b * VB + r[None, :] + c[:, None] * 0)
-    tl.store(S + b * SB + c, tl.sum(t * vt, axis=1))
-
-
-@libentry()
-@triton.jit
-def _upd_kernel(
-    W,
-    S,
-    UI,
-    WB,
-    SB,
-    UB,
-    BC: tl.constexpr,
-    MP: tl.constexpr,
-):
-    b = tl.program_id(0)
-    c = tl.program_id(1) * BC + tl.arange(0, BC)
-    r = tl.arange(0, MP)
-    off = b * WB + c[:, None] * MP + r[None, :]
-    st = tl.load(S + b * SB + c[:, None] + r[None, :] * 0)
-    ut = tl.load(UI + b * UB + r[None, :] + c[:, None] * 0)
-    tl.store(W + off, tl.load(W + off) - st * ut)
-
-
-@libentry()
-@triton.jit
-def _fused_sweep_kernel(
-    W,
+def _lhp_update_kernel(
     A,
-    TAU,
-    K,
-    N,
+    tau,
+    Q,
+    D,
     M,
-    WB,
-    a_bs,
-    a_rs,
-    a_cs,
-    t_bs,
-    t_cs,
-    MP: tl.constexpr,
+    NBLK,
+    a_batch_stride,
+    tau_batch_stride,
+    q_batch_stride,
+    k_idx,
+    stride_row,
+    col_stride,
+    BLOCK_M: tl.constexpr,
 ):
-    b = tl.program_id(0)
-    c = tl.program_id(1)
-    r = tl.arange(0, MP)
-    rc = tl.minimum(r, M - 1)
-    q = tl.where((c < N) & (r < M) & (r == c), 1.0, 0.0)
-    for t in range(0, K):
-        i = K - 1 - t
-        av = tl.load(A + b * a_bs + rc * a_rs + i * a_cs)
-        tau = tl.load(TAU + b * t_bs + i * t_cs)
-        v = tl.where(r > i, av, tl.where(r == i, 1.0, 0.0))
-        v = tl.where(r < M, v, 0.0)
-        q = q - tl.sum(q * v) * (v * tau)
-    tl.store(W + b * WB + c * MP + r, q)
+    """Kernel C (large-M path): Q block -= tau_k * dots * v block.
+
+    Load-then-store of the same block (no store-before-load of the same
+    address within the program, which the XPU backend miscompiles).
+    Grid: (batch, NBLK, n).
+    """
+    pid_batch = tl.program_id(0)
+    mb = tl.program_id(1)
+    col = tl.program_id(2)
+    rows = tl.arange(0, BLOCK_M)
+    r = mb * BLOCK_M + rows
+    msk = r < M
+    safe_r = tl.minimum(r, M - 1)
+
+    a_base = A + pid_batch * a_batch_stride
+    q_base = Q + pid_batch * q_batch_stride
+    tau_base = tau + pid_batch * tau_batch_stride
+    tau_k = tl.load(tau_base + k_idx)
+    a_col = tl.load(a_base + safe_r * stride_row + k_idx)
+    v = tl.where(r == k_idx, 1.0, tl.where(msk & (r > k_idx), a_col, 0.0))
+    qb = tl.load(q_base + safe_r * stride_row + col)
+    qb = tl.where(msk, qb, 0.0)
+    dots = tl.load(D + pid_batch * col_stride + col)
+    qb = qb - tau_k * (dots * v)
+    tl.store(q_base + r * stride_row + col, qb, mask=msk)
 
 
-@libentry()
-@triton.jit
-def _fused_sweep_cc2_kernel(
-    W,
-    A,
-    TAU,
-    K,
-    N,
-    M,
-    WB,
-    a_bs,
-    a_rs,
-    a_cs,
-    t_bs,
-    t_cs,
-    MP: tl.constexpr,
+def _lhp_large_m(
+    A_work,
+    tau_work,
+    m,
+    n,
+    k,
+    batch_size,
+    a_batch_stride,
+    tau_batch_stride,
+    stride_row,
 ):
-    b = tl.program_id(0)
-    c0 = tl.program_id(1) * 2
-    r = tl.arange(0, MP)
-    rc = tl.minimum(r, M - 1)
-    q0 = tl.where((c0 < N) & (r < M) & (r == c0), 1.0, 0.0)
-    q1 = tl.where((c0 + 1 < N) & (r < M) & (r == c0 + 1), 1.0, 0.0)
-    for t in range(0, K):
-        i = K - 1 - t
-        av = tl.load(A + b * a_bs + rc * a_rs + i * a_cs)
-        tau = tl.load(TAU + b * t_bs + i * t_cs)
-        v = tl.where(r > i, av, tl.where(r == i, 1.0, 0.0))
-        v = tl.where(r < M, v, 0.0)
-        u = v * tau
-        q0 = q0 - tl.sum(q0 * v) * u
-        q1 = q1 - tl.sum(q1 * v) * u
-    tl.store(W + b * WB + c0 * MP + r, q0)
-    tl.store(W + b * WB + (c0 + 1) * MP + r, q1)
-
-
-@libentry()
-@triton.jit
-def _fused_sweep_cc4_kernel(
-    W,
-    A,
-    TAU,
-    K,
-    N,
-    M,
-    WB,
-    a_bs,
-    a_rs,
-    a_cs,
-    t_bs,
-    t_cs,
-    MP: tl.constexpr,
-):
-    b = tl.program_id(0)
-    c0 = tl.program_id(1) * 4
-    r = tl.arange(0, MP)
-    rc = tl.minimum(r, M - 1)
-    q0 = tl.where((c0 < N) & (r < M) & (r == c0), 1.0, 0.0)
-    q1 = tl.where((c0 + 1 < N) & (r < M) & (r == c0 + 1), 1.0, 0.0)
-    q2 = tl.where((c0 + 2 < N) & (r < M) & (r == c0 + 2), 1.0, 0.0)
-    q3 = tl.where((c0 + 3 < N) & (r < M) & (r == c0 + 3), 1.0, 0.0)
-    for t in range(0, K):
-        i = K - 1 - t
-        av = tl.load(A + b * a_bs + rc * a_rs + i * a_cs)
-        tau = tl.load(TAU + b * t_bs + i * t_cs)
-        v = tl.where(r > i, av, tl.where(r == i, 1.0, 0.0))
-        v = tl.where(r < M, v, 0.0)
-        u = v * tau
-        q0 = q0 - tl.sum(q0 * v) * u
-        q1 = q1 - tl.sum(q1 * v) * u
-        q2 = q2 - tl.sum(q2 * v) * u
-        q3 = q3 - tl.sum(q3 * v) * u
-    tl.store(W + b * WB + (c0 + 0) * MP + r, q0)
-    tl.store(W + b * WB + (c0 + 1) * MP + r, q1)
-    tl.store(W + b * WB + (c0 + 2) * MP + r, q2)
-    tl.store(W + b * WB + (c0 + 3) * MP + r, q3)
-
-
-@libentry()
-@triton.jit
-def _fused_sweep_cc8_kernel(
-    W,
-    A,
-    TAU,
-    K,
-    N,
-    M,
-    WB,
-    a_bs,
-    a_rs,
-    a_cs,
-    t_bs,
-    t_cs,
-    MP: tl.constexpr,
-):
-    b = tl.program_id(0)
-    c0 = tl.program_id(1) * 8
-    r = tl.arange(0, MP)
-    rc = tl.minimum(r, M - 1)
-    q0 = tl.where((c0 < N) & (r < M) & (r == c0), 1.0, 0.0)
-    q1 = tl.where((c0 + 1 < N) & (r < M) & (r == c0 + 1), 1.0, 0.0)
-    q2 = tl.where((c0 + 2 < N) & (r < M) & (r == c0 + 2), 1.0, 0.0)
-    q3 = tl.where((c0 + 3 < N) & (r < M) & (r == c0 + 3), 1.0, 0.0)
-    q4 = tl.where((c0 + 4 < N) & (r < M) & (r == c0 + 4), 1.0, 0.0)
-    q5 = tl.where((c0 + 5 < N) & (r < M) & (r == c0 + 5), 1.0, 0.0)
-    q6 = tl.where((c0 + 6 < N) & (r < M) & (r == c0 + 6), 1.0, 0.0)
-    q7 = tl.where((c0 + 7 < N) & (r < M) & (r == c0 + 7), 1.0, 0.0)
-    for t in range(0, K):
-        i = K - 1 - t
-        av = tl.load(A + b * a_bs + rc * a_rs + i * a_cs)
-        tau = tl.load(TAU + b * t_bs + i * t_cs)
-        v = tl.where(r > i, av, tl.where(r == i, 1.0, 0.0))
-        v = tl.where(r < M, v, 0.0)
-        u = v * tau
-        q0 = q0 - tl.sum(q0 * v) * u
-        q1 = q1 - tl.sum(q1 * v) * u
-        q2 = q2 - tl.sum(q2 * v) * u
-        q3 = q3 - tl.sum(q3 * v) * u
-        q4 = q4 - tl.sum(q4 * v) * u
-        q5 = q5 - tl.sum(q5 * v) * u
-        q6 = q6 - tl.sum(q6 * v) * u
-        q7 = q7 - tl.sum(q7 * v) * u
-    tl.store(W + b * WB + (c0 + 0) * MP + r, q0)
-    tl.store(W + b * WB + (c0 + 1) * MP + r, q1)
-    tl.store(W + b * WB + (c0 + 2) * MP + r, q2)
-    tl.store(W + b * WB + (c0 + 3) * MP + r, q3)
-    tl.store(W + b * WB + (c0 + 4) * MP + r, q4)
-    tl.store(W + b * WB + (c0 + 5) * MP + r, q5)
-    tl.store(W + b * WB + (c0 + 6) * MP + r, q6)
-    tl.store(W + b * WB + (c0 + 7) * MP + r, q7)
-
-
-@libentry()
-@triton.jit
-def _out_kernel(
-    OUT,
-    W,
-    TOTAL,
-    MN,
-    N,
-    WB,
-    MP,
-    BT: tl.constexpr,
-):
-    f = tl.program_id(0) * BT + tl.arange(0, BT)
-    fc = tl.minimum(f, TOTAL - 1)
-    b = fc // MN
-    rem = fc - b * MN
-    r = rem // N
-    c = rem - r * N
-    tl.store(OUT + f, tl.load(W + b * WB + c * MP + r))
+    """Large-M (M > _ONE_SHOT_M) fallback: 3 launches per k, see module docstring."""
+    Q = (
+        torch.eye(m, n, dtype=A_work.dtype, device=A_work.device)
+        .unsqueeze(0)
+        .expand(batch_size, m, n)
+        .contiguous()
+    )
+    nblk = triton.cdiv(m, _BLOCKED_BLOCK_M)
+    col_stride = n
+    q_batch_stride = m * n  # Q is (batch, m, n) contiguous
+    pd = torch.empty(batch_size * nblk * n, dtype=A_work.dtype, device=A_work.device)
+    dots = torch.empty(batch_size * n, dtype=A_work.dtype, device=A_work.device)
+    block_n = triton.next_power_of_2(nblk)
+    for k_idx in range(k - 1, -1, -1):
+        _lhp_partial_dot_kernel[(batch_size, nblk, n)](
+            A_work,
+            Q,
+            pd,
+            m,
+            nblk,
+            a_batch_stride,
+            q_batch_stride,
+            k_idx,
+            stride_row,
+            col_stride,
+            BLOCK_M=_BLOCKED_BLOCK_M,
+            isCloseUnrollControl=True,
+        )
+        _lhp_reduce_kernel[(batch_size, n)](
+            pd,
+            dots,
+            nblk,
+            col_stride,
+            BLOCK_N=block_n,
+            isCloseUnrollControl=True,
+        )
+        _lhp_update_kernel[(batch_size, nblk, n)](
+            A_work,
+            tau_work,
+            Q,
+            dots,
+            m,
+            nblk,
+            a_batch_stride,
+            tau_batch_stride,
+            q_batch_stride,
+            k_idx,
+            stride_row,
+            col_stride,
+            BLOCK_M=_BLOCKED_BLOCK_M,
+            isCloseUnrollControl=True,
+        )
+    return Q
 
 
 def linalg_householder_product(A, tau):
-    """Q = H(0) H(1) ... H(k-1) restricted to its first n columns.
+    """Computes the product of Householder matrices (orgqr).
 
-    ``H(i) = I - tau[i] v_i v_i^T`` with ``v_i[j] = 0`` for ``j < i``,
-    ``v_i[i] = 1`` and ``v_i[j] = A[j, i]`` for ``j > i`` -- the geqrf layout.
+    Given the output of torch.geqrf (Householder vectors A and scalars tau),
+    computes Q = H(0) * H(1) * ... * H(k-1) where H(i) = I - tau[i] * v[i] * v[i]^T.
     """
     logger.debug("GEMS_KUNLUNXIN LINALG_HOUSEHOLDER_PRODUCT")
 
-    assert (
-        A.dtype in _SUPPORTED_DTYPES
+    # Only float32 and float64 supported: householder_product requires real floating point
+    assert A.dtype in (
+        torch.float32,
+        torch.float64,
     ), f"linalg_householder_product only supports float32 and float64, got {A.dtype}"
+
     shape = A.shape
     if len(shape) < 2:
         raise ValueError("A must be at least 2D")
@@ -408,88 +327,63 @@ def linalg_householder_product(A, tau):
     m = shape[-2]
     n = shape[-1]
     k = tau.shape[-1]
-    batch = 1
-    for d in shape[:-2]:
-        batch *= d
 
-    dt, dev = A.dtype, A.device
-    total = batch * m * n
-    if total == 0:
-        return torch.empty(shape, dtype=dt, device=dev)
+    # Handle batch dimensions
+    if len(shape) == 2:
+        batch_size = 1
+        A_work = A.unsqueeze(0).contiguous()
+        tau_work = tau.unsqueeze(0).contiguous()
+    else:
+        batch_size = 1
+        for d in shape[:-2]:
+            batch_size *= d
+        A_work = A.reshape(batch_size, m, n).contiguous()
+        tau_work = tau.reshape(batch_size, k).contiguous()
 
-    A3 = A.reshape(batch, m, n)
-    tau2 = tau.reshape(batch, k)
+    # Allocate output Q
+    Q = torch.empty_like(A_work)
+    if m == 0 or n == 0 or batch_size == 0:
+        # Degenerate/empty output; the kernels below assume 0 < M and 0 < N.
+        return Q.reshape(shape)
 
-    MP = max(_MIN_ROW, _p2(m))
-    if MP > _MAX_ROW:
-        raise NotImplementedError(
-            "kunlunxin linalg_householder_product: the reduction tile spans the"
-            f" padded row length {MP} > {_MAX_ROW}, which is outside the"
-            " validated envelope of this backend"
+    a_batch_stride = A_work.stride(0)
+    q_batch_stride = Q.stride(0)
+    tau_batch_stride = tau_work.stride(0)
+    stride_row = A_work.stride(1)  # n (columns per row)
+
+    if m > _ONE_SHOT_M:
+        Q = _lhp_large_m(
+            A_work,
+            tau_work,
+            m,
+            n,
+            k,
+            batch_size,
+            a_batch_stride,
+            tau_batch_stride,
+            stride_row,
         )
-    NP = max(_LANES, _p2(n))
-    KP = max(_LANES, _p2(k))
-    nb = NP // _LANES
-    BT = _OUT_BT
-    npad = triton.cdiv(total, BT) * BT
+        return Q.reshape(shape)
 
-    W = torch.empty((batch, NP, MP), dtype=dt, device=dev)
-    OUT = torch.empty((npad,), dtype=dt, device=dev)
-    WB = NP * MP
-
-    with torch_device_fn.device(dev):
-        if k == 0:
-            _init_w_kernel[(batch, nb)](W, n, m, WB, BC=_LANES, MP=MP)
-        elif MP == _SWEEP_ROW:
-            cc = _pick_cc(n)
-            grid = (batch, triton.cdiv(n, cc))
-            args = (
-                W,
-                A3,
-                tau2,
-                k,
-                n,
-                m,
-                WB,
-                A3.stride(0),
-                A3.stride(1),
-                A3.stride(2),
-                tau2.stride(0),
-                tau2.stride(1),
-            )
-            if cc == 1:
-                _fused_sweep_kernel[grid](*args, MP=MP)
-            elif cc == 2:
-                _fused_sweep_cc2_kernel[grid](*args, MP=MP)
-            elif cc == 4:
-                _fused_sweep_cc4_kernel[grid](*args, MP=MP)
-            else:
-                _fused_sweep_cc8_kernel[grid](*args, MP=MP)
-        else:
-            V = torch.empty((batch, KP, MP), dtype=dt, device=dev)
-            U = torch.empty((batch, KP, MP), dtype=dt, device=dev)
-            S = torch.empty((batch, NP), dtype=dt, device=dev)
-            VB = KP * MP
-            _init_v_kernel[(batch, KP // _LANES)](
-                A3,
-                tau2,
-                V,
-                U,
-                k,
-                m,
-                A3.stride(0),
-                A3.stride(1),
-                A3.stride(2),
-                tau2.stride(0),
-                tau2.stride(1),
-                VB,
-                BI=_LANES,
-                MP=MP,
-            )
-            _init_w_kernel[(batch, nb)](W, n, m, WB, BC=_LANES, MP=MP)
-            for i in range(k - 1, -1, -1):
-                _dot_kernel[(batch, nb)](W, V[:, i], S, WB, VB, NP, BC=_LANES, MP=MP)
-                _upd_kernel[(batch, nb)](W, S, U[:, i], WB, NP, VB, BC=_LANES, MP=MP)
-        _out_kernel[(triton.cdiv(total, BT),)](OUT, W, total, m * n, n, WB, MP, BT=BT)
-
-    return OUT[:total].view(shape)
+    grid = (batch_size, n)
+    BLOCK_M = triton.next_power_of_2(m)
+    _householder_product_column_kernel[grid](
+        A_work,
+        tau_work,
+        Q,
+        m,
+        n,
+        k,
+        a_batch_stride,
+        q_batch_stride,
+        tau_batch_stride,
+        stride_row,
+        BLOCK_M=BLOCK_M,
+        # The K-loop is an scf.for with a loop-carried register tensor
+        # (q_vec); TritonXPUUnrollControl tiles the body without re-typing
+        # that iter_arg and the module fails MLIR verification
+        # ('arith.mulf'/'arith.cmpi' type mismatch). Skipping the pass for
+        # this kernel only is the standard fix (see searchsorted.py).
+        isCloseUnrollControl=True,
+    )
+    return Q.reshape(shape)

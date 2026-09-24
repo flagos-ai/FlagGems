@@ -109,6 +109,8 @@ def pytest_configure(config):
     global TO_CPU
     global QUICK_MODE
 
+    TEST_RESULTS.clear()
+
     REGISTERED_MARKS = {
         marker.split(":")[0].strip() for marker in config.getini("markers")
     }
@@ -171,7 +173,21 @@ def pytest_sessionfinish(session, exitstatus):
 def pytest_unconfigure(config):
     """Cleanup: restore all overridden operators."""
     if hasattr(config, "_override_registry"):
-        config._override_registry.restore_all()
+        all_skipped = bool(TEST_RESULTS) and all(
+            result.get("result") == "skipped" for result in TEST_RESULTS.values()
+        )
+        config._override_registry.restore_all(allow_unused=all_skipped)
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_call(item):
+    registry = item.config._override_registry
+    before = registry.call_counts()
+    yield
+    after = registry.call_counts()
+    TEST_RESULTS[item.nodeid]["candidate_calls"] = {
+        name: count - before.get(name, 0) for name, count in after.items()
+    }
 
 
 @pytest.hookimpl(tryfirst=True)

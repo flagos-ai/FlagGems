@@ -394,6 +394,13 @@ class KernelGenerator:
                 code.writeline("tiles_per_cta: tl.constexpr,")
                 code.writeline("tile_size: tl.constexpr,")
                 code.writeline("one_tile_per_cta: tl.constexpr,")
+                # broadcast-scalar flags: an input whose task-rank strides are all
+                # zero is a broadcast scalar. Loading it as a tile-wide masked
+                # constant-address block makes the XPU compile blow up on huge
+                # tiles (two broadcast inputs + 1M tile -> 60-100s vs 9s), so the
+                # kernel loads such inputs as scalars instead (see the loads).
+                for i in range(schema.num_input_tensors()):
+                    code.writeline(f"in{i}_broadcast: tl.constexpr,")
         code.writeline("):")
 
     def gen_num_tiles(self, code):
@@ -649,9 +656,19 @@ class KernelGenerator:
         for i in range(schema.num_input_tensors()):
             offsets = tuple(f"i{j} * in{i}_stride{j}" for j in range(ndim))
             offset_combine = " + ".join(offsets)
-            code.writeline(
-                f"in{i} = tl.load(in{i}_ptr + {offset_combine}, mask=mask).to(in{i}_ptr.type.element_ty)"
-            )
+            # broadcast-scalar inputs are loaded as scalars (the single element is
+            # broadcast by the arithmetic below). A tile-wide masked constant-address
+            # load of a huge tile is what the XPU compile chokes on.
+            code.writeline(f"if in{i}_broadcast: # scalar load, no tile-wide gather")
+            with code.indent():
+                code.writeline(
+                    f"in{i} = tl.load(in{i}_ptr).to(in{i}_ptr.type.element_ty)"
+                )
+            code.writeline("else:")
+            with code.indent():
+                code.writeline(
+                    f"in{i} = tl.load(in{i}_ptr + {offset_combine}, mask=mask).to(in{i}_ptr.type.element_ty)"
+                )
 
         code.newline()
 
@@ -811,6 +828,14 @@ class WrapperGenerator:
             code.writeline("tile_size = tile_sizes[0]")
             code.writeline("num_tiles = triton.cdiv(num_tasks, tile_size)")
             determine_num_ctas_and_tiles = [
+                # The auto-grid threshold is a numel window (2048*64 == 131072,
+                # matches log.py _MULTI_CTA_MAX_NUMEL).  It must be tested on
+                # num_tasks (== out0.numel()), NOT on sum(out0.shape): for a
+                # broadcast/multi-rank path that is not dimension-collapsed the
+                # sum of the dims is far smaller than numel (e.g. (16,128,64,60)
+                # sums to 268 but holds 7.8M elements), so the sum() test would
+                # misclassify a huge tensor as "small" and hand one CTA a
+                # ~8M-element tile, which hangs the where_self scalar suite.
                 "if num_tasks <= 2048*64:",
                 "   num_ctas = 1 # XPU BLOCK_NUM",
                 "   num_tiles = 1 # XPU BLOCK_NUM",
@@ -942,6 +967,16 @@ class WrapperGenerator:
         code.writeline("# kernel launch")
         for i in range(schema.num_input_tensors()):
             code.writeline(f"in{i}_strides = in{i}.stride()")
+        if ndim > 0:
+            # a broadcast scalar has all-zero task-rank strides.
+            # bool outputs (comparisons etc.) keep the pre-change tile-wide load:
+            # with a scalar operand the XPU compare lowering fails on fp16
+            # (`tt.splat` type mismatch -> uni_sram OutOfResources); arithmetic
+            # outputs keep the scalar path (the compile-time win it was added for).
+            for i in range(schema.num_input_tensors()):
+                code.writeline(
+                    f"in{i}_broadcast = out0.dtype != torch.bool and all(st == 0 for st in in{i}_strides)"
+                )
         for i in range(schema.num_output_tensors()):
             code.writeline(f"out{i}_strides = out{i}.stride()")
 
@@ -971,6 +1006,8 @@ class WrapperGenerator:
                     shape_args: str = ", ".join(f"shape[{i}]" for i in range(ndim))
                     code.writeline(f"{shape_args}, # task indexing space")
                     code.writeline("num_tasks, # num tasks")
+                    for i in range(schema.num_input_tensors()):
+                        code.writeline(f"in{i}_broadcast=in{i}_broadcast,")
                     code.writeline("tiles_per_cta=tiles_per_cta, # tiles_per_cta")
                     code.writeline("tile_size=tile_size,")
                     code.writeline("one_tile_per_cta=one_tile_per_cta,")
