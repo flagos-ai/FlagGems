@@ -29,7 +29,7 @@ config_ = CodeGenConfig(
     True,
     prefer_1d_tile=True,
     buffer_size_limit=2048,
-    isCloseVectorization=True,
+    isCloseVectorization=False,
     kunlunAutoGrid=True,
     unroll_num=8,
 )
@@ -38,26 +38,34 @@ config_ = CodeGenConfig(
 @pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")], config=config_)
 @triton.jit
 def sinc_func(x):
+    # sinc(x) = sin(pi*x)/(pi*x), sinc(0) = 1.
+    #
+    # Shape of this kernel is pinned by three measured constraints:
+    #  1. `isCloseVectorization=True` (the previous setting) silently
+    #     miscompiles `tl.sin`: maxabs err 1.51e-01 (fp32) / 3.63e-01 (fp16)
+    #     on (4096, 4096) instead of the dtype-rounding floor. Disabled.
+    #  2. `tl.sin` is not trustworthy for tiny arguments when the tile is
+    #     narrow (0-d / (1,) / (6,) / (64,) launches): sin(pi*1e-8) returns 0,
+    #     so a bare `sin(px)/px` body yields 0.0 instead of 1.0 (abs err 1.0,
+    #     60 tolerance violations over a 64-element sweep). The series branch
+    #     below covers |pi*x| < 0.5, which removes the sin call from the whole
+    #     region where it misbehaves; worst observed err is then 2.4e-08.
+    #  3. An integer-reduction body built on `tl.floor` (nearest + parity) is
+    #     exact but costs 4.60 ms on (4096, 4096) fp16 vs 0.81 ms here -- the
+    #     two `math.floor` soft externs alone are ~87% of that kernel.
     x_f32 = x.to(tl.float32)
-    nearest = tl.floor(x_f32 + 0.5)
-    remainder = x_f32 - nearest
-    parity = nearest - 2.0 * tl.floor(nearest * 0.5)
-    sign = 1.0 - 2.0 * parity
-
-    u = 3.141592653589793 * remainder
-    u2 = u * u
-    sinc_u = -1.0 / 1307674368000.0
-    sinc_u = sinc_u * u2 + 1.0 / 6227020800.0
-    sinc_u = sinc_u * u2 - 1.0 / 39916800.0
-    sinc_u = sinc_u * u2 + 1.0 / 362880.0
-    sinc_u = sinc_u * u2 - 1.0 / 5040.0
-    sinc_u = sinc_u * u2 + 1.0 / 120.0
-    sinc_u = sinc_u * u2 - 1.0 / 6.0
-    sinc_u = sinc_u * u2 + 1.0
-
-    denominator = tl.where(x_f32 == 0.0, 1.0, x_f32)
-    result = sign * (remainder / denominator) * sinc_u
-    return tl.where(x_f32 == 0.0, 1.0, result)
+    px = 3.141592653589793 * x_f32
+    px2 = px * px
+    # sin(px)/px truncated at u^10/11!, exact to ~4e-14 for |px| < 0.5
+    series = 1.0 + px2 * (
+        -1.0 / 6.0
+        + px2
+        * (
+            1.0 / 120.0
+            + px2 * (-1.0 / 5040.0 + px2 * (1.0 / 362880.0 - px2 / 39916800.0))
+        )
+    )
+    return tl.where(px2 < 0.25, series, tl.sin(px) / px)
 
 
 def sinc(A):

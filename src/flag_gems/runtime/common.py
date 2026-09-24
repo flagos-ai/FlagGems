@@ -117,6 +117,9 @@ DEFAULT_STRATEGIES = {
         "default",
     ],
     "mv_reduce": ["align32", "default", "default", "default", "default"],
+    # Hygon's MV kernel keeps input strides in its autotune key.  Keep this
+    # separate from the generic two-key MV contract used by other backends.
+    "mv_hygon": ["align32", "align32", "default", "default", "default"],
     "mul": ["align32", "default"],
     "mul_broadcast_2d": ["align32", "default", "default"],
     "sparse_attention": ["align32", "align32", "align32"],
@@ -241,6 +244,7 @@ OP_KEY_ORDERS = {
         "SPLIT_K",
     ],
     "mv_reduce": ["M", "BATCH", "SPLIT_K", "SYB", "SYM"],
+    "mv_hygon": ["M", "N", "stride_an", "stride_am", "stride_bm"],
     "mul": ["n_elements", "dtype"],
     "mul_broadcast_2d": ["n_elements", "n_cols", "dtype"],
     "sparse_attention": ["topk", "H_ACTUAL", "D"],
