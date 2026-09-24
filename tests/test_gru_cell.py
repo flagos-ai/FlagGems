@@ -211,11 +211,24 @@ def test_gru_cell_malformed_operands(shapes):
 
 
 @pytest.mark.gru_cell
-def test_gru_cell_bias_length_mismatch():
-    inp, hx, w_ih, w_hh, b_ih, b_hh = _make_operands(
-        torch.float32, (2, 3, 4), ["-1", "1"], with_bias=True
+@pytest.mark.parametrize(
+    "shape", tu.selected_cases([(1024, 1024, 64)], quick=[(2, 19, 7)])
+)
+@pytest.mark.parametrize(
+    "dtype",
+    [dtype for dtype in GRU_CELL_DTYPES if dtype in (torch.float16, torch.bfloat16)],
+)
+@pytest.mark.parametrize("bias", ["b_ih", "b_hh"])
+@pytest.mark.parametrize("length_delta", [-1, 1])
+def test_gru_cell_bias_length_mismatch(shape, dtype, bias, length_delta):
+    inp, hx, w_ih, w_hh = _make_operands(dtype, shape, ["-1", "1"])
+    gates = w_ih.shape[0]
+    b_ih = tu.make_input(
+        dtype, (gates + (length_delta if bias == "b_ih" else 0),), ["-1", "1"]
     )
-    b_ih = b_ih[:-1]
+    b_hh = tu.make_input(
+        dtype, (gates + (length_delta if bias == "b_hh" else 0),), ["-1", "1"]
+    )
     with pytest.raises(RuntimeError):
         flag_gems.gru_cell(inp, hx, w_ih, w_hh, b_ih, b_hh)
 

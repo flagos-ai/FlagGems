@@ -267,12 +267,26 @@ def test_lstm_cell_negative_bias_rank():
 
 
 @pytest.mark.lstm_cell
-def test_lstm_cell_negative_bias_length():
-    inp, hx, w_ih, w_hh = _operands((3, 8, 4), torch.float32, ["-1", "1"])
-    bad_b_ih = tu.make_input(torch.float32, (w_ih.shape[0] + 1,), ["-1", "1"])
-    good_b_hh = tu.make_input(torch.float32, (w_hh.shape[0],), ["-1", "1"])
-    with pytest.raises((RuntimeError, TypeError, ValueError, IndexError)):
-        flag_gems.lstm_cell(inp, hx, w_ih, w_hh, bad_b_ih, good_b_hh)
+@pytest.mark.parametrize(
+    "shape", tu.selected_cases([(1024, 1024, 64)], quick=[(2, 19, 7)])
+)
+@pytest.mark.parametrize(
+    "dtype",
+    [dtype for dtype in SUPPORTED_DTYPES if dtype in (torch.float16, torch.bfloat16)],
+)
+@pytest.mark.parametrize("bias", ["b_ih", "b_hh"])
+@pytest.mark.parametrize("length_delta", [-1, 1])
+def test_lstm_cell_negative_bias_length(shape, dtype, bias, length_delta):
+    inp, hx, w_ih, w_hh = _operands(shape, dtype, ["-1", "1"])
+    gates = w_ih.shape[0]
+    b_ih = tu.make_input(
+        dtype, (gates + (length_delta if bias == "b_ih" else 0),), ["-1", "1"]
+    )
+    b_hh = tu.make_input(
+        dtype, (gates + (length_delta if bias == "b_hh" else 0),), ["-1", "1"]
+    )
+    with pytest.raises(RuntimeError):
+        flag_gems.lstm_cell(inp, hx, w_ih, w_hh, b_ih, b_hh)
 
 
 @pytest.mark.lstm_cell

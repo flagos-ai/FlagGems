@@ -37,12 +37,16 @@ _BASIC_CASES = [
 _QUICK_CASES = [((2, 19, 7), (4, 19, 3), (1,), (1,), (1,))]
 CONV_CASES = tu.selected_cases(_BASIC_CASES, quick=_QUICK_CASES)
 
-CONV_DTYPES = [torch.float32, torch.bfloat16, torch.float16]
+CONV_DTYPES = [torch.float32, torch.float16]
+if utils.bf16_is_supported:
+    CONV_DTYPES.append(torch.bfloat16)
 if utils.fp64_is_supported:
     CONV_DTYPES.append(torch.float64)
 
 _PARAM_INPUT_SHAPE = (20, 320, 15)
-_PARAM_DTYPE = torch.bfloat16
+_PARAM_DTYPES = [
+    dtype for dtype in CONV_DTYPES if dtype in (torch.float16, torch.bfloat16)
+]
 _NEGATIVE_PARAM_SHAPES = tu.selected_cases([_PARAM_INPUT_SHAPE], quick=[(2, 19, 7)])
 _PARAM_CASES = tu.selected_cases(
     [
@@ -63,12 +67,24 @@ _PARAM_CASES = tu.selected_cases(
 
 _TRANSPOSED_CASES = tu.selected_cases(
     [
-        ((20, 320, 15), (320, 32, 3), (1,), (1,), (0,), 1),
-        ((20, 320, 15), (320, 32, 3), (2,), (1,), (1,), 1),
-        ((20, 320, 15), (320, 32, 3), (3,), (1,), (2,), 1),
-        ((20, 320, 15), (320, 16, 3), (2,), (1,), (1,), 2),
-        ((16, 128, 64, 60), (128, 8, 3, 3), (1, 1), (1, 1), (0, 0), 1),
-        ((16, 7, 57, 32, 29), (7, 8, 3, 3, 3), (1, 1, 1), (1, 1, 1), (0, 0, 0), 1),
+        ((20, 320, 15), (320, 32, 3), (1,), (1,), (1,), (0,), 1),
+        ((20, 320, 15), (320, 32, 3), (2,), (1,), (1,), (1,), 1),
+        ((20, 320, 15), (320, 32, 3), (3,), (1,), (1,), (2,), 1),
+        ((20, 320, 15), (320, 16, 3), (2,), (1,), (1,), (1,), 2),
+        ((16, 128, 64, 60), (128, 8, 3, 3), (1, 1), (1, 1), (1, 1), (0, 0), 1),
+        (
+            (16, 7, 57, 32, 29),
+            (7, 8, 3, 3, 3),
+            (1, 1, 1),
+            (1, 1, 1),
+            (1, 1, 1),
+            (0, 0, 0),
+            1,
+        ),
+        # output_padding may reach stride if it stays below dilation, or vice versa.
+        ((20, 320, 15), (320, 32, 3), (1,), (1,), (2,), (1,), 1),
+        ((20, 320, 15), (320, 32, 3), (2,), (1,), (3,), (2,), 1),
+        ((20, 320, 15), (320, 32, 3), (3,), (1,), (2,), (2,), 1),
     ],
     quick=[],
 )
@@ -76,6 +92,7 @@ _TRANSPOSED_CASES = tu.selected_cases(
 _BACKWARD_CASES = tu.selected_cases(
     [
         ((2, 6, 12), (3, 6, 3), (1,), (1,), (1,), 1),
+        ((2, 6, 12), (3, 6, 3), (1,), (1,), (2,), 1),
         ((2, 4, 8, 8), (5, 4, 3, 3), (2, 2), (1, 1), (1, 1), 1),
         ((2, 4, 5, 6, 7), (6, 2, 3, 3, 3), (1, 1, 1), (1, 1, 1), (1, 1, 1), 2),
     ],
@@ -126,9 +143,10 @@ def test_convolution_value_ranges(
 
 @pytest.mark.convolution
 @pytest.mark.parametrize("weight_shape,stride,padding,dilation,groups", _PARAM_CASES)
-def test_convolution_parameters(weight_shape, stride, padding, dilation, groups):
-    inp = tu.make_input(_PARAM_DTYPE, _PARAM_INPUT_SHAPE, ["-1", "1"])
-    weight = tu.make_input(_PARAM_DTYPE, weight_shape, ["-1", "1"])
+@pytest.mark.parametrize("dtype", _PARAM_DTYPES)
+def test_convolution_parameters(weight_shape, stride, padding, dilation, groups, dtype):
+    inp = tu.make_input(dtype, _PARAM_INPUT_SHAPE, ["-1", "1"])
+    weight = tu.make_input(dtype, weight_shape, ["-1", "1"])
     ref_inp = tu.to_reference(inp)
     ref_weight = tu.to_reference(weight)
 
@@ -152,7 +170,8 @@ def test_convolution_parameters(weight_shape, stride, padding, dilation, groups)
 
 @pytest.mark.convolution
 @pytest.mark.parametrize(
-    "input_shape,weight_shape,stride,padding,output_padding,groups", _TRANSPOSED_CASES
+    "input_shape,weight_shape,stride,padding,dilation,output_padding,groups",
+    _TRANSPOSED_CASES,
 )
 @pytest.mark.parametrize("dtype", CONV_DTYPES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
@@ -161,6 +180,7 @@ def test_convolution_transposed(
     weight_shape,
     stride,
     padding,
+    dilation,
     output_padding,
     groups,
     dtype,
@@ -170,7 +190,6 @@ def test_convolution_transposed(
     weight = tu.make_input(dtype, weight_shape, value_range)
     ref_inp = tu.to_reference(inp)
     ref_weight = tu.to_reference(weight)
-    dilation = (1,) * len(stride)
 
     ref_out = torch.ops.aten.convolution(
         ref_inp,
@@ -316,17 +335,18 @@ def test_convolution_special_values(dtype, scenario):
     tu.assert_result_close(res_out, ref_out)
 
 
-def _conv_inputs(input_shape):
-    inp = tu.make_input(_PARAM_DTYPE, input_shape, ["-1", "1"])
-    weight = tu.make_input(_PARAM_DTYPE, (6, input_shape[1], 3), ["-1", "1"])
+def _conv_inputs(input_shape, dtype):
+    inp = tu.make_input(dtype, input_shape, ["-1", "1"])
+    weight = tu.make_input(dtype, (6, input_shape[1], 3), ["-1", "1"])
     return inp, weight
 
 
 @pytest.mark.convolution
 @pytest.mark.parametrize("padding", [-1, -2])
 @pytest.mark.parametrize("input_shape", _NEGATIVE_PARAM_SHAPES)
-def test_convolution_negative_padding(padding, input_shape):
-    inp, weight = _conv_inputs(input_shape)
+@pytest.mark.parametrize("dtype", _PARAM_DTYPES)
+def test_convolution_negative_padding(padding, input_shape, dtype):
+    inp, weight = _conv_inputs(input_shape, dtype)
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems.convolution(inp, weight, None, (1,), (padding,), (1,), False, (0,), 1)
 
@@ -334,8 +354,9 @@ def test_convolution_negative_padding(padding, input_shape):
 @pytest.mark.convolution
 @pytest.mark.parametrize("stride", [0, -1])
 @pytest.mark.parametrize("input_shape", _NEGATIVE_PARAM_SHAPES)
-def test_convolution_non_positive_stride(stride, input_shape):
-    inp, weight = _conv_inputs(input_shape)
+@pytest.mark.parametrize("dtype", _PARAM_DTYPES)
+def test_convolution_non_positive_stride(stride, input_shape, dtype):
+    inp, weight = _conv_inputs(input_shape, dtype)
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems.convolution(inp, weight, None, (stride,), (1,), (1,), False, (0,), 1)
 
@@ -343,8 +364,9 @@ def test_convolution_non_positive_stride(stride, input_shape):
 @pytest.mark.convolution
 @pytest.mark.parametrize("dilation", [0, -1])
 @pytest.mark.parametrize("input_shape", _NEGATIVE_PARAM_SHAPES)
-def test_convolution_non_positive_dilation(dilation, input_shape):
-    inp, weight = _conv_inputs(input_shape)
+@pytest.mark.parametrize("dtype", _PARAM_DTYPES)
+def test_convolution_non_positive_dilation(dilation, input_shape, dtype):
+    inp, weight = _conv_inputs(input_shape, dtype)
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems.convolution(
             inp, weight, None, (1,), (1,), (dilation,), False, (0,), 1
@@ -354,8 +376,9 @@ def test_convolution_non_positive_dilation(dilation, input_shape):
 @pytest.mark.convolution
 @pytest.mark.parametrize("groups", [0, -1])
 @pytest.mark.parametrize("input_shape", _NEGATIVE_PARAM_SHAPES)
-def test_convolution_non_positive_groups(groups, input_shape):
-    inp, weight = _conv_inputs(input_shape)
+@pytest.mark.parametrize("dtype", _PARAM_DTYPES)
+def test_convolution_non_positive_groups(groups, input_shape, dtype):
+    inp, weight = _conv_inputs(input_shape, dtype)
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems.convolution(inp, weight, None, (1,), (1,), (1,), False, (0,), groups)
 
@@ -379,9 +402,10 @@ def test_convolution_channel_mismatch():
 
 @pytest.mark.convolution
 @pytest.mark.parametrize("input_shape", _NEGATIVE_PARAM_SHAPES)
-def test_convolution_groups_not_divisible(input_shape):
-    inp = tu.make_input(_PARAM_DTYPE, input_shape, ["-1", "1"])
-    weight = tu.make_input(_PARAM_DTYPE, (6, input_shape[1] // 3, 3), ["-1", "1"])
+@pytest.mark.parametrize("dtype", _PARAM_DTYPES)
+def test_convolution_groups_not_divisible(input_shape, dtype):
+    inp = tu.make_input(dtype, input_shape, ["-1", "1"])
+    weight = tu.make_input(dtype, (6, input_shape[1] // 3, 3), ["-1", "1"])
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems.convolution(inp, weight, None, (1,), (1,), (1,), False, (0,), 3)
 
@@ -396,13 +420,19 @@ def test_convolution_kernel_larger_than_input():
 
 @pytest.mark.convolution
 @pytest.mark.parametrize("input_shape", _NEGATIVE_PARAM_SHAPES)
-@pytest.mark.parametrize("output_padding", [-1, 1, 2])
-def test_convolution_invalid_output_padding(input_shape, output_padding):
-    inp = tu.make_input(_PARAM_DTYPE, input_shape, ["-1", "1"])
-    weight = tu.make_input(_PARAM_DTYPE, (input_shape[1], 6, 3), ["-1", "1"])
+@pytest.mark.parametrize("dtype", _PARAM_DTYPES)
+@pytest.mark.parametrize(
+    "stride,dilation,output_padding",
+    [(1, 1, -1), (1, 1, 1), (1, 1, 2), (1, 2, 2), (2, 3, 3), (3, 2, 3)],
+)
+def test_convolution_invalid_output_padding(
+    input_shape, dtype, stride, dilation, output_padding
+):
+    inp = tu.make_input(dtype, input_shape, ["-1", "1"])
+    weight = tu.make_input(dtype, (input_shape[1], 6, 3), ["-1", "1"])
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems.convolution(
-            inp, weight, None, (1,), (1,), (1,), True, (output_padding,), 1
+            inp, weight, None, (stride,), (1,), (dilation,), True, (output_padding,), 1
         )
 
 
@@ -417,7 +447,7 @@ def test_convolution_bias_length_mismatch():
 
 @pytest.mark.convolution
 def test_convolution_non_tensor_input():
-    inp, weight = _conv_inputs((2, 4, 12))
+    inp, weight = _conv_inputs((2, 4, 12), torch.float32)
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems.convolution(
             inp.tolist(), weight, None, (1,), (1,), (1,), False, (0,), 1
