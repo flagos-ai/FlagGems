@@ -221,5 +221,7 @@ def test_pairwise_distance_int(shape, p, keepdim, dtype):
 
     ref_out = _ref_pairwise_distance(ref_x1, ref_x2, p=p, eps=1e-6, keepdim=keepdim)
     res_out = flag_gems.pairwise_distance(x1, x2, p=p, eps=1e-6, keepdim=keepdim)
-
-    utils.gems_assert_close(res_out, ref_out, torch.float32, atol=1.0)
+    if p in (0.0, 1.0, 2.0):
+        utils.gems_assert_close(res_out, ref_out, torch.float32)
+    else:
+        utils.gems_assert_close(res_out, ref_out, torch.float32, atol=0.35)
