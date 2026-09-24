@@ -97,7 +97,7 @@ _FULL_CONFIG = (
     ("__iand__.Tensor", __iand___tensor),
     ("__ilshift__.Tensor", __ilshift__),
     ("__ior__.Scalar", ior_scalar),
-    ("__ior__.Tensor", bitwise_or_tensor_),
+    ("__ior__.Tensor", ior_tensor),
     ("__irshift__.Tensor", __irshift__),
     ("__ixor__.Scalar", xor_scalar_),
     ("__ixor__.Tensor", xor_),
@@ -221,6 +221,8 @@ _FULL_CONFIG = (
     ),
     ("_histogramdd_from_bin_cts", _histogramdd_from_bin_cts),
     ("_histogramdd_from_bin_cts.out", _histogramdd_from_bin_cts_out),
+    ("_histogramdd_from_bin_tensors", _histogramdd_from_bin_tensors),
+    ("_histogramdd_from_bin_tensors.out", _histogramdd_from_bin_tensors_out),
     ("_index_put_impl_", _index_put_impl_),
     (
         "_int_mm",
