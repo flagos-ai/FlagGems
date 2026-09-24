@@ -5,7 +5,7 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.ops.linalg_lu_factor import linalg_lu_factor
+from flag_gems.ops.linalg_lu_factor import _lu_scale_col, linalg_lu_factor
 from flag_gems.ops.lu_unpack import (
     lu_unpack_l_kernel,
     lu_unpack_p_kernel_large,
@@ -163,7 +163,7 @@ def _linalg_lu_fused_kernel(
         pivot = tl.sum(tl.where(rows == j_ind, col_vals, 0.0), axis=0)
 
         # Scale column below diagonal (L factors) and write back.
-        scaled_col = tl.where(rows > j_ind, col_vals / pivot, col_vals)
+        scaled_col = _lu_scale_col(col_vals, pivot, rows > j_ind)
         work = tl.where(
             (rows[:, None] > j_ind) & (cols[None, :] == j_ind),
             scaled_col[:, None],
