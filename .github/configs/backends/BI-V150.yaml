@@ -71,5 +71,5 @@ test_env:
 # GPU availability check script for this backend
 gpu_check_script: tools/gpu_check_iluvatar.sh
 
-# Output base directory for this backends
-output_base_dir: /data/flaggems/ops-test
+# Output base directory; ops-test appends the GitHub repository name
+output_base_dir: /data/flaggems

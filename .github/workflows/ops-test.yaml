@@ -81,12 +81,16 @@ jobs:
           OPS_INPUT: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.ops || '' }}
           UPLOAD_LOG_INPUT: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.upload_log || '' }}
           SEND_FEISHU_INPUT: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.send_feishu || '' }}
+          REPOSITORY_NAME: ${{ github.event.repository.name }}
         run: |
           import json
           import os
           import yaml
 
           checkout_ref = os.environ.get('BRANCH_INPUT', '').strip() or 'master'
+          repository_name = os.environ['REPOSITORY_NAME'].strip()
+          if not repository_name:
+              raise ValueError('GitHub repository name is empty')
           with open('.github/configs/backends/config.yaml') as f:
               main = yaml.safe_load(f)
 
@@ -106,6 +110,9 @@ jobs:
                   backend = yaml.safe_load(f)
               if vendors_filter and backend.get('vendor', '').lower() not in vendors_filter:
                   continue
+              backend['output_base_dir'] = (
+                  f"{backend['output_base_dir'].rstrip('/')}/{repository_name}"
+              )
               backend['test_env'] = json.dumps(backend.get('test_env') or {})
               if backend.get('use_container', True):
                   container_include.append(backend)
@@ -151,6 +158,7 @@ jobs:
       volumes: ${{ matrix.container_volumes }}
     env:
       DATE: ${{ needs.prepare.outputs.date }}
+      REPOSITORY_NAME: ${{ github.event.repository.name }}
       OUTPUT_DIR: ${{ matrix.output_base_dir }}/${{ needs.prepare.outputs.date }}/logs_results_${{ needs.prepare.outputs.date }}
     steps:
       - id: checkout-attempt-1
@@ -316,7 +324,7 @@ jobs:
 
       - name: Package results
         run: |
-          ARCHIVE="${{ matrix.output_base_dir }}/ops-test-${{ matrix.name }}-${DATE}.tar.gz"
+          ARCHIVE="${{ matrix.output_base_dir }}/${REPOSITORY_NAME}-${{ matrix.name }}-${DATE}.tar.gz"
           mkdir -p "${OUTPUT_DIR}" "$(dirname "${ARCHIVE}")"
           tar -czf "${ARCHIVE}" -C "$(dirname "${OUTPUT_DIR}")" "$(basename "${OUTPUT_DIR}")"
           echo "ARCHIVE=${ARCHIVE}" >> "$GITHUB_ENV"
@@ -380,6 +388,7 @@ jobs:
     timeout-minutes: 1080
     env:
       DATE: ${{ needs.prepare.outputs.date }}
+      REPOSITORY_NAME: ${{ github.event.repository.name }}
       OUTPUT_DIR: ${{ matrix.output_base_dir }}/${{ needs.prepare.outputs.date }}/logs_results_${{ needs.prepare.outputs.date }}
     steps:
       - id: checkout-attempt-1
@@ -463,7 +472,7 @@ jobs:
 
       - name: Package results
         run: |
-          ARCHIVE="${{ matrix.output_base_dir }}/ops-test-${{ matrix.name }}-${DATE}.tar.gz"
+          ARCHIVE="${{ matrix.output_base_dir }}/${REPOSITORY_NAME}-${{ matrix.name }}-${DATE}.tar.gz"
           mkdir -p "${OUTPUT_DIR}" "$(dirname "${ARCHIVE}")"
           tar -czf "${ARCHIVE}" -C "$(dirname "${OUTPUT_DIR}")" "$(basename "${OUTPUT_DIR}")"
           echo "ARCHIVE=${ARCHIVE}" >> "$GITHUB_ENV"
