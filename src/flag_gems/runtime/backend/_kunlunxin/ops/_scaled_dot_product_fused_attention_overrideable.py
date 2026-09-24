@@ -21,6 +21,11 @@ import threading
 import torch
 
 from .attention import scaled_dot_product_attention_forward  # [attn-route 2026-09-16]
+from .le import le  # [call-fix 2026-09-24] in-tree direct call
+from .logsumexp import logsumexp  # [call-fix 2026-09-24]
+from .mm import mm  # [call-fix 2026-09-24]
+from .to import to_copy  # [call-fix 2026-09-24]
+from .where import where_scalar_other  # [call-fix 2026-09-24]
 
 logger = logging.getLogger(__name__)
 
@@ -29,35 +34,70 @@ _SDPA_LSE_MASK_CACHE = {}
 
 
 def _sdpa_causal_add_mask(sq, sk, dtype, device):
-    """[attn-route 2026-09-17 v3] cached additive causal mask (0 / -1.0e6)."""
+    """[attn-route 2026-09-17 v3] cached additive causal mask (0 / -1.0e6).
+
+    [call-fix 2026-09-24] Built on-device from the in-tree comparison and
+    select kernels (no numpy / torch compute calls): ``arange`` /
+    ``arange_start`` are plain constructors, and ``le`` / ``where`` are the
+    backend's own kernels invoked by direct import. The causal condition
+    ``cols <= rows + (sk - sq)`` is folded into the row ``arange_start``
+    range so no tensor arithmetic is needed. Runs once per
+    (sq, sk, dtype, device) key.
+    """
     key = (sq, sk, str(dtype), str(device))
     m = _SDPA_LSE_MASK_CACHE.get(key)
     if m is None:
-        import numpy as np
+        from .arange import arange, arange_start
 
-        rows = np.arange(sq).reshape(-1, 1)
-        cols = np.arange(sk).reshape(1, -1)
-        add = np.where(cols <= rows + (sk - sq), 0.0, -1.0e6).astype(np.float32)
-        m = torch.from_numpy(add).to(device=device, dtype=dtype)
+        cols = arange(sk, device=device).unsqueeze(0)
+        # rows + (sk - sq) == arange_start(sk - sq, sk)
+        rows_eff = arange_start(sk - sq, sk, device=device).unsqueeze(-1)
+        allowed = le(cols, rows_eff)
+        m = where_scalar_other(allowed, 0.0, -1.0e6)
+        if m.dtype != dtype:
+            m = to_copy(m, dtype=dtype)
         _SDPA_LSE_MASK_CACHE[key] = m
     return m
 
 
 def _sdpa_logsumexp(query, key, is_causal, scale, attn_mask=None):
-    """[attn-route 2026-09-17 v3] xpu-side lse; causal via cached additive mask."""
+    """[attn-route 2026-09-17 v3] xpu-side lse; causal via cached additive mask.
+
+    [call-fix 2026-09-24] all compute goes through the backend's own
+    kernels by direct import (to_copy / mm / mul / add / logsumexp);
+    ``transpose`` is a view. This is a fallback path (the primary path
+    recovers the kernel's own lse from the autograd ctx), so it runs
+    rarely.
+    """
+    from .add import add
+    from .mul import mul
+
     sm_scale = scale if scale is not None else 1.0 / (query.shape[-1] ** 0.5)
-    qf = query.float()
-    kf = key.float()
+    qf = to_copy(query, dtype=torch.float32)
+    kf = to_copy(key, dtype=torch.float32)
     if qf.shape[1] != kf.shape[1]:
-        kf = kf.repeat_interleave(qf.shape[1] // kf.shape[1], dim=1)
-    scores = torch.matmul(qf, kf.transpose(-1, -2)) * sm_scale
-    if attn_mask is not None:
-        scores = scores + attn_mask.float()
-    if is_causal:
-        scores = scores + _sdpa_causal_add_mask(
-            scores.shape[-2], scores.shape[-1], scores.dtype, scores.device
+        # GQA: repeat the key heads to match the query heads
+        # (repeat_interleave along dim=1 expressed via view ops only).
+        rep = qf.shape[1] // kf.shape[1]
+        shp = list(kf.shape)
+        kf = (
+            kf.unsqueeze(2)
+            .expand(shp[0], shp[1], rep, shp[2], shp[3])
+            .reshape(shp[0], shp[1] * rep, shp[2], shp[3])
         )
-    return torch.logsumexp(scores, dim=-1)
+    scores = mm(qf, kf.transpose(-1, -2))
+    if sm_scale != 1.0:
+        scores = mul(scores, sm_scale)
+    if attn_mask is not None:
+        scores = add(scores, to_copy(attn_mask, dtype=torch.float32))
+    if is_causal:
+        scores = add(
+            scores,
+            _sdpa_causal_add_mask(
+                scores.shape[-2], scores.shape[-1], scores.dtype, scores.device
+            ),
+        )
+    return logsumexp(scores, dim=-1)
 
 
 def _sdpa_forward_with_lse(
@@ -192,8 +232,8 @@ def _make_glue(batch_size, seq_len_q, seq_len_k, device):
     cum_k = torch.tensor(
         [0, seq_len_k] * batch_size, dtype=torch.int32, device=device
     ).reshape(batch_size, 2)
-    philox_seed = torch.tensor([0], dtype=torch.int64, device=device)
-    philox_offset = torch.tensor([0], dtype=torch.int64, device=device)
+    philox_seed = torch.full((1,), 0, dtype=torch.int64, device=device)
+    philox_offset = torch.full((1,), 0, dtype=torch.int64, device=device)
     debug = torch.empty(0, dtype=torch.float16, device=device)
     return {
         "cum_q": cum_q,
@@ -282,8 +322,8 @@ def _generic_impl(
     ).reshape(batch_size, 2)
     max_q = seq_len_q
     max_k = seq_len_k
-    philox_seed = torch.tensor([0], dtype=torch.int64, device=query.device)
-    philox_offset = torch.tensor([0], dtype=torch.int64, device=query.device)
+    philox_seed = torch.full((1,), 0, dtype=torch.int64, device=query.device)
+    philox_offset = torch.full((1,), 0, dtype=torch.int64, device=query.device)
     if return_debug_mask:
         debug_attn_mask = torch.zeros(
             (batch_size, query.shape[1], seq_len_q, seq_len_k),
@@ -456,9 +496,13 @@ def _scaled_dot_product_fused_attention_overrideable(
                     if jdx is not None:
                         rec["launch"] = cap["orig_launch"]
                         rec["a2"] = a2
-                        rec["j_q"], rec["j_k"], rec["j_v"], rec["j_o"], rec["j_lse"] = (
-                            jdx
-                        )
+                        (
+                            rec["j_q"],
+                            rec["j_k"],
+                            rec["j_v"],
+                            rec["j_o"],
+                            rec["j_lse"],
+                        ) = jdx
                         rec["stream2"] = a2[3]
                 with _LOCK:
                     if len(_CACHE) >= _MAX_KEYS:
