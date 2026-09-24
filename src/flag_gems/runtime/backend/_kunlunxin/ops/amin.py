@@ -73,34 +73,41 @@ if _HAS_TLE:
         # is the .o content digest, so a stale .o silently keeps the old code.
         _RAW_DIR = _os.path.dirname(_os.path.abspath(__file__))
         _PAY_OBJ = _os.path.join(_os.path.dirname(_RAW_DIR), "payload", "obj")
-        _FLAT_XPU = _os.path.join(_PAY_OBJ, "amin_flat.o")
-        _FLAT1C_XPU = _os.path.join(_PAY_OBJ, "amin_flat1c.o")
+        # All amin device kernels are shipped in a single merged object
+        # (amin.o = relocatable link of the per-kernel .o).  In object= mode the
+        # loader resolves each stub by its entry-symbol name, so one .o holding
+        # every symbol works exactly like the old per-kernel files.  Re-pack with
+        #   ld.lld -r amin_*.o -o amin.o
+        # after editing/repacking any individual kernel .o.
+        _AMIN_OBJ = _os.path.join(_PAY_OBJ, "amin.o")
+        _FLAT_XPU = _AMIN_OBJ
+        _FLAT1C_XPU = _AMIN_OBJ
         _ROW_XPU = {
-            torch.float16: _os.path.join(_PAY_OBJ, "amin_row_f16.o"),
-            torch.float32: _os.path.join(_PAY_OBJ, "amin_row_f32.o"),
-            torch.bfloat16: _os.path.join(_PAY_OBJ, "amin_row_bf16.o"),
+            torch.float16: _AMIN_OBJ,
+            torch.float32: _AMIN_OBJ,
+            torch.bfloat16: _AMIN_OBJ,
         }
         _MID_XPU = {
-            torch.float16: _os.path.join(_PAY_OBJ, "amin_mid_f16.o"),
-            torch.float32: _os.path.join(_PAY_OBJ, "amin_mid_f32.o"),
-            torch.bfloat16: _os.path.join(_PAY_OBJ, "amin_mid_bf16.o"),
+            torch.float16: _AMIN_OBJ,
+            torch.float32: _AMIN_OBJ,
+            torch.bfloat16: _AMIN_OBJ,
         }
         _MIDPART_XPU = {
-            torch.float16: _os.path.join(_PAY_OBJ, "amin_mid_part_f16.o"),
-            torch.float32: _os.path.join(_PAY_OBJ, "amin_mid_f32.o"),
-            torch.bfloat16: _os.path.join(_PAY_OBJ, "amin_mid_bf16.o"),
+            torch.float16: _AMIN_OBJ,
+            torch.float32: _AMIN_OBJ,
+            torch.bfloat16: _AMIN_OBJ,
         }
         # -- 2D last-dim FUSED row-min + in-place broadcast writeback --
         _ROWFILL_XPU = {
-            torch.float16: _os.path.join(_PAY_OBJ, "amin_rowfill_f16.o"),
-            torch.float32: _os.path.join(_PAY_OBJ, "amin_rowfill_f32.o"),
-            torch.bfloat16: _os.path.join(_PAY_OBJ, "amin_rowfill_bf16.o"),
+            torch.float16: _AMIN_OBJ,
+            torch.float32: _AMIN_OBJ,
+            torch.bfloat16: _AMIN_OBJ,
         }
         # -- 3D middle-dim FUSED column-min + in-place broadcast writeback --
         _MIDFILL_XPU = {
-            torch.float16: _os.path.join(_PAY_OBJ, "amin_midfill_f16.o"),
-            torch.float32: _os.path.join(_PAY_OBJ, "amin_midfill_f32.o"),
-            torch.bfloat16: _os.path.join(_PAY_OBJ, "amin_midfill_bf16.o"),
+            torch.float16: _AMIN_OBJ,
+            torch.float32: _AMIN_OBJ,
+            torch.bfloat16: _AMIN_OBJ,
         }
 
         # -- 1D flat: part (each core min-reduces a slice) + final (core0 folds) --
