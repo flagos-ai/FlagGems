@@ -335,7 +335,7 @@ ops:
 
     '
   for:
-  - adaptive_avg_pool3d_backward
+  - adaptive_avg_pool3d_backward.grad_input
   labels:
   - aten
   - KernelGen
@@ -1782,7 +1782,7 @@ ops:
   description: Triton kernel implementation for batch normalization backward reduce
     stage.
   for:
-  - native_batch_norm_backward_reduce
+  - batch_norm_backward_reduce
   labels:
   - aten
   - KernelGen
@@ -2120,7 +2120,7 @@ ops:
 - id: bitwise_left_shift
   description: Computes the left arithmetic shift of `input` by `other` bits.
   for:
-  - bitwise_left_shift
+  - bitwise_left_shift.Tensor
   labels:
   - aten
   - pointwise
@@ -2131,7 +2131,7 @@ ops:
 - id: bitwise_left_shift_
   description: The in-place version of `bitwise_left_shift()`.
   for:
-  - bitwise_left_shift_
+  - bitwise_left_shift_.Tensor
   labels:
   - aten
   - KernelGen
@@ -2220,7 +2220,7 @@ ops:
 - id: bitwise_right_shift
   description: Computes the right arithmetic shift of `input` by `other` bits.
   for:
-  - bitwise_right_shift
+  - bitwise_right_shift.Tensor
   labels:
   - aten
   - pointwise
@@ -2231,7 +2231,7 @@ ops:
 - id: bitwise_right_shift_
   description: The in-place version of `bitwise_right_shift()`.
   for:
-  - bitwise_right_shift_
+  - bitwise_right_shift_.Tensor
   labels:
   - aten
   - KernelGen
@@ -3238,7 +3238,7 @@ ops:
 
     '
   for:
-  - conv_transpose2d
+  - conv_transpose2d.input
   labels:
   - aten
   - KernelGen
@@ -3252,7 +3252,7 @@ ops:
 
     '
   for:
-  - conv_transpose3d
+  - conv_transpose3d.input
   labels:
   - aten
   - KernelGen
@@ -3396,7 +3396,7 @@ ops:
 
     '
   for:
-  - copysign
+  - copysign.Tensor
   labels:
   - aten
   - pointwise
@@ -3979,7 +3979,6 @@ ops:
 
     '
   for:
-  - dequantize
   - dequantize.self
   labels:
   - aten
@@ -5760,7 +5759,7 @@ ops:
   description: In-place remainder of division (fmod_), computes element-wise remainder
     with truncation toward zero.
   for:
-  - fmod_
+  - fmod_.Tensor
   labels:
   - aten
   - KernelGen
@@ -5960,7 +5959,7 @@ ops:
   description: Return mantissa and exponent of input, such that x = mantissa * 2^exponent,
     with mantissa in (-1, 1).
   for:
-  - frexp
+  - frexp.Tensor
   labels:
   - aten
   - KernelGen
@@ -6623,22 +6622,6 @@ ops:
   - Math
   stages:
   - stable: '5.3'
-- id: grid_sample
-  description: 'Given an `input` and a flow-field `grid`, computes the `output` using
-    `input` values and
-
-    pixel locations from `grid`.
-
-    '
-  for:
-  - nn.functional.grid_sample
-  labels:
-  - aten
-  - nn.functional
-  kind:
-  - NeuralNetwork
-  stages:
-  - alpha: '5.3'
 - id: grid_sampler_2d
   description: 'Performs 2D grid sampling of the input tensor using the given grid.
 
@@ -9694,12 +9677,27 @@ ops:
   - Math
   stages:
   - alpha: '5.3'
-- id: lshift
-  description: Triton kernel implementation for __lshift__.
+- id: lshift_scalar
+  description: Applies a bitwise left shift to an integer tensor with a scalar shift
+    value.
   for:
-  - __lshift__
+  - __lshift__.Scalar
   labels:
   - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: lshift_tensor
+  description: Applies a bitwise left shift to an integer tensor with a tensor shift
+    value.
+  for:
+  - __lshift__.Tensor
+  labels:
+  - aten
+  - pointwise
   - KernelGen
   kind:
   - Math
@@ -9708,7 +9706,7 @@ ops:
 - id: lstm
   description: Triton kernel implementation for lstm.
   for:
-  - aten.lstm
+  - lstm.input
   labels:
   - aten
   - KernelGen
@@ -10762,8 +10760,6 @@ ops:
 
     '
   for:
-  - multiply
-  - multiply.Scalar
   - multiply.Tensor
   labels:
   - aten
@@ -10776,8 +10772,6 @@ ops:
   description: In-place multiplication using Triton kernel (alias for mul_). Supports
     tensor-tensor and tensor-scalar operations.
   for:
-  - multiply_
-  - multiply_.Scalar
   - multiply_.Tensor
   labels:
   - aten
@@ -11650,7 +11644,7 @@ ops:
 
     '
   for:
-  - norm
+  - norm.Scalar
   labels:
   - aten
   - KernelGen
@@ -12916,7 +12910,7 @@ ops:
 
     '
   for:
-  - remainder
+  - remainder.Tensor
   labels:
   - aten
   - KernelGen
@@ -16543,7 +16537,7 @@ ops:
 
     '
   for:
-  - sym_size
+  - sym_size.int
   labels:
   - aten
   - KernelGen
@@ -16567,7 +16561,7 @@ ops:
   description: Returns the stride of the input tensor as a tuple of integers. Used
     for torch.compile symbolic tracing.
   for:
-  - sym_stride
+  - sym_stride.int
   labels:
   - aten
   - KernelGen
@@ -16772,14 +16766,35 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
-- id: tensor_split
-  description: 'Splits a tensor into multiple sub-tensors along a given dimension,
-
-    using either a number of sections or a list of split indices.
-
-    '
+- id: tensor_split_indices
+  description: Splits a tensor into multiple sub-tensors at the given indices along
+    a given dimension.
   for:
-  - tensor_split
+  - tensor_split.indices
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.3'
+- id: tensor_split_sections
+  description: Splits a tensor into multiple sub-tensors along a given dimension,
+    using a number of sections.
+  for:
+  - tensor_split.sections
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.3'
+- id: tensor_split_tensor_indices_or_sections
+  description: Splits a tensor into multiple sub-tensors along a given dimension,
+    using a tensor of split indices.
+  for:
+  - tensor_split.tensor_indices_or_sections
   labels:
   - aten
   - KernelGen
@@ -17368,7 +17383,7 @@ ops:
   description: Removes a tensor dimension and returns a tuple of all slices along
     a given dimension as copies.
   for:
-  - unbind_copy
+  - unbind_copy.int
   labels:
   - aten
   - KernelGen
@@ -17393,7 +17408,7 @@ ops:
 - id: unflatten
   description: Expand a single dimension into multiple dimensions (inverse of flatten).
   for:
-  - unflatten
+  - unflatten.int
   labels:
   - aten
   - KernelGen
@@ -17535,7 +17550,7 @@ ops:
 
     '
   for:
-  - _unsafe_index
+  - _unsafe_index.Tensor
   labels:
   - aten
   kind:
