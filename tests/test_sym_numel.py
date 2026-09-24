@@ -35,6 +35,6 @@ def test_sym_numel(shape, dtype, caplog):
     with caplog.at_level("DEBUG", logger="flag_gems.ops.sym_numel"):
         res_out = flag_gems.sym_numel(inp)
 
-    assert "GEMS SYM_NUMEL" in caplog.text
+    assert f"{utils.gems_log_prefix(flag_gems.sym_numel)} SYM_NUMEL" in caplog.text
     # Compare numel results (convert to tensors for gems_assert_equal)
     utils.gems_assert_equal(torch.tensor(res_out), torch.tensor(ref_out))

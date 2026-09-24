@@ -76,6 +76,11 @@ special_zeta_scalar_tensor: test_special_zeta
 special_zeta_tensor_scalar: test_special_zeta
 
 # Operators tested in combined files or with different naming
+lshift_scalar: test_lshift
+tensor_split_sections: test_tensor_split
+tensor_split_indices: test_tensor_split
+tensor_split_tensor_indices_or_sections: test_tensor_split
+lshift_tensor: test_lshift
 rshift_scalar: test_rshift
 rshift_tensor: test_rshift
 rshift_scalar_out: test_rshift

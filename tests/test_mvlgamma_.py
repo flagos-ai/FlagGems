@@ -59,7 +59,10 @@ def test_special_multigammaln(shape, dtype, p, caplog):
         with flag_gems.use_gems():
             res_out = torch.ops.aten.special_multigammaln(inp, p)
 
-    assert "GEMS SPECIAL_MULTIGAMMALN" in caplog.text
+    assert (
+        f"{utils.gems_log_prefix(flag_gems.special_multigammaln)} SPECIAL_MULTIGAMMALN"
+        in caplog.text
+    )
     # Use relaxed tolerance for float16 due to lgamma precision limitations
     atol = 1e-2 if dtype == torch.float16 else 1e-4
     utils.gems_assert_close(res_out, ref_out, dtype, atol=atol)

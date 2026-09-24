@@ -491,13 +491,9 @@ def cholesky_solve(B, L, upper=False, *, _out=None):
             )
         return output
 
-    # Serial path: one program per (batch, RHS-tile) walks all rows with
-    # scalar/vector load-store arithmetic. tl.dot would drag the kernel into
-    # the SDNN pipeline and fail to lower, tt.gather is illegal on this
-    # backend, so no blocked kernel is available for the remaining sizes.
     block_rhs = max(triton.next_power_of_2(nrhs), 16)
-    if block_rhs > 128:
-        block_rhs = 128
+    if block_rhs > 64:
+        block_rhs = 64
     grid = (batch_size, triton.cdiv(nrhs, block_rhs))
     _cholesky_solve_serial_kernel[grid](
         L_kernel,
