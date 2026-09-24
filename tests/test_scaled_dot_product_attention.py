@@ -15,10 +15,10 @@
 import numpy as np
 import pytest
 import torch
+from flag_gems.utils import random_utils
 
 import flag_gems
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import random_utils
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
@@ -278,9 +278,6 @@ def test_scaled_dot_product_attention_legacy(
 
 
 @pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="Issue #2849: Not working")
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "kunlunxin", reason="Issue #2849: Not working"
-)
 @pytest.mark.skipif(flag_gems.vendor_name == "sunrise", reason="Compiler Error")
 @pytest.mark.skipif(
     torch.__version__ < "2.5", reason="Low Pytorch Version: enable_gqa not supported"

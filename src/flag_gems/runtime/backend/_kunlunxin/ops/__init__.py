@@ -521,6 +521,9 @@ from .rsqrt import rsqrt, rsqrt_
 from .rsub import rsub, rsub_scalar, rsub_tensor
 from .safe_softmax import _safe_softmax
 from .scalar_tensor import scalar_tensor
+from .scaled_dot_product_flash_attention_backward import (
+    scaled_dot_product_flash_attention_backward,
+)
 from .scaled_mm import scaled_mm, scaled_mm_out
 from .scaled_softmax import scaled_softmax_backward, scaled_softmax_forward
 from .scatter import scatter, scatter_
@@ -1278,6 +1281,7 @@ __all__ = [
     "scaled_dot_product_attention",
     "scaled_dot_product_attention_backward",
     "scaled_dot_product_attention_forward",
+    "scaled_dot_product_flash_attention_backward",
     "scaled_mm",
     "scaled_mm_out",
     "scaled_softmax_backward",

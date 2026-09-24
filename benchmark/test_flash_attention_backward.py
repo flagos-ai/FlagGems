@@ -16,10 +16,10 @@ import math
 
 import pytest
 import torch
+from flag_gems.utils.random_utils import set_philox_state
 
 import flag_gems
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils.random_utils import set_philox_state
 
 from . import base
 
@@ -478,6 +478,53 @@ def sdp_flash_attn_bwd_input_fn(config, dtype, device):
     )
 
 
+def _sdp_flash_attn_bwd_math_ref(
+    dOut_bshd,
+    Q_bshd,
+    K_bshd,
+    V_bshd,
+    out_bshd,
+    lse,
+    cum_seq_q,
+    cum_seq_k,
+    max_q,
+    max_k,
+    dropout_p,
+    is_causal,
+    philox_seed,
+    philox_offset,
+    scale=None,
+):
+    # The aten op has no implementation on this stack (its schema check rejects
+    # the vendor rng tensors before dispatch), so the baseline is the standard
+    # attention-backward math computed in float32 on device. dropout_p=0 only.
+    q = Q_bshd.transpose(1, 2).float()
+    k = K_bshd.transpose(1, 2).float()
+    v = V_bshd.transpose(1, 2).float()
+    do = dOut_bshd.transpose(1, 2).float()
+    o = out_bshd.transpose(1, 2).float()
+    head_dim = q.shape[-1]
+    sm_scale = scale if scale is not None else 1.0 / math.sqrt(head_dim)
+    scores = (q @ k.transpose(-1, -2)) * sm_scale
+    if is_causal:
+        ql, kl = scores.shape[-2], scores.shape[-1]
+        mask = torch.ones(ql, kl, dtype=torch.bool, device=scores.device).tril()
+        scores = scores.masked_fill(~mask, float("-inf"))
+    p = torch.softmax(scores, dim=-1)
+    dv = p.transpose(-1, -2) @ do
+    dp = do @ v.transpose(-1, -2)
+    delta = (do * o).sum(-1, keepdim=True)
+    ds = (p * (dp - delta)).to(q.dtype)
+    dq = (ds @ k) * sm_scale
+    dk = (ds.transpose(-1, -2) @ q) * sm_scale
+    dtype = Q_bshd.dtype
+    return (
+        dq.transpose(1, 2).to(dtype),
+        dk.transpose(1, 2).to(dtype),
+        dv.transpose(1, 2).to(dtype),
+    )
+
+
 def _sdp_flash_attn_bwd_aten(
     dOut_bshd,
     Q_bshd,
@@ -531,7 +578,7 @@ def _sdp_flash_attn_bwd_gems(
     philox_offset,
     scale=None,
 ):
-    return flag_gems.ops.scaled_dot_product_flash_attention_backward(
+    return flag_gems.scaled_dot_product_flash_attention_backward(
         dOut_bshd,
         Q_bshd,
         K_bshd,
@@ -565,7 +612,7 @@ def test_perf_scaled_dot_product_flash_attention_backward(is_causal):
     bench = SdpFlashAttentionBackwardBenchmark(
         op_name="scaled_dot_product_flash_attention_backward",
         input_fn=input_fn,
-        torch_op=_sdp_flash_attn_bwd_aten,
+        torch_op=_sdp_flash_attn_bwd_math_ref,
         dtypes=[torch.float16, torch.bfloat16],
     )
     bench.set_gems(_sdp_flash_attn_bwd_gems)
