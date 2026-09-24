@@ -192,19 +192,18 @@ def _tle_min_geom(M, N, itemsize, acc_itemsize):
             xblock = 512 if M > 64 else 256
         else:
             xblock = min(512, max(128, _npo2(-(-M // 8))))
-        # 2026-09-23 两条实测修正（同窗口 ABBA n=5，正控自检通过；见
-        # evidence/all-dim-backend-20260922/launch-cost/geom-grid-sweep-20260923/ §8）：
-        # ① **tile 不得比 M 还宽** —— M=64 时旧值给 256，等于拿 4 倍于数据的 tile 空转；
-        #    贴合成 64 后 (64,64) f16 **9388 → 6321 ns（1.485×）**，是这三格级收益的主项。
-        #    （§3.18「几何逐字无差」不矛盾：那条比的是 256 vs 512，**两者都远大于 M**。）
-        # ② 大 `row_bytes` 且 **M ≥ 4096** 时 **128 优于 512**：`(4096,4096)` f16 1.082× / f32 1.138×。
-        #    ⚠️ 「段长越长越好」是**错的** —— 4KB/8KB 段分别掉到 0.69× / 0.35×。
-        #    ⚠️ **`M >= 4096` 这个限定是实测加上的**：同一改动在 **M=2048** 上
-        #    `(2048,4096)` / `(2048,2048)` × {f16,f32} **四格全部负收益**（0.897–0.931×，
-        #    方向一致 ⇒ 非噪声；基线用**旧公式值 256** 算的，不是已被本改动改过的当前值）
-        #    ⇒ ② 是**单形状的经验最优**，只在 M≥4096 成立，别推广。
-        #    ① 则相反，有原理性理由（tile 不得比 M 宽，与 M 无关地成立）。
-        #    证据见 `evidence/all-dim-backend-20260922/launch-cost/geom-grid-sweep-20260923/` §8/§9。
+        # Two clamps, each from a same-window A/B sweep (latin-square order, n=5):
+        # (1) The tile must not be wider than M. The old value gave 256 at M=64,
+        #     i.e. it cycled 4x the data per tile; snapping it to 64 took (64,64)
+        #     f16 from 9388 to 6321 ns (1.485x) and is the main win of that tier.
+        #     This one has a principled reason: it holds for any M.
+        # (2) For a wide row_bytes AND M >= 4096, 128 beats 512: (4096,4096) f16
+        #     1.082x / f32 1.138x. Longer runs are NOT monotonically better --
+        #     4KB / 8KB runs drop to 0.69x / 0.35x. The `M >= 4096` bound is
+        #     measured, not assumed: the same change lost on all four M=2048
+        #     cells, (2048,2048) and (2048,4096) x {f16, f32} (0.897-0.931x, all
+        #     in the same direction), so (2) is a single-shape optimum that only
+        #     holds at M >= 4096 -- do not generalise it.
         xblock = min(xblock, _npo2(M))
         if row_bytes > 2048 and M >= 4096:
             xblock = min(xblock, 128)
@@ -530,16 +529,16 @@ def all_global_s2(mid, out, P, BLOCK: tl.constexpr):
 @libentry()
 @triton.jit
 def all_global_flat_s1(inp, mid, CHUNK, BLOCK: tl.constexpr, ACC: tl.constexpr):
-    """一维**连续** stage-1（对比 `all_global_s1` 的 2-D 跨行 load）。
+    """1-D contiguous stage-1 (vs. the 2-D cross-row load in `all_global_s1`).
 
-    调用方保证 `grid*CHUNK == N` 且 `CHUNK % BLOCK == 0` ⇒ **无需掩码**
-    （原 2-D 路径的 `mask = row_mask and (cols < C)` 在实际派发下恒为真，
-    但编译器不知道，白付掩码 + `other=` 的代价）。
+    The caller guarantees `grid*CHUNK == N` and `CHUNK % BLOCK == 0`, so the body
+    needs no mask (the 2-D path's `mask = row_mask and (cols < C)` is always true
+    under the actual dispatch, but the compiler cannot know that and pays for the
+    mask plus `other=` anyway).
 
-    ⚠️ `BLOCK` 必须按 dtype 分档，**不能一刀切**：实测 1M 上
-    `BLOCK=16384` 对 f16/bf16 是 1.20–1.26×，但 f32 的 `[16384]` fp32 累加器 = 64 KB
-    撑不住、反而 0.79×；f32 的甜点是 8192。32768 两档都更差。见
-    `evidence/all-dim-backend-20260922/launch-cost/dimnone-flat-20260923/` §7。
+    BLOCK must be picked per dtype. On 1M elements BLOCK=16384 is 1.20-1.26x for
+    f16/bf16, but an f32 [16384] accumulator is 64 KB and loses (0.79x); f32's
+    sweet spot is 8192, and 32768 is worse for both tiers.
     """
     pid = ext.program_id(0)
     base = pid * CHUNK
@@ -549,7 +548,8 @@ def all_global_flat_s1(inp, mid, CHUNK, BLOCK: tl.constexpr, ACC: tl.constexpr):
         v = tl.load(inp + base + off + offs0)
         acc = tl.minimum(acc, tl.abs(v).to(ACC))
     r = tl.min(acc, axis=0)
-    # partials 步距 16 word —— 与 all_global_s1 同口径（64 核不挤同一条 64B 行）
+    # Stride the partials by 16 words (same as all_global_s1) so that no two
+    # cores share one 64 B line.
     tl.store(mid + pid * 16, (r != 0).to(tl.int32))
 
 
@@ -557,10 +557,13 @@ _FLAT_GRID = 8
 
 
 def _flat_plan(n, itemsize):
-    """一维连续 stage-1 的 `(grid, BLOCK)`；**不适用时返回 None**（退回原 2-D 路径）。
+    """`(grid, BLOCK)` for the 1-D contiguous stage-1; None when not applicable
+    (the caller then falls back to the original 2-D path).
 
-    只做最保守的准入：`grid | n` 且 `BLOCK | (n // grid)`，两者都满足才免掩码。
-    不满足就走原路径 —— 不为它加掩码分支（那会把收益不明地混进来）。
+    Admission is deliberately conservative: `grid | n` and `BLOCK | (n // grid)`
+    must both hold, which is what makes the mask-free body safe. Anything else
+    takes the old path -- no mask branch is added here, so a win of unclear size
+    is never mixed in.
     """
     if n % _FLAT_GRID:
         return None

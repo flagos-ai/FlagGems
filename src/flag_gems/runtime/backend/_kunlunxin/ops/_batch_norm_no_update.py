@@ -114,8 +114,7 @@ def _batch_norm_no_update_kernel(
 # that repeat every SPATIAL lanes. Same-shape measurements: 9.6us, and the
 # balanced speedup over the official 12 cells goes 0.49 -> 1.17-1.36.
 #
-# Three constraints are load-bearing, all measured on device (evidence:
-# artifacts/op-perf-batch-2026-09/evidence/batch-norm-audit-20260918/):
+# Three constraints are load-bearing, all measured on device:
 #   * SPATIAL must stay a constexpr -- `gidx // SPATIAL` then folds to a
 #     magic-number multiply at compile time, which is what makes this flat form
 #     viable at all: feeding SPATIAL as a runtime value measures 402-1095us on
