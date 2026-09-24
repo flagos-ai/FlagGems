@@ -176,7 +176,7 @@ def _adaptive_avg_pool2d_backward_map_kernel(
     dominated by the `offs // IN_HW` / `% IN_HW` pair, and a *runtime* divisor
     costs ~30 extra instructions per element on this backend (measured
     965us -> 247us on the [4,128,112,112 -> 14,14] fp32 core shape when IN_HW
-    was made constexpr; evidence/adaptive-avg-pool2d-bwd-recon-20260918 §7).
+    was made constexpr).
     """
     pid = tl.program_id(0)
     offs = pid * BLOCK + tl.arange(0, BLOCK)
@@ -225,8 +225,7 @@ def _adaptive_avg_pool2d_backward_flat_kernel(
     shape constant a `tl.constexpr` -- which is what makes it fast.  The
     row-per-program kernel it replaces ran one program per input row at 32
     lanes (under the reliable 64-lane width) and kept a runtime divisor in
-    every window bound; at (4, 3, 32, 32 -> 7, 7) it is ~3x slower at fp32
-    (evidence/adaptive-avg-pool2d-bwd-recon-20260918 §7.5).
+    every window bound; at (4, 3, 32, 32 -> 7, 7) it is ~3x slower at fp32.
     """
     pid = tl.program_id(0)
     offs = pid * BLOCK + tl.arange(0, BLOCK)
