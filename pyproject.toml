@@ -93,6 +93,12 @@ ascend-cann900 = [
     "flagtree==0.6.1+ascend3.5",
 ]
 
+biren-br2xx = [
+    "torch==2.12.0+cpu",
+    "torch-supa==1.0.0.21200+br2xx",
+    "triton==3.4.0+br2xx",
+]
+
 cambricon-neuware443 = [
     "cambricon_dali==0.13.0",
     "torch==2.7.1+cpu",
