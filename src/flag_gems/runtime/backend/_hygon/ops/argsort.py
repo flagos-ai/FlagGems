@@ -16,13 +16,9 @@ import logging
 
 import torch
 import triton
-import triton.language as tl
 
 from flag_gems.ops.argsort import (
-    _argsort_before,
-    _argsort_partition,
-    _argsort_partner,
-    _argsort_row_offset,
+    _argsort_merge,
     _argsort_tiles,
     _packed_merge,
     _radix_bucket_prefix,
@@ -34,93 +30,13 @@ from flag_gems.ops.argsort import (
     _radix_tile_prefix,
 )
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
 
-@libentry()
-@triton.jit
-def _argsort_merge_dual(
-    values_in,
-    indices_in,
-    values_out,
-    indices_out,
-    N: tl.constexpr,
-    RUN: tl.constexpr,
-    BLOCK: tl.constexpr,
-    SEARCH_STEPS: tl.constexpr,
-    LOG_BLOCK: tl.constexpr,
-    SHAPE: tl.constexpr,
-    OUT_STRIDES: tl.constexpr,
-    OUT_AXIS_STRIDE: tl.constexpr,
-    DESC: tl.constexpr,
-    FINAL: tl.constexpr,
-    WARPS: tl.constexpr,
-):
-    blocks: tl.constexpr = triton.cdiv(N, BLOCK)
-    task = tl.program_id(0)
-    row = task // blocks
-    start = (task - row * blocks) * BLOCK
-    pair_start = start // (2 * RUN) * (2 * RUN)
-    a_len = tl.minimum(RUN, N - pair_start)
-    b_start = pair_start + RUN
-    b_len = tl.maximum(0, tl.minimum(RUN, N - b_start))
-    diagonal = start - pair_start
-    end_diagonal = tl.minimum(diagonal + BLOCK, a_len + b_len)
-    base = row.to(tl.int64) * N
-    boundary = tl.arange(0, 2)
-    diagonals = tl.where(boundary == 0, diagonal, end_diagonal)
-    cuts = _argsort_partition(
-        values_in,
-        base,
-        pair_start,
-        b_start,
-        a_len,
-        b_len,
-        diagonals,
-        SEARCH_STEPS,
-        DESC,
-    )
-    a0 = tl.sum(tl.where(boundary == 0, cuts, 0), 0)
-    a1 = tl.sum(tl.where(boundary == 1, cuts, 0), 0)
-    b0 = diagonal - a0
-    b1 = end_diagonal - a1
-    na = a1 - a0
-    nb = b1 - b0
-    lane = tl.arange(0, BLOCK)
-    is_a = lane < na
-    is_b = lane >= BLOCK - nb
-    source = tl.where(
-        is_a, pair_start + a0 + lane, b_start + b1 - 1 - (lane - (BLOCK - nb))
-    )
-    values = tl.load(values_in + base + source, is_a | is_b, other=0)
-    indices = tl.load(indices_in + base + source, is_a | is_b, other=N)
-    for step in tl.static_range(LOG_BLOCK - 1, -1, -1):
-        ov = _argsort_partner(values, step)
-        oi = _argsort_partner(indices, step)
-        before = _argsort_before(ov, oi, values, indices, DESC)
-        if N % BLOCK != 0:
-            valid = indices < N
-            other_valid = oi < N
-            before = other_valid & (before | ~valid)
-        lower = lane & 1 << step == 0
-        swap = tl.where(lower, before, ~before)
-        values = tl.where(swap, ov, values)
-        indices = tl.where(swap, oi, indices)
-    col = start + lane
-    if FINAL:
-        out_base = _argsort_row_offset(row, SHAPE, OUT_STRIDES)
-        offset = out_base + col.to(tl.int64) * OUT_AXIS_STRIDE
-    else:
-        offset = base + col
-        tl.store(values_out + offset, values, col < N)
-    tl.store(indices_out + offset, indices, col < N)
-
-
 def _argsort_merge_entry(inp, dim=-1, descending=False):
     """Stable indices using bounded tiles and launch-separated merge passes."""
-    logger.debug("GEMS ARGSORT")
+    logger.debug("GEMS_HYGON ARGSORT")
     rank = inp.ndim
     if dim < -max(rank, 1) or dim >= max(rank, 1):
         raise IndexError("Dimension out of range")
@@ -157,8 +73,8 @@ def _argsort_merge_entry(inp, dim=-1, descending=False):
     merge_block = min(block, 1024)
     tile_warps = 4
     merge_warps = 4
-    packed_warps = 1 if inp.element_size() == 2 and n == 65536 else 4
-    pair_merge_kernel = _argsort_merge_dual
+    packed_warps = 1 if n >= 131072 and inp.dtype in (torch.float32, torch.int32) else 4
+    pair_merge_kernel = _argsort_merge
     with torch_device_fn.device(inp.device):
         if n <= block:
             _argsort_tiles[triton.cdiv(rows, row_block),](
@@ -209,6 +125,8 @@ def _argsort_merge_entry(inp, dim=-1, descending=False):
                 num_warps=tile_warps,
             )
             packed_merge_kernel = _packed_merge
+            if n >= 131072 and inp.dtype in (torch.float32, torch.int32):
+                packed_merge_kernel = _packed_merge.fn
             run = block
             while run < n:
                 final = run * 2 >= n
@@ -304,14 +222,18 @@ def _argsort_radix_fused_narrow(inp, dim, descending):
     assert passes in (1, 2)
     counts = torch.empty((rows, 256, tiles), dtype=torch.int32, device=inp.device)
     offsets = torch.empty((rows, 256, tiles), dtype=torch.int32, device=inp.device)
-    split_prefix = True
+    split_prefix = False
     bucket_totals = (
         torch.empty((rows, 256), dtype=torch.int32, device=inp.device)
         if split_prefix
         else offsets
     )
     if passes == 2:
-        keys_current = torch.empty((rows, n), dtype=torch.int32, device=inp.device)
+        keys_current = torch.empty(
+            (rows, n),
+            dtype=torch.int16 if inp.dtype == torch.bfloat16 else torch.int32,
+            device=inp.device,
+        )
         indices_current = torch.empty((rows, n), dtype=torch.int32, device=inp.device)
     else:
         keys_current = out
@@ -495,7 +417,7 @@ def _argsort_radix(inp, dim, descending):
 
 
 def argsort(inp, dim=-1, descending=False):
-    logger.debug("GEMS_MTHREADS ARGSORT")
+    logger.debug("GEMS_HYGON ARGSORT")
     rank = inp.ndim
     if dim < -max(rank, 1) or dim >= max(rank, 1):
         raise IndexError("Dimension out of range")
@@ -503,10 +425,7 @@ def argsort(inp, dim=-1, descending=False):
     if (
         inp.numel() > 0
         and 131072 <= n <= 262144
-        and (
-            inp.dtype
-            in (torch.float16, torch.bfloat16, torch.int16, torch.int8, torch.uint8)
-        )
+        and (inp.dtype in (torch.float16, torch.bfloat16, torch.int16))
     ):
         return _argsort_radix_fused_narrow(inp, dim, descending)
     if (
