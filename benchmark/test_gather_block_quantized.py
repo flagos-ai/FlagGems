@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base
 
 # GatherBlockQuantized Benchmark
@@ -66,4 +68,5 @@ def test_gather_block_quantized():
         # gather_block_quantized consumes int8 data and float32 scales.
         dtypes=[torch.float32],
     )
+    bench.set_gems(flag_gems.ops.gather_block_quantized)
     bench.run()
