@@ -43,7 +43,7 @@ def test_batch_norm_stats(shape, dtype):
     ref_inp = utils.to_reference(inp, True)
     ref_mean, ref_invstd = torch.batch_norm_stats(ref_inp, eps)
 
-    res_mean, res_invstd = torch.batch_norm_stats(inp, eps)
+    res_mean, res_invstd = flag_gems.batch_norm_stats(inp, eps)
 
     # batch_norm_stats always returns float32 regardless of input dtype
     utils.gems_assert_close(res_mean, ref_mean, torch.float32)
