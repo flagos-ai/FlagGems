@@ -61,3 +61,24 @@ def test_upsample_bicubic2d(N, C, H, W, outH, outW, align_corners, use_scale, dt
         )
 
     utils.gems_assert_close(res_out.to(dtype=dtype), ref_out, dtype, reduce_dim=16)
+
+
+# The parametrized cases above always derive scale_factors as (outH / H, outW / W),
+# which makes 1 / scale equal to H / outH by construction -- the one case where using
+# the size ratio instead of the explicit scale factor happens to be right.
+@pytest.mark.upsample_bicubic2d
+@pytest.mark.parametrize("shape", [(1, 2, 3, 3), (1, 2, 5, 5), (2, 3, 7, 5)])
+@pytest.mark.parametrize("scale_factor", [1.5, 2.5])
+@pytest.mark.parametrize("dtype", UPSAMPLE_BICUBIC2D_DTYPES)
+def test_upsample_bicubic2d_explicit_scale_factor(shape, scale_factor, dtype):
+    x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    scale_factors = (scale_factor, scale_factor)
+
+    ref_x = utils.to_reference(x, True)
+    ref_out = torch._C._nn.upsample_bicubic2d(ref_x, None, False, scale_factors).to(
+        dtype=dtype
+    )
+    with flag_gems.use_gems():
+        res_out = torch._C._nn.upsample_bicubic2d(x, None, False, scale_factors)
+
+    utils.gems_assert_close(res_out.to(dtype=dtype), ref_out, dtype, reduce_dim=16)
