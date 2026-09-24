@@ -77,20 +77,35 @@ def summarize_kernel_rows(rows, warmup, active):
 
 
 def do_bench_argsort_npu(fn, warmup=5, active=30, context=None):
-    """Use the installed collector, correcting its per-kernel-row aggregation.
+    """Collect complete invocations independently of Triton timer defaults.
 
     Native argsort can emit Sort and Cast, while Gems can emit several passes.
     Comparing single kernel-row averages would favor the longer kernel chain.
     Retain the source CSV and grouping report beside other benchmark artifacts.
     """
-    from triton.backends.ascend.testing import do_bench_npu
+    import torch_npu
 
     artifacts = Path("benchmark_profiles") / "argsort" / uuid.uuid4().hex
     artifacts.mkdir(parents=True)
     with tempfile.TemporaryDirectory(prefix="argsort-npu-") as temporary:
-        do_bench_npu(
-            fn, warmup=warmup, active=active, prof_dir=temporary, keep_res=True
+        # Compile before recording. Some Triton versions use mspti and ignore
+        # profile-directory arguments, so own the CSV-producing collector here.
+        fn()
+        torch.npu.synchronize()
+        config = torch_npu.profiler._ExperimentalConfig(
+            profiler_level=torch_npu.profiler.ProfilerLevel.Level1,
+            data_simplification=False,
         )
+        with torch_npu.profiler.profile(
+            activities=[torch_npu.profiler.ProfilerActivity.NPU],
+            on_trace_ready=torch_npu.profiler.tensorboard_trace_handler(
+                temporary, async_mode=False
+            ),
+            experimental_config=config,
+        ):
+            for _ in range(warmup + active):
+                fn()
+                torch.npu.synchronize()
         files = list(Path(temporary).rglob("kernel_details.csv"))
         if len(files) != 1:
             raise RuntimeError("Expected exactly one NPU kernel_details.csv")
