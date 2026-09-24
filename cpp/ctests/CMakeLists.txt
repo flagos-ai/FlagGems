@@ -137,6 +137,11 @@ target_link_libraries(test_triton_flash_attn_varlen
   PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
 add_test(NAME test_triton_flash_attn_varlen COMMAND test_triton_flash_attn_varlen)
 
+add_executable(test_triton_cross_attention test_triton_cross_attention.cpp)
+target_link_libraries(test_triton_cross_attention
+  PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
+add_test(NAME test_triton_cross_attention COMMAND test_triton_cross_attention)
+
 add_executable(test_triton_rwkv_ka_fusion test_triton_rwkv_ka_fusion.cpp)
 target_link_libraries(test_triton_rwkv_ka_fusion
   PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)

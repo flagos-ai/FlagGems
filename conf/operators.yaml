@@ -3706,6 +3706,22 @@ ops:
   - LinearAlg
   stages:
   - alpha: '5.5'
+- id: cross_attention
+  description: 'Forward-only dense cross attention over BNSD tensors: computes
+    softmax(scale * Q @ K^T) @ V with an optional bool/uint8 mask whose non-zero
+    entries block the corresponding key.  Supports MHA, GQA and MQA, and a value
+    head dimension smaller than the query/key head dimension.
+    '
+  for:
+  - cross_attention
+  labels:
+  - Attention
+  - NoCPU
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
+  cpp: '5.5'
 - id: cross_entropy_loss
   description: Computes the cross entropy loss between input logits and target.
   for:
