@@ -632,6 +632,7 @@ from flag_gems.ops.index_select_backward import index_select_backward
 from flag_gems.ops.inner import inner
 from flag_gems.ops.int_mm import int_mm, int_mm_out
 from flag_gems.ops.inverse import inverse
+from flag_gems.ops.ior_scalar import ior_scalar
 from flag_gems.ops.is_nonzero import is_nonzero
 from flag_gems.ops.is_same_size import is_same_size
 from flag_gems.ops.isclose import allclose, isclose
@@ -904,7 +905,12 @@ from flag_gems.ops.pow import (
 )
 from flag_gems.ops.prelu import prelu
 from flag_gems.ops.prod import prod, prod_dim
+from flag_gems.ops.put import put, put_out
 from flag_gems.ops.quantile import quantile
+from flag_gems.ops.quantize_per_tensor import (
+    quantize_per_tensor,
+    quantize_per_tensor_out,
+)
 from flag_gems.ops.quantized_gru import (
     quantized_gru_data,
     quantized_gru_impl,
@@ -972,6 +978,7 @@ from flag_gems.ops.roll import roll
 from flag_gems.ops.rot90 import rot90
 from flag_gems.ops.round import round, round_, round_out
 from flag_gems.ops.row_indices import row_indices
+from flag_gems.ops.row_indices_copy import row_indices_copy, row_indices_copy_out
 from flag_gems.ops.row_stack import row_stack, row_stack_out
 from flag_gems.ops.rrelu_with_noise import rrelu_with_noise, rrelu_with_noise_
 from flag_gems.ops.rrelu_with_noise_backward import rrelu_with_noise_backward
@@ -1906,6 +1913,7 @@ __all__ = [
     "int_mm",
     "int_mm_out",
     "inverse",
+    "ior_scalar",
     "is_nonzero",
     "is_same_size",
     "isclose",
@@ -2211,7 +2219,11 @@ __all__ = [
     "prelu",
     "prod",
     "prod_dim",
+    "put",
+    "put_out",
     "quantile",
+    "quantize_per_tensor",
+    "quantize_per_tensor_out",
     "quantized_gru_data",
     "quantized_gru_impl",
     "quantized_gru_input",
@@ -2286,6 +2298,8 @@ __all__ = [
     "round_out",
     "router_gemm",
     "row_indices",
+    "row_indices_copy",
+    "row_indices_copy_out",
     "row_stack",
     "row_stack_out",
     "rrelu_with_noise",

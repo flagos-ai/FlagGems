@@ -4522,17 +4522,6 @@ ops:
   stages:
   - alpha: '5.0'
   - beta: '5.3'
-- id: dunder_ior_scalar
-  description: The scalar version of `dunder_ior_tensor`.
-  for:
-  - __ior__.Scalar
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Math
-  stages:
-  - beta: '5.3'
 - id: dunder_ior_tensor
   description: The in-place version of bitwise or operation for tensor and scalar.
   for:
@@ -7947,6 +7936,18 @@ ops:
   - LinearAlg
   stages:
   - alpha: '5.4'
+
+- id: ior_scalar
+  description: The scalar version of `dunder_ior_tensor`.
+  for:
+  - __ior__.Scalar
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - beta: '5.3'
 
 - id: irshift
   description: Triton kernel implementation for __irshift__.
@@ -12656,6 +12657,32 @@ ops:
   - stable: '2.0'
   labels:
   - aten
+- id: put
+  description: |
+    Copies the elements of `source` into `self` at the flattened (row-major)
+    positions given by `index`. When `accumulate` is `True`, the values are
+    added to the existing elements of `self` instead of overwriting them.
+  for:
+  - put
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
+- id: put_out
+  description: |
+    A variant of `put()` that writes the result into the `out` tensor.
+  for:
+  - put.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: quantile
   description: Computes the q-th quantiles of each row of the `input` tensor along
     the dimension `dim`.
@@ -12667,6 +12694,33 @@ ops:
   - Tensor
   stages:
   - stable: '2.2'
+- id: quantize_per_tensor
+  description: |
+    Quantizes a float32 tensor to a quantized tensor (torch.quint8 / qint8 / qint32)
+    with the given scale and zero point, using round-half-to-even rounding and
+    clamping to the representable integer range.
+  for:
+  - quantize_per_tensor
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
+- id: quantize_per_tensor_out
+  description: |
+    A variant of `quantize_per_tensor()` that writes the result into the `out`
+    quantized tensor. Computed with the same Triton kernel as the base variant.
+  for:
+  - quantize_per_tensor.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: quantized_gru
   description: 'Quantized GRU (Gated Recurrent Unit) implementation using Triton fused
     gate kernel for efficient RNN inference.
@@ -13683,6 +13737,29 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: row_indices_copy
+  description: Returns the row indices of a column-compressed (CSC or BSC) sparse tensor as a contiguous strided tensor.
+  for:
+  - row_indices_copy
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
+- id: row_indices_copy_out
+  description: |
+    A variant of row_indices_copy() that writes the result into the out tensor.
+  for:
+  - row_indices_copy.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: row_stack
   description: |
     Stack tensors in sequence vertically (row wise). Alias of vstack.
