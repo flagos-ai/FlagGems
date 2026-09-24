@@ -20,6 +20,10 @@ import flag_gems
 from . import accuracy_utils as utils
 from .conftest import TO_CPU
 
+# Hardcoded shapes: batch_norm_update_stats reduces over N and spatial dims per
+# channel, so coverage is driven by the (N, C, spatial) layout rather than total
+# element count. The first two entries cover small/3D inputs, the rest mirror
+# typical CNN feature-map shapes to exercise varying C vs spatial ratios.
 SHAPES = [
     (16, 3, 32),
     (32, 32, 32),
@@ -55,7 +59,7 @@ def test_batch_norm_update_stats(shape, dtype, has_running):
         0.1,
     )
 
-    res_out = torch.batch_norm_update_stats(
+    res_out = flag_gems.batch_norm_update_stats(
         input_t,
         running_mean.clone() if running_mean is not None else None,
         running_var.clone() if running_var is not None else None,
