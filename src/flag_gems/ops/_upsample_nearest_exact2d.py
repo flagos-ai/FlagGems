@@ -27,9 +27,8 @@ def _upsample_nearest_exact2d_kernel(
     sC_out,
     sH_out,
     sW_out,
-    use_scales: tl.constexpr,
-    scale_h,
-    scale_w,
+    reciprocal_scale_h,
+    reciprocal_scale_w,
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(axis=0)
@@ -41,13 +40,11 @@ def _upsample_nearest_exact2d_kernel(
     ow = idx % OW
     oh = idx // OW % OH
 
-    # Compute source indices ih, iw for each output index oh, ow
-    if use_scales:
-        ih = tl.floor(oh.to(tl.float32) / scale_h).to(tl.int32)
-        iw = tl.floor(ow.to(tl.float32) / scale_w).to(tl.int32)
-    else:
-        ih = (oh * IH) // OH
-        iw = (ow * IW) // OW
+    # Compute source indices ih, iw for each output index oh, ow, using the
+    # "nearest exact" formula from PyTorch:
+    # src_index = min(floor((dst_index + 0.5) * (IN / OUT)), IN - 1)
+    ih = tl.floor((oh.to(tl.float32) + 0.5) * reciprocal_scale_h).to(tl.int32)
+    iw = tl.floor((ow.to(tl.float32) + 0.5) * reciprocal_scale_w).to(tl.int32)
     ih = tl.minimum(ih, IH - 1)
     iw = tl.minimum(iw, IW - 1)
 
@@ -139,9 +136,12 @@ def _launch_upsample_nearest_exact2d_kernel(input, out, output_size=None, scale=
         triton.cdiv(N * C, 4),
     )
 
+    # The source-index formula uses the IN / OUT ratio; a given scale factor is
+    # OUT / IN, so its reciprocal is that ratio. Computed here, in the same
+    # order as ATen, so the float rounding matches.
     use_scales = scale is not None and output_size is None
-    scale_h = float(scale[0]) if use_scales else 1.0
-    scale_w = float(scale[1]) if use_scales else 1.0
+    reciprocal_scale_h = 1.0 / float(scale[0]) if use_scales else IH / OH
+    reciprocal_scale_w = 1.0 / float(scale[1]) if use_scales else IW / OW
 
     _upsample_nearest_exact2d_kernel[grid](
         input,
@@ -160,9 +160,8 @@ def _launch_upsample_nearest_exact2d_kernel(input, out, output_size=None, scale=
         out.stride(1),
         out.stride(2),
         out.stride(3),
-        use_scales=use_scales,
-        scale_h=scale_h,
-        scale_w=scale_w,
+        reciprocal_scale_h=reciprocal_scale_h,
+        reciprocal_scale_w=reciprocal_scale_w,
         BLOCK_SIZE=BLOCK_SIZE,
     )
     return out
