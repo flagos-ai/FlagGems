@@ -434,3 +434,7 @@ if get_device_capability(current_device()) >= (3, 1):
     from .mm_w8a8_fp8 import mm_w8a8_fp8, mm_w8a8_fp8_out  # noqa: F401
 
     __all__.extend(["mm_w8a8_fp8", "mm_w8a8_fp8_out"])
+
+from .scaled_mm import scaled_mm, scaled_mm_out  # noqa: F401
+
+__all__.extend(["scaled_mm", "scaled_mm_out"])
