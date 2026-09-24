@@ -226,9 +226,7 @@ def _thnn_fused_lstm_cell_backward_impl(
     )
     grad_cx = torch.empty((batch_size, hidden_size), device=cx.device, dtype=cx.dtype)
     if has_bias:
-        grad_biases = torch.empty(
-            (4 * hidden_size,), device=cx.device, dtype=cx.dtype
-        )
+        grad_biases = torch.empty((4 * hidden_size,), device=cx.device, dtype=cx.dtype)
     else:
         grad_biases = torch.zeros(0, dtype=cx.dtype, device=cx.device)
 

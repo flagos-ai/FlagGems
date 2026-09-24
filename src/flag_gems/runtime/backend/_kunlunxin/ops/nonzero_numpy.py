@@ -67,7 +67,9 @@ def _nznp_count_tail_kernel(inp, counts, n_elements, n_main, slot, BLOCK: tl.con
 
 @libentry()
 @triton.jit
-def _nznp_count_full_masked_kernel(inp, counts, MASK: tl.constexpr, BLOCK: tl.constexpr):
+def _nznp_count_full_masked_kernel(
+    inp, counts, MASK: tl.constexpr, BLOCK: tl.constexpr
+):
     # Same as _nznp_count_full_kernel but the input is an integer reinterpret of
     # a float tensor; the sign bit is cleared so -0.0 counts as zero (identical
     # to `w != 0`) while the compare itself stays an integer `!= 0` (cmpf was
