@@ -1,5 +1,6 @@
 import logging
 import math
+import os
 
 import torch
 import triton
@@ -85,7 +86,12 @@ def _tle_interior_copy(x: torch.Tensor, out: torch.Tensor, pad_left: int, W_in: 
     return True
 
 
-@tle.raw.dialect("xpu3", file="pad_edges3.xpu")
+_PAYLOAD_OBJ = os.path.join(
+    os.path.dirname(__file__), "..", "payload", "obj", "reflection_pad1d.o"
+)
+
+
+@tle.raw.dialect("xpu3", object=_PAYLOAD_OBJ, arch=3)
 def pad_edges3(out, inp, B, W_in, W_out, pad_left, pad_right, es, pid, npid): ...
 
 

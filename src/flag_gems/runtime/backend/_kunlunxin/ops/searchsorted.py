@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import logging
+import os
 
 import torch
 import triton
@@ -37,9 +38,10 @@ try:
 except Exception:  # pragma: no cover - depends on triton build / arch
     _HAS_TLE = False
 
-# Optional tle.raw fast path: a hand-written 16-wide SIMD bitwalk (see
-# searchsorted_raw.xpu) that gathers probes from per-core local memory via
-# vgather_lm. This is the one lever Triton's XPU codegen misses -- it only emits
+# Optional tle.raw fast path: a hand-written 16-wide SIMD bitwalk (shipped as
+# the precompiled payload/obj/searchsorted.o) that gathers probes from per-core
+# local memory via vgather_lm. This is the one lever Triton's XPU codegen misses
+# -- it only emits
 # a hardware vgather for compile-time linear-ramp offsets, so a data-dependent
 # probe index falls back to a serial scalar-load loop. The raw payload keeps the
 # whole gather chain vectorized, matching / beating torch on the benchmark
@@ -246,36 +248,38 @@ _RAW_GRID_2D = 12
 
 def _make_raw_kernels():
     # Defined lazily so the module still imports on backends without `tle.raw`.
-    _here = "searchsorted_raw.xpu"
+    _here = os.path.join(
+        os.path.dirname(__file__), "..", "payload", "obj", "searchsorted.o"
+    )
 
-    @_tle_ext.raw.dialect("xpu3", file=_here)
+    @_tle_ext.raw.dialect("xpu3", object=_here, arch=3)
     def ss_1d_f32(seq, vals, out, sl, n, right, logn): ...
 
-    @_tle_ext.raw.dialect("xpu3", file=_here)
+    @_tle_ext.raw.dialect("xpu3", object=_here, arch=3)
     def ss_2d_f32(seq, vals, out, rows, sl, vpr, right, logn): ...
 
-    @_tle_ext.raw.dialect("xpu3", file=_here)
+    @_tle_ext.raw.dialect("xpu3", object=_here, arch=3)
     def ss_1d_i32(seq, vals, out, sl, n, right, logn): ...
 
-    @_tle_ext.raw.dialect("xpu3", file=_here)
+    @_tle_ext.raw.dialect("xpu3", object=_here, arch=3)
     def ss_2d_i32(seq, vals, out, rows, sl, vpr, right, logn): ...
 
     # Widen-in-LM 2D variants: read the native narrow buffer and widen to
     # fp32/int32 inside the kernel (avoids the slow gems .to(fp32) cast), then
     # run the same bitwalk. All are dim==2, int32-output.
-    @_tle_ext.raw.dialect("xpu3", file=_here)
+    @_tle_ext.raw.dialect("xpu3", object=_here, arch=3)
     def ss_2d_f16w(seq, vals, out, rows, sl, vpr, right, logn): ...
 
-    @_tle_ext.raw.dialect("xpu3", file=_here)
+    @_tle_ext.raw.dialect("xpu3", object=_here, arch=3)
     def ss_2d_bf16w(seq, vals, out, rows, sl, vpr, right, logn): ...
 
-    @_tle_ext.raw.dialect("xpu3", file=_here)
+    @_tle_ext.raw.dialect("xpu3", object=_here, arch=3)
     def ss_2d_i16w(seq, vals, out, rows, sl, vpr, right, logn): ...
 
-    @_tle_ext.raw.dialect("xpu3", file=_here)
+    @_tle_ext.raw.dialect("xpu3", object=_here, arch=3)
     def ss_2d_i8w(seq, vals, out, rows, sl, vpr, right, logn): ...
 
-    @_tle_ext.raw.dialect("xpu3", file=_here)
+    @_tle_ext.raw.dialect("xpu3", object=_here, arch=3)
     def ss_2d_u8w(seq, vals, out, rows, sl, vpr, right, logn): ...
 
     @triton.jit(do_not_specialize=["sl", "n", "right", "logn"])
