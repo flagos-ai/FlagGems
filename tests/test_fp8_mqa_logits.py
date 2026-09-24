@@ -19,6 +19,7 @@ import torch
 
 import flag_gems
 
+from . import accuracy_utils as utils
 from . import conftest as cfg
 from .accuracy_utils import gems_assert_close
 
@@ -34,6 +35,14 @@ try:
     VLLM_AVAILABLE = True
 except ImportError:
     VLLM_AVAILABLE = False
+
+
+FP8_DTYPES = [torch.float8_e4m3fn] if utils.fp8_is_supported else []
+
+pytestmark = pytest.mark.skipif(
+    not FP8_DTYPES,
+    reason="kunlunxin does not support FP8 (no FP8 hardware)",
+)
 
 
 def is_hopper_available() -> bool:

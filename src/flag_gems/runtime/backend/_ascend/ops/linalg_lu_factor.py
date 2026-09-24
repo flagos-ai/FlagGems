@@ -25,6 +25,33 @@ _LU_FACTOR_TILE_M = 64  # row tile size for trailing update (from main ops)
 _LU_FACTOR_TILE_N = 128  # col tile size for solve / left-swap (from main ops)
 
 
+@triton.jit
+def _lu_scale_col(col_vals, pivot, cond):
+    """Divide ``col_vals`` by ``pivot`` wherever ``cond`` holds.
+
+    A plain ``tl.where(cond, col_vals / pivot, col_vals)`` is not safe: ``where``
+    is a select, so the division is evaluated in *every* lane, and a zero pivot
+    makes it ``0/0 = NaN`` in the lanes the select keeps.  ``NaN * 0 = NaN`` then
+    poisons the whole trailing submatrix through the rank-1 update, even though
+    the zero column carries no information — turning a singular-but-factorable
+    matrix into a NaN-filled factor and destroying the columns past the zero
+    pivot.
+
+    An exactly-zero pivot instead produces zero multipliers, which is what ATen
+    does: the factorization stays finite and the zero pivot is reported through
+    ``info`` rather than contaminating anything.  Note the column below a zero
+    pivot is *not* necessarily zero when ``pivot=False``, so zeroing beats
+    skipping here.
+
+    Non-finite pivots keep propagating: ATen reports ``info == 0`` for a NaN/Inf
+    pivot, so only an exact zero is rewritten.
+    """
+    safe_pivot = tl.where(pivot != 0.0, pivot, 1.0)
+    scaled = col_vals / safe_pivot
+    scaled = tl.where(pivot != 0.0, scaled, 0.0)
+    return tl.where(cond, scaled, col_vals)
+
+
 # --- Local copies of kernels from main ops (flag_gems.ops.linalg_lu_factor) ---
 # Defined here rather than imported to ensure fresh Ascend compilation
 # (imported kernels may use cached GPU binaries that produce incorrect results).
@@ -172,7 +199,7 @@ def _linalg_lu_factor_kernel(
         )
 
         col_vals = tl.sum(work * pivot_col_mask, axis=1)
-        multipliers = tl.where(rows > j_ind, col_vals / pivot, col_vals)
+        multipliers = _lu_scale_col(col_vals, pivot, rows > j_ind)
         work = tl.where(
             (rows[:, None] > j_ind) & (cols[None, :] == j_ind),
             multipliers[:, None],
@@ -339,7 +366,7 @@ def _blocked_panel_kernel(
                 mask=l_mask,
                 other=0.0,
             ).to(tl.float32)
-            l_vals = tl.where(l_mask, l_vals / pivot_val, l_vals)
+            l_vals = _lu_scale_col(l_vals, pivot_val, l_mask)
             tl.store(
                 LU_ptr + pid_b * m * n + l_rows * n + j,
                 l_vals,
@@ -476,7 +503,7 @@ def _panel_column_factor_kernel(
 
     pivot = tl.load(LU + pid_b * M * N + j * N + j)
 
-    l_col = tl.where(rows > j, l_col / pivot, l_col)
+    l_col = _lu_scale_col(l_col, pivot, rows > j)
     tl.store(LU + l_col_offsets, l_col, mask=row_mask)
 
     # --- Rank-1 update on trailing submatrix ---

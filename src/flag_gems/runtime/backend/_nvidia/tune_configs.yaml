@@ -32,6 +32,26 @@ _conj_copy:
       BLOCK_SIZE: 4096
     num_warps: 8
 
+_conj_physical:
+  - META:
+      BLOCK_SIZE: 512
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 1024
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 2048
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
+    num_warps: 8
+
 _adaptive_avg_pool3d_backward:
   - META:
       BLOCK_SIZE: 512
@@ -3450,3 +3470,30 @@ quantized_max_pool3d:
       BLOCK_W: 64
     num_warps: 8
     num_stages: 2
+
+matrix_power_bmm:
+  - META:
+      TILE_M: 64
+      TILE_N: 64
+      TILE_K: 32
+    num_warps: 4
+  - META:
+      TILE_M: 128
+      TILE_N: 64
+      TILE_K: 32
+    num_warps: 4
+  - META:
+      TILE_M: 64
+      TILE_N: 128
+      TILE_K: 32
+    num_warps: 4
+  - META:
+      TILE_M: 128
+      TILE_N: 128
+      TILE_K: 32
+    num_warps: 8
+  - META:
+      TILE_M: 32
+      TILE_N: 32
+      TILE_K: 32
+    num_warps: 2

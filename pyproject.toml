@@ -180,7 +180,7 @@ metax-maca3810 = [
     "torchcodec==0.6.0+metax3.8.1.0",
     "torchaudio==2.4.1+metax3.8.1.0",
     "torchvision==0.25.0+metax3.8.1.0",
-    "flagtree==0.6.1+metax3.6",
+    "flagtree==0.7.0rc3+metax3.6",
 ]
 
 mthreads-musa436 = [
@@ -286,15 +286,16 @@ flaggems-setup = "flaggems_setup:main"
 # Package discovery (including shipping the tests/ and benchmark/ suites under
 # collision-safe names) is defined in setup.py, so it is intentionally omitted
 # here — declaring `packages` in both places is an error.
-flaggems-flagtune-pretune = "flag_gems.flagtune.cli.pretune:main"
-flaggems-flagtune-train = "flag_gems.flagtune.cli.train:main"
-flaggems-flagtune-compare = "flag_gems.flagtune.cli.compare:main"
+flaggems-flagtune-pretune = "flag_gems.flagtune.offline.cli.pretune:main"
+flaggems-flagtune-train = "flag_gems.flagtune.offline.cli.train:main"
+flaggems-flagtune-compare = "flag_gems.flagtune.offline.cli.compare:main"
 
 [tool.setuptools.package-data]
 
 "flag_gems" = ["backends.yaml"]
 "flag_gems.runtime" = ["*/**/*.yaml"]
-"flag_gems.flagtune.contracts" = ["configs/*.yaml"]
+"flag_gems.flagtune.inference" = ["manifest.json"]
+"flag_gems.flagtune.offline.contracts" = ["configs/*.yaml"]
 
 [tool.setuptools_scm]
 write_to = "src/flag_gems/_version.py"
