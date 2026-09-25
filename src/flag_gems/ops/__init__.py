@@ -159,6 +159,7 @@ from flag_gems.ops._pdist_backward import _pdist_backward
 from flag_gems.ops._pdist_forward import _pdist_forward
 from flag_gems.ops._philox_normal_ import _philox_normal_
 from flag_gems.ops._pin_memory import _pin_memory
+from flag_gems.ops._philox_uniform_ import _philox_uniform_
 from flag_gems.ops._prelu_kernel import _prelu_kernel
 from flag_gems.ops._prelu_kernel_backward import _prelu_kernel_backward
 from flag_gems.ops._reshape_alias import _reshape_alias
@@ -1434,6 +1435,7 @@ __all__ = [
     "_pdist_backward",
     "_pdist_forward",
     "_philox_normal_",
+    "_philox_uniform_",
     "_pin_memory",
     "_prelu_kernel",
     "_prelu_kernel_backward",
