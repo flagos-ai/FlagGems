@@ -344,6 +344,7 @@ _FULL_CONFIG = (
         "_sobol_engine_initialize_state_",
         _sobol_engine_initialize_state_,
     ),
+    ("_sobol_engine_scramble_", _sobol_engine_scramble_),
     ("_softmax", softmax),
     ("_softmax.out", softmax_out),
     ("_softmax_backward_data", softmax_backward),
