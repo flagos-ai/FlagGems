@@ -427,6 +427,7 @@ from flag_gems.ops.cosine_similarity import cosine_similarity
 from flag_gems.ops.count_nonzero import count_nonzero
 from flag_gems.ops.cov import cov
 from flag_gems.ops.cross import cross, cross_out
+from flag_gems.ops.cross_attention import cross_attention
 from flag_gems.ops.ctc_loss import ctc_loss
 from flag_gems.ops.cudnn_attention_backward import cudnn_attention_backward
 from flag_gems.ops.cudnn_attention_forward import cudnn_attention_forward
@@ -1703,6 +1704,7 @@ __all__ = [
     "count_nonzero",
     "cov",
     "cross",
+    "cross_attention",
     "cross_out",
     "ctc_loss",
     "cudnn_attention_backward",

@@ -38,6 +38,7 @@ add_library(operators
 	          exponential_.cpp
             reshape_and_cache_flash.cpp
             flash_attn_varlen_func.cpp
+            cross_attention.cpp
             rwkv_mm_sparsity.cpp
             rwkv_ka_fusion.cpp
             copy.cpp
