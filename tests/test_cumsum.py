@@ -32,20 +32,6 @@ else:
 
 random.seed(time.time() // 100)
 
-# Backends that ship their own cumsum copy still carrying the empty-tensor
-# div-by-zero (issue 4602). Skip the empty-input tests there until those
-# backend overrides get the same fix as the generic implementation.
-_EMPTY_CUMSUM_UNFIXED_VENDORS = {
-    "aipu",
-    "arm",
-    "ascend",
-    "cambricon",
-    "kunlunxin",
-    "sunrise",
-    "enflame",
-    "tsingmicro",
-}
-
 
 @pytest.mark.cumsum
 @pytest.mark.parametrize("shape", CUMSUM_SHAPES)
@@ -54,6 +40,13 @@ def test_cumsum(shape, dtype):
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
+
+    if flag_gems.vendor_name == "enflame" and dtype in utils.INT_DTYPES:
+        # The GCU cumsum requires the output dtype to match the input dtype,
+        # while the integer reference call below promotes int16/int32 to int64:
+        # topsatenCumsum aborts instead of raising. The enflame override itself
+        # is still covered by the float and empty-tensor cases.
+        pytest.skip("enflame does not support int16/int32 cumsum on GCU")
 
     dim = 1 if shape == utils.REDUCTION_SHAPES[-1] else -1
     if dtype in utils.INT_DTYPES:
@@ -93,11 +86,8 @@ def test_cumsum(shape, dtype):
 def test_cumsum_empty(shape, dim, dtype):
     # Issue 4543: cumsum on an empty tensor must not raise (div-by-zero when a
     # scanned/leading dim is 0). Output should match torch.cumsum in shape/dtype.
-    if flag_gems.vendor_name in _EMPTY_CUMSUM_UNFIXED_VENDORS:
-        pytest.skip(
-            f"{flag_gems.vendor_name} cumsum override still has the empty-tensor "
-            "div-by-zero (issue 4602)"
-        )
+    if flag_gems.vendor_name == "enflame" and dtype in utils.INT_DTYPES:
+        pytest.skip("enflame does not support int16/int32 cumsum on GCU")
     if dtype in utils.INT_DTYPES:
         inp = torch.zeros(shape, dtype=dtype, device=flag_gems.device)
     else:
@@ -109,8 +99,13 @@ def test_cumsum_empty(shape, dim, dtype):
         res_out = torch.cumsum(inp, dim=dim)
 
     assert res_out.shape == ref_out.shape
-    assert res_out.dtype == ref_out.dtype
     assert res_out.numel() == 0
+    if flag_gems.vendor_name in ["aipu", "cambricon", "enflame", "tsingmicro"]:
+        # These vendors keep the input dtype for integer inputs (no int64
+        # promotion), consistent with the check_dtype override in test_cumsum.
+        assert res_out.dtype == dtype
+    else:
+        assert res_out.dtype == ref_out.dtype
 
 
 @pytest.mark.cumsum_out
