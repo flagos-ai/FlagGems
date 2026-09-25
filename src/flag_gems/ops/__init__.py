@@ -1222,6 +1222,7 @@ from flag_gems.ops.trace import trace
 from flag_gems.ops.trace_backward import trace_backward
 from flag_gems.ops.transpose import transpose
 from flag_gems.ops.transpose_copy import transpose_copy
+from flag_gems.ops.trapezoid import trapezoid_x
 from flag_gems.ops.trapz import trapz
 from flag_gems.ops.triangular_indices import tril_indices, triu_indices
 from flag_gems.ops.tril import tril, tril_, tril_out
@@ -2575,6 +2576,7 @@ __all__ = [
     "trace_backward",
     "transpose",
     "transpose_copy",
+    "trapezoid_x",
     "trapz",
     "tril",
     "tril_",
