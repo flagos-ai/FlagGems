@@ -21,31 +21,6 @@ import triton
 import triton.language as tl
 
 # ---------------------------------------------------------------------------
-# PPU toolchain compatibility fix for the ZW810 (thead PPU) backend.
-# This Triton build emits PTX-style inline asm with a "ppu." opcode prefix
-# (e.g. "ppu.mov.u32", "ppu.ld.global.b32"), but the installed PPU SDK
-# assembler (ppu-llc 2.0.0-715aa1) parses the bare dialect ("mov.u32",
-# "ld.global.b32").  Without this fix every Triton kernel fails to compile on
-# this target with "token recognition error at '.mo'".  Strip the vendor
-# prefix from the emitted LLVM IR before the hgbin stage.
-# ---------------------------------------------------------------------------
-try:
-    from triton.backends.ppu import compiler as _ppu_compiler_mod
-
-    if not getattr(_ppu_compiler_mod.PPUBackend, "_ppu_prefix_patched", False):
-        _orig_make_hgbin = _ppu_compiler_mod.PPUBackend.make_hgbin
-
-        def _make_hgbin_no_ppu_prefix(self, src, metadata, opt, capability):
-            return _orig_make_hgbin(
-                self, src.replace("ppu.", ""), metadata, opt, capability
-            )
-
-        _ppu_compiler_mod.PPUBackend.make_hgbin = _make_hgbin_no_ppu_prefix
-        _ppu_compiler_mod.PPUBackend._ppu_prefix_patched = True
-except ModuleNotFoundError:
-    pass
-
-# ---------------------------------------------------------------------------
 # FlagGems registered-op key bridge.
 # The KernelGen FlagGems plugin overrides the registered ATen op by keying on
 # the benchmark operator name ("conv_depthwise2d"), but the FlagGems
