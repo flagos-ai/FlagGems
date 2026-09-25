@@ -10,102 +10,124 @@ from flag_gems.runtime import device, torch_device_fn
 logger = logging.getLogger(__name__)
 device = device.name
 
+# ---------------------------------------------------------------------------
+# Separable trilinear upsampling via tl.dot.
+#
+# 3D trilinear interpolation is separable into three independent 1D linear
+# interpolations (along W, H, D). Each 1D interpolation along an axis is a
+# small (out, in) weight matrix applied along that axis, i.e. a matmul. The
+# naive per-output-element kernel is bound by data-dependent gather throughput
+# (~0.017x-0.9x vs torch). Recasting W/H as tl.dot matmuls turns the gather
+# into dense contiguous compute on the matmul units; D (tiny extent) stays a
+# contiguous 2-neighbor lerp. Everything is a Triton kernel, so it is immune
+# to the use_gems aten interception that penalizes torch.matmul internals.
+#
+# The three interpolation matrices depend only on (in, out, align_corners,
+# scale); they are built once (fp32) and cached. All accumulation is fp32.
+# ---------------------------------------------------------------------------
+
+_WEIGHT_CACHE = {}
+
 
 @triton.jit
-def upsample_trilinear3d_kernel(
-    ptr_o,
-    ptr_i,
-    scale_d,
-    scale_h,
-    scale_w,
-    bias_d,
-    bias_h,
-    bias_w,
-    OD: tl.constexpr,
-    OH: tl.constexpr,
-    OW: tl.constexpr,
-    ID: tl.constexpr,
-    IH: tl.constexpr,
-    IW: tl.constexpr,
-    SAME_D: tl.constexpr,
-    SAME_H: tl.constexpr,
-    SAME_W: tl.constexpr,
-    BX: tl.constexpr,
-    USE_INT32_IDX: tl.constexpr,
+def _mm_kernel(
+    a_ptr, b_ptr, c_ptr, M, N, K,
+    sam, sak, sbk, sbn, scm, scn,
+    BM: tl.constexpr, BN: tl.constexpr, BK: tl.constexpr,
 ):
-    row = tl.program_id(axis=0)
-    if not USE_INT32_IDX:
-        row = row.to(tl.int64)
-    oh = row % OH
-    od = (row // OH) % OD
-    nc = row // (OH * OD)
+    # C[M, N] = A[M, K] @ B[K, N], acc in fp32 (A loaded then upcast).
+    pid_m = tl.program_id(0)
+    pid_n = tl.program_id(1)
+    offs_m = pid_m * BM + tl.arange(0, BM)
+    offs_n = pid_n * BN + tl.arange(0, BN)
+    offs_k = tl.arange(0, BK)
+    a_ptrs = a_ptr + (offs_m[:, None] * sam + offs_k[None, :] * sak)
+    b_ptrs = b_ptr + (offs_k[:, None] * sbk + offs_n[None, :] * sbn)
+    acc = tl.zeros((BM, BN), dtype=tl.float32)
+    for k in range(0, tl.cdiv(K, BK)):
+        km = offs_k[None, :] < K - k * BK
+        a = tl.load(a_ptrs, mask=(offs_m[:, None] < M) & km, other=0.0).to(tl.float32)
+        b = tl.load(b_ptrs, mask=(offs_k[:, None] < K - k * BK) & (offs_n[None, :] < N), other=0.0)
+        acc += tl.dot(a, b, allow_tf32=False)
+        a_ptrs += BK * sak
+        b_ptrs += BK * sbk
+    c_ptrs = c_ptr + scm * offs_m[:, None] + scn * offs_n[None, :]
+    tl.store(c_ptrs, acc, mask=(offs_m[:, None] < M) & (offs_n[None, :] < N))
 
-    ow = tl.arange(0, BX)
-    mask = ow < OW
 
-    if SAME_D:
-        src_d = od.to(tl.float32)
+@triton.jit
+def _lbmm_kernel(
+    w_ptr, x_ptr, c_ptr, OUT, K, COLS,
+    swo, swk, sxb, sxk, sxc, scb, sco, scc,
+    BO: tl.constexpr, BC: tl.constexpr, BK: tl.constexpr,
+):
+    # C[b, OUT, COLS] = W[OUT, K] @ X[b, K, COLS], W shared across batch b.
+    pid_b = tl.program_id(0)
+    pid_o = tl.program_id(1)
+    pid_c = tl.program_id(2)
+    offs_o = pid_o * BO + tl.arange(0, BO)
+    offs_c = pid_c * BC + tl.arange(0, BC)
+    offs_k = tl.arange(0, BK)
+    w_ptrs = w_ptr + (offs_o[:, None] * swo + offs_k[None, :] * swk)
+    x_ptrs = x_ptr + pid_b * sxb + (offs_k[:, None] * sxk + offs_c[None, :] * sxc)
+    acc = tl.zeros((BO, BC), dtype=tl.float32)
+    for k in range(0, tl.cdiv(K, BK)):
+        kk = K - k * BK
+        w = tl.load(w_ptrs, mask=(offs_o[:, None] < OUT) & (offs_k[None, :] < kk), other=0.0)
+        x = tl.load(x_ptrs, mask=(offs_k[:, None] < kk) & (offs_c[None, :] < COLS), other=0.0).to(tl.float32)
+        acc += tl.dot(w, x, allow_tf32=False)
+        w_ptrs += BK * swk
+        x_ptrs += BK * sxk
+    c_ptrs = c_ptr + pid_b * scb + sco * offs_o[:, None] + scc * offs_c[None, :]
+    tl.store(c_ptrs, acc, mask=(offs_o[:, None] < OUT) & (offs_c[None, :] < COLS))
+
+
+@triton.jit
+def _dlerp_kernel(
+    y_ptr, o_ptr, id0_ptr, id1_ptr, w0_ptr, w1_ptr,
+    OD, P, ID, BP: tl.constexpr,
+):
+    # out[n, od, p] = w0[od]*y[n, id0[od], p] + w1[od]*y[n, id1[od], p]
+    pid_nod = tl.program_id(0)
+    pid_p = tl.program_id(1)
+    n = pid_nod // OD
+    od = pid_nod % OD
+    id0 = tl.load(id0_ptr + od)
+    id1 = tl.load(id1_ptr + od)
+    w0 = tl.load(w0_ptr + od)
+    w1 = tl.load(w1_ptr + od)
+    offs = pid_p * BP + tl.arange(0, BP)
+    m = offs < P
+    base = n * ID * P
+    a = tl.load(y_ptr + base + id0 * P + offs, mask=m, other=0.0)
+    b = tl.load(y_ptr + base + id1 * P + offs, mask=m, other=0.0)
+    out = a * w0 + b * w1
+    tl.store(o_ptr + pid_nod * P + offs, out.to(o_ptr.dtype.element_ty), mask=m)
+
+
+def _build_weights(in_sz, out_sz, align_corners, scale, dev):
+    key = (in_sz, out_sz, align_corners, scale, str(dev))
+    cached = _WEIGHT_CACHE.get(key)
+    if cached is not None:
+        return cached
+    o = torch.arange(out_sz, device=dev, dtype=torch.float32)
+    if align_corners:
+        scale_val = (in_sz - 1.0) / (out_sz - 1.0) if out_sz > 1 else 0.0
+        src = o * scale_val
     else:
-        src_d = od.to(tl.float32) * scale_d + bias_d
-    if SAME_H:
-        src_h = oh.to(tl.float32)
-    else:
-        src_h = oh.to(tl.float32) * scale_h + bias_h
-    if SAME_W:
-        src_w = ow.to(tl.float32)
-    else:
-        src_w = ow.to(tl.float32) * scale_w + bias_w
-
-    src_d = tl.maximum(0.0, tl.minimum(src_d, ID - 1.0))
-    src_h = tl.maximum(0.0, tl.minimum(src_h, IH - 1.0))
-    src_w = tl.maximum(0.0, tl.minimum(src_w, IW - 1.0))
-
-    id0 = tl.floor(src_d).to(tl.int32)
-    ih0 = tl.floor(src_h).to(tl.int32)
-    iw0 = tl.floor(src_w).to(tl.int32)
-
-    id1 = tl.minimum(id0 + 1, ID - 1)
-    ih1 = tl.minimum(ih0 + 1, IH - 1)
-    iw1 = tl.minimum(iw0 + 1, IW - 1)
-
-    td = src_d - id0.to(tl.float32)
-    th = src_h - ih0.to(tl.float32)
-    tw = src_w - iw0.to(tl.float32)
-
-    wd0 = 1.0 - td
-    wh0 = 1.0 - th
-    ww0 = 1.0 - tw
-
-    d_stride_in = IH * IW
-    h_stride_in = IW
-    spatial_in_stride = ID * IH * IW
-    base = nc * spatial_in_stride
-
-    b00 = base + id0 * d_stride_in + ih0 * h_stride_in
-    b01 = base + id0 * d_stride_in + ih1 * h_stride_in
-    b10 = base + id1 * d_stride_in + ih0 * h_stride_in
-    b11 = base + id1 * d_stride_in + ih1 * h_stride_in
-
-    x000 = tl.load(ptr_i + b00 + iw0).to(tl.float32)
-    x001 = tl.load(ptr_i + b00 + iw1).to(tl.float32)
-    x010 = tl.load(ptr_i + b01 + iw0).to(tl.float32)
-    x011 = tl.load(ptr_i + b01 + iw1).to(tl.float32)
-    x100 = tl.load(ptr_i + b10 + iw0).to(tl.float32)
-    x101 = tl.load(ptr_i + b10 + iw1).to(tl.float32)
-    x110 = tl.load(ptr_i + b11 + iw0).to(tl.float32)
-    x111 = tl.load(ptr_i + b11 + iw1).to(tl.float32)
-
-    c000 = x000 * ww0 + x001 * tw
-    c001 = x010 * ww0 + x011 * tw
-    front = c000 * wh0 + c001 * th
-
-    c100 = x100 * ww0 + x101 * tw
-    c101 = x110 * ww0 + x111 * tw
-    back = c100 * wh0 + c101 * th
-
-    out = front * wd0 + back * td
-
-    tl.store(ptr_o + row * OW + ow, out, mask=mask)
+        real_scale = (1.0 / scale) if scale is not None else (in_sz / out_sz)
+        src = o * real_scale + (0.5 * real_scale - 0.5)
+    src = torch.clamp(src, min=0.0, max=in_sz - 1.0)
+    i0 = src.to(torch.int32)
+    i1 = torch.clamp(i0 + 1, max=in_sz - 1)
+    t = src - i0.to(torch.float32)
+    w = torch.zeros(out_sz, in_sz, device=dev, dtype=torch.float32)
+    rows = torch.arange(out_sz, device=dev)
+    w[rows, i0.long()] += 1.0 - t
+    w[rows, i1.long()] += t
+    entry = (w, i0.contiguous(), i1.contiguous(), (1.0 - t).contiguous(), t.contiguous())
+    _WEIGHT_CACHE[key] = entry
+    return entry
 
 
 def upsample_trilinear3d(
@@ -124,59 +146,46 @@ def upsample_trilinear3d(
     OD, OH, OW = output_size
     NC = N * C
 
-    def calculate_scale_and_bias(in_sz, out_sz, scale):
-        if align_corners:
-            if out_sz > 1:
-                scale_val = (in_sz - 1.0) / (out_sz - 1.0)
-            else:
-                scale_val = 0.0
-            bias_val = 0.0
-        else:
-            if scale is not None:
-                real_scale = 1.0 / scale
-            else:
-                real_scale = in_sz / out_sz
-            scale_val = real_scale
-            bias_val = 0.5 * real_scale - 0.5
-        return scale_val, bias_val
-
-    scale_d, bias_d = calculate_scale_and_bias(ID, OD, scales_d)
-    scale_h, bias_h = calculate_scale_and_bias(IH, OH, scales_h)
-    scale_w, bias_w = calculate_scale_and_bias(IW, OW, scales_w)
-
-    inp = self.reshape(NC, ID, IH, IW).contiguous()
     out = torch.empty((N, C, OD, OH, OW), device=self.device, dtype=self.dtype)
-
     if out.numel() == 0:
         return out
 
-    total_out = NC * OD * OH * OW
-    BX = 1 << max(0, (OW - 1).bit_length())
-    grid = (NC * OD * OH,)
-    num_warps = min(8, max(1, BX // 64))
+    dev = self.device
+    wd, id0, id1, wd0, wd1 = _build_weights(ID, OD, align_corners, scales_d, dev)
+    wh = _build_weights(IH, OH, align_corners, scales_h, dev)[0]
+    ww = _build_weights(IW, OW, align_corners, scales_w, dev)[0]
 
-    with torch_device_fn.device(self.device):
-        upsample_trilinear3d_kernel[grid](
-            out,
-            inp,
-            scale_d,
-            scale_h,
-            scale_w,
-            bias_d,
-            bias_h,
-            bias_w,
-            OD=OD,
-            OH=OH,
-            OW=OW,
-            ID=ID,
-            IH=IH,
-            IW=IW,
-            SAME_D=(OD == ID),
-            SAME_H=(OH == IH),
-            SAME_W=(OW == IW),
-            BX=BX,
-            USE_INT32_IDX=(total_out + BX <= (2**31 - 1)),
-            num_warps=num_warps,
+    with torch_device_fn.device(dev):
+        # W-pass: y1[NC*ID*IH, OW] = x[NC*ID*IH, IW] @ Ww^T[IW, OW]
+        xin = self.reshape(NC * ID * IH, IW).contiguous()
+        wwt = ww.t().contiguous()
+        M1 = NC * ID * IH
+        y1 = torch.empty((M1, OW), device=dev, dtype=torch.float32)
+        BM, BN, BK = 64, 64, 32
+        _mm_kernel[(triton.cdiv(M1, BM), triton.cdiv(OW, BN))](
+            xin, wwt, y1, M1, OW, IW,
+            xin.stride(0), xin.stride(1), wwt.stride(0), wwt.stride(1),
+            y1.stride(0), y1.stride(1), BM=BM, BN=BN, BK=BK,
+        )
+
+        # H-pass: y2[NC*ID, OH, OW] = Wh[OH, IH] @ y1[NC*ID, IH, OW]
+        y1b = y1.reshape(NC * ID, IH, OW)
+        y2 = torch.empty((NC * ID, OH, OW), device=dev, dtype=torch.float32)
+        BO, BC, BKh = 64, 64, 32
+        _lbmm_kernel[(NC * ID, triton.cdiv(OH, BO), triton.cdiv(OW, BC))](
+            wh, y1b, y2, OH, IH, OW,
+            wh.stride(0), wh.stride(1),
+            y1b.stride(0), y1b.stride(1), y1b.stride(2),
+            y2.stride(0), y2.stride(1), y2.stride(2),
+            BO=BO, BC=BC, BK=BKh,
+        )
+
+        # D-pass: out[N, C, OD, OH, OW] = lerp over ID of y2[NC, ID, OH*OW]
+        y2p = y2.reshape(NC, ID, OH * OW)
+        P = OH * OW
+        BP = 1024
+        _dlerp_kernel[(NC * OD, triton.cdiv(P, BP))](
+            y2p, out, id0, id1, wd0, wd1, OD, P, ID, BP=BP,
         )
 
     return out
