@@ -15529,6 +15529,20 @@ ops:
   - NeuralNetwork
   stages:
   - beta: '5.3'
+- id: sparse_dim
+  description: 'Returns the number of sparse dimensions of a tensor: 0 for strided
+    tensors, the index count for sparse COO, 2 for compressed layouts.
+
+    '
+  for:
+  - sparse_dim
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: sparse_mla_fwd_interface
   description: 'A generic interface for sparse MLA (Multi-head Latent Attention) for
     DeepSeek v3/v3.2.
