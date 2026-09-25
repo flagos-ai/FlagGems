@@ -57,6 +57,7 @@ from flag_gems.ops._ctc_loss import _ctc_loss, _ctc_loss_out
 from flag_gems.ops._ctc_loss_backward import _ctc_loss_backward, _ctc_loss_backward_out
 from flag_gems.ops._cummax_helper import _cummax_helper
 from flag_gems.ops._cummin_helper import _cummin_helper
+from flag_gems.ops._dim_arange import _dim_arange
 from flag_gems.ops._dirichlet_grad import _dirichlet_grad
 from flag_gems.ops._dyn_quant_matmul_4bit import _dyn_quant_matmul_4bit
 from flag_gems.ops._dyn_quant_pack_4bit_weight import _dyn_quant_pack_4bit_weight
@@ -1365,6 +1366,7 @@ __all__ = [
     "_ctc_loss_out",
     "_cummax_helper",
     "_cummin_helper",
+    "_dim_arange",
     "_dirichlet_grad",
     "_dyn_quant_matmul_4bit",
     "_dyn_quant_pack_4bit_weight",
