@@ -623,6 +623,7 @@ from flag_gems.ops.heaviside import heaviside
 from flag_gems.ops.heaviside_ import heaviside_
 from flag_gems.ops.hinge_embedding_loss import hinge_embedding_loss
 from flag_gems.ops.histc import histc
+from flag_gems.ops.histogram import histogram_bin_ct, histogram_bins_tensor
 from flag_gems.ops.histogramdd import histogramdd
 from flag_gems.ops.hsplit import hsplit
 from flag_gems.ops.hspmm import hspmm
@@ -1914,6 +1915,8 @@ __all__ = [
     "heaviside_",
     "hinge_embedding_loss",
     "histc",
+    "histogram_bin_ct",
+    "histogram_bins_tensor",
     "histogramdd",
     "hsplit",
     "hspmm",

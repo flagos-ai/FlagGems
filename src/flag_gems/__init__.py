@@ -883,6 +883,8 @@ _FULL_CONFIG = (
     ("heaviside_", heaviside_),
     ("hinge_embedding_loss", hinge_embedding_loss),
     ("histc", histc),
+    ("histogram.bin_ct", histogram_bin_ct),
+    ("histogram.bins_tensor", histogram_bins_tensor),
     ("histogramdd", histogramdd, None, ["CompositeImplicitAutograd"]),
     ("hsplit.array", hsplit),
     ("hsplit.int", hsplit),
