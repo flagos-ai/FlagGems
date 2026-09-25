@@ -59,6 +59,7 @@ from .grouped_matmul import grouped_matmul
 from .groupnorm import group_norm, group_norm_backward
 from .gru import gru, gru_data
 from .hadamard_transform import hadamard_transform
+from .histc import histc
 from .hstack import hstack
 from .igammac import igammac, igammac_out
 from .index import index
@@ -231,6 +232,7 @@ __all__ = [
     "gru",
     "gru_data",
     "hadamard_transform",
+    "histc",
     "hstack",
     "igammac",
     "igammac_out",
