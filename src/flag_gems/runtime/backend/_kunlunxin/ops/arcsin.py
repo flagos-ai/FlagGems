@@ -18,8 +18,8 @@ import torch
 import triton
 import triton.language as tl
 import triton.language.extra.xpu.libdevice as xpu
+from _kunlunxin.utils.bf16_fast_store import bf16_fast_store
 
-from flag_gems.runtime.backend._kunlunxin.utils.bf16_fast_store import bf16_fast_store
 from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)

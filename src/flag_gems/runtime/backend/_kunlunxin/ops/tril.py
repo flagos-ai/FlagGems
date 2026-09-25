@@ -18,6 +18,7 @@ import os
 import torch
 import triton
 import triton.language as tl
+from _kunlunxin.utils.bf16_fast_store import bf16_fast_store
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
@@ -1313,6 +1314,14 @@ def _launch_tril_strided_out(
 
 
 def _launch_tril(input: torch.Tensor, out: torch.Tensor, diagonal: int):
+    # bf16 outputs take the fast f32->bf16 store lowering for this launch only;
+    # see _kunlunxin.utils.bf16_fast_store for why it is scoped rather than set
+    # globally, and for the one-ULP tie-bias difference from the default path.
+    with bf16_fast_store(out.dtype):
+        return _launch_tril_impl(input, out, diagonal)
+
+
+def _launch_tril_impl(input: torch.Tensor, out: torch.Tensor, diagonal: int):
     M, N = input.shape[-2:]
     total = input.numel()
     if total == 0:
