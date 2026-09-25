@@ -53,3 +53,26 @@ def test_nonzero(shape, dtype):
         res_out = torch.nonzero(inp)
 
     utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.nonzero
+@pytest.mark.parametrize("shape", [(0,), (0, 3), (2, 0), (2, 0, 3)])
+@pytest.mark.parametrize("dtype", [torch.bool, torch.int64, torch.float32])
+@pytest.mark.parametrize("as_tuple", [False, True])
+def test_nonzero_empty(shape, dtype, as_tuple):
+    inp = torch.empty(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp, False)
+    ref_out = torch.nonzero(ref_inp, as_tuple=as_tuple)
+    res_out = flag_gems.nonzero(inp, as_tuple=as_tuple)
+
+    if as_tuple:
+        assert isinstance(res_out, tuple)
+        assert len(res_out) == inp.ndim
+        actual_tensors, expected_tensors = res_out, ref_out
+    else:
+        actual_tensors, expected_tensors = (res_out,), (ref_out,)
+    for actual, expected in zip(actual_tensors, expected_tensors):
+        assert actual.shape == expected.shape
+        assert actual.dtype == torch.int64
+        assert actual.device == inp.device
+        utils.gems_assert_equal(actual, expected)
