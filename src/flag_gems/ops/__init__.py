@@ -332,6 +332,7 @@ from flag_gems.ops.batch_norm_gather_stats import batch_norm_gather_stats
 from flag_gems.ops.batch_norm_gather_stats_with_counts import (
     batch_norm_gather_stats_with_counts,
 )
+from flag_gems.ops.batch_norm_stats import batch_norm_stats
 from flag_gems.ops.bernoulli import bernoulli
 from flag_gems.ops.bernoulli_ import bernoulli_
 from flag_gems.ops.bilinear import bilinear
@@ -1602,6 +1603,7 @@ __all__ = [
     "batch_norm_backward_reduce",
     "batch_norm_gather_stats",
     "batch_norm_gather_stats_with_counts",
+    "batch_norm_stats",
     "bernoulli",
     "bernoulli_",
     "bilinear",
