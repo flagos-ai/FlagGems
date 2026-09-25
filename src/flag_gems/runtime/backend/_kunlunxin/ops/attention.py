@@ -25,7 +25,10 @@ import triton.language as tl
 from flag_gems.config import use_c_extension
 from flag_gems.runtime import torch_device_fn
 
+from .cat import cat
+from .contiguous import contiguous
 from .flash_api import mha_varlan_fwd
+from .flash_attention_backward import _fab_bwd_launch
 
 logger = logging.getLogger(__name__)
 
@@ -1112,12 +1115,142 @@ def scaled_dot_product_attention_backward(
 ):
     logger.debug("GEMS_KUNLUNXIN SCALED_DOT_PRODUCT_ATTENTION_BACKWARD")
     head_dim = query.shape[-1]
-    assert (
-        attn_mask is None
-    ), "staged attention backward does not support attention bias"
+    assert attn_mask is None, "attention backward does not support attention bias"
     assert dropout_p == 0.0, "Currently only support dropout_p=0.0"
     sm_scale = 1.0 / math.sqrt(head_dim) if scale is None else scale
-    return _staged_attention_backward(do, query, key, value, o, M, sm_scale, is_causal)
+    # [c228] Route through the flash-attention launch-table binding. The sdpa
+    # contract is BHSD with an [B, H, S] fp32 logsumexp; the binding contract
+    # is BSHD contiguous (see flash_attention_backward.py).
+    grad_out = contiguous(do.permute(0, 2, 1, 3))
+    q_bshd = contiguous(query.permute(0, 2, 1, 3))
+    k_bshd = contiguous(key.permute(0, 2, 1, 3))
+    v_bshd = contiguous(value.permute(0, 2, 1, 3))
+    o_bshd = contiguous(o.permute(0, 2, 1, 3))
+    dq, dk, dv = sdnn_fa_bwd_route(
+        grad_out, q_bshd, k_bshd, v_bshd, o_bshd, M, bool(is_causal), sm_scale
+    )
+    dq = contiguous(dq.permute(0, 2, 1, 3))
+    dk = contiguous(dk.permute(0, 2, 1, 3))
+    dv = contiguous(dv.permute(0, 2, 1, 3))
+    return dq, dk, dv
+
+
+_SDNN_FA_BWD_MIN_HEAD_DIM = 64
+
+
+def sdnn_fa_bwd_route(grad_out, query, key, value, out, lse, is_causal, sm_scale):
+    """Dense flash-attention backward through the launch-table binding.
+
+    The bound kernel is bottom-right aligned while the sdpa/flash reference
+    contract is top-left; for q != kv the longer side is truncated to a
+    square and the truncated gradients are zero-filled, which reproduces the
+    top-left reference exactly (fully masked rows/columns carry zero
+    gradient). head_dim < 64 is zero-padded to 64: padded dims contribute
+    nothing to scores or gradients and are sliced back. If the binding
+    honestly falls back, the carrier poisons dQ with NaN so a missed binding
+    can never look like a valid result.
+    """
+    batch, q_len, q_heads, head_dim = query.shape
+    kv_len = key.shape[1]
+    if head_dim < _SDNN_FA_BWD_MIN_HEAD_DIM:
+        pad = _SDNN_FA_BWD_MIN_HEAD_DIM - head_dim
+        dev = query.device
+        dt = query.dtype
+        query = cat(
+            [query, torch.zeros(batch, q_len, q_heads, pad, dtype=dt, device=dev)],
+            dim=3,
+        )
+        key = cat(
+            [
+                key,
+                torch.zeros(batch, kv_len, key.shape[2], pad, dtype=dt, device=dev),
+            ],
+            dim=3,
+        )
+        value = cat(
+            [
+                value,
+                torch.zeros(batch, kv_len, value.shape[2], pad, dtype=dt, device=dev),
+            ],
+            dim=3,
+        )
+        out = cat(
+            [out, torch.zeros(batch, q_len, q_heads, pad, dtype=dt, device=dev)],
+            dim=3,
+        )
+        grad_out = cat(
+            [
+                grad_out,
+                torch.zeros(batch, q_len, q_heads, pad, dtype=dt, device=dev),
+            ],
+            dim=3,
+        )
+    if is_causal and q_len != kv_len:
+        if q_len < kv_len:
+            k_sq = contiguous(key[:, :q_len])
+            v_sq = contiguous(value[:, :q_len])
+            dq, dk, dv = _fab_bwd_launch(
+                grad_out, query, k_sq, v_sq, out, lse, sm_scale, True, -1, -1
+            )
+            dk = cat(
+                [
+                    dk,
+                    torch.zeros(
+                        batch,
+                        kv_len - q_len,
+                        dk.shape[2],
+                        dk.shape[3],
+                        dtype=dk.dtype,
+                        device=dk.device,
+                    ),
+                ],
+                dim=1,
+            )
+            dv = cat(
+                [
+                    dv,
+                    torch.zeros(
+                        batch,
+                        kv_len - q_len,
+                        dv.shape[2],
+                        dv.shape[3],
+                        dtype=dv.dtype,
+                        device=dv.device,
+                    ),
+                ],
+                dim=1,
+            )
+        else:
+            q_sq = contiguous(query[:, :kv_len])
+            o_sq = contiguous(out[:, :kv_len])
+            do_sq = contiguous(grad_out[:, :kv_len])
+            lse_sq = contiguous(lse[:, :, :kv_len])
+            dq, dk, dv = _fab_bwd_launch(
+                do_sq, q_sq, key, value, o_sq, lse_sq, sm_scale, True, -1, -1
+            )
+            dq = cat(
+                [
+                    dq,
+                    torch.zeros(
+                        batch,
+                        q_len - kv_len,
+                        dq.shape[2],
+                        dq.shape[3],
+                        dtype=dq.dtype,
+                        device=dq.device,
+                    ),
+                ],
+                dim=1,
+            )
+    else:
+        dq, dk, dv = _fab_bwd_launch(
+            grad_out, query, key, value, out, lse, sm_scale, bool(is_causal), -1, -1
+        )
+    if head_dim < _SDNN_FA_BWD_MIN_HEAD_DIM:
+        dq = dq[:, :, :, :head_dim]
+        dk = dk[:, :, :, :head_dim]
+        dv = dv[:, :, :, :head_dim]
+    return dq, dk, dv
 
 
 def efficient_attention_backward(
@@ -1331,6 +1464,23 @@ def scaled_dot_product_attention(
     scale=None,
     enable_gqa=False,
 ):
+    if (
+        torch.is_grad_enabled()
+        and attn_mask is None
+        and (query.requires_grad or key.requires_grad or value.requires_grad)
+    ):
+        # Gradients are required: keep the autograd graph via the flash
+        # attention node (the inference fast path below does not record one).
+        return ScaleDotProductAttention.apply(
+            query,
+            key,
+            value,
+            attn_mask,
+            dropout_p,
+            is_causal,
+            scale,
+            enable_gqa,
+        )
     return scaled_dot_product_attention_forward(
         query,
         key,

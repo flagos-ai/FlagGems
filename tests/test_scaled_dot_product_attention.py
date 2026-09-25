@@ -278,9 +278,6 @@ def test_scaled_dot_product_attention_legacy(
 
 
 @pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="Issue #2849: Not working")
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "kunlunxin", reason="Issue #2849: Not working"
-)
 @pytest.mark.skipif(flag_gems.vendor_name == "sunrise", reason="Compiler Error")
 @pytest.mark.skipif(
     torch.__version__ < "2.5", reason="Low Pytorch Version: enable_gqa not supported"
