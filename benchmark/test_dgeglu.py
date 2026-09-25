@@ -24,12 +24,24 @@ from . import base, consts
 # See: https://github.com/NVIDIA/TransformerEngine/issues/1065
 try:
     from transformer_engine.pytorch import cpp_extensions as tex
+    from transformer_engine.pytorch.constants import TE_DType
 
     TE_OP = getattr(tex, "dgeglu", None)
     TE_AVAILABLE = True
 except ImportError:
     TE_AVAILABLE = False
     TE_OP = None
+    TE_DType = None
+
+
+def _te_dgeglu(grad_output, inp, quantizer=None):
+    # TransformerEngine's dgeglu takes an extra argument that the benchmark
+    # carries for signature compatibility.  Upstream TE takes a quantizer there
+    # and accepts ``None`` (which is what the benchmark passes); the version
+    # vendored for kunlunxin takes the output dtype instead.
+    if flag_gems.vendor_name == "kunlunxin":
+        return TE_OP(grad_output, inp, TE_DType[inp.dtype])
+    return TE_OP(grad_output, inp, quantizer)
 
 
 @pytest.mark.dgeglu
@@ -38,7 +50,7 @@ except ImportError:
 def test_dgeglu():
     bench = base.TexGluBackwardBenchmark(
         op_name="dgeglu",
-        torch_op=TE_OP,
+        torch_op=_te_dgeglu,
         gems_op=flag_gems.dgeglu,
         dtypes=consts.FLOAT_DTYPES,
         # TODO(Qiming): Is this flag correct?

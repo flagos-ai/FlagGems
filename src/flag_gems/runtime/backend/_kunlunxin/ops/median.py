@@ -1142,7 +1142,11 @@ def _resolve_dim_name(inp, dim):
 
 def median_dim(inp, dim=-1, keepdim=False):
     logger.debug("GEMS_KUNLUNXIN MEDIAN_DIM")
-    _check_supported_dtype(inp)
+    # An empty result has no element to reduce, so the dtype restriction that
+    # makes complex median unsupported does not apply here.  `median` and
+    # `median_out` below already guard the check this way.
+    if inp.numel() != 0:
+        _check_supported_dtype(inp)
     dim_res, dim_was_name = _resolve_dim_name(inp, dim)
     if dim_was_name:
         names = list(inp.names)
@@ -1161,7 +1165,9 @@ def median_dim(inp, dim=-1, keepdim=False):
 
 def median_dim_values(inp, dim=-1, keepdim=False, *, values, indices):
     logger.debug("GEMS_KUNLUNXIN MEDIAN_DIM_VALUES")
-    _check_supported_dtype(inp)
+    # Same empty-result exemption as `median_dim` above.
+    if inp.numel() != 0:
+        _check_supported_dtype(inp)
     if values.dtype != inp.dtype:
         raise RuntimeError(
             f"median(): Expected 'values' tensor to have dtype {inp.dtype}, but got {values.dtype}"
