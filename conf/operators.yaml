@@ -2598,6 +2598,18 @@ ops:
   - Distribution
   stages:
   - beta: '5.3'
+- id: ccol_indices_copy
+  description: Returns a fresh contiguous copy of a sparse CSC/BSC tensor's compressed-column-index
+    array as an int64 tensor shaped batch dims plus `ncols + 1`.
+  for:
+  - ccol_indices_copy
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: cdist
   description: 'Computes the p-norm distance between each pair of the two collections
     of row vectors.
