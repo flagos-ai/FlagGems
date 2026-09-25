@@ -257,6 +257,20 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.5'
+- id: _values
+  description: 'Returns the values tensor of a sparse COO tensor as a zero-copy
+    view.
+
+    '
+  for:
+  - _values
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: _weight_norm
   description: 'Reparameterizes a module''s weight tensor by decoupling its magnitude
     (g)
