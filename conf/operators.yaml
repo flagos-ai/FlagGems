@@ -758,10 +758,13 @@ ops:
   stages:
   - alpha: '5.4'
 - id: addmm_activation
-  description: |
-    Performs `addmm` followed by an activation function. Computes
+  description: 'Performs `addmm` followed by an activation function. Computes
+
     `beta * input + alpha * (mat1 @ mat2)` and applies ReLU, or GELU (tanh
+
     approximation) when `use_gelu` is True.
+
+    '
   for:
   - _addmm_activation
   labels:
@@ -772,7 +775,8 @@ ops:
   stages:
   - alpha: '5.5'
 - id: addmm_activation_out
-  description: A variant of `_addmm_activation()` that assigns the output to the provided `out` parameter.
+  description: A variant of `_addmm_activation()` that assigns the output to the provided
+    `out` parameter.
   for:
   - _addmm_activation.out
   labels:
@@ -834,8 +838,8 @@ ops:
   stages:
   - beta: '5.4'
 - id: addmm_vector_bias
-  description: A variant of `addmm` that exercises the vector bias (1-D `input`)
-    broadcast path.
+  description: A variant of `addmm` that exercises the vector bias (1-D `input`) broadcast
+    path.
   for:
   - addmm
   labels:
@@ -1930,8 +1934,10 @@ ops:
   stages:
   - alpha: '5.5'
 - id: batch_norm_gather_stats_with_counts
-  description: |
-    Triton kernel implementation for gathering per-device batch normalization statistics with per-segment counts into global mean and inverse standard deviation.
+  description: 'Triton kernel implementation for gathering per-device batch normalization
+    statistics with per-segment counts into global mean and inverse standard deviation.
+
+    '
   for:
   - batch_norm_gather_stats_with_counts
   labels:
@@ -3648,10 +3654,14 @@ ops:
   stages:
   - alpha: '5.4'
 - id: cosine_similarity
-  description: |
-    Computes the cosine similarity between x1 and x2 along dim, broadcasting the
+  description: 'Computes the cosine similarity between x1 and x2 along dim, broadcasting
+    the
+
     inputs to a common shape first. Returns <x1, x2> / (max(||x1||_2, eps) *
+
     max(||x2||_2, eps)) reduced over dim, with eps guarding against zero norms.
+
+    '
   for:
   - cosine_similarity
   labels:
@@ -3711,7 +3721,8 @@ ops:
   stages:
   - beta: '5.3'
 - id: cross
-  description: Computes the cross product of two 3-dimensional vectors along a dimension of size 3.
+  description: Computes the cross product of two 3-dimensional vectors along a dimension
+    of size 3.
   for:
   - cross
   labels:
@@ -3771,8 +3782,8 @@ ops:
   stages:
     - alpha: '5.4'
 - id: ctc_loss_backward
-  description: The backward computation of `ctc_loss()`, exercised through the
-    autograd of the forward operator.
+  description: The backward computation of `ctc_loss()`, exercised through the autograd
+    of the forward operator.
   for:
   - ctc_loss.Tensor
   labels:
@@ -4757,9 +4768,11 @@ ops:
   stages:
   - alpha: '5.4'
 - id: embedding_sparse_backward
-  description: |
-    Calculates the sparse gradient of the weight matrix for an embedding
+  description: 'Calculates the sparse gradient of the weight matrix for an embedding
+
     layer during backpropagation, returning an uncoalesced sparse COO tensor.
+
+    '
   for:
   - embedding_sparse_backward
   labels:
@@ -6066,8 +6079,10 @@ ops:
   stages:
   - alpha: '5.4'
 - id: fractional_max_pool3d
-  description: |
-    Applies 3D fractional max pooling over an input signal composed of several input planes.
+  description: 'Applies 3D fractional max pooling over an input signal composed of
+    several input planes.
+
+    '
   for:
   - fractional_max_pool3d
   labels:
@@ -6276,8 +6291,8 @@ ops:
   - beta: '5.4'
 - id: fused_marlin_moe_w4a16_int4
   description: Fused MoE with GPTQ INT4 (uint4b8) W4A16 weights in plain row-major
-    layout; Triton wna16 fused-dequant GEMM with SwiGLU activation, aligned with
-    vLLM's fused_marlin_moe call signature.
+    layout; Triton wna16 fused-dequant GEMM with SwiGLU activation, aligned with vLLM's
+    fused_marlin_moe call signature.
   for:
   - flag_gems.fused.fused_marlin_moe.fused_marlin_moe
   labels:
@@ -6290,8 +6305,8 @@ ops:
   - beta: '5.4'
 - id: fused_marlin_moe_w4a16_mxfp4
   description: Fused MoE with MXFP4 (E2M1) W4A16 weights packed two codes per byte
-    and E8M0 scales; Triton wna16 fused-dequant GEMM with SwiGLU activation,
-    aligned with vLLM's fused_marlin_moe call signature.
+    and E8M0 scales; Triton wna16 fused-dequant GEMM with SwiGLU activation, aligned
+    with vLLM's fused_marlin_moe call signature.
   for:
   - flag_gems.fused.fused_marlin_moe.fused_marlin_moe
   labels:
@@ -6303,9 +6318,8 @@ ops:
   stages:
   - beta: '5.4'
 - id: fused_marlin_moe_w8a16_int8
-  description: Fused MoE with GPTQ INT8 (uint8b128) W8A16 weights; Triton wna16
-    fused-dequant GEMM with SwiGLU activation, aligned with vLLM's fused_marlin_moe
-    call signature.
+  description: Fused MoE with GPTQ INT8 (uint8b128) W8A16 weights; Triton wna16 fused-dequant
+    GEMM with SwiGLU activation, aligned with vLLM's fused_marlin_moe call signature.
   for:
   - flag_gems.fused.fused_marlin_moe.fused_marlin_moe
   labels:
@@ -6418,10 +6432,14 @@ ops:
   stages:
   - alpha: '5.4'
 - id: fused_sgd_
-  description: |
-    The in-place version of `fused_sgd()`. Covers both the default overload and
+  description: 'The in-place version of `fused_sgd()`. Covers both the default overload
+    and
+
     `_fused_sgd_.tensor_lr`, which takes the learning rate as a tensor so a
+
     scheduler can update it without a host round-trip; both share one kernel.
+
+    '
   for:
   - _fused_sgd_
   - _fused_sgd_.tensor_lr
@@ -6948,8 +6966,8 @@ ops:
   stages:
   - alpha: '5.5'
 - id: hamming_window_periodic_alpha
-  description: A variant of hamming_window() that takes an explicit periodic flag and
-    alpha parameter.
+  description: A variant of hamming_window() that takes an explicit periodic flag
+    and alpha parameter.
   for:
   - hamming_window.periodic_alpha
   labels:
@@ -8226,11 +8244,16 @@ ops:
   stages:
   - alpha: '5.4'
 - id: isreal
-  description: |
-    Tests whether each element is real, i.e. whether its imaginary part is
+  description: 'Tests whether each element is real, i.e. whether its imaginary part
+    is
+
     zero, and returns a bool tensor. Real-valued dtypes are always True; for
+
     complex dtypes the imaginary component is compared against an exact zero
+
     (a negative zero counts as zero).
+
+    '
   for:
   - isreal
   labels:
@@ -9421,9 +9444,9 @@ ops:
   stages:
   - alpha: '5.5'
 - id: linalg_tensorinv_out
-  description: |-
-    Out-of-place variant of linalg_tensorinv: computes the tensor inverse
-    and writes the result into the provided out tensor.
+  description: 'Out-of-place variant of linalg_tensorinv: computes the tensor inverse
+
+    and writes the result into the provided out tensor.'
   for:
   - linalg_tensorinv.out
   labels:
@@ -10332,11 +10355,15 @@ ops:
   stages:
   - alpha: '5.5'
 - id: masked_softmax
-  description: |
-    Apply a softmax over `dim` while excluding positions where the boolean
+  description: 'Apply a softmax over `dim` while excluding positions where the boolean
+
     mask is True. mask_type selects how the mask broadcasts: 2 for an
+
     elementwise mask, 1 for a (B, L) attention padding mask, and 0 for an
+
     (L, L) source mask.
+
+    '
   for:
   - _masked_softmax
   labels:
@@ -10347,17 +10374,21 @@ ops:
   stages:
   - alpha: '5.5'
 - id: masked_softmax_backward
-  description: |
-    Computes the input gradient of a masked softmax: masked positions are
+  description: 'Computes the input gradient of a masked softmax: masked positions
+    are
+
     zeroed and the remaining positions follow the standard softmax backward
+
     formula output * (grad_output - sum(output * grad_output over dim)).
+
+    '
   for:
-    - _masked_softmax_backward
+  - _masked_softmax_backward
   labels:
-    - aten
-    - KernelGen
+  - aten
+  - KernelGen
   kind:
-    - NeuralNetwork
+  - NeuralNetwork
   stages:
     - alpha: '5.5'
 - id: matmul_backward
@@ -11082,8 +11113,8 @@ ops:
   stages:
   - alpha: '5.5'
 - id: multilabel_margin_loss_forward
-  description: 'Computes the forward multi-label margin loss and returns both the
-    loss and the per-class target membership mask.'
+  description: Computes the forward multi-label margin loss and returns both the loss
+    and the per-class target membership mask.
   for:
   - multilabel_margin_loss_forward
   labels:
@@ -11280,9 +11311,12 @@ ops:
   stages:
   - beta: '5.4'
 - id: nanquantile
-  description: |
-    Computes the q-th quantiles of each row of the `input` tensor along the
+  description: 'Computes the q-th quantiles of each row of the `input` tensor along
+    the
+
     dimension `dim`, ignoring `NaN` values.
+
+    '
   for:
   - nanquantile
   labels:
@@ -11633,10 +11667,13 @@ ops:
   stages:
   - alpha: '5.4'
 - id: nested_select_backward
-  description: |
-    Triton kernel implementation for the backward of nested tensor `select`
+  description: 'Triton kernel implementation for the backward of nested tensor `select`
+
     along the batch dimension. Scatters the gradient of the selected
+
     component into a zero buffer with the same nested structure as the input.
+
+    '
   for:
   - _nested_select_backward
   labels:
@@ -12367,10 +12404,13 @@ ops:
   stages:
   - stable: '2.1'
 - id: pad_circular
-  description: |
-    Pads the last one to three dimensions of an N-D tensor using circular
+  description: 'Pads the last one to three dimensions of an N-D tensor using circular
+
     (periodic wrap-around) boundary values. Negative padding crops.
+
     This is an IR representation, not a public API.
+
+    '
   for:
   - _pad_circular
   labels:
@@ -12997,8 +13037,10 @@ ops:
   stages:
   - alpha: '5.5'
 - id: quantized_max_pool3d_out
-  description: |
-    A variant of quantized_max_pool3d() that writes the result into the out tensor.
+  description: 'A variant of quantized_max_pool3d() that writes the result into the
+    out tensor.
+
+    '
   for:
   - quantized_max_pool3d.out
   labels:
@@ -13158,17 +13200,20 @@ ops:
   stages:
   - alpha: '5.4'
 - id: real
-  description: |
-    Returns the real component of a complex tensor as a zero-copy view. For
+  description: 'Returns the real component of a complex tensor as a zero-copy view.
+    For
+
     non-complex tensors, returns the input tensor unchanged.
+
+    '
   for:
-    - real
+  - real
   labels:
-    - aten
+  - aten
   kind:
-    - Tensor
+  - Tensor
   stages:
-    - alpha: '5.5'
+  - alpha: '5.5'
 - id: reciprocal
   description: Returns a new tensor with the reciprocal of the elements of `input`.
   for:
@@ -14005,8 +14050,7 @@ ops:
   stages:
   - alpha: '5.5.0'
 - id: rrelu_with_noise
-  description: 'Triton kernel implementation for rrelu_with_noise
-    '
+  description: 'Triton kernel implementation for rrelu_with_noise '
   for:
   - rrelu_with_noise
   labels:
@@ -14016,8 +14060,7 @@ ops:
   stages:
   - beta: '5.5'
 - id: rrelu_with_noise_
-  description: 'Triton kernel implementation for rrelu_with_noise_
-    '
+  description: 'Triton kernel implementation for rrelu_with_noise_ '
   for:
   - rrelu_with_noise_
   labels:
@@ -14953,9 +14996,11 @@ ops:
   stages:
   - alpha: '5.4'
 - id: sign_
-  description: |
-    The in-place version of `sign()`, writing the element-wise sign back
+  description: 'The in-place version of `sign()`, writing the element-wise sign back
+
     into the input tensor.
+
+    '
   for:
   - sign_
   labels:
@@ -15220,10 +15265,14 @@ ops:
   stages:
   - stable: '5.0'
 - id: slice_copy
-  description: |
-    Performs the same operation as `torch.slice`, but all output tensors are freshly
+  description: 'Performs the same operation as `torch.slice`, but all output tensors
+    are freshly
+
     created instead of aliasing the input. Returns a new tensor containing the
+
     selected slice of `self` along the given dimension.
+
+    '
   for:
   - slice_copy.Tensor
   labels:
@@ -15234,8 +15283,9 @@ ops:
   stages:
   - alpha: '5.5'
 - id: slice_copy_out
-  description: |
-    A variant of `slice_copy()` that assigns the output to an `out` tensor.
+  description: 'A variant of `slice_copy()` that assigns the output to an `out` tensor.
+
+    '
   for:
   - slice_copy.Tensor_out
   labels:
@@ -15260,11 +15310,15 @@ ops:
   stages:
   - stable: '2.2'
 - id: slogdet
-  description: |
-    Computes the sign and natural logarithm of the absolute value of the
+  description: 'Computes the sign and natural logarithm of the absolute value of the
+
     determinant of a square matrix (or a batch of square matrices) using LU
+
     decomposition with partial pivoting. This is the public alias for
+
     `torch.linalg.slogdet`.
+
+    '
   for:
   - slogdet
   labels:
@@ -16163,23 +16217,25 @@ ops:
   stages:
   - alpha: '5.4'
 - id: special_laguerre_polynomial_l
-  description: |
-    Computes the Laguerre polynomial :math:`L_n(x)` element-wise for tensor
+  description: 'Computes the Laguerre polynomial :math:`L_n(x)` element-wise for tensor
+
     and scalar x/n overloads, including destination-passing variants.
+
+    '
   for:
-    - special_laguerre_polynomial_l
-    - special_laguerre_polynomial_l.out
-    - special_laguerre_polynomial_l.x_scalar
-    - special_laguerre_polynomial_l.x_scalar_out
-    - special_laguerre_polynomial_l.n_scalar
-    - special_laguerre_polynomial_l.n_scalar_out
+  - special_laguerre_polynomial_l
+  - special_laguerre_polynomial_l.out
+  - special_laguerre_polynomial_l.x_scalar
+  - special_laguerre_polynomial_l.x_scalar_out
+  - special_laguerre_polynomial_l.n_scalar
+  - special_laguerre_polynomial_l.n_scalar_out
   labels:
-    - aten
-    - pointwise
+  - aten
+  - pointwise
   kind:
-    - Math
+  - Math
   stages:
-    - alpha: '5.5'
+  - alpha: '5.5'
 - id: special_legendre_polynomial_p
   description: 'Computes the Legendre polynomial P_n(x) of degree n for each element
     in the input tensor,
@@ -17536,8 +17592,8 @@ ops:
   stages:
   - stable: '2.1'
 - id: to_copy
-  description: Copies a tensor to a different dtype, layout, device, or memory
-    format, exposed as the low-level `_to_copy` aten operator.
+  description: Copies a tensor to a different dtype, layout, device, or memory format,
+    exposed as the low-level `_to_copy` aten operator.
   for:
   - _to_copy
   condition:
@@ -17701,15 +17757,18 @@ ops:
   stages:
   - alpha: '5.1'
 - id: transpose_copy
-  description: |
-    Returns a new contiguous tensor with the two specified dimensions swapped.
+  description: 'Returns a new contiguous tensor with the two specified dimensions
+    swapped.
+
     The result does not alias the input tensor.
+
+    '
   for:
-    - transpose_copy.int
+  - transpose_copy.int
   labels:
-    - aten
+  - aten
   kind:
-    - Tensor
+  - Tensor
   stages:
     - alpha: '5.5'
 - id: trapz
@@ -18014,7 +18073,8 @@ ops:
   stages:
   - alpha: '5.4'
 - id: uniform
-  description: Returns a new tensor filled with numbers sampled from the continuous uniform distribution.
+  description: Returns a new tensor filled with numbers sampled from the continuous
+    uniform distribution.
   for:
   - uniform
   labels:
