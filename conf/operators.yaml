@@ -12342,6 +12342,19 @@ ops:
   stages:
   - beta: '5.0'
   - stable: '5.3'
+- id: pack_padded_sequence
+  description: |
+    Packs a padded batch of variable length sequences into a PackedSequence
+    data tensor together with the per-time-step batch sizes.
+  for:
+  - _pack_padded_sequence
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5.0'
 - id: pack_seq_triton
   description: Pack variable-length token sequences into a padded batched tensor.
   for:
