@@ -930,6 +930,10 @@ from flag_gems.ops.prelu import prelu
 from flag_gems.ops.prod import prod, prod_dim
 from flag_gems.ops.put import put, put_out
 from flag_gems.ops.quantile import quantile
+from flag_gems.ops.quantize_per_channel import (
+    quantize_per_channel,
+    quantize_per_channel_out,
+)
 from flag_gems.ops.quantize_per_tensor import (
     quantize_per_tensor,
     quantize_per_tensor_out,
@@ -2264,6 +2268,8 @@ __all__ = [
     "put",
     "put_out",
     "quantile",
+    "quantize_per_channel",
+    "quantize_per_channel_out",
     "quantize_per_tensor",
     "quantize_per_tensor_out",
     "quantized_gru_data",

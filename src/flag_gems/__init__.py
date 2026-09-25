@@ -1266,6 +1266,8 @@ _FULL_CONFIG = (
     ("put", put),
     ("put.out", put_out),
     ("quantile", quantile),
+    ("quantize_per_channel", quantize_per_channel),
+    ("quantize_per_channel.out", quantize_per_channel_out),
     ("quantize_per_tensor", quantize_per_tensor),
     ("quantize_per_tensor.out", quantize_per_tensor_out),
     ("quantized_gru.data", quantized_gru_data),
