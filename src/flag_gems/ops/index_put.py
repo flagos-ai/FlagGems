@@ -95,13 +95,18 @@ def generate_index_put_kernel(
         code.writeline("pid0 = ext.program_id(axis=0)")
         code.writeline("pid1 = ext.program_id(axis=1)")
         code.writeline(
-            "offset0 = pid0 * BLOCK_SIZE0 + tl.arange(0, BLOCK_SIZE0)[:, None]"
+            "offset0 = pid0.to(tl.int64) * BLOCK_SIZE0 + "
+            "tl.arange(0, BLOCK_SIZE0).to(tl.int64)[:, None]"
         )
         if inp_rank == indices_len:
-            code.writeline("offset1 = pid1 * 1 + tl.arange(0, 1)[None, :]")
+            code.writeline(
+                "offset1 = pid1.to(tl.int64) + "
+                "tl.arange(0, 1).to(tl.int64)[None, :]"
+            )
         else:
             code.writeline(
-                "offset1 = pid1 * BLOCK_SIZE1 + tl.arange(0, BLOCK_SIZE1)[None, :]"
+                "offset1 = pid1.to(tl.int64) * BLOCK_SIZE1 + "
+                "tl.arange(0, BLOCK_SIZE1).to(tl.int64)[None, :]"
             )
         code.newline()
         code.writeline("cur_idx = offset0")
@@ -118,7 +123,8 @@ def generate_index_put_kernel(
         for i in range(indices_len):
             comp = [f"indices_idx{j} * indices{i}_stride{j}" for j in range(index_rank)]
             code.writeline(
-                f"cur_index{i} = tl.load(indices{i}_ptr + {' + '.join(comp)}, mask=mask0, other=0)"
+                f"cur_index{i} = tl.load(indices{i}_ptr + "
+                f"{' + '.join(comp)}, mask=mask0, other=0).to(tl.int64)"
             )
         code.newline()
         index_mask = [
