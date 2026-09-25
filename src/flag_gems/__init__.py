@@ -1524,6 +1524,8 @@ _FULL_CONFIG = (
     ("special_logsumexp", special_logsumexp),
     ("special_modified_bessel_i0", special_modified_bessel_i0),
     ("special_modified_bessel_i0.out", special_modified_bessel_i0_out),
+    ("special_modified_bessel_i1", special_modified_bessel_i1),
+    ("special_modified_bessel_i1.out", special_modified_bessel_i1_out),
     ("special_modified_bessel_k0", special_modified_bessel_k0),
     ("special_modified_bessel_k0.out", special_modified_bessel_k0_out),
     ("special_modified_bessel_k1", special_modified_bessel_k1),
