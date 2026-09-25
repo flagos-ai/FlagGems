@@ -141,6 +141,7 @@ from .scatter_reduce import scatter_reduce, scatter_reduce_, scatter_reduce_out
 from .segment_reduce import _segment_reduce_backward, _segment_reduce_backward_out
 from .select_backward import select_backward
 from .select_scatter import select_scatter
+from .selu_ import selu_
 from .silu import silu, silu_
 from .slice_scatter import slice_scatter
 from .softmax import softmax, softmax_backward, softmax_backward_out, softmax_out
@@ -344,6 +345,7 @@ __all__ = [
     "scatter_reduce_out",
     "select_backward",
     "select_scatter",
+    "selu_",
     "silu",
     "silu_",
     "slice_scatter",
