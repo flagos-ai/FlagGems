@@ -12858,6 +12858,17 @@ ops:
   - Tensor
   stages:
   - alpha: '5.5'
+- id: put_
+  description: The in-place version of `put()`.
+  for:
+  - put_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: put_out
   description: |
     A variant of `put()` that writes the result into the `out` tensor.

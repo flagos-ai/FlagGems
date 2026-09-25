@@ -929,6 +929,7 @@ from flag_gems.ops.pow import (
 from flag_gems.ops.prelu import prelu
 from flag_gems.ops.prod import prod, prod_dim
 from flag_gems.ops.put import put, put_out
+from flag_gems.ops.put_ import put_
 from flag_gems.ops.quantile import quantile
 from flag_gems.ops.quantize_per_tensor import (
     quantize_per_tensor,
@@ -2262,6 +2263,7 @@ __all__ = [
     "prod",
     "prod_dim",
     "put",
+    "put_",
     "put_out",
     "quantile",
     "quantize_per_tensor",
