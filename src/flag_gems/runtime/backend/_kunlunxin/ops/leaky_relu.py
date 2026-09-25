@@ -17,6 +17,7 @@ import logging
 import torch
 import triton
 import triton.language as tl
+from _kunlunxin.utils.bf16_fast_store import bf16_fast_store
 from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
@@ -186,19 +187,23 @@ def _leaky_relu_backward_flat(grad_output, self, negative_slope):
         block = _LEAKY_FAT_BLOCK
     need_mask = n % block != 0
     grid = (triton.cdiv(n, block),)
-    leaky_relu_backward_flat_kernel[grid](
-        grad_output,
-        self,
-        out,
-        n,
-        negative_slope,
-        BLOCK=block,
-        NEED_MASK=need_mask,
-        USE_BIT=(n <= 8192),
-        num_warps=warps,
-        buffer_size_limit=_LEAKY_BSL,
-        unroll_num=16,
-    )
+    # bf16 outputs take the fast f32->bf16 store lowering for this launch only;
+    # see _kunlunxin.utils.bf16_fast_store for why it is scoped rather than set
+    # globally, and for the one-ULP tie-bias difference from the default path.
+    with bf16_fast_store(out.dtype):
+        leaky_relu_backward_flat_kernel[grid](
+            grad_output,
+            self,
+            out,
+            n,
+            negative_slope,
+            BLOCK=block,
+            NEED_MASK=need_mask,
+            USE_BIT=(n <= 8192),
+            num_warps=warps,
+            buffer_size_limit=_LEAKY_BSL,
+            unroll_num=16,
+        )
     return out
 
 
