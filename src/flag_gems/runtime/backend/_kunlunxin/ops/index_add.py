@@ -322,6 +322,8 @@ def index_add(inp, dim, index, src, alpha=1):
     dim = dim % inp.ndim
     inp_len = inp.size(dim)
     N = index.numel()
+    if N == 0:
+        return inp.clone()
     M = src.numel() // N if N > 0 else 0
     fine_dim = inp.ndim - 1
     if dim != fine_dim:
@@ -423,6 +425,8 @@ def index_add_(inp, dim, index, src, alpha=1):
     dim = dim % inp_cont.ndim
     inp_len = inp_cont.size(dim)
     N = index.numel()
+    if N == 0:
+        return inp
     M = src.numel() // N if N > 0 else 0
     fine_dim = inp_cont.ndim - 1
     if dim != fine_dim:

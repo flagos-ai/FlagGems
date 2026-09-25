@@ -1189,6 +1189,8 @@ def index_add(inp, dim, index, src, alpha=1):
     dim = dim % inp.ndim
     inp_len = inp.size(dim)
     N = index.numel()
+    if N == 0:
+        return inp.clone()
     M = src.numel() // N
 
     # Bounds check: the common op (src/flag_gems/ops/index_add.py) performs this
@@ -1256,6 +1258,8 @@ def index_add_(inp, dim, index, src, alpha=1):
     dim = dim % inp.ndim
     inp_len = inp.size(dim)
     N = index.numel()
+    if N == 0:
+        return inp
     M = src.numel() // N
 
     # Bounds check: the common op (src/flag_gems/ops/index_add.py) performs this
