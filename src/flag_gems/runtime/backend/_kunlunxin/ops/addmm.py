@@ -24,6 +24,8 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import broadcastable_to, libentry
 from flag_gems.utils import triton_lang_extension as ext
 
+from .mm import mm  # [call-fix 2026-09-24] in-tree direct call
+
 logger = logging.getLogger(__name__)
 
 
@@ -269,6 +271,20 @@ def addmm(bias, mat1, mat2, *, beta=1.0, alpha=1.0):
     assert broadcastable_to(
         bias.shape, (mat1.shape[0], mat2.shape[1])
     ), "Incompatible input shape"
+    if (
+        mat1.dtype == torch.bfloat16
+        and mat2.dtype == torch.bfloat16
+        and bias.dtype == torch.bfloat16
+        and alpha == 1.0
+        and beta == 1.0
+    ):
+        # [kunlunxin] match the native two-step numerics: the matmul result is
+        # rounded to bf16 first, then the bias is added in bf16.
+        # [call-fix 2026-09-24] the product goes through the backend's own mm
+        # by direct import; the in-tree add kernel keeps the bf16 bias add.
+        from .add import add
+
+        return add(mm(mat1, mat2), bias)
     M, K = mat1.shape
     _, N = mat2.shape
 
