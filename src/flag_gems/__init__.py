@@ -537,6 +537,7 @@ _FULL_CONFIG = (
     ("baddbmm", baddbmm),
     ("baddbmm.out", baddbmm_out),
     ("baddbmm_", baddbmm_),
+    ("bartlett_window", bartlett_window),
     ("batch_norm_backward_elemt", batch_norm_backward_elemt),
     ("batch_norm_backward_reduce", batch_norm_backward_reduce),
     ("batch_norm_gather_stats", batch_norm_gather_stats),
