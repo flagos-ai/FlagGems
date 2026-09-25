@@ -1387,6 +1387,7 @@ _FULL_CONFIG = (
     ),
     ("row_stack", row_stack),
     ("row_stack.out", row_stack_out),
+    ("rrelu", rrelu),
     ("rrelu_with_noise", rrelu_with_noise),
     ("rrelu_with_noise_", rrelu_with_noise_),
     ("rrelu_with_noise_backward", rrelu_with_noise_backward),
