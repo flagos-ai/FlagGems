@@ -16561,6 +16561,17 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: special_spherical_bessel_j0
+  description: Computes the spherical Bessel function of the first kind of order 0.
+  for:
+  - special_spherical_bessel_j0
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: special_xlog1py
   description: 'Computes `x * log1p(y)` for each element pair in the input tensors
     `x` and `y`.
