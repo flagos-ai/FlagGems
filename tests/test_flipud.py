@@ -62,7 +62,13 @@ def test_accuracy_flipud_non_float(dtype, high):
 @pytest.mark.parametrize("dtype", utils.COMPLEX_DTYPES)
 def test_accuracy_flipud_complex(dtype):
     inp = torch.randn((3, 5), dtype=dtype, device=flag_gems.device).T
-    expected = torch.flipud(utils.to_reference(inp, False))
+    ref_inp = utils.to_reference(inp, False)
+    # CPU has no ComplexHalf flip kernel; flip is a pure permutation, so upcast
+    # the reference, flip, and cast back — exact and dtype-preserving.
+    if ref_inp.dtype == torch.complex32:
+        expected = torch.flipud(ref_inp.to(torch.complex64)).to(torch.complex32)
+    else:
+        expected = torch.flipud(ref_inp)
 
     with flag_gems.use_gems():
         result = torch.flipud(inp)

@@ -567,14 +567,17 @@ def test_efficient_attention_backward(
             num_splits_key=None,
         )
 
-    utils.gems_assert_close(dQ, ref_dQ, dtype, equal_nan=True)
-    utils.gems_assert_close(dK, ref_dK, dtype, equal_nan=True)
-    utils.gems_assert_close(dV, ref_dV, dtype, equal_nan=True)
+    # Attention backward accumulates over the sequence, so fp16/bf16 gradients
+    # can differ from the reference by a few ULP on individual elements; use the
+    # relaxed tolerance already applied to other attention ops.
+    utils.gems_assert_close(dQ, ref_dQ, dtype, equal_nan=True, atol=2e-2)
+    utils.gems_assert_close(dK, ref_dK, dtype, equal_nan=True, atol=2e-2)
+    utils.gems_assert_close(dV, ref_dV, dtype, equal_nan=True, atol=2e-2)
 
     if has_bias and bias_requires_grad:
         assert dBias_gems is not None, "dBias should not be None"
         assert ref_dBias is not None, "ref dBias should not be None"
-        utils.gems_assert_close(dBias_gems, ref_dBias, dtype, equal_nan=True)
+        utils.gems_assert_close(dBias_gems, ref_dBias, dtype, equal_nan=True, atol=2e-2)
 
 
 @pytest.mark.scaled_dot_product_efficient_attention_backward

@@ -1318,10 +1318,11 @@ def _fallback_erfc(x):
 @triton.jit
 def _fallback_rcp_rn(x):
     # Correctly-rounded reciprocal, used when a backend's libdevice lacks a
-    # native rcp_rn (e.g. the Ascend CANN backend). x is expected to already
-    # be fp32/fp64; casting 1.0 to x's dtype keeps the division from widening
-    # to fp64, which is what the callers of rcp_rn rely on.
-    return (1.0).to(x.dtype) / x
+    # native rcp_rn (e.g. the Ascend CANN or HIP backend). x is expected to be
+    # fp32/fp64. A Python float literal has no `.to()` in the Triton frontend;
+    # in `1.0 / x` the literal adopts x's dtype, so the division stays in x's
+    # precision without widening to fp64.
+    return 1.0 / x
 
 
 _FALLBACK_SYMBOLS = {
@@ -1352,6 +1353,11 @@ def _patch_missing_symbols(module, names):
         # FlagGems only needs their shared round-to-nearest-even value semantics.
         if name == "nearbyint" and hasattr(module, "rint"):
             setattr(module, name, module.rint)
+            continue
+        # The HIP/AMD libdevice is the mirror case: it exposes nearbyint but not
+        # rint (which otherwise fails to lower). They share round-to-nearest-even.
+        if name == "rint" and hasattr(module, "nearbyint"):
+            setattr(module, name, module.nearbyint)
             continue
         # Prefer the pure-triton fallback over borrowing from another backend's
         # libdevice.  This loop only runs for symbols the vendor's own libdevice

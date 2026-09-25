@@ -24,6 +24,30 @@ import triton.language.extra.libdevice as libdevice
 logger = logging.getLogger(__name__)
 
 
+# libdevice.div_rn does not lower on the HIP/AMD backend, so fall back to '/'
+# there (for fp32 it lowers to the same IEEE round-to-nearest-even division).
+# Every other backend keeps the exact div_rn intrinsic, so their behavior is
+# byte-for-byte unchanged.
+if torch.version.hip is not None:
+
+    @triton.jit
+    def _div_rn(a, b):
+        return a / b
+
+else:
+
+    @triton.jit
+    def _div_rn(a, b):
+        return libdevice.div_rn(a, b)
+
+
+@triton.jit
+def _rint(x):
+    # Round half to even. libdevice.rint does not lower on HIP, but the backend
+    # provides the equivalent libdevice.nearbyint.
+    return libdevice.nearbyint(x)
+
+
 _SCALAR_TYPE_NAMES = {
     torch.float16: "Half",
     torch.bfloat16: "BFloat16",
@@ -92,18 +116,16 @@ def _qparams(
         mn = tl.minimum(rmin, 0.0)
         mx = tl.maximum(rmax, 0.0)
         # asymmetric / default branch
-        sc = libdevice.div_rn(mx - mn, qmxf - qmnf)
+        sc = _div_rn(mx - mn, qmxf - qmnf)
         sc = tl.where(sc == 0.0, 0.1, sc)
-        z = libdevice.rint(qmnf - libdevice.div_rn(mn, sc))
+        z = _rint(qmnf - _div_rn(mn, sc))
         z = tl.minimum(tl.maximum(z, qmnf), qmxf)
 
         both = (mn < 0.0) & (mx > 0.0)
         if SYM:
-            sc_sym = tl.maximum(
-                libdevice.div_rn(-mn, -qmnf), libdevice.div_rn(mx, qmxf)
-            )
+            sc_sym = tl.maximum(_div_rn(-mn, -qmnf), _div_rn(mx, qmxf))
             sc_sym = tl.where(sc_sym == 0.0, 0.1, sc_sym)
-            z_sym = libdevice.rint((qmnf + qmxf) / 2.0)
+            z_sym = _rint((qmnf + qmxf) / 2.0)
             sc = tl.where(both, sc_sym, sc)
             z = tl.where(both, z_sym, z)
 
@@ -137,7 +159,7 @@ def _fake_quant(
 
     qmnf = qmin.to(tl.float32)
     qmxf = qmax.to(tl.float32)
-    q = libdevice.rint(libdevice.div_rn(x, s)) + z
+    q = _rint(_div_rn(x, s)) + z
     valid = (q >= qmnf) & (q <= qmxf)
     qc = tl.minimum(tl.maximum(q, qmnf), qmxf)
     out = (qc - z) * s
@@ -184,15 +206,15 @@ def _pt_qparam_fq(
     qmxf = qmax.to(tl.float32)
     mn = tl.minimum(rmin, 0.0)
     mx = tl.maximum(rmax, 0.0)
-    sc = libdevice.div_rn(mx - mn, qmxf - qmnf)
+    sc = _div_rn(mx - mn, qmxf - qmnf)
     sc = tl.where(sc == 0.0, 0.1, sc)
-    z = libdevice.rint(qmnf - libdevice.div_rn(mn, sc))
+    z = _rint(qmnf - _div_rn(mn, sc))
     z = tl.minimum(tl.maximum(z, qmnf), qmxf)
     if SYM:
         both = (mn < 0.0) & (mx > 0.0)
-        sc_sym = tl.maximum(libdevice.div_rn(-mn, -qmnf), libdevice.div_rn(mx, qmxf))
+        sc_sym = tl.maximum(_div_rn(-mn, -qmnf), _div_rn(mx, qmxf))
         sc_sym = tl.where(sc_sym == 0.0, 0.1, sc_sym)
-        z_sym = libdevice.rint((qmnf + qmxf) / 2.0)
+        z_sym = _rint((qmnf + qmxf) / 2.0)
         sc = tl.where(both, sc_sym, sc)
         z = tl.where(both, z_sym, z)
 
@@ -206,7 +228,7 @@ def _pt_qparam_fq(
     off = pid * BLOCK + tl.arange(0, BLOCK)
     m = off < N
     x = tl.load(x_ptr + off, mask=m, other=0.0).to(tl.float32)
-    q = libdevice.rint(libdevice.div_rn(x, sc)) + z
+    q = _rint(_div_rn(x, sc)) + z
     valid = (q >= qmnf) & (q <= qmxf)
     qc = tl.minimum(tl.maximum(q, qmnf), qmxf)
     out = (qc - z) * sc
@@ -262,15 +284,15 @@ def _fused_fq(
     qmxf = qmax.to(tl.float32)
     mn = tl.minimum(rmin, 0.0)
     mx = tl.maximum(rmax, 0.0)
-    sc = libdevice.div_rn(mx - mn, qmxf - qmnf)
+    sc = _div_rn(mx - mn, qmxf - qmnf)
     sc = tl.where(sc == 0.0, 0.1, sc)
-    z = libdevice.rint(qmnf - libdevice.div_rn(mn, sc))
+    z = _rint(qmnf - _div_rn(mn, sc))
     z = tl.minimum(tl.maximum(z, qmnf), qmxf)
     if SYM:
         both = (mn < 0.0) & (mx > 0.0)
-        sc_sym = tl.maximum(libdevice.div_rn(-mn, -qmnf), libdevice.div_rn(mx, qmxf))
+        sc_sym = tl.maximum(_div_rn(-mn, -qmnf), _div_rn(mx, qmxf))
         sc_sym = tl.where(sc_sym == 0.0, 0.1, sc_sym)
-        z_sym = libdevice.rint((qmnf + qmxf) / 2.0)
+        z_sym = _rint((qmnf + qmxf) / 2.0)
         sc = tl.where(both, sc_sym, sc)
         z = tl.where(both, z_sym, z)
 
@@ -283,7 +305,7 @@ def _fused_fq(
     tl.store(zp_out_ptr + c, z.to(tl.int32), mask=gate)
 
     x = tl.load(x_ptr + off, mask=m, other=0.0).to(tl.float32)
-    q = libdevice.rint(libdevice.div_rn(x, sc)) + z
+    q = _rint(_div_rn(x, sc)) + z
     valid = (q >= qmnf) & (q <= qmxf)
     qc = tl.minimum(tl.maximum(q, qmnf), qmxf)
     out = (qc - z) * sc
