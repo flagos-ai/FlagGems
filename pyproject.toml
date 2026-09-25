@@ -300,6 +300,7 @@ flaggems-flagtune-compare = "flag_gems.flagtune.offline.cli.compare:main"
 
 "flag_gems" = ["backends.yaml"]
 "flag_gems.runtime" = ["*/**/*.yaml"]
+"flag_gems.utils" = ["configs/*.yaml"]
 "flag_gems.flagtune.inference" = ["manifest.json"]
 "flag_gems.flagtune.offline.contracts" = ["configs/*.yaml"]
 
