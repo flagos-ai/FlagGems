@@ -11055,21 +11055,11 @@ ops:
   labels:
   - aten
   - Loss
+  - KernelGen
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.5'
-- id: multi_margin_loss_backward_out
-  description: Writes the multi-class margin-loss gradient into grad_input.
-  for:
-  - multi_margin_loss_backward.grad_input
-  labels:
-  - aten
-  - Loss
-  kind:
-  - NeuralNetwork
-  stages:
-  - alpha: '5.5'
+  - alpha: '5.5.0'
 - id: multi_margin_loss_out
   description: Writes the multi-class margin loss into the provided output tensor.
   for:
