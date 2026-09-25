@@ -69,6 +69,7 @@ from .matmul_int8 import matmul_int8
 from .max_pool3d_with_indices_backward import max_pool3d_with_indices_backward
 from .min import min, min_dim
 from .mm import mm, mm_out
+from .mm_w8a8_int8 import mm_w8a8_int8, mm_w8a8_int8_out
 from .mv import mv
 from .mvlgamma import mvlgamma
 from .mvlgamma_ import mvlgamma_
@@ -222,6 +223,8 @@ __all__ = [
     "min_dim",
     "mm",
     "mm_out",
+    "mm_w8a8_int8",
+    "mm_w8a8_int8_out",
     "mv",
     "mvlgamma",
     "mvlgamma_",

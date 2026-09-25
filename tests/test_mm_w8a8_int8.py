@@ -368,7 +368,12 @@ def reference(a, b, sa, sb, bias=None, dtype=torch.float32):
     return value.to(dtype)
 
 
-@pytest.mark.skipif(flag_gems.vendor_name != "hygon", reason="hygon only")
+_PREQUANTIZED = ("hygon", "metax")
+
+
+@pytest.mark.skipif(
+    flag_gems.vendor_name not in _PREQUANTIZED, reason="prequantized W8A8 INT8 only"
+)
 @pytest.mark.parametrize(
     "shape",
     [
@@ -396,6 +401,8 @@ def reference(a, b, sa, sb, bias=None, dtype=torch.float32):
 )
 @pytest.mark.mm_w8a8_int8
 def test_prequantized(shape, dtype, scalar, bias_on, layout):
+    if flag_gems.vendor_name == "metax" and dtype == torch.float32:
+        pytest.skip("MetaX scaled_mm output is FP16 or BF16")
     a, b, sa, sb = inputs(*shape, scalar=scalar, layout=layout)
     bias = (
         torch.randn(shape[1], device=flag_gems.device, dtype=dtype) if bias_on else None
@@ -420,22 +427,27 @@ def test_long_k_overflow(code):
     gems_assert_equal(y.cpu(), reference(a, b, sa, sb))
 
 
-@pytest.mark.skipif(flag_gems.vendor_name != "hygon", reason="hygon only")
+@pytest.mark.skipif(
+    flag_gems.vendor_name not in _PREQUANTIZED, reason="prequantized W8A8 INT8 only"
+)
 @pytest.mark.parametrize("a_scalar,b_scalar", [(True, False), (False, True)])
 def test_mixed_scales(a_scalar, b_scalar):
     a, b, sa, sb = inputs(17, 13, 31)
     sa = sa[:1] if a_scalar else sa.flatten()
     sb = sb[:, :1].contiguous() if b_scalar else sb.flatten()
-    y = flag_gems.mm_w8a8_int8(a, b, sa, sb)
+    y = flag_gems.mm_w8a8_int8(a, b, sa, sb, torch.bfloat16)
     assert y.dtype == torch.bfloat16
     gems_assert_equal(y.cpu(), reference(a, b, sa, sb, dtype=torch.bfloat16))
 
 
-@pytest.mark.skipif(flag_gems.vendor_name != "hygon", reason="hygon only")
+@pytest.mark.skipif(
+    flag_gems.vendor_name not in _PREQUANTIZED, reason="prequantized W8A8 INT8 only"
+)
 def test_graph_updates():
     a, b, sa, sb = inputs(17, 13, 31)
-    bias = torch.randn(13, device=flag_gems.device)
-    out = torch.empty((17, 13), device=flag_gems.device)
+    dtype = torch.bfloat16 if flag_gems.vendor_name == "metax" else torch.float32
+    bias = torch.randn(13, device=flag_gems.device, dtype=dtype)
+    out = torch.empty((17, 13), device=flag_gems.device, dtype=dtype)
     for _ in range(3):
         flag_gems.mm_w8a8_int8_out(a, b, sa, sb, out=out, bias=bias)
     graph = torch.cuda.CUDAGraph()
@@ -447,10 +459,12 @@ def test_graph_updates():
     sb.mul_(3)
     bias.add_(1)
     graph.replay()
-    gems_assert_equal(out.cpu(), reference(a, b, sa, sb, bias))
+    gems_assert_equal(out.cpu(), reference(a, b, sa, sb, bias, dtype))
 
 
-@pytest.mark.skipif(flag_gems.vendor_name != "hygon", reason="hygon only")
+@pytest.mark.skipif(
+    flag_gems.vendor_name not in _PREQUANTIZED, reason="prequantized W8A8 INT8 only"
+)
 @pytest.mark.parametrize(
     "bad",
     [
@@ -471,9 +485,12 @@ def test_graph_updates():
     ],
 )
 def test_invalid(bad):
+    if flag_gems.vendor_name == "metax" and bad in ("scale_stride", "alias"):
+        pytest.skip("MetaX copies strided scales and does not reject aliased out")
     a, b, sa, sb = inputs(3, 5, 7)
     bias = None
-    out = torch.empty((3, 5), device=flag_gems.device)
+    out_dtype = torch.bfloat16 if flag_gems.vendor_name == "metax" else torch.float32
+    out = torch.empty((3, 5), device=flag_gems.device, dtype=out_dtype)
     if bad == "a_dtype":
         a = a.float()
     elif bad == "b_dtype":
