@@ -1372,6 +1372,7 @@ _FULL_CONFIG = (
     ("rnn_relu.input", rnn_relu),
     ("rnn_tanh.data", rnn_tanh_data),
     ("rnn_tanh.input", rnn_tanh),
+    ("rnn_tanh_cell", rnn_tanh_cell),
     ("roll", roll),
     ("rot90", rot90),
     ("round", round),

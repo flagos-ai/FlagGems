@@ -13854,6 +13854,21 @@ ops:
   - rnn_tanh
   source:
   - aten
+- id: rnn_tanh_cell
+  description: |
+    Applies a single-timestep Elman RNN cell with tanh activation:
+    h' = tanh(x @ W_ih^T + b_ih + h @ W_hh^T + b_hh). Implemented as a
+    Triton mat-vec kernel with float32 accumulation.
+  for:
+  - rnn_tanh_cell
+  labels:
+  - aten
+  - KernelGen
+  - NoCPU
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5.0'
 - id: rnn_tanh_data
   description: Pure Triton implementation for the rnn_tanh data overload.
   for:

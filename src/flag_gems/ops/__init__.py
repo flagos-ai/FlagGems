@@ -998,6 +998,7 @@ from flag_gems.ops.rms_norm import rms_norm, rms_norm_backward, rms_norm_forward
 from flag_gems.ops.rms_norm_w8a16_fp8 import rms_norm_w8a16_fp8
 from flag_gems.ops.rnn_relu import rnn_relu
 from flag_gems.ops.rnn_tanh import rnn_tanh, rnn_tanh_data
+from flag_gems.ops.rnn_tanh_cell import rnn_tanh_cell
 from flag_gems.ops.roll import roll
 from flag_gems.ops.rot90 import rot90
 from flag_gems.ops.round import round, round_, round_out
@@ -2333,6 +2334,7 @@ __all__ = [
     "rms_norm_w8a16_fp8",
     "rnn_relu",
     "rnn_tanh",
+    "rnn_tanh_cell",
     "rnn_tanh_data",
     "roll",
     "rot90",
