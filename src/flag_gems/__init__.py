@@ -336,6 +336,7 @@ _FULL_CONFIG = (
     ("_scaled_grouped_mm_v2", _scaled_grouped_mm_v2),
     ("_scaled_mm", scaled_mm, lambda: torch_ge("2.5")),
     ("_scaled_mm.out", scaled_mm_out, lambda: torch_ge("2.5")),
+    ("_scaled_mm_v2", _scaled_mm_v2),
     ("_segment_reduce_backward", _segment_reduce_backward),
     ("_segment_reduce_backward.out", _segment_reduce_backward_out),
     ("_sobol_engine_draw", underscore_sobol_engine_draw),
