@@ -18,6 +18,9 @@ from .adaptive_max_pool3d import adaptive_max_pool3d
 from .addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out
 from .all import all, all_dim, all_dims
 from .amax import amax
+from .amp_foreach_non_finite_check_and_unscale_ import (
+    _amp_foreach_non_finite_check_and_unscale_,
+)
 from .angle import angle
 from .any import any, any_dim, any_dims
 from .arange import arange, arange_start
@@ -170,6 +173,7 @@ from .zeros import zeros
 from .zeros_like import zeros_like
 
 __all__ = [
+    "_amp_foreach_non_finite_check_and_unscale_",
     "_dyn_quant_matmul_4bit",
     "_segment_reduce_backward",
     "_segment_reduce_backward_out",
