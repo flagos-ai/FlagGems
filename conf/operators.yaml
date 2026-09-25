@@ -932,6 +932,21 @@ ops:
   - Tensor
   stages:
   - alpha: '5.3'
+- id: affine_grid_generator_backward
+  description: 'Computes the backward pass of affine_grid_generator: given the gradient
+
+    w.r.t. the output grid, produces the gradient w.r.t. the affine matrix theta.
+
+    '
+  for:
+  - affine_grid_generator_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: alias
   description: Return a view tensor sharing the same storage (zero-copy alias).
   for:
