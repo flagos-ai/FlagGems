@@ -674,6 +674,90 @@ class TunedConfigLoader(object):
                 for w in ranges["w"]
             ]
 
+        if op_name in (
+            "mm_w8a8_fp8_musa_ws_fragmented",
+            "mm_w8a8_fp8_musa_ws_fragmented_default",
+        ):
+            return [
+                triton.Config(
+                    dict(
+                        BM=bm,
+                        BN=bn,
+                        BK=bk,
+                        NC=nc,
+                        CW=cw,
+                        PW=pw,
+                        STAGES=stages,
+                        GM=gm,
+                        FRAGMENTED=fragmented,
+                    ),
+                    num_warps=cw,
+                    num_stages=1,
+                    pre_hook=pre_hook,
+                )
+                for bm in ranges["BM"]
+                for bn in ranges["BN"]
+                for bk in ranges["BK"]
+                for nc in ranges["NC"]
+                for cw in ranges["CW"]
+                for pw in ranges["PW"]
+                for stages in ranges["STAGES"]
+                for gm in ranges["GM"]
+                for fragmented in ranges["FRAGMENTED"]
+                if nc * cw + pw <= 32
+                and (not fragmented or nc == 2)
+                and (bm + (bn + bn // 4 if fragmented else nc * bn)) * bk * stages
+                <= 192 * 1024
+                and 16 <= bm * bn // (cw * 32) <= 128
+            ]
+
+        if op_name in ("mm_w8a8_fp8_musa_ws", "mm_w8a8_fp8_musa_ws_default"):
+            return [
+                triton.Config(
+                    dict(
+                        BM=bm, BN=bn, BK=bk, NC=nc, CW=cw, PW=pw, STAGES=stages, GM=gm
+                    ),
+                    num_warps=cw,
+                    num_stages=1,
+                    pre_hook=pre_hook,
+                )
+                for bm in ranges["BM"]
+                for bn in ranges["BN"]
+                for bk in ranges["BK"]
+                for nc in ranges["NC"]
+                for cw in ranges["CW"]
+                for pw in ranges["PW"]
+                for stages in ranges["STAGES"]
+                for gm in ranges["GM"]
+                if nc * cw + pw <= 32
+                and (bm + nc * bn) * bk * stages <= 192 * 1024
+                and 16 <= bm * bn // (cw * 32) <= 128
+            ]
+
+        if op_name in ("mm_w8a8_fp8_musa", "mm_w8a8_fp8_musa_default"):
+            return [
+                triton.Config(
+                    {
+                        "BLOCK_M": bm,
+                        "BLOCK_N": bn,
+                        "BLOCK_K": bk,
+                        "GROUP_M": gm,
+                        "PERSISTENT": persistent,
+                    },
+                    num_stages=stages,
+                    num_warps=warps,
+                    pre_hook=pre_hook,
+                )
+                for bm in ranges["BLOCK_M"]
+                for bn in ranges["BLOCK_N"]
+                for bk in ranges["BLOCK_K"]
+                for gm in ranges["GROUP_M"]
+                for persistent in ranges["PERSISTENT"]
+                for stages in ranges["s"]
+                for warps in ranges["w"]
+                if (bm + bn) * bk * stages <= 192 * 1024 and bm * bn <= 128 * warps * 32
+            ]
+
         if op_name in ("w8a8_block_fp8_general_tma", "mm_w8a8_fp8_general_tma"):
             group_m_values = ranges.get("GROUP_M", [None])
             return [
@@ -824,7 +908,42 @@ class TunedConfigLoader(object):
         return None
 
     def _build_expand_registry(self):
+        musa_yaml = os.path.join(
+            os.path.dirname(__file__), "backend", "_mthreads", "tune_configs.yaml"
+        )
         return {
+            **{
+                name: {
+                    "yaml_op_name": name,
+                    "key": [
+                        "M",
+                        "N",
+                        "K",
+                        "AM",
+                        "AK",
+                        "BK_STRIDE",
+                        "BN_STRIDE",
+                        "DESCRIPTOR",
+                        "SPLIT_K",
+                    ],
+                    "default_strategy": ["default"] * 9,
+                    "expand_yaml_path": musa_yaml,
+                }
+                for name in ("mm_w8a8_fp8_musa", "mm_w8a8_fp8_musa_default")
+            },
+            **{
+                name: {
+                    "key": ["M", "N", "K"],
+                    "default_strategy": ["default"] * 3,
+                    "expand_yaml_path": musa_yaml,
+                }
+                for name in (
+                    "mm_w8a8_fp8_musa_ws",
+                    "mm_w8a8_fp8_musa_ws_default",
+                    "mm_w8a8_fp8_musa_ws_fragmented",
+                    "mm_w8a8_fp8_musa_ws_fragmented_default",
+                )
+            },
             "addmm": self._build_single_expand_spec(
                 "addmm", expand_yaml_path=self._get_expand_config_path("addmm")
             ),
@@ -1268,6 +1387,18 @@ class TunedConfigLoader(object):
         current_op_configs = self._get_op_configs(op_name)
         if not current_op_configs:
             return []
+
+        if self.device.vendor_name == "mthreads" and op_name in (
+            "mm_w8a8_fp8_musa",
+            "mm_w8a8_fp8_musa_default",
+            "mm_w8a8_fp8_musa_ws",
+            "mm_w8a8_fp8_musa_ws_default",
+            "mm_w8a8_fp8_musa_ws_fragmented",
+            "mm_w8a8_fp8_musa_ws_fragmented_default",
+        ):
+            # These spaces share tune_configs.yaml but require the resource
+            # pruning in their builders, not an unbounded Cartesian product.
+            return self.ops_get_configs(op_name)
 
         configs = []
 
