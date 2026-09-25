@@ -1638,6 +1638,7 @@ _FULL_CONFIG = (
     ("tril.out", tril_out),
     ("tril_", tril_),
     ("tril_indices", tril_indices),
+    ("triplet_margin_loss", triplet_margin_loss),
     ("triu", triu),
     ("triu_", triu_),
     ("triu_indices", triu_indices),
