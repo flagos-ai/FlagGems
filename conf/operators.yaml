@@ -1984,6 +1984,18 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: batch_norm_update_stats
+  description: |
+    Triton kernel implementation for computing per-channel mean and invstd from input and updating running statistics.
+  for:
+  - batch_norm_update_stats
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: batch_norm_with_update
   description: Applies training-mode Batch Normalization using batch statistics and updates
     running_mean/running_var in place.
