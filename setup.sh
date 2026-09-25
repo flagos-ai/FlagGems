@@ -204,7 +204,23 @@ for item in b.get('triton_post_install', []):
     if isinstance(item, str):
         triton_post.append(item)
 print(f'TRITON_POST_INSTALL=\"{\" \".join(triton_post)}\"')
+
+print(f'TORCH_PKG=\"{b.get(\"torch\", \"\")}\"')
+print(f'TORCH_INDEX=\"{b.get(\"torch_index\", \"\")}\"')
 ")
+
+# ── Install torch from its own index (optional) ──────────────
+# Some vendors (e.g. thead) publish torch on a dedicated index that is not
+# the vendor's flagos-pypi mirror. Install it separately, with --no-deps so
+# the resolver used for `.[backend]` below never has to reconcile two
+# incompatible indexes for the same dependency.
+if [ -n "${TORCH_PKG}" ]; then
+  printf "Installing torch [${TORCH_PKG}] ..."
+  uv pip install -q --no-deps "${TORCH_PKG}" \
+    --index "${TORCH_INDEX:-$FLAGOS_PYPI}" \
+    || fail
+  ok
+fi
 
 # ── C++ extensions ───────────────────────────────────────────
 # Set ENABLE_CPP=1 to build C++ wrapped operators.
