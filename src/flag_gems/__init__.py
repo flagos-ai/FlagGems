@@ -1494,6 +1494,7 @@ _FULL_CONFIG = (
     ("special_gammaln.out", special_gammaln_out),
     ("special_hermite_polynomial_h", special_hermite_polynomial_h),
     ("special_hermite_polynomial_h.n_scalar", special_hermite_polynomial_h),
+    ("special_hermite_polynomial_he", special_hermite_polynomial_he),
     ("special_i0", special_i0),
     ("special_i0.out", special_i0_out),
     ("special_i0e", special_i0e),

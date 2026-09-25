@@ -104,6 +104,7 @@ from .special_chebyshev_polynomial_w import (
 from .special_gammainc import special_gammainc
 from .special_gammaln import special_gammaln
 from .special_gammaln_out import special_gammaln_out
+from .special_hermite_polynomial_he import special_hermite_polynomial_he
 from .special_legendre_polynomial_p import special_legendre_polynomial_p
 from .special_multigammaln import special_multigammaln
 from .special_round import special_round
@@ -264,6 +265,7 @@ __all__ = [
     "special_gammainc",
     "special_gammaln",
     "special_gammaln_out",
+    "special_hermite_polynomial_he",
     "special_legendre_polynomial_p",
     "special_multigammaln",
     "special_round",
