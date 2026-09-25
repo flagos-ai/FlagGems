@@ -3334,10 +3334,34 @@ ops:
   stages:
   - beta: '2.2'
   - stable: '5.3'
+- id: conv_tbc
+  description: Applies a 1D convolution over an input with time-batch-channel (T,
+    B, C) layout.
+  for:
+  - conv_tbc
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: conv_tbc_backward
   description: Triton kernel implementation for conv_tbc_backward.
   for:
   - conv_tbc_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: conv_tbc_out
+  description: A variant of `conv_tbc()` that assigns the output to the given `out`
+    parameter.
+  for:
+  - conv_tbc.out
   labels:
   - aten
   - KernelGen
