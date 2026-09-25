@@ -111,6 +111,7 @@ from .thnn_fused_lstm_cell_backward_impl import _thnn_fused_lstm_cell_backward_i
 from .tile import tile
 from .unsafe_masked_index_put_accumulate import _unsafe_masked_index_put_accumulate
 from .var import var, var_correction, var_dim
+from .var_mean import var_mean
 
 _pointwise_dynamic = importlib.import_module("flag_gems.utils.pointwise_dynamic")
 _pointwise_dynamic.ModuleGenerator = ModuleGenerator
@@ -221,4 +222,5 @@ __all__ = [
     "var",
     "var_correction",
     "var_dim",
+    "var_mean",
 ]
