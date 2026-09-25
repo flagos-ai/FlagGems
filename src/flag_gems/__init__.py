@@ -332,6 +332,10 @@ _FULL_CONFIG = (
         "_scaled_dot_product_fused_attention_overrideable",
         _scaled_dot_product_fused_attention_overrideable,
     ),
+    (
+        "_scaled_dot_product_fused_attention_overrideable_backward",
+        scaled_dot_product_fused_attention_overrideable_backward,
+    ),
     ("_scaled_grouped_mm", scaled_grouped_mm, lambda: torch_ge("2.8")),
     ("_scaled_grouped_mm_v2", _scaled_grouped_mm_v2),
     ("_scaled_mm", scaled_mm, lambda: torch_ge("2.5")),

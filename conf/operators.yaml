@@ -14403,6 +14403,20 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: scaled_dot_product_fused_attention_overrideable_backward
+  description: |
+    Backward pass of the overrideable fused scaled dot product attention, computing
+    gradients of query, key, value and attention bias for privateuse1-style backends.
+  for:
+  - _scaled_dot_product_fused_attention_overrideable_backward
+  labels:
+  - aten
+  - KernelGen
+  - NoCPU
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5.0'
 - id: scaled_grouped_mm
   description: 'Performs grouped matrix multiplication with row-wise and column-wise
     scaling,

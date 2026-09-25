@@ -185,6 +185,9 @@ from flag_gems.ops._scaled_dot_product_flash_attention import (
 from flag_gems.ops._scaled_dot_product_fused_attention_overrideable import (
     _scaled_dot_product_fused_attention_overrideable,
 )
+from flag_gems.ops._scaled_dot_product_fused_attention_overrideable_backward import (
+    scaled_dot_product_fused_attention_overrideable_backward,
+)
 from flag_gems.ops._scaled_grouped_mm_v2 import _scaled_grouped_mm_v2
 from flag_gems.ops._sobol_engine_ff_ import _sobol_engine_ff_
 from flag_gems.ops._sobol_engine_initialize_state_ import (
@@ -2361,6 +2364,7 @@ __all__ = [
     "scaled_dot_product_cudnn_attention_backward",
     "scaled_dot_product_efficient_attention_backward",
     "scaled_dot_product_flash_attention_backward",
+    "scaled_dot_product_fused_attention_overrideable_backward",
     "scaled_grouped_mm",
     "scaled_mm",
     "scaled_mm_out",
