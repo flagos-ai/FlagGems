@@ -146,6 +146,18 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: _linalg_eigh
+  description: Computes the eigenvalues and eigenvectors of a symmetric or Hermitian
+    matrix.
+  for:
+  - _linalg_eigh
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: _linalg_slogdet
   description: 'Computes the sign and natural logarithm of the absolute value of the
 
@@ -8807,6 +8819,20 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: linalg_eigh
+  description: 'Computes the eigenvalue decomposition of a symmetric (or Hermitian)
+    matrix or a batch of matrices.
+
+    '
+  for:
+  - linalg_eigh
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.4'
 - id: linalg_eigvals
   description: Computes the eigenvalues of a square matrix.
   for:
@@ -11672,10 +11698,10 @@ ops:
   for:
     - _nested_tensor_from_mask
   labels:
-    - aten
-    - KernelGen
+  - aten
+  - KernelGen
   kind:
-    - Tensor
+  - Tensor
   stages:
     - alpha: '5.5.0'
 - id: nested_tensor_from_mask_left_aligned

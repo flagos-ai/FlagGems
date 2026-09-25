@@ -108,3 +108,6 @@ upsample_bicubic2d_backward_grad_input: test_upsample_bicubic2d_backward
 upsample_bilinear2d_backward_grad_input: test_upsample_bilinear2d_backward
 upsample_linear1d_backward: test_upsample_linear1d
 upsample_nearest2d_backward_grad_input: test_upsample_nearest2d_backward
+
+# Underscore-prefixed aten op shares the base operator test file
+_linalg_eigh: test_linalg_eigh
