@@ -191,3 +191,37 @@ def test_pairwise_distance_fp64(shape, p):
         res_out = torch.nn.functional.pairwise_distance(x1, x2, p=p, eps=1e-6)
 
     utils.gems_assert_close(res_out, ref_out, torch.float64)
+
+
+INT_DTYPES = [torch.int8, torch.uint8]
+INT_SHAPES = [
+    (64, 64),
+    (1024, 257),
+    (64, 65536),
+]
+
+
+@pytest.mark.pairwise_distance
+@pytest.mark.parametrize("shape", INT_SHAPES)
+@pytest.mark.parametrize("p", P_LIST)
+@pytest.mark.parametrize("keepdim", [False, True])
+@pytest.mark.parametrize("dtype", INT_DTYPES)
+def test_pairwise_distance_int(shape, p, keepdim, dtype):
+    torch.manual_seed(0)
+
+    if dtype == torch.int8:
+        x1 = torch.randint(-128, 127, shape, dtype=dtype, device=flag_gems.device)
+        x2 = torch.randint(-128, 127, shape, dtype=dtype, device=flag_gems.device)
+    else:
+        x1 = torch.randint(0, 255, shape, dtype=dtype, device=flag_gems.device)
+        x2 = torch.randint(0, 255, shape, dtype=dtype, device=flag_gems.device)
+
+    ref_x1 = utils.to_reference(x1, True)
+    ref_x2 = utils.to_reference(x2, True)
+
+    ref_out = _ref_pairwise_distance(ref_x1, ref_x2, p=p, eps=1e-6, keepdim=keepdim)
+    res_out = flag_gems.pairwise_distance(x1, x2, p=p, eps=1e-6, keepdim=keepdim)
+    if p in _ASCEND_SUPPORTED_P:
+        utils.gems_assert_close(res_out, ref_out, torch.float32)
+    else:
+        utils.gems_assert_close(res_out, ref_out, torch.float32, atol=0.35)
