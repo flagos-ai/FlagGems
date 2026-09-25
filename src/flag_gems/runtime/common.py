@@ -43,6 +43,16 @@ class vendors(Enum):
 
 
 DEFAULT_STRATEGIES = {
+    "mm_dense": ["default"] * 3,
+    "mm_gemm": ["default"] * 10,
+    "mm_nt_rows": ["default"] * 10,
+    "mm_wide": ["default"] * 10,
+    "mm_simt_row": ["default"] * 10,
+    "mm_simt_column": ["default"] * 10,
+    "mm_syrk": ["default"] * 6,
+    "mm_dual": ["default"] * 9,
+    "mm_pack": ["default"] * 4,
+    "mm_reduce": ["default"] * 5,
     "addmm": ["align32", "align32", "align32"],
     "addmm_sqmma": ["align32", "align32", "align32"],
     "baddbmm": ["align32", "align32", "align32"],
@@ -81,8 +91,6 @@ DEFAULT_STRATEGIES = {
     ],
     "gemv": ["align32", "align32", "align32", "default"],
     "mm": ["align32", "align32", "align32", "align32", "align32"],
-    "mm_nn": ["align32", "align32", "align32"],
-    "mm_nt": ["align32", "align32", "align32"],
     "mm_sqmma": ["align32", "align32", "align32", "default"],
     "mm_general_tma": [
         "align32",
@@ -184,6 +192,27 @@ DEFAULT_STRATEGIES = {
 }
 
 OP_KEY_ORDERS = {
+    "mm_dense": ["M", "N", "K"],
+    "mm_gemm": ["M", "N", "K", "SAM", "SAK", "SBK", "SBN", "SCM", "SCN", "SPLIT_K"],
+    "mm_nt_rows": ["M", "N", "K", "SAM", "SAK", "SBK", "SBN", "SCM", "SCN", "SPLIT_K"],
+    "mm_wide": ["M", "N", "K", "SAM", "SAK", "SBK", "SBN", "SCM", "SCN", "SPLIT_K"],
+    "mm_simt_row": ["M", "N", "K", "SAM", "SAK", "SBK", "SBN", "SCM", "SCN", "SPLIT_K"],
+    "mm_simt_column": [
+        "M",
+        "N",
+        "K",
+        "SAM",
+        "SAK",
+        "SBK",
+        "SBN",
+        "SCM",
+        "SCN",
+        "SPLIT_K",
+    ],
+    "mm_syrk": ["M", "K", "SAM", "SAK", "SCM", "SCN"],
+    "mm_dual": ["M", "N", "K", "SAM", "SAK", "SBK", "SBN", "SCM", "SCN"],
+    "mm_pack": ["R", "C", "SR", "SC"],
+    "mm_reduce": ["N", "TOTAL", "SCM", "SCN", "SPLIT_K"],
     "addmm": ["M", "N", "K"],
     "addmm_sqmma": ["M", "N", "K"],
     "bmm": ["M", "N", "K", "stride_am", "stride_bk"],
@@ -222,8 +251,6 @@ OP_KEY_ORDERS = {
     ],
     "gemv": ["M", "K", "stride_am", "stride_bk"],
     "mm": ["M", "N", "K", "stride_am", "stride_bk"],
-    "mm_nn": ["M", "N", "K"],
-    "mm_nt": ["M", "N", "K"],
     "mm_sqmma": ["M", "N", "K", "dtype"],
     "mm_general_tma": ["M", "N", "K", "stride_am", "stride_bk", "dtype"],
     "mm_tma_transposed_direct": ["M", "N", "K", "stride_bk"],

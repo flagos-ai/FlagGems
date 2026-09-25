@@ -16,6 +16,7 @@ import copy
 import inspect
 import os
 import warnings
+from itertools import product
 
 import triton
 
@@ -101,6 +102,49 @@ class TunedConfigLoader(object):
         return triton.Config(single_config["META"], **kwargs)
 
     def _build_configs_by_op(self, op_name, ranges, pre_hook=None):
+        # Current MetaX MM families keep their kernel parameter names.
+        if op_name in ("mm_gemm", "mm_dense", "mm_nt_rows", "mm_wide"):
+            fields = (
+                "BM",
+                "BN",
+                "BK",
+                "GROUP_M",
+                "TRANSPOSE",
+                "STATIC_K",
+                "pipeline",
+                "scenario",
+            )
+        else:
+            fields = {
+                "mm_syrk": ("BT", "BK", "pipeline", "scenario"),
+                "mm_dual": (
+                    "BM",
+                    "B0",
+                    "B1",
+                    "BK",
+                    "SWAP",
+                    "GROUP_M",
+                    "pipeline",
+                    "scenario",
+                ),
+                "mm_pack": ("BR", "BC"),
+                "mm_reduce": ("BLOCK",),
+                "mm_simt_row": ("BN", "BK"),
+                "mm_simt_column": ("BM", "BK"),
+            }.get(op_name)
+        if fields is not None:
+            return [
+                triton.Config(
+                    dict(zip(fields, values)),
+                    num_stages=stages,
+                    num_warps=warps,
+                    pre_hook=pre_hook,
+                )
+                for values in product(*(ranges[field.upper()] for field in fields))
+                for stages in ranges["s"]
+                for warps in ranges["w"]
+            ]
+
         if op_name == "bmm":
             return [
                 triton.Config(
@@ -479,35 +523,6 @@ class TunedConfigLoader(object):
                 for warps in ranges["w"]
             ]
 
-        if op_name in ("mm_nn", "mm_nt"):
-            # "scenario" is optional so older expand yamls stay loadable, but
-            # once present it must be set on every generated config: the tuner's
-            # SQL config cache builds its schema from the first config it stores
-            # and marks the columns NOT NULL, so a key that appears on only some
-            # configs makes lookups for the others raise KeyError.
-            scenarios = ranges.get("SCENARIO", [""])
-            return [
-                triton.Config(
-                    {
-                        "BLOCK_M": block_m,
-                        "BLOCK_N": block_n,
-                        "BLOCK_K": block_k,
-                        "pipeline": pipeline,
-                        "scenario": scenario,
-                    },
-                    num_stages=s,
-                    num_warps=w,
-                    pre_hook=pre_hook,
-                )
-                for block_m in ranges["BLOCK_M"]
-                for block_n in ranges["BLOCK_N"]
-                for block_k in ranges["BLOCK_K"]
-                for pipeline in ranges["PIPELINE"]
-                for scenario in scenarios
-                for s in ranges["s"]
-                for w in ranges["w"]
-            ]
-
         if op_name in ("bmm_sqmma", "addmm_sqmma"):
             return [
                 triton.Config(
@@ -532,7 +547,6 @@ class TunedConfigLoader(object):
             "gemv_ppu",
             "mm_ppu_multi_row_gemv",
             "mm_ppu_narrow_columns",
-            "gemv_k_parallel",
             "mm_w8a8_fp8_gemv",
         ):
             ppu_gemv = op_name in (
@@ -825,6 +839,16 @@ class TunedConfigLoader(object):
 
     def _build_expand_registry(self):
         return {
+            "mm_dense": self._build_single_expand_spec("mm_dense"),
+            "mm_gemm": self._build_single_expand_spec("mm_gemm"),
+            "mm_nt_rows": self._build_single_expand_spec("mm_nt_rows"),
+            "mm_wide": self._build_single_expand_spec("mm_wide"),
+            "mm_simt_row": self._build_single_expand_spec("mm_simt_row"),
+            "mm_simt_column": self._build_single_expand_spec("mm_simt_column"),
+            "mm_syrk": self._build_single_expand_spec("mm_syrk"),
+            "mm_dual": self._build_single_expand_spec("mm_dual"),
+            "mm_pack": self._build_single_expand_spec("mm_pack"),
+            "mm_reduce": self._build_single_expand_spec("mm_reduce"),
             "addmm": self._build_single_expand_spec(
                 "addmm", expand_yaml_path=self._get_expand_config_path("addmm")
             ),
@@ -885,9 +909,6 @@ class TunedConfigLoader(object):
                 "default_strategy": ["default"] * 5,
                 "expand_yaml_path": None,
             },
-            "gemv_k_parallel": self._build_single_expand_spec(
-                "gemv", yaml_op_name="gemv_k_parallel"
-            ),
             "mm": self._build_single_expand_spec(
                 "mm", expand_yaml_path=self._get_expand_config_path("mm")
             ),
@@ -962,8 +983,6 @@ class TunedConfigLoader(object):
                 "default_strategy": ["default", "default"],
                 "expand_yaml_path": None,
             },
-            "mm_nn": self._build_single_expand_spec("mm_nn"),
-            "mm_nt": self._build_single_expand_spec("mm_nt"),
             "mm_splitk_two_step": self._build_single_expand_spec(
                 "mm", yaml_op_name="mm_splitk_two_step"
             ),

@@ -266,305 +266,6 @@ mm:
     scenario: ""
   num_stages: 2
   num_warps: 4
-mm_nn:
-- META:
-    BLOCK_M: 16
-    BLOCK_N: 64
-    BLOCK_K: 32
-    pipeline: "basic"
-    scenario: ""
-  num_stages: 4
-  num_warps: 2
-- META:
-    BLOCK_M: 64
-    BLOCK_N: 128
-    BLOCK_K: 32
-    pipeline: "basic"
-    scenario: ""
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_M: 128
-    BLOCK_N: 128
-    BLOCK_K: 32
-    pipeline: "basic"
-    scenario: ""
-  num_stages: 2
-  num_warps: 8
-- META:
-    BLOCK_M: 256
-    BLOCK_N: 256
-    BLOCK_K: 32
-    pipeline: "basic"
-    scenario: ""
-  num_stages: 2
-  num_warps: 8
-- META:
-    BLOCK_M: 64
-    BLOCK_N: 64
-    BLOCK_K: 32
-    pipeline: "cpasync"
-    scenario: ""
-  num_stages: 2
-  num_warps: 4
-- META:
-    BLOCK_M: 64
-    BLOCK_N: 64
-    BLOCK_K: 32
-    pipeline: "cpasync"
-    scenario: ""
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_M: 64
-    BLOCK_N: 64
-    BLOCK_K: 64
-    pipeline: "basic"
-    scenario: ""
-  num_stages: 2
-  num_warps: 4
-- META:
-    BLOCK_M: 32
-    BLOCK_N: 64
-    BLOCK_K: 64
-    pipeline: "basic"
-    scenario: ""
-  num_stages: 4
-  num_warps: 4
-mm_nt:
-- META:
-    BLOCK_M: 16
-    BLOCK_N: 32
-    BLOCK_K: 64
-    pipeline: "basic"
-    scenario: ""
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_M: 32
-    BLOCK_N: 32
-    BLOCK_K: 64
-    pipeline: "basic"
-    scenario: ""
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_M: 32
-    BLOCK_N: 64
-    BLOCK_K: 64
-    pipeline: "basic"
-    scenario: ""
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_M: 64
-    BLOCK_N: 64
-    BLOCK_K: 64
-    pipeline: "basic"
-    scenario: ""
-  num_stages: 2
-  num_warps: 4
-- META:
-    BLOCK_M: 64
-    BLOCK_N: 64
-    BLOCK_K: 64
-    pipeline: "basic"
-    scenario: ""
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_M: 64
-    BLOCK_N: 64
-    BLOCK_K: 64
-    pipeline: "cpasync"
-    scenario: ""
-  num_stages: 3
-  num_warps: 4
-- META:
-    BLOCK_M: 256
-    BLOCK_N: 64
-    BLOCK_K: 32
-    pipeline: "basic"
-    scenario: ""
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_M: 128
-    BLOCK_N: 128
-    BLOCK_K: 32
-    pipeline: "basic"
-    scenario: ""
-  num_stages: 2
-  num_warps: 8
-mm_splitk:
-- META:
-    BLOCK_M: 16
-    BLOCK_N: 64
-    BLOCK_K: 64
-    SPLIT_K: 4
-    pipeline: "null"
-  num_stages: 3
-  num_warps: 4
-- META:
-    BLOCK_M: 16
-    BLOCK_N: 128
-    BLOCK_K: 64
-    SPLIT_K: 4
-    pipeline: "null"
-  num_stages: 3
-  num_warps: 4
-- META:
-    BLOCK_M: 16
-    BLOCK_N: 64
-    BLOCK_K: 128
-    SPLIT_K: 8
-    pipeline: "null"
-  num_stages: 3
-  num_warps: 4
-- META:
-    BLOCK_M: 16
-    BLOCK_N: 256
-    BLOCK_K: 64
-    SPLIT_K: 4
-    pipeline: "null"
-  num_stages: 3
-  num_warps: 4
-- META:
-    BLOCK_M: 16
-    BLOCK_N: 64
-    BLOCK_K: 256
-    SPLIT_K: 8
-    pipeline: "null"
-  num_stages: 3
-  num_warps: 4
-- META:
-    BLOCK_M: 16
-    BLOCK_N: 16
-    BLOCK_K: 64
-    SPLIT_K: 16
-    pipeline: "null"
-  num_stages: 2
-  num_warps: 4
-- META:
-    BLOCK_M: 16
-    BLOCK_N: 16
-    BLOCK_K: 256
-    SPLIT_K: 8
-    pipeline: "null"
-  num_stages: 2
-  num_warps: 2
-- META:
-    BLOCK_M: 16
-    BLOCK_N: 16
-    BLOCK_K: 256
-    SPLIT_K: 16
-    pipeline: "null"
-  num_stages: 2
-  num_warps: 4
-mm_splitk_two_step:
-- META:
-    BLOCK_M: 16
-    BLOCK_N: 16
-    BLOCK_K: 64
-    pipeline: "null"
-  num_stages: 2
-  num_warps: 2
-- META:
-    BLOCK_M: 16
-    BLOCK_N: 32
-    BLOCK_K: 64
-    pipeline: "null"
-  num_stages: 2
-  num_warps: 2
-- META:
-    BLOCK_M: 16
-    BLOCK_N: 64
-    BLOCK_K: 64
-    pipeline: "null"
-  num_stages: 2
-  num_warps: 2
-- META:
-    BLOCK_M: 16
-    BLOCK_N: 128
-    BLOCK_K: 64
-    pipeline: "null"
-  num_stages: 2
-  num_warps: 2
-- META:
-    BLOCK_M: 32
-    BLOCK_N: 64
-    BLOCK_K: 64
-    pipeline: "null"
-  num_stages: 2
-  num_warps: 4
-- META:
-    BLOCK_M: 32
-    BLOCK_N: 128
-    BLOCK_K: 64
-    pipeline: "null"
-  num_stages: 2
-  num_warps: 4
-- META:
-    BLOCK_M: 32
-    BLOCK_N: 64
-    BLOCK_K: 64
-    pipeline: "basic"
-  num_stages: 2
-  num_warps: 4
-- META:
-    BLOCK_M: 16
-    BLOCK_N: 64
-    BLOCK_K: 64
-    pipeline: "basic"
-  num_stages: 2
-  num_warps: 4
-- META:
-    BLOCK_M: 32
-    BLOCK_N: 64
-    BLOCK_K: 64
-    pipeline: "null"
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_M: 16
-    BLOCK_N: 64
-    BLOCK_K: 64
-    pipeline: "null"
-  num_stages: 2
-  num_warps: 4
-- META:
-    BLOCK_M: 32
-    BLOCK_N: 64
-    BLOCK_K: 64
-    pipeline: "cpasync"
-  num_stages: 2
-  num_warps: 2
-gemv_k_parallel:
-- META:
-    BLOCK_M: 4
-    BLOCK_K: 128
-  num_stages: 2
-  num_warps: 1
-- META:
-    BLOCK_M: 8
-    BLOCK_K: 128
-  num_stages: 2
-  num_warps: 2
-- META:
-    BLOCK_M: 16
-    BLOCK_K: 128
-  num_stages: 2
-  num_warps: 2
-- META:
-    BLOCK_M: 16
-    BLOCK_K: 256
-  num_stages: 2
-  num_warps: 4
-- META:
-    BLOCK_M: 32
-    BLOCK_K: 256
-  num_stages: 2
-  num_warps: 4
 softmax_non_inner:
 - META:
     TILE_K: 32
@@ -1833,3 +1534,1047 @@ mv_reduce:
   - META: {BLOCK: 512}
     num_warps: 4
     num_stages: 1
+
+# MM default candidates.
+# Keep candidate order: libtuner includes it in its persistent cache key.
+mm_gemm:
+- META:
+    BM: 16
+    BN: 32
+    BK: 32
+    GROUP_M: 1
+    TRANSPOSE: false
+    STATIC_K: false
+    pipeline: basic
+    scenario: ''
+  num_warps: 4
+  num_stages: 2
+- META:
+    BM: 32
+    BN: 16
+    BK: 64
+    GROUP_M: 1
+    TRANSPOSE: false
+    STATIC_K: false
+    pipeline: basic
+    scenario: ''
+  num_warps: 4
+  num_stages: 2
+- META:
+    BM: 16
+    BN: 32
+    BK: 64
+    GROUP_M: 1
+    TRANSPOSE: false
+    STATIC_K: false
+    pipeline: basic
+    scenario: ''
+  num_warps: 4
+  num_stages: 3
+- META:
+    BM: 16
+    BN: 32
+    BK: 64
+    GROUP_M: 1
+    TRANSPOSE: false
+    STATIC_K: false
+    pipeline: cpasync
+    scenario: ''
+  num_warps: 4
+  num_stages: 2
+- META:
+    BM: 16
+    BN: 32
+    BK: 64
+    GROUP_M: 1
+    TRANSPOSE: false
+    STATIC_K: false
+    pipeline: cpasync
+    scenario: ''
+  num_warps: 4
+  num_stages: 3
+- META:
+    BM: 16
+    BN: 64
+    BK: 64
+    GROUP_M: 1
+    TRANSPOSE: false
+    STATIC_K: false
+    pipeline: cpasync
+    scenario: ''
+  num_warps: 4
+  num_stages: 2
+- META:
+    BM: 32
+    BN: 32
+    BK: 32
+    GROUP_M: 1
+    TRANSPOSE: false
+    STATIC_K: false
+    pipeline: basic
+    scenario: ''
+  num_warps: 4
+  num_stages: 2
+- META:
+    BM: 32
+    BN: 32
+    BK: 64
+    GROUP_M: 1
+    TRANSPOSE: false
+    STATIC_K: false
+    pipeline: basic
+    scenario: ''
+  num_warps: 2
+  num_stages: 2
+- META:
+    BM: 32
+    BN: 32
+    BK: 64
+    GROUP_M: 1
+    TRANSPOSE: false
+    STATIC_K: false
+    pipeline: basic
+    scenario: ''
+  num_warps: 4
+  num_stages: 3
+- META:
+    BM: 32
+    BN: 32
+    BK: 128
+    GROUP_M: 1
+    TRANSPOSE: false
+    STATIC_K: false
+    pipeline: cpasync
+    scenario: ''
+  num_warps: 4
+  num_stages: 2
+- META:
+    BM: 32
+    BN: 64
+    BK: 32
+    GROUP_M: 1
+    TRANSPOSE: false
+    STATIC_K: false
+    pipeline: basic
+    scenario: ''
+  num_warps: 4
+  num_stages: 2
+- META:
+    BM: 64
+    BN: 64
+    BK: 32
+    GROUP_M: 1
+    TRANSPOSE: false
+    STATIC_K: false
+    pipeline: basic
+    scenario: ''
+  num_warps: 4
+  num_stages: 2
+- META:
+    BM: 64
+    BN: 64
+    BK: 32
+    GROUP_M: 1
+    TRANSPOSE: false
+    STATIC_K: false
+    pipeline: basic
+    scenario: ''
+  num_warps: 2
+  num_stages: 2
+- META:
+    BM: 64
+    BN: 64
+    BK: 64
+    GROUP_M: 1
+    TRANSPOSE: false
+    STATIC_K: false
+    pipeline: basic
+    scenario: ''
+  num_warps: 4
+  num_stages: 2
+- META:
+    BM: 64
+    BN: 64
+    BK: 64
+    GROUP_M: 1
+    TRANSPOSE: false
+    STATIC_K: false
+    pipeline: cpasync
+    scenario: ''
+  num_warps: 4
+  num_stages: 2
+- META:
+    BM: 64
+    BN: 64
+    BK: 64
+    GROUP_M: 1
+    TRANSPOSE: false
+    STATIC_K: false
+    pipeline: cpasync
+    scenario: ''
+  num_warps: 4
+  num_stages: 3
+- META:
+    BM: 64
+    BN: 64
+    BK: 64
+    GROUP_M: 1
+    TRANSPOSE: false
+    STATIC_K: false
+    pipeline: basic
+    scenario: ''
+  num_warps: 8
+  num_stages: 2
+- META:
+    BM: 64
+    BN: 64
+    BK: 64
+    GROUP_M: 1
+    TRANSPOSE: false
+    STATIC_K: false
+    pipeline: basic
+    scenario: ''
+  num_warps: 8
+  num_stages: 3
+- META:
+    BM: 64
+    BN: 64
+    BK: 64
+    GROUP_M: 1
+    TRANSPOSE: false
+    STATIC_K: false
+    pipeline: cpasync
+    scenario: ''
+  num_warps: 8
+  num_stages: 3
+- META:
+    BM: 128
+    BN: 128
+    BK: 64
+    GROUP_M: 1
+    TRANSPOSE: false
+    STATIC_K: false
+    pipeline: basic
+    scenario: ''
+  num_warps: 4
+  num_stages: 2
+- META:
+    BM: 128
+    BN: 128
+    BK: 64
+    GROUP_M: 1
+    TRANSPOSE: false
+    STATIC_K: false
+    pipeline: cpasync
+    scenario: ''
+  num_warps: 4
+  num_stages: 2
+- META:
+    BM: 32
+    BN: 32
+    BK: 64
+    GROUP_M: 1
+    TRANSPOSE: true
+    STATIC_K: false
+    pipeline: cpasync
+    scenario: ''
+  num_warps: 4
+  num_stages: 2
+- META:
+    BM: 64
+    BN: 64
+    BK: 32
+    GROUP_M: 1
+    TRANSPOSE: true
+    STATIC_K: false
+    pipeline: cpasync
+    scenario: ''
+  num_warps: 4
+  num_stages: 3
+- META:
+    BM: 128
+    BN: 128
+    BK: 64
+    GROUP_M: 1
+    TRANSPOSE: false
+    STATIC_K: false
+    pipeline: basic
+    scenario: ''
+  num_warps: 8
+  num_stages: 2
+- META:
+    BM: 64
+    BN: 64
+    BK: 64
+    GROUP_M: 1
+    TRANSPOSE: false
+    STATIC_K: true
+    pipeline: basic
+    scenario: ''
+  num_warps: 4
+  num_stages: 2
+- META:
+    BM: 64
+    BN: 64
+    BK: 32
+    GROUP_M: 1
+    TRANSPOSE: false
+    STATIC_K: true
+    pipeline: basic
+    scenario: ''
+  num_warps: 4
+  num_stages: 2
+- META:
+    BM: 64
+    BN: 64
+    BK: 64
+    GROUP_M: 1
+    TRANSPOSE: true
+    STATIC_K: true
+    pipeline: basic
+    scenario: ''
+  num_warps: 4
+  num_stages: 2
+- META:
+    BM: 64
+    BN: 32
+    BK: 32
+    GROUP_M: 1
+    TRANSPOSE: false
+    STATIC_K: true
+    pipeline: basic
+    scenario: ''
+  num_warps: 4
+  num_stages: 2
+- META:
+    BM: 128
+    BN: 128
+    BK: 64
+    GROUP_M: 1
+    TRANSPOSE: false
+    STATIC_K: false
+    pipeline: basic
+    scenario: unprefetch
+  num_warps: 8
+  num_stages: 2
+- META:
+    BM: 128
+    BN: 128
+    BK: 64
+    GROUP_M: 1
+    TRANSPOSE: false
+    STATIC_K: false
+    pipeline: basic
+    scenario: unprefetch
+  num_warps: 8
+  num_stages: 3
+- META:
+    BM: 128
+    BN: 128
+    BK: 64
+    GROUP_M: 1
+    TRANSPOSE: false
+    STATIC_K: false
+    pipeline: basic
+    scenario: unprefetch
+  num_warps: 8
+  num_stages: 4
+- META:
+    BM: 64
+    BN: 64
+    BK: 32
+    GROUP_M: 8
+    TRANSPOSE: false
+    STATIC_K: false
+    pipeline: basic
+    scenario: ''
+  num_warps: 4
+  num_stages: 2
+- META:
+    BM: 64
+    BN: 64
+    BK: 64
+    GROUP_M: 8
+    TRANSPOSE: false
+    STATIC_K: false
+    pipeline: basic
+    scenario: ''
+  num_warps: 4
+  num_stages: 2
+- META:
+    BM: 64
+    BN: 64
+    BK: 64
+    GROUP_M: 8
+    TRANSPOSE: false
+    STATIC_K: false
+    pipeline: cpasync
+    scenario: ''
+  num_warps: 4
+  num_stages: 2
+- META:
+    BM: 128
+    BN: 128
+    BK: 32
+    GROUP_M: 8
+    TRANSPOSE: false
+    STATIC_K: false
+    pipeline: basic
+    scenario: ''
+  num_warps: 4
+  num_stages: 3
+- META:
+    BM: 128
+    BN: 128
+    BK: 64
+    GROUP_M: 8
+    TRANSPOSE: false
+    STATIC_K: false
+    pipeline: basic
+    scenario: ''
+  num_warps: 4
+  num_stages: 2
+- META:
+    BM: 128
+    BN: 128
+    BK: 64
+    GROUP_M: 8
+    TRANSPOSE: false
+    STATIC_K: false
+    pipeline: cpasync
+    scenario: ''
+  num_warps: 4
+  num_stages: 2
+- META:
+    BM: 128
+    BN: 128
+    BK: 128
+    GROUP_M: 8
+    TRANSPOSE: false
+    STATIC_K: false
+    pipeline: cpasync
+    scenario: ''
+  num_warps: 4
+  num_stages: 4
+- META:
+    BM: 128
+    BN: 128
+    BK: 64
+    GROUP_M: 8
+    TRANSPOSE: false
+    STATIC_K: false
+    pipeline: basic
+    scenario: ''
+  num_warps: 8
+  num_stages: 2
+- META:
+    BM: 128
+    BN: 128
+    BK: 64
+    GROUP_M: 1
+    TRANSPOSE: false
+    STATIC_K: false
+    pipeline: basic
+    scenario: ''
+  num_warps: 8
+  num_stages: 2
+- META:
+    BM: 128
+    BN: 256
+    BK: 32
+    GROUP_M: 1
+    TRANSPOSE: false
+    STATIC_K: false
+    pipeline: basic
+    scenario: ''
+  num_warps: 8
+  num_stages: 2
+- META:
+    BM: 128
+    BN: 256
+    BK: 32
+    GROUP_M: 8
+    TRANSPOSE: false
+    STATIC_K: false
+    pipeline: basic
+    scenario: ''
+  num_warps: 8
+  num_stages: 2
+- META:
+    BM: 256
+    BN: 128
+    BK: 32
+    GROUP_M: 1
+    TRANSPOSE: false
+    STATIC_K: false
+    pipeline: basic
+    scenario: ''
+  num_warps: 8
+  num_stages: 2
+- META:
+    BM: 256
+    BN: 128
+    BK: 32
+    GROUP_M: 8
+    TRANSPOSE: false
+    STATIC_K: false
+    pipeline: basic
+    scenario: ''
+  num_warps: 8
+  num_stages: 2
+- META:
+    BM: 256
+    BN: 256
+    BK: 32
+    GROUP_M: 1
+    TRANSPOSE: false
+    STATIC_K: false
+    pipeline: basic
+    scenario: ''
+  num_warps: 8
+  num_stages: 2
+- META:
+    BM: 256
+    BN: 256
+    BK: 32
+    GROUP_M: 8
+    TRANSPOSE: false
+    STATIC_K: false
+    pipeline: basic
+    scenario: ''
+  num_warps: 8
+  num_stages: 2
+- META:
+    BM: 256
+    BN: 256
+    BK: 32
+    GROUP_M: 8
+    TRANSPOSE: false
+    STATIC_K: false
+    pipeline: cpasync
+    scenario: ''
+  num_warps: 8
+  num_stages: 2
+- META:
+    BM: 128
+    BN: 128
+    BK: 64
+    GROUP_M: 8
+    TRANSPOSE: false
+    STATIC_K: false
+    pipeline: basic
+    scenario: unprefetch
+  num_warps: 8
+  num_stages: 2
+- META:
+    BM: 128
+    BN: 128
+    BK: 64
+    GROUP_M: 8
+    TRANSPOSE: false
+    STATIC_K: false
+    pipeline: basic
+    scenario: unprefetch
+  num_warps: 8
+  num_stages: 3
+- META:
+    BM: 128
+    BN: 128
+    BK: 64
+    GROUP_M: 8
+    TRANSPOSE: false
+    STATIC_K: false
+    pipeline: basic
+    scenario: unprefetch
+  num_warps: 8
+  num_stages: 4
+- META:
+    BM: 256
+    BN: 256
+    BK: 32
+    GROUP_M: 1
+    TRANSPOSE: false
+    STATIC_K: false
+    pipeline: basic
+    scenario: reduceSmemUsage
+  num_warps: 8
+  num_stages: 2
+- META:
+    BM: 256
+    BN: 256
+    BK: 32
+    GROUP_M: 8
+    TRANSPOSE: false
+    STATIC_K: false
+    pipeline: basic
+    scenario: reduceSmemUsage
+  num_warps: 8
+  num_stages: 2
+
+# Reuse upstream NN/NT four-stage tiles, including the effective BM=16
+# produced by BLOCK_M autotuning. BM/BN candidates are explicit here.
+- META:
+    BM: 16
+    BN: 64
+    BK: 32
+    GROUP_M: 8
+    TRANSPOSE: false
+    STATIC_K: false
+    pipeline: basic
+    scenario: ''
+  num_warps: 2
+  num_stages: 4
+- META:
+    BM: 16
+    BN: 32
+    BK: 64
+    GROUP_M: 8
+    TRANSPOSE: false
+    STATIC_K: false
+    pipeline: basic
+    scenario: ''
+  num_warps: 4
+  num_stages: 4
+- META:
+    BM: 32
+    BN: 32
+    BK: 64
+    GROUP_M: 8
+    TRANSPOSE: false
+    STATIC_K: false
+    pipeline: basic
+    scenario: ''
+  num_warps: 4
+  num_stages: 4
+- META:
+    BM: 32
+    BN: 64
+    BK: 64
+    GROUP_M: 8
+    TRANSPOSE: false
+    STATIC_K: false
+    pipeline: basic
+    scenario: ''
+  num_warps: 4
+  num_stages: 4
+- META:
+    BM: 16
+    BN: 64
+    BK: 64
+    GROUP_M: 8
+    TRANSPOSE: false
+    STATIC_K: false
+    pipeline: basic
+    scenario: ''
+  num_warps: 4
+  num_stages: 4
+
+mm_syrk:
+- META:
+    BT: 32
+    BK: 64
+    pipeline: basic
+    scenario: ''
+  num_warps: 4
+  num_stages: 2
+- META:
+    BT: 64
+    BK: 32
+    pipeline: basic
+    scenario: ''
+  num_warps: 4
+  num_stages: 2
+- META:
+    BT: 64
+    BK: 64
+    pipeline: basic
+    scenario: ''
+  num_warps: 4
+  num_stages: 2
+- META:
+    BT: 128
+    BK: 32
+    pipeline: basic
+    scenario: ''
+  num_warps: 4
+  num_stages: 2
+- META:
+    BT: 128
+    BK: 64
+    pipeline: basic
+    scenario: ''
+  num_warps: 4
+  num_stages: 2
+- META:
+    BT: 128
+    BK: 64
+    pipeline: basic
+    scenario: ''
+  num_warps: 8
+  num_stages: 4
+- META:
+    BT: 256
+    BK: 32
+    pipeline: basic
+    scenario: reduceSmemUsage
+  num_warps: 8
+  num_stages: 2
+
+mm_dual:
+- META:
+    BM: 128
+    B0: 64
+    B1: 16
+    BK: 64
+    SWAP: true
+    GROUP_M: 1
+    pipeline: basic
+    scenario: unprefetch
+  num_warps: 8
+  num_stages: 3
+- META:
+    BM: 128
+    B0: 64
+    B1: 16
+    BK: 64
+    SWAP: true
+    GROUP_M: 1
+    pipeline: basic
+    scenario: unprefetch
+  num_warps: 8
+  num_stages: 4
+- META:
+    BM: 128
+    B0: 64
+    B1: 32
+    BK: 64
+    SWAP: true
+    GROUP_M: 1
+    pipeline: basic
+    scenario: unprefetch
+  num_warps: 8
+  num_stages: 3
+- META:
+    BM: 128
+    B0: 64
+    B1: 32
+    BK: 64
+    SWAP: true
+    GROUP_M: 1
+    pipeline: basic
+    scenario: unprefetch
+  num_warps: 8
+  num_stages: 4
+- META:
+    BM: 128
+    B0: 64
+    B1: 16
+    BK: 64
+    SWAP: true
+    GROUP_M: 1
+    pipeline: cpasync
+    scenario: unprefetch
+  num_warps: 8
+  num_stages: 2
+- META:
+    BM: 128
+    B0: 64
+    B1: 32
+    BK: 64
+    SWAP: true
+    GROUP_M: 1
+    pipeline: cpasync
+    scenario: unprefetch
+  num_warps: 8
+  num_stages: 2
+
+mm_pack:
+- META:
+    BR: 32
+    BC: 64
+  num_warps: 4
+  num_stages: 1
+- META:
+    BR: 64
+    BC: 64
+  num_warps: 4
+  num_stages: 1
+- META:
+    BR: 64
+    BC: 128
+  num_warps: 4
+  num_stages: 1
+- META:
+    BR: 128
+    BC: 128
+  num_warps: 8
+  num_stages: 1
+
+mm_reduce:
+- META:
+    BLOCK: 32
+  num_warps: 1
+  num_stages: 1
+- META:
+    BLOCK: 32
+  num_warps: 4
+  num_stages: 1
+- META:
+    BLOCK: 64
+  num_warps: 1
+  num_stages: 1
+- META:
+    BLOCK: 128
+  num_warps: 2
+  num_stages: 1
+- META:
+    BLOCK: 256
+  num_warps: 4
+  num_stages: 1
+- META:
+    BLOCK: 1024
+  num_warps: 4
+  num_stages: 1
+
+mm_simt_row:
+- META:
+    BN: 8
+    BK: 256
+  num_warps: 2
+  num_stages: 1
+- META:
+    BN: 8
+    BK: 512
+  num_warps: 4
+  num_stages: 1
+- META:
+    BN: 8
+    BK: 1024
+  num_warps: 4
+  num_stages: 1
+- META:
+    BN: 16
+    BK: 128
+  num_warps: 2
+  num_stages: 1
+- META:
+    BN: 16
+    BK: 256
+  num_warps: 4
+  num_stages: 1
+- META:
+    BN: 16
+    BK: 512
+  num_warps: 4
+  num_stages: 1
+- META:
+    BN: 16
+    BK: 1024
+  num_warps: 8
+  num_stages: 1
+- META:
+    BN: 32
+    BK: 64
+  num_warps: 2
+  num_stages: 1
+- META:
+    BN: 32
+    BK: 128
+  num_warps: 4
+  num_stages: 1
+- META:
+    BN: 32
+    BK: 256
+  num_warps: 4
+  num_stages: 1
+- META:
+    BN: 32
+    BK: 512
+  num_warps: 8
+  num_stages: 1
+- META:
+    BN: 64
+    BK: 64
+  num_warps: 2
+  num_stages: 1
+- META:
+    BN: 64
+    BK: 128
+  num_warps: 4
+  num_stages: 1
+- META:
+    BN: 64
+    BK: 256
+  num_warps: 8
+  num_stages: 1
+- META:
+    BN: 128
+    BK: 64
+  num_warps: 4
+  num_stages: 1
+- META:
+    BN: 128
+    BK: 128
+  num_warps: 8
+  num_stages: 1
+
+mm_simt_column:
+- META:
+    BM: 8
+    BK: 256
+  num_warps: 2
+  num_stages: 1
+- META:
+    BM: 8
+    BK: 512
+  num_warps: 4
+  num_stages: 1
+- META:
+    BM: 8
+    BK: 1024
+  num_warps: 4
+  num_stages: 1
+- META:
+    BM: 16
+    BK: 128
+  num_warps: 2
+  num_stages: 1
+- META:
+    BM: 16
+    BK: 256
+  num_warps: 4
+  num_stages: 1
+- META:
+    BM: 16
+    BK: 512
+  num_warps: 4
+  num_stages: 1
+- META:
+    BM: 16
+    BK: 1024
+  num_warps: 8
+  num_stages: 1
+- META:
+    BM: 32
+    BK: 64
+  num_warps: 2
+  num_stages: 1
+- META:
+    BM: 32
+    BK: 128
+  num_warps: 4
+  num_stages: 1
+- META:
+    BM: 32
+    BK: 256
+  num_warps: 4
+  num_stages: 1
+- META:
+    BM: 32
+    BK: 512
+  num_warps: 8
+  num_stages: 1
+- META:
+    BM: 64
+    BK: 64
+  num_warps: 2
+  num_stages: 1
+- META:
+    BM: 64
+    BK: 128
+  num_warps: 4
+  num_stages: 1
+- META:
+    BM: 64
+    BK: 256
+  num_warps: 8
+  num_stages: 1
+- META:
+    BM: 128
+    BK: 64
+  num_warps: 4
+  num_stages: 1
+- META:
+    BM: 128
+    BK: 128
+  num_warps: 8
+  num_stages: 1
+
+mm_wide:
+- META:
+    BM: 32
+    BN: 128
+    BK: 32
+    GROUP_M: 1
+    TRANSPOSE: false
+    STATIC_K: false
+    pipeline: cpasync
+    scenario: ''
+  num_warps: 2
+  num_stages: 2
+- META:
+    BM: 32
+    BN: 128
+    BK: 32
+    GROUP_M: 1
+    TRANSPOSE: false
+    STATIC_K: false
+    pipeline: basic
+    scenario: ''
+  num_warps: 4
+  num_stages: 4
+- META:
+    BM: 32
+    BN: 128
+    BK: 64
+    GROUP_M: 1
+    TRANSPOSE: false
+    STATIC_K: false
+    pipeline: basic
+    scenario: ''
+  num_warps: 4
+  num_stages: 2
+- META:
+    BM: 64
+    BN: 128
+    BK: 32
+    GROUP_M: 1
+    TRANSPOSE: false
+    STATIC_K: false
+    pipeline: basic
+    scenario: ''
+  num_warps: 4
+  num_stages: 3
+- META:
+    BM: 16
+    BN: 128
+    BK: 64
+    GROUP_M: 1
+    TRANSPOSE: false
+    STATIC_K: false
+    pipeline: basic
+    scenario: ''
+  num_warps: 4
+  num_stages: 2
+- META:
+    BM: 128
+    BN: 16
+    BK: 64
+    GROUP_M: 1
+    TRANSPOSE: true
+    STATIC_K: false
+    pipeline: basic
+    scenario: ''
+  num_warps: 4
+  num_stages: 2
+- META:
+    BM: 128
+    BN: 32
+    BK: 64
+    GROUP_M: 1
+    TRANSPOSE: true
+    STATIC_K: false
+    pipeline: basic
+    scenario: ''
+  num_warps: 4
+  num_stages: 2

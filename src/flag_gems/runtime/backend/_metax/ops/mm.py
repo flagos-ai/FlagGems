@@ -1,21 +1,27 @@
 # Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# SPDX-License-Identifier: Apache-2.0
 
-import functools
+"""MetaX MM: classify the workload, then launch a tuned plan.
+
+Dispatch reads shapes, strides, dtypes and pointer alignment. It selects one
+family -- vector forwarding to mv.py, a SIMT reduction in either orientation,
+a tiled dot, a dual dot sharing its LHS, or a triangular self-transpose
+product -- plus an optional K partition and an optional RHS repacking. The
+self-transpose route requires identical input pointers and reversed strides.
+Dispatch never benchmarks candidates; standard libtuner selects kernel tiles.
+
+Strides reach the kernels as constexpr, so a padded or sliced view compiles to
+the same specialized code a dense one gets instead of falling back to a slow
+general form. Workload decisions and compiled code are cached; partial results
+are call-local.
+"""
+
+import copy
 import logging
-import math
 import os
+from dataclasses import dataclass
+from functools import lru_cache
+from typing import Callable, NamedTuple
 
 import torch
 import triton
@@ -24,1493 +30,1413 @@ import triton.language as tl
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
-from flag_gems.utils import triton_lang_extension as ext
-from flag_gems.utils.device_info import get_l2_cache_size, get_sm_count
+
+from .mv import mv
 
 logger = logging.getLogger(__name__)
 EXPAND_CONFIG_FILENAME = os.path.normpath(
     os.path.join(os.path.dirname(__file__), "..", "mm_metax_expand.yaml")
 )
 
-
-def _prune_mm_dense_configs(configs, named_args, transposed_b=False, **kwargs):
-    configs = list(configs)
-    M = named_args["M"]
-    N = named_args["N"]
-    K = named_args["K"]
-    pruned_configs = []
-
-    for config in configs:
-        block_m = config.kwargs["BLOCK_M"]
-        block_n = config.kwargs["BLOCK_N"]
-        block_k = config.kwargs["BLOCK_K"]
-        pipeline = config.kwargs["pipeline"]
-        warps = config.num_warps
-        stages = config.num_stages
-
-        if block_k == 128:
-            if block_m > 128 or block_n > 128 or pipeline != "cpasync":
-                continue
-
-        if (
-            pipeline == "cpasync"
-            and block_k >= 64
-            and (block_m == 128 or block_n == 128)
-        ):
-            continue
-
-        if transposed_b and K % block_k != 0 and block_m == 256 and block_n == 256:
-            continue
-
-        if (block_m == 128 or block_n == 128) and pipeline == "basic":
-            stage_bytes = (block_m + block_n) * block_k * 2 * stages
-            if stage_bytes > 64 * 1024:
-                continue
-
-        if M >= 1024 and N >= 128:
-            if block_m not in (64, 128, 256) or block_n not in (64, 128, 256):
-                continue
-            if warps not in (4, 8):
-                continue
-        else:
-            if block_m == 128 or warps == 8:
-                continue
-            if N <= 64 and (block_m > 64 or block_n > 64):
-                continue
-            if warps == 2 and not (block_m <= 32 and block_n <= 64):
-                continue
-
-        pruned_configs.append(config)
-
-    return pruned_configs or list(configs)
+# MACA MMA rejects, or silently miscomputes, a tl.dot whose M/N/K tile is
+# smaller than 16. YAML candidates already sit on this floor; AABS must not
+# shrink them further.
+_MMA_MIN = 16
+# SIMT only wins when both output axes fit inside one MMA tile. A long axis
+# lets a masked 16-wide GEMM reuse the other operand; reloading it per SIMT
+# CTA is the losing traffic.
+_SIMT_EXTENT = 8
+_SIMT_WIDE = 32
+# Nominal SIMT tile over the wide axis, used only to estimate CTA counts.
+_SIMT_TILE = 32
+# Each K partition must run at least this many BK steps to amortize its
+# prologue and the separate reduction pass that follows it.
+_SPLIT_MIN_K_TILES = 2
+_SPLIT_MAX = 32
+# One reduction step of the tiled kernels.
+_K_TILE = 64
+# C550's native FP16/BF16 GEMM uses a 128x128x128, four-stage async pipeline.
+# Four Triton warps is the measured mapping for this shape; the generic
+# shared-memory budget below is intentionally bypassed for this exact dense-NN
+# candidate.
+_MMA_NATIVE_TILE = (128, 128, 128)
+_MMA_NATIVE_WARPS = 4
+_MMA_NATIVE_STAGES = 4
 
 
-_prune_mm_dense_configs_nt = functools.partial(
-    _prune_mm_dense_configs, transposed_b=True
-)
+# Workload description. These records hold no tensors.
 
 
-@libentry()
-@libtuner(
-    configs=runtime.get_tuned_config("mm"),
-    key=["M", "N", "K", "stride_am", "stride_bk"],
-    policy="flagtune",
-    prune_configs_by={"early_config_prune": _prune_mm_dense_configs},
-    flagtune_op_name="mm",
-    flagtune_expand_op_name="mm",
-    flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
-    flagtune_op_id="flaggems/mm",
-    flagtune_variant="metax_general",
-)
-@triton.heuristics(runtime.get_heuristic_config("mm"))
-@triton.heuristics(
-    {
-        "EVEN_M": lambda args: args["M"] % args["BLOCK_M"] == 0,
-        "EVEN_N": lambda args: args["N"] % args["BLOCK_N"] == 0,
-    }
-)
-@triton.heuristics(
-    {
-        "UPGRADE": lambda args: math.ceil(
-            (args["M"] * args["N"]) / (args["BLOCK_M"] * args["BLOCK_N"])
-        ).bit_length()
-        > 31,
-    }
-)
-@triton.heuristics(
-    {
-        "UPGRADE_A_OFFS": lambda args: math.ceil(args["M"] * args["K"]).bit_length()
-        > 31,
-    }
-)
-@triton.heuristics(
-    {
-        "UPGRADE_B_OFFS": lambda args: math.ceil(args["K"] * args["N"]).bit_length()
-        > 31,
-    }
-)
-@triton.heuristics(
-    {
-        "UPGRADE_C_OFFS": lambda args: math.ceil(args["M"] * args["N"]).bit_length()
-        > 31,
-    }
-)
+@dataclass(frozen=True)
+class _Features:
+    """Exact call metadata plus the derived quantities dispatch reasons about."""
+
+    m: int
+    n: int
+    k: int
+    a_strides: tuple
+    b_strides: tuple
+    c_strides: tuple
+    dtype: torch.dtype
+    out_dtype: torch.dtype
+    aligned: bool
+    self_transpose: bool
+    sm_count: int
+    shared_bytes: int
+    l2_bytes: int
+
+    @property
+    def half(self):
+        return self.dtype in (torch.float16, torch.bfloat16)
+
+    @property
+    def element_size(self):
+        return 2 if self.half else 4
+
+    @property
+    def reduction_tiles(self):
+        return triton.cdiv(self.k, _K_TILE)
+
+    @property
+    def rhs_k_contiguous(self):
+        return self.b_strides[0] == 1
+
+    @property
+    def dense_operands(self):
+        return self.a_strides == (self.k, 1) and self.b_strides in (
+            (self.n, 1),
+            (1, self.k),
+        )
+
+    @property
+    def dense_output(self):
+        return self.c_strides == (self.n, 1)
+
+    @property
+    def vector_aligned(self):
+        # Eight half elements form the 16-byte vector load these tiles issue.
+        return self.aligned and all(
+            stride == 1 or stride % 8 == 0
+            for stride in self.a_strides + self.b_strides + self.c_strides
+        )
+
+    def tiles(self, rows, columns):
+        return triton.cdiv(self.m, rows) * triton.cdiv(self.n, columns)
+
+    def wave_work(self, rows, columns, occupancy=1):
+        capacity = self.sm_count * occupancy
+        return triton.cdiv(self.tiles(rows, columns), capacity) * rows * columns
+
+    def tile_utilization(self, rows, columns):
+        return self.m * self.n / (self.tiles(rows, columns) * rows * columns)
+
+    def wave_utilization(self, rows, columns):
+        tiles = self.tiles(rows, columns)
+        slots = triton.cdiv(tiles, self.sm_count) * self.sm_count
+        return tiles / slots
+
+
+class _MmCall(NamedTuple):
+    """Tensors and metadata for one invocation."""
+
+    a: torch.Tensor
+    b: torch.Tensor
+    c: torch.Tensor
+    f: _Features
+
+
+class _MmPlan(NamedTuple):
+    """An immutable execution choice; never owns tensors or workspace."""
+
+    launch: Callable
+    split_k: int = 1
+    pack_rhs: bool = False
+
+
+# Triton arithmetic families.
+
+
 @triton.jit
 def mm_kernel(
     A,
     B,
     C,
-    M,
-    N,
-    K,
-    stride_am,
-    stride_ak,
-    stride_bk,
-    stride_bn,
-    stride_cm,
-    stride_cn,
-    dot_out_dtype: tl.constexpr,
-    BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-    BLOCK_K: tl.constexpr,
-    GROUP_M: tl.constexpr,
-    EVEN_M: tl.constexpr,
-    EVEN_N: tl.constexpr,
-    EVEN_K: tl.constexpr,
-    UPGRADE: tl.constexpr,
-    UPGRADE_A_OFFS: tl.constexpr,
-    UPGRADE_B_OFFS: tl.constexpr,
-    UPGRADE_C_OFFS: tl.constexpr,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    SAM: tl.constexpr,
+    SAK: tl.constexpr,
+    SBK: tl.constexpr,
+    SBN: tl.constexpr,
+    SCM: tl.constexpr,
+    SCN: tl.constexpr,
+    BM: tl.constexpr,
+    BN: tl.constexpr,
+    BK: tl.constexpr,
+    GROUP_M: tl.constexpr = 1,
+    SPLIT_K: tl.constexpr = 1,
+    TRANSPOSE: tl.constexpr = False,
+    STATIC_K: tl.constexpr = False,
 ):
-    # matrix multiplication
-    if UPGRADE:
-        pid = ext.program_id(0)
+    """One output tile per CTA, optionally with a deterministic K partition."""
+    if TRANSPOSE:
+        # Compute C^T = B^T A^T. Swapping the dot operands changes which
+        # operand feeds which MMA port without materializing a transpose.
+        A, B = B, A
+        M, N = N, M
+        SAM, SAK, SBK, SBN = SBN, SBK, SAK, SAM
+        SCM, SCN = SCN, SCM
+    nm, nn = tl.cdiv(M, BM), tl.cdiv(N, BN)
+    split = tl.program_id(0) // (nm * nn) % SPLIT_K
+    pid = tl.program_id(0) % (nm * nn)
+    group = pid // (GROUP_M * nn)
+    first_m = group * GROUP_M
+    group_m = tl.minimum(nm - first_m, GROUP_M)
+    local = pid % (GROUP_M * nn)
+    pm = first_m + local % group_m
+    pn = local // group_m
+    mi = pm * BM + tl.arange(0, BM)
+    ni = pn * BN + tl.arange(0, BN)
+    iterations = tl.cdiv(K, BK * SPLIT_K)
+    ki = tl.arange(0, BK) + split * iterations * BK
+    # Tell the vectorizer each axis is a dense power-of-two tile. The values
+    # do not change; masked tails still compare against M/N/K below.
+    mi = tl.max_contiguous(tl.multiple_of(mi, BM), BM)
+    ni = tl.max_contiguous(tl.multiple_of(ni, BN), BN)
+    ki = tl.max_contiguous(tl.multiple_of(ki, BK), BK)
+    ap = A + mi[:, None].to(tl.int64) * SAM + ki[None, :].to(tl.int64) * SAK
+    bp = B + ki[:, None].to(tl.int64) * SBK + ni[None, :].to(tl.int64) * SBN
+    acc = tl.zeros((BM, BN), tl.float32)
+    if STATIC_K:
+        # Short reductions cannot amortize a pipelined loop's prologue and
+        # epilogue. Keep addresses in int64 here too, including sliced views.
+        for k in tl.static_range((K + BK * SPLIT_K - 1) // (BK * SPLIT_K)):
+            if K % (BK * SPLIT_K) == 0:
+                if M % BM == 0:
+                    ak = tl.load(ap)
+                else:
+                    ak = tl.load(ap, mi[:, None] < M, other=0)
+                if N % BN == 0:
+                    bk = tl.load(bp)
+                else:
+                    bk = tl.load(bp, ni[None, :] < N, other=0)
+            else:
+                ak = tl.load(
+                    ap, (mi[:, None] < M) & (ki[None, :] + k * BK < K), other=0
+                )
+                bk = tl.load(
+                    bp, (ki[:, None] + k * BK < K) & (ni[None, :] < N), other=0
+                )
+            acc = tl.dot(ak, bk, acc, out_dtype=tl.float32, allow_tf32=False)
+            ap += BK * SAK
+            bp += BK * SBK
     else:
-        pid = tl.program_id(0)
-    grid_m = tl.cdiv(M, BLOCK_M)
-    grid_n = tl.cdiv(N, BLOCK_N)
-    # re-order program ID for better L2 performance
-    width = GROUP_M * grid_n
-    group_id = pid // width
-    group_size = min(grid_m - group_id * GROUP_M, GROUP_M)
-    pid_m = group_id * GROUP_M + (pid % group_size)
-    pid_n = (pid % width) // (group_size)
-    # do matrix multiplication
-    if UPGRADE_A_OFFS:
-        rm = (pid_m * BLOCK_M + tl.arange(0, BLOCK_M)).to(tl.int64)
-        if EVEN_M:
-            ram = tl.max_contiguous(tl.multiple_of(rm, BLOCK_M), BLOCK_M).to(tl.int64)
-        else:
-            ram = tl.max_contiguous(tl.multiple_of(rm % M, BLOCK_M), BLOCK_M).to(
-                tl.int64
-            )
-    else:
-        rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-        if EVEN_M:
-            ram = tl.max_contiguous(tl.multiple_of(rm, BLOCK_M), BLOCK_M)
-        else:
-            ram = tl.max_contiguous(tl.multiple_of(rm % M, BLOCK_M), BLOCK_M)
-    if UPGRADE_B_OFFS:
-        rn = (pid_n * BLOCK_N + tl.arange(0, BLOCK_N)).to(tl.int64)
-        if EVEN_N:
-            rbn = tl.max_contiguous(tl.multiple_of(rn, BLOCK_N), BLOCK_N).to(tl.int64)
-        else:
-            rbn = tl.max_contiguous(tl.multiple_of(rn % N, BLOCK_N), BLOCK_N).to(
-                tl.int64
-            )
-    else:
-        rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-        if EVEN_N:
-            rbn = tl.max_contiguous(tl.multiple_of(rn, BLOCK_N), BLOCK_N)
-        else:
-            rbn = tl.max_contiguous(tl.multiple_of(rn % N, BLOCK_N), BLOCK_N)
-
-    rk = tl.arange(0, BLOCK_K)
-    # pointers
-    A = A + (ram[:, None] * stride_am + rk[None, :] * stride_ak)
-    B = B + (rk[:, None] * stride_bk + rbn[None, :] * stride_bn)
-    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=dot_out_dtype)
-    for k in range(0, tl.cdiv(K, BLOCK_K)):
-        if EVEN_K:
-            a = tl.load(A)
-            b = tl.load(B)
-        else:
-            k_remaining = K - k * BLOCK_K
-            _0 = tl.zeros((1, 1), dtype=C.dtype.element_ty)
-            a = tl.load(A, mask=rk[None, :] < k_remaining, other=_0)
-            b = tl.load(B, mask=rk[:, None] < k_remaining, other=_0)
-        if a.dtype != b.dtype:
-            a = a.to(C.dtype.element_ty)
-            b = b.to(C.dtype.element_ty)
-        acc = tl.dot(
-            a,
-            b,
-            acc,
-            out_dtype=dot_out_dtype,
-            allow_tf32=False,
-        )
-        A += BLOCK_K * stride_ak
-        B += BLOCK_K * stride_bk
-    acc = acc.to(C.dtype.element_ty)
-    # rematerialize rm and rn to save registers
-    if UPGRADE_C_OFFS:
-        rm = (pid_m * BLOCK_M + tl.arange(0, BLOCK_M)).to(tl.int64)
-        rn = (pid_n * BLOCK_N + tl.arange(0, BLOCK_N)).to(tl.int64)
-        C = C + (rm[:, None] * stride_cm + rn[None, :] * stride_cn).to(tl.int64)
-    else:
-        rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-        rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-        C = C + (rm[:, None] * stride_cm + rn[None, :] * stride_cn)
-    if EVEN_M and EVEN_N:
-        tl.store(C, acc)
-    else:
-        mask = (rm < M)[:, None] & (rn < N)[None, :]
-        tl.store(C, acc, mask=mask)
+        for k in range(iterations):
+            if K % (BK * SPLIT_K) == 0:
+                if M % BM == 0:
+                    ak = tl.load(ap)
+                else:
+                    ak = tl.load(ap, mi[:, None] < M, other=0)
+                if N % BN == 0:
+                    bk = tl.load(bp)
+                else:
+                    bk = tl.load(bp, ni[None, :] < N, other=0)
+            else:
+                ak = tl.load(
+                    ap, (mi[:, None] < M) & (ki[None, :] + k * BK < K), other=0
+                )
+                bk = tl.load(
+                    bp, (ki[:, None] + k * BK < K) & (ni[None, :] < N), other=0
+                )
+            acc = tl.dot(ak, bk, acc, out_dtype=tl.float32, allow_tf32=False)
+            ap += BK * SAK
+            bp += BK * SBK
+    cp = (
+        C
+        + split.to(tl.int64) * M * N
+        + mi[:, None].to(tl.int64) * SCM
+        + ni[None, :].to(tl.int64) * SCN
+    )
+    tl.store(cp, acc, (mi[:, None] < M) & (ni[None, :] < N))
 
 
-@libentry()
-@libtuner(
-    configs=runtime.get_tuned_config("mm_nn"),
-    key=["M", "N", "K"],
-    policy="flagtune",
-    prune_configs_by={"early_config_prune": _prune_mm_dense_configs},
-    flagtune_op_name="mm",
-    flagtune_expand_op_name="mm_nn",
-    flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
-    flagtune_op_id="flaggems/mm",
-    flagtune_variant="metax_nn",
-)
-@triton.heuristics(runtime.get_heuristic_config("mm"))
-@triton.heuristics(
-    {
-        "EVEN_M": lambda args: args["M"] % args["BLOCK_M"] == 0,
-        "EVEN_N": lambda args: args["N"] % args["BLOCK_N"] == 0,
-    }
-)
 @triton.jit
 def mm_kernel_nn(
     A,
     B,
     C,
-    M,
-    N,
-    K,
-    BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-    BLOCK_K: tl.constexpr,
-    GROUP_M: tl.constexpr,
-    EVEN_M: tl.constexpr,
-    EVEN_N: tl.constexpr,
-    EVEN_K: tl.constexpr,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    BM: tl.constexpr,
+    BN: tl.constexpr,
+    BK: tl.constexpr,
+    GROUP_M: tl.constexpr = 1,
+    TRANSPOSE: tl.constexpr = False,
+    STATIC_K: tl.constexpr = False,
 ):
+    """Mask-free dense-NN kernel for dimensions divisible by the selected tile."""
+    nm, nn = tl.cdiv(M, BM), tl.cdiv(N, BN)
     pid = tl.program_id(0)
-    grid_m = tl.cdiv(M, BLOCK_M)
-    grid_n = tl.cdiv(N, BLOCK_N)
+    group = pid // (GROUP_M * nn)
+    first_m = group * GROUP_M
+    group_m = tl.minimum(nm - first_m, GROUP_M)
+    local = pid % (GROUP_M * nn)
+    pm = first_m + local % group_m
+    pn = local // group_m
+    mi = pm * BM + tl.arange(0, BM)
+    ni = pn * BN + tl.arange(0, BN)
+    ki = tl.arange(0, BK)
+    mi = tl.max_contiguous(tl.multiple_of(mi, BM), BM)
+    ni = tl.max_contiguous(tl.multiple_of(ni, BN), BN)
+    ki = tl.max_contiguous(tl.multiple_of(ki, BK), BK)
+    ap = A + mi[:, None].to(tl.int64) * K + ki[None, :].to(tl.int64)
+    bp = B + ki[:, None].to(tl.int64) * N + ni[None, :].to(tl.int64)
+    acc = tl.zeros((BM, BN), tl.float32)
+    # Carry the four-stage depth into the loop so MetaX can overlap K panels.
+    for _ in tl.range(0, tl.cdiv(K, BK), 1, num_stages=4):
+        acc = tl.dot(
+            tl.load(ap),
+            tl.load(bp),
+            acc,
+            out_dtype=tl.float32,
+            allow_tf32=False,
+        )
+        ap += BK
+        bp += BK * N
+    cp = C + mi[:, None].to(tl.int64) * N + ni[None, :].to(tl.int64)
+    tl.store(cp, acc)
 
-    width = GROUP_M * grid_n
-    group_id = pid // width
-    group_size = min(grid_m - group_id * GROUP_M, GROUP_M)
-    pid_m = group_id * GROUP_M + pid % group_size
-    pid_n = pid % width // group_size
 
-    rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-    if EVEN_M:
-        ram = tl.max_contiguous(tl.multiple_of(rm, BLOCK_M), BLOCK_M)
-    else:
-        ram = tl.max_contiguous(tl.multiple_of(rm % M, BLOCK_M), BLOCK_M)
-    if EVEN_N:
-        rbn = tl.max_contiguous(tl.multiple_of(rn, BLOCK_N), BLOCK_N)
-    else:
-        rbn = tl.max_contiguous(tl.multiple_of(rn % N, BLOCK_N), BLOCK_N)
-
-    rk = tl.arange(0, BLOCK_K)
-    a_ptrs = A + ram[:, None] * K + rk[None, :]
-    b_ptrs = B + rk[:, None] * N + rbn[None, :]
-    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
-
-    for k in range(0, tl.cdiv(K, BLOCK_K)):
-        if EVEN_K:
-            a = tl.load(a_ptrs)
-            b = tl.load(b_ptrs)
+@triton.jit
+def _syrk_kernel(
+    A,
+    C,
+    M: tl.constexpr,
+    K: tl.constexpr,
+    SAM: tl.constexpr,
+    SAK: tl.constexpr,
+    SCM: tl.constexpr,
+    SCN: tl.constexpr,
+    BT: tl.constexpr,
+    BK: tl.constexpr,
+):
+    """Compute the lower triangle of A @ A.T and mirror off-diagonal tiles."""
+    pid = tl.program_id(0).to(tl.int64)
+    row = ((tl.sqrt(8.0 * pid.to(tl.float32) + 1.0) - 1.0) * 0.5).to(tl.int64)
+    # Correct either direction of rounding at a triangular-number boundary.
+    row = tl.where(row * (row + 1) // 2 > pid, row - 1, row)
+    row = tl.where((row + 1) * (row + 2) // 2 <= pid, row + 1, row)
+    column = pid - row * (row + 1) // 2
+    mi = row * BT + tl.arange(0, BT)
+    ni = column * BT + tl.arange(0, BT)
+    mi = tl.max_contiguous(tl.multiple_of(mi, BT), BT)
+    ni = tl.max_contiguous(tl.multiple_of(ni, BT), BT)
+    ki = tl.arange(0, BK)
+    ap = A + mi[:, None] * SAM + ki[None, :] * SAK
+    bp = A + ki[:, None] * SAK + ni[None, :] * SAM
+    acc = tl.zeros((BT, BT), tl.float32)
+    for _ in range(tl.cdiv(K, BK)):
+        # Dispatch guarantees complete K tiles; M tails remain masked.
+        if M % BT == 0:
+            av = tl.load(ap)
+            bv = tl.load(bp)
         else:
-            k_remaining = K - k * BLOCK_K
-            a = tl.load(a_ptrs, mask=rk[None, :] < k_remaining, other=0.0)
-            b = tl.load(b_ptrs, mask=rk[:, None] < k_remaining, other=0.0)
-        if a.dtype != b.dtype:
-            a = a.to(C.dtype.element_ty)
-            b = b.to(C.dtype.element_ty)
-        acc = tl.dot(a, b, acc, out_dtype=tl.float32, allow_tf32=False)
-        a_ptrs += BLOCK_K
-        b_ptrs += BLOCK_K * N
-
-    c_ptrs = C + rm[:, None] * N + rn[None, :]
-    result = acc.to(C.dtype.element_ty)
-    if EVEN_M and EVEN_N:
-        tl.store(c_ptrs, result)
-    else:
-        tl.store(c_ptrs, result, mask=(rm < M)[:, None] & (rn < N)[None, :])
+            av = tl.load(ap, mi[:, None] < M, other=0)
+            bv = tl.load(bp, ni[None, :] < M, other=0)
+        acc = tl.dot(av, bv, acc, out_dtype=tl.float32, allow_tf32=False)
+        ap += BK * SAK
+        bp += BK * SAK
+    mask = (mi[:, None] < M) & (ni[None, :] < M)
+    tl.store(C + mi[:, None] * SCM + ni[None, :] * SCN, acc, mask)
+    if row != column:
+        tl.store(C + ni[None, :] * SCM + mi[:, None] * SCN, acc, mask)
 
 
-@libentry()
-@libtuner(
-    configs=runtime.get_tuned_config("mm_nt"),
-    key=["M", "N", "K"],
-    policy="flagtune",
-    prune_configs_by={"early_config_prune": _prune_mm_dense_configs_nt},
-    flagtune_op_name="mm",
-    flagtune_expand_op_name="mm_nt",
-    flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
-    flagtune_op_id="flaggems/mm",
-    flagtune_variant="metax_nt",
-)
-@triton.heuristics(runtime.get_heuristic_config("mm"))
-@triton.heuristics(
-    {
-        "EVEN_M": lambda args: args["M"] % args["BLOCK_M"] == 0,
-        "EVEN_N": lambda args: args["N"] % args["BLOCK_N"] == 0,
-    }
-)
 @triton.jit
-def mm_kernel_nt(
+def _dual_gemm_kernel(
     A,
     B,
     C,
-    M,
-    N,
-    K,
-    BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-    BLOCK_K: tl.constexpr,
-    GROUP_M: tl.constexpr,
-    EVEN_M: tl.constexpr,
-    EVEN_N: tl.constexpr,
-    EVEN_K: tl.constexpr,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    SAM: tl.constexpr,
+    SAK: tl.constexpr,
+    SBK: tl.constexpr,
+    SBN: tl.constexpr,
+    SCM: tl.constexpr,
+    SCN: tl.constexpr,
+    BM: tl.constexpr,
+    B0: tl.constexpr,
+    B1: tl.constexpr,
+    BK: tl.constexpr,
+    SWAP: tl.constexpr = False,
+    GROUP_M: tl.constexpr = 1,
 ):
+    """Two power-of-two dots share A, forming a narrower non-power-of-two tile.
+
+    SWAP computes C^T = B^T A^T, storing through the original output strides.
+    """
+    if SWAP:
+        A, B = B, A
+        M, N = N, M
+        SAM, SAK, SBK, SBN = SBN, SBK, SAK, SAM
+        SCM, SCN = SCN, SCM
+    nn = tl.cdiv(N, B0 + B1)
+    nm = tl.cdiv(M, BM)
     pid = tl.program_id(0)
-    grid_m = tl.cdiv(M, BLOCK_M)
-    grid_n = tl.cdiv(N, BLOCK_N)
-
-    width = GROUP_M * grid_n
-    group_id = pid // width
-    group_size = min(grid_m - group_id * GROUP_M, GROUP_M)
-    pid_m = group_id * GROUP_M + pid % group_size
-    pid_n = pid % width // group_size
-
-    rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-    if EVEN_M:
-        ram = tl.max_contiguous(tl.multiple_of(rm, BLOCK_M), BLOCK_M)
-    else:
-        ram = tl.max_contiguous(tl.multiple_of(rm % M, BLOCK_M), BLOCK_M)
-    if EVEN_N:
-        rbn = tl.max_contiguous(tl.multiple_of(rn, BLOCK_N), BLOCK_N)
-    else:
-        rbn = tl.max_contiguous(tl.multiple_of(rn % N, BLOCK_N), BLOCK_N)
-
-    rk = tl.arange(0, BLOCK_K)
-    a_ptrs = A + ram[:, None] * K + rk[None, :]
-    b_ptrs = B + rk[:, None] + rbn[None, :] * K
-    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
-
-    for k in range(0, tl.cdiv(K, BLOCK_K)):
-        if EVEN_K:
-            a = tl.load(a_ptrs)
-            b = tl.load(b_ptrs)
-        else:
-            k_remaining = K - k * BLOCK_K
-            a = tl.load(a_ptrs, mask=rk[None, :] < k_remaining, other=0.0)
-            b = tl.load(b_ptrs, mask=rk[:, None] < k_remaining, other=0.0)
-        if a.dtype != b.dtype:
-            a = a.to(C.dtype.element_ty)
-            b = b.to(C.dtype.element_ty)
-        acc = tl.dot(a, b, acc, out_dtype=tl.float32, allow_tf32=False)
-        a_ptrs += BLOCK_K
-        b_ptrs += BLOCK_K
-
-    c_ptrs = C + rm[:, None] * N + rn[None, :]
-    result = acc.to(C.dtype.element_ty)
-    if EVEN_M and EVEN_N:
-        tl.store(c_ptrs, result)
-    else:
-        tl.store(c_ptrs, result, mask=(rm < M)[:, None] & (rn < N)[None, :])
+    group = pid // (GROUP_M * nn)
+    first_m = group * GROUP_M
+    group_m = tl.minimum(nm - first_m, GROUP_M)
+    local = pid % (GROUP_M * nn)
+    pm = first_m + local % group_m
+    pn = local // group_m
+    m = pm * BM + tl.arange(0, BM)
+    n0 = pn * (B0 + B1) + tl.arange(0, B0)
+    n1 = pn * (B0 + B1) + B0 + tl.arange(0, B1)
+    k = tl.arange(0, BK)
+    m = tl.max_contiguous(tl.multiple_of(m, BM), BM)
+    n0 = tl.max_contiguous(tl.multiple_of(n0, B0), B0)
+    n1 = tl.max_contiguous(tl.multiple_of(n1, B1), B1)
+    k = tl.max_contiguous(tl.multiple_of(k, BK), BK)
+    ap = A + m[:, None].to(tl.int64) * SAM + k[None, :].to(tl.int64) * SAK
+    bp0 = B + k[:, None].to(tl.int64) * SBK + n0[None, :].to(tl.int64) * SBN
+    bp1 = B + k[:, None].to(tl.int64) * SBK + n1[None, :].to(tl.int64) * SBN
+    c0 = tl.zeros((BM, B0), tl.float32)
+    c1 = tl.zeros((BM, B1), tl.float32)
+    for it in range(tl.cdiv(K, BK)):
+        av = tl.load(ap, (m[:, None] < M) & (k[None, :] + it * BK < K), 0)
+        b0 = tl.load(bp0, (n0[None, :] < N) & (k[:, None] + it * BK < K), 0)
+        b1 = tl.load(bp1, (n1[None, :] < N) & (k[:, None] + it * BK < K), 0)
+        c0 = tl.dot(av, b0, c0, out_dtype=tl.float32, allow_tf32=False)
+        c1 = tl.dot(av, b1, c1, out_dtype=tl.float32, allow_tf32=False)
+        ap += BK * SAK
+        bp0 += BK * SBK
+        bp1 += BK * SBK
+    p0 = C + m[:, None].to(tl.int64) * SCM + n0[None, :].to(tl.int64) * SCN
+    p1 = C + m[:, None].to(tl.int64) * SCM + n1[None, :].to(tl.int64) * SCN
+    tl.store(p0, c0, (m[:, None] < M) & (n0[None, :] < N))
+    tl.store(p1, c1, (m[:, None] < M) & (n1[None, :] < N))
 
 
-def _prune_gemv_configs(configs, named_args, **kwargs):
-    configs = list(configs)
-    pruned_configs = [
-        config
-        for config in configs
-        if config.kwargs["BLOCK_K"] == 256 and config.num_warps in (4, 8)
-    ]
-    return pruned_configs or list(configs)
-
-
-@libentry()
-@libtuner(
-    configs=[triton.Config({"BLOCK_M": 32, "BLOCK_K": 256})],
-    key=["M", "K", "stride_am", "stride_bk"],
-    policy="flagtune",
-    prune_configs_by={"early_config_prune": _prune_gemv_configs},
-    flagtune_op_name="mm",
-    flagtune_expand_op_name="gemv",
-    flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
-    flagtune_op_id="flaggems/mm",
-    flagtune_variant="metax_gemv",
-)
 @triton.jit
-def gemv_kernel(
+def _simt_row_kernel(
     A,
     B,
     C,
-    M,
-    K,
-    stride_am,
-    stride_ak,
-    stride_bk,
-    stride_cm,
-    BLOCK_M: tl.constexpr,
-    BLOCK_K: tl.constexpr,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    SAM: tl.constexpr,
+    SAK: tl.constexpr,
+    SBK: tl.constexpr,
+    SBN: tl.constexpr,
+    SCM: tl.constexpr,
+    SCN: tl.constexpr,
+    BN: tl.constexpr,
+    BK: tl.constexpr,
+    SPLIT_K: tl.constexpr = 1,
 ):
-    pid = tl.program_id(0)
-    offsets_m = pid * BLOCK_M + tl.arange(0, BLOCK_M)
-    mask_m = offsets_m < M
-
-    acc = tl.zeros((BLOCK_M,), dtype=tl.float32)
-    for k_start in range(0, K, BLOCK_K):
-        offsets_k = k_start + tl.arange(0, BLOCK_K)
-        mask_k = offsets_k < K
-        a = tl.load(
-            A + offsets_m[:, None] * stride_am + offsets_k[None, :] * stride_ak,
-            mask=mask_m[:, None] & mask_k[None, :],
-            other=0.0,
-        )
-        b = tl.load(B + offsets_k * stride_bk, mask=mask_k, other=0.0)
-        acc += tl.sum(a.to(tl.float32) * b.to(tl.float32)[None, :], axis=1)
-
-    tl.store(C + offsets_m * stride_cm, acc.to(C.dtype.element_ty), mask=mask_m)
-
-
-def gemv_mm(a, b, c, M, K):
-    grid = lambda META: (triton.cdiv(M, META["BLOCK_M"]),)
-    with torch_device_fn.device(a.device):
-        gemv_kernel[grid](
-            a,
-            b,
-            c,
-            M,
-            K,
-            a.stride(0),
-            a.stride(1),
-            b.stride(0),
-            c.stride(0),
-        )
-    return c
-
-
-@libentry()
-@libtuner(
-    configs=runtime.get_tuned_config("gemv_k_parallel"),
-    key=["M", "K", "stride_am", "stride_bk"],
-    policy="flagtune",
-    flagtune_op_name="mm",
-    flagtune_expand_op_name="gemv_k_parallel",
-    flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
-    flagtune_op_id="flaggems/mm",
-    flagtune_variant="metax_gemv_k_parallel_partial",
-)
-@triton.jit
-def gemv_kernel_k_parallel_partial(
-    A,
-    B,
-    P,
-    M,
-    K,
-    stride_am,
-    stride_ak,
-    stride_bk,
-    SPLIT_K: tl.constexpr,
-    BLOCK_M: tl.constexpr,
-    BLOCK_K: tl.constexpr,
-):
-    pid_m = tl.program_id(0)
-    pid_k = tl.program_id(1)
-    offsets_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    mask_m = offsets_m < M
-
-    total_k_iters = tl.cdiv(K, BLOCK_K)
-    k_per_split = tl.cdiv(total_k_iters, SPLIT_K)
-    k_start = pid_k * k_per_split
-    k_end = min((pid_k + 1) * k_per_split, total_k_iters)
-
-    acc = tl.zeros((BLOCK_M,), dtype=tl.float32)
-    for k_iter in range(k_start, k_end):
-        offsets_k = k_iter * BLOCK_K + tl.arange(0, BLOCK_K)
-        mask_k = offsets_k < K
-        a = tl.load(
-            A + offsets_m[:, None] * stride_am + offsets_k[None, :] * stride_ak,
-            mask=mask_m[:, None] & mask_k[None, :],
-            other=0.0,
-        )
-        b = tl.load(B + offsets_k * stride_bk, mask=mask_k, other=0.0)
-        acc += tl.sum(a.to(tl.float32) * b.to(tl.float32)[None, :], axis=1)
-
-    tl.store(P + pid_k * M + offsets_m, acc, mask=mask_m)
-
-
-@libentry()
-@triton.jit
-def gemv_kernel_k_parallel_reduce(
-    P,
-    C,
-    M,
-    stride_cm,
-    SPLIT_K: tl.constexpr,
-    BLOCK_SIZE: tl.constexpr,
-):
-    offsets_m = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask_m = offsets_m < M
-    acc = tl.zeros((BLOCK_SIZE,), dtype=tl.float32)
-
-    for split_id in range(0, SPLIT_K):
-        acc += tl.load(P + split_id * M + offsets_m, mask=mask_m, other=0.0)
-
+    """One row of A per CTA: columns are the inner axis, so A broadcasts."""
+    nn = tl.cdiv(N, BN)
+    split = tl.program_id(0) // (M * nn) % SPLIT_K
+    m = (tl.program_id(0) // nn % M).to(tl.int64)
+    n = (tl.program_id(0) % nn * BN + tl.arange(0, BN)).to(tl.int64)
+    iterations = tl.cdiv(K, BK * SPLIT_K)
+    k = tl.arange(0, BK) + split.to(tl.int64) * iterations * BK
+    acc = tl.zeros((BN, BK), tl.float32)
+    for start in range(iterations):
+        ks = k + start * BK
+        a = tl.load(A + m * SAM + ks * SAK, ks < K, other=0).to(tl.float32)
+        b = tl.load(
+            B + n[:, None] * SBN + ks[None, :] * SBK,
+            (n[:, None] < N) & (ks[None, :] < K),
+            other=0,
+        ).to(tl.float32)
+        acc = tl.fma(a[None, :], b, acc)
     tl.store(
-        C + offsets_m * stride_cm,
-        acc.to(C.dtype.element_ty),
-        mask=mask_m,
+        C + split.to(tl.int64) * M * N + m * SCM + n * SCN,
+        tl.sum(acc, axis=1),
+        n < N,
     )
 
 
-_GEMV_BLOCK_M = 32
-_GEMV_K_PARALLEL_BLOCK_K = 128
-_GEMV_K_PARALLEL_MAX_SPLITS = 16
-_GEMV_K_PARALLEL_TARGET_SM_NUMERATOR = 1
-_GEMV_K_PARALLEL_TARGET_SM_DENOMINATOR = 2
-
-
-def _floor_power_of_two(value):
-    if value < 1:
-        return 0
-    return 1 << (int(value).bit_length() - 1)
-
-
-def _ceil_power_of_two(value):
-    if value <= 1:
-        return 1
-    return 1 << (int(value - 1).bit_length())
-
-
-def _gemv_k_parallel_split_k(M, K):
-    base_programs = max(1, triton.cdiv(M, _GEMV_BLOCK_M))
-    target_programs = max(
-        1,
-        get_sm_count()
-        * _GEMV_K_PARALLEL_TARGET_SM_NUMERATOR
-        // _GEMV_K_PARALLEL_TARGET_SM_DENOMINATOR,
-    )
-    occupancy_splits = target_programs // base_programs
-    k_splits = max(1, triton.cdiv(K, _GEMV_K_PARALLEL_BLOCK_K))
-
-    split_k = min(
-        _GEMV_K_PARALLEL_MAX_SPLITS,
-        k_splits,
-        _floor_power_of_two(occupancy_splits),
-    )
-    return max(1, split_k)
-
-
-def gemv_mm_k_parallel(a, b, c, M, K):
-    split_k = _gemv_k_parallel_split_k(M, K)
-    partials = torch.empty((split_k, M), device=a.device, dtype=torch.float32)
-    partial_grid = lambda META: (
-        triton.cdiv(M, META["BLOCK_M"]),
-        split_k,
-    )
-    reduce_block_size = 256
-    reduce_grid = (triton.cdiv(M, reduce_block_size),)
-
-    with torch_device_fn.device(a.device):
-        gemv_kernel_k_parallel_partial[partial_grid](
-            a,
-            b,
-            partials,
-            M,
-            K,
-            a.stride(0),
-            a.stride(1),
-            b.stride(0),
-            SPLIT_K=split_k,
-        )
-        gemv_kernel_k_parallel_reduce[reduce_grid](
-            partials,
-            c,
-            M,
-            c.stride(0),
-            SPLIT_K=split_k,
-            BLOCK_SIZE=reduce_block_size,
-            num_warps=4,
-        )
-    return c
-
-
-def _reset_splitk_output(args, reset_only=False):
-    c = args["C"] if isinstance(args, dict) else args[2]
-    c.zero_()
-
-
-def _splitk_b_is_transposed(named_args):
-    return named_args.get("stride_bk") == 1
-
-
-def _splitk_nt_config_aborts(config, transposed_b):
-    if not transposed_b:
-        return False
-
-    pipeline = config.kwargs.get("pipeline")
-    block_n = config.kwargs["BLOCK_N"]
-    block_k = config.kwargs["BLOCK_K"]
-
-    if pipeline == "cpasync" and block_k < block_n:
-        return True
-
-    return False
-
-
-def _prune_mm_splitk_two_step_configs(configs, named_args, **kwargs):
-    configs = list(configs)
-    N = named_args["N"]
-    transposed_b = _splitk_b_is_transposed(named_args)
-    block_ns = (16, 32) if N == 16 else (64, 128)
-    pruned_configs = [
-        config
-        for config in configs
-        if not _splitk_nt_config_aborts(config, transposed_b)
-        if config.kwargs["BLOCK_N"] in block_ns
-    ]
-    return pruned_configs or list(configs)
-
-
-@libentry()
-@libtuner(
-    configs=runtime.get_tuned_config("mm_splitk"),
-    key=["M", "N", "K", "stride_am", "stride_bk"],
-    policy="flagtune",
-    pre_hook=_reset_splitk_output,
-    flagtune_op_name="mm",
-    flagtune_expand_op_name="mm_splitk",
-    flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
-    flagtune_op_id="flaggems/mm",
-    flagtune_variant="metax_splitk",
-)
-@triton.jit
-def mm_kernel_splitk(
-    A,
-    B,
-    C,
-    M,
-    N,
-    K,
-    stride_am,
-    stride_ak,
-    stride_bk,
-    stride_bn,
-    stride_cm,
-    stride_cn,
-    BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-    BLOCK_K: tl.constexpr,
-    SPLIT_K: tl.constexpr,
-):
-    pid = tl.program_id(0)
-    pid_k = tl.program_id(1)
-
-    grid_n = tl.cdiv(N, BLOCK_N)
-    pid_m = pid // grid_n
-    pid_n = pid % grid_n
-
-    offsets_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    offsets_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-
-    total_k_iters = tl.cdiv(K, BLOCK_K)
-    k_per_split = tl.cdiv(total_k_iters, SPLIT_K)
-    k_start = pid_k * k_per_split
-    k_end = min((pid_k + 1) * k_per_split, total_k_iters)
-
-    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
-    for k in range(k_start, k_end):
-        offsets_k = k * BLOCK_K + tl.arange(0, BLOCK_K)
-        a = tl.load(
-            A + offsets_m[:, None] * stride_am + offsets_k[None, :] * stride_ak,
-            mask=(offsets_m[:, None] < M) & (offsets_k[None, :] < K),
-            other=0.0,
-        )
-        b = tl.load(
-            B + offsets_k[:, None] * stride_bk + offsets_n[None, :] * stride_bn,
-            mask=(offsets_k[:, None] < K) & (offsets_n[None, :] < N),
-            other=0.0,
-        )
-        acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
-
-    c_ptrs = C + offsets_m[:, None] * stride_cm + offsets_n[None, :] * stride_cn
-    mask = (offsets_m < M)[:, None] & (offsets_n < N)[None, :]
-    tl.atomic_add(c_ptrs, acc, mask=mask)
-
-
-def splitk_mm(a, b, c, M, N, K):
-    grid = lambda META: (
-        triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
-        META["SPLIT_K"],
-    )
-    with torch_device_fn.device(a.device):
-        mm_kernel_splitk[grid](
-            a,
-            b,
-            c,
-            M,
-            N,
-            K,
-            a.stride(0),
-            a.stride(1),
-            b.stride(0),
-            b.stride(1),
-            c.stride(0),
-            c.stride(1),
-        )
-    return c
-
-
-@libentry()
-@libtuner(
-    configs=runtime.get_tuned_config("mm_splitk_two_step"),
-    key=["M", "N", "K", "stride_am", "stride_bk"],
-    policy="flagtune",
-    prune_configs_by={"early_config_prune": _prune_mm_splitk_two_step_configs},
-    flagtune_op_name="mm",
-    flagtune_expand_op_name="mm_splitk_two_step",
-    flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
-    flagtune_op_id="flaggems/mm",
-    flagtune_variant="metax_splitk_two_step_partial",
-)
-@triton.jit
-def mm_kernel_splitk_partial(
-    A,
-    B,
-    P,
-    M,
-    N,
-    K,
-    stride_am,
-    stride_ak,
-    stride_bk,
-    stride_bn,
-    SPLIT_K: tl.constexpr,
-    BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-    BLOCK_K: tl.constexpr,
-):
-    pid = tl.program_id(0)
-    pid_k = tl.program_id(1)
-
-    grid_n = tl.cdiv(N, BLOCK_N)
-    pid_m = pid // grid_n
-    pid_n = pid % grid_n
-
-    offsets_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    offsets_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-
-    total_k_iters = tl.cdiv(K, BLOCK_K)
-    k_per_split = tl.cdiv(total_k_iters, SPLIT_K)
-    k_start = pid_k * k_per_split
-    k_end = min((pid_k + 1) * k_per_split, total_k_iters)
-
-    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
-    for k in range(k_start, k_end):
-        offsets_k = k * BLOCK_K + tl.arange(0, BLOCK_K)
-        a = tl.load(
-            A + offsets_m[:, None] * stride_am + offsets_k[None, :] * stride_ak,
-            mask=(offsets_m[:, None] < M) & (offsets_k[None, :] < K),
-            other=0.0,
-        )
-        b = tl.load(
-            B + offsets_k[:, None] * stride_bk + offsets_n[None, :] * stride_bn,
-            mask=(offsets_k[:, None] < K) & (offsets_n[None, :] < N),
-            other=0.0,
-        )
-        acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
-
-    p_ptrs = P + pid_k * M * N + offsets_m[:, None] * N + offsets_n[None, :]
-    mask = (offsets_m < M)[:, None] & (offsets_n < N)[None, :]
-    tl.store(p_ptrs, acc, mask=mask)
-
-
-@libentry()
 @triton.jit
 def mm_kernel_small_n_partial(
     A,
     B,
-    P,
-    M,
-    N,
-    K,
-    stride_am,
-    stride_ak,
-    stride_bk,
-    stride_bn,
-    SPLIT_K: tl.constexpr,
-    BLOCK_M: tl.constexpr,
-    BLOCK_K: tl.constexpr,
+    C,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    SAM: tl.constexpr,
+    SAK: tl.constexpr,
+    SBK: tl.constexpr,
+    SBN: tl.constexpr,
+    SCM: tl.constexpr,
+    SCN: tl.constexpr,
+    BM: tl.constexpr,
+    BK: tl.constexpr,
+    SPLIT_K: tl.constexpr = 1,
 ):
-    pid_m = tl.program_id(0)
-    pid_nk = tl.program_id(1)
-    pid_n = pid_nk % N
-    pid_k = pid_nk // N
-
-    offsets_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    mask_m = offsets_m < M
-    total_k_iters = tl.cdiv(K, BLOCK_K)
-    k_per_split = tl.cdiv(total_k_iters, SPLIT_K)
-    k_start = pid_k * k_per_split
-    k_end = min((pid_k + 1) * k_per_split, total_k_iters)
-
-    acc = tl.zeros((BLOCK_M,), dtype=tl.float32)
-    for k_iter in range(k_start, k_end):
-        offsets_k = k_iter * BLOCK_K + tl.arange(0, BLOCK_K)
-        mask_k = offsets_k < K
+    """One column of C per CTA: a BM tile of A shares each loaded B column."""
+    nm = tl.cdiv(M, BM)
+    split = tl.program_id(0) // (N * nm) % SPLIT_K
+    n = (tl.program_id(0) // nm % N).to(tl.int64)
+    m = (tl.program_id(0) % nm * BM + tl.arange(0, BM)).to(tl.int64)
+    iterations = tl.cdiv(K, BK * SPLIT_K)
+    k = tl.arange(0, BK) + split.to(tl.int64) * iterations * BK
+    acc = tl.zeros((BM, BK), tl.float32)
+    for start in range(iterations):
+        ks = k + start * BK
         a = tl.load(
-            A + offsets_m[:, None] * stride_am + offsets_k[None, :] * stride_ak,
-            mask=mask_m[:, None] & mask_k[None, :],
-            other=0.0,
-        )
-        b = tl.load(
-            B + offsets_k * stride_bk + pid_n * stride_bn,
-            mask=mask_k,
-            other=0.0,
-        )
-        acc += tl.sum(a.to(tl.float32) * b.to(tl.float32)[None, :], axis=1)
-
-    p_offsets = pid_k * M * N + offsets_m * N + pid_n
-    tl.store(P + p_offsets, acc, mask=mask_m)
+            A + m[:, None] * SAM + ks[None, :] * SAK,
+            (m[:, None] < M) & (ks[None, :] < K),
+            other=0,
+        ).to(tl.float32)
+        b = tl.load(B + ks * SBK + n * SBN, ks < K, other=0).to(tl.float32)
+        acc = tl.fma(b[None, :], a, acc)
+    tl.store(
+        C + split.to(tl.int64) * M * N + m * SCM + n * SCN,
+        tl.sum(acc, axis=1),
+        m < M,
+    )
 
 
-@libentry()
 @triton.jit
-def mm_kernel_small_n_dot_partial(
-    A,
+def _pack_rhs_kernel(
     B,
-    P,
-    M,
-    N,
-    K,
-    stride_am,
-    stride_ak,
-    stride_bk,
-    stride_bn,
-    SPLIT_K: tl.constexpr,
-    BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-    BLOCK_K: tl.constexpr,
+    T,
+    R: tl.constexpr,
+    C: tl.constexpr,
+    SR: tl.constexpr,
+    SC: tl.constexpr,
+    BR: tl.constexpr,
+    BC: tl.constexpr,
 ):
-    pid = tl.program_id(0)
-    pid_k = tl.program_id(1)
-    grid_n = tl.cdiv(N, BLOCK_N)
-    pid_m = pid // grid_n
-    pid_n = pid % grid_n
-
-    offsets_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    offsets_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-    total_k_iters = tl.cdiv(K, BLOCK_K)
-    k_per_split = tl.cdiv(total_k_iters, SPLIT_K)
-    k_start = pid_k * k_per_split
-    k_end = min((pid_k + 1) * k_per_split, total_k_iters)
-
-    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
-    for k_iter in range(k_start, k_end):
-        offsets_k = k_iter * BLOCK_K + tl.arange(0, BLOCK_K)
-        a = tl.load(
-            A + offsets_m[:, None] * stride_am + offsets_k[None, :] * stride_ak,
-            mask=(offsets_m[:, None] < M) & (offsets_k[None, :] < K),
-            other=0.0,
-        )
-        b = tl.load(
-            B + offsets_k[:, None] * stride_bk + offsets_n[None, :] * stride_bn,
-            mask=(offsets_k[:, None] < K) & (offsets_n[None, :] < N),
-            other=0.0,
-        )
-        acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
-
-    p_offsets = pid_k * M * N + offsets_m[:, None] * N + offsets_n[None, :]
-    mask = (offsets_m < M)[:, None] & (offsets_n < N)[None, :]
-    tl.store(P + p_offsets, acc, mask=mask)
+    """Materialize a K-contiguous RHS using a tiled Triton copy."""
+    row = (tl.program_id(0) // tl.cdiv(C, BC) * BR + tl.arange(0, BR)).to(tl.int64)
+    col = (tl.program_id(0) % tl.cdiv(C, BC) * BC + tl.arange(0, BC)).to(tl.int64)
+    mask = (row[:, None] < R) & (col[None, :] < C)
+    value = tl.load(B + row[:, None] * SR + col[None, :] * SC, mask, other=0)
+    tl.store(T + row[:, None] + col[None, :] * R, value, mask)
 
 
-@libentry()
 @triton.jit
 def mm_kernel_splitk_reduce(
     P,
     C,
-    M,
-    N,
-    stride_cm,
-    stride_cn,
+    N: tl.constexpr,
+    TOTAL: tl.constexpr,
+    SCM: tl.constexpr,
+    SCN: tl.constexpr,
     SPLIT_K: tl.constexpr,
-    BLOCK_SIZE: tl.constexpr,
+    BLOCK: tl.constexpr,
 ):
-    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < M * N
-    acc = tl.zeros((BLOCK_SIZE,), dtype=tl.float32)
-
-    for split_id in range(0, SPLIT_K):
-        acc += tl.load(P + split_id * M * N + offsets, mask=mask, other=0.0)
-
-    offsets_m = offsets // N
-    offsets_n = offsets % N
-    c_ptrs = C + offsets_m * stride_cm + offsets_n * stride_cn
-    tl.store(c_ptrs, acc, mask=mask)
+    """Each lane owns one output; add the FP32 partials without atomics."""
+    i = tl.program_id(0).to(tl.int64) * BLOCK + tl.arange(0, BLOCK)
+    result = tl.zeros((BLOCK,), tl.float32)
+    for s in tl.static_range(SPLIT_K):
+        result += tl.load(P + s * TOTAL + i, i < TOTAL, other=0)
+    tl.store(C + i // N * SCM + i % N * SCN, result, i < TOTAL)
 
 
-_TWO_STEP_MAX_SPLITS = 16
-_TWO_STEP_MIN_PROFITABLE_SPLITS = 4
-_TWO_STEP_MIN_K_ITERS_PER_SPLIT = 2
-_TWO_STEP_TARGET_SM_NUMERATOR = 3
-_TWO_STEP_TARGET_SM_DENOMINATOR = 4
-_TWO_STEP_WORKSPACE_L2_NUMERATOR = 1
-_TWO_STEP_WORKSPACE_L2_DENOMINATOR = 4
-_GENERIC_TWO_STEP_MAX_SPLITS = 32
-_GENERIC_TWO_STEP_WORKSPACE_L2_DENOMINATOR = 8
-_GENERIC_SPLITK_DENSE_OUTPUT_L2_DENOMINATOR = 64
-_SMALL_N_DOT_BLOCK_N = 16
-_SMALL_N_DOT_BLOCK_K = 64
-_SMALL_N_MAX_SPLITS = 32
-_SMALL_N_ELEMENTWISE_MAX_M = 8
-_SMALL_N_ELEMENTWISE_MAX_BLOCK_K = 1024
-_SMALL_N_ELEMENTWISE_TILE_ELEMENTS = 4096
+# Per-family tuning and compiler constraints.
 
 
-@functools.lru_cache(maxsize=1)
-def _two_step_tile_candidates():
-    candidates = {
-        (
-            config.kwargs["BLOCK_M"],
-            config.kwargs["BLOCK_N"],
-            config.kwargs["BLOCK_K"],
-        )
-        for config in runtime.get_tuned_config("mm_splitk_two_step")
-    }
-
-    expand_config = runtime.get_expand_config(
-        "mm_splitk_two_step",
-        yaml_path=EXPAND_CONFIG_FILENAME,
-    )
-    if expand_config != -1:
-        ranges = expand_config["ranges"]
-        candidates.update(
-            (block_m, block_n, block_k)
-            for block_m in ranges.get("BLOCK_M", ())
-            for block_n in ranges.get("BLOCK_N", ())
-            for block_k in ranges.get("BLOCK_K", ())
-        )
-
-    return tuple(sorted(candidates))
-
-
-def _two_step_reference_tile(N):
-    allowed_block_ns = (16, 32) if N == 16 else (64, 128)
-    candidates = tuple(
-        candidate
-        for candidate in _two_step_tile_candidates()
-        if candidate[1] in allowed_block_ns
-    )
-    if not candidates:
-        return None
-
-    return max(
-        candidates,
-        key=lambda tile: (tile[0] * tile[1], tile[0], tile[1], tile[2]),
+def _is_native_mma_candidate(config, args):
+    return (
+        _is_dense_mma_config(config)
+        and args.get("SPLIT_K", 1) == 1
+        and args["A"].dtype in (torch.float16, torch.bfloat16)
+        and args["C"].dtype == args["A"].dtype
+        and args["SAM"] == args["K"]
+        and args["SAK"] == 1
+        and args["SBK"] == args["N"]
+        and args["SBN"] == 1
+        and args["SCM"] == args["N"]
+        and args["SCN"] == 1
     )
 
 
-def _two_step_split_k(M, N, K):
-    reference_tile = _two_step_reference_tile(N)
-    if reference_tile is None:
-        return 1, 0
-
-    block_m, block_n, block_k = reference_tile
-    output_tiles = triton.cdiv(M, block_m) * triton.cdiv(N, block_n)
-    target_programs = max(
-        1,
-        get_sm_count()
-        * _TWO_STEP_TARGET_SM_NUMERATOR
-        // _TWO_STEP_TARGET_SM_DENOMINATOR,
+def _is_nt_mma_candidate(config, args):
+    """Allow the native-shaped tile for K-contiguous NT partials."""
+    return (
+        _is_dense_mma_config(config)
+        and args["A"].dtype in (torch.float16, torch.bfloat16)
+        and args["SAK"] == 1
+        and args["SBK"] == 1
+        and args["SBN"] == args["K"]
+        and args["SCN"] == 1
+        and args.get("SPLIT_K", 1) > 1
     )
 
-    required_splits = triton.cdiv(target_programs, output_tiles)
-    occupancy_split_k = _ceil_power_of_two(required_splits)
 
-    k_iters = triton.cdiv(K, block_k)
-    max_k_split = _floor_power_of_two(k_iters // _TWO_STEP_MIN_K_ITERS_PER_SPLIT)
-    split_k = min(
-        occupancy_split_k,
-        max_k_split,
-        _TWO_STEP_MAX_SPLITS,
+def _is_dense_mma_config(config):
+    """Return the one native-shaped config accepted by the dense kernel."""
+    meta = config.kwargs
+    return (
+        (meta["BM"], meta["BN"], meta["BK"]) == _MMA_NATIVE_TILE
+        and meta["GROUP_M"] == 8
+        and not meta["TRANSPOSE"]
+        and not meta["STATIC_K"]
+        and meta["pipeline"] == "cpasync"
+        and meta["scenario"] == ""
+        and config.num_warps == _MMA_NATIVE_WARPS
+        and config.num_stages == _MMA_NATIVE_STAGES
     )
-    return max(1, split_k), output_tiles
 
 
-def _generic_two_step_split_k(M, N, K):
-    reference_tile = _two_step_reference_tile(N)
-    if reference_tile is None:
-        return 1
-
-    block_m, _, block_k = reference_tile
-    k_iters = triton.cdiv(K, block_k)
-    max_k_split = _floor_power_of_two(k_iters // _TWO_STEP_MIN_K_ITERS_PER_SPLIT)
-    split_k = min(max_k_split, _TWO_STEP_MAX_SPLITS)
-
-    extended_split_k = min(max_k_split, _GENERIC_TWO_STEP_MAX_SPLITS)
-    extended_workspace_bytes = extended_split_k * M * N * torch.float32.itemsize
-    extended_workspace_budget = max(
-        1,
-        get_l2_cache_size() // _GENERIC_TWO_STEP_WORKSPACE_L2_DENOMINATOR,
-    )
-    if (
-        extended_split_k > split_k
-        and M <= block_m
-        and extended_workspace_bytes <= extended_workspace_budget
+def _prune_dense(configs, named_args, **kwargs):
+    args = {**named_args, **kwargs}
+    if not (
+        args["A"].dtype in (torch.float16, torch.bfloat16)
+        and args["C"].dtype == args["A"].dtype
+        and args["M"] == args["N"] == args["K"]
+        and args["A"].stride() == (args["K"], 1)
+        and args["B"].stride() == (args["N"], 1)
+        and args["C"].stride() == (args["N"], 1)
     ):
-        split_k = extended_split_k
-
-    return max(1, split_k)
-
-
-def _small_n_mm_config(M, N, K):
-    if M <= _SMALL_N_ELEMENTWISE_MAX_M:
-        block_m = _ceil_power_of_two(M)
-        block_k = min(
-            _SMALL_N_ELEMENTWISE_MAX_BLOCK_K,
-            _SMALL_N_ELEMENTWISE_TILE_ELEMENTS // block_m,
+        return []
+    return [
+        copy.deepcopy(config)
+        for config in configs
+        if _is_dense_mma_config(config)
+        and all(
+            args[axis] % config.kwargs[tile] == 0
+            for axis, tile in (("M", "BM"), ("N", "BN"), ("K", "BK"))
         )
-        base_programs = triton.cdiv(M, block_m) * N
-        occupancy_split_k = _floor_power_of_two(max(1, get_sm_count() // base_programs))
-        max_k_split = _floor_power_of_two(triton.cdiv(K, block_k))
-        split_k = min(
-            occupancy_split_k,
-            max_k_split,
-            _SMALL_N_MAX_SPLITS,
-        )
-        return "elementwise", max(1, split_k), block_m, block_k, 1
-
-    block_m = 32 if M <= 32 else 64
-    num_warps = 2 if block_m == 32 else 4
-    output_tiles = triton.cdiv(M, block_m) * triton.cdiv(N, _SMALL_N_DOT_BLOCK_N)
-    required_splits = triton.cdiv(get_sm_count(), output_tiles)
-    occupancy_split_k = _ceil_power_of_two(required_splits)
-    k_iters = triton.cdiv(K, _SMALL_N_DOT_BLOCK_K)
-    max_k_split = _floor_power_of_two(k_iters // _TWO_STEP_MIN_K_ITERS_PER_SPLIT)
-    split_k = min(
-        occupancy_split_k,
-        max_k_split,
-        _SMALL_N_MAX_SPLITS,
-    )
-    return "dot", max(1, split_k), block_m, _SMALL_N_DOT_BLOCK_K, num_warps
+    ]
 
 
-def _launch_splitk_reduce(partials, c, M, N, split_k):
-    n_elements = M * N
-    small_output = n_elements <= 256
-    block_size = 64 if small_output else 256
-    num_warps = 1 if small_output else 4
-    mm_kernel_splitk_reduce[(triton.cdiv(n_elements, block_size),)](
-        partials,
-        c,
-        M,
-        N,
-        c.stride(0),
-        c.stride(1),
-        SPLIT_K=split_k,
-        BLOCK_SIZE=block_size,
-        num_warps=num_warps,
-    )
-
-
-def _launch_splitk_mm_two_step(a, b, c, M, N, K, split_k):
-    partials = torch.empty((split_k, M, N), device=a.device, dtype=torch.float32)
-    partial_grid = lambda META: (
-        triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
-        split_k,
-    )
-    with torch_device_fn.device(a.device):
-        mm_kernel_splitk_partial[partial_grid](
-            a,
-            b,
-            partials,
-            M,
-            N,
-            K,
-            a.stride(0),
-            a.stride(1),
-            b.stride(0),
-            b.stride(1),
-            SPLIT_K=split_k,
-        )
-        _launch_splitk_reduce(partials, c, M, N, split_k)
-    return c
-
-
-def splitk_mm_two_step(a, b, c, M, N, K, split_k=None):
-    if split_k is None:
-        split_k, _ = _two_step_split_k(M, N, K)
-    return _launch_splitk_mm_two_step(a, b, c, M, N, K, split_k)
-
-
-def small_n_mm(a, b, c, M, N, K):
-    kernel, split_k, block_m, block_k, num_warps = _small_n_mm_config(M, N, K)
-    partials = torch.empty((split_k, M, N), device=a.device, dtype=torch.float32)
-
-    with torch_device_fn.device(a.device):
-        if kernel == "elementwise":
-            grid = (triton.cdiv(M, block_m), N * split_k)
-            mm_kernel_small_n_partial[grid](
-                a,
-                b,
-                partials,
-                M,
-                N,
-                K,
-                a.stride(0),
-                a.stride(1),
-                b.stride(0),
-                b.stride(1),
-                SPLIT_K=split_k,
-                BLOCK_M=block_m,
-                BLOCK_K=block_k,
-                num_warps=num_warps,
-            )
-        else:
-            grid = (
-                triton.cdiv(M, block_m) * triton.cdiv(N, _SMALL_N_DOT_BLOCK_N),
-                split_k,
-            )
-            mm_kernel_small_n_dot_partial[grid](
-                a,
-                b,
-                partials,
-                M,
-                N,
-                K,
-                a.stride(0),
-                a.stride(1),
-                b.stride(0),
-                b.stride(1),
-                SPLIT_K=split_k,
-                BLOCK_M=block_m,
-                BLOCK_N=_SMALL_N_DOT_BLOCK_N,
-                BLOCK_K=block_k,
-                num_warps=num_warps,
-            )
-        _launch_splitk_reduce(partials, c, M, N, split_k)
-    return c
-
-
-_ordered_datatypes = [torch.float16, torch.bfloat16, torch.float32]
-
-
-def get_higher_dtype(a, b):
-    if a is b:
-        return a
-
-    assert a in _ordered_datatypes
-    assert b in _ordered_datatypes
-
-    for d in _ordered_datatypes:
-        if a is d:
-            return b
-        if b is d:
-            return a
-
-
-def general_mm(a, b, c, M, N, K):
-    dot_out_dtype = tl.float32
-    grid = lambda META: (
-        triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
-    )
-    with torch_device_fn.device(a.device):
-        mm_kernel[grid](
-            a,
-            b,
-            c,
-            M,
-            N,
-            K,
-            a.stride(0),
-            a.stride(1),
-            b.stride(0),
-            b.stride(1),
-            c.stride(0),
-            c.stride(1),
-            dot_out_dtype=dot_out_dtype,
-            GROUP_M=8,
-        )
-    return c
-
-
-def general_mm_nn(a, b, c, M, N, K):
-    grid = lambda META: (
-        triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
-    )
-    with torch_device_fn.device(a.device):
-        mm_kernel_nn[grid](
-            a,
-            b,
-            c,
-            M,
-            N,
-            K,
-            GROUP_M=8,
-        )
-    return c
-
-
-def general_mm_nt(a, b, c, M, N, K):
-    grid = lambda META: (
-        triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
-    )
-    with torch_device_fn.device(a.device):
-        mm_kernel_nt[grid](
-            a,
-            b,
-            c,
-            M,
-            N,
-            K,
-            GROUP_M=8,
-        )
-    return c
-
-
-@functools.lru_cache(maxsize=1)
-def _dense_output_tile_candidates():
-    tile_candidates = set()
-    for config_name in ("mm", "mm_nn", "mm_nt"):
-        tile_candidates.update(
-            (config.kwargs["BLOCK_M"], config.kwargs["BLOCK_N"])
-            for config in runtime.get_tuned_config(config_name)
-            if "BLOCK_M" in config.kwargs and "BLOCK_N" in config.kwargs
-        )
-
-        expand_config = runtime.get_expand_config(
-            config_name,
-            yaml_path=EXPAND_CONFIG_FILENAME,
-        )
-        if expand_config != -1:
-            ranges = expand_config["ranges"]
-            block_ms = ranges.get("BLOCK_M", ())
-            block_ns = ranges.get("BLOCK_N", ())
-            tile_candidates.update(
-                (block_m, block_n) for block_m in block_ms for block_n in block_ns
-            )
-
-    return tuple(sorted(tile_candidates))
-
-
-def _max_general_mm_programs(M, N):
-    tile_candidates = _dense_output_tile_candidates()
-    if not tile_candidates:
-        return get_sm_count()
-
-    return max(
-        triton.cdiv(M, block_m) * triton.cdiv(N, block_n)
-        for block_m, block_n in tile_candidates
-    )
-
-
-def splitk_mm_scenario(M, N, K):
-    if K < 2048:
-        return False
-
-    max_general_programs = _max_general_mm_programs(M, N)
-    parallelism_budget = max(1, get_sm_count() * 3 // 4)
-
-    atomic_working_set = M * N * 4
-    atomic_l2_budget = max(1, get_l2_cache_size() // 32)
-
-    return (
-        max_general_programs <= parallelism_budget
-        and atomic_working_set <= atomic_l2_budget
-    )
-
-
-def _small_n_mm_scenario(a, b, c, N, K):
-    return (
-        1 < N < _SMALL_N_DOT_BLOCK_N
-        and K >= 2048
-        and a.dtype == b.dtype == c.dtype
-        and c.dtype in (torch.float16, torch.bfloat16)
-    )
-
-
-def _prefer_dense_nt_over_generic_splitk(M, N, K):
-    fp32_output_bytes = M * N * torch.float32.itemsize
-    output_threshold = max(
-        1,
-        get_l2_cache_size() // _GENERIC_SPLITK_DENSE_OUTPUT_L2_DENOMINATOR,
-    )
-    return K <= 2 * N and fp32_output_bytes >= output_threshold
-
-
-def _splitk_mm_two_step_scenario(M, N, K):
-    if K < 2048:
-        return False
-
-    if N != 256:
-        return False
-
-    split_k, output_tiles = _two_step_split_k(M, N, K)
-    target_programs = max(
-        1,
-        get_sm_count()
-        * _TWO_STEP_TARGET_SM_NUMERATOR
-        // _TWO_STEP_TARGET_SM_DENOMINATOR,
-    )
-
-    if output_tiles * _TWO_STEP_MIN_PROFITABLE_SPLITS > target_programs:
-        return False
-    if split_k < _TWO_STEP_MIN_PROFITABLE_SPLITS:
-        return False
-
-    workspace_bytes = split_k * M * N * torch.float32.itemsize
-    workspace_budget = max(
-        1,
-        get_l2_cache_size()
-        * _TWO_STEP_WORKSPACE_L2_NUMERATOR
-        // _TWO_STEP_WORKSPACE_L2_DENOMINATOR,
-    )
-    if workspace_bytes > workspace_budget:
-        return False
-
-    return True
-
-
-def _gemv_k_parallel_scenario(M, K):
-    return K >= 2048 and _gemv_k_parallel_split_k(M, K) > 1
-
-
-def nn_mm_scenario(a, b, c, M, N, K):
-    return (
-        M > 0
-        and N > 0
-        and K > 0
-        and a.dtype in _ordered_datatypes
-        and b.dtype in _ordered_datatypes
-        and c.dtype in _ordered_datatypes
-        and a.stride(0) == K
-        and a.stride(1) == 1
-        and b.stride(0) == N
-        and b.stride(1) == 1
-        and c.stride(0) == N
-        and c.stride(1) == 1
-        and M * K < 2**31
-        and K * N < 2**31
-        and M * N < 2**31
-    )
-
-
-def nt_mm_scenario(a, b, c, M, N, K):
-    return (
-        M > 0
-        and N > 0
-        and K > 0
-        and a.dtype in _ordered_datatypes
-        and b.dtype in _ordered_datatypes
-        and c.dtype in _ordered_datatypes
-        and a.stride(0) == K
-        and a.stride(1) == 1
-        and b.stride(0) == 1
-        and b.stride(1) == K
-        and c.stride(0) == N
-        and c.stride(1) == 1
-        and M * K < 2**31
-        and K * N < 2**31
-        and M * N < 2**31
-    )
-
-
-def _select_two_step_split_k(M, N, K):
-    if _splitk_mm_two_step_scenario(M, N, K):
-        split_k, _ = _two_step_split_k(M, N, K)
-        return split_k
-    return None
-
-
-def mm(a, b):
-    logger.debug("GEMS_METAX MM")
-    device = a.device
-    # handle non-contiguous inputs if necessary
-    if a.stride(0) > 1 and a.stride(1) > 1:
-        a = a.contiguous()
-    if b.stride(0) > 1 and b.stride(1) > 1:
-        b = b.contiguous()
-    # checks constraints
-    assert a.shape[1] == b.shape[0], "incompatible dimensions"
-    M, K = a.shape
-    _, N = b.shape
-    # allocates output
-    c_dtype = get_higher_dtype(a.dtype, b.dtype)
-    c = torch.empty((M, N), device=device, dtype=c_dtype)
-    if M == 0 or N == 0:
-        return c
-    if N == 1:
-        if _gemv_k_parallel_scenario(M, K):
-            return gemv_mm_k_parallel(a, b, c, M, K)
-        return gemv_mm(a, b, c, M, K)
-    if _small_n_mm_scenario(a, b, c, N, K):
-        return small_n_mm(a, b, c, M, N, K)
-    two_step_split_k = _select_two_step_split_k(M, N, K)
-    if two_step_split_k is not None:
-        return splitk_mm_two_step(a, b, c, M, N, K, two_step_split_k)
-    nt_scenario = nt_mm_scenario(a, b, c, M, N, K)
-    prefer_dense_nt = (
-        c.dtype in (torch.float16, torch.bfloat16)
-        and nt_scenario
-        and _prefer_dense_nt_over_generic_splitk(M, N, K)
-    )
-    if splitk_mm_scenario(M, N, K) and not prefer_dense_nt:
-        if (
-            c.dtype == torch.float32
-            and not torch.are_deterministic_algorithms_enabled()
+def _prune_gemm(configs, named_args, **kwargs):
+    args = {**named_args, **kwargs}
+    m, n, k = args["M"], args["N"], args["K"]
+    size = args["A"].element_size()
+    result = []
+    for config in configs:
+        meta = config.kwargs
+        if meta["STATIC_K"] and (
+            k > 128 or min(m, n) < 64 or args.get("SPLIT_K", 1) != 1
         ):
-            c.zero_()
-            return splitk_mm(a, b, c, M, N, K)
-        split_k = _generic_two_step_split_k(M, N, K)
-        return splitk_mm_two_step(a, b, c, M, N, K, split_k)
-    if nn_mm_scenario(a, b, c, M, N, K):
-        return general_mm_nn(a, b, c, M, N, K)
-    if nt_scenario:
-        return general_mm_nt(a, b, c, M, N, K)
-    return general_mm(a, b, c, M, N, K)
+            continue
+        mt, nt = (n, m) if meta["TRANSPOSE"] else (m, n)
+        bm, bn, bk = meta["BM"], meta["BN"], meta["BK"]
+        if bm < _MMA_MIN or bn < _MMA_MIN or bk < _MMA_MIN:
+            continue
+        if meta["scenario"] == "unprefetch" and (mt % bm or nt % bn or k % bk):
+            # Masked edges make this layout spill heavily with deeper stages.
+            continue
+        if (
+            size == 4
+            and args.get("SPLIT_K", 1) > 1
+            and k % (bk * args["SPLIT_K"]) != 0
+            and meta["pipeline"].startswith("cpasync")
+        ):
+            # This FlagTree backend's genSwiMask asserts on the masked FP32
+            # split-K async pipeline. The basic pipeline handles the same tail.
+            continue
+        if meta["STATIC_K"] and bm != bn and size != 4:
+            continue
+        if bm > max(32, triton.next_power_of_2(mt)) or bn > max(
+            32, triton.next_power_of_2(nt)
+        ):
+            continue
+        if bk > max(32, triton.next_power_of_2(k)):
+            continue
+        # FlagTree still allocates a second K buffer unless num_stages is 1.
+        # unprefetch does not shrink a 256-wide tile; it doubles it to 128 KiB.
+        # The native C550 MMA pipeline is a compiler-recognized exception:
+        # its four-stage 128x128x128 candidate uses the async layout without
+        # the generic two-buffer estimate. The NT partial uses the same
+        # compiler allocation when B is K-contiguous and split-K is active.
+        native_mma = _is_native_mma_candidate(config, args)
+        nt_mma = _is_nt_mma_candidate(config, args)
+        buffers = 1 if config.num_stages <= 1 else min(config.num_stages, 2)
+        if not (native_mma or nt_mma) and (bm + bn) * bk * size * buffers > 65536:
+            continue
+        if config.num_stages > 2 and k <= bk:
+            continue
+        if bm >= 256 and bn >= 256:
+            # The default NT accumulator conversion needs 128 KiB of scratch.
+            # reduceSmemUsage tiles that conversion so the 256x256x32 basic
+            # pipeline fits in 64 KiB. Row masks also fit, provided most
+            # lanes remain useful. Keep N/K complete: a masked N panel or
+            # FP32 partial changes conversion traffic and register pressure.
+            complete_tiles = not (mt % bm or nt % bn or k % bk)
+            masked_rows = (
+                args.get("nt_row_masks", False)
+                and mt >= 1024
+                and k >= 512
+                and nt % bn == 0
+                and k % bk == 0
+                and mt * 8 >= triton.cdiv(mt, bm) * bm * 7
+            )
+            reduced_scratch = meta["scenario"] == "reduceSmemUsage"
+            if reduced_scratch and not (
+                size == 2
+                and args["C"].dtype == args["A"].dtype
+                and args["SAK"] == 1
+                and args["SBK"] == 1
+                and args["SCN"] == 1
+                and (complete_tiles or masked_rows)
+                and args.get("SPLIT_K", 1) == 1
+                and not meta["TRANSPOSE"]
+                and meta["pipeline"] == "basic"
+            ):
+                continue
+            if (
+                (args["SBK"] == 1 and not reduced_scratch)
+                or bk > 32
+                or config.num_stages > 2
+                or meta["scenario"] == "unprefetch"
+            ):
+                continue
+        if bm * bn >= 128 * 128:
+            # 1024² has 16 CTAs of 256x256 and loses to a 64 tile. 2048² has 64
+            # CTAs, half a wave, but that 256 tile still beats a filled 128 wave.
+            sm = _device_limits(args["A"].device)[0]
+            ctas = triton.cdiv(mt, bm) * triton.cdiv(nt, bn) * args.get("SPLIT_K", 1)
+            if ctas < sm // 2:
+                continue
+        # 8-warp 128x128 needs a long K. Pipelined unprefetch on a strided RHS
+        # is 5-10x slower than a 256 tile; the basic 8-warp form compiles and
+        # stays in the pool so autotune can keep it when it actually wins.
+        if bm == 128 and bn == 128 and config.num_warps == 8:
+            if k < 512:
+                continue
+            if (
+                meta["scenario"] == "unprefetch"
+                and config.num_stages > 1
+                and (args["SAK"] != 1 or args["SBK"] != 1)
+            ):
+                continue
+        if meta["TRANSPOSE"]:
+            if meta["STATIC_K"]:
+                if size != 2 or args["SAK"] != 1 or args["SBK"] != 1:
+                    continue
+            elif not (
+                args.get("wide_transpose", False)
+                or args["SAM"] == 1
+                or (args["SBN"] == 1 and k <= 256 and min(m, n) >= 64)
+            ):
+                continue
+        # FlagTree's AABS mutates a config while benchmarking it. Keep the YAML
+        # candidate pool intact so a tiny first call cannot shrink later GEMMs.
+        result.append(copy.deepcopy(config))
+    return result
+
+
+def _prune_wide(configs, named_args, **kwargs):
+    return _prune_gemm(configs, named_args, wide_transpose=True, **kwargs)
+
+
+def _prune_nt_rows(configs, named_args, **kwargs):
+    return _prune_gemm(configs, named_args, nt_row_masks=True, **kwargs)
+
+
+def _prune_dual(configs, named_args, **kwargs):
+    args = {**named_args, **kwargs}
+    f = _features(args["A"], args["B"], args["C"])
+    return [
+        copy.deepcopy(config)
+        for config in configs
+        if _dual_tile_profitable(
+            f, config.kwargs["B0"] + config.kwargs["B1"], config.kwargs["BM"]
+        )
+    ]
+
+
+def _prune_syrk(configs, named_args, **kwargs):
+    args = {**named_args, **kwargs}
+    sm = _device_limits(args["A"].device)[0]
+    result = []
+    for config in configs:
+        tile = config.kwargs["BT"]
+        if args["A"].dtype == torch.float32 and tile > 64:
+            # Larger FP32 accumulators spill; retaining the input layout and
+            # smaller tiles is faster than packing to the half-precision path.
+            continue
+        tiles = triton.cdiv(args["M"], tile)
+        if tile >= 256 and (args["M"] % tile or tiles * (tiles + 1) // 2 < sm // 2):
+            continue
+        if config.num_stages > 2 and args["K"] < 512:
+            continue
+        result.append(copy.deepcopy(config))
+    return result
+
+
+def _simt_candidates(configs, tile, extent, k, split):
+    fitting = [
+        config
+        for config in configs
+        if config.kwargs[tile] <= max(16, triton.next_power_of_2(extent))
+    ]
+    # Output-axis and K-axis limits must be applied jointly: the BK=64
+    # candidates use 32-wide output tiles, so a short, narrow reduction used
+    # to prune every candidate. Retain the smallest K tile that fits the
+    # output axis; the kernel masks the extra reduction lanes.
+    k_limit = max(
+        min(config.kwargs["BK"] for config in fitting),
+        triton.next_power_of_2(triton.cdiv(k, split)),
+    )
+    return [
+        copy.deepcopy(config) for config in fitting if config.kwargs["BK"] <= k_limit
+    ]
+
+
+def _prune_simt_row(configs, named_args, **kwargs):
+    args = {**named_args, **kwargs}
+    return _simt_candidates(configs, "BN", args["N"], args["K"], args.get("SPLIT_K", 1))
+
+
+def _prune_simt_column(configs, named_args, **kwargs):
+    args = {**named_args, **kwargs}
+    return _simt_candidates(configs, "BM", args["M"], args["K"], args.get("SPLIT_K", 1))
+
+
+def _keep_all(configs, named_args, **kwargs):
+    return copy.deepcopy(configs)
+
+
+def _tune(
+    kernel,
+    name,
+    key,
+    prune,
+    *,
+    additional_configs=(),
+    config_filter=None,
+    expand_name=None,
+):
+    configs = runtime.get_tuned_config(name) + list(additional_configs)
+    if config_filter is not None:
+        configs = [config for config in configs if config_filter(config)]
+    return libentry()(
+        libtuner(
+            configs=configs,
+            key=key,
+            prune_configs_by={"early_config_prune": prune},
+            flagtune_op_name="mm",
+            flagtune_expand_op_name=expand_name or name,
+            flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
+            use_cuda_graph=True,
+            rep=20,
+        )(kernel)
+    )
+
+
+_STRIDE_KEY = ["M", "N", "K", "SAM", "SAK", "SBK", "SBN", "SCM", "SCN", "SPLIT_K"]
+
+_gemm_tuned = _tune(mm_kernel, "mm_gemm", _STRIDE_KEY, _prune_gemm)
+_gemm_dense_tuned = _tune(
+    mm_kernel_nn,
+    "mm_gemm",
+    ["M", "N", "K"],
+    _prune_dense,
+    config_filter=_is_dense_mma_config,
+    expand_name="mm_dense",
+)
+# This family has a long K and row-major A / column-major B. Static-K and
+# transposed candidates are never legal here. A distinct candidate pool also
+# gives libtuner a separate persistent best-config cache from the old pruning.
+_nt_rows_tuned = _tune(
+    mm_kernel,
+    "mm_gemm",
+    _STRIDE_KEY,
+    _prune_nt_rows,
+    expand_name="mm_nt_rows",
+    config_filter=lambda config: not (
+        config.kwargs["STATIC_K"] or config.kwargs["TRANSPOSE"]
+    ),
+)
+_wide_tuned = _tune(
+    mm_kernel,
+    "mm_wide",
+    _STRIDE_KEY,
+    _prune_wide,
+    additional_configs=_gemm_tuned.fn.configs,
+)
+_syrk_tuned = _tune(
+    _syrk_kernel,
+    "mm_syrk",
+    ["M", "K", "SAM", "SAK", "SCM", "SCN"],
+    _prune_syrk,
+)
+_dual_tuned = _tune(_dual_gemm_kernel, "mm_dual", _STRIDE_KEY[:-1], _prune_dual)
+_simt_row_tuned = _tune(_simt_row_kernel, "mm_simt_row", _STRIDE_KEY, _prune_simt_row)
+_simt_column_tuned = _tune(
+    mm_kernel_small_n_partial, "mm_simt_column", _STRIDE_KEY, _prune_simt_column
+)
+_pack_tuned = _tune(_pack_rhs_kernel, "mm_pack", ["R", "C", "SR", "SC"], _keep_all)
+_reduce_tuned = _tune(
+    mm_kernel_splitk_reduce,
+    "mm_reduce",
+    ["N", "TOTAL", "SCM", "SCN", "SPLIT_K"],
+    _keep_all,
+)
+
+_DUAL_TILES = tuple(
+    sorted(
+        {
+            (c.kwargs["B0"] + c.kwargs["B1"], c.kwargs["BM"])
+            for c in _dual_tuned.fn.configs
+        }
+    )
+)
+
+# Dispatch policy. Every predicate reads metadata only.
+
+
+@lru_cache(None)
+def _device_limits(device):
+    props = runtime.torch_device_fn.get_device_properties(device)
+    return (
+        props.multi_processor_count,
+        props.shared_memory_per_block,
+        props.L2_cache_size,
+    )
+
+
+def _features(a, b, c) -> _Features:
+    return _Features(
+        a.shape[0],
+        b.shape[1],
+        a.shape[1],
+        tuple(a.stride()),
+        tuple(b.stride()),
+        tuple(c.stride()),
+        a.dtype,
+        c.dtype,
+        all(t.data_ptr() % 16 == 0 for t in (a, b, c)),
+        a.data_ptr() == b.data_ptr()
+        and a.shape == b.shape[::-1]
+        and a.stride() == b.stride()[::-1],
+        *_device_limits(a.device),
+    )
+
+
+def _floor_power_of_two(value):
+    return 1 << (int(value).bit_length() - 1) if value >= 1 else 0
+
+
+def _ceil_power_of_two(value):
+    return 1 << (int(value) - 1).bit_length() if value > 1 else 1
+
+
+@lru_cache(None)
+def _reference_tile(element_size, shared_bytes):
+    """The coarsest pooled tile whose pipeline leaves room for a second CTA.
+
+    Split-K is sized against this tile. A coarser reference reports fewer CTAs
+    than the autotuner will really run and over-partitions K; a finer one
+    reports more and suppresses partitions the device needs to stay busy.
+    Read declared defaults so FlagTune mode and call order cannot change it.
+    """
+    fits = [
+        (config.kwargs["BM"], config.kwargs["BN"])
+        for config in runtime.get_tuned_config("mm_gemm")
+        if (config.kwargs["BM"] + config.kwargs["BN"])
+        * config.kwargs["BK"]
+        * element_size
+        * config.num_stages
+        <= shared_bytes // 2
+    ]
+    return max(fits, key=lambda tile: tile[0] * tile[1]) if fits else (32, 32)
+
+
+def _nt_mma_suitable(f: _Features) -> bool:
+    """Return whether the NT MMA candidate has enough work to amortize split-K."""
+    return (
+        f.half
+        and f.out_dtype == f.dtype
+        and 128 <= min(f.m, f.n) <= 512
+        and f.k >= 2048
+        and f.k % _MMA_NATIVE_TILE[2] == 0
+        and f.a_strides == (f.k, 1)
+        and f.b_strides == (1, f.k)
+        and f.dense_output
+        and f.vector_aligned
+        and not f.self_transpose
+    )
+
+
+def _nt_mma_split_count(f: _Features) -> int:
+    """Choose a power-of-two K split for the 128-wide NT MMA tile."""
+    output_tiles = f.tiles(_MMA_NATIVE_TILE[0], _MMA_NATIVE_TILE[1])
+    if output_tiles < 4:
+        return 1
+    target = max(1, f.sm_count * 3 // 4)
+    wanted = _ceil_power_of_two(triton.cdiv(target, output_tiles))
+    affordable = max(
+        1, _floor_power_of_two(f.k // (_MMA_NATIVE_TILE[2] * _SPLIT_MIN_K_TILES))
+    )
+    budgeted = max(1, _floor_power_of_two(f.l2_bytes // max(1, 4 * f.m * f.n)))
+    split = max(1, min(wanted, affordable, budgeted, _SPLIT_MAX))
+    # Async K panels need complete partitions. Lower the split until it divides
+    # the reduction; the generic masked path remains the fallback otherwise.
+    while split > 1 and f.k % (_MMA_NATIVE_TILE[2] * split):
+        split //= 2
+    # A split adds an FP32 reduction pass. One output row tile has enough
+    # parallel work to hide it; multiple output row tiles need more than four K panels
+    # per partition or the reduction costs more than the MMA gain.
+    if (
+        split > 1
+        and triton.cdiv(f.m, _MMA_NATIVE_TILE[0]) > 1
+        and f.k // _MMA_NATIVE_TILE[2] <= 4 * split
+    ):
+        return 1
+    return split if split > 1 else 1
+
+
+def _split_count(f: _Features) -> int:
+    """Partition K when the preferred output tiling cannot fill the device."""
+    # For medium half-precision outputs with a short reduction, the extra
+    # FP32 workspace and reduction launch cost more than the saved GEMM time.
+    # Longer K and FP32 still benefit from the occupancy-based policy below.
+    if (
+        f.half
+        and f.out_dtype == f.dtype
+        and 256 <= min(f.m, f.n) <= max(f.m, f.n) <= 512
+        and 256 <= f.k <= 512
+        and f.m % 64 == f.n % 64 == f.k % 64 == 0
+        and f.dense_operands
+        and f.dense_output
+        and f.vector_aligned
+    ):
+        return 1
+    target = max(1, f.sm_count * 3 // 4)
+    tiles = f.tiles(*_reference_tile(f.element_size, f.shared_bytes))
+    if tiles >= target:
+        return _long_k_split_count(f)
+    if (
+        f.half
+        and f.out_dtype == f.dtype
+        and 2 <= f.m < _MMA_MIN
+        and tiles >= f.sm_count // 2
+        and 2048 <= f.k <= 4096
+        and f.n % _K_TILE == f.k % _K_TILE == 0
+        and f.dense_operands
+        and f.b_strides[1] == 1
+        and f.dense_output
+        and f.vector_aligned
+    ):
+        # The four-stage NN tiles with masked rows can stream RHS panels with
+        # half a device wave. Splitting that wave adds FP32 partial traffic
+        # and a reduction launch without improving the complete call. Keep
+        # the occupancy fallback for narrower outputs and long-K scheduling
+        # above for outputs that already meet the original CTA target.
+        # Complete row tiles and deeper K still benefit from partitioning.
+        return 1
+    wanted = _ceil_power_of_two(triton.cdiv(target, tiles))
+    # Each partition needs enough reduction work to pay for the second pass,
+    # and the FP32 partial buffer is written once and read once: keep it in L2.
+    affordable = _floor_power_of_two(f.reduction_tiles // _SPLIT_MIN_K_TILES)
+    budgeted = _floor_power_of_two(f.l2_bytes // max(1, 4 * f.m * f.n))
+    split = max(1, min(wanted, affordable, budgeted, _SPLIT_MAX))
+    return _long_k_split_count(f) if split == 1 else split
+
+
+def _long_k_split_count(f: _Features) -> int:
+    """Balance CTA waves for long NN reductions with a small/medium M axis."""
+    if not (
+        f.half
+        and f.out_dtype == f.dtype
+        and 2 <= f.m <= 512
+        and f.n >= 2048
+        and (f.m >= 128 or f.n >= 8192)
+        and 4096 <= f.k <= 8192
+        and f.k % _K_TILE == 0
+        and f.dense_operands
+        and f.b_strides[1] == 1
+        and f.dense_output
+        and f.vector_aligned
+    ):
+        return 1
+    # The small reference used for the occupancy fallback above can already
+    # fill the device while a faster, larger tile leaves a partial last wave.
+    # This is a scheduling estimate; libtuner still selects the actual tile.
+    bm, bn = (min(128, max(32, triton.next_power_of_2(x))) for x in (f.m, f.n))
+    ctas = f.tiles(bm, bn)
+    budget = min(
+        4,
+        _floor_power_of_two(f.k // 1024),
+        _floor_power_of_two(2 * f.l2_bytes // (4 * f.m * f.n)),
+    )
+
+    def wave_work(split):
+        return triton.cdiv(ctas * split, f.sm_count) * triton.cdiv(f.k, _K_TILE * split)
+
+    candidates = [1] + [split for split in (2, 4) if split <= budget]
+    best = min(candidates, key=wave_work)
+    # Require headroom for the extra workspace and reduction launch. At
+    # K=2048 these costs can erase the predicted gain, so that range is kept
+    # on the existing policy even when the wave count looks favorable.
+    return best if wave_work(1) >= wave_work(best) * 1.15 else 1
+
+
+def _dual_tile_profitable(f: _Features, rows: int, columns: int) -> bool:
+    # Reducing per-CTA work helps only if enough CTAs run concurrently. This is
+    # a scheduling estimate, not a measured hardware occupancy counter.
+    return (
+        f.wave_work(128, 128) / f.wave_work(rows, columns) >= 1.15
+        and f.tile_utilization(rows, columns) >= 0.85
+        and f.wave_utilization(rows, columns) >= 0.85
+    )
+
+
+def _dual_suitable(f: _Features) -> bool:
+    # Deep half-precision pipelines need contiguous vectors and enough K work.
+    # Keep non-vectorizable tails on the tiled kernel; logical M tails stay
+    # valid when physical strides are aligned and output padding is modest.
+    if not (
+        f.half
+        and f.out_dtype == f.dtype
+        and f.dense_operands
+        and f.dense_output
+        and f.vector_aligned
+        and f.k % _K_TILE == 0
+        and f.reduction_tiles >= 32
+        and min(f.m, f.n) >= 4 * 128
+        and f.tiles(128, 128) >= f.sm_count * 4
+        and f.shared_bytes >= 52 * 1024
+    ):
+        return False
+    # Each dual candidate needs more than half an SM's shared memory, so assume
+    # one resident CTA and require both output lanes and CTA wave slots to stay
+    # at least 85% used while wave work drops by at least 15%.
+    return any(_dual_tile_profitable(f, rows, columns) for rows, columns in _DUAL_TILES)
+
+
+def _pack_profitable(f: _Features, split: int) -> bool:
+    # Packing is amortized by repeated use of each B panel over many M tiles.
+    if not (f.half and f.dense_operands and not f.rhs_k_contiguous):
+        return False
+    if (
+        f.m // 128 >= 8
+        and f.n // 128 >= 8
+        and f.reduction_tiles >= 256
+        and f.m % 128 == 0
+        and f.n % 128 == 0
+        and f.k % _K_TILE == 0
+    ):
+        return True
+    # Long reductions with a narrow RHS benefit from contiguous K loads.
+    # Limit packing to a reusable L2-sized RHS and enough M reuse to cover
+    # the full per-call transpose. The output is still computed normally.
+    return (
+        split == 1
+        and f.out_dtype == f.dtype
+        and f.m >= 1024
+        and 256 <= f.n <= 512
+        and f.n % 128 == 0
+        and 4096 <= f.k <= 8192
+        and f.k % _K_TILE == 0
+        and f.k * f.n * f.element_size <= f.l2_bytes
+        and f.dense_output
+        and f.vector_aligned
+    )
+
+
+def _dense_mma_suitable(f: _Features) -> bool:
+    """Use the mask-free native-shaped kernel for exact dense squares."""
+    return (
+        f.half
+        and f.out_dtype == f.dtype
+        and f.m == f.n == f.k
+        and f.m >= 8 * _MMA_NATIVE_TILE[0]
+        and f.m % _MMA_NATIVE_TILE[0] == 0
+        and f.dense_operands
+        and f.a_strides == (f.k, 1)
+        and f.b_strides == (f.n, 1)
+        and f.dense_output
+        and f.vector_aligned
+        and not f.self_transpose
+    )
+
+
+@lru_cache(maxsize=4096)
+def _dispatch_mm(f: _Features) -> _MmPlan:
+    """Select the algorithm from metadata; never launch or benchmark candidates."""
+    # An empty reduction produces zeros; zero_ is a no-op for empty outputs.
+    if not f.m or not f.n or not f.k:
+        return _MmPlan(_launch_zero)
+    if f.n == 1:
+        return _MmPlan(_launch_mv)
+    if f.m == 1:
+        return _MmPlan(_launch_mv_transposed)
+    if _dense_mma_suitable(f):
+        return _MmPlan(_launch_dense)
+    if _nt_mma_suitable(f):
+        split = _nt_mma_split_count(f)
+        if split > 1:
+            return _MmPlan(_launch_gemm, split)
+    if _simt_suitable(f):
+        if f.n < f.m:
+            programs = f.n * triton.cdiv(f.m, _SIMT_TILE)
+            return _MmPlan(_launch_simt_column, _simt_split_count(f, programs))
+        programs = f.m * triton.cdiv(f.n, _SIMT_TILE)
+        return _MmPlan(_launch_simt_row, _simt_split_count(f, programs))
+    if (
+        f.self_transpose
+        and f.out_dtype == f.dtype
+        and f.m >= 1024
+        # At two K panels, triangular indexing and the mirrored store cost
+        # more than the saved dot work. Keep those short reductions tiled.
+        and f.k >= 256
+        and f.m % 128 == 0
+        and f.k % 64 == 0
+        and f.aligned
+        and f.dense_output
+        and f.a_strides in ((f.k, 1), (1, f.m))
+    ):
+        return _MmPlan(_launch_syrk, pack_rhs=f.half and f.a_strides[1] != 1)
+    if _dual_suitable(f):
+        return _MmPlan(_launch_dual)
+    if (
+        f.half
+        and f.out_dtype == f.dtype
+        and 2 <= f.m <= 64
+        and f.n >= 2048
+        and f.k >= 512
+        and (
+            (f.m >= 16 and f.n % 128 == 0)
+            # Long rows amortize partial N panels. Smaller N with a tail can
+            # select a tile whose full split/reduce call is slower.
+            or (f.n >= 8192 and f.n % 32 == 0)
+        )
+        and f.k % 64 == 0
+        and f.dense_operands
+        and f.b_strides[1] == 1
+        and f.dense_output
+        and f.vector_aligned
+    ):
+        return _MmPlan(_launch_wide, _split_count(f))
+    split = _split_count(f)
+    pack = _pack_profitable(f, split)
+    if (
+        split == 1
+        and f.half
+        and f.out_dtype == f.dtype
+        and f.dense_operands
+        and (f.rhs_k_contiguous or pack)
+        and f.dense_output
+        and f.vector_aligned
+        and f.m >= 1024
+        and f.m % 256 != 0
+        and f.n % 256 == 0
+        and f.k >= 512
+        and f.k % 32 == 0
+        and f.m * 8 >= triton.cdiv(f.m, 256) * 256 * 7
+        and f.tiles(256, 256) >= f.sm_count // 2
+    ):
+        return _MmPlan(_launch_nt_rows, pack_rhs=pack)
+    return _MmPlan(_launch_gemm, split, pack)
+
+
+def _simt_suitable(f: _Features) -> bool:
+    return min(f.m, f.n) <= _SIMT_EXTENT and max(f.m, f.n) <= _SIMT_WIDE
+
+
+def _simt_split_count(f: _Features, programs: int) -> int:
+    """A SIMT CTA is tiny, so parallelism past the output comes from K alone."""
+    wanted = _ceil_power_of_two(triton.cdiv(f.sm_count, max(1, programs)))
+    affordable = _floor_power_of_two(f.reduction_tiles // _SPLIT_MIN_K_TILES)
+    budgeted = _floor_power_of_two(f.l2_bytes // max(1, 4 * f.m * f.n))
+    return max(1, min(wanted, affordable, budgeted, _SPLIT_MAX))
+
+
+# Execution.
+
+
+def _partial_target(call, split_k):
+    """The FP32 workspace a partitioned launch writes, or the output itself."""
+    if split_k == 1:
+        return call.c, call.f.c_strides
+    f = call.f
+    target = torch.empty((split_k, f.m, f.n), device=call.a.device, dtype=torch.float32)
+    return target, (f.n, 1)
+
+
+def _reduce(call, target, split_k):
+    total = call.f.m * call.f.n
+    _reduce_tuned[lambda cfg: (triton.cdiv(total, cfg["BLOCK"]),)](
+        target,
+        call.c,
+        call.f.n,
+        total,
+        *call.f.c_strides,
+        SPLIT_K=split_k,
+    )
+
+
+def _launch_zero(call, plan):
+    call.c.zero_()
+
+
+def _launch_mv(call, plan):
+    mv(call.a, call.b[:, 0], out=call.c[:, 0])
+
+
+def _launch_mv_transposed(call, plan):
+    mv(call.b.transpose(0, 1), call.a[0], out=call.c[0])
+
+
+def _launch_simt_row(call, plan):
+    f = call.f
+    target, strides = _partial_target(call, plan.split_k)
+    _simt_row_tuned[lambda cfg: (plan.split_k * f.m * triton.cdiv(f.n, cfg["BN"]),)](
+        call.a,
+        call.b,
+        target,
+        f.m,
+        f.n,
+        f.k,
+        *f.a_strides,
+        *f.b_strides,
+        *strides,
+        SPLIT_K=plan.split_k,
+    )
+    if plan.split_k > 1:
+        _reduce(call, target, plan.split_k)
+
+
+def _launch_simt_column(call, plan):
+    f = call.f
+    target, strides = _partial_target(call, plan.split_k)
+    _simt_column_tuned[lambda cfg: (plan.split_k * f.n * triton.cdiv(f.m, cfg["BM"]),)](
+        call.a,
+        call.b,
+        target,
+        f.m,
+        f.n,
+        f.k,
+        *f.a_strides,
+        *f.b_strides,
+        *strides,
+        SPLIT_K=plan.split_k,
+    )
+    if plan.split_k > 1:
+        _reduce(call, target, plan.split_k)
+
+
+def _dual_grid(f, cfg):
+    columns = cfg["B0"] + cfg["B1"]
+    # SWAP computes the transposed problem, so its CTA count is the same tiling
+    # read the other way round.
+    return (
+        (f.tiles(columns, cfg["BM"]),)
+        if cfg["SWAP"]
+        else (f.tiles(cfg["BM"], columns),)
+    )
+
+
+def _launch_dual(call, plan):
+    f = call.f
+    _dual_tuned[lambda cfg: _dual_grid(f, cfg)](
+        call.a,
+        call.b,
+        call.c,
+        f.m,
+        f.n,
+        f.k,
+        *f.a_strides,
+        *f.b_strides,
+        *f.c_strides,
+    )
+
+
+def _launch_dense(call, plan):
+    f = call.f
+    _gemm_dense_tuned[
+        lambda cfg: (triton.cdiv(f.m, cfg["BM"]) * triton.cdiv(f.n, cfg["BN"]),)
+    ](call.a, call.b, call.c, f.m, f.n, f.k)
+
+
+def _launch_gemm(call, plan):
+    _launch_tiled(call, plan, _gemm_tuned)
+
+
+def _launch_wide(call, plan):
+    _launch_tiled(call, plan, _wide_tuned)
+
+
+def _launch_nt_rows(call, plan):
+    _launch_tiled(call, plan, _nt_rows_tuned)
+
+
+def _launch_tiled(call, plan, tuned):
+    f = call.f
+    b, b_strides = call.b, f.b_strides
+    if plan.pack_rhs:
+        b = torch.empty_strided((f.k, f.n), (1, f.k), dtype=b.dtype, device=b.device)
+        _pack_tuned[
+            lambda cfg: (triton.cdiv(f.k, cfg["BR"]) * triton.cdiv(f.n, cfg["BC"]),)
+        ](call.b, b, f.k, f.n, *f.b_strides)
+        b_strides = (1, f.k)
+    target, strides = _partial_target(call, plan.split_k)
+
+    def grid(cfg):
+        rows, columns = (f.n, f.m) if cfg["TRANSPOSE"] else (f.m, f.n)
+        return (
+            plan.split_k
+            * triton.cdiv(rows, cfg["BM"])
+            * triton.cdiv(columns, cfg["BN"]),
+        )
+
+    tuned[grid](
+        call.a,
+        b,
+        target,
+        f.m,
+        f.n,
+        f.k,
+        *f.a_strides,
+        *b_strides,
+        *strides,
+        SPLIT_K=plan.split_k,
+    )
+    if plan.split_k > 1:
+        _reduce(call, target, plan.split_k)
+
+
+def _launch_syrk(call, plan):
+    f = call.f
+    a = call.a
+    if plan.pack_rhs:
+        # Packing B = A.T also provides a row-major A as a view of that
+        # call-local buffer. Neither input data nor workspace is cached.
+        b = torch.empty_strided(
+            (f.k, f.n), (1, f.k), device=call.b.device, dtype=call.b.dtype
+        )
+        _pack_tuned[
+            lambda cfg: (triton.cdiv(f.k, cfg["BR"]) * triton.cdiv(f.n, cfg["BC"]),)
+        ](call.b, b, f.k, f.n, *f.b_strides)
+        a = b.transpose(0, 1)
+
+    def grid(cfg):
+        tiles = triton.cdiv(f.m, cfg["BT"])
+        return (tiles * (tiles + 1) // 2,)
+
+    _syrk_tuned[grid](a, call.c, f.m, f.k, *a.stride(), *f.c_strides)
+
+
+# Public API.
+
+
+def mm(a, b, *, out=None):
+    """Dispatch the workload from tensor metadata, then launch the selected plan."""
+    logger.debug("GEMS METAX MM")
+    if out is None:
+        out = torch.empty((a.shape[0], b.shape[1]), device=a.device, dtype=a.dtype)
+    call = _MmCall(a, b, out, _features(a, b, out))
+    with torch_device_fn.device(a.device):
+        plan = _dispatch_mm(call.f)
+        plan.launch(call, plan)
+        return call.c
 
 
 def mm_out(a, b, *, out):
-    logger.debug("GEMS_METAX MM_OUT")
-    # handle non-contiguous inputs if necessary
-    if a.stride(0) > 1 and a.stride(1) > 1:
-        a = a.contiguous()
-    if b.stride(0) > 1 and b.stride(1) > 1:
-        b = b.contiguous()
-    # checks constraints
-    assert a.shape[1] == b.shape[0], "incompatible dimensions"
-    M, K = a.shape
-    _, N = b.shape
-    # allocates output
-    c = out
-    if M == 0 or N == 0:
-        return c
-    if N == 1:
-        if _gemv_k_parallel_scenario(M, K):
-            return gemv_mm_k_parallel(a, b, c, M, K)
-        return gemv_mm(a, b, c, M, K)
-    if _small_n_mm_scenario(a, b, c, N, K):
-        return small_n_mm(a, b, c, M, N, K)
-    two_step_split_k = _select_two_step_split_k(M, N, K)
-    if two_step_split_k is not None:
-        return splitk_mm_two_step(a, b, out, M, N, K, two_step_split_k)
-    nt_scenario = nt_mm_scenario(a, b, c, M, N, K)
-    prefer_dense_nt = (
-        c.dtype in (torch.float16, torch.bfloat16)
-        and nt_scenario
-        and _prefer_dense_nt_over_generic_splitk(M, N, K)
-    )
-    if splitk_mm_scenario(M, N, K) and not prefer_dense_nt:
-        if (
-            c.dtype == torch.float32
-            and not torch.are_deterministic_algorithms_enabled()
-        ):
-            c.zero_()
-            return splitk_mm(a, b, c, M, N, K)
-        split_k = _generic_two_step_split_k(M, N, K)
-        return splitk_mm_two_step(a, b, c, M, N, K, split_k)
-    if nn_mm_scenario(a, b, c, M, N, K):
-        return general_mm_nn(a, b, c, M, N, K)
-    if nt_scenario:
-        return general_mm_nt(a, b, c, M, N, K)
-    return general_mm(a, b, c, M, N, K)
+    # Registration filters use the function name, so keep a distinct out entry.
+    return mm(a, b, out=out)
