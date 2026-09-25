@@ -20,24 +20,47 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
+from flag_gems.utils.codegen_config_utils import get_codegen_config
 
 logger = logging.getLogger(__name__)
 
 _SUPPORTED_DTYPES = (torch.float16, torch.bfloat16, torch.float32, torch.float64)
 
+_BLOCK_SIZE = 1024
+
 
 @triton.jit
-def log_kernel_(x_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
+def log_kernel_(x_ptr, n_elements, n_blocks, BLOCK_SIZE: tl.constexpr):
     pid = tl.program_id(axis=0)
-    block_start = pid * BLOCK_SIZE
-    offsets = block_start + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
+    num_programs = tl.num_programs(axis=0)
+    # Grid-stride loop. The caller caps the grid at the backend's maximum grid
+    # size, so a single program may have to walk several blocks. Capping is
+    # required on backends that - unlike CUDA - do not simply queue the extra
+    # programs: triton-ascend pads the launch up to a multiple of the device
+    # core count and runs every padding CTA with program_id == 0, which
+    # re-executes the first block. For an in-place op such as log_ that means
+    # log is applied twice to those elements (log(log(x)) is NaN for x < 1),
+    # so the whole first block came out as NaN.
+    for block_id in range(pid, n_blocks, num_programs):
+        offsets = block_id * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < n_elements
 
-    x = tl.load(x_ptr + offsets, mask=mask)
-    x_f32 = x.to(tl.float32)
-    y_f32 = tl.log(x_f32)
-    y = y_f32.to(x.dtype)
-    tl.store(x_ptr + offsets, y, mask=mask)
+        x = tl.load(x_ptr + offsets, mask=mask)
+        x_f32 = x.to(tl.float32)
+        y_f32 = tl.log(x_f32)
+        y = y_f32.to(x.dtype)
+        tl.store(x_ptr + offsets, y, mask=mask)
+
+
+def _launch_log_(x, n_elements):
+    # `max_grid_size[0]` is the per-vendor program cap `pointwise_dynamic`
+    # already honours (Ascend sets it to its vector-core count). Never launch
+    # more programs than that.
+    n_blocks = triton.cdiv(n_elements, _BLOCK_SIZE)
+    max_programs = get_codegen_config().max_grid_size[0]
+    grid = (min(n_blocks, max_programs),)
+    with torch_device_fn.device(x.device):
+        log_kernel_[grid](x, n_elements, n_blocks, BLOCK_SIZE=_BLOCK_SIZE)
 
 
 def log_(*args, **kwargs):
@@ -66,9 +89,7 @@ def log_(*args, **kwargs):
         n_elements = y.numel()
         if n_elements == 0:
             return x
-        grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-        with torch_device_fn.device(y.device):
-            log_kernel_[grid](y, n_elements, BLOCK_SIZE=1024)
+        _launch_log_(y, n_elements)
         x.copy_(y)
         return x
 
@@ -76,7 +97,5 @@ def log_(*args, **kwargs):
     if n_elements == 0:
         return x
 
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-    with torch_device_fn.device(x.device):
-        log_kernel_[grid](x, n_elements, BLOCK_SIZE=1024)
+    _launch_log_(x, n_elements)
     return x
