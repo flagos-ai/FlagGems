@@ -6760,6 +6760,18 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.5'
+- id: grid_sampler_2d_backward
+  description: Computes gradients for 2D grid sampling operation. Returns gradients
+    with respect to input tensor and/or sampling grid.
+  for:
+  - grid_sampler_2d_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5.0'
 - id: grid_sampler_3d
   description: Given an `input` and a flow-field `grid` in 3D, computes the `output`
     using `input` values and pixel locations from `grid` with trilinear or nearest
