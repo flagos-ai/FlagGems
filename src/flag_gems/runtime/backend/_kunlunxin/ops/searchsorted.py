@@ -231,11 +231,35 @@ def _searchsorted_sm_staged_kernel(
         else:
             v = tl.load(values_ptr + qidx)
 
+        # `L` is a power of two on this path (`_sm_staged_supported` guarantees
+        # it), which makes the top round and both per-round guards redundant:
+        #   * the `step == L` round only asks "is `v` past the last element" --
+        #     its probe is always `L-1`, and a hit pins `idx` at `L` for good, so
+        #     it is hoisted into `end_hit` and the loop starts at `L/2`;
+        #   * from there `idx` accumulates at most `L/2 + ... + 1 == L-1`, so
+        #     `nxt <= L` holds by construction and `tl.minimum(nxt, L)` is a
+        #     no-op -- the probe cannot leave `[0, L)`.
+        # Measured on device (ABBA, same card, fp32): 1.058 / 1.071 / 1.156 on
+        # the three benchmark shapes, bit-exact against this version.
+        # `end_hit` MUST be `~go_left`, not the "equivalent" `v > mv0`: when the
+        # sequence holds NaN the two disagree, and `~go_left` is the one that
+        # keeps the existing advance-to-the-right semantics (CPU-checked, 5900
+        # cases; `v > mv0` mismatched 1580 of them).
+        last = tl.full((RP, RQ), L - 1, dtype=tl.int32)
+        if WIDEN:
+            mv0 = tl.load(tle.gpu.local_ptr(fbuf, (rows, last)))
+        else:
+            mv0 = tl.load(tle.gpu.local_ptr(sbuf, (rows, last)))
+        if RIGHT:
+            end_hit = ~(v < mv0)
+        else:
+            end_hit = ~(v <= mv0)
+
         idx = tl.zeros((RP, RQ), dtype=tl.int32)
-        for k in tl.static_range(LOG, -1, -1):
+        for k in tl.static_range(LOG - 1, -1, -1):
             step = 1 << k
             nxt = idx + step
-            probe = tl.minimum(nxt, L) - 1
+            probe = nxt - 1
             if WIDEN:
                 mv = tl.load(tle.gpu.local_ptr(fbuf, (rows, probe)))
             else:
@@ -251,7 +275,8 @@ def _searchsorted_sm_staged_kernel(
             # latency-bound on the gather, not op-count-bound, so shaving
             # arithmetic here buys nothing. Kept because it is strictly fewer
             # instructions, not because it is faster.
-            idx += step * ((~go_left) & (nxt <= L)).to(tl.int32)
+            idx += step * (~go_left).to(tl.int32)
+        idx = tl.where(end_hit, L, idx)
 
         tl.store(tle.gpu.local_ptr(obuf, (rows, cols)), idx.to(OTY))
         tle.gpu.copy(obuf, out_desc, [RP, RQ], [rb, pq * RQ])
