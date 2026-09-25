@@ -620,6 +620,7 @@ _FULL_CONFIG = (
     ("clip", clip),
     ("clip_", clip_),
     ("col2im", col2im),
+    ("col_indices", col_indices, None, (AUTOGRAD_DISPATCH_KEY,)),
     ("column_stack", column_stack),
     ("column_stack.out", column_stack_out),
     ("concat", concat),
