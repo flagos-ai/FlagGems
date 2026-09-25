@@ -795,6 +795,7 @@ from flag_gems.ops.matrix_exp_backward import matrix_exp_backward
 from flag_gems.ops.matrix_power import matrix_power, matrix_power_out
 from flag_gems.ops.max import max, max_dim
 from flag_gems.ops.max_pool1d import max_pool1d
+from flag_gems.ops.max_pool1d_with_indices import max_pool1d_with_indices
 from flag_gems.ops.max_pool2d_with_indices import (
     max_pool2d_backward,
     max_pool2d_with_indices,
@@ -2123,6 +2124,7 @@ __all__ = [
     "max",
     "max_dim",
     "max_pool1d",
+    "max_pool1d_with_indices",
     "max_pool2d_backward",
     "max_pool2d_with_indices",
     "max_pool2d_with_indices_backward",

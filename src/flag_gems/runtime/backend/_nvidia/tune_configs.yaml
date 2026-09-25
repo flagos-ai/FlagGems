@@ -3471,6 +3471,32 @@ quantized_max_pool3d:
     num_warps: 8
     num_stages: 2
 
+max_pool1d_with_indices:
+  - META:
+      BLOCK_L: 128
+    num_stages: 4
+    num_warps: 4
+  - META:
+      BLOCK_L: 256
+    num_stages: 3
+    num_warps: 4
+  - META:
+      BLOCK_L: 512
+    num_stages: 3
+    num_warps: 8
+  - META:
+      BLOCK_L: 1024
+    num_stages: 2
+    num_warps: 8
+  - META:
+      BLOCK_L: 64
+    num_stages: 5
+    num_warps: 2
+  - META:
+      BLOCK_L: 32
+    num_stages: 5
+    num_warps: 2
+
 matrix_power_bmm:
   - META:
       TILE_M: 64
