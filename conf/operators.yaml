@@ -11619,6 +11619,20 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: nested_from_padded
+  description: 'Constructs a nested tensor from a padded dense tensor, removing the
+    padding rows for each component according to the nested sizes in `cpu_nested_shape_example`.
+
+    '
+  for:
+  - _nested_from_padded
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5.0'
 - id: nested_from_padded_tensor
   description: 'Constructs a nested tensor from a padded tensor and offsets.
 

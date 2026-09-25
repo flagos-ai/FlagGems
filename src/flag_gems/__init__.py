@@ -273,6 +273,7 @@ _FULL_CONFIG = (
         _native_batch_norm_legit_no_training,
     ),
     ("_native_multi_head_attention", _native_multi_head_attention),
+    ("_nested_from_padded", _nested_from_padded),
     ("_nested_from_padded_tensor", _nested_from_padded_tensor),
     ("_nested_select_backward", _nested_select_backward),
     ("_nested_sum_backward", _nested_sum_backward),
