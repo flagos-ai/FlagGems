@@ -1,0 +1,131 @@
+# Copyright 2026 FlagOS Contributors
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: Iluvatar embedding bag diagnostics
+on:
+  pull_request:
+    branches: [master]
+    paths:
+      - '.github/workflows/iluvatar-embedding-bag-probes.yaml'
+      - '.github/scripts/test_iluvatar_async_errors.py'
+
+permissions:
+  contents: read
+
+jobs:
+  ix-diagnostics:
+    if: github.head_ref == 'ci/iluvatar-embedding-bag-probes'
+    runs-on: iluvatar-bi-v150-0
+    timeout-minutes: 45
+    container:
+      image: harbor.baai.ac.cn/flagos-base/flagos-base-iluvatar-corex4.5.0:2.1.2
+      options: --device /dev/iluvatar0 --device /dev/itrctl --shm-size=256g --ulimit memlock=-1 --ulimit stack=67108864
+    concurrency:
+      group: ix-embedding-bag-probes-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - name: Check out the pinned operator from upstream (attempt 1)
+        id: operator-checkout-1
+        timeout-minutes: 5
+        continue-on-error: true
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          repository: flagos-ai/FlagGems
+          ref: 4e217249418ae762f5ed0315da96b5427167cc74
+          fetch-depth: 1
+          path: operator-source
+      - name: Check out the pinned operator from upstream (attempt 2)
+        id: operator-checkout-2
+        if: ${{ !cancelled() && steps.operator-checkout-1.outcome == 'failure' }}
+        timeout-minutes: 5
+        continue-on-error: true
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          repository: flagos-ai/FlagGems
+          ref: 4e217249418ae762f5ed0315da96b5427167cc74
+          fetch-depth: 1
+          path: operator-source
+      - name: Check out the pinned operator from upstream (attempt 3)
+        id: operator-checkout-3
+        if: ${{ !cancelled() && steps.operator-checkout-2.outcome == 'failure' }}
+        timeout-minutes: 5
+        continue-on-error: true
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          repository: flagos-ai/FlagGems
+          ref: 4e217249418ae762f5ed0315da96b5427167cc74
+          fetch-depth: 1
+          path: operator-source
+      - name: Check out the pinned operator from upstream (attempt 4)
+        id: operator-checkout-4
+        if: ${{ !cancelled() && steps.operator-checkout-3.outcome == 'failure' }}
+        timeout-minutes: 5
+        continue-on-error: true
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          repository: flagos-ai/FlagGems
+          ref: 4e217249418ae762f5ed0315da96b5427167cc74
+          fetch-depth: 1
+          path: operator-source
+      - name: Check out the pinned operator from upstream (attempt 5)
+        id: operator-checkout-5
+        if: ${{ !cancelled() && steps.operator-checkout-4.outcome == 'failure' }}
+        timeout-minutes: 5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          repository: flagos-ai/FlagGems
+          ref: 4e217249418ae762f5ed0315da96b5427167cc74
+          fetch-depth: 1
+          path: operator-source
+      - name: Set up the IX environment
+        id: setup
+        working-directory: operator-source
+        shell: bash
+        run: |
+          # Use mainline setup, not the historical change in the operator PR.
+          test "$(git rev-parse HEAD)" = 4e217249418ae762f5ed0315da96b5427167cc74
+          cp ../setup.sh setup.sh
+          mkdir -p ../ix-results
+          # Bound setup's optional history fetches without modifying setup.sh.
+          # Its existing fallback chain tolerates a fetch timeout/nonzero exit.
+          git() {
+            if [[ "${1:-}" == fetch ]]; then
+              printf 'Diagnostic setup: git fetch limited to 60 seconds\n'
+              timeout --kill-after=10s 60s "$(type -P git)" "$@"
+            else
+              command git "$@"
+            fi
+          }
+          export -f git
+          set -o pipefail
+          ./setup.sh iluvatar 2>&1 | tee ../ix-results/setup.stdout.log
+          unset -f git
+          source .venv/bin/activate
+          python -c 'from importlib.metadata import distributions; print("\n".join(sorted("{}=={}".format(d.metadata["Name"], d.version) for d in distributions())))' > ../ix-results/environment.txt
+      - name: Run isolated pytest exception checks
+        timeout-minutes: 15
+        working-directory: operator-source
+        shell: bash
+        run: |
+          source .venv/bin/activate
+          ulimit -c 0
+          set -o pipefail
+          python -m pytest -c /dev/null -s -vv ../.github/scripts/test_iluvatar_async_errors.py --junitxml=../ix-results/pytest.xml 2>&1 | tee ../ix-results/pytest.stdout.log
+      - name: Preserve diagnostics even when assertions fail
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: ix-embedding-bag-${{ github.run_id }}
+          path: ix-results/
+          if-no-files-found: warn
