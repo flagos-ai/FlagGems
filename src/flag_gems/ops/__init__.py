@@ -193,6 +193,7 @@ from flag_gems.ops._sobol_engine_initialize_state_ import (
 from flag_gems.ops._sparse_semi_structured_addmm import _sparse_semi_structured_addmm
 from flag_gems.ops._sparse_semi_structured_linear import _sparse_semi_structured_linear
 from flag_gems.ops._sparse_semi_structured_mm import _sparse_semi_structured_mm
+from flag_gems.ops._spsolve import spsolve
 from flag_gems.ops._stack import _stack
 from flag_gems.ops._standard_gamma import standard_gamma
 from flag_gems.ops._standard_gamma_grad import standard_gamma_grad
@@ -2511,6 +2512,7 @@ __all__ = [
     "special_zeta_tensor_scalar_out",
     "split_with_sizes",
     "split_with_sizes_copy",
+    "spsolve",
     "sqrt",
     "sqrt_",
     "square",

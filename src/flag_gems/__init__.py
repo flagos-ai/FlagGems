@@ -352,6 +352,7 @@ _FULL_CONFIG = (
     ("_sparse_semi_structured_linear", _sparse_semi_structured_linear),
     ("_sparse_semi_structured_mm", _sparse_semi_structured_mm),
     ("_spdiags", spdiags),
+    ("_spsolve", spsolve, None, (SPARSE_CSR_DISPATCH_KEY,)),
     ("_stack", _stack),
     ("_standard_gamma", standard_gamma),
     ("_standard_gamma_grad", standard_gamma_grad),
