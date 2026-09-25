@@ -163,6 +163,22 @@ ops:
   - LinearAlg
   stages:
   - alpha: '5.5'
+- id: _linalg_solve_ex
+  description: 'Solves a linear system AX = B by delegating to the shared fused LU decomposition
+    Triton kernel of linalg_solve_ex; the private primitive backing torch.linalg.solve_ex.
+    Returns (result, LU, pivots, info) where info indicates singularity status; LU and
+    pivots are schema-parity buffers.
+
+    '
+  for:
+  - _linalg_solve_ex
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.5'
 - id: _linalg_svd
   description: 'Computes the singular value decomposition (SVD) of a matrix; the private
     primitive backing torch.linalg.svd and torch.linalg.svdvals.
@@ -9349,7 +9365,6 @@ ops:
     where info indicates singularity status.
   for:
   - linalg_solve_ex
-  - _linalg_solve_ex
   labels:
   - aten
   - KernelGen

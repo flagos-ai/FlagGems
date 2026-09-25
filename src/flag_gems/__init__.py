@@ -243,6 +243,7 @@ _FULL_CONFIG = (
     ("_jagged_to_padded_dense_forward", _jagged_to_padded_dense_forward),
     ("_linalg_eigvals", _linalg_eigvals),
     ("_linalg_slogdet", _linalg_slogdet),
+    ("_linalg_solve_ex", _linalg_solve_ex),
     ("_linalg_svd", _linalg_svd),
     ("_list_to_tensor", _list_to_tensor),
     ("_log_softmax", log_softmax),
