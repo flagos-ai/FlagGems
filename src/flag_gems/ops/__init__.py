@@ -668,6 +668,7 @@ from flag_gems.ops.kaiser_window import (
     kaiser_window_beta,
     kaiser_window_periodic,
 )
+from flag_gems.ops.kl_div import kl_div
 from flag_gems.ops.kron import kron
 from flag_gems.ops.kthvalue import kthvalue
 from flag_gems.ops.l1_loss import l1_loss
@@ -1967,6 +1968,7 @@ __all__ = [
     "kaiser_window",
     "kaiser_window_beta",
     "kaiser_window_periodic",
+    "kl_div",
     "kron",
     "kthvalue",
     "l1_loss",

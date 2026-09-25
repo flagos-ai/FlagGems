@@ -8304,6 +8304,23 @@ ops:
   - Math
   stages:
   - alpha: '5.5.0'
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5.0'
+- id: kl_div
+  description: |
+    Compute the Kullback-Leibler divergence loss between the input
+    (log-probabilities) and the target, supporting none/mean/sum reductions
+    and both the probability and log-space target interpretations.
+  for:
+  - kl_div
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5.0'
 - id: kron
   description: Computes the Kronecker product of `input` and `other`.
   for:
