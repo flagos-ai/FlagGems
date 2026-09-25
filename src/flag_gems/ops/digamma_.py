@@ -76,11 +76,9 @@ def digamma_kernel_(
     tl.store(x_ptr + offsets, result, mask=mask)
 
 
-def digamma_(*args, **kwargs):
+def digamma_(self):
     logger.debug("GEMS DIGAMMA_")
-    x = args[0]
-    if not isinstance(x, torch.Tensor):
-        raise TypeError("digamma_ expects a torch.Tensor as the first argument")
+    x = self
 
     # Handle non-contiguous tensors by operating on a contiguous copy and copying back
     if not x.is_contiguous():

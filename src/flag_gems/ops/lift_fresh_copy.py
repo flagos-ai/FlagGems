@@ -34,21 +34,9 @@ def _copy_kernel(in_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
     tl.store(out_ptr + offsets, x, mask=mask)
 
 
-def lift_fresh_copy(*args, **kwargs):
+def lift_fresh_copy(self):
     logger.debug("GEMS LIFT_FRESH_COPY")
-    # Attempt to find the input tensor from args/kwargs
-    x = None
-    if len(args) > 0 and isinstance(args[0], torch.Tensor):
-        x = args[0]
-    elif "self" in kwargs and isinstance(kwargs["self"], torch.Tensor):
-        x = kwargs["self"]
-    else:
-        for v in list(args) + list(kwargs.values()):
-            if isinstance(v, torch.Tensor):
-                x = v
-                break
-    if x is None:
-        raise ValueError("lift_fresh_copy expects a Tensor argument")
+    x = self
 
     if x.device.type != flag_gems.device:
         raise ValueError(
