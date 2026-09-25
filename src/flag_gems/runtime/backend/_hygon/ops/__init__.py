@@ -92,6 +92,7 @@ from .linalg_solve_triangular import (
     linalg_solve_triangular,
     linalg_solve_triangular_out,
 )
+from .linear import linear
 from .log_normal_ import log_normal_
 from .masked_scale import masked_scale
 from .masked_scatter_backward import masked_scatter_backward
@@ -255,6 +256,7 @@ __all__ = [
     "linalg_matrix_power_out",
     "linalg_solve_triangular",
     "linalg_solve_triangular_out",
+    "linear",
     "log_normal_",
     "masked_scale",
     "masked_scatter_backward",

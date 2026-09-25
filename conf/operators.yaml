@@ -9473,11 +9473,10 @@ ops:
   - linear
   labels:
   - aten
-  - KernelGen
   kind:
   - BLAS
   stages:
-  - alpha: '5.4'
+  - beta: '5.5'
 - id: linear_backward
   description: Triton kernel implementation for linear_backward.
   for:
