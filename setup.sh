@@ -279,7 +279,8 @@ if [ "${COMPILER}" = "flagtree" ]; then
     for attempt in 1 2 3; do
       printf "Installing FlagTree (attempt ${attempt}) ..."
       if uv pip install -q --reinstall ${FLAGTREE_PKGS} \
-           --default-index "${FLAGOS_PYPI}" --index "${MIRROR}" && verify_triton_install; then
+           --default-index "${FLAGOS_PYPI}" \
+           --index "${MIRROR}" && verify_triton_install; then
         ok
         break
       fi
@@ -300,7 +301,8 @@ if [ "${COMPILER}" = "triton" ] && [ -n "${TRITON_PKGS}" ]; then
   for attempt in 1 2 3; do
     printf "Installing Triton (attempt ${attempt}) ..."
     if uv pip install -q --reinstall ${TRITON_PKGS} \
-         --default-index "${FLAGOS_PYPI}" --index "${MIRROR}" && verify_triton_install; then
+         --default-index "${FLAGOS_PYPI}" \
+         --index "${MIRROR}" && verify_triton_install; then
       ok
       break
     fi
