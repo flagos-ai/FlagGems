@@ -21,6 +21,7 @@ from .bin_topk import bucket_sort_topk_xpu  # noqa: F401  (import triggers _inst
 from .bincount import bincount
 from .concat_and_cache_mla import concat_and_cache_mla
 from .cross_entropy_loss import cross_entropy_loss
+from .DSA.indexer_k_tiled import triton_lighting_indexer_k_tiled_interface
 from .flashmla_sparse import flash_mla_sparse_fwd
 from .fused_add_rms_norm import fused_add_rms_norm
 from .fused_deepseek_v4_qnorm_rope_kv_rope_insert import (
@@ -79,6 +80,7 @@ __all__ = [
     "outer",
     "instance_norm",
     "weight_norm",
+    "triton_lighting_indexer_k_tiled_interface",
     "concat_and_cache_mla",
     "reshape_and_cache",
     "moe_align_block_size",
