@@ -3742,6 +3742,20 @@ ops:
   - LinearAlg
   stages:
   - alpha: '5.5'
+- id: crow_indices_copy
+  description: 'Returns a fresh copy of the crow (row) indices of a sparse compressed
+    tensor, mirroring `aten::crow_indices_copy`.
+
+    '
+  for:
+  - crow_indices_copy
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: cslt_sparse_mm
   description: Triton implementation of aten._cslt_sparse_mm; decodes the cuSPARSELt
     2:4 structured-sparse compressed blob back to dense and runs a tiled dense matmul,

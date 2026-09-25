@@ -660,6 +660,12 @@ _FULL_CONFIG = (
     ("cov", cov),
     ("cross", cross),
     ("cross.out", cross_out),
+    (
+        "crow_indices_copy",
+        crow_indices_copy,
+        None,
+        (SPARSE_CSR_DISPATCH_KEY,),
+    ),
     ("ctc_loss.IntList", ctc_loss, None, (AUTOGRAD_DISPATCH_KEY,)),
     ("ctc_loss.Tensor", ctc_loss, None, (AUTOGRAD_DISPATCH_KEY,)),
     ("cudnn_batch_norm_backward", cudnn_batch_norm_backward),
