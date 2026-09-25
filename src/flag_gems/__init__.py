@@ -1370,6 +1370,7 @@ _FULL_CONFIG = (
     ("resolve_neg", resolve_neg),
     ("rms_norm", rms_norm),
     ("rnn_relu.input", rnn_relu),
+    ("rnn_relu_cell", rnn_relu_cell),
     ("rnn_tanh.data", rnn_tanh_data),
     ("rnn_tanh.input", rnn_tanh),
     ("roll", roll),
