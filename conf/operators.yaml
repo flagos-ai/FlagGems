@@ -17944,6 +17944,18 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: underscore_linalg_det
+  description: Computes the determinant of a square matrix (or a batch of square
+    matrices), returning it together with the LU factorisation and pivots.
+  for:
+  - _linalg_det
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.5.0'
 - id: underscore_sobol_engine_draw
   description: 'Generates quasi-random Sobol sequence points. XOR-based algorithm
     using Gray code for low-discrepancy sampling.
