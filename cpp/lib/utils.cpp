@@ -33,14 +33,15 @@ std::filesystem::path get_path_of_this_library() {
 
 std::filesystem::path get_triton_src_path() {
   const static std::filesystem::path triton_src_dir = []() {
-    std::filesystem::path installed_script_path =
-        get_path_of_this_library().parent_path().parent_path().parent_path() / "share" / "flag_gems" /
-        "triton_src";
+    // Installed wheel: c_operators*.so lives at <site-packages>/flag_gems/,
+    // triton kernel sources are at <site-packages>/flag_gems/triton_src/.
+    std::filesystem::path installed_script_path = get_path_of_this_library().parent_path() / "triton_src";
     if (std::filesystem::exists(installed_script_path)) {
       return installed_script_path;
     } else {
+      // Source-tree build: <repo>/cpp/triton_src/
       std::filesystem::path source_script_path =
-          std::filesystem::path(__FILE__).parent_path().parent_path().parent_path() / "triton_src";
+          std::filesystem::path(__FILE__).parent_path().parent_path() / "triton_src";
       return source_script_path;
     }
   }();
@@ -50,10 +51,12 @@ std::filesystem::path get_triton_src_path() {
 std::filesystem::path get_flag_gems_src_path() {
   const static std::filesystem::path flag_gems_src_dir = []() {
     const char *flag_gems_dir = std::getenv("FLAGGEMS_SOURCE_DIR");
-    if (!flag_gems_dir) {
-      throw std::runtime_error("Environment variable FLAGGEMS_SOURCE_DIR not set");
+    if (flag_gems_dir) {
+      return std::filesystem::path(flag_gems_dir);
     }
-    return std::filesystem::path(flag_gems_dir);
+    // Installed wheel: the .so lives at <site-packages>/flag_gems/c_operators*.so.
+    // Triton source files are at <site-packages>/flag_gems/ops/*.py etc.
+    return get_path_of_this_library().parent_path();
   }();
   return flag_gems_src_dir;
 }
