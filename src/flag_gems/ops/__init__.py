@@ -791,6 +791,7 @@ from flag_gems.ops.masked_scatter_backward import masked_scatter_backward
 from flag_gems.ops.masked_select import masked_select
 from flag_gems.ops.masked_select_backward import masked_select_backward
 from flag_gems.ops.matmul_backward import matmul_backward
+from flag_gems.ops.matrix_exp import matrix_exp
 from flag_gems.ops.matrix_exp_backward import matrix_exp_backward
 from flag_gems.ops.matrix_power import matrix_power, matrix_power_out
 from flag_gems.ops.max import max, max_dim
@@ -2117,6 +2118,7 @@ __all__ = [
     "masked_select",
     "masked_select_backward",
     "matmul_backward",
+    "matrix_exp",
     "matrix_exp_backward",
     "matrix_power",
     "matrix_power_out",

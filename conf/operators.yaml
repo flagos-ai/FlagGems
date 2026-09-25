@@ -10392,6 +10392,19 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: matrix_exp
+  description: Computes the matrix exponential of one or more square matrices via
+    scaling-and-squaring with a degree-18 Taylor polynomial, evaluated entirely with
+    the Triton bmm kernel.
+  for:
+  - matrix_exp
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: matrix_exp_backward
   description: Triton kernel implementation for matrix_exp_backward.
   for:
