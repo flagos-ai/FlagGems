@@ -10115,6 +10115,19 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: lu_solve
+  description: |
+    Returns the LU solve of the linear system Ax = b using the partially pivoted
+    LU factorization of A from lu_factor.
+  for:
+  - lu_solve
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.5.0'
 - id: lu_unpack
   description: Unpacks the LU decomposition returned by `lu_factor` into separate
     permutation matrix P, lower triangular L, and upper triangular U.

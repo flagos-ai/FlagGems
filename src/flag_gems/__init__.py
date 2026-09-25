@@ -1090,6 +1090,8 @@ _FULL_CONFIG = (
     ("lt.Tensor", lt),
     ("lt_.Scalar", lt_scalar_),
     ("lt_.Tensor", lt_),
+    ("lu_solve", lu_solve),
+    ("lu_solve.out", lu_solve_out),
     ("lu_unpack", lu_unpack),
     ("lu_unpack.out", lu_unpack_out),
     ("margin_ranking_loss", margin_ranking_loss),
