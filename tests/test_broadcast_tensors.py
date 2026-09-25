@@ -73,3 +73,20 @@ def test_broadcast_tensors_three_inputs(shape, dtype):
     assert len(res_out) == len(ref_out)
     for res, ref in zip(res_out, ref_out):
         utils.gems_assert_equal(res, ref)
+
+
+@pytest.mark.broadcast_tensors
+@pytest.mark.parametrize("shapes", [[(0,), (1,)], [(2, 0, 3), (1, 1, 3)]])
+def test_broadcast_tensors_zero_size_dimension(shapes):
+    tensors = [torch.empty(shape, device=flag_gems.device) for shape in shapes]
+    expected = torch.broadcast_tensors(*tensors)
+    actual = flag_gems.broadcast_tensors(tensors)
+    assert [x.shape for x in actual] == [x.shape for x in expected]
+
+
+@pytest.mark.broadcast_tensors
+@pytest.mark.parametrize("shapes", [[(0,), (3,)], [(2,), (3,)]])
+def test_broadcast_tensors_incompatible_sizes(shapes):
+    tensors = [torch.empty(shape, device=flag_gems.device) for shape in shapes]
+    with pytest.raises(RuntimeError):
+        flag_gems.broadcast_tensors(tensors)

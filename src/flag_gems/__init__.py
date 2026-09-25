@@ -608,7 +608,8 @@ _FULL_CONFIG = (
     ("cholesky_solve", cholesky_solve, None, (CONJUGATE_DISPATCH_KEY,)),
     ("cholesky_solve.out", cholesky_solve_out, None, (CONJUGATE_DISPATCH_KEY,)),
     ("choose_qparams_optimized", choose_qparams_optimized),
-    ("chunk", chunk),
+    # chunk decomposes into differentiable view ops; preserve autograd dispatch.
+    ("chunk", chunk, None, (AUTOGRAD_DISPATCH_KEY,)),
     ("clamp", clamp),
     ("clamp.Tensor", clamp_tensor),
     ("clamp_", clamp_),
