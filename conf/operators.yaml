@@ -11696,6 +11696,18 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: nested_tensor_from_tensor_list
+  description: Constructs a nested tensor from a list of tensors, each element of
+    which becomes a component of the resulting nested tensor.
+  for:
+  - _nested_tensor_from_tensor_list
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5.0'
 - id: nested_tensor_softmax_with_shape
   description: |
     Computes softmax over the last dimension of nested-tensor attention scores,
