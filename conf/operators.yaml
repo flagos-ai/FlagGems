@@ -917,6 +917,20 @@ ops:
   - BLAS
   stages:
   - stable: '4.0'
+- id: adjoint
+  description: 'Returns the conjugate transpose view of a tensor: out[..., j, i]
+    = conj(self[..., i, j]).
+
+    '
+  for:
+  - adjoint
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: affine_grid_generator
   description: 'Generates a 2D or 3D flow field (sampling grid), given a batch of
     affine matrices theta.
