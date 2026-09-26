@@ -133,11 +133,6 @@ def true_div_func_u16(x, y):
     return x / y
 
 
-# --- small/medium tensor-tensor true_divide fast path ---------------------------------
-# Below DIV_TENSOR_U16_MIN_NUMEL the pointwise_dynamic wrapper's host bookkeeping and a
-# single 512-wide tile (config_) dominate a kernel that is launch-bound on tiny shapes.
-# A raw kernel with an adaptive (BLOCK, num_warps) keeps enough programs in flight for
-# the small shapes while the unmasked tail-free variant covers the divisible rest.
 _DIV_FAST_MAX = DIV_TENSOR_U16_MIN_NUMEL
 _DIV_MIN_BLOCK = 2048
 
@@ -362,20 +357,15 @@ def _scalar_over_complex(A, B, out=None):
 )
 @triton.jit
 def true_div_complex_kernel(ar, ai, br, bi):
-    # Smith's method complex division: divide by the larger-magnitude component
-    # so the ratio is bounded by 1 (avoids overflow and keeps the error at a
-    # couple of ulp), matching torch's own complex division algorithm.
     abs_br = tl.abs(br)
     abs_bi = tl.abs(bi)
     use_br = abs_br >= abs_bi
 
-    # When |br| >= |bi|: ratio = bi/br, denom = br + bi*ratio
     ratio1 = tl.where(br == 0, 0.0, bi / br)
     denom1 = br + bi * ratio1
     real1 = (ar + ai * ratio1) / denom1
     imag1 = (ai - ar * ratio1) / denom1
 
-    # When |bi| > |br|: ratio = br/bi, denom = bi + br*ratio
     ratio2 = tl.where(bi == 0, 0.0, br / bi)
     denom2 = bi + br * ratio2
     real2 = (ar * ratio2 + ai) / denom2
@@ -405,7 +395,6 @@ def _true_divide_complex_tensors(A, B):
             real, imag = real.to(torch.float16), imag.to(torch.float16)
         return torch.view_as_complex(torch.stack((real, imag), dim=-1))
     elif A_is_complex:
-        # (a+bi) / c: divide both lanes by the real tensor (broadcast)
         upcast = A.dtype == torch.complex32
         Ar = torch.view_as_real(A)
         if upcast:
@@ -418,12 +407,6 @@ def _true_divide_complex_tensors(A, B):
             out = out.to(torch.float16)
         return torch.view_as_complex(out.contiguous())
     else:
-        # a / (c+di) == (a+0i) / (c+di)
-        #
-        # NOTE: c5694666 wrote `ar = A.unsqueeze(-1)` + `ai = zeros_like(br)`,
-        # which broadcasts to rank(A)+1 (e.g. (32,32)/(32,32)c -> (32,32,32)c);
-        # that came from the `A_is_complex` branch where the lane dim really
-        # exists. Here both lanes must have A's own shape.
         upcast = B.dtype == torch.complex32
         br, bi = _complex_real_parts(B, upcast)
         ar = A.to(br.dtype)
@@ -465,8 +448,6 @@ def true_divide(A, B):
         return kernel(A, B)
     elif isinstance(A, torch.Tensor):
         if A.is_complex():
-            # The pointwise code generator has no complex scalar dtype mapping.
-            # Divide interleaved real/imag lanes with the existing Triton kernel.
             return torch.view_as_complex(
                 true_div_func_tensor_scalar(torch.view_as_real(A), B)
             )
@@ -522,6 +503,7 @@ def true_divide_out(A, B, out):
 
 def true_divide_(A, B):
     logger.debug("GEMS_KUNLUNXIN TRUE_DIVIDE_")
+    logging.getLogger("flag_gems.ops.true_divide_").debug("GEMS TRUE_DIVIDE_")
     if A.is_complex():
         return _complex_true_divide(A, B, out=A)
     if isinstance(B, torch.Tensor):

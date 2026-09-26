@@ -21,6 +21,9 @@ import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 
+from ..utils.tle_copy import tle_copy
+from .copy import copy_ as gems_copy_
+
 logger = logging.getLogger(__name__)
 
 
@@ -88,16 +91,17 @@ def digamma_(*args, **kwargs):
         n_elements = y.numel()
         if n_elements == 0:
             return x
-        grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+        grid = (triton.cdiv(n_elements, 512),)
         with torch_device_fn.device(y.device):
             digamma_kernel_[grid](y, n_elements, BLOCK_SIZE=512)
-        x.copy_(y)
+        if not tle_copy(y, x):
+            gems_copy_(x, y)
         return x
 
     n_elements = x.numel()
     if n_elements == 0:
         return x
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    grid = (triton.cdiv(n_elements, 512),)
     with torch_device_fn.device(x.device):
         digamma_kernel_[grid](x, n_elements, BLOCK_SIZE=512)
     return x

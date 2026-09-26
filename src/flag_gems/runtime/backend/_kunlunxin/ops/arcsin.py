@@ -24,58 +24,9 @@ from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
 
-# The XPU backend has two f32->bf16 store lowerings (TritonXPUToLLVM
-# LoadStoreOpToLLVM.cpp): the default one packs every two 512-bit f32 vectors
-# through a per-lane vand/vadd rounding chain followed by two masked
-# SCATTER_MH ops, which costs ~+150us at n = 16.7M (a 1.35x slowdown of the
-# whole op vs the f32 store). TRITONXPU_BF16_FAST selects the vendor
-# vstore2_lm device call instead (a single hardware-rounded 16->bf16 pack +
-# store per two vectors, ~70us faster at 16.7M, bit-exact RNE on the same
-# outputs; used by the vendor's own sglang kernels, e.g.
-# third_party/xpu/test/sglang/qwen3_next/test_l2norm_fwd_kernel.py). The flag
-# is a compile-time choice read when a kernel is compiled, so it is set here
-# (before any kunlunxin kernel compiles at import time); a later assignment
-# in _launch would not apply if the kernel is JIT-cached. It only changes the
-# f32->bf16 store lowering (bit-exact) and leaves every other op untouched.
 os.environ.setdefault("TRITONXPU_BF16_FAST", "1")
 
-# asin(x) = sign(x) * (pi/2 - 2*sqrt(t)*P(t)) with t = (1-|x|)/2 in [0, 0.5]
-# and P(t) = asin(sqrt(t))/sqrt(t).  P is analytic on t in [0, 0.5] (its only
-# singularity is the branch point at t = 1), so its Chebyshev coefficients in
-# w = 4t - 1 decay geometrically (rho = 3 + 2*sqrt(2) ~ 5.83); the degree-4
-# truncation leaves a true fit error < 1e-6, and the fp32 Horner (the backend
-# fuses the mul+add into a single 512-bit vmacf) keeps
-# |asin(x) - asin_ref| <= 3e-5 on the full fp32 domain [-1, 1], well inside
-# the test tolerance (atol 1e-4 + rtol 1.3e-6).
 #
-# Perf notes (XPU4, measured with the official unary matrix, n = 16.7M,
-# torch.asin = 228us):
-#   * XPU has a 512-bit vsqrtf but no vector select: a t-form kernel with
-#     tl.where(x < 0, -r, r) costs ~485us, of which ~216us is the compare +
-#     subtract + select chain (each arith.select is not 512-bit-vectorized).
-#   * The sign is therefore applied with pure min/max (vnminf/vnmaxf are
-#     512-bit and need no compare/mask): with S = 2^126,
-#         m  = min(1, max(0, -x*S))   (exactly 1 for x<0, 0 for x>=0)
-#         r  = w * (1 - 2*m)          w = asin(|x|) >= 0 for |x| <= 1
-#     so r = +-w with no select, ~4 cheap vector ops (~+15us vs the pure-int
-#     sign-bit OR, which is NOT usable: the f32<->i32 bitcast of a bf16-loaded
-#     value makes the backend scalarize the store path through local memory
-#     and corrupts every 16-lane vector past the first one for bf16 inputs,
-#     whereas min/max produces bit-exact results on all dtypes).
-#   * sqrt is computed as t*rsqrt(t+1e-30): xpu.rsqrt lowers to the inline
-#     SFU op (~0.67x the cost of the software-expanded tl.sqrt chain); the
-#     +1e-30 bias keeps s = 0 exactly at t = 0 (x = +-1), so
-#     asin(+-1) = +-pi/2 like torch. Polynomial-removing poly fits (deg-8+
-#     in x^2, rationals (n,n) up to 8) converge ~n^-2 and cannot reach 1e-4
-#     below ~80 terms, so the sqrt cannot be removed entirely.
-#   * The bf16 store goes through TRITONXPU_BF16_FAST (see the note below
-#     the imports), which cuts the bf16 f32->bf16 pack+store from ~150us to
-#     ~36us at n = 16.7M (measured 348us -> 242us for the whole op at that
-#     size; the remaining time is SFU + memory).
-#   * 32768-lane tiles measured fastest at 4.2M/16.7M, 65536 ties at 67M;
-#     8192 for the mid sizes and 2048-masked for the launch-bound small
-#     shapes (masked memory path costs ~2x, so unmasked runs whenever the
-#     shape divides the tile exactly).
 MIN_BLOCK = 2048
 UNROLL_NUM = 8
 BUFFER_SIZE_LIMIT = 8192
@@ -104,7 +55,6 @@ def arcsin_kernel(
     mask = offset < n_elements
     x = tl.load(x_ptr + offset, mask=mask, other=0).to(tl.float32)
     t = 0.5 - 0.5 * tl.abs(x)
-    # |x| > 1 makes t < 0 -> rsqrt(NaN) -> NaN propagates out, matching torch.
     s = t * xpu.rsqrt(t + 1e-30)
     p = 0.0962260290980339
     p = p * t + 0.008193825371563435
@@ -113,7 +63,6 @@ def arcsin_kernel(
     p = p * t + 1.0000052452087402
     v = (s * p) * 2.0
     w = 1.5707964 - v
-    # sign via min/max (no select; see the header comment): m = (x < 0) ? 1 : 0
     m = tl.minimum(1.0, tl.maximum(0.0, -x * 8.50705917e37))
     r = w * (1.0 - 2.0 * m)
     tl.store(out_ptr + offset, r.to(out_ptr.dtype.element_ty), mask=mask)

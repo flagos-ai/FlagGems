@@ -86,10 +86,6 @@ def heaviside_(self: torch.Tensor, values: torch.Tensor):
         x_contig = torch.empty_like(self)
         torch.ops.aten._copy_from(self, x_contig, False)
 
-    # Compute a concrete grid tuple rather than a fresh lambda. On the XPU
-    # backend the launch grid is baked into XPUOptions and participates in the
-    # triton cache key; a new lambda every call hashes by identity and forces a
-    # full recompile on every launch (same fix as the hypot launch helpers).
     BLOCK_SIZE = 1024
     grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
     with torch_device_fn.device(self.device):

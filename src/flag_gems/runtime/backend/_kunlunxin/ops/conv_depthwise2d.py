@@ -23,12 +23,6 @@ from .conv2d import conv2d
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# [0918 C-162] bias=None: cached all-zero fp32 bias. The launcher/C handler and
-# the vendor kernel only read this tensor (const float*), so one cached buffer
-# is safe and removes a per-call device alloc+memset (~10us; host-bound small
-# shapes are 20-30% of the total).
-# ---------------------------------------------------------------------------
 _ZERO_BIAS_CACHE = {}
 
 
@@ -41,19 +35,6 @@ def _zero_bias(out_c, device):
     return t
 
 
-# ---------------------------------------------------------------------------
-# [0918 C-162] fast path (host-overhead reduction for the depthwise shapes).
-#
-# The plain path rebuilds the whole launch machinery on every call (autograd
-# Function apply -> triton JITFunction.run binder -> Launcher -> launcher
-# symbol table -> vendor conv2d_fusion). On the first call for a config key we
-# delegate to the plain path and capture the deepest launcher arguments; later
-# calls replay them with fresh tensors spliced in (same kernel, all other
-# arguments identical; the first replay is checked against a clone of the
-# capture output). Any doubt (grad tensors, non-XPU tensors, stream change,
-# user bias, key cap, failed capture/replay/verify) falls back to the plain
-# path. FG_DEPTHWISE_FASTPATH=0 disables the fast path entirely.
-# ---------------------------------------------------------------------------
 _ENABLED = os.environ.get("FG_DEPTHWISE_FASTPATH", "1") != "0"
 _LOCK = threading.Lock()
 _CACHE = {}
@@ -162,8 +143,6 @@ def _record(out, cap, input, weight):
         return None
     jb = tpos[3] if len(tpos) > 3 else None
     a2 = list(a2)
-    # release references held by the capture (every slot below is spliced on
-    # replay); the verify reference is the only intentional keep-alive
     a2[j_in] = None
     a2[j_w] = None
     a2[j_out] = None
@@ -242,8 +221,6 @@ def _conv_depthwise2d(input, weight, kernel_size, bias, stride, padding, dilatio
     groups = input.shape[1]
     user_bias = bias
     if bias is None:
-        # explicit cached fp32 zero bias == bias=None semantics; conv2d()
-        # re-derives bias_pointer from it without a per-call allocation
         bias = _zero_bias(weight.shape[0], input.device)
 
     def plain():

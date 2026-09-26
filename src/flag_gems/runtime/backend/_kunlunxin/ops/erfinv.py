@@ -84,28 +84,14 @@ def _erfinv_kernel(
         x = tl.load(x_ptr + offsets)
     xf = x.to(tl.float32)
     absx = tl.abs(xf)
-    # Input clamp replaces the two edge `tl.where` below (each vselect scalarizes
-    # into per-lane branches on XPU, ~0.18ms each at 16.7M). For |x| < 1 the
-    # result is unchanged; NaN inputs still propagate through `xf * p` (xf stays
-    # NaN). Trade-off: |x| >= 1 (outside erfinv's domain, not covered by the
-    # accuracy test) now returns a bounded finite value instead of torch's
-    # NaN / +-inf -- a branch-free scheme cannot distinguish |x|==1 (-> inf) from
-    # |x|>1 (-> NaN) since both make 1-|x| and |x|-1 zero.
     ac = tl.minimum(absx, 1.0)
     ax2 = ac * ac
 
     if MODE == 0:
         # fp32: Chebyshev-24 on z = 2 x^2/0.9801 - 1, evaluated as two parallel
-        # degree-12 Clenshaw chains (even + odd in z) to halve the serial
-        # dependency depth (48 -> 24). Division is folded to a reciprocal
-        # multiply. Even/odd identity: T_{2j}(z)=T_j(w), T_{2j+1}(z)=z*R_j(w)
-        # with w = 2z^2-1, R_0=1, R_1=2w-1, R_{k+1}=2w R_k - R_{k-1} (odd
-        # Clenshaw closes with O = b0 - b1 since R_{-1}=1). Verified in fp32:
-        # max err 4.94e-5 vs 4.93e-5 for the single 25-term chain (tol 1e-4).
         z = ax2 * (2.0 / 0.9801) - 1.0
         w = 2.0 * z * z - 1.0
         f2 = w + w
-        # even part: sum_j c_{2j} T_j(w)   (c24, c22, ... c2, then c0)
         b1 = 0.0
         b2 = 0.0
         b0 = 1.6881476768e-05 + f2 * b1 - b2
@@ -145,7 +131,6 @@ def _erfinv_kernel(
         b2 = b1
         b1 = b0
         E_ = 1.1595634222e00 + w * b1 - b2
-        # odd part: sum_k c_{2k+1} R_k(w)   (c23, c21, ... c3, then c1)
         b1 = 0.0
         b2 = 0.0
         b0 = 2.6660336516e-05 + f2 * b1 - b2
@@ -185,7 +170,6 @@ def _erfinv_kernel(
         O_ = b0 - b1
         p = E_ + z * O_
     else:
-        # Horner in (x^2 - 0.5), power basis (fp16/bf16 mode).
         w = ax2 - 0.5
         p = 7.5165068750e05
         p = 4.1740281250e05 + p * w
@@ -218,7 +202,6 @@ def _launch_erfinv(x: torch.Tensor, out: torch.Tensor):
     if n_elements == 0:
         return
     block_size, num_warps, masked = _pick_block(n_elements)
-    # fp32 -> Chebyshev-24 (MODE 0); fp16/bf16 -> power-basis Horner (MODE 1).
     mode = 0 if x.dtype == torch.float32 else 1
     grid = (
         (triton.cdiv(n_elements, block_size),)

@@ -71,34 +71,31 @@ def _adaptive_avg_pool3d_backward_exact_kernel(
 def _adaptive_avg_pool3d_backward_general_kernel(
     grad_output_ptr,
     grad_input_ptr,
+    out_last,
+    n_elems,
     in_d,
     in_h,
     in_w,
     out_d,
     out_h,
     out_w,
-    BLOCK: tl.constexpr,
-    MAX_D,
-    MAX_H,
+    MAX_D: tl.constexpr,
+    MAX_H: tl.constexpr,
     MAX_W: tl.constexpr,
+    BLOCK: tl.constexpr,
+    USE_STATIC: tl.constexpr,
 ):
     # General path (non-integer ratios, handles upsampling).
-    # One program per (n*c, d, h) input row; lanes cover w.  For each input
-    # element we enumerate the (few) output positions whose pooling region may
-    # contain it: o in [o_min, o_max) per dim, o_max - o_min <= ceil(out/in)+1.
-    # Loads are made safe by clamping the candidate to [0, out-1] (never OOB
-    # even if the hardware drops the predicate) and the contribution is zeroed
-    # with tl.where.  Region bounds are recomputed host-side as constexpr, so
-    # the per-dim candidate counts stay small: the runtime od/oh loops keep the
-    # static unroll of the innermost (vector) ow loop at MAX_W iterations.
-    pid = tl.program_id(0)
-    h = pid % in_h
-    t = pid // in_h
-    d = t % in_d
-    nc = t // in_d
+    offsets = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    lane_ok = offsets < n_elems
+    safe = tl.where(lane_ok, offsets, 0)
 
-    w = tl.arange(0, BLOCK)
-    valid = w < in_w
+    w = safe % in_w
+    rem = safe // in_w
+    h = rem % in_h
+    rem = rem // in_h
+    d = rem % in_d
+    nc = rem // in_d
 
     d_min = (d * out_d) // in_d
     d_max = tl.minimum(((d + 1) * out_d + in_d - 1) // in_d, out_d)
@@ -108,52 +105,83 @@ def _adaptive_avg_pool3d_backward_general_kernel(
     w_max = tl.minimum(((w + 1) * out_w + in_w - 1) // in_w, out_w)
 
     acc = tl.zeros((BLOCK,), dtype=tl.float32)
-    gop = grad_output_ptr + nc * (out_d * out_h * out_w)
-    for od in range(0, MAX_D):
-        o_d = d_min + od
-        d_ok = o_d < d_max
-        c_d = tl.minimum(o_d, out_d - 1)
-        for oh in range(0, MAX_H):
-            o_h = h_min + oh
-            h_ok = o_h < h_max
-            c_h = tl.minimum(o_h, out_h - 1)
-            for ow in tl.static_range(0, MAX_W):
-                o_w = w_min + ow
-                w_ok = o_w < w_max
-                active = valid & d_ok & h_ok & w_ok
-                c_w = tl.minimum(o_w, out_w - 1)
-                # Pooling region of output (c_d, c_h, c_w); for active lanes
-                # this equals the region of (o_d, o_h, o_w).
-                ds = (c_d * in_d) // out_d
-                de = tl.minimum(((c_d + 1) * in_d + out_d - 1) // out_d, in_d)
+    if USE_STATIC:
+        for od in tl.static_range(0, MAX_D):
+            o_d = d_min + od
+            c_d = tl.minimum(o_d, out_d - 1)
+            ds = (c_d * in_d) // out_d
+            de = tl.minimum(((c_d + 1) * in_d + out_d - 1) // out_d, in_d)
+            d_ok = (o_d < d_max) & (d >= ds) & (d < de)
+            sz_d = de - ds
+            for oh in tl.static_range(0, MAX_H):
+                o_h = h_min + oh
+                c_h = tl.minimum(o_h, out_h - 1)
                 hs = (c_h * in_h) // out_h
                 he = tl.minimum(((c_h + 1) * in_h + out_h - 1) // out_h, in_h)
-                ws = (c_w * in_w) // out_w
-                we = tl.minimum(((c_w + 1) * in_w + out_w - 1) // out_w, in_w)
-                in_region = (
-                    (d >= ds) & (d < de) & (h >= hs) & (h < he) & (w >= ws) & (w < we)
-                )
-                area = (de - ds) * (he - hs) * (we - ws)
-                val = tl.load(gop + c_d * (out_h * out_w) + c_h * out_w + c_w)
-                contrib = tl.where(in_region, val, 0.0) / tl.cast(area, tl.float32)
-                acc += tl.where(active, contrib, 0.0)
+                h_ok = (o_h < h_max) & (h >= hs) & (h < he)
+                sz_dh = sz_d * (he - hs)
+                row_ok = d_ok & h_ok
+                for ow in tl.static_range(0, MAX_W):
+                    o_w = w_min + ow
+                    c_w = tl.minimum(o_w, out_w - 1)
+                    ws = (c_w * in_w) // out_w
+                    we = tl.minimum(((c_w + 1) * in_w + out_w - 1) // out_w, in_w)
+                    active = row_ok & (o_w < w_max) & (w >= ws) & (w < we)
+                    area = sz_dh * (we - ws)
+                    o_off = ((nc * out_d + c_d) * out_h + c_h) * out_w + c_w
+                    o_off = tl.minimum(tl.maximum(o_off, 0), out_last)
+                    val = tl.load(grad_output_ptr + o_off).to(tl.float32)
+                    acc += tl.where(active, val / tl.cast(area, tl.float32), 0.0)
+    else:
+        for od in range(0, MAX_D):
+            o_d = d_min + od
+            c_d = tl.minimum(o_d, out_d - 1)
+            ds = (c_d * in_d) // out_d
+            de = tl.minimum(((c_d + 1) * in_d + out_d - 1) // out_d, in_d)
+            d_ok = (o_d < d_max) & (d >= ds) & (d < de)
+            sz_d = de - ds
+            for oh in range(0, MAX_H):
+                o_h = h_min + oh
+                c_h = tl.minimum(o_h, out_h - 1)
+                hs = (c_h * in_h) // out_h
+                he = tl.minimum(((c_h + 1) * in_h + out_h - 1) // out_h, in_h)
+                h_ok = (o_h < h_max) & (h >= hs) & (h < he)
+                sz_dh = sz_d * (he - hs)
+                row_ok = d_ok & h_ok
+                for ow in range(0, MAX_W):
+                    o_w = w_min + ow
+                    c_w = tl.minimum(o_w, out_w - 1)
+                    ws = (c_w * in_w) // out_w
+                    we = tl.minimum(((c_w + 1) * in_w + out_w - 1) // out_w, in_w)
+                    active = row_ok & (o_w < w_max) & (w >= ws) & (w < we)
+                    area = sz_dh * (we - ws)
+                    o_off = ((nc * out_d + c_d) * out_h + c_h) * out_w + c_w
+                    o_off = tl.minimum(tl.maximum(o_off, 0), out_last)
+                    val = tl.load(grad_output_ptr + o_off).to(tl.float32)
+                    acc += tl.where(active, val / tl.cast(area, tl.float32), 0.0)
 
-    gip = grad_input_ptr + ((nc * in_d + d) * in_h + h) * in_w
-    tl.store(gip + w, acc, mask=valid)
+    tl.store(
+        grad_input_ptr + offsets, acc.to(grad_input_ptr.dtype.element_ty), mask=lane_ok
+    )
 
 
-def _adaptive_avg_pool3d_backward(grad_output, input):
-    """Gradient of adaptive_avg_pool3d (Kunlunxin/XPU implementation)."""
-    logger.debug("GEMS_KUNLUNXIN _ADAPTIVE_AVG_POOL3D_BACKWARD")
+def _fill_grad_input(grad_output, input, grad_input):
+    """Launch the backward kernel, writing the result into ``grad_input``.
 
+    ``grad_input`` must be a contiguous buffer of ``input``'s shape.  The
+    kernel overwrites every element (accumulation is in float32 and the store
+    converts to the buffer's element type), so no prior initialization is
+    needed.
+    """
     grad_output = grad_output.contiguous()
-    input = input.contiguous()
     in_n, in_c, in_d, in_h, in_w = input.shape
     out_d, out_h, out_w = grad_output.shape[-3:]
 
-    grad_input = torch.empty_like(input)
-    if grad_output.numel() == 0 or input.numel() == 0:
-        return grad_input
+    if grad_input.dtype == torch.bfloat16:
+        grad_output = grad_output.to(torch.float32)
+        work = torch.empty_like(grad_input, dtype=torch.float32)
+    else:
+        work = grad_input
 
     with torch_device_fn.device(input.device):
         if in_d % out_d == 0 and in_h % out_h == 0 and in_w % out_w == 0:
@@ -162,7 +190,7 @@ def _adaptive_avg_pool3d_backward(grad_output, input):
             grid = (triton.cdiv(n_elems, 1024),)
             _adaptive_avg_pool3d_backward_exact_kernel[grid](
                 grad_output,
-                grad_input,
+                work,
                 in_d,
                 in_h,
                 in_w,
@@ -178,21 +206,72 @@ def _adaptive_avg_pool3d_backward(grad_output, input):
                 num_warps=4,
             )
         else:
-            block = triton.next_power_of_2(in_w)
-            grid = (in_n * in_c * in_d * in_h,)
-            _adaptive_avg_pool3d_backward_general_kernel[grid](
+            n_elems = in_n * in_c * in_d * in_h * in_w
+            max_d = (out_d + in_d - 1) // in_d + 1
+            max_h = (out_h + in_h - 1) // in_h + 1
+            max_w = (out_w + in_w - 1) // in_w + 1
+            use_static = max_d * max_h * max_w <= 27
+            block = 1024
+            if not use_static:
+                block = 64
+            while block > 64 and block > n_elems:
+                block //= 2
+            n_tiles = triton.cdiv(n_elems, block)
+            out_total = grad_output.numel()
+            _adaptive_avg_pool3d_backward_general_kernel[(n_tiles,)](
                 grad_output,
-                grad_input,
+                work,
+                out_total - 1,
+                n_elems,
                 in_d,
                 in_h,
                 in_w,
                 out_d,
                 out_h,
                 out_w,
+                MAX_D=max_d,
+                MAX_H=max_h,
+                MAX_W=max_w,
                 BLOCK=block,
-                MAX_D=(out_d + in_d - 1) // in_d + 1,
-                MAX_H=(out_h + in_h - 1) // in_h + 1,
-                MAX_W=(out_w + in_w - 1) // in_w + 1,
-                num_warps=4,
+                USE_STATIC=use_static,
+                num_warps=1,
             )
+
+    if work is not grad_input:
+        grad_input.copy_(work)
+
+
+def _adaptive_avg_pool3d_backward(grad_output, input):
+    """Gradient of adaptive_avg_pool3d (Kunlunxin/XPU implementation)."""
+    logger.debug("GEMS_KUNLUNXIN _ADAPTIVE_AVG_POOL3D_BACKWARD")
+
+    input = input.contiguous()
+    grad_input = torch.empty_like(input)
+    if grad_output.numel() == 0 or input.numel() == 0:
+        return grad_input.zero_()
+
+    _fill_grad_input(grad_output, input, grad_input)
+    return grad_input
+
+
+def adaptive_avg_pool3d_backward_grad_input(grad_output, input, *, grad_input):
+    """Out-variant of adaptive_avg_pool3d_backward (Kunlunxin/XPU).
+
+    Corresponds to ``aten::adaptive_avg_pool3d_backward.grad_input``: the
+    result is written into the caller-provided ``grad_input`` buffer, which is
+    also returned.
+    """
+    logger.debug("GEMS_KUNLUNXIN ADAPTIVE_AVG_POOL3D_BACKWARD_GRAD_INPUT")
+
+    if grad_output.numel() == 0 or input.numel() == 0:
+        return grad_input.zero_()
+
+    input = input.contiguous()
+    if grad_input.is_contiguous():
+        _fill_grad_input(grad_output, input, grad_input)
+        return grad_input
+
+    scratch = torch.empty_like(input)
+    _fill_grad_input(grad_output, input, scratch)
+    grad_input.copy_(scratch)
     return grad_input

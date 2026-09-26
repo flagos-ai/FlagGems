@@ -42,11 +42,6 @@ def threshold_kernel(self, threshold, value):
 )
 @triton.jit
 def threshold_backward_kernel(grad_output, self, threshold):
-    # grad_input = grad_output * (self > threshold)
-    # Avoid tensor-vs-scalar compare (B1 gets scalarized into a per-lane branch,
-    # extremely slow); instead build a 0/1 mask via saturating clamp so it maps
-    # to 512-bit vnminf/vnmaxf.
-    # (self - threshold) > 0 -> *1e30 saturates to >=1 -> min(1,max(0,..))=1; else 0.
     go = grad_output.to(tl.float32)
     s = self.to(tl.float32)
     m = tl.minimum(1.0, tl.maximum(0.0, (s - threshold) * 1.0e30))

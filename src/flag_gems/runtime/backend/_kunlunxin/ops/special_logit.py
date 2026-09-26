@@ -76,7 +76,7 @@ def _special_logit_impl(input: torch.Tensor, eps=None, out: torch.Tensor = None)
     n_elements = result.numel()
     # 1024 is a common power-of-2 block size that balances occupancy and memory throughput.
     BLOCK_SIZE = 1024
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
 
     with torch_device_fn.device(input.device):
         special_logit_kernel[grid](

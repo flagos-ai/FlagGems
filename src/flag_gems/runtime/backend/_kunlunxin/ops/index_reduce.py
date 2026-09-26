@@ -1,6 +1,7 @@
 import logging
 import math
 
+import torch
 import triton
 import triton.language as tl
 
@@ -113,3 +114,31 @@ def index_reduce_(inp, dim, index, source, reduce, *, include_self=True):
         )
     inp.copy_(result)
     return inp
+
+
+def index_reduce(inp, dim, index, source, reduce, *, include_self=True):
+    logger.debug("GEMS_KUNLUNXIN INDEX_REDUCE")
+    assert reduce in _REDUCTIONS, f"Unsupported reduce: {reduce}"
+    out = inp.clone(memory_format=torch.contiguous_format)
+    return index_reduce_(out, dim, index, source, reduce, include_self=include_self)
+
+
+def index_reduce_out(inp, dim, index, source, reduce, *, include_self=True, out=None):
+    logger.debug("GEMS_KUNLUNXIN INDEX_REDUCE_OUT")
+    assert reduce in _REDUCTIONS, f"Unsupported reduce: {reduce}"
+    if out is None:
+        return index_reduce(inp, dim, index, source, reduce, include_self=include_self)
+    if out.dtype != inp.dtype:
+        raise RuntimeError(
+            f"Expected out tensor to have dtype {inp.dtype}, but got {out.dtype} instead"
+        )
+    if out.device != inp.device:
+        raise RuntimeError(
+            f"Expected out tensor to be on device {inp.device}, "
+            f"but got {out.device} instead"
+        )
+    if tuple(out.shape) != tuple(inp.shape):
+        out.resize_(inp.shape)
+    if out.data_ptr() != inp.data_ptr() or out.stride() != inp.stride():
+        out.copy_(inp)
+    return index_reduce_(out, dim, index, source, reduce, include_self=include_self)

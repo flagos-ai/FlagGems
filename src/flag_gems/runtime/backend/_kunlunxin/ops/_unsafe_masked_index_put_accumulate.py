@@ -64,11 +64,6 @@ def _unsafe_masked_index_put_accumulate_kernel(
     active = offsets < mask_numel
     keep = tl.load(mask + offsets, mask=active, other=0) != 0
 
-    # Compute each source's flat destination offset. Clamp out-of-range/negative
-    # indices before use: this backend hands the address to gm2lm before the mask
-    # applies, so masking illegal indices still reads OOB and hangs the card.
-    # Clamping to [0, SHAPE-1] matches torch's `index.clamp(-size, size-1)` for
-    # non-negative indices.
     i0 = tl.load(index0 + offsets, mask=active, other=0).to(tl.int32)
     i0 = tl.minimum(tl.maximum(i0, 0), SHAPE0 - 1)
     dest = i0 * STRIDE0
@@ -81,49 +76,15 @@ def _unsafe_masked_index_put_accumulate_kernel(
         i2 = tl.minimum(tl.maximum(i2, 0), SHAPE2 - 1)
         dest += i2 * STRIDE2
 
-    # Zero the update for masked-out sources and tail lanes, so the match below
-    # needs no mask.
     update = tl.load(values + offsets, mask=active, other=0.0).to(tl.float32)
     update = tl.where(keep & active, update, 0.0)
 
     for c in tl.static_range(DESTS):
         out_off = dest_base + c
-        # The out buffer keeps DESTS sentinel elements at the tail, so this store
-        # needs no mask (a discrete store's mask is unreliable under address
-        # collisions; prefer writing into the legal padding region).
         acc = tl.sum(tl.where(dest == out_off, update, 0.0), axis=0)
         in_off = tl.minimum(out_off, out_numel - 1)
         base = tl.load(inp_ptr + in_off).to(tl.float32)
         tl.store(out_ptr + out_off, base + acc)
-
-
-# ---------------------------------------------------------------------------
-# Multi-round "winner loop" path (large scale)
-#
-# The match kernel is O(out_numel * mask_numel), structurally unreachable at large
-# scale, so we need O(mask_numel). On this backend both alternatives are blocked:
-# atomic_add (~192 ns/elem, and pays full price even with an all-false mask) and
-# sort/prefix-sum (multi-kernel, hits TritonXPU crash points). Hence an atomic-free
-# winner loop: the natural single-winner semantics of a discrete store pick exactly
-# one source per target each round; R rounds cover the maximum multiplicity.
-#
-# Key constraint: discrete-access cost depends only on how many lanes hit the same
-# address (collisions serialize, ~192 ns/lane; random addresses ~1 ns/elem). So this
-# design never lets two lanes share a sentinel slot:
-#   * a source i, when retired or masked out, writes its own private slot
-#     `out_numel + i`, not the shared out_numel;
-#   * a target d with "no winner this round" is marked with its own value `d`
-#     (translated to 0 via val_lookup), not the shared 0.
-#
-# tag address space (one row per round, row length row = out_numel + pad):
-#   [0, out_numel)              target slots; value < out_numel means "no winner"
-#   [out_numel, out_numel+pad)  source private slots; source i's marker = out_numel + i
-# tag only needs an all-zero init (can't use torch.arange(int32): this backend
-# ASSERT-FAILs and returns garbage). val_lookup is the same length as a tag row:
-# [0, out_numel) is always 0, tail = values. combine rewrites the "no winner" index
-# to `offs` (distinct per d, val_lookup[offs]==0), so one collision-free gather
-# yields both "is there a winner" and "the winner's value".
-# ---------------------------------------------------------------------------
 
 
 @libentry()
@@ -288,23 +249,9 @@ def _umipa_combine_kernel(
     tl.store(out_ptr + offs, acc, mask=inb)
 
 
-# Rounds per batch. The fused variant's winner overwrites other claims on the same
-# target, so each multiplicity level burns ~two rounds; 8 covers typical inputs
-# (Poisson multiplicity 4~9). If rounds run short, the convergence loop runs another
-# batch automatically.
 _ROUNDS_PER_BATCH = 8
-# The four multi-round kernels use neither isCloseVectorization nor buffer_size_limit
-# (measured to not affect this bottleneck, which is address collisions); kept as a
-# constant only to make parametric A/B arm-switching a one-liner.
 _ROUND_LAUNCH_KW = {}
-# match path ~ out_numel*mask_numel*74ps; multi-round path has a ~11-launch floor;
-# the two cross over around 4e6.
 _MULTI_ROUND_MIN_WORK = 4_000_000
-# Size threshold for splitting each round into retire+claim (split when mask_numel >=
-# this). Splitting makes rounds == max multiplicity and halves discrete traffic, but
-# costs `rounds` extra launches per batch; the crossover is mask_numel ~ 14000 => use
-# 16384. Of the four benchmark shapes, only (2,1024,64) (mask=131072) triggers the
-# split; (4096,) stays fused. Correctness does not depend on this value, only perf.
 _ROUND_SPLIT_MIN_MASK_NUMEL = 16384
 
 
@@ -322,21 +269,13 @@ def _unsafe_masked_index_put_accumulate_multi_round(
     block_n = max(64, min(2048, triton.next_power_of_2(out_numel)))
     grid_n = (triton.cdiv(out_numel, block_n),)
 
-    # Row length row = out_numel target slots + one private slot per source; also
-    # ensures the maskless tag gather in combine (offs up to grid_n*block_n-1) stays
-    # in bounds.
     pad = max(m_pad, grid_n[0] * block_n - out_numel)
     row = out_numel + pad
     dev = inp.device
 
-    # An all-zero row suffices (0 < out_numel always means "no winner" and never
-    # equals any marker). Can't use torch.arange(int32): this backend ASSERT-FAILs
-    # and returns garbage.
     tag = torch.zeros((rounds + 1) * row, dtype=torch.int32, device=dev)
 
     dest_buf = torch.empty(m_pad, dtype=torch.int32, device=dev)
-    # The first out_numel entries must stay 0 (target contributes nothing this round);
-    # prep fills the tail with values.
     val_lookup = torch.zeros(row, dtype=inp.dtype, device=dev)
     alive = torch.empty(grid_m[0], dtype=torch.int32, device=dev)
     out = torch.empty_like(inp)
@@ -411,11 +350,6 @@ def _unsafe_masked_index_put_accumulate_multi_round(
                 **_ROUND_LAUNCH_KW,
             )
             src = out
-            # The only device->host sync: read alive once after a batch of rounds.
-            # The reduction must run host-side: this backend's gems device sum (which
-            # alive.sum() dispatches to under use_gems) illegally accesses memory
-            # (error 700) and wedges the card on small tensors; .cpu() is just a D2H
-            # copy followed by a CPU sum, avoiding the defect.
             if int(alive.cpu().sum()) == 0:
                 break
         else:
@@ -432,8 +366,6 @@ def _unsafe_masked_index_put_accumulate(input, mask, indices, values):
         raise RuntimeError(
             "Kunlunxin _unsafe_masked_index_put_accumulate supports ranks 1 to 3"
         )
-    # This aten op is functional (self is immutable; the reference clones then
-    # index_put_), so it must return a new tensor.
     if input.numel() == 0 or mask.numel() == 0:
         return input.clone()
 
@@ -448,8 +380,6 @@ def _unsafe_masked_index_put_accumulate(input, mask, indices, values):
     strides = list(inp.stride()) + [0] * (3 - rank)
     out_numel = inp.numel()
 
-    # Size split: small scale, the O(N*M) match needs only one launch; large scale,
-    # match is structurally unreachable, so take the multi-round path.
     if out_numel * mask.numel() >= _MULTI_ROUND_MIN_WORK:
         return _unsafe_masked_index_put_accumulate_multi_round(
             inp,
@@ -463,8 +393,6 @@ def _unsafe_masked_index_put_accumulate(input, mask, indices, values):
 
     dests = _dests_per_program(out_numel)
     grid = (triton.cdiv(out_numel, dests),)
-    # Tail sentinels: grid*dests may exceed out_numel; the extra lanes write into the
-    # padding region instead of being masked out.
     out_buf = torch.empty(grid[0] * dests, dtype=inp.dtype, device=inp.device)
     out = out_buf[:out_numel].view(inp.shape)
     block_size = triton.next_power_of_2(mask.numel())

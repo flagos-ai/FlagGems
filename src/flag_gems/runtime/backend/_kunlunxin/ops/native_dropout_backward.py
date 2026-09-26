@@ -22,16 +22,13 @@ try:
     import triton.experimental.tle.language as tle
 
     _HAS_SDNN = True
-except ImportError:  # tle extension unavailable (non-XPU triton builds)
+except ImportError:
     _HAS_SDNN = False
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Tier 1 (fp16/fp32, preferred): tle.pipe/tle.dsa SDNN coprocessor path.
-# ---------------------------------------------------------------------------
 _SDNN_CONFIG = {
-    torch.float16: (16384, 8, 2),  # TILE, NBLOCKS, CAPACITY
+    torch.float16: (16384, 8, 2),
     torch.float32: (16384, 2, 2),
 }
 
@@ -60,14 +57,9 @@ def native_dropout_backward_sdnn_kernel(
     m_writer, m_reader = m_pipe.writer(), m_pipe.reader()
 
     s = scale.to(DTYPE)
-    # On a ragged grid the last program's `numel - base` goes negative past
-    # the end; a negative `sizes` extent faults on hardware, so only own the
-    # blocks that have data.
     nblocks = tl.minimum(NBLOCKS, (numel - base + TILE - 1) // TILE)
     for i in tl.range(0, nblocks):
         off = base + i * TILE
-        # `sizes` narrows the DMA instead of a masked load (the dsa rewrite
-        # cannot carry a mask through the staging buffer).
         tail = tl.minimum(numel - off, TILE)
 
         g_slot = g_writer.acquire(i)
@@ -81,10 +73,6 @@ def native_dropout_backward_sdnn_kernel(
         m_ready = m_reader.wait(i)
         g = tle.dsa.to_tensor(g_ready.slot.tile)
         m = tle.dsa.to_tensor(m_ready.slot.tile)
-        # `g` must be the RIGHT operand: tritonsdnn-pipeline requires exactly
-        # one coprocessor consumer per pipe slot and the ew lowering writes
-        # in place into src0; `(m.to * s) * g` leaves the g slot a single read
-        # and puts the result in a fresh compiler buffer.
         res = (m.to(DTYPE) * s) * g
         tle.dsa.copy(res, out_ptr + off + c, sizes=[tail])
 
@@ -92,9 +80,6 @@ def native_dropout_backward_sdnn_kernel(
         m_reader.release(i)
 
 
-# ---------------------------------------------------------------------------
-# Tier 2 (bf16/fallback): single-precision unified LSU kernel.
-# ---------------------------------------------------------------------------
 _BLOCK = 65536
 _NUM_WARPS = 32
 

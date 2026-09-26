@@ -537,9 +537,6 @@ def _softmax_forward_launch(output, inp, M, N):
     """Inner launch on a contiguous [M, N] view (reduced dim innermost)."""
     use_multirow = N <= _SM_MR_MAX_N and ((N & (N - 1)) == 0)
     if use_multirow:
-        # Prefer a large TILE_M; shrink (by halving) until it divides M so we
-        # still take the multirow path for non-power-of-two M instead of the
-        # much slower per-row `softmax_kernel_inner` (measured 5-15x slower).
         tile_m = _SM_MR_TILE_M if N <= 2048 else _SM_MR_TILE_M_N4096
         while tile_m > 1 and M % tile_m != 0:
             tile_m >>= 1
@@ -929,8 +926,8 @@ def softmax(self, dim, half_to_float=False):
         if K > 1:
             inp_view = self.view(M, N, K).transpose(1, 2)
             inp_reshaped = torch.empty((M * K, N), dtype=self.dtype, device=self.device)
-            if not tle_copy(inp_view, inp_reshaped):
-                torch.ops.aten._copy_from(inp_view, inp_reshaped, False)
+            if not tle_copy(inp_view, inp_reshaped.view(M, K, N)):
+                torch.ops.aten._copy_from(inp_view, inp_reshaped.view(M, K, N), False)
             out_reshaped = torch.empty((M * K, N), dtype=dtype, device=self.device)
 
             _softmax_forward_launch(out_reshaped, inp_reshaped, M * K, N)
@@ -940,6 +937,15 @@ def softmax(self, dim, half_to_float=False):
             out = torch.empty_like(self, dtype=dtype)
             _softmax_forward_launch(out, self, M, N)
     return out
+
+
+def special_softmax(self, dim, dtype=None):
+    logger.debug("GEMS_KUNLUNXIN SPECIAL_SOFTMAX")
+
+    if dtype is not None:
+        self = self.to(dtype)
+
+    return softmax(self, dim)
 
 
 _SM_N1_BLOCK = 512
