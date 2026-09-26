@@ -17,6 +17,7 @@ import logging
 import torch
 import triton
 import triton.language as tl
+import triton.language.extra.cann.extension as extension
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
@@ -26,10 +27,57 @@ from flag_gems.utils import broadcastable_to, libentry, libtuner
 logger = logging.getLogger(__name__)
 
 
+# Preserve the existing candidates for other dtypes, layouts, and small GEMMs.
+_ADDMM_BASE_CONFIGS = runtime.get_tuned_config("mm")
+
+
+def _prune_addmm_configs(configs, named_args, **kwargs):
+    args = {**named_args, **kwargs}
+    if (
+        args["A"].dtype != torch.bfloat16
+        or args["stride_ak"] != 1
+        or args["stride_bn"] != 1
+        or args["stride_cn"] != 1
+        or min(args["M"], args["N"]) < 128
+    ):
+        return _ADDMM_BASE_CONFIGS
+    # Large K tiles amortize loop overhead; short reductions need less padding.
+    tiles = (
+        {(128, 128, 128), (128, 256, 64)}
+        if args["K"] <= 256
+        else {(128, 128, 128), (128, 256, 256), (256, 128, 128)}
+    )
+    return [
+        config
+        for config in configs
+        if tuple(config.kwargs[k] for k in ("BLOCK_M", "BLOCK_N", "BLOCK_K")) in tiles
+    ]
+
+
 @libentry()
 @libtuner(
-    configs=runtime.get_tuned_config("mm"),
-    key=["M", "N", "K"],
+    configs=_ADDMM_BASE_CONFIGS
+    + [
+        triton.Config(
+            {"BLOCK_M": m, "BLOCK_N": n, "BLOCK_K": k, "SPLIT_K": 1},
+            num_warps=4,
+            num_stages=2,
+        )
+        for m, n, k in ((128, 256, 64), (128, 256, 256), (256, 128, 128))
+    ],
+    key=[
+        "M",
+        "N",
+        "K",
+        "stride_am",
+        "stride_ak",
+        "stride_bk",
+        "stride_bn",
+        "stride_cm",
+        "stride_cn",
+        "DOT_PAD_ONLY_K",
+    ],
+    prune_configs_by={"early_config_prune": _prune_addmm_configs},
 )
 @triton.heuristics(_hcu.HEURISTICS_CONFIGS["mm"])
 @triton.jit(do_not_specialize=["alpha", "beta"])
@@ -60,6 +108,7 @@ def addmm_kernel(
     EVEN_K: tl.constexpr,
     BIAS_IS_VECTOR: tl.constexpr,
     BIAS_IS_SCALAR: tl.constexpr,
+    DOT_PAD_ONLY_K: tl.constexpr = False,
 ):
     pid = tl.program_id(0)
     pid_z = tl.program_id(1)
@@ -95,6 +144,9 @@ def addmm_kernel(
                 mask=(rk < k_remaining)[:, None] & (rbn < N)[None, :],
                 other=0.0,
             )
+        if DOT_PAD_ONLY_K:
+            extension.compile_hint(a, "dot_pad_only_k")
+            extension.compile_hint(b, "dot_pad_only_k")
         acc += tl.dot(a, b, out_dtype=dot_out_dtype, allow_tf32=False)
         A += BLOCK_K * SPLIT_K * stride_ak
         B += BLOCK_K * SPLIT_K * stride_bk
@@ -125,6 +177,27 @@ def _launch_addmm(bias, mat1, mat2, out, alpha, beta):
         mat1 = mat1.contiguous()
     if mat2.stride(0) > 1 and mat2.stride(1) > 1:
         mat2 = mat2.contiguous()
+
+    # Align B row pitch when large NN GEMMs amortize the packing cost.
+    # Padding is outside the logical N and is never loaded by the masked kernel.
+    if (
+        mat1.dtype == torch.bfloat16
+        and mat1.stride(1) == 1
+        and mat2.stride(1) == 1
+        and mat2.stride(0) == N
+        and out.stride(1) == 1
+        and M >= 4096
+        and N >= 128
+        and K >= 512
+        and N % 256 != 0
+        and (N % 128 != 0 or K >= 4096)
+    ):
+        storage = torch.empty(
+            (K, triton.cdiv(N, 256) * 256), device=mat2.device, dtype=mat2.dtype
+        )
+        packed = storage[:, :N]
+        packed.copy_(mat2)
+        mat2 = packed
 
     # Keep vector/scalar bias compact; broadcast strides cover other valid shapes.
     bias_is_vector = bias.ndim == 1 and bias.shape[0] == N
@@ -167,6 +240,17 @@ def _launch_addmm(bias, mat1, mat2, out, alpha, beta):
             GROUP_M=8,
             BIAS_IS_VECTOR=bias_is_vector,
             BIAS_IS_SCALAR=bias_is_scalar,
+            DOT_PAD_ONLY_K=(
+                mat1.dtype == torch.bfloat16
+                and mat1.stride(1) == 1
+                and mat2.stride(1) == 1
+                and out.stride(1) == 1
+                and bias_is_vector
+                and M >= 4096
+                and N >= 128
+                and N % 16 == 0
+                and K > 0
+            ),
         )
     return out
 
