@@ -101,6 +101,43 @@ class TunedConfigLoader(object):
         return triton.Config(single_config["META"], **kwargs)
 
     def _build_configs_by_op(self, op_name, ranges, pre_hook=None):
+        if op_name == "addmm_hygon":
+            load_modes = ranges.get("LOAD_MODE", [None])
+            matrix_instr_nonkdims = ranges.get("MATRIX_INSTR_NONKDIM", [None])
+            sched_latencies = ranges.get("SCHED_LATENCY", [None])
+            return [
+                triton.Config(
+                    dict(
+                        BLOCK_SIZE_M=bm,
+                        BLOCK_SIZE_N=bn,
+                        BLOCK_SIZE_K=bk,
+                        GROUP_SIZE_M=gm,
+                        **({"LOAD_MODE": mode} if mode is not None else {}),
+                        **(
+                            {"matrix_instr_nonkdim": matrix_instr_nonkdim}
+                            if matrix_instr_nonkdim is not None
+                            else {}
+                        ),
+                        **(
+                            {"sched_latency": sched_latency}
+                            if sched_latency is not None
+                            else {}
+                        ),
+                    ),
+                    num_stages=s,
+                    num_warps=w,
+                    pre_hook=pre_hook,
+                )
+                for bm in ranges["BLOCK_M"]
+                for bn in ranges["BLOCK_N"]
+                for bk in ranges["BLOCK_K"]
+                for gm in ranges["GROUP_M"]
+                for mode in load_modes
+                for matrix_instr_nonkdim in matrix_instr_nonkdims
+                for sched_latency in sched_latencies
+                for s in ranges["s"]
+                for w in ranges["w"]
+            ]
         if op_name == "bmm":
             return [
                 triton.Config(
@@ -188,6 +225,25 @@ class TunedConfigLoader(object):
                 for block_n in ranges["BLOCK_N"]
                 for block_m in ranges["BLOCK_M"]
                 for loop_stages in ranges["LOOP_STAGES"]
+                for s in ranges["s"]
+                for w in ranges["w"]
+            ]
+
+        if op_name in ("baddbmm_hygon", "baddbmm_hygon_splitk", "baddbmm_hygon_gemv"):
+            # Algorithm families share the YAML contract, not a shape-specific
+            # list. Compiler scheduling is searched alongside kernel parameters.
+            names = [name for name in ranges if name not in ("s", "w")]
+            return [
+                triton.Config(
+                    {
+                        ("sched_latency" if name == "SCHED_LATENCY" else name): value
+                        for name, value in zip(names, values)
+                    },
+                    num_stages=s,
+                    num_warps=w,
+                    pre_hook=pre_hook,
+                )
+                for values in itertools.product(*(ranges[name] for name in names))
                 for s in ranges["s"]
                 for w in ranges["w"]
             ]
@@ -825,6 +881,9 @@ class TunedConfigLoader(object):
 
     def _build_expand_registry(self):
         return {
+            "addmm_hygon": self._build_single_expand_spec(
+                "addmm_hygon", expand_yaml_path=self._get_expand_config_path("addmm")
+            ),
             "addmm": self._build_single_expand_spec(
                 "addmm", expand_yaml_path=self._get_expand_config_path("addmm")
             ),

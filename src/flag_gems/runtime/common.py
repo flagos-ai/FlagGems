@@ -43,6 +43,7 @@ class vendors(Enum):
 
 
 DEFAULT_STRATEGIES = {
+    "addmm_hygon": ["default", "default", "default"],
     "addmm": ["align32", "align32", "align32"],
     "addmm_sqmma": ["align32", "align32", "align32"],
     "baddbmm": ["align32", "align32", "align32"],
@@ -184,6 +185,11 @@ DEFAULT_STRATEGIES = {
 }
 
 OP_KEY_ORDERS = {
+    "addmm_hygon": [
+        "M",
+        "N",
+        "K",
+    ],
     "addmm": ["M", "N", "K"],
     "addmm_sqmma": ["M", "N", "K"],
     "bmm": ["M", "N", "K", "stride_am", "stride_bk"],
