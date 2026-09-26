@@ -345,3 +345,46 @@ def test_index_put_mixed_none_and_tensor(input_shape, indices_config, dtype):
 
     out = flag_gems.index_put(inp, indices, values, accumulate)
     utils.gems_assert_close(out, ref_out, dtype)
+
+
+# #4020: an index tensor holding a single element used to abort the Ascend MLIR
+# pipeline. The generated kernel receives the index extent as a scalar argument,
+# and triton specializes such an argument whose value is 1 into a compile-time
+# constant, which collapsed the block mask into a constant mask. SGLang reaches
+# this through the Mamba cache-pool write `t[:, select_index] = z` on a rank-4
+# tensor, so the cases below use that shape of index list (a full slice plus one
+# one-element index tensor).
+SINGLE_ELEMENT_INDEX_CASES = (
+    ((8, 64, 1, 128), 1),
+    ((4, 8, 16, 32), 1),
+    ((4, 1, 16, 32), 1),
+    ((2, 128, 1, 64), 1),
+    ((1, 8, 16, 32), 1),
+)
+
+
+@pytest.mark.index_put_
+@pytest.mark.parametrize("input_shape, index_dim", SINGLE_ELEMENT_INDEX_CASES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_index_put__single_element_index(input_shape, index_dim, dtype):
+    """An index tensor with one element must not break the generated kernel."""
+    inp = torch.randn(input_shape, dtype=dtype, device=flag_gems.device)
+    index = torch.randint(0, input_shape[index_dim], (1,), device=flag_gems.device)
+    values = torch.randn(
+        input_shape[:index_dim] + (1,) + input_shape[index_dim + 1 :],
+        dtype=dtype,
+        device=flag_gems.device,
+    )
+
+    indices = [None] * len(input_shape)
+    indices[index_dim] = index
+    ref_slices = [slice(None)] * len(input_shape)
+    ref_slices[index_dim] = utils.to_reference(index)
+
+    ref_inp = utils.to_reference(inp)
+    ref_values = utils.to_reference(values)
+    # the write SGLang performs, and what `aten::index_put_` receives for it
+    ref_inp[tuple(ref_slices)] = ref_values
+    flag_gems.index_put_(inp, indices, values, False)
+
+    utils.gems_assert_close(inp, ref_inp, dtype)
