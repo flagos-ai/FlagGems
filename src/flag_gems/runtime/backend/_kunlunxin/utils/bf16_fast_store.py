@@ -62,19 +62,21 @@ _ENV_KEY = "TRITONXPU_BF16_FAST"
 def bf16_fast_store(out_dtype):
     """Select the fast f32->bf16 store lowering for the enclosed launch.
 
-    No-op unless ``out_dtype`` is ``torch.bfloat16``.  Any pre-existing value of
-    the variable is restored on exit, so a caller that set it explicitly (or set
-    it to ``"0"`` to opt out) keeps that setting.
+    No-op unless ``out_dtype`` is ``torch.bfloat16``.  **A caller's explicit
+    setting always wins**: if the variable is already present (``"0"`` to opt
+    out, ``"1"`` to force it on), this block does not touch it.  Otherwise the
+    variable is set to ``"1"`` for the duration of the block and removed on
+    exit, so nothing leaks past the launch.
     """
     if out_dtype is not torch.bfloat16:
         yield
         return
-    saved = os.environ.get(_ENV_KEY)
+    if os.environ.get(_ENV_KEY) is not None:
+        # Explicit caller setting wins -- do not override it.
+        yield
+        return
     os.environ[_ENV_KEY] = "1"
     try:
         yield
     finally:
-        if saved is None:
-            os.environ.pop(_ENV_KEY, None)
-        else:
-            os.environ[_ENV_KEY] = saved
+        os.environ.pop(_ENV_KEY, None)
