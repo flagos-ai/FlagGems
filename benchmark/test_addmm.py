@@ -12,12 +12,33 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import importlib
+
 import pytest
 import torch
 
 import flag_gems
 
 from . import base, consts, utils
+
+
+HYGON_ADDMM_REAL_MODEL_SHAPES = [
+    (1, 12675, 4608, 4608),
+    (1, 12675, 7168, 4608),
+    (1, 16384, 576, 4608),
+    (1, 16384, 2048, 4608),
+    (1, 16384, 4096, 576),
+    (1, 16384, 4608, 4608),
+    (1, 65536, 432, 1152),
+    (1, 65536, 538, 1152),
+    (1, 65536, 1152, 144),
+    (1, 65536, 1152, 538),
+    (1, 65536, 1152, 1152),
+    (1, 65536, 1152, 1536),
+    (1, 65536, 1152, 4304),
+    (1, 65536, 3456, 1152),
+    (1, 65536, 4304, 1152),
+]
 
 
 def _input_fn(b, m, n, k, dtype, device, b_column_major):
@@ -32,6 +53,13 @@ def _input_fn(b, m, n, k, dtype, device, b_column_major):
 
 
 class AddmmVectorBiasBenchmark(base.BlasBenchmark):
+    def set_shapes(self, shape_file_path=None):
+        if flag_gems.vendor_name != "hygon":
+            return super().set_shapes(shape_file_path)
+
+        self.shapes = list(HYGON_ADDMM_REAL_MODEL_SHAPES)
+        self.shape_desc = "B, M, N, K"
+
     def set_more_shapes(self):
         return []
 
@@ -84,11 +112,20 @@ def test_addmm(monkeypatch):
 
 @pytest.mark.addmm_vector_bias
 def test_addmm_vector_bias(monkeypatch):
+    if flag_gems.vendor_name == "hygon":
+        monkeypatch.setenv("USE_FLAGTUNE", "1")
+        flag_gems.flagtune(include=["addmm"])
+        op = importlib.import_module(flag_gems.addmm.__module__)
+        op.addmm_kernel._apply_flagtune()
+        dtypes = consts.FLOAT_DTYPES
+    else:
+        dtypes = consts.FLOAT_DTYPES
+
     bench = AddmmVectorBiasBenchmark(
         op_name="addmm_vector_bias",
         input_fn=_input_fn_vector_bias,
         torch_op=torch.addmm,
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=dtypes,
     )
 
     bench.run()
