@@ -27,6 +27,7 @@ import torch
 import triton
 import triton.language as tl
 import triton.language.extra.xpu.libdevice as xpu
+from _kunlunxin.utils.bf16_fast_store import bf16_fast_store
 
 logger = logging.getLogger(__name__)
 
@@ -214,6 +215,14 @@ def _erfinv_kernel(
 
 
 def _launch_erfinv(x: torch.Tensor, out: torch.Tensor):
+    # bf16 outputs take the fast f32->bf16 store lowering for this launch only;
+    # see _kunlunxin.utils.bf16_fast_store for why it is scoped rather than set
+    # globally, and for the one-ULP tie-bias difference from the default path.
+    with bf16_fast_store(out.dtype):
+        return _launch_erfinv_impl(x, out)
+
+
+def _launch_erfinv_impl(x: torch.Tensor, out: torch.Tensor):
     n_elements = x.numel()
     if n_elements == 0:
         return
