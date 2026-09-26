@@ -19,6 +19,11 @@ import flag_gems
 
 from . import base, consts
 
+ASCEND_VECTOR_BIAS_SHAPES = [
+    (1, 448, 7168, 256),
+    (1, 14429, 2112, 7168),
+]
+
 
 class BaddbmmBenchmark(base.BlasBenchmark):
     def set_more_shapes(self):
@@ -48,6 +53,13 @@ class BaddbmmBenchmark(base.BlasBenchmark):
         return total_flops
 
 
+class BaddbmmVectorBiasBenchmark(BaddbmmBenchmark):
+    def set_more_shapes(self):
+        if flag_gems.vendor_name == "ascend":
+            return ASCEND_VECTOR_BIAS_SHAPES
+        return []
+
+
 def _input_fn(b, m, n, k, dtype, device, b_column_major):
     inp1 = torch.randn([b, m, k], dtype=dtype, device=device, requires_grad=True)
 
@@ -72,6 +84,32 @@ def test_baddbmm():
         input_fn=_input_fn,
         torch_op=torch.baddbmm,
         dtypes=consts.FLOAT_DTYPES,
+    )
+
+    bench.run()
+
+
+def _input_fn_vector_bias(b, m, n, k, dtype, device, b_column_major):
+    mat1 = torch.randn((b, m, k), dtype=dtype, device=device)
+    if b_column_major:
+        mat2 = torch.randn((b, n, k), dtype=dtype, device=device).transpose(1, 2)
+    else:
+        mat2 = torch.randn((b, k, n), dtype=dtype, device=device)
+    bias = torch.randn((n,), dtype=dtype, device=device)
+    yield bias, mat1, mat2
+
+
+@pytest.mark.baddbmm
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend",
+    reason="Ascend-specific vector-bias target-shape benchmark",
+)
+def test_baddbmm_vector_bias():
+    bench = BaddbmmVectorBiasBenchmark(
+        op_name="baddbmm",
+        input_fn=_input_fn_vector_bias,
+        torch_op=torch.baddbmm,
+        dtypes=[torch.bfloat16],
     )
 
     bench.run()

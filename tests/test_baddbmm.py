@@ -45,6 +45,22 @@ FP8_MNK_SHAPES = [
     (84, 7168, 3884),
 ]
 
+ASCEND_ONLY = pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend",
+    reason="Ascend-specific baddbmm broadcast and target-shape coverage",
+)
+ASCEND_TARGET_SHAPES = [
+    (1, 448, 7168, 256),
+    (1, 14429, 2112, 7168),
+]
+ASCEND_BROADCAST_BIAS_SHAPES = [
+    (),
+    (19,),
+    (17, 1),
+    (1, 17, 19),
+    (2, 1, 19),
+]
+
 
 @pytest.mark.baddbmm
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
@@ -133,3 +149,42 @@ def test_baddbmm_backward(M, N, K, scalar, dtype):
     gems_assert_close(res_in_bias, ref_in_bias, dtype, reduce_dim=K)
     gems_assert_close(res_in_grad1, ref_in_grad1, dtype, reduce_dim=N)
     gems_assert_close(res_in_grad2, ref_in_grad2, dtype, reduce_dim=M)
+
+
+@pytest.mark.baddbmm
+@ASCEND_ONLY
+@pytest.mark.parametrize("bias_shape", ASCEND_BROADCAST_BIAS_SHAPES)
+def test_baddbmm_ascend_broadcast_bias(bias_shape):
+    batch, M, N, K = 2, 17, 19, 23
+    dtype = torch.bfloat16
+    mat1 = torch.randn((batch, M, K), dtype=dtype, device=flag_gems.device)
+    mat2 = torch.randn((batch, K, N), dtype=dtype, device=flag_gems.device)
+    bias = torch.randn(bias_shape, dtype=dtype, device=flag_gems.device)
+
+    ref_out = torch.baddbmm(
+        to_reference(bias, True),
+        to_reference(mat1, True),
+        to_reference(mat2, True),
+    )
+    result = flag_gems.baddbmm(bias, mat1, mat2)
+
+    gems_assert_close(result, ref_out, dtype, reduce_dim=K)
+
+
+@pytest.mark.baddbmm
+@ASCEND_ONLY
+@pytest.mark.parametrize("batch, M, N, K", ASCEND_TARGET_SHAPES)
+def test_baddbmm_ascend_target_shapes(batch, M, N, K):
+    dtype = torch.bfloat16
+    mat1 = torch.randn((batch, M, K), dtype=dtype, device=flag_gems.device)
+    mat2 = torch.randn((batch, K, N), dtype=dtype, device=flag_gems.device)
+    bias = torch.randn((N,), dtype=dtype, device=flag_gems.device)
+
+    ref_out = torch.baddbmm(
+        to_reference(bias, True),
+        to_reference(mat1, True),
+        to_reference(mat2, True),
+    )
+    result = flag_gems.baddbmm(bias, mat1, mat2)
+
+    gems_assert_close(result, ref_out, dtype, reduce_dim=K)
