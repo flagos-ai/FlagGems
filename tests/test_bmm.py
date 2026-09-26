@@ -37,6 +37,15 @@ else:
     ]
     FLOAT_DTYPES = utils.FLOAT_DTYPES
 
+ASCEND_ONLY = pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend",
+    reason="Ascend-specific bmm target-shape coverage",
+)
+ASCEND_TARGET_SHAPES = [
+    (1, 448, 7168, 256),
+    (1, 14429, 2112, 7168),
+]
+
 
 @pytest.mark.bmm
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
@@ -122,6 +131,23 @@ def test_bmm_out(M, N, K, dtype):
         torch.bmm(mat1, mat2, out=out)
 
     utils.gems_assert_close(out, ref_out, dtype, reduce_dim=K)
+
+
+@pytest.mark.bmm
+@ASCEND_ONLY
+@pytest.mark.parametrize("batch, M, N, K", ASCEND_TARGET_SHAPES)
+def test_bmm_ascend_target_shapes(batch, M, N, K):
+    dtype = torch.bfloat16
+    mat1 = torch.randn((batch, M, K), dtype=dtype, device=flag_gems.device)
+    mat2 = torch.randn((batch, K, N), dtype=dtype, device=flag_gems.device)
+
+    ref_out = torch.bmm(
+        utils.to_reference(mat1, True),
+        utils.to_reference(mat2, True),
+    )
+    result = flag_gems.bmm(mat1, mat2)
+
+    utils.gems_assert_close(result, ref_out, dtype, reduce_dim=K)
 
 
 FP8_DTYPE = getattr(torch, "float8_e4m3fn", None)

@@ -21,6 +21,19 @@ from flag_gems.ops.bmm_w8a8_fp8 import bmm_w8a8_fp8
 
 from . import base, consts
 
+ASCEND_TARGET_SHAPES = [
+    (1, 448, 7168, 256),
+    (1, 14429, 2112, 7168),
+]
+
+
+class BmmBenchmark(base.BlasBenchmark):
+    def set_more_shapes(self):
+        shapes = super().set_more_shapes()
+        if flag_gems.vendor_name == "ascend":
+            shapes += ASCEND_TARGET_SHAPES
+        return shapes
+
 
 def _input_fn(b, m, n, k, dtype, device, b_column_major):
     inp1 = torch.randn([b, m, k], dtype=dtype, device=device)
@@ -37,7 +50,7 @@ def _input_fn(b, m, n, k, dtype, device, b_column_major):
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_bmm(monkeypatch):
-    bench = base.BlasBenchmark(
+    bench = BmmBenchmark(
         op_name="bmm",
         input_fn=_input_fn,
         torch_op=torch.bmm,
