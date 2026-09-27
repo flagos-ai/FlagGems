@@ -474,15 +474,9 @@ mv:
     META:
       BLOCK_M: block_m
       BLOCK_N: block_n
-  block_m:
-  - 32
-  - 64
-  - 128
-  block_n:
-  - 1
-  - 2
-  - 4
-  - 8
+  block_m: [128, 256, 512, 1024, 2048, 4096]
+  block_n: [1, 2, 4, 8, 16, 32]
+
 
 nonzero:
 - gen: true

@@ -34,10 +34,41 @@ else:
     FLOAT_DTYPES = utils.FLOAT_DTYPES
 
 
+ASCEND_TARGET_SHAPES = [
+    (2048, 2048),
+    (4107, 2048),
+    (5240, 4096),
+    (16384, 4096),
+]
+
+
+ASCEND_ONLY = pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend",
+    reason="Ascend-specific MV target-shape coverage",
+)
+
+
 @pytest.mark.mv
 @pytest.mark.parametrize("M, N", MN_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_mv(M, N, dtype):
+    matrix = torch.randn((N, M), dtype=dtype, device=flag_gems.device)
+    vector = torch.randn((M,), dtype=dtype, device=flag_gems.device)
+    ref_matrix = utils.to_reference(matrix, True)
+    ref_vector = utils.to_reference(vector, True)
+
+    ref_out = torch.mv(ref_matrix, ref_vector)
+    with flag_gems.use_gems():
+        res_out = torch.mv(matrix, vector)
+
+    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=M)
+
+
+@pytest.mark.mv
+@ASCEND_ONLY
+@pytest.mark.parametrize("N, M", ASCEND_TARGET_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_mv_ascend_target_shapes(N, M, dtype):
     matrix = torch.randn((N, M), dtype=dtype, device=flag_gems.device)
     vector = torch.randn((M,), dtype=dtype, device=flag_gems.device)
     ref_matrix = utils.to_reference(matrix, True)
