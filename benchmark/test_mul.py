@@ -15,64 +15,7 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base, consts
-
-
-REAL_MODEL_MUL_ROW_SIZES = [
-    1, 2, 4, 8, 16, 24, 32, 40, 48, 56, 64, 72, 80, 88, 96, 104,
-    112, 120, 128, 136, 144, 152, 160, 168, 176, 184, 192, 200, 208,
-    216, 224, 232, 240, 248, 256, 272, 288, 304, 320, 336, 352, 368,
-    384, 400, 416, 432, 448, 464, 480, 496, 512, 1035, 1036, 2048,
-    4106, 4107, 4108, 4109, 4434, 4435, 6207, 9331, 10342, 10343,
-    10441, 13421, 13422, 14554, 16384,
-]
-
-REAL_MODEL_MUL_SHAPES = [
-    ("broadcast", (m, 1), (m, 2048)) for m in REAL_MODEL_MUL_ROW_SIZES
-] + [
-    ("broadcast", (1048576, 1), (1, 32)),
-    ("broadcast", (8192, 1), (1, 18)),
-    ("scalar", (18,), None),
-    ("scalar", (32,), None),
-    ("scalar", (1, 2048), None),
-    ("scalar", (2, 2048), None),
-    ("scalar", (4, 2048), None),
-    ("scalar", (8, 2048), None),
-    ("scalar", (16, 2048), None),
-    ("scalar", (32, 2048), None),
-    ("scalar", (64, 2048), None),
-    ("scalar", (128, 2048), None),
-    ("scalar", (256, 2048), None),
-    ("scalar", (512, 2048), None),
-]
-
-
-class RealModelMulBenchmark(base.BinaryPointwiseBenchmark):
-    def set_shapes(self, shape_file_path=None):
-        self.shapes = REAL_MODEL_MUL_SHAPES
-        self.shape_desc = "kind, lhs_shape, rhs_shape"
-
-    def get_input_iter(self, dtype):
-        for kind, lhs_shape, rhs_shape in self.shapes:
-            lhs = base.generate_tensor_input(lhs_shape, dtype, self.device)
-            if kind == "scalar":
-                yield lhs, 0.5
-            else:
-                rhs = base.generate_tensor_input(rhs_shape, dtype, self.device)
-                yield lhs, rhs
-
-
-@pytest.mark.mul
-def test_mul_real_shapes():
-    bench = RealModelMulBenchmark(
-        op_name="mul",
-        torch_op=torch.mul,
-        dtypes=consts.FLOAT_DTYPES,
-    )
-    bench.set_gems(flag_gems.mul)
-    bench.run()
 
 
 # TODO(0x45f): Fix OOM when dtypes includes COMPLEX_DTYPES is included (Issue #2693).
