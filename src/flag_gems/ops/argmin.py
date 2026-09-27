@@ -223,6 +223,7 @@ def argmin_kernel(
 def argmin(inp, dim=None, keepdim=False, *, dtype=None):
     logger.debug("GEMS ARGMIN")
     if dim is None:
+        inp = inp.contiguous()
         M = inp.numel()
         if dtype is None:
             dtype = inp.dtype

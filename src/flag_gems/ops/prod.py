@@ -67,6 +67,7 @@ def prod(inp, *, dtype=None):
     if dtype is None:
         dtype = inp.dtype
 
+    inp = inp.contiguous()
     M = inp.numel()
     block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
     mid_size = triton.cdiv(M, block_size)
