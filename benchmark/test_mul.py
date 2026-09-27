@@ -20,7 +20,7 @@ import flag_gems
 from . import base, consts
 
 
-ASCEND_MUL_ROW_SIZES = [
+REAL_MODEL_MUL_ROW_SIZES = [
     1, 2, 4, 8, 16, 24, 32, 40, 48, 56, 64, 72, 80, 88, 96, 104,
     112, 120, 128, 136, 144, 152, 160, 168, 176, 184, 192, 200, 208,
     216, 224, 232, 240, 248, 256, 272, 288, 304, 320, 336, 352, 368,
@@ -29,8 +29,8 @@ ASCEND_MUL_ROW_SIZES = [
     10441, 13421, 13422, 14554, 16384,
 ]
 
-ASCEND_MUL_SHAPES = [
-    ("broadcast", (m, 1), (m, 2048)) for m in ASCEND_MUL_ROW_SIZES
+REAL_MODEL_MUL_SHAPES = [
+    ("broadcast", (m, 1), (m, 2048)) for m in REAL_MODEL_MUL_ROW_SIZES
 ] + [
     ("broadcast", (1048576, 1), (1, 32)),
     ("broadcast", (8192, 1), (1, 18)),
@@ -49,9 +49,9 @@ ASCEND_MUL_SHAPES = [
 ]
 
 
-class AscendMulBenchmark(base.BinaryPointwiseBenchmark):
+class RealModelMulBenchmark(base.BinaryPointwiseBenchmark):
     def set_shapes(self, shape_file_path=None):
-        self.shapes = ASCEND_MUL_SHAPES
+        self.shapes = REAL_MODEL_MUL_SHAPES
         self.shape_desc = "kind, lhs_shape, rhs_shape"
 
     def get_input_iter(self, dtype):
@@ -65,12 +65,8 @@ class AscendMulBenchmark(base.BinaryPointwiseBenchmark):
 
 
 @pytest.mark.mul
-@pytest.mark.skipif(
-    flag_gems.vendor_name != "ascend",
-    reason="Ascend-specific real-shape mul benchmark",
-)
-def test_mul_ascend_real_shapes():
-    bench = AscendMulBenchmark(
+def test_mul_real_shapes():
+    bench = RealModelMulBenchmark(
         op_name="mul",
         torch_op=torch.mul,
         dtypes=consts.FLOAT_DTYPES,
