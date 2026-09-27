@@ -214,5 +214,14 @@ def gather(inp, dim, index, out=None, sparse_grad=False):
 
 def gather_backward(grad, self, dim, index, sparse_grad):
     logger.debug("GEMS GATHER BACKWARD")
+    # scatter_(reduce="add") rejects bfloat16, and accumulating directly in
+    # float16/bfloat16 loses precision when the index contains repeats (the
+    # common case for gather_backward). Accumulate in float32 for the
+    # reduced-precision dtypes and cast back, matching the approach used by
+    # scatter_add_0 and embedding_backward.
+    if grad.dtype in (torch.float16, torch.bfloat16):
+        result = grad.new_zeros(self.shape, dtype=torch.float32)
+        scatter_(result, dim, index, grad.to(torch.float32), reduce="add")
+        return result.to(grad.dtype)
     result = grad.new_zeros(self.shape)
     return scatter_(result, dim, index, grad, reduce="add")
