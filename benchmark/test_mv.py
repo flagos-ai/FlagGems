@@ -91,7 +91,6 @@ class MvBenchmark(base.GenericBenchmark2DOnly):
         del shape_file_path
         if base.Config.bench_level == consts.BenchLevel.CORE:
             self.shapes = list(MV_REPRESENTATIVE_SHAPES)
-            self.shapes += [(4107, 2048), (5240, 4096)]
         else:
             self.shapes = list(MV_MODEL_SHAPES)
         self.shape_desc = "N, K"
