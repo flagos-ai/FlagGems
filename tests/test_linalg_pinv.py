@@ -34,6 +34,24 @@ PINV_SHAPES = [(4, 4), (8, 8)]
 PINV_LARGE_SHAPES = [(48, 48), (64, 40), (40, 64)]
 
 
+def _well_conditioned(m, n, dtype, seed=0):
+    """Build a (m, n) matrix with a known, tightly bounded singular spectrum.
+
+    `randn(m, n) + 2 * I` leaves the condition number uncontrolled (observed in
+    the hundreds to thousands at 48x48), and pinv error grows with cond * eps,
+    so that construction makes the tolerance check seed-dependent. Composing an
+    explicit SVD with singular values in [1, 2] pins cond <= 2 instead.
+    """
+    g = torch.Generator(device="cpu").manual_seed(seed)
+    k = min(m, n)
+    # Orthonormal factors via QR of fixed-seed gaussians.
+    u, _ = torch.linalg.qr(torch.randn(m, k, generator=g))
+    v, _ = torch.linalg.qr(torch.randn(n, k, generator=g))
+    s = torch.linspace(2.0, 1.0, k)
+    A = (u * s) @ v.T
+    return A.to(dtype).to(flag_gems.device)
+
+
 @pytest.mark.linalg_pinv
 @pytest.mark.parametrize("shape", PINV_SHAPES)
 @pytest.mark.parametrize("dtype", PINV_DTYPES)
@@ -73,9 +91,7 @@ def test_linalg_pinv_batched(shape, dtype):
 @pytest.mark.parametrize("dtype", PINV_DTYPES)
 def test_linalg_pinv_large(shape, dtype):
     m, n = shape
-    # Use well-conditioned matrix for reliable SVD convergence
-    A = torch.randn(m, n, dtype=dtype, device=flag_gems.device)
-    A = A + torch.eye(m, n, dtype=dtype, device=flag_gems.device) * 2.0
+    A = _well_conditioned(m, n, dtype)
     ref_A = utils.to_reference(A)
     ref_out = torch.linalg.pinv(ref_A)
     res_out = flag_gems.linalg_pinv(A)
@@ -88,14 +104,8 @@ def test_linalg_pinv_large(shape, dtype):
 def test_linalg_pinv_large_batched(shape, dtype):
     m, n = shape
     batch = 2
-    # Use well-conditioned matrices
-    A = torch.randn(batch, m, n, dtype=dtype, device=flag_gems.device)
-    eye = (
-        torch.eye(m, n, dtype=dtype, device=flag_gems.device)
-        .unsqueeze(0)
-        .expand(batch, m, n)
-    )
-    A = A + eye * 2.0
+    # Distinct seeds so the batch elements are not identical matrices.
+    A = torch.stack([_well_conditioned(m, n, dtype, seed=s) for s in range(batch)])
     ref_A = utils.to_reference(A)
     ref_out = torch.linalg.pinv(ref_A)
     res_out = flag_gems.linalg_pinv(A)
