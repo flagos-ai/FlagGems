@@ -642,6 +642,17 @@ def _ppu_split_k_reduce_configs():
     ]
 
 
+def _flagtune_mm_dtype_identity(arguments):
+    """Return the public MM input/output dtype identity for a PPU kernel."""
+    lhs = arguments.get("A")
+    rhs = arguments.get("B")
+    if rhs is None:
+        rhs = arguments.get("X")
+    if lhs is None or rhs is None:
+        raise ValueError("PPU MM FlagTune identity requires A and B/X tensors")
+    return lhs.dtype, rhs.dtype, lhs.dtype
+
+
 if HAS_PPU_TLE:
 
     @libentry()
@@ -649,11 +660,17 @@ if HAS_PPU_TLE:
         configs=_ppu_gemv_configs(),
         key=["FUSE_ADDMM", "TRANSPOSED", "B_TRANSPOSED", "M", "K"],
         strategy=["default", "default", "default", "default", "default"],
+        policy="flagtune",
         prune_configs_by={"early_config_prune": _prune_single_gemv_configs},
         warmup=25,
         rep=100,
+        # The packaged PPU model was trained with graph-replay candidate timing.
+        benchmark_mode="replay",
         flagtune_op_name="mm",
         flagtune_expand_op_name="gemv_ppu",
+        flagtune_op_id="flaggems/mm",
+        flagtune_variant="gemv_ppu",
+        flagtune_dtype_resolver=_flagtune_mm_dtype_identity,
         flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
     )
     @triton.jit(do_not_specialize=["alpha", "beta"])
@@ -726,11 +743,15 @@ if HAS_PPU_TLE:
             _ppu_bucket_strategy,
             _ppu_reduction_bucket_strategy,
         ],
+        policy="flagtune",
         prune_configs_by={"early_config_prune": _prune_gemv_configs},
         warmup=5,
         rep=20,
         flagtune_op_name="mm",
         flagtune_expand_op_name="mm_ppu_multi_row_gemv",
+        flagtune_op_id="flaggems/mm",
+        flagtune_variant="mm_ppu_multi_row_gemv",
+        flagtune_dtype_resolver=_flagtune_mm_dtype_identity,
         flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
     )
     @triton.jit(do_not_specialize=["alpha", "beta"])
@@ -807,11 +828,15 @@ if HAS_PPU_TLE:
             _ppu_bucket_strategy,
             _ppu_reduction_bucket_strategy,
         ],
+        policy="flagtune",
         prune_configs_by={"early_config_prune": _prune_gemv_configs},
         warmup=5,
         rep=20,
         flagtune_op_name="mm",
         flagtune_expand_op_name="mm_ppu_narrow_columns",
+        flagtune_op_id="flaggems/mm",
+        flagtune_variant="mm_ppu_narrow_columns",
+        flagtune_dtype_resolver=_flagtune_mm_dtype_identity,
         flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
     )
     @triton.jit(do_not_specialize=["alpha", "beta"])
@@ -967,6 +992,7 @@ if HAS_PPU_TLE:
             _ppu_bucket_strategy,
             _ppu_reduction_bucket_strategy,
         ],
+        policy="flagtune",
         prune_configs_by={"early_config_prune": _prune_gemm_configs},
         # PPU's event benchmarker is noisy in the sub-30us regime.  Match the
         # production benchmark protocol so nearby configs are not ranked by
@@ -975,6 +1001,9 @@ if HAS_PPU_TLE:
         rep=100,
         flagtune_op_name="mm",
         flagtune_expand_op_name="mm_ppu",
+        flagtune_op_id="flaggems/mm",
+        flagtune_variant="mm_ppu",
+        flagtune_dtype_resolver=_flagtune_mm_dtype_identity,
         flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
     )
     @triton.heuristics(
@@ -1080,11 +1109,15 @@ if HAS_PPU_TLE:
             _ppu_bucket_strategy,
             _ppu_reduction_bucket_strategy,
         ],
+        policy="flagtune",
         prune_configs_by={"early_config_prune": _prune_narrow_n_configs},
         warmup=5,
         rep=10,
         flagtune_op_name="mm",
         flagtune_expand_op_name="mm_ppu_narrow_n",
+        flagtune_op_id="flaggems/mm",
+        flagtune_variant="mm_ppu_narrow_n",
+        flagtune_dtype_resolver=_flagtune_mm_dtype_identity,
         flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
     )
     @triton.heuristics(
@@ -1181,11 +1214,15 @@ if HAS_PPU_TLE:
             _ppu_bucket_strategy,
             _ppu_reduction_bucket_strategy,
         ],
+        policy="flagtune",
         prune_configs_by={"early_config_prune": _prune_gemm_configs},
         warmup=5,
         rep=10,
         flagtune_op_name="mm",
         flagtune_expand_op_name="mm_ppu_small_m",
+        flagtune_op_id="flaggems/mm",
+        flagtune_variant="mm_ppu_small_m",
+        flagtune_dtype_resolver=_flagtune_mm_dtype_identity,
         flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
     )
     @triton.heuristics(
@@ -1294,11 +1331,15 @@ if HAS_PPU_TLE:
             _ppu_bucket_strategy,
             _ppu_reduction_bucket_strategy,
         ],
+        policy="flagtune",
         prune_configs_by={"early_config_prune": _prune_gemm_configs},
         warmup=5,
         rep=10,
         flagtune_op_name="mm",
         flagtune_expand_op_name="mm_ppu_mid_m",
+        flagtune_op_id="flaggems/mm",
+        flagtune_variant="mm_ppu_mid_m",
+        flagtune_dtype_resolver=_flagtune_mm_dtype_identity,
         flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
     )
     @triton.heuristics(
@@ -1515,11 +1556,15 @@ if HAS_PPU_TLE:
             _ppu_bucket_strategy,
             _ppu_reduction_bucket_strategy,
         ],
+        policy="flagtune",
         prune_configs_by={"early_config_prune": _prune_split_k_configs},
         warmup=5,
         rep=10,
         flagtune_op_name="mm",
         flagtune_expand_op_name="mm_ppu_split_k",
+        flagtune_op_id="flaggems/mm",
+        flagtune_variant="mm_ppu_split_k",
+        flagtune_dtype_resolver=_flagtune_mm_dtype_identity,
         flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
     )
     @triton.jit

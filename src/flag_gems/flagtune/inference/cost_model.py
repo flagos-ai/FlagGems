@@ -248,7 +248,15 @@ def run_proposer(
     identity = model_identity.artifact_key
     fields = tuple(variant_info.param_names)
     to_config = variant_info.to_config
-    initial = configs_to_dicts(candidate_configs, list(fields))
+    # Runtime tuning may have gained configs since this model was packaged.
+    # Only pass candidates covered by the model's recorded parameter space.
+    initial = [
+        config
+        for config in configs_to_dicts(candidate_configs, list(fields))
+        if variant_info.param_space.validate(config)
+    ]
+    if not initial:
+        raise ValueError("no runtime candidates satisfy the loaded model parameter space")
     legal_keys = {tuple(config[name] for name in fields) for config in initial}
 
     def checked_config(config_dict):
