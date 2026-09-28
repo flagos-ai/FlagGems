@@ -16,20 +16,6 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
-
-import flag_gems
-
-from . import base, consts
-
-# ``_dimV`` starts with an underscore, and ``pytest.mark`` refuses to
-# generate a marker via attribute access for such names. Register it directly
-# on the MarkGenerator so ``@pytest.mark._dimV`` and ``-m _dimV`` both work.
-setattr(
-    pytest.mark,
-    "_dimV",
-    MarkDecorator(Mark("_dimV", (), {}, _ispytest=True), _ispytest=True),
-)
 
 # Sparse COO sizes for the benchmark: the op is O(1) in nnz (pure metadata
 # read), so the sweep exercises the host path across sparse sizes and the
@@ -62,12 +48,12 @@ class DimVBenchmark(base.Benchmark):
             yield (inp,)
 
 
-@pytest.mark._dimV
-def test__dimV():
+@pytest.mark.dimV
+def test_dimV():
     bench = DimVBenchmark(
-        op_name="_dimV",
+        op_name="dimV",
         torch_op=torch.ops.aten._dimV,
-        gems_op=flag_gems._dimV,
+        gems_op=flag_gems.dimV,
         dtypes=consts.FLOAT_DTYPES + consts.INT_DTYPES + consts.BOOL_DTYPES,
     )
     bench.run()

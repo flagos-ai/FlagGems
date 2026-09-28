@@ -82,12 +82,12 @@ def _coo_cases(shape):
 
 @pytest.mark.dimV
 @pytest.mark.parametrize("shape", SPARSE_DIM_SIZES)
-def test_accuracy__dimV_coo(shape):
+def test_accuracy_dimV_coo(shape):
     for name, sparse in _coo_cases(shape):
         sparse = sparse.to(flag_gems.device)
         ref_sparse = utils.to_reference(sparse)
 
-        res_out = flag_gems._dimV(sparse)
+        res_out = flag_gems.dimV(sparse)
         ref_out = ref_sparse._dimV()
 
         assert isinstance(res_out, int), f"{name}: not an int: {res_out!r}"
@@ -96,17 +96,17 @@ def test_accuracy__dimV_coo(shape):
 
 @pytest.mark.dimV
 @pytest.mark.parametrize("shape", SPARSE_DIM_SIZES)
-def test_accuracy__dimV_matches_indices_formula(shape):
+def test_accuracy_dimV_matches_indices_formula(shape):
     # Pinned formula from the verified semantics: _dimV == dim() -
     # _indices().shape[0] for sparse COO, independent of values/nnz state.
     sparse = _make_coo(len(shape), 5, shape, seed=7).to(flag_gems.device)
-    assert flag_gems._dimV(sparse) == sparse.dim() - sparse._indices().shape[0]
-    assert flag_gems._dimV(sparse) == utils.to_reference(sparse)._dimV()
+    assert flag_gems.dimV(sparse) == sparse.dim() - sparse._indices().shape[0]
+    assert flag_gems.dimV(sparse) == utils.to_reference(sparse)._dimV()
 
 
 @pytest.mark.dimV
 @pytest.mark.parametrize("layout", ["strided", "csr", "csc"])
-def test_accuracy__dimV_unsupported_layouts_raise(layout):
+def test_accuracy_dimV_unsupported_layouts_raise(layout):
     t = torch.randn(2, 3, device=flag_gems.device)
     if layout == "strided":
         inp = t
@@ -121,11 +121,11 @@ def test_accuracy__dimV_unsupported_layouts_raise(layout):
     with pytest.raises(NotImplementedError):
         utils.to_reference(inp)._dimV()
     with pytest.raises(NotImplementedError):
-        flag_gems._dimV(inp)
+        flag_gems.dimV(inp)
 
 
 @pytest.mark.dimV
-def test_accuracy__dimV_dispatch_stability():
+def test_accuracy_dimV_dispatch_stability():
     # The registration is on the Sparse dispatch key; exercise the
     # dispatcher-routed path repeatedly (a recursion bug or stale state would
     # surface here) and across an unrelated op dispatch (_nnz) in between.
