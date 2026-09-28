@@ -241,6 +241,8 @@ def _launch_erfinv(x: torch.Tensor, out: torch.Tensor):
 
 def erfinv(x: torch.Tensor):
     """Inverse error function (aten::erfinv)."""
+    logger.debug("GEMS_KUNLUNXIN ERFCINV")
+
     x_in = x if x.is_contiguous() else x.contiguous()
     out = torch.empty_like(x_in)
     _launch_erfinv(x_in, out)
@@ -256,6 +258,8 @@ def erfinv_(x: torch.Tensor):
     Non-contiguous inputs are evaluated through a contiguous scratch and
     written back in the original layout via the native strided copy engine.
     """
+    logger.debug("GEMS_KUNLUNXIN ERFCINV_")
+
     if x.is_contiguous():
         _launch_erfinv(x, x)
     else:
