@@ -373,10 +373,17 @@ def test_accuracy_ccol_indices_copy_coo_falls_through_to_native():
         (3, 3),
     )
     ref_inp = _ref_pair(inp)
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(NotImplementedError) as native_exc:
         torch.ops.aten.ccol_indices_copy(ref_inp)
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(NotImplementedError) as exc:
         flag_gems.ccol_indices_copy(inp)
+    # Compare against native ATen directly: same type, same
+    # operator-identifying message prefix (the dispatcher's full message
+    # appends a build-specific backend enumeration that a host-side
+    # reproduction cannot byte-match).
+    ours, native = str(exc.value), str(native_exc.value)
+    native_prefix = native.split("'aten::ccol_indices_copy'")[0] + "'aten::ccol_indices_copy'"
+    assert ours.startswith(native_prefix), f"ours: {ours!r}\nnative: {native!r}"
 
 
 @pytest.mark.ccol_indices_copy
