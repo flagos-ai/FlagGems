@@ -113,6 +113,44 @@ def test_linear_3d_with_bias(dtype):
 
 
 @pytest.mark.linear
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "iluvatar",
+    reason="Issue #5379: Iluvatar override requires separate vendor validation",
+)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("with_bias", [False, True])
+def test_linear_3d_noncontiguous(dtype, with_bias):
+    batch_size = 2
+    sequence_length = 16
+    in_features = 64
+    out_features = 32
+
+    input_tensor = torch.randn(
+        (batch_size, in_features, sequence_length),
+        dtype=dtype,
+        device=flag_gems.device,
+    ).transpose(1, 2)
+    weight = torch.randn(
+        (out_features, in_features), dtype=dtype, device=flag_gems.device
+    )
+    bias = (
+        torch.randn((out_features,), dtype=dtype, device=flag_gems.device)
+        if with_bias
+        else None
+    )
+    assert not input_tensor.is_contiguous()
+
+    ref_input = utils.to_reference(input_tensor, True)
+    ref_weight = utils.to_reference(weight, True)
+    ref_bias = utils.to_reference(bias, True)
+
+    ref_out = torch.nn.functional.linear(ref_input, ref_weight, ref_bias)
+    res_out = flag_gems.linear(input_tensor, weight, bias)
+
+    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=in_features)
+
+
+@pytest.mark.linear
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_linear_1d_with_bias(dtype):
     if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
