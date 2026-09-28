@@ -38,17 +38,10 @@ import math
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
 from . import test_utils as tu
-
-setattr(
-    pytest.mark,
-    "_sparse_sum_backward",
-    MarkDecorator(Mark("_sparse_sum_backward", (), {}, _ispytest=True), _ispytest=True),
-)
 
 # Existing static capability flags (tests/accuracy_utils.py re-exports the same values
 # as bf16_is_supported / fp64_is_supported / int64_is_supported / fp8_is_supported).
@@ -635,7 +628,7 @@ for _row in _REGATHER_ROWS:
         raise ValueError(f"regather descriptor {_row!r} would need a coalesce kernel")
 
 
-@pytest.mark._sparse_sum_backward
+@pytest.mark.sparse_sum_backward
 @pytest.mark.parametrize("row", tu.selected_cases(_COPY_ROWS, quick=_QUICK_ROWS))
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("dtype", _COPY_PATH_DTYPES)
@@ -653,7 +646,7 @@ def test__sparse_sum_backward(dtype, value_range, row):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark._sparse_sum_backward
+@pytest.mark.sparse_sum_backward
 @pytest.mark.parametrize("row", tu.selected_cases(_SHAPE_FLOAT_ROWS, quick=[]))
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("dtype", _FLOAT_DTYPES)
@@ -670,7 +663,7 @@ def test__sparse_sum_backward_shapes(dtype, value_range, row):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark._sparse_sum_backward
+@pytest.mark.sparse_sum_backward
 @pytest.mark.parametrize("row", tu.selected_cases(_DIM_ROWS, quick=[]))
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("dtype", _FLOAT_DTYPES)
@@ -687,7 +680,7 @@ def test__sparse_sum_backward_dim_forms(dtype, value_range, row):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark._sparse_sum_backward
+@pytest.mark.sparse_sum_backward
 @pytest.mark.parametrize("row", tu.selected_cases(_DIM_LARGE_ROWS, quick=[]))
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("dtype", _FLOAT_DTYPES)
@@ -707,7 +700,7 @@ def test__sparse_sum_backward_dim_forms_large(dtype, value_range, row):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark._sparse_sum_backward
+@pytest.mark.sparse_sum_backward
 @pytest.mark.parametrize("row", tu.selected_cases(_ZERO_ROWS, quick=[]))
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("dtype", _COPY_PATH_DTYPES)
@@ -725,7 +718,7 @@ def test__sparse_sum_backward_zero_nnz_and_zero_axis(dtype, value_range, row):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark._sparse_sum_backward
+@pytest.mark.sparse_sum_backward
 @pytest.mark.parametrize("row", tu.selected_cases(_NONCONTIG_ROWS, quick=[]))
 @pytest.mark.parametrize("dtype", _FLOAT_DTYPES)
 def test__sparse_sum_backward_noncontiguous(dtype, row):
@@ -742,7 +735,7 @@ def test__sparse_sum_backward_noncontiguous(dtype, row):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark._sparse_sum_backward
+@pytest.mark.sparse_sum_backward
 @pytest.mark.parametrize("row", tu.selected_cases(_OFFSET_ROWS, quick=[]))
 @pytest.mark.parametrize("dtype", _FLOAT_DTYPES)
 def test__sparse_sum_backward_stored_offsets(dtype, row):
@@ -763,7 +756,7 @@ def test__sparse_sum_backward_stored_offsets(dtype, row):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark._sparse_sum_backward
+@pytest.mark.sparse_sum_backward
 @pytest.mark.parametrize("row", tu.selected_cases(_OUT_ROWS, quick=[]))
 @pytest.mark.parametrize("dtype", _FLOAT_DTYPES)
 def test__sparse_sum_backward_out(dtype, row):
@@ -784,7 +777,7 @@ def test__sparse_sum_backward_out(dtype, row):
     tu.assert_result_equal(res_buf, ref_buf)
 
 
-@pytest.mark._sparse_sum_backward
+@pytest.mark.sparse_sum_backward
 @pytest.mark.parametrize("row", tu.selected_cases(_UNCOALESCED_ROWS, quick=[]))
 @pytest.mark.parametrize("dtype", _FLOAT_DTYPES)
 def test__sparse_sum_backward_uncoalesced_self(dtype, row):
@@ -801,7 +794,7 @@ def test__sparse_sum_backward_uncoalesced_self(dtype, row):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark._sparse_sum_backward
+@pytest.mark.sparse_sum_backward
 @pytest.mark.parametrize("row", tu.selected_cases(_DUPLICATE_ROWS, quick=[]))
 @pytest.mark.parametrize("dtype", _FLOAT_DTYPES)
 def test__sparse_sum_backward_duplicate_coordinates(dtype, row):
@@ -825,7 +818,7 @@ def test__sparse_sum_backward_duplicate_coordinates(dtype, row):
     tu.assert_result_close(res_out, ref_out)
 
 
-@pytest.mark._sparse_sum_backward
+@pytest.mark.sparse_sum_backward
 @pytest.mark.parametrize("row", tu.selected_cases(_SPECIAL_ROWS, quick=[]))
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_CASES)
 def test__sparse_sum_backward_special_values(dtype, scenario, row):
@@ -843,7 +836,7 @@ def test__sparse_sum_backward_special_values(dtype, scenario, row):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark._sparse_sum_backward
+@pytest.mark.sparse_sum_backward
 @pytest.mark.parametrize("row", tu.selected_cases(_FP8_SPECIAL_ROWS, quick=[]))
 @pytest.mark.parametrize("dtype,scenario", _FP8_SPECIAL_CASES)
 def test__sparse_sum_backward_fp8_special_values(dtype, scenario, row):
@@ -862,7 +855,7 @@ def test__sparse_sum_backward_fp8_special_values(dtype, scenario, row):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark._sparse_sum_backward
+@pytest.mark.sparse_sum_backward
 @pytest.mark.parametrize("dtype", _REGATHER_REJECTED_DTYPES)
 def test__sparse_sum_backward_regather_rejects_non_float_dtypes(dtype):
     # dims=(0,) keeps sparse axis 1 only, so the grad regathers values. The two fixtures
@@ -880,7 +873,7 @@ def test__sparse_sum_backward_regather_rejects_non_float_dtypes(dtype):
         flag_gems._sparse_sum_backward(grad, inp, dims)
 
 
-@pytest.mark._sparse_sum_backward
+@pytest.mark.sparse_sum_backward
 def test__sparse_sum_backward_negative_dense_self():
     # self must be SparseCOO; a dense self has no native kernel.
     inp = torch.randn((4, 5), device=flag_gems.device)
@@ -889,7 +882,7 @@ def test__sparse_sum_backward_negative_dense_self():
         flag_gems._sparse_sum_backward(grad, inp, [0])
 
 
-@pytest.mark._sparse_sum_backward
+@pytest.mark.sparse_sum_backward
 def test__sparse_sum_backward_negative_out_of_range_dim():
     inp = _sparse_self((4, 5), 2, torch.float32, ["-1", "1"], 3)
     grad = _make_grad(inp, (4, 5), 2, (), torch.float32, ["-1", "1"])
@@ -897,7 +890,7 @@ def test__sparse_sum_backward_negative_out_of_range_dim():
         flag_gems._sparse_sum_backward(grad, inp, [5])
 
 
-@pytest.mark._sparse_sum_backward
+@pytest.mark.sparse_sum_backward
 def test__sparse_sum_backward_negative_aliased_dim():
     # [0, -2] names axis 0 twice on rank 2, which the native op rejects (measured:
     # RuntimeError: dim 0 appears multiple times in the list of dims). The exception is
@@ -909,7 +902,7 @@ def test__sparse_sum_backward_negative_aliased_dim():
         flag_gems._sparse_sum_backward(grad, inp, [0, -2])
 
 
-@pytest.mark._sparse_sum_backward
+@pytest.mark.sparse_sum_backward
 def test__sparse_sum_backward_negative_sparse_grad_for_summed_dims():
     # Summing every sparse dim requires a dense grad, so the sparse grad built for the
     # empty dim list is rejected for dims=[0, 1].

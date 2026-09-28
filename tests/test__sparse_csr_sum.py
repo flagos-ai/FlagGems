@@ -14,21 +14,12 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
 from . import test_utils as tu
 
-# ``_sparse_csr_sum`` starts with an underscore, so ``pytest.mark`` cannot be
-# extended by attribute access; register the marker on the MarkGenerator.
-setattr(
-    pytest.mark,
-    "_sparse_csr_sum",
-    MarkDecorator(Mark("_sparse_csr_sum", (), {}, _ispytest=True), _ispytest=True),
-)
-
-pytestmark = pytest.mark._sparse_csr_sum
+pytestmark = pytest.mark.sparse_csr_sum
 
 _DEVICE_FLAGS = flag_gems.runtime.device
 

@@ -23,18 +23,11 @@ case_fn / build_inputs_fn pair, so --list-cases allocates no tensors and
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
 from . import base, utils
 from .generated_operator_utils import OperatorBenchmark
-
-setattr(
-    pytest.mark,
-    "_cudnn_ctc_loss",
-    MarkDecorator(Mark("_cudnn_ctc_loss", (), {}, _ispytest=True), _ispytest=True),
-)
 
 # _cudnn_ctc_loss has no entry in core_shapes.yaml, so the ctc_loss rows from
 # that file (shape_desc 'T, N, C, S') are supplied as defaults; an explicit
@@ -149,7 +142,7 @@ def _build_inputs_fn(plan, dtype, device):
     )
 
 
-@pytest.mark._cudnn_ctc_loss
+@pytest.mark.cudnn_ctc_loss
 def test__cudnn_ctc_loss():
     bench = _CudnnCtcLossBenchmark(
         op_name="_cudnn_ctc_loss",

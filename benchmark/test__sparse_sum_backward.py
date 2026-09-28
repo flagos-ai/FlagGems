@@ -38,18 +38,11 @@ the tensor the operator receives.
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
 from . import base, consts
 from .generated_operator_utils import OperatorBenchmark
-
-setattr(
-    pytest.mark,
-    "_sparse_sum_backward",
-    MarkDecorator(Mark("_sparse_sum_backward", (), {}, _ispytest=True), _ispytest=True),
-)
 
 _SUPPORTS_BF16 = flag_gems.runtime.device.support_bf16
 _SUPPORTS_FP64 = flag_gems.runtime.device.support_fp64
@@ -410,7 +403,7 @@ class SparseSumBackwardBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=_ALL_ROWS)
 
 
-@pytest.mark._sparse_sum_backward
+@pytest.mark.sparse_sum_backward
 def test__sparse_sum_backward():
     bench = SparseSumBackwardBenchmark(
         op_name="_sparse_sum_backward",

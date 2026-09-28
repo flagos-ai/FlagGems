@@ -21,22 +21,11 @@ built in the same phase as the input.
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
 from . import base, utils
 from .generated_operator_utils import OperatorBenchmark
-
-# ``pytest.mark`` refuses attribute access for underscore-prefixed names, so the
-# marker is registered on the MarkGenerator directly.
-setattr(
-    pytest.mark,
-    "_sparse_semi_structured_apply",
-    MarkDecorator(
-        Mark("_sparse_semi_structured_apply", (), {}, _ispytest=True), _ispytest=True
-    ),
-)
 
 # The native kernel accepts float16 and bfloat16 only, so the dtype set is listed
 # explicitly instead of using a convenience list; bfloat16 is gated on the static
@@ -120,7 +109,7 @@ class SparseSemiStructuredApplyBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=_APPLY_SHAPES)
 
 
-@pytest.mark._sparse_semi_structured_apply
+@pytest.mark.sparse_semi_structured_apply
 def test__sparse_semi_structured_apply():
     bench = SparseSemiStructuredApplyBenchmark(
         op_name="_sparse_semi_structured_apply",

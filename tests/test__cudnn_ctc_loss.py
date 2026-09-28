@@ -56,18 +56,11 @@ Coverage notes:
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
 from . import accuracy_utils as utils
 from . import test_utils as tu
-
-setattr(
-    pytest.mark,
-    "_cudnn_ctc_loss",
-    MarkDecorator(Mark("_cudnn_ctc_loss", (), {}, _ispytest=True), _ispytest=True),
-)
 
 TARGETS_DTYPE = torch.int32
 
@@ -139,7 +132,7 @@ GRID_ROWS = [
 QUICK_ROWS = [(2, 19, 7, [2] * 19, [1] * 19)]
 
 
-@pytest.mark._cudnn_ctc_loss
+@pytest.mark.cudnn_ctc_loss
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("row", tu.selected_cases(GRID_ROWS, quick=QUICK_ROWS))
 def test__cudnn_ctc_loss_accuracy(row, value_range):
@@ -172,7 +165,7 @@ EMPTY_TARGET_ROWS = [
 ]
 
 
-@pytest.mark._cudnn_ctc_loss
+@pytest.mark.cudnn_ctc_loss
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("row", tu.selected_cases(EMPTY_TARGET_ROWS, quick=[]))
 def test__cudnn_ctc_loss_empty_targets(row, value_range):
@@ -216,7 +209,7 @@ def _special_log_probs(dtype, scenario, shape):
     return payload[offsets % payload.numel()].reshape(shape)
 
 
-@pytest.mark._cudnn_ctc_loss
+@pytest.mark.cudnn_ctc_loss
 @pytest.mark.parametrize("dtype,scenario,row", SPECIAL_CASES)
 def test__cudnn_ctc_loss_special_values(dtype, scenario, row):
     time_steps, batch, num_classes, input_lengths, target_lengths = row
@@ -241,7 +234,7 @@ FLAG_CASES = ((False, False), (False, True), (True, False), (True, True))
 PARAM_ROW = (20, 320, 15, [20] * 320, [8] * 320)
 
 
-@pytest.mark._cudnn_ctc_loss
+@pytest.mark.cudnn_ctc_loss
 @pytest.mark.parametrize(
     "deterministic,zero_infinity", tu.selected_cases(FLAG_CASES, quick=[])
 )
@@ -284,7 +277,7 @@ OUT_ROWS = [
 ]
 
 
-@pytest.mark._cudnn_ctc_loss
+@pytest.mark.cudnn_ctc_loss
 @pytest.mark.parametrize("row", tu.selected_cases(OUT_ROWS, quick=[]))
 def test__cudnn_ctc_loss_out(row):
     time_steps, batch, num_classes, input_lengths, target_lengths = row
@@ -336,7 +329,7 @@ def test__cudnn_ctc_loss_out(row):
     tu.assert_result_close(res[1], ref[1])
 
 
-@pytest.mark._cudnn_ctc_loss
+@pytest.mark.cudnn_ctc_loss
 @pytest.mark.parametrize("row", tu.selected_cases([OUT_ROWS[0]], quick=[]))
 def test__cudnn_ctc_loss_out_strided(row):
     """A non-contiguous out1 is accepted and keeps its layout metadata."""
@@ -402,7 +395,7 @@ TENSOR_ROWS = [
 ]
 
 
-@pytest.mark._cudnn_ctc_loss
+@pytest.mark.cudnn_ctc_loss
 @pytest.mark.parametrize("row", tu.selected_cases(TENSOR_ROWS, quick=[]))
 def test__cudnn_ctc_loss_length_tensors(row):
     """The .Tensor overload takes int32 length tensors on the compute device."""
@@ -452,7 +445,7 @@ BACKWARD_ROWS = [
 ]
 
 
-@pytest.mark._cudnn_ctc_loss
+@pytest.mark.cudnn_ctc_loss
 @pytest.mark.parametrize("row", tu.selected_cases(BACKWARD_ROWS, quick=[]))
 def test__cudnn_ctc_loss_backward(row):
     # log_alpha is a native constant (no grad_fn), so only nll is differentiated.
@@ -489,7 +482,7 @@ def _valid_workload(time_steps=8, batch=3, num_classes=6, target_length=3):
     return log_probs, targets, [time_steps] * batch, [target_length] * batch
 
 
-@pytest.mark._cudnn_ctc_loss
+@pytest.mark.cudnn_ctc_loss
 @pytest.mark.parametrize("dtype", REJECTED_LOG_PROBS_DTYPES)
 def test__cudnn_ctc_loss_rejects_unsupported_log_probs_dtype(dtype):
     _, targets, input_lengths, target_lengths = _valid_workload()
@@ -501,7 +494,7 @@ def test__cudnn_ctc_loss_rejects_unsupported_log_probs_dtype(dtype):
         )
 
 
-@pytest.mark._cudnn_ctc_loss
+@pytest.mark.cudnn_ctc_loss
 @pytest.mark.parametrize("shape", [(8, 6), (2, 3, 6, 4)])
 def test__cudnn_ctc_loss_rejects_wrong_log_probs_rank(shape):
     log_probs = tu.make_input(torch.float32, shape, ["-1", "1"])
@@ -513,7 +506,7 @@ def test__cudnn_ctc_loss_rejects_wrong_log_probs_rank(shape):
         )
 
 
-@pytest.mark._cudnn_ctc_loss
+@pytest.mark.cudnn_ctc_loss
 @pytest.mark.parametrize("dtype", [torch.int64, torch.float32, torch.uint8])
 def test__cudnn_ctc_loss_rejects_wrong_targets_dtype(dtype):
     log_probs, _, input_lengths, target_lengths = _valid_workload()
@@ -525,7 +518,7 @@ def test__cudnn_ctc_loss_rejects_wrong_targets_dtype(dtype):
         )
 
 
-@pytest.mark._cudnn_ctc_loss
+@pytest.mark.cudnn_ctc_loss
 @pytest.mark.parametrize("strided", [False, True])
 def test__cudnn_ctc_loss_rejects_targets_layout(strided):
     """Targets must be CPU int32: compute-device or non-contiguous both raise."""
@@ -542,7 +535,7 @@ def test__cudnn_ctc_loss_rejects_targets_layout(strided):
         )
 
 
-@pytest.mark._cudnn_ctc_loss
+@pytest.mark.cudnn_ctc_loss
 @pytest.mark.parametrize("blank", [1, 5, 3])
 def test__cudnn_ctc_loss_rejects_nonzero_blank(blank):
     log_probs, targets, input_lengths, target_lengths = _valid_workload()
@@ -553,7 +546,7 @@ def test__cudnn_ctc_loss_rejects_nonzero_blank(blank):
         )
 
 
-@pytest.mark._cudnn_ctc_loss
+@pytest.mark.cudnn_ctc_loss
 @pytest.mark.parametrize("which", ["input_lengths", "target_lengths"])
 def test__cudnn_ctc_loss_rejects_length_count_mismatch(which):
     log_probs, targets, input_lengths, target_lengths = _valid_workload()
@@ -568,7 +561,7 @@ def test__cudnn_ctc_loss_rejects_length_count_mismatch(which):
         )
 
 
-@pytest.mark._cudnn_ctc_loss
+@pytest.mark.cudnn_ctc_loss
 def test__cudnn_ctc_loss_rejects_input_lengths_beyond_time():
     log_probs, targets, _, target_lengths = _valid_workload()
 
@@ -578,7 +571,7 @@ def test__cudnn_ctc_loss_rejects_input_lengths_beyond_time():
         )
 
 
-@pytest.mark._cudnn_ctc_loss
+@pytest.mark.cudnn_ctc_loss
 def test__cudnn_ctc_loss_rejects_single_class():
     # C == 1 is a native BAD_PARAM; the targets are given explicitly because the
     # label builder would divide by C - 1.
@@ -591,7 +584,7 @@ def test__cudnn_ctc_loss_rejects_single_class():
         )
 
 
-@pytest.mark._cudnn_ctc_loss
+@pytest.mark.cudnn_ctc_loss
 def test__cudnn_ctc_loss_rejects_single_class_empty_targets():
     """C == 1 with a blank-only transcript is native BAD_PARAM as well."""
     log_probs = tu.make_input(torch.float32, (8, 3, 1), ["-1", "1"])
@@ -603,7 +596,7 @@ def test__cudnn_ctc_loss_rejects_single_class_empty_targets():
         )
 
 
-@pytest.mark._cudnn_ctc_loss
+@pytest.mark.cudnn_ctc_loss
 def test__cudnn_ctc_loss_rejects_empty_batch():
     log_probs = torch.empty((8, 0, 6), dtype=torch.float32, device=flag_gems.device)
     targets = torch.zeros(0, dtype=TARGETS_DTYPE)

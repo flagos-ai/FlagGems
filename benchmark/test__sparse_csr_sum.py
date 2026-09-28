@@ -14,20 +14,11 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
 from . import base
 from .generated_operator_utils import OperatorBenchmark
-
-# ``_sparse_csr_sum`` starts with an underscore, so ``pytest.mark`` cannot be
-# extended by attribute access; register the marker on the MarkGenerator.
-setattr(
-    pytest.mark,
-    "_sparse_csr_sum",
-    MarkDecorator(Mark("_sparse_csr_sum", (), {}, _ispytest=True), _ispytest=True),
-)
 
 _DEVICE_FLAGS = flag_gems.runtime.device
 
@@ -141,7 +132,7 @@ class SparseCsrSumBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=_CSR_BENCH_SHAPES)
 
 
-@pytest.mark._sparse_csr_sum
+@pytest.mark.sparse_csr_sum
 def test__sparse_csr_sum():
     bench = SparseCsrSumBenchmark(
         op_name="_sparse_csr_sum",
