@@ -18,65 +18,24 @@
 
 #include "flag_gems/operators.h"
 
+#ifdef FLAGGEMS_POINTWISE_DYNAMIC_BOXED
+// Generic boxed dispatch adapter (flaggems_pointwise_boxed) + its routing
+// table. The generated pointwise_cstub.inc IMPL section registers this single
+// function for every pointwise op via makeFromBoxedFunction.
+#include "pointwise_boxed.h"
+#endif
+
 namespace py = pybind11;
 
 // TODO: use pytorch's argparse utilities to generate CPython bindings, since it is more efficient than
 // bindings provided by torch library, since it is in a boxed fashion
 PYBIND11_MODULE(c_operators, m) {
 #ifdef FLAGGEMS_POINTWISE_DYNAMIC
-  // add
-  m.def(
-      "add_tensor",
-      [](const at::Tensor& self, const at::Tensor& other, double alpha) {
-        return flag_gems::add_tensor(self, other, alpha);
-      },
-      py::arg("self"),
-      py::arg("other"),
-      py::arg("alpha") = 1.0);
-  m.def(
-      "add_scalar",
-      [](const at::Tensor& self, const at::Scalar& other, double alpha) {
-        return flag_gems::add_scalar(self, other, alpha);
-      },
-      py::arg("self"),
-      py::arg("other"),
-      py::arg("alpha") = 1.0);
-  m.def(
-      "add_tensor_inplace",
-      [](at::Tensor& self, const at::Tensor& other, double alpha) {
-        return flag_gems::add_tensor_inplace(self, other, alpha);
-      },
-      py::arg("self"),
-      py::arg("other"),
-      py::arg("alpha") = 1.0);
-  m.def(
-      "add_scalar_inplace",
-      [](at::Tensor& self, const at::Scalar& other, double alpha) {
-        return flag_gems::add_scalar_inplace(self, other, alpha);
-      },
-      py::arg("self"),
-      py::arg("other"),
-      py::arg("alpha") = 1.0);
-  // div
-  m.def("div.Tensor", &flag_gems::true_div);
-  m.def("div_.Tensor", &flag_gems::true_div_);
-  m.def("div.Tensor_mode", &flag_gems::div_mode);
-  m.def("div_.Tensor_mode", &flag_gems::div_mode_);
-  m.def("floor_divide", &flag_gems::floor_div);
-  m.def("floor_divide_.Tensor", &flag_gems::floor_div_);
-  m.def("divide.Tensor", &flag_gems::true_div);
-  m.def("divide_.Tensor", &flag_gems::true_div_);
-  m.def("divide.Tensor_mode", &flag_gems::div_mode);
-  m.def("divide_.Tensor_mode", &flag_gems::div_mode_);
-  m.def("true_divide.Tensor", &flag_gems::true_div);
-  m.def("true_divide_.Tensor", &flag_gems::true_div_);
-  m.def("remainder.Tensor", &flag_gems::remainder);
-  m.def("remainder_.Tensor", &flag_gems::remainder_);
-  // fill
-  m.def("fill.Scalar", &flag_gems::fill_scalar);
-  m.def("fill.Tensor", &flag_gems::fill_tensor);
-  m.def("fill_.Scalar", &flag_gems::fill_scalar_);
-  m.def("fill_.Tensor", &flag_gems::fill_tensor_);
+  // Auto-generated pointwise pybind defs (from op_specs.py). See
+  // lib/pointwise_dynamic_cpp/prebuild_kernels.py.
+#define FLAGGEMS_CSTUB_PYBIND
+#include "pointwise_cstub.inc"
+#undef FLAGGEMS_CSTUB_PYBIND
 #endif
   m.def("act_quant",
         &flag_gems::act_quant_triton,
@@ -171,33 +130,10 @@ PYBIND11_MODULE(c_operators, m) {
 namespace flag_gems {
 TORCH_LIBRARY(flag_gems, m) {
 #ifdef FLAGGEMS_POINTWISE_DYNAMIC
-  // add
-  m.def("add_tensor(Tensor self, Tensor other, *, Scalar alpha=1) -> Tensor", {at::Tag::pt2_compliant_tag});
-  m.def("add_scalar(Tensor self, Scalar other, Scalar alpha=1) -> Tensor", {at::Tag::pt2_compliant_tag});
-  m.def("add_tensor_inplace(Tensor(a!) self, Tensor other, *, Scalar alpha=1) -> Tensor(a!)",
-        {at::Tag::pt2_compliant_tag});
-  m.def("add_scalar_inplace(Tensor(a!) self, Scalar other, Scalar alpha=1) -> Tensor(a!)",
-        {at::Tag::pt2_compliant_tag});
-  // div
-  m.def("div.Tensor(Tensor self, Tensor other) -> Tensor");
-  m.def("div_.Tensor(Tensor(a!) self, Tensor other) -> Tensor(a!)");
-  m.def("div.Tensor_mode(Tensor self, Tensor other, *, str? rounding_mode) -> Tensor");
-  m.def("div_.Tensor_mode(Tensor(a!) self, Tensor other, *, str? rounding_mode) -> Tensor(a!)");
-  m.def("floor_divide(Tensor self, Tensor other) -> Tensor");
-  m.def("floor_divide_.Tensor(Tensor(a!) self, Tensor other) -> Tensor(a!)");
-  m.def("divide.Tensor(Tensor self, Tensor other) -> Tensor");
-  m.def("divide_.Tensor(Tensor(a!) self, Tensor other) -> Tensor(a!)");
-  m.def("divide.Tensor_mode(Tensor self, Tensor other, *, str? rounding_mode) -> Tensor");
-  m.def("divide_.Tensor_mode(Tensor(a!) self, Tensor other, *, str? rounding_mode) -> Tensor(a!)");
-  m.def("true_divide.Tensor(Tensor self, Tensor other) -> Tensor");
-  m.def("true_divide_.Tensor(Tensor(a!) self, Tensor other) -> Tensor(a!)");
-  m.def("remainder.Tensor(Tensor self, Tensor other) -> Tensor");
-  m.def("remainder_.Tensor(Tensor(a!) self, Tensor other) -> Tensor(a!)");
-  // fill
-  m.def("fill.Scalar(Tensor self, Scalar value) -> Tensor");
-  m.def("fill.Tensor(Tensor self, Tensor value) -> Tensor");
-  m.def("fill_.Scalar(Tensor(a!) self, Scalar value) -> Tensor(a!)");
-  m.def("fill_.Tensor(Tensor(a!) self, Tensor value) -> Tensor(a!)");
+  // Auto-generated pointwise schema defs (from op_specs.py).
+#define FLAGGEMS_CSTUB_SCHEMA
+#include "pointwise_cstub.inc"
+#undef FLAGGEMS_CSTUB_SCHEMA
 #endif
   m.def("exponential_(Tensor(a!) x, float  lambd = 1.0, *,Generator? gen = None) -> Tensor(a!)");
   // blas
@@ -307,44 +243,10 @@ TORCH_LIBRARY(flag_gems, m) {
 
 TORCH_LIBRARY_IMPL(flag_gems, FLAGGEMS_DISPATCH_KEY, m) {
 #ifdef FLAGGEMS_POINTWISE_DYNAMIC
-  // add
-  m.impl("add_tensor", TORCH_FN(add_tensor));
-  m.impl("add_scalar", TORCH_FN(add_scalar));
-  m.impl("add_tensor_inplace", TORCH_FN(add_tensor_inplace));
-  m.impl("add_scalar_inplace", TORCH_FN(add_scalar_inplace));
-  // div
-  m.impl("div.Tensor", TORCH_FN(true_div));
-  m.impl("div_.Tensor", TORCH_FN(true_div_));
-  m.impl("div.Tensor_mode", TORCH_FN(div_mode));
-  m.impl("div_.Tensor_mode", TORCH_FN(div_mode_));
-  m.impl("div.Scalar", TORCH_FN(true_div));
-  m.impl("div_.Scalar", TORCH_FN(true_div_));
-  m.impl("div.Scalar_mode", TORCH_FN(div_mode));
-  m.impl("div_.Scalar_mode", TORCH_FN(div_mode_));
-  m.impl("floor_divide", TORCH_FN(floor_div));
-  m.impl("floor_divide_.Tensor", TORCH_FN(floor_div_));
-  m.impl("floor_divide.Scalar", TORCH_FN(floor_div));
-  m.impl("floor_divide_.Scalar", TORCH_FN(floor_div_));
-  m.impl("divide.Tensor", TORCH_FN(true_div));
-  m.impl("divide_.Tensor", TORCH_FN(true_div_));
-  m.impl("divide.Scalar", TORCH_FN(true_div));
-  m.impl("divide_.Scalar", TORCH_FN(true_div_));
-  m.impl("divide.Tensor_mode", TORCH_FN(div_mode));
-  m.impl("divide_.Tensor_mode", TORCH_FN(div_mode_));
-  m.impl("divide.Scalar_mode", TORCH_FN(div_mode));
-  m.impl("divide_.Scalar_mode", TORCH_FN(div_mode_));
-  m.impl("true_divide.Tensor", TORCH_FN(true_div));
-  m.impl("true_divide_.Tensor", TORCH_FN(true_div_));
-  m.impl("remainder.Scalar", TORCH_FN(remainder));
-  m.impl("remainder_.Scalar", TORCH_FN(remainder_));
-  m.impl("remainder.Tensor", TORCH_FN(remainder));
-  m.impl("remainder_.Tensor", TORCH_FN(remainder_));
-  m.impl("remainder.Scalar_Tensor", TORCH_FN(remainder));
-  // fill
-  m.impl("fill.Scalar", TORCH_FN(fill_scalar));
-  m.impl("fill.Tensor", TORCH_FN(fill_tensor));
-  m.impl("fill_.Scalar", TORCH_FN(fill_scalar_));
-  m.impl("fill_.Tensor", TORCH_FN(fill_tensor_));
+  // Auto-generated pointwise impl registrations (from op_specs.py).
+#define FLAGGEMS_CSTUB_IMPL
+#include "pointwise_cstub.inc"
+#undef FLAGGEMS_CSTUB_IMPL
 #endif
 
   m.impl("exponential_", TORCH_FN(exponential_));

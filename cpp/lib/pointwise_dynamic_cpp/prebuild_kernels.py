@@ -63,16 +63,28 @@ from typing import Dict, List
 # Path setup — ensure FlagGems source tree is importable
 # ---------------------------------------------------------------------------
 SCRIPT_DIR = Path(__file__).parent.resolve()
-FLAGGEMS_ROOT = SCRIPT_DIR.parent.parent
+FLAGGEMS_ROOT = SCRIPT_DIR.parent.parent.parent
 FLAGGEMS_SRC = FLAGGEMS_ROOT / "src"
 sys.path.insert(0, str(FLAGGEMS_SRC))
+# op_specs.py lives alongside this script.
+sys.path.insert(0, str(SCRIPT_DIR))
 
 try:
+    import flag_gems
     from flag_gems.utils.code_cache import code_cache_dir
     from flag_gems.utils.pointwise_dynamic import PointwiseDynamicFunction
 except ImportError as e:
     print(f"Error importing FlagGems: {e}")
     print(f"Ensure FlagGems source can be found at: {FLAGGEMS_SRC}")
+    sys.exit(1)
+
+FLAGGEMS_IMPORTED_FROM = Path(flag_gems.__file__).resolve().parent
+FLAGGEMS_EXPECTED_PACKAGE = (FLAGGEMS_SRC / "flag_gems").resolve()
+if FLAGGEMS_IMPORTED_FROM != FLAGGEMS_EXPECTED_PACKAGE:
+    print(
+        "Error: imported flag_gems from an unexpected source tree: "
+        f"{FLAGGEMS_IMPORTED_FROM} (expected {FLAGGEMS_EXPECTED_PACKAGE})"
+    )
     sys.exit(1)
 
 
@@ -121,6 +133,9 @@ class KernelEntry:
         num_non_tensor_inputs: Number of scalar (non-tensor) inputs.
         num_outputs: Number of output tensors.
         promotion_rules: Dtype-promotion rules for each output.
+        is_tensor_mask: The actual is_tensor ordering from the schema
+            (e.g. [True, False] for tensor-scalar, [False, True] for
+            scalar-tensor). Needed to correctly build the C++ mask.
         is_1d_tile: Whether the kernel uses the 1D-tile codegen path
             (no stride_order args, single tile_size constexpr).
         is_block_pointer: Whether the kernel uses block pointers
@@ -139,6 +154,7 @@ class KernelEntry:
     num_non_tensor_inputs: int
     num_outputs: int
     promotion_rules: List[PromotionRule]
+    is_tensor_mask: List[bool]
     is_1d_tile: bool
     is_block_pointer: bool
     max_tile_size: int
@@ -287,6 +303,7 @@ def prebuild_from_function(
                 num_non_tensor_inputs=num_non_tensor_inputs,
                 num_outputs=num_outputs,
                 promotion_rules=promotion_rules,
+                is_tensor_mask=schema._is_tensor,
                 is_1d_tile=is_1d_tile,
                 is_block_pointer=is_block_pointer,
                 max_tile_size=cfg_max_tile_size,
@@ -487,6 +504,17 @@ def generate_manifest_header(entries: List[KernelEntry], max_rank: int) -> str:
     lines.append("")
     lines.append(f"constexpr int MAX_RANK = {max_rank};")
     lines.append("")
+    lines.append(
+        f"// POINTWISE_MAX_RANK: The C++ dispatch pre-generates kernels for ranks 0..{max_rank}."
+    )
+    lines.append(
+        f"// Inputs with effective rank > {max_rank} that skip the fast path will error with a"
+    )
+    lines.append(
+        "// TORCH_CHECK. The Python path (torch.ops.flag_gems.*) codegens any rank on"
+    )
+    lines.append("// demand and does not have this limit.")
+    lines.append("")
     lines.append("// Lookup helper — returns nullptr when (op_name, rank) is not found")
     lines.append(
         "inline const KernelInfo* get_kernel_info(const std::string& op_name, int rank) {"
@@ -503,26 +531,30 @@ def generate_manifest_header(entries: List[KernelEntry], max_rank: int) -> str:
     return "\n".join(lines)
 
 
-def _build_is_tensor_mask(num_tensors: int, num_scalars: int) -> str:
-    """Build the ``is_tensor_mask`` C++ initializer from counts.
+def _build_is_tensor_mask(is_tensor_list: List[bool]) -> str:
+    """Build the ``is_tensor_mask`` C++ initializer from the schema's is_tensor list.
 
-    The mask reflects the *original* argument order in the Python
-    ``@pointwise_dynamic`` schema.  For simplicity, we assume tensors
-    come first, followed by scalars — which matches how
-    ``FunctionSchema`` orders them for all standard FlagGems ops.
+    The mask order MUST match the @pointwise_dynamic decorator's is_tensor
+    parameter: if is_tensor=[False, True] (scalar first), the mask is
+    {false, true}. Passing {true, false} to such a kernel causes the
+    dispatcher to pass the tensor pointer into the scalar slot (crash).
+
+    Previously assumed tensors-first, which broke scalar-first ops like
+    rem_st (remainder.Scalar_Tensor).
 
     Args:
-        num_tensors: Number of tensor inputs.
-        num_scalars: Number of scalar (non-tensor) inputs.
+        is_tensor_list: The actual is_tensor ordering from the schema.
 
     Returns:
         A brace-enclosed C++ bool initializer, e.g. ``"{true, true, false}"``.
     """
-    parts = ["true"] * num_tensors + ["false"] * num_scalars
-    return "{" + ", ".join(parts) + "}"
+    mask_parts = ["true" if is_t else "false" for is_t in is_tensor_list]
+    return "{" + ", ".join(mask_parts) + "}"
 
 
-def _generate_wrapper(op_name: str, num_tensors: int, num_scalars: int) -> str:
+def _generate_wrapper(
+    op_name: str, num_tensors: int, num_scalars: int, is_tensor_mask: List[bool]
+) -> str:
     """Generate a pair of inline C++ wrappers for a single op.
 
     Produces both a normal version (allocates output) and an ``_out``
@@ -534,6 +566,7 @@ def _generate_wrapper(op_name: str, num_tensors: int, num_scalars: int) -> str:
         op_name: The op name used as the registry key.
         num_tensors: Number of tensor inputs.
         num_scalars: Number of scalar (non-tensor) inputs.
+        is_tensor_mask: The actual is_tensor ordering from the schema.
 
     Returns:
         A C++ code string containing both wrapper functions, or an
@@ -549,7 +582,7 @@ def _generate_wrapper(op_name: str, num_tensors: int, num_scalars: int) -> str:
         - (3,1) Ternary + 1 scalar
     """
     nt, ns = num_tensors, num_scalars
-    mask = _build_is_tensor_mask(nt, ns)
+    mask = _build_is_tensor_mask(is_tensor_mask)
 
     # --- tensor parameter lists ---
     tensor_params = {
@@ -573,12 +606,15 @@ def _generate_wrapper(op_name: str, num_tensors: int, num_scalars: int) -> str:
     if ns == 0:
         s_params_with_comma = ""
         s_args = "{}"
+        scalar_dtypes = "{}"
     elif ns == 1:
         s_params_with_comma = ", double scalar = 1.0"
         s_args = "{scalar}"
+        scalar_dtypes = "{at::kDouble}"
     elif ns == 2:
         s_params_with_comma = ", double scalar0 = 0.0, double scalar1 = 0.0"
         s_args = "{scalar0, scalar1}"
+        scalar_dtypes = "{at::kDouble, at::kDouble}"
     else:
         return f"// TODO: unsupported {ns} scalars for {op_name}\n\n"
 
@@ -595,7 +631,7 @@ def _generate_wrapper(op_name: str, num_tensors: int, num_scalars: int) -> str:
     all_params = t_params + (s_params_with_comma if ns else "")
     code += f"inline at::Tensor {op_name}({all_params}) {{\n"
     code += registry_lookup
-    code += f"    return dispatch_pointwise_impl(registry, {t_args}, {s_args}, {mask}, {{}});\n"
+    code += f"    return dispatch_pointwise_impl(registry, {t_args}, {s_args}, {scalar_dtypes}, {mask}, {{}});\n"
     code += "}\n\n"
 
     # _out wrapper (out tensor inserted after input tensors)
@@ -603,7 +639,7 @@ def _generate_wrapper(op_name: str, num_tensors: int, num_scalars: int) -> str:
     code += f"inline at::Tensor {op_name}_out({out_params}) {{\n"
     code += registry_lookup
     code += "    std::vector<c10::optional<at::Tensor>> pre_outputs = {out};\n"
-    code += f"    return dispatch_pointwise_impl(registry, {t_args}, {s_args}, {mask}, pre_outputs);\n"
+    code += f"    return dispatch_pointwise_impl(registry, {t_args}, {s_args}, {scalar_dtypes}, {mask}, pre_outputs);\n"
     code += "}\n\n"
 
     return code
@@ -652,11 +688,453 @@ namespace pointwise_dynamic {
             continue
         sample = op_entries[0]
         header += _generate_wrapper(
-            op_name, sample.num_input_tensors, sample.num_non_tensor_inputs
+            op_name,
+            sample.num_input_tensors,
+            sample.num_non_tensor_inputs,
+            sample.is_tensor_mask,
         )
 
     header += "}  // namespace pointwise_dynamic\n"
     return header
+
+
+# ===================================================================
+# aten-facing glue generation (from op_specs.py)
+# ===================================================================
+
+_GLUE_LICENSE = """\
+// Copyright 2026 FlagOS Contributors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+"""
+
+
+def _render_return(ret: str, name: str) -> str:
+    """``at::Tensor abs`` / ``at::Tensor &foo`` — matching header style."""
+    return f"{ret}{name}" if ret.endswith("&") else f"{ret} {name}"
+
+
+def _decl(spec) -> str:
+    """One-line C++ declaration ``<ret> <name>(<params with defaults>);``."""
+    if spec.decl_override:
+        return spec.decl_override
+    params = ", ".join(p.decl(with_default=True) for p in spec.params)
+    return f"{_render_return(spec.ret, spec.cpp_name)}({params});"
+
+
+def generate_operators_glue_header(specs) -> str:
+    """Generate ``pointwise_ops_glue.h`` — the ``flag_gems::<op>`` declarations.
+
+    Included by ``flag_gems/operators.h`` inside its
+    ``#ifdef FLAGGEMS_POINTWISE_DYNAMIC`` guard. Emits one declaration per spec,
+    preceded by its schema comment when present.
+    """
+    lines = [
+        _GLUE_LICENSE,
+        "",
+        "#pragma once",
+        "",
+        "// ==========================================================================",
+        "// Auto-generated by prebuild_kernels.py from op_specs.py -- DO NOT EDIT.",
+        "// aten-facing declarations for the pointwise_dynamic C++ glue.",
+        "//",
+        "// This file is #included *inside* `namespace flag_gems { ... }` by",
+        "// flag_gems/operators.h, so it must NOT open a namespace of its own.",
+        "// ==========================================================================",
+        "",
+    ]
+    for spec in specs:
+        if spec.decl_comment:
+            lines.append(f"// {spec.decl_comment}")
+        lines.append(_decl(spec))
+    lines.append("")
+    return "\n".join(lines)
+
+
+def _gen_passthrough_body(spec) -> str:
+    tensor_args = ", ".join(p.name for p in spec.params if p.is_tensor)
+    sig = ", ".join(p.defn() for p in spec.params)
+    body = []
+    if spec.decl_comment:
+        body.append(f"// {spec.decl_comment}")
+    body.append(f"{_render_return(spec.ret, spec.cpp_name)}({sig}) {{")
+    body.append(f"  return pointwise_dynamic::{spec.kernel}({tensor_args});")
+    body.append("}")
+    return "\n".join(body)
+
+
+def _gen_selector_body(spec) -> str:
+    sel = spec.select
+    on = sel["on"]
+    tensor_args = ", ".join(p.name for p in spec.params if p.is_tensor)
+    sig = ", ".join(p.defn() for p in spec.params)
+    body = []
+    if spec.decl_comment:
+        body.append(f"// {spec.decl_comment}")
+    body.append(f"{_render_return(spec.ret, spec.cpp_name)}({sig}) {{")
+    for value, kernel in sel["cases"].items():
+        body.append(f'  if ({on} == "{value}") {{')
+        body.append(f"    return pointwise_dynamic::{kernel}({tensor_args});")
+        body.append("  }")
+    if "check" in sel:
+        default_value, msg = sel["check"]
+        body.append(f'  TORCH_CHECK({on} == "{default_value}", "{msg}", {on}, "\'");')
+    body.append(f"  return pointwise_dynamic::{sel['default']}({tensor_args});")
+    body.append("}")
+    return "\n".join(body)
+
+
+def generate_lib_bodies(specs) -> str:
+    """Generate ``pointwise_ops_glue.cc`` — bodies for non-hand-written ops.
+
+    Passthrough ops forward to a single kernel; selector ops (e.g. gelu) branch
+    on a string kwarg. Hand-written ops (add/div/fill/remainder) are skipped --
+    their bodies stay in ``lib/<op>.cpp``.
+    """
+    lines = [
+        _GLUE_LICENSE,
+        "",
+        "// ==========================================================================",
+        "// Auto-generated by prebuild_kernels.py from op_specs.py -- DO NOT EDIT.",
+        "// Bodies for passthrough / selector pointwise ops.",
+        "// ==========================================================================",
+        "",
+        '#include "flag_gems/operators.h"',
+        '#include "pointwise_runtime.h"',
+        "",
+        "namespace flag_gems {",
+        "",
+    ]
+    for spec in specs:
+        if spec.handwritten:
+            continue
+        if spec.select is not None:
+            lines.append(_gen_selector_body(spec))
+        elif spec.kernel is not None:
+            lines.append(_gen_passthrough_body(spec))
+        else:
+            continue
+        lines.append("")
+    lines.append("}  // namespace flag_gems")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def _gen_pybind_line(spec) -> str:
+    pb = spec.pybind
+    if isinstance(pb, str):
+        return f'  m.def("{pb}", &flag_gems::{spec.cpp_name});'
+    # dict => lambda form with py::arg defaults
+    name = pb["name"]
+    plist = pb["params"]
+    call_params = ", ".join(t for (t, _n, _d) in plist)
+    call_args = ", ".join(n for (_t, n, _d) in plist)
+    out = [
+        "  m.def(",
+        f'      "{name}",',
+        f"      []({call_params}) {{",
+        f"        return flag_gems::{spec.cpp_name}({call_args});",
+        "      },",
+    ]
+    for i, (_t, n, d) in enumerate(plist):
+        arg = f'      py::arg("{n}")'
+        if d is not None:
+            arg += f" = {d}"
+        arg += "," if i < len(plist) - 1 else ");"
+        out.append(arg)
+    return "\n".join(out)
+
+
+def _boxed_recipe_for(spec):
+    """Classify one OpSpec into a (kind, base, ts, st, both0, cases) tuple.
+
+    kind: 'Plain' | 'Binary' | 'SelectPlain' | 'SelectBinary'
+      Plain        - unary/add/fill: tensors->inputs, scalars->scalars in order.
+      Binary       - div/floor/trunc/remainder: 0-dim operand -> scalar promotion,
+                     routing to explicit base/ts/st kernel variants.
+      SelectPlain  - gelu: a string arg selects the (unary) kernel, then Plain.
+      SelectBinary - div_mode: a string arg selects the family base, then Binary
+                     with variant names derived by suffix.
+    Returns None for specs that get no aten registration of their own (helper
+    kernels like remainder_ts/remainder_st that are only reached from a family
+    dispatcher body).
+    """
+    sel = spec.boxed_select
+    if sel is not None:
+        kind = "SelectBinary" if sel.get("family") else "SelectPlain"
+        cases = list(sel.get("cases", {}).items())
+        return (kind, sel["default"], None, None, False, cases)
+    if spec.kernel is None:
+        return None
+    if (
+        spec.kernel_ts is not None
+        or spec.kernel_st is not None
+        or spec.boxed_both0_host
+    ):
+        return (
+            "Binary",
+            spec.kernel,
+            spec.kernel_ts,
+            spec.kernel_st,
+            spec.boxed_both0_host,
+            [],
+        )
+    return ("Plain", spec.kernel, None, None, False, [])
+
+
+def generate_aten_to_kernel_header(specs, legacy_impl) -> str:
+    """Emit ``pointwise_aten_to_kernel.h`` — the boxed-dispatch recipe table.
+
+    Maps each registered aten name (``flag_gems::<name>``) to a ``BoxedRecipe``
+    consumed by the hand-written generic adapter in ``pointwise_boxed.h``. Two
+    sources of aten names, mirroring ``generate_cstub_blocks``:
+      * spec-driven (``spec.impl_name``): add / unary / gelu;
+      * legacy families (``legacy_impl`` = (aten_name, cpp_name) pairs) joined
+        to their spec by ``cpp_name``: div / floor / trunc / remainder / fill.
+    """
+    by_cpp = {s.cpp_name: s for s in specs}
+
+    # (aten_name, spec) pairs in emission order: spec-driven first, then legacy.
+    entries = []
+    for spec in specs:
+        if spec.impl_name is not None:
+            entries.append((spec.impl_name, spec))
+    for aten_name, cpp_name in legacy_impl:
+        spec = by_cpp.get(cpp_name)
+        if spec is None:
+            raise SystemExit(
+                f"generate_aten_to_kernel_header: legacy impl '{aten_name}' "
+                f"references unknown cpp fn '{cpp_name}'"
+            )
+        entries.append((aten_name, spec))
+
+    _KIND_ENUM = {"Plain": 0, "Binary": 1, "SelectPlain": 2, "SelectBinary": 3}
+
+    rows = []
+    for aten_name, spec in entries:
+        recipe = _boxed_recipe_for(spec)
+        if recipe is None:
+            raise SystemExit(
+                f"generate_aten_to_kernel_header: '{aten_name}' (cpp "
+                f"{spec.cpp_name}) has no boxed routing (kernel/select unset)"
+            )
+        kind, base, ts, st, both0, cases = recipe
+
+        def _c(v):
+            return f'"{v}"' if v is not None else "nullptr"
+
+        cases_init = ", ".join(f'{{"{val}", "{ker}"}}' for val, ker in cases)
+        cases_field = f"{{{cases_init}}}" if cases else "{}"
+        rows.append(
+            f'    {{"flag_gems::{aten_name}", {{BoxedKind::{kind}, '
+            f"{_c(base)}, {_c(ts)}, {_c(st)}, "
+            f"{'true' if both0 else 'false'}, {cases_field}}}}},"
+        )
+
+    body = "\n".join(rows)
+    return f"""\
+{_GLUE_LICENSE}
+
+// ==========================================================================
+// Auto-generated by prebuild_kernels.py from op_specs.py -- DO NOT EDIT.
+// Boxed-dispatch recipe table consumed by pointwise_boxed.h.
+// ==========================================================================
+#pragma once
+
+#include <string>
+#include <unordered_map>
+#include <vector>
+
+namespace flag_gems {{
+
+// How the generic boxed adapter should route an aten op to Triton kernels.
+enum class BoxedKind : int {{
+  Plain = 0,         // tensors->inputs, scalars->scalars, natural mask
+  Binary = 1,        // 0-dim operand -> scalar promotion (base/ts/st variants)
+  SelectPlain = 2,   // string arg selects kernel, then Plain
+  SelectBinary = 3,  // string arg selects family base, then Binary
+}};
+
+struct BoxedSelectorCase {{
+  const char* value;   // string value to match (e.g. "tanh", "floor")
+  const char* kernel;  // base kernel selected on match
+}};
+
+struct BoxedRecipe {{
+  BoxedKind kind;
+  const char* kernel;     // base kernel (Plain) / binary base / selector default
+  const char* kernel_ts;  // Binary: 2nd operand 0-dim/scalar variant (or nullptr)
+  const char* kernel_st;  // Binary: 1st operand 0-dim/scalar variant (or nullptr)
+  bool both0_host;        // remainder: both-0-dim host fmod special case
+  std::vector<BoxedSelectorCase> cases;  // Select* kinds: value -> base kernel
+}};
+
+// aten name ("flag_gems::<op>") -> routing recipe.
+inline const std::unordered_map<std::string, BoxedRecipe> ATEN_TO_BOXED = {{
+{body}
+}};
+
+}}  // namespace flag_gems
+"""
+
+
+def generate_cstub_blocks(
+    specs, legacy_pybind, legacy_schema, legacy_impl, boxed=False
+) -> str:
+    """Generate ``pointwise_cstub.inc`` — the three registration blocks.
+
+    Emitted as three ``#if defined(...)`` sections so ``cstub.cpp`` can include
+    the same file at three points, selecting one block each time via a macro:
+
+        #define FLAGGEMS_CSTUB_PYBIND
+        #include "pointwise_cstub.inc"
+        #undef FLAGGEMS_CSTUB_PYBIND
+
+    Registration *order* is not semantically significant to PyTorch, so specs
+    and legacy families are simply concatenated within each block.
+    """
+    pybind, schema, impl = [], [], []
+
+    # When boxed, every pointwise op registers the SAME generic adapter via
+    # makeFromBoxedFunction; the per-op routing lives in the ATEN_TO_BOXED table
+    # (pointwise_aten_to_kernel.h). The unboxed path keeps per-op TORCH_FN.
+    _BOXED_FN = (
+        "torch::CppFunction::makeFromBoxedFunction<"
+        "&flag_gems::flaggems_pointwise_boxed>()"
+    )
+
+    def _impl_line(aten_name):
+        return f'  m.impl("{aten_name}", {_BOXED_FN});'
+
+    # Spec-driven registrations.
+    for spec in specs:
+        if spec.pybind is not None:
+            pybind.append(_gen_pybind_line(spec))
+        if spec.schema is not None:
+            if spec.schema_tags:
+                schema.append(f'  m.def("{spec.schema}", {spec.schema_tags});')
+            else:
+                schema.append(f'  m.def("{spec.schema}");')
+        if spec.impl_name is not None:
+            if boxed:
+                impl.append(_impl_line(spec.impl_name))
+            else:
+                impl.append(f'  m.impl("{spec.impl_name}", TORCH_FN({spec.cpp_name}));')
+
+    # Legacy div/fill families.
+    for name, cpp in legacy_pybind:
+        pybind.append(f'  m.def("{name}", &flag_gems::{cpp});')
+    for s in legacy_schema:
+        schema.append(f'  m.def("{s}");')
+    for name, cpp in legacy_impl:
+        if boxed:
+            impl.append(_impl_line(name))
+        else:
+            impl.append(f'  m.impl("{name}", TORCH_FN({cpp}));')
+
+    def _section(macro, body_lines):
+        return [f"#if defined({macro})"] + body_lines + [f"#endif  // {macro}", ""]
+
+    lines = [
+        _GLUE_LICENSE,
+        "",
+        "// ==========================================================================",
+        "// Auto-generated by prebuild_kernels.py from op_specs.py -- DO NOT EDIT.",
+        "// Three registration blocks for csrc/cstub.cpp, selected by macro.",
+        "// ==========================================================================",
+        "",
+    ]
+    lines += _section("FLAGGEMS_CSTUB_PYBIND", pybind)
+    lines += _section("FLAGGEMS_CSTUB_SCHEMA", schema)
+    lines += _section("FLAGGEMS_CSTUB_IMPL", impl)
+    return "\n".join(lines)
+
+
+def validate_specs(specs, kernel_meta: Dict[str, tuple]) -> None:
+    """Cross-check spec-declared arity against the discovered FunctionSchema.
+
+    ``kernel_meta`` maps a pointwise kernel attr name (e.g. ``"abs_func"``) to
+    ``(num_input_tensors, num_non_tensor_inputs)`` read off the
+    ``@pointwise_dynamic`` schema. For each spec that names a single ``kernel``
+    and declares ``check_arity``, the counts must match, otherwise the build is
+    aborted -- turning "did the human get the signature right?" into a
+    build-time assertion.
+    """
+    errors = []
+    for spec in specs:
+        if spec.kernel is None or spec.check_arity is None:
+            continue
+        if spec.kernel not in kernel_meta:
+            errors.append(
+                f"{spec.cpp_name}: kernel '{spec.kernel}' was not discovered "
+                f"among @pointwise_dynamic functions (check op-file list)"
+            )
+            continue
+        got = kernel_meta[spec.kernel]
+        if got != spec.check_arity:
+            errors.append(
+                f"{spec.cpp_name}: declared arity {spec.check_arity} != "
+                f"discovered {got} for kernel '{spec.kernel}'"
+            )
+    if errors:
+        print("ERROR: op_specs.py validation failed:")
+        for e in errors:
+            print(f"  - {e}")
+        sys.exit(1)
+
+
+def validate_legacy_alignment(schema_list, impl_list) -> None:
+    """Validate 1:1 alignment between LEGACY_SCHEMA and LEGACY_IMPL.
+
+    The custom flag_gems namespace requires local schemas for all implementations
+    because the boxed adapter calls op.schema(). Every impl must have a schema,
+    and vice versa.
+    """
+    errors = []
+
+    # Extract schema names (before the opening paren)
+    schema_names = set()
+    for s in schema_list:
+        name = s.split("(")[0].strip()
+        if name in schema_names:
+            errors.append(f"Duplicate schema name: {name}")
+        schema_names.add(name)
+
+    # Extract impl names (first element of each tuple)
+    impl_names = set()
+    for impl_name, cpp_fn in impl_list:
+        if impl_name in impl_names:
+            errors.append(f"Duplicate impl name: {impl_name}")
+        impl_names.add(impl_name)
+
+    # Check alignment
+    missing_schemas = impl_names - schema_names
+    missing_impls = schema_names - impl_names
+
+    if missing_schemas:
+        errors.append(
+            f"Implementations without schemas: {sorted(missing_schemas)}\n"
+            f"  (boxed adapter needs local schemas for all custom namespace impls)"
+        )
+
+    if missing_impls:
+        errors.append(f"Schemas without implementations: {sorted(missing_impls)}")
+
+    if errors:
+        print("ERROR: LEGACY_SCHEMA / LEGACY_IMPL alignment check failed:")
+        for e in errors:
+            print(f"  - {e}")
+        sys.exit(1)
 
 
 # ===================================================================
@@ -683,11 +1161,18 @@ def main():
         help="Directory containing op files to scan",
     )
 
-    parser.add_argument("--max-rank", type=int, default=6, help="Maximum tensor rank")
+    parser.add_argument("--max-rank", type=int, default=5, help="Maximum tensor rank")
     parser.add_argument(
         "--output-dir", type=str, required=True, help="Output directory"
     )
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
+    parser.add_argument(
+        "--boxed",
+        action="store_true",
+        help="Register pointwise ops via the generic boxed adapter "
+        "(flaggems_pointwise_boxed) instead of per-op TORCH_FN. Also emits "
+        "pointwise_aten_to_kernel.h with the routing table.",
+    )
 
     args = parser.parse_args()
 
@@ -774,6 +1259,48 @@ def main():
     report_path = output_dir / "kernel_report.txt"
     report_path.write_text(generate_kernel_report(all_entries, ops_found))
     print(f"Generated: {report_path}")
+
+    # -----------------------------------------------------------------
+    # aten-facing glue (declarations, bodies, cstub blocks) from op_specs.py
+    # -----------------------------------------------------------------
+    import op_specs
+
+    # arity map for cross-checking specs against discovered schemas
+    kernel_meta = {
+        name: (e[0].num_input_tensors, e[0].num_non_tensor_inputs)
+        for name, e in ops_found.items()
+        if e
+    }
+    validate_specs(op_specs.ALL_SPECS, kernel_meta)
+    validate_legacy_alignment(op_specs.LEGACY_SCHEMA, op_specs.LEGACY_IMPL)
+
+    glue_header = output_dir / "pointwise_ops_glue.h"
+    glue_header.write_text(generate_operators_glue_header(op_specs.ALL_SPECS))
+    print(f"Generated: {glue_header}")
+
+    glue_bodies = output_dir / "pointwise_ops_glue.cc"
+    glue_bodies.write_text(generate_lib_bodies(op_specs.ALL_SPECS))
+    print(f"Generated: {glue_bodies}")
+
+    cstub_inc = output_dir / "pointwise_cstub.inc"
+    cstub_inc.write_text(
+        generate_cstub_blocks(
+            op_specs.ALL_SPECS,
+            op_specs.LEGACY_PYBIND,
+            op_specs.LEGACY_SCHEMA,
+            op_specs.LEGACY_IMPL,
+            boxed=args.boxed,
+        )
+    )
+    print(f"Generated: {cstub_inc}" + (" (boxed)" if args.boxed else ""))
+
+    # Boxed routing table — emitted unconditionally (harmless header when the
+    # unboxed path is built; required when --boxed).
+    aten_to_kernel = output_dir / "pointwise_aten_to_kernel.h"
+    aten_to_kernel.write_text(
+        generate_aten_to_kernel_header(op_specs.ALL_SPECS, op_specs.LEGACY_IMPL)
+    )
+    print(f"Generated: {aten_to_kernel}")
 
     # -----------------------------------------------------------------
     # Summary
