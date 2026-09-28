@@ -35,7 +35,7 @@ env:
   # throwaway HOME; the check scripts (derive_changed_operators, etc.) then run
   # git with HOME=/github/home and git rejects the dir as dubious ownership
   # ("fatal: not a git repository"). Trust it for every git call in the job via
-  # git's env-based config so we don't need a setup step in each of the jobs.
+  # git's env-based config so we don't need a setup step in each of the 9 jobs.
   GIT_CONFIG_COUNT: '1'
   GIT_CONFIG_KEY_0: safe.directory
   GIT_CONFIG_VALUE_0: '*'
@@ -77,12 +77,19 @@ jobs:
 
   check-operators-yaml:
     # cpu-runner is an already-running container; no container: image needed.
-    # Reuses the working tree checked out by derive-changed-operators on the
-    # same runner instead of checking out again.
     runs-on: cpu-runner
     needs: derive-changed-operators
     if: needs.derive-changed-operators.outputs.has_changes == 'true'
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - name: Ensure full working tree
+        shell: bash
+        run: |
+          # See derive-changed-operators: recover from inherited sparse-checkout
+          # state in the reused runner workspace. Harmless no-op when clean.
+          git sparse-checkout disable 2>/dev/null || true
+          git ls-files -z | xargs -0 -r git update-index --no-skip-worktree
+          git checkout --force HEAD -- .
       - name: Install dependencies
         run: pip install pyyaml
       - name: Check operators.yaml
@@ -92,23 +99,38 @@ jobs:
 
   check-init-exports:
     # cpu-runner is an already-running container; no container: image needed.
-    # Reuses the working tree checked out by derive-changed-operators on the
-    # same runner instead of checking out again.
     runs-on: cpu-runner
     needs: derive-changed-operators
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - name: Ensure full working tree
+        shell: bash
+        run: |
+          # See derive-changed-operators: recover from inherited sparse-checkout
+          # state in the reused runner workspace. Harmless no-op when clean.
+          git sparse-checkout disable 2>/dev/null || true
+          git ls-files -z | xargs -0 -r git update-index --no-skip-worktree
+          git checkout --force HEAD -- .
       - name: Check __init__.py exports and registry
         run: python3 tools/ci_checks/check_init_exports.py
 
   check-kernelgen-tests:
     # cpu-runner is an already-running container; no container: image needed.
-    # Reuses the working tree checked out by derive-changed-operators on the
-    # same runner instead of checking out again (that job already did
-    # fetch-depth: 0, which this check also needs for base/head diffing).
     runs-on: cpu-runner
     needs: derive-changed-operators
     if: needs.derive-changed-operators.outputs.has_changes == 'true'
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Ensure full working tree
+        shell: bash
+        run: |
+          # See derive-changed-operators: recover from inherited sparse-checkout
+          # state in the reused runner workspace. Harmless no-op when clean.
+          git sparse-checkout disable 2>/dev/null || true
+          git ls-files -z | xargs -0 -r git update-index --no-skip-worktree
+          git checkout --force HEAD -- .
       - name: Check changed test files for use_gems
         run: |
           python3 tools/ci_checks/check_kernelgen_tests.py \
@@ -118,12 +140,19 @@ jobs:
 
   check-operator-markers:
     # cpu-runner is an already-running container; no container: image needed.
-    # Reuses the working tree checked out by derive-changed-operators on the
-    # same runner instead of checking out again.
     runs-on: cpu-runner
     needs: derive-changed-operators
     if: needs.derive-changed-operators.outputs.has_changes == 'true'
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - name: Ensure full working tree
+        shell: bash
+        run: |
+          # See derive-changed-operators: recover from inherited sparse-checkout
+          # state in the reused runner workspace. Harmless no-op when clean.
+          git sparse-checkout disable 2>/dev/null || true
+          git ls-files -z | xargs -0 -r git update-index --no-skip-worktree
+          git checkout --force HEAD -- .
       - name: Install dependencies
         run: pip install pyyaml
       - name: Check operator test files and markers
@@ -133,12 +162,19 @@ jobs:
 
   check-aten-operators:
     # cpu-runner is an already-running container; no container: image needed.
-    # Reuses the working tree checked out by derive-changed-operators on the
-    # same runner instead of checking out again.
     runs-on: cpu-runner
     needs: derive-changed-operators
     if: needs.derive-changed-operators.outputs.has_changes == 'true'
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - name: Ensure full working tree
+        shell: bash
+        run: |
+          # See derive-changed-operators: recover from inherited sparse-checkout
+          # state in the reused runner workspace. Harmless no-op when clean.
+          git sparse-checkout disable 2>/dev/null || true
+          git ls-files -z | xargs -0 -r git update-index --no-skip-worktree
+          git checkout --force HEAD -- .
       - name: Install dependencies
         run: pip install pyyaml
       - name: Check aten operator names
@@ -151,12 +187,19 @@ jobs:
 
   check-api-logs:
     # cpu-runner is an already-running container; no container: image needed.
-    # Reuses the working tree checked out by derive-changed-operators on the
-    # same runner instead of checking out again.
     runs-on: cpu-runner
     needs: derive-changed-operators
     if: needs.derive-changed-operators.outputs.has_changes == 'true'
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - name: Ensure full working tree
+        shell: bash
+        run: |
+          # See derive-changed-operators: recover from inherited sparse-checkout
+          # state in the reused runner workspace. Harmless no-op when clean.
+          git sparse-checkout disable 2>/dev/null || true
+          git ls-files -z | xargs -0 -r git update-index --no-skip-worktree
+          git checkout --force HEAD -- .
       - name: Install dependencies
         run: pip install pyyaml
       - name: Check API logging convention
@@ -166,12 +209,19 @@ jobs:
 
   check-benchmark-coverage:
     # cpu-runner is an already-running container; no container: image needed.
-    # Reuses the working tree checked out by derive-changed-operators on the
-    # same runner instead of checking out again.
     runs-on: cpu-runner
     needs: derive-changed-operators
     if: needs.derive-changed-operators.outputs.has_changes == 'true'
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - name: Ensure full working tree
+        shell: bash
+        run: |
+          # See derive-changed-operators: recover from inherited sparse-checkout
+          # state in the reused runner workspace. Harmless no-op when clean.
+          git sparse-checkout disable 2>/dev/null || true
+          git ls-files -z | xargs -0 -r git update-index --no-skip-worktree
+          git checkout --force HEAD -- .
       - name: Install dependencies
         run: pip install pyyaml
       - name: Check benchmark coverage
