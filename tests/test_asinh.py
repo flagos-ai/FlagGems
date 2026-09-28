@@ -40,8 +40,7 @@ def test_asinh(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp, True)
     ref_out = torch.asinh(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.asinh(inp)
+    res_out = flag_gems.asinh(inp)
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
@@ -52,8 +51,7 @@ def test_asinh_various_sizes(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp, True)
     ref_out = torch.asinh(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.asinh(inp)
+    res_out = flag_gems.asinh(inp)
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
@@ -74,8 +72,7 @@ def test_asinh_edge_cases(dtype):
     inp = torch.tensor(vals, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp, True)
     ref_out = torch.asinh(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.asinh(inp)
+    res_out = flag_gems.asinh(inp)
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
@@ -84,8 +81,7 @@ def test_asinh_empty_tensor():
     inp = torch.empty(0, dtype=torch.float32, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
     ref_out = torch.asinh(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.asinh(inp)
+    res_out = flag_gems.asinh(inp)
     utils.gems_assert_equal(res_out, ref_out)
 
 
@@ -111,7 +107,6 @@ def test_asinh_(shape, dtype):
     ref_inp = utils.to_reference(inp.clone())
 
     ref_out = ref_inp.asinh_()
-    with flag_gems.use_gems():
-        res_out = inp.asinh_()
+    res_out = flag_gems.asinh_(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

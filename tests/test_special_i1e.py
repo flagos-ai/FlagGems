@@ -19,19 +19,6 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-
-# The active implementation may be the generic one (flag_gems.ops.special_i1e,
-# logging "GEMS ...") or a vendor-specific override registered under
-# flag_gems.runtime.backend._<vendor>.ops (logging "GEMS_<VENDOR> ..."), so
-# derive the logger name and expected prefix from the resolved function
-# instead of hardcoding either.
-def _gems_log_prefix(fn):
-    module = fn.__module__
-    if module.startswith("flag_gems.runtime.backend."):
-        return f"GEMS_{flag_gems.vendor_name.upper()}"
-    return "GEMS"
-
-
 _SPECIAL_I1E_LOGGER = flag_gems.special_i1e.__module__
 _SPECIAL_I1E_OUT_LOGGER = flag_gems.special_i1e_out.__module__
 
@@ -46,7 +33,7 @@ def test_special_i1e(shape, dtype, caplog):
     with caplog.at_level("DEBUG", logger=_SPECIAL_I1E_LOGGER):
         with flag_gems.use_gems():
             res_out = torch.special.i1e(inp)
-    assert f"{_gems_log_prefix(flag_gems.special_i1e)} SPECIAL_I1E" in caplog.text
+    assert f"{utils.gems_log_prefix(flag_gems.special_i1e)} SPECIAL_I1E" in caplog.text
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
@@ -65,7 +52,7 @@ def test_special_i1e_out(shape, dtype, caplog):
         with flag_gems.use_gems():
             res_out = torch.ops.aten.special_i1e.out(inp, out=out)
 
-    expected_prefix = _gems_log_prefix(flag_gems.special_i1e_out)
+    expected_prefix = utils.gems_log_prefix(flag_gems.special_i1e_out)
     assert f"{expected_prefix} SPECIAL_I1E_OUT" in caplog.text
     assert res_out is out
     utils.gems_assert_close(res_out, ref_out, dtype)
