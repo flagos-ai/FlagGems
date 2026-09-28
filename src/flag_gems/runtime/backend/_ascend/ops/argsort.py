@@ -2831,7 +2831,9 @@ file(WRITE "${CMAKE_BINARY_DIR}/argsort-cxx-include-path.txt"
     "${argsort_cxx_include_path}")
 target_include_directories(ascend_argsort_runtime PRIVATE
     "$ENV{ASCEND_HOME_PATH}/aarch64-linux/include")
+# Match the host C++ compiler's library search for the final ASC link.
 target_link_directories(ascend_argsort_runtime PRIVATE
+    ${CMAKE_CXX_IMPLICIT_LINK_DIRECTORIES}
     "$ENV{ASCEND_HOME_PATH}/lib64"
     "$ENV{ASCEND_HOME_PATH}/aarch64-linux/lib64")
 target_link_libraries(ascend_argsort_runtime PRIVATE
