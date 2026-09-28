@@ -1075,3 +1075,12 @@ swiglu:
     - [2560, 2048]
     - [15000, 2048]
   shape_desc: "M, 2H (last dim is split in half)"
+
+unique2:
+  shapes:
+    - [1024]
+    - [4096]
+    - [16384]
+    - [65536]
+    - [262144]
+  shape_desc: "N"

@@ -40,9 +40,7 @@ def test_bucketize(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
     ref_out = _reference_bucketize(inp, boundaries)
-
-    with flag_gems.use_gems():
-        res_out = torch.bucketize(inp, boundaries)
+    res_out = flag_gems.bucketize(inp, boundaries)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -55,9 +53,7 @@ def test_bucketize_right(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
     ref_out = _reference_bucketize(inp, boundaries, right=True)
-
-    with flag_gems.use_gems():
-        res_out = torch.bucketize(inp, boundaries, right=True)
+    res_out = flag_gems.bucketize(inp, boundaries, right=True)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -70,9 +66,7 @@ def test_bucketize_int32(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
     ref_out = _reference_bucketize(inp, boundaries, out_int32=True)
-
-    with flag_gems.use_gems():
-        res_out = torch.bucketize(inp, boundaries, out_int32=True)
+    res_out = flag_gems.bucketize(inp, boundaries, out_int32=True)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -109,8 +103,6 @@ def test_bucketize_boundary_cases(right, boundary_values, boundary_dtype):
     )
 
     ref_out = _reference_bucketize(inp, boundaries, right=right)
-
-    with flag_gems.use_gems():
-        res_out = torch.bucketize(inp, boundaries, right=right)
+    res_out = flag_gems.bucketize(inp, boundaries, right=right)
 
     utils.gems_assert_equal(res_out, ref_out)

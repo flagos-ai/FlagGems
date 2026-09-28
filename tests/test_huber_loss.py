@@ -32,8 +32,7 @@ def test_huber_loss(shape, dtype, reduction, delta):
     ref_target = utils.to_reference(target, True)
 
     ref_out = torch.ops.aten.huber_loss(ref_inp, ref_target, reduction, float(delta))
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.huber_loss(inp, target, reduction, float(delta))
+    res_out = flag_gems.huber_loss(inp, target, reduction, float(delta))
 
     reduce_dim = target.numel() if reduction != 0 else shape[-1]
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=reduce_dim)
@@ -55,9 +54,8 @@ def test_huber_loss_out(shape, dtype, reduction, delta):
     torch.ops.aten.huber_loss.out(
         ref_inp, ref_target, reduction, float(delta), out=ref_out
     )
-    with flag_gems.use_gems():
-        res_out = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
-        torch.ops.aten.huber_loss.out(inp, target, reduction, float(delta), out=res_out)
+    res_out = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
+    flag_gems.huber_loss_out(inp, target, reduction, float(delta), out=res_out)
 
     reduce_dim = target.numel() if reduction != 0 else shape[-1]
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=reduce_dim)
