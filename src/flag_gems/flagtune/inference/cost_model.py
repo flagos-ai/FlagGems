@@ -106,11 +106,33 @@ def model_bundle_missing_error() -> Type[BaseException]:
 
 def flagtune_error_types() -> Tuple[Type[BaseException], ...]:
     """Return unified FlagTree errors with compatibility for older releases."""
+    error_types: list[Type[BaseException]]
     try:
         from triton.flagtune.runtime.errors import FlagTuneError
     except ImportError:
-        return (FileNotFoundError, model_bundle_missing_error())
-    return (FlagTuneError,)
+        error_types = [FileNotFoundError, model_bundle_missing_error()]
+    else:
+        error_types = [FlagTuneError]
+
+    # Older FlagTree releases expose device probing and package validation
+    # failures separately and do not provide ``runtime.errors.FlagTuneError``.
+    # Keep these narrow compatibility exceptions in the AUTO fallback set
+    # without swallowing arbitrary device, compiler, or benchmark errors.
+    try:
+        from triton.flagtune.runtime.device import UnsupportedFlagTuneDeviceError
+    except ImportError:
+        pass
+    else:
+        if UnsupportedFlagTuneDeviceError not in error_types:
+            error_types.append(UnsupportedFlagTuneDeviceError)
+    try:
+        from triton.flagtune.runtime.model_loader import IncompatibleModelError
+    except ImportError:
+        pass
+    else:
+        if IncompatibleModelError not in error_types:
+            error_types.append(IncompatibleModelError)
+    return tuple(error_types)
 
 
 def configs_to_dicts(

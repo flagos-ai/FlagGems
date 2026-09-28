@@ -29,8 +29,7 @@ def test_isneginf(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.isneginf(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.isneginf(inp)
+    res_out = flag_gems.isneginf(inp)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -46,7 +45,6 @@ def test_isneginf_out(shape, dtype):
     ref_out = torch.empty_like(ref_inp, dtype=torch.bool)
 
     torch.isneginf(ref_inp, out=ref_out)
-    with flag_gems.use_gems():
-        torch.isneginf(inp, out=out)
+    flag_gems.isneginf_out(inp, out=out)
 
     utils.gems_assert_equal(out, ref_out)

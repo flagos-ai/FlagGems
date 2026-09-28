@@ -53,8 +53,7 @@ def test_conj_physical_(shape, is_complex, dtype):
         out_dtype = dtype
         ref_out = torch.conj_physical_(utils.to_reference(input, True))
 
-    with flag_gems.use_gems():
-        res_out = torch.conj_physical_(input)
+    res_out = flag_gems.conj_physical_(input)
 
     # in-place semantics: the result must alias the input storage
     assert res_out.data_ptr() == input.data_ptr()
