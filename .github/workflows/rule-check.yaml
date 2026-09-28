@@ -52,6 +52,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           fetch-depth: 0
+          filter: blob:none
+      # fetch-depth: 0 alone previously fetched full commit *and file* history
+      # for every branch and tag (260+ refs), taking 18+ minutes on this
+      # bandwidth-constrained runner even though the diff below only reads
+      # file paths, never blob contents. filter:blob:none keeps the full
+      # commit graph (so merge-base/three-dot diff still resolves correctly
+      # for any base/head pair) but skips downloading file contents, which is
+      # what actually dominated fetch time.
       - name: Ensure full working tree
         shell: bash
         run: |
@@ -123,6 +131,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           fetch-depth: 0
+          filter: blob:none
+      # See derive-changed-operators: keep the full commit graph for
+      # merge-base resolution but skip blob content, which is what made
+      # fetch-depth: 0 take 18+ minutes on this bandwidth-constrained runner.
       - name: Ensure full working tree
         shell: bash
         run: |
