@@ -14,19 +14,11 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
 from . import accuracy_utils as utils
 from . import test_utils as tu
-
-# Register the underscore-prefixed pytest marker explicitly.
-setattr(
-    pytest.mark,
-    "_linalg_solve_ex",
-    MarkDecorator(Mark("_linalg_solve_ex", (), {}, _ispytest=True), _ispytest=True),
-)
 
 # Measured with valid rank>=2 operands on the active CUDA backend: float32,
 # complex64, float64 and complex128 solve natively and keep their dtype, while
@@ -121,7 +113,7 @@ def _assert_outputs(res_out, ref_out):
     tu.assert_result_equal(res_out[3], ref_out[3])
 
 
-@pytest.mark._linalg_solve_ex
+@pytest.mark.linalg_solve_ex
 @pytest.mark.parametrize("shape", _GRID_SHAPES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
@@ -135,7 +127,7 @@ def test__linalg_solve_ex_conditioned_grid(shape, value_range, dtype):
     _assert_outputs(res_out, ref_out)
 
 
-@pytest.mark._linalg_solve_ex
+@pytest.mark.linalg_solve_ex
 @pytest.mark.parametrize("shape", _GRID_SHAPES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
@@ -149,7 +141,7 @@ def test__linalg_solve_ex_raw_grid(shape, value_range, dtype):
     _assert_outputs(res_out, ref_out)
 
 
-@pytest.mark._linalg_solve_ex
+@pytest.mark.linalg_solve_ex
 @pytest.mark.parametrize("dtype", tu.selected_cases(SUPPORTED_DTYPES, quick=[]))
 def test__linalg_solve_ex_nontrivial_pivots(dtype):
     # Scaled anti-diagonal identity: the leading column pivot is the last row,
@@ -170,7 +162,7 @@ _FLAG_CASES = tu.selected_cases(
 )
 
 
-@pytest.mark._linalg_solve_ex
+@pytest.mark.linalg_solve_ex
 @pytest.mark.parametrize("left,check_errors", _FLAG_CASES)
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
 def test__linalg_solve_ex_flag_combinations(left, check_errors, dtype):
@@ -185,7 +177,7 @@ def test__linalg_solve_ex_flag_combinations(left, check_errors, dtype):
     _assert_outputs(res_out, ref_out)
 
 
-@pytest.mark._linalg_solve_ex
+@pytest.mark.linalg_solve_ex
 @pytest.mark.parametrize("dtype", tu.selected_cases(SUPPORTED_DTYPES, quick=[]))
 def test__linalg_solve_ex_default_arguments(dtype):
     a, b = _conditioned_pair(dtype, (20, 320, 15), ["-1", "1"])
@@ -201,7 +193,7 @@ def test__linalg_solve_ex_default_arguments(dtype):
     _assert_outputs(res_explicit, ref_out)
 
 
-@pytest.mark._linalg_solve_ex
+@pytest.mark.linalg_solve_ex
 @pytest.mark.parametrize("dtype", tu.selected_cases(SUPPORTED_DTYPES, quick=[]))
 def test__linalg_solve_ex_mixed_batch_info(dtype):
     n, m = 3, 2
@@ -230,7 +222,7 @@ _BROADCAST_CASES = tu.selected_cases(
 )
 
 
-@pytest.mark._linalg_solve_ex
+@pytest.mark.linalg_solve_ex
 @pytest.mark.parametrize("a_shape,b_shape,left,dtype", _BROADCAST_CASES)
 def test__linalg_solve_ex_broadcast(a_shape, b_shape, left, dtype):
     n = a_shape[-1]
@@ -252,7 +244,7 @@ _BACKWARD_CASES = tu.selected_cases(
 )
 
 
-@pytest.mark._linalg_solve_ex
+@pytest.mark.linalg_solve_ex
 @pytest.mark.parametrize("left,batch", _BACKWARD_CASES)
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
 def test__linalg_solve_ex_backward(left, batch, dtype):
@@ -298,7 +290,7 @@ _SPECIAL_CASES = tu.selected_cases(
 )
 
 
-@pytest.mark._linalg_solve_ex
+@pytest.mark.linalg_solve_ex
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_CASES)
 def test__linalg_solve_ex_special_dense_diagonal(dtype, scenario):
     payload = tu.make_special_input(dtype, scenario)
@@ -314,7 +306,7 @@ def test__linalg_solve_ex_special_dense_diagonal(dtype, scenario):
     _assert_outputs(res_out, ref_out)
 
 
-@pytest.mark._linalg_solve_ex
+@pytest.mark.linalg_solve_ex
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_CASES)
 def test__linalg_solve_ex_special_rhs_column(dtype, scenario):
     payload = tu.make_special_input(dtype, scenario)
@@ -345,7 +337,7 @@ _RHS_POISON_SLOTS = {
 }
 
 
-@pytest.mark._linalg_solve_ex
+@pytest.mark.linalg_solve_ex
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_CASES)
 def test__linalg_solve_ex_special_single_rhs_position(dtype, scenario):
     payload = tu.make_special_input(dtype, scenario)
@@ -365,7 +357,7 @@ def test__linalg_solve_ex_special_single_rhs_position(dtype, scenario):
     assert bool(torch.isfinite(res_out[0][:, 1]).all())
 
 
-@pytest.mark._linalg_solve_ex
+@pytest.mark.linalg_solve_ex
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_CASES)
 def test__linalg_solve_ex_special_isolated_batch_lane(dtype, scenario):
     payload = tu.make_special_input(dtype, scenario)
@@ -393,7 +385,7 @@ _IMAGINARY_SPECIAL_CASES = tu.selected_cases(
 )
 
 
-@pytest.mark._linalg_solve_ex
+@pytest.mark.linalg_solve_ex
 @pytest.mark.parametrize("dtype,scenario", _IMAGINARY_SPECIAL_CASES)
 def test__linalg_solve_ex_special_imaginary_diagonal(dtype, scenario):
     # Imaginary-only payload: a real component plus 1j*inf would smear NaN
@@ -424,7 +416,7 @@ _ZERO_EXTENT_CASES = [
 _MINIMAL_SYSTEM_RHS = [1.0, 2.0, -3.0]
 
 
-@pytest.mark._linalg_solve_ex
+@pytest.mark.linalg_solve_ex
 @pytest.mark.parametrize("a_shape,b_shape", _ZERO_EXTENT_CASES)
 @pytest.mark.parametrize("dtype", tu.selected_cases(SUPPORTED_DTYPES, quick=[]))
 def test__linalg_solve_ex_zero_extents(a_shape, b_shape, dtype):
@@ -440,7 +432,7 @@ def test__linalg_solve_ex_zero_extents(a_shape, b_shape, dtype):
     assert res_out[3].shape == tuple(a_shape[:-2])
 
 
-@pytest.mark._linalg_solve_ex
+@pytest.mark.linalg_solve_ex
 @pytest.mark.parametrize("dtype", tu.selected_cases(SUPPORTED_DTYPES, quick=[]))
 def test__linalg_solve_ex_minimal_1x1_system(dtype):
     # Smallest nonempty solve. A is the fixed nonzero [[4]], so the system is
@@ -459,7 +451,7 @@ def test__linalg_solve_ex_minimal_1x1_system(dtype):
     assert res_out[3].shape == ()
 
 
-@pytest.mark._linalg_solve_ex
+@pytest.mark.linalg_solve_ex
 @pytest.mark.parametrize("dtype", tu.selected_cases(SUPPORTED_DTYPES, quick=[]))
 def test__linalg_solve_ex_singular_info(dtype):
     n = 4
@@ -476,7 +468,7 @@ def test__linalg_solve_ex_singular_info(dtype):
     assert bool(torch.isfinite(res_out[1]).all())
 
 
-@pytest.mark._linalg_solve_ex
+@pytest.mark.linalg_solve_ex
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
 def test__linalg_solve_ex_check_errors_raises(dtype):
     n = 4
@@ -487,7 +479,7 @@ def test__linalg_solve_ex_check_errors_raises(dtype):
         flag_gems._linalg_solve_ex(a, b, check_errors=True)
 
 
-@pytest.mark._linalg_solve_ex
+@pytest.mark.linalg_solve_ex
 @pytest.mark.parametrize("dtype", tu.selected_cases(SUPPORTED_DTYPES, quick=[]))
 def test__linalg_solve_ex_result_overload(dtype):
     a, b = _conditioned_pair(dtype, (2, 19, 7), ["-1", "1"])
@@ -545,7 +537,7 @@ def _view_state(tensor):
     )
 
 
-@pytest.mark._linalg_solve_ex
+@pytest.mark.linalg_solve_ex
 @pytest.mark.parametrize("dtype", tu.selected_cases(SUPPORTED_DTYPES, quick=[]))
 def test__linalg_solve_ex_result_overload_strided_views(dtype):
     a, b = _conditioned_pair(dtype, (2, 8, 4), ["-1", "1"])
@@ -615,7 +607,7 @@ def test__linalg_solve_ex_result_overload_strided_views(dtype):
 _NONCONTIG_KINDS = tu.selected_cases(["offset", "transposed"], quick=[])
 
 
-@pytest.mark._linalg_solve_ex
+@pytest.mark.linalg_solve_ex
 @pytest.mark.parametrize("kind", _NONCONTIG_KINDS)
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
 def test__linalg_solve_ex_noncontiguous_layouts(kind, dtype):
@@ -670,7 +662,7 @@ if flag_gems.runtime.device.vendor_name == "nvidia":
         _NATIVE_REJECTED_DTYPES.append(torch.int64)
 
 
-@pytest.mark._linalg_solve_ex
+@pytest.mark.linalg_solve_ex
 @pytest.mark.parametrize("dtype", _NATIVE_REJECTED_DTYPES)
 def test__linalg_solve_ex_rejects_unsupported_dtype(dtype):
     a = tu.make_input(dtype, (4, 4), ["-1", "1"])
@@ -685,7 +677,7 @@ _NEGATIVE_SHAPE_CASES = [
 ]
 
 
-@pytest.mark._linalg_solve_ex
+@pytest.mark.linalg_solve_ex
 @pytest.mark.parametrize("a_shape,b_shape", _NEGATIVE_SHAPE_CASES)
 def test__linalg_solve_ex_rejects_invalid_shapes(a_shape, b_shape):
     a = tu.make_input(torch.float32, a_shape, ["-1", "1"])
@@ -694,7 +686,7 @@ def test__linalg_solve_ex_rejects_invalid_shapes(a_shape, b_shape):
         flag_gems._linalg_solve_ex(a, b)
 
 
-@pytest.mark._linalg_solve_ex
+@pytest.mark.linalg_solve_ex
 def test__linalg_solve_ex_requires_rhs():
     a = tu.make_input(torch.float32, (4, 4), ["-1", "1"])
     # B is a required positional argument. The candidate surfaces the missing

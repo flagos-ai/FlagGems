@@ -14,19 +14,11 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
 from . import base
 from .generated_operator_utils import OperatorBenchmark
-
-# Register the underscore-prefixed pytest marker explicitly.
-setattr(
-    pytest.mark,
-    "_linalg_solve_ex",
-    MarkDecorator(Mark("_linalg_solve_ex", (), {}, _ispytest=True), _ispytest=True),
-)
 
 # Measured with valid rank>=2 operands: float32, complex64, float64 and
 # complex128 are solved natively. Only the 64-bit types follow the backend
@@ -126,7 +118,7 @@ class SolveExBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=DEFAULT_DESCRIPTORS)
 
 
-@pytest.mark._linalg_solve_ex
+@pytest.mark.linalg_solve_ex
 def test__linalg_solve_ex():
     bench = SolveExBenchmark(
         op_name="_linalg_solve_ex",
