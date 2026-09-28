@@ -55,7 +55,7 @@ permissions:
 
 jobs:
   test:
-    if: ${{ inputs.backend != 'iluvatar' && inputs.backend != 'kunlunxin' }}
+    if: ${{ inputs.backend != 'iluvatar' && inputs.backend != 'kunlunxin' && inputs.backend != 'metax-maca3810' }}
     runs-on: ${{ inputs.runner_label }}
     concurrency:
       group: >-
@@ -127,6 +127,53 @@ jobs:
       # runner's _actions cache and don't depend on the workspace path.
       - uses: flagos-ai/FlagGems/.github/actions/checkout-retry@master
       - uses: flagos-ai/FlagGems/.github/actions/setup-flaggems@master
+        with:
+          backend: ${{ inputs.backend }}
+          gpu_check_script: ${{ inputs.gpu_check_script }}
+
+      - name: Test alpha ops
+        if: ${{ inputs.test_script != '' }}
+        env:
+          CHANGED_FILES: ${{ inputs.changed_files }}
+        shell: bash
+        run: |
+          bash ${{ inputs.test_script }} ${{ inputs.backend }} ${{ inputs.pr_id }}
+      - name: Run backend tests
+        if: ${{ inputs.test_script == '' }}
+        shell: bash
+        env:
+          CHANGED_FILES: ${{ inputs.changed_files }}
+        run: |
+          source .venv/bin/activate
+          tools/test-op.sh ${{ inputs.pr_id }}
+
+  # MetaX runs inside a container on whichever metax-mxc550-* server this
+  # repo has access to, mirroring the iluvatar setup below.
+  # Equivalent to:
+  #   docker run --rm -it \
+  #     --device /dev/mxcd \
+  #     --device /dev/dri \
+  #     --group-add video \
+  #     harbor.baai.ac.cn/flagos-runtime/flagos-runtime-metax-maca3.8.1.3:2.2.0 bash
+  # with GitHub Actions creating/starting the container and exec'ing each step.
+  test-metax:
+    if: ${{ inputs.backend == 'metax-maca3810' }}
+    runs-on: >-
+      ${{ github.repository == 'flagos-ai/FlagGems-vllm'
+          && 'metax-mxc550-1'
+          || 'metax-mxc550-0' }}
+    container:
+      image: harbor.baai.ac.cn/flagos-runtime/flagos-runtime-metax-maca3.8.1.3:2.2.0
+      options: --device /dev/mxcd --device /dev/dri --group-add video
+    concurrency:
+      group: >-
+        op-test-${{ inputs.backend }}-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        continue-on-error: true
+      - uses: ./.github/actions/checkout-retry
+      - uses: ./.github/actions/setup-flaggems
         with:
           backend: ${{ inputs.backend }}
           gpu_check_script: ${{ inputs.gpu_check_script }}
