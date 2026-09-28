@@ -137,7 +137,9 @@ def _assert_layout_facts(res_out, inp, facts):
 def _assert_operands_unchanged(
     inp, inp_before, other, other_before, base=None, base_before=None
 ):
-    # Reshaping never writes to its operands.
+    # Reshaping never writes to its operands. Snapshots come from tu.to_reference
+    # so they sit on the configured reference device, the placement the shared
+    # accuracy helpers expect for the reference operand.
     tu.assert_result_equal(inp, inp_before)
     tu.assert_result_equal(other, other_before)
     if base is not None and base is not inp:
@@ -284,8 +286,8 @@ _NUMEL_MISMATCH_ROWS = [
 def test_reshape_as(shape, value_range, dtype):
     inp = tu.make_input(dtype, shape, value_range)
     other = torch.zeros(_TARGET_SHAPES[shape], dtype=dtype, device=flag_gems.device)
-    inp_before = inp.detach().clone()
-    other_before = other.detach().clone()
+    inp_before = tu.to_reference(inp.detach())
+    other_before = tu.to_reference(other.detach())
 
     ref_out, facts = _native_facts(
         tu.to_reference(inp.detach()), tu.to_reference(other.detach())
@@ -302,8 +304,8 @@ def test_reshape_as(shape, value_range, dtype):
 def test_reshape_as_with_size(shape, target):
     inp = tu.make_input(torch.float32, shape, ["-1", "1"])
     other = torch.zeros(target, dtype=torch.float32, device=flag_gems.device)
-    inp_before = inp.detach().clone()
-    other_before = other.detach().clone()
+    inp_before = tu.to_reference(inp.detach())
+    other_before = tu.to_reference(other.detach())
 
     ref_out, facts = _native_facts(
         tu.to_reference(inp.detach()), tu.to_reference(other.detach())
@@ -320,9 +322,9 @@ def test_reshape_as_with_size(shape, target):
 def test_reshape_as_strided_input(shape, layout, target):
     inp, ref_inp, base = _layout_pair(shape, layout, torch.float32)
     other = torch.zeros(target, dtype=torch.float32, device=flag_gems.device)
-    inp_before = inp.detach().clone()
-    base_before = base.detach().clone()
-    other_before = other.detach().clone()
+    inp_before = tu.to_reference(inp.detach())
+    base_before = tu.to_reference(base.detach())
+    other_before = tu.to_reference(other.detach())
 
     ref_out, facts = _native_facts(ref_inp, tu.to_reference(other.detach()))
     res_out = flag_gems.reshape_as(inp, other)
@@ -337,9 +339,9 @@ def test_reshape_as_strided_input(shape, layout, target):
 def test_reshape_as_broadcast_input(storage, expand, target):
     inp, ref_inp, base = _layout_pair(storage, "expanded", torch.float32, expand)
     other = torch.zeros(target, dtype=torch.float32, device=flag_gems.device)
-    inp_before = inp.detach().clone()
-    base_before = base.detach().clone()
-    other_before = other.detach().clone()
+    inp_before = tu.to_reference(inp.detach())
+    base_before = tu.to_reference(base.detach())
+    other_before = tu.to_reference(other.detach())
 
     ref_out, facts = _native_facts(ref_inp, tu.to_reference(other.detach()))
     res_out = flag_gems.reshape_as(inp, other)
@@ -358,8 +360,8 @@ def test_reshape_as_other_operand(shape, dtype, other_shape, other_dtype, other_
         other.fill_(float("nan"))
     elif other_kind == "transposed":
         other = other.t()
-    inp_before = inp.detach().clone()
-    other_before = other.detach().clone()
+    inp_before = tu.to_reference(inp.detach())
+    other_before = tu.to_reference(other.detach())
 
     ref_out, facts = _native_facts(
         tu.to_reference(inp.detach()), tu.to_reference(other.detach())
@@ -378,8 +380,8 @@ def test_reshape_as_other_operand(shape, dtype, other_shape, other_dtype, other_
 def test_reshape_as_view_writes_through(shape, target):
     inp = tu.make_input(torch.float32, shape, ["-1", "1"])
     other = torch.zeros(target, dtype=torch.float32, device=flag_gems.device)
-    inp_before = inp.detach().clone()
-    other_before = other.detach().clone()
+    inp_before = tu.to_reference(inp.detach())
+    other_before = tu.to_reference(other.detach())
 
     ref_out, facts = _native_facts(
         tu.to_reference(inp.detach()), tu.to_reference(other.detach())
@@ -402,9 +404,9 @@ def test_reshape_as_view_writes_through(shape, target):
 def test_reshape_as_materialized_copy_isolated(shape, layout, target):
     inp, ref_inp, base = _layout_pair(shape, layout, torch.float32)
     other = torch.zeros(target, dtype=torch.float32, device=flag_gems.device)
-    inp_before = inp.detach().clone()
-    base_before = base.detach().clone()
-    other_before = other.detach().clone()
+    inp_before = tu.to_reference(inp.detach())
+    base_before = tu.to_reference(base.detach())
+    other_before = tu.to_reference(other.detach())
 
     ref_out, facts = _native_facts(ref_inp, tu.to_reference(other.detach()))
     res_out = flag_gems.reshape_as(inp, other)
@@ -414,9 +416,9 @@ def test_reshape_as_materialized_copy_isolated(shape, layout, target):
     # Prove the candidate itself left its operands intact ...
     _assert_operands_unchanged(inp, inp_before, other, other_before, base, base_before)
 
-    res_before = res_out.detach().clone()
+    res_before = tu.to_reference(res_out.detach())
     inp.fill_(7.0)
-    base_filled = base.detach().clone()
+    base_filled = tu.to_reference(base.detach())
 
     # ... then that a materializing result owns its storage: mutating the input
     # afterwards cannot change the already recorded result ...
@@ -445,9 +447,9 @@ def test_reshape_as_conjugate_input(layout, target, dtype):
         ref_inp = ref_base.t().conj()
         expect_conj = False
     other = torch.zeros(target, dtype=dtype, device=flag_gems.device)
-    inp_before = inp.detach().clone()
-    base_before = base.detach().clone()
-    other_before = other.detach().clone()
+    inp_before = tu.to_reference(inp.detach())
+    base_before = tu.to_reference(base.detach())
+    other_before = tu.to_reference(other.detach())
 
     ref_out, facts = _native_facts(ref_inp, tu.to_reference(other.detach()))
     res_out = flag_gems.reshape_as(inp, other)
@@ -470,9 +472,9 @@ def test_reshape_as_backward(shape, layout, expand, target, dtype):
     other = torch.zeros(target, dtype=dtype, device=flag_gems.device)
     upstream = tu.make_input(dtype, target, ["-1", "1"])
     ref_upstream = tu.to_reference(upstream.detach())
-    inp_before = inp.detach().clone()
-    base_before = base.detach().clone()
-    other_before = other.detach().clone()
+    inp_before = tu.to_reference(inp.detach())
+    base_before = tu.to_reference(base.detach())
+    other_before = tu.to_reference(other.detach())
 
     ref_out, facts = _native_facts(ref_inp, tu.to_reference(other.detach()))
     res_out = flag_gems.reshape_as(inp, other)
@@ -504,9 +506,9 @@ def test_reshape_as_expanded_base_backward(dtype):
     other = torch.zeros((15,), dtype=dtype, device=flag_gems.device)
     upstream = _exact_upstream((15,), dtype)
     ref_upstream = tu.to_reference(upstream.detach())
-    inp_before = inp.detach().clone()
-    base_before = base.detach().clone()
-    other_before = other.detach().clone()
+    inp_before = tu.to_reference(inp.detach())
+    base_before = tu.to_reference(base.detach())
+    other_before = tu.to_reference(other.detach())
 
     ref_out, facts = _native_facts(ref_inp, tu.to_reference(other.detach()))
     res_out = flag_gems.reshape_as(inp, other)
@@ -532,8 +534,8 @@ def test_reshape_as_other_has_no_gradient(dtype):
     )
     inp.requires_grad_(True)
     other.requires_grad_(True)
-    inp_before = inp.detach().clone()
-    other_before = other.detach().clone()
+    inp_before = tu.to_reference(inp.detach())
+    other_before = tu.to_reference(other.detach())
 
     res_out = flag_gems.reshape_as(inp, other)
 
@@ -556,8 +558,8 @@ def test_reshape_as_other_has_no_gradient(dtype):
 def test_reshape_as_special_values(dtype, scenario):
     inp = tu.make_special_input(dtype, scenario)
     other = torch.zeros((1, inp.numel()), dtype=dtype, device=flag_gems.device)
-    inp_before = inp.detach().clone()
-    other_before = other.detach().clone()
+    inp_before = tu.to_reference(inp.detach())
+    other_before = tu.to_reference(other.detach())
 
     ref_out, facts = _native_facts(
         tu.to_reference(inp.detach()), tu.to_reference(other.detach())

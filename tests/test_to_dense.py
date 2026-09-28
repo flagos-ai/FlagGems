@@ -151,29 +151,47 @@ def test_to_dense_strided_is_identity(shape, value_range, dtype):
 _VIEW_DTYPES = _supported([torch.float32, torch.float16, torch.bfloat16, torch.float64])
 
 
-def _view_input(geometry, dtype):
-    """Strided inputs that carry a non-contiguous or lazy view state.
-
-    Returns ``(view, parent)``.  ``parent`` is the real tensor the view is
-    carved from -- for a lazy neg/conj view the un-flagged base tensor -- so a
-    test can compare the whole backing allocation, view padding included.
-    """
+def _view_parent(geometry, dtype):
+    """Base allocation the tested view is carved from."""
     if geometry == "transpose":
-        parent = tu.make_input(dtype, (8, 16), ["-1", "1"])
-        return parent.t(), parent
+        return tu.make_input(dtype, (8, 16), ["-1", "1"])
     if geometry == "step":
-        parent = tu.make_input(dtype, (96,), ["-1", "1"])
-        return parent[::3], parent
+        return tu.make_input(dtype, (96,), ["-1", "1"])
     if geometry == "offset":
-        parent = tu.make_input(dtype, (12, 16), ["-1", "1"])
-        return parent[3:], parent
-    if geometry == "neg":
-        parent = tu.make_input(dtype, (8, 16), ["-1", "1"])
-        return torch._neg_view(parent), parent
-    if geometry == "conj":
-        parent = tu.make_input(dtype, (8, 16), ["-1", "1"])
-        return parent.conj(), parent
+        return tu.make_input(dtype, (12, 16), ["-1", "1"])
+    if geometry in ("neg", "conj"):
+        return tu.make_input(dtype, (8, 16), ["-1", "1"])
     raise ValueError(geometry)
+
+
+def _apply_view(geometry, base):
+    """Apply one tested view geometry; both operands go through this call."""
+    if geometry == "transpose":
+        return base.t()
+    if geometry == "step":
+        return base[::3]
+    if geometry == "offset":
+        return base[3:]
+    if geometry == "neg":
+        return torch._neg_view(base)
+    if geometry == "conj":
+        return base.conj()
+    raise ValueError(geometry)
+
+
+def _view_operands(geometry, dtype):
+    """Candidate view, the parent allocation, and the reference-side view.
+
+    ``parent`` is the un-flagged base tensor, so a test can compare the whole
+    backing allocation, view padding included.  The reference view is carved
+    from the parent's reference-placement copy rather than moved out of the
+    candidate view: the device transfer inside the shared reference helper
+    resolves a lazy neg/conj flag, so a moved view would hand the native
+    reference an operand without the view state under test.
+    """
+    parent = _view_parent(geometry, dtype)
+    ref_parent = tu.to_reference(parent)
+    return _apply_view(geometry, parent), parent, _apply_view(geometry, ref_parent)
 
 
 _VIEW_CASES = tu.selected_cases(
@@ -190,12 +208,12 @@ _VIEW_CASES = tu.selected_cases(
 @pytest.mark.to_dense
 @pytest.mark.parametrize("geometry,dtype", _VIEW_CASES)
 def test_to_dense_strided_view_identity(geometry, dtype):
-    inp, parent = _view_input(geometry, dtype)
-    # Whole-allocation snapshot: the view shares its parent's storage, so a
-    # write outside the view (a lazy flag resolved in place, or a scribble into
-    # the padding) is only visible on the parent.
-    parent_before = parent.clone()
-    ref_inp = tu.to_reference(inp)
+    inp, parent, ref_inp = _view_operands(geometry, dtype)
+    # Whole-allocation expected snapshot: the view shares its parent's storage,
+    # so a write outside the view (a lazy flag resolved in place, or a scribble
+    # into the padding) is only visible on the parent.  to_reference stores it
+    # independently on the configured reference device.
+    parent_before = tu.to_reference(parent)
 
     ref_out = torch.ops.aten.to_dense(ref_inp)
     res_out = flag_gems.to_dense(inp)
@@ -288,9 +306,8 @@ _VIEW_CAST_CASES = tu.selected_cases(
 @pytest.mark.parametrize("geometry,dtype_pair", _VIEW_CAST_CASES)
 def test_to_dense_strided_view_cast(geometry, dtype_pair):
     in_dtype, out_dtype = dtype_pair
-    inp, parent = _view_input(geometry, in_dtype)
-    parent_before = parent.clone()
-    ref_inp = tu.to_reference(inp)
+    inp, parent, ref_inp = _view_operands(geometry, in_dtype)
+    parent_before = tu.to_reference(parent)
 
     ref_out = torch.ops.aten.to_dense(ref_inp, dtype=out_dtype)
     res_out = flag_gems.to_dense(inp, dtype=out_dtype)
@@ -565,7 +582,12 @@ def _sparse_components(inp):
 @pytest.mark.parametrize("dtype", _LAYOUT_DTYPES)
 def test_to_dense_sparse_layouts(layout, value_range, dtype):
     inp = _sparse_layout_input(layout, dtype, value_range)
-    storage_before = [component.clone() for component in _sparse_components(inp)]
+    # Densifying must not rewrite or reorder the storage it reads; the expected
+    # snapshot goes through to_reference for independent storage on the
+    # configured reference device.
+    storage_before = [
+        tu.to_reference(component) for component in _sparse_components(inp)
+    ]
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.to_dense(ref_inp)
@@ -709,12 +731,15 @@ def test_to_dense_sparse_storage_views(kind, dtype):
     inp, parents = _storage_view_input(kind, dtype)
     index_stride = inp._indices().stride()
     value_stride = inp._values().stride()
-    indices_before = inp._indices().clone()
-    values_before = inp._values().clone()
-    # Each stored component is a view carved from a parent buffer, so a clone of
-    # the view alone cannot see a write into the unused padding of that buffer.
-    # The parents are the fixture's own allocations, so snapshot them whole.
-    parents_before = [parent.clone() for parent in parents]
+    # Expected snapshots go through to_reference, so each is independently
+    # stored and follows the configured reference device.
+    indices_before = tu.to_reference(inp._indices())
+    values_before = tu.to_reference(inp._values())
+    # Each stored component is a view carved from a parent buffer, so a snapshot
+    # of the view alone cannot see a write into the unused padding of that
+    # buffer.  The parents are the fixture's own allocations, so snapshot them
+    # whole, keeping the raw stored indices/values exactly as they are stored.
+    parents_before = [tu.to_reference(parent) for parent in parents]
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.to_dense(ref_inp)

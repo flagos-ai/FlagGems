@@ -307,7 +307,7 @@ def _layout_input(base, layout):
 @pytest.mark.parametrize("shape,blocksize,dense_dim", _MATRIX_CASES)
 def test_to_sparse_bsc(shape, blocksize, dense_dim, value_range, dtype):
     inp = tu.make_input(dtype, shape, value_range)
-    before = inp.clone()
+    before = tu.to_reference(inp)
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.to_sparse_bsc(ref_inp, blocksize, dense_dim)
@@ -325,7 +325,7 @@ def test_to_sparse_bsc(shape, blocksize, dense_dim, value_range, dtype):
 def test_to_sparse_bsc_batched(batch_shape, shape, blocksize, value_range, dtype):
     tile = tu.make_input(dtype, shape, value_range)
     inp = tile.repeat(*batch_shape, *([1] * len(shape)))
-    before = inp.clone()
+    before = tu.to_reference(inp)
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.to_sparse_bsc(ref_inp, blocksize)
@@ -341,7 +341,7 @@ def test_to_sparse_bsc_batched(batch_shape, shape, blocksize, value_range, dtype
 @pytest.mark.parametrize("shape,blocksize,dense_dim", _BLOCKSIZE_CASES)
 def test_to_sparse_bsc_blocksize(shape, blocksize, dense_dim, dtype):
     inp = tu.make_input(dtype, shape, ["-1", "1"])
-    before = inp.clone()
+    before = tu.to_reference(inp)
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.to_sparse_bsc(ref_inp, blocksize, dense_dim)
@@ -357,7 +357,7 @@ def test_to_sparse_bsc_blocksize(shape, blocksize, dense_dim, dtype):
 @pytest.mark.parametrize("argument,shape,blocksize", _OPTIONAL_DENSE_DIM_CASES)
 def test_to_sparse_bsc_optional_dense_dim(argument, shape, blocksize, dtype):
     inp = tu.make_input(dtype, shape, ["-1", "1"])
-    before = inp.clone()
+    before = tu.to_reference(inp)
     ref_inp = tu.to_reference(inp)
 
     if argument == "omitted":
@@ -377,7 +377,7 @@ def test_to_sparse_bsc_optional_dense_dim(argument, shape, blocksize, dtype):
 @pytest.mark.parametrize("pattern,shape,blocksize,dense_dim", _STRUCTURE_CASES)
 def test_to_sparse_bsc_payload_structure(pattern, shape, blocksize, dense_dim, dtype):
     inp = _structure_input(pattern, dtype, shape, blocksize, dense_dim)
-    before = inp.clone()
+    before = tu.to_reference(inp)
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.to_sparse_bsc(ref_inp, blocksize, dense_dim)
@@ -397,7 +397,7 @@ def test_to_sparse_bsc_special_values(dtype, scenario, shape, blocksize, dense_d
     for size in shape:
         count *= size
     inp = payload.repeat(count // payload.numel()).view(*shape)
-    before = inp.clone()
+    before = tu.to_reference(inp)
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.to_sparse_bsc(ref_inp, blocksize, dense_dim)
@@ -412,10 +412,10 @@ def test_to_sparse_bsc_special_values(dtype, scenario, shape, blocksize, dense_d
 @pytest.mark.parametrize("layout,dtype", _LAYOUT_CASES)
 def test_to_sparse_bsc_input_layout(layout, dtype):
     base = tu.make_input(dtype, (32, 32), ["-1", "1"])
-    before_base = base.clone()
+    before_base = tu.to_reference(base)
     inp = _layout_input(base, layout)
     # flip_copy is a real copy, so the candidate operand needs its own snapshot
-    before_inp = inp.clone()
+    before_inp = tu.to_reference(inp)
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.to_sparse_bsc(ref_inp, (2, 2), 0)
@@ -444,7 +444,7 @@ def test_to_sparse_bsc_backward(shape, blocksize, dense_dim, pattern, dtype):
     upstream = torch.where(upstream == 0, torch.ones_like(upstream), upstream)
     _apply_block_pattern(inp, pattern, blocksize, dense_dim)
     inp.requires_grad_(True)
-    before = inp.detach().clone()
+    before = tu.to_reference(inp)
     ref_inp = tu.to_reference(inp)
     ref_upstream = tu.to_reference(upstream)
 
