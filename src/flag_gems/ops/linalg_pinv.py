@@ -404,7 +404,9 @@ def _pinv_reconstruct_kernel(
             mask=(offs_l[:, None] < R) & jmask[None, :],
             other=0.0,
         )
-        acc += tl.dot(v * inv_sj_sq[None, :], tl.trans(w))
+        # allow_tf32=False: TF32 keeps only ~10 mantissa bits, which loses far
+        # more precision than the float32 tolerance the pinv tests assert.
+        acc += tl.dot(v * inv_sj_sq[None, :], tl.trans(w), allow_tf32=False)
 
     tl.store(
         OUT_ptr + batch_idx * out_batch_stride + offs_i[:, None] * R + offs_l[None, :],
