@@ -30,6 +30,10 @@ _NUM_WARPS = 4
 _L_CSC = torch.sparse_csc
 _L_BSC = torch.sparse_bsc
 
+# Native dispatcher spells sparse backend keys with uppercase acronyms
+# ('SparseCUDA' / 'SparseCPU'), not device-type capitalized names.
+_SPARSE_BACKEND_NAME = {"cuda": "SparseCUDA", "cpu": "SparseCPU"}
+
 # C++ layout names as printed by native ATen in the rejection message of
 # ``aten::ccol_indices_copy`` (ATen/SparseCsrTensorUtils.h dispatch macro).
 # Only column-compressed layouts (CSC/BSC) carry a compressed-column-index
@@ -116,7 +120,7 @@ def _select_src(self: torch.Tensor) -> torch.Tensor:
     # H20: CUDA COO raises ``NotImplementedError`` with the message below),
     # so the rejection is reproduced explicitly instead of redispatching to
     # the same operator from the host implementation.
-    backend = "Sparse" + str(self.device.type).capitalize()
+    backend = _SPARSE_BACKEND_NAME.get(self.device.type, "Sparse")
     raise NotImplementedError(
         "Could not run 'aten::ccol_indices_copy' with arguments from the "
         f"'{backend}' backend. This could be because the operator doesn't "
