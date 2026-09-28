@@ -40,12 +40,20 @@ _BLOCK = 1024
 # macro). Only row-compressed layouts (CSR/BSR) carry a crow-indices buffer;
 # the mapping below covers every remaining standard layout so the mirrored
 # message is byte-identical to the native one.
+# Layouts that native rejects with the layout RuntimeError. COO is NOT here:
+# native has no crow_indices_copy kernel on the sparse-COO key at all and
+# raises NotImplementedError instead (verified on H20), so COO is handled
+# by the explicit NotImplementedError branch below.
 _NON_ROW_COMPRESSED_LAYOUT_NAMES = {
     torch.strided: "Strided",
-    torch.sparse_coo: "Sparse",
     torch.sparse_csc: "SparseCsc",
     torch.sparse_bsc: "SparseBsc",
 }
+_LAYOUT_COO = torch.sparse_coo
+
+# Native dispatcher spells sparse backend keys with uppercase acronyms
+# ('SparseCUDA' / 'SparseCPU'), not device-type capitalized names.
+_SPARSE_BACKEND_NAME = {"cuda": "SparseCUDA", "cpu": "SparseCPU"}
 
 
 def crow_indices_copy(self: torch.Tensor) -> torch.Tensor:
@@ -75,12 +83,27 @@ def crow_indices_copy(self: torch.Tensor) -> torch.Tensor:
     appears for a zero-sized batch dimension).
     """
     logger.debug("GEMS CROW_INDICES_COPY")
+    if self.layout == _LAYOUT_COO:
+        # Native has no crow_indices_copy kernel on the sparse-COO key
+        # (verified on H20: CUDA COO raises NotImplementedError with the
+        # message below), so the native rejection is reproduced explicitly
+        # instead of routing through the native accessor, which reports a
+        # different error type and message.
+        backend = _SPARSE_BACKEND_NAME.get(self.device.type, "Sparse")
+        raise NotImplementedError(
+            "Could not run 'aten::crow_indices_copy' with arguments from "
+            f"the '{backend}' backend. This could be because the operator "
+            "doesn't exist for that backend."
+        )
     if self.layout not in (torch.sparse_csr, torch.sparse_bsr):
         layout_name = _NON_ROW_COMPRESSED_LAYOUT_NAMES.get(self.layout)
         if layout_name is None:
-            # Unknown layout: fall through to the native accessor, which
-            # reports it.
-            return self.crow_indices()
+            backend = _SPARSE_BACKEND_NAME.get(self.device.type, "Sparse")
+            raise NotImplementedError(
+                "Could not run 'aten::crow_indices_copy' with arguments from "
+                f"the '{backend}' backend. This could be because the operator "
+                "doesn't exist for that backend."
+            )
         raise RuntimeError(
             "crow_indices expected sparse row compressed tensor layout "
             f"but got {layout_name}"

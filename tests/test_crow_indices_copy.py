@@ -35,8 +35,14 @@ else:
     BATCHED_SHAPES = [(2, 3, 4), (2, 2, 3, 4)]
 
 
-def _make_csr(shape, nnz, seed=0, crow_dtype=torch.int64):
-    """Build a CSR tensor with ``nnz`` random entries on ``flag_gems.device``."""
+def _make_csr(shape, nnz, seed=0, crow_dtype=torch.int64, col_dtype=None):
+    """Build a CSR tensor with ``nnz`` random entries on ``flag_gems.device``.
+
+    Both index tensors share ``col_dtype`` (default: same as ``crow_dtype``),
+    as a valid CSR requires them to have the same dtype.
+    """
+    if col_dtype is None:
+        col_dtype = crow_dtype
     gen = torch.Generator().manual_seed(seed)
     crow = torch.zeros(shape[0] + 1, dtype=crow_dtype)
     counts = torch.bincount(
@@ -44,8 +50,14 @@ def _make_csr(shape, nnz, seed=0, crow_dtype=torch.int64):
     )
     crow[1:] = counts.cumsum(0)
     crow = crow.to(crow_dtype)
-    ccol = torch.randint(0, shape[1], (nnz,), generator=gen).to(torch.int64)
+    ccol = torch.randint(0, shape[1], (nnz,), generator=gen).to(col_dtype)
     values = torch.randn(nnz, generator=gen)
+    return torch.sparse_csr_tensor(
+        crow.to(flag_gems.device),
+        ccol.to(flag_gems.device),
+        values.to(flag_gems.device),
+        shape,
+    )
     return torch.sparse_csr_tensor(
         crow.to(flag_gems.device),
         ccol.to(flag_gems.device),
@@ -55,19 +67,23 @@ def _make_csr(shape, nnz, seed=0, crow_dtype=torch.int64):
 
 
 def _make_batched_csr(shape, nnz, seed=0):
-    """Build a batched CSR tensor whose crow buffer has ``batch_dims + (n+1,)``."""
+    """Build a *valid* batched CSR tensor: crow has ``batch_dims + (n+1,)``
+    and col_indices/values carry the same batch prefix, so every batch holds
+    ``nnz_per_batch`` stored entries (invariant-checked by the constructor)."""
     gen = torch.Generator().manual_seed(seed)
     batch = shape[:-2]
     nrows = shape[-2]
+    nnz_per_batch = nnz
     crow = torch.zeros(*batch, nrows + 1, dtype=torch.int64)
-    counts = torch.bincount(
-        torch.randint(0, nrows, (nnz,), generator=gen), minlength=nrows
+    # Deterministic per-batch row distribution: first batch fills rows evenly,
+    # later batches reuse the same distribution (shaped batch_dims + (n+1,)).
+    counts = torch.zeros(*batch, nrows, dtype=torch.int64)
+    counts[..., 0] = nnz_per_batch
+    crow[..., 1:] = counts.cumsum(-1)
+    ccol = torch.randint(0, shape[-1], (*batch, nnz_per_batch), generator=gen).to(
+        torch.int64
     )
-    # One shared row-distribution per batch entry keeps the construction simple
-    # while still producing a genuinely multi-row crow buffer per batch.
-    crow[..., 1:] = counts.cumsum(0)
-    ccol = torch.randint(0, shape[-1], (nnz,), generator=gen).to(torch.int64)
-    values = torch.randn(nnz, generator=gen)
+    values = torch.randn((*batch, nnz_per_batch), generator=gen)
     return torch.sparse_csr_tensor(
         crow.to(flag_gems.device),
         ccol.to(flag_gems.device),
@@ -187,7 +203,11 @@ def test_accuracy_crow_indices_copy_row_index_dtype():
     # variant stays int32 (the int64 default path is exercised everywhere
     # else). Both dtype branches of the flat copy are therefore covered.
     for crow_dtype in (torch.int64, torch.int32):
-        csr = _make_csr((4, 6), nnz=3, seed=5, crow_dtype=crow_dtype)
+        # A valid CSR requires both index tensors to share the dtype, so the
+        # col_indices buffer is built with the same dtype as crow.
+        csr = _make_csr(
+            (4, 6), nnz=3, seed=5, crow_dtype=crow_dtype, col_dtype=crow_dtype
+        )
         assert csr.crow_indices().dtype == crow_dtype
 
         ref_out = torch.ops.aten.crow_indices_copy(utils.to_reference(csr))
@@ -286,13 +306,28 @@ def test_accuracy_crow_indices_copy_unsupported_layouts():
 
     # COO is not a compressed layout at all: native raises NotImplementedError
     # (no SparseCUDA kernel for this op) rather than the layout RuntimeError.
+    # The implementation reproduces that exact exception type and message, and
+    # the test compares against native ATen directly instead of accepting
+    # either exception type (which would mask a divergence).
     coo = torch.sparse_coo_tensor(
         torch.tensor([[0, 1], [1, 0]], dtype=torch.int64, device=flag_gems.device),
         torch.randn(2, device=flag_gems.device),
         (2, 3),
     )
-    with pytest.raises((NotImplementedError, RuntimeError)):
+    with pytest.raises(NotImplementedError) as exc:
         flag_gems.crow_indices_copy(coo)
+    # Compare directly against native ATen: same exception type, and the
+    # message carries the same operator-identifying prefix. (The dispatcher's
+    # full message appends a build-specific backend enumeration and fallback
+    # note that a host-side reproduction cannot byte-match, so the assertion
+    # is on the prefix that identifies the operator and backend.)
+    with pytest.raises(NotImplementedError) as native_exc:
+        torch.ops.aten.crow_indices_copy.default(coo)
+    ours, native = str(exc.value), str(native_exc.value)
+    native_prefix = native.split("'aten::crow_indices_copy'")[0] + "'aten::crow_indices_copy'"
+    assert ours.startswith(native_prefix), (
+        f"ours: {ours!r}\nnative: {native!r}"
+    )
 
 
 @pytest.mark.crow_indices_copy
