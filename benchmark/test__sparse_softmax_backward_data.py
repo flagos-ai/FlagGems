@@ -14,23 +14,11 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
 from . import base
 from .generated_operator_utils import OperatorBenchmark
-
-# The public operator name starts with an underscore, which pytest does not
-# expose as a marker attribute, so register it on the MarkGenerator directly.
-setattr(
-    pytest.mark,
-    "_sparse_softmax_backward_data",
-    MarkDecorator(
-        Mark("_sparse_softmax_backward_data", (), {}, _ispytest=True),
-        _ispytest=True,
-    ),
-)
 
 # (sparse_shape, nnz, sparse_dim, dim) workload descriptors. sparse_dim == rank
 # keeps every dim on the sparse-coordinate kernel; sparse_dim < rank stores dense
@@ -106,7 +94,7 @@ class SparseSoftmaxBackwardDataBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=_SSBD_SHAPES)
 
 
-@pytest.mark._sparse_softmax_backward_data
+@pytest.mark.sparse_softmax_backward_data
 def test__sparse_softmax_backward_data():
     bench = SparseSoftmaxBackwardDataBenchmark(
         op_name="_sparse_softmax_backward_data",

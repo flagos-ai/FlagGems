@@ -14,20 +14,11 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
 from . import base
 from .generated_operator_utils import OperatorBenchmark
-
-# The operator name starts with an underscore, which pytest's MarkGenerator cannot
-# synthesise, so the marker is registered explicitly.
-setattr(
-    pytest.mark,
-    "_sparse_softmax",
-    MarkDecorator(Mark("_sparse_softmax", (), {}, _ispytest=True), _ispytest=True),
-)
 
 # The default half_to_float=False form is native for float32/float64 only, so the
 # fp16/bf16 part of consts.FLOAT_DTYPES is not measurable for this operator; fp64 is
@@ -91,7 +82,7 @@ class SparseSoftmaxBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=default_shapes)
 
 
-@pytest.mark._sparse_softmax
+@pytest.mark.sparse_softmax
 def test__sparse_softmax():
     bench = SparseSoftmaxBenchmark(
         op_name="_sparse_softmax",

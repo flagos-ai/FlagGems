@@ -14,20 +14,11 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
 from . import base, consts, utils
 from .generated_operator_utils import OperatorBenchmark
-
-# The operator name starts with an underscore, so pytest cannot resolve the
-# marker by attribute lookup; register it on the MarkGenerator.
-setattr(
-    pytest.mark,
-    "_sparse_csr_prod",
-    MarkDecorator(Mark("_sparse_csr_prod", (), {}, _ispytest=True), _ispytest=True),
-)
 
 # The CSR kernel asserts input_dim == 2 and core_shapes.yaml has no
 # _sparse_csr_prod entry, so these 2-D defaults replace the inherited 1-D/3-D
@@ -77,7 +68,7 @@ class SparseCsrProdBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=_PROD_SHAPES)
 
 
-@pytest.mark._sparse_csr_prod
+@pytest.mark.sparse_csr_prod
 def test__sparse_csr_prod():
     bench = SparseCsrProdBenchmark(
         op_name="_sparse_csr_prod",
