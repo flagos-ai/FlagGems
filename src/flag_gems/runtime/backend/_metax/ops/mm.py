@@ -82,7 +82,7 @@ def _prune_mm_dense_configs(configs, named_args, transposed_b=False, **kwargs):
 
         pruned_configs.append(config)
 
-    return pruned_configs or configs
+    return pruned_configs or list(configs)
 
 
 _prune_mm_dense_configs_nt = functools.partial(
@@ -94,10 +94,13 @@ _prune_mm_dense_configs_nt = functools.partial(
 @libtuner(
     configs=runtime.get_tuned_config("mm"),
     key=["M", "N", "K", "stride_am", "stride_bk"],
+    policy="flagtune",
     prune_configs_by={"early_config_prune": _prune_mm_dense_configs},
     flagtune_op_name="mm",
     flagtune_expand_op_name="mm",
     flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
+    flagtune_op_id="flaggems/mm",
+    flagtune_variant="metax_general",
 )
 @triton.heuristics(runtime.get_heuristic_config("mm"))
 @triton.heuristics(
@@ -249,10 +252,13 @@ def mm_kernel(
 @libtuner(
     configs=runtime.get_tuned_config("mm_nn"),
     key=["M", "N", "K"],
+    policy="flagtune",
     prune_configs_by={"early_config_prune": _prune_mm_dense_configs},
     flagtune_op_name="mm",
     flagtune_expand_op_name="mm_nn",
     flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
+    flagtune_op_id="flaggems/mm",
+    flagtune_variant="metax_nn",
 )
 @triton.heuristics(runtime.get_heuristic_config("mm"))
 @triton.heuristics(
@@ -330,10 +336,13 @@ def mm_kernel_nn(
 @libtuner(
     configs=runtime.get_tuned_config("mm_nt"),
     key=["M", "N", "K"],
+    policy="flagtune",
     prune_configs_by={"early_config_prune": _prune_mm_dense_configs_nt},
     flagtune_op_name="mm",
     flagtune_expand_op_name="mm_nt",
     flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
+    flagtune_op_id="flaggems/mm",
+    flagtune_variant="metax_nt",
 )
 @triton.heuristics(runtime.get_heuristic_config("mm"))
 @triton.heuristics(
@@ -414,17 +423,20 @@ def _prune_gemv_configs(configs, named_args, **kwargs):
         for config in configs
         if config.kwargs["BLOCK_K"] == 256 and config.num_warps in (4, 8)
     ]
-    return pruned_configs or configs
+    return pruned_configs or list(configs)
 
 
 @libentry()
 @libtuner(
     configs=[triton.Config({"BLOCK_M": 32, "BLOCK_K": 256})],
     key=["M", "K", "stride_am", "stride_bk"],
+    policy="flagtune",
     prune_configs_by={"early_config_prune": _prune_gemv_configs},
     flagtune_op_name="mm",
     flagtune_expand_op_name="gemv",
     flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
+    flagtune_op_id="flaggems/mm",
+    flagtune_variant="metax_gemv",
 )
 @triton.jit
 def gemv_kernel(
@@ -480,9 +492,12 @@ def gemv_mm(a, b, c, M, K):
 @libtuner(
     configs=runtime.get_tuned_config("gemv_k_parallel"),
     key=["M", "K", "stride_am", "stride_bk"],
+    policy="flagtune",
     flagtune_op_name="mm",
     flagtune_expand_op_name="gemv_k_parallel",
     flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
+    flagtune_op_id="flaggems/mm",
+    flagtune_variant="metax_gemv_k_parallel_partial",
 )
 @triton.jit
 def gemv_kernel_k_parallel_partial(
@@ -653,17 +668,20 @@ def _prune_mm_splitk_two_step_configs(configs, named_args, **kwargs):
         if not _splitk_nt_config_aborts(config, transposed_b)
         if config.kwargs["BLOCK_N"] in block_ns
     ]
-    return pruned_configs or configs
+    return pruned_configs or list(configs)
 
 
 @libentry()
 @libtuner(
     configs=runtime.get_tuned_config("mm_splitk"),
     key=["M", "N", "K", "stride_am", "stride_bk"],
+    policy="flagtune",
     pre_hook=_reset_splitk_output,
     flagtune_op_name="mm",
     flagtune_expand_op_name="mm_splitk",
     flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
+    flagtune_op_id="flaggems/mm",
+    flagtune_variant="metax_splitk",
 )
 @triton.jit
 def mm_kernel_splitk(
@@ -746,10 +764,13 @@ def splitk_mm(a, b, c, M, N, K):
 @libtuner(
     configs=runtime.get_tuned_config("mm_splitk_two_step"),
     key=["M", "N", "K", "stride_am", "stride_bk"],
+    policy="flagtune",
     prune_configs_by={"early_config_prune": _prune_mm_splitk_two_step_configs},
     flagtune_op_name="mm",
     flagtune_expand_op_name="mm_splitk_two_step",
     flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
+    flagtune_op_id="flaggems/mm",
+    flagtune_variant="metax_splitk_two_step_partial",
 )
 @triton.jit
 def mm_kernel_splitk_partial(

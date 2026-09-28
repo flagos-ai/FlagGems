@@ -14,6 +14,7 @@
 
 import logging
 
+import torch
 import triton
 import triton.language as tl
 from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
@@ -40,25 +41,53 @@ clamp_max_config = CodeGenConfig(
     buffer_size_limit=4096,
     isCloseVectorization=False,
     unroll_num=8,
+    kunlunAutoGrid=True,
+)
+
+clamp_tensor_config = CodeGenConfig(
+    512,
+    (65536, 65536, 65536),
+    32,
+    True,
+    prefer_1d_tile=True,
+    buffer_size_limit=4096,
+    isCloseVectorization=False,
+    unroll_num=8,
+    kunlunAutoGrid=True,
 )
 
 
-@pointwise_dynamic(promotion_methods=[(0, 1, 2, "DEFAULT")])
+@pointwise_dynamic(promotion_methods=[(0, 1, 2, "DEFAULT")], config=clamp_tensor_config)
 @triton.jit
 def clamp_func_tensor(x, mini, maxi):
     return tl.minimum(maxi, tl.maximum(mini, x))
 
 
-@pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
+@pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")], config=clamp_tensor_config)
 @triton.jit
 def clamp_func_min_tensor(x, mini):
     return tl.maximum(mini.to(tl.float32), x.to(tl.float32))
 
 
-@pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
+@pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")], config=clamp_tensor_config)
 @triton.jit
 def clamp_func_max_tensor(x, maxi):
     return tl.minimum(maxi, x)
+
+
+def _clamp_out_alloc_ok(a, *others):
+    """True when the promoted clamp result is provably ``a`` itself in shape and
+    dtype, so ``out0=torch.empty_like(a)`` is a valid pre-allocation.
+
+    Level-③ gate (see clamp_max's out0 comment for levels ①/②): the benchmark
+    passes three same-shape tensors, and for a vector/tensor bound every arg must
+    match a in BOTH shape and dtype -- a shape-only or dtype-only check silently
+    produces wrong values (broadcast or widening) while still "running".
+    """
+    return a.is_floating_point() and all(
+        isinstance(o, torch.Tensor) and o.shape == a.shape and o.dtype == a.dtype
+        for o in others
+    )
 
 
 def clamp_tensor(A, mini=None, maxi=None):
@@ -66,10 +95,16 @@ def clamp_tensor(A, mini=None, maxi=None):
     if mini is None and maxi is None:
         raise ValueError("At least one of mini or maxi must not be None")
     elif mini is None:
+        if _clamp_out_alloc_ok(A, maxi):
+            return clamp_func_max_tensor(A, maxi, out0=torch.empty_like(A))
         return clamp_func_max_tensor(A, maxi)
     elif maxi is None:
+        if _clamp_out_alloc_ok(A, mini):
+            return clamp_func_min_tensor(A, mini, out0=torch.empty_like(A))
         return clamp_func_min_tensor(A, mini)
     else:
+        if _clamp_out_alloc_ok(A, mini, maxi):
+            return clamp_func_tensor(A, mini, maxi, out0=torch.empty_like(A))
         return clamp_func_tensor(A, mini, maxi)
 
 
@@ -119,6 +154,8 @@ def clamp_max(A, max_value):
     logger.debug("GEMS_KUNLUNXIN CLAMP_MAX")
     if max_value is None:
         raise ValueError("max_value must not be None")
+    if A.is_floating_point() and type(max_value) in (int, float):
+        return clamp_max_func(A, max_value, out0=torch.empty_like(A))
     return clamp_max_func(A, max_value)
 
 

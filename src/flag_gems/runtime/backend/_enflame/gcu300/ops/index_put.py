@@ -169,44 +169,53 @@ def generate_index_put_kernel(
     code.writeline("):")
 
     with code.indent():
-        code.writeline("pid0 = tl.program_id(axis=0)")
+        # grid.x is capped at 65535, so a single program walks several dim0
+        # tiles when M / BLOCK_SIZE0 exceeds that. Mirrors the pid1 loop below.
+        code.writeline("num_pid0 = tl.num_programs(0)")
+        code.writeline("num_blocks_m = (M + BLOCK_SIZE0 - 1) // BLOCK_SIZE0")
         code.writeline(
-            "offset0 = pid0 * BLOCK_SIZE0 + tl.arange(0, BLOCK_SIZE0)[:, None]"
+            "for pid0 in tl.range(tl.program_id(0), num_blocks_m, num_pid0):"
         )
-        code.newline()
-        code.writeline("cur_idx = offset0")
-        for i in range(index_rank - 1, -1, -1):
-            code.writeline(f"indices_idx{i} = cur_idx % indices0_shape{i}")
-            code.writeline(f"cur_idx = cur_idx // indices0_shape{i}")
-        code.newline()
-        code.writeline("mask0 = offset0 < M")
-        for i in range(indices_len):
-            comp = [f"indices_idx{j} * indices{i}_stride{j}" for j in range(index_rank)]
+        with code.indent():
             code.writeline(
-                f"cur_index{i} = tl.load(indices{i}_ptr + {' + '.join(comp)}, mask=mask0, other=0)"
+                "offset0 = pid0 * BLOCK_SIZE0 + tl.arange(0, BLOCK_SIZE0)[:, None]"
             )
-        code.newline()
-        index_mask = [
-            f"(cur_index{i} >= 0) & (cur_index{i} < input_shape{i})"
-            for i in range(indices_len)
-        ]
-        code.writeline(f"index_mask = {' & '.join(index_mask)}")
-        code.newline()
-        if inp_rank == indices_len:
-            code.writeline("pid1 = tl.program_id(axis=1)")
-            code.writeline("offset1 = pid1 * 1 + tl.arange(0, 1)[None, :]")
-            _gen_kernel_inner_body(inp_rank, indices_len, index_rank, code)
-        else:
-            code.writeline("num_pid1 = tl.num_programs(1)")
-            code.writeline("num_blocks_n = (N + BLOCK_SIZE1 - 1) // BLOCK_SIZE1")
-            code.writeline(
-                "for pid1 in tl.range(tl.program_id(1), num_blocks_n, num_pid1):"
-            )
-            with code.indent():
+            code.newline()
+            code.writeline("cur_idx = offset0")
+            for i in range(index_rank - 1, -1, -1):
+                code.writeline(f"indices_idx{i} = cur_idx % indices0_shape{i}")
+                code.writeline(f"cur_idx = cur_idx // indices0_shape{i}")
+            code.newline()
+            code.writeline("mask0 = offset0 < M")
+            for i in range(indices_len):
+                comp = [
+                    f"indices_idx{j} * indices{i}_stride{j}" for j in range(index_rank)
+                ]
                 code.writeline(
-                    "offset1 = pid1 * BLOCK_SIZE1 + tl.arange(0, BLOCK_SIZE1)[None, :]"
+                    f"cur_index{i} = tl.load(indices{i}_ptr + {' + '.join(comp)}, mask=mask0, other=0)"
                 )
+            code.newline()
+            index_mask = [
+                f"(cur_index{i} >= 0) & (cur_index{i} < input_shape{i})"
+                for i in range(indices_len)
+            ]
+            code.writeline(f"index_mask = {' & '.join(index_mask)}")
+            code.newline()
+            if inp_rank == indices_len:
+                code.writeline("pid1 = tl.program_id(axis=1)")
+                code.writeline("offset1 = pid1 * 1 + tl.arange(0, 1)[None, :]")
                 _gen_kernel_inner_body(inp_rank, indices_len, index_rank, code)
+            else:
+                code.writeline("num_pid1 = tl.num_programs(1)")
+                code.writeline("num_blocks_n = (N + BLOCK_SIZE1 - 1) // BLOCK_SIZE1")
+                code.writeline(
+                    "for pid1 in tl.range(tl.program_id(1), num_blocks_n, num_pid1):"
+                )
+                with code.indent():
+                    code.writeline(
+                        "offset1 = pid1 * BLOCK_SIZE1 + tl.arange(0, BLOCK_SIZE1)[None, :]"
+                    )
+                    _gen_kernel_inner_body(inp_rank, indices_len, index_rank, code)
 
     code.newline()
     code.newline()
@@ -245,7 +254,7 @@ def generate_index_put_wrapper(
             code.writeline(")")
             code.writeline("return (")
             with code.indent():
-                code.writeline("triton.cdiv(M, block_size0),")
+                code.writeline("min(triton.cdiv(M, block_size0), 65535),")
                 if inp_rank != indices_len:
                     code.writeline("min(triton.cdiv(N, block_size1), 255),")
                 else:

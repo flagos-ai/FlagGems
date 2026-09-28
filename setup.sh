@@ -66,6 +66,20 @@ if missing:
     print(f"{len(missing)} recorded file(s) missing, e.g. {missing[:5]}")
     sys.exit(1)
 
+# On ascend, triton's backend package imports torch/torch_npu as a side
+# effect (for its do_bench_npu helper) while triton itself is still
+# mid-import. torch_npu's import in turn reaches back into triton.language,
+# which doesn't exist on the triton module yet -> circular-import
+# AttributeError. Fully importing torch/torch_npu first, standalone, means
+# that reentrant import is a cheap no-op (modules already initialized)
+# instead of a reentrant partial import.
+import torch  # noqa: F401
+
+try:
+    import torch_npu  # noqa: F401
+except ImportError:
+    pass
+
 import triton
 
 if triton.__file__ is None or not hasattr(triton, "Config"):

@@ -30,8 +30,7 @@ def test_gt(shape, dtype):
     ref_inp2 = utils.to_reference(inp2)
 
     ref_out = torch.gt(ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.gt(inp1, inp2)
+    res_out = flag_gems.gt(inp1, inp2)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -45,7 +44,6 @@ def test_gt_scalar(shape, dtype):
     inp2 = 0
 
     ref_out = torch.gt(ref_inp1, inp2)
-    with flag_gems.use_gems():
-        res_out = torch.gt(inp1, inp2)
+    res_out = flag_gems.gt_scalar(inp1, inp2)
 
     utils.gems_assert_equal(res_out, ref_out)

@@ -43,6 +43,7 @@ from .broadcast_tensors import broadcast_tensors
 from .broadcast_to import broadcast_to
 from .cholesky_inverse import cholesky_inverse
 from .conj_physical import conj_physical
+from .conv2d import conv2d
 from .conv_depthwise2d import conv_depthwise2d
 from .cudnn_convolution import cudnn_convolution
 from .diagonal_scatter import diagonal_scatter
@@ -108,6 +109,7 @@ from .mm import mm
 from .mm_w8a8_int8 import mm_w8a8_int8, mm_w8a8_int8_out
 from .mse_loss_backward import mse_loss_backward
 from .mul import mul, mul_
+from .mv import mv
 from .mvlgamma import mvlgamma
 from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .nansum import nansum, nansum_out
@@ -206,6 +208,7 @@ __all__ = [
     "broadcast_to",
     "cholesky_inverse",
     "conj_physical",
+    "conv2d",
     "conv_depthwise2d",
     "cudnn_convolution",
     "diagonal_scatter",
@@ -270,6 +273,7 @@ __all__ = [
     "mse_loss_backward",
     "mul",
     "mul_",
+    "mv",
     "mvlgamma",
     "nanmedian",
     "nanmedian_dim",

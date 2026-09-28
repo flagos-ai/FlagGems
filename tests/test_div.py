@@ -34,8 +34,7 @@ def test_div_tensor_tensor(shape, dtype):
     ref_inp2 = utils.to_reference(inp2, False)
 
     ref_out = torch.div(ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.div(inp1, inp2)
+    res_out = flag_gems.true_divide(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
@@ -51,8 +50,7 @@ def test_div_tensor_tensor_(shape, dtype):
     ref_inp2 = utils.to_reference(inp2, False)
 
     ref_out = ref_inp1.div_(ref_inp2)
-    with flag_gems.use_gems():
-        res_out = inp1.div_(inp2)
+    res_out = flag_gems.true_divide_(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
@@ -87,8 +85,7 @@ def test_div_tensor_mode_float(shape, rounding_mode, dtype):
     ref_inp2 = utils.to_reference(inp2, False)
 
     ref_out = torch.div(ref_inp1, ref_inp2, rounding_mode=rounding_mode)
-    with flag_gems.use_gems():
-        res_out = torch.div(inp1, inp2, rounding_mode=rounding_mode)
+    res_out = flag_gems.div_mode(inp1, inp2, rounding_mode=rounding_mode)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
@@ -106,8 +103,7 @@ def test_div_tensor_mode_int(shape, rounding_mode, dtype):
     ref_inp2 = utils.to_reference(inp2, False)
 
     ref_out = torch.div(ref_inp1, ref_inp2, rounding_mode=rounding_mode)
-    with flag_gems.use_gems():
-        res_out = torch.div(inp1, inp2, rounding_mode=rounding_mode)
+    res_out = flag_gems.div_mode(inp1, inp2, rounding_mode=rounding_mode)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -123,8 +119,7 @@ def test_div_tensor_mode_float_(shape, rounding_mode, dtype):
     ref_inp2 = utils.to_reference(inp2, False)
 
     ref_out = ref_inp1.div_(ref_inp2, rounding_mode=rounding_mode)
-    with flag_gems.use_gems():
-        res_out = inp1.div_(inp2, rounding_mode=rounding_mode)
+    res_out = flag_gems.div_mode_(inp1, inp2, rounding_mode=rounding_mode)
 
     assert res_out is inp1
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
@@ -143,8 +138,7 @@ def test_div_tensor_mode_int_(shape, rounding_mode, dtype):
     ref_inp2 = utils.to_reference(inp2, False)
 
     ref_out = ref_inp1.div_(ref_inp2, rounding_mode=rounding_mode)
-    with flag_gems.use_gems():
-        res_out = inp1.div_(inp2, rounding_mode=rounding_mode)
+    res_out = flag_gems.div_mode_(inp1, inp2, rounding_mode=rounding_mode)
 
     assert res_out is inp1
     utils.gems_assert_equal(res_out, ref_out)
@@ -160,8 +154,7 @@ def test_div_scalar_mode_float(shape, rounding_mode, dtype):
     ref_inp = utils.to_reference(inp, False)
 
     ref_out = torch.div(ref_inp, scalar, rounding_mode=rounding_mode)
-    with flag_gems.use_gems():
-        res_out = torch.div(inp, scalar, rounding_mode=rounding_mode)
+    res_out = flag_gems.div_mode(inp, scalar, rounding_mode=rounding_mode)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
@@ -178,8 +171,7 @@ def test_div_scalar_mode_int(shape, rounding_mode, dtype):
     ref_inp = utils.to_reference(inp, False)
 
     ref_out = torch.div(ref_inp, scalar, rounding_mode=rounding_mode)
-    with flag_gems.use_gems():
-        res_out = torch.div(inp, scalar, rounding_mode=rounding_mode)
+    res_out = flag_gems.div_mode(inp, scalar, rounding_mode=rounding_mode)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -194,8 +186,7 @@ def test_div_scalar_mode_float_(shape, rounding_mode, dtype):
     ref_inp = utils.to_reference(inp.clone(), False)
 
     ref_out = ref_inp.div_(scalar, rounding_mode=rounding_mode)
-    with flag_gems.use_gems():
-        res_out = inp.div_(scalar, rounding_mode=rounding_mode)
+    res_out = flag_gems.div_mode_(inp, scalar, rounding_mode=rounding_mode)
 
     assert res_out is inp
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
@@ -213,8 +204,7 @@ def test_div_scalar_mode_int_(shape, rounding_mode, dtype):
     ref_inp = utils.to_reference(inp.clone(), False)
 
     ref_out = ref_inp.div_(scalar, rounding_mode=rounding_mode)
-    with flag_gems.use_gems():
-        res_out = inp.div_(scalar, rounding_mode=rounding_mode)
+    res_out = flag_gems.div_mode_(inp, scalar, rounding_mode=rounding_mode)
 
     assert res_out is inp
     utils.gems_assert_equal(res_out, ref_out)
@@ -234,8 +224,7 @@ def test_div_tensor_scalar(shape, scalar, dtype):
     ref_inp1 = utils.to_reference(inp1, False)
 
     ref_out = torch.div(ref_inp1, inp2)
-    with flag_gems.use_gems():
-        res_out = torch.div(inp1, inp2)
+    res_out = flag_gems.true_divide(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
@@ -254,8 +243,7 @@ def test_div_tensor_scalar_(shape, scalar, dtype):
     ref_inp1 = utils.to_reference(inp1.clone(), False)
 
     ref_out = ref_inp1.div_(inp2)
-    with flag_gems.use_gems():
-        res_out = inp1.div_(inp2)
+    res_out = flag_gems.true_divide_(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
@@ -269,8 +257,7 @@ def test_div_scalar_(shape, scalar, dtype):
     ref_inp = utils.to_reference(inp.clone(), False)
 
     ref_out = ref_inp.div_(scalar)
-    with flag_gems.use_gems():
-        res_out = inp.div_(scalar)
+    res_out = flag_gems.true_divide_(inp, scalar)
 
     assert res_out is inp
     utils.gems_assert_close(inp, ref_out, dtype, equal_nan=True)
@@ -290,8 +277,7 @@ def test_div_scalar_tensor(shape, scalar, dtype):
     ref_inp2 = utils.to_reference(inp2, False)
 
     ref_out = torch.div(inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.div(inp1, inp2)
+    res_out = flag_gems.true_divide(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
@@ -308,8 +294,7 @@ def test_div_scalar_scalar(dtype):
         inp2 = random.randint(1, 100)
 
     ref_out = torch.div(inp1, inp2)
-    with flag_gems.use_gems():
-        res_out = torch.div(inp1, inp2)
+    res_out = flag_gems.true_divide(inp1, inp2)
 
     if dtype == torch.int64:
         utils.gems_assert_equal(res_out, ref_out)
@@ -341,8 +326,7 @@ def test_div_complex_complex(shape, complex_dtype):
     ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = torch.div(ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.div(inp1, inp2)
+    res_out = flag_gems.true_divide(inp1, inp2)
 
     # mthreads does not support torch.isclose for complex types on device,
     # so move to CPU before comparison.
@@ -390,8 +374,7 @@ def test_div_complex_float_tensor(shape, complex_dtype):
         ref_inp2 = utils.to_reference(inp2, True)
         ref_out = torch.div(ref_inp1, ref_inp2)
 
-    with flag_gems.use_gems():
-        res_out = torch.div(inp1, inp2)
+    res_out = flag_gems.true_divide(inp1, inp2)
 
     if flag_gems.vendor_name == "mthreads":
         res_out = res_out.to("cpu")
@@ -427,8 +410,7 @@ def test_div_tensor_int(shape, complex_dtype):
         ref_inp2 = utils.to_reference(inp2, True)
         ref_out = torch.div(ref_inp1, ref_inp2)
 
-    with flag_gems.use_gems():
-        res_out = torch.div(inp1, inp2)
+    res_out = flag_gems.true_divide(inp1, inp2)
 
     if flag_gems.vendor_name == "mthreads":
         res_out = res_out.to("cpu")
@@ -456,8 +438,7 @@ def test_div_complex_int_scalar(shape, complex_dtype):
     ref_inp2 = inp2
 
     ref_out = torch.div(ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.div(inp1, inp2)
+    res_out = flag_gems.true_divide(inp1, inp2)
 
     # mthreads does not support torch.isclose for complex types on device,
     # so move to CPU before comparison.
@@ -480,8 +461,7 @@ def test_div_out_tensor_tensor(shape, dtype):
     torch.div(ref_inp1, ref_inp2, out=ref_out)
 
     out = torch.empty_like(inp1)
-    with flag_gems.use_gems():
-        res_out = torch.div(inp1, inp2, out=out)
+    res_out = flag_gems.true_divide_out(inp1, inp2, out)
 
     assert res_out is out
     utils.gems_assert_close(out, ref_out, dtype, equal_nan=True)
@@ -499,8 +479,7 @@ def test_div_out_tensor_scalar(shape, scalar, dtype):
     torch.div(ref_inp, scalar, out=ref_out)
 
     out = torch.empty_like(inp)
-    with flag_gems.use_gems():
-        res_out = torch.div(inp, scalar, out=out)
+    res_out = flag_gems.true_divide_out(inp, scalar, out)
 
     assert res_out is out
     utils.gems_assert_close(out, ref_out, dtype, equal_nan=True)
@@ -518,8 +497,7 @@ def test_div_out_scalar_tensor(shape, scalar, dtype):
     torch.div(scalar, ref_inp, out=ref_out)
 
     out = torch.empty_like(inp)
-    with flag_gems.use_gems():
-        res_out = torch.div(scalar, inp, out=out)
+    res_out = flag_gems.true_divide_out(scalar, inp, out)
 
     assert res_out is out
     utils.gems_assert_close(out, ref_out, dtype, equal_nan=True)
