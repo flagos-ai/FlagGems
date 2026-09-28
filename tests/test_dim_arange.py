@@ -37,11 +37,11 @@ if QUICK_MODE:
 @pytest.mark.dim_arange
 @pytest.mark.parametrize("n", DIM_ARANGE_SHAPES)
 @pytest.mark.parametrize("dim", [-1, 0])
-def test_accuracy__dim_arange(n, dim):
+def test_accuracy_dim_arange(n, dim):
     like = torch.randn(n, device=flag_gems.device)
 
     ref_out = torch.ops.aten._dim_arange(utils.to_reference(like), dim)
-    res_out = flag_gems._dim_arange(like, dim)
+    res_out = flag_gems.dim_arange(like, dim)
 
     assert res_out.shape == (like.shape[dim],)
     assert res_out.dtype == torch.int64
@@ -50,7 +50,7 @@ def test_accuracy__dim_arange(n, dim):
 
 @pytest.mark.dim_arange
 @pytest.mark.parametrize("shape", TENSOR_SHAPES)
-def test_accuracy__dim_arange_multi_dim(shape):
+def test_accuracy_dim_arange_multi_dim(shape):
     # Only the extent of ``dim`` matters; the tensor values are irrelevant.
     # Include a non-contiguous input to exercise the same launch path on a
     # strided tensor.
@@ -59,21 +59,21 @@ def test_accuracy__dim_arange_multi_dim(shape):
     assert not non_contig.is_contiguous()
 
     ref_out = torch.ops.aten._dim_arange(utils.to_reference(non_contig), 0)
-    res_out = flag_gems._dim_arange(non_contig, 0)
+    res_out = flag_gems.dim_arange(non_contig, 0)
     utils.gems_assert_equal(res_out, ref_out)
 
     ref_neg = torch.ops.aten._dim_arange(utils.to_reference(like), -1)
-    res_neg = flag_gems._dim_arange(like, -1)
+    res_neg = flag_gems.dim_arange(like, -1)
     utils.gems_assert_equal(res_neg, ref_neg)
 
 
 @pytest.mark.dim_arange
-def test_accuracy__dim_arange_empty():
+def test_accuracy_dim_arange_empty():
     # Empty extent along the selected dim yields an empty 1-D output.
     like = torch.randn(0, 4, device=flag_gems.device)
 
     ref_out = torch.ops.aten._dim_arange(utils.to_reference(like), 0)
-    res_out = flag_gems._dim_arange(like, 0)
+    res_out = flag_gems.dim_arange(like, 0)
 
     assert res_out.shape == (0,)
     assert res_out.dtype == torch.int64
@@ -89,15 +89,15 @@ def test_accuracy__dim_arange_error_behavior():
     with pytest.raises(IndexError, match="Dimension out of range"):
         torch.ops.aten._dim_arange(ref_like, 2)
     with pytest.raises(IndexError, match="Dimension out of range"):
-        flag_gems._dim_arange(like, 2)
+        flag_gems.dim_arange(like, 2)
 
     with pytest.raises(IndexError, match="Dimension out of range"):
         torch.ops.aten._dim_arange(ref_like, -3)
     with pytest.raises(IndexError, match="Dimension out of range"):
-        flag_gems._dim_arange(like, -3)
+        flag_gems.dim_arange(like, -3)
 
     scalar = torch.tensor(1.0, device=flag_gems.device)
     with pytest.raises(IndexError, match="tensor has no dimensions"):
         torch.ops.aten._dim_arange(utils.to_reference(scalar), 0)
     with pytest.raises(IndexError, match="tensor has no dimensions"):
-        flag_gems._dim_arange(scalar, 0)
+        flag_gems.dim_arange(scalar, 0)

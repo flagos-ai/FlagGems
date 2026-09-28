@@ -16,21 +16,9 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
-
 import flag_gems
 
 from . import base, consts, utils
-
-# ``_dim_arange`` starts with an underscore, and ``pytest.mark`` refuses to
-# generate a marker via attribute access for such names. Register it directly
-# on the MarkGenerator so ``@pytest.mark._dim_arange`` and ``-m _dim_arange``
-# both work.
-setattr(
-    pytest.mark,
-    "_dim_arange",
-    MarkDecorator(Mark("_dim_arange", (), {}, _ispytest=True), _ispytest=True),
-)
 
 # 1-D sizes for the ``like`` tensor: cover the exact power-of-two launch path
 # (256/1024/65536/131072) and the masked fallback path.
@@ -57,10 +45,10 @@ class DimArangeBenchmark(base.Benchmark):
             yield like, dim
 
 
-@pytest.mark._dim_arange
-def test__dim_arange():
+@pytest.mark.dim_arange
+def test_dim_arange():
     bench = DimArangeBenchmark(
-        op_name="_dim_arange",
+        op_name="dim_arange",
         torch_op=torch.ops.aten._dim_arange,
         gems_op=flag_gems._dim_arange,
         dtypes=consts.FLOAT_DTYPES + consts.INT_DTYPES + consts.BOOL_DTYPES,
