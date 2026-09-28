@@ -86,7 +86,7 @@ jobs:
           source .venv/bin/activate
           tools/test-op.sh ${{ inputs.pr_id }}
 
-  # Kunlunxin runs inside a container on the klx-p800-1 server, since the XPU
+  # Kunlunxin runs inside a container on the klx-p800 server, since the XPU
   # driver/runtime it needs is only set up inside this image.
   # Equivalent to:
   #   docker run --rm -it \
@@ -94,7 +94,7 @@ jobs:
   # with GitHub Actions creating/starting the container and exec'ing each step.
   test-kunlunxin:
     if: ${{ inputs.backend == 'kunlunxin' }}
-    runs-on: klx-p800-1
+    runs-on: klx-p800
     container:
       image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin-xre5.37.1:2.1.2
       options: --device /dev/xpu0 --device /dev/xpuctrl --shm-size=256g --ulimit memlock=-1 --ulimit stack=67108864
@@ -103,7 +103,7 @@ jobs:
         op-test-${{ inputs.backend }}-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
     steps:
-      # klx-p800-1 reuses its workspace across jobs. Stale skip-worktree bits
+      # klx-p800 reuses its workspace across jobs. Stale skip-worktree bits
       # (e.g. on _kunlunxin backend op files) make `git checkout --force` refuse
       # to overwrite them, aborting checkout and breaking the local
       # checkout-retry action. Clear the residue before checkout. Harmless no-op
@@ -120,8 +120,13 @@ jobs:
           git clean -ffdx 2>/dev/null || true
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         continue-on-error: true
-      - uses: ./.github/actions/checkout-retry
-      - uses: ./.github/actions/setup-flaggems
+      # Use fully-qualified @master refs instead of local ./ paths. On the
+      # klx-p800 k8s-novolume runner, local actions are resolved by the runner
+      # against /home/runner/_work while checkout writes to the container's
+      # /__w, so ./ refs can't be found. Remote refs are fetched into the
+      # runner's _actions cache and don't depend on the workspace path.
+      - uses: flagos-ai/FlagGems/.github/actions/checkout-retry@master
+      - uses: flagos-ai/FlagGems/.github/actions/setup-flaggems@master
         with:
           backend: ${{ inputs.backend }}
           gpu_check_script: ${{ inputs.gpu_check_script }}

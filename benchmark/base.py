@@ -40,6 +40,7 @@ from .consts import (
     check_metric_dependencies,
     model_shapes,
 )
+from .reference import reference_failure
 
 torch_backend_device = flag_gems.runtime.torch_backend_device
 torch_device_fn = flag_gems.runtime.torch_device_fn
@@ -106,6 +107,19 @@ class Benchmark:
         self.op_name = op_name
         if is_backward and self.op_name.find("_backward") == -1:
             self.op_name += "_backward"
+        if (
+            getattr(Config, "reference_only", False)
+            and type(self).run is not Benchmark.run
+        ):
+            Config.reference_records.append(
+                {
+                    "nodeid": Config.current_nodeid,
+                    "operator": self.op_name,
+                    "status": "UNSUPPORTED",
+                    "reason": "custom benchmark run requires an explicit reference runner",
+                }
+            )
+            pytest.skip("reference-only is unsupported for custom benchmark run")
         self.torch_op = torch_op
         self.gems_op = kwargs.get("gems_op", None)
         self.is_backward = is_backward
@@ -290,7 +304,12 @@ class Benchmark:
         self.gems_op = gems_op
 
     def get_latency(self, op, *args, **kwargs):
+        fn, xs = self._benchmark_callable(op, *args, **kwargs)
+        return self._time_callable(fn, xs)
+
+    def _benchmark_callable(self, op, *args, **kwargs):
         fn = lambda: op(*args, **kwargs)
+        xs = None
         if self.is_backward:
             out = fn()
             dout = torch.randn_like(out)
@@ -299,6 +318,9 @@ class Benchmark:
             fn = lambda: torch.autograd.grad(
                 (out,), xs, grad_outputs=(dout,), retain_graph=True
             )
+        return fn, xs
+
+    def _time_callable(self, fn, xs):
         if Config.mode == consts.BenchMode.OPERATOR:
             n_warm, n_rep = get_iter_count(fn)
             for i in range(n_warm):
@@ -596,6 +618,95 @@ class Benchmark:
             del args, kwargs
         return executed
 
+    def _run_reference_cases(self, case_ids: Optional[Collection[str]]):
+        """Run the original timing baseline once; never enter Gems dispatch."""
+        if (
+            not self.supports_cases()
+            or getattr(self.get_latency, "__func__", None) is not Benchmark.get_latency
+            or getattr(self._measure_input, "__func__", None)
+            is not Benchmark._measure_input
+        ):
+            Config.reference_records.append(
+                {
+                    "nodeid": Config.current_nodeid,
+                    "operator": self.op_name,
+                    "status": "UNSUPPORTED",
+                    "reason": "custom or legacy baseline requires an explicit reference runner",
+                }
+            )
+            pytest.skip("reference-only is unsupported for this benchmark")
+        cases = self._collect_cases()
+        if not cases:
+            raise ValueError(f"Operator '{self.op_name}' has no reference cases.")
+        Config.available_case_ids.update(case.case_id for case in cases)
+        selected = None if case_ids is None else set(case_ids)
+        executed = []
+        selected_cases = [
+            case for case in cases if selected is None or case.case_id in selected
+        ]
+        records = [
+            {
+                **case.to_dict(),
+                "nodeid": Config.current_nodeid,
+                "operator": self.op_name,
+                "count": 0,
+                "status": "NOT_RUN",
+                "reason": "reference traversal stopped before this case",
+            }
+            for case in selected_cases
+        ]
+        Config.reference_records.extend(records)
+        for case, record in zip(selected_cases, records):
+            record.pop("reason")
+            record["status"] = "FAILED"
+            if Config.skip_native:
+                record.update(status="SKIP", reason=Config.native_baseline_skip_reason)
+                continue
+            args = kwargs = fn = grad_inputs = None
+            try:
+                record["stage"] = "build_inputs"
+                args, kwargs = self.unpack_to_args_kwargs(self.build_inputs(case))
+                record["stage"] = "prepare_reference"
+                fn, grad_inputs = self._benchmark_callable(
+                    self.torch_op, *args, **kwargs
+                )
+                record["stage"] = "invoke"
+                record["count"] = 1
+                fn()
+                record["stage"] = "synchronize"
+                torch_device_fn.synchronize()
+            except pytest.skip.Exception as error:
+                record.update(status="SKIP", reason=str(error))
+                raise
+            except BaseException as error:
+                record["failure"] = reference_failure(error)
+                if (
+                    not isinstance(error, Exception)
+                    or record["stage"] == "synchronize"
+                    or record["failure"]["category"] == "UNKNOWN"
+                ):
+                    raise
+                # Only explicit capability errors can continue, and never if
+                # queued accelerator work reports an additional failure.
+                try:
+                    torch_device_fn.synchronize()
+                except BaseException as sync_error:
+                    record["recovery_failure"] = reference_failure(sync_error)
+                    raise
+                continue
+            finally:
+                del fn, grad_inputs, args, kwargs
+            record["status"] = "PASSED"
+            Config.executed_case_ids.add(case.case_id)
+            executed.append(case.case_id)
+        failures = sum(record["status"] == "FAILED" for record in records)
+        if failures:
+            pytest.fail(
+                f"{failures} reference cases failed; see per-case reference report",
+                pytrace=False,
+            )
+        return executed
+
     def _run_profile_cases(self, case_ids: Collection[str]):
         """Run one candidate case with warmup/iterations owned by pytest."""
         if not self.supports_cases():
@@ -709,6 +820,9 @@ class Benchmark:
         configured_case_ids = getattr(Config, "case_ids", None)
         selection_requested = case_ids is not None or configured_case_ids is not None
         selected_case_ids = case_ids if case_ids is not None else configured_case_ids
+
+        if getattr(Config, "reference_only", False):
+            return self._run_reference_cases(selected_case_ids)
 
         if getattr(Config, "preflight_only", False):
             return self._run_preflight_cases(selected_case_ids)

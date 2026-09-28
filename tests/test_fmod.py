@@ -36,8 +36,7 @@ def test_fmod_tensor(shape, dtype):
     ref_inp1 = to_reference(inp1, True)
     ref_inp2 = to_reference(inp2, True)
     ref_out = torch.fmod(ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.fmod(inp1, inp2)
+    res_out = flag_gems.fmod_tensor(inp1, inp2)
     gems_assert_close(res_out, ref_out, dtype)
 
 
@@ -50,8 +49,7 @@ def test_fmod_scalar(shape, scalar, dtype):
     inp2 = scalar if scalar != 0 else 1.0
     ref_inp1 = to_reference(inp1, True)
     ref_out = torch.fmod(ref_inp1, inp2)
-    with flag_gems.use_gems():
-        res_out = torch.fmod(inp1, inp2)
+    res_out = flag_gems.fmod_scalar(inp1, inp2)
     atol = 1e-3 if abs(scalar) < 0.01 else 1e-4
     gems_assert_close(res_out, ref_out, dtype, atol=atol)
 
@@ -66,8 +64,7 @@ def test_fmod_tensor_inplace(shape, dtype):
     ref_inp1 = to_reference(inp1.clone(), True)
     ref_inp2 = to_reference(inp2, True)
     ref_out = ref_inp1.fmod_(ref_inp2)
-    with flag_gems.use_gems():
-        res_out = inp1.fmod_(inp2)
+    res_out = flag_gems.fmod_tensor_(inp1, inp2)
     gems_assert_close(res_out, ref_out, dtype)
 
 
@@ -80,7 +77,6 @@ def test_fmod_scalar_inplace(shape, scalar, dtype):
     inp2 = scalar if scalar != 0 else 1.0
     ref_inp1 = to_reference(inp1.clone(), True)
     ref_out = ref_inp1.fmod_(inp2)
-    with flag_gems.use_gems():
-        res_out = inp1.fmod_(inp2)
+    res_out = flag_gems.fmod_scalar_(inp1, inp2)
     atol = 1e-3 if abs(scalar) < 0.01 else 1e-4
     gems_assert_close(res_out, ref_out, dtype, atol=atol)

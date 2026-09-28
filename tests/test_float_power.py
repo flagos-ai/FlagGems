@@ -56,8 +56,7 @@ def test_float_power_tensor_tensor(shapes, dtype):
         utils.to_reference(base), utils.to_reference(exponent)
     )
 
-    with flag_gems.use_gems():
-        result = torch.ops.aten.float_power.Tensor_Tensor(base, exponent)
+    result = flag_gems.float_power_tensor_tensor(base, exponent)
 
     _assert_result(result, ref)
 
@@ -78,8 +77,7 @@ def test_float_power_tensor_tensor_noncontiguous_and_special_values():
         utils.to_reference(base), utils.to_reference(exponent)
     )
 
-    with flag_gems.use_gems():
-        result = torch.ops.aten.float_power.Tensor_Tensor(base, exponent)
+    result = flag_gems.float_power_tensor_tensor(base, exponent)
 
     _assert_result(result, ref)
 
@@ -92,8 +90,7 @@ def test_float_power_tensor_scalar(shape, dtype, exponent):
     base = _make_input(shape, dtype, positive=True)
     ref = torch.ops.aten.float_power.Tensor_Scalar(utils.to_reference(base), exponent)
 
-    with flag_gems.use_gems():
-        result = torch.ops.aten.float_power.Tensor_Scalar(base, exponent)
+    result = flag_gems.float_power_tensor_scalar(base, exponent)
 
     _assert_result(result, ref)
 
@@ -106,8 +103,7 @@ def test_float_power_scalar_tensor(shape, dtype, base):
     exponent = _make_input(shape, dtype)
     ref = torch.ops.aten.float_power.Scalar(base, utils.to_reference(exponent))
 
-    with flag_gems.use_gems():
-        result = torch.ops.aten.float_power.Scalar(base, exponent)
+    result = flag_gems.float_power_scalar_tensor(base, exponent)
 
     _assert_result(result, ref)
 
@@ -127,8 +123,7 @@ def test_float_power_tensor_tensor_out(shapes, dtype):
     )
     out = torch.empty(result_shape, dtype=torch.float64, device=flag_gems.device)
 
-    with flag_gems.use_gems():
-        result = torch.ops.aten.float_power.Tensor_Tensor_out(base, exponent, out=out)
+    result = flag_gems.float_power_tensor_tensor_out(base, exponent, out=out)
 
     assert result is out
     _assert_result(result, ref)
@@ -144,8 +139,7 @@ def test_float_power_tensor_scalar_out(shape, dtype):
     ref = torch.ops.aten.float_power.Tensor_Scalar_out(ref_base, -0.5, out=ref_out)
     out = torch.empty(0, dtype=torch.float64, device=flag_gems.device)
 
-    with flag_gems.use_gems():
-        result = torch.ops.aten.float_power.Tensor_Scalar_out(base, -0.5, out=out)
+    result = flag_gems.float_power_tensor_scalar_out(base, -0.5, out=out)
 
     assert result is out
     assert result.shape == base.shape
@@ -162,8 +156,7 @@ def test_float_power_scalar_tensor_out(shape, dtype):
     ref = torch.ops.aten.float_power.Scalar_out(2.0, ref_exponent, out=ref_out)
     out = torch.empty(shape, dtype=torch.float64, device=flag_gems.device)
 
-    with flag_gems.use_gems():
-        result = torch.ops.aten.float_power.Scalar_out(2.0, exponent, out=out)
+    result = flag_gems.float_power_scalar_tensor_out(2.0, exponent, out=out)
 
     assert result is out
     _assert_result(result, ref)
@@ -176,8 +169,7 @@ def test_float_power_tensor_tensor_out_noncontiguous():
     out = torch.empty((4, 3), dtype=torch.float64, device=flag_gems.device).T
     ref = torch.float_power(utils.to_reference(base), utils.to_reference(exponent))
 
-    with flag_gems.use_gems():
-        result = torch.ops.aten.float_power.Tensor_Tensor_out(base, exponent, out=out)
+    result = flag_gems.float_power_tensor_tensor_out(base, exponent, out=out)
 
     assert result is out
     assert not result.is_contiguous()
@@ -189,8 +181,5 @@ def test_float_power_out_rejects_non_double_output():
     base = torch.rand(8, device=flag_gems.device)
     out = torch.empty_like(base)
 
-    with (
-        flag_gems.use_gems(),
-        pytest.raises(RuntimeError, match="requires dtype Double"),
-    ):
+    with pytest.raises(RuntimeError, match="requires dtype Double"):
         torch.ops.aten.float_power.Tensor_Scalar_out(base, 2.0, out=out)

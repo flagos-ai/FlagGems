@@ -1871,6 +1871,8 @@ ops:
   - beta: '5.3'
 - id: batch_norm
   description: An internal operator used for implementing the `BatchNorm` functionality.
+  for:
+  - native_batch_norm
   labels:
   - aten
   kind:
@@ -4027,7 +4029,7 @@ ops:
   stages:
   - alpha: '5.5.0'
 - id: cumsum
-  destination: Returns the cumulative sum of elements of `input` in the dimension
+  description: Returns the cumulative sum of elements of `input` in the dimension
     `dim`.
   for:
   - cumsum
@@ -4049,7 +4051,7 @@ ops:
   stages:
   - alpha: '5.4'
 - id: cumsum_out
-  destination: 'Returns the cumulative sum of elements of `input` in the dimension
+  description: 'Returns the cumulative sum of elements of `input` in the dimension
     `dim`.
 
     It is a variant of `cumsum()`.
@@ -4534,17 +4536,6 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.0'
-  - beta: '5.3'
-- id: dunder_ior_tensor
-  description: The in-place version of bitwise or operation for tensor and scalar.
-  for:
-  - __ior__.Tensor
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Math
-  stages:
   - beta: '5.3'
 - id: dunder_or_scalar
   description: The scalar version of `dunder_or_tensor`.
@@ -6811,6 +6802,8 @@ ops:
 - id: group_norm
   description: An internal IR for applying Group Normalization for last certain number
     of dimensions.
+  for:
+  - native_group_norm
   labels:
   - aten
   - Reduction
@@ -6829,6 +6822,23 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '3.0'
+- id: grouped_matmul
+  description: 'Grouped matrix multiplication on Ascend NPUs, mirroring ``torch_npu.npu_grouped_matmul``.
+
+    Computes ``Y[group] = X[group] @ Weight[group]`` for Mixture-of-Experts (MoE)
+    models, where ``x`` is ``[M, K]``, ``weight`` is ``[G, K, N]`` and ``group_list``
+    holds either cumulative group ends (type 0) or per-group row counts (type 1).
+
+    '
+  for:
+  - grouped_matmul
+  labels:
+  - NoCPU
+  - MoE
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.5'
 - id: grouped_mm
   description: 'Grouped matrix multiply is a functional operator designed to accelerate
     Mixture-of-Experts (MoE) models
@@ -7423,6 +7433,36 @@ ops:
   - Reduction
   stages:
   - alpha: '5.4'
+- id: histogramdd_from_bin_tensors
+  description: 'Triton kernel implementation for _histogramdd_from_bin_tensors.
+    Computes a multi-dimensional histogram from explicit per-dimension
+    bin-edge tensors, supporting optional weights and density
+    normalisation.
+
+    '
+  for:
+  - _histogramdd_from_bin_tensors
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Reduction
+  stages:
+  - alpha: '5.4'
+- id: histogramdd_from_bin_tensors_out
+  description: 'A variant of `_histogramdd_from_bin_tensors()` that assigns the output
+    to the given `out` parameter.
+
+    '
+  for:
+  - _histogramdd_from_bin_tensors.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Reduction
+  stages:
+  - alpha: '5.4'
 - id: hsplit
   description: 'Split a tensor into multiple sub-tensors horizontally (column-wise).
 
@@ -8005,9 +8045,21 @@ ops:
   - alpha: '5.4'
 
 - id: ior_scalar
-  description: The scalar version of `dunder_ior_tensor`.
+  description: The scalar version of `ior_tensor`.
   for:
   - __ior__.Scalar
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - beta: '5.3'
+
+- id: ior_tensor
+  description: The in-place version of bitwise or operation for two tensors.
+  for:
+  - __ior__.Tensor
   labels:
   - aten
   - KernelGen
@@ -8308,6 +8360,8 @@ ops:
 - id: layer_norm
   description: An internal IR for applying Layer Normalization for last certain number
     of dimensions.
+  for:
+  - native_layer_norm
   labels:
   - aten
   kind:
