@@ -14,20 +14,11 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
 from . import base, consts
 from .generated_operator_utils import OperatorBenchmark
-
-# pytest.mark cannot build a marker for an underscore-prefixed name through
-# attribute access, so register it explicitly.
-setattr(
-    pytest.mark,
-    "_sparse_addmm",
-    MarkDecorator(Mark("_sparse_addmm", (), {}, _ispytest=True), _ispytest=True),
-)
 
 # The shared FLOAT_DTYPES list cannot be used as-is: 'addmm_sparse_cuda' has no
 # Half and no BFloat16 kernel on this backend. float32 and float64 do have one,
@@ -171,7 +162,7 @@ class SparseAddmmZeroExtentBenchmark(SparseAddmmBenchmark):
     default_mnk = _ZERO_EXTENT_MNK
 
 
-@pytest.mark._sparse_addmm
+@pytest.mark.sparse_addmm
 def test__sparse_addmm():
     bench = SparseAddmmBenchmark(
         op_name="_sparse_addmm",
@@ -184,7 +175,7 @@ def test__sparse_addmm():
     bench.run()
 
 
-@pytest.mark._sparse_addmm
+@pytest.mark.sparse_addmm
 def test__sparse_addmm_zero_extent():
     bench = SparseAddmmZeroExtentBenchmark(
         op_name="_sparse_addmm",

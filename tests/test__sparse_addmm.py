@@ -14,19 +14,10 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
 from . import test_utils as tu
-
-# pytest.mark cannot build a marker for an underscore-prefixed name through
-# attribute access, so register it explicitly.
-setattr(
-    pytest.mark,
-    "_sparse_addmm",
-    MarkDecorator(Mark("_sparse_addmm", (), {}, _ispytest=True), _ispytest=True),
-)
 
 # Dtypes the native kernel accepts, probed with valid calls on the active NVIDIA
 # backend: float32, float64, complex64 (complex128 is accepted as well, but it is
@@ -77,7 +68,7 @@ def _sparse_mat1(dense):
     return dense.to_sparse()
 
 
-@pytest.mark._sparse_addmm
+@pytest.mark.sparse_addmm
 @pytest.mark.parametrize("dtype", _DTYPES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("mnk", _MNK_ROWS)
@@ -127,7 +118,7 @@ def _strided_operands(label, dtype):
     return self_t, mat2
 
 
-@pytest.mark._sparse_addmm
+@pytest.mark.sparse_addmm
 @pytest.mark.parametrize("label", _STRIDED_ROWS)
 @pytest.mark.parametrize("dtype", _REAL_DTYPES)
 def test__sparse_addmm_strided_dense_operands(label, dtype):
@@ -196,7 +187,7 @@ def _sparse_state_mat1(label, shape, dtype):
     return dense.coalesce().to_sparse_csr()
 
 
-@pytest.mark._sparse_addmm
+@pytest.mark.sparse_addmm
 @pytest.mark.parametrize("label", _SPARSE_STATE_ROWS)
 def test__sparse_addmm_sparse_operand_state(label):
     dtype = torch.float32
@@ -233,7 +224,7 @@ _BROADCAST_ROWS = tu.selected_cases(
 )
 
 
-@pytest.mark._sparse_addmm
+@pytest.mark.sparse_addmm
 @pytest.mark.parametrize("mnk,self_shape", _BROADCAST_ROWS)
 def test__sparse_addmm_self_broadcast(mnk, self_shape):
     m, n, k = mnk
@@ -282,7 +273,7 @@ def _param_operands(dtype, value_range):
     return self_t, mat1, mat2
 
 
-@pytest.mark._sparse_addmm
+@pytest.mark.sparse_addmm
 @pytest.mark.parametrize("dtype,beta", _BETA_ROWS)
 def test__sparse_addmm_beta_values(dtype, beta):
     self_t, mat1, mat2 = _param_operands(dtype, ["-1", "1"])
@@ -298,7 +289,7 @@ def test__sparse_addmm_beta_values(dtype, beta):
     tu.assert_result_close(res_out, ref_out)
 
 
-@pytest.mark._sparse_addmm
+@pytest.mark.sparse_addmm
 @pytest.mark.parametrize("dtype,alpha", _ALPHA_ROWS)
 def test__sparse_addmm_alpha_values(dtype, alpha):
     self_t, mat1, mat2 = _param_operands(dtype, ["-1", "1"])
@@ -314,7 +305,7 @@ def test__sparse_addmm_alpha_values(dtype, alpha):
     tu.assert_result_close(res_out, ref_out)
 
 
-@pytest.mark._sparse_addmm
+@pytest.mark.sparse_addmm
 @pytest.mark.parametrize("dtype,alpha", _ALPHA_INF_ROWS)
 def test__sparse_addmm_alpha_inf_boundary(dtype, alpha):
     # alpha = +/-Inf is only order-independent when the reduced operand has a
@@ -376,7 +367,7 @@ def _diagonal_special_coo(payload, shape, dtype):
     ).coalesce()
 
 
-@pytest.mark._sparse_addmm
+@pytest.mark.sparse_addmm
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_ROWS)
 def test__sparse_addmm_special_values_in_self(dtype, scenario):
     m, n, k = _SPECIAL_MNK
@@ -395,7 +386,7 @@ def test__sparse_addmm_special_values_in_self(dtype, scenario):
     tu.assert_result_close(res_out, ref_out)
 
 
-@pytest.mark._sparse_addmm
+@pytest.mark.sparse_addmm
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_ROWS)
 def test__sparse_addmm_special_values_in_sparse_operand(dtype, scenario):
     m, n, k = _SPECIAL_MNK
@@ -415,7 +406,7 @@ def test__sparse_addmm_special_values_in_sparse_operand(dtype, scenario):
     tu.assert_result_close(res_out, ref_out)
 
 
-@pytest.mark._sparse_addmm
+@pytest.mark.sparse_addmm
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_ROWS)
 def test__sparse_addmm_special_values_in_mat2(dtype, scenario):
     m, n, k = _SPECIAL_MNK
@@ -436,7 +427,7 @@ def test__sparse_addmm_special_values_in_mat2(dtype, scenario):
     tu.assert_result_close(res_out, ref_out)
 
 
-@pytest.mark._sparse_addmm
+@pytest.mark.sparse_addmm
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_ROWS)
 def test__sparse_addmm_beta_zero_drops_special_self(dtype, scenario):
     m, n, k = _SPECIAL_MNK
@@ -468,7 +459,7 @@ _BACKWARD_ROWS = tu.selected_cases(
 )
 
 
-@pytest.mark._sparse_addmm
+@pytest.mark.sparse_addmm
 @pytest.mark.parametrize("mnk,dtype", _BACKWARD_ROWS)
 def test__sparse_addmm_backward(mnk, dtype):
     m, n, k = mnk
@@ -511,7 +502,7 @@ def test__sparse_addmm_backward(mnk, dtype):
 _OUT_ROWS = tu.selected_cases(_DTYPES, quick=[])
 
 
-@pytest.mark._sparse_addmm
+@pytest.mark.sparse_addmm
 @pytest.mark.parametrize("dtype", _OUT_ROWS)
 def test__sparse_addmm_out_overload(dtype):
     # aten::_sparse_addmm.out is a real native overload on this backend (probe:
@@ -560,7 +551,7 @@ _VENDOR_REJECTED_DTYPES = (
 )
 
 
-@pytest.mark._sparse_addmm
+@pytest.mark.sparse_addmm
 @pytest.mark.parametrize("dtype", _VENDOR_REJECTED_DTYPES)
 def test__sparse_addmm_rejects_unsupported_dtype(dtype):
     m, n, k = (8, 9, 6)
@@ -593,7 +584,7 @@ _INVALID_OPERAND_SHAPES = [
 ]
 
 
-@pytest.mark._sparse_addmm
+@pytest.mark.sparse_addmm
 @pytest.mark.parametrize("self_shape,mat1_shape,mat2_shape", _INVALID_OPERAND_SHAPES)
 def test__sparse_addmm_rejects_invalid_operand_shapes(
     self_shape, mat1_shape, mat2_shape

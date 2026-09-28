@@ -15,21 +15,11 @@ import math
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
 from . import base
 from .generated_operator_utils import OperatorBenchmark
-
-setattr(
-    pytest.mark,
-    "_sparse_log_softmax_backward_data",
-    MarkDecorator(
-        Mark("_sparse_log_softmax_backward_data", (), {}, _ispytest=True),
-        _ispytest=True,
-    ),
-)
 
 # The native operator carries float32/float64 kernels; float64 stays behind the static
 # capability flag. Listing and execution share this list.
@@ -179,7 +169,7 @@ class SparseLogSoftmaxBackwardBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=_DEFAULT_CASES)
 
 
-@pytest.mark._sparse_log_softmax_backward_data
+@pytest.mark.sparse_log_softmax_backward_data
 def test__sparse_log_softmax_backward_data_benchmark():
     bench = SparseLogSoftmaxBackwardBenchmark(
         op_name="_sparse_log_softmax_backward_data",

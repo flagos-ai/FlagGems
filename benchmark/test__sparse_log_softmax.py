@@ -22,19 +22,11 @@ tail axis of the 4-dim shape.
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
 from . import base
 from .generated_operator_utils import OperatorBenchmark
-
-# pytest blocks attribute access for underscore-prefixed marker names.
-setattr(
-    pytest.mark,
-    "_sparse_log_softmax",
-    MarkDecorator(Mark("_sparse_log_softmax", (), {}, _ispytest=True), _ispytest=True),
-)
 
 # float64 rows follow the static capability flag exposed by the runtime
 # detector; no parsed device name and no probe at import time.
@@ -194,7 +186,7 @@ class SparseLogSoftmaxBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=SPARSE_SHAPES)
 
 
-@pytest.mark._sparse_log_softmax
+@pytest.mark.sparse_log_softmax
 def test__sparse_log_softmax():
     bench = SparseLogSoftmaxBenchmark(
         op_name="_sparse_log_softmax",

@@ -14,19 +14,11 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
 from . import base, consts
 from .generated_operator_utils import OperatorBenchmark
-
-# _sparse_sum starts with an underscore, so register its marker explicitly.
-setattr(
-    pytest.mark,
-    "_sparse_sum",
-    MarkDecorator(Mark("_sparse_sum", (), {}, _ispytest=True), _ispytest=True),
-)
 
 # bfloat16 needs the backend kernel; the gate is a static capability flag, so
 # listing stays allocation-free and never probes tensors. The benchmark only runs
@@ -151,7 +143,7 @@ class SparseSumBenchmark(OperatorBenchmark):
         return _SPARSE_SUM_MORE_SHAPES
 
 
-@pytest.mark._sparse_sum
+@pytest.mark.sparse_sum
 def test__sparse_sum():
     bench = SparseSumBenchmark(
         op_name="_sparse_sum",

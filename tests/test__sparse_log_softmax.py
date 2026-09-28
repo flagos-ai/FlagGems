@@ -23,19 +23,11 @@ the sparse path sees real normalization groups instead of singletons.
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
 from . import accuracy_utils as utils
 from . import test_utils as tu
-
-# pytest blocks attribute access for underscore-prefixed marker names.
-setattr(
-    pytest.mark,
-    "_sparse_log_softmax",
-    MarkDecorator(Mark("_sparse_log_softmax", (), {}, _ispytest=True), _ispytest=True),
-)
 
 # Static construction capability, taken from the runtime detector's existing
 # flags: a dtype whose flag is False is never used to build a fixture, so no
@@ -445,7 +437,7 @@ def _uncoalesced_input(shape, sparse_dim, dtype, dim):
     return _make_coo(indices, values, shape, dtype, is_coalesced=False)
 
 
-@pytest.mark._sparse_log_softmax
+@pytest.mark.sparse_log_softmax
 @pytest.mark.parametrize("shape,sparse_dim,dim", POSITIVE_ROWS)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
@@ -459,7 +451,7 @@ def test__sparse_log_softmax(shape, sparse_dim, dim, value_range, dtype):
     tu.assert_result_close(res_out, ref_out)
 
 
-@pytest.mark._sparse_log_softmax
+@pytest.mark.sparse_log_softmax
 @pytest.mark.parametrize("in_dtype,out_dtype", CONVERSION_ROWS)
 def test__sparse_log_softmax_int_conversion(in_dtype, out_dtype):
     inp = _sparse_input(_PARAM_SHAPE, _PARAM_SPARSE_DIM, in_dtype, dim=_PARAM_DIM)
@@ -471,7 +463,7 @@ def test__sparse_log_softmax_int_conversion(in_dtype, out_dtype):
     tu.assert_result_close(res_out, ref_out)
 
 
-@pytest.mark._sparse_log_softmax
+@pytest.mark.sparse_log_softmax
 @pytest.mark.parametrize("dtype", DEFAULT_DTYPE_DTYPES)
 def test__sparse_log_softmax_int_default_dtype(dtype):
     inp = _sparse_input(_PARAM_SHAPE, _PARAM_SPARSE_DIM, dtype, dim=_PARAM_DIM)
@@ -483,7 +475,7 @@ def test__sparse_log_softmax_int_default_dtype(dtype):
     tu.assert_result_close(res_out, ref_out)
 
 
-@pytest.mark._sparse_log_softmax
+@pytest.mark.sparse_log_softmax
 @pytest.mark.parametrize("shape,sparse_dim,dim", SPECIAL_ROWS)
 @pytest.mark.parametrize("dtype,scenario", SPECIAL_CASES)
 def test__sparse_log_softmax_special_values(shape, sparse_dim, dim, dtype, scenario):
@@ -496,7 +488,7 @@ def test__sparse_log_softmax_special_values(shape, sparse_dim, dim, dtype, scena
     tu.assert_result_close(res_out, ref_out)
 
 
-@pytest.mark._sparse_log_softmax
+@pytest.mark.sparse_log_softmax
 @pytest.mark.parametrize("in_dtype,out_dtype,scenario", SPECIAL_CONVERSION_CASES)
 def test__sparse_log_softmax_int_special_values(in_dtype, out_dtype, scenario):
     inp = _sparse_special_input(
@@ -510,7 +502,7 @@ def test__sparse_log_softmax_int_special_values(in_dtype, out_dtype, scenario):
     tu.assert_result_close(res_out, ref_out)
 
 
-@pytest.mark._sparse_log_softmax
+@pytest.mark.sparse_log_softmax
 @pytest.mark.parametrize("shape,sparse_dim,dim", BACKWARD_ROWS)
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
 def test__sparse_log_softmax_backward(shape, sparse_dim, dim, dtype):
@@ -533,7 +525,7 @@ def test__sparse_log_softmax_backward(shape, sparse_dim, dim, dtype):
     tu.assert_result_close(res_grad, ref_grad)
 
 
-@pytest.mark._sparse_log_softmax
+@pytest.mark.sparse_log_softmax
 @pytest.mark.parametrize("shape,sparse_dim,dim", EMPTY_ROWS)
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
 def test__sparse_log_softmax_empty_input(shape, sparse_dim, dim, dtype):
@@ -546,7 +538,7 @@ def test__sparse_log_softmax_empty_input(shape, sparse_dim, dim, dtype):
     tu.assert_result_close(res_out, ref_out)
 
 
-@pytest.mark._sparse_log_softmax
+@pytest.mark.sparse_log_softmax
 @pytest.mark.parametrize("shape,sparse_dim,dim", UNCOALESCED_ROWS)
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
 def test__sparse_log_softmax_uncoalesced_input(shape, sparse_dim, dim, dtype):
@@ -561,7 +553,7 @@ def test__sparse_log_softmax_uncoalesced_input(shape, sparse_dim, dim, dtype):
     tu.assert_result_close(res_out, ref_out)
 
 
-@pytest.mark._sparse_log_softmax
+@pytest.mark.sparse_log_softmax
 @pytest.mark.parametrize("shape,sparse_dim,dim", OUT_ROWS)
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
 def test__sparse_log_softmax_out(shape, sparse_dim, dim, dtype):
@@ -579,7 +571,7 @@ def test__sparse_log_softmax_out(shape, sparse_dim, dim, dtype):
     tu.assert_result_close(res_ret, ref_ret)
 
 
-@pytest.mark._sparse_log_softmax
+@pytest.mark.sparse_log_softmax
 @pytest.mark.parametrize("shape,sparse_dim,dim", INVALID_DIM_ROWS)
 def test__sparse_log_softmax_rejects_invalid_dim(shape, sparse_dim, dim):
     inp = _sparse_input(shape, sparse_dim, torch.float32, dim=dim)
@@ -588,7 +580,7 @@ def test__sparse_log_softmax_rejects_invalid_dim(shape, sparse_dim, dim):
         flag_gems._sparse_log_softmax(inp, dim, half_to_float=False)
 
 
-@pytest.mark._sparse_log_softmax
+@pytest.mark.sparse_log_softmax
 @pytest.mark.parametrize("nnz,dim", SCALAR_NEG_ROWS)
 def test__sparse_log_softmax_rejects_scalar_input(nnz, dim):
     inp = _scalar_coo(nnz, torch.float32)
@@ -597,7 +589,7 @@ def test__sparse_log_softmax_rejects_scalar_input(nnz, dim):
         flag_gems._sparse_log_softmax(inp, dim, half_to_float=False)
 
 
-@pytest.mark._sparse_log_softmax
+@pytest.mark.sparse_log_softmax
 @pytest.mark.parametrize("dtype", UNSUPPORTED_DTYPES if _VENDOR_MEASURED else [])
 def test__sparse_log_softmax_rejects_unsupported_dtype(dtype):
     inp = _sparse_input((256,), 1, dtype, dim=0)
@@ -606,7 +598,7 @@ def test__sparse_log_softmax_rejects_unsupported_dtype(dtype):
         flag_gems._sparse_log_softmax(inp, 0, half_to_float=False)
 
 
-@pytest.mark._sparse_log_softmax
+@pytest.mark.sparse_log_softmax
 @pytest.mark.parametrize("dtype", INVALID_DTYPE_PARAMS if _VENDOR_MEASURED else [])
 def test__sparse_log_softmax_rejects_invalid_dtype_param(dtype):
     inp = _sparse_input((256,), 1, torch.float32, dim=0)
@@ -615,7 +607,7 @@ def test__sparse_log_softmax_rejects_invalid_dtype_param(dtype):
         flag_gems._sparse_log_softmax(inp, 0, dtype=dtype)
 
 
-@pytest.mark._sparse_log_softmax
+@pytest.mark.sparse_log_softmax
 @pytest.mark.parametrize("dtype", HALF_TO_FLOAT_DTYPES if _VENDOR_MEASURED else [])
 def test__sparse_log_softmax_rejects_half_to_float(dtype):
     inp = _sparse_input((256,), 1, dtype, dim=0)
@@ -624,7 +616,7 @@ def test__sparse_log_softmax_rejects_half_to_float(dtype):
         flag_gems._sparse_log_softmax(inp, 0, half_to_float=True)
 
 
-@pytest.mark._sparse_log_softmax
+@pytest.mark.sparse_log_softmax
 def test__sparse_log_softmax_rejects_dense_input():
     # Native raises NotImplementedError (a RuntimeError subclass) for a strided
     # input, since only the SparseCPU/SparseCUDA kernels exist.

@@ -14,20 +14,11 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
 from . import accuracy_utils as utils
 from . import test_utils as tu
-
-# '_sparse_sum' starts with an underscore, so pytest cannot create the marker by
-# attribute access; register it explicitly (this also enables -m _sparse_sum).
-setattr(
-    pytest.mark,
-    "_sparse_sum",
-    MarkDecorator(Mark("_sparse_sum", (), {}, _ispytest=True), _ispytest=True),
-)
 
 # Value-grid operand dtypes. A sparse COO tensor of an fp8 dtype constructs fine,
 # but on the measured NVIDIA CUDA backend the native .default / .dim / .dtype forms
@@ -329,7 +320,7 @@ def _observation(out):
     return (dense * weight).sum()
 
 
-@pytest.mark._sparse_sum
+@pytest.mark.sparse_sum
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("dtype", _SUM_DTYPES)
@@ -345,7 +336,7 @@ def test_sparse_sum_default(shape, value_range, dtype):
     tu.assert_result_close(res_out, ref_out)
 
 
-@pytest.mark._sparse_sum
+@pytest.mark.sparse_sum
 @pytest.mark.parametrize("shape,dims", tu.selected_cases(_DIM_ROWS, quick=[]))
 @pytest.mark.parametrize("dtype", _SUM_DTYPES)
 def test_sparse_sum_dim(shape, dims, dtype):
@@ -358,7 +349,7 @@ def test_sparse_sum_dim(shape, dims, dtype):
     tu.assert_result_close(res_out, ref_out)
 
 
-@pytest.mark._sparse_sum
+@pytest.mark.sparse_sum
 @pytest.mark.parametrize("target", tu.selected_cases(_DTYPE_TARGETS, quick=[]))
 def test_sparse_sum_dtype(target):
     # Parameter-coverage workload: spec shape (1024, 1024), range [-1, 1], fp32
@@ -372,7 +363,7 @@ def test_sparse_sum_dtype(target):
     tu.assert_result_close(res_out, ref_out)
 
 
-@pytest.mark._sparse_sum
+@pytest.mark.sparse_sum
 @pytest.mark.parametrize(
     "operand_dtype,shape,dims,target",
     tu.selected_cases(_DIM_DTYPE_CASES, quick=[]),
@@ -387,7 +378,7 @@ def test_sparse_sum_dim_dtype(operand_dtype, shape, dims, target):
     tu.assert_result_close(res_out, ref_out)
 
 
-@pytest.mark._sparse_sum
+@pytest.mark.sparse_sum
 @pytest.mark.parametrize("dims", _FP8_SPECIAL_DIMS)
 @pytest.mark.parametrize("target", _FP8_SPECIAL_TARGETS)
 @pytest.mark.parametrize(
@@ -416,7 +407,7 @@ def test_sparse_sum_dim_dtype_special_values(dtype, scenario, target, dims):
     tu.assert_result_close(res_out, ref_out)
 
 
-@pytest.mark._sparse_sum
+@pytest.mark.sparse_sum
 @pytest.mark.parametrize("dims", [[0], [1]])
 @pytest.mark.parametrize("dtype", tu.selected_cases(_SUM_DTYPES, quick=[]))
 def test_sparse_sum_dim_out(dims, dtype):
@@ -449,7 +440,7 @@ def test_sparse_sum_dim_out(dims, dtype):
     tu.assert_result_close(res_ret, ref_ret)
 
 
-@pytest.mark._sparse_sum
+@pytest.mark.sparse_sum
 @pytest.mark.parametrize("dtype", tu.selected_cases(_SUM_DTYPES, quick=[]))
 def test_sparse_sum_dim_out_dense(dtype):
     # Reducing every dim yields a dense 0-dim result. Integer operands promote to
@@ -471,7 +462,7 @@ def test_sparse_sum_dim_out_dense(dtype):
     tu.assert_result_close(res_ret, ref_ret)
 
 
-@pytest.mark._sparse_sum
+@pytest.mark.sparse_sum
 @pytest.mark.parametrize("shape", [(256,), (1024, 1024)])
 @pytest.mark.parametrize(
     "dtype,scenario",
@@ -498,7 +489,7 @@ def test_sparse_sum_special_values(shape, dtype, scenario):
     tu.assert_result_close(res_out, ref_out)
 
 
-@pytest.mark._sparse_sum
+@pytest.mark.sparse_sum
 @pytest.mark.parametrize(
     "shape,dims,dtype", tu.selected_cases(_BACKWARD_ROWS, quick=[])
 )
@@ -537,7 +528,7 @@ def test_sparse_sum_backward(shape, dims, dtype):
     tu.assert_result_close(res_grad, ref_grad)
 
 
-@pytest.mark._sparse_sum
+@pytest.mark.sparse_sum
 @pytest.mark.parametrize(
     "shape,coords,payload", tu.selected_cases(_STRUCTURE_ROWS, quick=[])
 )
@@ -551,7 +542,7 @@ def test_sparse_sum_structure_default(shape, coords, payload):
     tu.assert_result_close(res_out, ref_out)
 
 
-@pytest.mark._sparse_sum
+@pytest.mark.sparse_sum
 @pytest.mark.parametrize("dims", [[0], [1], [0, 1]])
 @pytest.mark.parametrize(
     "shape,coords,payload", tu.selected_cases(_STRUCTURE_ROWS, quick=[])
@@ -566,7 +557,7 @@ def test_sparse_sum_structure_dim(shape, coords, payload, dims):
     tu.assert_result_close(res_out, ref_out)
 
 
-@pytest.mark._sparse_sum
+@pytest.mark.sparse_sum
 @pytest.mark.parametrize(
     "shape", tu.selected_cases([(0,), (0, 8), (8, 0), (0, 0)], quick=[])
 )
@@ -580,7 +571,7 @@ def test_sparse_sum_empty_default(shape):
     tu.assert_result_close(res_out, ref_out)
 
 
-@pytest.mark._sparse_sum
+@pytest.mark.sparse_sum
 @pytest.mark.parametrize("dims", [[], [0]])
 @pytest.mark.parametrize(
     "shape", tu.selected_cases([(0,), (0, 8), (8, 0), (0, 0)], quick=[])
@@ -595,7 +586,7 @@ def test_sparse_sum_empty_dim(shape, dims):
     tu.assert_result_close(res_out, ref_out)
 
 
-@pytest.mark._sparse_sum
+@pytest.mark.sparse_sum
 @pytest.mark.parametrize(
     "shape,dims", tu.selected_cases(_NEGATIVE_DIM_CASES, quick=_NEGATIVE_DIM_CASES)
 )
@@ -607,14 +598,14 @@ def test_sparse_sum_rejects_out_of_range_dim(shape, dims):
         flag_gems._sparse_sum(inp, dims)
 
 
-@pytest.mark._sparse_sum
+@pytest.mark.sparse_sum
 def test_sparse_sum_rejects_duplicate_dim():
     inp = _sparse_operand(torch.float32, (1024, 1024), ["-1", "1"])
     with pytest.raises(RuntimeError):
         flag_gems._sparse_sum(inp, [0, 0])
 
 
-@pytest.mark._sparse_sum
+@pytest.mark.sparse_sum
 def test_sparse_sum_rejects_dim_on_scalar():
     # The 0-dim operand has no dim 0: native raises 'Trying to create tensor with
     # negative dimension -1: [-1, nnz]' for dim [0].
@@ -623,14 +614,14 @@ def test_sparse_sum_rejects_dim_on_scalar():
         flag_gems._sparse_sum(inp, [0])
 
 
-@pytest.mark._sparse_sum
+@pytest.mark.sparse_sum
 def test_sparse_sum_rejects_dense_input():
     inp = tu.make_input(torch.float32, (4, 4), ["-1", "1"])
     with pytest.raises((RuntimeError, NotImplementedError, TypeError)):
         flag_gems._sparse_sum(inp)
 
 
-@pytest.mark._sparse_sum
+@pytest.mark.sparse_sum
 @pytest.mark.parametrize("dtype", _FP8_REJECT_DTYPES)
 def test_sparse_sum_rejects_fp8_operand(dtype):
     # The fp8 .default form has no kernel on the NVIDIA CUDA backend this rejection
