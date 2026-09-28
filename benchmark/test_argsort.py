@@ -185,12 +185,26 @@ def _input_fn(shape, dtype, device):
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
-def test_argsort():
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype,
+            marks=pytest.mark.skip_native(
+                vendors=["ascend"],
+                reason="Native integer argsort falls back to AiCPU",
+            ),
+        )
+        for dtype in consts.INT_DTYPES + consts.EXTRA_INT_DTYPES
+    ]
+    + consts.FLOAT_DTYPES,
+)
+def test_argsort(dtype):
     bench = ArgsortBenchmark(
         input_fn=_input_fn,
         op_name="argsort",
         torch_op=torch.argsort,
-        dtypes=consts.INT_DTYPES + consts.FLOAT_DTYPES + consts.EXTRA_INT_DTYPES,
+        dtypes=[dtype],
     )
     bench.set_gems(flag_gems.argsort)
     bench.run()

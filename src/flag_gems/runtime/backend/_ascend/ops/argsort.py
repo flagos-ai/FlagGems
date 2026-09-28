@@ -2821,10 +2821,14 @@ add_executable(ascend_argsort_runtime op_host/sort.asc)
 # bisheng must retain its own intrinsic headers for device compilation.
 foreach(include_dir IN LISTS CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES)
     if(include_dir MATCHES "/c\\+\\+(/|$)")
+        list(APPEND argsort_cxx_includes "${include_dir}")
         target_include_directories(ascend_argsort_runtime SYSTEM PRIVATE
             "$<$<COMPILE_LANGUAGE:ASC>:${include_dir}>")
     endif()
 endforeach()
+list(JOIN argsort_cxx_includes ":" argsort_cxx_include_path)
+file(WRITE "${CMAKE_BINARY_DIR}/argsort-cxx-include-path.txt"
+    "${argsort_cxx_include_path}")
 target_include_directories(ascend_argsort_runtime PRIVATE
     "$ENV{ASCEND_HOME_PATH}/aarch64-linux/include")
 target_link_directories(ascend_argsort_runtime PRIVATE
@@ -3023,7 +3027,20 @@ def _asc_sort_build(identity, home, bisheng, source_text):
                     ],
                     [identity["cmake"], "--build", str(build), "-j2"],
                 )
-                for command in commands:
+                for step, command in enumerate(commands):
+                    if step:
+                        # CANN also compiles generated stubs in child processes
+                        # that do not inherit the target's -I options.
+                        include_path = (
+                            build / "argsort-cxx-include-path.txt"
+                        ).read_text()
+                        if include_path:
+                            env["CPLUS_INCLUDE_PATH"] = os.pathsep.join(
+                                filter(
+                                    None,
+                                    (include_path, env.get("CPLUS_INCLUDE_PATH", "")),
+                                )
+                            )
                     result = subprocess.run(
                         command,
                         env=env,
