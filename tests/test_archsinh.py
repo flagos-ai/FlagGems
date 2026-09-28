@@ -28,7 +28,6 @@ def test_arcsinh_(shape, dtype):
     ref_inp = utils.to_reference(inp.clone())
 
     ref_out = ref_inp.arcsinh_()
-    with flag_gems.use_gems():
-        res_out = inp.arcsinh_()
+    res_out = flag_gems.arcsinh_(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

@@ -32,8 +32,7 @@ def test_binomial(shape, dtype, n, p):
     prob = torch.full(
         size=shape, fill_value=float(p), dtype=dtype, device=flag_gems.device
     )
-    with flag_gems.use_gems():
-        res_out = torch.binomial(count, prob)
+    res_out = flag_gems.binomial(count, prob)
 
     ref_count = to_reference(count)
     ref_prob = to_reference(prob)
@@ -63,8 +62,7 @@ def test_binomial_large_count(shape, dtype):
     count = torch.full(size=shape, fill_value=n, dtype=dtype, device=flag_gems.device)
     prob = torch.full(size=shape, fill_value=p, dtype=dtype, device=flag_gems.device)
 
-    with flag_gems.use_gems():
-        res_out = torch.binomial(count, prob)
+    res_out = flag_gems.binomial(count, prob)
 
     ref_out = to_reference(res_out).to(torch.float32)
     mean = torch.mean(ref_out)
@@ -82,8 +80,7 @@ def test_binomial_varying_prob(shape, dtype):
     count = torch.randint(1, 100, size=shape, device=flag_gems.device).to(dtype)
     prob = torch.rand(size=shape, dtype=dtype, device=flag_gems.device)
 
-    with flag_gems.use_gems():
-        res_out = torch.binomial(count, prob)
+    res_out = flag_gems.binomial(count, prob)
 
     assert (res_out >= 0).all()
     assert (res_out <= count).all()
@@ -102,9 +99,8 @@ def test_binomial_edge_probs(dtype):
     prob0 = torch.zeros(size=shape, dtype=dtype, device=flag_gems.device)
     prob1 = torch.ones(size=shape, dtype=dtype, device=flag_gems.device)
 
-    with flag_gems.use_gems():
-        out0 = torch.binomial(count, prob0)
-        out1 = torch.binomial(count, prob1)
+    out0 = flag_gems.binomial(count, prob0)
+    out1 = flag_gems.binomial(count, prob1)
 
     # p==0 is deterministically 0, p==1 is deterministically count (==8).
     utils.gems_assert_equal(out0, to_reference(torch.zeros_like(count)))
@@ -119,8 +115,7 @@ def test_binomial_zero_count(dtype):
     count = torch.zeros(size=shape, dtype=dtype, device=flag_gems.device)
     prob = torch.full(size=shape, fill_value=0.5, dtype=dtype, device=flag_gems.device)
 
-    with flag_gems.use_gems():
-        res_out = torch.binomial(count, prob)
+    res_out = flag_gems.binomial(count, prob)
 
     # count==0 deterministically yields 0 regardless of prob.
     utils.gems_assert_equal(res_out, to_reference(torch.zeros_like(count)))
@@ -135,8 +130,7 @@ def test_binomial_out(shape, dtype):
     prob = torch.full(size=shape, fill_value=p, dtype=dtype, device=flag_gems.device)
     out = torch.empty(shape, dtype=dtype, device=flag_gems.device)
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.binomial.out(count, prob, out=out)
+    res_out = flag_gems.binomial_out(count, prob, out=out)
 
     assert res_out.data_ptr() == out.data_ptr()
     ref_out = to_reference(out).to(torch.float32)

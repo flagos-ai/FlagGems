@@ -25,6 +25,21 @@ attention:
   - 1
   - 2
   - 3
+attention_bwd:
+- gen: true
+  param_map:
+    META: metas
+    num_warps: warps
+    num_stages: stages
+  metas:
+  - {BLOCK_M1: 32, BLOCK_N1: 32, BLOCK_M2: 64, BLOCK_N2: 32}
+  - {BLOCK_M1: 32, BLOCK_N1: 32, BLOCK_M2: 32, BLOCK_N2: 32}
+  warps:
+  - 4
+  - 8
+  stages:
+  - 1
+  - 2
 bmm:
 - META:
     TILE_M: 32
@@ -431,6 +446,14 @@ nansum_final_reduce:
     BLOCK_SIZE: 4096
   num_warps: 8
 
+scaled_grouped_mm:
+- META:
+    BLOCK_M: 64
+    BLOCK_N: 64
+    BLOCK_K: 32
+  num_stages: 1
+  num_warps: 4
+  num_ldmatrixes: 0
 softmax_non_inner:
 - META:
     TILE_K: 32
@@ -959,9 +982,11 @@ mv:
     META:
       BLOCK_M: block_m
       BLOCK_N: block_n
+      LOOP_STAGES: loop_stages
     num_warps: warps
     num_stages: stages
   warps:
+  - 1
   - 2
   - 4
   - 8
@@ -970,12 +995,20 @@ mv:
   - 64
   - 128
   - 256
+  - 512
+  - 1024
+  - 2048
+  - 4096
   block_n:
   - 1
   - 2
   - 4
   - 8
   - 16
+  loop_stages:
+  - 1
+  - 2
+  - 3
   stages:
   - 2
   - 3

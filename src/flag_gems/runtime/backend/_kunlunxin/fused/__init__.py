@@ -14,6 +14,9 @@
 
 from .add_rms_norm import add_rms_norm
 from .beam_search_score import beam_search_score, beam_search_score_
+from .bf16_paged_mqa_logits import (  # noqa: F401  (import triggers _install)
+    bf16_paged_mqa_logits,
+)
 from .bin_topk import bucket_sort_topk_xpu  # noqa: F401  (import triggers _install)
 from .bincount import bincount
 from .concat_and_cache_mla import concat_and_cache_mla

@@ -92,7 +92,8 @@ def softmax_kernel_inner(
 
 
 _SM_MR_MAX_N = 4096
-_SM_N_TILE_M = [(16, 64), (64, 32), (256, 16), (1024, 8), (2048, 4), (4096, 8)]
+_SM_MR_TILE_M = 64
+_SM_MR_TILE_M_N4096 = 16
 
 
 @triton.jit
@@ -536,28 +537,28 @@ def _softmax_forward_launch(output, inp, M, N):
     """Inner launch on a contiguous [M, N] view (reduced dim innermost)."""
     use_multirow = N <= _SM_MR_MAX_N and ((N & (N - 1)) == 0)
     if use_multirow:
-        tile_m = 1
-        for n_hi, tm in _SM_N_TILE_M:
-            if N <= n_hi:
-                tile_m = tm
-                break
-        if M % tile_m == 0:
-            grid = (M // tile_m,)
-            if tile_m * N > 8192:
-                softmax_kernel_multirow[grid](
-                    output,
-                    inp,
-                    M,
-                    N=N,
-                    TILE_M=tile_m,
-                    num_warps=4,
-                    buffer_size_limit=2048,
-                )
-            else:
-                softmax_kernel_multirow[grid](
-                    output, inp, M, N=N, TILE_M=tile_m, num_warps=4
-                )
-            return
+        # Prefer a large TILE_M; shrink (by halving) until it divides M so we
+        # still take the multirow path for non-power-of-two M instead of the
+        # much slower per-row `softmax_kernel_inner` (measured 5-15x slower).
+        tile_m = _SM_MR_TILE_M if N <= 2048 else _SM_MR_TILE_M_N4096
+        while tile_m > 1 and M % tile_m != 0:
+            tile_m >>= 1
+        grid = (M // tile_m,)
+        if tile_m * N > 8192:
+            softmax_kernel_multirow[grid](
+                output,
+                inp,
+                M,
+                N=N,
+                TILE_M=tile_m,
+                num_warps=4,
+                buffer_size_limit=2048,
+            )
+        else:
+            softmax_kernel_multirow[grid](
+                output, inp, M, N=N, TILE_M=tile_m, num_warps=4
+            )
+        return
     if N > _SM_CHUNK_SPLIT_MAX_N and M > 1:
         grid = (M, 1, 1)
         softmax_kernel_inner[grid](

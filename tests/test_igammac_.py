@@ -20,10 +20,10 @@ def test_special_gammaincc(shape, dtype, caplog):
 
     ref_out = torch.ops.aten.special_gammaincc(ref_inp1, ref_inp2)
     with caplog.at_level("DEBUG", logger="flag_gems.ops.special_gammaincc"):
-        with flag_gems.use_gems():
-            res_out = torch.ops.aten.special_gammaincc(inp1, inp2)
+        res_out = flag_gems.special_gammaincc(inp1, inp2)
 
-    assert "GEMS SPECIAL_GAMMAINCC" in caplog.text
+    expected_prefix = utils.gems_log_prefix(flag_gems.special_gammaincc)
+    assert f"{expected_prefix} SPECIAL_GAMMAINCC" in caplog.text
     utils.gems_assert_close(res_out, ref_out, dtype)
     # special_gammaincc is out-of-place: inputs must stay unmodified
     utils.gems_assert_close(inp1, ref_inp1, dtype)
@@ -42,8 +42,7 @@ def test_igammac_(shape, dtype):
     ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = ref_inp1.igammac_(ref_inp2)
-    with flag_gems.use_gems():
-        res_out = inp1.igammac_(inp2)
+    res_out = flag_gems.igammac_(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
     # igammac_ is in-place: also verify the mutated input tensor matches reference

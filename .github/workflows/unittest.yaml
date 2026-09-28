@@ -29,6 +29,12 @@ on:
 
 jobs:
   preprocess:
+    # Runs on GitHub-hosted ubuntu-latest: this job only computes metadata via
+    # the GitHub API and git (changed files, PR labels, backend matrix), needs
+    # no self-hosted hardware, and avoids the injected-proxy environment where
+    # wait-for-triage's octokit cannot tunnel HTTPS to api.github.com. Downstream
+    # jobs are unaffected — needs/runs-on are decoupled, so they still schedule
+    # onto the self-hosted runners (jiuding, h20, cpu-runner).
     runs-on: ubuntu-latest
     concurrency:
       group: unit-test-${{ (github.event.pull_request && contains(github.event.pull_request.title, 'KernelGen')) && 'kg' || github.run_id }}
@@ -190,7 +196,8 @@ jobs:
   # individual jobs) as the required status check in branch protection
   # rules, otherwise skipped jobs block merges forever.
   unittest-required:
-    runs-on: ubuntu-latest
+    # cpu-runner is an already-running container; no container: image needed.
+    runs-on: cpu-runner
     needs:
       - preprocess
       - cpp-op
