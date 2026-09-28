@@ -17,7 +17,7 @@
 import pytest
 import torch
 
-from flag_gems.ops.linalg_pinv import linalg_pinv
+import flag_gems
 
 from . import accuracy_utils as utils
 
@@ -29,6 +29,10 @@ PINV_DTYPES = [torch.float32]
 # n <= 8 due to Triton static_range compile time for larger sizes
 PINV_SHAPES = [(4, 4), (8, 8)]
 
+# Shapes above the fused kernel's 32-element limit, which route to the blocked
+# Jacobi path. Kept small because the reference pinv runs on CPU under --ref=cpu.
+PINV_LARGE_SHAPES = [(48, 48), (64, 40), (40, 64)]
+
 
 @pytest.mark.linalg_pinv
 @pytest.mark.parametrize("shape", PINV_SHAPES)
@@ -36,11 +40,11 @@ PINV_SHAPES = [(4, 4), (8, 8)]
 def test_linalg_pinv(shape, dtype):
     m, n = shape
     # Use well-conditioned matrix for reliable SVD convergence
-    A = torch.randn(m, n, dtype=dtype, device="cuda")
-    A = A + torch.eye(m, n, dtype=dtype, device="cuda") * 2.0
+    A = torch.randn(m, n, dtype=dtype, device=flag_gems.device)
+    A = A + torch.eye(m, n, dtype=dtype, device=flag_gems.device) * 2.0
     ref_A = utils.to_reference(A)
     ref_out = torch.linalg.pinv(ref_A)
-    res_out = linalg_pinv(A)
+    res_out = flag_gems.linalg_pinv(A)
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
@@ -51,10 +55,48 @@ def test_linalg_pinv_batched(shape, dtype):
     m, n = shape
     batch = 4
     # Use well-conditioned matrices
-    A = torch.randn(batch, m, n, dtype=dtype, device="cuda")
-    eye = torch.eye(m, n, dtype=dtype, device="cuda").unsqueeze(0).expand(batch, m, n)
+    A = torch.randn(batch, m, n, dtype=dtype, device=flag_gems.device)
+    eye = (
+        torch.eye(m, n, dtype=dtype, device=flag_gems.device)
+        .unsqueeze(0)
+        .expand(batch, m, n)
+    )
     A = A + eye * 2.0
     ref_A = utils.to_reference(A)
     ref_out = torch.linalg.pinv(ref_A)
-    res_out = linalg_pinv(A)
+    res_out = flag_gems.linalg_pinv(A)
+    utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.linalg_pinv
+@pytest.mark.parametrize("shape", PINV_LARGE_SHAPES)
+@pytest.mark.parametrize("dtype", PINV_DTYPES)
+def test_linalg_pinv_large(shape, dtype):
+    m, n = shape
+    # Use well-conditioned matrix for reliable SVD convergence
+    A = torch.randn(m, n, dtype=dtype, device=flag_gems.device)
+    A = A + torch.eye(m, n, dtype=dtype, device=flag_gems.device) * 2.0
+    ref_A = utils.to_reference(A)
+    ref_out = torch.linalg.pinv(ref_A)
+    res_out = flag_gems.linalg_pinv(A)
+    utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.linalg_pinv
+@pytest.mark.parametrize("shape", PINV_LARGE_SHAPES)
+@pytest.mark.parametrize("dtype", PINV_DTYPES)
+def test_linalg_pinv_large_batched(shape, dtype):
+    m, n = shape
+    batch = 2
+    # Use well-conditioned matrices
+    A = torch.randn(batch, m, n, dtype=dtype, device=flag_gems.device)
+    eye = (
+        torch.eye(m, n, dtype=dtype, device=flag_gems.device)
+        .unsqueeze(0)
+        .expand(batch, m, n)
+    )
+    A = A + eye * 2.0
+    ref_A = utils.to_reference(A)
+    ref_out = torch.linalg.pinv(ref_A)
+    res_out = flag_gems.linalg_pinv(A)
     utils.gems_assert_close(res_out, ref_out, dtype)
