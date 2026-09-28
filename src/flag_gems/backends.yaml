@@ -103,6 +103,15 @@ backends:
       - attrs==25.3.0
       - psutil==7.0.0
 
+  biren-br2xx:
+    python: "3.10"
+    triton: triton==3.4.0+br2xx
+    env_source:
+      - /usr/local/birensupa/all/latest/scripts/brsw_set_env.sh
+    deps:
+      - torch==2.12.0+cpu
+      - torch-supa==1.0.0.21200+br2xx
+
   cambricon-neuware443:
     python: "3.10"
     cmake_backend: MLU

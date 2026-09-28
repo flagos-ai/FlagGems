@@ -103,8 +103,7 @@ def test_floor_divide_float(shape, dtype):
     ref_inp2 = utils.to_reference(inp2, False)
 
     ref_out = torch.div(ref_inp1, ref_inp2, rounding_mode="floor")
-    with flag_gems.use_gems():
-        res_out = torch.div(inp1, inp2, rounding_mode="floor")
+    res_out = flag_gems.floor_divide(inp1, inp2)
 
     utils.gems_assert_equal(res_out, ref_out, equal_nan=True)
 
@@ -122,8 +121,7 @@ def test_floor_divide_float_(shape, dtype):
     ref_inp2 = utils.to_reference(inp2, False)
 
     ref_out = ref_inp1.div_(ref_inp2, rounding_mode="floor")
-    with flag_gems.use_gems():
-        res_out = inp1.div_(inp2, rounding_mode="floor")
+    res_out = flag_gems.floor_divide_(inp1, inp2)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -167,13 +165,11 @@ def test_floor_divide_int(shape, dtype):
     for d in inp2.flatten()[:2]:
         d = d.item()
         ref_out = ref_inp1 // d
-        with flag_gems.use_gems():
-            res_out = inp1 // d
+        res_out = flag_gems.floor_divide(inp1, d)
         utils.gems_assert_equal(res_out, ref_out)
 
         ref_out = d // ref_inp1
-        with flag_gems.use_gems():
-            res_out = d // inp1
+        res_out = flag_gems.floor_divide(d, inp1)
         utils.gems_assert_equal(res_out, ref_out)
 
 
@@ -204,8 +200,7 @@ def test_floor_divide_int_(shape, dtype):
     ref_inp2 = utils.to_reference(inp2, False)
 
     ref_out = ref_inp1.floor_divide_(ref_inp2)
-    with flag_gems.use_gems():
-        res_out = inp1.floor_divide_(inp2)
+    res_out = flag_gems.floor_divide_(inp1, inp2)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -213,8 +208,7 @@ def test_floor_divide_int_(shape, dtype):
     for d in inp2.flatten()[:2]:
         d = d.item()
         ref_out = ref_inp1.floor_divide_(d)
-        with flag_gems.use_gems():
-            res_out = inp1.floor_divide_(d)
+        res_out = flag_gems.floor_divide_(inp1, d)
         utils.gems_assert_equal(res_out, ref_out)
 
 
@@ -229,8 +223,7 @@ def test_floor_divide_scalar_scalar(dtype):
         inp2 = random.randint(1, 100)
 
     ref_out = torch.floor_divide(inp1, inp2)
-    with flag_gems.use_gems():
-        res_out = torch.floor_divide(inp1, inp2)
+    res_out = flag_gems.floor_divide(inp1, inp2)
 
     if dtype == torch.int64:
         utils.gems_assert_equal(res_out, ref_out)
@@ -247,8 +240,7 @@ def test_floor_divide_scalar_inplace_float(shape, dtype):
     ref_inp = utils.to_reference(inp.clone(), False)
 
     ref_out = ref_inp.floor_divide_(scalar)
-    with flag_gems.use_gems():
-        res_out = inp.floor_divide_(scalar)
+    res_out = flag_gems.floor_divide_(inp, scalar)
 
     utils.gems_assert_equal(res_out, ref_out, equal_nan=True)
 
@@ -264,7 +256,6 @@ def test_floor_divide_scalar_inplace_int(shape, dtype):
     ref_inp = utils.to_reference(inp.clone(), False)
 
     ref_out = ref_inp.floor_divide_(scalar)
-    with flag_gems.use_gems():
-        res_out = inp.floor_divide_(scalar)
+    res_out = flag_gems.floor_divide_(inp, scalar)
 
     utils.gems_assert_equal(res_out, ref_out)

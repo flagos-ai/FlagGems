@@ -43,5 +43,5 @@ def test_ior_scalar(shape, dtype, caplog):
     with caplog.at_level("DEBUG", logger="flag_gems.ops.ior_scalar"):
         res_out = flag_gems.ior_scalar(inp1, inp2)
 
-    assert "GEMS IOR SCALAR" in caplog.text
+    assert f"{utils.gems_log_prefix(flag_gems.ior_scalar)} IOR SCALAR" in caplog.text
     utils.gems_assert_equal(res_out, ref_out)

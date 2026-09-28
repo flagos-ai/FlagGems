@@ -30,7 +30,6 @@ def test_gt_scalar_(shape, dtype):
     inp2 = 0
 
     ref_out = ref_inp1.gt_(inp2)
-    with flag_gems.use_gems():
-        res_out = inp1.gt_(inp2)
+    res_out = flag_gems.gt_scalar_(inp1, inp2)
 
     utils.gems_assert_equal(res_out, ref_out)
