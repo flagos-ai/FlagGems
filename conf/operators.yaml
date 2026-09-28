@@ -2445,7 +2445,19 @@ ops:
   kind:
   - Tensor
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
+- id: ccol_indices_copy_out
+  description: A variant of `ccol_indices_copy()` that assigns the output to the `out`
+    tensor.
+  for:
+  - ccol_indices_copy.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: cdist
   description: 'Computes the p-norm distance between each pair of the two collections
     of row vectors.

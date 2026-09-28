@@ -64,6 +64,28 @@ def _ccol_copy_strided_kernel(src_ptr, dst_ptr, n_elem, stride, BLOCK: tl.conste
     tl.store(dst_ptr + offs, v, mask=mask)
 
 
+@triton.jit
+def _ccol_copy_strided_nd_kernel(
+    src_ptr, dst_ptr, n_elem, meta_ptr, ndim: tl.constexpr, BLOCK: tl.constexpr
+):
+    # meta layout: for dim i in [0, ndim): meta[2*i] = size[i], meta[2*i+1] = stride[i]
+    # (one int64 device tensor built host-side and uploaded in a single copy)
+    pid = tl.program_id(0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < n_elem
+    idx = offs
+    in_off = tl.zeros([BLOCK], dtype=tl.int64)
+    for k in tl.static_range(ndim):
+        i = ndim - 1 - k
+        d = tl.load(meta_ptr + 2 * i).to(tl.int64)
+        s = tl.load(meta_ptr + 2 * i + 1).to(tl.int64)
+        c = idx % d
+        idx = idx // d
+        in_off += c * s
+    v = tl.load(src_ptr + in_off, mask=mask)
+    tl.store(dst_ptr + offs, v, mask=mask)
+
+
 def _select_src(self: torch.Tensor) -> torch.Tensor:
     """Layout dispatch shared by both overloads.
 
@@ -90,9 +112,16 @@ def _select_src(self: torch.Tensor) -> torch.Tensor:
             "ccol_indices expected sparse column compressed tensor layout "
             f"but got {layout_name}"
         )
-    # Unknown layout: fall through to the native operator, which reports it.
-    with torch._C._AutoDispatchBelowAutograd():
-        return torch.ops.aten.ccol_indices_copy.default(self)
+    # COO and any other layout: native has no kernel for them (verified on
+    # H20: CUDA COO raises ``NotImplementedError`` with the message below),
+    # so the rejection is reproduced explicitly instead of redispatching to
+    # the same operator from the host implementation.
+    backend = "Sparse" + str(self.device.type).capitalize()
+    raise NotImplementedError(
+        "Could not run 'aten::ccol_indices_copy' with arguments from the "
+        f"'{backend}' backend. This could be because the operator doesn't "
+        "exist for that backend."
+    )
 
 
 def _launch_ccol_copy(src: torch.Tensor, dst: torch.Tensor) -> None:
@@ -109,12 +138,26 @@ def _launch_ccol_copy(src: torch.Tensor, dst: torch.Tensor) -> None:
     if src.is_contiguous():
         with torch_device_fn.device(src.device):
             _ccol_copy_kernel[grid](src, dst, n, BLOCK=_BLOCK, num_warps=_NUM_WARPS)
-    else:
-        if src.dim() != 1:
-            raise ValueError("non-contiguous multi-dim input is unsupported")
+    elif src.dim() == 1:
         with torch_device_fn.device(src.device):
             _ccol_copy_strided_kernel[grid](
                 src, dst, n, src.stride(0), BLOCK=_BLOCK, num_warps=_NUM_WARPS
+            )
+    else:
+        # Multi-dim non-contiguous ccol buffer: gather through per-dim
+        # size/stride metadata (built host-side, uploaded in one H2D copy).
+        # Native ATen handles these inputs, so the branch is part of the
+        # contract (review: this closes the previously disclosed divergence).
+        shape = [int(v) for v in src.shape]
+        strides = [int(v) for v in src.stride()]
+        meta = torch.tensor(
+            [v for s, st in zip(shape, strides) for v in (s, st)],
+            dtype=torch.int64,
+            device=src.device,
+        )
+        with torch_device_fn.device(src.device):
+            _ccol_copy_strided_nd_kernel[grid](
+                src, dst, n, meta, ndim=len(shape), BLOCK=_BLOCK, num_warps=_NUM_WARPS
             )
 
 
@@ -179,6 +222,15 @@ def ccol_indices_copy_out(self: torch.Tensor, *, out: torch.Tensor) -> torch.Ten
     if out.dtype != src.dtype:
         raise RuntimeError(
             f"Expected out tensor to have dtype {src.dtype}, but got {out.dtype} instead"
+        )
+    if out.device != src.device:
+        # Native rejects a cross-device out before launching the kernel
+        # (verified on H20: CUDA sparse + CPU out raises this exact message);
+        # without the guard the Triton launch would receive pointers from
+        # different devices instead of raising.
+        raise RuntimeError(
+            f"Expected out tensor to have device {src.device}, but got "
+            f"{out.device} instead"
         )
     if tuple(out.shape) != tuple(src.shape):
         out.resize_(src.shape)

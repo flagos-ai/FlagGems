@@ -16,25 +16,10 @@
 
 import pytest
 import torch
-from pytest import Mark, MarkDecorator
-
 import flag_gems
 
 from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
-
-setattr(
-    pytest.mark,
-    "ccol_indices_copy",
-    MarkDecorator(Mark("ccol_indices_copy", (), {}, _ispytest=True), _ispytest=True),
-)
-setattr(
-    pytest.mark,
-    "ccol_indices_copy_out",
-    MarkDecorator(
-        Mark("ccol_indices_copy_out", (), {}, _ispytest=True), _ispytest=True
-    ),
-)
 
 # Shapes for the dtype sweep: square/rectangular CSC plus a single-column case.
 CSC_SHAPES = [(4, 6), (16, 32), (5, 5), (3, 1)]
@@ -268,31 +253,23 @@ def test_accuracy_ccol_indices_copy_strided_ccol_1d():
 
 
 @pytest.mark.ccol_indices_copy
-def test_accuracy_ccol_indices_copy_strided_ccol_multi_dim_divergence():
-    # Disclosed divergence: the supplied implementation raises
-    # ValueError("non-contiguous multi-dim input is unsupported") for a
-    # multi-dim non-contiguous ccol buffer, because its gather kernel is
-    # single-stride (1-D) only. Native ATen has no such restriction and copies
-    # the batched non-contiguous buffer correctly. The source behaviour is
-    # preserved deliberately (kernel strategy is out of scope for this
-    # integration); this test pins BOTH facts: native succeeds, ours raises
-    # the documented ValueError. A future integration can close the gap by
-    # adding a multi-stride kernel.
+def test_accuracy_ccol_indices_copy_strided_ccol_multi_dim():
+    # Multi-dim non-contiguous ccol buffer: native ATen copies the batched
+    # strided buffer correctly, and so does this implementation through the
+    # ND-strided gather kernel (review: the previously disclosed ValueError
+    # divergence is closed — this case is a reachable public-API input).
     inp = _make_strided_ccol_csc((2, 4, 6), 6)
     assert inp.ccol_indices().dim() == 2
     assert not inp.ccol_indices().is_contiguous()
     ref_inp = _ref_pair(inp)
 
-    # Native handles it: values equal the (converted) strided ccol view. The
-    # comparison derives the expected view from the already-converted
-    # reference base -- never convert base and view separately.
     ref_out = torch.ops.aten.ccol_indices_copy(ref_inp)
     assert ref_out.is_contiguous()
-    assert torch.equal(ref_out.cpu(), ref_inp.ccol_indices().cpu())
-
-    with pytest.raises(ValueError) as res_exc:
-        flag_gems.ccol_indices_copy(inp)
-    assert "non-contiguous multi-dim input is unsupported" in str(res_exc.value)
+    res_out = flag_gems.ccol_indices_copy(inp)
+    assert res_out.is_contiguous()
+    # The comparison derives the expected view from the already-converted
+    # reference base -- never convert base and view separately.
+    assert torch.equal(res_out.cpu(), ref_inp.ccol_indices().cpu())
 
 
 @pytest.mark.ccol_indices_copy
@@ -430,6 +407,17 @@ def test_accuracy_ccol_indices_copy_dispatch_stability():
         res_out = flag_gems.ccol_indices_copy(inp)
         utils.gems_assert_equal(res_out, ref_out)
         assert torch.ops.aten.dim(inp) == 2
+
+
+@pytest.mark.ccol_indices_copy_out
+def test_accuracy_ccol_indices_copy_out_device_mismatch():
+    # Cross-device out must raise the native error instead of launching the
+    # Triton kernel with pointers from different devices (review-requested).
+    inp = _make_csc((4, 6), 6)
+    out_cpu = torch.zeros(7, dtype=torch.int64, device="cpu")
+    with pytest.raises(RuntimeError) as exc:
+        flag_gems.ccol_indices_copy_out(inp, out=out_cpu)
+    assert "device" in str(exc.value)
 
 
 @pytest.mark.ccol_indices_copy_out
