@@ -27,10 +27,7 @@ except ImportError:
     SM100_AVAILABLE = False
 
 import flag_gems
-from flag_gems.fused.fp8_fp4_mega_moe import (
-    fp8_fp4_mega_moe,
-    fp8_fp4_mega_moe_torch_ref,
-)
+from flag_gems.fused.fp8_fp4_mega_moe import fp8_fp4_mega_moe_torch_ref
 
 from . import accuracy_utils as utils
 from .accuracy_utils import gems_assert_close, to_reference
@@ -143,8 +140,7 @@ def test_fp8_fp4_mega_moe_torch_ref(
     args = _build_inputs(num_tokens, hidden, intermediate, num_experts, top_k, device)
     ref_out = to_reference(fp8_fp4_mega_moe_torch_ref(*args))
 
-    with flag_gems.use_gems():
-        res_out = fp8_fp4_mega_moe(*args)
+    res_out = flag_gems.fp8_fp4_mega_moe(*args)
 
     gems_assert_close(
         res_out,

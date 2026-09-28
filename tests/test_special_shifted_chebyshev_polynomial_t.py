@@ -49,8 +49,8 @@ def test_special_shifted_chebyshev_polynomial_t(shape, dtype, caplog):
         with flag_gems.use_gems():
             res_out = torch.ops.aten.special_shifted_chebyshev_polynomial_t(x, n)
     assert (
-        f"{utils.gems_log_prefix(flag_gems.special_shifted_chebyshev_polynomial_t)} SPECIAL_SHIFTED_CHEBYSHEV_POLYNOMIAL_T"
-        in caplog.text
+        f"{utils.gems_log_prefix(flag_gems.special_shifted_chebyshev_polynomial_t)}"
+        " SPECIAL_SHIFTED_CHEBYSHEV_POLYNOMIAL_T" in caplog.text
     )
 
     # Use larger tolerance for float32 due to trigonometric function precision
@@ -74,8 +74,8 @@ def test_special_shifted_chebyshev_polynomial_t_scalar_n(shape, dtype, caplog):
         with flag_gems.use_gems():
             res_out = torch.ops.aten.special_shifted_chebyshev_polynomial_t(x, n)
     assert (
-        f"{utils.gems_log_prefix(flag_gems.special_shifted_chebyshev_polynomial_t)} SPECIAL_SHIFTED_CHEBYSHEV_POLYNOMIAL_T"
-        in caplog.text
+        f"{utils.gems_log_prefix(flag_gems.special_shifted_chebyshev_polynomial_t)}"
+        " SPECIAL_SHIFTED_CHEBYSHEV_POLYNOMIAL_T" in caplog.text
     )
 
     utils.gems_assert_close(res_out, ref_out, dtype)

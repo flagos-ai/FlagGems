@@ -266,15 +266,14 @@ def _run_case(
         tma_aligned_scales=tma_aligned_scales,
     )
 
-    with flag_gems.use_gems():
-        out, scale_out = flag_gems.fused_inv_rope_fp8_quant(
-            o,
-            positions,
-            cos_sin_cache,
-            n_groups,
-            heads_per_group,
-            tma_aligned_scales=tma_aligned_scales,
-        )
+    out, scale_out = flag_gems.fused_inv_rope_fp8_quant(
+        o,
+        positions,
+        cos_sin_cache,
+        n_groups,
+        heads_per_group,
+        tma_aligned_scales=tma_aligned_scales,
+    )
 
     return {
         "o": o,
