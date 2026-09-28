@@ -19,6 +19,12 @@ import torch
 import triton
 import triton.language as tl
 
+# Use the backend-local gems `copy_` instead of the bare `Tensor.copy_` for the
+# staging/widen writes: that path is a real device-to-device copy (the int32->
+# int64 / non-contiguous-out case), so we route it explicitly through gems to
+# avoid ever falling through to the vendor aten copy kernel.
+from _kunlunxin.ops.copy import copy_ as _gems_copy_
+
 from flag_gems.runtime import device as runtime_device
 from flag_gems.runtime import torch_device_fn
 
@@ -646,7 +652,7 @@ def _searchsorted_impl(
                         raw_out, out, n_out, wblock
                     )
                 else:
-                    out.copy_(raw_out)
+                    _gems_copy_(out, raw_out)
             return out
 
         grid = (triton.cdiv(values.numel(), block_size),)
@@ -685,7 +691,6 @@ def _searchsorted_impl(
                 kernel_out,
                 values.numel(),
                 values_per_row,
-                sequence_len,
                 LOG_SEQUENCE_LEN=sequence_len.bit_length(),
                 RIGHT=right,
                 HAS_SORTER=sorter_contiguous is not None,
@@ -693,10 +698,11 @@ def _searchsorted_impl(
                 USE_INT32_INDEX=use_int32_index,
                 BLOCK_SIZE=block_size,
                 NEED_MASK=need_mask,
+                SEQUENCE_LEN=sequence_len,
             )
 
     if kernel_out is not out:
-        out.copy_(kernel_out)
+        _gems_copy_(out, kernel_out)
     return out
 
 
