@@ -45,8 +45,7 @@ def test_flip(shape, dtype, dims):
     inp = utils.unsqueeze_tensor(inp, max_ndim)
     ref_inp = utils.to_reference(inp, False)
 
-    with flag_gems.use_gems():
-        res_out = torch.flip(inp, dims)
+    res_out = flag_gems.flip(inp, dims)
     ref_out = torch.flip(ref_inp, dims)
 
     utils.gems_assert_equal(res_out, ref_out)
@@ -69,7 +68,6 @@ def test_flip_with_non_dense_input(shape, dtype, dims):
         )[::2, ::2]
     ref_inp = utils.to_reference(inp, False)
 
-    with flag_gems.use_gems():
-        res_out = torch.flip(inp, dims)
+    res_out = flag_gems.flip(inp, dims)
     ref_out = torch.flip(ref_inp, dims)
     utils.gems_assert_equal(res_out, ref_out)

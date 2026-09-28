@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from ._dyn_quant_matmul_4bit import _dyn_quant_matmul_4bit
+from .adaptive_avg_pool2d import adaptive_avg_pool2d
 from .adaptive_max_pool3d import adaptive_max_pool3d
 from .addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out
 from .all import all, all_dim, all_dims
@@ -174,6 +175,7 @@ __all__ = [
     "_segment_reduce_backward_out",
     "_unique2",
     "_upsample_bicubic2d_aa",
+    "adaptive_avg_pool2d",
     "adaptive_max_pool3d",
     "addmm",
     "addmm_dtype",
