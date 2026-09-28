@@ -38,9 +38,11 @@ def _well_conditioned(m, n, dtype, seed=0):
     """Build a (m, n) matrix with a known, tightly bounded singular spectrum.
 
     `randn(m, n) + 2 * I` leaves the condition number uncontrolled (observed in
-    the hundreds to thousands at 48x48), and pinv error grows with cond * eps,
-    so that construction makes the tolerance check seed-dependent. Composing an
-    explicit SVD with singular values in [1, 2] pins cond <= 2 instead.
+    the hundreds to thousands), and pinv error grows with cond * eps, so that
+    construction makes the tolerance check seed-dependent: it passed or failed
+    depending on which matrix was drawn. Composing an explicit SVD with
+    singular values in [1, 2] pins cond <= 2 instead, for both the fused and
+    the blocked kernel paths.
     """
     g = torch.Generator(device="cpu").manual_seed(seed)
     k = min(m, n)
@@ -57,9 +59,7 @@ def _well_conditioned(m, n, dtype, seed=0):
 @pytest.mark.parametrize("dtype", PINV_DTYPES)
 def test_linalg_pinv(shape, dtype):
     m, n = shape
-    # Use well-conditioned matrix for reliable SVD convergence
-    A = torch.randn(m, n, dtype=dtype, device=flag_gems.device)
-    A = A + torch.eye(m, n, dtype=dtype, device=flag_gems.device) * 2.0
+    A = _well_conditioned(m, n, dtype)
     ref_A = utils.to_reference(A)
     ref_out = torch.linalg.pinv(ref_A)
     res_out = flag_gems.linalg_pinv(A)
@@ -72,14 +72,8 @@ def test_linalg_pinv(shape, dtype):
 def test_linalg_pinv_batched(shape, dtype):
     m, n = shape
     batch = 4
-    # Use well-conditioned matrices
-    A = torch.randn(batch, m, n, dtype=dtype, device=flag_gems.device)
-    eye = (
-        torch.eye(m, n, dtype=dtype, device=flag_gems.device)
-        .unsqueeze(0)
-        .expand(batch, m, n)
-    )
-    A = A + eye * 2.0
+    # Distinct seeds so the batch elements are not identical matrices.
+    A = torch.stack([_well_conditioned(m, n, dtype, seed=s) for s in range(batch)])
     ref_A = utils.to_reference(A)
     ref_out = torch.linalg.pinv(ref_A)
     res_out = flag_gems.linalg_pinv(A)
