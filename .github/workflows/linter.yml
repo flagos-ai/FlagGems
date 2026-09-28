@@ -56,6 +56,16 @@ jobs:
         git sparse-checkout disable 2>/dev/null || true
         git ls-files -z | xargs -0 -r git update-index --no-skip-worktree
         git checkout --force HEAD -- .
+    # Each run rebuilds all 5 hook environments from their gitcode.com mirrors
+    # from scratch (~60s, confirmed via job log: "Once installed this
+    # environment will be reused" fires every time, meaning ~/.cache/pre-commit
+    # never survives between jobs on this runner). Cache it explicitly so repeat
+    # runs skip straight to hook execution.
+    - name: Cache pre-commit environments
+      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4.3.0
+      with:
+        path: ~/.cache/pre-commit
+        key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
     # pre-commit is preinstalled in the runner image but its console-script
     # entrypoint lives in /usr/local/bin, which is not on the PATH inherited by
     # steps running directly on cpu-runner (it was only on PATH when the job ran
