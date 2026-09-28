@@ -61,15 +61,13 @@ def test_diagonal_backward(shape, dtype, dim1, dim2, offset):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.diagonal(ref_inp, offset, dim1, dim2)
-    with flag_gems.use_gems():
-        res_out = torch.diagonal(inp, offset, dim1, dim2)
+    res_out = torch.diagonal(inp, offset, dim1, dim2)
 
     out_grad = torch.randn_like(res_out.cpu()).to(device=flag_gems.device)
     ref_grad = utils.to_reference(out_grad)
 
     (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
-    with flag_gems.use_gems():
-        (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
+    res_in_grad = flag_gems.diagonal_backward(out_grad, inp.size(), offset, dim1, dim2)
 
     utils.gems_assert_equal(res_out, ref_out)
     utils.gems_assert_equal(res_in_grad, ref_in_grad)
