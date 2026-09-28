@@ -14,21 +14,11 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
 from . import accuracy_utils as utils
 from . import test_utils as tu
-
-_OP_NAME = "_nested_compute_contiguous_strides_offsets"
-
-# Register underscore-prefixed pytest markers explicitly.
-setattr(
-    pytest.mark,
-    _OP_NAME,
-    MarkDecorator(Mark(_OP_NAME, (), {}, _ispytest=True), _ispytest=True),
-)
 
 # Derive contiguous strides and cumulative storage offsets from CPU int64 sizes.
 # Keep inputs non-empty and on CPU: the current reference crashes otherwise.
@@ -91,7 +81,7 @@ def _make_sizes_from_range(num_tensors, num_dims, value_range, seed=0):
     return raw.cpu().remainder(_SIZE_MODULUS)
 
 
-@pytest.mark._nested_compute_contiguous_strides_offsets
+@pytest.mark.nested_compute_contiguous_strides_offsets
 @pytest.mark.parametrize("pattern", _SIZE_PATTERNS)
 @pytest.mark.parametrize("num_dims", _NUM_DIMS)
 @pytest.mark.parametrize("num_tensors", _NUM_TENSORS)
@@ -111,7 +101,7 @@ def test__nested_compute_contiguous_strides_offsets(num_tensors, num_dims, patte
     utils.gems_assert_equal(res_offsets, ref_offsets)
 
 
-@pytest.mark._nested_compute_contiguous_strides_offsets
+@pytest.mark.nested_compute_contiguous_strides_offsets
 @pytest.mark.parametrize("layout", _VALUE_RANGE_LAYOUTS)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 def test__nested_compute_contiguous_strides_offsets_value_ranges(layout, value_range):
@@ -131,7 +121,7 @@ def test__nested_compute_contiguous_strides_offsets_value_ranges(layout, value_r
     utils.gems_assert_equal(res_offsets, ref_offsets)
 
 
-@pytest.mark._nested_compute_contiguous_strides_offsets
+@pytest.mark.nested_compute_contiguous_strides_offsets
 def test__nested_compute_contiguous_strides_offsets_known_layout():
     sizes = torch.tensor([[2, 3], [4, 3], [1, 3], [3, 3]], dtype=torch.int64)
 
@@ -149,7 +139,7 @@ def test__nested_compute_contiguous_strides_offsets_known_layout():
     utils.gems_assert_equal(res_offsets, ref_offsets)
 
 
-@pytest.mark._nested_compute_contiguous_strides_offsets
+@pytest.mark.nested_compute_contiguous_strides_offsets
 def test__nested_compute_contiguous_strides_offsets_invalid_ndim():
     bad = torch.ones(4, dtype=torch.int64)
     with pytest.raises(IndexError):
@@ -158,7 +148,7 @@ def test__nested_compute_contiguous_strides_offsets_invalid_ndim():
         flag_gems._nested_compute_contiguous_strides_offsets(bad)
 
 
-@pytest.mark._nested_compute_contiguous_strides_offsets
+@pytest.mark.nested_compute_contiguous_strides_offsets
 @pytest.mark.parametrize("dtype", _UNSUPPORTED_DTYPES)
 def test__nested_compute_contiguous_strides_offsets_rejects_non_int64(dtype):
     bad = torch.zeros((4, 3), dtype=dtype)
@@ -168,7 +158,7 @@ def test__nested_compute_contiguous_strides_offsets_rejects_non_int64(dtype):
         flag_gems._nested_compute_contiguous_strides_offsets(bad)
 
 
-@pytest.mark._nested_compute_contiguous_strides_offsets
+@pytest.mark.nested_compute_contiguous_strides_offsets
 def test__nested_compute_contiguous_strides_offsets_rejects_non_tensor():
     with pytest.raises(RuntimeError):
         torch.ops.aten._nested_compute_contiguous_strides_offsets(3.14)

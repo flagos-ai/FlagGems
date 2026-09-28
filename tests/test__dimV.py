@@ -14,19 +14,11 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
 from . import accuracy_utils as utils
 from . import test_utils as tu
-
-# Register the underscore-prefixed pytest marker explicitly.
-setattr(
-    pytest.mark,
-    "_dimV",
-    MarkDecorator(Mark("_dimV", (), {}, _ispytest=True), _ispytest=True),
-)
 
 # _dimV reports the dense dimension count of a COO tensor. Dense and
 # compressed sparse inputs are rejected.
@@ -127,7 +119,7 @@ def _assert_result(res_out, ref_out):
     utils.gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark._dimV
+@pytest.mark.dimV
 @pytest.mark.parametrize("case", _DIMV_COO_CASES)
 @pytest.mark.parametrize("dtype", _DIMV_DTYPES)
 def test__dimV_coo(case, dtype):
@@ -145,7 +137,7 @@ def test__dimV_coo(case, dtype):
     assert inp.sparse_dim() + inp.dense_dim() == len(shape)
 
 
-@pytest.mark._dimV
+@pytest.mark.dimV
 @pytest.mark.parametrize("case", _DIMV_SHAPE_CASES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("dtype", _DIMV_DTYPES)
@@ -162,7 +154,7 @@ def test__dimV_shape_value_range_grid(case, value_range, dtype):
     assert inp.sparse_dim() + inp.dense_dim() == len(shape)
 
 
-@pytest.mark._dimV
+@pytest.mark.dimV
 @pytest.mark.parametrize("case", _DIMV_HYBRID_CASES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("dtype", _DIMV_DTYPES)
@@ -179,7 +171,7 @@ def test__dimV_hybrid_value_ranges(case, value_range, dtype):
     assert inp.sparse_dim() + inp.dense_dim() == len(shape)
 
 
-@pytest.mark._dimV
+@pytest.mark.dimV
 @pytest.mark.parametrize("dtype", _DIMV_DTYPES)
 def test__dimV_empty(dtype):
     shape, dense_dim = (3, 4), 0
@@ -192,7 +184,7 @@ def test__dimV_empty(dtype):
     _assert_result(res_out, ref_out)
 
 
-@pytest.mark._dimV
+@pytest.mark.dimV
 @pytest.mark.parametrize("shape, dense_dim", [((4, 5, 6), 1), ((4, 5, 6), 2)])
 @pytest.mark.parametrize("dtype", _DIMV_DTYPES)
 def test__dimV_empty_hybrid(shape, dense_dim, dtype):
@@ -207,7 +199,7 @@ def test__dimV_empty_hybrid(shape, dense_dim, dtype):
     assert inp.sparse_dim() + inp.dense_dim() == len(shape)
 
 
-@pytest.mark._dimV
+@pytest.mark.dimV
 @pytest.mark.parametrize("dtype", _DIMV_DTYPES)
 def test__dimV_single_entry(dtype):
     shape, dense_dim = (3, 4, 5), 2
@@ -221,7 +213,7 @@ def test__dimV_single_entry(dtype):
     _assert_result(res_out, ref_out)
 
 
-@pytest.mark._dimV
+@pytest.mark.dimV
 @pytest.mark.parametrize("dtype", _DIMV_DTYPES)
 def test__dimV_uncoalesced(dtype):
     shape = (3, 4)
@@ -237,7 +229,7 @@ def test__dimV_uncoalesced(dtype):
     _assert_result(res_out, ref_out)
 
 
-@pytest.mark._dimV
+@pytest.mark.dimV
 @pytest.mark.parametrize(
     "dtype,scenario", tu.selected_cases(tu.special_value_cases(_DIMV_DTYPES))
 )
@@ -263,7 +255,7 @@ _NEGATIVE_EXC = (
 )
 
 
-@pytest.mark._dimV
+@pytest.mark.dimV
 def test__dimV_dense_raises():
     inp = tu.make_input(torch.float32, (4, 4), ["-1", "1"])
     with pytest.raises(NotImplementedError):
@@ -272,7 +264,7 @@ def test__dimV_dense_raises():
         flag_gems._dimV(inp)
 
 
-@pytest.mark._dimV
+@pytest.mark.dimV
 def test__dimV_csr_raises():
     crow_indices = torch.tensor([0, 1, 2])
     col_indices = torch.tensor([0, 1])
@@ -286,7 +278,7 @@ def test__dimV_csr_raises():
         flag_gems._dimV(inp)
 
 
-@pytest.mark._dimV
+@pytest.mark.dimV
 def test__dimV_rejects_non_tensor():
     with pytest.raises(RuntimeError):
         torch.ops.aten._dimV(3.14)

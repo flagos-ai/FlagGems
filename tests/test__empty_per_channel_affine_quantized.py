@@ -16,23 +16,11 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
 from . import accuracy_utils as utils
 from . import test_utils as tu
-
-# Register underscore-prefixed pytest markers explicitly.
-for _name in (
-    "_empty_per_channel_affine_quantized",
-    "_empty_per_channel_affine_quantized_out",
-):
-    setattr(
-        pytest.mark,
-        _name,
-        MarkDecorator(Mark(_name, (), {}, _ispytest=True), _ispytest=True),
-    )
 
 # Allocate uninitialized quantized storage; compare layout and per-channel qparams.
 QINT_DTYPES = [torch.qint8, torch.quint8, torch.qint32, torch.quint4x2, torch.quint2x4]
@@ -108,7 +96,7 @@ def _assert_per_channel_metadata(res_out, ref_out):
     )
 
 
-@pytest.mark._empty_per_channel_affine_quantized
+@pytest.mark.empty_per_channel_affine_quantized
 @pytest.mark.parametrize("shape,axis", SHAPE_AXIS)
 @pytest.mark.parametrize("quantized_dtype", QINT_DTYPES)
 @pytest.mark.parametrize("scale_dtype", SCALES_DTYPES)
@@ -144,7 +132,7 @@ def test__empty_per_channel_affine_quantized(
     tu.assert_result_equal(zero_points, ref_zero_points)
 
 
-@pytest.mark._empty_per_channel_affine_quantized
+@pytest.mark.empty_per_channel_affine_quantized
 @pytest.mark.parametrize("shape,axis", SHAPE_AXIS)
 @pytest.mark.parametrize("quantized_dtype", QINT_DTYPES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
@@ -179,7 +167,7 @@ def test__empty_per_channel_affine_quantized_metadata_value_ranges(
     tu.assert_result_equal(zero_points, ref_zero_points)
 
 
-@pytest.mark._empty_per_channel_affine_quantized_out
+@pytest.mark.empty_per_channel_affine_quantized_out
 @pytest.mark.parametrize("shape,axis", SHAPE_AXIS)
 @pytest.mark.parametrize("quantized_dtype", QINT_DTYPES_OUT)
 @pytest.mark.parametrize("scale_dtype", SCALES_DTYPES)
@@ -235,7 +223,7 @@ def test__empty_per_channel_affine_quantized_out(
     tu.assert_result_equal(zero_points, ref_zero_points)
 
 
-@pytest.mark._empty_per_channel_affine_quantized
+@pytest.mark.empty_per_channel_affine_quantized
 @pytest.mark.parametrize("shape", tu.selected_cases([(3, 4)]))
 @pytest.mark.parametrize("scenario", tu.selected_cases(["nan", "inf", "mixed"]))
 def test__empty_per_channel_affine_quantized_nan_inf_scales(shape, scenario):
@@ -268,7 +256,7 @@ def test__empty_per_channel_affine_quantized_nan_inf_scales(shape, scenario):
     tu.assert_result_equal(zero_points, ref_zero_points)
 
 
-@pytest.mark._empty_per_channel_affine_quantized
+@pytest.mark.empty_per_channel_affine_quantized
 def test__empty_per_channel_affine_quantized_fp64_scales_preserved():
     # These scale values cannot round-trip through float32.
     shape = (3, 4)
@@ -303,7 +291,7 @@ def test__empty_per_channel_affine_quantized_fp64_scales_preserved():
     tu.assert_result_equal(zero_points, ref_zero_points)
 
 
-@pytest.mark._empty_per_channel_affine_quantized
+@pytest.mark.empty_per_channel_affine_quantized
 @pytest.mark.parametrize("invalid_dtype", [torch.float32, torch.float64, torch.int32])
 def test__empty_per_channel_affine_quantized_negative_invalid_dtype(invalid_dtype):
     shape = (2, 3)
@@ -331,7 +319,7 @@ def test__empty_per_channel_affine_quantized_negative_invalid_dtype(invalid_dtyp
         )
 
 
-@pytest.mark._empty_per_channel_affine_quantized
+@pytest.mark.empty_per_channel_affine_quantized
 @pytest.mark.parametrize("scale_dtype", [torch.int32, torch.int64, torch.uint8])
 def test__empty_per_channel_affine_quantized_negative_non_float_scales(scale_dtype):
     shape = (2, 3)
@@ -359,7 +347,7 @@ def test__empty_per_channel_affine_quantized_negative_non_float_scales(scale_dty
         )
 
 
-@pytest.mark._empty_per_channel_affine_quantized
+@pytest.mark.empty_per_channel_affine_quantized
 @pytest.mark.parametrize("scale_len,zero_point_len", [(1, 2), (3, 1), (0, 2), (2, 0)])
 def test__empty_per_channel_affine_quantized_negative_metadata_length_mismatch(
     scale_len, zero_point_len

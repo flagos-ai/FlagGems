@@ -14,25 +14,11 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
-from .generated_operator_utils import OperatorBenchmark
 from . import base, consts, utils
-
-# ``_slow_conv2d_backward`` starts with an underscore, and ``pytest.mark``
-# refuses to generate a marker via attribute access for such names. Register the
-# marker directly on the MarkGenerator so ``@pytest.mark._slow_conv2d_backward``
-# and ``-m _slow_conv2d_backward`` both work.
-setattr(
-    pytest.mark,
-    "_slow_conv2d_backward",
-    MarkDecorator(
-        Mark("_slow_conv2d_backward", (), {}, _ispytest=True),
-        _ispytest=True,
-    ),
-)
+from .generated_operator_utils import OperatorBenchmark
 
 # aten::_slow_conv2d_backward(grad_output, self, weight, kernel_size, stride,
 # padding, output_mask) -> (grad_input, grad_weight, grad_bias). ``self`` is
@@ -100,7 +86,7 @@ class SlowConv2dBackwardBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=_SLOW_CONV2D_BACKWARD_SHAPES)
 
 
-@pytest.mark._slow_conv2d_backward
+@pytest.mark.slow_conv2d_backward
 def test__slow_conv2d_backward():
     bench = SlowConv2dBackwardBenchmark(
         op_name="_slow_conv2d_backward",

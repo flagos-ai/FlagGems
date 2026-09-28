@@ -14,25 +14,11 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
-from .generated_operator_utils import OperatorBenchmark
 from . import base, consts, utils
-
-# ``_new_zeros_with_same_feature_meta`` starts with an underscore, and
-# ``pytest.mark`` refuses to generate a marker via attribute access for such
-# names. Register it directly on the MarkGenerator so ``-m
-# _new_zeros_with_same_feature_meta`` works.
-setattr(
-    pytest.mark,
-    "_new_zeros_with_same_feature_meta",
-    MarkDecorator(
-        Mark("_new_zeros_with_same_feature_meta", (), {}, _ispytest=True),
-        _ispytest=True,
-    ),
-)
+from .generated_operator_utils import OperatorBenchmark
 
 # aten::_new_zeros_with_same_feature_meta allocates a zero tensor whose shape
 # is ``self.shape[:self_num_batch_dims] + other.shape`` and whose dtype follows
@@ -80,7 +66,7 @@ class NewZerosWithSameFeatureMetaBenchmark(OperatorBenchmark):
         )
 
 
-@pytest.mark._new_zeros_with_same_feature_meta
+@pytest.mark.new_zeros_with_same_feature_meta
 def test__new_zeros_with_same_feature_meta():
     bench = NewZerosWithSameFeatureMetaBenchmark(
         op_name="_new_zeros_with_same_feature_meta",

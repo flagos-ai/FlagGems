@@ -14,22 +14,11 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
-from .generated_operator_utils import OperatorBenchmark
 from . import base, consts, utils
-
-# ``_shape_as_tensor`` starts with an underscore, and ``pytest.mark`` refuses to
-# generate a marker via attribute access for such names. Register it directly on
-# the MarkGenerator so ``@pytest.mark._shape_as_tensor`` and ``-m
-# _shape_as_tensor`` both work.
-setattr(
-    pytest.mark,
-    "_shape_as_tensor",
-    MarkDecorator(Mark("_shape_as_tensor", (), {}, _ispytest=True), _ispytest=True),
-)
+from .generated_operator_utils import OperatorBenchmark
 
 # aten::_shape_as_tensor(self) materializes the logical shape as a fresh 1-D
 # int64 CPU tensor. It is a pure metadata query: the measured work is the input
@@ -69,7 +58,7 @@ class ShapeAsTensorBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=_SHAPE_AS_TENSOR_SHAPES)
 
 
-@pytest.mark._shape_as_tensor
+@pytest.mark.shape_as_tensor
 def test__shape_as_tensor():
     bench = ShapeAsTensorBenchmark(
         op_name="_shape_as_tensor",

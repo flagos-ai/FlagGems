@@ -27,25 +27,11 @@ both share the exact same call semantics ``op(input, reduce_range=...)``.
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
-from .generated_operator_utils import OperatorBenchmark
 from . import base, consts, utils
-
-# ``_choose_qparams_per_tensor`` starts with an underscore and ``pytest.mark``
-# refuses attribute access for such names, so register the marker directly on
-# the MarkGenerator: ``@pytest.mark._choose_qparams_per_tensor`` and
-# ``-m _choose_qparams_per_tensor`` then both work.
-setattr(
-    pytest.mark,
-    "_choose_qparams_per_tensor",
-    MarkDecorator(
-        Mark("_choose_qparams_per_tensor", (), {}, _ispytest=True),
-        _ispytest=True,
-    ),
-)
+from .generated_operator_utils import OperatorBenchmark
 
 CQPT_SHAPES = [
     (65536,),
@@ -82,7 +68,7 @@ class ChooseQParamsPerTensorBenchmark(OperatorBenchmark):
         return []
 
 
-@pytest.mark._choose_qparams_per_tensor
+@pytest.mark.choose_qparams_per_tensor
 def test__choose_qparams_per_tensor():
     bench = ChooseQParamsPerTensorBenchmark(
         op_name="_choose_qparams_per_tensor",

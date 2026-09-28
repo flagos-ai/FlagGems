@@ -14,22 +14,11 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
 from . import accuracy_utils as utils
 from . import test_utils as tu
-
-# Register underscore-prefixed pytest markers explicitly.
-setattr(
-    pytest.mark,
-    "_choose_qparams_per_tensor",
-    MarkDecorator(
-        Mark("_choose_qparams_per_tensor", (), {}, _ispytest=True),
-        _ispytest=True,
-    ),
-)
 
 # Reduce input extrema to Python (scale, zero_point) scalars.
 _CQPT_DTYPES = (
@@ -108,7 +97,7 @@ def _assert_pair(res, ref):
     assert res_zp == ref_zp, f"zero_point {res_zp} != {ref_zp}"
 
 
-@pytest.mark._choose_qparams_per_tensor
+@pytest.mark.choose_qparams_per_tensor
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("dtype", _CQPT_DTYPES)
@@ -126,7 +115,7 @@ def test__choose_qparams_per_tensor_value_ranges(
     _assert_pair(res_pair, ref_pair)
 
 
-@pytest.mark._choose_qparams_per_tensor
+@pytest.mark.choose_qparams_per_tensor
 @pytest.mark.parametrize("values", _CQPT_TINY_CASES)
 @pytest.mark.parametrize("reduce_range", _CQPT_REDUCE_RANGE)
 def test__choose_qparams_per_tensor_tiny_scale(values, reduce_range):
@@ -140,7 +129,7 @@ def test__choose_qparams_per_tensor_tiny_scale(values, reduce_range):
     _assert_pair(res_pair, ref_pair)
 
 
-@pytest.mark._choose_qparams_per_tensor
+@pytest.mark.choose_qparams_per_tensor
 @pytest.mark.parametrize("value", _CQPT_CONSTANT_VALUES)
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 @pytest.mark.parametrize("reduce_range", _CQPT_REDUCE_RANGE)
@@ -154,7 +143,7 @@ def test__choose_qparams_per_tensor_constant(value, dtype, reduce_range):
     _assert_pair(res_pair, ref_pair)
 
 
-@pytest.mark._choose_qparams_per_tensor
+@pytest.mark.choose_qparams_per_tensor
 @pytest.mark.parametrize("reduce_range", _CQPT_REDUCE_RANGE)
 def test__choose_qparams_per_tensor_inf(reduce_range):
     inp = torch.tensor(_CQPT_INF_INPUT, dtype=torch.float32, device=flag_gems.device)
@@ -166,7 +155,7 @@ def test__choose_qparams_per_tensor_inf(reduce_range):
     _assert_pair(res_pair, ref_pair)
 
 
-@pytest.mark._choose_qparams_per_tensor
+@pytest.mark.choose_qparams_per_tensor
 @pytest.mark.parametrize("layout", ["transpose", "slice"])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 @pytest.mark.parametrize("reduce_range", _CQPT_REDUCE_RANGE)
@@ -183,7 +172,7 @@ def test__choose_qparams_per_tensor_non_contiguous(layout, dtype, reduce_range):
     _assert_pair(res_pair, ref_pair)
 
 
-@pytest.mark._choose_qparams_per_tensor
+@pytest.mark.choose_qparams_per_tensor
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
 def test__choose_qparams_per_tensor_default_reduce_range(dtype):
     utils.init_seed(0)
@@ -196,7 +185,7 @@ def test__choose_qparams_per_tensor_default_reduce_range(dtype):
     _assert_pair(res_pair, ref_pair)
 
 
-@pytest.mark._choose_qparams_per_tensor
+@pytest.mark.choose_qparams_per_tensor
 def test__choose_qparams_per_tensor_rejects_nan():
     inp = torch.tensor(
         [float("nan"), 1.0, 2.0], dtype=torch.float32, device=flag_gems.device
@@ -209,7 +198,7 @@ def test__choose_qparams_per_tensor_rejects_nan():
         flag_gems._choose_qparams_per_tensor(inp, False)
 
 
-@pytest.mark._choose_qparams_per_tensor
+@pytest.mark.choose_qparams_per_tensor
 def test__choose_qparams_per_tensor_rejects_empty():
     inp = torch.empty(0, dtype=torch.float32, device=flag_gems.device)
     ref_inp = tu.to_reference(inp)
@@ -220,7 +209,7 @@ def test__choose_qparams_per_tensor_rejects_empty():
         flag_gems._choose_qparams_per_tensor(inp, False)
 
 
-@pytest.mark._choose_qparams_per_tensor
+@pytest.mark.choose_qparams_per_tensor
 def test__choose_qparams_per_tensor_rejects_complex():
     inp = torch.tensor([1.0 + 2.0j], dtype=torch.complex64, device=flag_gems.device)
     ref_inp = tu.to_reference(inp)
@@ -231,7 +220,7 @@ def test__choose_qparams_per_tensor_rejects_complex():
         flag_gems._choose_qparams_per_tensor(inp, False)
 
 
-@pytest.mark._choose_qparams_per_tensor
+@pytest.mark.choose_qparams_per_tensor
 def test__choose_qparams_per_tensor_rejects_fp8():
     inp = torch.zeros((4,), dtype=torch.float8_e4m3fn, device=flag_gems.device)
     ref_inp = tu.to_reference(inp)
@@ -242,7 +231,7 @@ def test__choose_qparams_per_tensor_rejects_fp8():
         flag_gems._choose_qparams_per_tensor(inp, False)
 
 
-@pytest.mark._choose_qparams_per_tensor
+@pytest.mark.choose_qparams_per_tensor
 def test__choose_qparams_per_tensor_rejects_non_tensor():
     with pytest.raises((RuntimeError, TypeError)):
         torch.ops.aten._choose_qparams_per_tensor(3.14, False)

@@ -16,21 +16,11 @@ import math
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
 from . import accuracy_utils as utils
 from . import test_utils as tu
-
-# Register underscore-prefixed pytest markers explicitly.
-setattr(
-    pytest.mark,
-    "_has_same_storage_numel",
-    MarkDecorator(
-        Mark("_has_same_storage_numel", (), {}, _ispytest=True), _ispytest=True
-    ),
-)
 
 # Compare storage element counts, which may differ from logical tensor sizes.
 _HAS_SAME_STORAGE_NUMEL_DTYPES = (
@@ -122,7 +112,7 @@ def _assert_result(res_out, ref_out):
     utils.gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark._has_same_storage_numel
+@pytest.mark.has_same_storage_numel
 @pytest.mark.parametrize("self_spec,other_spec", _HAS_SAME_STORAGE_NUMEL_CASES)
 @pytest.mark.parametrize("dtype", _HAS_SAME_STORAGE_NUMEL_DTYPES)
 def test__has_same_storage_numel_layouts(self_spec, other_spec, dtype):
@@ -142,7 +132,7 @@ def test__has_same_storage_numel_layouts(self_spec, other_spec, dtype):
     _assert_result(res_out, ref_out)
 
 
-@pytest.mark._has_same_storage_numel
+@pytest.mark.has_same_storage_numel
 @pytest.mark.parametrize("self_dtype,other_dtype", _CROSS_DTYPE_CASES)
 def test__has_same_storage_numel_cross_dtype(self_dtype, other_dtype):
     self_t = torch.zeros((4, 4), dtype=self_dtype, device=flag_gems.device)
@@ -156,7 +146,7 @@ def test__has_same_storage_numel_cross_dtype(self_dtype, other_dtype):
     _assert_result(res_out, ref_out)
 
 
-@pytest.mark._has_same_storage_numel
+@pytest.mark.has_same_storage_numel
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype", _HAS_SAME_STORAGE_NUMEL_DTYPES)
 def test__has_same_storage_numel_shapes(shape, dtype):
@@ -171,7 +161,7 @@ def test__has_same_storage_numel_shapes(shape, dtype):
     _assert_result(res_out, ref_out)
 
 
-@pytest.mark._has_same_storage_numel
+@pytest.mark.has_same_storage_numel
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("dtype", _HAS_SAME_STORAGE_NUMEL_DTYPES)
@@ -187,7 +177,7 @@ def test__has_same_storage_numel_value_ranges(shape, value_range, dtype):
     _assert_result(res_out, ref_out)
 
 
-@pytest.mark._has_same_storage_numel
+@pytest.mark.has_same_storage_numel
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize(
     "dtype,scenario",
@@ -205,7 +195,7 @@ def test__has_same_storage_numel_nan_inf(shape, dtype, scenario):
     _assert_result(res_out, ref_out)
 
 
-@pytest.mark._has_same_storage_numel
+@pytest.mark.has_same_storage_numel
 def test__has_same_storage_numel_ignores_autograd():
     self_t = torch.zeros((4, 4), device=flag_gems.device).requires_grad_()
     other_t = torch.zeros((4, 4), device=flag_gems.device).requires_grad_()
@@ -219,7 +209,7 @@ def test__has_same_storage_numel_ignores_autograd():
     assert not isinstance(res_out, torch.Tensor) or not res_out.requires_grad
 
 
-@pytest.mark._has_same_storage_numel
+@pytest.mark.has_same_storage_numel
 @pytest.mark.parametrize("self_arg,other_arg", _INVALID_ARG_CASES)
 def test__has_same_storage_numel_rejects_non_tensor(self_arg, other_arg):
     with pytest.raises(RuntimeError):
@@ -232,7 +222,7 @@ def test__has_same_storage_numel_rejects_non_tensor(self_arg, other_arg):
         flag_gems._has_same_storage_numel(self_arg, other_arg)
 
 
-@pytest.mark._has_same_storage_numel
+@pytest.mark.has_same_storage_numel
 def test__has_same_storage_numel_rejects_missing_argument():
     inp = torch.zeros((4,), device=flag_gems.device)
     with pytest.raises(RuntimeError):

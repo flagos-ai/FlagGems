@@ -15,23 +15,11 @@
 # SPDX-License-Identifier: Apache-2.0
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
-from .generated_operator_utils import OperatorBenchmark
 from . import base
-
-# ``_empty_affine_quantized`` starts with an underscore, and ``pytest.mark``
-# refuses to generate a marker via attribute access for such names. Register the
-# markers directly on the MarkGenerator so ``@pytest.mark._empty_affine_quantized``
-# and ``-m _empty_affine_quantized`` both work.
-for _name in ("_empty_affine_quantized", "_empty_affine_quantized_out"):
-    setattr(
-        pytest.mark,
-        _name,
-        MarkDecorator(Mark(_name, (), {}, _ispytest=True), _ispytest=True),
-    )
+from .generated_operator_utils import OperatorBenchmark
 
 # aten::_empty_affine_quantized is a factory that returns a fresh per-tensor
 # affine quantized tensor with uninitialized storage, so the benchmark measures
@@ -111,7 +99,7 @@ class EmptyAffineQuantizedBenchmark(OperatorBenchmark):
         )
 
 
-@pytest.mark._empty_affine_quantized
+@pytest.mark.empty_affine_quantized
 def test__empty_affine_quantized():
     bench = EmptyAffineQuantizedBenchmark(
         op_name="_empty_affine_quantized",
@@ -127,7 +115,7 @@ def test__empty_affine_quantized():
     bench.run()
 
 
-@pytest.mark._empty_affine_quantized_out
+@pytest.mark.empty_affine_quantized_out
 def test__empty_affine_quantized_out():
     bench = EmptyAffineQuantizedBenchmark(
         op_name="_empty_affine_quantized",

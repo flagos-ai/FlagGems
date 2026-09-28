@@ -14,25 +14,14 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
-from .generated_operator_utils import OperatorBenchmark
 from . import base, consts
+from .generated_operator_utils import OperatorBenchmark
 
 _OP_NAME = "_nested_compute_contiguous_strides_offsets"
 
-# ``_nested_compute_contiguous_strides_offsets`` starts with an underscore, and
-# ``pytest.mark`` refuses to generate a marker via attribute access for such
-# names. Register it directly on the MarkGenerator so
-# ``@pytest.mark._nested_compute_contiguous_strides_offsets`` and
-# ``-m _nested_compute_contiguous_strides_offsets`` both work.
-setattr(
-    pytest.mark,
-    _OP_NAME,
-    MarkDecorator(Mark(_OP_NAME, (), {}, _ispytest=True), _ispytest=True),
-)
 
 # aten::_nested_compute_contiguous_strides_offsets(Tensor nested_size)
 # -> (Tensor, Tensor) computes the contiguous strides and storage offsets of
@@ -94,7 +83,7 @@ class NestedComputeContiguousStridesOffsetsBenchmark(OperatorBenchmark):
         return []
 
 
-@pytest.mark._nested_compute_contiguous_strides_offsets
+@pytest.mark.nested_compute_contiguous_strides_offsets
 def test__nested_compute_contiguous_strides_offsets():
     bench = NestedComputeContiguousStridesOffsetsBenchmark(
         op_name=_OP_NAME,

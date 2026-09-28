@@ -14,24 +14,11 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
-from .generated_operator_utils import OperatorBenchmark
 from . import base, consts, utils
-
-# ``_has_same_storage_numel`` starts with an underscore, and ``pytest.mark``
-# refuses to generate a marker via attribute access for such names. Register it
-# directly on the MarkGenerator so ``@pytest.mark._has_same_storage_numel`` and
-# ``-m _has_same_storage_numel`` both work.
-setattr(
-    pytest.mark,
-    "_has_same_storage_numel",
-    MarkDecorator(
-        Mark("_has_same_storage_numel", (), {}, _ispytest=True), _ispytest=True
-    ),
-)
+from .generated_operator_utils import OperatorBenchmark
 
 # aten::_has_same_storage_numel(Tensor self, Tensor other) -> bool is a pure
 # storage-metadata query: it compares the two storage element counts and reads
@@ -76,7 +63,7 @@ class _HasSameStorageNumelBenchmark(OperatorBenchmark):
         )
 
 
-@pytest.mark._has_same_storage_numel
+@pytest.mark.has_same_storage_numel
 def test__has_same_storage_numel():
     bench = _HasSameStorageNumelBenchmark(
         op_name="_has_same_storage_numel",

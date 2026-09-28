@@ -14,24 +14,11 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
 from . import accuracy_utils as utils
 from . import test_utils as tu
-
-# Register underscore-prefixed pytest markers explicitly.
-setattr(
-    pytest.mark,
-    "_neg_view_copy",
-    MarkDecorator(Mark("_neg_view_copy", (), {}, _ispytest=True), _ispytest=True),
-)
-setattr(
-    pytest.mark,
-    "_neg_view_copy_out",
-    MarkDecorator(Mark("_neg_view_copy_out", (), {}, _ispytest=True), _ispytest=True),
-)
 
 # Materialize negated values in independent contiguous storage.
 _NEG_VIEW_COPY_DTYPES = (
@@ -76,7 +63,7 @@ def _assert_copy_semantics(res_out, ref_out, inp, ref_inp):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark._neg_view_copy
+@pytest.mark.neg_view_copy
 @pytest.mark.parametrize("shape", _NEG_VIEW_COPY_SHAPES)
 @pytest.mark.parametrize("dtype", _NEG_VIEW_COPY_DTYPES)
 def test__neg_view_copy(shape, dtype):
@@ -92,7 +79,7 @@ def test__neg_view_copy(shape, dtype):
     _assert_copy_semantics(res_out, ref_out, inp, ref_inp)
 
 
-@pytest.mark._neg_view_copy
+@pytest.mark.neg_view_copy
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize(("dtype", "value_range"), _RANGE_CASES)
 def test__neg_view_copy_value_ranges(shape, dtype, value_range):
@@ -105,7 +92,7 @@ def test__neg_view_copy_value_ranges(shape, dtype, value_range):
     _assert_copy_semantics(res_out, ref_out, inp, ref_inp)
 
 
-@pytest.mark._neg_view_copy_out
+@pytest.mark.neg_view_copy_out
 @pytest.mark.parametrize("shape", _NEG_VIEW_COPY_SHAPES)
 @pytest.mark.parametrize("dtype", _NEG_VIEW_COPY_DTYPES)
 def test__neg_view_copy_out(shape, dtype):
@@ -125,7 +112,7 @@ def test__neg_view_copy_out(shape, dtype):
     _assert_copy_semantics(res_ret, ref_out, inp, ref_inp)
 
 
-@pytest.mark._neg_view_copy_out
+@pytest.mark.neg_view_copy_out
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize(("dtype", "value_range"), _RANGE_CASES)
 def test__neg_view_copy_out_value_ranges(shape, dtype, value_range):
@@ -142,7 +129,7 @@ def test__neg_view_copy_out_value_ranges(shape, dtype, value_range):
     _assert_copy_semantics(res_ret, ref_out, inp, ref_inp)
 
 
-@pytest.mark._neg_view_copy
+@pytest.mark.neg_view_copy
 @pytest.mark.parametrize(
     "dtype, scenario", tu.selected_cases(tu.special_value_cases(utils.ALL_FLOAT_DTYPES))
 )
@@ -161,7 +148,7 @@ def test__neg_view_copy_special_values(dtype, scenario):
     )
 
 
-@pytest.mark._neg_view_copy
+@pytest.mark.neg_view_copy
 @pytest.mark.parametrize("shape", _NEG_VIEW_COPY_NONCONTIG_SHAPES)
 @pytest.mark.parametrize("dtype", _NEG_VIEW_COPY_DTYPES)
 def test__neg_view_copy_non_contiguous(shape, dtype):
@@ -179,7 +166,7 @@ def test__neg_view_copy_non_contiguous(shape, dtype):
     _assert_copy_semantics(res_out, ref_out, inp, ref_inp)
 
 
-@pytest.mark._neg_view_copy
+@pytest.mark.neg_view_copy
 @pytest.mark.parametrize("shape", _NEG_VIEW_COPY_EMPTY_SHAPES)
 @pytest.mark.parametrize("dtype", _NEG_VIEW_COPY_DTYPES)
 def test__neg_view_copy_empty(shape, dtype):
@@ -194,7 +181,7 @@ def test__neg_view_copy_empty(shape, dtype):
     _assert_copy_semantics(res_out, ref_out, inp, ref_inp)
 
 
-@pytest.mark._neg_view_copy
+@pytest.mark.neg_view_copy
 @pytest.mark.parametrize("shape", _NEG_VIEW_COPY_BACKWARD_SHAPES)
 @pytest.mark.parametrize("dtype", tu.selected_cases(utils.ALL_FLOAT_DTYPES))
 def test__neg_view_copy_backward(shape, dtype):
@@ -214,7 +201,7 @@ def test__neg_view_copy_backward(shape, dtype):
     tu.assert_result_close(res_in_grad, ref_in_grad)
 
 
-@pytest.mark._neg_view_copy
+@pytest.mark.neg_view_copy
 @pytest.mark.parametrize("dtype", _UNSUPPORTED_DTYPES)
 def test__neg_view_copy_rejects_unsupported_dtypes(dtype):
     inp = torch.zeros(4, dtype=dtype, device=flag_gems.device)
@@ -224,7 +211,7 @@ def test__neg_view_copy_rejects_unsupported_dtypes(dtype):
         flag_gems._neg_view_copy(inp)
 
 
-@pytest.mark._neg_view_copy
+@pytest.mark.neg_view_copy
 def test__neg_view_copy_rejects_non_tensor():
     with pytest.raises(RuntimeError):
         torch.ops.aten._neg_view_copy(3.14)

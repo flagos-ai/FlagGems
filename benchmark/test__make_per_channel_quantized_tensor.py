@@ -15,27 +15,11 @@
 # SPDX-License-Identifier: Apache-2.0
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
-from .generated_operator_utils import OperatorBenchmark
 from . import base
-
-# ``_make_per_channel_quantized_tensor`` starts with an underscore, and
-# ``pytest.mark`` refuses to generate a marker via attribute access for such
-# names. Register the markers directly on the MarkGenerator so
-# ``@pytest.mark._make_per_channel_quantized_tensor`` and ``-m
-# _make_per_channel_quantized_tensor`` both work.
-for _name in (
-    "_make_per_channel_quantized_tensor",
-    "_make_per_channel_quantized_tensor_out",
-):
-    setattr(
-        pytest.mark,
-        _name,
-        MarkDecorator(Mark(_name, (), {}, _ispytest=True), _ispytest=True),
-    )
+from .generated_operator_utils import OperatorBenchmark
 
 # aten::_make_per_channel_quantized_tensor(Tensor self, Tensor scale, Tensor
 # zero_point, int axis) -> Tensor wraps an integer storage tensor into a
@@ -143,7 +127,7 @@ class MakePerChannelQuantizedTensorBenchmark(OperatorBenchmark):
         )
 
 
-@pytest.mark._make_per_channel_quantized_tensor
+@pytest.mark.make_per_channel_quantized_tensor
 def test__make_per_channel_quantized_tensor():
     bench = MakePerChannelQuantizedTensorBenchmark(
         op_name="_make_per_channel_quantized_tensor",
@@ -159,7 +143,7 @@ def test__make_per_channel_quantized_tensor():
     bench.run()
 
 
-@pytest.mark._make_per_channel_quantized_tensor_out
+@pytest.mark.make_per_channel_quantized_tensor_out
 def test__make_per_channel_quantized_tensor_out():
     bench = MakePerChannelQuantizedTensorBenchmark(
         op_name="_make_per_channel_quantized_tensor",

@@ -14,27 +14,11 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
-from .generated_operator_utils import OperatorBenchmark
 from . import base
-
-# ``_make_per_tensor_quantized_tensor`` starts with an underscore, and
-# ``pytest.mark`` refuses to generate a marker via attribute access for such
-# names. Register the markers directly on the MarkGenerator so
-# ``@pytest.mark._make_per_tensor_quantized_tensor`` and ``-m
-# _make_per_tensor_quantized_tensor`` both work.
-for _name in (
-    "_make_per_tensor_quantized_tensor",
-    "_make_per_tensor_quantized_tensor_out",
-):
-    setattr(
-        pytest.mark,
-        _name,
-        MarkDecorator(Mark(_name, (), {}, _ispytest=True), _ispytest=True),
-    )
+from .generated_operator_utils import OperatorBenchmark
 
 # aten::_make_per_tensor_quantized_tensor(Tensor self, float scale, int
 # zero_point) -> Tensor wraps an integer tensor into a per-tensor affine
@@ -124,7 +108,7 @@ class MakePerTensorQuantizedTensorBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=MAKE_PERTENSOR_SHAPES)
 
 
-@pytest.mark._make_per_tensor_quantized_tensor
+@pytest.mark.make_per_tensor_quantized_tensor
 def test__make_per_tensor_quantized_tensor():
     bench = MakePerTensorQuantizedTensorBenchmark(
         op_name="_make_per_tensor_quantized_tensor",
@@ -137,7 +121,7 @@ def test__make_per_tensor_quantized_tensor():
     bench.run()
 
 
-@pytest.mark._make_per_tensor_quantized_tensor_out
+@pytest.mark.make_per_tensor_quantized_tensor_out
 def test__make_per_tensor_quantized_tensor_out():
     bench = MakePerTensorQuantizedTensorBenchmark(
         op_name="_make_per_tensor_quantized_tensor",

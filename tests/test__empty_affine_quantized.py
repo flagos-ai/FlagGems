@@ -18,20 +18,11 @@ import math
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
 from . import conftest as cfg
 from . import test_utils as tu
-
-# Register underscore-prefixed pytest markers explicitly.
-for _name in ("_empty_affine_quantized", "_empty_affine_quantized_out"):
-    setattr(
-        pytest.mark,
-        _name,
-        MarkDecorator(Mark(_name, (), {}, _ispytest=True), _ispytest=True),
-    )
 
 # Allocate uninitialized quantized storage; compare layout and per-tensor qparams.
 QUANT_DTYPES = [torch.quint8, torch.qint8, torch.qint32]
@@ -74,7 +65,7 @@ def _assert_quant_metadata(res_out, ref_out):
     assert res_out.device.type == torch.device(flag_gems.device).type
 
 
-@pytest.mark._empty_affine_quantized
+@pytest.mark.empty_affine_quantized
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype", QUANT_DTYPES)
 @pytest.mark.parametrize("scale", QUANT_SCALES)
@@ -96,7 +87,7 @@ def test__empty_affine_quantized(shape, dtype, scale, zero_point):
     assert res_out.is_contiguous()
 
 
-@pytest.mark._empty_affine_quantized
+@pytest.mark.empty_affine_quantized
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("dtype", QUANT_DTYPES)
@@ -114,7 +105,7 @@ def test__empty_affine_quantized_value_ranges(shape, value_range, dtype):
     _assert_quant_metadata(res_out, ref_out)
 
 
-@pytest.mark._empty_affine_quantized
+@pytest.mark.empty_affine_quantized
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype", QUANT_DTYPES)
 @pytest.mark.parametrize("scale", NON_FINITE_SCALES)
@@ -129,7 +120,7 @@ def test__empty_affine_quantized_non_finite_scale(shape, dtype, scale):
     _assert_quant_metadata(res_out, ref_out)
 
 
-@pytest.mark._empty_affine_quantized
+@pytest.mark.empty_affine_quantized
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype", QUANT_DTYPES)
 @pytest.mark.parametrize("zero_point", WIDE_ZERO_POINTS)
@@ -144,7 +135,7 @@ def test__empty_affine_quantized_wide_zero_point(shape, dtype, zero_point):
     _assert_quant_metadata(res_out, ref_out)
 
 
-@pytest.mark._empty_affine_quantized
+@pytest.mark.empty_affine_quantized
 @pytest.mark.parametrize("shape", EMPTY_SHAPES)
 @pytest.mark.parametrize("dtype", QUANT_DTYPES)
 def test__empty_affine_quantized_empty(shape, dtype):
@@ -159,7 +150,7 @@ def test__empty_affine_quantized_empty(shape, dtype):
     _assert_quant_metadata(res_out, ref_out)
 
 
-@pytest.mark._empty_affine_quantized
+@pytest.mark.empty_affine_quantized
 @pytest.mark.parametrize("shape", CHANNELS_LAST_SHAPES)
 @pytest.mark.parametrize("dtype", QUANT_DTYPES)
 def test__empty_affine_quantized_channels_last(shape, dtype):
@@ -174,7 +165,7 @@ def test__empty_affine_quantized_channels_last(shape, dtype):
     assert res_out.is_contiguous(memory_format=torch.channels_last)
 
 
-@pytest.mark._empty_affine_quantized
+@pytest.mark.empty_affine_quantized
 @pytest.mark.parametrize("shape", CHANNELS_LAST_3D_SHAPES)
 @pytest.mark.parametrize("dtype", QUANT_DTYPES)
 def test__empty_affine_quantized_channels_last_3d(shape, dtype):
@@ -195,7 +186,7 @@ def test__empty_affine_quantized_channels_last_3d(shape, dtype):
     assert res_out.is_contiguous(memory_format=torch.channels_last_3d)
 
 
-@pytest.mark._empty_affine_quantized_out
+@pytest.mark.empty_affine_quantized_out
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype", QUANT_DTYPES)
 @pytest.mark.parametrize("scale", QUANT_SCALES)
@@ -220,7 +211,7 @@ def test__empty_affine_quantized_out(shape, dtype, scale, zero_point):
     _assert_quant_metadata(res_out, ref_out)
 
 
-@pytest.mark._empty_affine_quantized_out
+@pytest.mark.empty_affine_quantized_out
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("shape", tu.selected_cases([(16, 8)], quick=[(2, 19, 7)]))
 def test__empty_affine_quantized_out_value_ranges(value_range, shape):
@@ -245,7 +236,7 @@ def test__empty_affine_quantized_out_value_ranges(value_range, shape):
     _assert_quant_metadata(res_out, ref_out)
 
 
-@pytest.mark._empty_affine_quantized_out
+@pytest.mark.empty_affine_quantized_out
 def test__empty_affine_quantized_out_non_contiguous_view():
     # Update the view qparams while leaving the base tensor qparams untouched.
     dtype = torch.quint8
@@ -272,7 +263,7 @@ def test__empty_affine_quantized_out_non_contiguous_view():
     assert act_base.q_zero_point() == ref_base.q_zero_point()
 
 
-@pytest.mark._empty_affine_quantized
+@pytest.mark.empty_affine_quantized
 def test__empty_affine_quantized_rejects_negative_size():
     with pytest.raises(RuntimeError):
         torch.ops.aten._empty_affine_quantized((-1,), dtype=torch.quint8)
@@ -280,7 +271,7 @@ def test__empty_affine_quantized_rejects_negative_size():
         flag_gems._empty_affine_quantized((-1,), dtype=torch.quint8)
 
 
-@pytest.mark._empty_affine_quantized
+@pytest.mark.empty_affine_quantized
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int8, torch.bool])
 def test__empty_affine_quantized_rejects_non_quantized_dtype(dtype):
     with pytest.raises((NotImplementedError, RuntimeError, TypeError)):
@@ -289,7 +280,7 @@ def test__empty_affine_quantized_rejects_non_quantized_dtype(dtype):
         flag_gems._empty_affine_quantized((2, 3), dtype=dtype)
 
 
-@pytest.mark._empty_affine_quantized
+@pytest.mark.empty_affine_quantized
 def test__empty_affine_quantized_rejects_sparse_layout():
     with pytest.raises((NotImplementedError, RuntimeError)):
         torch.ops.aten._empty_affine_quantized(
@@ -301,7 +292,7 @@ def test__empty_affine_quantized_rejects_sparse_layout():
         )
 
 
-@pytest.mark._empty_affine_quantized
+@pytest.mark.empty_affine_quantized
 @pytest.mark.parametrize(
     "memory_format",
     [torch.preserve_format, torch.channels_last_3d],
@@ -328,7 +319,7 @@ def test__empty_affine_quantized_rejects_invalid_memory_format(memory_format):
             )
 
 
-@pytest.mark._empty_affine_quantized
+@pytest.mark.empty_affine_quantized
 @pytest.mark.parametrize(
     "kwargs",
     [
@@ -344,7 +335,7 @@ def test__empty_affine_quantized_rejects_invalid_scalar_qparams(kwargs):
         flag_gems._empty_affine_quantized((2, 3), dtype=torch.quint8, **kwargs)
 
 
-@pytest.mark._empty_affine_quantized_out
+@pytest.mark.empty_affine_quantized_out
 def test__empty_affine_quantized_out_rejects_non_quantized_buffer():
     ref_buf = torch.empty((2, 3), dtype=torch.float32, device=_ref_device())
     with pytest.raises((NotImplementedError, RuntimeError, TypeError)):
@@ -355,7 +346,7 @@ def test__empty_affine_quantized_out_rejects_non_quantized_buffer():
         flag_gems._empty_affine_quantized((2, 3), out=act_buf)
 
 
-@pytest.mark._empty_affine_quantized_out
+@pytest.mark.empty_affine_quantized_out
 @pytest.mark.skipif(
     cfg.TO_CPU,
     reason="CPU reference resizes the out buffer; only the CUDA reference rejects "

@@ -14,23 +14,11 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
-from .generated_operator_utils import OperatorBenchmark
 from . import base, consts
-
-# ``_efficientzerotensor`` starts with an underscore, and ``pytest.mark``
-# refuses to create a marker through attribute access for such names. Register
-# the markers on the MarkGenerator directly so both
-# ``@pytest.mark._efficientzerotensor`` and ``-m _efficientzerotensor`` work.
-for _name in ("_efficientzerotensor", "_efficientzerotensor_out"):
-    setattr(
-        pytest.mark,
-        _name,
-        MarkDecorator(Mark(_name, (), {}, _ispytest=True), _ispytest=True),
-    )
+from .generated_operator_utils import OperatorBenchmark
 
 # aten::_efficientzerotensor is a factory that allocates a real, zero-filled
 # tensor on the active device. The default shape set contains a 1-B-element
@@ -83,7 +71,7 @@ class EfficientZeroTensorBenchmark(OperatorBenchmark):
 # ``flag_gems._efficientzerotensor`` is not registered in every checkout;
 # ``getattr(..., None)`` keeps the module importable while ``Benchmark._candidate_call``
 # inside the benchmark still picks up the KernelGen override at runtime.
-@pytest.mark._efficientzerotensor
+@pytest.mark.efficientzerotensor
 def test__efficientzerotensor():
     bench = EfficientZeroTensorBenchmark(
         op_name="_efficientzerotensor",
@@ -96,7 +84,7 @@ def test__efficientzerotensor():
     bench.run()
 
 
-@pytest.mark._efficientzerotensor_out
+@pytest.mark.efficientzerotensor_out
 def test__efficientzerotensor_out():
     bench = EfficientZeroTensorBenchmark(
         op_name="_efficientzerotensor",

@@ -14,21 +14,11 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
-from .generated_operator_utils import OperatorBenchmark
 from . import base, consts, utils
-
-# ``_dimV`` starts with an underscore, and ``pytest.mark`` refuses to generate a
-# marker via attribute access for such names. Register it directly on the
-# MarkGenerator so ``@pytest.mark._dimV`` and ``-m _dimV`` both work.
-setattr(
-    pytest.mark,
-    "_dimV",
-    MarkDecorator(Mark("_dimV", (), {}, _ispytest=True), _ispytest=True),
-)
+from .generated_operator_utils import OperatorBenchmark
 
 # aten::_dimV(Tensor self) -> int reports the dense dimension count of a sparse
 # tensor. It is a pure metadata query (the measured work is dispatch and layout
@@ -109,7 +99,7 @@ class DimVBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=_BENCH_CASES)
 
 
-@pytest.mark._dimV
+@pytest.mark.dimV
 def test__dimV():
     bench = DimVBenchmark(
         op_name="_dimV",

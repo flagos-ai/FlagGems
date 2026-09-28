@@ -14,21 +14,12 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
 from . import test_utils as tu
-
-# Register underscore-prefixed pytest markers explicitly.
-for _name in ("_efficientzerotensor", "_efficientzerotensor_out"):
-    setattr(
-        pytest.mark,
-        _name,
-        MarkDecorator(Mark(_name, (), {}, _ispytest=True), _ispytest=True),
-    )
 
 # Create fresh zeros, or overwrite and return the supplied out buffer.
 _EFFICIENTZEROTENSOR_DTYPES = (
@@ -51,7 +42,7 @@ def _reference_device():
     return "cpu" if cfg.TO_CPU else flag_gems.device
 
 
-@pytest.mark._efficientzerotensor
+@pytest.mark.efficientzerotensor
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype", _EFFICIENTZEROTENSOR_DTYPES)
 def test__efficientzerotensor_zero_fill(shape, dtype):
@@ -74,7 +65,7 @@ def test__efficientzerotensor_zero_fill(shape, dtype):
     utils.gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark._efficientzerotensor
+@pytest.mark.efficientzerotensor
 @pytest.mark.parametrize("shape", _ZERO_SIZE_SHAPES)
 @pytest.mark.parametrize("dtype", _EFFICIENTZEROTENSOR_DTYPES)
 def test__efficientzerotensor_zero_size(shape, dtype):
@@ -92,7 +83,7 @@ def test__efficientzerotensor_zero_size(shape, dtype):
     utils.gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark._efficientzerotensor_out
+@pytest.mark.efficientzerotensor_out
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype,value_range", _OUT_RANGE_PARAMS)
 def test__efficientzerotensor_out_range(shape, dtype, value_range):
@@ -112,7 +103,7 @@ def test__efficientzerotensor_out_range(shape, dtype, value_range):
     utils.gems_assert_equal(act_buf, ref_buf)
 
 
-@pytest.mark._efficientzerotensor_out
+@pytest.mark.efficientzerotensor_out
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype", _EFFICIENTZEROTENSOR_DTYPES)
 def test__efficientzerotensor_out_overwrites(shape, dtype):
@@ -130,7 +121,7 @@ def test__efficientzerotensor_out_overwrites(shape, dtype):
     utils.gems_assert_equal(act_buf, ref_buf)
 
 
-@pytest.mark._efficientzerotensor
+@pytest.mark.efficientzerotensor
 def test__efficientzerotensor_rejects_negative_size():
     with pytest.raises(RuntimeError):
         torch.ops.aten._efficientzerotensor(
@@ -142,7 +133,7 @@ def test__efficientzerotensor_rejects_negative_size():
         )
 
 
-@pytest.mark._efficientzerotensor
+@pytest.mark.efficientzerotensor
 def test__efficientzerotensor_rejects_non_integer_size():
     with pytest.raises(RuntimeError):
         torch.ops.aten._efficientzerotensor(
@@ -154,7 +145,7 @@ def test__efficientzerotensor_rejects_non_integer_size():
         )
 
 
-@pytest.mark._efficientzerotensor
+@pytest.mark.efficientzerotensor
 def test__efficientzerotensor_rejects_non_strided_layout():
     with pytest.raises((NotImplementedError, RuntimeError)):
         torch.ops.aten._efficientzerotensor(

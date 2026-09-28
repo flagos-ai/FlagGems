@@ -14,22 +14,11 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
-from .generated_operator_utils import OperatorBenchmark
 from . import base, consts, utils
-
-# ``_remove_batch_dim`` starts with an underscore, and ``pytest.mark`` refuses to
-# generate a marker via attribute access for such names. Register it directly on
-# the MarkGenerator so ``@pytest.mark._remove_batch_dim`` and ``-m
-# _remove_batch_dim`` both work.
-setattr(
-    pytest.mark,
-    "_remove_batch_dim",
-    MarkDecorator(Mark("_remove_batch_dim", (), {}, _ispytest=True), _ispytest=True),
-)
+from .generated_operator_utils import OperatorBenchmark
 
 # aten::_remove_batch_dim inserts a broadcast batch dimension of size
 # ``batch_size`` at position ``out_dim`` of the input shape (exactly
@@ -79,7 +68,7 @@ class RemoveBatchDimBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=_BENCH_CASES)
 
 
-@pytest.mark._remove_batch_dim
+@pytest.mark.remove_batch_dim
 def test__remove_batch_dim():
     bench = RemoveBatchDimBenchmark(
         op_name="_remove_batch_dim",

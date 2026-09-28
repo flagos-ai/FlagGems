@@ -14,25 +14,11 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
-from .generated_operator_utils import OperatorBenchmark
 from . import base, consts, utils
-
-# ``_nested_tensor_storage_offsets`` starts with an underscore, and pytest.mark
-# refuses to generate a marker via attribute access for such names. Register it
-# directly on the MarkGenerator so ``@pytest.mark._nested_tensor_storage_offsets``
-# and ``-m _nested_tensor_storage_offsets`` both work.
-setattr(
-    pytest.mark,
-    "_nested_tensor_storage_offsets",
-    MarkDecorator(
-        Mark("_nested_tensor_storage_offsets", (), {}, _ispytest=True),
-        _ispytest=True,
-    ),
-)
+from .generated_operator_utils import OperatorBenchmark
 
 # aten::_nested_tensor_storage_offsets(Tensor self) -> Tensor reads the
 # (num_tensors,) int64 storage-offset metadata of a strided-layout nested
@@ -122,7 +108,7 @@ class NestedStorageOffsetsBenchmark(OperatorBenchmark):
         return parsed_args if parsed_args else parsed_kwargs
 
 
-@pytest.mark._nested_tensor_storage_offsets
+@pytest.mark.nested_tensor_storage_offsets
 def test__nested_tensor_storage_offsets():
     # torch_op is the perf comparison reference; gems_op is the candidate under
     # test. They share the same single-argument call semantics

@@ -14,22 +14,11 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
-from .generated_operator_utils import OperatorBenchmark
 from . import base, consts, utils
-
-# ``_indices`` starts with an underscore, and ``pytest.mark`` refuses to
-# generate a marker via attribute access for such names. Register it directly
-# on the MarkGenerator so ``@pytest.mark._indices`` and ``-m _indices`` both
-# work.
-setattr(
-    pytest.mark,
-    "_indices",
-    MarkDecorator(Mark("_indices", (), {}, _ispytest=True), _ispytest=True),
-)
+from .generated_operator_utils import OperatorBenchmark
 
 # (sparse_shape, dense_shape, nnz). _indices returns the (sparse_dim, nnz)
 # int64 index tensor of a sparse COO tensor — a metadata accessor whose result
@@ -80,7 +69,7 @@ class IndicesBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=_INDICES_SHAPES)
 
 
-@pytest.mark._indices
+@pytest.mark.indices
 def test__indices():
     bench = IndicesBenchmark(
         op_name="_indices",

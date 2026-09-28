@@ -14,19 +14,11 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
 from . import accuracy_utils as utils
 from . import test_utils as tu
-
-# Register the underscore-prefixed pytest marker explicitly.
-setattr(
-    pytest.mark,
-    "_indices",
-    MarkDecorator(Mark("_indices", (), {}, _ispytest=True), _ispytest=True),
-)
 
 # _indices returns a view of the COO index storage, including duplicate entries.
 # Dense and compressed sparse inputs are rejected.
@@ -94,7 +86,7 @@ def _assert_result(res_out, ref_out, inp, ref_inp):
         utils.gems_assert_equal(inp._values(), ref_inp._values())
 
 
-@pytest.mark._indices
+@pytest.mark.indices
 @pytest.mark.parametrize("case", _INDICES_COO_CASES)
 @pytest.mark.parametrize("dtype", _INDICES_DTYPES)
 def test__indices_layouts(case, dtype):
@@ -108,7 +100,7 @@ def test__indices_layouts(case, dtype):
     _assert_result(res_out, ref_out, inp, ref_inp)
 
 
-@pytest.mark._indices
+@pytest.mark.indices
 @pytest.mark.parametrize(
     "shape", [shape for shape in tu.selected_shapes() if len(shape) >= 1]
 )
@@ -125,7 +117,7 @@ def test__indices_spec_shapes_value_ranges(shape, value_range, dtype):
     _assert_result(res_out, ref_out, inp, ref_inp)
 
 
-@pytest.mark._indices
+@pytest.mark.indices
 @pytest.mark.parametrize("case", _INDICES_RANGE_CASES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("dtype", _INDICES_DTYPES)
@@ -140,7 +132,7 @@ def test__indices_value_ranges(case, value_range, dtype):
     _assert_result(res_out, ref_out, inp, ref_inp)
 
 
-@pytest.mark._indices
+@pytest.mark.indices
 @pytest.mark.parametrize("dtype", _INDICES_DTYPES)
 def test__indices_empty(dtype):
     shape, sparse_dim = (3, 4), 2
@@ -155,7 +147,7 @@ def test__indices_empty(dtype):
     _assert_result(res_out, ref_out, inp, ref_inp)
 
 
-@pytest.mark._indices
+@pytest.mark.indices
 @pytest.mark.parametrize("dtype", _INDICES_DTYPES)
 def test__indices_empty_hybrid(dtype):
     shape, sparse_dim = (4, 5, 6), 2
@@ -170,7 +162,7 @@ def test__indices_empty_hybrid(dtype):
     _assert_result(res_out, ref_out, inp, ref_inp)
 
 
-@pytest.mark._indices
+@pytest.mark.indices
 @pytest.mark.parametrize("dtype", _INDICES_DTYPES)
 def test__indices_uncoalesced(dtype):
     shape = (3, 4)
@@ -186,7 +178,7 @@ def test__indices_uncoalesced(dtype):
     _assert_result(res_out, ref_out, inp, ref_inp)
 
 
-@pytest.mark._indices
+@pytest.mark.indices
 @pytest.mark.parametrize("dtype", _INDICES_DTYPES)
 def test__indices_explicit_zeros(dtype):
     shape = (3, 3)
@@ -205,7 +197,7 @@ def test__indices_explicit_zeros(dtype):
     assert res_out.shape == (2, 3)
 
 
-@pytest.mark._indices
+@pytest.mark.indices
 @pytest.mark.parametrize("dtype", _INDICES_DTYPES)
 def test__indices_full_storage(dtype):
     shape = (2, 3)
@@ -224,7 +216,7 @@ def test__indices_full_storage(dtype):
     _assert_result(res_out, ref_out, inp, ref_inp)
 
 
-@pytest.mark._indices
+@pytest.mark.indices
 @pytest.mark.parametrize(
     "dtype,scenario", tu.selected_cases(tu.special_value_cases(_INDICES_DTYPES))
 )
@@ -240,7 +232,7 @@ def test__indices_nan_inf_values_ignored(dtype, scenario):
     _assert_result(res_out, ref_out, inp, ref_inp)
 
 
-@pytest.mark._indices
+@pytest.mark.indices
 def test__indices_dense_raises():
     inp = tu.make_input(torch.float32, (4, 4), ["-1", "1"])
     with pytest.raises(NotImplementedError):
@@ -249,7 +241,7 @@ def test__indices_dense_raises():
         flag_gems._indices(inp)
 
 
-@pytest.mark._indices
+@pytest.mark.indices
 def test__indices_csr_raises():
     crow_indices = torch.tensor([0, 2, 4], dtype=torch.long, device=flag_gems.device)
     col_indices = torch.tensor([0, 1, 2, 3], dtype=torch.long, device=flag_gems.device)
@@ -263,7 +255,7 @@ def test__indices_csr_raises():
         flag_gems._indices(inp)
 
 
-@pytest.mark._indices
+@pytest.mark.indices
 def test__indices_rejects_non_tensor():
     with pytest.raises(RuntimeError):
         torch.ops.aten._indices(3.14)

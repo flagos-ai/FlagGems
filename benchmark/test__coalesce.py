@@ -14,22 +14,11 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
-from .generated_operator_utils import OperatorBenchmark
 from . import base, consts
-
-# ``_coalesce`` starts with an underscore, and ``pytest.mark`` refuses to
-# generate a marker via attribute access for such names. Register it directly
-# on the MarkGenerator so ``@pytest.mark._coalesce`` and ``-m _coalesce`` both
-# work.
-setattr(
-    pytest.mark,
-    "_coalesce",
-    MarkDecorator(Mark("_coalesce", (), {}, _ispytest=True), _ispytest=True),
-)
+from .generated_operator_utils import OperatorBenchmark
 
 # (sparse shape, nnz) workload descriptions. Coalescing work scales with nnz,
 # so the tensors are sized for a meaningful measurement while staying small
@@ -80,7 +69,7 @@ class CoalesceBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=_COALESCE_SHAPES)
 
 
-@pytest.mark._coalesce
+@pytest.mark.underscore_coalesce
 def test__coalesce():
     bench = CoalesceBenchmark(
         op_name="_coalesce",

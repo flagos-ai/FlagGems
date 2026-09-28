@@ -16,22 +16,11 @@ import math
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
-from .generated_operator_utils import OperatorBenchmark
 from . import base, consts, utils
-
-# ``_make_dual`` starts with an underscore, and ``pytest.mark`` refuses to
-# generate a marker via attribute access for such names. Register it directly
-# on the MarkGenerator so ``@pytest.mark._make_dual`` and ``-m _make_dual`` both
-# work.
-setattr(
-    pytest.mark,
-    "_make_dual",
-    MarkDecorator(Mark("_make_dual", (), {}, _ispytest=True), _ispytest=True),
-)
+from .generated_operator_utils import OperatorBenchmark
 
 # aten::_make_dual(Tensor(a) primal, Tensor tangent, int level) -> Tensor(a)
 # attaches a forward tangent to an aliasing view of the primal at an active
@@ -46,7 +35,8 @@ setattr(
 # build_inputs_fn.
 #
 # gems_op is resolved through getattr because flag_gems._make_dual is not yet
-# registered as a direct callable; KernelGen's --override _make_dual:<file>:<function> still wins at run time via Benchmark._candidate_call.
+# registered as a direct callable; KernelGen's --override _make_dual:<file>:<function> still wins at
+# run time via Benchmark._candidate_call.
 
 # A view op's latency is dominated by the call overhead, not by the tensor
 # size. Capping the input numel avoids allocating multi-GB primal+tangent pairs
@@ -71,7 +61,7 @@ class MakeDualBenchmark(OperatorBenchmark):
         self.shapes = [shape for shape in self.shapes if math.prod(shape) <= MAX_NUMEL]
 
 
-@pytest.mark._make_dual
+@pytest.mark.make_dual
 def test__make_dual():
     # The level must stay live for the entire benchmark run, so dual_level() is
     # entered here and the input builder closes over the exact level index it

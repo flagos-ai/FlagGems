@@ -14,22 +14,11 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
-from .generated_operator_utils import OperatorBenchmark
 from . import base, consts, utils
-
-# ``_dim_arange`` starts with an underscore, and ``pytest.mark`` refuses to
-# generate a marker via attribute access for such names. Register it directly on
-# the MarkGenerator so ``@pytest.mark._dim_arange`` and ``-m _dim_arange`` both
-# work.
-setattr(
-    pytest.mark,
-    "_dim_arange",
-    MarkDecorator(Mark("_dim_arange", (), {}, _ispytest=True), _ispytest=True),
-)
+from .generated_operator_utils import OperatorBenchmark
 
 # aten::_dim_arange(like, dim) builds a fresh 1-D int64 tensor of length
 # like.size(dim). Only the extent of the selected dim is materialized, while the
@@ -70,7 +59,7 @@ class DimArangeBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=_DIM_ARANGE_SHAPES)
 
 
-@pytest.mark._dim_arange
+@pytest.mark.dim_arange
 def test__dim_arange():
     bench = DimArangeBenchmark(
         op_name="_dim_arange",

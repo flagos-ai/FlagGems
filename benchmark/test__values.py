@@ -14,22 +14,11 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
-from .generated_operator_utils import OperatorBenchmark
 from . import base, consts, utils
-
-# ``_values`` starts with an underscore, and ``pytest.mark`` refuses to
-# generate a marker via attribute access for such names. Register it directly
-# on the MarkGenerator so ``@pytest.mark._values`` and ``-m _values`` both
-# work.
-setattr(
-    pytest.mark,
-    "_values",
-    MarkDecorator(Mark("_values", (), {}, _ispytest=True), _ispytest=True),
-)
+from .generated_operator_utils import OperatorBenchmark
 
 # (sparse_shape, dense_shape, nnz). _values returns the (nnz,) + dense_shape
 # values tensor of a sparse COO tensor — a metadata accessor whose result is an
@@ -85,7 +74,7 @@ class ValuesBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=_VALUES_SHAPES)
 
 
-@pytest.mark._values
+@pytest.mark.values
 def test__values():
     bench = ValuesBenchmark(
         op_name="_values",

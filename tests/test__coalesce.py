@@ -14,24 +14,11 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
 from . import accuracy_utils as utils
 from . import test_utils as tu
-
-# Register underscore-prefixed pytest markers explicitly.
-setattr(
-    pytest.mark,
-    "_coalesce",
-    MarkDecorator(Mark("_coalesce", (), {}, _ispytest=True), _ispytest=True),
-)
-setattr(
-    pytest.mark,
-    "_coalesce_out",
-    MarkDecorator(Mark("_coalesce_out", (), {}, _ispytest=True), _ispytest=True),
-)
 
 # Merge duplicate COO coordinates and sum their stored values.
 # FP8 inputs are exercised by the rejection test.
@@ -155,7 +142,7 @@ def _assert_coalesced(res_out, ref_out, dtype, *, equal_nan=False):
         utils.gems_assert_equal(res_out.values(), ref_out.values())
 
 
-@pytest.mark._coalesce
+@pytest.mark.underscore_coalesce
 @pytest.mark.parametrize("case", _COALESCE_CASES)
 @pytest.mark.parametrize("dtype", _COALESCE_DTYPES)
 def test__coalesce(case, dtype):
@@ -173,7 +160,7 @@ def test__coalesce(case, dtype):
     assert not inp.is_coalesced()
 
 
-@pytest.mark._coalesce
+@pytest.mark.underscore_coalesce
 @pytest.mark.parametrize("value_range,dtype,case", _VALUE_CASES)
 def test__coalesce_value_ranges(value_range, dtype, case):
     shape, nnz = case
@@ -189,7 +176,7 @@ def test__coalesce_value_ranges(value_range, dtype, case):
     assert not inp.is_coalesced()
 
 
-@pytest.mark._coalesce
+@pytest.mark.underscore_coalesce
 @pytest.mark.parametrize("case", _COALESCE_CASES)
 @pytest.mark.parametrize(
     "dtype,scenario",
@@ -216,7 +203,7 @@ def test__coalesce_nan_inf(case, dtype, scenario):
     assert not inp.is_coalesced()
 
 
-@pytest.mark._coalesce_out
+@pytest.mark.coalesce_out
 @pytest.mark.parametrize("case", _COALESCE_CASES)
 @pytest.mark.parametrize("dtype", _COALESCE_DTYPES)
 def test__coalesce_out(case, dtype):
@@ -236,7 +223,7 @@ def test__coalesce_out(case, dtype):
     assert not inp.is_coalesced()
 
 
-@pytest.mark._coalesce
+@pytest.mark.underscore_coalesce
 def test__coalesce_rejects_dense_input():
     inp = torch.randn(4, 4, dtype=torch.float32, device=flag_gems.device)
     with pytest.raises(RuntimeError):
@@ -245,7 +232,7 @@ def test__coalesce_rejects_dense_input():
         flag_gems._coalesce(inp)
 
 
-@pytest.mark._coalesce
+@pytest.mark.underscore_coalesce
 def test__coalesce_rejects_csr_input():
     inp = torch.randn(4, 4, dtype=torch.float32, device=flag_gems.device)
     inp = inp.to_sparse_csr()
@@ -255,7 +242,7 @@ def test__coalesce_rejects_csr_input():
         flag_gems._coalesce(inp)
 
 
-@pytest.mark._coalesce
+@pytest.mark.underscore_coalesce
 def test__coalesce_rejects_fp8_input():
     indices = torch.zeros((1, 3), dtype=torch.long, device=flag_gems.device)
     values = torch.zeros(3, dtype=torch.float8_e4m3fn, device=flag_gems.device)

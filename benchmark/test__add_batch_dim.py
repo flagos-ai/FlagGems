@@ -14,22 +14,11 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
-from .generated_operator_utils import OperatorBenchmark
 from . import base, consts, utils
-
-# ``_add_batch_dim`` starts with an underscore, and ``pytest.mark`` refuses to
-# generate a marker via attribute access for such names. Register it directly
-# on the MarkGenerator so ``@pytest.mark._add_batch_dim`` and ``-m
-# _add_batch_dim`` both work.
-setattr(
-    pytest.mark,
-    "_add_batch_dim",
-    MarkDecorator(Mark("_add_batch_dim", (), {}, _ispytest=True), _ispytest=True),
-)
+from .generated_operator_utils import OperatorBenchmark
 
 # aten::_add_batch_dim is a zero-copy lazy wrapper: it hides one physical
 # dimension of the input behind a vmap batch dimension and allocates nothing,
@@ -71,7 +60,7 @@ class AddBatchDimBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=ADD_BATCH_DIM_SHAPES)
 
 
-@pytest.mark._add_batch_dim
+@pytest.mark.add_batch_dim
 def test__add_batch_dim():
     bench = AddBatchDimBenchmark(
         op_name="_add_batch_dim",

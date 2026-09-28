@@ -16,22 +16,11 @@ import math
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
-from .generated_operator_utils import OperatorBenchmark
 from . import base, consts, utils
-
-# ``_neg_view`` starts with an underscore, and ``pytest.mark`` refuses to
-# generate a marker via attribute access for such names. Register it directly
-# on the MarkGenerator so ``@pytest.mark._neg_view`` and ``-m _neg_view`` both
-# work.
-setattr(
-    pytest.mark,
-    "_neg_view",
-    MarkDecorator(Mark("_neg_view", (), {}, _ispytest=True), _ispytest=True),
-)
+from .generated_operator_utils import OperatorBenchmark
 
 # aten::_neg_view is a zero-copy negative view: it shares the input storage and
 # only toggles the lazy neg bit, so the benchmark measures dispatch and
@@ -75,7 +64,7 @@ class NegViewBenchmark(OperatorBenchmark):
         self.shapes = [s for s in self.shapes if math.prod(s) <= self.MAX_NUMEL]
 
 
-@pytest.mark._neg_view
+@pytest.mark.neg_view
 def test__neg_view():
     bench = NegViewBenchmark(
         op_name="_neg_view",

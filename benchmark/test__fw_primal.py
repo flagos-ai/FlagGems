@@ -14,21 +14,11 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
-from .generated_operator_utils import OperatorBenchmark
 from . import base, consts, utils
-
-# ``_fw_primal`` starts with an underscore and ``pytest.mark`` refuses to
-# generate a marker via attribute access for such names, so register it on the
-# MarkGenerator directly (``@pytest.mark._fw_primal`` and ``-m _fw_primal``).
-setattr(
-    pytest.mark,
-    "_fw_primal",
-    MarkDecorator(Mark("_fw_primal", (), {}, _ispytest=True), _ispytest=True),
-)
+from .generated_operator_utils import OperatorBenchmark
 
 # aten::_fw_primal(Tensor(a) self, int level) -> Tensor(a) is a zero-copy
 # forward-mode-AD view: it shares the input storage and allocates nothing, so
@@ -71,7 +61,7 @@ class FwPrimalBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=FW_PRIMAL_SHAPES)
 
 
-@pytest.mark._fw_primal
+@pytest.mark.fw_primal
 def test__fw_primal():
     bench = FwPrimalBenchmark(
         op_name="_fw_primal",

@@ -14,23 +14,9 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
-from .generated_operator_utils import OperatorBenchmark
 from . import base, consts, utils
-
-# ``_version`` starts with an underscore and ``pytest.mark`` refuses to
-# generate a marker through attribute access for such names, so register it
-# directly on the MarkGenerator to keep both ``@pytest.mark._version`` and
-# ``-m _version`` working.
-try:
-    pytest.mark._version
-except AttributeError:
-    setattr(
-        pytest.mark,
-        "_version",
-        MarkDecorator(Mark("_version", (), {}, _ispytest=True), _ispytest=True),
-    )
+from .generated_operator_utils import OperatorBenchmark
 
 # aten::_version(Tensor self) -> int reads the per-tensor version counter that
 # every in-place mutation bumps. It is a pure O(1) metadata query whose measured
@@ -71,7 +57,7 @@ class VersionBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=_VERSION_SHAPES)
 
 
-@pytest.mark._version
+@pytest.mark.version
 def test__version():
     bench = VersionBenchmark(
         op_name="_version",

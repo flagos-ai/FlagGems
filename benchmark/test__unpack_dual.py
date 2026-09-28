@@ -16,22 +16,11 @@ import math
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
-from .generated_operator_utils import OperatorBenchmark
 from . import base, consts, utils
-
-# ``_unpack_dual`` starts with an underscore, and ``pytest.mark`` refuses to
-# generate a marker via attribute access for such names. Register it directly
-# on the MarkGenerator so ``@pytest.mark._unpack_dual`` and ``-m _unpack_dual``
-# both work.
-setattr(
-    pytest.mark,
-    "_unpack_dual",
-    MarkDecorator(Mark("_unpack_dual", (), {}, _ispytest=True), _ispytest=True),
-)
+from .generated_operator_utils import OperatorBenchmark
 
 # aten::_unpack_dual(Tensor(a) dual, int level) -> (Tensor(a) primal, Tensor
 # tangent) is the forward-mode AD dual-construction inverse: it reads the primal
@@ -45,7 +34,8 @@ setattr(
 # case_fn + build_inputs_fn.
 #
 # gems_op is resolved through getattr because flag_gems._unpack_dual is not yet
-# registered as a direct callable; KernelGen's --override _unpack_dual:<file>:<function> still wins at run time via Benchmark._candidate_call.
+# registered as a direct callable; KernelGen's --override _unpack_dual:<file>:<function> still wins
+# at run time via Benchmark._candidate_call.
 
 # A view op's latency is dominated by the call overhead, not by the tensor
 # size. Capping the input numel avoids allocating multi-GB primal+tangent pairs
@@ -96,7 +86,7 @@ class _UnpackDualBenchmark(OperatorBenchmark):
         self.shapes = [shape for shape in self.shapes if math.prod(shape) <= MAX_NUMEL]
 
 
-@pytest.mark._unpack_dual
+@pytest.mark.unpack_dual
 def test__unpack_dual():
     # The level must stay live for the entire benchmark run, so dual_level() is
     # entered here and the input builder closes over the exact level index it
@@ -114,7 +104,7 @@ def test__unpack_dual():
         bench.run()
 
 
-@pytest.mark._unpack_dual
+@pytest.mark.unpack_dual
 def test__unpack_dual_plain():
     # The tangent-None path: a plain tensor has no forward tangent at level 0,
     # so unpacking only produces the aliasing primal view. It is timed outside

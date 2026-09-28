@@ -14,25 +14,11 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
-from .generated_operator_utils import OperatorBenchmark
 from . import base, consts, utils
-
-# ``_slow_conv2d_forward`` starts with an underscore, and ``pytest.mark`` refuses
-# to generate a marker via attribute access for such names. Register it directly
-# on the MarkGenerator so ``@pytest.mark._slow_conv2d_forward`` and ``-m
-# _slow_conv2d_forward`` both work.
-setattr(
-    pytest.mark,
-    "_slow_conv2d_forward",
-    MarkDecorator(
-        Mark("_slow_conv2d_forward", (), {}, _ispytest=True),
-        _ispytest=True,
-    ),
-)
+from .generated_operator_utils import OperatorBenchmark
 
 # aten::_slow_conv2d_forward(self, weight, kernel_size, bias, stride, padding)
 # performs an im2col-based 2-D convolution (groups=1, no dilation). The default
@@ -83,7 +69,7 @@ class SlowConv2dForwardBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=SLOW_CONV2D_SHAPES)
 
 
-@pytest.mark._slow_conv2d_forward
+@pytest.mark.slow_conv2d_forward
 def test__slow_conv2d_forward():
     # ``flag_gems._slow_conv2d_forward`` is only public once KernelGen registers
     # the candidate; before that the benchmark resolves the candidate through

@@ -14,22 +14,11 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
 from . import accuracy_utils as utils
 from . import test_utils as tu
-
-# Register underscore-prefixed pytest markers explicitly.
-setattr(
-    pytest.mark,
-    "_nested_tensor_storage_offsets",
-    MarkDecorator(
-        Mark("_nested_tensor_storage_offsets", (), {}, _ispytest=True),
-        _ispytest=True,
-    ),
-)
 
 # Read the CPU int64 metadata of a strided-layout nested tensor.
 # Empty batches are valid; jagged layout and .out lack reference kernels.
@@ -78,7 +67,7 @@ def _assert_offsets(res_out, ref_out):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark._nested_tensor_storage_offsets
+@pytest.mark.nested_tensor_storage_offsets
 @pytest.mark.parametrize("num_tensors", _NUM_TENSORS)
 @pytest.mark.parametrize("num_dims", _NUM_DIMS)
 @pytest.mark.parametrize("dtype", _COMPONENT_DTYPES)
@@ -92,7 +81,7 @@ def test__nested_tensor_storage_offsets(num_tensors, num_dims, dtype):
     _assert_offsets(res_out, ref_out)
 
 
-@pytest.mark._nested_tensor_storage_offsets
+@pytest.mark.nested_tensor_storage_offsets
 @pytest.mark.parametrize("dtype", _COMPONENT_DTYPES)
 def test__nested_tensor_storage_offsets_ragged_non_zero_dim(dtype):
     components = [
@@ -109,7 +98,7 @@ def test__nested_tensor_storage_offsets_ragged_non_zero_dim(dtype):
     _assert_offsets(res_out, ref_out)
 
 
-@pytest.mark._nested_tensor_storage_offsets
+@pytest.mark.nested_tensor_storage_offsets
 @pytest.mark.parametrize("dtype", _COMPONENT_DTYPES)
 def test__nested_tensor_storage_offsets_uniform(dtype):
     num_tensors = 6
@@ -127,7 +116,7 @@ def test__nested_tensor_storage_offsets_uniform(dtype):
     _assert_offsets(res_out, ref_out)
 
 
-@pytest.mark._nested_tensor_storage_offsets
+@pytest.mark.nested_tensor_storage_offsets
 @pytest.mark.parametrize("dtype", _COMPONENT_DTYPES)
 def test__nested_tensor_storage_offsets_with_empty_components(dtype):
     num_tensors = 4
@@ -145,7 +134,7 @@ def test__nested_tensor_storage_offsets_with_empty_components(dtype):
     _assert_offsets(res_out, ref_out)
 
 
-@pytest.mark._nested_tensor_storage_offsets
+@pytest.mark.nested_tensor_storage_offsets
 @pytest.mark.parametrize("dtype", _COMPONENT_DTYPES)
 def test__nested_tensor_storage_offsets_non_contiguous(dtype):
     inp = _make_strided_view_input(dtype)
@@ -159,7 +148,7 @@ def test__nested_tensor_storage_offsets_non_contiguous(dtype):
     _assert_offsets(res_out, ref_out)
 
 
-@pytest.mark._nested_tensor_storage_offsets
+@pytest.mark.nested_tensor_storage_offsets
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("dtype", _COMPONENT_DTYPES)
 def test__nested_tensor_storage_offsets_value_ranges(dtype, value_range):
@@ -173,7 +162,7 @@ def test__nested_tensor_storage_offsets_value_ranges(dtype, value_range):
     _assert_offsets(res_out, ref_out)
 
 
-@pytest.mark._nested_tensor_storage_offsets
+@pytest.mark.nested_tensor_storage_offsets
 @pytest.mark.parametrize(
     "dtype,scenario", tu.selected_cases(tu.special_value_cases(_COMPONENT_DTYPES))
 )
@@ -197,7 +186,7 @@ def test__nested_tensor_storage_offsets_nan_inf(dtype, scenario):
     _assert_offsets(res_out, ref_out)
 
 
-@pytest.mark._nested_tensor_storage_offsets
+@pytest.mark.nested_tensor_storage_offsets
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test__nested_tensor_storage_offsets_non_nested_raises(dtype):
     inp = tu.make_input(dtype, (4, 4), _DEFAULT_VALUE_RANGE)

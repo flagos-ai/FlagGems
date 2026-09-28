@@ -15,27 +15,11 @@
 # SPDX-License-Identifier: Apache-2.0
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
-from .generated_operator_utils import OperatorBenchmark
 from . import base
-
-# ``_empty_per_channel_affine_quantized`` starts with an underscore, and
-# ``pytest.mark`` refuses to generate a marker via attribute access for such
-# names. Register the markers directly on the MarkGenerator so
-# ``@pytest.mark._empty_per_channel_affine_quantized`` and
-# ``-m _empty_per_channel_affine_quantized`` both work.
-for _name in (
-    "_empty_per_channel_affine_quantized",
-    "_empty_per_channel_affine_quantized_out",
-):
-    setattr(
-        pytest.mark,
-        _name,
-        MarkDecorator(Mark(_name, (), {}, _ispytest=True), _ispytest=True),
-    )
+from .generated_operator_utils import OperatorBenchmark
 
 # aten::_empty_per_channel_affine_quantized is a quantized-tensor factory whose
 # cost is dominated by storage allocation. The default shape set contains a
@@ -126,7 +110,7 @@ class EmptyPerChannelAffineQuantizedBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=EMPTY_Q_SHAPES)
 
 
-@pytest.mark._empty_per_channel_affine_quantized
+@pytest.mark.empty_per_channel_affine_quantized
 def test__empty_per_channel_affine_quantized():
     bench = EmptyPerChannelAffineQuantizedBenchmark(
         op_name="_empty_per_channel_affine_quantized",
@@ -139,7 +123,7 @@ def test__empty_per_channel_affine_quantized():
     bench.run()
 
 
-@pytest.mark._empty_per_channel_affine_quantized_out
+@pytest.mark.empty_per_channel_affine_quantized_out
 def test__empty_per_channel_affine_quantized_out():
     bench = EmptyPerChannelAffineQuantizedBenchmark(
         op_name="_empty_per_channel_affine_quantized",

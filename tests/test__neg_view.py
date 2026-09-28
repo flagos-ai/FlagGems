@@ -14,19 +14,11 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
 from . import accuracy_utils as utils
 from . import test_utils as tu
-
-# Register underscore-prefixed pytest markers explicitly.
-setattr(
-    pytest.mark,
-    "_neg_view",
-    MarkDecorator(Mark("_neg_view", (), {}, _ispytest=True), _ispytest=True),
-)
 
 # Toggle the lazy neg bit while preserving input storage and layout.
 # FP8/bool views exist, but their negated values cannot be materialized.
@@ -86,7 +78,7 @@ def _assert_view_semantics(res_out, ref_out, inp):
     assert torch._C._is_alias_of(res_out, inp)
 
 
-@pytest.mark._neg_view
+@pytest.mark.neg_view
 @pytest.mark.parametrize("shape", _NEG_VIEW_SHAPES)
 @pytest.mark.parametrize("dtype", _VALUE_DTYPES)
 def test__neg_view(shape, dtype):
@@ -103,7 +95,7 @@ def test__neg_view(shape, dtype):
     assert res_out.is_neg()
 
 
-@pytest.mark._neg_view
+@pytest.mark.neg_view
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize(("dtype", "value_range"), _RANGE_CASES)
 def test__neg_view_value_ranges(shape, dtype, value_range):
@@ -117,7 +109,7 @@ def test__neg_view_value_ranges(shape, dtype, value_range):
     _assert_values_equal(res_out, ref_out)
 
 
-@pytest.mark._neg_view
+@pytest.mark.neg_view
 @pytest.mark.parametrize("shape", _NEG_VIEW_SHAPES)
 @pytest.mark.parametrize("dtype", _UNMATERIALIZABLE_DTYPES)
 def test__neg_view_unmaterializable_dtypes(shape, dtype):
@@ -132,7 +124,7 @@ def test__neg_view_unmaterializable_dtypes(shape, dtype):
     _assert_values_equal(res_out, ref_out)
 
 
-@pytest.mark._neg_view
+@pytest.mark.neg_view
 @pytest.mark.parametrize("shape", _NEG_VIEW_NONCONTIG_SHAPES)
 @pytest.mark.parametrize("dtype", _ALL_TEST_DTYPES)
 def test__neg_view_non_contiguous(shape, dtype):
@@ -151,7 +143,7 @@ def test__neg_view_non_contiguous(shape, dtype):
     _assert_values_equal(res_out, ref_out)
 
 
-@pytest.mark._neg_view
+@pytest.mark.neg_view
 @pytest.mark.parametrize("shape", _NEG_VIEW_TOGGLE_SHAPES)
 @pytest.mark.parametrize("dtype", _ALL_TEST_DTYPES)
 def test__neg_view_toggle(shape, dtype):
@@ -172,7 +164,7 @@ def test__neg_view_toggle(shape, dtype):
     assert not res_out.is_neg()
 
 
-@pytest.mark._neg_view
+@pytest.mark.neg_view
 @pytest.mark.parametrize(
     "dtype, scenario", tu.selected_cases(tu.special_value_cases(utils.ALL_FLOAT_DTYPES))
 )
@@ -192,7 +184,7 @@ def test__neg_view_special_values(dtype, scenario):
     )
 
 
-@pytest.mark._neg_view
+@pytest.mark.neg_view
 @pytest.mark.parametrize("shape", _NEG_VIEW_MUTATION_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test__neg_view_mutation(shape, dtype):
@@ -214,7 +206,7 @@ def test__neg_view_mutation(shape, dtype):
     tu.assert_result_equal(inp, ref_inp)
 
 
-@pytest.mark._neg_view
+@pytest.mark.neg_view
 @pytest.mark.parametrize(
     "dtype,scenario", tu.selected_cases(tu.special_value_cases(_FP8_DTYPES))
 )
@@ -230,7 +222,7 @@ def test__neg_view_fp8_special_values(dtype, scenario):
     tu.assert_result_equal(inp.view(torch.uint8), ref_inp.view(torch.uint8))
 
 
-@pytest.mark._neg_view
+@pytest.mark.neg_view
 @pytest.mark.parametrize("shape", _NEG_VIEW_BACKWARD_SHAPES)
 # FP8 backward calls aten.neg, which has no CPU/CUDA FP8 kernel.
 @pytest.mark.parametrize(
@@ -254,7 +246,7 @@ def test__neg_view_backward(shape, dtype):
     tu.assert_result_equal(res_in_grad, ref_in_grad)
 
 
-@pytest.mark._neg_view
+@pytest.mark.neg_view
 def test__neg_view_rejects_non_tensor():
     with pytest.raises(RuntimeError):
         torch.ops.aten._neg_view(3.14)

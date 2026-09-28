@@ -16,23 +16,11 @@ import math
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
 from . import conftest as cfg
 from . import test_utils as tu
-
-# Register underscore-prefixed pytest markers explicitly.
-for _name in (
-    "_make_per_tensor_quantized_tensor",
-    "_make_per_tensor_quantized_tensor_out",
-):
-    setattr(
-        pytest.mark,
-        _name,
-        MarkDecorator(Mark(_name, (), {}, _ispytest=True), _ispytest=True),
-    )
 
 # Copy integer storage and attach per-tensor scale/zero-point metadata.
 _MAKE_PERTENSOR_INPUT_DTYPES = [torch.int8, torch.uint8, torch.int32]
@@ -121,7 +109,7 @@ def _assert_quant_metadata(res_out, ref_out):
     tu.assert_result_equal(res_out.int_repr(), ref_out.int_repr())
 
 
-@pytest.mark._make_per_tensor_quantized_tensor
+@pytest.mark.make_per_tensor_quantized_tensor
 @pytest.mark.parametrize("shape", _GRID_SHAPES)
 @pytest.mark.parametrize("dtype", _MAKE_PERTENSOR_INPUT_DTYPES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
@@ -137,7 +125,7 @@ def test__make_per_tensor_quantized_tensor_value_ranges(shape, dtype, value_rang
     tu.assert_result_equal(inp, ref_inp)
 
 
-@pytest.mark._make_per_tensor_quantized_tensor
+@pytest.mark.make_per_tensor_quantized_tensor
 @pytest.mark.parametrize("shape", _SMALL_SHAPES)
 @pytest.mark.parametrize("dtype", _MAKE_PERTENSOR_INPUT_DTYPES)
 @pytest.mark.parametrize("scale", _MAKE_PERTENSOR_SCALES)
@@ -155,7 +143,7 @@ def test__make_per_tensor_quantized_tensor_qparams(shape, dtype, scale, zero_poi
     tu.assert_result_equal(inp, ref_inp)
 
 
-@pytest.mark._make_per_tensor_quantized_tensor
+@pytest.mark.make_per_tensor_quantized_tensor
 @pytest.mark.parametrize("pattern", _BOUNDARY_PATTERNS)
 @pytest.mark.parametrize("dtype", _MAKE_PERTENSOR_INPUT_DTYPES)
 def test__make_per_tensor_quantized_tensor_boundary_values(dtype, pattern):
@@ -169,7 +157,7 @@ def test__make_per_tensor_quantized_tensor_boundary_values(dtype, pattern):
     tu.assert_result_equal(inp, ref_inp)
 
 
-@pytest.mark._make_per_tensor_quantized_tensor
+@pytest.mark.make_per_tensor_quantized_tensor
 @pytest.mark.parametrize("scale", _NON_FINITE_SCALES)
 @pytest.mark.parametrize("dtype", _MAKE_PERTENSOR_INPUT_DTYPES)
 def test__make_per_tensor_quantized_tensor_non_finite_scale(dtype, scale):
@@ -183,7 +171,7 @@ def test__make_per_tensor_quantized_tensor_non_finite_scale(dtype, scale):
     tu.assert_result_equal(inp, ref_inp)
 
 
-@pytest.mark._make_per_tensor_quantized_tensor
+@pytest.mark.make_per_tensor_quantized_tensor
 @pytest.mark.parametrize("dtype", _MAKE_PERTENSOR_INPUT_DTYPES)
 def test__make_per_tensor_quantized_tensor_non_contiguous(dtype):
     base = _make_input((16, 8), dtype)
@@ -198,7 +186,7 @@ def test__make_per_tensor_quantized_tensor_non_contiguous(dtype):
     tu.assert_result_equal(inp, ref_inp)
 
 
-@pytest.mark._make_per_tensor_quantized_tensor_out
+@pytest.mark.make_per_tensor_quantized_tensor_out
 @pytest.mark.parametrize("shape", _GRID_SHAPES)
 @pytest.mark.parametrize("dtype", _MAKE_PERTENSOR_INPUT_DTYPES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
@@ -230,7 +218,7 @@ def test__make_per_tensor_quantized_tensor_out_value_ranges(shape, dtype, value_
     tu.assert_result_equal(inp, ref_inp)
 
 
-@pytest.mark._make_per_tensor_quantized_tensor_out
+@pytest.mark.make_per_tensor_quantized_tensor_out
 @pytest.mark.parametrize("dtype", _MAKE_PERTENSOR_INPUT_DTYPES)
 @pytest.mark.parametrize("scale", _MAKE_PERTENSOR_SCALES)
 @pytest.mark.parametrize("zero_point", _MAKE_PERTENSOR_ZERO_POINTS)
@@ -262,7 +250,7 @@ def test__make_per_tensor_quantized_tensor_out_qparams(dtype, scale, zero_point)
     tu.assert_result_equal(inp, ref_inp)
 
 
-@pytest.mark._make_per_tensor_quantized_tensor
+@pytest.mark.make_per_tensor_quantized_tensor
 @pytest.mark.parametrize("dtype", _REJECTED_DTYPES)
 def test__make_per_tensor_quantized_tensor_rejects_non_storage_dtype(dtype):
     inp = torch.tensor([1, 2, 3], dtype=dtype, device=flag_gems.device)
@@ -273,7 +261,7 @@ def test__make_per_tensor_quantized_tensor_rejects_non_storage_dtype(dtype):
         flag_gems._make_per_tensor_quantized_tensor(inp, 0.1, 0)
 
 
-@pytest.mark._make_per_tensor_quantized_tensor_out
+@pytest.mark.make_per_tensor_quantized_tensor_out
 @pytest.mark.parametrize("dtype", _MAKE_PERTENSOR_INPUT_DTYPES)
 def test__make_per_tensor_quantized_tensor_out_rejects_non_quantized_buffer(dtype):
     inp = _make_input((2, 3), dtype)
@@ -290,7 +278,7 @@ def test__make_per_tensor_quantized_tensor_out_rejects_non_quantized_buffer(dtyp
         flag_gems._make_per_tensor_quantized_tensor(inp, 0.1, 0, out=act_buf)
 
 
-@pytest.mark._make_per_tensor_quantized_tensor_out
+@pytest.mark.make_per_tensor_quantized_tensor_out
 @pytest.mark.parametrize("dtype", _MAKE_PERTENSOR_INPUT_DTYPES)
 def test__make_per_tensor_quantized_tensor_out_rejects_wrong_quantized_dtype(dtype):
     inp = _make_input((2, 3), dtype)
@@ -319,7 +307,7 @@ def test__make_per_tensor_quantized_tensor_out_rejects_wrong_quantized_dtype(dty
         flag_gems._make_per_tensor_quantized_tensor(inp, 0.1, 0, out=act_buf)
 
 
-@pytest.mark._make_per_tensor_quantized_tensor_out
+@pytest.mark.make_per_tensor_quantized_tensor_out
 @pytest.mark.skipif(
     cfg.TO_CPU,
     reason="CPU reference resizes the out buffer; only the CUDA reference rejects "

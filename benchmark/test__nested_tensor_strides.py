@@ -14,24 +14,11 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
-from .generated_operator_utils import OperatorBenchmark
 from . import base, consts
-
-# ``_nested_tensor_strides`` starts with an underscore, and ``pytest.mark``
-# refuses to generate a marker via attribute access for such names. Register it
-# directly on the MarkGenerator so ``@pytest.mark._nested_tensor_strides`` and
-# ``-m _nested_tensor_strides`` both work.
-setattr(
-    pytest.mark,
-    "_nested_tensor_strides",
-    MarkDecorator(
-        Mark("_nested_tensor_strides", (), {}, _ispytest=True), _ispytest=True
-    ),
-)
+from .generated_operator_utils import OperatorBenchmark
 
 # aten::_nested_tensor_strides(Tensor self) -> Tensor reads the (num_tensors,
 # num_dims) int64 strides metadata of a strided-layout nested tensor. Its cost is
@@ -119,7 +106,7 @@ class NestedTensorStridesBenchmark(OperatorBenchmark):
         return parsed_args if parsed_args else parsed_kwargs
 
 
-@pytest.mark._nested_tensor_strides
+@pytest.mark.nested_tensor_strides
 def test__nested_tensor_strides():
     # torch_op is the perf comparison reference; gems_op is the candidate under
     # test. They share the same single-argument call semantics

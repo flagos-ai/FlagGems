@@ -14,22 +14,11 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
 from . import accuracy_utils as utils
 from . import test_utils as tu
-
-# Register underscore-prefixed pytest markers explicitly.
-setattr(
-    pytest.mark,
-    "_slow_conv2d_backward",
-    MarkDecorator(
-        Mark("_slow_conv2d_backward", (), {}, _ispytest=True),
-        _ispytest=True,
-    ),
-)
 
 # Test masked gradients and both output-buffer overloads of slow conv2d backward.
 # Extreme ranges retain their bounds and use the original reference dtype to preserve overflow.
@@ -170,7 +159,7 @@ def _assert_grads_close(
         )
 
 
-@pytest.mark._slow_conv2d_backward
+@pytest.mark.slow_conv2d_backward
 @pytest.mark.parametrize("case", SLOW_CONV2D_VALUE_RANGES_CASES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("dtype", utils.ALL_FLOAT_DTYPES)
@@ -200,7 +189,7 @@ def test__slow_conv2d_backward_value_ranges(case, value_range, dtype):
     _assert_grads_close(res, ref, in_reduce_dim, out_reduce_dim, dtype, equal_nan=True)
 
 
-@pytest.mark._slow_conv2d_backward
+@pytest.mark.slow_conv2d_backward
 @pytest.mark.parametrize("case", SLOW_CONV2D_BACKWARD_CASES)
 @pytest.mark.parametrize("dtype", utils.ALL_FLOAT_DTYPES)
 def test__slow_conv2d_backward_output_mask_full(case, dtype):
@@ -222,7 +211,7 @@ def test__slow_conv2d_backward_output_mask_full(case, dtype):
     _assert_grads_close(res, ref, in_reduce_dim, out_reduce_dim, dtype)
 
 
-@pytest.mark._slow_conv2d_backward
+@pytest.mark.slow_conv2d_backward
 @pytest.mark.parametrize("case", SLOW_CONV2D_BACKWARD_CASES)
 @pytest.mark.parametrize("dtype", utils.ALL_FLOAT_DTYPES)
 def test__slow_conv2d_backward_grad_input_only(case, dtype):
@@ -245,7 +234,7 @@ def test__slow_conv2d_backward_grad_input_only(case, dtype):
     _assert_grads_close(res, ref, in_reduce_dim, out_reduce_dim, dtype)
 
 
-@pytest.mark._slow_conv2d_backward
+@pytest.mark.slow_conv2d_backward
 @pytest.mark.parametrize("case", SLOW_CONV2D_BACKWARD_CASES)
 @pytest.mark.parametrize("dtype", utils.ALL_FLOAT_DTYPES)
 def test__slow_conv2d_backward_grad_weight_only(case, dtype):
@@ -268,7 +257,7 @@ def test__slow_conv2d_backward_grad_weight_only(case, dtype):
     _assert_grads_close(res, ref, in_reduce_dim, out_reduce_dim, dtype)
 
 
-@pytest.mark._slow_conv2d_backward
+@pytest.mark.slow_conv2d_backward
 @pytest.mark.parametrize("case", SLOW_CONV2D_BACKWARD_CASES)
 @pytest.mark.parametrize("dtype", utils.ALL_FLOAT_DTYPES)
 def test__slow_conv2d_backward_grad_bias_only(case, dtype):
@@ -291,7 +280,7 @@ def test__slow_conv2d_backward_grad_bias_only(case, dtype):
     _assert_grads_close(res, ref, in_reduce_dim, out_reduce_dim, dtype)
 
 
-@pytest.mark._slow_conv2d_backward
+@pytest.mark.slow_conv2d_backward
 @pytest.mark.parametrize("case", SLOW_CONV2D_BACKWARD_CASES[:2])
 @pytest.mark.parametrize("mask", _MIXED_MASKS)
 @pytest.mark.parametrize("dtype", utils.ALL_FLOAT_DTYPES)
@@ -314,7 +303,7 @@ def test__slow_conv2d_backward_mixed_mask(case, mask, dtype):
     _assert_grads_close(res, ref, in_reduce_dim, out_reduce_dim, dtype)
 
 
-@pytest.mark._slow_conv2d_backward
+@pytest.mark.slow_conv2d_backward
 @pytest.mark.parametrize("case", SLOW_CONV2D_BACKWARD_CASES)
 @pytest.mark.parametrize("dtype", utils.ALL_FLOAT_DTYPES)
 def test__slow_conv2d_backward_grad_input_out(case, dtype):
@@ -370,7 +359,7 @@ def test__slow_conv2d_backward_grad_input_out(case, dtype):
     _assert_grads_close(ref_ret, ref, in_reduce_dim, out_reduce_dim, dtype)
 
 
-@pytest.mark._slow_conv2d_backward
+@pytest.mark.slow_conv2d_backward
 @pytest.mark.parametrize("case", SLOW_CONV2D_BACKWARD_CASES)
 @pytest.mark.parametrize("dtype", utils.ALL_FLOAT_DTYPES)
 def test__slow_conv2d_backward_output_mask_out(case, dtype):
@@ -424,7 +413,7 @@ def test__slow_conv2d_backward_output_mask_out(case, dtype):
     _assert_grads_close(ref_ret, ref, in_reduce_dim, out_reduce_dim, dtype)
 
 
-@pytest.mark._slow_conv2d_backward
+@pytest.mark.slow_conv2d_backward
 @pytest.mark.parametrize("case", SLOW_CONV2D_BACKWARD_CASES[:3])
 @pytest.mark.parametrize("dtype", utils.ALL_FLOAT_DTYPES)
 def test__slow_conv2d_backward_backward(case, dtype):
@@ -462,7 +451,7 @@ def test__slow_conv2d_backward_backward(case, dtype):
     _assert_grads_close(res, ref, in_reduce_dim, out_reduce_dim, dtype)
 
 
-@pytest.mark._slow_conv2d_backward
+@pytest.mark.slow_conv2d_backward
 @pytest.mark.parametrize(
     "dtype,scenario", tu.selected_cases(tu.special_value_cases(utils.ALL_FLOAT_DTYPES))
 )
@@ -493,7 +482,7 @@ def test__slow_conv2d_backward_nan_inf(dtype, scenario, special_arg):
     _assert_grads_close(res, ref, in_reduce_dim, out_reduce_dim, dtype, equal_nan=True)
 
 
-@pytest.mark._slow_conv2d_backward
+@pytest.mark.slow_conv2d_backward
 @pytest.mark.parametrize("case", _INVALID_SLOW_CONV2D_CASES)
 def test__slow_conv2d_backward_negative_invalid_config(case):
     inp_shape, weight_shape, kernel_size, stride, padding, grad_output_shape = case
@@ -516,7 +505,7 @@ def test__slow_conv2d_backward_negative_invalid_config(case):
         )
 
 
-@pytest.mark._slow_conv2d_backward
+@pytest.mark.slow_conv2d_backward
 @pytest.mark.parametrize("dtype", _NON_FLOAT_DTYPES)
 def test__slow_conv2d_backward_negative_non_float_dtype(dtype):
     inp = tu.make_input(dtype, (2, 3, 5, 5), ["0", "1"])
@@ -534,7 +523,7 @@ def test__slow_conv2d_backward_negative_non_float_dtype(dtype):
         )
 
 
-@pytest.mark._slow_conv2d_backward
+@pytest.mark.slow_conv2d_backward
 def test__slow_conv2d_backward_negative_non_4d_grad_output():
     inp = _INPUT_SCALE * tu.make_input(torch.float32, (2, 3, 5, 5), ["-1", "1"])
     weight = _INPUT_SCALE * tu.make_input(torch.float32, (4, 3, 3, 3), ["-1", "1"])
@@ -551,7 +540,7 @@ def test__slow_conv2d_backward_negative_non_4d_grad_output():
         )
 
 
-@pytest.mark._slow_conv2d_backward
+@pytest.mark.slow_conv2d_backward
 @pytest.mark.parametrize("scalar_param", _SCALAR_PARAMS)
 def test__slow_conv2d_backward_negative_scalar_param(scalar_param):
     inp_shape, weight_shape, kernel_size, stride, padding = SLOW_CONV2D_BACKWARD_CASES[

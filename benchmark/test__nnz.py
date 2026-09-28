@@ -14,21 +14,11 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
-from .generated_operator_utils import OperatorBenchmark
 from . import base, consts, utils
-
-# ``_nnz`` starts with an underscore, and ``pytest.mark`` refuses to generate a
-# marker via attribute access for such names. Register it directly on the
-# MarkGenerator so ``@pytest.mark._nnz`` and ``-m _nnz`` both work.
-setattr(
-    pytest.mark,
-    "_nnz",
-    MarkDecorator(Mark("_nnz", (), {}, _ispytest=True), _ispytest=True),
-)
+from .generated_operator_utils import OperatorBenchmark
 
 # aten::_nnz(Tensor self) -> int reports the number of stored entries of a
 # sparse tensor. It is a pure metadata query (the measured work is dispatch and
@@ -124,7 +114,7 @@ class NnzBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=_NNZ_SHAPES)
 
 
-@pytest.mark._nnz
+@pytest.mark.nnz
 def test__nnz():
     bench = NnzBenchmark(
         op_name="_nnz",

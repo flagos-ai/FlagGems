@@ -16,26 +16,10 @@ import math
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
 from . import base, consts
-
-# ``_neg_view_copy`` starts with an underscore, and ``pytest.mark`` refuses to
-# generate a marker via attribute access for such names. Register the markers
-# directly on the MarkGenerator so ``@pytest.mark._neg_view_copy`` and
-# ``-m _neg_view_copy`` both work.
-setattr(
-    pytest.mark,
-    "_neg_view_copy",
-    MarkDecorator(Mark("_neg_view_copy", (), {}, _ispytest=True), _ispytest=True),
-)
-setattr(
-    pytest.mark,
-    "_neg_view_copy_out",
-    MarkDecorator(Mark("_neg_view_copy_out", (), {}, _ispytest=True), _ispytest=True),
-)
 
 # _neg_view_copy materializes a fresh copy (negated values) of the input, so
 # each case needs input + output (2x one tensor's memory per case). The default
@@ -69,7 +53,7 @@ class NegViewCopyOutBenchmark(base.UnaryPointwiseOutBenchmark):
         ]
 
 
-@pytest.mark._neg_view_copy
+@pytest.mark.neg_view_copy
 def test__neg_view_copy():
     bench = NegViewCopyBenchmark(
         op_name="_neg_view_copy",
@@ -83,7 +67,7 @@ def test__neg_view_copy():
     bench.run()
 
 
-@pytest.mark._neg_view_copy_out
+@pytest.mark.neg_view_copy_out
 def test__neg_view_copy_out():
     bench = NegViewCopyOutBenchmark(
         op_name="_neg_view_copy",

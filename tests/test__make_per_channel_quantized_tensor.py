@@ -16,23 +16,11 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
 from . import conftest as cfg
 from . import test_utils as tu
-
-# Register underscore-prefixed pytest markers explicitly.
-for _name in (
-    "_make_per_channel_quantized_tensor",
-    "_make_per_channel_quantized_tensor_out",
-):
-    setattr(
-        pytest.mark,
-        _name,
-        MarkDecorator(Mark(_name, (), {}, _ispytest=True), _ispytest=True),
-    )
 
 # Copy integer storage and attach per-channel scale/zero-point metadata.
 # Integer zero points use affine qparams; floating zero points use float_qparams.
@@ -171,7 +159,7 @@ def _assert_per_channel_metadata(res_out, ref_out):
     tu.assert_result_equal(res_out.int_repr(), ref_out.int_repr())
 
 
-@pytest.mark._make_per_channel_quantized_tensor
+@pytest.mark.make_per_channel_quantized_tensor
 @pytest.mark.parametrize("storage_dtype", _STORAGE_DTYPES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("shape,axis", _SHAPE_AXIS)
@@ -200,7 +188,7 @@ def test__make_per_channel_quantized_tensor_value_ranges(
     tu.assert_result_equal(zero_points, ref_zero_points)
 
 
-@pytest.mark._make_per_channel_quantized_tensor
+@pytest.mark.make_per_channel_quantized_tensor
 @pytest.mark.parametrize("storage_dtype", _STORAGE_DTYPES)
 @pytest.mark.parametrize("scale_dtype", _SCALE_DTYPES)
 @pytest.mark.parametrize("shape,axis", _SHAPE_AXIS)
@@ -225,7 +213,7 @@ def test__make_per_channel_quantized_tensor(shape, axis, storage_dtype, scale_dt
     tu.assert_result_equal(zero_points, ref_zero_points)
 
 
-@pytest.mark._make_per_channel_quantized_tensor
+@pytest.mark.make_per_channel_quantized_tensor
 @pytest.mark.parametrize("storage_dtype", _STORAGE_DTYPES)
 @pytest.mark.parametrize("scale_dtype", _SCALE_DTYPES)
 @pytest.mark.parametrize("shape,axis", _AXIS_SHAPES)
@@ -252,7 +240,7 @@ def test__make_per_channel_quantized_tensor_axis(
     tu.assert_result_equal(zero_points, ref_zero_points)
 
 
-@pytest.mark._make_per_channel_quantized_tensor
+@pytest.mark.make_per_channel_quantized_tensor
 @pytest.mark.parametrize("storage_dtype", _STORAGE_DTYPES)
 def test__make_per_channel_quantized_tensor_boundary_values(storage_dtype):
     info = torch.iinfo(storage_dtype)
@@ -286,7 +274,7 @@ def test__make_per_channel_quantized_tensor_boundary_values(storage_dtype):
     tu.assert_result_equal(zero_points, ref_zero_points)
 
 
-@pytest.mark._make_per_channel_quantized_tensor
+@pytest.mark.make_per_channel_quantized_tensor
 @pytest.mark.parametrize("storage_dtype", _STORAGE_DTYPES)
 @pytest.mark.parametrize("scale_dtype", _SCALE_DTYPES)
 def test__make_per_channel_quantized_tensor_non_contiguous(storage_dtype, scale_dtype):
@@ -313,7 +301,7 @@ def test__make_per_channel_quantized_tensor_non_contiguous(storage_dtype, scale_
     tu.assert_result_equal(zero_points, ref_zero_points)
 
 
-@pytest.mark._make_per_channel_quantized_tensor
+@pytest.mark.make_per_channel_quantized_tensor
 @pytest.mark.parametrize("storage_dtype", _STORAGE_DTYPES)
 @pytest.mark.parametrize("zero_point_dtype", [torch.float32, torch.float64])
 @pytest.mark.parametrize("shape,axis", _SHAPE_AXIS)
@@ -340,7 +328,7 @@ def test__make_per_channel_quantized_tensor_float_zero_points(
     tu.assert_result_equal(zero_points, ref_zero_points)
 
 
-@pytest.mark._make_per_channel_quantized_tensor
+@pytest.mark.make_per_channel_quantized_tensor
 @pytest.mark.parametrize("storage_dtype", _STORAGE_DTYPES)
 @pytest.mark.parametrize("bad", _NON_FINITE)
 def test__make_per_channel_quantized_tensor_non_finite_scales(storage_dtype, bad):
@@ -371,7 +359,7 @@ def test__make_per_channel_quantized_tensor_non_finite_scales(storage_dtype, bad
     tu.assert_result_equal(zero_points, ref_zero_points)
 
 
-@pytest.mark._make_per_channel_quantized_tensor
+@pytest.mark.make_per_channel_quantized_tensor
 @pytest.mark.parametrize("storage_dtype", _STORAGE_DTYPES)
 @pytest.mark.parametrize("bad", _NON_FINITE)
 def test__make_per_channel_quantized_tensor_non_finite_float_zero_points(
@@ -404,7 +392,7 @@ def test__make_per_channel_quantized_tensor_non_finite_float_zero_points(
     tu.assert_result_equal(zero_points, ref_zero_points)
 
 
-@pytest.mark._make_per_channel_quantized_tensor_out
+@pytest.mark.make_per_channel_quantized_tensor_out
 @pytest.mark.parametrize("storage_dtype", _STORAGE_DTYPES)
 @pytest.mark.parametrize("shape,axis", _SHAPE_AXIS)
 def test__make_per_channel_quantized_tensor_out(shape, axis, storage_dtype):
@@ -433,7 +421,7 @@ def test__make_per_channel_quantized_tensor_out(shape, axis, storage_dtype):
     tu.assert_result_equal(zero_points, ref_zero_points)
 
 
-@pytest.mark._make_per_channel_quantized_tensor
+@pytest.mark.make_per_channel_quantized_tensor
 @pytest.mark.parametrize("invalid_dtype", _REJECTED_INPUT_DTYPES)
 def test__make_per_channel_quantized_tensor_rejects_non_storage_dtype(invalid_dtype):
     shape = (2, 3)
@@ -452,7 +440,7 @@ def test__make_per_channel_quantized_tensor_rejects_non_storage_dtype(invalid_dt
         flag_gems._make_per_channel_quantized_tensor(inp, scales, zero_points, 1)
 
 
-@pytest.mark._make_per_channel_quantized_tensor
+@pytest.mark.make_per_channel_quantized_tensor
 @pytest.mark.parametrize("scale_dtype", [torch.int32, torch.int64])
 def test__make_per_channel_quantized_tensor_rejects_non_float_scales(scale_dtype):
     shape = (2, 3)
@@ -471,7 +459,7 @@ def test__make_per_channel_quantized_tensor_rejects_non_float_scales(scale_dtype
         flag_gems._make_per_channel_quantized_tensor(inp, scales, zero_points, 1)
 
 
-@pytest.mark._make_per_channel_quantized_tensor
+@pytest.mark.make_per_channel_quantized_tensor
 @pytest.mark.parametrize("bad_metadata", ["scale", "zero_point"])
 def test__make_per_channel_quantized_tensor_rejects_non_1d_metadata(bad_metadata):
     shape = (2, 3)
@@ -494,7 +482,7 @@ def test__make_per_channel_quantized_tensor_rejects_non_1d_metadata(bad_metadata
         flag_gems._make_per_channel_quantized_tensor(inp, scales, zero_points, 1)
 
 
-@pytest.mark._make_per_channel_quantized_tensor
+@pytest.mark.make_per_channel_quantized_tensor
 @pytest.mark.parametrize("scale_len,zero_point_len", [(2, 3), (3, 2), (0, 3), (3, 0)])
 def test__make_per_channel_quantized_tensor_rejects_metadata_length_mismatch(
     scale_len, zero_point_len
@@ -518,7 +506,7 @@ def test__make_per_channel_quantized_tensor_rejects_metadata_length_mismatch(
         flag_gems._make_per_channel_quantized_tensor(inp, scales, zero_points, 1)
 
 
-@pytest.mark._make_per_channel_quantized_tensor_out
+@pytest.mark.make_per_channel_quantized_tensor_out
 @pytest.mark.parametrize("storage_dtype", _STORAGE_DTYPES)
 def test__make_per_channel_quantized_tensor_out_rejects_non_quantized_buffer(
     storage_dtype,
@@ -545,7 +533,7 @@ def test__make_per_channel_quantized_tensor_out_rejects_non_quantized_buffer(
         )
 
 
-@pytest.mark._make_per_channel_quantized_tensor_out
+@pytest.mark.make_per_channel_quantized_tensor_out
 @pytest.mark.parametrize("storage_dtype", _STORAGE_DTYPES)
 def test__make_per_channel_quantized_tensor_out_rejects_wrong_quantized_dtype(
     storage_dtype,
