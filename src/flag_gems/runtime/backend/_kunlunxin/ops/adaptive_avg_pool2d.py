@@ -474,7 +474,7 @@ def _adaptive_avg_pool2d_general_kernel(
     OH: tl.constexpr,
     OW: tl.constexpr,
     MAX_KH,
-    MAX_KW: tl.constexpr,
+    MAX_KW,
     BLOCK_SIZE: tl.constexpr,
 ):
     program_id = ext.program_id(0)
@@ -489,9 +489,13 @@ def _adaptive_avg_pool2d_general_kernel(
     iw_end = ((ow + 1) * IW + OW - 1) // OW
 
     value = tl.zeros((BLOCK_SIZE,), dtype=tl.float32)
+    # KW is a runtime loop (not static_range): for large non-exact windows a
+    # static unroll of MAX_KW (e.g. 130) blows the XPU buffer tuner
+    # ("Failed to tune buffer size"). The accumulation is a per-lane
+    # value += tl.where(...) (no tt.reduce), so it legalizes in an scf.for loop.
     for kh in range(0, MAX_KH):
         ih = ih_start + kh
-        for kw in tl.static_range(MAX_KW):
+        for kw in range(0, MAX_KW):
             iw = iw_start + kw
             active = valid & (ih < ih_end) & (iw < iw_end)
             safe_ih = tl.minimum(ih, ih_end - 1)
