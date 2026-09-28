@@ -16,20 +16,6 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
-
-import flag_gems
-
-from . import base, consts, utils
-
-# ``_values`` starts with an underscore, and ``pytest.mark`` refuses to
-# generate a marker via attribute access for such names. Register it directly
-# on the MarkGenerator so ``@pytest.mark._values`` and ``-m _values`` both work.
-setattr(
-    pytest.mark,
-    "_values",
-    MarkDecorator(Mark("_values", (), {}, _ispytest=True), _ispytest=True),
-)
 
 # Sparse COO sizes: cover small, medium and large stored-entry counts. _values
 # is a zero-copy view op (O(1): it only detaches the values tensor from the
@@ -56,12 +42,12 @@ class ValuesBenchmark(base.Benchmark):
             yield (inp,)
 
 
-@pytest.mark._values
-def test__values():
+@pytest.mark.values
+def test_values():
     bench = ValuesBenchmark(
-        op_name="_values",
+        op_name="values",
         torch_op=torch.ops.aten._values,
-        gems_op=flag_gems._values,
+        gems_op=flag_gems.values,
         dtypes=consts.FLOAT_DTYPES + consts.INT_DTYPES + consts.BOOL_DTYPES,
     )
     bench.run()

@@ -71,12 +71,12 @@ if QUICK_MODE:
     ids=[name for name, _ in COO_CASES],
 )
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_accuracy__values_coo(name, make, dtype):
+def test_accuracy_values_coo(name, make, dtype):
     inp = make(flag_gems.device, dtype=dtype)
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.ops.aten._values(ref_inp)
-    res_out = flag_gems._values(inp)
+    res_out = flag_gems.values(inp)
 
     assert res_out.shape == ref_out.shape
     assert res_out.dtype == ref_out.dtype == inp._values().dtype
@@ -88,13 +88,13 @@ def test_accuracy__values_coo(name, make, dtype):
 
 
 @pytest.mark.values
-def test__values_mutation_through_view():
+def test_values_mutation_through_view():
     # Writing through the returned view must be visible through the native
     # ``_values`` accessor and vice versa: proves a real alias, not a copy.
     inp = _make_coo_plain(flag_gems.device)
     ref_inp = utils.to_reference(inp.clone())
 
-    res_out = flag_gems._values(inp)
+    res_out = flag_gems.values(inp)
     ref_out = ref_inp._values()
 
     assert res_out.data_ptr() == inp._values().data_ptr()
@@ -106,7 +106,7 @@ def test__values_mutation_through_view():
 
 
 @pytest.mark.values
-def test__values_strided_raises():
+def test_values_strided_raises():
     # ATen implements _values only for sparse COO: the dispatcher raises
     # NotImplementedError for strided (dense) tensors. The registered
     # implementation mirrors that with its layout guard (it also guards before
@@ -118,11 +118,11 @@ def test__values_strided_raises():
     with pytest.raises(NotImplementedError):
         torch.ops.aten._values(ref_inp)
     with pytest.raises(NotImplementedError):
-        flag_gems._values(inp)
+        flag_gems.values(inp)
 
 
 @pytest.mark.values
-def test__values_sparse_compressed():
+def test_values_sparse_compressed():
     # Verify natively whether aten::_values supports the sparse compressed
     # layouts; on this torch build it does not (SparseCsr* backends have no
     # kernel), so the registered path must raise the same NotImplementedError.
@@ -138,7 +138,7 @@ def test__values_sparse_compressed():
 
     inp = dense.to_sparse_csr()
     with pytest.raises(NotImplementedError):
-        flag_gems._values(inp)
+        flag_gems.values(inp)
 
     try:
         torch.ops.aten._values(ref_dense.to_sparse_csc())
@@ -147,11 +147,11 @@ def test__values_sparse_compressed():
         native_csc_ok = False
     assert native_csc_ok is False
     with pytest.raises(NotImplementedError):
-        flag_gems._values(dense.to_sparse_csc())
+        flag_gems.values(dense.to_sparse_csc())
 
 
 @pytest.mark.values
-def test__values_dispatch_stability():
+def test_values_dispatch_stability():
     # Repeated calls and cross-op interference must stay stable: the impl
     # delegates below the autograd key, so repeated dispatch never recurses and
     # unrelated dispatcher traffic (``aten::_nnz``) does not disturb it.
@@ -160,7 +160,7 @@ def test__values_dispatch_stability():
     ref_values = torch.ops.aten._values(ref_inp)
 
     for _ in range(3):
-        res = flag_gems._values(inp)
+        res = flag_gems.values(inp)
         assert res.shape == ref_values.shape
         assert res.data_ptr() == inp._values().data_ptr()
         # Unrelated registered-metadata dispatcher traffic in between.
