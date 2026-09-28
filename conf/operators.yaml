@@ -67,7 +67,7 @@ ops:
   kind:
   - Tensor
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: _flash_attention_forward
   description: Run the canonical FlashAttention forward operator.
   for:
