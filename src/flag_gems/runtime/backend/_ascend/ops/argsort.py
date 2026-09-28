@@ -22,6 +22,7 @@ import re
 import shutil
 import struct
 import subprocess
+import sys
 import tempfile
 import threading
 from pathlib import Path
@@ -2859,16 +2860,16 @@ def _asc_sort_require(condition, message):
         raise RuntimeError(message)
 
 
-def _asc_sort_metadata(name, source_hash):
+def _asc_sort_metadata(name, source_hash, arch, ub_bytes):
     return SimpleNamespace(
-        arch="Ascend910B1",
+        arch=arch,
         debug=False,
         mix_mode="aiv",
         parallel_mode="simd",
         force_simt_only=False,
         compile_on_910_95=False,
         shared=1,
-        shared_mem_dynamic_size=221184,
+        shared_mem_dynamic_size=ub_bytes,
         bs_task_type=10,
         enable_auto_blockify=None,
         name=name,
@@ -2969,7 +2970,7 @@ def _asc_sort_device_binary(fat_object):
     return data
 
 
-def _asc_sort_build(identity, home, bisheng):
+def _asc_sort_build(identity, home, bisheng, source_text):
     import fcntl
 
     from triton.runtime.cache import get_cache_manager
@@ -2995,7 +2996,7 @@ def _asc_sort_build(identity, home, bisheng):
             with tempfile.TemporaryDirectory(prefix="build-", dir=build_root) as temp:
                 source = Path(temp)
                 (source / "op_host").mkdir()
-                write_atomic(str(source / "op_host/sort.asc"), _ASC_SORT_SOURCE)
+                write_atomic(str(source / "op_host/sort.asc"), source_text)
                 write_atomic(str(source / "CMakeLists.txt"), _ASC_SORT_CMAKE)
                 build = source / "build"
                 env = dict(os.environ, ASCEND_HOME_PATH=str(home))
@@ -3031,6 +3032,22 @@ def _asc_sort_build(identity, home, bisheng):
             fcntl.flock(lock, fcntl.LOCK_UN)
 
 
+def _asc_sort_tiling(aiv, ub_bytes):
+    # The initial 4096-element sort uses three 8-byte buffers, a bit mask,
+    # and a 2-byte conversion buffer in the FP16/BF16 variant.
+    # Streaming merge uses 80 bytes per window element plus 160 DMA padding
+    # bytes. Reserve 8 KiB for compiler/API temporaries in either stage.
+    reserve = 8192
+    initial_bytes = 4096 * 26 + 4096 // 8
+    _asc_sort_require(0 < aiv < 65536, "invalid vector core count")
+    _asc_sort_require(ub_bytes >= initial_bytes + reserve, "insufficient sort UB")
+    window = 2048
+    while window >= 32 and 80 * window + 160 + reserve > ub_bytes:
+        window //= 2
+    _asc_sort_require(window >= 32, "insufficient merge UB")
+    return {"aiv": aiv, "ub_bytes": ub_bytes, "run": 4096, "window": window}
+
+
 class _AscSortRuntime:
     def __init__(self, device):
         from triton.backends.ascend import driver, utils
@@ -3039,16 +3056,19 @@ class _AscSortRuntime:
             platform.machine() == "aarch64",
             "requires the validated AArch64 ASC toolchain",
         )
-        _asc_sort_require(
-            torch.npu.get_device_name(device) == "Ascend910B1", "unvalidated NPU model"
-        )
-        _asc_sort_require(
-            triton.__version__.split("+", 1)[0] == "3.5.1"
-            and torch.__version__.split("+", 1)[0].startswith("2.10."),
-            "unvalidated torch/Triton release",
-        )
+        # A2 (910B) and A3 (910_93) share the dav-2201 device target.
+        # Check the family rather than a single SKU or software release.
+        device_name = torch.npu.get_device_name(device)
+        self.driver = driver.NPUDriver()
+        self.loader = self.driver.utils
+        target = self.driver.get_current_target().arch
+        for model in (device_name, target):
+            _asc_sort_require(
+                re.fullmatch(r"Ascend910(?:B[1-4]C?|_93[0-9]*)", model) is not None,
+                "requires an A2/A3 dav-2201 target: " + model,
+            )
         arch = utils.get_ascend_arch_from_env()
-        _asc_sort_require(arch in ("", "Ascend910B1"), "different compiler target")
+        _asc_sort_require(arch in ("", target), "different compiler target")
         _asc_sort_require(
             utils.is_ffts_supported(arch) and not utils.force_disable_ffts(),
             "FFTS is unavailable",
@@ -3081,37 +3101,43 @@ class _AscSortRuntime:
         if not info_path.is_file():
             info_path = home / "aarch64-linux/ascend_all_cann_install.info"
         info = info_path.read_text()
-        fields = dict(
-            (key.strip(), value.strip())
-            for line in info.splitlines()
-            if "=" in line
-            for key, value in [line.split("=", 1)]
-        )
-        _asc_sort_require(
-            fields.get("version") == "9.0.0"
-            and fields.get("innerversion") == "V100R001C10SPC001B250"
-            and fields.get("arch") == "aarch64",
-            "unvalidated CANN SDK build",
-        )
         bisheng = (home / "bin/bisheng").resolve(strict=True)
         _asc_sort_require(
             bisheng.is_file() and os.access(bisheng, os.X_OK), "missing ASC compiler"
         )
         cmake = shutil.which("cmake")
         _asc_sort_require(cmake is not None, "cmake is unavailable")
-        self.driver = driver.NPUDriver()
-        self.loader = self.driver.utils
-        _asc_sort_require(
-            self.driver.get_current_target().arch == "Ascend910B1",
-            "runtime target mismatch",
-        )
         self.aiv = int(self.loader.get_aivector_core_num())
-        _asc_sort_require(0 < self.aiv < 65536, "invalid vector core count")
-        source_hash = hashlib.sha256(_ASC_SORT_SOURCE.encode()).hexdigest()
+        # Query CANN for this SoC in a child process: selecting a compile SoC
+        # changes TBE global state and must not affect other operators.
+        query = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import sys; from tbe.common import platform as p; "
+                "p.set_current_compile_soc_info(sys.argv[1]); "
+                "print('ARGSORT_UB=' + str(p.get_soc_spec('UB_SIZE')))",
+                device_name,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=True,
+        )
+        match = re.search(r"^ARGSORT_UB=(\d+)$", query.stdout, re.M)
+        _asc_sort_require(match is not None, "CANN did not report UB capacity")
+        self.tiling = _asc_sort_tiling(self.aiv, int(match.group(1)))
+        source_text = _ASC_SORT_SOURCE.replace(
+            "constexpr uint32_t V179_WINDOW = 2048;",
+            f"constexpr uint32_t V179_WINDOW = {self.tiling['window']};",
+        )
+        source_hash = hashlib.sha256(source_text.encode()).hexdigest()
         specifications = {}
         wrapper_hashes = {}
         for name, signature in _ASC_SORT_SIGNATURES.items():
-            metadata = _asc_sort_metadata(name, source_hash)
+            metadata = _asc_sort_metadata(
+                name, source_hash, target, self.tiling["ub_bytes"]
+            )
             src = SimpleNamespace(signature=dict(enumerate(signature)), constants={})
             wrapper = driver.make_launcher(src.constants, src.signature, metadata)
             _asc_sort_check_launcher(wrapper, signature)
@@ -3122,6 +3148,9 @@ class _AscSortRuntime:
             source=source_hash,
             cmake_source=hashlib.sha256(_ASC_SORT_CMAKE.encode()).hexdigest(),
             arch="dav-2201",
+            device_name=device_name,
+            runtime_target=target,
+            tiling=self.tiling,
             sdk_home=str(home),
             sdk_info=hashlib.sha256(info.encode()).hexdigest(),
             compiler=str(bisheng),
@@ -3131,7 +3160,7 @@ class _AscSortRuntime:
             triton=triton.__version__,
             launcher_abi=wrapper_hashes,
         )
-        self.device_bytes = _asc_sort_build(identity, home, bisheng)
+        self.device_bytes = _asc_sort_build(identity, home, bisheng, source_text)
         binary_hash = hashlib.sha256(self.device_bytes).hexdigest()
         self.entries = {}
         for name, (src, metadata) in specifications.items():
@@ -3190,15 +3219,15 @@ def _asc_sort_get_runtime(device):
 def _argsort_asc_runtime(inp, descending):
     n = inp.shape[-1]
     rows = inp.numel() // n
-    initial_tasks = rows * triton.cdiv(n, 4096)
-    if initial_tasks > 0x7FFFFFFF:
-        return None
     with torch_device_fn.device(inp.device):
         runtime = _asc_sort_get_runtime(inp.device.index)
         if runtime is None:
             return None
-        stages = [(4096, initial_tasks, False)]
-        run = 4096
+        run = runtime.tiling["run"]
+        initial_tasks = rows * triton.cdiv(n, run)
+        if initial_tasks > 0x7FFFFFFF:
+            return None
+        stages = [(run, initial_tasks, False)]
         while run < n:
             tasks = rows * triton.cdiv(n, 4 * run)
             stages.append((run, tasks, 4 * run >= n))
