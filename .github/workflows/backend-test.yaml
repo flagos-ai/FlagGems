@@ -55,7 +55,7 @@ permissions:
 
 jobs:
   test:
-    if: ${{ inputs.backend != 'iluvatar' && inputs.backend != 'kunlunxin' && inputs.backend != 'metax-maca3810' && inputs.backend != 'hygon' }}
+    if: ${{ inputs.backend != 'iluvatar' && inputs.backend != 'kunlunxin' && inputs.backend != 'metax-maca3810' && inputs.backend != 'hygon' && inputs.backend != 'mthreads-musa520' }}
     runs-on: ${{ inputs.runner_label }}
     concurrency:
       group: >-
@@ -217,6 +217,29 @@ jobs:
       options: --device /dev/kfd --device /dev/mkfd --device /dev/dri --group-add video --security-opt seccomp=unconfined --shm-size=256g --ulimit memlock=-1 --ulimit stack=67108864
       volumes:
         - /opt/hyhal:/opt/hyhal
+  # MooreThreads runs inside a container on whichever mthreads-s5000-* server
+  # this repo has access to, mirroring the iluvatar setup below.
+  # Equivalent to:
+  #   docker run --rm -it \
+  #     --device /dev/mtgpu.0 /dev/mtgpu.1 /dev/mtgpu.2 /dev/mtgpu.3 /dev/mtgpu.4 /dev/mtgpu.5 /dev/mtgpu.6 /dev/mtgpu.7 \
+  #     --device /dev/dri \
+  #     -v /usr/bin/mthreads-gmi:/usr/bin/mthreads-gmi:ro \
+  #     harbor.baai.ac.cn/flagos-runtime/flagos-runtime-mthreads-musa5.2.0:2.2.0 bash
+  # with GitHub Actions creating/starting the container and exec'ing each step.
+  test-mthreads:
+    if: ${{ inputs.backend == 'mthreads-musa520' }}
+    runs-on: >-
+      ${{ github.repository == 'flagos-ai/FlagGems-vllm'
+          && 'mthreads-s5000-1'
+          || 'mthreads-s5000-0' }}
+    container:
+      image: harbor.baai.ac.cn/flagos-runtime/flagos-runtime-mthreads-musa5.2.0:2.2.0
+      options: >-
+        --device /dev/mtgpu.0 --device /dev/mtgpu.1 --device /dev/mtgpu.2 --device /dev/mtgpu.3
+        --device /dev/mtgpu.4 --device /dev/mtgpu.5 --device /dev/mtgpu.6 --device /dev/mtgpu.7
+        --device /dev/dri --shm-size=256g --ulimit memlock=-1 --ulimit stack=67108864
+      volumes:
+        - /usr/bin/mthreads-gmi:/usr/bin/mthreads-gmi:ro
     concurrency:
       group: >-
         op-test-${{ inputs.backend }}-${{ github.event.pull_request.number || github.ref }}
