@@ -70,9 +70,17 @@ jobs:
       # far master has since moved. head.sha needs no extra fetch: checkout
       # above already pulled it via the PR merge ref, which GitHub does
       # allow fetching by bare SHA.
+      #
+      # --unshallow is required: actions/checkout defaults to fetch-depth: 1,
+      # so the repo starts as a shallow clone with a `.git/shallow` boundary
+      # at head.sha's commit. A plain `git fetch origin master` re-points
+      # origin/master at the new tip but does NOT cross that shallow
+      # boundary, so base.sha (and everything before it) stays absent and
+      # `git diff base...head` fails with "Invalid symmetric difference
+      # expression" even though the fetch itself reports success.
       - name: Fetch base branch history
         shell: bash
-        run: git fetch --no-tags origin master
+        run: git fetch --no-tags --unshallow origin master
 
       - name: Ensure full working tree
         shell: bash
@@ -145,11 +153,13 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       # See derive-changed-operators: fetch master's history only (not all
       # 260+ branches, and not a partial clone whose per-blob lazy fetches
-      # proved unreliable on this runner's proxy). head.sha needs no extra
-      # fetch; checkout above already pulled it via the PR merge ref.
+      # proved unreliable on this runner's proxy), and --unshallow to cross
+      # the fetch-depth: 1 boundary left by checkout so base.sha is actually
+      # present. head.sha needs no extra fetch; checkout above already
+      # pulled it via the PR merge ref.
       - name: Fetch base branch history
         shell: bash
-        run: git fetch --no-tags origin master
+        run: git fetch --no-tags --unshallow origin master
 
       - name: Ensure full working tree
         shell: bash
