@@ -2816,6 +2816,15 @@ project(ascend_argsort_runtime LANGUAGES ASC CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 add_executable(ascend_argsort_runtime op_host/sort.asc)
+# ASC may not discover the standard library selected by the host C++ compiler.
+# Forward only C++ library directories, not GCC's compiler-internal headers:
+# bisheng must retain its own intrinsic headers for device compilation.
+foreach(include_dir IN LISTS CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES)
+    if(include_dir MATCHES "/c\\+\\+(/|$)")
+        target_include_directories(ascend_argsort_runtime SYSTEM PRIVATE
+            "$<$<COMPILE_LANGUAGE:ASC>:${include_dir}>")
+    endif()
+endforeach()
 target_include_directories(ascend_argsort_runtime PRIVATE
     "$ENV{ASCEND_HOME_PATH}/aarch64-linux/include")
 target_link_directories(ascend_argsort_runtime PRIVATE
