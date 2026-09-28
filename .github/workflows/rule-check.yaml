@@ -50,16 +50,30 @@ jobs:
       has_changes: ${{ steps.derive.outputs.has_changes }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-        with:
-          fetch-depth: 0
-          filter: blob:none
-      # fetch-depth: 0 alone previously fetched full commit *and file* history
-      # for every branch and tag (260+ refs), taking 18+ minutes on this
-      # bandwidth-constrained runner even though the diff below only reads
-      # file paths, never blob contents. filter:blob:none keeps the full
-      # commit graph (so merge-base/three-dot diff still resolves correctly
-      # for any base/head pair) but skips downloading file contents, which is
-      # what actually dominated fetch time.
+      # fetch-depth: 0 (default checkout) fetches full history for *every*
+      # branch and tag (260+ refs), taking 18+ minutes on this
+      # bandwidth-constrained runner. filter:blob:none was tried as a fix but
+      # made things worse: `git checkout --force HEAD -- .` below then has to
+      # lazily fetch each missing blob as a separate HTTPS request, and this
+      # runner's flaky proxy drops enough of those requests
+      # (gnutls_handshake failures) that the job hangs for hours instead of
+      # completing in 18 minutes.
+      #
+      # Fetching base.sha directly (`git fetch origin <sha>`) is not an
+      # option either: GitHub's upload-pack only allows fetching a bare SHA
+      # when it is the current tip of some advertised ref (a branch, tag, or
+      # refs/pull/*/head|merge). base.sha is master's tip only at the moment
+      # the PR is opened; once master gains new commits it becomes a
+      # non-tip commit and a direct fetch is rejected ("not our ref"). Fetch
+      # master's full history instead (still just one branch, not all 260+)
+      # so base.sha's ancestry is guaranteed to be present regardless of how
+      # far master has since moved. head.sha needs no extra fetch: checkout
+      # above already pulled it via the PR merge ref, which GitHub does
+      # allow fetching by bare SHA.
+      - name: Fetch base branch history
+        shell: bash
+        run: git fetch --no-tags origin master
+
       - name: Ensure full working tree
         shell: bash
         run: |
@@ -129,12 +143,14 @@ jobs:
     if: needs.derive-changed-operators.outputs.has_changes == 'true'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-        with:
-          fetch-depth: 0
-          filter: blob:none
-      # See derive-changed-operators: keep the full commit graph for
-      # merge-base resolution but skip blob content, which is what made
-      # fetch-depth: 0 take 18+ minutes on this bandwidth-constrained runner.
+      # See derive-changed-operators: fetch master's history only (not all
+      # 260+ branches, and not a partial clone whose per-blob lazy fetches
+      # proved unreliable on this runner's proxy). head.sha needs no extra
+      # fetch; checkout above already pulled it via the PR merge ref.
+      - name: Fetch base branch history
+        shell: bash
+        run: git fetch --no-tags origin master
+
       - name: Ensure full working tree
         shell: bash
         run: |
