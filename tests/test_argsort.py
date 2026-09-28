@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import inspect
+
 import pytest
 import torch
 
@@ -26,6 +28,23 @@ if cfg.QUICK_MODE:
 else:
     ARGSORT_BATCH_SIZES = [4, 8]
     ARGSORT_HIDDEN_SIZES = [1, 256, 2048, 9333, 65536, 32768, 128 * 1024, 256 * 1024]
+
+
+def _argsort_reference(inp, dim, descending):
+    ref_inp = utils.to_reference(inp)
+    reference_device = ref_inp.device
+    if flag_gems.vendor_name == "ascend" and not inp.dtype.is_floating_point:
+        if inp.dtype in (torch.int8, torch.uint8, torch.int16):
+            # These integer ranges are exactly representable in FP32. Avoid
+            # native integer argsort's AiCPU fallback without introducing ties.
+            ref_inp = ref_inp.to(torch.float32)
+        else:
+            # Full-range int32/int64 and adjacent extrema cannot be represented
+            # exactly by NPU floating types. Keep an exact CPU integer oracle.
+            ref_inp = ref_inp.cpu()
+    return torch.argsort(ref_inp, dim=dim, stable=True, descending=descending).to(
+        reference_device
+    )
 
 
 @pytest.mark.argsort
@@ -50,8 +69,7 @@ def test_accuracy_argsort(batch_size, hiddensize, descending, dtype, dim):
     else:
         y = torch.randn((batch_size, hiddensize), dtype=dtype, device=flag_gems.device)
 
-    ref_y = utils.to_reference(y)
-    ref_index = torch.argsort(ref_y, dim=dim, stable=True, descending=descending)
+    ref_index = _argsort_reference(y, dim, descending)
 
     res_index = flag_gems.argsort(y, dim=dim, descending=descending)
 
@@ -76,9 +94,7 @@ def test_argsort_byte_boundaries(dtype, descending, dim, length, noncontiguous):
         inp = inp.to(flag_gems.device)
     if dim == 0:
         inp = inp.t()
-    ref = torch.argsort(
-        utils.to_reference(inp), dim=dim, descending=descending, stable=True
-    )
+    ref = _argsort_reference(inp, dim, descending)
     res = flag_gems.argsort(inp, dim=dim, descending=descending)
     assert res.dtype == torch.int64
     assert res.shape == inp.shape
@@ -130,12 +146,12 @@ def test_argsort_stable_extrema(dtype, length, descending, dim):
     ref_inp = utils.to_reference(inp)
     # Native MUSA stable sort separates -0.0 and +0.0. Use CPU semantics for
     # floating extrema, then restore the configured reference device.
-    ref = torch.argsort(
-        ref_inp.cpu() if dtype.is_floating_point else ref_inp,
-        dim=dim,
-        descending=descending,
-        stable=True,
-    ).to(ref_inp.device)
+    if dtype.is_floating_point:
+        ref = torch.argsort(
+            ref_inp.cpu(), dim=dim, descending=descending, stable=True
+        ).to(ref_inp.device)
+    else:
+        ref = _argsort_reference(inp, dim, descending)
     result = flag_gems.argsort(inp, dim=dim, descending=descending)
     assert result.dtype == torch.int64
     assert result.shape == inp.shape
@@ -219,3 +235,28 @@ def test_argsort_strided_3d(dtype, descending, length, dim):
     assert result.shape == inp.shape
     assert result.device == inp.device
     utils.gems_assert_equal(result, ref)
+
+
+@pytest.mark.argsort
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend launcher ABI")
+def test_argsort_ascend_launcher_abi():
+    from triton.backends.ascend import driver
+
+    namespace = inspect.unwrap(flag_gems.argsort).__globals__
+    check = namespace["_asc_sort_check_launcher"]
+    target = driver.NPUDriver().get_current_target().arch
+    for name, signature in namespace["_ASC_SORT_SIGNATURES"].items():
+        metadata = namespace["_asc_sort_metadata"](name, "abi-test", target, 196608)
+        wrapper = driver.make_launcher({}, dict(enumerate(signature)), metadata)
+        check(wrapper, signature)
+        marker = "struct __attribute__((packed)) {"
+        assert marker in wrapper
+        for comment in ("// debugger annotation\n", "/* debugger annotation */"):
+            check(wrapper.replace(marker, marker + comment), signature)
+        with pytest.raises(RuntimeError, match="launcher argument ABI"):
+            check(
+                wrapper.replace(
+                    marker, marker + "uint32_t extra __attribute__((aligned(4)));"
+                ),
+                signature,
+            )

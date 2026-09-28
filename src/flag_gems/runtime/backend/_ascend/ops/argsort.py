@@ -25,6 +25,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import warnings
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -2890,12 +2891,15 @@ def _asc_sort_check_launcher(source, signature):
         flags=re.S,
     )
     _asc_sort_require(len(bodies) == 1, "unrecognized launcher argument struct")
+    # Compiler-generated comments do not change the packed argument ABI.
+    # Strip them only inside the struct; all real fields must still match.
+    body = re.sub(r"/\*.*?\*/|//[^\n]*", "", bodies[0], flags=re.S)
     pattern = (
         r"(void\s*\*|int32_t|uint32_t)\s+(\w+)\s+__attribute__\(\(aligned\((\d+)\)\)\);"
     )
     fields = [
         (ty.replace(" ", ""), name, int(align))
-        for ty, name, align in re.findall(pattern, bodies[0])
+        for ty, name, align in re.findall(pattern, body)
     ]
     expected = [
         ("void*", name, 8) for name in ("ffts_addr", "syncBlockLock", "workspace_addr")
@@ -2910,9 +2914,7 @@ def _asc_sort_check_launcher(source, signature):
     ]
     expected += [("int32_t", name, 4) for name in ("gridX", "gridY", "gridZ")]
     _asc_sort_require(fields == expected, "unsupported launcher argument ABI")
-    _asc_sort_require(
-        not re.sub(pattern, "", bodies[0]).strip(), "extra launcher fields"
-    )
+    _asc_sort_require(not re.sub(pattern, "", body).strip(), "extra launcher fields")
     compact = re.sub(r"\s+", "", source)
     _asc_sort_require(
         "rtGetC2cCtrlAddr" in source
@@ -3064,7 +3066,8 @@ class _AscSortRuntime:
         target = self.driver.get_current_target().arch
         for model in (device_name, target):
             _asc_sort_require(
-                re.fullmatch(r"Ascend910(?:B[1-4]C?|_93[0-9]*)", model) is not None,
+                model.startswith("Ascend910B")
+                or re.fullmatch(r"Ascend910_93[0-9]*", model) is not None,
                 "requires an A2/A3 dav-2201 target: " + model,
             )
         arch = utils.get_ascend_arch_from_env()
@@ -3208,8 +3211,16 @@ def _asc_sort_get_runtime(device):
             except Exception as error:
                 # This function cannot submit kernels. Never fall back after a
                 # launch has been submitted: execution errors must propagate.
-                logger.warning(
-                    "Ascend argsort ASC route unavailable; using Triton: %s", error
+                detail = str(error)
+                if isinstance(error, subprocess.CalledProcessError):
+                    detail += "\n" + (error.stderr or error.stdout or "")[-4000:]
+                # Pytest captures logging on successful cases. Emit a warning
+                # once per cached initialization so CI exposes slow fallbacks.
+                warnings.warn(
+                    "Ascend argsort ASC initialization failed; using Triton "
+                    f"fallback: {type(error).__name__}: {detail}",
+                    RuntimeWarning,
+                    stacklevel=2,
                 )
                 runtime = None
             _ASC_SORT_RUNTIMES[key] = runtime
