@@ -14,21 +14,11 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
 from . import base, consts, utils
 from .generated_operator_utils import OperatorBenchmark
-
-# ``_sparse_mm`` starts with an underscore, and ``pytest.mark`` refuses to
-# generate a marker via attribute access for such names. Register it directly on
-# the MarkGenerator so ``@pytest.mark._sparse_mm`` and ``-m _sparse_mm`` work.
-setattr(
-    pytest.mark,
-    "_sparse_mm",
-    MarkDecorator(Mark("_sparse_mm", (), {}, _ispytest=True), _ispytest=True),
-)
 
 # (rows, inner, cols, nnz_per_row) workload descriptors: sparse (rows, inner)
 # COO @ dense (inner, cols), so the stored nnz is rows * nnz_per_row. The
@@ -135,7 +125,7 @@ class SparseMMBenchmark(OperatorBenchmark):
         return []
 
 
-@pytest.mark._sparse_mm
+@pytest.mark.sparse_mm
 def test__sparse_mm():
     bench = SparseMMBenchmark(
         op_name="_sparse_mm",

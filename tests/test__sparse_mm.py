@@ -26,21 +26,11 @@ backend and is covered as a vendor-scoped negative.
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
 from . import accuracy_utils as utils
 from . import test_utils as tu
-
-# ``_sparse_mm`` starts with an underscore and ``pytest.mark`` refuses attribute
-# access for such names, so register the marker on the MarkGenerator itself:
-# ``@pytest.mark._sparse_mm`` and ``-m _sparse_mm`` then both work.
-setattr(
-    pytest.mark,
-    "_sparse_mm",
-    MarkDecorator(Mark("_sparse_mm", (), {}, _ispytest=True), _ispytest=True),
-)
 
 # Value range used by every non-grid workload (layouts, storage states, special
 # values, backward, negatives).
@@ -144,7 +134,7 @@ def _make_sparse_operand(dtype, rows, inner, value_range, *, nnz_per_row=None):
     return _coo_from(indices, values, (rows, inner))
 
 
-@pytest.mark._sparse_mm
+@pytest.mark.sparse_mm
 @pytest.mark.parametrize("dtype", COO_DENSE_DTYPES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("shape", MM_SHAPES)
@@ -199,7 +189,7 @@ def _form_operands(form, shape, dtype, value_range):
     return coo.to_sparse_csr(), other.to_sparse_csr()
 
 
-@pytest.mark._sparse_mm
+@pytest.mark.sparse_mm
 @pytest.mark.parametrize("form,shape,dtype,value_range", _FORM_CASES)
 def test__sparse_mm_layout_form(form, shape, dtype, value_range):
     sparse, dense = _form_operands(form, shape, dtype, value_range)
@@ -221,7 +211,7 @@ _DENSE_PAIR_CASES = tu.selected_cases(
 )
 
 
-@pytest.mark._sparse_mm
+@pytest.mark.sparse_mm
 @pytest.mark.parametrize("shape,dtype", _DENSE_PAIR_CASES)
 def test__sparse_mm_dense_pair(shape, dtype):
     rows, inner, cols = shape
@@ -364,7 +354,7 @@ def _state_operands(state, dtype):
     return _coo_from(indices, values, (rows, inner)), dense
 
 
-@pytest.mark._sparse_mm
+@pytest.mark.sparse_mm
 @pytest.mark.parametrize("state,dtype", _STATE_CASES)
 def test__sparse_mm_sparse_state(state, dtype):
     sparse, dense = _state_operands(state, dtype)
@@ -407,7 +397,7 @@ def _special_operands(dtype, scenario, placement):
     return sparse, row.repeat(size).reshape(size, size)
 
 
-@pytest.mark._sparse_mm
+@pytest.mark.sparse_mm
 @pytest.mark.parametrize("dtype,scenario,placement", _SPECIAL_CASES)
 def test__sparse_mm_special_values(dtype, scenario, placement):
     sparse, dense = _special_operands(dtype, scenario, placement)
@@ -434,7 +424,7 @@ _BACKWARD_CASES = tu.selected_cases(
 )
 
 
-@pytest.mark._sparse_mm
+@pytest.mark.sparse_mm
 @pytest.mark.parametrize("shape,dtype,upstream", _BACKWARD_CASES)
 def test__sparse_mm_backward(shape, dtype, upstream):
     rows, inner, cols = shape
@@ -546,7 +536,7 @@ def _invalid_operands(kind):
     raise AssertionError(f"unhandled invalid operand: {kind}")
 
 
-@pytest.mark._sparse_mm
+@pytest.mark.sparse_mm
 @pytest.mark.parametrize("kind,expected", _INVALID_OPERAND_CASES)
 def test__sparse_mm_invalid_operand(kind, expected):
     sparse, dense = _invalid_operands(kind)
@@ -574,7 +564,7 @@ if flag_gems.runtime.device.vendor_name == "nvidia":
         _UNSUPPORTED_COO_DTYPES += [torch.float8_e4m3fn, torch.float8_e5m2]
 
 
-@pytest.mark._sparse_mm
+@pytest.mark.sparse_mm
 @pytest.mark.parametrize("dtype", _UNSUPPORTED_COO_DTYPES)
 def test__sparse_mm_unsupported_dtype(dtype):
     sparse = _make_sparse_operand(dtype, 4, 4, _UNIT_RANGE)
@@ -596,7 +586,7 @@ _REDUCE_CASES = (
 )
 
 
-@pytest.mark._sparse_mm
+@pytest.mark.sparse_mm
 @pytest.mark.parametrize("reduce", _REDUCE_CASES)
 def test__sparse_mm_reduce_unsupported(reduce):
     sparse = _make_sparse_operand(torch.float32, 4, 5, _UNIT_RANGE)
