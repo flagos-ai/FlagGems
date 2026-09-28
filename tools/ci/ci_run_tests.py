@@ -5,6 +5,7 @@ ci_run_tests.py - CI Environment Batch Test Runner for FlagGems Operators
 """
 
 import argparse
+import atexit
 import datetime
 import json
 import os
@@ -13,14 +14,12 @@ import signal
 import subprocess
 import sys
 import tempfile
-import atexit
 import time
+from multiprocessing import Process
 from pathlib import Path
 from typing import Dict, List, Optional, Set
 
 import yaml
-import distro
-from multiprocessing import Process
 
 try:
     import flag_gems
@@ -50,21 +49,22 @@ DEFAULT_SKIP_OPERATORS: Set[str] = {
 
 DEFAULT_SKIP_TEST_PATTERNS: Set[str] = {
     # Skip specific test functions that cause issues
-    #"test_scaled_dot_product_attention_legacy_backward",
-    #"test_scaled_dot_product_attention_square_qk_even_mn",
-    #"test_scaled_dot_product_attention_nonsquare_qk",
-    #"test_scaled_dot_product_attention_legacy",
-    #"test_scaled_dot_product_flash_attention",
+    # "test_scaled_dot_product_attention_legacy_backward",
+    # "test_scaled_dot_product_attention_square_qk_even_mn",
+    # "test_scaled_dot_product_attention_nonsquare_qk",
+    # "test_scaled_dot_product_attention_legacy",
+    # "test_scaled_dot_product_flash_attention",
 }
 
 DEFAULT_SKIP_TEST_FILES: Set[str] = {
-    #"test_scaled_dot_product_attention.py",
+    # "test_scaled_dot_product_attention.py",
 }
 
 # Runtime skip lists (will be updated from file)
 SKIP_OPERATORS: Set[str] = set(DEFAULT_SKIP_OPERATORS)
 SKIP_TEST_PATTERNS: Set[str] = set(DEFAULT_SKIP_TEST_PATTERNS)
 SKIP_TEST_FILES: Set[str] = set(DEFAULT_SKIP_TEST_FILES)
+
 
 def load_skip_file(file_path: Path) -> Dict[str, Set[str]]:
     """
@@ -103,9 +103,9 @@ def load_skip_file(file_path: Path) -> Dict[str, Set[str]]:
         Dictionary with keys: 'skip_operators', 'skip_test_patterns', 'skip_test_files'
     """
     result = {
-        'skip_operators': set(),
-        'skip_test_patterns': set(),
-        'skip_test_files': set(),
+        "skip_operators": set(),
+        "skip_test_patterns": set(),
+        "skip_test_files": set(),
     }
 
     if not file_path.exists():
@@ -120,12 +120,12 @@ def load_skip_file(file_path: Path) -> Dict[str, Set[str]]:
             data = yaml.safe_load(content)
             if isinstance(data, dict):
                 # YAML format
-                if 'skip_operators' in data:
-                    result['skip_operators'] = set(data['skip_operators'] or [])
-                if 'skip_test_patterns' in data:
-                    result['skip_test_patterns'] = set(data['skip_test_patterns'] or [])
-                if 'skip_test_files' in data:
-                    result['skip_test_files'] = set(data['skip_test_files'] or [])
+                if "skip_operators" in data:
+                    result["skip_operators"] = set(data["skip_operators"] or [])
+                if "skip_test_patterns" in data:
+                    result["skip_test_patterns"] = set(data["skip_test_patterns"] or [])
+                if "skip_test_files" in data:
+                    result["skip_test_files"] = set(data["skip_test_files"] or [])
                 return result
         except yaml.YAMLError:
             pass
@@ -134,26 +134,26 @@ def load_skip_file(file_path: Path) -> Dict[str, Set[str]]:
         current_section = None
         for line in content.splitlines():
             line = line.strip()
-            if not line or line.startswith('#'):
+            if not line or line.startswith("#"):
                 # Check for section headers in comments
-                if 'skip_operators' in line.lower():
-                    current_section = 'skip_operators'
-                elif 'skip_test_patterns' in line.lower():
-                    current_section = 'skip_test_patterns'
-                elif 'skip_test_files' in line.lower():
-                    current_section = 'skip_test_files'
+                if "skip_operators" in line.lower():
+                    current_section = "skip_operators"
+                elif "skip_test_patterns" in line.lower():
+                    current_section = "skip_test_patterns"
+                elif "skip_test_files" in line.lower():
+                    current_section = "skip_test_files"
                 continue
 
             if current_section:
                 result[current_section].add(line)
             else:
                 # Auto-detect based on content
-                if line.endswith('.py'):
-                    result['skip_test_files'].add(line)
-                elif line.startswith('test_'):
-                    result['skip_test_patterns'].add(line)
+                if line.endswith(".py"):
+                    result["skip_test_files"].add(line)
+                elif line.startswith("test_"):
+                    result["skip_test_patterns"].add(line)
                 else:
-                    result['skip_operators'].add(line)
+                    result["skip_operators"].add(line)
 
         return result
 
@@ -176,16 +176,18 @@ def apply_skip_file(file_path: Path):
 
     data = load_skip_file(file_path)
 
-    if data['skip_operators']:
-        SKIP_OPERATORS = data['skip_operators']
+    if data["skip_operators"]:
+        SKIP_OPERATORS = data["skip_operators"]
         print(f"[INFO] Loaded {len(SKIP_OPERATORS)} skip_operators from {file_path}")
 
-    if data['skip_test_patterns']:
-        SKIP_TEST_PATTERNS = data['skip_test_patterns']
-        print(f"[INFO] Loaded {len(SKIP_TEST_PATTERNS)} skip_test_patterns from {file_path}")
+    if data["skip_test_patterns"]:
+        SKIP_TEST_PATTERNS = data["skip_test_patterns"]
+        print(
+            f"[INFO] Loaded {len(SKIP_TEST_PATTERNS)} skip_test_patterns from {file_path}"
+        )
 
-    if data['skip_test_files']:
-        SKIP_TEST_FILES = data['skip_test_files']
+    if data["skip_test_files"]:
+        SKIP_TEST_FILES = data["skip_test_files"]
         print(f"[INFO] Loaded {len(SKIP_TEST_FILES)} skip_test_files from {file_path}")
 
 
@@ -259,7 +261,11 @@ def get_ops_to_test(args) -> List[str]:
     if args.op_list_file:
         try:
             with open(args.op_list_file, "r") as f:
-                lines = [line.strip() for line in f if line.strip() and not line.startswith("#")]
+                lines = [
+                    line.strip()
+                    for line in f
+                    if line.strip() and not line.startswith("#")
+                ]
             ops = [op.lstrip("_") for op in lines]
             filtered_ops = [op for op in ops if op not in SKIP_OPERATORS]
             if len(filtered_ops) < len(ops):
@@ -279,7 +285,9 @@ def build_mark_expression(ops: List[str]) -> str:
     return " or ".join(quoted_ops)
 
 
-def build_pytest_command(ops: List[str], args, output_name: str = "accuracy_all.json") -> str:
+def build_pytest_command(
+    ops: List[str], args, output_name: str = "accuracy_all.json"
+) -> str:
     """
     Build the pytest command line with skip filters
     """
@@ -300,10 +308,10 @@ def build_pytest_command(ops: List[str], args, output_name: str = "accuracy_all.
 
     # Skip test files using --ignore
     for test_file in SKIP_TEST_FILES:
-        cmd += f' --ignore={TESTS_DIR / test_file}'
+        cmd += f" --ignore={TESTS_DIR / test_file}"
 
     # Add other options
-    cmd += f' --record json --output {output_name}'
+    cmd += f" --record json --output {output_name}"
 
     if args.quick:
         cmd += " --quick"
@@ -323,7 +331,7 @@ def build_pytest_command(ops: List[str], args, output_name: str = "accuracy_all.
 
 
 def run_pytest_with_timeout(cmd: str, env: dict, timeout: int = 72000) -> tuple:
-    info(f"Running pytest...")
+    info("Running pytest...")
     info(f"Working directory: {TESTS_DIR}")
 
     start_time = time.time()
@@ -452,7 +460,7 @@ def generate_summary(grouped_results: Dict, ops: List[str], duration: float) -> 
             "skip_operators": sorted(SKIP_OPERATORS),
             "skip_test_patterns": sorted(SKIP_TEST_PATTERNS),
             "skip_test_files": sorted(SKIP_TEST_FILES),
-        }
+        },
     }
 
     for op in ops:
@@ -537,39 +545,44 @@ def print_summary(summary: Dict):
     info("=" * 70)
 
     # Show skip list summary
-    if summary.get('skip_lists'):
-        skip_info = summary['skip_lists']
-        if skip_info.get('skip_operators'):
+    if summary.get("skip_lists"):
+        skip_info = summary["skip_lists"]
+        if skip_info.get("skip_operators"):
             info(f"Skipped operators: {len(skip_info['skip_operators'])}")
-        if skip_info.get('skip_test_patterns'):
+        if skip_info.get("skip_test_patterns"):
             info(f"Skipped test patterns: {len(skip_info['skip_test_patterns'])}")
-        if skip_info.get('skip_test_files'):
+        if skip_info.get("skip_test_files"):
             info(f"Skipped test files: {len(skip_info['skip_test_files'])}")
 
-    failed_ops = [op for op, stats in summary['operators'].items() 
-                 if stats['status'] == 'Failed']
+    failed_ops = [
+        op for op, stats in summary["operators"].items() if stats["status"] == "Failed"
+    ]
     if failed_ops:
         warn(f"\nFailed operators ({len(failed_ops)}):")
         for op in failed_ops[:20]:
-            stats = summary['operators'][op]
+            stats = summary["operators"][op]
             warn(f"  - {op}: {stats['failed']} failed, {stats['errors']} errors")
-            if stats.get('failed_cases'):
-                warn(f"    Failed cases:")
-                for case in stats['failed_cases'][:5]:
+            if stats.get("failed_cases"):
+                warn("    Failed cases:")
+                for case in stats["failed_cases"][:5]:
                     warn(f"      - {case}")
-                if len(stats['failed_cases']) > 5:
+                if len(stats["failed_cases"]) > 5:
                     warn(f"      ... and {len(stats['failed_cases']) - 5} more")
         if len(failed_ops) > 20:
             warn(f"  ... and {len(failed_ops) - 20} more")
 
-    not_found_ops = [op for op, stats in summary['operators'].items() 
-                    if stats['status'] == 'NotFound']
+    not_found_ops = [
+        op
+        for op, stats in summary["operators"].items()
+        if stats["status"] == "NotFound"
+    ]
     if not_found_ops:
         warn(f"\nOperators with no tests ({len(not_found_ops)}):")
         for op in not_found_ops[:10]:
             warn(f"  - {op}")
         if len(not_found_ops) > 10:
             warn(f"  ... and {len(not_found_ops) - 10} more")
+
 
 def collect_all_marks(args, env: dict, output_dir: Path) -> Dict:
     """
@@ -591,7 +604,7 @@ def collect_all_marks(args, env: dict, output_dir: Path) -> Dict:
             pass
 
     # Build collect command with absolute path
-    collect_cmd = f'pytest --collect-marks={marks_file} --continue-on-collection-errors'
+    collect_cmd = f"pytest --collect-marks={marks_file} --continue-on-collection-errors"
 
     if args.quick:
         collect_cmd += " --quick"
@@ -601,9 +614,9 @@ def collect_all_marks(args, env: dict, output_dir: Path) -> Dict:
 
     # Skip test files - use absolute path
     for test_file in SKIP_TEST_FILES:
-        collect_cmd += f' --ignore={TESTS_DIR / test_file}'
+        collect_cmd += f" --ignore={TESTS_DIR / test_file}"
 
-    info(f"Collecting test marks...")
+    info("Collecting test marks...")
     info(f"Command: {collect_cmd}")
     info(f"Marks file: {marks_file}")
 
@@ -617,7 +630,7 @@ def collect_all_marks(args, env: dict, output_dir: Path) -> Dict:
             shell=True,
             capture_output=True,
             text=True,
-            timeout=120
+            timeout=120,
         )
 
         # Log the exit code for debugging
@@ -625,9 +638,13 @@ def collect_all_marks(args, env: dict, output_dir: Path) -> Dict:
 
         # Log the complete stderr for debugging (but truncate if too long)
         if collect_result.stderr:
-            stderr_lines = collect_result.stderr.split('\n')
+            stderr_lines = collect_result.stderr.split("\n")
             # Filter out expected warnings
-            expected_warnings = ["no tests ran", "TEST_RESULTS has 0 entries", "No test results collected"]
+            expected_warnings = [
+                "no tests ran",
+                "TEST_RESULTS has 0 entries",
+                "No test results collected",
+            ]
             error_lines = []
             for line in stderr_lines:
                 if line.strip() and not any(w in line for w in expected_warnings):
@@ -638,10 +655,12 @@ def collect_all_marks(args, env: dict, output_dir: Path) -> Dict:
 
         # Exit codes 0, 3, 5 are acceptable (3 = pytest internal error, 5 = no tests)
         if collect_result.returncode not in [0, 3, 5]:
-            warn(f"Mark collection returned unexpected exit code: {collect_result.returncode}")
+            warn(
+                f"Mark collection returned unexpected exit code: {collect_result.returncode}"
+            )
 
     except subprocess.TimeoutExpired:
-        warn(f"Mark collection timed out after 120 seconds")
+        warn("Mark collection timed out after 120 seconds")
         return {}
     except Exception as e:
         warn(f"Failed to collect marks: {e}")
@@ -649,7 +668,10 @@ def collect_all_marks(args, env: dict, output_dir: Path) -> Dict:
 
     # Load marks mapping - check if file exists even if exit code was non-zero
     test_marks_map = {}
-    info(f"Checking if marks file exists: {marks_file.exists()}, size: {marks_file.stat().st_size if marks_file.exists() else 0}")
+    info(
+        f"Checking if marks file exists: {marks_file.exists()}, "
+        f"size: {marks_file.stat().st_size if marks_file.exists() else 0}"
+    )
 
     if marks_file.exists() and marks_file.stat().st_size > 0:
         try:
@@ -685,13 +707,21 @@ def collect_all_marks(args, env: dict, output_dir: Path) -> Dict:
 
                             if key not in test_marks_map or not test_marks_map[key]:
                                 test_marks_map[key] = marks
-                            if alt_key and (alt_key not in test_marks_map or not test_marks_map[alt_key]):
+                            if alt_key and (
+                                alt_key not in test_marks_map
+                                or not test_marks_map[alt_key]
+                            ):
                                 test_marks_map[alt_key] = marks
 
-                            if test_func not in test_marks_map or not test_marks_map[test_func]:
+                            if (
+                                test_func not in test_marks_map
+                                or not test_marks_map[test_func]
+                            ):
                                 test_marks_map[test_func] = marks
 
-                        info(f"Loaded marks for {len(test_marks_map)} lookup entries from {marks_file}")
+                        info(
+                            f"Loaded marks for {len(test_marks_map)} lookup entries from {marks_file}"
+                        )
                         info(f"Marks file saved for analysis: {marks_file}")
         except yaml.YAMLError as e:
             error(f"Failed to parse YAML from {marks_file}: {e}")
@@ -719,9 +749,12 @@ def collect_all_marks(args, env: dict, output_dir: Path) -> Dict:
         # Additional debug: check if any marks file was created in the tests directory
         possible_files = list(TESTS_DIR.glob("*marks*.yaml"))
         if possible_files:
-            info(f"Found marks files in tests directory: {[f.name for f in possible_files]}")
+            info(
+                f"Found marks files in tests directory: {[f.name for f in possible_files]}"
+            )
             # Move the file to the output directory
             import shutil
+
             for f in possible_files:
                 try:
                     dest = output_dir / f.name
@@ -839,15 +872,22 @@ def parse_results_with_marks(result_file: Path, test_marks_map: Dict) -> Dict:
                 grouped_results[op_name][test_case] = data
 
     if matched_count == 0 and total_count > 0:
-        warn(f"WARNING: No tests matched using marks. Using function name extraction for all {total_count} tests.")
+        warn(
+            f"WARNING: No tests matched using marks. Using function name extraction for all {total_count} tests."
+        )
         # Print sample keys for debugging
         if test_marks_map:
-            warn(f"Marks map has {len(test_marks_map)} entries. Sample keys: {list(test_marks_map.keys())[:5]}")
+            warn(
+                f"Marks map has {len(test_marks_map)} entries. Sample keys: {list(test_marks_map.keys())[:5]}"
+            )
     elif unmatched_count > 0:
         warn(f"{unmatched_count} test cases had no marks, used function name fallback")
 
-    info(f"Matched {matched_count} test cases with marks, {unmatched_count} with fallback")
+    info(
+        f"Matched {matched_count} test cases with marks, {unmatched_count} with fallback"
+    )
     return grouped_results
+
 
 def load_marks_file(marks_file: Path) -> Dict:
     """Helper function to load marks from a file."""
@@ -877,7 +917,9 @@ def load_marks_file(marks_file: Path) -> Dict:
 
                     if key not in test_marks_map or not test_marks_map[key]:
                         test_marks_map[key] = marks
-                    if alt_key and (alt_key not in test_marks_map or not test_marks_map[alt_key]):
+                    if alt_key and (
+                        alt_key not in test_marks_map or not test_marks_map[alt_key]
+                    ):
                         test_marks_map[alt_key] = marks
 
                     if test_func not in test_marks_map or not test_marks_map[test_func]:
@@ -886,7 +928,15 @@ def load_marks_file(marks_file: Path) -> Dict:
     except Exception:
         return {}
 
-def run_test_batch(ops: List[str], args, env: dict, output_dir: Path, batch_num: int = None, output_name: str = "accuracy_all.json") -> tuple:
+
+def run_test_batch(
+    ops: List[str],
+    args,
+    env: dict,
+    output_dir: Path,
+    batch_num: int = None,
+    output_name: str = "accuracy_all.json",
+) -> tuple:
     # Step 1: Collect all test marks (once per batch)
     # Pass output_dir so marks file is saved there
     test_marks_map = collect_all_marks(args, env, output_dir)
@@ -895,7 +945,9 @@ def run_test_batch(ops: List[str], args, env: dict, output_dir: Path, batch_num:
     cmd = build_pytest_command(ops, args, output_name)
 
     start_time = time.time()
-    return_code, stdout, stderr, duration = run_pytest_with_timeout(cmd, env, args.timeout)
+    return_code, stdout, stderr, duration = run_pytest_with_timeout(
+        cmd, env, args.timeout
+    )
     total_duration = time.time() - start_time
 
     suffix = f"_batch{batch_num}" if batch_num else ""
@@ -942,6 +994,7 @@ def run_test_batch(ops: List[str], args, env: dict, output_dir: Path, batch_num:
 # Multi-GPU Support Functions
 # ============================================================================
 
+
 def build_gpu_env(base_env: dict, gpu_id: int) -> dict:
     """Create environment dict for a specific GPU."""
     env = base_env.copy()
@@ -966,7 +1019,13 @@ def build_gpu_env(base_env: dict, gpu_id: int) -> dict:
     return env
 
 
-def run_single_gpu_mode(ops: List[str], args, env: dict, output_dir: Path, output_prefix: str = "accuracy_all") -> tuple:
+def run_single_gpu_mode(
+    ops: List[str],
+    args,
+    env: dict,
+    output_dir: Path,
+    output_prefix: str = "accuracy_all",
+) -> tuple:
     """
     Run tests in single-GPU mode (sequential batches).
     Returns (all_results, total_duration, batch_success).
@@ -980,16 +1039,20 @@ def run_single_gpu_mode(ops: List[str], args, env: dict, output_dir: Path, outpu
         info(f"Testing {len(ops)} operators in batches of {max_ops_per_batch}")
 
         for i in range(0, len(ops), max_ops_per_batch):
-            batch_ops = ops[i:i+max_ops_per_batch]
+            batch_ops = ops[i : i + max_ops_per_batch]
             batch_num = i // max_ops_per_batch + 1
             total_batches = (len(ops) + max_ops_per_batch - 1) // max_ops_per_batch
 
             info(f"\n{'='*70}")
-            info(f"Batch {batch_num}/{total_batches}: Testing {len(batch_ops)} operators")
+            info(
+                f"Batch {batch_num}/{total_batches}: Testing {len(batch_ops)} operators"
+            )
             info(f"{'='*70}")
 
             output_name = f"{output_prefix}_batch{batch_num}.json"
-            success, summary, duration = run_test_batch(batch_ops, args, env, output_dir, batch_num, output_name)
+            success, summary, duration = run_test_batch(
+                batch_ops, args, env, output_dir, batch_num, output_name
+            )
 
             total_duration += duration
 
@@ -1000,7 +1063,9 @@ def run_single_gpu_mode(ops: List[str], args, env: dict, output_dir: Path, outpu
     else:
         info(f"Testing {len(ops)} operators in a single batch")
         output_name = f"{output_prefix}.json"
-        success, summary, duration = run_test_batch(ops, args, env, output_dir, output_name=output_name)
+        success, summary, duration = run_test_batch(
+            ops, args, env, output_dir, output_name=output_name
+        )
         total_duration = duration
 
         if success and summary and "operators" in summary:
@@ -1011,7 +1076,9 @@ def run_single_gpu_mode(ops: List[str], args, env: dict, output_dir: Path, outpu
     return all_results, total_duration, batch_success
 
 
-def run_gpu_worker(gpu_id: int, ops: List[str], args, base_output_dir: Path, base_env: dict) -> None:
+def run_gpu_worker(
+    gpu_id: int, ops: List[str], args, base_output_dir: Path, base_env: dict
+) -> None:
     """
     Worker function to run tests on a specific GPU.
     Executes in a separate process. Results saved to gpu_output_dir/summary.json.
@@ -1029,7 +1096,9 @@ def run_gpu_worker(gpu_id: int, ops: List[str], args, base_output_dir: Path, bas
 
     # Run tests using single GPU logic with isolated output prefix
     output_prefix = f"accuracy_all_gpu{gpu_id}"
-    all_results, total_duration, batch_success = run_single_gpu_mode(ops, args, env, gpu_output_dir, output_prefix)
+    all_results, total_duration, batch_success = run_single_gpu_mode(
+        ops, args, env, gpu_output_dir, output_prefix
+    )
 
     if all_results:
         # Build summary matching single GPU format exactly
@@ -1043,15 +1112,19 @@ def run_gpu_worker(gpu_id: int, ops: List[str], args, base_output_dir: Path, bas
                 "failed": sum(op.get("failed", 0) for op in all_results.values()),
                 "skipped": sum(op.get("skipped", 0) for op in all_results.values()),
                 "errors": sum(op.get("errors", 0) for op in all_results.values()),
-                "not_found": sum(1 for op in all_results.values() if op.get("status") == "NotFound"),
+                "not_found": sum(
+                    1 for op in all_results.values() if op.get("status") == "NotFound"
+                ),
             },
             "skip_lists": {
                 "skip_operators": sorted(SKIP_OPERATORS),
                 "skip_test_patterns": sorted(SKIP_TEST_PATTERNS),
                 "skip_test_files": sorted(SKIP_TEST_FILES),
-                "skip_file_source": str(args.skip_file) if args.skip_file else "default",
+                "skip_file_source": (
+                    str(args.skip_file) if args.skip_file else "default"
+                ),
             },
-            "operators": all_results
+            "operators": all_results,
         }
 
         summary_file = gpu_output_dir / "summary.json"
@@ -1063,7 +1136,9 @@ def run_gpu_worker(gpu_id: int, ops: List[str], args, base_output_dir: Path, bas
         error(f"GPU {gpu_id}: No results collected")
 
 
-def merge_gpu_summaries(output_dir: Path, gpu_ids: List[int], wall_duration: float) -> Optional[Dict]:
+def merge_gpu_summaries(
+    output_dir: Path, gpu_ids: List[int], wall_duration: float
+) -> Optional[Dict]:
     """Merge summaries from multiple GPU workers into a single summary."""
     merged_operators = {}
     merged_totals = {
@@ -1106,13 +1181,16 @@ def merge_gpu_summaries(output_dir: Path, gpu_ids: List[int], wall_duration: flo
         "timestamp": datetime.datetime.now().isoformat(),
         "duration_seconds": wall_duration,
         "totals": merged_totals,
-        "skip_lists": skip_lists if skip_lists else {
-            "skip_operators": sorted(SKIP_OPERATORS),
-            "skip_test_patterns": sorted(SKIP_TEST_PATTERNS),
-            "skip_test_files": sorted(SKIP_TEST_FILES),
-            "skip_file_source": str(args.skip_file) if args.skip_file else "default",
-        },
-        "operators": merged_operators
+        "skip_lists": (
+            skip_lists
+            if skip_lists
+            else {
+                "skip_operators": sorted(SKIP_OPERATORS),
+                "skip_test_patterns": sorted(SKIP_TEST_PATTERNS),
+                "skip_test_files": sorted(SKIP_TEST_FILES),
+            }
+        ),
+        "operators": merged_operators,
     }
 
 
@@ -1139,69 +1217,63 @@ Examples:
 
   # Show skip list
   python ci_run_tests.py --show-skips
-        """
+        """,
     )
 
     parser.add_argument(
-        "--ops",
-        help="Comma-separated list of operator IDs, e.g., 'add,softmax,mul'"
+        "--ops", help="Comma-separated list of operator IDs, e.g., 'add,softmax,mul'"
     )
     parser.add_argument(
-        "--op-list-file",
-        help="Read operator list from file, one ID per line"
+        "--op-list-file", help="Read operator list from file, one ID per line"
     )
     parser.add_argument(
         "--gpus",
         default="0",
-        help='GPU IDs, comma-separated, or "all" to use all GPUs. Default: "0"'
+        help='GPU IDs, comma-separated, or "all" to use all GPUs. Default: "0"',
     )
     parser.add_argument(
         "--output-dir",
         default=None,
-        help="Output directory. Default: logs_ci_YYYYMMDD_HHMM"
+        help="Output directory. Default: logs_ci_YYYYMMDD_HHMM",
     )
     parser.add_argument(
         "--quick",
         action="store_true",
-        help="Run tests in quick mode (fewer test cases)"
+        help="Run tests in quick mode (fewer test cases)",
     )
     parser.add_argument(
         "--first-parameter-only",
         action="store_true",
-        help="Run only the first parameter combination for each test function"
+        help="Run only the first parameter combination for each test function",
     )
     parser.add_argument(
         "--timeout",
         type=int,
         default=72000,
-        help="Test timeout in seconds. Default: 72000"
+        help="Test timeout in seconds. Default: 72000",
     )
-    parser.add_argument(
-        "--verbose",
-        action="store_true",
-        help="Show verbose output"
-    )
+    parser.add_argument("--verbose", action="store_true", help="Show verbose output")
     parser.add_argument(
         "--no-cleanup",
         action="store_true",
-        help="Do not clean up temporary files (for debugging)"
+        help="Do not clean up temporary files (for debugging)",
     )
     parser.add_argument(
         "--batch-size",
         type=int,
         default=1000,
-        help="Number of operators per batch. Default: 1000"
+        help="Number of operators per batch. Default: 1000",
     )
     parser.add_argument(
         "--show-skips",
         action="store_true",
-        help="Show the list of skipped operators and patterns"
+        help="Show the list of skipped operators and patterns",
     )
     parser.add_argument(
         "--skip-file",
         type=Path,
         default=None,
-        help="Path to skip list file (YAML or text format)"
+        help="Path to skip list file (YAML or text format)",
     )
 
     args = parser.parse_args()
@@ -1233,6 +1305,7 @@ Examples:
     if args.gpus.strip().lower() == "all":
         try:
             import torch
+
             gpu_count = torch.cuda.device_count()
             if gpu_count == 0:
                 error("No GPU devices detected")
@@ -1298,7 +1371,9 @@ Examples:
 
     base_env = os.environ.copy()
     old_pythonpath = base_env.get("PYTHONPATH", "")
-    base_env["PYTHONPATH"] = patch_dir + (os.pathsep + old_pythonpath if old_pythonpath else "")
+    base_env["PYTHONPATH"] = patch_dir + (
+        os.pathsep + old_pythonpath if old_pythonpath else ""
+    )
     # ------------------------------------------------------------------
 
     # Determine execution mode
@@ -1308,7 +1383,9 @@ Examples:
         # ==================== SINGLE GPU MODE ====================
         env = build_gpu_env(base_env, gpu_ids[0])
 
-        all_results, total_duration, batch_success = run_single_gpu_mode(ops, args, env, output_dir)
+        all_results, total_duration, batch_success = run_single_gpu_mode(
+            ops, args, env, output_dir
+        )
 
         if all_results:
             final_summary = {
@@ -1316,20 +1393,28 @@ Examples:
                 "duration_seconds": total_duration,
                 "totals": {
                     "total_ops": len(ops),
-                    "total_cases": sum(op.get("total", 0) for op in all_results.values()),
+                    "total_cases": sum(
+                        op.get("total", 0) for op in all_results.values()
+                    ),
                     "passed": sum(op.get("passed", 0) for op in all_results.values()),
                     "failed": sum(op.get("failed", 0) for op in all_results.values()),
                     "skipped": sum(op.get("skipped", 0) for op in all_results.values()),
                     "errors": sum(op.get("errors", 0) for op in all_results.values()),
-                    "not_found": sum(1 for op in all_results.values() if op.get("status") == "NotFound"),
+                    "not_found": sum(
+                        1
+                        for op in all_results.values()
+                        if op.get("status") == "NotFound"
+                    ),
                 },
                 "skip_lists": {
                     "skip_operators": sorted(SKIP_OPERATORS),
                     "skip_test_patterns": sorted(SKIP_TEST_PATTERNS),
                     "skip_test_files": sorted(SKIP_TEST_FILES),
-                    "skip_file_source": str(args.skip_file) if args.skip_file else "default",
+                    "skip_file_source": (
+                        str(args.skip_file) if args.skip_file else "default"
+                    ),
                 },
-                "operators": all_results
+                "operators": all_results,
             }
 
             summary_file = output_dir / "summary.json"
@@ -1361,7 +1446,10 @@ Examples:
                 info(f"GPU {gpu_id}: No operators assigned, skipping")
                 continue
 
-            p = Process(target=run_gpu_worker, args=(gpu_id, gpu_ops, args, output_dir, base_env))
+            p = Process(
+                target=run_gpu_worker,
+                args=(gpu_id, gpu_ops, args, output_dir, base_env),
+            )
             p.start()
             processes.append((gpu_id, p))
             info(f"Launched worker for GPU {gpu_id} with {len(gpu_ops)} operators")
