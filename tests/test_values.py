@@ -151,6 +151,134 @@ def test_values_sparse_compressed():
 
 
 @pytest.mark.values
+def test_values_unsupported_layouts_reject_like_native():
+    # Native ATen implements ``_values`` only on the Sparse{CPU,CUDA} keys:
+    # every non-COO layout reaches the dispatcher, which reports the
+    # *backend* key the tensor dispatched on ('SparseCsrCUDA' for all four
+    # sparse compressed layouts, 'CUDA' for strided -- both spelled with
+    # uppercase acronyms, not the Python layout spelling). The registered
+    # guard must reject with the same exception type and a message that
+    # includes the same operator+backend identification; a layout-spelled
+    # message ("torch.sparse_bsr layout") fails this comparison. (The
+    # dispatcher's full message appends a build-specific backend enumeration
+    # and fallback note that a host-side reproduction cannot byte-match, so
+    # the assertion is on the identifying portion.)
+    dense = torch.tensor([[1.0, 2.0], [3.0, 4.0]], device=flag_gems.device)
+
+    unsupported = [
+        dense,  # strided -> 'CUDA' backend
+        dense.to_sparse_csr(),  # -> 'SparseCsrCUDA' backend
+        dense.to_sparse_csc(),
+        dense.to_sparse_bsr((2, 2)),
+        dense.to_sparse_bsc((2, 2)),
+    ]
+    for tensor in unsupported:
+        with pytest.raises(NotImplementedError) as ours_exc:
+            flag_gems.values(tensor)
+        with pytest.raises(NotImplementedError) as native_exc:
+            torch.ops.aten._values(utils.to_reference(tensor))
+        ours, native = str(ours_exc.value), str(native_exc.value)
+        # The identifying prefix of the native message ends with the backend
+        # key token; ours must reach at least that token in the same order.
+        native_prefix = native.split("backend.")[0]
+        assert ours.startswith(native_prefix), (
+            f"layout={tensor.layout}: ours: {ours!r}\nnative: {native!r}"
+        )
+
+
+@pytest.mark.values
+@pytest.mark.parametrize("dtype", [torch.int64, torch.int32, torch.bool])
+def test_values_non_float_dtypes_alias(dtype):
+    # Non-float stored values must come back through the same zero-copy
+    # alias contract as float values: identical storage, preserved dtype,
+    # equal elements -- compared against native ATen.
+    if dtype is torch.bool:
+        values = torch.tensor([True, False, True], device=flag_gems.device)
+    else:
+        values = torch.arange(3, dtype=dtype, device=flag_gems.device)
+    inp = torch.sparse_coo_tensor(
+        torch.tensor([[0, 1, 1], [1, 0, 1]], dtype=torch.int64, device=flag_gems.device),
+        values,
+        (2, 3),
+    )
+
+    ref_out = torch.ops.aten._values(utils.to_reference(inp))
+    res_out = flag_gems.values(inp)
+
+    assert res_out.dtype == ref_out.dtype == dtype
+    assert res_out.shape == ref_out.shape == values.shape
+    assert res_out.data_ptr() == inp._values().data_ptr()
+    utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.values
+def test_values_int_hybrid_alias():
+    # Hybrid COO (trailing dense dims) with integer stored values: the alias
+    # view keeps the dense dims in the values shape and stays zero-copy.
+    values = torch.arange(4, dtype=torch.int32, device=flag_gems.device).reshape(2, 2)
+    inp = torch.sparse_coo_tensor(
+        torch.tensor([[0, 1]], dtype=torch.int64, device=flag_gems.device),
+        values,
+        (2, 2),
+    )
+
+    ref_out = torch.ops.aten._values(utils.to_reference(inp))
+    res_out = flag_gems.values(inp)
+
+    assert res_out.dtype == ref_out.dtype == torch.int32
+    assert res_out.shape == ref_out.shape == values.shape
+    assert res_out.data_ptr() == inp._values().data_ptr()
+    utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.values
+def test_values_requires_grad_nondifferentiable_contract():
+    # ``_values`` is the *internal* accessor: on this build native returns a
+    # plain alias view that is NOT part of autograd -- even when the stored
+    # values carry ``requires_grad=True``, the returned view has
+    # ``requires_grad=False``, no ``grad_fn`` and is a leaf (the public,
+    # differentiable accessor is ``sparse.values()``, a different operator).
+    # The registered path must reproduce exactly this non-differentiable view
+    # contract, compared live against native on the same tensor.
+    values = torch.randn(3, device=flag_gems.device, requires_grad=True)
+    assert values.requires_grad
+    inp = torch.sparse_coo_tensor(
+        torch.tensor([[0, 1, 1], [1, 0, 1]], dtype=torch.int64, device=flag_gems.device),
+        values,
+        (2, 3),
+    )
+
+    res_out = flag_gems.values(inp)
+    ref_out = torch.ops.aten._values(utils.to_reference(inp))
+
+    assert res_out.requires_grad == ref_out.requires_grad
+    assert res_out.grad_fn is None and ref_out.grad_fn is None
+    assert res_out.is_leaf and ref_out.is_leaf
+    assert res_out.data_ptr() == inp._values().data_ptr()
+    utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.values
+def test_values_sparse_requires_grad_view_contract():
+    # A sparse tensor that itself requires grad (e.g. built from a leaf
+    # differentiable dense tensor via ``to_sparse``) must yield the same
+    # non-differentiable internal view through both entry points: the
+    # requires_grad state of the source does not leak into ``_values``.
+    dense = torch.randn(2, 3, device=flag_gems.device, requires_grad=True)
+    inp = dense.to_sparse()
+    assert inp.requires_grad
+
+    res_out = flag_gems.values(inp)
+    ref_out = torch.ops.aten._values(utils.to_reference(inp))
+
+    assert res_out.requires_grad == ref_out.requires_grad
+    assert res_out.grad_fn is None and ref_out.grad_fn is None
+    assert res_out.is_leaf and ref_out.is_leaf
+    assert res_out.data_ptr() == inp._values().data_ptr()
+    utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.values
 def test_values_dispatch_stability():
     # Repeated calls and cross-op interference must stay stable: the impl
     # delegates below the autograd key, so repeated dispatch never recurses and

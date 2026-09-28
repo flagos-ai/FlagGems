@@ -20,6 +20,20 @@ import torch
 
 logger = logging.getLogger(__name__)
 
+# Native dispatcher spells backend keys with uppercase acronyms ('CUDA',
+# 'SparseCsrCUDA' on CUDA; 'CPU', 'SparseCsrCPU' on CPU) -- not the Python
+# layout spelling. Verified on H20: native rejects every non-COO layout with
+# NotImplementedError naming the backend key the tensor dispatched on
+# ('SparseCsrCUDA' for all four sparse compressed layouts, 'CUDA' for
+# strided), so the guard below reproduces exactly that.
+_NON_COO_BACKEND_NAME = {
+    torch.strided: {"cuda": "CUDA", "cpu": "CPU"},
+    torch.sparse_csr: {"cuda": "SparseCsrCUDA", "cpu": "SparseCsrCPU"},
+    torch.sparse_csc: {"cuda": "SparseCsrCUDA", "cpu": "SparseCsrCPU"},
+    torch.sparse_bsr: {"cuda": "SparseCsrCUDA", "cpu": "SparseCsrCPU"},
+    torch.sparse_bsc: {"cuda": "SparseCsrCUDA", "cpu": "SparseCsrCPU"},
+}
+
 
 def _values(self: torch.Tensor) -> torch.Tensor:
     """Return the values tensor of a sparse COO tensor as a zero-copy view.
@@ -31,13 +45,15 @@ def _values(self: torch.Tensor) -> torch.Tensor:
     (trailing dense dims) COO tensors are supported, coalesced or not, including
     tensors with zero stored entries.
 
-    Other layouts have no native kernel for this operator (ATen implements it
-    only for the SparseCOO backends), so they are rejected up front with the
+    Other layouts have no native kernel for this operator (ATen registers it
+    only on the Sparse{CPU,CUDA} keys), so they are rejected up front with the
     dispatcher's own error (``NotImplementedError``) instead of being
     re-dispatched: the override is also registered on the backend (CUDA) key,
     and delegating a strided tensor below the autograd key would re-enter this
-    override and recurse.
-
+    override and recurse. The rejection message names the backend key the
+    tensor dispatches on, spelled the way the native dispatcher spells it
+    (``'SparseCsrCUDA'`` for all four sparse compressed layouts, ``'CUDA'``
+    for strided), mirroring the native dispatcher's own error text.
     The COO path is routed through the native ATen kernel via
     ``torch._C._AutoDispatchBelowAutograd()``; calling the operator again
     without that context would recurse once registered on the autograd key.
@@ -45,9 +61,19 @@ def _values(self: torch.Tensor) -> torch.Tensor:
     logger.debug("GEMS _VALUES")
 
     if self.layout != torch.sparse_coo:
+        backend_names = _NON_COO_BACKEND_NAME.get(self.layout)
+        if backend_names is None:
+            # Unknown layout: fall back to the sparse backend key spelling
+            # (native would likewise report a sparse backend key).
+            backend_names = {"cuda": "SparseCUDA", "cpu": "SparseCPU"}
+        backend = backend_names.get(self.device.type, "Sparse")
         raise NotImplementedError(
-            f"Could not run 'aten::_values' with arguments from the '{self.layout}' "
-            "layout: the operator only has kernels for sparse COO tensors"
+            "Could not run 'aten::_values' with arguments from the "
+            f"'{backend}' backend. This could be because the operator "
+            "doesn't exist for this backend, or was omitted during the "
+            "selective/custom build process (if using custom build). If you "
+            "are a Facebook employee using PyTorch on mobile, please visit "
+            "https://fburl.com/ptmfixes for possible resolutions."
         )
 
     with torch._C._AutoDispatchBelowAutograd():
