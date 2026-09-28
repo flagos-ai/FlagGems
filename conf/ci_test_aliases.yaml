@@ -108,3 +108,10 @@ upsample_bicubic2d_backward_grad_input: test_upsample_bicubic2d_backward
 upsample_bilinear2d_backward_grad_input: test_upsample_bilinear2d_backward
 upsample_linear1d_backward: test_upsample_linear1d
 upsample_nearest2d_backward_grad_input: test_upsample_nearest2d_backward
+
+
+# Leading-underscore aten ops: the FlagGems id gets an ``underscore`` prefix
+# (naming Rule 2 - ids must not start with an underscore), while the test file
+# keeps the aten name (tests/test__linalg_det.py). This alias maps the id used
+# by conf/operators.yaml and the pytest marker back to that file.
+underscore_linalg_det: test__linalg_det
