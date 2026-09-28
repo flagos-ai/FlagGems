@@ -30,11 +30,6 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
-# The runner injects the host's proxy (HTTP_PROXY/HTTPS_PROXY) into every job
-# container; the host proxy reaches GitHub, so we leave it in place and add no
-# proxy overrides. (Do NOT set no_proxy=* — that disables the working proxy;
-# and --network host is rejected because the runner already attaches a
-# user-defined network to the container.)
 env:
   # checkout registers the workspace as a safe git directory only in a
   # throwaway HOME; the check scripts (derive_changed_operators, etc.) then run
@@ -47,9 +42,8 @@ env:
 
 jobs:
   derive-changed-operators:
-    runs-on: basic-runner-cpu
-    container:
-      image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
+    # cpu-runner is an already-running container; no container: image needed.
+    runs-on: cpu-runner
     outputs:
       changed_operators: ${{ steps.derive.outputs.changed_operators }}
       changed_files: ${{ steps.derive.outputs.changed_files }}
@@ -61,7 +55,7 @@ jobs:
       - name: Ensure full working tree
         shell: bash
         run: |
-          # basic-runner-cpu reuses its _work dir across jobs. A prior job's
+          # cpu-runner reuses its _work dir across jobs. A prior job's
           # sparse checkout (e.g. unittest preprocess fetching only
           # .github/backends.json) leaves skip-worktree bits behind; the next
           # checkout's "sparse-checkout disable" runs after it unsets
@@ -82,9 +76,8 @@ jobs:
             --head "${{ github.event.pull_request.head.sha }}"
 
   check-operators-yaml:
-    runs-on: basic-runner-cpu
-    container:
-      image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
+    # cpu-runner is an already-running container; no container: image needed.
+    runs-on: cpu-runner
     needs: derive-changed-operators
     if: needs.derive-changed-operators.outputs.has_changes == 'true'
     steps:
@@ -105,9 +98,8 @@ jobs:
             --operators '${{ needs.derive-changed-operators.outputs.changed_operators }}'
 
   check-init-exports:
-    runs-on: basic-runner-cpu
-    container:
-      image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
+    # cpu-runner is an already-running container; no container: image needed.
+    runs-on: cpu-runner
     needs: derive-changed-operators
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -120,12 +112,11 @@ jobs:
           git ls-files -z | xargs -0 -r git update-index --no-skip-worktree
           git checkout --force HEAD -- .
       - name: Check __init__.py exports and registry
-        run: python tools/ci_checks/check_init_exports.py
+        run: python3 tools/ci_checks/check_init_exports.py
 
   check-kernelgen-tests:
-    runs-on: basic-runner-cpu
-    container:
-      image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
+    # cpu-runner is an already-running container; no container: image needed.
+    runs-on: cpu-runner
     needs: derive-changed-operators
     if: needs.derive-changed-operators.outputs.has_changes == 'true'
     steps:
@@ -148,9 +139,8 @@ jobs:
             --head "${{ github.event.pull_request.head.sha }}"
 
   check-operator-markers:
-    runs-on: basic-runner-cpu
-    container:
-      image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
+    # cpu-runner is an already-running container; no container: image needed.
+    runs-on: cpu-runner
     needs: derive-changed-operators
     if: needs.derive-changed-operators.outputs.has_changes == 'true'
     steps:
@@ -171,9 +161,8 @@ jobs:
             --operators '${{ needs.derive-changed-operators.outputs.changed_operators }}'
 
   check-aten-operators:
-    runs-on: basic-runner-cpu
-    container:
-      image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
+    # cpu-runner is an already-running container; no container: image needed.
+    runs-on: cpu-runner
     needs: derive-changed-operators
     if: needs.derive-changed-operators.outputs.has_changes == 'true'
     steps:
@@ -197,9 +186,8 @@ jobs:
   # These emit ::warning annotations but always exit 0
 
   check-api-logs:
-    runs-on: basic-runner-cpu
-    container:
-      image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
+    # cpu-runner is an already-running container; no container: image needed.
+    runs-on: cpu-runner
     needs: derive-changed-operators
     if: needs.derive-changed-operators.outputs.has_changes == 'true'
     steps:
@@ -220,9 +208,8 @@ jobs:
             --operators '${{ needs.derive-changed-operators.outputs.changed_operators }}'
 
   check-benchmark-coverage:
-    runs-on: basic-runner-cpu
-    container:
-      image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
+    # cpu-runner is an already-running container; no container: image needed.
+    runs-on: cpu-runner
     needs: derive-changed-operators
     if: needs.derive-changed-operators.outputs.has_changes == 'true'
     steps:
@@ -247,9 +234,8 @@ jobs:
   # as the required status check in branch protection rules, otherwise
   # skipped checks block merges forever.
   rule-check-required:
-    runs-on: basic-runner-cpu
-    container:
-      image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin:0.0.2
+    # cpu-runner is an already-running container; no container: image needed.
+    runs-on: cpu-runner
     needs:
       - derive-changed-operators
       - check-operators-yaml

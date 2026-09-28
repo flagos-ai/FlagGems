@@ -59,8 +59,7 @@ def test_coalesced_(nnd, nnz, size, coalesced, dtype):
     ref_inp1 = utils.to_reference(ref_inp1)
 
     ref_out = ref_inp1._coalesced_(coalesced)
-    with flag_gems.use_gems():
-        out1 = inp1._coalesced_(coalesced)
+    out1 = flag_gems._coalesced_(inp1, coalesced)
 
     # The op is an in-place metadata mutation that returns ``self``.
     assert out1 is inp1
@@ -84,8 +83,9 @@ def test_coalesced__toggle(nnd, nnz, size, dtype):
     # quick-cpu mode) so ``gems_assert_close`` can compare across devices.
     ref_inp1 = utils.to_reference(ref_inp1)
 
-    with flag_gems.use_gems():
-        out1 = inp1._coalesced_(True)._coalesced_(False)._coalesced_(True)
+    flag_gems._coalesced_(inp1, True)
+    flag_gems._coalesced_(inp1, False)
+    out1 = flag_gems._coalesced_(inp1, True)
     ref_out = ref_inp1._coalesced_(True)._coalesced_(False)._coalesced_(True)
 
     assert out1 is inp1
@@ -108,6 +108,5 @@ def test_coalesced__invalid_layout(dtype):
         ref_err = e
     assert ref_err is not None, "native _coalesced_ should reject dense tensors"
 
-    with flag_gems.use_gems():
-        with pytest.raises(RuntimeError):
-            inp._coalesced_(True)
+    with pytest.raises(RuntimeError):
+        flag_gems._coalesced_(inp, True)

@@ -20,8 +20,7 @@ def test_hsplit_int(shape, dtype, sections):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.hsplit(ref_inp, sections)
-    with flag_gems.use_gems():
-        res_out = torch.hsplit(inp, sections)
+    res_out = flag_gems.hsplit(inp, sections)
 
     assert len(res_out) == len(
         ref_out
@@ -44,8 +43,7 @@ def test_hsplit_array(shape, dtype, indices):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.hsplit(ref_inp, indices)
-    with flag_gems.use_gems():
-        res_out = torch.hsplit(inp, indices)
+    res_out = flag_gems.hsplit(inp, indices)
 
     assert len(res_out) == len(
         ref_out

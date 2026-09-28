@@ -17,13 +17,26 @@ import math
 import struct
 from typing import Optional, Tuple
 
+import numpy as np
 import torch
 import triton
 import triton.language as tl
 
 from flag_gems.runtime import device, torch_device_fn
+from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
+
+_BLOCK = 1024
+# How many extra output positions are scanned around the analytically estimated
+# window.  The window has to absorb the (at most one-step) difference between
+# ATen's ``floor((dst + 0.5) * reciprocal_scale)`` and the analytic inverse
+# ``ceil(src * scale - 0.5)``: both are only exact in real arithmetic and the
+# fp32 rounding of the reciprocal can move a boundary by one position.
+# ``cand = ceil(scale) + 1`` is what an exhaustive sweep of every
+# (in_size, out_size) in [1, 64] x [1, 256] together with 4000 random larger
+# pairs actually needs; +1 more is kept as margin.
+_EXTRA_CANDIDATES = 2
 
 
 @triton.jit

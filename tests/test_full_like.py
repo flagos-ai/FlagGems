@@ -45,13 +45,11 @@ def test_full_like(shape, dtype, fill_value):
 
     # without dtype
     ref_out = torch.full_like(ref_inp, fill_value)
-    with flag_gems.use_gems():
-        res_out = torch.full_like(inp, fill_value)
+    res_out = flag_gems.full_like(inp, fill_value)
     utils.gems_assert_equal(res_out, ref_out, equal_nan=True)
 
     # with dtype
     ref_out = torch.full_like(ref_inp, fill_value, dtype=dtype)
-    with flag_gems.use_gems():
-        res_out = torch.full_like(inp, fill_value, dtype=dtype)
+    res_out = flag_gems.full_like(inp, fill_value, dtype=dtype)
 
     utils.gems_assert_equal(res_out, ref_out, equal_nan=True)

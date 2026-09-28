@@ -323,7 +323,7 @@ def test_flash_attn_varlen_opt_func(monkeypatch):
     monkeypatch.setenv("VLLM_CONFIGURE_LOGGING", "0")
 
     bench = FlashAttnVarlenOptInitBenchmark(
-        op_name="flash_attn_varlen_func",
+        op_name="flash_attn_varlen_opt_func",
         torch_op=flash_attn_varlen_func_ref,
         dtypes=[torch.float16, torch.bfloat16],
     )

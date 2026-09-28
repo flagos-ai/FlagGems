@@ -17,15 +17,9 @@ import torch
 
 import flag_gems
 
-from . import base, consts
-from .conftest import Config
+from . import base
 
 VENDOR = flag_gems.vendor_name
-
-# On ascend the general KERNEL-mode do_bench_npu is unreliable; use the
-# operator (end-to-end) timing mode (same as det/lu_factor/cholesky_solve).
-if VENDOR == "ascend":
-    Config.mode = consts.BenchMode.OPERATOR
 
 SOLVE_TRI_SHAPES = [
     (8, 16),
