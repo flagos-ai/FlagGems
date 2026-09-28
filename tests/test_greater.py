@@ -30,8 +30,7 @@ def test_greater(shape, dtype):
     ref_inp2 = utils.to_reference(inp2)
 
     ref_out = torch.greater(ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.greater(inp1, inp2)
+    res_out = flag_gems.greater(inp1, inp2)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -45,8 +44,7 @@ def test_greater_scalar(shape, dtype):
     inp2 = 0
 
     ref_out = torch.greater(ref_inp1, inp2)
-    with flag_gems.use_gems():
-        res_out = torch.greater(inp1, inp2)
+    res_out = flag_gems.greater_scalar(inp1, inp2)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -64,8 +62,7 @@ def test_greater_out(shape, dtype):
     ref_out = torch.empty_like(ref_inp1, dtype=torch.bool)
 
     torch.greater(ref_inp1, ref_inp2, out=ref_out)
-    with flag_gems.use_gems():
-        torch.greater(inp1, inp2, out=out)
+    flag_gems.greater_out(inp1, inp2, out=out)
 
     utils.gems_assert_equal(out, ref_out)
 
@@ -82,7 +79,6 @@ def test_greater_scalar_out(shape, dtype):
     ref_out = torch.empty_like(ref_inp1, dtype=torch.bool)
 
     torch.greater(ref_inp1, inp2, out=ref_out)
-    with flag_gems.use_gems():
-        torch.greater(inp1, inp2, out=out)
+    flag_gems.greater_scalar_out(inp1, inp2, out=out)
 
     utils.gems_assert_equal(out, ref_out)

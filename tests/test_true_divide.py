@@ -133,7 +133,7 @@ def test_true_divide_tensor_dispatch(shape, dtype, caplog):
         with flag_gems.use_gems():
             res_out = torch.ops.aten.true_divide.Tensor(inp1, inp2)
 
-    assert "GEMS TRUE_DIVIDE" in caplog.text
+    assert f"{utils.gems_log_prefix(flag_gems.true_divide)} TRUE_DIVIDE" in caplog.text
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
@@ -151,6 +151,8 @@ def test_true_divide_tensor_inplace_dispatch(shape, dtype, caplog):
         with flag_gems.use_gems():
             res_out = torch.ops.aten.true_divide_.Tensor(inp1, inp2)
 
-    assert "GEMS TRUE_DIVIDE_" in caplog.text
+    assert (
+        f"{utils.gems_log_prefix(flag_gems.true_divide_)} TRUE_DIVIDE_" in caplog.text
+    )
     assert res_out is inp1
     utils.gems_assert_close(inp1, ref_inp1, dtype, equal_nan=True)

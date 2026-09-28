@@ -52,7 +52,6 @@ def test_count_nonzero(shape, dtype):
     dim = random.choice([None] + list(range(inp.ndim)))
     ref_out = torch.count_nonzero(ref_inp, dim)
 
-    with flag_gems.use_gems():
-        res_out = torch.count_nonzero(inp, dim)
+    res_out = flag_gems.count_nonzero(inp, dim)
 
     utils.gems_assert_equal(res_out, ref_out)
