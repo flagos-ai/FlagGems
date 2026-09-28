@@ -340,3 +340,18 @@ def init_seed(seed):
     torch.manual_seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
+
+
+def gems_log_prefix(fn):
+    """Derive the expected log prefix from the resolved function module.
+
+    The generic implementation logs with the ``"GEMS"`` prefix, while
+    vendor-specific overrides registered under
+    ``flag_gems.runtime.backend._<vendor>.ops`` log with
+    ``"GEMS_<VENDOR>"``.  This helper inspects the resolved function so
+    that test assertions work on every backend.
+    """
+    module = fn.__module__
+    if module.startswith("flag_gems.runtime.backend."):
+        return f"GEMS_{flag_gems.vendor_name.upper()}"
+    return "GEMS"

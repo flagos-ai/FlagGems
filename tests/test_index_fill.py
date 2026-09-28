@@ -95,8 +95,7 @@ def test_index_fill_scalar(shape, dim, dtype, index_case):
     ref_index = to_reference(index, False)
     ref_out = ref_inp.index_fill(dim, ref_index, value)
 
-    with flag_gems.use_gems(include=INDEX_FILL_OPS):
-        res_out = inp.index_fill(dim, index, value)
+    res_out = flag_gems.index_fill(inp, dim, index, value)
 
     gems_assert_equal(res_out, ref_out)
     assert res_out is not inp
@@ -117,8 +116,7 @@ def test_index_fill_scalar_(shape, dim, dtype, index_case):
     ref_index = to_reference(index, False)
     ref_inp.index_fill_(dim, ref_index, value)
 
-    with flag_gems.use_gems(include=INDEX_FILL_OPS):
-        res_out = inp.index_fill_(dim, index, value)
+    res_out = flag_gems.index_fill_(inp, dim, index, value)
 
     assert res_out is inp
     gems_assert_equal(inp, ref_inp)
@@ -141,8 +139,7 @@ def test_index_fill_tensor_value(dtype, value_device):
     ref_value = _to_ref_value(value)
     ref_out = ref_inp.index_fill(1, ref_index, ref_value)
 
-    with flag_gems.use_gems(include=INDEX_FILL_OPS):
-        res_out = inp.index_fill(1, index, value)
+    res_out = flag_gems.index_fill(inp, 1, index, value)
 
     gems_assert_equal(res_out, ref_out)
 
@@ -155,8 +152,7 @@ def test_index_fill_duplicate_index():
     ref_index = to_reference(index, False)
     ref_inp.index_fill_(1, ref_index, -7.0)
 
-    with flag_gems.use_gems(include=INDEX_FILL_OPS):
-        inp.index_fill_(1, index, -7.0)
+    flag_gems.index_fill_(inp, 1, index, -7.0)
 
     gems_assert_equal(inp, ref_inp)
 
@@ -173,8 +169,7 @@ def test_index_fill_noncontiguous():
     ref_index = to_reference(index, False)
     ref_out = ref_view.index_fill(1, ref_index, -8.0)
 
-    with flag_gems.use_gems(include=INDEX_FILL_OPS):
-        res_out = view.index_fill(1, index, -8.0)
+    res_out = flag_gems.index_fill(view, 1, index, -8.0)
 
     gems_assert_equal(res_out, ref_out)
     assert res_out is not view

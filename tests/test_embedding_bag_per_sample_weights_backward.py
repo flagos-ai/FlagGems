@@ -54,9 +54,8 @@ def test_embedding_bag_per_sample_weights_backward(
     ref_out = torch.ops.aten._embedding_bag_per_sample_weights_backward.default(
         ref_grad, ref_weight, ref_indices, ref_offsets, ref_offset2bag, 0, -1
     )
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._embedding_bag_per_sample_weights_backward.default(
-            grad, weight, indices, offsets, offset2bag, 0, -1
-        )
+    res_out = flag_gems._embedding_bag_per_sample_weights_backward(
+        grad, weight, indices, offsets, offset2bag, 0, -1
+    )
 
     utils.gems_assert_close(res_out, ref_out, dtype)
