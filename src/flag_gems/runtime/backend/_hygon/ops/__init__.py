@@ -12,19 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from ._amp_foreach_non_finite_check_and_unscale_ import (
+    _amp_foreach_non_finite_check_and_unscale_,
+)
+from ._conj import _conj
 from ._flash_attention_forward import _flash_attention_forward
 
 # Hygon internal implementation for attention
 from ._scaled_dot_product_flash_attention import _scaled_dot_product_flash_attention
+from ._thnn_fused_lstm_cell import _thnn_fused_lstm_cell
 from .adaptive_avg_pool2d_backward import adaptive_avg_pool2d_backward
 from .adaptive_max_pool2d_backward import adaptive_max_pool2d_backward
 from .adaptive_max_pool3d_backward import adaptive_max_pool3d_backward
 from .addmm_ import addmm_
 from .addmv_ import addmv_
 from .addr import addr
-from .amp_foreach_non_finite_check_and_unscale_ import (
-    amp_foreach_non_finite_check_and_unscale_,
-)
 from .any import any, any_dim, any_dims
 from .argsort import argsort
 from .as_strided_scatter import as_strided_scatter
@@ -40,6 +42,7 @@ from .avg_pool3d_backward import avg_pool3d_backward
 from .baddbmm_ import baddbmm_
 from .beam_search_score import beam_search_score
 from .binary_cross_entropy_backward import binary_cross_entropy_backward
+from .block_diag import block_diag
 from .broadcast_tensors import broadcast_tensors
 from .broadcast_to import broadcast_to
 from .cholesky_inverse import cholesky_inverse
@@ -73,6 +76,16 @@ from .fill import (
     fill_tensor,
     fill_tensor_,
     fill_tensor_out,
+)
+from .float_power_ import (
+    float_power_scalar_tensor,
+    float_power_scalar_tensor_out,
+    float_power_tensor_scalar,
+    float_power_tensor_scalar_,
+    float_power_tensor_scalar_out,
+    float_power_tensor_tensor,
+    float_power_tensor_tensor_,
+    float_power_tensor_tensor_out,
 )
 from .fused_moving_avg_obs_fq_helper import fused_moving_avg_obs_fq_helper
 from .gcd_ import gcd_
@@ -153,6 +166,7 @@ from .searchsorted import (
 from .silu import silu, silu_, silu_backward
 from .softplus_backward import softplus_backward
 from .sort import sort, sort_stable
+from .special_bessel_j0 import special_bessel_j0
 from .special_chebyshev_polynomial_u import special_chebyshev_polynomial_u
 from .special_chebyshev_polynomial_v import special_chebyshev_polynomial_v
 from .special_chebyshev_polynomial_w import (
@@ -171,14 +185,15 @@ from .special_shifted_chebyshev_polynomial_v import (
     special_shifted_chebyshev_polynomial_v,
 )
 from .split_with_sizes_copy import split_with_sizes_copy
-from .thnn_fused_lstm_cell import thnn_fused_lstm_cell
 from .tile import tile
 from .topk_w8a16_fp8 import topk_w8a16_fp8
 from .unique import _unique2
 from .unique_dim import unique_dim
 from .unsqueeze import unsqueeze, unsqueeze_
+from .upsample_linear1d import upsample_linear1d
 from .upsample_nearest2d import upsample_nearest2d
 from .upsample_nearest_exact2d_backward import upsample_nearest_exact2d_backward
+from .vdot import vdot
 from .weight_norm import (
     weight_norm,
     weight_norm_except_dim,
@@ -188,8 +203,11 @@ from .weight_norm import (
 )
 
 __all__ = [
+    "_amp_foreach_non_finite_check_and_unscale_",
+    "_conj",
     "_flash_attention_forward",
     "_scaled_dot_product_flash_attention",
+    "_thnn_fused_lstm_cell",
     "_unique2",
     "adaptive_avg_pool2d_backward",
     "adaptive_max_pool2d_backward",
@@ -197,7 +215,6 @@ __all__ = [
     "addmm_",
     "addmv_",
     "addr",
-    "amp_foreach_non_finite_check_and_unscale_",
     "any",
     "any_dim",
     "any_dims",
@@ -207,6 +224,7 @@ __all__ = [
     "baddbmm_",
     "beam_search_score",
     "binary_cross_entropy_backward",
+    "block_diag",
     "broadcast_tensors",
     "broadcast_to",
     "cholesky_inverse",
@@ -230,6 +248,14 @@ __all__ = [
     "fill_tensor_out",
     "flash_attention_forward",
     "flash_attn_varlen_func",
+    "float_power_scalar_tensor",
+    "float_power_scalar_tensor_out",
+    "float_power_tensor_scalar",
+    "float_power_tensor_scalar_",
+    "float_power_tensor_scalar_out",
+    "float_power_tensor_tensor",
+    "float_power_tensor_tensor_",
+    "float_power_tensor_tensor_out",
     "floor_divide",
     "floor_divide_",
     "fused_moving_avg_obs_fq_helper",
@@ -332,6 +358,7 @@ __all__ = [
     "softplus_backward",
     "sort",
     "sort_stable",
+    "special_bessel_j0",
     "special_chebyshev_polynomial_u",
     "special_chebyshev_polynomial_v",
     "special_chebyshev_polynomial_w",
@@ -345,7 +372,6 @@ __all__ = [
     "special_shifted_chebyshev_polynomial_v",
     "split_with_sizes_copy",
     "SUPPORTED_FP8_DTYPE",
-    "thnn_fused_lstm_cell",
     "tile",
     "topk_w8a16_fp8",
     "true_divide",
@@ -356,8 +382,10 @@ __all__ = [
     "unique_dim",
     "unsqueeze",
     "unsqueeze_",
+    "upsample_linear1d",
     "upsample_nearest2d",
     "upsample_nearest_exact2d_backward",
+    "vdot",
     "weight_norm",
     "weight_norm_except_dim",
     "weight_norm_except_dim_backward",
