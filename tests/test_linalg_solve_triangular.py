@@ -5,6 +5,7 @@ torch.backends.cuda.matmul.allow_tf32 = False
 
 import flag_gems  # noqa: E402
 from flag_gems.utils import get_device_properties  # noqa: E402
+from flag_gems.utils.triton_version_utils import HAS_TLE  # noqa: E402
 
 from . import accuracy_utils as utils  # noqa: E402
 
@@ -17,6 +18,16 @@ DTYPES = [
 if flag_gems.runtime.device.support_fp64 and not IS_ASCEND:
     # On ascend fp64 is not reliably supported (torch_npu casts double to float).
     DTYPES.append(torch.float64)
+
+
+# Stored on the diagonal when a case asks for unitriangular=True.  The flag means
+# the diagonal is *not referenced*, so a correct op ignores this value entirely
+# and an op that drops the flag does not.  It has to be non-unit: the
+# construction below already leaves exactly 1.0 on the diagonal, so a unit value
+# here would make the flag unobservable -- honouring it and ignoring it give
+# identical results, and the test could not fail.  Verified on 910B that both
+# torch's CPU fp64 and its NPU fp32 path ignore the stored diagonal bit-for-bit.
+_UNITRI_DIAG_DECOY = 7.0
 
 
 def _make_triangular(shape, dtype, device, upper, unitriangular):
@@ -41,59 +52,25 @@ def _make_triangular(shape, dtype, device, upper, unitriangular):
     A.add_(eye)
 
     if unitriangular:
-        A.diagonal(0, -2, -1).fill_(1.0)
+        A.diagonal(0, -2, -1).fill_(_UNITRI_DIAG_DECOY)
 
     return A
 
 
-def _solve_tri_small_ops(A, B, upper=False, left=True, unitriangular=False):
-    """Block forward/backward substitution built from small torch ops
-    (matmul + inverse), running on AI Core.
-
-    On ascend, torch_npu's solve_triangular runs on AI_CPU and is not a
-    meaningful AI Core reference; this small-op combination is used as both the
-    functional reference and the benchmark baseline.  test_baseline_matches_torch
-    below proves it agrees with torch.linalg.solve_triangular.
-    """
-    n = A.shape[-1]
-    bs = 64
-    X = B.clone()
-    if not left:
-        # X A = B  <=>  A^T X^T = B^T  (reduce to left-multiply, transpose back)
-        return _solve_tri_small_ops(
-            A.mT.contiguous(),
-            B.mT.contiguous(),
-            not upper,
-            True,
-            unitriangular,
-        ).mT.contiguous()
-    if upper:
-        for i in range(n - 1, -1, -bs):
-            i0 = max(0, i - bs + 1)
-            i1 = i + 1
-            Aii = A[..., i0:i1, i0:i1]
-            rhs = B[..., i0:i1, :]
-            if i1 < n:
-                rhs = rhs - torch.matmul(A[..., i0:i1, i1:], X[..., i1:, :])
-            X[..., i0:i1, :] = torch.matmul(torch.linalg.inv(Aii), rhs)
-    else:
-        for i in range(0, n, bs):
-            i1 = min(i + bs, n)
-            Aii = A[..., i:i1, i:i1]
-            rhs = B[..., i:i1, :]
-            if i > 0:
-                rhs = rhs - torch.matmul(A[..., i:i1, :i], X[..., :i, :])
-            X[..., i:i1, :] = torch.matmul(torch.linalg.inv(Aii), rhs)
-    return X
-
-
 def _ref_solve_tri(A, B, **kwargs):
-    """Correctness reference.  On ascend use the small-op combination (AI Core)
-    because torch_npu's solve_triangular runs on AI_CPU; on thead/PPU solve in
-    fp64 on CPU because the device fp32 trsm there carries ~2-3e-3 error vs the
-    fp64 truth at n=1024 (measured 2026-09-16, see repro_solve_tri_ppu.py),
-    which dwarfs the kernel's own ~3-6e-4 error and spuriously fails the test.
-    Elsewhere use the torch reference."""
+    """Correctness reference.
+
+    On ascend this is torch.linalg.solve_triangular, which lowers to
+    aclnnTriangularSolve on AI_CPU -- device side, with no host CPU fallback.
+    Verified on 910B: `aten::linalg_solve_triangular` carries a real PrivateUse1
+    kernel registration (RegisterNPU.cpp), whereas `aten::linalg_inv_ex.inverse`
+    only carries a VariableFallbackKernel stub, which is why the previous
+    matmul + torch.linalg.inv formulation silently ran on the host CPU.
+
+    On thead/PPU solve in fp64 on CPU because the device fp32 trsm there
+    carries ~2-3e-3 error vs the fp64 truth at n=1024 (measured 2026-09-16, see
+    repro_solve_tri_ppu.py), which dwarfs the kernel's own ~3-6e-4 error and
+    spuriously fails the test.  Elsewhere use the torch reference."""
     if IS_THEAD:
         # Solve in fp64 on CPU (LAPACK, accurate), then place the reference
         # where the comparison machinery expects it: on the device in normal
@@ -103,11 +80,9 @@ def _ref_solve_tri(A, B, **kwargs):
             A.double().cpu(), B.double().cpu(), **kwargs
         )
         return ref if utils.TO_CPU else ref.to(A.device)
-    ref_A = utils.to_reference(A)
-    ref_B = utils.to_reference(B)
-    if IS_ASCEND:
-        return _solve_tri_small_ops(ref_A, ref_B, **kwargs)
-    return torch.linalg.solve_triangular(ref_A, ref_B, **kwargs)
+    return torch.linalg.solve_triangular(
+        utils.to_reference(A), utils.to_reference(B), **kwargs
+    )
 
 
 def _grid_programs(batch_shape, k):
@@ -212,6 +187,8 @@ def test_right(n, k, upper, dtype):
 @pytest.mark.parametrize("upper", [False, True])
 @pytest.mark.parametrize("dtype", DTYPES)
 def test_unitriangular(n, k, upper, dtype):
+    """A carries a deliberately wrong diagonal (see _UNITRI_DIAG_DECOY), so this
+    only passes if the op really ignores the diagonal when the flag is set."""
     A = _make_triangular(
         (n, n), dtype, flag_gems.device, upper=upper, unitriangular=True
     )
@@ -322,26 +299,6 @@ def test_grid_above_core_count(batch_shape, n, k, upper):
 @pytest.mark.parametrize("k", [1, 8])
 @pytest.mark.parametrize("upper", [False, True])
 @pytest.mark.parametrize("dtype", DTYPES)
-def test_out_kwarg(n, k, upper, dtype):
-    A = _make_triangular(
-        (n, n), dtype, flag_gems.device, upper=upper, unitriangular=False
-    )
-    B = torch.randn(n, k, dtype=dtype, device=flag_gems.device)
-    out = torch.empty_like(B)
-
-    ref_out = _ref_solve_tri(A, B, upper=upper)
-
-    res_out = flag_gems.linalg_solve_triangular_out(A, B, upper=upper, out=out)
-
-    assert res_out is out
-    utils.gems_assert_close(res_out, ref_out, dtype)
-
-
-@pytest.mark.linalg_solve_triangular_out
-@pytest.mark.parametrize("n", [16, 64, 128])
-@pytest.mark.parametrize("k", [1, 8])
-@pytest.mark.parametrize("upper", [False, True])
-@pytest.mark.parametrize("dtype", DTYPES)
 def test_linalg_solve_triangular_out(n, k, upper, dtype):
     A = _make_triangular(
         (n, n), dtype, flag_gems.device, upper=upper, unitriangular=False
@@ -431,11 +388,14 @@ def test_large_n_f64(n, k, upper, dtype):
 @pytest.mark.parametrize("n", [8, 32, 128, 512, 600])
 @pytest.mark.parametrize("upper", [False, True])
 @pytest.mark.parametrize("dtype", DTYPES)
+@pytest.mark.skipif(
+    not HAS_TLE,
+    reason="platform already runs the non-TLE kernels, so forcing HAS_TLE=False "
+    "would just re-run the path every other test in this file covers",
+)
 def test_no_tle_fallback(n, upper, dtype, monkeypatch):
     """Non-TLE fallback smoke tests: force HAS_TLE=False to exercise pure-Triton fallback kernels."""
     import importlib
-
-    import flag_gems.ops  # noqa: F401
 
     solve_mod = importlib.import_module("flag_gems.ops.linalg_solve_triangular")
 
@@ -451,34 +411,3 @@ def test_no_tle_fallback(n, upper, dtype, monkeypatch):
     res_out = flag_gems.linalg_solve_triangular(A, B, upper=upper)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
-
-
-@pytest.mark.linalg_solve_triangular
-@pytest.mark.skipif(
-    flag_gems.vendor_name != "ascend",
-    reason="Verify the correctness of the PyTorch combination implementation path, "
-    "and perform verification only on the Ascend platform.",
-)
-@pytest.mark.parametrize("n", [16, 64, 128, 256, 512])
-@pytest.mark.parametrize("k", [1, 8, 64, 256])
-@pytest.mark.parametrize("upper", [False, True])
-def test_baseline_matches_torch(n, k, upper):
-    """Validate the small-op baseline used for benchmarking.
-
-    The small-op combination (block forward/backward substitution via matmul and
-    inverse, running on AI Core) must agree with torch.linalg.solve_triangular,
-    so it can serve as the benchmark baseline on platforms where the torch
-    reference runs on a different execution unit (e.g. ascend AI_CPU).
-    """
-    dtype = torch.float32
-    A = _make_triangular(
-        (n, n), dtype, flag_gems.device, upper=upper, unitriangular=False
-    )
-    B = torch.randn(n, k, dtype=dtype, device=flag_gems.device)
-
-    res_small = _solve_tri_small_ops(A, B, upper=upper)
-    ref_A = utils.to_reference(A)
-    ref_B = utils.to_reference(B)
-    res_torch = torch.linalg.solve_triangular(ref_A, ref_B, upper=upper)
-
-    utils.gems_assert_close(res_small, res_torch, dtype)

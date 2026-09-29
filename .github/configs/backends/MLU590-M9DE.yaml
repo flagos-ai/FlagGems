@@ -13,7 +13,7 @@
 # limitations under the License.
 
 # FlagGems backends Configuration
-# This file defines environment settings for weekly testing
+# This file defines environment settings for operator testing
 name: MLU590-M9DE
 vendor: Cambricon
 
@@ -47,12 +47,12 @@ container_options: >-
 # GPUs to test for this backends
 test_gpus: "0,1,2,3,4,5,6,7"
 
-# Extra environment variables injected only into the "Run weekly tests" step
+# Extra environment variables injected only into the "Run ops tests" step
 test_env:
   PIP_CACHE_DIR: /root/.cache/pip
 
 # GPU availability check script for this backend
 gpu_check_script: tools/gpu_check_cambricon.sh
 
-# Output base directory for this backends
-output_base_dir: /data/flaggems/weekly
+# Output base directory; ops-test appends the GitHub repository name
+output_base_dir: /data/github-outputs

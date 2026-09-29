@@ -1869,6 +1869,18 @@ ops:
   - BLAS
   stages:
   - beta: '5.3'
+- id: bartlett_window
+  description: Generates a Bartlett window of given length, returning a 1-D tensor
+    with the triangular window coefficients.
+  for:
+  - bartlett_window
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: batch_norm
   description: An internal operator used for implementing the `BatchNorm` functionality.
   for:
@@ -1986,6 +1998,18 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: batch_norm_stats
+  description: Computes per-channel mean and inverse standard deviation for batch
+    normalization.
+  for:
+  - batch_norm_stats
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: batch_norm_with_update
   description: Applies training-mode Batch Normalization using batch statistics and updates
     running_mean/running_var in place.
@@ -3722,6 +3746,22 @@ ops:
   - LinearAlg
   stages:
   - alpha: '5.5'
+- id: cross_attention
+  description: 'Forward-only dense cross attention over BNSD tensors: computes
+    softmax(scale * Q @ K^T) @ V with an optional bool/uint8 mask whose non-zero
+    entries block the corresponding key.  Supports MHA, GQA and MQA, and a value
+    head dimension smaller than the query/key head dimension.
+    '
+  for:
+  - cross_attention
+  labels:
+  - Attention
+  - NoCPU
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
+  cpp: '5.5'
 - id: cross_entropy_loss
   description: Computes the cross entropy loss between input logits and target.
   for:
@@ -9479,11 +9519,10 @@ ops:
   - linear
   labels:
   - aten
-  - KernelGen
   kind:
   - BLAS
   stages:
-  - alpha: '5.4'
+  - beta: '5.5'
 - id: linear_backward
   description: Triton kernel implementation for linear_backward.
   for:
