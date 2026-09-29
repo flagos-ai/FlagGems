@@ -572,3 +572,40 @@ def test_to_sparse_bsr_invalid_arguments(name, shape, call_args, expected):
 
     with pytest.raises(expected):
         flag_gems.to_sparse_bsr(inp, *call_args)
+
+
+@pytest.mark.to_sparse_bsr
+@pytest.mark.parametrize(
+    "source_layout",
+    tu.selected_cases(
+        [
+            torch.sparse_coo,
+            torch.sparse_csr,
+            torch.sparse_csc,
+            torch.sparse_bsr,
+            torch.sparse_bsc,
+        ]
+        if utils.int64_is_supported
+        else [],
+        quick=[],
+    ),
+)
+def test_to_sparse_bsr_sparse_source(source_layout):
+    dense = torch.arange(-32, 32, dtype=torch.float32, device=flag_gems.device).reshape(
+        8, 8
+    )
+    dense[:4, :4] = 0
+    kwargs = {"layout": source_layout}
+    if source_layout in (torch.sparse_bsr, torch.sparse_bsc):
+        kwargs["blocksize"] = (2, 2)
+    inp = dense.to_sparse(**kwargs)
+    ref_inp = tu.to_reference(inp)
+
+    ref_out = torch.ops.aten.to_sparse_bsr(ref_inp, (2, 2))
+    res_out = flag_gems.to_sparse_bsr(inp, (2, 2))
+
+    tu.assert_result_equal(res_out, ref_out)
+    tu.assert_result_equal(inp, ref_inp)
+    assert res_out.device == inp.device
+    if source_layout == torch.sparse_bsr:
+        assert res_out is inp

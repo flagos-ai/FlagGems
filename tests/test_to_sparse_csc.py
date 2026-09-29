@@ -495,6 +495,8 @@ def test_to_sparse_csc_sparse_source(label, dtype):
     ref_out = torch.ops.aten.to_sparse_csc(ref_src)
     res_out = flag_gems.to_sparse_csc(res_src)
 
+    if label in ("csc", "csc_batched"):
+        assert res_out is res_src
     _assert_csc_equal(res_out, ref_out, res_src)
     # `res_src` is the tensor the candidate received; its own components and sparse
     # metadata must be unchanged.

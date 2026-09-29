@@ -169,7 +169,13 @@ class RavelBenchmark(OperatorBenchmark):
     def set_shapes(self, shape_file_path=None):
         # Shared resolution: a caller's shape file wins for this operator or for
         # this benchmark class, so no valid requested workload is filtered out.
-        super().set_shapes(shape_file_path)
+        default_shapes = list(RAVEL_SHAPES)
+        if (
+            base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE
+            and not base.Config.query
+        ):
+            default_shapes += RAVEL_EXTRA_SHAPES
+        super().set_shapes(shape_file_path, default_shapes=default_shapes)
 
     def set_more_shapes(self):
         return RAVEL_EXTRA_SHAPES

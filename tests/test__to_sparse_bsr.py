@@ -149,17 +149,8 @@ _OUT_ROWS = (
 # declared buffer capacity is below the 16 blocks of a fully specified input.
 _OUT_BLOCKS = ((), (0,), (0, 1), ())
 
-# Backward through the native reference is unsupported when the sparse part is
-# batched, i.e. rank > 2. The reverse path builds a sparse COO whose
-# sparse_dim() counts the batch axes and then requires sparse_dim() == 2 when
-# converting back to BSR. Observed on the active device for (2, 4, 8, 8) with
-# blocksize [2, 4], dense_dim 1 and for (2, 8, 8) with blocksize [2, 2],
-# dense_dim 0: RuntimeError: sparse_coo_to_sparse: conversion from Sparse to
-# SparseBsr for input tensors with sparse_dim()!=2 is not supported. The forward
-# of those shapes succeeds and reports sparse_dim() == 2, so only unbatched
-# shapes are covered here. The 'holes' row adds a small shape whose single stored
-# block keeps a non-zero border but a zero interior, so the backward is also
-# exercised on a retained block that is not uniformly non-zero.
+# A BSR upstream reaches the conversion backward directly, including batched
+# and hybrid inputs. The holes row retains zeros inside a stored block.
 _BACKWARD_ROWS = tu.selected_cases(
     [
         ((8, 8), (2, 2), 0, "pattern"),
@@ -167,6 +158,8 @@ _BACKWARD_ROWS = tu.selected_cases(
         ((4, 8, 8), (4, 4), 1, "pattern"),
         ((8, 8), (2, 2), 0, "zeros"),
         ((8, 8), (4, 4), 0, "holes"),
+        ((2, 4, 8, 8), (2, 4), 1, "pattern"),
+        ((2, 8, 8), (2, 2), 0, "pattern"),
     ],
     quick=[],
 )
@@ -644,16 +637,15 @@ def test__to_sparse_bsr_backward(shape, blocksize, dense_dim, kind):
     upstream = torch.arange(
         1.0, float(inp.numel()) + 1.0, dtype=dtype, device=inp.device
     ).reshape(shape)
+    upstream = torch.ops.aten._to_sparse_bsr(upstream, list(blocksize), dense_dim)
     ref_upstream = tu.to_reference(upstream)
 
     ref_out = torch.ops.aten._to_sparse_bsr(ref_inp, list(blocksize), dense_dim)
     res_out = flag_gems._to_sparse_bsr(inp, list(blocksize), dense_dim)
     tu.assert_result_equal(res_out, ref_out)
 
-    (ref_grad,) = torch.autograd.grad(
-        ref_out.to_dense(), ref_inp, grad_outputs=ref_upstream
-    )
-    (grad,) = torch.autograd.grad(res_out.to_dense(), inp, grad_outputs=upstream)
+    (ref_grad,) = torch.autograd.grad(ref_out, ref_inp, grad_outputs=ref_upstream)
+    (grad,) = torch.autograd.grad(res_out, inp, grad_outputs=upstream)
     tu.assert_result_equal(grad, ref_grad)
     tu.assert_result_equal(inp, expected_input)
     assert grad.device == inp.device
