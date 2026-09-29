@@ -666,6 +666,7 @@ from .upsample_nearest_exact1d import upsample_nearest_exact1d
 from .upsample_nearest_exact1d_backward import (
     _upsample_nearest_exact1d_backward,
     _upsample_nearest_exact1d_backward_grad_input,
+)
 from .upsample_nearest_exact2d import (
     _upsample_nearest_exact2d,
     _upsample_nearest_exact2d_out,
