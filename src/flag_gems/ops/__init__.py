@@ -57,7 +57,6 @@ from flag_gems.ops._ctc_loss import _ctc_loss, _ctc_loss_out
 from flag_gems.ops._ctc_loss_backward import _ctc_loss_backward, _ctc_loss_backward_out
 from flag_gems.ops._cummax_helper import _cummax_helper
 from flag_gems.ops._cummin_helper import _cummin_helper
-from flag_gems.ops.dimV import _dimV as dimV
 from flag_gems.ops._dirichlet_grad import _dirichlet_grad
 from flag_gems.ops._dyn_quant_matmul_4bit import _dyn_quant_matmul_4bit
 from flag_gems.ops._dyn_quant_pack_4bit_weight import _dyn_quant_pack_4bit_weight
@@ -460,6 +459,7 @@ from flag_gems.ops.diagonal_copy import diagonal_copy
 from flag_gems.ops.diagonal_scatter import diagonal_scatter
 from flag_gems.ops.diff import diff
 from flag_gems.ops.digamma_ import digamma, digamma_
+from flag_gems.ops.dimV import _dimV as dimV
 from flag_gems.ops.dist import dist
 from flag_gems.ops.div import (
     div_mode,
