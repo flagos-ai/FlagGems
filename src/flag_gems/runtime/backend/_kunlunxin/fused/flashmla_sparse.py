@@ -289,6 +289,7 @@ def _pv_matmul(
         acc.to(tl.bfloat16),
     )
 
+
 def flash_mla_sparse_fwd(
     q: torch.Tensor,
     kv: torch.Tensor,
@@ -333,7 +334,6 @@ def flash_mla_sparse_fwd(
         max_logits.fill_(float("-inf"))
         lse.fill_(float("inf"))
         return output, max_logits, lse
-
 
     DP = 512
     TD = DQK - DP
