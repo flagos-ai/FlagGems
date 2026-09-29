@@ -22,6 +22,15 @@ from flag_gems.utils.device_info import get_device_capability
 
 from . import base
 
+fp8_is_supported = flag_gems.runtime.device.support_fp8
+
+FP8_DTYPES = [torch.float8_e4m3fn] if fp8_is_supported else []
+
+pytestmark = pytest.mark.skipif(
+    not FP8_DTYPES,
+    reason="kunlunxin does not support FP8 (no FP8 hardware)",
+)
+
 M = [1, 40, 164, 512, 3454, 12027, 38594]
 N = [128, 896, 2048, 8192]
 # Test parameters

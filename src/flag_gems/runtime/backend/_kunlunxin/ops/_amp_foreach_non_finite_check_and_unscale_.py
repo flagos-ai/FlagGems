@@ -1,131 +1,325 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
+from typing import List
 
 import torch
 import triton
 import triton.language as tl
-from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 
-from ..utils.pointwise_dynamic import pointwise_dynamic
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import tl_extra_shim
 
 logger = logging.getLogger(__name__)
 
-_BLOCK_SIZE = 8192
-_NUM_WARPS = 8
-_LARGE_NUMEL = 2 * 1024 * 1024
+_isnanf = tl_extra_shim.isnan
+_isinff = tl_extra_shim.isinf
 
-config_ = CodeGenConfig(
-    512,
-    (65536, 65536, 65536),
-    32,
-    True,
-    prefer_1d_tile=True,
-    buffer_size_limit=2048,
-    isCloseVectorization=True,
-    kunlunAutoGrid=True,
-    unroll_num=8,
-)
-
-
-@pointwise_dynamic(
-    is_tensor=[True, False],
-    promotion_methods=[(0, "DEFAULT")],
-    config=config_,
-)
-@triton.jit
-def unscale_func(value, inv_scale):
-    return (value.to(tl.float32) * inv_scale).to(value.dtype)
+# Fixed block sizes (no autotune: XPU recompiles per shape under autotune and
+# the accumulated IR dumps explode). Two hand-dispatched tiles instead
+# (HARNESS pattern: explicit per-shape dispatch beats autotune):
+# - 4096 for larger tensors: cuts the program count 4x versus 1024; the large
+#   comprehensive shapes were launch-bound (25k tiny programs for
+#   4096x4096 + 2048x4096, 6.8ms -> 2.5ms fp16 / 1.9ms fp32).
+# - 1024 for small tensors: a single 4096-wide program serializes small
+#   tensors onto one program ([1024,4] fp32: 0.025ms -> 0.048ms).
+# Both keep the per-program `tl.max` reduction within the XPU-safe block
+# limit (<= 8192).
+BLOCK_SIZE_SMALL = 1024
+BLOCK_SIZE_LARGE = 4096
 
 
 @triton.jit
-def _unscale_flag_kernel(
-    x_ptr,
-    inv_scale,
-    flag_ptr,
-    numel,
+def _strided_copy_kernel(
+    dst,
+    src,
+    N,
+    D0,
+    D1,
+    D2,
+    D3,
+    D4,
+    D5,
+    D6,
+    D7,
+    SS0,
+    SS1,
+    SS2,
+    SS3,
+    SS4,
+    SS5,
+    SS6,
+    SS7,
+    DS0,
+    DS1,
+    DS2,
+    DS3,
+    DS4,
+    DS5,
+    DS6,
+    DS7,
     BLOCK: tl.constexpr,
-    NEED_MASK: tl.constexpr,
 ):
-    """One fused pass: unscale in place and publish one per-block non-finite
-    flag.  Fusing removes the second full read of the tensor (the previous
-    split unscale/flag kernels were two separate elementwise launches) and
-    cuts one launch per tensor; on the launch-bound small/medium shapes this
-    is the dominant win.  Tail lanes load ``other=0.0`` (finite) so masked-out
-    lanes never raise the flag, and ``nf & mask`` guards stores of the flag.
-    """
-    pid = tl.program_id(0)
-    offs = pid * BLOCK + tl.arange(0, BLOCK)
-    if NEED_MASK:
-        mask = offs < numel
-        x = tl.load(x_ptr + offs, mask=mask, other=0.0)
-    else:
-        x = tl.load(x_ptr + offs)
-    out = (x.to(tl.float32) * tl.load(inv_scale)).to(x.dtype)
-    if NEED_MASK:
-        tl.store(x_ptr + offs, out, mask=mask)
-    else:
-        tl.store(x_ptr + offs, out)
-    nf = ~((x <= 3.4028235e38) & (x >= -3.4028235e38))
-    if NEED_MASK:
-        nf = nf & mask
-    tl.store(flag_ptr + pid, tl.max(tl.where(nf, 1.0, 0.0)))
+    # Elementwise same-shape strided copy: dst[i] = src[i] over the logical
+    # index space (dims D0..D7 outermost-first, front-padded with 1s). No
+    # native copy_/copy primitives: every lane's source/destination offset is
+    # computed from the two stride vectors.
+    pid = tl.program_id(axis=0)
+    offs = pid.to(tl.int64) * BLOCK + tl.arange(0, BLOCK).to(tl.int64)
+    mask = offs < N
+    idx = offs
+    i7 = idx % D7
+    idx = idx // D7
+    i6 = idx % D6
+    idx = idx // D6
+    i5 = idx % D5
+    idx = idx // D5
+    i4 = idx % D4
+    idx = idx // D4
+    i3 = idx % D3
+    idx = idx // D3
+    i2 = idx % D2
+    idx = idx // D2
+    i1 = idx % D1
+    i0 = idx // D1
+    s_off = (
+        i0 * SS0
+        + i1 * SS1
+        + i2 * SS2
+        + i3 * SS3
+        + i4 * SS4
+        + i5 * SS5
+        + i6 * SS6
+        + i7 * SS7
+    )
+    d_off = (
+        i0 * DS0
+        + i1 * DS1
+        + i2 * DS2
+        + i3 * DS3
+        + i4 * DS4
+        + i5 * DS5
+        + i6 * DS6
+        + i7 * DS7
+    )
+    vals = tl.load(src + s_off, mask=mask)
+    tl.store(dst + d_off, vals, mask=mask)
+
+
+def _strided_copy(dst, src):
+    # Same-shape strided copy without native copy_/copy: gems overrides copy_,
+    # so a plain copy_ here would recurse into the override; all offset math
+    # happens in the kernel from the two stride vectors.
+    assert tuple(dst.shape) == tuple(src.shape), "shape mismatch"
+    n = dst.numel()
+    if n:
+        dims = list(src.shape)
+        ss = list(src.stride())
+        ds = list(dst.stride())
+        pad = 8 - len(dims)
+        assert pad >= 0, "strided copy supports up to 8 dims"
+        dims = [1] * pad + dims
+        ss = [0] * pad + ss
+        ds = [0] * pad + ds
+        BLOCK = 1024
+        grid = (triton.cdiv(n, BLOCK),)
+        with torch_device_fn.device(dst.device):
+            _strided_copy_kernel[grid](
+                dst,
+                src,
+                n,
+                *dims,
+                *ss,
+                *ds,
+                BLOCK=BLOCK,
+            )
+    return dst
+
+
+LARGE_TENSOR_NUMEL = 65536
+
+# Block size of the tiny found_inf fixup kernel that scans the per-program
+# bad-value flags of a whole foreach call (a few int32 loads per program).
+FOUND_INF_REDUCE_BLOCK = 1024
 
 
 @triton.jit
-def _reduce_flags_kernel(flag_ptr, num_flags, found_ptr, BLOCK: tl.constexpr):
-    acc = tl.zeros([BLOCK], dtype=tl.float32)
-    for base in tl.range(0, num_flags, BLOCK):
-        offs = base + tl.arange(0, BLOCK)
-        m = offs < num_flags
-        acc = tl.maximum(acc, tl.load(flag_ptr + offs, mask=m, other=0.0))
-    m = tl.max(acc, axis=0)
-    idx0 = tl.arange(0, 1)
-    cur = tl.load(found_ptr + idx0)
-    tl.store(found_ptr + idx0, tl.where(m > 0, 1.0, cur))
+def _amp_foreach_non_finite_check_and_unscale_kernel(
+    inp_ptr,
+    inv_scale_ptr,
+    bad_flags_ptr,
+    output_ptr,
+    num_elements,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    block_start = pid * BLOCK_SIZE
+    offsets = block_start + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < num_elements
+
+    inp = tl.load(inp_ptr + offsets, mask=mask, other=0.0)
+    scale = tl.load(inv_scale_ptr).to(tl.float32)
+
+    inp_fp32 = inp.to(tl.float32)
+
+    # NOTE (kunlunxin/XPU): `~tl_extra_shim.finitef(x)` is unreliable in this
+    # kernel -- finite values get reported as non-finite, so every element
+    # stays unscaled. Detect non-finite explicitly with libdevice isnan/isinf
+    # (the same reliable primitives the backend isnan/isinf overrides use).
+    is_non_finite = _isnanf(inp_fp32) | _isinff(inp_fp32)
+
+    # Non-finite values stay as-is; finite values are scaled (ATen semantics).
+    scaled_fp32 = tl.where(is_non_finite, inp_fp32, inp_fp32 * scale)
+
+    scaled = scaled_fp32.to(inp.dtype)
+    tl.store(output_ptr + offsets, scaled, mask=mask)
+
+    # found_inf detection fused into the same kernel: check the *stored* value
+    # (converted back to fp32), which is exactly what the previous separate
+    # post-pass (`torch.isnan(t).any() or torch.isinf(t).any()`) observed --
+    # including values that overflow to inf during the dtype conversion.
+    # Masked lanes load `other=0.0` (finite) and never store, so they cannot
+    # raise a false positive.
+    #
+    # NOTE (kunlunxin/XPU): the per-block flag cannot be reduced and fed into
+    # an atomic on this backend (atomic_max/atomic_add with a block-derived
+    # value operand fail to compile: "Failed to tune buffer size"; only
+    # constant-value atomics compile, and masked atomics fail to parse).
+    # Instead each program stores its 0/1 flag into its own slot of a small
+    # flags buffer (unconditional store of every slot: no stale data across
+    # calls), and a single tiny fixup kernel folds the flags into found_inf.
+    stored_fp32 = scaled.to(tl.float32)
+    is_bad = _isnanf(stored_fp32) | _isinff(stored_fp32)
+    block_bad = tl.max(is_bad.to(tl.int32), axis=0)
+    tl.store(bad_flags_ptr + pid, block_bad, mask=True)
 
 
-def _amp_foreach_non_finite_check_and_unscale_(tensors, found_inf, inv_scale):
+@triton.jit
+def _amp_foreach_found_inf_reduce_kernel(
+    bad_flags_ptr,
+    found_inf_ptr,
+    num_flags,
+    BLOCK_SIZE: tl.constexpr,
+):
+    # Single-program fold of the per-program flags into found_inf, mirroring
+    # the previous host-side semantics: found_inf <- 1.0 if any non-finite
+    # value was seen in any input tensor, otherwise found_inf is untouched.
+    any_bad = 0
+    for start in range(0, num_flags, BLOCK_SIZE):
+        offsets = start + tl.arange(0, BLOCK_SIZE)
+        flag_mask = offsets < num_flags
+        flags = tl.load(bad_flags_ptr + offsets, mask=flag_mask, other=0)
+        any_bad = any_bad | tl.max(flags, axis=0)
+
+    current = tl.load(found_inf_ptr)
+    updated = tl.where(any_bad > 0, 1.0, current)
+    tl.store(found_inf_ptr, updated)
+
+
+def _amp_foreach_non_finite_check_and_unscale_(
+    tensors: List[torch.Tensor],
+    found_inf: torch.Tensor,
+    inv_scale: torch.Tensor,
+):
+    """
+    Check for non-finite values in tensors and unscale them (in-place).
+
+    For each tensor in the list:
+    - Scale finite values by inv_scale; non-finite (inf, nan) stay unchanged.
+    - If any element is non-finite, set found_inf to 1.0.
+    """
     logger.debug("GEMS_KUNLUNXIN AMP_FOREACH_NON_FINITE_CHECK_AND_UNSCALE")
-    large = []
-    small = []
-    for tensor in tensors:
-        n = tensor.numel()
-        if n == 0 or not tensor.is_floating_point():
-            continue
-        if n >= _LARGE_NUMEL:
-            large.append(tensor)
-        else:
-            small.append(tensor)
 
-    total_blocks = sum(triton.cdiv(t.numel(), _BLOCK_SIZE) for t in small)
-    if total_blocks > 0:
-        flags = torch.empty(total_blocks, device=tensors[0].device, dtype=torch.float32)
-        base = 0
-        for tensor in small:
-            n = tensor.numel()
-            nb = triton.cdiv(n, _BLOCK_SIZE)
-            _unscale_flag_kernel[(nb,)](
+    if not isinstance(tensors, (list, tuple)):
+        raise TypeError(f"Expected list or tuple of tensors, got {type(tensors)}")
+
+    if len(tensors) == 0:
+        return
+
+    # PyTorch expects inv_scale as a float32 tensor.
+    inv_scale = inv_scale.to(dtype=torch.float32)
+
+    # The unscale kernel and the found_inf detection are fused into a single
+    # launch per tensor. The previous implementation needed ~6 launches per
+    # tensor (empty_like alloc + unscale kernel + _copy_from write-back, then
+    # isnan/isinf/any post-passes over the full data), which made this foreach
+    # op launch- and traffic-bound (full-tensor bool materializations of
+    # isnan/isinf alone quadrupled the memory traffic of the op call).
+    jobs = []
+    for tensor in tensors:
+        if not tensor.is_floating_point():
+            continue
+
+        num_elements = tensor.numel()
+        if num_elements == 0:
+            continue
+
+        block = (
+            BLOCK_SIZE_LARGE if num_elements >= LARGE_TENSOR_NUMEL else BLOCK_SIZE_SMALL
+        )
+        num_programs = triton.cdiv(num_elements, block)
+        jobs.append((tensor, num_elements, num_programs, block))
+
+    if not jobs:
+        return
+
+    total_programs = sum(job[2] for job in jobs)
+    # torch.empty only allocates (no kernel launch); every flag slot is
+    # unconditionally written by its own program, so no zero-init is needed.
+    bad_flags = torch.empty(total_programs, dtype=torch.int32, device=inv_scale.device)
+
+    flag_offset = 0
+    for tensor, num_elements, num_programs, block in jobs:
+        grid = (num_programs,)
+
+        if tensor.is_contiguous():
+            # Fast path: the store target aliases the load source, which is
+            # safe: every program loads its own disjoint region before
+            # storing it.
+            _amp_foreach_non_finite_check_and_unscale_kernel[grid](
                 tensor,
                 inv_scale,
-                flags[base:],
-                n,
-                BLOCK=_BLOCK_SIZE,
-                NEED_MASK=n % _BLOCK_SIZE != 0,
-                num_warps=_NUM_WARPS,
+                bad_flags[flag_offset:],
+                tensor,
+                num_elements,
+                BLOCK_SIZE=block,
             )
-            base += nb
-        _reduce_flags_kernel[(1,)](
-            flags,
-            total_blocks,
-            found_inf,
-            BLOCK=4096,
-        )
+        else:
+            # Non-contiguous inputs: the kernel addresses elements by flat
+            # offset, so write a dense temporary and scatter it back with the
+            # strided-copy kernel (gems overrides copy_, so a plain copy_ here
+            # would recurse into the override; the kernel is self-contained).
+            output = torch.empty_like(tensor)
+            _amp_foreach_non_finite_check_and_unscale_kernel[grid](
+                tensor,
+                inv_scale,
+                bad_flags[flag_offset:],
+                output,
+                num_elements,
+                BLOCK_SIZE=block,
+            )
+            _strided_copy(tensor, output)
 
-    if large:
-        scale = inv_scale.item()
-        has_non_finite = False
-        for tensor in large:
-            unscale_func(tensor, scale, out0=tensor)
-            if torch.any(~torch.isfinite(tensor)):
-                has_non_finite = True
-        if has_non_finite:
-            found_inf.fill_(1.0)
+        flag_offset += num_programs
+
+    # One tiny fixup kernel per foreach call folds the flags into found_inf
+    # (a few int32 loads per program slot; ordering is guaranteed by the
+    # in-stream program order of the launches above).
+    _amp_foreach_found_inf_reduce_kernel[(1,)](
+        bad_flags,
+        found_inf,
+        total_programs,
+        BLOCK_SIZE=FOUND_INF_REDUCE_BLOCK,
+    )

@@ -82,7 +82,7 @@ def test_addmm(monkeypatch):
     bench.run()
 
 
-@pytest.mark.addmm
+@pytest.mark.addmm_vector_bias
 def test_addmm_vector_bias(monkeypatch):
     bench = AddmmVectorBiasBenchmark(
         op_name="addmm_vector_bias",
@@ -183,7 +183,7 @@ def test_addmm_out(monkeypatch):
     bench.run()
 
 
-@pytest.mark.addmm_out
+@pytest.mark.addmm_out_vector_bias
 def test_addmm_out_vector_bias(monkeypatch):
     bench = AddmmVectorBiasBenchmark(
         op_name="addmm_out_vector_bias",

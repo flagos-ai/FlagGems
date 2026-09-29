@@ -92,8 +92,7 @@ def test_isclose(shape, dtype, zero_tol, equal_nan, gen_nan):
 
     ref_inp1 = utils.to_reference(inp1, False)
     ref_inp2 = utils.to_reference(inp2, False)
-    with flag_gems.use_gems():
-        res_out = torch.isclose(inp1, inp2, rtol, atol, equal_nan=equal_nan)
+    res_out = flag_gems.isclose(inp1, inp2, rtol, atol, equal_nan=equal_nan)
 
     ref_out = torch.isclose(ref_inp1, ref_inp2, rtol, atol, equal_nan=equal_nan)
 

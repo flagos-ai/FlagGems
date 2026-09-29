@@ -57,6 +57,10 @@ NO_QUICK_CPU_TESTS=(
 TEST_CASES=()
 PERF_TEST_CASES=()
 TEST_CASES_CPU=()
+# Operator implementation files (generic ops/ or a backend's ops/) that changed
+# but bring no test file of their own. We still want to exercise them, selected
+# by pytest marker below.
+OPS_IMPL_FILES=()
 for item in $CHANGED_FILES; do
   file_name=$(basename "$item")
   case $item in
@@ -70,6 +74,11 @@ for item in $CHANGED_FILES; do
       ;;
     benchmark/test*)
       PERF_TEST_CASES+=($item)
+      ;;
+    src/flag_gems/ops/*.py | src/flag_gems/runtime/backend/*/ops/*.py)
+      if [[ "$file_name" != "__init__.py" ]]; then
+        OPS_IMPL_FILES+=($item)
+      fi
       ;;
   esac
 
@@ -92,8 +101,39 @@ for item in $CHANGED_FILES; do
   fi
 done
 
-# Skip tests if no tests file is found
-if [[ ${#TEST_CASES[@]} -eq 0  && ${#PERF_TEST_CASES[@]} -eq 0 ]]; then
+# Derive pytest markers for changed implementation files that carry no test
+# file of their own, so we can select their tests by marker. Without this a PR
+# that only touches e.g. src/flag_gems/runtime/backend/_kunlunxin/ops/foo.py
+# runs no tests at all and passes vacuously. The derive script applies the
+# #6359 marker convention (e.g. _pad_enum -> pad_enum), so the markers here
+# match those declared in the test files.
+OPS_MARKERS=()
+if [[ ${#OPS_IMPL_FILES[@]} -gt 0 ]]; then
+  mapfile -t DERIVED_MARKERS < <(
+    python3 tools/ci_checks/derive_changed_operators.py \
+      --ops-only --changed-files "${OPS_IMPL_FILES[*]}" 2>/dev/null
+  )
+  # Drop markers whose test file (tests/test_<marker>.py) is already being run
+  # directly via TEST_CASES, so the same file is not executed twice. The marker
+  # already has the leading underscore stripped, so this matches the test file
+  # naming (marker pad_enum -> tests/test_pad_enum.py).
+  for marker in "${DERIVED_MARKERS[@]}"; do
+    [[ -z "$marker" ]] && continue
+    already=0
+    for tc in "${TEST_CASES[@]}"; do
+      if [[ "$tc" == "tests/test_${marker}.py" ]]; then
+        already=1
+        break
+      fi
+    done
+    if (( already == 0 )); then
+      OPS_MARKERS+=("$marker")
+    fi
+  done
+fi
+
+# Skip tests only when there is nothing at all to run.
+if [[ ${#TEST_CASES[@]} -eq 0 && ${#PERF_TEST_CASES[@]} -eq 0 && ${#OPS_MARKERS[@]} -eq 0 ]]; then
   exit 0
 fi
 
@@ -108,6 +148,50 @@ for item in "${TEST_CASES[@]}"; do
     FAILURES+=("${item}")
   fi
 done
+
+# Run marker-selected tests for changed operator implementations that have no
+# test file of their own. Markers follow the #6359 convention, so this reaches
+# the right tests even when the implementation file name differs from the test
+# file name (e.g. _pad_enum -> marker pad_enum -> tests/test_pad_enum.py).
+if [[ ${#OPS_MARKERS[@]} -gt 0 ]]; then
+  # Build an "m1 or m2 or ..." marker expression.
+  MARKER_EXPR=""
+  for marker in "${OPS_MARKERS[@]}"; do
+    [[ -z "$marker" ]] && continue
+    if [[ -z "$MARKER_EXPR" ]]; then
+      MARKER_EXPR="$marker"
+    else
+      MARKER_EXPR="${MARKER_EXPR} or ${marker}"
+    fi
+  done
+
+  if [[ -n "$MARKER_EXPR" ]]; then
+    echo "Running marker-selected tests for changed operators: ${MARKER_EXPR}"
+    # Run and capture output. When a marker matches no test, pytest DESELECTS
+    # all tests and still exits 0 (it exits 5 only for a truly empty
+    # collection), so the exit code alone cannot tell "passed" from "ran
+    # nothing". We therefore also inspect the summary line: a run that executed
+    # zero tests (all deselected / no tests ran) is reported as a warning rather
+    # than a silent pass, while genuine collection errors keep pytest's non-zero
+    # exit and are recorded as failures.
+    marker_log="marker-run-${GITHUB_SHA::7}.log"
+    # `| tee` would mask pytest's exit status, so read it from PIPESTATUS.
+    coverage run -m pytest -s ${EXTRA_OPTS} tests/ -m "${MARKER_EXPR}" \
+        2>&1 | tee "${marker_log}"
+    rc=${PIPESTATUS[0]}
+    if [[ $rc -eq 0 ]]; then
+      if grep -qE "no tests ran|[0-9]+ deselected" "${marker_log}" \
+          && ! grep -qE "[0-9]+ (passed|failed|error)" "${marker_log}"; then
+        echo "::warning::No tests matched markers for changed operators (${MARKER_EXPR}); nothing ran."
+      fi
+      rm -f "${marker_log}"
+    else
+      rm -f "${marker_log}"
+      if $FAIL_FAST; then exit 1; fi
+      FAILURES+=("operator markers: ${MARKER_EXPR}")
+    fi
+  fi
+fi
 
 # Run quick-cpu test if necessary
 for item in "${TEST_CASES_CPU[@]}"; do

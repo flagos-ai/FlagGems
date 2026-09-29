@@ -1,3 +1,23 @@
+# Kunlunxin (XPU) override of `_add_relu` / `_add_relu_` (relu(x + y)).
+#
+# Why this file exists: `_add_relu.Tensor` was NOT overridden by the vendor
+# backend, so `torch._add_relu(a, b)` (the functional test path) fell back to
+# the generic bare `flag_gems.utils.pointwise_dynamic` codegen
+# (`ops/_add_relu.py`), which on XPU lowers to discrete (non-unit-stride)
+# memory access -> catastrophic latency: measured on XPU 5 (2026-09-04)
+# 8.5 ms @ 2.56M elems, 53 ms @ 16M, 890 ms @ 256M, 2.28 s @ 655M (fp16/bf16),
+# vs ~1.3/2.6 ms for native torch `relu(add(a,b))` (~1000x). The sibling
+# kunlunxin `add`/`relu` (same framework `_kunlunxin.utils.pointwise_dynamic`)
+# are memory-bound (10-12 us small, ~2 TB/s large), so this override restores
+# the fast path for the op.
+#
+# Semantics: `_add_relu(a, b) == max(0, a + b)` elementwise. `tl.maximum`
+# lowers to `maxnum` (NaN -> the other operand), which matches the native ATen
+# |add_relu| kernel exactly (CPU ref: `torch._add_relu([nan, ...], [0, ...])`
+# -> 0.0, i.e. max(0, NaN) == 0 -- NOTE: this differs from
+# `torch.relu(x)` (NaN -> NaN) and `torch.clamp(x, min=0)` (NaN -> NaN)).
+# `alpha` is honored (`relu(a + alpha*b)`), unlike the previous generic impl
+# which silently ignored it.
 import logging
 
 import torch

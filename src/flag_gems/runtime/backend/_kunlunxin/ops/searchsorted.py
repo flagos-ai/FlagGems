@@ -46,7 +46,6 @@ def _searchsorted_kernel(
     out,
     total_values,
     values_per_row,
-    sequence_len,
     LOG_SEQUENCE_LEN: tl.constexpr,
     RIGHT: tl.constexpr,
     HAS_SORTER: tl.constexpr,
@@ -54,6 +53,7 @@ def _searchsorted_kernel(
     USE_INT32_INDEX: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
     NEED_MASK: tl.constexpr,
+    SEQUENCE_LEN: tl.constexpr,
 ):
     # Bitwalk (binary lifting) formulation of searchsorted:
     #   result = # of boundaries strictly below / not above `values`,
@@ -65,6 +65,12 @@ def _searchsorted_kernel(
     # ~150s @LOG=8, >1h @LOG=10; new kernel: 4-6s at LOG=13).
     # NaN semantics match the original: comparisons with NaN are false,
     # so `~go_left` is true and NaN advances to the right (end) position.
+    # SEQUENCE_LEN is constexpr so the per-round probe address stays
+    # affine-in-{offsets, idx} for the XPU backend (a runtime sequence_len
+    # broke affine analysis ~1.25x on the 2D benchmark shapes). NOTE:
+    # making BOTH SEQUENCE_LEN and values_per_row constexpr triggers an XPU
+    # backend constant-fold bug for small non-pow2 sequences (S=2,3 gave
+    # wrong results) -- keep values_per_row runtime.
     offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     if NEED_MASK:
         mask = offsets < total_values
@@ -79,9 +85,9 @@ def _searchsorted_kernel(
             row_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
     else:
         if USE_INT32_INDEX:
-            row_offsets = (offsets // values_per_row).to(tl.int32) * sequence_len
+            row_offsets = (offsets // values_per_row).to(tl.int32) * SEQUENCE_LEN
         else:
-            row_offsets = (offsets // values_per_row) * sequence_len
+            row_offsets = (offsets // values_per_row) * SEQUENCE_LEN
 
     if USE_INT32_INDEX:
         idx = tl.zeros((BLOCK_SIZE,), dtype=tl.int32)
@@ -91,8 +97,8 @@ def _searchsorted_kernel(
     for b in tl.static_range(LOG_SEQUENCE_LEN, -1, -1):
         step = 1 << b
         next_idx = idx + step
-        probe = tl.minimum(next_idx, sequence_len) - 1
-        in_range = next_idx <= sequence_len
+        probe = tl.minimum(next_idx, SEQUENCE_LEN) - 1
+        in_range = next_idx <= SEQUENCE_LEN
         if HAS_SORTER:
             if NEED_MASK:
                 si = tl.load(sorter + row_offsets + probe, mask=mask, other=0)
@@ -104,7 +110,7 @@ def _searchsorted_kernel(
                 if USE_INT32_INDEX:
                     si = si.to(tl.int32)
                 mv = tl.load(sorted_sequence + row_offsets + si)
-            valid = (si >= 0) & (si < sequence_len)
+            valid = (si >= 0) & (si < SEQUENCE_LEN)
             tl.device_assert(in_range | (~valid), "sorter index out of range")
         else:
             if NEED_MASK:
@@ -264,11 +270,21 @@ def _searchsorted_impl(
 
     sequence_len = sorted_sequence.shape[-1]
     values_per_row = values.shape[-1] if sorted_sequence.dim() != 1 else values.numel()
-    block_size = (
-        _ASCEND_BLOCK_SIZE
-        if is_ascend and sorted_sequence.dtype.is_floating_point
-        else _CUDA_BLOCK_SIZE
-    )
+    if is_ascend and sorted_sequence.dtype.is_floating_point:
+        block_size = _ASCEND_BLOCK_SIZE
+    elif is_ascend:
+        block_size = _CUDA_BLOCK_SIZE
+    else:
+        # kunlunxin: size-banded block. The probe loads are data-dependent
+        # gathers; larger blocks hide per-warp gather latency better, but too
+        # large spills registers (2048 regressed on the 256x1024/512 case).
+        numel = values.numel()
+        if numel <= 4096:
+            block_size = 256
+        elif numel <= 16384:
+            block_size = 512
+        else:
+            block_size = 1024
     use_int32_index = (
         values.numel() < torch.iinfo(torch.int32).max
         and sorted_sequence.numel() < torch.iinfo(torch.int32).max
@@ -288,7 +304,6 @@ def _searchsorted_impl(
             kernel_out,
             values.numel(),
             values_per_row,
-            sequence_len,
             LOG_SEQUENCE_LEN=sequence_len.bit_length(),
             RIGHT=right,
             HAS_SORTER=sorter_contiguous is not None,
@@ -296,6 +311,7 @@ def _searchsorted_impl(
             USE_INT32_INDEX=use_int32_index,
             BLOCK_SIZE=block_size,
             NEED_MASK=need_mask,
+            SEQUENCE_LEN=sequence_len,
         )
 
     if kernel_out is not out:

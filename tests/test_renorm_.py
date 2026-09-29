@@ -23,7 +23,7 @@ from .conftest import QUICK_MODE
 RENORM_SHAPES = (
     [(2, 32), (4, 128)]
     if QUICK_MODE
-    else [(1, 2), (4, 128), (16, 256), (4, 1024), (1, 4096)]
+    else [(1, 2), (4, 128), (16, 256), (4, 1024), (1, 4096), (4, 5000)]
 )
 RENORM_DIM_LIST = [1] if QUICK_MODE else [0, 1, -1]
 RENORM_P_LIST = [2.0] if QUICK_MODE else [1.0, 2.0, 3.5]
@@ -41,7 +41,9 @@ RENORM_MAXNORM_LIST = [1.0] if QUICK_MODE else [0.5, 1.0, 2.0]
 @pytest.mark.parametrize("maxnorm", RENORM_MAXNORM_LIST)
 def test_renorm_(shape, dtype, dim, p, maxnorm):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp = utils.to_reference(inp)
+    # Clone first: renorm_ is in-place, so the reference and the gems result
+    # must not share the same storage, otherwise the comparison is vacuous.
+    ref_inp = utils.to_reference(inp.clone())
 
     ref_out = torch.ops.aten.renorm_(ref_inp, p, dim, maxnorm)
     with flag_gems.use_gems():

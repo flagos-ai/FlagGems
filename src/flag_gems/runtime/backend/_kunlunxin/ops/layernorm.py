@@ -280,6 +280,53 @@ def layer_norm_row_loop_kernel(
         tl.store(out_ptr + row + cols, y.to(out_ptr.dtype.element_ty))
 
 
+@libentry()
+@triton.jit(do_not_specialize=["eps"])
+def layer_norm_row_loop_mask_kernel(
+    in_ptr,
+    out_ptr,
+    weight_ptr,
+    bias_ptr,
+    out_mean_ptr,
+    out_rstd_ptr,
+    N,
+    eps,
+    TILE_N: tl.constexpr,
+):
+    pid = ext.program_id(0)
+    row = pid * N
+
+    acc_sum = tl.zeros((TILE_N,), dtype=tl.float32)
+    acc_sq = tl.zeros((TILE_N,), dtype=tl.float32)
+    for off in range(0, N, TILE_N):
+        cols = off + tl.arange(0, TILE_N)
+        mask = cols < N
+        x = tl.load(in_ptr + row + cols, mask=mask, other=0.0).to(tl.float32)
+        acc_sum += x
+        acc_sq += x * x
+
+    mean = tl.sum(acc_sum, axis=0) / N
+    var = tl.sum(acc_sq, axis=0) / N - mean * mean
+    rstd = tl.math.rsqrt(var + eps)
+    tl.store(out_mean_ptr + pid, mean)
+    tl.store(out_rstd_ptr + pid, rstd)
+
+    for off in range(0, N, TILE_N):
+        cols = off + tl.arange(0, TILE_N)
+        mask = cols < N
+        x = tl.load(in_ptr + row + cols, mask=mask, other=0.0).to(tl.float32)
+        if weight_ptr is None:
+            w = 1.0
+        else:
+            w = tl.load(weight_ptr + cols, mask=mask, other=0.0).to(tl.float32)
+        if bias_ptr is None:
+            b = 0.0
+        else:
+            b = tl.load(bias_ptr + cols, mask=mask, other=0.0).to(tl.float32)
+        y = (x - mean) * rstd * w + b
+        tl.store(out_ptr + row + cols, y.to(out_ptr.dtype.element_ty), mask=mask)
+
+
 @triton.jit
 def layernorm_fwd_kernel(
     X,
@@ -630,9 +677,9 @@ def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
                 isCloseUnrollControl=True,
             )
         elif N % 1024 == 0:
-            TILE_N = 1024
+            TILE_N = 4096
             grid = (M, 1, 1)
-            layer_norm_row_loop_kernel[grid](
+            layer_norm_row_loop_mask_kernel[grid](
                 input,
                 y,
                 weight,
