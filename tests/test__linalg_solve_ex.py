@@ -694,3 +694,39 @@ def test__linalg_solve_ex_requires_rhs():
     # ('missing value for argument B'); some backends report TypeError instead.
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems._linalg_solve_ex(a)
+
+
+@pytest.mark.linalg_solve_ex
+@pytest.mark.parametrize("n", tu.selected_cases([1, 4, 17], quick=[]))
+@pytest.mark.parametrize(
+    "batch,broadcast_vector",
+    [((), False), ((2,), False), ((2,), True), ((2, 3), False), ((2, 3), True)],
+)
+@pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
+@pytest.mark.parametrize("check_errors", [True, False])
+def test__linalg_solve_ex_vector_rhs(n, dtype, check_errors, batch, broadcast_vector):
+    a, b = _conditioned_pair(dtype, batch + (n, 1), ["-1", "1"])
+    b = b.squeeze(-1)
+    if broadcast_vector:
+        b = b.reshape(-1, n)[0]
+    ref_a, ref_b = tu.to_reference(a), tu.to_reference(b)
+
+    ref_out = torch.ops.aten._linalg_solve_ex(
+        ref_a, ref_b, left=True, check_errors=check_errors
+    )
+    res_out = flag_gems._linalg_solve_ex(a, b, left=True, check_errors=check_errors)
+
+    _assert_outputs(res_out, ref_out)
+    tu.assert_result_equal(a, ref_a)
+    tu.assert_result_equal(b, ref_b)
+
+
+@pytest.mark.linalg_solve_ex
+@pytest.mark.parametrize("n", [1, 4, 17])
+def test__linalg_solve_ex_rejects_vector_rhs_for_right_solve(n):
+    a, b = _conditioned_pair(torch.float32, (n, 1), ["-1", "1"])
+    b = b.squeeze(-1)
+
+    # The native vector form is defined only for AX = B.
+    with pytest.raises(RuntimeError):
+        flag_gems._linalg_solve_ex(a, b, left=False)

@@ -142,7 +142,7 @@ def test_linalg_inv_matches_reference(dtype, case):
     # The shared assertion transfers to the CPU, so the output device contract
     # is checked here against the input.
     assert res_out.device == inp.device
-    tu.assert_result_close(res_out, ref_out)
+    tu.assert_result_close(res_out, ref_out, atol=0)
 
 
 _OUT_CASES = tu.selected_cases(
