@@ -39,11 +39,34 @@ def sparse_dim(self: torch.Tensor) -> int:
       trailing dense dimensions) are covered by the same formula, and the
       result is independent of coalescing state and nnz.
     - Sparse compressed layouts (CSR/CSC/BSR/BSC): ``sparse_dim == 2`` by
-      ATen contract, independent of the logical tensor shape.
+      ATen contract, independent of the logical tensor shape. These are the
+      only four layouts with a compressed index buffer, so they are
+      recognized explicitly rather than falling through to a catch-all.
+    - Any other layout (nested, jagged, future additions) has no native
+      ``sparse_dim`` kernel registered: ATen rejects it with a
+      ``NotImplementedError`` naming the dispatch backend key. The
+      implementation reproduces that rejection explicitly instead of
+      returning a default value for an unrecognized layout.
     """
     logger.debug("GEMS SPARSE_DIM")
     if self.layout == torch.strided:
         return 0
     if self.layout == torch.sparse_coo:
         return self._indices().shape[0]
-    return 2
+    if self.layout in (
+        torch.sparse_csr,
+        torch.sparse_csc,
+        torch.sparse_bsr,
+        torch.sparse_bsc,
+    ):
+        return 2
+    # Unknown layout: native has no kernel registered on this dispatch key
+    # (verified on H20: a NestedTensorCUDA tensor raises NotImplementedError
+    # with the dispatcher's backend-identifying message), so the native
+    # rejection is reproduced explicitly.
+    backend = "Sparse" + str(self.device.type).capitalize()
+    raise NotImplementedError(
+        "Could not run 'aten::sparse_dim' with arguments from the "
+        f"'{backend}' backend. This could be because the operator doesn't "
+        "exist for this backend."
+    )

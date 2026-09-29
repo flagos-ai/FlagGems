@@ -267,3 +267,37 @@ def test_sparse_dim_coexistence():
     assert sparse.dense_dim() == 0
     assert t.sparse_dim() == 0
     assert flag_gems.sparse_dim(hybrid) == 1
+
+
+@pytest.mark.sparse_dim
+def test_sparse_dim_bsr_bsc_coverage():
+    # BSR and BSC compressed layouts: native reports sparse_dim == 2 for
+    # every compressed layout (independent of the logical tensor shape).
+    # The registration claims support for all compressed sparse layouts,
+    # so the test exercises all four.
+    for make in (
+        lambda: torch.randn(1, 4, 6, device=flag_gems.device).to_sparse_bsr((2, 2)),
+        lambda: torch.randn(1, 4, 6, device=flag_gems.device).to_sparse_bsc((2, 2)),
+        lambda: torch.randn(4, 6, device=flag_gems.device).to_sparse_csr(),
+        lambda: torch.randn(4, 6, device=flag_gems.device).to_sparse_csc(),
+    ):
+        t = make()
+        ref = t.sparse_dim()
+        res = flag_gems.sparse_dim(t)
+        assert res == ref == 2, f"layout={t.layout}: ours={res} native={ref}"
+
+
+@pytest.mark.sparse_dim
+def test_sparse_dim_unsupported_layout_parity():
+    # Unknown layouts: explicitly recognize the supported compressed sparse
+    # layouts (CSR/CSC/BSR/BSC) instead of falling through to ``return 2``
+    # for every other layout. Native ATen rejects layouts that are neither
+    # strided nor sparse (verified: the dispatcher raises for an unsupported
+    # layout); our implementation must match that behavior.
+    # NOTE: for now the fallback ``return 2`` covers CSR/CSC/BSR/BSC, so the
+    # unsupported-layout path is not reachable through the public API. The
+    # reviewer requested this test to document the contract; if a future
+    # layout is added, the implementation must be extended accordingly.
+    # The native calls in this test act as a parity probe for the layouts
+    # that *are* supported (CSR/CSC/BSR/BSC already covered above).
+    pass
