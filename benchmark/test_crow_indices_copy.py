@@ -17,8 +17,6 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base, consts, utils
 
 # CSR inputs for the ``crow_indices_copy`` benchmark: (nnz, shape) pairs. The
