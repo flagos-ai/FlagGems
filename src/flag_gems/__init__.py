@@ -219,6 +219,7 @@ _FULL_CONFIG = (
         None,
         (AUTOGRAD_DISPATCH_KEY,),
     ),
+    ("_has_same_storage_numel", _has_same_storage_numel),
     ("_histogramdd_from_bin_cts", _histogramdd_from_bin_cts),
     ("_histogramdd_from_bin_cts.out", _histogramdd_from_bin_cts_out),
     ("_histogramdd_from_bin_tensors", _histogramdd_from_bin_tensors),
