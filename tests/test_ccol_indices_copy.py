@@ -382,7 +382,9 @@ def test_accuracy_ccol_indices_copy_coo_falls_through_to_native():
     # appends a build-specific backend enumeration that a host-side
     # reproduction cannot byte-match).
     ours, native = str(exc.value), str(native_exc.value)
-    native_prefix = native.split("'aten::ccol_indices_copy'")[0] + "'aten::ccol_indices_copy'"
+    native_prefix = (
+        native.split("'aten::ccol_indices_copy'")[0] + "'aten::ccol_indices_copy'"
+    )
     assert ours.startswith(native_prefix), f"ours: {ours!r}\nnative: {native!r}"
 
 
