@@ -14,7 +14,6 @@ def test_clone(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.clone(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.clone(inp)
+    res_out = flag_gems.clone(inp)
 
     utils.gems_assert_equal(res_out, ref_out)

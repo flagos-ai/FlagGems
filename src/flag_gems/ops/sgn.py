@@ -83,22 +83,18 @@ def sgn_complex_kernel(
     scaled_real = real_compute / safe_scale
     scaled_imag = imag_compute / safe_scale
     finite_norm = scale * tl.sqrt(scaled_real * scaled_real + scaled_imag * scaled_imag)
-    safe_norm = tl.where(is_zero, 1.0, finite_norm)
 
-    # Any non-finite component makes the whole result NaN, matching torch.sgn
-    # on complex inputs: (inf + 1j), (1 + infj) and (nan + nanj) all map to
-    # (nan, nan).
-    nonfinite = (
-        (abs_real == float("inf"))
-        | (abs_imag == float("inf"))
-        | (real_compute != real_compute)
-        | (imag_compute != imag_compute)
-    )
-    nan = float("nan")
-    out_real = tl.where(nonfinite, nan, real_compute / safe_norm)
-    out_imag = tl.where(nonfinite, nan, imag_compute / safe_norm)
-    out_real = tl.where(is_zero, 0.0, out_real)
-    out_imag = tl.where(is_zero, 0.0, out_imag)
+    # Match torch.sgn's complex abs (std::hypot): an infinite component makes the
+    # magnitude inf (dominating any NaN); otherwise a NaN propagates. Dividing the
+    # original components by this magnitude then reproduces IEEE semantics per
+    # component, e.g. (inf + 1j) -> (nan, 0) and (1 + infj) -> (0, nan).
+    has_inf = (abs_real == float("inf")) | (abs_imag == float("inf"))
+    has_nan = (real_compute != real_compute) | (imag_compute != imag_compute)
+    norm = tl.where(has_inf, float("inf"), tl.where(has_nan, float("nan"), finite_norm))
+    safe_norm = tl.where(is_zero, 1.0, norm)
+
+    out_real = tl.where(is_zero, 0.0, real_compute / safe_norm)
+    out_imag = tl.where(is_zero, 0.0, imag_compute / safe_norm)
 
     tl.store(out_ri_ptr + base, out_real, mask=mask)
     tl.store(out_ri_ptr + base + 1, out_imag, mask=mask)

@@ -802,9 +802,13 @@ def test_scaled_dot_product_flash_attention_backward(
     # gradients, and an fp16 reference carries too little precision to pin the
     # expected values down.
     def ref_grads():
-        q = Q.float().detach().requires_grad_(True)
-        k = K.float().detach().requires_grad_(True)
-        v = V.float().detach().requires_grad_(True)
+        # Route through to_reference so the reference follows the test
+        # framework's device selection (CPU under --ref cpu, otherwise the
+        # accelerator).
+        q = utils.to_reference(Q).float().detach().requires_grad_(True)
+        k = utils.to_reference(K).float().detach().requires_grad_(True)
+        v = utils.to_reference(V).float().detach().requires_grad_(True)
+        do = utils.to_reference(dOut).float()
         o = torch.nn.functional.scaled_dot_product_attention(
             q.transpose(1, 2),
             k.transpose(1, 2),
@@ -812,33 +816,27 @@ def test_scaled_dot_product_flash_attention_backward(
             is_causal=is_causal,
             scale=scale,
         ).transpose(1, 2)
-        return torch.autograd.grad(o, (q, k, v), dOut.float())
+        return torch.autograd.grad(o, (q, k, v), do)
 
     ref_dQ, ref_dK, ref_dV = ref_grads()
-    ref_dQ = ref_dQ.cpu()
-    ref_dK = ref_dK.cpu()
-    ref_dV = ref_dV.cpu()
 
-    with flag_gems.use_gems():
-        res_dQ, res_dK, res_dV = (
-            torch.ops.aten._scaled_dot_product_flash_attention_backward(
-                dOut,
-                Q,
-                K,
-                V,
-                out,
-                lse,
-                None,
-                None,
-                q_seq_len,
-                kv_seq_len,
-                0.0,
-                is_causal,
-                philox_seed,
-                philox_offset,
-                scale=scale,
-            )
-        )
+    res_dQ, res_dK, res_dV = flag_gems.scaled_dot_product_flash_attention_backward(
+        dOut,
+        Q,
+        K,
+        V,
+        out,
+        lse,
+        None,
+        None,
+        q_seq_len,
+        kv_seq_len,
+        0.0,
+        is_causal,
+        philox_seed,
+        philox_offset,
+        scale=scale,
+    )
 
     # Low-precision accumulation in the Triton kernel rounds a small
     # fraction of elements past the 1e-4 default tolerance (larger at the
