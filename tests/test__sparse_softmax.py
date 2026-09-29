@@ -328,6 +328,7 @@ def test__sparse_softmax_default_form(case, value_range, dtype):
     res_out = flag_gems._sparse_softmax(inp, dim, half_to_float=False)
 
     tu.assert_result_close(res_out, ref_out)
+    assert res_out.is_coalesced() == ref_out.is_coalesced()
 
 
 @pytest.mark.sparse_softmax
@@ -345,6 +346,7 @@ def test__sparse_softmax_dtype_conversion(case, value_range, dtype):
     res_out = flag_gems._sparse_softmax(inp, dim, dtype=torch.float32)
 
     tu.assert_result_close(res_out, ref_out)
+    assert res_out.is_coalesced() == ref_out.is_coalesced()
 
 
 @pytest.mark.sparse_softmax
@@ -360,6 +362,7 @@ def test__sparse_softmax_dtype_conversion_float64(case, value_range, dtype):
     res_out = flag_gems._sparse_softmax(inp, dim, dtype=torch.float64)
 
     tu.assert_result_close(res_out, ref_out)
+    assert res_out.is_coalesced() == ref_out.is_coalesced()
 
 
 @pytest.mark.sparse_softmax
@@ -377,6 +380,7 @@ def test__sparse_softmax_int_overload_keeps_input_dtype(case, value_range, dtype
     res_out = flag_gems._sparse_softmax(inp, dim)
 
     tu.assert_result_close(res_out, ref_out)
+    assert res_out.is_coalesced() == ref_out.is_coalesced()
 
 
 @pytest.mark.sparse_softmax
@@ -392,6 +396,7 @@ def test__sparse_softmax_hybrid(case, value_range, dtype):
     res_out = flag_gems._sparse_softmax(inp, dim, half_to_float=False)
 
     tu.assert_result_close(res_out, ref_out)
+    assert res_out.is_coalesced() == ref_out.is_coalesced()
 
 
 @pytest.mark.sparse_softmax
@@ -414,6 +419,7 @@ def test__sparse_softmax_out(case, value_range, dtype):
     # and return it, with the values the native call returned.
     assert res_ret is out
     tu.assert_result_close(res_ret, ref_ret)
+    assert res_ret.is_coalesced() == ref_ret.is_coalesced()
 
 
 @pytest.mark.sparse_softmax
@@ -434,6 +440,7 @@ def test__sparse_softmax_backward(case, value_range, dtype):
     (res_grad,) = torch.autograd.grad(res_out, inp, grad_outputs=upstream)
 
     tu.assert_result_close(res_out, ref_out)
+    assert res_out.is_coalesced() == ref_out.is_coalesced()
     tu.assert_result_close(res_grad, ref_grad)
 
 
@@ -449,6 +456,7 @@ def test__sparse_softmax_special_values(case, dtype, scenario):
     res_out = flag_gems._sparse_softmax(inp, dim, half_to_float=False)
 
     tu.assert_result_close(res_out, ref_out)
+    assert res_out.is_coalesced() == ref_out.is_coalesced()
 
 
 @pytest.mark.sparse_softmax
@@ -465,6 +473,7 @@ def test__sparse_softmax_special_values_dtype_conversion(case, dtype, scenario):
     res_out = flag_gems._sparse_softmax(inp, dim, dtype=torch.float32)
 
     tu.assert_result_close(res_out, ref_out)
+    assert res_out.is_coalesced() == ref_out.is_coalesced()
 
 
 @pytest.mark.sparse_softmax
