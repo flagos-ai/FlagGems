@@ -14,6 +14,7 @@
 
 """Reference-only contract tests using CPU tensors and fake device operations."""
 
+import functools
 import json
 from types import SimpleNamespace
 
@@ -92,6 +93,83 @@ def test_backward_reference_uses_original_grad_semantics(runner, monkeypatch):
     bench.run(case_ids=["case-0"])
     assert len(gradients) == 1
     assert events == ["sync"]
+
+
+@pytest.mark.parametrize("fresh_inputs", [False, True])
+def test_generated_operator_reference_does_not_require_candidate_or_timing(
+    runner, monkeypatch, fresh_inputs
+):
+    from benchmark.generated_operator_utils import OperatorBenchmark
+
+    bench, config, events = runner
+    # Exercise the real helper's timing method and declaration with the same
+    # controlled case inputs used by the base runner contract tests.
+    bench.__class__ = OperatorBenchmark
+    bench.fresh_inputs = fresh_inputs
+    bench.gems_op = None
+    monkeypatch.setattr(bench, "_get_fresh_input_latency", forbidden)
+    assert bench.run() == ["case-0", "case-1", "case-2"]
+    assert events == [0, "sync", 1, "sync", 2, "sync"]
+    assert all(
+        r["status"] == "PASSED" and r["count"] == 1 for r in config.reference_records
+    )
+
+
+@pytest.mark.parametrize("method_name", ["get_latency", "_measure_input"])
+def test_reference_declaration_does_not_authorize_an_unknown_override(
+    runner, method_name
+):
+    from benchmark.generated_operator_utils import OperatorBenchmark
+
+    bench, config, events = runner
+    custom = type("Custom", (OperatorBenchmark,), {method_name: forbidden})
+    bench.__class__ = custom
+    bench.fresh_inputs = False
+    with pytest.raises(pytest.skip.Exception):
+        bench.run()
+    assert not events
+    assert reference_report(config.reference_records)["status"] == "UNSUPPORTED"
+
+
+def test_declared_reference_preserves_failure_records(runner, monkeypatch):
+    from benchmark.generated_operator_utils import OperatorBenchmark
+
+    bench, config, _ = runner
+    bench.__class__ = OperatorBenchmark
+    bench.fresh_inputs = True
+
+    def broken(value):
+        raise RuntimeError("original reference failed")
+
+    bench.torch_op = broken
+    monkeypatch.setattr(bench, "_get_fresh_input_latency", forbidden)
+    with pytest.raises(RuntimeError, match="original reference failed"):
+        bench.run()
+    assert [r["status"] for r in config.reference_records] == [
+        "FAILED",
+        "NOT_RUN",
+        "NOT_RUN",
+    ]
+    assert config.reference_records[0]["stage"] == "invoke"
+    assert config.reference_records[0]["count"] == 1
+
+
+def test_wrapper_does_not_inherit_reference_permission_through_wraps(runner):
+    from benchmark.generated_operator_utils import OperatorBenchmark
+
+    bench, config, events = runner
+
+    class Custom(OperatorBenchmark):
+        @functools.wraps(OperatorBenchmark.get_latency)
+        def get_latency(self, *args, **kwargs):
+            forbidden()
+
+    bench.__class__ = Custom
+    bench.fresh_inputs = False
+    with pytest.raises(pytest.skip.Exception):
+        bench.run()
+    assert not events
+    assert reference_report(config.reference_records)["status"] == "UNSUPPORTED"
 
 
 def test_skip_native_is_not_a_pass_or_failure(runner):
