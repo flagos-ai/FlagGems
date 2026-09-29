@@ -324,10 +324,10 @@ def test_accuracy_crow_indices_copy_unsupported_layouts():
     with pytest.raises(NotImplementedError) as native_exc:
         torch.ops.aten.crow_indices_copy.default(coo)
     ours, native = str(exc.value), str(native_exc.value)
-    native_prefix = native.split("'aten::crow_indices_copy'")[0] + "'aten::crow_indices_copy'"
-    assert ours.startswith(native_prefix), (
-        f"ours: {ours!r}\nnative: {native!r}"
+    native_prefix = (
+        native.split("'aten::crow_indices_copy'")[0] + "'aten::crow_indices_copy'"
     )
+    assert ours.startswith(native_prefix), f"ours: {ours!r}\nnative: {native!r}"
 
 
 @pytest.mark.crow_indices_copy
