@@ -20,8 +20,6 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
-# The runner selects tests by the operator id with the leading underscore
-# stripped, so the marker drops the leading underscore.
 @pytest.mark.transformer_encoder_layer_fwd
 @pytest.mark.parametrize("batch_size", [2])
 @pytest.mark.parametrize("seq_len", [16])
