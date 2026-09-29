@@ -28,8 +28,7 @@ def test_float_power_(shape, dtype):
     ref_inp1.copy_(ref_out)
     ref_out = ref_inp1
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.float_power_.Tensor(inp1, inp2)
+    res_out = flag_gems.float_power_tensor_tensor_(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
@@ -54,7 +53,6 @@ def test_float_power_scalar(shape, dtype):
     ref_inp.copy_(ref_out)
     ref_out = ref_inp
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.float_power_.Scalar(inp, scalar)
+    res_out = flag_gems.float_power_tensor_scalar_(inp, scalar)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)

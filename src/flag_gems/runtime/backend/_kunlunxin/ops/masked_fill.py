@@ -175,8 +175,25 @@ def _use_fast_path(inp, mask, value):
     return inp.numel() >= _FAST_MIN_NUMEL
 
 
+def _normalize_bool_scalar(value):
+    """Hoist a Python ``bool`` value to ``int`` before it reaches any kernel.
+
+    ``value`` is carried into the Triton kernels as an untyped scalar under
+    ``do_not_specialize`` (both the generated ``pointwise_dynamic`` kernels and
+    ``masked_fill_small_kernel``).  Its element type is bound once per process,
+    on the first call: a leading Python ``bool`` binds it to ``i1`` and every
+    later integer scalar is then silently truncated with ``& 1``
+    (``masked_fill_(mask, True)`` followed by ``masked_fill_(mask, 3)`` fills
+    ``1.0`` instead of ``3.0``; ``-7`` and ``2`` give ``1.0`` and ``0.0``).
+    ``bool`` is exactly representable as ``int`` 0/1, so hoisting it removes the
+    poisoned binding without changing any result.
+    """
+    return int(value) if isinstance(value, bool) else value
+
+
 def masked_fill(inp, mask, value):
     logger.debug("GEMS_KUNLUNXIN MASKED_FILL")
+    value = _normalize_bool_scalar(value)
     assert (
         (torch.is_tensor(value) and value.ndim == 0)
         or isinstance(value, int)
@@ -237,6 +254,7 @@ def masked_fill(inp, mask, value):
 
 def masked_fill_(inp, mask, value):
     logger.debug("GEMS_KUNLUNXIN MASKED_FILL_")
+    value = _normalize_bool_scalar(value)
     assert (
         (torch.is_tensor(value) and value.ndim == 0)
         or isinstance(value, int)
