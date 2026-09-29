@@ -307,14 +307,13 @@ def _layout_input(base, layout):
 @pytest.mark.parametrize("shape,blocksize,dense_dim", _MATRIX_CASES)
 def test_to_sparse_bsc(shape, blocksize, dense_dim, value_range, dtype):
     inp = tu.make_input(dtype, shape, value_range)
-    before = tu.to_reference(inp)
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.to_sparse_bsc(ref_inp, blocksize, dense_dim)
     res_out = flag_gems.to_sparse_bsc(inp, blocksize, dense_dim)
 
     # the relayout only reads its input
-    tu.assert_result_equal(inp, before)
+    tu.assert_result_equal(inp, ref_inp)
     _assert_bsc_equal(res_out, ref_out, inp)
 
 
@@ -325,14 +324,13 @@ def test_to_sparse_bsc(shape, blocksize, dense_dim, value_range, dtype):
 def test_to_sparse_bsc_batched(batch_shape, shape, blocksize, value_range, dtype):
     tile = tu.make_input(dtype, shape, value_range)
     inp = tile.repeat(*batch_shape, *([1] * len(shape)))
-    before = tu.to_reference(inp)
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.to_sparse_bsc(ref_inp, blocksize)
     res_out = flag_gems.to_sparse_bsc(inp, blocksize)
 
     # the relayout only reads its input
-    tu.assert_result_equal(inp, before)
+    tu.assert_result_equal(inp, ref_inp)
     _assert_bsc_equal(res_out, ref_out, inp)
 
 
@@ -341,14 +339,13 @@ def test_to_sparse_bsc_batched(batch_shape, shape, blocksize, value_range, dtype
 @pytest.mark.parametrize("shape,blocksize,dense_dim", _BLOCKSIZE_CASES)
 def test_to_sparse_bsc_blocksize(shape, blocksize, dense_dim, dtype):
     inp = tu.make_input(dtype, shape, ["-1", "1"])
-    before = tu.to_reference(inp)
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.to_sparse_bsc(ref_inp, blocksize, dense_dim)
     res_out = flag_gems.to_sparse_bsc(inp, blocksize, dense_dim)
 
     # the relayout only reads its input
-    tu.assert_result_equal(inp, before)
+    tu.assert_result_equal(inp, ref_inp)
     _assert_bsc_equal(res_out, ref_out, inp)
 
 
@@ -357,7 +354,6 @@ def test_to_sparse_bsc_blocksize(shape, blocksize, dense_dim, dtype):
 @pytest.mark.parametrize("argument,shape,blocksize", _OPTIONAL_DENSE_DIM_CASES)
 def test_to_sparse_bsc_optional_dense_dim(argument, shape, blocksize, dtype):
     inp = tu.make_input(dtype, shape, ["-1", "1"])
-    before = tu.to_reference(inp)
     ref_inp = tu.to_reference(inp)
 
     if argument == "omitted":
@@ -368,7 +364,7 @@ def test_to_sparse_bsc_optional_dense_dim(argument, shape, blocksize, dtype):
         res_out = flag_gems.to_sparse_bsc(inp, blocksize, None)
 
     # the relayout only reads its input
-    tu.assert_result_equal(inp, before)
+    tu.assert_result_equal(inp, ref_inp)
     _assert_bsc_equal(res_out, ref_out, inp)
 
 
@@ -377,14 +373,13 @@ def test_to_sparse_bsc_optional_dense_dim(argument, shape, blocksize, dtype):
 @pytest.mark.parametrize("pattern,shape,blocksize,dense_dim", _STRUCTURE_CASES)
 def test_to_sparse_bsc_payload_structure(pattern, shape, blocksize, dense_dim, dtype):
     inp = _structure_input(pattern, dtype, shape, blocksize, dense_dim)
-    before = tu.to_reference(inp)
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.to_sparse_bsc(ref_inp, blocksize, dense_dim)
     res_out = flag_gems.to_sparse_bsc(inp, blocksize, dense_dim)
 
     # the relayout only reads its input
-    tu.assert_result_equal(inp, before)
+    tu.assert_result_equal(inp, ref_inp)
     _assert_bsc_equal(res_out, ref_out, inp)
 
 
@@ -397,14 +392,13 @@ def test_to_sparse_bsc_special_values(dtype, scenario, shape, blocksize, dense_d
     for size in shape:
         count *= size
     inp = payload.repeat(count // payload.numel()).view(*shape)
-    before = tu.to_reference(inp)
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.to_sparse_bsc(ref_inp, blocksize, dense_dim)
     res_out = flag_gems.to_sparse_bsc(inp, blocksize, dense_dim)
 
     # the relayout only reads its input, and nan must compare equal here
-    tu.assert_result_equal(inp, before)
+    tu.assert_result_equal(inp, ref_inp)
     _assert_bsc_equal(res_out, ref_out, inp)
 
 
@@ -444,7 +438,6 @@ def test_to_sparse_bsc_backward(shape, blocksize, dense_dim, pattern, dtype):
     upstream = torch.where(upstream == 0, torch.ones_like(upstream), upstream)
     _apply_block_pattern(inp, pattern, blocksize, dense_dim)
     inp.requires_grad_(True)
-    before = tu.to_reference(inp)
     ref_inp = tu.to_reference(inp)
     ref_upstream = tu.to_reference(upstream)
 
@@ -452,7 +445,7 @@ def test_to_sparse_bsc_backward(shape, blocksize, dense_dim, pattern, dtype):
     res_out = flag_gems.to_sparse_bsc(inp, blocksize, dense_dim)
 
     # the relayout only reads its input
-    tu.assert_result_equal(inp, before)
+    tu.assert_result_equal(inp, ref_inp)
     _assert_bsc_equal(res_out, ref_out, inp)
 
     # the sparse grad_output is a fixture built with the native operator on both
@@ -470,7 +463,7 @@ def test_to_sparse_bsc_backward(shape, blocksize, dense_dim, pattern, dtype):
     # the relayout performs no arithmetic reduction, so both gradients carry the
     # upstream values through unchanged and are compared exactly
     tu.assert_result_equal(res_grad, ref_grad)
-    tu.assert_result_equal(inp, before)
+    tu.assert_result_equal(inp, ref_inp)
 
 
 @pytest.mark.to_sparse_bsc
@@ -490,3 +483,40 @@ def test_to_sparse_bsc_unequal_batch_blocks():
 
     with pytest.raises(RuntimeError):
         flag_gems.to_sparse_bsc(inp, (2, 2))
+
+
+@pytest.mark.to_sparse_bsc
+@pytest.mark.parametrize(
+    "source_layout",
+    tu.selected_cases(
+        [
+            torch.sparse_coo,
+            torch.sparse_csr,
+            torch.sparse_csc,
+            torch.sparse_bsr,
+            torch.sparse_bsc,
+        ]
+        if utils.int64_is_supported
+        else [],
+        quick=[],
+    ),
+)
+def test_to_sparse_bsc_sparse_source(source_layout):
+    dense = torch.arange(-32, 32, dtype=torch.float32, device=flag_gems.device).reshape(
+        8, 8
+    )
+    dense[:4, :4] = 0
+    kwargs = {"layout": source_layout}
+    if source_layout in (torch.sparse_bsr, torch.sparse_bsc):
+        kwargs["blocksize"] = (2, 2)
+    inp = dense.to_sparse(**kwargs)
+    ref_inp = tu.to_reference(inp)
+
+    ref_out = torch.ops.aten.to_sparse_bsc(ref_inp, (2, 2))
+    res_out = flag_gems.to_sparse_bsc(inp, (2, 2))
+
+    tu.assert_result_equal(res_out, ref_out)
+    tu.assert_result_equal(inp, ref_inp)
+    assert res_out.device == inp.device
+    if source_layout == torch.sparse_bsc:
+        assert res_out is inp

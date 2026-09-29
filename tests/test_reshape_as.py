@@ -289,9 +289,7 @@ def test_reshape_as(shape, value_range, dtype):
     inp_before = tu.to_reference(inp.detach())
     other_before = tu.to_reference(other.detach())
 
-    ref_out, facts = _native_facts(
-        tu.to_reference(inp.detach()), tu.to_reference(other.detach())
-    )
+    ref_out, facts = _native_facts(inp_before, other_before)
     res_out = flag_gems.reshape_as(inp, other)
 
     tu.assert_result_equal(res_out, ref_out)
@@ -307,9 +305,7 @@ def test_reshape_as_with_size(shape, target):
     inp_before = tu.to_reference(inp.detach())
     other_before = tu.to_reference(other.detach())
 
-    ref_out, facts = _native_facts(
-        tu.to_reference(inp.detach()), tu.to_reference(other.detach())
-    )
+    ref_out, facts = _native_facts(inp_before, other_before)
     res_out = flag_gems.reshape_as(inp, other)
 
     tu.assert_result_equal(res_out, ref_out)
@@ -326,7 +322,7 @@ def test_reshape_as_strided_input(shape, layout, target):
     base_before = tu.to_reference(base.detach())
     other_before = tu.to_reference(other.detach())
 
-    ref_out, facts = _native_facts(ref_inp, tu.to_reference(other.detach()))
+    ref_out, facts = _native_facts(ref_inp, other_before)
     res_out = flag_gems.reshape_as(inp, other)
 
     tu.assert_result_equal(res_out, ref_out)
@@ -343,7 +339,7 @@ def test_reshape_as_broadcast_input(storage, expand, target):
     base_before = tu.to_reference(base.detach())
     other_before = tu.to_reference(other.detach())
 
-    ref_out, facts = _native_facts(ref_inp, tu.to_reference(other.detach()))
+    ref_out, facts = _native_facts(ref_inp, other_before)
     res_out = flag_gems.reshape_as(inp, other)
 
     tu.assert_result_equal(res_out, ref_out)
@@ -363,9 +359,7 @@ def test_reshape_as_other_operand(shape, dtype, other_shape, other_dtype, other_
     inp_before = tu.to_reference(inp.detach())
     other_before = tu.to_reference(other.detach())
 
-    ref_out, facts = _native_facts(
-        tu.to_reference(inp.detach()), tu.to_reference(other.detach())
-    )
+    ref_out, facts = _native_facts(inp_before, other_before)
     res_out = flag_gems.reshape_as(inp, other)
 
     # An exact comparison against a native result built from a sentinel operand
@@ -383,9 +377,7 @@ def test_reshape_as_view_writes_through(shape, target):
     inp_before = tu.to_reference(inp.detach())
     other_before = tu.to_reference(other.detach())
 
-    ref_out, facts = _native_facts(
-        tu.to_reference(inp.detach()), tu.to_reference(other.detach())
-    )
+    ref_out, facts = _native_facts(inp_before, other_before)
     res_out = flag_gems.reshape_as(inp, other)
 
     # Compare the untouched result first, then the operand contract.
@@ -408,7 +400,7 @@ def test_reshape_as_materialized_copy_isolated(shape, layout, target):
     base_before = tu.to_reference(base.detach())
     other_before = tu.to_reference(other.detach())
 
-    ref_out, facts = _native_facts(ref_inp, tu.to_reference(other.detach()))
+    ref_out, facts = _native_facts(ref_inp, other_before)
     res_out = flag_gems.reshape_as(inp, other)
 
     tu.assert_result_equal(res_out, ref_out)
@@ -451,7 +443,7 @@ def test_reshape_as_conjugate_input(layout, target, dtype):
     base_before = tu.to_reference(base.detach())
     other_before = tu.to_reference(other.detach())
 
-    ref_out, facts = _native_facts(ref_inp, tu.to_reference(other.detach()))
+    ref_out, facts = _native_facts(ref_inp, other_before)
     res_out = flag_gems.reshape_as(inp, other)
 
     assert res_out.is_conj() == ref_out.is_conj()
@@ -476,7 +468,7 @@ def test_reshape_as_backward(shape, layout, expand, target, dtype):
     base_before = tu.to_reference(base.detach())
     other_before = tu.to_reference(other.detach())
 
-    ref_out, facts = _native_facts(ref_inp, tu.to_reference(other.detach()))
+    ref_out, facts = _native_facts(ref_inp, other_before)
     res_out = flag_gems.reshape_as(inp, other)
 
     # Check the forward result first. Every gradient below is a pure relayout of
@@ -510,7 +502,7 @@ def test_reshape_as_expanded_base_backward(dtype):
     base_before = tu.to_reference(base.detach())
     other_before = tu.to_reference(other.detach())
 
-    ref_out, facts = _native_facts(ref_inp, tu.to_reference(other.detach()))
+    ref_out, facts = _native_facts(ref_inp, other_before)
     res_out = flag_gems.reshape_as(inp, other)
 
     tu.assert_result_equal(res_out, ref_out)
@@ -561,9 +553,7 @@ def test_reshape_as_special_values(dtype, scenario):
     inp_before = tu.to_reference(inp.detach())
     other_before = tu.to_reference(other.detach())
 
-    ref_out, facts = _native_facts(
-        tu.to_reference(inp.detach()), tu.to_reference(other.detach())
-    )
+    ref_out, facts = _native_facts(inp_before, other_before)
     res_out = flag_gems.reshape_as(inp, other)
 
     tu.assert_result_equal(res_out, ref_out)

@@ -999,3 +999,55 @@ def test__validate_sparse_coo_tensor_args_rejects_missing_arguments(missing):
 
     with pytest.raises(_MISSING_ERRORS):
         flag_gems._validate_sparse_coo_tensor_args(**kwargs)
+
+
+_NNZ_BOUNDARIES = [31, 32, 33, 255, 256, 257, 1023, 1024, 1025]
+
+
+@pytest.mark.validate_sparse_coo_tensor_args
+@pytest.mark.parametrize(
+    "nnz", _int64_gated(tu.selected_cases(_NNZ_BOUNDARIES, quick=[]))
+)
+@pytest.mark.parametrize("is_coalesced", [False, True])
+def test__validate_sparse_coo_tensor_args_nnz_boundary(nnz, is_coalesced):
+    size = (nnz + 1, 2)
+    indices = _sorted_unique_indices(size, nnz)
+    values = tu.make_input(torch.float32, (nnz,), ["-1", "1"])
+    snapshot = _snapshot(indices, values)
+
+    torch.ops.aten._validate_sparse_coo_tensor_args(
+        tu.to_reference(indices), tu.to_reference(values), size, is_coalesced
+    )
+    res_out = flag_gems._validate_sparse_coo_tensor_args(
+        indices, values, size, is_coalesced
+    )
+
+    assert res_out is None
+    _assert_operands_unchanged(snapshot, indices, values)
+
+
+@pytest.mark.validate_sparse_coo_tensor_args
+@pytest.mark.parametrize("nnz", _int64_gated(_NNZ_BOUNDARIES))
+@pytest.mark.parametrize("position", ["first", "middle", "last"])
+@pytest.mark.parametrize(
+    "violation", ["negative", "upper_bound", "duplicate", "unsorted"]
+)
+def test__validate_sparse_coo_tensor_args_rejects_long_indices(
+    nnz, position, violation
+):
+    size = (nnz + 1, 2)
+    indices = _sorted_unique_indices(size, nnz)
+    values = tu.make_input(torch.float32, (nnz,), ["-1", "1"])
+    index = {"first": 0, "middle": nnz // 2, "last": nnz - 1}[position]
+    if violation == "negative":
+        indices[0, index] = -1
+    elif violation == "upper_bound":
+        indices[0, index] = size[0]
+    elif violation == "duplicate":
+        indices[:, index] = indices[:, index - 1 if index else 1]
+    else:
+        neighbor = index - 1 if index else 1
+        indices[:, [index, neighbor]] = indices[:, [neighbor, index]]
+
+    with pytest.raises(_VALUE_ERRORS):
+        flag_gems._validate_sparse_coo_tensor_args(indices, values, size, True)
