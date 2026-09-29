@@ -186,12 +186,13 @@ def make_out_buffers(reference, shape, layout):
 
 
 def out_buffer_metadata(tensors):
-    # Shape/stride/offset of the supplied output buffers. Object identity alone
+    # Shape, strides, offset and storage of the supplied output buffers. Identity alone
     # would still hold for a candidate that resized or re-strided a correctly
     # shaped strided view onto fresh contiguous storage, so the metadata is
     # compared before and after the candidate call.
     return [
-        (tensor.shape, tensor.stride(), tensor.storage_offset()) for tensor in tensors
+        (tensor.shape, tensor.stride(), tensor.storage_offset(), tensor.data_ptr())
+        for tensor in tensors
     ]
 
 

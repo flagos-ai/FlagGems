@@ -201,7 +201,7 @@ def test_cholesky_input_layout(dtype, layout):
 
     # The factorization is not in-place: nothing in the input storage, inside or
     # outside the view, may change.
-    assert torch.equal(storage, preserved)
+    tu.assert_result_equal(storage, preserved)
     tu.assert_result_close(res_out, ref_out)
 
 

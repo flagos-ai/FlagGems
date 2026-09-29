@@ -365,12 +365,9 @@ def test__sparse_mm_sparse_state(state, dtype):
     tu.assert_result_close(res_out, ref_out)
 
 
-# nan/inf coverage for each supported floating dtype. ``tu.make_special_input``
-# returns the same payload (nan, inf, -inf, 0.0, -0.0) for every scenario name, so
-# the three scenarios below are not three distinct value classes; the scenarios
-# are kept because the payload contract is the shared helper's, and each placement
-# moves that payload to a different operand.
-_SPECIAL_DTYPES = [torch.float32, torch.complex64] + _WIDE_DTYPES
+# Each scenario supplies a distinct NaN, infinity or mixed payload. Reduced
+# precision uses the native-supported CSR path; other dtypes use COO.
+_SPECIAL_DTYPES = COO_DENSE_DTYPES + _REDUCED_DTYPES
 _SPECIAL_CASES = tu.selected_cases(
     [
         (dtype, scenario, placement)
@@ -401,6 +398,8 @@ def _special_operands(dtype, scenario, placement):
 @pytest.mark.parametrize("dtype,scenario,placement", _SPECIAL_CASES)
 def test__sparse_mm_special_values(dtype, scenario, placement):
     sparse, dense = _special_operands(dtype, scenario, placement)
+    if dtype in _REDUCED_DTYPES:
+        sparse = sparse.to_sparse_csr()
 
     ref_out = torch.ops.aten._sparse_mm(tu.to_reference(sparse), tu.to_reference(dense))
     res_out = flag_gems._sparse_mm(sparse, dense)
