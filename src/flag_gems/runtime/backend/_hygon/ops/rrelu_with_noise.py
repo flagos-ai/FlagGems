@@ -19,10 +19,14 @@ On this backend the per-call wrapper cost is large compared with a plain
 kernel launch, and for small inputs it dominates the measured latency: the
 kernel itself needs a few microseconds while the wrapper adds on the order of
 a hundred.  This file serves contiguous inputs with a direct launch (the same
-shape of fast path the Hygon gelu kernels use) and keeps ``pointwise_dynamic``
-as the fallback for strided inputs and for tensors too large for int32
-offsets.  Training mode samples its noise workspace the same way, for the
-same reason.
+shape of fast path the Hygon gelu kernels use); strided inputs and tensors too
+large for int32 offsets go to the generic implementation, which covers them
+with ``pointwise_dynamic``.
+
+Training draws its slopes in the training kernel here, as the generic
+operator does too.  What this file adds on top of that is the launch around
+the kernel: ``_device_ctx`` and ``_next_philox_state`` keep the host side of
+a launch off dispatches that cost more than the launch itself.
 
 This module is registered by the Hygon ``SpecOpRegistrar``, which overrides
 the generic ``rrelu_with_noise`` / ``rrelu_with_noise_`` by function name, so
@@ -38,8 +42,8 @@ import triton
 import triton.language as tl
 
 from flag_gems import runtime
+from flag_gems.ops.rrelu_with_noise import _rrelu_with_noise_impl as _generic_impl
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import pointwise_dynamic
 from flag_gems.utils.random_utils import uint_to_uniform_float
 
 logger = logging.getLogger(__name__)
@@ -139,32 +143,6 @@ def _rrelu_with_noise_train_contiguous_kernel(
     _rrelu_with_noise_train_group(x_ptr, noise_ptr, out_ptr, off_1, r1, N)
     _rrelu_with_noise_train_group(x_ptr, noise_ptr, out_ptr, off_2, r2, N)
     _rrelu_with_noise_train_group(x_ptr, noise_ptr, out_ptr, off_3, r3, N)
-
-
-# Fallback paths.  These are the same pointwise_dynamic kernels the generic
-# implementation uses; they are defined here so this module stays
-# self-contained.
-@pointwise_dynamic(
-    is_tensor=[True, False],
-    num_outputs=1,
-    promotion_methods=[(0, 1, "DEFAULT")],
-)
-@triton.jit
-def _rrelu_with_noise_eval_generic(self, slope):
-    return tl.where(self > 0, self, self * slope)
-
-
-@pointwise_dynamic(
-    is_tensor=[True, True],
-    num_outputs=2,
-    promotion_methods=[(0, 1, "DEFAULT"), (0, 1, "DEFAULT")],
-)
-@triton.jit
-def _rrelu_with_noise_train_generic(self, noise):
-    not_positive = self <= 0
-    effective_noise = tl.where(not_positive, noise, 1.0)
-    output = tl.where(not_positive, self * effective_noise, self)
-    return output, effective_noise
 
 
 def _can_use_contiguous_path(self, noise):
@@ -281,77 +259,6 @@ def _check_rrelu_with_noise_args(self, noise, lower, upper):
         )
 
 
-# Training needs a fresh uniform sample for the noise workspace before every
-# launch.  Routing that through the generic ``uniform_`` pays the same wrapper
-# cost this file exists to avoid, so sample with a direct launch instead.
-#
-# The kernel, its heuristic config, and the seed/offset bookkeeping are copied
-# from the generic ``flag_gems.ops.uniform``.  They have to match exactly: the
-# sampler derives each element's philox counter from the tile index and BLOCK,
-# so a different tiling rule would produce different values from the same
-# generator state.  Copying it keeps both the sampled values and the amount by
-# which the generator advances unchanged.
-_UNIFORM_UNROLL = 4
-
-
-@triton.heuristics(runtime.get_heuristic_config("uniform"))
-@triton.jit(do_not_specialize=["philox_seed", "philox_offset"])
-def _uniform_contiguous_kernel(
-    out_ptr,
-    N,
-    philox_seed,
-    philox_offset,
-    from_,
-    to,
-    BLOCK: tl.constexpr,
-):
-    philox_seed = philox_seed.to(tl.int64)
-    philox_offset = philox_offset.to(tl.int64)
-    c0 = (philox_offset & 0xFFFFFFFF).to(tl.uint32)
-    c1 = ((philox_offset >> 32) & 0xFFFFFFFF).to(tl.uint32)
-    i4 = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
-    c0 += i4
-    _O = c0 * 0
-    r0, r1, r2, r3 = tl.philox(philox_seed, c0, c1, _O, _O)
-    r0 = uint_to_uniform_float(r0) * (to - from_) + from_
-    r1 = uint_to_uniform_float(r1) * (to - from_) + from_
-    r2 = uint_to_uniform_float(r2) * (to - from_) + from_
-    r3 = uint_to_uniform_float(r3) * (to - from_) + from_
-    off_0 = tl.program_id(0) * BLOCK * 4 + tl.arange(0, BLOCK)
-    off_1 = off_0 + BLOCK
-    off_2 = off_1 + BLOCK
-    off_3 = off_2 + BLOCK
-    tl.store(out_ptr + off_0, r0, mask=off_0 < N, eviction_policy="evict_first")
-    tl.store(out_ptr + off_1, r1, mask=off_1 < N, eviction_policy="evict_first")
-    tl.store(out_ptr + off_2, r2, mask=off_2 < N, eviction_policy="evict_first")
-    tl.store(out_ptr + off_3, r3, mask=off_3 < N, eviction_policy="evict_first")
-
-
-def _fill_uniform_contiguous(out, lower, upper, generator):
-    """Fill a contiguous tensor with U(lower, upper) in place."""
-    N = out.numel()
-    if N == 0:
-        return out
-    grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK"] * _UNIFORM_UNROLL),)
-    increment = triton.cdiv(N, _UNIFORM_UNROLL)
-    philox_seed, philox_offset = _next_philox_state(increment, generator=generator)
-    with _device_ctx(out.device):
-        _uniform_contiguous_kernel[grid_fn](
-            out, N, philox_seed, philox_offset, lower, upper
-        )
-    return out
-
-
-def _fill_training_noise(noise, lower, upper, generator):
-    # For a strided workspace, sample contiguously and let the training kernel
-    # scatter effective noise into the caller's layout while producing output.
-    if noise.is_contiguous():
-        return _fill_uniform_contiguous(noise, float(lower), float(upper), generator)
-
-    sampled = torch.empty_like(noise, memory_format=torch.contiguous_format)
-    return _fill_uniform_contiguous(sampled, float(lower), float(upper), generator)
-
-
 def _new_output(self):
     # ``aten::rrelu_with_noise`` returns the out-of-place result in legacy
     # contiguous layout, whatever the input layout is, so the allocation cannot
@@ -386,25 +293,18 @@ def _rrelu_with_noise_impl(
             return _launch_contiguous_eval(
                 self, self if inplace else _new_output(self), slope
             )
-        output = out if out is not None else _new_output(self)
-        _rrelu_with_noise_eval_generic(self, slope, out0=output)
-        return output
-
-    if fast_path:
+    elif fast_path:
         # Training draws the noise in the kernel, so nothing has to be filled
         # beforehand here.
         return _launch_contiguous_train(
             self, noise, self if inplace else _new_output(self), lower, upper, generator
         )
 
-    sampled_noise = _fill_training_noise(noise, lower, upper, generator)
-    if allocate:
-        output, _ = _rrelu_with_noise_train_generic(
-            self, sampled_noise, out0=_new_output(self), out1=noise
-        )
-        return output
-    _rrelu_with_noise_train_generic(self, sampled_noise, out0=out, out1=noise)
-    return out
+    # Strided inputs and tensors too large for an int32 flat offset take the
+    # generic implementation, in both modes.  Only strided training still fills
+    # the workspace up front -- the one path where the draw cannot move into
+    # the kernel.
+    return _generic_impl(self, noise, lower, upper, training, generator, out=out)
 
 
 def rrelu_with_noise(

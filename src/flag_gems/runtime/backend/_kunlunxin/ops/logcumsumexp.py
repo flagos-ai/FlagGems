@@ -29,10 +29,19 @@ logger = logging.getLogger(__name__)
 #  - N <= _ROW_MAX_N: one row per program, full row as a single 1D tile
 #    (TILE_N = next_pow2(N); the scan is a 1D tl.cumsum, which is the only
 #    scan path that lowers correctly on this XPU backend -- the 2D axis=1
-#    cumsum silently mis-computes, so no multirow 2D tiles here).
+#    cumsum silently mis-computes, so no multirow 2D tiles here). The tile is
+#    masked whenever TILE_N != N *or* TILE_N < 64: `tl.arange` is widened to
+#    round_up(TILE_N, 64) lanes, so a narrower tile would touch lanes past the
+#    row on both the load and the store.
 #  - N >  _ROW_MAX_N: per-row chunked online scan (BN=4096): uint32-key
 #    chunk max, per-chunk cumsum with a numerically-stable running rescale.
 #    A masked tail chunk (masked load with -inf + masked store) is proven ok.
+# Both scan tiers derive the max-shift from a monotone uint32 key that ranks
+# non-finite lanes below every finite one, so a row containing +inf/NaN still
+# computes a correct finite prefix instead of overflowing to +inf/NaN. The
+# chunk tier additionally pins the running sum at +inf once a +inf lane has
+# been seen (the blanket max would otherwise turn the next chunk's rescale
+# `inf * 0` into NaN and poison the rest of the row).
 _ROW_MAX_N = 4096
 
 # K > 1 (middle-dim): the original per-block kernel, driven sequentially from
@@ -63,9 +72,31 @@ def logcumsumexp_row_kernel(
     else:
         x = tl.load(inp_ptr + row_offset + n_offsets).to(tl.float32)
     bits = x.to(tl.uint32, bitcast=True)
-    key = bits ^ (0x80000000 | (bits >> 31))
+    # Monotone uint32 key (radix-sort family). `s` is the sign mask when the
+    # bitcast is read as int32 and shifted *arithmetically* (0xFFFFFFFF for
+    # negatives, 0 otherwise), so key = bits ^ (0x80000000 | s) reproduces the
+    # standard order: -inf < negatives < -0 < +0 < positives < +inf < NaN.
+    # The old `bits ^ (0x80000000 | (bits >> 31))` shifted a *uint32* (logical
+    # >> 31 gives 1, i.e. mask 0x80000001) and so mapped negatives to a
+    # *decreasing* key order: an all-negative row then searched from its
+    # minimum and overflowed exp() to +inf for any row whose spread exceeded
+    # ~88. Same defect and same fix as `_kunlunxin/ops/logsumexp.py`.
+    s = (bits.to(tl.int32, bitcast=True) >> 31).to(tl.uint32, bitcast=True)
+    key = bits ^ (0x80000000 | s)
+    # A scan needs more than a correct max: the shift must stay *finite*
+    # whenever the row holds a finite entry, otherwise a single +inf/NaN lane
+    # becomes the exponent base and exp() turns the whole finite prefix into
+    # +inf (or NaN). In the standard order the non-finite keys are exactly
+    # {+inf, +NaN} >= 0xFF800000 at the top (and -inf/-NaN already sit at the
+    # bottom, below every finite negative), so one threshold compare on the key
+    # we just built blankets them: key 0x007FFFFF decodes back to -inf, so an
+    # all-non-finite row still reaches the base-0 guard below and keeps
+    # log(0)=-inf / exp(+inf)=+inf / NaN propagation.
+    key = tl.where(key < 0xFF800000, key, 0x007FFFFF)
     m_key = tl.max(key, axis=0)
-    m = (m_key ^ (0x80000000 | ((m_key >> 31) ^ 1))).to(tl.float32, bitcast=True)
+    m = tl.where(m_key < 0x80000000, m_key ^ 0xFFFFFFFF, m_key ^ 0x80000000).to(
+        tl.float32, bitcast=True
+    )
     # exp base: -inf or +inf rows fall back to base 0 so that e=exp(x-0)
     # keeps log(0)=-inf / exp(+inf)=+inf semantics (torch-compatible scan).
     ms = tl.where(m == -float("inf"), 0.0, tl.where(m == float("inf"), 0.0, m))
@@ -93,8 +124,12 @@ def logcumsumexp_chunk_kernel(
     chunks: s_prev is the max-shifted prefix sum of the row so far. The
     rescaled prefix ``carry = s_prev * exp(m_prev - ms)`` degenerates to
     ``s_prev`` whenever the chunk max does not move the running max, which
-    also keeps the all-(-inf) rows free of NaN. 1D masked load (-inf) and
-    masked store are used for the tail chunk and are verified exact.
+    also keeps the all-(-inf) rows free of NaN.  A non-finite prefix is pinned
+    too (``s_prev == +inf`` -> ``carry = +inf``): otherwise an all-+inf chunk
+    leaves ``m_prev = -inf`` with ``s_prev = +inf`` and the next finite chunk's
+    ``inf * exp(-inf - ms) = inf * 0`` would turn the row into NaN instead of
+    the ``+inf`` torch keeps.  1D masked load (-inf) and masked store are used
+    for the tail chunk and are verified exact.
     """
     pid = ext.program_id(0)
     row_offset = pid * N
@@ -110,16 +145,37 @@ def logcumsumexp_chunk_kernel(
         else:
             x = tl.load(inp_ptr + row_offset + n_offsets).to(tl.float32)
         bits = x.to(tl.uint32, bitcast=True)
-        key = bits ^ (0x80000000 | (bits >> 31))
+        # Same monotone uint32 key + non-finite blanket as the row kernel (see
+        # the long note there). This matters more here than anywhere: without
+        # it a single +inf/NaN lane in one chunk sets the base for that whole
+        # chunk and poisons the running (m_prev, s_prev) carry.
+        s = (bits.to(tl.int32, bitcast=True) >> 31).to(tl.uint32, bitcast=True)
+        key = bits ^ (0x80000000 | s)
+        key = tl.where(key < 0xFF800000, key, 0x007FFFFF)
         m_key = tl.max(key, axis=0)
-        m_c = (m_key ^ (0x80000000 | ((m_key >> 31) ^ 1))).to(tl.float32, bitcast=True)
-        m_new = tl.maximum(m_prev, m_c)
-        ms = tl.where(
-            m_new == -float("inf"), 0.0, tl.where(m_new == float("inf"), 0.0, m_new)
+        m_c = tl.where(m_key < 0x80000000, m_key ^ 0xFFFFFFFF, m_key ^ 0x80000000).to(
+            tl.float32, bitcast=True
         )
+        m_new = tl.maximum(m_prev, m_c)
+        # +inf/NaN never reach here: the key blanket above maps them to the
+        # -inf key, so the running max is always a finite value or -inf.
+        ms = tl.where(m_new == -float("inf"), 0.0, m_new)
         e = tl.exp(x - ms)
         cs = tl.cumsum(e, axis=0)
-        carry = tl.where(m_prev == m_new, s_prev, s_prev * tl.exp(m_prev - ms))
+        # The rescale `s_prev * exp(m_prev - ms)` is only valid while s_prev is
+        # finite.  As soon as a +inf lane entered the prefix, s_prev is +inf and
+        # the product is inf * 0 = NaN for any chunk that moves the running max:
+        # chunk0 = [+inf]*4096 leaves m_prev = -inf (its blanket max) with
+        # s_prev = +inf, and the next finite chunk would then turn the whole
+        # remainder of the row into NaN although torch's cumsum stays +inf from
+        # the first +inf lane on.  +inf contributes +inf to the prefix sum
+        # whatever the shift, so pin it.  NaN needs no special case -- NaN * 0
+        # is already NaN and propagates on its own.
+        carry = tl.where(
+            (m_prev == m_new) | (s_prev == float("inf")),
+            s_prev,
+            s_prev * tl.exp(m_prev - ms),
+        )
         res = ms + tl.log(cs + carry)
         if NEED_TAIL:
             tl.store(out_ptr + row_offset + n_offsets, res, mask=mask)
@@ -195,7 +251,16 @@ def _scan_rows_into(inp, out, M, N):
         return
     if N <= _ROW_MAX_N:
         TILE_N = triton.next_power_of_2(N)
-        need_mask = 1 if TILE_N != N else 0
+        # This backend silently widens `tl.arange(0, TILE_N)` to
+        # round_up(TILE_N, 64) lanes, so a TILE_N < 64 tile is 64 lanes wide.
+        # The unmasked fast path would then read and write 64 - TILE_N lanes
+        # past every row: neighbouring rows get clobbered (non-deterministically
+        # -- whichever program stores last wins) and the final rows write beyond
+        # the output allocation. Verified by sentinel-padded buffers: N=2/4/8/16/32
+        # leaked 62/60/56/48/32 elements per row, N>=64 leaked 0. The boundary
+        # mask `n_offsets < N` is honoured for 1D stores (unlike 2D tiles), so
+        # masking whenever the tile is narrower than the 64-lane floor fixes it.
+        need_mask = 1 if (TILE_N != N or TILE_N < 64) else 0
         num_warps = 8 if TILE_N > 2048 else 4
         grid = (M, 1, 1)
         logcumsumexp_row_kernel[grid](

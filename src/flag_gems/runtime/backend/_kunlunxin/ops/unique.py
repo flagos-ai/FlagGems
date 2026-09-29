@@ -1613,12 +1613,9 @@ def _unique2(
             sorted_data, ne, cum_input, N, BLOCK=_BOUND_BLOCK, num_warps=8
         )
 
-    start = torch.nonzero(ne).ravel()
-    n_unique = start.numel()
-    if n_unique == N:
-        data_out = sorted_data
-    else:
-        data_out = torch.index_select(sorted_data, 0, start)
+    data_out = torch.masked_select(sorted_data, ne)
+    n_unique = data_out.numel()
+    start = torch.nonzero(ne).ravel() if return_counts else None
 
     inverse_indices = None
     counts = None

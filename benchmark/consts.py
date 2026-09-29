@@ -96,6 +96,7 @@ def model_shapes():
 @dataclass
 class BenchmarkMetrics:
     case_id: Optional[str] = None
+    candidate_source: Optional[str] = None
     # Legacy shape information for backward compatibility
     # This field corresponds to the 'size' field in the previous version's benchmark.
     legacy_shape: Optional[int] = None
@@ -123,6 +124,7 @@ class BenchmarkMetrics:
 
 ALL_AVAILABLE_METRICS = set(map(lambda x: x.name, fields(BenchmarkMetrics))) - {
     "case_id",
+    "candidate_source",
     "legacy_shape",
     "shape_detail",
 }

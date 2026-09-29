@@ -39,13 +39,11 @@ def test_lerp(shape, dtype):
     ref_weight = utils.to_reference(weight)
 
     ref_out = torch.lerp(ref_input, ref_end, weight=5.0)
-    with flag_gems.use_gems():
-        res_out = torch.lerp(input, end, weight=5.0)
+    res_out = flag_gems.lerp_scalar(input, end, weight=5.0)
     utils.gems_assert_close(res_out, ref_out, dtype)
 
     ref_out = torch.lerp(ref_input, ref_end, weight=ref_weight)
-    with flag_gems.use_gems():
-        res_out = torch.lerp(input, end, weight=weight)
+    res_out = flag_gems.lerp_tensor(input, end, weight=weight)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -69,13 +67,11 @@ def test_lerp_(shape, dtype):
     ref_weight = utils.to_reference(weight)
 
     ref_out = ref_input.clone().lerp_(ref_end, weight=5.0)
-    with flag_gems.use_gems():
-        res_out = input.clone().lerp_(end, weight=5.0)
+    res_out = flag_gems.lerp_scalar_(input.clone(), end, weight=5.0)
     utils.gems_assert_close(res_out, ref_out, dtype)
 
     ref_out = ref_input.clone().lerp_(ref_end, weight=ref_weight)
-    with flag_gems.use_gems():
-        res_out = input.clone().lerp_(end, weight=weight)
+    res_out = flag_gems.lerp_tensor_(input.clone(), end, weight=weight)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -96,13 +92,11 @@ def test_lerp_scalar(shape, dtype):
     ref_end = utils.to_reference(end)
 
     ref_out = torch.lerp(ref_input, ref_end, weight=5.0)
-    with flag_gems.use_gems():
-        res_out = torch.lerp(input, end, weight=5.0)
+    res_out = flag_gems.lerp_scalar(input, end, weight=5.0)
     utils.gems_assert_close(res_out, ref_out, dtype)
 
     ref_out = torch.lerp(ref_input, ref_end, weight=-2.0)
-    with flag_gems.use_gems():
-        res_out = torch.lerp(input, end, weight=-2.0)
+    res_out = flag_gems.lerp_scalar(input, end, weight=-2.0)
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
@@ -122,11 +116,9 @@ def test_lerp_scalar_(shape, dtype):
     ref_end = utils.to_reference(end)
 
     ref_out = ref_input.clone().lerp_(ref_end, weight=0.2)
-    with flag_gems.use_gems():
-        res_out = input.clone().lerp_(end, weight=0.2)
+    res_out = flag_gems.lerp_scalar_(input.clone(), end, weight=0.2)
     utils.gems_assert_close(res_out, ref_out, dtype)
 
     ref_out = ref_input.clone().lerp_(ref_end, weight=0.8)
-    with flag_gems.use_gems():
-        res_out = input.clone().lerp_(end, weight=0.8)
+    res_out = flag_gems.lerp_scalar_(input.clone(), end, weight=0.8)
     utils.gems_assert_close(res_out, ref_out, dtype)

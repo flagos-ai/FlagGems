@@ -51,8 +51,7 @@ def test_einsum_matmul(M, K, N, dtype):
     ref_inp1 = to_reference(inp1, True)
     ref_inp2 = to_reference(inp2, True)
     ref_out = torch.einsum("ij,jk->ik", ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.einsum("ij,jk->ik", inp1, inp2)
+    res_out = flag_gems.mm(inp1, inp2)
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
 
 
@@ -65,8 +64,7 @@ def test_einsum_bmm(B, M, K, N, dtype):
     ref_inp1 = to_reference(inp1, True)
     ref_inp2 = to_reference(inp2, True)
     ref_out = torch.einsum("bij,bjk->bik", ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.einsum("bij,bjk->bik", inp1, inp2)
+    res_out = flag_gems.bmm(inp1, inp2)
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
 
 
@@ -79,8 +77,7 @@ def test_einsum_dot(size, dtype):
     ref_inp1 = to_reference(inp1, True)
     ref_inp2 = to_reference(inp2, True)
     ref_out = torch.einsum("i,i->", ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.einsum("i,i->", inp1, inp2)
+    res_out = flag_gems.dot(inp1, inp2)
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=size)
 
 
@@ -93,8 +90,7 @@ def test_einsum_outer(M, N, dtype):
     ref_inp1 = to_reference(inp1, True)
     ref_inp2 = to_reference(inp2, True)
     ref_out = torch.einsum("i,j->ij", ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.einsum("i,j->ij", inp1, inp2)
+    res_out = flag_gems.outer(inp1, inp2)
     gems_assert_close(res_out, ref_out, dtype)
 
 
@@ -105,8 +101,7 @@ def test_einsum_trace(size, dtype):
     inp = torch.randn((size, size), dtype=dtype, device=flag_gems.device)
     ref_inp = to_reference(inp, True)
     ref_out = torch.einsum("ii->", ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.einsum("ii->", inp)
+    res_out = flag_gems.sum(torch.diagonal(inp))
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=size)
 
 
@@ -117,8 +112,7 @@ def test_einsum_diagonal(size, dtype):
     inp = torch.randn((size, size), dtype=dtype, device=flag_gems.device)
     ref_inp = to_reference(inp, True)
     ref_out = torch.einsum("ii->i", ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.einsum("ii->i", inp)
+    res_out = flag_gems.diagonal_copy(inp)
     gems_assert_close(res_out, ref_out, dtype)
 
 
@@ -130,12 +124,10 @@ def test_einsum_transpose(shape, dtype):
     ref_inp = to_reference(inp, True)
     if len(shape) == 2:
         ref_out = torch.einsum("ij->ji", ref_inp)
-        with flag_gems.use_gems():
-            res_out = torch.einsum("ij->ji", inp)
+        res_out = flag_gems.permute_copy(inp, (1, 0))
     else:
         ref_out = torch.einsum("ijk->kji", ref_inp)
-        with flag_gems.use_gems():
-            res_out = torch.einsum("ijk->kji", inp)
+        res_out = flag_gems.permute_copy(inp, (2, 1, 0))
     gems_assert_close(res_out, ref_out, dtype)
 
 
@@ -146,8 +138,7 @@ def test_einsum_sum_all(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = to_reference(inp, True)
     ref_out = torch.einsum("ijk->", ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.einsum("ijk->", inp)
+    res_out = flag_gems.sum(inp)
     reduce_dim = shape[0] * shape[1] * shape[2]
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=reduce_dim)
 
@@ -159,8 +150,7 @@ def test_einsum_sum_dim(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = to_reference(inp, True)
     ref_out = torch.einsum("ijk->j", ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.einsum("ijk->j", inp)
+    res_out = flag_gems.sum_dim(inp, dim=(0, 2))
     reduce_dim = shape[0] * shape[2]
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=reduce_dim)
 
@@ -175,6 +165,8 @@ def test_einsum_ellipsis(dtype):
     ref_inp1 = to_reference(inp1, True)
     ref_inp2 = to_reference(inp2, True)
     ref_out = torch.einsum("...ij,...jk->...ik", ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.einsum("...ij,...jk->...ik", inp1, inp2)
+    res_out = flag_gems.bmm(
+        inp1.reshape(-1, shape1[-2], shape1[-1]),
+        inp2.reshape(-1, shape2[-2], shape2[-1]),
+    ).reshape(shape1[:-2] + (shape1[-2], shape2[-1]))
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=64)

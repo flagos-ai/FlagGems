@@ -6,6 +6,7 @@ import triton
 import triton.language as tl
 
 import flag_gems
+from flag_gems.ops.linalg_lu_factor import _lu_scale_col
 from flag_gems.ops.linalg_lu_factor_ex import linalg_lu_factor_ex as gems_lu_factor_ex
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
@@ -1014,7 +1015,7 @@ def _lu_factor_kernel(
                 info_val = j_ind + 1
 
         # Scale column below diagonal (L factors) and write back.
-        scaled_col = tl.where(rows > j_ind, col_vals / pivot, col_vals)
+        scaled_col = _lu_scale_col(col_vals, pivot, rows > j_ind)
         work = tl.where(
             (rows[:, None] > j_ind) & (cols[None, :] == j_ind),
             scaled_col[:, None],
@@ -1979,14 +1980,23 @@ def _lu_panel_par(
         mask2 = rowmask[:, None] & colmask[None, :]
         sl = tl.load(LU_ptr + offs, mask=mask2, other=0.0).to(LU_ptr.dtype.element_ty)
         col_vals = tl.sum(tl.where(cols[None, :] == jj, sl, 0.0), axis=1)
-        scaled = tl.where(rows > j, col_vals / pivot_val, col_vals)
+        scaled = _lu_scale_col(col_vals, pivot_val, rows > j)
         sl = tl.where((rows[:, None] > j) & (cols[None, :] == jj), scaled[:, None], sl)
         upd = (rows[:, None] > j) & (cols[None, :] > jj)
         sl = tl.where(upd, sl - scaled[:, None] * u_row[None, :], sl)
         tl.store(LU_ptr + offs, sl, mask=mask2)
 
     if pid_g == 0:
-        tl.store(info_ptr + pid_b, info_val)
+        # One launch per panel shares this ``info`` slot, and a panel *after*
+        # the singular one finds no zero pivot of its own, so a plain store let
+        # the last panel overwrite an earlier panel's report with 0 -- turning
+        # a reported singular factor back into "no error".  Keep the first zero
+        # pivot instead, as LAPACK/ATen do.
+        prev = tl.load(info_ptr + pid_b)
+        first = tl.where(
+            (prev == 0) | ((info_val != 0) & (info_val < prev)), info_val, prev
+        )
+        tl.store(info_ptr + pid_b, first)
 
 
 @triton.jit

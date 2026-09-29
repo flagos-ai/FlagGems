@@ -34,10 +34,35 @@ jobs:
     concurrency:
       group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
-    runs-on: ubuntu-latest
+    # cpu-runner is an already-running container; no container: image needed.
+    runs-on: cpu-runner
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-    - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
-      with:
-        python-version: '3.11'
-    - uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd  # v3.0.1
+    # checkout marks the repo safe only in a throwaway HOME; pre-commit runs
+    # with HOME=/github/home and git rejects the dir as dubious ownership.
+    # Register it in the persistent global config pre-commit actually reads.
+    - name: Mark workspace as a safe git directory
+      shell: bash
+      run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+    - name: Ensure full working tree
+      shell: bash
+      run: |
+        # cpu-runner reuses its _work dir across jobs. A prior job's
+        # sparse checkout leaves skip-worktree bits behind that the next
+        # checkout's "sparse-checkout disable" can't clear, so tracked files
+        # stay absent on disk even though checkout reports success (pre-commit
+        # then can't see the files it must lint). Clear any skip-worktree bits
+        # and force-restore the full tree. Harmless no-op when clean.
+        git sparse-checkout disable 2>/dev/null || true
+        git ls-files -z | xargs -0 -r git update-index --no-skip-worktree
+        git checkout --force HEAD -- .
+    # pre-commit is preinstalled in the runner image but its console-script
+    # entrypoint lives in /usr/local/bin, which is not on the PATH inherited by
+    # steps running directly on cpu-runner (it was only on PATH when the job ran
+    # inside a container). Invoke it via `python3 -m pre_commit` so it resolves
+    # by import path instead of PATH lookup. Ensure it is present first.
+    - name: Run pre-commit
+      shell: bash
+      run: |
+        python3 -m pre_commit --version || python3 -m pip install pre-commit
+        python3 -m pre_commit run --show-diff-on-failure --color=always --all-files
