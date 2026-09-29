@@ -113,7 +113,12 @@ def _shape_rows(shapes):
 # shape.  Quick mode keeps a single representative positive row per supported
 # dtype.
 POSITIVE_ROWS = tu.selected_cases(
-    _shape_rows(tu.REQUIRED_SHAPES) + _shape_rows([_QUICK_SHAPE]),
+    _shape_rows(tu.REQUIRED_SHAPES)
+    + _shape_rows([_QUICK_SHAPE])
+    + [
+        (shape, sparse_dim, dim - len(shape))
+        for shape, sparse_dim, dim in _shape_rows([_QUICK_SHAPE])
+    ],
     quick=[(_QUICK_SHAPE, 2, 0)],
 )
 

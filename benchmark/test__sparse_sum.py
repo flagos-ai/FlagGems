@@ -128,14 +128,13 @@ class SparseSumBenchmark(OperatorBenchmark):
     """
 
     def set_shapes(self, shape_file_path=None):
-        super().set_shapes(shape_file_path, default_shapes=_SPARSE_SUM_SHAPES)
-        # The generic merge in base.set_shapes is reached only through the dense
-        # path, so the descriptor-form extras are merged here instead.
+        default_shapes = list(_SPARSE_SUM_SHAPES)
         if (
             base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE
             and not base.Config.query
         ):
-            self.shapes = list(dict.fromkeys(self.shapes + self.set_more_shapes()))
+            default_shapes += self.set_more_shapes()
+        super().set_shapes(shape_file_path, default_shapes=default_shapes)
 
     def set_more_shapes(self):
         # Extras must keep the descriptor form, otherwise dense shapes would be

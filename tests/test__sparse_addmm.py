@@ -63,11 +63,6 @@ _MNK_SHAPES = [
 _MNK_ROWS = tu.selected_cases(_MNK_SHAPES, quick=[(2, 19, 7)])
 
 
-def _sparse_mat1(dense):
-    """2-D COO twin of ``dense`` - the sparse operand of the operator."""
-    return dense.to_sparse()
-
-
 @pytest.mark.sparse_addmm
 @pytest.mark.parametrize("dtype", _DTYPES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
@@ -77,7 +72,7 @@ def test__sparse_addmm_value_grid(mnk, value_range, dtype):
     # the public call contract, and the sweeps further down pass them explicitly.
     m, n, k = mnk
     self_t = tu.make_input(dtype, (m, n), value_range)
-    mat1 = _sparse_mat1(tu.make_input(dtype, (m, k), value_range))
+    mat1 = tu.make_input(dtype, (m, k), value_range).to_sparse()
     mat2 = tu.make_input(dtype, (k, n), value_range)
 
     ref_out = torch.ops.aten._sparse_addmm(
@@ -124,7 +119,7 @@ def _strided_operands(label, dtype):
 def test__sparse_addmm_strided_dense_operands(label, dtype):
     m, n, k = _STRIDED_MNK
     self_t, mat2 = _strided_operands(label, dtype)
-    mat1 = _sparse_mat1(tu.make_input(dtype, (m, k), ["-1", "1"]))
+    mat1 = tu.make_input(dtype, (m, k), ["-1", "1"]).to_sparse()
 
     ref_out = torch.ops.aten._sparse_addmm(
         tu.to_reference(self_t), tu.to_reference(mat1), tu.to_reference(mat2)
@@ -230,7 +225,7 @@ def test__sparse_addmm_self_broadcast(mnk, self_shape):
     m, n, k = mnk
     dtype = torch.float32
     self_t = tu.make_input(dtype, self_shape, ["-1", "1"])
-    mat1 = _sparse_mat1(tu.make_input(dtype, (m, k), ["-1", "1"]))
+    mat1 = tu.make_input(dtype, (m, k), ["-1", "1"]).to_sparse()
     mat2 = tu.make_input(dtype, (k, n), ["-1", "1"])
 
     ref_out = torch.ops.aten._sparse_addmm(
@@ -268,7 +263,7 @@ _ALPHA_INF_ROWS = tu.selected_cases(
 def _param_operands(dtype, value_range):
     m, n, k = _PARAM_MNK
     self_t = tu.make_input(dtype, (m, n), value_range)
-    mat1 = _sparse_mat1(tu.make_input(dtype, (m, k), value_range))
+    mat1 = tu.make_input(dtype, (m, k), value_range).to_sparse()
     mat2 = tu.make_input(dtype, (k, n), value_range)
     return self_t, mat1, mat2
 
@@ -375,7 +370,7 @@ def test__sparse_addmm_special_values_in_self(dtype, scenario):
     self_t = _with_leading_special_values(
         tu.make_input(dtype, (m, n), ["-1", "1"]), scenario
     )
-    mat1 = _sparse_mat1(tu.make_input(dtype, (m, k), ["-1", "1"]))
+    mat1 = tu.make_input(dtype, (m, k), ["-1", "1"]).to_sparse()
     mat2 = tu.make_input(dtype, (k, n), ["-1", "1"])
 
     ref_out = torch.ops.aten._sparse_addmm(
@@ -411,7 +406,7 @@ def test__sparse_addmm_special_values_in_sparse_operand(dtype, scenario):
 def test__sparse_addmm_special_values_in_mat2(dtype, scenario):
     m, n, k = _SPECIAL_MNK
     self_t = tu.make_input(dtype, (m, n), ["-1", "1"])
-    mat1 = _sparse_mat1(tu.make_input(dtype, (m, k), ["-1", "1"]))
+    mat1 = tu.make_input(dtype, (m, k), ["-1", "1"]).to_sparse()
     # The payload occupies mat2's first row (one entry per output column), so
     # every output entry mixes exactly one special value with finite products and
     # its NaN-ness does not depend on the summation order.
@@ -434,7 +429,7 @@ def test__sparse_addmm_beta_zero_drops_special_self(dtype, scenario):
     self_t = _with_leading_special_values(
         tu.make_input(dtype, (m, n), ["-1", "1"]), scenario
     )
-    mat1 = _sparse_mat1(tu.make_input(dtype, (m, k), ["-1", "1"]))
+    mat1 = tu.make_input(dtype, (m, k), ["-1", "1"]).to_sparse()
     mat2 = tu.make_input(dtype, (k, n), ["-1", "1"])
 
     # beta == 0 removes self from the product, so the native result is finite even
@@ -468,7 +463,7 @@ def test__sparse_addmm_backward(mnk, dtype):
     # reference operands below are independent copies of the same values, so the
     # two autograd graphs share no storage.
     self_t = tu.make_input(dtype, (m, n), value_range).requires_grad_(True)
-    mat1 = _sparse_mat1(tu.make_input(dtype, (m, k), value_range)).requires_grad_(True)
+    mat1 = tu.make_input(dtype, (m, k), value_range).to_sparse().requires_grad_(True)
     mat2 = tu.make_input(dtype, (k, n), value_range).requires_grad_(True)
     upstream = tu.make_input(dtype, (m, n), value_range)
 
@@ -510,7 +505,7 @@ def test__sparse_addmm_out_overload(dtype):
     # simulating it with default + copy_.
     m, n, k = (8, 9, 6)
     self_t = tu.make_input(dtype, (m, n), ["-1", "1"])
-    mat1 = _sparse_mat1(tu.make_input(dtype, (m, k), ["-1", "1"]))
+    mat1 = tu.make_input(dtype, (m, k), ["-1", "1"]).to_sparse()
     mat2 = tu.make_input(dtype, (k, n), ["-1", "1"])
 
     ref_self = tu.to_reference(self_t)
