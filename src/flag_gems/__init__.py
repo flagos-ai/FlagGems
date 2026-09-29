@@ -1010,6 +1010,7 @@ _FULL_CONFIG = (
     ("linalg_lu_factor.out", linalg_lu_factor_out),
     ("linalg_lu_factor_ex", linalg_lu_factor_ex),
     ("linalg_lu_factor_ex.out", linalg_lu_factor_ex_out),
+    ("linalg_lu_solve", linalg_lu_solve),
     ("linalg_matmul", linalg_matmul),
     ("linalg_matrix_exp", linalg_matrix_exp),
     ("linalg_matrix_exp.out", linalg_matrix_exp_out),
