@@ -231,6 +231,7 @@ def test_view_as_complex_copy_out_into_offset_view(parent_shape, index, dtype):
     res_ret = flag_gems.view_as_complex_copy(inp, out=out)
 
     assert res_ret is out
+    tu.assert_result_equal(out, ref_out)
     tu.assert_result_equal(parent, ref_parent)
     tu.assert_result_equal(inp, ref_inp)
 
@@ -261,6 +262,7 @@ def test_view_as_complex_copy_out_with_strided_input(
     res_ret = flag_gems.view_as_complex_copy(inp, out=out)
 
     assert res_ret is out
+    tu.assert_result_equal(out, ref_out)
     tu.assert_result_equal(parent, ref_parent)
     tu.assert_result_equal(inp, ref_inp)
 
