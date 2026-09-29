@@ -17,8 +17,15 @@ import warnings
 
 import torch
 import triton
-import triton.experimental.tle.language as tle
 import triton.language as tl
+
+try:
+    import triton.experimental.tle.language as tle
+
+    HAS_TLE = True
+except ImportError:
+    tle = None
+    HAS_TLE = False
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
@@ -531,6 +538,10 @@ def cholesky_solve(B, L, upper=False):
         X: solution tensor of shape (*, N, nrhs)
     """
     logger.debug("GEMS_ASCEND CHOLESKY_SOLVE")
+    if not HAS_TLE:
+        raise RuntimeError(
+            "Ascend cholesky_solve is unavailable: requires triton.experimental.tle."
+        )
     if L.dtype not in (torch.float32,):
         raise ValueError("cholesky_solve on Ascend only supports float32")
     assert B.dtype == L.dtype, "B and L must have the same dtype"
