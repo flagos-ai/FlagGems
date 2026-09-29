@@ -333,6 +333,7 @@ from flag_gems.ops.bartlett_window import bartlett_window
 from flag_gems.ops.batch_norm import batch_norm, batch_norm_backward
 from flag_gems.ops.batch_norm_backward_elemt import batch_norm_backward_elemt
 from flag_gems.ops.batch_norm_backward_reduce import batch_norm_backward_reduce
+from flag_gems.ops.batch_norm_elemt import batch_norm_elemt
 from flag_gems.ops.batch_norm_gather_stats import batch_norm_gather_stats
 from flag_gems.ops.batch_norm_gather_stats_with_counts import (
     batch_norm_gather_stats_with_counts,
@@ -1625,6 +1626,7 @@ __all__ = [
     "batch_norm_backward",
     "batch_norm_backward_elemt",
     "batch_norm_backward_reduce",
+    "batch_norm_elemt",
     "batch_norm_gather_stats",
     "batch_norm_gather_stats_with_counts",
     "batch_norm_stats",
