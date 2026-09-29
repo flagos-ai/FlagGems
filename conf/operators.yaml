@@ -9377,6 +9377,17 @@ ops:
   - LinearAlg
   stages:
   - beta: '5.4'
+- id: linalg_pinv
+  description: Computes the Moore-Penrose pseudoinverse of a matrix via Jacobi SVD.
+  for:
+  - linalg_pinv
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.5'
 - id: linalg_polar
   description: Computes the right polar decomposition A = U @ H.
   for:
@@ -19056,6 +19067,25 @@ ops:
   - BLAS
   stages:
   - alpha: '5.3'
+- id: weight_int4pack_mm
+  description: 'Int4 packed weight matrix multiplication. Computes C = A @ dequant(W).T
+
+    where W is a byte-pair int4 packed uint8 tensor of shape (N, K//2).
+
+    Weights are pre-dequantized into float32 and then processed by a Triton
+
+    GEMM kernel.
+
+    '
+  for:
+  - _weight_int4pack_mm
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.4'
 - id: weight_int4pack_mm_with_scales_and_zeros
   description: 'Int4 quantized matrix multiplication with separate scales and zeros.
     Computes
