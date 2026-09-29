@@ -63,6 +63,10 @@ def _p2(x):
     return 1 << (max(1, int(x)) - 1).bit_length()
 
 
+def _ceil_to(x, m):
+    return ((int(x) + m - 1) // m) * m
+
+
 @libentry()
 @triton.jit
 def _mk_v_kernel(
@@ -101,6 +105,9 @@ def _dot_kernel(
 
     The single 2-D axis=1 tl.sum in the whole factorisation. v arrives as a
     stride-0 duplicated-address tile so no 1-D broadcast reaches the reduce.
+    Kept as-is deliberately: a 1-D per-row reduce over mp was measured slower
+    for the wide-MP cases (m >> n) than this 2-D form, which amortises the
+    reduction across BC rows.
     """
     b = tl.program_id(0)
     c = C0 + tl.program_id(1) * BC + tl.arange(0, BC)
@@ -192,21 +199,25 @@ def _upd_kernel(
     C0,
     NCP: tl.constexpr,
     MP: tl.constexpr,
-    BC: tl.constexpr,
 ):
-    """M <- H M, i.e. W[c, r] -= WV[c] * v[r].
+    """M <- H M, i.e. W[c, r] -= WV[c] * v[r], one program per row c.
 
-    Both rank-1 operands are stride-0 duplicated-address 2-D loads. Written as
-    1-D broadcasts (``WV[c][:, None] * V[r][None, :]``) this is silently wrong
-    for MP > 128 on this backend.
+    The rank-1 operands are carried by a SCALAR (WV[c]) and a 1-D vector (v[:])
+    instead of the previous pair of stride-0 duplicated-address 2-D tiles. On
+    this backend a stride-0 2-D load lowers to a per-lane gathered access, so
+    the old form ran at the ~4.3 ns/elem gather wall even though the store was
+    affine; measured 71-91% of the whole operator inside this kernel. Scaling a
+    1-D row by a scalar keeps both the load and the store affine (~0.5 ns/elem)
+    and does not broadcast a 1-D vector along the last axis of a stored tile,
+    which is the shape this compiler miscompiles for >128 elements.
     """
     b = tl.program_id(0)
-    c = C0 + tl.program_id(1) * BC + tl.arange(0, BC)
+    c = C0 + tl.program_id(1)
     r = tl.arange(0, MP)
-    off = b * (NCP * MP) + c[:, None] * MP + r[None, :]
-    wt = tl.load(WV + b * NCP + c[:, None] + r[None, :] * 0)
-    vt = tl.load(V + b * MP + r[None, :] + c[:, None] * 0)
-    tl.store(W + off, tl.load(W + off) - wt * vt)
+    off = b * (NCP * MP) + c * MP + r
+    wv = tl.load(WV + b * NCP + c)
+    v = tl.load(V + b * MP + r)
+    tl.store(W + off, tl.load(W + off) - wv * v)
 
 
 @libentry()
@@ -353,7 +364,7 @@ def _qr_sweep(W, NCP, MP, NP, nsteps, batch, dt, dev, keep_reflectors):
         if keep_reflectors:
             _vsave_kernel[(batch,)](V, BETA, VS, BETAS, j, NP, MP=MP)
         _wvec_kernel[(batch, nb)](W, S, ALPHA, BETA, WV, j, c0, NCP=NCP, MP=MP, BC=BC)
-        _upd_kernel[(batch, nb)](W, WV, V, c0, NCP=NCP, MP=MP, BC=BC)
+        _upd_kernel[(batch, NCP - c0)](W, WV, V, c0, NCP=NCP, MP=MP)
     return DIAG, RMAX, VS, BETAS
 
 
@@ -366,7 +377,7 @@ def _lstsq_tall(A, B, rcond):
     KP = max(_LANES, _p2(nrhs))
     MP = max(_MIN_ROW, _p2(m))
     NP = max(_MIN_COL, _p2(n))
-    NCP = max(NP, _p2(n + KP))
+    NCP = max(NP, _ceil_to(n + KP, _LANES))
 
     W = torch.zeros((batch, NCP, MP), dtype=dt, device=dev)
     W[:, :n, :m] = A.transpose(-1, -2)
@@ -385,7 +396,7 @@ def _lstsq_tall(A, B, rcond):
                 RHS, XI, XS, DIAG, RMAX, rcond, i, n, NW=NP, KP=KP
             )
             _rowcpy_kernel[(batch,)](W, RROW, NCP * MP, i, LD=MP, NW=NP)
-            _upd_kernel[(batch, 1)](RHS, XI, RROW, 0, NCP=KP, MP=NP, BC=KP)
+            _upd_kernel[(batch, KP)](RHS, XI, RROW, 0, NCP=KP, MP=NP)
 
         RES = torch.zeros((batch, KP), dtype=dt, device=dev)
         if m > n:
@@ -428,7 +439,7 @@ def _lstsq_wide(A, B, rcond):
                 RHS, YI, YS, DIAG, RMAX, rcond, c, m, NW=MIP, KP=KP
             )
             _colcpy_kernel[(batch,)](W, COL, NRP * MP, c, LD=MP, NW=MIP)
-            _upd_kernel[(batch, 1)](RHS, YI, COL, 0, NCP=KP, MP=MIP, BC=KP)
+            _upd_kernel[(batch, KP)](RHS, YI, COL, 0, NCP=KP, MP=MIP)
 
         Z = torch.zeros((batch, KP, MP), dtype=dt, device=dev)
         Z[:, :nrhs, :m] = YS[:, :m, :nrhs].transpose(-1, -2)
@@ -440,7 +451,7 @@ def _lstsq_wide(A, B, rcond):
             _rowcpy_kernel[(batch,)](VS, RROW, NRP * MP, j, LD=MP, NW=MP)
             _dot_kernel[(batch, 1)](Z, RROW, DOT, 0, NCP=KP, MP=MP, BC=KP)
             _scale_kernel[(batch,)](DOT, BETAS, COEF, j, NRP, KP=KP)
-            _upd_kernel[(batch, 1)](Z, COEF, RROW, 0, NCP=KP, MP=MP, BC=KP)
+            _upd_kernel[(batch, KP)](Z, COEF, RROW, 0, NCP=KP, MP=MP)
 
     return Z[:, :nrhs, :n].transpose(-1, -2).contiguous()
 

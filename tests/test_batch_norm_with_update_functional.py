@@ -73,23 +73,22 @@ def test_batch_norm_with_update_functional(shape, dtype, affine):
         eps,
     )
 
-    with flag_gems.use_gems():
-        (
-            res_out,
-            res_save_mean,
-            res_save_invstd,
-            res_reserve,
-            res_running_mean_out,
-            res_running_var_out,
-        ) = torch.ops.aten._batch_norm_with_update_functional(
-            inp,
-            weight,
-            bias,
-            running_mean,
-            running_var,
-            momentum,
-            eps,
-        )
+    (
+        res_out,
+        res_save_mean,
+        res_save_invstd,
+        res_reserve,
+        res_running_mean_out,
+        res_running_var_out,
+    ) = flag_gems._batch_norm_with_update_functional(
+        inp,
+        weight,
+        bias,
+        running_mean,
+        running_var,
+        momentum,
+        eps,
+    )
 
     utils.gems_assert_close(res_out, ref_out, dtype)
     utils.gems_assert_close(res_save_mean, ref_save_mean, dtype)
