@@ -423,6 +423,7 @@ _FULL_CONFIG = (
         "_upsample_nearest_exact3d_backward.grad_input",
         _upsample_nearest_exact3d_backward_grad_input,
     ),
+    ("_weight_int4pack_mm", weight_int4pack_mm),
     (
         "_weight_int4pack_mm_with_scales_and_zeros",
         _weight_int4pack_mm_with_scales_and_zeros,
@@ -951,6 +952,7 @@ _FULL_CONFIG = (
     ("kaiser_window", kaiser_window),
     ("kaiser_window.beta", kaiser_window_beta),
     ("kaiser_window.periodic", kaiser_window_periodic),
+    ("kl_div", kl_div),
     ("kron", kron),
     ("kthvalue", kthvalue),
     ("l1_loss", l1_loss),
@@ -1039,6 +1041,7 @@ _FULL_CONFIG = (
     ("linalg_multi_dot.out", linalg_multi_dot_out),
     ("linalg_norm", linalg_norm),
     ("linalg_norm.ord_str", linalg_norm),
+    ("linalg_pinv", linalg_pinv),
     ("linalg_polar", linalg_polar),
     ("linalg_polar.out", linalg_polar_out),
     ("linalg_qr", linalg_qr),
