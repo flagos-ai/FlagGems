@@ -16,20 +16,48 @@ import logging
 
 import torch
 import triton
+from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 
+config_ = CodeGenConfig(
+    512,
+    (65536, 65536, 65536),
+    32,
+    True,
+    prefer_1d_tile=True,
+    buffer_size_limit=4096,
+    kunlunAutoGrid=True,
+)
 
-@pointwise_dynamic(is_tensor=[True, True, False], promotion_methods=[(0, 1, "DEFAULT")])
+
+config_tensor_ = CodeGenConfig(
+    512,
+    (65536, 65536, 65536),
+    32,
+    True,
+    prefer_1d_tile=True,
+    buffer_size_limit=4096,
+    kunlunAutoGrid=True,
+)
+
+
+@pointwise_dynamic(
+    is_tensor=[True, True, False],
+    promotion_methods=[(0, 1, "DEFAULT")],
+    config=config_tensor_,
+)
 @triton.jit
 def rsub_func(x, y, alpha):
     return y - x * alpha
 
 
 @pointwise_dynamic(
-    is_tensor=[True, False, False], promotion_methods=[(0, 1, "DEFAULT")]
+    is_tensor=[True, False, False],
+    promotion_methods=[(0, 1, "DEFAULT")],
+    config=config_,
 )
 @triton.jit
 def rsub_func_tensor_scalar(x, y, alpha):
@@ -59,9 +87,18 @@ def rsub(A, B, *, alpha=1):
 
 def rsub_tensor(A, B, *, alpha=1):
     logger.debug("GEMS_KUNLUNXIN RSUB_TENSOR")
+    if (
+        A.is_floating_point()
+        and isinstance(B, torch.Tensor)
+        and B.shape == A.shape
+        and B.dtype == A.dtype
+    ):
+        return rsub_func(A, B, alpha, out0=torch.empty_like(A))
     return rsub_func(A, B, alpha)
 
 
 def rsub_scalar(A, B, alpha=1):
     logger.debug("GEMS_KUNLUNXIN RSUB_SCALAR")
+    if A.is_floating_point() and type(B) in (int, float):
+        return rsub_func_tensor_scalar(A, B, alpha, out0=torch.empty_like(A))
     return rsub_func_tensor_scalar(A, B, alpha)

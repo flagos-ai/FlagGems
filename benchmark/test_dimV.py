@@ -16,6 +16,7 @@
 
 import pytest
 import torch
+from . import base, consts, utils
 
 # Sparse COO sizes for the benchmark: the op is O(1) in nnz (pure metadata
 # read), so the sweep exercises the host path across sparse sizes and the

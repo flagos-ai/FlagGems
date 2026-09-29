@@ -183,6 +183,18 @@ std::tuple<at::Tensor, at::Tensor> flash_attn_varlen_func(
     std::optional<at::Tensor> cp_tot_seqused_k = std::nullopt,
     int64_t fa_version = 2);
 
+// cross_attention(Tensor query, Tensor key, Tensor value,
+//                 Tensor? attn_mask=None, float? scale=None) -> Tensor
+// BNSD forward-only dense cross attention (MHA / GQA / MQA, fp16 / bf16 /
+// fp32).  Non-zero attn_mask entries block the corresponding key; fully masked
+// query rows produce exact zeros.  Query and key share a head dimension, the
+// value head dimension may be smaller.
+at::Tensor cross_attention(const at::Tensor &query,
+                           const at::Tensor &key,
+                           const at::Tensor &value,
+                           const std::optional<at::Tensor> &attn_mask = std::nullopt,
+                           const std::optional<double> &scale = std::nullopt);
+
 struct FlashFwdParams {
   // tensor pointers
   at::Tensor q;
