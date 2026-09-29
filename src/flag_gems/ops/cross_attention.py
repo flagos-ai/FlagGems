@@ -21,10 +21,15 @@ import numbers
 import torch
 import triton
 import triton.language as tl
-from triton.experimental.tle.language import gpu as tle_gpu
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
+from flag_gems.utils.triton_version_utils import HAS_TLE
+
+if HAS_TLE:
+    from triton.experimental.tle.language import gpu as tle_gpu
+else:
+    tle_gpu = None
 
 logger = logging.getLogger(__name__)
 _SUPPORTED_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
@@ -437,6 +442,10 @@ def cross_attention(query, key, value, attn_mask=None, scale=None):
     Fully masked rows produce exact zeros. This API currently has no backward.
     """
     logger.debug("GEMS CROSS ATTENTION")
+    if not HAS_TLE:
+        raise RuntimeError(
+            "cross_attention is unavailable: requires triton.experimental.tle."
+        )
     _validate_inputs(query, key, value, attn_mask, scale)
     batch, query_heads, query_len, qk_dim = query.shape
     kv_heads, key_len, value_dim = key.shape[1], key.shape[2], value.shape[3]
