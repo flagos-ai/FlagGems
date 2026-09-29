@@ -48,10 +48,9 @@ def test_jagged_to_padded_dense_forward(batch_size, max_length, dtype):
     )
 
     # GEMS implementation
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._jagged_to_padded_dense_forward(
-            values, [offsets], [max_length], 0.0
-        )
+    res_out = flag_gems._jagged_to_padded_dense_forward(
+        values, [offsets], [max_length], 0.0
+    )
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -78,9 +77,8 @@ def test_jagged_to_padded_dense_forward_padding(batch_size, max_length, padding_
         ref_values, [ref_offsets], [max_length], padding_value
     )
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._jagged_to_padded_dense_forward(
-            values, [offsets], [max_length], padding_value
-        )
+    res_out = flag_gems._jagged_to_padded_dense_forward(
+        values, [offsets], [max_length], padding_value
+    )
 
     utils.gems_assert_close(res_out, ref_out, torch.float32)

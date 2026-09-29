@@ -35,8 +35,7 @@ def test_fmod_(shape, dtype):
     ref_inp2 = utils.to_reference(inp2)
 
     ref_out = ref_inp1.fmod_(ref_inp2)
-    with flag_gems.use_gems():
-        res_out = inp.fmod_(inp2)
+    res_out = flag_gems.fmod_tensor_(inp, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype, atol=2.0)
     utils.gems_assert_close(inp, ref_out, dtype, atol=2.0)

@@ -146,25 +146,24 @@ def test_batch_norm_impl_index_backward_train(shape, dtype, impl_index, affine):
         ref_reserve,
     )
 
-    with flag_gems.use_gems():
-        (
-            res_in_grad,
-            res_weight_grad,
-            res_bias_grad,
-        ) = fn(
-            impl_index,
-            inp,
-            grad_output,
-            backward_weight,
-            running_mean,
-            running_var,
-            save_mean,
-            save_var,
-            True,
-            1e-5,
-            output_mask,
-            reserve,
-        )
+    (
+        res_in_grad,
+        res_weight_grad,
+        res_bias_grad,
+    ) = flag_gems._batch_norm_impl_index_backward(
+        impl_index,
+        inp,
+        grad_output,
+        backward_weight,
+        running_mean,
+        running_var,
+        save_mean,
+        save_var,
+        True,
+        1e-5,
+        output_mask,
+        reserve,
+    )
 
     reduce_dim = math.prod(shape) // C
     utils.gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=reduce_dim)
@@ -236,25 +235,24 @@ def test_batch_norm_impl_index_backward_eval(shape, dtype, impl_index, affine):
         ref_reserve,
     )
 
-    with flag_gems.use_gems():
-        (
-            res_in_grad,
-            res_weight_grad,
-            res_bias_grad,
-        ) = fn(
-            impl_index,
-            inp,
-            grad_output,
-            weight,
-            running_mean,
-            running_var,
-            save_mean,
-            save_var,
-            False,
-            1e-5,
-            output_mask,
-            reserve,
-        )
+    (
+        res_in_grad,
+        res_weight_grad,
+        res_bias_grad,
+    ) = flag_gems._batch_norm_impl_index_backward(
+        impl_index,
+        inp,
+        grad_output,
+        weight,
+        running_mean,
+        running_var,
+        save_mean,
+        save_var,
+        False,
+        1e-5,
+        output_mask,
+        reserve,
+    )
 
     reduce_dim = math.prod(shape) // C
     utils.gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=reduce_dim)
@@ -311,21 +309,20 @@ def test_batch_norm_impl_index_backward_empty(dtype):
         ref_reserve,
     )
 
-    with flag_gems.use_gems():
-        res_out = fn(
-            0,
-            inp,
-            grad_output,
-            weight,
-            running_mean,
-            running_var,
-            save_mean,
-            save_var,
-            True,
-            1e-5,
-            output_mask,
-            reserve,
-        )
+    res_out = flag_gems._batch_norm_impl_index_backward(
+        0,
+        inp,
+        grad_output,
+        weight,
+        running_mean,
+        running_var,
+        save_mean,
+        save_var,
+        True,
+        1e-5,
+        output_mask,
+        reserve,
+    )
 
     for res, ref in zip(res_out, ref_out):
         assert res.shape == ref.shape
