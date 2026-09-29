@@ -10533,17 +10533,6 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.5'
-- id: max_pool3d_backward
-  description: The backward version of `max_pool2d_with_indices()`.
-  for:
-  - nn.functional.max_pool3d
-  labels:
-  - aten
-  - nn.functional
-  kind:
-  - NeuralNetwork
-  stages:
-  - beta: '5.3'
 - id: max_pool3d_with_indices
   description: Applies a 3D max pooling over an input signal composed of several input
     planes.

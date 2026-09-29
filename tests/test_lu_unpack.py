@@ -126,6 +126,7 @@ def test_lu_unpack_batched(shape, dtype):
 
 
 @pytest.mark.lu_unpack
+@pytest.mark.lu_unpack_out
 @pytest.mark.parametrize("shape", LU_SHAPES)
 @pytest.mark.parametrize("dtype", LU_DTYPES)
 def test_lu_unpack_out(shape, dtype):

@@ -67,6 +67,13 @@ else:
         resolve_benchmarker,
     )
 
+# FlagTree's auto-adjust-block-size knob exists only on Triton builds that
+# carry it; stock Triton exposes triton.knobs but without this attribute.
+try:
+    _HAS_FLAGTREE_AABS = hasattr(triton.knobs.autotuning, "adjust_block_size")
+except AttributeError:
+    _HAS_FLAGTREE_AABS = False
+
 from flag_gems import runtime
 from flag_gems.flagtune.inference import cost_model
 from flag_gems.runtime import device, torch_device_fn
@@ -1469,6 +1476,33 @@ class LibEntry(triton.KernelInterface):
         const_key = [_descriptor_cache_key(arg) for arg in const_args]
         return tuple(spec_key + dns_key + const_key)
 
+    def _first_run(self, *args, **kwargs):
+        """Run the tuner once for a fresh entry key, with AABS disabled when
+        the caller passes constexpr values as keyword arguments.
+
+        FlagTree's AABS (auto-adjust-block-size) treats ``tl.arange(0, X)``
+        constexprs as tunable block sizes and writes them back into
+        ``config.kwargs`` during benchmarking. When the caller also supplies
+        the same constexpr as a launch kwarg, the tuner's relaunch
+        (``fn.run(*args, **kwargs, **config.all_kwargs())``) binds that name
+        twice and raises TypeError. The caller's values are the intended
+        sizes, so AABS has nothing to adjust here — suspend it for the
+        benchmark and restore it afterwards.
+        """
+        if not _HAS_FLAGTREE_AABS:
+            return self.fn.run(*args, **kwargs)
+        knobs_obj = triton.knobs.autotuning
+        if not any(
+            p.is_constexpr and p.name in kwargs for p in self.jit_function.params
+        ):
+            return self.fn.run(*args, **kwargs)
+        previous = knobs_obj.adjust_block_size
+        try:
+            knobs_obj.adjust_block_size = False
+            return self.fn.run(*args, **kwargs)
+        finally:
+            knobs_obj.adjust_block_size = previous
+
     def run(self, *args, **kwargs):
         grid = kwargs["grid"]
         if self._has_flagtune_tuner:
@@ -1532,7 +1566,7 @@ class LibEntry(triton.KernelInterface):
             with self.lock:
                 if entry_key in cache:
                     break
-                kernel = self.fn.run(*args, **kwargs)
+                kernel = self._first_run(*args, **kwargs)
                 fn = self.fn
                 # collect constexpr arguments for grid computation
                 constexprs = {}
