@@ -11,40 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-# Kunlunxin (XPU) override of special_multigammaln (out-of-place).
-#
-# Root cause (dispatch mechanism "b", import-time binding):
-#   `flag_gems/ops/special_multigammaln.py` does
-#       from flag_gems.ops.mvlgamma_ import mvlgamma_
-#   at *import* time, so it captures the **generic** `mvlgamma_` object.
-#   `SpecOpRegistrar` only rebinds the `flag_gems.mvlgamma_` package attribute,
-#   it cannot reach into the already-bound global of another module. Proof on
-#   XPU 5: `flag_gems.special_multigammaln.__globals__["mvlgamma_"]` lives in
-#   `flag_gems/ops/mvlgamma_.py` while `flag_gems.mvlgamma_` lives in
-#   `_kunlunxin/ops/mvlgamma_.py` (`inner is flag_gems.mvlgamma_` -> False).
-#   The generic kernel resolves `_lgamma = getattr(tl_extra_shim, "lgamma", ...)`,
-#   which links to `undefined symbol: Unsupported` on xpu3, so all 60 cases of
-#   `tests/test_mvlgamma_.py -m special_multigammaln` failed at compile time and
-#   the benchmark aborted on its first cell.
-#
-# Fix: a real XPU kernel for the out-of-place variant (no CPU/ATen/composite
-# fallback, no reuse of the broken generic module). It inlines the same
-# Lanczos g=7 log-gamma (`_lgamma_pos`) that the verified lgamma / mvlgamma /
-# mvlgamma_ overrides use. Test and benchmark inputs keep `x - k/2` positive
-# for the tested domain (`rand + (p-1)/2 + 1`), matching the sibling overrides.
-#
-# XPU-specific choices (measured on XPU 5, see
-# harness/solution/performance/special_multigammaln_xpu5_20260829.md):
-#   * `P` / `CONST` are `tl.constexpr`: the loop is unrolled to exactly `p`
-#     log-gamma evaluations instead of always 12 + a `tl.where` select chain,
-#     and the `p` scalar no longer needs a device tensor (which cost an extra
-#     `empty` + `fill_` launch per call under `use_gems()`).
-#   * The output buffer is over-allocated to a whole number of tiles and the
-#     store carries **no mask**: a masked store on this backend writes the full
-#     tile anyway, which would run past a tightly sized allocation.
-#   * `BLOCK_SIZE=512` elements: measured optimum / near-optimum for all three
-#     float dtypes (tile byte-width sweep 128 B .. 16 KB).
 import logging
 
 import torch
