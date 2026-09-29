@@ -31,6 +31,8 @@ class ChangeType(Enum):
     # Critical regressions (block merge)
     PASSED_TO_FAILED = "PASSED_TO_FAILED"
     PASSED_TO_ERROR = "PASSED_TO_ERROR"
+    PASSED_TO_SKIPPED = "PASSED_TO_SKIPPED"
+    PASSED_TO_NOT_FOUND = "PASSED_TO_NOT_FOUND"
     SKIPPED_TO_FAILED = "SKIPPED_TO_FAILED"
     NOT_FOUND_TO_FAILED = "NOT_FOUND_TO_FAILED"
     NOT_FOUND_TO_ERROR = "NOT_FOUND_TO_ERROR"
@@ -42,8 +44,6 @@ class ChangeType(Enum):
     NOT_FOUND_TO_PASSED = "NOT_FOUND_TO_PASSED"
 
     # Warnings (caution)
-    PASSED_TO_SKIPPED = "PASSED_TO_SKIPPED"
-    PASSED_TO_NOT_FOUND = "PASSED_TO_NOT_FOUND"
     FAILED_TO_ERROR = "FAILED_TO_ERROR"
     ERROR_TO_FAILED = "ERROR_TO_FAILED"
     NOT_FOUND_TO_SKIPPED = "NOT_FOUND_TO_SKIPPED"
@@ -72,6 +72,8 @@ class Severity(Enum):
 CHANGE_SEVERITY = {
     ChangeType.PASSED_TO_FAILED: Severity.CRITICAL,
     ChangeType.PASSED_TO_ERROR: Severity.CRITICAL,
+    ChangeType.PASSED_TO_SKIPPED: Severity.CRITICAL,
+    ChangeType.PASSED_TO_NOT_FOUND: Severity.CRITICAL,
     ChangeType.SKIPPED_TO_FAILED: Severity.CRITICAL,
     ChangeType.NOT_FOUND_TO_FAILED: Severity.CRITICAL,
     ChangeType.NOT_FOUND_TO_ERROR: Severity.CRITICAL,
@@ -79,8 +81,6 @@ CHANGE_SEVERITY = {
     ChangeType.ERROR_TO_PASSED: Severity.GOOD,
     ChangeType.SKIPPED_TO_PASSED: Severity.GOOD,
     ChangeType.NOT_FOUND_TO_PASSED: Severity.GOOD,
-    ChangeType.PASSED_TO_SKIPPED: Severity.WARNING,
-    ChangeType.PASSED_TO_NOT_FOUND: Severity.WARNING,
     ChangeType.FAILED_TO_ERROR: Severity.WARNING,
     ChangeType.ERROR_TO_FAILED: Severity.WARNING,
     ChangeType.NOT_FOUND_TO_SKIPPED: Severity.WARNING,
@@ -95,6 +95,8 @@ CHANGE_SEVERITY = {
 CHANGE_LABELS = {
     ChangeType.PASSED_TO_FAILED: "Passed → Failed",
     ChangeType.PASSED_TO_ERROR: "Passed → Error",
+    ChangeType.PASSED_TO_SKIPPED: "Passed → Skipped",
+    ChangeType.PASSED_TO_NOT_FOUND: "Test Removed",
     ChangeType.SKIPPED_TO_FAILED: "Skipped → Failed",
     ChangeType.NOT_FOUND_TO_FAILED: "New Test Failed",
     ChangeType.NOT_FOUND_TO_ERROR: "New Test Error",
@@ -102,8 +104,6 @@ CHANGE_LABELS = {
     ChangeType.ERROR_TO_PASSED: "Error → Passed",
     ChangeType.SKIPPED_TO_PASSED: "Skipped → Passed",
     ChangeType.NOT_FOUND_TO_PASSED: "New Test Passed",
-    ChangeType.PASSED_TO_SKIPPED: "Passed → Skipped",
-    ChangeType.PASSED_TO_NOT_FOUND: "Test Removed",
     ChangeType.FAILED_TO_ERROR: "Failed → Error",
     ChangeType.ERROR_TO_FAILED: "Error → Failed",
     ChangeType.NOT_FOUND_TO_SKIPPED: "New Test Skipped",
@@ -303,6 +303,9 @@ class TestComparator:
         try:
             return ChangeType(key)
         except ValueError:
+            print(
+                f"[WARN] Unknown status transition: {baseline_status} → {candidate_status}"
+            )
             return ChangeType.UNCHANGED
 
     def compare(self) -> ComparisonReport:
@@ -470,20 +473,17 @@ class ReportGenerator:
     def to_json(report: ComparisonReport, pretty: bool = True) -> str:
         """Convert report to JSON"""
 
-        def serialize(obj):
-            if isinstance(obj, Change):
-                return {
-                    "operator": obj.operator,
-                    "test_case": obj.test_case,
-                    "baseline_status": obj.baseline_status,
-                    "candidate_status": obj.candidate_status,
-                    "change_type": obj.change_type.value,
-                    "severity": obj.severity.value,
-                }
+        def convert(obj):
+            if isinstance(obj, Enum):
+                return obj.value
+            if isinstance(obj, dict):
+                return {k: convert(v) for k, v in obj.items()}
+            if isinstance(obj, list):
+                return [convert(i) for i in obj]
             return obj
 
         return json.dumps(
-            asdict(report, dict_factory=lambda x: {k: serialize(v) for k, v in x}),
+            convert(asdict(report)),
             indent=2 if pretty else None,
             default=str,
         )
@@ -506,34 +506,34 @@ class ReportGenerator:
 
         stats = report.statistics
         lines.append(
-            f"  Total Operators  |  {stats['operators']['baseline']}  "
-            f"|  {stats['operators']['candidate']}  "
-            f"|  {stats['operators']['delta']:+d}  |"
+            f"| Total Operators | {stats['operators']['baseline']} "
+            f"| {stats['operators']['candidate']} "
+            f"| {stats['operators']['delta']:+d} |"
         )
         lines.append(
-            f"  Total Test Cases  |  {stats['test_cases']['baseline']}  "
-            f"|  {stats['test_cases']['candidate']}  "
-            f"|  {stats['test_cases']['delta']:+d}  |"
+            f"| Total Test Cases | {stats['test_cases']['baseline']} "
+            f"| {stats['test_cases']['candidate']} "
+            f"| {stats['test_cases']['delta']:+d} |"
         )
         lines.append(
-            f"  ✅ Passed  |  {stats['passed']['baseline']}  "
-            f"|  {stats['passed']['candidate']}  "
-            f"|  {stats['passed']['delta']:+d}  |"
+            f"| ✅ Passed | {stats['passed']['baseline']} "
+            f"| {stats['passed']['candidate']} "
+            f"| {stats['passed']['delta']:+d} |"
         )
         lines.append(
-            f"  ❌ Failed  |  {stats['failed']['baseline']}  "
-            f"|  {stats['failed']['candidate']}  "
-            f"|  {stats['failed']['delta']:+d}  |"
+            f"| ❌ Failed | {stats['failed']['baseline']} "
+            f"| {stats['failed']['candidate']} "
+            f"| {stats['failed']['delta']:+d} |"
         )
         lines.append(
-            f"  ⏭️ Skipped  |  {stats['skipped']['baseline']}  "
-            f"|  {stats['skipped']['candidate']}  "
-            f"|  {stats['skipped']['delta']:+d}  |"
+            f"| ⏭️ Skipped | {stats['skipped']['baseline']} "
+            f"| {stats['skipped']['candidate']} "
+            f"| {stats['skipped']['delta']:+d} |"
         )
         lines.append(
-            f"  ⚠ Errors  |  {stats['errors']['baseline']}  "
-            f"|  {stats['errors']['candidate']}  "
-            f"|  {stats['errors']['delta']:+d}  |"
+            f"| ⚠ Errors | {stats['errors']['baseline']} "
+            f"| {stats['errors']['candidate']} "
+            f"| {stats['errors']['delta']:+d} |"
         )
 
         # Changes Summary

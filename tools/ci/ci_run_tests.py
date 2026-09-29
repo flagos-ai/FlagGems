@@ -1137,7 +1137,7 @@ def run_gpu_worker(
 
 
 def merge_gpu_summaries(
-    output_dir: Path, gpu_ids: List[int], wall_duration: float
+    output_dir: Path, gpu_ids: List[int], wall_duration: float, args=None
 ) -> Optional[Dict]:
     """Merge summaries from multiple GPU workers into a single summary."""
     merged_operators = {}
@@ -1188,6 +1188,9 @@ def merge_gpu_summaries(
                 "skip_operators": sorted(SKIP_OPERATORS),
                 "skip_test_patterns": sorted(SKIP_TEST_PATTERNS),
                 "skip_test_files": sorted(SKIP_TEST_FILES),
+                "skip_file_source": (
+                    str(args.skip_file) if args and args.skip_file else "default"
+                ),
             }
         ),
         "operators": merged_operators,
@@ -1463,7 +1466,9 @@ Examples:
 
         # Merge results from all GPUs
         active_gpu_ids = [gid for gid, _ in processes]
-        final_summary = merge_gpu_summaries(output_dir, active_gpu_ids, wall_duration)
+        final_summary = merge_gpu_summaries(
+            output_dir, active_gpu_ids, wall_duration, args
+        )
 
         if final_summary:
             summary_file = output_dir / "summary.json"
