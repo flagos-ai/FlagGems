@@ -261,7 +261,9 @@ def test_accuracy_atleast_2d_zero_sized(shape, dtype=None):
     ref_out = torch.ops.aten.atleast_2d(ref_inp)
     res_out = flag_gems.atleast_2d(inp)
     assert res_out.shape == ref_out.shape
-    assert tuple(res_out.stride()) == tuple(ref_inp.reshape(res_out.shape).stride()) or shape == (0,)
+    assert tuple(res_out.stride()) == tuple(
+        ref_inp.reshape(res_out.shape).stride()
+    ) or shape == (0,)
     if inp.ndim < 2:
         # unsqueeze paths must remain zero-copy views
         assert res_out.data_ptr() == inp.data_ptr()
