@@ -50,7 +50,7 @@ def test_dim_arange():
     bench = DimArangeBenchmark(
         op_name="dim_arange",
         torch_op=torch.ops.aten._dim_arange,
-        gems_op=flag_gems._dim_arange,
+        gems_op=flag_gems.dim_arange,
         dtypes=consts.FLOAT_DTYPES + consts.INT_DTYPES + consts.BOOL_DTYPES,
     )
     bench.run()

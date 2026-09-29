@@ -16,6 +16,7 @@ import pytest
 import torch
 
 import flag_gems
+import tests.accuracy_utils as utils
 from flag_gems.ops.sym_constrain_range import sym_constrain_range as gems_impl
 
 # Scalar bounds for sym_constrain_range - covering min-only, max-only, both,
@@ -68,7 +69,10 @@ def test_sym_constrain_range_gems_impl(size, min_val, max_val, caplog):
     with caplog.at_level("DEBUG", logger="flag_gems.ops.sym_constrain_range"):
         res_out = gems_impl(size, min=min_val, max=max_val)
 
-    assert "GEMS SYM_CONSTRAIN_RANGE" in caplog.text
+    assert (
+        f"{utils.gems_log_prefix(flag_gems.sym_constrain_range)} SYM_CONSTRAIN_RANGE"
+        in caplog.text
+    )
     assert res_out is None
 
 
