@@ -33,8 +33,7 @@ def test_gelu_and_mul(shape, approximate, dtype):
     ref_out = torch.mul(
         torch.nn.functional.gelu(ref_inp1, approximate=approximate), ref_inp2
     )
-    with flag_gems.use_gems():
-        res_out = flag_gems.gelu_and_mul(inp1, inp2, approximate)
+    res_out = flag_gems.gelu_and_mul(inp1, inp2, approximate)
 
     out_grad = torch.randn_like(res_out)
     ref_grad = utils.to_reference(out_grad, True)

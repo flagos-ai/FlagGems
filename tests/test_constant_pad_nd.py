@@ -40,8 +40,7 @@ def test_constant_pad_nd(shape, dtype):
 
     ref_inp = to_reference(inp)
     ref_out = torch.constant_pad_nd(ref_inp, pad, value)
-    with flag_gems.use_gems():
-        res_out = torch.constant_pad_nd(inp, pad, value)
+    res_out = flag_gems.constant_pad_nd(inp, pad, value)
 
     gems_assert_equal(res_out, ref_out)
 
@@ -62,8 +61,7 @@ def test_constant_pad_nd_non_contiguous(shape, dtype):
 
     ref_inp = to_reference(inp)
     ref_out = torch.constant_pad_nd(ref_inp, pad, value)
-    with flag_gems.use_gems():
-        res_out = torch.constant_pad_nd(inp, pad, value)
+    res_out = flag_gems.constant_pad_nd(inp, pad, value)
 
     gems_assert_equal(res_out, ref_out)
 
@@ -83,8 +81,7 @@ def test_constant_pad_nd_zero_value(shape, dtype):
 
     ref_inp = to_reference(inp)
     ref_out = torch.constant_pad_nd(ref_inp, pad, value)
-    with flag_gems.use_gems():
-        res_out = torch.constant_pad_nd(inp, pad, value)
+    res_out = flag_gems.constant_pad_nd(inp, pad, value)
 
     gems_assert_equal(res_out, ref_out)
 
@@ -102,7 +99,6 @@ def test_constant_pad_nd_partial_dims(shape, dtype):
 
     ref_inp = to_reference(inp)
     ref_out = torch.constant_pad_nd(ref_inp, pad, value)
-    with flag_gems.use_gems():
-        res_out = torch.constant_pad_nd(inp, pad, value)
+    res_out = flag_gems.constant_pad_nd(inp, pad, value)
 
     gems_assert_equal(res_out, ref_out)

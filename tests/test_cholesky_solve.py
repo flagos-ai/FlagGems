@@ -185,17 +185,11 @@ def _reference_cholesky_solve(rhs, factor, upper=False):
 
 
 def _solve_with_gems(rhs, L, upper=False):
-    with flag_gems.use_gems(include=["cholesky_solve"]):
-        assert "cholesky_solve" in flag_gems.current_work_registrar.get_all_keys()
-        return torch.cholesky_solve(rhs, L, upper=upper)
+    return flag_gems.cholesky_solve(rhs, L, upper=upper)
 
 
 def _solve_out_with_gems(rhs, L, out, upper=False):
-    with flag_gems.use_gems(include=["cholesky_solve", "cholesky_solve_out"]):
-        registered_keys = flag_gems.current_work_registrar.get_all_keys()
-        assert "cholesky_solve" in registered_keys
-        assert "cholesky_solve.out" in registered_keys
-        return torch.cholesky_solve(rhs, L, upper=upper, out=out)
+    return flag_gems.cholesky_solve_out(rhs, L, upper=upper, out=out)
 
 
 def _assert_cholesky_solve_close(result, reference, dtype):

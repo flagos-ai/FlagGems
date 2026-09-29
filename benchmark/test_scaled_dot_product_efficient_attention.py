@@ -1,8 +1,6 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base, consts
 
 # Attention benchmark shapes: (batch, heads, seq_len, head_dim)
@@ -38,7 +36,7 @@ class ScaledDotProductEfficientAttentionBenchmark(base.Benchmark):
 def test_scaled_dot_product_efficient_attention():
     bench = ScaledDotProductEfficientAttentionBenchmark(
         op_name="scaled_dot_product_efficient_attention",
-        torch_op=flag_gems._scaled_dot_product_efficient_attention,
+        torch_op=torch.ops.aten._scaled_dot_product_efficient_attention,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

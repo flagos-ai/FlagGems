@@ -54,7 +54,7 @@ except ModuleNotFoundError as exc:
     if exc.name != "triton.flagtune":
         raise
     _HAS_FLAGTREE_FLAGTUNE = False
-    from flag_gems.flagtune.runtime._benchmark_protocol import (
+    from flag_gems.flagtune.offline.runtime.benchmark_protocol import (
         BenchmarkMode,
         BenchmarkProtocol,
         resolve_benchmarker,
@@ -68,7 +68,7 @@ else:
     )
 
 from flag_gems import runtime
-from flag_gems.flagtune import cost_model
+from flag_gems.flagtune.inference import cost_model
 from flag_gems.runtime import device, torch_device_fn
 from flag_gems.runtime.backend import _state
 from flag_gems.utils.code_cache import config_cache_dir
@@ -160,13 +160,29 @@ def _infer_tensor_dtypes(values: Iterable[Any]) -> Tuple[Any, ...]:
     return tuple(dtypes)
 
 
+_TENSOR_DESCRIPTOR_TYPE = None  # None = unresolved; False = unavailable; else the class
+
+
 def _descriptor_cache_key(arg):
-    """Normalize descriptors for both positional and keyword dispatch keys."""
-    try:
-        from triton.tools.tensor_descriptor import TensorDescriptor
-    except ImportError:
-        return arg
-    if not isinstance(arg, TensorDescriptor):
+    """Normalize descriptors for both positional and keyword dispatch keys.
+
+    Per-call cost matters: this runs once per kernel argument per launch, and a
+    function-local `import` here measured ~1.1 us per call on this machine
+    (~95% of the whole helper, cascading to ~16 us/launch on small-shape ops).
+    Resolve the descriptor type once instead; the common path is then a single
+    isinstance check. Semantics unchanged.
+    """
+    global _TENSOR_DESCRIPTOR_TYPE
+    descriptor_type = _TENSOR_DESCRIPTOR_TYPE
+    if descriptor_type is None:
+        try:
+            from triton.tools.tensor_descriptor import TensorDescriptor
+        except ImportError:
+            descriptor_type = False
+        else:
+            descriptor_type = TensorDescriptor
+        _TENSOR_DESCRIPTOR_TYPE = descriptor_type
+    if descriptor_type is False or not isinstance(arg, descriptor_type):
         return arg
     return (
         "TensorDescriptor",
