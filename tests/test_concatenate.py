@@ -79,8 +79,7 @@ def test_concatenate(shape, dim, dtype):
     ref_inp = [to_reference(_) for _ in inp]
     ref_out = torch.concatenate(ref_inp, dim)
 
-    with flag_gems.use_gems():
-        res_out = torch.concatenate(inp, dim)
+    res_out = flag_gems.concatenate(inp, dim)
     gems_assert_equal(res_out, ref_out)
 
 
@@ -105,6 +104,5 @@ def test_concatenate_empty_tensor(shape, dim, dtype):
     ref_inp = [to_reference(_) for _ in inp]
     ref_out = torch.concatenate(ref_inp, dim)
 
-    with flag_gems.use_gems():
-        res_out = torch.concatenate(inp, dim)
+    res_out = flag_gems.concatenate(inp, dim)
     gems_assert_equal(res_out, ref_out)

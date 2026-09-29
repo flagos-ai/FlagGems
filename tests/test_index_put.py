@@ -31,6 +31,10 @@ else:
 
 INDEX_PUT_SHAPE_ACC_FALSE = (
     ((2**28,), ((2**16,),), (2**16,), False),
+    # grid.x = M / BLOCK_SIZE0 must stay within the launch limit, which is
+    # 65535 on some backends (e.g. enflame GCU300). M = 2**18 = 262144 exceeds
+    # it, so a kernel that chunks grid.x is required here.
+    ((2**19,), ((2**18,),), (2**18,), False),
     ((32, 32), ((8,), (8,)), (8,), False),
     ((32, 32), ((8,), (2, 8)), (8,), False),
     ((32, 32), ((2, 8),), (32,), False),

@@ -35,6 +35,27 @@ def test_log_(shape, dtype):
 
 
 @pytest.mark.log_
+@pytest.mark.parametrize("n", [40960, 41984, 65536, 151936])
+def test_log_large_inplace(n):
+    """A grid larger than the device core count must not re-run the first tile.
+
+    Regression test for #6446. Ascend caps the launch grid at the vector core
+    count (40 for an Ascend910) and triton-ascend pads a larger grid up to a
+    multiple of it, running every padding CTA with program_id == 0. When log_
+    launched one program per 1024-element tile without capping, the extra CTAs
+    re-applied the in-place log to tile 0, so log(log(x)) came out as NaN.
+    The sizes below all need more than 40 tiles while not being a multiple of
+    40, which is what makes the old code pad instead of queueing cleanly.
+    """
+    torch.manual_seed(0)
+    inp = torch.rand(n, dtype=torch.float32, device=flag_gems.device) + 0.1
+    ref_inp = utils.to_reference(inp.clone())
+    ref_out = ref_inp.log_()
+    res_out = flag_gems.log_(inp)
+    utils.gems_assert_close(res_out, ref_out, torch.float32)
+
+
+@pytest.mark.log_
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_log_special_values(dtype):
     """Test log_ on inf, -inf, 0, and nan inputs."""
@@ -79,7 +100,10 @@ def test_log_empty(dtype):
 def test_log_unsupported_dtype_raises(dtype):
     """Integer in-place log cannot store a float result: match torch and raise
     instead of silently truncating."""
-    inp = torch.arange(1, 5, dtype=dtype, device=flag_gems.device)
+    # Build the values on CPU and move them: torch_npu's arange has no int16
+    # kernel, so arange(dtype=torch.int16, device=<npu>) raises before the test
+    # can run. int16 tensors themselves are fine on npu.
+    inp = torch.arange(1, 5, dtype=dtype).to(flag_gems.device)
 
     # torch raises RuntimeError; gems raises TypeError (cannot delegate to aten
     # without recursion). Both prevent silent truncation.

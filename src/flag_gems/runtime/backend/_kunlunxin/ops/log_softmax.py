@@ -22,6 +22,8 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
+from ..utils.tle_copy import tle_copy
+
 logger = logging.getLogger(__name__)
 
 
@@ -103,13 +105,14 @@ def _strided_copy_kernel(
 
 
 def _strided_copy(dst, src):
-    # Same-shape strided copy without native copy_/copy: the gems copy_
-    # override is wedged out of this path (its tle kernel is unreliable on
-    # strided/transposed operands), so all offset math happens in the kernel
-    # from the two stride vectors.
     assert tuple(dst.shape) == tuple(src.shape), "shape mismatch"
     n = dst.numel()
     if n:
+        try:
+            if tle_copy(src, dst):
+                return dst
+        except Exception:  # noqa: BLE001 - unsupported layout -> own kernel
+            logger.debug("tle_copy declined the strided copy; using the gem kernel")
         dims = list(src.shape)
         ss = list(src.stride())
         ds = list(dst.stride())
@@ -260,6 +263,7 @@ FWD_TAIL_PIECE = 4096  # masked 1D tail pieces kept <= 4096 lanes (exact)
 # TILE_M buckets per N (probed XPU 5). Non-power-of-2 N < 64 needs TILE_M>=64
 # to compile correctly; handled in the dispatch.
 FWD_N_TILE_M = [(16, 64), (64, 32), (256, 16), (1024, 16), (4096, 8)]
+FWD_KEY_MAX_N = 64  # singlepass rows wider than this use the exact tl.max
 
 
 @triton.jit
@@ -281,6 +285,7 @@ def log_softmax_kernel_singlepass(
     N: tl.constexpr,
     TILE_M: tl.constexpr,
     NEED_MASK: tl.constexpr,
+    USE_KEY: tl.constexpr,
 ):
     pid_m = ext.program_id(0)
     m_offsets = pid_m * TILE_M + tl.arange(0, TILE_M)
@@ -293,9 +298,11 @@ def log_softmax_kernel_singlepass(
         )
     else:
         inp = tl.load(input_ptr + offsets).to(tl.float32)
-    bits = inp.to(tl.uint32, bitcast=True)
-    m_key = tl.max(_k_fwd_key_u32(bits), 1)
-    m = _k_fwd_decode_key(m_key)
+    if USE_KEY:
+        bits = inp.to(tl.uint32, bitcast=True)
+        m = _k_fwd_decode_key(tl.max(_k_fwd_key_u32(bits), 1))
+    else:
+        m = tl.max(inp, 1)
     e = tl.exp(inp - m[:, None])
     z = tl.sum(e, 1)
     out = inp - m[:, None] - tl.log(z)[:, None]
@@ -303,16 +310,6 @@ def log_softmax_kernel_singlepass(
         tl.store(output_ptr + offsets, out, mask=mask)
     else:
         tl.store(output_ptr + offsets, out)
-
-
-# NOTE (2026-09-02): the old 2D [TILE_M, N] row-masked tail kernel was
-# replaced: on XPU the 2D row-masked STORE is not honored -- it writes the
-# full TILE_M rows, i.e. (TILE_M - M % TILE_M) rows OOB past the output
-# (guard probe: M=1,N=2 -> 126 elements past the 8-byte output; M=3,N=256
-# -> 7424 elements). The 1D per-row masked load/store IS exact (guard probe
-# 2026-09-02), so the tail rows go through this per-row kernel. (A sliced
-# view passed to the launcher also faults on this backend, so the kernel
-# takes the full pointers and a runtime ROW_START instead of views.)
 
 
 @libentry()
@@ -324,6 +321,7 @@ def log_softmax_kernel_singlepass_tail(
     ROW_START,
     N,
     TILE_N: tl.constexpr,
+    USE_KEY: tl.constexpr,
 ):
     """Masked tail rows of the singlepass tile: one program per row, grid =
     M - ROW_START. 1D per-row masked load/store (exact on XPU), unlike the
@@ -333,8 +331,10 @@ def log_softmax_kernel_singlepass_tail(
     off = (ROW_START + pid) * N + n_offsets
     mask = n_offsets < N
     x = tl.load(input_ptr + off, mask=mask, other=-float("inf")).to(tl.float32)
-    m_key = tl.max(_k_fwd_key_u32(x.to(tl.uint32, bitcast=True)), 0)
-    m = _k_fwd_decode_key(m_key)
+    if USE_KEY:
+        m = _k_fwd_decode_key(tl.max(_k_fwd_key_u32(x.to(tl.uint32, bitcast=True)), 0))
+    else:
+        m = tl.max(x, 0)
     z = tl.sum(tl.exp(x - m), 0)
     out = x - m - tl.log(z)
     tl.store(output_ptr + off, out, mask=mask)
@@ -349,6 +349,7 @@ def log_softmax_kernel_chunk(
     C_FULL,
     C,
     BLOCK_N: tl.constexpr,
+    USE_KEY: tl.constexpr,
 ):
     """Flat (row*C_FULL + c) grid; offsets = pid*BN (BN constexpr -> the
     [M*C_FULL, BN] read is contiguous, block DMA on XPU). Partial (m_c, z_c)
@@ -359,8 +360,10 @@ def log_softmax_kernel_chunk(
     n_offsets = tl.arange(0, BLOCK_N)
     off = pid * BLOCK_N + n_offsets
     x = tl.load(input_ptr + off).to(tl.float32)
-    m_key = tl.max(_k_fwd_key_u32(x.to(tl.uint32, bitcast=True)), 0)
-    m = _k_fwd_decode_key(m_key)
+    if USE_KEY:
+        m = _k_fwd_decode_key(tl.max(_k_fwd_key_u32(x.to(tl.uint32, bitcast=True)), 0))
+    else:
+        m = tl.max(x, 0)
     z = tl.sum(tl.exp(x - m), 0)
     tl.store(partial_m_ptr + row * C + c, m)
     tl.store(partial_z_ptr + row * C + c, z)
@@ -422,6 +425,7 @@ def log_softmax_chunk_strided(
     C_FULL,
     C,
     BLOCK_N: tl.constexpr,
+    USE_KEY: tl.constexpr,
 ):
     """Flat (row*C_FULL + c) grid with per-row base offsets (needed when
     N % BN != 0: the flat pid*BN form drifts by the row tail)."""
@@ -431,8 +435,10 @@ def log_softmax_chunk_strided(
     n_offsets = tl.arange(0, BLOCK_N)
     off = row * N + c * BLOCK_N + n_offsets
     x = tl.load(input_ptr + off).to(tl.float32)
-    m_key = _k_fwd_key_u32(x.to(tl.uint32, bitcast=True))
-    m = _k_fwd_decode_key(tl.max(m_key, 0))
+    if USE_KEY:
+        m = _k_fwd_decode_key(tl.max(_k_fwd_key_u32(x.to(tl.uint32, bitcast=True)), 0))
+    else:
+        m = tl.max(x, 0)
     z = tl.sum(tl.exp(x - m), 0)
     tl.store(partial_m_ptr + row * C + c, m)
     tl.store(partial_z_ptr + row * C + c, z)
@@ -473,6 +479,7 @@ def log_softmax_tail_piece_partial(
     T_SLOT,
     TAIL_BASE,
     PLEN: tl.constexpr,
+    USE_KEY: tl.constexpr,
 ):
     """Partial (m, z) over one exact power-of-2 tail piece of width PLEN<=4096
     (fully inside the row, so loads/stores are UNMASKED). The old masked 1D
@@ -484,8 +491,10 @@ def log_softmax_tail_piece_partial(
     n_offsets = TAIL_BASE + tl.arange(0, PLEN)
     off = pid * N + n_offsets
     x = tl.load(input_ptr + off).to(tl.float32)
-    m_key = _k_fwd_key_u32(x.to(tl.uint32, bitcast=True))
-    m = _k_fwd_decode_key(tl.max(m_key, 0))
+    if USE_KEY:
+        m = _k_fwd_decode_key(tl.max(_k_fwd_key_u32(x.to(tl.uint32, bitcast=True)), 0))
+    else:
+        m = tl.max(x, 0)
     z = tl.sum(tl.exp(x - m), 0)
     po = pid * C_STRIDE + T_SLOT
     tl.store(partial_m_ptr + po, m)
@@ -525,6 +534,7 @@ def log_softmax_tail_masked_partial(
     T_SLOT,
     TAIL_BASE,
     TAIL_LEN,
+    USE_KEY: tl.constexpr,
 ):
     """Masked 64-lane piece for the <64 column remainder of a row tail.
     A 64-wide masked tile with <64 real lanes is the exact form the previous
@@ -536,8 +546,10 @@ def log_softmax_tail_masked_partial(
     within = n_offsets < TAIL_LEN
     off = pid * N + TAIL_BASE + n_offsets
     x = tl.load(input_ptr + off, mask=within, other=float("-inf")).to(tl.float32)
-    m_key = _k_fwd_key_u32(x.to(tl.uint32, bitcast=True))
-    m = _k_fwd_decode_key(tl.max(m_key, 0))
+    if USE_KEY:
+        m = _k_fwd_decode_key(tl.max(_k_fwd_key_u32(x.to(tl.uint32, bitcast=True)), 0))
+    else:
+        m = tl.max(x, 0)
     z = tl.sum(tl.exp(x - m), 0)
     po = pid * C_STRIDE + T_SLOT
     tl.store(partial_m_ptr + po, m)
@@ -607,6 +619,7 @@ def _fwd_n1_flat(out, inp):
 
 
 def _fwd_singlepass(out, inp, M, N):
+    use_key = (N <= FWD_KEY_MAX_N) and (inp.dtype != torch.bfloat16)
     if (N & (N - 1)) != 0 and N >= 64:
         # Non-pow2 N in [64, 4096] (e.g. 65/97/99/101/127/129/193/254/255/
         # 257/511/513/1023/1025 ...): the [TILE_M, N] 2D tile silently
@@ -644,6 +657,7 @@ def _fwd_singlepass(out, inp, M, N):
         N,
         TILE_M=tile_m,
         NEED_MASK=False,
+        USE_KEY=use_key,
         buffer_size_limit=2048,
         num_warps=8,
     )
@@ -659,6 +673,7 @@ def _fwd_singlepass(out, inp, M, N):
             nfull * tile_m,
             N,
             TILE_N=triton.next_power_of_2(N),
+            USE_KEY=use_key,
             buffer_size_limit=2048,
             num_warps=8,
         )
@@ -685,6 +700,9 @@ def _pow2_tail_pieces(n, cap=FWD_TAIL_PIECE):
 
 
 def _fwd_chunk_split(out, inp, M, N):
+    # the wide-chunk path keeps the int-key max for fp16/fp32 (measured 1.42x)
+    # but not for bf16, where it is numerically wrong (FWD_KEY_MAX_N above).
+    use_key = inp.dtype != torch.bfloat16
     c_full = N // FWD_CHUNK_BN
     taillen = N - c_full * FWD_CHUNK_BN
     pieces, rrem = _pow2_tail_pieces(taillen) if taillen else ([], 0)
@@ -707,6 +725,7 @@ def _fwd_chunk_split(out, inp, M, N):
             c_full + slot,
             base,
             PLEN=plen,
+            USE_KEY=use_key,
             num_warps=8,
         )
         base += plen
@@ -720,6 +739,7 @@ def _fwd_chunk_split(out, inp, M, N):
             c_full + len(pieces),
             base,
             rrem,
+            USE_KEY=use_key,
             num_warps=8,
         )
     if c_full:
@@ -732,6 +752,7 @@ def _fwd_chunk_split(out, inp, M, N):
                 c_full,
                 C,
                 BLOCK_N=FWD_CHUNK_BN,
+                USE_KEY=use_key,
                 buffer_size_limit=2048,
                 num_warps=8,
             )
@@ -743,6 +764,7 @@ def _fwd_chunk_split(out, inp, M, N):
                 c_full,
                 C,
                 BLOCK_N=FWD_CHUNK_BN,
+                USE_KEY=use_key,
                 buffer_size_limit=2048,
                 num_warps=8,
             )
@@ -808,21 +830,6 @@ def _fwd_chunk_split(out, inp, M, N):
         )
 
 
-# ------------------------  backward -------------------------------
-# log_softmax backward:  scale = sum(out_grad over N); in_grad = out_grad - exp(out)*scale
-#
-# XPU dispatch (measured on P800): the old code sent all N<=8192 to the 2D
-# [TILE_M, N] multirow tile. That tile does an axis=1 reduce that is pathological
-# on XPU for medium N: as N grows TILE_M shrinks (=8192//N), the 2D reduce stops
-# amortizing and gems latency explodes (N=4096 -> 14.7ms / sp 0.016, N=256 ->
-# 3.0ms) while the loads/stores stay on the slow masked-memory path even when
-# the mask is always true. Unmasking the always-true row mask (M % TILE_M == 0)
-# flips this completely: the same [TILE_M, N] block-DMA tile becomes faster than
-# the per-row 1D-reduce kernels for every N <= 4096 (e.g. N=4096 0.75->0.47ms,
-# N=1024 0.16->0.03ms, N=256 3.0->0.10ms). Per-row 1D-reduce kernels are kept for
-# huge rows (N > 4096, two-pass multi-tile; the unmasked full tiles run 16384
-# wide, tails stay 8192 wide) and N==1 is a flat pointwise op (scale == out_grad
-# element itself).
 BWD_MULTIROW_MAX_N = 4096
 BWD_SINGLE_TILE_MAX_N = 4096
 BWD_MT_TILE_N = 8192

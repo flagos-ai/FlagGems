@@ -62,18 +62,17 @@ def test_cudnn_convolution_2d(
         allow_tf32=False,
     )
 
-    with flag_gems.use_gems():
-        res_out = torch.cudnn_convolution(
-            inp,
-            weight,
-            padding=[padding, padding],
-            stride=[stride, stride],
-            dilation=[dilation, dilation],
-            groups=groups,
-            benchmark=False,
-            deterministic=False,
-            allow_tf32=False,
-        )
+    res_out = flag_gems.cudnn_convolution(
+        inp,
+        weight,
+        padding=[padding, padding],
+        stride=[stride, stride],
+        dilation=[dilation, dilation],
+        groups=groups,
+        benchmark=False,
+        deterministic=False,
+        allow_tf32=False,
+    )
 
     gems_assert_close(res_out.cpu(), ref_out.cpu(), dtype)
 
@@ -114,18 +113,17 @@ def test_cudnn_convolution_1d(shape, kernel, stride, padding, dtype, monkeypatch
         allow_tf32=False,
     )
 
-    with flag_gems.use_gems():
-        res_out = torch.cudnn_convolution(
-            inp,
-            weight,
-            padding=[padding],
-            stride=[stride],
-            dilation=[1],
-            groups=1,
-            benchmark=False,
-            deterministic=False,
-            allow_tf32=False,
-        )
+    res_out = flag_gems.cudnn_convolution(
+        inp,
+        weight,
+        padding=[padding],
+        stride=[stride],
+        dilation=[1],
+        groups=1,
+        benchmark=False,
+        deterministic=False,
+        allow_tf32=False,
+    )
 
     gems_assert_close(res_out.cpu(), ref_out.cpu(), dtype)
 
@@ -168,17 +166,16 @@ def test_cudnn_convolution_3d(
         allow_tf32=False,
     )
 
-    with flag_gems.use_gems():
-        res_out = torch.cudnn_convolution(
-            inp,
-            weight,
-            padding=[padding, padding, padding],
-            stride=[stride, stride, stride],
-            dilation=[dilation, dilation, dilation],
-            groups=groups,
-            benchmark=False,
-            deterministic=False,
-            allow_tf32=False,
-        )
+    res_out = flag_gems.cudnn_convolution(
+        inp,
+        weight,
+        padding=[padding, padding, padding],
+        stride=[stride, stride, stride],
+        dilation=[dilation, dilation, dilation],
+        groups=groups,
+        benchmark=False,
+        deterministic=False,
+        allow_tf32=False,
+    )
 
     gems_assert_close(res_out.cpu(), ref_out.cpu(), dtype)
