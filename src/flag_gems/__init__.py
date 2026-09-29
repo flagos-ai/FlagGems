@@ -103,7 +103,7 @@ _FULL_CONFIG = (
     ("__ixor__.Tensor", xor_),
     ("__lshift__.Scalar", __lshift__),
     ("__lshift__.Tensor", __lshift__),
-    ("__or__.Scalar", bitwise_or_scalar),
+    ("__or__.Scalar", or_scalar),
     ("__or__.Tensor", bitwise_or_tensor),
     ("__rshift__.Scalar", __rshift__),
     ("__rshift__.Scalar_out", __rshift__),
