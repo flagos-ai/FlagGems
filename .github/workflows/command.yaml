@@ -98,6 +98,10 @@ jobs:
             core.setOutput('runs_on_default', container.runs_on_default || '');
             core.setOutput('runs_on_vllm', container.runs_on_vllm || '');
 
+  # Generic (non-containerized) runners. Everything except the 5 vendors whose
+  # driver/runtime is only set up inside a container. The backend/vendor is
+  # derived from the runner label at runtime. Uses local ./ action refs since
+  # these runners resolve them against the checked-out workspace.
   test-operator:
     needs: preprocess
     if: >-
@@ -157,115 +161,29 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         continue-on-error: true
       - uses: ./.github/actions/checkout-retry
-      - name: setup-gh
-        shell: bash
-        env:
-          GH_VERSION: "2.95.0"
-        run: |
-          GH_DIR="${HOME}/.local/bin"
-          if command -v gh &>/dev/null; then
-            echo "gh already available: $(gh --version | head -1)"
-          elif [ -x "${GH_DIR}/gh" ]; then
-            echo "gh found at ${GH_DIR}: $("${GH_DIR}/gh" --version | head -1)"
-            echo "${GH_DIR}" >> $GITHUB_PATH
-          else
-            mkdir -p "${GH_DIR}"
-            curl -fsSL "https://resource.flagos.net/repository/flagos-filestore/github/gh_${GH_VERSION}_linux_amd64.tar.gz" \
-              | tar -xz --strip-components=2 -C "${GH_DIR}" "gh_${GH_VERSION}_linux_amd64/bin/gh"
-            echo "Installed gh ${GH_VERSION} to ${GH_DIR}"
-            echo "${GH_DIR}" >> $GITHUB_PATH
-          fi
-      - id: checkout-pr
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          echo "checking out ${{ needs.preprocess.outputs.pull }}"
-          gh pr checkout ${{ needs.preprocess.outputs.pull }}
-
+      - uses: ./.github/actions/checkout-pr
+        with:
+          pull: ${{ needs.preprocess.outputs.pull }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
       - uses: ./.github/actions/setup-flaggems
         with:
           backend: ${{ env.BACKEND }}
           gpu_check_script: tools/gpu_check_${{ env.VENDOR }}.sh
-
-      - id: run-tests
-        shell: bash
-        env:
-          EXISTING_OP: ${{ needs.preprocess.outputs.existing }}
-        run: |
-          source .venv/bin/activate
-          tools/run_tests.py --ops ${{ needs.preprocess.outputs.op }} \
-            --gpus "${AVAILABLE_GPUS}" \
-            --dump-output \
-            --output-dir results_new
-
-          if [ "$EXISTING_OP" == "0" ]; then
-            tools/psum_text --format markdown \
-              --output report.md \
-              --single \
-              results_new
-            mv results_new results
-          else
-            git checkout master
-            tools/run_tests.py --ops ${{ needs.preprocess.outputs.op }} \
-              --gpus "${AVAILABLE_GPUS}" \
-              --dump-output \
-              --output-dir results_old
-
-            # merge two data sets into one directory
-            mkdir results
-            mv results_old results/before
-            mv results_new results/after
-
-            tools/psum_text --format markdown \
-              --single \
-              --compare \
-              --output report.md \
-              results
-          fi
-
-      - id: upload-results
-        # uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
-        uses: actions/upload-artifact@v7.0.1
-        continue-on-error: true
+      - uses: ./.github/actions/run-op-test
         with:
-          name: ${{ needs.preprocess.outputs.op }}-${{ env.BACKEND }}
-          path: results/
-
-      - id: attach-result-link
-        if: steps.upload-results.outcome == 'success'
-        run: |
-          echo -e "\n---\n" >> report.md
-          echo -e "📎 Download the full log [here](${{ steps.upload-results.outputs.artifact-url }})" >> report.md
-
-      - id: comment
-        uses: mshick/add-pr-comment@ec328af66588ab8f77cdeb2c264f14aba45bbf59  # 3.12.0
-        with:
-          message-path: report.md
-          message-id: ${{ needs.preprocess.outputs.op }}-${{ needs.preprocess.outputs.runner }}
-          allow-repeats: True
-
-      - id: failure-report
-        if: failure()
-        uses: mshick/add-pr-comment@ec328af66588ab8f77cdeb2c264f14aba45bbf59  # 3.12.0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          message: |
-            ## ❌ On-demand test failed
-
-            **Operator:** `${{ needs.preprocess.outputs.op }}`
-            **Runner:** `${{ needs.preprocess.outputs.runner }}`
-            **Backend:** ${{ env.BACKEND }}
-
-            The test failed to complete. Check the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details.
-          message-id: ${{ needs.preprocess.outputs.op }}-${{ needs.preprocess.outputs.runner }}
+          op: ${{ needs.preprocess.outputs.op }}
+          backend: ${{ env.BACKEND }}
+          runner: ${{ needs.preprocess.outputs.runner }}
+          existing: ${{ needs.preprocess.outputs.existing }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
   # Hygon, MetaX, MooreThreads, Iluvatar, and Kunlunxin only have their
-  # driver/runtime set up inside a vendor container, mirroring
-  # backend-test.yaml. Each runs on whichever physical machine this repo has
-  # access to (FlagGems-vllm uses the "-1" host, FlagGems uses "-0"), and uses
-  # fully-qualified @master action refs since local ./ refs can't be resolved
-  # inside these containers.
+  # driver/runtime set up inside a vendor container, mirroring backend-test.yaml.
+  # The image/options/runner labels come from .github/backends.json via the
+  # preprocess lookup-container step. Each runs on whichever physical machine
+  # this repo has access to (FlagGems-vllm uses the "-1" host, FlagGems uses
+  # "-0"), and uses fully-qualified @master action refs since local ./ refs
+  # can't be resolved inside these containers.
   test-operator-hygon:
     needs: preprocess
     if: needs.preprocess.outputs.continue == 'true' && needs.preprocess.outputs.runner == 'hygon'
@@ -276,114 +194,25 @@ jobs:
     container:
       image: ${{ needs.preprocess.outputs.container_image }}
       options: ${{ needs.preprocess.outputs.container_options }}
-    env:
-      VENDOR: hygon
-      BACKEND: hygon
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         continue-on-error: true
       - uses: flagos-ai/FlagGems/.github/actions/checkout-retry@master
-      - name: setup-gh
-        shell: bash
-        env:
-          GH_VERSION: "2.95.0"
-        run: |
-          GH_DIR="${HOME}/.local/bin"
-          if command -v gh &>/dev/null; then
-            echo "gh already available: $(gh --version | head -1)"
-          elif [ -x "${GH_DIR}/gh" ]; then
-            echo "gh found at ${GH_DIR}: $("${GH_DIR}/gh" --version | head -1)"
-            echo "${GH_DIR}" >> $GITHUB_PATH
-          else
-            mkdir -p "${GH_DIR}"
-            curl -fsSL "https://resource.flagos.net/repository/flagos-filestore/github/gh_${GH_VERSION}_linux_amd64.tar.gz" \
-              | tar -xz --strip-components=2 -C "${GH_DIR}" "gh_${GH_VERSION}_linux_amd64/bin/gh"
-            echo "Installed gh ${GH_VERSION} to ${GH_DIR}"
-            echo "${GH_DIR}" >> $GITHUB_PATH
-          fi
-      - id: checkout-pr
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          echo "checking out ${{ needs.preprocess.outputs.pull }}"
-          gh pr checkout ${{ needs.preprocess.outputs.pull }}
-
+      - uses: flagos-ai/FlagGems/.github/actions/checkout-pr@master
+        with:
+          pull: ${{ needs.preprocess.outputs.pull }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
       - uses: flagos-ai/FlagGems/.github/actions/setup-flaggems@master
         with:
-          backend: ${{ env.BACKEND }}
-          gpu_check_script: tools/gpu_check_${{ env.VENDOR }}.sh
-
-      - id: run-tests
-        shell: bash
-        env:
-          EXISTING_OP: ${{ needs.preprocess.outputs.existing }}
-        run: |
-          source .venv/bin/activate
-          tools/run_tests.py --ops ${{ needs.preprocess.outputs.op }} \
-            --gpus "${AVAILABLE_GPUS}" \
-            --dump-output \
-            --output-dir results_new
-
-          if [ "$EXISTING_OP" == "0" ]; then
-            tools/psum_text --format markdown \
-              --output report.md \
-              --single \
-              results_new
-            mv results_new results
-          else
-            git checkout master
-            tools/run_tests.py --ops ${{ needs.preprocess.outputs.op }} \
-              --gpus "${AVAILABLE_GPUS}" \
-              --dump-output \
-              --output-dir results_old
-
-            # merge two data sets into one directory
-            mkdir results
-            mv results_old results/before
-            mv results_new results/after
-
-            tools/psum_text --format markdown \
-              --single \
-              --compare \
-              --output report.md \
-              results
-          fi
-
-      - id: upload-results
-        uses: actions/upload-artifact@v7.0.1
-        continue-on-error: true
+          backend: hygon
+          gpu_check_script: tools/gpu_check_hygon.sh
+      - uses: flagos-ai/FlagGems/.github/actions/run-op-test@master
         with:
-          name: ${{ needs.preprocess.outputs.op }}-${{ env.BACKEND }}
-          path: results/
-
-      - id: attach-result-link
-        if: steps.upload-results.outcome == 'success'
-        run: |
-          echo -e "\n---\n" >> report.md
-          echo -e "📎 Download the full log [here](${{ steps.upload-results.outputs.artifact-url }})" >> report.md
-
-      - id: comment
-        uses: mshick/add-pr-comment@ec328af66588ab8f77cdeb2c264f14aba45bbf59  # 3.12.0
-        with:
-          message-path: report.md
-          message-id: ${{ needs.preprocess.outputs.op }}-${{ needs.preprocess.outputs.runner }}
-          allow-repeats: True
-
-      - id: failure-report
-        if: failure()
-        uses: mshick/add-pr-comment@ec328af66588ab8f77cdeb2c264f14aba45bbf59  # 3.12.0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          message: |
-            ## ❌ On-demand test failed
-
-            **Operator:** `${{ needs.preprocess.outputs.op }}`
-            **Runner:** `${{ needs.preprocess.outputs.runner }}`
-            **Backend:** ${{ env.BACKEND }}
-
-            The test failed to complete. Check the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details.
-          message-id: ${{ needs.preprocess.outputs.op }}-${{ needs.preprocess.outputs.runner }}
+          op: ${{ needs.preprocess.outputs.op }}
+          backend: hygon
+          runner: ${{ needs.preprocess.outputs.runner }}
+          existing: ${{ needs.preprocess.outputs.existing }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
   test-operator-mthreads:
     needs: preprocess
@@ -397,114 +226,25 @@ jobs:
       options: ${{ needs.preprocess.outputs.container_options }}
       volumes:
         - /usr/bin/mthreads-gmi:/usr/bin/mthreads-gmi:ro
-    env:
-      VENDOR: mthreads
-      BACKEND: mthreads-musa520
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         continue-on-error: true
       - uses: flagos-ai/FlagGems/.github/actions/checkout-retry@master
-      - name: setup-gh
-        shell: bash
-        env:
-          GH_VERSION: "2.95.0"
-        run: |
-          GH_DIR="${HOME}/.local/bin"
-          if command -v gh &>/dev/null; then
-            echo "gh already available: $(gh --version | head -1)"
-          elif [ -x "${GH_DIR}/gh" ]; then
-            echo "gh found at ${GH_DIR}: $("${GH_DIR}/gh" --version | head -1)"
-            echo "${GH_DIR}" >> $GITHUB_PATH
-          else
-            mkdir -p "${GH_DIR}"
-            curl -fsSL "https://resource.flagos.net/repository/flagos-filestore/github/gh_${GH_VERSION}_linux_amd64.tar.gz" \
-              | tar -xz --strip-components=2 -C "${GH_DIR}" "gh_${GH_VERSION}_linux_amd64/bin/gh"
-            echo "Installed gh ${GH_VERSION} to ${GH_DIR}"
-            echo "${GH_DIR}" >> $GITHUB_PATH
-          fi
-      - id: checkout-pr
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          echo "checking out ${{ needs.preprocess.outputs.pull }}"
-          gh pr checkout ${{ needs.preprocess.outputs.pull }}
-
+      - uses: flagos-ai/FlagGems/.github/actions/checkout-pr@master
+        with:
+          pull: ${{ needs.preprocess.outputs.pull }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
       - uses: flagos-ai/FlagGems/.github/actions/setup-flaggems@master
         with:
-          backend: ${{ env.BACKEND }}
-          gpu_check_script: tools/gpu_check_${{ env.VENDOR }}.sh
-
-      - id: run-tests
-        shell: bash
-        env:
-          EXISTING_OP: ${{ needs.preprocess.outputs.existing }}
-        run: |
-          source .venv/bin/activate
-          tools/run_tests.py --ops ${{ needs.preprocess.outputs.op }} \
-            --gpus "${AVAILABLE_GPUS}" \
-            --dump-output \
-            --output-dir results_new
-
-          if [ "$EXISTING_OP" == "0" ]; then
-            tools/psum_text --format markdown \
-              --output report.md \
-              --single \
-              results_new
-            mv results_new results
-          else
-            git checkout master
-            tools/run_tests.py --ops ${{ needs.preprocess.outputs.op }} \
-              --gpus "${AVAILABLE_GPUS}" \
-              --dump-output \
-              --output-dir results_old
-
-            # merge two data sets into one directory
-            mkdir results
-            mv results_old results/before
-            mv results_new results/after
-
-            tools/psum_text --format markdown \
-              --single \
-              --compare \
-              --output report.md \
-              results
-          fi
-
-      - id: upload-results
-        uses: actions/upload-artifact@v7.0.1
-        continue-on-error: true
+          backend: mthreads-musa520
+          gpu_check_script: tools/gpu_check_mthreads.sh
+      - uses: flagos-ai/FlagGems/.github/actions/run-op-test@master
         with:
-          name: ${{ needs.preprocess.outputs.op }}-${{ env.BACKEND }}
-          path: results/
-
-      - id: attach-result-link
-        if: steps.upload-results.outcome == 'success'
-        run: |
-          echo -e "\n---\n" >> report.md
-          echo -e "📎 Download the full log [here](${{ steps.upload-results.outputs.artifact-url }})" >> report.md
-
-      - id: comment
-        uses: mshick/add-pr-comment@ec328af66588ab8f77cdeb2c264f14aba45bbf59  # 3.12.0
-        with:
-          message-path: report.md
-          message-id: ${{ needs.preprocess.outputs.op }}-${{ needs.preprocess.outputs.runner }}
-          allow-repeats: True
-
-      - id: failure-report
-        if: failure()
-        uses: mshick/add-pr-comment@ec328af66588ab8f77cdeb2c264f14aba45bbf59  # 3.12.0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          message: |
-            ## ❌ On-demand test failed
-
-            **Operator:** `${{ needs.preprocess.outputs.op }}`
-            **Runner:** `${{ needs.preprocess.outputs.runner }}`
-            **Backend:** ${{ env.BACKEND }}
-
-            The test failed to complete. Check the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details.
-          message-id: ${{ needs.preprocess.outputs.op }}-${{ needs.preprocess.outputs.runner }}
+          op: ${{ needs.preprocess.outputs.op }}
+          backend: mthreads-musa520
+          runner: ${{ needs.preprocess.outputs.runner }}
+          existing: ${{ needs.preprocess.outputs.existing }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
   test-operator-metax:
     needs: preprocess
@@ -518,114 +258,25 @@ jobs:
     container:
       image: ${{ needs.preprocess.outputs.container_image }}
       options: ${{ needs.preprocess.outputs.container_options }}
-    env:
-      VENDOR: metax
-      BACKEND: metax-maca3810
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         continue-on-error: true
       - uses: flagos-ai/FlagGems/.github/actions/checkout-retry@master
-      - name: setup-gh
-        shell: bash
-        env:
-          GH_VERSION: "2.95.0"
-        run: |
-          GH_DIR="${HOME}/.local/bin"
-          if command -v gh &>/dev/null; then
-            echo "gh already available: $(gh --version | head -1)"
-          elif [ -x "${GH_DIR}/gh" ]; then
-            echo "gh found at ${GH_DIR}: $("${GH_DIR}/gh" --version | head -1)"
-            echo "${GH_DIR}" >> $GITHUB_PATH
-          else
-            mkdir -p "${GH_DIR}"
-            curl -fsSL "https://resource.flagos.net/repository/flagos-filestore/github/gh_${GH_VERSION}_linux_amd64.tar.gz" \
-              | tar -xz --strip-components=2 -C "${GH_DIR}" "gh_${GH_VERSION}_linux_amd64/bin/gh"
-            echo "Installed gh ${GH_VERSION} to ${GH_DIR}"
-            echo "${GH_DIR}" >> $GITHUB_PATH
-          fi
-      - id: checkout-pr
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          echo "checking out ${{ needs.preprocess.outputs.pull }}"
-          gh pr checkout ${{ needs.preprocess.outputs.pull }}
-
+      - uses: flagos-ai/FlagGems/.github/actions/checkout-pr@master
+        with:
+          pull: ${{ needs.preprocess.outputs.pull }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
       - uses: flagos-ai/FlagGems/.github/actions/setup-flaggems@master
         with:
-          backend: ${{ env.BACKEND }}
-          gpu_check_script: tools/gpu_check_${{ env.VENDOR }}.sh
-
-      - id: run-tests
-        shell: bash
-        env:
-          EXISTING_OP: ${{ needs.preprocess.outputs.existing }}
-        run: |
-          source .venv/bin/activate
-          tools/run_tests.py --ops ${{ needs.preprocess.outputs.op }} \
-            --gpus "${AVAILABLE_GPUS}" \
-            --dump-output \
-            --output-dir results_new
-
-          if [ "$EXISTING_OP" == "0" ]; then
-            tools/psum_text --format markdown \
-              --output report.md \
-              --single \
-              results_new
-            mv results_new results
-          else
-            git checkout master
-            tools/run_tests.py --ops ${{ needs.preprocess.outputs.op }} \
-              --gpus "${AVAILABLE_GPUS}" \
-              --dump-output \
-              --output-dir results_old
-
-            # merge two data sets into one directory
-            mkdir results
-            mv results_old results/before
-            mv results_new results/after
-
-            tools/psum_text --format markdown \
-              --single \
-              --compare \
-              --output report.md \
-              results
-          fi
-
-      - id: upload-results
-        uses: actions/upload-artifact@v7.0.1
-        continue-on-error: true
+          backend: metax-maca3810
+          gpu_check_script: tools/gpu_check_metax.sh
+      - uses: flagos-ai/FlagGems/.github/actions/run-op-test@master
         with:
-          name: ${{ needs.preprocess.outputs.op }}-${{ env.BACKEND }}
-          path: results/
-
-      - id: attach-result-link
-        if: steps.upload-results.outcome == 'success'
-        run: |
-          echo -e "\n---\n" >> report.md
-          echo -e "📎 Download the full log [here](${{ steps.upload-results.outputs.artifact-url }})" >> report.md
-
-      - id: comment
-        uses: mshick/add-pr-comment@ec328af66588ab8f77cdeb2c264f14aba45bbf59  # 3.12.0
-        with:
-          message-path: report.md
-          message-id: ${{ needs.preprocess.outputs.op }}-${{ needs.preprocess.outputs.runner }}
-          allow-repeats: True
-
-      - id: failure-report
-        if: failure()
-        uses: mshick/add-pr-comment@ec328af66588ab8f77cdeb2c264f14aba45bbf59  # 3.12.0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          message: |
-            ## ❌ On-demand test failed
-
-            **Operator:** `${{ needs.preprocess.outputs.op }}`
-            **Runner:** `${{ needs.preprocess.outputs.runner }}`
-            **Backend:** ${{ env.BACKEND }}
-
-            The test failed to complete. Check the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details.
-          message-id: ${{ needs.preprocess.outputs.op }}-${{ needs.preprocess.outputs.runner }}
+          op: ${{ needs.preprocess.outputs.op }}
+          backend: metax-maca3810
+          runner: ${{ needs.preprocess.outputs.runner }}
+          existing: ${{ needs.preprocess.outputs.existing }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
   test-operator-iluvatar:
     needs: preprocess
@@ -637,114 +288,25 @@ jobs:
     container:
       image: ${{ needs.preprocess.outputs.container_image }}
       options: ${{ needs.preprocess.outputs.container_options }}
-    env:
-      VENDOR: iluvatar
-      BACKEND: iluvatar
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         continue-on-error: true
       - uses: flagos-ai/FlagGems/.github/actions/checkout-retry@master
-      - name: setup-gh
-        shell: bash
-        env:
-          GH_VERSION: "2.95.0"
-        run: |
-          GH_DIR="${HOME}/.local/bin"
-          if command -v gh &>/dev/null; then
-            echo "gh already available: $(gh --version | head -1)"
-          elif [ -x "${GH_DIR}/gh" ]; then
-            echo "gh found at ${GH_DIR}: $("${GH_DIR}/gh" --version | head -1)"
-            echo "${GH_DIR}" >> $GITHUB_PATH
-          else
-            mkdir -p "${GH_DIR}"
-            curl -fsSL "https://resource.flagos.net/repository/flagos-filestore/github/gh_${GH_VERSION}_linux_amd64.tar.gz" \
-              | tar -xz --strip-components=2 -C "${GH_DIR}" "gh_${GH_VERSION}_linux_amd64/bin/gh"
-            echo "Installed gh ${GH_VERSION} to ${GH_DIR}"
-            echo "${GH_DIR}" >> $GITHUB_PATH
-          fi
-      - id: checkout-pr
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          echo "checking out ${{ needs.preprocess.outputs.pull }}"
-          gh pr checkout ${{ needs.preprocess.outputs.pull }}
-
+      - uses: flagos-ai/FlagGems/.github/actions/checkout-pr@master
+        with:
+          pull: ${{ needs.preprocess.outputs.pull }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
       - uses: flagos-ai/FlagGems/.github/actions/setup-flaggems@master
         with:
-          backend: ${{ env.BACKEND }}
-          gpu_check_script: tools/gpu_check_${{ env.VENDOR }}.sh
-
-      - id: run-tests
-        shell: bash
-        env:
-          EXISTING_OP: ${{ needs.preprocess.outputs.existing }}
-        run: |
-          source .venv/bin/activate
-          tools/run_tests.py --ops ${{ needs.preprocess.outputs.op }} \
-            --gpus "${AVAILABLE_GPUS}" \
-            --dump-output \
-            --output-dir results_new
-
-          if [ "$EXISTING_OP" == "0" ]; then
-            tools/psum_text --format markdown \
-              --output report.md \
-              --single \
-              results_new
-            mv results_new results
-          else
-            git checkout master
-            tools/run_tests.py --ops ${{ needs.preprocess.outputs.op }} \
-              --gpus "${AVAILABLE_GPUS}" \
-              --dump-output \
-              --output-dir results_old
-
-            # merge two data sets into one directory
-            mkdir results
-            mv results_old results/before
-            mv results_new results/after
-
-            tools/psum_text --format markdown \
-              --single \
-              --compare \
-              --output report.md \
-              results
-          fi
-
-      - id: upload-results
-        uses: actions/upload-artifact@v7.0.1
-        continue-on-error: true
+          backend: iluvatar
+          gpu_check_script: tools/gpu_check_iluvatar.sh
+      - uses: flagos-ai/FlagGems/.github/actions/run-op-test@master
         with:
-          name: ${{ needs.preprocess.outputs.op }}-${{ env.BACKEND }}
-          path: results/
-
-      - id: attach-result-link
-        if: steps.upload-results.outcome == 'success'
-        run: |
-          echo -e "\n---\n" >> report.md
-          echo -e "📎 Download the full log [here](${{ steps.upload-results.outputs.artifact-url }})" >> report.md
-
-      - id: comment
-        uses: mshick/add-pr-comment@ec328af66588ab8f77cdeb2c264f14aba45bbf59  # 3.12.0
-        with:
-          message-path: report.md
-          message-id: ${{ needs.preprocess.outputs.op }}-${{ needs.preprocess.outputs.runner }}
-          allow-repeats: True
-
-      - id: failure-report
-        if: failure()
-        uses: mshick/add-pr-comment@ec328af66588ab8f77cdeb2c264f14aba45bbf59  # 3.12.0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          message: |
-            ## ❌ On-demand test failed
-
-            **Operator:** `${{ needs.preprocess.outputs.op }}`
-            **Runner:** `${{ needs.preprocess.outputs.runner }}`
-            **Backend:** ${{ env.BACKEND }}
-
-            The test failed to complete. Check the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details.
-          message-id: ${{ needs.preprocess.outputs.op }}-${{ needs.preprocess.outputs.runner }}
+          op: ${{ needs.preprocess.outputs.op }}
+          backend: iluvatar
+          runner: ${{ needs.preprocess.outputs.runner }}
+          existing: ${{ needs.preprocess.outputs.existing }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
   # Kunlunxin reuses its workspace across jobs on klx-p800, so stale
   # skip-worktree bits from previous runs need clearing before checkout (see
@@ -756,9 +318,6 @@ jobs:
     container:
       image: ${{ needs.preprocess.outputs.container_image }}
       options: ${{ needs.preprocess.outputs.container_options }}
-    env:
-      VENDOR: kunlunxin
-      BACKEND: kunlunxin
     steps:
       - name: Reset reused workspace
         shell: bash
@@ -773,104 +332,18 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         continue-on-error: true
       - uses: flagos-ai/FlagGems/.github/actions/checkout-retry@master
-      - name: setup-gh
-        shell: bash
-        env:
-          GH_VERSION: "2.95.0"
-        run: |
-          GH_DIR="${HOME}/.local/bin"
-          if command -v gh &>/dev/null; then
-            echo "gh already available: $(gh --version | head -1)"
-          elif [ -x "${GH_DIR}/gh" ]; then
-            echo "gh found at ${GH_DIR}: $("${GH_DIR}/gh" --version | head -1)"
-            echo "${GH_DIR}" >> $GITHUB_PATH
-          else
-            mkdir -p "${GH_DIR}"
-            curl -fsSL "https://resource.flagos.net/repository/flagos-filestore/github/gh_${GH_VERSION}_linux_amd64.tar.gz" \
-              | tar -xz --strip-components=2 -C "${GH_DIR}" "gh_${GH_VERSION}_linux_amd64/bin/gh"
-            echo "Installed gh ${GH_VERSION} to ${GH_DIR}"
-            echo "${GH_DIR}" >> $GITHUB_PATH
-          fi
-      - id: checkout-pr
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          echo "checking out ${{ needs.preprocess.outputs.pull }}"
-          gh pr checkout ${{ needs.preprocess.outputs.pull }}
-
+      - uses: flagos-ai/FlagGems/.github/actions/checkout-pr@master
+        with:
+          pull: ${{ needs.preprocess.outputs.pull }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
       - uses: flagos-ai/FlagGems/.github/actions/setup-flaggems@master
         with:
-          backend: ${{ env.BACKEND }}
-          gpu_check_script: tools/gpu_check_${{ env.VENDOR }}.sh
-
-      - id: run-tests
-        shell: bash
-        env:
-          EXISTING_OP: ${{ needs.preprocess.outputs.existing }}
-        run: |
-          source .venv/bin/activate
-          tools/run_tests.py --ops ${{ needs.preprocess.outputs.op }} \
-            --gpus "${AVAILABLE_GPUS}" \
-            --dump-output \
-            --output-dir results_new
-
-          if [ "$EXISTING_OP" == "0" ]; then
-            tools/psum_text --format markdown \
-              --output report.md \
-              --single \
-              results_new
-            mv results_new results
-          else
-            git checkout master
-            tools/run_tests.py --ops ${{ needs.preprocess.outputs.op }} \
-              --gpus "${AVAILABLE_GPUS}" \
-              --dump-output \
-              --output-dir results_old
-
-            # merge two data sets into one directory
-            mkdir results
-            mv results_old results/before
-            mv results_new results/after
-
-            tools/psum_text --format markdown \
-              --single \
-              --compare \
-              --output report.md \
-              results
-          fi
-
-      - id: upload-results
-        uses: actions/upload-artifact@v7.0.1
-        continue-on-error: true
+          backend: kunlunxin
+          gpu_check_script: tools/gpu_check_kunlunxin.sh
+      - uses: flagos-ai/FlagGems/.github/actions/run-op-test@master
         with:
-          name: ${{ needs.preprocess.outputs.op }}-${{ env.BACKEND }}
-          path: results/
-
-      - id: attach-result-link
-        if: steps.upload-results.outcome == 'success'
-        run: |
-          echo -e "\n---\n" >> report.md
-          echo -e "📎 Download the full log [here](${{ steps.upload-results.outputs.artifact-url }})" >> report.md
-
-      - id: comment
-        uses: mshick/add-pr-comment@ec328af66588ab8f77cdeb2c264f14aba45bbf59  # 3.12.0
-        with:
-          message-path: report.md
-          message-id: ${{ needs.preprocess.outputs.op }}-${{ needs.preprocess.outputs.runner }}
-          allow-repeats: True
-
-      - id: failure-report
-        if: failure()
-        uses: mshick/add-pr-comment@ec328af66588ab8f77cdeb2c264f14aba45bbf59  # 3.12.0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          message: |
-            ## ❌ On-demand test failed
-
-            **Operator:** `${{ needs.preprocess.outputs.op }}`
-            **Runner:** `${{ needs.preprocess.outputs.runner }}`
-            **Backend:** ${{ env.BACKEND }}
-
-            The test failed to complete. Check the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details.
-          message-id: ${{ needs.preprocess.outputs.op }}-${{ needs.preprocess.outputs.runner }}
+          op: ${{ needs.preprocess.outputs.op }}
+          backend: kunlunxin
+          runner: ${{ needs.preprocess.outputs.runner }}
+          existing: ${{ needs.preprocess.outputs.existing }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
