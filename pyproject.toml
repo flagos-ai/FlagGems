@@ -200,7 +200,7 @@ mthreads-musa520 = [
     "torch==2.9.1+musa5.2.0",
     "torch_musa==2.9.1",
     "mkl==2024.0.0",
-    "flagtree==0.6.0+mthreads3.6",
+    "flagtree==0.7.0+mthreads3.6",
 ]
 
 nvidia-cuda128 = [

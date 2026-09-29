@@ -26,6 +26,7 @@ from .amp_foreach_non_finite_check_and_unscale_ import (
     amp_foreach_non_finite_check_and_unscale_,
 )
 from .any import any, any_dim, any_dims
+from .argsort import argsort
 from .as_strided_scatter import as_strided_scatter
 from .attention import (
     ScaleDotProductAttention,
@@ -93,6 +94,7 @@ from .linalg_solve_triangular import (
     linalg_solve_triangular,
     linalg_solve_triangular_out,
 )
+from .linear import linear
 from .log_normal_ import log_normal_
 from .masked_scale import masked_scale
 from .masked_scatter_backward import masked_scatter_backward
@@ -199,6 +201,7 @@ __all__ = [
     "any",
     "any_dim",
     "any_dims",
+    "argsort",
     "as_strided_scatter",
     "avg_pool3d_backward",
     "baddbmm_",
@@ -257,6 +260,7 @@ __all__ = [
     "linalg_matrix_power_out",
     "linalg_solve_triangular",
     "linalg_solve_triangular_out",
+    "linear",
     "log_normal_",
     "masked_scale",
     "masked_scatter_backward",

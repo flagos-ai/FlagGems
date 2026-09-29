@@ -279,7 +279,7 @@ backends:
     python: "3.10"
     cmake_backend: MUSA
     triton: triton==3.6.0
-    flagtree: flagtree==0.6.0+mthreads3.6
+    flagtree: flagtree==0.7.0+mthreads3.6
     env:
       MUSA_HOME: /usr/local/musa
       PATH: $MUSA_HOME/bin:$PATH
