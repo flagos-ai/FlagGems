@@ -176,7 +176,11 @@ def test_values_unsupported_layouts_reject_like_native():
         with pytest.raises(NotImplementedError) as ours_exc:
             flag_gems.values(tensor)
         with pytest.raises(NotImplementedError) as native_exc:
-            torch.ops.aten._values(utils.to_reference(tensor))
+            # Call native on the SAME device tensor: the dispatcher message
+            # names the *backend key* of the tensor's device ('CUDA' vs
+            # 'CPU'), so a CPU-side reference would report a different
+            # backend than our GPU implementation and break the comparison.
+            torch.ops.aten._values(tensor)
         ours, native = str(ours_exc.value), str(native_exc.value)
         # The identifying prefix of the native message ends with the backend
         # key token; ours must reach at least that token in the same order.
