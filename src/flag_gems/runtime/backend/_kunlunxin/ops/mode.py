@@ -40,9 +40,7 @@ try:
     # C++ ABI (the merge-time signature check is skipped for object=).  Rebuilt
     # via docs/xpu3/how_to_pack_payload/pack_payload.py + ld.lld -r after any
     # edit to the .xpu sources (object= cache key is the .o digest).
-    _MODE_OBJ = os.path.join(
-        os.path.dirname(_RAW_DIR), "payload", "obj", "mode.o"
-    )
+    _MODE_OBJ = os.path.join(os.path.dirname(_RAW_DIR), "payload", "obj", "mode.o")
 
     @_tle_ext.raw.dialect("xpu3", object=_MODE_OBJ, arch=3)
     def mode_f16_hist(inp, oval, oidx, rows, N, nclusters): ...
@@ -89,6 +87,7 @@ except Exception as _e:  # pragma: no cover - defensive
 # ---------------------------------------------------------------------------
 _HAS_RAW_RADIX = False
 try:
+
     @_tle_ext.raw.dialect("xpu3", object=_MODE_OBJ, arch=3)
     def mode_i32_lm(inp, oval, oidx, rows, N, ncores): ...
 
@@ -125,15 +124,11 @@ try:
 
     @triton.jit(do_not_specialize=["rows", "N", "nclusters"])
     def _mode_radix_i32_w(Inp, Oval, Oidx, BufA, BufB, rows, N, nclusters):
-        _tle.raw.call(
-            mode_i32_radix, (Inp, Oval, Oidx, BufA, BufB, rows, N, nclusters)
-        )
+        _tle.raw.call(mode_i32_radix, (Inp, Oval, Oidx, BufA, BufB, rows, N, nclusters))
 
     @triton.jit(do_not_specialize=["rows", "N", "nclusters"])
     def _mode_radix_f32_w(Inp, Oval, Oidx, BufA, BufB, rows, N, nclusters):
-        _tle.raw.call(
-            mode_f32_radix, (Inp, Oval, Oidx, BufA, BufB, rows, N, nclusters)
-        )
+        _tle.raw.call(mode_f32_radix, (Inp, Oval, Oidx, BufA, BufB, rows, N, nclusters))
 
     _RAW_LM = {torch.int32: _mode_lm_i32_w, torch.float32: _mode_lm_f32_w}
     _RAW_LM2 = {torch.int32: _mode_lm2_i32_w, torch.float32: _mode_lm2_f32_w}
@@ -221,7 +216,6 @@ def _mode_hist_run(rows, flat_values, flat_indices, M, N, wrapper):
         wrapper[(g,)](rows, flat_values, oidx32, M, N, g)
     flat_indices.copy_(oidx32.to(torch.int64))
     return True
-
 
 
 @libentry()
@@ -576,14 +570,10 @@ def _mode_impl(inp, dim, keepdim):
     elif _HAS_RAW_HIST and inp.dtype in _RAW_HIST and rows.is_contiguous():
         # fp16/bf16/int16: O(N) histogram mode (breaks the sort ceiling).
         try:
-            _mode_hist_run(
-                rows, flat_values, flat_indices, M, N, _RAW_HIST[inp.dtype]
-            )
+            _mode_hist_run(rows, flat_values, flat_indices, M, N, _RAW_HIST[inp.dtype])
         except Exception as e:  # pragma: no cover - fall back to radix path
             logger.debug("mode histogram fell back to radix path: %s", e)
-            _mode_radix_fallback(
-                rows, flat_values, flat_indices, M, N, inp.device
-            )
+            _mode_radix_fallback(rows, flat_values, flat_indices, M, N, inp.device)
     elif (
         _HAS_RAW_RADIX
         and inp.dtype in _RAW_LM
@@ -592,14 +582,10 @@ def _mode_impl(inp, dim, keepdim):
     ):
         # fp32/int32, N<=512: per-core in-LM radix (no global scatter).
         try:
-            _mode_lm_run(
-                rows, flat_values, flat_indices, M, N, _RAW_LM[inp.dtype]
-            )
+            _mode_lm_run(rows, flat_values, flat_indices, M, N, _RAW_LM[inp.dtype])
         except Exception as e:  # pragma: no cover
             logger.debug("mode LM radix fell back: %s", e)
-            _mode_radix_fallback(
-                rows, flat_values, flat_indices, M, N, inp.device
-            )
+            _mode_radix_fallback(rows, flat_values, flat_indices, M, N, inp.device)
     elif (
         _HAS_RAW_RADIX
         and inp.dtype in _RAW_LM2
@@ -609,14 +595,10 @@ def _mode_impl(inp, dim, keepdim):
         # fp32/int32, 512<N<=1024: 2-chunk per-core in-LM radix + merge (no
         # global scatter; sorts two 512-halves in LM and merge-scans).
         try:
-            _mode_lm2_run(
-                rows, flat_values, flat_indices, M, N, _RAW_LM2[inp.dtype]
-            )
+            _mode_lm2_run(rows, flat_values, flat_indices, M, N, _RAW_LM2[inp.dtype])
         except Exception as e:  # pragma: no cover
             logger.debug("mode LM2 radix fell back: %s", e)
-            _mode_radix_fallback(
-                rows, flat_values, flat_indices, M, N, inp.device
-            )
+            _mode_radix_fallback(rows, flat_values, flat_indices, M, N, inp.device)
     elif (
         _HAS_RAW_RADIX
         and inp.dtype in _RAW_CLUSTER
@@ -632,9 +614,7 @@ def _mode_impl(inp, dim, keepdim):
             )
         except Exception as e:  # pragma: no cover
             logger.debug("mode cluster radix fell back: %s", e)
-            _mode_radix_fallback(
-                rows, flat_values, flat_indices, M, N, inp.device
-            )
+            _mode_radix_fallback(rows, flat_values, flat_indices, M, N, inp.device)
     else:
         _mode_radix_fallback(rows, flat_values, flat_indices, M, N, inp.device)
 
