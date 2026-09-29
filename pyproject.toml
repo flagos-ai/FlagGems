@@ -186,7 +186,7 @@ metax-maca3810 = [
     "torchcodec==0.6.0+metax3.8.1.0",
     "torchaudio==2.4.1+metax3.8.1.0",
     "torchvision==0.25.0+metax3.8.1.0",
-    "flagtree==0.7.0rc3+metax3.6",
+    "flagtree==0.7.0+metax3.6",
 ]
 
 mthreads-musa436 = [
@@ -200,7 +200,7 @@ mthreads-musa520 = [
     "torch==2.9.1+musa5.2.0",
     "torch_musa==2.9.1",
     "mkl==2024.0.0",
-    "flagtree==0.6.0+mthreads3.6",
+    "flagtree==0.7.0+mthreads3.6",
 ]
 
 nvidia-cuda128 = [

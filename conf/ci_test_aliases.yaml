@@ -32,6 +32,7 @@ alias_copy_out: test_alias_copy
 as_strided_copy_out: test_as_strided_copy
 baddbmm_out: test_baddbmm
 binary_cross_entropy_out: test_binary_cross_entropy
+conv_tbc_out: test_conv_tbc
 huber_loss_out: test_huber_loss
 int_mm_out: test_int_mm
 linalg_eigvals_out: test_linalg_eigvals
@@ -110,3 +111,4 @@ upsample_bicubic2d_backward_grad_input: test_upsample_bicubic2d_backward
 upsample_bilinear2d_backward_grad_input: test_upsample_bilinear2d_backward
 upsample_linear1d_backward: test_upsample_linear1d
 upsample_nearest2d_backward_grad_input: test_upsample_nearest2d_backward
+_flash_attention_forward: test_flash_attention
