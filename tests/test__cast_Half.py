@@ -176,8 +176,7 @@ def test__cast_Half_float16_identity(dtype, shape, layout):
     # Native-guided object identity: the native cast answers with its own input
     # object here, so the candidate has to do the same. A copy or a distinct view
     # of the same storage would still match the value, shape, pointer and offset.
-    if ref_out is ref_inp:
-        assert res_out is inp
+    assert res_out is inp
 
 
 # non_blocking coverage in both call forms; the main grid already uses the
@@ -248,6 +247,8 @@ def test__cast_Half_special_values(dtype, scenario):
 # The integer rows straddle the 2048 spacing change and the same overflow point.
 # A candidate that flushes, rounds or saturates differently fails here.
 _FP16_BOUNDARY_VALUES = [
+    -0.0,
+    -(2.0**-25),
     2.0**-25,
     2.0**-24,
     2.0**-14,
@@ -266,6 +267,8 @@ _FP16_BOUNDARY_VALUES = [
 ]
 
 _FP64_BOUNDARY_VALUES = [
+    -0.0,
+    -(2.0**-25),
     1.0 + 2.0**-40,
     5e-324,
     2.0**-25,
@@ -323,6 +326,7 @@ def test__cast_Half_rounding_boundaries(dtype, values):
     res_out = flag_gems._cast_Half(inp)
 
     tu.assert_result_equal(res_out, ref_out)
+    tu.assert_result_equal(torch.signbit(res_out), torch.signbit(ref_out))
 
 
 # Complex sources are accepted natively with the imaginary part discarded; the
