@@ -32,8 +32,7 @@ def test_accuracy_fliplr(shape, dtype):
     original = utils.to_reference(inp.clone(), False)
 
     expected = torch.fliplr(ref_inp)
-    with flag_gems.use_gems():
-        result = torch.fliplr(inp)
+    result = flag_gems.fliplr(inp)
 
     utils.gems_assert_equal(result, expected)
     utils.gems_assert_equal(inp, original)
@@ -52,8 +51,7 @@ def test_accuracy_fliplr_non_float(dtype, high):
     inp = torch.randint(0, high, (7, 11), dtype=dtype, device=flag_gems.device)
     expected = torch.fliplr(utils.to_reference(inp, False))
 
-    with flag_gems.use_gems():
-        result = torch.fliplr(inp)
+    result = flag_gems.fliplr(inp)
 
     utils.gems_assert_equal(result, expected)
 
@@ -78,8 +76,7 @@ def test_accuracy_fliplr_noncontiguous(make_input, dtype):
     ref_inp = utils.to_reference(inp, False)
     expected = torch.fliplr(ref_inp)
 
-    with flag_gems.use_gems():
-        result = torch.fliplr(inp)
+    result = flag_gems.fliplr(inp)
 
     utils.gems_assert_equal(result, expected)
     assert result.stride() == expected.stride()
@@ -89,8 +86,5 @@ def test_accuracy_fliplr_noncontiguous(make_input, dtype):
 @pytest.mark.parametrize("shape", [(), (0,), (8,)])
 def test_fliplr_rejects_inputs_with_fewer_than_two_dims(shape):
     inp = torch.empty(shape, device=flag_gems.device)
-    with (
-        flag_gems.use_gems(),
-        pytest.raises(RuntimeError, match="Input must be >= 2-d"),
-    ):
+    with pytest.raises(RuntimeError, match="Input must be >= 2-d"):
         torch.fliplr(inp)
