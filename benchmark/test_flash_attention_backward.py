@@ -729,13 +729,17 @@ def _cudnn_attn_bwd_aten(
     is_causal,
     scale=None,
 ):
+    # The cuDNN SDPA backward consumes the forward's Stats tensor in its
+    # original [B, H, S, 1] layout; the shared input builder keeps the
+    # squeezed [B, H, S] form for the FlagGems entry point, so restore the
+    # trailing dimension for the torch reference call.
     return torch.ops.aten._scaled_dot_product_cudnn_attention_backward(
         dOut_bhsd,
         Q_bhsd,
         K_bhsd,
         V_bhsd,
         out_bhsd,
-        lse,
+        lse.unsqueeze(-1),
         philox_seed,
         philox_offset,
         attn_bias,
