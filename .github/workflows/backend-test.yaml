@@ -215,8 +215,8 @@ jobs:
     container:
       image: harbor.baai.ac.cn/flagos-base/flagos-base-hygon-dtk26.04:2.2.0
       options: --device /dev/kfd --device /dev/mkfd --device /dev/dri --group-add video --security-opt seccomp=unconfined --shm-size=256g --ulimit memlock=-1 --ulimit stack=67108864
-      volumes:
-        - /opt/hyhal:/opt/hyhal
+      #volumes:
+      #  - /opt/hyhal:/opt/hyhal
     concurrency:
       group: >-
         op-test-${{ inputs.backend }}-${{ github.event.pull_request.number || github.ref }}
@@ -264,11 +264,9 @@ jobs:
     container:
       image: harbor.baai.ac.cn/flagos-base/flagos-base-mthreads-musa5.2.0:2.2.0
       options: >-
-        --device /dev/mtgpu.0 --device /dev/mtgpu.1 --device /dev/mtgpu.2 --device /dev/mtgpu.3
-        --device /dev/mtgpu.4 --device /dev/mtgpu.5 --device /dev/mtgpu.6 --device /dev/mtgpu.7
-        --device /dev/dri --shm-size=256g --ulimit memlock=-1 --ulimit stack=67108864
-      volumes:
-        - /usr/bin/mthreads-gmi:/usr/bin/mthreads-gmi:ro
+        --device /dev/mtgpu.0 --device /dev/dri --shm-size=256g --ulimit memlock=-1 --ulimit stack=67108864
+      #volumes:
+      #  - /usr/bin/mthreads-gmi:/usr/bin/mthreads-gmi:ro
     concurrency:
       group: >-
         op-test-${{ inputs.backend }}-${{ github.event.pull_request.number || github.ref }}
