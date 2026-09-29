@@ -22,7 +22,10 @@ from . import base, consts
 # Check if TransformerEngine is available
 try:
     import transformer_engine.pytorch.cpp_extensions as tex
-    from transformer_engine.pytorch import DType as TEDType
+    try:
+        from transformer_engine.pytorch import DType as TEDType
+    except ImportError:
+        from transformer_engine.pytorch.cpp_extensions import DType as TEDType
 
     HAS_TE = True
 
@@ -48,17 +51,20 @@ def te_rmsnorm_fwd_input_fn(shape, dtype, device):
 
 
 def te_rmsnorm_fwd(inp, weight, eps=1e-5):
-    te_otype = TORCH_TO_TE_DTYPE[inp.dtype]
-    result = tex.rmsnorm_fwd(
-        inp,
-        weight,
-        eps,
-        None,  # ln_out
-        None,  # quantizer
-        te_otype,
-        0,  # sm_margin
-        False,  # zero_centered_gamma
-    )
+    if base.vendor_name == "kunlunxin":
+        result = tex.rmsnorm_fwd(inp, weight, eps, 0, False)
+    else:
+        te_otype = TORCH_TO_TE_DTYPE[inp.dtype]
+        result = tex.rmsnorm_fwd(
+            inp,
+            weight,
+            eps,
+            None,  # ln_out
+            None,  # quantizer
+            te_otype,
+            0,  # sm_margin
+            False,  # zero_centered_gamma
+        )
     return result[0]
 
 
