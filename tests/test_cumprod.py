@@ -98,8 +98,7 @@ def test_cumprod(shape_dim, dtype):
     ref_inp = _reference_input(inp)
 
     ref_out = torch.cumprod(ref_inp, dim=dim)
-    with flag_gems.use_gems():
-        res_out = torch.cumprod(inp, dim=dim)
+    res_out = flag_gems.cumprod(inp, dim=dim)
 
     check_dtype = ref_out.dtype if dtype in INT_DTYPES + BOOL_DTYPES else dtype
     utils.gems_assert_close(res_out, ref_out, check_dtype, reduce_dim=shape[dim])
@@ -112,8 +111,7 @@ def test_cumprod_dtype(input_dtype, output_dtype):
     ref_inp = _reference_input(inp)
 
     ref_out = torch.cumprod(ref_inp, dim=1, dtype=output_dtype)
-    with flag_gems.use_gems():
-        res_out = torch.cumprod(inp, dim=1, dtype=output_dtype)
+    res_out = flag_gems.cumprod(inp, dim=1, dtype=output_dtype)
 
     utils.gems_assert_close(res_out, ref_out, output_dtype, reduce_dim=17)
 
@@ -125,8 +123,7 @@ def test_cumprod_low_precision_multitile(dtype):
     ref_inp = _reference_input(inp)
 
     ref_out = torch.cumprod(ref_inp, dim=1)
-    with flag_gems.use_gems():
-        res_out = torch.cumprod(inp, dim=1)
+    res_out = flag_gems.cumprod(inp, dim=1)
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=inp.shape[1])
 
@@ -140,8 +137,7 @@ def test_cumprod_inplace(shape_dim, dtype):
     ref_inp = _reference_input(inp)
     ref_out = torch.cumprod(ref_inp, dim=dim).to(dtype)
 
-    with flag_gems.use_gems():
-        res_out = inp.cumprod_(dim)
+    res_out = flag_gems.cumprod_(inp, dim)
 
     assert res_out.data_ptr() == inp.data_ptr()
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=shape[dim])
@@ -153,8 +149,7 @@ def test_cumprod_inplace_long_row_int16():
     ref_inp = _reference_input(inp)
     ref_out = torch.cumprod(ref_inp, dim=1).to(inp.dtype)
 
-    with flag_gems.use_gems():
-        res_out = inp.cumprod_(1)
+    res_out = flag_gems.cumprod_(inp, 1)
 
     assert res_out.data_ptr() == inp.data_ptr()
     utils.gems_assert_close(res_out, ref_out, inp.dtype, reduce_dim=inp.shape[1])
@@ -167,8 +162,7 @@ def test_cumprod_inplace_low_precision_multitile(dtype):
     ref_inp = _reference_input(inp)
     ref_out = torch.cumprod(ref_inp, dim=1).to(inp.dtype)
 
-    with flag_gems.use_gems():
-        res_out = inp.cumprod_(1)
+    res_out = flag_gems.cumprod_(inp, 1)
 
     assert res_out.data_ptr() == inp.data_ptr()
     utils.gems_assert_close(res_out, ref_out, inp.dtype, reduce_dim=inp.shape[1])
@@ -182,8 +176,7 @@ def test_cumprod_inplace_non_contiguous(dtype):
     ref_inp = _reference_input(inp)
     ref_out = torch.cumprod(ref_inp, dim=1).to(inp.dtype)
 
-    with flag_gems.use_gems():
-        res_out = inp.cumprod_(1)
+    res_out = flag_gems.cumprod_(inp, 1)
 
     assert res_out.data_ptr() == inp.data_ptr()
     utils.gems_assert_close(res_out, ref_out, inp.dtype, reduce_dim=inp.shape[1])
@@ -197,8 +190,7 @@ def test_cumprod_inplace_non_contiguous_tile_boundary(dtype):
     ref_inp = _reference_input(inp)
     ref_out = torch.cumprod(ref_inp, dim=0).to(inp.dtype)
 
-    with flag_gems.use_gems():
-        res_out = inp.cumprod_(0)
+    res_out = flag_gems.cumprod_(inp, 0)
 
     assert res_out.data_ptr() == inp.data_ptr()
     utils.gems_assert_close(res_out, ref_out, inp.dtype, reduce_dim=inp.shape[0])
@@ -208,15 +200,51 @@ def test_cumprod_inplace_non_contiguous_tile_boundary(dtype):
 def test_cumprod_inplace_dtype_mismatch():
     inp = _make_input((4, 9), torch.int16)
 
-    with flag_gems.use_gems():
-        with pytest.raises(RuntimeError, match="Bad in-place call"):
-            inp.cumprod_(1, dtype=torch.int64)
+    with pytest.raises(RuntimeError, match="Bad in-place call"):
+        inp.cumprod_(1, dtype=torch.int64)
 
 
 @pytest.mark.cumprod_
 def test_cumprod_inplace_bool_unsupported():
     inp = _make_input((4, 9), torch.bool)
 
-    with flag_gems.use_gems():
-        with pytest.raises((RuntimeError, NotImplementedError)):
-            inp.cumprod_(1)
+    with pytest.raises((RuntimeError, NotImplementedError)):
+        flag_gems.cumprod_(inp, 1)
+
+
+CUMPROD_BACKWARD_SHAPE_DIMS = [
+    ((1024,), 0),
+    ((128, 64), 0),
+    ((128, 64), 1),
+    ((32, 128, 16), 1),
+    ((4, 5, 6), -2),
+    ((8, 3, 7, 5), 2),
+]
+
+
+@pytest.mark.cumprod_backward
+@pytest.mark.parametrize("shape_dim", CUMPROD_BACKWARD_SHAPE_DIMS)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("with_zero", [False, True])
+def test_cumprod_backward(shape_dim, dtype, with_zero):
+    shape, dim = shape_dim
+    inp = torch.empty(shape, dtype=dtype, device=flag_gems.device).uniform_(0.95, 1.05)
+    if with_zero:
+        # Inject a zero along the reduction dim to exercise the zero-handling path.
+        idx = tuple(torch.randint(0, s, (1,)).item() for s in shape)
+        inp[idx] = 0.0
+    grad = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    output = torch.cumprod(inp, dim=dim)
+
+    ref_grad = utils.to_reference(grad, True)
+    ref_inp = utils.to_reference(inp, True)
+    ref_output = utils.to_reference(output, True)
+    ref_out = torch.ops.aten.cumprod_backward(ref_grad, ref_inp, dim, ref_output)
+
+    res_out = flag_gems.cumprod_backward(grad, inp, dim, output)
+
+    # The backward reverse-cumsum accumulates reduce_dim terms; for low-precision
+    # dtypes a single element can differ by ~1 ULP due to reordering vs the aten
+    # reference, so allow a slightly wider absolute tolerance.
+    atol = 1e-3 if dtype in (torch.float16, torch.bfloat16) else 1e-4
+    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=shape[dim], atol=atol)

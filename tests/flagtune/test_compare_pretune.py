@@ -27,6 +27,7 @@ SCRIPT_PATH = (
     / "src"
     / "flag_gems"
     / "flagtune"
+    / "offline"
     / "cli"
     / "compare.py"
 )
