@@ -104,7 +104,7 @@ _FULL_CONFIG = (
     ("__lshift__.Scalar", __lshift__),
     ("__lshift__.Tensor", __lshift__),
     ("__or__.Scalar", bitwise_or_scalar),
-    ("__or__.Tensor", bitwise_or_tensor),
+    ("__or__.Tensor", or_tensor),
     ("__rshift__.Scalar", __rshift__),
     ("__rshift__.Scalar_out", __rshift__),
     ("__rshift__.Tensor", __rshift__),

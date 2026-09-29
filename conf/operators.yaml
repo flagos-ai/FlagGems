@@ -4612,17 +4612,6 @@ ops:
   - Math
   stages:
   - beta: '5.3'
-- id: dunder_or_tensor
-  description: The in-place version of bitwise or operation for tensor and scalar.
-  for:
-  - __or__.Tensor
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Math
-  stages:
-  - beta: '5.3'
 - id: dyn_quant_matmul_4bit
   description: Dynamic per-row INT8 activation and signed INT4 weight matrix multiplication.
   for:
@@ -12395,6 +12384,18 @@ ops:
   - Tensor
   stages:
   - stable: '2.1'
+- id: or_tensor
+  description: Computes the bitwise OR operation through the tensor dunder method
+    with tensor operands.
+  for:
+  - __or__.Tensor
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - beta: '5.3'
 - id: orgqr
   description: 'Computes the first n columns of a product of Householder matrices.
 
