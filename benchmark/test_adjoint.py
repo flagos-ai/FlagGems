@@ -17,8 +17,6 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base, consts
 
 # Matrix-like shapes: adjoint needs at least 2 dimensions (1-D raises and the
