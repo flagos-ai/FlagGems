@@ -16,9 +16,10 @@
 
 import pytest
 import torch
+
 import flag_gems
 
-from . import base, consts, utils
+from . import base, consts
 
 # Sparse COO sizes for the benchmark: the op is O(1) in nnz (pure metadata
 # read), so the sweep exercises the host path across sparse sizes and the
