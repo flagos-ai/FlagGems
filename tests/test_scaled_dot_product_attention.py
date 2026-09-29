@@ -295,6 +295,7 @@ def test_scaled_dot_product_attention_legacy(
     torch.__version__ < "2.5", reason="Low Pytorch Version: enable_gqa not supported"
 )
 @pytest.mark.scaled_dot_product_attention_backward
+@pytest.mark.scaled_dot_product_flash_attention_backward
 @pytest.mark.parametrize(
     "batch, num_q_head, num_kv_head, q_seq_len, kv_seq_len, head_size, enable_gqa",
     LEGACY_SHAPES,
