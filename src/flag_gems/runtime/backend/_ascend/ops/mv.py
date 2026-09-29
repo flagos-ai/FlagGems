@@ -39,7 +39,8 @@ def _prune_mv_configs(configs, named_args, **kwargs):
     if m not in (2048, 4096) or n < 128:
         return configs
     selected = [
-        c for c in configs
+        c
+        for c in configs
         if c.kwargs.get("BLOCK_M", 0) in (128, 256, 512, 1024, 2048, 4096)
         and c.kwargs.get("BLOCK_N", 0) in (1, 2, 4, 8, 16, 32)
     ]
