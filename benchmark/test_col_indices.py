@@ -17,8 +17,6 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base, consts, utils
 
 # CSR inputs for the ``col_indices`` benchmark: (nnz, shape) pairs. The op only
