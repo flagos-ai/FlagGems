@@ -3360,10 +3360,34 @@ ops:
   stages:
   - beta: '2.2'
   - stable: '5.3'
+- id: conv_tbc
+  description: Applies a 1D convolution over an input with time-batch-channel (T,
+    B, C) layout.
+  for:
+  - conv_tbc
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: conv_tbc_backward
   description: Triton kernel implementation for conv_tbc_backward.
   for:
   - conv_tbc_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: conv_tbc_out
+  description: A variant of `conv_tbc()` that assigns the output to the given `out`
+    parameter.
+  for:
+  - conv_tbc.out
   labels:
   - aten
   - KernelGen
@@ -7419,6 +7443,22 @@ ops:
   - Math
   stages:
   - alpha: '5.3'
+- id: histogram
+  description: 'Compute histogram of a tensor into bins. histogram.bin_ct uses uniform
+    bins (integer count), histogram.bins_tensor uses non-uniform bins (Tensor edges).
+    Returns (hist, bin_edges).
+
+    '
+  for:
+  - histogram.bin_ct
+  - histogram.bins_tensor
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5.0'
 - id: histogramdd
   description: 'Computes D-dimensional histogram over (N, D) input tensor. Returns
     histogram tensor and list of bin edge tensors per dimension.
@@ -10513,6 +10553,17 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: max_pool1d_with_indices
+  description: Triton kernel implementation for max_pool1d_with_indices.
+  for:
+  - max_pool1d_with_indices
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: max_pool2d_backward
   description: 'Applies a 2D max pooling over an input signal composed of several
     input planes.
@@ -12903,6 +12954,17 @@ ops:
   - Tensor
   stages:
   - alpha: '5.5'
+- id: put_
+  description: The in-place version of `put()`.
+  for:
+  - put_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: put_out
   description: |
     A variant of `put()` that writes the result into the `out` tensor.
@@ -12926,6 +12988,32 @@ ops:
   - Tensor
   stages:
   - stable: '2.2'
+- id: quantize_per_channel
+  description: |
+    Triton kernel implementation for quantize_per_channel. Quantizes a float
+    tensor per channel with the given scales and zero_points along the
+    specified axis, producing a per-channel affine quantized tensor.
+  for:
+  - quantize_per_channel
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
+- id: quantize_per_channel_out
+  description: |
+    A variant of quantize_per_channel() that writes the result into the out tensor.
+  for:
+  - quantize_per_channel.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: quantize_per_tensor
   description: |
     Quantizes a float32 tensor to a quantized tensor (torch.quint8 / qint8 / qint32)
@@ -12951,6 +13039,29 @@ ops:
   - KernelGen
   kind:
   - Math
+  stages:
+  - alpha: '5.5'
+- id: quantized_batch_norm
+  description: Applies batch normalization on a 4D (NCHW) quantized tensor.
+  for:
+  - quantized_batch_norm
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
+- id: quantized_batch_norm_out
+  description: |
+    A variant of quantized_batch_norm() that writes the result into the out tensor.
+  for:
+  - quantized_batch_norm.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
   stages:
   - alpha: '5.5'
 - id: quantized_gru
@@ -14448,6 +14559,20 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: scaled_dot_product_fused_attention_overrideable_backward
+  description: |
+    Backward pass of the overrideable fused scaled dot product attention, computing
+    gradients of query, key, value and attention bias for privateuse1-style backends.
+  for:
+  - _scaled_dot_product_fused_attention_overrideable_backward
+  labels:
+  - aten
+  - KernelGen
+  - NoCPU
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5.0'
 - id: scaled_grouped_mm
   description: 'Performs grouped matrix multiplication with row-wise and column-wise
     scaling,
@@ -16076,6 +16201,18 @@ ops:
   - KernelGen
   stages:
   - alpha: '5.1'
+- id: special_hermite_polynomial_he
+  description: |
+    Probabilists' Hermite polynomial He_n(input).
+  for:
+  - special.hermite_polynomial_he
+  kind:
+  - Math
+  labels:
+  - aten
+  - KernelGen
+  stages:
+  - alpha: '5.4'
 - id: special_i0
   description: 'Computes the zeroth order modified Bessel function of the first kind
 
@@ -16738,6 +16875,18 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: spsolve
+  description: Solves a sparse linear system AX = B for a CSR matrix A via CSR-to-dense
+    conversion and the FlagGems linalg_solve kernel.
+  for:
+  - _spsolve
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.5'
 - id: sqrt
   description: Returns a new tensor with the square-root of the elements of `input`.
   for:
@@ -17842,6 +17991,18 @@ ops:
   - KernelGen
   kind:
   - Math
+  stages:
+  - alpha: '5.5'
+- id: triplet_margin_loss
+  description: Triplet margin loss for learning embeddings
+  for:
+  - triplet_margin_loss
+  labels:
+  - aten
+  - nn.functional
+  - KernelGen
+  kind:
+  - NeuralNetwork
   stages:
   - alpha: '5.5'
 - id: triton_lighting_indexer_k_tiled_interface
