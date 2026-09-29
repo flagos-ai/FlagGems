@@ -69,3 +69,39 @@ def test_accuracy_adaptive_avg_pool2d_forward(shape, output_size, dtype):
     res_out = flag_gems.adaptive_avg_pool2d(inp, output_size)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.adaptive_avg_pool2d
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("layout", ["contiguous", "strided", "channels_last"])
+@pytest.mark.parametrize(
+    "shape, output_size",
+    [
+        ((1, 2, 130, 259), (1, 1)),
+        ((1, 2, 225, 257), (3, 2)),
+        ((2, 3, 3, 5), (7, 9)),
+        ((2, 3, 1, 1), (2, 3)),
+        ((0, 3, 17, 19), (3, 5)),
+        ((1, 2, 65, 67), (2, 3)),
+    ],
+)
+def test_accuracy_adaptive_avg_pool2d_boundary_layout(
+    shape, output_size, layout, dtype
+):
+    if layout == "strided":
+        storage_shape = (*shape[:-1], shape[-1] * 2)
+        inp = torch.randn(storage_shape, dtype=dtype, device=flag_gems.device)[..., ::2]
+    else:
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        if layout == "channels_last":
+            if flag_gems.vendor_name == "ascend":
+                inp = inp.permute(0, 2, 3, 1).contiguous().permute(0, 3, 1, 2)
+            else:
+                inp = inp.contiguous(memory_format=torch.channels_last)
+    ref_inp = utils.to_reference(inp, True)
+    ref_out = torch.ops.aten._adaptive_avg_pool2d(ref_inp, output_size)
+    actual = flag_gems.adaptive_avg_pool2d(inp, output_size)
+    utils.gems_assert_close(actual, ref_out, dtype)

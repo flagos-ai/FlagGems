@@ -52,6 +52,23 @@ pytest_plugins = ["pytester"]
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def test_override_call_count_snapshots_and_all_skip_restore(tmp_path):
+    source = tmp_path / "candidate.py"
+    source.write_text("def run(value): return value\n")
+    registry = DynamicOpOverride()
+    registry.override_from_file("neg", str(source), "run")
+    snapshot = registry.call_counts()
+    snapshot["flag_gems.neg"] = 100
+    assert registry.call_counts()["flag_gems.neg"] == 0
+    registry.get_override("neg")(1)
+    assert registry.call_counts()["flag_gems.neg"] == 1
+    registry.restore_all()
+    assert registry.call_counts() == {}
+    registry.override_from_file("neg", str(source), "run")
+    registry.restore_all(allow_unused=True)
+    assert registry.list_overrides() == []
+
+
 # Test fixtures for custom implementations
 def custom_abs_impl(input):
     """Custom implementation of abs that adds a marker"""
