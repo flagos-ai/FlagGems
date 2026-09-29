@@ -238,12 +238,14 @@ _SPECIAL_CASES = tu.special_value_cases(_FLOAT_DTYPES)
 # (measured: float('inf') cast to float8_e4m3fn is nan, so the format's inf payload
 # collapses to nan), float8_e5m2 keeps both. No infinity is claimed for e4m3fn. The
 # rows below are copy-form (dims=() keeps every sparse dim), the only branch this
-# backend supports for fp8.
-_FP8_SPECIAL_ROWS = [
+# backend supports for fp8 and bfloat16.
+_COPY_SPECIAL_ROWS = [
     ((20, 320, 15), 2, (), 8),
     ((32, 64), 2, (), 5),
 ]
-_FP8_SPECIAL_CASES = tu.special_value_cases(_FP8_DTYPES)
+_COPY_SPECIAL_CASES = tu.special_value_cases(
+    _FP8_DTYPES + ([torch.bfloat16] if _SUPPORTS_BF16 else [])
+)
 
 # Regather descriptor for the dtype-rejection grid. dims=(0,) keeps sparse axis 1 only,
 # so the grad regathers; the projection onto that one axis holds 8 distinct, ascending
@@ -606,7 +608,7 @@ for _row in (
     + _UNCOALESCED_ROWS
     + _DUPLICATE_ROWS
     + _SPECIAL_ROWS
-    + _FP8_SPECIAL_ROWS
+    + _COPY_SPECIAL_ROWS
     + _REGATHER_ROWS
 ):
     _validate_dims(_row[0], _row[2])
@@ -837,9 +839,9 @@ def test__sparse_sum_backward_special_values(dtype, scenario, row):
 
 
 @pytest.mark.sparse_sum_backward
-@pytest.mark.parametrize("row", tu.selected_cases(_FP8_SPECIAL_ROWS, quick=[]))
-@pytest.mark.parametrize("dtype,scenario", _FP8_SPECIAL_CASES)
-def test__sparse_sum_backward_fp8_special_values(dtype, scenario, row):
+@pytest.mark.parametrize("row", tu.selected_cases(_COPY_SPECIAL_ROWS, quick=[]))
+@pytest.mark.parametrize("dtype,scenario", _COPY_SPECIAL_CASES)
+def test__sparse_sum_backward_copy_special_values(dtype, scenario, row):
     shape, sparse_dim, dims, nnz = row
     inp = _sparse_self(shape, sparse_dim, dtype, ["-1", "1"], nnz)
     payload = tu.make_special_input(dtype, scenario)
