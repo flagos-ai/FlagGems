@@ -172,8 +172,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         continue-on-error: true
-      - uses: ./.github/actions/checkout-retry
-      - uses: ./.github/actions/setup-flaggems
+      - uses: flagos-ai/FlagGems/.github/actions/checkout-retry@master
+      - uses: flagos-ai/FlagGems/.github/actions/setup-flaggems@master
         with:
           backend: ${{ inputs.backend }}
           gpu_check_script: ${{ inputs.gpu_check_script }}
@@ -217,6 +217,35 @@ jobs:
       options: --device /dev/kfd --device /dev/mkfd --device /dev/dri --group-add video --security-opt seccomp=unconfined --shm-size=256g --ulimit memlock=-1 --ulimit stack=67108864
       volumes:
         - /opt/hyhal:/opt/hyhal
+    concurrency:
+      group: >-
+        op-test-${{ inputs.backend }}-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        continue-on-error: true
+      - uses: flagos-ai/FlagGems/.github/actions/checkout-retry@master
+      - uses: flagos-ai/FlagGems/.github/actions/setup-flaggems@master
+        with:
+          backend: ${{ inputs.backend }}
+          gpu_check_script: ${{ inputs.gpu_check_script }}
+
+      - name: Test alpha ops
+        if: ${{ inputs.test_script != '' }}
+        env:
+          CHANGED_FILES: ${{ inputs.changed_files }}
+        shell: bash
+        run: |
+          bash ${{ inputs.test_script }} ${{ inputs.backend }} ${{ inputs.pr_id }}
+      - name: Run backend tests
+        if: ${{ inputs.test_script == '' }}
+        shell: bash
+        env:
+          CHANGED_FILES: ${{ inputs.changed_files }}
+        run: |
+          source .venv/bin/activate
+          tools/test-op.sh ${{ inputs.pr_id }}
+
   # MooreThreads runs inside a container on whichever mthreads-s5000-* server
   # this repo has access to, mirroring the iluvatar setup below.
   # Equivalent to:
@@ -247,8 +276,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         continue-on-error: true
-      - uses: ./.github/actions/checkout-retry
-      - uses: ./.github/actions/setup-flaggems
+      - uses: flagos-ai/FlagGems/.github/actions/checkout-retry@master
+      - uses: flagos-ai/FlagGems/.github/actions/setup-flaggems@master
         with:
           backend: ${{ inputs.backend }}
           gpu_check_script: ${{ inputs.gpu_check_script }}
@@ -296,8 +325,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         continue-on-error: true
-      - uses: ./.github/actions/checkout-retry
-      - uses: ./.github/actions/setup-flaggems
+      - uses: flagos-ai/FlagGems/.github/actions/checkout-retry@master
+      - uses: flagos-ai/FlagGems/.github/actions/setup-flaggems@master
         with:
           backend: ${{ inputs.backend }}
           gpu_check_script: ${{ inputs.gpu_check_script }}
