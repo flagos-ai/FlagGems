@@ -29,7 +29,6 @@ def test_isnan(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.isnan(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.isnan(inp)
+    res_out = flag_gems.isnan(inp)
 
     utils.gems_assert_equal(res_out, ref_out)

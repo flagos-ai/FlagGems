@@ -453,3 +453,13 @@ fused_recurrent_gated_delta_rule:
     - [480]
     - [496]
   shape_desc: "T"
+
+# conv_transpose1d benchmark shapes; order matches
+# benchmark/test_conv_transpose1d.py conv_transpose1d_input_fn unpack.
+conv_transpose1d:
+  shapes:
+    - [32, 64, 128, 64, 3, 1, 0, 1]
+    - [64, 48, 256, 128, 5, 2, 2, 1]
+    - [16, 24, 512, 96, 7, 1, 3, 1]
+    - [8, 16, 1024, 32, 3, 2, 1, 2]
+    - [4, 8, 2048, 16, 5, 1, 2, 1]

@@ -133,6 +133,86 @@ def true_div_func_u16(x, y):
     return x / y
 
 
+# --- small/medium tensor-tensor true_divide fast path ---------------------------------
+# Below DIV_TENSOR_U16_MIN_NUMEL the pointwise_dynamic wrapper's host bookkeeping and a
+# single 512-wide tile (config_) dominate a kernel that is launch-bound on tiny shapes.
+# A raw kernel with an adaptive (BLOCK, num_warps) keeps enough programs in flight for
+# the small shapes while the unmasked tail-free variant covers the divisible rest.
+_DIV_FAST_MAX = DIV_TENSOR_U16_MIN_NUMEL
+_DIV_MIN_BLOCK = 2048
+
+
+def _pick_block(n_elements):
+    if n_elements >= 1_048_576:
+        for tile in (32768, 16384, 8192, 4096, 2048):
+            if n_elements % tile == 0:
+                return tile, 4, False
+    if n_elements >= 65_536 and n_elements % 8192 == 0:
+        return 8192, 4, False
+    if n_elements <= 65_536:
+        return _DIV_MIN_BLOCK, 4, True
+    return 8192, 4, True
+
+
+@triton.jit
+def _div_fast_kernel(x_ptr, y_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
+    pid = tl.program_id(0)
+    offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offset < n_elements
+    x = tl.load(x_ptr + offset, mask=mask, other=0)
+    y = tl.load(y_ptr + offset, mask=mask, other=1)
+    tl.store(out_ptr + offset, x / y, mask=mask)
+
+
+@triton.jit
+def _div_fast_kernel_unmasked(x_ptr, y_ptr, out_ptr, BLOCK_SIZE: tl.constexpr):
+    pid = tl.program_id(0)
+    offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    x = tl.load(x_ptr + offset)
+    y = tl.load(y_ptr + offset)
+    tl.store(out_ptr + offset, x / y)
+
+
+def _div_small_eligible(A, B):
+    return (
+        A.dtype == B.dtype
+        and A.dtype in (torch.float16, torch.float32, torch.bfloat16)
+        and A.is_contiguous()
+        and B.is_contiguous()
+        and A.shape == B.shape
+        and 0 < A.numel() < _DIV_FAST_MAX
+    )
+
+
+def _true_divide_fast(A, B, out):
+    numel = A.numel()
+    block_size, num_warps, masked = _pick_block(numel)
+    if masked:
+        _div_fast_kernel[(triton.cdiv(numel, block_size),)](
+            A,
+            B,
+            out,
+            numel,
+            BLOCK_SIZE=block_size,
+            num_warps=num_warps,
+            buffer_size_limit=8192,
+            unroll_num=16,
+            isCloseMemoryAsync=False,
+        )
+    else:
+        _div_fast_kernel_unmasked[(numel // block_size,)](
+            A,
+            B,
+            out,
+            BLOCK_SIZE=block_size,
+            num_warps=num_warps,
+            buffer_size_limit=8192,
+            unroll_num=16,
+            isCloseMemoryAsync=False,
+        )
+    return out
+
+
 # ---- complex true division (bit-view kernels) ----
 # XPU triton has no complex type support (jit specialization KeyErrors) and
 # xdnn native casts/copies on complex dtypes are [NOT IMPLEMENTED] / broken
@@ -377,6 +457,8 @@ def true_divide(A, B):
             and A.numel() >= DIV_TENSOR_U16_MIN_NUMEL
         ):
             kernel = true_div_func_u16
+        if _div_small_eligible(A, B):
+            return _true_divide_fast(A, B, torch.empty_like(A))
         out0 = _same_layout_out0(A, B)
         if out0 is not None:
             return kernel(A, B, out0=out0)
@@ -422,6 +504,8 @@ def true_divide_out(A, B, out):
             and A.numel() >= DIV_TENSOR_U16_MIN_NUMEL
         ):
             return true_div_func_u16(A, B, out0=out)
+        if _div_small_eligible(A, B) and out.is_contiguous() and out.shape == A.shape:
+            return _true_divide_fast(A, B, out)
         return true_div_func(A, B, out0=out)
     elif isinstance(A, torch.Tensor):
         if A.numel() >= DIV_SCALAR_CFG_THRESHOLD:
@@ -446,6 +530,8 @@ def true_divide_(A, B):
             and A.numel() >= DIV_TENSOR_U16_MIN_NUMEL
         ):
             return true_div_func_u16(A, B, out0=A)
+        if _div_small_eligible(A, B):
+            return _true_divide_fast(A, B, A)
         return true_div_func(A, B, out0=A)
     else:
         if A.numel() >= DIV_SCALAR_CFG_THRESHOLD:

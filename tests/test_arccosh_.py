@@ -17,7 +17,6 @@ def test_arccosh_(shape, dtype):
     act_inp = inp.clone()
 
     ref_inp.arccosh_()
-    with flag_gems.use_gems():
-        act_inp.arccosh_()
+    flag_gems.arccosh_(act_inp)
 
     utils.gems_assert_close(act_inp, ref_inp, dtype)

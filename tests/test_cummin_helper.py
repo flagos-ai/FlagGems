@@ -32,11 +32,11 @@ else:
 
 
 def _run_helper(inp, dim):
-    """Invoke the GEMS-registered ``_cummin_helper`` writing into freshly
+    """Invoke the GEMS ``_cummin_helper`` writing into freshly
     allocated ``values`` / ``indices`` tensors."""
     values = torch.empty_like(inp)
     indices = torch.empty(inp.shape, dtype=torch.int64, device=inp.device)
-    torch.ops.aten._cummin_helper(inp, values, indices, dim)
+    flag_gems._cummin_helper(inp, values, indices, dim)
     return values, indices
 
 
@@ -67,8 +67,7 @@ def test_cummin_helper(shape, dtype):
     ref_inp = utils.to_reference(inp, True)
 
     ref_values, ref_indices = _ref_helper(ref_inp, dim)
-    with flag_gems.use_gems():
-        res_values, res_indices = _run_helper(inp, dim)
+    res_values, res_indices = _run_helper(inp, dim)
 
     utils.gems_assert_close(res_values, ref_values, dtype, reduce_dim=shape[dim])
     utils.gems_assert_equal(res_indices, ref_indices)
@@ -93,8 +92,7 @@ def test_cummin_helper_with_nan(shape, dtype, nan_ratio):
     ref_inp = utils.to_reference(inp, True)
 
     ref_values, ref_indices = _ref_helper(ref_inp, dim)
-    with flag_gems.use_gems():
-        res_values, res_indices = _run_helper(inp, dim)
+    res_values, res_indices = _run_helper(inp, dim)
 
     utils.gems_assert_close(
         res_values,
@@ -130,8 +128,7 @@ def test_cummin_helper_dim(shape, dtype, dim):
     ref_inp = utils.to_reference(inp, True)
 
     ref_values, ref_indices = _ref_helper(ref_inp, dim)
-    with flag_gems.use_gems():
-        res_values, res_indices = _run_helper(inp, dim)
+    res_values, res_indices = _run_helper(inp, dim)
 
     utils.gems_assert_close(res_values, ref_values, dtype, reduce_dim=shape[dim])
     utils.gems_assert_equal(res_indices, ref_indices)

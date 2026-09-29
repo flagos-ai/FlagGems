@@ -1869,8 +1869,22 @@ ops:
   - BLAS
   stages:
   - beta: '5.3'
+- id: bartlett_window
+  description: Generates a Bartlett window of given length, returning a 1-D tensor
+    with the triangular window coefficients.
+  for:
+  - bartlett_window
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: batch_norm
   description: An internal operator used for implementing the `BatchNorm` functionality.
+  for:
+  - native_batch_norm
   labels:
   - aten
   kind:
@@ -1984,6 +1998,18 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: batch_norm_stats
+  description: Computes per-channel mean and inverse standard deviation for batch
+    normalization.
+  for:
+  - batch_norm_stats
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: batch_norm_with_update
   description: Applies training-mode Batch Normalization using batch statistics and updates
     running_mean/running_var in place.
@@ -3334,10 +3360,34 @@ ops:
   stages:
   - beta: '2.2'
   - stable: '5.3'
+- id: conv_tbc
+  description: Applies a 1D convolution over an input with time-batch-channel (T,
+    B, C) layout.
+  for:
+  - conv_tbc
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: conv_tbc_backward
   description: Triton kernel implementation for conv_tbc_backward.
   for:
   - conv_tbc_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: conv_tbc_out
+  description: A variant of `conv_tbc()` that assigns the output to the given `out`
+    parameter.
+  for:
+  - conv_tbc.out
   labels:
   - aten
   - KernelGen
@@ -3720,6 +3770,22 @@ ops:
   - LinearAlg
   stages:
   - alpha: '5.5'
+- id: cross_attention
+  description: 'Forward-only dense cross attention over BNSD tensors: computes
+    softmax(scale * Q @ K^T) @ V with an optional bool/uint8 mask whose non-zero
+    entries block the corresponding key.  Supports MHA, GQA and MQA, and a value
+    head dimension smaller than the query/key head dimension.
+    '
+  for:
+  - cross_attention
+  labels:
+  - Attention
+  - NoCPU
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
+  cpp: '5.5'
 - id: cross_entropy_loss
   description: Computes the cross entropy loss between input logits and target.
   for:
@@ -4027,7 +4093,7 @@ ops:
   stages:
   - alpha: '5.5.0'
 - id: cumsum
-  destination: Returns the cumulative sum of elements of `input` in the dimension
+  description: Returns the cumulative sum of elements of `input` in the dimension
     `dim`.
   for:
   - cumsum
@@ -4049,7 +4115,7 @@ ops:
   stages:
   - alpha: '5.4'
 - id: cumsum_out
-  destination: 'Returns the cumulative sum of elements of `input` in the dimension
+  description: 'Returns the cumulative sum of elements of `input` in the dimension
     `dim`.
 
     It is a variant of `cumsum()`.
@@ -6788,6 +6854,8 @@ ops:
 - id: group_norm
   description: An internal IR for applying Group Normalization for last certain number
     of dimensions.
+  for:
+  - native_group_norm
   labels:
   - aten
   - Reduction
@@ -7375,6 +7443,22 @@ ops:
   - Math
   stages:
   - alpha: '5.3'
+- id: histogram
+  description: 'Compute histogram of a tensor into bins. histogram.bin_ct uses uniform
+    bins (integer count), histogram.bins_tensor uses non-uniform bins (Tensor edges).
+    Returns (hist, bin_edges).
+
+    '
+  for:
+  - histogram.bin_ct
+  - histogram.bins_tensor
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5.0'
 - id: histogramdd
   description: 'Computes D-dimensional histogram over (N, D) input tensor. Returns
     histogram tensor and list of bin edge tensors per dimension.
@@ -8304,6 +8388,20 @@ ops:
   - Math
   stages:
   - alpha: '5.5.0'
+- id: kl_div
+  description: |
+    Compute the Kullback-Leibler divergence loss between the input
+    (log-probabilities) and the target, supporting none/mean/sum reductions
+    and both the probability and log-space target interpretations.
+  for:
+  - kl_div
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5.0'
 - id: kron
   description: Computes the Kronecker product of `input` and `other`.
   for:
@@ -8344,6 +8442,8 @@ ops:
 - id: layer_norm
   description: An internal IR for applying Layer Normalization for last certain number
     of dimensions.
+  for:
+  - native_layer_norm
   labels:
   - aten
   kind:
@@ -9267,6 +9367,17 @@ ops:
   - LinearAlg
   stages:
   - beta: '5.4'
+- id: linalg_pinv
+  description: Computes the Moore-Penrose pseudoinverse of a matrix via Jacobi SVD.
+  for:
+  - linalg_pinv
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.5'
 - id: linalg_polar
   description: Computes the right polar decomposition A = U @ H.
   for:
@@ -9473,11 +9584,10 @@ ops:
   - linear
   labels:
   - aten
-  - KernelGen
   kind:
   - BLAS
   stages:
-  - alpha: '5.4'
+  - beta: '5.5'
 - id: linear_backward
   description: Triton kernel implementation for linear_backward.
   for:
@@ -10468,6 +10578,17 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: max_pool1d_with_indices
+  description: Triton kernel implementation for max_pool1d_with_indices.
+  for:
+  - max_pool1d_with_indices
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: max_pool2d_backward
   description: 'Applies a 2D max pooling over an input signal composed of several
     input planes.
@@ -12858,6 +12979,17 @@ ops:
   - Tensor
   stages:
   - alpha: '5.5'
+- id: put_
+  description: The in-place version of `put()`.
+  for:
+  - put_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: put_out
   description: |
     A variant of `put()` that writes the result into the `out` tensor.
@@ -12881,6 +13013,32 @@ ops:
   - Tensor
   stages:
   - stable: '2.2'
+- id: quantize_per_channel
+  description: |
+    Triton kernel implementation for quantize_per_channel. Quantizes a float
+    tensor per channel with the given scales and zero_points along the
+    specified axis, producing a per-channel affine quantized tensor.
+  for:
+  - quantize_per_channel
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
+- id: quantize_per_channel_out
+  description: |
+    A variant of quantize_per_channel() that writes the result into the out tensor.
+  for:
+  - quantize_per_channel.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: quantize_per_tensor
   description: |
     Quantizes a float32 tensor to a quantized tensor (torch.quint8 / qint8 / qint32)
@@ -12906,6 +13064,29 @@ ops:
   - KernelGen
   kind:
   - Math
+  stages:
+  - alpha: '5.5'
+- id: quantized_batch_norm
+  description: Applies batch normalization on a 4D (NCHW) quantized tensor.
+  for:
+  - quantized_batch_norm
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
+- id: quantized_batch_norm_out
+  description: |
+    A variant of quantized_batch_norm() that writes the result into the out tensor.
+  for:
+  - quantized_batch_norm.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
   stages:
   - alpha: '5.5'
 - id: quantized_gru
@@ -14403,6 +14584,20 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: scaled_dot_product_fused_attention_overrideable_backward
+  description: |
+    Backward pass of the overrideable fused scaled dot product attention, computing
+    gradients of query, key, value and attention bias for privateuse1-style backends.
+  for:
+  - _scaled_dot_product_fused_attention_overrideable_backward
+  labels:
+  - aten
+  - KernelGen
+  - NoCPU
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5.0'
 - id: scaled_grouped_mm
   description: 'Performs grouped matrix multiplication with row-wise and column-wise
     scaling,
@@ -16036,6 +16231,18 @@ ops:
   - KernelGen
   stages:
   - alpha: '5.1'
+- id: special_hermite_polynomial_he
+  description: |
+    Probabilists' Hermite polynomial He_n(input).
+  for:
+  - special.hermite_polynomial_he
+  kind:
+  - Math
+  labels:
+  - aten
+  - KernelGen
+  stages:
+  - alpha: '5.4'
 - id: special_i0
   description: 'Computes the zeroth order modified Bessel function of the first kind
 
@@ -16698,6 +16905,18 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: spsolve
+  description: Solves a sparse linear system AX = B for a CSR matrix A via CSR-to-dense
+    conversion and the FlagGems linalg_solve kernel.
+  for:
+  - _spsolve
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.5'
 - id: sqrt
   description: Returns a new tensor with the square-root of the elements of `input`.
   for:
@@ -17804,6 +18023,18 @@ ops:
   - Math
   stages:
   - alpha: '5.5'
+- id: triplet_margin_loss
+  description: Triplet margin loss for learning embeddings
+  for:
+  - triplet_margin_loss
+  labels:
+  - aten
+  - nn.functional
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: triton_lighting_indexer_k_tiled_interface
   description: Part of FP8 MQA framework. It is currently not exposed as an operator
     for use.
@@ -18826,6 +19057,25 @@ ops:
   - BLAS
   stages:
   - alpha: '5.3'
+- id: weight_int4pack_mm
+  description: 'Int4 packed weight matrix multiplication. Computes C = A @ dequant(W).T
+
+    where W is a byte-pair int4 packed uint8 tensor of shape (N, K//2).
+
+    Weights are pre-dequantized into float32 and then processed by a Triton
+
+    GEMM kernel.
+
+    '
+  for:
+  - _weight_int4pack_mm
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.4'
 - id: weight_int4pack_mm_with_scales_and_zeros
   description: 'Int4 quantized matrix multiplication with separate scales and zeros.
     Computes
