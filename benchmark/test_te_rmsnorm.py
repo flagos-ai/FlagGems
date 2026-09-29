@@ -22,6 +22,7 @@ from . import base, consts
 # Check if TransformerEngine is available
 try:
     import transformer_engine.pytorch.cpp_extensions as tex
+
     try:
         from transformer_engine.pytorch import DType as TEDType
     except ImportError:
