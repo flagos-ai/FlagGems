@@ -44,3 +44,36 @@ def test_amax(shape, dim, keepdim, dtype):
         res_out = torch.amax(inp, dim=dim, keepdim=keepdim)
 
     utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.amax
+@pytest.mark.parametrize(
+    "keepdim, dim, shape",
+    [
+        (True, 1, (4, 7, 11)),
+        (False, 0, (4, 7, 11)),
+        (False, [0, 2], (4, 7, 11)),
+    ],
+)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_amax_out(shape, dim, keepdim, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp)
+
+    ref_out = torch.amax(ref_inp, dim=dim, keepdim=keepdim)
+    out = torch.empty(ref_out.shape, dtype=dtype, device=flag_gems.device)
+    with flag_gems.use_gems():
+        res_out = torch.amax(inp, dim=dim, keepdim=keepdim, out=out)
+
+    assert res_out is out
+    assert out.shape == ref_out.shape
+    utils.gems_assert_equal(out, ref_out)
+
+
+@pytest.mark.amax
+def test_amax_out_rejects_wrong_shape():
+    inp = torch.randn((4, 7, 11), device=flag_gems.device)
+    out = torch.empty((1,), device=flag_gems.device)
+
+    with flag_gems.use_gems(), pytest.raises(RuntimeError, match="expected out shape"):
+        torch.amax(inp, dim=1, out=out)

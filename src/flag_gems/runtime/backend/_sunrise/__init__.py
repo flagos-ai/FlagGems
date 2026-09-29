@@ -275,6 +275,13 @@ def _install_register_config_patch():
         full_config_by_func=None,
     ):
         config, full_config_by_func = _extend_config(config, full_config_by_func)
+        # GeneralOpRegistrar normally resolves public bindings from the global
+        # _FULL_CONFIG. Seed the lookup with the merged Sunrise configuration
+        # so vendor-only overloads such as amax.out remain registrable.
+        self._full_config_key_to_func = {}
+        for item in config:
+            if len(item) >= 2:
+                self._full_config_key_to_func.setdefault(item[0], item[1])
         return original_init(
             self,
             config,
