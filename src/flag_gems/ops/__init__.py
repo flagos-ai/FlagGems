@@ -325,6 +325,7 @@ from flag_gems.ops.avg_pool2d import avg_pool2d, avg_pool2d_backward
 from flag_gems.ops.avg_pool3d import avg_pool3d, avg_pool3d_backward
 from flag_gems.ops.baddbmm import baddbmm, baddbmm_out
 from flag_gems.ops.baddbmm_ import baddbmm_
+from flag_gems.ops.bartlett_window import bartlett_window
 from flag_gems.ops.batch_norm import batch_norm, batch_norm_backward
 from flag_gems.ops.batch_norm_backward_elemt import batch_norm_backward_elemt
 from flag_gems.ops.batch_norm_backward_reduce import batch_norm_backward_reduce
@@ -332,6 +333,7 @@ from flag_gems.ops.batch_norm_gather_stats import batch_norm_gather_stats
 from flag_gems.ops.batch_norm_gather_stats_with_counts import (
     batch_norm_gather_stats_with_counts,
 )
+from flag_gems.ops.batch_norm_stats import batch_norm_stats
 from flag_gems.ops.bernoulli import bernoulli
 from flag_gems.ops.bernoulli_ import bernoulli_
 from flag_gems.ops.bilinear import bilinear
@@ -427,6 +429,7 @@ from flag_gems.ops.cosine_similarity import cosine_similarity
 from flag_gems.ops.count_nonzero import count_nonzero
 from flag_gems.ops.cov import cov
 from flag_gems.ops.cross import cross, cross_out
+from flag_gems.ops.cross_attention import cross_attention
 from flag_gems.ops.ctc_loss import ctc_loss
 from flag_gems.ops.cudnn_attention_backward import cudnn_attention_backward
 from flag_gems.ops.cudnn_attention_forward import cudnn_attention_forward
@@ -1596,12 +1599,14 @@ __all__ = [
     "baddbmm",
     "baddbmm_",
     "baddbmm_out",
+    "bartlett_window",
     "batch_norm",
     "batch_norm_backward",
     "batch_norm_backward_elemt",
     "batch_norm_backward_reduce",
     "batch_norm_gather_stats",
     "batch_norm_gather_stats_with_counts",
+    "batch_norm_stats",
     "bernoulli",
     "bernoulli_",
     "bilinear",
@@ -1703,6 +1708,7 @@ __all__ = [
     "count_nonzero",
     "cov",
     "cross",
+    "cross_attention",
     "cross_out",
     "ctc_loss",
     "cudnn_attention_backward",
