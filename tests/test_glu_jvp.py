@@ -64,24 +64,25 @@ def _primal_shape(shape, dim, extent=None):
 
 
 def _operand(kind, dtype, shape, dim, value_range):
-    """Build one operand of shape in the input state named by kind."""
+    """Build the operand and retain the parent of a view for readonly checks."""
     if kind == "contiguous":
-        return tu.make_input(dtype, shape, value_range)
+        return tu.make_input(dtype, shape, value_range), None
     if kind == "strided":
         wide = list(shape)
         wide[dim] *= 2
         base = tu.make_input(dtype, tuple(wide), value_range)
         index = [slice(None)] * len(shape)
         index[dim] = slice(1, None, 2)
-        return base[tuple(index)]
+        return base[tuple(index)], base
     if kind == "offset":
         base = tu.make_input(dtype, (shape[0] + 2, shape[1] + 2), value_range)
-        return base[1 : shape[0] + 1, : shape[1]]
+        return base[1 : shape[0] + 1, : shape[1]], base
     if kind == "transposed":
-        return tu.make_input(dtype, (shape[1], shape[0]), value_range).t()
+        base = tu.make_input(dtype, (shape[1], shape[0]), value_range)
+        return base.t(), base
     if kind == "permuted":
         base = tu.make_input(dtype, (shape[2], shape[0], shape[1]), value_range)
-        return base.permute(1, 2, 0)
+        return base.permute(1, 2, 0), base
     raise ValueError(f"unknown input state: {kind}")
 
 
@@ -138,16 +139,23 @@ _POSITIVE_CASES = tu.selected_cases(
 @pytest.mark.glu_jvp
 @pytest.mark.parametrize("shape,dim,dtype,value_range,kind,extent", _POSITIVE_CASES)
 def test_glu_jvp(shape, dim, dtype, value_range, kind, extent):
-    x = _operand(kind, dtype, shape, dim, value_range)
-    dx = _operand(kind, dtype, shape, dim, value_range)
+    x, x_parent = _operand(kind, dtype, shape, dim, value_range)
+    dx, dx_parent = _operand(kind, dtype, shape, dim, value_range)
     glu = tu.make_input(dtype, _primal_shape(shape, dim, extent), value_range)
 
-    ref_out = torch.ops.aten.glu_jvp(
-        tu.to_reference(glu), tu.to_reference(x), tu.to_reference(dx), dim
-    )
+    parents = [t for t in (x_parent, dx_parent) if t is not None]
+    ref_parents = [tu.to_reference(t) for t in parents]
+    ref_glu, ref_x, ref_dx = (tu.to_reference(t) for t in (glu, x, dx))
+    ref_out = torch.ops.aten.glu_jvp(ref_glu, ref_x, ref_dx, dim)
     res_out = flag_gems.glu_jvp(glu, x, dx, dim)
 
     tu.assert_result_close(res_out, ref_out)
+    tu.assert_result_equal(glu, ref_glu)
+    tu.assert_result_equal(x, ref_x)
+    tu.assert_result_equal(dx, ref_dx)
+
+    for parent, ref_parent in zip(parents, ref_parents):
+        tu.assert_result_equal(parent, ref_parent)
 
 
 # Broadcast against the axes glu_jvp does not narrow. The narrowed axis keeps
@@ -174,12 +182,14 @@ def test_glu_jvp_broadcast(shape, dim, glu_shape, dx_shape, dtype):
     dx = tu.make_input(dtype, dx_shape, ["-1", "1"])
     glu = tu.make_input(dtype, glu_shape, ["-1", "1"])
 
-    ref_out = torch.ops.aten.glu_jvp(
-        tu.to_reference(glu), tu.to_reference(x), tu.to_reference(dx), dim
-    )
+    ref_glu, ref_x, ref_dx = (tu.to_reference(t) for t in (glu, x, dx))
+    ref_out = torch.ops.aten.glu_jvp(ref_glu, ref_x, ref_dx, dim)
     res_out = flag_gems.glu_jvp(glu, x, dx, dim)
 
     tu.assert_result_close(res_out, ref_out)
+    tu.assert_result_equal(glu, ref_glu)
+    tu.assert_result_equal(x, ref_x)
+    tu.assert_result_equal(dx, ref_dx)
 
 
 # aten::glu_jvp.out is a real native kernel on this backend: it fills the caller
@@ -199,10 +209,9 @@ def test_glu_jvp_out(shape, dim, dtype):
     dx = tu.make_input(dtype, shape, ["-1", "1"])
     glu = tu.make_input(dtype, _primal_shape(shape, dim), ["-1", "1"])
 
-    ref_out = torch.empty_like(tu.to_reference(glu))
-    torch.ops.aten.glu_jvp.out(
-        tu.to_reference(glu), tu.to_reference(x), tu.to_reference(dx), dim, out=ref_out
-    )
+    ref_glu, ref_x, ref_dx = (tu.to_reference(t) for t in (glu, x, dx))
+    ref_out = torch.empty_like(ref_glu)
+    torch.ops.aten.glu_jvp.out(ref_glu, ref_x, ref_dx, dim, out=ref_out)
 
     out = torch.full_like(glu, 0.5)
     res_out = flag_gems.glu_jvp(glu, x, dx, dim, out=out)
@@ -211,6 +220,9 @@ def test_glu_jvp_out(shape, dim, dtype):
     # object because an empty tensor's data_ptr does not identify it.
     assert res_out is out
     tu.assert_result_close(res_out, ref_out)
+    tu.assert_result_equal(glu, ref_glu)
+    tu.assert_result_equal(x, ref_x)
+    tu.assert_result_equal(dx, ref_dx)
 
 
 # nan / inf / mixed payloads, default only. The shared payload is one 5-element
@@ -228,12 +240,14 @@ def test_glu_jvp_special_values(dtype, scenario):
     dx = tu.make_special_input(dtype, scenario).repeat(2)
     glu = tu.make_special_input(dtype, scenario)
 
-    ref_out = torch.ops.aten.glu_jvp(
-        tu.to_reference(glu), tu.to_reference(x), tu.to_reference(dx), -1
-    )
+    ref_glu, ref_x, ref_dx = (tu.to_reference(t) for t in (glu, x, dx))
+    ref_out = torch.ops.aten.glu_jvp(ref_glu, ref_x, ref_dx, -1)
     res_out = flag_gems.glu_jvp(glu, x, dx, -1)
 
     tu.assert_result_close(res_out, ref_out)
+    tu.assert_result_equal(glu, ref_glu)
+    tu.assert_result_equal(x, ref_x)
+    tu.assert_result_equal(dx, ref_dx)
 
 
 # Rejection workloads, kept in both execution levels.

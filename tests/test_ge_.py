@@ -195,6 +195,7 @@ def test_ge__tensor(shape, other_shape, dtype, other_dtype, value_range):
     tu.assert_result_equal(res_out, ref_out)
     tu.assert_result_equal(res_inp, ref_inp)
     assert res_out is res_inp
+    tu.assert_result_equal(other, ref_other)
 
 
 @pytest.mark.ge_
@@ -242,6 +243,7 @@ def test_ge__backward(dtype, shape, value_range):
     assert res_out is res_receiver
     tu.assert_result_equal(res_receiver, ref_receiver)
     tu.assert_result_close(res_grad, ref_grad)
+    tu.assert_result_equal(other, ref_other)
 
 
 @pytest.mark.ge_
@@ -262,6 +264,7 @@ def test_ge__special_values(dtype, scenario):
     tu.assert_result_equal(res_out, ref_out)
     tu.assert_result_equal(res_inp, ref_inp)
     assert res_out is res_inp
+    tu.assert_result_equal(other, ref_other)
 
 
 @pytest.mark.ge_
@@ -292,7 +295,8 @@ def test_ge__view_receiver(dtype, kind):
     ref_inp = _view_of(ref_storage, kind)
     res_inp = _view_of(res_storage, kind)
 
-    ref_out = torch.ops.aten.ge_.Tensor(ref_inp, tu.to_reference(other))
+    ref_other = tu.to_reference(other)
+    ref_out = torch.ops.aten.ge_.Tensor(ref_inp, ref_other)
     res_out = flag_gems.ge_(res_inp, other)
 
     tu.assert_result_equal(res_out, ref_out)
@@ -300,6 +304,7 @@ def test_ge__view_receiver(dtype, kind):
     # The whole backing storage shows the writes landed at the view's offsets.
     tu.assert_result_equal(res_storage, ref_storage)
     assert res_out is res_inp
+    tu.assert_result_equal(other, ref_other)
 
 
 @pytest.mark.ge_
