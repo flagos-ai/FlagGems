@@ -418,10 +418,7 @@ if flag_gems.runtime.device.vendor_name == "nvidia":
     if utils.fp8_is_supported:
         _UNSUPPORTED_DTYPE_ROWS.append(("float8_e4m3fn", torch.float8_e4m3fn))
         _UNSUPPORTED_DTYPE_ROWS.append(("float8_e5m2", torch.float8_e5m2))
-_UNSUPPORTED_DTYPE_CASES = tu.selected_cases(
-    _UNSUPPORTED_DTYPE_ROWS,
-    quick=[row for row in _UNSUPPORTED_DTYPE_ROWS if row[0] == "float32"],
-)
+_UNSUPPORTED_DTYPE_CASES = _UNSUPPORTED_DTYPE_ROWS
 
 
 @pytest.mark.convert_indices_from_csr_to_coo

@@ -93,22 +93,19 @@ SCALAR_VALUES = tu.selected_cases(
     quick=[],
 )
 
-ZERO_SCALARS = tu.selected_cases([0, 0.0, -0.0, False, 0j], quick=[0.0])
+ZERO_SCALARS = [0, 0.0, -0.0, False, 0j]
 
 # Native propagates assert_msg verbatim and substitutes the fallback below for an empty
 # message; both behaviors were probed with torch.ops.aten._functional_assert_scalar.
 EMPTY_MSG_FALLBACK = "Assertion is failed"
 UNICODE_MSG = "断言失败 \U0001f600"
 ESCAPED_MSG = "line1\nline2\tend"
-MESSAGE_CASES = tu.selected_cases(
-    [
-        (MSG, MSG),
-        ("", EMPTY_MSG_FALLBACK),
-        (UNICODE_MSG, UNICODE_MSG),
-        (ESCAPED_MSG, ESCAPED_MSG),
-    ],
-    quick=[(MSG, MSG)],
-)
+MESSAGE_CASES = [
+    (MSG, MSG),
+    ("", EMPTY_MSG_FALLBACK),
+    (UNICODE_MSG, UNICODE_MSG),
+    (ESCAPED_MSG, ESCAPED_MSG),
+]
 
 # tu.special_value_cases() skips non-floating dtypes, so the complex64 rows are appended
 # here and built by the shared tu.make_special_input(). That helper also omits inf/mixed
@@ -387,9 +384,7 @@ def test__functional_assert_scalar_rejects_non_number_self():
 
 
 @pytest.mark.functional_assert_scalar
-@pytest.mark.parametrize(
-    "msg", tu.selected_cases([None, 123, 1.5, ["m"]], quick=[None])
-)
+@pytest.mark.parametrize("msg", [None, 123, 1.5, ["m"]])
 def test__functional_assert_scalar_rejects_non_str_message(msg):
     # bytes are accepted natively as a str argument, so they are not a negative case.
     token = tu.make_input(torch.float32, (4,), ["-1", "1"])
@@ -399,9 +394,7 @@ def test__functional_assert_scalar_rejects_non_str_message(msg):
 
 
 @pytest.mark.functional_assert_scalar
-@pytest.mark.parametrize(
-    "dep_token", tu.selected_cases([None, 7, "token", [1.0, 2.0]], quick=[None])
-)
+@pytest.mark.parametrize("dep_token", [None, 7, "token", [1.0, 2.0]])
 def test__functional_assert_scalar_rejects_non_tensor_token(dep_token):
     with pytest.raises(RuntimeError):
         flag_gems._functional_assert_scalar(1.0, MSG, dep_token)
