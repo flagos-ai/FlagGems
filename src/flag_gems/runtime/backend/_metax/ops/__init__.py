@@ -53,6 +53,7 @@ from .linalg_solve_triangular import (
     linalg_solve_triangular_out,
 )
 from .linalg_svdvals import linalg_svdvals
+from .linear import linear
 from .log_normal_ import log_normal_
 from .log_sigmoid_forward import log_sigmoid_forward
 from .log_softmax import log_softmax, log_softmax_backward
@@ -104,6 +105,7 @@ from .special_chebyshev_polynomial_w import (
 from .special_gammainc import special_gammainc
 from .special_gammaln import special_gammaln
 from .special_gammaln_out import special_gammaln_out
+from .special_hermite_polynomial_he import special_hermite_polynomial_he
 from .special_legendre_polynomial_p import special_legendre_polynomial_p
 from .special_multigammaln import special_multigammaln
 from .special_round import special_round
@@ -198,6 +200,7 @@ __all__ = [
     "linalg_solve_triangular",
     "linalg_solve_triangular_out",
     "linalg_svdvals",
+    "linear",
     "log_normal_",
     "log_sigmoid_forward",
     "log_softmax",
@@ -264,6 +267,7 @@ __all__ = [
     "special_gammainc",
     "special_gammaln",
     "special_gammaln_out",
+    "special_hermite_polynomial_he",
     "special_legendre_polynomial_p",
     "special_multigammaln",
     "special_round",
