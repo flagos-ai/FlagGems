@@ -177,20 +177,9 @@ def _validate(plan, dtype):
             raise ValueError(f"per-channel axis must be an integer, got {axis!r}")
         if not 0 <= axis < len(shape):
             raise ValueError(f"per-channel axis {axis} is out of range for {shape}")
-        if not isinstance(scale, list) or not isinstance(zero_point, list):
-            raise ValueError("per-channel scales and zero points must be lists")
-        channels = shape[axis]
-        if len(scale) != channels or len(zero_point) != channels:
-            raise ValueError(
-                f"per-channel metadata must hold {channels} entries for axis {axis}"
-            )
-        for value in scale:
-            if isinstance(value, bool) or not isinstance(value, (int, float)):
-                raise ValueError(f"per-channel scale must be numeric, got {value!r}")
-            if not math.isfinite(value) or value <= 0:
-                raise ValueError(
-                    f"per-channel scale must be finite and positive, got {value!r}"
-                )
+        if scale is not None or zero_point is not None:
+            raise ValueError("per-channel parameters are generated at build time")
+        return shape
     else:
         if isinstance(scale, bool) or not isinstance(scale, (int, float)):
             raise ValueError(f"scale must be numeric, got {scale!r}")
@@ -213,15 +202,15 @@ def _case_fn(shape, dtype):
     for index, layout in enumerate(_applicable_layouts(shape)):
         if layout == "per_channel":
             axis = len(shape) - 1
-            scales, zero_points = _channel_qparams(shape[axis], dtype)
             params = {
                 "layout": layout,
                 "qscheme": "per_channel_affine",
                 "axis": axis,
-                "scale": scales,
-                "zero_point": zero_points,
+                "channels": shape[axis],
+                "scale_cycle": list(_CHANNEL_SCALE_CYCLE),
+                "zero_point_rule": "linear_min_to_max",
             }
-            builder_args = (tuple(shape), layout, scales, zero_points, axis)
+            builder_args = (tuple(shape), layout, None, None, axis)
         else:
             scale, zero_point = _per_tensor_qparams(dtype, sum(shape) + index)
             params = {
@@ -249,6 +238,7 @@ def _quantized_input(plan, dtype, device):
     shape = _validate(plan, dtype)
     payload = _payload(shape, device)
     if layout == "per_channel":
+        scale, zero_point = _channel_qparams(shape[axis], dtype)
         inp = torch.quantize_per_channel(
             payload,
             torch.tensor(scale, dtype=torch.float64, device=device),

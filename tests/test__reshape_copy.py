@@ -287,26 +287,19 @@ def test__reshape_copy_backward(shape, dtype):
     tu.assert_result_equal(res_grad, ref_grad)
 
 
-_INVALID_SIZES = tu.selected_cases(
-    [
-        ([0], RuntimeError),
-        ([], RuntimeError),
-        ([12], RuntimeError),
-        ([5, 5], RuntimeError),
-        ([-1, -1], RuntimeError),
-        ([-2], RuntimeError),
-        # ``True`` is coerced to 1 by the native schema (``[True, 24]`` is
-        # accepted as shape (1, 24)), so this row is rejected for its element
-        # count, not for a bool extent.
-        ([True, 2], RuntimeError),
-        ([1.5, 2], (TypeError, RuntimeError)),
-    ],
-    quick=[
-        ([0], RuntimeError),
-        ([5, 5], RuntimeError),
-        ([1.5, 2], (TypeError, RuntimeError)),
-    ],
-)
+_INVALID_SIZES = [
+    ([0], RuntimeError),
+    ([], RuntimeError),
+    ([12], RuntimeError),
+    ([5, 5], RuntimeError),
+    ([-1, -1], RuntimeError),
+    ([-2], RuntimeError),
+    # ``True`` is coerced to 1 by the native schema (``[True, 24]`` is
+    # accepted as shape (1, 24)), so this row is rejected for its element
+    # count, not for a bool extent.
+    ([True, 2], RuntimeError),
+    ([1.5, 2], (TypeError, RuntimeError)),
+]
 
 
 @pytest.mark.reshape_copy
