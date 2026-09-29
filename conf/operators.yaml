@@ -1871,6 +1871,8 @@ ops:
   - beta: '5.3'
 - id: batch_norm
   description: An internal operator used for implementing the `BatchNorm` functionality.
+  for:
+  - native_batch_norm
   labels:
   - aten
   kind:
@@ -3720,6 +3722,22 @@ ops:
   - LinearAlg
   stages:
   - alpha: '5.5'
+- id: cross_attention
+  description: 'Forward-only dense cross attention over BNSD tensors: computes
+    softmax(scale * Q @ K^T) @ V with an optional bool/uint8 mask whose non-zero
+    entries block the corresponding key.  Supports MHA, GQA and MQA, and a value
+    head dimension smaller than the query/key head dimension.
+    '
+  for:
+  - cross_attention
+  labels:
+  - Attention
+  - NoCPU
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
+  cpp: '5.5'
 - id: cross_entropy_loss
   description: Computes the cross entropy loss between input logits and target.
   for:
@@ -4027,7 +4045,7 @@ ops:
   stages:
   - alpha: '5.5.0'
 - id: cumsum
-  destination: Returns the cumulative sum of elements of `input` in the dimension
+  description: Returns the cumulative sum of elements of `input` in the dimension
     `dim`.
   for:
   - cumsum
@@ -4049,7 +4067,7 @@ ops:
   stages:
   - alpha: '5.4'
 - id: cumsum_out
-  destination: 'Returns the cumulative sum of elements of `input` in the dimension
+  description: 'Returns the cumulative sum of elements of `input` in the dimension
     `dim`.
 
     It is a variant of `cumsum()`.
@@ -6788,6 +6806,8 @@ ops:
 - id: group_norm
   description: An internal IR for applying Group Normalization for last certain number
     of dimensions.
+  for:
+  - native_group_norm
   labels:
   - aten
   - Reduction
@@ -8344,6 +8364,8 @@ ops:
 - id: layer_norm
   description: An internal IR for applying Layer Normalization for last certain number
     of dimensions.
+  for:
+  - native_layer_norm
   labels:
   - aten
   kind:
@@ -9473,11 +9495,10 @@ ops:
   - linear
   labels:
   - aten
-  - KernelGen
   kind:
   - BLAS
   stages:
-  - alpha: '5.4'
+  - beta: '5.5'
 - id: linear_backward
   description: Triton kernel implementation for linear_backward.
   for:

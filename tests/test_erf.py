@@ -45,8 +45,7 @@ def test_erf(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.erf(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.erf(inp)
+    res_out = flag_gems.erf(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -60,7 +59,6 @@ def test_erf_(shape, dtype):
     ref_inp = utils.to_reference(inp.clone())
 
     ref_out = torch.erf_(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.erf_(inp)
+    res_out = flag_gems.erf_(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

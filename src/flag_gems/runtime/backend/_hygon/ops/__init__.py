@@ -43,6 +43,7 @@ from .broadcast_tensors import broadcast_tensors
 from .broadcast_to import broadcast_to
 from .cholesky_inverse import cholesky_inverse
 from .conj_physical import conj_physical
+from .conv2d import conv2d
 from .conv_depthwise2d import conv_depthwise2d
 from .cudnn_convolution import cudnn_convolution
 from .diagonal_scatter import diagonal_scatter
@@ -92,6 +93,7 @@ from .linalg_solve_triangular import (
     linalg_solve_triangular,
     linalg_solve_triangular_out,
 )
+from .linear import linear
 from .log_normal_ import log_normal_
 from .masked_scale import masked_scale
 from .masked_scatter_backward import masked_scatter_backward
@@ -207,6 +209,7 @@ __all__ = [
     "broadcast_to",
     "cholesky_inverse",
     "conj_physical",
+    "conv2d",
     "conv_depthwise2d",
     "cudnn_convolution",
     "diagonal_scatter",
@@ -255,6 +258,7 @@ __all__ = [
     "linalg_matrix_power_out",
     "linalg_solve_triangular",
     "linalg_solve_triangular_out",
+    "linear",
     "log_normal_",
     "masked_scale",
     "masked_scatter_backward",
