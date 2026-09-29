@@ -346,9 +346,11 @@ def test_clone_out(shape, memory_format, out_layout, dtype):
     kwargs = _memory_format_kwargs(memory_format)
 
     ref_out = torch.ops.aten.clone.out(ref_inp, out=ref_buf, **kwargs)
+    storage = (buf.data_ptr(), buf.storage_offset())
     res_out = flag_gems.clone(inp, out=buf, **kwargs)
 
     assert res_out is buf
+    assert (buf.data_ptr(), buf.storage_offset()) == storage
     assert res_out.device == buf.device
     assert res_out.stride() == ref_out.stride()
     tu.assert_result_equal(buf, ref_buf)

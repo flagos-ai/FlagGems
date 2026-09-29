@@ -907,6 +907,8 @@ def test_to_sparse_sparse_source(
     ref_out = torch.ops.aten.to_sparse(ref_src, **kwargs)
     res_out = flag_gems.to_sparse(src, **kwargs)
 
+    if source_layout == layout and source_blocksize == blocksize:
+        assert res_out is src
     tu.assert_result_equal(res_out, ref_out)
     assert res_out.device == src.device
     # The already-sparse source keeps its raw stored data, its layout and its
@@ -937,6 +939,8 @@ def test_to_sparse_source_edges(kind, layout, blocksize, expected_nnz):
     ref_out = torch.ops.aten.to_sparse(ref_src, **kwargs)
     res_out = flag_gems.to_sparse(src, **kwargs)
 
+    if layout in (None, torch.sparse_coo):
+        assert res_out is src
     assert res_out.device == src.device
     assert res_out.layout == ref_out.layout
     assert res_out._nnz() == ref_out._nnz()

@@ -214,6 +214,9 @@ def _validated_descriptor(descriptor):
             f"dense_dim {dense_dim} for {shape!r}"
         )
 
+    if name != "sparse_coo" and math.prod(extents[: rank - dense_dim - 2]) == 0:
+        raise ValueError("compressed layouts require non-empty batch dimensions")
+
     # The block pair applies to the matrix axes, which sit immediately before
     # the dense tail, not to the last axes of the whole shape.
     if blocks is not None:
