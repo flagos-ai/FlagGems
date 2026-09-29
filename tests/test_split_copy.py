@@ -351,6 +351,7 @@ def test_split_copy_out(shape, split_size, dim):
         for part in ref_parts
     ]
     given = list(out)
+    storage = [(part.data_ptr(), part.stride(), part.storage_offset()) for part in out]
 
     torch.ops.aten.split_copy.Tensor_out(ref_inp, split_size, dim, out=ref_out)
     res_ret = flag_gems.split_copy(inp, split_size, dim, out=out)
@@ -360,6 +361,9 @@ def test_split_copy_out(shape, split_size, dim):
     assert res_ret is None
     assert len(out) == len(given)
     assert all(entry is original for entry, original in zip(out, given))
+    assert [
+        (part.data_ptr(), part.stride(), part.storage_offset()) for part in out
+    ] == storage
     _assert_parts(out, ref_out, inp.device)
     tu.assert_result_equal(inp, ref_inp)
 
