@@ -17,6 +17,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 # 1-D sizes for the input tensor: cover small/large strided inputs. dim is a
