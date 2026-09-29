@@ -308,6 +308,7 @@ def test__cast_Double_boundary_values(dtype):
     res_out = flag_gems._cast_Double(inp)
 
     tu.assert_result_equal(res_out, ref_out)
+    tu.assert_result_equal(torch.signbit(res_out), torch.signbit(ref_out))
 
 
 # The int64 row keeps exact source integers: 2**63 - 1, 2**53 + 1 and

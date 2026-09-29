@@ -174,6 +174,7 @@ def test_view_as_real_copy_out_offset_buffer(shape, dtype):
     res_ret = flag_gems.view_as_real_copy(inp, out=out)
 
     assert res_ret is out
+    tu.assert_result_equal(out, ref_out)
     tu.assert_result_equal(base, ref_base)
     tu.assert_result_equal(inp, ref_inp)
 
