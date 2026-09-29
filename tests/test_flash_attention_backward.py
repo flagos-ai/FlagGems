@@ -412,9 +412,9 @@ def test_scaled_dot_product_cudnn_attention_backward(
         is_causal,
         scale=scale,
     )
-    ref_dQ = ref_dQ_bhsd.permute(0, 2, 1, 3).contiguous().cpu()
-    ref_dK = ref_dK_bhsd.permute(0, 2, 1, 3).contiguous().cpu()
-    ref_dV = ref_dV_bhsd.permute(0, 2, 1, 3).contiguous().cpu()
+    ref_dQ = utils.to_reference(ref_dQ_bhsd.permute(0, 2, 1, 3).contiguous())
+    ref_dK = utils.to_reference(ref_dK_bhsd.permute(0, 2, 1, 3).contiguous())
+    ref_dV = utils.to_reference(ref_dV_bhsd.permute(0, 2, 1, 3).contiguous())
 
     (
         dQ_bhsd,
