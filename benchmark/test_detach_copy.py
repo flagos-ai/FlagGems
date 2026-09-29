@@ -17,6 +17,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts, utils
 
 # 1-D sizes plus a 2-D square: cover the flat-copy kernel across small to
