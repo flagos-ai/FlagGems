@@ -29,17 +29,11 @@ from flag_gems.utils.shape_utils import volume
 
 logger = logging.getLogger(__name__)
 
-# Name of the active flag_gems backend device (e.g. "cuda", "musa"). The
-# optimized Triton path below runs on this device; tensors on other device
-# types (e.g. plain "cpu") fall through to the aten reference path. Gating on
-# the hardcoded literal "cuda" wrongly excluded backends whose device type is
-# not "cuda" (e.g. mthreads reports "musa") from the shared Triton path.
 _DEVICE_NAME = runtime_device.name
 
 _FALLBACK_KEYSET = torch._C.DispatchKeySet(
     torch._C.DispatchKey.CompositeExplicitAutograd
 )
-
 
 
 def _prune_mul_flat_configs(configs, named_args, **kwargs):
@@ -60,6 +54,23 @@ def mul_get_configs():
     return [
         triton.Config({"BLOCK_SIZE": 1024}, num_warps=4, num_stages=3),
     ]
+
+
+def _prune_mul_full_configs(configs, named_args, **kwargs):
+    args = {**named_args, **kwargs}
+    n = args["n_elements"]
+    max_block = 16384 if args["dtype"] == "float16" else 8192
+    if n < 8192:
+        max_block = min(max_block, 2048)
+    usable = [
+        c
+        for c in configs
+        if c.kwargs["BLOCK_SIZE"] <= max_block and n % c.kwargs["BLOCK_SIZE"] == 0
+    ]
+    if not usable:
+        raise RuntimeError("No aligned MUL configuration after pruning")
+    largest = max(c.kwargs["BLOCK_SIZE"] for c in usable)
+    return [c for c in usable if c.kwargs["BLOCK_SIZE"] == largest]
 
 
 def mul_broadcast_get_configs():
@@ -97,6 +108,32 @@ def mul_kernel(
     y = tl.load(y_ptr + offsets, mask=mask)
     out = x & y if IS_BOOL else x * y
     tl.store(output_ptr + offsets, out, mask=mask)
+
+
+@libentry()
+@libtuner(
+    configs=runtime.get_tuned_config("mul_flat"),
+    key=["n_elements", "dtype"],
+    strategy=["default", "default"],
+    prune_configs_by={"early_config_prune": _prune_mul_full_configs},
+    warmup=5,
+    rep=5,
+)
+@triton.jit
+def mul_contiguous_full_kernel(
+    x_ptr,
+    y_ptr,
+    output_ptr,
+    n_elements: tl.constexpr,
+    dtype: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+    IS_BOOL: tl.constexpr,
+):
+    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    x = tl.load(x_ptr + offsets)
+    y = tl.load(y_ptr + offsets)
+    out = x & y if IS_BOOL else x * y
+    tl.store(output_ptr + offsets, out)
 
 
 @libentry()
@@ -503,6 +540,18 @@ def _launch_contiguous_tensor_tensor(a_t, b_t, output, dtype):
     n_elements = output.numel()
     if n_elements == 0:
         return output
+    if dtype in (torch.float16, torch.float32, torch.bfloat16) and n_elements % 64 == 0:
+        grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+        with torch_device_fn.device(output.device):
+            mul_contiguous_full_kernel[grid](
+                a_t,
+                b_t,
+                output,
+                n_elements,
+                dtype=_dtype_name(dtype),
+                IS_BOOL=_is_bool_dtype(dtype),
+            )
+        return output
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
     with torch_device_fn.device(output.device):
         mul_kernel[grid](
@@ -533,7 +582,6 @@ def _launch_scalar(tensor, scalar, output, dtype):
     return output
 
 
-
 def _prune_mul_tiled_configs(configs, named_args, **kwargs):
     args = {**named_args, **kwargs}
     m, n = args["M"], args["N"]
@@ -544,7 +592,8 @@ def _prune_mul_tiled_configs(configs, named_args, **kwargs):
     )
     max_elements = 8192 if args["dtype"] == "bfloat16" and dense_operand else 16384
     pruned = [
-        c for c in configs
+        c
+        for c in configs
         if c.kwargs["BLOCK_M"] <= max_m
         and c.kwargs["BLOCK_N"] <= max_n
         and c.kwargs["BLOCK_M"] * c.kwargs["BLOCK_N"] <= max_elements
@@ -554,8 +603,7 @@ def _prune_mul_tiled_configs(configs, named_args, **kwargs):
     widest = max(c.kwargs["BLOCK_N"] for c in pruned)
     wide = [c for c in pruned if c.kwargs["BLOCK_N"] >= max(32, widest // 2)]
     counts = {
-        id(c): triton.cdiv(m, c.kwargs["BLOCK_M"])
-        * triton.cdiv(n, c.kwargs["BLOCK_N"])
+        id(c): triton.cdiv(m, c.kwargs["BLOCK_M"]) * triton.cdiv(n, c.kwargs["BLOCK_N"])
         for c in wide
     }
     limit = max(1, 2 * min(counts.values()))
@@ -570,15 +618,18 @@ class _MulTiledTuner(LibTuner):
             try:
                 measured = bench_fn(config)
             except Exception as exc:
-                if (type(exc).__name__ != "MLIRCompilationError"
-                        or not type(exc).__module__.startswith("triton.")):
+                if type(exc).__name__ != "MLIRCompilationError" or not type(
+                    exc
+                ).__module__.startswith("triton."):
                     raise
                 logger.warning("MUL tiled compile rejected %s: %s", config, exc)
                 measured = [float("inf")] * 3
             timings[config] = measured
         valid = {c: t for c, t in timings.items() if all(math.isfinite(v) for v in t)}
         if not valid:
-            raise RuntimeError("All MUL tiled configurations failed; inspect compile logs")
+            raise RuntimeError(
+                "All MUL tiled configurations failed; inspect compile logs"
+            )
         return min(valid, key=valid.get), timings
 
 
@@ -594,12 +645,18 @@ class _MulTiledTuner(LibTuner):
 )
 @triton.jit
 def mul_broadcast_tiled_kernel(
-    a_ptr, b_ptr, out_ptr,
-    M: tl.constexpr, N: tl.constexpr,
-    a_s0: tl.constexpr, a_s1: tl.constexpr,
-    b_s0: tl.constexpr, b_s1: tl.constexpr,
+    a_ptr,
+    b_ptr,
+    out_ptr,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    a_s0: tl.constexpr,
+    a_s1: tl.constexpr,
+    b_s0: tl.constexpr,
+    b_s1: tl.constexpr,
     dtype: tl.constexpr,
-    BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
 ):
     col_tiles = tl.cdiv(N, BLOCK_N)
     pid = tl.program_id(0)
@@ -617,8 +674,9 @@ def mul_broadcast_tiled_kernel(
         a_cols = tl.load(a_ptr + cols * a_s1, mask=cols < N, other=0)
         a_value = tl.broadcast_to(a_cols[None, :], (BLOCK_M, BLOCK_N))
     else:
-        a_value = tl.load(a_ptr + rows[:, None] * a_s0 + cols[None, :] * a_s1,
-                          mask=valid, other=0)
+        a_value = tl.load(
+            a_ptr + rows[:, None] * a_s0 + cols[None, :] * a_s1, mask=valid, other=0
+        )
 
     if b_s0 == 0 and b_s1 == 0:
         b_scalar = tl.load(b_ptr)
@@ -630,8 +688,9 @@ def mul_broadcast_tiled_kernel(
         b_cols = tl.load(b_ptr + cols * b_s1, mask=cols < N, other=0)
         b_value = tl.broadcast_to(b_cols[None, :], (BLOCK_M, BLOCK_N))
     else:
-        b_value = tl.load(b_ptr + rows[:, None] * b_s0 + cols[None, :] * b_s1,
-                          mask=valid, other=0)
+        b_value = tl.load(
+            b_ptr + rows[:, None] * b_s0 + cols[None, :] * b_s1, mask=valid, other=0
+        )
 
     result = a_value * b_value
     tl.store(out_ptr + rows[:, None] * N + cols[None, :], result, mask=valid)
@@ -658,9 +717,15 @@ def _launch_2d_broadcast(
         )
         with torch_device_fn.device(output.device):
             mul_broadcast_tiled_kernel[grid](
-                a_t, b_t, output, out_shape[0], out_shape[1],
-                a_s0=a_stride[0], a_s1=a_stride[1],
-                b_s0=b_stride[0], b_s1=b_stride[1],
+                a_t,
+                b_t,
+                output,
+                out_shape[0],
+                out_shape[1],
+                a_s0=a_stride[0],
+                a_s1=a_stride[1],
+                b_s0=b_stride[0],
+                b_s1=b_stride[1],
                 dtype=_dtype_name(dtype),
             )
         return output

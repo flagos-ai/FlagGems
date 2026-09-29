@@ -106,6 +106,7 @@ from .max import max, max_dim
 from .mean import mean, mean_dim
 from .min import min, min_dim
 from .mm import mm, mm_out
+from .mul import mul
 from .multinomial import multinomial
 from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .nansum import nansum, nansum_out
@@ -298,6 +299,7 @@ __all__ = [
     "min_dim",
     "mm",
     "mm_out",
+    "mul",
     "multinomial",
     "nanmedian",
     "nanmedian_dim",
