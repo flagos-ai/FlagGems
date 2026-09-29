@@ -17,8 +17,6 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base, consts
 
 # atleast_2d is a pure view/reshape: its cost is independent of numel, so
