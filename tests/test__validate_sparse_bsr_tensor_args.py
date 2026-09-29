@@ -84,11 +84,9 @@ _INDEX_DTYPE_MISMATCHES = [
 ]
 _NON_INDEX_DTYPES = [torch.int16, torch.float32, torch.bool]
 
-# Quick mode keeps one float and one integer dtype over the shape/range grid. The
-# structural, special-value and supplemental call-form families are default-only.
-_VALUES_DTYPES = tu.selected_cases(
-    _ALL_VALUES_DTYPES, quick=[torch.float32, torch.int32]
-)
+# Both modes retain supported dtypes; quick reduces only the shape/range grid.
+# Structural, special-value and supplemental call forms remain default-only.
+_VALUES_DTYPES = _ALL_VALUES_DTYPES
 _SPECIAL_VALUE_CASES = tu.selected_cases(
     tu.special_value_cases(_ALL_VALUES_DTYPES), quick=[]
 )
