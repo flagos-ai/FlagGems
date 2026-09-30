@@ -45,6 +45,25 @@ def adjoint(self: torch.Tensor) -> torch.Tensor:
     "matrices or batches of matrices" ``RuntimeError`` as native ``adjoint``.
     """
     logger.debug("GEMS ADJOINT")
-    if self.ndim == 0 or self.dtype.is_complex:
+    if self.ndim == 0:
+        # 0-D: native adjoint() emits a deprecation warning and degrades to
+        # conj(). Reproduce the warning text natively (delegating to self.mH
+        # would expose the Tensor.mH deprecation warning instead).
+        import warnings as _warnings
+
+        _warnings.warn(
+            "adjoint() is deprecated on 0-D tensors. Consider using x.conj().",
+            UserWarning,
+            stacklevel=2,
+        )
+        return self.conj()
+    if self.ndim < 2:
+        # 1-D real tensor: native adjoint() raises with its own message
+        # naming adjoint(), not mT. Reproduce it before delegating.
+        raise RuntimeError(
+            f"tensor.adjoint() is only supported on matrices or batches of "
+            f"matrices. Got {self.ndim}-D tensor."
+        )
+    if self.dtype.is_complex:
         return self.mH
     return self.mT

@@ -48,6 +48,11 @@ def test_adjoint():
         op_name="adjoint",
         torch_op=torch.ops.aten.adjoint,
         gems_op=flag_gems.adjoint,
-        dtypes=consts.FLOAT_DTYPES + consts.INT_DTYPES + consts.BOOL_DTYPES,
+        dtypes=(
+            consts.FLOAT_DTYPES
+            + consts.INT_DTYPES
+            + consts.BOOL_DTYPES
+            + consts.COMPLEX_DTYPES
+        ),
     )
     bench.run()
