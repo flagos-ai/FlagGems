@@ -55,7 +55,7 @@
     "gpu_check": "tools/gpu_check_kunlunxin.sh",
     "enabled": true,
     "container": {
-      "image": "harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin-xre5.37.1:2.1.2",
+      "image": "harbor.baai.ac.cn/flagos-runtime/flagos-runtime-kunlunxin-xre5.37.1:2.2.0",
       "options": "--device /dev/xpu0 --device /dev/xpuctrl --shm-size=256g --ulimit memlock=-1 --ulimit stack=67108864",
       "volumes": [],
       "runs_on_default": "klx-p800",
