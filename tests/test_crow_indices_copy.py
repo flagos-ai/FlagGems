@@ -373,3 +373,50 @@ def test_accuracy_crow_indices_copy_repeated_dispatch():
     via_dispatch = torch.ops.aten.crow_indices_copy(csr)
     assert via_dispatch.data_ptr() != csr.crow_indices().data_ptr()
     utils.gems_assert_equal(via_dispatch, ref)
+
+
+@pytest.mark.crow_indices_copy
+def test_accuracy_crow_indices_copy_dispatch_sentinel():
+    # Sentinel test (reviewer-requested): prove that the FlagGems
+    # implementation is actually reached, both through the public wrapper and
+    # through the dispatcher once the SparseCsrCUDA registration is installed.
+    # A counting wrapper is patched into the flag_gems namespace (phase 1) and
+    # registered on the same key the PR registers (SparseCsrCUDA) via a
+    # temporary torch.library Library (phase 2); the counter must advance on
+    # both routes, otherwise the call went to native ATen instead.
+    original_impl = flag_gems.crow_indices_copy
+    calls = {"count": 0}
+
+    def counting_impl(tensor):
+        calls["count"] += 1
+        return original_impl(tensor)
+
+    # Phase 1: the public wrapper routes through the implementation.
+    flag_gems.crow_indices_copy = counting_impl
+    try:
+        csr = _make_csr((3, 5), nnz=4, seed=3)
+        flag_gems.crow_indices_copy(csr)
+        assert (
+            calls["count"] > 0
+        ), "flag_gems.crow_indices_copy did not reach the implementation"
+    finally:
+        flag_gems.crow_indices_copy = original_impl
+
+    # Phase 2: without installing a registration, torch.ops.aten
+    # .crow_indices_copy(csr) calls native ATen and cannot observe the
+    # FlagGems implementation. Registering the counting wrapper on the
+    # SparseCsrCUDA key makes the dispatcher-routed path observable.
+    lib = torch.library.Library("aten", "IMPL")
+    try:
+        lib.impl("crow_indices_copy", counting_impl, "SparseCsrCUDA")
+        calls["count"] = 0
+        via_dispatch = torch.ops.aten.crow_indices_copy(csr)
+        assert (
+            calls["count"] > 0
+        ), "torch.ops.aten.crow_indices_copy did not reach the registered implementation"
+        utils.gems_assert_equal(
+            via_dispatch, torch.ops.aten.crow_indices_copy(utils.to_reference(csr))
+        )
+    finally:
+        lib._destroy()
+        del lib
