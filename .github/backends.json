@@ -25,35 +25,70 @@
     "runner_label": "hygon",
     "label": "vendor/Hygon",
     "gpu_check": "tools/gpu_check_hygon.sh",
-    "enabled": true
+    "enabled": true,
+    "container": {
+      "image": "harbor.baai.ac.cn/flagos-base/flagos-base-hygon-dtk26.04:2.2.0",
+      "options": "--device /dev/kfd --device /dev/mkfd --device /dev/dri --group-add video --security-opt seccomp=unconfined --shm-size=256g --ulimit memlock=-1 --ulimit stack=67108864",
+      "volumes": [],
+      "runs_on_default": "hygon-bw1000-0",
+      "runs_on_vllm": "hygon-bw1000-1"
+    }
   },
   {
     "backend": "iluvatar",
     "runner_label": "iluvatar",
     "label": "vendor/Iluvatar",
     "gpu_check": "tools/gpu_check_iluvatar.sh",
-    "enabled": true
+    "enabled": true,
+    "container": {
+      "image": "harbor.baai.ac.cn/flagos-base/flagos-base-iluvatar-corex4.5.0:2.2.0",
+      "options": "--device /dev/iluvatar0 --device /dev/itrctl --shm-size=256g --ulimit memlock=-1 --ulimit stack=67108864",
+      "volumes": [],
+      "runs_on_default": "iluvatar-bi-v150-0",
+      "runs_on_vllm": "iluvatar-bi-v150-1"
+    }
   },
   {
     "backend": "kunlunxin",
     "runner_label": "kunlunxin",
     "label": "vendor/Kunlunxin",
     "gpu_check": "tools/gpu_check_kunlunxin.sh",
-    "enabled": true
+    "enabled": true,
+    "container": {
+      "image": "harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin-xre5.37.1:2.1.2",
+      "options": "--device /dev/xpu0 --device /dev/xpuctrl --shm-size=256g --ulimit memlock=-1 --ulimit stack=67108864",
+      "volumes": [],
+      "runs_on_default": "klx-p800",
+      "runs_on_vllm": "klx-p800"
+    }
   },
   {
     "backend": "metax-maca3810",
     "runner_label": "maca381",
     "label": "vendor/MetaX",
     "gpu_check": "tools/gpu_check_metax.sh",
-    "enabled": true
+    "enabled": true,
+    "container": {
+      "image": "harbor.baai.ac.cn/flagos-base/flagos-base-metax-maca3.8.1.3:2.2.0",
+      "options": "--device /dev/mxcd --device /dev/dri --group-add video",
+      "volumes": [],
+      "runs_on_default": "metax-mxc550-0",
+      "runs_on_vllm": "metax-mxc550-1"
+    }
   },
   {
     "backend": "mthreads-musa520",
     "runner_label": "musa-520",
     "label": "vendor/MooreThreads",
     "gpu_check": "tools/gpu_check_mthreads.sh",
-    "enabled": true
+    "enabled": true,
+    "container": {
+      "image": "harbor.baai.ac.cn/flagos-base/flagos-base-mthreads-musa5.2.0:2.2.0",
+      "options": "--device /dev/mtgpu.0 --device /dev/mtgpu.1 --device /dev/mtgpu.2 --device /dev/mtgpu.3 --device /dev/mtgpu.4 --device /dev/mtgpu.5 --device /dev/mtgpu.6 --device /dev/mtgpu.7 --device /dev/dri --shm-size=256g --ulimit memlock=-1 --ulimit stack=67108864",
+      "volumes": ["/usr/bin/mthreads-gmi:/usr/bin/mthreads-gmi:ro"],
+      "runs_on_default": "mthreads-s5000-0",
+      "runs_on_vllm": "mthreads-s5000-1"
+    }
   },
   {
     "backend": "nvidia-cuda128",
