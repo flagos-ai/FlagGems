@@ -28,6 +28,10 @@ if QUICK_MODE:
 
 
 def _gen_input(shape, dtype):
+    # Complex dtypes must be generated explicitly: without this branch they
+    # fall through to BOOL below and never exercise the complex copy path.
+    if dtype.is_complex:
+        return torch.randn(shape, dtype=dtype, device=flag_gems.device)
     if dtype in utils.FLOAT_DTYPES:
         return torch.randn(shape, dtype=dtype, device=flag_gems.device)
     if dtype in utils.INT_DTYPES:
@@ -59,6 +63,9 @@ def _gen_input(shape, dtype):
 )
 def test_accuracy_detach_copy(shape, dtype):
     inp = _gen_input(shape, dtype)
+    # Guards the generation branch above: a silent BOOL fallthrough would
+    # make this parametrization pass without testing the requested dtype.
+    assert inp.dtype == dtype
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.ops.aten.detach_copy(ref_inp)
@@ -184,3 +191,90 @@ def test_accuracy_detach_copy_dispatch_stability():
         assert torch.equal(utils.to_cpu(res_out, ref_out), ref_out)
         assert torch.ops.aten.dim(inp) == 2
     assert res_out.data_ptr() != inp.data_ptr()
+
+
+@pytest.mark.detach_copy
+@pytest.mark.parametrize(
+    "make_inp",
+    [
+        lambda: torch._neg_view(torch.randn(1024, device=flag_gems.device)),
+        lambda: torch._neg_view(
+            torch.randn(4, 8, device=flag_gems.device).transpose(0, -1)
+        ),
+        lambda: torch._neg_view(torch.randn((), device=flag_gems.device)),
+        lambda: torch._neg_view(
+            torch.randn(16, 128, 64, 60, device=flag_gems.device).permute(2, 0, 3, 1)
+        ),
+    ],
+)
+def test_accuracy_detach_copy_neg_view(make_inp):
+    # _neg_view carries a lazy negative bit: both copy kernels read the raw
+    # storage, so the logical value (the negated storage) must be materialized
+    # before copying. Native detach_copy resolves the bit; a bitwise copy
+    # would return the raw storage values instead of the logical ones.
+    inp = make_inp()
+    assert inp.is_neg()
+    ref_out = torch.ops.aten.detach_copy(utils.to_reference(inp))
+    res_out = flag_gems.detach_copy(inp)
+
+    utils.gems_assert_equal(res_out, ref_out)
+    assert res_out.dtype == inp.dtype
+    # res_out must equal the resolved logical values, and must NOT equal the
+    # raw storage of the view's base (which is what a bitwise copy yields).
+    assert torch.equal(res_out, inp.resolve_neg())
+    assert not torch.equal(res_out, inp.resolve_neg().neg())
+    assert res_out.data_ptr() != inp.data_ptr()
+    assert not res_out.is_neg()
+    # Freshly allocated output is contiguous, like the native operator.
+    assert res_out.is_contiguous() == ref_out.is_contiguous()
+
+
+@pytest.mark.detach_copy
+def test_accuracy_detach_copy_neg_view_complex():
+    # The negative bit also rides on complex views; combined neg+conj views
+    # resolve to -conj(x), which must not be confused with raw storage.
+    inp = torch.randn(3, 4, dtype=torch.complex64, device=flag_gems.device)
+    neg_conj = torch._neg_view(inp).conj()
+    assert neg_conj.is_neg() and neg_conj.is_conj()
+    ref_out = torch.ops.aten.detach_copy(utils.to_reference(neg_conj))
+    res_out = flag_gems.detach_copy(neg_conj)
+
+    utils.gems_assert_equal(res_out, ref_out)
+    assert torch.allclose(res_out, (-inp).conj())
+    assert res_out.data_ptr() != inp.data_ptr()
+    assert not res_out.is_neg() and not res_out.is_conj()
+
+
+@pytest.mark.detach_copy
+@pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
+@pytest.mark.parametrize(
+    "make_inp",
+    [
+        lambda s, d: torch.randn(s, dtype=d, device=flag_gems.device),
+        # Transposed complex: view_as_real interleaves the (real, imag) axis,
+        # so the strided kernel must honour a non-contiguous reinterpreting.
+        lambda s, d: torch.randn(s[0], s[1], dtype=d, device=flag_gems.device).t(),
+        lambda s, d: torch.randn((), dtype=d, device=flag_gems.device),
+        lambda s, d: torch.empty(s[0], 0, dtype=d, device=flag_gems.device).t(),
+    ],
+)
+def test_accuracy_detach_copy_complex_layouts(make_inp, dtype):
+    # Complex inputs must stay on the device path (view_as_real -> copy
+    # kernels -> view_as_complex) with the same layout contract as native:
+    # dense contiguous output, even for a non-contiguous complex input.
+    inp = make_inp((4, 6), dtype)
+    ref_inp = utils.to_reference(inp)
+
+    ref_out = torch.ops.aten.detach_copy(ref_inp)
+    res_out = flag_gems.detach_copy(inp)
+
+    utils.gems_assert_equal(res_out, ref_out)
+    assert res_out.dtype == inp.dtype
+    assert res_out.shape == inp.shape
+    if inp.numel() > 0:
+        # Empty CUDA tensors have no backing page (data_ptr() == 0 on both
+        # sides), so the fresh-storage property is only observable here.
+        assert res_out.data_ptr() != inp.data_ptr()
+    assert res_out.is_contiguous() == ref_out.is_contiguous()
+    assert res_out.stride() == ref_out.stride()
+    assert not res_out.is_conj() and not res_out.is_neg()
