@@ -91,14 +91,35 @@ def collect_requirements(cfg: dict) -> list[str]:
 
 
 def normalize(version: str) -> str:
-    """Normalize a version for comparison.
-
-    PEP 440 local versions use '+', but some tools record the local segment
-    with '.' separators internally. Compare on the exact string first; callers
-    that need looser matching can extend this. We strip surrounding whitespace
-    and compare case-insensitively on the package name elsewhere.
-    """
+    """Normalize a version for comparison (strip whitespace)."""
     return version.strip()
+
+
+def base_version(version: str) -> str:
+    """Return the public version, dropping any PEP 440 local segment ('+...').
+
+    e.g. '1.0.0.1+20260605' -> '1.0.0.1', '0.7.0+xpu3.6' -> '0.7.0'.
+    """
+    return normalize(version).split("+", 1)[0]
+
+
+def versions_match(want: str, have: str) -> bool:
+    """Whether an installed version satisfies a pinned '==' version.
+
+    Exact string equality counts. In addition, a pin without a local segment
+    is treated as satisfied by an installed build that adds one — i.e. the pin
+    'xmlir==1.0.0.1' is satisfied by an installed '1.0.0.1+20260605', since the
+    image's build is the same public release plus a local build tag. This
+    avoids a spurious reinstall of a version (…+local) that isn't even
+    published to the index. A pin that DOES carry a local segment must match
+    exactly, so we never mistake one local build for another.
+    """
+    want, have = normalize(want), normalize(have)
+    if want == have:
+        return True
+    if "+" not in want and base_version(have) == want:
+        return True
+    return False
 
 
 def installed_version(dist_name: str) -> str | None:
@@ -132,7 +153,7 @@ def reconcile(reqs: list[str]) -> tuple[list[str], list[str]]:
         if have is None:
             log(f"  {name}: not installed -> install {want}")
             to_install.append(req)
-        elif normalize(have) == want:
+        elif versions_match(want, have):
             log(f"  {name}: {have} matches -> skip")
             up_to_date.append(req)
         else:
