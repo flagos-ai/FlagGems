@@ -26,7 +26,14 @@ import logging
 import torch
 import triton
 import triton.language as tl
-from triton.experimental.tle import language as tle_async
+
+try:
+    from triton.experimental.tle import language as tle_async
+
+    HAS_TLE = True
+except ImportError:
+    tle_async = None
+    HAS_TLE = False
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
@@ -320,6 +327,11 @@ def _launch(
     k: int,
     bias=None,
 ) -> torch.Tensor:
+    if not HAS_TLE:
+        raise RuntimeError(
+            "THead mm_w8a8_int8 AIU path is unavailable: requires "
+            "triton.experimental.tle."
+        )
     transpose_out = (m == 256 and n >= 16384 and 2048 <= k <= 4096) or (
         m >= 1024 and n <= 1024 and 2048 <= k <= 4096
     )

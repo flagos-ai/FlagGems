@@ -67,7 +67,7 @@ def torch_mm_self_transpose(inp):
     return torch.mm(inp, inp.t())
 
 
-@pytest.mark.mm
+@pytest.mark.mm_self_transpose
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )

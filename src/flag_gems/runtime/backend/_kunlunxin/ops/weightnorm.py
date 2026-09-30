@@ -103,31 +103,69 @@ def weight_norm_kernel_last(
 # access wall. So a triton per-row reduction can only cover N <= 8192, and any
 # 2-pass chunked triton reduction for larger N is LAUNCH-BOUND (~25x slower than
 # torch). Dispatch:
-#   N <= 256          -> multirow [TILE_M, N] tile (one load, amortize launch)
-#   256 < N <= 8192   -> constexpr-N 1D single-tile per row (one load, block DMA)
+#   N <= 8192         -> multirow [TILE_M, N] tile (TILE_M*N <= 8192, one load,
+#                        amortize launch; NEED_MASK fast path when TILE_M | M)
 #   N > 8192          -> torch primitives (tuned vendor reduce/elementwise)
 
 _WN_TILE = 8192
 
 
+def _wn_fwd_tile_m(M, N):
+    """Largest power-of-two tile rows keeping TILE_M*N <= 8192 and TILE_M <= M.
+
+    Prefers a divisor of M (unmasked fast path); falls back to the largest
+    allowed tile (masked) when M is not divisible.
+    """
+    if N == 0:
+        return 1
+    cap = max(1, _WN_TILE // N)
+    tile = 1
+    while tile * 2 <= cap and tile * 2 <= M:
+        tile *= 2
+    res = tile
+    while res > 1:
+        if M % res == 0:
+            return res
+        res //= 2
+    return max(1, tile)
+
+
 @libentry()
 @triton.jit(do_not_specialize=["eps"])
 def _wn_multirow_kernel(
-    output, norm, v, g, M, N: tl.constexpr, TILE_M: tl.constexpr, eps
+    output,
+    norm,
+    v,
+    g,
+    M,
+    N: tl.constexpr,
+    TILE_M: tl.constexpr,
+    NEED_MASK: tl.constexpr,
+    eps,
 ):
     pid = tl.program_id(0)
     rows = pid * TILE_M + tl.arange(0, TILE_M)
-    rmask = rows < M
     n = tl.arange(0, N)
     offs = rows[:, None] * N + n[None, :]
-    x = tl.load(v + offs, mask=rmask[:, None]).to(tl.float32)
+    if NEED_MASK:
+        rmask = rows < M
+        x = tl.load(v + offs, mask=rmask[:, None]).to(tl.float32)
+    else:
+        x = tl.load(v + offs).to(tl.float32)
     ss = tl.sum(x * x, axis=1)
     nrm = tl.sqrt(ss + eps)
-    tl.store(norm + rows, nrm, mask=rmask)
-    gv = tl.load(g + rows, mask=rmask).to(tl.float32)
+    if NEED_MASK:
+        tl.store(norm + rows, nrm, mask=rmask)
+        gv = tl.load(g + rows, mask=rmask).to(tl.float32)
+    else:
+        tl.store(norm + rows, nrm)
+        gv = tl.load(g + rows).to(tl.float32)
     scale = gv / nrm
     out = x * scale[:, None]
-    tl.store(output + offs, out, mask=rmask[:, None])
+    if NEED_MASK:
+        tl.store(output + offs, out, mask=rmask[:, None])
+    else:
+        tl.store(output + offs, out)
 
 
 @libentry()
@@ -150,14 +188,13 @@ def _wn_row1d_kernel(output, norm, v, g, N: tl.constexpr, eps):
 def _wn_first_forward(output, norm, v, g, M, N):
     eps = torch.finfo(torch.float32).tiny
     with torch_device_fn.device(v.device):
-        if N <= 256:
-            TILE_M = triton.next_power_of_2(max(1, _WN_TILE // N))
+        if N <= _WN_TILE:
+            TILE_M = _wn_fwd_tile_m(M, N)
+            need_mask = (M % TILE_M) != 0
             grid = (triton.cdiv(M, TILE_M),)
             _wn_multirow_kernel[grid](
-                output, norm, v, g, M, N, TILE_M, eps, num_warps=4
+                output, norm, v, g, M, N, TILE_M, need_mask, eps, num_warps=4
             )
-        elif N <= _WN_TILE:
-            _wn_row1d_kernel[(M,)](output, norm, v, g, N, eps, num_warps=8)
         else:
             # N > 8192: a triton per-row reduction needs >=2 chunks/row, but
             # tl.sum caps at 8192 lanes and a chunked [K, TILE] tile hits the

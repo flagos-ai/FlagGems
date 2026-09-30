@@ -34,6 +34,7 @@ from .gt_tensor_ import gt_tensor_
 from .hadamard_transform import hadamard_transform
 from .index import index
 from .index_put import index_put, index_put_
+from .index_reduce import index_reduce, index_reduce_, index_reduce_out
 from .index_select import index_select
 from .isin import isin
 from .kthvalue import kthvalue
@@ -52,6 +53,7 @@ from .linalg_solve_triangular import (
     linalg_solve_triangular_out,
 )
 from .linalg_svdvals import linalg_svdvals
+from .linear import linear
 from .log_normal_ import log_normal_
 from .log_sigmoid_forward import log_sigmoid_forward
 from .log_softmax import log_softmax, log_softmax_backward
@@ -103,6 +105,7 @@ from .special_chebyshev_polynomial_w import (
 from .special_gammainc import special_gammainc
 from .special_gammaln import special_gammaln
 from .special_gammaln_out import special_gammaln_out
+from .special_hermite_polynomial_he import special_hermite_polynomial_he
 from .special_legendre_polynomial_p import special_legendre_polynomial_p
 from .special_multigammaln import special_multigammaln
 from .special_round import special_round
@@ -112,6 +115,7 @@ from .special_shifted_chebyshev_polynomial_w import (
 )
 from .tanh import tanh
 from .to_copy import to_copy
+from .topk_w8a16_fp8 import topk_w8a16_fp8
 from .unique import _unique2
 from .unsafe_masked_index_put_accumulate import _unsafe_masked_index_put_accumulate
 from .upsample_linear1d import upsample_linear1d
@@ -172,6 +176,9 @@ __all__ = [
     "index",
     "index_put",
     "index_put_",
+    "index_reduce",
+    "index_reduce_",
+    "index_reduce_out",
     "index_select",
     "isin",
     "kthvalue",
@@ -193,6 +200,7 @@ __all__ = [
     "linalg_solve_triangular",
     "linalg_solve_triangular_out",
     "linalg_svdvals",
+    "linear",
     "log_normal_",
     "log_sigmoid_forward",
     "log_softmax",
@@ -259,6 +267,7 @@ __all__ = [
     "special_gammainc",
     "special_gammaln",
     "special_gammaln_out",
+    "special_hermite_polynomial_he",
     "special_legendre_polynomial_p",
     "special_multigammaln",
     "special_round",
@@ -266,6 +275,7 @@ __all__ = [
     "special_shifted_chebyshev_polynomial_w",
     "tanh",
     "to_copy",
+    "topk_w8a16_fp8",
     "upsample_linear1d",
     "upsample_nearest2d",
     "weight_int8pack_mm",

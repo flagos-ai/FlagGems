@@ -156,7 +156,7 @@ def test_gru():
 def test_gru_data():
     bench = GRUDataBenchmark(
         input_fn=gru_data_input_fn,
-        op_name="gru.data",
+        op_name="gru_data",
         torch_op=torch.ops.aten.gru.data,
         gems_op=flag_gems.gru_data,
         dtypes=DTYPES,

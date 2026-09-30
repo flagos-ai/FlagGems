@@ -106,6 +106,19 @@ if not KLX_USE_AUTOTUNE:
         #     addmm_family_num_stages_fix_xpu4_20260831.md
         return 3
 
+    def heur_even(args):
+        M = args["M"]
+        N = args["N"]
+        K = args["K"]
+        return (
+            M % heur_block_m(args) == 0
+            and N % heur_block_n(args) == 0
+            and K % heur_block_k(args) == 0
+        )
+
+    def heur_bias_1d(args):
+        return args.get("stride_im", -1) == 0 and args.get("stride_in", -1) == 1
+
     autotune_decorator = triton.heuristics(
         {
             "BLOCK_SIZE_M": heur_block_m,
@@ -113,6 +126,8 @@ if not KLX_USE_AUTOTUNE:
             "BLOCK_SIZE_K": heur_block_k,
             "num_warps": heur_warps,
             "num_stages": heur_stages,
+            "EVEN": heur_even,
+            "BIAS_1D": heur_bias_1d,
         }
     )
 
@@ -143,6 +158,8 @@ def addmm_kernel(
     BLOCK_SIZE_K: tl.constexpr,
     GROUP_M: tl.constexpr,
     BLOCK_K_CHOICE,
+    EVEN: tl.constexpr = False,
+    BIAS_1D: tl.constexpr = False,
 ):
     pid = ext.program_id(0)
     if GROUP_M > 1:
@@ -166,16 +183,20 @@ def addmm_kernel(
 
     accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
     for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
-        a = tl.load(
-            a_ptrs,
-            mask=(offs_am[:, None] < M) & (offs_k[None, :] < K - k * BLOCK_SIZE_K),
-            other=0.0,
-        )
-        b = tl.load(
-            b_ptrs,
-            mask=(offs_k[:, None] < K - k * BLOCK_SIZE_K) & (offs_bn[None, :] < N),
-            other=0.0,
-        )
+        if EVEN:
+            a = tl.load(a_ptrs)
+            b = tl.load(b_ptrs)
+        else:
+            a = tl.load(
+                a_ptrs,
+                mask=(offs_am[:, None] < M) & (offs_k[None, :] < K - k * BLOCK_SIZE_K),
+                other=0.0,
+            )
+            b = tl.load(
+                b_ptrs,
+                mask=(offs_k[:, None] < K - k * BLOCK_SIZE_K) & (offs_bn[None, :] < N),
+                other=0.0,
+            )
         accumulator += tl.dot(a, b, allow_tf32=False)
         a_ptrs += BLOCK_SIZE_K * stride_ak
         b_ptrs += BLOCK_SIZE_K * stride_bk
@@ -183,14 +204,21 @@ def addmm_kernel(
     offs_cm = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
     offs_cn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
     c_ptrs = c_ptr + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :]
-    c_mask = (offs_cm[:, None] < M) & (offs_cn[None, :] < N)
     i_ptrs = i_ptr + stride_im * offs_cm[:, None] + stride_in * offs_cn[None, :]
-    bias = tl.load(i_ptrs, mask=c_mask, other=0.0)
 
-    accumulator = accumulator * alpha + bias * beta
-    # Let tl.store convert to the output pointer dtype. The dtype-out variant
-    # may use fp32 output with fp16/bf16 inputs and an input-dtype bias.
-    tl.store(c_ptrs, accumulator, mask=c_mask)
+    if EVEN:
+        if BIAS_1D:
+            bias1d = tl.load(i_ptr + stride_in * offs_cn)
+            accumulator = accumulator * alpha + bias1d[None, :] * beta
+        else:
+            bias = tl.load(i_ptrs)
+            accumulator = accumulator * alpha + bias * beta
+        tl.store(c_ptrs, accumulator)
+    else:
+        c_mask = (offs_cm[:, None] < M) & (offs_cn[None, :] < N)
+        bias = tl.load(i_ptrs, mask=c_mask, other=0.0)
+        accumulator = accumulator * alpha + bias * beta
+        tl.store(c_ptrs, accumulator, mask=c_mask)
 
 
 def _bias_with_unit_inner_stride(bias, shape):
