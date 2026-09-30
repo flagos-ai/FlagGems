@@ -169,7 +169,7 @@ jobs:
         with:
           backend: ${{ env.BACKEND }}
           gpu_check_script: tools/gpu_check_${{ env.VENDOR }}.sh
-      - uses: ./.github/actions/run-op-test
+      - uses: ./.github/actions/ondemand-test
         with:
           op: ${{ needs.preprocess.outputs.op }}
           backend: ${{ env.BACKEND }}
@@ -206,7 +206,7 @@ jobs:
         with:
           backend: hygon
           gpu_check_script: tools/gpu_check_hygon.sh
-      - uses: flagos-ai/FlagGems/.github/actions/run-op-test@master
+      - uses: flagos-ai/FlagGems/.github/actions/ondemand-test@master
         with:
           op: ${{ needs.preprocess.outputs.op }}
           backend: hygon
@@ -238,7 +238,7 @@ jobs:
         with:
           backend: mthreads-musa520
           gpu_check_script: tools/gpu_check_mthreads.sh
-      - uses: flagos-ai/FlagGems/.github/actions/run-op-test@master
+      - uses: flagos-ai/FlagGems/.github/actions/ondemand-test@master
         with:
           op: ${{ needs.preprocess.outputs.op }}
           backend: mthreads-musa520
@@ -270,7 +270,7 @@ jobs:
         with:
           backend: metax-maca3810
           gpu_check_script: tools/gpu_check_metax.sh
-      - uses: flagos-ai/FlagGems/.github/actions/run-op-test@master
+      - uses: flagos-ai/FlagGems/.github/actions/ondemand-test@master
         with:
           op: ${{ needs.preprocess.outputs.op }}
           backend: metax-maca3810
@@ -300,7 +300,7 @@ jobs:
         with:
           backend: iluvatar
           gpu_check_script: tools/gpu_check_iluvatar.sh
-      - uses: flagos-ai/FlagGems/.github/actions/run-op-test@master
+      - uses: flagos-ai/FlagGems/.github/actions/ondemand-test@master
         with:
           op: ${{ needs.preprocess.outputs.op }}
           backend: iluvatar
@@ -340,7 +340,7 @@ jobs:
         with:
           backend: kunlunxin
           gpu_check_script: tools/gpu_check_kunlunxin.sh
-      - uses: flagos-ai/FlagGems/.github/actions/run-op-test@master
+      - uses: flagos-ai/FlagGems/.github/actions/ondemand-test@master
         with:
           op: ${{ needs.preprocess.outputs.op }}
           backend: kunlunxin
