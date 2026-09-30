@@ -219,7 +219,6 @@ _FULL_CONFIG = (
         None,
         (AUTOGRAD_DISPATCH_KEY,),
     ),
-    ("_has_same_storage_numel", _has_same_storage_numel),
     ("_histogramdd_from_bin_cts", _histogramdd_from_bin_cts),
     ("_histogramdd_from_bin_cts.out", _histogramdd_from_bin_cts_out),
     ("_histogramdd_from_bin_tensors", _histogramdd_from_bin_tensors),
@@ -289,8 +288,6 @@ _FULL_CONFIG = (
     ("_padded_dense_to_jagged_forward", _padded_dense_to_jagged_forward),
     ("_pdist_backward", _pdist_backward),
     ("_pdist_forward", _pdist_forward),
-    # _pin_memory takes a CPU tensor and dispatches on the CPU key, not the
-    # accelerator key: registering under the backend key would never fire.
     ("_pin_memory", _pin_memory, None, ["CPU"]),
     ("_prelu_kernel", _prelu_kernel),
     ("_prelu_kernel_backward", _prelu_kernel_backward),
@@ -879,6 +876,7 @@ _FULL_CONFIG = (
     ("hardtanh.out", hardtanh_out),
     ("hardtanh_", hardtanh_),
     ("hardtanh_backward", hardtanh_backward),
+    ("has_same_storage_numel", has_same_storage_numel),
     ("hash_tensor", hash_tensor),
     ("heaviside", heaviside),
     ("heaviside_", heaviside_),
@@ -1193,9 +1191,6 @@ _FULL_CONFIG = (
     ("neg_", neg_),
     ("negative", negative),
     ("negative_", negative_),
-    # nested_to_padded_tensor is a CompositeImplicitAutograd op; it decomposes before
-    # reaching the backend key, so we must also register the CompositeImplicitAutograd
-    # key for use_gems() to intercept it instead of silently running the decomposition.
     (
         "nested_to_padded_tensor",
         nested_to_padded_tensor,
@@ -1243,8 +1238,6 @@ _FULL_CONFIG = (
     ("pairwise_distance", pairwise_distance),
     ("pdist", pdist),
     ("permute_copy", permute_copy),
-    # pin_memory is CompositeImplicitAutograd; it decomposes before reaching any
-    # backend key, so the composite key is the only place use_gems() can see it.
     ("pin_memory", pin_memory, None, ["CompositeImplicitAutograd"]),
     ("pinverse", pinverse, None, (AUTOGRAD_DISPATCH_KEY,)),
     ("pixel_shuffle", pixel_shuffle),
