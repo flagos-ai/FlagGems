@@ -19,6 +19,7 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+# CI trigger: exercise container-mode backend tests (kunlunxin/metax/hygon/mthreads/iluvatar).
 TILE_DIMS = [(0,), (2,), (2, 0), (0, 2), (2, 2), (2, 2, 2), (2, 2, 2, 2)]
 
 
