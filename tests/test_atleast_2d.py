@@ -45,6 +45,23 @@ SWEEP_DTYPES = (
 COMPLEX_DTYPES = [torch.complex64, torch.complex128]
 
 
+@pytest.mark.atleast_2d
+@pytest.mark.parametrize("shape", RANK0_SHAPES + RANK1_SHAPES + RANK2_SHAPES)
+@pytest.mark.parametrize("dtype", COMPLEX_DTYPES)
+def test_accuracy_atleast_2d_complex(shape, dtype):
+    # complex inputs: atleast_2d is a pure host-side reshape, so the
+    # conjugate bit and imaginary part must survive the view unchanged.
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp)
+
+    ref_out = torch.ops.aten.atleast_2d(ref_inp)
+    res_out = flag_gems.atleast_2d(inp)
+    assert res_out.dtype == inp.dtype == ref_out.dtype
+    assert res_out.shape == ref_out.shape
+    assert res_out.data_ptr() == inp.data_ptr()
+    assert torch.equal(res_out.cpu(), ref_out.cpu())
+
+
 def _make_input(shape, dtype):
     if dtype is torch.bool:
         return torch.randint(0, 2, shape, dtype=dtype, device=flag_gems.device)
