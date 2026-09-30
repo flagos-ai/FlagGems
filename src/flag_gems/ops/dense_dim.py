@@ -36,12 +36,15 @@ def dense_dim(self: torch.Tensor) -> int:
       (the leading index-matrix dimension), so ``dense_dim == dim() -
       indices.shape[0]``. Hybrid COO tensors (values with trailing dense
       dimensions) are covered by the same formula.
-    - Sparse compressed layouts (CSR/CSC/BSR/BSC): ``sparse_dim == 2`` by
-      ATen contract, so ``dense_dim == dim() - 2``.
+    - Sparse compressed layouts (CSR/CSC/BSR/BSC): the two sparse dims are
+      fixed by the ATen contract, and any leading batch dimensions are
+      independent of the sparse/dense classification, so ``dense_dim == 0``
+      for every compressed layout (verified on H20: a batched CSR tensor
+      with shape [B, M, N] reports ``dense_dim() == 0`` natively).
     """
     logger.debug("GEMS DENSE_DIM")
     if self.layout == torch.strided:
         return self.dim()
     if self.layout == torch.sparse_coo:
         return self.dim() - self._indices().shape[0]
-    return self.dim() - 2
+    return 0
