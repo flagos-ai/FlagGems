@@ -91,6 +91,32 @@ def test_sub_tensor_scalar_(shape, scalar, alpha, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.sub_
+@pytest.mark.parametrize("other_kind", ["python_float", "float_tensor"])
+def test_sub_inplace_rejects_unsafe_cast(other_kind):
+    inp = torch.tensor([1, 1], dtype=torch.int64, device=flag_gems.device)
+    before = inp.clone()
+
+    if other_kind == "python_float":
+        other = 2.5
+        ref_other = other
+    else:
+        other = torch.tensor(2.5, dtype=torch.float32, device=flag_gems.device)
+        ref_other = torch.tensor(2.5, dtype=torch.float32)
+
+    ref_inp = torch.tensor([1, 1], dtype=torch.int64)
+
+    with pytest.raises(RuntimeError, match="can't be cast"):
+        ref_inp.sub_(ref_other)
+
+    with flag_gems.use_gems():
+        with pytest.raises(RuntimeError, match="can't be cast"):
+            inp.sub_(other)
+
+    assert torch.equal(inp, before)
+    assert inp.dtype == torch.int64
+
+
 @pytest.mark.sub
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("scalar", utils.SCALARS)

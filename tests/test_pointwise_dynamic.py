@@ -358,6 +358,49 @@ def test_dynamic_function_with_predefined_out(use_block_pointer):
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4108: not working"
 )
+def test_dynamic_function_with_predefined_out_rejects_unsafe_cast(
+    use_block_pointer,
+):
+    config = CodeGenConfig(
+        max_tile_size=1024,
+        max_grid_size=MAX_GRID_SIZES,
+        max_num_warps_per_cta=32,
+        prefer_block_pointer=use_block_pointer,
+        prefer_1d_tile=False,
+    )
+
+    @pointwise_dynamic(
+        num_inputs=2,
+        is_tensor=[True, True],
+        promotion_methods=[(0, 1, "DEFAULT")],
+        config=config,
+    )
+    @triton.jit
+    def add_func(x, y):
+        return x + y
+
+    SIZE = 10
+    x = torch.ones(
+        [SIZE, SIZE], dtype=torch.int64, device=flag_gems.device
+    )
+    y = torch.ones(
+        [SIZE, SIZE], dtype=torch.float32, device=flag_gems.device
+    )
+    out = torch.full(
+        [SIZE, SIZE], 7, dtype=torch.int64, device=flag_gems.device
+    )
+    before = out.clone()
+
+    with pytest.raises(RuntimeError, match="can't be cast"):
+        add_func(x, y, out0=out)
+
+    assert torch.equal(out, before)
+
+
+@pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4108: not working"
+)
 def test_dynamic_function_with_some_predefined_out1(use_block_pointer):
     config = CodeGenConfig(
         max_tile_size=1024,
