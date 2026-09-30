@@ -30,7 +30,6 @@ class OperatorBenchmark(base.GenericBenchmark):
         super().__init__(*args, **kwargs)
         self.fresh_inputs = fresh_inputs
 
-    @base.reference_uses_torch_op
     def get_latency(self, op, *args, **kwargs):
         if self.fresh_inputs:
             return self._get_fresh_input_latency(op, args, kwargs)
@@ -96,6 +95,9 @@ class OperatorBenchmark(base.GenericBenchmark):
         # happens before the start event/clock, never inside the measured call.
         if self.is_backward:
             raise ValueError("Fresh-input backward measurement is not supported")
+        if getattr(base.Config, "reference_only", False):
+            fresh_args, fresh_kwargs = _clone_benchmark_inputs((args, kwargs))
+            return super().get_latency(op, *fresh_args, **fresh_kwargs)
         if base.Config.mode == consts.BenchMode.CUDAGRAPH:
             raise ValueError(
                 "State-changing benchmarks require fresh inputs; use kernel or operator mode"

@@ -59,15 +59,24 @@ else:
         pass
 
 
-def reference_uses_torch_op(method):
-    """Declare that a timing override keeps the standard Torch reference call.
+def measure_calls(fn, *, warmup_calls=0, repeat_calls=1):
+    """Synchronized wall-time sample with explicit counts, without calibration.
 
-    The declaration belongs to this function, so a subclass replacing it must
-    declare its own contract. Reference-only still bypasses timing and candidate
-    dispatch, and custom input measurement remains unsupported.
+    This is a readiness measurement, not headline kernel timing. In particular,
+    zero warmup and one repeat invokes fn exactly once on every backend.
     """
-    method._reference_uses_torch_op = method
-    return method
+    if type(warmup_calls) is not int or warmup_calls < 0:
+        raise ValueError("warmup_calls must be a nonnegative integer")
+    if type(repeat_calls) is not int or repeat_calls < 1:
+        raise ValueError("repeat_calls must be a positive integer")
+    for _ in range(warmup_calls):
+        fn()
+    torch_device_fn.synchronize()
+    start = time.perf_counter()
+    for _ in range(repeat_calls):
+        fn()
+    torch_device_fn.synchronize()
+    return (time.perf_counter() - start) * 1000 / repeat_calls
 
 
 def get_iter_count(fn):
@@ -332,6 +341,8 @@ class Benchmark:
         return fn, xs
 
     def _time_callable(self, fn, xs):
+        if getattr(Config, "reference_only", False):
+            return measure_calls(fn, warmup_calls=0, repeat_calls=1)
         if Config.mode == consts.BenchMode.OPERATOR:
             n_warm, n_rep = get_iter_count(fn)
             for i in range(n_warm):
@@ -630,24 +641,14 @@ class Benchmark:
         return executed
 
     def _run_reference_cases(self, case_ids: Optional[Collection[str]]):
-        """Run the original timing baseline once; never enter Gems dispatch."""
-        latency_method = getattr(self.get_latency, "__func__", None)
-        if (
-            not self.supports_cases()
-            or (
-                latency_method is not Benchmark.get_latency
-                and getattr(latency_method, "_reference_uses_torch_op", False)
-                is not latency_method
-            )
-            or getattr(self._measure_input, "__func__", None)
-            is not Benchmark._measure_input
-        ):
+        """Measure the original Torch baseline through the benchmark's own timer."""
+        if not self.supports_cases():
             Config.reference_records.append(
                 {
                     "nodeid": Config.current_nodeid,
                     "operator": self.op_name,
                     "status": "UNSUPPORTED",
-                    "reason": "custom or legacy baseline requires an explicit reference runner",
+                    "reason": "reference-only requires the benchmark case interface",
                 }
             )
             pytest.skip("reference-only is unsupported for this benchmark")
@@ -665,7 +666,6 @@ class Benchmark:
                 **case.to_dict(),
                 "nodeid": Config.current_nodeid,
                 "operator": self.op_name,
-                "count": 0,
                 "status": "NOT_RUN",
                 "reason": "reference traversal stopped before this case",
             }
@@ -678,17 +678,15 @@ class Benchmark:
             if Config.skip_native:
                 record.update(status="SKIP", reason=Config.native_baseline_skip_reason)
                 continue
-            args = kwargs = fn = grad_inputs = None
+            args = kwargs = None
             try:
                 record["stage"] = "build_inputs"
                 args, kwargs = self.unpack_to_args_kwargs(self.build_inputs(case))
-                record["stage"] = "prepare_reference"
-                fn, grad_inputs = self._benchmark_callable(
-                    self.torch_op, *args, **kwargs
-                )
-                record["stage"] = "invoke"
-                record["count"] = 1
-                fn()
+                record["stage"] = "benchmark_reference"
+                latency = float(self.get_latency(self.torch_op, *args, **kwargs))
+                if not math.isfinite(latency) or latency < 0:
+                    raise ValueError("reference benchmark returned invalid latency")
+                record["latency_ms"] = latency
                 record["stage"] = "synchronize"
                 torch_device_fn.synchronize()
             except pytest.skip.Exception as error:
@@ -711,7 +709,7 @@ class Benchmark:
                     raise
                 continue
             finally:
-                del fn, grad_inputs, args, kwargs
+                del args, kwargs
             record["status"] = "PASSED"
             Config.executed_case_ids.add(case.case_id)
             executed.append(case.case_id)

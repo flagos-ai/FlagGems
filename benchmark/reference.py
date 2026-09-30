@@ -106,7 +106,7 @@ def reference_report(records, *, exitstatus=0):
     else:
         status = "NO_CASES"
     return {
-        "schema_version": "flaggems.reference/v1",
+        "schema_version": "flaggems.reference/v2",
         "phase": "timing",
         "status": status,
         "records": records,

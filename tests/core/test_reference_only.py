@@ -14,7 +14,6 @@
 
 """Reference-only contract tests using CPU tensors and fake device operations."""
 
-import functools
 import json
 from types import SimpleNamespace
 
@@ -31,7 +30,7 @@ from benchmark.reference import (
 
 
 def forbidden(*args, **kwargs):
-    raise AssertionError("candidate, timing or profiling must not run")
+    raise AssertionError("candidate or profiling must not run")
 
 
 @pytest.fixture
@@ -57,20 +56,24 @@ def runner(monkeypatch):
     monkeypatch.setattr(bench, "build_inputs", lambda case: (case.ordinal,))
     monkeypatch.setattr(bench, "unpack_to_args_kwargs", lambda value: (value, {}))
     monkeypatch.setattr(bench, "_candidate_call", forbidden)
-    monkeypatch.setattr(bench, "_time_callable", forbidden)
+
+    clock = iter(i * 0.0005 for i in range(100))
+    monkeypatch.setattr(base.time, "perf_counter", lambda: next(clock))
+    monkeypatch.setattr(base, "get_iter_count", forbidden)
     return bench, config, events
 
 
 @pytest.mark.parametrize("selected,expected", [(None, [0, 1, 2]), (["case-1"], [1])])
-def test_benchmark_runs_original_baseline_once(runner, selected, expected):
+def test_benchmark_uses_original_timer_and_records_latency(runner, selected, expected):
     bench, config, events = runner
     assert bench.run(case_ids=selected) == [f"case-{i}" for i in expected]
-    assert events == [x for i in expected for x in (i, "sync")]
+    assert events == [x for i in expected for x in ("sync", i, "sync", "sync")]
     assert all(
-        r["count"] == 1 and r["status"] == "PASSED" for r in config.reference_records
+        r["latency_ms"] == pytest.approx(0.5) and r["status"] == "PASSED"
+        for r in config.reference_records
     )
     assert all(
-        "latency" not in r and "speedup" not in r for r in config.reference_records
+        "count" not in r and "speedup" not in r for r in config.reference_records
     )
 
 
@@ -92,84 +95,112 @@ def test_backward_reference_uses_original_grad_semantics(runner, monkeypatch):
     monkeypatch.setattr(torch.autograd, "grad", grad)
     bench.run(case_ids=["case-0"])
     assert len(gradients) == 1
-    assert events == ["sync"]
+    assert events == ["sync", "sync", "sync"]
 
 
 @pytest.mark.parametrize("fresh_inputs", [False, True])
-def test_generated_operator_reference_does_not_require_candidate_or_timing(
+def test_generated_operator_reference_reuses_fresh_input_timer_without_candidate(
     runner, monkeypatch, fresh_inputs
 ):
     from benchmark.generated_operator_utils import OperatorBenchmark
 
     bench, config, events = runner
-    # Exercise the real helper's timing method and declaration with the same
-    # controlled case inputs used by the base runner contract tests.
+    # Exercise the actual get_latency dispatch; no marker or per-pytest opt-in.
     bench.__class__ = OperatorBenchmark
     bench.fresh_inputs = fresh_inputs
     bench.gems_op = None
-    monkeypatch.setattr(bench, "_get_fresh_input_latency", forbidden)
     assert bench.run() == ["case-0", "case-1", "case-2"]
-    assert events == [0, "sync", 1, "sync", 2, "sync"]
+    assert events == [x for i in range(3) for x in ("sync", i, "sync", "sync")]
     assert all(
-        r["status"] == "PASSED" and r["count"] == 1 for r in config.reference_records
+        r["status"] == "PASSED" and r["latency_ms"] == pytest.approx(0.5)
+        for r in config.reference_records
     )
 
 
-@pytest.mark.parametrize("method_name", ["get_latency", "_measure_input"])
-def test_reference_declaration_does_not_authorize_an_unknown_override(
-    runner, method_name
+def test_custom_timer_is_called_without_declaration_or_measurement_dispatch(runner):
+    bench, config, events = runner
+
+    class Custom(base.Benchmark):
+        def get_latency(self, op, *args, **kwargs):
+            assert op is self.torch_op
+            return super().get_latency(op, *args, **kwargs)
+
+        def _measure_input(self, *args, **kwargs):
+            forbidden()  # Reference-only does not run the two-sided benchmark.
+
+    bench.__class__ = Custom
+    assert bench.run() == ["case-0", "case-1", "case-2"]
+    assert events == [x for i in range(3) for x in ("sync", i, "sync", "sync")]
+    assert all(r["latency_ms"] == pytest.approx(0.5) for r in config.reference_records)
+
+
+@pytest.mark.parametrize("warmup,repeats", [(0, 1), (1, 1), (2, 3)])
+def test_measure_calls_uses_counts_not_milliseconds(runner, warmup, repeats):
+    _, _, events = runner
+    latency = base.measure_calls(
+        lambda: events.append("op"), warmup_calls=warmup, repeat_calls=repeats
+    )
+    assert events == ["op"] * warmup + ["sync"] + ["op"] * repeats + ["sync"]
+    assert latency == pytest.approx(0.5 / repeats)
+
+
+@pytest.mark.parametrize("mode", list(base.consts.BenchMode))
+def test_reference_single_call_does_not_enter_adaptive_or_graph_timer(runner, mode):
+    bench, config, events = runner
+    config.mode = mode
+    config.warm_up = config.repetition = 1000
+    bench.run(case_ids=["case-0"])
+    assert events == ["sync", 0, "sync", "sync"]
+
+
+def test_normal_benchmark_keeps_original_warmup_and_iterations(runner, monkeypatch):
+    bench, config, events = runner
+    config.reference_only = False
+    config.mode = base.consts.BenchMode.OPERATOR
+    monkeypatch.setattr(base, "measure_calls", forbidden)
+    monkeypatch.setattr(base, "get_iter_count", lambda fn: (2, 3))
+    bench.get_latency(lambda: events.append("op"))
+    assert events == ["op", "op", "sync", "op", "op", "op", "sync"]
+
+
+def test_fresh_reference_clones_input_but_invokes_operator_only_once(
+    runner, monkeypatch
 ):
     from benchmark.generated_operator_utils import OperatorBenchmark
 
     bench, config, events = runner
-    custom = type("Custom", (OperatorBenchmark,), {method_name: forbidden})
-    bench.__class__ = custom
-    bench.fresh_inputs = False
-    with pytest.raises(pytest.skip.Exception):
-        bench.run()
-    assert not events
-    assert reference_report(config.reference_records)["status"] == "UNSUPPORTED"
-
-
-def test_declared_reference_preserves_failure_records(runner, monkeypatch):
-    from benchmark.generated_operator_utils import OperatorBenchmark
-
-    bench, config, _ = runner
     bench.__class__ = OperatorBenchmark
     bench.fresh_inputs = True
+    config.mode = base.consts.BenchMode.CUDAGRAPH
+    original = torch.zeros(4)
+    calls = []
 
-    def broken(value):
-        raise RuntimeError("original reference failed")
+    def op(value):
+        calls.append(value.clone())
+        value.add_(1)
+        return value
 
-    bench.torch_op = broken
-    monkeypatch.setattr(bench, "_get_fresh_input_latency", forbidden)
-    with pytest.raises(RuntimeError, match="original reference failed"):
+    bench.torch_op = op
+    monkeypatch.setattr(bench, "build_inputs", lambda case: (original,))
+    bench.run(case_ids=["case-0"])
+    assert len(calls) == 1
+    assert torch.equal(original, torch.zeros(4))
+    assert torch.equal(calls[0], original)
+
+
+@pytest.mark.parametrize("warmup,repeats", [(-1, 1), (0, 0), (True, 1), (0, 1.0)])
+def test_invalid_fixed_counts_never_invoke_operator(runner, warmup, repeats):
+    with pytest.raises(ValueError):
+        base.measure_calls(forbidden, warmup_calls=warmup, repeat_calls=repeats)
+
+
+@pytest.mark.parametrize("latency", [float("nan"), float("inf"), -1.0])
+def test_invalid_timer_result_is_not_a_pass(runner, monkeypatch, latency):
+    bench, config, _ = runner
+    monkeypatch.setattr(bench, "get_latency", lambda *a, **kw: latency)
+    with pytest.raises(ValueError, match="invalid latency"):
         bench.run()
-    assert [r["status"] for r in config.reference_records] == [
-        "FAILED",
-        "NOT_RUN",
-        "NOT_RUN",
-    ]
-    assert config.reference_records[0]["stage"] == "invoke"
-    assert config.reference_records[0]["count"] == 1
-
-
-def test_wrapper_does_not_inherit_reference_permission_through_wraps(runner):
-    from benchmark.generated_operator_utils import OperatorBenchmark
-
-    bench, config, events = runner
-
-    class Custom(OperatorBenchmark):
-        @functools.wraps(OperatorBenchmark.get_latency)
-        def get_latency(self, *args, **kwargs):
-            forbidden()
-
-    bench.__class__ = Custom
-    bench.fresh_inputs = False
-    with pytest.raises(pytest.skip.Exception):
-        bench.run()
-    assert not events
-    assert reference_report(config.reference_records)["status"] == "UNSUPPORTED"
+    assert config.reference_records[0]["status"] == "FAILED"
 
 
 def test_skip_native_is_not_a_pass_or_failure(runner):
@@ -208,9 +239,11 @@ def test_reference_failure_is_not_passed(runner, monkeypatch, failure):
     record = config.reference_records[0]
     assert (
         record["stage"]
-        == {"input": "build_inputs", "reference": "invoke", "sync": "synchronize"}[
-            failure
-        ]
+        == {
+            "input": "build_inputs",
+            "reference": "benchmark_reference",
+            "sync": "benchmark_reference",
+        }[failure]
     )
     assert (
         record["dtype"] == "float32"
@@ -240,7 +273,7 @@ def test_capability_failures_are_recorded_individually_and_later_cases_run(runne
         "DTYPE_UNSUPPORTED",
         "API_MISSING",
     ]
-    assert events == ["sync", "sync", 2, "sync"]
+    assert events == ["sync", "sync", "sync", "sync", "sync", 2, "sync", "sync"]
     assert config.executed_case_ids == {"case-2"}
     assert reference_report(records)["status"] == "FAILED"
     assert json.loads(json.dumps(records)) == records
@@ -266,8 +299,12 @@ def test_capability_failure_does_not_continue_after_sync_failure(runner, monkeyp
     def unavailable(*args):
         raise NotImplementedError("no backend kernel")
 
+    synchronizations = []
+
     def broken_sync():
-        raise RuntimeError("device lost")
+        synchronizations.append(True)
+        if len(synchronizations) > 1:
+            raise RuntimeError("device lost")
 
     bench.torch_op = unavailable
     monkeypatch.setattr(base.torch_device_fn, "synchronize", broken_sync)
@@ -298,8 +335,8 @@ def test_reference_interrupt_propagates_and_leaves_unexecuted_cases(runner):
     ]
 
 
-@pytest.mark.parametrize("stage", ["build_inputs", "prepare_reference"])
-def test_capability_failure_before_invocation_keeps_zero_call_count(
+@pytest.mark.parametrize("stage", ["build_inputs", "benchmark_reference"])
+def test_capability_failure_does_not_invent_latency_or_call_count(
     runner, monkeypatch, stage
 ):
     bench, config, _ = runner
@@ -315,7 +352,10 @@ def test_capability_failure_before_invocation_keeps_zero_call_count(
     with pytest.raises(pytest.fail.Exception, match="3 reference cases failed"):
         bench.run()
     assert all(
-        r["stage"] == stage and r["count"] == 0 and r["status"] == "FAILED"
+        r["stage"] == stage
+        and "latency_ms" not in r
+        and "count" not in r
+        and r["status"] == "FAILED"
         for r in config.reference_records
     )
 
@@ -420,7 +460,12 @@ def test_reference_unknown_case_selection_fails(runner):
 def test_partial_calls_before_pytest_skip_do_not_claim_complete_readiness():
     report = reference_report(
         [
-            {"nodeid": "test", "case_id": "first", "status": "PASSED", "count": 1},
+            {
+                "nodeid": "test",
+                "case_id": "first",
+                "status": "PASSED",
+                "latency_ms": 0.5,
+            },
             {
                 "nodeid": "test",
                 "status": "SKIP",
@@ -430,7 +475,8 @@ def test_partial_calls_before_pytest_skip_do_not_claim_complete_readiness():
         ]
     )
     assert report["status"] == "ALL_SKIP"
-    assert report["records"][0]["count"] == 1
+    assert report["records"][0]["latency_ms"] == 0.5
+    assert report["schema_version"] == "flaggems.reference/v2"
 
 
 @pytest.mark.parametrize("reference_only", [False, True])
