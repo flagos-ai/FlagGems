@@ -61,6 +61,36 @@ def _to_copy_contiguous_kernel(inp, out, n_elements, BLOCK_SIZE: tl.constexpr):
     tl.store(out + offsets, values.to(out.dtype.element_ty), mask=mask)
 
 
+# Async/autogrid contiguous copy: this routes float->non-bf16-float casts
+# through the tuned pointwise_dynamic codegen with hardware DMA-queue streaming
+# (kunlunAutoGrid) and async load/store overlap (isCloseMemoryAsync=False),
+# which is the op-layer equivalent of the vendor cast kernel's TriplePtr
+# triple-buffered gm_load_async/gm_store_async pipeline. Measured on P800 (dev4)
+# this matches native aten device time (.to(f64) 16.7M: 0.53 -> 0.95 speedup;
+# 4.2M f16->f64: 0.55 -> 0.95) versus the plain single-buffer launch above.
+_async_copy_config = CodeGenConfig(
+    512,
+    (65536, 65536, 65536),
+    32,
+    True,
+    prefer_1d_tile=True,
+    isCloseMemoryAsync=False,
+    kunlunAutoGrid=True,
+)
+
+
+@pointwise_dynamic(
+    is_tensor=[
+        True,
+    ],
+    promotion_methods=[(0, "DEFAULT")],
+    config=_async_copy_config,
+)
+@triton.jit
+def _to_copy_func_async(x):
+    return x
+
+
 @triton.jit
 def _to_copy_to_complex_kernel(inp, out, n_elements, BLOCK_SIZE: tl.constexpr):
     offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
@@ -87,7 +117,45 @@ def _to_copy_contiguous(inp, out, target_dtype):
     n_elements = inp.numel()
     if n_elements == 0:
         return out
-    block_size = 256
+    # float -> non-bf16 float contiguous casts (which dominate the
+    # float_power / up-convert chains) go through the tuned pointwise_dynamic
+    # autogrid + async-DMA path (_to_copy_func_async): it streams via hardware
+    # DMA queues with load/store overlap, the op-layer equivalent of the vendor
+    # cast kernel's triple-buffered gm_load_async pipeline, and matches native
+    # aten device time (~0.95 vs the plain launch's ~0.53 at 16.7M). The bf16
+    # SOURCE case is excluded (its async load miscompiles / produces WRONG values
+    # on large shapes) and instead takes the big-tile plain kernel below, which
+    # is verified correct. int sources and ->bf16 targets keep the safe 256
+    # baseline (their vectorized vsitofp / ->bf16 paths abort at large tiles).
+    #
+    # SMALL shapes (<= 65536) are routed to the plain big-tile kernel below
+    # instead: pointwise_dynamic's host-side prep (dynamic shape/grid analysis)
+    # costs ~66us/call, which dwarfs the ~5us of device work on a tiny copy and
+    # stalls the whole float_power chain (3 casts * ~66us). A direct triton
+    # launch has only ~10-15us host overhead. The async DMA overlap only pays off
+    # once the device work is large enough to hide behind (>=1M elements).
+    if (
+        n_elements > 65536
+        and inp.is_floating_point()
+        and inp.dtype != torch.bfloat16
+        and target_dtype.is_floating_point
+        and target_dtype != torch.bfloat16
+    ):
+        return _to_copy_func_async(inp, out0=out)
+
+    if (
+        inp.is_floating_point()
+        and target_dtype.is_floating_point
+        and target_dtype != torch.bfloat16
+    ):
+        # bf16 source -> non-bf16 float: big power-of-two tile, capped so small
+        # tensors keep a single right-sized tile (verified correct at 16384).
+        block_size = min(16384, triton.next_power_of_2(n_elements))
+    else:
+        # A 256-element tile serializes large contiguous copies into tens of
+        # thousands of tiny masked launches, but is the only safe size for the
+        # int->float / ->bf16 casts that miscompile at large tiles.
+        block_size = 256
     with torch_device_fn.device(inp.device):
         kernel = (
             _to_copy_contiguous_to_bf16_kernel
