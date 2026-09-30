@@ -166,26 +166,27 @@ def test_accuracy_col_indices_dispatch_stability():
 def test_accuracy_col_indices_dispatch_sentinel():
     # Sentinel test: verify that the FlagGems wrapper is actually reached
     # through the Autograd-key dispatch path (reviewer-requested). Patch
-    # flag_gems.col_indices with a counting wrapper and verify the call
-    # goes through the registered implementation.
-    import flag_gems.ops.col_indices as impl_mod
+    # flag_gems.col_indices with a counting wrapper at the flag_gems
+    # namespace level and verify that the call routes through the
+    # registered implementation.
+    import flag_gems
 
-    original_impl = impl_mod.col_indices
+    original_impl = flag_gems.col_indices
     calls = {"count": 0}
 
     def counting_impl(tensor):
         calls["count"] += 1
         return original_impl(tensor)
 
-    impl_mod.col_indices = counting_impl
+    flag_gems.col_indices = counting_impl
     try:
         csr = _make_csr((3, 5), nnz=4, seed=3)
         flag_gems.col_indices(csr)
-        assert (
-            calls["count"] > 0
-        ), "flag_gems.col_indices did not reach the registered implementation"
+        assert calls["count"] > 0, (
+            "flag_gems.col_indices did not reach the registered implementation"
+        )
     finally:
-        impl_mod.col_indices = original_impl
+        flag_gems.col_indices = original_impl
     utils.gems_assert_equal(
         flag_gems.col_indices(csr), utils.to_reference(csr).col_indices()
     )
