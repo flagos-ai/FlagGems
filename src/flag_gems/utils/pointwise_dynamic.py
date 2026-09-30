@@ -1610,13 +1610,30 @@ class PointwiseDynamicFunction:
                 )
         in_tensors = [item for i, item in enumerate(args) if schema.is_tensor(i)]
 
-        # output dtype promotions
-        outputs_dtypes_for_allocation = []
-        for i in outputs_that_need_allocation:
+        # Compute the promoted dtype for every output, including outputs supplied
+        # by the caller (for example, in-place/out= operations).
+        output_dtypes = []
+        for i in range(schema.num_output_tensors()):
             *arg_indices, method = schema._promotion_methods[i]
             promote_args = (args[j] for j in arg_indices)
             _, dtype = type_promotion(*promote_args, type_promotion=method)
-            outputs_dtypes_for_allocation.append(dtype)
+            output_dtypes.append(dtype)
+
+        # A caller-supplied output must be able to safely hold the promoted result.
+        # Reject the operation before launching the kernel so that the output/input
+        # tensor is left unchanged on failure.
+        for i, dtype in enumerate(output_dtypes):
+            k = f"out{i}"
+            if k in kwargs and kwargs[k] is not None:
+                out = kwargs[k]
+                if not torch.can_cast(dtype, out.dtype):
+                    raise RuntimeError(
+                        f"result type {dtype} can't be cast to the desired output type {out.dtype}"
+                    )
+
+        outputs_dtypes_for_allocation = [
+            output_dtypes[i] for i in outputs_that_need_allocation
+        ]
 
         tensors = out_tensors + in_tensors
         INT32_MAX = torch.iinfo(torch.int32).max
