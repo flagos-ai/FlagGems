@@ -116,6 +116,7 @@ from flag_gems.ops._is_all_true import _is_all_true
 from flag_gems.ops._jagged_to_padded_dense_forward import (
     _jagged_to_padded_dense_forward,
 )
+from flag_gems.ops._linalg_eigh import _linalg_eigh
 from flag_gems.ops._linalg_eigvals import _linalg_eigvals
 from flag_gems.ops._linalg_slogdet import _linalg_slogdet
 from flag_gems.ops._linalg_svd import _linalg_svd
@@ -459,6 +460,7 @@ from flag_gems.ops.diagonal_copy import diagonal_copy
 from flag_gems.ops.diagonal_scatter import diagonal_scatter
 from flag_gems.ops.diff import diff
 from flag_gems.ops.digamma_ import digamma, digamma_
+from flag_gems.ops.dim import dim
 from flag_gems.ops.dist import dist
 from flag_gems.ops.div import (
     div_mode,
@@ -708,6 +710,7 @@ from flag_gems.ops.linalg_cond import linalg_cond, linalg_cond_p_str
 from flag_gems.ops.linalg_cross import linalg_cross, linalg_cross_out
 from flag_gems.ops.linalg_det import linalg_det, linalg_det_out
 from flag_gems.ops.linalg_eig import linalg_eig
+from flag_gems.ops.linalg_eigh import linalg_eigh
 from flag_gems.ops.linalg_eigvals import linalg_eigvals, linalg_eigvals_out
 from flag_gems.ops.linalg_householder_product import linalg_householder_product
 from flag_gems.ops.linalg_inv_ex import linalg_inv_ex
@@ -911,6 +914,7 @@ from flag_gems.ops.nuclear_norm import nuclear_norm
 from flag_gems.ops.one_hot import one_hot
 from flag_gems.ops.ones import ones
 from flag_gems.ops.ones_like import ones_like
+from flag_gems.ops.or_scalar import or_scalar
 from flag_gems.ops.or_tensor import or_tensor
 from flag_gems.ops.orgqr import orgqr, orgqr_out
 from flag_gems.ops.ormqr import ormqr
@@ -1425,6 +1429,7 @@ __all__ = [
     "_index_put_impl_",
     "_is_all_true",
     "_jagged_to_padded_dense_forward",
+    "_linalg_eigh",
     "_linalg_eigvals",
     "_linalg_slogdet",
     "_linalg_svd",
@@ -1765,6 +1770,7 @@ __all__ = [
     "diff",
     "digamma",
     "digamma_",
+    "dim",
     "dist",
     "div_mode",
     "div_mode_",
@@ -2046,6 +2052,7 @@ __all__ = [
     "linalg_det",
     "linalg_det_out",
     "linalg_eig",
+    "linalg_eigh",
     "linalg_eigvals",
     "linalg_eigvals_out",
     "linalg_householder_product",
@@ -2268,6 +2275,7 @@ __all__ = [
     "one_hot",
     "ones",
     "ones_like",
+    "or_scalar",
     "or_tensor",
     "orgqr",
     "orgqr_out",

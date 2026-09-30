@@ -37,9 +37,39 @@ bmm:
     TILE_K: 64
     GROUP_M: 1
 - META:
+    TILE_M: 64
+    TILE_N: 256
+    TILE_K: 64
+    GROUP_M: 1
+- META:
     TILE_M: 128
     TILE_N: 128
     TILE_K: 128
+    GROUP_M: 1
+- META:
+    TILE_M: 128
+    TILE_N: 256
+    TILE_K: 128
+    GROUP_M: 1
+- META:
+    TILE_M: 128
+    TILE_N: 256
+    TILE_K: 256
+    GROUP_M: 1
+- META:
+    TILE_M: 256
+    TILE_N: 64
+    TILE_K: 64
+    GROUP_M: 1
+- META:
+    TILE_M: 256
+    TILE_N: 128
+    TILE_K: 128
+    GROUP_M: 1
+- META:
+    TILE_M: 256
+    TILE_N: 128
+    TILE_K: 256
     GROUP_M: 1
 - META:
     TILE_M: 256
@@ -55,6 +85,53 @@ bmm:
     TILE_M: 1024
     TILE_N: 1024
     TILE_K: 1024
+    GROUP_M: 1
+
+baddbmm:
+- META:
+    TILE_M: 64
+    TILE_N: 64
+    TILE_K: 64
+    GROUP_M: 1
+- META:
+    TILE_M: 64
+    TILE_N: 256
+    TILE_K: 64
+    GROUP_M: 1
+- META:
+    TILE_M: 128
+    TILE_N: 128
+    TILE_K: 128
+    GROUP_M: 1
+- META:
+    TILE_M: 128
+    TILE_N: 256
+    TILE_K: 128
+    GROUP_M: 1
+- META:
+    TILE_M: 128
+    TILE_N: 256
+    TILE_K: 256
+    GROUP_M: 1
+- META:
+    TILE_M: 256
+    TILE_N: 64
+    TILE_K: 64
+    GROUP_M: 1
+- META:
+    TILE_M: 256
+    TILE_N: 128
+    TILE_K: 128
+    GROUP_M: 1
+- META:
+    TILE_M: 256
+    TILE_N: 128
+    TILE_K: 256
+    GROUP_M: 1
+- META:
+    TILE_M: 256
+    TILE_N: 256
+    TILE_K: 256
     GROUP_M: 1
 
 argmax:
@@ -474,15 +551,9 @@ mv:
     META:
       BLOCK_M: block_m
       BLOCK_N: block_n
-  block_m:
-  - 32
-  - 64
-  - 128
-  block_n:
-  - 1
-  - 2
-  - 4
-  - 8
+  block_m: [128, 256, 512, 1024, 2048, 4096]
+  block_n: [1, 2, 4, 8, 16, 32]
+
 
 nonzero:
 - gen: true
