@@ -698,6 +698,7 @@ _FULL_CONFIG = (
     ("diff", diff),
     ("digamma", digamma),
     ("digamma_", digamma_),
+    ("dimV", dimV, None, (SPARSE_DISPATCH_KEY,)),
     ("dist", dist),
     ("div.out", true_divide_out),
     ("div.Scalar", true_divide),
