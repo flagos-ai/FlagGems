@@ -36,8 +36,8 @@ def test__has_same_storage_numel_same_tensors():
     ref_b = utils.to_reference(b)
 
     assert torch.ops.aten._has_same_storage_numel(ref_a, ref_b)
-    assert flag_gems._has_same_storage_numel(a, b)
-    assert flag_gems._has_same_storage_numel(
+    assert flag_gems.has_same_storage_numel(a, b)
+    assert flag_gems.has_same_storage_numel(
         a, a
     ) == torch.ops.aten._has_same_storage_numel(ref_a, ref_a)
 
@@ -50,7 +50,7 @@ def test__has_same_storage_numel_different_tensors_same_shape():
     ref_b = utils.to_reference(b)
 
     ref_out = torch.ops.aten._has_same_storage_numel(ref_a, ref_b)
-    res_out = flag_gems._has_same_storage_numel(a, b)
+    res_out = flag_gems.has_same_storage_numel(a, b)
     assert res_out is False or res_out == ref_out  # separate storages
     assert res_out == ref_out
 
@@ -67,7 +67,7 @@ def test__has_same_storage_numel_view_of_same_storage():
     ref_b = ref_a[2:5]
 
     ref_out = torch.ops.aten._has_same_storage_numel(ref_a, ref_b)
-    res_out = flag_gems._has_same_storage_numel(a, b)
+    res_out = flag_gems.has_same_storage_numel(a, b)
     assert ref_out is True
     assert res_out == ref_out
 
@@ -80,7 +80,7 @@ def test__has_same_storage_numel_as_strided_views():
     ref_b = torch.as_strided(ref_a, (4,), (1,), 1)
 
     ref_out = torch.ops.aten._has_same_storage_numel(ref_a, ref_b)
-    res_out = flag_gems._has_same_storage_numel(a, b)
+    res_out = flag_gems.has_same_storage_numel(a, b)
     assert ref_out is True
     assert res_out == ref_out
 
@@ -89,7 +89,7 @@ def test__has_same_storage_numel_as_strided_views():
     d = torch.as_strided(c, (3,), (2,), 0)
     ref_c = utils.to_reference(c)
     ref_d = torch.as_strided(ref_c, (3,), (2,), 0)
-    assert flag_gems._has_same_storage_numel(
+    assert flag_gems.has_same_storage_numel(
         c, d
     ) == torch.ops.aten._has_same_storage_numel(ref_c, ref_d)
 
@@ -101,7 +101,7 @@ def test__has_same_storage_numel_different_dtypes():
     b = torch.randn(4, device=flag_gems.device, dtype=torch.float64)
     ref_a = utils.to_reference(a)
     ref_b = utils.to_reference(b)
-    assert flag_gems._has_same_storage_numel(
+    assert flag_gems.has_same_storage_numel(
         a, b
     ) == torch.ops.aten._has_same_storage_numel(ref_a, ref_b)
 
@@ -112,7 +112,7 @@ def test__has_same_storage_numel_different_dtypes():
     ref_base = utils.to_reference(base)
     ref_view = ref_base.view(torch.int64)
     ref_out = torch.ops.aten._has_same_storage_numel(ref_base, ref_view)
-    res_out = flag_gems._has_same_storage_numel(base, as_int64)
+    res_out = flag_gems.has_same_storage_numel(base, as_int64)
     assert ref_out is False
     assert res_out == ref_out
 
@@ -125,7 +125,7 @@ def test__has_same_storage_numel_different_shapes_different_storages():
     ref_b = utils.to_reference(b)
 
     ref_out = torch.ops.aten._has_same_storage_numel(ref_a, ref_b)
-    res_out = flag_gems._has_same_storage_numel(a, b)
+    res_out = flag_gems.has_same_storage_numel(a, b)
     assert ref_out is False
     assert res_out == ref_out
 
@@ -136,7 +136,7 @@ def test__has_same_storage_numel_empty_tensors():
     e2 = torch.empty(0, device=flag_gems.device)
     ref_e1 = utils.to_reference(e1)
     ref_e2 = utils.to_reference(e2)
-    assert flag_gems._has_same_storage_numel(
+    assert flag_gems.has_same_storage_numel(
         e1, e2
     ) == torch.ops.aten._has_same_storage_numel(ref_e1, ref_e2)
 
@@ -146,7 +146,7 @@ def test__has_same_storage_numel_empty_tensors():
     ref_a = utils.to_reference(a)
     ref_ev = ref_a[8:]
     ref_out = torch.ops.aten._has_same_storage_numel(ref_a, ref_ev)
-    res_out = flag_gems._has_same_storage_numel(a, empty_view)
+    res_out = flag_gems.has_same_storage_numel(a, empty_view)
     assert ref_out is True
     assert res_out == ref_out
 
@@ -158,7 +158,7 @@ def test__has_same_storage_numel_non_contiguous():
     b = a.t()
     ref_a = utils.to_reference(a)
     ref_b = ref_a.t()
-    assert flag_gems._has_same_storage_numel(
+    assert flag_gems.has_same_storage_numel(
         a, b
     ) == torch.ops.aten._has_same_storage_numel(ref_a, ref_b)
 
@@ -168,7 +168,7 @@ def test__has_same_storage_numel_non_contiguous():
     ref_c = utils.to_reference(c)
     ref_d = utils.to_reference(d)
     ref_out = torch.ops.aten._has_same_storage_numel(ref_c, ref_d)
-    res_out = flag_gems._has_same_storage_numel(c, d)
+    res_out = flag_gems.has_same_storage_numel(c, d)
     assert res_out == ref_out
 
 
@@ -178,10 +178,10 @@ def test__has_same_storage_numel_chunk_views():
     c1, c2 = torch.chunk(base, 2)
     ref_base = utils.to_reference(base)
     ref_c1, ref_c2 = torch.chunk(ref_base, 2)
-    assert flag_gems._has_same_storage_numel(
+    assert flag_gems.has_same_storage_numel(
         c1, c2
     ) == torch.ops.aten._has_same_storage_numel(ref_c1, ref_c2)
-    assert flag_gems._has_same_storage_numel(
+    assert flag_gems.has_same_storage_numel(
         base, c1
     ) == torch.ops.aten._has_same_storage_numel(ref_base, ref_c1)
 
@@ -199,12 +199,12 @@ def test__has_same_storage_numel_dtype_sweep(dtype):
     ref_a = utils.to_reference(a)
     ref_b = utils.to_reference(b)
     ref_out = torch.ops.aten._has_same_storage_numel(ref_a, ref_b)
-    res_out = flag_gems._has_same_storage_numel(a, b)
+    res_out = flag_gems.has_same_storage_numel(a, b)
     assert res_out == ref_out
 
     view = a[1:4]
     ref_view = ref_a[1:4]
-    assert flag_gems._has_same_storage_numel(
+    assert flag_gems.has_same_storage_numel(
         a, view
     ) == torch.ops.aten._has_same_storage_numel(ref_a, ref_view)
 
@@ -219,7 +219,7 @@ def test__has_same_storage_numel_dispatch_stability():
     ref_b = ref_a[2:5]
     expected = torch.ops.aten._has_same_storage_numel(ref_a, ref_b)
 
-    results = [flag_gems._has_same_storage_numel(a, b) for _ in range(5)]
+    results = [flag_gems.has_same_storage_numel(a, b) for _ in range(5)]
     assert all(r == expected for r in results)
 
     # Interleave an unrelated dispatch between calls. (aten::_nnz would raise
@@ -227,6 +227,6 @@ def test__has_same_storage_numel_dispatch_stability():
     for _ in range(3):
         torch.ops.aten._local_scalar_dense(a)
         torch.randn(4, device=flag_gems.device)
-        assert flag_gems._has_same_storage_numel(a, b) == expected
+        assert flag_gems.has_same_storage_numel(a, b) == expected
         torch.ops.aten._local_scalar_dense(b)
-        assert flag_gems._has_same_storage_numel(b, a) == expected
+        assert flag_gems.has_same_storage_numel(b, a) == expected

@@ -63,7 +63,7 @@ def test__has_same_storage_numel():
     bench = HasSameStorageNumelBenchmark(
         op_name="_has_same_storage_numel",
         torch_op=torch.ops.aten._has_same_storage_numel,
-        gems_op=flag_gems._has_same_storage_numel,
+        gems_op=flag_gems.has_same_storage_numel,
         dtypes=consts.FLOAT_DTYPES + consts.INT_DTYPES + consts.BOOL_DTYPES,
     )
     bench.run()
