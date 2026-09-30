@@ -19,6 +19,7 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+# Dimensions exercised for tile: scalar, 1-D, and up to 4-D repeat specs.
 TILE_DIMS = [(0,), (2,), (2, 0), (0, 2), (2, 2), (2, 2, 2), (2, 2, 2, 2)]
 
 

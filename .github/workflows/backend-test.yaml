@@ -90,13 +90,17 @@ jobs:
   # driver/runtime it needs is only set up inside this image.
   # Equivalent to:
   #   docker run --rm -it \
-  #     harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin-xre5.37.1:2.1.2 bash
+  #     harbor.baai.ac.cn/flagos-runtime/flagos-runtime-kunlunxin-xre5.37.1:2.2.0 bash
   # with GitHub Actions creating/starting the container and exec'ing each step.
   test-kunlunxin:
     if: ${{ inputs.backend == 'kunlunxin' }}
     runs-on: klx-p800
     container:
-      image: harbor.baai.ac.cn/flagos-base/flagos-base-kunlunxin-xre5.37.1:2.1.2
+      # Runtime image ships flagtree 0.7.0+xpu3.6 / triton preinstalled, so this
+      # job no longer runs setup.sh's flagtree --reinstall — the 0.6.1+xpu3.6
+      # wheel is a broken zip ("Failed to read from zip file"). See the install
+      # step below and .github/configs/backends/P800.yaml.
+      image: harbor.baai.ac.cn/flagos-runtime/flagos-runtime-kunlunxin-xre5.37.1:2.2.0
       options: --device /dev/xpu0 --device /dev/xpuctrl --shm-size=256g --ulimit memlock=-1 --ulimit stack=67108864
     concurrency:
       group: >-
@@ -126,25 +130,44 @@ jobs:
       # /__w, so ./ refs can't be found. Remote refs are fetched into the
       # runner's _actions cache and don't depend on the workspace path.
       - uses: flagos-ai/FlagGems/.github/actions/checkout-retry@master
-      - uses: flagos-ai/FlagGems/.github/actions/setup-flaggems@master
-        with:
-          backend: ${{ inputs.backend }}
-          gpu_check_script: ${{ inputs.gpu_check_script }}
+      # Do NOT use setup-flaggems here: it runs setup.sh, which builds a fresh
+      # .venv and unconditionally reinstalls flagtree from backends.yaml. On the
+      # runtime image the compiler and heavy deps (flagtree/torch/xmlir…) are
+      # already installed, so instead we:
+      #   1. install the PR's FlagGems code with --no-deps (test the checkout,
+      #      not the image's baked-in flag_gems, without perturbing deps), then
+      #   2. reconcile the backend's pinned deps against what the image ships —
+      #      versions that already match are left in place, only mismatches are
+      #      reinstalled at the backends.yaml version (the single source of
+      #      truth). This avoids both blind trust and a full reinstall.
+      #   3. add the pure test tooling (coverage/pytest/…; no flagtree/torch).
+      - name: Install FlagGems (kunlunxin, reconcile deps with image)
+        shell: bash --login -e -o pipefail {0}
+        run: |
+          pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+          pip config set global.extra-index-url "https://mirrors.aliyun.com/pypi/simple/ https://mirrors.cloud.tencent.com/pypi/simple/"
+          pip config set global.trusted-host "pypi.tuna.tsinghua.edu.cn mirrors.aliyun.com mirrors.cloud.tencent.com"
+          pip install --no-deps .
+          python3 tools/reconcile_backend_deps.py "${{ inputs.backend }}"
+          pip install .[test]
+      - name: Check GPU availability
+        if: ${{ inputs.gpu_check_script != '' }}
+        shell: bash --login -e -o pipefail {0}
+        run: bash ${{ inputs.gpu_check_script }}
 
       - name: Test alpha ops
         if: ${{ inputs.test_script != '' }}
         env:
           CHANGED_FILES: ${{ inputs.changed_files }}
-        shell: bash
+        shell: bash --login -e -o pipefail {0}
         run: |
           bash ${{ inputs.test_script }} ${{ inputs.backend }} ${{ inputs.pr_id }}
       - name: Run backend tests
         if: ${{ inputs.test_script == '' }}
-        shell: bash
+        shell: bash --login -e -o pipefail {0}
         env:
           CHANGED_FILES: ${{ inputs.changed_files }}
         run: |
-          source .venv/bin/activate
           tools/test-op.sh ${{ inputs.pr_id }}
 
   # MetaX runs inside a container on whichever metax-mxc550-* server this
