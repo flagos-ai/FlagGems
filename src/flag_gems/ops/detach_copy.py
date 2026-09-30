@@ -55,6 +55,25 @@ def _detach_copy_strided(
     tl.store(out_ptr + offsets, val, mask=mask)
 
 
+def _resolve_lazy_bits(input: torch.Tensor) -> torch.Tensor:
+    """Materialize lazy conjugate / negative bits before any raw storage read.
+
+    Both copy kernels load the underlying storage directly, so a view carrying
+    a lazy bit — e.g. ``torch._neg_view(x)`` or ``x.conj()`` — would be copied
+    bitwise: ``detach_copy(torch._neg_view(x))`` would return ``x`` instead of
+    the logical value ``-x``. ``resolve_conj`` / ``resolve_neg`` return the
+    input unchanged when no bit is set and otherwise materialize the logical
+    values into fresh storage, which is also what the native operator observes
+    before copying (its freshly allocated result carries no lazy bits).
+    """
+    if input.is_conj():
+        input = input.resolve_conj()
+    is_neg = getattr(input, "is_neg", None)
+    if is_neg is not None and is_neg():
+        input = input.resolve_neg()
+    return input
+
+
 def detach_copy(self: torch.Tensor) -> torch.Tensor:
     """Return a copy of ``self`` detached from the autograd graph.
 
@@ -62,41 +81,52 @@ def detach_copy(self: torch.Tensor) -> torch.Tensor:
     materialized into freshly allocated memory (equivalent to
     ``self.detach().clone()``), so the result never aliases the input.
 
-    Contiguous inputs take a flat 1-D copy kernel; non-contiguous inputs
-    take a strided kernel driven by a device-side shape/stride metadata
-    buffer (``meta[2*i] = shape[i]``, ``meta[2*i+1] = stride[i]``) and
-    always produce a contiguous output, matching the native operator.
+    Contiguous inputs take a flat 1-D copy kernel; non-contiguous inputs take
+    a strided kernel driven by a device-side shape/stride metadata buffer
+    (``meta[2*i] = shape[i]``, ``meta[2*i+1] = stride[i]``). Either way the
+    output is freshly allocated, dense and contiguous, matching the native
+    operator, which also returns a contiguous tensor for a non-contiguous
+    input.
+
+    Complex inputs stay on the device path: they are resolved of their lazy
+    conjugate/negative bits and reinterpreted through ``torch.view_as_real``
+    as interleaved (real, imag) pairs, copied by the same kernels, and
+    reassembled with ``torch.view_as_complex`` (Triton has no complex dtype
+    mapping, so the kernels themselves stay real-valued).
     """
     logger.debug("GEMS DETACH_COPY")
+    # Lazy conjugate/negative bits must be materialized before the kernels
+    # read raw storage (no-op views are returned untouched).
+    self = _resolve_lazy_bits(self)
+    is_complex = self.dtype.is_complex
+    if is_complex:
+        self = torch.view_as_real(self)
     n = self.numel()
-    if self.dtype.is_complex:
-        # Triton cannot load/store complex pointers (no dtype mapping for
-        # complex64/complex128 in the current Triton version): dispatching a
-        # complex tensor into the kernels below fails with KeyError. Native
-        # aten::detach_copy supports complex inputs natively, so route them
-        # below the autograd key before any Triton kernel is entered.
-        with torch._C._AutoDispatchBelowAutograd():
-            return torch.ops.aten.detach_copy(self)
+    # Fresh contiguous storage, exactly like native detach_copy. ``empty_like``
+    # would preserve a non-contiguous input's strides, which both the kernels'
+    # linear stores and the native layout contract rule out.
+    out = torch.empty(self.shape, dtype=self.dtype, device=self.device)
+    if n == 0:
+        # No elements to read: the freshly allocated (dense) output is already
+        # the required result, and a grid of (0,) must not be launched.
+        return torch.view_as_complex(out) if is_complex else out
     if self.is_contiguous():
-        out = torch.empty_like(self)
-        if n == 0:
-            return out
         BLOCK = 1024
         grid = (triton.cdiv(n, BLOCK),)
         with torch_device_fn.device(self.device):
             _detach_copy_flat[grid](self, out, n, BLOCK_SIZE=BLOCK, num_warps=4)
-        return out
     else:
-        out = torch.empty(self.shape, dtype=self.dtype, device=self.device)
-        if n == 0:
-            return out
         shape = self.shape
         stride = self.stride()
         nd = len(shape)
-        meta = torch.empty(2 * nd, dtype=torch.int64, device=self.device)
-        for i in range(nd):
-            meta[2 * i] = shape[i]
-            meta[2 * i + 1] = stride[i]
+        # One host->device transfer for the shape/stride metadata; filling a
+        # device tensor with a scalar ``meta[i] = v`` loop would launch
+        # 2 * ndim separate device operations before the copy kernel.
+        meta = torch.tensor(
+            [v for s, st in zip(shape, stride) for v in (s, st)],
+            dtype=torch.int64,
+            device=self.device,
+        )
         # Tuning measured on H20 (see the task report): the strided kernel's
         # per-element div/mod address computation prefers narrower blocks than
         # the flat path — BLOCK=256 beats the shared 1024 default by 10-58%
@@ -107,4 +137,4 @@ def detach_copy(self: torch.Tensor) -> torch.Tensor:
             _detach_copy_strided[grid](
                 self, out, n, meta, ndim=nd, BLOCK_SIZE=BLOCK, num_warps=4
             )
-        return out
+    return torch.view_as_complex(out) if is_complex else out
