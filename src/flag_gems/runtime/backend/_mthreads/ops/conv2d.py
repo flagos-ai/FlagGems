@@ -2148,7 +2148,16 @@ class Conv2d(torch.autograd.Function):
         forward_pad_w = pad_w
         used_fused_pad_cl = False
 
-        use_packed_weight = _should_use_weight_prepack(batch, out_h, out_w)
+        # Degenerate-width (W == 1, KW == 1) convolutions, i.e. every
+        # conv1d-via-unsqueeze call, must stay on the single OIHW kernel.
+        # The packed/interior row-wise paths tile the output-width dimension
+        # with BLOCK_NI_HO_WO lanes per program, which degenerates to a
+        # single active lane (1/128 utilization) when out_w == 1, and the
+        # interior split adds per-row programs that dominate runtime.
+        is_degenerate_width = kernel_w == 1 and out_w == 1
+        use_packed_weight = (
+            _should_use_weight_prepack(batch, out_h, out_w) and not is_degenerate_width
+        )
 
         # 3x3 full-output routing.
         #
