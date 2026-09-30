@@ -3,6 +3,7 @@
 Candidate dispatch, Preflight reports and profiling hooks belong to upstream
 benchmark.base. This helper does not add another candidate registry.
 """
+
 import time
 from contextlib import nullcontext
 
@@ -10,6 +11,7 @@ import torch
 import yaml
 
 from . import base, consts
+
 
 def _clone_benchmark_inputs(value):
     # The opt-in cases use independent dense/sparse tensors and scalar kwargs.
@@ -28,6 +30,7 @@ class OperatorBenchmark(base.GenericBenchmark):
         super().__init__(*args, **kwargs)
         self.fresh_inputs = fresh_inputs
 
+    @base.reference_uses_torch_op
     def get_latency(self, op, *args, **kwargs):
         if self.fresh_inputs:
             return self._get_fresh_input_latency(op, args, kwargs)
@@ -57,7 +60,11 @@ class OperatorBenchmark(base.GenericBenchmark):
                     fresh_args, fresh_kwargs = _clone_benchmark_inputs((args, kwargs))
                     base.torch_device_fn.synchronize()
                     hook = base.Config.profile_hook
-                    scope = hook(backend=base.vendor_name, case_id=case.case_id) if hook else None
+                    scope = (
+                        hook(backend=base.vendor_name, case_id=case.case_id)
+                        if hook
+                        else None
+                    )
                     with scope if scope is not None else nullcontext():
                         op(*fresh_args, **fresh_kwargs)
                         base.torch_device_fn.synchronize()
@@ -73,9 +80,15 @@ class OperatorBenchmark(base.GenericBenchmark):
         selected = configured.get(self.op_name, configured.get(type(self).__name__, {}))
 
         def as_tuple(value):
-            return tuple(as_tuple(item) for item in value) if isinstance(value, (tuple, list)) else value
+            return (
+                tuple(as_tuple(item) for item in value)
+                if isinstance(value, (tuple, list))
+                else value
+            )
 
-        self.shapes = [as_tuple(shape) for shape in selected.get("shapes", default_shapes)]
+        self.shapes = [
+            as_tuple(shape) for shape in selected.get("shapes", default_shapes)
+        ]
         self.shape_desc = selected.get("shape_desc", self.DEFAULT_SHAPE_DESC)
 
     def _get_fresh_input_latency(self, op, args, kwargs):

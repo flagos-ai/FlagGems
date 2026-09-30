@@ -59,6 +59,17 @@ else:
         pass
 
 
+def reference_uses_torch_op(method):
+    """Declare that a timing override keeps the standard Torch reference call.
+
+    The declaration belongs to this function, so a subclass replacing it must
+    declare its own contract. Reference-only still bypasses timing and candidate
+    dispatch, and custom input measurement remains unsupported.
+    """
+    method._reference_uses_torch_op = method
+    return method
+
+
 def get_iter_count(fn):
     if Config.mode == consts.BenchMode.OPERATOR:
         torch_device_fn.synchronize()
@@ -620,9 +631,14 @@ class Benchmark:
 
     def _run_reference_cases(self, case_ids: Optional[Collection[str]]):
         """Run the original timing baseline once; never enter Gems dispatch."""
+        latency_method = getattr(self.get_latency, "__func__", None)
         if (
             not self.supports_cases()
-            or getattr(self.get_latency, "__func__", None) is not Benchmark.get_latency
+            or (
+                latency_method is not Benchmark.get_latency
+                and getattr(latency_method, "_reference_uses_torch_op", False)
+                is not latency_method
+            )
             or getattr(self._measure_input, "__func__", None)
             is not Benchmark._measure_input
         ):
