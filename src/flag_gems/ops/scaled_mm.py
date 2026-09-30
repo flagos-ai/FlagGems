@@ -45,6 +45,11 @@ def _heur_even_k(args):
     strategy=["align32", "align32", "align32", "align32", "align32"],
     warmup=2,
     rep=4,
+    # BLOCK_K feeds a tl.dot that the fp8 path requires to be at least 32
+    # wide. FlagTree's auto-adjust-block-size sizes BLOCK_K from the K extent,
+    # so a K below 32 (the fp8 case here uses K=16) would shrink it past that
+    # limit and fail to compile.
+    disable_aabs=True,
 )
 @triton.heuristics({"EVEN_K": _heur_even_k})
 @triton.jit

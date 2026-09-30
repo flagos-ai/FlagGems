@@ -99,7 +99,10 @@ _DKV_CONFIGS = [
 
 @triton.autotune(
     configs=_DQ_CONFIGS,
-    key=["seqlen_q", "seqlen_k", "HEAD_DIM"],
+    # HAS_BIAS/DO_BIAS_GRAD must be part of the key: they change the kernel's
+    # shared-memory footprint, and a config tuned without an attention bias
+    # can exceed the device limit once recompiled with one.
+    key=["seqlen_q", "seqlen_k", "HEAD_DIM", "HAS_BIAS", "DO_BIAS_GRAD"],
 )
 @triton.jit
 def _flash_attn_bwd_dq_fused(
@@ -307,7 +310,10 @@ def _flash_attn_bwd_dq_fused(
 
 @triton.autotune(
     configs=_DKV_CONFIGS,
-    key=["seqlen_q", "seqlen_k", "HEAD_DIM"],
+    # HAS_BIAS must be part of the key: it changes the kernel's shared-memory
+    # footprint, and a config tuned without an attention bias can exceed the
+    # device limit once recompiled with one.
+    key=["seqlen_q", "seqlen_k", "HEAD_DIM", "HAS_BIAS"],
 )
 @triton.jit
 def _flash_attn_bwd_dkv(
@@ -535,7 +541,10 @@ def _flash_attn_bwd_dkv(
 
 @triton.autotune(
     configs=_DQ_CONFIGS,
-    key=["max_seqlen_q", "max_seqlen_k", "HEAD_DIM"],
+    # HAS_BIAS/DO_BIAS_GRAD must be part of the key: they change the kernel's
+    # shared-memory footprint, and a config tuned without an attention bias
+    # can exceed the device limit once recompiled with one.
+    key=["max_seqlen_q", "max_seqlen_k", "HEAD_DIM", "HAS_BIAS", "DO_BIAS_GRAD"],
 )
 @triton.jit
 def _flash_attn_bwd_varlen_dq_fused(
@@ -745,7 +754,10 @@ def _flash_attn_bwd_varlen_dq_fused(
 
 @triton.autotune(
     configs=_DKV_CONFIGS,
-    key=["max_seqlen_q", "max_seqlen_k", "HEAD_DIM"],
+    # HAS_BIAS must be part of the key: it changes the kernel's shared-memory
+    # footprint, and a config tuned without an attention bias can exceed the
+    # device limit once recompiled with one.
+    key=["max_seqlen_q", "max_seqlen_k", "HEAD_DIM", "HAS_BIAS"],
 )
 @triton.jit
 def _flash_attn_bwd_varlen_dkv(

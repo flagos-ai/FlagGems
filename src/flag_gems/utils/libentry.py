@@ -1298,6 +1298,7 @@ def libtuner(
     flagtune_yaml_path=None,
     flagtune_pre_hook=None,
     flagtune_dtype_resolver=None,
+    disable_aabs=False,
 ):
     """Decorator for triton library autotuner.
 
@@ -1311,6 +1312,11 @@ def libtuner(
     FlagTune Args:
         use_cuda_graph: Use CUDA Graph benchmarking for this ordinary tuner.
             The default is ``False`` and uses ``triton.testing.do_bench``.
+        disable_aabs: Keep the configured block sizes for this kernel when
+            FlagTree's auto-adjust-block-size is active. AABS sizes a block
+            from the extent of the ``tl.arange(0, BLOCK)`` that feeds it, so a
+            small runtime dimension can shrink the block below a constraint the
+            kernel relies on (an fp8 ``tl.dot`` needs K >= 32, for example).
         flagtune_op_name: FlagGems legacy runtime enablement key.
         flagtune_expand_op_name: Independent legacy expanded-config name; it
             defaults to ``flagtune_op_name``.
@@ -1345,7 +1351,7 @@ def libtuner(
 
     def decorator(fn):
         """Construct the selected policy class around a Triton JIT kernel."""
-        return policy(
+        tuner = policy(
             fn,
             fn.arg_names,
             configs,
@@ -1369,6 +1375,8 @@ def libtuner(
             flagtune_variant=flagtune_variant,
             flagtune_dtype_resolver=flagtune_dtype_resolver,
         )
+        tuner.disable_aabs = disable_aabs
+        return tuner
 
     return decorator
 
@@ -1478,7 +1486,8 @@ class LibEntry(triton.KernelInterface):
 
     def _first_run(self, *args, **kwargs):
         """Run the tuner once for a fresh entry key, with AABS disabled when
-        the caller passes constexpr values as keyword arguments.
+        the caller passes constexpr values as keyword arguments, or when the
+        kernel opted out with ``libtuner(disable_aabs=True)``.
 
         FlagTree's AABS (auto-adjust-block-size) treats ``tl.arange(0, X)``
         constexprs as tunable block sizes and writes them back into
@@ -1492,7 +1501,7 @@ class LibEntry(triton.KernelInterface):
         if not _HAS_FLAGTREE_AABS:
             return self.fn.run(*args, **kwargs)
         knobs_obj = triton.knobs.autotuning
-        if not any(
+        if not getattr(self.fn, "disable_aabs", False) and not any(
             p.is_constexpr and p.name in kwargs for p in self.jit_function.params
         ):
             return self.fn.run(*args, **kwargs)

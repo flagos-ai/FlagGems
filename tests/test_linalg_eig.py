@@ -40,14 +40,26 @@ def test_linalg_eig(shape, dtype):
     ref_w, _ = torch.linalg.eig(ref_inp)
     res_w, res_v = flag_gems.ops.linalg_eig(inp)
 
-    # eigenvalue set: sort by (real, imag) before comparing
-    def _sort_key(w):
-        r = torch.view_as_real(w)
-        return torch.argsort(r[:, 0] * 1e6 + r[:, 1])
-
-    res_sorted = res_w[_sort_key(res_w)]
-    ref_sorted = ref_w[_sort_key(ref_w)]
-    utils.gems_assert_close(res_sorted, ref_sorted, res_w.dtype, atol=1e-3)
+    # Eigenvalues carry no order and no fixed phase, so pair each reference
+    # eigenvalue with its nearest kernel counterpart before comparing. Sorting
+    # both lists by a scalar key is not enough: two eigenvalues with close real
+    # parts can still be ordered differently on the two sides.
+    assert len(res_w) == len(ref_w)
+    ref_cpu = ref_w.to(torch.complex128).cpu()
+    res_cpu = res_w.to(torch.complex128).cpu()
+    remaining = list(range(len(res_cpu)))
+    matched = []
+    for ref_val in ref_cpu:
+        dists = [(abs(res_cpu[i] - ref_val), i) for i in remaining]
+        _, best = min(dists)
+        remaining.remove(best)
+        matched.append(res_cpu[best])
+    utils.gems_assert_close(
+        torch.stack(matched).to(res_w.dtype).to(res_w.device),
+        ref_w,
+        res_w.dtype,
+        atol=1e-3,
+    )
 
     # reconstruction residual A @ V - V @ diag(w)
     a_c = inp.to(res_v.dtype)
