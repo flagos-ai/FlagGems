@@ -17,6 +17,7 @@ import logging
 import torch
 import triton
 import triton.language as tl
+from _kunlunxin.utils.bf16_fast_store import bf16_fast_store
 
 from flag_gems.utils import triton_lang_extension as ext
 
@@ -153,6 +154,14 @@ def atan2_kernel_unmasked(
 
 
 def _launch(x, y, out):
+    # bf16 outputs take the fast f32->bf16 store lowering for this launch only;
+    # see _kunlunxin.utils.bf16_fast_store for why it is scoped rather than set
+    # globally, and for the one-ULP tie-bias difference from the default path.
+    with bf16_fast_store(out.dtype):
+        return _launch_impl(x, y, out)
+
+
+def _launch_impl(x, y, out):
     n_elements = x.numel()
     if n_elements == 0:
         return
