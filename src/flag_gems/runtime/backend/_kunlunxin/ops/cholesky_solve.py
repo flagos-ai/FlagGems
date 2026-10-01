@@ -42,6 +42,7 @@ import triton.language as tl
 from flag_gems.utils import libentry
 
 from .contiguous import contiguous
+from .copy import copy_
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +51,7 @@ _SPLIT_HEAD = 128
 
 
 def _broadcast_shapes(*shapes):
-    """Host-side broadcast of shape tuples (equivalent of torch.broadcast_shapes)."""
+    """Host-side broadcast of shape tuples."""
     rank = max(len(shape) for shape in shapes)
     padded = [(1,) * (rank - len(shape)) + tuple(shape) for shape in shapes]
     out = []
@@ -121,7 +122,7 @@ def _copy_cholesky_solve_out(result: torch.Tensor, out: torch.Tensor) -> torch.T
                 stacklevel=3,
             )
         out.resize_(result.shape)
-    out.copy_(result)
+    copy_(out, result)
     return out
 
 
@@ -339,6 +340,7 @@ def _cholesky_dot_right_kernel(
     offU,
     bA,
     bY,
+    bU,
     sA,
     sY,
     sU,
@@ -356,7 +358,7 @@ def _cholesky_dot_right_kernel(
     mm = tl.arange(0, MBN)
     Ap = A_ptr + offA + batch * bA
     Yp = Y_ptr + offY + batch * bY + col
-    Up = UPD_ptr + offU + col * sU
+    Up = UPD_ptr + offU + batch * bU + col * sU
     At = tl.load(Ap + mm[:, None] * sA + rows[None, :])
     yv = tl.load(Yp + mm * sY)
     upd = tl.dot(yv[None, :], At, input_precision="ieee")
@@ -374,6 +376,7 @@ def _cholesky_apply_sub_kernel(
     offU,
     bZI,
     bZO,
+    bU,
     sZI,
     sZO,
     sU,
@@ -388,7 +391,7 @@ def _cholesky_apply_sub_kernel(
     rows = tl.arange(0, KBN)
     ZIp = ZIN_ptr + offZI + batch * bZI + col
     ZOp = ZOUT_ptr + offZO + batch * bZO + col
-    Up = UPD_ptr + offU + col * sU
+    Up = UPD_ptr + offU + batch * bU + col * sU
     t = tl.load(ZIp + rows * sZI)
     u = tl.load(Up + rows)
     tl.store(ZOp + rows * sZO, t - u)
@@ -443,8 +446,10 @@ def _solve_two_block(X, B, L, batch_size, N, nrhs, upper):
     sL = Lk.stride(1)
     bB = Bk.stride(0)
     sB = Bk.stride(1)
-    scratch = torch.empty((nrhs, h1), dtype=X.dtype, device=X.device)
-    sU = scratch.stride(0)
+    # Each (batch, rhs) program owns a separate update vector.
+    scratch = torch.empty((batch_size, nrhs, h1), dtype=X.dtype, device=X.device)
+    bU = scratch.stride(0)
+    sU = scratch.stride(1)
     off_x1 = 0
     off_x2 = h1 * sX
     off_l11 = 0
@@ -529,6 +534,7 @@ def _solve_two_block(X, B, L, batch_size, N, nrhs, upper):
             0,
             bL,
             bX,
+            bU,
             sL,
             sX,
             sU,
@@ -551,6 +557,7 @@ def _solve_two_block(X, B, L, batch_size, N, nrhs, upper):
             0,
             bzi,
             bX,
+            bU,
             szi,
             sX,
             sU,
