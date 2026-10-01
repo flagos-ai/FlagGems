@@ -34,7 +34,7 @@ from . import test_utils as tu
 _NUMPY_T_DTYPES = (
     list(tu.REQUIRED_DTYPES)
     + [torch.bool, torch.complex64, torch.complex32, torch.int16]
-    + ([torch.float64] if utils.fp64_is_supported else [])
+    + ([torch.float64, torch.complex128] if utils.fp64_is_supported else [])
 )
 
 
@@ -222,7 +222,8 @@ _BACKWARD_CASES = tu.selected_cases(
 @pytest.mark.numpy_T
 @pytest.mark.parametrize("shape", _BACKWARD_CASES)
 @pytest.mark.parametrize(
-    "dtype", [torch.float16, torch.float32, torch.bfloat16, torch.float64]
+    "dtype",
+    [dtype for dtype in _NUMPY_T_DTYPES if dtype.is_floating_point or dtype.is_complex],
 )
 def test_numpy_T_backward(shape, dtype):
     inp = tu.make_input(dtype, shape, ["-1", "1"]).detach().requires_grad_(True)

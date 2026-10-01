@@ -47,7 +47,7 @@ _COMPLEX_DTYPES = [torch.complex64] + (
 
 # Only matrices and the deprecated scalar form are valid positive inputs.
 _MATRIX_H_SHAPES = tu.selected_cases(
-    [(), (1, 1), (16, 16), (1024, 1024), (20, 320), (256, 8192), (8192, 32)],
+    [(), (1, 1), (2, 19), (16, 16), (1024, 1024), (20, 320), (256, 8192), (8192, 32)],
     quick=[(), (1, 1), (2, 19)],
 )
 
@@ -84,6 +84,12 @@ _BACKWARD_CASES = [
 ]
 if utils.fp64_is_supported:
     _BACKWARD_CASES.append(((8, 8), torch.float64))
+_BACKWARD_CASES += [
+    ((4, 6), dtype)
+    for dtype in _MATRIX_H_DTYPES
+    if (dtype.is_floating_point or dtype.is_complex)
+    and dtype not in {row[1] for row in _BACKWARD_CASES}
+]
 
 _SPECIAL_VALUE_CASES = tu.special_value_cases(_MATRIX_H_DTYPES)
 

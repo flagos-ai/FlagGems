@@ -187,7 +187,8 @@ def test_mT_view_writes_through(shape, layout):
 
 
 _MT_BACKWARD_DTYPES = tu.selected_cases(
-    [torch.float32, torch.float16, torch.bfloat16], quick=[]
+    [dtype for dtype in _MT_DTYPES if dtype.is_floating_point or dtype.is_complex],
+    quick=[],
 )
 
 

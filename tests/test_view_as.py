@@ -62,6 +62,11 @@ _VIEW_AS_DTYPES = [
     if _dtype_supported(dtype)
 ]
 _BACKWARD_DTYPES = [
+    dtype for dtype in _VIEW_AS_DTYPES if dtype.is_floating_point or dtype.is_complex
+]
+# Expanded-base gradients reduce over repeated storage positions. Keep their
+# existing real-dtype exact-sum fixtures separate from pure view gradients.
+_ACCUMULATING_DTYPES = [
     dtype
     for dtype in (torch.float16, torch.float32, torch.bfloat16, torch.float64)
     if _dtype_supported(dtype)
@@ -265,7 +270,7 @@ BACKWARD_CASES = tu.selected_cases(
     ],
     quick=[],
 )
-EXPANDED_BACKWARD_CASES = tu.selected_cases(_BACKWARD_DTYPES, quick=[])
+EXPANDED_BACKWARD_CASES = tu.selected_cases(_ACCUMULATING_DTYPES, quick=[])
 NO_GRAD_CASES = tu.selected_cases(_BACKWARD_DTYPES, quick=[])
 
 # Positive special values are default-only as well.

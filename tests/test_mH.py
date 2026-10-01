@@ -37,7 +37,14 @@ _MH_COMPLEX_DTYPES = [
     dtype for dtype in (torch.complex64, torch.complex128) if dtype in _MH_DTYPES
 ]
 
-_MH_SHAPES = [shape for shape in tu.selected_shapes() if len(shape) >= 2]
+_MH_SHAPES = [shape for shape in tu.selected_shapes() if len(shape) >= 2] + [
+    (1, 1),
+    (1, 7),
+    (7, 1),
+    (0, 3),
+    (3, 0),
+    (2, 0, 4),
+]
 
 # Inputs that are already transposed, strided or offset windows stay views, so
 # the result has to re-derive strides and keep the shared storage offset. Every
@@ -67,14 +74,8 @@ _MH_BACKWARD_ROWS = tu.selected_cases(
     [
         (shape, dtype)
         for shape in ((4, 6), (7, 13, 29), (2, 3, 4))
-        for dtype in (
-            torch.float16,
-            torch.float32,
-            torch.bfloat16,
-            torch.float64,
-            torch.complex64,
-        )
-        if dtype in _MH_DTYPES
+        for dtype in _MH_DTYPES
+        if dtype.is_floating_point or dtype.is_complex
     ],
     quick=[],
 )
