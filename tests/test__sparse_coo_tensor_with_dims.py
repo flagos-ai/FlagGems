@@ -305,7 +305,12 @@ _NEGATIVE_ROWS = [
     ids=[row[0] for row in _NEGATIVE_ROWS],
 )
 def test_sparse_coo_tensor_with_dims_invalid(args, kwargs, out_kind):
-    call_kwargs = dict(kwargs)
+    call_kwargs = (
+        {"dtype": torch.float32, "layout": _SPARSE_COO, "device": flag_gems.device}
+        if out_kind is None
+        else {}
+    )
+    call_kwargs.update(kwargs)
     if out_kind == "dense":
         call_kwargs["out"] = torch.zeros(3, 4, device=flag_gems.device)
     elif out_kind == "non_tensor":

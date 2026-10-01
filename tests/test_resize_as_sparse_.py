@@ -29,7 +29,7 @@ from . import test_utils as tu
 # * backward -- the operator registers no derivative ("derivative for
 #   aten::resize_as_sparse_ is not implemented").
 # * broadcast -- sparse COO has no broadcasting; the template must keep the
-#   rank, both split counts and every non-empty extent of ``self``.
+#   rank and split counts for non-empty ``self``; its extents may grow.
 # * parameter sweeps -- the schema takes two tensors and has no bool/int/float
 #   parameter with a default or an interesting boundary.
 # A native probe of this overload accepted every dtype listed here, so there is
@@ -296,5 +296,39 @@ def test_resize_as_sparse_invalid_template(case, dtype):
 def test_resize_as_sparse_non_tensor_template(dtype):
     # The schema requires a Tensor template; a sequence must not be accepted.
     inp = _sparse_coo((4, 5), 2, 3, dtype, _DEFAULT_RANGE)
-    with pytest.raises((TypeError, ValueError, RuntimeError, AttributeError)):
+    with pytest.raises((TypeError, ValueError, RuntimeError)):
         flag_gems.resize_as_sparse_(inp, [6, 5])
+
+
+@pytest.mark.resize_as_sparse_
+@pytest.mark.parametrize(
+    "dtype",
+    tu.selected_cases(
+        [
+            torch.float16,
+            torch.bfloat16,
+            torch.float32,
+            torch.float64,
+            torch.float8_e4m3fn,
+            torch.float8_e5m2,
+            torch.complex64,
+            torch.complex128,
+        ],
+        quick=[],
+    ),
+)
+def test_resize_as_sparse_missing_derivative(dtype):
+    indices = torch.tensor([[0, 1], [1, 2]], dtype=torch.int64, device=flag_gems.device)
+    values = tu.make_input(dtype, (2,), ["-1", "1"]).requires_grad_()
+    inp = torch.sparse_coo_tensor(indices, values, (3, 4))
+    template = _make_template("sparse", (5, 4), 2, dtype)
+    res = flag_gems.resize_as_sparse_(inp, template)
+    assert res is inp
+    assert res.requires_grad
+    grad = torch.sparse_coo_tensor(
+        indices, torch.ones(2, device=flag_gems.device).to(dtype), res.shape
+    )
+    with pytest.raises(
+        RuntimeError, match="derivative for aten::resize_as_sparse_ is not implemented"
+    ):
+        torch.autograd.grad(res, values, grad)

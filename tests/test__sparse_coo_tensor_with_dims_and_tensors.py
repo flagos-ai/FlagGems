@@ -20,7 +20,7 @@ import flag_gems
 from . import test_utils as tu
 
 # Dtypes this constructor accepts with int64 indices and a matching `dtype`
-# argument (probing the real signature rejects the others).
+# argument, including complex values.
 SUPPORTED_DTYPES = [
     torch.int8,
     torch.uint8,
@@ -34,6 +34,8 @@ SUPPORTED_DTYPES = [
     torch.float64,
     torch.int16,
     torch.bool,
+    torch.complex64,
+    torch.complex128,
 ]
 
 # The shared matrix already drops e4m3fn's inf scenarios (that dtype has no
@@ -50,10 +52,9 @@ _SPECIAL_VALUE_CASES = tu.selected_cases(
 # (size, sparse_dim, dense_dim) triple and nnz counts the stored entries, so each
 # spec shape is carried by one row that keeps its rank. quick keeps every cheap
 # branch (0-dim, singleton, empty nnz, batch, dense tail, 3-dim) and drops only
-# the large rows. Broadcast and backward do not apply: there is no elementwise
-# pair, and the stored members of the result are the caller's own leaves, so
-# autograd reports "element 0 of tensors does not require grad" instead of a
-# grad_fn.
+# the large rows. There is no elementwise pair to broadcast. Backward maps
+# sparse output gradients to the values input; FP8 backward lacks the native
+# binary_op_intersection_cuda kernel on this backend.
 _QUICK_SIZE_ROWS = [
     pytest.param(((), 0, 0, 0), id="zero-dim"),
     pytest.param(((1,), 1, 0, 1), id="singleton"),
@@ -322,7 +323,7 @@ def test__sparse_coo_tensor_with_dims_and_tensors_out(dtype):
         device=ref_buf_values.device,
         dtype=dtype,
     )
-    res_buffer = flag_gems._sparse_coo_tensor_with_dims_and_tensors(
+    res_buffer = torch.ops.aten._sparse_coo_tensor_with_dims_and_tensors(
         sparse_dim,
         dense_dim,
         list(size),
@@ -455,3 +456,59 @@ def test__sparse_coo_tensor_with_dims_and_tensors_rejects_dense_out():
         flag_gems._sparse_coo_tensor_with_dims_and_tensors(
             2, 0, [4, 5], indices, values, out=dense
         )
+
+
+@pytest.mark.sparse_coo_tensor_with_dims_and_tensors
+@pytest.mark.parametrize("dense_shape", [(), (2,)])
+@pytest.mark.parametrize("duplicate", [False, True])
+@pytest.mark.parametrize(
+    "dtype",
+    tu.selected_cases(
+        [
+            torch.float16,
+            torch.bfloat16,
+            torch.float32,
+            torch.float64,
+            torch.complex64,
+            torch.complex128,
+        ],
+        quick=[],
+    ),
+)
+def test_sparse_coo_tensor_with_dims_and_tensors_backward(
+    dtype, dense_shape, duplicate
+):
+    size = (3, 4) + dense_shape
+    indices = torch.tensor(
+        [[0, 1, 1], [1, 2, 2 if duplicate else 3]],
+        dtype=torch.int64,
+        device=flag_gems.device,
+    )
+    values = tu.make_input(dtype, (3,) + dense_shape, ["-1", "1"]).requires_grad_()
+    ref_indices = tu.to_reference(indices)
+    ref_values = tu.to_reference(values).detach().requires_grad_()
+    ref_out = torch.ops.aten._sparse_coo_tensor_with_dims_and_tensors(
+        2,
+        len(dense_shape),
+        list(size),
+        ref_indices,
+        ref_values,
+        layout=torch.sparse_coo,
+        device=ref_values.device,
+        dtype=dtype,
+    )
+    res_out = flag_gems._sparse_coo_tensor_with_dims_and_tensors(
+        2,
+        len(dense_shape),
+        list(size),
+        indices,
+        values,
+        layout=torch.sparse_coo,
+        device=values.device,
+        dtype=dtype,
+    )
+    grad_values = tu.make_input(dtype, (3,) + dense_shape, ["-1", "1"])
+    grad = torch.sparse_coo_tensor(indices, grad_values, size)
+    ref_grad = torch.autograd.grad(ref_out, ref_values, tu.to_reference(grad))[0]
+    res_grad = torch.autograd.grad(res_out, values, grad)[0]
+    tu.assert_result_equal(res_grad, ref_grad)

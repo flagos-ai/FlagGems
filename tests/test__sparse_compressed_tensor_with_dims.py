@@ -507,8 +507,8 @@ def test_cpu_pin_memory(pin_memory):
         "cpu",
         index_dtype=torch.int64,
     )
-    if pin_memory:
-        assert _parts(res)[0].is_pinned()
+    for res_part, ref_part in zip(_parts(res), _parts(ref)):
+        assert res_part.is_pinned() == ref_part.is_pinned() == pin_memory
 
 
 @pytest.mark.sparse_compressed_tensor_with_dims
