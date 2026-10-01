@@ -119,30 +119,24 @@ def test_is_inference_scalar_and_empty(dtype, shape, inference):
 
 @pytest.mark.is_inference
 @pytest.mark.parametrize("dtype", _BOUNDARY_DTYPES)
-def test_is_inference_context_is_not_tensor_state(dtype):
-    plain = tu.make_input(dtype, (4, 6), ["-1", "1"])
-    with torch.inference_mode():
-        inferred = plain.clone()
-
-    # The flag belongs to the tensor, not to the calling context: a plain tensor
-    # queried from inside the context stays non-inference.
-    with torch.inference_mode():
-        ref_inside = torch.ops.aten.is_inference(plain)
-        res_inside = flag_gems.is_inference(plain)
-    assert isinstance(res_inside, bool)
-    assert res_inside is ref_inside
-
-    # ... and an inference tensor queried outside the context stays inference.
-    ref_outside = torch.ops.aten.is_inference(inferred)
-    res_outside = flag_gems.is_inference(inferred)
-    assert isinstance(res_outside, bool)
-    assert res_outside is ref_outside
+@pytest.mark.parametrize("inference", [False, True])
+@pytest.mark.parametrize("query_context", [False, True])
+def test_is_inference_context_is_not_tensor_state(dtype, inference, query_context):
+    base = tu.make_input(dtype, (4, 6), ["-1", "1"])
+    inp, ref_inp = _state_pair(base, inference)
+    # Allocation determines the tensor flag; the query context must not change it.
+    with torch.inference_mode(query_context):
+        ref = torch.ops.aten.is_inference(ref_inp)
+        res = flag_gems.is_inference(inp)
+    assert isinstance(res, bool)
+    assert res is ref
 
 
 @pytest.mark.is_inference
 @pytest.mark.parametrize("form", _VIEW_FORMS)
 @pytest.mark.parametrize("dtype", _BOUNDARY_DTYPES)
-def test_is_inference_derived_state(dtype, form):
+@pytest.mark.parametrize("clone_after_view", [False, True])
+def test_is_inference_derived_state(dtype, form, clone_after_view):
     base = tu.make_input(dtype, (4, 6), ["-1", "1"])
     with torch.inference_mode():
         inferred = base.clone()
@@ -151,16 +145,13 @@ def test_is_inference_derived_state(dtype, form):
     # Views and detach share the source storage and inherit its flag ...
     inp = _make_view(inferred, form)
     ref_inp = _make_view(ref_inferred, form)
+    if clone_after_view:
+        # A clone made outside inference mode starts an ordinary tensor.
+        inp, ref_inp = inp.clone(), ref_inp.clone()
     ref_out = torch.ops.aten.is_inference(ref_inp)
     res_out = flag_gems.is_inference(inp)
     assert isinstance(res_out, bool)
     assert res_out is ref_out
-
-    # ... while a fresh clone outside the context starts non-inference.
-    ref_clone = torch.ops.aten.is_inference(ref_inferred.clone())
-    res_clone = flag_gems.is_inference(inferred.clone())
-    assert isinstance(res_clone, bool)
-    assert res_clone is ref_clone
 
 
 @pytest.mark.is_inference
@@ -255,3 +246,12 @@ def test_is_inference_negative_out_kwarg(dtype):
     inp = tu.make_input(dtype, (4, 6), ["-1", "1"])
     with pytest.raises((TypeError, RuntimeError)):
         flag_gems.is_inference(inp, out=inp)
+
+
+@pytest.mark.is_inference
+def test_is_inference_undefined_tensor():
+    ref = torch.ops.aten.is_inference(None)
+    res = flag_gems.is_inference(None)
+
+    assert isinstance(res, bool)
+    assert res is ref

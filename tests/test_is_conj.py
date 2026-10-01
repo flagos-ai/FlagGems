@@ -139,7 +139,9 @@ _QUICK_STATE_ROWS = [
     for state, _ in _STATE_ROWS
 ]
 
-_STATE_CASES = tu.selected_cases(_STATE_ROWS, quick=_QUICK_STATE_ROWS)
+_STATE_CASES = tu.selected_cases(
+    _STATE_ROWS + _QUICK_STATE_ROWS, quick=_QUICK_STATE_ROWS
+)
 
 
 @pytest.mark.is_conj
@@ -290,3 +292,12 @@ def test_is_conj_rejects_non_tensor_args(bad_arg):
 def test_is_conj_requires_an_argument():
     with pytest.raises((TypeError, ValueError, RuntimeError)):
         flag_gems.is_conj()
+
+
+@pytest.mark.is_conj
+def test_is_conj_undefined_tensor():
+    ref = torch.ops.aten.is_conj(None)
+    res = flag_gems.is_conj(None)
+
+    assert isinstance(res, bool)
+    assert res is ref

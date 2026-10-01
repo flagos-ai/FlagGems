@@ -77,14 +77,24 @@ _SUPPORTED_FLOAT_DTYPES = [
 ]
 
 
-# One value range: no stored element is read, so the five spec ranges would
-# repeat the same (dtype, shape) workload. Content independence is proven by the
-# NaN/Inf workload below instead.
+# Exercise shared ranges even though the native predicate only reads dtype.
 @pytest.mark.is_signed
 @pytest.mark.parametrize("shape", tu.selected_shapes())
+@pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
-def test_is_signed_dtype_and_shape(dtype, shape):
-    inp = tu.make_input(dtype, shape, ["-1", "1"])
+def test_is_signed_dtype_and_shape(dtype, shape, value_range):
+    if dtype == torch.uint64 and list(value_range) == ["0", "max"]:
+        # randint bounds are signed int64. Casting the full signed range wraps
+        # negative samples into uint64's upper half without losing any bits.
+        inp = torch.randint(
+            torch.iinfo(torch.int64).min,
+            torch.iinfo(torch.int64).max,
+            shape,
+            dtype=torch.int64,
+            device=flag_gems.device,
+        ).to(torch.uint64)
+    else:
+        inp = tu.make_input(dtype, shape, value_range)
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.is_signed(ref_inp)
@@ -198,6 +208,7 @@ def test_is_signed_special_values(dtype, scenario):
 
 # The schema is aten::is_signed(Tensor self); a non-tensor argument is invalid.
 NON_TENSOR_CASES = [
+    ("undefined_tensor", None),
     ("int_argument", 1),
     ("float_argument", 1.0),
     ("list_argument", [1, 2]),
