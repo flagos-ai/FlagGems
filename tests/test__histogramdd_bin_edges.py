@@ -317,3 +317,16 @@ def test__histogramdd_bin_edges_non_finite_data_without_range(scenario):
 
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems._histogramdd_bin_edges(inp, [3])
+
+
+@pytest.mark.histogramdd_bin_edges
+@pytest.mark.parametrize("dtype", tu.selected_cases(SUPPORTED_DTYPES, quick=[]))
+def test_histogramdd_bin_edges_missing_derivative(dtype):
+    inp = _cpu_input(dtype, (4, 2), ["-1", "1"]).requires_grad_()
+    result = flag_gems._histogramdd_bin_edges(inp, [2, 3])
+    assert all(edge.requires_grad for edge in result)
+    with pytest.raises(
+        RuntimeError,
+        match="derivative for aten::_histogramdd_bin_edges is not implemented",
+    ):
+        torch.autograd.grad(result, inp, [torch.ones_like(edge) for edge in result])

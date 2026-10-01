@@ -33,6 +33,9 @@ _BENCH_CASES = [
     ("jagged", [32, 16, 8], [256, 256]),
     ("jagged", [4, 8, 2, 6], [16, 128, 64]),
     ("strided", [8, 4], [20, 320, 15]),
+    ("jagged", [0, 0], []),
+    ("jagged", [0, 0], [2]),
+    ("jagged", [2, 3], [0]),
 ]
 
 # Keep the harness dtype set, minus bfloat16 where the device does not report
@@ -64,10 +67,10 @@ def _normalize_case(case):
     trailing_dims = tuple(_as_dim(value, "trailing dim") for value in trailing)
     if not row_lengths or any(length < 0 for length in row_lengths):
         raise ValueError(f"ragged lengths must be non-negative: {row_lengths!r}")
-    if sum(row_lengths) == 0:
-        raise ValueError("at least one ragged row must be non-empty")
-    if any(dim <= 0 for dim in trailing_dims):
-        raise ValueError(f"trailing dims must be positive: {trailing_dims!r}")
+    if any(dim < 0 for dim in trailing_dims):
+        raise ValueError(f"trailing dims must be non-negative: {trailing_dims!r}")
+    if layout == "strided" and (sum(row_lengths) == 0 or 0 in trailing_dims):
+        raise ValueError("strided nested input needs a non-empty constituent")
     return layout, row_lengths, trailing_dims
 
 

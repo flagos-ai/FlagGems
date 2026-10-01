@@ -22,6 +22,7 @@ import torch
 
 import flag_gems
 
+from . import conftest as cfg
 from . import test_utils as tu
 
 
@@ -106,9 +107,11 @@ SPECIAL_CASES = tu.special_value_cases(SPECIAL_DTYPES)
 
 # FP8 gradients are supported on the GPU reference path but not when the
 # reference runs on CPU (the nested-view backward raises "create_nt_buffer not
-# implemented for Float8_e4m3fn/e5m2" there), so they are not in this list.
-BACKWARD_DTYPES = [torch.float32, torch.bfloat16, torch.float16] + _extra_dtypes(
-    torch.float64
+# implemented for Float8_e4m3fn/e5m2" there), so only CPU references omit them.
+BACKWARD_DTYPES = (
+    [torch.float32, torch.bfloat16, torch.float16]
+    + _extra_dtypes(torch.float64)
+    + ([] if cfg.TO_CPU else [torch.float8_e4m3fn, torch.float8_e5m2])
 )
 
 
@@ -225,31 +228,20 @@ def test_nested_view_from_buffer_backward(dtype):
     # Offsets [0, 4] tile the whole buffer: with gapped metadata the native
     # backward returns a gradient sized by the covered span, not by the buffer.
     sizes, strides, offsets = [[4], [4]], [[1], [1]], [0, 4]
-    weights = (2.0, 3.0)
-
-    ref_input = tu.to_reference(tu.make_input(dtype, (8,), ["-1", "1"]))
-    ref_input.requires_grad_(True)
+    inp = tu.make_input(dtype, (8,), ["-1", "1"]).requires_grad_()
+    ref_input = tu.to_reference(inp)
     ref_out = torch.ops.aten._nested_view_from_buffer(
         ref_input, *_metadata(sizes, strides, offsets)
     )
-    ref_loss = sum(
-        weight * component.float().sum()
-        for weight, component in zip(weights, ref_out.unbind())
-    )
-    (ref_grad,) = torch.autograd.grad(ref_loss, ref_input)
-
-    inp = tu.make_input(dtype, (8,), ["-1", "1"])
-    inp.requires_grad_(True)
     res_out = flag_gems._nested_view_from_buffer(
         inp, *_metadata(sizes, strides, offsets)
     )
-    res_loss = sum(
-        weight * component.float().sum()
-        for weight, component in zip(weights, res_out.unbind())
-    )
-    (res_grad,) = torch.autograd.grad(res_loss, inp)
-
-    tu.assert_result_close(res_grad, ref_grad)
+    upstream = [tu.make_input(dtype, (4,), ["-1", "1"]) for _ in sizes]
+    ref_grad = torch.autograd.grad(
+        ref_out.unbind(), ref_input, [tu.to_reference(g) for g in upstream]
+    )[0]
+    res_grad = torch.autograd.grad(res_out.unbind(), inp, upstream)[0]
+    tu.assert_result_equal(res_grad, ref_grad)
 
 
 @pytest.mark.nested_view_from_buffer

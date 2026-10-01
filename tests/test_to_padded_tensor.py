@@ -18,6 +18,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
 from . import test_utils as tu
 
 # aten::to_padded_tensor(Tensor self, float padding, SymInt[]? output_size=None)
@@ -68,7 +69,6 @@ _LAYOUT_DTYPE_ROWS = [("jagged", dtype) for dtype in _JAGGED_DTYPES] + [
 # Quick keeps every supported dtype and both layout branches, and only trims the
 # shape/value-range axes of the collection.
 _LAYOUT_DTYPE_CASES = _LAYOUT_DTYPE_ROWS
-_LAYOUT_DTYPE_QUICK = [("jagged", torch.float32), ("strided", torch.float32)]
 
 
 def _offsets_from_lengths(lengths):
@@ -139,7 +139,7 @@ def test_to_padded_tensor_value_ranges(layout, dtype, shape, lengths, value_rang
     ref_nested = _make_nested(layout, tu.to_reference(values), lengths)
 
     ref_out = torch.ops.aten.to_padded_tensor(ref_nested, _PAD)
-    values_before = values.clone()
+    values_before = nested.values().clone()
     res_out = flag_gems.to_padded_tensor(nested, _PAD)
 
     tu.assert_result_equal(res_out, ref_out)
@@ -147,7 +147,7 @@ def test_to_padded_tensor_value_ranges(layout, dtype, shape, lengths, value_rang
         len(lengths), lengths, trailing
     )
     # Densifying must not write the padding fill back into the values buffer.
-    tu.assert_result_equal(values, values_before)
+    tu.assert_result_equal(nested.values(), values_before)
 
 
 # Padding values: zero and a small positive value in quick; zero, positive,
@@ -227,12 +227,6 @@ _OS_CASES = [
     ("strided", [4, 8, 8, 4], (4, 8, 8, 4)),
     ("strided", [4, 10, 8, 4], (4, 10, 8, 4)),
 ]
-_OS_QUICK = [
-    ("jagged", [4, 8, 8, 4], (4, 8, 8, 4)),
-    ("jagged", [4, 10, 8, 4], (4, 10, 8, 4)),
-    ("strided", [4, 8, 8, 4], (4, 8, 8, 4)),
-    ("strided", [4, 10, 8, 4], (4, 10, 8, 4)),
-]
 
 
 @pytest.mark.to_padded_tensor
@@ -250,9 +244,8 @@ def test_to_padded_tensor_output_size(layout, output_size, expected_shape):
     _assert_padding_cells(res_out, ref_out, _OS_LENGTHS)
 
 
-# Ragged structure: empty rows are valid as long as one constituent is
-# non-empty (native nested storage rejects an all-empty list with "at least one
-# constituent tensor should have non-zero numel").
+# These rows are valid for both layouts. Entirely empty inputs are covered
+# separately: jagged accepts them while strided rejects them.
 _STRUCTURE_CASES = [
     ((20, 4), [0, 20, 0, 0]),
     ((20, 4), [20]),
@@ -274,7 +267,7 @@ def test_to_padded_tensor_ragged_structure(layout, dtype, shape, lengths):
     ref_nested = _make_nested(layout, tu.to_reference(values), lengths)
 
     ref_out = torch.ops.aten.to_padded_tensor(ref_nested, _PAD)
-    values_before = values.clone()
+    values_before = nested.values().clone()
     res_out = flag_gems.to_padded_tensor(nested, _PAD)
 
     tu.assert_result_equal(res_out, ref_out)
@@ -282,7 +275,7 @@ def test_to_padded_tensor_ragged_structure(layout, dtype, shape, lengths):
         len(lengths), lengths, trailing
     )
     _assert_padding_cells(res_out, ref_out, lengths)
-    tu.assert_result_equal(values, values_before)
+    tu.assert_result_equal(nested.values(), values_before)
 
 
 # Storage state of the densified source. nested_tensor_from_jagged keeps the
@@ -299,7 +292,6 @@ _SOURCE_ROWS = [
     ("offset", (4,), torch.int32),
     ("view", (), torch.float16),
 ]
-_SOURCE_QUICK = [("offset", (2, 3), torch.float32), ("view", (2, 3), torch.float32)]
 
 
 def _make_source_values(dtype, trailing, state, value_range):
@@ -325,7 +317,7 @@ def test_to_padded_tensor_source_layout(state, trailing, dtype):
     )
 
     ref_out = torch.ops.aten.to_padded_tensor(ref_nested, _PAD)
-    values_before = values.clone()
+    values_before = nested.values().clone()
     res_out = flag_gems.to_padded_tensor(nested, _PAD)
 
     tu.assert_result_equal(res_out, ref_out)
@@ -334,7 +326,7 @@ def test_to_padded_tensor_source_layout(state, trailing, dtype):
         trailing
     )
     _assert_padding_cells(res_out, ref_out, _SOURCE_LENGTHS)
-    tu.assert_result_equal(values, values_before)
+    tu.assert_result_equal(nested.values(), values_before)
 
 
 # Special values use the shared generator contract (nan for every float dtype;
@@ -392,9 +384,8 @@ def test_to_padded_tensor_special_values(layout, dtype, scenario):
     _assert_padding_cells(res_out, ref_out, _SPECIAL_LENGTHS)
 
 
-# A strided nested tensor cannot carry requires_grad, so the differentiable form
-# is the offset-built jagged tensor over a leaf values buffer. Backward is
-# default-only.
+# The jagged path differentiates its values buffer; the strided path below
+# differentiates a nested leaf. Both are default-only.
 def _backward_cases():
     cases = [
         ((2,), [2, 4, 1, 5], torch.float32),
@@ -431,13 +422,11 @@ def test_to_padded_tensor_backward(trailing, lengths, dtype):
     # The offset-built jagged path pads to offsets[-1], not to the longest row.
     assert tuple(res_out.shape) == (len(lengths), sum(lengths)) + tuple(trailing)
 
-    (ref_grad,) = torch.autograd.grad(
-        ref_out, ref_values, torch.full_like(ref_out, 0.5)
-    )
-    (res_grad,) = torch.autograd.grad(res_out, values, torch.full_like(res_out, 0.5))
-    # The gradient scatters the upstream values back into the rows, so it sums
-    # values and is compared with the arithmetic tolerance.
-    tu.assert_result_close(res_grad, ref_grad)
+    upstream = tu.make_input(dtype, tuple(res_out.shape), ["-1", "1"])
+    (ref_grad,) = torch.autograd.grad(ref_out, ref_values, tu.to_reference(upstream))
+    (res_grad,) = torch.autograd.grad(res_out, values, upstream)
+    # Backward copies the valid row regions without reducing them.
+    tu.assert_result_equal(res_grad, ref_grad)
 
 
 # Negative workloads: only the candidate exception is asserted, and every row is
@@ -512,3 +501,54 @@ def test_to_padded_tensor_rejects_dense_input():
 def test_to_padded_tensor_rejects_non_tensor_input():
     with pytest.raises(_CANDIDATE_EXC):
         flag_gems.to_padded_tensor(3.14, _PAD)
+
+
+@pytest.mark.to_padded_tensor
+@pytest.mark.parametrize(
+    "lengths,trailing", [([0, 0], ()), ([0, 0], (2,)), ([2, 3], (0,))]
+)
+@pytest.mark.parametrize("dtype", _JAGGED_DTYPES)
+def test_to_padded_tensor_empty_jagged(lengths, trailing, dtype):
+    values = _make_values(dtype, lengths, trailing, ["-1", "1"])
+    nested = _make_nested("jagged", values, lengths)
+    ref_nested = _make_nested("jagged", tu.to_reference(values), lengths)
+    ref_out = torch.ops.aten.to_padded_tensor(ref_nested, _PAD)
+    res_out = flag_gems.to_padded_tensor(nested, _PAD)
+    tu.assert_result_equal(res_out, ref_out)
+
+
+@pytest.mark.to_padded_tensor
+@pytest.mark.parametrize(
+    "lengths,trailing", [([0, 0], ()), ([0, 0], (2,)), ([2, 3], (0,))]
+)
+def test_to_padded_tensor_rejects_empty_strided(lengths, trailing):
+    nested = _make_nested(
+        "strided", _make_values(torch.float32, lengths, trailing, ["-1", "1"]), lengths
+    )
+    with pytest.raises(RuntimeError, match="at least one constituent tensor"):
+        flag_gems.to_padded_tensor(nested, _PAD)
+
+
+# CPU nested backward lacks create_nt_buffer for FP8; the device oracle supports it.
+_STRIDED_BACKWARD_DTYPES = _FLOAT_DTYPE_OPTIONS + (
+    [] if cfg.TO_CPU else _FP8_DTYPE_OPTIONS
+)
+
+
+@pytest.mark.to_padded_tensor
+@pytest.mark.parametrize("dtype", tu.selected_cases(_STRIDED_BACKWARD_DTYPES, quick=[]))
+@pytest.mark.parametrize("output_size", [None, [2, 5, 3]])
+def test_to_padded_tensor_strided_backward(dtype, output_size):
+    parts = [tu.make_input(dtype, (length, 2), ["-1", "1"]) for length in (2, 3)]
+    nested = torch.nested.nested_tensor(parts, requires_grad=True)
+    ref_nested = torch.nested.nested_tensor(
+        [tu.to_reference(part) for part in parts], requires_grad=True
+    )
+    ref_out = torch.ops.aten.to_padded_tensor(ref_nested, _PAD, output_size)
+    res_out = flag_gems.to_padded_tensor(nested, _PAD, output_size)
+    tu.assert_result_equal(res_out, ref_out)
+    upstream = tu.make_input(dtype, tuple(res_out.shape), ["-1", "1"])
+    ref_grad = torch.autograd.grad(ref_out, ref_nested, tu.to_reference(upstream))[0]
+    res_grad = torch.autograd.grad(res_out, nested, upstream)[0]
+    for res_part, ref_part in zip(res_grad.unbind(), ref_grad.unbind()):
+        tu.assert_result_equal(res_part, ref_part)
