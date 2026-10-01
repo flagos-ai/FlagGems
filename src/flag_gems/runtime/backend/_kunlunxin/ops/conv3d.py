@@ -22,6 +22,7 @@ import triton.language as tl
 from flag_gems.utils import libentry
 
 from .conv2d import conv2d_output_size
+from .to import to_copy
 
 logger = logging.getLogger(__name__)
 
@@ -310,10 +311,10 @@ def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
     # channels/kernels easily overflows causing NaN propagation
     use_fp32_compute = input.dtype == torch.float16
     if use_fp32_compute:
-        input = input.to(torch.float32)
-        weight = weight.to(torch.float32)
+        input = to_copy(input, dtype=torch.float32)
+        weight = to_copy(weight, dtype=torch.float32)
         if bias is not None:
-            bias = bias.to(torch.float32)
+            bias = to_copy(bias, dtype=torch.float32)
         compute_dtype = torch.float32
     else:
         compute_dtype = output_dtype
@@ -338,7 +339,7 @@ def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
     if bias is None:
         bias_pointer = torch.zeros(out_c, device=input.device, dtype=torch.float)
     else:
-        bias_pointer = bias.to(torch.float)
+        bias_pointer = to_copy(bias, dtype=torch.float32)
 
     conv3d_forward_kernel[grid](
         input,
@@ -390,6 +391,6 @@ def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
 
     # Convert back to original dtype if we promoted to fp32
     if use_fp32_compute:
-        output = output.to(output_dtype)
+        output = to_copy(output, dtype=output_dtype)
 
     return output
