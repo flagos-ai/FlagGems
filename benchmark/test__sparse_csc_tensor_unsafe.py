@@ -119,12 +119,10 @@ def _csc_components(matrix_shape, entries, index_dtype, device):
             ),
         )
     )
-    assert int(row.numel()) == entries
-    nnz = int(row.numel())
     if batch:
         ccol = ccol.expand(*batch, cols + 1).contiguous()
-        row = row.expand(*batch, nnz).contiguous()
-    return ccol, row, batch + [nnz]
+        row = row.expand(*batch, entries).contiguous()
+    return ccol, row, batch + [entries]
 
 
 def _case_fn(shape, dtype):

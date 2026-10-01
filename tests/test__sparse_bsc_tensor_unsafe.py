@@ -442,3 +442,40 @@ def test__sparse_bsc_tensor_unsafe_negative_pin_accelerator_payload():
         flag_gems._sparse_bsc_tensor_unsafe(
             ccol, rows, values, size, device=flag_gems.device, pin_memory=True
         )
+
+
+@pytest.mark.sparse_bsc_tensor_unsafe
+@pytest.mark.parametrize(
+    "dtype", [dtype for dtype in _DTYPES if dtype.is_floating_point or dtype.is_complex]
+)
+def test__sparse_bsc_tensor_unsafe_requires_grad_input(dtype):
+    # Unsafe factories alias the payload but do not create an autograd edge.
+    compressed = torch.tensor([0, 1, 2], dtype=torch.int64, device=flag_gems.device)
+    plain = torch.tensor([0, 1], dtype=torch.int64, device=flag_gems.device)
+    values_shape = (2, 2, 2)
+    size = [4, 4]
+    values = tu.make_input(dtype, values_shape, ["-1", "1"]).requires_grad_()
+    ref_out = torch.ops.aten._sparse_bsc_tensor_unsafe(
+        compressed,
+        plain,
+        values,
+        size,
+        dtype=dtype,
+        layout=torch.sparse_bsc,
+        device=values.device,
+    )
+    res_out = flag_gems._sparse_bsc_tensor_unsafe(
+        compressed,
+        plain,
+        values,
+        size,
+        dtype=dtype,
+        layout=torch.sparse_bsc,
+        device=values.device,
+    )
+
+    assert not res_out.requires_grad
+    assert res_out.requires_grad == ref_out.requires_grad
+    assert res_out.grad_fn is ref_out.grad_fn is None
+    assert res_out.values().data_ptr() == values.data_ptr()
+    tu.assert_result_equal(res_out.values(), ref_out.values())

@@ -85,12 +85,12 @@ def _extents(size, nnz):
 def _case_fn(shape, dtype):
     del dtype
     size, nnz = _descriptor(shape)
-    rows, _batch, total, per_batch = _extents(size, nnz)
+    rows, batch, total, per_batch = _extents(size, nnz)
     yield base.BenchmarkCasePlan(
         shape={
-            "crow_indices": [rows + 1],
-            "col_indices": [per_batch],
-            "values": [per_batch],
+            "crow_indices": list(batch) + [rows + 1],
+            "col_indices": list(batch) + [per_batch],
+            "values": list(batch) + [per_batch],
         },
         params={"size": list(size), "nnz": total},
         builder_args=(size, total),

@@ -111,11 +111,12 @@ def _bsparse_components(
     every col index stays in range; ``values`` is sized from the declared extent
     and the block shape.
     """
-    batch = _batch_dims(size)
-    block = _block_for(size, block)
-    if len(size) >= 2:
-        row_blocks = max(size[-2] // block[0], 1)
-        col_blocks = max(size[-1] // block[1], 1)
+    matrix_size = size[: -len(dense_shape)] if dense_shape else size
+    batch = _batch_dims(matrix_size)
+    block = _block_for(matrix_size, block)
+    if len(matrix_size) >= 2:
+        row_blocks = max(matrix_size[-2] // block[0], 1)
+        col_blocks = max(matrix_size[-1] // block[1], 1)
     else:
         # A rank<2 size declares no sparse extent; a single block row keeps the
         # components minimal while the stored size stays unconstrained.
@@ -236,7 +237,7 @@ def test_sparse_bsr_tensor_unsafe_values_view_metadata():
     # The constructor wraps the caller's tensor as-is, so a strided values view
     # must keep its storage, offset and strides in the result.
     base = tu.make_input(torch.float32, (4, 4, 4), ["-1", "1"])
-    values = base[1:3]
+    values = base[1:3].transpose(-1, -2)
     crow = torch.tensor([0, 1, 2], dtype=torch.int32, device=flag_gems.device)
     col = torch.tensor([0, 1], dtype=torch.int32, device=flag_gems.device)
     ref_crow = tu.to_reference(crow)
@@ -534,3 +535,45 @@ def test_sparse_bsr_tensor_unsafe_rejects_pin_memory_for_accelerator_components(
             device=flag_gems.device,
             pin_memory=True,
         )
+
+
+@pytest.mark.sparse_bsr_tensor_unsafe
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        dtype
+        for dtype in SUPPORTED_DTYPES
+        if dtype.is_floating_point or dtype.is_complex
+    ],
+)
+def test__sparse_bsr_tensor_unsafe_requires_grad_input(dtype):
+    # Unsafe factories alias the payload but do not create an autograd edge.
+    compressed = torch.tensor([0, 1, 2], dtype=torch.int64, device=flag_gems.device)
+    plain = torch.tensor([0, 1], dtype=torch.int64, device=flag_gems.device)
+    values_shape = (2, 2, 2)
+    size = [4, 4]
+    values = tu.make_input(dtype, values_shape, ["-1", "1"]).requires_grad_()
+    ref_out = torch.ops.aten._sparse_bsr_tensor_unsafe(
+        compressed,
+        plain,
+        values,
+        size,
+        dtype=dtype,
+        layout=torch.sparse_bsr,
+        device=values.device,
+    )
+    res_out = flag_gems._sparse_bsr_tensor_unsafe(
+        compressed,
+        plain,
+        values,
+        size,
+        dtype=dtype,
+        layout=torch.sparse_bsr,
+        device=values.device,
+    )
+
+    assert not res_out.requires_grad
+    assert res_out.requires_grad == ref_out.requires_grad
+    assert res_out.grad_fn is ref_out.grad_fn is None
+    assert res_out.values().data_ptr() == values.data_ptr()
+    tu.assert_result_equal(res_out.values(), ref_out.values())

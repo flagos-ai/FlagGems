@@ -651,3 +651,45 @@ def test__sparse_compressed_tensor_unsafe_special_values(
     tu.assert_result_equal(res_compressed, _stored_indices(ref_out)[0])
     tu.assert_result_equal(res_plain, _stored_indices(ref_out)[1])
     tu.assert_result_equal(res_out.values(), ref_out.values())
+
+
+@pytest.mark.sparse_compressed_tensor_unsafe
+@pytest.mark.parametrize(
+    "dtype",
+    [dtype for dtype in _VALUES_DTYPES if dtype.is_floating_point or dtype.is_complex],
+)
+@pytest.mark.parametrize(
+    "layout", [torch.sparse_csr, torch.sparse_csc, torch.sparse_bsr, torch.sparse_bsc]
+)
+def test__sparse_compressed_tensor_unsafe_requires_grad_input(dtype, layout):
+    # Unsafe factories alias the payload but do not create an autograd edge.
+    compressed = torch.tensor([0, 1, 2], dtype=torch.int64, device=flag_gems.device)
+    plain = torch.tensor([0, 1], dtype=torch.int64, device=flag_gems.device)
+    blocked = layout in (torch.sparse_bsr, torch.sparse_bsc)
+    values_shape = (2, 2, 2) if blocked else (2,)
+    size = [4, 4] if blocked else [2, 2]
+    values = tu.make_input(dtype, values_shape, ["-1", "1"]).requires_grad_()
+    ref_out = torch.ops.aten._sparse_compressed_tensor_unsafe(
+        compressed,
+        plain,
+        values,
+        size,
+        dtype=dtype,
+        layout=layout,
+        device=values.device,
+    )
+    res_out = flag_gems._sparse_compressed_tensor_unsafe(
+        compressed,
+        plain,
+        values,
+        size,
+        dtype=dtype,
+        layout=layout,
+        device=values.device,
+    )
+
+    assert not res_out.requires_grad
+    assert res_out.requires_grad == ref_out.requires_grad
+    assert res_out.grad_fn is ref_out.grad_fn is None
+    assert res_out.values().data_ptr() == values.data_ptr()
+    tu.assert_result_equal(res_out.values(), ref_out.values())
