@@ -36,13 +36,12 @@ STORAGE_BYTES = {
     torch.qint32: torch.int32,
 }
 
-# per_channel_affine keeps float64 scales with integer zero points (int32 for qint32
-# storage); per_channel_affine_float_qparams keeps float32 for both and exists for
-# 8-bit storage only.
+# Both 8-bit and qint32 storage support either quantizer family. Integer zero
+# points select float64 scales; floating zero points select float32 scales.
 FAMILIES_BY_STORAGE = {
     torch.qint8: ("affine", "float_qparams"),
     torch.quint8: ("affine", "float_qparams"),
-    torch.qint32: ("affine",),
+    torch.qint32: ("affine", "float_qparams"),
 }
 
 QPARAM_DTYPES = {
