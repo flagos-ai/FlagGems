@@ -61,7 +61,16 @@ _TFF_OTHER_CASES = [(torch.float32, ()), (torch.int64, (5,)), (torch.float32, (2
 
 _TFF_INVALID_CALLS = ["missing_other", "non_tensor_self", "non_tensor_other"]
 
-_TFF_BACKWARD_FORMS = ["leaf", "nonleaf"]
+_TFF_BACKWARD_ROWS = [
+    (dtype, form)
+    for dtype in _TFF_DTYPES
+    if dtype.is_floating_point or dtype.is_complex
+    for form in (
+        ("leaf", "clone")
+        if dtype in (torch.float8_e4m3fn, torch.float8_e5m2)
+        else ("leaf", "nonleaf")
+    )
+]
 
 # Positive NaN/Inf cases belong to the default suite only.
 _TFF_SPECIAL_CASES = tu.selected_cases(
@@ -233,21 +242,41 @@ def test_test_functorch_fallback_returns_fresh_copy():
 
 
 @pytest.mark.test_functorch_fallback
-@pytest.mark.parametrize("form", _TFF_BACKWARD_FORMS)
-def test_test_functorch_fallback_backward_unsupported(form):
-    leaf = tu.make_input(torch.float32, (4, 8), ["-1", "1"]).cpu().requires_grad_(True)
-    other = tu.make_input(torch.float32, (4, 8), ["-1", "1"]).cpu()
-    inp = leaf if form == "leaf" else leaf * 2.0
+@pytest.mark.parametrize("dtype,form", _TFF_BACKWARD_ROWS)
+def test_test_functorch_fallback_backward_unsupported(form, dtype):
+    leaf = tu.make_input(dtype, (4, 8), ["-1", "1"]).cpu().requires_grad_(True)
+    ref_leaf = tu.to_reference(leaf)
+    other = tu.make_input(dtype, (4, 8), ["-1", "1"]).cpu()
+    # Clone creates a non-leaf without requiring numeric FP8 multiplication.
+    if form == "leaf":
+        inp, ref_inp = leaf, ref_leaf
+    elif form == "clone":
+        inp, ref_inp = leaf.clone(), ref_leaf.clone()
+    else:
+        inp, ref_inp = leaf * 2.0, ref_leaf * 2.0
+    upstream = tu.make_input(dtype, (4, 8), ["-1", "1"]).cpu()
 
-    # Native evidence: "derivative for aten::_test_functorch_fallback is not
-    # implemented", raised through the original leaf for both forms, so no
-    # gradient may be produced here.
-    out = flag_gems._test_functorch_fallback(inp, other)
+    ref_out = torch.ops.aten._test_functorch_fallback(ref_inp, other)
+    res_out = flag_gems._test_functorch_fallback(inp, other)
+    tu.assert_result_equal(res_out, ref_out)
     with pytest.raises(
         RuntimeError,
         match="derivative for aten::_test_functorch_fallback is not implemented",
     ):
-        torch.autograd.grad(out, leaf, grad_outputs=torch.ones(4, 8))
+        torch.autograd.grad(res_out, leaf, grad_outputs=upstream)
+
+
+@pytest.mark.test_functorch_fallback
+def test_test_functorch_fallback_undefined_other():
+    inp = tu.make_input(torch.float32, (4, 8), ["-1", "1"]).cpu()
+    ref_inp = tu.to_reference(inp)
+
+    ref_out = torch.ops.aten._test_functorch_fallback(ref_inp, None)
+    res_out = flag_gems._test_functorch_fallback(inp, None)
+
+    tu.assert_result_equal(res_out, ref_out)
+    tu.assert_result_equal(inp, ref_inp)
+    assert not torch._C._is_alias_of(res_out, inp)
 
 
 @pytest.mark.test_functorch_fallback

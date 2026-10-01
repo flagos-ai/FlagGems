@@ -55,8 +55,8 @@ _VIEW_DTYPES = [
 ]
 
 # The forward view accepts complex64, but native autograd rejects complex
-# outputs (does not support automatic differentiation for outputs with complex
-# dtype), so gradients are checked for real floating dtypes only.
+# outputs. Its device-dispatched backward adds one on CUDA, where native FP8
+# addition is unavailable; gradients therefore use the supported real dtypes.
 _BACKWARD_DTYPES = [
     dtype
     for dtype in (torch.float16, torch.float32, torch.bfloat16, torch.float64)

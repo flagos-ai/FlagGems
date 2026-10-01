@@ -230,8 +230,7 @@ def test__test_warn_in_autograd_out(shape, layout, dtype):
 @pytest.mark.test_warn_in_autograd
 @pytest.mark.parametrize("dtype", _CONJ_DTYPES)
 def test__test_warn_in_autograd_conj_view(dtype):
-    base = tu.make_input(torch.float32, (4, 8), ["-1", "1"])
-    base = torch.complex(base, torch.zeros_like(base)).to(dtype)
+    base = tu.make_input(dtype, (4, 8), ["-1", "1"])
     ref_base = tu.to_reference(base)
     inp, ref_inp = base.conj(), ref_base.conj()
 

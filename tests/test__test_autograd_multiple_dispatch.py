@@ -53,7 +53,8 @@ _LAYOUT_ROWS = [
 ]
 _NONCONTIG_ROWS = _LAYOUT_ROWS + [((2, 19, 7), "sliced")]
 _OUT_NONCONTIG_SHAPES = tu.selected_cases(
-    [(8, 16, 32), (4, 8, 16, 32), (2, 19, 7)], quick=[(8, 16, 32), (2, 19, 7)]
+    [(8, 16, 32), (4, 8, 16, 32), (2, 19, 7)],
+    quick=[(8, 16, 32), (4, 8, 16, 32), (2, 19, 7)],
 )
 _EMPTY_SHAPES = [(0,), (2, 0, 3)]
 

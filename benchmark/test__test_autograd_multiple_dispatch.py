@@ -37,7 +37,7 @@ def _dtype_supported(dtype):
     return bool(getattr(flag_gems.runtime.device, flag_name))
 
 
-# The operator is a dtype-agnostic storage relocation, so every supported dtype
+# The operator copies its input, so every supported dtype
 # family is timed: float, complex, int and bool.
 BENCH_DTYPES = [
     dtype

@@ -17,9 +17,9 @@
 ``flag_gems._test_autograd_multiple_dispatch_view_copy`` flattens ``self`` into a
 fresh rank-1 contiguous copy: the result never aliases the input, a lazy
 negation/conjugate bit on the source is materialized, and only a layout that
-still covers one contiguous subspace can be flattened. A transposed, permuted,
-expanded or gap-sliced operand therefore raises the native "view size is not
-compatible" error and is covered as a negative case. The schema takes a single
+admits a flat view can be flattened. A fully zero-stride expansion is valid;
+a transposed, permuted, partially expanded or gap-sliced operand raises the native
+"view size is not compatible" error. The schema takes a single
 tensor operand and no scalar, so the spec's broadcast, scalar-operand and
 parameter-sweep dimensions do not apply.
 """
@@ -71,6 +71,7 @@ _OUT_DTYPES = _supported(
         torch.float16,
         torch.int32,
         torch.bool,
+        torch.float8_e4m3fn,
         torch.float8_e5m2,
         torch.complex64,
     ]
@@ -85,9 +86,10 @@ _LAYOUT_BUILDERS = {
     "narrow_offset": lambda t: t[1:3],
     "unsqueeze": lambda t: t.unsqueeze(0),
     "flat_offset": lambda t: t.reshape(-1)[3:],
+    "expanded": lambda t: t[:1, :1, :1].expand(t.shape),
 }
 
-# Every base/layout pair keeps one contiguous subspace; the 2-D row repeats the
+# Every base/layout pair admits a flat view; the 2-D row repeats the
 # strided layout at a different rank.
 _STRIDED_ROWS = tu.selected_cases(
     [
@@ -95,6 +97,7 @@ _STRIDED_ROWS = tu.selected_cases(
         (_LAYOUT_BASE, "narrow_offset"),
         (_LAYOUT_BASE, "unsqueeze"),
         (_LAYOUT_BASE, "flat_offset"),
+        (_LAYOUT_BASE, "expanded"),
         ((1024, 1024), "last_dim_stride"),
     ],
     quick=[
@@ -102,6 +105,7 @@ _STRIDED_ROWS = tu.selected_cases(
         (_LAYOUT_BASE, "narrow_offset"),
         (_LAYOUT_BASE, "unsqueeze"),
         (_LAYOUT_BASE, "flat_offset"),
+        (_LAYOUT_BASE, "expanded"),
     ],
 )
 
