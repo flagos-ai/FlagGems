@@ -43,17 +43,16 @@ def test_logspace(start, end, steps, base, dtype, pin_memory):
     ref_out = temp.to("cpu" if cfg.TO_CPU else flag_gems.device)
 
     # compute on cpu and move back to device
-    with flag_gems.use_gems():
-        res_out = torch.logspace(
-            start,
-            end,
-            steps,
-            base,
-            dtype=dtype,
-            layout=None,
-            device=flag_gems.device,
-            pin_memory=pin_memory,
-        )
+    res_out = flag_gems.logspace(
+        start,
+        end,
+        steps,
+        base,
+        dtype=dtype,
+        layout=None,
+        device=flag_gems.device,
+        pin_memory=pin_memory,
+    )
 
     if dtype in [torch.float16, torch.bfloat16, torch.float32, None]:
         utils.gems_assert_close(res_out, ref_out, dtype=dtype)

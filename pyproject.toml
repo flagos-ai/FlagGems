@@ -172,7 +172,9 @@ kunlunxin = [
     "torch_xray==2.0.4",
     "xformers==0.0.29+1e7a8ec.d20260114",
     "xmlir==1.0.0.1",
-    "flagtree==0.6.1+xpu3.6",
+    # Match the flagos-runtime-kunlunxin-xre5.37.1:2.2.0 image (flagtree
+    # 0.7.0+xpu3.6). The old 0.6.1+xpu3.6 wheel is a broken zip.
+    "flagtree==0.7.0+xpu3.6",
 ]
 
 metax-maca3810 = [

@@ -103,8 +103,8 @@ _FULL_CONFIG = (
     ("__ixor__.Tensor", xor_),
     ("__lshift__.Scalar", __lshift__),
     ("__lshift__.Tensor", __lshift__),
-    ("__or__.Scalar", bitwise_or_scalar),
-    ("__or__.Tensor", bitwise_or_tensor),
+    ("__or__.Scalar", or_scalar),
+    ("__or__.Tensor", or_tensor),
     ("__rshift__.Scalar", __rshift__),
     ("__rshift__.Scalar_out", __rshift__),
     ("__rshift__.Tensor", __rshift__),
@@ -241,6 +241,7 @@ _FULL_CONFIG = (
     ),
     ("_is_all_true", _is_all_true),
     ("_jagged_to_padded_dense_forward", _jagged_to_padded_dense_forward),
+    ("_linalg_eigh", _linalg_eigh),
     ("_linalg_eigvals", _linalg_eigvals),
     ("_linalg_slogdet", _linalg_slogdet),
     ("_linalg_svd", _linalg_svd),
@@ -698,6 +699,12 @@ _FULL_CONFIG = (
     ("diff", diff),
     ("digamma", digamma),
     ("digamma_", digamma_),
+    # aten::dim is not a dispatcher operator on this build (it is a JIT
+    # primitive plus a Python Tensor method; probes: probe1..probe14 in the
+    # run dir). A device-key registration is unreachable dead code, so the
+    # entry registers no extra dispatch key and the implementation is tested
+    # through its direct call path, mirroring the can_cast investigation.
+    ("dim", dim),
     ("dist", dist),
     ("div.out", true_divide_out),
     ("div.Scalar", true_divide),
@@ -996,6 +1003,7 @@ _FULL_CONFIG = (
     ("linalg_det", linalg_det),
     ("linalg_det.out", linalg_det_out),
     ("linalg_eig", linalg_eig),
+    ("linalg_eigh", linalg_eigh),
     ("linalg_eigvals", linalg_eigvals),
     ("linalg_eigvals.out", linalg_eigvals_out),
     ("linalg_householder_product", linalg_householder_product),
