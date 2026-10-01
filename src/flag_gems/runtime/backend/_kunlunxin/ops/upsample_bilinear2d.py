@@ -21,6 +21,8 @@ import triton.language as tl
 
 from flag_gems.runtime import device, torch_device_fn
 
+from .contiguous import contiguous
+
 logger = logging.getLogger(__name__)
 device = device.name
 
@@ -119,7 +121,7 @@ def upsample_bilinear2d(
     scale_h, bias_h = bilinear_scale_bias(IH, OH, align_corners, scales_h)
     scale_w, bias_w = bilinear_scale_bias(IW, OW, align_corners, scales_w)
 
-    inp = input.contiguous()
+    inp = contiguous(input)
     output = torch.empty((N, C, OH, OW), device=input.device, dtype=input.dtype)
 
     total = N * C * OH * OW

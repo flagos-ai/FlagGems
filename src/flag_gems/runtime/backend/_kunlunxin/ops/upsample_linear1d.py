@@ -96,7 +96,7 @@ def upsample_linear1d(
     align_corners: bool,
     scales: float = None,
 ):
-    logger.debug("GEMS_KUNLUNXIN UPSAMPL_LINEAR1D")
+    logger.debug("GEMS_KUNLUNXIN UPSAMPLE_LINEAR1D")
     assert self.ndim == 3, "Input must be [N, C, W]"
 
     N, C, W_in = self.shape
