@@ -96,11 +96,13 @@ def topk_single_stage_kernel(
     x_ptr,
     k: tl.constexpr,
     N: tl.constexpr,
+    row_stride,
+    col_stride,
     BLOCK_SIZE: tl.constexpr,
     DESCENDING: tl.constexpr,
 ):
     cur_batch = tle.program_id(0)
-    x_ptr += cur_batch * N
+    x_ptr += cur_batch * row_stride
     y_ptr += cur_batch * k
     index_ptr += cur_batch * k
 
@@ -110,7 +112,7 @@ def topk_single_stage_kernel(
     pad_val = float("-inf") if DESCENDING else float("inf")
     mask_index_val = _MIN_INT32_VAL if DESCENDING else _MAX_INT32_VAL
 
-    x_val = tl.load(x_ptr + cols, mask=mask, other=pad_val).to(tl.float32)
+    x_val = tl.load(x_ptr + cols * col_stride, mask=mask, other=pad_val).to(tl.float32)
     idx_val = tl.where(mask, cols, mask_index_val).to(tl.int32)
 
     sorted_x, sorted_idx = argsort(x_val, idx_val, dim=0, descending=DESCENDING)
@@ -130,6 +132,8 @@ def topk_stage1_kernel(
     x_ptr,
     k,
     N: tl.constexpr,
+    row_stride,
+    col_stride,
     CHUNK_SIZE: tl.constexpr,
     DESCENDING: tl.constexpr,
 ):
@@ -141,13 +145,13 @@ def topk_stage1_kernel(
     index_ptr += cur_batch * chunk_num * k + cur_chunk_idx * k
 
     chunk_offset = cur_chunk_idx * CHUNK_SIZE
-    x_ptr += cur_batch * N + chunk_offset
+    x_ptr += cur_batch * row_stride + chunk_offset * col_stride
 
     cols = tl.arange(0, CHUNK_SIZE)
     mask = (chunk_offset + cols) < N
 
     mask_val = float("-inf") if DESCENDING else float("inf")
-    x_val = tl.load(x_ptr + cols, mask=mask, other=mask_val).to(tl.float32)
+    x_val = tl.load(x_ptr + cols * col_stride, mask=mask, other=mask_val).to(tl.float32)
     available = mask
 
     for k_idx in range(k):
@@ -581,6 +585,19 @@ def topk(x, k, dim=-1, largest=True, sorted=True):
 
     topk_elem_cnt = x.shape[dim]
     batch_size = math.prod(x.shape) // topk_elem_cnt
+    if not x.is_contiguous() and (
+        x.ndim > 2
+        or topk_elem_cnt >= 4096
+        or any(x.stride()[i] != 1 for i in range(x.ndim - 1, x.ndim))
+    ):
+        if x.ndim > 2:
+            s = x.stride()
+            for i in range(x.ndim - 2):
+                if s[i] != s[i + 1] * x.shape[i + 1]:
+                    x = x.contiguous()
+                    break
+        else:
+            x = x.contiguous()
 
     if (
         HAS_TLE
@@ -636,6 +653,8 @@ def topk(x, k, dim=-1, largest=True, sorted=True):
                 x,
                 k,
                 topk_elem_cnt,
+                x.stride(-2) if x.ndim > 1 else 1,
+                x.stride(-1),
                 BLOCK_SIZE,
                 descending,
             )
@@ -672,6 +691,8 @@ def topk(x, k, dim=-1, largest=True, sorted=True):
             x,  # pointer to the input
             k,
             topk_elem_cnt,
+            x.stride(-2) if x.ndim > 1 else 1,
+            x.stride(-1),
             chunk_size,
             descending,
         )
