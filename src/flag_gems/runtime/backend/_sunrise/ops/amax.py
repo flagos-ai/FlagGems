@@ -82,22 +82,22 @@ def amax_kernel(
     tl.store(out, all, row_mask)
 
 
-def amax(inp, dim=None, keepdim=False):
+def amax(inp, dim=None, keepdim=False, *, out=None):
     logger.debug("GEMS AMAX")
-    if dim is None or len(dim) == 0:
+    if dim is None or (not isinstance(dim, int) and len(dim) == 0):
         M = inp.numel()
         block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
         mid_size = triton.cdiv(M, block_size)
         block_mid = triton.next_power_of_2(mid_size)
         dtype = inp.dtype
         mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
-        if not keepdim:
-            out = torch.empty([], dtype=dtype, device=inp.device)
-        else:
-            shape = list(inp.shape)
-            for i in range(0, inp.dim()):
-                shape[i] = 1
-            out = torch.empty(shape, dtype=dtype, device=inp.device)
+        expected_shape = [1] * inp.dim() if keepdim else []
+        if out is None:
+            out = torch.empty(expected_shape, dtype=dtype, device=inp.device)
+        elif list(out.shape) != expected_shape:
+            raise RuntimeError(
+                f"amax.out expected out shape {expected_shape}, got {list(out.shape)}"
+            )
         with torch_device_fn.device(inp.device):
             amax_kernel_1[(mid_size, 1)](
                 inp,
@@ -124,18 +124,29 @@ def amax(inp, dim=None, keepdim=False):
             shape[i] = 1
         M = inp.numel() // N
 
-        out = torch.empty(shape, dtype=dtype, device=inp.device)
+        out_provided = out is not None
+        expected_shape = (
+            shape
+            if keepdim
+            else [size for index, size in enumerate(shape) if index not in dim]
+        )
+        if out is None:
+            out = torch.empty(shape, dtype=dtype, device=inp.device)
+        elif list(out.shape) != expected_shape:
+            raise RuntimeError(
+                f"amax.out expected out shape {expected_shape}, got {list(out.shape)}"
+            )
 
         grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
         with torch_device_fn.device(inp.device):
             amax_kernel[grid](inp, out, M, N)
-        if not keepdim:
+        if not keepdim and not out_provided:
             out = out.squeeze(dim=dim)
         return out
 
 
 def amax_out(inp, dim=None, keepdim=False, *, out=None):
-    logger.debug("SUNRISE AMAX_OUT CPU REFERENCE")
+    logger.debug("SUNRISE AMAX_OUT")
     if out is None:
         raise ValueError("amax_out expects an out tensor")
     return amax(inp, dim=dim, keepdim=keepdim, out=out)
