@@ -48,7 +48,8 @@ def _dtype_supported(dtype):
 # sparse COO values, and none of them may influence a metadata query.
 _DTYPES = [
     dtype
-    for dtype in tu.REQUIRED_DTYPES + [torch.float64, torch.int16, torch.bool]
+    for dtype in tu.REQUIRED_DTYPES
+    + [torch.float64, torch.int16, torch.bool, torch.complex64]
     if _dtype_supported(dtype)
 ]
 
@@ -57,6 +58,9 @@ _DTYPES = [
 # (the dense shape grid would not change a metadata answer). Rows are
 # (size, nnz, recorded bit); None lets the constructor derive the bit.
 _MAIN_ROWS = [
+    ((), 1, True),
+    ((2, 19, 7), 19, False),
+    ((2, 19, 7), 24, True),
     ((), 2, False),
     ((1,), 1, False),
     ((4,), 8, False),
@@ -96,10 +100,7 @@ _MAIN_CASES = tu.selected_cases(
     ],
 )
 
-_RANGE_CASES = tu.selected_cases(
-    [((3, 5, 7), 60, True), ((20, 320, 15), 2000, False)],
-    quick=[((2, 19, 7), 19, False)],
-)
+_RANGE_CASES = _MAIN_CASES
 
 _STATE_CASES = tu.selected_cases(
     [((4, 4), 20, False), ((3, 5, 7), 60, True), ((1024, 1024), 4096, False)],

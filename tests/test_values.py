@@ -70,7 +70,7 @@ def _capability_gated(dtypes):
 # complex types are extra. No separate flag reports complex support;
 # complex128 follows fp64; complex64 remains available.
 _VALUE_DTYPES = _capability_gated(
-    tu.REQUIRED_DTYPES + [torch.float64, torch.complex64, torch.complex128]
+    tu.REQUIRED_DTYPES + [torch.float64, torch.complex64, torch.complex128, torch.bool]
 )
 _SPECIAL_DTYPES = [dtype for dtype in _VALUE_DTYPES if dtype.is_floating_point]
 # COO stores its coordinates as int64.

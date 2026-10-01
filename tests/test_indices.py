@@ -59,6 +59,7 @@ _INDICES_DTYPES = [
     torch.int64,
     torch.int16,
     torch.bool,
+    torch.complex64,
 ] + ([torch.float64] if utils.fp64_is_supported else [])
 
 _INDICES_DTYPES = [dtype for dtype in _INDICES_DTYPES if _DTYPE_FLAGS.get(dtype, True)]
@@ -120,7 +121,9 @@ _MUTATION_CASES = tu.selected_cases(_MUTATION_ROWS, quick=_MUTATION_ROWS)
 _SPECIAL_CASES = tu.selected_cases(tu.special_value_cases(_INDICES_DTYPES), quick=[])
 
 # The state check runs in both modes, so it keeps float64 where supported.
-_GRAD_DTYPES = [torch.float32] + ([torch.float64] if utils.fp64_is_supported else [])
+_GRAD_DTYPES = [
+    dtype for dtype in _INDICES_DTYPES if dtype.is_floating_point or dtype.is_complex
+]
 
 
 def _distinct_flat(numel, nnz, device, seed=0):

@@ -110,7 +110,10 @@ def _layout_input(layout, storage_shape, dtype):
     for dim in storage_shape:
         numel *= dim
     values = torch.arange(numel + 4, dtype=torch.float32, device=flag_gems.device)
-    values = values.to(torch.complex64) if dtype.is_complex else values.to(dtype)
+    if dtype.is_complex:
+        values = torch.complex(values, values + 1).to(dtype)
+    else:
+        values = values.to(dtype)
     base = values[:numel].view(storage_shape)
 
     if layout == "contiguous":

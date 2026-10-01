@@ -93,7 +93,7 @@ _LAYOUT_ROWS = [
         (2, 3, 4, 4),
         lambda t: t.contiguous(memory_format=torch.channels_last),
     ),
-    # A size-1 axis with a non-zero stride is not a broadcast (code 0).
+    # A size-1 axis is not a broadcast even with stride zero (code 0).
     ("size1_zero_stride", (8,), lambda t: torch.as_strided(t, (1, 4), (0, 1))),
     ("size1_single_element", (1,), lambda t: torch.as_strided(t, (1,), (7,))),
     # An axis of size > 1 whose stride is 0 is a broadcast (code 1).
@@ -213,9 +213,8 @@ def test_debug_has_internal_overlap_invalid_argument(bad_arg):
 
 
 @pytest.mark.debug_has_internal_overlap
-def test_debug_has_internal_overlap_arity():
+@pytest.mark.parametrize("argc", [0, 2])
+def test_debug_has_internal_overlap_arity(argc):
     inp = tu.make_input(torch.float32, (4, 4), _UNIT_RANGE)
     with pytest.raises((TypeError, ValueError, RuntimeError)):
-        flag_gems._debug_has_internal_overlap()
-    with pytest.raises((TypeError, ValueError, RuntimeError)):
-        flag_gems._debug_has_internal_overlap(inp, inp)
+        flag_gems._debug_has_internal_overlap(*([inp] * argc))

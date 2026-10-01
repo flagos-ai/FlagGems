@@ -35,8 +35,13 @@ def _case_fn(shape, dtype):
         if layout == "transpose" and len(shape) < 2:
             # Transposing needs two axes; the other layouts still cover it.
             continue
+        input_shape = shape
+        if layout == "transpose":
+            input_shape = shape[:-2] + (shape[-1], shape[-2])
+        elif layout == "step_slice":
+            input_shape = shape[:-1] + ((shape[-1] + 1) // 2,)
         yield base.BenchmarkCasePlan(
-            shape={"input": list(shape), "layout": layout},
+            shape={"input": list(input_shape), "layout": layout},
             params={"layout": layout},
             builder_args=(shape, layout),
         )
@@ -80,6 +85,11 @@ def test_debug_has_internal_overlap():
             + consts.EXTRA_INT_DTYPES
             + consts.BOOL_DTYPES
             + consts.COMPLEX_DTYPES
+            + (
+                [torch.float8_e4m3fn, torch.float8_e5m2]
+                if flag_gems.runtime.device.support_fp8
+                else []
+            )
         ),
     )
     bench.run()

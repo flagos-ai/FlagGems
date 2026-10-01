@@ -71,7 +71,8 @@ _REQUIRED_DTYPES = [
 
 BENCH_DTYPES = [
     dtype
-    for dtype in _REQUIRED_DTYPES + [torch.float64, torch.int16, torch.bool]
+    for dtype in _REQUIRED_DTYPES
+    + [torch.float64, torch.int16, torch.bool, torch.complex64]
     if _dtype_supported(dtype)
 ]
 
