@@ -22,6 +22,7 @@ import triton.language as tl
 from flag_gems.utils import libentry
 
 from .conv2d import conv2d_output_size
+from .to import to_copy
 
 logger = logging.getLogger(__name__)
 
@@ -254,6 +255,32 @@ def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
     else:
         stride_depth = stride_height = stride_width = stride
 
+    _same_crop = False
+    if isinstance(padding, str):
+        if padding == "valid":
+            padding = 0
+        elif padding == "same":
+            assert stride == 1, (
+                f"Doesn't support any stride values other than 1 in padding = 'same' mode, "
+                f"received stride value {stride}"
+            )
+            import math
+
+            _dil = (
+                dilation
+                if isinstance(dilation, (list, tuple))
+                else (dilation, dilation, dilation)
+            )
+            padding = tuple(
+                int(math.ceil((d * (k - 1)) / 2))
+                for d, k in zip(_dil, weight.shape[2:])
+            )
+            _same_crop = True
+        else:
+            raise ValueError(
+                f"Unsupported padding string: {padding}, only 'valid'/'same' are allowed."
+            )
+
     if isinstance(padding, (list, tuple)):
         padding_depth, padding_height, padding_width = padding
     else:
@@ -284,10 +311,10 @@ def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
     # channels/kernels easily overflows causing NaN propagation
     use_fp32_compute = input.dtype == torch.float16
     if use_fp32_compute:
-        input = input.to(torch.float32)
-        weight = weight.to(torch.float32)
+        input = to_copy(input, dtype=torch.float32)
+        weight = to_copy(weight, dtype=torch.float32)
         if bias is not None:
-            bias = bias.to(torch.float32)
+            bias = to_copy(bias, dtype=torch.float32)
         compute_dtype = torch.float32
     else:
         compute_dtype = output_dtype
@@ -312,7 +339,7 @@ def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
     if bias is None:
         bias_pointer = torch.zeros(out_c, device=input.device, dtype=torch.float)
     else:
-        bias_pointer = bias.to(torch.float)
+        bias_pointer = to_copy(bias, dtype=torch.float32)
 
     conv3d_forward_kernel[grid](
         input,
@@ -349,8 +376,21 @@ def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
         BLOCK_CO=32,
     )
 
+    if _same_crop and (
+        out_depth > input_depth or out_height > input_height or out_width > input_width
+    ):
+        # PyTorch 'same' puts the extra (odd) padding at the END of each dim
+        # (verified vs CPU conv1d k=2/k=4), so drop the surplus from the FRONT:
+        # keep [out-in, out) per dim (full dim when out == in).
+        output = output[
+            ...,
+            out_depth - input_depth : out_depth,
+            out_height - input_height : out_height,
+            out_width - input_width : out_width,
+        ]
+
     # Convert back to original dtype if we promoted to fp32
     if use_fp32_compute:
-        output = output.to(output_dtype)
+        output = to_copy(output, dtype=output_dtype)
 
     return output
