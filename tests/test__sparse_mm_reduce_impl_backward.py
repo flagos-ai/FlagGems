@@ -39,7 +39,7 @@ _QUICK_SHAPES = [(1, 1, 1, 1), (2, 19, 7, 3)]
 _REDUCES = ["sum", "mean", "amax", "amin"]
 
 # Probed on the target: only these four dtypes have SparseCsrCPU kernels. The
-# six below build a valid CSR but raise `..._kernel not implemented for ...`,
+# types below build a valid CSR but raise `..._kernel not implemented for ...`,
 # so they are pinned by the negative tests rather than dropped.
 _SUPPORTED_DTYPES = [torch.float32, torch.float64, torch.float16, torch.bfloat16]
 _UNSUPPORTED_DTYPES = [
@@ -49,6 +49,7 @@ _UNSUPPORTED_DTYPES = [
     torch.float8_e5m2,
     torch.int32,
     torch.int64,
+    torch.bool,
 ]
 
 _MASK_CASES = [(True, True), (True, False), (False, True), (False, False)]
@@ -118,15 +119,19 @@ def _make_inputs(shape, dtype, value_range, reduce):
     )
 
 
-def _make_special_inputs(shape, dtype, scenario, reduce):
+def _make_special_inputs(shape, dtype, scenario, reduce, placement):
     m, k, n, nnz = shape
-    return _backward_inputs(
-        shape,
-        _special_dense((m, nnz), dtype, scenario),
-        _special_dense((m, n), dtype, scenario),
-        _special_dense((k, n), dtype, scenario),
-        reduce,
-    )
+    operands = [
+        _special_dense(dims, dtype, scenario)
+        if placement in (name, "all")
+        else _dense(dims, dtype, ("-1", "1"))
+        for name, dims in [
+            ("values", (m, nnz)),
+            ("grad_out", (m, n)),
+            ("weight", (k, n)),
+        ]
+    ]
+    return _backward_inputs(shape, *operands, reduce)
 
 
 def _assert_backward_result(res, ref, mask):
@@ -140,8 +145,10 @@ def _assert_backward_result(res, ref, mask):
         assert (res_part is None) == (ref_part is None) == (not wanted)
         if res_part is None:
             continue
+        assert res_part.shape == ref_part.shape
+        assert res_part.layout == ref_part.layout
+        assert res_part.device == ref_part.device
         if ref_part.layout == torch.sparse_csr:
-            assert res_part.layout == torch.sparse_csr
             tu.assert_result_equal(res_part.crow_indices(), ref_part.crow_indices())
             tu.assert_result_equal(res_part.col_indices(), ref_part.col_indices())
             tu.assert_result_close(res_part.values(), ref_part.values())
@@ -204,11 +211,12 @@ def test__sparse_mm_reduce_impl_backward_output_mask(mask, dtype, reduce):
 @pytest.mark.sparse_mm_reduce_impl_backward
 @pytest.mark.parametrize("reduce", _REDUCES)
 @pytest.mark.parametrize("case", _SPECIAL_CASES)
-def test__sparse_mm_reduce_impl_backward_special_values(case, reduce):
+@pytest.mark.parametrize("placement", ["values", "grad_out", "weight", "all"])
+def test__sparse_mm_reduce_impl_backward_special_values(case, reduce, placement):
     dtype, scenario = case
     shape = _NEGATIVE_SHAPE
     self_csr, grad_out, weight, arg_out = _make_special_inputs(
-        shape, dtype, scenario, reduce
+        shape, dtype, scenario, reduce, placement
     )
     mask = (True, True)
 
@@ -386,3 +394,35 @@ def test__sparse_mm_reduce_impl_backward_layout(layout, reduce, dtype):
         self_csr, grad_out, weight, reduce, arg_out, [True, True]
     )
     _assert_backward_result(res, ref, (True, True))
+
+
+@pytest.mark.sparse_mm_reduce_impl_backward
+@pytest.mark.parametrize("dtype", _SUPPORTED_DTYPES)
+@pytest.mark.parametrize("reduce", _REDUCES)
+@pytest.mark.parametrize("mask", _MASK_CASES)
+@pytest.mark.parametrize("index_dtype", [torch.int32, torch.int64])
+def test_sparse_mm_reduce_impl_backward_mixed_empty_rows(
+    dtype, reduce, mask, index_dtype
+):
+    # Mixed empty/nonempty rows need the forward workspace's empty-row sentinels.
+    self_csr = torch.sparse_csr_tensor(
+        torch.tensor([0, 0, 2, 2, 3], dtype=index_dtype),
+        torch.tensor([1, 6, 2], dtype=index_dtype),
+        _dense((3,), dtype, ("-1", "1")),
+        size=(4, 8),
+    )
+    grad_out = _dense((4, 3), dtype, ("-1", "1"))
+    weight = _dense((8, 3), dtype, ("-1", "1"))
+    arg_out = _arg_out(self_csr, weight, reduce)
+    ref = torch.ops.aten._sparse_mm_reduce_impl_backward(
+        tu.to_reference(self_csr),
+        tu.to_reference(grad_out),
+        tu.to_reference(weight),
+        reduce,
+        tu.to_reference(arg_out),
+        list(mask),
+    )
+    res = flag_gems._sparse_mm_reduce_impl_backward(
+        self_csr, grad_out, weight, reduce, arg_out, list(mask)
+    )
+    _assert_backward_result(res, ref, mask)
