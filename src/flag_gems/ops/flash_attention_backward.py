@@ -42,7 +42,7 @@ def _disable_aabs_for_small_seqlen(seqlen_q, seqlen_k):
     Fall back to the plain (non-adjusted) configs for such shapes.
     """
     # If triton.knobs is not available (Triton < 3.6), skip the workaround
-    if _autotuning_knobs is None:
+    if _autotuning_knobs is None or not hasattr(_autotuning_knobs, "adjust_block_size"):
         yield
         return
 

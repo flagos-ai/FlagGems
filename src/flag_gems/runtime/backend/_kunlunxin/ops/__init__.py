@@ -253,6 +253,7 @@ from .fill import (
     fill_tensor_,
     fill_tensor_out,
 )
+from .flash_attention_backward import flash_attention_backward  # noqa: F401
 from .flip import flip
 from .float_power_ import (  # noqa: F401  (registered via _FULL_CONFIG)
     float_power_scalar_tensor,
@@ -530,6 +531,9 @@ from .rsqrt import rsqrt, rsqrt_
 from .rsub import rsub, rsub_scalar, rsub_tensor
 from .safe_softmax import _safe_softmax
 from .scalar_tensor import scalar_tensor
+from .scaled_dot_product_flash_attention_backward import (
+    scaled_dot_product_flash_attention_backward,
+)
 from .scaled_mm import scaled_mm, scaled_mm_out
 from .scaled_softmax import scaled_softmax_backward, scaled_softmax_forward
 from .scatter import scatter, scatter_
@@ -947,6 +951,7 @@ __all__ = [
     "fill_tensor",
     "fill_tensor_",
     "fill_tensor_out",
+    "flash_attention_backward",
     "flash_attention_forward",
     "flash_attn_varlen_func",
     "flip",
@@ -1296,6 +1301,7 @@ __all__ = [
     "scaled_dot_product_attention_backward",
     "scaled_dot_product_attention_forward",
     "scaled_dot_product_efficient_attention_backward",
+    "scaled_dot_product_flash_attention_backward",
     "scaled_mm",
     "scaled_mm_out",
     "scaled_softmax_backward",

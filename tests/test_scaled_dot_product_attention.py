@@ -164,8 +164,20 @@ def test_scaled_dot_product_flash_attention(
     assert len(result) == 9
     utils.gems_assert_close(result[0], ref_out, dtype)
     utils.gems_assert_close(result[1], ref_lse, torch.float)
-    assert result[2] is None
-    assert result[3] is None
+    if flag_gems.vendor_name == "kunlunxin":
+        # The vendor flash-attention kernel is LOD-based and reports the
+        # cumulative query/key lengths on the dense path as well (int32
+        # tensors of batch + 1 entries) instead of leaving the slots
+        # undefined as upstream does.
+        for cum_seq in (result[2], result[3]):
+            assert cum_seq is None or (
+                isinstance(cum_seq, torch.Tensor)
+                and cum_seq.dtype == torch.int32
+                and cum_seq.numel() == batch + 1
+            )
+    else:
+        assert result[2] is None
+        assert result[3] is None
     assert result[4:6] == (q_seq_len, kv_seq_len)
 
 
@@ -278,14 +290,12 @@ def test_scaled_dot_product_attention_legacy(
 
 
 @pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="Issue #2849: Not working")
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "kunlunxin", reason="Issue #2849: Not working"
-)
 @pytest.mark.skipif(flag_gems.vendor_name == "sunrise", reason="Compiler Error")
 @pytest.mark.skipif(
     torch.__version__ < "2.5", reason="Low Pytorch Version: enable_gqa not supported"
 )
 @pytest.mark.scaled_dot_product_attention_backward
+@pytest.mark.scaled_dot_product_flash_attention_backward
 @pytest.mark.parametrize(
     "batch, num_q_head, num_kv_head, q_seq_len, kv_seq_len, head_size, enable_gqa",
     LEGACY_SHAPES,
