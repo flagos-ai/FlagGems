@@ -62,32 +62,29 @@ def test_size_default(shape, value_range, dtype):
 
 # One row per (shape, dim): dim 0, a middle rank, the last dim and the matching
 # negative positions for every rank the `int` call accepts.
-SIZE_DIM_ROWS = tu.selected_cases(
-    [
-        ((6,), 0),
-        ((6,), -1),
-        ((3, 5), 0),
-        ((3, 5), 1),
-        ((3, 5), -1),
-        ((3, 5), -2),
-        ((4, 6, 8), 0),
-        ((4, 6, 8), 1),
-        ((4, 6, 8), 2),
-        ((4, 6, 8), -1),
-        ((4, 6, 8), -3),
-        ((2, 3, 5, 7), 0),
-        ((2, 3, 5, 7), 2),
-        ((2, 3, 5, 7), 3),
-        ((2, 3, 5, 7), -1),
-        ((2, 3, 5, 7), -4),
-        ((2, 3, 4, 5, 6), 0),
-        ((2, 3, 4, 5, 6), 3),
-        ((2, 3, 4, 5, 6), 4),
-        ((2, 3, 4, 5, 6), -1),
-        ((2, 3, 4, 5, 6), -5),
-    ],
-    quick=[((4, 6, 8), 0), ((4, 6, 8), -1)],
-)
+SIZE_DIM_ROWS = [
+    ((6,), 0),
+    ((6,), -1),
+    ((3, 5), 0),
+    ((3, 5), 1),
+    ((3, 5), -1),
+    ((3, 5), -2),
+    ((4, 6, 8), 0),
+    ((4, 6, 8), 1),
+    ((4, 6, 8), 2),
+    ((4, 6, 8), -1),
+    ((4, 6, 8), -3),
+    ((2, 3, 5, 7), 0),
+    ((2, 3, 5, 7), 2),
+    ((2, 3, 5, 7), 3),
+    ((2, 3, 5, 7), -1),
+    ((2, 3, 5, 7), -4),
+    ((2, 3, 4, 5, 6), 0),
+    ((2, 3, 4, 5, 6), 3),
+    ((2, 3, 4, 5, 6), 4),
+    ((2, 3, 4, 5, 6), -1),
+    ((2, 3, 4, 5, 6), -5),
+]
 
 SIZE_DIM_DTYPES = [torch.float32, torch.int64, torch.bool]
 
@@ -137,31 +134,25 @@ def _view(base, layout):
 # A metadata query must report the operand's own shape, not its base's, so these
 # rows carry a non-contiguous view, a nonzero-offset view, an empty dimension and
 # the 0-dim scalar.
-SIZE_VIEW_ROWS = tu.selected_cases(
-    [
-        ((16, 32), "transposed"),
-        ((12, 24), "column_step"),
-        ((10, 8), "offset_window"),
-        ((), "asis"),
-        ((5, 0, 7), "asis"),
-        ((0, 3), "asis"),
-    ],
-    quick=[((16, 32), "transposed"), ((5, 0, 7), "asis")],
-)
+SIZE_VIEW_ROWS = [
+    ((16, 32), "transposed"),
+    ((12, 24), "column_step"),
+    ((10, 8), "offset_window"),
+    ((), "asis"),
+    ((5, 0, 7), "asis"),
+    ((0, 3), "asis"),
+]
 
 # The same operands in the `int` call form, at an index valid for the view's own
 # rank (rank 0 has no index and stays out of this list).
-SIZE_VIEW_DIMS = tu.selected_cases(
-    [
-        ((16, 32), "transposed", 0),
-        ((16, 32), "transposed", -1),
-        ((12, 24), "column_step", 1),
-        ((10, 8), "offset_window", -2),
-        ((5, 0, 7), "asis", 1),
-        ((0, 3), "asis", 0),
-    ],
-    quick=[((16, 32), "transposed", 0), ((5, 0, 7), "asis", 1)],
-)
+SIZE_VIEW_DIMS = [
+    ((16, 32), "transposed", 0),
+    ((16, 32), "transposed", -1),
+    ((12, 24), "column_step", 1),
+    ((10, 8), "offset_window", -2),
+    ((5, 0, 7), "asis", 1),
+    ((0, 3), "asis", 0),
+]
 
 
 @pytest.mark.size

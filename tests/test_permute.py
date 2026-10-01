@@ -96,9 +96,7 @@ DIMS_ROWS = [
 
 
 @pytest.mark.permute
-@pytest.mark.parametrize(
-    "shape,dims", tu.selected_cases(DIMS_ROWS, quick=[((2, 3, 4), [2, 1, 0])])
-)
+@pytest.mark.parametrize("shape,dims", DIMS_ROWS)
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int32])
 def test_permute_dims(shape, dims, dtype):
     inp = tu.make_input(dtype, shape, ["-1", "1"])
@@ -141,7 +139,7 @@ def _make_view_source(shape, kind):
 
 
 @pytest.mark.permute
-@pytest.mark.parametrize("case", tu.selected_cases(VIEW_ROWS, quick=VIEW_ROWS[:1]))
+@pytest.mark.parametrize("case", VIEW_ROWS)
 def test_permute_view_metadata(case):
     shape, dims, kind = case
     inp = _make_view_source(shape, kind)
@@ -166,9 +164,7 @@ MUTATION_ROWS = [
 
 
 @pytest.mark.permute
-@pytest.mark.parametrize(
-    "shape,dims", tu.selected_cases(MUTATION_ROWS, quick=MUTATION_ROWS[:1])
-)
+@pytest.mark.parametrize("shape,dims", MUTATION_ROWS)
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.int32])
 def test_permute_writes_through_the_view(shape, dims, dtype):
     inp = tu.make_input(dtype, shape, ["-1", "1"])
@@ -189,7 +185,7 @@ LAZY_ROWS = ["plain", "conj", "neg", "conj_neg"]
 
 
 @pytest.mark.permute
-@pytest.mark.parametrize("case", tu.selected_cases(LAZY_ROWS, quick=LAZY_ROWS[:1]))
+@pytest.mark.parametrize("case", LAZY_ROWS)
 def test_permute_preserves_lazy_bits(case):
     inp = tu.make_input(torch.complex64, (4, 6), ["-1", "1"])
     if case in ("conj", "conj_neg"):

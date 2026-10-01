@@ -50,14 +50,11 @@ Native behaviour the fixtures rely on (measured on the target device):
     checked, so a backend that cannot differentiate one of the forms fails that
     row instead of being skipped.
 
-Case levels: ``--quick`` runs the value grid plus one ``.out`` smoke case and
-every negative case; the other positive families are default-only through
-``tu.selected_cases(..., quick=[])``. Every positive family is collected only
-where the runtime advertises int64 support, because each of their results -- and
-the ``.out`` buffers built for them -- is an int64-indexed compressed structure
-that this operator itself emits; that flag is static device metadata, so
-collection performs no tensor work, and the schema negatives, whose native
-rejection happens before any index tensor exists, run everywhere.
+Quick retains small block/dense-dimension variations, empty extents, input
+layouts, out buffers and every negative case. Large shape grids, special values
+and extra backward checks run in default mode. Positive cases require the
+runtime's static int64 capability because native BSC output uses int64 indices;
+collection performs no tensor work.
 
 Every positive case also compares the candidate's input with the independent
 reference copy once the call has returned (the fold only reads) and checks the
@@ -343,8 +340,8 @@ _STRUCTURE_ROWS = [
     ((16, 128, 64, 60), (16, 15), None, False),
     ((16, 7, 57, 32, 29), (19, 16), 1, False),
 ]
-_VALUE_GRID_ROWS = _positive(_STRUCTURE_ROWS, quick=[_STRUCTURE_ROWS[0]])
-_ALL_ZERO_ROWS = _positive(_STRUCTURE_ROWS)
+_VALUE_GRID_ROWS = _positive(_STRUCTURE_ROWS, quick=_STRUCTURE_ROWS[:2])
+_ALL_ZERO_ROWS = _positive(_STRUCTURE_ROWS, quick=_STRUCTURE_ROWS[:2])
 
 # (shape, blocksize, dense_dim, omit_dense_dim, empty_blocks): empty blocks cover
 # a leading, an interior and a trailing block, a completely empty block column,
@@ -368,12 +365,12 @@ _PATTERN_ROWS = [
     ((2, 8, 8, 3), (2, 2), 1, False, ((0, 1), (2, 0), (3, 3))),
     ((2, 8, 8, 3), (2, 2), 1, False, ()),
 ]
-_PATTERN_ROWS_SELECTED = _positive(_PATTERN_ROWS)
+_PATTERN_ROWS_SELECTED = _PATTERN_ROWS if utils.int64_is_supported else []
 
 # (shape, blocksize, dense_dim, omit_dense_dim): a zero extent inside the sparse
 # dims (or no batch dim at all) is a valid input. The single shared range is
 # enough because an empty tensor has no element whose range could matter.
-_ZERO_EXTENT_ROWS = _positive(
+_ZERO_EXTENT_ROWS = (
     [
         ((0, 4), (1, 1), None, False),
         ((4, 0), (1, 1), None, False),
@@ -382,6 +379,8 @@ _ZERO_EXTENT_ROWS = _positive(
         ((2, 8, 0, 4), (1, 1), None, False),
         ((0, 4, 3), (1, 1), 1, False),
     ]
+    if utils.int64_is_supported
+    else []
 )
 
 # Measured native rejection: a rank >= 3 input whose batch dims multiply to zero
@@ -410,7 +409,9 @@ _DENSE_DIM_ROWS = _positive(
         _dense_dim_row((2, 3, 6, 4, 5), 1),
         _dense_dim_row((2, 3, 6, 4, 5), 2),
         _dense_dim_row((2, 3, 6, 4, 5), 3),
-    ]
+    ],
+    quick=[((2, 19, 7), (1, 1), None, True), _dense_dim_row((2, 19, 7), 0)]
+    + [_dense_dim_row((2, 3, 6, 4, 5), dim) for dim in range(4)],
 )
 
 _BLOCKSIZE_ROWS_SELECTED = _positive(
@@ -425,7 +426,10 @@ _BLOCKSIZE_ROWS_SELECTED = _positive(
         ((20, 320, 15), (10, 3), None, False),
         ((20, 320, 15), (20, 5), None, False),
         ((16, 128, 64, 60), (16, 15), None, False),
-    ]
+    ],
+    quick=[
+        ((16, 16), (block, block), None, block in (1, 2)) for block in (1, 2, 4, 8, 16)
+    ],
 )
 
 # Every rank the backward exercises, including the batched (4, 8, 8) result and
@@ -452,13 +456,11 @@ _SPECIAL_ROWS = _positive(
 )
 
 _VIEW_ROWS = _positive(
-    [
-        ((16, 16), (2, 2), None, False),
-        ((20, 320, 15), (5, 5), None, False),
-    ]
+    [((16, 16), (2, 2), None, False), ((20, 320, 15), (5, 5), None, False)],
+    quick=[((16, 16), (2, 2), None, False)],
 )
 
-_LAZY_ROWS = _positive([(8, 8)])
+_LAZY_ROWS = [(8, 8)] if utils.int64_is_supported else []
 
 # (shape, blocksize, dense_dim, omit_dense_dim, result empty block, buffer empty
 # block): the buffer stores the same number of blocks but occupies a different
@@ -470,7 +472,9 @@ _OUT_ROWS = [
     ((4, 8, 8), (2, 2), None, True, (1, 1), (0, 0)),
     ((2, 8, 8, 3), (2, 2), 1, False, (1, 1), (0, 3)),
 ]
-_OUT_ROWS_SELECTED = _positive(_OUT_ROWS, quick=[_OUT_ROWS[0]])
+_OUT_ROWS_SELECTED = _positive(
+    _OUT_ROWS, quick=[_OUT_ROWS[0], _OUT_ROWS[2], _OUT_ROWS[3]]
+)
 
 # Measured native rejections: a negative dense_dim raises RuntimeError, a
 # dense_dim above rank-2 (including one that overflows the index computation)

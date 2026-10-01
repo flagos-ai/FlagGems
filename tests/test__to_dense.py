@@ -106,24 +106,29 @@ _DUPLICATE_SHAPES = [
     (16, 7, 57, 32, 29),
 ]
 _DUPLICATE_CASES = _coo_cases(
-    [(shape, parity) for shape in _DUPLICATE_SHAPES for parity in (1, 4)]
+    [(shape, parity) for shape in _DUPLICATE_SHAPES for parity in (1, 4)],
+    quick=[((256,), 1), ((256,), 4)],
 )
 _EXACT_CASES = _coo_cases(
-    [(shape, parity) for shape in _DUPLICATE_SHAPES for parity in (2, 3)]
+    [(shape, parity) for shape in _DUPLICATE_SHAPES for parity in (2, 3)],
+    quick=[((256,), 2), ((256,), 3)],
 )
 _CANCELLATION_CASES = _coo_cases(
     [
         (shape, dtype)
         for shape in [(256,), (1024, 1024), (20, 320, 15)]
-        for dtype in (
-            [torch.float32, torch.float16]
-            + ([torch.bfloat16] if utils.bf16_is_supported else [])
-        )
+        for dtype in [torch.float32, torch.float16]
+        + ([torch.bfloat16] if utils.bf16_is_supported else [])
     ]
-    + ([((1024, 1024), torch.float64)] if utils.fp64_is_supported else [])
+    + ([((1024, 1024), torch.float64)] if utils.fp64_is_supported else []),
+    quick=[
+        ((256,), dtype)
+        for dtype in [torch.float32, torch.float16]
+        + ([torch.bfloat16] if utils.bf16_is_supported else [])
+    ],
 )
 _HYBRID_DTYPES = [torch.float32, torch.float16]
-_HYBRID_CASES = _coo_cases(
+_HYBRID_CASES = (
     [
         ((8, 16, 32), 2, False),
         ((4, 8, 16, 32), 2, False),
@@ -132,9 +137,11 @@ _HYBRID_CASES = _coo_cases(
         ((16, 7, 57), 1, True),
         ((8, 16, 32), 2, True),
     ]
+    if _COO_SUPPORTED
+    else []
 )
-_HYBRID_DUPLICATE_SHAPES = _coo_cases(
-    [((8, 16), 1), ((16, 7, 57), 1), ((8, 16, 32), 2)]
+_HYBRID_DUPLICATE_SHAPES = (
+    [((8, 16), 1), ((16, 7, 57), 1), ((8, 16, 32), 2)] if _COO_SUPPORTED else []
 )
 _COMPRESSED_CASES = tu.selected_cases(
     [
@@ -154,7 +161,17 @@ _COMPRESSED_CASES = tu.selected_cases(
         ("csc", (2, 32, 32), 0.3, True),
         ("csr", (2, 32, 32), 0.3, False),
         ("csc", (2, 32, 32), 0.3, False),
+    ],
+    quick=[
+        (layout, (64, 64), density, False)
+        for layout in ("csr", "csc")
+        for density in (0.05, 0.6)
     ]
+    + [
+        (layout, (2, 32, 32), 0.3, shared)
+        for layout in ("csr", "csc")
+        for shared in (False, True)
+    ],
 )
 _COMPRESSED_DTYPES = [torch.float16, torch.float32]
 _BLOCK_CASES = tu.selected_cases(
@@ -169,14 +186,20 @@ _BLOCK_CASES = tu.selected_cases(
         ("bsc", (32, 32), 4, True),
         ("bsc", (64, 64), 4, True),
         ("bsc", (32, 32), 4, False),
+    ],
+    quick=[
+        (layout, (32, 32), block, True)
+        for layout in ("bsr", "bsc")
+        for block in (1, 2, 4)
     ]
+    + [(layout, (32, 32), 4, False) for layout in ("bsr", "bsc")],
 )
 # The ``out`` overload keeps one quick row as the designated smoke case.
 _OUT_CASES = _coo_cases(
     [((256, 256), torch.float32), ((20, 320), torch.float16)],
     quick=[((256, 256), torch.float32)],
 )
-_MASKED_GRAD_CASES = _coo_cases([None, True, False])
+_MASKED_GRAD_CASES = [None, True, False] if _COO_SUPPORTED else []
 _MASKED_GRAD_DTYPES = [torch.float32, torch.float16]
 _BACKWARD_SHAPES = [((64, 128), 2), ((64, 8, 16), 1)]
 # Distinct coordinates densify as a plain scatter: forward and stored-value
@@ -223,25 +246,29 @@ _SPECIAL_ROWS = _coo_cases(
 _UNSAFE_SPECIAL_ROWS = _coo_cases(
     [(dtype, scenario) for dtype, scenario in tu.special_value_cases(_FLOAT_DTYPES)]
 )
-_STORED_ZERO_SHAPES = _coo_cases([(64, 64), (256,), (20, 320)])
+_STORED_ZERO_SHAPES = [(64, 64), (256,), (20, 320)] if _COO_SUPPORTED else []
 _STORED_ZERO_DTYPES = [torch.float32, torch.float16, torch.int32]
 _STRIDED_VALUE_CASES = _coo_cases(
     [
         ((256,), torch.float32),
         ((1024, 1024), torch.float32),
         ((20, 320, 15), torch.float16),
-    ]
+    ],
+    quick=[((256,), torch.float32)],
 )
 _COALESCED_CASES = _coo_cases(
     [
         ((256,), torch.float32),
         ((1024, 1024), torch.float32),
         ((20, 320, 15), torch.float16),
-    ]
+    ],
+    quick=[((256,), torch.float32)],
 )
-_NO_STORED_SHAPES = _coo_cases([(256,), (1024, 1024), (16, 128, 64, 60)])
+_NO_STORED_SHAPES = _coo_cases(
+    [(256,), (1024, 1024), (16, 128, 64, 60)], quick=[(256,)]
+)
 _NO_STORED_DTYPES = [torch.float32, torch.int32]
-_RANK0_CASES = _coo_cases([0, 1, 5])
+_RANK0_CASES = [0, 1, 5] if _COO_SUPPORTED else []
 _RANK0_DTYPES = [torch.float32, torch.int32]
 _DTYPE_ARG_LAYOUTS = ["csr", "csc"] + (["coo"] if _COO_SUPPORTED else [])
 # COO fixtures for the two argument-type negatives.

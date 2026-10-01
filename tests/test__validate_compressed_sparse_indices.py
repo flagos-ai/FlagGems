@@ -278,9 +278,7 @@ _BOUNDARY_DTYPES = {
 
 def _boundary_cases():
     rows = []
-    for case_id, shape, counts_row, first_row, dim in tu.selected_cases(
-        _BOUNDARY_ROWS, quick=[]
-    ):
+    for case_id, shape, counts_row, first_row, dim in _BOUNDARY_ROWS:
         for index_dtype in _BOUNDARY_DTYPES[case_id]:
             if index_dtype in _INDEX_DTYPES:
                 rows.append(
