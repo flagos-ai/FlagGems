@@ -41,7 +41,7 @@
     "gpu_check": "tools/gpu_check_iluvatar.sh",
     "enabled": true,
     "container": {
-      "image": "harbor.baai.ac.cn/flagos-base/flagos-base-iluvatar-corex4.5.0:2.2.0",
+      "image": "harbor.baai.ac.cn/flagos-runtime/flagos-runtime-iluvatar-corex4.5.0:2.2.0",
       "options": "--device /dev/iluvatar0 --device /dev/itrctl --shm-size=256g --ulimit memlock=-1 --ulimit stack=67108864",
       "volumes": [],
       "runs_on_default": "iluvatar-bi-v150-0",

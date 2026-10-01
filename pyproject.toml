@@ -153,7 +153,8 @@ iluvatar = [
     "torchaudio==2.10.0+corex.4.5.0.20260804",
     "torchvision==0.25.0+corex.4.5.0.20260804",
     "numpy<2",
-    "flagtree==0.6.1+iluvatar3.6",
+    # Match the flagos-runtime-iluvatar-corex4.5.0:2.2.0 image (flagtree 0.7.0+iluvatar3.6).
+    "flagtree==0.7.0+iluvatar3.6",
 ]
 
 kunlunxin = [
