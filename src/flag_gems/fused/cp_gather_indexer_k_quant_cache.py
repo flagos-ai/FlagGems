@@ -87,8 +87,10 @@ def _cp_gather_indexer_quant_cache_kernel(
         + block_offset[:, None].to(tl.int64) * HEAD_DIM
     )
     src_scale_offset = (
-        block_id * kv_cache_scale_stride
-        + block_offset * num_quant_blocks
+        # int64: block_id * stride overflows int32 once the paged cache
+        # exceeds ~8k blocks (stride(0) is ~260k fp32 elements per block).
+        block_id.to(tl.int64) * kv_cache_scale_stride
+        + block_offset.to(tl.int64) * num_quant_blocks
         + quant_block_id
     )
     dst_offset = tid[:, None].to(tl.int64) * k_fp8_stride
