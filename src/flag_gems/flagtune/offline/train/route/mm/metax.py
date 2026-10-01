@@ -12,52 +12,46 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""MetaX MM route predicates used by the shared FlagTune resolver."""
+"""MetaX MM route selection used by the shared FlagTune resolver."""
 
 from typing import Any
 
 
 def select_mm_route(a: Any, b: Any, module: Any) -> str:
-    """Mirror the MetaX public ``mm`` dispatch using backend helpers."""
-    if a.stride(0) > 1 and a.stride(1) > 1:
-        a = a.contiguous()
-    if b.stride(0) > 1 and b.stride(1) > 1:
-        b = b.contiguous()
+    """Use the public MM dispatch without launching or copying input tensors."""
     if a.shape[1] != b.shape[0]:
         return "invalid"
     m, k = a.shape
     _, n = b.shape
-    torch = module.torch
-    if m == 0 or n == 0:
+    if not m or not n or not k:
         return "empty"
-    c = torch.empty(
-        (m, n), device=a.device, dtype=module.get_higher_dtype(a.dtype, b.dtype)
+    if m == 1 or n == 1:
+        return "metax_mv"
+
+    a_strides, b_strides = a.stride(), b.stride()
+    properties = module.get_device_properties(a.device.index)
+    kernel, split_k, pack_rhs = module._dispatch_mm(
+        m,
+        n,
+        k,
+        a_strides,
+        b_strides,
+        (n, 1),
+        a.dtype,
+        a.dtype,
+        all(t.data_ptr() % module._VECTOR_ALIGNMENT_BYTES == 0 for t in (a, b)),
+        a.data_ptr() == b.data_ptr()
+        and a.shape == b.shape[::-1]
+        and a_strides == b_strides[::-1],
+        properties.multi_processor_count,
+        properties.shared_memory_per_block,
+        properties.L2_cache_size,
     )
-    if n == 1:
-        return (
-            "metax_gemv_k_parallel"
-            if module._gemv_k_parallel_scenario(m, k)
-            else "metax_gemv"
-        )
-    if module._small_n_mm_scenario(a, b, c, n, k):
-        return "metax_small_n"
-    if module._select_two_step_split_k(m, n, k) is not None:
-        return "metax_splitk_two_step"
-    nt_scenario = module.nt_mm_scenario(a, b, c, m, n, k)
-    prefer_dense_nt = (
-        c.dtype in (torch.float16, torch.bfloat16)
-        and nt_scenario
-        and module._prefer_dense_nt_over_generic_splitk(m, n, k)
-    )
-    if module.splitk_mm_scenario(m, n, k) and not prefer_dense_nt:
-        if (
-            c.dtype == torch.float32
-            and not torch.are_deterministic_algorithms_enabled()
-        ):
-            return "metax_splitk"
-        return "metax_splitk_two_step"
-    if module.nn_mm_scenario(a, b, c, m, n, k):
-        return "metax_nn"
-    if nt_scenario:
-        return "metax_nt"
-    return "metax_general"
+    # Fresh MM outputs are contiguous and aligned. The new kernel signatures
+    # must not bind to the published metax_nn/nt/gemv cost models.
+    route = "metax_" + kernel.jit_function.__name__.lstrip("_")
+    if split_k > 1:
+        route += "_splitk"
+    if pack_rhs:
+        route += "_packed"
+    return route
