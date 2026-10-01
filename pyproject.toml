@@ -145,7 +145,8 @@ enflame-tops1910 = [
 hygon = [
     "torch==2.9.0+das.opt1.dtk2604",
     "flash_attn==2.8.3+das.opt1.dtk2604.torch290",
-    "flagtree==0.6.1+hcu3.6",
+    # Match the flagos-runtime-hygon-dtk26.04:2.2.0 image (flagtree 0.7.0+hcu3.6).
+    "flagtree==0.7.0+hcu3.6",
 ]
 
 iluvatar = [

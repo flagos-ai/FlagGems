@@ -191,7 +191,10 @@ backends:
   hygon:
     python: "3.10"
     triton: triton==3.5.1+das.opt1.dtk2604.torch290
-    flagtree: flagtree==0.6.1+hcu3.6
+    # Match the flagos-runtime-hygon-dtk26.04:2.2.0 image, which preinstalls
+    # flagtree 0.7.0+hcu3.6; the reconcile step then skips it instead of
+    # reinstalling the older 0.6.1 over the network.
+    flagtree: flagtree==0.7.0+hcu3.6
     env_source:
       - /opt/dtk-26.04/env.sh
     env:

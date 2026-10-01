@@ -27,7 +27,7 @@
     "gpu_check": "tools/gpu_check_hygon.sh",
     "enabled": true,
     "container": {
-      "image": "harbor.baai.ac.cn/flagos-base/flagos-base-hygon-dtk26.04:2.2.0",
+      "image": "harbor.baai.ac.cn/flagos-runtime/flagos-runtime-hygon-dtk26.04:2.2.0",
       "options": "--device /dev/kfd --device /dev/mkfd --device /dev/dri --group-add video --security-opt seccomp=unconfined --shm-size=256g --ulimit memlock=-1 --ulimit stack=67108864",
       "volumes": [],
       "runs_on_default": "hygon-bw1000-0",
