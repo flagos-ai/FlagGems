@@ -355,7 +355,7 @@ __all__ = [
 if get_device_capability(current_device())[0] >= 3:
     from .addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out  # noqa: F401
     from .baddbmm import baddbmm, baddbmm_out  # noqa: F401
-    from .bmm import bmm  # noqa: F401
+    from .bmm import bmm, bmm_out  # noqa: F401
     from .gelu import gelu  # noqa: F401
     from .mm import mm  # noqa: F401
     from .mv import mv  # noqa: F401
@@ -370,6 +370,7 @@ if get_device_capability(current_device())[0] >= 3:
             "baddbmm",
             "baddbmm_out",
             "bmm",
+            "bmm_out",
             "gelu",
             "mm",
             "mv",

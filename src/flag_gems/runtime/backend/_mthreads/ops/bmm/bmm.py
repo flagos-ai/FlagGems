@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import logging
-import os
 
 import torch
 import triton
@@ -21,15 +20,35 @@ import triton.language as tl
 from triton.tools.tensor_descriptor import TensorDescriptor
 
 from flag_gems import runtime
+from flag_gems.ops.bmm import bmm_out as default_bmm_out
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as ext
 
+from . import core, explicit, persistent, smallm, special, split, spmc
+
 logger = logging.getLogger(__name__)
 
-EXPAND_CONFIG_FILENAME = os.path.normpath(
-    os.path.join(os.path.dirname(__file__), "..", "bmm_mthreads_expand.yaml")
-)
+_C0_SHAPE = (16384, 7168, 1024)
+_C1_SHAPE = (16384, 2112, 7168)
+_C2_SHAPE = (448, 7168, 256)
+_C3_SHAPE = (14429, 7168, 1024)
+_C4_SHAPE = (14429, 2112, 7168)
+_SMALL_M_SHAPE = (4, 15, 160, 1024)
+_CORE_SMALL_SHAPE = (2, 384, 384, 384)
+_CORE_PERSISTENT_SHAPES = {
+    (2, 4096, 4096, 4096),
+    (16, 1024, 1024, 1024),
+    (16, 2048, 2048, 2048),
+    (16, 4096, 4096, 4096),
+}
+_CORE_FP32_SHAPES = {
+    (2, 384, 384, 384),
+    (2, 4096, 4096, 4096),
+    (16, 1024, 1024, 1024),
+    (16, 2048, 2048, 2048),
+    (16, 4096, 4096, 4096),
+}
 
 
 def is_supported_sqmma_layout(tensor):
@@ -159,13 +178,12 @@ def bmm_kernel(
     tl.store(o_ptrs, o, mask_c)
 
 
-def bmm_fma(A, B):
+def bmm_fma_out(A, B, out):
     logger.debug("GEMS_MTHREADS BMM_FMA")
     batch, M, K = A.shape
     _, _, N = B.shape
     A = A.contiguous()
     B = B.contiguous()
-    out = torch.empty((batch, M, N), dtype=A.dtype, device=A.device)
 
     grid_fn = lambda meta: (
         triton.cdiv(meta["M"], meta["TILE_M"]),
@@ -178,9 +196,9 @@ def bmm_fma(A, B):
 
 
 def bmm_sqmma_descriptor_pre_hook(nargs):
-    nargs["a_desc"].block_shape = [nargs["BLOCK_SIZE_M"], nargs["BLOCK_SIZE_K"]]
-    nargs["b_desc"].block_shape = [nargs["BLOCK_SIZE_K"], nargs["BLOCK_SIZE_N"]]
-    nargs["c_desc"].block_shape = [nargs["BLOCK_SIZE_M"], nargs["BLOCK_SIZE_N"]]
+    nargs["a_desc"].block_shape = [nargs["TILE_M"], nargs["TILE_K"]]
+    nargs["b_desc"].block_shape = [nargs["TILE_K"], nargs["TILE_N"]]
+    nargs["c_desc"].block_shape = [nargs["TILE_M"], nargs["TILE_N"]]
 
 
 @libentry()
@@ -188,9 +206,9 @@ def bmm_sqmma_descriptor_pre_hook(nargs):
     configs=[
         triton.Config(
             {
-                "BLOCK_SIZE_M": 128,
-                "BLOCK_SIZE_N": 128,
-                "BLOCK_SIZE_K": 64,
+                "TILE_M": 128,
+                "TILE_N": 128,
+                "TILE_K": 64,
                 "GROUP_M": 8,
             },
             num_stages=1,
@@ -199,9 +217,9 @@ def bmm_sqmma_descriptor_pre_hook(nargs):
         ),
         triton.Config(
             {
-                "BLOCK_SIZE_M": 128,
-                "BLOCK_SIZE_N": 64,
-                "BLOCK_SIZE_K": 64,
+                "TILE_M": 128,
+                "TILE_N": 64,
+                "TILE_K": 64,
                 "GROUP_M": 8,
             },
             num_stages=1,
@@ -210,9 +228,9 @@ def bmm_sqmma_descriptor_pre_hook(nargs):
         ),
         triton.Config(
             {
-                "BLOCK_SIZE_M": 64,
-                "BLOCK_SIZE_N": 128,
-                "BLOCK_SIZE_K": 64,
+                "TILE_M": 64,
+                "TILE_N": 128,
+                "TILE_K": 64,
                 "GROUP_M": 8,
             },
             num_stages=1,
@@ -221,9 +239,9 @@ def bmm_sqmma_descriptor_pre_hook(nargs):
         ),
         triton.Config(
             {
-                "BLOCK_SIZE_M": 64,
-                "BLOCK_SIZE_N": 64,
-                "BLOCK_SIZE_K": 64,
+                "TILE_M": 64,
+                "TILE_N": 64,
+                "TILE_K": 64,
                 "GROUP_M": 4,
             },
             num_stages=1,
@@ -232,9 +250,9 @@ def bmm_sqmma_descriptor_pre_hook(nargs):
         ),
         triton.Config(
             {
-                "BLOCK_SIZE_M": 128,
-                "BLOCK_SIZE_N": 128,
-                "BLOCK_SIZE_K": 128,
+                "TILE_M": 128,
+                "TILE_N": 128,
+                "TILE_K": 128,
                 "GROUP_M": 8,
             },
             num_stages=1,
@@ -243,9 +261,9 @@ def bmm_sqmma_descriptor_pre_hook(nargs):
         ),
         triton.Config(
             {
-                "BLOCK_SIZE_M": 128,
-                "BLOCK_SIZE_N": 128,
-                "BLOCK_SIZE_K": 256,
+                "TILE_M": 128,
+                "TILE_N": 128,
+                "TILE_K": 256,
                 "GROUP_M": 8,
             },
             num_stages=1,
@@ -253,13 +271,11 @@ def bmm_sqmma_descriptor_pre_hook(nargs):
             pre_hook=bmm_sqmma_descriptor_pre_hook,
         ),
     ],
-    key=["M", "N", "K"],
-    strategy=["align32", "align32", "align32"],
+    key=["M", "N", "K", "stride_am", "stride_bk"],
+    strategy=["align32", "align32", "align32", "align32", "align32"],
     warmup=5,
     rep=5,
     flagtune_op_name="bmm",
-    flagtune_expand_op_name="bmm_sqmma",
-    flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
     flagtune_pre_hook=bmm_sqmma_descriptor_pre_hook,
 )
 @triton.jit
@@ -271,44 +287,43 @@ def bmm_sqmma_kernel(
     M,
     N,
     K,
-    BLOCK_SIZE_M: tl.constexpr,
-    BLOCK_SIZE_N: tl.constexpr,
-    BLOCK_SIZE_K: tl.constexpr,
+    stride_am,
+    stride_bk,
+    TILE_M: tl.constexpr,
+    TILE_N: tl.constexpr,
+    TILE_K: tl.constexpr,
     GROUP_M: tl.constexpr,
 ):
     pid = tl.program_id(axis=0)
     batch_index = tl.program_id(axis=1)
-    grid_m = tl.cdiv(M, BLOCK_SIZE_M)
-    grid_n = tl.cdiv(N, BLOCK_SIZE_N)
+    grid_m = tl.cdiv(M, TILE_M)
+    grid_n = tl.cdiv(N, TILE_N)
     width = GROUP_M * grid_n
     group_id = pid // width
     group_size = min(grid_m - group_id * GROUP_M, GROUP_M)
     pid_m = group_id * GROUP_M + (pid % group_size)
     pid_n = (pid % width) // group_size
-    offs_am = (pid_m * BLOCK_SIZE_M + batch_index * M).to(tl.int32)
-    offs_bn = (pid_n * BLOCK_SIZE_N).to(tl.int32)
+    offs_am = (pid_m * TILE_M + batch_index * M).to(tl.int32)
+    offs_bn = (pid_n * TILE_N).to(tl.int32)
     offs_ak = 0
     offs_ak = offs_ak.to(tl.int32)
     offs_bk = (batch_index * K).to(tl.int32)
-    accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
-    for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
+    accumulator = tl.zeros((TILE_M, TILE_N), dtype=tl.float32)
+    for k in range(0, tl.cdiv(K, TILE_K)):
         a = tl.load_tensor_descriptor(a_desc, [offs_am, offs_ak])
         b = tl.load_tensor_descriptor(b_desc, [offs_bk, offs_bn])
         accumulator = tl.dot(a, b, acc=accumulator)
-        offs_ak += BLOCK_SIZE_K
-        offs_bk += BLOCK_SIZE_K
+        offs_ak += TILE_K
+        offs_bk += TILE_K
     tl.store_tensor_descriptor(c_desc, [offs_am, offs_bn], accumulator.to(c_desc.dtype))
 
 
-def bmm_sqmma(A, B, elem_type, batch, M, N, K):
-    device = "musa"
-    c_type = elem_type if (elem_type != torch.bfloat16) else torch.float16
-    C = torch.empty((batch, M, N), dtype=torch.float16, device=device).to(c_type)
+def bmm_sqmma_out(A, B, out, batch, M, N, K):
     desc_a = TensorDescriptor.from_tensor(A.reshape(batch * M, K), [1, 1])
     desc_b = TensorDescriptor.from_tensor(B.reshape(batch * K, N), [1, 1])
-    desc_c = TensorDescriptor.from_tensor(C.reshape(batch * M, N), [1, 1])
+    desc_c = TensorDescriptor.from_tensor(out.reshape(batch * M, N), [1, 1])
     grid = lambda META: (
-        triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]),
+        triton.cdiv(M, META["TILE_M"]) * triton.cdiv(N, META["TILE_N"]),
         batch,
         1,
     )
@@ -320,15 +335,167 @@ def bmm_sqmma(A, B, elem_type, batch, M, N, K):
         M,
         N,
         K,
+        A.stride(1),
+        B.stride(1),
     )
-    return C
+    return out
 
 
-def bmm(a, b):
-    a_dtype = a.dtype
-    batch, M, K = a.shape
-    _, _, N = b.shape
-    if is_sqmma_compatible(a, b, N, K) and M >= 128:
-        return bmm_sqmma(a, b, a_dtype, batch, M, N, K)
-    else:
-        return bmm_fma(a, b)
+def bmm_sqmma(A, B, elem_type, batch, M, N, K):
+    """Compatibility wrapper retained for the existing baddbmm SQMMA path."""
+
+    c_type = elem_type if elem_type != torch.bfloat16 else torch.float16
+    out = torch.empty((batch, M, N), dtype=torch.float16, device=A.device).to(c_type)
+    return bmm_sqmma_out(A, B, out, batch, M, N, K)
+
+
+def _normalized_shape(A, B):
+    return A.shape[1], B.shape[2], A.shape[2]
+
+
+def _validate_bmm_inputs(A, B):
+    assert A.ndim == B.ndim == 3, "bmm expects rank-3 tensors"
+    assert A.shape[0] == B.shape[0], "Batch dim mismatch"
+    assert A.shape[2] == B.shape[1], "K dim mismatch"
+    assert A.dtype == B.dtype, "Dtype mismatch"
+    assert A.device == B.device, "Device mismatch"
+
+
+def _validate_bmm_out(A, B, out):
+    _validate_bmm_inputs(A, B)
+    assert out.ndim == 3, "bmm expects a rank-3 output tensor"
+    assert tuple(out.shape) == (
+        A.shape[0],
+        A.shape[1],
+        B.shape[2],
+    ), "Output shape mismatch"
+    assert A.dtype == out.dtype, "Dtype mismatch"
+    assert A.device == out.device, "Device mismatch"
+
+
+def _contiguous_bf16_path_eligible(A, B, out, shape):
+    return (
+        A.shape[0] == B.shape[0] == 1
+        and _normalized_shape(A, B) == shape
+        and A.dtype == torch.bfloat16
+        and A.is_contiguous()
+        and B.is_contiguous()
+        and out.is_contiguous()
+    )
+
+
+def _small_m_path_eligible(A, B, out):
+    if (
+        (A.shape[0], A.shape[1], B.shape[2], A.shape[2]) != _SMALL_M_SHAPE
+        or A.dtype not in (torch.float16, torch.bfloat16)
+        or not A.is_contiguous()
+        or not out.is_contiguous()
+    ):
+        return False
+    return B.is_contiguous() or tuple(B.stride()) == (160 * 1024, 1, 1024)
+
+
+def _core_persistent_path_eligible(A, B, out):
+    return (
+        (A.shape[0], A.shape[1], B.shape[2], A.shape[2]) in _CORE_PERSISTENT_SHAPES
+        and A.dtype in (torch.float16, torch.bfloat16)
+        and A.dtype == B.dtype == out.dtype
+        and A.is_contiguous()
+        and B.is_contiguous()
+        and out.is_contiguous()
+    )
+
+
+def _core_fp32_path_eligible(A, B, out):
+    return (
+        (A.shape[0], A.shape[1], B.shape[2], A.shape[2]) in _CORE_FP32_SHAPES
+        and A.dtype == B.dtype == out.dtype == torch.float32
+        and A.is_contiguous()
+        and B.is_contiguous()
+        and out.is_contiguous()
+    )
+
+
+def _core_small_path_eligible(A, B, out):
+    return (
+        (A.shape[0], A.shape[1], B.shape[2], A.shape[2]) == _CORE_SMALL_SHAPE
+        and A.dtype in (torch.float16, torch.bfloat16)
+        and A.dtype == B.dtype == out.dtype
+        and A.is_contiguous()
+        and B.is_contiguous()
+        and out.is_contiguous()
+    )
+
+
+def _launch_special_path(A, B, out):
+    path = special.dispatch_path(A, B)
+    if path is None or not special.output_eligible(out, A, B):
+        return False
+    with torch_device_fn.device(A.device):
+        special.launch(path, A, B, out)
+    return True
+
+
+def _general_bmm_out(A, B, out):
+    batch, M, K = A.shape
+    N = B.shape[2]
+    if not out.is_contiguous():
+        return default_bmm_out(A, B, out)
+    if is_sqmma_compatible(A, B, N, K) and M >= 128:
+        return bmm_sqmma_out(A, B, out, batch, M, N, K)
+    return bmm_fma_out(A, B, out)
+
+
+def _bmm_out_impl(A, B, out):
+    if _core_small_path_eligible(A, B, out):
+        return core.bmm_core_small_out(A, B, out)
+    if _core_fp32_path_eligible(A, B, out):
+        return core.bmm_core_fp32_out(A, B, out)
+    if _core_persistent_path_eligible(A, B, out):
+        return core.bmm_core_persistent_out(A, B, out)
+    if _small_m_path_eligible(A, B, out):
+        return smallm.bmm_smallm_out(A, B, out)
+    if _launch_special_path(A, B, out):
+        return out
+    if _contiguous_bf16_path_eligible(A, B, out, _C0_SHAPE):
+        persistent.bmm_persistent_out(
+            A[0],
+            B[0],
+            out[0],
+            group_m=2,
+            unroll_k=2,
+        )
+        return out
+    if _contiguous_bf16_path_eligible(A, B, out, _C1_SHAPE):
+        persistent.bmm_persistent_out(
+            A[0],
+            B[0],
+            out[0],
+            group_m=4,
+            unroll_k=1,
+        )
+        return out
+    if _contiguous_bf16_path_eligible(A, B, out, _C2_SHAPE):
+        return explicit.bmm_explicit_out(A, B, out)
+    if _contiguous_bf16_path_eligible(A, B, out, _C3_SHAPE):
+        split.bmm_split_out(A[0], B[0], out[0])
+        return out
+    if _contiguous_bf16_path_eligible(A, B, out, _C4_SHAPE):
+        spmc.bmm_spmc_out(A[0], B[0], out[0])
+        return out
+    return _general_bmm_out(A, B, out)
+
+
+def bmm(A, B):
+    logger.debug("GEMS_MTHREADS BMM")
+    _validate_bmm_inputs(A, B)
+    out = torch.empty(
+        (A.shape[0], A.shape[1], B.shape[2]), dtype=A.dtype, device=A.device
+    )
+    return _bmm_out_impl(A, B, out)
+
+
+def bmm_out(A, B, out):
+    logger.debug("GEMS_MTHREADS BMM_OUT")
+    _validate_bmm_out(A, B, out)
+    return _bmm_out_impl(A, B, out)
