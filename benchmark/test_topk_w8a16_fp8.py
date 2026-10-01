@@ -12,22 +12,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import statistics
+from enum import Enum
+
 import pytest
 import torch
 
 import flag_gems
 
 from . import base
+from .conftest import Config
 
 GROUP_SIZE = 128
 FP8_DTYPE = (
     torch.float8_e4m3fn
-    if flag_gems.vendor_name in ("hygon", "mthreads", "nvidia")
+    if flag_gems.vendor_name in ("ascend", "hygon", "mthreads", "nvidia")
     else torch.float8_e5m2
 )
 
 
 def _fp8_available():
+    if flag_gems.device == "npu":
+        return torch.npu.is_available() and hasattr(torch, "float8_e4m3fn")
     if flag_gems.device == "musa":
         return torch.musa.is_available() and hasattr(torch, "float8_e4m3fn")
     return (
@@ -82,7 +88,7 @@ class TopKFp8W8A16Benchmark(base.Benchmark):
     DEFAULT_SHAPE_DESC = "M, N, K"
 
     def set_shapes(self, shape_file_path=None):
-        if flag_gems.vendor_name == "nvidia":
+        if flag_gems.vendor_name in ("ascend", "nvidia"):
             self.shapes = [
                 (4, 128, 8),
                 (8, 256, 16),
@@ -105,30 +111,99 @@ class TopKFp8W8A16Benchmark(base.Benchmark):
     def get_input_iter(self, dtype):
         for m, n, k in self.shapes:
             torch.manual_seed(5966)
-            x = torch.randn((m, n), dtype=dtype, device=self.device)
-            group_size = n if flag_gems.vendor_name == "nvidia" else GROUP_SIZE
-            x_fp8, x_scale = _quantize_fp8_grouped(x, group_size=group_size)
-            dequant = (
-                x
-                if flag_gems.vendor_name == "nvidia"
-                else _dequant_fp8(x_fp8, x_scale, group_size=group_size)
-            )
+            if flag_gems.device == "npu":
+                # Ascend quantizes on CPU because the device need not support FP8 casts.
+                x = torch.randn((m, n), dtype=dtype)
+                group_size = n
+                x_fp8, x_scale = _quantize_fp8_grouped(x, group_size=group_size)
+                reference = x_fp8.float() * x_scale.float()
+                x_fp8 = x_fp8.view(torch.uint8).to(self.device).view(FP8_DTYPE)
+                x_scale = x_scale.to(self.device)
+                values, indices = flag_gems.topk_w8a16_fp8(
+                    x_fp8, x_scale, k, group_size=group_size
+                )
+                torch.testing.assert_close(
+                    values.cpu(),
+                    torch.topk(reference, k).values.to(dtype),
+                    rtol=0,
+                    atol=0,
+                )
+                torch.testing.assert_close(
+                    values.cpu(),
+                    torch.gather(reference, -1, indices.cpu()).to(dtype),
+                    rtol=0,
+                    atol=0,
+                )
+                dequant = x.to(self.device)
+            else:
+                x = torch.randn((m, n), dtype=dtype, device=self.device)
+                group_size = n if flag_gems.vendor_name == "nvidia" else GROUP_SIZE
+                x_fp8, x_scale = _quantize_fp8_grouped(x, group_size=group_size)
+                dequant = (
+                    x
+                    if flag_gems.vendor_name == "nvidia"
+                    else _dequant_fp8(x_fp8, x_scale, group_size=group_size)
+                )
             yield x_fp8, x_scale, k, dequant, group_size
+
+
+class AscendTopKFp8W8A16Benchmark(TopKFp8W8A16Benchmark):
+    def get_latency(self, op, *args, **kwargs):
+        fn = lambda: op(*args, **kwargs)
+        stream = torch.npu.Stream()
+        stream.wait_stream(torch.npu.current_stream())
+        with torch.npu.stream(stream):
+            for _ in range(5):
+                fn()
+        torch.npu.synchronize()
+        graph = torch.npu.NPUGraph()
+        with torch.npu.graph(graph, stream=stream):
+            for _ in range(100):
+                fn()
+        for _ in range(10):
+            graph.replay()
+        torch.npu.synchronize()
+        starts = [torch.npu.Event(enable_timing=True) for _ in range(30)]
+        ends = [torch.npu.Event(enable_timing=True) for _ in range(30)]
+        for start, end in zip(starts, ends):
+            start.record()
+            graph.replay()
+            end.record()
+        torch.npu.synchronize()
+        return (
+            statistics.median(
+                start.elapsed_time(end) for start, end in zip(starts, ends)
+            )
+            / 100
+        )
+
+
+class AscendGraphMode(Enum):
+    NPUGRAPH = "npugraph"
 
 
 @pytest.mark.topk_w8a16_fp8
 @pytest.mark.skipif(
-    getattr(flag_gems, "vendor_name", None)
-    not in ("thead", "hygon", "mthreads", "nvidia", "metax"),
+    flag_gems.vendor_name
+    not in ("ascend", "thead", "hygon", "mthreads", "nvidia", "metax"),
     reason="topk_w8a16_fp8 requires an implemented backend",
 )
 @pytest.mark.skipif(not _fp8_available(), reason="required FP8 format is unavailable")
 @pytest.mark.parametrize(
     "baseline",
-    ["torch"] if flag_gems.vendor_name == "nvidia" else ["torch", "flaggems"],
+    (
+        ["torch"]
+        if flag_gems.vendor_name in ("ascend", "nvidia")
+        else ["torch", "flaggems"]
+    ),
 )
-def test_topk_w8a16_fp8(baseline):
-    bench = TopKFp8W8A16Benchmark(
+def test_topk_w8a16_fp8(baseline, monkeypatch):
+    if flag_gems.device == "npu":
+        monkeypatch.setattr(Config, "mode", AscendGraphMode.NPUGRAPH)
+        benchmark_class = AscendTopKFp8W8A16Benchmark
+    else:
+        benchmark_class = TopKFp8W8A16Benchmark
+    bench = benchmark_class(
         op_name="topk_w8a16_fp8",
         torch_op=_torch_topk_w8a16 if baseline == "torch" else _gems_bf16_topk,
         dtypes=[torch.bfloat16],
