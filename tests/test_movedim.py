@@ -47,9 +47,7 @@ _DTYPES = [
     if _dtype_supported(dtype)
 ]
 _BACKWARD_DTYPES = [
-    dtype
-    for dtype in (torch.float16, torch.float32, torch.bfloat16, torch.float64)
-    if _dtype_supported(dtype)
+    dtype for dtype in _DTYPES if dtype.is_floating_point or dtype.is_complex
 ]
 
 

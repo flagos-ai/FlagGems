@@ -229,7 +229,14 @@ def test_squeeze_result_writes_through_to_input(dtype):
 
 @pytest.mark.squeeze
 @pytest.mark.parametrize("shape,dim", _BACKWARD_CASES)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        dtype
+        for dtype in _SUPPORTED_DTYPES
+        if dtype.is_floating_point or dtype.is_complex
+    ],
+)
 def test_squeeze_backward(shape, dim, dtype):
     inp = tu.make_input(dtype, shape, _RANGE).requires_grad_(True)
     ref_inp = tu.to_reference(inp)
@@ -244,7 +251,7 @@ def test_squeeze_backward(shape, dim, dtype):
     tu.assert_result_equal(res_out, ref_out)
 
     # grad_outputs must match the squeezed shape, not the input shape.
-    upstream = torch.randn_like(res_out)
+    upstream = tu.make_input(dtype, tuple(res_out.shape), _RANGE)
     (res_grad,) = torch.autograd.grad(res_out, inp, grad_outputs=upstream)
     (ref_grad,) = torch.autograd.grad(
         ref_out, ref_inp, grad_outputs=tu.to_reference(upstream)

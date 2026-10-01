@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import math
-
 import pytest
 import torch
 
@@ -53,9 +51,8 @@ _SPECIAL_DTYPES = [dtype for dtype in _DTYPES if dtype.is_floating_point]
 _LAYOUT_DTYPES = [torch.float32, torch.int64]
 _LAYOUT_DTYPES = [dtype for dtype in _LAYOUT_DTYPES if _DTYPE_FLAGS.get(dtype, True)]
 
-_BACKWARD_DTYPES = [torch.float32, torch.float16, torch.bfloat16]
 _BACKWARD_DTYPES = [
-    dtype for dtype in _BACKWARD_DTYPES if _DTYPE_FLAGS.get(dtype, True)
+    dtype for dtype in _DTYPES if dtype.is_floating_point or dtype.is_complex
 ]
 
 _SQUEEZE_ROWS = [
@@ -116,12 +113,6 @@ _BACKWARD_ROWS = [
     ((1, 4, 1), ([0, 2],)),
     ((2, 3), (1,)),
 ]
-
-
-def _exact_upstream(shape, dtype):
-    # 1..numel is exactly representable in every tested gradient dtype.
-    steps = torch.arange(1, math.prod(shape) + 1, dtype=dtype, device=flag_gems.device)
-    return steps.reshape(shape)
 
 
 def _snapshot(inp):
@@ -302,11 +293,9 @@ def test_squeeze__backward(shape, extra, dtype):
     # The forward result is checked before the gradient is taken.
     tu.assert_result_equal(res_out, ref_out)
 
-    # A non-uniform upstream of small integers is exact in every tested dtype,
-    # so the squeezed gradient is compared exactly instead of within a
-    # tolerance. It is built on the candidate device; the reference gets its own
-    # independent copy through tu.to_reference.
-    upstream = _exact_upstream(ref_out.shape, dtype)
+    # Squeeze only relabels dimensions, so a non-uniform upstream is relayed
+    # exactly for every supported floating and complex dtype.
+    upstream = tu.make_input(dtype, tuple(ref_out.shape), ["-1", "1"])
     ref_upstream = tu.to_reference(upstream)
 
     (res_grad,) = torch.autograd.grad(res_out, leaf, grad_outputs=upstream)

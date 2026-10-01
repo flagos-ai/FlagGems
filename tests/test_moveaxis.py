@@ -287,7 +287,9 @@ BACKWARD_ROWS = tu.selected_cases(
     quick=[],
 )
 
-BACKWARD_DTYPES = [torch.float32, torch.float64, torch.float16, torch.bfloat16]
+BACKWARD_DTYPES = [
+    dtype for dtype in SUPPORTED_DTYPES if dtype.is_floating_point or dtype.is_complex
+]
 
 
 @pytest.mark.parametrize("shape,source,destination", BACKWARD_ROWS)

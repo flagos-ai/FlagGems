@@ -18,7 +18,7 @@ Both overloads of ``torch.ops.aten.view`` are listed and measured through the
 single public candidate ``flag_gems.view``: the ``size`` overload on a
 contiguous input, and the ``dtype`` overload reinterpreting to ``torch.uint8``
 -- a 1-byte target element size divides every trailing dimension, so that
-overload adds no shape constraint of its own.
+rank-0 inputs require a 1-byte source dtype as well.
 
 The shapes stay the shared ones (the ``core_shapes.yaml`` class-key entry, the
 framework's comprehensive extras and the higher-rank boundaries they lack), so a
@@ -51,7 +51,7 @@ _VIEW_DTYPES = list(
 )
 
 # The reinterpret target: torch.uint8's 1-byte element size divides every
-# source element size, so the dtype overload needs no shape filtering.
+# source element size; scalar inputs additionally require a 1-byte source.
 _DTYPE_TARGET = torch.uint8
 
 # Numel-preserving rearrangements of the shared and boundary shapes; an
@@ -80,7 +80,6 @@ def _size_target(shape):
 
 
 def _case_fn(shape, dtype):
-    del dtype
     shape = tuple(shape)
     target = _size_target(shape)
     yield base.BenchmarkCasePlan(
@@ -88,9 +87,14 @@ def _case_fn(shape, dtype):
         params={"overload": "size", "target": list(target)},
         builder_args=(shape, "size", target),
     )
-    if shape:
-        # The dtype overload reinterprets the trailing dimension, so a 0-d
-        # input has nothing to reinterpret and yields the size plan only.
+    if shape or dtype in (
+        torch.bool,
+        torch.int8,
+        torch.uint8,
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        # Scalars support reinterpretation when the element size stays one byte.
         yield base.BenchmarkCasePlan(
             shape={"input": list(shape)},
             params={"overload": "dtype", "target": str(_DTYPE_TARGET)},
@@ -113,6 +117,10 @@ def _build_inputs_fn(plan, dtype, device):
 
 class ViewBenchmark(base.GenericBenchmark):
     """Shared shape grids plus the higher-rank boundaries they lack."""
+
+    def set_shapes(self, shape_file_path=None):
+        super().set_shapes(shape_file_path)
+        self.shapes = list(dict.fromkeys(tuple(s) for s in [*self.shapes, ()]))
 
     def set_more_shapes(self):
         return super().set_more_shapes() + [(16, 128, 64, 60), (16, 7, 57, 32, 29)]

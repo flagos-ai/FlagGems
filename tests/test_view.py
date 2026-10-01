@@ -15,7 +15,7 @@
 """Correctness tests for both ``aten::view`` overloads.
 
 A view moves no element, so every value comparison here is exact (zero
-olerance) and the facts a value comparison cannot see -- strides, storage
+tolerance) and the facts a value comparison cannot see -- strides, storage
 offset, storage sharing, view identity and the lazy conjugate/negative bit --
 are matched against a native reference built on an independent operand.
 
@@ -33,7 +33,7 @@ Probed native argument rules: a tuple, a list or ``size=`` names the target
 shape, while a bare int is the dtype overload's ScalarType id (``view(x, 24)``
 reinterprets and ``view(x, 100)`` aborts the native library), so the size
 workloads pass sequences only and the single bare int exercised is the ``-1``
-that the native call rejects. The dtype overload requires ``dim() >= 1``,
+that the native call rejects. For different element sizes the dtype overload requires ``dim() >= 1``,
 ``stride(-1) == 1``, both ``shape[-1] * itemsize(self)`` and
 ``storage_offset()`` divisible by the element-size ratio, and no lazy
 conjugate or negative bit.
@@ -75,8 +75,8 @@ _VIEW_DTYPES = [
     if _dtype_supported(dtype)
 ]
 
-# Only a floating source can carry a gradient or the lazy negative bit, and
-# only a complex source can carry the lazy conjugate bit.
+# Floating and complex sources can carry gradients; lazy-bit fixtures below
+# keep their existing real and complex dtype groups.
 _FLOAT_VIEW_DTYPES = [
     dtype
     for dtype in (torch.float16, torch.float32, torch.bfloat16, torch.float64)
@@ -136,18 +136,18 @@ _DTYPE_PAIRS = [
 
 
 def _dtype_rows():
-    # Rank-0 inputs are skipped: the dtype overload has no trailing dimension
-    # to reinterpret. A pair is kept exactly when the element-size ratio
-    # divides the trailing dimension, which is the native condition, so no
-    # valid combination is dropped and no invalid one is collected.
+    # Scalar dtype views are valid when the element size is unchanged.
+    shapes = list(tu.selected_shapes())
+    if () not in shapes:
+        shapes.append(())
     rows = []
-    for shape in tu.selected_shapes():
-        if not shape:
-            continue
+    for shape in shapes:
         for src, dst in _DTYPE_PAIRS:
             if not (_dtype_supported(src) and _dtype_supported(dst)):
                 continue
-            if shape[-1] * _ITEM_SIZE[src] % _ITEM_SIZE[dst] == 0:
+            if not shape and _ITEM_SIZE[src] != _ITEM_SIZE[dst]:
+                continue
+            if not shape or shape[-1] * _ITEM_SIZE[src] % _ITEM_SIZE[dst] == 0:
                 rows.append((shape, src, dst))
     return rows
 
@@ -543,7 +543,10 @@ def test_view_dtype_shares_storage(src, dst):
 
 @pytest.mark.view
 @pytest.mark.parametrize("shape,target", _BACKWARD_CASES)
-@pytest.mark.parametrize("dtype", _FLOAT_VIEW_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [dtype for dtype in _VIEW_DTYPES if dtype.is_floating_point or dtype.is_complex],
+)
 def test_view_size_backward(shape, target, dtype):
     inp = tu.make_input(dtype, shape, ["-1", "1"]).requires_grad_(True)
     ref_inp = tu.to_reference(inp.detach()).requires_grad_(True)
