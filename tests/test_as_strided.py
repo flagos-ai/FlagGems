@@ -251,20 +251,15 @@ def test_as_strided_view_writes_through(shape, size, stride, offset):
     tu.assert_result_equal(inp, ref_inp)
 
 
-# Backward. The placement rows map every storage element to at most one view
-# element, so the gradient is a plain placement (exact comparison); the
-# overlapping window and the stride-0 row accumulate and are compared as
-# arithmetic results. Every real (fp16/fp32/bf16/fp64) and complex
-# (complex64/complex128) combination was probed per row with explicit
-# grad_outputs and produced a gradient. float8 is excluded because the autograd
-# path needs sum/index_add kernels that are unimplemented for float8 in this
-# environment ('sum_cpu' for the placement rows, 'index_add_' for the
-# overlapping ones), so it cannot produce a gradient at all.
+# Non-overlapping views only place gradients, so they compare exactly. The
+# overlapping window and stride-0 rows accumulate and use arithmetic tolerance.
+# FP8 is included for placement; overlapping rows require index_add / sum
+# kernels that are unavailable for FP8 on the validated backend.
 _BACKWARD_ROWS = [
     ((4, 6), [3, 4], [6, 1], 0, False),
     ((8, 8), [2, 2], [8, 1], 3, False),
     ((4, 6), [2, 3], [1, 1], 2, True),
-    ((12,), [8], [1], 2, True),
+    ((12,), [8], [1], 2, False),
     ((6, 4), [3, 4], [0, 1], 0, True),
 ]
 _BACKWARD_REAL_DTYPES = [torch.float16, torch.float32, torch.bfloat16] + (

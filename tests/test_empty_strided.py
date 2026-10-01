@@ -53,7 +53,7 @@ _ALLOCATOR_DTYPES = [
     torch.complex128,
 ] + [dtype for dtype, supported in _CAPABILITY_GATED_DTYPES if supported]
 
-_LAYOUTS = ("contiguous", "reversed", "padded", "overlap")
+_LAYOUTS = ("contiguous", "reversed", "padded", "overlap", "zero_stride")
 
 
 def _contiguous_strides(size):
@@ -72,6 +72,8 @@ def _strides_for(size, layout):
     if layout == "padded":
         # One padding element per axis: the storage is larger than numel.
         return tuple(step * 2 for step in contiguous)
+    if layout == "zero_stride":
+        return tuple(0 for _ in contiguous)
     if layout == "overlap":
         # Every axis advances by one element: storage smaller than numel and
         # not dense.
@@ -110,6 +112,7 @@ def _assert_allocation(result, reference, size, stride, device):
     assert result.dtype == reference.dtype
     assert result.numel() == reference.numel()
     assert result.storage_offset() == reference.storage_offset() == 0
+    assert result.device == reference.device
     assert result.device.type == torch.device(device).type
     assert result._is_view() is False
     assert result.requires_grad is False

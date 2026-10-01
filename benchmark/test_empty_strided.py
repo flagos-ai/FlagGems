@@ -41,7 +41,7 @@ EMPTY_STRIDED_LAYOUTS = [
     ((4 * 1024 * 1024,), (1,)),
 ]
 
-_LAYOUTS = ("contiguous", "reversed", "padded", "overlap")
+_LAYOUTS = ("contiguous", "reversed", "padded", "overlap", "zero_stride")
 
 
 def _contiguous_strides(size):
@@ -60,6 +60,8 @@ def _strides_for(size, layout):
     if layout == "padded":
         # One padding element per axis: a storage larger than numel.
         return tuple(step * 2 for step in contiguous)
+    if layout == "zero_stride":
+        return tuple(0 for _ in contiguous)
     if layout == "overlap":
         # Every axis advances by one element: an overlapping, smaller storage.
         return tuple(1 for _ in contiguous)

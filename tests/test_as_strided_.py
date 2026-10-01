@@ -311,7 +311,7 @@ _BACKWARD_ROWS = [
 ]
 BACKWARD_CASES = tu.selected_cases(
     [
-        (shape, size, stride, offset, dtype)
+        (shape, size, stride, offset, overlaps, dtype)
         for shape, size, stride, offset, overlaps in _BACKWARD_ROWS
         for dtype in _GRAD_DTYPES + _FP8_GRAD_DTYPES
         # The accumulating gradient path of the overlapping rows dispatches to
@@ -325,8 +325,8 @@ BACKWARD_CASES = tu.selected_cases(
 
 
 @pytest.mark.as_strided_
-@pytest.mark.parametrize("shape,size,stride,offset,dtype", BACKWARD_CASES)
-def test_as_strided__backward(shape, size, stride, offset, dtype):
+@pytest.mark.parametrize("shape,size,stride,offset,overlaps,dtype", BACKWARD_CASES)
+def test_as_strided__backward(shape, size, stride, offset, overlaps, dtype):
     # An in-place operator rejects a leaf requiring grad (and a view of one), so
     # the mutated operand is the non-leaf clone below while the differentiated
     # operand is the independent source leaf it was cloned from.
@@ -352,7 +352,10 @@ def test_as_strided__backward(shape, size, stride, offset, dtype):
     ref_grad = torch.autograd.grad(ref_out, ref_src, grad_outputs=ref_upstream)[0]
     res_grad = torch.autograd.grad(res_out, src, grad_outputs=upstream)[0]
 
-    tu.assert_result_close(res_grad, ref_grad)
+    if overlaps:
+        tu.assert_result_close(res_grad, ref_grad)
+    else:
+        tu.assert_result_equal(res_grad, ref_grad)
 
 
 _OUT_OF_BOUNDS_ROWS = [
@@ -415,3 +418,12 @@ def test_as_strided__rejects_non_integer_sequence(size, stride):
     inp = tu.make_input(torch.float32, (4, 6), ["-1", "1"])
     with pytest.raises((RuntimeError, TypeError, ValueError)):
         flag_gems.as_strided_(inp, size, stride, 0)
+
+
+@pytest.mark.as_strided_
+@pytest.mark.parametrize("is_view", [False, True])
+def test_as_strided__rejects_leaf_requiring_grad(is_view):
+    leaf = tu.make_input(torch.float32, (4, 6), ["-1", "1"]).requires_grad_(True)
+    inp = leaf[:, :] if is_view else leaf
+    with pytest.raises(RuntimeError):
+        flag_gems.as_strided_(inp, [6, 4], [1, 6], 0)
