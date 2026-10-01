@@ -19,7 +19,6 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-# CI trigger: exercise the hygon runtime-image migration end-to-end (remove after verify).
 TILE_DIMS = [(0,), (2,), (2, 0), (0, 2), (2, 2), (2, 2, 2), (2, 2, 2, 2)]
 
 
