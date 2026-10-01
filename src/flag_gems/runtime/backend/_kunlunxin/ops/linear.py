@@ -23,6 +23,8 @@ from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 
+from .contiguous import contiguous
+
 logger = logging.getLogger(__name__)
 
 
@@ -126,7 +128,7 @@ def linear_kernel(
 
     # Add bias if present
     if BIAS:
-        bias_ptrs = bias_ptr + offs_on
+        bias_ptrs = bias_ptr + offs_on * stride_bn
         bias = tl.load(bias_ptrs, mask=output_mask_n, other=0.0)
         accumulator = accumulator + bias
 
@@ -136,27 +138,7 @@ def linear_kernel(
 
 
 def linear(input, weight, bias=None):
-    """
-    Applies a linear transformation to the incoming data: y = xA^T + b
-
-    Args:
-        input: Input tensor of shape (*, in_features) where * means any number of
-               additional dimensions, including none.
-        weight: Weight tensor of shape (out_features, in_features)
-        bias: Bias tensor of shape (out_features), optional
-
-    Returns:
-        Output tensor of shape (*, out_features)
-    """
-    logger.debug("GEMS LINEAR")
-
-    input_dim = input.dim()
-    if input_dim == 1:
-        # Single 1D input: treat as (1, in_features)
-        input = input.unsqueeze(0)
-        single_1d = True
-    else:
-        single_1d = False
+    logger.debug("GEMS_KUNLUNXIN LINEAR")
 
     # Flatten batch dimensions: (*, in_features) -> (batch, in_features)
     batch_dims = input.shape[:-1]
@@ -166,15 +148,14 @@ def linear(input, weight, bias=None):
     M = batch_size
     K = input.shape[-1]  # in_features
     N = weight.shape[0]  # out_features
-
-    # Flatten input: (*, K) -> (M, K)
-    input_flat = input.view(M, K)
-
-    # Ensure weight is contiguous and properly shaped
-    weight = weight.contiguous()
-
     # Allocate output
     output = torch.empty((M, N), device=input.device, dtype=input.dtype)
+    if M == 0 or N == 0:
+        return output.view(*batch_dims, N)
+
+    # Materialize strided input with the backend copy before flattening batch
+    # dimensions. Weight and bias are read directly using their own strides.
+    input_flat = contiguous(input).view(M, K)
 
     # Launch kernel
     grid = lambda META: (
@@ -201,11 +182,5 @@ def linear(input, weight, bias=None):
             BIAS=bias is not None,
         )
 
-    # Reshape output: (M, N) -> (*, N)
-    output = output.view(*batch_dims, N)
-
-    # If original input was 1D, squeeze the batch dim
-    if single_1d:
-        output = output.squeeze(0)
-
-    return output
+    # A 1D input has no batch dimensions, so the result is a vector.
+    return output.view(*batch_dims, N)
