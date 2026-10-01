@@ -1,0 +1,38 @@
+# Public flagtune(include=["addmm"]) expands the original Hygon GEMM search.
+# The kernel keeps the historical pointer-load data flow; FlagTune searches
+# only its legal tile and launch parameters.
+addmm_hygon:
+  - param_map:
+      META:
+        BLOCK_SIZE_M: block_m
+        BLOCK_SIZE_N: block_n
+        BLOCK_SIZE_K: block_k
+        GROUP_SIZE_M: group_m
+      num_warps: warps
+      num_stages: stages
+    block_m: [32, 64, 128, 256]
+    block_n: [32, 64, 128, 256]
+    block_k: [16, 32, 64, 128]
+    group_m: [1, 2, 4, 8, 16]
+    warps: [2, 4, 8]
+    stages: [1, 2, 3, 4]
+
+# Keep the generic public addmm expansion available because fused operators
+# query this section during backend registration.
+addmm:
+  - param_map:
+      META:
+        BLOCK_SIZE_M: block_m
+        BLOCK_SIZE_N: block_n
+        BLOCK_SIZE_K: block_k
+      num_warps: warps
+      num_stages: stages
+    block_m: [32, 64, 128, 256]
+    block_n: [32, 64, 128, 256]
+    block_k: [16, 32, 64, 128]
+    warps: [2, 4, 8]
+    stages: [1, 2, 3, 4]
+  - strategy:
+      M: default
+      N: default
+      K: default

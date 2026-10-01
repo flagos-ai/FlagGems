@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 from numbers import Number
 
@@ -49,11 +63,13 @@ def _allow_tf32(mat1, mat2):
 @libentry()
 @libtuner(
     configs=runtime.get_tuned_config("addmm"),
-    key=["M", "N", "K"],
-    strategy=["align32", "align32", "align32"],
-    warmup=5,
-    rep=10,
+    key=runtime.common.OP_KEY_ORDERS["addmm_hygon"],
+    strategy=runtime.common.DEFAULT_STRATEGIES["addmm_hygon"],
+    warmup=2,
+    rep=8,
+    benchmark_mode="event",
     flagtune_op_name="addmm",
+    flagtune_expand_op_name="addmm_hygon",
 )
 @triton.heuristics(
     {

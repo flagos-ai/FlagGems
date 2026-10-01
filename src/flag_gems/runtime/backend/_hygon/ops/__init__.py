@@ -24,6 +24,7 @@ from ._thnn_fused_lstm_cell import _thnn_fused_lstm_cell
 from .adaptive_avg_pool2d_backward import adaptive_avg_pool2d_backward
 from .adaptive_max_pool2d_backward import adaptive_max_pool2d_backward
 from .adaptive_max_pool3d_backward import adaptive_max_pool3d_backward
+from .addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out
 from .addmm_ import addmm_
 from .addmv_ import addmv_
 from .addr import addr
@@ -39,6 +40,7 @@ from .attention import (
     scaled_dot_product_attention_forward,
 )
 from .avg_pool3d_backward import avg_pool3d_backward
+from .baddbmm import baddbmm, baddbmm_, baddbmm_out
 from .baddbmm_ import baddbmm_
 from .beam_search_score import beam_search_score
 from .binary_cross_entropy_backward import binary_cross_entropy_backward
@@ -212,6 +214,10 @@ __all__ = [
     "adaptive_avg_pool2d_backward",
     "adaptive_max_pool2d_backward",
     "adaptive_max_pool3d_backward",
+    "addmm",
+    "addmm_dtype",
+    "addmm_dtype_out",
+    "addmm_out",
     "addmm_",
     "addmv_",
     "addr",
@@ -221,6 +227,9 @@ __all__ = [
     "argsort",
     "as_strided_scatter",
     "avg_pool3d_backward",
+    "baddbmm",
+    "baddbmm_",
+    "baddbmm_out",
     "baddbmm_",
     "beam_search_score",
     "binary_cross_entropy_backward",
