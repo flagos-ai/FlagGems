@@ -76,23 +76,11 @@ def _view_shape(layout, shape):
     return shape
 
 
-def _query_formats(shape, layout):
-    # channels_last / channels_last_3d only accept rank 4 / rank 5 natively, so
-    # those queries are planned on those ranks only.
-    queries = ["default", "contiguous", "preserve"]
-    rank = len(shape)
-    if rank == 4 and layout in ("plain", "channels_last"):
-        queries.append("channels_last")
-    if rank == 5 and layout in ("plain", "channels_last_3d"):
-        queries.append("channels_last_3d")
-    return queries
-
-
 def _case_fn(shape, dtype):
     del dtype
     shape = tuple(shape)
     for layout in _layout_kinds(shape):
-        for name in _query_formats(shape, layout):
+        for name in ("default", *_MEMORY_FORMATS):
             yield base.BenchmarkCasePlan(
                 shape={"input": list(_view_shape(layout, shape))},
                 params={"layout": layout, "memory_format": name},

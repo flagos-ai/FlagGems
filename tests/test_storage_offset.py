@@ -20,11 +20,9 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
-# storage_offset is a host-side metadata query returning a Python int, so the
-# view chain - not the element values - determines the result. The spec's
-# value-range, broadcast, NaN/Inf and backward grids are therefore replaced by
-# the layout x shape x dtype sweep below. Native probes read every dtype and
-# layout used here without error, so none of them is exempted.
+# storage_offset reads view metadata and returns a Python int. The shared value
+# ranges verify that payloads do not affect the answer; layout/view chains vary
+# the actual offset. There is no binary broadcast or differentiable result.
 _DTYPES = (
     tu.REQUIRED_DTYPES
     + ([torch.float64] if utils.fp64_is_supported else [])
@@ -95,7 +93,7 @@ def _layout_rows(shapes, layouts):
     ]
 
 
-# Element values never reach the result, so the grid only needs storage.
+# Each layout is constructed from a full shared shape before querying its offset.
 _VIEW_ROWS = _layout_rows(tu.selected_shapes(), _CORE_LAYOUTS) + _layout_rows(
     [shape for shape in tu.selected_shapes() if len(shape) >= 2], _STRIDED_LAYOUTS
 )
@@ -103,9 +101,10 @@ _VIEW_ROWS = _layout_rows(tu.selected_shapes(), _CORE_LAYOUTS) + _layout_rows(
 
 @pytest.mark.storage_offset
 @pytest.mark.parametrize("shape,layout", _VIEW_ROWS)
+@pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("dtype", _DTYPES)
-def test_storage_offset_views(shape, layout, dtype):
-    base = torch.empty(shape, dtype=dtype, device=flag_gems.device)
+def test_storage_offset_views(shape, layout, value_range, dtype):
+    base = tu.make_input(dtype, shape, value_range)
     inp = _offset_view(base, layout)
     ref_inp = tu.to_reference(inp)
 

@@ -61,33 +61,17 @@ _LAYOUT_ROWS = [
     ("neg_view", "neg_view", (4, 6)),
 ]
 
-# (label, kind, base shape, memory_format). channels_last only accepts rank 4
-# and channels_last_3d only rank 5 natively, so those rows use matching ranks.
+# Queries accept every rank; an incompatible channels-last rank returns False.
+# Only constructing a channels-last allocation requires a matching rank.
 _MEMORY_FORMAT_ROWS = [
-    ("plain_contiguous", "plain", (4, 6), torch.contiguous_format),
-    ("plain_preserve", "plain", (4, 6), torch.preserve_format),
-    ("scalar_contiguous", "plain", (), torch.contiguous_format),
-    ("empty_contiguous", "plain", (0,), torch.contiguous_format),
-    ("transposed_contiguous", "transposed", (4, 6), torch.contiguous_format),
-    ("transposed_preserve", "transposed", (4, 6), torch.preserve_format),
-    ("column_step_preserve", "column_step", (4, 12), torch.preserve_format),
-    ("offset_slice_preserve", "offset_slice", (8, 12), torch.preserve_format),
-    ("expanded_contiguous", "expanded", (1, 1), torch.contiguous_format),
-    ("unit_offset_preserve", "unit_offset_1d", (16,), torch.preserve_format),
-    ("channels_last_query", "channels_last", (2, 3, 4, 5), torch.channels_last),
-    (
-        "channels_last_3d_query",
-        "channels_last_3d",
-        (2, 3, 4, 5, 6),
+    (f"{label}_{memory_format}", kind, shape, memory_format)
+    for label, kind, shape in _LAYOUT_ROWS
+    for memory_format in (
+        torch.contiguous_format,
+        torch.preserve_format,
+        torch.channels_last,
         torch.channels_last_3d,
-    ),
-    ("plain_channels_last_query", "plain", (2, 3, 4, 5), torch.channels_last),
-    (
-        "plain_channels_last_3d_query",
-        "plain",
-        (2, 3, 4, 5, 6),
-        torch.channels_last_3d,
-    ),
+    )
 ]
 
 # Positive special-value rows are default-only.

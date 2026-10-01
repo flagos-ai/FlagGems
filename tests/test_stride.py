@@ -100,7 +100,8 @@ def _dim_cases_for(shapes):
 
 # `dim` parameter coverage: zero, positive, negative and both dimension bounds.
 _DIM_CASES = tu.selected_cases(
-    _dim_cases_for(tu.REQUIRED_SHAPES), quick=_dim_cases_for(tu.QUICK_SHAPES)
+    _dim_cases_for(list(dict.fromkeys(tu.REQUIRED_SHAPES + tu.QUICK_SHAPES))),
+    quick=_dim_cases_for(tu.QUICK_SHAPES),
 )
 
 
@@ -205,34 +206,33 @@ def test_stride_layout_dim(storage_shape, layout, dim, dtype):
 @pytest.mark.stride
 @pytest.mark.parametrize("shape", _EMPTY_SHAPES)
 @pytest.mark.parametrize("dtype", _LAYOUT_DTYPES)
-def test_stride_empty_shapes(shape, dtype):
+@pytest.mark.parametrize("call_args", [(), (0,)])
+def test_stride_empty_shapes(shape, dtype, call_args):
     inp = tu.make_input(dtype, shape, ["-1", "1"])
     ref_inp = tu.to_reference(inp)
 
-    ref_out = torch.ops.aten.stride(ref_inp)
-    res_out = flag_gems.stride(inp)
-    _assert_stride_list(res_out, ref_out)
-
-    ref_dim = torch.ops.aten.stride(ref_inp, 0)
-    res_dim = flag_gems.stride(inp, 0)
-    _assert_stride_int(res_dim, ref_dim)
+    ref_out = torch.ops.aten.stride(ref_inp, *call_args)
+    res_out = flag_gems.stride(inp, *call_args)
+    if call_args:
+        _assert_stride_int(res_out, ref_out)
+    else:
+        _assert_stride_list(res_out, ref_out)
 
 
 @pytest.mark.stride
 @pytest.mark.parametrize("shape,nnz", _SPARSE_CASES)
 @pytest.mark.parametrize("dtype", _LAYOUT_DTYPES)
-def test_stride_sparse_coo(shape, nnz, dtype):
+@pytest.mark.parametrize("call_args", [(), (0,)])
+def test_stride_sparse_coo(shape, nnz, dtype, call_args):
     inp = _make_coo(shape, nnz, dtype)
     ref_inp = tu.to_reference(inp)
 
-    ref_out = torch.ops.aten.stride(ref_inp)
-    res_out = flag_gems.stride(inp)
-    _assert_stride_list(res_out, ref_out)
-
-    # COO tensors report a zero stride for every sparse dimension.
-    ref_dim = torch.ops.aten.stride(ref_inp, 0)
-    res_dim = flag_gems.stride(inp, 0)
-    _assert_stride_int(res_dim, ref_dim)
+    ref_out = torch.ops.aten.stride(ref_inp, *call_args)
+    res_out = flag_gems.stride(inp, *call_args)
+    if call_args:
+        _assert_stride_int(res_out, ref_out)
+    else:
+        _assert_stride_list(res_out, ref_out)
 
 
 @pytest.mark.stride
@@ -240,28 +240,27 @@ def test_stride_sparse_coo(shape, nnz, dtype):
 @pytest.mark.parametrize(
     "dtype,scenario", tu.selected_cases(tu.special_value_cases(_STRIDE_DTYPES))
 )
-def test_stride_special_values(dtype, scenario, shape):
+@pytest.mark.parametrize("call_args", [(), (0,)])
+def test_stride_special_values(dtype, scenario, shape, call_args):
     inp = tu.make_special_input(dtype, scenario).reshape(shape)
     ref_inp = tu.to_reference(inp)
 
-    ref_out = torch.ops.aten.stride(ref_inp)
-    res_out = flag_gems.stride(inp)
-    _assert_stride_list(res_out, ref_out)
-
-    ref_dim = torch.ops.aten.stride(ref_inp, 0)
-    res_dim = flag_gems.stride(inp, 0)
-    _assert_stride_int(res_dim, ref_dim)
+    ref_out = torch.ops.aten.stride(ref_inp, *call_args)
+    res_out = flag_gems.stride(inp, *call_args)
+    if call_args:
+        _assert_stride_int(res_out, ref_out)
+    else:
+        _assert_stride_list(res_out, ref_out)
 
 
 @pytest.mark.stride
 @pytest.mark.parametrize("shape", _OOB_SHAPES)
-def test_stride_rejects_out_of_range_dim(shape):
+@pytest.mark.parametrize("side", ["before_first", "after_last"])
+def test_stride_rejects_out_of_range_dim(shape, side):
     inp = tu.make_input(torch.float32, shape, ["-1", "1"])
-
+    dim = -len(shape) - 1 if side == "before_first" else len(shape)
     with pytest.raises((IndexError, RuntimeError, ValueError, TypeError)):
-        flag_gems.stride(inp, len(shape))
-    with pytest.raises((IndexError, RuntimeError, ValueError, TypeError)):
-        flag_gems.stride(inp, -len(shape) - 1)
+        flag_gems.stride(inp, dim)
 
 
 @pytest.mark.stride
