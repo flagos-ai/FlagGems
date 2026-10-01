@@ -69,7 +69,7 @@
     "gpu_check": "tools/gpu_check_metax.sh",
     "enabled": true,
     "container": {
-      "image": "harbor.baai.ac.cn/flagos-base/flagos-base-metax-maca3.8.1.3:2.2.0",
+      "image": "harbor.baai.ac.cn/flagos-runtime/flagos-runtime-metax-maca3.8.1.3:2.2.0",
       "options": "--device /dev/mxcd --device /dev/dri --group-add video",
       "volumes": [],
       "runs_on_default": "metax-mxc550-0",
