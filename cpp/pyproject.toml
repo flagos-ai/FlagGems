@@ -55,4 +55,4 @@ FLAGGEMS_BUILD_C_EXTENSIONS = "ON"
 # Version is derived from the parent repository so the native package stays in
 # lockstep with the main flag-gems package (same commit, same version).
 root = ".."
-version_scheme = "no-guess-dev"
+version_scheme = "only-version"
