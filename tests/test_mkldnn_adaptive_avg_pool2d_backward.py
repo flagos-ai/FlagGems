@@ -267,7 +267,7 @@ def test_mkldnn_adaptive_avg_pool2d_backward_rejects_unsupported_dtype(dtype):
 
 
 @pytest.mark.mkldnn_adaptive_avg_pool2d_backward
-@pytest.mark.parametrize("dtype", NEGATIVE_DTYPES)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16, torch.float16])
 def test_mkldnn_adaptive_avg_pool2d_backward_has_no_gradient(dtype):
     dense_leaf = torch.randn((1, 2, 4, 4), dtype=dtype).requires_grad_()
     ref_leaf = dense_leaf.detach().clone().requires_grad_()

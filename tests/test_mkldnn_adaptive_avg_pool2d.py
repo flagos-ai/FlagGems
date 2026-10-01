@@ -136,6 +136,18 @@ def test_mkldnn_adaptive_avg_pool2d_output_size(dtype, shape, output_size):
 
 @pytest.mark.mkldnn_adaptive_avg_pool2d
 @pytest.mark.parametrize("dtype", _DTYPES)
+@pytest.mark.parametrize("shape", [(0, 3, 8, 8), (2, 0, 8, 8)])
+def test_mkldnn_adaptive_avg_pool2d_empty(shape, dtype):
+    inp, ref_inp = _pair_inputs(dtype, shape, _RANGE)
+
+    ref_out = torch.ops.aten.mkldnn_adaptive_avg_pool2d(ref_inp, [2, 2])
+    res_out = flag_gems.mkldnn_adaptive_avg_pool2d(inp, [2, 2])
+
+    _assert_mkldnn_result(res_out, ref_out, inp, exact=True)
+
+
+@pytest.mark.mkldnn_adaptive_avg_pool2d
+@pytest.mark.parametrize("dtype", _DTYPES)
 def test_mkldnn_adaptive_avg_pool2d_out(dtype):
     inp, ref_inp = _pair_inputs(dtype, _SMALL_SHAPE, _RANGE)
     out_shape = (_SMALL_SHAPE[0], _SMALL_SHAPE[1], *_SMALL_OUTPUT_SIZE)
@@ -200,17 +212,18 @@ def test_mkldnn_adaptive_avg_pool2d_backward(dtype):
 
 @pytest.mark.mkldnn_adaptive_avg_pool2d
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_CASES)
-def test_mkldnn_adaptive_avg_pool2d_special_values(dtype, scenario):
+@pytest.mark.parametrize("reduce_width", [False, True], ids=["identity", "average"])
+def test_mkldnn_adaptive_avg_pool2d_special_values(dtype, scenario, reduce_width):
     payload = tu.make_special_input(dtype, scenario).cpu()
     width = payload.numel()
     inp = payload.reshape(1, 1, 1, width).to_mkldnn()
     ref_inp = payload.reshape(1, 1, 1, width).to_mkldnn()
 
-    # A 1x1 window copies each value, so NaN / Inf must survive exactly.
-    ref_out = torch.ops.aten.mkldnn_adaptive_avg_pool2d(ref_inp, [1, width])
-    res_out = flag_gems.mkldnn_adaptive_avg_pool2d(inp, [1, width])
+    output_size = [1, 1 if reduce_width else width]
+    ref_out = torch.ops.aten.mkldnn_adaptive_avg_pool2d(ref_inp, output_size)
+    res_out = flag_gems.mkldnn_adaptive_avg_pool2d(inp, output_size)
 
-    _assert_mkldnn_result(res_out, ref_out, inp, exact=True)
+    _assert_mkldnn_result(res_out, ref_out, inp, exact=not reduce_width)
 
 
 @pytest.mark.mkldnn_adaptive_avg_pool2d
