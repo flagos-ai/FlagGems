@@ -31,7 +31,10 @@ def test_masked_softmax_mask_type_2(shape, dtype, dim):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     mask = torch.randint(0, 2, shape, dtype=torch.bool, device=flag_gems.device)
 
-    ref_x = utils.to_reference(x)
+    # Reference at double precision: the kernel matches it exactly, while a
+    # same-precision CPU reference accumulates the softmax sum in float32
+    # and drifts by a few ulp.
+    ref_x = utils.to_reference(x, True)
     ref_mask = utils.to_reference(mask)
     ref_out = torch.ops.aten._masked_softmax(ref_x, ref_mask, dim, 2)
 
@@ -49,7 +52,10 @@ def test_masked_softmax_mask_type_1(shape, dtype):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     mask = torch.randint(0, 2, (B, L), dtype=torch.bool, device=flag_gems.device)
 
-    ref_x = utils.to_reference(x)
+    # Reference at double precision: the kernel matches it exactly, while a
+    # same-precision CPU reference accumulates the softmax sum in float32
+    # and drifts by a few ulp.
+    ref_x = utils.to_reference(x, True)
     ref_mask = utils.to_reference(mask)
     ref_out = torch.ops.aten._masked_softmax(ref_x, ref_mask, 3, 1)
 
@@ -67,7 +73,10 @@ def test_masked_softmax_mask_type_0(shape, dtype):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     mask = torch.randint(0, 2, (L, L), dtype=torch.bool, device=flag_gems.device)
 
-    ref_x = utils.to_reference(x)
+    # Reference at double precision: the kernel matches it exactly, while a
+    # same-precision CPU reference accumulates the softmax sum in float32
+    # and drifts by a few ulp.
+    ref_x = utils.to_reference(x, True)
     ref_mask = utils.to_reference(mask)
     ref_out = torch.ops.aten._masked_softmax(ref_x, ref_mask, 3, 0)
 
@@ -86,7 +95,10 @@ def test_masked_softmax_dispatch():
     x = torch.randn((32, 64), dtype=torch.float32, device=flag_gems.device)
     mask = torch.randint(0, 2, (32, 64), dtype=torch.bool, device=flag_gems.device)
 
-    ref_x = utils.to_reference(x)
+    # Reference at double precision: the kernel matches it exactly, while a
+    # same-precision CPU reference accumulates the softmax sum in float32
+    # and drifts by a few ulp.
+    ref_x = utils.to_reference(x, True)
     ref_mask = utils.to_reference(mask)
     ref_out = torch.ops.aten._masked_softmax(ref_x, ref_mask, -1, 2)
 

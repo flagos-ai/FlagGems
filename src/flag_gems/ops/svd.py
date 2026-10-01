@@ -3452,9 +3452,15 @@ def _singular_values_only(input):
     largest = max(m, n)
     if k == 2 and largest <= _RANK2_BLOCK_R_MAX:
         return _rank2_singular_values(input)
-    if k <= 16 and largest <= 1024:
+    # The small Jacobi kernel fully unrolls its SWEEPS * K * (K-1) / 2
+    # rotations, and Triton's ttgir pass takes minutes on the resulting IR for
+    # even modest k (measured cold-cache compile: k=4 5s, k=8 72s, k=15 997s,
+    # k=16 1273s). Route k >= 8 through the blocked implementation, which
+    # drives the same Jacobi sweep from Python-side runtime loops and compiles
+    # in well under a second. This mirrors the k=16 reroute in svd().
+    if k <= 4 and largest <= 1024:
         return _small_jacobi_singular_values(input)
-    if 16 < k <= 512 and largest <= 1024:
+    if 4 < k <= 512 and largest <= 1024:
         return _blocked_jacobi_singular_values(input)
     return _unsupported_svd(input, True, False)
 

@@ -52,6 +52,28 @@ def _make_input(shape, device="cuda"):
     return torch.randn(shape, dtype=torch.float32, device=device) * 3.0
 
 
+def _assert_int_repr_matches(res, ref):
+    """Compare two int representations.
+
+    On the accelerator the kernel is bit-exact against aten. Under
+    ``--ref=cpu`` a quotient landing exactly on ``k + 0.5`` is resolved
+    differently by the two aten backends (CPU rounds an fp32 product, CUDA
+    rounds the fp64 quotient -- see ``test_quantize_per_tensor_half_way_values``),
+    so a handful of large random inputs may be off by one quantization level.
+    """
+    if utils.TO_CPU:
+        # The two operands live on different devices here, so compare on CPU.
+        res_int = res.int_repr().long().cpu()
+        ref_int = ref.int_repr().long().cpu()
+        diff = (res_int - ref_int).abs()
+        assert diff.max().item() <= 1, (
+            f"int_repr differs by more than one quantization level: "
+            f"max |diff| = {diff.max().item()}"
+        )
+    else:
+        utils.gems_assert_equal(res.int_repr(), ref.int_repr())
+
+
 @pytest.mark.quantize_per_tensor
 @pytest.mark.parametrize("shape", QUANT_SHAPES)
 @pytest.mark.parametrize("in_dtype", QUANT_DTYPES)
@@ -64,7 +86,7 @@ def test_quantize_per_tensor(shape, in_dtype, scale, zero_point):
     ref_out = torch.quantize_per_tensor(ref_inp, scale, zero_point, in_dtype)
     res_out = flag_gems.quantize_per_tensor(res_inp, scale, zero_point, in_dtype)
 
-    utils.gems_assert_equal(res_out.int_repr(), ref_out.int_repr())
+    _assert_int_repr_matches(res_out, ref_out)
     assert res_out.dtype == in_dtype
     assert res_out.q_scale() == ref_out.q_scale()
     assert res_out.q_zero_point() == ref_out.q_zero_point()
@@ -92,7 +114,7 @@ def test_quantize_per_tensor_out(shape, in_dtype, scale, zero_point):
     )
 
     assert res_r is res_out
-    utils.gems_assert_equal(res_r.int_repr(), ref_r.int_repr())
+    _assert_int_repr_matches(res_r, ref_r)
     assert res_r.q_scale() == ref_r.q_scale()
     assert res_r.q_zero_point() == ref_r.q_zero_point()
 

@@ -18,7 +18,9 @@ def _parse_pool3d_params(kernel_size, stride, padding, dilation):
     """
 
     def _parse_param(param, name, default=None):
-        if param is None:
+        # An empty list means "same as kernel_size" (the aten default `int[3] stride=[]`),
+        # which the autograd derivative forwards verbatim to the backward call.
+        if param is None or (isinstance(param, (list, tuple)) and len(param) == 0):
             return default
         if isinstance(param, int):
             return param, param, param

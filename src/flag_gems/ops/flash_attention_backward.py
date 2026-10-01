@@ -41,8 +41,10 @@ def _disable_aabs_for_small_seqlen(seqlen_q, seqlen_k):
     "Input shapes should have M >= 1, N >= 1 and K >= 16" (decode: seqlen 1).
     Fall back to the plain (non-adjusted) configs for such shapes.
     """
-    # If triton.knobs is not available (Triton < 3.6), skip the workaround
-    if _autotuning_knobs is None:
+    # The AABS knob exists only on Triton builds that carry FlagTree's
+    # auto-adjust-block-size feature; on stock Triton (knobs present but no
+    # such knob) there is nothing to disable.
+    if _autotuning_knobs is None or not hasattr(_autotuning_knobs, "adjust_block_size"):
         yield
         return
 
@@ -97,7 +99,10 @@ _DKV_CONFIGS = [
 
 @triton.autotune(
     configs=_DQ_CONFIGS,
-    key=["seqlen_q", "seqlen_k", "HEAD_DIM"],
+    # HAS_BIAS/DO_BIAS_GRAD must be part of the key: they change the kernel's
+    # shared-memory footprint, and a config tuned without an attention bias
+    # can exceed the device limit once recompiled with one.
+    key=["seqlen_q", "seqlen_k", "HEAD_DIM", "HAS_BIAS", "DO_BIAS_GRAD"],
 )
 @triton.jit
 def _flash_attn_bwd_dq_fused(
@@ -305,7 +310,10 @@ def _flash_attn_bwd_dq_fused(
 
 @triton.autotune(
     configs=_DKV_CONFIGS,
-    key=["seqlen_q", "seqlen_k", "HEAD_DIM"],
+    # HAS_BIAS must be part of the key: it changes the kernel's shared-memory
+    # footprint, and a config tuned without an attention bias can exceed the
+    # device limit once recompiled with one.
+    key=["seqlen_q", "seqlen_k", "HEAD_DIM", "HAS_BIAS"],
 )
 @triton.jit
 def _flash_attn_bwd_dkv(
@@ -533,7 +541,10 @@ def _flash_attn_bwd_dkv(
 
 @triton.autotune(
     configs=_DQ_CONFIGS,
-    key=["max_seqlen_q", "max_seqlen_k", "HEAD_DIM"],
+    # HAS_BIAS/DO_BIAS_GRAD must be part of the key: they change the kernel's
+    # shared-memory footprint, and a config tuned without an attention bias
+    # can exceed the device limit once recompiled with one.
+    key=["max_seqlen_q", "max_seqlen_k", "HEAD_DIM", "HAS_BIAS", "DO_BIAS_GRAD"],
 )
 @triton.jit
 def _flash_attn_bwd_varlen_dq_fused(
@@ -743,7 +754,10 @@ def _flash_attn_bwd_varlen_dq_fused(
 
 @triton.autotune(
     configs=_DKV_CONFIGS,
-    key=["max_seqlen_q", "max_seqlen_k", "HEAD_DIM"],
+    # HAS_BIAS must be part of the key: it changes the kernel's shared-memory
+    # footprint, and a config tuned without an attention bias can exceed the
+    # device limit once recompiled with one.
+    key=["max_seqlen_q", "max_seqlen_k", "HEAD_DIM", "HAS_BIAS"],
 )
 @triton.jit
 def _flash_attn_bwd_varlen_dkv(
@@ -1394,6 +1408,28 @@ def scaled_dot_product_flash_attention_backward(
     is_dropout = dropout_p > 0.0
     rng_tuple = _parse_philox(philox_seed, philox_offset) if is_dropout else None
     use_varlen = (cum_seq_q is not None) and (cum_seq_k is not None)
+    # The opaque ATen entry and the flash backward kernels share the
+    # (B, S, H, D) layout; tensors pass straight through. The log-sum-exp
+    # arrives from the ATen forward in (B, H, S) already, so no transpose is
+    # needed either — only a varlen caller's cumulative-sequence path differs.
+    if use_varlen:
+        return flash_attn_backward(
+            grad_out,
+            query,
+            key,
+            value,
+            out,
+            logsumexp,
+            cu_seq_q=cum_seq_q,
+            cu_seq_k=cum_seq_k,
+            max_seqlen_q=int(max_q),
+            max_seqlen_k=int(max_k),
+            is_dropout=is_dropout,
+            dropout_p=dropout_p,
+            rng_state=rng_tuple,
+            is_causal=is_causal,
+            softmax_scale=scale,
+        )[:3]
     dQ, dK, dV, _ = flash_attn_backward(
         grad_out,
         query,
@@ -1401,8 +1437,6 @@ def scaled_dot_product_flash_attention_backward(
         value,
         out,
         logsumexp,
-        cu_seq_q=cum_seq_q if use_varlen else None,
-        cu_seq_k=cum_seq_k if use_varlen else None,
         max_seqlen_q=int(max_q),
         max_seqlen_k=int(max_k),
         is_dropout=is_dropout,

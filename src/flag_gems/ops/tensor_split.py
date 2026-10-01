@@ -127,29 +127,38 @@ def tensor_split(
                 split_sizes.append(base_size + 1)
             else:
                 split_sizes.append(base_size)
+        split_starts = []
+        start = 0
+        for size in split_sizes:
+            split_starts.append(start)
+            start += size
 
     elif isinstance(indices_or_sections, (list, tuple)):
-        # Split at specific indices
+        # Split at specific indices. Each index is resolved independently:
+        # negatives wrap Python-style and the result is clamped to [0, dim_size].
+        # torch accepts out-of-range, negative, duplicate and unsorted indices;
+        # a section whose end precedes its start simply becomes empty.
         indices = list(indices_or_sections)
         if not all(isinstance(i, int) for i in indices):
             raise TypeError("All elements in indices_or_sections must be integers")
 
-        # Validate indices are sorted and in range
-        if len(indices) > 0:
-            if indices[0] < 0 or indices[-1] > dim_size:
-                raise ValueError(
-                    f"indices_or_sections must be in range [0, {dim_size}]"
-                )
-            if any(indices[i] >= indices[i + 1] for i in range(len(indices) - 1)):
-                raise ValueError("indices_or_sections must be strictly increasing")
-
-        # Calculate split sizes
-        prev_idx = 0
-        split_sizes = []
+        boundaries = []
         for idx in indices:
-            split_sizes.append(idx - prev_idx)
+            if idx < 0:
+                idx += dim_size
+            boundaries.append(min(max(idx, 0), dim_size))
+
+        # Section i spans [previous boundary, boundary i], the last one ends at
+        # dim_size.
+        split_starts = []
+        split_sizes = []
+        prev_idx = 0
+        for idx in boundaries:
+            split_starts.append(prev_idx)
+            split_sizes.append(max(idx - prev_idx, 0))
             prev_idx = idx
-        split_sizes.append(dim_size - prev_idx)
+        split_starts.append(prev_idx)
+        split_sizes.append(max(dim_size - prev_idx, 0))
 
     elif isinstance(indices_or_sections, torch.Tensor):
         # Handle tensor indices (must be on CPU, 0-d or 1-d)
@@ -183,11 +192,10 @@ def tensor_split(
         dim_prod_pre *= input.shape[d]
 
     # Process each split
-    current_dim_idx = 0
     # Standard block size for element-wise copy kernel
     BLOCK_SIZE = 1024
 
-    for split_size in split_sizes:
+    for split_start, split_size in zip(split_starts, split_sizes):
         # Create output tensor
         output_shape = list(input.shape)
         output_shape[dim] = split_size
@@ -219,11 +227,10 @@ def tensor_split(
             dim,  # split_dim
             dim_prod_pre,
             dim_prod_post,
-            current_dim_idx,  # start offset of this split along split_dim
+            split_start,  # start offset of this split along split_dim
             BLOCK_SIZE=BLOCK_SIZE,
         )
 
         output_tensors.append(output_tensor)
-        current_dim_idx += split_size
 
     return output_tensors

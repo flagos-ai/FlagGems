@@ -404,6 +404,7 @@ from flag_gems.ops.clamp import (
 )
 from flag_gems.ops.clamp_max import clamp_max, clamp_max_  # noqa: F401
 from flag_gems.ops.clip import clip, clip_
+from flag_gems.ops.clone import clone
 from flag_gems.ops.col2im import col2im
 from flag_gems.ops.column_stack import column_stack, column_stack_out
 from flag_gems.ops.concat import concat
@@ -816,10 +817,7 @@ from flag_gems.ops.max_pool2d_with_indices import (
     max_pool2d_with_indices_backward,
 )
 from flag_gems.ops.max_pool3d import max_pool3d
-from flag_gems.ops.max_pool3d_with_indices import (
-    max_pool3d_backward,
-    max_pool3d_with_indices,
-)
+from flag_gems.ops.max_pool3d_with_indices import max_pool3d_with_indices
 from flag_gems.ops.max_pool3d_with_indices_backward import (
     max_pool3d_with_indices_backward,
 )
@@ -1701,6 +1699,7 @@ __all__ = [
     "clamp_tensor_",
     "clip",
     "clip_",
+    "clone",
     "col2im",
     "column_stack",
     "column_stack_out",
@@ -2169,7 +2168,6 @@ __all__ = [
     "max_pool2d_with_indices",
     "max_pool2d_with_indices_backward",
     "max_pool3d",
-    "max_pool3d_backward",
     "max_pool3d_with_indices",
     "max_pool3d_with_indices_backward",
     "max_unpool2d",

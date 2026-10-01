@@ -143,6 +143,7 @@ def _w8a8_reference(x, w1, w2, weights, ids, s1, s2):
     return routed.float().sum(dim=1).to(dtype)
 
 
+@pytest.mark.fused_moe
 @pytest.mark.parametrize("num_tokens", [32, 4095, 4096, 4097, 8192])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
 @pytest.mark.parametrize("execution_mode", ["eager", "graph"])

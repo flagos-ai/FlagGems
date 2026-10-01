@@ -1,0 +1,19 @@
+import pytest
+import torch
+
+import flag_gems
+
+from . import accuracy_utils as utils
+
+
+@pytest.mark.clone
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_clone(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp)
+
+    ref_out = torch.clone(ref_inp)
+    res_out = flag_gems.clone(inp)
+
+    utils.gems_assert_equal(res_out, ref_out)
