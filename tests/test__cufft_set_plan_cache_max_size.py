@@ -40,6 +40,7 @@ def _plan_cache_index():
 
 
 _PLAN_CACHE_INDEX = _plan_cache_index()
+_DEVICE_INDICES = list(range(flag_gems.runtime.device.device_count))
 
 # Static vendor capability, read without touching a device or the driver during
 # collection: this entry point drives the NVIDIA cuFFT runtime plan cache.
@@ -58,14 +59,13 @@ pytestmark = pytest.mark.skipif(
 
 
 @contextlib.contextmanager
-def _plan_cache_capacity():
+def _plan_cache_capacity(index=_PLAN_CACHE_INDEX):
     """Yield the cache index and put its ambient capacity back afterwards.
 
     The capacity is process-global and the user may have chosen it before the
     test, so the value read at entry is what is restored, in a ``finally`` block
     that also runs when a candidate call or an assertion raises.
     """
-    index = _PLAN_CACHE_INDEX
     previous = torch.ops.aten._cufft_get_plan_cache_max_size(index)
     try:
         yield index
@@ -128,9 +128,10 @@ def _call_arguments(call_form, index, capacity):
 @pytest.mark.cufft_set_plan_cache_max_size
 @pytest.mark.parametrize("call_form", _CALL_FORMS)
 @pytest.mark.parametrize("capacity", _STORE_CASES)
-def test_set_plan_cache_max_size(capacity, call_form):
-    args, kwargs = _call_arguments(call_form, _PLAN_CACHE_INDEX, capacity)
-    with _plan_cache_capacity() as index:
+@pytest.mark.parametrize("device_index", _DEVICE_INDICES)
+def test_set_plan_cache_max_size(capacity, call_form, device_index):
+    args, kwargs = _call_arguments(call_form, device_index, capacity)
+    with _plan_cache_capacity(device_index) as index:
         control = _distinct_capacity(capacity)
         torch.ops.aten._cufft_set_plan_cache_max_size(index, control)
 
@@ -149,9 +150,8 @@ _TRANSITION_CASES = _TRANSITIONS
 @pytest.mark.parametrize("first,second", _TRANSITION_CASES)
 def test_repeated_set_overwrites_previous(first, second):
     with _plan_cache_capacity() as index:
+        torch.ops.aten._cufft_set_plan_cache_max_size(index, _distinct_capacity(first))
         for capacity in (first, second):
-            control = _distinct_capacity(capacity)
-            torch.ops.aten._cufft_set_plan_cache_max_size(index, control)
             assert flag_gems._cufft_set_plan_cache_max_size(index, capacity) is None
             assert torch.ops.aten._cufft_get_plan_cache_max_size(index) == capacity
 
@@ -227,11 +227,13 @@ def test_reject_invalid_max_size(max_size):
         flag_gems._cufft_set_plan_cache_max_size(_PLAN_CACHE_INDEX, max_size)
 
 
-# With one visible device the driver call itself fails and ATen reports
-# RuntimeError.  Negative indices and >= 128 raise UnicodeDecodeError while
-# decoding the driver's non-UTF-8 error byte, which is neither RuntimeError nor
-# TypeError, so they are excluded from this negative set.
-_OUT_OF_RANGE_DEVICE_INDICES = [1, 2, 3, 5, 100, 127]
+# Invalid indices depend on the visible device count; low-byte aliases of
+# existing devices are valid and cannot be negative cases.
+_OUT_OF_RANGE_DEVICE_INDICES = [
+    index
+    for index in [1, 2, 3, 5, 100, 127]
+    if not 0 <= (index & 0xFF) < len(_DEVICE_INDICES)
+]
 
 
 @pytest.mark.cufft_set_plan_cache_max_size
@@ -287,7 +289,11 @@ def _run_capacity_scenario(index, plan_count, capacity, set_capacity):
     set_capacity(index, _PREPARE_CAPACITY)
     for length in _PLAN_LENGTHS[:plan_count]:
         torch.fft.fft(
-            torch.zeros(length, dtype=torch.complex64, device=flag_gems.device)
+            torch.zeros(
+                length,
+                dtype=torch.complex64,
+                device=torch.device(flag_gems.device, index),
+            )
         )
     occupied = torch.ops.aten._cufft_get_plan_cache_size(index)
     set_capacity(index, capacity)
@@ -300,8 +306,9 @@ def _run_capacity_scenario(index, plan_count, capacity, set_capacity):
 
 @pytest.mark.cufft_set_plan_cache_max_size
 @pytest.mark.parametrize("plan_count,capacity", _EVICTION_CASES)
-def test_set_plan_cache_max_size_affects_live_cache(plan_count, capacity):
-    with _plan_cache_capacity() as index:
+@pytest.mark.parametrize("device_index", _DEVICE_INDICES)
+def test_set_plan_cache_max_size_affects_live_cache(plan_count, capacity, device_index):
+    with _plan_cache_capacity(device_index) as index:
         reference = _run_capacity_scenario(
             index, plan_count, capacity, torch.ops.aten._cufft_set_plan_cache_max_size
         )

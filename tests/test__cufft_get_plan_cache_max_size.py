@@ -25,9 +25,8 @@ _NATIVE_GET = torch.ops.aten._cufft_get_plan_cache_max_size
 _NATIVE_SET = torch.ops.aten._cufft_set_plan_cache_max_size
 _NATIVE_CLEAR = torch.ops.aten._cufft_clear_plan_cache
 
-# Index 0 exists on every host that has a device; probing the native runtime
-# during collection would run the operator before the candidate is available.
-VALID_DEVICE_INDICES = [0]
+# Enumerate device metadata without querying or changing any plan cache.
+VALID_DEVICE_INDICES = list(range(flag_gems.runtime.device.device_count))
 
 # Capacities the native setter stores and reads back exactly.
 _PLAN_CAPACITY_VALUES = [
@@ -117,11 +116,15 @@ _PLAN_CAPACITY_VALUES = [
     2**30 + 1,
     2**31 - 2,
     2**31 - 1,
+    2**32,
+    2**63 - 1,
 ]
 
 # Quick keeps the disabling boundary, the smallest capacity and a cheap
 # non-power value; every capacity is a host scalar, so no case is expensive.
-PLAN_CACHE_CAPACITIES = tu.selected_cases(_PLAN_CAPACITY_VALUES, quick=[0, 1, 7])
+PLAN_CACHE_CAPACITIES = tu.selected_cases(
+    _PLAN_CAPACITY_VALUES, quick=[0, 1, 7, 2**32, 2**63 - 1]
+)
 
 # Clearing plans must not reset the capacity; checked in both modes.
 POST_CLEAR_CAPACITIES = [0, 7]
@@ -189,6 +192,7 @@ def test__cufft_get_plan_cache_max_size_with_configured_capacity(
     reference = _NATIVE_GET(device_index)
     result = flag_gems._cufft_get_plan_cache_max_size(device_index)
     _assert_limit(result, reference)
+    assert _NATIVE_GET(device_index) == reference
 
 
 @pytest.mark.cufft_get_plan_cache_max_size

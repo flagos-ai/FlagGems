@@ -29,12 +29,17 @@ _SAVED_CAPACITIES = {}
 
 # Rows are integer state descriptors (device_index, plan-cache capacity, call
 # form); the operator has no tensor operand, so no tensor shape is involved.
-_STATE_ROWS = (
-    (0, 0, "positional"),
-    (0, 1, "keyword"),
-    (0, 7, "positional"),
-    (0, 4096, "keyword"),
-)
+_STATE_ROWS = [
+    (index, capacity, form)
+    for index in range(flag_gems.runtime.device.device_count)
+    for capacity, form in [
+        (0, "positional"),
+        (1, "keyword"),
+        (7, "positional"),
+        (4096, "keyword"),
+    ]
+]
+
 
 # The harness dtype dimension is inert here; one int64 row keeps the standard
 # collection and reporting path without an empty float cross product.

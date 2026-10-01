@@ -48,8 +48,8 @@ _SKIP_REASON = (
 # The device index replaces the spec's shape level: it has to name a real device, and the
 # last device is a distinct workload because the plan cache is per device.
 _VALID_DEVICE_INDICES = tu.selected_cases(
-    [0] + ([_DEVICE_COUNT - 1] if _DEVICE_COUNT > 1 else []),
-    quick=[0],
+    list(range(_DEVICE_COUNT)),
+    quick=list(range(_DEVICE_COUNT)),
 )
 
 # The native oracle narrows an accepted argument to a signed byte before validating it, so
@@ -157,11 +157,9 @@ def _populate_plan_cache(device_index, kind, count):
 @contextlib.contextmanager
 def _plan_cache_capacity(device_index, capacity):
     """Temporarily set the plan cache capacity of one device and always restore it."""
-    if capacity is None:
-        yield
-        return
     previous = torch.ops.aten._cufft_get_plan_cache_max_size(device_index)
-    torch.ops.aten._cufft_set_plan_cache_max_size(device_index, capacity)
+    limit = max(previous, 1) if capacity is None else capacity
+    torch.ops.aten._cufft_set_plan_cache_max_size(device_index, limit)
     try:
         yield
     finally:

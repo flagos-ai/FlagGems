@@ -312,7 +312,7 @@ def test_record_stream_special_values(dtype, scenario):
 def test_record_stream_invalid_args(case, value):
     if case.endswith("_self"):
         args = (value, torch.Stream())
-        expected = (RuntimeError, TypeError, AttributeError)
+        expected = (RuntimeError, TypeError)
     else:
         args = (torch.zeros(4, device=flag_gems.device), value)
         expected = (RuntimeError, TypeError)
