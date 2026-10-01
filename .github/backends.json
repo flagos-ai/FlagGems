@@ -83,7 +83,7 @@
     "gpu_check": "tools/gpu_check_mthreads.sh",
     "enabled": true,
     "container": {
-      "image": "harbor.baai.ac.cn/flagos-base/flagos-base-mthreads-musa5.2.0:2.2.0",
+      "image": "harbor.baai.ac.cn/flagos-runtime/flagos-runtime-mthreads-musa5.2.0:2.2.0",
       "options": "--device /dev/mtgpu.0 --device /dev/mtgpu.1 --device /dev/mtgpu.2 --device /dev/mtgpu.3 --device /dev/mtgpu.4 --device /dev/mtgpu.5 --device /dev/mtgpu.6 --device /dev/mtgpu.7 --device /dev/dri --shm-size=256g --ulimit memlock=-1 --ulimit stack=67108864",
       "volumes": ["/usr/bin/mthreads-gmi:/usr/bin/mthreads-gmi:ro"],
       "runs_on_default": "mthreads-s5000-0",

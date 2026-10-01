@@ -309,25 +309,36 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         continue-on-error: true
       - uses: flagos-ai/FlagGems/.github/actions/checkout-retry@master
-      - uses: flagos-ai/FlagGems/.github/actions/setup-flaggems@master
-        with:
-          backend: ${{ inputs.backend }}
-          gpu_check_script: ${{ inputs.gpu_check_script }}
+      # Trust the runtime image's preinstalled compiler/deps and reconcile
+      # instead of running setup.sh (which rebuilds a venv and reinstalls
+      # flagtree + heavy deps over the network). See test-kunlunxin.
+      - name: Install FlagGems (mthreads, reconcile deps with image)
+        shell: bash --login -e -o pipefail {0}
+        run: |
+          pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+          pip config set global.extra-index-url "https://mirrors.aliyun.com/pypi/simple/ https://mirrors.cloud.tencent.com/pypi/simple/"
+          pip config set global.trusted-host "pypi.tuna.tsinghua.edu.cn mirrors.aliyun.com mirrors.cloud.tencent.com"
+          pip install --no-deps .
+          python3 tools/reconcile_backend_deps.py "${{ inputs.backend }}"
+          pip install .[test]
+      - name: Check GPU availability
+        if: ${{ inputs.gpu_check_script != '' }}
+        shell: bash --login -e -o pipefail {0}
+        run: bash ${{ inputs.gpu_check_script }}
 
       - name: Test alpha ops
         if: ${{ inputs.test_script != '' }}
         env:
           CHANGED_FILES: ${{ inputs.changed_files }}
-        shell: bash
+        shell: bash --login -e -o pipefail {0}
         run: |
           bash ${{ inputs.test_script }} ${{ inputs.backend }} ${{ inputs.pr_id }}
       - name: Run backend tests
         if: ${{ inputs.test_script == '' }}
-        shell: bash
+        shell: bash --login -e -o pipefail {0}
         env:
           CHANGED_FILES: ${{ inputs.changed_files }}
         run: |
-          source .venv/bin/activate
           tools/test-op.sh ${{ inputs.pr_id }}
 
   # Iluvatar runs inside a container on whichever iluvatar-bi-v150-* server
