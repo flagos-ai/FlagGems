@@ -44,7 +44,7 @@ from . import test_utils as tu
 # flag_gems device because native has no CPU or Sparse dispatch.
 
 _DROPOUTS = (0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.99, 1.0, float("inf"))
-_SEEDS = (0, 42, 123456789, -1, 2**31 - 1, -(2**63))
+_SEEDS = (0, 42, 123456789, -1, 2**31 - 1, -(2**63), 2**63 - 1)
 
 # train is the only bool parameter and True is its only accepted value: native
 # maps train=False to dropout_p = 0 and then asserts dropout > 0, so the False
@@ -67,8 +67,12 @@ _TRAIN_DISABLED_CASES = [(0.05, False, 7), (0.5, False, 42), (0.99, False, -1)]
 _REJECTED_DTYPES = [
     torch.float32,
     torch.float16,
+    torch.bfloat16,
+    torch.float8_e4m3fn,
+    torch.float8_e5m2,
     torch.float64,
     torch.int8,
+    torch.int32,
     torch.int64,
     torch.bool,
     None,
@@ -150,6 +154,7 @@ def _assert_out_state(res, ref, buffer):
     # The .out overload returns the caller's buffer, resized to the state size.
     assert res is buffer
     _assert_state(res, ref)
+    tu.assert_result_close(_cudnn_rnn_output(res), _cudnn_rnn_output(ref))
 
 
 @pytest.mark.cudnn_init_dropout_state
@@ -201,7 +206,7 @@ def test__cudnn_init_dropout_state_out_reuses_sized_buffer(dropout, train, seed)
     # A buffer that already has the state size is not resized; its old contents
     # are never read.
     ref_buf = _native_state(dropout, train, seed)
-    act_buf = ref_buf.clone()
+    act_buf = _native_state(dropout, train, seed + 1)
     size_before = ref_buf.shape
 
     ref_out = torch.ops.aten._cudnn_init_dropout_state.out(

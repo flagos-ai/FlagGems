@@ -62,6 +62,18 @@ _3D_SHAPES = [
 _SHAPE_ROWS = _2D_SHAPES + _3D_SHAPES
 _QUICK_SHAPE_ROWS = _2D_SHAPES[:3] + _2D_SHAPES[-2:] + _3D_SHAPES[:1]
 
+_EMPTY_SHAPES = [
+    ((0, 2, 3, 4), (0, 2, 2, 2)),
+    ((2, 2, 3, 4), (2, 2, 0, 2)),
+    ((0, 2, 3, 4, 5), (0, 2, 2, 2, 3)),
+    ((2, 0, 3, 4, 5), (2, 2, 2, 2, 3)),
+    ((2, 2, 3, 4, 5), (2, 0, 2, 2, 3)),
+    ((2, 2, 3, 4, 5), (2, 2, 0, 2, 3)),
+    ((2, 2, 3, 4, 5), (2, 2, 2, 0, 3)),
+]
+_SHAPE_ROWS += _EMPTY_SHAPES
+_QUICK_SHAPE_ROWS += _EMPTY_SHAPES
+
 
 def _coordinate_grid(shape, dtype, span=1.0):
     # Grid coordinates are normalized to [-1, 1] by definition, so they are not

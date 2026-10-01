@@ -67,7 +67,10 @@ _MNK_SHAPES = [
     (4, 0, 3),
     (4, 3, 0),
 ]
-_MNK_ROWS = tu.selected_cases(_MNK_SHAPES, quick=[(2, 19, 7)])
+_MNK_ROWS = tu.selected_cases(
+    _MNK_SHAPES + [(2, 19, 7)],
+    quick=[(2, 19, 7), (1, 1, 1), (0, 4, 3), (4, 0, 3), (4, 3, 0)],
+)
 
 # reduce selects the kernel that runs, so all four modes are cases at both levels.
 _REDUCE_MNK = [(6, 8, 5), (20, 320, 15), (256, 256, 256)]
@@ -76,8 +79,7 @@ _REDUCE_ROWS = tu.selected_cases(
     quick=[((2, 19, 7), reduce) for reduce in _REDUCES],
 )
 
-# Storage patterns and operand states. Every label is cheap, so quick keeps them
-# all with a single reduce; only the label x reduce cross product is default-only.
+# Storage patterns and operand states are cheap, so quick keeps every reduce.
 _STRUCTURE_SHAPES = [
     (6, 8, 5, "sparse"),
     (6, 8, 5, "empty_rows"),
@@ -96,7 +98,11 @@ _STRUCTURE_ROWS = tu.selected_cases(
         for (m, k, n, label) in _STRUCTURE_SHAPES
         for reduce in _REDUCES
     ],
-    quick=[(m, k, n, label, "sum") for (m, k, n, label) in _STRUCTURE_SHAPES],
+    quick=[
+        (m, k, n, label, reduce)
+        for (m, k, n, label) in _STRUCTURE_SHAPES
+        for reduce in _REDUCES
+    ],
 )
 
 # Independent differentiable leaves over two storage patterns, one of them with
@@ -113,7 +119,7 @@ _BACKWARD_ROWS = tu.selected_cases(
 
 # arg_out is filled only in grad mode for amax/amin, and its dtype follows the CSR
 # index dtype, so both index types and both differentiable operands are covered.
-# One row per reduce plus the int32 branch is cheap enough for quick.
+# Both index widths and differentiable operands are cheap enough for quick.
 _GRAD_ARG_ROWS = tu.selected_cases(
     [
         (reduce, index_dtype, grad_operand)
@@ -121,8 +127,12 @@ _GRAD_ARG_ROWS = tu.selected_cases(
         for index_dtype in (torch.int64, torch.int32)
         for grad_operand in ("self", "other")
     ],
-    quick=[(reduce, torch.int64, "self") for reduce in _REDUCES]
-    + [("sum", torch.int32, "other")],
+    quick=[
+        (reduce, index_dtype, grad_operand)
+        for reduce in _REDUCES
+        for index_dtype in (torch.int64, torch.int32)
+        for grad_operand in ("self", "other")
+    ],
 )
 
 # nan / inf / mixed payloads in the stored values and in the dense operand, for
@@ -302,10 +312,11 @@ def test__sparse_mm_reduce_impl_value_grid(mnk, value_range, dtype):
 
 @pytest.mark.sparse_mm_reduce_impl
 @pytest.mark.parametrize("mnk,reduce", _REDUCE_ROWS)
-def test__sparse_mm_reduce_impl_reduce_modes(mnk, reduce):
+@pytest.mark.parametrize("dtype", _DTYPES)
+def test__sparse_mm_reduce_impl_reduce_modes(mnk, reduce, dtype):
     m, k, n = mnk
-    self_t = _csr(torch.float32, _row_pattern(m, k, "sparse"), (m, k))
-    other = _dense(torch.float32, (k, n))
+    self_t = _csr(dtype, _row_pattern(m, k, "sparse"), (m, k))
+    other = _dense(dtype, (k, n))
 
     ref_out, _ = torch.ops.aten._sparse_mm_reduce_impl(
         tu.to_reference(self_t), tu.to_reference(other), reduce

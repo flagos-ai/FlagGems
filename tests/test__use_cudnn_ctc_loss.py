@@ -394,3 +394,24 @@ def test__use_cudnn_ctc_loss_invalid_call(case):
             flag_gems._use_cudnn_ctc_loss(
                 [[0.0] * 5] * 3, targets, [8, 8, 8], [3, 3, 3], 0
             )
+
+
+@pytest.mark.use_cudnn_ctc_loss
+@pytest.mark.parametrize("shape", [(), (8,), (8, 3), (8, 3, 5), (8, 3, 5, 2)])
+@pytest.mark.parametrize("enabled", [False, True])
+@pytest.mark.parametrize("form", ["list", "tensor"])
+def test_use_cudnn_ctc_loss_rank_and_backend_state(shape, enabled, form):
+    log_probs = tu.make_input(torch.float32, shape, ["-1", "1"])
+    targets = _targets(3, 3)
+    input_lengths, target_lengths = [8] * 3, [3] * 3
+    if form == "tensor":
+        input_lengths = torch.tensor(input_lengths, dtype=torch.int32)
+        target_lengths = torch.tensor(target_lengths, dtype=torch.int32)
+    with torch.backends.cudnn.flags(enabled=enabled):
+        ref = torch.ops.aten._use_cudnn_ctc_loss(
+            log_probs, targets, input_lengths, target_lengths, 0
+        )
+        res = flag_gems._use_cudnn_ctc_loss(
+            log_probs, targets, input_lengths, target_lengths, 0
+        )
+    _assert_bool(res, ref)

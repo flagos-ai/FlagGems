@@ -63,6 +63,8 @@ _GRID = tu.selected_cases(
     _GRID_ROWS,
     quick=[
         (_QUICK_SHAPE, _QUICK_SHAPE, ["-1", "1"]),
+        ((1, 1, 1, 8), (1, 1, 1, 8), ["-1", "1"]),
+        ((1, 1, 2, 8), (1, 1, 2, 8), ["-1", "1"]),
         ((1, 2, 19, 8), (1, 2, 16, 8), ["-1", "1"]),
     ],
 )
@@ -74,7 +76,6 @@ _SPECIAL_CASES = tu.selected_cases(tu.special_value_cases(_DTYPES), quick=[])
 # optional arguments. is_causal and scale are forwarded to the forward as well,
 # so the gradients belong to the state that was handed to the backward.
 _PARAM_SHAPE = (1, 4, 128, 64)
-_PARAM_DTYPE = torch.bfloat16
 _PARAM_ROWS = [
     (0.0, False, None),
     (0.5, False, None),
@@ -99,7 +100,6 @@ _PARAM_CASES = tu.selected_cases(
 # Probed accepted float-mask shapes for (batch, head, seq, head_dim) =
 # (1, 4, 128, 64): 2-D (seq, seq) and 4-D (batch, head, seq, seq). A bool mask
 # is silently ignored by this kernel, so it is not used.
-_MASK_DTYPE = torch.float32
 _MASK_SHAPE = (1, 4, 128, 64)
 _MASK_CASES = tu.selected_cases(
     [(128, 128), (1, 4, 128, 128)], quick=[(128, 128), (1, 4, 128, 128)]
@@ -190,13 +190,14 @@ def test_scaled_dot_product_flash_attention_for_cpu_backward(
 
 @pytest.mark.scaled_dot_product_flash_attention_for_cpu_backward
 @pytest.mark.parametrize("dropout_p,is_causal,scale", _PARAM_CASES)
+@pytest.mark.parametrize("dtype", _DTYPES)
 def test_scaled_dot_product_flash_attention_for_cpu_backward_with_params(
-    dropout_p, is_causal, scale
+    dropout_p, is_causal, scale, dtype
 ):
     fwd_kwargs = {"is_causal": is_causal}
     if scale is not None:
         fwd_kwargs["scale"] = scale
-    inp, ref = _operands(_PARAM_SHAPE, _PARAM_DTYPE, ["-1", "1"], fwd_kwargs=fwd_kwargs)
+    inp, ref = _operands(_PARAM_SHAPE, dtype, ["-1", "1"], fwd_kwargs=fwd_kwargs)
     bwd_kwargs = {} if scale is None else {"scale": scale}
 
     ref_grads = torch.ops.aten._scaled_dot_product_flash_attention_for_cpu_backward(
@@ -227,10 +228,20 @@ def test_scaled_dot_product_flash_attention_for_cpu_backward_with_params(
 
 @pytest.mark.scaled_dot_product_flash_attention_for_cpu_backward
 @pytest.mark.parametrize("mask_shape", _MASK_CASES)
-def test_scaled_dot_product_flash_attention_for_cpu_backward_with_attn_mask(mask_shape):
-    mask = tu.make_input(_MASK_DTYPE, mask_shape, ["-1", "1"]).cpu()
+@pytest.mark.parametrize(
+    "dtype,mask_dtype",
+    [
+        (dtype, mask_dtype)
+        for dtype in _DTYPES
+        for mask_dtype in dict.fromkeys([dtype, torch.float32])
+    ],
+)
+def test_scaled_dot_product_flash_attention_for_cpu_backward_with_attn_mask(
+    mask_shape, dtype, mask_dtype
+):
+    mask = tu.make_input(mask_dtype, mask_shape, ["-1", "1"]).cpu()
     inp, ref = _operands(
-        _MASK_SHAPE, _MASK_DTYPE, ["-1", "1"], fwd_kwargs={"attn_mask": mask}
+        _MASK_SHAPE, dtype, ["-1", "1"], fwd_kwargs={"attn_mask": mask}
     )
 
     ref_grads = torch.ops.aten._scaled_dot_product_flash_attention_for_cpu_backward(
@@ -242,7 +253,7 @@ def test_scaled_dot_product_flash_attention_for_cpu_backward_with_attn_mask(mask
         ref.logsumexp,
         0.0,
         False,
-        attn_mask=mask,
+        attn_mask=tu.to_reference(mask),
     )
     res_grads = flag_gems._scaled_dot_product_flash_attention_for_cpu_backward(
         inp.grad_out,

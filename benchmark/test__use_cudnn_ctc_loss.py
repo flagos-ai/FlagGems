@@ -53,8 +53,9 @@ _LENGTHS_FORMS = ("list", "tensor")
 def _case_fn(shape, dtype):
     del dtype
     log_probs_shape = tuple(shape)
-    batch = log_probs_shape[1]
-    input_lengths = [log_probs_shape[0]] * batch
+    batch = log_probs_shape[1] if len(log_probs_shape) == 3 else 1
+    time_extent = log_probs_shape[0] if log_probs_shape else 0
+    input_lengths = [time_extent] * batch
     target_lengths = [_TARGET_LENGTH] * batch
     for form in _LENGTHS_FORMS:
         yield base.BenchmarkCasePlan(
@@ -93,13 +94,10 @@ def _build_inputs_fn(plan, dtype, device):
 class UseCudnnCtcLossBenchmark(OperatorBenchmark):
     def set_shapes(self, shape_file_path=None):
         super().set_shapes(shape_file_path)
-        # This native interface requires rank 3. Keep all shared inputs of
-        # that rank and every original operator workload; unsupported ranks are
-        # tested as errors in the correctness suite, not reshaped into new semantics.
+        # Other ranks are valid predicate workloads returning False. Retain
+        # their requested shapes alongside the rank-3 cuDNN eligibility cases.
         self.shapes = list(
-            dict.fromkeys(
-                [tuple(shape) for shape in self.shapes if len(shape) == 3] + CTC_SHAPES
-            )
+            dict.fromkeys([tuple(shape) for shape in self.shapes] + CTC_SHAPES)
         )
 
 
