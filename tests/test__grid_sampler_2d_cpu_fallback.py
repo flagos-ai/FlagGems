@@ -209,6 +209,7 @@ def test__grid_sampler_2d_cpu_fallback_values(shape, value_range, dtype):
     tu.assert_result_close(res_out, ref_out)
     # The operator is out of place: the candidate must not touch its operands.
     tu.assert_result_equal(inp, ref_inp)
+    tu.assert_result_equal(grid, ref_grid)
 
 
 @pytest.mark.grid_sampler_2d_cpu_fallback

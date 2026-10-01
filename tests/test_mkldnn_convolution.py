@@ -520,3 +520,28 @@ def test_mkldnn_convolution_rejects_out_dtype_mismatch(in_dtype, out_dtype):
             1,
             out=out_buf,
         )
+
+
+@pytest.mark.mkldnn_convolution
+@pytest.mark.parametrize("dtype", _SUPPORTED_DTYPES)
+@pytest.mark.parametrize("packed_weight", [False, True])
+@pytest.mark.parametrize("use_bias", [False, True])
+def test_mkldnn_convolution_mkldnn_layout(dtype, packed_weight, use_bias):
+    dense = _base_input(dtype, (2, 3, 8, 8), _UNIT_RANGE)
+    weight = _base_input(dtype, (4, 3, 3, 3), _UNIT_RANGE)
+    ref_weight = tu.to_reference(weight)
+    if packed_weight:
+        weight, ref_weight = weight.to_mkldnn(), ref_weight.to_mkldnn()
+    bias = _bias(dtype, 4, _UNIT_RANGE) if use_bias else None
+    ref_bias = tu.to_reference(bias) if use_bias else None
+    inp, ref_inp = dense.to_mkldnn(), tu.to_reference(dense).to_mkldnn()
+
+    ref_out = torch.ops.aten.mkldnn_convolution(
+        ref_inp, ref_weight, ref_bias, [1, 1], [1, 1], [1, 1], 1
+    )
+    res_out = flag_gems.mkldnn_convolution(inp, weight, bias, [1, 1], [1, 1], [1, 1], 1)
+
+    assert res_out.layout == torch._mkldnn
+    tu.assert_result_close(res_out.to_dense(), ref_out.to_dense())
+    tu.assert_result_equal(inp.to_dense(), ref_inp.to_dense())
+    tu.assert_result_equal(weight.to_dense(), ref_weight.to_dense())

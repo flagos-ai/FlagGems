@@ -52,6 +52,8 @@ def _mode_id(mode):
 _IMAGE_SHAPE_ROWS = [
     (0, 2, 3, 4, 2, 2),
     (1, 2, 3, 4, 0, 2),
+    (1, 0, 3, 4, 2, 2),
+    (1, 2, 3, 4, 2, 0),
     (1, 1, 1, 1, 1, 1),
     (1, 3, 4, 4, 2, 3),
     (2, 3, 8, 6, 5, 7),
@@ -60,7 +62,7 @@ _IMAGE_SHAPE_ROWS = [
     (16, 128, 64, 60, 2, 3),
     (2, 64, 12, 40, 25, 7),
 ]
-_QUICK_IMAGE_SHAPES = _IMAGE_SHAPE_ROWS[:5]
+_QUICK_IMAGE_SHAPES = _IMAGE_SHAPE_ROWS[:7]
 _IMAGE_SHAPES = tu.selected_cases(_IMAGE_SHAPE_ROWS, quick=_QUICK_IMAGE_SHAPES)
 
 # One mode per interpolation/padding family plus both align_corners values; the
@@ -228,23 +230,27 @@ def test__grid_sampler_2d_cpu_fallback_backward_special_values(slot, dtype, scen
 
 
 @pytest.mark.grid_sampler_2d_cpu_fallback_backward
-def test__grid_sampler_2d_cpu_fallback_backward_rejects_unsupported_input_dtype():
-    # Native rejects anything but float32 ("expected scalar type Float but found
-    # Double"); the candidate must reject the same input.
-    grad_output, inp, grid = _make_inputs(_SMALL_SHAPE, ["-1", "1"])
+@pytest.mark.parametrize("slot", [0, 1, 2], ids=["grad_output", "input", "grid"])
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        torch.float64,
+        torch.float16,
+        torch.bfloat16,
+        torch.int8,
+        torch.uint8,
+        torch.int32,
+        torch.int64,
+        torch.bool,
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ],
+)
+def test__grid_sampler_2d_cpu_fallback_backward_rejects_unsupported_dtype(slot, dtype):
+    operands = list(_make_inputs(_SMALL_SHAPE, ["-1", "1"]))
+    operands[slot] = operands[slot].to(dtype)
     with pytest.raises(RuntimeError):
-        flag_gems._grid_sampler_2d_cpu_fallback_backward(
-            grad_output, inp.double(), grid, 0, 0, False
-        )
-
-
-@pytest.mark.grid_sampler_2d_cpu_fallback_backward
-def test__grid_sampler_2d_cpu_fallback_backward_rejects_unsupported_grid_dtype():
-    grad_output, inp, grid = _make_inputs(_SMALL_SHAPE, ["-1", "1"])
-    with pytest.raises(RuntimeError):
-        flag_gems._grid_sampler_2d_cpu_fallback_backward(
-            grad_output, inp, grid.half(), 0, 0, False
-        )
+        flag_gems._grid_sampler_2d_cpu_fallback_backward(*operands, 0, 0, False)
 
 
 @pytest.mark.grid_sampler_2d_cpu_fallback_backward

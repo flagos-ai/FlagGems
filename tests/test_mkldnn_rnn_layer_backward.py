@@ -254,12 +254,11 @@ PARAM_CASES = tu.selected_cases(PARAM_ROWS, quick=PARAM_ROWS)
 
 @pytest.mark.mkldnn_rnn_layer_backward
 @pytest.mark.parametrize("params", PARAM_CASES)
-def test_mkldnn_rnn_layer_backward_params(params):
+@pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
+def test_mkldnn_rnn_layer_backward_params(params, dtype):
     # The forward is built with the same parameters, so the workspace it hands to
     # the backward belongs to this call.  All seven components are compared.
-    ref_args, res_args = _operand_pair(
-        torch.float32, _SMALL_SHAPE, ["-1", "1"], **params
-    )
+    ref_args, res_args = _operand_pair(dtype, _SMALL_SHAPE, ["-1", "1"], **params)
     workspace_meta = _workspace_meta(res_args[22])
     before = _clone_operands(res_args)
 
@@ -316,8 +315,9 @@ def test_mkldnn_rnn_layer_backward_out():
 
 
 @pytest.mark.mkldnn_rnn_layer_backward
-def test_mkldnn_rnn_layer_backward_without_gradients():
-    ref_args, res_args = _operand_pair(torch.float32, _SMALL_SHAPE, ["-1", "1"])
+@pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
+def test_mkldnn_rnn_layer_backward_without_gradients(dtype):
+    ref_args, res_args = _operand_pair(dtype, _SMALL_SHAPE, ["-1", "1"])
     # grad_output / grad_hy / grad_cy are optional; with no gradient at all the
     # native contract returns seven undefined results, whose contents must never
     # be compared.  The None values are positional because a keyword None bypasses
@@ -331,6 +331,31 @@ def test_mkldnn_rnn_layer_backward_without_gradients():
     assert len(res_out) == len(ref_out) == 7
     assert [_is_undefined(tensor) for tensor in ref_out] == [True] * 7
     assert [_is_undefined(tensor) for tensor in res_out] == [True] * 7
+
+
+@pytest.mark.mkldnn_rnn_layer_backward
+@pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
+@pytest.mark.parametrize(
+    "present",
+    [
+        (True, False, False),
+        (False, True, False),
+        (False, False, True),
+        (True, True, False),
+        (True, False, True),
+        (False, True, True),
+    ],
+)
+def test_mkldnn_rnn_layer_backward_optional_gradients(dtype, present):
+    ref_args, res_args = _operand_pair(dtype, _SMALL_SHAPE, ["-1", "1"])
+    for index, supplied in enumerate(present, 10):
+        if not supplied:
+            ref_args[index] = res_args[index] = None
+
+    ref_out = torch.ops.aten.mkldnn_rnn_layer_backward(*ref_args)
+    res_out = flag_gems.mkldnn_rnn_layer_backward(*res_args)
+
+    _assert_outputs_close(res_out, ref_out)
 
 
 # Negative rows are collected in both modes.  Indices 0..12 are the floating

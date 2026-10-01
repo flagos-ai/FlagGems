@@ -62,7 +62,7 @@ DEFAULT_PARAMS = {
 # half the kernel, the native pooling descriptor's bound. Rows that omit padding /
 # dilation / ceil_mode exercise those schema defaults by omission; the stride
 # default `[]` is not native-valid for 5-D and is a negative case instead. stride
-# 0 is never passed: it crashes the vendor kernel with SIGFPE.
+# 0 is rejected when checked against a valid saved forward workspace.
 PARAM_ROWS = [
     {"kernel_size": [2, 2, 2], "stride": [2, 2, 2]},
     {"kernel_size": [2, 2, 2], "stride": [2, 2, 2], "padding": [0, 0, 0]},
@@ -167,10 +167,9 @@ def test_mkldnn_max_pool3d_backward_value_range(shape, value_range, dtype):
         grad.to_mkldnn(), res_output, res_input, **DEFAULT_PARAMS
     )
 
-    # Scatter/indexing result: the values are copied, never rounded, so they are
-    # compared at the shared tolerance after the layout check.
+    # Non-overlapping windows scatter each gradient without accumulation.
     assert res_out.is_mkldnn
-    tu.assert_result_close(res_out.to_dense(), ref_out.to_dense())
+    tu.assert_result_equal(res_out.to_dense(), ref_out.to_dense())
 
 
 @pytest.mark.mkldnn_max_pool3d_backward
@@ -259,7 +258,7 @@ def test_mkldnn_max_pool3d_backward_out(dtype):
 
     assert res_out.is_mkldnn
     assert res_out is res_buf
-    tu.assert_result_close(res_out.to_dense(), ref_out.to_dense())
+    tu.assert_result_equal(res_out.to_dense(), ref_out.to_dense())
 
 
 @pytest.mark.mkldnn_max_pool3d_backward
@@ -289,7 +288,7 @@ def test_mkldnn_max_pool3d_backward_special_values(where, dtype, scenario):
     )
 
     assert res_out.is_mkldnn
-    tu.assert_result_close(res_out.to_dense(), ref_out.to_dense())
+    tu.assert_result_equal(res_out.to_dense(), ref_out.to_dense())
 
 
 @pytest.mark.mkldnn_max_pool3d_backward
@@ -383,7 +382,7 @@ def test_mkldnn_max_pool3d_backward_rejects_missing_stride():
     # The schema default for stride is an empty list, which is not native-valid
     # for a 5-D operand (`got stride=[]`), so every workload above passes stride
     # explicitly and the omission is covered here instead. The stride must also be
-    # positive: 0 SIGFPEs the vendor kernel.
+    # positive; zero stride is covered separately below.
     inp = _cpu_input(torch.float32, PARAM_DESCRIPTOR, ["-1", "1"])
     output, input_mkldnn = _operands(inp, DEFAULT_PARAMS)
     grad = _cpu_input(torch.float32, tuple(output.shape), ["-1", "1"])
@@ -406,4 +405,19 @@ def test_mkldnn_max_pool3d_backward_rejects_forward_without_workspace():
     with pytest.raises(INVALID_INPUT_ERRORS):
         flag_gems.mkldnn_max_pool3d_backward(
             grad.to_mkldnn(), output, input_mkldnn, **DEFAULT_PARAMS
+        )
+
+
+@pytest.mark.mkldnn_max_pool3d_backward
+def test_mkldnn_max_pool3d_backward_rejects_zero_stride():
+    inp = _cpu_input(torch.float32, PARAM_DESCRIPTOR, ["-1", "1"])
+    output, input_mkldnn = _operands(inp, DEFAULT_PARAMS)
+    grad = _cpu_input(torch.float32, tuple(output.shape), ["-1", "1"])
+
+    with pytest.raises(INVALID_INPUT_ERRORS):
+        flag_gems.mkldnn_max_pool3d_backward(
+            grad.to_mkldnn(),
+            output,
+            input_mkldnn,
+            **dict(DEFAULT_PARAMS, stride=[0, 0, 0]),
         )

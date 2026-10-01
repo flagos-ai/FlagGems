@@ -46,6 +46,8 @@ MKLDNN_CONVOLUTION_ROWS = [
         1,
         "contiguous",
     ),
+    ((2, 3, 8, 8), (4, 3, 3, 3), (1, 1), (1, 1), (1, 1), 1, "mkldnn-input"),
+    ((2, 3, 8, 8), (4, 3, 3, 3), (1, 1), (1, 1), (1, 1), 1, "mkldnn-both"),
     # oneDNN reorders strided, offset and channels-last CPU operands internally,
     # so these rows measure the same extents through a different memory layout.
     ((2, 3, 8, 8), (4, 3, 3, 3), (1, 1), (1, 1), (1, 1), 1, "channels-last"),
@@ -170,6 +172,10 @@ def _build_inputs_fn(plan, dtype, device):
     weight = _laid_out_tensor(
         layout if layout in _WEIGHT_LAYOUTS else "contiguous", weight_shape, dtype
     )
+    if layout in ("mkldnn-input", "mkldnn-both"):
+        inp = inp.to_mkldnn()
+    if layout == "mkldnn-both":
+        weight = weight.to_mkldnn()
     bias = _cpu_tensor((weight_shape[0],), _native_bias_dtype(dtype))
     return (
         inp,
