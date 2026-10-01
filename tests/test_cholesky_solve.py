@@ -53,6 +53,7 @@ CHOLESKY_SOLVE_FP32_BLOCKED_LOWER_SHAPES = [
     (256, 16),
     (256, 128),
 ]
+CHOLESKY_SOLVE_BATCHED_BLOCKED_SHAPES = [(2, 256, 4), (3, 256, 2)]
 CHOLESKY_SOLVE_BATCH_SHAPES = [(2, 4, 1), (3, 8, 2), (2, 3, 16, 4)]
 CHOLESKY_SOLVE_RHS_BOUNDARY_SHAPES = [
     (64, 15),
@@ -382,6 +383,48 @@ def test_cholesky_solve_fp32_blocked_lower(shape, contiguous_factor):
         factor = factor.contiguous()
 
     _assert_cholesky_solve_matches(A, factor, rhs, dtype, upper=False)
+
+
+@pytest.mark.cholesky_solve
+@pytest.mark.parametrize("shape", CHOLESKY_SOLVE_BATCHED_BLOCKED_SHAPES)
+@pytest.mark.parametrize("dtype", _REAL_DTYPES)
+@pytest.mark.parametrize("upper", [False, True])
+@pytest.mark.parametrize("transpose_contiguous_factor", [False, True])
+def test_cholesky_solve_blocked_batch(shape, dtype, upper, transpose_contiguous_factor):
+    """Exercise the N=256 scratch update for more than one batch."""
+    A, L, rhs = _make_cholesky_solve_inputs(shape, dtype)
+    factor = L.mH.contiguous() if upper else L
+    factor = (
+        factor.mT.contiguous().mT
+        if transpose_contiguous_factor
+        else factor.contiguous()
+    )
+
+    _assert_cholesky_solve_matches(A, factor, rhs, dtype, upper=upper)
+
+
+@pytest.mark.cholesky_solve
+@pytest.mark.parametrize(
+    "shapes",
+    [
+        ((1, 256, 256), (2, 256, 4)),
+        ((2, 256, 256), (1, 256, 4)),
+        ((2, 1, 256, 256), (3, 256, 4)),
+    ],
+)
+@pytest.mark.parametrize("dtype", _REAL_DTYPES)
+@pytest.mark.parametrize("upper", [False, True])
+def test_cholesky_solve_blocked_broadcast_batch(shapes, dtype, upper):
+    """Exercise both input broadcast directions and multiple batch axes."""
+    A_shape, rhs_shape = shapes
+    _, factor, rhs = _make_cholesky_solve_broadcast_inputs(
+        A_shape, rhs_shape, dtype, upper
+    )
+
+    ref_out = _reference_cholesky_solve(rhs, factor, upper=upper)
+    res_out = _solve_with_gems(rhs, factor, upper=upper)
+    _assert_cholesky_solve_close(res_out, ref_out, dtype)
+    assert res_out.shape == ref_out.shape
 
 
 @pytest.mark.cholesky_solve
