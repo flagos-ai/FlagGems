@@ -55,7 +55,7 @@ _TENSOR_FORMS = ("tensor_tensor", "mixed_rank", "tensor_scalar", "scalar_tensor"
 
 # Float8 promotes only with itself (a mixed fp8 pair raises in the native op),
 # so an fp8 bucket pairs its 0-dim operand with the same fp8 dtype.
-_FP8_DTYPES = [d for d in consts.FP8_DTYPES if isinstance(d, torch.dtype)]
+_FP8_DTYPES = [torch.float8_e4m3fn, torch.float8_e5m2]
 
 # Every dtype whose storage the op accepts, taken from the shared lists; fp8 is
 # included only when the running build exposes a usable fp8 storage type.

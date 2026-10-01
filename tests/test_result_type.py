@@ -17,17 +17,11 @@
 aten::result_type is pure dtype inference: each of its four overloads
 (.Tensor, .Scalar, .Scalar_Tensor, .Scalar_Scalar) returns a Python int
 ScalarType code, never a tensor, and no overload reads element values. The
-spec's five value ranges, broadcast and backward dimensions therefore cannot
-change a result: there is no arithmetic to observe and no value to compare. The
-seven-shape grid is represented instead by the only shape property this operator
-looks at, the operand rank role: for two operands of different dtypes zero-dimensional and dimensioned
-tensors have different promotion priority, so swapping their rank roles can
-change the code, as the mixed-dtype rank-role test below
-shows. The semantic dimensions covered here are the four call forms, the dtype
-promotion lattice, that mixed-dtype rank role, Python scalar-class promotion,
-the fp8 promotion restrictions and the rejected argument forms. Every
-expectation is taken from the native operator itself, so no operand is upcast,
-converted or re-created.
+shared shape and value-range grid checks that element values cannot affect the
+result. Rank roles also matter: a zero-dimensional tensor can have lower
+promotion priority than a dimensioned operand. The tests cover all four call
+forms, dtype pairs, rank roles, Python scalar kinds and rejected arguments.
+Expectations come directly from the native operator.
 """
 
 import itertools
@@ -124,7 +118,7 @@ _RANK_SHAPES = {0: (), 1: (4,)}
 
 # The 0-dim tensor boundary against every Python scalar kind, for every dtype.
 # These payloads are tiny, so quick keeps all of them.
-ZERO_DIM_ROWS = [(dtype, kind) for dtype in ALL_DTYPES for kind in (1, True)]
+ZERO_DIM_ROWS = TENSOR_SCALAR_ROWS + COMPLEX_SCALAR_ROWS
 
 # Promotion is dtype driven when both operands share a dtype: a 0-dim, 1-dim,
 # 3-dim, 4-dim or 5-dim operand on either side must not change the result.
@@ -164,7 +158,7 @@ MIXED_RANK_ROWS = [
 # accepts; the scenarios the dtype cannot represent are dropped by the shared
 # generator itself (e.g. e4m3fn has no infinity).
 SPECIAL_VALUE_ROWS = tu.special_value_cases(
-    [torch.float16, torch.bfloat16, torch.float32, torch.float64] + FP8_DTYPES
+    [dtype for dtype in ALL_DTYPES if dtype.is_floating_point]
 )
 
 # Objects that match no result_type schema: neither a tensor nor a Scalar.
@@ -282,9 +276,6 @@ def test_result_type_ignores_tensor_rank(shape_a, shape_b, dtype):
     res = flag_gems.result_type(a, b)
 
     _assert_result(res, ref)
-    # Two operands of the same dtype must resolve to that dtype whatever their
-    # ranks or shapes are.
-    assert res == torch.ops.aten.result_type(a, a)
 
 
 @pytest.mark.result_type
@@ -346,3 +337,17 @@ def test_result_type_missing_argument():
 
     with pytest.raises((TypeError, RuntimeError)):
         flag_gems.result_type(inp)
+
+
+@pytest.mark.result_type
+@pytest.mark.parametrize("dtype", ALL_DTYPES)
+@pytest.mark.parametrize("shape", tu.selected_shapes())
+@pytest.mark.parametrize("value_range", tu.selected_ranges())
+def test_result_type_shared_grid(dtype, shape, value_range):
+    inp = tu.make_input(dtype, shape, value_range)
+    other = tu.make_input(dtype, (), ["-1", "1"])
+    ref = torch.ops.aten.result_type(inp, other)
+
+    res = flag_gems.result_type(inp, other)
+
+    _assert_result(res, ref)

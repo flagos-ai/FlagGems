@@ -18,7 +18,7 @@ The operator returns the placement index recorded in the operand's host-side
 metadata (the accelerator index, ``-1`` when the placement carries none). It
 reads no element data, so dtype, shape, contents and strides cannot change the
 result: the checks below compare the returned Python ``int`` and verify the
-operand is left untouched instead of applying a value-range grid. Broadcast,
+operand placement is preserved across the shared shape and value-range grids. Broadcast,
 scalar-operand and backward workloads do not apply to a schema with one Tensor
 argument returning a Python int.
 
@@ -49,18 +49,11 @@ _MAIN_RANGE = ["-1", "1"]
 
 # bool and float64 additionally accept this metadata read; float64 is gated on
 # the backend flag used throughout the suite.
-_DTYPES = tu.REQUIRED_DTYPES + [torch.bool]
+_DTYPES = tu.REQUIRED_DTYPES + [torch.bool, torch.complex64]
 if utils.fp64_is_supported:
     _DTYPES = _DTYPES + [torch.float64]
 
 _DTYPES = [dtype for dtype in _DTYPES if _DTYPE_FLAGS.get(dtype, True)]
-
-# Value ranges cannot change a metadata read, so two representative shapes
-# carry the required five-range sweep (the shape level still shrinks to the
-# quick shape).
-_RANGE_SHAPES = tu.selected_cases(
-    [(20, 320, 15), (16, 128, 64, 60)], quick=[(2, 19, 7)]
-)
 
 # Layouts whose placement must be read without materializing the tensor:
 # non-contiguous views (transposed / sliced with nonzero offset), an
@@ -99,9 +92,7 @@ def _layout_input(layout, dtype):
         return torch.sparse_coo_tensor(indices, values, (4, 4))
     if layout == "grad":
         inp = tu.make_input(dtype, (4, 10), _MAIN_RANGE)
-        # Only floating dtypes can carry a grad; torch.dtype.is_floating_point
-        # is a bool, unlike the bound method Tensor.is_floating_point.
-        return inp.requires_grad_(inp.dtype.is_floating_point)
+        return inp.requires_grad_(inp.dtype.is_floating_point or inp.dtype.is_complex)
     raise ValueError("unknown layout: %s" % layout)
 
 
@@ -126,7 +117,7 @@ def test_get_device(shape, dtype):
 
 
 @pytest.mark.get_device
-@pytest.mark.parametrize("shape", _RANGE_SHAPES)
+@pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("dtype", _DTYPES)
 def test_get_device_value_ranges(shape, value_range, dtype):

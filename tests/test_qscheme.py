@@ -41,7 +41,7 @@ _PT_BOUNDARY_SHAPES = [(), (0,), (0, 3)]
 _PC_BOUNDARY_SHAPES = [(0,), (0, 3)]
 
 _PT_SHAPES = tu.selected_cases(
-    list(tu.REQUIRED_SHAPES) + _PT_BOUNDARY_SHAPES,
+    list(dict.fromkeys(list(tu.REQUIRED_SHAPES) + _PT_BOUNDARY_SHAPES)),
     quick=list(tu.QUICK_SHAPES) + _PT_BOUNDARY_SHAPES,
 )
 _PC_SHAPES = tu.selected_cases(
