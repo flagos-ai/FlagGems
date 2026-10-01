@@ -28,13 +28,10 @@ from . import test_utils as tu
 # flag_gems.device and meta fixtures stay on the meta device, so no ambient
 # default device can move a fixture.
 #
-# Fixtures are payload-free torch.empty allocations: the operator reads no
-# element, so the shared value-range framework -- which fills the whole buffer
-# through torch.testing.make_tensor -- adds no coverage here, and no
-# uninitialized content is ever compared. tu.to_reference is not usable for
-# these operands: it rebuilds them through torch.empty(0).set_(storage.clone(),
-# ...) and that rebuilt tensor reports is_pinned() == False even when the cloned
-# storage is pinned.
+# The storage grids fill inputs from the shared value ranges while preserving
+# their allocator. Other metadata-only fixtures can remain uninitialized.
+# tu.to_reference cannot preserve the pinned-allocation state under test, so
+# references are built with the same allocator as their candidate operands.
 
 # Static capability flags read at import: no tensor is allocated at collection
 # time and no test probes support at run time.
@@ -75,22 +72,27 @@ def _assert_matches_native(res_out, ref_out):
     assert res_out is ref_out
 
 
-def _storage_tensor(storage, shape, dtype):
+def _storage_tensor(storage, shape, dtype, value_range=None):
     if storage == "pinned-host":
-        return torch.empty(shape, dtype=dtype, device="cpu", pin_memory=True)
-    if storage == "plain-host":
-        return torch.empty(shape, dtype=dtype, device="cpu")
-    if storage == "backend":
-        return torch.empty(shape, dtype=dtype, device=flag_gems.device)
-    raise ValueError(storage)
+        inp = torch.empty(shape, dtype=dtype, device="cpu", pin_memory=True)
+    elif storage == "plain-host":
+        inp = torch.empty(shape, dtype=dtype, device="cpu")
+    elif storage == "backend":
+        inp = torch.empty(shape, dtype=dtype, device=flag_gems.device)
+    else:
+        raise ValueError(storage)
+    if value_range is not None:
+        inp.copy_(tu.make_input(dtype, shape, value_range).to(inp.device))
+    return inp
 
 
 @pytest.mark.is_pinned
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype", _DTYPES)
-def test_is_pinned_pinned_host_storage(shape, dtype):
-    inp = _storage_tensor("pinned-host", shape, dtype)
-    ref_inp = _storage_tensor("pinned-host", shape, dtype)
+@pytest.mark.parametrize("value_range", tu.selected_ranges())
+def test_is_pinned_pinned_host_storage(shape, dtype, value_range):
+    inp = _storage_tensor("pinned-host", shape, dtype, value_range)
+    ref_inp = _storage_tensor("pinned-host", shape, dtype, value_range)
 
     ref_out = torch.ops.aten.is_pinned(ref_inp)
     res_out = flag_gems.is_pinned(inp)
@@ -102,9 +104,10 @@ def test_is_pinned_pinned_host_storage(shape, dtype):
 @pytest.mark.is_pinned
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype", _DTYPES)
-def test_is_pinned_plain_host_storage(shape, dtype):
-    inp = _storage_tensor("plain-host", shape, dtype)
-    ref_inp = _storage_tensor("plain-host", shape, dtype)
+@pytest.mark.parametrize("value_range", tu.selected_ranges())
+def test_is_pinned_plain_host_storage(shape, dtype, value_range):
+    inp = _storage_tensor("plain-host", shape, dtype, value_range)
+    ref_inp = _storage_tensor("plain-host", shape, dtype, value_range)
 
     ref_out = torch.ops.aten.is_pinned(ref_inp)
     res_out = flag_gems.is_pinned(inp)
@@ -116,9 +119,10 @@ def test_is_pinned_plain_host_storage(shape, dtype):
 @pytest.mark.is_pinned
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype", _DTYPES)
-def test_is_pinned_backend_storage(shape, dtype):
-    inp = _storage_tensor("backend", shape, dtype)
-    ref_inp = _storage_tensor("backend", shape, dtype)
+@pytest.mark.parametrize("value_range", tu.selected_ranges())
+def test_is_pinned_backend_storage(shape, dtype, value_range):
+    inp = _storage_tensor("backend", shape, dtype, value_range)
+    ref_inp = _storage_tensor("backend", shape, dtype, value_range)
 
     ref_out = torch.ops.aten.is_pinned(ref_inp)
     res_out = flag_gems.is_pinned(inp)

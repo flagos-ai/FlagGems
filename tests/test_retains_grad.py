@@ -327,7 +327,11 @@ def test_retains_grad_does_not_mutate_retained_nonleaf(dtype):
 
 
 _BACKWARD_STATES = tu.selected_cases(["retained", "not_retained"], quick=[])
-_BACKWARD_DTYPES = [torch.float32]
+_BACKWARD_DTYPES = [
+    dtype
+    for dtype in (torch.float16, torch.float32, torch.bfloat16)
+    if _DTYPE_FLAGS.get(dtype, True)
+]
 if utils.fp64_is_supported:
     _BACKWARD_DTYPES.append(torch.float64)
 

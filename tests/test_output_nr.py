@@ -147,7 +147,6 @@ _METADATA_ONLY_GRAPHS = frozenset(
         "chunk",
         "unbind",
         "conj",
-        "resolve_conj",
         "neg_view",
     }
 )
@@ -162,7 +161,7 @@ _METADATA_VIEW_GRAPHS = ["view", "unsqueeze"]
 # Multi-output nodes whose slot count depends on the input shape.
 _SLOT_SHAPES = {
     "split": [(6,), (4, 8), (3, 7)],
-    "chunk": [(9,), (6, 4)],
+    "chunk": [(9,), (6, 4), (4,)],
     "unbind": [(3,), (3, 4)],
     "var_mean": [(8,), (4, 6)],
     "aminmax": [(8,), (4, 6)],
@@ -201,8 +200,10 @@ def _slot_count(graph, shape):
     if graph == "split":
         return -(-shape[0] // max(shape[0] // 2, 1))
     if graph == "chunk":
-        # torch.chunk returns min(chunks, size) parts.
-        return min(3, shape[0])
+        # chunk uses ceil(size / chunks) elements per part and can return fewer
+        # parts than requested (size=4, chunks=3 produces two parts).
+        chunk_size = (shape[0] + 2) // 3
+        return (shape[0] + chunk_size - 1) // chunk_size
     if graph == "unbind":
         return shape[0]
     return 2 if graph in _TWO_SLOT_GRAPHS else 1
@@ -219,7 +220,13 @@ def _slot_rows(graphs):
     return rows
 
 
-_GRAD_ROWS = _slot_rows(_SINGLE_OUTPUT_SHAPES) + _slot_rows(_SLOT_SHAPES)
+_GRAD_ROWS = [
+    (*row, dtype)
+    for row in _slot_rows(_SINGLE_OUTPUT_SHAPES) + _slot_rows(_SLOT_SHAPES)
+    for dtype in (
+        _GRAPH_DTYPES if row[0] in _METADATA_ONLY_GRAPHS else _ARITHMETIC_DTYPES
+    )
+]
 
 # Graphs whose node identity, storage and view metadata must survive the query.
 _GRAPH_STATE_CASES = [
@@ -331,8 +338,7 @@ def test_output_nr_metadata_view_of_leaf(graph, shape, dtype):
 
 
 @pytest.mark.output_nr
-@pytest.mark.parametrize("dtype", _ARITHMETIC_DTYPES)
-@pytest.mark.parametrize("graph,shape,slot,expected", _GRAD_ROWS)
+@pytest.mark.parametrize("graph,shape,slot,expected,dtype", _GRAD_ROWS)
 def test_output_nr_grad_graph_slots(graph, shape, slot, expected, dtype):
     leaf = _graph_tensor(
         dtype, shape, requires_grad=True, empty=graph in _METADATA_ONLY_GRAPHS
@@ -378,7 +384,9 @@ def test_output_nr_lazy_conjugate_and_negation(
     graph, shape, requires_grad, is_conj, is_neg
 ):
     dtype = _LAZY_DTYPES[graph]
-    leaf = _graph_tensor(dtype, shape, requires_grad=requires_grad, empty=True)
+    leaf = _graph_tensor(
+        dtype, shape, requires_grad=requires_grad, empty=graph in _METADATA_ONLY_GRAPHS
+    )
     ref_leaf = _twin(leaf)
 
     queried = _GRAPH_BUILDERS[graph](leaf)[0]

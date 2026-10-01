@@ -143,7 +143,7 @@ _CASES = [
         dtype,
         id=f"{kind}-{_shape_tag(shape)}-{_dtype_tag(dtype)}",
     )
-    for shape in tu.selected_shapes()
+    for shape in list(tu.selected_shapes()) + [(0,), (0, 3)]
     for kind, expected in _KIND_ROWS
     if _kind_applies(kind, shape)
     for dtype in _DTYPES
@@ -328,3 +328,19 @@ def test_is_set_to_rejects_non_tensor_operands(position, bad_value):
 
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems.is_set_to(*args)
+
+
+@pytest.mark.is_set_to
+@pytest.mark.parametrize("offset", [0, 1])
+def test_is_set_to_empty_views_with_offset(offset):
+    base = tu.make_input(torch.float32, (8,), _VALUE_RANGE)
+    ref_base = tu.to_reference(base)
+    inp, other = base[:0], base[offset:offset]
+    ref_inp, ref_other = ref_base[:0], ref_base[offset:offset]
+
+    ref_out = torch.ops.aten.is_set_to(ref_inp, ref_other)
+    res_out = flag_gems.is_set_to(inp, other)
+
+    assert type(res_out) is bool
+    assert res_out == ref_out
+    assert res_out is (offset == 0)
