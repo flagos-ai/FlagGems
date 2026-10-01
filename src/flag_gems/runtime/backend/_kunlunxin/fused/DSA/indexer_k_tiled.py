@@ -33,9 +33,13 @@
 # ik_fix8.py — loop-free restructure: grid = (Q rows, K/BK column blocks); one dot per program.
 # Rewrites vs upstream indexer_k_tiled.py: no inner kv loop (race-free), scalar window loads,
 # slt-only masks + value-level where for the lower bound, expand_dims(acc.sum(0)) for the head sum.
+import logging
+
 import torch
 import triton
 import triton.language as tl
+
+logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -105,6 +109,7 @@ def fishdv(
 def triton_lighting_indexer_k_tiled_interface(
     q, kv, weights, cu_seqlen_ks, cu_seqlen_ke
 ):
+    logger.debug("GEMS_KUNLUNXIN TRITON_LIGHTING_INDEXER_K_TILED_INTERFACE")
     Q, H, D = q.shape[0], q.shape[1], q.shape[2]
     K = kv.shape[0]
     CU = cu_seqlen_ks.shape[0]
