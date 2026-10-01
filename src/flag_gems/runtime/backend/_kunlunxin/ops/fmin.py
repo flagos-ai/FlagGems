@@ -24,12 +24,6 @@ logger = logging.getLogger(__name__)
 
 @triton.jit
 def _fmin_ignore_nan(x, y):
-    # torch.fmin semantics: ignore NaN (return the non-NaN operand).
-    # The XPU backend cannot select v16i1 fcmp setuo (unordered float compares
-    # used by isnan / x != x) for wide vectors - it crashes the LLVM backend -
-    # so NaN is detected through integer bit patterns instead (IEEE-754:
-    # exponent all-ones + non-zero mantissa). tl.PropagateNan.NONE is also not
-    # implemented by the XPU backend, hence the explicit select.
     if x.dtype == tl.float32:
         xi = x.to(tl.int32, bitcast=True)
         yi = y.to(tl.int32, bitcast=True)
@@ -119,7 +113,7 @@ def fmin(a, b):
         out_c = torch.empty(out_shape, dtype=compute_dtype, device=a_c.device)
     n_elements = out_c.numel()
     block_size = _pick_block_size(n_elements)
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    grid = (triton.cdiv(n_elements, block_size),)
     with torch_device_fn.device(a_c.device):
         fmin_kernel[grid](a_c, b_c, out_c, n_elements, BLOCK_SIZE=block_size)
     if out_c.dtype != out.dtype:
@@ -147,7 +141,7 @@ def fmin_out(a, b, out):
         out_c = torch.empty(expected_shape, dtype=compute_dtype, device=out.device)
     n_elements = out_c.numel()
     block_size = _pick_block_size(n_elements)
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    grid = (triton.cdiv(n_elements, block_size),)
     with torch_device_fn.device(out.device):
         fmin_kernel[grid](a_c, b_c, out_c, n_elements, BLOCK_SIZE=block_size)
     if out_c is not out:

@@ -11,24 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
-# kunlunxin (XPU) conv_transpose2d.
-#
-# The generic triton implementation hits the SDNN pipeline on XPU and produces
-# wrong values / aborts (tickets/t4).  This overlay binds the operator to the
-# vendor implementation instead: the kernel below is a launch-table binding
-# shell ("conv_transpose2d_forward" pattern) whose real computation is
-# performed by xpudnn::conv2d_transpose_fusion_v2 inside liblaunch_shared.so
-# (see third_party/xpu/device/xpu3/launch_extra.cpp).  bf16 has no vendor
-# transpose instantiation; bf16 inputs are converted in the C handler
-# (cast -> fp32 v2 -> cast back, all inside one launch).
-#
-# Performance note: the flag_gems `to`/`_to_copy` overlay (a pointwise_dynamic
-# kernel) costs ~0.1-0.2 ms of HOST time per call on this stack, and python
-# level pad/assign ops used to materialise the dilation are in the same class.
-# On these small shapes that host cost dominates the measured latency, so the
-# casts and the dilation fold are done with two bare triton kernels (~25 us of
-# host time each) instead of the overlay ops.
 import logging
 
 import torch
@@ -37,9 +19,6 @@ import triton.language as tl
 
 logger = logging.getLogger(__name__)
 
-# NOTE: the binding shell below deliberately has no @libentry wrapper: the
-# wrapper costs ~0.02 ms of host time per call on this stack and the shell body
-# is never executed anyway (the launch-table handler serves it).
 
 _ZERO_BIAS_CACHE = {}
 
@@ -48,8 +27,6 @@ _SCRATCH_CACHE = {}
 
 
 def _scratch_buf(shape, device):
-    # internal fp32 staging buffers for the C-side bf16 conversion; reused
-    # across calls (they are fully overwritten before use).
     key = (tuple(shape), str(device))
     t = _SCRATCH_CACHE.get(key)
     if t is None:
@@ -78,8 +55,6 @@ def _cast_kernel(src, dst, n, BLOCK: tl.constexpr):
 def _fast_cast(t, dtype):
     out = torch.empty(t.shape, dtype=dtype, device=t.device)
     n = t.numel()
-    # a large block keeps the CTA count (and its dispatch cost) low; verified
-    # ~2x cheaper than BLOCK=1024 on the official event-timing protocol.
     _cast_kernel[(triton.cdiv(n, 16384),)](t, out, n, BLOCK=16384)
     return out
 
@@ -95,9 +70,6 @@ def _fold_kernel(src, dst, kh, kw, kh2, kw2, dh, dw, BLOCK: tl.constexpr):
     v = tl.load(
         src + r * kh * kw + (row // dh) * kw + (col // dw), mask=mask, other=0.0
     )
-    # NB: folding the keep predicate into the load mask (mask & keep) is ignored
-    # by the current XPU triton build (observed on 2026-09-18); an explicit
-    # select is used instead.
     v = tl.where(keep, v, 0.0)
     tl.store(dst + r * kh2 * kw2 + offs, v, mask=mask)
 
@@ -191,12 +163,6 @@ def conv_transpose2d_forward_kernel(
     out_bf16_pointer,
     BLOCK: tl.constexpr,
 ):
-    # Binding shell: the launch-table handler serves this kernel through
-    # xpudnn::conv2d_transpose_fusion_v2 and strips this body on the SDNN
-    # pipeline.  The dead tl.dot below is what makes the launcher classify
-    # this kernel as an SDNN kernel, which pins the kernel-parameter table
-    # layout the C++ handler indexes into (same convention as the conv2d
-    # binding kernels).  The branch is unreachable (program ids are >= 0).
     pid = tl.program_id(0)
     offs = tl.arange(0, 1)
     keep = (pid < 0) & (offs < 0)
@@ -230,8 +196,6 @@ def conv_transpose2d(
     )
 
     def _pair2(v):
-        # the aten schema may pass int[N] args as lists; accept ints, length-1
-        # and length-2 sequences, reject longer ones like the generic _pair
         if isinstance(v, (list, tuple)):
             if len(v) == 1:
                 return int(v[0]), int(v[0])
@@ -286,9 +250,6 @@ def conv_transpose2d(
         )
 
     orig_dtype = input.dtype
-    # bf16 has no vendor transpose instantiation at all; for fp16 the fusion
-    # entry's grouped+strided combination is far slower than the fp32 v2 one.
-    # Both ride the C handler's cast pipeline (cast -> fp32 v2 -> cast back).
     use_cast_ride = orig_dtype == torch.bfloat16 or (
         orig_dtype == torch.float16 and groups > 1 and (stride_h > 1 or stride_w > 1)
     )
@@ -298,11 +259,6 @@ def conv_transpose2d(
         scratch_w = _scratch_buf(weight.shape, weight.device)
 
     if bias is None:
-        # a None argument would drop its slot from the launcher parameter
-        # table and shift every later index; always pass a real fp32 tensor
-        # (mirrors the conv2d binding).  The bias value itself is applied in
-        # python below; the vendor bias path is unreliable on degenerate or
-        # heavily padded shapes.
         bias_f32 = _zero_bias(weight.shape[1] * groups, input.device)
     elif bias.dtype != torch.float32:
         bias_f32 = _fast_cast(bias, torch.float32)
@@ -311,17 +267,9 @@ def conv_transpose2d(
     has_bias = 0 if bias is None else 1
 
     if dilation_h != 1 or dilation_w != 1:
-        # the vendor's combined asymmetric stride+dilation handling is broken
-        # (t4 family); materialising the dilation into a zero-stuffed weight
-        # is mathematically exact and lets us pass dilation=(1, 1).
         weight = _fold_dilation(weight, dilation_h, dilation_w)
         dilation_h, dilation_w = 1, 1
 
-    # output_padding identity: conv_transpose(s, p, op) equals
-    #   conv_transpose(s, p - op, 0)[op : op + out]
-    # which keeps the vendor call free of output_padding (its op handling is
-    # unreliable, t4 family).  Valid whenever p >= op (holds for the official
-    # matrix); otherwise fall back to passing op through.
     borrow_op = (
         (output_padding_h or output_padding_w)
         and padding_h >= output_padding_h
@@ -350,8 +298,6 @@ def conv_transpose2d(
         + 1
     )
 
-    # the borrowed call produces out0 + 2*op rows/cols; target already holds
-    # out0 + op, so the buffer needs exactly target + op
     alloc_h = out_h + (output_padding_h if borrow_op else 0)
     alloc_w = out_w + (output_padding_w if borrow_op else 0)
     if use_cast_ride:
@@ -419,10 +365,6 @@ def conv_transpose2d(
         ]
         out = out.contiguous()
     if bias is not None:
-        # the vendor bias path is unreliable on degenerate or heavily padded
-        # shapes; apply the bias here instead.  For fp32 outputs the add is
-        # exact; for narrow dtypes it is done in fp32 with a single rounding
-        # (matching the generic op's accumulation contract).
         b = bias_f32.view(1, -1, 1, 1)
         if out.dtype == torch.float32:
             out = out + b

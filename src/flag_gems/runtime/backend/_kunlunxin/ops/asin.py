@@ -23,37 +23,11 @@ from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
 
-# asin(x) fast path (race: arcsin/asin, 2026-09-04): the previous kernel
-# (tl.sqrt + tl.where sign reconstruction) was select/mask-bound: the
-# x<0 where-compile emits an ~100-instruction i1->i32 mask extraction
-# (llvm.xpu.vvor_f_mh_rn) costing ~0.245 ms at 16.7M elements, 2.2x the
-# whole torch.asin time. This rewrite replaces both with XPU-friendly ops:
 #
-#   asin(x) = sgn(x) * (pi/2 - 2*s*P(t)),  t=(1-|x|)/2 in [0,0.5],
-#   s = t*rsqrt(t+eps) ~ sqrt(t),  P = degree-8 LSQ fit of asin(s)/s
-#   sgn(x) = 1 - 2*min(1, max(0, -x*2^126))      (no select/compare)
 #
-#   - rsqrt: xpu.rsqrt lowers to the inline hardware SFU op
-#     (tt.extern_elementwise _ZN3xpu6rsqrtfEf, ~0.67x the cost of the
-#     software-expanded tl.sqrt chain). The +1e-30 bias keeps s=0 exactly
-#     at t=0 (x = +-1): 0*rsqrt(1e-30) = 0, so asin(+-1) = +-pi/2 like
-#     torch. The bias is a bit-exact no-op for every other representable
-#     t (no fp32 value falls in (1, 1+2e-30]).
-#   - sign: pure min/max/fma, no ordered-compare -> no mask extraction.
-#     The 2^126 scale maps x<0 -> m=1, x>0 -> m=0, and the min(1,..)
-#     clamps the product; for normal |x| the result is exactly +-1.
-#     (min/max on XPU drop NaN, which is fine: q is already NaN for
-#     |x|>1, so r = NaN*(1-2m) = NaN.)
-#   - poly2 = 2*P folds the *2.0 into the coefficients (one mul saved).
-#
-# Accuracy: fp32 Horner keeps |asin(x)-ref| <= 4e-5 on [-1,1] (measured
-# 3.70e-5 on randn), inside atol 1e-4 + rtol (1.3e-6 / 1e-3 / 1e-3).
 # Coeffs (fp32-rounded, Horner order high -> low), shared with acos.py:
 #   [-246.59942627, 530.01574707, -470.57415771, 222.85160828, -60.52576828,
 #     9.49576759, -0.72389036, 0.19823363, 0.99959993]
-# Known limit: bf16 output stores pay a software-expanded f32->bf16
-# convert (~0.07 ms at 16.7M elements, ~2x the fp32 store cost); fp16 and
-# fp32 are unaffected.
 MIN_BLOCK = 2048
 # unroll 8 beats 16 on the official unary matrix (acos family sweep,
 # arccos/arccos_ closure 2026-08-16: u16 -> u8 gained ~4%).
@@ -64,11 +38,7 @@ IS_CLOSE_MEMORY_ASYNC = False
 
 def _pick_block(n_elements):
     # Bucket the tile into a few unmasked sizes + 1 masked fallback so the
-    # kernel compiles at most ~6 times total. Unmasked runs when the shape
     # divides the tile exactly (masked memory path on XPU costs ~2x).
-    # Larger blocks win once there are >= ~128 programs (16.7M+ elements);
-    # mid sizes prefer 32768 (>=16 programs); small sizes 8192; tiny shapes
-    # are launch-bound and use the 2048/4w masked kernel.
     if n_elements >= (1 << 24) and n_elements % 131072 == 0:
         return 131072, 8, False
     if n_elements >= (1 << 19) and n_elements % 32768 == 0:
@@ -85,7 +55,6 @@ def _pick_block(n_elements):
 @triton.jit
 def _asin_body(x):
     t = 0.5 - 0.5 * tl.abs(x)
-    # |x| > 1 makes t < 0 -> rsqrt(NaN) -> NaN propagates out, matching torch.
     s = t * xpu.rsqrt(t + 1e-30)
     p = -493.19885254
     p = p * t + 1060.03149414

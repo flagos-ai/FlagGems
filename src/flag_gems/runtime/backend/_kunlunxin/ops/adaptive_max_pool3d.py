@@ -140,7 +140,10 @@ def adaptive_max_pool3d(input: torch.Tensor, output_size, return_indices=False):
     # tiles; do not raise BLOCK_SIZE without re-measuring every shape).  For
     # the common window of at most 2 per dim (out = in / 2) the scan also
     # fits 128-lane tiles / num_warps=2, which is measurably faster.
-    if max(win_d, win_h, win_w) <= 2:
+    global_out = out_d == 1 and out_h == 1 and out_w == 1
+    if max(win_d, win_h, win_w) <= 2 and not (
+        global_out and max(win_d, win_h, win_w) > 1
+    ):
         block, num_warps = 128, 2
     else:
         block, num_warps = 64, 1

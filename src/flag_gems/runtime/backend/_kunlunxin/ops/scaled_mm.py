@@ -46,8 +46,6 @@ _LAST = None
 def _load_generic():
     import importlib
 
-    # `flag_gems.ops.scaled_mm` package attribute is shadowed by the op
-    # function; importlib returns the module object from sys.modules.
     return importlib.import_module("flag_gems.ops.scaled_mm")
 
 
@@ -171,7 +169,6 @@ def _fast_impl(self, mat2, scale_a, scale_b, bias, out_dtype, out, plain):
         _resolve_out_dtype,
     )
 
-    # ultra-fast path: identical input objects & options as the previous call
     last = _LAST
     if (
         last is not None
@@ -197,8 +194,6 @@ def _fast_impl(self, mat2, scale_a, scale_b, bias, out_dtype, out, plain):
         try:
             return _replay(rec, last[7], last[8], last[9], last[10], last[11], out)
         except Exception:
-            # drop the identity shortcut; the slow path re-validates and will
-            # evict a bad record on its own error path
             _LAST = None
             return plain()
 

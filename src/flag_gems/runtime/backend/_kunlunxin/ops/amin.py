@@ -14,13 +14,6 @@ from ..utils.tle_copy import tle_copy
 
 logger = logging.getLogger(__name__)
 
-# tle.gpu (cluster path) coalesced-DMA row-reduce for the small-N row-reduce
-# case.  For narrow reductions (small N) with many rows, the per-lane strided
-# amin_rows_kernel is launch/overhead bound (torch does the whole reduce in
-# ~6-9us); a tle.gpu kernel that packs XBLOCK=256 rows/program (4 rows/core)
-# and streams the N axis in coalesced block DMAs into LM has far fewer programs
-# and higher bandwidth.  Optional import: any failure leaves _HAS_TLE False and
-# the code falls back to the existing kernels.
 try:
     import triton.experimental.tle.language as tle
     from triton.tools.tensor_descriptor import TensorDescriptor
@@ -35,27 +28,10 @@ _TLE_TL_DTYPE = {
     torch.bfloat16: tl.bfloat16,
 }
 
-# Engage the tle small-N row path only for narrow reductions with many rows.
 _TLE_ROW_MAX_N = 256
 _TLE_ROW_MIN_M = 256
 
 
-# ---------------------------------------------------------------------------
-# tle.raw hand-written XTDK (xpu3) payloads.
-#
-# The amin benchmark is dominated by memory-bound reductions where the Triton
-# path leaves large gaps:
-#   * 3D middle-dim reduce (out[o,w]=min_m inp[o,m,w]) -- the previous biggest
-#     laggard.  The Triton path served this via permute(0,2,1) -> non-contiguous
-#     -> a slow transpose copy -> row-reduce.  The raw kernel reads the native
-#     [outer][mid][inner] layout and vvmin-accumulates a width-`inner` column-min
-#     with NO transpose (1-pass, or a 2-pass mid-split for high-mid shapes).
-#   * 2D last-dim row-min for moderate N (SIMD vvmin + horizontal fold).
-#   * 1D full-reduce for very large numel (two-pass streaming SIMD).
-# All payloads compute the exact float min (no accumulation error) and were
-# validated bit-exact (torch.equal) against torch.amin on P800.  Any import or
-# launch failure leaves _HAS_RAW False and the existing Triton kernels run.
-# ---------------------------------------------------------------------------
 _HAS_RAW = False
 if _HAS_TLE:
     try:
@@ -63,22 +39,8 @@ if _HAS_TLE:
 
         import triton.experimental.tle as _tle_ext
 
-        # Precompiled, secrecy-hardened device objects (packed from the .xpu
-        # sources via docs/xpu3/how_to_pack_payload/pack_payload.py --obj-dir).
-        # We ship the .o (not the .xpu source): stub name must equal the entry
-        # symbol and the signature must match the C++ ABI.  In object= mode the
-        # merge-time signature check is skipped (payload isn't in IR), so a wrong
-        # signature fails at runtime, not compile -- keep the stub in lockstep
-        # with the C++.  Re-pack after editing any .xpu -- the compile-cache key
-        # is the .o content digest, so a stale .o silently keeps the old code.
         _RAW_DIR = _os.path.dirname(_os.path.abspath(__file__))
         _PAY_OBJ = _os.path.join(_os.path.dirname(_RAW_DIR), "payload", "obj")
-        # All amin device kernels are shipped in a single merged object
-        # (amin.o = relocatable link of the per-kernel .o).  In object= mode the
-        # loader resolves each stub by its entry-symbol name, so one .o holding
-        # every symbol works exactly like the old per-kernel files.  Re-pack with
-        #   ld.lld -r amin_*.o -o amin.o
-        # after editing/repacking any individual kernel .o.
         _AMIN_OBJ = _os.path.join(_PAY_OBJ, "amin.o")
         _FLAT_XPU = _AMIN_OBJ
         _FLAT1C_XPU = _AMIN_OBJ
@@ -97,20 +59,17 @@ if _HAS_TLE:
             torch.float32: _AMIN_OBJ,
             torch.bfloat16: _AMIN_OBJ,
         }
-        # -- 2D last-dim FUSED row-min + in-place broadcast writeback --
         _ROWFILL_XPU = {
             torch.float16: _AMIN_OBJ,
             torch.float32: _AMIN_OBJ,
             torch.bfloat16: _AMIN_OBJ,
         }
-        # -- 3D middle-dim FUSED column-min + in-place broadcast writeback --
         _MIDFILL_XPU = {
             torch.float16: _AMIN_OBJ,
             torch.float32: _AMIN_OBJ,
             torch.bfloat16: _AMIN_OBJ,
         }
 
-        # -- 1D flat: part (each core min-reduces a slice) + final (core0 folds) --
         @_tle_ext.raw.dialect("xpu3", object=_FLAT_XPU, arch=3)
         def amin_flat_part_f16(inp, part, total, ncores): ...
         @_tle_ext.raw.dialect("xpu3", object=_FLAT_XPU, arch=3)
@@ -124,9 +83,6 @@ if _HAS_TLE:
         @_tle_ext.raw.dialect("xpu3", object=_FLAT_XPU, arch=3)
         def amin_flat_final_bf16(part, out, np): ...
 
-        # -- 1D flat single-cluster single-launch (64 cores -> shared partials
-        #    -> core0 folds -> out).  No 2nd launch; wins for latency/launch-
-        #    bound totals (~<=2M elems); loses to 2-pass for bandwidth-bound. --
         @_tle_ext.raw.dialect("xpu3", object=_FLAT1C_XPU, arch=3)
         def amin_flat1c_f16(inp, out, total): ...
         @_tle_ext.raw.dialect("xpu3", object=_FLAT1C_XPU, arch=3)
@@ -134,7 +90,6 @@ if _HAS_TLE:
         @_tle_ext.raw.dialect("xpu3", object=_FLAT1C_XPU, arch=3)
         def amin_flat1c_bf16(inp, out, total): ...
 
-        # -- 2D last-dim row-min --
         @_tle_ext.raw.dialect("xpu3", object=_ROW_XPU[torch.float16], arch=3)
         def amin_rows_f16_t(inp, out, rows, N, ncores): ...
         @_tle_ext.raw.dialect("xpu3", object=_ROW_XPU[torch.float32], arch=3)
@@ -142,7 +97,6 @@ if _HAS_TLE:
         @_tle_ext.raw.dialect("xpu3", object=_ROW_XPU[torch.bfloat16], arch=3)
         def amin_rows_bf16_t(inp, out, rows, N, ncores): ...
 
-        # -- 3D middle-dim column-min (1-pass) --
         @_tle_ext.raw.dialect("xpu3", object=_MID_XPU[torch.float16], arch=3)
         def amin_mid_f16(inp, out, outer, mid, inner, ncores): ...
         @_tle_ext.raw.dialect("xpu3", object=_MID_XPU[torch.float32], arch=3)
@@ -150,7 +104,6 @@ if _HAS_TLE:
         @_tle_ext.raw.dialect("xpu3", object=_MID_XPU[torch.bfloat16], arch=3)
         def amin_mid_bf16(inp, out, outer, mid, inner, ncores): ...
 
-        # -- 3D middle-dim column-min (2-pass part: split mid into nseg) --
         @_tle_ext.raw.dialect("xpu3", object=_MIDPART_XPU[torch.float16], arch=3)
         def amin_mid_part_f16(inp, part, outer, mid, inner, nseg, ncores): ...
         @_tle_ext.raw.dialect("xpu3", object=_MIDPART_XPU[torch.float32], arch=3)
@@ -158,8 +111,6 @@ if _HAS_TLE:
         @_tle_ext.raw.dialect("xpu3", object=_MIDPART_XPU[torch.bfloat16], arch=3)
         def amin_mid_part_bf16(inp, part, outer, mid, inner, nseg, ncores): ...
 
-        # -- 2D last-dim FUSED row-min + in-place broadcast fill (one launch,
-        #    no separate copy pass; inp is both source and destination) --
         @_tle_ext.raw.dialect("xpu3", object=_ROWFILL_XPU[torch.float16], arch=3)
         def amin_rowfill_f16_t(inp, rows, N, ncores): ...
         @_tle_ext.raw.dialect("xpu3", object=_ROWFILL_XPU[torch.float32], arch=3)
@@ -167,8 +118,6 @@ if _HAS_TLE:
         @_tle_ext.raw.dialect("xpu3", object=_ROWFILL_XPU[torch.bfloat16], arch=3)
         def amin_rowfill_bf16_t(inp, rows, N, ncores): ...
 
-        # -- 3D middle-dim FUSED column-min + in-place broadcast fill (one launch,
-        #    no separate copy pass; inp is both source and destination) --
         @_tle_ext.raw.dialect("xpu3", object=_MIDFILL_XPU[torch.float16], arch=3)
         def amin_midfill_f16(inp, outer, mid, inner, ncores): ...
         @_tle_ext.raw.dialect("xpu3", object=_MIDFILL_XPU[torch.float32], arch=3)
@@ -318,34 +267,16 @@ if _HAS_TLE:
         _HAS_RAW = False
 
 
-# Raw-path routing thresholds (P800, do_bench median vs torch.amin):
-#   * 3D middle-dim: raw wins hugely for mid>1 (0.86-1.19 vs 0.11-0.25 baseline).
-#   * 2D last-dim: raw wins for moderate N; loses for huge N (>=~1<<20 the native
-#     torch reduce out-bandwidths the streaming kernel) -> cap N.
-#   * 1D flat: raw wins for very large numel; near-parity at ~1M.
-_RAW_ROW_MAX_N = 1 << 16  # 65536: raw row-min beats baseline up to here
-_RAW_FLAT_MIN_NUMEL = 1 << 20  # engage raw 1D at/above ~1M elements
-_RAW_FLAT_1CLU_MAX = 1 << 21  # <=2M: single-cluster single-launch wins (no 2nd
-#   launch floor); above this the 2-pass multi-cluster is faster (bandwidth).
-_RAW_MID_2PASS_MIN_MID = 128  # split mid into segments above this
-_ROWFILL_MAX_N = 1 << 20  # fused in-place row-min+fill validated up to 1M cols
-# Above these per-dtype numels the fused single-launch rowfill loses to the
-# SPLIT path: our amin() reduce + native IMPLICIT broadcast copy_(result_keepdim).
-# The benchmark's torch ref writes back with implicit broadcast copy_ (fill-like,
-# ~free); matching it (instead of the fused self-written LM2GM fill or an
-# expand_as strided gather) makes the writeback ~free so gems latency approaches
-# reduce-only.  fp32's per-byte reduce is slower so it crosses over earlier.
+_RAW_ROW_MAX_N = 1 << 16
+_RAW_FLAT_MIN_NUMEL = 1 << 20
+_RAW_FLAT_1CLU_MAX = 1 << 21
+_RAW_MID_2PASS_MIN_MID = 128
+_ROWFILL_MAX_N = 1 << 20
 _ROWFILL_SPLIT_NUMEL = {
     torch.float16: 1 << 24,
     torch.float32: 1 << 22,
     torch.bfloat16: 1 << 24,
 }
-# Fused in-place 3D middle-dim column-min+fill wins only for SMALL mid (outer=64
-# caps the outer-split kernel at a single cluster; large mid then serializes the
-# whole mid*inner block per core and loses to the amin()+copy split which spreads
-# mid across all 12 clusters).  Per-dtype crossover from amin_midfill_probe3:
-# fp16/fp32 win through mid=64 (lose at 128); bf16's widen path only wins at the
-# degenerate mid<=1, and regresses hard by mid=16, so keep its threshold tiny.
 _MIDFILL_MAX_MID = {torch.float16: 64, torch.float32: 64, torch.bfloat16: 8}
 
 
@@ -369,7 +300,6 @@ def _amin_raw_mid(inp, out, outer, mid, inner):
     try:
         mid_fn = _RAW_MID[dt]
         if mid >= _RAW_MID_2PASS_MIN_MID:
-            # 2-pass: split mid into nseg segments (full 12-cluster launch each).
             nseg = 12
             part_fn = _RAW_MIDPART[dt]
             part = torch.empty((outer, nseg, inner), dtype=dt, device=inp.device)
@@ -395,16 +325,14 @@ def _raw_grid_for_rows(M, N, elem_bytes):
     Measured wins: (1024,16) fp16/bf16 g12->g2 0.40->0.66, fp32 g12->g4
     0.72->0.90; (1024,256) fp32 g12->g6 0.70->0.77; >=4MB unchanged at g12."""
     nbytes = M * N * elem_bytes
-    if nbytes < (48 << 10):  # <48KB
+    if nbytes < (48 << 10):
         g = 2
-    elif nbytes < (768 << 10):  # <768KB
+    elif nbytes < (768 << 10):
         g = 4
-    elif nbytes < (4 << 20):  # <4MB
+    elif nbytes < (4 << 20):
         g = 6
     else:
         g = 12
-    # The kernel stages per-core output rows in a 512-slot LM buffer; ensure
-    # ceil(M / (g*64)) <= 512 by bumping the grid up when needed.
     g_min = (M + 512 * 64 - 1) // (512 * 64)
     if g < g_min:
         g = g_min
@@ -420,22 +348,12 @@ def _amin_raw_rows(src, out, M, N):
         return False
     if N <= 1 or N > _RAW_ROW_MAX_N:
         return False
-    # The row kernel stages per-core output rows in a 512-slot LM buffer;
-    # require ceil(M / ncores) <= 512 so no core overruns it.
     if (M + 12 * 64 - 1) // (12 * 64) > 512:
         return False
     try:
         fn = _RAW_ROWS[dt]
         g = _raw_grid_for_rows(M, N, src.element_size())
         nc = g * 64
-        # Over-parallelization guard.  When the launched core count (g*64) is
-        # >= the row count and each row is small (N<=512), the kernel degrades
-        # to <=1 row per core: 64-128 cores each issue a tiny GM2LM plus a
-        # 1-element scattered LM2GM, and those tiny transfers serialize on the
-        # cluster DMA descriptor queue -- device time balloons.  Batching ~4
-        # rows/core amortizes the per-core fixed cost.  Profiled (64,64):
-        # device kernel 10.7us(nc128) -> 3.6us(nc16), Gems speedup 0.25 -> 0.75
-        # across all 3 dtypes (torch reduce_mt is 2.7us).
         if nc >= M and N <= 512:
             nc = max(16, (M + 3) // 4)
             g = (nc + 63) // 64
@@ -462,9 +380,6 @@ def _amin_inplace_rowfill(inp, M, N):
         fn = _RAW_ROWFILL[dt]
         g = _raw_grid_for_rows(M, N, inp.element_size())
         nc = g * 64
-        # Same over-parallelization guard as _amin_raw_rows: when g*64 >= rows
-        # and N is small, batch ~4 rows/core to avoid tiny-transfer DMA
-        # descriptor serialization.
         if nc >= M and N <= 512:
             nc = max(16, (M + 3) // 4)
             g = (nc + 63) // 64
@@ -528,12 +443,6 @@ def _amin_raw_flat(inp, out, numel):
     if numel < _RAW_FLAT_MIN_NUMEL or numel >= (1 << 31):
         return False
     try:
-        # For latency/launch-bound totals (<=2M) prefer a 2-pass via the tuned
-        # multi-cluster row kernel when the total factors into a SIMD-aligned
-        # 2D shape (all 12 clusters stream in parallel).  Otherwise fall back to
-        # a single-cluster single-launch reduce: it folds all 64 cores' partials
-        # in cluster-shared SM and writes the scalar directly, avoiding the
-        # 2nd-launch floor.  Above 2M the flat two-pass wins (bandwidth).
         if numel <= _RAW_FLAT_1CLU_MAX and dt in _RAW_FLAT1C:
             if dt in _RAW_ROWS:
                 R = _flat_via_rows_R(numel, inp.element_size())
@@ -562,11 +471,6 @@ _FULL_REDUCTION_BLOCK_SIZE = 8192
 _FLAT_CHUNK = 32768
 _FLAT_ROW_WIDTH = 8192
 _FLAT_CHUNK_MAX_NUMEL = 1 << 26
-# Above this numel the scalar broadcast writeback is bandwidth-bound, so the
-# fast fill_ path (~2TB/s) beats the stride-0 expand copy_ (~700GBPS).  Below
-# it fill_'s fixed per-call overhead (~30us) dominates and regresses the small
-# flat shapes (e.g. 1M dropped 0.64->0.24), so keep copy_ there.  Crossover
-# measured ~16M on P800.
 _FLAT_FILL_MIN_NUMEL = 1 << 25
 _BLOCK_N_MAX = 8192
 
@@ -678,12 +582,6 @@ def _tle_row_config(M, N, dtype):
     if N > _TLE_ROW_MAX_N or M < _TLE_ROW_MIN_M or M % 64 != 0:
         return None
     if dtype == torch.float16:
-        # fp16 is compile-safe on the tle row path only when YBLOCK >= 64.
-        # With YBLOCK == 16 (N <= 32) an XBLOCK >= 128 kernel fails to compile
-        # ("v" PassManager) and XBLOCK == 64 loses to the fallback, so tiny-N
-        # fp16 stays on the existing path.  For YBLOCK >= 64 (e.g. N == 256)
-        # XBLOCK == 256 compiles and matches bf16: measured (1024,256) fp16
-        # 0.251 fallback -> 0.433 tle.  (harness/perf_ir/amin_fp16_tle_scan.py)
         ypow = triton.next_power_of_2(N)
         if ypow < 64:
             return None
@@ -696,7 +594,7 @@ def _tle_row_config(M, N, dtype):
     if dtype == torch.bfloat16:
         xblock = 256 if M % 256 == 0 else (128 if M % 128 == 0 else 64)
         cap = 128
-    else:  # torch.float32
+    else:
         xblock = 128 if M % 128 == 0 else 64
         cap = 256
     yblock = min(triton.next_power_of_2(N), cap)
@@ -961,12 +859,6 @@ def amin(inp, dim=None, keepdim=False):
                 out = out.squeeze(dim=dim)
             return out
 
-        # ---- raw XTDK fast paths for the single-dim contiguous case ----
-        # For a single contiguous reduction dim d, out[o, w] = min_m inp[o, m, w]
-        # with outer = prod(shape[:d]), mid = shape[d] (== N), inner =
-        # prod(shape[d+1:]).  inner > 1 is a middle-dim column-min (the previous
-        # biggest laggard); inner == 1 is a last-dim row-min.  Both read the
-        # native layout and skip the permute/transpose copy the Triton path uses.
         if (
             _HAS_RAW
             and len(dim) == 1
@@ -1057,9 +949,6 @@ def amin_(inp, dim=None, keepdim=False):
             for i in range(0, inp.dim()):
                 shape[i] = 1
             out = torch.empty(shape, dtype=dtype, device=inp.device)
-        # Prefer the raw XTDK flat reduction (single-cluster single-launch for
-        # <=2M, tuned two-pass above) -- same fast path amin() uses for dim=None.
-        # Falls back to the staged / 2-kernel Triton reductions if unavailable.
         flat = inp.reshape(-1)
         with torch_device_fn.device(inp.device):
             if _amin_raw_flat(flat, out.reshape([]), M):
@@ -1068,11 +957,6 @@ def amin_(inp, dim=None, keepdim=False):
                 else:
                     inp.copy_(out if out.shape == inp.shape else out.expand_as(inp))
                 return inp
-        # For very large numel the amin_kernel_1/2 pair collapses the whole
-        # partial buffer in a single program (BLOCK_MID = next_pow2(mid_size)),
-        # which is catastrophic (e.g. numel=1<<30 measured ~0.08x).  Reuse the
-        # staged _amin_flat reduction there; keep the light 2-kernel path for
-        # small/medium numel where it has less launch overhead.
         if M >= _FLAT_CHUNK_MAX_NUMEL:
             with torch_device_fn.device(inp.device):
                 _amin_flat(inp.reshape(-1), out.reshape([]), inp.device)
@@ -1095,12 +979,6 @@ def amin_(inp, dim=None, keepdim=False):
         inp.copy_(out if out.shape == inp.shape else out.expand_as(inp))
         return inp
     else:
-        # FUSED fast path: reducing the last dim of a contiguous tensor is a
-        # per-row min broadcast back over that row -- do it in one raw kernel
-        # (reduce + in-place fill) instead of amin()+copy_.  Measured 1.3-2x
-        # over the split for moderate N; validated bit-exact.  Only when a single
-        # trailing dim is reduced, the tensor is contiguous, and N is within the
-        # tested range; otherwise fall through to the generic reduce+copy.
         ndim = inp.dim()
         norm = sorted((d % ndim) for d in dim)
         if (
@@ -1119,11 +997,6 @@ def amin_(inp, dim=None, keepdim=False):
                 with torch_device_fn.device(inp.device):
                     if _amin_inplace_rowfill(inp, M, N):
                         return inp
-        # FUSED fast path: reducing a genuine interior (middle) dim of a
-        # contiguous tensor is a per-column min broadcast back over that dim --
-        # fuse reduce + in-place fill in one raw kernel.  Only for small mid and
-        # inner<=64 (kernel LM/accumulator budget); large mid loses the
-        # single-cluster occupancy race and stays on the reduce+copy split.
         if (
             len(norm) == 1
             and 0 < norm[0] < ndim - 1
@@ -1142,8 +1015,5 @@ def amin_(inp, dim=None, keepdim=False):
                     if _amin_inplace_midfill(inp, outer, mid, inner):
                         return inp
         result = amin(inp, dim=dim, keepdim=True)
-        # IMPLICIT broadcast writeback: copy_ from the [.,1,.] keepdim result hits
-        # the native fill-like fast path (~free), matching the benchmark torch ref.
-        # An explicit expand_as view would force the slow stride-0 gather path.
         inp.copy_(result)
         return inp

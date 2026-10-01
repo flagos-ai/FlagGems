@@ -27,8 +27,5 @@ def conj_physical(input: torch.Tensor) -> torch.Tensor:
     logger.debug("GEMS_KUNLUNXIN CONJ_PHYSICAL")
     if not input.is_complex():
         return input
-    # Same behavior as the generic implementation: resolve a pending conjugate
-    # bit first, since torch.view_as_real() (used by _conj) rejects unresolved
-    # conj views. resolve_conj() is a no-op when the bit is not set.
     input = resolve_conj(input)
     return _conj(input)

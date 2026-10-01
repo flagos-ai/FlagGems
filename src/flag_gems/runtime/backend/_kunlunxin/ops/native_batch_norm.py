@@ -328,62 +328,11 @@ def native_batch_norm_normalize_kernel(
             tl.store(output_pointer + base + idx, y.to(output_pointer.dtype.element_ty))
 
 
-# ---------------------------------------------------------------------------
-# TRAINING fast path: ONE launch at grid=(1,), batch axis folded into the
-# block's COLUMN axis.  See harness/solution/native_batch_norm/README.md.
-#
-# The two-stage path above is structurally capped well below the acceptance bar
-# on float32: its best measured stage-1 is 15.1 us and its best stage-2 6.0 us
-# (21.1 us total) while the torch reference needs only 9.1-11.1 us on the small
-# shapes -- i.e. TWO launches cannot reach 0.8x no matter how the tiles are
-# chosen.  A single grid=(1,) program instead costs
-#     ~8.5-9.4 us launch floor + 0.58 us * NIT + numel*3*sizeof / 107 GB/s
-# where NIT is the total `tl.static_range` unroll count.  NIT is therefore the
-# only large lever, and the trick that collapses it is folding the batch axis
-# into the block's column axis rather than into an outer loop:
-#     block   [C, NB*W]
-#     column  j -> (j // W) * NROW + (j % W)        NROW = C * S
-# A block row is still a single channel, so `tl.sum(acc, axis=1)` IS already the
-# per-channel sum over all folded n and all s: no reshape, no 3-D block (which
-# asserts in the backend's OffsetAnalysis), no second reduction.  NIT drops from
-# N*S/W to (N/NB)*(S/W).  `j` derives from `tl.arange`, so the column offsets are
-# constant-folded and the runtime-integer-chain penalty does not apply.
-#
-# Measured against the torch reference (float32 / float16 / bfloat16, do_bench
-# median), best plan per shape:
-#     (4,16,64,4)   NIT=1   1.022 / 1.739 / 2.305
-#     (16,16,64)    NIT=1   0.953 / 1.819 / 2.216
-#     (16,16,128)   NIT=1   0.852 / 1.621 / 2.094
-#     (16,16,8,48)  NIT=3   0.604 / 1.220 / 1.463
-#     (16,16,1024)  NIT=2   0.365 / 0.750 / 0.913
-# float32 alone is weak on the larger shapes because a single program only sees
-# ~107 GB/s, but acceptance is dtype-equal-weighted and fp16/bf16 more than pay
-# for it.  Past ~2^18 elements the bandwidth wall wins outright
-# ((16,8,128,128), 2 Mi elements, would be ~0.12x) -- hence the numel gate.
-_NBN_FUSED_MAX_NUMEL = 1 << 18  # (16,16,1024) still wins; 2 Mi elements does not
-# C*NB*W.  A plain Triton block has been measured to hold >= 2^18 lanes with two
-# float32 accumulators, but 2^17 is what every measured-best plan above actually
-# used, and raising NIT by one costs only 0.58 us -- so stay on measured ground.
+_NBN_FUSED_MAX_NUMEL = 1 << 18
 _NBN_FUSED_MAX_LANES = 1 << 17
-_NBN_FUSED_MAX_W = 2048  # W=4096 + bfloat16 wedges the card (noc idle timeout)
-# HARD GATE, do not relax: with bfloat16 a total unroll of NIT in {11,12,16,24}
-# silently miscomputes (NaN / errors of 5-8 ULP) and NIT=11 raises
-# `kl3ChannelCheckErrors ... status=700` -> KL_XID_KERNEL_EXCEPTION, i.e. it
-# takes the card down.  The bad region is NOT monotone (NIT=32/48 are clean), so
-# it cannot be extrapolated away; every measured-best plan above has NIT <= 8.
+_NBN_FUSED_MAX_W = 2048
 _NBN_FUSED_MAX_NIT = 8
-# A block narrower than the 64-lane execution width and carrying no `mask=` gets
-# executed at 64 lanes anyway, i.e. it stores out of bounds
-# (`memory-access-laws` 2b-4).  The wide traffic below is deliberately maskless,
-# so demand at least 64 lanes in total.
 _NBN_FUSED_MIN_LANES = 64
-# W below 64 is admitted only when W == S, i.e. R == 1 and `j // W == 0`, so the
-# block's address set is one contiguous [0, C*NB*S) span instead of a strided
-# one.  Verified with a 4096-element canary past every output buffer on
-# (1,8,4,4) W=16 and (2,8,4,4) W=16, all three dtypes: spill exactly 0, worst
-# 0.79 ULP.  This is what admits (1,8,4,4) (S=16 < 64), whose two-launch
-# fallback measured 0.248/0.478/0.599 while the equally NIT=1 (4,16,64,4) --
-# same torch reference latency to within 2% -- gets 1.045/1.817/2.449.
 
 
 def _is_pow2(value):
@@ -430,30 +379,30 @@ def _nbn_fused_plan(batch_dim, feat_dim, spatial_dim):
 @libentry()
 @triton.jit(do_not_specialize=["momentum", "eps", "var_correction"])
 def native_batch_norm_fused_kernel(
-    input_pointer,  # [N, C, S] contiguous, flattened
+    input_pointer,
     output_pointer,
-    save_mean_pointer,  # [C] input-dtype out
-    save_inv_std_pointer,  # [C] input-dtype out
-    running_mean_pointer,  # [C] in/out, or unused alias
-    running_var_pointer,  # [C] in/out, or unused alias
-    weight_pointer,  # [C], or unused alias
-    bias_pointer,  # [C], or unused alias
-    count,  # batch_dim * spatial_dim
+    save_mean_pointer,
+    save_inv_std_pointer,
+    running_mean_pointer,
+    running_var_pointer,
+    weight_pointer,
+    bias_pointer,
+    count,
     momentum,
     eps,
-    var_correction,  # count / (count - 1), 1.0 when count <= 1
+    var_correction,
     HAS_RM: tl.constexpr,
     HAS_RV: tl.constexpr,
     HAS_WEIGHT: tl.constexpr,
     HAS_BIAS: tl.constexpr,
     S: tl.constexpr,
     C: tl.constexpr,
-    NROW: tl.constexpr,  # C * S
+    NROW: tl.constexpr,
     W: tl.constexpr,
     NB: tl.constexpr,
-    NBW: tl.constexpr,  # NB * W
-    IN: tl.constexpr,  # N // NB
-    R: tl.constexpr,  # S // W
+    NBW: tl.constexpr,
+    IN: tl.constexpr,
+    R: tl.constexpr,
 ):
     row = tl.arange(0, C)[:, None] * S
     j = tl.arange(0, NBW)
@@ -487,11 +436,6 @@ def native_batch_norm_fused_kernel(
 
     for g in tl.static_range(IN):
         for t in tl.static_range(R):
-            # Inline the SAME address expression separately at the load and at
-            # the store.  Binding it to a Python local and reusing it makes
-            # `TritonXPUUnrollControl` report `operand #1 does not dominate this
-            # use` -- for float16/bfloat16 only, float32 still compiles, so this
-            # is not something a float32-only check would catch.
             x = tl.load(input_pointer + (g * NB * NROW + t * W) + row + col).to(
                 tl.float32
             )
@@ -500,11 +444,6 @@ def native_batch_norm_fused_kernel(
                 (x * scale + shift).to(output_pointer.dtype.element_ty),
             )
 
-    # Epilogue AFTER every wide store: a `mask=` on an earlier load leaks its
-    # predicate into a later wide store in the same program (silently truncating
-    # it), so all wide traffic above is maskless and all narrow traffic is here.
-    # These blocks are C (8/16) lanes wide, i.e. narrower than the 64-lane
-    # execution width, so they MUST carry `mask=` or they write out of bounds.
     tl.store(
         save_mean_pointer + idx,
         mean.to(save_mean_pointer.dtype.element_ty),
@@ -530,7 +469,6 @@ def native_batch_norm_fused_kernel(
         running_var = tl.load(running_var_pointer + idx, mask=keep, other=0.0).to(
             tl.float32
         )
-        # aten::native_batch_norm folds the UNBIASED batch variance in.
         tl.store(
             running_var_pointer + idx,
             ((1.0 - momentum) * running_var + momentum * var * var_correction).to(
@@ -540,7 +478,6 @@ def native_batch_norm_fused_kernel(
         )
 
 
-# grid cap used by the other batch-norm kernels in this directory.
 NBN_MAX_PROGRAMS = 4096
 
 
