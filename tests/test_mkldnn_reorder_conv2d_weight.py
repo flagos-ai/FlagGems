@@ -19,8 +19,8 @@ as a dense CPU tensor and converted with ``to_mkldnn()``, and the comparison is 
 materialized ``to_dense()`` values, because ``torch.testing.assert_close`` has no kernel for
 the mkldnn layout. The operator is a pure weight re-layout, so values must be preserved
 exactly and every comparison below is exact. There is a single tensor operand, the
-convolution attributes in its schema do not broadcast, and the result carries no autograd
-history, so this file has no broadcast, tensor-vs-scalar or backward dimension.
+convolution attributes in its schema do not broadcast. A graph-recording input keeps an
+autograd connection, but native backward raises an unimplemented-derivative error.
 """
 
 import pytest
@@ -108,8 +108,7 @@ def test_mkldnn_reorder_conv2d_weight_size_inferred(shape, expected_shape, dtype
 
 # Explicit convolution attributes on a rank-4 weight. Each of padding/stride/dilation/
 # groups/input_size has a schema default, which the grid above already covers by omission.
-# ``input_size`` is never combined with ``groups=2``: with 16 input channels that geometry is
-# invalid and the native operator rejects it.
+# With explicit input_size, input channels equal weight.shape[1] * groups.
 _PARAM_ROWS = [
     {"padding": [1, 1]},
     {"padding": [2, 3]},
@@ -122,6 +121,8 @@ _PARAM_ROWS = [
     {"groups": 2},
     {"groups": 4},
     {"input_size": [1, 16, 32, 32]},
+    {"groups": 2, "input_size": [1, 32, 32, 32]},
+    {"groups": 4, "input_size": [1, 64, 32, 32]},
     {"padding": [1, 1], "stride": [2, 2], "dilation": [1, 1], "groups": 2},
     {"padding": [2, 2], "stride": [1, 1], "dilation": [2, 2], "groups": 1},
 ]
@@ -265,3 +266,27 @@ def test_mkldnn_reorder_conv2d_weight_none_operand():
 def test_mkldnn_reorder_conv2d_weight_dense_operand():
     with pytest.raises((RuntimeError, TypeError, NotImplementedError)):
         flag_gems.mkldnn_reorder_conv2d_weight(torch.zeros(_WEIGHT_SHAPE))
+
+
+@pytest.mark.mkldnn_reorder_conv2d_weight
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
+def test_mkldnn_reorder_conv2d_weight_rejects_backward(dtype):
+    inp = (
+        tu.make_input(dtype, (8, 4, 3, 3), ["-1", "1"])
+        .cpu()
+        .to_mkldnn()
+        .requires_grad_()
+    )
+    ref_inp = tu.to_reference(inp)
+    ref_out = torch.ops.aten.mkldnn_reorder_conv2d_weight(ref_inp)
+    res_out = flag_gems.mkldnn_reorder_conv2d_weight(inp)
+
+    assert res_out.is_mkldnn
+    assert res_out.requires_grad
+    tu.assert_result_equal(res_out.to_dense(), ref_out.to_dense())
+    upstream = tu.make_input(dtype, res_out.shape, ["-1", "1"]).cpu().to_mkldnn()
+    with pytest.raises(
+        RuntimeError,
+        match="derivative for aten::mkldnn_reorder_conv2d_weight is not implemented",
+    ):
+        torch.autograd.grad(res_out, inp, grad_outputs=upstream)

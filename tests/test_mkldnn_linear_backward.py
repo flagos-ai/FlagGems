@@ -193,14 +193,18 @@ def test_mkldnn_linear_backward(shape, out_features, value_range, dtype):
     )
 
     _assert_backward_outputs(res_out, ref_out, self_mkldnn.device)
+    tu.assert_result_equal(self_mkldnn.to_dense(), ref_self.to_dense())
+    tu.assert_result_equal(grad_out_mkldnn.to_dense(), ref_grad_out.to_dense())
+    tu.assert_result_equal(weight, ref_weight)
 
 
 @pytest.mark.mkldnn_linear_backward
 @pytest.mark.parametrize("shape,out_features", _MASK_SHAPE_CASES)
 @pytest.mark.parametrize("output_mask", _OUTPUT_MASKS)
-def test_mkldnn_linear_backward_output_mask(shape, out_features, output_mask):
+@pytest.mark.parametrize("dtype", _DTYPES)
+def test_mkldnn_linear_backward_output_mask(shape, out_features, output_mask, dtype):
     self_mkldnn, grad_out_mkldnn, weight = _make_operands(
-        shape, out_features, torch.float32, _DEFAULT_RANGE
+        shape, out_features, dtype, _DEFAULT_RANGE
     )
     ref_self, ref_grad_out, ref_weight = _reference_operands(
         self_mkldnn, grad_out_mkldnn, weight
@@ -214,6 +218,9 @@ def test_mkldnn_linear_backward_output_mask(shape, out_features, output_mask):
     )
 
     _assert_backward_outputs(res_out, ref_out, self_mkldnn.device)
+    tu.assert_result_equal(self_mkldnn.to_dense(), ref_self.to_dense())
+    tu.assert_result_equal(grad_out_mkldnn.to_dense(), ref_grad_out.to_dense())
+    tu.assert_result_equal(weight, ref_weight)
 
 
 @pytest.mark.mkldnn_linear_backward
@@ -240,6 +247,9 @@ def test_mkldnn_linear_backward_nan_inf(dtype, scenario):
     )
 
     _assert_backward_outputs(res_out, ref_out, self_mkldnn.device)
+    tu.assert_result_equal(self_mkldnn.to_dense(), ref_self.to_dense())
+    tu.assert_result_equal(grad_out_mkldnn.to_dense(), ref_grad_out.to_dense())
+    tu.assert_result_equal(weight, ref_weight)
 
 
 @pytest.mark.mkldnn_linear_backward

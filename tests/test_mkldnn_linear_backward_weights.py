@@ -249,6 +249,7 @@ def test_mkldnn_linear_backward_weights_metadata(shape, dtype, bias_defined):
         grad_output, inp, weight, bias_defined
     )
 
+    tu.assert_result_equal(weight, ref_weight)
     # Both mkldnn operands are read-only inputs.
     tu.assert_result_equal(_dense_observation(grad_output), grad_before)
     tu.assert_result_equal(_dense_observation(inp), inp_before)

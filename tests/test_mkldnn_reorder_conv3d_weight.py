@@ -263,3 +263,27 @@ def test_mkldnn_reorder_conv3d_weight_dense_input_rejected():
 
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems.mkldnn_reorder_conv3d_weight(inp, _PADDING, _STRIDE, _DILATION, 1)
+
+
+@pytest.mark.mkldnn_reorder_conv3d_weight
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
+def test_mkldnn_reorder_conv3d_weight_rejects_backward(dtype):
+    inp = (
+        tu.make_input(dtype, (8, 4, 3, 3, 3), ["-1", "1"])
+        .cpu()
+        .to_mkldnn()
+        .requires_grad_()
+    )
+    ref_inp = tu.to_reference(inp)
+    ref_out = torch.ops.aten.mkldnn_reorder_conv3d_weight(ref_inp)
+    res_out = flag_gems.mkldnn_reorder_conv3d_weight(inp)
+
+    assert res_out.is_mkldnn
+    assert res_out.requires_grad
+    tu.assert_result_equal(res_out.to_dense(), ref_out.to_dense())
+    upstream = tu.make_input(dtype, res_out.shape, ["-1", "1"]).cpu().to_mkldnn()
+    with pytest.raises(
+        RuntimeError,
+        match="derivative for aten::mkldnn_reorder_conv3d_weight is not implemented",
+    ):
+        torch.autograd.grad(res_out, inp, grad_outputs=upstream)
