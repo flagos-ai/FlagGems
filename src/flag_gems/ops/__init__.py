@@ -436,6 +436,7 @@ from flag_gems.ops.count_nonzero import count_nonzero
 from flag_gems.ops.cov import cov
 from flag_gems.ops.cross import cross, cross_out
 from flag_gems.ops.cross_attention import cross_attention
+from flag_gems.ops.crow_indices_copy import crow_indices_copy
 from flag_gems.ops.ctc_loss import ctc_loss
 from flag_gems.ops.cudnn_attention_backward import cudnn_attention_backward
 from flag_gems.ops.cudnn_attention_forward import cudnn_attention_forward
@@ -1739,6 +1740,7 @@ __all__ = [
     "cross",
     "cross_attention",
     "cross_out",
+    "crow_indices_copy",
     "ctc_loss",
     "cudnn_attention_backward",
     "cudnn_attention_forward",
