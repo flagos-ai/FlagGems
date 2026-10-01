@@ -17,7 +17,9 @@ pytest -q benchmark/test_negative.py --reference-only --output benchmark-referen
 
 标准 case-based Benchmark 复用 `build_inputs()`、`unpack_to_args_kwargs()` 和原 `torch_op`。普通计时与 reference-only 共用 forward/backward callable 构造；backward 执行原 forward 和 `torch.autograd.grad`，但不调用计时器。每个 case 执行一次并同步，结束后释放输入和计算图，不进入 candidate 的 `use_gems`、`gems_op` 或 override 分支。
 
-没有 case builder，或自定义 `run/get_latency/_measure_input` 的 benchmark 明确报告 `UNSUPPORTED`，不能绕过特殊 baseline 逻辑后宣称已验证。原 `skip_native` 和 pytest skip 条件保留。该模式不是任意 Python 测试代码的沙箱。
+没有 case builder、自定义 `run/_measure_input`，或未声明标准 reference 的自定义 `get_latency`，均明确报告 `UNSUPPORTED`。原 `skip_native` 和 pytest skip 条件保留。该模式不是任意 Python 测试代码的沙箱。
+
+仅包装计时或为重复测量准备 fresh inputs、但仍使用标准 `torch_op` reference 的 `get_latency` 方法，可以通过 `@base.reference_uses_torch_op` 明确声明这一契约。`OperatorBenchmark` 已使用此声明，因此 `fresh_inputs=False/True` 均可执行每个 case 一次的原始 Torch reference。该声明绑定具体方法；未知子类覆盖和仅通过 `functools.wraps` 复制方法属性都不会自动获得支持。自定义 `_measure_input`、没有 case 接口或更改 baseline 语义的 benchmark 仍需独立处理，不会因这个声明被放行。
 
 本接口不修改或执行正确性 pytest，不提供 correctness reference 的 marker、包装器或截断逻辑。正确性测试继续做源码 review，生成候选后运行原完整正确性测试。性能和正确性 reference 的 dtype、精度、设备、shape 可能不同，不能相互替代。
 
