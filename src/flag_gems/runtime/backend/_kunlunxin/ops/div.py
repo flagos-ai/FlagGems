@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import logging
-import struct
 
 import torch
 import triton
@@ -26,6 +25,7 @@ from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 div_rn = tl_extra_shim.div_rn
+fmod = tl_extra_shim.fmod
 
 config_ = CodeGenConfig(
     512,
@@ -593,6 +593,30 @@ def _floor_div_fp32(x, y):
     return tl.where(y == 0.0, q, fd)
 
 
+@triton.jit
+def _half_floor_div(x, y):
+    # c10::div_floor_floating (npy_divmodf) with each step rounded back to half.
+    xf = x.to(tl.float32)
+    yf = y.to(tl.float32)
+    q = div_rn(xf, yf)
+    mod = fmod(xf, yf).to(x.dtype)
+    num = (xf - mod.to(tl.float32)).to(x.dtype)
+    div = div_rn(num.to(tl.float32), yf).to(x.dtype)
+    modf = mod.to(tl.float32)
+    adj = (modf != 0.0) & ((yf < 0.0) != (modf < 0.0))
+    div = tl.where(adj, (div.to(tl.float32) - 1.0).to(x.dtype), div)
+    divf = div.to(tl.float32)
+    floordiv = tl.math.floor(divf).to(x.dtype)
+    diff = (divf - floordiv.to(tl.float32)).to(x.dtype)
+    floordiv = tl.where(
+        diff.to(tl.float32) > 0.5,
+        (floordiv.to(tl.float32) + 1.0).to(x.dtype),
+        floordiv,
+    )
+    floordiv = tl.where(divf == 0.0, tl.where(q < 0.0, -0.0, 0.0).to(x.dtype), floordiv)
+    return tl.where(yf == 0.0, q.to(x.dtype), floordiv)
+
+
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")], config=config_)
 @triton.jit
 def trunc_div_func(x, y):
@@ -709,6 +733,8 @@ def _float_floordiv_corrected(x, y):
 def floor_div_func_corrected(x, y):
     if x.type.scalar.is_int() & y.type.scalar.is_int():
         return _int_floordiv(x, y)
+    elif x.dtype.is_fp16() | x.dtype.is_bf16():
+        return _half_floor_div(x, y)
     else:
         return _float_floordiv_corrected(x.to(tl.float32), y.to(tl.float32))
 
@@ -727,10 +753,8 @@ def floor_div_func_corrected_tensor_scalar(x, y):
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, "DEFAULT")])
 @triton.jit
 def floor_div_lowp_tensor_scalar_func(x, y):
-    # fp16/bf16 scalar path: promote to fp32 and divide in fp32 (torch does
-    # the same; there is no native fp16/bf16 division), then floor exactly
-    # with the same exact-remainder semantics as the fp32 path.
-    y = tl.full(x.shape, y, x.dtype)
+    # fp16/bf16 tensor / scalar: CPU reference (div.Scalar_mode) computes in
+    # fp32, so cast both to fp32 instead of rounding the scalar to half.
     return _floor_div_fp32(x.to(tl.float32), y.to(tl.float32))
 
 
@@ -745,26 +769,12 @@ def floor_div_func_corrected_scalar_tensor(x, y):
         return _float_floordiv_corrected(x.to(tl.float32), y.to(tl.float32))
 
 
-def _as_bfloat16_scalar(value):
-    bits = struct.unpack(">I", struct.pack(">f", float(value)))[0]
-    exponent = bits & 0x7F800000
-    mantissa = bits & 0x007FFFFF
-    if exponent != 0x7F800000:
-        bits += 0x7FFF + ((bits >> 16) & 1)
-    elif mantissa:
-        bits |= 0x00400000
-    bits &= 0xFFFF0000
-    return struct.unpack(">f", struct.pack(">I", bits))[0]
-
-
 def floor_divide(A, B):
     logger.debug("GEMS_KUNLUNXIN FLOOR_DIVIDE")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         return floor_div_func_corrected(A, B)
     elif isinstance(A, torch.Tensor):
         if A.dtype in (torch.float16, torch.bfloat16):
-            if A.dtype == torch.bfloat16:
-                B = _as_bfloat16_scalar(B)
             return floor_div_lowp_tensor_scalar_func(A, B)
         return floor_div_func_corrected_tensor_scalar(A, B)
     elif isinstance(B, torch.Tensor):
@@ -780,8 +790,6 @@ def floor_divide_(A, B):
         return floor_div_func_corrected(A, B, out0=A)
     else:
         if A.dtype in (torch.float16, torch.bfloat16):
-            if A.dtype == torch.bfloat16:
-                B = _as_bfloat16_scalar(B)
             return floor_div_lowp_tensor_scalar_func(A, B, out0=A)
         return floor_div_func_corrected_tensor_scalar(A, B, out0=A)
 
