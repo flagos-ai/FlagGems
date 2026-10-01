@@ -46,8 +46,9 @@ if utils.fp64_is_supported:
     SPECIAL_DTYPES.append(torch.float64)
 SPECIAL_DTYPES = [dtype for dtype in SPECIAL_DTYPES if _DTYPE_FLAGS.get(dtype, True)]
 
-BACKWARD_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
-BACKWARD_DTYPES = [dtype for dtype in BACKWARD_DTYPES if _DTYPE_FLAGS.get(dtype, True)]
+BACKWARD_DTYPES = [
+    dtype for dtype in DTYPES if dtype.is_floating_point or dtype.is_complex
+]
 
 
 def _dims_for(shape):

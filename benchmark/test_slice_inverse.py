@@ -54,9 +54,8 @@ def _dtypes():
         + consts.BOOL_DTYPES
         + consts.COMPLEX_DTYPES
     )
-    fp8 = consts.get_fp8_dtype()
-    if fp8 is not None and fp8 not in dtypes:
-        dtypes.append(fp8)
+    if flag_gems.runtime.device.support_fp8:
+        dtypes.extend([torch.float8_e4m3fn, torch.float8_e5m2])
     return dtypes
 
 

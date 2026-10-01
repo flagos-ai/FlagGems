@@ -318,11 +318,8 @@ _BACKWARD = tu.selected_cases(
     [((2, 3, 4), 0, 2), ((20, 320, 15), 1, 2)],
     quick=[],
 )
-_BACKWARD_DTYPES = [torch.float32, torch.float16, torch.bfloat16]
-if utils.fp64_is_supported:
-    _BACKWARD_DTYPES.append(torch.float64)
 _BACKWARD_DTYPES = [
-    dtype for dtype in _BACKWARD_DTYPES if _DTYPE_FLAGS.get(dtype, True)
+    dtype for dtype in _DTYPES if dtype.is_floating_point or dtype.is_complex
 ]
 
 
@@ -336,8 +333,8 @@ def test_swapaxes__backward(shape, axis0, axis1, dtype):
     leaf = tu.make_input(dtype, shape, ["-1", "1"]).requires_grad_(True)
     ref_leaf = tu.to_reference(leaf)
 
-    ref_inp = ref_leaf * 1.0
-    inp = leaf * 1.0
+    ref_inp = ref_leaf.clone()
+    inp = leaf.clone()
     ref_version, version = ref_inp._version, inp._version
     ref_out = torch.ops.aten.swapaxes_(ref_inp, axis0, axis1)
     res_out = flag_gems.swapaxes_(inp, axis0, axis1)
@@ -349,12 +346,12 @@ def test_swapaxes__backward(shape, axis0, axis1, dtype):
 
     tu.assert_result_equal(res_out, ref_out)
 
-    # The upstream gradient follows the swapped output shape, so the loss is an
-    # elementwise product and the leaf gradient is that gradient permuted back.
+    # Explicit upstream gradients exercise the relayout without introducing
+    # arithmetic kernels unrelated to this metadata operation.
     upstream = tu.make_input(dtype, tuple(res_out.shape), ["0", "1"])
     ref_upstream = tu.to_reference(upstream)
-    ref_grad = torch.autograd.grad((ref_out * ref_upstream).sum(), ref_leaf)[0]
-    res_grad = torch.autograd.grad((res_out * upstream).sum(), leaf)[0]
+    ref_grad = torch.autograd.grad(ref_out, ref_leaf, grad_outputs=ref_upstream)[0]
+    res_grad = torch.autograd.grad(res_out, leaf, grad_outputs=upstream)[0]
 
     assert res_grad.shape == ref_grad.shape
     tu.assert_result_equal(res_grad, ref_grad)

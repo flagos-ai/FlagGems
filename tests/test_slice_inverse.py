@@ -19,8 +19,7 @@
 offset; the slice arguments are only read by the backward pass.  The checks
 below assert that view contract (values, shape, strides, storage offset,
 storage aliasing and write-through), and ``src`` always lives in a separate
-allocation with a disjoint payload so that a candidate returning ``src``
-cannot pass.
+allocation so that the storage assertion rejects a candidate returning ``src``.
 """
 
 import pytest
@@ -35,10 +34,10 @@ pytestmark = pytest.mark.slice_inverse
 DTYPES = list(tu.REQUIRED_DTYPES)
 if flag_gems.runtime.device.support_fp64:
     DTYPES.append(torch.float64)
-DTYPES.append(torch.bool)
+DTYPES += [torch.bool, torch.complex64]
 
-# Payload of the independent ``src`` allocation, disjoint from the tested value
-# ranges so that a result read from src's storage compares unequal.
+# Payload for the independent src allocation; its storage must never supply
+# the result, even when its values happen to match self.
 SRC_RANGE = ["0", "max"]
 
 
@@ -284,10 +283,10 @@ def test_slice_inverse_reads_self_and_writes_through():
 
 BACKWARD_CASES = tu.selected_cases(
     [
-        (torch.float32, (4, 6)),
-        (torch.bfloat16, (4, 6)),
-        (torch.float16, (5,)),
-        (torch.float32, (2, 3, 4)),
+        (dtype, shape)
+        for shape in [(4, 6), (5,), (2, 3, 4)]
+        for dtype in DTYPES
+        if dtype.is_floating_point
     ],
     quick=[],
 )
@@ -295,10 +294,9 @@ BACKWARD_CASES = tu.selected_cases(
 
 @pytest.mark.parametrize("dtype,shape", BACKWARD_CASES)
 def test_slice_inverse_backward(dtype, shape):
-    # The native backward requires src to describe exactly the slice named by
-    # (dim, start, end, step); a partial region raises "expected src to have a
-    # size equal to the slice of self".  The forward is a pure relayout, so both
-    # the output and the gradient are compared exactly.
+    # Native complex autograd is unsupported. Partial regions return gradients
+    # with an incompatible shape, so positive backward cases use full regions.
+    # The output and full-region gradient are pure views and compare exactly.
     inp = tu.make_input(dtype, shape, ["-1", "1"]).requires_grad_(True)
     src = tu.make_input(dtype, shape, SRC_RANGE)
     upstream = tu.make_input(dtype, shape, ["-1", "1"])
@@ -336,3 +334,16 @@ def test_slice_inverse_non_tensor_src(bad_src):
     inp = tu.make_input(torch.float32, (4, 6), ["-1", "1"])
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems.slice_inverse(inp, bad_src)
+
+
+@pytest.mark.parametrize("src_dtype", DTYPES)
+def test_slice_inverse_src_dtype_does_not_change_result(src_dtype):
+    base = tu.make_input(torch.float32, (4, 6), ["-1", "1"])
+    src = tu.make_input(src_dtype, (2, 6), ["-1", "1"])
+    operands = _snapshot(base, src)
+    ref_base, ref_src = tu.to_reference(base), tu.to_reference(src)
+
+    ref = torch.ops.aten.slice_inverse(ref_base, ref_src, 0, 0, 2, 1)
+    res = flag_gems.slice_inverse(base, src, 0, 0, 2, 1)
+
+    _assert_view(res, ref, src, base, operands)

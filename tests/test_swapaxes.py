@@ -58,6 +58,8 @@ def _assert_view_matches(res_out, ref_out, inp, ref_inp):
 # ndim-1 boundaries, negative axes and equal axes. A 0-D or 1-D tensor only
 # accepts the identity swap; any other index is out of range.
 _AXIS_ROWS = [
+    ((0, 3), 0, 1),
+    ((2, 0, 4), 0, 2),
     ((), 0, 0),
     ((1,), 0, 0),
     ((256,), 0, -1),
@@ -77,6 +79,8 @@ _AXIS_ROWS = [
 # combinations on the quick shape; only the large-shape combinations are
 # trimmed.
 _QUICK_AXIS_ROWS = [
+    ((0, 3), 0, 1),
+    ((2, 0, 4), 0, 2),
     ((), 0, 0),
     ((1,), 0, 0),
     ((2, 19, 7), 0, 2),
@@ -234,11 +238,8 @@ def test_swapaxes_special_values(dtype, scenario):
     tu.assert_result_equal(res_out, ref_out)
 
 
-_BACKWARD_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
-if utils.fp64_is_supported:
-    _BACKWARD_DTYPES.append(torch.float64)
 _BACKWARD_DTYPES = [
-    dtype for dtype in _BACKWARD_DTYPES if _DTYPE_FLAGS.get(dtype, True)
+    dtype for dtype in SUPPORTED_DTYPES if dtype.is_floating_point or dtype.is_complex
 ]
 
 
@@ -293,3 +294,17 @@ def test_swapaxes_invalid_axis_type(axis0, axis1):
 def test_swapaxes_rejects_non_tensor():
     with pytest.raises((RuntimeError, TypeError, ValueError)):
         flag_gems.swapaxes(3.14, 0, 1)
+
+
+@pytest.mark.swapaxes
+@pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
+def test_swapaxes_expanded_input(dtype):
+    base = tu.make_input(dtype, (1, 3), ["-1", "1"])
+    ref_base = tu.to_reference(base)
+    inp, ref_inp = base.expand(4, 3), ref_base.expand(4, 3)
+
+    ref_out = torch.ops.aten.swapaxes(ref_inp, 0, 1)
+    res_out = flag_gems.swapaxes(inp, 0, 1)
+
+    _assert_view_matches(res_out, ref_out, inp, ref_inp)
+    tu.assert_result_equal(res_out, ref_out)

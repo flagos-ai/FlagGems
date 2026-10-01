@@ -134,11 +134,8 @@ _BACKWARD_ROWS = tu.selected_cases(
     ],
     quick=[],
 )
-_BACKWARD_DTYPES = [torch.float32, torch.float16, torch.bfloat16]
-if utils.fp64_is_supported:
-    _BACKWARD_DTYPES.append(torch.float64)
 _BACKWARD_DTYPES = [
-    dtype for dtype in _BACKWARD_DTYPES if _DTYPE_FLAGS.get(dtype, True)
+    dtype for dtype in _DTYPES if dtype.is_floating_point or dtype.is_complex
 ]
 
 # Out-of-range indices are the only invalid value a dim argument can take.
