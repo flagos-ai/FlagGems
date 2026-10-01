@@ -14,22 +14,8 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 from . import base, consts
-
-# ``_batch_norm_with_update_functional`` starts with an underscore, and ``pytest.mark``
-# refuses to generate a marker via attribute access for such names. Register it
-# directly on the MarkGenerator so ``@pytest.mark._batch_norm_with_update_functional`` and
-# ``-m _batch_norm_with_update_functional`` both work.
-setattr(
-    pytest.mark,
-    "_batch_norm_with_update_functional",
-    MarkDecorator(
-        Mark("_batch_norm_with_update_functional", (), {}, _ispytest=True),
-        _ispytest=True,
-    ),
-)
 
 
 class NormBenchmark(base.GenericBenchmark):
