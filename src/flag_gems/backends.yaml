@@ -219,7 +219,10 @@ backends:
   kunlunxin:
     python: "3.10"
     triton: triton==3.6.0+gitcd2d6c1b
-    flagtree: flagtree==0.6.1+xpu3.6
+    # Match the flagos-runtime-kunlunxin-xre5.37.1:2.2.0 image, which preinstalls
+    # flagtree 0.7.0+xpu3.6. The old 0.6.1+xpu3.6 wheel is a broken zip
+    # ("Failed to read from zip file") and must not be reinstalled.
+    flagtree: flagtree==0.7.0+xpu3.6
     env:
       PATH: /usr/local/xpu/bin:$PATH
       XPU_EVENT_KL3_ENABLE: "1"
