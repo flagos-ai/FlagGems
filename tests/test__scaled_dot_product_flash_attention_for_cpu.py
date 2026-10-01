@@ -70,8 +70,12 @@ BOUNDARY_SHAPES = tu.selected_cases(
 
 # Small cross-attention rows: the kernel supports Sq != Sk in both directions.
 CROSS_SHAPES = tu.selected_cases(
-    [((2, 3, 5, 8), (2, 3, 7, 8)), ((2, 4, 16, 32), (2, 4, 129, 32))],
-    quick=[((2, 3, 5, 8), (2, 3, 7, 8))],
+    [
+        ((2, 3, 5, 8), (2, 3, 7, 8)),
+        ((2, 3, 7, 8), (2, 3, 5, 8)),
+        ((2, 4, 16, 32), (2, 4, 129, 32)),
+    ],
+    quick=[((2, 3, 5, 8), (2, 3, 7, 8)), ((2, 3, 7, 8), (2, 3, 5, 8))],
 )
 
 # A head-transposed operand is non-contiguous. Probe: the native kernel accepts
@@ -90,17 +94,32 @@ MASK_SHAPES = tu.selected_cases(
     quick=[(5, 5), (2, 3, 5, 5), (2, 1, 5, 5), (1, 3, 5, 5)],
 )
 
-# Probe: with a half-precision query the kernel also accepts a float32 mask (it
-# keeps an internal float32 mask buffer); equal-dtype masks are covered above.
+# The kernel accepts float32 masks with FP16, BF16 and FP64 queries;
+# equal-dtype masks are covered above.
 MIXED_MASK_CASES = tu.selected_cases(
-    [(torch.float16, torch.float32)], quick=[(torch.float16, torch.float32)]
+    [
+        (dtype, torch.float32)
+        for dtype in (torch.float16, torch.bfloat16, torch.float64)
+    ],
+    quick=[
+        (dtype, torch.float32)
+        for dtype in (torch.float16, torch.bfloat16, torch.float64)
+    ],
 )
 
 # (q_shape, kv_shape) pairs; causal masking supports Sq != Sk by aligning the
 # query/key positions according to the native causal rule.
 CAUSAL_CASES = tu.selected_cases(
-    [((2, 3, 7, 8), (2, 3, 7, 8)), ((2, 3, 7, 8), (2, 3, 129, 8))],
-    quick=[((2, 3, 7, 8), (2, 3, 7, 8)), ((2, 3, 7, 8), (2, 3, 129, 8))],
+    [
+        ((2, 3, 7, 8), (2, 3, 7, 8)),
+        ((2, 3, 7, 8), (2, 3, 129, 8)),
+        ((2, 3, 7, 8), (2, 3, 5, 8)),
+    ],
+    quick=[
+        ((2, 3, 7, 8), (2, 3, 7, 8)),
+        ((2, 3, 7, 8), (2, 3, 129, 8)),
+        ((2, 3, 7, 8), (2, 3, 5, 8)),
+    ],
 )
 
 # float scale: positive, negative, zero plus the inf and nan boundaries; the
@@ -157,7 +176,7 @@ def test__scaled_dot_product_flash_attention_for_cpu(shape, value_range, dtype):
 
 @pytest.mark.scaled_dot_product_flash_attention_for_cpu
 @pytest.mark.parametrize("shape", BOUNDARY_SHAPES)
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+@pytest.mark.parametrize("dtype", ATTENTION_DTYPES)
 def test__scaled_dot_product_flash_attention_for_cpu_boundary_shapes(shape, dtype):
     q, k, v = _qkv(dtype, shape, ["-1", "1"])
     ref_q, ref_k, ref_v = (tu.to_reference(t) for t in (q, k, v))
@@ -324,10 +343,16 @@ def _special_input(dtype, scenario, shape):
 
 @pytest.mark.scaled_dot_product_flash_attention_for_cpu
 @pytest.mark.parametrize("dtype,scenario", SPECIAL_CASES)
-def test__scaled_dot_product_flash_attention_for_cpu_special_values(dtype, scenario):
-    q = _special_input(dtype, scenario, SPECIAL_SHAPE)
-    k = _special_input(dtype, scenario, SPECIAL_SHAPE)
-    v = _special_input(dtype, scenario, SPECIAL_SHAPE)
+@pytest.mark.parametrize("slot", ["q", "k", "v", "all"])
+def test__scaled_dot_product_flash_attention_for_cpu_special_values(
+    dtype, scenario, slot
+):
+    q, k, v = (
+        _special_input(dtype, scenario, SPECIAL_SHAPE)
+        if slot in (name, "all")
+        else _cpu_input(dtype, SPECIAL_SHAPE, ["-1", "1"])
+        for name in ("q", "k", "v")
+    )
     ref_q, ref_k, ref_v = (tu.to_reference(t) for t in (q, k, v))
 
     ref_out, ref_lse = torch.ops.aten._scaled_dot_product_flash_attention_for_cpu(
@@ -342,8 +367,10 @@ def test__scaled_dot_product_flash_attention_for_cpu_special_values(dtype, scena
 
 @pytest.mark.scaled_dot_product_flash_attention_for_cpu
 @pytest.mark.parametrize("q_shape,kv_shape,is_causal,dtype", BACKWARD_CASES)
+@pytest.mark.parametrize("use_mask", [False, True])
+@pytest.mark.parametrize("scale", [None, 0.5])
 def test__scaled_dot_product_flash_attention_for_cpu_backward(
-    q_shape, kv_shape, is_causal, dtype
+    q_shape, kv_shape, is_causal, dtype, use_mask, scale
 ):
     q = _cpu_input(dtype, q_shape, ["-1", "1"]).requires_grad_()
     k = _cpu_input(dtype, kv_shape, ["-1", "1"]).requires_grad_()
@@ -352,11 +379,17 @@ def test__scaled_dot_product_flash_attention_for_cpu_backward(
     ref_k = k.detach().clone().requires_grad_()
     ref_v = v.detach().clone().requires_grad_()
 
+    mask = (
+        _cpu_input(dtype, (q_shape[-2], kv_shape[-2]), ["-1", "1"])
+        if use_mask
+        else None
+    )
+    ref_mask = tu.to_reference(mask)
     res_out, _ = flag_gems._scaled_dot_product_flash_attention_for_cpu(
-        q, k, v, 0.0, is_causal
+        q, k, v, 0.0, is_causal, attn_mask=mask, scale=scale
     )
     ref_out, _ = torch.ops.aten._scaled_dot_product_flash_attention_for_cpu(
-        ref_q, ref_k, ref_v, 0.0, is_causal
+        ref_q, ref_k, ref_v, 0.0, is_causal, attn_mask=ref_mask, scale=scale
     )
 
     tu.assert_result_close(res_out, ref_out)
@@ -422,8 +455,7 @@ BAD_MASK_DTYPES = [torch.float16, torch.float64, torch.bool]
 @pytest.mark.scaled_dot_product_flash_attention_for_cpu
 @pytest.mark.parametrize("mask_dtype", BAD_MASK_DTYPES)
 def test__scaled_dot_product_flash_attention_for_cpu_negative_mask_dtype(mask_dtype):
-    # A mask must match the query dtype unless it is the float32 mask buffer the
-    # kernel keeps for half-precision queries.
+    # A float32 query accepts a float32 mask only.
     dtype = torch.float32
     q, k, v = _qkv(dtype, MASK_QUERY_SHAPE, ["-1", "1"])
     mask = _cpu_input(mask_dtype, (5, 5), ["-1", "1"])

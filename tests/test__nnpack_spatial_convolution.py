@@ -56,7 +56,7 @@ _CONV_SHAPES = [
     ((2, 7, 11, 13), 9),
     ((16, 128, 64, 60), 8),
 ]
-_QUICK_CONV_SHAPES = [((2, 3, 19, 7), 6)]
+_QUICK_CONV_SHAPES = [((2, 3, 19, 7), 6), ((1, 1, 8, 8), 1)]
 _SHAPE_CASES = tu.selected_cases(_CONV_SHAPES, quick=_QUICK_CONV_SHAPES)
 
 # Kernel sizes and the symmetric padding each one needs.
@@ -230,9 +230,7 @@ def test__nnpack_spatial_convolution_bias(with_bias, value_range):
 def test__nnpack_spatial_convolution_out(shape, out_channels, value_range):
     inp, weight, bias = _conv_operands(shape, out_channels, value_range)
     ref_inp, ref_weight, ref_bias = (tu.to_reference(t) for t in (inp, weight, bias))
-    out_shape = torch.ops.aten._nnpack_spatial_convolution(
-        ref_inp, ref_weight, ref_bias, [1, 1], [1, 1]
-    ).shape
+    out_shape = (shape[0], out_channels, shape[2], shape[3])
 
     # Both buffers start identical, so any region the kernel leaves unwritten
     # shows up as a value mismatch against the reference output.
@@ -367,3 +365,20 @@ def test__nnpack_spatial_convolution_non_tensor_weight():
 
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems._nnpack_spatial_convolution(inp, [[[0.0]]], bias, [1, 1], [1, 1])
+
+
+@pytest.mark.parametrize("with_bias", [False, True])
+def test__nnpack_spatial_convolution_nonsquare_kernel(with_bias):
+    inp = _cpu_input((2, 3, 9, 7), ["-1", "1"])
+    weight = _cpu_input((4, 3, 3, 5), ["-1", "1"])
+    bias = _cpu_input((4,), ["-1", "1"]) if with_bias else None
+    ref_inp, ref_weight, ref_bias = (tu.to_reference(t) for t in (inp, weight, bias))
+
+    ref_out = torch.ops.aten._nnpack_spatial_convolution(
+        ref_inp, ref_weight, ref_bias, [1, 2], [1, 1]
+    )
+    res_out = flag_gems._nnpack_spatial_convolution(inp, weight, bias, [1, 2], [1, 1])
+
+    tu.assert_result_close(res_out, ref_out)
+    tu.assert_result_equal(inp, ref_inp)
+    tu.assert_result_equal(weight, ref_weight)

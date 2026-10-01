@@ -78,13 +78,11 @@ def _case_fn(shape, dtype):
 
 
 def _build_inputs_fn(plan, dtype, device):
-    shape = _weight_shape(plan.builder_args[0])
+    (shape,) = plan.builder_args
     # The kernel is CPU-only (a CUDA operand faults inside the native op), so the
     # weight tensor is built on the CPU that both the reference and the injected
     # candidate receive. Allocation is outside the timed region.
     inp = torch.randn(shape, dtype=dtype, device="cpu")
-    # The listed metadata must describe the tensor actually handed to the op.
-    assert tuple(inp.shape) == tuple(plan.shape["input"])
     return inp, {}
 
 

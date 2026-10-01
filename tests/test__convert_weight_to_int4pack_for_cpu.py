@@ -38,7 +38,7 @@ _PARAM_SHAPE = (32, 64)
 
 # 0/positive/negative plus the int64 boundary values of the required int
 # argument; the native implementation ignores the value.
-_TILE_ROWS = [0, 1, -1, 2, 4, 8, 16, 2**31 - 1, -(2**31)]
+_TILE_ROWS = [0, 1, -1, 2, 4, 8, 16, 2**31 - 1, -(2**31), 2**63 - 1, -(2**63)]
 
 
 def _cpu_input(shape, value_range, dtype=_DTYPE):
