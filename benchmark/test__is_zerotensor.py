@@ -40,15 +40,18 @@ _MORE_SHAPES = [
 
 _KINDS = ("zerotensor", "dense_zero")
 
-# All dtype groups the native predicate accepts on this backend; the fp8 group
-# is a one-element placeholder that is None on backends without fp8.
+# Include both supported FP8 storage types for the metadata query.
 _BENCH_DTYPES = (
     consts.FLOAT_DTYPES
     + consts.INT_DTYPES
     + consts.EXTRA_INT_DTYPES
     + consts.BOOL_DTYPES
     + consts.COMPLEX_DTYPES
-    + [dtype for dtype in consts.FP8_DTYPES if dtype is not None]
+    + (
+        [torch.float8_e4m3fn, torch.float8_e5m2]
+        if flag_gems.runtime.device.support_fp8
+        else []
+    )
 )
 
 

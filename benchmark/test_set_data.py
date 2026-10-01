@@ -74,8 +74,11 @@ def _case_fn(shape, dtype):
     # per row keeps both shapes in the case list while the tensors stay unbuilt.
     del dtype
     target_shape, storage_shape, kind = shape
+    source_shape = list(storage_shape)
+    if kind == "transposed" and len(source_shape) > 1:
+        source_shape[0], source_shape[1] = source_shape[1], source_shape[0]
     yield base.BenchmarkCasePlan(
-        shape={"target": list(target_shape), "source": list(storage_shape)},
+        shape={"target": list(target_shape), "source": source_shape},
         params={"source_layout": kind},
         builder_args=(target_shape, storage_shape, kind),
     )

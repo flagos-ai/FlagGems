@@ -260,6 +260,7 @@ def test__to_cpu_layout(kind):
     res_out = flag_gems._to_cpu([inp])[0]
 
     tu.assert_result_equal(inp, source)
+    assert res_out.device.type == "cpu"
     tu.assert_result_equal(res_out, ref_out)
     # The native result decides the transferred layout: a dense source keeps its
     # strides, a strided/offset/expanded source is materialized with a zero
@@ -297,6 +298,7 @@ def test__to_cpu_lazy_view_flags(kind):
     # copy materializes it, a host input keeps it.
     assert res_out.is_conj() == ref_out.is_conj()
     assert res_out.is_neg() == ref_out.is_neg()
+    assert res_out.device.type == "cpu"
     tu.assert_result_equal(res_out, ref_out)
 
 
@@ -337,6 +339,7 @@ def test__to_cpu_backward(dtype, shape):
     ref_out = torch.ops.aten._to_cpu([ref_leaf])[0]
     res_out = flag_gems._to_cpu([leaf])[0]
 
+    assert res_out.device.type == "cpu"
     tu.assert_result_equal(res_out, ref_out)
     tu.assert_result_equal(leaf, source)
 
@@ -360,6 +363,7 @@ def test__to_cpu_special_values(dtype, scenario):
     res_out = flag_gems._to_cpu([inp])[0]
 
     tu.assert_result_equal(inp, source)
+    assert res_out.device.type == "cpu"
     tu.assert_result_equal(res_out, ref_out)
 
 

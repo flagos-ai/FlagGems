@@ -69,7 +69,7 @@ _WRONG_LAYOUT = torch.sparse_coo
 # suite adds a 0-D, 1-D, 3-D and 5-D metadata vector. The grid test below already
 # covers all seven spec shapes.
 _METADATA_SHAPES = tu.selected_cases(
-    [(), (256,), (20, 320, 15), (16, 7, 57, 32, 29)],
+    [(), (256,), (2, 19, 7), (20, 320, 15), (16, 7, 57, 32, 29)],
     quick=[(), (256,), (2, 19, 7)],
 )
 

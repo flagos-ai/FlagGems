@@ -235,14 +235,15 @@ def test_assert_scalar_falsy_raises(value):
 
 @pytest.mark.assert_scalar
 @pytest.mark.parametrize("msg", MESSAGE_CASES)
-def test_assert_scalar_message_contract(msg):
-    # A truthy scalar never raises, so the message is observable only on the falsy path.
-    ref = torch.ops.aten._assert_scalar(1, msg)
-    assert flag_gems._assert_scalar(1, msg) is ref
-    with pytest.raises(RuntimeError) as excinfo:
-        flag_gems._assert_scalar(0, msg)
-    # Native rewrites only the empty message, to a fixed fallback text.
-    assert str(excinfo.value) == (msg or EMPTY_MSG_FALLBACK)
+@pytest.mark.parametrize("value", [0, 1])
+def test_assert_scalar_message_contract(msg, value):
+    if value:
+        ref = torch.ops.aten._assert_scalar(value, msg)
+        assert flag_gems._assert_scalar(value, msg) is ref
+    else:
+        with pytest.raises(RuntimeError) as excinfo:
+            flag_gems._assert_scalar(value, msg)
+        assert str(excinfo.value) == (msg or EMPTY_MSG_FALLBACK)
 
 
 @pytest.mark.assert_scalar

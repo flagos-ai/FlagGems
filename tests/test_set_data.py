@@ -127,7 +127,10 @@ def _attach_autograd(base, kind):
         return base
     if kind == "leaf_grad":
         return base.requires_grad_(True)
-    return base.requires_grad_(True) * 2.0
+    base.requires_grad_(True)
+    if base.dtype in (torch.float8_e4m3fn, torch.float8_e5m2):
+        return base.clone()
+    return base * 2.0
 
 
 def _grad_leaf(base, kind):
@@ -218,15 +221,13 @@ _LAZY_FLAG_CASES = [
     (torch.complex64, "conj"),
     (torch.complex64, "conj_neg"),
 ]
-_AUTOGRAD_DTYPES = _supported(
-    [torch.float32, torch.float16, torch.bfloat16, torch.float64]
-)
+_AUTOGRAD_DTYPES = [
+    dtype for dtype in SUPPORTED_DTYPES if dtype.is_floating_point or dtype.is_complex
+]
 _AUTOGRAD_KINDS = ["leaf", "leaf_grad", "nonleaf"]
 
-# The non-leaf donor keeps the target's pre-swap shape: its surviving grad_fn was
-# built for that shape and native backward rejects a mismatch (RuntimeError from
-# MulBackward0: "got [4, 3] but expected shape compatible with [4, 3]"). A leaf
-# target may change shape because its gradient follows the new metadata.
+# A non-leaf target keeps its old graph, so backward cases preserve its shape.
+# A leaf target may change shape: its gradient follows the new metadata.
 _BACKWARD_CASES = tu.selected_cases(
     [("leaf_grad", (4, 3), (3, 5)), ("nonleaf", (4, 3), (4, 3))], quick=[]
 )
@@ -393,9 +394,9 @@ def test_set_data_preserves_target_autograd_state(dtype, kind):
     assert res_ret is None
     _assert_replaced(target, source)
     tu.assert_result_equal(target, ref_target)
-    # A metadata swap is not a data write: the version counter, the leaf flag and
-    # any surviving grad_fn must match both the reference and the pre-swap state.
-    assert _autograd_state(target) == _autograd_state(ref_target)
+    # Reference construction can start at a different version counter. Compare
+    # autograd metadata across tensors and preservation against the target itself.
+    assert _autograd_state(target)[:3] == _autograd_state(ref_target)[:3]
     assert _autograd_state(target) == state_before
 
 
@@ -419,14 +420,14 @@ def test_set_data_backward_through_original_leaf(
 
     assert res_ret is None
     _assert_replaced(target, source)
-    # Differentiating through the original leaf (not through the target object)
-    # keeps the surviving graph honest: the non-leaf row can only produce the
-    # gradient its MulBackward0 was built to emit.
-    (res_grad,) = torch.autograd.grad((target * 3.0).sum(), leaf)
-    (ref_grad,) = torch.autograd.grad((ref_target * 3.0).sum(), ref_leaf)
-    assert res_grad.dtype == ref_grad.dtype
-    assert res_grad.shape == ref_grad.shape
-    tu.assert_result_close(res_grad, ref_grad)
+    # Nonuniform upstream checks the preserved graph without requiring FP8
+    # arithmetic or a real scalar loss for complex tensors.
+    upstream = tu.make_input(dtype, source_shape, ["-1", "1"])
+    (res_grad,) = torch.autograd.grad(target, leaf, grad_outputs=upstream)
+    (ref_grad,) = torch.autograd.grad(
+        ref_target, ref_leaf, grad_outputs=tu.to_reference(upstream)
+    )
+    tu.assert_result_equal(res_grad, ref_grad)
 
 
 @pytest.mark.set_data
