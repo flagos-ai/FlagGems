@@ -100,11 +100,45 @@ def _case_fn(shape, dtype):
             builder_args=(shape, input_dtype),
         )
 
+    # The actual layout-backward path consumes opaque CPU gradients. Its dtype
+    # conversions differ from dense casts, and rank-zero opaque tensors do not exist.
+    if shape and dtype in (
+        torch.float32,
+        torch.float16,
+        torch.bfloat16,
+        torch.int8,
+        torch.uint8,
+    ):
+        targets = (dtype,)
+        if dtype in (torch.float32, torch.float16, torch.bfloat16):
+            targets = (
+                torch.float32,
+                torch.float16,
+                torch.bfloat16,
+                torch.int8,
+                torch.uint8,
+            )
+        for target in targets:
+            yield base.BenchmarkCasePlan(
+                shape={"grad": list(shape), "input": list(shape)},
+                params={
+                    "mode": "opaque to dense",
+                    "grad_dtype": str(dtype),
+                    "input_dtype": str(target),
+                },
+                builder_args=(shape, target, "opaque"),
+            )
+
 
 def _build_inputs_fn(plan, dtype, device):
     # The cast reads grad values; the benchmark does not compare its result,
     # so uninitialized payloads are enough (generate_tensor_input has no
     # generator for fp8/complex anyway).
+    if len(plan.builder_args) == 3:
+        shape, input_dtype, _ = plan.builder_args
+        grad = torch.empty(shape, dtype=dtype, device="cpu").to_mkldnn()
+        inp = torch.empty(shape, dtype=input_dtype, device="cpu")
+        return grad, inp, {}
     shape, input_dtype = plan.builder_args
     grad = torch.empty(shape, dtype=dtype, device=device)
     inp = torch.empty(shape, dtype=input_dtype, device=device)

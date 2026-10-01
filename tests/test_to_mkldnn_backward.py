@@ -19,12 +19,10 @@ import flag_gems
 
 from . import test_utils as tu
 
-# aten::to_mkldnn_backward(Tensor grad, Tensor input) -> Tensor reads only
-# input.dtype: equal dtypes hand back `grad` itself (identical object, storage
-# and layout, no kernel runs), a dtype mismatch returns a fresh tensor cast from
-# grad to input.dtype.  Input shape, strides and device are never read.  A
-# non-strided `input` is not a valid form at all - the native kernel asserts
-# input_.layout() == c10::kStrided - so no case feeds an MKLDNN-layout input.
+# aten::to_mkldnn_backward converts grad to dense with input.dtype. A dense
+# same-dtype grad is returned by identity; an opaque oneDNN grad is materialized
+# on CPU. Only input.dtype/layout matter, not its shape or device. The input
+# must be strided, and opaque grad conversion follows oneDNN dtype restrictions.
 
 _DEVICE_DTYPE_FLAG = {
     torch.bfloat16: "support_bf16",
@@ -420,13 +418,7 @@ def test_to_mkldnn_backward_backward(grad_dtype, input_dtype):
 
     # A non-uniform upstream gradient so neither a constant nor a broadcast can
     # pass by accident.
-    upstream = (
-        torch.arange(
-            1, shape[0] * shape[1] + 1, dtype=torch.float32, device=grad.device
-        )
-        .reshape(shape)
-        .to(res_out.dtype)
-    )
+    upstream = tu.make_input(res_out.dtype, shape, ["-1", "1"])
     res_grad = torch.autograd.grad(res_out, grad, grad_outputs=upstream)[0]
 
     ref_leaf = tu.to_reference(grad.detach()).requires_grad_(True)
@@ -457,3 +449,82 @@ def test_to_mkldnn_backward_rejects_invalid_arguments(form):
     else:
         with pytest.raises((RuntimeError, TypeError)):
             flag_gems.to_mkldnn_backward(grad)
+
+
+MKLDNN_DTYPES = [torch.float32, torch.float16, torch.bfloat16, torch.int8, torch.uint8]
+MKLDNN_CAST_PAIRS = [
+    (source, target)
+    for source in MKLDNN_DTYPES[:3]
+    for target in MKLDNN_DTYPES
+    if source != target
+]
+
+
+@pytest.mark.to_mkldnn_backward
+@pytest.mark.parametrize("dtype", MKLDNN_DTYPES)
+@pytest.mark.parametrize(
+    "shape", [s for s in tu.selected_shapes() if s] + [(0,), (0, 3)]
+)
+@pytest.mark.parametrize("value_range", tu.selected_ranges())
+def test_to_mkldnn_backward_opaque_grad(dtype, shape, value_range):
+    dense = tu.make_input(dtype, shape, value_range).cpu()
+    grad = dense.to_mkldnn()
+    ref_grad = dense.clone().to_mkldnn()
+    inp = torch.zeros((7,), dtype=dtype, device="cpu")
+
+    ref_out = torch.ops.aten.to_mkldnn_backward(ref_grad, inp)
+    res_out = flag_gems.to_mkldnn_backward(grad, inp)
+
+    assert res_out.layout == torch.strided
+    assert res_out.device == grad.device
+    assert res_out is not grad
+    tu.assert_result_equal(res_out, ref_out)
+    tu.assert_result_equal(grad.to_dense(), dense)
+
+
+@pytest.mark.to_mkldnn_backward
+@pytest.mark.parametrize("source,target", MKLDNN_CAST_PAIRS)
+def test_to_mkldnn_backward_opaque_dtype_conversion(source, target):
+    dense = tu.make_input(source, (2, 3), ["-1", "1"]).cpu()
+    grad = dense.to_mkldnn()
+    ref_grad = dense.clone().to_mkldnn()
+    inp = torch.zeros((7,), dtype=target, device="cpu")
+
+    ref_out = torch.ops.aten.to_mkldnn_backward(ref_grad, inp)
+    res_out = flag_gems.to_mkldnn_backward(grad, inp)
+
+    assert res_out.layout == torch.strided
+    assert res_out.device == grad.device
+    tu.assert_result_equal(res_out, ref_out)
+    tu.assert_result_equal(grad.to_dense(), dense)
+
+
+@pytest.mark.to_mkldnn_backward
+@pytest.mark.parametrize(
+    "source,target",
+    [
+        (torch.float32, torch.float64),
+        (torch.float32, torch.int32),
+        (torch.float32, torch.int64),
+        (torch.float32, torch.bool),
+        (torch.float32, torch.complex64),
+        (torch.float32, torch.float8_e4m3fn),
+        (torch.float32, torch.float8_e5m2),
+        (torch.int8, torch.float32),
+        (torch.uint8, torch.float32),
+        (torch.int8, torch.uint8),
+    ],
+)
+def test_to_mkldnn_backward_rejects_opaque_dtype_conversion(source, target):
+    grad = torch.ones(2, 3, dtype=source, device="cpu").to_mkldnn()
+    inp = torch.empty(7, dtype=target, device="cpu")
+    with pytest.raises(RuntimeError):
+        flag_gems.to_mkldnn_backward(grad, inp)
+
+
+@pytest.mark.to_mkldnn_backward
+def test_to_mkldnn_backward_rejects_opaque_input():
+    grad = torch.ones(2, 3, device="cpu").to_mkldnn()
+    inp = torch.ones(7, device="cpu").to_mkldnn()
+    with pytest.raises(RuntimeError):
+        flag_gems.to_mkldnn_backward(grad, inp)

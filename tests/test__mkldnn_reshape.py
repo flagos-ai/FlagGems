@@ -180,6 +180,8 @@ def test__mkldnn_reshape_shares_source_memory():
     res = flag_gems._mkldnn_reshape(inp, [3, 2])
     ref = torch.ops.aten._mkldnn_reshape(ref_inp, [3, 2])
 
+    _assert_mkldnn_result(res, ref)
+
     replacement = torch.arange(6, 12, dtype=torch.float32).reshape(2, 3).to_mkldnn()
     inp.copy_(replacement)
     ref_inp.copy_(tu.to_reference(replacement))
@@ -250,6 +252,9 @@ NEGATIVE_SHAPE_ROWS = [
     ((2, 3), (5,)),
     ((2, 3), ()),
     ((3, 4), (2, 2)),
+    ((2, 3), (-1, -1)),
+    ((2, 3), (-2, 3)),
+    ((0,), (0, -1)),
 ]
 
 

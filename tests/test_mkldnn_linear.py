@@ -171,10 +171,12 @@ BACKWARD_SHAPES = tu.selected_cases([(4, 6), (2, 3, 5)], quick=[])
 
 @pytest.mark.mkldnn_linear
 @pytest.mark.parametrize("shape", BACKWARD_SHAPES)
-def test_mkldnn_linear_backward(shape):
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
+def test_mkldnn_linear_backward(shape, dtype):
     # The original mkldnn activation is the differentiated leaf, alongside the
-    # dense weight and bias.
-    dense = tu.make_input(torch.float32, shape, ["-1", "1"]).to("cpu")
+    # dense weight and bias. Native backward requires FP32 weight/bias even
+    # for FP16/BF16 activations; same-dtype forward coverage stays above.
+    dense = tu.make_input(dtype, shape, ["-1", "1"]).to("cpu")
     weight = tu.make_input(torch.float32, (OUT_FEATURES, shape[-1]), ["-1", "1"]).to(
         "cpu"
     )
@@ -191,7 +193,7 @@ def test_mkldnn_linear_backward(shape):
     # gradient must carry the same layout; a strided one raises invalid gradient
     # at index 0 - expected layout Mkldnn but got Strided.
     upstream = (
-        tu.make_input(torch.float32, shape[:-1] + (OUT_FEATURES,), ["-1", "1"])
+        tu.make_input(dtype, shape[:-1] + (OUT_FEATURES,), ["-1", "1"])
         .to("cpu")
         .to_mkldnn()
     )

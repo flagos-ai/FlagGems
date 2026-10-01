@@ -205,20 +205,26 @@ def test__mkldnn_transpose_special_values(dtype, scenario):
 
 
 @pytest.mark.mkldnn_transpose
-def test__mkldnn_transpose_backward():
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
+def test__mkldnn_transpose_backward(dtype):
     # The candidate is exercised through the original leaf: the mkldnn operand
     # is that leaf's conversion, and the upstream gradient is non-uniform so a
     # fabricated gradient could not pass. Native aten::_mkldnn_transpose
     # registers no derivative ("derivative for aten::_mkldnn_transpose is not
     # implemented"), so differentiating must fail instead of returning a
     # gradient the reference cannot produce.
-    leaf = torch.randn(3, 4, requires_grad=True)
+    leaf = torch.randn(3, 4, dtype=dtype, requires_grad=True)
     inp = leaf.to_mkldnn()
-    upstream = torch.arange(1, 13, dtype=torch.float32).reshape(4, 3).to_mkldnn()
+    upstream = torch.arange(1, 13, dtype=dtype).reshape(4, 3).to_mkldnn()
 
+    ref_out = torch.ops.aten._mkldnn_transpose(tu.to_reference(inp), 0, 1)
     res_out = flag_gems._mkldnn_transpose(inp, 0, 1)
+    _assert_opaque(res_out, inp.shape, dtype, 0, 1)
+    tu.assert_result_equal(res_out.to_dense(), ref_out.to_dense())
 
-    with pytest.raises(RuntimeError):
+    with pytest.raises(
+        RuntimeError, match="derivative for aten::_mkldnn_transpose is not implemented"
+    ):
         torch.autograd.grad(res_out, leaf, grad_outputs=upstream)
 
 
