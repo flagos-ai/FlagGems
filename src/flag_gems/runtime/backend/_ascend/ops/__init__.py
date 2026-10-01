@@ -33,6 +33,7 @@ from .attention import (
     scaled_dot_product_attention_forward,
 )
 from .baddbmm import baddbmm
+from .beam_search_score import beam_search_score
 from .bmm import bmm
 from .cat import cat, cat_out
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
@@ -198,6 +199,7 @@ __all__ = [
     "argmin",
     "argsort",
     "baddbmm",
+    "beam_search_score",
     "bmm",
     "cat",
     "cat_out",
