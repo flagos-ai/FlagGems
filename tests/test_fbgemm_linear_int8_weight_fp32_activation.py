@@ -22,8 +22,9 @@ import flag_gems
 from . import test_utils as tu
 
 # The native FBGEMM kernel is CPU-only and float32-only: the activation must be
-# float32 with dim() >= 2 (input.size(-1) is the reduction dim), the weight is
-# int8 (N, K), col_offsets int32, the bias float32 of length N, weight_scale a
+# float32 with dim() >= 2 (input.size(-1) is the reduction dim). The weight
+# supplies (N, K) metadata; numerical weights come from the packed handle.
+# col_offsets is int32, bias is float32 of length N, weight_scale is a
 # Python number and weight_zero_point an integral Python number. Every operand
 # is therefore built on CPU.
 DTYPES = [torch.float32]
@@ -499,3 +500,43 @@ def test_fbgemm_linear_int8_weight_fp32_activation_invalid_scalars(
         flag_gems.fbgemm_linear_int8_weight_fp32_activation(
             inp, weight, packed, col_offsets, weight_scale, weight_zero_point, bias
         )
+
+
+@pytest.mark.fbgemm_linear_int8_weight_fp32_activation
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        torch.float32,
+        torch.float16,
+        torch.bfloat16,
+        torch.float64,
+        torch.int8,
+        torch.uint8,
+        torch.int32,
+        torch.int64,
+        torch.bool,
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+        torch.complex64,
+        torch.complex128,
+    ],
+)
+def test_fbgemm_linear_int8_weight_fp32_activation_weight_metadata_dtype(dtype):
+    inp = _activation("plain", _SMALL_SHAPE, torch.float32, ["-1", "1"])
+    weight, packed, col_offsets, bias = _native_operands(_SMALL_SHAPE[-1])
+    scale, zero_point = 1.0, 0
+    weight = weight.to(dtype)
+    ref_out = torch.ops.aten.fbgemm_linear_int8_weight_fp32_activation(
+        tu.to_reference(inp),
+        tu.to_reference(weight),
+        packed,
+        tu.to_reference(col_offsets),
+        scale,
+        zero_point,
+        tu.to_reference(bias),
+    )
+    res_out = flag_gems.fbgemm_linear_int8_weight_fp32_activation(
+        inp, weight, packed, col_offsets, scale, zero_point, bias
+    )
+
+    tu.assert_result_close(res_out, ref_out)

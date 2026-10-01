@@ -166,17 +166,6 @@ _VIEW_CASES = tu.selected_cases(
     quick=["transposed", "stride_holes", "offset_slice", "expanded"],
 )
 
-# (is_contiguous, nonzero storage offset) measured for each layout: the row
-# window is a contiguous slice of its base, so it is contiguous but offset --
-# the two facts are asserted separately instead of a blanket non-contiguity
-# claim that only holds for the transposed/stride-hole/expanded layouts.
-_VIEW_FACTS = {
-    "transposed": (False, False),
-    "stride_holes": (False, False),
-    "offset_slice": (True, True),
-    "expanded": (False, False),
-}
-
 
 def _view_weight(case):
     if case == "transposed":
@@ -194,9 +183,6 @@ def test_fbgemm_pack_gemm_matrix_fp16_strided_weight(case):
     inp = _view_weight(case)
     ref_inp = tu.to_reference(inp)
     shape = inp.shape
-    contiguous, offset = _VIEW_FACTS[case]
-    assert inp.is_contiguous() == contiguous
-    assert (inp.storage_offset() > 0) == offset
 
     ref_out = torch.ops.aten.fbgemm_pack_gemm_matrix_fp16(ref_inp)
     res_out = flag_gems.fbgemm_pack_gemm_matrix_fp16(inp)

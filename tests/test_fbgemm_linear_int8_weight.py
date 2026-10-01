@@ -17,7 +17,8 @@
 Measured native contract of
 ``aten::fbgemm_linear_int8_weight(input, weight, packed, col_offsets,
 weight_scale, weight_zero_point, bias)`` (CPU kernel):
-- CPU-only and float32-only; every other operand dtype is rejected.
+- CPU-only; activation and bias must be float32. Weight supplies shape metadata,
+  while numerical weights come from the packed handle.
 - rank(input) >= 2, weight (N, K) with K == input.size(-1), bias length N.
 - weight_scale / weight_zero_point must be Python numbers (integral zero point).
 - ``packed`` must be the genuine buffer produced by
@@ -100,6 +101,7 @@ _AUTOGRAD_CASES = tu.selected_cases(["no_graph"], quick=[])
 
 # "expected scalar type Float but found X" for each of these.
 _REJECTED_DTYPES = [
+    torch.bool,
     torch.int8,
     torch.uint8,
     torch.int16,
@@ -395,3 +397,42 @@ def test_fbgemm_linear_int8_weight_rejects_scalar_form(case):
         flag_gems.fbgemm_linear_int8_weight(
             inp, weight, packed, col_offsets, weight_scale, weight_zero_point, bias
         )
+
+
+@pytest.mark.fbgemm_linear_int8_weight
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        torch.float32,
+        torch.float16,
+        torch.bfloat16,
+        torch.float64,
+        torch.int8,
+        torch.uint8,
+        torch.int32,
+        torch.int64,
+        torch.bool,
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+        torch.complex64,
+        torch.complex128,
+    ],
+)
+def test_fbgemm_linear_int8_weight_weight_metadata_dtype(dtype):
+    inp, weight, bias = _make_linear_operands(_WORKLOAD_SHAPE, _WORKLOAD_N, ["-1", "1"])
+    packed, col_offsets, scale, zero_point = _pack_weights(weight)
+    weight = weight.to(dtype)
+    ref_out = torch.ops.aten.fbgemm_linear_int8_weight(
+        tu.to_reference(inp),
+        tu.to_reference(weight),
+        packed,
+        tu.to_reference(col_offsets),
+        scale,
+        zero_point,
+        tu.to_reference(bias),
+    )
+    res_out = flag_gems.fbgemm_linear_int8_weight(
+        inp, weight, packed, col_offsets, scale, zero_point, bias
+    )
+
+    tu.assert_result_close(res_out, ref_out)

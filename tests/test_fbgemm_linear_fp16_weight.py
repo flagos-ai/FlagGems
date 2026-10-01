@@ -221,22 +221,33 @@ _BACKWARD_ROWS = tu.selected_cases(
 
 
 @pytest.mark.parametrize("act_shape,weight_shape,bias_shape", _BACKWARD_ROWS)
-def test_fbgemm_linear_fp16_weight_backward(act_shape, weight_shape, bias_shape):
-    inp = _input(_DTYPE, act_shape, _FINITE)
+@pytest.mark.parametrize(
+    "bias_dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64]
+)
+def test_fbgemm_linear_fp16_weight_backward(
+    act_shape, weight_shape, bias_shape, bias_dtype
+):
+    inp = _input(_DTYPE, act_shape, _FINITE).requires_grad_()
+    ref_inp = tu.to_reference(inp)
     weight = _input(_DTYPE, weight_shape, _FINITE)
-    bias = _input(_DTYPE, bias_shape, _FINITE).requires_grad_(True)
+    bias = _input(bias_dtype, bias_shape, _FINITE).requires_grad_(True)
     ref_bias = bias.detach().clone().requires_grad_(True)
     upstream = _input(_DTYPE, act_shape[:-1] + (weight_shape[0],), _FINITE)
 
     ref_out = torch.ops.aten.fbgemm_linear_fp16_weight(
-        tu.to_reference(inp), _packed(tu.to_reference(weight)), ref_bias
+        ref_inp, _packed(tu.to_reference(weight)), ref_bias
     )
     res_out = flag_gems.fbgemm_linear_fp16_weight(inp, _packed(weight), bias)
 
     tu.assert_result_close(res_out, ref_out)
     assert res_out.requires_grad == ref_out.requires_grad
-    ref_grad = torch.autograd.grad(ref_out, ref_bias, grad_outputs=upstream)[0]
-    res_grad = torch.autograd.grad(res_out, bias, grad_outputs=upstream)[0]
+    ref_input_grad, ref_grad = torch.autograd.grad(
+        ref_out, (ref_inp, ref_bias), grad_outputs=upstream, allow_unused=True
+    )
+    res_input_grad, res_grad = torch.autograd.grad(
+        res_out, (inp, bias), grad_outputs=upstream, allow_unused=True
+    )
+    assert res_input_grad is ref_input_grad is None
 
     tu.assert_result_close(res_grad, ref_grad)
 

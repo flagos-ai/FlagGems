@@ -308,26 +308,38 @@ BACKWARD_ROWS = tu.selected_cases([(4, 16), (2, 3, 16)], quick=[])
 
 @pytest.mark.fbgemm_linear_fp16_weight_fp32_activation
 @pytest.mark.parametrize("shape", BACKWARD_ROWS)
-def test_fbgemm_linear_fp16_weight_fp32_activation_backward_bias(shape):
-    inp = _make_input(ACTIVATION_DTYPE, shape, ["-1", "1"])
+@pytest.mark.parametrize("bias_size", [1, N])
+@pytest.mark.parametrize(
+    "bias_dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64]
+)
+def test_fbgemm_linear_fp16_weight_fp32_activation_backward_bias(
+    shape, bias_size, bias_dtype
+):
+    inp = _make_input(ACTIVATION_DTYPE, shape, ["-1", "1"]).requires_grad_()
+    ref_inp = tu.to_reference(inp)
     upstream = _make_input(ACTIVATION_DTYPE, tuple(shape[:-1]) + (N,), ["-1", "1"])
     # Differentiate through the original bias leaf.
-    bias = _make_input(ACTIVATION_DTYPE, (N,), ["-1", "1"]).requires_grad_(True)
+    bias = _make_input(bias_dtype, (bias_size,), ["-1", "1"]).requires_grad_(True)
     packed = _packed_weight(shape[-1], N, ["-1", "1"])
 
     ref_bias = tu.to_reference(bias)
     ref_out = torch.ops.aten.fbgemm_linear_fp16_weight_fp32_activation(
-        tu.to_reference(inp), packed, ref_bias
+        ref_inp, packed, ref_bias
     )
     res_out = flag_gems.fbgemm_linear_fp16_weight_fp32_activation(inp, packed, bias)
     tu.assert_result_close(res_out, ref_out)
 
-    ref_grad = torch.autograd.grad(
-        ref_out, ref_bias, grad_outputs=tu.to_reference(upstream)
-    )[0]
-    res_grad = torch.autograd.grad(res_out, bias, grad_outputs=upstream)[0]
-
-    assert res_grad.shape == (N,)
+    ref_input_grad, ref_grad = torch.autograd.grad(
+        ref_out,
+        (ref_inp, ref_bias),
+        grad_outputs=tu.to_reference(upstream),
+        allow_unused=True,
+    )
+    res_input_grad, res_grad = torch.autograd.grad(
+        res_out, (inp, bias), grad_outputs=upstream, allow_unused=True
+    )
+    assert res_input_grad is ref_input_grad is None
+    assert res_grad.shape == (bias_size,)
     tu.assert_result_close(res_grad, ref_grad)
 
 
@@ -371,10 +383,11 @@ def test_fbgemm_linear_fp16_weight_fp32_activation_negative_activation_dtype(dty
 
 
 @pytest.mark.fbgemm_linear_fp16_weight_fp32_activation
-@pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
-def test_fbgemm_linear_fp16_weight_fp32_activation_negative_complex_bias(dtype):
-    # The trailing add has no float32 result for a complex bias: "result type
-    # ComplexFloat can't be cast to the desired output type Float".
+@pytest.mark.parametrize(
+    "dtype", [torch.complex64, torch.complex128, torch.float8_e4m3fn, torch.float8_e5m2]
+)
+def test_fbgemm_linear_fp16_weight_fp32_activation_negative_bias_dtype(dtype):
+    # The trailing add rejects complex-to-float casts and float8 promotion.
     inp = _make_input(ACTIVATION_DTYPE, (4, 16), ["-1", "1"])
     bias = torch.ones(N, dtype=dtype, device=_HOST)
     packed = _packed_weight(16, N, ["-1", "1"])
