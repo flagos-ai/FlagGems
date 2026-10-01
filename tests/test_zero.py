@@ -35,8 +35,7 @@ def test_zero(shape, dtype):
     act_x = x.clone()
 
     ref_out = torch.ops.aten.zero(ref_x)
-    with flag_gems.use_gems():
-        act_out = torch.ops.aten.zero(act_x)
+    act_out = flag_gems.zero(self=act_x)
 
     utils.gems_assert_close(act_out, ref_out, dtype)
 
@@ -51,8 +50,7 @@ def test_zero_(shape, dtype):
     ref_out = utils.to_reference(out)
     ref_out.zero_()
 
-    with flag_gems.use_gems():
-        out.zero_()
+    flag_gems.zero_(out)
 
     utils.gems_assert_equal(out, ref_out)
 
@@ -66,7 +64,6 @@ def test_zero_out(shape, dtype):
     act_x = x.clone()
 
     ref_out = torch.ops.aten.zero.out(ref_x, out=ref_x)
-    with flag_gems.use_gems():
-        act_out = torch.ops.aten.zero.out(act_x, out=act_x)
+    act_out = flag_gems.zero_out(self=act_x, out=act_x)
 
     utils.gems_assert_close(act_out, ref_out, dtype)

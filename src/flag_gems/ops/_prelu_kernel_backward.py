@@ -60,21 +60,9 @@ def _prelu_kernel_backward_kernel(
     tl.store(grad_weight_ptr + offsets, grad_weight, mask=mask)
 
 
-def _prelu_kernel_backward(*args, **kwargs):
+def _prelu_kernel_backward(grad_output, self, weight):
     logger.debug("GEMS _PRELU_KERNEL_BACKWARD")
-
-    # Extract inputs
-    if len(args) >= 3:
-        grad_output, x, weight = args[0], args[1], args[2]
-    else:
-        grad_output = kwargs.get("grad_output")
-        x = kwargs.get("self")
-        weight = kwargs.get("weight")
-
-    if grad_output is None or x is None or weight is None:
-        raise ValueError(
-            "_prelu_kernel_backward expects (grad_output, self, weight) as arguments."
-        )
+    x = self
 
     if (
         grad_output.device.type != flag_gems.device

@@ -41,13 +41,9 @@ def arcsinh_kernel_(x_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
     tl.store(x_ptr + offsets, y, mask=mask)
 
 
-def arcsinh_(*args, **kwargs):
+def arcsinh_(self):
     logger.debug("GEMS ARCSINH_")
-    if len(args) == 0:
-        raise TypeError("arcsinh_ expected at least 1 argument (a Tensor)")
-    x = args[0]
-    if not isinstance(x, torch.Tensor):
-        raise TypeError("arcsinh_ expected a torch.Tensor as the first argument")
+    x = self
 
     if (not x.is_contiguous()) or (not x.dtype.is_floating_point):
         torch.ops.aten.arcsinh_(x)
