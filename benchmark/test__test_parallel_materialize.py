@@ -64,7 +64,7 @@ _BENCH_DTYPES = tuple(
     if _DTYPE_FLAGS.get(dtype, True)
 )
 
-# torch._neg_view needs a native negation kernel, which CUDA has none for on FP8
+# Materializing a lazy negative view needs a negation kernel, absent on CUDA FP8
 # ("neg_cuda" not implemented for 'Float8_e4m3fn' / 'Float8_e5m2') or bool, so
 # those dtypes only get the identity kind.
 _LAZY_DTYPES = frozenset(

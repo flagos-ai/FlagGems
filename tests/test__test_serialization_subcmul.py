@@ -81,6 +81,8 @@ def test__test_serialization_subcmul(shape, value_range, dtype):
 # shapes (default suite) plus small logical pairs that stay in --quick.
 _SMALL_BROADCAST_ROWS = [
     (torch.float16, (2, 3, 5), (5,)),
+    (torch.float32, (), (2, 3)),
+    (torch.float32, (2, 3), ()),
     (torch.int32, (2, 3, 5), (2, 1, 5)),
     (torch.uint8, (1, 3, 1), (2, 3, 5)),
 ]
@@ -124,7 +126,7 @@ _ALPHA_ROWS = (
     + [
         (dtype, alpha, _LARGE_SHAPE)
         for dtype in _COMPLEX_DTYPES
-        for alpha in _FINITE_ALPHAS
+        for alpha in _FINITE_ALPHAS + (1 + 2j,)
     ]
     + [
         (dtype, alpha, _LARGE_SHAPE)
@@ -150,6 +152,7 @@ _ALPHA_QUICK_ROWS = (
     ]
     + [(dtype, alpha, _QUICK_SHAPE) for dtype in _INT_DTYPES for alpha in (0, -3, 5)]
     + [(dtype, 2.5, _QUICK_SHAPE) for dtype in _INT_DTYPES]
+    + [(dtype, 1 + 2j, _QUICK_SHAPE) for dtype in _COMPLEX_DTYPES]
 )
 _ALPHA_CASES = tu.selected_cases(
     _ALPHA_ROWS + _ALPHA_QUICK_ROWS, quick=_ALPHA_QUICK_ROWS
@@ -220,12 +223,13 @@ _LAYOUT_CASES = tu.selected_cases(_LAYOUT_ROWS, quick=_LAYOUT_ROWS)
 
 
 def _layout_operands(dtype, kind):
-    base = tu.make_input(dtype, (8, 16), _UNIT_RANGE)
+    base = tu.make_input(dtype, (8, 16), ["-1", "0"])
+    other = tu.make_input(dtype, (8, 16), ["0", "1"])
     if kind == "transposed":
-        return base.t(), base.t()
+        return base.t(), other.t()
     if kind == "storage_offset":
-        return base[2:6], base[2:6]
-    return base, base[:1].expand(8, 16)
+        return base[2:6], other[2:6]
+    return base, other[:1].expand(8, 16)
 
 
 @pytest.mark.test_serialization_subcmul
@@ -239,6 +243,8 @@ def test__test_serialization_subcmul_layouts(dtype, kind):
     res_out = flag_gems._test_serialization_subcmul(inp, other)
 
     tu.assert_result_close(res_out, ref_out)
+    tu.assert_result_equal(inp, ref_inp)
+    tu.assert_result_equal(other, ref_other)
 
 
 # Zero-element operands are valid and must produce empty outputs.
@@ -303,6 +309,28 @@ def test__test_serialization_subcmul_backward(dtype, inp_shape, other_shape):
     )
     res_grads = torch.autograd.grad(res_out, [inp, other], grad_outputs=upstream)
 
+    for res_grad, ref_grad in zip(res_grads, ref_grads):
+        tu.assert_result_close(res_grad, ref_grad)
+
+
+@pytest.mark.test_serialization_subcmul
+@pytest.mark.parametrize("dtype", tu.selected_cases(_COMPLEX_DTYPES, quick=[]))
+@pytest.mark.parametrize("alpha", [2.5, 1 + 2j])
+@pytest.mark.parametrize("other_shape", [(2, 3), (3,)])
+def test__test_serialization_subcmul_complex_backward(dtype, alpha, other_shape):
+    inp = tu.make_input(dtype, (2, 3), _UNIT_RANGE).requires_grad_()
+    other = tu.make_input(dtype, other_shape, _UNIT_RANGE).requires_grad_()
+    ref_inp = tu.to_reference(inp)
+    ref_other = tu.to_reference(other)
+    upstream = tu.make_input(dtype, (2, 3), _UNIT_RANGE)
+
+    ref_out = torch.ops.aten._test_serialization_subcmul(ref_inp, ref_other, alpha)
+    res_out = flag_gems._test_serialization_subcmul(inp, other, alpha)
+    tu.assert_result_close(res_out, ref_out)
+    ref_grads = torch.autograd.grad(
+        ref_out, (ref_inp, ref_other), grad_outputs=tu.to_reference(upstream)
+    )
+    res_grads = torch.autograd.grad(res_out, (inp, other), grad_outputs=upstream)
     for res_grad, ref_grad in zip(res_grads, ref_grads):
         tu.assert_result_close(res_grad, ref_grad)
 

@@ -101,7 +101,14 @@ _SPECIAL_DTYPES = [
 _SPECIAL_CASES = tu.selected_cases(tu.special_value_cases(_SPECIAL_DTYPES), quick=[])
 
 # Native accepts graph-recording inputs but raises for backward through a non-leaf.
-_GRAPH_DTYPES = [torch.float32, torch.float64, torch.bfloat16]
+_GRAPH_ROWS = [
+    (
+        dtype,
+        "clone" if dtype in (torch.float8_e4m3fn, torch.float8_e5m2) else "multiply",
+    )
+    for dtype in DTYPES
+    if dtype.is_floating_point or dtype.is_complex
+]
 
 # Negatives run in both modes.
 _NON_TENSOR_ARGUMENTS = [None, 3.14, [1.0, 2.0]]
@@ -236,14 +243,15 @@ def test__foobar_special_values(dtype, scenario):
 
 
 @pytest.mark.foobar
-@pytest.mark.parametrize("dtype", _GRAPH_DTYPES)
-def test__foobar_rejects_backward(dtype):
+@pytest.mark.parametrize("dtype,graph", _GRAPH_ROWS)
+def test__foobar_rejects_backward(dtype, graph):
     # A non-leaf input ensures backward reaches the missing native derivative.
     base = tu.make_input(dtype, _PARAM_SHAPE, ["-1", "1"]).to(_CPU).requires_grad_(True)
     ref_base = tu.to_reference(base)
 
-    inp = base * 2.0
-    ref_inp = ref_base * 2.0
+    # FP8 supports a copy graph even though CPU numeric multiplication is missing.
+    inp = base.clone() if graph == "clone" else base * 2.0
+    ref_inp = ref_base.clone() if graph == "clone" else ref_base * 2.0
 
     ref_out = torch.ops.aten._foobar(ref_inp)
     res_out = flag_gems._foobar(inp)

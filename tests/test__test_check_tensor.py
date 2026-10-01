@@ -244,7 +244,9 @@ _HOLE_ROWS = tu.selected_cases(
     quick=_SMALL_HOLE_ROWS,
 )
 
-_TRUE_ROWS = _grid_rows() + _EDGE_ROWS + _HOLE_ROWS
+_TRUE_ROWS = list(
+    dict.fromkeys(_grid_rows() + [((), "contiguous", False)] + _EDGE_ROWS + _HOLE_ROWS)
+)
 
 _FALSE_ROWS = [
     (shape, position) for shape in _FALSE_SHAPES for position in _FALSE_POSITIONS

@@ -151,16 +151,16 @@ def test__test_parallel_materialize_identity(kind, shape, value_range, dtype):
     tu.assert_result_equal(res_out, ref_out)
 
 
-# torch._neg_view needs a native negation kernel, which CUDA has none for on FP8
+# Materializing a lazy negative view needs a negation kernel, absent on CUDA FP8
 # ("neg_cuda" not implemented for 'Float8_e4m3fn' / 'Float8_e5m2') or bool, and a
 # lazy conj bit only exists for complex, so those dtypes keep their dense
 # coverage above and are not used to build lazy operands.
-LAZY_ROWS = (
-    ("neg", torch.float32),
-    ("neg", torch.int32),
-    ("neg", torch.complex64),
-    ("conj", torch.complex64),
-)
+LAZY_ROWS = [
+    ("neg", dtype)
+    for dtype in SUPPORTED_DTYPES
+    if dtype not in (torch.float8_e4m3fn, torch.float8_e5m2, torch.bool)
+] + [("conj", dtype) for dtype in SUPPORTED_DTYPES if dtype.is_complex]
+
 _LAZY_PARAMS = [
     (num_parallel, skip)
     for num_parallel in _NUM_PARALLEL_VALUES + [_NUM_PARALLEL]
@@ -278,6 +278,8 @@ def test__test_parallel_materialize_alias_storage(dtype):
     ref_out = torch.ops.aten._test_parallel_materialize(ref_inp, _NUM_PARALLEL)
     res_out = flag_gems._test_parallel_materialize(inp, _NUM_PARALLEL)
 
+    tu.assert_result_equal(res_out, ref_out)
+    assert res_out is inp
     # Native returns the operand itself, so a write through the result shows up
     # in the operand: mutate the independent native and candidate results and
     # compare the candidate operand against the independent native operand.
@@ -328,7 +330,11 @@ def test__test_parallel_materialize_special_values(kind, dtype, scenario):
 # Native registers no derivative for this operator: the operator call itself
 # succeeds on a lazy operand, but differentiating the materialized result with
 # respect to the original leaf raises. That negative contract stays in quick.
-_BACKWARD_ROWS = (("neg", torch.float32), ("conj", torch.complex64))
+_BACKWARD_ROWS = [
+    (kind, dtype)
+    for kind, dtype in LAZY_ROWS
+    if dtype.is_floating_point or dtype.is_complex
+]
 
 
 @pytest.mark.test_parallel_materialize
