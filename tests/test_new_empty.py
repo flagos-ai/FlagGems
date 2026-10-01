@@ -76,7 +76,9 @@ _SIZE_FORMS = [(), (2, 3), torch.Size([2, 3]), [True, 2]]
 _SOURCE_VARIANT_DTYPES = [torch.float32, torch.int8]
 _SOURCE_VARIANT_PARENT = (4, 12)
 _SOURCE_VARIANTS = ["contiguous", "noncontiguous", "offset", "expanded"]
-_DIFFERENTIABLE_DTYPES = [torch.float32] + _FP64_DTYPES
+_DIFFERENTIABLE_DTYPES = [
+    dtype for dtype in NEW_EMPTY_DTYPES if dtype.is_floating_point or dtype.is_complex
+]
 _DENSE_LAYOUT_CASES = [{}, {"layout": None}, {"layout": torch.strided}]
 _SPECIAL_DTYPES = [torch.float16, torch.float32] + _BF16_DTYPES + _FP8_DTYPES
 _SPECIAL_CASES = tu.selected_cases(

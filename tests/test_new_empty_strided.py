@@ -140,11 +140,9 @@ def test_new_empty_strided_allocation(shape, layout, value_range, dtype):
     tu.assert_result_equal(inp, inp_before)
 
 
-# (requested size, requested stride, out-buffer kind, buffer storage is reused,
-# payload is defined). Every row is a native-valid call: a buffer whose layout already
-# satisfies the request keeps its own stride, a mismatching buffer is resized by the
-# operator (deprecated but supported), and the rows that merely append a defined
-# payload are marked by the last flag.
+# (requested size, stride, buffer kind, storage retained). The native out
+# overload overwrites even retained buffers with undefined data in ordinary
+# mode. Only deterministic fill defines the result payload.
 _OUT_ROWS = [
     ((2, 3), (3, 1), "matching", True),
     ((0, 3), (3, 1), "matching", True),
@@ -267,7 +265,11 @@ def test_new_empty_strided_optional_kwargs(kwargs, dtype):
     tu.assert_result_equal(inp, inp_before)
 
 
-_DTYPE_OVERRIDE_CASES = [torch.int32, torch.uint8, torch.float64, torch.bool]
+_DTYPE_OVERRIDE_CASES = [
+    dtype
+    for dtype in [torch.int32, torch.uint8, torch.float64, torch.bool]
+    if _dtype_supported(dtype)
+]
 
 
 @pytest.mark.new_empty_strided
@@ -396,7 +398,14 @@ def test_new_empty_strided_result_storage_isolated(shape, layout, dtype):
 
 
 @pytest.mark.new_empty_strided
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        dtype
+        for dtype in SUPPORTED_DTYPES
+        if dtype.is_floating_point or dtype.is_complex
+    ],
+)
 def test_new_empty_strided_result_has_no_autograd(dtype):
     inp = tu.make_input(dtype, (3, 4), ["-1", "1"]).requires_grad_(True)
     inp_before = tu.to_reference(inp)

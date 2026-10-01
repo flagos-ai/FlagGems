@@ -73,7 +73,7 @@ _ACCUM_DTYPES = [dtype for dtype in _ACCUM_DTYPES if _DTYPE_FLAGS.get(dtype, Tru
 # reduction here ("Promotion for Float8 Types is not supported"). The
 # create_graph flag itself stays covered for every dtype by the grad-state row.
 _SECOND_ORDER_DTYPES = tu.selected_cases(
-    [torch.float16, torch.bfloat16, torch.float32, torch.float64, torch.complex64],
+    _ACCUM_DTYPES,
     quick=[],
 )
 

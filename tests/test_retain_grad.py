@@ -73,8 +73,8 @@ _FLAG_ROWS = tu.selected_cases(
             (2, 0, 3),
         ]
     ]
-    + [("leaf", shape) for shape in [(), (256,), (1024, 1024)]]
-    + [("retained", shape) for shape in [(256,), (1024, 1024)]],
+    + [("leaf", shape) for shape in [(), (256,), (2, 19, 7), (1024, 1024)]]
+    + [("retained", shape) for shape in [(256,), (2, 19, 7), (1024, 1024)]],
     quick=[
         ("nonleaf", (2, 19, 7)),
         ("nonleaf", ()),
@@ -258,7 +258,7 @@ def test_retain_grad_populates_grad(shape, dtype):
     # Backward must actually fill the retained `.grad` of the non-leaf tensor,
     # and the gradient reaching the differentiable leaf must be unchanged.
     assert mid.grad is not None
-    tu.assert_result_close(mid.grad, ref_mid.grad)
+    tu.assert_result_equal(mid.grad, ref_mid.grad)
     tu.assert_result_close(res_grad, ref_grad)
 
 
@@ -314,7 +314,7 @@ def test_retain_grad_is_per_tensor_backward(shape, dtype):
         grad_outputs=[ref_upstream, ref_upstream],
     )
 
-    tu.assert_result_close(first.grad, ref_first.grad)
+    tu.assert_result_equal(first.grad, ref_first.grad)
     tu.assert_result_close(res[0], ref[0])
     tu.assert_result_close(res[1], ref[1])
     # Reading `.grad` on an unretained non-leaf is how the missing accumulator is
@@ -338,8 +338,8 @@ def test_retain_grad_non_contiguous_view_backward(shape, dtype):
     res_grad = torch.autograd.grad(view, base, grad_outputs=upstream)[0]
     ref_grad = torch.autograd.grad(ref_view, ref_base, grad_outputs=ref_upstream)[0]
 
-    tu.assert_result_close(view.grad, ref_view.grad)
-    tu.assert_result_close(res_grad, ref_grad)
+    tu.assert_result_equal(view.grad, ref_view.grad)
+    tu.assert_result_equal(res_grad, ref_grad)
 
 
 @pytest.mark.retain_grad

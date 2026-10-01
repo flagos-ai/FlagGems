@@ -125,7 +125,7 @@ def test_requires_grad_metadata_state(shape, value_range, dtype, flag):
     tu.assert_result_equal(res, torch.ops.aten.requires_grad_(ref_inp, flag))
 
 
-_DEFAULT_FLAG_SHAPES = tu.selected_cases([(1024, 1024)], quick=[(2, 19, 7)])
+_DEFAULT_FLAG_SHAPES = tu.selected_cases([(2, 19, 7), (1024, 1024)], quick=[(2, 19, 7)])
 
 
 @pytest.mark.parametrize("shape", _DEFAULT_FLAG_SHAPES)
@@ -295,8 +295,7 @@ _BACKWARD_ROWS = tu.selected_cases(
 
 @pytest.mark.parametrize("dtype,shape", _BACKWARD_ROWS)
 def test_requires_grad_enables_backward(dtype, shape):
-    # The operator must make the original leaf differentiable; complex64 and fp8
-    # are excluded, this backend has no real-scalar-loss or fp8 mul path.
+    # This arithmetic graph supplements the clone-gradient case below.
     inp = tu.make_input(dtype, shape, ["-1", "1"])
     ref_inp = tu.to_reference(inp)
 
@@ -335,3 +334,19 @@ def test_requires_grad_rejects_non_bool_flag(flag):
     inp = tu.make_input(torch.float32, (4, 8), ["-1", "1"])
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems.requires_grad_(inp, flag)
+
+
+@pytest.mark.parametrize("dtype", tu.selected_cases(_GRAD_DTYPES, quick=[]))
+def test_requires_grad_enables_clone_backward(dtype):
+    inp = tu.make_input(dtype, (2, 3), ["-1", "1"])
+    ref_inp = tu.to_reference(inp)
+    upstream = tu.make_input(dtype, (2, 3), ["-1", "1"])
+
+    assert flag_gems.requires_grad_(inp) is inp
+    torch.ops.aten.requires_grad_(ref_inp)
+
+    (grad,) = torch.autograd.grad(inp.clone(), inp, grad_outputs=upstream)
+    (ref_grad,) = torch.autograd.grad(
+        ref_inp.clone(), ref_inp, grad_outputs=tu.to_reference(upstream)
+    )
+    tu.assert_result_equal(grad, ref_grad)
