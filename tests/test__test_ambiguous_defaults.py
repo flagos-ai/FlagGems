@@ -187,28 +187,33 @@ def test__test_ambiguous_defaults_keyword_forms(native_overload, kwargs):
 
 
 @pytest.mark.test_ambiguous_defaults
+@pytest.mark.parametrize("value_range", [["0", "0"], ["1", "1"]])
 @pytest.mark.parametrize("native_overload,params", _CALL_FORMS)
-def test__test_ambiguous_defaults_operand_is_unread(native_overload, params):
-    # Identical calls on different operand contents must give the same constant,
-    # leave the operand untouched and return a fresh scalar for each overload.
-    zero = tu.make_input(torch.float32, (4, 6), ["0", "0"])
-    one = tu.make_input(torch.float32, (4, 6), ["1", "1"])
-    ref_zero = tu.to_reference(zero)
-    ref_one = tu.to_reference(one)
+def test__test_ambiguous_defaults_operand_is_unread(
+    value_range, native_overload, params
+):
+    inp = tu.make_input(torch.float32, (4, 6), value_range)
+    ref_inp = tu.to_reference(inp)
 
-    ref_out = native_overload(ref_zero, *params)
-    res_zero = flag_gems._test_ambiguous_defaults(zero, *params)
-    res_one = flag_gems._test_ambiguous_defaults(one, *params)
+    ref_out = native_overload(ref_inp, *params)
+    res_out = flag_gems._test_ambiguous_defaults(inp, *params)
 
-    tu.assert_result_equal(res_zero, ref_out)
-    tu.assert_result_equal(res_one, ref_out)
-    tu.assert_result_equal(zero, ref_zero)
-    tu.assert_result_equal(one, ref_one)
-    assert res_zero is not zero
-    assert res_one is not one
-    assert torch._C._is_alias_of(res_zero, zero) is False
-    assert torch._C._is_alias_of(res_one, one) is False
-    _assert_scalar_contract(res_zero)
+    tu.assert_result_equal(res_out, ref_out)
+    tu.assert_result_equal(inp, ref_inp)
+    assert res_out is not inp
+    assert not torch._C._is_alias_of(res_out, inp)
+    _assert_scalar_contract(res_out)
+
+
+@pytest.mark.test_ambiguous_defaults
+@pytest.mark.parametrize("tail", [(), (1, 1), (2, "2")])
+def test__test_ambiguous_defaults_undefined_operand(tail):
+    # The schema accepts an undefined tensor and the implementation never reads it.
+    ref_out = torch.ops.aten._test_ambiguous_defaults(None, *tail)
+    res_out = flag_gems._test_ambiguous_defaults(None, *tail)
+
+    tu.assert_result_equal(res_out, ref_out)
+    _assert_scalar_contract(res_out)
 
 
 @pytest.mark.test_ambiguous_defaults
@@ -244,12 +249,15 @@ def test__test_ambiguous_defaults_special_values(dtype, scenario):
 
 @pytest.mark.test_ambiguous_defaults
 @pytest.mark.parametrize("native_overload,params", _CALL_FORMS)
-def test__test_ambiguous_defaults_has_no_gradient(native_overload, params):
+@pytest.mark.parametrize(
+    "dtype", [dtype for dtype in _DTYPES if dtype.is_floating_point or dtype.is_complex]
+)
+def test__test_ambiguous_defaults_has_no_gradient(native_overload, params, dtype):
     # Negative contract kept in every mode: the native result never requires grad,
     # so differentiating it against the original leaf operand raises instead of
     # producing a gradient, and the candidate must return an equally detached
     # scalar.
-    dummy = tu.make_input(torch.float32, (4, 6), ["-1", "1"]).requires_grad_(True)
+    dummy = tu.make_input(dtype, (4, 6), ["-1", "1"]).requires_grad_(True)
     ref_dummy = tu.to_reference(dummy)
 
     ref_out = native_overload(ref_dummy, *params)

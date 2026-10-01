@@ -177,6 +177,21 @@ def test_test_optional_intlist_identity_layout(layout, shape):
 
 
 @pytest.mark.test_optional_intlist
+@pytest.mark.parametrize("addends", [None, [1, -2, 3, 0]])
+def test_test_optional_intlist_keyword_addends(addends):
+    values, ref_values = _independent_operands(torch.int32, (4,), ["-1", "1"])
+    ref_out = torch.ops.aten._test_optional_intlist(ref_values, addends=addends)
+    res_out = flag_gems._test_optional_intlist(values, addends=addends)
+
+    tu.assert_result_equal(res_out, ref_out)
+    tu.assert_result_equal(values, ref_values)
+    if addends is None:
+        assert res_out is values
+    else:
+        assert not torch._C._is_alias_of(res_out, values)
+
+
+@pytest.mark.test_optional_intlist
 @pytest.mark.parametrize("shape", _ONE_D_SHAPES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 def test_test_optional_intlist_addends(shape, value_range):
@@ -248,9 +263,10 @@ def test_test_optional_intlist_out(shape, value_range):
 
 @pytest.mark.test_optional_intlist
 @pytest.mark.parametrize("layout", _OUT_LAYOUTS)
-def test_test_optional_intlist_out_strided(layout):
+@pytest.mark.parametrize("with_addends", [False, True])
+def test_test_optional_intlist_out_strided(layout, with_addends):
     values = torch.arange(6, dtype=torch.int32, device=_CPU)
-    addends = [1] * values.numel()
+    addends = [1] * values.numel() if with_addends else None
     # A strided / non-zero-offset view of a larger int32 buffer: the .out overload
     # has to write through that geometry and leave the other elements alone.
     base = torch.zeros(12, dtype=torch.int32, device=_CPU)
@@ -269,9 +285,10 @@ def test_test_optional_intlist_out_strided(layout):
 
 
 @pytest.mark.test_optional_intlist
-def test_test_optional_intlist_out_resize():
+@pytest.mark.parametrize("with_addends", [False, True])
+def test_test_optional_intlist_out_resize(with_addends):
     values = torch.arange(4, dtype=torch.int32, device=_CPU)
-    addends = [1] * values.numel()
+    addends = [1] * values.numel() if with_addends else None
     # A plain buffer whose length differs from the result: the native .out resizes
     # it in place and still returns the caller's tensor.
     out = torch.empty(7, dtype=torch.int32, device=_CPU)
@@ -373,3 +390,11 @@ def test_test_optional_intlist_out_rejects_dtype(out_dtype):
     out = torch.zeros(4, dtype=out_dtype, device=_CPU)
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems._test_optional_intlist(values, [1, 1, 1, 1], out=out)
+
+
+@pytest.mark.test_optional_intlist
+def test__test_optional_intlist_rejects_missing_addends():
+    # Optional describes the value (None), not whether the argument can be omitted.
+    values = torch.zeros(2, dtype=torch.int32, device="cpu")
+    with pytest.raises((RuntimeError, TypeError)):
+        flag_gems._test_optional_intlist(values)

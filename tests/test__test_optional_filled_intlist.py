@@ -21,8 +21,8 @@ from . import test_utils as tu
 
 # `_test_optional_filled_intlist(Tensor values, int[2]? addends)` dispatches on
 # CPU only (CUDA and Meta raise NotImplementedError). `addends=None` is genuine
-# object identity for every dtype and shape, and that form is differentiable:
-# a non-leaf operand has no implemented derivative. With addends present
+# object identity for every dtype and shape, but a non-leaf operand has no
+# implemented derivative. With addends present
 # `values` must be rank-1 int32 and one addend is consumed per element, so an
 # explicit list must be at least as long as the tensor while the `int[2]?` fill
 # only covers tensors of up to two elements. The second operand is a host int
@@ -425,3 +425,11 @@ def test__test_optional_filled_intlist_out_rejects_wrong_dtype(out_dtype):
 
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems._test_optional_filled_intlist(inp, 7, out=out)
+
+
+@pytest.mark.test_optional_filled_intlist
+def test__test_optional_filled_intlist_rejects_missing_addends():
+    # Optional describes the value (None), not whether the argument can be omitted.
+    values = torch.zeros(2, dtype=torch.int32, device="cpu")
+    with pytest.raises((RuntimeError, TypeError)):
+        flag_gems._test_optional_filled_intlist(values)

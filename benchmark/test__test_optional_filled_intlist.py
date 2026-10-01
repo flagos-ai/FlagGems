@@ -114,9 +114,8 @@ def _case_fn(shape, dtype):
 
 
 def _build_inputs_fn(plan, dtype, device):
-    # Identity does not read the payload; arithmetic uses initialized zeros. An uninitialized tensor is
-    # enough and utils.generate_tensor_input (which can return None for an
-    # unsupported dtype) is not used. `device` is ignored: the op is CPU-only.
+    # Identity does not read the payload; arithmetic uses initialized zeros.
+    # `device` is ignored: the native op is CPU-only.
     dims, form, numel = plan.builder_args
     values = (
         torch.empty(dims, dtype=dtype, device=_CPU)

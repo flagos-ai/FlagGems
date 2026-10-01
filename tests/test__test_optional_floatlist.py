@@ -64,8 +64,7 @@ IDENTITY_SHAPES = tu.selected_shapes() + [(0,)]
 ADDENDS_SHAPES = [(0,), (1,), (19,), (256,)]
 
 # (addend, add extra entries past numel, sequence type). Zero / positive /
-# negative / fractional addends; the native kernel ignores entries past numel
-# (``op(tensor([1, 2, 3, 4]), [1, 2, 3, 4]) == [1, 3, 5, 7]``); a tuple operand
+# negative / fractional addends; entries past numel are ignored and a tuple
 # is accepted exactly like a list.
 ADDENDS_ROWS = tu.selected_cases(
     [
@@ -92,7 +91,7 @@ OUT_LAYOUTS = tu.selected_cases(
 _OUT_SIZE = 4
 _OUT_FILL = 7.0
 
-# Special values and the None-path derivative are default-only dimensions.
+# Positive special values stay default-only; derivative rejection stays in quick.
 SPECIAL_CASES = tu.selected_cases(tu.special_value_cases(IDENTITY_DTYPES), quick=[])
 ADDENDS_SPECIAL_CASES = tu.selected_cases(
     tu.special_value_cases([torch.float32]), quick=[]
@@ -179,6 +178,20 @@ def test__test_optional_floatlist_addends(shape, value_range, addend_case):
     assert res_out is not inp
     tu.assert_result_close(res_out, ref_out)
     tu.assert_result_equal(inp, snapshot)
+
+
+@pytest.mark.test_optional_floatlist
+@pytest.mark.parametrize("addends", [[1.5, -0.5, 2.0, 0.0], (1.5, -0.5, 2.0, 0.0)])
+def test__test_optional_floatlist_elementwise_addends(addends):
+    inp = _cpu_input(torch.float32, (4,), ("-1", "1"))
+    ref_inp = tu.to_reference(inp)
+
+    ref_out = torch.ops.aten._test_optional_floatlist(ref_inp, addends)
+    res_out = flag_gems._test_optional_floatlist(inp, addends)
+
+    tu.assert_result_close(res_out, ref_out)
+    tu.assert_result_equal(inp, ref_inp)
+    assert not torch._C._is_alias_of(res_out, inp)
 
 
 @pytest.mark.test_optional_floatlist
@@ -348,3 +361,11 @@ def test__test_optional_floatlist_out_rejects_buffer_dtype(with_addends):
         buffer = torch.empty(3, dtype=torch.float32)
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems._test_optional_floatlist(values, addends, out=buffer)
+
+
+@pytest.mark.test_optional_floatlist
+def test__test_optional_floatlist_rejects_missing_addends():
+    # Optional describes the value (None), not whether the argument can be omitted.
+    values = torch.zeros(2, dtype=torch.float32, device="cpu")
+    with pytest.raises((RuntimeError, TypeError)):
+        flag_gems._test_optional_floatlist(values)
