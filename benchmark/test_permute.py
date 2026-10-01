@@ -12,12 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Benchmark for ``aten::permute`` (a metadata-only view).
-
-consts.DEFAULT_SHAPES contains a 1-D 1-GiB tensor that a permute would only
-alias, so a bounded rank >= 2 shape list is used instead; a caller-supplied
-shape file still wins because set_shapes passes its entries through unchanged.
-"""
+"""Benchmark for ``aten::permute`` (a metadata-only view)."""
 
 import pytest
 import torch
@@ -28,6 +23,8 @@ from . import base, consts, utils
 from .generated_operator_utils import OperatorBenchmark
 
 PERMUTE_SHAPES = [
+    (),
+    (256,),
     (64, 64),
     (1024, 1024),
     (4096, 4096),

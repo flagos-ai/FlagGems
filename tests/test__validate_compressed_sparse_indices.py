@@ -88,9 +88,8 @@ _VALID_SHAPES = [shape for shape in tu.selected_shapes() if len(shape) > 0]
 # both ``is_crow`` directions; these two shapes exercise the two branches.
 _HIGH_RANK_SHAPES = [(2,) * 7 + (4,), (2,) * 8 + (4,)]
 
-# Rank-8/rank-9 descriptors are a supplemental positive dimension and stay out
-# of the quick smoke subset, which keeps only the ordinary valid shapes.
-_SHAPE_CASES = tu.selected_cases(_VALID_SHAPES + _HIGH_RANK_SHAPES, quick=_VALID_SHAPES)
+# Keep both cheap rank-dispatch branches in quick as well as default.
+_SHAPE_CASES = _VALID_SHAPES + _HIGH_RANK_SHAPES
 
 
 def _range_plan(value_range):

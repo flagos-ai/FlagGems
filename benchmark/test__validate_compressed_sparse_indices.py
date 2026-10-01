@@ -124,19 +124,18 @@ def _case_fn(shape, dtype):
 def _build_inputs_fn(plan, dtype, device):
     # The plan's dtype is the index dtype of both tensors, and the tensors must
     # live on the framework device.
-    del device
     batch, cdim, counts, dim, is_crow = plan.builder_args
     nnz = sum(counts)
     # Offsets are the prefix sums of the row lengths and every row's indices are
     # ``arange(count)``, so the leading offset is 0, the offsets are monotone and
     # the terminal offset is exactly ``nnz``.
     compressed = torch.tensor(
-        [0, *itertools.accumulate(counts)], dtype=dtype, device=flag_gems.device
+        [0, *itertools.accumulate(counts)], dtype=dtype, device=device
     )
     plain = torch.tensor(
         [value for count in counts for value in range(count)],
         dtype=dtype,
-        device=flag_gems.device,
+        device=device,
     )
     if batch:
         compressed = compressed.expand(*batch, -1).contiguous()

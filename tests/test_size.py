@@ -88,7 +88,9 @@ SIZE_DIM_ROWS = [
 
 SIZE_DIM_DTYPES = [torch.float32, torch.int64, torch.bool]
 
-SIZE_DIM_RANGES = tu.selected_cases([["-1", "1"], ["min", "max"]], quick=[["-1", "1"]])
+SIZE_DIM_RANGES = tu.selected_cases(
+    tu.selected_ranges() + [["min", "max"]], quick=tu.selected_ranges()
+)
 
 
 @pytest.mark.size
@@ -186,19 +188,21 @@ def test_size_view_dim(storage_shape, layout, dim, dtype):
 
 
 @pytest.mark.size
-def test_size_extent_above_int32():
+@pytest.mark.parametrize("dim", [None, 0])
+def test_size_extent_above_int32(dim):
     # A zero-numel tensor whose first extent exceeds 2**31: the reported int must
     # stay exact rather than wrap through a 32-bit accumulator.
     inp = torch.zeros((2**33, 0), device=flag_gems.device)
     ref_inp = tu.to_reference(inp)
 
-    ref_out = torch.ops.aten.size(ref_inp)
-    res_out = flag_gems.size(inp)
-    _assert_extents(res_out, ref_out)
-
-    ref_dim = torch.ops.aten.size.int(ref_inp, 0)
-    res_dim = flag_gems.size(inp, 0)
-    _assert_dim(res_dim, ref_dim)
+    if dim is None:
+        ref_out = torch.ops.aten.size(ref_inp)
+        res_out = flag_gems.size(inp)
+        _assert_extents(res_out, ref_out)
+    else:
+        ref_out = torch.ops.aten.size.int(ref_inp, dim)
+        res_out = flag_gems.size(inp, dim)
+        _assert_dim(res_out, ref_out)
 
 
 def _sparse_input(layout):

@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
-
 import pytest
 import torch
 
@@ -26,12 +24,13 @@ from .generated_operator_utils import OperatorBenchmark
 # plus the attribute read and the payload is never touched. The shapes only need
 # to be realistic and cheap to allocate.
 SIZE_SHAPES = [
+    (),
     (256,),
     (2, 19, 7),
     (1024, 1024),
     (20, 320, 15),
-    (16, 128, 64),
-    (16, 7, 57, 32),
+    (16, 128, 64, 60),
+    (16, 7, 57, 32, 29),
 ]
 
 
@@ -44,7 +43,7 @@ def _case_fn(shape, dtype):
         params={"dim": None},
         builder_args=(shape, None),
     )
-    if len(shape) >= 2:
+    if shape:
         # int call form, at both boundary positions of the dim argument.
         for dim in (0, -1):
             yield base.BenchmarkCasePlan(
@@ -64,19 +63,7 @@ def _build_inputs_fn(plan, dtype, device):
 
 class SizeBenchmark(OperatorBenchmark):
     def set_shapes(self, shape_file_path=None):
-        # Keep a caller --shape-file, but fall back to the metadata shapes
-        # because core_shapes.yaml has no `size` entry and the base defaults are
-        # multi-million-element allocations.
-        if shape_file_path and os.path.isfile(shape_file_path):
-            super().set_shapes(shape_file_path, default_shapes=SIZE_SHAPES)
-            return
-        self.shapes = [tuple(shape) for shape in SIZE_SHAPES]
-        self.shape_desc = self.DEFAULT_SHAPE_DESC
-
-    def set_more_shapes(self):
-        # 1-D..4-D is already covered and extra shapes would only add allocation
-        # cost to a query that never reads the payload.
-        return []
+        super().set_shapes(shape_file_path, default_shapes=SIZE_SHAPES)
 
 
 @pytest.mark.size

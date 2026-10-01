@@ -173,7 +173,7 @@ _COMPRESSED_CASES = tu.selected_cases(
         for shared in (False, True)
     ],
 )
-_COMPRESSED_DTYPES = [torch.float16, torch.float32]
+_COMPRESSED_DTYPES = _DTYPES
 _BLOCK_CASES = tu.selected_cases(
     [
         ("bsr", (32, 32), 1, True),
@@ -208,7 +208,7 @@ _BACKWARD_UNIQUE_CASES = _coo_cases(
     [
         (shape, sparse_dim, False, dtype)
         for shape, sparse_dim in _BACKWARD_SHAPES
-        for dtype in _HYBRID_DTYPES
+        for dtype in _FLOAT_DTYPES
     ]
 )
 # Repeated coordinates add the colliding stored values in the forward, so those
@@ -432,7 +432,9 @@ def _compressed(shape, density, dtype, seed, csc, share_structure=False):
     Each line stores exactly ``k = round(density * inner)`` entries, so batched
     items have identical stored counts by construction rather than by luck; one
     entry per line is deliberately stored as zero and the rest are
-    ``0.25 + 0.75 * u`` with a random sign, so the dense tail is never rebuilt.
+    floating values use ``0.25 + 0.75 * u`` with a random sign. Integer, boolean
+    and complex payloads use the shared fixture to retain nonzero values and
+    imaginary components.
     """
     rows, cols = shape[-2], shape[-1]
     batch = tuple(shape[:-2])
@@ -456,6 +458,8 @@ def _compressed(shape, density, dtype, seed, csc, share_structure=False):
     magnitude = 0.25 + 0.75 * torch.rand((count,), generator=generator)
     sign = torch.where(torch.rand((count,), generator=generator) < 0.5, -1.0, 1.0)
     values = (magnitude * sign).to(dtype)
+    if not dtype.is_floating_point:
+        values = _make_values(dtype, count, ("-1", "1"), seed).cpu()
     values[::k] = 0
     indptr = torch.arange(0, (lines + 1) * k, k, dtype=torch.int32)
     if n_batch > 1:
@@ -1003,14 +1007,17 @@ def test__to_dense_backward_values(shape, sparse_dim, duplicate, dtype):
 
 @pytest.mark.to_dense
 @pytest.mark.parametrize("shape,sparse_dim", _SPARSE_GRAD_CASES)
-@pytest.mark.parametrize("dtype", [torch.float32])
-def test__to_dense_backward_sparse_input(shape, sparse_dim, dtype):
-    inp, _, ref_inp, _ = _backward_inputs(shape, sparse_dim, False, dtype)
+@pytest.mark.parametrize("dtype", _FLOAT_DTYPES + [torch.complex64])
+@pytest.mark.parametrize("masked_grad", [None, True, False])
+def test__to_dense_backward_sparse_input(shape, sparse_dim, dtype, masked_grad):
+    inp, _, _ = _hybrid(shape, sparse_dim, dtype, ("-1", "1"), 5)
+    inp = inp.detach().requires_grad_()
+    ref_inp = tu.to_reference(inp)
     upstream = tu.make_input(dtype, shape, ("-1", "1"))
     ref_upstream = tu.to_reference(upstream)
 
-    res_out = flag_gems._to_dense(inp)
-    ref_out = torch.ops.aten._to_dense(ref_inp)
+    res_out = flag_gems._to_dense(inp, None, masked_grad)
+    ref_out = torch.ops.aten._to_dense(ref_inp, None, masked_grad)
     res_grad = torch.autograd.grad(res_out, inp, grad_outputs=upstream)[0]
     ref_grad = torch.autograd.grad(ref_out, ref_inp, grad_outputs=ref_upstream)[0]
 
@@ -1018,6 +1025,7 @@ def test__to_dense_backward_sparse_input(shape, sparse_dim, dtype):
     tu.assert_result_equal(res_out, ref_out)
     assert res_grad.device == inp.device
     # Keep the sparse structure instead of densifying it for the comparison.
+    assert res_grad.shape == ref_grad.shape == inp.shape
     assert res_grad.layout == ref_grad.layout == torch.sparse_coo
     res_coalesced = res_grad.coalesce()
     ref_coalesced = ref_grad.coalesce()
