@@ -31,6 +31,8 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+pytestmark = pytest.mark.sparse_bsc_tensor_unsafe
+
 # The nine required dtypes, plus the extras the native factory also accepts.
 _DTYPES = (
     list(tu.REQUIRED_DTYPES)
@@ -114,7 +116,6 @@ def _assert_payload_is_aliased(res_out, ccol, rows, values):
         assert stored.storage_offset() == given.storage_offset()
 
 
-@pytest.mark.sparse_bsc_tensor_unsafe
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("dtype", _DTYPES)
@@ -168,7 +169,6 @@ _DESCRIPTOR_CASES = [
 ]
 
 
-@pytest.mark.sparse_bsc_tensor_unsafe
 @pytest.mark.parametrize("index_dtype", _INDEX_DTYPES)
 @pytest.mark.parametrize(
     "size,block,per_column_block",
@@ -201,7 +201,6 @@ def test__sparse_bsc_tensor_unsafe_descriptor(
     _assert_payload_is_aliased(res_out, ccol, rows, values)
 
 
-@pytest.mark.sparse_bsc_tensor_unsafe
 @pytest.mark.parametrize(
     "pointer_delta", [-1, 1], ids=["truncated_pointers", "oversized_pointers"]
 )
@@ -357,7 +356,6 @@ def test__sparse_bsc_tensor_unsafe_cpu_payload_and_pin_memory():
     _assert_matches(res_out, ref_out, size, torch.float32)
 
 
-@pytest.mark.sparse_bsc_tensor_unsafe
 @pytest.mark.parametrize(
     "dtype,scenario",
     tu.selected_cases(tu.special_value_cases(_SPECIAL_DTYPES), quick=[]),
