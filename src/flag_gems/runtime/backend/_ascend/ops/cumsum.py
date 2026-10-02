@@ -222,7 +222,6 @@ def cumsum(inp, dim=1, *, dtype=None):
     for i in range(dim):
         M *= shape[i]
     inp = inp.contiguous()
-    K = inp.numel() // M // N
 
     if dtype is None:
         dtype = inp.dtype
@@ -231,6 +230,13 @@ def cumsum(inp, dim=1, *, dtype=None):
     if inp.dtype in (torch.int8, torch.int16, torch.int32, torch.uint8):
         dtype = torch.int64
     out = torch.empty_like(inp, dtype=dtype)
+
+    # Empty tensor: return early to avoid the zero-size division below
+    # (issue #4602), matching torch.cumsum semantics.
+    if inp.numel() == 0:
+        return out
+
+    K = inp.numel() // M // N
 
     compute_dtype = out.dtype
     if inp.dtype == torch.float16 or inp.dtype == torch.bfloat16:
