@@ -85,7 +85,7 @@ def _ambient_state():
 @contextlib.contextmanager
 def _ambient_context(case):
     """Apply one ambient configuration and restore it exactly afterwards."""
-    (grad_mode, enabled, deterministic, benchmark, allow_tf32, det_algos) = case
+    grad_mode, enabled, deterministic, benchmark, allow_tf32, det_algos = case
     saved = _ambient_state()
     torch.backends.cudnn.enabled = enabled
     torch.backends.cudnn.deterministic = deterministic
