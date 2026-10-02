@@ -25,8 +25,6 @@ import flag_gems
 
 from . import test_utils as tu
 
-pytestmark = pytest.mark.mkldnn_max_pool2d
-
 # (kernel_size, stride, padding, dilation, ceil_mode)
 _KERNEL = ([2, 2], [2, 2], [0, 0], [1, 1], False)
 _ASYMMETRIC = ([3, 5], [2, 1], [1, 2], [1, 1], False)
@@ -89,6 +87,7 @@ def _assert_operand_metadata(res_out, ref_out, operand):
     assert res_out.device == operand.device
 
 
+@pytest.mark.mkldnn_max_pool2d
 @pytest.mark.parametrize("shape,params", _VALUE_ROWS)
 @pytest.mark.parametrize("dtype", _DTYPES)
 @pytest.mark.parametrize("value_range", _RANGES)
@@ -112,6 +111,7 @@ def test_mkldnn_max_pool2d(shape, dtype, value_range, params):
     tu.assert_result_equal(cand_in.to_dense(), operand_before)
 
 
+@pytest.mark.mkldnn_max_pool2d
 @pytest.mark.parametrize("params", _PARAM_FORMS)
 @pytest.mark.parametrize("dtype", _DTYPES)
 def test_mkldnn_max_pool2d_param_forms(dtype, params):
@@ -130,6 +130,7 @@ def test_mkldnn_max_pool2d_param_forms(dtype, params):
     tu.assert_result_equal(res_out.to_dense(), ref_out.to_dense())
 
 
+@pytest.mark.mkldnn_max_pool2d
 @pytest.mark.parametrize("kernel_size", [[2, 2], [3, 3]])
 @pytest.mark.parametrize("dtype", _DTYPES)
 def test_mkldnn_max_pool2d_default_args(dtype, kernel_size):
@@ -144,6 +145,7 @@ def test_mkldnn_max_pool2d_default_args(dtype, kernel_size):
     tu.assert_result_equal(res_out.to_dense(), ref_out.to_dense())
 
 
+@pytest.mark.mkldnn_max_pool2d
 @pytest.mark.parametrize("dtype", _DTYPES)
 @pytest.mark.parametrize("value_range", _RANGES)
 def test_mkldnn_max_pool2d_out(dtype, value_range):
@@ -175,6 +177,7 @@ def test_mkldnn_max_pool2d_out(dtype, value_range):
 _SPECIAL_ROWS = tu.selected_cases(tu.special_value_cases(_FLOAT_DTYPES), quick=[])
 
 
+@pytest.mark.mkldnn_max_pool2d
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_ROWS)
 def test_mkldnn_max_pool2d_special_values(dtype, scenario):
     # oneDNN propagates +/-inf (inf wins over any finite value) and ignores NaN
@@ -192,6 +195,7 @@ def test_mkldnn_max_pool2d_special_values(dtype, scenario):
 _BACKWARD_SHAPES = tu.selected_cases([(2, 3, 19, 7), (1, 2, 13, 11)], quick=[])
 
 
+@pytest.mark.mkldnn_max_pool2d
 @pytest.mark.parametrize("shape", _BACKWARD_SHAPES)
 @pytest.mark.parametrize("dtype", _FLOAT_DTYPES)
 def test_mkldnn_max_pool2d_backward(dtype, shape):
@@ -219,6 +223,7 @@ def test_mkldnn_max_pool2d_backward(dtype, shape):
     tu.assert_result_equal(res_grad, ref_grad)
 
 
+@pytest.mark.mkldnn_max_pool2d
 @pytest.mark.parametrize("shape,params", _INVALID_CASES)
 @pytest.mark.parametrize("dtype", _DTYPES)
 def test_mkldnn_max_pool2d_invalid_args(shape, dtype, params):
@@ -231,6 +236,7 @@ def test_mkldnn_max_pool2d_invalid_args(shape, dtype, params):
         )
 
 
+@pytest.mark.mkldnn_max_pool2d
 def test_mkldnn_max_pool2d_out_rejects_dense_buffer():
     kernel_size, stride, padding, dilation, ceil_mode = _ASYMMETRIC
     inp = tu.make_input(torch.float32, (2, 3, 19, 7), ["-1", "1"])
