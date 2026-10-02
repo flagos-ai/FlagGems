@@ -12,13 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for the RDNA4-specific split softmax.
+"""Tests for the RDNA split softmax overrides.
 
 The generic softmax test file only uses shapes with either many rows or a short
 reduction, so none of them reach the split path; these cover the regime the arch
-override exists for. The arch loader imports the override under the top-level
-name "rdna4.ops.softmax", so that is where the gate function has to be read from
+override exists for. The arch loader imports the override under a top-level name
+like "rdna4.ops.softmax", so that is where the gate function has to be read from
 to be sure the module under test is the one actually installed.
+
+RDNA3 and RDNA4 share the kernel and the gate structure, differing only in the
+row budget, and every assertion below is written against the module's own
+constants rather than literals. So the same file covers whichever override is
+installed; at most one of them ever is.
 """
 
 import math
@@ -32,12 +37,21 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import conftest as cfg
 
-ARCH_SOFTMAX = sys.modules.get("rdna4.ops.softmax")
-INSTALLED = ARCH_SOFTMAX is not None and ARCH_SOFTMAX.softmax is flag_gems.softmax
+ARCH_NAMES = ("rdna3", "rdna4")
+ARCH_SOFTMAX = next(
+    (
+        mod
+        for name in ARCH_NAMES
+        if (mod := sys.modules.get(f"{name}.ops.softmax")) is not None
+        and mod.softmax is flag_gems.softmax
+    ),
+    None,
+)
+INSTALLED = ARCH_SOFTMAX is not None
 
 pytestmark = pytest.mark.skipif(
     not INSTALLED,
-    reason="RDNA4 split softmax is not the installed softmax on this device",
+    reason="no RDNA split softmax is the installed softmax on this device",
 )
 
 # Element widths the gate treats differently, and the widths the test suite has to
@@ -100,7 +114,7 @@ def split_plan(shape, dim, itemsize):
 @pytest.mark.softmax
 @pytest.mark.parametrize("itemsize", ITEMSIZES)
 @pytest.mark.parametrize("shape, dim", SPLIT_SHAPES)
-def test_rdna4_softmax_gate_engages(shape, dim, itemsize):
+def test_split_softmax_gate_engages(shape, dim, itemsize):
     m, n, _ = mnk(shape, dim)
     plan = split_plan(shape, dim, itemsize)
     assert plan is not None, f"expected the split path for M={m} N={n}"
@@ -117,14 +131,14 @@ def test_rdna4_softmax_gate_engages(shape, dim, itemsize):
 @pytest.mark.softmax
 @pytest.mark.parametrize("itemsize", ITEMSIZES)
 @pytest.mark.parametrize("shape, dim", GENERIC_SHAPES)
-def test_rdna4_softmax_gate_defers(shape, dim, itemsize):
+def test_split_softmax_gate_defers(shape, dim, itemsize):
     assert (
         split_plan(shape, dim, itemsize) is None
     ), f"{shape} dim={dim} should fall through to the generic implementation"
 
 
 @pytest.mark.softmax
-def test_rdna4_softmax_gate_limits_follow_element_width():
+def test_split_softmax_gate_limits_follow_element_width():
     """Pin both limits from both sides, for both element widths.
 
     The two crossovers sit in different places, so a shape the gate accepts for a
@@ -165,7 +179,7 @@ def test_rdna4_softmax_gate_limits_follow_element_width():
 @pytest.mark.softmax
 @pytest.mark.parametrize("shape, dim", SPLIT_SHAPES + GENERIC_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_rdna4_softmax(shape, dim, dtype):
+def test_split_softmax(shape, dim, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp, True)
 
@@ -181,7 +195,7 @@ def test_rdna4_softmax(shape, dim, dtype):
 @pytest.mark.softmax
 @pytest.mark.parametrize("shape, dim", SPLIT_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_rdna4_softmax_out(shape, dim, dtype):
+def test_split_softmax_out(shape, dim, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp, True)
     # Deliberately the wrong size, so the resize path is covered too.
@@ -196,7 +210,7 @@ def test_rdna4_softmax_out(shape, dim, dtype):
 
 @pytest.mark.softmax
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_rdna4_softmax_half_to_float(dtype):
+def test_split_softmax_half_to_float(dtype):
     if dtype is torch.float32:
         pytest.skip("half_to_float only applies to reduced-precision input")
     shape, dim = SPLIT_SHAPES[0]
@@ -215,7 +229,7 @@ def test_rdna4_softmax_half_to_float(dtype):
 
 @pytest.mark.softmax
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_rdna4_softmax_neg_inf(dtype):
+def test_split_softmax_neg_inf(dtype):
     """Masked attention rows are the reason the combine needs an -inf guard.
 
     A chunk that is entirely -inf must contribute a zero sum instead of exp(nan),
@@ -256,7 +270,7 @@ def test_rdna4_softmax_neg_inf(dtype):
 
 @pytest.mark.softmax
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_rdna4_softmax_at_row_cap(dtype):
+def test_split_softmax_at_row_cap(dtype):
     """Cover grid.y at the row cap: every row combines its own set of partials.
 
     The shapes in SPLIT_SHAPES only reach M=4, so without this the widest grid the
@@ -286,7 +300,7 @@ def test_rdna4_softmax_at_row_cap(dtype):
 
 
 @pytest.mark.softmax
-def test_rdna4_softmax_non_contiguous():
+def test_split_softmax_non_contiguous():
     shape, dim = SPLIT_SHAPES[0]
     n = shape[dim]
     base = torch.randn(
