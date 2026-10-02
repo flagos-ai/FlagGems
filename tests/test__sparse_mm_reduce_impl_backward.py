@@ -122,9 +122,11 @@ def _make_inputs(shape, dtype, value_range, reduce):
 def _make_special_inputs(shape, dtype, scenario, reduce, placement):
     m, k, n, nnz = shape
     operands = [
-        _special_dense(dims, dtype, scenario)
-        if placement in (name, "all")
-        else _dense(dims, dtype, ("-1", "1"))
+        (
+            _special_dense(dims, dtype, scenario)
+            if placement in (name, "all")
+            else _dense(dims, dtype, ("-1", "1"))
+        )
         for name, dims in [
             ("values", (m, nnz)),
             ("grad_out", (m, n)),
