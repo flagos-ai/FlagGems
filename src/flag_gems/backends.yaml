@@ -36,6 +36,12 @@
 # "triton:" — vendor-specific Triton packages for this backend
 # "flagtree:" — FlagTree package for this backend (preferred)
 #
+# "extra_index:" — additional PyPI index URL searched (after pypi_base and
+#   mirror) when installing this backend's deps and compiler package.
+#   TEMPORARY escape hatch only: all packages should normally be published
+#   to pypi_base (FlagOS). Use this only while a vendor's packages are not
+#   yet available there, and remove it once FlagOS catches up.
+#
 # "env:" — environment variables to export (key: value pairs).
 #   Written into .venv/bin/activate by setup.sh so that
 #   `source .venv/bin/activate` sets up the full environment.
@@ -335,11 +341,16 @@ backends:
 
   thead:
     python: "3.12"
-    triton: triton==3.5.0+ppu2.0.0.oe
+    triton: triton==3.6.0+v0.2.0.ppu2.1.1
+    flagtree: flagtree==0.6.2a2+ppu3.6
+    # TEMPORARY: flagtree/torch for thead aren't on FlagOS's pypi_base yet,
+    # so pull them from the vendor's index until FlagOS catches up.
+    # Remove this once those versions are published to pypi_base.
+    extra_index: "https://pkg.flytiger-eco.com/artifactory/api/pypi/pypi_index/simple"
     env_source:
       - /usr/local/PPU_SDK/envsetup.sh
     deps:
-      - torch==2.9.0+ppu2.0.0.oe
+      - torch==2.10.0+v0.1.0.ppu2.1.1
 
   tsingmicro:
     python: "3.10"
