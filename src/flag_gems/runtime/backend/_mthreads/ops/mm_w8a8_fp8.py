@@ -26,6 +26,16 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils.triton_version_utils import HAS_TLE
 
+_HAS_WS = False
+if HAS_TLE:
+    import triton.experimental.tle.language as tle
+
+    # Released FlagTree builds may provide TLE without the SQMMA/WS API.
+    _HAS_WS = hasattr(tle, "pipe") and all(
+        hasattr(tle.gpu, name)
+        for name in ("alloc", "smem", "copy", "warp_specialize", "wgmma", "wgmma_wait")
+    )
+
 _CONFIG_YAML = str(Path(__file__).resolve().parent.parent / "tune_configs.yaml")
 _TUNE_KEY = [
     "M",
@@ -38,9 +48,8 @@ _TUNE_KEY = [
     "DESCRIPTOR",
     "SPLIT_K",
 ]
-if HAS_TLE:
+if _HAS_WS:
     # Multi-consumer SQMMA requires the MUSA compiler fixes in FlagTree #1267.
-    import triton.experimental.tle.language as tle
 
     def _set_blocks(args):
         args["A"].block_shape = [args["BM"], args["BK"]]
@@ -688,19 +697,18 @@ def _launch_ws_tuned(kernel, grid, args):
             meta[name] for name in tuple(kernel.signature.parameters)[len(args) :]
         )
         launch_grid = (tuple(grid(meta)) + (1, 1))[:3]
-        cached = (compiled, meta, tail, compiled[launch_grid])
+        cached = (meta, tail, compiled[launch_grid])
         _WS_LAUNCH_CACHE[key] = cached
         if len(_WS_LAUNCH_CACHE) > 128:
             _WS_LAUNCH_CACHE.popitem(last=False)
     else:
         _WS_LAUNCH_CACHE.move_to_end(key)
-        compiled, meta, tail, launch = cached
+        meta, tail, launch = cached
         args[0].block_shape = [meta["BM"], meta["BK"]]
         args[1].block_shape = [meta["BN"], meta["BK"]]
         if "FRAGMENTED" in meta:
             args[2].block_shape = [max(32, meta["BN"] // 4), meta["BK"]]
         launch(*args, *tail)
-    return cached[:2]
 
 
 def _set_descriptor_blocks(args):
@@ -946,7 +954,7 @@ def _launch(a, b, out, sa, sb, sa_stride, sb_stride, bias, sr, sr_stride):
     )
     split = _select_split_k(m, n, k, descriptor)
     if (
-        HAS_TLE
+        _HAS_WS
         and descriptor
         and split == 1
         and min(m, n, k) >= 64

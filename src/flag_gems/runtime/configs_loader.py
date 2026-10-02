@@ -675,6 +675,8 @@ class TunedConfigLoader(object):
             ]
 
         if op_name in (
+            "mm_w8a8_fp8_musa_ws",
+            "mm_w8a8_fp8_musa_ws_default",
             "mm_w8a8_fp8_musa_ws_fragmented",
             "mm_w8a8_fp8_musa_ws_fragmented_default",
         ):
@@ -689,7 +691,9 @@ class TunedConfigLoader(object):
                         PW=pw,
                         STAGES=stages,
                         GM=gm,
-                        FRAGMENTED=fragmented,
+                        **(
+                            {"FRAGMENTED": fragmented} if fragmented is not None else {}
+                        ),
                     ),
                     num_warps=cw,
                     num_stages=1,
@@ -703,34 +707,11 @@ class TunedConfigLoader(object):
                 for pw in ranges["PW"]
                 for stages in ranges["STAGES"]
                 for gm in ranges["GM"]
-                for fragmented in ranges["FRAGMENTED"]
+                for fragmented in ranges.get("FRAGMENTED", [None])
                 if nc * cw + pw <= 32
                 and (not fragmented or nc == 2)
                 and (bm + (bn + bn // 4 if fragmented else nc * bn)) * bk * stages
                 <= 192 * 1024
-                and 16 <= bm * bn // (cw * 32) <= 128
-            ]
-
-        if op_name in ("mm_w8a8_fp8_musa_ws", "mm_w8a8_fp8_musa_ws_default"):
-            return [
-                triton.Config(
-                    dict(
-                        BM=bm, BN=bn, BK=bk, NC=nc, CW=cw, PW=pw, STAGES=stages, GM=gm
-                    ),
-                    num_warps=cw,
-                    num_stages=1,
-                    pre_hook=pre_hook,
-                )
-                for bm in ranges["BM"]
-                for bn in ranges["BN"]
-                for bk in ranges["BK"]
-                for nc in ranges["NC"]
-                for cw in ranges["CW"]
-                for pw in ranges["PW"]
-                for stages in ranges["STAGES"]
-                for gm in ranges["GM"]
-                if nc * cw + pw <= 32
-                and (bm + nc * bn) * bk * stages <= 192 * 1024
                 and 16 <= bm * bn // (cw * 32) <= 128
             ]
 
