@@ -373,6 +373,22 @@ def linear(
     )
 
     # ========================================================
+    # M == 0
+    #
+    # Empty batch. Both kernels below are grid-sized by M, so an empty input
+    # would launch them with a zero-sized grid, which Ascend's runtime rejects
+    # ("linear_kernel, error code is 107000 / Parameter verification failed").
+    # That error is raised as a C++ exception from the launcher and therefore
+    # aborts the whole process instead of being catchable from Python.
+    # ========================================================
+
+    if M == 0:
+        return output.reshape(
+            *original_shape[:-1],
+            N,
+        )
+
+    # ========================================================
     # M == 1
     #
     # Autoregressive decode / GEMV specialization.
