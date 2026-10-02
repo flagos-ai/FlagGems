@@ -256,6 +256,7 @@ test = [
     "openpyxl==3.1.5",
     "pandas==2.3.3",
     "pytest==9.0.3",
+    "pytest-timeout>=2.3.1",
     "pytest-md-report==0.8.0",
     # Cap scipy below 1.18.0: scipy>=1.18.0 requires numpy>=2.0.0, which forces
     # numpy to upgrade to 2.x. On Iluvatar the container's pre-installed torch
