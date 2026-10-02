@@ -75,7 +75,7 @@ permissions:
 
 jobs:
   test:
-    if: ${{ inputs.backend != 'iluvatar' && inputs.backend != 'kunlunxin' && inputs.backend != 'metax-maca3810' && inputs.backend != 'hygon' && inputs.backend != 'mthreads-musa520' }}
+    if: ${{ inputs.backend != 'iluvatar' && inputs.backend != 'kunlunxin' && inputs.backend != 'metax-maca3810' && inputs.backend != 'hygon' && inputs.backend != 'mthreads-musa520' && inputs.backend != 'thead' }}
     runs-on: ${{ inputs.runner_label }}
     concurrency:
       group: >-
@@ -242,6 +242,57 @@ jobs:
         env:
           CHANGED_FILES: ${{ inputs.changed_files }}
         run: |
+          tools/test-op.sh ${{ inputs.pr_id }}
+
+  # THead runs inside a container on the flagcicd-810e runner, since the PPU
+  # driver/runtime it needs is only set up inside this image.
+  # Equivalent to:
+  #   docker run --rm -it \
+  #     --device=/dev/alixpu --device=/dev/alixpu_ctl \
+  #     pkg.flytiger-eco.com/docker_release/pytorch:v2.1.1-2.10.0-ubuntu24.04-cuda13.0-py312 bash
+  # with GitHub Actions creating/starting the container and exec'ing each step.
+  #
+  # Unlike hygon/metax/iluvatar/mthreads below, this image only ships a bare
+  # torch — flagtree for this backend isn't published to FlagOS's pypi_base
+  # yet (see backends.yaml's extra_index comment), so there's nothing to
+  # reconcile against. Run setup-flaggems/setup.sh here to install it from the
+  # vendor's temporary index instead of reconcile_backend_deps.py.
+  test-thead:
+    if: ${{ inputs.backend == 'thead' }}
+    runs-on: >-
+      ${{ github.repository == 'flagos-ai/FlagGems-vllm'
+          && inputs.runs_on_vllm
+          || inputs.runs_on_default }}
+    container:
+      image: ${{ inputs.container_image }}
+      options: ${{ inputs.container_options }}
+    concurrency:
+      group: >-
+        op-test-${{ inputs.backend }}-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        continue-on-error: true
+      - uses: ./.github/actions/checkout-retry
+      - uses: ./.github/actions/setup-flaggems
+        with:
+          backend: ${{ inputs.backend }}
+          gpu_check_script: ${{ inputs.gpu_check_script }}
+
+      - name: Test alpha ops
+        if: ${{ inputs.test_script != '' }}
+        env:
+          CHANGED_FILES: ${{ inputs.changed_files }}
+        shell: bash
+        run: |
+          bash ${{ inputs.test_script }} ${{ inputs.backend }} ${{ inputs.pr_id }}
+      - name: Run backend tests
+        if: ${{ inputs.test_script == '' }}
+        shell: bash
+        env:
+          CHANGED_FILES: ${{ inputs.changed_files }}
+        run: |
+          source .venv/bin/activate
           tools/test-op.sh ${{ inputs.pr_id }}
 
   # Hygon runs inside a container on whichever hygon-bw1000-* server this

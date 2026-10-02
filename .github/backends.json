@@ -155,7 +155,15 @@
     "command_aliases": ["thead"],
     "label": "vendor/THead",
     "gpu_check": "tools/gpu_check_thead.sh",
-    "enabled": true
+    "enabled": true,
+    "containerized": true,
+    "container": {
+      "image": "pkg.flytiger-eco.com/docker_release/pytorch:v2.1.1-2.10.0-ubuntu24.04-cuda13.0-py312",
+      "options": "--device=/dev/alixpu --device=/dev/alixpu_ctl --shm-size=256g --ulimit memlock=-1 --ulimit stack=67108864",
+      "volumes": [],
+      "runs_on_default": "flagcicd-810e",
+      "runs_on_vllm": "flagcicd-810e"
+    }
   },
   {
     "backend": "tsingmicro",
