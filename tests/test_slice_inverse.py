@@ -29,8 +29,6 @@ import flag_gems
 
 from . import test_utils as tu
 
-pytestmark = pytest.mark.slice_inverse
-
 DTYPES = list(tu.REQUIRED_DTYPES)
 if flag_gems.runtime.device.support_fp64:
     DTYPES.append(torch.float64)
@@ -88,6 +86,7 @@ def _assert_view(result, reference, src, base, operands):
     assert _snapshot(base, src) == operands
 
 
+@pytest.mark.slice_inverse
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("dtype", DTYPES)
@@ -144,6 +143,7 @@ REGION_CASES = tu.selected_cases(
 )
 
 
+@pytest.mark.slice_inverse
 @pytest.mark.parametrize("shape,region,dtype", REGION_CASES)
 def test_slice_inverse_region(shape, region, dtype):
     base = tu.make_input(dtype, shape, ["-1", "1"])
@@ -170,6 +170,7 @@ IGNORED_ARG_CASES = tu.selected_cases(
 )
 
 
+@pytest.mark.slice_inverse
 @pytest.mark.parametrize("shape,params", IGNORED_ARG_CASES)
 def test_slice_inverse_ignores_slice_args(shape, params):
     base = tu.make_input(torch.float32, shape, ["-1", "1"])
@@ -196,6 +197,7 @@ LAYOUTS = {
 }
 
 
+@pytest.mark.slice_inverse
 @pytest.mark.parametrize("layout", LAYOUTS.values(), ids=list(LAYOUTS))
 @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
 def test_slice_inverse_layout(layout, dtype):
@@ -226,6 +228,7 @@ DEGENERATE_ROWS = [
 DEGENERATE_CASES = DEGENERATE_ROWS
 
 
+@pytest.mark.slice_inverse
 @pytest.mark.parametrize("dtype,shape", DEGENERATE_CASES)
 def test_slice_inverse_degenerate(dtype, shape):
     base = tu.make_input(dtype, shape, ["-1", "1"])
@@ -246,6 +249,7 @@ SPECIAL_DTYPES = [dtype for dtype in DTYPES if dtype.is_floating_point]
 SPECIAL_CASES = tu.selected_cases(tu.special_value_cases(SPECIAL_DTYPES), quick=[])
 
 
+@pytest.mark.slice_inverse
 @pytest.mark.parametrize("dtype,scenario", SPECIAL_CASES)
 def test_slice_inverse_special_values(dtype, scenario):
     base = tu.make_special_input(dtype, scenario)
@@ -262,6 +266,7 @@ def test_slice_inverse_special_values(dtype, scenario):
     _assert_view(res, ref, src, base, operands)
 
 
+@pytest.mark.slice_inverse
 def test_slice_inverse_reads_self_and_writes_through():
     base = torch.full((4, 6), 1.0, device=flag_gems.device)
     src = torch.full((2, 6), 7.0, device=flag_gems.device)
@@ -292,6 +297,7 @@ BACKWARD_CASES = tu.selected_cases(
 )
 
 
+@pytest.mark.slice_inverse
 @pytest.mark.parametrize("dtype,shape", BACKWARD_CASES)
 def test_slice_inverse_backward(dtype, shape):
     # Native complex autograd is unsupported. Partial regions return gradients
@@ -321,6 +327,7 @@ def test_slice_inverse_backward(dtype, shape):
 OUT_OF_STORAGE_CASES = [((4, 6), (10, 6), 5), ((2, 3), (6, 3), 2), ((4,), (8,), 4)]
 
 
+@pytest.mark.slice_inverse
 @pytest.mark.parametrize("self_shape,src_shape,offset", OUT_OF_STORAGE_CASES)
 def test_slice_inverse_src_out_of_storage(self_shape, src_shape, offset):
     inp = tu.make_input(torch.float32, self_shape, ["-1", "1"])
@@ -329,6 +336,7 @@ def test_slice_inverse_src_out_of_storage(self_shape, src_shape, offset):
         flag_gems.slice_inverse(inp, too_large)
 
 
+@pytest.mark.slice_inverse
 @pytest.mark.parametrize("bad_src", [[1.0, 2.0], 3.0])
 def test_slice_inverse_non_tensor_src(bad_src):
     inp = tu.make_input(torch.float32, (4, 6), ["-1", "1"])
@@ -336,6 +344,7 @@ def test_slice_inverse_non_tensor_src(bad_src):
         flag_gems.slice_inverse(inp, bad_src)
 
 
+@pytest.mark.slice_inverse
 @pytest.mark.parametrize("src_dtype", DTYPES)
 def test_slice_inverse_src_dtype_does_not_change_result(src_dtype):
     base = tu.make_input(torch.float32, (4, 6), ["-1", "1"])
