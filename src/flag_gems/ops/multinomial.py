@@ -65,7 +65,7 @@ def multinomial_with_replacement(
     tl.store(out_ptr + y_off + n, start, mask=n < N)
 
 
-def multinomial(prob, n_samples, with_replacement=False, *, gen=None):
+def multinomial(prob, n_samples, with_replacement=False, *, generator=None):
     logger.debug("GEMS MULTINOMIAL")
     assert prob.dtype in (torch.float16, torch.float32, torch.bfloat16, torch.float64)
     assert 0 < prob.dim() <= 2, "prob_dist must be 1 or 2 dim"
@@ -85,7 +85,7 @@ def multinomial(prob, n_samples, with_replacement=False, *, gen=None):
         prob_f32.clamp_(min=1e-12)  # avoid 0/q=0 ties for zero-prob categories
         q = torch.empty(
             prob.shape, dtype=torch.float32, device=prob.device
-        ).exponential_(1.0)
+        ).exponential_(1.0, generator=generator)
         q.clamp_(min=1e-20)  # prevent division overflow
         s = prob_f32 / q
         if n_samples == 1:
@@ -108,7 +108,9 @@ def multinomial(prob, n_samples, with_replacement=False, *, gen=None):
     # The CTA level parallelism is framed in a 2d grid of blocks with grid.y
     # indexing into distributions and grid.x output sample batches
     increment = n_dist * n_samples
-    philox_seed, philox_offset = philox_backend_seed_offset(increment, generator=gen)
+    philox_seed, philox_offset = philox_backend_seed_offset(
+        increment, generator=generator
+    )
     grid = lambda META: (triton.cdiv(n_samples, META["NBLOCK"]), n_dist)
     multinomial_with_replacement[grid](
         cum_prob, out, n_categories, n_samples, philox_seed, philox_offset
