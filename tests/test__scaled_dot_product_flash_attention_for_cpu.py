@@ -348,9 +348,11 @@ def test__scaled_dot_product_flash_attention_for_cpu_special_values(
     dtype, scenario, slot
 ):
     q, k, v = (
-        _special_input(dtype, scenario, SPECIAL_SHAPE)
-        if slot in (name, "all")
-        else _cpu_input(dtype, SPECIAL_SHAPE, ["-1", "1"])
+        (
+            _special_input(dtype, scenario, SPECIAL_SHAPE)
+            if slot in (name, "all")
+            else _cpu_input(dtype, SPECIAL_SHAPE, ["-1", "1"])
+        )
         for name in ("q", "k", "v")
     )
     ref_q, ref_k, ref_v = (tu.to_reference(t) for t in (q, k, v))

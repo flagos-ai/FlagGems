@@ -36,7 +36,6 @@ def initialize_nnpack():
 
 
 pytestmark = [
-    pytest.mark.nnpack_spatial_convolution,
     pytest.mark.skipif(
         not _NNPACK_AVAILABLE,
         reason="PyTorch was built without NNPACK",
@@ -152,6 +151,7 @@ def _conv_operands(shape, out_channels, value_range, kernel=3):
     return inp, weight, bias
 
 
+@pytest.mark.nnpack_spatial_convolution
 @pytest.mark.parametrize("shape,out_channels", _SHAPE_CASES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 def test__nnpack_spatial_convolution(shape, out_channels, value_range):
@@ -166,6 +166,7 @@ def test__nnpack_spatial_convolution(shape, out_channels, value_range):
     tu.assert_result_close(res_out, ref_out)
 
 
+@pytest.mark.nnpack_spatial_convolution
 @pytest.mark.parametrize("kernel,padding", _KERNEL_CASES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 def test__nnpack_spatial_convolution_kernel_size(kernel, padding, value_range):
@@ -180,6 +181,7 @@ def test__nnpack_spatial_convolution_kernel_size(kernel, padding, value_range):
     tu.assert_result_close(res_out, ref_out)
 
 
+@pytest.mark.nnpack_spatial_convolution
 @pytest.mark.parametrize("padding,stride", _PAD_STRIDE_CASES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 def test__nnpack_spatial_convolution_padding_stride(padding, stride, value_range):
@@ -194,6 +196,7 @@ def test__nnpack_spatial_convolution_padding_stride(padding, stride, value_range
     tu.assert_result_close(res_out, ref_out)
 
 
+@pytest.mark.nnpack_spatial_convolution
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 def test__nnpack_spatial_convolution_default_stride(value_range):
     # stride has the schema default [1, 1]; omitting it checks that the public
@@ -209,6 +212,7 @@ def test__nnpack_spatial_convolution_default_stride(value_range):
     tu.assert_result_close(res_out, ref_out)
 
 
+@pytest.mark.nnpack_spatial_convolution
 @pytest.mark.parametrize("with_bias", [True, False])
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 def test__nnpack_spatial_convolution_bias(with_bias, value_range):
@@ -225,6 +229,7 @@ def test__nnpack_spatial_convolution_bias(with_bias, value_range):
     tu.assert_result_close(res_out, ref_out)
 
 
+@pytest.mark.nnpack_spatial_convolution
 @pytest.mark.parametrize("shape,out_channels", _SHAPE_CASES[:2])
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 def test__nnpack_spatial_convolution_out(shape, out_channels, value_range):
@@ -247,6 +252,7 @@ def test__nnpack_spatial_convolution_out(shape, out_channels, value_range):
     tu.assert_result_close(res_ret, ref_out)
 
 
+@pytest.mark.nnpack_spatial_convolution
 @pytest.mark.parametrize("operand", ["input", "weight"])
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 def test__nnpack_spatial_convolution_noncontiguous(operand, value_range):
@@ -268,6 +274,7 @@ def test__nnpack_spatial_convolution_noncontiguous(operand, value_range):
     tu.assert_result_close(res_out, ref_out)
 
 
+@pytest.mark.nnpack_spatial_convolution
 @pytest.mark.parametrize("shape,out_channels,padding,stride", _BACKWARD_CASES)
 def test__nnpack_spatial_convolution_backward(shape, out_channels, padding, stride):
     inp, weight, bias = _conv_operands(shape, out_channels, ["-1", "1"])
@@ -292,6 +299,7 @@ def test__nnpack_spatial_convolution_backward(shape, out_channels, padding, stri
         tu.assert_result_close(res_grad, ref_grad)
 
 
+@pytest.mark.nnpack_spatial_convolution
 @pytest.mark.parametrize(
     "dtype,scenario",
     tu.selected_cases(tu.special_value_cases([torch.float32]), quick=[]),
@@ -315,6 +323,7 @@ def test__nnpack_spatial_convolution_special_values(
     tu.assert_result_close(res_out, ref_out)
 
 
+@pytest.mark.nnpack_spatial_convolution
 @pytest.mark.parametrize("dtype", _UNSUPPORTED_DTYPES)
 def test__nnpack_spatial_convolution_unsupported_dtype(dtype):
     inp, weight, bias = _conv_operands((2, 3, 19, 7), 6, ["-1", "1"])
@@ -324,6 +333,7 @@ def test__nnpack_spatial_convolution_unsupported_dtype(dtype):
         flag_gems._nnpack_spatial_convolution(inp, weight, bias, [1, 1], [1, 1])
 
 
+@pytest.mark.nnpack_spatial_convolution
 @pytest.mark.parametrize("shape", _INVALID_INPUT_SHAPES)
 def test__nnpack_spatial_convolution_invalid_input_shape(shape):
     inp = _cpu_input(shape, ["-1", "1"])
@@ -334,6 +344,7 @@ def test__nnpack_spatial_convolution_invalid_input_shape(shape):
         flag_gems._nnpack_spatial_convolution(inp, weight, bias, [1, 1], [1, 1])
 
 
+@pytest.mark.nnpack_spatial_convolution
 @pytest.mark.parametrize("weight_shape", _BAD_WEIGHT_SHAPES)
 def test__nnpack_spatial_convolution_invalid_weight_shape(weight_shape):
     inp = _cpu_input((2, 3, 19, 7), ["-1", "1"])
@@ -344,6 +355,7 @@ def test__nnpack_spatial_convolution_invalid_weight_shape(weight_shape):
         flag_gems._nnpack_spatial_convolution(inp, weight, bias, [1, 1], [1, 1])
 
 
+@pytest.mark.nnpack_spatial_convolution
 @pytest.mark.parametrize("padding", _BAD_PADDING)
 def test__nnpack_spatial_convolution_negative_padding(padding):
     inp, weight, bias = _conv_operands((2, 3, 19, 7), 6, ["-1", "1"])
@@ -352,6 +364,7 @@ def test__nnpack_spatial_convolution_negative_padding(padding):
         flag_gems._nnpack_spatial_convolution(inp, weight, bias, padding, [1, 1])
 
 
+@pytest.mark.nnpack_spatial_convolution
 @pytest.mark.parametrize("stride", _BAD_STRIDE)
 def test__nnpack_spatial_convolution_negative_stride(stride):
     inp, weight, bias = _conv_operands((2, 3, 19, 7), 6, ["-1", "1"])
@@ -360,6 +373,7 @@ def test__nnpack_spatial_convolution_negative_stride(stride):
         flag_gems._nnpack_spatial_convolution(inp, weight, bias, [1, 1], stride)
 
 
+@pytest.mark.nnpack_spatial_convolution
 def test__nnpack_spatial_convolution_non_tensor_weight():
     inp, _, bias = _conv_operands((2, 3, 19, 7), 6, ["-1", "1"])
 
@@ -367,6 +381,7 @@ def test__nnpack_spatial_convolution_non_tensor_weight():
         flag_gems._nnpack_spatial_convolution(inp, [[[0.0]]], bias, [1, 1], [1, 1])
 
 
+@pytest.mark.nnpack_spatial_convolution
 @pytest.mark.parametrize("with_bias", [False, True])
 def test__nnpack_spatial_convolution_nonsquare_kernel(with_bias):
     inp = _cpu_input((2, 3, 9, 7), ["-1", "1"])
