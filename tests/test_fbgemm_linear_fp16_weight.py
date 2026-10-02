@@ -20,7 +20,6 @@ import flag_gems
 from . import test_utils as tu
 
 pytestmark = [
-    pytest.mark.fbgemm_linear_fp16_weight,
     # Native FBGEMM entry points emit vendor deprecation notices; only warnings
     # are filtered, so a vendor notice cannot be read as a numeric failure.
     pytest.mark.filterwarnings("ignore::UserWarning"),
@@ -93,6 +92,7 @@ _SHAPE_ROWS = tu.selected_cases(
 )
 
 
+@pytest.mark.fbgemm_linear_fp16_weight
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("bias_form", _BIAS_FORMS)
 @pytest.mark.parametrize("shape_row", _SHAPE_ROWS)
@@ -143,6 +143,7 @@ def _strided_operands(kind, act_shape, weight_shape, bias_shape):
     return inp, weight, bias
 
 
+@pytest.mark.fbgemm_linear_fp16_weight
 @pytest.mark.parametrize("layout", _LAYOUT_CASES)
 def test_fbgemm_linear_fp16_weight_strided_operands(layout):
     kind, act_shape, weight_shape, bias_shape = layout
@@ -187,6 +188,7 @@ def _special_operand(shape, dtype, scenario):
     return pattern.repeat(repeats)[:numel].reshape(shape)
 
 
+@pytest.mark.fbgemm_linear_fp16_weight
 @pytest.mark.parametrize("operand,dtype,scenario", _SPECIAL_ROWS)
 def test_fbgemm_linear_fp16_weight_special_values(operand, dtype, scenario):
     act_shape, weight_shape = (2, 19, 7), (16, 7)
@@ -220,6 +222,7 @@ _BACKWARD_ROWS = tu.selected_cases(
 )
 
 
+@pytest.mark.fbgemm_linear_fp16_weight
 @pytest.mark.parametrize("act_shape,weight_shape,bias_shape", _BACKWARD_ROWS)
 @pytest.mark.parametrize(
     "bias_dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64]
@@ -271,6 +274,7 @@ _BIAS_SHAPE_ROWS = tu.selected_cases(
 )
 
 
+@pytest.mark.fbgemm_linear_fp16_weight
 @pytest.mark.parametrize("bias_dtype", _BIAS_DTYPES)
 @pytest.mark.parametrize("shape_row", _BIAS_SHAPE_ROWS)
 def test_fbgemm_linear_fp16_weight_bias_dtype(shape_row, bias_dtype):
@@ -297,6 +301,7 @@ _ZERO_K_ROWS = tu.selected_cases(
 )
 
 
+@pytest.mark.fbgemm_linear_fp16_weight
 @pytest.mark.parametrize("act_shape,weight_shape,bias_shape", _ZERO_K_ROWS)
 def test_fbgemm_linear_fp16_weight_zero_k_metadata(act_shape, weight_shape, bias_shape):
     inp = _input(_DTYPE, act_shape, _FINITE)
@@ -394,6 +399,7 @@ def _invalid_call(kind, value):
     raise AssertionError(kind)
 
 
+@pytest.mark.fbgemm_linear_fp16_weight
 @pytest.mark.parametrize("row", _NEGATIVE_ROWS)
 def test_fbgemm_linear_fp16_weight_invalid(row):
     args, kwargs = _invalid_call(*row)
