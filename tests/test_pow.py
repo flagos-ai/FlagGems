@@ -20,6 +20,12 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
+# `pow` is the ops-file stem (`ops/pow.py`, `_ascend/ops/pow.py`) and therefore
+# the pytest marker `tools/test-op.sh` selects when a PR touches only that file
+# (see `tools/ci_checks/derive_changed_operators.py`). The operators.yaml ids
+# are the five overloads marked below, so the bare marker has to be carried here
+# too -- otherwise such a PR selects zero tests and the backend job fails.
+@pytest.mark.pow
 @pytest.mark.pow_tensor_tensor
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -48,6 +54,7 @@ def test_pow_tensor_tensor(shape, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
+@pytest.mark.pow
 @pytest.mark.pow_tensor_tensor_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -74,6 +81,7 @@ def test_pow_tensor_tensor_(shape, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
+@pytest.mark.pow
 @pytest.mark.pow_tensor_scalar
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize(
@@ -112,6 +120,7 @@ def test_pow_tensor_scalar(scalar, shape, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
+@pytest.mark.pow
 @pytest.mark.pow_tensor_scalar_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("scalar", utils.SCALARS)
@@ -146,6 +155,7 @@ def test_pow_tensor_scalar_(scalar, shape, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
+@pytest.mark.pow
 @pytest.mark.pow_scalar
 @pytest.mark.parametrize("scalar", utils.SCALARS)
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
