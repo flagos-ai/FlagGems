@@ -32,8 +32,6 @@ import flag_gems
 
 from . import test_utils as tu
 
-pytestmark = pytest.mark.mkldnn_linear_backward_weights
-
 NATIVE = torch.ops.aten.mkldnn_linear_backward_weights
 OUT_FEATURES = 8
 
@@ -120,6 +118,7 @@ def _dense_operands(shape, dtype):
     return grad_output, inp, weight
 
 
+@pytest.mark.mkldnn_linear_backward_weights
 @pytest.mark.parametrize("bias_defined", BIAS_FLAGS)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("shape", GRAD_SHAPES)
@@ -146,6 +145,7 @@ def test_mkldnn_linear_backward_weights(shape, value_range, bias_defined, dtype)
         assert res_grad_bias.dtype == ref_grad_bias.dtype
 
 
+@pytest.mark.mkldnn_linear_backward_weights
 @pytest.mark.parametrize("bias_defined", BIAS_FLAGS)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("shape", OUT_SHAPES)
@@ -216,6 +216,7 @@ def _special_operands(shape, dtype, scenario):
     return grad_output, inp, weight.clone(), ref_grad_output, ref_inp, weight
 
 
+@pytest.mark.mkldnn_linear_backward_weights
 @pytest.mark.parametrize("dtype,scenario", SPECIAL_CASES)
 @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
 def test_mkldnn_linear_backward_weights_special_values(shape, dtype, scenario):
@@ -232,6 +233,7 @@ def test_mkldnn_linear_backward_weights_special_values(shape, dtype, scenario):
     tu.assert_result_close(res_grad_bias, ref_grad_bias)
 
 
+@pytest.mark.mkldnn_linear_backward_weights
 @pytest.mark.parametrize("bias_defined", BIAS_FLAGS)
 @pytest.mark.parametrize("shape", METADATA_SHAPES)
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
@@ -333,6 +335,7 @@ def _negative_args(case):
     raise AssertionError(f"unknown negative case: {case}")
 
 
+@pytest.mark.mkldnn_linear_backward_weights
 @pytest.mark.parametrize("case", NEGATIVE_CASES)
 def test_mkldnn_linear_backward_weights_rejects_invalid_operands(case):
     grad_output, inp, weight, bias_defined = _negative_args(case)
