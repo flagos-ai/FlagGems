@@ -63,7 +63,7 @@ def _dequant_fp8(x_fp8, x_scale, group_size=FP8_GROUP_SIZE):
 @pytest.mark.topk_w8a16_fp8
 @pytest.mark.skipif(
     getattr(flag_gems, "vendor_name", None)
-    not in ("thead", "hygon", "mthreads", "nvidia"),
+    not in ("thead", "hygon", "mthreads", "nvidia", "metax"),
     reason="topk_w8a16_fp8 requires an implemented backend",
 )
 @pytest.mark.skipif(not _fp8_available(), reason="required FP8 format is unavailable")

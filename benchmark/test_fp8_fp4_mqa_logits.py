@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 try:
     from vllm.platforms import current_platform
     from vllm.third_party.deep_gemm.utils import per_custom_dims_cast_to_fp8
@@ -27,6 +29,15 @@ except ImportError:
     SM90_AVAILABLE = False
 
 from . import base
+
+fp8_is_supported = flag_gems.runtime.device.support_fp8
+
+FP8_DTYPES = [torch.float8_e4m3fn] if fp8_is_supported else []
+
+pytestmark = pytest.mark.skipif(
+    not FP8_DTYPES,
+    reason="kunlunxin does not support FP8 (no FP8 hardware)",
+)
 
 # DeepSeek V4 production config
 H = 64

@@ -57,6 +57,7 @@ class DeviceDetector:
             self.support_fp64 = self.info.fp64_enabled
             self.support_bf16 = self.info.bf16_enabled
             self.support_int64 = self.info.int64_enabled
+            self.support_fp8 = self.info.fp8_enabled
 
     def get_vendor(self, vendor_name=None) -> tuple:
         # Try to get the vendor name from a quick special command like 'torch.mlu'.

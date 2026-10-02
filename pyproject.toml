@@ -93,6 +93,12 @@ ascend-cann900 = [
     "flagtree==0.6.1+ascend3.5",
 ]
 
+biren-br2xx = [
+    "torch==2.12.0+cpu",
+    "torch-supa==1.0.0.21200+br2xx",
+    "triton==3.4.0+br2xx",
+]
+
 cambricon-neuware443 = [
     "cambricon_dali==0.13.0",
     "torch==2.7.1+cpu",
@@ -139,7 +145,8 @@ enflame-tops1910 = [
 hygon = [
     "torch==2.9.0+das.opt1.dtk2604",
     "flash_attn==2.8.3+das.opt1.dtk2604.torch290",
-    "flagtree==0.6.1+hcu3.6",
+    # Match the flagos-runtime-hygon-dtk26.04:2.2.0 image (flagtree 0.7.0+hcu3.6).
+    "flagtree==0.7.0+hcu3.6",
 ]
 
 iluvatar = [
@@ -147,7 +154,8 @@ iluvatar = [
     "torchaudio==2.10.0+corex.4.5.0.20260804",
     "torchvision==0.25.0+corex.4.5.0.20260804",
     "numpy<2",
-    "flagtree==0.6.1+iluvatar3.6",
+    # Match the flagos-runtime-iluvatar-corex4.5.0:2.2.0 image (flagtree 0.7.0+iluvatar3.6).
+    "flagtree==0.7.0+iluvatar3.6",
 ]
 
 kunlunxin = [
@@ -166,7 +174,9 @@ kunlunxin = [
     "torch_xray==2.0.4",
     "xformers==0.0.29+1e7a8ec.d20260114",
     "xmlir==1.0.0.1",
-    "flagtree==0.6.1+xpu3.6",
+    # Match the flagos-runtime-kunlunxin-xre5.37.1:2.2.0 image (flagtree
+    # 0.7.0+xpu3.6). The old 0.6.1+xpu3.6 wheel is a broken zip.
+    "flagtree==0.7.0+xpu3.6",
 ]
 
 metax-maca3810 = [
@@ -180,7 +190,7 @@ metax-maca3810 = [
     "torchcodec==0.6.0+metax3.8.1.0",
     "torchaudio==2.4.1+metax3.8.1.0",
     "torchvision==0.25.0+metax3.8.1.0",
-    "flagtree==0.6.1+metax3.6",
+    "flagtree==0.7.0+metax3.6",
 ]
 
 mthreads-musa436 = [
@@ -194,7 +204,7 @@ mthreads-musa520 = [
     "torch==2.9.1+musa5.2.0",
     "torch_musa==2.9.1",
     "mkl==2024.0.0",
-    "flagtree==0.6.0+mthreads3.6",
+    "flagtree==0.7.0+mthreads3.6",
 ]
 
 nvidia-cuda128 = [
@@ -286,15 +296,16 @@ flaggems-setup = "flaggems_setup:main"
 # Package discovery (including shipping the tests/ and benchmark/ suites under
 # collision-safe names) is defined in setup.py, so it is intentionally omitted
 # here — declaring `packages` in both places is an error.
-flaggems-flagtune-pretune = "flag_gems.flagtune.cli.pretune:main"
-flaggems-flagtune-train = "flag_gems.flagtune.cli.train:main"
-flaggems-flagtune-compare = "flag_gems.flagtune.cli.compare:main"
+flaggems-flagtune-pretune = "flag_gems.flagtune.offline.cli.pretune:main"
+flaggems-flagtune-train = "flag_gems.flagtune.offline.cli.train:main"
+flaggems-flagtune-compare = "flag_gems.flagtune.offline.cli.compare:main"
 
 [tool.setuptools.package-data]
 
 "flag_gems" = ["backends.yaml"]
 "flag_gems.runtime" = ["*/**/*.yaml"]
-"flag_gems.flagtune.contracts" = ["configs/*.yaml"]
+"flag_gems.flagtune.inference" = ["manifest.json"]
+"flag_gems.flagtune.offline.contracts" = ["configs/*.yaml"]
 
 [tool.setuptools_scm]
 write_to = "src/flag_gems/_version.py"
