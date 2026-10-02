@@ -1,6 +1,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 REPLICATION_PAD2D_BACKWARD_SHAPES = [
@@ -59,4 +61,5 @@ def test_replication_pad2d_backward():
         torch_op=torch.ops.aten.replication_pad2d_backward,
         dtypes=consts.FLOAT_DTYPES,
     )
+    bench.gems_op = flag_gems.replication_pad2d_backward
     bench.run()
