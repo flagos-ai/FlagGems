@@ -237,7 +237,7 @@ def avg_pool3d_backward(
     count_include_pad,
     divisor_override,
 ):
-    logger.debug("GEMS ILUVATAR AVG_POOL3D_BACKWARD")
+    logger.debug("GEMS_ILUVATAR AVG_POOL3D_BACKWARD")
 
     if divisor_override is not None and divisor_override == 0:
         raise ValueError("divisor_override cannot be zero")

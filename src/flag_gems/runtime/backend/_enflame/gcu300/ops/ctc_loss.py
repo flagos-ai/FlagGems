@@ -1034,7 +1034,7 @@ def ctc_loss(
     reduction="mean",
     zero_infinity=False,
 ):
-    logger.debug("GEMS_ENFLAME CTC LOSS")
+    logger.debug("GEMS_ENFLAME CTC_LOSS")
     return CtcLossFunction.apply(
         log_probs,
         targets,

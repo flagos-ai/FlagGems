@@ -312,7 +312,7 @@ _DIRECT = {
 
 
 def _specialized_special_multigammaln(self, p):
-    _logger.debug("GEMS SPECIAL_MULTIGAMMALN")
+    _logger.debug("GEMS_MTHREADS SPECIAL_MULTIGAMMALN")
     p = int(p)
     if self.numel() == 0:
         return torch.empty_like(self)

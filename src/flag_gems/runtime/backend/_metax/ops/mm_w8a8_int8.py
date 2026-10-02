@@ -1268,7 +1268,7 @@ def _mm_w8a8_int8_floating(a, b, *, out_dtype=None):
     The call signature follows mm_w8a8_fp8; the quantization format is INT8.
     Default output is BF16. Quantization is recomputed, never cached by pointer.
     """
-    logger.debug("GEMS MM_W8A8_INT8")
+    logger.debug("GEMS_METAX MM_W8A8_INT8")
     out_dtype = torch.bfloat16 if out_dtype is None else out_dtype
     if out_dtype not in _SUPPORTED_FLOAT:
         raise TypeError("out_dtype must be BF16, FP16 or FP32")
@@ -1279,7 +1279,7 @@ def _mm_w8a8_int8_floating(a, b, *, out_dtype=None):
 
 def _mm_w8a8_int8_floating_out(a, b, *, out):
     """Write floating-input INT8 GEMM into a contiguous caller-owned output."""
-    logger.debug("GEMS MM_W8A8_INT8_OUT")
+    logger.debug("GEMS_METAX MM_W8A8_INT8_OUT")
     return _mm_w8a8_int8_prequantized_out(*_prepare_mm_w8a8_int8_inputs(a, b), out=out)
 
 

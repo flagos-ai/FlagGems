@@ -123,7 +123,7 @@ def conv_depthwise2d_forward_kernel(
 
 
 def _conv_depthwise2d(input, weight, kernel_size, bias, stride, padding, dilation):
-    logger.debug("GEMS ILUVATAR DEPTHWISE")
+    logger.debug("GEMS_ILUVATAR DEPTHWISE")
     assert (
         input.ndim == 4
     ), "Invalid input tensor must be 4D, recevied shape {input.shape}"

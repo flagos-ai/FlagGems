@@ -225,7 +225,7 @@ def _sparse_semi_structured_mm(mat1, mat1_meta, mat2, *, out_dtype=None):
     Returns:
         Matrix of shape (M, N)
     """
-    logger.debug("GEMS SPARSE_SEMI_STRUCTURED_MM")
+    logger.debug("GEMS_SUNRISE SPARSE_SEMI_STRUCTURED_MM")
 
     M = mat1.shape[0]
     K4 = mat1_meta.shape[1]

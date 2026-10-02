@@ -599,7 +599,7 @@ def streamk_scenario(a, b, M, N, K):
 
 
 def mm(a, b):
-    logger.debug("GEMS MM")
+    logger.debug("GEMS_SUNRISE MM")
 
     device = a.device
     if is_syrk_transpose_pair(a, b):
@@ -628,7 +628,7 @@ def mm(a, b):
 
 
 def mm_out(a, b, *, out):
-    logger.debug("GEMS MM_OUT")
+    logger.debug("GEMS_SUNRISE MM_OUT")
 
     if is_syrk_transpose_pair(a, b):
         M, K = a.shape
