@@ -43,7 +43,7 @@ def test_and_tensor(shape, dtype, caplog):
     ref_inp2 = utils.to_reference(inp2)
 
     ref_out = torch.ops.aten.__and__.Tensor(ref_inp1, ref_inp2)
-    with caplog.at_level("DEBUG", logger="flag_gems.ops.and_tensor"):
+    with caplog.at_level("DEBUG"):
         res_out = flag_gems.and_tensor(inp1, inp2)
 
     assert f"{utils.gems_log_prefix(flag_gems.and_tensor)} AND" in caplog.text

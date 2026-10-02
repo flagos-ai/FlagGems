@@ -55,7 +55,7 @@ def test_special_multigammaln(shape, dtype, p, caplog):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.ops.aten.special_multigammaln(ref_inp, p)
-    with caplog.at_level("DEBUG", logger="flag_gems.ops.special_multigammaln"):
+    with caplog.at_level("DEBUG"):
         res_out = flag_gems.special_multigammaln(inp, p)
 
     assert (
