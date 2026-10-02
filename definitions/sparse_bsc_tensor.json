@@ -1,0 +1,65 @@
+{
+  "name": "sparse_bsc_tensor",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::sparse_bsc_tensor.ccol_row_value_size(Tensor ccol_indices, Tensor row_indices, Tensor values, int[] size, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=False) -> Tensor. The original Gems pytest calls and results define the required contract; support their overloads, keyword arguments, return types and errors. Do not narrow test coverage to this example signature.\nRegistered reference signatures:\naten::sparse_bsc_tensor.ccol_row_value_size(Tensor ccol_indices, Tensor row_indices, Tensor values, int[] size, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=False) -> Tensor",
+  "parameters": [
+    {
+      "name": "ccol_indices",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "row_indices",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "values",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "size",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "List[int]"
+    },
+    {
+      "name": "dtype",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[int]"
+    },
+    {
+      "name": "layout",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[int]"
+    },
+    {
+      "name": "device",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[Device]"
+    },
+    {
+      "name": "pin_memory",
+      "kind": "keyword_only",
+      "required": false,
+      "default": false,
+      "type_hint": "Optional[bool]"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": []
+  },
+  "api_version": "v6.0"
+}

@@ -1,0 +1,34 @@
+{
+  "name": "copy_sparse_to_sparse_",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::copy_sparse_to_sparse_(Tensor(a!) self, Tensor src, bool non_blocking=False) -> Tensor(a!). The original Gems pytest calls and results define the required contract; support their overloads, keyword arguments, return types and errors. Do not narrow test coverage to this example signature.\nRegistered reference signatures:\naten::copy_sparse_to_sparse_(Tensor(a!) self, Tensor src, bool non_blocking=False) -> Tensor(a!)",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "src",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "non_blocking",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": false,
+      "type_hint": "bool"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [
+      "self"
+    ]
+  },
+  "api_version": "v6.0"
+}
