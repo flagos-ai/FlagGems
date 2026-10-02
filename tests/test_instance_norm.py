@@ -147,3 +147,106 @@ def test_instance_norm(
             utils.gems_assert_close(
                 res_bias_grad, ref_bias_grad, dtype, reduce_dim=B * N
             )
+
+
+# Regression for issue #4885: the running-stats update kernel recovered the
+# biased variance as (1 / rstd**2 + eps) instead of (1 / rstd**2 - eps), so
+# running_var was stored as (var + 2 * eps) * N / (N - 1) instead of
+# var * N / (N - 1). The default eps=1e-5 keeps the error under the accuracy
+# tolerance, so this test uses a larger eps to expose it. The shapes span all
+# three forward kernels that store rstd: N <= 128 (multiline persistent),
+# 128 < N <= 4096 (persistent), and N > 4096 (loop).
+INSTANCE_NORM_LARGE_EPS = [0.1, 1.0]
+INSTANCE_NORM_EPS_SHAPES = [
+    (4, 16, 8, 8),  # N=64, multiline persistent
+    (2, 3, 2, 2),  # N=4, small
+    (2, 2, 64, 64),  # N=4096, persistent
+    (2, 2, 72, 72),  # N=5184, loop
+]
+
+
+@pytest.mark.instance_norm
+@pytest.mark.parametrize("shape", INSTANCE_NORM_EPS_SHAPES)
+@pytest.mark.parametrize("eps", INSTANCE_NORM_LARGE_EPS)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_instance_norm_running_var_large_eps(shape, eps, dtype):
+    C = shape[1]
+    inp = torch.randn(shape, dtype=dtype, device=device)
+    running_mean = torch.randn(size=(C,), dtype=torch.float32, device=device)
+    running_var = (
+        torch.randn(size=(C,), dtype=torch.float32, device=device).abs() + 1e-5
+    )
+    momentum = 0.1
+
+    ref_inp = utils.to_reference(inp, True)
+    ref_running_mean = utils.to_reference(running_mean.clone(), True)
+    ref_running_var = utils.to_reference(running_var.clone(), True)
+
+    torch.nn.functional.instance_norm(
+        ref_inp,
+        running_mean=ref_running_mean,
+        running_var=ref_running_var,
+        use_input_stats=True,
+        momentum=momentum,
+        eps=eps,
+    )
+    flag_gems.instance_norm(
+        inp,
+        running_mean=running_mean,
+        running_var=running_var,
+        use_input_stats=True,
+        momentum=momentum,
+        eps=eps,
+    )
+
+    utils.gems_assert_close(running_mean, ref_running_mean, running_mean.dtype)
+    utils.gems_assert_close(running_var, ref_running_var, running_var.dtype)
+
+
+@pytest.mark.instance_norm
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_instance_norm_running_var_near_zero(dtype):
+    # A near-constant channel has ~zero variance. With momentum=1.0 and a zero
+    # initial running_var, the stored running_var equals the freshly recovered
+    # variance directly (running_var = new_var / B), so it reflects the update
+    # kernel's output without being diluted by the previous value. The clamp
+    # tl.maximum(1 / rstd**2 - eps, 0) then guarantees running_var stays
+    # non-negative under subtractive cancellation. See issue #4885.
+    shape = (2, 4, 8, 8)
+    C = shape[1]
+    inp = torch.ones(shape, dtype=dtype, device=device)
+    inp += 1e-4 * torch.randn(shape, dtype=dtype, device=device)
+    running_mean = torch.zeros(size=(C,), dtype=torch.float32, device=device)
+    running_var = torch.zeros(size=(C,), dtype=torch.float32, device=device)
+    eps = 1.0
+    momentum = 1.0
+
+    ref_inp = utils.to_reference(inp, True)
+    ref_running_mean = utils.to_reference(running_mean.clone(), True)
+    ref_running_var = utils.to_reference(running_var.clone(), True)
+
+    torch.nn.functional.instance_norm(
+        ref_inp,
+        running_mean=ref_running_mean,
+        running_var=ref_running_var,
+        use_input_stats=True,
+        momentum=momentum,
+        eps=eps,
+    )
+    flag_gems.instance_norm(
+        inp,
+        running_mean=running_mean,
+        running_var=running_var,
+        use_input_stats=True,
+        momentum=momentum,
+        eps=eps,
+    )
+
+    assert torch.all(running_var >= 0), "running_var must never be negative"
+    utils.gems_assert_close(running_var, ref_running_var, running_var.dtype)

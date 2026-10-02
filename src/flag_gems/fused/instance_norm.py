@@ -312,7 +312,7 @@ def update_running_stats_kernel(
             tl.float32
         )
         var = (
-            (1 / (rstd * rstd) + eps) * N / (N - 1)
+            tl.maximum(1 / (rstd * rstd) - eps, 0.0) * N / (N - 1)
         )  # NOTE: use unbiased var to update running_var
 
         new_mean += tl.sum(mean, axis=0)
