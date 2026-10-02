@@ -1,12 +1,4 @@
-# Kunlunxin backend override of flag_gems/ops/scaled_grouped_mm.py.
-# Same kernel and wrapper as the generic module, with two additional autotune
-# candidates for the large-M / wide-N regime:
-#     (BLOCK_M=256, BLOCK_N=256, BLOCK_K=64) and (128, 128, BLOCK_K=128).
-# The stock 4-candidate space tops out at BLOCK_M/N=128 x BLOCK_K=64; measured
-# on the official benchmark core shapes the added candidates win by
-# +1.27..1.58x on (16,256,512,512) and +1.48..1.66x on (32,256,2048,1024)
-# across fp16/bf16/fp32 with identical maxdiff vs the composed torch reference.
-# [sggemm-klx 2026-09-19] (C-173)
+# Kunlunxin backend override for scaled grouped matrix multiplication.
 
 # Copyright 2026 FlagOS Contributors
 #
@@ -32,11 +24,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils.device_info import get_sm_count
 
-from .cat import cat
 from .contiguous import contiguous
-from .mm import mm
-from .stack import stack
-from .to import to_copy
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +33,72 @@ BIAS_VECTOR = 1
 BIAS_GROUPED = 2
 
 
+@triton.jit
+def _decode_e4m3(bits, FNUZ: tl.constexpr):
+    bits = bits.to(tl.int32)
+    exponent = (bits >> 3) & 15
+    mantissa = bits & 7
+    if FNUZ:
+        power = ((exponent + 119) << 23).to(tl.float32, bitcast=True)
+        subnormal = mantissa.to(tl.float32) * 0.0009765625
+        is_nan = bits == 128
+    else:
+        power = ((exponent + 120) << 23).to(tl.float32, bitcast=True)
+        subnormal = mantissa.to(tl.float32) * 0.001953125
+        is_nan = (bits & 127) == 127
+    value = tl.where(exponent == 0, subnormal, power * (1.0 + mantissa * 0.125))
+    value = tl.where((bits & 128) != 0, -value, value)
+    return tl.where(is_nan, float("nan"), value).to(tl.float16)
+
+
+@triton.jit
+def _decode_e4m3_tensor(
+    X,
+    Y,
+    NUMEL: tl.constexpr,
+    ROWS: tl.constexpr,
+    COLS: tl.constexpr,
+    stride_g: tl.constexpr,
+    stride_m: tl.constexpr,
+    stride_n: tl.constexpr,
+    FNUZ: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    offsets = tl.program_id(0).to(tl.int64) * BLOCK + tl.arange(0, BLOCK)
+    group = offsets // (ROWS * COLS)
+    row = (offsets // COLS) % ROWS
+    col = offsets % COLS
+    bits = tl.load(
+        X + group * stride_g + row * stride_m + col * stride_n,
+        mask=offsets < NUMEL,
+        other=0,
+    )
+    tl.store(Y + offsets, _decode_e4m3(bits, FNUZ), mask=offsets < NUMEL)
+
+
+def _decode_e4m3_operand(operand, fnuz):
+    decoded = torch.empty(operand.shape, dtype=torch.float16, device=operand.device)
+    if operand.numel():
+        with torch_device_fn.device(operand.device):
+            _decode_e4m3_tensor[(triton.cdiv(operand.numel(), 256),)](
+                operand.view(torch.uint8),
+                decoded,
+                operand.numel(),
+                operand.shape[-2],
+                operand.shape[-1],
+                operand.stride(0) if operand.dim() == 3 else 0,
+                operand.stride(-2),
+                operand.stride(-1),
+                fnuz,
+                BLOCK=256,
+                num_warps=4,
+                num_stages=1,
+            )
+    return decoded
+
+
 def get_autotune_config():
+    logger.debug("GEMS_KUNLUNXIN GET_AUTOTUNE_CONFIG")
     return [
         triton.Config(
             {"BLOCK_M": 64, "BLOCK_N": 64, "BLOCK_K": 64},
@@ -81,10 +134,25 @@ def get_autotune_config():
     ]
 
 
+def _prune_scaled_grouped_mm_configs(configs, named_args, **kwargs):
+    """Keep the conservative tile for inputs materialized from FP8."""
+    e4m3 = kwargs.get("E4M3", named_args.get("E4M3", False))
+    if not e4m3:
+        return configs
+    return [
+        triton.Config(
+            {"BLOCK_M": 32, "BLOCK_N": 32, "BLOCK_K": 32},
+            num_stages=1,
+            num_warps=2,
+        )
+    ]
+
+
 @libentry()
 @libtuner(
     configs=get_autotune_config(),
-    key=["M", "N", "K", "A_IS_2D", "B_IS_2D"],
+    key=["M", "N", "K", "A_IS_2D", "B_IS_2D", "E4M3"],
+    prune_configs_by={"early_config_prune": _prune_scaled_grouped_mm_configs},
     warmup=2,
     rep=4,
 )
@@ -115,6 +183,8 @@ def scaled_grouped_mm_kernel(
     A_IS_2D: tl.constexpr,
     B_IS_2D: tl.constexpr,
     BIAS_MODE: tl.constexpr,
+    E4M3: tl.constexpr,
+    FNUZ: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     BLOCK_K: tl.constexpr,
@@ -394,109 +464,11 @@ def _normalize_bias(bias, *, a_is_2d, b_is_2d, num_groups, N):
 
 
 def _supports_triton_dot(dtype):
-    return dtype in (torch.float16, torch.bfloat16, torch.float32) or _is_float8_dtype(
-        dtype
+    return dtype in (torch.float16, torch.bfloat16, torch.float32) or dtype in tuple(
+        getattr(torch, name)
+        for name in ("float8_e4m3fn", "float8_e4m3fnuz")
+        if hasattr(torch, name)
     )
-
-
-def _scale_and_add_bias(out, scale_a, scale_b, bias, out_dtype):
-    out = out * scale_a * scale_b
-    if bias is not None:
-        out = out + bias
-    return to_copy(out, dtype=out_dtype)
-
-
-def _f32(t):
-    """fp32 view for the composed fallback (backend cast entry point)."""
-    return to_copy(t, dtype=torch.float32)
-
-
-def _scaled_grouped_mm_fallback(
-    mat_a,
-    mat_b,
-    scale_a,
-    scale_b,
-    offs,
-    bias,
-    out_dtype,
-    a_is_2d,
-    b_is_2d,
-    num_groups,
-):
-    out_chunks = []
-    starts = [0]
-    if offs is not None:
-        starts += offs.detach().cpu().tolist()
-
-    if a_is_2d and not b_is_2d:
-        for group_idx in range(num_groups):
-            m_start, m_end = starts[group_idx], starts[group_idx + 1]
-            chunk = mm(_f32(mat_a[m_start:m_end]), _f32(mat_b[group_idx]))
-            chunk_bias = None
-            if bias is not None:
-                chunk_bias = bias if bias.dim() == 1 else bias[group_idx]
-            out_chunks.append(
-                _scale_and_add_bias(
-                    chunk,
-                    scale_a[m_start:m_end].reshape(-1, 1),
-                    scale_b[group_idx].reshape(1, -1),
-                    chunk_bias,
-                    out_dtype,
-                )
-            )
-        return cat(out_chunks, dim=0)
-
-    if not a_is_2d and b_is_2d:
-        for group_idx in range(num_groups):
-            n_start, n_end = starts[group_idx], starts[group_idx + 1]
-            chunk = mm(_f32(mat_a[group_idx]), _f32(mat_b[:, n_start:n_end]))
-            chunk_bias = bias[n_start:n_end] if bias is not None else None
-            out_chunks.append(
-                _scale_and_add_bias(
-                    chunk,
-                    scale_a[group_idx].reshape(-1, 1),
-                    scale_b[n_start:n_end].reshape(1, -1),
-                    chunk_bias,
-                    out_dtype,
-                )
-            )
-        return cat(out_chunks, dim=1)
-
-    if a_is_2d and b_is_2d:
-        scale_a = scale_a.reshape(num_groups, mat_a.shape[0])
-        scale_b = scale_b.reshape(num_groups, mat_b.shape[1])
-        for group_idx in range(num_groups):
-            k_start, k_end = starts[group_idx], starts[group_idx + 1]
-            chunk = mm(_f32(mat_a[:, k_start:k_end]), _f32(mat_b[k_start:k_end]))
-            chunk_bias = None
-            if bias is not None:
-                chunk_bias = bias if bias.dim() == 1 else bias[group_idx]
-            out_chunks.append(
-                _scale_and_add_bias(
-                    chunk,
-                    scale_a[group_idx].reshape(-1, 1),
-                    scale_b[group_idx].reshape(1, -1),
-                    chunk_bias,
-                    out_dtype,
-                )
-            )
-        return stack(out_chunks, dim=0)
-
-    for group_idx in range(num_groups):
-        chunk = mm(_f32(mat_a[group_idx]), _f32(mat_b[group_idx]))
-        chunk_bias = None
-        if bias is not None:
-            chunk_bias = bias if bias.dim() == 1 else bias[group_idx]
-        out_chunks.append(
-            _scale_and_add_bias(
-                chunk,
-                scale_a[group_idx].reshape(-1, 1),
-                scale_b[group_idx].reshape(1, -1),
-                chunk_bias,
-                out_dtype,
-            )
-        )
-    return stack(out_chunks, dim=0)
 
 
 def scaled_grouped_mm(
@@ -549,27 +521,31 @@ def scaled_grouped_mm(
     )
 
     if not _supports_triton_dot(self.dtype):
-        return _scaled_grouped_mm_fallback(
-            self,
-            mat2,
-            scale_a,
-            scale_b,
-            offs,
-            bias,
-            output_dtype,
-            a_is_2d,
-            b_is_2d,
-            num_groups,
+        raise NotImplementedError(
+            "scaled_grouped_mm: dtype has no Kunlunxin device kernel; "
+            "CPU fallback is intentionally disabled"
         )
-
-    if self.stride(-2) > 1 and self.stride(-1) > 1:
-        self = contiguous(self)
-    if mat2.stride(-2) > 1 and mat2.stride(-1) > 1:
-        mat2 = contiguous(mat2)
 
     out = torch.empty(out_shape, dtype=output_dtype, device=self.device)
     if out.numel() == 0:
         return out
+
+    e4m3 = self.dtype in tuple(
+        getattr(torch, name)
+        for name in ("float8_e4m3fn", "float8_e4m3fnuz")
+        if hasattr(torch, name)
+    )
+    fnuz = self.dtype == getattr(torch, "float8_e4m3fnuz", None)
+    if e4m3:
+        # E4M3 values are exactly representable in FP16. Keep decoding separate
+        # from the dot loop so its byte conversions retain their semantics.
+        self = _decode_e4m3_operand(self, fnuz)
+        mat2 = _decode_e4m3_operand(mat2, fnuz)
+    else:
+        if self.stride(-2) > 1 and self.stride(-1) > 1:
+            self = contiguous(self)
+        if mat2.stride(-2) > 1 and mat2.stride(-1) > 1:
+            mat2 = contiguous(mat2)
 
     stride_ag = self.stride(0) if not a_is_2d else 0
     stride_am = self.stride(-2)
@@ -611,5 +587,7 @@ def scaled_grouped_mm(
             A_IS_2D=a_is_2d,
             B_IS_2D=b_is_2d,
             BIAS_MODE=bias_mode,
+            E4M3=e4m3,
+            FNUZ=fnuz,
         )
     return out
