@@ -101,9 +101,7 @@ def ge_scalar(A, B):
             # floor 1024) so we don't launch a 131072-lane program for a
             # few-K-element tensor. Same fix as le_scalar's small-shape branch.
             if 0 < numel < _GE_SCALAR_FAST_TILE:
-                tile = min(
-                    _GE_SCALAR_FAST_TILE, max(1024, triton.next_power_of_2(numel))
-                )
+                tile = min(_GE_SCALAR_FAST_TILE, max(1024, triton.next_power_of_2(numel)))
                 return _ge_scalar_native(
                     A, s, numel, masked=(numel % tile != 0), tile=tile
                 )
@@ -111,6 +109,10 @@ def ge_scalar(A, B):
     return res
 
 
+# ---------------------------------------------------------------------------
+# ge_scalar: native fused in-dtype compare (x >= scalar.to(DTYPE)) under
+# TRITONXPU_COMPARE_FUSION=1, bool written directly. Scalar gate admits only
+# finite scalars exactly representable in A.dtype (bit-identical to torch).
 _GE_SCALAR_FAST_TILE = 131072
 _GE_SCALAR_MASKED_MIN = 1 << 20
 
@@ -120,9 +122,7 @@ _GE_SCALAR_MASKED_MIN = 1 << 20
 
 
 @triton.jit
-def ge_scalar_native_kernel(
-    out_ptr, x_ptr, scalar, TILE: tl.constexpr, DTYPE: tl.constexpr
-):
+def ge_scalar_native_kernel(out_ptr, x_ptr, scalar, TILE: tl.constexpr, DTYPE: tl.constexpr):
     pid = tl.program_id(0)
     tid = pid * TILE + tl.arange(0, TILE)
     x = tl.load(x_ptr + tid)
@@ -131,9 +131,7 @@ def ge_scalar_native_kernel(
 
 
 @triton.jit
-def ge_scalar_native_masked_kernel(
-    out_ptr, x_ptr, scalar, numel, TILE: tl.constexpr, DTYPE: tl.constexpr
-):
+def ge_scalar_native_masked_kernel(out_ptr, x_ptr, scalar, numel, TILE: tl.constexpr, DTYPE: tl.constexpr):
     pid = tl.program_id(0)
     tid = pid * TILE + tl.arange(0, TILE)
     mask = tid < numel
