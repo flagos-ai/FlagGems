@@ -120,7 +120,7 @@
   },
   {
     "backend": "thead",
-    "runner_label": "thead",
+    "runner_label": "flagcicd-810e",
     "label": "vendor/THead",
     "gpu_check": "tools/gpu_check_thead.sh",
     "enabled": true
