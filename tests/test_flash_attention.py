@@ -233,7 +233,7 @@ def test__flash_attention_forward(
             scale=scale,
         )
         ref_out, ref_lse = ref_result[0], ref_result[1]
-    with caplog.at_level("DEBUG", logger="flag_gems.ops._flash_attention_forward"):
+    with caplog.at_level("DEBUG"):
         result = flag_gems._flash_attention_forward(
             q,
             k,

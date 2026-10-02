@@ -43,7 +43,7 @@ def test_ior_tensor(shape, dtype, caplog):
     ref_inp2 = utils.to_reference(inp2)
 
     ref_out = torch.ops.aten.__ior__.Tensor(ref_inp1, ref_inp2)
-    with caplog.at_level("DEBUG", logger="flag_gems.ops.ior_tensor"):
+    with caplog.at_level("DEBUG"):
         res_out = flag_gems.ior_tensor(inp1, inp2)
 
     assert "GEMS IOR TENSOR" in caplog.text
