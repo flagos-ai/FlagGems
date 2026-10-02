@@ -1,0 +1,20 @@
+{
+  "api_version": "v6.0",
+  "name": "is_conj",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::is_conj(Tensor self) -> bool. This representative signature is not exclusive: the original Gems pytest owns the full contract, including any additional overloads, keyword arguments, returns, error behavior, aliasing and mutation semantics; do not narrow the tests to this one signature and never remove tests or adapt reference behavior to fit this signature. Semantics (from the tests): is_conj is a metadata-only predicate that reads the tensor's lazy conjugate bit and runs no kernel; it returns a Python/ATen bool indicating whether the input's conjugate flag is set (e.g. True for a.conj(), False for a plain tensor), without toggling or resolving that flag and without touching the storage the input aliases. Only complex tensors can carry the bit; non-complex dtypes are also covered (plain and neg-view cases), but those cases are only compared against torch.ops.aten.is_conj of the corresponding reference tensor, so the tests do not separately assert a returned value of False for them. Because the bit is per-tensor rather than per-storage, a lazy-conj alias and a plain alias sharing the same storage can return different results; the tests assert that such a pair differs. The tests also exercise an optional/undefined argument path: flag_gems.is_conj(None) is a valid call whose result matches torch.ops.aten.is_conj(None) (False), and non-tensor arguments and a missing argument raise errors; those optional-argument, invalid-input and error behaviors belong to the original Gems pytest and are not expressed by this non-optional representative signature. All supplied registered schema strings, verbatim: aten::is_conj(Tensor self) -> bool. No non-JSON ATen defaults were rendered as strings; this signature has no defaults.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

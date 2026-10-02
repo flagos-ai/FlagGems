@@ -1,0 +1,36 @@
+{
+  "api_version": "v6.0",
+  "name": "swapaxes_",
+  "description": "Representative ATen signature (not an exclusive ABI), copied verbatim from the supplied schema: aten::swapaxes_(Tensor(a!) self, int axis0, int axis1) -> Tensor(a!). This signature is representative only and is not exclusive: the original Gems pytest defines the full contract for overloads, keyword arguments, returns, errors, aliasing and mutation, and tests must never be narrowed or removed to fit this one signature. All supplied registered schema strings: aten::swapaxes_(Tensor(a!) self, int axis0, int axis1) -> Tensor(a!). Semantics (from the actual pytest and benchmark): an in-place view operation that swaps the strides of axis0 and axis1 of self; negative axes count from the end, equal axes are a no-op, out-of-range axes raise IndexError natively, and non-integer axis arguments raise RuntimeError. No elements move and no storage is allocated, so the storage data pointer, byte count, base tensor and storage offset are retained. The call returns self itself (same Python object), so the result aliases and write-through mutates the input, which carries the swapped shape/stride metadata; torch.ops.aten.swapaxes_ is the reference entrypoint and flag_gems.swapaxes_ is the injected public entrypoint. Mutating an in-place metadata change on a leaf tensor that requires grad raises RuntimeError natively; gradient flow is exercised through a non-leaf. This model expresses only the representative overload's unconditional effects, not the overload-dependent or error behavior retained by pytest.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "axis0",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    },
+    {
+      "name": "axis1",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [
+      "self"
+    ],
+    "returns_alias_of": {
+      "out": "self"
+    }
+  }
+}

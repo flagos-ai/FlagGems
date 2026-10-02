@@ -1,0 +1,46 @@
+{
+  "api_version": "v6.0",
+  "name": "_autocast_to_reduced_precision",
+  "description": "Representative ATen signature (not an exclusive ABI), copied VERBATIM from the supplied registered schema: aten::_autocast_to_reduced_precision(Tensor(a) self, bool cuda_enabled, bool cpu_enabled, ScalarType cuda_dtype, ScalarType cpu_dtype) -> Tensor(a). ALL supplied registered schema strings (verbatim): aten::_autocast_to_reduced_precision(Tensor(a) self, bool cuda_enabled, bool cpu_enabled, ScalarType cuda_dtype, ScalarType cpu_dtype) -> Tensor(a). The representative signature is not exclusive: the original Gems pytest owns the full contract (overloads, keyword arguments, returns, errors, aliasing and mutation behavior), and no test may be removed, narrowed or have its reference behavior adapted to fit this one signature. Semantics exercised by that pytest, each checked by comparing the candidate with the native reference on the same inputs: on the active device backend a float32 self is cast to cuda_dtype when cuda_enabled is true and cuda_dtype is not float32 (producing a converted result); the other tested rows are pass-through rows, and there the pytest compares the candidate's object relation with the relation measured from the native reference at run time, `assert (res_out is res_inp) == (ref_out is ref_inp)`, rather than asserting identity on its own. Those pass-through rows are a non-float32 source (exercised with cuda_dtype = torch.float16 only), cuda_enabled false, or cuda_dtype == float32; the strided and geometry rows extend the same comparison to transpose, strided-slice, offset-slice, zero-extent, empty and stride-0 (expanded) views. cpu_enabled and cpu_dtype address CPU-resident inputs on a CUDA-style backend, so for a device input they are schema arguments only and are not allocations, and the pytest keeps cpu_dtype different from every cuda_dtype so a candidate reading the wrong branch returns a wrong dtype; the pytest also records this branch as an unresolved protocol gap (under `--ref cpu` the reference returns the float32 input where this device candidate converts it), so no unconditional claim is made here about which branch cpu_enabled/cpu_dtype select. The conversion is a cast, not a promotion: it rounds to the target mantissa, underflows to zero and overflows per target format (fp16/e5m2 overflow to infinity, bfloat16 rounds up, e4m3fn turns out-of-range values into NaN) as measured against the reference on the listed boundary and special values, and its backward casts the upstream gradient back to the source dtype on conversion rows while reusing the upstream gradient on aliasing rows, with both gradients compared exactly against the reference. Argument-level cases: cpu_dtype is required (a call omitting it raises TypeError/RuntimeError); an invalid value supplied for the dtype arguments is rejected (None and 1.5 are used), while the schema declares ScalarType for cuda_dtype and cpu_dtype; a string passed as a flag is rejected, and the pytest documents that integer 1/0 is accepted for the flags; a non-tensor self is rejected; all of these use pytest.raises((TypeError, RuntimeError)). The schema declares Tensor(a) -> Tensor(a), so the modeled return aliases self; the actual alias relation is dispatch-dependent (identity on pass-through rows, a distinct tensor on conversion rows) and is validated by the pytest rather than expressed conditionally here.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "cuda_enabled",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "bool"
+    },
+    {
+      "name": "cpu_enabled",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "bool"
+    },
+    {
+      "name": "cuda_dtype",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    },
+    {
+      "name": "cpu_dtype",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {
+      "out": "self"
+    }
+  }
+}

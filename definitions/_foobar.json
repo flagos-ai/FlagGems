@@ -1,0 +1,41 @@
+{
+  "api_version": "v6.0",
+  "name": "_foobar",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::_foobar(Tensor self, bool arg1=True, bool arg2=True, *, bool arg3=True) -> Tensor. All supplied registered schemas, verbatim: aten::_foobar(Tensor self, bool arg1=True, bool arg2=True, *, bool arg3=True) -> Tensor ; aten::_foobar.out(Tensor self, bool arg1=True, bool arg2=True, *, bool arg3=True, Tensor(a!) out) -> Tensor(a!). Original Gems pytest owns the full contract: overload selection, positional/keyword/out= call forms, return identity, error behavior, lazy conj/neg inputs, aliasing and mutation; do not narrow the tests to this representative signature. Semantics derived from the tests: for ordinary strided CPU inputs the operator returns its input unchanged, so the candidate result is the same object as the input and the input itself is left unmodified. This identity is conditional, not unconditional: when the input carries lazy conj or neg bits (the transposed/offset/expanded/empty/workload cases are ordinary strided inputs and take the identity branch, while the lazy-conj and lazy-neg builders take the other branch), the result is a fresh tensor with both lazy bits resolved and cleared, and the input's own conj/neg flags remain exactly as they were before the call. The bool parameters arg1, arg2 and arg3 are exercised at their schema defaults, as explicit True/False values, and with all three set together; each of these call forms is compared against the native reference for the same arguments, and the pytest does not assert that different argument settings yield the same result. A non-tensor self (None, float, list) raises TypeError or RuntimeError. The .out overload writes in place into the caller's Tensor(a!) buffer and returns that same object with its stride and storage offset preserved, leaves the input tensor unchanged, and raises TypeError or RuntimeError when the out dtype does not match the input dtype. Autograd stays connected (requires_grad is preserved rather than detached), but backward through a non-leaf raises RuntimeError matching 'derivative for aten::_foobar is not implemented'. This definition models only the representative default overload; the out overload's mutation and aliasing behavior remains covered by the original pytest.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "arg1",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": true,
+      "type_hint": "bool"
+    },
+    {
+      "name": "arg2",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": true,
+      "type_hint": "bool"
+    },
+    {
+      "name": "arg3",
+      "kind": "keyword_only",
+      "required": false,
+      "default": true,
+      "type_hint": "bool"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

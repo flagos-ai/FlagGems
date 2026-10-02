@@ -1,0 +1,20 @@
+{
+  "api_version": "v6.0",
+  "name": "retains_grad",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::retains_grad(Tensor self) -> bool. This signature is representative only and is not exclusive; the original Gems pytest calls and assertions own the full contract for overloads, keyword arguments, returns, errors, aliasing and mutation, and tests must not be narrowed, removed or reference-adapted to fit this one signature. All supplied registered signatures: aten::retains_grad(Tensor self) -> bool. Semantics: a metadata/state query that reports Autograd state for a single tensor, answering True only when the tensor is a non-leaf whose own node called retain_grad() (leaf, leaf-with-retain_grad, plain non-leaf, clone of a retained node, view of a retained node, detached, no_grad, inference_mode and Parameter states all answer False). It reads no element data, accepts leaf tensors across the dtypes the pytest covers (the required dtypes plus bool and complex64, and float64 where the device supports it, including bool, integer, FP8 and complex storage forms), does not mutate the operand, its storage, strides, storage_offset or autograd flags, is not differentiable and its flag survives a completed backward pass. The schema has no dtype/dim restriction, no parameters or overloads beyond the single self operand (which is positional-or-keyword), no scalar-operand or list overload and no additional returns; the only rejected inputs are non-tensor operands (double, int, bool, str, list, tuple, nested list, None) and wrong arity (missing or extra operand), and those error behaviors remain in pytest.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

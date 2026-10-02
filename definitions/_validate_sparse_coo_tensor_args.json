@@ -1,0 +1,37 @@
+{
+  "api_version": "v6.0",
+  "name": "_validate_sparse_coo_tensor_args",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::_validate_sparse_coo_tensor_args(Tensor indices, Tensor values, int[] size, bool? is_coalesced=None) -> (). This signature is representative only and is NOT exclusive: the original Gems pytest defines the full contract, including which overloads, keyword arguments, return values, raised errors, aliasing and mutation are supported, and tests must never be narrowed or reference behavior adapted to this single signature. Semantics derived from the tests: the operator validates a COO tensor descriptor without materializing or reading the stored values. It checks that indices is an int64 tensor with rank exactly 2, that size is an int-like sequence (list, tuple and torch.Size are all accepted) whose length is the index row count plus the number of values dense dimensions, that is_coalesced is a bool or None, that every stored coordinate lies in [0, size[axis]), and that is_coalesced=True implies sorted, distinct coordinates. The default for is_coalesced is None (the C++ schema renders the optional default as null); the tests exercise the omitted argument, explicit None, explicit False and explicit True as separate call forms. The operator returns None (void) and must not mutate or re-layout any operand: indices and values keep their contents, shape, stride and storage_offset, and the mutable size list keeps its entries. It is read-only even for non-contiguous, offset and strided operands. Failure taxonomy asserted by the tests, whose negative families call the Gems candidate: out-of-range coordinates (including int64 boundary values), a negative size extent and an is_coalesced=True violation are required to raise RuntimeError, while malformed schema-level operands (non-int64 index dtype, an index rank other than 2, a non-list size, float size entries, a non-Tensor operand, a non-bool is_coalesced) and missing required arguments are accepted if they raise either RuntimeError or TypeError. The tests never accept ValueError. Dense metadata is not cross-checked: values length versus nnz and the values dense extents versus the trailing size extents are accepted regardless. Registered schema strings supplied: aten::_validate_sparse_coo_tensor_args(Tensor indices, Tensor values, int[] size, bool? is_coalesced=None) -> ().",
+  "parameters": [
+    {
+      "name": "indices",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "values",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "size",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "List[int]"
+    },
+    {
+      "name": "is_coalesced",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[bool]"
+    }
+  ],
+  "outputs": [],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

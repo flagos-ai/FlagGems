@@ -1,0 +1,23 @@
+{
+  "api_version": "v6.0",
+  "name": "fbgemm_linear_quantize_weight",
+  "description": "Representative ATen overload chosen for this definition, schema copied VERBATIM: aten::fbgemm_linear_quantize_weight(Tensor input) -> (Tensor, Tensor, float, int). This representative signature is NOT exclusive and is not an exclusive ABI: the original Gems pytest calls and their results define the full contract (tuple length, returned Python types, keyword handling, error conditions, aliasing and mutation behavior), and no test may be removed, re-scoped, or have reference behavior adapted to fit this single signature. All registered schema strings supplied for this operator, VERBATIM: aten::fbgemm_linear_quantize_weight(Tensor input) -> (Tensor, Tensor, float, int). Only this one registered overload was supplied, so no scalar/list overload variants are recorded here; any remaining overload or error semantics stay owned by the pytest. Semantics from the pinned native producer (aten/src/ATen/native/QuantizedLinear.cpp, pytorch/pytorch commit 556f9401181dd1dc5eac04df80f3178cab215763, URL https://raw.githubusercontent.com/pytorch/pytorch/556f9401181dd1dc5eac04df80f3178cab215763/aten/src/ATen/native/QuantizedLinear.cpp): the operator copies the weight with weight.contiguous(), runs ONE fbgemm::FindMinMax over weight_contig.numel() and ONE ChooseQuantizationParams (signed 8-bit, qmin=-128, qmax=127, preserve_sparsity=false), then ONE fbgemm::Quantize over all weight_contig.numel() elements. Quantization is therefore PER-TENSOR over the whole tensor, not per-row; test comments describing per-row quantization or a per-row quantizer are misleading and the per-tensor native rule takes precedence. The native return is std::make_tuple(quantized, col_offsets, q_params.scale, q_params.zero_point), so the four logical outputs are quantized, col_offsets, scale and zero_point: quantized is int8 (at::kChar) with the same shape as the contiguous weight; col_offsets is an int32 tensor of length weight_contig.size(0) filled by CalcColOffsetsTranspose(K=quantized.size(1), N=quantized.size(0), B_zero_point=q_params.zero_point) as sum over j of Bint8[i*K+j] minus B_zero_point*K, i.e. a column-offset correction consumed by the packed GEMM kernels, NOT an additive learned bias and NOT input.shape[:-1] for arbitrary rank; high-rank inputs are not flattened by any general rule here, the length is simply dim 0 of the contiguous weight. scale is the schema float return (native q_params.scale, a double) and zero_point is the schema int return (native q_params.zero_point, int64), which the pytest checks with isinstance(res_scale, float), isinstance(res_zp, int) excluding bool, exact zero_point equality, and an atol=0 float64 comparison for scale. The whole-tensor constant-input case is distinct from row-wise constants: a tensor whose every element is equal takes the degenerate equal-min/max branch of ChooseQuantizationParams (sentinel scale/zero_point), whereas the pytest constant-row and zero-row cases keep one row constant inside an otherwise varying tensor and are row-wise, not whole-tensor, constants; both families stay in the pytest. Tested scope preserved from the calls: input is read only, so there is no mutation and no returned alias of the input (tests compare inp with a pre-call copy and the native code writes only fresh buffers); accepted dtype is float32, other dtypes raise expected scalar type Float but found <dtype>; rank below 2 raises IndexError inside the kernel; an empty shape such as (0, 4) still returns a fully defined tuple; non-contiguous transpose/slice/offset/expanded views are normalized by the internal contiguous() call and yield the contiguous result; the operator is CPU-only (a CUDA operand faults inside at::native::fbgemm_linear_quantize_weight) and additionally requires fbgemm::fbgemmSupportedCPU() with a one-time deprecation warning, and no autograd formula exists for the integer outputs (only grad metadata is compared).",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "quantized",
+    "col_offsets",
+    "scale",
+    "zero_point"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

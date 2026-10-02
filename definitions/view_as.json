@@ -1,0 +1,28 @@
+{
+  "api_version": "v6.0",
+  "name": "view_as",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::view_as(Tensor(a) self, Tensor other) -> Tensor(a). Registered schema strings: aten::view_as(Tensor(a) self, Tensor other) -> Tensor(a). This representative signature is not exclusive: the original Gems pytest owns the full overload, keyword, return, error, mutation and alias contract, and its tests must never be narrowed or its reference behavior adapted to fit only this signature. Semantics: view_as returns a view of `self` whose shape is taken from `other` (only other's shape is read; its dtype, layout, device and values never reach the result). The result is a distinct tensor object that keeps self's element count and shares self's storage at self's storage offset; pytest checks the result's strides, storage offset, storage sharing and lazy conjugate/negative bits against the native result for the same target shape rather than against self's own strides, and those bits must survive instead of being materialized away. All positive pytest cases use numel-preserving targets; for a target shape that is not stride-expressible from self, a numel mismatch, or a non-tensor operand, the candidate is required to raise (RuntimeError, or RuntimeError/TypeError for non-tensors) instead of returning a materialized copy, and those negative cases assert only that the candidate raises rather than comparing against the native operator. `other` stays out of the autograd graph (no gradient with respect to it), while gradients flow to `self`.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "other",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {
+      "out": "self"
+    }
+  }
+}

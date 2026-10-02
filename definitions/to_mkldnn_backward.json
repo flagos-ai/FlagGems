@@ -1,0 +1,26 @@
+{
+  "api_version": "v6.0",
+  "name": "to_mkldnn_backward",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::to_mkldnn_backward(Tensor grad, Tensor input) -> Tensor. All registered schemas: aten::to_mkldnn_backward(Tensor grad, Tensor input) -> Tensor. Original Gems pytest owns the full contract — overloads, keyword arguments, returns, errors, aliasing and mutation — and must not be narrowed to this signature; no test may be removed or its reference adapted to fit this representative overload. Semantics derived from the tests: converts grad back out of opaque oneDNN/MKLDNN form; for a dense strided grad whose dtype already equals input.dtype it returns grad itself (identity, same storage) without copying, otherwise it returns a fresh strided tensor cast to input.dtype that keeps grad's shape and device. Only input.dtype and input.layout are read — a strided input is required and input shape/device are irrelevant — while the opaque-grad branch additionally honors oneDNN dtype restrictions and materializes a strided CPU tensor, and rejects opaque input. Neither grad nor input is mutated. The identity/aliasing return, the opaque-grad materialization path and the raised errors are conditional behaviors described here in prose because this single-signature model cannot express them.",
+  "parameters": [
+    {
+      "name": "grad",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

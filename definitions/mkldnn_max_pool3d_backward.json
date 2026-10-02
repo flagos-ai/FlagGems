@@ -1,0 +1,74 @@
+{
+  "api_version": "v6.0",
+  "name": "mkldnn_max_pool3d_backward",
+  "description": "Representative ATen signature (not an exclusive ABI), copied verbatim: aten::mkldnn_max_pool3d_backward(Tensor grad_output, Tensor output, Tensor input, int[3] kernel_size, int[3] stride=[], int[3] padding=0, int[3] dilation=1, bool ceil_mode=False) -> Tensor. Other registered overloads, listed verbatim: aten::mkldnn_max_pool3d_backward.out(Tensor grad_output, Tensor output, Tensor input, int[3] kernel_size, int[3] stride=[], int[3] padding=0, int[3] dilation=1, bool ceil_mode=False, *, Tensor(a!) out) -> Tensor(a!). The original Gems pytest owns the full contract - overloads, keyword arguments, returns, errors, aliasing and mutation - and must never be narrowed to this one representative signature; this single-overload model records conditional/overload-dependent effects only in prose. Semantics from the tests: backward of 3-D max pooling over 5-D NCDHW MkldnnCPU operands on CPU. grad_output must match the shape of the forward output; output must be the untouched result of aten::mkldnn_max_pool3d whose input required grad, because it carries the saved argmax workspace the backward re-creates and consumes; input is that original forward input as a MkldnnCPU tensor. kernel_size, stride and padding are positive 3-vectors (padding bounded by half the kernel), dilation only supports 1, ceil_mode enables ceiling output windows; supported dtypes are float32, bfloat16 and float16, and operands are 5-D only. The default (representative) overload is out-of-place: it returns a fresh MkldnnCPU tensor and leaves grad_output, output and input unchanged. The keyword-only `out` overload instead writes into and returns (aliases) the supplied MkldnnCPU out buffer, which is the mutation and aliasing behavior covered by the pytest out test and is not expressed by this representative effects block. The schema's stride default is the literal empty list [], which is not native-valid for 5-D operands and is exercised as a rejection case; padding=0 and dilation=1 are non-JSON ATen defaults rendered here as the stable expanded lists [0, 0, 0] and [1, 1, 1], matching the supplied parameter metadata.",
+  "parameters": [
+    {
+      "name": "grad_output",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "output",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "kernel_size",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "List[int]"
+    },
+    {
+      "name": "stride",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": [],
+      "type_hint": "List[int]"
+    },
+    {
+      "name": "padding",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": [
+        0,
+        0,
+        0
+      ],
+      "type_hint": "List[int]"
+    },
+    {
+      "name": "dilation",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": [
+        1,
+        1,
+        1
+      ],
+      "type_hint": "List[int]"
+    },
+    {
+      "name": "ceil_mode",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": false,
+      "type_hint": "bool"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

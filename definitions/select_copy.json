@@ -1,0 +1,32 @@
+{
+  "api_version": "v6.0",
+  "name": "select_copy",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::select_copy.int(Tensor self, int dim, SymInt index) -> Tensor. Original Gems pytest owns the full overload, keyword-argument, return, error, mutation and alias contract; do not narrow tests to this signature. Other registered signatures: aten::select_copy.int_out(Tensor self, int dim, SymInt index, *, Tensor(a!) out) -> Tensor(a!). Semantics derived from the tests: select_copy materializes a dense copy of the slice self[..., index, ...] along dim, i.e. the copy analogue of aten::select, so a nonempty result neither views nor shares storage with self (storage isolation is asserted only for nonempty results; an empty result may share the input's null storage pointer). dim is normalized against rank, so negative dim and index are valid; dim must lie in [-rank, rank-1] and index in [-size(dim), size(dim)-1], otherwise IndexError is raised. A 0-dim input raises IndexError; a zero-extent selected axis has no valid index and raises IndexError, while selecting a present, nonzero axis of a tensor that has another zero-extent axis returns a correctly shaped empty result. dim and index must be integers (bool is accepted as an int, floats are rejected with RuntimeError), and a non-tensor self raises RuntimeError. The operator is differentiable: backward scatters each upstream element exactly once into zeros, so gradients introduce no rounding. The int_out overload takes a required keyword-only out tensor, writes the copy into it in place and returns that same buffer (it mutates out and is aliased with out), including when out is a non-contiguous, offset view of a larger tensor whose uncovered elements must remain untouched; that conditional mutation/alias behavior belongs to the original pytest and is not expressed as effects here.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "dim",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    },
+    {
+      "name": "index",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "api_version": "v6.0",
+  "name": "grid_sampler",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::grid_sampler(Tensor input, Tensor grid, int interpolation_mode, int padding_mode, bool align_corners) -> Tensor. This representative overload is not exclusive: the original Gems pytest owns the full contract for overloads, keyword arguments, return values, error behavior, aliasing and mutation, and no test may be removed or narrowed to fit this one signature. Registered schemas supplied for this operator (all listed verbatim): aten::grid_sampler(Tensor input, Tensor grid, int interpolation_mode, int padding_mode, bool align_corners) -> Tensor. Semantics: samples input (N, C, IH, IW) with a 4-D grid (N, OH, OW, 2) or input (N, C, ID, IH, IW) with a 5-D grid (N, OD, OH, OW, 3), returning one Tensor of shape (N, C, *grid spatial dims); input and grid must agree on rank and batch size (fixed-rank, no broadcast and no scalar operand). interpolation_mode selects 0 bilinear (4-D) / trilinear (5-D), 1 nearest, 2 bicubic (4-D only; mode 2 with a 5-D input raises 'bicubic interpolation only supports 4D input'); padding_mode selects 0 zeros, 1 border, 2 reflection for coordinates outside the normalized [-1, 1] range; align_corners is a boolean boundary convention. The schema declares no default arguments and exposes no `out` overload. The pytest exercises floating-point operands: float32, float16 and bfloat16 unconditionally, and float64 only where the backend reports fp64 support; bool, int8, uint8, int32, int64, float8_e4m3fn and float8_e5m2 appear only as negative rows, and both those rows and the invalid-shape rows only require the candidate to raise one of ValueError, RuntimeError, TypeError or AssertionError. Tests also cover gradients to both operands, non-contiguous/offset layouts, empty outputs, special values and dtype-extreme ranges. No workload, device, reference or evaluator detail is part of this definition.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "grid",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "interpolation_mode",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    },
+    {
+      "name": "padding_mode",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    },
+    {
+      "name": "align_corners",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "bool"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "api_version": "v6.0",
+  "name": "record_stream",
+  "description": "Representative ATen signature (not an exclusive ABI), copied verbatim: aten::record_stream(Tensor(a!) self, Stream s) -> (). This representative signature is selected for the definition but is not exclusive: the original Gems pytest owns the full contract, including overloads, keyword arguments, return values, errors, aliasing and mutation, and must not be narrowed to this one signature. Semantics: caching-allocator bookkeeping. It marks the storage backing self as used by stream s so the allocator cannot hand the block out again before s completes. It returns None, reads no element, does not rebind or reconfigure the stream it was given, and leaves the operand's shape, strides, storage offset, data_ptr, untyped_storage data_ptr and dtype untouched, including when self is a view (the view's storage is recorded, no copy and no rebind). Behavior is overload-independent here (single registered overload). Registered ATen schemas supplied for this operator: aten::record_stream(Tensor(a!) self, Stream s) -> (). Errors remain in pytest: invalid self (int, list, None) and invalid stream (float, None) raise RuntimeError/TypeError.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "s",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Stream"
+    }
+  ],
+  "outputs": [],
+  "effects": {
+    "mutates": [
+      "self"
+    ],
+    "returns_alias_of": {}
+  }
+}

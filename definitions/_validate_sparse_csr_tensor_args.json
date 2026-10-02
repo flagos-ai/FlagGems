@@ -1,0 +1,36 @@
+{
+  "api_version": "v6.0",
+  "name": "_validate_sparse_csr_tensor_args",
+  "description": "Representative ATen signature (not an exclusive ABI, and not an exhaustive contract): aten::_validate_sparse_csr_tensor_args(Tensor crow_indices, Tensor col_indices, Tensor values, int[] size) -> (). This signature is the sole registered overload supplied for this operator; it is recorded here only as the representative contract and must not narrow the original tests. The original Gems pytest owns the full contract: overload resolution, positional and keyword arguments, return values, error behavior, aliasing and mutation. Other registered signatures: aten::_validate_sparse_csr_tensor_args(Tensor crow_indices, Tensor col_indices, Tensor values, int[] size) -> (). Semantics: a host-side structural validator for a CSR (compressed sparse row) description. crow_indices (Int or Long, rank >= 1, contiguous per batch) holds the per-row start offsets, col_indices (same dtype as crow_indices, rank >= 1, contiguous per batch) holds the column of each stored entry, values holds the stored payload and is only inspected for dtype, device, batch dimensions and shape (its contents, including NaN/Inf, are never read), and size is a required int[] giving the full sparse tensor shape: leading elements are batch dimensions, followed by the sparse rows and columns, followed by any trailing dense dimensions (a tested case with size (3, 4, 2) has three rows, four columns and one trailing dense dimension of extent 2). The operator returns nothing: it validates and rejects invalid descriptions by raising RuntimeError (for example mismatched index lengths, wrong rank of size, non-Int/non-Long index dtypes, mixed index dtypes, non-contiguous index tensors, device mismatch, or values whose shape disagrees with nnz); a non-Tensor argument in place of crow_indices is an invalid call form that the native dispatcher rejects with TypeError instead. The device-side index-value invariants abort the process and are not exercised as pytest cases here. The representative signature is neither the only call form nor the whole behavior surface; scalar and list arguments, keyword forms and all error paths remain defined by the original pytest.",
+  "parameters": [
+    {
+      "name": "crow_indices",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "col_indices",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "values",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "size",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "List[int]"
+    }
+  ],
+  "outputs": [],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

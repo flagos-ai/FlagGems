@@ -1,0 +1,20 @@
+{
+  "api_version": "v6.0",
+  "name": "is_coalesced",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::is_coalesced(Tensor self) -> bool. Original Gems pytest owns the full contract; its calls, keyword arguments, returns, raised errors, aliasing and mutation behavior define what must be supported, and tests must never be narrowed, removed or adapted to fit this one representative signature. Semantics: records-only metadata query that returns the coalesced bit saved on a sparse COO tensor as a Python bool (not a 0-dim tensor); it never sorts, merges, deduplicates or re-derives the coordinates, never rewrites the recorded flag, and never writes the stored indices/values, so an out-of-order or duplicated coordinate set recorded with is_coalesced=True is still reported as True. Registered ATen signatures (verbatim): aten::is_coalesced(Tensor self) -> bool. Only this bool-returning tensor overload is registered; the original pytest additionally verifies error behavior that this data model does not express: dense/strided, CSR, CSC, BSR and BSC layouts raise RuntimeError, and non-tensor arguments (float, list) raise RuntimeError or TypeError.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

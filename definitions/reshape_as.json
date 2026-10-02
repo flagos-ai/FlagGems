@@ -1,0 +1,28 @@
+{
+  "api_version": "v6.0",
+  "name": "reshape_as",
+  "description": "Representative ATen schema, copied VERBATIM: aten::reshape_as(Tensor(a) self, Tensor other) -> Tensor(a). This representative overload is NOT exclusive: the original Gems pytest defines the full contract for every registered overload, keyword argument, return, error, aliasing and mutation behavior, and no test may be narrowed, removed or have its reference semantics adapted to fit this one signature. All supplied registered schema strings, VERBATIM: \"aten::reshape_as(Tensor(a) self, Tensor other) -> Tensor(a)\". Semantics (from the tests): reshape_as returns 'self' reshaped to the shape of 'other'; 'other' supplies shape only, so its dtype, storage layout and values never reach the result (NaN/transposed/other-dtype operands must give identical results), while the element count of 'self' must match the numel of 'other' or a RuntimeError is raised; non-tensor operands must raise RuntimeError/TypeError. When the target shape is stride-expressible from 'self' the result is a view sharing storage with 'self' (strides, storage_offset and data_ptr alias are matched against an independently computed native result), otherwise the operator materializes a copy owning fresh storage that is isolated from 'self' and its backing base. A contiguous conjugate view keeps its lazy conjugate bit, while a transposing layout resolves it. Neither path rounds, gradients are pure relayouts/accumulations with respect to 'self' only, and 'other' stays out of the autograd graph; 'self' and 'other' (and any sliced/expanded backing base) are never written by the operator, though a view result writes through to 'self'. The schema-level alias annotation Tensor(a) ... -> Tensor(a) expresses the aliasing of the representative call; because the actual aliasing is conditional on stride-expressibility, this definition records the schema-declared alias and does not attempt to model that condition as a separate effect.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "other",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {
+      "out": "self"
+    }
+  }
+}

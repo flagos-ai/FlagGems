@@ -1,0 +1,20 @@
+{
+  "api_version": "v6.0",
+  "name": "special_psi",
+  "description": "Representative ATen schema (verbatim): aten::special_psi(Tensor self) -> Tensor. This representative overload is not exclusive: the original Gems pytest defines the full contract, including overloads, keyword arguments, returns, errors, aliasing and mutation, and tests must not be narrowed to this signature. All registered schemas (verbatim): aten::special_psi(Tensor self) -> Tensor; aten::special_psi.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!). Semantics: elementwise digamma (psi) function, the logarithmic derivative of the gamma function, evaluated over the input tensor. Float16/bfloat16/float32/float64 inputs keep their dtype, while int8/uint8/int32/int64/bool inputs produce a float32 result; on the measured nvidia/CUDA backend the pytest records missing kernels for float8 and complex dtypes, whose cases raise RuntimeError/TypeError, with those rejection cases collected only for the nvidia vendor and only for dtypes the backend can construct, so this is not a claim about all backends or versions. Non-tensor inputs are rejected. The .out overload takes a keyword-only out buffer, writes in place in contiguous, transposed, strided or offset layouts, returns the same buffer object without changing its stride or storage offset, and rejects an incompatible out dtype. Autograd is exercised through a backward test. The default overload is represented here; the out overload, dtype promotion, error behavior and autograd remain defined by the original pytest.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

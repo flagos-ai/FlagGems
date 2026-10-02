@@ -1,0 +1,30 @@
+{
+  "api_version": "v6.0",
+  "name": "resize_as_sparse_",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::resize_as_sparse_(Tensor(a!) self, Tensor the_template) -> Tensor(a!). This representative overload is not exclusive: the original Gems pytest defines the full contract for overloads, keyword arguments, returns, errors, aliasing and mutation, and tests must never be narrowed or removed to fit this one signature. Registered ATen signatures supplied verbatim: aten::resize_as_sparse_(Tensor(a!) self, Tensor the_template) -> Tensor(a!). Semantics: resizes sparse COO self in place to the_template's shape and sparse/dense split, returns self (aliasing and mutating it); the_template contributes its shape and sparse/dense split and its stored entries are not read, and it is rejected by the reference when it would shrink a non-empty self or change the sparse/dense split (pytest asserts TypeError/ValueError/RuntimeError), when it is not a Tensor (pytest passes a [6, 5] sequence and expects an error), and the operator registers no autograd derivative (pytest asserts \"derivative for aten::resize_as_sparse_ is not implemented\"). Empty and rank-0 sparse self inputs are exercised in pytest, including an empty sparse self paired with a dense template; no dense self input is exercised.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "the_template",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [
+      "self"
+    ],
+    "returns_alias_of": {
+      "out": "self"
+    }
+  }
+}

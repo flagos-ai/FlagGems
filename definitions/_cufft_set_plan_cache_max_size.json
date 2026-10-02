@@ -1,0 +1,24 @@
+{
+  "api_version": "v6.0",
+  "name": "_cufft_set_plan_cache_max_size",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::_cufft_set_plan_cache_max_size(int device_index, int max_size) -> (). This representative signature is not exclusive; the original Gems pytest defines the overloads, keyword arguments, returns, errors, aliasing and mutation that must be supported, and must never be narrowed, removed or adapted to fit this single signature. Registered schemas (verbatim): aten::_cufft_set_plan_cache_max_size(int device_index, int max_size) -> (). Semantics: a tensor-free, void ATen entry point that stores the integer capacity max_size into the per-device cuFFT plan cache of the device addressed by device_index; it has no tensor operands, no return value and no parameter is mutated or aliased (the stored state is observable only through the paired _cufft_get_plan_cache_max_size / _cufft_get_plan_cache_size entry points and through the eviction of live plans). Both parameters are required positional-or-keyword ints with no defaults, so calls omitting or duplicating an argument are arity errors and negative, overflowing or otherwise out-of-range capacities and unusable device indices raise in the native argument parser; non-tensor non-integral capacities (for example the Python floats 1.5, -0.5, nan and inf, and non-ints such as strings and None) raise RuntimeError, while 0-dim tensor payloads follow native int-conversion semantics — bool and integral tensors by value, a non-integral tensor by truncation towards zero — and multi-element, negative or otherwise rejected tensor payloads keep their native RuntimeError.",
+  "parameters": [
+    {
+      "name": "device_index",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    },
+    {
+      "name": "max_size",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    }
+  ],
+  "outputs": [],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

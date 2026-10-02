@@ -1,0 +1,20 @@
+{
+  "api_version": "v6.0",
+  "name": "_is_zerotensor",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::_is_zerotensor(Tensor self) -> bool. This representative signature is NOT exclusive. All supplied registered schema strings, verbatim: \"aten::_is_zerotensor(Tensor self) -> bool\". The original Gems pytest owns the full contract: overloads, keyword arguments, returns, errors, aliasing and mutation; do not narrow its coverage to this representative signature, remove workloads, or adapt reference behavior to fit it. Semantics derived from the tests: a host-side metadata query that reads the ZeroTensor dispatch marker of the tensor impl and returns a Python bool (type res is bool, not a 0-dim tensor). It is not an element-wise zero test: an ordinary dense torch.zeros operand is reported False and only an aten._efficientzerotensor operand is reported True. Cheap rewrites of a flagged operand (identity, detach, slice, view, reshape, transpose, unsqueeze, narrow, expand, contiguous) preserve the marker, while materializing ops (clone, zeros_like) drop it. The query must not materialize, detach or otherwise rewrite its operand (shape, stride, storage_offset, device and dtype are unchanged). None is a valid undefined-tensor operand for the native operator. The schema takes a single Tensor, so non-tensor arguments (int, float, str, list, tuple, dict, dtype) and a missing argument must raise RuntimeError or TypeError; there is no unsupported-dtype or unsupported-rank form to reject. The result is a Python bool with no grad_fn, so there is no backward workload, but grad-requiring operands are accepted and left with requires_grad True. Only one overload is registered, so no additional scalar/list overloads are involved; error and invalid-argument behavior remains asserted in the original pytest.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

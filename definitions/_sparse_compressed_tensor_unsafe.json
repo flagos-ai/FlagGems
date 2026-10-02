@@ -1,0 +1,66 @@
+{
+  "api_version": "v6.0",
+  "name": "_sparse_compressed_tensor_unsafe",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::_sparse_compressed_tensor_unsafe(Tensor compressed_indices, Tensor plain_indices, Tensor values, SymInt[] size, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None) -> Tensor. Registered schemas supplied: aten::_sparse_compressed_tensor_unsafe(Tensor compressed_indices, Tensor plain_indices, Tensor values, SymInt[] size, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None) -> Tensor. This single registered overload is representative only, not an exclusive ABI: the original Gems pytest owns the full contract, including which overloads, keyword arguments, return values, raised errors, aliasing and mutation are supported, and tests must never be removed or have reference behavior adapted to fit this one signature. Semantics (from the supplied tests and benchmark): an unchecked sparse compressed constructor for CSR/CSC/BSR/BSC that wraps the caller's compressed_indices, plain_indices and values, storing them verbatim without calling _validate_sparse_compressed_tensor_args, so inconsistent, unsorted, duplicated, out-of-range, negative, short or long index components and rank-0/rank-1/empty/oversized size metadata are accepted; the logical shape is exactly size, the result layout is the requested layout, its dtype is the requested dtype, nnz is carried by the plain-index tensor, and the caller's strides, storage offsets and storage sharing are preserved so mutating the result's values is visible through the caller's tensors; the factory creates no autograd edge (requires_grad is False and grad_fn is None) even for floating/complex values that require grad; dtype, layout, device and pin_memory are keyword-only optional arguments, with dtype and pin_memory exercised both omitted and explicit and the device inferred from the component tensors when omitted, while layout has no usable default because omitting it is an error; layout must be a recognized sparse compressed layout, size must be non-negative and component arguments must be tensors, otherwise RuntimeError or TypeError is raised; the constructor is device-generic, so dense CPU components are accepted with pin_memory=False, and on a non-CPU backend pin_memory=True is a violation because accelerator-backed components are not pinnable (no supplied case exercises a successful pin_memory=True).",
+  "parameters": [
+    {
+      "name": "compressed_indices",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "plain_indices",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "values",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "size",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "List[int]"
+    },
+    {
+      "name": "dtype",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[int]"
+    },
+    {
+      "name": "layout",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[int]"
+    },
+    {
+      "name": "device",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[Device]"
+    },
+    {
+      "name": "pin_memory",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[bool]"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

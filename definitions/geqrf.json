@@ -1,0 +1,21 @@
+{
+  "api_version": "v6.0",
+  "name": "geqrf",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::geqrf(Tensor self) -> (Tensor a, Tensor tau). This schema is representative only, never exclusive. Registered schemas supplied by the source evidence, verbatim: aten::geqrf(Tensor self) -> (Tensor a, Tensor tau); aten::geqrf.a(Tensor self, *, Tensor(a!) a, Tensor(b!) tau) -> (Tensor(a!) a, Tensor(b!) tau). Original Gems pytest owns the full contract: overload selection, keyword arguments, returns, errors, aliasing and mutation. Do not narrow tests to this signature. Semantics (from the actual tests): LAPACK Householder QR factorisation; an input of shape (*batch, M, N) is factored into the packed reflector matrix a of shape (*batch, M, N) and the reflector scalars tau of shape (*batch, min(M, N)); the default overload is out-of-place and leaves the input unchanged. Overload-dependent behavior is defined by the original Gems pytest, not by this single-overload model: the aten::geqrf.a overload takes required keyword-only buffers a and tau, writes them in place, returns those exact aliased tensors without resizing or re-striding them, and is exercised with contiguous, offset and strided output buffers; the default overload is also called with non-contiguous inputs, empty and boundary shapes and special values, and pytest further defines rank-below-two rejection and unsupported-dtype rejection; the non-differentiable autograd behavior is only recorded in a source comment and is not exercised by any test. This definition models only the representative default overload's parameters and effects; the .a overload's mutation and aliasing must remain expressed in and validated by the pytest.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "a",
+    "tau"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

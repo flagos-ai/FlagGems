@@ -1,0 +1,60 @@
+{
+  "api_version": "v6.0",
+  "name": "_sparse_coo_tensor_with_dims",
+  "description": "Representative ATen signature, copied verbatim from the supplied registered schema and NOT an exclusive ABI: aten::_sparse_coo_tensor_with_dims(int sparse_dim, int dense_dim, int[] size, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=False) -> Tensor. All supplied registered schemas, verbatim: aten::_sparse_coo_tensor_with_dims(int sparse_dim, int dense_dim, int[] size, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=False) -> Tensor ; aten::_sparse_coo_tensor_with_dims.out(int sparse_dim, int dense_dim, int[] size, *, Tensor(a!) out) -> Tensor(a!). Original Gems pytest owns the full contract: overload selection, keyword arguments, returns, errors, aliasing and mutation are defined by those calls and results; tests must never be narrowed or rewritten to this one signature. Semantics: the operator is an allocation-only constructor of an empty sparse COO tensor. Given sparse_dim, dense_dim and size (requiring sparse_dim + dense_dim == len(size)), the default overload returns a new coalesced, non-view, requires_grad=False leaf COO tensor with the requested dtype, layout and device. Nothing is stored per element: _nnz() == 0, _indices() is an int64 tensor of shape (sparse_dim, 0), _values() has shape (0,) + tuple(size[sparse_dim:]) with the requested dtype, and to_dense() matches the native reference for the tested shapes (no per-element values are stored, so there are no stored elements to compare). The tests always pass dtype, layout=torch.sparse_coo and an explicit device; when dtype is omitted the None sentinel is exercised and the tests assert the resulting dtype is float32 on both the candidate and the native reference. The schema defaults for layout and device are the None sentinel, and their behavior is left to pytest. The .out overload is a separate registered signature: it takes a required keyword-only `out` buffer that must already match the requested size (a mismatched buffer is rejected), resets its stored content, mutates that tensor and returns the same object (alias set `a`, and the return aliases `out`). Because this definition models one overload only, effects.mutates and effects.returns_alias_of are empty here and the out-overload aliasing/mutation stays in pytest. Negative behavior also stays in pytest: rank mismatch, negative extents, non-list scalar size, non-int sparse_dim, dense (strided) layout and dense/non-tensor/size-mismatched out buffers are asserted to raise one of TypeError/ValueError/RuntimeError for the candidate. Non-JSON ATen defaults were rendered as stable strings: dtype=None, layout=None and device=None are the Optional sentinels carried as JSON null, while pin_memory=False is a real bool default.",
+  "parameters": [
+    {
+      "name": "sparse_dim",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    },
+    {
+      "name": "dense_dim",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    },
+    {
+      "name": "size",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "List[int]"
+    },
+    {
+      "name": "dtype",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[int]"
+    },
+    {
+      "name": "layout",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[int]"
+    },
+    {
+      "name": "device",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[Device]"
+    },
+    {
+      "name": "pin_memory",
+      "kind": "keyword_only",
+      "required": false,
+      "default": false,
+      "type_hint": "Optional[bool]"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

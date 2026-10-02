@@ -1,0 +1,22 @@
+{
+  "api_version": "v6.0",
+  "name": "mT",
+  "description": "Representative ATen signature (not an exclusive ABI), copied VERBATIM from the supplied schema: aten::mT(Tensor(a) self) -> Tensor(a). This definition represents that one overload only and is explicitly NOT exclusive: the original Gems pytest (tests/test_mT.py) owns the full contract for every registered overload, including the accepted keyword arguments, the exact returns, the raised error types, storage aliasing and mutation, and coverage must never be narrowed or removed to match this single signature. All supplied registered schema strings, VERBATIM: \"aten::mT(Tensor(a) self) -> Tensor(a)\"; \"aten::mT.a(Tensor(a) self) -> Tensor(a)\". The mT.a entry is supplied with the same signature, argument-alias set and empty mutation set; the pytest calls only torch.ops.aten.mT and flag_gems.mT, so beyond the registered schema no mT.a-specific runtime behavior is asserted here. Concise semantics derived from the actual tests: mT swaps the last two dimensions of a matrix or a batch of matrices and returns a zero-copy view that shares storage with its input (checked via res_out.untyped_storage().data_ptr() == inp.untyped_storage().data_ptr()); torch.ops.aten.mT is the reference call while flag_gems.mT is the public injected entrypoint. The tests treat it as a metadata-only view: the result's stride, storage offset and conjugate bit are compared with the native reference view, the input's shape, stride and offset with the reference input, and the values, including special NaN/Inf scenarios, with the reference (a metadata-only view leaves NaN/Inf payloads untouched). For a lazily conjugated complex input the conjugate bit is kept, not toggled (assert res_out.is_conj()). Rank 0 is a deprecated identity that returns the same tensor object (assert res_out is inp); rank 1 inputs are rejected with RuntimeError and non-tensor arguments such as 3.14, [1.0, 2.0] or None with RuntimeError/TypeError. A write through the result (fill_) is checked to land in the input storage. The backward tests compute the input gradient through the original leaf and compare it against the reference gradient in the transposed upstream layout. Conditional, rank-dependent behavior and every error path stay expressed in pytest, not in this single-overload model.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {
+      "out": "self"
+    }
+  }
+}

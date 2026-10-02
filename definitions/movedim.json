@@ -1,0 +1,34 @@
+{
+  "api_version": "v6.0",
+  "name": "movedim",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::movedim.int(Tensor(a) self, int source, int destination) -> Tensor(a). This signature is representative only, not exclusive: the original Gems pytest owns the full contract for overloads, keyword arguments, returns, errors, aliasing and mutation, and must not be narrowed to this signature. All registered signatures: aten::movedim.int(Tensor(a) self, int source, int destination) -> Tensor(a); aten::movedim.intlist(Tensor(a) self, int[] source, int[] destination) -> Tensor(a). Semantics: movedim permutes the axis order of self by moving axis source to position destination, accepting negative axes, and returns a view that aliases the input storage without copying or rounding any element. The intlist overload takes axis lists and dispatches on argument type; the empty list is the identity and rank 0/1 admit only the identity move. Tests exercise scalar axes, single- and multi-axis lists, negative axes, non-contiguous and offset inputs, the lazy conjugate bit, view write-through, backward gradients, special values, and rejection of out-of-range, duplicated, mismatched-length or non-integer axes (IndexError/RuntimeError/TypeError) plus non-Tensor input. Representative effects describe the scalar-axis overload's view alias only; overload-dependent behavior stays in pytest.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "source",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    },
+    {
+      "name": "destination",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {
+      "out": "self"
+    }
+  }
+}

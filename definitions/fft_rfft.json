@@ -1,0 +1,41 @@
+{
+  "api_version": "v6.0",
+  "name": "fft_rfft",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::fft_rfft(Tensor self, SymInt? n=None, int dim=-1, str? norm=None) -> Tensor. Registered ATen signatures supplied, verbatim: aten::fft_rfft(Tensor self, SymInt? n=None, int dim=-1, str? norm=None) -> Tensor; aten::fft_rfft.out(Tensor self, SymInt? n=None, int dim=-1, str? norm=None, *, Tensor(a!) out) -> Tensor(a!). Semantics derived from the tests: computes the one-sided (real-input) discrete Fourier transform of a real-valued tensor, transforming the single axis selected by dim (default -1, the trailing axis) and producing n//2 + 1 complex bins along that axis, where the transform length n defaults to the size of that axis; n may truncate or zero-pad the signal. norm accepts None, backward, forward and ortho. Accepted real dtypes map to complex results: float32 -> complex64; float64 -> complex128 is collected only where the device advertises fp64, and float16 -> complex32 only under the NVIDIA/cuFFT scope, where the half lane additionally requires a power-of-two transformed length. int8/uint8/int32/bool are promoted through float32 to complex64, with int64 collected only where the device advertises it. A complex input is rejected because rfft is defined only for a real signal; complex64 is rejected unconditionally and the complex128 rejection row is collected only where the device supports fp64. The operator supports autograd through the candidate entrypoint (forward values and input gradients are compared), and it has no second tensor operand, so there is no broadcast dimension. Error behavior stays in the original pytest: a 0-dim input, an empty signal without a positive explicit n, and out-of-range n/dim/norm values are asserted there as raised exceptions, while the zero-length batch-axis rows and the bfloat16/float8 rejection rows are collected only under the measured cuFFT backend scope (and, for bfloat16/float8, only where the device advertises the dtype). This definition models exactly one overload, so effects are empty here; the .out overload additionally mutates and aliases its keyword-only out buffer, and this model does not express that conditional, overload-dependent effect. The representative signature is not exclusive: the original Gems pytest defines the overloads, keyword arguments, returns, errors, aliasing and mutation that the implementation must support, and its coverage must never be narrowed or its reference behavior adapted to fit this one signature.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "n",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[int]"
+    },
+    {
+      "name": "dim",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": -1,
+      "type_hint": "int"
+    },
+    {
+      "name": "norm",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[str]"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "api_version": "v6.0",
+  "name": "_validate_sparse_compressed_tensor_args",
+  "description": "Representative ATen signature (not an exclusive ABI), copied verbatim from the supplied schema: aten::_validate_sparse_compressed_tensor_args(Tensor compressed_indices, Tensor plain_indices, Tensor values, int[] size, Layout layout) -> (). This representative signature is not exclusive: the original Gems pytest owns the full contract for overloads, keyword arguments, return values, raised errors, aliasing and mutation, and it must not be narrowed, trimmed or re-adapted to fit this one signature. All supplied registered schema strings for this operator (verbatim): aten::_validate_sparse_compressed_tensor_args(Tensor compressed_indices, Tensor plain_indices, Tensor values, int[] size, Layout layout) -> (). Semantics derived from the tests: the operator is a pure structural validator for compressed sparse layouts (CSR, CSC, BSR, BSC). It reads the two index tensors, the values tensor, the logical `size` (batch extents + 2 base extents + dense extents) and the `layout`, performs host-side structural checks plus a device-side scan over nnz, returns nothing, and leaves every input untouched. The pytest passes it only by position as flag_gems._validate_sparse_compressed_tensor_args(compressed, plain, values, size, layout) and asserts the result is None and that compressed/plain/values and their full parent storage (strides, storage offsets) are unchanged. Negative cases assert that structurally invalid arguments (bad index ndim/length/stride, bad values ndim, bad size rank or negative extents, indivisible block shape, missing batch size, batch mismatch, wrong index dtype or dtype mismatch, wrong device, and strided/sparse_coo/string layouts) raise RuntimeError or TypeError; those raises stay in the pytest. The schema declares `Layout layout`, while the supplied parameter metadata records the hint as `int`; the benchmark forwards a torch.layout value, so the type hint is descriptive only and no data is generated from it.",
+  "parameters": [
+    {
+      "name": "compressed_indices",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "plain_indices",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "values",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "size",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "List[int]"
+    },
+    {
+      "name": "layout",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    }
+  ],
+  "outputs": [],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

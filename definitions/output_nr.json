@@ -1,0 +1,20 @@
+{
+  "api_version": "v6.0",
+  "name": "output_nr",
+  "description": "Representative ATen signature (not an exclusive ABI), copied verbatim from the supplied schema: aten::output_nr(Tensor self) -> int. All supplied registered schema strings, verbatim: aten::output_nr(Tensor self) -> int. This representative signature is not exclusive: the original Gems pytest owns the full contract and defines the overloads, keyword arguments, return values, errors, aliasing and mutation behavior; the tests must not be narrowed to this signature and reference semantics must not be adapted to fit it. Semantics derived from the tests: output_nr returns the position of self in the output list of its autograd node -- 0 for every tensor without a grad_fn (leaves, no_grad results, single-output nodes) and the slot index for a differentiable output of a multi-output node (e.g. the second slot of split/var_mean/aminmax). It is an O(1) metadata-only read: no element value, dtype, layout or device is read, so it applies to all dtypes including fp8, complex, integer and bool, and to empty tensors. The result is a Python int (asserted as type(res) is int), which cannot be differentiated, so no autograd.grad workload exists. The query must not mutate the queried tensor's autograd node, storage or view metadata, and lazy conjugate/negation flags must survive unmaterialized. Errors owned by the original pytest: missing self, too many positional arguments, unexpected keyword arguments, non-tensor operands and undefined tensors all raise RuntimeError/TypeError/ValueError; the representative model expresses only the single-tensor signature.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

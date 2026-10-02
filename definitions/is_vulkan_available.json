@@ -1,0 +1,13 @@
+{
+  "api_version": "v6.0",
+  "name": "is_vulkan_available",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::is_vulkan_available() -> bool. This nullary query takes no arguments and reports a build-time property of the installed stack; it returns a single Python bool, and the pytest asserts that the result type is bool and that its value equals the native torch.ops.aten.is_vulkan_available() answer for the ambient states and call indices it sweeps (plain, no_grad, inference_mode, seeded, single_thread, after_cpu_allocation, after_device_allocation, after_device_kernel_launch, default_dtype_float64, default_dtype_float16, default_device_active, deterministic_algorithms, matmul_precision_high, under_tensor_dispatch_mode; call indices 1 through 8). The representative signature is not exclusive: the original Gems pytest defines the full overload, keyword-argument, return, error, aliasing and mutation contract, so no test or reference behavior may be removed or narrowed to fit this one signature. All registered schema strings supplied for this operator: aten::is_vulkan_available() -> bool.",
+  "parameters": [],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

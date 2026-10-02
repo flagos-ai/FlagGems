@@ -1,0 +1,20 @@
+{
+  "api_version": "v6.0",
+  "name": "is_distributed",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::is_distributed(Tensor self) -> bool. This representative overload is not exclusive: the original Gems pytest owns the full contract for overloads, keyword arguments, returns, errors, aliasing and mutation, so tests must not be narrowed or reference behavior adapted to fit this one signature. All supplied registered schemas verbatim: aten::is_distributed(Tensor self) -> bool. Semantics: reports TensorImpl distributed state (a Python bool) and reads no tensor data, so the pytest varies tensor state and dtype and also parametrizes value ranges, including positive NaN/Inf special values; it accepts any dtype the backend can allocate, works on non-trivial states (transpose, slice, expand, step, conj/neg lazy views, zero-dim, empty, meta, sparse_coo, sparse_csr) without disturbing sizes or lazy conj/neg flags, leaves autograd state untouched (no graph, no deposited gradient on a leaf), and raises RuntimeError/TypeError for non-tensor arguments; the single return is a bool, not a tensor, so there is no output alias.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

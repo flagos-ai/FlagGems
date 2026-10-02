@@ -1,0 +1,26 @@
+{
+  "api_version": "v6.0",
+  "name": "set_data",
+  "description": "Representative ATen signature (not an exclusive ABI), copied verbatim from the supplied schema: aten::set_data(Tensor(a!) self, Tensor new_data) -> (). This representative signature is not exclusive: the original Gems pytest calls and results own the full contract, defining the overloads, keyword arguments, returns, errors, aliasing and mutation behavior that must be supported; do not narrow tests to this one signature, remove workloads, or adapt reference behavior to fit it. All supplied registered schema strings, verbatim: aten::set_data(Tensor(a!) self, Tensor new_data) -> (). Semantics derived from the tests: set_data computes nothing and returns None; it rebinds the target tensor object self onto the donor tensor new_data's type metadata and storage, so self adopts the donor's dtype, layout, shape, strides, storage offset, data pointer, untyped-storage pointer and lazy conjugate/negative bits, while the donor's own metadata and values stay intact and the target's previous backing storage is untouched. The supplied cases only swap tensors that already share a device, so only same-device swaps are covered. The swap aliases the donor storage (a later write through self is visible in the donor window), self keeps its own autograd state (requires_grad, leafness, grad_fn, version counter) rather than that of the donor, and backward still flows through the original leaf. new_data must be a Tensor: the tests require scalar, string, None and list arguments and sparse, quantized and meta tensors to be rejected with RuntimeError or TypeError, and a grad-tracking self may only be rebound to a floating or complex donor (RuntimeError for the int8, uint8, int32, int64 and bool donors the tests cover). There is no broadcast dimension and no scalar-operand overload.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "new_data",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [],
+  "effects": {
+    "mutates": [
+      "self"
+    ],
+    "returns_alias_of": {}
+  }
+}

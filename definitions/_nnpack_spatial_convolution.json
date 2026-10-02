@@ -1,0 +1,48 @@
+{
+  "api_version": "v6.0",
+  "name": "_nnpack_spatial_convolution",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::_nnpack_spatial_convolution(Tensor input, Tensor weight, Tensor? bias, SymInt[2] padding, SymInt[2] stride=[1, 1]) -> Tensor. The original Gems pytest owns the full contract for this operator: it defines the overloads, keyword arguments, returns, errors, aliasing and mutation behavior, and must not be narrowed to this one representative signature. Semantics derived from the tests: this is PyTorch's NNPACK CPU spatial-convolution engine; it implements float32 only, and the tests build the operands and the reference on the CPU. The tested unsupported dtypes (float64, float16, bfloat16, int8, uint8, int16, int32, int64, bool and the listed float8 variants) raise RuntimeError/TypeError, and accelerator operands are rejected as well. The error cases actually exercised are rank-2 and rank-3 inputs, a zero-size batch dimension, invalid weight shapes such as (4, 3, 3), (4, 5, 3, 3) and (0, 3, 3, 3), and negative padding or stride; ranks above 4 are not asserted to raise, because the native shape precheck was observed to abort the process with SIGFPE (integer divide by zero) for a 6-D input instead of raising, so that negative cannot run in-process. Non-square kernels such as (4, 3, 3, 5) are native-valid. It convolves a 4-D NCHW input with a 4-D weight of shape (out_channels, in_channels, kH, kW), optionally adds a 1-D bias (bias may be None), and honors a 2-element padding and 2-element stride (including asymmetric padding and stride 2); stride defaults to [1, 1] when omitted, and omitting it exercises that default. The single logical result is a 4-D NCHW tensor; the tests also check gradients for input, weight and bias. Other registered schemas: aten::_nnpack_spatial_convolution(Tensor input, Tensor weight, Tensor? bias, SymInt[2] padding, SymInt[2] stride=[1, 1]) -> Tensor ; aten::_nnpack_spatial_convolution.out(Tensor input, Tensor weight, Tensor? bias, SymInt[2] padding, SymInt[2] stride=[1, 1], *, Tensor(a!) out) -> Tensor(a!). The .out overload is the out= variant: it takes a required keyword-only out tensor, writes the result into it and returns that same tensor; its mutation/alias contract stays with the original pytest and is not expressed by this representative default-overload definition.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "weight",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "bias",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Optional[Tensor]"
+    },
+    {
+      "name": "padding",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "List[int]"
+    },
+    {
+      "name": "stride",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": [
+        1,
+        1
+      ],
+      "type_hint": "List[int]"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

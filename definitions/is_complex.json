@@ -1,0 +1,20 @@
+{
+  "api_version": "v6.0",
+  "name": "is_complex",
+  "description": "Representative ATen overload (not an exclusive ABI): aten::is_complex(Tensor self) -> bool. Registered schemas supplied and listed verbatim: aten::is_complex(Tensor self) -> bool. The representative signature is not exclusive: the original Gems pytest owns and defines the full contract for overloads, keyword arguments, returns, errors, aliasing and mutation, and the pytest coverage must not be narrowed to this one signature. Semantics: a dtype-only query that returns a Python bool, True for the tested complex dtypes (complex64, complex128, complex32) and False for the other tested dtypes (int8, uint8, float8_e4m3fn, float8_e5m2, float32, bfloat16, float16, int32, int64, float64, int16, bool); the suites vary element values and storage state and compare against torch.ops.aten.is_complex, so those inputs must not change the answer. The tests assert `type(res_out) is bool` and equality with torch.ops.aten.is_complex for multiple shapes and value ranges, and for 0-dim, empty, transposed, offset-slice, stride-0 expanded, conjugate-view, negative-view, sparse COO, meta and quantized tensors, and for nan/inf special-value payloads. At runtime the Tensor argument is optional: the pytest passes None to native without expecting an error and requires the candidate to match that result, while for non-Tensor arguments (float, int, bool, str, a list of tensors) and a missing argument the pytest asserts that the candidate raises RuntimeError/TypeError without consulting native; this definition keeps the required Tensor schema of the representative overload while the original pytest retains responsibility for that optional/error behavior. Effects are overload-independent and empty: no parameter is mutated and no output aliases a parameter (the operator returns a Python bool, not the input).",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

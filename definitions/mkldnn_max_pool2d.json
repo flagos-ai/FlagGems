@@ -1,0 +1,60 @@
+{
+  "api_version": "v6.0",
+  "name": "mkldnn_max_pool2d",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::mkldnn_max_pool2d(Tensor self, int[2] kernel_size, int[2] stride=[], int[2] padding=0, int[2] dilation=1, bool ceil_mode=False) -> Tensor. All supplied registered schemas, verbatim: aten::mkldnn_max_pool2d.out(Tensor self, int[2] kernel_size, int[2] stride=[], int[2] padding=0, int[2] dilation=1, bool ceil_mode=False, *, Tensor(a!) out) -> Tensor(a!); aten::mkldnn_max_pool2d(Tensor self, int[2] kernel_size, int[2] stride=[], int[2] padding=0, int[2] dilation=1, bool ceil_mode=False) -> Tensor. The representative overload is the plain (non-out) form because it is the signature the public injected entrypoint resolves to in the ordinary case; it is not exclusive and no keyword, return, error, aliasing or mutation behavior of the other overload may be dropped. Original Gems pytest owns the full contract: overload selection, keyword arguments, returns, raised errors, aliasing and mutation are defined by the pytest and benchmark sources, and tests must never be removed or the reference adapted to fit this one signature. Semantics derived from the tests: oneDNN-only 2D max pooling over rank-4 (N, C, H, W) MKLDNN operands built with to_mkldnn() on CPU; the result is a fresh MKLDNN tensor whose layout and device match the operand and whose dtype matches the reference result, and the operand is not modified in place. stride defaults to kernel_size when empty (stride=[]); the supplied parameter metadata resolves the registered schema defaults stride=[], padding=0 and dilation=1 to the concrete list defaults [] (empty means kernel_size), [0, 0] and [1, 1], retained here verbatim as JSON values. Asymmetric kernel_size/stride/padding, ceil_mode=True, and scalar ints accepted for the int[2] parameters are all exercised; dilation values other than 1, non-rank-4 operands and negative padding raise RuntimeError/TypeError. Supported element types are torch.float32, torch.bfloat16, torch.float16, torch.int8 and torch.uint8 (oneDNN cannot hold int32/int64/float64/bool/fp8 operands); floats also support autograd through the operator. The out overload is a keyword-only extension of the same entrypoint: out is a required keyword-only MKLDNN tensor, it is mutated in place, the return is that same buffer (identity, not merely equal values), a dense out buffer is rejected, and in that overload effects would be mutates=['out'] with the sole return aliased to out; those conditional effects are not expressible by this single representative model.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "kernel_size",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "List[int]"
+    },
+    {
+      "name": "stride",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": [],
+      "type_hint": "List[int]"
+    },
+    {
+      "name": "padding",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": [
+        0,
+        0
+      ],
+      "type_hint": "List[int]"
+    },
+    {
+      "name": "dilation",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": [
+        1,
+        1
+      ],
+      "type_hint": "List[int]"
+    },
+    {
+      "name": "ceil_mode",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": false,
+      "type_hint": "bool"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

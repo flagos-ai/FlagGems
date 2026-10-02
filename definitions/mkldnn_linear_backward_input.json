@@ -1,0 +1,32 @@
+{
+  "api_version": "v6.0",
+  "name": "mkldnn_linear_backward_input",
+  "description": "Representative ATen signature (not an exclusive ABI), copied verbatim: \"aten::mkldnn_linear_backward_input(int[] input_size, Tensor grad_output, Tensor weight) -> Tensor\". This representative signature is not exclusive: the original Gems pytest owns and defines the full contract for overloads, keyword arguments, returns, error behavior, aliasing and mutation, and must never be narrowed, removed or adapted to fit this one signature. All supplied registered schemas, verbatim: \"aten::mkldnn_linear_backward_input.out(int[] input_size, Tensor grad_output, Tensor weight, *, Tensor(a!) out) -> Tensor(a!)\", \"aten::mkldnn_linear_backward_input(int[] input_size, Tensor grad_output, Tensor weight) -> Tensor\". Semantics derived from the tests: this operator is the data (input) gradient of an MKLDNN linear / fully-connected layer. grad_output must be a CPU mkldnn tensor (MkldnnCPU) holding an (M, N) matrix or a higher-rank tensor that is first flattened to 2-D; weight is a dense CPU float32 (N, K) tensor and must remain float32 regardless of the grad dtype. The returned mkldnn tensor has shape (M, K) and is reshaped to input_size only when len(input_size) > 2; shorter or empty input_size forms are ignored and keep (M, K). Supported grad dtypes are float32, float16 and bfloat16; the operator registers no derivative (it is itself the backward pass) and validates operand layouts, dtypes, grad rank and input_size, raising RuntimeError or NotImplementedError for invalid forms (dense grad_output, mkldnn weight, non-float32 weight, 1-D grad_output, unsupported grad dtype, bad input_size, non-mkldnn or mismatched out buffer). In the .out overload the `*` marker makes only the out argument keyword-only; it takes a preallocated mkldnn out buffer in the result shape, returns that same aliased tensor (a!) and mutates it, whereas the representative default overload allocates and returns a fresh, non-aliased tensor with no mutation.",
+  "parameters": [
+    {
+      "name": "input_size",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "List[int]"
+    },
+    {
+      "name": "grad_output",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "weight",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

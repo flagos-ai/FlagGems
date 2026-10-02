@@ -1,0 +1,20 @@
+{
+  "api_version": "v6.0",
+  "name": "is_non_overlapping_and_dense",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::is_non_overlapping_and_dense(Tensor self) -> bool. This representative signature is not exclusive; the original Gems pytest owns the full contract for the overloads, keyword arguments, returns, errors, aliasing and mutation it exercises, and tests must never be narrowed or reference behavior adapted to fit this single signature. All supplied registered schema strings (verbatim): aten::is_non_overlapping_and_dense(Tensor self) -> bool. Semantics: pure metadata predicate over a tensor's sizes, strides and storage_offset; it never reads element values, does not broadcast, and returns a Python bool. Dense, non-overlapping layouts (contiguous, dense permutations, as_strided dense perm) are True; overlapping stride-0 expansions, as_strided gaps/overlaps, and sparse COO inputs are False. The element dtype and the element values of the input are irrelevant to the result, while sizes, strides, storage_offset and the resulting layout are what determine it; autograd on the bool result is not supported.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

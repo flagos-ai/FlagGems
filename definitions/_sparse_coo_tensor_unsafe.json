@@ -1,0 +1,67 @@
+{
+  "api_version": "v6.0",
+  "name": "_sparse_coo_tensor_unsafe",
+  "description": "Representative ATen signature (not an exclusive ABI), copied verbatim: aten::_sparse_coo_tensor_unsafe(Tensor indices, Tensor values, SymInt[] size, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None, bool? is_coalesced=None) -> Tensor. This is the one registered overload supplied for this operator. All supplied registered schema strings, verbatim: aten::_sparse_coo_tensor_unsafe(Tensor indices, Tensor values, SymInt[] size, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None, bool? is_coalesced=None) -> Tensor. This is the one registered overload supplied for this operator. The original Gems pytest owns the full contract of overloads, keyword arguments, return forms, error behavior, aliasing and mutation; it must not be narrowed to this representative signature, and no test or reference behavior may be adapted or removed to fit it. Semantics derived from the tests and benchmark: a metadata-only COO constructor that wraps the caller's int64 coordinate tensor of shape (sparse_dim, nnz) and value tensor of shape (nnz,) + dense_shape into a new sparse COO tensor of logical shape size, without bounds checking coordinates (\"unsafe\"), so out-of-range rows are stored unchanged. The tested malformed-input cases raise RuntimeError for invalid indices (non-int64, or rank other than two) and for an nnz mismatch, while the invalid-size tests accept either RuntimeError or TypeError and assert no specific type. The result reports sparse_dim equal to the number of sparse dimensions, dense_dim equal to the number of trailing dense extents, and _nnz() equal to the stored entries; is_coalesced is measured as True when fewer than two entries are stored and is otherwise overridden by the is_coalesced keyword, whose tested True and False values are both honored. size is accepted as list, tuple or torch.Size, positionally or by keyword; the empty-size case is tested with zero sparse and zero dense dimensions. The constructor adopts the caller's storages rather than re-packing: result indices/values share data_ptr, stride and storage_offset with the inputs, so writes through the result are visible in the caller's buffer; the call itself mutates no parameter, and the representative schema records no return alias annotation for the returned Tensor (alias_before []). Parameter metadata is supplied evidence: the trailing dtype, layout, device, pin_memory and is_coalesced arguments are keyword-only with explicit JSON null defaults (native optional ScalarType/Layout/Device/bool values rendered as Optional hints), and no defaults are invented here.",
+  "parameters": [
+    {
+      "name": "indices",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "values",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "size",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "List[int]"
+    },
+    {
+      "name": "dtype",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[int]"
+    },
+    {
+      "name": "layout",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[int]"
+    },
+    {
+      "name": "device",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[Device]"
+    },
+    {
+      "name": "pin_memory",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[bool]"
+    },
+    {
+      "name": "is_coalesced",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[bool]"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

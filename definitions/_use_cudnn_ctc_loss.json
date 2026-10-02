@@ -1,0 +1,44 @@
+{
+  "api_version": "v6.0",
+  "name": "_use_cudnn_ctc_loss",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::_use_cudnn_ctc_loss(Tensor log_probs, Tensor targets, int[] input_lengths, int[] target_lengths, int blank) -> bool. This representative overload is not exclusive: the original Gems pytest owns the full contract, including overload selection, keyword arguments, returns, errors, aliasing and mutation, and must never be narrowed to this one signature. Registered signatures (verbatim): aten::_use_cudnn_ctc_loss(Tensor log_probs, Tensor targets, int[] input_lengths, int[] target_lengths, int blank) -> bool ; aten::_use_cudnn_ctc_loss.Tensor(Tensor log_probs, Tensor targets, Tensor input_lengths, Tensor target_lengths, int blank) -> bool. Semantics: boolean capability predicate consulted by torch.nn.CTCLoss before choosing between the cuDNN CTC path and native _ctc_loss. It only inspects its operands (rank, dtype, device, contiguity, blank and the two length lists) and returns a plain Python bool; nothing is allocated, mutated or traced, and there is no autograd graph, broadcast or elementwise computation, so the result is a Python scalar rather than a tensor. Under the int[] form of the representative overload, the native predicate requires cuDNN enabled, blank == 0, rank-1 int32 contiguous targets on CPU, float32 rank-3 log_probs on CUDA, every input_lengths entry equal to log_probs.size(0), and every target_lengths entry below 256 and no greater than the corresponding input length. The .Tensor overload tested by the same pytest drops the CPU-targets test, requires the length tensors to be int32 and bounds its loop by target_lengths.size(); it is dispatched either explicitly as torch.ops.aten._use_cudnn_ctc_loss.Tensor or implicitly by the FlagGems public entrypoint flag_gems._use_cudnn_ctc_loss when Tensor lengths are passed. Rejected dtype, rank or device produce a plain False rather than an exception (those rows are compared as booleans against the backend's honest answer), while malformed calls (missing blank, extra argument, non-int blank, non-Tensor log_probs/targets) raise TypeError/ValueError/RuntimeError. Because the outcome depends only on operand metadata, no numerical tolerances or special values change the result once a dtype is rejected. All parameters are required with no schema default, so no rendered non-JSON defaults apply here.",
+  "parameters": [
+    {
+      "name": "log_probs",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "targets",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "input_lengths",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "List[int]"
+    },
+    {
+      "name": "target_lengths",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "List[int]"
+    },
+    {
+      "name": "blank",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

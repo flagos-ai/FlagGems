@@ -1,0 +1,40 @@
+{
+  "api_version": "v6.0",
+  "name": "_convert_indices_from_csr_to_coo",
+  "description": "Representative ATen signature (not an exclusive ABI), copied verbatim: aten::_convert_indices_from_csr_to_coo(Tensor crow_indices, Tensor col_indices, *, bool out_int32=False, bool transpose=False) -> Tensor. This representative signature is not exclusive: the original Gems pytest owns the full contract, including the other registered overloads, keyword arguments, returns, error cases, aliasing and mutation; never remove tests or adapt reference behavior to fit this one signature. Semantics: convert CSR-format index tensors to COO order, where crow_indices are the per-row pointers and col_indices are the stored column indices; crow_indices and col_indices must have the same rank and matching leading batch extents rather than broadcasting (mismatched extents/rank and zero-dim operands are rejected); out_int32 selects an int32 result tensor instead of the default int64, and transpose selects the transposed conversion. The pytest's positive cases build crow_indices with monotonic offsets whose terminal count matches the stored column entries of each block; that describes the tests' valid-input construction, not an operator-enforced validation. Registered signatures (all, verbatim): aten::_convert_indices_from_csr_to_coo(Tensor crow_indices, Tensor col_indices, *, bool out_int32=False, bool transpose=False) -> Tensor; aten::_convert_indices_from_csr_to_coo.out(Tensor crow_indices, Tensor col_indices, *, bool out_int32=False, bool transpose=False, Tensor(a!) out) -> Tensor(a!). The out overload (out-buffer writing, aliasing of the returned tensor with `out`, and its mutation) is exercised by pytest and is modeled here only through this description, not as a conditional effect.",
+  "parameters": [
+    {
+      "name": "crow_indices",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "col_indices",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "out_int32",
+      "kind": "keyword_only",
+      "required": false,
+      "default": false,
+      "type_hint": "bool"
+    },
+    {
+      "name": "transpose",
+      "kind": "keyword_only",
+      "required": false,
+      "default": false,
+      "type_hint": "bool"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

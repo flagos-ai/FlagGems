@@ -1,0 +1,41 @@
+{
+  "api_version": "v6.0",
+  "name": "_to_sparse",
+  "description": "Representative ATen signature (not an exclusive ABI), copied verbatim: aten::_to_sparse(Tensor self, *, Layout? layout=None, int[2]? blocksize=None, int? dense_dim=None) -> Tensor. Semantics: converts the dense tensor self into a sparse tensor. layout selects the output sparse layout (sparse_coo by default, and also sparse_csr, sparse_csc, sparse_bsr, sparse_bsc); blocksize is the optional block pair required by the block layouts sparse_bsr/sparse_bsc, must be positive, have exactly two entries and divide the two matrix axes; dense_dim is the number of trailing dense dimensions kept in the result (must be < rank, and a compressed layout needs a rank-2 sparse grid after the dense tail is removed). The provided type hints are the supplied metadata, where the ATen Layout? is rendered as Optional[int] and the [2] block pair as Optional[List[int]]; all ATen defaults are null/None, so no non-JSON default string needs remapping here. Calling the same packet positionally as _to_sparse(self, sparse_dim) dispatches the separate sparse_dim overload, which accepts no layout/blocksize/dense_dim keyword. The conversion is not in place: self is never mutated. The original pytest also pins the error contract: invalid layout values, dense_dim out of range or non-integer, blocksize zero/negative/mis-sized/non-dividing, blocksize with COO or CSR, CSR with nonzero dense_dim, and ranks too low for CSR all raise RuntimeError/TypeError/IndexError; a CSR conversion with no blocksize is a positive case, and no negative row omits the blocksize of a block layout. This definition describes only the representative default overload; the positional sparse_dim form, the out forms with their alias and mutation behavior, and all errors remain owned by the original Gems pytest. The representative signature is not exclusive: original Gems pytest owns the full contract of overloads, keyword arguments, returns, errors, aliasing and mutation, and tests must never be removed, narrowed, or have reference behavior adapted to this single signature. All supplied registered schema strings, verbatim: aten::_to_sparse.sparse_dim(Tensor self, int sparse_dim) -> Tensor; aten::_to_sparse(Tensor self, *, Layout? layout=None, int[2]? blocksize=None, int? dense_dim=None) -> Tensor; aten::_to_sparse.sparse_dim_out(Tensor self, int sparse_dim, *, Tensor(a!) out) -> Tensor(a!); aten::_to_sparse.out(Tensor self, *, Layout? layout=None, int[2]? blocksize=None, int? dense_dim=None, Tensor(a!) out) -> Tensor(a!).",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "layout",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[int]"
+    },
+    {
+      "name": "blocksize",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[List[int]]"
+    },
+    {
+      "name": "dense_dim",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[int]"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

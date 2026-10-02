@@ -1,0 +1,24 @@
+{
+  "api_version": "v6.0",
+  "name": "_assert_scalar",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::_assert_scalar(Scalar self, str assert_msg) -> (). This representative overload is not exclusive: the original Gems pytest owns the full overload/keyword/return/error/mutation/alias contract for this operator, and tests must never be narrowed, removed or adapted to fit this single signature. Semantics: the operator takes a host Python number (Scalar self) plus a message string and asserts on the host. For the native-accepted scalar types the pytest exercises (Python non-zero int within the int64 range, bool True, float including nan and inf, complex, and numpy.float64) the tests require the Gems result to be identical to the native reference result (`res is ref`), consistent with the schema's empty return list. For falsy values of those accepted types (integer/float/complex/numpy float64 zero, signed zeros, False) the tests expect the Gems call to raise RuntimeError whose text equals the passed message; when the message is empty the expected text is the test's EMPTY_MSG_FALLBACK constant ('Assertion is failed'). Acceptance is by native-accepted Scalar number type, not truthiness alone: the pytest also lists other truthy and falsy inputs (for example np.float32(1.0) and decimal.Decimal(0)) among its rejection cases. There is no tensor operand and no tensor result, so no shape/dtype grid, broadcast, backward or device asset is expressed here; tensor-valued self, non-number scalars, non-str messages and wrong arity are error paths owned by pytest. All supplied registered schema strings: aten::_assert_scalar(Scalar self, str assert_msg) -> ().",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "number"
+    },
+    {
+      "name": "assert_msg",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "str"
+    }
+  ],
+  "outputs": [],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

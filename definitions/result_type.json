@@ -1,0 +1,26 @@
+{
+  "api_version": "v6.0",
+  "name": "result_type",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::result_type.Tensor(Tensor tensor, Tensor other) -> ScalarType. This representative signature is not exclusive: the original Gems pytest defines the full contract and owns all overload, keyword-argument, return, error, aliasing and mutation behavior, so tests must never be narrowed to this one signature, nor reference behavior adapted to fit it. Other registered ATen schemas (verbatim): \"aten::result_type.Tensor(Tensor tensor, Tensor other) -> ScalarType\", \"aten::result_type.Scalar(Tensor tensor, Scalar other) -> ScalarType\", \"aten::result_type.Scalar_Tensor(Scalar scalar, Tensor tensor) -> ScalarType\", \"aten::result_type.Scalar_Scalar(Scalar scalar1, Scalar scalar2) -> ScalarType\". Semantics: pure dtype inference; each overload returns a Python int ScalarType code (never a tensor), the pytest asserts type(res) is int, and every candidate code is compared against the native torch.ops.aten.result_type code. The pytest covers the four call forms, dtype pairs, rank roles, the shared shape/value-range grid, nan/inf payloads, None as the second argument (compared against the native oracle; no supplied schema marks a scalar parameter optional), and candidate rejection (TypeError/RuntimeError) of mixed fp8 pairs, non-tensor/non-Scalar arguments and missing arguments. Its notes record equal-dtype promotion as dtype-driven regardless of rank, two 0-dim operands as following ordinary dtype promotion, and the mixed-dtype 0-dim role as probed on the active backend (e.g. uint8[1-D] x int32[0-D] -> uint8 while uint8[0-D] x int32[1-D] -> int32); fp8 promotes only with the same fp8 type, keeping fp8 out of the general promotion lattice. Effects are overload-dependent (parameter names, arity and accepted operand types differ across the four schemas); this definition models only the representative tensor/tensor overload and does not express those conditional effects.",
+  "parameters": [
+    {
+      "name": "tensor",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "other",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

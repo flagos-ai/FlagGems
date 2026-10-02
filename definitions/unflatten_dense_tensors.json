@@ -1,0 +1,26 @@
+{
+  "api_version": "v6.0",
+  "name": "unflatten_dense_tensors",
+  "description": "Representative ATen signature (not an exclusive ABI, and not an exclusive contract): aten::unflatten_dense_tensors(Tensor flat, Tensor[] tensors) -> Tensor[]. All supplied registered schemas, verbatim: aten::unflatten_dense_tensors(Tensor flat, Tensor[] tensors) -> Tensor[]. The original Gems pytest owns the full overload, keyword-argument, return, error, mutation and aliasing contract; do not narrow its coverage to this one representative signature. Semantics: splits dim 0 of flat into one chunk per donor tensor and views each chunk with that donor's shape, so each non-empty returned tensor aliases flat's storage instead of copying donor data. Only donor shapes are read: donor dtype, layout and values are ignored, while the result dtype comes from flat. flat is never flattened first, so dim 0 of a rank>=2 flat buffer must already cover the requested element count. An empty donor list returns an empty list (not an error); zero-element donors collapse to a fresh empty result with shape (0,) and stride (1,) that does not alias flat. A zero-dim flat or donors requesting more elements than flat provides raise RuntimeError, while a non-tensor donor argument is tested as raising TypeError or RuntimeError. Multiple donor ranks (0-D through 3-D), non-contiguous flat slices, bool/complex/FP8 dtypes and autograd through the original flat leaf are all part of the pytest contract, not of this single signature.",
+  "parameters": [
+    {
+      "name": "flat",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "tensors",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "List[Tensor]"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

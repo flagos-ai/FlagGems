@@ -1,0 +1,57 @@
+{
+  "api_version": "v6.0",
+  "name": "_cudnn_ctc_loss",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::_cudnn_ctc_loss(Tensor log_probs, Tensor targets, int[] input_lengths, int[] target_lengths, int blank, bool deterministic, bool zero_infinity) -> (Tensor, Tensor). This schema string is copied verbatim and is the representative overload only. Original Gems pytest owns the full contract: the registered overloads, keyword arguments, returns, errors, aliasing and mutation below are all exercised by the frozen tests and must not be narrowed, deleted or adapted to fit this one signature. All supplied registered schema strings, verbatim: (1) aten::_cudnn_ctc_loss.out(Tensor log_probs, Tensor targets, int[] input_lengths, int[] target_lengths, int blank, bool deterministic, bool zero_infinity, *, Tensor(a!) out0, Tensor(b!) out1) -> (Tensor(a!), Tensor(b!)); (2) aten::_cudnn_ctc_loss(Tensor log_probs, Tensor targets, int[] input_lengths, int[] target_lengths, int blank, bool deterministic, bool zero_infinity) -> (Tensor, Tensor); (3) aten::_cudnn_ctc_loss.Tensor(Tensor log_probs, Tensor targets, Tensor input_lengths, Tensor target_lengths, int blank, bool deterministic, bool zero_infinity) -> (Tensor, Tensor). Semantics (from the pytest calls and assertions): log_probs is a float32 compute-device 3-D (T, N, C) tensor, targets is a 1-D CPU int32 contiguous label tensor with labels below C and blank = 0, input_lengths/target_lengths are length-N int lists (the .Tensor overload passes int32 compute-device 1-D tensors instead). The operator returns a 2-tuple. Correcting the misleading local test label: the frozen pytest names its two bindings ref_log_alpha/res_log_alpha, but that name is only a local label and is not the native meaning. The native producer returns std::make_tuple(std::move(costs), std::move(grad)) in BOTH the list-length and tensor-length implementations, so logical output 0 is the per-batch negative-log-likelihood cost vector nll (shape (N,)) and logical output 1 is a gradient buffer grad (shape (T, N, C)) whose semantics are the gradient of the loss w.r.t. log_probs, NOT log_alpha and NOT an accumulated log-likelihood. The tests still compare the whole returned tuple element-wise, and that tuple comparison remains the contract. The representative .out overload is not modeled here because it carries two keyword-only out buffers; the frozen test test__cudnn_ctc_loss_out asserts res[0] is res_nll and res[1] is res_log_alpha, i.e. caller-provided buffers are written into and returned, and test__cudnn_ctc_loss_out_strided asserts a non-contiguous out1 keeps its stride and storage_offset. Those conditional/alias effects belong to the .out overload and are described here rather than expressed in this definition; schema alias annotations (a!)/(b!) alone do not prove Python object identity, the identity assertions in the test do. Error behavior kept in pytest: log_probs must be rank 3 and float32 (the tests cover float16, bfloat16, float64, int8, uint8, int32, int64, bool, float8_e4m3fn and float8_e5m2 as rejected cases, with the capability-gated dtypes only collected when the corresponding static backend flag is set), targets must be CPU contiguous int32 (int64, float32, uint8, compute-device and non-contiguous targets are each rejected by their own test), blank must be 0, the length lists must have length N, input_lengths must not exceed T, C must be >= 2, and an empty batch is rejected. One rejected argument does not establish that every value of its Python type is rejected; the tests preserve the exact values and gating they exercise. Native producer evidence: pytorch/aten/src/ATen/native/cudnn/LossCTC.cpp at commit 556f9401181dd1dc5eac04df80f3178cab215763 (https://raw.githubusercontent.com/pytorch/pytorch/556f9401181dd1dc5eac04df80f3178cab215763/aten/src/ATen/native/cudnn/LossCTC.cpp), where both _cudnn_ctc_loss and _cudnn_ctc_loss_tensor end with return std::make_tuple(std::move(costs), std::move(grad)).",
+  "parameters": [
+    {
+      "name": "log_probs",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "targets",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "input_lengths",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "List[int]"
+    },
+    {
+      "name": "target_lengths",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "List[int]"
+    },
+    {
+      "name": "blank",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    },
+    {
+      "name": "deterministic",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "bool"
+    },
+    {
+      "name": "zero_infinity",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "bool"
+    }
+  ],
+  "outputs": [
+    "nll",
+    "grad"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

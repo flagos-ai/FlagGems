@@ -1,0 +1,82 @@
+{
+  "api_version": "v6.0",
+  "name": "istft",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::istft(Tensor self, int n_fft, int? hop_length=None, int? win_length=None, Tensor? window=None, bool center=True, bool normalized=False, bool? onesided=None, int? length=None, bool return_complex=False) -> Tensor. Registered schemas supplied for this operator (all of them, verbatim): ['aten::istft(Tensor self, int n_fft, int? hop_length=None, int? win_length=None, Tensor? window=None, bool center=True, bool normalized=False, bool? onesided=None, int? length=None, bool return_complex=False) -> Tensor']. torch.ops.aten.istft registers exactly one overload (overloads() == ['default']), so there is no out overload; every test passes its arguments straight to the public injected entrypoint flag_gems.istft alongside torch.ops.aten.istft. Original Gems pytest owns the full contract -- overloads, keyword arguments, returns, errors, aliasing and mutation -- and this representative signature is not exclusive: do not narrow the tests to it, do not remove workloads and do not adapt reference behavior to fit it. Semantics (derived from the tests): inverse short-time Fourier transform. It reconstructs a signal from a complex spectrogram of rank 2 (freq_bins, n_frames) or rank 3 (batch, freq_bins, n_frames) by overlap-add, optionally shaped by a 1-D analysis window (window) of win_length, zero-padded to n_fft when shorter; hop_length defaults to n_fft // 4 independently of win_length, and win_length defaults to n_fft. center selects the edge trim of the overlap-add (True by default), normalized selects the normalization convention, onesided=None infers the transform kind from the frequency extent (a full-size extent freq_bins == n_fft selects the two-sided transform, otherwise one-sided), and length truncates or zero-pads the reconstructed length. The real-valued reconstruction is returned unless return_complex=True, which requires a two-sided transform. Error behavior covered by pytest: non-complex input, rank below 2 or above 3, frequency extent mismatch, empty frame/batch extents, invalid n_fft/hop_length/win_length/length, invalid windows (rank-2, length mismatch, all-zero, complex window with real output), onesided with return_complex=True, and untrimmed short windows. Backend- and dtype-lane-scoped measured rejections: the complex32 rejections (complex output, and non-power-of-two n_fft) are registered only when the vendor is NVIDIA (flag_gems.vendor_name == 'nvidia'), and the untrimmed short-window rejection is registered only for the non-half dtypes of that backend, while the same untrimmed geometry is a positive boundary row on the complex32 half lane. Do not generalize these measured rejections to other backends or dtype lanes.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "n_fft",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    },
+    {
+      "name": "hop_length",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[int]"
+    },
+    {
+      "name": "win_length",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[int]"
+    },
+    {
+      "name": "window",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[Tensor]"
+    },
+    {
+      "name": "center",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": true,
+      "type_hint": "bool"
+    },
+    {
+      "name": "normalized",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": false,
+      "type_hint": "bool"
+    },
+    {
+      "name": "onesided",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[bool]"
+    },
+    {
+      "name": "length",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[int]"
+    },
+    {
+      "name": "return_complex",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": false,
+      "type_hint": "bool"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

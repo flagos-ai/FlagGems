@@ -1,0 +1,31 @@
+{
+  "api_version": "v6.0",
+  "name": "requires_grad_",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::requires_grad_(Tensor(a!) self, bool requires_grad=True) -> Tensor(a!). Original Gems pytest owns the full contract: overloads, keyword arguments, returns, errors, aliasing and mutation are all defined by the actual pytest and benchmark, and no test may be narrowed, removed or adapted to this one representative signature. Semantics derived from the tests: a host-side autograd-flag write that sets or clears the requires_grad flag of self in place; it returns the same tensor object (res is inp) and only the flag changes, with dtype, shape, stride, storage_offset, storage data_ptr, is_leaf and _version preserved. Setting True initializes the flag to True and is rejected (RuntimeError/TypeError) for integral and bool dtypes that cannot carry a gradient; clearing False is valid for every dtype except a non-leaf, where it is rejected. Setting True on a non-leaf is a valid no-op that keeps the graph link, and the operator enables backward through the affected tensor. Views keep aliasing the base storage, leave the base flag untouched, and their own flag may be flipped in both directions when the base does not require grad. The schema default (requires_grad=True) is reachable by omitting the argument. Empty tensors keep their shape. Registered schema strings supplied for this operator: 'aten::requires_grad_(Tensor(a!) self, bool requires_grad=True) -> Tensor(a!)'.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "requires_grad",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": true,
+      "type_hint": "bool"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [
+      "self"
+    ],
+    "returns_alias_of": {
+      "out": "self"
+    }
+  }
+}

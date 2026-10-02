@@ -1,0 +1,20 @@
+{
+  "api_version": "v6.0",
+  "name": "_test_warn_in_autograd",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::_test_warn_in_autograd(Tensor self) -> Tensor. This representative signature is the default (non-out) overload only; it is NOT exclusive and does not narrow the operator contract. Original Gems pytest owns the full contract: overloads, keyword arguments, returns, error types, aliasing and mutation behavior are defined by the original FlagGems pytest and must never be removed or adapted to fit this one signature. ALL supplied registered signatures (verbatim): aten::_test_warn_in_autograd(Tensor self) -> Tensor ; aten::_test_warn_in_autograd.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!). Semantics: the operator materialises a fresh copy of its single tensor operand like clone -- same values, dtype and shape, never aliasing the input (the result is not a view and owns distinct storage when non-empty), lazy conjugate and negation bits are resolved, and NaN/Inf values are copied verbatim. Empty (zero-element) inputs, non-contiguous strides, nonzero storage offsets, zero-stride expansion and unbacked as_strided views are all valid inputs; reading a strided view must not modify it. The parameter metadata below is derived from the default signature; the registered out= overload (keyword-only out buffer, written in place and returned by identity, matching the reference dtype/shape/stride) and the error cases (non-tensor input, wrong-dtype out, non-tensor out) are covered exclusively by the original FlagGems pytest and are neither represented nor narrowed by this definition.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

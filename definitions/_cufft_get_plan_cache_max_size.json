@@ -1,0 +1,20 @@
+{
+  "api_version": "v6.0",
+  "name": "_cufft_get_plan_cache_max_size",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::_cufft_get_plan_cache_max_size(int device_index) -> int. Registered schema strings: aten::_cufft_get_plan_cache_max_size(int device_index) -> int. Semantics: returns the current cuFFT plan cache capacity of the given device as a Python int; it is a pure query that mutates no parameter, and the pytest re-reads the native capacity after the call to confirm it is unchanged. The capacity read back is configured by the separate aten::_cufft_set_plan_cache_max_size, while aten::_cufft_clear_plan_cache clears the plans and, per the pytest comment, clearing plans must not reset the capacity. Original Gems pytest calls and results define the full contract, including keyword invocation, int-like and low-byte-aliasing index spellings, the out-of-range and non-integer rejection errors, and wrong-arity behavior; do not narrow tests to this representative signature. This definition models only the representative overload; the index spellings are supplied by pytest (including a 0-dim integer tensor and non-integer values) and are not generated from these hints.",
+  "parameters": [
+    {
+      "name": "device_index",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

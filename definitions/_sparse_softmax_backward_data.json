@@ -1,0 +1,38 @@
+{
+  "api_version": "v6.0",
+  "name": "_sparse_softmax_backward_data",
+  "description": "Representative ATen signature (not an exclusive ABI), copied verbatim: aten::_sparse_softmax_backward_data(Tensor grad_output, Tensor output, int dim, Tensor self) -> Tensor. Original Gems pytest calls and results define the full contract, including the .out overload, keyword arguments, returns, errors, aliasing and mutation; do not narrow tests to this signature. All supplied registered schema strings, verbatim: aten::_sparse_softmax_backward_data.out(Tensor grad_output, Tensor output, int dim, Tensor self, *, Tensor(a!) out) -> Tensor(a!); aten::_sparse_softmax_backward_data(Tensor grad_output, Tensor output, int dim, Tensor self) -> Tensor. Semantics: backpropagates through a sparse COO softmax; given grad_output and the forward output as two independent sparse COO tensors, it returns the gradient with respect to the softmax input along dim. The native preprocessing compares only size and sparse_dim (no broadcasting; mismatched size or sparse_dim raises RuntimeError, dense operands raise RuntimeError through NotImplementedError), and dim is normalized by maybe_wrap_dim so an out-of-range dim surfaces as IndexError or RuntimeError. The returned tensor is coalesced; dim is accepted only as a Python int, so there is no separate scalar-operand form. Only SparseCPU/SparseCUDA kernels are registered and the CUDA kernel dispatches on AT_DISPATCH_FLOATING_TYPES, so float32 is supported plus float64 where the device reports fp64 support. On the measured NVIDIA CUDA sparse backend the tests additionally collect half, bfloat16, integer and bool inputs, which stop in the softmax_backward dispatch, and the two fp8 types, which stop one step earlier in the sparse-coalesce metadata step; all surface as RuntimeError there, while other vendors have no matching measurement and the tests assert no dtype rejection for them. The overload-dependent behavior belongs to the original tests: the .out overload takes out as a keyword-only caller-owned buffer, writes the coalesced result into it in place and returns that same tensor, whereas the representative default overload allocates and returns a fresh tensor (this definition describes only the default overload's effects).",
+  "parameters": [
+    {
+      "name": "grad_output",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "output",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "dim",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    },
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "result"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

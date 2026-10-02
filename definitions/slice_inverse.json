@@ -1,0 +1,56 @@
+{
+  "api_version": "v6.0",
+  "name": "slice_inverse",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::slice_inverse(Tensor(a) self, Tensor src, int dim=0, SymInt? start=None, SymInt? end=None, SymInt step=1) -> Tensor(a). All registered schemas supplied for this operator, verbatim: [\"aten::slice_inverse(Tensor(a) self, Tensor src, int dim=0, SymInt? start=None, SymInt? end=None, SymInt step=1) -> Tensor(a)\"]. The representative signature is not exclusive: the original Gems pytest owns the full overload, keyword, return, error, mutation and aliasing contract and must not be narrowed to this signature, and no tests may be removed or reference behavior adapted to fit it. Semantics from the tests: slice_inverse returns self's storage reinterpreted with src's sizes, strides and storage offset; the slice arguments (dim/start/end/step) are only read by the backward pass, so the forward result metadata must be src's even for ignored arguments (out-of-range dim, zero step, reversed start/end). src always lives in a separate allocation, so the result must not be src's storage, and writing through the result mutates self's base storage. Only start and end are optional (SymInt?) and take None; dim and step are non-optional ints, and no tested case passes None for them. Tested slice-argument values include negative and boundary integers (dim 0/1/-1, start -3/0/1, end -1/0/2/3, step 0/1/2) and a degenerate empty region. Errors covered by pytest but not modeled here: RuntimeError when the region described by src reaches past the end of self's storage, and RuntimeError/TypeError for non-Tensor src. src dtype does not change the result metadata. The schema types are SymInt?/SymInt; non-JSON ATen defaults were rendered as stable strings (dim=0, start=None, end=None, step=1) and are retained as such.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "src",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "dim",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 0,
+      "type_hint": "int"
+    },
+    {
+      "name": "start",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[int]"
+    },
+    {
+      "name": "end",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[int]"
+    },
+    {
+      "name": "step",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 1,
+      "type_hint": "int"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {
+      "out": "self"
+    }
+  }
+}

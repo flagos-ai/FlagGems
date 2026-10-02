@@ -1,0 +1,33 @@
+{
+  "api_version": "v6.0",
+  "name": "split_copy",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::split_copy.Tensor(Tensor self, SymInt split_size, int dim=0) -> Tensor[]. This representative signature is not exclusive: the original Gems pytest owns the full contract for overloads, keyword arguments, return values, errors, aliasing and mutation, and tests must never be narrowed to this one signature. Registered signatures supplied for this operator (verbatim): aten::split_copy.Tensor(Tensor self, SymInt split_size, int dim=0) -> Tensor[] ; aten::split_copy.Tensor_out(Tensor self, SymInt split_size, int dim=0, *, Tensor(a!)[] out) -> (). Semantics: split_copy is a packet without a .default overload, so the reference is reached through the packet call form and, for the out variant, through .Tensor_out; the candidate is always the single public flag_gems.split_copy name. It copies the input along dim into consecutive chunks of split_size, returning a Python sequence of distinct fresh tensors (never a single stacked tensor), with a shorter final part when the axis length is not divisible by split_size; the input is left unmodified and the parts do not alias it. dim defaults to 0 and accepts negative values in [-rank, rank-1]. Error behavior owned by pytest: split_size < 0 and split_size = 0 on a non-empty axis raise RuntimeError, split_size = 0 is valid only when the split axis is itself empty (one full-size part), out-of-range dim raises IndexError, rank 0 raises RuntimeError, non-integer split_size/dim and non-tensor self raise RuntimeError or TypeError. The out overload is keyword-only (out), writes into the caller's existing buffers in place, returns None, preserves the caller's list entries and buffer views/storage, and requires the buffer count and geometry checked by the tests; a dtype-mismatched out buffer is not an error natively and is deliberately not asserted. Those out-specific conditional effects remain expressed by the Gems pytest rather than by this single-overload model.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "split_size",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    },
+    {
+      "name": "dim",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 0,
+      "type_hint": "int"
+    }
+  ],
+  "outputs": [
+    "parts"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

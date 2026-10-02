@@ -1,0 +1,43 @@
+{
+  "api_version": "v6.0",
+  "name": "as_strided_",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::as_strided_(Tensor(a!) self, SymInt[] size, SymInt[] stride, SymInt? storage_offset=None) -> Tensor(a!). Registered schemas supplied for this operator: aten::as_strided_(Tensor(a!) self, SymInt[] size, SymInt[] stride, SymInt? storage_offset=None) -> Tensor(a!). This representative signature is not exclusive: the original Gems pytest owns the full contract, including the call forms with storage_offset omitted, passed as explicit None, or passed as an explicit integer value (omission and None preserve the operand's current storage offset; an explicit value replaces it), the return of that very same tensor (result is self, no copy), the installed-view metadata (shape, strides, storage offset), buffer reuse, the lazy conjugate bit, backward/gradient scattering with overlap accumulation, and the invalid-argument errors (out-of-bounds strides/offset, negative stride, rank mismatch between size and stride, negative offset, non-tensor self, non-integer sequences such as scalar or float size/stride, and leaf-requiring-grad operands). Do not narrow those tests, keyword/positional forms, returns, aliasing or mutation behavior to this one signature. In-place metadata reinterpretation: no element is moved or read; sizes, strides and storage offset of the operand's existing storage are rewritten. size and stride must be integer sequences; there is no scalar-operand overload and no broadcasting. The native default for storage_offset is None for the representative signature (rendered as JSON null).",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "size",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "List[int]"
+    },
+    {
+      "name": "stride",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "List[int]"
+    },
+    {
+      "name": "storage_offset",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[int]"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [
+      "self"
+    ],
+    "returns_alias_of": {
+      "out": "self"
+    }
+  }
+}

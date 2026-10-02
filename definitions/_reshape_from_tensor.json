@@ -1,0 +1,26 @@
+{
+  "api_version": "v6.0",
+  "name": "_reshape_from_tensor",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::_reshape_from_tensor(Tensor self, Tensor shape) -> Tensor. This representative signature is not exclusive: the original Gems pytest defines the overloads, keyword arguments, returns, errors, aliasing and mutation behavior that must be supported, and must not be narrowed to this one signature. All supplied registered schema strings: aten::_reshape_from_tensor(Tensor self, Tensor shape) -> Tensor (the single registered overload). Semantics (derived from the tests): reshape `self` to the extents listed in the 1-D int64 metadata tensor `shape`; native returns a view aliasing the operand's storage when the requested target is stride-expressible from the operand's strides and otherwise materializes a fresh contiguous tensor, so callers observe stride, storage_offset and storage-identity results that depend on stride compatibility rather than rank alone. The tests also exercise keyword form (`shape=`), strided/offset/transposed/empty/scalar operands, lazy conjugate and negative-view operands, backward gradients, and rejections: a `shape` tensor whose dtype is not int64, rank-0 or rank-2 metadata, numel mismatch, two inferred dims, dims below -1, empty target on a non-empty operand, and non-tensor metadata (omitted argument, None, Python list, int or tuple) each raise RuntimeError. The ATen schema declares no argument aliases and no mutation, so the effects below are empty; the conditional view-vs-copy aliasing and the observable operand mutation through an aliased result remain fully specified by the original pytest rather than by this single representative signature.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "shape",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}
