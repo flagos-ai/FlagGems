@@ -19,8 +19,6 @@ import flag_gems
 
 from . import test_utils as tu
 
-pytestmark = pytest.mark.moveaxis
-
 # Optional dtypes join the grid only when the backend reports the capability;
 # every dtype outside this map stays unconditional, so a supported case is never
 # dropped and no test probes support or skips at run time.
@@ -85,6 +83,7 @@ def _assert_operand_unchanged(inp, snapshot):
     assert (inp.shape, inp.stride(), inp.storage_offset(), inp.data_ptr()) == snapshot
 
 
+@pytest.mark.moveaxis
 @pytest.mark.parametrize("shape,source,destination", SHAPE_ROWS)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
@@ -119,6 +118,7 @@ def _intlist_rows(shapes):
 INTLIST_ROWS = _intlist_rows(tu.selected_shapes())
 
 
+@pytest.mark.moveaxis
 @pytest.mark.parametrize("shape,source,destination", INTLIST_ROWS)
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
 def test_moveaxis_intlist_axis(shape, source, destination, dtype):
@@ -141,6 +141,7 @@ IDENTITY_ROWS = [
 ]
 
 
+@pytest.mark.moveaxis
 @pytest.mark.parametrize("shape,source,destination", IDENTITY_ROWS)
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
 def test_moveaxis_identity_keeps_layout(shape, source, destination, dtype):
@@ -178,6 +179,7 @@ NONCONTIG_DTYPES = [
 ]
 
 
+@pytest.mark.moveaxis
 @pytest.mark.parametrize("shape,state,source,destination", NONCONTIG_ROWS)
 @pytest.mark.parametrize("dtype", NONCONTIG_DTYPES)
 def test_moveaxis_noncontiguous_input(shape, state, source, destination, dtype):
@@ -202,6 +204,7 @@ EXPANDED_ROWS = [
 ]
 
 
+@pytest.mark.moveaxis
 @pytest.mark.parametrize("base_shape,expanded_shape,source,destination", EXPANDED_ROWS)
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.int32])
 def test_moveaxis_expanded_input(
@@ -219,6 +222,7 @@ def test_moveaxis_expanded_input(
     _assert_view_of(res_out, ref_out, inp, ref_inp)
 
 
+@pytest.mark.moveaxis
 @pytest.mark.parametrize("source,destination", [(0, 1), (1, 0)])
 def test_moveaxis_conjugate_input(source, destination):
     # The lazy conjugate bit is view state that must survive the axis move
@@ -236,6 +240,7 @@ def test_moveaxis_conjugate_input(source, destination):
     _assert_view_of(res_out, ref_out, inp, ref_inp)
 
 
+@pytest.mark.moveaxis
 @pytest.mark.parametrize("source,destination", [(0, 1), ([0, 1], [1, 0])])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int32])
 def test_moveaxis_result_mutation_aliases_input(source, destination, dtype):
@@ -263,6 +268,7 @@ EMPTY_ROWS = [
 ]
 
 
+@pytest.mark.moveaxis
 @pytest.mark.parametrize("shape,source,destination", EMPTY_ROWS)
 def test_moveaxis_empty_tensor(shape, source, destination):
     # Zero-filled rather than uninitialized: an empty view holds no elements,
@@ -292,6 +298,7 @@ BACKWARD_DTYPES = [
 ]
 
 
+@pytest.mark.moveaxis
 @pytest.mark.parametrize("shape,source,destination", BACKWARD_ROWS)
 @pytest.mark.parametrize("dtype", BACKWARD_DTYPES)
 def test_moveaxis_backward(shape, source, destination, dtype):
@@ -316,6 +323,7 @@ def test_moveaxis_backward(shape, source, destination, dtype):
     assert res_grad.shape == inp.shape
 
 
+@pytest.mark.moveaxis
 @pytest.mark.parametrize(
     "source,destination", tu.selected_cases([(0, 1), ([0, 1], [1, 0])], quick=[])
 )
@@ -341,6 +349,7 @@ def test_moveaxis_backward_accumulates(source, destination):
 SPECIAL_CASES = tu.selected_cases(tu.special_value_cases(SUPPORTED_DTYPES), quick=[])
 
 
+@pytest.mark.moveaxis
 @pytest.mark.parametrize("dtype,scenario", SPECIAL_CASES)
 def test_moveaxis_special_values(dtype, scenario):
     # moveaxis computes nothing, so nan/inf payloads must survive unchanged;
@@ -358,6 +367,7 @@ def test_moveaxis_special_values(dtype, scenario):
 NEG_BASE = (4, 5)
 
 
+@pytest.mark.moveaxis
 @pytest.mark.parametrize("bad_dim", [2, -3])
 def test_moveaxis_int_dim_out_of_range(bad_dim):
     inp = tu.make_input(torch.float32, NEG_BASE, ["-1", "1"])
@@ -365,18 +375,21 @@ def test_moveaxis_int_dim_out_of_range(bad_dim):
         flag_gems.moveaxis(inp, bad_dim, 0)
 
 
+@pytest.mark.moveaxis
 def test_moveaxis_int_destination_out_of_range():
     inp = tu.make_input(torch.float32, NEG_BASE, ["-1", "1"])
     with pytest.raises((IndexError, RuntimeError)):
         flag_gems.moveaxis(inp, 0, 5)
 
 
+@pytest.mark.moveaxis
 def test_moveaxis_intlist_length_mismatch():
     inp = tu.make_input(torch.float32, NEG_BASE, ["-1", "1"])
     with pytest.raises((RuntimeError, ValueError, TypeError)):
         flag_gems.moveaxis(inp, [0, 1], [1])
 
 
+@pytest.mark.moveaxis
 @pytest.mark.parametrize("source,destination", [([0, 0], [1, 1]), ([0, 1], [1, 1])])
 def test_moveaxis_intlist_repeated_axis(source, destination):
     inp = tu.make_input(torch.float32, NEG_BASE, ["-1", "1"])
@@ -384,6 +397,7 @@ def test_moveaxis_intlist_repeated_axis(source, destination):
         flag_gems.moveaxis(inp, source, destination)
 
 
+@pytest.mark.moveaxis
 @pytest.mark.parametrize("bad_axis", [0.5, -1.5])
 def test_moveaxis_int_non_integer_axis(bad_axis):
     inp = tu.make_input(torch.float32, NEG_BASE, ["-1", "1"])
@@ -391,12 +405,14 @@ def test_moveaxis_int_non_integer_axis(bad_axis):
         flag_gems.moveaxis(inp, bad_axis, 1)
 
 
+@pytest.mark.moveaxis
 def test_moveaxis_intlist_non_integer_axis():
     inp = tu.make_input(torch.float32, NEG_BASE, ["-1", "1"])
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems.moveaxis(inp, [0.0], [1])
 
 
+@pytest.mark.moveaxis
 def test_moveaxis_non_tensor_input():
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems.moveaxis([[1, 2], [3, 4]], 0, 1)
