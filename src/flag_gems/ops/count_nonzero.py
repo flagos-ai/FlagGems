@@ -13,13 +13,15 @@
 # limitations under the License.
 
 import logging
+from functools import reduce
 
 import torch
 import triton
 import triton.language as tl
 
 from flag_gems import runtime
-from flag_gems.utils import dim_compress, libentry
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
@@ -87,6 +89,73 @@ def count_nonzero_combin_kernel(
     tl.store(combin_ptr + pid_x * combin_N + pid_y, nonzero_count)
 
 
+@libentry()
+@triton.heuristics(runtime.get_heuristic_config("softmax_non_inner"))
+@triton.jit
+def count_nonzero_dim_kernel_non_inner(
+    out_ptr,
+    x_ptr,
+    M,
+    N,
+    K,
+    TILE_N: tl.constexpr,
+    TILE_K: tl.constexpr,
+    ONE_TILE_PER_CTA: tl.constexpr,
+):
+    # Split the input into (M, N, K) and count nonzeros over N with a strided
+    # read, avoiding the dim_compress copy. Masked lanes load 0 and contribute
+    # nothing to the count.
+    pid_m = ext.program_id(0)
+    pid_k = ext.program_id(1)
+    k_idx = pid_k * TILE_K + tl.arange(0, TILE_K)
+    k_offsets = k_idx[None, :]
+
+    if ONE_TILE_PER_CTA:
+        n_offsets = tl.arange(0, TILE_N)[:, None]
+        offsets = pid_m * N * K + n_offsets * K + k_offsets
+        mask = (n_offsets < N) & (k_offsets < K)
+        x = tl.load(x_ptr + offsets, mask=mask, other=0)
+        count = tl.sum((x != 0).to(tl.int64), axis=0)
+    else:
+        acc = tl.zeros([TILE_N, TILE_K], dtype=tl.int64)
+        for start_n in range(0, N, TILE_N):
+            n_offsets = start_n + tl.arange(0, TILE_N)[:, None]
+            offsets = pid_m * N * K + n_offsets * K + k_offsets
+            mask = (n_offsets < N) & (k_offsets < K)
+            x = tl.load(x_ptr + offsets, mask=mask, other=0)
+            acc += (x != 0).to(tl.int64)
+        count = tl.sum(acc, axis=0)
+    tl.store(out_ptr + pid_m * K + k_idx, count, mask=k_idx < K)
+
+
+@libentry()
+@triton.heuristics(runtime.get_heuristic_config("softmax_inner"))
+@triton.jit
+def count_nonzero_dim_kernel_inner(
+    out_ptr,
+    x_ptr,
+    M,
+    N,
+    TILE_N: tl.constexpr,
+    ONE_TILE_PER_CTA: tl.constexpr,
+):
+    pid_m = ext.program_id(0)
+    if ONE_TILE_PER_CTA:
+        n_offsets = tl.arange(0, TILE_N)
+        mask = n_offsets < N
+        x = tl.load(x_ptr + pid_m * N + n_offsets, mask=mask, other=0)
+        count = tl.sum((x != 0).to(tl.int64), axis=0)
+    else:
+        acc = tl.zeros([TILE_N], dtype=tl.int64)
+        for start_n in range(0, N, TILE_N):
+            n_offsets = start_n + tl.arange(0, TILE_N)
+            mask = n_offsets < N
+            x = tl.load(x_ptr + pid_m * N + n_offsets, mask=mask, other=0)
+            acc += (x != 0).to(tl.int64)
+        count = tl.sum(acc, axis=0)
+    tl.store(out_ptr + pid_m, count)
+
+
 def count_nonzero(x, dim=None):
     logger.debug("GEMS COUNT NONZERO")
 
@@ -96,33 +165,28 @@ def count_nonzero(x, dim=None):
     if dim is not None:
         assert dim >= -x.ndim and dim < x.ndim, "Invalid dim"
         dim = dim % x.ndim
-        shape = x.shape
-        BLOCK_SIZE = 2048
-        numel = x.numel()
-        x = dim_compress(x, dim)
-        x = x.contiguous().flatten()
-        combin_shape = list(shape)
-        combin_shape[dim] = triton.cdiv(combin_shape[dim], BLOCK_SIZE)
-        if combin_shape[dim] != 1:
-            combin = torch.zeros(combin_shape, dtype=torch.int64, device=x.device)
-            grid = (triton.cdiv(numel, shape[dim]), combin_shape[dim], 1)
-            count_nonzero_combin_kernel[grid](
-                x, combin, shape[dim], combin_shape[dim], numel, BLOCK_SIZE
-            )
-            x = combin
-            shape = x.shape
-            numel = x.numel()
-            out_shape = list(shape)
-            del out_shape[dim]
-            out = torch.zeros(out_shape, dtype=torch.int64, device=x.device)
-            grid = lambda meta: (triton.cdiv(numel, shape[dim]),)
-            count_nonzero_combin_kernel_1[grid](x, out, shape[dim], numel)
-            return out
-        out_shape = list(shape)
-        del out_shape[dim]
+        # Single-dim reduction: split into (M, N, K) and count over N with a
+        # strided kernel, avoiding the dim_compress copy. K == 1 means the
+        # reduced dim is innermost (contiguous); K > 1 means it is a middle or
+        # outer dim, where the copy used to dominate the runtime.
+        shape = list(x.shape)
+        N = shape[dim]
+        M = reduce(lambda a, b: a * b, shape[:dim], 1)
+        K = reduce(lambda a, b: a * b, shape[dim + 1 :], 1)
+        out_shape = shape[:dim] + shape[dim + 1 :]
         out = torch.zeros(out_shape, dtype=torch.int64, device=x.device)
-        grid = lambda meta: (triton.cdiv(numel, shape[dim]),)
-        count_nonzero_kernel[grid](x, out, shape[dim], numel)
+        if M == 0 or K == 0 or N == 0:
+            # An empty reduction dim counts to 0 (already zero-filled); an empty
+            # spectator dim gives an empty output. Both match torch.
+            return out
+        x = x.contiguous()
+        with torch_device_fn.device(x.device):
+            if K == 1:
+                grid = (M, 1, 1)
+                count_nonzero_dim_kernel_inner[grid](out, x, M, N)
+            else:
+                grid = lambda meta: (M, triton.cdiv(K, meta["TILE_K"]), 1)
+                count_nonzero_dim_kernel_non_inner[grid](out, x, M, N, K)
         return out
     else:
         x = x.contiguous().flatten()
