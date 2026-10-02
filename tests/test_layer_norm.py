@@ -66,7 +66,7 @@ def test_native_layer_norm(shape, normalized_shape, dtype, affine, caplog):
         eps,
     )
 
-    with caplog.at_level("DEBUG", logger="flag_gems.ops.native_layer_norm"):
+    with caplog.at_level("DEBUG"):
         result = flag_gems.native_layer_norm(inp, normalized_shape, weight, bias, eps)
 
     assert (

@@ -38,7 +38,7 @@ def test_special_ndtri(shape, dtype, caplog):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.ops.aten.special_ndtri(ref_inp)
-    with caplog.at_level("DEBUG", logger="flag_gems.ops.special_ndtri"):
+    with caplog.at_level("DEBUG"):
         with flag_gems.use_gems():
             res_out = torch.ops.aten.special_ndtri(inp)
 
@@ -62,7 +62,7 @@ def test_special_ndtri_edge_values(dtype, caplog):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.ops.aten.special_ndtri(ref_inp)
-    with caplog.at_level("DEBUG", logger="flag_gems.ops.special_ndtri"):
+    with caplog.at_level("DEBUG"):
         with flag_gems.use_gems():
             res_out = torch.ops.aten.special_ndtri(inp)
 
@@ -89,7 +89,7 @@ def test_special_ndtri_non_contiguous(dtype, caplog):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.ops.aten.special_ndtri(ref_inp)
-    with caplog.at_level("DEBUG", logger="flag_gems.ops.special_ndtri"):
+    with caplog.at_level("DEBUG"):
         with flag_gems.use_gems():
             res_out = torch.ops.aten.special_ndtri(inp)
 

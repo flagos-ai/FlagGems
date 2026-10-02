@@ -33,7 +33,7 @@ def test_sym_storage_offset(shape, dtype, caplog):
 
     ref_out = torch.ops.aten.sym_storage_offset(ref_inp)
     with flag_gems.use_gems():
-        with caplog.at_level("DEBUG", logger="flag_gems.ops.sym_storage_offset"):
+        with caplog.at_level("DEBUG"):
             res_out = torch.ops.aten.sym_storage_offset(inp)
 
     assert (

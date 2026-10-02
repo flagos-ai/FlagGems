@@ -66,7 +66,7 @@ def test_sym_constrain_range_gems_impl(size, min_val, max_val, caplog):
     kernel, so we call the FlagGems wrapper directly to guarantee the Triton
     range-check kernel runs (verified via the debug log) and returns None.
     """
-    with caplog.at_level("DEBUG", logger="flag_gems.ops.sym_constrain_range"):
+    with caplog.at_level("DEBUG"):
         res_out = gems_impl(size, min=min_val, max=max_val)
 
     assert (

@@ -498,7 +498,7 @@ def floor_div_func_scalar_tensor(x, y):
 
 
 def floor_divide(A, B):
-    logger.debug("GEMS FLOOR_DIVIDE")
+    logger.debug("GEMS_SUNRISE FLOOR_DIVIDE")
     # if isinstance(A, torch.Tensor) and not A.is_floating_point():
     #     if isinstance(B, torch.Tensor):
     #         return floor_div_int_func(A, B)
@@ -517,7 +517,7 @@ def floor_divide(A, B):
 
 
 def floor_divide_(A, B):
-    logger.debug("GEMS FLOOR_DIVIDE_")
+    logger.debug("GEMS_SUNRISE FLOOR_DIVIDE_")
     # if not A.is_floating_point():
     #     if isinstance(B, torch.Tensor):
     #         return floor_div_int_func(A, B, out0=A)
