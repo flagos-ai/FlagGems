@@ -1,0 +1,72 @@
+{
+  "name": "_empty_per_channel_affine_quantized",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::_empty_per_channel_affine_quantized(SymInt[] size, *, Tensor scales, Tensor zero_points, int axis, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None, MemoryFormat? memory_format=0) -> Tensor. The original Gems pytest calls and results define the required contract; support their overloads, keyword arguments, return types and errors. Do not narrow test coverage to this example signature.\nRegistered reference signatures:\naten::_empty_per_channel_affine_quantized(SymInt[] size, *, Tensor scales, Tensor zero_points, int axis, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None, MemoryFormat? memory_format=0) -> Tensor\naten::_empty_per_channel_affine_quantized.out(SymInt[] size, *, Tensor scales, Tensor zero_points, int axis, MemoryFormat? memory_format=0, Tensor(a!) out) -> Tensor(a!)",
+  "parameters": [
+    {
+      "name": "size",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "List[int]"
+    },
+    {
+      "name": "scales",
+      "kind": "keyword_only",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "zero_points",
+      "kind": "keyword_only",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "axis",
+      "kind": "keyword_only",
+      "required": true,
+      "type_hint": "int"
+    },
+    {
+      "name": "dtype",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[int]"
+    },
+    {
+      "name": "layout",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[int]"
+    },
+    {
+      "name": "device",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[Device]"
+    },
+    {
+      "name": "pin_memory",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[bool]"
+    },
+    {
+      "name": "memory_format",
+      "kind": "keyword_only",
+      "required": false,
+      "default": 0,
+      "type_hint": "Optional[int]"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": []
+  },
+  "api_version": "v6.0"
+}

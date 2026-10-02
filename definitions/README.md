@@ -43,6 +43,17 @@ reference comparison. Keep runtime validation evidence outside the JSON files.
 
 ## KernelGen Server import
 
+Recent KernelGen Server versions expose the logical Catalog `flaggems`, which
+reads this directory directly from the same selected checkout as pytest and
+benchmark. Use `kg run --catalog-name flaggems --definition <operator>` with a
+Server advertising the `flaggems_definitions` capability. No copying into the
+Server repository is needed. The original 70 KernelGen test operators are now
+published here alongside the newer definitions; existing experiment snapshots
+remain unchanged.
+
+The following manual layout is only for consumers that still require a
+standalone Catalog:
+
 This directory stores portable definition files, not a complete Server Catalog.
 To import them into a FlagGems adapter Catalog, copy the JSON files into the
 Catalog's `definitions/` directory and provide this `manifest.json` at the
