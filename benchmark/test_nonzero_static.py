@@ -19,8 +19,7 @@ import torch
 
 import flag_gems
 
-from . import base, consts
-from .conftest import Config
+from . import base
 
 VENDOR = flag_gems.vendor_name
 
@@ -28,8 +27,6 @@ VENDOR = flag_gems.vendor_name
 # (end-to-end) timing mode (same as det/lu_factor/linalg_solve_triangular).
 # nonzero_static additionally spans several kernels per call, which the
 # KERNEL-mode profiler averages per kernel instead of summing.
-if VENDOR == "ascend":
-    Config.mode = consts.BenchMode.OPERATOR
 
 BENCH_DTYPES = [  # The Ascend performance report is scoped to FP16 and BF16.
     torch.float16,

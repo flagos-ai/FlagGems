@@ -57,7 +57,6 @@ def test_norm_scalaropt_dim(shape, ord, dim, keepdim, dtype):
     ref_inp = to_reference(inp, True)
 
     ref_out = torch.norm(ref_inp, ord, dim, keepdim)
-    with flag_gems.use_gems():
-        res_out = torch.norm(inp, ord, dim, keepdim)
+    res_out = flag_gems.norm_scalaropt_dim(inp, ord, dim, keepdim)
 
     gems_assert_close(res_out, ref_out, dtype)

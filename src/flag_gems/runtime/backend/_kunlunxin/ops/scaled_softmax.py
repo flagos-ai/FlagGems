@@ -22,32 +22,8 @@ from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
-autotune_configs = [
-    triton.Config({"BLOCK_Q": 1, "BLOCK_K": 128}, num_warps=4, num_stages=2),
-    triton.Config({"BLOCK_Q": 1, "BLOCK_K": 256}, num_warps=4, num_stages=2),
-    triton.Config({"BLOCK_Q": 1, "BLOCK_K": 512}, num_warps=4, num_stages=2),
-    triton.Config({"BLOCK_Q": 1, "BLOCK_K": 1024}, num_warps=4, num_stages=2),
-    triton.Config({"BLOCK_Q": 1, "BLOCK_K": 2048}, num_warps=4, num_stages=2),
-    triton.Config({"BLOCK_Q": 2, "BLOCK_K": 128}, num_warps=4, num_stages=2),
-    triton.Config({"BLOCK_Q": 4, "BLOCK_K": 32}, num_warps=4, num_stages=2),
-    triton.Config({"BLOCK_Q": 4, "BLOCK_K": 64}, num_warps=4, num_stages=2),
-    triton.Config({"BLOCK_Q": 4, "BLOCK_K": 128}, num_warps=4, num_stages=2),
-    triton.Config({"BLOCK_Q": 8, "BLOCK_K": 32}, num_warps=4, num_stages=2),
-    triton.Config({"BLOCK_Q": 8, "BLOCK_K": 64}, num_warps=4, num_stages=2),
-    triton.Config({"BLOCK_Q": 16, "BLOCK_K": 32}, num_warps=4, num_stages=2),
-    triton.Config({"BLOCK_Q": 32, "BLOCK_K": 128}, num_warps=8, num_stages=4),
-    triton.Config({"BLOCK_Q": 32, "BLOCK_K": 256}, num_warps=8, num_stages=4),
-    triton.Config({"BLOCK_Q": 32, "BLOCK_K": 512}, num_warps=8, num_stages=4),
-    triton.Config({"BLOCK_Q": 64, "BLOCK_K": 128}, num_warps=8, num_stages=4),
-    triton.Config({"BLOCK_Q": 64, "BLOCK_K": 256}, num_warps=8, num_stages=4),
-    triton.Config({"BLOCK_Q": 64, "BLOCK_K": 512}, num_warps=8, num_stages=4),
-    triton.Config({"BLOCK_Q": 64, "BLOCK_K": 1024}, num_warps=8, num_stages=4),
-    triton.Config({"BLOCK_Q": 128, "BLOCK_K": 512}, num_warps=8, num_stages=4),
-]
-
 
 @libentry()
-@triton.autotune(configs=autotune_configs, key=["query_seq_len", "key_seq_len"])
 @triton.jit
 def scaled_softmax_forward_kernel(
     output_ptr,
@@ -167,12 +143,15 @@ def scaled_softmax_forward(input_t: torch.Tensor, scale_factor: float):
         stride_b,
         stride_h,
         stride_q,
+        BLOCK_Q=1,
+        BLOCK_K=128,
+        num_warps=4,
+        num_stages=2,
     )
     return output_t
 
 
 @libentry()
-@triton.autotune(configs=autotune_configs, key=["query_seq_len", "key_seq_len"])
 @triton.jit
 def scaled_softmax_backward_kernel(
     grad_input_ptr,
@@ -294,6 +273,10 @@ def scaled_softmax_backward(
         stride_b,
         stride_h,
         stride_q,
+        BLOCK_Q=1,
+        BLOCK_K=128,
+        num_warps=4,
+        num_stages=2,
     )
 
     return grad_input

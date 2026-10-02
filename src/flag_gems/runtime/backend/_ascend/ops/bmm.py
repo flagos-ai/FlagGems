@@ -17,6 +17,7 @@ import logging
 import torch
 import triton
 import triton.language as tl
+import triton.language.extra.cann.extension as extension
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
@@ -27,11 +28,43 @@ from flag_gems.utils import triton_lang_extension as ext
 logger = logging.getLogger(__name__)
 
 
+_BMM_CONFIGS = runtime.get_tuned_config("bmm")
+
+
+def _prune_bmm_configs(configs, named_args, **kwargs):
+    args = {**named_args, **kwargs}
+    A = args["A"]
+    M, N, K = args["M"], args["N"], args["K"]
+    if A.dtype != torch.bfloat16 or A.shape[0] != 1 or M < 256 or K < 256:
+        return configs
+
+    target = None
+    if N >= 4096:
+        target = (128, 256, 256)
+    elif N >= 1024 and K >= 4096:
+        target = (256, 128, 256)
+    if target is None:
+        return configs
+
+    selected = [
+        config
+        for config in configs
+        if (
+            config.kwargs["TILE_M"],
+            config.kwargs["TILE_N"],
+            config.kwargs["TILE_K"],
+        )
+        == target
+    ]
+    return selected or configs
+
+
 # avoid
 @libentry()
 @triton.autotune(
-    configs=runtime.get_tuned_config("bmm"),
-    key=["M", "N", "K"],
+    configs=_BMM_CONFIGS,
+    key=["M", "N", "K", "DOT_PAD_ONLY_K"],
+    prune_configs_by={"early_config_prune": _prune_bmm_configs},
 )
 @triton.heuristics(_hcu.HEURISTICS_CONFIGS["bmm"])
 @triton.jit
@@ -46,6 +79,7 @@ def bmm_kernel(
     TILE_N: tl.constexpr,
     TILE_K: tl.constexpr,
     GROUP_M: tl.constexpr,
+    DOT_PAD_ONLY_K: tl.constexpr,
     DIVISIBLE_M: tl.constexpr,
     DIVISIBLE_N: tl.constexpr,
     DIVISIBLE_K: tl.constexpr,
@@ -84,25 +118,54 @@ def bmm_kernel(
     b_ptrs = B + offs_k[:, None] * N + offs_n[None, :]
     o_ptrs = O + offs_m[:, None] * N + offs_n[None, :]
 
-    mask_m = offs_m < M
-    mask_n = offs_n < N
+    if not DIVISIBLE_M:
+        mask_m = offs_m < M
+    if not DIVISIBLE_N:
+        mask_n = offs_n < N
 
     num_iters = tl.cdiv(K, TILE_K)
     o = tl.zeros((TILE_M, TILE_N), dtype=tl.float32)
     for i in range(num_iters):
-        mask_k = offs_k < K - i * TILE_K
-        mask_a = mask_m[:, None] & mask_k[None, :]
-        mask_b = mask_k[:, None] & mask_n[None, :]
-        a = tl.load(a_ptrs, mask=mask_a, other=0.0)
-        b = tl.load(b_ptrs, mask=mask_b, other=0.0)
+        if DIVISIBLE_K:
+            mask_a = None if DIVISIBLE_M else mask_m[:, None]
+            mask_b = None if DIVISIBLE_N else mask_n[None, :]
+        else:
+            mask_k = offs_k < K - i * TILE_K
+            mask_a = (
+                mask_k[None, :] if DIVISIBLE_M else mask_m[:, None] & mask_k[None, :]
+            )
+            mask_b = (
+                mask_k[:, None] if DIVISIBLE_N else mask_k[:, None] & mask_n[None, :]
+            )
+        if DIVISIBLE_K and DIVISIBLE_M:
+            a = tl.load(a_ptrs)
+        else:
+            a = tl.load(a_ptrs, mask=mask_a, other=0.0)
+        if DIVISIBLE_K and DIVISIBLE_N:
+            b = tl.load(b_ptrs)
+        else:
+            b = tl.load(b_ptrs, mask=mask_b, other=0.0)
 
         a_ptrs += TILE_K
         b_ptrs += TILE_K * N
 
+        if DOT_PAD_ONLY_K:
+            extension.compile_hint(a, "dot_pad_only_k")
+            extension.compile_hint(b, "dot_pad_only_k")
         o += tl.dot(a, b, allow_tf32=False)
 
-    mask_c = mask_m[:, None] & mask_n[None, :]
-    tl.store(o_ptrs, o, mask_c)
+    if DIVISIBLE_M and DIVISIBLE_N:
+        mask_c = None
+    elif DIVISIBLE_M:
+        mask_c = mask_n[None, :]
+    elif DIVISIBLE_N:
+        mask_c = mask_m[:, None]
+    else:
+        mask_c = mask_m[:, None] & mask_n[None, :]
+    if DIVISIBLE_M and DIVISIBLE_N:
+        tl.store(o_ptrs, o)
+    else:
+        tl.store(o_ptrs, o, mask_c)
 
 
 def bmm(A, B):
@@ -112,6 +175,14 @@ def bmm(A, B):
     A = A.contiguous()
     B = B.contiguous()
     out = torch.empty((batch, M, N), dtype=A.dtype, device=A.device)
+    dot_pad_only_k = (
+        A.dtype == torch.bfloat16
+        and batch == 1
+        and M >= 256
+        and N >= 128
+        and N % 16 == 0
+        and K >= 128
+    )
 
     grid_fn = lambda meta: (
         triton.cdiv(meta["M"], meta["TILE_M"]),
@@ -120,5 +191,13 @@ def bmm(A, B):
     )
 
     with torch_device_fn.device(A.device):
-        bmm_kernel[grid_fn](A, B, out, M, N, K)
+        bmm_kernel[grid_fn](
+            A,
+            B,
+            out,
+            M,
+            N,
+            K,
+            DOT_PAD_ONLY_K=dot_pad_only_k,
+        )
     return out

@@ -19,8 +19,6 @@
 # executed: the launch table intercepts it by name. If the handler honestly
 # falls back (INT_MIN) the carrier body poisons dQ with NaN so a missed
 # binding can never look like a valid result.
-# The reference side (test-time calls outside use_gems) is served by the
-# backend monkey_patch CPU reference; nothing here changes that.
 # ============================================================================
 
 import logging

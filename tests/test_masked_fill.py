@@ -41,8 +41,7 @@ def test_masked_fill(shape, dtype, threshold, value_type):
         ref_out = torch.masked_fill(ref_inp, ref_mask, utils.to_reference(value))
     else:
         ref_out = torch.masked_fill(ref_inp, ref_mask, value)
-    with flag_gems.use_gems():
-        res_out = torch.masked_fill(inp, mask, value)
+    res_out = flag_gems.masked_fill(inp, mask, value)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -68,8 +67,7 @@ def test_masked_fill_(shape, dtype, threshold, value_type):
         ref_inp.masked_fill_(ref_mask, utils.to_reference(value))
     else:
         ref_inp.masked_fill_(ref_mask, value)
-    with flag_gems.use_gems():
-        inp.masked_fill_(mask, value)
+    flag_gems.masked_fill_(inp, mask, value)
 
     utils.gems_assert_equal(inp, ref_inp)
 
@@ -86,8 +84,7 @@ def test_masked_fill_scalar(shape, dtype, threshold):
     ref_inp = utils.to_reference(inp)
     ref_mask = utils.to_reference(mask)
     ref_out = torch.masked_fill(ref_inp, ref_mask, value)
-    with flag_gems.use_gems():
-        res_out = torch.masked_fill(inp, mask, value)
+    res_out = flag_gems.masked_fill(inp, mask, value)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -104,7 +101,6 @@ def test_masked_fill_scalar_(shape, dtype, threshold, value):
     ref_inp = utils.to_reference(inp)
     ref_mask = utils.to_reference(mask)
     ref_inp.masked_fill_(ref_mask, value)
-    with flag_gems.use_gems():
-        inp.masked_fill_(mask, value)
+    flag_gems.masked_fill_(inp, mask, value)
 
     utils.gems_assert_equal(inp, ref_inp)

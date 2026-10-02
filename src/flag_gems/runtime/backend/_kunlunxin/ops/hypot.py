@@ -92,7 +92,11 @@ def _launch_hypot_kernel(x: torch.Tensor, y: torch.Tensor, out: torch.Tensor):
         return
 
     BLOCK_SIZE = 1024
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    # Compute a concrete grid tuple rather than a fresh lambda. On the XPU
+    # backend the launch grid is baked into XPUOptions and participates in the
+    # triton cache key; a new lambda every call hashes by identity and forces a
+    # full recompile on every launch (see _hypot_inplace_flat_kernel).
+    grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
 
     out_dtype = out.dtype
     if out_dtype not in (torch.float16, torch.bfloat16, torch.float32, torch.float64):
@@ -151,7 +155,11 @@ def _launch_hypot_inplace_flat(x: torch.Tensor, y: torch.Tensor):
         return
 
     BLOCK_SIZE = 1024
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    # Compute a concrete grid tuple rather than a fresh lambda. On the XPU
+    # backend the launch grid is baked into XPUOptions and participates in the
+    # triton cache key; a new lambda every call hashes by identity and forces a
+    # full recompile on every launch (see _hypot_inplace_flat_kernel).
+    grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
 
     COMPUTE_DTYPE = tl.float64 if x.dtype == torch.float64 else tl.float32
 
@@ -251,7 +259,11 @@ def _launch_hypot_inplace_strided(
         return
 
     BLOCK_SIZE = 1024
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    # Compute a concrete grid tuple rather than a fresh lambda. On the XPU
+    # backend the launch grid is baked into XPUOptions and participates in the
+    # triton cache key; a new lambda every call hashes by identity and forces a
+    # full recompile on every launch (see _hypot_inplace_flat_kernel).
+    grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
 
     COMPUTE_DTYPE = tl.float64 if x.dtype == torch.float64 else tl.float32
     rank = x.dim()

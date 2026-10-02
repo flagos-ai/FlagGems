@@ -40,8 +40,7 @@ from . import accuracy_utils as utils
 def test_accuracy__list_to_tensor(self_list):
     ref_out = torch.ops.aten._list_to_tensor(self_list)
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._list_to_tensor(self_list)
+    res_out = flag_gems._list_to_tensor(self_list)
 
     gems_out = flag_gems._list_to_tensor(self_list)
 

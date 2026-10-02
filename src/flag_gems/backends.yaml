@@ -103,6 +103,15 @@ backends:
       - attrs==25.3.0
       - psutil==7.0.0
 
+  biren-br2xx:
+    python: "3.10"
+    triton: triton==3.4.0+br2xx
+    env_source:
+      - /usr/local/birensupa/all/latest/scripts/brsw_set_env.sh
+    deps:
+      - torch==2.12.0+cpu
+      - torch-supa==1.0.0.21200+br2xx
+
   cambricon-neuware443:
     python: "3.10"
     cmake_backend: MLU
@@ -182,7 +191,10 @@ backends:
   hygon:
     python: "3.10"
     triton: triton==3.5.1+das.opt1.dtk2604.torch290
-    flagtree: flagtree==0.6.1+hcu3.6
+    # Match the flagos-runtime-hygon-dtk26.04:2.2.0 image, which preinstalls
+    # flagtree 0.7.0+hcu3.6; the reconcile step then skips it instead of
+    # reinstalling the older 0.6.1 over the network.
+    flagtree: flagtree==0.7.0+hcu3.6
     env_source:
       - /opt/dtk-26.04/env.sh
     env:
@@ -195,7 +207,10 @@ backends:
     python: "3.12"
     cmake_backend: IX
     triton: triton==3.2.0+corex.4.5.0.20260804
-    flagtree: flagtree==0.6.1+iluvatar3.6
+    # Match the flagos-runtime-iluvatar-corex4.5.0:2.2.0 image, which preinstalls
+    # flagtree 0.7.0+iluvatar3.6; the reconcile step then skips it instead of
+    # reinstalling the older 0.6.1 over the network.
+    flagtree: flagtree==0.7.0+iluvatar3.6
     env:
       COREX_ROOT: /usr/local/corex
       PATH: $COREX_ROOT/bin:$PATH
@@ -210,7 +225,10 @@ backends:
   kunlunxin:
     python: "3.10"
     triton: triton==3.6.0+gitcd2d6c1b
-    flagtree: flagtree==0.6.1+xpu3.6
+    # Match the flagos-runtime-kunlunxin-xre5.37.1:2.2.0 image, which preinstalls
+    # flagtree 0.7.0+xpu3.6. The old 0.6.1+xpu3.6 wheel is a broken zip
+    # ("Failed to read from zip file") and must not be reinstalled.
+    flagtree: flagtree==0.7.0+xpu3.6
     env:
       PATH: /usr/local/xpu/bin:$PATH
       XPU_EVENT_KL3_ENABLE: "1"
@@ -235,7 +253,7 @@ backends:
   metax-maca3810:
     python: "3.12"
     triton: triton==3.6.0+metax3.8.1.0
-    flagtree: flagtree==0.6.1+metax3.6
+    flagtree: flagtree==0.7.0+metax3.6
     env:
       MACA_PATH: /opt/maca
       PATH: /opt/maca/mxgpu_llvm/bin:/opt/maca/bin:${PATH}
@@ -270,7 +288,7 @@ backends:
     python: "3.10"
     cmake_backend: MUSA
     triton: triton==3.6.0
-    flagtree: flagtree==0.6.0+mthreads3.6
+    flagtree: flagtree==0.7.0+mthreads3.6
     env:
       MUSA_HOME: /usr/local/musa
       PATH: $MUSA_HOME/bin:$PATH
@@ -300,7 +318,6 @@ backends:
 
   thead:
     python: "3.12"
-    flagtree: flagtree==0.6.2a2+ppu3.6
     triton: triton==3.5.0+ppu2.0.0.oe
     env_source:
       - /usr/local/PPU_SDK/envsetup.sh

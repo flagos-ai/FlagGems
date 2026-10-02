@@ -16,8 +16,7 @@ def test_nextafter(shape, dtype):
     ref_inp2 = utils.to_reference(inp2)
 
     ref_out = torch.nextafter(ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.nextafter(inp1, inp2)
+    res_out = flag_gems.nextafter(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -32,8 +31,7 @@ def test_nextafter_(shape, dtype):
     ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = ref_inp1.nextafter_(ref_inp2)
-    with flag_gems.use_gems():
-        res_out = inp1.nextafter_(inp2)
+    res_out = flag_gems.nextafter_(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
     utils.gems_assert_close(inp1, ref_inp1, dtype)
@@ -60,9 +58,8 @@ def test_nextafter_out(shape, dtype):
 
     ref_out = torch.nextafter(ref_inp1, ref_inp2)
 
-    with flag_gems.use_gems():
-        out = torch.empty_like(inp1)
-        res_out = torch.nextafter(inp1, inp2, out=out)
+    out = torch.empty_like(inp1)
+    res_out = flag_gems.nextafter(inp1, inp2, out=out)
 
     # in-place contract: the same object is returned and populated
     assert res_out is out
@@ -82,8 +79,7 @@ def test_nextafter_out_none(shape, dtype):
 
     ref_out = torch.nextafter(ref_inp1, ref_inp2)
 
-    with flag_gems.use_gems():
-        res_out = torch.nextafter(inp1, inp2)
+    res_out = flag_gems.nextafter(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
     # the inputs must not be mutated
@@ -103,9 +99,8 @@ def test_nextafter_inplace_is_self(shape, dtype):
 
     ref_out = ref_inp1.nextafter_(ref_inp2)
 
-    with flag_gems.use_gems():
-        captured = inp1
-        res_out = inp1.nextafter_(inp2)
+    captured = inp1
+    res_out = flag_gems.nextafter_(inp1, inp2)
 
     assert res_out is captured
     utils.gems_assert_close(res_out, ref_out, dtype)
@@ -120,9 +115,8 @@ def test_nextafter_rejects_out(dtype):
     inp2 = torch.randn(16, dtype=dtype, device=flag_gems.device)
     out = torch.empty_like(inp1)
 
-    with flag_gems.use_gems():
-        with pytest.raises(TypeError):
-            inp1.nextafter_(inp2, out=out)
+    with pytest.raises(TypeError):
+        flag_gems.nextafter_(inp1, inp2, out=out)
 
 
 # --- Edge-case / special-value tests ---
@@ -163,8 +157,7 @@ def test_nextafter_edge_values(dtype, inp, other):
     ref_other = utils.to_reference(other_t)
 
     ref_out = torch.nextafter(ref_inp, ref_other)
-    with flag_gems.use_gems():
-        res_out = torch.nextafter(inp_t, other_t)
+    res_out = flag_gems.nextafter(inp_t, other_t)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
@@ -195,8 +188,7 @@ def test_nextafter_nan(dtype):
         ref_other = utils.to_reference(other_t)
 
         ref_out = torch.nextafter(ref_inp, ref_other)
-        with flag_gems.use_gems():
-            res_out = torch.nextafter(inp_t, other_t)
+        res_out = flag_gems.nextafter(inp_t, other_t)
 
         # All outputs must be NaN
         assert torch.isnan(ref_out).all()
@@ -229,8 +221,7 @@ def test_nextafter_infinity(dtype):
         ref_other = utils.to_reference(other_t)
 
         ref_out = torch.nextafter(ref_inp, ref_other)
-        with flag_gems.use_gems():
-            res_out = torch.nextafter(inp_t, other_t)
+        res_out = flag_gems.nextafter(inp_t, other_t)
 
         utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
@@ -255,7 +246,6 @@ def test_nextafter_small_values(dtype):
         ref_other = utils.to_reference(other_t)
 
         ref_out = torch.nextafter(ref_inp, ref_other)
-        with flag_gems.use_gems():
-            res_out = torch.nextafter(inp_t, other_t)
+        res_out = flag_gems.nextafter(inp_t, other_t)
 
         utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)

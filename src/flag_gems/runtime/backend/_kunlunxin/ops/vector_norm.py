@@ -871,7 +871,10 @@ _DIM_MIN_WORK = 65536  # smaller tensors are launch-bound; keep generic path
 _DIM_MAX_INDEX = 1 << 31  # tile offsets are int32
 _DIM_CHUNKS = (32768, 8192)  # tl.sum-safe row chunk widths (bsl=2048)
 _DIM_MERGE_BLOCK = 1024
-_DIM_MASK_ROWS = 64  # rows per masked tile (= core count, measured optimum)
+_DIM_MASK_ROWS = 64
+_DIM_TILE_ROWS_WIDE = 128
+_DIM_TILE_ROWS_WIDE_SHORTN = 256
+_DIM_TILE_SHORTN = 512
 
 
 @libentry()
@@ -1331,15 +1334,7 @@ def _tle_flat(x, out, dtype):
 
 
 @functools.lru_cache(maxsize=1024)
-def _l2_dim_plan(m, n):
-    """('tile', TILE_M) / ('mask', (BLOCK_M, BLOCK_N)) / ('chunk', CHUNK) for an
-    (M, N) trailing reduce, or None when the shape belongs on the generic path.
-
-    The unmasked ('tile', ...) kernel is only selected when N and TILE_M are both
-    powers of two -- any other extent is silently mis-lowered by TritonXPU (see
-    the block comment above).  Shapes that used to take an unsafe tile now take
-    the masked pow2 kernel; shapes that already fell through to the generic path
-    still do, so the generic path's behaviour is unchanged."""
+def _l2_dim_plan(m, n, wide=False):
     if m < 1 or n < _DIM_MIN_N:
         return None
     if m * n < _DIM_MIN_WORK or m * n >= _DIM_MAX_INDEX:
@@ -1358,9 +1353,15 @@ def _l2_dim_plan(m, n):
         if n & (n - 1) == 0:
             # largest power of two that divides m, clamped to the tile budget
             p2 = m & (-m)
-            lim = 1 << (int(cap).bit_length() - 1)
-            if p2 > lim:
-                p2 = lim
+            tile_cap = _DIM_MASK_ROWS
+            if wide:
+                tile_cap = (
+                    _DIM_TILE_ROWS_WIDE_SHORTN
+                    if n <= _DIM_TILE_SHORTN
+                    else _DIM_TILE_ROWS_WIDE
+                )
+            if p2 > tile_cap:
+                p2 = tile_cap
             if p2 * n >= _DIM_MIN_TILE:
                 return ("tile", p2)
         block_n = triton.next_power_of_2(n)
@@ -1416,14 +1417,7 @@ def _l2_trailing_dim(x, dim, keepdim, dtype):
     m = 1
     for d in range(ndim - len(red)):
         m *= x.shape[d]
-    tle_plan = _tle_norm_plan(m, n, dtype)
-    if tle_plan is not None:
-        out = _tle_norm_launch(x, m, n, *tle_plan, dtype)
-        kept = list(x.shape[: ndim - len(red)])
-        if keepdim:
-            return out.view(kept + [1] * len(red))
-        return out.view(kept)
-    plan = _l2_dim_plan(m, n)
+    plan = _l2_dim_plan(m, n, x.dtype in (torch.float16, torch.bfloat16))
     if plan is None:
         return None
     out = _l2_dim_launch(x, m, n, plan, dtype)

@@ -39,8 +39,7 @@ def test_bitwise_or_scalar(shape, dtype):
     ref_inp1 = utils.to_reference(inp1)
 
     ref_out = torch.bitwise_or(ref_inp1, inp2)
-    with flag_gems.use_gems():
-        res_out = torch.bitwise_or(inp1, inp2)
+    res_out = flag_gems.bitwise_or_scalar(inp1, inp2)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -60,7 +59,6 @@ def test_bitwise_or_scalar_(shape, dtype):
     ref_inp1 = utils.to_reference(inp1.clone())
 
     ref_out = ref_inp1.bitwise_or_(inp2)
-    with flag_gems.use_gems():
-        res_out = inp1.bitwise_or_(inp2)
+    res_out = flag_gems.bitwise_or_scalar_(inp1, inp2)
 
     utils.gems_assert_equal(res_out, ref_out)
