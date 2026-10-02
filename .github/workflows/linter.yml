@@ -36,6 +36,12 @@ jobs:
       cancel-in-progress: true
     # cpu-runner is an already-running container; no container: image needed.
     runs-on: cpu-runner
+    env:
+      # Point pre-commit at the hook venvs prebuilt into the cpu-runner image
+      # (see .github/docker/cpu-runner.Dockerfile). Without this, pre-commit
+      # falls back to ~/.cache/pre-commit (empty on the ephemeral pod) and
+      # rebuilds every hook env (~128s). Must match the image's PRE_COMMIT_HOME.
+      PRE_COMMIT_HOME: /opt/pre-commit-cache
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
     # checkout marks the repo safe only in a throwaway HOME; pre-commit runs
@@ -56,11 +62,11 @@ jobs:
         git sparse-checkout disable 2>/dev/null || true
         git ls-files -z | xargs -0 -r git update-index --no-skip-worktree
         git checkout --force HEAD -- .
-    # pre-commit and its hook environments are preinstalled in the cpu-runner
-    # image (PRE_COMMIT_HOME points at the baked-in cache), so no install or
-    # hook bootstrapping happens here. Invoke via `python3 -m pre_commit` since
-    # the console-script entrypoint is not on the PATH inherited by steps
-    # running directly on cpu-runner.
+    # pre-commit and its hook venvs are preinstalled in the cpu-runner image and
+    # found via the job-level PRE_COMMIT_HOME above, so no install or hook
+    # bootstrapping happens here. Invoke via `python3 -m pre_commit` since the
+    # console-script entrypoint is not on the PATH inherited by steps running
+    # directly on cpu-runner.
     - name: Run pre-commit
       shell: bash
       run: |
