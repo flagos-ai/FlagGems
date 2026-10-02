@@ -1,0 +1,22 @@
+{
+  "api_version": "v6.0",
+  "name": "values",
+  "description": "Representative ATen signature (not an exclusive ABI), copied verbatim: aten::values(Tensor(a) self) -> Tensor(a). This representative signature is not exclusive and does not narrow the contract; original Gems pytest defines the overloads, keyword arguments, returns, errors, aliasing and mutation that must be supported. All supplied registered schemas, verbatim: aten::values(Tensor(a) self) -> Tensor(a); aten::values.str(Dict(str, t) self) -> t[](*); aten::values.int(Dict(int, t) self) -> t[](*); aten::values.bool(Dict(bool, t) self) -> t[](*); aten::values.float(Dict(float, t) self) -> t[](*); aten::values.complex(Dict(complex, t) self) -> t[](*); aten::values.Tensor(Dict(Tensor, t) self) -> t[](*). Semantics from tests: sparse-tensor accessor returning the stored values buffer of a sparse tensor (COO, and compressed CSR/CSC/BSR/BSC including batched and hybrid dense-trailing forms) as an aliasing view that shares the values storage, preserving the stored values' shape, stride and storage offset, with write-through observed in both directions and index buffers left untouched. Input must be a coalesced COO or a compressed sparse tensor; the pytest asserts that dense input, uncoalesced COO and a bare Python scalar each raise one of RuntimeError, TypeError or NotImplementedError, without matching any message text, the native-reference messages ('values expected sparse tensor layout but got Strided'; 'Cannot get values on an uncoalesced tensor, please call .coalesce() first') being recorded only as source comments. The dict-keyed overloads (str/int/bool/float/complex/Tensor) instead return a List[t] of the dictionary's values and are conditional/overload-dependent behavior owned by the original pytest, not expressed by this single representative signature.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {
+      "out": "self"
+    }
+  }
+}

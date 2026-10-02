@@ -1,0 +1,36 @@
+{
+  "api_version": "v6.0",
+  "name": "_validate_sparse_bsc_tensor_args",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::_validate_sparse_bsc_tensor_args(Tensor ccol_indices, Tensor row_indices, Tensor values, int[] size) -> (). This single representative overload is chosen only as the contract anchor; it is NOT exclusive. The original Gems pytest owns the full contract — all registered overloads, keyword arguments, tuple/list/torch.Size call forms for `size`, the void return, the raised error cases, input-preservation (non-mutation) guarantees and aliasing behavior. Do not narrow, drop or rewrite tests to fit this one signature, and do not adapt reference semantics to it. Registered ATen schemas (verbatim): aten::_validate_sparse_bsc_tensor_args(Tensor ccol_indices, Tensor row_indices, Tensor values, int[] size) -> (). Semantics derived from the tests: validates the metadata of a BSC (batched block compressed sparse column) sparse tensor. `ccol_indices` and `row_indices` must share one int32/int64 dtype and be stride-1 per batch; `values` supplies the block payload, and its per-batch nnz together with its block extents (a zero block extent is clamped to 1) must be consistent with `ccol_indices`, while the logical extents must divide evenly by the block extents. `size` is the logical dense size of the descriptor (batch + 2 base extents + optional dense tail); the block shape itself is taken from the `values` payload, not from `size`. The operator returns nothing (void): it only inspects descriptors, leaves the input tensors unchanged and raises RuntimeError for the descriptor violations the pytest exercises. For missing or non-tensor arguments the pytest accepts either TypeError or RuntimeError. Content invariants (row index range, sortedness or duplicates, `ccol_indices[0]`, `ccol_indices[-1] == nnz`, monotonicity) are not asserted here: the pytest marks those cases unresolved because the native check aborts the process on this backend. There is no tensor output, no `.out` overload, no broadcasting and no autograd.",
+  "parameters": [
+    {
+      "name": "ccol_indices",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "row_indices",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "values",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "size",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "List[int]"
+    }
+  ],
+  "outputs": [],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

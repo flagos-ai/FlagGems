@@ -1,0 +1,26 @@
+{
+  "api_version": "v6.0",
+  "name": "_sparse_semi_structured_apply_dense",
+  "description": "Representative ATen signature (not an exclusive ABI), copied verbatim: aten::_sparse_semi_structured_apply_dense(Tensor input, Tensor thread_masks) -> Tensor. This is the one registered schema supplied: aten::_sparse_semi_structured_apply_dense(Tensor input, Tensor thread_masks) -> Tensor. The representative signature is not exclusive: the original Gems pytest owns the full contract for overloads, keyword arguments, return values, raised errors, aliasing and mutation, and no test may be removed or have its reference semantics adapted to fit this single signature. Semantics: each element of the dense rank-2 Half/BFloat16 input tensor is selected by its packed mask bit in thread_masks; the element is kept where the bit is 1 and replaced by zero where the bit is 0, with no rounding and no broadcast. The op is not a multiply, so an all-zero mask maps NaN and +-Inf to zero rather than producing NaN, while an all-ones mask preserves NaN/Inf categories. Positive cases run a rank-2 operand that is RowMajor (stride(1) == 1) or ColMajor (stride(0) == 1) with tile-aligned extents (rows % 32 == 0, cols % 64 == 0) and a uint8 packed mask of shape (4*ceil(rows/32), 8*ceil(cols/64), 8); unaligned extents are rejected by the benchmark case descriptor and are not tested against the operator. The negative families asserted in pytest are scoped to the measured vendor (nvidia) and cover unsupported dtypes (RuntimeError), invalid ranks (RuntimeError/IndexError), a both-strides-greater-than-1 layout (RuntimeError) and mask defects (RuntimeError); on other vendors those tables are empty and remain unchecked. Positive tests only compare values (tu.assert_result_equal) and assert neither in-place mutation nor output aliasing; the registered schema records no mutation and a Tensor return with no alias, which is representative metadata rather than an unconditional runtime guarantee.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "thread_masks",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

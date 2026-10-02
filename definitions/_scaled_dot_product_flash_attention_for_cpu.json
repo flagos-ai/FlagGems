@@ -1,0 +1,61 @@
+{
+  "api_version": "v6.0",
+  "name": "_scaled_dot_product_flash_attention_for_cpu",
+  "description": "Representative ATen signature (not an exclusive ABI), copied verbatim from the supplied schema: aten::_scaled_dot_product_flash_attention_for_cpu(Tensor query, Tensor key, Tensor value, float dropout_p=0., bool is_causal=False, *, Tensor? attn_mask=None, float? scale=None) -> (Tensor output, Tensor logsumexp). Registered schemas: aten::_scaled_dot_product_flash_attention_for_cpu(Tensor query, Tensor key, Tensor value, float dropout_p=0., bool is_causal=False, *, Tensor? attn_mask=None, float? scale=None) -> (Tensor output, Tensor logsumexp). The representative signature is not exclusive: the original Gems pytest owns the full contract, including overloads, keyword arguments, returns, errors, aliasing and mutation; do not narrow coverage to this signature. Semantics evidenced by the tests: CPU-only scaled dot-product attention over rank-4 (B, H, S, E) query/key/value tensors, including non-contiguous head-transposed operands, returning attention output and log-sum-exp as two separate tensors. dropout_p is effectively required to be 0.0 (0.5 and -1.0 raise); is_causal applies the native causal mask and supports Sq != Sk; attn_mask is keyword-only with 2-D or broadcastable 4-D shapes; scale is keyword-only with the schema default None when omitted. The registered schema declares no argument mutation and no returned aliases; that alias/mutation metadata is representative and is not asserted at runtime by these tests, which compare the candidate outputs numerically against the native reference only.",
+  "parameters": [
+    {
+      "name": "query",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "key",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "value",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "dropout_p",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 0.0,
+      "type_hint": "float"
+    },
+    {
+      "name": "is_causal",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": false,
+      "type_hint": "bool"
+    },
+    {
+      "name": "attn_mask",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[Tensor]"
+    },
+    {
+      "name": "scale",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[float]"
+    }
+  ],
+  "outputs": [
+    "output",
+    "logsumexp"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

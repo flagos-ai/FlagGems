@@ -1,0 +1,13 @@
+{
+  "api_version": "v6.0",
+  "name": "_nnpack_available",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::_nnpack_available() -> bool. This representative signature is not exclusive: the original Gems pytest defines the overloads, keyword arguments, returns, errors, aliasing and mutation that the operator must support, and tests must never be narrowed or adapted to this single signature. Semantics: a nullary, host-side build-capability query reporting whether this PyTorch build was compiled with NNPACK; it takes no operands and returns a Python bool, and the pytest checks that the sampled ambient torch state and the global RNG state are unchanged by the call. In the pytest the result is pinned by agreement with the native query: repeated calls, a worker-thread call, and calls under each sampled ambient state (grad mode, inference mode, default dtype set to float16/float64/bfloat16, thread count, deterministic algorithms, CPU autocast bfloat16, and the runtime torch.backends.nnpack enabled flag) must all match torch.ops.aten._nnpack_available(); the runtime nnpack flag is not the build capability the schema reports, so returning that flag instead is wrong. Calls with any positional or keyword argument, including a Tensor operand, must raise TypeError, ValueError or RuntimeError. All supplied registered schemas (verbatim): aten::_nnpack_available() -> bool",
+  "parameters": [],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

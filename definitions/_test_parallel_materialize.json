@@ -1,0 +1,33 @@
+{
+  "api_version": "v6.0",
+  "name": "_test_parallel_materialize",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::_test_parallel_materialize(Tensor self, int num_parallel, bool skip_first=False) -> Tensor. Registered schema strings: aten::_test_parallel_materialize(Tensor self, int num_parallel, bool skip_first=False) -> Tensor. Original Gems pytest owns the full contract: it defines the keyword/positional call forms, the optional skip_first default, the num_parallel sweep (0, 1, -1, 3, 10**6), return identity/aliasing, the lazy-bit-cleared contiguous result for conj/neg operands, the untouched lazy operand that stays lazily viewed after the call, the RuntimeError reporting that the operator's autograd derivative is not implemented, and the negative operand/parameter rows (non-tensor operand, invalid or missing num_parallel, an invalid skip_first value, a sparse operand); that pytest states no dtype is rejected natively and the rank is free, so no dtype-rejection behavior is asserted. Do not narrow or remove those tests to fit this single signature. Semantics: the operator materializes a lazily conj/neg viewed operand. An already materialized operand is returned as the very same object, so a write through the result is visible in the operand, while a lazy one comes back as a fresh contiguous tensor on the same device with the lazy bit cleared; num_parallel and skip_first only describe how the work is segmented and do not change the result in the tested sweep. The registered schema declares no argument aliases or mutation (mutates: [], argument_aliases: {}), so the identity and mutation-through-result behavior is pytest runtime evidence for the tested cases rather than an unconditional schema guarantee.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "num_parallel",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    },
+    {
+      "name": "skip_first",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": false,
+      "type_hint": "bool"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

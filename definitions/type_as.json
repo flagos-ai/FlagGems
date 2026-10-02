@@ -1,0 +1,26 @@
+{
+  "api_version": "v6.0",
+  "name": "type_as",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::type_as(Tensor self, Tensor other) -> Tensor. All supplied registered schema strings, verbatim: aten::type_as(Tensor self, Tensor other) -> Tensor. This representative signature is not exclusive: the original Gems pytest defines the overloads, keyword arguments, returns, errors, aliasing and mutation that must be supported, and tests must never be narrowed to this signature. Semantics derived from the tests: type_as casts self to other's dtype and places the result on other's device; other's shape, values, offset and strides are ignored, and there is no broadcasting. When self already has other's dtype and device, native returns self itself (view metadata included), so the output may alias the self parameter conditionally on dtype/device equality; that conditional alias is not modeled as an unconditional effect here. The cast is a deterministic elementwise map compared exactly (matching NaNs allowed): float-to-int truncates toward zero, wider floats into fp8 round per native behavior, float8_e4m3fn yields NaN on overflow while float8_e5m2 yields +-inf, and NaN/Inf survive widening casts. Both operands are read and neither is modified. Backward yields the upstream gradient cast back to the input dtype exactly. Non-tensor operands and a missing operand raise TypeError/RuntimeError. Pure memory-bound cast, streamed over self.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "other",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

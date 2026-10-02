@@ -1,0 +1,26 @@
+{
+  "api_version": "v6.0",
+  "name": "_sparse_sparse_matmul",
+  "description": "Representative ATen schema copied verbatim (representative signature, NOT an exclusive ABI): aten::_sparse_sparse_matmul(Tensor self, Tensor other) -> Tensor. Other registered schema verbatim: aten::_sparse_sparse_matmul.out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!). Semantics: 2-D sparse COO matrix multiplication, i.e. mat1 (m, k) COO @ mat2 (k, n) COO producing an (m, n) sparse COO result whose entries are coalesced even when an operand is uncoalesced, with duplicated unsorted coordinates summed and stored zeros contributing nothing; both operands must be rank-2 COO (csr and dense operands are rejected), their dtypes must agree, and the shared inner extent k must match. The .out overload (keyword-only out) writes the product into the caller-provided COO buffer and returns that same buffer, with alias set (a!) on out. Only the two-argument default overload is modeled here; the original Gems pytest owns the full overload, keyword, return, error, mutation and aliasing contract (including the .out buffer identity, the sparse-gradient backward behavior, empty/zero-extent descriptors, layout variants, stored zeros, special values, and all rejection families), so tests must never be narrowed to this single representative signature.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "other",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

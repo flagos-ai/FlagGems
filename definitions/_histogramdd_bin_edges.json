@@ -1,0 +1,47 @@
+{
+  "api_version": "v6.0",
+  "name": "_histogramdd_bin_edges",
+  "description": "Representative ATen overload (verbatim, representative and not exclusive): aten::_histogramdd_bin_edges(Tensor self, int[] bins, *, float[]? range=None, Tensor? weight=None, bool density=False) -> Tensor[]. This representative signature is not an exclusive ABI: the original Gems pytest owns the full contract — overloads, keyword arguments, returns, error behavior, aliasing and mutation — and must never be narrowed, rewritten or reduced to this one signature. All supplied registered schema strings (verbatim): aten::_histogramdd_bin_edges(Tensor self, int[] bins, *, float[]? range=None, Tensor? weight=None, bool density=False) -> Tensor[]; aten::_histogramdd_bin_edges.out(Tensor self, int[] bins, *, float[]? range=None, Tensor? weight=None, bool density=False, Tensor(a!)[] out) -> (). Semantics observed in the tests: for a floating-point tensor self of rank >= 2, computes one 1-D tensor of bin edges per histogram dimension, returning a Tensor[] of len(bins) tensors where entry d has bins[d] + 1 edges. len(bins) must equal self.shape[-1] and bin counts must be non-negative. range is a flat float[] carrying 2*D finite bounds in dimension order; when range is omitted the extent is derived from the data, and data-derived extents that are non-finite (NaN/Inf samples) are rejected. weight and density are accepted keyword-only arguments that do not affect the returned edges. Native support covers float32/float64 only; unsupported dtypes, rank < 2, mismatched len(bins), negative bin counts, wrong-length ranges and non-finite range bounds raise RuntimeError/TypeError. Outputs still carry requires_grad when the input requires grad, but the backward derivative for aten::_histogramdd_bin_edges is not implemented. The .out overload differs conditionally in effect: it returns nothing and fills caller-provided Tensor(a!)[] buffers in place, which this single-overload effects model does not express. All optional defaults here are JSON-representable (None/null for range and weight and false for density), so no string-rendered ATen defaults needed to be retained.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "bins",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "List[int]"
+    },
+    {
+      "name": "range",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[List[float]]"
+    },
+    {
+      "name": "weight",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[Tensor]"
+    },
+    {
+      "name": "density",
+      "kind": "keyword_only",
+      "required": false,
+      "default": false,
+      "type_hint": "bool"
+    }
+  ],
+  "outputs": [
+    "bin_edges"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

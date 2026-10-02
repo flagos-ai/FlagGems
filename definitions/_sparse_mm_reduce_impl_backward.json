@@ -1,0 +1,51 @@
+{
+  "api_version": "v6.0",
+  "name": "_sparse_mm_reduce_impl_backward",
+  "description": "Representative ATen signature (not an exclusive ABI), copied verbatim: aten::_sparse_mm_reduce_impl_backward(Tensor self, Tensor grad_out, Tensor weight, str reduce, Tensor arg_out, bool[2] output_mask) -> (Tensor, Tensor). All supplied registered schema strings, verbatim: aten::_sparse_mm_reduce_impl_backward(Tensor self, Tensor grad_out, Tensor weight, str reduce, Tensor arg_out, bool[2] output_mask) -> (Tensor, Tensor). The representative signature is not exclusive: the original Gems pytest defines the overloads, keyword arguments, returns, errors, aliasing and mutation behavior that the implementation must support; do not narrow its coverage to this one signature, and never remove tests or adapt reference behavior to fit it. Semantics derived from the tests: this is the backward of the SparseCsrCPU sparse-matmul-with-reduce primitive, computing gradients of the two differentiable inputs of aten::_sparse_mm_reduce_impl. self is a sparse CSR (m, k) operand, grad_out is dense (m, n), weight is dense (k, n), reduce is a string reduction mode restricted to \"sum\", \"mean\", \"amax\" and \"amin\" (\"prod\" and unknown strings raise RuntimeError), and arg_out is the workspace emitted by the matching native forward (absolute CSR storage indices for amax/amin, empty for sum/mean). output_mask is a bool[2] selecting whether the gradient w.r.t. the sparse operand (grad_self, a sparse CSR tensor with matching crow/col structure) and the gradient w.r.t. weight (grad_weight, dense) are returned; a masked-out component is returned as None and the result tuple length always equals len(output_mask), so a one-element mask list is rejected. There is no out overload. Errors exercised by the original pytest include unsupported dtypes (integer, bool and float8 types build a valid CSR but fail with a kernel-not-implemented RuntimeError), invalid reduce strings, an output_mask that does not satisfy bool[2], a dense self (only sparse-CSR self is registered), and a weight whose shape does not match. The representative schema records no mutation and no aliasing of outputs to inputs.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "grad_out",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "weight",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "reduce",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "str"
+    },
+    {
+      "name": "arg_out",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "output_mask",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "List[bool]"
+    }
+  ],
+  "outputs": [
+    "self_out",
+    "weight_out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "api_version": "v6.0",
+  "name": "special_scaled_modified_bessel_k0",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::special_scaled_modified_bessel_k0(Tensor x) -> Tensor. This representative signature is NOT exclusive: the original Gems pytest defines and owns the full contract, including the .out overload, keyword arguments, return values, raised errors, aliasing and mutation behavior; do not narrow or remove those tests to fit this one signature. Other registered signatures supplied verbatim: aten::special_scaled_modified_bessel_k0(Tensor x) -> Tensor; aten::special_scaled_modified_bessel_k0.out(Tensor x, *, Tensor(a!) out) -> Tensor(a!). Semantics derived from the tests: this is a unary pointwise operator computing K0e(x) = exp(x) * K0(x) for x > 0, with no broadcast dimension. Integral and bool inputs are promoted to float32; float32, and float64 where the static fp64 capability flag is set, use the native kernel. On the measured NVIDIA CUDA-family backend (the only vendor for which the pytest builds these cases, with bf16/fp8/complex128 gated on the shared capability flags), half, bfloat16, float8 and complex inputs are rejected with RuntimeError or TypeError; the tests do not match the message text, which the module records as naming the scaled_modified_bessel_k0_cuda kernel. At x = 0 (including -0.0 and the smallest subnormal) the result is +inf; negative inputs return NaN; the operator registers no autograd formula, so requires_grad inputs yield requires_grad False with no grad_fn. Non-contiguous and offset layouts must be honored. The .out overload is keyword-only, writes into and returns the caller's buffer, and rejects non-float out buffers. Args and their kinds/defaults shown here describe only the representative default overload.",
+  "parameters": [
+    {
+      "name": "x",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "api_version": "v6.0",
+  "name": "numel",
+  "description": "Representative ATen signature (not exclusive): aten::numel(Tensor self) -> int. Original Gems pytest owns the full contract (overloads, keyword arguments, returns, errors, aliasing, mutation); do not narrow, delete or rewrite tests to fit this single signature. This is also the only registered overload (default), so no scalar/list overload exists on the schema side; the None argument and non-tensor/missing-argument error cases below remain owned by pytest rather than by this model. Semantics: numel is a host-side metadata query that returns the logical element count of the tensor as a Python int. It reads only shape/layout metadata and never touches the payload, so it does not materialize, compact or reallocate storage and leaves size, stride, storage_offset, data_ptr, storage bytes and _version unchanged; it produces no grad_fn, does not populate .grad, and does not bump the version counter. It counts dense logical elements for sparse (not _nnz), sparse CSR (not values().numel()), nested, jagged, quantized and meta tensors, and handles strided views (transpose, step slice, narrowed, offset view, zero stride, empty, scalar, conj) by shape alone. It returns 0 for a None argument; non-tensor arguments (float, int, bool, str, tuple, list, dict, object) raise TypeError/ValueError/RuntimeError, and a missing argument raises TypeError/RuntimeError. All supplied registered schemas, verbatim: aten::numel(Tensor self) -> int.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

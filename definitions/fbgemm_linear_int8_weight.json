@@ -1,0 +1,56 @@
+{
+  "api_version": "v6.0",
+  "name": "fbgemm_linear_int8_weight",
+  "description": "Representative ATen signature (not an exclusive ABI), copied verbatim: aten::fbgemm_linear_int8_weight(Tensor input, Tensor weight, Tensor packed, Tensor col_offsets, Scalar weight_scale, Scalar weight_zero_point, Tensor bias) -> Tensor. Registered schema strings (all supplied signatures, verbatim): aten::fbgemm_linear_int8_weight(Tensor input, Tensor weight, Tensor packed, Tensor col_offsets, Scalar weight_scale, Scalar weight_zero_point, Tensor bias) -> Tensor. This definition captures only that one registered overload; the original Gems pytest owns the full contract for overload resolution, keyword arguments, return values, raised errors, aliasing and mutation, and tests must not be narrowed or reference behavior adapted to fit this single signature. Semantics measured by the tests: CPU-only host FBGEMM int8 linear; the activation and bias must be float32 while the weight tensor supplies shape metadata only (the numerical weights come from the packed handle); rank(input) >= 2, weight is (N, K) with K == input.size(-1) and bias has length N; packed must be the genuine buffer produced by fbgemm_pack_quantized_matrix (clone/set_/storage copies are rejected with \"Expected temporary cpp type wrapper\", so the same handle is shared by oracle and candidate); col_offsets is accepted but not read; weight_scale and weight_zero_point must be Python numbers, and weight_zero_point must also be integral, since a fractional zero point is rejected; the kernel does not clamp zero points, it only shifts the dequantized weights; invalid dtypes, ranks, K mismatches, bias lengths and scalar forms raise RuntimeError; there is no autograd, so results never carry a grad_fn even with requires_grad operands; no operand is mutated; the single Tensor result is only compared against the native reference with tu.assert_result_close on the tested shapes, so no output-shape formula is asserted here.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "weight",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "packed",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "col_offsets",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "weight_scale",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "number"
+    },
+    {
+      "name": "weight_zero_point",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "number"
+    },
+    {
+      "name": "bias",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

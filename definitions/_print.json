@@ -1,0 +1,18 @@
+{
+  "api_version": "v6.0",
+  "name": "_print",
+  "description": "Representative ATen signature (not an exclusive ABI), copied verbatim from the supplied schema: aten::_print(str s) -> (). All supplied registered schemas, verbatim: aten::_print(str s) -> (). This single schema is representative only; the original Gems pytest owns the full contract, including call forms, keyword arguments, return values, raised errors, aliasing and mutation, and must not be narrowed to this signature. Semantics derived from the tests: the operator writes its payload to the C stdout stream verbatim followed by exactly one \"\\n\" and returns None (a void return; the tests assert `res is None`). Both positional `op(message)` and keyword `op(s=message)` forms are exercised, and the public injected entrypoint is `flag_gems._print` (`getattr(flag_gems, \"_print\", None)`), compared against `torch.ops.aten._print`. Although the schema types the argument as str, the pytest also exercises bytes and bytearray payloads — the only empty payload case supplied is bytes (`b\"\"`, id `bytes_empty`), while the bytearray case is non-empty (`bytearray(b\"bytearray payload\")`) — and checks the reference writes the raw payload bytes followed by one \"\\n\"; those cases are owned by pytest rather than being constrained here. Non-string values (int, float, bool, None, list, tuple, dict, set, and 0-d/1-d tensors) and invalid call forms (no argument, two arguments, unknown keyword) raise RuntimeError or TypeError; all of those negative cases remain owned by pytest. No tensor operand, optional parameter, broadcast, dtype, shape or backward semantics exist for this operator, so the payload content and length are the only workload dimension.",
+  "parameters": [
+    {
+      "name": "s",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "str"
+    }
+  ],
+  "outputs": [],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

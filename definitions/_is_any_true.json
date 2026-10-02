@@ -1,0 +1,20 @@
+{
+  "api_version": "v6.0",
+  "name": "_is_any_true",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::_is_any_true(Tensor self) -> Tensor. Registered schemas supplied for this operator: aten::_is_any_true(Tensor self) -> Tensor. Original Gems pytest owns the full contract - overloads, keyword arguments, returns, errors, aliasing and mutation - and it must not be narrowed to this one representative signature. Semantics: reduces an entire bool tensor of any shape (including 0-dim and empty tensors) to a 0-dim bool tensor that is True iff at least one element is True; the reduction reads the logical elements of the view, so the tested transposed, strided, zero-stride expanded, offset and otherwise non-contiguous layouts are checked against the same reference as their contiguous equivalent, empty inputs are always False, and the input tensor is only read and never mutated. Rejection claims are backend-scoped in the source evidence: non-tensor arguments and arities other than one tensor are rejected by the typed dispatcher or by a candidate type guard, while non-bool dtype rejection was measured only on the probed NVIDIA backend, where the kernel asserts self.scalar_type() == at::kBool, and the pytest grid for non-bool dtypes is collected only on that vendor; all of these rejections remain asserted in pytest.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

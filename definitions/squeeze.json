@@ -1,0 +1,28 @@
+{
+  "api_version": "v6.0",
+  "name": "squeeze",
+  "description": "Representative ATen signature, selected from the supplied schemas and the actual test calls, and NOT an exclusive ABI: aten::squeeze.dim(Tensor(a) self, int dim) -> Tensor(a). The original Gems pytest (tests/test_squeeze.py) owns the full contract for every overload, keyword argument, return, error, aliasing and mutation behavior; never remove tests or adapt reference semantics to fit this one signature. All supplied registered schemas, verbatim: aten::squeeze(Tensor(a) self) -> Tensor(a); aten::squeeze.dim(Tensor(a) self, int dim) -> Tensor(a); aten::squeeze.dims(Tensor(a) self, int[] dim) -> Tensor(a); aten::squeeze.dimname(Tensor(a) self, str dim) -> Tensor(a). Semantics derived from the tests: squeeze is a metadata-only view that returns a new tensor object (res_out is not inp, res_out._is_view()) sharing self's untyped storage, whose shape, stride, storage offset and conjugate-bit state match the native reference output for the tested shapes, layouts and dtypes, while the input's shape, stride and storage offset stay equal to the reference input's. squeeze(x) drops every size-1 dimension; squeeze(x, dim) drops that dimension when its extent is 1 and otherwise behaves like the native reference, with negative dims covered by tests; squeeze(x, dims) handles listed dims including unsorted lists, the empty list and lists containing non-singleton dims, each checked against the reference. Out-of-range dims raise IndexError and duplicate dims in the dims list raise RuntimeError. The tests additionally fill the squeezed result and compare the candidate input with the reference input, and they compare the backward gradient with the reference gradient while asserting the gradient's shape equals the input shape. Because effects are overload-dependent only through which size-1 dims are dropped and through error cases, they are described here and remain covered by pytest rather than encoded as conditional effects.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "dim",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {
+      "out": "self"
+    }
+  }
+}

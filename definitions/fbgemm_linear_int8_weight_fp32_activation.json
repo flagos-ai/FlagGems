@@ -1,0 +1,56 @@
+{
+  "api_version": "v6.0",
+  "name": "fbgemm_linear_int8_weight_fp32_activation",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::fbgemm_linear_int8_weight_fp32_activation(Tensor input, Tensor weight, Tensor packed, Tensor col_offsets, Scalar weight_scale, Scalar weight_zero_point, Tensor bias) -> Tensor. Registered schemas supplied for this operator: aten::fbgemm_linear_int8_weight_fp32_activation(Tensor input, Tensor weight, Tensor packed, Tensor col_offsets, Scalar weight_scale, Scalar weight_zero_point, Tensor bias) -> Tensor. This single registered overload is the representative contract; the original Gems pytest owns the full contract for overloads, keyword arguments, returns, errors, aliasing and mutation, and the tests must not be narrowed to this signature or have their reference behavior adapted. Semantics (from the tests): a host-side FBGEMM int8 GEMM with float32 activation. The activation must be float32 with dim() >= 2 (input.size(-1) is the reduction dim); weight supplies (N, K) metadata whose numerical values live in the opaque packed handle produced by torch.ops.aten.fbgemm_pack_quantized_matrix; col_offsets is int32 built as sum over dim=1 of weight; bias is float32 of length N; weight_scale is a Python number (positive/negative/zero, magnitude and nan/inf boundaries exercised) and weight_zero_point is an integral Python number. All operands are CPU. The workloads compare the candidate result against the native ATen operator: they assert that the output device equals the input device and that values match the reference, and the snapshot workloads additionally assert that input, weight, packed, col_offsets and bias are unmodified. The requires_grad workload only asserts that the output's requires_grad and grad_fn presence agree with the native reference output; it does not assert an unconditionally detached result. Error cases retained in pytest: non-float32 or rank < 2 activation, non-2D weight, non-int32 col_offsets, invalid bias (dtype/rank/length), mismatched inner dimension, non-int8 packed handle, non-integral weight_zero_point or a tensor weight_scale. weight_metadata_dtype also checks that the weight operand's dtype does not change the numerical result.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "weight",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "packed",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "col_offsets",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "weight_scale",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "number"
+    },
+    {
+      "name": "weight_zero_point",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "number"
+    },
+    {
+      "name": "bias",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

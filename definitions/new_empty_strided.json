@@ -1,0 +1,60 @@
+{
+  "api_version": "v6.0",
+  "name": "new_empty_strided",
+  "description": "Representative ATen signature (not an exclusive ABI), copied verbatim: aten::new_empty_strided(Tensor self, SymInt[] size, SymInt[] stride, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None) -> Tensor. This representative signature is NOT exclusive: it does not narrow the operator contract. The original Gems pytest defines the full overload, keyword-argument, return, error, aliasing and mutation behavior, and must not be reduced to this signature. Registered ATen schemas supplied verbatim: (1) aten::new_empty_strided(Tensor self, SymInt[] size, SymInt[] stride, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None) -> Tensor; (2) aten::new_empty_strided.out(Tensor self, SymInt[] size, SymInt[] stride, *, Tensor(a!) out) -> Tensor(a!). Semantics evidenced by the tests: new_empty_strided allocates fresh, uninitialized storage for an explicit size and stride; `self` contributes dtype/device metadata only and is never aliased or mutated, and no element of `self` is read. The default overload returns a new strided tensor whose shape equals `size`, whose stride() equals `stride`, whose dtype is `dtype` when supplied (otherwise `self.dtype`), whose device is `device` when supplied (otherwise `self.device`), whose layout is torch.strided, whose storage_offset is 0, which is not a view, and which carries no autograd history (requires_grad False, grad_fn None) and is not a function of `self`. layout accepts torch.strided; the only non-strided layout exercised, torch.sparse_coo, is rejected on the tested configuration, and the pytest marks that row \"no sparse allocation backend\", so the evidence does not establish that every other layout raises. pin_memory is a host-memory contract valid for a dense CPU source with a CPU device, and is rejected for a non-CPU source. `size` and `stride` are sequence arguments: there is no operand broadcast, no scalar-operand form, no backward workload, and no aliasing of the result to `self`. Ordering and rank validity are enforced (size/stride rank mismatch, non-sequence size, non-integer extent, negative extent, negative stride and stride overflow all raise RuntimeError/TypeError/ValueError/NotImplementedError). The separate .out overload is overload-dependent behavior not expressed by this pure model: it takes a keyword-only Tensor(a!) out, mutates it, reuses or resizes its storage (a zero-size buffer is reallocated) and returns the buffer object itself with alias relationship to out, and it accepts no dtype argument because the buffer's dtype is authoritative. Native SymInt[] size/stride are expressed here as List[int] type hints; the non-JSON schema defaults dtype=None, layout=None, device=None and pin_memory=None were rendered as JSON null and are retained in the parameter defaults.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "size",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "List[int]"
+    },
+    {
+      "name": "stride",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "List[int]"
+    },
+    {
+      "name": "dtype",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[int]"
+    },
+    {
+      "name": "layout",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[int]"
+    },
+    {
+      "name": "device",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[Device]"
+    },
+    {
+      "name": "pin_memory",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[bool]"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

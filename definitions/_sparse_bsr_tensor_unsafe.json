@@ -1,0 +1,66 @@
+{
+  "api_version": "v6.0",
+  "name": "_sparse_bsr_tensor_unsafe",
+  "description": "Representative ATen signature (not an exclusive ABI), copied verbatim: `aten::_sparse_bsr_tensor_unsafe(Tensor crow_indices, Tensor col_indices, Tensor values, int[] size, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None) -> Tensor`. All registered schema strings supplied for this operator: `aten::_sparse_bsr_tensor_unsafe(Tensor crow_indices, Tensor col_indices, Tensor values, int[] size, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None) -> Tensor`. The original Gems pytest owns the full overload, keyword, return, error, mutation and alias contract; this single representative signature is not exclusive and coverage must never be narrowed, and reference behavior must never be adapted to fit it. Semantics: host-side unsafe BSR constructor that wraps the caller's crow_indices, col_indices and values into a torch.sparse_bsr tensor of the declared size, storing size verbatim with no validation. dtype, layout, device and pin_memory are keyword-only and default to None. The trailing dims of values give the BSR block shape and any dims after that are the dense dims; leading dims of the declared size are batch dims. The result aliases the component storage rather than copying it: the tests assert that the result's crow_indices, col_indices and values share the inputs' data_ptr, and that the result's values() additionally preserves the input values' storage_offset and strides. The result is not differentiable (requires_grad is False, grad_fn is None) and the three input components are left unmodified. Overload-independent error paths exercised by pytest include non-tensor components, non-int size entries, missing size, string dtype/layout, dtype mismatch, non-BSR layout, component/device mismatch and pin_memory with accelerator components. Calls that omit the optional keywords are only asserted to produce a CPU result with a pin state matching the reference (the layout assertion covers sparse_bsr); no further default resolution is asserted here. Every supplied parameter default is JSON-representable (null), so no non-JSON ATen default string had to be rendered.",
+  "parameters": [
+    {
+      "name": "crow_indices",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "col_indices",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "values",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "size",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "List[int]"
+    },
+    {
+      "name": "dtype",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[int]"
+    },
+    {
+      "name": "layout",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[int]"
+    },
+    {
+      "name": "device",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[Device]"
+    },
+    {
+      "name": "pin_memory",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[bool]"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

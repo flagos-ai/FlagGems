@@ -1,0 +1,20 @@
+{
+  "api_version": "v6.0",
+  "name": "q_zero_point",
+  "description": "Representative ATen signature (not an exclusive ABI), copied verbatim from the supplied registered schema: aten::q_zero_point(Tensor self) -> int. This definition represents that single overload only; it is not an exclusive contract and must not be used to narrow or remove tests. The original Gems pytest owns the full overload, keyword-argument, return, error, aliasing and mutation behavior, including: per-tensor affine quantized inputs with storage dtypes torch.uint8/torch.int8/torch.int32 (quantized dtypes torch.quint8/torch.qint8/torch.qint32); stored zero-point round-trip for zero, both signs, dtype boundaries and out-of-range values; finite, zero, negative, NaN and +/-Inf scales (the scale is the sole carrier of a non-finite field and must not affect the returned Python int); quantized views of differing layouts (stride-2 slice, transpose, narrow with non-zero storage offset and reshape) that must not be mutated; empty quantized tensors; raised errors for non-quantized dtypes, per-channel quantizers and non-tensor arguments. Semantics: reads the zero point already stored in a per-tensor affine quantizer; it does not quantize anything and returns a Python int without writing to the input's storage. Registered schema strings supplied: aten::q_zero_point(Tensor self) -> int.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

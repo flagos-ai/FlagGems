@@ -1,0 +1,20 @@
+{
+  "api_version": "v6.0",
+  "name": "get_device",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::get_device(Tensor self) -> int. This signature is representative only, not the exclusive contract; the original Gems pytest owns the full overload/keyword/return/error/mutation/alias behavior and must not be narrowed to this signature. Other registered schema strings for this operator (verbatim): \"aten::get_device(Tensor self) -> int\". Semantics: reads the placement index recorded in the operand's host-side metadata and returns it as a Python int; returns -1 when the placement carries no device index (cpu or meta). It reads no element data, so dtype, shape, contents and strides cannot change the result, and the operand's shape, stride, storage offset, dtype and device must be preserved (no reallocation or reinterpretation). Sparse COO operands and empty, expanded, sliced, transposed and requires-grad operands are all accepted. Non-Tensor arguments, a missing argument and an extra argument must raise TypeError/ValueError/RuntimeError; those error contracts remain defined by pytest.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

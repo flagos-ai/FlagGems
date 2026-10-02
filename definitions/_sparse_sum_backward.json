@@ -1,0 +1,32 @@
+{
+  "api_version": "v6.0",
+  "name": "_sparse_sum_backward",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::_sparse_sum_backward(Tensor grad, Tensor self, int[] dim) -> Tensor. Labeled representative and NOT exclusive: the original Gems pytest owns the full overload, keyword-argument, return, error, mutation and alias contract, so tests are never narrowed to this one signature. All supplied registered schemas, verbatim: aten::_sparse_sum_backward.out(Tensor grad, Tensor self, int[] dim, *, Tensor(a!) out) -> Tensor(a!); aten::_sparse_sum_backward(Tensor grad, Tensor self, int[] dim) -> Tensor. Overload-dependent behavior kept in pytest: the out= form takes a keyword-only Tensor out that is resized in place, mutated, aliased, and returned as the same buffer. Semantics from the tests: _sparse_sum_backward is the autograd formula of aten::_sparse_sum. self is a SparseCOO tensor; grad is dense when dim covers every sparse dim, otherwise sparse, keeping the retained sparse dims plus every dense dim dim did not sum. The result has self's shape and sparse_dim. When grad is dense or keeps every sparse axis the kernel only gathers indices and copies/remaps values, returning a result for every dtype including float8_e4m3fn and float8_e5m2; a grad that keeps a proper non-empty subset of the sparse axes regathers values and dispatches floating types only (RuntimeError on CUDA for Char/Byte/Int/Long/Bool/BFloat16 and fp8). dim is a list of ints with no schema default; negative and reordered dims are legal, the empty list is an identity gradient. The negative workloads assert only that an out-of-range dim and an unsupported layout or grad form raise one of IndexError, RuntimeError or TypeError, and that a repeated normalized axis (e.g. [0, -2] on rank 2) raises RuntimeError; the source comments additionally record ATen's specific per-case types (IndexError for an out-of-range dim, RuntimeError for an unsupported layout or grad form, with NotImplementedError deriving from RuntimeError, and TypeError for a wrong argument type), but the frozen tests do not pin those per-case types and no test exercises a wrong argument type. The operator registers no derivative (no higher-order workload). No parameter of this overload has a schema default; non-JSON ATen defaults therefore do not arise. Effects shown here describe the representative overload only; conditional/alias behavior of the out overload is not expressed by this model.",
+  "parameters": [
+    {
+      "name": "grad",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "dim",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "List[int]"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

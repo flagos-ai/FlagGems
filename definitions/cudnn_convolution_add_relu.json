@@ -1,0 +1,68 @@
+{
+  "api_version": "v6.0",
+  "name": "cudnn_convolution_add_relu",
+  "description": "Representative ATen signature (not an exclusive ABI), copied verbatim from the supplied registered schema:\n\naten::cudnn_convolution_add_relu(Tensor self, Tensor weight, Tensor z, Scalar? alpha, Tensor? bias, SymInt[] stride, SymInt[] padding, SymInt[] dilation, SymInt groups) -> Tensor\n\nThis representative overload is not exclusive: the original Gems pytest owns the full contract, including every overload, keyword argument, return value, error path, aliasing and mutation behavior. Do not narrow the tests to this one signature and never remove tests or adapt reference behavior to fit it. All supplied registered schemas, verbatim:\n\n1) aten::cudnn_convolution_add_relu(Tensor self, Tensor weight, Tensor z, Scalar? alpha, Tensor? bias, SymInt[] stride, SymInt[] padding, SymInt[] dilation, SymInt groups) -> Tensor\n\n2) aten::cudnn_convolution_add_relu.out(Tensor self, Tensor weight, Tensor z, Scalar? alpha, Tensor? bias, SymInt[] stride, SymInt[] padding, SymInt[] dilation, SymInt groups, *, Tensor(a!) out) -> Tensor(a!)\n\nSemantics (from the tests): a 4-D NCHW or 5-D NCDHW convolution of self by weight, adding alpha * z (the residual, shaped exactly like the convolution output) and an optional bias broadcast over channels, then applying ReLU; stride/padding/dilation are per-spatial-dim lists and groups is an int satisfying in_channels == groups * weight.size(1). alpha is an Optional Scalar passed positionally as None when unspecified (it is not schema-defaulted), and bias is an Optional Tensor accepting None, (C,), (C,1,1) or (1,C,1,1). The positive cases run float32 and float16, plus bfloat16 when the runtime capability flag is set. The negative-dtype cases that assert RuntimeError/TypeError for integer, bool, fp8 and fp64 inputs exist only for the nvidia descriptor vendor (NEGATIVE_DTYPES = _NEGATIVE_DTYPES if _IS_DESCRIPTOR_VENDOR else []), with fp64 added only when utils.fp64_is_supported, so no dtype rejection is asserted for other vendors. The rank and parameter-list-length rejects measured on that vendor (2-D/3-D self, 3-D weight, a self/weight rank mismatch, and a stride/padding/dilation list whose length disagrees with the input rank) are likewise enumerated only for it, since RANK_NEGATIVE_CASES is empty on other vendors. The .out overload is a separate registered signature: it adds a keyword-only out tensor, returns that same caller buffer, mutates it, and resizes it when the supplied buffer shape differs from the result (buffer dtype must still match the computation dtype). Those overload-dependent behaviors are exercised by pytest and are described here rather than modeled as conditional effects. There is no backward implementation (autograd raises RuntimeError).",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "weight",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "z",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "alpha",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Optional[number]"
+    },
+    {
+      "name": "bias",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Optional[Tensor]"
+    },
+    {
+      "name": "stride",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "List[int]"
+    },
+    {
+      "name": "padding",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "List[int]"
+    },
+    {
+      "name": "dilation",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "List[int]"
+    },
+    {
+      "name": "groups",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

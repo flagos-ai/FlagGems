@@ -1,0 +1,33 @@
+{
+  "api_version": "v6.0",
+  "name": "to_padded_tensor",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::to_padded_tensor(Tensor self, float padding, SymInt[]? output_size=None) -> Tensor. Original Gems pytest calls and results define the full contract; do not narrow tests to this signature. All supplied registered signatures, verbatim: aten::to_padded_tensor.out(Tensor self, float padding, SymInt[]? output_size=None, *, Tensor(a!) out) -> Tensor(a!); aten::to_padded_tensor(Tensor self, float padding, SymInt[]? output_size=None) -> Tensor. Semantics derived from the tests: densify a nested tensor by copying every ragged row into a dense output and filling each cell past a row's length with the scalar float padding value. Both nested layouts are exercised - jagged (torch.jagged) and ordinary strided nested storage - and their output_size rules differ: jagged keeps the part count and omitted trailing dims and accepts truncation, growth and zero extents, while strided rejects shorter lists and only accepts an exact or grown output_size. The optional output_size defaults to null (None in the schema), which selects the natural padded shape. The representative overload is the default (non-out) form used by the value-range, padding, keyword and output_size tests; the out variant is a separate registered overload not used by the tests. The original Gems pytest owns the full overload, keyword-argument, return, error, mutation, aliasing and backward behavior: it calls flag_gems.to_padded_tensor(nested, padding=_PAD, output_size=None) with the schema keyword names, checks that densifying never writes the padding fill back into the nested values buffer, asserts backward gradients for the jagged and strided paths, and asserts candidate exceptions for negative extents, strided truncation, wrong-length and non-integer output_size, missing or non-float padding, dense and non-tensor inputs, and empty strided inputs. This definition represents one overload only; scalar/list form differences, error cases and conditional effects stay in pytest.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "padding",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "float"
+    },
+    {
+      "name": "output_size",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[List[int]]"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

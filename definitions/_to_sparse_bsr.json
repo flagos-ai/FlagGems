@@ -1,0 +1,33 @@
+{
+  "api_version": "v6.0",
+  "name": "_to_sparse_bsr",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::_to_sparse_bsr(Tensor self, int[2] blocksize, int? dense_dim=None) -> Tensor. This is only the representative overload; the original Gems pytest, not this definition, owns the full contract (overload selection, keyword arguments, returns, errors, aliasing and mutation) and its coverage must never be narrowed to this one signature. All supplied registered schemas verbatim: aten::_to_sparse_bsr(Tensor self, int[2] blocksize, int? dense_dim=None) -> Tensor; aten::_to_sparse_bsr.out(Tensor self, int[2] blocksize, int? dense_dim=None, *, Tensor(a!) out) -> Tensor(a!). Semantics: converts a dense Tensor - or a sparse COO Tensor when dense_dim is omitted or passed as None - into a BSR (block sparse row) Tensor whose 2-element blocksize must divide the last two sparse axes; dense_dim selects how many trailing dimensions stay dense, its registered schema default is None, and an omitted or explicitly-None value is treated as the absent argument. The .out overload takes a keyword-only out BSR buffer, returns that same buffer (alias), and requires the buffer's stored block count to match the conversion exactly. Overload-dependent behavior (the keyword-only out parameter, its mutation and alias) is expressed here only for the representative overload; pytest exercises the .out path, its identity return, the capacity-mismatch error, backward gradients, views, degenerate shapes, COO sources and the negative/error table. Native errors covered by pytest include rank < 2, non-divisible/non-positive/wrong-length/float blocksize, out-of-range or negative dense_dim, zero batch product, uneven per-batch stored block counts, explicit dense_dim for a sparse COO/CSR input, and .out block-count mismatch.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "blocksize",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "List[int]"
+    },
+    {
+      "name": "dense_dim",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[int]"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

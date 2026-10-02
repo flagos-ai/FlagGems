@@ -1,0 +1,33 @@
+{
+  "api_version": "v6.0",
+  "name": "to_sparse_bsc",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::to_sparse_bsc(Tensor self, int[2] blocksize, int? dense_dim=None) -> Tensor. Registered schemas supplied for this operator: aten::to_sparse_bsc(Tensor self, int[2] blocksize, int? dense_dim=None) -> Tensor. This definition describes only that one representative overload; it is not an exclusive contract. The original Gems pytest owns the full overload, keyword, return, error, mutation and alias behavior and must not be narrowed to this signature. Semantics: block-sparse relayout of a dense (or sparse) input into torch.sparse_bsc. `blocksize` is a two-element block shape that must divide the two sparse dims; the two dims in front of the trailing dense dims are the sparse dims, the trailing `dense_dim` dims are dense, and `dense_dim` defaults to 0 when omitted or None; any leading dims form batch axes that must store the same number of blocks per batch. Blocks that are entirely the zero value (and block rows left empty) are pruned from the stored structure, so the stored BSC indices/values are payload dependent. Rank < 2 and out-of-range dense_dim or wrong blocksize raise (IndexError/RuntimeError per native probing). Tests additionally cover optional/omitted dense_dim, non-contiguous and offset inputs (transpose, offset slice, stepped, expanded, conjugated complex view, and a copied flip that is explicitly not a negative-stride view), nan/inf/complex payloads, backward relayout gradients equal to the nonuniform upstream, sparse-source layouts (coo/csr/csc/bsr/bsc), unequal per-batch stored-block counts raising RuntimeError, and a sparse_bsc source where the pytest asserts the Gems result is the input object itself; those conditional, alias-dependent and error behaviors live in the original pytest and are not expressed by this single representative signature.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "blocksize",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "List[int]"
+    },
+    {
+      "name": "dense_dim",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[int]"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

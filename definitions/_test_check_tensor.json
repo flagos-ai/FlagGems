@@ -1,0 +1,20 @@
+{
+  "api_version": "v6.0",
+  "name": "_test_check_tensor",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::_test_check_tensor(Tensor self) -> Tensor. Original Gems pytest calls and results define the full contract; do not narrow tests to this signature. All supplied registered schemas, verbatim: aten::_test_check_tensor(Tensor self) -> Tensor. Semantics derived from the tests: this is the bool-only self-test behind TORCH_CHECK_TENSOR_ALL. The operand must be a bool tensor whose visible elements are all true; the result is a new all-true bool tensor that reports the same device, stride, storage_offset, contiguity and view status as the native result but owns independent storage (not a view, different data_ptr). Only the visible window of strided, windowed, narrowed, stepped, transposed, permuted or stride-0 expanded views is inspected; false elements that sit outside the exposed window are not rejected, and the operand and its storage owner are left unmodified. Zero-element and single-element shapes are supported. Error behavior (false visible elements, non-bool dtypes such as the REQUIRED_DTYPES plus float64/complex64/complex128, and non-tensor arguments such as float/int/str/None/nested list/tensor list) is defined by the original Gems pytest and is not expressed here.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

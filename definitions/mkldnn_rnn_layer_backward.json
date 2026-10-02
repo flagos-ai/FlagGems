@@ -1,0 +1,158 @@
+{
+  "api_version": "v6.0",
+  "name": "mkldnn_rnn_layer_backward",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::mkldnn_rnn_layer_backward(Tensor input, Tensor weight1, Tensor weight2, Tensor weight3, Tensor weight4, Tensor hx_, Tensor cx_tmp, Tensor output, Tensor hy_, Tensor cy_, Tensor? grad_output, Tensor? grad_hy, Tensor? grad_cy, bool reverse, int mode, int hidden_size, int num_layers, bool has_biases, bool train, bool bidirectional, int[] batch_sizes, bool batch_first, Tensor workspace) -> (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor). This representative overload is one contract only and is not the whole ABI; the original Gems pytest defines and owns the full overload, keyword-argument, return, error, aliasing and mutation contract, so tests must never be narrowed, removed or adapted to this single signature. Registered signatures supplied for this operator, listed verbatim: (1) aten::mkldnn_rnn_layer_backward(Tensor input, Tensor weight1, Tensor weight2, Tensor weight3, Tensor weight4, Tensor hx_, Tensor cx_tmp, Tensor output, Tensor hy_, Tensor cy_, Tensor? grad_output, Tensor? grad_hy, Tensor? grad_cy, bool reverse, int mode, int hidden_size, int num_layers, bool has_biases, bool train, bool bidirectional, int[] batch_sizes, bool batch_first, Tensor workspace) -> (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor). (2) aten::mkldnn_rnn_layer_backward.out(Tensor input, Tensor weight1, Tensor weight2, Tensor weight3, Tensor weight4, Tensor hx_, Tensor cx_tmp, Tensor output, Tensor hy_, Tensor cy_, Tensor? grad_output, Tensor? grad_hy, Tensor? grad_cy, bool reverse, int mode, int hidden_size, int num_layers, bool has_biases, bool train, bool bidirectional, int[] batch_sizes, bool batch_first, Tensor workspace, *, Tensor(a!) out0, Tensor(b!) out1, Tensor(c!) out2, Tensor(d!) out3, Tensor(e!) out4, Tensor(f!) out5, Tensor(g!) out6) -> (Tensor(a!), Tensor(b!), Tensor(c!), Tensor(d!), Tensor(e!), Tensor(f!), Tensor(g!)). The out overload is exercised separately by pytest and is not expressed here: it adds seven keyword-only output buffers out0..out6 that the operator mutates in place and returns as the same tensor objects (alias groups a..g), so its mutation and alias behavior remains the pytest contract, not a property of this representative definition. Semantics derived from the correctness and benchmark sources: this is the oneDNN (CPU dispatch key) LSTM backward primitive; the input is rank-3 (T, N, I) and the hidden size H drives every weight, bias, state and gradient shape, with weight_ih (4H, I), weight_hh (4H, H), 1-D biases of extent 4H, hx_/cx_tmp of shape (N, H), and output from the corresponding mkldnn_rnn_layer forward. The last argument workspace is opaque uint8 oneDNN scratch allocated by the training forward and handed to the backward, so it cannot be synthesized from the other operands. grad_output, grad_hy and grad_cy are optional gradient seeds supplied positionally; the frozen tests assert seven undefined results (None or empty tensors, whose contents must never be compared) only for the case where all three are omitted, while any supplied subset is compared for all seven results against the native reference, so partial-omission result semantics stay with the original pytest. mode 2 selects LSTM; num_layers, bidirectional and batch_first are primitive-level flags that do not change the operand geometry at this level because the multi-layer caller slices layers/directions beforehand. The operator returns seven tensors (diff_x, diff_weight_ih, diff_weight_hh, diff_bias_ih, diff_bias_hh, diff_hx, diff_cx). The thirteen floating operands (input, weight1..weight4, hx_, cx_tmp, output, hy_, cy_ and the optional gradients) must be float32, bfloat16 or float16; other dtypes among them raise RuntimeError, a rank-1 input surfaces as IndexError, and a mode other than 2 raises RuntimeError, while the trailing workspace operand remains uint8 oneDNN scratch. All of those negative and keyword-form behaviors stay with the original pytest.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "weight1",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "weight2",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "weight3",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "weight4",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "hx_",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "cx_tmp",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "output",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "hy_",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "cy_",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "grad_output",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Optional[Tensor]"
+    },
+    {
+      "name": "grad_hy",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Optional[Tensor]"
+    },
+    {
+      "name": "grad_cy",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Optional[Tensor]"
+    },
+    {
+      "name": "reverse",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "bool"
+    },
+    {
+      "name": "mode",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    },
+    {
+      "name": "hidden_size",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    },
+    {
+      "name": "num_layers",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    },
+    {
+      "name": "has_biases",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "bool"
+    },
+    {
+      "name": "train",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "bool"
+    },
+    {
+      "name": "bidirectional",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "bool"
+    },
+    {
+      "name": "batch_sizes",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "List[int]"
+    },
+    {
+      "name": "batch_first",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "bool"
+    },
+    {
+      "name": "workspace",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "diff_x",
+    "diff_weight_ih",
+    "diff_weight_hh",
+    "diff_bias_ih",
+    "diff_bias_hh",
+    "diff_hx",
+    "diff_cx"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

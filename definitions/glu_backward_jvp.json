@@ -1,0 +1,50 @@
+{
+  "api_version": "v6.0",
+  "name": "glu_backward_jvp",
+  "description": "Representative ATen overload (default), selected from the registered schemas and not an exclusive ABI: aten::glu_backward_jvp(Tensor grad_x, Tensor grad_glu, Tensor x, Tensor dgrad_glu, Tensor dx, int dim) -> Tensor. All registered schemas for this operator, verbatim: aten::glu_backward_jvp(Tensor grad_x, Tensor grad_glu, Tensor x, Tensor dgrad_glu, Tensor dx, int dim) -> Tensor; aten::glu_backward_jvp.out(Tensor grad_x, Tensor grad_glu, Tensor x, Tensor dgrad_glu, Tensor dx, int dim, *, Tensor(a!) out) -> Tensor(a!). The original Gems pytest defines the full contract for this operator, including every overload, keyword argument, return value, error, aliasing and mutation behavior; do not narrow that coverage to this one representative signature and never change reference behavior or workloads to fit it. Semantics derived from the tests: glu_backward_jvp is the forward-mode JVP helper for glu. grad_x and dx have the shape of x; grad_glu and dgrad_glu keep the rank of x with extent either 1 (broadcast) or exactly x.shape[dim] // 2 along dim, and may have a different shape than the inputs for broadcasting. The result truncates dim to 2 * (x.shape[dim] // 2), so an odd split axis drops its last element. dim may be negative and is interpreted Python-style; out-of-range dims raise IndexError, and an invalid grad_glu/dgrad_glu extent along the split slice raises RuntimeError. Integer inputs are promoted to float32 while floating inputs keep their dtype; bool inputs raise RuntimeError, and float8 inputs raise RuntimeError on the measured nvidia vendor, where the pytest adds that case (`FP8_REJECTED = utils.fp8_is_supported and flag_gems.vendor_name == \"nvidia\"`) and scopes the expectation to the vendor rather than to a device name, so it is not a general claim about other backends. The .out overload is keyword-only (`*`), mutates the caller's `out` buffer, returns that same buffer (aliasing `out`), and is covered only by the original pytest, not by this single-overload definition. The operator has no scalar-operand form: all five inputs are tensors and dim is a required int with no schema default.",
+  "parameters": [
+    {
+      "name": "grad_x",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "grad_glu",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "x",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "dgrad_glu",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "dx",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "dim",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "api_version": "v6.0",
+  "name": "fbgemm_pack_gemm_matrix_fp16",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::fbgemm_pack_gemm_matrix_fp16(Tensor input) -> Tensor. Registered schemas (all supplied strings, verbatim): aten::fbgemm_pack_gemm_matrix_fp16(Tensor input) -> Tensor. This representative signature is not exclusive: the original Gems pytest defines and owns the full contract, including every registered overload, keyword arguments, returns, raised errors, aliasing and mutation, and the benchmark owns device/workload selection; coverage must never be narrowed to the single signature modeled here. Semantics from the tests: CPU-only FBGEMM packing of a float32 weight of rank >= 2 into an opaque cpp_custom_type_hack fp16 handle; native reads the contiguous flat prefix shape[0] * shape[1], saturates values to +-65504 (clamping a contiguous weight, including offset slices, in place while a strided view is copied and its base left untouched), returns a fresh one-pointer handle that never aliases the weight storage and carries no autograd state; the packed format is observed only through the native consumer fbgemm_linear_fp16_weight_fp32_activation. Rank 0/1 weights (IndexError), non-float32 dtypes (RuntimeError/TypeError) and non-tensor or missing weights are rejected. No non-JSON ATen defaults apply to this signature (its single parameter is required with no default).",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

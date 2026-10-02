@@ -1,0 +1,20 @@
+{
+  "api_version": "v6.0",
+  "name": "qscheme",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::qscheme(Tensor self) -> QScheme. This one overload is a representative contract only and is not exclusive; the original Gems pytest owns the full contract for overloads, keyword arguments, returns, errors, aliasing and mutation, and tests must never be narrowed or have reference behavior adapted to fit this signature. All supplied registered schema strings, verbatim: \"aten::qscheme(Tensor self) -> QScheme\". Semantics: qscheme is a metadata-only query that reports the quantization scheme a quantized tensor already carries, returning a plain Python int (0 per_tensor_affine, 1 per_channel_affine, 4 per_channel_affine_float_qparams). It reads no payload, so results are invariant to payload value range, shape and special values; the operand's own saved quantizer determines the result. The operator accepts only the quantized element types (torch.quint8, torch.qint8, torch.qint32); non-quantized dtypes, non-quantized special values, sparse tensors and dequantized tensors raise RuntimeError, and None raises RuntimeError or TypeError. The query must not reallocate or copy storage and must leave the saved quantizer, qparams, storage and device of its input unchanged. Views do not preserve the reported scheme: indexing the channel axis of a per-channel tensor reports per_tensor_affine while wider channel slices stay per_channel_affine, and per-channel schemes need a channel axis so the 0-dim scalar form appears in per-tensor rows only. These conditional and error behaviors remain owned by the original Gems pytest and are not expressed by this single representative signature.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

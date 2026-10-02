@@ -1,0 +1,20 @@
+{
+  "api_version": "v6.0",
+  "name": "is_signed",
+  "description": "Representative ATen signature (not an exclusive ABI), copied verbatim from the supplied registered schema: \"aten::is_signed(Tensor self) -> bool\". This representative signature is not exclusive: the original Gems pytest owns the full overload, keyword-argument, return, error, aliasing and mutation contract, and tests must never be narrowed, removed or have reference behavior adapted to fit this one signature. All supplied registered schema strings: \"aten::is_signed(Tensor self) -> bool\". Semantics derived from the tests: is_signed is a dtype predicate that reads no stored element and returns a Python bool (not a tensor); it is True for the signed integer kinds (int8/int16/int32/int64) and for every float/complex kind (float16/bfloat16/float32/float64/complex32/complex64/complex128 and float8 variants), and False for bool and the unsigned integer kinds (uint8/uint16/uint32/uint64). The answer depends only on dtype, so strides, storage offset, memory layout (transposed, storage-offset view, expanded stride-0, channels_last, conj/neg views), sparse COO layout, meta device, zero-size shapes and NaN/Inf element contents do not change the result. Because the schema is unary with exactly one Tensor argument, a non-tensor argument, an extra second argument, and a quantized tensor (at::isSignedType has no quantized branch) are all rejected with RuntimeError/TypeError. No broadcast, scalar-operand, backward or value-range workload applies: the signature is unary and the bool result carries no autograd graph. The single ATen return is a bool scalar, so the definition exposes one logical output and no mutation or aliasing effects; the other registered signature forms remain covered by the original pytest.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

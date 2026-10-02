@@ -1,0 +1,36 @@
+{
+  "api_version": "v6.0",
+  "name": "_validate_sparse_bsr_tensor_args",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::_validate_sparse_bsr_tensor_args(Tensor crow_indices, Tensor col_indices, Tensor values, int[] size) -> (). Registered schemas supplied for this operator: aten::_validate_sparse_bsr_tensor_args(Tensor crow_indices, Tensor col_indices, Tensor values, int[] size) -> (). The representative signature is not exclusive: the original Gems pytest owns the full overload/keyword/return/error/mutation/alias contract, including the accepted size containers (list and tuple), positional and keyword-argument call forms, the None return, the read-only (non-mutating) behavior on all three index/payload tensors including storage-offset views and strided payload slices, and the RuntimeError/TypeError rejections (short crow_indices, short col_indices, index dtype mismatch, non-index index dtypes, non-contiguous crow_indices or col_indices, index batch/rank mismatch, values batch mismatch, scalar crow_indices, size rank below two, size dense rank mismatch, size not divisible by the block extents, negative extent, invalid size values such as floats/scalar/None, missing size, unexpected keyword such as dims, and non-tensor indices). Tests must never be narrowed to this one signature. Semantics: the operator validates blocked sparse-row (BSR) metadata without producing a tensor. It checks rank and extent agreement, where logical size has rank = len(batch) + 2 sparse block extents + len(dense), values has rank = len(batch) + 1 NNZ axis + 2 block extents + len(dense), crow_indices.shape[-1] must equal row_blocks + 1, and col_indices.shape[-1] must equal nnz = values.shape[len(batch)]. It also checks that the index dtypes are mutually matching and restricted to the suite's supported index dtypes (int32, and int64 where the device supports it) rather than to any integral dtype, that the indices are contiguous per batch, that the leading batch extents of crow_indices, col_indices and values agree with size, and that the size extents are non-negative and divisible by the block extents. It only reads its inputs and returns None.",
+  "parameters": [
+    {
+      "name": "crow_indices",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "col_indices",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "values",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "size",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "List[int]"
+    }
+  ],
+  "outputs": [],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

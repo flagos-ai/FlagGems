@@ -1,0 +1,22 @@
+{
+  "api_version": "v6.0",
+  "name": "mH",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::mH(Tensor(a) self) -> Tensor(a). This representative signature is not exclusive: the original Gems pytest defines the overloads, keyword arguments, returns, errors, aliasing and mutation it must support, and must never be narrowed, deleted or have its reference behavior adapted to fit this single signature. Registered schemas: aten::mH(Tensor(a) self) -> Tensor(a); aten::mH.a(Tensor(a) self) -> Tensor(a). Semantics: aten::mH returns a zero-copy conjugate-transpose view of self - it swaps the last two dimensions and toggles the lazy conjugate bit (never materialized; a no-op for real dtypes). Because it is a view, output shares storage with self, re-derives strides and preserves the storage offset; writes through the result are visible in self. Rank >= 2 performs the transpose; 0-D input is the deprecated conj() path that warns and degrades to conj(); every rank-1 input (including the empty (0,) tensor) is rejected, with the pytest asserting RuntimeError from the Gem entry point on those shapes without calling the reference. Backward applies the same relayout to the upstream gradient. The 'default' and 'a' overloads share the same self-only signature; overload-dependent details (errors, aliasing, conj/0-D cases) remain in pytest rather than being encoded here.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {
+      "out": "self"
+    }
+  }
+}

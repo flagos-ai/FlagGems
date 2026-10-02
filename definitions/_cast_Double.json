@@ -1,0 +1,27 @@
+{
+  "api_version": "v6.0",
+  "name": "_cast_Double",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::_cast_Double(Tensor self, bool non_blocking=False) -> Tensor. This representative signature is not exclusive and must not be treated as the whole ABI: the original Gems pytest defines the full contract for overloads, keyword arguments, return values, errors, aliasing and mutation, and its coverage must never be narrowed to this one signature. All supplied registered schemas (verbatim): aten::_cast_Double(Tensor self, bool non_blocking=False) -> Tensor. Semantics observed in the tests: elementwise cast of `self` to torch.float64, with every positive workload returning float64; the tested inputs cover contiguous, 0-dim scalar, empty, zero-extent, offset, stepped, transpose and channels-last layouts, and each result is compared against the native operator's output rather than being checked for output strides or memory format. The optional `non_blocking` flag is accepted positionally and by keyword; both call forms are exercised and must remain valid. For a float64 input the native operator is a pass-through that returns the caller's own tensor object, so those cases check object identity rather than only values; this aliasing is conditional on the input dtype and is therefore not modelled as an unconditional alias here. Integer inputs carry no autograd relation, so the result must not require grad, while floating inputs backpropagate by casting a non-uniform upstream gradient back into the input dtype. Error behavior owned by the pytest: non-tensor input, a missing `self`, invalid `non_blocking` values (strings, lists, mappings) and unknown keywords (dtype, out, unknown_flag) must all raise.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "non_blocking",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": false,
+      "type_hint": "bool"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

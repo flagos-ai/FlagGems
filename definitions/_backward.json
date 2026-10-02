@@ -1,0 +1,45 @@
+{
+  "api_version": "v6.0",
+  "name": "_backward",
+  "description": "Representative ATen schema (VERBATIM): aten::_backward(Tensor self, Tensor[] inputs, Tensor? gradient=None, bool? retain_graph=None, bool create_graph=False) -> (). This representative overload is NOT exclusive. Original Gems pytest defines the full contract: overload selection, keyword arguments, returns, errors, aliasing and mutation remain owned by tests/test__backward.py and must not be narrowed to this single signature. All supplied registered schema strings (verbatim): aten::_backward(Tensor self, Tensor[] inputs, Tensor? gradient=None, bool? retain_graph=None, bool create_graph=False) -> (). Semantics derived from the tests: this is the AutogradBackward executor. `self` is an existing graph root (scalar or non-scalar) built from at least one requires-grad tensor; `inputs` names the graph tensors at which the engine stops and that receive `.grad`/retain_grad — it may be empty, in which case the whole pass still runs and accumulates on the graph's leaf, it may name a non-leaf intermediate (the engine stops there and does not reach the leaf), or it may name tensors unrelated to the graph (no gradient is populated on them or on the graph's leaf). `gradient` supplies the cotangent for a non-scalar root; the tests pass a tensor of the root's own dtype (float32 for an fp8 cast, complex for a complex root) and omit it when the root is scalar, and it must be a Tensor when given. `retain_graph` controls whether the graph survives the pass (replaying with retain_graph=True accumulates gradients again; a freed graph reused raises RuntimeError). `create_graph=True` leaves a differentiable `.grad` so second-order passes can be executed. The operator mutates `.grad` state on graph tensors and returns None (void). Errors retained by pytest: input without grad, root without graph, non-scalar root without gradient, mismatched gradient shape, non-Tensor gradient, plain (non-list) inputs, and freed-graph reuse all raise TypeError/RuntimeError. Those errors and the full overload/keyword/return/alias behavior remain in the original pytest and are not constrained by this representative definition.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "inputs",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "List[Tensor]"
+    },
+    {
+      "name": "gradient",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[Tensor]"
+    },
+    {
+      "name": "retain_graph",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[bool]"
+    },
+    {
+      "name": "create_graph",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": false,
+      "type_hint": "bool"
+    }
+  ],
+  "outputs": [],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

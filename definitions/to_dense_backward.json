@@ -1,0 +1,33 @@
+{
+  "api_version": "v6.0",
+  "name": "to_dense_backward",
+  "description": "Representative ATen signature (not an exclusive ABI), copied verbatim: aten::to_dense_backward(Tensor grad, Tensor input, bool? masked_grad=None) -> Tensor. This single representative signature is NOT exclusive; the original Gems pytest defines the full contract of overloads, keyword arguments, returns, errors, aliasing and mutation, and no test may be narrowed, removed or reference-adapted to fit this one signature. All registered schema strings supplied for this operator, verbatim: aten::to_dense_backward(Tensor grad, Tensor input, bool? masked_grad=None) -> Tensor. Semantics (from the pytest): to_dense_backward is the autograd formula of _to_dense; it brings the dense grad into the representation of input, dispatching on the layout of input. For a strided input it returns grad converted to the scalar type of input, keeping grad's stored values and the shape of grad, independent of the input's shape or contiguity (no broadcast or elementwise combination exists, and mismatched grad/input shapes are valid). For a COO input it returns grad.sparse_mask(input.coalesce()) when masked_grad is true, and the same masked branch is selected by the registered default value None (the omitted and explicit None forms), while masked_grad false returns grad.to_sparse(input.sparse_dim()); CSR/CSC/BSR/BSC inputs re-wrap those two branches in the layout of input, and the source records that a compressed operand with sparse_dim()!=2 does not reach the masked branch (the rank-3 CSR/CSC rows are exercised only with masked_grad false). Optional[bool] also accepts ints where 0 is the only false value. The operator never mutates its operands (the sparse input is snapshotted and checked unchanged) and the only registered overload is default, with no .out variant; the boolean, list-valued and error cases (non-tensor grad, invalid masked_grad) remain owned by the pytest.",
+  "parameters": [
+    {
+      "name": "grad",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "masked_grad",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[bool]"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

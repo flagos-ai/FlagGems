@@ -1,0 +1,32 @@
+{
+  "api_version": "v6.0",
+  "name": "sym_constrain_range_for_size",
+  "description": "Representative ATen signature (not an exclusive ABI), copied verbatim: aten::sym_constrain_range_for_size(Scalar size, *, int? min=None, int? max=None) -> (). This representative signature is NOT exclusive: the original Gems pytest owns the full contract for overloads, keyword arguments, returns, errors, aliasing and mutation, and must not be narrowed to this one signature. All supplied registered schemas, verbatim: [\"aten::sym_constrain_range_for_size(Scalar size, *, int? min=None, int? max=None) -> ()\"]. Semantics: a host-side / compile-graph guard for symbolic sizes; it checks that the Scalar size lies within the inclusive range [min, max] (per the pytest, an omitted bound defaults to the 0 .. int64 max domain) and returns nothing. size is a Scalar accepted as int, float or bool numeric forms; min and max are keyword-only optional ints, and max, when supplied, must be greater than 2. Invalid sizes (non-numeric, strings, containers, tensors, complex, non-finite, or out-of-int64 values) and invalid bounds (out-of-range size, min > max, non-int or string bounds) raise; the pytest keeps that full error and boundary coverage. This definition models one representative overload only; the pytest retains the full overload, keyword, return, error, alias and mutation coverage.",
+  "parameters": [
+    {
+      "name": "size",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "number"
+    },
+    {
+      "name": "min",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[int]"
+    },
+    {
+      "name": "max",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[int]"
+    }
+  ],
+  "outputs": [],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

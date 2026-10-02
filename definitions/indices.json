@@ -1,0 +1,22 @@
+{
+  "api_version": "v6.0",
+  "name": "indices",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::indices(Tensor(a) self) -> Tensor(a). Original Gems pytest calls and results define the full contract; do not narrow tests to this signature. Registered signatures supplied for this operator (verbatim): aten::indices(Tensor(a) self) -> Tensor(a). Semantics: sparse COO accessor that returns the operand's stored index tensor; in the pytest-checked cases the result has shape (sparse_dim, nnz), dtype int64 and layout strided. Those cases also check that the result is the operand's stored index tensor rather than a normalized contiguous copy: the result matches the operand index tensor's strides, storage offset and data_ptr (the data_ptr comparison is made when the coordinates are non-empty), a write through the result is observed in the operand, and a write to the operand's index storage is observed by a later call. The schema's Tensor(a) -> Tensor(a) annotation is representative metadata; the concrete alias and mutation checks belong to the pytest. In the tested floating and complex cases the result is not differentiable (requires_grad False, grad_fn None), and the special-value cases place NaN/Inf in the operand values and compare the returned coordinates with the reference. The pytest accepts coalesced COO operands and also covers rejection of uncoalesced COO, dense/strided tensors, sparse CSR, non-tensor and missing operands. All of these overload, keyword, return, error, aliasing and mutation behaviors remain owned by the original Gems pytest.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {
+      "out": "self"
+    }
+  }
+}

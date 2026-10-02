@@ -1,0 +1,32 @@
+{
+  "api_version": "v6.0",
+  "name": "fbgemm_linear_fp16_weight",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::fbgemm_linear_fp16_weight(Tensor input, Tensor packed_weight, Tensor bias) -> Tensor. Original Gems pytest owns the full contract; do not narrow tests to this signature. Registered schemas: aten::fbgemm_linear_fp16_weight(Tensor input, Tensor packed_weight, Tensor bias) -> Tensor. Semantics: CPU-only FBGEMM linear, computing input @ packed_weight.T plus bias, where packed_weight is the opaque uint8 handle produced by aten::fbgemm_pack_gemm_matrix_fp16 and cannot be rebuilt from plain tensor data; input is a float32 CPU tensor with rank >= 2 whose last dim equals the packed weight inner dim, and bias is a CPU tensor either broadcast as (1,) or full as (num_rows,), with the trailing add accepting floating, integer and bool bias dtypes. Tests also exercise strided/offset operand storage with read-only operands, float32 activation/weight specials, gradient only through the bias leaf, an uninitialized-result zero-K metadata case, and invalid arity, dtype, rank, shape, kwarg and out= rows. Overloads, keyword arguments, returns, errors, aliasing and mutation are owned by the original Gems pytest and are not narrowed to this representative signature.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "packed_weight",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "bias",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

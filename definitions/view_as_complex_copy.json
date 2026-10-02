@@ -1,0 +1,20 @@
+{
+  "api_version": "v6.0",
+  "name": "view_as_complex_copy",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::view_as_complex_copy(Tensor self) -> Tensor. Semantics: materializes a complex tensor from real pairs, where the two elements of the trailing size-2 dimension become the real and imaginary parts of one complex element; the copy allocates fresh storage instead of aliasing the input (unlike aten::view_as_complex), and the input is left unmodified. Native requirements: rank >= 1, a last dimension of size 2 with stride 1, every other stride divisible by 2 and an even element storage offset; the real dtypes covered are float16, float32 and float64 (float64 only where the runtime reports FP64 support), mapping to complex32, complex64 and complex128 respectively. The unsupported dtypes and invalid shapes/layouts exercised by the pytest (non-size-2 or rank-0 shapes, non-unit last stride, odd storage offset, odd outer stride) are asserted to raise RuntimeError. All registered ATen signatures: aten::view_as_complex_copy(Tensor self) -> Tensor; aten::view_as_complex_copy.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!) [the out argument is keyword-only, is written in place, and the returned tensor aliases out; the out dtype must be the complex counterpart of the input dtype]. The representative signature is not exclusive: the original Gems pytest owns the full contract for overloads, keyword arguments, return identity, error behavior, aliasing and mutation, and tests must not be narrowed to this one signature.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

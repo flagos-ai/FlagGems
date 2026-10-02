@@ -1,0 +1,56 @@
+{
+  "api_version": "v6.0",
+  "name": "cudnn_convolution_relu",
+  "description": "Representative ATen signature (not an exclusive ABI), copied verbatim: aten::cudnn_convolution_relu(Tensor self, Tensor weight, Tensor? bias, SymInt[] stride, SymInt[] padding, SymInt[] dilation, SymInt groups) -> Tensor. This definition is representative only, not exclusive: the original Gems pytest owns the full contract for overload selection, keyword arguments, return identity, error behavior, aliasing and mutation, and must never be narrowed to this one signature. Other registered signatures, verbatim: aten::cudnn_convolution_relu(Tensor self, Tensor weight, Tensor? bias, SymInt[] stride, SymInt[] padding, SymInt[] dilation, SymInt groups) -> Tensor; aten::cudnn_convolution_relu.out(Tensor self, Tensor weight, Tensor? bias, SymInt[] stride, SymInt[] padding, SymInt[] dilation, SymInt groups, *, Tensor(a!) out) -> Tensor(a!). Semantics: fused N-D convolution followed by ReLU; the input rank is 4 (2-D convolution) or 5 (3-D convolution), weight has shape (out_channels, in_channels // groups, *kernel), stride/padding/dilation carry one entry per spatial dimension, groups 1 is standard, groups == in_channels is depthwise, and bias is required but nullable (None disables it) with native-valid broadcast forms (C,), (C, 1, ...) and (1, C, 1, ...). All parameters of the default signature are required and positional-or-keyword; the out overload adds a required keyword-only out tensor that is mutated and returned as an alias of out (the default overload has no mutation and returns a fresh tensor). The schema has no scalar operand and no autograd formula, so backward is not part of the contract. Error behavior is asserted by pytest via RuntimeError for its own case lists and is not expressed here: the unsupported-dtype and bad-rank lists are gated to the vendor whose probes established them, while the mismatched-operand and invalid stride/dilation/padding lists are not gated.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "weight",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "bias",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Optional[Tensor]"
+    },
+    {
+      "name": "stride",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "List[int]"
+    },
+    {
+      "name": "padding",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "List[int]"
+    },
+    {
+      "name": "dilation",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "List[int]"
+    },
+    {
+      "name": "groups",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

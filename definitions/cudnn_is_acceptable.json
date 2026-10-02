@@ -1,0 +1,20 @@
+{
+  "api_version": "v6.0",
+  "name": "cudnn_is_acceptable",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::cudnn_is_acceptable(Tensor self) -> bool. Registered schemas: aten::cudnn_is_acceptable(Tensor self) -> bool. Original Gems pytest owns the full contract and defines overloads, keyword arguments, returns, errors, aliasing and mutation; do not narrow coverage to this representative signature or adapt reference behavior to fit it. Semantics: a host-side predicate, not a numerical kernel. It returns a Python bool stating whether cuDNN may be used for self, i.e. the tensor resides on the accelerator, cuDNN is enabled and compiled in, the dtype is one of float16/float32/float64, and numel != 0. It never reads element values (NaN/Inf payloads and uninitialized allocations give the same answer) and never mutates the operand; the result has no autograd history. numel == 0 is rejected for every dtype, non-accelerator operands (CPU/meta) are rejected even for accepted dtypes, the torch.backends.cudnn.enabled flag is the first gate, and non-tensor or missing arguments raise RuntimeError/TypeError. Layout (transposed or strided views) does not change the answer. default is the only registered overload; there is no .out overload and no scalar operand, so broadcast and tensor-vs-scalar coverage do not apply.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

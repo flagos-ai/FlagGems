@@ -1,0 +1,40 @@
+{
+  "api_version": "v6.0",
+  "name": "_sparse_csr_prod",
+  "description": "Representative ATen overload: aten::_sparse_csr_prod.dim_dtype(Tensor self, int[1] dim, bool keepdim=False, *, ScalarType? dtype=None) -> Tensor. This representative signature is NOT exclusive: the original Gems pytest defines the full contract for overloads, keyword arguments, returns, errors, aliasing and mutation, and its coverage must never be narrowed to this one signature. Semantics derived from the tests, which compare each candidate call against the ATen reference: computes the reduction product of the stored values of a 2-D sparse CSR tensor along the dim entries, returning a sparse CSR tensor; dim is an int[1] list and the pytest exercises positive, negative ([-1], [-2]), multi-axis ([0, 1], [1, 0]) and empty ([]) entries, each compared against the reference; the pytest does not assert that these forms select distinct reduction paths or output shapes. keepdim must be True natively (the pytest asserts that keepdim=False raises). The optional keyword-only dtype is forwarded to both the reference and the candidate in the dtype-conversion test, which also covers an explicit None request; its ATen default None is rendered here as JSON null (no non-JSON string defaults occur in this schema). Duplicate dim entries, out-of-range dims, batched (rank != 2) CSR input, strided input and unsupported dtypes (bool and both float8 dtypes on the nvidia backend) are rejected by the pytest and remain there, not in this data model. All supplied registered schema strings, verbatim: aten::_sparse_csr_prod.dim_dtype(Tensor self, int[1] dim, bool keepdim=False, *, ScalarType? dtype=None) -> Tensor and aten::_sparse_csr_prod.dim_dtype_out(Tensor self, int[1] dim, bool keepdim=False, *, ScalarType? dtype=None, Tensor(a!) out) -> Tensor(a!). The other registered overload is overload-dependent and cannot be expressed conditionally here: dim_dtype_out takes a required keyword-only out (a sparse CSR buffer with matching nnz and dtype; the pytest also passes a same-nnz buffer whose stored support differs from the result, which is overwritten) and returns it, mutating out and aliasing the returned tensor to it; the pytest asserts that aliasing identity (res_out is res_buf) and its stale-support overwrite behavior, so those effects stay in the original Gems pytest while this definition models only the non-out dim_dtype overload. No reference source, test paths, device selection, workloads or evaluator fields are represented here.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "dim",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "List[int]"
+    },
+    {
+      "name": "keepdim",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": false,
+      "type_hint": "bool"
+    },
+    {
+      "name": "dtype",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[int]"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

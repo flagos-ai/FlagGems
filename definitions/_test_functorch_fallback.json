@@ -1,0 +1,26 @@
+{
+  "api_version": "v6.0",
+  "name": "_test_functorch_fallback",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::_test_functorch_fallback(Tensor self, Tensor other) -> Tensor. Registered signatures: aten::_test_functorch_fallback(Tensor self, Tensor other) -> Tensor ; aten::_test_functorch_fallback.out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!). Original Gems pytest calls and results define the full contract for both overloads, including keyword arguments, returns, errors, aliasing and mutation; do not narrow tests to this representative signature. Semantics derived from the tests: returns a fresh, non-view copy of self; a new storage pointer is asserted for non-empty input, and the alias check is made against self only, not against other. other is never read, so its shape and dtype cannot affect the result. A dense self keeps its strides in the result while stepped/offset/expanded self is materialized and the lazy conjugate bit is dropped. The test module reports CPU and Meta as the only native kernels and CUDA operands as raising NotImplementedError; the supplied cases run CPU tensors only. There is no autograd formula, so torch.autograd.grad raises RuntimeError('derivative for aten::_test_functorch_fallback is not implemented'). The out overload takes a keyword-only Tensor(a!) out buffer, mutates it and returns that same buffer by identity, writing through the caller's layout (strides and storage offset) and resizing a too-small buffer to the input shape; in the tested float32-input/float64-out-buffer case the call raises (RuntimeError or TypeError).",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "other",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

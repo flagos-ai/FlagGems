@@ -1,0 +1,72 @@
+{
+  "api_version": "v6.0",
+  "name": "mkldnn_max_pool2d_backward",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::mkldnn_max_pool2d_backward(Tensor grad_output, Tensor output, Tensor input, int[2] kernel_size, int[2] stride=[], int[2] padding=0, int[2] dilation=1, bool ceil_mode=False) -> Tensor. This representative signature is not exclusive: the original Gems pytest defines the full contract to support, including every registered overload, positional and keyword invocation, return identity, error cases, aliasing and mutation, and tests must never be narrowed or have reference behavior adapted to fit this one signature. All registered schema strings (verbatim): aten::mkldnn_max_pool2d_backward(Tensor grad_output, Tensor output, Tensor input, int[2] kernel_size, int[2] stride=[], int[2] padding=0, int[2] dilation=1, bool ceil_mode=False) -> Tensor ; aten::mkldnn_max_pool2d_backward.out(Tensor grad_output, Tensor output, Tensor input, int[2] kernel_size, int[2] stride=[], int[2] padding=0, int[2] dilation=1, bool ceil_mode=False, *, Tensor(a!) out) -> Tensor(a!). Semantics (derived from the tests): MkldnnCPU-only backward of 2-D max pooling. It reads three opaque torch._mkldnn CPU tensors - grad_output and output in the (N, C, H_out, W_out) forward shape and input in the (N, C, H, W) pooling shape - and requires the oneDNN pooling workspace that a grad-enabled torch.ops.aten.mkldnn_max_pool2d forward stores on its output, so the tests build a fresh training forward per argument triple. The result is the gradInput, which carries the input's shape and dtype in the opaque mkldnn CPU layout (materialized with to_dense for value comparison). Only 4-D (N, C, H, W) inputs are readable; supported dtypes are float32, bfloat16 and float16 (int8/uint8 fail the oneDNN pooling descriptor and float64/int32/int64/bool have no mkldnn representation). Omitted padding, dilation and ceil_mode are honoured as their schema defaults, while an omitted stride uses the schema default [] and is rejected by the native operator (the pytest records the native message as expecting \"a single integer value or a list of 2 values\"), so stride must be supplied explicitly rather than omitted; dense, absent or non-4-D arguments, pooling parameters that are invalid, negative, or disagree with the workspace produced by the forward that built the arguments, and integer/unconvertible dtypes raise TypeError or RuntimeError. The .out overload instead writes into a caller-provided input-shaped mkldnn buffer, which it mutates and returns as the same tensor (alias), and rejects a dense buffer. Defaults note: int[2] padding=0 and int[2] dilation=1 are per-dimension scalar defaults rendered here as the stable lists [0, 0] and [1, 1]; int[2] stride=[] is the empty-list schema default retained verbatim.",
+  "parameters": [
+    {
+      "name": "grad_output",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "output",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "kernel_size",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "List[int]"
+    },
+    {
+      "name": "stride",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": [],
+      "type_hint": "List[int]"
+    },
+    {
+      "name": "padding",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": [
+        0,
+        0
+      ],
+      "type_hint": "List[int]"
+    },
+    {
+      "name": "dilation",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": [
+        1,
+        1
+      ],
+      "type_hint": "List[int]"
+    },
+    {
+      "name": "ceil_mode",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": false,
+      "type_hint": "bool"
+    }
+  ],
+  "outputs": [
+    "grad_input"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

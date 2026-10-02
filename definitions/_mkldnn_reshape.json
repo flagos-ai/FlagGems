@@ -1,0 +1,26 @@
+{
+  "api_version": "v6.0",
+  "name": "_mkldnn_reshape",
+  "description": "Representative registered schema, copied verbatim from the supplied ATen evidence: aten::_mkldnn_reshape(Tensor self, int[] shape) -> Tensor. This representative signature is representative only and not exclusive: the original Gems pytest owns the full contract for this operator, including overload selection, keyword arguments, return values, raised errors, aliasing and mutation, so no test may be removed, narrowed or have its reference semantics adapted to fit this one signature. All supplied registered schemas, verbatim: aten::_mkldnn_reshape(Tensor self, int[] shape) -> Tensor; aten::_mkldnn_reshape.out(Tensor self, int[] shape, *, Tensor(a!) out) -> Tensor(a!). Semantics: reshape/reorder an opaque oneDNN ('mkldnn') tensor to the requested int[] shape without changing numel, yielding an opaque mkldnn result with the target shape and the corresponding mkldnn stride. The input is an mkldnn tensor only (dense operands are outside the schema and raise). A single -1 entry infers that dimension; the resolved shape has no -1. For the default overload the supplied pytest asserts that the candidate aliases exactly what the native oracle aliases: native returns the operand itself when the target shape already matches, otherwise a new opaque mkldnn tensor object, and a separate supplied case asserts that the result observes later writes to the source tensor, so storage sharing with the source is part of the tested behavior; this conditional, overload-dependent aliasing is not expressible by returns_alias_of and stays in pytest. The .out overload is keyword-only, requires an mkldnn out tensor of the requested shape, writes into it, mutates it and returns it aliased as the very same tensor. Invalid requests such as numel mismatch, an empty target shape, multiple -1 entries, negative entries other than -1, dense input, dense out or a wrongly shaped out raise errors: the supplied cases accept RuntimeError/TypeError/ValueError for an invalid target shape, and RuntimeError/TypeError for a dense input, a dense out and a wrongly shaped out.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "shape",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "List[int]"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

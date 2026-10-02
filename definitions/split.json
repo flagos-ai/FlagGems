@@ -1,0 +1,33 @@
+{
+  "api_version": "v6.0",
+  "name": "split",
+  "description": "Representative ATen signature (not an exclusive ABI): aten::split.Tensor(Tensor(a -> *) self, SymInt split_size, int dim=0) -> Tensor(a)[]. This representative signature is not exclusive; the original Gems pytest defines the full contract - every overload, keyword argument, return, error, aliasing and mutation behaviour - and tests must never be narrowed to this signature nor the reference adapted to fit it. All supplied registered schemas for this operator, verbatim: aten::split.Tensor(Tensor(a -> *) self, SymInt split_size, int dim=0) -> Tensor(a)[]; aten::split.sizes(Tensor(a -> *) self, SymInt[] split_size, int dim=0) -> Tensor(a)[]; aten::split.str(str self, str? separator=None, int max=-1) -> str[]; aten::split(Tensor(a -> *) self, int[] split_sizes, int dim=0) -> Tensor(a)[]. Semantics: the tensor forms partition the input along dim (default 0, negative dims accepted, first/middle/last dimensions exercised) and return a Python list of tensors that are views of the input, so every part must keep the input's strides, storage offset, view state and storage identity, including empty parts and zero-size sizes entries; write-through to the shared storage distinguishes a view from a copy. The Tensor form cuts into chunks of split_size with a possibly smaller trailing part, while the sizes/default forms take an explicit size list that must sum exactly to the split dimension extent. split's backward is a plain scatter of the upstream parts onto the leaf input. The str form is not Python str.split: separator=None (the default) whitespace-tokenizes, drops empty fields around the ends and ignores max, whereas an explicit separator honours max as a split bound (0 -> no split, negative -> unlimited) and keeps empty fields; it returns a Python list of str. Errors remain owned by pytest: split_size 0 or -1 on a non-empty split dimension, negative/non-summing/empty sizes lists, out-of-range dim, rank-0 input ('split expects at least a 1-dimensional tensor'), non-tensor self, non-str self/separator, empty separator and non-int max. Non-JSON ATen defaults were rendered as stable strings/JSON values and retained here: dim=0, separator=None (JSON null), max=-1. Mutation: the representative tensor overload does not mutate its input, so effects.mutates is empty. The representative return Tensor(a)[] carries an empty alias_before list in the supplied schema, so returns_alias_of is intentionally empty rather than asserting a return-to-parameter alias; the view aliasing that pytest enforces is verified directly by the tests and is not modelled conditionally here.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "split_size",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    },
+    {
+      "name": "dim",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 0,
+      "type_hint": "int"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

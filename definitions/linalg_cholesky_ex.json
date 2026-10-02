@@ -1,0 +1,35 @@
+{
+  "api_version": "v6.0",
+  "name": "linalg_cholesky_ex",
+  "description": "Representative ATen signature (not an exclusive ABI), copied verbatim: aten::linalg_cholesky_ex(Tensor self, *, bool upper=False, bool check_errors=False) -> (Tensor L, Tensor info). Other registered signatures, verbatim: aten::linalg_cholesky_ex.L(Tensor self, *, bool upper=False, bool check_errors=False, Tensor(a!) L, Tensor(b!) info) -> (Tensor(a!) L, Tensor(b!) info). The representative signature is not exclusive: the original Gems pytest defines the full contract, including both registered overloads, the keyword-only upper/check_errors defaults, the (L, info) tuple return, dtype and shape errors, check_errors raising, the .L write-out aliasing/mutation of its L and info buffers, backward, and complex-diagonal handling; do not narrow tests to this one signature and do not adapt reference behavior to fit it. Semantics: computes the Cholesky factorization of a Hermitian positive-definite square matrix (or batch of square matrices); returns the factor L (lower-triangular with A = L L^H) by default, or the upper factor U (A = U^H U) when upper=True, together with an integer info tensor reporting the leading minor that failed (0 when the factorization succeeds), with info being the failing minor per batch entry. With check_errors=False (the schema default), a non-positive-definite input is reported through info rather than raising; check_errors=True raises instead. Batched, non-contiguous and offset views are supported. For the representative signature, L and info are freshly allocated outputs that alias neither self nor each other; the .L overload instead writes into and returns the caller-supplied L and info buffers.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "upper",
+      "kind": "keyword_only",
+      "required": false,
+      "default": false,
+      "type_hint": "bool"
+    },
+    {
+      "name": "check_errors",
+      "kind": "keyword_only",
+      "required": false,
+      "default": false,
+      "type_hint": "bool"
+    }
+  ],
+  "outputs": [
+    "L",
+    "info"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}
