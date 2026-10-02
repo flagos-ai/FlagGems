@@ -110,7 +110,7 @@ def count_nonzero_combin_kernel(
 
 
 def count_nonzero(x, dim=None):
-    logger.debug("GEMS_CAMBRICON COUNT NONZERO")
+    logger.debug("GEMS_CAMBRICON COUNT_NONZERO")
 
     if x.is_sparse:
         x = x.to_dense()
