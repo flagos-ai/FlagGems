@@ -333,3 +333,6 @@ def rrelu_with_noise_(
     return _rrelu_with_noise_impl(
         self, noise, lower, upper, training, generator, out=self
     )
+
+
+__all__ = ["rrelu_with_noise", "rrelu_with_noise_"]
