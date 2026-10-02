@@ -1063,6 +1063,8 @@ _FULL_CONFIG = (
     ("linalg_svdvals", linalg_svdvals),
     ("linalg_tensorinv", linalg_tensorinv),
     ("linalg_tensorinv.out", linalg_tensorinv_out),
+    ("linalg_tensorsolve", linalg_tensorsolve),
+    ("linalg_tensorsolve.out", linalg_tensorsolve_out),
     ("linalg_vander", linalg_vander),
     ("linalg_vecdot", linalg_vecdot),
     ("linalg_vecdot.out", linalg_vecdot_out),
@@ -1265,8 +1267,6 @@ _FULL_CONFIG = (
     ("pairwise_distance", pairwise_distance),
     ("pdist", pdist),
     ("permute_copy", permute_copy),
-    # pin_memory is CompositeImplicitAutograd; it decomposes before reaching any
-    # backend key, so the composite key is the only place use_gems() can see it.
     ("pin_memory", pin_memory, None, ["CompositeImplicitAutograd"]),
     ("pinverse", pinverse, None, (AUTOGRAD_DISPATCH_KEY,)),
     ("pixel_shuffle", pixel_shuffle),
