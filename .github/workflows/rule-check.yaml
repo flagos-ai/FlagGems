@@ -73,8 +73,8 @@ jobs:
           git sparse-checkout disable 2>/dev/null || true
           git ls-files -z | xargs -0 -r git update-index --no-skip-worktree
           git checkout --force HEAD -- .
-      - name: Install dependencies
-        run: pip install pyyaml
+      # pyyaml (the only third-party import in tools/ci_checks/*.py) is
+      # preinstalled in the cpu-runner image, so no install step is needed here.
 
       - name: Derive changed operators
         id: derive
