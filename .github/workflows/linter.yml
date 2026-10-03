@@ -43,6 +43,26 @@ jobs:
       # rebuilds every hook env (~128s). Must match the image's PRE_COMMIT_HOME.
       PRE_COMMIT_HOME: /opt/pre-commit-cache
     steps:
+    - name: Diag proxy speed (temporary)
+      shell: bash
+      run: |
+        # Mask any credentials in proxy vars before printing.
+        mask() { sed -E 's#(://)[^@/]*@#\1***@#g'; }
+        echo "http_proxy=$(echo "${http_proxy:-<unset>}"  | mask)"
+        echo "https_proxy=$(echo "${https_proxy:-<unset>}" | mask)"
+        echo "no_proxy=${no_proxy:-<unset>}"
+        echo "--- via proxy (uses injected http(s)_proxy) ---"
+        for i in 1 2 3; do
+          curl -sS -o /dev/null -w "  try$i: http=%{http_code} connect=%{time_connect}s total=%{time_total}s\n" \
+            --max-time 30 https://github.com || echo "  try$i: FAILED"
+        done
+        echo "--- direct (no proxy) ---"
+        for i in 1 2 3; do
+          curl -sS -o /dev/null -w "  try$i: http=%{http_code} connect=%{time_connect}s total=%{time_total}s\n" \
+            --noproxy '*' --max-time 30 https://github.com || echo "  try$i: FAILED"
+        done
+        echo "--- git ls-remote via proxy (what checkout actually does) ---"
+        time git ls-remote --heads https://github.com/flagos-ai/FlagGems.git refs/heads/master 2>&1 | head -2 || echo "  git ls-remote FAILED"
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
     # checkout marks the repo safe only in a throwaway HOME; pre-commit runs
     # with HOME=/github/home and git rejects the dir as dubious ownership.
@@ -67,6 +87,14 @@ jobs:
     # bootstrapping happens here. Invoke via `python3 -m pre_commit` since the
     # console-script entrypoint is not on the PATH inherited by steps running
     # directly on cpu-runner.
+    - name: Diag pre-commit cache (temporary)
+      shell: bash
+      run: |
+        echo "PRE_COMMIT_HOME=$PRE_COMMIT_HOME"
+        echo "--- ls -la $PRE_COMMIT_HOME ---"
+        ls -la "$PRE_COMMIT_HOME" 2>&1 || echo "MISSING: $PRE_COMMIT_HOME does not exist (runner image lacks the prebuilt cache)"
+        echo "--- repo dirs ---"
+        ls -d "$PRE_COMMIT_HOME"/repo* 2>&1 || echo "no repo* dirs"
     - name: Run pre-commit
       shell: bash
       run: |
