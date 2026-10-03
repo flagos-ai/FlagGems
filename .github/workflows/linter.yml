@@ -51,8 +51,8 @@ jobs:
         # several rounds each, so we can compare real checkout latency/failures.
         REPO="https://github.com/flagos-ai/FlagGems.git"
         REF="${{ github.event.pull_request.head.sha || github.sha }}"
-        ROUNDS=5
-        PER_FETCH_TIMEOUT=90   # cap a hung fetch so one bad round can't stall the job
+        ROUNDS=3
+        PER_FETCH_TIMEOUT=20   # cap a hung fetch so the step finishes fast
 
         mask() { sed -E 's#(://)[^@/]*@#\1***@#g'; }
         echo "http_proxy=$(echo "${http_proxy:-<unset>}" | mask)   ref=${REF}"
