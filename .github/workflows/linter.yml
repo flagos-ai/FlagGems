@@ -51,40 +51,33 @@ jobs:
       http_proxy: ${{ secrets.CI_HTTP_PROXY }}
       https_proxy: ${{ secrets.CI_HTTP_PROXY }}
     steps:
-    - name: Diag checkout speed proxy-vs-direct (temporary)
+    - name: Diag checkout speed via proxy (temporary)
       shell: bash
       run: |
         # Time the REAL work actions/checkout does — a shallow fetch of the ref
-        # under test — once via the injected proxy and once direct (no proxy),
-        # several rounds each, so we can compare real checkout latency/failures.
+        # under test — via the (new) proxy from the job env, many rounds, to get
+        # a solid success-rate sample to compare against the old proxy.
         REPO="https://github.com/flagos-ai/FlagGems.git"
         REF="${{ github.event.pull_request.head.sha || github.sha }}"
-        ROUNDS=3
+        ROUNDS=10
         PER_FETCH_TIMEOUT=20   # cap a hung fetch so the step finishes fast
 
         mask() { sed -E 's#(://)[^@/]*@#\1***@#g'; }
         echo "http_proxy=$(echo "${http_proxy:-<unset>}" | mask)   ref=${REF}"
 
-        one_fetch() {  # $1 = mode label; env already set by caller
+        ok=0; fail=0
+        for i in $(seq 1 $ROUNDS); do
           d=$(mktemp -d)
           ( cd "$d"; git init -q .; git remote add origin "$REPO" )
           start=$(date +%s%N)
           if timeout "$PER_FETCH_TIMEOUT" git -C "$d" -c protocol.version=2 \
                fetch -q --no-tags --prune --depth=1 origin "$REF" 2>/dev/null; then
-            rc=ok; else rc=FAIL; fi
-          end=$(date +%s%N)
-          ms=$(( (end - start) / 1000000 ))
-          printf "  %-6s %s: %d.%03ds\n" "$1" "$rc" "$(( ms / 1000 ))" "$(( ms % 1000 ))"
+            rc=ok; ok=$((ok+1)); else rc=FAIL; fail=$((fail+1)); fi
+          end=$(date +%s%N); ms=$(( (end - start) / 1000000 ))
+          printf "  round %2d %s: %d.%03ds\n" "$i" "$rc" "$(( ms / 1000 ))" "$(( ms % 1000 ))"
           rm -rf "$d"
-        }
-
-        echo "--- via proxy (injected http(s)_proxy) ---"
-        for i in $(seq 1 $ROUNDS); do one_fetch "proxy"; done
-
-        echo "--- direct (no proxy) ---"
-        for i in $(seq 1 $ROUNDS); do
-          ( export no_proxy='*' NO_PROXY='*'; unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY; one_fetch "direct" )
         done
+        echo "=== proxy summary: ${ok}/${ROUNDS} ok, ${fail} fail ==="
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
     # checkout marks the repo safe only in a throwaway HOME; pre-commit runs
     # with HOME=/github/home and git rejects the dir as dubious ownership.
