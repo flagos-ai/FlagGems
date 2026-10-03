@@ -64,9 +64,31 @@ jobs:
       http_proxy: ${{ secrets.CI_HTTP_PROXY }}
       https_proxy: ${{ secrets.CI_HTTP_PROXY }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      # Checkout with up to 3 attempts, each with a hard step timeout. The proxy
+      # occasionally makes git fetch HANG (not fail), and a hung fetch ignores
+      # git's own timeouts — only the runner's step `timeout-minutes` can kill
+      # it (SIGKILL on the process tree), which then lets the next attempt run.
+      # `continue-on-error` alone (as in checkout-retry) can't help a hang: it
+      # waits for the step to end, which never happens until the step timeout.
+      - id: co1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           fetch-depth: 0
+        timeout-minutes: 3
+        continue-on-error: true
+      - id: co2
+        if: steps.co1.outcome == 'failure'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+        timeout-minutes: 3
+        continue-on-error: true
+      - id: co3
+        if: steps.co1.outcome == 'failure' && steps.co2.outcome == 'failure'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+        timeout-minutes: 3
       - name: Ensure full working tree
         shell: bash
         run: |

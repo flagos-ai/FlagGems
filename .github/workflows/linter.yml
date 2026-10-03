@@ -51,34 +51,23 @@ jobs:
       http_proxy: ${{ secrets.CI_HTTP_PROXY }}
       https_proxy: ${{ secrets.CI_HTTP_PROXY }}
     steps:
-    - name: Diag checkout speed via proxy (temporary)
-      shell: bash
-      run: |
-        # Time the REAL work actions/checkout does — a shallow fetch of the ref
-        # under test — via the (new) proxy from the job env, many rounds, to get
-        # a solid success-rate sample to compare against the old proxy.
-        REPO="https://github.com/flagos-ai/FlagGems.git"
-        REF="${{ github.event.pull_request.head.sha || github.sha }}"
-        ROUNDS=10
-        PER_FETCH_TIMEOUT=20   # cap a hung fetch so the step finishes fast
-
-        mask() { sed -E 's#(://)[^@/]*@#\1***@#g'; }
-        echo "http_proxy=$(echo "${http_proxy:-<unset>}" | mask)   ref=${REF}"
-
-        ok=0; fail=0
-        for i in $(seq 1 $ROUNDS); do
-          d=$(mktemp -d)
-          ( cd "$d"; git init -q .; git remote add origin "$REPO" )
-          start=$(date +%s%N)
-          if timeout "$PER_FETCH_TIMEOUT" git -C "$d" -c protocol.version=2 \
-               fetch -q --no-tags --prune --depth=1 origin "$REF" 2>/dev/null; then
-            rc=ok; ok=$((ok+1)); else rc=FAIL; fail=$((fail+1)); fi
-          end=$(date +%s%N); ms=$(( (end - start) / 1000000 ))
-          printf "  round %2d %s: %d.%03ds\n" "$i" "$rc" "$(( ms / 1000 ))" "$(( ms % 1000 ))"
-          rm -rf "$d"
-        done
-        echo "=== proxy summary: ${ok}/${ROUNDS} ok, ${fail} fail ==="
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+    # Checkout with up to 3 attempts, each with a hard step timeout. The proxy
+    # occasionally makes git fetch HANG (not fail), and a hung fetch ignores
+    # git's own timeouts — only the runner's step `timeout-minutes` can kill it
+    # (SIGKILL on the process tree), which then lets the next attempt run.
+    - id: co1
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      timeout-minutes: 3
+      continue-on-error: true
+    - id: co2
+      if: steps.co1.outcome == 'failure'
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      timeout-minutes: 3
+      continue-on-error: true
+    - id: co3
+      if: steps.co1.outcome == 'failure' && steps.co2.outcome == 'failure'
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      timeout-minutes: 3
     # checkout marks the repo safe only in a throwaway HOME; pre-commit runs
     # with HOME=/github/home and git rejects the dir as dubious ownership.
     # Register it in the persistent global config pre-commit actually reads.
