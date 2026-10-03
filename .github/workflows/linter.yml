@@ -43,6 +43,21 @@ jobs:
       # rebuilds every hook env (~128s). Must match the image's PRE_COMMIT_HOME.
       PRE_COMMIT_HOME: /opt/pre-commit-cache
     steps:
+    - name: Hold for manual debug (temporary)
+      shell: bash
+      run: |
+        mask() { sed -E 's#(://)[^@/]*@#\1***@#g'; }
+        echo "=== debug hold: exec into this runner pod/container ==="
+        echo "hostname: $(hostname)"
+        echo "/etc/hostname: $(cat /etc/hostname 2>/dev/null)"
+        echo "http_proxy=$(echo "${http_proxy:-<unset>}" | mask)"
+        echo "https_proxy=$(echo "${https_proxy:-<unset>}" | mask)"
+        echo "no_proxy=${no_proxy:-<unset>}"
+        echo "workdir: $(pwd)"
+        echo "On a node run: crictl ps | grep runner   (or: sudo ctr -n k8s.io containers ls | grep runner)"
+        echo "then: crictl exec -it <id> bash"
+        echo "sleeping 21600s (6h); cancel the job when done"
+        sleep 21600
     - name: Diag checkout speed proxy-vs-direct (temporary)
       shell: bash
       run: |
