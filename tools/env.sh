@@ -30,7 +30,7 @@ flaggems_c_extensions_enabled() {
 }
 
 case $BACKEND in
-  ascend|ascend-cann850|ascend-cann900)
+  ascend|ascend-cann900)
     # This script is provided by the Huawei Ascend CANN toolkit installation.
     if [ -f /usr/local/Ascend/cann/set_env.sh ]; then
       source /usr/local/Ascend/cann/set_env.sh || true
