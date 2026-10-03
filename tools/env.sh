@@ -30,7 +30,7 @@ flaggems_c_extensions_enabled() {
 }
 
 case $BACKEND in
-  ascend|ascend-cann850|ascend-cann900)
+  ascend|ascend-cann900)
     # This script is provided by the Huawei Ascend CANN toolkit installation.
     if [ -f /usr/local/Ascend/cann/set_env.sh ]; then
       source /usr/local/Ascend/cann/set_env.sh || true
@@ -89,7 +89,7 @@ case $BACKEND in
     export PATH=/usr/local/cuda/bin:$PATH
     export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
     ;;
-  mthreads|mthreads-436|mthreads-520|mthreads-musa436|mthreads-musa520)
+  mthreads|mthreads-520|mthreads-musa520)
     export MUSA_HOME=/usr/local/musa
     export PATH=$MUSA_HOME/bin:$PATH
     export LD_LIBRARY_PATH=$MUSA_HOME/lib:$LD_LIBRARY_PATH
