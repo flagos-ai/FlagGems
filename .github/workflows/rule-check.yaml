@@ -58,10 +58,11 @@ jobs:
     env:
       # Override the platform-injected proxy (which fails ~1/3 of git fetches)
       # with a working one from secrets, so actions/checkout's fetch is reliable.
+      # Only lowercase: GitHub treats env names case-insensitively, so defining
+      # both http_proxy and HTTP_PROXY is a duplicate-key error that fails the
+      # whole workflow to parse. git/curl honor the lowercase names.
       http_proxy: ${{ secrets.CI_HTTP_PROXY }}
       https_proxy: ${{ secrets.CI_HTTP_PROXY }}
-      HTTP_PROXY: ${{ secrets.CI_HTTP_PROXY }}
-      HTTPS_PROXY: ${{ secrets.CI_HTTP_PROXY }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
