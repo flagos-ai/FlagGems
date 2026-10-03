@@ -43,26 +43,40 @@ jobs:
       # rebuilds every hook env (~128s). Must match the image's PRE_COMMIT_HOME.
       PRE_COMMIT_HOME: /opt/pre-commit-cache
     steps:
-    - name: Diag proxy speed (temporary)
+    - name: Diag checkout speed proxy-vs-direct (temporary)
       shell: bash
       run: |
-        # Mask any credentials in proxy vars before printing.
+        # Time the REAL work actions/checkout does — a shallow fetch of the ref
+        # under test — once via the injected proxy and once direct (no proxy),
+        # several rounds each, so we can compare real checkout latency/failures.
+        REPO="https://github.com/flagos-ai/FlagGems.git"
+        REF="${{ github.event.pull_request.head.sha || github.sha }}"
+        ROUNDS=5
+        PER_FETCH_TIMEOUT=90   # cap a hung fetch so one bad round can't stall the job
+
         mask() { sed -E 's#(://)[^@/]*@#\1***@#g'; }
-        echo "http_proxy=$(echo "${http_proxy:-<unset>}"  | mask)"
-        echo "https_proxy=$(echo "${https_proxy:-<unset>}" | mask)"
-        echo "no_proxy=${no_proxy:-<unset>}"
-        echo "--- via proxy (uses injected http(s)_proxy) ---"
-        for i in 1 2 3; do
-          curl -sS -o /dev/null -w "  try$i: http=%{http_code} connect=%{time_connect}s total=%{time_total}s\n" \
-            --max-time 30 https://github.com || echo "  try$i: FAILED"
-        done
+        echo "http_proxy=$(echo "${http_proxy:-<unset>}" | mask)   ref=${REF}"
+
+        one_fetch() {  # $1 = mode label; env already set by caller
+          d=$(mktemp -d)
+          ( cd "$d"; git init -q .; git remote add origin "$REPO" )
+          start=$(date +%s%N)
+          if timeout "$PER_FETCH_TIMEOUT" git -C "$d" -c protocol.version=2 \
+               fetch -q --no-tags --prune --depth=1 origin "$REF" 2>/dev/null; then
+            rc=ok; else rc=FAIL; fi
+          end=$(date +%s%N)
+          ms=$(( (end - start) / 1000000 ))
+          printf "  %-6s %s: %d.%03ds\n" "$1" "$rc" "$(( ms / 1000 ))" "$(( ms % 1000 ))"
+          rm -rf "$d"
+        }
+
+        echo "--- via proxy (injected http(s)_proxy) ---"
+        for i in $(seq 1 $ROUNDS); do one_fetch "proxy"; done
+
         echo "--- direct (no proxy) ---"
-        for i in 1 2 3; do
-          curl -sS -o /dev/null -w "  try$i: http=%{http_code} connect=%{time_connect}s total=%{time_total}s\n" \
-            --noproxy '*' --max-time 30 https://github.com || echo "  try$i: FAILED"
+        for i in $(seq 1 $ROUNDS); do
+          ( export no_proxy='*' NO_PROXY='*'; unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY; one_fetch "direct" )
         done
-        echo "--- git ls-remote via proxy (what checkout actually does) ---"
-        time git ls-remote --heads https://github.com/flagos-ai/FlagGems.git refs/heads/master 2>&1 | head -2 || echo "  git ls-remote FAILED"
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
     # checkout marks the repo safe only in a throwaway HOME; pre-commit runs
     # with HOME=/github/home and git rejects the dir as dubious ownership.
