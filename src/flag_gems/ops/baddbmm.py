@@ -177,6 +177,7 @@ def _baddbmm_launch(bias, A, B, beta, alpha, out):
             bias_batch_stride=bias_batch_stride,
             bias_M_stride=bias_M_stride,
             bias_N_stride=bias_N_stride,
+            IS_FP64=A.dtype == torch.float64,
         )
 
 
