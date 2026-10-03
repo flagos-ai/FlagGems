@@ -88,6 +88,8 @@ jobs:
               maca381: 'metax-maca3810',
               iluvatar: 'iluvatar',
               kunlunxin: 'kunlunxin',
+              thead: 'thead',
+              'flagcicd-810e': 'thead',
             };
             const runner = '${{ steps.parse-command.outputs.RUNNER }}';
             const backendId = runnerToBackend[runner];
@@ -98,7 +100,7 @@ jobs:
             core.setOutput('runs_on_default', container.runs_on_default || '');
             core.setOutput('runs_on_vllm', container.runs_on_vllm || '');
 
-  # Generic (non-containerized) runners. Everything except the 5 vendors whose
+  # Generic (non-containerized) runners. Everything except the 6 vendors whose
   # driver/runtime is only set up inside a container. The backend/vendor is
   # derived from the runner label at runtime. Uses local ./ action refs since
   # these runners resolve them against the checked-out workspace.
@@ -106,7 +108,7 @@ jobs:
     needs: preprocess
     if: >-
       needs.preprocess.outputs.continue == 'true' &&
-      !contains(fromJSON('["hygon", "mthreads", "metax", "maca381", "iluvatar", "kunlunxin"]'), needs.preprocess.outputs.runner)
+      !contains(fromJSON('["hygon", "mthreads", "metax", "maca381", "iluvatar", "kunlunxin", "thead", "flagcicd-810e"]'), needs.preprocess.outputs.runner)
     runs-on: ${{ needs.preprocess.outputs.runner }}
     steps:
       - id: resolve-vendor
@@ -344,6 +346,44 @@ jobs:
         with:
           op: ${{ needs.preprocess.outputs.op }}
           backend: kunlunxin
+          runner: ${{ needs.preprocess.outputs.runner }}
+          existing: ${{ needs.preprocess.outputs.existing }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+  # THead's flagcicd-810e runner needs the PPU driver/runtime that only
+  # exists inside this image. Unlike hygon/metax/iluvatar/mthreads above, the
+  # image only ships a bare torch — flagtree for this backend isn't published
+  # to FlagOS's pypi_base yet (see backends.yaml's extra_index comment), so
+  # setup-flaggems/setup.sh installs it from the vendor's temporary index here
+  # instead of reconcile_backend_deps.py.
+  test-operator-thead:
+    needs: preprocess
+    if: >-
+      needs.preprocess.outputs.continue == 'true' &&
+      (needs.preprocess.outputs.runner == 'thead' || needs.preprocess.outputs.runner == 'flagcicd-810e')
+    runs-on: >-
+      ${{ github.repository == 'flagos-ai/FlagGems-vllm'
+          && needs.preprocess.outputs.runs_on_vllm
+          || needs.preprocess.outputs.runs_on_default }}
+    container:
+      image: ${{ needs.preprocess.outputs.container_image }}
+      options: ${{ needs.preprocess.outputs.container_options }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        continue-on-error: true
+      - uses: flagos-ai/FlagGems/.github/actions/checkout-retry@master
+      - uses: flagos-ai/FlagGems/.github/actions/checkout-pr@master
+        with:
+          pull: ${{ needs.preprocess.outputs.pull }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: flagos-ai/FlagGems/.github/actions/setup-flaggems@master
+        with:
+          backend: thead
+          gpu_check_script: tools/gpu_check_thead.sh
+      - uses: flagos-ai/FlagGems/.github/actions/ondemand-test@master
+        with:
+          op: ${{ needs.preprocess.outputs.op }}
+          backend: thead
           runner: ${{ needs.preprocess.outputs.runner }}
           existing: ${{ needs.preprocess.outputs.existing }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
