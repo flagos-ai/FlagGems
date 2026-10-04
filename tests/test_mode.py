@@ -214,3 +214,21 @@ def test_mode_adjacent_values(dtype, width):
     inp[2, ::2] = 0
     inp[2, 1::2] = -0.0
     _assert_mode_matches(inp.to(flag_gems.device), -1, False)
+
+
+@pytest.mark.mode
+@pytest.mark.parametrize(
+    "dtype",
+    _mode_dtype_params(
+        [torch.float16, torch.bfloat16, torch.int16, torch.int8, torch.uint8]
+    ),
+)
+@pytest.mark.parametrize("dim", [0, -1])
+def test_mode_many_rows(dtype, dim):
+    # Independent rows must not exhaust the launch grid for short reductions.
+    data = torch.arange(4097, dtype=torch.int32).remainder(17).to(dtype)
+    inp = data[:, None].expand(-1, 65).contiguous()
+    inp[:, -1] = -1
+    if dim == 0:
+        inp = inp.t()
+    _assert_mode_matches(inp.to(flag_gems.device), dim, True)
