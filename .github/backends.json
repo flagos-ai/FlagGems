@@ -155,6 +155,7 @@
     "command_aliases": ["thead"],
     "label": "vendor/THead",
     "gpu_check": "tools/gpu_check_thead.sh",
+    "enabled": true,
     "containerized": true,
     "container": {
       "enabled": true,
