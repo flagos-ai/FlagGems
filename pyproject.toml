@@ -76,6 +76,7 @@ dependencies = [
 
 # --- BEGIN auto-generated from backends.yaml ---
 ascend-cann900 = [
+    "cann-shmem==1.6.0",
     "torch==2.10.0+cpu",
     "torch-npu==2.10.0",
     "decorator==5.2.1",

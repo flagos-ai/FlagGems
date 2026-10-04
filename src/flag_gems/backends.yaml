@@ -83,6 +83,7 @@ backends:
     env_source:
       - /usr/local/Ascend/cann/set_env.sh
     deps:
+      - cann-shmem==1.6.0
       - torch==2.10.0+cpu
       - torch-npu==2.10.0
       - decorator==5.2.1
