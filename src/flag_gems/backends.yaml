@@ -73,6 +73,20 @@ backends:
       - torchaudio==2.11.0+cu130
       - torchvision==0.26.0+cu130
 
+  ascend-cann850:
+    python: "3.11"
+    cmake_backend: NPU
+    triton: triton-ascend==3.2.0
+    flagtree: flagtree==0.6.0+ascend3.2
+    env_source:
+      - /usr/local/Ascend/cann/set_env.sh
+    deps:
+      - torch==2.9.0+cpu
+      - torch-npu==2.9.0
+      - decorator==5.1.1
+      - attrs==24.2.0
+      - psutil==6.0.0
+
   ascend-cann900:
     python: "3.11"
     cmake_backend: NPU
@@ -98,6 +112,21 @@ backends:
     deps:
       - torch==2.12.0+cpu
       - torch-supa==1.0.0.21200+br2xx
+
+  cambricon-neuware443:
+    python: "3.10"
+    cmake_backend: MLU
+    triton: triton==3.2.0+mlu1.7.2
+    env:
+      NEUWARE_HOME: /usr/local/neuware
+      PATH: /usr/local/neuware/bin:$PATH
+      LD_LIBRARY_PATH: /usr/local/neuware/lib64:$LD_LIBRARY_PATH
+    deps:
+      - cambricon_dali==0.13.0
+      - torch==2.7.1+cpu
+      - torch-mlu==1.29.2+torch2.7.1
+      - torch-mlu-ops==1.8.0+torch2.7.1
+      - numpy==2.2.6
 
   cambricon-neuware472:
     python: "3.12"
@@ -241,6 +270,35 @@ backends:
       - torchcodec==0.6.0+metax3.8.1.0
       - torchaudio==2.4.1+metax3.8.1.0
       - torchvision==0.25.0+metax3.8.1.0
+
+  metax-maca3720:
+    python: "3.12"
+    triton: triton==3.0.0+metax3.7.2.0
+    flagtree: flagtree==3.1.0+metax3.7.2.0
+    env:
+      MACA_PATH: /opt/maca
+      PATH: /opt/maca/mxgpu_llvm/bin:/opt/maca/bin:${PATH}
+      LD_LIBRARY_PATH: /opt/maca/lib:/opt/maca/mxgpu_llvm/lib:$LD_LIBRARY_PATH
+    deps:
+      - torch==2.8.0+metax3.7.2.0
+      - torchaudio==2.4.1+metax3.7.2.0
+      - torchvision==0.15.1+metax3.7.2.0
+      - flash_attn==2.6.3+metax3.7.2.0torch2.8
+      - numpy==2.3.5
+
+  mthreads-musa436:
+    python: "3.10"
+    cmake_backend: MUSA
+    triton: triton==3.6.0+git89458660
+    flagtree: flagtree==0.6.0+mthreads3.6
+    env:
+      MUSA_HOME: /usr/local/musa
+      PATH: $MUSA_HOME/bin:$PATH
+      LD_LIBRARY_PATH: $VIRTUAL_ENV/lib:$MUSA_HOME/lib:$LD_LIBRARY_PATH
+    deps:
+      - torch==2.9.0+musa.4.3.6
+      - torch_musa==2.9.0
+      - mkl==2024.0.0
 
   mthreads-musa520:
     python: "3.10"

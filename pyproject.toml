@@ -75,6 +75,15 @@ dependencies = [
 [project.optional-dependencies]
 
 # --- BEGIN auto-generated from backends.yaml ---
+ascend-cann850 = [
+    "torch==2.9.0+cpu",
+    "torch-npu==2.9.0",
+    "decorator==5.1.1",
+    "attrs==24.2.0",
+    "psutil==6.0.0",
+    "flagtree==0.6.0+ascend3.2",
+]
+
 ascend-cann900 = [
     "cann-shmem==1.6.0",
     "torch==2.10.0+cpu",
@@ -89,6 +98,15 @@ biren-br2xx = [
     "torch==2.12.0+cpu",
     "torch-supa==1.0.0.21200+br2xx",
     "triton==3.4.0+br2xx",
+]
+
+cambricon-neuware443 = [
+    "cambricon_dali==0.13.0",
+    "torch==2.7.1+cpu",
+    "torch-mlu==1.29.2+torch2.7.1",
+    "torch-mlu-ops==1.8.0+torch2.7.1",
+    "numpy==2.2.6",
+    "triton==3.2.0+mlu1.7.2",
 ]
 
 cambricon-neuware472 = [
@@ -158,6 +176,15 @@ kunlunxin = [
     "flagtree==0.7.0+xpu3.6",
 ]
 
+metax-maca3720 = [
+    "torch==2.8.0+metax3.7.2.0",
+    "torchaudio==2.4.1+metax3.7.2.0",
+    "torchvision==0.15.1+metax3.7.2.0",
+    "flash_attn==2.6.3+metax3.7.2.0torch2.8",
+    "numpy==2.3.5",
+    "flagtree==3.1.0+metax3.7.2.0",
+]
+
 metax-maca3810 = [
     "apex==0.1+metax3.8.1.0",
     "flash_attn==2.6.3+metax3.8.1.0torch2.10",
@@ -170,6 +197,13 @@ metax-maca3810 = [
     "torchaudio==2.4.1+metax3.8.1.0",
     "torchvision==0.25.0+metax3.8.1.0",
     "flagtree==0.7.0+metax3.6",
+]
+
+mthreads-musa436 = [
+    "torch==2.9.0+musa.4.3.6",
+    "torch_musa==2.9.0",
+    "mkl==2024.0.0",
+    "flagtree==0.6.0+mthreads3.6",
 ]
 
 mthreads-musa520 = [
