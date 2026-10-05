@@ -7,6 +7,7 @@ from . import base
 
 VENDOR_NAME = flag_gems.vendor_name
 IS_ASCEND = VENDOR_NAME == "ascend"
+IS_KUNLUNXIN = VENDOR_NAME == "kunlunxin"
 IS_THEAD = VENDOR_NAME == "thead"
 SUPPORT_FP64 = flag_gems.runtime.device.support_fp64
 
@@ -138,6 +139,12 @@ def test_cholesky_solve():
         torch_op = torch.ops.aten.cholesky_solve
         gems_op = None
         dtypes = REAL_DTYPES
+    elif IS_KUNLUNXIN:
+        # No complex device kernels on this backend (torch.eye / common_matmul
+        # reject complex), so only the real dtypes are benchmarked.
+        torch_op = torch.ops.aten.cholesky_solve
+        gems_op = None
+        dtypes = REAL_DTYPES
     else:
         torch_op = torch.ops.aten.cholesky_solve
         gems_op = None
@@ -160,6 +167,11 @@ def test_cholesky_solve_out():
         dtypes = [torch.float32]
     elif IS_THEAD:
         # Thead torch.cholesky_solve does not support complex dtype.
+        torch_op = torch.cholesky_solve
+        gems_op = None
+        dtypes = REAL_DTYPES
+    elif IS_KUNLUNXIN:
+        # No complex device kernels on this backend; real dtypes only.
         torch_op = torch.cholesky_solve
         gems_op = None
         dtypes = REAL_DTYPES
