@@ -15,7 +15,6 @@
 name: linter
 
 on:
-  workflow_dispatch:
   push:
     branches:
       - master
@@ -104,14 +103,6 @@ jobs:
     # bootstrapping happens here. Invoke via `python3 -m pre_commit` since the
     # console-script entrypoint is not on the PATH inherited by steps running
     # directly on cpu-runner.
-    - name: Diag pre-commit cache (temporary)
-      shell: bash
-      run: |
-        echo "PRE_COMMIT_HOME=$PRE_COMMIT_HOME"
-        echo "--- ls -la $PRE_COMMIT_HOME ---"
-        ls -la "$PRE_COMMIT_HOME" 2>&1 || echo "MISSING: $PRE_COMMIT_HOME does not exist (runner image lacks the prebuilt cache)"
-        echo "--- repo dirs ---"
-        ls -d "$PRE_COMMIT_HOME"/repo* 2>&1 || echo "no repo* dirs"
     - name: Run pre-commit
       shell: bash
       run: |
