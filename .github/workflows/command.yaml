@@ -27,7 +27,7 @@ jobs:
   preprocess:
     runs-on: ubuntu-latest
     outputs:
-      continue: ${{ steps.check.outputs.continue }}
+      continue: ${{ steps.check.outputs.continue == 'true' && steps.validate-runner.outputs.continue == 'true' }}
       op: ${{ steps.parse-command.outputs.OP_ID}}
       runner: ${{ steps.parse-command.outputs.RUNNER }}
       pull: ${{ steps.parse-command.outputs.PR_NUMBER }}
@@ -73,8 +73,45 @@ jobs:
             echo "EXISTING_OP=1" >> $GITHUB_OUTPUT
           fi
 
-      - id: lookup-container
+      # Validates the runner alias against every label the jobs below actually
+      # dispatch on (resolve-vendor's case branches + the containerized vendor
+      # list). Catches typos like "nvidia-cuda133" (a backends.json id, not a
+      # runner label) before they silently queue against a non-existent runner.
+      - id: validate-runner
         if: ${{ steps.check.outputs.continue == 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ steps.parse-command.outputs.PR_NUMBER }}
+          RUNNER: ${{ steps.parse-command.outputs.RUNNER }}
+          REPO: ${{ github.repository }}
+        run: |
+          valid_runners=(
+            h20 a100 h100
+            ascend cann9
+            enflame
+            cambricon
+            hygon mthreads metax maca381 iluvatar kunlunxin
+          )
+
+          valid="false"
+          for r in "${valid_runners[@]}"; do
+            if [ "${RUNNER}" = "$r" ]; then
+              valid="true"
+              break
+            fi
+          done
+
+          if [ "$valid" = "false" ]; then
+            list=$(printf '`%s`, ' "${valid_runners[@]}")
+            list="${list%, }"
+            gh pr comment "${PR_NUMBER}" --repo "${REPO}" --body "⚠️ Unknown runner \`${RUNNER}\` in \`/test\` command. Valid runners are: ${list}."
+            echo "continue=false" >> $GITHUB_OUTPUT
+          else
+            echo "continue=true" >> $GITHUB_OUTPUT
+          fi
+
+      - id: lookup-container
+        if: ${{ steps.check.outputs.continue == 'true' && steps.validate-runner.outputs.continue == 'true' }}
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3  # v9.0.0
         with:
           script: |
