@@ -71,7 +71,9 @@ def test_native_batch_norm(shape, dtype, affine, caplog):
         1e-5,
     )
 
-    with caplog.at_level("DEBUG"):
+    with caplog.at_level(
+        "DEBUG", logger=utils.gems_log_logger(flag_gems.native_batch_norm)
+    ):
         result = flag_gems.native_batch_norm(
             inp,
             weight,

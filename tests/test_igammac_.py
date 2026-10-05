@@ -19,7 +19,9 @@ def test_special_gammaincc(shape, dtype, caplog):
     ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = torch.ops.aten.special_gammaincc(ref_inp1, ref_inp2)
-    with caplog.at_level("DEBUG"):
+    with caplog.at_level(
+        "DEBUG", logger=utils.gems_log_logger(flag_gems.special_gammaincc)
+    ):
         res_out = flag_gems.special_gammaincc(inp1, inp2)
 
     expected_prefix = utils.gems_log_prefix(flag_gems.special_gammaincc)

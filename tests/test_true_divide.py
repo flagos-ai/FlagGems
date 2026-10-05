@@ -129,7 +129,7 @@ def test_true_divide_tensor_dispatch(shape, dtype, caplog):
     ref_inp2 = utils.to_reference(inp2, False)
 
     ref_out = torch.ops.aten.true_divide.Tensor(ref_inp1, ref_inp2)
-    with caplog.at_level("DEBUG"):
+    with caplog.at_level("DEBUG", logger=utils.gems_log_logger(flag_gems.true_divide)):
         with flag_gems.use_gems():
             res_out = torch.ops.aten.true_divide.Tensor(inp1, inp2)
 
@@ -147,7 +147,7 @@ def test_true_divide_tensor_inplace_dispatch(shape, dtype, caplog):
     ref_inp2 = utils.to_reference(inp2, False)
 
     torch.ops.aten.true_divide_.Tensor(ref_inp1, ref_inp2)
-    with caplog.at_level("DEBUG"):
+    with caplog.at_level("DEBUG", logger=utils.gems_log_logger(flag_gems.true_divide_)):
         with flag_gems.use_gems():
             res_out = torch.ops.aten.true_divide_.Tensor(inp1, inp2)
 

@@ -32,7 +32,7 @@ def test_sym_numel(shape, dtype, caplog):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.ops.aten.sym_numel(ref_inp)
-    with caplog.at_level("DEBUG"):
+    with caplog.at_level("DEBUG", logger=utils.gems_log_logger(flag_gems.sym_numel)):
         res_out = flag_gems.sym_numel(inp)
 
     assert f"{utils.gems_log_prefix(flag_gems.sym_numel)} SYM_NUMEL" in caplog.text

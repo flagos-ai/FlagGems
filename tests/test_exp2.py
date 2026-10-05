@@ -28,7 +28,7 @@ def test_special_exp2(shape, dtype, caplog):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.ops.aten.special_exp2(ref_inp)
-    with caplog.at_level("DEBUG"):
+    with caplog.at_level("DEBUG", logger=utils.gems_log_logger(flag_gems.special_exp2)):
         res_out = flag_gems.special_exp2(inp)
 
     assert (

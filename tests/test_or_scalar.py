@@ -40,8 +40,8 @@ def test_or_scalar(shape, dtype, caplog):
     ref_inp1 = utils.to_reference(inp1)
 
     ref_out = torch.ops.aten.__or__.Scalar(ref_inp1, inp2)
-    with caplog.at_level("DEBUG"):
+    with caplog.at_level("DEBUG", logger=utils.gems_log_logger(flag_gems.or_scalar)):
         res_out = flag_gems.or_scalar(inp1, inp2)
 
-    assert "GEMS OR SCALAR" in caplog.text
+    assert f"{utils.gems_log_prefix(flag_gems.or_scalar)} OR_SCALAR" in caplog.text
     utils.gems_assert_equal(res_out, ref_out)
