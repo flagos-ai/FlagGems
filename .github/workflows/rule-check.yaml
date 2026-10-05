@@ -65,31 +65,46 @@ jobs:
       http_proxy: ${{ secrets.CI_HTTP_PROXY }}
       https_proxy: ${{ secrets.CI_HTTP_PROXY }}
     steps:
-      # Checkout with up to 3 attempts, each with a hard step timeout. The proxy
-      # occasionally makes git fetch HANG (not fail), and a hung fetch ignores
-      # git's own timeouts — only the runner's step `timeout-minutes` can kill
-      # it (SIGKILL on the process tree), which then lets the next attempt run.
-      # `continue-on-error` alone (as in checkout-retry) can't help a hang: it
-      # waits for the step to end, which never happens until the step timeout.
+      # Checkout with up to 5 attempts, each with a hard 1-minute step timeout.
+      # The proxy makes git fetch HANG (not fail) ~half the time; a hung fetch
+      # ignores git's own timeouts, so only the runner's step `timeout-minutes`
+      # can kill it (SIGKILL on the process tree) and let the next attempt run.
+      # Success takes ~4-7s, so 1 minute is ample headroom while making a hung
+      # attempt fail fast; 5 attempts drive the ~50%/attempt failure rate down
+      # to ~3% overall, worst case ~5 minutes instead of hanging forever.
       - id: co1
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           fetch-depth: 0
-        timeout-minutes: 3
+        timeout-minutes: 1
         continue-on-error: true
       - id: co2
         if: steps.co1.outcome == 'failure'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           fetch-depth: 0
-        timeout-minutes: 3
+        timeout-minutes: 1
         continue-on-error: true
       - id: co3
         if: steps.co1.outcome == 'failure' && steps.co2.outcome == 'failure'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           fetch-depth: 0
-        timeout-minutes: 3
+        timeout-minutes: 1
+        continue-on-error: true
+      - id: co4
+        if: steps.co1.outcome == 'failure' && steps.co2.outcome == 'failure' && steps.co3.outcome == 'failure'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+        timeout-minutes: 1
+        continue-on-error: true
+      - id: co5
+        if: steps.co1.outcome == 'failure' && steps.co2.outcome == 'failure' && steps.co3.outcome == 'failure' && steps.co4.outcome == 'failure'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+        timeout-minutes: 1
       - name: Ensure full working tree
         shell: bash
         run: |
