@@ -1,0 +1,2695 @@
+# Copyright 2026 FlagOS Contributors
+# SPDX-License-Identifier: Apache-2.0
+
+# Each group expands independently. The operator prunes by layout,
+# parallelism and device resources, then measures the complete call.
+
+baddbmm_gemm:
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 16
+    bn:
+      - 32
+    bk:
+      - 32
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 32
+    bn:
+      - 16
+    bk:
+      - 64
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 16
+    bn:
+      - 32
+    bk:
+      - 64
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 3
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 16
+    bn:
+      - 32
+    bk:
+      - 64
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - cpasync
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 2
+      - 3
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 16
+    bn:
+      - 64
+    bk:
+      - 64
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - cpasync
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 32
+    bn:
+      - 32
+    bk:
+      - 32
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 32
+    bn:
+      - 32
+    bk:
+      - 64
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 2
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 32
+    bn:
+      - 32
+    bk:
+      - 64
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 3
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 32
+    bn:
+      - 32
+    bk:
+      - 128
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - cpasync
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 32
+      - 64
+    bn:
+      - 64
+    bk:
+      - 32
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 64
+    bn:
+      - 64
+    bk:
+      - 32
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 2
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 64
+    bn:
+      - 64
+    bk:
+      - 64
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+      - cpasync
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 64
+    bn:
+      - 64
+    bk:
+      - 64
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - cpasync
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 3
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 64
+    bn:
+      - 64
+    bk:
+      - 64
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 8
+    stages:
+      - 2
+      - 3
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 64
+    bn:
+      - 64
+    bk:
+      - 64
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - cpasync
+    scenario:
+      - ''
+    warps:
+      - 8
+    stages:
+      - 3
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 128
+    bn:
+      - 128
+    bk:
+      - 64
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+      - cpasync
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 32
+    bn:
+      - 32
+    bk:
+      - 64
+    group_m:
+      - 1
+    transpose:
+      - true
+    static_k:
+      - false
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - cpasync
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 64
+    bn:
+      - 64
+    bk:
+      - 32
+    group_m:
+      - 1
+    transpose:
+      - true
+    static_k:
+      - false
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - cpasync
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 3
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 128
+    bn:
+      - 128
+    bk:
+      - 64
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 8
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 64
+    bn:
+      - 64
+    bk:
+      - 64
+      - 32
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - true
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 64
+    bn:
+      - 64
+    bk:
+      - 64
+    group_m:
+      - 1
+    transpose:
+      - true
+    static_k:
+      - true
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 64
+    bn:
+      - 32
+    bk:
+      - 32
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - true
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 128
+    bn:
+      - 128
+    bk:
+      - 64
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - unprefetch
+    warps:
+      - 8
+    stages:
+      - 2
+      - 3
+      - 4
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 64
+    bn:
+      - 64
+    bk:
+      - 32
+      - 64
+    group_m:
+      - 8
+    transpose:
+      - false
+    static_k:
+      - false
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 64
+    bn:
+      - 64
+    bk:
+      - 64
+    group_m:
+      - 8
+    transpose:
+      - false
+    static_k:
+      - false
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - cpasync
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 128
+    bn:
+      - 128
+    bk:
+      - 32
+    group_m:
+      - 8
+    transpose:
+      - false
+    static_k:
+      - false
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 3
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 128
+    bn:
+      - 128
+    bk:
+      - 64
+    group_m:
+      - 8
+    transpose:
+      - false
+    static_k:
+      - false
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+      - cpasync
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 128
+    bn:
+      - 128
+    bk:
+      - 128
+    group_m:
+      - 8
+    transpose:
+      - false
+    static_k:
+      - false
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - cpasync
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 4
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 128
+    bn:
+      - 128
+    bk:
+      - 64
+    group_m:
+      - 8
+    transpose:
+      - false
+    static_k:
+      - false
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 8
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 128
+    bn:
+      - 256
+    bk:
+      - 32
+    group_m:
+      - 1
+      - 8
+    transpose:
+      - false
+    static_k:
+      - false
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 8
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 256
+    bn:
+      - 128
+    bk:
+      - 32
+    group_m:
+      - 1
+      - 8
+    transpose:
+      - false
+    static_k:
+      - false
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 8
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 256
+    bn:
+      - 256
+    bk:
+      - 32
+    group_m:
+      - 1
+      - 8
+    transpose:
+      - false
+    static_k:
+      - false
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 8
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 256
+    bn:
+      - 256
+    bk:
+      - 32
+    group_m:
+      - 8
+    transpose:
+      - false
+    static_k:
+      - false
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - cpasync
+    scenario:
+      - ''
+    warps:
+      - 8
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 128
+    bn:
+      - 128
+    bk:
+      - 64
+    group_m:
+      - 8
+    transpose:
+      - false
+    static_k:
+      - false
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - unprefetch
+    warps:
+      - 8
+    stages:
+      - 2
+      - 3
+      - 4
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 256
+    bn:
+      - 256
+    bk:
+      - 32
+    group_m:
+      - 1
+      - 8
+    transpose:
+      - false
+    static_k:
+      - false
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - reduceSmemUsage
+    warps:
+      - 8
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 16
+    bn:
+      - 64
+    bk:
+      - 32
+    group_m:
+      - 8
+    transpose:
+      - false
+    static_k:
+      - false
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 2
+    stages:
+      - 4
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 16
+      - 32
+    bn:
+      - 32
+    bk:
+      - 64
+    group_m:
+      - 8
+    transpose:
+      - false
+    static_k:
+      - false
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 4
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 32
+      - 16
+    bn:
+      - 64
+    bk:
+      - 64
+    group_m:
+      - 8
+    transpose:
+      - false
+    static_k:
+      - false
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 4
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 32
+    bn:
+      - 128
+    bk:
+      - 32
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - cpasync
+    scenario:
+      - ''
+    warps:
+      - 2
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 32
+    bn:
+      - 128
+    bk:
+      - 32
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 4
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 32
+    bn:
+      - 128
+    bk:
+      - 64
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 64
+    bn:
+      - 128
+    bk:
+      - 32
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 3
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 16
+    bn:
+      - 128
+    bk:
+      - 64
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 128
+    bn:
+      - 16
+      - 32
+    bk:
+      - 64
+    group_m:
+      - 1
+    transpose:
+      - true
+    static_k:
+      - false
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 128
+    bn:
+      - 64
+    bk:
+      - 64
+    group_m:
+      - 8
+    transpose:
+      - true
+    static_k:
+      - false
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 3
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 64
+    bn:
+      - 128
+    bk:
+      - 64
+    group_m:
+      - 8
+    transpose:
+      - true
+    static_k:
+      - false
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 3
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 32
+      - 64
+    bn:
+      - 64
+    bk:
+      - 32
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - roll
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 64
+    bn:
+      - 64
+    bk:
+      - 64
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+      - cpasync
+    scenario:
+      - roll
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 64
+    bn:
+      - 64
+    bk:
+      - 64
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - cpasync
+    scenario:
+      - roll
+    warps:
+      - 4
+    stages:
+      - 3
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 128
+    bn:
+      - 128
+    bk:
+      - 64
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+      - cpasync
+    scenario:
+      - roll
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 64
+    bn:
+      - 64
+    bk:
+      - 32
+    group_m:
+      - 1
+    transpose:
+      - true
+    static_k:
+      - false
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - cpasync
+    scenario:
+      - roll
+    warps:
+      - 4
+    stages:
+      - 3
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 64
+    bn:
+      - 64
+    bk:
+      - 32
+      - 64
+    group_m:
+      - 8
+    transpose:
+      - false
+    static_k:
+      - false
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - roll
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 64
+    bn:
+      - 64
+    bk:
+      - 64
+    group_m:
+      - 8
+    transpose:
+      - false
+    static_k:
+      - false
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - cpasync
+    scenario:
+      - roll
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 128
+    bn:
+      - 128
+    bk:
+      - 32
+    group_m:
+      - 8
+    transpose:
+      - false
+    static_k:
+      - false
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - roll
+    warps:
+      - 4
+    stages:
+      - 3
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 128
+    bn:
+      - 128
+    bk:
+      - 64
+    group_m:
+      - 8
+    transpose:
+      - false
+    static_k:
+      - false
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+      - cpasync
+    scenario:
+      - roll
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 32
+    bn:
+      - 64
+    bk:
+      - 64
+    group_m:
+      - 8
+    transpose:
+      - false
+    static_k:
+      - false
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - roll
+    warps:
+      - 4
+    stages:
+      - 4
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 32
+    bn:
+      - 128
+    bk:
+      - 32
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - roll
+    warps:
+      - 4
+    stages:
+      - 4
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 32
+    bn:
+      - 128
+    bk:
+      - 64
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - roll
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 64
+    bn:
+      - 128
+    bk:
+      - 32
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - roll
+    warps:
+      - 4
+    stages:
+      - 3
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 128
+    bn:
+      - 64
+    bk:
+      - 64
+    group_m:
+      - 8
+    transpose:
+      - true
+    static_k:
+      - false
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - roll
+    warps:
+      - 4
+    stages:
+      - 3
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 64
+    bn:
+      - 128
+    bk:
+      - 64
+    group_m:
+      - 8
+    transpose:
+      - true
+    static_k:
+      - false
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - roll
+    warps:
+      - 4
+    stages:
+      - 3
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 64
+    bn:
+      - 64
+    bk:
+      - 64
+    group_m:
+      - 1
+      - 8
+    transpose:
+      - false
+    static_k:
+      - false
+    flat_epilogue:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 3
+  # The flat epilogue makes the native NT half-output store legal.
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        FLAT_EPILOGUE: flat_epilogue
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 128
+    bn:
+      - 128
+    bk:
+      - 128
+    group_m:
+      - 1
+      - 8
+    transpose:
+      - false
+    static_k:
+      - false
+    flat_epilogue:
+      - true
+    split_k:
+      - 1
+    pipeline:
+      - cpasync
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 4
+  - strategy:
+      BATCH: default
+      SAB: default
+      SBB: default
+      SCB: default
+      SIB: default
+      M: default
+      N: default
+      K: default
+      SAM: default
+      SAK: default
+      SBK: default
+      SBN: default
+      SCM: default
+      SCN: default
+      SIM: default
+      SIN: default
+      BETA_ZERO: default
+      ALPHA_ONE: default
+      BETA_ONE: default
+      MAX_SPLIT: default
+      A_ALIGNMENT: default
+      B_ALIGNMENT: default
+      C_ALIGNMENT: default
+      BIAS_ALIGNMENT: default
+
+baddbmm_vector:
+  - config:
+    param_map:
+      META:
+        BN: bn
+        BK: bk
+        SPLIT_K: split_k
+      num_warps: warps
+      num_stages: stages
+    bn:
+      - 1
+    bk:
+      - 256
+      - 512
+      - 1024
+    split_k:
+      - 1
+    warps:
+      - 4
+    stages:
+      - 1
+  - config:
+    param_map:
+      META:
+        BN: bn
+        BK: bk
+        SPLIT_K: split_k
+      num_warps: warps
+      num_stages: stages
+    bn:
+      - 2
+      - 4
+    bk:
+      - 256
+    split_k:
+      - 1
+    warps:
+      - 4
+    stages:
+      - 1
+  - config:
+    param_map:
+      META:
+        BN: bn
+        BK: bk
+        SPLIT_K: split_k
+      num_warps: warps
+      num_stages: stages
+    bn:
+      - 4
+    bk:
+      - 512
+    split_k:
+      - 1
+    warps:
+      - 4
+    stages:
+      - 1
+  - config:
+    param_map:
+      META:
+        BN: bn
+        BK: bk
+        SPLIT_K: split_k
+      num_warps: warps
+      num_stages: stages
+    bn:
+      - 8
+    bk:
+      - 128
+      - 256
+    split_k:
+      - 1
+    warps:
+      - 4
+    stages:
+      - 1
+  - config:
+    param_map:
+      META:
+        BN: bn
+        BK: bk
+        SPLIT_K: split_k
+      num_warps: warps
+      num_stages: stages
+    bn:
+      - 32
+      - 64
+    bk:
+      - 32
+    split_k:
+      - 1
+    warps:
+      - 4
+    stages:
+      - 1
+  - config:
+    param_map:
+      META:
+        BN: bn
+        BK: bk
+        SPLIT_K: split_k
+      num_warps: warps
+      num_stages: stages
+    bn:
+      - 128
+    bk:
+      - 16
+      - 32
+    split_k:
+      - 1
+    warps:
+      - 4
+    stages:
+      - 1
+  - config:
+    param_map:
+      META:
+        BN: bn
+        BK: bk
+        SPLIT_K: split_k
+      num_warps: warps
+      num_stages: stages
+    bn:
+      - 64
+      - 128
+    bk:
+      - 64
+    split_k:
+      - 1
+    warps:
+      - 4
+    stages:
+      - 1
+  - config:
+    param_map:
+      META:
+        BN: bn
+        BK: bk
+        SPLIT_K: split_k
+      num_warps: warps
+      num_stages: stages
+    bn:
+      - 128
+    bk:
+      - 128
+    split_k:
+      - 1
+    warps:
+      - 4
+    stages:
+      - 1
+  - strategy:
+      BATCH: default
+      SAB: default
+      SBB: default
+      SCB: default
+      SIB: default
+      M: default
+      N: default
+      K: default
+      SAM: default
+      SAK: default
+      SBK: default
+      SBN: default
+      SCM: default
+      SCN: default
+      SIM: default
+      SIN: default
+      BETA_ZERO: default
+      ALPHA_ONE: default
+      BETA_ONE: default
+      MAX_SPLIT: default
+      A_ALIGNMENT: default
+      B_ALIGNMENT: default
+      C_ALIGNMENT: default
+      BIAS_ALIGNMENT: default
+      TRANSPOSE: default

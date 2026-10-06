@@ -1,18 +1,9 @@
 # Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# SPDX-License-Identifier: Apache-2.0
 
+import copy
 import logging
+import os
 
 import torch
 import triton
@@ -20,366 +11,678 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
-from flag_gems.runtime.backend._metax import heuristics_config_utils as _hcu
-from flag_gems.utils import broadcastable_to, libentry, libtuner
-from flag_gems.utils import triton_lang_extension as ext
+from flag_gems.utils import get_device_properties, libentry, libtuner
+from flag_gems.utils.libentry import LibTuner
 
 logger = logging.getLogger(__name__)
+EXPAND_CONFIG_FILENAME = os.path.normpath(
+    os.path.join(os.path.dirname(__file__), "..", "addmm_metax_expand.yaml")
+)
+_NT128_MIN_DIM = 64
+_NT128_SHARED_BYTES = 64 * 1024
+
+
+# Bound split-K partition size, workspace, and concurrent programs.
+_SPLIT_K_CANDIDATES = (1, 2, 4, 8, 16, 32)
+_MIN_K_PER_SPLIT = 256
+_MAX_SPLIT_K_WORKSPACE_BYTES = 32 * 1024**2
+_MAX_SPLIT_K_PROGRAMS_PER_SM = 4
+_MAX_VECTOR_SPLIT_K_PROGRAMS_PER_SM = 8
+
+
+# MAX_SPLIT and *_ALIGNMENT must stay in the kernel signatures: the host
+# tuner uses them for pruning and cache identity, not device arithmetic.
+_KEY = [
+    "M",
+    "N",
+    "K",
+    "SAM",
+    "SAK",
+    "SBK",
+    "SBN",
+    "SCM",
+    "SCN",
+    "SIM",
+    "SIN",
+    "BETA_ZERO",
+    "ALPHA_ONE",
+    "BETA_ONE",
+    "MAX_SPLIT",
+    "A_ALIGNMENT",
+    "B_ALIGNMENT",
+    "C_ALIGNMENT",
+    "BIAS_ALIGNMENT",
+]
+
+
+@libentry()
+@triton.jit(do_not_specialize=["alpha", "beta"])
+def _addmm_finish_kernel(
+    P,
+    C,
+    Bias,
+    alpha,
+    beta,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    SCM: tl.constexpr,
+    SCN: tl.constexpr,
+    SIM: tl.constexpr,
+    SIN: tl.constexpr,
+    SPLIT_K: tl.constexpr,
+    BETA_ZERO: tl.constexpr,
+    ALPHA_ONE: tl.constexpr,
+    BETA_ONE: tl.constexpr,
+    ZERO: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    i = tl.program_id(0).to(tl.int64) * BLOCK + tl.arange(0, BLOCK)
+    m, n = i // N, i % N
+    acc = tl.zeros((BLOCK,), tl.float32)
+    if not ZERO:
+        for split in tl.static_range(SPLIT_K):
+            acc += tl.load(P + split * M * N + i, i < M * N, 0)
+        if not ALPHA_ONE:
+            acc *= alpha
+    if not BETA_ZERO:
+        bias = tl.load(Bias + m * SIM + n * SIN, i < M * N, 0)
+        bias = bias.to(tl.float32)
+        acc += bias if BETA_ONE else beta * bias
+    tl.store(C + m * SCM + n * SCN, acc, i < M * N)
+
+
+def _addmm_bench_post_hook(args, exception):
+    # Include the selected split-K reduction in candidate timing.
+    if exception is None and args["SPLIT_K"] > 1:
+        _addmm_finish_kernel[(triton.cdiv(args["M"] * args["N"], 256), 1)](
+            args["P"],
+            args["C"],
+            args["Bias"],
+            args["alpha"],
+            args["beta"],
+            args["M"],
+            args["N"],
+            args["SCM"],
+            args["SCN"],
+            args["SIM"],
+            args["SIN"],
+            args["SPLIT_K"],
+            args["BETA_ZERO"],
+            args["ALPHA_ONE"],
+            args["BETA_ONE"],
+            False,
+            BLOCK=256,
+            num_warps=4,
+        )
+
+
+class _AddmmTuner(LibTuner.get("default")):
+    """Keep pruned tiles: AABS mishandles short K and logical transpose."""
+
+    def get_key(self, args):
+        # Re-select winners when native-tile eligibility changes.
+        return super().get_key(args) + (_NT128_MIN_DIM,)
+
+    def _bench(self, *args, config, **meta):
+        options = {**meta, **config.all_kwargs()}
+        values = {**dict(zip(self.arg_names, args)), **options}
+
+        def launch():
+            self.fn.run(*args, **options)
+            self.post_hook(values, exception=None)
+
+        try:
+            return self.do_bench(launch, quantiles=(0.5, 0.2, 0.8))
+        except triton.runtime.errors.OutOfResources:
+            return [float("inf")] * 3
+
+
+def _prune_addmm_gemm(configs, named_args, **kwargs):
+    args = {**named_args, **kwargs}
+    m, n, k = args["M"], args["N"], args["K"]
+    properties = get_device_properties(args["A"].device.index)
+    sm = properties.multi_processor_count
+    shared_bytes = properties.shared_memory_per_block
+    result = []
+    for config in configs:
+        meta = config.kwargs
+        bm, bn, bk = meta["BM"], meta["BN"], meta["BK"]
+        native_tile = (
+            bm == bn == bk == 128
+            and config.num_warps == 4
+            and config.num_stages == 4
+            and meta["pipeline"] == "cpasync"
+            and not meta["scenario"]
+            and not meta["TRANSPOSE"]
+            and not meta["STATIC_K"]
+        )
+        dense_output = args["SCM"] == n and args["SCN"] == 1
+        direct = (
+            native_tile
+            and args["A"].dtype in (torch.float16, torch.bfloat16)
+            and args["C"].dtype == args["A"].dtype
+            and m >= 1024
+            and n >= 128
+            and k >= 512
+            and args["SAM"] == k
+            and args["SAK"] == 1
+            and dense_output
+            and all(args[name].data_ptr() % 16 == 0 for name in ("A", "B", "C"))
+            and k % 8 == n % 8 == 0
+            and triton.cdiv(m, bm) * triton.cdiv(n, bn) >= sm // 2
+        )
+        direct_nn = direct and args["SBK"] == n and args["SBN"] == 1
+        direct_nt = direct and args["SBK"] == 1 and args["SBN"] == k
+        # Flatten before bias arithmetic so the NT half store does not
+        # require the faulty MMA-layout bias/store conversion.
+        if meta["FLAT_EPILOGUE"] and not direct_nt:
+            continue
+        nt_128 = (
+            bm == bn == bk == 128
+            and config.num_warps == 4
+            and meta["pipeline"] == "cpasync"
+            and args["SAK"] == args["SBK"] == 1
+            and args["A"].dtype != torch.float32
+            and args["A"].data_ptr() % 16 == args["B"].data_ptr() % 16 == 0
+            and args["SAM"] % 8 == args["SBN"] % 8 == 0
+            and min(m, n) >= _NT128_MIN_DIM
+            and k >= 4096
+        )
+        mt, nt = (n, m) if meta["TRANSPOSE"] else (m, n)
+        if bm > max(32, triton.next_power_of_2(mt)) or bn > max(
+            32, triton.next_power_of_2(nt)
+        ):
+            continue
+        if min(m, n) >= 1024 and bm * bn < 4096:
+            continue
+        shared = (
+            _NT128_SHARED_BYTES
+            if nt_128 or direct_nn or (direct_nt and meta["FLAT_EPILOGUE"])
+            else (bm + bn)
+            * bk
+            * args["A"].element_size()
+            * (1 if config.num_stages == 1 else 2)
+        )
+        if shared > shared_bytes:
+            continue
+        if (
+            bk > max(32, triton.next_power_of_2(k))
+            or meta["scenario"] == "reduceSmemUsage"
+        ):
+            continue
+        if meta["scenario"] == "unprefetch" and (mt % bm or nt % bn or k % bk):
+            continue
+        if meta["STATIC_K"] and (k > 128 or min(m, n) < 64):
+            continue
+        if bm >= 256 and bn >= 256 and args["SBK"] == 1:
+            continue
+        if meta["TRANSPOSE"] and not (args["SBN"] == 1 or args["SAM"] == 1 or nt_128):
+            continue
+        # Roll changes only the installed compiler's loop-unroll policy.
+        if meta["scenario"] == "roll" and not (64 <= min(m, n) <= 256 and k >= 1024):
+            continue
+        tiles = triton.cdiv(mt, bm) * triton.cdiv(nt, bn)
+        for split in _SPLIT_K_CANDIDATES:
+            if split > args["MAX_SPLIT"]:
+                break
+            if (meta["FLAT_EPILOGUE"] or direct_nn) and split != 1:
+                continue
+            # This installed cpasync lowering uses 64 KiB with an FP32
+            # destination. A separate finish avoids its transposed BF16-store
+            # correctness failure. K tails made of whole MMA tiles are valid.
+            if (
+                nt_128
+                and not meta["FLAT_EPILOGUE"]
+                and (k % bk or (split == 1 and args["C"].dtype != torch.float32))
+            ):
+                continue
+            if split > 1 and (
+                meta["STATIC_K"]
+                or k < split * _MIN_K_PER_SPLIT
+                or tiles * split > _MAX_SPLIT_K_PROGRAMS_PER_SM * sm
+            ):
+                continue
+            if (
+                args["A"].dtype == torch.float32
+                and split > 1
+                and k % (bk * split)
+                and meta["pipeline"].startswith("cpasync")
+            ):
+                continue
+            candidate = copy.deepcopy(config)
+            candidate.kwargs["SPLIT_K"] = split
+            result.append(candidate)
+    return result
+
+
+def _prune_addmm_vector(configs, named_args, **kwargs):
+    args = {**named_args, **kwargs}
+    n = args["M"] if args["TRANSPOSE"] else args["N"]
+    sk = args["SAK"] if args["TRANSPOSE"] else args["SBK"]
+    sn = args["SAM"] if args["TRANSPOSE"] else args["SBN"]
+    along_k = sk == 1 or sk <= sn or n < 32
+    rows = args["N"] if args["TRANSPOSE"] else args["M"]
+    sm = get_device_properties(args["A"].device.index).multi_processor_count
+    result = []
+    for config in configs:
+        if config.kwargs["BN"] > max(1, triton.next_power_of_2(n)):
+            continue
+        if not (
+            (along_k and config.kwargs["BN"] <= 8)
+            or (not along_k and config.kwargs["BN"] >= 32)
+        ):
+            continue
+        tiles = rows * triton.cdiv(n, config.kwargs["BN"])
+        for split in _SPLIT_K_CANDIDATES:
+            if split > args["MAX_SPLIT"]:
+                break
+            # SIMT needs more CTAs than MMA to hide the streamed matrix loads.
+            if split > 1 and (
+                args["K"] < split * _MIN_K_PER_SPLIT
+                or tiles * split > _MAX_VECTOR_SPLIT_K_PROGRAMS_PER_SM * sm
+            ):
+                continue
+            candidate = copy.deepcopy(config)
+            candidate.kwargs["SPLIT_K"] = split
+            result.append(candidate)
+    return result
 
 
 @libentry()
 @libtuner(
-    configs=runtime.get_tuned_config("addmm"),
-    key=["M", "N", "K", "stride_am", "stride_bk"],
-    strategy=["align32", "align32", "align32", "align32", "align32"],
-    warmup=5,
-    rep=10,
+    configs=runtime.ops_get_configs("addmm_gemm", yaml_path=EXPAND_CONFIG_FILENAME),
+    key=_KEY,
+    prune_configs_by={"early_config_prune": _prune_addmm_gemm},
+    policy=_AddmmTuner,
+    post_hook=_addmm_bench_post_hook,
+    flagtune_op_name="addmm",
+    flagtune_expand_op_name="addmm_gemm",
+    flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
+    rep=30,
 )
-@triton.heuristics(_hcu.HEURISTICS_CONFIGS["addmm"])
 @triton.jit(do_not_specialize=["alpha", "beta"])
-def addmm_kernel(
-    a_ptr,
-    b_ptr,
-    i_ptr,
-    c_ptr,
+def _addmm_gemm_kernel(
+    A,
+    B,
+    C,
+    P,
+    Bias,
     alpha,
     beta,
-    M,
-    N,
-    K,
-    stride_am,
-    stride_ak,
-    stride_bk,
-    stride_bn,
-    stride_im,
-    stride_in,
-    stride_cm,
-    stride_cn,
-    BLOCK_SIZE_M: tl.constexpr,
-    BLOCK_SIZE_N: tl.constexpr,
-    BLOCK_SIZE_K: tl.constexpr,
-    GROUP_M: tl.constexpr,
-    UPGRADE: tl.constexpr,
-    UPGRADE_A_OFFS: tl.constexpr,
-    UPGRADE_B_OFFS: tl.constexpr,
-    UPGRADE_C_OFFS: tl.constexpr,
-    BIAS_IS_VECTOR: tl.constexpr,
-    BIAS_IS_SCALAR: tl.constexpr,
+    SIM: tl.constexpr,
+    SIN: tl.constexpr,
+    BETA_ZERO: tl.constexpr,
+    ALPHA_ONE: tl.constexpr,
+    BETA_ONE: tl.constexpr,
+    MAX_SPLIT: tl.constexpr,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    SAM: tl.constexpr,
+    SAK: tl.constexpr,
+    SBK: tl.constexpr,
+    SBN: tl.constexpr,
+    SCM: tl.constexpr,
+    SCN: tl.constexpr,
+    A_ALIGNMENT: tl.constexpr,
+    B_ALIGNMENT: tl.constexpr,
+    C_ALIGNMENT: tl.constexpr,
+    BIAS_ALIGNMENT: tl.constexpr,
+    BM: tl.constexpr,
+    BN: tl.constexpr,
+    BK: tl.constexpr,
+    GROUP_M: tl.constexpr = 1,
+    SPLIT_K: tl.constexpr = 1,
+    TRANSPOSE: tl.constexpr = False,
+    STATIC_K: tl.constexpr = False,
+    FLAT_EPILOGUE: tl.constexpr = False,
 ):
-    if UPGRADE:
-        pid = ext.program_id(0)
+    """One output tile per CTA, optionally with a deterministic K partition."""
+    if SPLIT_K > 1:
+        C = P
+        SCM, SCN = N, 1
+    if TRANSPOSE:
+        # Compute C^T = B^T A^T. Swapping the dot operands changes which
+        # operand feeds which MMA port without materializing a transpose.
+        A, B = B, A
+        M, N = N, M
+        SAM, SAK, SBK, SBN = SBN, SBK, SAK, SAM
+        SCM, SCN = SCN, SCM
+        SIM, SIN = SIN, SIM
+    nm, nn = tl.cdiv(M, BM), tl.cdiv(N, BN)
+    split = tl.program_id(0) // (nm * nn) % SPLIT_K
+    pid = tl.program_id(0) % (nm * nn)
+    group = pid // (GROUP_M * nn)
+    first_m = group * GROUP_M
+    group_m = tl.minimum(nm - first_m, GROUP_M)
+    local = pid % (GROUP_M * nn)
+    pm = first_m + local % group_m
+    pn = local // group_m
+    mi = pm * BM + tl.arange(0, BM)
+    ni = pn * BN + tl.arange(0, BN)
+    iterations = tl.cdiv(K, BK * SPLIT_K)
+    ki = tl.arange(0, BK) + split * iterations * BK
+    # Tell the vectorizer each axis is a dense power-of-two tile. The values
+    # do not change; masked tails still compare against M/N/K below.
+    mi = tl.max_contiguous(tl.multiple_of(mi, BM), BM)
+    ni = tl.max_contiguous(tl.multiple_of(ni, BN), BN)
+    ki = tl.max_contiguous(tl.multiple_of(ki, BK), BK)
+    ap = A + mi[:, None].to(tl.int64) * SAM + ki[None, :].to(tl.int64) * SAK
+    bp = B + ki[:, None].to(tl.int64) * SBK + ni[None, :].to(tl.int64) * SBN
+    acc = tl.zeros((BM, BN), tl.float32)
+    if STATIC_K:
+        # Short reductions cannot amortize a pipelined loop's prologue and
+        # epilogue. Keep addresses in int64 here too, including sliced views.
+        for k in tl.static_range((K + BK * SPLIT_K - 1) // (BK * SPLIT_K)):
+            if K % (BK * SPLIT_K) == 0:
+                if M % BM == 0:
+                    ak = tl.load(ap)
+                else:
+                    ak = tl.load(ap, mi[:, None] < M, other=0)
+                if N % BN == 0:
+                    bk = tl.load(bp)
+                else:
+                    bk = tl.load(bp, ni[None, :] < N, other=0)
+            else:
+                ak = tl.load(
+                    ap, (mi[:, None] < M) & (ki[None, :] + k * BK < K), other=0
+                )
+                bk = tl.load(
+                    bp, (ki[:, None] + k * BK < K) & (ni[None, :] < N), other=0
+                )
+            acc = tl.dot(ak, bk, acc, out_dtype=tl.float32, allow_tf32=False)
+            ap += BK * SAK
+            bp += BK * SBK
     else:
-        pid = tl.program_id(0)
-
-    grid_m = tl.cdiv(M, BLOCK_SIZE_M)
-    grid_n = tl.cdiv(N, BLOCK_SIZE_N)
-    # Visit neighboring M tiles before advancing N to improve B-tile reuse.
-    width = GROUP_M * grid_n
-    group_id = pid // width
-    group_size = min(grid_m - group_id * GROUP_M, GROUP_M)
-    pid_m = group_id * GROUP_M + (pid % group_size)
-    pid_n = (pid % width) // group_size
-
-    if UPGRADE_A_OFFS:
-        offs_m = (pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)).to(tl.int64)
+        for k in range(iterations):
+            if K % (BK * SPLIT_K) == 0:
+                if M % BM == 0:
+                    ak = tl.load(ap)
+                else:
+                    ak = tl.load(ap, mi[:, None] < M, other=0)
+                if N % BN == 0:
+                    bk = tl.load(bp)
+                else:
+                    bk = tl.load(bp, ni[None, :] < N, other=0)
+            else:
+                ak = tl.load(
+                    ap, (mi[:, None] < M) & (ki[None, :] + k * BK < K), other=0
+                )
+                bk = tl.load(
+                    bp, (ki[:, None] + k * BK < K) & (ni[None, :] < N), other=0
+                )
+            acc = tl.dot(ak, bk, acc, out_dtype=tl.float32, allow_tf32=False)
+            ap += BK * SAK
+            bp += BK * SBK
+    if FLAT_EPILOGUE:
+        # Materialize the accumulator's output order before the bias arithmetic.
+        i = tl.arange(0, BM * BN)
+        rows = (pm * BM + i // BN).to(tl.int64)
+        cols = (pn * BN + i % BN).to(tl.int64)
+        value = tl.reshape(acc, (BM * BN,))
+        mask = (rows < M) & (cols < N)
+        if SPLIT_K == 1:
+            if not ALPHA_ONE:
+                value *= alpha
+            if not BETA_ZERO:
+                bias = tl.load(Bias + rows * SIM + cols * SIN, mask, 0).to(tl.float32)
+                value += bias if BETA_ONE else beta * bias
+        tl.store(C + split.to(tl.int64) * M * N + rows * SCM + cols * SCN, value, mask)
     else:
-        offs_m = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
-    if UPGRADE_B_OFFS:
-        offs_n = (pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)).to(tl.int64)
-    else:
-        offs_n = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
-    offs_k = tl.arange(0, BLOCK_SIZE_K)
-    a_ptrs = a_ptr + offs_m[:, None] * stride_am + offs_k[None, :] * stride_ak
-    b_ptrs = b_ptr + offs_k[:, None] * stride_bk + offs_n[None, :] * stride_bn
-
-    accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
-    for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
-        a = tl.load(
-            a_ptrs,
-            mask=(offs_m[:, None] < M) & (offs_k[None, :] < K - k * BLOCK_SIZE_K),
-            other=0.0,
+        cp = (
+            C
+            + split.to(tl.int64) * M * N
+            + mi[:, None].to(tl.int64) * SCM
+            + ni[None, :].to(tl.int64) * SCN
         )
-        b = tl.load(
-            b_ptrs,
-            mask=(offs_k[:, None] < K - k * BLOCK_SIZE_K) & (offs_n[None, :] < N),
-            other=0.0,
-        )
-        accumulator += tl.dot(a, b, allow_tf32=False)
-        a_ptrs += BLOCK_SIZE_K * stride_ak
-        b_ptrs += BLOCK_SIZE_K * stride_bk
-
-    if UPGRADE_C_OFFS:
-        store_m = (pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)).to(tl.int64)
-        store_n = (pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)).to(tl.int64)
-    else:
-        store_m = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
-        store_n = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
-    c_ptrs = c_ptr + stride_cm * store_m[:, None] + stride_cn * store_n[None, :]
-    mask = (store_m[:, None] < M) & (store_n[None, :] < N)
-    # PyTorch ignores bias, including NaN and Inf values, when beta is zero.
-    if beta == 0:
-        result = accumulator * alpha
-    else:
-        if BIAS_IS_VECTOR:
-            bias_tile = tl.load(
-                i_ptr + stride_in * store_n,
-                mask=store_n < N,
-                other=0.0,
-            )[None, :]
-        elif BIAS_IS_SCALAR:
-            bias_tile = tl.load(i_ptr)
-        else:
-            i_ptrs = i_ptr + stride_im * store_m[:, None] + stride_in * store_n[None, :]
-            bias_tile = tl.load(i_ptrs, mask=mask, other=0.0)
-        result = accumulator * alpha + bias_tile.to(accumulator.dtype) * beta
-    tl.store(c_ptrs, result.to(c_ptr.dtype.element_ty), mask=mask)
+        if SPLIT_K == 1:
+            if not ALPHA_ONE:
+                acc *= alpha
+            if not BETA_ZERO:
+                if SIM == 0 and SIN == 0:
+                    bias = tl.full((BM, BN), tl.load(Bias).to(tl.float32), tl.float32)
+                elif SIM == 0:
+                    bias = tl.broadcast_to(
+                        tl.load(
+                            Bias + ni[None, :].to(tl.int64) * SIN, ni[None, :] < N, 0
+                        ).to(tl.float32),
+                        (BM, BN),
+                    )
+                elif SIN == 0:
+                    bias = tl.broadcast_to(
+                        tl.load(
+                            Bias + mi[:, None].to(tl.int64) * SIM, mi[:, None] < M, 0
+                        ).to(tl.float32),
+                        (BM, BN),
+                    )
+                else:
+                    bias = tl.load(
+                        Bias
+                        + mi[:, None].to(tl.int64) * SIM
+                        + ni[None, :].to(tl.int64) * SIN,
+                        (mi[:, None] < M) & (ni[None, :] < N),
+                        other=0,
+                    ).to(tl.float32)
+                acc += bias if BETA_ONE else beta * bias
+        tl.store(cp, acc, (mi[:, None] < M) & (ni[None, :] < N))
 
 
 @libentry()
+@libtuner(
+    configs=runtime.ops_get_configs("addmm_vector", yaml_path=EXPAND_CONFIG_FILENAME),
+    key=_KEY + ["TRANSPOSE"],
+    prune_configs_by={"early_config_prune": _prune_addmm_vector},
+    policy=_AddmmTuner,
+    post_hook=_addmm_bench_post_hook,
+    flagtune_op_name="addmm",
+    flagtune_expand_op_name="addmm_vector",
+    flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
+    rep=30,
+)
 @triton.jit(do_not_specialize=["alpha", "beta"])
-def addmm_fallback_kernel(
-    a_ptr,
-    b_ptr,
-    i_ptr,
-    c_ptr,
+def _addmm_vector_kernel(
+    A,
+    B,
+    C,
+    P,
+    Bias,
     alpha,
     beta,
-    M,
-    N,
-    K,
-    stride_am,
-    stride_ak,
-    stride_bk,
-    stride_bn,
-    stride_im,
-    stride_in,
-    stride_cm,
-    stride_cn,
-    BLOCK_SIZE_K: tl.constexpr,
-    BIAS_IS_VECTOR: tl.constexpr,
-    BIAS_IS_SCALAR: tl.constexpr,
+    SIM: tl.constexpr,
+    SIN: tl.constexpr,
+    BETA_ZERO: tl.constexpr,
+    ALPHA_ONE: tl.constexpr,
+    BETA_ONE: tl.constexpr,
+    MAX_SPLIT: tl.constexpr,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    SAM: tl.constexpr,
+    SAK: tl.constexpr,
+    SBK: tl.constexpr,
+    SBN: tl.constexpr,
+    SCM: tl.constexpr,
+    SCN: tl.constexpr,
+    A_ALIGNMENT: tl.constexpr,
+    B_ALIGNMENT: tl.constexpr,
+    C_ALIGNMENT: tl.constexpr,
+    BIAS_ALIGNMENT: tl.constexpr,
+    BN: tl.constexpr,
+    BK: tl.constexpr,
+    SPLIT_K: tl.constexpr,
+    TRANSPOSE: tl.constexpr,
 ):
-    pid = ext.program_id(0)
-    row = pid // N
-    col = pid % N
-    offs_k = tl.arange(0, BLOCK_SIZE_K)
-    accumulator = 0.0
-    for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
-        k_offsets = k * BLOCK_SIZE_K + offs_k
-        a = tl.load(
-            a_ptr + row * stride_am + k_offsets * stride_ak,
-            mask=k_offsets < K,
-            other=0.0,
-        ).to(tl.float32)
+    if SPLIT_K > 1:
+        C = P
+        SCM, SCN = N, 1
+    if TRANSPOSE:
+        A, B = B, A
+        M, N = N, M
+        SAM, SAK, SBK, SBN = SBN, SBK, SAK, SAM
+        SCM, SCN = SCN, SCM
+        SIM, SIN = SIN, SIM
+    nn = tl.cdiv(N, BN)
+    pid = tl.program_id(0)
+    split = pid // (M * nn)
+    m = (pid // nn % M).to(tl.int64)
+    n = (pid % nn * BN + tl.arange(0, BN)).to(tl.int64)
+    iterations = tl.cdiv(K, BK * SPLIT_K)
+    k = tl.arange(0, BK).to(tl.int64) + split * iterations * BK
+    acc = tl.zeros((BN, BK), tl.float32)
+    for start in range(iterations):
+        ks = k + start * BK
+        a = tl.load(A + m * SAM + ks * SAK, ks < K, 0).to(tl.float32)
         b = tl.load(
-            b_ptr + k_offsets * stride_bk + col * stride_bn,
-            mask=k_offsets < K,
-            other=0.0,
+            B + n[:, None] * SBN + ks[None, :] * SBK,
+            (n[:, None] < N) & (ks[None, :] < K),
+            0,
         ).to(tl.float32)
-        accumulator += tl.sum(a * b, axis=0)
-
-    if beta == 0:
-        result = accumulator * alpha
-    else:
-        if BIAS_IS_VECTOR:
-            bias = tl.load(i_ptr + col * stride_in)
-        elif BIAS_IS_SCALAR:
-            bias = tl.load(i_ptr)
-        else:
-            bias = tl.load(i_ptr + row * stride_im + col * stride_in)
-        result = accumulator * alpha + bias.to(tl.float32) * beta
-    tl.store(
-        c_ptr + row * stride_cm + col * stride_cn,
-        result.to(c_ptr.dtype.element_ty),
-    )
+        acc = tl.fma(a[None, :], b, acc)
+    result = tl.sum(acc, 1)
+    if SPLIT_K == 1:
+        if not ALPHA_ONE:
+            result *= alpha
+        if not BETA_ZERO:
+            bias = tl.load(Bias + m * SIM + n * SIN, n < N, 0).to(tl.float32)
+            result += bias if BETA_ONE else bias * beta
+    tl.store(C + split.to(tl.int64) * M * N + m * SCM + n * SCN, result, n < N)
 
 
-def _prepare_bias(bias, out):
-    bias_is_vector = bias.ndim == 1 and bias.shape[0] == out.shape[1]
-    bias_is_scalar = not bias_is_vector and bias.numel() == 1
-    if bias_is_vector:
-        return bias, 0, bias.stride(0), True, False
-    if bias_is_scalar:
-        return bias, 0, 0, False, True
-    bias = bias.broadcast_to(out.shape)
-    return bias, bias.stride(0), bias.stride(1), False, False
-
-
-def _fallback_addmm(bias, mat1, mat2, out, beta, alpha):
-    M, K = mat1.shape
-    N = mat2.shape[1]
+def _addmm_impl(bias, a, b, beta, alpha, out=None, out_dtype=None):
+    dtype = a.dtype if out_dtype is None else out_dtype
+    m, n = a.shape[-2], b.shape[-1]
+    shape = (m, n)
+    si = bias.broadcast_to(shape).stride()
     if out is None:
-        out = torch.empty((M, N), device=mat1.device, dtype=mat1.dtype)
-    else:
-        assert out.shape == (M, N), "Incompatible output shape"
-    if M == 0 or N == 0:
-        return out
+        out = torch.empty(shape, device=a.device, dtype=dtype)
 
-    bias, stride_im, stride_in, bias_is_vector, bias_is_scalar = _prepare_bias(
-        bias, out
-    )
-    block_size_k = min(256, triton.next_power_of_2(K)) if K > 0 else 1
-    with torch_device_fn.device(mat1.device):
-        addmm_fallback_kernel[(M * N,)](
-            mat1,
-            mat2,
-            bias,
+    k = a.shape[-1]
+    if not m or not n:
+        return out
+    with torch_device_fn.device(a.device):
+        if not k or alpha == 0:
+            _addmm_finish_kernel[(triton.cdiv(m * n, 256), 1)](
+                out,
+                out,
+                bias,
+                alpha,
+                beta,
+                m,
+                n,
+                *out.stride(),
+                *si,
+                1,
+                beta == 0,
+                alpha == 1,
+                beta == 1,
+                True,
+                BLOCK=256,
+                num_warps=4,
+            )
+            return out
+
+        small_strided = (
+            max(m, n) <= 32
+            and k <= 256
+            and (1 not in a.stride()[-2:] or 1 not in b.stride()[-2:])
+        )
+        transpose = not small_strided and (n == 1 or (n <= 8 and m > n))
+        rows, cols = (n, m) if transpose else (m, n)
+        vector = small_strided or rows == 1 or (rows <= 8 and cols <= 32)
+        # Split-K partials are FP32 even when the final output is half precision.
+        bytes_per_split = m * n * torch.float32.itemsize
+        split_limit = min(
+            _SPLIT_K_CANDIDATES[-1],
+            max(1, k // _MIN_K_PER_SPLIT),
+            max(1, _MAX_SPLIT_K_WORKSPACE_BYTES // bytes_per_split),
+        )
+        max_split = (
+            1
+            if small_strided
+            else max(split for split in _SPLIT_K_CANDIDATES if split <= split_limit)
+        )
+        partial = torch.empty(
+            (max_split * m * n if max_split > 1 else 0,),
+            dtype=torch.float32,
+            device=a.device,
+        )
+        args = (
+            a,
+            b,
             out,
+            partial,
+            bias,
             alpha,
             beta,
-            M,
-            N,
-            K,
-            mat1.stride(0),
-            mat1.stride(1),
-            mat2.stride(0),
-            mat2.stride(1),
-            stride_im,
-            stride_in,
-            out.stride(0),
-            out.stride(1),
-            BLOCK_SIZE_K=block_size_k,
-            BIAS_IS_VECTOR=bias_is_vector,
-            BIAS_IS_SCALAR=bias_is_scalar,
+            *si,
+            beta == 0,
+            alpha == 1,
+            beta == 1,
+            max_split,
+            m,
+            n,
+            k,
+            *a.stride()[-2:],
+            *b.stride()[-2:],
+            *out.stride()[-2:],
+            a.data_ptr() % 16,
+            b.data_ptr() % 16,
+            out.data_ptr() % 16,
+            bias.data_ptr() % 16,
         )
+        if vector:
+            grid = lambda meta: (
+                rows * triton.cdiv(cols, meta["BN"]) * meta["SPLIT_K"],
+                1,
+            )
+            _, meta = _addmm_vector_kernel[grid](*args, TRANSPOSE=transpose)
+        else:
+
+            def grid(meta):
+                mt, nt = (n, m) if meta["TRANSPOSE"] else (m, n)
+                return (
+                    triton.cdiv(mt, meta["BM"])
+                    * triton.cdiv(nt, meta["BN"])
+                    * meta["SPLIT_K"],
+                    1,
+                )
+
+            _, meta = _addmm_gemm_kernel[grid](*args)
+        if meta["SPLIT_K"] > 1:
+            # All FP32 partials are ready before the reduction and affine epilogue.
+            _addmm_finish_kernel[(triton.cdiv(m * n, 256), 1)](
+                partial,
+                out,
+                bias,
+                alpha,
+                beta,
+                m,
+                n,
+                *out.stride(),
+                *si,
+                meta["SPLIT_K"],
+                beta == 0,
+                alpha == 1,
+                beta == 1,
+                False,
+                BLOCK=256,
+                num_warps=4,
+            )
     return out
 
 
-def _addmm_impl(bias, mat1, mat2, out, beta, alpha):
-    assert mat1.shape[1] == mat2.shape[0], "Incompatible dimensions"
-    assert broadcastable_to(
-        bias.shape, (mat1.shape[0], mat2.shape[1])
-    ), "Incompatible input shape"
-    M, K = mat1.shape
-    _, N = mat2.shape
-
-    logger.debug(
-        "GEMS_METAX ADDMM, [shape info]: [-, %s, %s, %s](batch, M, N, K), "
-        "[A column-major]: %s, [B column-major]: %s, [bias column-major]: %s",
-        M,
-        N,
-        K,
-        mat1.stride(0) == 1,
-        mat2.stride(0) == 1,
-        bias.ndim > 0 and bias.stride(0) == 1,
-    )
-
-    # Avoid MetaX dot lowering for output dimensions smaller than one tile.
-    MIN_TILE = 32
-    if M < MIN_TILE or N < MIN_TILE:
-        logger.debug(
-            "GEMS_METAX ADDMM using scalar fallback (small M=%s or N=%s)", M, N
-        )
-        return _fallback_addmm(bias, mat1, mat2, out, beta, alpha)
-
-    fallback_bias = bias
-    fallback_mat1 = mat1
-    fallback_mat2 = mat2
-    fallback_out = out
-    # MetaX lowers the GEMM load efficiently when B is contiguous in N.
-    if mat1.stride(0) > 1 and mat1.stride(1) > 1:
-        mat1 = mat1.contiguous()
-    if mat2.stride(1) != 1:
-        mat2 = mat2.contiguous()
-    if out is None:
-        out = torch.empty((M, N), device=mat1.device, dtype=mat1.dtype)
-    else:
-        assert out.shape == (M, N), "Incompatible output shape"
-    # Keep vector/scalar bias compact; broadcast strides cover other valid shapes.
-    bias, bias_stride_m, bias_stride_n, bias_is_vector, bias_is_scalar = _prepare_bias(
-        bias, out
-    )
-    grid = lambda META: (
-        triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]),
-    )
-    try:
-        with torch_device_fn.device(mat1.device):
-            addmm_kernel[grid](
-                mat1,
-                mat2,
-                bias,
-                out,
-                alpha,
-                beta,
-                M,
-                N,
-                K,
-                mat1.stride(0),
-                mat1.stride(1),
-                mat2.stride(0),
-                mat2.stride(1),
-                bias_stride_m,
-                bias_stride_n,
-                out.stride(0),
-                out.stride(1),
-                GROUP_M=8,
-                BIAS_IS_VECTOR=bias_is_vector,
-                BIAS_IS_SCALAR=bias_is_scalar,
-            )
-        return out
-    except RuntimeError as e:
-        # Retry without dot tiling when MetaX async-pipeline lowering rejects
-        # a shape/config combination.
-        logger.warning(
-            "GEMS_METAX ADDMM kernel compilation failed for shape (%s,%s,%s), "
-            "using scalar fallback: %s",
-            M,
-            N,
-            K,
-            e,
-        )
-        return _fallback_addmm(
-            fallback_bias,
-            fallback_mat1,
-            fallback_mat2,
-            fallback_out,
-            beta,
-            alpha,
-        )
-
-
 def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
-    logger.debug("GEMS_METAX ADDMM")
-    return _addmm_impl(bias, mat1, mat2, None, beta, alpha)
+    logger.debug("GEMS METAX ADDMM")
+    return _addmm_impl(bias, mat1, mat2, beta, alpha)
 
 
 def addmm_out(bias, mat1, mat2, *, beta=1, alpha=1, out=None):
-    logger.debug("GEMS_METAX ADDMM_OUT")
-    return _addmm_impl(bias, mat1, mat2, out, beta, alpha)
+    return _addmm_impl(bias, mat1, mat2, beta, alpha, out)
 
 
 def addmm_dtype(bias, mat1, mat2, out_dtype, *, beta=1, alpha=1):
-    logger.debug("GEMS_METAX ADDMM_DTYPE")
-    out = torch.empty(
-        (mat1.shape[0], mat2.shape[1]),
-        device=mat1.device,
-        dtype=out_dtype,
-    )
-    return addmm_dtype_out(bias, mat1, mat2, out_dtype, beta=beta, alpha=alpha, out=out)
+    return _addmm_impl(bias, mat1, mat2, beta, alpha, out_dtype=out_dtype)
 
 
 def addmm_dtype_out(bias, mat1, mat2, out_dtype, *, beta=1, alpha=1, out):
-    logger.debug("GEMS_METAX ADDMM_DTYPE_OUT")
-    if mat1.dtype != mat2.dtype:
-        raise RuntimeError(
-            f"mat1 and mat2 must have the same dtype, but got {mat1.dtype} and {mat2.dtype}"
-        )
-    if out.dtype != out_dtype:
-        raise RuntimeError(
-            "out_dtype must be the same as the dtype of the provided out tensor"
-        )
-    if not (
-        out_dtype == mat1.dtype
-        or (
-            out_dtype == torch.float32 and mat1.dtype in (torch.float16, torch.bfloat16)
-        )
-    ):
-        raise RuntimeError(
-            "out_dtype must be the same as input dtype or fp32 for fp16/bf16 inputs"
-        )
-    if bias.dtype != out_dtype and bias.dtype != mat1.dtype:
-        raise RuntimeError("self dtype must match either out_dtype or mat1 dtype")
-
-    # beta=0 must not read bias; otherwise cast it directly to the output dtype.
-    bias_c = bias if beta == 0 else bias.to(out_dtype)
-    return _addmm_impl(bias_c, mat1, mat2, out, beta, alpha)
+    return _addmm_impl(bias, mat1, mat2, beta, alpha, out, out_dtype)

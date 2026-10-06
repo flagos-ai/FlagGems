@@ -1,0 +1,1919 @@
+# Copyright 2026 FlagOS Contributors
+# SPDX-License-Identifier: Apache-2.0
+
+# Each group expands independently. The operator prunes by layout,
+# parallelism and device resources, then measures the complete call.
+
+router_gemm:
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        SIMT: simt
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 16
+    bn:
+      - 32
+    bk:
+      - 32
+    group_m:
+      - 1
+    simt:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        SIMT: simt
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 32
+    bn:
+      - 16
+    bk:
+      - 64
+    group_m:
+      - 1
+    simt:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        SIMT: simt
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 16
+    bn:
+      - 32
+    bk:
+      - 64
+    group_m:
+      - 1
+    simt:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 3
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        SIMT: simt
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 16
+    bn:
+      - 32
+    bk:
+      - 64
+    group_m:
+      - 1
+    simt:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - cpasync
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 2
+      - 3
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        SIMT: simt
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 16
+    bn:
+      - 64
+    bk:
+      - 64
+    group_m:
+      - 1
+    simt:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - cpasync
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        SIMT: simt
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 32
+    bn:
+      - 32
+    bk:
+      - 32
+    group_m:
+      - 1
+    simt:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        SIMT: simt
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 32
+    bn:
+      - 32
+    bk:
+      - 64
+    group_m:
+      - 1
+    simt:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 2
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        SIMT: simt
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 32
+    bn:
+      - 32
+    bk:
+      - 64
+    group_m:
+      - 1
+    simt:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 3
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        SIMT: simt
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 32
+    bn:
+      - 32
+    bk:
+      - 128
+    group_m:
+      - 1
+    simt:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - cpasync
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        SIMT: simt
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 32
+      - 64
+    bn:
+      - 64
+    bk:
+      - 32
+    group_m:
+      - 1
+    simt:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        SIMT: simt
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 64
+    bn:
+      - 64
+    bk:
+      - 32
+    group_m:
+      - 1
+    simt:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 2
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        SIMT: simt
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 64
+    bn:
+      - 64
+    bk:
+      - 64
+    group_m:
+      - 1
+    simt:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+      - cpasync
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        SIMT: simt
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 64
+    bn:
+      - 64
+    bk:
+      - 64
+    group_m:
+      - 1
+    simt:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - cpasync
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 3
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        SIMT: simt
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 64
+    bn:
+      - 64
+    bk:
+      - 64
+    group_m:
+      - 1
+    simt:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 8
+    stages:
+      - 2
+      - 3
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        SIMT: simt
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 64
+    bn:
+      - 64
+    bk:
+      - 64
+    group_m:
+      - 1
+    simt:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - cpasync
+    scenario:
+      - ''
+    warps:
+      - 8
+    stages:
+      - 3
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        SIMT: simt
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 128
+    bn:
+      - 128
+    bk:
+      - 64
+    group_m:
+      - 1
+    simt:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+      - cpasync
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        SIMT: simt
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 128
+    bn:
+      - 128
+    bk:
+      - 64
+    group_m:
+      - 1
+    simt:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 8
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        SIMT: simt
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 64
+    bn:
+      - 64
+    bk:
+      - 32
+      - 64
+    group_m:
+      - 8
+    simt:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        SIMT: simt
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 64
+    bn:
+      - 64
+    bk:
+      - 64
+    group_m:
+      - 8
+    simt:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - cpasync
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        SIMT: simt
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 128
+    bn:
+      - 128
+    bk:
+      - 32
+    group_m:
+      - 8
+    simt:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 3
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        SIMT: simt
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 128
+    bn:
+      - 128
+    bk:
+      - 64
+    group_m:
+      - 8
+    simt:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+      - cpasync
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        SIMT: simt
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 128
+    bn:
+      - 128
+    bk:
+      - 128
+    group_m:
+      - 8
+    simt:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - cpasync
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 4
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        SIMT: simt
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 128
+    bn:
+      - 128
+    bk:
+      - 64
+    group_m:
+      - 8
+    simt:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 8
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        SIMT: simt
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 16
+    bn:
+      - 64
+    bk:
+      - 32
+    group_m:
+      - 8
+    simt:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 2
+    stages:
+      - 4
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        SIMT: simt
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 16
+      - 32
+    bn:
+      - 32
+    bk:
+      - 64
+    group_m:
+      - 8
+    simt:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 4
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        SIMT: simt
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 32
+      - 16
+    bn:
+      - 64
+    bk:
+      - 64
+    group_m:
+      - 8
+    simt:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 4
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        SIMT: simt
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 32
+    bn:
+      - 128
+    bk:
+      - 32
+    group_m:
+      - 1
+    simt:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - cpasync
+    scenario:
+      - ''
+    warps:
+      - 2
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        SIMT: simt
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 32
+    bn:
+      - 128
+    bk:
+      - 32
+    group_m:
+      - 1
+    simt:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 4
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        SIMT: simt
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 32
+    bn:
+      - 128
+    bk:
+      - 64
+    group_m:
+      - 1
+    simt:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        SIMT: simt
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 64
+    bn:
+      - 128
+    bk:
+      - 32
+    group_m:
+      - 1
+    simt:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 3
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        SIMT: simt
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 16
+    bn:
+      - 128
+    bk:
+      - 64
+    group_m:
+      - 1
+    simt:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        SIMT: simt
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 16
+    bn:
+      - 16
+    bk:
+      - 64
+    group_m:
+      - 1
+    simt:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 3
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        SIMT: simt
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 16
+    bn:
+      - 16
+    bk:
+      - 64
+    group_m:
+      - 1
+    simt:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - cpasync
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 4
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        SIMT: simt
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 32
+    bn:
+      - 16
+    bk:
+      - 64
+    group_m:
+      - 1
+    simt:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 3
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        SIMT: simt
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 32
+    bn:
+      - 16
+    bk:
+      - 64
+    group_m:
+      - 1
+    simt:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - cpasync
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 4
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        SIMT: simt
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 64
+    bn:
+      - 16
+    bk:
+      - 64
+    group_m:
+      - 1
+    simt:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 3
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        SIMT: simt
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 64
+    bn:
+      - 16
+    bk:
+      - 64
+    group_m:
+      - 1
+    simt:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - cpasync
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 4
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        SIMT: simt
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 128
+    bn:
+      - 16
+    bk:
+      - 64
+    group_m:
+      - 1
+    simt:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 3
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        SIMT: simt
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 128
+    bn:
+      - 16
+    bk:
+      - 64
+    group_m:
+      - 1
+    simt:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - cpasync
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 4
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        SIMT: simt
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 32
+    bn:
+      - 32
+    bk:
+      - 128
+    group_m:
+      - 1
+    simt:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 3
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        SIMT: simt
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 32
+    bn:
+      - 32
+    bk:
+      - 128
+    group_m:
+      - 1
+    simt:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - cpasync
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 4
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        SIMT: simt
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 64
+    bn:
+      - 32
+    bk:
+      - 128
+    group_m:
+      - 1
+    simt:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 3
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        SIMT: simt
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 64
+    bn:
+      - 32
+    bk:
+      - 128
+    group_m:
+      - 1
+    simt:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - cpasync
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 4
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        SIMT: simt
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 128
+    bn:
+      - 32
+    bk:
+      - 128
+    group_m:
+      - 1
+    simt:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 3
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        SIMT: simt
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 128
+    bn:
+      - 32
+    bk:
+      - 128
+    group_m:
+      - 1
+    simt:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - cpasync
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 4
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        SIMT: simt
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 128
+    bn:
+      - 128
+    bk:
+      - 128
+    group_m:
+      - 1
+    simt:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 3
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        SIMT: simt
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 128
+    bn:
+      - 128
+    bk:
+      - 128
+    group_m:
+      - 1
+    simt:
+      - false
+    split_k:
+      - 1
+    pipeline:
+      - cpasync
+    scenario:
+      - ''
+    warps:
+      - 4
+    stages:
+      - 4
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        SIMT: simt
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 1
+    bn:
+      - 1
+    bk:
+      - 256
+    group_m:
+      - 1
+    simt:
+      - true
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 2
+      - 4
+    stages:
+      - 1
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        SIMT: simt
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 1
+    bn:
+      - 1
+    bk:
+      - 512
+    group_m:
+      - 1
+    simt:
+      - true
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 2
+      - 4
+    stages:
+      - 1
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        SIMT: simt
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 1
+    bn:
+      - 1
+    bk:
+      - 1024
+    group_m:
+      - 1
+    simt:
+      - true
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 2
+      - 4
+    stages:
+      - 1
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        SIMT: simt
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 1
+    bn:
+      - 1
+    bk:
+      - 2048
+    group_m:
+      - 1
+    simt:
+      - true
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 2
+      - 4
+    stages:
+      - 1
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        SIMT: simt
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 1
+    bn:
+      - 1
+    bk:
+      - 4096
+    group_m:
+      - 1
+    simt:
+      - true
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 2
+      - 4
+    stages:
+      - 1
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        SIMT: simt
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 1
+    bn:
+      - 2
+    bk:
+      - 256
+    group_m:
+      - 1
+    simt:
+      - true
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 2
+      - 4
+    stages:
+      - 1
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        SIMT: simt
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 1
+    bn:
+      - 4
+    bk:
+      - 256
+    group_m:
+      - 1
+    simt:
+      - true
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 2
+      - 4
+    stages:
+      - 1
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        SIMT: simt
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 1
+    bn:
+      - 4
+    bk:
+      - 512
+    group_m:
+      - 1
+    simt:
+      - true
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 2
+      - 4
+    stages:
+      - 1
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        SIMT: simt
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 1
+    bn:
+      - 8
+    bk:
+      - 128
+    group_m:
+      - 1
+    simt:
+      - true
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 2
+      - 4
+    stages:
+      - 1
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        SIMT: simt
+        SPLIT_K: split_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 1
+    bn:
+      - 8
+    bk:
+      - 256
+    group_m:
+      - 1
+    simt:
+      - true
+    split_k:
+      - 1
+    pipeline:
+      - basic
+    scenario:
+      - ''
+    warps:
+      - 2
+      - 4
+    stages:
+      - 1
+  - strategy:
+      M: default
+      N: default
+      K: default
+      SXM: default
+      SXK: default
+      SWN: default
+      SWK: default
+      MAX_SPLIT: default
+      ALLOW_SIMT: default
+      X_ALIGNMENT: default
+      W_ALIGNMENT: default
