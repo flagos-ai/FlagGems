@@ -30,8 +30,7 @@ from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 from flag_gems.utils.libentry import LibTuner
 
-from . import bmm_regular as regular
-from . import bmm_ring as ring
+from . import regular, ring
 
 logger = logging.getLogger(__name__)
 
@@ -790,9 +789,9 @@ class _PipelineTuner(LibTuner.get("default")):
         root = Path(__file__).parent
         files = (
             "bmm.py",
-            "bmm_ring.py",
-            "bmm_regular.py",
-            "../tune_configs.yaml",
+            "ring.py",
+            "regular.py",
+            "../../tune_configs.yaml",
         )
         return hashlib.sha256(
             b"".join((root / f).read_bytes() for f in files)
