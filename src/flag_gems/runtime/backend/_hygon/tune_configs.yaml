@@ -1668,3 +1668,1907 @@ linear:
     BLOCK_SIZE_K: 32
   num_stages: 2
   num_warps: 8
+
+baddbmm:
+- gen: true
+  param_map:
+    META:
+      BLOCK_M: block_m
+      BLOCK_N: block_n
+      BLOCK_K: block_k
+      GROUP_M: group_m
+      STAGE_SHARED: stage_shared
+      UNROLL: unroll
+      LOOP_STAGES: loop_stages
+      WRAP_M: wrap_m
+      matrix_instr_nonkdim: matrix_instr_nonkdim
+      sched_latency: sched_latency
+    num_warps: warps
+    num_stages: loop_stages
+  unroll:
+  - 1
+  warps:
+  - 4
+  - 8
+  block_m:
+  - 32
+  block_n:
+  - 64
+  block_k:
+  - 32
+  - 64
+  - 128
+  group_m:
+  - 1
+  - 4
+  stage_shared:
+  - 0
+  loop_stages:
+  - 1
+  - 2
+  - 3
+  wrap_m:
+  - false
+  - true
+  matrix_instr_nonkdim:
+  - 16
+  - 32
+  sched_latency:
+  - none
+- gen: true
+  param_map:
+    META:
+      BLOCK_M: block_m
+      BLOCK_N: block_n
+      BLOCK_K: block_k
+      GROUP_M: group_m
+      STAGE_SHARED: stage_shared
+      UNROLL: unroll
+      LOOP_STAGES: loop_stages
+      WRAP_M: wrap_m
+      matrix_instr_nonkdim: matrix_instr_nonkdim
+      sched_latency: sched_latency
+    num_warps: warps
+    num_stages: loop_stages
+  unroll:
+  - 1
+  warps:
+  - 4
+  - 8
+  block_m:
+  - 64
+  block_n:
+  - 64
+  block_k:
+  - 32
+  - 64
+  - 128
+  group_m:
+  - 1
+  - 4
+  stage_shared:
+  - 0
+  loop_stages:
+  - 1
+  - 2
+  - 3
+  wrap_m:
+  - false
+  - true
+  matrix_instr_nonkdim:
+  - 16
+  - 32
+  sched_latency:
+  - none
+- gen: true
+  param_map:
+    META:
+      BLOCK_M: block_m
+      BLOCK_N: block_n
+      BLOCK_K: block_k
+      GROUP_M: group_m
+      STAGE_SHARED: stage_shared
+      UNROLL: unroll
+      LOOP_STAGES: loop_stages
+      WRAP_M: wrap_m
+      matrix_instr_nonkdim: matrix_instr_nonkdim
+      sched_latency: sched_latency
+    num_warps: warps
+    num_stages: loop_stages
+  unroll:
+  - 1
+  warps:
+  - 4
+  - 8
+  block_m:
+  - 64
+  block_n:
+  - 128
+  block_k:
+  - 32
+  - 64
+  - 128
+  group_m:
+  - 1
+  - 4
+  stage_shared:
+  - 0
+  loop_stages:
+  - 1
+  - 2
+  - 3
+  wrap_m:
+  - false
+  - true
+  matrix_instr_nonkdim:
+  - 16
+  - 32
+  sched_latency:
+  - none
+- gen: true
+  param_map:
+    META:
+      BLOCK_M: block_m
+      BLOCK_N: block_n
+      BLOCK_K: block_k
+      GROUP_M: group_m
+      STAGE_SHARED: stage_shared
+      UNROLL: unroll
+      LOOP_STAGES: loop_stages
+      WRAP_M: wrap_m
+      matrix_instr_nonkdim: matrix_instr_nonkdim
+      sched_latency: sched_latency
+    num_warps: warps
+    num_stages: loop_stages
+  unroll:
+  - 1
+  warps:
+  - 4
+  - 8
+  block_m:
+  - 128
+  block_n:
+  - 64
+  block_k:
+  - 32
+  - 64
+  - 128
+  group_m:
+  - 1
+  - 4
+  stage_shared:
+  - 0
+  loop_stages:
+  - 1
+  - 2
+  - 3
+  wrap_m:
+  - false
+  - true
+  matrix_instr_nonkdim:
+  - 16
+  - 32
+  sched_latency:
+  - none
+- gen: true
+  param_map:
+    META:
+      BLOCK_M: block_m
+      BLOCK_N: block_n
+      BLOCK_K: block_k
+      GROUP_M: group_m
+      STAGE_SHARED: stage_shared
+      UNROLL: unroll
+      LOOP_STAGES: loop_stages
+      WRAP_M: wrap_m
+      matrix_instr_nonkdim: matrix_instr_nonkdim
+      sched_latency: sched_latency
+    num_warps: warps
+    num_stages: loop_stages
+  unroll:
+  - 1
+  warps:
+  - 4
+  - 8
+  block_m:
+  - 128
+  block_n:
+  - 128
+  block_k:
+  - 32
+  - 64
+  - 128
+  group_m:
+  - 1
+  - 4
+  stage_shared:
+  - 0
+  loop_stages:
+  - 1
+  - 2
+  - 3
+  wrap_m:
+  - false
+  - true
+  matrix_instr_nonkdim:
+  - 16
+  - 32
+  sched_latency:
+  - none
+- gen: true
+  param_map:
+    META:
+      BLOCK_M: block_m
+      BLOCK_N: block_n
+      BLOCK_K: block_k
+      GROUP_M: group_m
+      STAGE_SHARED: stage_shared
+      UNROLL: unroll
+      LOOP_STAGES: loop_stages
+      WRAP_M: wrap_m
+      matrix_instr_nonkdim: matrix_instr_nonkdim
+      sched_latency: sched_latency
+    num_warps: warps
+    num_stages: loop_stages
+  unroll:
+  - 1
+  warps:
+  - 4
+  - 8
+  block_m:
+  - 128
+  block_n:
+  - 256
+  block_k:
+  - 32
+  - 64
+  - 128
+  group_m:
+  - 1
+  - 4
+  stage_shared:
+  - 0
+  loop_stages:
+  - 1
+  - 2
+  - 3
+  wrap_m:
+  - false
+  - true
+  matrix_instr_nonkdim:
+  - 16
+  - 32
+  sched_latency:
+  - none
+- gen: true
+  param_map:
+    META:
+      BLOCK_M: block_m
+      BLOCK_N: block_n
+      BLOCK_K: block_k
+      GROUP_M: group_m
+      STAGE_SHARED: stage_shared
+      UNROLL: unroll
+      LOOP_STAGES: loop_stages
+      WRAP_M: wrap_m
+      matrix_instr_nonkdim: matrix_instr_nonkdim
+      sched_latency: sched_latency
+    num_warps: warps
+    num_stages: loop_stages
+  unroll:
+  - 1
+  warps:
+  - 4
+  - 8
+  block_m:
+  - 256
+  block_n:
+  - 128
+  block_k:
+  - 32
+  - 64
+  - 128
+  group_m:
+  - 1
+  - 4
+  stage_shared:
+  - 0
+  loop_stages:
+  - 1
+  - 2
+  - 3
+  wrap_m:
+  - false
+  - true
+  matrix_instr_nonkdim:
+  - 16
+  - 32
+  sched_latency:
+  - none
+- gen: true
+  param_map:
+    META:
+      BLOCK_M: block_m
+      BLOCK_N: block_n
+      BLOCK_K: block_k
+      GROUP_M: group_m
+      STAGE_SHARED: stage_shared
+      UNROLL: unroll
+      LOOP_STAGES: loop_stages
+      WRAP_M: wrap_m
+      sched_latency: sched_latency
+      matrix_instr_nonkdim: matrix_instr_nonkdim
+    num_warps: warps
+    num_stages: loop_stages
+  unroll:
+  - 1
+  - 2
+  warps:
+  - 1
+  - 4
+  block_m:
+  - 64
+  - 128
+  block_n:
+  - 64
+  - 128
+  - 256
+  block_k:
+  - 32
+  - 64
+  group_m:
+  - 1
+  - 4
+  stage_shared:
+  - 0
+  - 3
+  loop_stages:
+  - 1
+  wrap_m:
+  - false
+  sched_latency:
+  - none
+  matrix_instr_nonkdim:
+  - 0
+- gen: true
+  param_map:
+    META:
+      BLOCK_M: block_m
+      BLOCK_N: block_n
+      BLOCK_K: block_k
+      GROUP_M: group_m
+      STAGE_SHARED: stage_shared
+      UNROLL: unroll
+      LOOP_STAGES: loop_stages
+      WRAP_M: wrap_m
+      matrix_instr_nonkdim: matrix_instr_nonkdim
+      sched_latency: sched_latency
+    num_warps: warps
+    num_stages: loop_stages
+  block_m:
+  - 32
+  - 64
+  - 128
+  block_n:
+  - 64
+  - 128
+  - 256
+  block_k:
+  - 256
+  warps:
+  - 2
+  - 4
+  - 8
+  unroll:
+  - 1
+  group_m:
+  - 1
+  - 4
+  stage_shared:
+  - 0
+  loop_stages:
+  - 1
+  wrap_m:
+  - false
+  matrix_instr_nonkdim:
+  - 0
+  - 16
+  - 32
+  sched_latency:
+  - none
+- gen: true
+  param_map:
+    META:
+      BLOCK_M: block_m
+      BLOCK_N: block_n
+      BLOCK_K: block_k
+      GROUP_M: group_m
+      STAGE_SHARED: stage_shared
+      UNROLL: unroll
+      LOOP_STAGES: loop_stages
+      WRAP_M: wrap_m
+      matrix_instr_nonkdim: matrix_instr_nonkdim
+      sched_latency: sched_latency
+    num_warps: warps
+    num_stages: loop_stages
+  block_m:
+  - 64
+  - 128
+  block_n:
+  - 128
+  - 256
+  block_k:
+  - 32
+  - 64
+  warps:
+  - 2
+  - 4
+  unroll:
+  - 4
+  - 8
+  group_m:
+  - 1
+  - 4
+  stage_shared:
+  - 0
+  loop_stages:
+  - 1
+  wrap_m:
+  - false
+  matrix_instr_nonkdim:
+  - 0
+  - 16
+  - 32
+  sched_latency:
+  - none
+
+baddbmm_splitk:
+- gen: true
+  param_map:
+    META:
+      BLOCK_M: block_m
+      BLOCK_N: block_n
+      BLOCK_K: block_k
+      GROUP_M: group_m
+      STAGE_SHARED: stage_shared
+      UNROLL: unroll
+      LOOP_STAGES: loop_stages
+      WRAP_M: wrap_m
+      SPLIT_K: split_k
+      matrix_instr_nonkdim: matrix_instr_nonkdim
+      sched_latency: sched_latency
+    num_warps: warps
+    num_stages: loop_stages
+  unroll:
+  - 1
+  warps:
+  - 4
+  block_m:
+  - 32
+  block_n:
+  - 64
+  block_k:
+  - 32
+  - 64
+  - 128
+  group_m:
+  - 1
+  stage_shared:
+  - 0
+  loop_stages:
+  - 1
+  - 2
+  wrap_m:
+  - false
+  - true
+  split_k:
+  - 1
+  - 2
+  - 4
+  - 8
+  matrix_instr_nonkdim:
+  - 16
+  - 32
+  sched_latency:
+  - none
+- gen: true
+  param_map:
+    META:
+      BLOCK_M: block_m
+      BLOCK_N: block_n
+      BLOCK_K: block_k
+      GROUP_M: group_m
+      STAGE_SHARED: stage_shared
+      UNROLL: unroll
+      LOOP_STAGES: loop_stages
+      WRAP_M: wrap_m
+      SPLIT_K: split_k
+      matrix_instr_nonkdim: matrix_instr_nonkdim
+      sched_latency: sched_latency
+    num_warps: warps
+    num_stages: loop_stages
+  unroll:
+  - 1
+  warps:
+  - 4
+  block_m:
+  - 64
+  block_n:
+  - 64
+  block_k:
+  - 32
+  - 64
+  - 128
+  group_m:
+  - 1
+  stage_shared:
+  - 0
+  loop_stages:
+  - 1
+  - 2
+  wrap_m:
+  - false
+  - true
+  split_k:
+  - 1
+  - 2
+  - 4
+  - 8
+  matrix_instr_nonkdim:
+  - 16
+  - 32
+  sched_latency:
+  - none
+- gen: true
+  param_map:
+    META:
+      BLOCK_M: block_m
+      BLOCK_N: block_n
+      BLOCK_K: block_k
+      GROUP_M: group_m
+      STAGE_SHARED: stage_shared
+      UNROLL: unroll
+      LOOP_STAGES: loop_stages
+      WRAP_M: wrap_m
+      SPLIT_K: split_k
+      matrix_instr_nonkdim: matrix_instr_nonkdim
+      sched_latency: sched_latency
+    num_warps: warps
+    num_stages: loop_stages
+  unroll:
+  - 1
+  warps:
+  - 4
+  block_m:
+  - 64
+  block_n:
+  - 128
+  block_k:
+  - 32
+  - 64
+  - 128
+  group_m:
+  - 1
+  stage_shared:
+  - 0
+  loop_stages:
+  - 1
+  - 2
+  wrap_m:
+  - false
+  - true
+  split_k:
+  - 1
+  - 2
+  - 4
+  - 8
+  matrix_instr_nonkdim:
+  - 16
+  - 32
+  sched_latency:
+  - none
+- gen: true
+  param_map:
+    META:
+      BLOCK_M: block_m
+      BLOCK_N: block_n
+      BLOCK_K: block_k
+      GROUP_M: group_m
+      STAGE_SHARED: stage_shared
+      UNROLL: unroll
+      LOOP_STAGES: loop_stages
+      WRAP_M: wrap_m
+      SPLIT_K: split_k
+      matrix_instr_nonkdim: matrix_instr_nonkdim
+      sched_latency: sched_latency
+    num_warps: warps
+    num_stages: loop_stages
+  unroll:
+  - 1
+  warps:
+  - 4
+  block_m:
+  - 128
+  block_n:
+  - 128
+  block_k:
+  - 32
+  - 64
+  - 128
+  group_m:
+  - 1
+  stage_shared:
+  - 0
+  loop_stages:
+  - 1
+  - 2
+  wrap_m:
+  - false
+  - true
+  split_k:
+  - 1
+  - 2
+  - 4
+  - 8
+  matrix_instr_nonkdim:
+  - 16
+  - 32
+  sched_latency:
+  - none
+- gen: true
+  param_map:
+    META:
+      BLOCK_M: block_m
+      BLOCK_N: block_n
+      BLOCK_K: block_k
+      GROUP_M: group_m
+      STAGE_SHARED: stage_shared
+      UNROLL: unroll
+      SPLIT_K: split_k
+      sched_latency: sched_latency
+      matrix_instr_nonkdim: matrix_instr_nonkdim
+      LOOP_STAGES: loop_stages
+      WRAP_M: wrap_m
+    num_warps: warps
+    num_stages: pipeline
+  unroll:
+  - 1
+  pipeline:
+  - 1
+  warps:
+  - 4
+  block_m:
+  - 64
+  block_n:
+  - 128
+  block_k:
+  - 64
+  group_m:
+  - 1
+  stage_shared:
+  - 3
+  split_k:
+  - 2
+  sched_latency:
+  - none
+  matrix_instr_nonkdim:
+  - 0
+  loop_stages:
+  - 1
+  wrap_m:
+  - false
+
+baddbmm_gemv:
+- gen: true
+  param_map:
+    META:
+      BLOCK_N: block_n
+      BLOCK_K: block_k
+    num_warps: warps
+    num_stages: stages
+  block_n:
+  - 1
+  - 2
+  - 4
+  - 8
+  - 16
+  - 32
+  - 64
+  - 128
+  block_k:
+  - 32
+  - 64
+  - 128
+  - 256
+  stages:
+  - 1
+  warps:
+  - 1
+  - 2
+  - 4
+  - 8
+
+baddbmm_rect:
+- gen: true
+  param_map:
+    META:
+      BLOCK_M: block_m
+      BLOCK_N: block_n
+      BLOCK_K: block_k
+      GROUP_M: group_m
+      STAGE_SHARED: stage_shared
+      UNROLL: unroll
+      LOOP_STAGES: loop_stages
+      WRAP_M: wrap_m
+      matrix_instr_nonkdim: matrix_instr_nonkdim
+      TRANSPOSE_NM: transpose_nm
+      sched_latency: sched_latency
+    num_warps: warps
+    num_stages: loop_stages
+  unroll:
+  - 1
+  warps:
+  - 4
+  - 8
+  block_m:
+  - 32
+  block_n:
+  - 64
+  block_k:
+  - 32
+  - 64
+  - 128
+  group_m:
+  - 1
+  - 4
+  stage_shared:
+  - 0
+  loop_stages:
+  - 1
+  - 2
+  - 3
+  wrap_m:
+  - false
+  - true
+  matrix_instr_nonkdim:
+  - 16
+  - 32
+  transpose_nm:
+  - false
+  - true
+  sched_latency:
+  - none
+- gen: true
+  param_map:
+    META:
+      BLOCK_M: block_m
+      BLOCK_N: block_n
+      BLOCK_K: block_k
+      GROUP_M: group_m
+      STAGE_SHARED: stage_shared
+      UNROLL: unroll
+      LOOP_STAGES: loop_stages
+      WRAP_M: wrap_m
+      matrix_instr_nonkdim: matrix_instr_nonkdim
+      TRANSPOSE_NM: transpose_nm
+      sched_latency: sched_latency
+    num_warps: warps
+    num_stages: loop_stages
+  unroll:
+  - 1
+  warps:
+  - 4
+  - 8
+  block_m:
+  - 64
+  block_n:
+  - 64
+  block_k:
+  - 32
+  - 64
+  - 128
+  group_m:
+  - 1
+  - 4
+  stage_shared:
+  - 0
+  loop_stages:
+  - 1
+  - 2
+  - 3
+  wrap_m:
+  - false
+  - true
+  matrix_instr_nonkdim:
+  - 16
+  - 32
+  transpose_nm:
+  - false
+  - true
+  sched_latency:
+  - none
+- gen: true
+  param_map:
+    META:
+      BLOCK_M: block_m
+      BLOCK_N: block_n
+      BLOCK_K: block_k
+      GROUP_M: group_m
+      STAGE_SHARED: stage_shared
+      UNROLL: unroll
+      LOOP_STAGES: loop_stages
+      WRAP_M: wrap_m
+      matrix_instr_nonkdim: matrix_instr_nonkdim
+      TRANSPOSE_NM: transpose_nm
+      sched_latency: sched_latency
+    num_warps: warps
+    num_stages: loop_stages
+  unroll:
+  - 1
+  warps:
+  - 4
+  - 8
+  block_m:
+  - 64
+  block_n:
+  - 128
+  block_k:
+  - 32
+  - 64
+  - 128
+  group_m:
+  - 1
+  - 4
+  stage_shared:
+  - 0
+  loop_stages:
+  - 1
+  - 2
+  - 3
+  wrap_m:
+  - false
+  - true
+  matrix_instr_nonkdim:
+  - 16
+  - 32
+  transpose_nm:
+  - false
+  - true
+  sched_latency:
+  - none
+- gen: true
+  param_map:
+    META:
+      BLOCK_M: block_m
+      BLOCK_N: block_n
+      BLOCK_K: block_k
+      GROUP_M: group_m
+      STAGE_SHARED: stage_shared
+      UNROLL: unroll
+      LOOP_STAGES: loop_stages
+      WRAP_M: wrap_m
+      matrix_instr_nonkdim: matrix_instr_nonkdim
+      TRANSPOSE_NM: transpose_nm
+      sched_latency: sched_latency
+    num_warps: warps
+    num_stages: loop_stages
+  unroll:
+  - 1
+  warps:
+  - 4
+  - 8
+  block_m:
+  - 128
+  block_n:
+  - 64
+  block_k:
+  - 32
+  - 64
+  - 128
+  group_m:
+  - 1
+  - 4
+  stage_shared:
+  - 0
+  loop_stages:
+  - 1
+  - 2
+  - 3
+  wrap_m:
+  - false
+  - true
+  matrix_instr_nonkdim:
+  - 16
+  - 32
+  transpose_nm:
+  - false
+  - true
+  sched_latency:
+  - none
+- gen: true
+  param_map:
+    META:
+      BLOCK_M: block_m
+      BLOCK_N: block_n
+      BLOCK_K: block_k
+      GROUP_M: group_m
+      STAGE_SHARED: stage_shared
+      UNROLL: unroll
+      LOOP_STAGES: loop_stages
+      WRAP_M: wrap_m
+      matrix_instr_nonkdim: matrix_instr_nonkdim
+      TRANSPOSE_NM: transpose_nm
+      sched_latency: sched_latency
+    num_warps: warps
+    num_stages: loop_stages
+  unroll:
+  - 1
+  warps:
+  - 4
+  - 8
+  block_m:
+  - 128
+  block_n:
+  - 128
+  block_k:
+  - 32
+  - 64
+  - 128
+  group_m:
+  - 1
+  - 4
+  stage_shared:
+  - 0
+  loop_stages:
+  - 1
+  - 2
+  - 3
+  wrap_m:
+  - false
+  - true
+  matrix_instr_nonkdim:
+  - 16
+  - 32
+  transpose_nm:
+  - false
+  - true
+  sched_latency:
+  - none
+- gen: true
+  param_map:
+    META:
+      BLOCK_M: block_m
+      BLOCK_N: block_n
+      BLOCK_K: block_k
+      GROUP_M: group_m
+      STAGE_SHARED: stage_shared
+      UNROLL: unroll
+      LOOP_STAGES: loop_stages
+      WRAP_M: wrap_m
+      matrix_instr_nonkdim: matrix_instr_nonkdim
+      TRANSPOSE_NM: transpose_nm
+      sched_latency: sched_latency
+    num_warps: warps
+    num_stages: loop_stages
+  unroll:
+  - 1
+  warps:
+  - 4
+  - 8
+  block_m:
+  - 128
+  block_n:
+  - 256
+  block_k:
+  - 32
+  - 64
+  - 128
+  group_m:
+  - 1
+  - 4
+  stage_shared:
+  - 0
+  loop_stages:
+  - 1
+  - 2
+  - 3
+  wrap_m:
+  - false
+  - true
+  matrix_instr_nonkdim:
+  - 16
+  - 32
+  transpose_nm:
+  - false
+  - true
+  sched_latency:
+  - none
+- gen: true
+  param_map:
+    META:
+      BLOCK_M: block_m
+      BLOCK_N: block_n
+      BLOCK_K: block_k
+      GROUP_M: group_m
+      STAGE_SHARED: stage_shared
+      UNROLL: unroll
+      LOOP_STAGES: loop_stages
+      WRAP_M: wrap_m
+      matrix_instr_nonkdim: matrix_instr_nonkdim
+      TRANSPOSE_NM: transpose_nm
+      sched_latency: sched_latency
+    num_warps: warps
+    num_stages: loop_stages
+  unroll:
+  - 1
+  warps:
+  - 4
+  - 8
+  block_m:
+  - 256
+  block_n:
+  - 128
+  block_k:
+  - 32
+  - 64
+  - 128
+  group_m:
+  - 1
+  - 4
+  stage_shared:
+  - 0
+  loop_stages:
+  - 1
+  - 2
+  - 3
+  wrap_m:
+  - false
+  - true
+  matrix_instr_nonkdim:
+  - 16
+  - 32
+  transpose_nm:
+  - false
+  - true
+  sched_latency:
+  - none
+- gen: true
+  param_map:
+    META:
+      BLOCK_M: block_m
+      BLOCK_N: block_n
+      BLOCK_K: block_k
+      GROUP_M: group_m
+      STAGE_SHARED: stage_shared
+      UNROLL: unroll
+      LOOP_STAGES: loop_stages
+      WRAP_M: wrap_m
+      sched_latency: sched_latency
+      TRANSPOSE_NM: transpose_nm
+      matrix_instr_nonkdim: matrix_instr_nonkdim
+    num_warps: warps
+    num_stages: loop_stages
+  unroll:
+  - 1
+  - 2
+  warps:
+  - 1
+  - 4
+  block_m:
+  - 64
+  - 128
+  block_n:
+  - 64
+  - 128
+  - 256
+  block_k:
+  - 32
+  - 64
+  group_m:
+  - 1
+  - 4
+  stage_shared:
+  - 0
+  - 3
+  loop_stages:
+  - 1
+  wrap_m:
+  - false
+  sched_latency:
+  - none
+  transpose_nm:
+  - false
+  - true
+  matrix_instr_nonkdim:
+  - 0
+
+baddbmm_packed:
+- gen: true
+  param_map:
+    META:
+      BLOCK_M: block_m
+      BLOCK_N: block_n
+      BLOCK_K: block_k
+      GROUP_M: group_m
+      QUADRANT: quadrant
+      UNROLL: unroll
+      LOOP_STAGES: loop_stages
+      matrix_instr_nonkdim: matrix_instr_nonkdim
+      PREFETCH: prefetch
+      sched_latency: sched_latency
+    num_warps: warps
+    num_stages: loop_stages
+  block_m:
+  - 64
+  block_n:
+  - 128
+  block_k:
+  - 32
+  - 64
+  group_m:
+  - 1
+  - 4
+  - 8
+  quadrant:
+  - false
+  unroll:
+  - 1
+  - 2
+  - 4
+  loop_stages:
+  - 1
+  - 2
+  matrix_instr_nonkdim:
+  - 16
+  - 32
+  warps:
+  - 4
+  - 8
+  prefetch:
+  - false
+  sched_latency:
+  - none
+- gen: true
+  param_map:
+    META:
+      BLOCK_M: block_m
+      BLOCK_N: block_n
+      BLOCK_K: block_k
+      GROUP_M: group_m
+      QUADRANT: quadrant
+      UNROLL: unroll
+      LOOP_STAGES: loop_stages
+      matrix_instr_nonkdim: matrix_instr_nonkdim
+      PREFETCH: prefetch
+      sched_latency: sched_latency
+    num_warps: warps
+    num_stages: loop_stages
+  block_m:
+  - 128
+  block_n:
+  - 64
+  block_k:
+  - 32
+  - 64
+  group_m:
+  - 1
+  - 4
+  - 8
+  quadrant:
+  - false
+  unroll:
+  - 1
+  - 2
+  - 4
+  loop_stages:
+  - 1
+  - 2
+  matrix_instr_nonkdim:
+  - 16
+  - 32
+  warps:
+  - 4
+  - 8
+  prefetch:
+  - false
+  sched_latency:
+  - none
+- gen: true
+  param_map:
+    META:
+      BLOCK_M: block_m
+      BLOCK_N: block_n
+      BLOCK_K: block_k
+      GROUP_M: group_m
+      QUADRANT: quadrant
+      UNROLL: unroll
+      LOOP_STAGES: loop_stages
+      matrix_instr_nonkdim: matrix_instr_nonkdim
+      PREFETCH: prefetch
+      sched_latency: sched_latency
+    num_warps: warps
+    num_stages: loop_stages
+  block_m:
+  - 128
+  block_n:
+  - 128
+  block_k:
+  - 32
+  - 64
+  group_m:
+  - 1
+  - 4
+  - 8
+  quadrant:
+  - false
+  unroll:
+  - 1
+  - 2
+  - 4
+  loop_stages:
+  - 1
+  - 2
+  matrix_instr_nonkdim:
+  - 16
+  - 32
+  warps:
+  - 4
+  - 8
+  prefetch:
+  - false
+  sched_latency:
+  - none
+- gen: true
+  param_map:
+    META:
+      BLOCK_M: block_m
+      BLOCK_N: block_n
+      BLOCK_K: block_k
+      GROUP_M: group_m
+      QUADRANT: quadrant
+      UNROLL: unroll
+      LOOP_STAGES: loop_stages
+      matrix_instr_nonkdim: matrix_instr_nonkdim
+      PREFETCH: prefetch
+      sched_latency: sched_latency
+    num_warps: warps
+    num_stages: loop_stages
+  block_m:
+  - 128
+  block_n:
+  - 256
+  block_k:
+  - 32
+  - 64
+  group_m:
+  - 1
+  - 4
+  - 8
+  quadrant:
+  - false
+  unroll:
+  - 1
+  - 2
+  - 4
+  loop_stages:
+  - 1
+  - 2
+  matrix_instr_nonkdim:
+  - 16
+  - 32
+  warps:
+  - 4
+  - 8
+  prefetch:
+  - false
+  sched_latency:
+  - none
+- gen: true
+  param_map:
+    META:
+      BLOCK_M: block_m
+      BLOCK_N: block_n
+      BLOCK_K: block_k
+      GROUP_M: group_m
+      QUADRANT: quadrant
+      UNROLL: unroll
+      LOOP_STAGES: loop_stages
+      matrix_instr_nonkdim: matrix_instr_nonkdim
+      PREFETCH: prefetch
+      sched_latency: sched_latency
+    num_warps: warps
+    num_stages: loop_stages
+  block_m:
+  - 256
+  block_n:
+  - 128
+  block_k:
+  - 32
+  - 64
+  group_m:
+  - 1
+  - 4
+  - 8
+  quadrant:
+  - false
+  unroll:
+  - 1
+  - 2
+  - 4
+  loop_stages:
+  - 1
+  - 2
+  matrix_instr_nonkdim:
+  - 16
+  - 32
+  warps:
+  - 4
+  - 8
+  prefetch:
+  - false
+  sched_latency:
+  - none
+- gen: true
+  param_map:
+    META:
+      BLOCK_M: block_m
+      BLOCK_N: block_n
+      BLOCK_K: block_k
+      GROUP_M: group_m
+      QUADRANT: quadrant
+      UNROLL: unroll
+      LOOP_STAGES: loop_stages
+      matrix_instr_nonkdim: matrix_instr_nonkdim
+      PREFETCH: prefetch
+      sched_latency: sched_latency
+    num_warps: warps
+    num_stages: loop_stages
+  block_m:
+  - 128
+  block_n:
+  - 128
+  block_k:
+  - 32
+  - 64
+  group_m:
+  - 1
+  - 4
+  - 8
+  quadrant:
+  - true
+  unroll:
+  - 1
+  - 2
+  - 4
+  loop_stages:
+  - 1
+  - 2
+  matrix_instr_nonkdim:
+  - 16
+  - 32
+  warps:
+  - 4
+  - 8
+  prefetch:
+  - false
+  sched_latency:
+  - none
+- gen: true
+  param_map:
+    META:
+      BLOCK_M: block_m
+      BLOCK_N: block_n
+      BLOCK_K: block_k
+      GROUP_M: group_m
+      QUADRANT: quadrant
+      UNROLL: unroll
+      LOOP_STAGES: loop_stages
+      matrix_instr_nonkdim: matrix_instr_nonkdim
+      PREFETCH: prefetch
+      sched_latency: sched_latency
+    num_warps: warps
+    num_stages: loop_stages
+  block_m:
+  - 128
+  block_n:
+  - 256
+  block_k:
+  - 32
+  - 64
+  group_m:
+  - 1
+  - 4
+  - 8
+  quadrant:
+  - true
+  unroll:
+  - 1
+  - 2
+  - 4
+  loop_stages:
+  - 1
+  - 2
+  matrix_instr_nonkdim:
+  - 16
+  - 32
+  warps:
+  - 4
+  - 8
+  prefetch:
+  - false
+  sched_latency:
+  - none
+- gen: true
+  param_map:
+    META:
+      BLOCK_M: block_m
+      BLOCK_N: block_n
+      BLOCK_K: block_k
+      GROUP_M: group_m
+      QUADRANT: quadrant
+      UNROLL: unroll
+      LOOP_STAGES: loop_stages
+      matrix_instr_nonkdim: matrix_instr_nonkdim
+      PREFETCH: prefetch
+      sched_latency: sched_latency
+    num_warps: warps
+    num_stages: loop_stages
+  block_m:
+  - 256
+  block_n:
+  - 128
+  block_k:
+  - 32
+  - 64
+  group_m:
+  - 1
+  - 4
+  - 8
+  quadrant:
+  - true
+  unroll:
+  - 1
+  - 2
+  - 4
+  loop_stages:
+  - 1
+  - 2
+  matrix_instr_nonkdim:
+  - 16
+  - 32
+  warps:
+  - 4
+  - 8
+  prefetch:
+  - false
+  sched_latency:
+  - none
+- gen: true
+  param_map:
+    META:
+      BLOCK_M: block_m
+      BLOCK_N: block_n
+      BLOCK_K: block_k
+      GROUP_M: group_m
+      QUADRANT: quadrant
+      UNROLL: unroll
+      LOOP_STAGES: loop_stages
+      matrix_instr_nonkdim: matrix_instr_nonkdim
+      PREFETCH: prefetch
+      sched_latency: sched_latency
+    num_warps: warps
+    num_stages: loop_stages
+  block_m:
+  - 256
+  block_n:
+  - 256
+  block_k:
+  - 32
+  - 64
+  group_m:
+  - 1
+  - 4
+  - 8
+  quadrant:
+  - true
+  unroll:
+  - 1
+  - 2
+  - 4
+  loop_stages:
+  - 1
+  - 2
+  matrix_instr_nonkdim:
+  - 16
+  - 32
+  warps:
+  - 4
+  - 8
+  prefetch:
+  - false
+  sched_latency:
+  - none
+
+baddbmm_bf16_packed:
+- gen: true
+  param_map:
+    META:
+      BLOCK_M: block_m
+      BLOCK_N: block_n
+      BLOCK_K: block_k
+      GROUP_M: group_m
+      QUADRANT: quadrant
+      UNROLL: unroll
+      LOOP_STAGES: loop_stages
+      PREFETCH: prefetch
+      matrix_instr_nonkdim: matrix_instr_nonkdim
+      sched_latency: sched_latency
+    num_warps: warps
+    num_stages: loop_stages
+  block_m:
+  - 64
+  block_n:
+  - 128
+  block_k:
+  - 32
+  - 64
+  - 128
+  group_m:
+  - 1
+  - 4
+  - 8
+  quadrant:
+  - 0
+  - 2
+  - 3
+  unroll:
+  - 1
+  - 4
+  loop_stages:
+  - 1
+  - 2
+  prefetch:
+  - false
+  - true
+  matrix_instr_nonkdim:
+  - 16
+  warps:
+  - 4
+  - 8
+  sched_latency:
+  - none
+- gen: true
+  param_map:
+    META:
+      BLOCK_M: block_m
+      BLOCK_N: block_n
+      BLOCK_K: block_k
+      GROUP_M: group_m
+      QUADRANT: quadrant
+      UNROLL: unroll
+      LOOP_STAGES: loop_stages
+      PREFETCH: prefetch
+      matrix_instr_nonkdim: matrix_instr_nonkdim
+      sched_latency: sched_latency
+    num_warps: warps
+    num_stages: loop_stages
+  block_m:
+  - 128
+  block_n:
+  - 64
+  block_k:
+  - 32
+  - 64
+  - 128
+  group_m:
+  - 1
+  - 4
+  - 8
+  quadrant:
+  - 0
+  - 2
+  - 3
+  unroll:
+  - 1
+  - 4
+  loop_stages:
+  - 1
+  - 2
+  prefetch:
+  - false
+  - true
+  matrix_instr_nonkdim:
+  - 16
+  warps:
+  - 4
+  - 8
+  sched_latency:
+  - none
+- gen: true
+  param_map:
+    META:
+      BLOCK_M: block_m
+      BLOCK_N: block_n
+      BLOCK_K: block_k
+      GROUP_M: group_m
+      QUADRANT: quadrant
+      UNROLL: unroll
+      LOOP_STAGES: loop_stages
+      PREFETCH: prefetch
+      matrix_instr_nonkdim: matrix_instr_nonkdim
+      sched_latency: sched_latency
+    num_warps: warps
+    num_stages: loop_stages
+  block_m:
+  - 128
+  block_n:
+  - 128
+  block_k:
+  - 32
+  - 64
+  - 128
+  group_m:
+  - 1
+  - 4
+  - 8
+  quadrant:
+  - 0
+  - 1
+  - 2
+  - 3
+  unroll:
+  - 1
+  - 4
+  loop_stages:
+  - 1
+  - 2
+  prefetch:
+  - false
+  - true
+  matrix_instr_nonkdim:
+  - 16
+  warps:
+  - 4
+  - 8
+  sched_latency:
+  - none
+- gen: true
+  param_map:
+    META:
+      BLOCK_M: block_m
+      BLOCK_N: block_n
+      BLOCK_K: block_k
+      GROUP_M: group_m
+      QUADRANT: quadrant
+      UNROLL: unroll
+      LOOP_STAGES: loop_stages
+      PREFETCH: prefetch
+      matrix_instr_nonkdim: matrix_instr_nonkdim
+      sched_latency: sched_latency
+    num_warps: warps
+    num_stages: loop_stages
+  block_m:
+  - 128
+  block_n:
+  - 256
+  block_k:
+  - 32
+  - 64
+  - 128
+  group_m:
+  - 1
+  - 4
+  - 8
+  quadrant:
+  - 0
+  - 1
+  - 2
+  - 3
+  unroll:
+  - 1
+  - 4
+  loop_stages:
+  - 1
+  - 2
+  prefetch:
+  - false
+  - true
+  matrix_instr_nonkdim:
+  - 16
+  warps:
+  - 4
+  - 8
+  sched_latency:
+  - none
+- gen: true
+  param_map:
+    META:
+      BLOCK_M: block_m
+      BLOCK_N: block_n
+      BLOCK_K: block_k
+      GROUP_M: group_m
+      QUADRANT: quadrant
+      UNROLL: unroll
+      LOOP_STAGES: loop_stages
+      PREFETCH: prefetch
+      matrix_instr_nonkdim: matrix_instr_nonkdim
+      sched_latency: sched_latency
+    num_warps: warps
+    num_stages: loop_stages
+  block_m:
+  - 256
+  block_n:
+  - 128
+  block_k:
+  - 32
+  - 64
+  - 128
+  group_m:
+  - 1
+  - 4
+  - 8
+  quadrant:
+  - 0
+  - 1
+  - 2
+  - 3
+  unroll:
+  - 1
+  - 4
+  loop_stages:
+  - 1
+  - 2
+  prefetch:
+  - false
+  - true
+  matrix_instr_nonkdim:
+  - 16
+  warps:
+  - 4
+  - 8
+  sched_latency:
+  - none
+- gen: true
+  param_map:
+    META:
+      BLOCK_M: block_m
+      BLOCK_N: block_n
+      BLOCK_K: block_k
+      GROUP_M: group_m
+      QUADRANT: quadrant
+      UNROLL: unroll
+      LOOP_STAGES: loop_stages
+      PREFETCH: prefetch
+      matrix_instr_nonkdim: matrix_instr_nonkdim
+      sched_latency: sched_latency
+    num_warps: warps
+    num_stages: loop_stages
+  block_m:
+  - 256
+  block_n:
+  - 256
+  block_k:
+  - 32
+  - 64
+  - 128
+  group_m:
+  - 1
+  - 4
+  - 8
+  quadrant:
+  - 0
+  - 1
+  - 2
+  - 3
+  unroll:
+  - 1
+  - 4
+  loop_stages:
+  - 1
+  - 2
+  prefetch:
+  - false
+  - true
+  matrix_instr_nonkdim:
+  - 16
+  warps:
+  - 4
+  - 8
+  sched_latency:
+  - none
+- gen: true
+  param_map:
+    META:
+      BLOCK_M: block_m
+      BLOCK_N: block_n
+      BLOCK_K: block_k
+      GROUP_M: group_m
+      QUADRANT: quadrant
+      UNROLL: unroll
+      LOOP_STAGES: loop_stages
+      PREFETCH: prefetch
+      matrix_instr_nonkdim: matrix_instr_nonkdim
+      sched_latency: sched_latency
+    num_warps: warps
+    num_stages: loop_stages
+  block_m:
+  - 512
+  block_n:
+  - 128
+  block_k:
+  - 32
+  - 64
+  - 128
+  group_m:
+  - 1
+  - 4
+  - 8
+  quadrant:
+  - 0
+  - 1
+  - 2
+  - 3
+  unroll:
+  - 1
+  - 4
+  loop_stages:
+  - 1
+  - 2
+  prefetch:
+  - false
+  - true
+  matrix_instr_nonkdim:
+  - 16
+  warps:
+  - 4
+  - 8
+  sched_latency:
+  - none
+- gen: true
+  param_map:
+    META:
+      BLOCK_M: block_m
+      BLOCK_N: block_n
+      BLOCK_K: block_k
+      GROUP_M: group_m
+      QUADRANT: quadrant
+      UNROLL: unroll
+      LOOP_STAGES: loop_stages
+      PREFETCH: prefetch
+      matrix_instr_nonkdim: matrix_instr_nonkdim
+      sched_latency: sched_latency
+    num_warps: warps
+    num_stages: loop_stages
+  block_m:
+  - 128
+  block_n:
+  - 512
+  block_k:
+  - 32
+  - 64
+  - 128
+  group_m:
+  - 1
+  - 4
+  - 8
+  quadrant:
+  - 0
+  - 1
+  - 2
+  - 3
+  unroll:
+  - 1
+  - 4
+  loop_stages:
+  - 1
+  - 2
+  prefetch:
+  - false
+  - true
+  matrix_instr_nonkdim:
+  - 16
+  warps:
+  - 4
+  - 8
+  sched_latency:
+  - none
