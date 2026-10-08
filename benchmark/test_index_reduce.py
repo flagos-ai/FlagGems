@@ -74,18 +74,6 @@ class IndexReduceBenchmark(base.Benchmark):
             yield inp, dim, index, source, kwargs
 
 
-def _run_index_reduce_functional_benchmark(reduce, use_out=False):
-    suffix = "_out" if use_out else ""
-    bench = IndexReduceBenchmark(
-        op_name=f"index_reduce{suffix}",
-        torch_op=(torch.ops.aten.index_reduce.out if use_out else torch.index_reduce),
-        dtypes=consts.FLOAT_DTYPES,
-        reduce=reduce,
-        use_out=use_out,
-    )
-    bench.run()
-
-
 @pytest.mark.index_reduce_
 @_ASCEND_NATIVE_BASELINE_SKIP
 @pytest.mark.parametrize("reduce", ["prod", "mean", "amax", "amin"])
@@ -109,7 +97,13 @@ def test_index_reduce_(reduce):
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_index_reduce(reduce):
-    _run_index_reduce_functional_benchmark(reduce)
+    bench = IndexReduceBenchmark(
+        op_name="index_reduce",
+        torch_op=torch.index_reduce,
+        dtypes=consts.FLOAT_DTYPES,
+        reduce=reduce,
+    )
+    bench.run()
 
 
 @pytest.mark.index_reduce_out
@@ -119,4 +113,11 @@ def test_index_reduce(reduce):
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_index_reduce_out(reduce):
-    _run_index_reduce_functional_benchmark(reduce, use_out=True)
+    bench = IndexReduceBenchmark(
+        op_name="index_reduce_out",
+        torch_op=torch.ops.aten.index_reduce.out,
+        dtypes=consts.FLOAT_DTYPES,
+        reduce=reduce,
+        use_out=True,
+    )
+    bench.run()
