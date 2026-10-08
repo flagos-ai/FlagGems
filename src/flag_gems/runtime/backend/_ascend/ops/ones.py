@@ -52,6 +52,11 @@ def ones(size, *, dtype=None, layout=None, device=None, pin_memory=None):
 
     out = torch.empty(size, device=device, dtype=dtype)
     N = volume(size)
+    if N == 0:
+        # Nothing to fill; returning early also avoids BLOCK_SIZE == 0
+        # (next_power_of_2(0) == 0), which makes the tl.arange(0, BLOCK_SIZE)
+        # below un-buildable on the Ascend backend.
+        return out
     BLOCK_SIZE = triton.next_power_of_2(math.ceil(math.sqrt(N)))
     grid = (triton.cdiv(N, BLOCK_SIZE),)
     with torch_device_fn.device(device):
