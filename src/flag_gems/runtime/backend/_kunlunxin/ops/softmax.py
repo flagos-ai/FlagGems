@@ -1,4 +1,6 @@
+import contextlib
 import logging
+import os
 
 import torch
 import triton
@@ -673,7 +675,7 @@ def softmax_backward_kernel_inner(
 
 
 _SB_MR_MAX_N = 4096
-_SB_N_TILE_M = [(16, 64), (64, 32), (256, 16), (1024, 8), (2048, 4), (4096, 2)]
+_SB_N_TILE_M = [(16, 64), (64, 32), (256, 16), (512, 32), (1024, 16), (2048, 8), (4096, 4)]
 _SB_WIDE = 8192
 
 
@@ -814,6 +816,36 @@ def softmax_backward_kernel_tail_pass(
     tl.store(in_grad_ptr + pid * N + PREV + tno, o * (g - scale), mask=tmask)
 
 
+@contextlib.contextmanager
+def _bf16_fast_store():
+    """Enable the device-library f32->bf16 fast store just for the kernels this
+    op compiles.
+
+    XPU3 has no native bf16<->f32 convert; the default f32->bf16 store lowers to
+    a slow scatter (VecFP32ToBF16Slow -> vscatter). Setting TRITONXPU_BF16_FAST
+    makes it lower to a device-library call that stores 32 bf16 (64B) at once
+    (VecFP32ToBF16), which is order-preserving and numerically identical within
+    bf16 tolerance. Measured softmax_backward_out bf16: [4096,4096] 0.44->0.63x,
+    [64,512,512] 0.54->0.68x (op overall 0.79->0.84x).
+
+    The flag is read at Triton *compile* time (XPU LoadStore lowering) and is NOT
+    part of the JIT cache key, so it only matters while the kernel is first
+    compiled -- it is then baked into the cached binary. Scoping it here keeps it
+    off for every other op. NOTE: if a stale non-fast binary is already cached,
+    clear the Triton cache once so these kernels recompile with the flag.
+    """
+    prev = os.environ.get("TRITONXPU_BF16_FAST")
+    os.environ["TRITONXPU_BF16_FAST"] = "1"
+    try:
+        yield
+    finally:
+        if prev is None:
+            os.environ.pop("TRITONXPU_BF16_FAST", None)
+        else:
+            os.environ["TRITONXPU_BF16_FAST"] = prev
+
+
+@_bf16_fast_store()
 def _softmax_backward_launch_k1(output, grad_output, in_grad, M, N, input_dtype):
     if N <= _SB_MR_MAX_N:
         TILE_M = 4
@@ -1078,15 +1110,17 @@ def softmax_backward(grad_output, output, dim, input_dtype, grad_input=None):
             out_grad_view = grad_output.view(M, N, K).transpose(1, 2)
             out_view = output.view(M, N, K).transpose(1, 2)
             out_grad_reshaped = torch.empty(
-                (M * K, N), dtype=grad_output.dtype, device=grad_output.device
+                (M, K, N), dtype=grad_output.dtype, device=grad_output.device
             )
             out_reshaped = torch.empty(
-                (M * K, N), dtype=output.dtype, device=output.device
+                (M, K, N), dtype=output.dtype, device=output.device
             )
             if not tle_copy(out_grad_view, out_grad_reshaped):
                 torch.ops.aten._copy_from(out_grad_view, out_grad_reshaped, False)
             if not tle_copy(out_view, out_reshaped):
                 torch.ops.aten._copy_from(out_view, out_reshaped, False)
+            out_grad_reshaped = out_grad_reshaped.view(M * K, N)
+            out_reshaped = out_reshaped.view(M * K, N)
             in_grad_reshaped = torch.empty(
                 (M * K, N), dtype=in_grad.dtype, device=in_grad.device
             )
