@@ -37,8 +37,7 @@ def test_narrow(shape, dtype):
             for length in [1, dim_size // 4, dim_size // 2]:
                 if start + length <= dim_size:
                     ref_out = torch.narrow(ref_inp, dim, start, length)
-                    with flag_gems.use_gems():
-                        res_out = torch.narrow(inp, dim, start, length)
+                    res_out = flag_gems.narrow(inp, dim, start, length)
                     utils.gems_assert_equal(res_out, ref_out)
                     # narrow is a view op: output must share storage with input.
                     assert (
@@ -56,8 +55,7 @@ def test_narrow_negative_start(dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.narrow(ref_inp, 1, -8, 4)
-    with flag_gems.use_gems():
-        res_out = torch.narrow(inp, 1, -8, 4)
+    res_out = flag_gems.narrow(inp, 1, -8, 4)
     utils.gems_assert_equal(res_out, ref_out)
 
 
@@ -70,8 +68,7 @@ def test_narrow_negative_dim(dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.narrow(ref_inp, -1, 4, 16)
-    with flag_gems.use_gems():
-        res_out = torch.narrow(inp, -1, 4, 16)
+    res_out = flag_gems.narrow(inp, -1, 4, 16)
     utils.gems_assert_equal(res_out, ref_out)
 
 
@@ -85,8 +82,7 @@ def test_narrow_tensor_start(dtype):
 
     start = torch.tensor(2, device=flag_gems.device)
     ref_out = torch.narrow(ref_inp, 2, start, 8)
-    with flag_gems.use_gems():
-        res_out = torch.narrow(inp, 2, start, 8)
+    res_out = flag_gems.narrow(inp, 2, start, 8)
     utils.gems_assert_equal(res_out, ref_out)
 
 
@@ -99,8 +95,7 @@ def test_narrow_full_slice(dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.narrow(ref_inp, 0, 0, 4)
-    with flag_gems.use_gems():
-        res_out = torch.narrow(inp, 0, 0, 4)
+    res_out = flag_gems.narrow(inp, 0, 0, 4)
     utils.gems_assert_equal(res_out, ref_out)
 
 
@@ -112,6 +107,5 @@ def test_narrow_1d(dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.narrow(ref_inp, 0, 10, 20)
-    with flag_gems.use_gems():
-        res_out = torch.narrow(inp, 0, 10, 20)
+    res_out = flag_gems.narrow(inp, 0, 10, 20)
     utils.gems_assert_equal(res_out, ref_out)

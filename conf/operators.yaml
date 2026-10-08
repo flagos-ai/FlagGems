@@ -146,6 +146,18 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: _linalg_eigh
+  description: Computes the eigenvalues and eigenvectors of a symmetric or Hermitian
+    matrix.
+  for:
+  - _linalg_eigh
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: _linalg_slogdet
   description: 'Computes the sign and natural logarithm of the absolute value of the
 
@@ -4362,6 +4374,20 @@ ops:
   stages:
   - beta: '5.0'
   - stable: '5.3'
+- id: dim
+  description: 'Returns the number of dimensions (rank) of a tensor: a pure metadata
+    query independent of layout, dtype and stored data.
+
+    '
+  for:
+  - dim
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: dirichlet_grad
   description: 'Computes the reparameterized-gradient of the Dirichlet distribution
     with respect
@@ -4377,7 +4403,7 @@ ops:
   kind:
   - Math
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: dispatch_fused_moe_kernel
   description: 'Accelerates neural network training by combining token routing (dispatch/all-to-all
     communication),
@@ -4600,28 +4626,6 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.0'
-  - beta: '5.3'
-- id: dunder_or_scalar
-  description: The scalar version of `dunder_or_tensor`.
-  for:
-  - __or__.Scalar
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Math
-  stages:
-  - beta: '5.3'
-- id: dunder_or_tensor
-  description: The in-place version of bitwise or operation for tensor and scalar.
-  for:
-  - __or__.Tensor
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Math
-  stages:
   - beta: '5.3'
 - id: dyn_quant_matmul_4bit
   description: Dynamic per-row INT8 activation and signed INT4 weight matrix multiplication.
@@ -8388,6 +8392,20 @@ ops:
   - Math
   stages:
   - alpha: '5.5.0'
+- id: kl_div
+  description: |
+    Compute the Kullback-Leibler divergence loss between the input
+    (log-probabilities) and the target, supporting none/mean/sum reductions
+    and both the probability and log-space target interpretations.
+  for:
+  - kl_div
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5.0'
 - id: kron
   description: Computes the Kronecker product of `input` and `other`.
   for:
@@ -8893,6 +8911,20 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: linalg_eigh
+  description: 'Computes the eigenvalue decomposition of a symmetric (or Hermitian)
+    matrix or a batch of matrices.
+
+    '
+  for:
+  - linalg_eigh
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.4'
 - id: linalg_eigvals
   description: Computes the eigenvalues of a square matrix.
   for:
@@ -9353,6 +9385,17 @@ ops:
   - LinearAlg
   stages:
   - beta: '5.4'
+- id: linalg_pinv
+  description: Computes the Moore-Penrose pseudoinverse of a matrix via Jacobi SVD.
+  for:
+  - linalg_pinv
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.5'
 - id: linalg_polar
   description: Computes the right polar decomposition A = U @ H.
   for:
@@ -11768,10 +11811,10 @@ ops:
   for:
     - _nested_tensor_from_mask
   labels:
-    - aten
-    - KernelGen
+  - aten
+  - KernelGen
   kind:
-    - Tensor
+  - Tensor
   stages:
     - alpha: '5.5.0'
 - id: nested_tensor_from_mask_left_aligned
@@ -12370,6 +12413,29 @@ ops:
   - Tensor
   stages:
   - stable: '2.1'
+- id: or_scalar
+  description: The scalar version of `or_tensor`.
+  for:
+  - __or__.Scalar
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - beta: '5.3'
+- id: or_tensor
+  description: Computes the bitwise OR operation through the tensor dunder method
+    with tensor operands.
+  for:
+  - __or__.Tensor
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - beta: '5.3'
 - id: orgqr
   description: 'Computes the first n columns of a product of Householder matrices.
 
@@ -19032,6 +19098,25 @@ ops:
   - BLAS
   stages:
   - alpha: '5.3'
+- id: weight_int4pack_mm
+  description: 'Int4 packed weight matrix multiplication. Computes C = A @ dequant(W).T
+
+    where W is a byte-pair int4 packed uint8 tensor of shape (N, K//2).
+
+    Weights are pre-dequantized into float32 and then processed by a Triton
+
+    GEMM kernel.
+
+    '
+  for:
+  - _weight_int4pack_mm
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.4'
 - id: weight_int4pack_mm_with_scales_and_zeros
   description: 'Int4 quantized matrix multiplication with separate scales and zeros.
     Computes
