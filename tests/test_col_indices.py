@@ -182,9 +182,9 @@ def test_accuracy_col_indices_dispatch_sentinel():
     try:
         csr = _make_csr((3, 5), nnz=4, seed=3)
         flag_gems.col_indices(csr)
-        assert calls["count"] > 0, (
-            "flag_gems.col_indices did not reach the registered implementation"
-        )
+        assert (
+            calls["count"] > 0
+        ), "flag_gems.col_indices did not reach the registered implementation"
     finally:
         flag_gems.col_indices = original_impl
     utils.gems_assert_equal(
