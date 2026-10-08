@@ -805,7 +805,7 @@ def mul_complex_broadcast_func(a, b, out=None):
 
 
 def mul(A, B, *, out=None):
-    logger.debug("GEMS MUL")
+    logger.debug("GEMS_HYGON MUL")
     if isinstance(A, torch.Tensor) or isinstance(B, torch.Tensor):
         if (
             (isinstance(A, torch.Tensor) and A.is_complex())
@@ -819,7 +819,7 @@ def mul(A, B, *, out=None):
 
 
 def mul_(A, B):
-    logger.debug("GEMS MUL_")
+    logger.debug("GEMS_HYGON MUL_")
     if not isinstance(A, torch.Tensor):
         raise TypeError("mul_ expects the first argument to be a tensor")
     dtype = _result_dtype(A, B)

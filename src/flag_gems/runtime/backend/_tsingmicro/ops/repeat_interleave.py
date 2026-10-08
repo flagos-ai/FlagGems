@@ -56,7 +56,7 @@ def _compute_output_numel(inp_shape, repeats, dim):
 
 
 def _repeat_interleave_self_int_impl(inp, repeats, dim=None, *, output_size=None):
-    logger.debug("GEMS TSINGMICRO REPEAT_INTERLEAVE_SELF_INT")
+    logger.debug("GEMS_TSINGMICRO REPEAT_INTERLEAVE_SELF_INT")
     if dim is None:
         inp = inp.flatten()
         dim = 0
@@ -120,7 +120,7 @@ def repeat_interleave_self_int(inp, repeats, dim=None, *, output_size=None):
 
 
 def repeat_interleave_self_tensor(inp, repeats, dim=None, *, output_size=None):
-    logger.debug("GEMS TSINGMICRO REPEAT_INTERLEAVE_SELF_TENSOR")
+    logger.debug("GEMS_TSINGMICRO REPEAT_INTERLEAVE_SELF_TENSOR")
 
     if repeats.numel() == 0:
         return inp.clone()

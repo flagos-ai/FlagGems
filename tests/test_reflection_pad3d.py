@@ -47,8 +47,7 @@ def test_reflection_pad3d(shape, dtype, padding):
     ref_x = utils.to_reference(x, True)
     ref_out = torch.ops.aten.reflection_pad3d(ref_x, padding)
 
-    with flag_gems.use_gems():
-        act_out = flag_gems.reflection_pad3d(x, padding)
+    act_out = flag_gems.reflection_pad3d(x, padding)
 
     utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
 
@@ -70,8 +69,7 @@ def test_reflection_pad3d_list_padding(padding):
     ref_x = utils.to_reference(x.clone())
     ref_out = torch.ops.aten.reflection_pad3d(ref_x, padding)
 
-    with flag_gems.use_gems():
-        act_out = flag_gems.reflection_pad3d(x, padding)
+    act_out = flag_gems.reflection_pad3d(x, padding)
 
     utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
 
@@ -87,8 +85,7 @@ def test_reflection_pad3d_empty_padding():
     ref_x = utils.to_reference(x.clone())
     ref_out = torch.ops.aten.reflection_pad3d(ref_x, padding)
 
-    with flag_gems.use_gems():
-        act_out = flag_gems.reflection_pad3d(x, padding)
+    act_out = flag_gems.reflection_pad3d(x, padding)
 
     utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
 
@@ -110,8 +107,7 @@ def test_reflection_pad3d_4d_input(padding):
     ref_x = utils.to_reference(x.clone())
     ref_out = torch.ops.aten.reflection_pad3d(ref_x, padding)
 
-    with flag_gems.use_gems():
-        act_out = flag_gems.reflection_pad3d(x, padding)
+    act_out = flag_gems.reflection_pad3d(x, padding)
 
     utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
 
@@ -139,7 +135,6 @@ def test_reflection_pad3d_out(shape, dtype, padding):
     ref_out = torch.ops.aten.reflection_pad3d(ref_x, padding)
 
     out = torch.empty(ref_out.shape, dtype=dtype, device=flag_gems.device)
-    with flag_gems.use_gems():
-        flag_gems.reflection_pad3d_out(x, padding, out)
+    flag_gems.reflection_pad3d_out(x, padding, out)
 
     utils.gems_assert_close(out, ref_out, dtype, equal_nan=True)

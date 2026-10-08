@@ -43,8 +43,8 @@ def test_or_tensor(shape, dtype, caplog):
     ref_inp2 = utils.to_reference(inp2)
 
     ref_out = torch.ops.aten.__or__.Tensor(ref_inp1, ref_inp2)
-    with caplog.at_level("DEBUG", logger="flag_gems.ops.or_tensor"):
+    with caplog.at_level("DEBUG", logger=utils.gems_log_logger(flag_gems.or_tensor)):
         res_out = flag_gems.or_tensor(inp1, inp2)
 
-    assert "GEMS OR TENSOR" in caplog.text
+    assert f"{utils.gems_log_prefix(flag_gems.or_tensor)} OR_TENSOR" in caplog.text
     utils.gems_assert_equal(res_out, ref_out)

@@ -332,7 +332,7 @@ def rnn_relu_kernel_forward(
     batch_first,
 ):
     """Launch the optimized Triton RNN ReLU kernel after validation."""
-    logger.debug("GEMS RNN_RELU FORWARD KERNEL LAUNCH")
+    logger.debug("GEMS_HYGON RNN_RELU_FORWARD_KERNEL_LAUNCH")
 
     if num_layers > 1 or bidirectional:
         raise NotImplementedError(
@@ -481,7 +481,7 @@ class RnnReluFunction(torch.autograd.Function):
         bidirectional,
         batch_first,
     ):
-        logger.debug("GEMS RNN_RELU FUNCTION FORWARD")
+        logger.debug("GEMS_HYGON RNN_RELU_FUNCTION_FORWARD")
 
         if num_layers > 1 or bidirectional or (dropout > 0 and train):
             raise NotImplementedError(
@@ -509,7 +509,7 @@ class RnnReluFunction(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_output, grad_hidden):
-        logger.debug("GEMS RNN_RELU FUNCTION BACKWARD")
+        logger.debug("GEMS_HYGON RNN_RELU_FUNCTION_BACKWARD")
 
         input, hx = ctx.saved_tensors
         params = ctx.params
@@ -606,7 +606,7 @@ def rnn_relu(
     batch_first=False,
 ):
     """Applies a single-layer unidirectional Elman RNN with ReLU."""
-    logger.debug("GEMS RNN_RELU")
+    logger.debug("GEMS_HYGON RNN_RELU")
 
     if params is None:
         raise ValueError("params must be provided")

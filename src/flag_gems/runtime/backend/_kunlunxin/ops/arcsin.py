@@ -196,5 +196,5 @@ def arcsin_(x):
 
 
 def arcsin_out(x, *, out=None):
-    logger.debug("GEMS_KUNLUNXIN ARCSIN OUT")
+    logger.debug("GEMS_KUNLUNXIN ARCSIN_OUT")
     return arcsin(x, out=out)

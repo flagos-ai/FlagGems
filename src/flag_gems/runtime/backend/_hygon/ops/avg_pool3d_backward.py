@@ -255,7 +255,7 @@ def avg_pool3d_backward(
     Returns:
         Gradient with respect to the input tensor.
     """
-    logger.debug("GEMS_HYGON AVG_POOL3D BACKWARD")
+    logger.debug("GEMS_HYGON AVG_POOL3D_BACKWARD")
 
     if divisor_override is not None and divisor_override == 0:
         raise ValueError("divisor_override cannot be zero")

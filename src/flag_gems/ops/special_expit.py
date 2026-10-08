@@ -34,6 +34,6 @@ def special_expit_forward(x):
 
 
 def special_expit(A):
-    logger.debug("GEMS SPECIAL_EXPIT FORWARD")
+    logger.debug("GEMS SPECIAL_EXPIT_FORWARD")
     output = special_expit_forward(A)
     return output
