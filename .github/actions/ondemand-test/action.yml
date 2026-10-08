@@ -1,0 +1,114 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: "Run on-demand op test"
+description: >-
+  Run the accuracy/perf comparison for a single operator, upload the result
+  artifact, and post (or update) a PR comment with the report. Shared by every
+  runner in the ondemand workflow. Contains only bash and remote-action steps
+  (no local ./ refs), so it can be consumed via a fully-qualified @master ref
+  from containerized runners.
+
+inputs:
+  op:
+    description: "Operator id under test"
+    required: true
+  backend:
+    description: "FlagGems backend label (used for the artifact name and report)"
+    required: true
+  runner:
+    description: "Runner alias from the /test comment (used as the comment message-id)"
+    required: true
+  existing:
+    description: "1 if the operator already exists on master (compare mode), 0 otherwise"
+    required: true
+  github-token:
+    description: "Token used to post the failure comment"
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - id: run-tests
+      shell: bash
+      env:
+        EXISTING_OP: ${{ inputs.existing }}
+      run: |
+        source .venv/bin/activate
+        tools/run_tests.py --ops ${{ inputs.op }} \
+          --gpus "${AVAILABLE_GPUS}" \
+          --dump-output \
+          --output-dir results_new
+
+        if [ "$EXISTING_OP" == "0" ]; then
+          tools/psum_text --format markdown \
+            --output report.md \
+            --single \
+            results_new
+          mv results_new results
+        else
+          git checkout master
+          tools/run_tests.py --ops ${{ inputs.op }} \
+            --gpus "${AVAILABLE_GPUS}" \
+            --dump-output \
+            --output-dir results_old
+
+          # merge two data sets into one directory
+          mkdir results
+          mv results_old results/before
+          mv results_new results/after
+
+          tools/psum_text --format markdown \
+            --single \
+            --compare \
+            --output report.md \
+            results
+        fi
+
+    - id: upload-results
+      uses: actions/upload-artifact@v7.0.1
+      continue-on-error: true
+      with:
+        name: ${{ inputs.op }}-${{ inputs.backend }}
+        path: results/
+
+    - id: attach-result-link
+      if: steps.upload-results.outcome == 'success'
+      shell: bash
+      run: |
+        echo -e "\n---\n" >> report.md
+        echo -e "📎 Download the full log [here](${{ steps.upload-results.outputs.artifact-url }})" >> report.md
+
+    - id: comment
+      uses: mshick/add-pr-comment@ec328af66588ab8f77cdeb2c264f14aba45bbf59  # 3.12.0
+      with:
+        message-path: report.md
+        message-id: ${{ inputs.op }}-${{ inputs.runner }}
+        allow-repeats: True
+
+    - id: failure-report
+      if: failure()
+      uses: mshick/add-pr-comment@ec328af66588ab8f77cdeb2c264f14aba45bbf59  # 3.12.0
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+      with:
+        message: |
+          ## ❌ On-demand test failed
+
+          **Operator:** `${{ inputs.op }}`
+          **Runner:** `${{ inputs.runner }}`
+          **Backend:** ${{ inputs.backend }}
+
+          The test failed to complete. Check the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details.
+        message-id: ${{ inputs.op }}-${{ inputs.runner }}

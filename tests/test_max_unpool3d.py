@@ -32,13 +32,12 @@ def test_max_unpool3d(shape, dtype):
     ref_out = torch.nn.functional.max_unpool3d(
         ref_output, ref_indices, kernel_size=2, stride=2, output_size=shape
     )
-    with flag_gems.use_gems():
-        res_out = flag_gems.max_unpool3d(
-            output,
-            indices,
-            kernel_size=2,
-            stride=2,
-            output_size=shape[2:],  # Only D, H, W
-        )
+    res_out = flag_gems.max_unpool3d(
+        output,
+        indices,
+        kernel_size=2,
+        stride=2,
+        output_size=shape[2:],  # Only D, H, W
+    )
 
     utils.gems_assert_close(res_out, ref_out, dtype)

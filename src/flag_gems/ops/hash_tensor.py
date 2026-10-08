@@ -148,7 +148,7 @@ def hash_tensor(x, dim, keepdim=False, mode=0):
     Returns:
         Tensor with dtype uint64 containing XOR hash values
     """
-    logger.debug("GEMS HASH TENSOR")
+    logger.debug("GEMS HASH_TENSOR")
 
     dtype = x.dtype
     device = x.device

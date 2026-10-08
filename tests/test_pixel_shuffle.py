@@ -33,7 +33,6 @@ def test_pixel_shuffle(shape_factor, dtype):
     ref_input = utils.to_reference(input_tensor, True)
     ref_out = torch.ops.aten.pixel_shuffle(ref_input, upscale_factor)
 
-    with flag_gems.use_gems():
-        act_out = torch.ops.aten.pixel_shuffle(input_tensor, upscale_factor)
+    act_out = flag_gems.pixel_shuffle(input_tensor, upscale_factor)
 
     utils.gems_assert_close(act_out, ref_out, dtype=dtype)

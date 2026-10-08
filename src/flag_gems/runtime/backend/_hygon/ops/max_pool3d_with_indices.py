@@ -443,7 +443,7 @@ def max_pool3d_backward(
     ceil_mode,
 ):
     """Backward pass for 3-D max pooling."""
-    logger.debug("GEMS_HYGON MAX_POOL3D BACKWARD")
+    logger.debug("GEMS_HYGON MAX_POOL3D_BACKWARD")
     grad_output = grad_output.contiguous()
     indices = indices.contiguous()
 
