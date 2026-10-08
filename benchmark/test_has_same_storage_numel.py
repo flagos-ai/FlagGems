@@ -16,23 +16,10 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
 from . import base, consts
-
-# ``_has_same_storage_numel`` starts with an underscore, and ``pytest.mark``
-# refuses to generate a marker via attribute access for such names. Register
-# it directly on the MarkGenerator so ``@pytest.mark._has_same_storage_numel``
-# and ``-m _has_same_storage_numel`` both work.
-setattr(
-    pytest.mark,
-    "_has_same_storage_numel",
-    MarkDecorator(
-        Mark("_has_same_storage_numel", (), {}, _ispytest=True), _ispytest=True
-    ),
-)
 
 # 1-D sizes: cover small/large inputs. The op is O(1) in numel (pure storage
 # metadata read); the sweep exercises the host path across input sizes and
@@ -58,8 +45,8 @@ class HasSameStorageNumelBenchmark(base.Benchmark):
             )
 
 
-@pytest.mark._has_same_storage_numel
-def test__has_same_storage_numel():
+@pytest.mark.has_same_storage_numel
+def test_has_same_storage_numel():
     bench = HasSameStorageNumelBenchmark(
         op_name="_has_same_storage_numel",
         torch_op=torch.ops.aten._has_same_storage_numel,
