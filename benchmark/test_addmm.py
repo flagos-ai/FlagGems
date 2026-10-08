@@ -105,6 +105,44 @@ def _input_fn_dtype(b, m, n, k, dtype, device, b_column_major):
         yield bias, inp1, inp2, torch.float32
 
 
+def _native_addmm_dtype(bias, mat1, mat2, out_dtype, *, beta=1.0, alpha=1.0):
+    """Device baseline for ``aten::addmm.dtype``.
+
+    This torch build registers the ``addmm.dtype`` schema but ships no device
+    kernel for it: only Meta/Autograd kernels exist, and the CUDA/XPU dispatch
+    keys resolve to the torch_xmlir eager *fallback*
+    (``ts_eager_fallback.cpp``), so the native call raises
+    "Could not run 'aten::addmm.dtype' with arguments from the 'CPU' backend"
+    and ``latency_base`` can never be assigned.
+
+    The baseline is therefore assembled from native device ops only (never from
+    FlagGems, and always outside ``use_gems``): ordinary ``torch.addmm`` with
+    the operands kept in their own fp16/bf16 dtype -- the same tensor-core GEMM
+    the dtype overload would select -- followed by the output-dtype conversion
+    the overload performs. It is dtype sensitive (measured on this card:
+    0.707 ms fp16 vs 1.379 ms bf16 at 4096^3, a 1.95x spread), unlike a shim
+    that promotes every operand to fp32 and therefore times one and the same
+    fp32 GEMM for both dtypes.
+    """
+    return torch.addmm(
+        bias.to(mat1.dtype), mat1, mat2, beta=beta, alpha=alpha
+    ).to(out_dtype)
+
+
+def _native_addmm_dtype_out(bias, mat1, mat2, out_dtype, out, beta=1.0, alpha=1.0):
+    out.copy_(
+        _native_addmm_dtype(bias, mat1, mat2, out_dtype, beta=beta, alpha=alpha)
+    )
+    return out
+
+
+def _gems_addmm_dtype_out(bias, mat1, mat2, out_dtype, out, beta=1.0, alpha=1.0):
+    """Candidate wrapper: ``flag_gems.addmm_dtype_out`` has a keyword-only ``out``."""
+    return flag_gems.addmm_dtype_out(
+        bias, mat1, mat2, out_dtype, beta=beta, alpha=alpha, out=out
+    )
+
+
 @pytest.mark.addmm_dtype
 @pytest.mark.skipif(
     utils.SkipVersion("torch", "<2.8"),
@@ -118,7 +156,8 @@ def test_addmm_dtype(monkeypatch):
     bench = base.BlasBenchmark(
         op_name="addmm_dtype",
         input_fn=_input_fn_dtype,
-        torch_op=torch.ops.aten.addmm.dtype,
+        torch_op=_native_addmm_dtype,
+        gems_op=flag_gems.addmm_dtype,
         dtypes=consts.FP16_BF16_DTYPES,
     )
 
@@ -150,9 +189,8 @@ def test_addmm_dtype_out(monkeypatch):
     bench = base.BlasBenchmark(
         op_name="addmm_dtype_out",
         input_fn=_input_fn_dtype_out,
-        torch_op=lambda bias, mat1, mat2, out_dtype, out: torch.ops.aten.addmm.dtype_out(
-            bias, mat1, mat2, out_dtype, beta=1.0, alpha=1.0, out=out
-        ),
+        torch_op=_native_addmm_dtype_out,
+        gems_op=_gems_addmm_dtype_out,
         dtypes=consts.FP16_BF16_DTYPES,
     )
 

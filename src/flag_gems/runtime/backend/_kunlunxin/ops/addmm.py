@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import logging
+import math
 import os
 
 import torch
@@ -58,6 +59,59 @@ autotune_decorator = triton.autotune(
 # Set KLX_USE_AUTOTUNE=1 to opt back into the autotune path for tuning
 # experiments; it is known-unsound and must not be used for accuracy runs.
 KLX_USE_AUTOTUNE = os.environ.get("KLX_USE_AUTOTUNE", "0") == "1"
+
+
+@libentry()
+@triton.jit
+def _addmm_gather_2d(
+    src,
+    dst,
+    rows,
+    cols,
+    src_stride0,
+    src_stride1,
+    BLOCK: tl.constexpr,
+):
+    """Gather a logical rank-2 view into contiguous storage."""
+    pid = ext.program_id(axis=0)
+    offsets = pid.to(tl.int64) * BLOCK + tl.arange(0, BLOCK)
+    count = tl.cast(rows, tl.int64) * cols
+    mask = offsets < count
+    row = offsets // cols
+    col = offsets - row * cols
+    values = tl.load(
+        src + row * src_stride0 + col * src_stride1,
+        mask=mask,
+        other=0,
+    )
+    tl.store(dst + offsets, values, mask=mask)
+
+
+@libentry()
+@triton.jit
+def _addmm_scatter_2d(
+    src,
+    dst,
+    rows,
+    cols,
+    dst_stride0,
+    dst_stride1,
+    BLOCK: tl.constexpr,
+):
+    """Scatter contiguous rank-2 storage into an arbitrary rank-2 view."""
+    pid = ext.program_id(axis=0)
+    offsets = pid.to(tl.int64) * BLOCK + tl.arange(0, BLOCK)
+    count = tl.cast(rows, tl.int64) * cols
+    mask = offsets < count
+    row = offsets // cols
+    col = offsets - row * cols
+    values = tl.load(src + offsets, mask=mask, other=0)
+    tl.store(
+        dst + row * dst_stride0 + col * dst_stride1,
+        values,
+        mask=mask,
+    )
+
 
 if not KLX_USE_AUTOTUNE:
 
@@ -207,7 +261,10 @@ def addmm_kernel(
     i_ptrs = i_ptr + stride_im * offs_cm[:, None] + stride_in * offs_cn[None, :]
 
     if EVEN:
-        if BIAS_1D:
+        if beta == 0:
+            # Beta zero must ignore bias (including NaN/Inf), matching aten::addmm.
+            accumulator = accumulator * alpha
+        elif BIAS_1D:
             bias1d = tl.load(i_ptr + stride_in * offs_cn)
             accumulator = accumulator * alpha + bias1d[None, :] * beta
         else:
@@ -216,51 +273,86 @@ def addmm_kernel(
         tl.store(c_ptrs, accumulator)
     else:
         c_mask = (offs_cm[:, None] < M) & (offs_cn[None, :] < N)
-        bias = tl.load(i_ptrs, mask=c_mask, other=0.0)
-        accumulator = accumulator * alpha + bias * beta
+        if beta == 0:
+            accumulator = accumulator * alpha
+        else:
+            bias = tl.load(i_ptrs, mask=c_mask, other=0.0)
+            accumulator = accumulator * alpha + bias * beta
         tl.store(c_ptrs, accumulator, mask=c_mask)
 
 
-def _bias_with_unit_inner_stride(bias, shape):
-    """Broadcast ``bias`` to ``shape`` while keeping its inner stride equal to 1.
+def _addmm_contiguous_2d(x):
+    """Materialize a rank-2 logical view without native contiguous/copy ops."""
+    rows, cols = x.shape
+    out = torch.empty((rows, cols), dtype=x.dtype, device=x.device)
+    if rows and cols:
+        block = 1024
+        grid = (triton.cdiv(rows * cols, block),)
+        with torch_device_fn.device(x.device):
+            _addmm_gather_2d[grid](
+                x,
+                out,
+                rows,
+                cols,
+                x.stride(0),
+                x.stride(1),
+                BLOCK=block,
+            )
+    return out
 
-    A 2D block load whose inner (N) stride is not 1 is mis-lowered on this
-    backend: the inner stride is silently treated as 1.  A bias that broadcasts
-    along N therefore reads ``bias[m + n]`` instead of ``bias[m]``, and a
-    1-element bias reads far past its own allocation (measured: fp32 (1,1) bias
-    picks up the caller's uninitialised ``out`` bytes).  Broadcasting along M
-    (``stride_im == 0``) uses a unit inner stride and stays free of charge, so
-    only the inner dimension has to be materialised.
-    """
+
+def _bias_with_unit_inner_stride(bias, shape, beta):
+    """Broadcast ``bias`` while avoiding native materialization operations."""
     b = bias.broadcast_to(shape)
+    if beta == 0:
+        return b
     if b.stride(1) != 1 and b.shape[1] > 1:
+        # The kernel's 2-D load requires a unit inner stride.  Gather one
+        # logical row when M broadcasts, then retain stride-zero broadcasting.
         if b.stride(0) == 0:
-            # A single distinct row: materialise that row only and keep the
-            # broadcast along M (strides become (0, 1), which is exact).
-            b = b[:1].contiguous().broadcast_to(shape)
+            row = _addmm_contiguous_2d(b[:1])
+            b = row.broadcast_to(shape)
         else:
-            b = b.contiguous()
+            b = _addmm_contiguous_2d(b)
     return b
 
 
-def _dest_with_unit_inner_stride(out, M, N):
-    """Pick the tensor the kernel stores into, plus its (row, column) strides.
+def _check_addmm_output(out):
+    rows, cols = out.shape
+    if not rows or not cols:
+        return
+    s0, s1 = out.stride()
+    overlap = (rows > 1 and s0 == 0) or (cols > 1 and s1 == 0)
+    if rows > 1 and cols > 1 and s0 and s1:
+        divisor = math.gcd(s0, s1)
+        overlap = overlap or (s1 // divisor < rows and s0 // divisor < cols)
+    if overlap:
+        raise RuntimeError("addmm output has internally overlapping elements")
 
-    ``tl.store`` of a 2D block whose inner (N) stride is not 1 is mis-lowered the
-    same way as the bias load: the inner stride is treated as 1, so each program
-    writes a contiguous run of N elements per row.  Measured on HEAD with
-    ``out = big[:, ::2]`` (M=65, N=64, fp32): 2080 of the 4160 ``out`` elements
-    keep their previous content while 2080 interleaved neighbour columns of the
-    base allocation are clobbered; a column-major ``out`` loses everything but
-    the first tile row (4032/4160 stale).  A masked store cannot avoid this - the
-    store is bounded by a ``memref.subview``, not by the mask - so the kernel is
-    kept on a unit inner stride and the result is placed afterwards.
-    """
+
+def _dest_with_unit_inner_stride(out, M, N, force_temp=False):
+    """Use a temporary for strided stores or storage shared with an input."""
     stride_cm, stride_cn = out.stride()
-    if stride_cn == 1 or N <= 1:
+    if not force_temp and (stride_cn == 1 or N <= 1):
         return out, stride_cm, stride_cn
     dest = torch.empty((M, N), device=out.device, dtype=out.dtype)
     return dest, dest.stride(0), dest.stride(1)
+
+
+def _scatter_addmm_result(dest, out, M, N):
+    if dest is not out and M and N:
+        block = 1024
+        grid = (triton.cdiv(M * N, block),)
+        with torch_device_fn.device(out.device):
+            _addmm_scatter_2d[grid](
+                dest,
+                out,
+                M,
+                N,
+                out.stride(0),
+                out.stride(1),
+                BLOCK=block,
+            )
 
 
 def addmm(bias, mat1, mat2, *, beta=1.0, alpha=1.0):
@@ -272,16 +364,20 @@ def addmm(bias, mat1, mat2, *, beta=1.0, alpha=1.0):
     M, K = mat1.shape
     _, N = mat2.shape
 
-    mat1 = mat1.contiguous()
+    if not mat1.is_contiguous():
+        mat1 = _addmm_contiguous_2d(mat1)
     # mat2 = mat2.contiguous()
     out = torch.empty((M, N), device=mat1.device, dtype=mat1.dtype)
-    bias = _bias_with_unit_inner_stride(bias, out.shape)
+    bias = _bias_with_unit_inner_stride(bias, out.shape, beta)
 
     block_k_choice = 256 if mat1.dtype == torch.float16 else 128
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]),
     )
-    dest, stride_cm, stride_cn = _dest_with_unit_inner_stride(out, M, N)
+    dest, stride_cm, stride_cn = _dest_with_unit_inner_stride(
+        out, M, N,
+        force_temp=any(torch._C._is_alias_of(out, x) for x in (bias, mat1, mat2)),
+    )
     with torch_device_fn.device(mat1.device):
         addmm_kernel[grid](
             mat1,
@@ -308,8 +404,7 @@ def addmm(bias, mat1, mat2, *, beta=1.0, alpha=1.0):
             # num_stages from every generated Config -> duplicate keyword.
             # KLX_USE_AUTOTUNE=0 gets stages=3 from heur_stages instead.
         )
-    if dest is not out:
-        out.copy_(dest)
+    _scatter_addmm_result(dest, out, M, N)
     return out
 
 
@@ -325,15 +420,20 @@ def addmm_out(bias, mat1, mat2, *, beta=1.0, alpha=1.0, out=None):
         out = torch.empty((M, N), device=mat1.device, dtype=mat1.dtype)
     else:
         assert out.shape == (M, N), "Incompatible output shape"
+    _check_addmm_output(out)
 
-    mat1 = mat1.contiguous()
-    bias = _bias_with_unit_inner_stride(bias, out.shape)
+    if not mat1.is_contiguous():
+        mat1 = _addmm_contiguous_2d(mat1)
+    bias = _bias_with_unit_inner_stride(bias, out.shape, beta)
 
     block_k_choice = 256 if mat1.dtype == torch.float16 else 128
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]),
     )
-    dest, stride_cm, stride_cn = _dest_with_unit_inner_stride(out, M, N)
+    dest, stride_cm, stride_cn = _dest_with_unit_inner_stride(
+        out, M, N,
+        force_temp=any(torch._C._is_alias_of(out, x) for x in (bias, mat1, mat2)),
+    )
     with torch_device_fn.device(mat1.device):
         addmm_kernel[grid](
             mat1,
@@ -360,8 +460,7 @@ def addmm_out(bias, mat1, mat2, *, beta=1.0, alpha=1.0, out=None):
             # num_stages from every generated Config -> duplicate keyword.
             # KLX_USE_AUTOTUNE=0 gets stages=3 from heur_stages instead.
         )
-    if dest is not out:
-        out.copy_(dest)
+    _scatter_addmm_result(dest, out, M, N)
     return out
 
 
@@ -400,16 +499,21 @@ def addmm_dtype_out(bias, mat1, mat2, out_dtype, *, beta=1, alpha=1, out):
         raise RuntimeError("self is not broadcastable to the result shape")
     if out.shape != (mat1.shape[0], mat2.shape[1]):
         raise RuntimeError("out has an incompatible shape")
+    _check_addmm_output(out)
 
     M, K = mat1.shape
     _, N = mat2.shape
-    mat1 = mat1.contiguous()
-    bias = _bias_with_unit_inner_stride(bias, out.shape)
+    if not mat1.is_contiguous():
+        mat1 = _addmm_contiguous_2d(mat1)
+    bias = _bias_with_unit_inner_stride(bias, out.shape, beta)
     block_k_choice = 256 if mat1.dtype == torch.float16 else 128
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]),
     )
-    dest, stride_cm, stride_cn = _dest_with_unit_inner_stride(out, M, N)
+    dest, stride_cm, stride_cn = _dest_with_unit_inner_stride(
+        out, M, N,
+        force_temp=any(torch._C._is_alias_of(out, x) for x in (bias, mat1, mat2)),
+    )
     with torch_device_fn.device(mat1.device):
         addmm_kernel[grid](
             mat1,
@@ -436,6 +540,5 @@ def addmm_dtype_out(bias, mat1, mat2, out_dtype, *, beta=1, alpha=1, out):
             # num_stages from every generated Config -> duplicate keyword.
             # KLX_USE_AUTOTUNE=0 gets stages=3 from heur_stages instead.
         )
-    if dest is not out:
-        out.copy_(dest)
+    _scatter_addmm_result(dest, out, M, N)
     return out
