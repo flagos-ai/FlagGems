@@ -138,14 +138,34 @@ jobs:
           git ls-files -z | xargs -0 -r git update-index --no-skip-worktree 2>/dev/null || true
           git reset --hard HEAD 2>/dev/null || true
           git clean -ffdx 2>/dev/null || true
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      # Checkout with up to 5 attempts, each with a hard 1-minute step timeout,
+      # to survive a hung git fetch (see test-metax). Only checkout is retried.
+      # actions/checkout is an official action resolved from the runner's
+      # _actions cache, so unlike the local ./checkout-retry it works on the
+      # klx-p800 k8s-novolume runner without the @master workaround.
+      - id: co1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        timeout-minutes: 1
         continue-on-error: true
-      # Use fully-qualified @master refs instead of local ./ paths. On the
-      # klx-p800 k8s-novolume runner, local actions are resolved by the runner
-      # against /home/runner/_work while checkout writes to the container's
-      # /__w, so ./ refs can't be found. Remote refs are fetched into the
-      # runner's _actions cache and don't depend on the workspace path.
-      - uses: flagos-ai/FlagGems/.github/actions/checkout-retry@master
+      - id: co2
+        if: steps.co1.outcome == 'failure'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        timeout-minutes: 1
+        continue-on-error: true
+      - id: co3
+        if: steps.co2.outcome == 'failure'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        timeout-minutes: 1
+        continue-on-error: true
+      - id: co4
+        if: steps.co3.outcome == 'failure'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        timeout-minutes: 1
+        continue-on-error: true
+      - id: co5
+        if: steps.co4.outcome == 'failure'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        timeout-minutes: 1
       # Do NOT use setup-flaggems here: it runs setup.sh, which builds a fresh
       # .venv and unconditionally reinstalls flagtree from backends.yaml. On the
       # runtime image the compiler and heavy deps (flagtree/torch/xmlir…) are
@@ -209,9 +229,35 @@ jobs:
         op-test-${{ inputs.backend }}-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      # Checkout with up to 5 attempts, each with a hard 1-minute step timeout.
+      # The proxy can make git fetch HANG (not fail); a hung fetch ignores git's
+      # own timeouts and the checkout-retry composite action can't bound it
+      # (composite steps don't honor timeout-minutes), so only the runner's step
+      # timeout can kill a hung fetch and let the next attempt run. Only the
+      # checkout (environment) is retried — never the op tests below.
+      - id: co1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        timeout-minutes: 1
         continue-on-error: true
-      - uses: flagos-ai/FlagGems/.github/actions/checkout-retry@master
+      - id: co2
+        if: steps.co1.outcome == 'failure'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        timeout-minutes: 1
+        continue-on-error: true
+      - id: co3
+        if: steps.co2.outcome == 'failure'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        timeout-minutes: 1
+        continue-on-error: true
+      - id: co4
+        if: steps.co3.outcome == 'failure'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        timeout-minutes: 1
+        continue-on-error: true
+      - id: co5
+        if: steps.co4.outcome == 'failure'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        timeout-minutes: 1
       # Trust the runtime image's preinstalled compiler/deps and reconcile
       # instead of running setup.sh (which rebuilds a venv and reinstalls
       # flagtree + heavy deps over the network). See test-kunlunxin.
@@ -321,9 +367,31 @@ jobs:
         op-test-${{ inputs.backend }}-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      # Checkout with up to 5 attempts, each with a hard 1-minute step timeout,
+      # to survive a hung git fetch (see test-metax). Only checkout is retried.
+      - id: co1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        timeout-minutes: 1
         continue-on-error: true
-      - uses: flagos-ai/FlagGems/.github/actions/checkout-retry@master
+      - id: co2
+        if: steps.co1.outcome == 'failure'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        timeout-minutes: 1
+        continue-on-error: true
+      - id: co3
+        if: steps.co2.outcome == 'failure'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        timeout-minutes: 1
+        continue-on-error: true
+      - id: co4
+        if: steps.co3.outcome == 'failure'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        timeout-minutes: 1
+        continue-on-error: true
+      - id: co5
+        if: steps.co4.outcome == 'failure'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        timeout-minutes: 1
       # Do NOT use setup-flaggems here: it runs setup.sh, which builds a fresh
       # .venv and reinstalls flagtree + heavy deps from the network (flaky — a
       # pip fetch timeout on fsspec already failed this job once). On the runtime
@@ -386,9 +454,31 @@ jobs:
         op-test-${{ inputs.backend }}-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      # Checkout with up to 5 attempts, each with a hard 1-minute step timeout,
+      # to survive a hung git fetch (see test-metax). Only checkout is retried.
+      - id: co1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        timeout-minutes: 1
         continue-on-error: true
-      - uses: flagos-ai/FlagGems/.github/actions/checkout-retry@master
+      - id: co2
+        if: steps.co1.outcome == 'failure'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        timeout-minutes: 1
+        continue-on-error: true
+      - id: co3
+        if: steps.co2.outcome == 'failure'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        timeout-minutes: 1
+        continue-on-error: true
+      - id: co4
+        if: steps.co3.outcome == 'failure'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        timeout-minutes: 1
+        continue-on-error: true
+      - id: co5
+        if: steps.co4.outcome == 'failure'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        timeout-minutes: 1
       # Trust the runtime image's preinstalled compiler/deps and reconcile
       # instead of running setup.sh (which rebuilds a venv and reinstalls
       # flagtree + heavy deps over the network). See test-kunlunxin.
@@ -446,9 +536,31 @@ jobs:
         op-test-${{ inputs.backend }}-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      # Checkout with up to 5 attempts, each with a hard 1-minute step timeout,
+      # to survive a hung git fetch (see test-metax). Only checkout is retried.
+      - id: co1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        timeout-minutes: 1
         continue-on-error: true
-      - uses: flagos-ai/FlagGems/.github/actions/checkout-retry@master
+      - id: co2
+        if: steps.co1.outcome == 'failure'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        timeout-minutes: 1
+        continue-on-error: true
+      - id: co3
+        if: steps.co2.outcome == 'failure'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        timeout-minutes: 1
+        continue-on-error: true
+      - id: co4
+        if: steps.co3.outcome == 'failure'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        timeout-minutes: 1
+        continue-on-error: true
+      - id: co5
+        if: steps.co4.outcome == 'failure'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        timeout-minutes: 1
       # Trust the runtime image's preinstalled compiler/deps and reconcile
       # instead of running setup.sh (which rebuilds a venv and reinstalls
       # flagtree + heavy deps over the network). See test-kunlunxin.
