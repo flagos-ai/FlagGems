@@ -112,8 +112,6 @@ def float_power_tt_fast_kernel_masked(
 # fp16/fp32 -- one vectorized kernel, no fp32 scratch, no extra widen pass.
 
 
-
-
 # Tensor ** scalar-exponent (scalar `e` passed as a runtime kernel arg).
 @triton.jit
 def float_power_ts_fast_kernel(x_ptr, e, out_ptr, BLOCK: tl.constexpr):
@@ -174,7 +172,6 @@ def float_power_ts_frac_kernel_masked(
     tl.store(out_ptr + offset, _float_power_ts_frac(x, e, ninf_val), mask=mask)
 
 
-
 # scalar-base ** Tensor (scalar `x` passed as a runtime kernel arg).
 @triton.jit
 def float_power_st_fast_kernel(x, e_ptr, out_ptr, BLOCK: tl.constexpr):
@@ -219,7 +216,9 @@ def float_power_st_pos_kernel(x, e_ptr, out_ptr, BLOCK: tl.constexpr):
 
 
 @triton.jit
-def float_power_st_pos_kernel_masked(x, e_ptr, out_ptr, n_elements, BLOCK: tl.constexpr):
+def float_power_st_pos_kernel_masked(
+    x, e_ptr, out_ptr, n_elements, BLOCK: tl.constexpr
+):
     pid = ext.program_id(0)
     offset = pid * BLOCK + tl.arange(0, BLOCK)
     mask = offset < n_elements
@@ -430,25 +429,19 @@ def float_power_tensor_tensor_func(x, exponent):
     # Functional (out-of-place) variant. The out0 tensor is nominally Double per
     # the float_power contract; on kunlunxin torch_xmlir stores it as float32, so
     # the trailing .to(tl.float64) truncates back to fp32 at store time.
-    return _float_power_corner(x.to(tl.float32), exponent.to(tl.float32)).to(
-        tl.float64
-    )
+    return _float_power_corner(x.to(tl.float32), exponent.to(tl.float32)).to(tl.float64)
 
 
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def float_power_tensor_scalar_func(x, exponent):
-    return _float_power_corner(x.to(tl.float32), exponent.to(tl.float32)).to(
-        tl.float64
-    )
+    return _float_power_corner(x.to(tl.float32), exponent.to(tl.float32)).to(tl.float64)
 
 
 @pointwise_dynamic(is_tensor=[False, True], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def float_power_scalar_tensor_func(x, exponent):
-    return _float_power_corner(x.to(tl.float32), exponent.to(tl.float32)).to(
-        tl.float64
-    )
+    return _float_power_corner(x.to(tl.float32), exponent.to(tl.float32)).to(tl.float64)
 
 
 def _prepare_out(out, shape, device):

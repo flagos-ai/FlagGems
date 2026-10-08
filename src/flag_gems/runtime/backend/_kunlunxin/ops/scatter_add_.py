@@ -73,8 +73,7 @@ try:
     )
 
     @tle.raw.dialect("xpu3", object=_SA2D_OBJ, arch=3)
-    def _scatter_add_2d_payload(out, inp, index, src, R, K, S, src_rs, zinit):
-        ...
+    def _scatter_add_2d_payload(out, inp, index, src, R, K, S, src_rs, zinit): ...
 
     @triton.jit(do_not_specialize=["ZINIT"])
     def _scatter_add_2d_tle_kernel(OUT, INP, IDX, SRC, R, K, S, SRC_RS, ZINIT):
@@ -83,8 +82,7 @@ try:
         )
 
     @tle.raw.dialect("xpu3", object=_SA2D_OBJ, arch=3)
-    def _scatter_add_2d_payload_fp16(out, inp, index, src, R, K, S, src_rs, zinit):
-        ...
+    def _scatter_add_2d_payload_fp16(out, inp, index, src, R, K, S, src_rs, zinit): ...
 
     @triton.jit(do_not_specialize=["ZINIT"])
     def _scatter_add_2d_tle_kernel_fp16(OUT, INP, IDX, SRC, R, K, S, SRC_RS, ZINIT):
@@ -93,8 +91,7 @@ try:
         )
 
     @tle.raw.dialect("xpu3", object=_SA2D_OBJ, arch=3)
-    def _scatter_add_2d_payload_bf16(out, inp, index, src, R, K, S, src_rs, zinit):
-        ...
+    def _scatter_add_2d_payload_bf16(out, inp, index, src, R, K, S, src_rs, zinit): ...
 
     @triton.jit(do_not_specialize=["ZINIT"])
     def _scatter_add_2d_tle_kernel_bf16(OUT, INP, IDX, SRC, R, K, S, SRC_RS, ZINIT):
@@ -112,8 +109,7 @@ try:
 
     # Big-K (1024 < K <= 65536): cluster-cooperative, out row resident in SM.
     @tle.raw.dialect("xpu3", object=_SA2D_OBJ, arch=3)
-    def _scatter_add_2d_big_payload(out, inp, index, src, R, K, S, src_rs, zinit):
-        ...
+    def _scatter_add_2d_big_payload(out, inp, index, src, R, K, S, src_rs, zinit): ...
 
     @triton.jit(do_not_specialize=["ZINIT"])
     def _scatter_add_2d_big_tle_kernel(OUT, INP, IDX, SRC, R, K, S, SRC_RS, ZINIT):
@@ -122,8 +118,9 @@ try:
         )
 
     @tle.raw.dialect("xpu3", object=_SA2D_OBJ, arch=3)
-    def _scatter_add_2d_big_payload_fp16(out, inp, index, src, R, K, S, src_rs, zinit):
-        ...
+    def _scatter_add_2d_big_payload_fp16(
+        out, inp, index, src, R, K, S, src_rs, zinit
+    ): ...
 
     @triton.jit(do_not_specialize=["ZINIT"])
     def _scatter_add_2d_big_tle_kernel_fp16(OUT, INP, IDX, SRC, R, K, S, SRC_RS, ZINIT):
@@ -133,8 +130,9 @@ try:
         )
 
     @tle.raw.dialect("xpu3", object=_SA2D_OBJ, arch=3)
-    def _scatter_add_2d_big_payload_bf16(out, inp, index, src, R, K, S, src_rs, zinit):
-        ...
+    def _scatter_add_2d_big_payload_bf16(
+        out, inp, index, src, R, K, S, src_rs, zinit
+    ): ...
 
     @triton.jit(do_not_specialize=["ZINIT"])
     def _scatter_add_2d_big_tle_kernel_bf16(OUT, INP, IDX, SRC, R, K, S, SRC_RS, ZINIT):
@@ -151,8 +149,7 @@ try:
 
     # Moderate-big-K (1024 < K <= 8192): single-owner tiled, NON-atomic.
     @tle.raw.dialect("xpu3", object=_SA2D_OBJ, arch=3)
-    def _scatter_add_2d_tile_payload(out, inp, index, src, R, K, S, src_rs, zinit):
-        ...
+    def _scatter_add_2d_tile_payload(out, inp, index, src, R, K, S, src_rs, zinit): ...
 
     @triton.jit(do_not_specialize=["ZINIT"])
     def _scatter_add_2d_tile_tle_kernel(OUT, INP, IDX, SRC, R, K, S, SRC_RS, ZINIT):
@@ -161,22 +158,28 @@ try:
         )
 
     @tle.raw.dialect("xpu3", object=_SA2D_OBJ, arch=3)
-    def _scatter_add_2d_tile_payload_fp16(out, inp, index, src, R, K, S, src_rs, zinit):
-        ...
+    def _scatter_add_2d_tile_payload_fp16(
+        out, inp, index, src, R, K, S, src_rs, zinit
+    ): ...
 
     @triton.jit(do_not_specialize=["ZINIT"])
-    def _scatter_add_2d_tile_tle_kernel_fp16(OUT, INP, IDX, SRC, R, K, S, SRC_RS, ZINIT):
+    def _scatter_add_2d_tile_tle_kernel_fp16(
+        OUT, INP, IDX, SRC, R, K, S, SRC_RS, ZINIT
+    ):
         tle.raw.call(
             _scatter_add_2d_tile_payload_fp16,
             (OUT, INP, IDX, SRC, R, K, S, SRC_RS, ZINIT),
         )
 
     @tle.raw.dialect("xpu3", object=_SA2D_OBJ, arch=3)
-    def _scatter_add_2d_tile_payload_bf16(out, inp, index, src, R, K, S, src_rs, zinit):
-        ...
+    def _scatter_add_2d_tile_payload_bf16(
+        out, inp, index, src, R, K, S, src_rs, zinit
+    ): ...
 
     @triton.jit(do_not_specialize=["ZINIT"])
-    def _scatter_add_2d_tile_tle_kernel_bf16(OUT, INP, IDX, SRC, R, K, S, SRC_RS, ZINIT):
+    def _scatter_add_2d_tile_tle_kernel_bf16(
+        OUT, INP, IDX, SRC, R, K, S, SRC_RS, ZINIT
+    ):
         tle.raw.call(
             _scatter_add_2d_tile_payload_bf16,
             (OUT, INP, IDX, SRC, R, K, S, SRC_RS, ZINIT),
@@ -194,7 +197,6 @@ except Exception:  # tle unavailable / import failure -> keep atomic fallback
     _SA2D_TLE_KERNELS = {}
     _SA2D_TLE_BIG_KERNELS = {}
     _SA2D_TLE_TILE_KERNELS = {}
-
 
 
 def span_for_slice(slice_n: int, block: int) -> int:

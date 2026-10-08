@@ -21,22 +21,21 @@ logger = logging.getLogger(__name__)
 # Triton lane-serial scatter.
 try:
     from .scatter_add_ import (
-        SA2D_TILE_MAX_K,
-        SA2D_TLE_BIG_MAX_K,
-        SA2D_TLE_GRID,
-        _sa2d_grid,
-        SA2D_TLE_MAX_K,
         _HAS_SA2D_TLE,
         _SA2D_TLE_BIG_KERNELS,
         _SA2D_TLE_KERNELS,
         _SA2D_TLE_TILE_KERNELS,
+        SA2D_TILE_MAX_K,
+        SA2D_TLE_BIG_MAX_K,
+        SA2D_TLE_GRID,
+        SA2D_TLE_MAX_K,
+        _sa2d_grid,
     )
 except Exception:
     _HAS_SA2D_TLE = False
     _SA2D_TLE_KERNELS = {}
     _SA2D_TLE_BIG_KERNELS = {}
     _SA2D_TLE_TILE_KERNELS = {}
-
 
 
 def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
@@ -830,15 +829,20 @@ def gather_backward(grad, self, dim, index, sparse_grad):
                 _S = index.shape[-1]
                 _R = index.numel() // _S
                 _zinit = _K <= SA2D_TILE_MAX_K
-                result = (
-                    grad.new_empty(_ss) if _zinit else grad.new_zeros(_ss)
-                )
+                result = grad.new_empty(_ss) if _zinit else grad.new_zeros(_ss)
                 _out2 = result if result.ndim == 2 else result.view(_R, _K)
                 _idx2 = index if index.ndim == 2 else index.view(_R, _S)
                 _grad2 = grad if grad.ndim == 2 else grad.view(_R, _S)
                 _kern[(_sa2d_grid(_K, _R),)](
-                    _out2, _out2, _idx2, _grad2, _R, _K, _S,
-                    _grad2.stride(0), 1 if _zinit else 0,
+                    _out2,
+                    _out2,
+                    _idx2,
+                    _grad2,
+                    _R,
+                    _K,
+                    _S,
+                    _grad2.stride(0),
+                    1 if _zinit else 0,
                 )
                 return result
     # ---- end lean hot path -------------------------------------------------
@@ -1057,7 +1061,6 @@ def _gather_backward_permute_rowvec(grad, self, dim, index_contiguous, result):
         inv[d] = i
     out = acc[:R].reshape(perm_shape).permute(inv).contiguous()
     return result.copy_(out.to(result.dtype))
-
 
 
 def _gather_backward_sum(grad, self, dim, index_contiguous, result):
