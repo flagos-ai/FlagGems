@@ -328,6 +328,13 @@ def fractional_max_pool2d_backward(
         out_h, out_w = output_size
 
     in_n, in_c, in_h, in_w = input.shape
+    expected_output_shape = (in_n, in_c, out_h, out_w)
+    if tuple(grad_output.shape) != expected_output_shape:
+        raise RuntimeError(
+            "fractional_max_pool2d_backward(): gradOutput sizes unexpected"
+        )
+    if tuple(indices.shape) != expected_output_shape:
+        raise RuntimeError("fractional_max_pool2d_backward(): indices sizes unexpected")
 
     grad_output = grad_output.contiguous()
     indices = indices.contiguous()
