@@ -19,27 +19,17 @@ import torch
 import triton
 import triton.language as tl
 
-import flag_gems
-from flag_gems.utils import tl_extra_shim
+from flag_gems.utils import pointwise_dynamic, tl_extra_shim
 
 logger = logging.getLogger(__name__)
 
 
+@pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")], num_inputs=2)
 @triton.jit
-def gammainc_kernel(a_ptr, x_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
-    pid = tl.program_id(axis=0)
-    block_start = pid * BLOCK_SIZE
-    offsets = block_start + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-
-    a = tl.load(a_ptr + offsets, mask=mask, other=0.0)
-    x = tl.load(x_ptr + offsets, mask=mask, other=0.0)
-
-    # Compute in float32 for better precision
+def special_gammainc_func(a, x):
     a_f32 = a.to(tl.float32)
     x_f32 = x.to(tl.float32)
 
-    # Handle edge cases
     # P(a, 0) = 0 for a > 0; NaN for a <= 0 or x < 0
     result = tl.where((a_f32 > 0.0) & (x_f32 >= 0.0), 0.0, float("nan"))
 
@@ -56,7 +46,6 @@ def gammainc_kernel(a_ptr, x_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr)
     # sum = Gamma(a) * sum_{n=0} x^n / Gamma(a+n+1) = sum_{n=0} x^n / ((a)_n * a)
     # where (a)_n = a*(a+1)*...*(a+n-1) is the rising factorial.
     # So series_result = exp(-x) * x^a * sum / Gamma(a)
-    series_sum = 0.0
     term = 1.0 / a_f32
     series_sum = term
     for i in range(1, 200):
@@ -106,69 +95,12 @@ def gammainc_kernel(a_ptr, x_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr)
         tl.where(use_series, series_result, frac_result),
         result,
     )
-
-    # Store result
-    tl.store(out_ptr + offsets, result, mask=mask)
-
-
-def _launch_gammainc(out: torch.Tensor, a: torch.Tensor, x: torch.Tensor):
-    assert (
-        a.device.type == flag_gems.device
-        and x.device.type == flag_gems.device
-        and out.device.type == flag_gems.device
-    ), f"All tensors must be {flag_gems.device} tensors"
-    assert (
-        out.numel() == a.numel() == x.numel()
-    ), "All tensors must have the same number of elements"
-    assert out.device == a.device == x.device, "All tensors must be on the same device"
-
-    # Ensure floating point compute
-    a_in = a
-    x_in = x
-    out_in = out
-
-    if not a_in.is_floating_point():
-        a_in = a_in.to(torch.get_default_dtype())
-    if not x_in.is_floating_point():
-        x_in = x_in.to(torch.get_default_dtype())
-
-    # Cast input to match the desired output dtype if needed
-    if a_in.dtype != out_in.dtype:
-        a_in = a_in.to(out_in.dtype)
-    if x_in.dtype != out_in.dtype:
-        x_in = x_in.to(out_in.dtype)
-
-    a_contig = a_in.contiguous()
-    x_contig = x_in.contiguous()
-    out_was_noncontig = not out_in.is_contiguous()
-    out_contig = out_in.contiguous() if out_was_noncontig else out_in
-
-    n_elements = out_contig.numel()
-    # 1024 provides good occupancy for element-wise gammainc kernel
-    BLOCK_SIZE = 1024
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-
-    gammainc_kernel[grid](
-        a_contig, x_contig, out_contig, n_elements, BLOCK_SIZE=BLOCK_SIZE
-    )
-
-    if out_was_noncontig:
-        out_in.copy_(out_contig)
-    return out_in
+    return result
 
 
 def special_gammainc(a: torch.Tensor, x: torch.Tensor, *, out: torch.Tensor = None):
     logger.debug("GEMS SPECIAL_GAMMAINC")
-    if a.device.type != flag_gems.device:
-        raise ValueError(
-            f"gammainc: first input tensor must be on {flag_gems.device} device"
-        )
-    if x.device.type != flag_gems.device:
-        raise ValueError(
-            f"gammainc: second input tensor must be on {flag_gems.device} device"
-        )
-
     if out is None:
-        out = torch.empty_like(a)
-    _launch_gammainc(out, a, x)
+        return special_gammainc_func(a, x)
+    special_gammainc_func(a, x, out0=out)
     return out

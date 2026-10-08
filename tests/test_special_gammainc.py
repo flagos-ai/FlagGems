@@ -91,3 +91,28 @@ def test_special_gammainc_boundary_large_x(dtype):
         res = torch.special.gammainc(a, x)
 
     utils.gems_assert_close(res, ref_out, dtype)
+
+
+@pytest.mark.special_gammainc
+@pytest.mark.parametrize("dtype", [torch.float32])
+@pytest.mark.parametrize(
+    "shape_a, shape_x",
+    [
+        ((4, 1), (1, 8)),
+        ((), (8,)),
+        ((1,), (8,)),
+        ((3, 1, 5), (3, 4, 1)),
+    ],
+)
+def test_special_gammainc_broadcast(shape_a, shape_x, dtype):
+    a = torch.rand(shape_a, dtype=dtype, device=flag_gems.device) * 5 + 0.1
+    x = torch.rand(shape_x, dtype=dtype, device=flag_gems.device) * 10 + 0.1
+
+    ref_a = utils.to_reference(a, True)
+    ref_x = utils.to_reference(x, True)
+    ref_out = torch.special.gammainc(ref_a, ref_x)
+
+    res_out = flag_gems.special_gammainc(a, x)
+
+    assert res_out.shape == ref_out.shape
+    utils.gems_assert_close(res_out, ref_out, dtype)

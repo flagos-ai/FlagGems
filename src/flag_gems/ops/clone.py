@@ -46,56 +46,52 @@ class _CloneFunction(torch.autograd.Function):
         return grad_out, None
 
 
-def _clone_impl(inp: torch.Tensor, memory_format: torch.memory_format):
-    n_elements = inp.numel()
-    if n_elements == 0:
-        # Handle empty tensors
-        if memory_format == torch.contiguous_format:
-            return torch.empty_like(inp, memory_format=torch.contiguous_format)
-        else:
-            return torch.empty_strided(
-                inp.size(), inp.stride(), dtype=inp.dtype, device=inp.device
-            )
-
-    # Fast path: contiguous tensor, use Triton kernel
-    if memory_format == torch.preserve_format and inp.is_contiguous(
-        memory_format=torch.preserve_format
-    ):
-        out = torch.empty_strided(
+def _allocate_preserve_format(inp: torch.Tensor) -> torch.Tensor:
+    # Replicating the original strides is only valid for a non-overlapping
+    # dense layout; other inputs take PyTorch's suggested layout.
+    if torch.ops.aten.is_non_overlapping_and_dense(inp):
+        return torch.empty_strided(
             inp.size(), inp.stride(), dtype=inp.dtype, device=inp.device
         )
-        # Flatten both for contiguous memory access
-        src = inp.flatten()
-        dst = out.flatten()
-        grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-        with torch_device_fn.device(inp.device):
-            _clone_kernel[grid](src, dst, n_elements, BLOCK_SIZE=1024)
-        return out
+    return torch.empty_like(inp, memory_format=torch.preserve_format)
 
-    if memory_format == torch.contiguous_format:
-        # Make the result contiguous
-        out = torch.empty_like(inp, memory_format=torch.contiguous_format)
-        if inp.is_contiguous():
-            # flatten() on a contiguous input is a pure view; on a strided
-            # input it would dispatch through reshape, whose decomposition
-            # calls clone again and recurses.
-            src = inp.flatten()
-            grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-            with torch_device_fn.device(inp.device):
-                _clone_kernel[grid](src, out, n_elements, BLOCK_SIZE=1024)
+
+def _launch_copy(src: torch.Tensor, dst: torch.Tensor):
+    n_elements = src.numel()
+    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    with torch_device_fn.device(src.device):
+        _clone_kernel[grid](src, dst, n_elements, BLOCK_SIZE=1024)
+
+
+def _clone_impl(inp: torch.Tensor, memory_format: torch.memory_format):
+    if inp.numel() == 0:
+        if memory_format == torch.preserve_format:
+            return _allocate_preserve_format(inp)
+        return torch.empty_like(inp, memory_format=memory_format)
+
+    if memory_format == torch.preserve_format:
+        out = _allocate_preserve_format(inp)
+        # Source and destination share the same layout, so element order
+        # matches and the flat kernel applies.
+        if inp.is_contiguous() or torch.ops.aten.is_non_overlapping_and_dense(inp):
+            _launch_copy(inp, out)
         else:
             out.copy_(inp)
         return out
 
-    # Fallback: non-contiguous preserve or other memory formats
-    if memory_format == torch.preserve_format:
-        out = torch.empty_strided(
-            inp.size(), inp.stride(), dtype=inp.dtype, device=inp.device
-        )
-    else:
-        out = torch.empty(inp.size(), dtype=inp.dtype, device=inp.device)
-        out = out.to(memory_format=memory_format)
+    if memory_format == torch.contiguous_format:
+        out = torch.empty_like(inp, memory_format=torch.contiguous_format)
+        # flatten() on a contiguous input is a pure view; on a strided input it
+        # would dispatch through reshape, whose decomposition calls clone again
+        # and recurses.
+        if inp.is_contiguous():
+            _launch_copy(inp, out)
+        else:
+            out.copy_(inp)
+        return out
 
+    out = torch.empty(inp.size(), dtype=inp.dtype, device=inp.device)
+    out = out.to(memory_format=memory_format)
     out.copy_(inp)
     return out
 
