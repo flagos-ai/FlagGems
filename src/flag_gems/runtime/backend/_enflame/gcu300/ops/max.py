@@ -19,12 +19,14 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import dim_compress, libentry, libtuner
+from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils.limits import get_dtype_min
 
 logger = logging.getLogger(__name__)
+
+_MAX_REDUCTION_TILE = 256
+_MAX_OUTPUT_TILE = 4
 
 
 @libentry()
@@ -42,6 +44,9 @@ def max_kernel_1(inp, mid, M, BLOCK_SIZE: tl.constexpr, num_stages: tl.constexpr
             min_value = 0
         inp_val = tl.load(inp_ptrs, mask=mask, other=min_value)
         max_val = tl.max(inp_val)
+        if inp.type.element_ty.is_floating():
+            has_nan = tl.max((mask & (inp_val != inp_val)).to(tl.int32), axis=0) != 0
+            max_val = tl.where(has_nan, float("nan"), max_val)
         mid_ptr = mid + tile_id
         tl.store(mid_ptr, max_val)
 
@@ -57,28 +62,13 @@ def max_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
         min_value = 0
     mid_val = tl.load(mid_ptrs, mask=mask, other=min_value)
     max_val = tl.max(mid_val)
+    if mid.type.element_ty.is_floating():
+        has_nan = tl.max((mask & (mid_val != mid_val)).to(tl.int32), axis=0) != 0
+        max_val = tl.where(has_nan, float("nan"), max_val)
     tl.store(out, max_val)
 
 
-def heur_block_n(args):
-    return triton.next_power_of_2(args["N"])
-
-
-def keep(conf):
-    BLOCK_M = conf.kwargs["BLOCK_M"]
-    BLOCK_N = conf.kwargs["BLOCK_N"]
-    if BLOCK_M * BLOCK_N < 2048:
-        return False
-    if BLOCK_M * BLOCK_N >= 256 * 1024:
-        return False
-    return True
-
-
 @libentry()
-@libtuner(
-    configs=list(filter(keep, runtime.get_tuned_config("naive_reduction"))),
-    key=["M", "N"],
-)
 @triton.jit
 def max_kernel_dim_low(
     inp,
@@ -86,9 +76,9 @@ def max_kernel_dim_low(
     out_index,
     M,
     N,
-    BLOCK_M: tl.constexpr = 16,
-    BLOCK_N: tl.constexpr = 4096,
-    num_stages: tl.constexpr = 2,
+    BLOCK_M: tl.constexpr = 4,
+    BLOCK_N: tl.constexpr = 256,
+    num_stages: tl.constexpr = 1,
 ):
     # set offset
     pid_m = tl.program_id(0)
@@ -109,7 +99,22 @@ def max_kernel_dim_low(
         mask_0 = (m_offset[:, None] < M) & (n_offset_0[None, :] < N)
         inp_ptrs_0 = inp + offset_0
         inp_vals_0 = tl.load(inp_ptrs_0, mask=mask_0, other=min_value)
-        result_value, result_index = tl.max(inp_vals_0, axis=1, return_indices=True)
+        result_value, result_index = tl.max(
+            inp_vals_0,
+            axis=1,
+            return_indices=True,
+            return_indices_tie_break_left=True,
+        )
+        if dtype.is_floating():
+            nan_i32 = (mask_0 & (inp_vals_0 != inp_vals_0)).to(tl.int32)
+            result_has_nan_i32, first_nan = tl.max(
+                nan_i32,
+                axis=1,
+                return_indices=True,
+                return_indices_tie_break_left=True,
+            )
+            result_has_nan = result_has_nan_i32 != 0
+            result_index = tl.where(result_has_nan, first_nan, result_index)
         # tl.device_print("test1")
         # for i in tl.range(BLOCK_N, N, BLOCK_N, num_stages=num_stages):
         #     tl.device_print("test")
@@ -121,10 +126,33 @@ def max_kernel_dim_low(
                 mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
                 inp_ptrs = inp + offset
                 inp_vals = tl.load(inp_ptrs, mask=mask, other=min_value)
-                max_value, max_index = tl.max(inp_vals, axis=1, return_indices=True)
+                max_value, max_index = tl.max(
+                    inp_vals,
+                    axis=1,
+                    return_indices=True,
+                    return_indices_tie_break_left=True,
+                )
                 update_mask = max_value > result_value
+                if dtype.is_floating():
+                    nan_i32 = (mask & (inp_vals != inp_vals)).to(tl.int32)
+                    has_nan_i32, first_nan = tl.max(
+                        nan_i32,
+                        axis=1,
+                        return_indices=True,
+                        return_indices_tie_break_left=True,
+                    )
+                    has_nan = has_nan_i32 != 0
+
+                    take_nan = has_nan & ~result_has_nan
+                    update_mask &= ~has_nan & ~result_has_nan
+                    result_index = tl.where(take_nan, i + first_nan, result_index)
+                    result_has_nan |= has_nan
                 result_value = tl.where(update_mask, max_value, result_value)
                 result_index = tl.where(update_mask, i + max_index, result_index)
+        if dtype.is_floating():
+            result_value = tl.where(result_has_nan, float("nan"), result_value).to(
+                dtype
+            )
         mask1 = m_offset < M
         offset_index = m_offset
         out_value_ptrs = out_value + offset_index
@@ -135,10 +163,6 @@ def max_kernel_dim_low(
 
 
 @libentry()
-@libtuner(
-    configs=list(filter(keep, runtime.get_tuned_config("naive_reduction"))),
-    key=["M", "N"],
-)
 @triton.jit
 def max_kernel_dim_high(
     inp,
@@ -146,9 +170,9 @@ def max_kernel_dim_high(
     out_index,
     M,
     N,
-    BLOCK_M: tl.constexpr = 64,
-    BLOCK_N: tl.constexpr = 64,
-    num_stages: tl.constexpr = 3,
+    BLOCK_M: tl.constexpr = 256,
+    BLOCK_N: tl.constexpr = 4,
+    num_stages: tl.constexpr = 1,
 ):
     # set offset
     pid_n = tl.program_id(0)
@@ -168,7 +192,22 @@ def max_kernel_dim_high(
         mask_0 = (m_offset_0[:, None] < M) & (n_offset[None, :] < N)
         inp_ptrs_0 = inp + offset_0
         inp_vals_0 = tl.load(inp_ptrs_0, mask=mask_0, other=min_value)
-        result_value, result_index = tl.max(inp_vals_0, axis=0, return_indices=True)
+        result_value, result_index = tl.max(
+            inp_vals_0,
+            axis=0,
+            return_indices=True,
+            return_indices_tie_break_left=True,
+        )
+        if dtype.is_floating():
+            nan_i32 = (mask_0 & (inp_vals_0 != inp_vals_0)).to(tl.int32)
+            result_has_nan_i32, first_nan = tl.max(
+                nan_i32,
+                axis=0,
+                return_indices=True,
+                return_indices_tie_break_left=True,
+            )
+            result_has_nan = result_has_nan_i32 != 0
+            result_index = tl.where(result_has_nan, first_nan, result_index)
         if M > BLOCK_M:
             for i in tl.range(BLOCK_M, M, BLOCK_M, num_stages=num_stages):
                 # tl.device_print("test22")
@@ -178,10 +217,33 @@ def max_kernel_dim_high(
                 mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
                 inp_ptrs = inp + offset
                 inp_vals = tl.load(inp_ptrs, mask=mask, other=min_value)
-                max_value, max_index = tl.max(inp_vals, axis=0, return_indices=True)
+                max_value, max_index = tl.max(
+                    inp_vals,
+                    axis=0,
+                    return_indices=True,
+                    return_indices_tie_break_left=True,
+                )
                 update_mask = max_value > result_value
+                if dtype.is_floating():
+                    nan_i32 = (mask & (inp_vals != inp_vals)).to(tl.int32)
+                    has_nan_i32, first_nan = tl.max(
+                        nan_i32,
+                        axis=0,
+                        return_indices=True,
+                        return_indices_tie_break_left=True,
+                    )
+                    has_nan = has_nan_i32 != 0
+
+                    take_nan = has_nan & ~result_has_nan
+                    update_mask &= ~has_nan & ~result_has_nan
+                    result_index = tl.where(take_nan, i + first_nan, result_index)
+                    result_has_nan |= has_nan
                 result_value = tl.where(update_mask, max_value, result_value)
                 result_index = tl.where(update_mask, i + max_index, result_index)
+        if dtype.is_floating():
+            result_value = tl.where(result_has_nan, float("nan"), result_value).to(
+                dtype
+            )
         mask1 = n_offset < N
         offset_index = n_offset
         out_value_ptrs = out_value + offset_index
@@ -192,10 +254,6 @@ def max_kernel_dim_high(
 
 
 @libentry()
-@libtuner(
-    configs=list(filter(keep, runtime.get_tuned_config("naive_reduction"))),
-    key=["M", "N"],
-)
 @triton.jit
 def max_kernel_dim_mid(
     inpIn,
@@ -204,9 +262,9 @@ def max_kernel_dim_mid(
     B,
     M,
     N,
-    BLOCK_M: tl.constexpr = 128,
+    BLOCK_M: tl.constexpr = 256,
     BLOCK_N: tl.constexpr = 4,
-    num_stages: tl.constexpr = 2,
+    num_stages: tl.constexpr = 1,
 ):
     pid_b = tl.program_id(1)
     pid_n = tl.program_id(0)
@@ -228,7 +286,22 @@ def max_kernel_dim_mid(
         mask_0 = (m_offset_0[:, None] < M) & (n_offset[None, :] < N)
         inp_ptrs_0 = inp + offset_0
         inp_vals_0 = tl.load(inp_ptrs_0, mask=mask_0, other=min_value)
-        result_value, result_index = tl.max(inp_vals_0, axis=0, return_indices=True)
+        result_value, result_index = tl.max(
+            inp_vals_0,
+            axis=0,
+            return_indices=True,
+            return_indices_tie_break_left=True,
+        )
+        if dtype.is_floating():
+            nan_i32 = (mask_0 & (inp_vals_0 != inp_vals_0)).to(tl.int32)
+            result_has_nan_i32, first_nan = tl.max(
+                nan_i32,
+                axis=0,
+                return_indices=True,
+                return_indices_tie_break_left=True,
+            )
+            result_has_nan = result_has_nan_i32 != 0
+            result_index = tl.where(result_has_nan, first_nan, result_index)
         if M > BLOCK_M:
             for i in tl.range(BLOCK_M, M, BLOCK_M, num_stages=num_stages):
                 m_offset = i + tl.arange(0, BLOCK_M)
@@ -237,10 +310,33 @@ def max_kernel_dim_mid(
                 mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
                 inp_ptrs = inp + offset
                 inp_vals = tl.load(inp_ptrs, mask=mask, other=min_value)
-                max_value, max_index = tl.max(inp_vals, axis=0, return_indices=True)
+                max_value, max_index = tl.max(
+                    inp_vals,
+                    axis=0,
+                    return_indices=True,
+                    return_indices_tie_break_left=True,
+                )
                 update_mask = max_value > result_value
+                if dtype.is_floating():
+                    nan_i32 = (mask & (inp_vals != inp_vals)).to(tl.int32)
+                    has_nan_i32, first_nan = tl.max(
+                        nan_i32,
+                        axis=0,
+                        return_indices=True,
+                        return_indices_tie_break_left=True,
+                    )
+                    has_nan = has_nan_i32 != 0
+
+                    take_nan = has_nan & ~result_has_nan
+                    update_mask &= ~has_nan & ~result_has_nan
+                    result_index = tl.where(take_nan, i + first_nan, result_index)
+                    result_has_nan |= has_nan
                 result_value = tl.where(update_mask, max_value, result_value)
                 result_index = tl.where(update_mask, i + max_index, result_index)
+        if dtype.is_floating():
+            result_value = tl.where(result_has_nan, float("nan"), result_value).to(
+                dtype
+            )
         mask1 = n_offset < N
         offset_index = n_offset
         out_value_ptrs = out_value + offset_index
@@ -310,16 +406,41 @@ def max_dim(inp, dim=None, keepdim=False):
     if dim == 0:
         M = inp.shape[0]
         N = inp.numel() // M
-        grid = lambda meta: (min(triton.cdiv(N, meta["BLOCK_N"]), 24),)
+        # Indexed max and NaN tracking need several per-lane L1 buffers.
+        # Deterministic 1K-lane tiles avoid fatal GCU300 autotune candidates.
+        block_m = min(triton.next_power_of_2(M), _MAX_REDUCTION_TILE)
+        block_n = min(triton.next_power_of_2(N), _MAX_OUTPUT_TILE)
+        grid = (min(triton.cdiv(N, block_n), 24),)
         with torch_device_fn.device(inp.device):
-            max_kernel_dim_high[grid](inp, out_value, out_index, M, N)
+            max_kernel_dim_high[grid](
+                inp,
+                out_value,
+                out_index,
+                M,
+                N,
+                BLOCK_M=block_m,
+                BLOCK_N=block_n,
+                num_stages=1,
+                num_warps=1,
+            )
     elif dim == inp.ndim - 1:
         N = inp.shape[inp.ndim - 1]
         M = inp.numel() // N
-        grid = lambda meta: (min(triton.cdiv(M, meta["BLOCK_M"]), 24),)
-        # grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
+        block_m = min(triton.next_power_of_2(M), _MAX_OUTPUT_TILE)
+        block_n = min(triton.next_power_of_2(N), _MAX_REDUCTION_TILE)
+        grid = (min(triton.cdiv(M, block_m), 24),)
         with torch_device_fn.device(inp.device):
-            max_kernel_dim_low[grid](inp, out_value, out_index, M, N)
+            max_kernel_dim_low[grid](
+                inp,
+                out_value,
+                out_index,
+                M,
+                N,
+                BLOCK_M=block_m,
+                BLOCK_N=block_n,
+                num_stages=1,
+                num_warps=1,
+            )
     else:
         B = 1
         for i in range(0, dim):
@@ -329,17 +450,42 @@ def max_dim(inp, dim=None, keepdim=False):
         for i in range(dim + 1, inp.ndim):
             N *= inp.shape[i]
         if B <= N * 128:
-            grid = lambda meta: (triton.cdiv(N, meta["BLOCK_N"]), min(B, 24), 1)
+            block_m = min(triton.next_power_of_2(M), _MAX_REDUCTION_TILE)
+            block_n = min(triton.next_power_of_2(N), _MAX_OUTPUT_TILE)
+            grid = (triton.cdiv(N, block_n), min(B, 24), 1)
             with torch_device_fn.device(inp.device):
-                max_kernel_dim_mid[grid](inp, out_value, out_index, B, M, N)
+                max_kernel_dim_mid[grid](
+                    inp,
+                    out_value,
+                    out_index,
+                    B,
+                    M,
+                    N,
+                    BLOCK_M=block_m,
+                    BLOCK_N=block_n,
+                    num_stages=1,
+                    num_warps=1,
+                )
         else:
             in_reshape = inp.reshape((B, M, N))
             inp_new = dim_compress(in_reshape, {0, 2})
             M = inp_new.shape[0]
             N = inp_new.numel() // M
-            grid = lambda meta: (triton.cdiv(N, meta["BLOCK_N"]),)
+            block_m = min(triton.next_power_of_2(M), _MAX_REDUCTION_TILE)
+            block_n = min(triton.next_power_of_2(N), _MAX_OUTPUT_TILE)
+            grid = (min(triton.cdiv(N, block_n), 24),)
             with torch_device_fn.device(inp.device):
-                max_kernel_dim_high[grid](inp_new, out_value, out_index, M, N)
+                max_kernel_dim_high[grid](
+                    inp_new,
+                    out_value,
+                    out_index,
+                    M,
+                    N,
+                    BLOCK_M=block_m,
+                    BLOCK_N=block_n,
+                    num_stages=1,
+                    num_warps=1,
+                )
     if not keepdim:
         out_value = torch.squeeze(out_value, dim)
         out_index = torch.squeeze(out_index, dim)
