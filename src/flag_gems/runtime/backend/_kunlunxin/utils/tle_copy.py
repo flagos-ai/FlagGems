@@ -65,7 +65,16 @@ try:
     import triton.experimental.tle.language as tle
     from triton.tools.tensor_descriptor import TensorDescriptor
 
-    _HAS_TLE = True
+    # Importing `.language` succeeds even on triton builds that expose only a
+    # subset of the tile-language surface, because submodules resolve lazily via
+    # a module-level __getattr__. The copy kernels need BOTH `tle.gpu` (the
+    # cluster/LM tile path) and `tle.dsa` (the SDNN row/transpose path), so probe
+    # them here. A build missing either would otherwise not fail until Triton
+    # walks the kernel body to compute its cache key at warmup, raising
+    # `AttributeError: module '...tle.language' has no attribute 'dsa'` deep in
+    # the compile path; detecting it up front lets tle_copy() return False and
+    # the caller keep its aten fallback instead.
+    _HAS_TLE = hasattr(tle, "gpu") and hasattr(tle, "dsa")
 except ImportError:  # triton without the XPU tile-language extension
     _HAS_TLE = False
 
