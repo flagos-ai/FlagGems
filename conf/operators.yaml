@@ -146,6 +146,16 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: _fused_dropout
+  description: Applies dropout using a keep probability and returns a uint8 mask.
+  for:
+  - _fused_dropout
+  labels:
+  - aten
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: _linalg_eigh
   description: Computes the eigenvalues and eigenvectors of a symmetric or Hermitian
     matrix.
