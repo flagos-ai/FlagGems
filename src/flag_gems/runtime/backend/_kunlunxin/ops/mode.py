@@ -157,23 +157,11 @@ _MODE_CLUSTER_MANYROW_MIN_N = 4096
 
 
 def _mode_lm_run(rows, flat_values, flat_indices, M, N, wrapper):
-    """Per-core in-LM radix sort (N<=512).  Writes mode value bits + int32
-    index, then widens the index to int64.  Returns True on success."""
-    g = min(12 * 64, max(1, M))
-    oval = torch.empty(M, dtype=rows.dtype, device=rows.device)
-    oidx32 = torch.empty(M, dtype=torch.int32, device=rows.device)
-    grid = min(12, (M + 63) // 64)
-    with torch_device_fn.device(rows.device):
-        wrapper[(grid,)](rows, oval, oidx32, M, N, g)
-    flat_values.copy_(oval)
-    flat_indices.copy_(oidx32.to(torch.int64))
-    return True
-
-
-def _mode_lm2_run(rows, flat_values, flat_indices, M, N, wrapper):
-    """2-chunk per-core in-LM radix + merge (512<N<=1024).  Same launch shape
-    as _mode_lm_run; the kernel sorts two 512-halves in LM and merge-scans for
-    the mode with no global scatter.  Returns True on success."""
+    """Per-core in-LM radix sort.  `wrapper` selects the kernel: the single
+    512-chunk sort (N<=512) or the 2-chunk sort + merge (512<N<=1024, two
+    512-halves sorted in LM and merge-scanned).  Both share this launch shape
+    and have no global scatter.  Writes mode value bits + int32 index, then
+    widens the index to int64.  Returns True on success."""
     g = min(12 * 64, max(1, M))
     oval = torch.empty(M, dtype=rows.dtype, device=rows.device)
     oidx32 = torch.empty(M, dtype=torch.int32, device=rows.device)
@@ -595,7 +583,7 @@ def _mode_impl(inp, dim, keepdim):
         # fp32/int32, 512<N<=1024: 2-chunk per-core in-LM radix + merge (no
         # global scatter; sorts two 512-halves in LM and merge-scans).
         try:
-            _mode_lm2_run(rows, flat_values, flat_indices, M, N, _RAW_LM2[inp.dtype])
+            _mode_lm_run(rows, flat_values, flat_indices, M, N, _RAW_LM2[inp.dtype])
         except Exception as e:  # pragma: no cover
             logger.debug("mode LM2 radix fell back: %s", e)
             _mode_radix_fallback(rows, flat_values, flat_indices, M, N, inp.device)
