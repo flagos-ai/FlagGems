@@ -4133,7 +4133,7 @@ ops:
   kind:
   - Tensor
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: dequantize
   description: 'Returns an fp32 Tensor by dequantizing a quantized Tensor.
 
