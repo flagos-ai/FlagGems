@@ -1,5 +1,6 @@
 {
   "name": "_new_zeros_with_same_feature_meta",
+  "requires_triton_kernel": true,
   "description": "Representative ATen signature (not an exclusive ABI): aten::_new_zeros_with_same_feature_meta(Tensor self, Tensor other, *, int self_num_batch_dims=0) -> Tensor. The original Gems pytest calls and results define the required contract; support their overloads, keyword arguments, return types and errors. Do not narrow test coverage to this example signature.\nRegistered reference signatures:\naten::_new_zeros_with_same_feature_meta(Tensor self, Tensor other, *, int self_num_batch_dims=0) -> Tensor\naten::_new_zeros_with_same_feature_meta.out(Tensor self, Tensor other, *, int self_num_batch_dims=0, Tensor(a!) out) -> Tensor(a!)",
   "parameters": [
     {

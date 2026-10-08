@@ -1,6 +1,7 @@
 {
   "api_version": "v6.0",
   "name": "linalg_eigvalsh",
+  "requires_triton_kernel": true,
   "description": "Representative ATen signature (not an exclusive ABI): aten::linalg_eigvalsh(Tensor self, str UPLO=\"L\") -> Tensor. All supplied registered signatures, verbatim: aten::linalg_eigvalsh(Tensor self, str UPLO=\"L\") -> Tensor; aten::linalg_eigvalsh.out(Tensor self, str UPLO=\"L\", *, Tensor(a!) out) -> Tensor(a!). Semantics: returns the eigenvalues of a real symmetric or complex Hermitian matrix, reading only the triangle selected by UPLO (\"L\"/\"l\" for the lower triangle, \"U\"/\"u\" for the upper triangle; case-insensitive; default \"L\"), in ascending order, in the real dtype matching the input (real input yields the same real dtype, complex input yields the corresponding real dtype). Input must have rank >= 2 with a square trailing pair; malformed shapes or invalid UPLO raise RuntimeError. On the vendor where they were measured, int8/uint8/float8/float16/bfloat16/int32/int64/bool also raise RuntimeError; another vendor may implement more. The .out overload writes into the keyword-only out buffer and returns that same object with its strides and storage offset preserved. Original Gems pytest owns the full contract, including overload selection, keyword arguments, returns, errors, aliasing and mutation; this definition represents one overload only and tests must never be narrowed to it.",
   "parameters": [
     {

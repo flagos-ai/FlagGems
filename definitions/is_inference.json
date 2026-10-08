@@ -1,6 +1,7 @@
 {
   "api_version": "v6.0",
   "name": "is_inference",
+  "requires_triton_kernel": false,
   "description": "Representative ATen signature (not an exclusive ABI): aten::is_inference(Tensor self) -> bool. Registered schemas (verbatim): aten::is_inference(Tensor self) -> bool. Semantics: reads the per-TensorImpl inference flag of one operand and returns a Python bool; the flag is established by allocation inside torch.inference_mode() (e.g. a clone made in that context), is inherited by views/detach sharing the source storage, and is not set by torch.no_grad(). aten accepts None as an undefined tensor and returns False rather than raising. The representative signature is NOT exclusive: the original Gems pytest owns the full contract for overloads, keyword arguments, return types, error behavior, aliasing and mutation. flag_gems.is_inference is the injected public entrypoint; the pytest additionally exercises non-tensor inputs, missing and extra positional arguments, rejected out= keyword, scalar and empty shapes across many dtypes, special NaN/Inf values, view/transpose/slice/expand/detach derived state, context-vs-tensor-state separation, undefined (None) input, and read-only non-mutation of storage, offsets, shape and stride. Do not remove tests or adapt reference behavior to fit this single signature.",
   "parameters": [
     {

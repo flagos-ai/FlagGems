@@ -1,6 +1,7 @@
 {
   "api_version": "v6.0",
   "name": "ravel",
+  "requires_triton_kernel": true,
   "description": "Representative ATen signature (not an exclusive ABI): aten::ravel(Tensor(a) self) -> Tensor(a). This representative signature is not exclusive: the original Gems pytest defines the full contract for overloads, keyword arguments, returns, errors, aliasing and mutation, and tests must never be narrowed to this one signature. Registered schema strings, verbatim: \"aten::ravel(Tensor(a) self) -> Tensor(a)\" [overload: default]. Semantics evidenced by the tests: ravel flattens the input to a 1-D tensor of inp.numel() elements with stride (1,). When the flattened input is already contiguous after collapsing size-1 dimensions (contiguous tensors, zero-dim tensors, empty tensors, row slices with a storage offset, and flattened singletons), the native op returns a view aliasing the input storage and preserving its storage_offset, so writing through the result lands only in the source window; for every other rank/strided/lazy layout (transpose, step slice, expanded zero-stride, negative or conj views over non-contiguous inputs) it materializes a fresh contiguous buffer that shares no storage with the input. Lazy neg/conj bits match the native result per path: preserved on the view path and folded into the values on the materializing copy path. Backward only rearranges gradients back to the input shape and touches no backing storage. A non-Tensor `self` and non-strided sparse (COO/CSR) layouts are rejected.",
   "parameters": [
     {

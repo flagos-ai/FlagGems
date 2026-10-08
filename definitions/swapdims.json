@@ -1,6 +1,7 @@
 {
   "api_version": "v6.0",
   "name": "swapdims",
+  "requires_triton_kernel": false,
   "description": "Representative ATen signature (not an exclusive ABI): aten::swapdims(Tensor(a) self, int dim0, int dim1) -> Tensor(a). This overload key is representative only; the original Gems pytest defines the full contract for overloads, keyword arguments, returns, errors, aliasing and mutation, and must not be narrowed to this single signature. Semantics: returns a new view of `self` whose size and stride metadata have dim0 and dim1 exchanged (a two-axis metadata transpose); no data is copied, the result is a distinct Tensor object (`res is not inp`, `res._is_view()`) that aliases the same untyped storage as `self`, with storage_offset preserved, the lazy conjugate bit preserved, and stepped/offset/expanded-input layouts preserved. Negative dims are accepted; out-of-range dims raise IndexError/RuntimeError and non-integer dims raise RuntimeError/TypeError. Autograd is supported through the view. All supplied registered ATen schemas: aten::swapdims(Tensor(a) self, int dim0, int dim1) -> Tensor(a).",
   "parameters": [
     {

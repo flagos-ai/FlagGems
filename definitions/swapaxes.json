@@ -1,6 +1,7 @@
 {
   "api_version": "v6.0",
   "name": "swapaxes",
+  "requires_triton_kernel": false,
   "description": "Representative ATen signature (not an exclusive ABI): aten::swapaxes(Tensor(a) self, int axis0, int axis1) -> Tensor(a). Registered schemas: [\"aten::swapaxes(Tensor(a) self, int axis0, int axis1) -> Tensor(a)\"]. This single representative signature is not exclusive: the original Gems pytest owns the full contract for overloads, keyword arguments, returns, errors, aliasing and mutation, and its coverage must never be narrowed to this signature. Semantics evidenced by the tests: returns a zero-copy metadata view of the input that permutes size and stride of the two axes, normalizes negative axes against self.dim(), keeps the storage offset and the underlying storage pointer, and always returns a fresh aliasing view even when axis0 == axis1 (never the input object itself); the view preserves lazy conjugation (is_conj) and requires_grad, and backward produces a gradient that agrees with the reference gradient under the test's result comparison (the case asserts shape equality and a reference comparison, not exact equality). The original tests also define error behavior not modeled here: out-of-range axes raise IndexError, non-integer axis types raise RuntimeError/TypeError/ValueError, and non-Tensor input is rejected.",
   "parameters": [
     {

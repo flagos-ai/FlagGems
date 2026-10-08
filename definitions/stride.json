@@ -1,6 +1,7 @@
 {
   "api_version": "v6.0",
   "name": "stride",
+  "requires_triton_kernel": false,
   "description": "Representative ATen signature (not an exclusive ABI): aten::stride(Tensor self) -> int[]. This representative signature is not exclusive, and original Gems pytest owns the full contract for the operator: it defines every overload, keyword argument, return value, raised error, aliasing and mutation that must continue to be honored, so tests must never be narrowed to this one signature. All registered supplied schemas, verbatim: aten::stride.int(Tensor self, int dim) -> int; aten::stride.Dimname(Tensor self, str dim) -> int; aten::stride(Tensor self) -> int[]. Semantics derived from the tests: stride is a host-side, read-only metadata query over a tensor's storage layout. In the representative default form it returns the full stride sequence as a list of Python ints, including for views with non-unit, zero or expanded strides and non-zero storage offsets, and for empty and sparse COO tensors. The int overload returns a single Python int for the stride of the given dimension and accepts negative indices; the Dimname overload takes a dimension name and needs a named tensor. The query never mutates, aliases or disturbs the operand tensor. Error behavior stays in pytest: out-of-range dims, a dim applied to a 0-dim tensor, non-integer dims, non-tensor inputs, and sparse CSR tensors that have no strides all raise.",
   "parameters": [
     {

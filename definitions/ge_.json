@@ -1,6 +1,7 @@
 {
   "api_version": "v6.0",
   "name": "ge_",
+  "requires_triton_kernel": true,
   "description": "Representative ATen signature (not an exclusive ABI), copied verbatim from the supplied schema: aten::ge_.Tensor(Tensor(a!) self, Tensor other) -> Tensor(a!). This representative overload is not exclusive: the original Gems pytest calls and results define the full contract, including the other registered overloads, their keyword arguments, returns, raised errors, aliasing and mutation; do not narrow the tests to this signature and never remove tests or adapt reference behavior to fit this one signature. Semantics (from the tests): in-place elementwise greater-or-equal, comparing promoted values of self and other and storing 0/1 results into the receiver in the receiver's dtype, with broadcasting of other up to the receiver; the receiver is returned and is the same tensor object (self is mutated in place, including through views and after autograd where the receiver is a non-leaf). All supplied registered schema strings: aten::ge_.Scalar(Tensor(a!) self, Scalar other) -> Tensor(a!); aten::ge_.Tensor(Tensor(a!) self, Tensor other) -> Tensor(a!). Overload-dependent behavior (for example the Scalar overload accepting a Python number, the scalar sweep including 0, both signs, fractional values and nan/inf, mixed-dtype promotion, and dtype/broadcast errors) stays owned by the original pytest and is not expressed by this single-overload definition.",
   "parameters": [
     {

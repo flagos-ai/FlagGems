@@ -1,6 +1,7 @@
 {
   "api_version": "v6.0",
   "name": "is_neg",
+  "requires_triton_kernel": false,
   "description": "Representative ATen signature (not an exclusive ABI): aten::is_neg(Tensor self) -> bool. The representative signature is not exclusive; the original Gems pytest owns the full contract for overloads, keyword arguments, returns, errors, aliasing and mutation, and its coverage must never be narrowed to this one signature. All supplied registered schemas, verbatim: aten::is_neg(Tensor self) -> bool. Semantics: is_neg reads the lazy neg bit recorded by torch._neg_view and returns a Python bool; the result is a parity of the neg bit and is independent of values, rank, layout, dtype and the conjugate bit. The supplied cases compare each observed result against torch.ops.aten.is_neg on an independently built reference operand, covering no flag, one negation, two negations, sliced/transposed/expanded/narrowed/scalar/empty layouts, complex inputs with the conjugate bit set in either order, and special values; an undefined tensor (None) is a valid self and is not negative. Setting and reading the bit is metadata only, so the read must not change stride, storage offset, storage identity, the lazy flags, conjugate flag, grad state or payload. Non-tensor arguments and a missing input raise TypeError/ValueError/RuntimeError; these error cases and the read-only contract remain owned by the pytest.",
   "parameters": [
     {

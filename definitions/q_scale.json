@@ -1,6 +1,7 @@
 {
   "api_version": "v6.0",
   "name": "q_scale",
+  "requires_triton_kernel": false,
   "description": "Representative ATen signature (not an exclusive ABI): aten::q_scale(Tensor self) -> float. This representative signature is not exclusive; the original Gems pytest defines the overloads, keyword arguments, return values, errors, aliasing and mutation behavior that the operator must support, and tests must never be removed or reference behavior adapted to fit this one signature. Semantics: reads the per-tensor affine scale stored in the quantized tensor's quantizer and returns it as a Python float. Only quantized tensors carrying a kPerTensorAffine quantizer are valid; plain (non-quantized) dtypes and per-channel quantizers raise RuntimeError/TypeError because no single stored scale exists. Non-tensor arguments also raise. Scales are returned verbatim, so zero, negative, tiny and extreme values, and NaN/Inf, are preserved. The operation is read-only: no input metadata, stored scale, or integer payload is mutated, including for non-contiguous views with nonzero storage offset and empty tensors. Registered schemas (verbatim): aten::q_scale(Tensor self) -> float.",
   "parameters": [
     {

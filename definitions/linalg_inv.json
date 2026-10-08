@@ -1,6 +1,7 @@
 {
   "api_version": "v6.0",
   "name": "linalg_inv",
+  "requires_triton_kernel": true,
   "description": "Representative ATen overload (not an exclusive ABI): aten::linalg_inv(Tensor A) -> Tensor. The original Gems pytest owns the full contract — overloads, keyword arguments, return values, errors, aliasing and mutation — and must not be narrowed to this one signature. Registered ATen schemas: aten::linalg_inv(Tensor A) -> Tensor; aten::linalg_inv.out(Tensor A, *, Tensor(a!) out) -> Tensor(a!). Semantics: returns the inverse of a batch of square matrices; A must be floating point or complex, rank >= 2 with equal trailing dimensions, and singular matrices are rejected with RuntimeError. The keyword-only .out overload writes into the supplied out buffer and returns that same tensor (alias of out, mutating out); that behavior is conditional on the overload and is therefore not expressed by this single-signature model. pytest also owns dtype rejection (integer/bool, and low-precision on the measured backend), rank < 2 and non-square shape rejection, singular-input rejection, vendor-measured non-finite handling, out-buffer stride/offset preservation and the backward gradient check.",
   "parameters": [
     {

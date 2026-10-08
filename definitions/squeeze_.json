@@ -1,6 +1,7 @@
 {
   "api_version": "v6.0",
   "name": "squeeze_",
+  "requires_triton_kernel": false,
   "description": "Representative ATen overload (not an exclusive ABI): aten::squeeze_.dim(Tensor(a!) self, int dim) -> Tensor(a!). This signature is representative only; the original Gems pytest owns the full contract and defines every overload, positional argument form, return, error, aliasing and mutation behavior, so tests must never be narrowed to this signature. Semantics: in-place removal of unit dimensions on the same tensor object (metadata-only rebinding that bumps the version counter and never reallocates or moves element data); with an int dim only the addressed dimension is considered and the call is a no-op when that dimension is not size 1, while negative dims are accepted and out-of-range dims raise. All supplied registered schemas verbatim: aten::squeeze_(Tensor(a!) self) -> Tensor(a!); aten::squeeze_.dim(Tensor(a!) self, int dim) -> Tensor(a!); aten::squeeze_.dims(Tensor(a!) self, int[] dim) -> Tensor(a!); aten::squeeze_.dimname(Tensor(a!) self, str dim) -> Tensor(a!). Overload-dependent behavior retained by pytest and not expressed here: the default overload squeezes every size-1 dimension, the dims overload takes a list or tuple of dims (empty list is a no-op, duplicates are rejected), the dimname overload takes a str name and is rejected in this build because named tensors are NYI, and out-of-range/duplicate dims, non-tensor input and in-place mutation of a grad-requiring leaf all raise.",
   "parameters": [
     {

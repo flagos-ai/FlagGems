@@ -1,6 +1,7 @@
 {
   "api_version": "v6.0",
   "name": "values_copy",
+  "requires_triton_kernel": true,
   "description": "Representative ATen signature (not an exclusive ABI): aten::values_copy(Tensor self) -> Tensor. Other registered schemas, verbatim: aten::values_copy.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!). Original Gems pytest owns the full contract of overloads, keyword arguments, returns, errors, aliasing and mutation; this definition is not exclusive and must not be used to narrow the tests. Semantics: values_copy is the non-aliasing counterpart of torch.values and returns a freshly allocated, contiguous strided tensor holding a copy of a sparse tensor's stored values (compressed layouts CSR, CSC, BSR, BSC and their batched forms are accepted, including empty storage, unsorted/offset/strided stored values, and float, complex, integer, bool and fp8 values). The default overload's return carries no alias annotation, and the tests assert that the result does not share the input values' storage when the result is nonempty, and that the input is left unmodified; the alias metadata is representative rather than an unconditional runtime guarantee for every case. The out overload writes in place into the keyword-only out tensor, returns that same tensor, and rejects a mismatched out dtype. Dense strided inputs are rejected, and COO/nested rejection rows are dispatched only on the measured NVIDIA vendor.",
   "parameters": [
     {

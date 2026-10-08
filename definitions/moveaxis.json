@@ -1,6 +1,7 @@
 {
   "api_version": "v6.0",
   "name": "moveaxis",
+  "requires_triton_kernel": false,
   "description": "Representative ATen signature (not an exclusive ABI): aten::moveaxis.int(Tensor(a) self, int source, int destination) -> Tensor(a). This signature is representative only, not an exclusive contract: the original Gems pytest owns the full overload/keyword/return/error/mutation/alias behavior, so tests must never be narrowed to this signature and reference behavior must never be adapted to fit it. Semantics derived from the tests: moveaxis returns a view of self in which the axis source is moved to position destination; it computes nothing and copies no data, so element values (including nan/inf special values), dtype, storage pointer, storage offset, empty shapes and the lazy conjugate bit are preserved while the strides are permuted to the native layout. Negative indices are normalized against self.dim(); an identity mapping still returns a fresh view object over the same storage, and because the result shares storage with self, writes through the result alias the input. Overload-dependent behavior (int[] pairs, empty pair no-ops, length mismatch, repeated-axis and non-integer-axis errors, non-tensor rejection, backward/grad accumulation) is defined by the original pytest, not expressed conditionally here. All registered schema strings: aten::moveaxis.intlist(Tensor(a) self, int[] source, int[] destination) -> Tensor(a); aten::moveaxis.int(Tensor(a) self, int source, int destination) -> Tensor(a).",
   "parameters": [
     {

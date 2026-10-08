@@ -1,6 +1,7 @@
 {
   "api_version": "v6.0",
   "name": "glu_jvp",
+  "requires_triton_kernel": true,
   "description": "Representative ATen signature (not an exclusive ABI): aten::glu_jvp(Tensor glu, Tensor x, Tensor dx, int dim) -> Tensor. This representative signature is not exclusive; the original Gems pytest owns the full contract for overloads, keyword arguments, returns, errors, aliasing and mutation, and tests must not be narrowed to this signature. Other registered signatures: aten::glu_jvp.out(Tensor glu, Tensor x, Tensor dx, int dim, *, Tensor(a!) out) -> Tensor(a!). Semantics: forward-mode JVP of aten::glu along dim; glu is the primal result, so the returned tensor has glu's shape and x / dx are narrowed to glu.size(dim) along dim (2 * glu.size(dim) must fit within x.size(dim), odd halving sizes and extents below the half width are valid, and the primal need not come from aten::glu); operands broadcast against the axes not narrowed; the kernel is float-only, and the integer/bool/fp8/complex rejection workloads are registered only for the nvidia vendor in this snapshot, so this definition does not assert cross-backend dtype rejection; in-range but too-short dx or oversized primal extents are rejected; inputs are not mutated. The out overload additionally writes into and returns the caller-supplied out buffer; that overload-dependent effect is expressed by the pytest rather than by this single-overload definition.",
   "parameters": [
     {

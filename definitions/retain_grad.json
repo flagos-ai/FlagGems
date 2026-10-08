@@ -1,6 +1,7 @@
 {
   "api_version": "v6.0",
   "name": "retain_grad",
+  "requires_triton_kernel": false,
   "description": "Representative ATen signature (not an exclusive ABI): aten::retain_grad(Tensor(a!) self) -> (). Registered schema strings supplied for this operator: aten::retain_grad(Tensor(a!) self) -> (). This single signature is the representative contract only; the original Gems pytest owns the full overload, keyword-argument, return, error, aliasing and mutation behavior, and must not be narrowed to this signature. Semantics (from tests): a host-side autograd-state mutation; it sets the `retains_grad` flag on the exact tensor object handed in so a later backward also fills that non-leaf's `.grad`. It returns None and moves no element, so the contract is state/metadata only: the flag lands on the very object passed in, it is per tensor (siblings and built-from leaves stay untouched), and storage, data_ptr, stride, storage_offset, version counter and values are untouched; it does not fabricate a gradient by itself. A leaf already owning its accumulator is accepted as a silent no-op, and a repeat call on an already flagged tensor is idempotent. It is only defined for a tensor that requires grad; tensors without grad raise RuntimeError, non-tensor inputs and a missing argument raise RuntimeError/TypeError, all of which remain pytest-owned.",
   "parameters": [
     {
