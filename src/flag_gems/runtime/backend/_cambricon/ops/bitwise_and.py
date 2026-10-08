@@ -33,7 +33,7 @@ def bitwise_and_tensor(A, B):
 
 
 def bitwise_and_tensor_(A, B):
-    logger.debug("GEMS_CAMBRICON BITWISE AND_")
+    logger.debug("GEMS_CAMBRICON BITWISE_AND_")
     return bitwise_and_func(A, B, True, out0=A)
 
 

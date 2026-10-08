@@ -43,8 +43,7 @@ def test_lu_unpack(shape, dtype):
     ref_pivots = utils.to_reference(pivots)
 
     # Unpack using FlagGems
-    with flag_gems.use_gems():
-        P, L, U = torch.ops.aten.lu_unpack(LU, pivots)
+    P, L, U = flag_gems.lu_unpack(LU, pivots)
 
     # Unpack using reference
     ref_P, ref_L, ref_U = torch.ops.aten.lu_unpack(ref_LU, ref_pivots)
@@ -73,8 +72,7 @@ def test_lu_unpack_unpack_data_false(shape, dtype):
     ref_LU = utils.to_reference(LU)
     ref_pivots = utils.to_reference(pivots)
 
-    with flag_gems.use_gems():
-        P, L, U = torch.ops.aten.lu_unpack(LU, pivots, unpack_data=False)
+    P, L, U = flag_gems.lu_unpack(LU, pivots, unpack_data=False)
 
     ref_P, ref_L, ref_U = torch.ops.aten.lu_unpack(
         ref_LU, ref_pivots, unpack_data=False
@@ -103,8 +101,7 @@ def test_lu_unpack_unpack_pivots_false(shape, dtype):
     ref_LU = utils.to_reference(LU)
     ref_pivots = utils.to_reference(pivots)
 
-    with flag_gems.use_gems():
-        P, L, U = torch.ops.aten.lu_unpack(LU, pivots, unpack_pivots=False)
+    P, L, U = flag_gems.lu_unpack(LU, pivots, unpack_pivots=False)
 
     ref_P, ref_L, ref_U = torch.ops.aten.lu_unpack(
         ref_LU, ref_pivots, unpack_pivots=False
@@ -135,8 +132,7 @@ def test_lu_unpack_batched(shape, dtype):
     ref_LU = utils.to_reference(LU)
     ref_pivots = utils.to_reference(pivots)
 
-    with flag_gems.use_gems():
-        P, L, U = torch.ops.aten.lu_unpack(LU, pivots)
+    P, L, U = flag_gems.lu_unpack(LU, pivots)
 
     ref_P, ref_L, ref_U = torch.ops.aten.lu_unpack(ref_LU, ref_pivots)
 
@@ -169,8 +165,7 @@ def test_lu_unpack_out(shape, dtype):
     L_out = torch.empty(m, k, dtype=dtype, device=flag_gems.device)
     U_out = torch.empty(k, n, dtype=dtype, device=flag_gems.device)
 
-    with flag_gems.use_gems():
-        torch.ops.aten.lu_unpack(LU, pivots, P=P_out, L=L_out, U=U_out)
+    flag_gems.lu_unpack_out(LU, pivots, P=P_out, L=L_out, U=U_out)
 
     ref_P, ref_L, ref_U = torch.ops.aten.lu_unpack(ref_LU, ref_pivots)
 

@@ -480,7 +480,7 @@ def cutlass_scaled_mm(
     b_scale: torch.Tensor,
     bias: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
-    logger.debug("GEMS CUTLASS SCALED MM")
+    logger.debug("GEMS CUTLASS_SCALED_MM")
     assert (
         a.dim() == 2 and b.dim() == 2 and c.dim() == 2
     ), "All inputs must be 2D tensors"

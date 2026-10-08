@@ -106,6 +106,8 @@ Before developing a new operator, check the `for` field in `conf/operators.yaml`
 
 On the host side, operators may call data initialization functions such as `torch.empty_like()`, `torch.zeros()`, and `torch.randn()`, as well as other FlagGems operators. Calling PyTorch computation operators directly is prohibited.
 
+The first statement in every operator function should emit a DEBUG log. The message must include the vendor prefix (`GEMS` for the generic implementation or `GEMS_<VENDOR>` for a vendor implementation), followed by a space and the operator name in uppercase snake case, for example `GEMS_NVIDIA SPECIAL_MULTIGAMMALN`.
+
 ## 6. Code format check {#code-format-check}
 
 Using `pre-commit` git hooks with FlagGems, you can format source Python code and perform basic code pre-checks when calling the `git commit` command.
@@ -127,6 +129,21 @@ When adding new test files, decorate test functions with `@pytest.mark.{OP_ID}` 
 > **Note**: The unit test mark name must match the operator's API name. If the API name has a leading underscore, add an additional `underscore` prefix to bypass pytest's limitations.
 
 If you are adding a C++ wrapped operator, you should add a corresponding *ctest* as well. See [Add a C++ wrapper](https://github.com/flagos-ai/FlagGems/blob/gh-pages/FlagGems/contribution/cpp-wrapper) for more details.
+
+### Testing operator logs {#testing-operator-logs}
+
+Operator unit tests may verify that the expected implementation was dispatched by checking its debug log. Enable DEBUG logging only for the logger belonging to the resolved implementation, rather than for the root logger:
+
+```python
+with caplog.at_level(
+    "DEBUG", logger=utils.gems_log_logger(flag_gems.add)
+):
+    result = flag_gems.add(inp, other)
+
+assert f"{utils.gems_log_prefix(flag_gems.add)} ADD" in caplog.text
+```
+
+`gems_log_logger()` derives the logger name from the resolved function, so the check also works when a backend-specific implementation is selected. `gems_log_prefix()` returns `GEMS` for the generic implementation and `GEMS_<VENDOR>` for a vendor implementation. Keep log assertions specific to the operator under test so unrelated DEBUG messages cannot make a test pass accidentally.
 
 ### Model test {#model-test}
 

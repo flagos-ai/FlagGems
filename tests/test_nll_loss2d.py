@@ -49,10 +49,9 @@ def test_nll_loss2d(shape, dtype, ignore_index, reduction, weight):
     ref_out = torch.ops.aten.nll_loss2d(
         ref_inp, ref_target, ref_weight, reduction_val, ignore_index
     )
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.nll_loss2d(
-            res_inp, res_target, res_weight, reduction_val, ignore_index
-        )
+    res_out = flag_gems.nll_loss2d(
+        res_inp, res_target, res_weight, reduction_val, ignore_index
+    )
 
     reduce_dim = 1 if reduction == "none" else res_target.numel()
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=reduce_dim)
