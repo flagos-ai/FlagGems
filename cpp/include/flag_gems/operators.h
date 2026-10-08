@@ -183,6 +183,18 @@ std::tuple<at::Tensor, at::Tensor> flash_attn_varlen_func(
     std::optional<at::Tensor> cp_tot_seqused_k = std::nullopt,
     int64_t fa_version = 2);
 
+// cross_attention(Tensor query, Tensor key, Tensor value,
+//                 Tensor? attn_mask=None, float? scale=None) -> Tensor
+// BNSD forward-only dense cross attention (MHA / GQA / MQA, fp16 / bf16 /
+// fp32).  Non-zero attn_mask entries block the corresponding key; fully masked
+// query rows produce exact zeros.  Query and key share a head dimension, the
+// value head dimension may be smaller.
+at::Tensor cross_attention(const at::Tensor &query,
+                           const at::Tensor &key,
+                           const at::Tensor &value,
+                           const std::optional<at::Tensor> &attn_mask = std::nullopt,
+                           const std::optional<double> &scale = std::nullopt);
+
 struct FlashFwdParams {
   // tensor pointers
   at::Tensor q;
@@ -270,5 +282,12 @@ at::Tensor to_copy(const at::Tensor &self,
                    c10::optional<at::MemoryFormat> memory_format = c10::nullopt);
 
 at::Tensor &copy_(at::Tensor &dst, const at::Tensor &src, bool non_blocking = false);
+
+// Set when the aten_patch extension registers flag_gems kernels for aten ops.
+// The copy fallbacks only have to guard against recursive dispatch while those
+// overrides are installed; without them the fallback must stay on the regular
+// backend path, which some backends (e.g. MLU) need to service device copies.
+void set_aten_patch_installed(bool installed);
+bool aten_patch_installed();
 
 }  // namespace flag_gems

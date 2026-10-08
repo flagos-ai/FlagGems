@@ -8,8 +8,6 @@ import triton.language as tl
 from flag_gems.ops.as_strided_copy import (
     _can_use_byte_triton,
     _can_use_triton,
-    _fallback_as_strided_copy,
-    _fallback_as_strided_copy_out,
     _launch_as_strided_copy,
     _launch_byte_as_strided_copy,
     _make_as_strided_view,
@@ -35,6 +33,15 @@ _MAX_BLOCK_R = 4096
 _MAX_SMALL_STRIDE = 4
 _SMALL_NUMEL = 65536
 _STRIDE_BLOCK = 4096
+
+# Element types the XPU constexpr-stride lowering rejects. Giving such a view a
+# *compile-time* inner stride makes the backend pick a gather lowering that only
+# accepts I16/FP16/BF16/I32/FP32 and abort compilation ("Only support
+# I16/FP16/BF16/I32/FP32 in VGather!" -> RuntimeError), while the generic kernels
+# (runtime stride, element-wise path) handle them correctly. bool and the float8
+# types are not affected (bool is lowered through a different route; float8 never
+# reaches these kernels because `_can_use_triton` rejects it).
+_BYTE_INT_DTYPES = (torch.int8, torch.uint8)
 
 
 @libentry()
@@ -207,6 +214,8 @@ def _try_fast_copy(view: torch.Tensor, out: torch.Tensor) -> bool:
     # tensors with a large stride (e.g. a full-matrix transpose).
     if S > _MAX_SMALL_STRIDE and n > _SMALL_NUMEL:
         return False
+    if view.dtype in _BYTE_INT_DTYPES:
+        return False
 
     if not outer_s:
         grid = (triton.cdiv(R, _STRIDE_BLOCK),)
@@ -241,7 +250,10 @@ def as_strided_copy(input, size, stride, storage_offset=None):
         view = _make_as_strided_view(input, size, stride, storage_offset)
         return view.clone(memory_format=torch.contiguous_format)
 
-    out = torch.empty(size, dtype=input.dtype, device=input.device)
+    contiguous_stride = torch.empty(size, device="meta").stride()
+    out = torch.empty_strided(
+        size, contiguous_stride, dtype=input.dtype, device=input.device
+    )
     if out.numel() == 0:
         _make_as_strided_view(input, size, stride, storage_offset)
         return out
@@ -253,7 +265,9 @@ def as_strided_copy(input, size, stride, storage_offset=None):
         return _launch_as_strided_copy(view, out)
     if _can_use_byte_triton(view, out):
         return _launch_byte_as_strided_copy(view, out)
-    return _fallback_as_strided_copy(input, size, stride, storage_offset)
+    raise NotImplementedError(
+        "Kunlunxin as_strided_copy does not support this stride layout."
+    )
 
 
 def as_strided_copy_out(input, size, stride, storage_offset=None, *, out):
@@ -281,19 +295,33 @@ def as_strided_copy_out(input, size, stride, storage_offset=None, *, out):
         out.copy_(view)
         return out
 
-    if (
-        torch._C._is_alias_of(input, out)
-        or has_internal_overlapping(out) != MemOverlap.No
-    ):
-        return _fallback_as_strided_copy_out(
-            input, size, stride, storage_offset, out=out
+    if has_internal_overlapping(out) != MemOverlap.No:
+        raise NotImplementedError(
+            "Kunlunxin as_strided_copy.out does not support internally overlapping "
+            "outputs."
         )
 
     view = _make_as_strided_view(input, size, stride, storage_offset)
+    if torch._C._is_alias_of(input, out):
+        snapshot = torch.empty_like(view, memory_format=torch.contiguous_format)
+        if _try_fast_copy(view, snapshot):
+            view = snapshot
+        elif _can_use_triton(view, snapshot):
+            _launch_as_strided_copy(view, snapshot)
+            view = snapshot
+        elif _can_use_byte_triton(view, snapshot):
+            _launch_byte_as_strided_copy(view, snapshot)
+            view = snapshot
+        else:
+            raise NotImplementedError(
+                "Kunlunxin as_strided_copy.out does not support this stride layout."
+            )
     if _try_fast_copy(view, out):
         return out
     if _can_use_triton(view, out):
         return _launch_as_strided_copy(view, out)
     if _can_use_byte_triton(view, out):
         return _launch_byte_as_strided_copy(view, out)
-    return _fallback_as_strided_copy_out(input, size, stride, storage_offset, out=out)
+    raise NotImplementedError(
+        "Kunlunxin as_strided_copy.out does not support this stride layout."
+    )

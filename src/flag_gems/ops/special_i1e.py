@@ -104,3 +104,12 @@ def special_i1e(x: torch.Tensor):
     logger.debug("GEMS SPECIAL_I1E")
     out = torch.empty_like(x)
     return _run_special_i1e_kernel(x, out)
+
+
+def special_i1e_out(self: torch.Tensor, out: torch.Tensor):
+    """
+    ATen wrapper: special_i1e.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+    """
+    logger.debug("GEMS SPECIAL_I1E_OUT")
+    x = self
+    return _run_special_i1e_kernel(x, out)

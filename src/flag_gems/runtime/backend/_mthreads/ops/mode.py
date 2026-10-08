@@ -86,6 +86,10 @@ def mode_kernel(
 
 def mode(inp, dim=-1, keepdim=False):
     logger.debug("GEMS_MTHREADS MODE")
+    if inp.dtype in (torch.int8, torch.uint8) and inp.shape[dim] > 0:
+        from flag_gems.ops.mode import _mode_byte
+
+        return _mode_byte(inp, dim, keepdim)
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
 
     shape = list(inp.shape)

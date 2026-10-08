@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import math
+
 import pytest
 import torch
 
@@ -24,6 +26,62 @@ if cfg.QUICK_MODE:
     FLOAT_DTYPES = [torch.float32]
 else:
     FLOAT_DTYPES = utils.FLOAT_DTYPES
+
+
+@pytest.mark.native_group_norm
+# Cover one-, two-, and three-dimensional spatial normalization inputs.
+@pytest.mark.parametrize(
+    "shape, num_groups",
+    [((2, 4, 8), 2), ((2, 4, 4, 4), 2), ((2, 4, 2, 2, 2), 2)],
+)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("affine", [True, False])
+def test_native_group_norm(shape, num_groups, dtype, affine, caplog):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    channel_count = shape[1]
+    weight = (
+        torch.randn(channel_count, dtype=dtype, device=flag_gems.device)
+        if affine
+        else None
+    )
+    bias = torch.randn_like(weight) if affine else None
+    batch_count = shape[0]
+    spatial_size = math.prod(shape[2:])
+    eps = 1e-5
+
+    ref_result = torch.ops.aten.native_group_norm.default(
+        utils.to_reference(inp, True),
+        utils.to_reference(weight, True),
+        utils.to_reference(bias, True),
+        batch_count,
+        channel_count,
+        spatial_size,
+        num_groups,
+        eps,
+    )
+
+    with caplog.at_level(
+        "DEBUG", logger=utils.gems_log_logger(flag_gems.native_group_norm)
+    ):
+        result = flag_gems.native_group_norm(
+            inp,
+            weight,
+            bias,
+            batch_count,
+            channel_count,
+            spatial_size,
+            num_groups,
+            eps,
+        )
+
+    assert (
+        f"{utils.gems_log_prefix(flag_gems.native_group_norm)} NATIVE_GROUP_NORM"
+        in caplog.text
+    )
+    assert len(result) == len(ref_result) == 3
+    reduce_dim = (channel_count // num_groups) * spatial_size
+    for actual, expected in zip(result, ref_result):
+        utils.gems_assert_close(actual, expected, dtype, reduce_dim=reduce_dim)
 
 
 @pytest.mark.group_norm
@@ -63,10 +121,16 @@ def test_group_norm(N, C, H, W, num_groups, dtype, wb_none):
         ref_inp, num_groups, weight=ref_weight, bias=ref_bias, eps=eps
     )
 
-    with flag_gems.use_gems():
-        res_out = torch.group_norm(
-            res_inp, num_groups, weight=res_weight, bias=res_bias, eps=eps
-        )
+    res_out, _, _ = flag_gems.group_norm(
+        res_inp,
+        res_weight,
+        res_bias,
+        N,
+        C,
+        H * W,
+        num_groups,
+        eps,
+    )
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -128,23 +192,22 @@ def test_group_norm_backward(N, C, H, W, num_groups, dtype, wb_none):
         num_groups,
         output_mask,
     )
-    with flag_gems.use_gems():
-        (
-            res_in_grad,
-            res_weight_grad,
-            res_bias_grad,
-        ) = torch.ops.aten.native_group_norm_backward(
-            res_grad,
-            res_inp,
-            res_mean,
-            res_rstd,
-            res_weight,
-            N,
-            C,
-            HxW,
-            num_groups,
-            output_mask,
-        )
+    (
+        res_in_grad,
+        res_weight_grad,
+        res_bias_grad,
+    ) = flag_gems.group_norm_backward(
+        res_grad,
+        res_inp,
+        res_mean,
+        res_rstd,
+        res_weight,
+        N,
+        C,
+        HxW,
+        num_groups,
+        output_mask,
+    )
     utils.gems_assert_close(
         res_in_grad, ref_in_grad, dtype, reduce_dim=group_size * HxW
     )

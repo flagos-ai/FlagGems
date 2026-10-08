@@ -308,7 +308,7 @@ def searchsorted_out(
     sorter=None,
     out,
 ):
-    logger.debug("GEMS SEARCHSORTED OUT")
+    logger.debug("GEMS SEARCHSORTED_OUT")
     return _searchsorted_impl(
         sorted_sequence,
         self,
@@ -329,7 +329,7 @@ def searchsorted_scalar(
     side=None,
     sorter=None,
 ):
-    logger.debug("GEMS SEARCHSORTED SCALAR")
+    logger.debug("GEMS SEARCHSORTED_SCALAR")
     _check_scalar_values_shape(sorted_sequence)
     values = torch.scalar_tensor(self, device=sorted_sequence.device)
     return _searchsorted_impl(
@@ -352,7 +352,7 @@ def searchsorted_scalar_out(
     sorter=None,
     out,
 ):
-    logger.debug("GEMS SEARCHSORTED SCALAR OUT")
+    logger.debug("GEMS SEARCHSORTED_SCALAR_OUT")
     _check_scalar_values_shape(sorted_sequence)
     values = torch.scalar_tensor(self, device=sorted_sequence.device)
     return _searchsorted_impl(

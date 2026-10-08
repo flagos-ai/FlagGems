@@ -45,6 +45,32 @@ MVLGAMMA_CASES = [
 ] + [(shape, dtype) for shape in LOW_PRECISION_SHAPES for dtype in LOW_PRECISION_DTYPES]
 
 
+@pytest.mark.special_multigammaln
+@pytest.mark.parametrize("shape,dtype", MVLGAMMA_CASES)
+@pytest.mark.parametrize("p", P_LIST)
+def test_special_multigammaln(shape, dtype, p, caplog):
+    torch.manual_seed(42)
+    inp = torch.rand(shape, dtype=dtype, device=flag_gems.device)
+    inp = inp + (p - 1) / 2 + 1.0
+    ref_inp = utils.to_reference(inp)
+
+    ref_out = torch.ops.aten.special_multigammaln(ref_inp, p)
+    with caplog.at_level(
+        "DEBUG", logger=utils.gems_log_logger(flag_gems.special_multigammaln)
+    ):
+        res_out = flag_gems.special_multigammaln(inp, p)
+
+    assert (
+        f"{utils.gems_log_prefix(flag_gems.special_multigammaln)} SPECIAL_MULTIGAMMALN"
+        in caplog.text
+    )
+    # Use relaxed tolerance for float16 due to lgamma precision limitations
+    atol = 1e-2 if dtype == torch.float16 else 1e-4
+    utils.gems_assert_close(res_out, ref_out, dtype, atol=atol)
+    # special_multigammaln is out-of-place: the input must stay unmodified
+    utils.gems_assert_close(inp, ref_inp, dtype, atol=atol)
+
+
 @pytest.mark.mvlgamma_
 @pytest.mark.parametrize("shape,dtype", MVLGAMMA_CASES)
 @pytest.mark.parametrize("p", P_LIST)
@@ -55,8 +81,7 @@ def test_mvlgamma_(shape, dtype, p):
     ref_inp = utils.to_reference(inp.clone())
 
     ref_out = ref_inp.mvlgamma_(p)
-    with flag_gems.use_gems():
-        res_out = inp.mvlgamma_(p)
+    res_out = flag_gems.mvlgamma_(inp, p)
 
     # Use relaxed tolerance for float16 due to lgamma precision limitations
     atol = 1e-2 if dtype == torch.float16 else 1e-4

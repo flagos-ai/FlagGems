@@ -15,7 +15,11 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base
+
+fp64_is_supported = flag_gems.runtime.device.support_fp64
 
 # Cholesky decomposition benchmark shapes
 # Square matrices from 2x2 to 256x256 covering small to medium-large use cases
@@ -52,7 +56,8 @@ def test_linalg_cholesky():
     bench = CholeskyBenchmark(
         op_name="linalg_cholesky",
         torch_op=torch.ops.aten.linalg_cholesky,
-        # Cholesky only supports float32/float64; fp16/bf16 not supported by PyTorch
-        dtypes=[torch.float32, torch.float64],
+        # Cholesky only supports float32/float64; fp16/bf16 not supported by
+        # PyTorch. fp64 is gated on device support (Moore Threads has no fp64).
+        dtypes=[torch.float32] + ([torch.float64] if fp64_is_supported else []),
     )
     bench.run()

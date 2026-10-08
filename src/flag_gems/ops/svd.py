@@ -1524,7 +1524,10 @@ def _small_jacobi_singular_values(input):
     s = torch.empty((batch, k), dtype=input.dtype, device=input.device)
     block_r = triton.next_power_of_2(rows)
     block_k = triton.next_power_of_2(k)
-    sweeps = 3 if k <= 4 else 5
+    # One-sided Jacobi needs enough sweeps for the smallest singular values to
+    # converge; the trailing singular values are the slowest. Use 8 sweeps for
+    # all sizes up to 16, which leaves atol=1e-3 margin on the smallest value.
+    sweeps = 8
     with torch_device_fn.device(input.device):
         _small_jacobi_svals_kernel[(batch,)](
             a,
@@ -1555,7 +1558,10 @@ def _small_jacobi_svd(input):
     v = torch.empty((batch, n, k), dtype=input.dtype, device=input.device)
     block_r = triton.next_power_of_2(rows)
     block_k = triton.next_power_of_2(k)
-    sweeps = 3 if k <= 4 else 5
+    # One-sided Jacobi needs enough sweeps for the smallest singular values to
+    # converge; the trailing singular values are the slowest. Use 8 sweeps for
+    # all sizes up to 16, which leaves atol=1e-3 margin on the smallest value.
+    sweeps = 8
     with torch_device_fn.device(input.device):
         _small_jacobi_svd_kernel[(batch,)](
             a,
@@ -3389,29 +3395,47 @@ def _some_false_svd_via_thin(input):
     batch, m, n = _svd_shape(input)
     k = min(m, n)
     thin_u, s, thin_v = svd(input, some=True, compute_uv=True)
-    u = torch.empty((*input.shape[:-2], m, m), dtype=input.dtype, device=input.device)
-    v = torch.empty((*input.shape[:-2], n, n), dtype=input.dtype, device=input.device)
-    with torch_device_fn.device(input.device):
-        _complete_svd_factor_kernel[(batch,)](
-            thin_u,
-            u,
-            ROWS=m,
-            THIN_COLS=k,
-            FULL_COLS=m,
-            BLOCK_ROWS=triton.next_power_of_2(m),
-            BLOCK_COLS=triton.next_power_of_2(m),
-            num_warps=4,
+
+    if m == k:
+        u = thin_u
+    else:
+        u = torch.empty(
+            (*input.shape[:-2], m, m),
+            dtype=input.dtype,
+            device=input.device,
         )
-        _complete_svd_factor_kernel[(batch,)](
-            thin_v,
-            v,
-            ROWS=n,
-            THIN_COLS=k,
-            FULL_COLS=n,
-            BLOCK_ROWS=triton.next_power_of_2(n),
-            BLOCK_COLS=triton.next_power_of_2(n),
-            num_warps=4,
+        with torch_device_fn.device(input.device):
+            _complete_svd_factor_kernel[(batch,)](
+                thin_u,
+                u,
+                ROWS=m,
+                THIN_COLS=k,
+                FULL_COLS=m,
+                BLOCK_ROWS=triton.next_power_of_2(m),
+                BLOCK_COLS=triton.next_power_of_2(m),
+                num_warps=4,
+            )
+
+    if n == k:
+        v = thin_v
+    else:
+        v = torch.empty(
+            (*input.shape[:-2], n, n),
+            dtype=input.dtype,
+            device=input.device,
         )
+        with torch_device_fn.device(input.device):
+            _complete_svd_factor_kernel[(batch,)](
+                thin_v,
+                v,
+                ROWS=n,
+                THIN_COLS=k,
+                FULL_COLS=n,
+                BLOCK_ROWS=triton.next_power_of_2(n),
+                BLOCK_COLS=triton.next_power_of_2(n),
+                num_warps=4,
+            )
+
     return u, s, v
 
 
@@ -3491,11 +3515,11 @@ def svd(input, some=True, compute_uv=True):
             return SVDResult(*_small4_square_svd(input))
         if _can_use_tall_wide_gram_jacobi_kernel(input, some, compute_uv):
             return SVDResult(*_gram_jacobi_svd(input))
-        use_batched_cyclic16 = k == 16 and batch >= 8 and max(m, n) <= 64
-        if (
-            _can_use_small_jacobi_kernel(input, some, compute_uv)
-            and not use_batched_cyclic16
-        ):
+        # k=16 is already too large for the fully static-unrolled small
+        # Jacobi kernel. Route it through the cyclic Jacobi implementation,
+        # including the single-matrix case.
+        use_cyclic16 = k == 16 and max(m, n) <= 64
+        if _can_use_small_jacobi_kernel(input, some, compute_uv) and not use_cyclic16:
             return SVDResult(*_small_jacobi_svd(input))
         if _can_use_tsqr_cholesky_kernel(input, some, compute_uv):
             return SVDResult(*_tsqr_cholesky_svd(input))

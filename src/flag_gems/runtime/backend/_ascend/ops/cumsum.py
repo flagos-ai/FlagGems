@@ -439,9 +439,8 @@ def normed_cumsum(inp, dim=-1):
             )
             return out
 
-        if inp.dtype != torch.float64:
-            acc_dtype = torch.float32
-        sums = torch.empty((n_rows, n_chunks), dtype=acc_dtype, device=device.name)
+        acc_dtype = torch.float32 if inp.dtype != torch.float64 else torch.float64
+        sums = torch.empty((n_rows, n_chunks), dtype=acc_dtype, device=inp.device)
         cumsums = torch.empty_like(sums)
         block_cumsum_kernel[grid](
             inp,

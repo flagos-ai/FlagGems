@@ -76,24 +76,20 @@ def index_add_kernel(
     inp_off = (
         rows_offsets * inp_len + cur_indices[None, :]
     )  # inp_off = (block_x * BLOCK_M + tl.arange(0, BLOCK_M)) * M + cur_indices
-    cur_inp = tl.load(
-        inp + inp_off, mask=block_mask, other=0.0
-    )  # cur_inp = tl.load(inp + inp_off, mask=block_mask, other=0.0)
     src_off = (
         rows_offsets * N + cols_offsets[None, :]
     )  # src_off = (block_x * BLOCK_M + tl.arange(0, BLOCK_M)) * N + block_y * BLOCK_N + tl.arange(0, BLOCK_N)
     cur_src = tl.load(
         src + src_off, mask=block_mask, other=0.0
     )  # cur_src = tl.load(src + src_off, mask=block_mask, other=0.0)
-    cur_inp += alpha * cur_src
 
-    tl.store(inp_cont + inp_off, cur_inp, mask=block_mask)
+    tl.atomic_add(inp_cont + inp_off, alpha * cur_src, mask=block_mask)
 
 
 def index_add(inp, dim, index, src, alpha=1):
     logger.debug("GEMS_KUNLUNXIN INDEX_ADD")
     assert ((0 <= index) * (index < inp.size(dim))).equal(
-        torch.ones(tuple(index.shape), dtype=torch.bool, device="cuda")
+        torch.ones(tuple(index.shape), dtype=torch.bool, device=index.device)
     ), "0 <= index < self.size(dim)"
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     assert index.numel() == src.size(
@@ -120,11 +116,8 @@ def index_add(inp, dim, index, src, alpha=1):
         src = dim_compress(src, dim)
     inp_cont = inp.clone()
 
-    grid = lambda meta: (
-        triton.cdiv(M, meta["BLOCK_M"]),
-        triton.cdiv(N, meta["BLOCK_N"]),
-    )
-    index_add_kernel[grid](inp, inp_cont, index, src, M, N, alpha, inp_len)
+    grid = lambda meta: (triton.cdiv(M * N, meta["BLOCK"]),)
+    index_add_atomic_kernel[grid](inp_cont, index, src, M, N, alpha, inp_len, BLOCK=256)
     if dim != fine_dim:
         order = [i for i in range(inp_cont.ndim - 1)]
         order.insert(dim, fine_dim)
@@ -133,10 +126,30 @@ def index_add(inp, dim, index, src, alpha=1):
         return inp_cont
 
 
+@triton.jit
+def index_add_atomic_kernel(
+    inp_cont,
+    index,
+    src,
+    M,
+    N,
+    alpha,
+    inp_len,
+    BLOCK: tl.constexpr,
+):
+    offsets = tl.program_id(axis=0) * BLOCK + tl.arange(0, BLOCK)
+    mask = offsets < M * N
+    rows = offsets // N
+    index_offsets = offsets % N
+    destination = tl.load(index + index_offsets, mask=mask, other=0)
+    values = tl.load(src + offsets, mask=mask, other=0.0)
+    tl.atomic_add(inp_cont + rows * inp_len + destination, alpha * values, mask=mask)
+
+
 def index_add_(inp, dim, index, src, alpha=1):
     logger.debug("GEMS_KUNLUNXIN INDEX_ADD_")
     assert ((0 <= index) * (index < inp.size(dim))).equal(
-        torch.ones(tuple(index.shape), dtype=torch.bool, device="cuda")
+        torch.ones(tuple(index.shape), dtype=torch.bool, device=index.device)
     ), "0 <= index < self.size(dim)"
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     assert index.numel() == src.size(
@@ -163,11 +176,8 @@ def index_add_(inp, dim, index, src, alpha=1):
         inp_cont = dim_compress(inp_cont, dim)
         src = dim_compress(src, dim)
 
-    grid = lambda meta: (
-        triton.cdiv(M, meta["BLOCK_M"]),
-        triton.cdiv(N, meta["BLOCK_N"]),
-    )
-    index_add_kernel[grid](inp_cont, inp_cont, index, src, M, N, alpha, inp_len)
+    grid = lambda meta: (triton.cdiv(M * N, meta["BLOCK"]),)
+    index_add_atomic_kernel[grid](inp_cont, index, src, M, N, alpha, inp_len, BLOCK=256)
     if dim != fine_dim:
         order = [i for i in range(inp_cont.ndim - 1)]
         order.insert(dim, fine_dim)

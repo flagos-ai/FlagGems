@@ -62,7 +62,7 @@ def var_mean_welford_kernel(
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
         col_mask = cols < N
-        mask = row_mask and col_mask
+        mask = row_mask & col_mask
 
         x = tl.load(X + cols, mask, other=0.0).to(tl.float32)
 

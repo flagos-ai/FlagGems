@@ -38,6 +38,66 @@ SHAPES = [
 ]
 
 
+@pytest.mark.native_batch_norm
+# Cover representative 3D and 4D batch-normalization inputs.
+@pytest.mark.parametrize("shape", [(4, 3, 8, 8), (2, 4, 16)])
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("affine", [True, False])
+def test_native_batch_norm(shape, dtype, affine, caplog):
+    channel_count = shape[1]
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    weight = (
+        torch.randn(channel_count, dtype=dtype, device=flag_gems.device)
+        if affine
+        else None
+    )
+    bias = torch.randn_like(weight) if affine else None
+    running_mean = torch.zeros(channel_count, dtype=dtype, device=flag_gems.device)
+    running_var = torch.ones(channel_count, dtype=dtype, device=flag_gems.device)
+
+    ref_inp = utils.to_reference(inp, True)
+    ref_weight = utils.to_reference(weight, True)
+    ref_bias = utils.to_reference(bias, True)
+    ref_running_mean = utils.to_reference(running_mean, True)
+    ref_running_var = utils.to_reference(running_var, True)
+    ref_result = torch.ops.aten.native_batch_norm.default(
+        ref_inp,
+        ref_weight,
+        ref_bias,
+        ref_running_mean,
+        ref_running_var,
+        True,
+        0.1,
+        1e-5,
+    )
+
+    with caplog.at_level(
+        "DEBUG", logger=utils.gems_log_logger(flag_gems.native_batch_norm)
+    ):
+        result = flag_gems.native_batch_norm(
+            inp,
+            weight,
+            bias,
+            running_mean,
+            running_var,
+            True,
+            0.1,
+            1e-5,
+        )
+
+    assert (
+        f"{utils.gems_log_prefix(flag_gems.native_batch_norm)} NATIVE_BATCH_NORM"
+        in caplog.text
+    )
+    assert len(result) == len(ref_result) == 3
+    reduce_dim = math.prod(shape) // channel_count
+    utils.gems_assert_close(result[0], ref_result[0], dtype, reduce_dim=reduce_dim)
+    utils.gems_assert_close(result[1], ref_result[1], dtype, reduce_dim=reduce_dim)
+    utils.gems_assert_close(result[2], ref_result[2], dtype, reduce_dim=reduce_dim)
+    utils.gems_assert_close(running_mean, ref_running_mean, dtype)
+    utils.gems_assert_close(running_var, ref_running_var, dtype)
+
+
 @pytest.mark.batch_norm
 @pytest.mark.parametrize("shape", SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -75,15 +135,16 @@ def test_batch_norm(shape, dtype, affine):
         eps=eps,
     )
 
-    with flag_gems.use_gems():
-        res_out = torch.nn.functional.batch_norm(
-            inp,
-            running_mean,
-            running_var,
-            weight=weight,
-            bias=bias,
-            eps=eps,
-        )
+    res_out = flag_gems.native_batch_norm(
+        inp,
+        weight,
+        bias,
+        running_mean,
+        running_var,
+        False,
+        0.1,
+        eps,
+    )[0]
 
     utils.gems_assert_close(res_out, ref_out, dtype)
     utils.gems_assert_close(running_mean, ref_running_mean, dtype)
@@ -137,23 +198,22 @@ def test_batch_norm_backward(shape, dtype, affine):
         eps,
         output_mask,
     )
-    with flag_gems.use_gems():
-        (
-            res_in_grad,
-            res_weight_grad,
-            res_bias_grad,
-        ) = torch.ops.aten.native_batch_norm_backward(
-            res_grad,
-            res_inp,
-            res_weight,
-            res_running_mean,
-            res_running_var,
-            res_save_mean,
-            res_save_invstd,
-            train,
-            eps,
-            output_mask,
-        )
+    (
+        res_in_grad,
+        res_weight_grad,
+        res_bias_grad,
+    ) = flag_gems.batch_norm_backward(
+        res_grad,
+        res_inp,
+        res_weight,
+        res_running_mean,
+        res_running_var,
+        res_save_mean,
+        res_save_invstd,
+        train,
+        eps,
+        output_mask,
+    )
 
     reduce_dim = math.prod(shape) // C
     utils.gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=reduce_dim)

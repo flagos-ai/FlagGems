@@ -140,9 +140,8 @@ def group_norm_kernel_opt(
             mean = tl.zeros([BLOCK_GROUP_SIZE, BLOCK_HW_SIZE], tl.float32)
             var = tl.zeros([BLOCK_GROUP_SIZE, BLOCK_HW_SIZE], tl.float32)
             for idy in range(0, hw_iter):
-                xy_mask = (
-                    group_offset[:, None] < group_size
-                    and (idy * BLOCK_HW_SIZE + hw_offset[None, :]) < HW
+                xy_mask = (group_offset[:, None] < group_size) & (
+                    (idy * BLOCK_HW_SIZE + hw_offset[None, :]) < HW
                 )
                 tmp = tl.load(
                     X + idy * BLOCK_HW_SIZE + xy_offset,
@@ -168,9 +167,8 @@ def group_norm_kernel_opt(
                 bias = tl.load(B_ptr + group_offset, cache_modifier=".cg")[:, None]
 
             for idy in range(0, hw_iter):
-                xy_mask = (
-                    group_offset[:, None] < group_size
-                    and (idy * BLOCK_HW_SIZE + hw_offset[None, :]) < HW
+                xy_mask = (group_offset[:, None] < group_size) & (
+                    (idy * BLOCK_HW_SIZE + hw_offset[None, :]) < HW
                 )
                 tmp = tl.load(
                     X + idy * BLOCK_HW_SIZE + xy_offset,

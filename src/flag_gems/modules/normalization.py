@@ -47,23 +47,24 @@ __all__ = [
 def gems_rms_forward(
     x: torch.Tensor, residual: Optional[torch.Tensor], weight: torch.Tensor, eps: float
 ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+
+    # NOTE: Dynamo cannot trace logging.Logger methods
+    # (torch._dynamo.exc.Unsupported 'logging.Logger method not supported
+    # for non-export cases'), so this entry point must not log.
+    # Debug-only removal; numerics/control flow unchanged.
     add_residual = residual is not None
     if add_residual:
         if use_c_extension:
-            logger.debug("GEMS CUSTOM FUSED_ADD_RMS_NORM(C EXTENSION)")
             torch.ops.flag_gems.fused_add_rms_norm(x, residual, weight, eps)
             return x, residual
         else:
-            logger.debug("GEMS CUSTOM FUSED_ADD_RMS_NORM")
             return flag_gems.fused_add_rms_norm(
                 x, residual, list(weight.size()), weight, eps
             )
     else:
         if use_c_extension:
-            logger.debug("GEMS CUSTOM RMS_NORM(C EXTENSION)")
             return torch.ops.flag_gems.rms_norm(x, weight, eps)
         else:
-            logger.debug("GEMS CUSTOM RMS_NORM")
             return flag_gems.rms_norm(x, list(weight.size()), weight, eps)
 
 

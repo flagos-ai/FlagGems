@@ -7,6 +7,30 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
+@pytest.mark.special_gammaincc
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+# The igammac kernel does not support Half/BFloat16
+@pytest.mark.parametrize("dtype", [torch.float32])
+def test_special_gammaincc(shape, dtype, caplog):
+    # Generate positive random values for a and x
+    inp1 = torch.rand(shape, dtype=dtype, device=flag_gems.device) + 0.1
+    inp2 = torch.rand(shape, dtype=dtype, device=flag_gems.device) + 0.1
+    ref_inp1 = utils.to_reference(inp1, True)
+    ref_inp2 = utils.to_reference(inp2, True)
+
+    ref_out = torch.ops.aten.special_gammaincc(ref_inp1, ref_inp2)
+    with caplog.at_level(
+        "DEBUG", logger=utils.gems_log_logger(flag_gems.special_gammaincc)
+    ):
+        res_out = flag_gems.special_gammaincc(inp1, inp2)
+
+    expected_prefix = utils.gems_log_prefix(flag_gems.special_gammaincc)
+    assert f"{expected_prefix} SPECIAL_GAMMAINCC" in caplog.text
+    utils.gems_assert_close(res_out, ref_out, dtype)
+    # special_gammaincc is out-of-place: inputs must stay unmodified
+    utils.gems_assert_close(inp1, ref_inp1, dtype)
+
+
 @pytest.mark.igammac_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 # igammac_cuda does not support Half/BFloat16
@@ -20,8 +44,7 @@ def test_igammac_(shape, dtype):
     ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = ref_inp1.igammac_(ref_inp2)
-    with flag_gems.use_gems():
-        res_out = inp1.igammac_(inp2)
+    res_out = flag_gems.igammac_(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
     # igammac_ is in-place: also verify the mutated input tensor matches reference

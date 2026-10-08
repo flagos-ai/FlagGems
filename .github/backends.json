@@ -1,112 +1,176 @@
 [
   {
-    "backend": "ascend-cann850",
-    "runner_label": "cann850",
-    "label": "vendor/Ascend",
-    "gpu_check": "tools/gpu_check_ascend.sh",
-    "enabled": true
-  },
-  {
     "backend": "ascend-cann900",
+    "vendor": "ascend",
     "runner_label": "cann9",
+    "command_aliases": ["ascend", "cann9"],
     "label": "vendor/Ascend",
     "gpu_check": "tools/gpu_check_ascend.sh",
     "enabled": true
   },
   {
     "backend": "cambricon-neuware472",
+    "vendor": "cambricon",
     "runner_label": "cambricon",
+    "command_aliases": ["cambricon"],
     "label": "vendor/Cambricon",
     "gpu_check": "tools/gpu_check_cambricon.sh",
     "enabled": true
   },
   {
     "backend": "enflame-tops1106",
+    "vendor": "enflame",
     "runner_label": "enflame",
+    "command_aliases": ["enflame"],
     "label": "vendor/Enflame",
     "gpu_check": "",
     "enabled": true
   },
   {
     "backend": "hygon",
+    "vendor": "hygon",
     "runner_label": "hygon",
+    "command_aliases": ["hygon"],
     "label": "vendor/Hygon",
     "gpu_check": "tools/gpu_check_hygon.sh",
-    "enabled": true
+    "enabled": true,
+    "containerized": true,
+    "container": {
+      "image": "harbor.baai.ac.cn/flagos-runtime/flagos-runtime-hygon-dtk26.04:2.2.0",
+      "options": "--device /dev/kfd --device /dev/mkfd --device /dev/dri --group-add video --security-opt seccomp=unconfined --shm-size=256g --ulimit memlock=-1 --ulimit stack=67108864",
+      "volumes": [],
+      "runs_on_default": "hygon-bw1000-0",
+      "runs_on_vllm": "hygon-bw1000-1"
+    }
   },
   {
     "backend": "iluvatar",
+    "vendor": "iluvatar",
     "runner_label": "iluvatar",
+    "command_aliases": ["iluvatar"],
     "label": "vendor/Iluvatar",
     "gpu_check": "tools/gpu_check_iluvatar.sh",
-    "enabled": true
+    "enabled": true,
+    "containerized": true,
+    "container": {
+      "image": "harbor.baai.ac.cn/flagos-runtime/flagos-runtime-iluvatar-corex4.5.0:2.2.0",
+      "options": "--device /dev/iluvatar0 --device /dev/itrctl --shm-size=256g --ulimit memlock=-1 --ulimit stack=67108864",
+      "volumes": [],
+      "runs_on_default": "iluvatar-bi-v150-0",
+      "runs_on_vllm": "iluvatar-bi-v150-1"
+    }
   },
   {
     "backend": "kunlunxin",
+    "vendor": "kunlunxin",
     "runner_label": "kunlunxin",
+    "command_aliases": ["kunlunxin"],
     "label": "vendor/Kunlunxin",
     "gpu_check": "tools/gpu_check_kunlunxin.sh",
-    "enabled": true
-  },
-  {
-    "backend": "metax-maca3720",
-    "runner_label": "maca372",
-    "label": "vendor/MetaX",
-    "gpu_check": "tools/gpu_check_metax.sh",
-    "enabled": true
+    "enabled": true,
+    "containerized": true,
+    "container": {
+      "image": "harbor.baai.ac.cn/flagos-runtime/flagos-runtime-kunlunxin-xre5.37.1:2.2.0",
+      "options": "--device /dev/xpu0 --device /dev/xpuctrl --shm-size=256g --ulimit memlock=-1 --ulimit stack=67108864",
+      "volumes": [],
+      "runs_on_default": "klx-p800",
+      "runs_on_vllm": "klx-p800"
+    }
   },
   {
     "backend": "metax-maca3810",
+    "vendor": "metax",
     "runner_label": "maca381",
+    "command_aliases": ["metax", "maca381"],
     "label": "vendor/MetaX",
     "gpu_check": "tools/gpu_check_metax.sh",
-    "enabled": true
+    "enabled": true,
+    "containerized": true,
+    "container": {
+      "image": "harbor.baai.ac.cn/flagos-runtime/flagos-runtime-metax-maca3.8.1.3:2.2.0",
+      "options": "--device /dev/mxcd --device /dev/dri --group-add video",
+      "volumes": [],
+      "runs_on_default": "metax-mxc550-0",
+      "runs_on_vllm": "metax-mxc550-1"
+    }
   },
   {
     "backend": "mthreads-musa520",
-    "runner_label": "mthreads",
+    "vendor": "mthreads",
+    "runner_label": "musa-520",
+    "command_aliases": ["mthreads"],
     "label": "vendor/MooreThreads",
     "gpu_check": "tools/gpu_check_mthreads.sh",
-    "enabled": true
+    "enabled": true,
+    "containerized": true,
+    "container": {
+      "image": "harbor.baai.ac.cn/flagos-runtime/flagos-runtime-mthreads-musa5.2.0:2.2.0",
+      "options": "--device /dev/mtgpu.0 --device /dev/mtgpu.1 --device /dev/mtgpu.2 --device /dev/mtgpu.3 --device /dev/mtgpu.4 --device /dev/mtgpu.5 --device /dev/mtgpu.6 --device /dev/mtgpu.7 --device /dev/dri --shm-size=256g --ulimit memlock=-1 --ulimit stack=67108864",
+      "volumes": ["/usr/bin/mthreads-gmi:/usr/bin/mthreads-gmi:ro"],
+      "runs_on_default": "mthreads-s5000-0",
+      "runs_on_vllm": "mthreads-s5000-1"
+    }
   },
   {
     "backend": "nvidia-cuda128",
+    "vendor": "nvidia",
     "runner_label": "h20-cu128",
+    "command_aliases": ["h20-cu128", "h100"],
+    "compiler": "triton",
     "label": "vendor/NVIDIA",
     "gpu_check": "tools/gpu_check_nvidia.sh",
     "enabled": false
   },
   {
     "backend": "nvidia-cuda133",
+    "vendor": "nvidia",
     "runner_label": "h20",
+    "command_aliases": ["h20", "a100"],
     "label": "vendor/NVIDIA",
     "gpu_check": "tools/gpu_check_nvidia.sh",
     "enabled": true
   },
   {
     "backend": "spacemit",
+    "vendor": "spacemit",
     "runner_label": "spacemit",
+    "command_aliases": ["spacemit"],
     "label": "vendor/SpaceMit",
     "gpu_check": "",
     "enabled": true
   },
   {
     "backend": "sunrise",
+    "vendor": "sunrise",
     "runner_label": "sunrise",
+    "command_aliases": ["sunrise"],
     "label": "vendor/Sunrise",
     "gpu_check": "",
     "enabled": true
   },
   {
     "backend": "thead",
-    "runner_label": "thead",
+    "vendor": "thead",
+    "runner_label": "flagcicd-810e",
+    "command_aliases": ["thead"],
     "label": "vendor/THead",
     "gpu_check": "tools/gpu_check_thead.sh",
-    "enabled": true
+    "enabled": true,
+    "containerized": true,
+    "container": {
+      "enabled": true,
+      "image": "pkg.flytiger-eco.com/docker_release/pytorch:v2.1.1-2.10.0-ubuntu24.04-cuda13.0-py312",
+      "options": "--device=/dev/alixpu --device=/dev/alixpu_ctl --device=/dev/alixpu_ppu0 --device=/dev/alixpu_ppu1 --device=/dev/alixpu_ppu2 --device=/dev/alixpu_ppu3 --device=/dev/alixpu_ppu4 --device=/dev/alixpu_ppu5 --device=/dev/alixpu_ppu6 --device=/dev/alixpu_ppu7 --device=/dev/alixpu_ppu8 --device=/dev/alixpu_ppu9 --device=/dev/alixpu_ppu10 --device=/dev/alixpu_ppu11 --device=/dev/alixpu_ppu12 --device=/dev/alixpu_ppu13 --device=/dev/alixpu_ppu14 --device=/dev/alixpu_ppu15 --shm-size=256g --ulimit memlock=-1 --ulimit stack=67108864",
+      "volumes": [],
+      "runs_on_default": "flagcicd-810e",
+      "runs_on_vllm": "flagcicd-810e"
+    }
   },
   {
     "backend": "tsingmicro",
+    "vendor": "tsingmicro",
     "runner_label": "tsingmicro",
+    "command_aliases": ["tsingmicro"],
     "label": "vendor/TsingMicro",
     "gpu_check": "tools/gpu_check_tsingmicro.sh",
     "enabled": true

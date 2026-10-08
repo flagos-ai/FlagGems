@@ -20,7 +20,10 @@ import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 
-from ..utils import MAX_GRID_SIZE_X
+# Absolute import so that this file can also be loaded as a standalone module
+# (the C++ operator library compiles these kernels by file path, without the
+# surrounding package context).
+from flag_gems.runtime.backend._cambricon.utils import MAX_GRID_SIZE_X
 
 logger = logging.getLogger(__name__)
 

@@ -1,17 +1,3 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 """Fast Hadamard Transform in Triton (KunlunXin).
 
 v0: Multi-pass butterfly via global memory, 1 kernel launch per stage.
@@ -21,16 +7,12 @@ Simple baseline for correctness. Each butterfly stage reads from IN, writes to O
 import math
 
 import torch
-import torch.nn.functional as F
 import triton
 import triton.language as tl
 
+from ..utils.tle_copy import tle_copy
+
 MAX_GRID = 65535
-
-
-# ============================================================
-# Single butterfly stage kernel
-# ============================================================
 
 
 @triton.jit
@@ -68,11 +50,6 @@ def _butterfly_stage(
             tl.store(OUT_ptr + base + offsets, result)
 
 
-# ============================================================
-# Scale + cast kernel
-# ============================================================
-
-
 @triton.jit
 def _scale_cast(
     IN_ptr,
@@ -95,41 +72,35 @@ def _scale_cast(
             tl.store(OUT_ptr + row_id * stride_out_row + offsets, x * scale)
 
 
-# ============================================================
-# Forward implementation
-# ============================================================
-
-
 def _hadamard_transform_fwd(x, scale):
     orig_shape = x.shape
     dim = x.shape[-1]
     input_dtype = x.dtype
 
-    # Pad to next power of 2
     log_dim = math.ceil(math.log2(dim)) if dim > 0 else 0
     dim_padded = 1 << log_dim
     if dim != dim_padded:
-        x = F.pad(x, (0, dim_padded - dim))
+        x_padded = torch.zeros(
+            *x.shape[:-1], dim_padded, dtype=x.dtype, device=x.device
+        )
+        if not tle_copy(x, x_padded[..., :dim]):
+            torch.ops.aten._copy_from(x, x_padded[..., :dim], False)
+        x = x_padded
 
     x_flat = x.reshape(-1, dim_padded).contiguous()
     n_rows = x_flat.shape[0]
-    n_stages = log_dim  # log2(dim_padded)
+    n_stages = log_dim
 
-    # Determine ROWS_PER_PROGRAM to stay within grid limit
     rows_per_prog = 1
     while (n_rows + rows_per_prog - 1) // rows_per_prog > MAX_GRID:
         rows_per_prog *= 2
     grid_size = (n_rows + rows_per_prog - 1) // rows_per_prog
 
-    # Allocate two fp32 scratch buffers for ping-pong
-    # .clone() is critical: for fp32 input, .float() is a no-op returning
-    # the same tensor, which would cause butterfly stages to overwrite the input
     buf_a = x_flat.float().clone()
     buf_b = torch.empty_like(buf_a)
 
     stride_row = dim_padded
 
-    # Run butterfly stages
     for s in range(n_stages):
         stride_s = 1 << s
         _butterfly_stage[(grid_size,)](
@@ -143,7 +114,6 @@ def _hadamard_transform_fwd(x, scale):
         )
         buf_a, buf_b = buf_b, buf_a
 
-    # Result is in buf_a; scale and cast back
     out = torch.empty(n_rows, dim_padded, dtype=input_dtype, device=x.device)
     _scale_cast[(grid_size,)](
         buf_a,
@@ -161,11 +131,6 @@ def _hadamard_transform_fwd(x, scale):
     return out.reshape(orig_shape)
 
 
-# ============================================================
-# Autograd wrapper
-# ============================================================
-
-
 class HadamardTransformFn(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, scale):
@@ -174,18 +139,12 @@ class HadamardTransformFn(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_output):
-        # Hadamard matrix is symmetric: backward = forward with same scale
         return (
             _hadamard_transform_fwd(
                 grad_output.contiguous(), ctx._hadamard_transform_scale
             ),
             None,
         )
-
-
-# ============================================================
-# Public API
-# ============================================================
 
 
 def hadamard_transform(x, scale=1.0):
@@ -203,11 +162,6 @@ def hadamard_transform(x, scale=1.0):
     the next power of 2.
     """
     return HadamardTransformFn.apply(x, scale)
-
-
-# ============================================================
-# XXN variants (non-power-of-2 dims)
-# ============================================================
 
 
 def hadamard_transform_12N(x, scale=1.0):

@@ -280,25 +280,24 @@ def test_flash_attention_backward(
         **extra_bwd,
     )
 
-    with flag_gems.use_gems():
-        dQ, dK, dV = torch.ops.aten._flash_attention_backward(
-            dOut,
-            Q,
-            K,
-            V,
-            out,
-            lse,
-            None,
-            None,
-            q_seq_len,
-            kv_seq_len,
-            0.0,
-            is_causal,
-            philox_seed,
-            philox_offset,
-            scale=scale,
-            **extra_bwd,
-        )
+    dQ, dK, dV = flag_gems.flash_attention_backward(
+        dOut,
+        Q,
+        K,
+        V,
+        out,
+        lse,
+        None,
+        None,
+        q_seq_len,
+        kv_seq_len,
+        0.0,
+        is_causal,
+        philox_seed,
+        philox_offset,
+        scale=scale,
+        **extra_bwd,
+    )
 
     utils.gems_assert_close(dQ, ref_dQ, dtype, equal_nan=True)
     utils.gems_assert_close(dK, ref_dK, dtype, equal_nan=True)
@@ -412,29 +411,28 @@ def test_scaled_dot_product_cudnn_attention_backward(
     ref_dK = ref_dK_bhsd.permute(0, 2, 1, 3).contiguous()
     ref_dV = ref_dV_bhsd.permute(0, 2, 1, 3).contiguous()
 
-    with flag_gems.use_gems():
-        (
-            dQ_bhsd,
-            dK_bhsd,
-            dV_bhsd,
-        ) = torch.ops.aten._scaled_dot_product_cudnn_attention_backward(
-            dOut_bhsd,
-            Q_bhsd,
-            K_bhsd,
-            V_bhsd,
-            out_bhsd,
-            lse,
-            philox_seed,
-            philox_offset,
-            attn_bias,
-            None,
-            None,
-            q_seq_len,
-            kv_seq_len,
-            0.0,
-            is_causal,
-            scale=scale,
-        )
+    (
+        dQ_bhsd,
+        dK_bhsd,
+        dV_bhsd,
+    ) = flag_gems.scaled_dot_product_cudnn_attention_backward(
+        dOut_bhsd,
+        Q_bhsd,
+        K_bhsd,
+        V_bhsd,
+        out_bhsd,
+        lse,
+        philox_seed,
+        philox_offset,
+        attn_bias,
+        None,
+        None,
+        q_seq_len,
+        kv_seq_len,
+        0.0,
+        is_causal,
+        scale=scale,
+    )
 
     dQ = dQ_bhsd.permute(0, 2, 1, 3).contiguous()
     dK = dK_bhsd.permute(0, 2, 1, 3).contiguous()
@@ -545,27 +543,26 @@ def test_efficient_attention_backward(
         num_splits_key=None,
     )
 
-    with flag_gems.use_gems():
-        dQ, dK, dV, dBias_gems = torch.ops.aten._efficient_attention_backward(
-            dOut,
-            Q,
-            K,
-            V,
-            bias,
-            out,
-            None,
-            None,
-            q_seq_len,
-            kv_seq_len,
-            lse_aligned,
-            0.0,
-            philox_seed,
-            philox_offset,
-            custom_mask_type,
-            bias_requires_grad and has_bias,
-            scale=scale,
-            num_splits_key=None,
-        )
+    dQ, dK, dV, dBias_gems = flag_gems.efficient_attention_backward(
+        dOut,
+        Q,
+        K,
+        V,
+        bias,
+        out,
+        None,
+        None,
+        q_seq_len,
+        kv_seq_len,
+        lse_aligned,
+        0.0,
+        philox_seed,
+        philox_offset,
+        custom_mask_type,
+        bias_requires_grad and has_bias,
+        scale=scale,
+        num_splits_key=None,
+    )
 
     utils.gems_assert_close(dQ, ref_dQ, dtype, equal_nan=True)
     utils.gems_assert_close(dK, ref_dK, dtype, equal_nan=True)
@@ -696,27 +693,26 @@ def test_scaled_dot_product_efficient_attention_backward(
     ref_dK = ref_dK_bhsd.permute(0, 2, 1, 3).contiguous()
     ref_dV = ref_dV_bhsd.permute(0, 2, 1, 3).contiguous()
 
-    with flag_gems.use_gems():
-        (
-            dQ_bhsd_gems,
-            dK_bhsd_gems,
-            dV_bhsd_gems,
-            dBias_gems,
-        ) = torch.ops.aten._scaled_dot_product_efficient_attention_backward(
-            dOut_bhsd,
-            Q_bhsd,
-            K_bhsd,
-            V_bhsd,
-            attn_bias,
-            out_bhsd,
-            lse,
-            philox_seed,
-            philox_offset,
-            0.0,
-            grad_input_mask,
-            is_causal,
-            scale=scale,
-        )
+    (
+        dQ_bhsd_gems,
+        dK_bhsd_gems,
+        dV_bhsd_gems,
+        dBias_gems,
+    ) = flag_gems.scaled_dot_product_efficient_attention_backward(
+        dOut_bhsd,
+        Q_bhsd,
+        K_bhsd,
+        V_bhsd,
+        attn_bias,
+        out_bhsd,
+        lse,
+        philox_seed,
+        philox_offset,
+        0.0,
+        grad_input_mask,
+        is_causal,
+        scale=scale,
+    )
 
     dQ = dQ_bhsd_gems.permute(0, 2, 1, 3).contiguous()
     dK = dK_bhsd_gems.permute(0, 2, 1, 3).contiguous()

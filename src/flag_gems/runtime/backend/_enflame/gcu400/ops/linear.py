@@ -52,6 +52,7 @@ def linear_kernel(
     stride_bn,
     # Bias is present or not
     BIAS: tl.constexpr,
+    GROUP_M: tl.constexpr,
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_N: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
@@ -63,8 +64,20 @@ def linear_kernel(
     - bias: (N,) optional
     - output: (M, N)
     """
-    pid_m = tl.program_id(0)
-    pid_n = tl.program_id(1)
+    # GCU 硬件限制 grid.y <= 255，而 N 可为 vocab 级大尺寸（如 248320），
+    # tile 数远超 255，不能放在 grid.y。因此将 (pid_m, pid_n) 二维 tile
+    # 空间平铺编码进单维 grid.x（与 mm/addmm 相同），grid.y 恒为 1。
+    pid = tl.program_id(0)
+    grid_m = tl.cdiv(M, BLOCK_SIZE_M)
+    grid_n = tl.cdiv(N, BLOCK_SIZE_N)
+
+    # GROUP_M swizzle：仅改变 (pid_m, pid_n) 的调度顺序以提升 A/B 块复用，
+    # 不改变每个 tile 的计算语义。
+    width = GROUP_M * grid_n
+    group_id = pid // width
+    group_size = min(grid_m - group_id * GROUP_M, GROUP_M)
+    pid_m = group_id * GROUP_M + (pid % group_size)
+    pid_n = (pid % width) // group_size
 
     offs_m = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
     offs_n = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
@@ -163,10 +176,10 @@ def linear(input, weight, bias=None):
     # Allocate output
     output = torch.empty((M, N), device=input.device, dtype=input.dtype)
 
-    # Launch kernel
+    # Launch kernel：把 (M, N) 的二维 tile 空间展平为单维 grid，
+    # grid.y 恒为 1（GCU 限制 grid.y <= 255，N 可为 vocab 级大尺寸）。
     grid = lambda META: (
-        triton.cdiv(M, META["BLOCK_SIZE_M"]),
-        triton.cdiv(N, META["BLOCK_SIZE_N"]),
+        triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]),
     )
 
     with torch_device_fn.device(input.device):
@@ -186,6 +199,7 @@ def linear(input, weight, bias=None):
             output.stride(1),
             bias.stride(0) if bias is not None else 0,
             BIAS=bias is not None,
+            GROUP_M=8,
         )
 
     # Reshape output: (M, N) -> (*, N)

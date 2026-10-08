@@ -18,18 +18,17 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
-BLOCK_SIZE = 16384
+BLOCK_SIZE = 1024
 NUM_WARPS = 1
 GRID_SIZE = 24
 
 
 @libentry()
-@triton.jit
+@triton.jit(do_not_specialize=["n_elements"])
 def zero_kernel(
     out_ptr,
     n_elements: tl.int32,
@@ -46,18 +45,12 @@ def zero_kernel(
 
 
 def _launch_zero_kernel(tensor: torch.Tensor) -> torch.Tensor:
-    assert isinstance(tensor, torch.Tensor), "Expected a torch.Tensor"
     assert tensor.is_contiguous(), "Tensor must be contiguous"
     n_elements = tensor.numel()
     if n_elements == 0:
         return tensor
-    grid_fn = lambda meta: (
-        min(triton.cdiv(n_elements, meta["BLOCK_SIZE"]), GRID_SIZE),
-    )
-    with torch_device_fn.device(tensor.device):
-        zero_kernel[grid_fn](
-            tensor, n_elements, BLOCK_SIZE=BLOCK_SIZE, num_warps=NUM_WARPS
-        )
+    grid = (min(triton.cdiv(n_elements, BLOCK_SIZE), GRID_SIZE),)
+    zero_kernel[grid](tensor, n_elements, BLOCK_SIZE=BLOCK_SIZE, num_warps=NUM_WARPS)
     return tensor
 
 

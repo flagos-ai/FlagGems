@@ -175,7 +175,7 @@ def generate_scatter_reduce_kernel(
             code.newline()
 
             # Sum reduction using atomic_add (float32) or CAS loop (bf16/fp16)
-            code.writeline("if IS_SUM or IS_MEAN:")
+            code.writeline("if IS_SUM | IS_MEAN:")
             with code.indent():
                 code.writeline("if IS_FLOAT32:")
                 with code.indent():

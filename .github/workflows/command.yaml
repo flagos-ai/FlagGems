@@ -27,11 +27,20 @@ jobs:
   preprocess:
     runs-on: ubuntu-latest
     outputs:
-      continue: ${{ steps.check.outputs.continue }}
+      continue: ${{ steps.check.outputs.continue == 'true' && steps.resolve-backend.outputs.continue == 'true' }}
       op: ${{ steps.parse-command.outputs.OP_ID}}
       runner: ${{ steps.parse-command.outputs.RUNNER }}
       pull: ${{ steps.parse-command.outputs.PR_NUMBER }}
       existing: ${{ steps.parse-command.outputs.EXISTING_OP }}
+      backend: ${{ steps.resolve-backend.outputs.backend }}
+      vendor: ${{ steps.resolve-backend.outputs.vendor }}
+      compiler: ${{ steps.resolve-backend.outputs.compiler }}
+      gpu_check: ${{ steps.resolve-backend.outputs.gpu_check }}
+      containerized: ${{ steps.resolve-backend.outputs.containerized }}
+      container_image: ${{ steps.resolve-backend.outputs.container_image }}
+      container_options: ${{ steps.resolve-backend.outputs.container_options }}
+      runs_on_default: ${{ steps.resolve-backend.outputs.runs_on_default }}
+      runs_on_vllm: ${{ steps.resolve-backend.outputs.runs_on_vllm }}
     steps:
       - id: checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -69,214 +78,286 @@ jobs:
             echo "EXISTING_OP=1" >> $GITHUB_OUTPUT
           fi
 
+      # Looks up the runner alias in backends.json's command_aliases (the
+      # single source of truth also used by resolve-vendor below) instead of
+      # a hand-written case/dict. An alias that matches no backend (e.g.
+      # "nvidia-cuda133", a backend id rather than a runner label) gets a
+      # comment back listing the valid aliases, instead of silently queuing
+      # against a non-existent runner.
+      - id: resolve-backend
+        if: ${{ steps.check.outputs.continue == 'true' }}
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3  # v9.0.0
+        with:
+          script: |
+            const fs = require('fs');
+            const backends = JSON.parse(fs.readFileSync('.github/backends.json', 'utf8'));
+            const runner = '${{ steps.parse-command.outputs.RUNNER }}';
+            const backend = backends.find(b => (b.command_aliases || []).includes(runner));
+
+            if (!backend) {
+              const aliases = backends.flatMap(b => b.command_aliases || []).sort();
+              const list = aliases.map(a => `\`${a}\``).join(', ');
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: `⚠️ Unknown runner \`${runner}\` in \`/test\` command. Valid runners are: ${list}.`,
+              });
+              core.setOutput('continue', 'false');
+              return;
+            }
+
+            const container = backend.container || {};
+            core.setOutput('continue', 'true');
+            core.setOutput('backend', backend.backend);
+            core.setOutput('vendor', backend.vendor);
+            core.setOutput('compiler', backend.compiler || '');
+            core.setOutput('gpu_check', backend.gpu_check || '');
+            core.setOutput('containerized', backend.containerized ? 'true' : 'false');
+            core.setOutput('container_image', container.image || '');
+            core.setOutput('container_options', container.options || '');
+            core.setOutput('runs_on_default', container.runs_on_default || '');
+            core.setOutput('runs_on_vllm', container.runs_on_vllm || '');
+
+  # Generic (non-containerized) runners. Everything except the vendors whose
+  # driver/runtime is only set up inside a container (containerized: true in
+  # backends.json). The runner label itself (e.g. h20, a100, h100) is what
+  # these machines are labeled with in GitHub Actions, independent of the
+  # resolved backend/vendor. Uses local ./ action refs since these runners
+  # resolve them against the checked-out workspace.
   test-operator:
     needs: preprocess
-    if: needs.preprocess.outputs.continue == 'true'
+    if: >-
+      needs.preprocess.outputs.continue == 'true' &&
+      needs.preprocess.outputs.containerized == 'false'
     runs-on: ${{ needs.preprocess.outputs.runner }}
+    env:
+      COMPILER: ${{ needs.preprocess.outputs.compiler }}
     steps:
-      - id: resolve-vendor
-        shell: bash
-        env:
-          RUNNER_LABEL: ${{ needs.preprocess.outputs.runner }}
-        run: |
-          case "${RUNNER_LABEL}" in
-            h20)
-              VENDOR="nvidia"
-              BACKEND="nvidia-cuda133"
-              ;;
-            a100)
-              VENDOR="nvidia"
-              BACKEND="nvidia-cuda133"
-              ;;
-            h100)
-              # Driver 535.183.06 supports up to CUDA 12.9, so use the 12.8
-              # profile (cuda133 requires a newer driver). Note: nvcc is not on
-              # PATH in this node's container (cuda at /usr/local/cuda-12.9);
-              # C++ extension builds may need PATH/CUDA_HOME set.
-              # This node's container glibc is too old for FlagTree
-              # (needs GLIBC 2.38), so use upstream Triton instead.
-              VENDOR="nvidia"
-              BACKEND="nvidia-cuda128"
-              echo "COMPILER=triton" >> $GITHUB_ENV
-              ;;
-            ascend)
-              VENDOR="ascend"
-              # The ascend runner pool contains nodes with two different CANN
-              # toolkits (8.5.x and 9.0.x). The job may land on either node, so
-              # detect the CANN version on the node and pick the matching
-              # backend: 8.5.x -> ascend-cann850, 9.0.x -> ascend-cann900
-              CANN_VERSION=$(ls -d /usr/local/Ascend/cann-* 2>/dev/null | sed 's|.*/cann-||' | sort -V | tail -1)
-              case "${CANN_VERSION}" in
-                8.5*)
-                  BACKEND="ascend-cann850"
-                  ;;
-                9.0*)
-                  BACKEND="ascend-cann900"
-                  ;;
-                *)
-                  echo "::error::Cannot detect CANN version on ascend runner (got '${CANN_VERSION}')" >&2
-                  exit 1
-                  ;;
-              esac
-              ;;
-            cann850)
-              VENDOR="ascend"
-              BACKEND="ascend-cann850"
-              ;;
-            cann9)
-              VENDOR="ascend"
-              BACKEND="ascend-cann900"
-              ;;
-            mthreads)
-              VENDOR="mthreads"
-              BACKEND="mthreads-musa520"
-              ;;
-            metax)
-              VENDOR="metax"
-              # The metax runner pool contains nodes with two different MACA
-              # drivers (3.7.x and 3.8.x). The job may land on either node, so
-              # detect the driver on the node and pick the matching backend:
-              #   3.7.x -> metax-maca3720, 3.8.x -> metax-maca3810
-              MACA_VERSION=$(mx-smi 2>/dev/null | awk -F': ' '/MACA Version/{split($2,a," "); print a[1]}')
-              case "${MACA_VERSION}" in
-                3.7.*)
-                  BACKEND="metax-maca3720"
-                  ;;
-                3.8.*)
-                  BACKEND="metax-maca3810"
-                  ;;
-                *)
-                  echo "::error::Cannot detect MACA version on metax runner (got '${MACA_VERSION}')" >&2
-                  exit 1
-                  ;;
-              esac
-              ;;
-            maca372)
-              VENDOR="metax"
-              BACKEND="metax-maca3720"
-              ;;
-            maca381)
-              VENDOR="metax"
-              BACKEND="metax-maca3810"
-              ;;
-            enflame)
-              VENDOR="enflame"
-              BACKEND="enflame-tops1106"
-              ;;
-            cambricon)
-              VENDOR="cambricon"
-              BACKEND="cambricon-neuware472"
-              ;;
-            *)
-              VENDOR="${RUNNER_LABEL}"
-              BACKEND="${RUNNER_LABEL}"
-              ;;
-          esac
-          echo "VENDOR=${VENDOR}" >> $GITHUB_ENV
-          echo "BACKEND=${BACKEND}" >> $GITHUB_ENV
-
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         continue-on-error: true
       - uses: ./.github/actions/checkout-retry
-      - name: setup-gh
-        shell: bash
-        env:
-          GH_VERSION: "2.95.0"
-        run: |
-          GH_DIR="${HOME}/.local/bin"
-          if command -v gh &>/dev/null; then
-            echo "gh already available: $(gh --version | head -1)"
-          elif [ -x "${GH_DIR}/gh" ]; then
-            echo "gh found at ${GH_DIR}: $("${GH_DIR}/gh" --version | head -1)"
-            echo "${GH_DIR}" >> $GITHUB_PATH
-          else
-            mkdir -p "${GH_DIR}"
-            curl -fsSL "https://resource.flagos.net/repository/flagos-filestore/github/gh_${GH_VERSION}_linux_amd64.tar.gz" \
-              | tar -xz --strip-components=2 -C "${GH_DIR}" "gh_${GH_VERSION}_linux_amd64/bin/gh"
-            echo "Installed gh ${GH_VERSION} to ${GH_DIR}"
-            echo "${GH_DIR}" >> $GITHUB_PATH
-          fi
-      - id: checkout-pr
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          echo "checking out ${{ needs.preprocess.outputs.pull }}"
-          gh pr checkout ${{ needs.preprocess.outputs.pull }}
-
+      - uses: ./.github/actions/checkout-pr
+        with:
+          pull: ${{ needs.preprocess.outputs.pull }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
       - uses: ./.github/actions/setup-flaggems
         with:
-          backend: ${{ env.BACKEND }}
-          gpu_check_script: tools/gpu_check_${{ env.VENDOR }}.sh
+          backend: ${{ needs.preprocess.outputs.backend }}
+          gpu_check_script: ${{ needs.preprocess.outputs.gpu_check }}
+      - uses: ./.github/actions/ondemand-test
+        with:
+          op: ${{ needs.preprocess.outputs.op }}
+          backend: ${{ needs.preprocess.outputs.backend }}
+          runner: ${{ needs.preprocess.outputs.runner }}
+          existing: ${{ needs.preprocess.outputs.existing }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - id: run-tests
-        shell: bash
-        env:
-          EXISTING_OP: ${{ needs.preprocess.outputs.existing }}
-        run: |
-          source .venv/bin/activate
-          tools/run_tests.py --ops ${{ needs.preprocess.outputs.op }} \
-            --gpus "${AVAILABLE_GPUS}" \
-            --dump-output \
-            --output-dir results_new
-
-          if [ "$EXISTING_OP" == "0" ]; then
-            tools/psum_text --format markdown \
-              --output report.md \
-              --single \
-              results_new
-            mv results_new results
-          else
-            git checkout master
-            tools/run_tests.py --ops ${{ needs.preprocess.outputs.op }} \
-              --gpus "${AVAILABLE_GPUS}" \
-              --dump-output \
-              --output-dir results_old
-
-            # merge two data sets into one directory
-            mkdir results
-            mv results_old results/before
-            mv results_new results/after
-
-            tools/psum_text --format markdown \
-              --single \
-              --compare \
-              --output report.md \
-              results
-          fi
-
-      - id: upload-results
-        # uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
-        uses: actions/upload-artifact@v7.0.1
+  # Hygon, MetaX, MooreThreads, Iluvatar, and Kunlunxin only have their
+  # driver/runtime set up inside a vendor container, mirroring backend-test.yaml.
+  # The image/options/runner labels come from .github/backends.json via the
+  # preprocess resolve-backend step. Each runs on whichever physical machine
+  # this repo has access to (FlagGems-vllm uses the "-1" host, FlagGems uses
+  # "-0"), and uses fully-qualified @master action refs since local ./ refs
+  # can't be resolved inside these containers.
+  test-operator-hygon:
+    needs: preprocess
+    if: needs.preprocess.outputs.continue == 'true' && needs.preprocess.outputs.runner == 'hygon'
+    runs-on: >-
+      ${{ github.repository == 'flagos-ai/FlagGems-vllm'
+          && needs.preprocess.outputs.runs_on_vllm
+          || needs.preprocess.outputs.runs_on_default }}
+    container:
+      image: ${{ needs.preprocess.outputs.container_image }}
+      options: ${{ needs.preprocess.outputs.container_options }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         continue-on-error: true
+      - uses: flagos-ai/FlagGems/.github/actions/checkout-retry@master
+      - uses: flagos-ai/FlagGems/.github/actions/checkout-pr@master
         with:
-          name: ${{ needs.preprocess.outputs.op }}-${{ env.BACKEND }}
-          path: results/
+          pull: ${{ needs.preprocess.outputs.pull }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: flagos-ai/FlagGems/.github/actions/setup-flaggems@master
+        with:
+          backend: ${{ needs.preprocess.outputs.backend }}
+          gpu_check_script: ${{ needs.preprocess.outputs.gpu_check }}
+      - uses: flagos-ai/FlagGems/.github/actions/ondemand-test@master
+        with:
+          op: ${{ needs.preprocess.outputs.op }}
+          backend: ${{ needs.preprocess.outputs.backend }}
+          runner: ${{ needs.preprocess.outputs.runner }}
+          existing: ${{ needs.preprocess.outputs.existing }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - id: attach-result-link
-        if: steps.upload-results.outcome == 'success'
+  test-operator-mthreads:
+    needs: preprocess
+    if: needs.preprocess.outputs.continue == 'true' && needs.preprocess.outputs.runner == 'mthreads'
+    runs-on: >-
+      ${{ github.repository == 'flagos-ai/FlagGems-vllm'
+          && needs.preprocess.outputs.runs_on_vllm
+          || needs.preprocess.outputs.runs_on_default }}
+    container:
+      image: ${{ needs.preprocess.outputs.container_image }}
+      options: ${{ needs.preprocess.outputs.container_options }}
+      volumes:
+        - /usr/bin/mthreads-gmi:/usr/bin/mthreads-gmi:ro
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        continue-on-error: true
+      - uses: flagos-ai/FlagGems/.github/actions/checkout-retry@master
+      - uses: flagos-ai/FlagGems/.github/actions/checkout-pr@master
+        with:
+          pull: ${{ needs.preprocess.outputs.pull }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: flagos-ai/FlagGems/.github/actions/setup-flaggems@master
+        with:
+          backend: ${{ needs.preprocess.outputs.backend }}
+          gpu_check_script: ${{ needs.preprocess.outputs.gpu_check }}
+      - uses: flagos-ai/FlagGems/.github/actions/ondemand-test@master
+        with:
+          op: ${{ needs.preprocess.outputs.op }}
+          backend: ${{ needs.preprocess.outputs.backend }}
+          runner: ${{ needs.preprocess.outputs.runner }}
+          existing: ${{ needs.preprocess.outputs.existing }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+  test-operator-metax:
+    needs: preprocess
+    if: >-
+      needs.preprocess.outputs.continue == 'true' &&
+      (needs.preprocess.outputs.runner == 'metax' || needs.preprocess.outputs.runner == 'maca381')
+    runs-on: >-
+      ${{ github.repository == 'flagos-ai/FlagGems-vllm'
+          && needs.preprocess.outputs.runs_on_vllm
+          || needs.preprocess.outputs.runs_on_default }}
+    container:
+      image: ${{ needs.preprocess.outputs.container_image }}
+      options: ${{ needs.preprocess.outputs.container_options }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        continue-on-error: true
+      - uses: flagos-ai/FlagGems/.github/actions/checkout-retry@master
+      - uses: flagos-ai/FlagGems/.github/actions/checkout-pr@master
+        with:
+          pull: ${{ needs.preprocess.outputs.pull }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: flagos-ai/FlagGems/.github/actions/setup-flaggems@master
+        with:
+          backend: ${{ needs.preprocess.outputs.backend }}
+          gpu_check_script: ${{ needs.preprocess.outputs.gpu_check }}
+      - uses: flagos-ai/FlagGems/.github/actions/ondemand-test@master
+        with:
+          op: ${{ needs.preprocess.outputs.op }}
+          backend: ${{ needs.preprocess.outputs.backend }}
+          runner: ${{ needs.preprocess.outputs.runner }}
+          existing: ${{ needs.preprocess.outputs.existing }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+  test-operator-iluvatar:
+    needs: preprocess
+    if: needs.preprocess.outputs.continue == 'true' && needs.preprocess.outputs.runner == 'iluvatar'
+    runs-on: >-
+      ${{ github.repository == 'flagos-ai/FlagGems-vllm'
+          && needs.preprocess.outputs.runs_on_vllm
+          || needs.preprocess.outputs.runs_on_default }}
+    container:
+      image: ${{ needs.preprocess.outputs.container_image }}
+      options: ${{ needs.preprocess.outputs.container_options }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        continue-on-error: true
+      - uses: flagos-ai/FlagGems/.github/actions/checkout-retry@master
+      - uses: flagos-ai/FlagGems/.github/actions/checkout-pr@master
+        with:
+          pull: ${{ needs.preprocess.outputs.pull }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: flagos-ai/FlagGems/.github/actions/setup-flaggems@master
+        with:
+          backend: ${{ needs.preprocess.outputs.backend }}
+          gpu_check_script: ${{ needs.preprocess.outputs.gpu_check }}
+      - uses: flagos-ai/FlagGems/.github/actions/ondemand-test@master
+        with:
+          op: ${{ needs.preprocess.outputs.op }}
+          backend: ${{ needs.preprocess.outputs.backend }}
+          runner: ${{ needs.preprocess.outputs.runner }}
+          existing: ${{ needs.preprocess.outputs.existing }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+  # Kunlunxin reuses its workspace across jobs on klx-p800, so stale
+  # skip-worktree bits from previous runs need clearing before checkout (see
+  # backend-test.yaml for details).
+  test-operator-kunlunxin:
+    needs: preprocess
+    if: needs.preprocess.outputs.continue == 'true' && needs.preprocess.outputs.runner == 'kunlunxin'
+    runs-on: ${{ needs.preprocess.outputs.runs_on_default }}
+    container:
+      image: ${{ needs.preprocess.outputs.container_image }}
+      options: ${{ needs.preprocess.outputs.container_options }}
+    steps:
+      - name: Reset reused workspace
+        shell: bash
         run: |
-          echo -e "\n---\n" >> report.md
-          echo -e "📎 Download the full log [here](${{ steps.upload-results.outputs.artifact-url }})" >> report.md
-
-      - id: comment
-        uses: mshick/add-pr-comment@ec328af66588ab8f77cdeb2c264f14aba45bbf59  # 3.12.0
+          git config --global --add safe.directory "$GITHUB_WORKSPACE" 2>/dev/null || true
+          cd "$GITHUB_WORKSPACE" 2>/dev/null || exit 0
+          [ -d .git ] || exit 0
+          git sparse-checkout disable 2>/dev/null || true
+          git ls-files -z | xargs -0 -r git update-index --no-skip-worktree 2>/dev/null || true
+          git reset --hard HEAD 2>/dev/null || true
+          git clean -ffdx 2>/dev/null || true
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        continue-on-error: true
+      - uses: flagos-ai/FlagGems/.github/actions/checkout-retry@master
+      - uses: flagos-ai/FlagGems/.github/actions/checkout-pr@master
         with:
-          message-path: report.md
-          message-id: ${{ needs.preprocess.outputs.op }}-${{ needs.preprocess.outputs.runner }}
-          allow-repeats: True
-
-      - id: failure-report
-        if: failure()
-        uses: mshick/add-pr-comment@ec328af66588ab8f77cdeb2c264f14aba45bbf59  # 3.12.0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          pull: ${{ needs.preprocess.outputs.pull }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: flagos-ai/FlagGems/.github/actions/setup-flaggems@master
         with:
-          message: |
-            ## ❌ On-demand test failed
+          backend: ${{ needs.preprocess.outputs.backend }}
+          gpu_check_script: ${{ needs.preprocess.outputs.gpu_check }}
+      - uses: flagos-ai/FlagGems/.github/actions/ondemand-test@master
+        with:
+          op: ${{ needs.preprocess.outputs.op }}
+          backend: ${{ needs.preprocess.outputs.backend }}
+          runner: ${{ needs.preprocess.outputs.runner }}
+          existing: ${{ needs.preprocess.outputs.existing }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
-            **Operator:** `${{ needs.preprocess.outputs.op }}`
-            **Runner:** `${{ needs.preprocess.outputs.runner }}`
-            **Backend:** ${{ env.BACKEND }}
-
-            The test failed to complete. Check the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details.
-          message-id: ${{ needs.preprocess.outputs.op }}-${{ needs.preprocess.outputs.runner }}
+  # THead's flagcicd-810e runner needs the PPU driver/runtime that only
+  # exists inside this image. Unlike hygon/metax/iluvatar/mthreads above, the
+  # image only ships a bare torch — flagtree for this backend isn't published
+  # to FlagOS's pypi_base yet (see backends.yaml's extra_index comment), so
+  # setup-flaggems/setup.sh installs it from the vendor's temporary index here
+  # instead of reconcile_backend_deps.py.
+  test-operator-thead:
+    needs: preprocess
+    if: >-
+      needs.preprocess.outputs.continue == 'true' &&
+      (needs.preprocess.outputs.runner == 'thead' || needs.preprocess.outputs.runner == 'flagcicd-810e')
+    runs-on: >-
+      ${{ github.repository == 'flagos-ai/FlagGems-vllm'
+          && needs.preprocess.outputs.runs_on_vllm
+          || needs.preprocess.outputs.runs_on_default }}
+    container:
+      image: ${{ needs.preprocess.outputs.container_image }}
+      options: ${{ needs.preprocess.outputs.container_options }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        continue-on-error: true
+      - uses: flagos-ai/FlagGems/.github/actions/checkout-retry@master
+      - uses: flagos-ai/FlagGems/.github/actions/checkout-pr@master
+        with:
+          pull: ${{ needs.preprocess.outputs.pull }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: flagos-ai/FlagGems/.github/actions/setup-flaggems@master
+        with:
+          backend: thead
+          gpu_check_script: tools/gpu_check_thead.sh
+      - uses: flagos-ai/FlagGems/.github/actions/ondemand-test@master
+        with:
+          op: ${{ needs.preprocess.outputs.op }}
+          backend: thead
+          runner: ${{ needs.preprocess.outputs.runner }}
+          existing: ${{ needs.preprocess.outputs.existing }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}

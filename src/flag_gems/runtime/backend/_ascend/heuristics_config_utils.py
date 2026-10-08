@@ -43,6 +43,53 @@ def bmm_heur_divisible_k(args):
     return args["K"] % args["TILE_K"] == 0
 
 
+def rrelu_with_noise_heur_block(args):
+    if args["N"] <= 512:
+        return 512
+    elif args["N"] <= 4096:
+        return 1024
+    else:
+        # Large tiles pipeline GM<->UB transfers best; 8192 overflows the
+        # 192 KB UB for the fp32 eval kernel (in+out tiles with buffering).
+        return 4096
+
+
+def rrelu_with_noise_eval_heur_block(args):
+    if args["N"] <= 512:
+        return 512
+    elif args["N"] <= 4096:
+        return 1024
+    elif args["N"] < (1 << 20):
+        return 4096
+    else:
+        # 8192-element tiles pipeline GM<->UB transfers best for every dtype
+        # (in+out tiles still fit the 192 KB UB for fp32).
+        return 8192
+
+
+def rrelu_with_noise_eval_heur_unroll(args):
+    # Tiles per program; every program pays a fixed setup cost on this
+    # backend, so larger inputs benefit from fewer, fatter programs. Fewer
+    # buckets also means fewer kernel variants: benchmark sweeps and real
+    # workloads with mixed shapes then reuse one compiled binary per bucket
+    # instead of paying a fresh compile for every size class.
+    if args["N"] <= 4096:
+        return 1
+    elif args["N"] < (1 << 20):
+        return 2
+    else:
+        return 8
+
+
+def rrelu_with_noise_heur_num_warps(args):
+    # Keep the small-input tiers aligned with the BLOCK tiers so nearby sizes
+    # compile to the same kernel variant (see eval_heur_unroll's comment).
+    if args["N"] <= 512:
+        return 4
+    else:
+        return 16
+
+
 def dropout_heur_block(args):
     if args["N"] <= 512:
         return 512
@@ -90,6 +137,22 @@ def index_select_heur_block_m(args):
 def index_select_heur_block_n(args):
     m = min(triton.next_power_of_2(triton.cdiv(args["N"], 16)), 512)
     return max(m, 16)
+
+
+def log_normal_heur_block(args):
+    if args["N"] <= 512:
+        return 512
+    else:
+        return 1024
+
+
+def log_normal_heur_num_warps(args):
+    if args["N"] <= 512:
+        return 4
+    elif args["N"] <= 1024:
+        return 8
+    else:
+        return 16
 
 
 def rand_heur_block(args):
@@ -239,6 +302,19 @@ def mm_heur_even_k(args):
     return args["K"] % (args["BLOCK_K"] * args["SPLIT_K"]) == 0
 
 
+def post_layer_norm_residual_heur_tile_n(args):
+    return triton.next_power_of_2(args["N"])
+
+
+def post_layer_norm_residual_heur_tile_m(args):
+    tile_n = triton.next_power_of_2(args["N"])
+    # Eight resident rows are beneficial through 1K columns on Ascend.
+    if tile_n <= 1024:
+        return 8
+    # Keep larger tiles within the one-pass kernel's original element budget.
+    return max(1, min(8, 4096 // tile_n))
+
+
 HEURISTICS_CONFIGS = {
     "argmax": {
         "BLOCK_M": argmax_heur_block_m,
@@ -274,6 +350,10 @@ HEURISTICS_CONFIGS = {
         "BLOCK_M": index_select_heur_block_m,
         "BLOCK_N": index_select_heur_block_n,
     },
+    "log_normal": {
+        "BLOCK": log_normal_heur_block,
+        "num_warps": log_normal_heur_num_warps,
+    },
     "mm": {
         "EVEN_K": mm_heur_even_k,
     },
@@ -284,6 +364,15 @@ HEURISTICS_CONFIGS = {
     "randn": {
         "BLOCK": randn_heur_block,
         "num_warps": randn_heur_num_warps,
+    },
+    "rrelu_with_noise_train": {
+        "BLOCK": rrelu_with_noise_heur_block,
+        "num_warps": rrelu_with_noise_heur_num_warps,
+    },
+    "rrelu_with_noise_eval": {
+        "BLOCK": rrelu_with_noise_eval_heur_block,
+        "num_warps": rrelu_with_noise_heur_num_warps,
+        "UNROLL": rrelu_with_noise_eval_heur_unroll,
     },
     "softmax_non_inner": {
         "TILE_K": softmax_heur_tile_k,
@@ -303,6 +392,10 @@ HEURISTICS_CONFIGS = {
     "softmax_backward_inner": {
         "TILE_M": softmax_heur_tile_m,
         "ONE_TILE_PER_CTA": softmax_heur_one_tile_per_cta,
+    },
+    "post_layer_norm_residual": {
+        "TILE_M": post_layer_norm_residual_heur_tile_m,
+        "TILE_N": post_layer_norm_residual_heur_tile_n,
     },
     "uniform": {
         "BLOCK": uniform_heur_block,

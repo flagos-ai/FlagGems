@@ -1,17 +1,3 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import importlib
 import logging
 import os
@@ -21,12 +7,30 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.utils import dim_compress
+from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer
 from flag_gems.utils.shape_utils import restride_dim
 
 logger = logging.getLogger(__name__)
+
+
+def span_for_slice(slice_n: int, block: int) -> int:
+    if slice_n <= 0:
+        return block
+    if slice_n >= block:
+        return slice_n
+    return slice_n * (block // slice_n)
+
+
+LOOP_CAP = 32
+BLOCK_CAP = 16384
+
+
+def block_for_span(span: int, block: int) -> int:
+    while span // block > LOOP_CAP and block < BLOCK_CAP:
+        block *= 2
+    return block
 
 
 @triton.jit
@@ -39,14 +43,20 @@ def scatter_add_kernel_1(
     n_elements,
     BLOCK_SIZE: tl.constexpr,
     LOOP: tl.constexpr,
+    SPAN: tl.constexpr,
+    EXACT_SPAN: tl.constexpr,
 ):
     pid = tl.program_id(0)
-    block_start = pid * BLOCK_SIZE * LOOP
+    block_start = pid * SPAN
+    if not EXACT_SPAN:
+        limit = tl.minimum(block_start + SPAN, n_elements)
     arange = tl.arange(0, BLOCK_SIZE)
-    offsets = block_start + arange
-    mask = offsets < n_elements
     for loop_iter in tl.static_range(LOOP):
         src_index_offsets = block_start + arange
+        if EXACT_SPAN:
+            mask = src_index_offsets < n_elements
+        else:
+            mask = src_index_offsets < limit
         src_tensor = tl.load(src_ptr + src_index_offsets, mask=mask, other=0)
         index_tensor = tl.load(index_ptr + src_index_offsets, mask=mask, other=0)
         out_offsets = src_index_offsets // index_dim_n * inp_dim_n + index_tensor
@@ -72,11 +82,9 @@ def generate_scatter_kernel(
     kernel_name: str,
     code: IndentedBuffer,
 ) -> IndentedBuffer:
-    # make the inlined function visible in the context
     code.newline()
 
-    # the autotune function
-    code.writeline("def heur_block(args):")
+    code.writeline("def base_block(args):")
     with code.indent():
         code.writeline("if(flag_gems.vendor_name in ['metax', 'iluvatar']):")
         with code.indent():
@@ -85,20 +93,52 @@ def generate_scatter_kernel(
     code.newline()
     code.newline()
 
-    code.writeline("def loop_count(args):")
+    code.writeline("def heur_span(args):")
     with code.indent():
-        code.writeline("return 1")
+        code.writeline("span = base_block(args)")
+        code.writeline('slice_n = args["SLICE"]')
+        code.writeline("if slice_n >= span:")
+        with code.indent():
+            code.writeline("span = slice_n")
+        code.writeline("else:")
+        with code.indent():
+            code.writeline("span = slice_n * (span // slice_n)")
+        code.writeline("return span")
     code.newline()
     code.newline()
 
-    # the decorators
+    code.writeline("def heur_block(args):")
+    with code.indent():
+        code.writeline("block = base_block(args)")
+        code.writeline("span = heur_span(args)")
+        code.writeline(f"while span // block > {LOOP_CAP} and block < {BLOCK_CAP}:")
+        with code.indent():
+            code.writeline("block *= 2")
+        code.writeline("return block")
+    code.newline()
+    code.newline()
+
+    code.writeline("def loop_count(args):")
+    with code.indent():
+        code.writeline("return triton.cdiv(heur_span(args), heur_block(args))")
+    code.newline()
+    code.newline()
+
+    code.writeline("def heur_exact(args):")
+    with code.indent():
+        code.writeline("return heur_span(args) % heur_block(args) == 0")
+    code.newline()
+    code.newline()
+
     code.writeline("@libentry()")
     code.writeline("@triton.heuristics(")
     with code.indent():
         code.writeline("{")
         with code.indent():
             code.writeline('"BLOCK": heur_block,')
+            code.writeline('"SPAN": heur_span,')
             code.writeline('"LOOP": loop_count,')
+            code.writeline('"EXACT_SPAN": heur_exact,')
         code.writeline("}")
     code.writeline(")")
     inp_stride_vars = ",".join(f"'inp_stride_{i}'" for i in range(rank))
@@ -110,7 +150,6 @@ def generate_scatter_kernel(
         f"{inp_stride_vars},{index_stride_vars},{src_stride_vars},{shape_vars}])"
     )
 
-    # signature
     code.writeline(f"def {kernel_name}(")
     with code.indent():
         if rank > 0:
@@ -133,20 +172,30 @@ def generate_scatter_kernel(
             code.writeline("inp_size_dim,")
             code.writeline("stride_dim,")
             code.writeline("N,")
+            code.writeline("SLICE,")
             code.writeline("BLOCK: tl.constexpr,")
             code.writeline("LOOP: tl.constexpr,")
+            code.writeline("SPAN: tl.constexpr,")
+            code.writeline("EXACT_SPAN: tl.constexpr,")
 
     code.writeline("):")
 
-    # Kernel Code
     with code.indent():
         code.writeline("pid = tl.program_id(0)")
-        code.writeline("offsets = pid * LOOP * BLOCK + tl.arange(0, BLOCK)")
+        code.writeline("base = pid * SPAN")
+        code.writeline("if not EXACT_SPAN:")
+        with code.indent():
+            code.writeline("limit = tl.minimum(base + SPAN, N)")
+        code.writeline("offsets = base + tl.arange(0, BLOCK)")
 
-        #   1. Calculate inp_offsets and idx_offsets
         code.writeline("for loop_iter in tl.static_range(LOOP):")
         with code.indent():
-            code.writeline("mask = offsets < N")
+            code.writeline("if EXACT_SPAN:")
+            with code.indent():
+                code.writeline("mask = offsets < N")
+            code.writeline("else:")
+            with code.indent():
+                code.writeline("mask = offsets < limit")
             code.writeline("cur_idx = offsets")
             code.writeline("inp_offsets = tl.zeros((BLOCK, ), dtype=tl.int32)")
             code.writeline("idx_offsets = tl.zeros((BLOCK, ), dtype=tl.int32)")
@@ -159,7 +208,6 @@ def generate_scatter_kernel(
                 if i != 0:
                     code.writeline(f"cur_idx = cur_idx // shape_{i}")
 
-            #   2. Use offsets to scatter
             code.writeline(
                 "cur_src = tl.load(src_strided + src_offsets, mask=mask, other=0)"
             )
@@ -180,13 +228,13 @@ def generate_scatter_kernel(
 
 
 def parameter_for_wrapper() -> str:
-    # src_strided, index, inp, out, dim, M, N
     parameters: List[str] = []
 
     parameters.append("src_strided")
     parameters.append("index")
     parameters.append("inp")
     parameters.append("out")
+    parameters.append("dim")
     parameters.append("dim_size")
     parameters.append("dim_stride")
     parameters.append("N")
@@ -212,10 +260,14 @@ def generate_destination_passing_wrapper(
         code.writeline("inp_size_dim = dim_size")
         code.writeline("stride_dim = dim_stride")
 
-        # kernel launch
+        code.writeline("SLICE = 1")
+        code.writeline("for _i in range(dim, len(index_shapes)):")
+        with code.indent():
+            code.writeline("SLICE *= index_shapes[_i]")
+
         code.writeline("grid = lambda meta: (")
         with code.indent():
-            code.writeline('triton.cdiv(N, meta["BLOCK"] * meta["LOOP"]), ')
+            code.writeline('triton.cdiv(N, meta["SPAN"]), ')
         code.writeline(")")
         kernel_launch: str = f"{kernel_name}[grid]("
         code.writeline(kernel_launch)
@@ -237,6 +289,7 @@ def generate_destination_passing_wrapper(
                 code.writeline("inp_size_dim,")
                 code.writeline("stride_dim,")
                 code.writeline("N,")
+                code.writeline("SLICE,")
 
         code.writeline(")")
         code.writeline("return out")
@@ -250,7 +303,6 @@ def generate_code(
     kernel_name: str,
     code: IndentedBuffer,
 ) -> IndentedBuffer:
-    # inputs: [src_strided, index, inp, out, dim, M, N]
     shape = inputs[1].shape
     rank = len(shape)
 
@@ -283,7 +335,6 @@ class ScatterFunction:
             with open(code_cache_dir() / file_name, "wt", encoding="utf-8") as f:
                 f.write(code.getvalue())
 
-            # load
             spec = importlib.util.spec_from_file_location(
                 f"_gen_module_rank_{key}_pid_{self.pid}",
                 f.name,
@@ -305,6 +356,31 @@ class ScatterFunction:
 _scatter_func = ScatterFunction()
 
 
+@libentry()
+@triton.jit(do_not_specialize=["idx_ncols", "src_stride0", "out_ncols"])
+def scatter_add_2d_kernel(
+    idx_ptr,
+    src_ptr,
+    out_ptr,
+    idx_ncols,
+    src_stride0,
+    out_ncols,
+    BLOCK: tl.constexpr,
+    LOOP: tl.constexpr,
+):
+    pr = tl.program_id(0)
+    rowbase = pr.to(tl.int64) * idx_ncols
+    srcbase = pr.to(tl.int64) * src_stride0
+    outbase = pr.to(tl.int64) * out_ncols
+    offs = tl.arange(0, BLOCK)
+    for loop_iter in tl.static_range(LOOP):
+        mask = offs < idx_ncols
+        idx = tl.load(idx_ptr + rowbase + offs, mask=mask, other=0).to(tl.int64)
+        srcv = tl.load(src_ptr + srcbase + offs, mask=mask, other=0)
+        tl.atomic_add(out_ptr + outbase + idx, srcv, mask=mask, sem="relaxed")
+        offs += BLOCK
+
+
 def scatter_add_0(inp, dim, index, src):
     logger.debug("GEMS_KUNLUNXIN SCATTER_ADD_0")
     dtype_convert = False
@@ -315,6 +391,28 @@ def scatter_add_0(inp, dim, index, src):
         out = inp
 
     src_strided = src.as_strided(index.shape, src.stride())
+    dim = dim % inp.ndim
+    if inp.ndim == 2 and dim == 1 and index.is_contiguous():
+        idx_ncols = index.shape[1]
+        src_stride0 = src_strided.stride(0)
+        out_ncols = out.shape[1]
+        BLOCK = block_for_span(idx_ncols, 128)
+        LOOP = triton.cdiv(idx_ncols, BLOCK)
+        grid = (index.shape[0],)
+        scatter_add_2d_kernel[grid](
+            index,
+            src_strided,
+            out,
+            idx_ncols,
+            src_stride0,
+            out_ncols,
+            BLOCK=BLOCK,
+            LOOP=LOOP,
+        )
+        if dtype_convert:
+            return inp.copy_(out.to(src.dtype))
+        return out
+
     inp_restrided = restride_dim(inp, dim, index.shape)
     dim_size = inp.size(dim)
     dim_stride = inp.stride(dim)
@@ -325,6 +423,7 @@ def scatter_add_0(inp, dim, index, src):
         index,
         inp_restrided,
         out,
+        dim,
         dim_size,
         dim_stride,
         N,
@@ -356,7 +455,12 @@ def scatter_add_1(x, dim, index, src):
         index = dim_compress(index, dim)
 
     all_elem = max(x.numel(), index.numel())
-    grid = lambda meta: (triton.cdiv(all_elem, meta["BLOCK_SIZE"] * meta["LOOP"]),)
+    BLOCK_SIZE = 256
+    SPAN = span_for_slice(index_dim_n, BLOCK_SIZE)
+    BLOCK_SIZE = block_for_span(SPAN, BLOCK_SIZE)
+    LOOP = triton.cdiv(SPAN, BLOCK_SIZE)
+    EXACT_SPAN = SPAN % BLOCK_SIZE == 0
+    grid = (triton.cdiv(all_elem, SPAN),)
 
     dtype_convert = False
     if x.dtype == torch.float16 or x.dtype == torch.bfloat16:
@@ -364,7 +468,16 @@ def scatter_add_1(x, dim, index, src):
         x = x.to(torch.float32)
 
     scatter_add_kernel_1[grid](
-        index_dim_n, inp_dim_n, x, index, src, all_elem, BLOCK_SIZE=256, LOOP=1
+        index_dim_n,
+        inp_dim_n,
+        x,
+        index,
+        src,
+        all_elem,
+        BLOCK_SIZE=BLOCK_SIZE,
+        LOOP=LOOP,
+        SPAN=SPAN,
+        EXACT_SPAN=EXACT_SPAN,
     )
     if dim != x.ndim - 1:
         order = [i for i in range(x.ndim - 1)]
@@ -401,3 +514,9 @@ def scatter_add_(x, dim, index, src):
         return scatter_add_1(x, dim, index, src)
     else:
         return scatter_add_0(x, dim, index, src)
+
+
+def scatter_add(inp, dim, index, src):
+    logger.debug("GEMS_KUNLUNXIN SCATTER_ADD")
+    out = inp.clone()
+    return scatter_add_(out, dim, index, src)

@@ -71,6 +71,10 @@ def test_special_log1p_nan_inf():
     utils.gems_assert_close(res_out, ref_out, torch.float32, equal_nan=True)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="enflame does not support fp64",
+)
 @pytest.mark.special_log1p
 def test_special_log1p_small_values():
     """Test special_log1p precision for very small values."""

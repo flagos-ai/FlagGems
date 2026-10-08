@@ -19,6 +19,12 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+# Moore Threads (MUSA) has no native torch.bucketize with integer boundaries;
+# the reference call itself raises "Bucketize func unsupported!". Gate that one
+# parametrization for mthreads only (hardware limitation, not a kernel bug) so
+# other backends still exercise the int64-boundary path.
+_MTHREADS = flag_gems.vendor_name == "mthreads"
+
 
 def _reference_bucketize(inp, boundaries, **kwargs):
     ref_inp = utils.to_reference(inp, True)
@@ -34,9 +40,7 @@ def test_bucketize(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
     ref_out = _reference_bucketize(inp, boundaries)
-
-    with flag_gems.use_gems():
-        res_out = torch.bucketize(inp, boundaries)
+    res_out = flag_gems.bucketize(inp, boundaries)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -49,9 +53,7 @@ def test_bucketize_right(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
     ref_out = _reference_bucketize(inp, boundaries, right=True)
-
-    with flag_gems.use_gems():
-        res_out = torch.bucketize(inp, boundaries, right=True)
+    res_out = flag_gems.bucketize(inp, boundaries, right=True)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -64,9 +66,7 @@ def test_bucketize_int32(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
     ref_out = _reference_bucketize(inp, boundaries, out_int32=True)
-
-    with flag_gems.use_gems():
-        res_out = torch.bucketize(inp, boundaries, out_int32=True)
+    res_out = flag_gems.bucketize(inp, boundaries, out_int32=True)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -76,7 +76,15 @@ def test_bucketize_int32(shape, dtype):
 @pytest.mark.parametrize(
     ("boundary_values", "boundary_dtype"),
     [
-        pytest.param([1, 3, 5, 7, 9], torch.int64, id="integer"),
+        pytest.param(
+            [1, 3, 5, 7, 9],
+            torch.int64,
+            id="integer",
+            marks=pytest.mark.skipif(
+                _MTHREADS,
+                reason="MUSA native torch.bucketize does not support integer boundaries",
+            ),
+        ),
         pytest.param([], torch.float32, id="empty"),
         pytest.param([5.0], torch.float32, id="single"),
         pytest.param([1.0, 3.0], torch.float32, id="two"),
@@ -95,8 +103,6 @@ def test_bucketize_boundary_cases(right, boundary_values, boundary_dtype):
     )
 
     ref_out = _reference_bucketize(inp, boundaries, right=right)
-
-    with flag_gems.use_gems():
-        res_out = torch.bucketize(inp, boundaries, right=right)
+    res_out = flag_gems.bucketize(inp, boundaries, right=right)
 
     utils.gems_assert_equal(res_out, ref_out)

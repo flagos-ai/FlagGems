@@ -92,14 +92,10 @@ def add_(A, B, *, alpha=1):
         A.copy_(torch.add(A_cpu, B_cpu, alpha=alpha))
         return A
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
-        if A.dtype == torch.int64:
-            A = A.to(torch.int32)
         if B.dtype == torch.int64:
             B = B.to(torch.int32)
         return add_func(A, B, alpha, out0=A)
     elif isinstance(A, torch.Tensor):
-        if A.dtype == torch.int64:
-            A = A.to(torch.int32)
         return add_func_tensor_scalar(A, B, alpha, out0=A)
     # elif isinstance(B, torch.Tensor):
     #     return add_func_scalar_tensor(A, B, alpha, out0=A)

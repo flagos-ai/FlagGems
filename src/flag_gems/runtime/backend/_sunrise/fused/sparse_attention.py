@@ -134,7 +134,10 @@ def sparse_attn_triton(
     b, m, h, d = q.shape
     topk = topk_idxs.shape[-1]
     o = torch.empty_like(q)
-    BLOCK = 64
+    # A 64-wide KV tile exceeds the 128 KiB shared-memory limit on PTPU
+    # for the D=512 sparse-attention shapes. The single pipeline stage is
+    # also required for correct results with the smaller tile on PTPU.
+    BLOCK = 16
 
     grid = (m, b)  # each program handles ALL h heads
     if h < 8:
@@ -169,6 +172,7 @@ def sparse_attn_triton(
             D=d,
             H=8,
             num_warps=8,  # 256 threads, matching tilelang
+            num_stages=1,
         )
         o = o_new[:, :, :h].contiguous()
         return o
@@ -199,5 +203,6 @@ def sparse_attn_triton(
         D=d,
         H=h,
         num_warps=8,  # 256 threads, matching tilelang
+        num_stages=1,
     )
     return o

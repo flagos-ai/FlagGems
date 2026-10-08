@@ -43,8 +43,7 @@ def test_min(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.min(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.min(inp)
+    res_out = flag_gems.min(inp)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -60,8 +59,7 @@ def test_min_all_inf(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.min(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.min(inp)
+    res_out = flag_gems.min(inp)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -82,8 +80,7 @@ def test_min_dim(shape, dim, keepdim, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out_value, ref_out_index = torch.min(ref_inp, dim=dim, keepdim=keepdim)
-    with flag_gems.use_gems():
-        res_out_value, res_out_index = torch.min(inp, dim=dim, keepdim=keepdim)
+    res_out_value, res_out_index = flag_gems.min_dim(inp, dim=dim, keepdim=keepdim)
 
     utils.gems_assert_equal(res_out_index, ref_out_index)
     utils.gems_assert_equal(res_out_value, ref_out_value)

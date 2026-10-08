@@ -58,6 +58,8 @@ CUDA_DEVICES = [f"cuda:{i}" for i in range(1 if torch.cuda.device_count() == 1 e
 # We assume fp8 is always enabled for testing.
 if flag_gems.vendor_name in ["kunlunxin", "cambricon", "sunrise"]:
     KV_CACHE_DTYPE = ["auto"]
+elif flag_gems.vendor_name == "thead" and torch.cuda.get_device_capability() == (8, 0):
+    KV_CACHE_DTYPE = ["auto"]
 else:
     KV_CACHE_DTYPE = ["auto", "fp8"]
 

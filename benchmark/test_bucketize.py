@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -26,10 +28,15 @@ def _input_fn(shape, cur_dtype, device):
 
 @pytest.mark.bucketize
 def test_bucketize_perf():
+    if flag_gems.vendor_name == "mthreads":
+        dtypes = [torch.float32]
+    else:
+        dtypes = consts.FLOAT_DTYPES
+
     bench = base.GenericBenchmark(
         op_name="bucketize",
         input_fn=_input_fn,
         torch_op=torch.bucketize,
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=dtypes,
     )
     bench.run()

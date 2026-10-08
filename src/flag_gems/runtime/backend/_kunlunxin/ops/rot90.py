@@ -3,10 +3,35 @@ import logging
 import torch
 import triton
 import triton.language as tl
+from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 
 from flag_gems.runtime import torch_device_fn
 
+from ..utils.pointwise_dynamic import pointwise_dynamic
+from ..utils.tle_copy import tle_copy
+
 logger = logging.getLogger(__name__)
+
+# Below this numel the single-pass reversed flip beats the two-pass
+# materialization (ported unchanged from the pre-rewrite implementation,
+# used for everything the flat 2-D kernel below does not cover).
+_SMALL_NUMEL = 200000
+
+config_ = CodeGenConfig(
+    512,
+    (65536, 65536, 65536),
+    32,
+    True,
+    prefer_1d_tile=True,
+    buffer_size_limit=4096,
+    kunlunAutoGrid=True,
+)
+
+
+@pointwise_dynamic(is_tensor=[True], promotion_methods=[(0, "DEFAULT")], config=config_)
+@triton.jit
+def _rot90_copy_pw(src):
+    return src
 
 
 # NOTE (kunlunxin/XPU): the generic rot90 kernel is decorated with
@@ -19,6 +44,16 @@ logger = logging.getLogger(__name__)
 # compute BLOCK_SIZE/num_warps in the Python wrapper (size-banded) and pass them
 # explicitly. Kernel body is byte-for-byte identical to generic -> zero numeric
 # change.
+#
+# 2026-09-14: an earlier revision replaced this kernel with a captured native
+# ``aten::flip`` (``torch.library.get_kernel`` + ``call_boxed``), which made the
+# measured gem *be* the reference implementation (rot90 is flip + a free view),
+# so its benchmark ratio was ~1.0 by construction. That is banned for metric
+# integrity: an operator implementation may not run the vendor implementation
+# of its own computation. This is the honest Triton path; until the backend
+# grows a vectorised reverse-lane load (Vgather negative stride, tracked in
+# analysis/14 P6) it is expected to be several times slower than the vendor
+# flip -- that gap is real and belongs in the numbers, not hidden.
 @triton.jit
 def rot90_kernel_2d(
     in_ptr,
@@ -127,6 +162,34 @@ def rot90_2d(inp, k, dims, out):
         )
 
 
+def _rot90_generic(x, k_norm, dim0, dim1):
+    """Pre-rewrite view-based implementation (flip/transpose + tle materialization).
+
+    Used for ndim != 2 and for explicit non-(0, 1) dims: the flat 2-D kernel
+    below assumes the MxN matrix spans the whole contiguous tensor, which only
+    holds for a 2-D input.
+    """
+    if k_norm == 0:
+        return x.clone()
+    if k_norm == 1:
+        if x.numel() <= _SMALL_NUMEL:
+            return x.flip([dim1]).transpose(dim0, dim1)
+        out_shape = list(x.shape)
+        out_shape[dim0], out_shape[dim1] = out_shape[dim1], out_shape[dim0]
+        out = torch.empty(out_shape, device=x.device, dtype=x.dtype)
+        # Materialize the transposed view with the copy-family recipe (same as
+        # permute_copy): tle takes the whole transfer, the pointwise kernel
+        # keeps the rest. No `torch.ops.aten._copy_from` -- it dispatches to
+        # the XPU fallback.
+        transposed = x.transpose(dim0, dim1)
+        if not tle_copy(transposed, out):
+            _rot90_copy_pw(transposed, out0=out)
+        return out.flip([dim0])
+    if k_norm == 2:
+        return x.flip([dim0, dim1])
+    return x.flip([dim0]).transpose(dim0, dim1)
+
+
 def rot90(input, k=1, dims=[0, 1]):
     logger.debug("GEMS_KUNLUNXIN ROT90")
     x = input
@@ -134,10 +197,28 @@ def rot90(input, k=1, dims=[0, 1]):
         x = x.contiguous()
 
     dim0, dim1 = dims[0], dims[1]
+    k_norm = ((k % 4) + 4) % 4
+
+    if dim0 != 0 or dim1 != 1 or x.ndim != 2:
+        # Anything but a 2-D default-dims input takes the view-based path: the
+        # flat kernel only models an MxN matrix spanning the whole tensor.
+        return _rot90_generic(x, k_norm, dim0, dim1)
+
     M = x.shape[dim0]
     N = x.shape[dim1]
 
-    k_norm = ((k % 4) + 4) % 4
+    # Large power-of-two numels: materialise the transpose with tle and flip the
+    # *outer* axis. The flat kernel below reads its input with a reversed lane
+    # order (D-017: no vectorised path on this backend), while this ordering
+    # lands flip's block path -- contiguous inner run, and a grid that covers the
+    # task space exactly, which is what keeps flip's index clamp out of the
+    # kernel (an inexact grid costs ~10x on a block copy, e.g. 400x800). Measured
+    # 2.6x-9x faster than the flat kernel at 512^2 / 1024^2 / 2048^2 (2026-09-18).
+    if k_norm == 1 and x.numel() > _SMALL_NUMEL and (x.numel() & (x.numel() - 1)) == 0:
+        wide = torch.empty([N, M], device=x.device, dtype=x.dtype)
+        if tle_copy(x.transpose(dim0, dim1), wide):
+            return wide.flip([dim0])
+        # tle cannot express this transfer -> fall through to the flat kernel.
 
     if k_norm == 0 or k_norm == 2:
         out_shape = list(x.shape)
@@ -147,29 +228,5 @@ def rot90(input, k=1, dims=[0, 1]):
         out_shape[dim1] = M
 
     out = torch.empty(out_shape, device=x.device, dtype=x.dtype)
-
-    if dim0 == 0 and dim1 == 1:
-        rot90_2d(x, k, dims, out)
-    else:
-        ndim = x.ndim
-
-        perm = [dim0, dim1]
-        for i in range(ndim):
-            if i != dim0 and i != dim1:
-                perm.append(i)
-
-        inverse_perm = [0] * ndim
-        inverse_perm[dim0] = 0
-        inverse_perm[dim1] = 1
-        idx = 2
-        for i in range(ndim):
-            if i != dim0 and i != dim1:
-                inverse_perm[i] = idx
-                idx += 1
-
-        x_transposed = x.permute(perm)
-        out_transposed = torch.empty(out_shape, device=x.device, dtype=x.dtype)
-        rot90_2d(x_transposed, k, [0, 1], out_transposed)
-        out.copy_(out_transposed.permute(inverse_perm))
-
+    rot90_2d(x, k, dims, out)
     return out

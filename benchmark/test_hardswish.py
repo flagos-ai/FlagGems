@@ -32,3 +32,23 @@ def test_hardswish_inplace():
         is_inplace=True,
     )
     bench.run()
+
+
+@pytest.mark.hardswish
+def test_hardswish():
+    bench = base.UnaryPointwiseBenchmark(
+        op_name="hardswish",
+        torch_op=torch.nn.functional.hardswish,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.hardswish_out
+def test_hardswish_out():
+    bench = base.UnaryPointwiseOutBenchmark(
+        op_name="hardswish_out",
+        torch_op=torch.ops.aten.hardswish.out,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()

@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -38,6 +40,47 @@ class TopKBenchmark(base.GenericBenchmark2DOnly):
         ]
 
 
+class TopKAscendBenchmark(base.GenericBenchmark2DOnly):
+    # Spec (from FlagTree measurements): fp32, sorted=True, seg_len=4096,
+    # do_bench_npu warmup=2, active=5. S = num segments per row follows from
+    # N / 4096.
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = [
+            ((1, 8192), 2048),
+            ((1, 16384), 2048),
+            ((1, 65536), 4096),
+            ((2, 8192), 64),
+            ((2, 131072), 64),
+            ((2, 262144), 32),
+            ((4, 8192), 128),
+            ((4, 8192), 512),
+            ((4, 8192), 1024),
+            ((4, 131072), 128),
+            ((4, 131072), 4096),
+            ((8, 65536), 4096),
+            ((8, 524288), 1024),
+            ((16, 8192), 64),
+            ((16, 8192), 128),
+            ((16, 16384), 256),
+            ((16, 16384), 8192),
+            ((16, 65536), 256),
+            ((16, 65536), 4096),
+            ((16, 131072), 1024),
+            ((16, 131072), 4096),
+            ((16, 524288), 128),
+            ((32, 8192), 512),
+            ((32, 32768), 128),
+            ((32, 65536), 4096),
+            ((32, 262144), 64),
+            ((32, 524288), 1024),
+            ((48, 16384), 128),
+            ((48, 16384), 256),
+            ((48, 131072), 8192),
+            ((48, 262144), 8192),
+            ((48, 524288), 8192),
+        ]
+
+
 def _input_fn(shape, dtype, device):
     if len(shape) == 2 and isinstance(shape[0], (tuple, list)):
         x_shape, k = shape
@@ -58,13 +101,34 @@ def _input_fn(shape, dtype, device):
     #     yield {"x": x, "k": k, "dim": -1, "sorted": False},
 
 
+def _ascend_input_fn(shape, dtype, device):
+    if isinstance(shape[0], (tuple, list)):
+        x_shape, k = shape
+    else:
+        x_shape, k = shape, (5 if shape[-1] > 5 else shape[-1])
+    x = torch.randn(x_shape, device=device, dtype=dtype)
+    yield {"x": x, "k": k},
+
+
 @pytest.mark.topk
 def test_topk():
-    bench = TopKBenchmark(
-        op_name="topk",
-        input_fn=_input_fn,
-        torch_op=torch.topk,
-        dtypes=consts.FLOAT_DTYPES,
-    )
+    if flag_gems.vendor_name == "ascend":
+        # DSA topk has no dim/largest args and is called directly (base.py
+        # skips use_gems when gems_op is given); torch.topk(x, k) defaults to
+        # last-dim largest=True on both sides.
+        bench = TopKAscendBenchmark(
+            op_name="topk",
+            input_fn=_ascend_input_fn,
+            torch_op=torch.topk,
+            gems_op=flag_gems.topk,
+            dtypes=[torch.float32],
+        )
+    else:
+        bench = TopKBenchmark(
+            op_name="topk",
+            input_fn=_input_fn,
+            torch_op=torch.topk,
+            dtypes=consts.FLOAT_DTYPES,
+        )
 
     bench.run()

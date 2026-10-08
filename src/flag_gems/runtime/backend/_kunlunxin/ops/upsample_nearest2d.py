@@ -26,23 +26,17 @@ from flag_gems.utils import triton_lang_extension as ext
 logger = logging.getLogger(__name__)
 device = device.name
 
-
-def heur_block_size(args):
-    return triton.next_power_of_2(
-        triton.cdiv(args["N"] * args["C"] * args["OH"] * args["OW"], 12)
-    )  # cluster_num
+# Upper bound on the per-program BLOCK_SIZE (number of output lanes handled by
+# one program). The unbounded `next_pow2(cdiv(total, 12))` produced tiles of up
+# to 33.5M lanes for pathological test shapes, which both bloats the compiled IR
+# and triggers the known XPU big-tile slowdown. A hard cap keeps every tile small
+# and the grid bounded.
+MAX_BLOCK_SIZE = 262144
 
 
 # @triton.autotune(
 #     configs=runtime.get_tuned_config("upsample_nearest2d"), key=["N", "C", "OH", "OW"]
 # )
-@triton.heuristics(
-    {
-        "SAME_H": lambda args: args["OH"] == args["IH"],
-        "SAME_W": lambda args: args["OW"] == args["IW"],
-        "BLOCK_SIZE": heur_block_size,
-    }
-)
 @triton.jit
 def upsample_nearest2d_kernel(
     ptr_o,
@@ -55,9 +49,11 @@ def upsample_nearest2d_kernel(
     IW,
     reciprocal_scale_h,
     reciprocal_scale_w,
-    BLOCK_SIZE: tl.constexpr,
+    total,
     SAME_H: tl.constexpr,
     SAME_W: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+    NEED_MASK: tl.constexpr,
 ):
     pid = ext.program_id(axis=0)
     idx = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
@@ -77,7 +73,12 @@ def upsample_nearest2d_kernel(
     offset_o = ((n * C + c) * OH + oh) * OW + ow
     offset_i = ((n * C + c) * IH + ih) * IW + iw
     data = tl.load(ptr_i + offset_i)
-    tl.store(ptr_o + offset_o, data)
+    if NEED_MASK:
+        # Tail block may extend past total output elements; guard the store.
+        # (offset_i is always in-bounds: oh/ow/n/c are derived via modulo.)
+        tl.store(ptr_o + offset_o, data, mask=idx < total)
+    else:
+        tl.store(ptr_o + offset_o, data)
 
 
 def upsample_nearest2d(
@@ -103,9 +104,29 @@ def upsample_nearest2d(
     # allocate output
     output = torch.empty((N, C, OH, OW), device=input.device, dtype=input.dtype)
     total_threads = N * C * OH * OW
-    grid = lambda META: (triton.cdiv(total_threads, META["BLOCK_SIZE"]),)
+    # Bounded block size: keep the usual ~12-program cluster layout for small
+    # outputs, but never build a huge single-program tile.
+    block_size = min(
+        triton.next_power_of_2(triton.cdiv(total_threads, 12)), MAX_BLOCK_SIZE
+    )
+    need_mask = total_threads % block_size != 0
+    grid = (triton.cdiv(total_threads, block_size),)
     with torch_device_fn.device(input.device):
         upsample_nearest2d_kernel[grid](
-            output, input, N, C, OH, OW, IH, IW, reciprocal_scale_h, reciprocal_scale_w
+            output,
+            input,
+            N,
+            C,
+            OH,
+            OW,
+            IH,
+            IW,
+            reciprocal_scale_h,
+            reciprocal_scale_w,
+            total_threads,
+            SAME_H=(OH == IH),
+            SAME_W=(OW == IW),
+            BLOCK_SIZE=block_size,
+            NEED_MASK=need_mask,
         )
     return output

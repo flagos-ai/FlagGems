@@ -12,12 +12,44 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import math
+
 import torch
 import triton
 
 
+def _metax_max_num_warps():
+    """Return the maximum number of warps safe on the current device.
+
+    MetaX C550 has warp_size=64 and max 512 threads per block, so
+    max safe num_warps is 8 (64*8=512).  For standard warp_size=32
+    devices this returns 16, preserving existing behavior.
+    """
+    props = torch.cuda.get_device_properties(torch.cuda.current_device())
+    return 512 // props.warp_size
+
+
 def simple_elementwise_blocksize_heur(args):
     return 512
+
+
+def addmm_heur_upgrade(args):
+    num_tiles = math.ceil(
+        (args["M"] * args["N"]) / (args["BLOCK_SIZE_M"] * args["BLOCK_SIZE_N"])
+    )
+    return num_tiles.bit_length() > 31
+
+
+def addmm_heur_upgrade_a_offs(args):
+    return math.ceil(args["M"] * args["K"]).bit_length() > 31
+
+
+def addmm_heur_upgrade_b_offs(args):
+    return math.ceil(args["K"] * args["N"]).bit_length() > 31
+
+
+def addmm_heur_upgrade_c_offs(args):
+    return math.ceil(args["M"] * args["N"]).bit_length() > 31
 
 
 def argmax_heur_block_m(args):
@@ -163,7 +195,7 @@ def dropout_heur_num_warps(args):
     if args["N"] <= 512:
         return 4
     else:
-        return 8  # MetaX C550: max 512 threads = 8 warps × 64
+        return _metax_max_num_warps()
 
 
 def exponential_heur_block(args):
@@ -177,7 +209,7 @@ def exponential_heur_num_warps(args):
     if args["N"] <= 512:
         return 4
     else:
-        return 8  # MetaX C550: max 512 threads = 8 warps × 64
+        return _metax_max_num_warps()
 
 
 def gather_heur_block_m(args):
@@ -206,7 +238,7 @@ def index_select_heur_block_n(args):
 
 
 def mm_heur_even_k(args):
-    return args["K"] % (args["BLOCK_K"] * args["SPLIT_K"]) == 0
+    return args["K"] % args["BLOCK_K"] == 0
 
 
 def ones_heur_block_size(args):
@@ -239,7 +271,7 @@ def rand_heur_num_warps(args):
     if args["N"] <= 512:
         return 4
     else:
-        return 8  # MetaX C550: max 512 threads = 8 warps × 64
+        return _metax_max_num_warps()
 
 
 def randn_heur_block(args):
@@ -253,7 +285,7 @@ def randn_heur_num_warps(args):
     if args["N"] <= 512:
         return 4
     else:
-        return 8  # MetaX C550: max 512 threads = 8 warps × 64
+        return _metax_max_num_warps()
 
 
 def softmax_heur_tile_k(args):
@@ -289,7 +321,7 @@ def softmax_heur_num_warps_non_inner(args):
     elif tile_size < 2048:
         return 4
     else:
-        return 8  # MetaX C550: max 512 threads = 8 warps × 64
+        return _metax_max_num_warps()
 
 
 def softmax_heur_tile_n_inner(args):
@@ -304,7 +336,7 @@ def softmax_heur_num_warps_inner(args):
     if tile_size < 2048:
         return 4
     else:
-        return 8  # MetaX C550: max 512 threads = 8 warps × 64
+        return _metax_max_num_warps()
 
 
 def softmax_heur_tile_n_bwd_non_inner(args):
@@ -326,7 +358,7 @@ def uniform_heur_num_warps(args):
     if args["N"] <= 512:
         return 4
     else:
-        return 8  # MetaX C550: max 512 threads = 8 warps × 64
+        return _metax_max_num_warps()
 
 
 def var_mean_heur_block_n(args):
@@ -389,6 +421,12 @@ def zeros_heur_num_warps(args):
 
 
 HEURISTICS_CONFIGS = {
+    "addmm": {
+        "UPGRADE": addmm_heur_upgrade,
+        "UPGRADE_A_OFFS": addmm_heur_upgrade_a_offs,
+        "UPGRADE_B_OFFS": addmm_heur_upgrade_b_offs,
+        "UPGRADE_C_OFFS": addmm_heur_upgrade_c_offs,
+    },
     "amax": {
         "BLOCK_M": lambda args: 4,
         "BLOCK_N": lambda args: 1024,

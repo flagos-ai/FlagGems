@@ -348,7 +348,7 @@ def log_softmax_kernel_inner(
             for start_n in range(0, N, BLOCK_N):
                 n_offset = start_n + tl.arange(0, BLOCK_N)
                 offset = m_offset[:, None] * N + n_offset[None, :]
-                mask = m_offset[:, None] < M and n_offset[None, :] < N
+                mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
                 inp = tl.load(input_ptr + offset, mask=mask, other=-float("inf")).to(
                     tl.float32
                 )
@@ -373,7 +373,7 @@ def log_softmax_kernel_inner(
             for start_n in range(0, N, BLOCK_N):
                 n_offset = start_n + tl.arange(0, BLOCK_N)
                 offset = m_offset[:, None] * N + n_offset[None, :]
-                mask = m_offset[:, None] < M and n_offset[None, :] < N
+                mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
                 inp = tl.load(input_ptr + offset, mask=mask, other=-float("inf")).to(
                     tl.float32
                 )
@@ -767,7 +767,7 @@ def log_softmax_backward_kernel_inner(
             m_offset = m_start + m_idx + tl.arange(0, BLOCK_M)
             n_offset = tl.arange(0, BLOCK_N)
             offset = m_offset[:, None] * N + n_offset[None, :]
-            mask = m_offset[:, None] < M and n_offset[None, :] < N
+            mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
             out_tile = tl.load(output_ptr + offset, mask=mask).to(tl.float32)
             out_grad_tile = tl.load(out_grad_ptr + offset, mask=mask).to(tl.float32)
             scale = tl.sum(out_grad_tile, 1)
@@ -780,14 +780,14 @@ def log_softmax_backward_kernel_inner(
             for start_n in range(0, N, BLOCK_N):
                 n_offset = start_n + tl.arange(0, BLOCK_N)
                 offset = m_offset[:, None] * N + n_offset[None, :]
-                mask = m_offset[:, None] < M and n_offset[None, :] < N
+                mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
                 out_grad_tile = tl.load(out_grad_ptr + offset, mask=mask).to(tl.float32)
                 scale += out_grad_tile
             scale = tl.sum(scale, 1)
             for start_n in range(0, N, BLOCK_N):
                 n_offset = start_n + tl.arange(0, BLOCK_N)
                 offset = m_offset[:, None] * N + n_offset[None, :]
-                mask = m_offset[:, None] < M and n_offset[None, :] < N
+                mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
                 out_tile = tl.load(
                     output_ptr + offset, mask=mask, eviction_policy="evict_first"
                 ).to(tl.float32)

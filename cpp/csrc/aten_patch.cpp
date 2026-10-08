@@ -43,15 +43,16 @@ namespace flag_gems {
 
 // Define dispatch key based on backend
 // CUDA, IX and MACA use CUDA dispatch key (IX/MACA are CUDA-compatible)
-// NPU, MUSA and GCU use PrivateUse1 dispatch key
+// NPU, MUSA, GCU and MLU use PrivateUse1 dispatch key
 #if defined(FLAGGEMS_USE_CUDA) || defined(FLAGGEMS_USE_IX) || defined(FLAGGEMS_USE_HCU) || \
     defined(FLAGGEMS_USE_MACA)
 #define FLAGGEMS_DISPATCH_KEY CUDA
-#elif defined(FLAGGEMS_USE_NPU) || defined(FLAGGEMS_USE_MUSA) || defined(FLAGGEMS_USE_GCU)
+#elif defined(FLAGGEMS_USE_NPU) || defined(FLAGGEMS_USE_MUSA) || defined(FLAGGEMS_USE_GCU) || \
+    defined(FLAGGEMS_USE_MLU)
 #define FLAGGEMS_DISPATCH_KEY PrivateUse1
 #else
 #error \
-    "No backend defined. Define one of: FLAGGEMS_USE_CUDA, FLAGGEMS_USE_IX, FLAGGEMS_USE_NPU, FLAGGEMS_USE_MUSA, FLAGGEMS_USE_GCU, FLAGGEMS_USE_HCU, FLAGGEMS_USE_MACA"
+    "No backend defined. Define one of: FLAGGEMS_USE_CUDA, FLAGGEMS_USE_IX, FLAGGEMS_USE_NPU, FLAGGEMS_USE_MUSA, FLAGGEMS_USE_GCU, FLAGGEMS_USE_HCU, FLAGGEMS_USE_MACA, FLAGGEMS_USE_MLU"
 #endif
 
 TORCH_LIBRARY_IMPL(aten, FLAGGEMS_DISPATCH_KEY, m) {
@@ -82,3 +83,16 @@ TORCH_LIBRARY_IMPL(aten, FLAGGEMS_DISPATCH_KEY, m) {
 }
 
 }  // namespace flag_gems
+
+namespace {
+// Placed after the TORCH_LIBRARY_IMPL block on purpose: namespace-scope dynamic
+// initialization runs in declaration order within a translation unit, so
+// registered_ops here already reflects what was actually installed. Loading this
+// module is not by itself enough — the copy fallbacks in lib/copy.cpp only need
+// their recursion guard when flag_gems really did take over aten ops (today every
+// registration above is commented out, so nothing is taken over).
+const int aten_patch_installed_marker = [] {
+  flag_gems::set_aten_patch_installed(!registered_ops.empty());
+  return 0;
+}();
+}  // namespace

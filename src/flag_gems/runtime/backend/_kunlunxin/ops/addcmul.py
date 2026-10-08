@@ -38,7 +38,8 @@ config_ = CodeGenConfig(
     prefer_1d_tile=True,
     buffer_size_limit=4096,
     isCloseVectorization=False,
-    unroll_num=8,
+    unroll_num=16,
+    kunlunAutoGrid=True,
 )
 
 
@@ -68,6 +69,9 @@ def addcmul(inp, tensor1, tensor2, *, value=1.0, out=None):
 
 def addcmul_out(inp, tensor1, tensor2, *, value=1.0, out):
     logger.debug("GEMS_KUNLUNXIN ADDCMUL_OUT")
+    if inp.shape == tensor1.shape == tensor2.shape and out.shape == inp.shape:
+        addcmul_forward(inp, tensor1, tensor2, value, out0=out)
+        return out
     broadcast_shape = torch.broadcast_shapes(inp.shape, tensor1.shape, tensor2.shape)
     if list(out.shape) != list(broadcast_shape):
         out.resize_(broadcast_shape)

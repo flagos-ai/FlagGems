@@ -25,6 +25,7 @@ import pytest
 import yaml
 
 import flag_gems
+from flag_gems.cli_override import add_override_arguments, apply_overrides_from_args
 
 BUILTIN_MARKS = {
     "filterwarnings",
@@ -95,6 +96,9 @@ def pytest_addoption(parser):
     except ValueError:
         pass
 
+    # Add dynamic operator override options
+    add_override_arguments(parser)
+
 
 def pytest_configure(config):
     global RECORD_LOG
@@ -104,6 +108,8 @@ def pytest_configure(config):
     global RUNTEST_INFO
     global TO_CPU
     global QUICK_MODE
+
+    TEST_RESULTS.clear()
 
     REGISTERED_MARKS = {
         marker.split(":")[0].strip() for marker in config.getini("markers")
@@ -132,6 +138,9 @@ def pytest_configure(config):
             format="[%(levelname)s] %(message)s",
         )
 
+    # Apply dynamic operator overrides
+    config._override_registry = apply_overrides_from_args(config.option)
+
 
 def pytest_runtest_teardown(item, nextitem):
     if not RECORD_LOG:
@@ -159,6 +168,26 @@ def pytest_runtest_teardown(item, nextitem):
 def pytest_sessionfinish(session, exitstatus):
     if RECORD_LOG:
         logging.info(json.dumps(RUNTEST_INFO, indent=2))
+
+
+def pytest_unconfigure(config):
+    """Cleanup: restore all overridden operators."""
+    if hasattr(config, "_override_registry"):
+        all_skipped = bool(TEST_RESULTS) and all(
+            result.get("result") == "skipped" for result in TEST_RESULTS.values()
+        )
+        config._override_registry.restore_all(allow_unused=all_skipped)
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_call(item):
+    registry = item.config._override_registry
+    before = registry.call_counts()
+    yield
+    after = registry.call_counts()
+    TEST_RESULTS[item.nodeid]["candidate_calls"] = {
+        name: count - before.get(name, 0) for name, count in after.items()
+    }
 
 
 @pytest.hookimpl(tryfirst=True)

@@ -29,17 +29,33 @@ fla-org/native-sparse-attention parallel.py (NSA V-chunked pattern).
 """
 
 import os
-
-os.environ.setdefault("TRITON_DISABLE_SWIZZLE", "1")
-# MetaX (mcTriton) compiler-pass enable flags
-os.environ.setdefault("TRITON_ENABLE_MACA_OPT_MOVE_DOT_OPERANDS_OUT_LOOP", "1")
-os.environ.setdefault("TRITON_ENABLE_MACA_MERGE_CONVERT_LAYOUT", "1")
-os.environ.setdefault("TRITON_ENABLE_SMEM_OFFSET_CACHE", "1")
-os.environ.setdefault("TRITON_ENABLE_BSM_INDEX_OPT", "1")
+from contextlib import contextmanager
 
 import torch  # noqa: E402
 import triton  # noqa: E402
 import triton.language as tl  # noqa: E402
+
+_SPARSE_ATTN_COMPILER_ENV = {
+    "TRITON_DISABLE_SWIZZLE": "1",
+    "TRITON_ENABLE_MACA_OPT_MOVE_DOT_OPERANDS_OUT_LOOP": "1",
+    "TRITON_ENABLE_MACA_MERGE_CONVERT_LAYOUT": "1",
+    "TRITON_ENABLE_SMEM_OFFSET_CACHE": "1",
+    "TRITON_ENABLE_BSM_INDEX_OPT": "1",
+}
+
+
+@contextmanager
+def _sparse_attn_compiler_env():
+    previous = {name: os.environ.get(name) for name in _SPARSE_ATTN_COMPILER_ENV}
+    os.environ.update(_SPARSE_ATTN_COMPILER_ENV)
+    try:
+        yield
+    finally:
+        for name, value in previous.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
 
 
 # ===========================================================================
@@ -416,7 +432,7 @@ _sparse_attn_universal_autotuned = triton.autotune(
 # ===========================================================================
 # Python wrapper — multi-tier dispatch
 # ===========================================================================
-def sparse_attn_triton(
+def _sparse_attn_triton_impl(
     q: torch.Tensor,
     kv: torch.Tensor,
     attn_sink: torch.Tensor,
@@ -634,3 +650,20 @@ def sparse_attn_triton(
         num_warps=2,
     )
     return o
+
+
+def sparse_attn_triton(
+    q: torch.Tensor,
+    kv: torch.Tensor,
+    attn_sink: torch.Tensor,
+    topk_idxs: torch.Tensor,
+    softmax_scale: float,
+) -> torch.Tensor:
+    with _sparse_attn_compiler_env():
+        return _sparse_attn_triton_impl(
+            q,
+            kv,
+            attn_sink,
+            topk_idxs,
+            softmax_scale,
+        )

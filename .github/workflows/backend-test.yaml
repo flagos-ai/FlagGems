@@ -1,6 +1,6 @@
 # Copyright 2026 FlagOS Contributors
-#
 # Licensed under the Apache License, Version 2.0 (the "License");
+#
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
@@ -46,6 +46,26 @@ on:
         required: false
         type: string
         default: ''
+      container_image:
+        description: 'Vendor container image, for backends that only have their driver/runtime set up inside a container (hygon, iluvatar, kunlunxin, metax-maca3810, mthreads-musa520). See .github/backends.json.'
+        required: false
+        type: string
+        default: ''
+      container_options:
+        description: 'docker run options (device mounts etc.) for container_image. See .github/backends.json.'
+        required: false
+        type: string
+        default: ''
+      runs_on_default:
+        description: 'Runner label to use container_image on, for the base repo (FlagGems). See .github/backends.json.'
+        required: false
+        type: string
+        default: ''
+      runs_on_vllm:
+        description: 'Runner label to use container_image on, for FlagGems-vllm. See .github/backends.json.'
+        required: false
+        type: string
+        default: ''
     secrets:
       RUNNER_SSH_KEY:
         required: true
@@ -55,6 +75,7 @@ permissions:
 
 jobs:
   test:
+    if: ${{ inputs.backend != 'iluvatar' && inputs.backend != 'kunlunxin' && inputs.backend != 'metax-maca3810' && inputs.backend != 'hygon' && inputs.backend != 'mthreads-musa520' && inputs.backend != 'thead' }}
     runs-on: ${{ inputs.runner_label }}
     concurrency:
       group: >-
@@ -83,4 +104,379 @@ jobs:
           CHANGED_FILES: ${{ inputs.changed_files }}
         run: |
           source .venv/bin/activate
+          tools/test-op.sh ${{ inputs.pr_id }}
+
+  # Kunlunxin runs inside a container on the klx-p800 server, since the XPU
+  # driver/runtime it needs is only set up inside this image.
+  # Equivalent to:
+  #   docker run --rm -it \
+  #     harbor.baai.ac.cn/flagos-runtime/flagos-runtime-kunlunxin-xre5.37.1:2.2.0 bash
+  # with GitHub Actions creating/starting the container and exec'ing each step.
+  test-kunlunxin:
+    if: ${{ inputs.backend == 'kunlunxin' }}
+    runs-on: ${{ inputs.runs_on_default }}
+    container:
+      image: ${{ inputs.container_image }}
+      options: ${{ inputs.container_options }}
+    concurrency:
+      group: >-
+        op-test-${{ inputs.backend }}-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    steps:
+      # klx-p800 reuses its workspace across jobs. Stale skip-worktree bits
+      # (e.g. on _kunlunxin backend op files) make `git checkout --force` refuse
+      # to overwrite them, aborting checkout and breaking the local
+      # checkout-retry action. Clear the residue before checkout. Harmless no-op
+      # on a clean or freshly-cloned workspace.
+      - name: Reset reused workspace
+        shell: bash
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE" 2>/dev/null || true
+          cd "$GITHUB_WORKSPACE" 2>/dev/null || exit 0
+          [ -d .git ] || exit 0
+          git sparse-checkout disable 2>/dev/null || true
+          git ls-files -z | xargs -0 -r git update-index --no-skip-worktree 2>/dev/null || true
+          git reset --hard HEAD 2>/dev/null || true
+          git clean -ffdx 2>/dev/null || true
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        continue-on-error: true
+      # Use fully-qualified @master refs instead of local ./ paths. On the
+      # klx-p800 k8s-novolume runner, local actions are resolved by the runner
+      # against /home/runner/_work while checkout writes to the container's
+      # /__w, so ./ refs can't be found. Remote refs are fetched into the
+      # runner's _actions cache and don't depend on the workspace path.
+      - uses: flagos-ai/FlagGems/.github/actions/checkout-retry@master
+      # Do NOT use setup-flaggems here: it runs setup.sh, which builds a fresh
+      # .venv and unconditionally reinstalls flagtree from backends.yaml. On the
+      # runtime image the compiler and heavy deps (flagtree/torch/xmlir…) are
+      # already installed, so instead we:
+      #   1. install the PR's FlagGems code with --no-deps (test the checkout,
+      #      not the image's baked-in flag_gems, without perturbing deps), then
+      #   2. reconcile the backend's pinned deps against what the image ships —
+      #      versions that already match are left in place, only mismatches are
+      #      reinstalled at the backends.yaml version (the single source of
+      #      truth). This avoids both blind trust and a full reinstall.
+      #   3. add the pure test tooling (coverage/pytest/…; no flagtree/torch).
+      - name: Install FlagGems (kunlunxin, reconcile deps with image)
+        shell: bash --login -e -o pipefail {0}
+        run: |
+          pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+          pip config set global.extra-index-url "https://mirrors.aliyun.com/pypi/simple/ https://mirrors.cloud.tencent.com/pypi/simple/"
+          pip config set global.trusted-host "pypi.tuna.tsinghua.edu.cn mirrors.aliyun.com mirrors.cloud.tencent.com"
+          pip install --no-deps .
+          python3 tools/reconcile_backend_deps.py "${{ inputs.backend }}"
+          pip install .[test]
+      - name: Check GPU availability
+        if: ${{ inputs.gpu_check_script != '' }}
+        shell: bash --login -e -o pipefail {0}
+        run: bash ${{ inputs.gpu_check_script }}
+
+      - name: Test alpha ops
+        if: ${{ inputs.test_script != '' }}
+        env:
+          CHANGED_FILES: ${{ inputs.changed_files }}
+        shell: bash --login -e -o pipefail {0}
+        run: |
+          bash ${{ inputs.test_script }} ${{ inputs.backend }} ${{ inputs.pr_id }}
+      - name: Run backend tests
+        if: ${{ inputs.test_script == '' }}
+        shell: bash --login -e -o pipefail {0}
+        env:
+          CHANGED_FILES: ${{ inputs.changed_files }}
+        run: |
+          tools/test-op.sh ${{ inputs.pr_id }}
+
+  # MetaX runs inside a container on whichever metax-mxc550-* server this
+  # repo has access to, mirroring the iluvatar setup below.
+  # Equivalent to:
+  #   docker run --rm -it \
+  #     --device /dev/mxcd \
+  #     --device /dev/dri \
+  #     --group-add video \
+  #     harbor.baai.ac.cn/flagos-base/flagos-base-metax-maca3.8.1.3:2.2.0 bash
+  # with GitHub Actions creating/starting the container and exec'ing each step.
+  test-metax:
+    if: ${{ inputs.backend == 'metax-maca3810' }}
+    runs-on: >-
+      ${{ github.repository == 'flagos-ai/FlagGems-vllm'
+          && inputs.runs_on_vllm
+          || inputs.runs_on_default }}
+    container:
+      image: ${{ inputs.container_image }}
+      options: ${{ inputs.container_options }}
+    concurrency:
+      group: >-
+        op-test-${{ inputs.backend }}-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        continue-on-error: true
+      - uses: flagos-ai/FlagGems/.github/actions/checkout-retry@master
+      # Trust the runtime image's preinstalled compiler/deps and reconcile
+      # instead of running setup.sh (which rebuilds a venv and reinstalls
+      # flagtree + heavy deps over the network). See test-kunlunxin.
+      - name: Install FlagGems (metax, reconcile deps with image)
+        shell: bash --login -e -o pipefail {0}
+        run: |
+          pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+          pip config set global.extra-index-url "https://mirrors.aliyun.com/pypi/simple/ https://mirrors.cloud.tencent.com/pypi/simple/"
+          pip config set global.trusted-host "pypi.tuna.tsinghua.edu.cn mirrors.aliyun.com mirrors.cloud.tencent.com"
+          pip install --no-deps .
+          python3 tools/reconcile_backend_deps.py "${{ inputs.backend }}"
+          pip install .[test]
+      - name: Check GPU availability
+        if: ${{ inputs.gpu_check_script != '' }}
+        shell: bash --login -e -o pipefail {0}
+        run: bash ${{ inputs.gpu_check_script }}
+
+      - name: Test alpha ops
+        if: ${{ inputs.test_script != '' }}
+        env:
+          CHANGED_FILES: ${{ inputs.changed_files }}
+        shell: bash --login -e -o pipefail {0}
+        run: |
+          bash ${{ inputs.test_script }} ${{ inputs.backend }} ${{ inputs.pr_id }}
+      - name: Run backend tests
+        if: ${{ inputs.test_script == '' }}
+        shell: bash --login -e -o pipefail {0}
+        env:
+          CHANGED_FILES: ${{ inputs.changed_files }}
+        run: |
+          tools/test-op.sh ${{ inputs.pr_id }}
+
+  # THead runs inside a container on the flagcicd-810e runner, since the PPU
+  # driver/runtime it needs is only set up inside this image.
+  # Equivalent to:
+  #   docker run --rm -it \
+  #     --device=/dev/alixpu --device=/dev/alixpu_ctl \
+  #     pkg.flytiger-eco.com/docker_release/pytorch:v2.1.1-2.10.0-ubuntu24.04-cuda13.0-py312 bash
+  # with GitHub Actions creating/starting the container and exec'ing each step.
+  #
+  # Unlike hygon/metax/iluvatar/mthreads below, this image only ships a bare
+  # torch — flagtree for this backend isn't published to FlagOS's pypi_base
+  # yet (see backends.yaml's extra_index comment), so there's nothing to
+  # reconcile against. Run setup-flaggems/setup.sh here to install it from the
+  # vendor's temporary index instead of reconcile_backend_deps.py.
+  test-thead:
+    if: ${{ inputs.backend == 'thead' }}
+    runs-on: >-
+      ${{ github.repository == 'flagos-ai/FlagGems-vllm'
+          && inputs.runs_on_vllm
+          || inputs.runs_on_default }}
+    container:
+      image: ${{ inputs.container_image }}
+      options: ${{ inputs.container_options }}
+    concurrency:
+      group: >-
+        op-test-${{ inputs.backend }}-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        continue-on-error: true
+      - uses: ./.github/actions/checkout-retry
+      - uses: ./.github/actions/setup-flaggems
+        with:
+          backend: ${{ inputs.backend }}
+          gpu_check_script: ${{ inputs.gpu_check_script }}
+
+      - name: Test alpha ops
+        if: ${{ inputs.test_script != '' }}
+        env:
+          CHANGED_FILES: ${{ inputs.changed_files }}
+        shell: bash
+        run: |
+          bash ${{ inputs.test_script }} ${{ inputs.backend }} ${{ inputs.pr_id }}
+      - name: Run backend tests
+        if: ${{ inputs.test_script == '' }}
+        shell: bash
+        env:
+          CHANGED_FILES: ${{ inputs.changed_files }}
+        run: |
+          source .venv/bin/activate
+          tools/test-op.sh ${{ inputs.pr_id }}
+
+  # Hygon runs inside a container on whichever hygon-bw1000-* server this
+  # repo has access to, mirroring the iluvatar setup below.
+  # Equivalent to:
+  #   docker run --rm -it \
+  #     --device /dev/kfd \
+  #     --device /dev/mkfd \
+  #     --device /dev/dri \
+  #     --group-add video \
+  #     -v /opt/hyhal:/opt/hyhal \
+  #     --security-opt seccomp=unconfined \
+  #     harbor.baai.ac.cn/flagos-base/flagos-base-hygon-dtk26.04:2.2.0 bash
+  # with GitHub Actions creating/starting the container and exec'ing each step.
+  test-hygon:
+    if: ${{ inputs.backend == 'hygon' }}
+    runs-on: >-
+      ${{ github.repository == 'flagos-ai/FlagGems-vllm'
+          && inputs.runs_on_vllm
+          || inputs.runs_on_default }}
+    container:
+      image: ${{ inputs.container_image }}
+      options: ${{ inputs.container_options }}
+    concurrency:
+      group: >-
+        op-test-${{ inputs.backend }}-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        continue-on-error: true
+      - uses: flagos-ai/FlagGems/.github/actions/checkout-retry@master
+      # Do NOT use setup-flaggems here: it runs setup.sh, which builds a fresh
+      # .venv and reinstalls flagtree + heavy deps from the network (flaky — a
+      # pip fetch timeout on fsspec already failed this job once). On the runtime
+      # image flagtree/torch/flash_attn are preinstalled, so instead we:
+      #   1. install the PR's FlagGems code with --no-deps (test the checkout,
+      #      not the image's baked-in flag_gems, without perturbing deps), then
+      #   2. reconcile the backend's pinned deps against what the image ships —
+      #      matching versions are left in place, only mismatches are reinstalled
+      #      at the backends.yaml version (single source of truth), then
+      #   3. add the pure test tooling (coverage/pytest/…; no flagtree/torch).
+      - name: Install FlagGems (hygon, reconcile deps with image)
+        shell: bash --login -e -o pipefail {0}
+        run: |
+          pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+          pip config set global.extra-index-url "https://mirrors.aliyun.com/pypi/simple/ https://mirrors.cloud.tencent.com/pypi/simple/"
+          pip config set global.trusted-host "pypi.tuna.tsinghua.edu.cn mirrors.aliyun.com mirrors.cloud.tencent.com"
+          pip install --no-deps .
+          python3 tools/reconcile_backend_deps.py "${{ inputs.backend }}"
+          pip install .[test]
+      - name: Check GPU availability
+        if: ${{ inputs.gpu_check_script != '' }}
+        shell: bash --login -e -o pipefail {0}
+        run: bash ${{ inputs.gpu_check_script }}
+
+      - name: Test alpha ops
+        if: ${{ inputs.test_script != '' }}
+        env:
+          CHANGED_FILES: ${{ inputs.changed_files }}
+        shell: bash --login -e -o pipefail {0}
+        run: |
+          bash ${{ inputs.test_script }} ${{ inputs.backend }} ${{ inputs.pr_id }}
+      - name: Run backend tests
+        if: ${{ inputs.test_script == '' }}
+        shell: bash --login -e -o pipefail {0}
+        env:
+          CHANGED_FILES: ${{ inputs.changed_files }}
+        run: |
+          tools/test-op.sh ${{ inputs.pr_id }}
+
+  # MooreThreads runs inside a container on whichever mthreads-s5000-* server
+  # this repo has access to, mirroring the iluvatar setup below.
+  # Equivalent to:
+  #   docker run --rm -it \
+  #     --device /dev/mtgpu.0 /dev/mtgpu.1 /dev/mtgpu.2 /dev/mtgpu.3 /dev/mtgpu.4 /dev/mtgpu.5 /dev/mtgpu.6 /dev/mtgpu.7 \
+  #     --device /dev/dri \
+  #     -v /usr/bin/mthreads-gmi:/usr/bin/mthreads-gmi:ro \
+  #     harbor.baai.ac.cn/flagos-base/flagos-base-mthreads-musa5.2.0:2.2.0 bash
+  # with GitHub Actions creating/starting the container and exec'ing each step.
+  test-mthreads:
+    if: ${{ inputs.backend == 'mthreads-musa520' }}
+    runs-on: >-
+      ${{ github.repository == 'flagos-ai/FlagGems-vllm'
+          && inputs.runs_on_vllm
+          || inputs.runs_on_default }}
+    container:
+      image: ${{ inputs.container_image }}
+      options: ${{ inputs.container_options }}
+    concurrency:
+      group: >-
+        op-test-${{ inputs.backend }}-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        continue-on-error: true
+      - uses: flagos-ai/FlagGems/.github/actions/checkout-retry@master
+      # Trust the runtime image's preinstalled compiler/deps and reconcile
+      # instead of running setup.sh (which rebuilds a venv and reinstalls
+      # flagtree + heavy deps over the network). See test-kunlunxin.
+      - name: Install FlagGems (mthreads, reconcile deps with image)
+        shell: bash --login -e -o pipefail {0}
+        run: |
+          pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+          pip config set global.extra-index-url "https://mirrors.aliyun.com/pypi/simple/ https://mirrors.cloud.tencent.com/pypi/simple/"
+          pip config set global.trusted-host "pypi.tuna.tsinghua.edu.cn mirrors.aliyun.com mirrors.cloud.tencent.com"
+          pip install --no-deps .
+          python3 tools/reconcile_backend_deps.py "${{ inputs.backend }}"
+          pip install .[test]
+      - name: Check GPU availability
+        if: ${{ inputs.gpu_check_script != '' }}
+        shell: bash --login -e -o pipefail {0}
+        run: bash ${{ inputs.gpu_check_script }}
+
+      - name: Test alpha ops
+        if: ${{ inputs.test_script != '' }}
+        env:
+          CHANGED_FILES: ${{ inputs.changed_files }}
+        shell: bash --login -e -o pipefail {0}
+        run: |
+          bash ${{ inputs.test_script }} ${{ inputs.backend }} ${{ inputs.pr_id }}
+      - name: Run backend tests
+        if: ${{ inputs.test_script == '' }}
+        shell: bash --login -e -o pipefail {0}
+        env:
+          CHANGED_FILES: ${{ inputs.changed_files }}
+        run: |
+          tools/test-op.sh ${{ inputs.pr_id }}
+
+  # Iluvatar runs inside a container on whichever iluvatar-bi-v150-* server
+  # this repo has access to. Different repos share this workflow file but
+  # each can only reach one of the two physical machines, so the runner
+  # label is derived from github.repository (which resolves to the base repo
+  # FlagGems uses iluvatar-bi-v150-0, FlagGems-vllm uses iluvatar-bi-v150-1.
+  # even for fork PRs, unlike vars/secrets which are withheld from forks):
+  # Equivalent to:
+  #   docker run --rm -it --device /dev/iluvatar0 --device /dev/itrctl \
+  #     --shm-size=256g --ulimit memlock=-1 --ulimit stack=67108864 \
+  # with GitHub Actions creating/starting the container and exec'ing each step.
+  #     harbor.baai.ac.cn/flagos-base/flagos-base-iluvatar-corex4.5.0:2.2.0 bash
+  test-iluvatar:
+    if: ${{ inputs.backend == 'iluvatar' }}
+    runs-on: >-
+      ${{ github.repository == 'flagos-ai/FlagGems-vllm'
+          && inputs.runs_on_vllm
+          || inputs.runs_on_default }}
+    container:
+      image: ${{ inputs.container_image }}
+      options: ${{ inputs.container_options }}
+    concurrency:
+      group: >-
+        op-test-${{ inputs.backend }}-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        continue-on-error: true
+      - uses: flagos-ai/FlagGems/.github/actions/checkout-retry@master
+      # Trust the runtime image's preinstalled compiler/deps and reconcile
+      # instead of running setup.sh (which rebuilds a venv and reinstalls
+      # flagtree + heavy deps over the network). See test-kunlunxin.
+      - name: Install FlagGems (iluvatar, reconcile deps with image)
+        shell: bash --login -e -o pipefail {0}
+        run: |
+          pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+          pip config set global.extra-index-url "https://mirrors.aliyun.com/pypi/simple/ https://mirrors.cloud.tencent.com/pypi/simple/"
+          pip config set global.trusted-host "pypi.tuna.tsinghua.edu.cn mirrors.aliyun.com mirrors.cloud.tencent.com"
+          pip install --no-deps .
+          python3 tools/reconcile_backend_deps.py "${{ inputs.backend }}"
+          pip install .[test]
+      - name: Check GPU availability
+        if: ${{ inputs.gpu_check_script != '' }}
+        shell: bash --login -e -o pipefail {0}
+        run: bash ${{ inputs.gpu_check_script }}
+
+      - name: Test alpha ops
+        if: ${{ inputs.test_script != '' }}
+        env:
+          CHANGED_FILES: ${{ inputs.changed_files }}
+        shell: bash --login -e -o pipefail {0}
+        run: |
+          bash ${{ inputs.test_script }} ${{ inputs.backend }} ${{ inputs.pr_id }}
+      - name: Run backend tests
+        if: ${{ inputs.test_script == '' }}
+        shell: bash --login -e -o pipefail {0}
+        env:
+          CHANGED_FILES: ${{ inputs.changed_files }}
+        run: |
           tools/test-op.sh ${{ inputs.pr_id }}

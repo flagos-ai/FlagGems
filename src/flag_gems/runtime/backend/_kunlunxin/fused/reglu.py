@@ -1,17 +1,3 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import logging
 from typing import Any, Optional
 
@@ -19,14 +5,13 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
-from flag_gems.utils import libentry, libtuner
+from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
 
 def heur_tile_m(args):
-    return triton.cdiv(args["M"], 12)  # cluster_num
+    return triton.cdiv(args["M"], 12)
 
 
 def heru_tile_n(args):
@@ -36,80 +21,66 @@ def heru_tile_n(args):
 
 
 @libentry()
-@libtuner(
-    configs=[
-        triton.Config({"BLOCK_M": 1, "BLOCK_N": 1024}),
-        triton.Config({"BLOCK_M": 2, "BLOCK_N": 1024}),
-        triton.Config({"BLOCK_M": 4, "BLOCK_N": 1024}),
-        triton.Config({"BLOCK_M": 8, "BLOCK_N": 1024}),
-        triton.Config({"BLOCK_M": 6, "BLOCK_N": 32}),
-        triton.Config({"BLOCK_M": 342, "BLOCK_N": 2048}),
-        triton.Config({"BLOCK_M": 2731, "BLOCK_N": 256}),
-    ],
-    key=["M", "N"],
-)
-# @triton.heuristics(
-#     values={
-#         "BLOCK_M": heur_tile_m,
-#         "BLOCK_N": heru_tile_n,
-#     },
-# )
-@triton.jit
+@triton.jit(do_not_specialize=["num_tasks"])
 def dreglu_kernel(
     grad_output_ptr,
     input_ptr,
     grad_input_ptr,
-    M,
-    N,
-    stride_grad_out_m,
-    stride_grad_out_n,
-    stride_in_m,
-    stride_in_n,
-    stride_grad_in_m,
-    stride_grad_in_n,
-    BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
+    num_tasks,
+    N: tl.constexpr,
+    TILE: tl.constexpr,
+    TILES_PER_CTA: tl.constexpr,
+    ONE_TILE: tl.constexpr,
 ):
-    pid_m = tl.program_id(axis=0)
-    pid_n = tl.program_id(axis=1)
-    offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-    grad_output_ptr += (
-        offs_m[:, None] * stride_grad_out_m + offs_n[None, :] * stride_grad_out_n
-    )
-    input_ptr_a = (
-        input_ptr + offs_m[:, None] * stride_in_m + offs_n[None, :] * stride_in_n
-    )
-    input_ptr_b = (
-        input_ptr + offs_m[:, None] * stride_in_m + (offs_n[None, :] + N) * stride_in_n
-    )
-    grad_input_ptr_a = (
-        grad_input_ptr
-        + offs_m[:, None] * stride_grad_in_m
-        + offs_n[None, :] * stride_grad_in_n
-    )
-    grad_input_ptr_b = (
-        grad_input_ptr
-        + offs_m[:, None] * stride_grad_in_m
-        + (offs_n[None, :] + N) * stride_grad_in_n
-    )
-    mask = (offs_m[:, None] < M) & (offs_n[None, :] < N)
-    grad_out = tl.load(grad_output_ptr, mask=mask, other=0.0).to(tl.float32)
-    block_a = tl.load(input_ptr_a, mask=mask, other=0.0).to(tl.float32)
-    block_b = tl.load(input_ptr_b, mask=mask, other=0.0).to(tl.float32)
-    relu_a = tl.maximum(block_a, 0.0)
-    d_relu_a = tl.where(block_a > 0, 1.0, 0.0)
-    grad_a = grad_out * d_relu_a * block_b
-    grad_b = grad_out * relu_a
-    tl.store(grad_input_ptr_a, grad_a, mask=mask)
-    tl.store(grad_input_ptr_b, grad_b, mask=mask)
+    pid = tl.program_id(0)
+    if ONE_TILE:
+        tid = pid * TILE + tl.arange(0, TILE)
+        mask = tid < num_tasks
+        a_off = (tid // N) * N
+        grad_out = tl.load(grad_output_ptr + tid, mask=mask).to(tl.float32)
+        block_a = tl.load(input_ptr + tid + a_off, mask=mask).to(tl.float32)
+        block_b = tl.load(input_ptr + tid + a_off + N, mask=mask).to(tl.float32)
+        relu_a = tl.maximum(block_a, 0.0)
+        d_relu_a = tl.where(block_a > 0, 1.0, 0.0)
+        grad_a = grad_out * d_relu_a * block_b
+        grad_b = grad_out * relu_a
+        tl.store(
+            grad_input_ptr + tid + a_off,
+            grad_a.to(input_ptr.type.element_ty),
+            mask=mask,
+        )
+        tl.store(
+            grad_input_ptr + tid + a_off + N,
+            grad_b.to(input_ptr.type.element_ty),
+            mask=mask,
+        )
+    else:
+        num_ctas = tl.num_programs(0)
+        for j in range(0, TILES_PER_CTA):
+            tile_id = pid + j * num_ctas
+            tid = tile_id * TILE + tl.arange(0, TILE)
+            mask = tid < num_tasks
+            a_off = (tid // N) * N
+            grad_out = tl.load(grad_output_ptr + tid, mask=mask).to(tl.float32)
+            block_a = tl.load(input_ptr + tid + a_off, mask=mask).to(tl.float32)
+            block_b = tl.load(input_ptr + tid + a_off + N, mask=mask).to(tl.float32)
+            relu_a = tl.maximum(block_a, 0.0)
+            d_relu_a = tl.where(block_a > 0, 1.0, 0.0)
+            grad_a = grad_out * d_relu_a * block_b
+            grad_b = grad_out * relu_a
+            tl.store(
+                grad_input_ptr + tid + a_off,
+                grad_a.to(input_ptr.type.element_ty),
+                mask=mask,
+            )
+            tl.store(
+                grad_input_ptr + tid + a_off + N,
+                grad_b.to(input_ptr.type.element_ty),
+                mask=mask,
+            )
 
 
 @libentry()
-@libtuner(
-    configs=runtime.get_tuned_config("gated_activation"),
-    key=["M", "N_OUT"],
-)
 @triton.jit
 def reglu_kernel(
     x_ptr,
@@ -140,6 +111,61 @@ def reglu_kernel(
     tl.store(y_ptr, output, mask=mask)
 
 
+@libentry()
+@triton.jit
+def reglu_pair_kernel(
+    input_ptr,
+    output_ptr,
+    num_tasks,
+    N_OUT: tl.constexpr,
+    TILE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    tid = pid * TILE + tl.arange(0, TILE)
+    mask = tid < num_tasks
+    a_off = (tid // N_OUT) * N_OUT
+    x_a = tl.load(input_ptr + tid + a_off, mask=mask).to(tl.float32)
+    x_b = tl.load(input_ptr + tid + a_off + N_OUT, mask=mask).to(tl.float32)
+    gate = tl.maximum(x_a, 0.0)
+    tl.store(output_ptr + tid, (gate * x_b).to(input_ptr.type.element_ty), mask=mask)
+
+
+def _pick_reglu_pair_tile(dtype, M, N_OUT):
+    if dtype == torch.bfloat16:
+        return 512 if N_OUT <= 64 else 1024
+    if dtype == torch.float16:
+        return 1024 if N_OUT <= 1024 else 16384
+    if N_OUT > 1024:
+        return 8192
+    return 2048 if M >= 65536 else 1024
+
+
+def _pick_reglu_config(dtype, M, N_OUT):
+    if N_OUT >= 2048 and M >= 1024:
+        if dtype == torch.float32:
+            if N_OUT >= 65536:
+                return 1, 8192, 8
+            elif N_OUT >= 4096:
+                return 1, 4096, 8
+            else:
+                return 1, 2048, 8
+        elif dtype == torch.bfloat16:
+            if N_OUT >= 65536:
+                return 1, 16384, 16
+            elif N_OUT >= 4096:
+                return 1, 4096, 8
+            else:
+                return 1, 2048, 8
+        return 8, 1024, 4
+    if N_OUT <= 64:
+        if M < 256:
+            return 1, 1024, 4
+        if dtype == torch.float32:
+            return 8, 1024, 4
+        return 8, 512, 4
+    return (16, 1024, 4) if M >= 8192 else (1, 1024, 4)
+
+
 def reglu(input_tensor: torch.Tensor, quantizer: Optional[Any] = None) -> torch.Tensor:
     shape = input_tensor.shape
     if input_tensor.dim() < 1:
@@ -150,32 +176,72 @@ def reglu(input_tensor: torch.Tensor, quantizer: Optional[Any] = None) -> torch.
             f"The last dimension of the input tensor must be even, but got {last_dim}."
         )
     N_OUT = last_dim // 2
-    M = input_tensor.numel() // last_dim
     if input_tensor.numel() == 0:
         output_shape = (*shape[:-1], N_OUT)
         return torch.empty(
             output_shape, device=input_tensor.device, dtype=input_tensor.dtype
         )
+    M = input_tensor.numel() // last_dim
     input_2d = input_tensor.contiguous().view(M, last_dim)
     output_2d = torch.empty(
         (M, N_OUT), device=input_tensor.device, dtype=input_tensor.dtype
     )
-    grid = lambda META: (
-        triton.cdiv(M, META["BLOCK_M"]),
-        triton.cdiv(N_OUT, META["BLOCK_N"]),
-    )
-    reglu_kernel[grid](
+    tile = _pick_reglu_pair_tile(input_tensor.dtype, M, N_OUT)
+    num_tasks = M * N_OUT
+    reglu_pair_kernel[(triton.cdiv(num_tasks, tile),)](
         input_2d,
         output_2d,
-        M,
-        N_OUT,
-        input_2d.stride(0),
-        input_2d.stride(1),
-        output_2d.stride(0),
-        output_2d.stride(1),
+        num_tasks,
+        N_OUT=N_OUT,
+        TILE=tile,
+        num_warps=4,
     )
     output_shape = (*shape[:-1], N_OUT)
     return output_2d.view(output_shape)
+
+
+def _pick_dreglu_config(dtype, M, N):
+    f16 = dtype == torch.float16
+    f32 = dtype == torch.float32
+    if N >= 2048:
+        if f16:
+            if N >= 65536:
+                return 1, 16384, 16
+            if N == 4096:
+                return 1, 4096, 8
+            return 342, 2048, 4
+        if f32:
+            if N >= 65536:
+                return 4, 8192, 8
+            if N == 4096:
+                return 1, 4096, 8
+            return 4, 2048, 8
+        if N >= 65536:
+            return 1, 16384, 8
+        if N == 4096:
+            return 1, 4096, 8
+        return 4, 2048, 4
+    if N <= 64:
+        if N == 1:
+            if M <= 1024:
+                return (8, 64, 4) if f32 else (16, 64, 8)
+            return (6, 32, 4) if f32 else (32, 64, 4)
+        if N == 16:
+            if M <= 1024:
+                return (1, 1024, 4) if f32 else (4, 256, 4)
+            return (8, 1024, 4) if f32 else (4, 256, 4)
+        if N == 32:
+            return (1, 1024, 4) if f32 else ((1, 256, 4) if f16 else (1, 1024, 4))
+        return (8, 256, 4)
+    if f16:
+        if M >= 32768:
+            return 342, 2048, 4
+        return 1, 2048, 8
+    if M >= 32768:
+        return (8, 1024, 4) if f32 else (1, 1024, 4)
+    if f32:
+        return (8, 1024, 4) if M > 1024 else (1, 1024, 4)
+    return 1, 1024, 4
 
 
 def dreglu(
@@ -183,6 +249,7 @@ def dreglu(
     input_tensor: torch.Tensor,
     quantizer: Optional[Any] = None,
 ) -> torch.Tensor:
+    logger.debug("GEMS_KUNLUNXIN DREGLU")
     shape = input_tensor.shape
     if shape[:-1] != grad_output.shape[:-1] or shape[-1] != 2 * grad_output.shape[-1]:
         raise ValueError(
@@ -193,21 +260,21 @@ def dreglu(
     grad_output_2d = grad_output.contiguous().view(M, N)
     input_2d = input_tensor.contiguous().view(M, 2 * N)
     grad_input = torch.empty_like(input_2d)
-    grid = lambda META: (
-        triton.cdiv(M, META["BLOCK_M"]),
-        triton.cdiv(N, META["BLOCK_N"]),
-    )
-    dreglu_kernel[grid](
+    num_tasks = grad_output_2d.numel()
+    if num_tasks == 0:
+        return grad_input.view(shape)
+    num_ctas = 12
+    num_tiles = num_ctas
+    tile = triton.next_power_of_2(triton.cdiv(num_tasks, num_tiles))
+    tiles_per_cta = triton.cdiv(num_tiles, num_ctas)
+    dreglu_kernel[(num_ctas, 1, 1)](
         grad_output_2d,
         input_2d,
         grad_input,
-        M,
-        N,
-        grad_output_2d.stride(0),
-        grad_output_2d.stride(1),
-        input_2d.stride(0),
-        input_2d.stride(1),
-        grad_input.stride(0),
-        grad_input.stride(1),
+        num_tasks,
+        N=N,
+        TILE=tile,
+        TILES_PER_CTA=tiles_per_cta,
+        ONE_TILE=tiles_per_cta == 1,
     )
     return grad_input.view(shape)

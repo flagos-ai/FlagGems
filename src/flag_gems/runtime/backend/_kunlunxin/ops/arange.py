@@ -14,6 +14,7 @@
 
 import logging
 import math
+import operator
 
 import torch
 import triton
@@ -24,6 +25,17 @@ from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
+
+
+def _is_integral_scalar(x):
+    """True for scalars that behave as integers (int/bool/numpy ints)."""
+    if isinstance(x, (int, bool)):
+        return True
+    try:
+        operator.index(x)
+        return True
+    except TypeError:
+        return False
 
 
 @libentry()
@@ -55,12 +67,6 @@ def arange_func_float(
     size,
     BLOCK_SIZE: tl.constexpr,
 ):
-    # For floating output dtypes: computing the whole value in int32 then
-    # casting a large-magnitude integer to float is the XPU bottleneck (~85 GB/s
-    # fp16 / 160 GB/s fp32). Instead convert only the small per-block `cols`
-    # (0..BLOCK_SIZE) to fp32 and add a precomputed fp32 base scalar, which halves
-    # the runtime (~170 GB/s fp16 / ~330 GB/s fp32). Results are bit-identical to
-    # the int kernel on all shapes.
     pid = ext.program_id(0)
     offset = pid * BLOCK_SIZE
     cols = tl.arange(0, BLOCK_SIZE)
@@ -74,6 +80,11 @@ def arange_start(
     start, end, step=1, *, dtype=None, layout=None, device=None, pin_memory=None
 ):
     logger.debug("GEMS_KUNLUNXIN ARANGE")
+    if dtype is None:
+        if all(_is_integral_scalar(x) for x in (start, end, step)):
+            dtype = torch.int64
+        else:
+            dtype = torch.float32
     if dtype is torch.int64:
         start = int(start)
         end = int(end)
@@ -83,19 +94,8 @@ def arange_start(
         sgn = (step > 0) - (step < 0)
         size = (end - start + step - sgn) // step
     else:
-        if dtype is torch.int64 and (
-            isinstance(step, float)
-            or isinstance(start, float)
-            or isinstance(end, float)
-        ):
-            int_step = int(step)
-            if int_step == 0:
-                raise RuntimeError("step must be nonzero")
         size = math.ceil((end - start) / step)
     size = int(size)
-
-    if dtype is None:
-        dtype = torch.int64
 
     if pin_memory is None:
         pin_memory = False

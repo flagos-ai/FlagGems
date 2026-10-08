@@ -257,8 +257,12 @@ def _float_floordiv(x, y):
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def floor_div_func(x, y):
-    if x.type.scalar.is_int() & x.type.scalar.is_int():
+    if x.type.scalar.is_int() & y.type.scalar.is_int():
         return _int_floordiv(x, y)
+    elif x.type.scalar.is_floating() & y.type.scalar.is_int():
+        return _float_floordiv(x, y.to(tl.float32))
+    elif x.type.scalar.is_int() & y.type.scalar.is_floating():
+        return _float_floordiv(x.to(tl.float32), y)
     else:
         return _float_floordiv(x, y)
 

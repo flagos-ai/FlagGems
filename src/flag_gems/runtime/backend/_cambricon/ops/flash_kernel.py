@@ -1233,16 +1233,16 @@ def load_from_kvcache(
     k_offset = tl.arange(0, BLOCK_K)[:, None] + cache_offset[None, :]
     v_offset = tl.arange(0, BLOCK_K)[None, :] + cache_offset[:, None]
     if d == BLOCK_K:
-        bK_mask = virtual_index[None, :] < max_virtual_index[None, :]
-        bV_mask = virtual_index[:, None] < max_virtual_index[:, None]
+        bK_mask = virtual_index[None, :] < max_virtual_index
+        bV_mask = virtual_index[:, None] < max_virtual_index
         bK = tl.load(k_ptr_base + k_offset, mask=bK_mask, other=0.0)
         bV = tl.load(v_ptr_base + v_offset, mask=bV_mask, other=0.0)
     else:
         bK_mask = (tl.arange(0, BLOCK_K)[:, None] < d) & (
-            virtual_index[None, :] < max_virtual_index[None, :]
+            virtual_index[None, :] < max_virtual_index
         )
         bV_mask = (tl.arange(0, BLOCK_K)[None, :] < d) & (
-            virtual_index[:, None] < max_virtual_index[:, None]
+            virtual_index[:, None] < max_virtual_index
         )
         bK = tl.load(k_ptr_base + k_offset, mask=bK_mask, other=0.0)
         bV = tl.load(v_ptr_base + v_offset, mask=bV_mask, other=0.0)

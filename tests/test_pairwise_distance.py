@@ -8,9 +8,7 @@ from . import conftest as cfg
 
 
 def composed_pairwise_distance(x1, x2, p=2.0, eps=1e-6, keepdim=False):
-    """NPU-native pairwise_distance via basic torch ops (sub+abs+pow+sum).
-    Supports arbitrary p, unlike torch_npu's LpNormV2 which only accepts {0,1,2}.
-    Used as the reference when aten would crash on p not in {0,1,2,inf,-inf}."""
+    # torch-native pairwise_distance via basic torch ops (sub+abs+pow+sum).
     diff = torch.abs(x1 - x2 + eps)
     if p == float("inf"):
         return torch.amax(diff, dim=-1, keepdim=keepdim)
@@ -29,11 +27,21 @@ def composed_pairwise_distance(x1, x2, p=2.0, eps=1e-6, keepdim=False):
 # torch_npu's native pairwise_distance only supports p in {0, 1, 2} -- inf,
 # -inf, and arbitrary real p all crash (core dump). When the reference runs on
 # NPU (not CPU), use the composed version for any p outside {0, 1, 2}.
-_ATEN_SUPPORTED_P = (0.0, 1.0, 2.0)
+_ASCEND_SUPPORTED_P = (0.0, 1.0, 2.0)
 
 
 def _ref_pairwise_distance(x1, x2, p=2.0, eps=1e-6, keepdim=False):
-    if not cfg.TO_CPU and p not in _ATEN_SUPPORTED_P:
+    # On ascend backend, native pairwise_distance only supports p in {0, 1, 2}.
+    # Fall back to composed op for unsupported p values.
+    if (
+        flag_gems.vendor_name == "ascend"
+        and not cfg.TO_CPU
+        and p not in _ASCEND_SUPPORTED_P
+    ):
+        return composed_pairwise_distance(x1, x2, p=p, eps=eps, keepdim=keepdim)
+    # On iluvatar, CPU-mode torch.pairwise_distance precision does not match
+    # the device-side implementation. Use composed op when TO_CPU is enabled.
+    if flag_gems.vendor_name == "iluvatar" and cfg.TO_CPU:
         return composed_pairwise_distance(x1, x2, p=p, eps=eps, keepdim=keepdim)
     return torch.nn.functional.pairwise_distance(x1, x2, p=p, eps=eps, keepdim=keepdim)
 

@@ -21,6 +21,13 @@ import flag_gems
 
 from . import base
 
+VENDOR = flag_gems.vendor_name
+
+# On ascend the general KERNEL-mode do_bench_npu is unreliable; use operator
+# (end-to-end) timing mode (same as det/lu_factor/linalg_solve_triangular).
+# nonzero_static additionally spans several kernels per call, which the
+# KERNEL-mode profiler averages per kernel instead of summing.
+
 BENCH_DTYPES = [  # The Ascend performance report is scoped to FP16 and BF16.
     torch.float16,
     torch.bfloat16,
@@ -80,7 +87,8 @@ def _make_input(shape, dtype, nnz_ratio, device):
 
 
 def _get_baseline_nonzero_static():
-    if flag_gems.vendor_name in ("ascend", "hygon"):
+    # Nonzero_static is not supported for cuda <= 11.4
+    if flag_gems.vendor_name in ("ascend", "hygon", "iluvatar"):
         return _composed_nonzero_static_baseline
     return torch.nonzero_static
 
