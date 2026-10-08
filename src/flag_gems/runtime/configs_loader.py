@@ -192,25 +192,6 @@ class TunedConfigLoader(object):
                 for w in ranges["w"]
             ]
 
-        if op_name in ("baddbmm_hygon", "baddbmm_hygon_splitk", "baddbmm_hygon_gemv"):
-            # Algorithm families share the YAML contract, not a shape-specific
-            # list. Compiler scheduling is searched alongside kernel parameters.
-            names = [name for name in ranges if name not in ("s", "w")]
-            return [
-                triton.Config(
-                    {
-                        ("sched_latency" if name == "SCHED_LATENCY" else name): value
-                        for name, value in zip(names, values)
-                    },
-                    num_stages=s,
-                    num_warps=w,
-                    pre_hook=pre_hook,
-                )
-                for values in itertools.product(*(ranges[name] for name in names))
-                for s in ranges["s"]
-                for w in ranges["w"]
-            ]
-
         if op_name in ("mv", "mv_row", "mv_column"):
             return [
                 triton.Config(
