@@ -245,7 +245,11 @@ def test_adjoint_diagnostics_parity():
     with warnings.catch_warnings(record=True) as ours_w:
         warnings.simplefilter("always")
         flag_gems.adjoint(x0)
+    # ours-side warning content is asserted; the native side was confirmed
+    # by a diagnostic probe but is not re-asserted because PyTorch's warning
+    # registry caches across tests, making it unreliable.
     ours_msgs = [str(x.message) for x in ours_w]
+    assert any(("deprecated" in m) and ("conj" in m) for m in ours_msgs), ours_msgs
 
     # (the native side's warning was confirmed by diagnostic probe; it is
     # not asserted here because PyTorch's warning registry caches across
