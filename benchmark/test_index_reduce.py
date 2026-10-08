@@ -74,16 +74,6 @@ class IndexReduceBenchmark(base.Benchmark):
             yield inp, dim, index, source, kwargs
 
 
-def _run_index_reduce_benchmark(reduce):
-    bench = IndexReduceBenchmark(
-        op_name=f"index_reduce_.{reduce}",
-        torch_op=torch.Tensor.index_reduce_,
-        dtypes=consts.FLOAT_DTYPES,
-        reduce=reduce,
-    )
-    bench.run()
-
-
 def _run_index_reduce_functional_benchmark(reduce, use_out=False):
     suffix = "_out" if use_out else ""
     bench = IndexReduceBenchmark(
@@ -98,38 +88,18 @@ def _run_index_reduce_functional_benchmark(reduce, use_out=False):
 
 @pytest.mark.index_reduce_
 @_ASCEND_NATIVE_BASELINE_SKIP
+@pytest.mark.parametrize("reduce", ["prod", "mean", "amax", "amin"])
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
-def test_index_reduce_prod():
-    _run_index_reduce_benchmark("prod")
-
-
-@pytest.mark.index_reduce_
-@_ASCEND_NATIVE_BASELINE_SKIP
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
-)
-def test_index_reduce_mean():
-    _run_index_reduce_benchmark("mean")
-
-
-@pytest.mark.index_reduce_
-@_ASCEND_NATIVE_BASELINE_SKIP
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
-)
-def test_index_reduce_amax():
-    _run_index_reduce_benchmark("amax")
-
-
-@pytest.mark.index_reduce_
-@_ASCEND_NATIVE_BASELINE_SKIP
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
-)
-def test_index_reduce_amin():
-    _run_index_reduce_benchmark("amin")
+def test_index_reduce_(reduce):
+    bench = IndexReduceBenchmark(
+        op_name="index_reduce_",
+        torch_op=torch.Tensor.index_reduce_,
+        dtypes=consts.FLOAT_DTYPES,
+        reduce=reduce,
+    )
+    bench.run()
 
 
 @pytest.mark.index_reduce
