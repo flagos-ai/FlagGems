@@ -216,7 +216,7 @@ def _multigammaln_kernel(
 
 
 def run(self, p):
-    _logger.debug("GEMS SPECIAL_MULTIGAMMALN")
+    _logger.debug("GEMS_HYGON SPECIAL_MULTIGAMMALN")
     p = int(p)
     out = torch.empty_like(self)
     numel = self.numel()

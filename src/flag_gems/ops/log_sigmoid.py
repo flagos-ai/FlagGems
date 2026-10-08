@@ -29,6 +29,6 @@ def log_sigmoid_forward(x):
 
 
 def log_sigmoid(x):
-    logger.debug("GEMS LOG_SIGMOID FORWARD")
+    logger.debug("GEMS LOG_SIGMOID_FORWARD")
 
     return log_sigmoid_forward(x)

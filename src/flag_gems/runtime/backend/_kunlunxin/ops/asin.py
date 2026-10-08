@@ -183,5 +183,5 @@ def asin_(x):
 
 
 def asin_out(x, *, out=None):
-    logger.debug("GEMS_KUNLUNXIN ASIN OUT")
+    logger.debug("GEMS_KUNLUNXIN ASIN_OUT")
     return asin(x, out=out)
