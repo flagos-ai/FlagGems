@@ -116,6 +116,7 @@ from flag_gems.ops._is_all_true import _is_all_true
 from flag_gems.ops._jagged_to_padded_dense_forward import (
     _jagged_to_padded_dense_forward,
 )
+from flag_gems.ops._linalg_eigh import _linalg_eigh
 from flag_gems.ops._linalg_eigvals import _linalg_eigvals
 from flag_gems.ops._linalg_slogdet import _linalg_slogdet
 from flag_gems.ops._linalg_svd import _linalg_svd
@@ -459,6 +460,7 @@ from flag_gems.ops.diagonal_copy import diagonal_copy
 from flag_gems.ops.diagonal_scatter import diagonal_scatter
 from flag_gems.ops.diff import diff
 from flag_gems.ops.digamma_ import digamma, digamma_
+from flag_gems.ops.dim import dim
 from flag_gems.ops.dist import dist
 from flag_gems.ops.div import (
     div_mode,
@@ -677,6 +679,7 @@ from flag_gems.ops.kaiser_window import (
     kaiser_window_beta,
     kaiser_window_periodic,
 )
+from flag_gems.ops.kl_div import kl_div
 from flag_gems.ops.kron import kron
 from flag_gems.ops.kthvalue import kthvalue
 from flag_gems.ops.l1_loss import l1_loss
@@ -707,6 +710,7 @@ from flag_gems.ops.linalg_cond import linalg_cond, linalg_cond_p_str
 from flag_gems.ops.linalg_cross import linalg_cross, linalg_cross_out
 from flag_gems.ops.linalg_det import linalg_det, linalg_det_out
 from flag_gems.ops.linalg_eig import linalg_eig
+from flag_gems.ops.linalg_eigh import linalg_eigh
 from flag_gems.ops.linalg_eigvals import linalg_eigvals, linalg_eigvals_out
 from flag_gems.ops.linalg_householder_product import linalg_householder_product
 from flag_gems.ops.linalg_inv_ex import linalg_inv_ex
@@ -738,6 +742,7 @@ from flag_gems.ops.linalg_matrix_sqrth import (
 )
 from flag_gems.ops.linalg_multi_dot import linalg_multi_dot, linalg_multi_dot_out
 from flag_gems.ops.linalg_norm import linalg_norm
+from flag_gems.ops.linalg_pinv import linalg_pinv
 from flag_gems.ops.linalg_polar import linalg_polar, linalg_polar_out
 from flag_gems.ops.linalg_qr import linalg_qr, linalg_qr_out
 from flag_gems.ops.linalg_slogdet import linalg_slogdet
@@ -909,6 +914,8 @@ from flag_gems.ops.nuclear_norm import nuclear_norm
 from flag_gems.ops.one_hot import one_hot
 from flag_gems.ops.ones import ones
 from flag_gems.ops.ones_like import ones_like
+from flag_gems.ops.or_scalar import or_scalar
+from flag_gems.ops.or_tensor import or_tensor
 from flag_gems.ops.orgqr import orgqr, orgqr_out
 from flag_gems.ops.ormqr import ormqr
 from flag_gems.ops.pad import constant_pad_nd, pad
@@ -1316,6 +1323,7 @@ from flag_gems.ops.view_copy import view_copy
 from flag_gems.ops.vsplit import vsplit
 from flag_gems.ops.vstack import vstack
 from flag_gems.ops.w8a8_block_fp8_matmul import w8a8_block_fp8_matmul
+from flag_gems.ops.weight_int4pack_mm import weight_int4pack_mm
 from flag_gems.ops.weight_int8pack_mm import weight_int8pack_mm
 from flag_gems.ops.weightnorm import (
     weight_norm_interface,
@@ -1421,6 +1429,7 @@ __all__ = [
     "_index_put_impl_",
     "_is_all_true",
     "_jagged_to_padded_dense_forward",
+    "_linalg_eigh",
     "_linalg_eigvals",
     "_linalg_slogdet",
     "_linalg_svd",
@@ -1761,6 +1770,7 @@ __all__ = [
     "diff",
     "digamma",
     "digamma_",
+    "dim",
     "dist",
     "div_mode",
     "div_mode_",
@@ -1995,6 +2005,7 @@ __all__ = [
     "kaiser_window",
     "kaiser_window_beta",
     "kaiser_window_periodic",
+    "kl_div",
     "kron",
     "kthvalue",
     "l1_loss",
@@ -2041,6 +2052,7 @@ __all__ = [
     "linalg_det",
     "linalg_det_out",
     "linalg_eig",
+    "linalg_eigh",
     "linalg_eigvals",
     "linalg_eigvals_out",
     "linalg_householder_product",
@@ -2069,6 +2081,7 @@ __all__ = [
     "linalg_multi_dot",
     "linalg_multi_dot_out",
     "linalg_norm",
+    "linalg_pinv",
     "linalg_polar",
     "linalg_polar_out",
     "linalg_qr",
@@ -2262,6 +2275,8 @@ __all__ = [
     "one_hot",
     "ones",
     "ones_like",
+    "or_scalar",
+    "or_tensor",
     "orgqr",
     "orgqr_out",
     "ormqr",
@@ -2679,6 +2694,7 @@ __all__ = [
     "vsplit",
     "vstack",
     "w8a8_block_fp8_matmul",
+    "weight_int4pack_mm",
     "weight_int8pack_mm",
     "weight_norm_differentiable_backward",
     "weight_norm_interface",

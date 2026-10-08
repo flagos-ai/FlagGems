@@ -103,8 +103,8 @@ _FULL_CONFIG = (
     ("__ixor__.Tensor", xor_),
     ("__lshift__.Scalar", __lshift__),
     ("__lshift__.Tensor", __lshift__),
-    ("__or__.Scalar", bitwise_or_scalar),
-    ("__or__.Tensor", bitwise_or_tensor),
+    ("__or__.Scalar", or_scalar),
+    ("__or__.Tensor", or_tensor),
     ("__rshift__.Scalar", __rshift__),
     ("__rshift__.Scalar_out", __rshift__),
     ("__rshift__.Tensor", __rshift__),
@@ -241,6 +241,7 @@ _FULL_CONFIG = (
     ),
     ("_is_all_true", _is_all_true),
     ("_jagged_to_padded_dense_forward", _jagged_to_padded_dense_forward),
+    ("_linalg_eigh", _linalg_eigh),
     ("_linalg_eigvals", _linalg_eigvals),
     ("_linalg_slogdet", _linalg_slogdet),
     ("_linalg_svd", _linalg_svd),
@@ -423,6 +424,7 @@ _FULL_CONFIG = (
         "_upsample_nearest_exact3d_backward.grad_input",
         _upsample_nearest_exact3d_backward_grad_input,
     ),
+    ("_weight_int4pack_mm", weight_int4pack_mm),
     (
         "_weight_int4pack_mm_with_scales_and_zeros",
         _weight_int4pack_mm_with_scales_and_zeros,
@@ -697,6 +699,12 @@ _FULL_CONFIG = (
     ("diff", diff),
     ("digamma", digamma),
     ("digamma_", digamma_),
+    # aten::dim is not a dispatcher operator on this build (it is a JIT
+    # primitive plus a Python Tensor method; probes: probe1..probe14 in the
+    # run dir). A device-key registration is unreachable dead code, so the
+    # entry registers no extra dispatch key and the implementation is tested
+    # through its direct call path, mirroring the can_cast investigation.
+    ("dim", dim),
     ("dist", dist),
     ("div.out", true_divide_out),
     ("div.Scalar", true_divide),
@@ -951,6 +959,7 @@ _FULL_CONFIG = (
     ("kaiser_window", kaiser_window),
     ("kaiser_window.beta", kaiser_window_beta),
     ("kaiser_window.periodic", kaiser_window_periodic),
+    ("kl_div", kl_div),
     ("kron", kron),
     ("kthvalue", kthvalue),
     ("l1_loss", l1_loss),
@@ -994,6 +1003,7 @@ _FULL_CONFIG = (
     ("linalg_det", linalg_det),
     ("linalg_det.out", linalg_det_out),
     ("linalg_eig", linalg_eig),
+    ("linalg_eigh", linalg_eigh),
     ("linalg_eigvals", linalg_eigvals),
     ("linalg_eigvals.out", linalg_eigvals_out),
     ("linalg_householder_product", linalg_householder_product),
@@ -1039,6 +1049,7 @@ _FULL_CONFIG = (
     ("linalg_multi_dot.out", linalg_multi_dot_out),
     ("linalg_norm", linalg_norm),
     ("linalg_norm.ord_str", linalg_norm),
+    ("linalg_pinv", linalg_pinv),
     ("linalg_polar", linalg_polar),
     ("linalg_polar.out", linalg_polar_out),
     ("linalg_qr", linalg_qr),

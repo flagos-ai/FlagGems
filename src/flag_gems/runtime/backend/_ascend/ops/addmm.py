@@ -17,6 +17,7 @@ import logging
 import torch
 import triton
 import triton.language as tl
+import triton.language.extra.cann.extension as extension
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
@@ -26,12 +27,80 @@ from flag_gems.utils import broadcastable_to, libentry, libtuner
 logger = logging.getLogger(__name__)
 
 
+# Preserve the existing candidates for other dtypes, layouts, and small GEMMs.
+_ADDMM_BASE_CONFIGS = runtime.get_tuned_config("mm")
+_ADDMM_HEURISTICS = {
+    **_hcu.HEURISTICS_CONFIGS["mm"],
+    "DIVISIBLE_M": lambda args: args["M"] % args["BLOCK_M"] == 0,
+    "DIVISIBLE_N": lambda args: args["N"] % args["BLOCK_N"] == 0,
+}
+
+
+def _prune_addmm_configs(configs, named_args, **kwargs):
+    args = {**named_args, **kwargs}
+    if (
+        args["A"].dtype not in (torch.float16, torch.float32, torch.bfloat16)
+        or args["stride_ak"] != 1
+        or args["stride_bn"] != 1
+        or args["stride_cn"] != 1
+        or min(args["M"], args["N"]) < 128
+    ):
+        return _ADDMM_BASE_CONFIGS
+    if args["M"] == args["N"] == args["K"]:
+        if args["A"].dtype == torch.float32:
+            tile = (64, 128, 128) if args["M"] < 512 else (256, 128, 128)
+        else:
+            tile = (128, 128, 128) if args["M"] < 512 else (128, 256, 256)
+        return [
+            config
+            for config in configs
+            if tuple(config.kwargs[key] for key in ("BLOCK_M", "BLOCK_N", "BLOCK_K"))
+            == tile
+        ]
+    # Large K tiles amortize loop overhead; short reductions need less padding.
+    tiles = (
+        {(128, 128, 128), (128, 256, 64)}
+        if args["K"] <= 256
+        else {(128, 128, 128), (128, 256, 256), (256, 128, 128)}
+    )
+    return [
+        config
+        for config in configs
+        if tuple(config.kwargs[k] for k in ("BLOCK_M", "BLOCK_N", "BLOCK_K")) in tiles
+    ]
+
+
 @libentry()
 @libtuner(
-    configs=runtime.get_tuned_config("mm"),
-    key=["M", "N", "K"],
+    configs=_ADDMM_BASE_CONFIGS
+    + [
+        triton.Config(
+            {"BLOCK_M": m, "BLOCK_N": n, "BLOCK_K": k, "SPLIT_K": 1},
+            num_warps=4,
+            num_stages=2,
+        )
+        for m, n, k in (
+            (64, 128, 128),
+            (128, 256, 64),
+            (128, 256, 256),
+            (256, 128, 128),
+        )
+    ],
+    key=[
+        "M",
+        "N",
+        "K",
+        "stride_am",
+        "stride_ak",
+        "stride_bk",
+        "stride_bn",
+        "stride_cm",
+        "stride_cn",
+        "DOT_PAD_ONLY_K",
+    ],
+    prune_configs_by={"early_config_prune": _prune_addmm_configs},
 )
-@triton.heuristics(_hcu.HEURISTICS_CONFIGS["mm"])
+@triton.heuristics(_ADDMM_HEURISTICS)
 @triton.jit(do_not_specialize=["alpha", "beta"])
 def addmm_kernel(
     A,
@@ -58,8 +127,11 @@ def addmm_kernel(
     GROUP_M: tl.constexpr,
     SPLIT_K: tl.constexpr,
     EVEN_K: tl.constexpr,
+    DIVISIBLE_M: tl.constexpr,
+    DIVISIBLE_N: tl.constexpr,
     BIAS_IS_VECTOR: tl.constexpr,
     BIAS_IS_SCALAR: tl.constexpr,
+    DOT_PAD_ONLY_K: tl.constexpr = False,
 ):
     pid = tl.program_id(0)
     pid_z = tl.program_id(1)
@@ -75,46 +147,138 @@ def addmm_kernel(
     ram = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
     rbn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
     rk = pid_z * BLOCK_K + tl.arange(0, BLOCK_K)
+    if DIVISIBLE_M:
+        ram = tl.max_contiguous(tl.multiple_of(ram, BLOCK_M), BLOCK_M)
+    if DIVISIBLE_N:
+        rbn = tl.max_contiguous(tl.multiple_of(rbn, BLOCK_N), BLOCK_N)
+    if EVEN_K:
+        rk = tl.max_contiguous(tl.multiple_of(rk, BLOCK_K), BLOCK_K)
     A += ram[:, None] * stride_am + rk[None, :] * stride_ak
     B += rk[:, None] * stride_bk + rbn[None, :] * stride_bn
+    if not DIVISIBLE_M:
+        mask_m = ram < M
+    if not DIVISIBLE_N:
+        mask_n = rbn < N
 
     acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=dot_out_dtype)
     for k in range(0, tl.cdiv(K, BLOCK_K * SPLIT_K)):
         if EVEN_K:
-            a = tl.load(A, mask=(ram < M)[:, None], other=0.0)
-            b = tl.load(B, mask=(rbn < N)[None, :], other=0.0)
+            if DIVISIBLE_M:
+                a = tl.load(A)
+            else:
+                a = tl.load(A, mask=mask_m[:, None], other=0.0)
+            if DIVISIBLE_N:
+                b = tl.load(B)
+            else:
+                b = tl.load(B, mask=mask_n[None, :], other=0.0)
         else:
             k_remaining = K - k * (BLOCK_K * SPLIT_K)
+            mask_k = rk < k_remaining
             a = tl.load(
                 A,
-                mask=(ram < M)[:, None] & (rk < k_remaining)[None, :],
+                mask=(
+                    mask_k[None, :]
+                    if DIVISIBLE_M
+                    else mask_m[:, None] & mask_k[None, :]
+                ),
                 other=0.0,
             )
             b = tl.load(
                 B,
-                mask=(rk < k_remaining)[:, None] & (rbn < N)[None, :],
+                mask=(
+                    mask_k[:, None]
+                    if DIVISIBLE_N
+                    else mask_k[:, None] & mask_n[None, :]
+                ),
                 other=0.0,
             )
+        if DOT_PAD_ONLY_K:
+            extension.compile_hint(a, "dot_pad_only_k")
+            extension.compile_hint(b, "dot_pad_only_k")
         acc += tl.dot(a, b, out_dtype=dot_out_dtype, allow_tf32=False)
         A += BLOCK_K * SPLIT_K * stride_ak
         B += BLOCK_K * SPLIT_K * stride_bk
 
     C += ram[:, None] * stride_cm + rbn[None, :] * stride_cn
-    mask = (ram < M)[:, None] & (rbn < N)[None, :]
+    if DIVISIBLE_M and DIVISIBLE_N:
+        mask = None
+    elif DIVISIBLE_M:
+        mask = mask_n[None, :]
+    elif DIVISIBLE_N:
+        mask = mask_m[:, None]
+    else:
+        mask = mask_m[:, None] & mask_n[None, :]
     if BIAS_IS_VECTOR:
         # Load a 1-D bias once per output-column tile.
-        bias_tile = tl.load(
-            bias + stride_in * rbn,
-            mask=rbn < N,
-            other=0.0,
-        )[None, :]
+        if DIVISIBLE_N:
+            bias_tile = tl.load(bias + stride_in * rbn)[None, :]
+        else:
+            bias_tile = tl.load(
+                bias + stride_in * rbn,
+                mask=mask_n,
+                other=0.0,
+            )[None, :]
     elif BIAS_IS_SCALAR:
         bias_tile = tl.load(bias)
     else:
         bias += stride_im * ram[:, None] + stride_in * rbn[None, :]
-        bias_tile = tl.load(bias, mask=mask, other=0.0)
+        if DIVISIBLE_M and DIVISIBLE_N:
+            bias_tile = tl.load(bias)
+        else:
+            bias_tile = tl.load(bias, mask=mask, other=0.0)
     acc = acc * alpha + bias_tile.to(acc.dtype) * beta
-    tl.store(C, acc.to(C.dtype.element_ty), mask=mask)
+    if DIVISIBLE_M and DIVISIBLE_N:
+        tl.store(C, acc.to(C.dtype.element_ty))
+    else:
+        tl.store(C, acc.to(C.dtype.element_ty), mask=mask)
+
+
+@libentry()
+@triton.jit
+def _addmm_small_mm(A, B, P, N: tl.constexpr, BM: tl.constexpr):
+    # Keep the matrix product separate from the Vector bias epilogue.
+    BN: tl.constexpr = 128
+    BK: tl.constexpr = 128
+    pid = tl.program_id(0)
+    row = pid // tl.cdiv(N, BN) * BM + tl.arange(0, BM)
+    col = pid % tl.cdiv(N, BN) * BN + tl.arange(0, BN)
+    kk = tl.arange(0, BK)
+    ap = A + row[:, None] * N + kk[None, :]
+    bp = B + kk[:, None] * N + col[None, :]
+    acc = tl.zeros((BM, BN), tl.float32)
+    for _ in range(N // BK):
+        a = tl.load(ap, row[:, None] < N, other=0)
+        b = tl.load(bp, col[None, :] < N, other=0)
+        acc += tl.dot(a, b, allow_tf32=False)
+        ap += BK
+        bp += BK * N
+    tl.store(
+        P + row[:, None] * N + col[None, :],
+        acc,
+        (row[:, None] < N) & (col[None, :] < N),
+    )
+
+
+@libentry()
+@triton.jit
+def _addmm_small_add(P, Bias, C, N: tl.constexpr):
+    idx = tl.program_id(0) * 8192 + tl.arange(0, 8192)
+    value = tl.load(P + idx, idx < N * N, other=0)
+    bias = tl.load(Bias + idx, idx < N * N, other=0).to(tl.float32)
+    tl.store(C + idx, value + bias, idx < N * N)
+
+
+@libentry()
+@triton.jit(do_not_specialize=["alpha", "beta"])
+def _addmm_small_finish(P, Bias, C, alpha, beta, N: tl.constexpr, UNIT: tl.constexpr):
+    idx = tl.program_id(0) * 8192 + tl.arange(0, 8192)
+    value = tl.load(P + idx, idx < N * N, other=0)
+    bias = tl.load(Bias + idx, idx < N * N, other=0).to(tl.float32)
+    if UNIT:
+        result = value + bias
+    else:
+        result = value * alpha + bias * beta
+    tl.store(C + idx, result, idx < N * N)
 
 
 def _launch_addmm(bias, mat1, mat2, out, alpha, beta):
@@ -125,6 +289,52 @@ def _launch_addmm(bias, mat1, mat2, out, alpha, beta):
         mat1 = mat1.contiguous()
     if mat2.stride(0) > 1 and mat2.stride(1) > 1:
         mat2 = mat2.contiguous()
+
+    if (
+        M == N == K
+        and (128 <= N < 512 or N == 1024)
+        and N % 128 == 0
+        and mat1.dtype in (torch.float16, torch.bfloat16, torch.float32)
+        and mat1.is_contiguous()
+        and mat2.is_contiguous()
+        and bias.shape == out.shape
+        and bias.is_contiguous()
+        and out.is_contiguous()
+    ):
+        partial = torch.empty((M, N), dtype=torch.float32, device=mat1.device)
+        bm = 64 if N < 512 else 256
+        with torch_device_fn.device(mat1.device):
+            _addmm_small_mm[(triton.cdiv(M, bm) * triton.cdiv(N, 128),)](
+                mat1, mat2, partial, N, bm, num_warps=4, num_stages=2
+            )
+            if alpha == 1 and beta == 1:
+                _addmm_small_add[(triton.cdiv(M * N, 8192),)](partial, bias, out, N)
+            else:
+                _addmm_small_finish[(triton.cdiv(M * N, 8192),)](
+                    partial, bias, out, alpha, beta, N, UNIT=False
+                )
+        return out
+
+    # Align B row pitch when large NN GEMMs amortize the packing cost.
+    # Padding is outside the logical N and is never loaded by the masked kernel.
+    if (
+        mat1.dtype == torch.bfloat16
+        and mat1.stride(1) == 1
+        and mat2.stride(1) == 1
+        and mat2.stride(0) == N
+        and out.stride(1) == 1
+        and M >= 4096
+        and N >= 128
+        and K >= 512
+        and N % 256 != 0
+        and (N % 128 != 0 or K >= 4096)
+    ):
+        storage = torch.empty(
+            (K, triton.cdiv(N, 256) * 256), device=mat2.device, dtype=mat2.dtype
+        )
+        packed = storage[:, :N]
+        packed.copy_(mat2)
+        mat2 = packed
 
     # Keep vector/scalar bias compact; broadcast strides cover other valid shapes.
     bias_is_vector = bias.ndim == 1 and bias.shape[0] == N
@@ -167,6 +377,16 @@ def _launch_addmm(bias, mat1, mat2, out, alpha, beta):
             GROUP_M=8,
             BIAS_IS_VECTOR=bias_is_vector,
             BIAS_IS_SCALAR=bias_is_scalar,
+            DOT_PAD_ONLY_K=(
+                mat1.dtype in (torch.float16, torch.bfloat16)
+                and mat1.stride(1) == 1
+                and mat2.stride(1) == 1
+                and out.stride(1) == 1
+                and M >= 128
+                and N >= 128
+                and N % 16 == 0
+                and K > 0
+            ),
         )
     return out
 
