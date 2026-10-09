@@ -15,6 +15,7 @@
 name: linter
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - master
@@ -50,6 +51,39 @@ jobs:
       http_proxy: ${{ secrets.CI_HTTP_PROXY }}
       https_proxy: ${{ secrets.CI_HTTP_PROXY }}
     steps:
+    - name: Diag SSH vs HTTP connectivity (temporary)
+      shell: bash
+      env:
+        # SSH ignores http(s)_proxy; clear them here so the SSH probes test the
+        # runner's direct egress, while the HTTP probe below keeps the proxy.
+        GIT_SSH_COMMAND: "ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no -o BatchMode=yes"
+      run: |
+        probe_ssh() {  # $1=label $2=host $3=port
+          start=$(date +%s%N)
+          out=$(timeout 25 ssh -T -o ConnectTimeout=15 -o StrictHostKeyChecking=no \
+                  -o BatchMode=yes -p "$3" "git@$2" 2>&1); rc=$?
+          end=$(date +%s%N); ms=$(( (end-start)/1000000 ))
+          # github returns "Hi ... successfully authenticated" or
+          # "Permission denied (publickey)" once the SSH handshake works.
+          if echo "$out" | grep -qiE "successfully authenticated|Permission denied|Hi "; then
+            verdict="REACHABLE(handshake ok)"
+          else
+            verdict="UNREACHABLE"
+          fi
+          printf "  %-10s %d.%03ds rc=%d %s\n" "$1" "$((ms/1000))" "$((ms%1000))" "$rc" "$verdict"
+          echo "    out: $(echo "$out" | head -1)"
+        }
+        echo "=== SSH 22 (github.com:22) ==="
+        for i in 1 2 3; do probe_ssh "ssh22-$i" github.com 22; done
+        echo "=== SSH 443 (ssh.github.com:443) ==="
+        for i in 1 2 3; do probe_ssh "ssh443-$i" ssh.github.com 443; done
+        echo "=== HTTP via proxy (git ls-remote) ==="
+        for i in 1 2 3; do
+          start=$(date +%s%N)
+          timeout 25 git ls-remote https://github.com/flagos-ai/FlagGems.git refs/heads/master >/dev/null 2>&1 && rc=ok || rc=FAIL
+          end=$(date +%s%N); ms=$(( (end-start)/1000000 ))
+          printf "  http-%d %d.%03ds %s\n" "$i" "$((ms/1000))" "$((ms%1000))" "$rc"
+        done
     # Checkout with up to 5 attempts, each with a hard 1-minute step timeout.
     # The proxy makes git fetch HANG (not fail) ~half the time; a hung fetch
     # ignores git's own timeouts, so only the runner's step `timeout-minutes`
