@@ -85,8 +85,18 @@ def _assert_indices_select_values(inp, dim, values, indices, *, keepdim, equal_n
 
     dim = dim % inp.ndim
     gather_indices = indices if keepdim else indices.unsqueeze(dim)
-    gathered = torch.gather(inp, dim, gather_indices)
-    expected = values if keepdim else values.unsqueeze(dim)
+    try:
+        gathered = torch.gather(inp, dim, gather_indices)
+        expected = values if keepdim else values.unsqueeze(dim)
+    except RuntimeError:
+        # Kunlunxin has no gather kernel for (integer value dtype, int64 index)
+        # pairs. This is a test-side reference computation only, so redo it on
+        # the host there rather than reporting the operator as failed; other
+        # backends must keep seeing the error.
+        if flag_gems.vendor_name != "kunlunxin":
+            raise
+        gathered = torch.gather(inp.cpu(), dim, gather_indices.cpu())
+        expected = (values if keepdim else values.unsqueeze(dim)).cpu()
     flag_gems.testing.assert_equal(gathered, expected, equal_nan=equal_nan)
 
 
@@ -421,17 +431,32 @@ def test_median_extra_no_dim_dtypes(dtype):
     utils.gems_assert_equal(res_out, ref_out)
 
 
+def _bool_no_dim_reference(inp):
+    """Reference value for a no-dim bool median.
+
+    Other backends keep the eager reference.  Kunlunxin has none for this
+    input: the call is redirected to CPU, which has no bool kernel
+    (`median_cpu ... Bool`), so the lower median of the flattened tensor is
+    computed on the host instead.  A no-dim bool median carries no indices, so
+    that closed form is a complete oracle.
+    """
+    if flag_gems.vendor_name != "kunlunxin":
+        return torch.median(inp)
+    flat = inp.detach().to("cpu").reshape(-1)
+    return torch.sort(flat).values[(flat.numel() - 1) // 2]
+
+
 @pytest.mark.median
 def test_median_bool_no_dim():
     if torch.device(flag_gems.device).type != "cuda":
         pytest.skip("bool median no-dim is CUDA-specific in native PyTorch")
 
     inp = torch.tensor([True, False, True], device=flag_gems.device)
-    ref_out = torch.median(inp)
+    ref_out = _bool_no_dim_reference(inp)
     res_out = gems_median(inp)
 
     assert res_out.dtype == ref_out.dtype
-    assert res_out.device == ref_out.device
+    assert res_out.device == inp.device
     assert res_out.item() == ref_out.item()
 
 
@@ -441,11 +466,11 @@ def test_median_bool_no_dim_full_registration():
         pytest.skip("bool median no-dim is CUDA-specific in native PyTorch")
 
     inp = torch.tensor([True, False, True, False, True], device=flag_gems.device)
-    ref_out = torch.median(inp)
+    ref_out = _bool_no_dim_reference(inp)
     res_out = gems_median(inp)
 
     assert res_out.dtype == ref_out.dtype
-    assert res_out.device == ref_out.device
+    assert res_out.device == inp.device
     assert res_out.item() == ref_out.item()
 
 
@@ -457,11 +482,11 @@ def test_median_bool_no_dim_large(width):
 
     vals = torch.arange(width, device=flag_gems.device)
     inp = (vals * 37) % 5 < 3
-    ref_out = torch.median(inp)
+    ref_out = _bool_no_dim_reference(inp)
     res_out = gems_median(inp)
 
     assert res_out.dtype == ref_out.dtype
-    assert res_out.device == ref_out.device
+    assert res_out.device == inp.device
     assert res_out.item() == ref_out.item()
 
 
@@ -473,11 +498,11 @@ def test_median_bool_no_dim_beyond_old_flat_limit():
     width = 1024 * 1024 + 1
     vals = torch.arange(width, device=flag_gems.device)
     inp = vals % 5 < 3
-    ref_out = torch.median(inp)
+    ref_out = _bool_no_dim_reference(inp)
     res_out = gems_median(inp)
 
     assert res_out.dtype == ref_out.dtype
-    assert res_out.device == ref_out.device
+    assert res_out.device == inp.device
     assert res_out.item() == ref_out.item()
 
 
@@ -570,9 +595,24 @@ def test_median_empty_output_unsupported_dtype(shape, dim, dtype):
         pytest.skip("empty-output bool/complex median semantics differ on CPU")
 
     inp = torch.empty(shape, dtype=dtype, device=flag_gems.device)
+    if flag_gems.vendor_name == "kunlunxin":
+        # Kunlunxin has no eager reference for these inputs: the call is
+        # redirected to CPU, which has no bool/complex median kernel.  An empty
+        # output reduces nothing, so assert the contract directly: values keep
+        # the input dtype, indices are int64, both keep the input device and the
+        # input shape minus `dim`.
+        res_out = gems_median_dim(inp, dim=dim)
+        expected_shape = tuple(size for index, size in enumerate(shape) if index != dim)
+        assert tuple(res_out.values.shape) == expected_shape
+        assert tuple(res_out.indices.shape) == expected_shape
+        assert res_out.values.dtype == dtype
+        assert res_out.indices.dtype == torch.int64
+        assert res_out.values.device == inp.device
+        assert res_out.indices.device == inp.device
+        return
+
     ref_out = torch.median(inp, dim=dim)
     res_out = gems_median_dim(inp, dim=dim)
-
     assert tuple(res_out.values.shape) == tuple(ref_out.values.shape)
     assert tuple(res_out.indices.shape) == tuple(ref_out.indices.shape)
     assert res_out.values.dtype == ref_out.values.dtype
@@ -732,7 +772,13 @@ def test_median_extended_lastdim_width(dtype):
 def test_median_lastdim_sort_unique_exact_index(dtype, width):
     rank = (width - 1) // 2
     first = torch.arange(width, dtype=dtype, device=flag_gems.device)
-    second = torch.arange(width, dtype=dtype, device=flag_gems.device).roll(7)
+    # Kunlunxin has no `roll` kernel for every integer dtype, so the rolled row
+    # is built on the host there; this is test input construction, and other
+    # backends keep the device-side call.
+    if flag_gems.vendor_name == "kunlunxin":
+        second = torch.arange(width, dtype=dtype).roll(7).to(flag_gems.device)
+    else:
+        second = torch.arange(width, dtype=dtype, device=flag_gems.device).roll(7)
     inp = torch.stack((first, second))
     expected_indices = torch.tensor([rank, (rank + 7) % width], device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
@@ -1058,7 +1104,18 @@ def test_median_f16_key_select_signed_zero_index_bits(dtype, width):
     _assert_median_dim_equal(
         res_out, ref_out, dtype, exact_indices=False, inp=inp, dim=1
     )
-    gathered = torch.gather(inp, 1, res_out.indices.unsqueeze(1)).reshape(-1)
+    try:
+        gathered = torch.gather(inp, 1, res_out.indices.unsqueeze(1)).reshape(-1)
+    except RuntimeError:
+        # Kunlunxin's gather has no (integer dtype, int64 index) kernel; this is
+        # a test-side reference computation, so redo it on the host there.
+        if flag_gems.vendor_name != "kunlunxin":
+            raise
+        gathered = (
+            torch.gather(inp.cpu(), 1, res_out.indices.cpu().unsqueeze(1))
+            .reshape(-1)
+            .to(inp.device)
+        )
     flag_gems.testing.assert_equal(
         torch.signbit(gathered), torch.signbit(res_out.values)
     )
@@ -1315,7 +1372,13 @@ def test_median_int_lastdim_select_boundaries(dtype, width):
 def test_median_int_lastdim_select_unique_exact_index(dtype, width):
     rank = (width - 1) // 2
     first = torch.arange(width, dtype=dtype, device=flag_gems.device)
-    second = torch.arange(width, dtype=dtype, device=flag_gems.device).roll(7)
+    # Kunlunxin has no `roll` kernel for every integer dtype, so the rolled row
+    # is built on the host there; this is test input construction, and other
+    # backends keep the device-side call.
+    if flag_gems.vendor_name == "kunlunxin":
+        second = torch.arange(width, dtype=dtype).roll(7).to(flag_gems.device)
+    else:
+        second = torch.arange(width, dtype=dtype, device=flag_gems.device).roll(7)
     inp = torch.stack((first, second))
     expected_indices = torch.tensor([rank, (rank + 7) % width], device=flag_gems.device)
     ref_inp = utils.to_reference(inp)

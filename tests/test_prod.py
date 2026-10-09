@@ -42,8 +42,7 @@ def test_prod(shape, dtype):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.prod(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.prod(inp)
+    res_out = flag_gems.prod(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -63,8 +62,7 @@ def test_prod_dim_int(shape, dim, keepdim, dtype):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.prod(ref_inp, dim=dim, keepdim=keepdim)
-    with flag_gems.use_gems():
-        res_out = torch.prod(inp, dim=dim, keepdim=keepdim)
+    res_out = flag_gems.prod_dim(inp, dim=dim, keepdim=keepdim)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -86,7 +84,6 @@ def test_prod_dim_multi_tile(shape, dim, keepdim):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.prod(ref_inp, dim=dim, keepdim=keepdim)
-    with flag_gems.use_gems():
-        res_out = torch.prod(inp, dim=dim, keepdim=keepdim)
+    res_out = flag_gems.prod_dim(inp, dim=dim, keepdim=keepdim)
 
     utils.gems_assert_close(res_out, ref_out, torch.float32)

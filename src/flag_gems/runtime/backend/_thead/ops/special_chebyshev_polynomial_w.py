@@ -69,7 +69,7 @@ def chebyshev_polynomial_w_func(x, n):
 
 
 def special_chebyshev_polynomial_w(x, n):
-    logger.debug("GEMS SPECIAL_CHEBYSHEV_POLYNOMIAL_W")
+    logger.debug("GEMS_THEAD SPECIAL_CHEBYSHEV_POLYNOMIAL_W")
     if x.dtype not in (torch.float32, torch.float64):
         raise ValueError(
             f"special_chebyshev_polynomial_w only supports float32/float64, got {x.dtype}"
@@ -85,7 +85,7 @@ def special_chebyshev_polynomial_w_out(x, n, out):
 
     ATen wrapper: special_chebyshev_polynomial_w.out(Tensor x, Scalar n, *, Tensor(a!) out) -> Tensor(a!)
     """
-    logger.debug("GEMS SPECIAL_CHEBYSHEV_POLYNOMIAL_W_OUT")
+    logger.debug("GEMS_THEAD SPECIAL_CHEBYSHEV_POLYNOMIAL_W_OUT")
     if x.dtype not in (torch.float32, torch.float64):
         raise ValueError(
             f"special_chebyshev_polynomial_w only supports float32/float64, got {x.dtype}"

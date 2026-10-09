@@ -58,8 +58,7 @@ def test_log_sigmoid_backward(shape, dtype):
     # CUDA's native forward returns an empty buffer. The backward operator must
     # therefore not require buffer elements on device backends.
     res_buffer = torch.empty(0, dtype=dtype, device=flag_gems.device)
-    with flag_gems.use_gems(include=["log_sigmoid_backward"]):
-        res_in_grad = torch.ops.aten.log_sigmoid_backward(res_grad, res_inp, res_buffer)
+    res_in_grad = flag_gems.log_sigmoid_backward(res_grad, res_inp, res_buffer)
 
     utils.gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
@@ -87,10 +86,9 @@ def test_log_sigmoid_backward_out(shape, dtype):
 
     res_buffer = torch.empty(0, dtype=dtype, device=flag_gems.device)
     res_grad_input = torch.empty_like(res_inp)
-    with flag_gems.use_gems(include=["log_sigmoid_backward_out"]):
-        result = torch.ops.aten.log_sigmoid_backward.grad_input(
-            res_grad, res_inp, res_buffer, grad_input=res_grad_input
-        )
+    result = flag_gems.log_sigmoid_backward_out(
+        res_grad, res_inp, res_buffer, grad_input=res_grad_input
+    )
 
     assert result is res_grad_input
     utils.gems_assert_close(res_grad_input, ref_grad_input, dtype)
@@ -112,10 +110,9 @@ def test_log_sigmoid_backward_out_noncontiguous(dtype):
         ref_grad, ref_inp, ref_buffer, grad_input=ref_grad_input
     )
 
-    with flag_gems.use_gems(include=["log_sigmoid_backward_out"]):
-        result = torch.ops.aten.log_sigmoid_backward.grad_input(
-            res_grad, res_inp, res_buffer, grad_input=res_grad_input
-        )
+    result = flag_gems.log_sigmoid_backward_out(
+        res_grad, res_inp, res_buffer, grad_input=res_grad_input
+    )
 
     assert result is res_grad_input
     utils.gems_assert_close(res_grad_input, ref_grad_input, dtype)
@@ -133,8 +130,7 @@ def test_log_sigmoid_backward_contiguous_buffer(dtype):
     ref_buffer = torch.exp(-torch.abs(ref_inp))
     ref_in_grad = _reference_log_sigmoid_backward(ref_grad, ref_inp, ref_buffer)
 
-    with flag_gems.use_gems(include=["log_sigmoid_backward"]):
-        res_in_grad = torch.ops.aten.log_sigmoid_backward(res_grad, res_inp, res_buffer)
+    res_in_grad = flag_gems.log_sigmoid_backward(res_grad, res_inp, res_buffer)
 
     utils.gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
@@ -152,10 +148,9 @@ def test_log_sigmoid_backward_out_contiguous_buffer(dtype):
     ref_buffer = torch.exp(-torch.abs(ref_inp))
     ref_in_grad = _reference_log_sigmoid_backward(ref_grad, ref_inp, ref_buffer)
 
-    with flag_gems.use_gems(include=["log_sigmoid_backward_out"]):
-        result = torch.ops.aten.log_sigmoid_backward.grad_input(
-            res_grad, res_inp, res_buffer, grad_input=res_grad_input
-        )
+    result = flag_gems.log_sigmoid_backward_out(
+        res_grad, res_inp, res_buffer, grad_input=res_grad_input
+    )
 
     assert result is res_grad_input
     utils.gems_assert_close(res_grad_input, ref_in_grad, dtype)

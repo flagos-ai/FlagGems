@@ -83,6 +83,157 @@ from flag_gems.ops._fake_quantize_per_tensor_affine_cachemask_tensor_qparams imp
 )
 from flag_gems.ops._fill_mem_eff_dropout_mask_ import _fill_mem_eff_dropout_mask_
 from flag_gems.ops._flash_attention_forward import _flash_attention_forward
+from flag_gems.ops._foreach_binary import (
+    _foreach_add__List,
+    _foreach_add__Scalar,
+    _foreach_add__ScalarList,
+    _foreach_add__Tensor,
+    _foreach_add_List,
+    _foreach_add_Scalar,
+    _foreach_add_ScalarList,
+    _foreach_add_Tensor,
+    _foreach_addcdiv__Scalar,
+    _foreach_addcdiv__ScalarList,
+    _foreach_addcdiv__Tensor,
+    _foreach_addcdiv_Scalar,
+    _foreach_addcdiv_ScalarList,
+    _foreach_addcdiv_Tensor,
+    _foreach_addcmul__Scalar,
+    _foreach_addcmul__ScalarList,
+    _foreach_addcmul__Tensor,
+    _foreach_addcmul_Scalar,
+    _foreach_addcmul_ScalarList,
+    _foreach_addcmul_Tensor,
+    _foreach_clamp_max__List,
+    _foreach_clamp_max__Scalar,
+    _foreach_clamp_max__ScalarList,
+    _foreach_clamp_max_List,
+    _foreach_clamp_max_Scalar,
+    _foreach_clamp_max_ScalarList,
+    _foreach_clamp_min__List,
+    _foreach_clamp_min__Scalar,
+    _foreach_clamp_min__ScalarList,
+    _foreach_clamp_min_List,
+    _foreach_clamp_min_Scalar,
+    _foreach_clamp_min_ScalarList,
+    _foreach_copy,
+    _foreach_copy_,
+    _foreach_div__List,
+    _foreach_div__Scalar,
+    _foreach_div__ScalarList,
+    _foreach_div__Tensor,
+    _foreach_div_List,
+    _foreach_div_Scalar,
+    _foreach_div_ScalarList,
+    _foreach_div_Tensor,
+    _foreach_lerp__List,
+    _foreach_lerp__Scalar,
+    _foreach_lerp__ScalarList,
+    _foreach_lerp_List,
+    _foreach_lerp_Scalar,
+    _foreach_lerp_ScalarList,
+    _foreach_maximum__List,
+    _foreach_maximum__Scalar,
+    _foreach_maximum__ScalarList,
+    _foreach_maximum_List,
+    _foreach_maximum_Scalar,
+    _foreach_maximum_ScalarList,
+    _foreach_minimum__List,
+    _foreach_minimum__Scalar,
+    _foreach_minimum__ScalarList,
+    _foreach_minimum_List,
+    _foreach_minimum_Scalar,
+    _foreach_minimum_ScalarList,
+    _foreach_mul__List,
+    _foreach_mul__Scalar,
+    _foreach_mul__ScalarList,
+    _foreach_mul__Tensor,
+    _foreach_mul_List,
+    _foreach_mul_Scalar,
+    _foreach_mul_ScalarList,
+    _foreach_mul_Tensor,
+    _foreach_pow__List,
+    _foreach_pow__Scalar,
+    _foreach_pow__ScalarList,
+    _foreach_pow_List,
+    _foreach_pow_Scalar,
+    _foreach_pow_ScalarAndTensor,
+    _foreach_pow_ScalarList,
+    _foreach_sub__List,
+    _foreach_sub__Scalar,
+    _foreach_sub__ScalarList,
+    _foreach_sub_List,
+    _foreach_sub_Scalar,
+    _foreach_sub_ScalarList,
+)
+from flag_gems.ops._foreach_reduction import (
+    _foreach_max,
+    _foreach_norm,
+    _foreach_zero,
+    _foreach_zero_,
+)
+from flag_gems.ops._foreach_unary import (
+    _foreach_abs,
+    _foreach_abs_,
+    _foreach_acos,
+    _foreach_acos_,
+    _foreach_asin,
+    _foreach_asin_,
+    _foreach_atan,
+    _foreach_atan_,
+    _foreach_ceil,
+    _foreach_ceil_,
+    _foreach_cos,
+    _foreach_cos_,
+    _foreach_cosh,
+    _foreach_cosh_,
+    _foreach_erf,
+    _foreach_erf_,
+    _foreach_erfc,
+    _foreach_erfc_,
+    _foreach_exp,
+    _foreach_exp_,
+    _foreach_expm1,
+    _foreach_expm1_,
+    _foreach_floor,
+    _foreach_floor_,
+    _foreach_frac,
+    _foreach_frac_,
+    _foreach_lgamma,
+    _foreach_lgamma_,
+    _foreach_log,
+    _foreach_log1p,
+    _foreach_log1p_,
+    _foreach_log2,
+    _foreach_log2_,
+    _foreach_log10,
+    _foreach_log10_,
+    _foreach_log_,
+    _foreach_neg,
+    _foreach_neg_,
+    _foreach_reciprocal,
+    _foreach_reciprocal_,
+    _foreach_round,
+    _foreach_round_,
+    _foreach_rsqrt,
+    _foreach_rsqrt_,
+    _foreach_sigmoid,
+    _foreach_sigmoid_,
+    _foreach_sign,
+    _foreach_sign_,
+    _foreach_sin,
+    _foreach_sin_,
+    _foreach_sinh,
+    _foreach_sinh_,
+    _foreach_sqrt,
+    _foreach_sqrt_,
+    _foreach_tan,
+    _foreach_tan_,
+    _foreach_tanh,
+    _foreach_tanh_,
+    _foreach_trunc,
+    _foreach_trunc_,
+)
 from flag_gems.ops._functional_sym_constrain_range import (
     _functional_sym_constrain_range,
 )
@@ -91,6 +242,7 @@ from flag_gems.ops._functional_sym_constrain_range_for_size import (
 )
 from flag_gems.ops._fused_adagrad_ import _fused_adagrad_
 from flag_gems.ops._fused_adam import _fused_adam, _fused_adam_
+from flag_gems.ops._fused_dropout import _fused_dropout
 from flag_gems.ops._fused_moving_avg_obs_fq_helper import (
     _fused_moving_avg_obs_fq_helper,
 )
@@ -116,6 +268,7 @@ from flag_gems.ops._is_all_true import _is_all_true
 from flag_gems.ops._jagged_to_padded_dense_forward import (
     _jagged_to_padded_dense_forward,
 )
+from flag_gems.ops._linalg_eigh import _linalg_eigh
 from flag_gems.ops._linalg_eigvals import _linalg_eigvals
 from flag_gems.ops._linalg_slogdet import _linalg_slogdet
 from flag_gems.ops._linalg_svd import _linalg_svd
@@ -338,6 +491,7 @@ from flag_gems.ops.batch_norm_gather_stats_with_counts import (
     batch_norm_gather_stats_with_counts,
 )
 from flag_gems.ops.batch_norm_stats import batch_norm_stats
+from flag_gems.ops.batch_norm_update_stats import batch_norm_update_stats
 from flag_gems.ops.bernoulli import bernoulli
 from flag_gems.ops.bernoulli_ import bernoulli_
 from flag_gems.ops.bilinear import bilinear
@@ -419,6 +573,10 @@ from flag_gems.ops.conv_tbc_backward import conv_tbc_backward
 from flag_gems.ops.conv_transpose1d import conv_transpose1d
 from flag_gems.ops.conv_transpose2d import conv_transpose2d
 from flag_gems.ops.conv_transpose3d import conv_transpose3d
+from flag_gems.ops.convolution_backward_overrideable import (
+    convolution_backward_overrideable,
+    convolution_backward_overrideable_out,
+)
 from flag_gems.ops.convolution_overrideable import (
     convolution_overrideable,
     convolution_overrideable_out,
@@ -460,6 +618,7 @@ from flag_gems.ops.diagonal_scatter import diagonal_scatter
 from flag_gems.ops.diff import diff
 from flag_gems.ops.digamma_ import digamma, digamma_
 from flag_gems.ops.dimV import _dimV as dimV
+from flag_gems.ops.dim import dim
 from flag_gems.ops.dist import dist
 from flag_gems.ops.div import (
     div_mode,
@@ -678,6 +837,7 @@ from flag_gems.ops.kaiser_window import (
     kaiser_window_beta,
     kaiser_window_periodic,
 )
+from flag_gems.ops.kl_div import kl_div
 from flag_gems.ops.kron import kron
 from flag_gems.ops.kthvalue import kthvalue
 from flag_gems.ops.l1_loss import l1_loss
@@ -708,6 +868,7 @@ from flag_gems.ops.linalg_cond import linalg_cond, linalg_cond_p_str
 from flag_gems.ops.linalg_cross import linalg_cross, linalg_cross_out
 from flag_gems.ops.linalg_det import linalg_det, linalg_det_out
 from flag_gems.ops.linalg_eig import linalg_eig
+from flag_gems.ops.linalg_eigh import linalg_eigh
 from flag_gems.ops.linalg_eigvals import linalg_eigvals, linalg_eigvals_out
 from flag_gems.ops.linalg_householder_product import linalg_householder_product
 from flag_gems.ops.linalg_inv_ex import linalg_inv_ex
@@ -720,6 +881,7 @@ from flag_gems.ops.linalg_lu_factor_ex import (
     linalg_lu_factor_ex,
     linalg_lu_factor_ex_out,
 )
+from flag_gems.ops.linalg_lu_solve import linalg_lu_solve
 from flag_gems.ops.linalg_matmul import linalg_matmul
 from flag_gems.ops.linalg_matrix_exp import linalg_matrix_exp, linalg_matrix_exp_out
 from flag_gems.ops.linalg_matrix_norm import linalg_matrix_norm, linalg_matrix_norm_out
@@ -739,6 +901,7 @@ from flag_gems.ops.linalg_matrix_sqrth import (
 )
 from flag_gems.ops.linalg_multi_dot import linalg_multi_dot, linalg_multi_dot_out
 from flag_gems.ops.linalg_norm import linalg_norm
+from flag_gems.ops.linalg_pinv import linalg_pinv
 from flag_gems.ops.linalg_polar import linalg_polar, linalg_polar_out
 from flag_gems.ops.linalg_qr import linalg_qr, linalg_qr_out
 from flag_gems.ops.linalg_slogdet import linalg_slogdet
@@ -910,6 +1073,8 @@ from flag_gems.ops.nuclear_norm import nuclear_norm
 from flag_gems.ops.one_hot import one_hot
 from flag_gems.ops.ones import ones
 from flag_gems.ops.ones_like import ones_like
+from flag_gems.ops.or_scalar import or_scalar
+from flag_gems.ops.or_tensor import or_tensor
 from flag_gems.ops.orgqr import orgqr, orgqr_out
 from flag_gems.ops.ormqr import ormqr
 from flag_gems.ops.pad import constant_pad_nd, pad
@@ -1317,6 +1482,7 @@ from flag_gems.ops.view_copy import view_copy
 from flag_gems.ops.vsplit import vsplit
 from flag_gems.ops.vstack import vstack
 from flag_gems.ops.w8a8_block_fp8_matmul import w8a8_block_fp8_matmul
+from flag_gems.ops.weight_int4pack_mm import weight_int4pack_mm
 from flag_gems.ops.weight_int8pack_mm import weight_int8pack_mm
 from flag_gems.ops.weightnorm import (
     weight_norm_interface,
@@ -1401,12 +1567,158 @@ __all__ = [
     "_fake_quantize_per_tensor_affine_cachemask_tensor_qparams",
     "_fill_mem_eff_dropout_mask_",
     "_flash_attention_forward",
+    "_foreach_abs",
+    "_foreach_abs_",
+    "_foreach_acos",
+    "_foreach_acos_",
+    "_foreach_add__List",
+    "_foreach_add__Scalar",
+    "_foreach_add__ScalarList",
+    "_foreach_add__Tensor",
+    "_foreach_add_List",
+    "_foreach_add_Scalar",
+    "_foreach_add_ScalarList",
+    "_foreach_add_Tensor",
+    "_foreach_addcdiv__Scalar",
+    "_foreach_addcdiv__ScalarList",
+    "_foreach_addcdiv__Tensor",
+    "_foreach_addcdiv_Scalar",
+    "_foreach_addcdiv_ScalarList",
+    "_foreach_addcdiv_Tensor",
+    "_foreach_addcmul__Scalar",
+    "_foreach_addcmul__ScalarList",
+    "_foreach_addcmul__Tensor",
+    "_foreach_addcmul_Scalar",
+    "_foreach_addcmul_ScalarList",
+    "_foreach_addcmul_Tensor",
+    "_foreach_asin",
+    "_foreach_asin_",
+    "_foreach_atan",
+    "_foreach_atan_",
+    "_foreach_ceil",
+    "_foreach_ceil_",
+    "_foreach_clamp_max__List",
+    "_foreach_clamp_max__Scalar",
+    "_foreach_clamp_max__ScalarList",
+    "_foreach_clamp_max_List",
+    "_foreach_clamp_max_Scalar",
+    "_foreach_clamp_max_ScalarList",
+    "_foreach_clamp_min__List",
+    "_foreach_clamp_min__Scalar",
+    "_foreach_clamp_min__ScalarList",
+    "_foreach_clamp_min_List",
+    "_foreach_clamp_min_Scalar",
+    "_foreach_clamp_min_ScalarList",
+    "_foreach_copy",
+    "_foreach_copy_",
+    "_foreach_cos",
+    "_foreach_cos_",
+    "_foreach_cosh",
+    "_foreach_cosh_",
+    "_foreach_div__List",
+    "_foreach_div__Scalar",
+    "_foreach_div__ScalarList",
+    "_foreach_div__Tensor",
+    "_foreach_div_List",
+    "_foreach_div_Scalar",
+    "_foreach_div_ScalarList",
+    "_foreach_div_Tensor",
+    "_foreach_erf",
+    "_foreach_erf_",
+    "_foreach_erfc",
+    "_foreach_erfc_",
+    "_foreach_exp",
+    "_foreach_exp_",
+    "_foreach_expm1",
+    "_foreach_expm1_",
+    "_foreach_floor",
+    "_foreach_floor_",
+    "_foreach_frac",
+    "_foreach_frac_",
+    "_foreach_lerp__List",
+    "_foreach_lerp__Scalar",
+    "_foreach_lerp__ScalarList",
+    "_foreach_lerp_List",
+    "_foreach_lerp_Scalar",
+    "_foreach_lerp_ScalarList",
+    "_foreach_lgamma",
+    "_foreach_lgamma_",
+    "_foreach_log",
+    "_foreach_log10",
+    "_foreach_log10_",
+    "_foreach_log1p",
+    "_foreach_log1p_",
+    "_foreach_log2",
+    "_foreach_log2_",
+    "_foreach_log_",
+    "_foreach_max",
+    "_foreach_maximum__List",
+    "_foreach_maximum__Scalar",
+    "_foreach_maximum__ScalarList",
+    "_foreach_maximum_List",
+    "_foreach_maximum_Scalar",
+    "_foreach_maximum_ScalarList",
+    "_foreach_minimum__List",
+    "_foreach_minimum__Scalar",
+    "_foreach_minimum__ScalarList",
+    "_foreach_minimum_List",
+    "_foreach_minimum_Scalar",
+    "_foreach_minimum_ScalarList",
+    "_foreach_mul__List",
+    "_foreach_mul__Scalar",
+    "_foreach_mul__ScalarList",
+    "_foreach_mul__Tensor",
+    "_foreach_mul_List",
+    "_foreach_mul_Scalar",
+    "_foreach_mul_ScalarList",
+    "_foreach_mul_Tensor",
+    "_foreach_neg",
+    "_foreach_neg_",
+    "_foreach_norm",
+    "_foreach_pow__List",
+    "_foreach_pow__Scalar",
+    "_foreach_pow__ScalarList",
+    "_foreach_pow_List",
+    "_foreach_pow_Scalar",
+    "_foreach_pow_ScalarAndTensor",
+    "_foreach_pow_ScalarList",
+    "_foreach_reciprocal",
+    "_foreach_reciprocal_",
+    "_foreach_round",
+    "_foreach_round_",
+    "_foreach_rsqrt",
+    "_foreach_rsqrt_",
+    "_foreach_sigmoid",
+    "_foreach_sigmoid_",
+    "_foreach_sign",
+    "_foreach_sign_",
+    "_foreach_sin",
+    "_foreach_sin_",
+    "_foreach_sinh",
+    "_foreach_sinh_",
+    "_foreach_sqrt",
+    "_foreach_sqrt_",
+    "_foreach_sub__List",
+    "_foreach_sub__Scalar",
+    "_foreach_sub__ScalarList",
+    "_foreach_sub_List",
+    "_foreach_sub_Scalar",
+    "_foreach_sub_ScalarList",
+    "_foreach_tan",
+    "_foreach_tan_",
+    "_foreach_tanh",
+    "_foreach_tanh_",
+    "_foreach_trunc",
+    "_foreach_trunc_",
+    "_foreach_zero",
+    "_foreach_zero_",
     "_functional_assert_async",
     "_functional_sym_constrain_range",
     "_functional_sym_constrain_range_for_size",
     "_fused_adagrad_",
     "_fused_adam",
     "_fused_adam_",
+    "_fused_dropout",
     "_fused_moving_avg_obs_fq_helper",
     "_fused_rms_norm",
     "_fused_rms_norm_backward",
@@ -1422,6 +1734,7 @@ __all__ = [
     "_index_put_impl_",
     "_is_all_true",
     "_jagged_to_padded_dense_forward",
+    "_linalg_eigh",
     "_linalg_eigvals",
     "_linalg_slogdet",
     "_linalg_svd",
@@ -1626,6 +1939,7 @@ __all__ = [
     "batch_norm_gather_stats",
     "batch_norm_gather_stats_with_counts",
     "batch_norm_stats",
+    "batch_norm_update_stats",
     "bernoulli",
     "bernoulli_",
     "bilinear",
@@ -1711,6 +2025,8 @@ __all__ = [
     "conv_transpose1d",
     "conv_transpose2d",
     "conv_transpose3d",
+    "convolution_backward_overrideable",
+    "convolution_backward_overrideable_out",
     "convolution_overrideable",
     "convolution_overrideable_out",
     "copy",
@@ -1762,6 +2078,7 @@ __all__ = [
     "diff",
     "digamma",
     "digamma_",
+    "dim",
     "dimV",
     "dist",
     "div_mode",
@@ -1997,6 +2314,7 @@ __all__ = [
     "kaiser_window",
     "kaiser_window_beta",
     "kaiser_window_periodic",
+    "kl_div",
     "kron",
     "kthvalue",
     "l1_loss",
@@ -2043,6 +2361,7 @@ __all__ = [
     "linalg_det",
     "linalg_det_out",
     "linalg_eig",
+    "linalg_eigh",
     "linalg_eigvals",
     "linalg_eigvals_out",
     "linalg_householder_product",
@@ -2055,6 +2374,7 @@ __all__ = [
     "linalg_lu_factor_ex_out",
     "linalg_lu_factor_out",
     "linalg_lu_out",
+    "linalg_lu_solve",
     "linalg_matmul",
     "linalg_matrix_exp",
     "linalg_matrix_exp_out",
@@ -2071,6 +2391,7 @@ __all__ = [
     "linalg_multi_dot",
     "linalg_multi_dot_out",
     "linalg_norm",
+    "linalg_pinv",
     "linalg_polar",
     "linalg_polar_out",
     "linalg_qr",
@@ -2264,6 +2585,8 @@ __all__ = [
     "one_hot",
     "ones",
     "ones_like",
+    "or_scalar",
+    "or_tensor",
     "orgqr",
     "orgqr_out",
     "ormqr",
@@ -2681,6 +3004,7 @@ __all__ = [
     "vsplit",
     "vstack",
     "w8a8_block_fp8_matmul",
+    "weight_int4pack_mm",
     "weight_int8pack_mm",
     "weight_norm_differentiable_backward",
     "weight_norm_interface",

@@ -32,7 +32,7 @@ def broadcast_to(x, size):
     Returns:
         Tensor: The broadcasted tensor.
     """
-    logger.debug("GEMS BROADCAST_TO")
+    logger.debug("GEMS_THEAD BROADCAST_TO")
 
     # broadcast_to is a pure view (meta) operation: torch eager resolves it with
     # near-zero overhead (~0.00016 ms) by merely adjusting shape/strides. Any

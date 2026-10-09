@@ -23,7 +23,7 @@ def unsqueeze(A: torch.Tensor, dim: int) -> torch.Tensor:
     Returns:
         View of the input tensor with a dimension of size 1 inserted
     """
-    logger.debug("GEMS UNSQUEEZE")
+    logger.debug("GEMS_HYGON UNSQUEEZE")
 
     ndim = A.dim()
 
@@ -55,6 +55,6 @@ def unsqueeze_(A: torch.Tensor, dim: int) -> torch.Tensor:
     Builds a zero-copy singleton view through the C++ composite kernel and
     rebinds its metadata to the input tensor.
     """
-    logger.debug("GEMS UNSQUEEZE_")
+    logger.debug("GEMS_HYGON UNSQUEEZE_")
     view = _unsqueeze_view.redispatch(_composite_keyset, A, dim)
     return A.set_(view)

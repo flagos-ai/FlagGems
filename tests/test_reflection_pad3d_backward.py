@@ -64,7 +64,6 @@ def test_reflection_pad3d_backward(shape, dtype, padding):
     ref_out = torch.ops.aten.reflection_pad3d_backward(ref_grad, ref_x, padding)
 
     # Gems backward on GPU
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.reflection_pad3d_backward(grad_output, x, padding)
+    res_out = flag_gems.reflection_pad3d_backward(grad_output, x, padding)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
