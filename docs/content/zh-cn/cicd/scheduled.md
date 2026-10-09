@@ -127,6 +127,63 @@ Feishu notification with the outcome.
 结果上传到内部 op-monitor 服务，同时发送包含结果的飞书通知。
 
 <!--
+## `ops-test.yaml` — QA acceptance testing
+
+**Trigger:** manual `workflow_dispatch` only, with optional `branch`,
+`vendors`, `ops`, `upload_log`, and `send_feishu` inputs.
+
+The on-demand counterpart to `weekly.yaml`, used by QA for acceptance testing
+of a specific branch, vendor set, or operator list before a release. The
+`prepare` job resolves the checkout ref (defaulting to `master`) and builds
+the backend matrix from `.github/configs/backends/config.yaml` plus one YAML
+file per backend, filtered by the `vendors` input (case-insensitive, empty =
+all enabled vendors); the `ops` input likewise narrows the run to specific
+operators (empty = every stage via `--stages all`).
+
+Backends are split into the same two execution modes as `weekly.yaml`:
+
+- **Container-based** (`test-container`) — runs inside the backend's Docker
+  image. Job timeout is 1440 minutes (24h) to accommodate the longest vendor
+  runs (e.g. Ascend 910B).
+- **Native** (`test-native`) — runs directly on the self-hosted runner,
+  with an 1080-minute (18h) job timeout.
+
+Each matrix job retries checkout up to three times (with 30s backoff),
+installs FlagGems, checks GPU availability, runs `tools/run_tests.py`
+scoped by `--ops` or `--stages all`, summarizes results with
+`add_labels`/`psum_text`/`psum_html`, packages them into a per-vendor
+archive, and — unless disabled via the `upload_log`/`send_feishu` inputs —
+uploads the archive to the internal op-monitor service and posts a Feishu
+notification with the outcome.
+-->
+## `ops-test.yaml` —— QA 验收测试
+
+**触发条件：** 仅支持手动触发（`workflow_dispatch`），可选参数包括
+`branch`、`vendors`、`ops`、`upload_log`、`send_feishu`。
+
+这是 `weekly.yaml` 的按需版本，供 QA 在发布前针对指定分支、厂商范围或算子
+列表进行验收测试。`prepare` 作业会解析代码检出引用（默认为 `master`），
+并基于 `.github/configs/backends/config.yaml` 以及每个后端对应的独立
+YAML 文件构建后端矩阵，根据 `vendors` 输入参数进行筛选（不区分大小写，
+留空表示所有已启用的厂商）；`ops` 输入参数同样用于将测试范围缩小到指定
+算子（留空则通过 `--stages all` 运行全部测试阶段）。
+
+各后端按与 `weekly.yaml` 相同的两种执行方式划分：
+
+- **基于容器**（`test-container`） —— 在后端对应的 Docker 镜像内运行。
+  作业超时时间为 1440 分钟（24 小时），以适配耗时最长的厂商测试
+  （例如 Ascend 910B）。
+- **原生运行**（`test-native`） —— 直接在自托管 runner 上运行，
+  作业超时时间为 1080 分钟（18 小时）。
+
+矩阵中的每个作业最多会重试三次代码检出（每次间隔 30 秒），随后安装
+FlagGems、检查 GPU 可用性、运行 `tools/run_tests.py`（通过 `--ops` 或
+`--stages all` 参数控制测试范围）、使用
+`add_labels`/`psum_text`/`psum_html` 汇总结果，并将结果打包为每个厂商
+对应的压缩包；除非通过 `upload_log`/`send_feishu` 输入参数禁用，还会将
+压缩包上传到内部 op-monitor 服务，并发送包含结果的飞书通知。
+
+<!--
 ## `command.yaml` — on-demand `/test` command
 
 **Trigger:** `issue_comment` created on a PR, matching `/test
@@ -156,10 +213,10 @@ comparison; for brand-new operators, it posts a single-run report. Results
 
 - `ci-report-feishu.yaml` reports every `rule-check` completion to a Feishu
   Bitable for tracking pass/fail trends over time.
-- `weekly.yaml` and `command.yaml`'s failure paths send Feishu chat
-  notifications via `.github/scripts/notify_feishu.py`.
-- `weekly.yaml` also uploads results to an internal "op-monitor" HTTP
-  service for longer-term dashboards.
+- `weekly.yaml`, `ops-test.yaml`, and `command.yaml`'s failure paths send
+  Feishu chat notifications via `.github/scripts/notify_feishu.py`.
+- `weekly.yaml` and `ops-test.yaml` also upload results to an internal
+  "op-monitor" HTTP service for longer-term dashboards.
 
 These are observability workflows; they do not gate merges.
 -->
@@ -167,9 +224,9 @@ These are observability workflows; they do not gate merges.
 
 - `ci-report-feishu.yaml` 会将每一次 `rule-check` 的执行结果上报到飞书
   多维表格（Bitable），用于跟踪长期的通过/失败趋势。
-- `weekly.yaml` 和 `command.yaml` 的失败处理路径会通过
+- `weekly.yaml`、`ops-test.yaml` 和 `command.yaml` 的失败处理路径会通过
   `.github/scripts/notify_feishu.py` 发送飞书群消息通知。
-- `weekly.yaml` 还会将结果上传到内部的 "op-monitor" HTTP 服务，用于生成
-  长期监控看板。
+- `weekly.yaml` 和 `ops-test.yaml` 还会将结果上传到内部的 "op-monitor"
+  HTTP 服务，用于生成长期监控看板。
 
 这些均属于可观测性（observability）相关的工作流，并不会阻塞 PR 的合并。

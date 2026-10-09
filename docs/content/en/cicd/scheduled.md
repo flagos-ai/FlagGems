@@ -73,6 +73,35 @@ results with `psum_text`/`psum_html`, and (unless disabled via input)
 uploads the packaged results to the internal op-monitor service and posts a
 Feishu notification with the outcome.
 
+## `ops-test.yaml` — QA acceptance testing
+
+**Trigger:** manual `workflow_dispatch` only, with optional `branch`,
+`vendors`, `ops`, `upload_log`, and `send_feishu` inputs.
+
+The on-demand counterpart to `weekly.yaml`, used by QA for acceptance testing
+of a specific branch, vendor set, or operator list before a release. The
+`prepare` job resolves the checkout ref (defaulting to `master`) and builds
+the backend matrix from `.github/configs/backends/config.yaml` plus one YAML
+file per backend, filtered by the `vendors` input (case-insensitive, empty =
+all enabled vendors); the `ops` input likewise narrows the run to specific
+operators (empty = every stage via `--stages all`).
+
+Backends are split into the same two execution modes as `weekly.yaml`:
+
+- **Container-based** (`test-container`) — runs inside the backend's Docker
+  image. Job timeout is 1440 minutes (24h) to accommodate the longest vendor
+  runs (e.g. Ascend 910B).
+- **Native** (`test-native`) — runs directly on the self-hosted runner,
+  with an 1080-minute (18h) job timeout.
+
+Each matrix job retries checkout up to three times (with 30s backoff),
+installs FlagGems, checks GPU availability, runs `tools/run_tests.py`
+scoped by `--ops` or `--stages all`, summarizes results with
+`add_labels`/`psum_text`/`psum_html`, packages them into a per-vendor
+archive, and — unless disabled via the `upload_log`/`send_feishu` inputs —
+uploads the archive to the internal op-monitor service and posts a Feishu
+notification with the outcome.
+
 ## `command.yaml` — on-demand `/test` command
 
 **Trigger:** `issue_comment` created on a PR, matching `/test
@@ -90,9 +119,9 @@ comparison; for brand-new operators, it posts a single-run report. Results
 
 - `ci-report-feishu.yaml` reports every `rule-check` completion to a Feishu
   Bitable for tracking pass/fail trends over time.
-- `weekly.yaml` and `command.yaml`'s failure paths send Feishu chat
-  notifications via `.github/scripts/notify_feishu.py`.
-- `weekly.yaml` also uploads results to an internal "op-monitor" HTTP
-  service for longer-term dashboards.
+- `weekly.yaml`, `ops-test.yaml`, and `command.yaml`'s failure paths send
+  Feishu chat notifications via `.github/scripts/notify_feishu.py`.
+- `weekly.yaml` and `ops-test.yaml` also upload results to an internal
+  "op-monitor" HTTP service for longer-term dashboards.
 
 These are observability workflows; they do not gate merges.

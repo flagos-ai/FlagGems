@@ -29,6 +29,7 @@ what runs on a schedule, and what runs on release.
 - [Pull request checks](pull-request/) — workflows triggered by opening,
   updating, or commenting on a pull request
 - [Scheduled and on-demand testing](scheduled/) — daily/weekly full-suite
-  tests, coverage reporting, and on-demand `/test` commands
+  tests, coverage reporting, on-demand QA acceptance testing, and on-demand
+  `/test` commands
 - [Release and sync](release-sync/) — building/publishing wheels and
   mirroring the repository to other remotes
