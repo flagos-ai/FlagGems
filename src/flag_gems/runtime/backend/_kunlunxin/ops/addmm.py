@@ -375,7 +375,9 @@ def addmm(bias, mat1, mat2, *, beta=1.0, alpha=1.0):
         triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]),
     )
     dest, stride_cm, stride_cn = _dest_with_unit_inner_stride(
-        out, M, N,
+        out,
+        M,
+        N,
         force_temp=any(torch._C._is_alias_of(out, x) for x in (bias, mat1, mat2)),
     )
     with torch_device_fn.device(mat1.device):
@@ -431,7 +433,9 @@ def addmm_out(bias, mat1, mat2, *, beta=1.0, alpha=1.0, out=None):
         triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]),
     )
     dest, stride_cm, stride_cn = _dest_with_unit_inner_stride(
-        out, M, N,
+        out,
+        M,
+        N,
         force_temp=any(torch._C._is_alias_of(out, x) for x in (bias, mat1, mat2)),
     )
     with torch_device_fn.device(mat1.device):
@@ -511,7 +515,9 @@ def addmm_dtype_out(bias, mat1, mat2, out_dtype, *, beta=1, alpha=1, out):
         triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]),
     )
     dest, stride_cm, stride_cn = _dest_with_unit_inner_stride(
-        out, M, N,
+        out,
+        M,
+        N,
         force_temp=any(torch._C._is_alias_of(out, x) for x in (bias, mat1, mat2)),
     )
     with torch_device_fn.device(mat1.device):
