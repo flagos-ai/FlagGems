@@ -228,6 +228,21 @@ ops:
   - Math
   stages:
   - alpha: '5.5'
+- id: _philox_uniform_
+  description: |
+    Fills the tensor in place with samples from a uniform distribution over
+    [low, high) drawn from a stateless Philox RNG stream identified by the
+    (seed, offset) pair in `key`.
+  for:
+  - _philox_uniform_
+  labels:
+  - aten
+  - KernelGen
+  - pointwise
+  kind:
+  - Distribution
+  stages:
+  - alpha: '5.5.0'
 - id: _reshape_alias
   description: 'Creates a view of the input tensor with the given size and stride,
 

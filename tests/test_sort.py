@@ -47,10 +47,7 @@ def test_sort(batch_size, hiddensize, descending, dtype, dim):
         ref_y, dim=dim, stable=True, descending=descending
     )
 
-    with flag_gems.use_gems():
-        res_value, res_index = torch.sort(
-            y, dim=dim, stable=True, descending=descending
-        )
+    res_value, res_index = flag_gems.sort(y, dim=dim, descending=descending)
 
     utils.gems_assert_close(res_value, ref_value, dtype)
     utils.gems_assert_equal(res_index, ref_index)
@@ -82,10 +79,7 @@ def test_sort_stable(batch_size, hiddensize, descending, dtype, dim):
         ref_y, dim=dim, stable=True, descending=descending
     )
 
-    with flag_gems.use_gems():
-        res_value, res_index = torch.sort(
-            y, dim=dim, stable=True, descending=descending
-        )
+    res_value, res_index = flag_gems.sort(y, dim=dim, descending=descending)
 
     utils.gems_assert_close(res_value, ref_value, dtype)
     utils.gems_assert_equal(res_index, ref_index)

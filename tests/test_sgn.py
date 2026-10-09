@@ -68,13 +68,11 @@ def _assert_matches_torch(inp, out=None):
     ref_inp = _to_reference(inp)
     if out is None:
         ref_out = torch.sgn(ref_inp)
-        with flag_gems.use_gems():
-            result = torch.sgn(inp)
+        result = flag_gems.sgn(inp)
     else:
         ref_out = torch.empty_like(ref_inp)
         torch.sgn(ref_inp, out=ref_out)
-        with flag_gems.use_gems():
-            result = torch.sgn(inp, out=out)
+        result = flag_gems.sgn_out(inp, out=out)
         assert result is out
 
     _assert_sgn_equal(result, ref_out, inp.dtype)
@@ -103,8 +101,7 @@ def test_sgn_(shape, dtype):
     ref_inp = utils.to_reference(inp.clone())
 
     ref_out = ref_inp.sgn_()
-    with flag_gems.use_gems():
-        res_out = inp.sgn_()
+    res_out = flag_gems.sgn_(inp)
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
@@ -143,8 +140,7 @@ def test_sgn_complex_nonfinite_values():
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.sgn(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.sgn(inp)
+    res_out = flag_gems.sgn(inp)
 
     res_real = torch.view_as_real(utils.to_cpu(res_out, ref_out))
     ref_real = torch.view_as_real(ref_out).to(dtype=res_real.dtype)
@@ -183,8 +179,8 @@ def test_sgn_out_rejects_mismatched_dtype():
 
     with pytest.raises(RuntimeError):
         torch.sgn(utils.to_reference(inp), out=utils.to_reference(out))
-    with flag_gems.use_gems(), pytest.raises(RuntimeError):
-        torch.sgn(inp, out=out)
+    with pytest.raises(RuntimeError):
+        flag_gems.sgn_out(inp, out=out)
 
 
 @pytest.mark.sgn
