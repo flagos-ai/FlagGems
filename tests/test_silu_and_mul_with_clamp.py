@@ -39,8 +39,7 @@ def test_silu_and_mul_with_clamp(shape, dtype, limit):
     ref_gate = torch.clamp(ref_inp1, max=limit)
     ref_up = torch.clamp(ref_inp2, min=-limit, max=limit)
     ref_out = torch.mul(torch.nn.functional.silu(ref_gate), ref_up)
-    with flag_gems.use_gems():
-        res_out = flag_gems.silu_and_mul_with_clamp(inp1, inp2, limit)
+    res_out = flag_gems.silu_and_mul_with_clamp(inp1, inp2, limit)
 
     out_grad = torch.randn_like(res_out)
     ref_grad = utils.to_reference(out_grad, True)
@@ -75,8 +74,7 @@ def test_silu_and_mul_with_clamp_out(shape, dtype, limit):
     ref_out = torch.mul(torch.nn.functional.silu(ref_gate), ref_up)
 
     out = torch.empty_like(inp1)
-    with flag_gems.use_gems():
-        ret = flag_gems.silu_and_mul_with_clamp_out(inp1, inp2, out, limit)
+    ret = flag_gems.silu_and_mul_with_clamp_out(inp1, inp2, out, limit)
 
     assert ret is out
     utils.gems_assert_close(out, ref_out, dtype)

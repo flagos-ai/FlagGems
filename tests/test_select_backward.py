@@ -69,13 +69,12 @@ def test_select_backward(shape, dtype, dim):
             index,
         )
 
-        with flag_gems.use_gems():
-            res_out = torch.ops.aten.select_backward(
-                res_grad,
-                shape,
-                actual_dim,
-                index,
-            )
+        res_out = flag_gems.select_backward(
+            res_grad,
+            shape,
+            actual_dim,
+            index,
+        )
 
         assert res_out.shape == tuple(shape)
         assert res_out.dtype == res_grad.dtype
@@ -103,8 +102,7 @@ def test_select_backward_non_contiguous(dtype):
 
     ref_out = torch.ops.aten.select_backward(ref_grad, shape, dim, index)
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.select_backward(res_grad, shape, dim, index)
+    res_out = flag_gems.select_backward(res_grad, shape, dim, index)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -121,7 +119,6 @@ def test_select_backward_small_and_edge(dtype):
 
     ref_out = torch.ops.aten.select_backward(ref_grad, shape, dim, index)
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.select_backward(res_grad, shape, dim, index)
+    res_out = flag_gems.select_backward(res_grad, shape, dim, index)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
