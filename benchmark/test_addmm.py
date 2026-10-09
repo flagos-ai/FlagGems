@@ -19,6 +19,8 @@ import flag_gems
 
 from . import base, consts, utils
 
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+
 
 def _input_fn(b, m, n, k, dtype, device, b_column_major):
     inp1 = torch.randn([m, k], dtype=dtype, device=device)
@@ -106,9 +108,12 @@ def _input_fn_dtype(b, m, n, k, dtype, device, b_column_major):
 
 
 def _native_addmm_dtype(bias, mat1, mat2, out_dtype, *, beta=1.0, alpha=1.0):
-    """Device baseline for ``aten::addmm.dtype``.
+    """Kunlunxin-only device baseline for ``aten::addmm.dtype``.
 
-    This torch build registers the ``addmm.dtype`` schema but ships no device
+    Every other vendor keeps the native ``torch.ops.aten.addmm.dtype`` op as the
+    baseline, which is available there.
+
+    On this backend the ``addmm.dtype`` schema is registered but ships no device
     kernel for it: only Meta/Autograd kernels exist, and the CUDA/XPU dispatch
     keys resolve to the torch_xmlir eager *fallback*
     (``ts_eager_fallback.cpp``), so the native call raises
@@ -141,6 +146,13 @@ def _gems_addmm_dtype_out(bias, mat1, mat2, out_dtype, out, beta=1.0, alpha=1.0)
     )
 
 
+def _aten_addmm_dtype_out(bias, mat1, mat2, out_dtype, out):
+    """Upstream baseline for every non-Kunlunxin vendor: the native dtype overload."""
+    return torch.ops.aten.addmm.dtype_out(
+        bias, mat1, mat2, out_dtype, beta=1.0, alpha=1.0, out=out
+    )
+
+
 @pytest.mark.addmm_dtype
 @pytest.mark.skipif(
     utils.SkipVersion("torch", "<2.8"),
@@ -154,8 +166,8 @@ def test_addmm_dtype(monkeypatch):
     bench = base.BlasBenchmark(
         op_name="addmm_dtype",
         input_fn=_input_fn_dtype,
-        torch_op=_native_addmm_dtype,
-        gems_op=flag_gems.addmm_dtype,
+        torch_op=_native_addmm_dtype if IS_KUNLUNXIN else torch.ops.aten.addmm.dtype,
+        gems_op=flag_gems.addmm_dtype if IS_KUNLUNXIN else None,
         dtypes=consts.FP16_BF16_DTYPES,
     )
 
@@ -187,8 +199,8 @@ def test_addmm_dtype_out(monkeypatch):
     bench = base.BlasBenchmark(
         op_name="addmm_dtype_out",
         input_fn=_input_fn_dtype_out,
-        torch_op=_native_addmm_dtype_out,
-        gems_op=_gems_addmm_dtype_out,
+        torch_op=(_native_addmm_dtype_out if IS_KUNLUNXIN else _aten_addmm_dtype_out),
+        gems_op=_gems_addmm_dtype_out if IS_KUNLUNXIN else None,
         dtypes=consts.FP16_BF16_DTYPES,
     )
 
