@@ -1,6 +1,7 @@
 {
   "api_version": "v6.0",
   "name": "_cast_Char",
+  "requires_triton_kernel": true,
   "description": "Representative ATen signature (not an exclusive ABI): aten::_cast_Char(Tensor self, bool non_blocking=False) -> Tensor. Original Gems pytest calls and results define the full contract; do not narrow tests to this signature. Semantics: cast the entries of `self` to torch.int8 (Char), returning an int8 tensor whose shape equals the input's. The pytest leaves out-of-range and non-finite payloads to the native operator on the active device and hard-codes no clamping or widening. `non_blocking` is accepted as a keyword and the result matches the native conversion for the omitted default and for the explicit False and True forms. When the operand is already int8, the operator returns the very same tensor object (same storage, storage offset, stride and shape) rather than a copy; this aliasing belongs to the already-int8 case covered by the pytest and is not expressed by this single-signature model. The operator takes exactly one tensor operand (no broadcasting), has no `.out` overload, and produces an integral result with no autograd history. All supplied registered schemas for this operator (verbatim): aten::_cast_Char(Tensor self, bool non_blocking=False) -> Tensor. Overload-, keyword-, return-, error-, mutation- and alias-dependent behavior remains owned by the original Gems pytest.",
   "parameters": [
     {

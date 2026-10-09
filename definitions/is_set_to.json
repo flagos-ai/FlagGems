@@ -1,6 +1,7 @@
 {
   "api_version": "v6.0",
   "name": "is_set_to",
+  "requires_triton_kernel": false,
   "description": "Representative ATen signature (not an exclusive ABI): aten::is_set_to(Tensor self, Tensor tensor) -> bool. This representative overload is not exclusive: the original Gems pytest owns the full contract for overloads, keyword arguments, returns, errors, aliasing and mutation, and no test or reference behavior may be removed or adapted to fit this one signature. All supplied registered schema strings: aten::is_set_to(Tensor self, Tensor tensor) -> bool. Semantics derived from the tests: the operator inspects allocation metadata only (untyped storage identity, storage offset, sizes, strides and the lazy conjugate/negative bits) and returns a Python bool rather than a tensor; it does not read element values, so NaN/Inf payloads and value ranges cannot change the result. Tested relations include the same object, detach, an as_strided view with identical geometry, a second TensorImpl over the same storage (set_), clone (different storage, not set to), narrowed views, strided slices, transposes, expanded views, dtype-reinterpretation views via Tensor.view(dtype), which are still set to while the two operands carry different dtypes, and lazy conj/neg views which are not set to anything until resolve_conj()/resolve_neg() materializes a plain tensor. Non-tensor operands must raise RuntimeError or TypeError, empty sibling views differ when storage offsets differ, and neither operand may be mutated by the query.",
   "parameters": [
     {

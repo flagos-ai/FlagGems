@@ -1,6 +1,7 @@
 {
   "api_version": "v6.0",
   "name": "q_per_channel_axis",
+  "requires_triton_kernel": false,
   "description": "Representative ATen signature (not an exclusive ABI): aten::q_per_channel_axis(Tensor self) -> int. This schema is copied verbatim from the supplied schema evidence and is representative only; it is not exclusive. Original Gems pytest owns the full contract for overloads, keyword arguments, returns, errors, aliasing and mutation, and no test or reference behavior may be narrowed, removed or adapted to fit this one signature. All supplied registered schema strings, verbatim: \"aten::q_per_channel_axis(Tensor self) -> int\". Semantics: reads the channel axis stored by a per-channel quantizer on the operand's quantizer metadata and returns it as a Python int; no tensor value, no broadcast form, no gradient and no element-wise rounding are involved. The accessor accepts per-channel affine quantized operands (torch.qint8, torch.quint8, torch.qint32, and sub-byte quint4x2/quint2x4 built through the factory), including 0-dim, empty-dim, negative-axis and view/alias layouts, and reports the view's own saved axis without disturbing the base tensor. Only stored metadata is read, so device-resident, host-resident and cloned operands behave identically. Invalid inputs (non-tensor, plain float tensor, per-tensor quantized operand) are expected to raise, and those error contracts remain owned by pytest rather than expressed in this definition.",
   "parameters": [
     {

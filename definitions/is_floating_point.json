@@ -1,6 +1,7 @@
 {
   "api_version": "v6.0",
   "name": "is_floating_point",
+  "requires_triton_kernel": false,
   "description": "Representative ATen signature (not an exclusive ABI): aten::is_floating_point(Tensor self) -> bool. This representative overload is not exclusive: the original Gems pytest owns the full contract for overloads, keyword arguments, returns, errors, aliasing and mutation, and tests must never be narrowed, removed or adapted to fit this one signature. Registered ATen schema strings supplied for this operator: aten::is_floating_point(Tensor self) -> bool. Semantics from the tests: the operator inspects only self.dtype, so the Python bool result must not depend on values, shape, strides, storage offset, or lazy conj/neg state. The pytest additionally covers the optional-Tensor form where None is a valid operand reported as not floating, empty operands, special nan/inf values, transposed/sliced/windowed/expanded/neg-view/conj layouts that must keep sharing the original storage, non-Tensor inputs (python float, list, string) and a missing argument, both of which must raise TypeError or RuntimeError. Those optional-argument, error and aliasing behaviors stay owned by the tests and are not expressed by this single-signature model.",
   "parameters": [
     {

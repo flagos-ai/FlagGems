@@ -1,6 +1,7 @@
 {
   "api_version": "v6.0",
   "name": "_to_cpu",
+  "requires_triton_kernel": true,
   "description": "Representative ATen signature, verbatim from the supplied schema: aten::_to_cpu(Tensor[] tensors) -> Tensor[]. This representative signature is not exclusive: the original Gems pytest defines the full contract (all overloads, keyword arguments, returns, errors, aliasing and mutation) and tests must not be narrowed to this signature. Semantics: takes a sequence of tensors and returns one CPU tensor per entry in the same order and length; device tensors are copied to host storage while host tensors are returned unchanged (host identity is `is`-observable), so a device-to-host copy yields per-entry distinct tensors for duplicate inputs. The native result decides the transferred layout (strides, storage offset, contiguity, channels_last) and whether lazy neg/conj bits survive; the copy is exact and differentiable, with the gradient flowing back to the original device leaf. The schema accepts a list, a plain tuple or an empty sequence; a bare tensor, None, a missing argument, a non-tensor entry or a string fails while binding arguments. Registered schemas: aten::_to_cpu(Tensor[] tensors) -> Tensor[].",
   "parameters": [
     {

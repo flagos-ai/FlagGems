@@ -1,6 +1,7 @@
 {
   "api_version": "v6.0",
   "name": "is_contiguous",
+  "requires_triton_kernel": false,
   "description": "Representative ATen signature (not an exclusive ABI): aten::is_contiguous(Tensor self) -> bool. This representative overload is not exclusive: the original Gems pytest defines the full contract, including the memory_format overload, keyword arguments, return types, errors, aliasing and mutation behavior; do not remove tests or adapt reference behavior to fit this one signature. Registered schemas: \"aten::is_contiguous(Tensor self) -> bool\"; \"aten::is_contiguous.memory_format(Tensor self, MemoryFormat memory_format) -> bool\". Semantics: a metadata-only predicate that reads size, stride and storage_offset only and returns whether the tensor is contiguous in the queried memory format; it has no kernel, no broadcast operand and no backward, element values never change the verdict, and the input's shape/stride/offset/data_ptr/conj/neg state is left unchanged. The memory_format overload (torch.ops.aten.is_contiguous.memory_format) accepts torch.contiguous_format, torch.preserve_format, torch.channels_last and torch.channels_last_3d, returns False for layouts incompatible with the queried format (e.g. channels-last ranks that do not match), and rejects non-integer memory_format values; non-tensor inputs and extra positional arguments raise RuntimeError or TypeError.",
   "parameters": [
     {

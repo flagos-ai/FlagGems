@@ -1,6 +1,7 @@
 {
   "api_version": "v6.0",
   "name": "_test_ambiguous_defaults",
+  "requires_triton_kernel": false,
   "description": "Representative ATen signature (not an exclusive ABI): aten::_test_ambiguous_defaults.a(Tensor dummy, int a=1, int b=1) -> Tensor. Other registered ATen signatures: aten::_test_ambiguous_defaults.b(Tensor dummy, int a=2, str b=\"2\") -> Tensor. The original Gems pytest owns the full contract: it defines the overload set, keyword arguments, defaults, return type, error cases, aliasing and mutation behavior, and the single public candidate name must select the overload from its argument types exactly as the native packet does (int b selects .a, str b selects .b). This definition must not be used to narrow or remove any of that coverage. Semantics: aten::_test_ambiguous_defaults never reads its operand and returns a constant int64 CPU 0-dim scalar with no autograd history; overload .a requires a == 1 and b == 1, overload .b requires a == 2 and b == \"2\" (invalid-parameter errors, non-tensor operands and undefined-tensor acceptance remain in pytest). The representative overload is chosen because it is the defaulted two-argument form exercised by the packet/default call paths; the .b overload's conditional argument typing is described here and remains covered by the original pytest.",
   "parameters": [
     {

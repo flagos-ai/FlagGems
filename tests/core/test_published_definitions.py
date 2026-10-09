@@ -28,6 +28,7 @@ def test_published_definition_contract(path):
     definition = json.loads(path.read_text(encoding="utf-8"))
     assert definition["api_version"] == "v6.0"
     assert definition["name"] == path.stem
+    assert isinstance(definition["requires_triton_kernel"], bool)
     assert isinstance(definition["description"], str)
     parameters = definition["parameters"]
     assert len({item["name"] for item in parameters}) == len(parameters)

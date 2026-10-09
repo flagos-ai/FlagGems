@@ -1,5 +1,6 @@
 {
   "name": "ccol_indices_copy",
+  "requires_triton_kernel": true,
   "description": "Representative ATen signature (not an exclusive ABI): aten::ccol_indices_copy(Tensor self) -> Tensor. The original Gems pytest calls and results define the required contract; support their overloads, keyword arguments, return types and errors. Do not narrow test coverage to this example signature.\nRegistered reference signatures:\naten::ccol_indices_copy(Tensor self) -> Tensor\naten::ccol_indices_copy.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)",
   "parameters": [
     {

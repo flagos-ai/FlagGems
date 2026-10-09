@@ -1,6 +1,7 @@
 {
   "api_version": "v6.0",
   "name": "is_leaf",
+  "requires_triton_kernel": false,
   "description": "Representative ATen signature (not an exclusive ABI): aten::is_leaf(Tensor self) -> bool. All supplied registered schema strings, verbatim: aten::is_leaf(Tensor self) -> bool. Only this single overload is registered, so it is the representative signature; it is not an exclusive ABI. The original Gems pytest owns the full overload, keyword-argument, return, error, mutation and alias contract and defines the behavior tests must support; do not narrow tests to this signature and never remove tests or adapt reference behavior to fit it. Semantics: is_leaf reads autograd metadata of the exact tensor object handed in and returns a Python bool, True when the tensor carries no grad_fn (a fresh tensor, a leaf with requires_grad, a view/clone/cat/chunk/detach result that no graph records, .data aliases, detach-then-requires_grad, Parameters, and no_grad/inference_mode results) and False for the result of a recorded differentiable operation (mul, sum, cumsum, pow). The answer is independent of shape, dtype, layout and stored element values, and the read is non-destructive: the input's identity, layout and autograd state are unchanged. Mutation and alias behavior are owned by the representative signature: effects.mutates and effects.returns_alias_of are empty. The single ATen return is one logical bool output. Conditional or overload-dependent behavior remains expressed only by the original pytest, not by this model.",
   "parameters": [
     {

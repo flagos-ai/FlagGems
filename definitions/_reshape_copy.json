@@ -1,6 +1,7 @@
 {
   "api_version": "v6.0",
   "name": "_reshape_copy",
+  "requires_triton_kernel": true,
   "description": "Representative ATen signature (not an exclusive ABI): aten::_reshape_copy(Tensor self, SymInt[] size) -> Tensor. Registered schemas supplied for this operator (verbatim): aten::_reshape_copy(Tensor self, SymInt[] size) -> Tensor. This representative overload is not exclusive: the original Gems pytest owns the full overload, keyword-argument, return, error, aliasing and mutation behavior, and no test may be removed or its reference behavior adapted to fit this one signature. Semantics derived from the tests: the operator returns a copy of self reshaped to size, preserving the element count; size may contain a single inferred -1 extent, empty or zero-extent shapes, and arbitrary non-diagonal extent permutations; the result is contiguous, is a distinct tensor object even for zero-element inputs, and never shares storage with the input when numel > 0; lazy conj/neg view bits are dropped; non-contiguous (transpose, strided slice, offset) inputs are accepted; the flattened element order is preserved; autograd backward is supported; and invalid sizes (element-count mismatch, two ambiguous -1 extents, non-list or missing size) raise RuntimeError/TypeError as enforced by pytest. The size argument is a SymInt[] list in ATen and is also accepted as a keyword argument named size.",
   "parameters": [
     {
