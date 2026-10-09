@@ -102,7 +102,11 @@ jobs:
               include: filtered.map(b => ({
                 backend: b.backend,
                 runner_label: b.runner_label,
-                gpu_check: b.gpu_check
+                gpu_check: b.gpu_check,
+                container_image: b.container?.image || '',
+                container_options: b.container?.options || '',
+                runs_on_default: b.container?.runs_on_default || '',
+                runs_on_vllm: b.container?.runs_on_vllm || ''
               }))
             };
             core.setOutput('matrix', JSON.stringify(matrix));
@@ -173,6 +177,10 @@ jobs:
       gpu_check_script: ${{ matrix.gpu_check }}
       changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
       pr_id: ${{ needs.preprocess.outputs.pr_id }}
+      container_image: ${{ matrix.container_image }}
+      container_options: ${{ matrix.container_options }}
+      runs_on_default: ${{ matrix.runs_on_default }}
+      runs_on_vllm: ${{ matrix.runs_on_vllm }}
     secrets:
       RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
 

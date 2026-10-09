@@ -42,7 +42,7 @@ def broadcast_tensors(*tensors):
     directly without ``.contiguous()``, matching PyTorch's native O(1)
     metadata-only semantics.
     """
-    logger.debug("GEMS ILUVATAR BROADCAST_TENSORS")
+    logger.debug("GEMS_ILUVATAR BROADCAST_TENSORS")
 
     if len(tensors) == 1 and isinstance(tensors[0], (list, tuple)):
         tensors = tuple(tensors[0])

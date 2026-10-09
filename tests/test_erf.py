@@ -30,7 +30,7 @@ def test_special_erf(shape, dtype, caplog):
         ref_out = torch.ops.aten.special_erf(ref_x.float()).to(dtype)
     else:
         ref_out = torch.ops.aten.special_erf(ref_x)
-    with caplog.at_level("DEBUG", logger="flag_gems.ops.special_erf"):
+    with caplog.at_level("DEBUG", logger=utils.gems_log_logger(flag_gems.special_erf)):
         with flag_gems.use_gems():
             act_out = torch.ops.aten.special_erf(x)
     assert f"{utils.gems_log_prefix(flag_gems.special_erf)} SPECIAL_ERF" in caplog.text

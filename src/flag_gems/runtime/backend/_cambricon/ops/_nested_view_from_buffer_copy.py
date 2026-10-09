@@ -11,7 +11,7 @@ def _nested_view_from_buffer_copy(
     nested_strides: torch.Tensor,
     offsets: torch.Tensor,
 ):
-    logger.debug("GEMS CAMBRICON _NESTED_VIEW_FROM_BUFFER_COPY")
+    logger.debug("GEMS_CAMBRICON _NESTED_VIEW_FROM_BUFFER_COPY")
 
     # The Cambricon (mlu) NestedTensor backend does not implement several ops
     # (e.g. aten::unbind.int, aten::_to_copy), so a nested tensor built directly

@@ -1616,7 +1616,7 @@ def _argsort_scalar_byte_pack(
 
 def _argsort_merge_entry(inp, dim=-1, descending=False):
     """Stable indices using bounded tiles and launch-separated merge passes."""
-    logger.debug("GEMS ARGSORT")
+    logger.debug("GEMS_ASCEND ARGSORT")
     rank = inp.ndim
     if dim < -max(rank, 1) or dim >= max(rank, 1):
         raise IndexError("Dimension out of range")

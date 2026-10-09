@@ -36,6 +36,12 @@
 # "triton:" — vendor-specific Triton packages for this backend
 # "flagtree:" — FlagTree package for this backend (preferred)
 #
+# "extra_index:" — additional PyPI index URL searched (after pypi_base and
+#   mirror) when installing this backend's deps and compiler package.
+#   TEMPORARY escape hatch only: all packages should normally be published
+#   to pypi_base (FlagOS). Use this only while a vendor's packages are not
+#   yet available there, and remove it once FlagOS catches up.
+#
 # "env:" — environment variables to export (key: value pairs).
 #   Written into .venv/bin/activate by setup.sh so that
 #   `source .venv/bin/activate` sets up the full environment.
@@ -64,11 +70,12 @@ backends:
     python: "3.12"
     cmake_backend: CUDA
     triton: triton==3.6.0
-    flagtree: flagtree==0.6.1
+    flagtree: flagtree==0.7.0
     env:
       PATH: /usr/local/cuda/bin:$PATH
       LD_LIBRARY_PATH: /usr/local/cuda/lib64:$LD_LIBRARY_PATH
     deps:
+      - flagcx==0.14.0rc2.post2+cuda13.3
       - torch==2.11.0+cu130
       - torchaudio==2.11.0+cu130
       - torchvision==0.26.0+cu130
@@ -93,10 +100,11 @@ backends:
     triton: triton==3.5.0
     triton_post_install:
       - triton_ascend==3.2.1
-    flagtree: flagtree==0.6.1+ascend3.5
+    flagtree: flagtree==0.7.0+ascend3.5
     env_source:
       - /usr/local/Ascend/cann/set_env.sh
     deps:
+      - cann-shmem==1.6.0
       - torch==2.10.0+cpu
       - torch-npu==2.10.0
       - decorator==5.2.1
@@ -153,6 +161,7 @@ backends:
       LD_LIBRARY_PATH: /opt/OpenCloudOS/gcc-toolset-14/root/usr/lib64:$LD_LIBRARY_PATH
       TORCH_GCU_ENABLE_INT64_AND_UINT64: "1"
       ENABLE_I64_CHECK: "0"
+      ENFLAME_PT_OP_DEBUG_CONFIG: "fallback_cpu=all_ops"
     deps:
       - pyefml==1.9.10
       - torch==2.10.0+cpu
@@ -175,6 +184,7 @@ backends:
       TORCH_GCU_ENABLE_INT64_AND_UINT64: "1"
       ENABLE_I64_CHECK: "0"
       TORCHGCU_INDUCTOR_ENABLE: "1"
+      ENFLAME_PT_OP_DEBUG_CONFIG: "fallback_cpu=all_ops"
     deps:
       - enflame-modelopt==3.6.20260615+torch.2.11.0
       - numpy==2.3.5
@@ -191,7 +201,10 @@ backends:
   hygon:
     python: "3.10"
     triton: triton==3.5.1+das.opt1.dtk2604.torch290
-    flagtree: flagtree==0.6.1+hcu3.6
+    # Match the flagos-runtime-hygon-dtk26.04:2.2.0 image, which preinstalls
+    # flagtree 0.7.0+hcu3.6; the reconcile step then skips it instead of
+    # reinstalling the older 0.6.1 over the network.
+    flagtree: flagtree==0.7.0+hcu3.6
     env_source:
       - /opt/dtk-26.04/env.sh
     env:
@@ -204,7 +217,10 @@ backends:
     python: "3.12"
     cmake_backend: IX
     triton: triton==3.2.0+corex.4.5.0.20260804
-    flagtree: flagtree==0.6.1+iluvatar3.6
+    # Match the flagos-runtime-iluvatar-corex4.5.0:2.2.0 image, which preinstalls
+    # flagtree 0.7.0+iluvatar3.6; the reconcile step then skips it instead of
+    # reinstalling the older 0.6.1 over the network.
+    flagtree: flagtree==0.7.0+iluvatar3.6
     env:
       COREX_ROOT: /usr/local/corex
       PATH: $COREX_ROOT/bin:$PATH
@@ -219,7 +235,10 @@ backends:
   kunlunxin:
     python: "3.10"
     triton: triton==3.6.0+gitcd2d6c1b
-    flagtree: flagtree==0.6.1+xpu3.6
+    # Match the flagos-runtime-kunlunxin-xre5.37.1:2.2.0 image, which preinstalls
+    # flagtree 0.7.0+xpu3.6. The old 0.6.1+xpu3.6 wheel is a broken zip
+    # ("Failed to read from zip file") and must not be reinstalled.
+    flagtree: flagtree==0.7.0+xpu3.6
     env:
       PATH: /usr/local/xpu/bin:$PATH
       XPU_EVENT_KL3_ENABLE: "1"
@@ -260,6 +279,21 @@ backends:
       - torchcodec==0.6.0+metax3.8.1.0
       - torchaudio==2.4.1+metax3.8.1.0
       - torchvision==0.25.0+metax3.8.1.0
+
+  metax-maca3720:
+    python: "3.12"
+    triton: triton==3.0.0+metax3.7.2.0
+    flagtree: flagtree==3.1.0+metax3.7.2.0
+    env:
+      MACA_PATH: /opt/maca
+      PATH: /opt/maca/mxgpu_llvm/bin:/opt/maca/bin:${PATH}
+      LD_LIBRARY_PATH: /opt/maca/lib:/opt/maca/mxgpu_llvm/lib:$LD_LIBRARY_PATH
+    deps:
+      - torch==2.8.0+metax3.7.2.0
+      - torchaudio==2.4.1+metax3.7.2.0
+      - torchvision==0.15.1+metax3.7.2.0
+      - flash_attn==2.6.3+metax3.7.2.0torch2.8
+      - numpy==2.3.5
 
   mthreads-musa436:
     python: "3.10"
@@ -309,11 +343,12 @@ backends:
 
   thead:
     python: "3.12"
-    triton: triton==3.5.0+ppu2.0.0.oe
+    triton: triton==3.6.0+v0.2.0.ppu2.1.1
+    flagtree: flagtree==0.7.0+ppu3.6
     env_source:
       - /usr/local/PPU_SDK/envsetup.sh
     deps:
-      - torch==2.9.0+ppu2.0.0.oe
+      - torch==2.10.0+v0.1.0.ppu2.1.1
 
   tsingmicro:
     python: "3.10"
