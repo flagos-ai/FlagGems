@@ -186,8 +186,8 @@ def _attn_fwd_mthreads(
     stride_o_seqlen,
     stride_o_headsize,
     q_head_num,
-    Q_CTX,
-    KV_CTX,
+    Q_CTX: tl.constexpr,
+    KV_CTX: tl.constexpr,
     HEAD_DIM: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
@@ -394,13 +394,24 @@ def scaled_dot_product_attention(
             o.stride(2),
             o.stride(3),
             query.shape[1],
-            query.shape[2],
-            key.shape[2],
+            Q_CTX=query.shape[2],
+            KV_CTX=key.shape[2],
             HEAD_DIM=query.shape[-1],
             BLOCK_M=64,
             BLOCK_N=32,
             num_warps=8,
-            num_stages=3,
+            # Residency needs BOTH of this launch's changes together (2x2
+            # ablation, MTT S5000): stages=1 drops staging shared memory
+            # 96 -> 56 KB, and the constexpr Q_CTX/KV_CTX above drop
+            # registers 165 -> 158 (no dynamic loop bounds / scf.if tail).
+            # Either change alone still leaves the kernel at 2 CTA/MP
+            # (bound by shared memory or registers, respectively); together
+            # they reach 3 CTA/MP, which hides the serial online-softmax
+            # chain: 10.05 -> 6.45 ms on B1 H32 Q4096 KV4122 D128 bf16
+            # (the pipeliner's staging never overlapped that chain anyway:
+            # MCU shows issue slots stalled ~103% of resident cycles at
+            # every depth).
+            num_stages=1,
         )
     if torch.is_grad_enabled() and any(t.requires_grad for t in (query, key, value)):
         o = _MthreadsSdpaForward.apply(query, key, value, o, M, sm_scale, is_causal)
