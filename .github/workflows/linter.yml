@@ -58,6 +58,7 @@ jobs:
         # runner's direct egress, while the HTTP probe below keeps the proxy.
         GIT_SSH_COMMAND: "ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no -o BatchMode=yes"
       run: |
+        set +e  # probes exit non-zero (auth fail / timeout); don't abort the step
         probe_ssh() {  # $1=label $2=host $3=port
           start=$(date +%s%N)
           out=$(timeout 25 ssh -T -o ConnectTimeout=15 -o StrictHostKeyChecking=no \
