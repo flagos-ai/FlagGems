@@ -424,6 +424,97 @@ def mm_sqmma(A, B, M, N, K):
     return C
 
 
+@libentry()
+@triton.jit
+def mm_splitk_kernel(
+    A,
+    B,
+    P,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    stride_am: tl.constexpr,
+    stride_ak: tl.constexpr,
+    stride_bk: tl.constexpr,
+    stride_bn: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    SPLIT_K: tl.constexpr,
+):
+    rm = (tl.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)).to(tl.int64)
+    rn = (tl.program_id(1) * BLOCK_N + tl.arange(0, BLOCK_N)).to(tl.int64)
+    pid_k = tl.program_id(2)
+    rk = tl.arange(0, BLOCK_K)
+    acc = tl.zeros((BLOCK_M, BLOCK_N), tl.float32)
+    for start in range(tl.cdiv(K, BLOCK_K * SPLIT_K)):
+        ks = ((start * SPLIT_K + pid_k) * BLOCK_K + rk).to(tl.int64)
+        a = tl.load(
+            A + rm[:, None] * stride_am + ks[None, :] * stride_ak,
+            (rm[:, None] < M) & (ks[None, :] < K),
+            other=0,
+        )
+        b = tl.load(
+            B + ks[:, None] * stride_bk + rn[None, :] * stride_bn,
+            (ks[:, None] < K) & (rn[None, :] < N),
+            other=0,
+        )
+        acc = tl.dot(a, b, acc)
+    tl.store(
+        P + pid_k * M * N + rm[:, None] * N + rn[None, :],
+        acc,
+        (rm[:, None] < M) & (rn[None, :] < N),
+    )
+
+
+@libentry()
+@triton.jit
+def mm_splitk_reduce_kernel(
+    P, C, SIZE: tl.constexpr, SPLIT_K: tl.constexpr, BLOCK: tl.constexpr
+):
+    offsets = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    parts = tl.arange(0, SPLIT_K)
+    values = tl.load(
+        P + parts[:, None] * SIZE + offsets[None, :],
+        offsets[None, :] < SIZE,
+        other=0,
+    )
+    tl.store(C + offsets, tl.sum(values, axis=0), offsets < SIZE)
+
+
+def mm_small(a, b):
+    M, K = a.shape
+    N = b.shape[1]
+    c = torch.empty((M, N), device=a.device, dtype=a.dtype)
+    # Populate the S5000 MPs even for small output grids. Keep partials in
+    # FP32 and reduce once, avoiding low-precision atomics and an output memset.
+    split_k = 32
+    partial = torch.empty((split_k, M, N), device=a.device, dtype=torch.float32)
+    with torch_device_fn.device(a.device):
+        mm_splitk_kernel[(triton.cdiv(M, 32), triton.cdiv(N, 32), split_k)](
+            a,
+            b,
+            partial,
+            M,
+            N,
+            K,
+            a.stride(0),
+            a.stride(1),
+            b.stride(0),
+            b.stride(1),
+            BLOCK_M=32,
+            BLOCK_N=32,
+            BLOCK_K=128,
+            SPLIT_K=split_k,
+            num_warps=4,
+            num_stages=1,
+        )
+        mm_splitk_reduce_kernel[(triton.cdiv(M * N, 256),)](
+            partial, c, M * N, split_k, BLOCK=256, num_warps=4
+        )
+    return c
+
+
 def mm(a, b):
     a_dtype = a.dtype
     b_dtype = b.dtype
@@ -433,6 +524,18 @@ def mm(a, b):
         c_dtype = get_higher_dtype(a_dtype, b_dtype)
         c = torch.empty((M, N), device=a.device, dtype=c_dtype)
         return gemv_mm(a, b, c, M, K)
+
+    # Split-K helps small output grids. Bound the partial workspace and require
+    # more K work as the grid grows to amortize the separate reduction.
+    if (
+        a_dtype == b_dtype
+        and a_dtype in (torch.float16, torch.bfloat16)
+        and M > 0
+        and N > 1
+        and 512 <= K <= 32768
+        and triton.cdiv(M, 32) * triton.cdiv(N, 32) <= min(64, K // 16)
+    ):
+        return mm_small(a, b)
 
     if is_sqmma_compatible(a, b, N, K):
         return mm_sqmma(

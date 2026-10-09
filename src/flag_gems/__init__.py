@@ -435,6 +435,7 @@ _FULL_CONFIG = (
     ("_padded_dense_to_jagged_forward", _padded_dense_to_jagged_forward),
     ("_pdist_backward", _pdist_backward),
     ("_pdist_forward", _pdist_forward),
+    ("_philox_uniform_", _philox_uniform_),
     # _pin_memory takes a CPU tensor and dispatches on the CPU key, not the
     # accelerator key: registering under the backend key would never fire.
     ("_pin_memory", _pin_memory, None, ["CPU"]),
@@ -795,6 +796,8 @@ _FULL_CONFIG = (
     ("conv_transpose1d", conv_transpose1d),
     ("conv_transpose2d.input", conv_transpose2d),
     ("conv_transpose3d.input", conv_transpose3d),
+    ("convolution_backward_overrideable", convolution_backward_overrideable),
+    ("convolution_backward_overrideable.out", convolution_backward_overrideable_out),
     ("convolution_overrideable", convolution_overrideable),
     ("convolution_overrideable.out", convolution_overrideable_out),
     (
