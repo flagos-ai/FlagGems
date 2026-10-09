@@ -130,6 +130,15 @@ def test_conv2d(
 
 @pytest.mark.conv2d_padding
 @pytest.mark.skipif(vendor_name == "hygon", reason="Issue #2802: operator doesn't work")
+@pytest.mark.skipif(
+    vendor_name == "kunlunxin",
+    reason="Issue #2803: the reference call F.conv2d(padding='valid'|'same') "
+    "dispatches to aten::conv2d.padding, which has no Autograd kernel on this "
+    "XPU build, so torch.autograd.grad over the reference raises 'One of the "
+    "differentiated Tensors appears to not have been used in the graph' before "
+    "the operator is reached. The official scheduler runs this marker with "
+    "--ref cpu (where it is 24/0); the CI unit-test step does not.",
+)
 @pytest.mark.parametrize("shape, kernel,groups", SHAPE_CONV2D)
 @pytest.mark.parametrize("stride", [1])
 @pytest.mark.parametrize("padding", STR_PADDINGS)
