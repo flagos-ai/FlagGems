@@ -256,7 +256,6 @@ from flag_gems.ops._gather_sparse_backward import _gather_sparse_backward
 from flag_gems.ops._has_compatible_shallow_copy_type import (
     _has_compatible_shallow_copy_type,
 )
-from flag_gems.ops.has_same_storage_numel import _has_same_storage_numel as has_same_storage_numel
 from flag_gems.ops._histogramdd_from_bin_cts import (
     _histogramdd_from_bin_cts,
     _histogramdd_from_bin_cts_out,
@@ -787,6 +786,9 @@ from flag_gems.ops.hardswish_backward import hardswish_backward
 from flag_gems.ops.hardtanh import hardtanh, hardtanh_out
 from flag_gems.ops.hardtanh_ import hardtanh_
 from flag_gems.ops.hardtanh_backward import hardtanh_backward
+from flag_gems.ops.has_same_storage_numel import (
+    _has_same_storage_numel as has_same_storage_numel,
+)
 from flag_gems.ops.hash_tensor import hash_tensor
 from flag_gems.ops.heaviside import heaviside
 from flag_gems.ops.heaviside_ import heaviside_
