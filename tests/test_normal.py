@@ -37,8 +37,7 @@ def test_normal_(shape, dtype):
     loc = 3.0
     scale = 10.0
     res_out = torch.randn(size=shape, dtype=dtype, device=flag_gems.device)
-    with flag_gems.use_gems():
-        res_out.normal_(loc, scale)
+    flag_gems.normal_(res_out, loc, scale)
 
     ref_out = utils.to_reference(res_out)
     mean = torch.mean(ref_out)
@@ -64,8 +63,7 @@ def test_normal_float_float_(shape, dtype):
     scale = 10.0
     res_out = torch.randn(size=shape, dtype=dtype, device=flag_gems.device)
     original_ptr = res_out.data_ptr()
-    with flag_gems.use_gems():
-        returned = res_out.normal_(loc, scale)
+    returned = flag_gems.normal_(res_out, loc, scale)
 
     assert returned.data_ptr() == original_ptr
 
@@ -92,8 +90,7 @@ def test_normal_float_tensor(shape, dtype):
     loc = 3.0
     scale = torch.full(size=shape, fill_value=10.0, dtype=dtype, device=device)
 
-    with flag_gems.use_gems():
-        res_out = torch.normal(loc, scale)
+    res_out = flag_gems.normal_float_tensor(loc, scale)
 
     ref_out = utils.to_reference(res_out)
     mean = torch.mean(ref_out)
@@ -117,8 +114,7 @@ def test_normal_tensor_float(shape, dtype):
 
     loc = torch.full(size=shape, fill_value=3.0, dtype=dtype, device=device)
     scale = 10.0
-    with flag_gems.use_gems():
-        res_out = torch.normal(loc, scale)
+    res_out = flag_gems.normal_tensor_float(loc, scale)
 
     ref_out = utils.to_reference(res_out)
     mean = torch.mean(ref_out)
@@ -143,8 +139,7 @@ def test_normal_tensor_tensor(shape, dtype):
     loc = torch.full(size=shape, fill_value=3.0, dtype=dtype, device=device)
     scale = torch.full(size=shape, fill_value=10.0, dtype=dtype, device=device)
 
-    with flag_gems.use_gems():
-        res_out = torch.normal(loc, scale)
+    res_out = flag_gems.normal_tensor_tensor(loc, scale)
 
     ref_out = utils.to_reference(res_out)
     mean = torch.mean(ref_out)

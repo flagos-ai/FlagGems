@@ -19,6 +19,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.utils import libentry
 from flag_gems.utils.device_info import get_device_capability
 
 logger = logging.getLogger(__name__)
@@ -274,10 +275,10 @@ def _pertensor_or_pertoken_smm_kernel(
     for k in range(0, tl.cdiv(K, TILE_K)):
         masks_k = offsets_k < K
         masks_a = masks_am[:, None] & masks_k[None, :]
-        a = tl.load(a_ptrs, mask=masks_a)
+        a = tl.load(a_ptrs, mask=masks_a, other=0.0)
 
         masks_b = masks_k[:, None] & masks_bn[None, :]
-        b = tl.load(b_ptrs, mask=masks_b)
+        b = tl.load(b_ptrs, mask=masks_b, other=0.0)
 
         acc = tl.dot(a, b, acc, out_dtype=ACC_DTYPE)
 
@@ -295,14 +296,14 @@ def _pertensor_or_pertoken_smm_kernel(
     b_scale = b_scale.broadcast_to((TILE_N, 1))
     acc = b_scale.T * acc.to(tl.float32)
 
-    c = acc.to(c_ptr.type.element_ty)
+    c = acc
 
     if bias_ptr:
         offsets_bias = offsets_bn
         bias_ptrs = bias_ptr + offsets_bias
         bias_mask = offsets_bias < N
         bias = tl.load(bias_ptrs, bias_mask)
-        c += bias
+        c += bias.to(tl.float32)
 
     offs_cm = pid_m * TILE_M + tl.arange(0, TILE_M).to(tl.int64)
     offs_cn = pid_n * TILE_N + tl.arange(0, TILE_N).to(tl.int64)
@@ -524,3 +525,103 @@ def cutlass_scaled_mm(
     elif SM_VERSION_NUM >= 75:
         # Turing
         cutlass_scaled_mm_sm75(c, a, b, a_scale, b_scale, bias)
+
+
+@libentry()
+@triton.jit
+def _scaled_mm_fp8_kernel(
+    A,
+    B,
+    SA,
+    SB,
+    Bias,
+    C,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    AM: tl.constexpr,
+    AK: tl.constexpr,
+    BK: tl.constexpr,
+    BN: tl.constexpr,
+    CM: tl.constexpr,
+    CN: tl.constexpr,
+    ROW_A: tl.constexpr,
+    ROW_B: tl.constexpr,
+    HAS_BIAS: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    DIRECT_FP8: tl.constexpr = False,
+    ACC_LIMIT: tl.constexpr = 0,
+):
+    m = tl.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)
+    n = tl.program_id(1) * BLOCK_N + tl.arange(0, BLOCK_N)
+    k = tl.arange(0, BLOCK_K)
+    acc = tl.zeros((BLOCK_M, BLOCK_N), tl.float32)
+    for start in range(tl.cdiv(K, BLOCK_K)):
+        kk = start * BLOCK_K + k
+        a = tl.load(
+            A + m[:, None] * AM + kk[None, :] * AK,
+            (m[:, None] < M) & (kk[None, :] < K),
+            other=0.0,
+        )
+        b = tl.load(
+            B + kk[:, None] * BK + n[None, :] * BN,
+            (kk[:, None] < K) & (n[None, :] < N),
+            other=0.0,
+        )
+        # Every finite E4M3/E5M2 value is exactly representable in FP16.
+        # This also supports mixed encodings without native FP8 dot instructions.
+        if DIRECT_FP8:
+            acc = tl.dot(a, b, acc, max_num_imprecise_acc=ACC_LIMIT)
+        else:
+            acc = tl.dot(a.to(tl.float16), b.to(tl.float16), acc)
+    if ROW_A:
+        sa = tl.load(SA + m, m < M, other=0.0)
+    else:
+        sa = tl.full((BLOCK_M,), tl.load(SA), tl.float32)
+    if ROW_B:
+        sb = tl.load(SB + n, n < N, other=0.0)
+    else:
+        sb = tl.full((BLOCK_N,), tl.load(SB), tl.float32)
+    acc = acc * sa[:, None] * sb[None, :]
+    if HAS_BIAS and K > 0:
+        acc += tl.load(Bias + n, n < N, other=0.0)[None, :].to(tl.float32)
+    tl.store(
+        C + m[:, None] * CM + n[None, :] * CN, acc, (m[:, None] < M) & (n[None, :] < N)
+    )
+
+
+def cutlass_scaled_mm_fp8(c, a, b, scale_a, scale_b, bias):
+    """Validated Hopper FP8 path, sharing the fused scale/bias epilogue.
+
+    Unlike the general CUTLASS-compatible entry, the ATen caller has already
+    validated metadata. Avoid repeating its dispatch and autotuning overhead.
+    """
+    m, k = a.shape
+    n = b.shape[1]
+    bm, bn, bk = (
+        (16, 32, 32) if k <= 32 else ((16, 32, 64) if m <= 128 else (32, 64, 128))
+    )
+    _scaled_mm_fp8_kernel[(triton.cdiv(m, bm), triton.cdiv(n, bn))](
+        a,
+        b,
+        scale_a,
+        scale_b,
+        bias,
+        c,
+        m,
+        n,
+        k,
+        *a.stride(),
+        *b.stride(),
+        *c.stride(),
+        scale_a.numel() != 1,
+        scale_b.numel() != 1,
+        bias is not None,
+        bm,
+        bn,
+        bk,
+        True,
+        0 if c.dtype in (torch.float8_e4m3fn, torch.float8_e5m2) else 32,
+    )

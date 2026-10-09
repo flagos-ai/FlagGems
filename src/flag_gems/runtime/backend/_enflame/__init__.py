@@ -34,6 +34,10 @@ driver = _GCUDriver()
 arch = driver.get_arch()
 arch_version = int(re.search(r"gcu(\d+)", arch).group(1))
 
+# fp8 casts are only supported on gcu400/410; gcu300 aborts the process on
+# unsupported fp8 casts instead of raising a catchable exception.
+fp8_enabled = arch_version in (400, 410)
+
 vendor_info = VendorDescriptor(
     vendor_name="enflame",
     device_name="gcu",
@@ -41,6 +45,7 @@ vendor_info = VendorDescriptor(
     dispatch_key="PrivateUse1",
     fp64_enabled=False,
     int64_enabled=False,
+    fp8_enabled=fp8_enabled,
     tle_enabled=True,
 )
 
