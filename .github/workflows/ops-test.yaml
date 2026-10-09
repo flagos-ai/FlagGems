@@ -270,10 +270,13 @@ jobs:
         shell: bash --login -e -o pipefail {0}
         run: |
           echo "[GPU check] Running GPU availability check script: ${{ matrix.gpu_check_script }}"
-          # Best-effort run: some backends (see force_test_gpus below) execute
-          # this only to print the detected GPUs, so a non-zero exit here must
-          # not fail the job.
-          GPU_OUTPUT=$(bash ${{ matrix.gpu_check_script }} || true)
+          if [ "${{ matrix.force_test_gpus }}" = "true" ]; then
+            # Best-effort run: this backend only uses the script output for
+            # logging/inspection, so a non-zero exit here must not fail the job.
+            GPU_OUTPUT=$(bash ${{ matrix.gpu_check_script }} || true)
+          else
+            GPU_OUTPUT=$(bash ${{ matrix.gpu_check_script }})
+          fi
           echo "[GPU check] GPU availability check output:"
           echo "$GPU_OUTPUT"
           if [ "${{ matrix.force_test_gpus }}" = "true" ]; then
@@ -434,10 +437,13 @@ jobs:
         shell: bash --login -e -o pipefail {0}
         run: |
           echo "[GPU check] Running GPU availability check script: ${{ matrix.gpu_check_script }}"
-          # Best-effort run: some backends (see force_test_gpus below) execute
-          # this only to print the detected GPUs, so a non-zero exit here must
-          # not fail the job.
-          GPU_OUTPUT=$(bash ${{ matrix.gpu_check_script }} || true)
+          if [ "${{ matrix.force_test_gpus }}" = "true" ]; then
+            # Best-effort run: this backend only uses the script output for
+            # logging/inspection, so a non-zero exit here must not fail the job.
+            GPU_OUTPUT=$(bash ${{ matrix.gpu_check_script }} || true)
+          else
+            GPU_OUTPUT=$(bash ${{ matrix.gpu_check_script }})
+          fi
           echo "[GPU check] GPU availability check output:"
           echo "$GPU_OUTPUT"
           if [ "${{ matrix.force_test_gpus }}" = "true" ]; then
