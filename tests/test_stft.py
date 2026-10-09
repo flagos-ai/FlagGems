@@ -20,6 +20,11 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import stft_utils
+
+# Expose the shared capability fixtures to pytest in this module.
+ascend_sip_unavailable_reason = stft_utils.ascend_sip_unavailable_reason
+require_stft_fft = stft_utils.require_stft_fft
 
 pytestmark = pytest.mark.stft
 
@@ -44,36 +49,38 @@ def test_stft_unsupported_shell_input_dtype():
 
 
 @pytest.mark.parametrize("amplitude", [0.0, 1e-30, 1e20])
-def test_stft_finite_extremes(amplitude):
+@pytest.mark.parametrize("n_fft", [7, 256])
+def test_stft_finite_extremes(amplitude, n_fft, require_stft_fft):
+    require_stft_fft(n_fft)
     for dtype in COMMON_DTYPES:
         inp_cpu = _make_input((2, 1025), dtype) * amplitude
         inp = inp_cpu.to(flag_gems.device)
-        for n_fft in (7, 256):
-            window_cpu = torch.hann_window(n_fft)
-            kwargs = dict(hop_length=3, normalized=True, return_complex=True)
-            expected = torch.ops.aten.stft.default(
-                inp_cpu.to(_reference_dtype(dtype)),
-                n_fft,
-                window=window_cpu.double(),
-                **kwargs,
-            )
-            actual = flag_gems.stft(
-                inp, n_fft, window=window_cpu.to(flag_gems.device), **kwargs
-            )
-            assert torch.isfinite(actual.cpu()).all()
-            # Rescale on the CPU so ordinary absolute tolerances cannot hide
-            # flushing tiny inputs to zero or overflow in an error reduction.
-            scale = amplitude if amplitude else 1.0
-            torch.testing.assert_close(
-                actual.cpu().to(torch.complex128) / scale,
-                expected / scale,
-                rtol=1e-4,
-                atol=1e-4,
-            )
+        window_cpu = torch.hann_window(n_fft)
+        kwargs = dict(hop_length=3, normalized=True, return_complex=True)
+        expected = torch.ops.aten.stft.default(
+            inp_cpu.to(_reference_dtype(dtype)),
+            n_fft,
+            window=window_cpu.double(),
+            **kwargs,
+        )
+        actual = flag_gems.stft(
+            inp, n_fft, window=window_cpu.to(flag_gems.device), **kwargs
+        )
+        assert torch.isfinite(actual.cpu()).all()
+        # Rescale on the CPU so ordinary absolute tolerances cannot hide
+        # flushing tiny inputs to zero or overflow in an error reduction.
+        scale = amplitude if amplitude else 1.0
+        torch.testing.assert_close(
+            actual.cpu().to(torch.complex128) / scale,
+            expected / scale,
+            rtol=1e-4,
+            atol=1e-4,
+        )
 
 
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
-def test_stft_window_promotes_low_precision_input(dtype):
+def test_stft_window_promotes_low_precision_input(dtype, require_stft_fft):
+    require_stft_fft(257)
     inp_cpu = _make_input((2, 1025), torch.float32).to(dtype)
     window_cpu = torch.hann_window(127, dtype=torch.float32)
     kwargs = dict(hop_length=31, win_length=127, return_complex=True)
@@ -98,9 +105,12 @@ def test_stft_window_promotes_low_precision_input(dtype):
     "input_dtype,window_dtype",
     [(torch.float32, torch.complex32), (torch.complex32, torch.float32)],
 )
-def test_stft_ascend_complex_half_promotion(input_dtype, window_dtype):
+def test_stft_ascend_complex_half_promotion(
+    input_dtype, window_dtype, require_stft_fft
+):
     # The effective FFT dtype is complex64, but complex-half operands still
     # require half-precision component pointers while gathering their frames.
+    require_stft_fft(256, complex_half=True)
     inp_cpu = _make_input((2, 641), input_dtype)
     window_cpu = _make_input((256,), window_dtype)
     kwargs = dict(hop_length=64, normalized=True, onesided=False, return_complex=True)
@@ -280,7 +290,9 @@ def test_stft(
     return_complex,
     align,
     dtype,
+    require_stft_fft,
 ):
+    require_stft_fft(n_fft)
     if dtype in (torch.float16, torch.complex32) and n_fft & (n_fft - 1):
         pytest.skip("half precision STFT requires a power-of-two n_fft")
     inp_cpu = _make_input(shape, dtype, noncontiguous=n_fft == 16)
@@ -340,7 +352,9 @@ def test_stft_center(
     return_complex,
     align,
     dtype,
+    require_stft_fft,
 ):
+    require_stft_fft(n_fft)
     if dtype in (torch.float16, torch.complex32) and n_fft & (n_fft - 1):
         pytest.skip("half precision STFT requires a power-of-two n_fft")
     inp_cpu = _make_input(shape, dtype, noncontiguous=pad_mode == "constant")
@@ -396,7 +410,8 @@ def test_stft_center(
         ("center", True),
     ],
 )
-def test_stft_torch_dispatch(entry, center, tmp_path):
+def test_stft_torch_dispatch(entry, center, tmp_path, require_stft_fft):
+    require_stft_fft(16, backward=True)
     inp_cpu = _make_input((2, 65), torch.float32)
     window_cpu = torch.hann_window(8)
     ref_inp = inp_cpu.double().requires_grad_()
@@ -463,7 +478,8 @@ def test_stft_torch_dispatch(entry, center, tmp_path):
 
 @pytest.mark.stft
 @pytest.mark.parametrize("center", [False, True])
-def test_stft_real_output_and_complex_window_promotion(center):
+def test_stft_real_output_and_complex_window_promotion(center, require_stft_fft):
+    require_stft_fft(16)
     inp_cpu = torch.randn(2, 65)
     real_window_cpu = torch.hann_window(8)
     complex_window_cpu = torch.complex(real_window_cpu, real_window_cpu * 0.25)
@@ -504,7 +520,8 @@ def test_stft_real_output_and_complex_window_promotion(center):
     "center,align", [(False, None), (False, False), (False, True), (True, None)]
 )
 @pytest.mark.parametrize("complex_input", [False, True])
-def test_stft_gradients(center, align, complex_input):
+def test_stft_gradients(center, align, complex_input, require_stft_fft):
+    require_stft_fft(16, backward=True)
     dtype = torch.complex64 if complex_input else torch.float32
     inp_cpu = _make_input((2, 65), dtype)
     window_cpu = _make_window("complex" if complex_input else "hann", 8, dtype)
@@ -554,8 +571,9 @@ def test_stft_gradients(center, align, complex_input):
     ],
 )
 def test_stft_padding_and_promotion_gradients(
-    pad_mode, hop, complex_input, complex_window, onesided
+    pad_mode, hop, complex_input, complex_window, onesided, require_stft_fft
 ):
+    require_stft_fft(16, backward=True)
     inp_cpu = _make_input((2, 65), torch.complex64 if complex_input else torch.float32)
     window_cpu = _make_window("complex" if complex_window else "hann", 8, torch.float32)
     ref_inp = inp_cpu.to(_reference_dtype(inp_cpu.dtype)).requires_grad_()
@@ -586,7 +604,8 @@ def test_stft_padding_and_promotion_gradients(
 
 
 @pytest.mark.stft_center
-def test_stft_empty_signal_gradients():
+def test_stft_empty_signal_gradients(require_stft_fft):
+    require_stft_fft(8)
     inp = torch.empty((2, 0), device=flag_gems.device, requires_grad=True)
     window = torch.ones(8, device=flag_gems.device, requires_grad=True)
     actual = flag_gems.stft_center(
@@ -600,7 +619,8 @@ def test_stft_empty_signal_gradients():
 
 @pytest.mark.stft
 @pytest.mark.parametrize("view", ["conjugate", "negative"])
-def test_stft_lazy_views(view):
+def test_stft_lazy_views(view, require_stft_fft):
+    require_stft_fft(16, backward=True)
     xbase = _make_input((65,), torch.complex64).to(flag_gems.device)
     wbase = _make_window("complex", 8, torch.float32).to(flag_gems.device)
     x = xbase.conj() if view == "conjugate" else xbase.conj().imag
@@ -624,7 +644,8 @@ def test_stft_lazy_views(view):
 
 
 @pytest.mark.stft
-def test_stft_chunked_forward_and_backward(monkeypatch):
+def test_stft_chunked_forward_and_backward(monkeypatch, require_stft_fft):
+    require_stft_fft(32, backward=True)
     import importlib
 
     module = importlib.import_module("flag_gems.ops.stft")
@@ -698,7 +719,8 @@ def _check_stft_nonfinite(center, kind, n_fft, win_length, record_property):
 @pytest.mark.stft
 @pytest.mark.parametrize("center", [False, True])
 @pytest.mark.parametrize("kind", ["nan", "inf", "-inf"])
-def test_stft_nonfinite(center, kind, record_property):
+def test_stft_nonfinite(center, kind, record_property, require_stft_fft):
+    require_stft_fft(8)
     _check_stft_nonfinite(center, kind, 8, None, record_property)
 
 
@@ -706,16 +728,19 @@ def test_stft_nonfinite(center, kind, record_property):
 @pytest.mark.parametrize("center", [False, True])
 @pytest.mark.parametrize("kind", ["nan", "inf", "-inf"])
 @pytest.mark.parametrize("win_length", [256, 127])
-def test_stft_nonfinite_window_support(center, kind, win_length, record_property):
+def test_stft_nonfinite_window_support(
+    center, kind, win_length, record_property, require_stft_fft
+):
     # Index 13 lies outside the short window in the frame starting at zero.
     # Multiplication by a zero window weight must still propagate NaN/Inf.
+    require_stft_fft(256)
     _check_stft_nonfinite(center, kind, 256, win_length, record_property)
 
 
 @pytest.mark.stft
 @pytest.mark.parametrize("center", [False, True])
 @pytest.mark.parametrize("shape", [(0,), (2, 0)])
-def test_stft_empty_batch_or_signal_follows_native(center, shape):
+def test_stft_empty_batch_or_signal_follows_native(center, shape, require_stft_fft):
     inp_cpu = torch.empty(shape)
     ref_op = torch.ops.aten.stft.center if center else torch.ops.aten.stft.default
     kwargs = {"center": True, "pad_mode": "constant"} if center else {}
@@ -731,6 +756,7 @@ def test_stft_empty_batch_or_signal_follows_native(center, shape):
                 **kwargs,
             )
     else:
+        require_stft_fft(8)
         actual = (flag_gems.stft_center if center else flag_gems.stft)(
             inp_cpu.to(flag_gems.device), 8, hop_length=2, return_complex=True, **kwargs
         )
@@ -793,7 +819,7 @@ def test_stft_center_rejects_explicit_align(align):
 
 
 @pytest.mark.stft
-def test_stft_default_align_odd_window_native_boundary():
+def test_stft_default_align_odd_window_native_boundary(require_stft_fft):
     # This ATen combination has had an as_strided bounds error. Preserve the
     # native result (or native error) rather than masking it as a passing value.
     inp_cpu = torch.randn(32)
@@ -814,6 +840,7 @@ def test_stft_default_align_odd_window_native_boundary():
                 **{**kwargs, "window": kwargs["window"].to(flag_gems.device)},
             )
     else:
+        require_stft_fft(16)
         actual = flag_gems.stft(
             inp_cpu.to(flag_gems.device),
             16,
@@ -863,13 +890,15 @@ def _check_stft_fused_complex_window_gradients(dtype, center):
 
 @pytest.mark.stft
 @pytest.mark.parametrize("dtype", COMMON_DTYPES)
-def test_stft_fused_complex_window_gradients(dtype):
+def test_stft_fused_complex_window_gradients(dtype, require_stft_fft):
+    require_stft_fft(256, backward=True)
     _check_stft_fused_complex_window_gradients(dtype, center=False)
 
 
 @pytest.mark.stft_center
 @pytest.mark.parametrize("dtype", COMMON_DTYPES)
-def test_stft_center_fused_complex_window_gradients(dtype):
+def test_stft_center_fused_complex_window_gradients(dtype, require_stft_fft):
+    require_stft_fft(256, backward=True)
     _check_stft_fused_complex_window_gradients(dtype, center=True)
 
 

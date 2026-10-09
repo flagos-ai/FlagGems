@@ -17,6 +17,7 @@ import torch
 import torch_npu
 import triton
 import triton.language as tl
+from packaging.version import Version
 
 from flag_gems.ops.stft import _frame_args, _load_pair, _pad_index
 from flag_gems.runtime import torch_device_fn
@@ -359,10 +360,10 @@ def fft_frames(frames, *, inverse=False):
 
 @lru_cache(maxsize=1)
 def _fused_stft_supported():
-    """Conservatively enable the compiler/runtime combination tested on 910B."""
+    """Enable the fused path for the CANN 9 / Triton 3.5 release families."""
     try:
-        return triton.__version__ == "3.5.1" and all(
-            torch_npu.utils.get_cann_version(component) == "9.0.0"
+        return Version(triton.__version__).release[:2] == (3, 5) and all(
+            Version(torch_npu.utils.get_cann_version(component)).major == 9
             for component in ("CANN", "RUNTIME", "COMPILER", "TOOLKIT")
         )
     except Exception:

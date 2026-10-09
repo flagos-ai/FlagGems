@@ -24,8 +24,13 @@ import torch
 import triton
 
 import flag_gems
+from tests import stft_utils
 
 from . import base
+
+# Expose the shared capability fixtures to pytest in this module.
+ascend_sip_unavailable_reason = stft_utils.ascend_sip_unavailable_reason
+require_stft_fft = stft_utils.require_stft_fft
 
 DTYPES = [torch.float32, torch.complex64]
 if flag_gems.vendor_name == "nvidia":
@@ -201,7 +206,9 @@ def stft_center_input_fn(shape, dtype, device):
     reason="Native TorchMUSA STFT copies frames to CPU for FFT; no device baseline",
 )
 @pytest.mark.parametrize("dtype", DTYPES)
-def test_perf_stft(dtype):
+def test_perf_stft(dtype, require_stft_fft):
+    # All three fixed cases use power-of-two sizes within the fused range.
+    require_stft_fft(256)
     bench = STFTBenchmark(
         op_name="stft",
         torch_op=torch.ops.aten.stft.default,
@@ -219,7 +226,9 @@ def test_perf_stft(dtype):
     reason="Native TorchMUSA STFT copies frames to CPU for FFT; no device baseline",
 )
 @pytest.mark.parametrize("dtype", CENTER_DTYPES)
-def test_perf_stft_center(dtype):
+def test_perf_stft_center(dtype, require_stft_fft):
+    # All three fixed cases use power-of-two sizes within the fused range.
+    require_stft_fft(256)
     bench = STFTBenchmark(
         op_name="stft_center",
         torch_op=torch.ops.aten.stft.center,
