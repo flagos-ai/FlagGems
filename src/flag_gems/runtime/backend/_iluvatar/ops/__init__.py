@@ -36,6 +36,7 @@ from .concatenate import run as concatenate
 from .constant_pad_nd import constant_pad_nd
 from .conv_depthwise2d import _conv_depthwise2d
 from .conv_transpose1d import conv_transpose1d
+from .cudnn_convolution import cudnn_convolution
 from .diagonal_scatter import diagonal_scatter
 from .div import div_mode, div_mode_
 from .fractional_max_pool2d_backward import fractional_max_pool2d_backward
@@ -94,6 +95,7 @@ from .special_chebyshev_polynomial_w import (
 )
 from .special_gammainc import special_gammainc
 from .special_hermite_polynomial_h import special_hermite_polynomial_h
+from .special_hermite_polynomial_he import special_hermite_polynomial_he
 from .special_legendre_polynomial_p import special_legendre_polynomial_p
 from .special_modified_bessel_k0 import special_modified_bessel_k0
 from .special_modified_bessel_k0_out import special_modified_bessel_k0_out
@@ -140,6 +142,7 @@ __all__ = [
     "concatenate",
     "constant_pad_nd",
     "conv_transpose1d",
+    "cudnn_convolution",
     "diagonal_scatter",
     "div_mode",
     "div_mode_",
@@ -208,6 +211,7 @@ __all__ = [
     "special_chebyshev_polynomial_w_out",
     "special_gammainc",
     "special_hermite_polynomial_h",
+    "special_hermite_polynomial_he",
     "special_legendre_polynomial_p",
     "special_modified_bessel_k0",
     "special_modified_bessel_k0_out",

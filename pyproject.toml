@@ -85,12 +85,13 @@ ascend-cann850 = [
 ]
 
 ascend-cann900 = [
+    "cann-shmem==1.6.0",
     "torch==2.10.0+cpu",
     "torch-npu==2.10.0",
     "decorator==5.2.1",
     "attrs==25.3.0",
     "psutil==7.0.0",
-    "flagtree==0.6.1+ascend3.5",
+    "flagtree==0.7.0+ascend3.5",
 ]
 
 biren-br2xx = [
@@ -145,7 +146,7 @@ enflame-tops1910 = [
 hygon = [
     "torch==2.9.0+das.opt1.dtk2604",
     "flash_attn==2.8.3+das.opt1.dtk2604.torch290",
-    "flagtree==0.6.1+hcu3.6",
+    "flagtree==0.7.0+hcu3.6",
 ]
 
 iluvatar = [
@@ -153,7 +154,7 @@ iluvatar = [
     "torchaudio==2.10.0+corex.4.5.0.20260804",
     "torchvision==0.25.0+corex.4.5.0.20260804",
     "numpy<2",
-    "flagtree==0.6.1+iluvatar3.6",
+    "flagtree==0.7.0+iluvatar3.6",
 ]
 
 kunlunxin = [
@@ -172,7 +173,16 @@ kunlunxin = [
     "torch_xray==2.0.4",
     "xformers==0.0.29+1e7a8ec.d20260114",
     "xmlir==1.0.0.1",
-    "flagtree==0.6.1+xpu3.6",
+    "flagtree==0.7.0+xpu3.6",
+]
+
+metax-maca3720 = [
+    "torch==2.8.0+metax3.7.2.0",
+    "torchaudio==2.4.1+metax3.7.2.0",
+    "torchvision==0.15.1+metax3.7.2.0",
+    "flash_attn==2.6.3+metax3.7.2.0torch2.8",
+    "numpy==2.3.5",
+    "flagtree==3.1.0+metax3.7.2.0",
 ]
 
 metax-maca3810 = [
@@ -200,7 +210,7 @@ mthreads-musa520 = [
     "torch==2.9.1+musa5.2.0",
     "torch_musa==2.9.1",
     "mkl==2024.0.0",
-    "flagtree==0.6.0+mthreads3.6",
+    "flagtree==0.7.0+mthreads3.6",
 ]
 
 nvidia-cuda128 = [
@@ -214,7 +224,7 @@ nvidia-cuda133 = [
     "torch==2.11.0+cu130",
     "torchaudio==2.11.0+cu130",
     "torchvision==0.26.0+cu130",
-    "flagtree==0.6.1",
+    "flagtree==0.7.0",
 ]
 
 spacemit = [
@@ -231,8 +241,8 @@ sunrise = [
 ]
 
 thead = [
-    "torch==2.9.0+ppu2.0.0.oe",
-    "triton==3.5.0+ppu2.0.0.oe",
+    "torch==2.10.0+v0.1.0.ppu2.1.1",
+    "flagtree==0.6.2a2+ppu3.6",
 ]
 
 tsingmicro = [

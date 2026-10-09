@@ -30,16 +30,14 @@ device = flag_gems.device
 )
 def test_ones(shape, dtype):
     # without dtype
-    with flag_gems.use_gems():
-        res_out = torch.ones(shape, device=flag_gems.device)
+    res_out = flag_gems.ones(shape, device=flag_gems.device)
 
     utils.gems_assert_equal(
         res_out, torch.ones(shape, device="cpu" if cfg.TO_CPU else device)
     )
 
     # with dtype
-    with flag_gems.use_gems():
-        res_out = torch.ones(shape, dtype=dtype, device=flag_gems.device)
+    res_out = flag_gems.ones(shape, dtype=dtype, device=flag_gems.device)
 
     utils.gems_assert_equal(
         res_out, torch.ones(shape, dtype=dtype, device="cpu" if cfg.TO_CPU else device)

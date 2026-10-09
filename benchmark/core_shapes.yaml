@@ -412,6 +412,34 @@ median_dim_values:
     - [[8, 64, 384, 64], 2, false]
   shape_desc: "input shape or [input shape, dim, keepdim]"
 
+# The unary _foreach_* family is keyed by benchmark class rather than by
+# operator name: the sixty registered operators share one executor and one
+# shape policy, and base.Benchmark.set_shapes already falls back to the class
+# name through the MRO when an operator name is absent here. Listing each
+# operator instead would mean sixty identical blocks, and any omission would
+# fall through to the shared `Benchmark` default of 1024**3 elements, which at
+# sixteen tensors per call reserves 64 GiB per dtype.
+ForeachOpsBenchmark:
+  shapes:
+    - [256, 256]
+    - [512, 512]
+    - [1024, 1024]
+  shape_desc: "M, N (per tensor, list of 16)"
+
+ForeachUnaryBenchmark:
+  shapes:
+    - [256, 256]
+    - [512, 512]
+    - [1024, 1024]
+  shape_desc: "M, N (per tensor, list of 16)"
+
+ForeachUnaryListLengthBenchmark:
+  shapes:
+    - [64]
+    - [1024]
+    - [65536]
+  shape_desc: "N (per tensor, list of 1/16/128)"
+
 IntMMBenchmark:
   shapes:
     - [32, 256, 256]
@@ -786,6 +814,60 @@ AttentionBenchmark:
     - [4, 32, 2048, 128]
     - [4, 32, 4096, 128]
     - [4, 32, 8192, 128]
+
+cross_attention:
+  shapes:
+    # - [1, 16, 16, 128, 16]
+    # - [4, 8, 128, 64, 128]
+    # - [2, 16, 256, 64, 128]
+    # - [2, 32, 128, 128, 512]
+    # - [1, 16, 257, 128, 513]
+
+    - [ 4, 8, 1024, 64, 1024]
+    - [ 4, 8, 1024, 128, 1024]
+    - [ 4, 8, 2048, 64, 256]
+    - [ 4, 8, 2048, 128, 256]
+    - [ 4, 8, 17, 64, 1030]
+    - [ 4, 8, 17, 128, 1030]
+    - [ 2, 4, 512, 128, 612]
+    - [ 2, 4, 1024, 64, 1034]
+    - [ 2, 4, 2048, 32, 2048]
+    - [ 2, 4, 4096, 16, 4096]
+    - [ 2, 4, 4001, 32, 4001]
+    - [ 2, 4, 4001, 64, 4096]
+    - [ 2, 4, 4096, 128, 4000]
+    - [ 1, 2, 8192, 16, 8202]
+    - [ 1, 2, 8192, 32, 8192]
+
+
+  shape_desc: "B, H, Q_LEN, HEAD_DIM, KV_LEN"
+
+cross_attention_mask:
+  shapes:
+    # - [1, 16, 16, 128, 16]
+    # - [4, 8, 128, 64, 128]
+    # - [2, 16, 256, 64, 128]
+    # - [2, 32, 128, 128, 512]
+    # - [1, 16, 257, 128, 513]
+
+    - [ 4, 8, 1024, 64, 1024]
+    - [ 4, 8, 1024, 128, 1024]
+    - [ 4, 8, 2048, 64, 256]
+    - [ 4, 8, 2048, 128, 256]
+    - [ 4, 8, 17, 64, 1030]
+    - [ 4, 8, 17, 128, 1030]
+    - [ 2, 4, 512, 128, 612]
+    - [ 2, 4, 1024, 64, 1034]
+    - [ 2, 4, 2048, 32, 2048]
+    - [ 2, 4, 4096, 16, 4096]
+    - [ 2, 4, 4001, 32, 4001]
+    - [ 2, 4, 4001, 64, 4096]
+    - [ 2, 4, 4096, 128, 4000]
+    - [ 1, 2, 8192, 16, 8202]
+    - [ 1, 2, 8192, 32, 8192]
+    - [ 2, 4, 512, 128, 612]
+
+  shape_desc: "B, H, Q_LEN, HEAD_DIM, KV_LEN"
 
 ScaledDotProductFusedAttentionOverrideableBenchmark:
   shapes:
