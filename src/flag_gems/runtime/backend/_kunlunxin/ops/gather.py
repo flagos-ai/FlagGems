@@ -27,7 +27,6 @@ try:
         _SA2D_TLE_TILE_KERNELS,
         SA2D_TILE_MAX_K,
         SA2D_TLE_BIG_MAX_K,
-        SA2D_TLE_GRID,
         SA2D_TLE_MAX_K,
         _sa2d_grid,
     )
