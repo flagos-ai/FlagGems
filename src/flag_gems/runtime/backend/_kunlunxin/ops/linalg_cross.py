@@ -1,17 +1,3 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import logging
 
 import torch
@@ -23,18 +9,10 @@ from flag_gems.ops.linalg_cross import _resolve_view, _validate_inputs
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
+from ..utils.tle_copy import tle_copy
+
 logger = logging.getLogger(__name__)
 
-# The generic complex kernels of flag_gems.ops.linalg_cross do not compile on
-# the Kunlunxin XPU backend: the 2D-tile + tl.split contiguous kernel fails
-# with "out of resource: uni_sram" for every BLOCK_SIZE, and the strided /
-# lastdim-broadcast / dim1-3d variants crash the XPU compiler (LLVM APInt
-# assertion or "Failed to tune buffer size") around BLOCK_SIZE=128. Only the
-# plain 1D interleaved kernel compiles for every tested (BLOCK, warps) pair.
-# This override therefore keeps the generic, already-passing real-dtype
-# implementation, and routes complex64 through its own materialized
-# last-dimension-last layout with the 1D kernel below (probe: BLOCK 8..256,
-# warps 1..8 all compile).
 _BLOCK_SIZE = 256
 _NUM_WARPS = 4
 
@@ -95,8 +73,6 @@ def _linalg_cross_complex_xpu(input, other, dim, output=None):
     input = _resolve_view(input)
     other = _resolve_view(other)
 
-    # Canonicalize to a contiguous layout with the cross dimension last, which
-    # is the only layout the XPU compiler can lower for complex cross products.
     input_moved = input.movedim(dim, -1)
     other_moved = other.movedim(dim, -1)
     input_moved, other_moved = torch.broadcast_tensors(input_moved, other_moved)
@@ -122,9 +98,8 @@ def _linalg_cross_complex_xpu(input, other, dim, output=None):
     result = result_moved.movedim(-1, dim)
     if output is None:
         return result
-    # Write through the user's (possibly strided) out tensor with the native
-    # strided-copy engine; flag_gems never overrides _copy_from.
-    torch.ops.aten._copy_from(result, output, False)
+    if not tle_copy(result, output):
+        torch.ops.aten._copy_from(result, output, False)
     return output
 
 
@@ -133,7 +108,6 @@ def linalg_cross(input, other, *, dim=-1):
     logger.debug("GEMS_KUNLUNXIN LINALG_CROSS")
     if input.is_complex():
         return _linalg_cross_complex_xpu(input, other, dim)
-    # The generic real kernels compile and pass on XPU; keep them untouched.
     return _generic_linalg_cross_impl(input, other, dim)
 
 

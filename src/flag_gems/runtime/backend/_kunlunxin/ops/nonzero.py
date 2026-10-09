@@ -1,24 +1,9 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import logging
 
 import torch
 import triton
 import triton.language as tl
 
-# from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
@@ -56,7 +41,7 @@ def nonzero_kernel(
     inp_vals = tl.load(inp + offset, mask=mask).to(tl.int1)
     out_offset = tl.load(prefix_sum + offset, mask=mask) - 1
 
-    nonzero_mask = mask and inp_vals  # noqa
+    nonzero_mask = mask and inp_vals
 
     idx_flat = offset
     for dim in range(ndim - 1, -1, -1):
@@ -67,7 +52,6 @@ def nonzero_kernel(
 
 
 def _dense_block_size(n):
-    # Keep the dense coordinate tile small enough for XPU LLVM lowering.
     if n <= 2048:
         return triton.next_power_of_2(n)
     return 2048
@@ -88,14 +72,12 @@ def nonzero_dense_flat_kernel(
     mask = j < n_out
     i = j // ndim
     d = j % ndim
-    stride_d = tl.load(strides + d, mask=mask)
-    shape_d = tl.load(shape + d, mask=mask)
+    stride_d = tl.load(strides + d)
+    shape_d = tl.load(shape + d)
     coord = (i // stride_d) % shape_d
     tl.store(out + j, coord, mask=mask)
 
 
-# Cap for the default dense tile. Larger tiles measured identical throughput
-# to 8192 on this backend; > 8192 risks the XPU tl.sum/lowering ceiling.
 _DENSE_TILE_CAP = 8192
 
 
@@ -115,11 +97,6 @@ def nonzero_dense_flat_args_kernel(
     s7,
     BLOCK_SIZE: tl.constexpr,
 ):
-    # DENSE (no zeros): row-major output [N, ndim]. One lane per OUTPUT element,
-    # j = i*ndim + d, coord = (i // stride[d]) % shape[d]. Row-major strides are
-    # derived in-kernel from the shape arguments, so the kernel has no global
-    # metadata loads and no masked loads at all: the only memory streams are the
-    # contiguous int64 stores of the output.
     pid = ext.program_id(0)
     j = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE).to(tl.int64)
     mask = j < n_out
@@ -171,14 +148,6 @@ def nonzero_dense_flat_args_kernel(
     tl.store(out + j, coord, mask=mask)
 
 
-# ---- exact nonzero count (dense detection) ----
-# Two-phase count. The main grid-stride pass is completely mask-free: every
-# program reduces TILE(=8192, the documented safe tl.sum point on this backend)
-# lanes per iteration, so no correctness ceiling is touched and the loads stay
-# affine/contiguous. The remainder (< GRID*TILE elements) is counted by a
-# separate masked pass whose clamped-offset loads (masked `other` values are
-# not trusted on this backend) only ever touch a small tail, keeping the main
-# pass at full bandwidth.
 _COUNT_TILE = 8192
 _COUNT_GRID_CAP = 256
 
@@ -233,7 +202,6 @@ def nonzero_count_reduce_kernel(partial, out, BLOCK: tl.constexpr):
 
 
 def _count_nonzero(inp, n_elements):
-    # Main pass covers full GRID*TILE strides; a masked pass covers the rest.
     total = 0
     stride = _COUNT_GRID_CAP * _COUNT_TILE
     n_main = (n_elements // stride) * stride
@@ -275,8 +243,6 @@ def _count_nonzero(inp, n_elements):
 @libentry()
 @triton.jit(do_not_specialize=["s0", "s1", "s2", "s3", "s4", "s5", "s6", "s7"])
 def nonzero_shape_int32_kernel(out, s0, s1, s2, s3, s4, s5, s6, s7, ndim: tl.constexpr):
-    # One launch fills the whole int32 shape table (row-major dim sizes) used
-    # by the sparse scatter kernel; replaces ndim single-value launches.
     d = tl.arange(0, 8)
     vals = tl.where(
         d == 0,
@@ -341,7 +307,6 @@ def nonzero(inp, *, as_tuple=False):
     n_elements = inp.numel()
 
     if n_elements == 0:
-        # ATen: shape (0, ndim) for empty tensors (scalar never reaches here).
         out = torch.empty(
             (0, inp_ndim) if inp_ndim else (0, 0), dtype=torch.int64, device=inp.device
         )
@@ -351,9 +316,6 @@ def nonzero(inp, *, as_tuple=False):
 
     inp = inp.contiguous()
 
-    # Large inputs: an exact count (one reduction pass, no scan materialization)
-    # decides dense-vs-sparse. Dense needs no prefix sum at all; the count is
-    # also the exact output row count for the sparse path.
     if n_elements >= 8192 and inp.dtype != torch.bool:
         num_nonzeros = _count_nonzero(inp, n_elements)
         if (
@@ -364,8 +326,6 @@ def nonzero(inp, *, as_tuple=False):
             return _dense_result(inp, num_nonzeros, as_tuple)
         return _sparse_result(inp, inp_ndim, n_elements, num_nonzeros, as_tuple)
 
-    # Small inputs (and bool, which is ~50% sparse in practice): keep the
-    # established prefix-sum + dense/scatter paths unchanged.
     inp, inp_bool, prefix_sum, num_nonzeros = _is_dense(inp)
     n_out = num_nonzeros * inp_ndim
     if inp_ndim >= 1 and num_nonzeros == n_elements and n_out < 2**31:
@@ -390,7 +350,6 @@ def nonzero(inp, *, as_tuple=False):
             return _unbind_views(out)
         return out
 
-    # SPARSE path: data-dependent scatter via prefix sum.
     shape = _device_int_tensor(inp.shape, torch.int32, inp.device)
     out = torch.empty(num_nonzeros, inp_ndim, dtype=torch.int64, device=inp.device)
 
@@ -493,8 +452,6 @@ def nonzero_dense_dimmajor_kernel(
     ndim: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
-    # DENSE (no zeros): dim-major output [ndim, N]. One lane per element, each dim
-    # written to a contiguous run out[dim*N + offset] -> stride-1 store per dim.
     pid = ext.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offset < n_elements

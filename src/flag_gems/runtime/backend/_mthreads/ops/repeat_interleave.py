@@ -28,6 +28,18 @@ from flag_gems.utils.tensor_wrapper import StridedBuffer
 logger = logging.getLogger(__name__)
 
 
+def _resolve_lazy_view(tensor):
+    # repeat_interleave is a fallthrough for PyTorch's Conjugate/Negative
+    # dispatch keys, so the backend owns resolving lazy conjugate/negative
+    # views. The kernels below read raw storage and would otherwise use the
+    # un-resolved physical values, so materialise the logical ones here.
+    if tensor.is_neg():
+        return torch.neg(torch._neg_view(tensor))
+    if tensor.is_conj():
+        return tensor.resolve_conj()
+    return tensor
+
+
 @pointwise_dynamic(num_inputs=1, promotion_methods=[(0, "DEFAULT")])
 @triton.jit
 def copy_func(x):
@@ -35,6 +47,7 @@ def copy_func(x):
 
 
 def repeat_interleave_self_int(inp, repeats, dim=None, *, output_size=None):
+    inp = _resolve_lazy_view(inp)
     logger.debug("GEMS_MTHREADS REPEAT_INTERLEAVE_SELF_INT")
     if dim is None:
         inp = inp.flatten()
@@ -447,6 +460,9 @@ def fused_repeat_interleave_dim0(inp, repeats, dim):
 
 
 def repeat_interleave_self_tensor(inp, repeats, dim=None, *, output_size=None):
+    inp = _resolve_lazy_view(inp)
+    if isinstance(repeats, torch.Tensor):
+        repeats = _resolve_lazy_view(repeats)
     logger.debug("GEMS_MTHREADS REPEAT_INTERLEAVE_SELF_TENSOR")
 
     if repeats.numel() == 0:

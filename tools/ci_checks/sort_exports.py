@@ -411,7 +411,13 @@ def discover_init_files() -> list[Path]:
     if main_init.exists():
         files.append(main_init)
 
-    # 2. All backend ops __init__.py files
+    # 2. Generic ops init (exports every device-agnostic operator; this is the
+    # file new operators are added to, so it must be kept sorted).
+    ops_init = root / "ops" / "__init__.py"
+    if ops_init.exists():
+        files.append(ops_init)
+
+    # 3. All backend ops __init__.py files
     backend_root = root / "runtime" / "backend"
     if backend_root.exists():
         for vendor_dir in backend_root.iterdir():

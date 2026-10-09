@@ -1,19 +1,4 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import logging
-import struct
 
 import torch
 import triton
@@ -33,7 +18,7 @@ config_ = CodeGenConfig(
     buffer_size_limit=4096,
     isCloseVectorization=False,
     kunlunAutoGrid=True,
-    unroll_num=4,  # PROBE-CANDIDATE unroll4 (baseline unroll8); revert if not strictly better
+    unroll_num=4,
 )
 
 
@@ -47,9 +32,6 @@ def threshold_kernel(self, threshold, value):
         d = (self - threshold) * big
         m = tl.minimum(1.0, tl.maximum(0.0, d))
         return self * m + value * (1.0 - m)
-    # f32 fma form v + (x - v)*m: one extra rounding on the m==1 path
-    # (|err| <= 6e-8 in f32, far inside RESOLUTION), but measurably faster
-    # than the two-term form on fp32/bf16.
     d = (self - threshold) * 1.0e30
     m = tl.minimum(1.0, tl.maximum(0.0, d))
     return value + (self - value) * m
@@ -60,12 +42,46 @@ def threshold_kernel(self, threshold, value):
 )
 @triton.jit
 def threshold_backward_kernel(grad_output, self, threshold):
-    return grad_output * (self > threshold)
+    # grad_input = grad_output * (self > threshold)
+    # Avoid tensor-vs-scalar compare (B1 gets scalarized into a per-lane branch,
+    # extremely slow); instead build a 0/1 mask via saturating clamp so it maps
+    # to 512-bit vnminf/vnmaxf.
+    # (self - threshold) > 0 -> *1e30 saturates to >=1 -> min(1,max(0,..))=1; else 0.
+    go = grad_output.to(tl.float32)
+    s = self.to(tl.float32)
+    m = tl.minimum(1.0, tl.maximum(0.0, (s - threshold) * 1.0e30))
+    return (go * m).to(grad_output.dtype)
 
 
 _THRESHOLD_BWD_BLOCK = 16384
 _THRESHOLD_BWD_BLOCK_SMALL = 8192
 _THRESHOLD_BWD_WARPS = 1
+_TB_TILE = 65536
+
+
+@triton.jit
+def _threshold_bwd_grid_kernel(
+    grad,
+    self,
+    out,
+    n_elements,
+    threshold,
+    TILE: tl.constexpr,
+    NEED_MASK: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    offs = pid * TILE + tl.arange(0, TILE)
+    if NEED_MASK:
+        m = offs < n_elements
+        go = tl.load(grad + offs, mask=m).to(tl.float32)
+        s = tl.load(self + offs, mask=m).to(tl.float32)
+        msk = tl.minimum(1.0, tl.maximum(0.0, (s - threshold) * 1.0e30))
+        tl.store(out + offs, go * msk, mask=m)
+    else:
+        go = tl.load(grad + offs).to(tl.float32)
+        s = tl.load(self + offs).to(tl.float32)
+        msk = tl.minimum(1.0, tl.maximum(0.0, (s - threshold) * 1.0e30))
+        tl.store(out + offs, go * msk)
 
 
 @triton.jit
@@ -107,39 +123,21 @@ def threshold_(self, threshold, value):
     return self
 
 
+_TB_SMALL_NUMEL = 1 << 20
+
+
 def threshold_backward(grad_output, self, threshold):
     logger.debug("GEMS_KUNLUNXIN THRESHOLD_BACKWARD")
-    use_bits = (
-        grad_output.is_contiguous()
-        and self.is_contiguous()
-        and grad_output.dtype == self.dtype
-        and grad_output.dtype in (torch.float16, torch.float32, torch.bfloat16)
-        and grad_output.numel() >= 8192
-    )
-    if use_bits:
-        tbits = struct.unpack("I", struct.pack("f", float(threshold)))[0]
-        if tbits < 0x80000000:  # non-negative fp32 threshold keeps the bit test exact
-            n = grad_output.numel()
-            out = torch.empty_like(grad_output)
-            if n == 0:
-                return out
-            block = (
-                _THRESHOLD_BWD_BLOCK
-                if n >= _THRESHOLD_BWD_BLOCK
-                else _THRESHOLD_BWD_BLOCK_SMALL
-            )
-            need_mask = (n % block) != 0
-            grid = (triton.cdiv(n, block),)
-            _threshold_backward_bits_kernel[grid](
-                grad_output,
-                self,
-                out,
-                n,
-                tbits,
-                BLOCK=block,
-                NEED_MASK=need_mask,
-                num_warps=_THRESHOLD_BWD_WARPS,
-            )
-            return out
-    grad_input = threshold_backward_kernel(grad_output, self, threshold)
-    return grad_input
+    n = grad_output.numel()
+    if 0 < n <= _TB_SMALL_NUMEL:
+        go = grad_output.contiguous()
+        s = self.contiguous()
+        out_dtype = torch.result_type(grad_output, self)
+        grad_input = torch.empty_like(go, dtype=out_dtype)
+        grid = (triton.cdiv(n, _TB_TILE),)
+        need_mask = (n % _TB_TILE) != 0
+        _threshold_bwd_grid_kernel[grid](
+            go, s, grad_input, n, threshold, _TB_TILE, need_mask, num_warps=4
+        )
+        return grad_input
+    return threshold_backward_kernel(grad_output, self, threshold)

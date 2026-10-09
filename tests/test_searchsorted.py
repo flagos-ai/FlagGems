@@ -91,8 +91,7 @@ def test_searchsorted_tensor(case_name, right, side, out_int32, dtype):
     kwargs = {"out_int32": out_int32, "right": right, "side": side}
     ref = torch.searchsorted(ref_sorted_sequence, ref_values, **kwargs)
 
-    with flag_gems.use_gems():
-        res = torch.searchsorted(sorted_sequence, values, **kwargs)
+    res = flag_gems.searchsorted(sorted_sequence, values, **kwargs)
 
     assert res.dtype == (torch.int32 if out_int32 else torch.int64)
     utils.gems_assert_equal(res, ref)
@@ -112,14 +111,13 @@ def test_searchsorted_tensor_nan_inf(dtype, right):
         utils.to_reference(sorted_sequence), utils.to_reference(values), right=right
     )
 
-    with flag_gems.use_gems():
-        res = torch.searchsorted(sorted_sequence, values, right=right)
+    res = flag_gems.searchsorted(sorted_sequence, values, right=right)
 
     utils.gems_assert_equal(res, ref)
 
 
 @pytest.mark.searchsorted
-@pytest.mark.parametrize("dtype", [torch.float32, torch.int32])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.int32, torch.int8, torch.uint8])
 @pytest.mark.parametrize("right", [False, True])
 def test_searchsorted_tensor_sorter(dtype, right):
     sorted_sequence = _tensor([[4, 1, 3, 2], [10, 5, 7, 6]], dtype, flag_gems.device)
@@ -132,14 +130,13 @@ def test_searchsorted_tensor_sorter(dtype, right):
         sorter=utils.to_reference(sorter),
     )
 
-    with flag_gems.use_gems():
-        res = torch.searchsorted(sorted_sequence, values, right=right, sorter=sorter)
+    res = flag_gems.searchsorted(sorted_sequence, values, right=right, sorter=sorter)
 
     utils.gems_assert_equal(res, ref)
 
 
 @pytest.mark.searchsorted
-@pytest.mark.parametrize("dtype", [torch.float32, torch.int64])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.int64, torch.int8, torch.uint8])
 @pytest.mark.parametrize("right", [False, True])
 def test_searchsorted_tensor_noncontiguous(dtype, right):
     base = _tensor([[0, 1, 2, 3, 4, 5], [1, 2, 4, 6, 8, 10]], dtype, flag_gems.device)
@@ -149,8 +146,7 @@ def test_searchsorted_tensor_noncontiguous(dtype, right):
         utils.to_reference(sorted_sequence), utils.to_reference(values), right=right
     )
 
-    with flag_gems.use_gems():
-        res = torch.searchsorted(sorted_sequence, values, right=right)
+    res = flag_gems.searchsorted(sorted_sequence, values, right=right)
 
     utils.gems_assert_equal(res, ref)
 
@@ -165,8 +161,7 @@ def test_searchsorted_scalar(right, side, out_int32, dtype):
     kwargs = {"out_int32": out_int32, "right": right, "side": side}
     ref = torch.searchsorted(utils.to_reference(sorted_sequence), value, **kwargs)
 
-    with flag_gems.use_gems():
-        res = torch.searchsorted(sorted_sequence, value, **kwargs)
+    res = flag_gems.searchsorted_scalar(sorted_sequence, value, **kwargs)
 
     assert res.shape == torch.Size([])
     assert res.dtype == (torch.int32 if out_int32 else torch.int64)
@@ -176,7 +171,7 @@ def test_searchsorted_scalar(right, side, out_int32, dtype):
 @pytest.mark.searchsorted_out
 @pytest.mark.parametrize("out_int32", [False, True])
 @pytest.mark.parametrize("right", [False, True])
-@pytest.mark.parametrize("dtype", [torch.float32, torch.int32])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.int32, torch.int8, torch.uint8])
 def test_searchsorted_tensor_out(out_int32, right, dtype):
     sorted_sequence = _tensor([[0, 2, 2, 5], [1, 3, 4, 8]], dtype, flag_gems.device)
     values = _tensor([[0, 2, 6], [2, 4, 9]], dtype, flag_gems.device)
@@ -198,14 +193,13 @@ def test_searchsorted_tensor_out(out_int32, right, dtype):
         right=right,
         out=ref_out,
     )
-    with flag_gems.use_gems():
-        res = torch.ops.aten.searchsorted.Tensor_out(
-            sorted_sequence,
-            values,
-            out_int32=out_int32,
-            right=right,
-            out=res_out,
-        )
+    res = flag_gems.searchsorted_out(
+        sorted_sequence,
+        values,
+        out_int32=out_int32,
+        right=right,
+        out=res_out,
+    )
 
     assert res.data_ptr() == res_out.data_ptr()
     assert res.stride() == res_out.stride()
@@ -215,7 +209,7 @@ def test_searchsorted_tensor_out(out_int32, right, dtype):
 @pytest.mark.searchsorted_scalar_out
 @pytest.mark.parametrize("out_int32", [False, True])
 @pytest.mark.parametrize("right", [False, True])
-@pytest.mark.parametrize("dtype", [torch.float32, torch.int32])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.int32, torch.int8, torch.uint8])
 def test_searchsorted_scalar_out(out_int32, right, dtype):
     sorted_sequence = _tensor([0, 2, 2, 5], dtype, flag_gems.device)
     value = 2.0 if dtype.is_floating_point else 2
@@ -232,14 +226,57 @@ def test_searchsorted_scalar_out(out_int32, right, dtype):
         right=right,
         out=ref_out,
     )
-    with flag_gems.use_gems():
-        res = torch.ops.aten.searchsorted.Scalar_out(
-            sorted_sequence,
-            value,
-            out_int32=out_int32,
-            right=right,
-            out=res_out,
-        )
+    res = flag_gems.searchsorted_scalar_out(
+        sorted_sequence,
+        value,
+        out_int32=out_int32,
+        right=right,
+        out=res_out,
+    )
 
     assert res.data_ptr() == res_out.data_ptr()
+    utils.gems_assert_equal(res, ref)
+
+
+@pytest.mark.searchsorted
+@pytest.mark.parametrize("dtype", [torch.int8, torch.uint8])
+@pytest.mark.parametrize("right", [False, True])
+@pytest.mark.parametrize("out_int32", [False, True])
+def test_searchsorted_byte_boundaries(dtype, right, out_int32):
+    data = [-127, -1, -1, 0, 126] if dtype == torch.int8 else [1, 127, 128, 128, 254]
+    queries = (
+        [-128, -127, -1, 0, 126, 127]
+        if dtype == torch.int8
+        else [0, 1, 127, 128, 254, 255]
+    )
+    boundaries = _tensor(data, dtype, flag_gems.device)
+    values = _tensor(queries, dtype, flag_gems.device)
+    ref = torch.searchsorted(
+        utils.to_reference(boundaries),
+        utils.to_reference(values),
+        right=right,
+        out_int32=out_int32,
+    )
+    res = flag_gems.searchsorted(boundaries, values, right=right, out_int32=out_int32)
+    assert res.dtype == (torch.int32 if out_int32 else torch.int64)
+    utils.gems_assert_equal(res, ref)
+
+
+@pytest.mark.searchsorted_scalar
+@pytest.mark.parametrize("dtype", [torch.int8, torch.uint8])
+@pytest.mark.parametrize("right", [False, True])
+@pytest.mark.parametrize("out_int32", [False, True])
+@pytest.mark.parametrize("position", ["below", "duplicate", "above"])
+def test_searchsorted_scalar_byte_boundaries(dtype, right, out_int32, position):
+    data = [-127, -1, -1, 0, 126] if dtype == torch.int8 else [1, 127, 128, 128, 254]
+    queries = [-128, -1, 127] if dtype == torch.int8 else [0, 128, 255]
+    value = queries[["below", "duplicate", "above"].index(position)]
+    boundaries = _tensor(data, dtype, flag_gems.device)
+    ref = torch.searchsorted(
+        utils.to_reference(boundaries), value, right=right, out_int32=out_int32
+    )
+    res = flag_gems.searchsorted_scalar(
+        boundaries, value, right=right, out_int32=out_int32
+    )
+    assert res.dtype == (torch.int32 if out_int32 else torch.int64)
     utils.gems_assert_equal(res, ref)

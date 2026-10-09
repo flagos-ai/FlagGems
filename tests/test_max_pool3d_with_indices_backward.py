@@ -65,16 +65,14 @@ def test_accuracy_max_pool3d_with_indices_backward(
     )
 
     # Forward pass (gems) to get indices
-    with flag_gems.use_gems():
-        res_out, res_indices = torch.nn.functional.max_pool3d(
-            inp,
-            kernel_size=kernel_size,
-            stride=stride,
-            padding=padding,
-            dilation=dilation,
-            ceil_mode=ceil_mode,
-            return_indices=True,
-        )
+    res_out, res_indices = flag_gems.max_pool3d_with_indices(
+        inp,
+        kernel_size=kernel_size,
+        stride=stride,
+        padding=padding,
+        dilation=dilation,
+        ceil_mode=ceil_mode,
+    )
 
     # Generate gradient
     out_grad = torch.randn_like(res_out, device=flag_gems.device)
@@ -84,17 +82,16 @@ def test_accuracy_max_pool3d_with_indices_backward(
     (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
 
     # Gems backward via direct call
-    with flag_gems.use_gems():
-        res_in_grad = flag_gems.max_pool3d_with_indices_backward(
-            out_grad,
-            inp,
-            kernel_size,
-            stride,
-            padding,
-            dilation,
-            ceil_mode,
-            res_indices,
-        )
+    res_in_grad = flag_gems.max_pool3d_with_indices_backward(
+        out_grad,
+        inp,
+        kernel_size,
+        stride,
+        padding,
+        dilation,
+        ceil_mode,
+        res_indices,
+    )
 
     # max_pool3d backward is scatter-based (each output grad maps to exactly
     # one input position), so no significant accumulation tolerance needed.

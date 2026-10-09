@@ -167,6 +167,11 @@ def linear(input, weight, bias=None):
         else:
             bm, bn, bk, nw, ns, gm, xcg = 32, 32, 64, 4, 1, 8, False
 
+    # Keep the reduced-precision TF32 path limited to the large FP32 GEMM
+    # configuration above.  The small-M configurations are accuracy-sensitive
+    # and therefore use the IEEE dot product.
+    use_tf32 = input.dtype == torch.float32 and M >= 2048 and N >= 2048
+
     out_shape = in_shape[:-1] + (N,)
     out = torch.empty(out_shape, device=input.device, dtype=input.dtype)
     if orig_dim == 1:
@@ -204,7 +209,7 @@ def linear(input, weight, bias=None):
         EVEN_N=(N % bn == 0),
         EVEN_K=(K % bk == 0),
         FP32_INPUT=(input.dtype == torch.float32),
-        USE_TF32=((input.dtype == torch.float32) and (M >= 32)),
+        USE_TF32=use_tf32,
         X_CG=xcg,
         num_warps=nw,
         num_stages=ns,

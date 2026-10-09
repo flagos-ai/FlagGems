@@ -20,7 +20,6 @@ import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +45,7 @@ def fused_add_rms_norm_kernel(
     else:
         cdtype = input_ptr.dtype.element_ty
 
-    pid = ext.program_id(0)
+    pid = tl.program_id(0).to(tl.int64)
     input_ptr += pid * in_stride_r
     residual_ptr += pid * r_stride_r
 
@@ -85,7 +84,7 @@ def fused_add_rms_norm_loop_kernel(
     else:
         cdtype = input_ptr.dtype.element_ty
 
-    pid = ext.program_id(0)
+    pid = tl.program_id(0).to(tl.int64)
     row_start = pid * N
 
     # Pass 1: add residual and compute variance

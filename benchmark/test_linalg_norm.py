@@ -31,6 +31,9 @@ _VECTOR_ORDS = (2, 1, 0, float("inf"))
 # Matrix norm orders (2D inputs, dim=None → (-2, -1)).
 _MATRIX_ORDS = ("fro", 1, -1, float("inf"), float("-inf"))
 
+# matrix norm ord 'fro' is not supported; Ascend matrix_norm supports 2, -2, nuc only.
+_SVD_ORDS = (2, -2, "nuc")
+
 # Non-default dims exercised on batched inputs.
 _BATCH_DIMS = [(-2, -1), (0, 2), 1]
 
@@ -59,6 +62,15 @@ class LinalgNormBenchmark(base.Benchmark):
                     # torch's reference routes these to linalg_matrix_norm, which
                     # rejects low-precision dtypes -- no baseline to compare against.
                     return
+                if VENDOR == "ascend":
+                    # Ascend implements the matrix norm through SVD only: the
+                    # non-SVD ords (fro/1/-1/±inf) crash or hang CANN native, so
+                    # benchmark just the ords it supports (GEMS SVD kernel caps
+                    # k ∈ [2, 512]).
+                    if _svd_ok(shape):
+                        for ord_val in _SVD_ORDS:
+                            yield inp.clone(), ord_val
+                    continue
                 for ord_val in _MATRIX_ORDS:
                     yield inp.clone(), ord_val
                 if _svd_ok(shape):
@@ -68,6 +80,15 @@ class LinalgNormBenchmark(base.Benchmark):
                 # batched: dim=None (matrix, (-2, -1)) + explicit 2-tuple/int dims
                 if dtype not in (torch.float16, torch.bfloat16):
                     yield inp.clone(), None
+                if VENDOR == "ascend":
+                    # ord=1 over a 2-tuple dim is a non-SVD matrix norm, rejected
+                    # on Ascend; keep the vector-branch dim and the SVD-based ords.
+                    yield inp.clone(), 2, _BATCH_DIMS[2]
+                    if dtype not in (torch.float16, torch.bfloat16):
+                        yield inp.clone(), 2, _BATCH_DIMS[0]
+                        if _svd_ok(shape):
+                            yield inp.clone(), "nuc", _BATCH_DIMS[0]
+                    continue
                 # ord=2 with a 2-tuple dim is the spectral norm (SVD) -- torch rejects
                 # fp16/bf16 there, so only benchmark it on fp32/fp64.
                 for ord_val, dim in ((1, _BATCH_DIMS[1]), (2, _BATCH_DIMS[2])):

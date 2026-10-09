@@ -148,6 +148,11 @@ def _matrix_power_golden(A, n):
     """
     if flag_gems.vendor_name == "thead" or not flag_gems.runtime.device.support_fp64:
         ref = torch.linalg.matrix_power(A.cpu().double(), n)
+        # gems_assert_close casts the golden to the op dtype before comparing; do
+        # that cast on the CPU first — a no-fp64 device (iluvatar) has no working
+        # on-device fp64->fp32 conversion (it silently yields zeros, like the
+        # fp32->fp64 direction), so an fp64 tensor must never reach the device.
+        ref = ref.to(A.dtype)
         # gems_assert_close compares on the op device in the default mode, on CPU
         # in --ref cpu mode.
         if not utils.TO_CPU:

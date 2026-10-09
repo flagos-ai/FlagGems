@@ -82,49 +82,80 @@ and republishes the site in response to that push.
 分支。`hugo-site.yaml` 随后会响应该推送，重新构建并发布站点。
 
 <!--
-## `weekly.yaml` — multi-vendor full-suite testing
+## `ops-test.yaml` — multi-vendor QA acceptance testing
 
-**Trigger:** cron `30 13 * * 3,6` (21:30 Beijing time, Wednesday and
-Saturday); also manual `workflow_dispatch` with optional `branch`,
-`vendors`, `ops`, `upload_log`, and `send_feishu` inputs.
+**Trigger:** `workflow_dispatch` only, with optional `branch`, `vendors`,
+`ops`, `upload_log`, and `send_feishu` inputs. GitHub Actions' native
+`schedule` trigger isn't used — it was observed to delay or drop runs by
+1-5 hours under load, which isn't acceptable for GPU test scheduling.
+Instead, `.github/scripts/trigger_workflow.sh` is installed as a crontab job
+on an always-on control-plane server; by default it fires `30 21 * * 3,6`
+(Beijing time, Wednesday and Saturday) and calls the GitHub API to dispatch
+this workflow, so GitHub still allocates the runners and executes it. The
+script retries on failure and checks for a duplicate run before retrying, to
+avoid double-triggering.
 
 Runs the full (or a filtered) operator suite across every enabled vendor
-backend, configured in `.github/configs/weekly/weekly-test.yaml` and one
-YAML file per backend. Backends are split into two execution modes:
+backend for QA acceptance testing — of a scheduled sweep via the external
+dispatcher, or of a specific branch/vendor/operator set via a manual run
+before a release. The `prepare` job resolves the checkout ref (defaulting
+to `master`) and builds the backend matrix from
+`.github/configs/backends/config.yaml` plus one YAML file per backend,
+filtered by the `vendors` input (case-insensitive, empty = all enabled
+vendors); the `ops` input likewise narrows the run to specific operators
+(empty = every stage via `--stages all`).
+
+Backends are split into two execution modes:
 
 - **Container-based** (`test-container`) — runs inside the backend's Docker
-  image, for vendors whose SDK is distributed as a container.
-  Ascend (910B) gets a 24h job timeout; others get standard limits, since
-  the whole-vendor run can take many hours.
+  image, for vendors whose SDK is distributed as a container. Job timeout
+  is 1440 minutes (24h) to accommodate the longest vendor runs (e.g. Ascend
+  910B).
 - **Native** (`test-native`) — runs directly on the self-hosted runner
-  without a container, for vendors set up that way.
+  without a container, with an 1080-minute (18h) job timeout.
 
-Each run installs FlagGems, checks GPU availability, runs
-`tools/run_tests.py` (scoped by `--ops` or `--stages all`), summarizes
-results with `psum_text`/`psum_html`, and (unless disabled via input)
-uploads the packaged results to the internal op-monitor service and posts a
-Feishu notification with the outcome.
+Each matrix job retries checkout up to three times (with 30s backoff),
+installs FlagGems, checks GPU availability, runs `tools/run_tests.py`
+scoped by `--ops` or `--stages all`, summarizes results with
+`add_labels`/`psum_text`/`psum_html`, packages them into a per-vendor
+archive, and — unless disabled via the `upload_log`/`send_feishu` inputs —
+uploads the archive to the internal op-monitor service and posts a Feishu
+notification with the outcome.
 -->
-## `weekly.yaml` — 多厂商全量测试
+## `ops-test.yaml` —— 多厂商 QA 验收测试
 
-**触发条件：** cron 表达式 `30 13 * * 3,6`（每周三、周六北京时间 21:30）；
-此外支持手动触发（`workflow_dispatch`），可选参数包括 `branch`、`vendors`、
-`ops`、`upload_log`、`send_feishu`。
+**触发条件：** 仅支持手动触发（`workflow_dispatch`），可选参数包括
+`branch`、`vendors`、`ops`、`upload_log`、`send_feishu`。该工作流不使用
+GitHub Actions 原生的 `schedule` 触发器——因为在负载较高时，原生定时触发
+曾出现延迟甚至丢失运行的情况（延迟 1-5 小时），这对于 GPU 测试的调度而言
+是不可接受的。取而代之的方案是：在一台常驻运行的控制面服务器上部署
+`.github/scripts/trigger_workflow.sh` 作为 crontab 任务，默认按
+`30 21 * * 3,6`（每周三、周六北京时间 21:30）的节奏调用 GitHub API 来
+触发本工作流，实际的 runner 分配和执行仍由 GitHub 完成。该脚本在失败时
+会自动重试，并在重试前检查是否已有重复运行，以避免重复触发。
 
-针对所有已启用的厂商后端运行完整（或经过筛选）的算子测试套件，配置来自
-`.github/configs/weekly/weekly-test.yaml` 以及每个后端对应的独立 YAML
-文件。各后端按两种执行方式划分：
+针对所有已启用的厂商后端运行完整（或经过筛选）的算子测试套件，用于 QA
+验收测试——既可以是通过外部调度脚本发起的定期全量测试，也可以是发布前
+针对指定分支/厂商/算子手动发起的测试。`prepare` 作业会解析代码检出引用
+（默认为 `master`），并基于 `.github/configs/backends/config.yaml` 以及
+每个后端对应的独立 YAML 文件构建后端矩阵，根据 `vendors` 输入参数进行
+筛选（不区分大小写，留空表示所有已启用的厂商）；`ops` 输入参数同样用于
+将测试范围缩小到指定算子（留空则通过 `--stages all` 运行全部测试阶段）。
+
+各后端按两种执行方式划分：
 
 - **基于容器**（`test-container`） —— 在后端对应的 Docker 镜像内运行，
-  适用于以容器形式分发 SDK 的厂商。由于全量测试可能耗时较长，Ascend（910B）
-  的作业超时时间设置为 24 小时，其他厂商使用标准超时限制。
-- **原生运行**（`test-native`） —— 直接在自托管 runner 上运行，不使用容器，
-  适用于以这种方式配置的厂商。
+  适用于以容器形式分发 SDK 的厂商。作业超时时间为 1440 分钟（24 小时），
+  以适配耗时最长的厂商测试（例如 Ascend 910B）。
+- **原生运行**（`test-native`） —— 直接在自托管 runner 上运行，不使用
+  容器，作业超时时间为 1080 分钟（18 小时）。
 
-每次运行都会安装 FlagGems、检查 GPU 可用性、运行 `tools/run_tests.py`
-（通过 `--ops` 或 `--stages all` 参数控制测试范围）、使用
-`psum_text`/`psum_html` 汇总结果，并（除非通过输入参数禁用）将打包后的
-结果上传到内部 op-monitor 服务，同时发送包含结果的飞书通知。
+矩阵中的每个作业最多会重试三次代码检出（每次间隔 30 秒），随后安装
+FlagGems、检查 GPU 可用性、运行 `tools/run_tests.py`（通过 `--ops` 或
+`--stages all` 参数控制测试范围）、使用
+`add_labels`/`psum_text`/`psum_html` 汇总结果，并将结果打包为每个厂商
+对应的压缩包；除非通过 `upload_log`/`send_feishu` 输入参数禁用，还会将
+压缩包上传到内部 op-monitor 服务，并发送包含结果的飞书通知。
 
 <!--
 ## `command.yaml` — on-demand `/test` command
@@ -156,9 +187,9 @@ comparison; for brand-new operators, it posts a single-run report. Results
 
 - `ci-report-feishu.yaml` reports every `rule-check` completion to a Feishu
   Bitable for tracking pass/fail trends over time.
-- `weekly.yaml` and `command.yaml`'s failure paths send Feishu chat
+- `ops-test.yaml` and `command.yaml`'s failure paths send Feishu chat
   notifications via `.github/scripts/notify_feishu.py`.
-- `weekly.yaml` also uploads results to an internal "op-monitor" HTTP
+- `ops-test.yaml` also uploads results to an internal "op-monitor" HTTP
   service for longer-term dashboards.
 
 These are observability workflows; they do not gate merges.
@@ -167,9 +198,9 @@ These are observability workflows; they do not gate merges.
 
 - `ci-report-feishu.yaml` 会将每一次 `rule-check` 的执行结果上报到飞书
   多维表格（Bitable），用于跟踪长期的通过/失败趋势。
-- `weekly.yaml` 和 `command.yaml` 的失败处理路径会通过
+- `ops-test.yaml` 和 `command.yaml` 的失败处理路径会通过
   `.github/scripts/notify_feishu.py` 发送飞书群消息通知。
-- `weekly.yaml` 还会将结果上传到内部的 "op-monitor" HTTP 服务，用于生成
-  长期监控看板。
+- `ops-test.yaml` 还会将结果上传到内部的 "op-monitor" HTTP 服务，用于
+  生成长期监控看板。
 
 这些均属于可观测性（observability）相关的工作流，并不会阻塞 PR 的合并。

@@ -1,17 +1,3 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import logging
 
 import torch
@@ -22,9 +8,6 @@ from torch import Tensor
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, tl_extra_shim
 
-# The accuracy test asserts on the GENERIC logger name
-# ("flag_gems.ops.native_batch_norm"); native_layer_norm.py / native_group_norm.py
-# in this directory do the same thing for the same reason.
 logger = logging.getLogger("flag_gems.ops.native_batch_norm")
 rsqrt = tl_extra_shim.rsqrt
 
@@ -35,60 +18,6 @@ def make_3d_for_bn(input: Tensor) -> Tensor:
     elif input.ndim >= 4:
         input = input.flatten(2, -1)
     return input
-
-
-# NOTE (kunlunxin / XPU, 2026-08-29): why this file exists at all.
-#
-# `src/flag_gems/ops/native_batch_norm.py:18` binds
-# `from flag_gems.ops.batch_norm import batch_norm` at MODULE IMPORT TIME, so the
-# reference is closed over inside `flag_gems.ops.native_batch_norm.__dict__`.
-# `SpecOpRegistrar` only rebinds the `flag_gems` top-level globals, so the vendor
-# `batch_norm` override was never reachable from `aten::native_batch_norm`: on XPU
-# the op ran the GENERIC `flag_gems/ops/batch_norm.py` Welford 2D-tile kernel, which
-# hard-fails to compile (`cnt += mask.to(tl.int32)` at batch_norm.py:107 ->
-# `triton_xpu.convert_layout` shape mismatch -> `TritonXPUUnrollControl` ->
-# wrapped as `out of resource: uni_sram`).  Registering a vendor
-# `native_batch_norm` here is the fix.
-#
-# The vendor `batch_norm` in this directory cannot simply be delegated to, because
-# `aten::native_batch_norm` has DIFFERENT running-stat semantics than what that
-# implementation encodes for torch@XPU's `aten::batch_norm`:
-#   * running_var must be folded with the UNBIASED batch variance
-#     (var * count / (count - 1)); vendor batch_norm uses the biased one.
-#   * running stats must be updated for float16/bfloat16 too; vendor batch_norm
-#     restricts the update to float32.
-# Both are required by `tests/test_batch_norm.py::test_native_batch_norm`, which
-# compares against the CPU `aten::native_batch_norm` reference.
-#
-# Kernel structure.  Everything is 1D-tile only (TritonXPU rejects 2D `axis=0`
-# reductions and silently miscompiles small 2D tiles) and every loop is a
-# SINGLE level with a runtime bound: a NESTED runtime loop around a masked
-# `tl.load` does not lower on this backend -- the first version of this file used
-# `for n in range(batch_dim): for off in range(0, S, TILE_S)` and the compiler
-# rejected it with
-#   `'tt.addptr' op all non-scalar operands/results must have the same shape and
-#    base type` -> `TritonXPUUnrollControl` -> wrapped as `uni_sram`
-# (evidence: harness/results/functional/native_batch_norm_xpu3_20260829/
-# func_post_r1.log).  Hence the per-channel reduction over N*S elements is split
-# into a partial stage and an in-normalize combine:
-#   stage 1  grid=(N*C,)  per-(n, c) partial sum / sum-of-squares.  Each slice is
-#                         S CONTIGUOUS elements in the [N, C, S] layout, so the
-#                         loop is block DMA.  Partials are written TRANSPOSED to
-#                         [C, N] so that stage 2 reads them contiguously instead
-#                         of through a stride-C gather.
-#   stage 2  grid=(N*C,)  per-slice affine normalize.  Each program first folds
-#                         its channel's N partials into mean / inv_std (a tiny
-#                         contiguous [N] reduction), then streams the contiguous
-#                         spatial run as block DMA.  The n == 0 program of each
-#                         channel additionally writes save_mean / save_invstd and
-#                         the running-stat update, so every address is written
-#                         exactly once.  Same shape as the production-validated
-#                         `_batch_norm_no_update_kernel` inference path.
-# A dedicated grid=(C,) combine launch between the two stages was measured to
-# cost a FLAT ~0.040 ms on every shape (pure launch overhead,
-# harness/probe/nbn_stage_probe.py), which is why the combine lives inside
-# stage 2 instead.
-# Tile widths are always >= 64: TritonXPU silently miscompiles <= 32-wide tiles.
 
 
 def _nbn_tile_s(spatial_dim):
@@ -113,12 +42,152 @@ def _nbn_tile_n(batch_dim):
     return tile, (batch_dim % tile) != 0
 
 
+NBN_FUSED_S_MAX = 2048
+
+
+def _nbn_fused_tile_s(spatial_dim):
+    """Tile for the fused stats kernel: loop-carried accumulators only lower at
+    TILE_S <= 128, and the masked variant needs TILE_S = 64 below 128 (a
+    128-wide mostly-false mask fails to lower, e.g. for S = 1)."""
+    if spatial_dim < 128:
+        return 64, (spatial_dim % 64) != 0
+    return 128, (spatial_dim % 128) != 0
+
+
+def _nbn_exact_tile(spatial_dim):
+    """Exact-fit tile for the fused normalize kernel (load/store only, so any
+    tile width lowers).  512/1024 for short runs, pow2-capped-4096 above."""
+    if spatial_dim <= 512:
+        return 512, (spatial_dim % 512) != 0
+    if spatial_dim <= 1024:
+        return 1024, (spatial_dim % 1024) != 0
+    tile = min(triton.next_power_of_2(spatial_dim), 4096)
+    return tile, (spatial_dim % tile) != 0
+
+
+@libentry()
+@triton.jit(do_not_specialize=["momentum", "eps", "var_correction"])
+def native_batch_norm_fused_stats_kernel(
+    input_pointer,
+    mean_pointer,
+    inv_std_pointer,
+    save_mean_pointer,
+    save_inv_std_pointer,
+    running_mean_pointer,
+    running_var_pointer,
+    batch_dim,
+    feat_dim,
+    spatial_dim,
+    count,
+    momentum,
+    eps,
+    var_correction,
+    HAS_RM: tl.constexpr,
+    HAS_RV: tl.constexpr,
+    TILE_S: tl.constexpr,
+    NEED_MASK: tl.constexpr,
+):
+    c = tl.program_id(axis=0)
+    acc = tl.zeros([TILE_S], dtype=tl.float32)
+    acc_sq = tl.zeros([TILE_S], dtype=tl.float32)
+    for n in range(0, batch_dim):
+        base = (n * feat_dim + c) * spatial_dim
+        for off in range(0, spatial_dim, TILE_S):
+            idx = off + tl.arange(0, TILE_S)
+            if NEED_MASK:
+                m = idx < spatial_dim
+                x = tl.load(input_pointer + base + idx, mask=m, other=0.0).to(
+                    tl.float32
+                )
+                x = tl.where(m, x, 0.0)
+                acc += x
+                acc_sq += x * x
+            else:
+                x = tl.load(input_pointer + base + idx).to(tl.float32)
+                acc += x
+                acc_sq += x * x
+    mean = tl.sum(acc) / count
+    var = tl.sum(acc_sq) / count - mean * mean
+    inv_std = rsqrt(var + eps)
+    tl.store(mean_pointer + c, mean)
+    tl.store(inv_std_pointer + c, inv_std)
+    tl.store(save_mean_pointer + c, mean.to(save_mean_pointer.dtype.element_ty))
+    tl.store(
+        save_inv_std_pointer + c, inv_std.to(save_inv_std_pointer.dtype.element_ty)
+    )
+    if HAS_RM:
+        running_mean = tl.load(running_mean_pointer + c).to(tl.float32)
+        tl.store(
+            running_mean_pointer + c,
+            ((1.0 - momentum) * running_mean + momentum * mean).to(
+                running_mean_pointer.dtype.element_ty
+            ),
+        )
+    if HAS_RV:
+        running_var = tl.load(running_var_pointer + c).to(tl.float32)
+        tl.store(
+            running_var_pointer + c,
+            ((1.0 - momentum) * running_var + momentum * var * var_correction).to(
+                running_var_pointer.dtype.element_ty
+            ),
+        )
+
+
+@libentry()
+@triton.jit
+def native_batch_norm_fused_normalize_kernel(
+    input_pointer,
+    output_pointer,
+    mean_pointer,
+    inv_std_pointer,
+    weight_pointer,
+    bias_pointer,
+    batch_dim,
+    feat_dim,
+    spatial_dim,
+    HAS_WEIGHT: tl.constexpr,
+    HAS_BIAS: tl.constexpr,
+    TILE_S: tl.constexpr,
+    NEED_MASK: tl.constexpr,
+):
+    c = tl.program_id(axis=0)
+    mean = tl.load(mean_pointer + c).to(tl.float32)
+    inv_std = tl.load(inv_std_pointer + c).to(tl.float32)
+    if HAS_WEIGHT:
+        weight = tl.load(weight_pointer + c).to(tl.float32)
+    else:
+        weight = 1.0
+    if HAS_BIAS:
+        bias = tl.load(bias_pointer + c).to(tl.float32)
+    else:
+        bias = 0.0
+    for n in range(0, batch_dim):
+        base = (n * feat_dim + c) * spatial_dim
+        for off in range(0, spatial_dim, TILE_S):
+            idx = off + tl.arange(0, TILE_S)
+            if NEED_MASK:
+                m = idx < spatial_dim
+                x = tl.load(input_pointer + base + idx, mask=m).to(tl.float32)
+                y = weight * (x - mean) * inv_std + bias
+                tl.store(
+                    output_pointer + base + idx,
+                    y.to(output_pointer.dtype.element_ty),
+                    mask=m,
+                )
+            else:
+                x = tl.load(input_pointer + base + idx).to(tl.float32)
+                y = weight * (x - mean) * inv_std + bias
+                tl.store(
+                    output_pointer + base + idx, y.to(output_pointer.dtype.element_ty)
+                )
+
+
 @libentry()
 @triton.jit
 def native_batch_norm_partial_stats_kernel(
-    input_pointer,  # [N, C, S] contiguous, flattened
-    part_sum_pointer,  # [C, N] f32 out
-    part_sqsum_pointer,  # [C, N] f32 out
+    input_pointer,
+    part_sum_pointer,
+    part_sqsum_pointer,
     batch_dim,
     feat_dim,
     spatial_dim,
@@ -138,17 +207,12 @@ def native_batch_norm_partial_stats_kernel(
         if NEED_MASK:
             m = idx < spatial_dim
             x = tl.load(input_pointer + base + idx, mask=m, other=0.0).to(tl.float32)
-            # Do NOT rely on `other=` alone: without the explicit predication the
-            # XPU masked tail can pull neighbouring memory into the reduction.
-            # `tl.where` (not `mask.to(tl.float32)`) also avoids the arith.uitofp
-            # uni_sram failure at TILE >= 256.
             x = tl.where(m, x, 0.0)
         else:
             x = tl.load(input_pointer + base + idx).to(tl.float32)
         acc += x
         acc_sq += x * x
 
-    # Transposed [C, N] layout -> stage 2 reads a contiguous run per channel.
     out = c * batch_dim + n
     tl.store(part_sum_pointer + out, tl.sum(acc))
     tl.store(part_sqsum_pointer + out, tl.sum(acc_sq))
@@ -157,23 +221,23 @@ def native_batch_norm_partial_stats_kernel(
 @libentry()
 @triton.jit(do_not_specialize=["eps", "momentum", "var_correction"])
 def native_batch_norm_normalize_kernel(
-    input_pointer,  # [N, C, S] contiguous, flattened
+    input_pointer,
     output_pointer,
-    part_sum_pointer,  # [C, N] f32 (TRAINING) or unused alias
-    part_sqsum_pointer,  # [C, N] f32 (TRAINING) or unused alias
-    save_mean_pointer,  # [C] input-dtype out (TRAINING) or unused alias
-    save_inv_std_pointer,  # [C] input-dtype out (TRAINING) or unused alias
-    running_mean_pointer,  # [C] in/out (TRAINING) / in (inference), or alias
-    running_var_pointer,  # [C] in/out (TRAINING) / in (inference), or alias
-    weight_pointer,  # [C] or unused alias
-    bias_pointer,  # [C] or unused alias
+    part_sum_pointer,
+    part_sqsum_pointer,
+    save_mean_pointer,
+    save_inv_std_pointer,
+    running_mean_pointer,
+    running_var_pointer,
+    weight_pointer,
+    bias_pointer,
     batch_dim,
     feat_dim,
     spatial_dim,
-    count,  # batch_dim * spatial_dim
+    count,
     momentum,
     eps,
-    var_correction,  # count / (count - 1), 1.0 when count <= 1
+    var_correction,
     slice_offset,
     TRAINING: tl.constexpr,
     HAS_RM: tl.constexpr,
@@ -191,13 +255,6 @@ def native_batch_norm_normalize_kernel(
     base = pid * spatial_dim
 
     if TRAINING:
-        # Combine this channel's N partials in-program.  The dedicated grid=(C,)
-        # combine launch it replaces cost a FLAT ~0.040 ms on every shape
-        # (measured, harness/probe/nbn_stage_probe.py) because it was pure launch
-        # overhead; re-doing the tiny [N] reduction in each of the N*C programs is
-        # far cheaper than paying that launch.  The running-stat update and the
-        # returned save_mean / save_invstd are written by the n == 0 program only,
-        # so every address is still written exactly once.
         pbase = c * batch_dim
         acc = tl.zeros([TILE_N], dtype=tl.float32)
         acc_sq = tl.zeros([TILE_N], dtype=tl.float32)
@@ -235,8 +292,6 @@ def native_batch_norm_normalize_kernel(
                 )
             if HAS_RV:
                 running_var = tl.load(running_var_pointer + c).to(tl.float32)
-                # aten::native_batch_norm folds the UNBIASED batch variance into
-                # running_var (this is what the CPU reference does).
                 tl.store(
                     running_var_pointer + c,
                     (
@@ -273,6 +328,218 @@ def native_batch_norm_normalize_kernel(
             tl.store(output_pointer + base + idx, y.to(output_pointer.dtype.element_ty))
 
 
+# ---------------------------------------------------------------------------
+# TRAINING fast path: ONE launch at grid=(1,), batch axis folded into the
+# block's COLUMN axis.  See harness/solution/native_batch_norm/README.md.
+#
+# The two-stage path above is structurally capped well below the acceptance bar
+# on float32: its best measured stage-1 is 15.1 us and its best stage-2 6.0 us
+# (21.1 us total) while the torch reference needs only 9.1-11.1 us on the small
+# shapes -- i.e. TWO launches cannot reach 0.8x no matter how the tiles are
+# chosen.  A single grid=(1,) program instead costs
+#     ~8.5-9.4 us launch floor + 0.58 us * NIT + numel*3*sizeof / 107 GB/s
+# where NIT is the total `tl.static_range` unroll count.  NIT is therefore the
+# only large lever, and the trick that collapses it is folding the batch axis
+# into the block's column axis rather than into an outer loop:
+#     block   [C, NB*W]
+#     column  j -> (j // W) * NROW + (j % W)        NROW = C * S
+# A block row is still a single channel, so `tl.sum(acc, axis=1)` IS already the
+# per-channel sum over all folded n and all s: no reshape, no 3-D block (which
+# asserts in the backend's OffsetAnalysis), no second reduction.  NIT drops from
+# N*S/W to (N/NB)*(S/W).  `j` derives from `tl.arange`, so the column offsets are
+# constant-folded and the runtime-integer-chain penalty does not apply.
+#
+# Measured against the torch reference (float32 / float16 / bfloat16, do_bench
+# median), best plan per shape:
+#     (4,16,64,4)   NIT=1   1.022 / 1.739 / 2.305
+#     (16,16,64)    NIT=1   0.953 / 1.819 / 2.216
+#     (16,16,128)   NIT=1   0.852 / 1.621 / 2.094
+#     (16,16,8,48)  NIT=3   0.604 / 1.220 / 1.463
+#     (16,16,1024)  NIT=2   0.365 / 0.750 / 0.913
+# float32 alone is weak on the larger shapes because a single program only sees
+# ~107 GB/s, but acceptance is dtype-equal-weighted and fp16/bf16 more than pay
+# for it.  Past ~2^18 elements the bandwidth wall wins outright
+# ((16,8,128,128), 2 Mi elements, would be ~0.12x) -- hence the numel gate.
+_NBN_FUSED_MAX_NUMEL = 1 << 18  # (16,16,1024) still wins; 2 Mi elements does not
+# C*NB*W.  A plain Triton block has been measured to hold >= 2^18 lanes with two
+# float32 accumulators, but 2^17 is what every measured-best plan above actually
+# used, and raising NIT by one costs only 0.58 us -- so stay on measured ground.
+_NBN_FUSED_MAX_LANES = 1 << 17
+_NBN_FUSED_MAX_W = 2048  # W=4096 + bfloat16 wedges the card (noc idle timeout)
+# HARD GATE, do not relax: with bfloat16 a total unroll of NIT in {11,12,16,24}
+# silently miscomputes (NaN / errors of 5-8 ULP) and NIT=11 raises
+# `kl3ChannelCheckErrors ... status=700` -> KL_XID_KERNEL_EXCEPTION, i.e. it
+# takes the card down.  The bad region is NOT monotone (NIT=32/48 are clean), so
+# it cannot be extrapolated away; every measured-best plan above has NIT <= 8.
+_NBN_FUSED_MAX_NIT = 8
+# A block narrower than the 64-lane execution width and carrying no `mask=` gets
+# executed at 64 lanes anyway, i.e. it stores out of bounds
+# (`memory-access-laws` 2b-4).  The wide traffic below is deliberately maskless,
+# so demand at least 64 lanes in total.
+_NBN_FUSED_MIN_LANES = 64
+# W below 64 is admitted only when W == S, i.e. R == 1 and `j // W == 0`, so the
+# block's address set is one contiguous [0, C*NB*S) span instead of a strided
+# one.  Verified with a 4096-element canary past every output buffer on
+# (1,8,4,4) W=16 and (2,8,4,4) W=16, all three dtypes: spill exactly 0, worst
+# 0.79 ULP.  This is what admits (1,8,4,4) (S=16 < 64), whose two-launch
+# fallback measured 0.248/0.478/0.599 while the equally NIT=1 (4,16,64,4) --
+# same torch reference latency to within 2% -- gets 1.045/1.817/2.449.
+
+
+def _is_pow2(value):
+    return value > 0 and (value & (value - 1)) == 0
+
+
+def _nbn_fused_plan(batch_dim, feat_dim, spatial_dim):
+    """Pick (W, NB, IN, R) for the grid=(1,) fused kernel, or None if ineligible.
+
+    Minimises NIT = (N/NB) * (S/W), tie-broken by the widest W (widest
+    contiguous DMA run).  Requirements: W is a power-of-two divisor of S,
+    W <= 2048, W >= 64 unless W == S, NB divides N, C is a power of two
+    (`tl.arange(0, C)`), 64 <= C*NB*W <= the lane budget, and NIT <= 8.
+    """
+    if not _is_pow2(feat_dim):
+        return None
+    if batch_dim * feat_dim * spatial_dim > _NBN_FUSED_MAX_NUMEL:
+        return None
+    best_key = None
+    best = None
+    w = 1
+    while w <= min(_NBN_FUSED_MAX_W, spatial_dim):
+        if spatial_dim % w == 0 and (w >= 64 or w == spatial_dim):
+            r = spatial_dim // w
+            nb = 1
+            while nb <= batch_dim:
+                lanes = feat_dim * nb * w
+                if (
+                    batch_dim % nb == 0
+                    and _NBN_FUSED_MIN_LANES <= lanes <= _NBN_FUSED_MAX_LANES
+                ):
+                    inner = batch_dim // nb
+                    nit = inner * r
+                    if nit <= _NBN_FUSED_MAX_NIT:
+                        key = (nit, -w)
+                        if best_key is None or key < best_key:
+                            best_key = key
+                            best = (w, nb, inner, r)
+                nb *= 2
+        w *= 2
+    return best
+
+
+@libentry()
+@triton.jit(do_not_specialize=["momentum", "eps", "var_correction"])
+def native_batch_norm_fused_kernel(
+    input_pointer,  # [N, C, S] contiguous, flattened
+    output_pointer,
+    save_mean_pointer,  # [C] input-dtype out
+    save_inv_std_pointer,  # [C] input-dtype out
+    running_mean_pointer,  # [C] in/out, or unused alias
+    running_var_pointer,  # [C] in/out, or unused alias
+    weight_pointer,  # [C], or unused alias
+    bias_pointer,  # [C], or unused alias
+    count,  # batch_dim * spatial_dim
+    momentum,
+    eps,
+    var_correction,  # count / (count - 1), 1.0 when count <= 1
+    HAS_RM: tl.constexpr,
+    HAS_RV: tl.constexpr,
+    HAS_WEIGHT: tl.constexpr,
+    HAS_BIAS: tl.constexpr,
+    S: tl.constexpr,
+    C: tl.constexpr,
+    NROW: tl.constexpr,  # C * S
+    W: tl.constexpr,
+    NB: tl.constexpr,
+    NBW: tl.constexpr,  # NB * W
+    IN: tl.constexpr,  # N // NB
+    R: tl.constexpr,  # S // W
+):
+    row = tl.arange(0, C)[:, None] * S
+    j = tl.arange(0, NBW)
+    col = ((j // W) * NROW + (j % W))[None, :]
+    acc = tl.zeros([C, NBW], dtype=tl.float32)
+    acc_sq = tl.zeros([C, NBW], dtype=tl.float32)
+    for g in tl.static_range(IN):
+        for t in tl.static_range(R):
+            x = tl.load(input_pointer + (g * NB * NROW + t * W) + row + col).to(
+                tl.float32
+            )
+            acc += x
+            acc_sq += x * x
+
+    idx = tl.arange(0, C)
+    keep = idx < C
+    mean = tl.sum(acc, axis=1) / count
+    var = tl.sum(acc_sq, axis=1) / count - mean * mean
+    inv_std = rsqrt(var + eps)
+    if HAS_WEIGHT:
+        weight = tl.load(weight_pointer + idx, mask=keep, other=0.0).to(tl.float32)
+    else:
+        weight = tl.full([C], 1.0, tl.float32)
+    if HAS_BIAS:
+        bias = tl.load(bias_pointer + idx, mask=keep, other=0.0).to(tl.float32)
+    else:
+        bias = tl.zeros([C], dtype=tl.float32)
+    gain = weight * inv_std
+    scale = gain[:, None]
+    shift = (bias - mean * gain)[:, None]
+
+    for g in tl.static_range(IN):
+        for t in tl.static_range(R):
+            # Inline the SAME address expression separately at the load and at
+            # the store.  Binding it to a Python local and reusing it makes
+            # `TritonXPUUnrollControl` report `operand #1 does not dominate this
+            # use` -- for float16/bfloat16 only, float32 still compiles, so this
+            # is not something a float32-only check would catch.
+            x = tl.load(input_pointer + (g * NB * NROW + t * W) + row + col).to(
+                tl.float32
+            )
+            tl.store(
+                output_pointer + (g * NB * NROW + t * W) + row + col,
+                (x * scale + shift).to(output_pointer.dtype.element_ty),
+            )
+
+    # Epilogue AFTER every wide store: a `mask=` on an earlier load leaks its
+    # predicate into a later wide store in the same program (silently truncating
+    # it), so all wide traffic above is maskless and all narrow traffic is here.
+    # These blocks are C (8/16) lanes wide, i.e. narrower than the 64-lane
+    # execution width, so they MUST carry `mask=` or they write out of bounds.
+    tl.store(
+        save_mean_pointer + idx,
+        mean.to(save_mean_pointer.dtype.element_ty),
+        mask=keep,
+    )
+    tl.store(
+        save_inv_std_pointer + idx,
+        inv_std.to(save_inv_std_pointer.dtype.element_ty),
+        mask=keep,
+    )
+    if HAS_RM:
+        running_mean = tl.load(running_mean_pointer + idx, mask=keep, other=0.0).to(
+            tl.float32
+        )
+        tl.store(
+            running_mean_pointer + idx,
+            ((1.0 - momentum) * running_mean + momentum * mean).to(
+                running_mean_pointer.dtype.element_ty
+            ),
+            mask=keep,
+        )
+    if HAS_RV:
+        running_var = tl.load(running_var_pointer + idx, mask=keep, other=0.0).to(
+            tl.float32
+        )
+        # aten::native_batch_norm folds the UNBIASED batch variance in.
+        tl.store(
+            running_var_pointer + idx,
+            ((1.0 - momentum) * running_var + momentum * var * var_correction).to(
+                running_var_pointer.dtype.element_ty
+            ),
+            mask=keep,
+        )
+
+
 # grid cap used by the other batch-norm kernels in this directory.
 NBN_MAX_PROGRAMS = 4096
 
@@ -296,7 +563,7 @@ def native_batch_norm(
     """
     logger.debug("GEMS_KUNLUNXIN NATIVE_BATCH_NORM")
 
-    input_3d = make_3d_for_bn(input)  # [N, C, S]
+    input_3d = make_3d_for_bn(input)
     if not input_3d.is_contiguous():
         input_3d = input_3d.contiguous()
     batch_dim, feat_dim, spatial_dim = input_3d.shape
@@ -304,9 +571,6 @@ def native_batch_norm(
     n_slices = batch_dim * feat_dim
 
     output = torch.empty_like(input_3d)
-    # In inference mode aten never consumes save_mean / save_invstd, and the
-    # generic implementation leaves them uninitialized too, so do not pay extra
-    # launches to fill them.
     save_mean = torch.empty(feat_dim, device=input.device, dtype=input.dtype)
     save_inv_std = torch.empty_like(save_mean)
 
@@ -314,7 +578,6 @@ def native_batch_norm(
     has_rm = running_mean is not None
     has_rv = running_var is not None
     if not training and not (has_rm and has_rv):
-        # Nothing to normalize with; aten requires running stats in eval mode.
         return output.view_as(input), save_mean, save_inv_std
     if count == 0 or n_slices == 0:
         return output.view_as(input), save_mean, save_inv_std
@@ -327,9 +590,42 @@ def native_batch_norm(
     has_bias = bias is not None
     var_correction = (count / (count - 1)) if count > 1 else 1.0
 
+    fused_plan = _nbn_fused_plan(batch_dim, feat_dim, spatial_dim) if training else None
+    if fused_plan is not None:
+        fused_w, fused_nb, fused_in, fused_r = fused_plan
+        with torch_device_fn.device(input.device):
+            native_batch_norm_fused_kernel[(1,)](
+                input_flat,
+                output_flat,
+                save_mean,
+                save_inv_std,
+                running_mean if has_rm else save_mean,
+                running_var if has_rv else save_inv_std,
+                weight if has_weight else save_mean,
+                bias if has_bias else save_inv_std,
+                count,
+                momentum,
+                eps,
+                var_correction,
+                HAS_RM=has_rm,
+                HAS_RV=has_rv,
+                HAS_WEIGHT=has_weight,
+                HAS_BIAS=has_bias,
+                S=spatial_dim,
+                C=feat_dim,
+                NROW=feat_dim * spatial_dim,
+                W=fused_w,
+                NB=fused_nb,
+                NBW=fused_nb * fused_w,
+                IN=fused_in,
+                R=fused_r,
+                num_warps=4,
+                isCloseVectorization=False,
+                buffer_size_limit=8192,
+            )
+        return output.view_as(input), save_mean, save_inv_std
+
     if training:
-        # Stage 1 writes every one of the N*C partial slots it is responsible
-        # for, so torch.empty is safe here (no zero-fill launch needed).
         part_sum = torch.empty(n_slices, device=input.device, dtype=torch.float32)
         part_sqsum = torch.empty_like(part_sum)
     else:

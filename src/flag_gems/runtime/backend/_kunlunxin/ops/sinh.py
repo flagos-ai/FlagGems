@@ -12,6 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Kunlunxin (XPU) override of sinh / sinh_.
+#
+# The generic `flag_gems.ops.sinh` uses pointwise_dynamic without an explicit
+# CodeGenConfig, so on XPU it specializes the kernel per input shape (per-shape
+# recompile) and runs with the default codegen knobs (slow path). Following the
+# established Kunlunxin pointwise recipe (cosh / log1p / log2 / mish), the kernel
+# is recompiled with an explicit bounded 1D-tile CodeGenConfig:
+# kunlunAutoGrid=True + prefer_1d_tile + unroll_num=8 + buffer_size_limit=4096.
+#
+# Formula: sinh(x) = (exp(x) - exp(-x)) * 0.5, fp32 intermediate. Large |x|
+# naturally overflows to +/-inf (exp(x) - exp(-x) = inf - 0 or 0 - inf), matching
+# torch.sinh for the large-value stability test.
 import logging
 
 import triton
@@ -29,21 +41,17 @@ config_ = CodeGenConfig(
     True,
     prefer_1d_tile=True,
     buffer_size_limit=4096,
-    isCloseVectorization=True,
+    isCloseVectorization=False,
     kunlunAutoGrid=True,
     unroll_num=8,
 )
 
 
-# sinh(x) = (exp(x) - exp(-x)) / 2
-# Uses float32 intermediate for numerical precision (matching the generic
-# implementation); the formula is exact for the large-value test set
-# (|x| <= 100) where exp(x) overflows in both fp16/bf16/fp32 alike.
 @pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")], config=config_)
 @triton.jit
 def sinh_func(x):
     x32 = x.to(tl.float32)
-    return ((tl.exp(x32) - tl.exp(-x32)) * 0.5).to(x.dtype)
+    return (0.5 * (tl.exp(x32) - tl.exp(-x32))).to(x.dtype)
 
 
 def sinh(A):

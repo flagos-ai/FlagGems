@@ -50,28 +50,45 @@ the HTML coverage report and summary markdown, commits them under
 and pushes directly to the `gh-pages` branch. `hugo-site.yaml` then rebuilds
 and republishes the site in response to that push.
 
-## `weekly.yaml` — multi-vendor full-suite testing
+## `ops-test.yaml` — multi-vendor QA acceptance testing
 
-**Trigger:** cron `30 13 * * 3,6` (21:30 Beijing time, Wednesday and
-Saturday); also manual `workflow_dispatch` with optional `branch`,
-`vendors`, `ops`, `upload_log`, and `send_feishu` inputs.
+**Trigger:** `workflow_dispatch` only, with optional `branch`, `vendors`,
+`ops`, `upload_log`, and `send_feishu` inputs. GitHub Actions' native
+`schedule` trigger isn't used — it was observed to delay or drop runs by
+1-5 hours under load, which isn't acceptable for GPU test scheduling.
+Instead, `.github/scripts/trigger_workflow.sh` is installed as a crontab job
+on an always-on control-plane server; by default it fires `30 21 * * 3,6`
+(Beijing time, Wednesday and Saturday) and calls the GitHub API to dispatch
+this workflow, so GitHub still allocates the runners and executes it. The
+script retries on failure and checks for a duplicate run before retrying, to
+avoid double-triggering.
 
 Runs the full (or a filtered) operator suite across every enabled vendor
-backend, configured in `.github/configs/weekly/weekly-test.yaml` and one
-YAML file per backend. Backends are split into two execution modes:
+backend for QA acceptance testing — of a scheduled sweep via the external
+dispatcher, or of a specific branch/vendor/operator set via a manual run
+before a release. The `prepare` job resolves the checkout ref (defaulting
+to `master`) and builds the backend matrix from
+`.github/configs/backends/config.yaml` plus one YAML file per backend,
+filtered by the `vendors` input (case-insensitive, empty = all enabled
+vendors); the `ops` input likewise narrows the run to specific operators
+(empty = every stage via `--stages all`).
+
+Backends are split into two execution modes:
 
 - **Container-based** (`test-container`) — runs inside the backend's Docker
-  image, for vendors whose SDK is distributed as a container.
-  Ascend (910B) gets a 24h job timeout; others get standard limits, since
-  the whole-vendor run can take many hours.
+  image, for vendors whose SDK is distributed as a container. Job timeout
+  is 1440 minutes (24h) to accommodate the longest vendor runs (e.g. Ascend
+  910B).
 - **Native** (`test-native`) — runs directly on the self-hosted runner
-  without a container, for vendors set up that way.
+  without a container, with an 1080-minute (18h) job timeout.
 
-Each run installs FlagGems, checks GPU availability, runs
-`tools/run_tests.py` (scoped by `--ops` or `--stages all`), summarizes
-results with `psum_text`/`psum_html`, and (unless disabled via input)
-uploads the packaged results to the internal op-monitor service and posts a
-Feishu notification with the outcome.
+Each matrix job retries checkout up to three times (with 30s backoff),
+installs FlagGems, checks GPU availability, runs `tools/run_tests.py`
+scoped by `--ops` or `--stages all`, summarizes results with
+`add_labels`/`psum_text`/`psum_html`, packages them into a per-vendor
+archive, and — unless disabled via the `upload_log`/`send_feishu` inputs —
+uploads the archive to the internal op-monitor service and posts a Feishu
+notification with the outcome.
 
 ## `command.yaml` — on-demand `/test` command
 
@@ -90,9 +107,9 @@ comparison; for brand-new operators, it posts a single-run report. Results
 
 - `ci-report-feishu.yaml` reports every `rule-check` completion to a Feishu
   Bitable for tracking pass/fail trends over time.
-- `weekly.yaml` and `command.yaml`'s failure paths send Feishu chat
+- `ops-test.yaml` and `command.yaml`'s failure paths send Feishu chat
   notifications via `.github/scripts/notify_feishu.py`.
-- `weekly.yaml` also uploads results to an internal "op-monitor" HTTP
+- `ops-test.yaml` also uploads results to an internal "op-monitor" HTTP
   service for longer-term dashboards.
 
 These are observability workflows; they do not gate merges.

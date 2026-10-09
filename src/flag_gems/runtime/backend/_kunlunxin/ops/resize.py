@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 def resize(inp: torch.Tensor, size, memory_format=None):
-    logger.debug("GEMS RESIZE")
+    logger.debug("GEMS_KUNLUNXIN RESIZE")
 
     if not isinstance(size, tuple):
         size = tuple(size)
@@ -48,7 +48,7 @@ def resize(inp: torch.Tensor, size, memory_format=None):
 
 
 def resize_(inp: torch.Tensor, size, memory_format=None):
-    logger.debug("GEMS RESIZE_")
+    logger.debug("GEMS_KUNLUNXIN RESIZE_")
 
     if not isinstance(size, tuple):
         size = tuple(size)

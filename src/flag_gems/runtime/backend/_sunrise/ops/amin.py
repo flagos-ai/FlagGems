@@ -83,7 +83,7 @@ def amin_kernel(
 
 
 def amin(inp, dim=None, keepdim=False, *, out=None):
-    logger.debug("GEMS AMIN")
+    logger.debug("GEMS_SUNRISE AMIN")
     if dim is None or (not isinstance(dim, int) and len(dim) == 0):
         M = inp.numel()
         block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))

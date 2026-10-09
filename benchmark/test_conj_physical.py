@@ -19,6 +19,23 @@ import flag_gems
 
 from . import base, consts
 
+# torch.randn has no FP8 implementation, so FP8 inputs are built from an FP32
+# tensor; int8/uint8 go through the existing truncating path.
+FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
+INT8_DTYPES = [torch.int8, torch.uint8]
+
+
+def _supported_fp8_dtypes(device):
+    """Keep only the FP8 dtypes the current device can actually materialize."""
+    supported = []
+    for dtype in FP8_DTYPES:
+        try:
+            torch.randn(1, device=device).to(dtype)
+        except Exception:
+            continue
+        supported.append(dtype)
+    return supported
+
 
 def _input_fn(shape, dtype, device):
     if dtype.is_complex:
@@ -26,6 +43,8 @@ def _input_fn(shape, dtype, device):
         real = torch.randn(shape, dtype=float_dtype, device=device)
         imag = torch.randn(shape, dtype=float_dtype, device=device)
         input_tensor = torch.complex(real, imag).to(dtype)
+    elif dtype in FP8_DTYPES:
+        input_tensor = torch.randn(shape, dtype=torch.float32, device=device).to(dtype)
     elif dtype.is_floating_point:
         input_tensor = torch.randn(shape, dtype=dtype, device=device)
     else:
@@ -59,9 +78,15 @@ def test_conj_physical():
         from .conftest import Config
 
         Config.mode = consts.BenchMode.OPERATOR
-        dtypes = consts.FLOAT_DTYPES + consts.INT_DTYPES
+        dtypes = consts.FLOAT_DTYPES + consts.INT_DTYPES + INT8_DTYPES
     else:
-        dtypes = consts.FLOAT_DTYPES + consts.INT_DTYPES + consts.COMPLEX_DTYPES
+        dtypes = (
+            consts.FLOAT_DTYPES
+            + consts.INT_DTYPES
+            + INT8_DTYPES
+            + _supported_fp8_dtypes(flag_gems.device)
+            + consts.COMPLEX_DTYPES
+        )
 
     bench = Conj_physicalBenchmark(
         input_fn=_input_fn,
@@ -71,4 +96,36 @@ def test_conj_physical():
     )
 
     bench.set_gems(flag_gems.conj_physical)
+    bench.run()
+
+
+@pytest.mark.underscore_conj_physical
+def test__conj_physical():
+    # The private op only differs from the public one for real dtypes (where it
+    # still allocates), so benchmark the complex path it actually accelerates.
+    bench = Conj_physicalBenchmark(
+        input_fn=_input_fn,
+        op_name="_conj_physical",
+        torch_op=torch.ops.aten._conj_physical,
+        dtypes=consts.COMPLEX_DTYPES,
+    )
+    bench.set_gems(flag_gems.ops._conj_physical)
+    bench.run()
+
+
+def _out_input_fn(shape, dtype, device):
+    """Same inputs as ``_input_fn``, plus the pre-allocated ``out`` target."""
+    for args in _input_fn(shape, dtype, device):
+        yield args[0], {"out": torch.empty_like(args[0])}
+
+
+@pytest.mark.underscore_conj_physical_out
+def test__conj_physical_out():
+    bench = Conj_physicalBenchmark(
+        input_fn=_out_input_fn,
+        op_name="_conj_physical_out",
+        torch_op=torch.ops.aten._conj_physical.out,
+        dtypes=consts.COMPLEX_DTYPES,
+    )
+    bench.set_gems(flag_gems.ops._conj_physical_out)
     bench.run()

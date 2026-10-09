@@ -668,9 +668,23 @@ def mul_broadcast_func(a, b, out=None):
 
 
 def _complex_parts(value, *, device, complex_dtype):
-    tensor = _as_tensor(value, device=device, dtype=complex_dtype)
-    real_view = torch.view_as_real(tensor)
-    return real_view[..., 0], real_view[..., 1]
+    if isinstance(value, torch.Tensor):
+        tensor = _as_tensor(value, device=device, dtype=complex_dtype)
+        real_view = torch.view_as_real(tensor)
+        return real_view[..., 0], real_view[..., 1]
+
+    # FlagTree does not accept complex dtypes as Triton pointer arguments.
+    # Keep Python scalar operands in their real component dtype and split the
+    # value before launching the complex kernel.
+    real_dtype = torch.empty((), dtype=complex_dtype).real.dtype
+    if isinstance(value, complex):
+        real_value, imag_value = value.real, value.imag
+    else:
+        real_value, imag_value = value, 0
+    return (
+        torch.tensor(real_value, device=device, dtype=real_dtype),
+        torch.tensor(imag_value, device=device, dtype=real_dtype),
+    )
 
 
 def _complex_output(out_shape, *, device, dtype, out=None):
@@ -791,7 +805,7 @@ def mul_complex_broadcast_func(a, b, out=None):
 
 
 def mul(A, B, *, out=None):
-    logger.debug("GEMS MUL")
+    logger.debug("GEMS_HYGON MUL")
     if isinstance(A, torch.Tensor) or isinstance(B, torch.Tensor):
         if (
             (isinstance(A, torch.Tensor) and A.is_complex())
@@ -805,7 +819,7 @@ def mul(A, B, *, out=None):
 
 
 def mul_(A, B):
-    logger.debug("GEMS MUL_")
+    logger.debug("GEMS_HYGON MUL_")
     if not isinstance(A, torch.Tensor):
         raise TypeError("mul_ expects the first argument to be a tensor")
     dtype = _result_dtype(A, B)

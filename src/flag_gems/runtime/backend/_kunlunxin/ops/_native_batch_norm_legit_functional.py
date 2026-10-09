@@ -1,8 +1,3 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-
 import logging
 
 from .batch_norm import batch_norm
@@ -30,5 +25,7 @@ def _native_batch_norm_legit_functional(
         training,
         momentum,
         eps,
+        update_running_all_dtypes=True,
+        unbiased_running_var=True,
     )
     return output, save_mean, save_invstd, running_mean, running_var

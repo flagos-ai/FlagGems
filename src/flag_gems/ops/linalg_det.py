@@ -321,9 +321,21 @@ def _linalg_det_impl(A):
     A_work = A.clone(memory_format=torch.contiguous_format).reshape(batch_count, n, n)
     out = torch.empty(batch_count, dtype=A.dtype, device=A.device)
 
-    use_panel = n > _DET_BLOCK_MAX and not (
-        A.dtype == torch.float64 and runtime_device.vendor_name == "metax"
+    # LU shape tuning is dtype dependent. A float64 element is twice as wide and
+    # the per-element arithmetic intensity of the trailing update is higher, so
+    # the panel kernel wants a narrower panel/block than float32: measured on
+    # H20, PANEL=16/BLOCK=32 beats PANEL=32/BLOCK=64 by 1.1-1.4x for float64 at
+    # n >= 64 and is the better choice for 32 < n <= 64 as well (which would
+    # otherwise fall through to the BLOCK=64 blocked path). float32 still
+    # prefers the wider config. The metax float64 special case is unchanged.
+    is_f64 = A.dtype == torch.float64
+    use_panel = (n > 32 if is_f64 else n > _DET_BLOCK_MAX) and not (
+        is_f64 and runtime_device.vendor_name == "metax"
     )
+    if is_f64:
+        panel_kwargs = {"PANEL": 16, "BLOCK": 32, "num_warps": 4}
+    else:
+        panel_kwargs = {"PANEL": 32, "BLOCK": 64, "num_warps": 4}
 
     grid = (batch_count,)
     with torch_device_fn.device(A.device):
@@ -334,7 +346,7 @@ def _linalg_det_impl(A):
                 A_work, out, n, BLOCK_N=block_n, num_warps=num_warps
             )
         elif use_panel:
-            _det_panel_kernel[grid](A_work, out, n, PANEL=32, BLOCK=64, num_warps=4)
+            _det_panel_kernel[grid](A_work, out, n, **panel_kwargs)
         else:
             block = min(64, max(8, triton.next_power_of_2(n)))
             num_warps = min(4, max(1, (block * block * 8) // 4096))

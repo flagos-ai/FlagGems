@@ -1,0 +1,45 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Thin caller for the shared Nexus upload workflow.
+#
+# This exact file (no per-repo edits) goes into every FlagOS
+# component repo at .github/workflows/upload-nexus.yml. The upload
+# logic lives in flagos-ai/build-infra; org-level secrets reach it
+# via `secrets: inherit`.
+
+name: Upload to Nexus Repository
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'Build workflow run ID (optional, uses latest successful run if blank)'
+        required: false
+
+jobs:
+  upload:
+    uses: flagos-ai/build-infra/.github/workflows/upload-nexus.yml@main
+    with:
+      run_id: ${{ github.event.inputs.run_id }}
+    secrets: inherit

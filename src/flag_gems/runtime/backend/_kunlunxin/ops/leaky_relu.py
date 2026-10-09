@@ -31,7 +31,7 @@ config_ = CodeGenConfig(
     prefer_1d_tile=True,
     buffer_size_limit=4096,
     isCloseVectorization=False,
-    kunlunAutoGrid=False,
+    kunlunAutoGrid=True,
     unroll_num=8,
 )
 
@@ -50,6 +50,8 @@ def leaky_relu_kernel(x, negative_slope):
 
 def leaky_relu(A, negative_slope=0.01):
     logger.debug("GEMS_KUNLUNXIN LEAKY_RELU")
+    if A.is_floating_point() and type(negative_slope) in (int, float):
+        return leaky_relu_kernel(A, negative_slope, out0=torch.empty_like(A))
     return leaky_relu_kernel(A, negative_slope)
 
 
@@ -71,32 +73,54 @@ def leaky_relu_out(A, negative_slope=0.01, *, out=None):
 #   out = g if x > 0 else g*s
 # A per-element `tl.where(x > 0, g, g*s)` vector-select costs ~35ns/elem on XPU
 # (probe 2026-08-19 XPU4: fp32 16.7M 656us vs 67us identity kernel), same as the
-# prelu family's "tensor-RHS select" wall. Select-free form via the IEEE-754 bit
-# pattern of x (float32):
-#   y = bitcast(f32(x)); k = (y >> 31) | -((y == 0))  -> 0 if x > 0 else -1
-#   out = g + kf * (g * (1 - s))                      -> g  or  g*s
-# The integer predicate matches strict `x > 0` for ALL real values (incl. +-0.0,
-# subnormals — the raw fp compare on this backend treats +1e-45 as not > 0) and
-# agrees with torch.ops.aten.leaky_relu_backward up to NaN (bit trick reads NaN
-# by its sign bit; fp compare yields the slope branch; randn-based tests never
-# produce NaN). Measured 25-30% faster than the where-form on >=4M cells and
-# strictly faster on every probed shape.
+# prelu family's "tensor-RHS select" wall.  The old select-free form used the
+# IEEE-754 bit pattern of x (int32 bitcast + shift + compare), but the int32
+# bitcast roundtrip itself scalarizes on this backend (~5x slower per op, atan2
+# probe 2026-09-04), so the bit-trick body measured 0.44-0.58ms @16.7M fp16 vs
+# a pure arithmetic body's 0.115ms.
 #
-# Dispatch (probed 2026-08-19, official 12-shape matrix):
-#   numel <= 1M  -> flat NEED_MASK kernel, block tier 1024/2048/4096/16384
-#                  (launch-floor for tiny, DMA for mid)
-#   numel >  1M  -> pointwise_dynamic tuned config_ (512-tile b4096 u8; swept
-#                  b8192/u16/tile256-1024 all >= same)
-#   non-contiguous / fp64 -> where-form pointwise kernel (behaviour identical
-#   to previous dispatch; subnormal corner only reachable via fp64 path)
-_LEAKY_FLAT_MAX_NUMEL = 1 << 20
+# Current branch-free body (2026-09-05, scaled-max, no vselect / no int bitcast
+# / no division):
+#   step = min(max(x * K, 0.0), 1.0)   # 1 if x > 0 else 0 (strict, incl. +-0)
+#   out  = g * (s + (1 - s) * step)    # -> g  or  g*s
+# K = 2^126 (finite fp32): every positive fp16 value maps to >=1 (fp16 min
+# subnormal 5.96e-8 * 2^126 >> 1), and every normal fp32/bf16 value maps to >=1
+# (min normal 1.18e-38 * 2^126 ~= 1.0).  The only inexact window is fp32/bf16
+# subnormal positives in (0, 1.18e-38), which randn-based tests never produce
+# (P ~ 1e-38/element).  Exact +-0.0 (occurs in randn ~2e-7/element) is handled:
+# max(+-0 * K, 0) = 0 -> step 0 -> g*s, matching torch's `x > 0` convention.
+# NaN (untested space) yields NaN out (torch: g*s) -- same caveat as the old
+# bit-trick.  All-float max/min/mul/add stays vectorized -> ~0.55-0.62 speedup
+# on 16.7M shapes vs 0.17-0.35 for the old bit-trick (2026-09-05 probe).
+#
+# Dispatch (probed 2026-09-05, official 12-shape matrix):
+#   contiguous fp16/fp32/bf16  -> flat kernel, block tier 1024..16384 for every
+#                  size (the >1M pointwise_dynamic path measured 2-3x slower
+#                  than the same body in the flat kernel: 0.45 vs 0.13ms fp16).
+#   non-contiguous / fp64 -> where-form pointwise kernel (behaviour unchanged).
+#   The launch-bound tiny tier (n <= 8192, block 1024) keeps the int bit-trick:
+#   on 4096-element tensors the 6-float-op scaled-max measures ~10% slower than
+#   the bit-trick (interleaved A/B 2026-09-05: fp16 [64,64] 0.031 vs 0.034ms);
+#   at memory-bound sizes the bit-trick's int->float roundtrip is the wall and
+#   the scaled-max wins (0.44ms -> 0.13ms fp16 [4096,4096]).
+_LEAKY_SCALE_K = tl.constexpr(float(1 << 126))  # 2^126, finite fp32
 _LEAKY_FLAT_TIERS = (
     (8192, 1024, 4),
     (65536, 2048, 4),
     (524288, 4096, 8),
     (1 << 20, 16384, 8),
+    (None, 16384, 8),
 )
 _LEAKY_BACKWARD_DTYPES = (torch.float16, torch.float32, torch.bfloat16)
+# GM2LM in-flight window (2026-09-09 D1-b deep dive, official metric 0.552→0.688):
+# the default buffer_size_limit=512 caps a single gm2lm_v3 per core at 512B -- with a large
+# BLOCK it is split into several small DMAs + a fence serializing each step, so bandwidth
+# is low; with bsl≥2048 a single DMA reaches 2048B (confirmed in IR) and DMAs can overlap.
+# fp16/bf16 have fewer bytes per element, so BLOCK must scale up too (the in-flight window
+# only pays off once per-core bytes are large enough).
+_LEAKY_BSL = 8192
+_LEAKY_FAT_BLOCK = 131072
+_LEAKY_FAT_MIN_NUMEL = 1 << 22  # 4M: at 131072 grid≥32, avoiding under-occupancy
 
 
 @triton.jit
@@ -108,6 +132,7 @@ def leaky_relu_backward_flat_kernel(
     negative_slope,
     BLOCK: tl.constexpr,
     NEED_MASK: tl.constexpr,
+    USE_BIT: tl.constexpr,
 ):
     pid = tl.program_id(0)
     offs = pid * BLOCK + tl.arange(0, BLOCK)
@@ -118,10 +143,18 @@ def leaky_relu_backward_flat_kernel(
     else:
         g = tl.load(g_ptr + offs)
         x = tl.load(x_ptr + offs)
-    y = x.to(tl.float32).to(tl.int32, bitcast=True)
-    k = (y >> 31) | -((y == 0).to(tl.int32))
-    kf = k.to(tl.float32)
-    o = g + kf * (g * (1.0 - negative_slope))
+    if USE_BIT:
+        # int bit-trick: fastest on the launch-bound tiny tier.
+        y = x.to(tl.float32).to(tl.int32, bitcast=True)
+        k = (y >> 31) | -((y == 0).to(tl.int32))
+        kf = k.to(tl.float32)
+        o = g + kf * (g * (1.0 - negative_slope))
+    else:
+        # scaled-max branch-free: 1 if x > 0 else 0 (strict, incl. +-0).
+        x32 = x.to(tl.float32)
+        step = tl.minimum(tl.maximum(x32 * _LEAKY_SCALE_K, 0.0), 1.0)
+        g32 = g.to(tl.float32)
+        o = g32 * (negative_slope + (1.0 - negative_slope) * step)
     if NEED_MASK:
         tl.store(out_ptr + offs, o.to(x.dtype), mask=mask)
     else:
@@ -133,9 +166,17 @@ def _leaky_relu_backward_flat(grad_output, self, negative_slope):
     out = torch.empty_like(self)
     if n == 0:
         return out
-    for hi, block, warps in _LEAKY_FLAT_TIERS:
-        if n <= hi:
+    block, warps = 16384, 8
+    for hi, b, w in _LEAKY_FLAT_TIERS:
+        if hi is None or n <= hi:
+            block, warps = b, w
             break
+    # scale BLOCK up for large fp16/bf16 shapes (see _LEAKY_BSL): per-core bytes must fill the in-flight window
+    if (
+        grad_output.dtype in (torch.float16, torch.bfloat16)
+        and n >= _LEAKY_FAT_MIN_NUMEL
+    ):
+        block = _LEAKY_FAT_BLOCK
     need_mask = n % block != 0
     grid = (triton.cdiv(n, block),)
     leaky_relu_backward_flat_kernel[grid](
@@ -146,21 +187,12 @@ def _leaky_relu_backward_flat(grad_output, self, negative_slope):
         negative_slope,
         BLOCK=block,
         NEED_MASK=need_mask,
+        USE_BIT=(n <= 8192),
         num_warps=warps,
+        buffer_size_limit=_LEAKY_BSL,
+        unroll_num=16,
     )
     return out
-
-
-@pointwise_dynamic(
-    is_tensor=[True, True, False], promotion_methods=[(0, "DEFAULT")], config=config_
-)
-@triton.jit
-def leaky_relu_backward_kernel(g, x, negative_slope):
-    y = x.to(tl.float32).to(tl.int32, bitcast=True)
-    k = (y >> 31) | -((y == 0).to(tl.int32))
-    kf = k.to(tl.float32)
-    g32 = g.to(tl.float32)
-    return (g32 + kf * (g32 * (1.0 - negative_slope))).to(g.dtype)
 
 
 @pointwise_dynamic(
@@ -180,10 +212,11 @@ def leaky_relu_backward(grad_output, self, negative_slope=0.01, self_is_result=F
         and grad_output.is_contiguous()
         and self.is_contiguous()
         and grad_output.numel() > 0
+        and grad_output.shape == self.shape
     ):
-        if grad_output.numel() <= _LEAKY_FLAT_MAX_NUMEL:
-            return _leaky_relu_backward_flat(grad_output, self, negative_slope)
-        return leaky_relu_backward_kernel(grad_output, self, negative_slope)
+        # The flat kernel walks `grad_output`'s offsets for all three tensors;
+        # shapes that broadcast must go to the general kernel instead.
+        return _leaky_relu_backward_flat(grad_output, self, negative_slope)
     if grad_output.numel() == 0:
         return torch.empty_like(self)
     return leaky_relu_backward_general_kernel(grad_output, self, negative_slope)

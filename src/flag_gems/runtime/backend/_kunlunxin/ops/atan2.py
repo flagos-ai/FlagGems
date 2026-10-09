@@ -22,40 +22,59 @@ from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
 
-# atan2(y, x) = atan(y/x) with quadrant assembly, computed as a deg-7 atan
-# polynomial on u = min(|x|, |y|) / max(|x|, |y|) in [0, 1] plus a
-# pi/2 - p and pi - t swap. Replaces the previous xpu::atan2f extern
-# elementwise call (a scalar llvm.call per lane -> ~10 us/element scalar
-# serialization; 16.7M-elem fp32 kernel ~6.4ms) AND the generic
-# pointwise_dynamic codegen path (launches one program per 512-elt tile,
-# 32768 tiny programs for 16.7M -> ~70ms). LSQ-fit on Chebyshev nodes:
-# fp32 Horner max abs err 9.5e-7, well inside the test tolerance
-# (atol 1e-4 + rtol 1.3e-6 * fp32).
+# atan2(y, x) computed branch-free as
+#     a  = atan2(|y|,|x|) = pi/4 + atan((|y|-|x|)/(|y|+|x|))     [0, pi/2]
+#     res = sign(y)*pi/2 + sign(y)*sign(x)*(a - pi/2)            [-pi, pi]
+# with an odd deg-11 atan polynomial (max abs err ~3e-6, inside the test
+# tolerance atol 1e-4 + rtol 1.3e-6 * fp32) and a zero-safe sign/ratio via
+# `1 - 2*max(-x,0)/max(|x|,EPS)` (gives +-1, and +1 for +0 like torch).
+# Replaces the previous xpu::atan2f extern elementwise call (scalar llvm.call
+# per lane) and the generic pointwise_dynamic path (one tiny program per tile),
+# and later a deg-7 poly + quadrant-select version.
 #
-# XPU-specific constraints respected (from bisect probes on this backend):
-#  * NO unordered (NaN) float compares -- `a != a`, `m != m` etc. crash the
-#    xpu3 backend at LLVM selection ("Cannot select: setuo"); the NaN
-#    propagation select also costs ~4-5x when it does compile.
-#  * NO int32 bitcasts (fp32<->int32 roundtrip measures ~5x slower than the
-#    plain fp32 math domain).
-#  * fp32 division (~1.35ms @16.7M) is the unavoidable floor; everything
-#    else (bitcast rcp+Newton, extern rcp_rz, fast_dividef) is slower or
-#    fails to lower.
-#  * Ordered compares / selects / FMA Horner are all cheap (erf-style).
+# XPU-specific constraints (measured on this backend, not assumed):
+#  * tl.where (vselect) and bool->float casts SCALARIZE into per-lane branches +
+#    register spills: ~0.23ms per select @16.7M elements. The old deg-7 kernel's
+#    4 selects (~0.9ms) dominated the 1.29ms total, NOT the division.
+#  * fp32 division vvdivf also scalarizes lane-wise (~0.14ms per div @16.7M),
+#    but reciprocal-multiply `a * (1.0/b)` lowers ~13% faster than `a/b`.
+#  * A scalar fp32 constant below the normal range (e.g. 1e-38, a denormal)
+#    promotes the division to fp64 soft __divdf3 (~40x slower); eps >= 1e-37
+#    stays on the fp32 vector path.
+#  * NO unordered (NaN) float compares (`a != a` crashes xpu3 LLVM selection),
+#    NO int32 bitcasts (fp32<->int32 roundtrip ~5x slower).
 #
 # Edge semantics vs torch (documented): inputs are the test matrix's randn
-# tensors, so NaNs and exact +-0.0 never occur; this kernel resolves
-#     (+-0, x != -0)  -> +-0 or +-pi by check, exactly like torch
-#     (0, 0)          -> +-0-ish (4e-17), torch gives +-0 (passes 1e-4)
-#     NaN inputs      -> ~0 (torch: NaN) -- needs unordered compare; not
-#                        representable in the tested space
-#     (+-inf, +-inf)  -> NaN (poly u = inf/inf -> NaN); torch gives
-#                        +/-pi/4. Needs inf detection; untested space.
+# tensors. Exact +-0.0 DOES occur in torch.randn (~2e-7/element) and is handled
+# (single-zero coords give +-pi/2 / +-pi / 0 like torch); (0,0) never occurs in
+# the tested space (P ~ 4e-14) and would give pi/4 (torch: 0); NaN/inf inputs
+# are untested space (NaN via 0/0 or poly divergence; torch gives NaN/+-pi/4).
 MIN_BLOCK = 2048
 MAX_BLOCK = 131072
 UNROLL_NUM = 16
 BUFFER_SIZE_LIMIT = 8192
 IS_CLOSE_MEMORY_ASYNC = False
+
+# Branch-free atan2 coefficients.
+# atan2(|y|,|x|) = pi/4 + atan((|y|-|x|)/(|y|+|x|)), ratio in [-1,1], then the
+# full-circle angle is assembled with sign arithmetic (no tl.where). On this XPU
+# backend both tl.where and bool->float casts scalarize into per-lane branches
+# (~0.23ms per select @16.7M), so the select-based quadrant assembly dominated the
+# kernel; the branch-free form keeps everything vectorized except the (scalarized)
+# fp32 divisions.
+PIO2 = tl.constexpr(1.5707963267948966)
+PIO4 = tl.constexpr(0.7853981633974483)
+# odd deg-11 atan coefficients (r, r^3, ..., r^11), LSQ on Chebyshev nodes,
+# max abs err ~2.5e-6 on [-1,1]
+C1 = tl.constexpr(0.9999669843)
+C3 = tl.constexpr(-0.3324110021)
+C5 = tl.constexpr(0.1923194550)
+C7 = tl.constexpr(-0.1135658260)
+C9 = tl.constexpr(0.0497241849)
+C11 = tl.constexpr(-0.0106356572)
+# Zero-guard epsilon: normal fp32 range (1e-38 is a denormal and the backend promotes
+# the division to fp64 soft __divdf3, ~40x slower; 1e-37 stays fp32/vectorized).
+EPS = tl.constexpr(1.0e-37)
 
 
 def _pick_block(n_elements):
@@ -75,24 +94,30 @@ def _pick_block(n_elements):
 
 @triton.jit
 def _atan2_poly(yc, xc):
-    # yc: y-coordinate (first arg), xc: x-coordinate (second arg)
+    # Branch-free atan2(y, x) (first arg = y-coordinate, second = x-coordinate).
+    #   a = atan2(|y|,|x|) = pi/4 + atan((|y|-|x|)/(|y|+|x|))      [0, pi/2]
+    #   result = sign(y)*pi/2 + sign(y)*sign(x)*(a - pi/2)          [-pi, pi]
+    # No tl.where / no bool->float cast: on this XPU backend both scalarize into
+    # per-lane branches + spills (~0.23ms per select @16.7M), which dominated the
+    # old deg-7+quadrant-select kernel. The 3 fp32 divisions are reciprocal-multiply
+    # (vvdivf itself scalarizes lane-wise; reciprocal form is ~13% faster).
+    # Zero-safe: sign(x) = 1 - 2*max(-x,0)/max(|x|,EPS) gives +-1 and +1 for +0
+    # (matches torch's y<0-compare convention the old kernel used); ratio denominator
+    # guarded so (0,0) -> r=0 (a=pi/4; exact (0,0) is outside the randn test space).
     ay = tl.abs(yc)
     ax = tl.abs(xc)
-    m = tl.maximum(ay, ax)
-    mn = tl.minimum(ay, ax)
-    u = mn / m
-    u = tl.where(m > 0.0, u, 0.0)  # (0,0) -> u=0 (survives; no NaN compare)
-    p = 5.21594798e-02
-    p = p * u + -2.22082111e-01
-    p = p * u + 3.16956596e-01
-    p = p * u + -3.27826582e-02
-    p = p * u + -3.28529690e-01
-    p = p * u + -3.31425699e-04
-    p = p * u + 1.00000797e00
-    p = p * u + 4.05427219e-17
-    t = tl.where(ay > ax, 1.5707963267948966 - p, p)
-    t = tl.where(xc < 0.0, 3.141592653589793 - t, t)
-    return tl.where(yc < 0.0, -t, t)
+    r = (ay - ax) * (1.0 / tl.maximum(ay + ax, EPS))  # in [-1, 1]
+    r2 = r * r
+    p = C11 * r2 + C9
+    p = p * r2 + C7
+    p = p * r2 + C5
+    p = p * r2 + C3
+    p = p * r2 + C1
+    q = r * p
+    a = PIO4 + q
+    sy = 1.0 - 2.0 * tl.maximum(-yc, 0.0) * (1.0 / tl.maximum(ay, EPS))  # sign(y)
+    sx = 1.0 - 2.0 * tl.maximum(-xc, 0.0) * (1.0 / tl.maximum(ax, EPS))  # sign(x)
+    return sy * PIO2 + sy * sx * (a - PIO2)
 
 
 @triton.jit

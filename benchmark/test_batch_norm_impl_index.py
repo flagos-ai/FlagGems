@@ -30,7 +30,7 @@ def test__batch_norm_impl_index():
 
     bench = NormBenchmark(
         input_fn=batch_norm_impl_index_input_fn,
-        op_name="_batch_norm_impl_index",
+        op_name="batch_norm_impl_index",
         torch_op=torch._batch_norm_impl_index,
         dtypes=consts.FLOAT_DTYPES,
     )

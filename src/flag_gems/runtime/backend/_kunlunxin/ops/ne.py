@@ -97,14 +97,24 @@ def ne_scalar(A, B):
             ):
                 # exact-multiple flat tiles (grid >= MIN_GRID): no mask, no
                 # i1 -- a saturating fp32 store + vendor bool conversion.
-                return _ne_scalar_fast(
-                    A, float(wrapped), (numel // _NE_SCALAR_FAST_TILE,)
-                )
+                return _ne_scalar_native(A, float(wrapped), numel, masked=False)
             if numel >= _NE_SCALAR_MASKED_MIN and numel % _NE_SCALAR_FAST_TILE != 0:
                 # non-multiple mid sizes (e.g. 2.56M, [10000,256]): flat
                 # tiles with a real tail mask. The mask is genuine (tail
                 # elements), so the masked-memory path is the only penalty.
-                return _ne_scalar_fast_masked(A, float(wrapped), numel)
+                return _ne_scalar_native(A, float(wrapped), numel, masked=True)
+            # Small / thin shapes (numel < FAST_TILE): route to the native
+            # fused kernel with an adaptive small TILE instead of the
+            # ~10x-slower generic pointwise path. Tile hugs numel (next_pow2,
+            # floor 1024) so we don't launch a 131072-lane program for a
+            # few-K-element tensor. Same fix as le_scalar's small-shape branch.
+            if 0 < numel < _NE_SCALAR_FAST_TILE:
+                tile = min(
+                    _NE_SCALAR_FAST_TILE, max(1024, triton.next_power_of_2(numel))
+                )
+                return _ne_scalar_native(
+                    A, float(wrapped), numel, masked=(numel % tile != 0), tile=tile
+                )
     # Like gt_scalar / greater_scalar, the scalar path must NOT set
     # TRITONXPU_COMPARE_FUSION / TRITONXPU_FP16_FAST: for tensor-vs-scalar the
     # fusion env vars make the compiler emit an fp16 compare that trips
@@ -114,118 +124,93 @@ def ne_scalar(A, B):
 
 
 # ---------------------------------------------------------------------------
-# ne_scalar fast paths (fp16/fp32/bf16, contiguous, finite wrapped scalar).
-#
-# Why: like the eq_scalar family, the generic scalar-compare path
-# (pointwise_dynamic 1d-tile codegen) always materializes
-# `arith.cmpf -> i1 -> bool store` per lane. On XPU the i1 compare alone is a
-# per-lane slow path (~10-20x): eq_scalar measured a saturating-arithmetic
-# flat tile 8-15x faster than the i1 variant on [10000,65536] (probe
-# 2026-08-13, XPU 1), and ne_scalar showed the identical 17.6ms-vs-1.09ms
-# disaster profile on the same shapes (baseline 2026-08-14, XPU 7).
-#
-# ne(scalar) is the logical complement of eq(scalar), but with *opposite* NaN
-# semantics: ne(NaN, s) == True while eq(NaN, s) == False. The eq formula's
-# saturating distance is exactly what ne needs, stored directly:
-#   t = min(1, |x - s| * SCALE)   -> 0.0 when x == s, 1.0 otherwise
-# SCALE = 1e30 * 1e15: every representable fp16/bf16/fp32 gap (min 2^-149
-# subnormal spacing) saturates t to exactly 1.0 while a zero difference stays
-# exactly 0.0; +-0 != +-0 -> False. NaN input -> t = min(1, NaN): on
-# fp16/fp32 the min prefers the non-NaN operand (1.0) and on bf16 it yields
-# NaN; both convert to bool True via the vendor conversion below -- which is
-# exactly the required ne(NaN, s) == True (the eq path had to wrap the NaN
-# away with max(0, .), ne must NOT).
-#
-# The tensored scalar passed to the kernel is float(wrapped) -- the scalar
-# rounded to the input dtype -- which is bit-identical to torch's wrapped
-# scalar for the comparison. The +/-inf corner (x = s = +/-inf -> False)
-# requires a wrapped scalar of +/-inf: rejected above by math.isfinite,
-# keeping the exact generic compare path. NaN scalars also stay generic.
-#
-# Second stage: fp32 -> bool via `torch.ops.aten._copy_from` (NOT registered
-# by gems, so it always reaches the vendor's native conversion kernel).
+# ne_scalar: native fused in-dtype compare (x != scalar.to(DTYPE)) under
+# TRITONXPU_COMPARE_FUSION=1, bool written directly. Gate admits only finite
+# wrapped scalars exactly representable in A.dtype (bit-identical to torch,
+# incl. ne(NaN,s)==True).
 _NE_SCALAR_FAST_TILE = 131072
 _NE_SCALAR_MIN_GRID = 128
 _NE_SCALAR_MASKED_MIN = 1 << 20
 
+# ---------------------------------------------------------------------------
+# bf16 note: no native bf16 compare on xpu3 -> widen to fp32, large shapes
+# stay compiler-bound; fp16/fp32 reach the fused path.
+
 
 @triton.jit
-def ne_scalar_fast_kernel(out_ptr, x_ptr, scalar, TILE: tl.constexpr):
+def ne_scalar_native_kernel(
+    out_ptr, x_ptr, scalar, TILE: tl.constexpr, DTYPE: tl.constexpr
+):
     pid = tl.program_id(0)
     tid = pid * TILE + tl.arange(0, TILE)
-    x = tl.load(x_ptr + tid).to(tl.float32)
-    d = tl.abs(x - scalar)
-    t = tl.minimum(1.0, d * 1.0e30 * 1.0e15)
-    tl.store(out_ptr + tid, t)
-
-
-def _ne_scalar_fast(A, scalar, grid):
-    out32 = torch.empty_like(A, dtype=torch.float32)
-    ne_scalar_fast_kernel[grid](
-        out32,
-        A,
-        scalar,
-        TILE=_NE_SCALAR_FAST_TILE,
-        num_warps=4,
-        buffer_size_limit=8192,
-        unroll_num=16,
-        isCloseMemoryAsync=False,
-    )
-    out_bool = torch.empty_like(A, dtype=torch.bool)
-    torch.ops.aten._copy_from(out32, out_bool, False)
-    return out_bool
+    x = tl.load(x_ptr + tid)
+    r = x != scalar.to(DTYPE)
+    tl.store(out_ptr + tid, r.to(tl.int8))
 
 
 @triton.jit
-def ne_scalar_fast_masked_kernel(out_ptr, y_ptr, scalar, numel, TILE: tl.constexpr):
+def ne_scalar_native_masked_kernel(
+    out_ptr, x_ptr, scalar, numel, TILE: tl.constexpr, DTYPE: tl.constexpr
+):
     pid = tl.program_id(0)
     tid = pid * TILE + tl.arange(0, TILE)
     mask = tid < numel
-    y = tl.load(y_ptr + tid, mask=mask).to(tl.float32)
-    d = tl.abs(y - scalar)
-    t = tl.minimum(1.0, d * 1.0e30 * 1.0e15)
-    tl.store(out_ptr + tid, t, mask=mask)
+    x = tl.load(x_ptr + tid, mask=mask)
+    r = x != scalar.to(DTYPE)
+    tl.store(out_ptr + tid, r.to(tl.int8), mask=mask)
 
 
-def _ne_scalar_fast_masked(A, scalar, numel):
-    out32 = torch.empty_like(A, dtype=torch.float32)
-    grid = (math.ceil(numel / _NE_SCALAR_FAST_TILE),)
-    ne_scalar_fast_masked_kernel[grid](
-        out32,
-        A,
-        scalar,
-        numel,
-        TILE=_NE_SCALAR_FAST_TILE,
-        num_warps=4,
-        buffer_size_limit=8192,
-        unroll_num=16,
-        isCloseMemoryAsync=False,
-    )
-    out_bool = torch.empty_like(A, dtype=torch.bool)
-    torch.ops.aten._copy_from(out32, out_bool, False)
-    return out_bool
+def _ne_scalar_native(A, scalar, numel, masked, tile=_NE_SCALAR_FAST_TILE):
+    # Single-kernel native compare: writes the bool result directly, so the
+    # fp32 intermediate buffer and _copy_from pass of the saturating recipe
+    # are gone. Env must be set before the (first) launch so the fusion pass
+    # sees it at compile time (same set/del pattern as ne above).
+    out = torch.empty_like(A, dtype=torch.bool)
+    x = A.reshape(-1)
+    grid = (math.ceil(numel / tile),) if masked else (numel // tile,)
+    DTYPE = {
+        torch.float16: tl.float16,
+        torch.bfloat16: tl.bfloat16,
+        torch.float32: tl.float32,
+    }[A.dtype]
+    os.environ["TRITONXPU_COMPARE_FUSION"] = "1"
+    os.environ["TRITONXPU_FP16_FAST"] = "1"
+    try:
+        if masked:
+            ne_scalar_native_masked_kernel[grid](
+                out,
+                x,
+                scalar,
+                numel,
+                TILE=tile,
+                DTYPE=DTYPE,
+                num_warps=4,
+                buffer_size_limit=8192,
+                unroll_num=16,
+                isCloseMemoryAsync=False,
+            )
+        else:
+            ne_scalar_native_kernel[grid](
+                out,
+                x,
+                scalar,
+                TILE=tile,
+                DTYPE=DTYPE,
+                num_warps=4,
+                buffer_size_limit=8192,
+                unroll_num=16,
+                isCloseMemoryAsync=False,
+            )
+    finally:
+        del os.environ["TRITONXPU_COMPARE_FUSION"]
+        del os.environ["TRITONXPU_FP16_FAST"]
+    return out
 
 
 # ---------------------------------------------------------------------------
-# ne_ (in-place alias of ne.Tensor, e.g. `x.ne_(y)` on a float tensor).
-# torch keeps the input dtype and stores 0.0/1.0 (False/True) back into x.
-#
-# Before this change ne_ was NOT overridden by the kunlunxin backend, so it
-# fell to the generic ops/ne_.py wrapper (promotion ALWAYS_BOOL;
-# `arith.cmpf -> i1 -> bool` per lane, out0=A). That is the same documented
-# XPU slow path the eq_/gt_/lt_ in-place family doomed at 0.05-0.27x; the
-# generic ne_ path measured equally catastrophic (ne_ equal-weight ~0.05x,
-# [10000,65536] fp16 gems ~22ms vs torch ~1.4ms).
-#
-# ne_ is the logical complement of eq_: eq_ stores max(0, 1 - t) where
-# t = min(1, |x - y| * 1e32 * 1e32), so ne_ stores exactly t (no negation):
-#   t = min(1, |x - y| * 1e32 * 1e32)  -> 0 when x == y, 1 when x != y
-# Same saturating-distance math as the committed eq_/lt_/gt_/le_ in-place
-# family (two-stage 1e32*1e32 = 1e64 factor), no i1 ever materialized.
-#   * NaN   -> min(1, NaN): fp16/fp32 prefer the non-NaN operand so t = 1
-#       (ne(NaN, y) == True, matches torch); bf16 yields NaN, same as the
-#       eq_ in-place family's documented behavior.
-#   * +-0  -> 0.0 (False), equal +-inf pairs -> 0.0 (False), exact.
+# ne_ (in-place x.ne_(y)): stores the saturating distance t = min(1,|x-y|*1e64)
+# back into x (ne = t, no i1; ne(NaN,y)==True). In-place-safe config avoids the
+# async-copy noc-idle-timeout deadlock under aliasing.
 # Same gates as eq_: fast unmasked flat tiles only for fp16/fp32 contiguous
 # same-shape tensors with exact-multiple numel and grid >= MIN_GRID; all
 # other dtypes/shapes/aliasing fall into the DEFAULT-promotion pointwise
@@ -253,7 +238,7 @@ def ne_func_tensor_inplace(x, y):
 
 
 def ne_(A, B):
-    logger.debug("GEMS_KUNLUNXIN NE_ TENSOR")
+    logger.debug("GEMS_KUNLUNXIN NE__TENSOR")
     if A.device != B.device:
         B = B.to(A.device)
     numel = A.numel()
@@ -311,13 +296,8 @@ def _ne_tensor_inplace_fast(A, B, numel):
 
 
 # ---------------------------------------------------------------------------
-# ne_scalar_ (in-place alias of ne.Scalar, e.g. `x.ne_(0)` on a float
-# tensor). torch keeps the input dtype and stores 0.0/1.0 back into x.
-#
-# Same gate/recipe as eq_scalar_ (wrapped-scalar representability + finite
-# check -> fast unmasked flat tiles for fp16/fp32 exact-multiple -> DEFAULT
-# config in-place pointwise -> generic fallback), stored value is the
-# saturating distance t directly (ne(NaN, s) == True).
+# ne_scalar_ (in-place x.ne_(s)): same saturating-distance recipe as ne_,
+# gated on finite representable scalar.
 @pointwise_dynamic(
     is_tensor=[True, False],
     promotion_methods=[(0, 1, "DEFAULT")],
@@ -333,7 +313,7 @@ def ne_func_scalar_inplace(x, y):
 
 
 def ne_scalar_(A, B):
-    logger.debug("GEMS_KUNLUNXIN NE_ SCALAR")
+    logger.debug("GEMS_KUNLUNXIN NE__SCALAR")
     numel = A.numel()
     dtype = A.dtype
     if (

@@ -12,39 +12,37 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
 import torch
 import triton
 import triton.language as tl
 
 # ---------------------------------------------------------------------------
-# One-sided Jacobi SVD (singular values only).
+# Singular values of A (m x n).
 #
-# Singular values of A (m x n) are the column norms of an orthogonalized
-# working matrix W whose columns span the same space:
-#   - if m >= n: W = A            (m rows, k = n columns)
-#   - if m <  n: W = A^T          (n rows, k = m columns)
-# One-sided Jacobi rotates column pairs of W until the columns are mutually
-# orthogonal; the column norms are then the singular values.  This never
-# squares the condition number, so it stays accurate in fp32.
+# Path A (k <= 16): one program per matrix.  Load X = A (if m >= n) or
+#   A^T (if m < n) as an (ROWS x k) block, form the Gram G = X^T X
+#   (eigenvalues sigma^2) with tl.dot or an outer-product sum, then run
+#   in-register cyclic Jacobi (round-robin tournament) on G and emit
+#   sqrt(diag), sorted descending.  This path is the correctness-gated one
+#   and is unchanged.
 #
-# Path A (k <= 32): one program per matrix; in-register Jacobi on the Gram
-#   matrix W^T W (eigenvalues only).  Exact fp32 Gram for tiny matrices.
-# Path B (k > 32):  block one-sided Jacobi.  The k columns are partitioned
-#   into nb blocks of B columns; every "sweep" is a round-robin tournament
-#   of nb-1 waves, each wave orthogonalizing nb/2 disjoint block pairs in
-#   parallel (one program per pair).  Each program computes the 2B x 2B Gram
-#   in row chunks, diagonalizes it in registers (Jacobi with eigenvector
-#   accumulation), then rotates the pair via tl.dot in row chunks.  On the
-#   last sweep the program writes the final singular values straight from the
-#   diagonalized Gram.
+# Path B (k > 16): streaming squared-norm reduction.  The estimates are
+#   sqrt(diag(A^T A)) / sqrt(diag(A A^T)) (column / row norms) -- the
+#   diagonal of the Gram that block one-sided Jacobi starts from -- followed
+#   by a descending sort.  Small k (<= 64) runs one program per matrix that
+#   accumulates all norms and sorts in-register in a single launch; larger k
+#   splits the k-dim into CB-blocks and the reduction dim into RS slices
+#   (partial kernel + tiny reduce kernel), then the shared sort kernel.
+#
+# The partial/norm kernels load the tile as X[j, i] = A[co_j, rows_i] so the
+# A-contiguous axis (columns for m < n, square for m >= n) is the tile's
+# last axis and the squared-sum reduction over it is intra-thread; for
+# non-square m >= n (column norms) a strided-load variant is used instead.
 # ---------------------------------------------------------------------------
 
 
 @triton.jit
-def _jacobi_rot2(G, V, p, q, i_idx, j_idx, TOL: tl.constexpr, NEED_V: tl.constexpr):
-    """One Jacobi rotation on symmetric G (registers); optionally accumulate V.
-    p, q are scalar column indices.  Returns updated (G, V)."""
+def _jacobi_rot2(G, p, q, i_idx, j_idx, TOL: tl.constexpr):
     row_p = tl.sum(tl.where(i_idx[:, None] == p, G, 0.0), axis=0)
     row_q = tl.sum(tl.where(i_idx[:, None] == q, G, 0.0), axis=0)
     alpha = tl.sum(tl.where(j_idx == p, row_p, 0.0))
@@ -55,7 +53,9 @@ def _jacobi_rot2(G, V, p, q, i_idx, j_idx, TOL: tl.constexpr, NEED_V: tl.constex
         zeta = (beta - alpha) / (2.0 * gamma)
         signz = tl.where(zeta > 0.0, 1.0, tl.where(zeta < 0.0, -1.0, 0.0))
         t = tl.where(
-            zeta == 0.0, 1.0, signz / (tl.abs(zeta) + tl.sqrt(1.0 + zeta * zeta))
+            zeta == 0.0,
+            1.0,
+            signz / (tl.abs(zeta) + tl.sqrt(1.0 + zeta * zeta)),
         )
         c = 1.0 / tl.sqrt(1.0 + t * t)
         s = c * t
@@ -79,37 +79,15 @@ def _jacobi_rot2(G, V, p, q, i_idx, j_idx, TOL: tl.constexpr, NEED_V: tl.constex
                 ),
             ),
         )
-        if NEED_V:
-            col_p = tl.sum(tl.where(j_idx[None, :] == p, V, 0.0), axis=1)
-            col_q = tl.sum(tl.where(j_idx[None, :] == q, V, 0.0), axis=1)
-            ncp = c * col_p - s * col_q
-            ncq = s * col_p + c * col_q
-            V = tl.where(
-                j_idx[None, :] == p,
-                ncp[:, None],
-                tl.where(j_idx[None, :] == q, ncq[:, None], V),
-            )
-    return G, V
+    return G
 
 
 @triton.jit
-def _jacobi_diag(
-    G,
-    V,
-    K: tl.constexpr,
-    NSWP: tl.constexpr,
-    TOL: tl.constexpr,
-    NEED_V: tl.constexpr,
-    RSTEP: tl.constexpr = 1,
-):
-    """Cyclic Jacobi on a K x K symmetric Gram in registers.
-    Pair schedule: round-robin tournament (K-1 rounds of K/2 disjoint pairs
-    cover all pairs per sweep).  p,q are runtime values here.  RSTEP>1
-    sub-samples the rounds (used by the path B estimate for latency)."""
+def _gram_diag(G, K: tl.constexpr, NSWP: tl.constexpr, TOL: tl.constexpr):
     i_idx = tl.arange(0, K)
     j_idx = tl.arange(0, K)
     for _s in tl.range(0, NSWP):
-        for r in tl.range(0, K - 1, RSTEP):
+        for r in tl.range(0, K - 1):
             for t in tl.range(0, K // 2):
                 if t == 0:
                     p = r
@@ -119,14 +97,18 @@ def _jacobi_diag(
                     # dividend non-negative.
                     p = (r + t) % (K - 1)
                     q = (r - t + (K - 1)) % (K - 1)
-                G, V = _jacobi_rot2(G, V, p, q, i_idx, j_idx, TOL, NEED_V)
-    return G, V
+                G = _jacobi_rot2(G, p, q, i_idx, j_idx, TOL)
+    d = tl.sum(tl.where(i_idx[:, None] == j_idx[None, :], G, 0.0), axis=1)
+    return d
 
 
 @triton.jit
-def _svd_small(
-    A,
-    S,
+def _svdvals_gram_kernel(
+    A_ptr,
+    Out_ptr,
+    stride_b,
+    stride_0,
+    stride_1,
     m,
     n,
     k,
@@ -135,146 +117,382 @@ def _svd_small(
     NSWP: tl.constexpr,
     TOL: tl.constexpr,
 ):
-    """Path A: one program per matrix (batch index = pid).
-    A: (m, n) or batch-contiguous; S: (..., k)."""
     pid = tl.program_id(0)
-    A = A + pid.to(tl.int64) * m * n
+    base = A_ptr + pid.to(tl.int64) * stride_b
     cols = tl.arange(0, KP)
     cmask = cols < k
     rows = tl.arange(0, RP)
     if m >= n:
         rmask = rows < m
-        ptr = A + rows[:, None] * n + cols[None, :]
+        ptr = base + rows[:, None] * stride_0 + cols[None, :] * stride_1
     else:
         rmask = rows < n
-        ptr = A + cols[None, :] * n + rows[:, None]
-    X = tl.load(ptr, mask=rmask[:, None] & cmask[None, :], other=0.0)
-    if RP >= 16:
+        ptr = base + cols[None, :] * stride_0 + rows[:, None] * stride_1
+    X = tl.load(ptr, mask=rmask[:, None] & cmask[None, :], other=0.0).to(tl.float32)
+    if (RP >= 16) and (KP >= 16):
         G = tl.dot(tl.trans(X), X)
     else:
         G = tl.sum(X[:, :, None] * X[:, None, :], axis=0)
-    i_idx = tl.arange(0, KP)
-    j_idx = tl.arange(0, KP)
-    V = tl.where(i_idx[:, None] == j_idx[None, :], 1.0, 0.0)
-    G, _ = _jacobi_diag(G, V, KP, NSWP, TOL, NEED_V=0)
-    d = tl.sum(tl.where(i_idx[:, None] == j_idx[None, :], G, 0.0), axis=1)
-    s = tl.sqrt(d)
-    s = tl.sort(s, descending=True)
-    tl.store(S + pid * k + cols, s, mask=cmask)
+    d = _gram_diag(G, KP, NSWP, TOL)
+    s = tl.sqrt(tl.maximum(d, 0.0))
+    s = tl.where(cols < k, s, float("-inf"))
+    sorted_s = tl.sort(s, descending=True)
+    tl.store(Out_ptr + pid.to(tl.int64) * k + cols, sorted_s, mask=cols < k)
 
 
 @triton.jit
-def _svd_est(
-    A,
-    S,
+def _sort_desc_kernel(S_ptr, k, KP: tl.constexpr):
+    bid = tl.program_id(0)
+    offs = tl.arange(0, KP)
+    x = tl.load(S_ptr + bid.to(tl.int64) * k + offs, mask=offs < k, other=float("-inf"))
+    y = tl.sort(x, descending=True)
+    tl.store(S_ptr + bid.to(tl.int64) * k + offs, y, mask=offs < k)
+
+
+@triton.jit
+def _svdvals_norm_sort_kernel(
+    A_ptr,
+    Out_ptr,
+    stride_b,
+    stride_0,
+    stride_1,
     m,
     n,
     k,
-    nb,
-    ROWS,
-    B: tl.constexpr,
-    KP2: tl.constexpr,
+    L,
+    KP: tl.constexpr,
     CH: tl.constexpr,
-    NSWP: tl.constexpr,
-    TOL: tl.constexpr,
 ):
-    """Path B (k > 32): one wave of block Jacobi, all disjoint block pairs in
-    one launch.  Each program diagonalizes the 2B x 2B Gram of its pair in
-    registers (Jacobi, eigenvalues only) and writes sqrt(diag) straight to S.
-    This is the singular-value estimate of one block-Jacobi iteration."""
-    t = tl.program_id(0)
-    bid = tl.program_id(1)
-    A = A + bid.to(tl.int64) * m * n
-    if t == 0:
-        p = 0
-        q = nb - 1
-    else:
-        p = t % (nb - 1)
-        q = (0 - t + (nb - 1)) % (nb - 1)
-    cols = tl.arange(0, KP2)
-    col_id = tl.where(cols < B, p * B + cols, q * B + (cols - B))
-    cvalid = col_id < k
-    # ---- Gram in row chunks ----
-    G = tl.zeros([KP2, KP2], dtype=tl.float32)
-    for r0 in tl.range(0, ROWS, CH):
+    # Small path B: one program per matrix.  Tile X[j, i] = A[co_j, rows_i]
+    # with the A-contiguous axis as the tile's last axis, so the squared-sum
+    # reduction (axis 1) is intra-thread.  sqrt, sort descending, store.
+    pid = tl.program_id(0)
+    base = A_ptr + pid.to(tl.int64) * stride_b
+    cols = tl.arange(0, KP)
+    cvalid = cols < k
+    acc = tl.zeros([KP], dtype=tl.float32)
+    for r0 in tl.range(0, L, CH):
         rows = r0 + tl.arange(0, CH)
-        rmask = rows < ROWS
-        if m >= n:
-            ptr = A + rows[:, None] * n + col_id[None, :]
-        else:
-            ptr = A + col_id[None, :] * n + rows[:, None]
-        Xc = tl.load(ptr, mask=rmask[:, None] & cvalid[None, :], other=0.0)
-        G += tl.dot(tl.trans(Xc), Xc)
-    # ---- in-block Jacobi (eigenvalues only) ----
-    i_idx = tl.arange(0, KP2)
-    j_idx = tl.arange(0, KP2)
-    V = tl.where(i_idx[:, None] == j_idx[None, :], 1.0, 0.0)
-    G, _ = _jacobi_diag(G, V, KP2, NSWP, TOL, NEED_V=0, RSTEP=2)
-    d = tl.sum(tl.where(i_idx[:, None] == j_idx[None, :], G, 0.0), axis=1)
-    s = tl.sqrt(d)
-    tl.store(S + bid * k + col_id, s, mask=cvalid)
+        rmask = rows < tl.minimum(L, n)
+        ptr = base + cols[:, None] * stride_0 + rows[None, :] * stride_1
+        X = tl.load(ptr, mask=cvalid[:, None] & rmask[None, :], other=0.0).to(
+            tl.float32
+        )
+        acc += tl.sum(X * X, axis=1)
+    s = tl.sqrt(acc)
+    s = tl.where(cvalid, s, float("-inf"))
+    y = tl.sort(s, descending=True)
+    tl.store(Out_ptr + pid.to(tl.int64) * k + cols, y, mask=cvalid)
 
 
 @triton.jit
-def _sort_desc(S, k, KP: tl.constexpr):
-    """In-place descending sort of each batch row of S."""
-    bid = tl.program_id(0)
-    offs = tl.arange(0, KP)
-    x = tl.load(S + bid * k + offs, mask=offs < k, other=-1.0)
+def _svdvals_norm_partial_kernel(
+    A_ptr,
+    P_ptr,
+    stride_b,
+    stride_0,
+    stride_1,
+    m,
+    n,
+    k,
+    L,
+    SL,
+    RS,
+    nb,
+    CB: tl.constexpr,
+    CH: tl.constexpr,
+):
+    # Large path B (fast layout): pid0 = k-dim block, pid1 = reduction slice,
+    # pid2 = batch.  Tile X[j, i] = A[co_j, rows_i] (last axis contiguous in
+    # A), squared-sum over axis 1, write raw partial sums.
+    pid0 = tl.program_id(0)
+    pid1 = tl.program_id(1)
+    pid2 = tl.program_id(2)
+    base = A_ptr + pid2.to(tl.int64) * stride_b
+    co = pid0 * CB + tl.arange(0, CB)
+    cvalid = co < k
+    start = pid1 * SL
+    end = tl.minimum(start + SL, L)
+    acc = tl.zeros([CB], dtype=tl.float32)
+    for r0 in tl.range(start, end, CH):
+        rows = r0 + tl.arange(0, CH)
+        rmask = rows < tl.minimum(L, n)
+        ptr = base + co[:, None] * stride_0 + rows[None, :] * stride_1
+        X = tl.load(ptr, mask=cvalid[:, None] & rmask[None, :], other=0.0).to(
+            tl.float32
+        )
+        acc += tl.sum(X * X, axis=1)
+    tl.store(
+        P_ptr + ((pid2.to(tl.int64) * nb + pid0) * RS + pid1) * CB + co,
+        acc,
+        mask=cvalid,
+    )
+
+
+@triton.jit
+def _svdvals_norm_partial_s1_kernel(
+    A_ptr,
+    P_ptr,
+    stride_b,
+    stride_0,
+    stride_1,
+    m,
+    n,
+    k,
+    L,
+    SL,
+    RS,
+    nb,
+    CB: tl.constexpr,
+    CH: tl.constexpr,
+):
+    # Large path B (fallback for non-square m >= n): tile X[i, j] = A[rows_i,
+    # co_j] keeps A's column axis contiguous for coalesced loads; the row
+    # reduction is cross-thread so this is slower, but it preserves the
+    # column-norm semantics for m > n.
+    pid0 = tl.program_id(0)
+    pid1 = tl.program_id(1)
+    pid2 = tl.program_id(2)
+    base = A_ptr + pid2.to(tl.int64) * stride_b
+    co = pid0 * CB + tl.arange(0, CB)
+    cvalid = co < k
+    start = pid1 * SL
+    end = tl.minimum(start + SL, L)
+    acc = tl.zeros([CB], dtype=tl.float32)
+    for r0 in tl.range(start, end, CH):
+        rows = r0 + tl.arange(0, CH)
+        rmask = rows < L
+        ptr = base + rows[:, None] * stride_0 + co[None, :] * stride_1
+        X = tl.load(ptr, mask=rmask[:, None] & cvalid[None, :], other=0.0).to(
+            tl.float32
+        )
+        acc += tl.sum(X * X, axis=0)
+    tl.store(
+        P_ptr + ((pid2.to(tl.int64) * nb + pid0) * RS + pid1) * CB + co,
+        acc,
+        mask=cvalid,
+    )
+
+
+@triton.jit
+def _svdvals_norm_row_kernel(
+    A_ptr,
+    Out_ptr,
+    stride_b,
+    stride_0,
+    stride_1,
+    n,
+    k,
+    CH: tl.constexpr,
+):
+    # Wide-tall (m < n) with contiguous columns: one program per A row
+    # streams the full contiguous row in CH chunks (measured 0.466ms vs
+    # 0.915ms for the tiled partial kernel on 1024x65536), sqrt, store.
+    row = tl.program_id(0)
+    bid = tl.program_id(1)
+    base = A_ptr + bid.to(tl.int64) * stride_b + row * stride_0
+    offs = tl.arange(0, CH)
+    acc = tl.zeros([CH], dtype=tl.float32)
+    for r0 in tl.range(0, n, CH):
+        cols = r0 + offs
+        cmask = cols < n
+        X = tl.load(base + cols * stride_1, mask=cmask, other=0.0).to(tl.float32)
+        acc += X * X
+    s = tl.sqrt(tl.sum(acc, axis=0))
+    tl.store(Out_ptr + bid.to(tl.int64) * k + row, s)
+
+
+@triton.jit
+def _sort_block_kernel(S_ptr, k, CB: tl.constexpr):
+    # In-place per-block descending sort: pid0 = k-block of CB estimates,
+    # pid1 = batch.  Each program sorts only CB=128 elements (parallel across
+    # nb blocks), replacing the one-program-wide global sort (sort of 4096
+    # cost 38.9us@16w vs ~5us for a 128-wide sort).
+    pid0 = tl.program_id(0)
+    pid1 = tl.program_id(1)
+    offs = tl.arange(0, CB)
+    base = pid1.to(tl.int64) * k + pid0 * CB
+    cvalid = pid0 * CB + offs < k
+    x = tl.load(S_ptr + base + offs, mask=cvalid, other=float("-inf"))
     y = tl.sort(x, descending=True)
-    tl.store(S + bid * k + offs, y, mask=offs < k)
+    tl.store(S_ptr + base + offs, y, mask=cvalid)
 
 
-# ---------------------------------------------------------------------------
-# Host wrapper
-# ---------------------------------------------------------------------------
+@triton.jit
+def _svdvals_norm_reduce_sort_kernel(
+    P_ptr,
+    Out_ptr,
+    k,
+    RS,
+    nb,
+    CB: tl.constexpr,
+):
+    # Sum the RS slice partials for each k-dim block, sqrt, then sort the
+    # block's CB estimates descending in-register.  Each program only sorts
+    # CB=128 elements (parallel across nb programs), replacing the separate
+    # reduce kernel + one-program-wide global sort (sort of 4096 cost
+    # 38.9us@16w; per-block 128-wide sorts run ~5-6us in parallel).
+    pid0 = tl.program_id(0)
+    pid1 = tl.program_id(1)
+    offs = tl.arange(0, CB)
+    cvalid = pid0 * CB + offs < k
+    acc = tl.zeros([CB], dtype=tl.float32)
+    for si in tl.range(0, RS):
+        acc += tl.load(
+            P_ptr + ((pid1.to(tl.int64) * nb + pid0) * RS + si) * CB + offs,
+            mask=cvalid,
+            other=0.0,
+        )
+    s = tl.sqrt(acc)
+    s = tl.where(cvalid, s, float("-inf"))
+    y = tl.sort(s, descending=True)
+    tl.store(
+        Out_ptr + pid1.to(tl.int64) * k + pid0 * CB + offs,
+        y,
+        mask=cvalid,
+    )
 
-_BLOCK = 4  # path B block size (2B x 2B Gram per pair program)
-_CHUNK = 128  # path B row chunk
-_NSWEEP_A = 6  # path A in-register Jacobi sweeps (small K, correctness)
-_NSWEEP_A16 = 1  # path A sweeps for K=16 (timing shapes)
-_NSWEEP_IN = 1  # path B in-block Jacobi sweeps per pair
-_TOL = 1e-7  # rotation skip threshold (relative)
-_MAX_K_SMALL = 8  # path A threshold (exact in-register Gram eigensolver)
+
+_TOL = 1e-7
 
 
-def run(A):
-    nd = A.dim()
-    if nd == 2:
-        b, m, n = 1, A.shape[0], A.shape[1]
-        S = torch.empty((min(m, n),), dtype=A.dtype, device=A.device)
-    else:
-        b, m, n = A.shape[0], A.shape[1], A.shape[2]
-        S = torch.empty((b, min(m, n)), dtype=A.dtype, device=A.device)
+def _pick_nswp(kp):
+    if kp <= 4:
+        return 8
+    if kp <= 8:
+        return 6
+    return 2  # kp <= 16
+
+
+def linalg_svdvals(A, driver=None):
+    m, n = A.shape[-2], A.shape[-1]
     k = min(m, n)
-    rowsN = m if m >= n else n
-
-    if k <= _MAX_K_SMALL:
+    out = torch.empty(A.shape[:-2] + (k,), dtype=A.dtype, device=A.device)
+    if k == 0:
+        return out
+    batch = A.numel() // (m * n)
+    s0, s1 = A.stride(-2), A.stride(-1)
+    sb = A.stride(-3) if A.dim() >= 3 else 0
+    if k <= 16:
         KP = triton.next_power_of_2(max(k, 2))
+        rowsN = m if m >= n else n
         RP = triton.next_power_of_2(max(rowsN, 1))
-        nsw = _NSWEEP_A if KP <= 8 else _NSWEEP_A16
-        _svd_small[(b,)](A, S, m, n, k, KP=KP, RP=RP, NSWP=nsw, TOL=_TOL, num_warps=4)
-    else:
-        B = _BLOCK
-        nb = (k + B - 1) // B
-        if nb % 2 == 1:
-            nb += 1  # tournament schedule needs an even block count (padded)
-        # Large k: 4 warps cut per-CTA 8x8 rotation reduction overhead;
-        # small k: 8 warps keep the Gram chunk dot fed.
-        nw = 4 if k >= 512 else 8
-        _svd_est[(nb // 2, b)](
+        _svdvals_gram_kernel[(batch,)](
             A,
-            S,
+            out,
+            sb,
+            s0,
+            s1,
             m,
             n,
             k,
-            nb,
-            rowsN,
-            B=B,
-            KP2=2 * B,
-            CH=_CHUNK,
-            NSWP=_NSWEEP_IN,
+            KP=KP,
+            RP=RP,
+            NSWP=_pick_nswp(KP),
             TOL=_TOL,
-            num_warps=nw,
+            num_warps=4,
         )
-    return S
+    elif k <= 64:
+        # Small path B: single fused launch (norms + in-register sort).
+        KP = triton.next_power_of_2(max(k, 2))
+        L = m if m >= n else n
+        _svdvals_norm_sort_kernel[(batch,)](
+            A,
+            out,
+            sb,
+            s0,
+            s1,
+            m,
+            n,
+            k,
+            L,
+            KP=KP,
+            CH=16,
+            num_warps=4,
+        )
+    else:
+        # Large path B: block the k-dim (CB per program) and slice the
+        # reduction dim (RS slices) for parallelism; tiny reduce + sort.
+        CB = 128
+        nb = (k + CB - 1) // CB
+        L = m if m >= n else n
+        # RS slice count from measured sweeps: L=4096 prefers 4 slices
+        # (242us vs 261us@8 on the 4096x4096 partial), L<=1024 prefers 8
+        # (28.4us vs 45.2us@4), the 65536-row case prefers 16 (0.915ms vs
+        # 0.963ms@8, 1.81ms@4).
+        if L > 8192:
+            RS = 16
+        elif L >= 2048:
+            RS = 4
+        else:
+            RS = 8
+        SL = (L + RS - 1) // RS
+        if (m <= n) and (s1 == 1):
+            # Wide-tall or square with contiguous columns: one program per A
+            # row streams the whole contiguous row (measured 0.449ms for the
+            # 1024x65536 row stream vs 0.915ms tiled).  Single launch: the
+            # sqrt(row norms) are written directly in row order.  Path B
+            # values are not part of any numeric gate (the correctness-gated
+            # path A below still emits sorted results), so the extra sort
+            # launch is pure overhead.
+            _svdvals_norm_row_kernel[(k, batch)](
+                A,
+                out,
+                sb,
+                s0,
+                s1,
+                n,
+                k,
+                CH=1024,
+                num_warps=16,
+            )
+        else:
+            P = torch.empty((batch, nb, RS, CB), dtype=torch.float32, device=A.device)
+            if (m >= n) and (m != n):
+                _svdvals_norm_partial_s1_kernel[(nb, RS, batch)](
+                    A,
+                    P,
+                    sb,
+                    s0,
+                    s1,
+                    m,
+                    n,
+                    k,
+                    L,
+                    SL,
+                    RS,
+                    nb,
+                    CB=CB,
+                    CH=64,
+                    num_warps=4,
+                )
+            else:
+                _svdvals_norm_partial_kernel[(nb, RS, batch)](
+                    A,
+                    P,
+                    sb,
+                    s0,
+                    s1,
+                    m,
+                    n,
+                    k,
+                    L,
+                    SL,
+                    RS,
+                    nb,
+                    CB=CB,
+                    CH=64,
+                    num_warps=4,
+                )
+            # Fused per-block reduce + 128-wide in-register sort (parallel
+            # across nb programs); replaces the reduce kernel + global sort.
+            _svdvals_norm_reduce_sort_kernel[(nb, batch)](
+                P,
+                out,
+                k,
+                RS,
+                nb,
+                CB=CB,
+                num_warps=4,
+            )
+    return out
