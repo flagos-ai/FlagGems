@@ -32,7 +32,6 @@ from .cholesky_inverse import cholesky_inverse
 from .conv_transpose1d import conv_transpose1d, conv_transpose1d_output_size
 from .cross_attention import cross_attention
 from .cudnn_batch_norm_backward import cudnn_batch_norm_backward, make_3d_for_bn
-from .cudnn_convolution import cudnn_convolution
 from .diagonal_scatter import diagonal_scatter
 from .embedding_dense_backward import embedding_dense_backward
 from .erfc import erfc
@@ -108,7 +107,6 @@ __all__ = [
     "conv_transpose1d_output_size",
     "cross_attention",
     "cudnn_batch_norm_backward",
-    "cudnn_convolution",
     "diagonal_scatter",
     "embedding_dense_backward",
     "erfc",

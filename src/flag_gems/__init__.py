@@ -351,6 +351,7 @@ _FULL_CONFIG = (
     ("_fused_adagrad_", _fused_adagrad_),
     ("_fused_adam", _fused_adam),
     ("_fused_adam_", _fused_adam_),
+    ("_fused_dropout", _fused_dropout),
     ("_fused_moving_avg_obs_fq_helper", _fused_moving_avg_obs_fq_helper),
     ("_fused_rms_norm", _fused_rms_norm),
     ("_fused_rms_norm_backward", _fused_rms_norm_backward),
@@ -794,6 +795,8 @@ _FULL_CONFIG = (
     ("conv_transpose1d", conv_transpose1d),
     ("conv_transpose2d.input", conv_transpose2d),
     ("conv_transpose3d.input", conv_transpose3d),
+    ("convolution_backward_overrideable", convolution_backward_overrideable),
+    ("convolution_backward_overrideable.out", convolution_backward_overrideable_out),
     ("convolution_overrideable", convolution_overrideable),
     ("convolution_overrideable.out", convolution_overrideable_out),
     (

@@ -242,6 +242,7 @@ from flag_gems.ops._functional_sym_constrain_range_for_size import (
 )
 from flag_gems.ops._fused_adagrad_ import _fused_adagrad_
 from flag_gems.ops._fused_adam import _fused_adam, _fused_adam_
+from flag_gems.ops._fused_dropout import _fused_dropout
 from flag_gems.ops._fused_moving_avg_obs_fq_helper import (
     _fused_moving_avg_obs_fq_helper,
 )
@@ -572,6 +573,10 @@ from flag_gems.ops.conv_tbc_backward import conv_tbc_backward
 from flag_gems.ops.conv_transpose1d import conv_transpose1d
 from flag_gems.ops.conv_transpose2d import conv_transpose2d
 from flag_gems.ops.conv_transpose3d import conv_transpose3d
+from flag_gems.ops.convolution_backward_overrideable import (
+    convolution_backward_overrideable,
+    convolution_backward_overrideable_out,
+)
 from flag_gems.ops.convolution_overrideable import (
     convolution_overrideable,
     convolution_overrideable_out,
@@ -1712,6 +1717,7 @@ __all__ = [
     "_fused_adagrad_",
     "_fused_adam",
     "_fused_adam_",
+    "_fused_dropout",
     "_fused_moving_avg_obs_fq_helper",
     "_fused_rms_norm",
     "_fused_rms_norm_backward",
@@ -2018,6 +2024,8 @@ __all__ = [
     "conv_transpose1d",
     "conv_transpose2d",
     "conv_transpose3d",
+    "convolution_backward_overrideable",
+    "convolution_backward_overrideable_out",
     "convolution_overrideable",
     "convolution_overrideable_out",
     "copy",
