@@ -384,7 +384,9 @@ def _isb_last(grad, self_sizes, dtype, device, index, index_len, dim_size_out):
     Mp, Kp, Np = _isb_large_pads(M, index_len, dim_size_out)
     oh = torch.zeros((Kp, Np), dtype=dtype, device=device)
     _one_hot_write(oh, index, index_len, dim_size_out, device)
-    out2d = _isb_gemm_large(grad_flat, oh, M, index_len, dim_size_out, Mp, Kp, Np, device)
+    out2d = _isb_gemm_large(
+        grad_flat, oh, M, index_len, dim_size_out, Mp, Kp, Np, device
+    )
     res = out2d[:M, :dim_size_out]
     if grad.ndim == 2:
         return res
@@ -404,7 +406,9 @@ def _isb_first(grad, self_sizes, dtype, device, index, index_len, dim_size_out):
     # _isb_gemm_large_kernel is layout-agnostic and _isb_gemm_large's exact-shape
     # check matches (Mp==Dp, Kp==Kp), so no materialisation (no aten) is needed.
     oh_t = oh.t()
-    out2d = _isb_gemm_large(oh_t, grad_flat, dim_size_out, index_len, M, Dp, Kp, Mp, device)
+    out2d = _isb_gemm_large(
+        oh_t, grad_flat, dim_size_out, index_len, M, Dp, Kp, Mp, device
+    )
     res = out2d[:dim_size_out, :M]
     if grad.ndim == 2:
         return res
@@ -559,9 +563,13 @@ def _isb_small_first(grad, self_sizes, dtype, device, index, index_len, dim_size
     return _materialize(res, self_sizes, dtype, device)
 
 
-def _isb_small_mid(grad, self_sizes, dim, dtype, device, index, index_len, dim_size_out):
+def _isb_small_mid(
+    grad, self_sizes, dim, dtype, device, index, index_len, dim_size_out
+):
     """Mid-dim (small): same batched-GEMM path as _isb_mid (masks cover small)."""
-    return _isb_mid(grad, self_sizes, dim, dtype, device, index, index_len, dim_size_out)
+    return _isb_mid(
+        grad, self_sizes, dim, dtype, device, index, index_len, dim_size_out
+    )
 
 
 def index_select_backward(grad, self_sizes, dim, index):
@@ -596,12 +604,24 @@ def index_select_backward(grad, self_sizes, dim, index):
 
     if dim == grad.ndim - 1:
         if small:
-            return _isb_small_last(grad, self_sizes, dtype, device, index, index_len, dim_size_out)
-        return _isb_last(grad, self_sizes, dtype, device, index, index_len, dim_size_out)
+            return _isb_small_last(
+                grad, self_sizes, dtype, device, index, index_len, dim_size_out
+            )
+        return _isb_last(
+            grad, self_sizes, dtype, device, index, index_len, dim_size_out
+        )
     if dim == 0:
         if small:
-            return _isb_small_first(grad, self_sizes, dtype, device, index, index_len, dim_size_out)
-        return _isb_first(grad, self_sizes, dtype, device, index, index_len, dim_size_out)
+            return _isb_small_first(
+                grad, self_sizes, dtype, device, index, index_len, dim_size_out
+            )
+        return _isb_first(
+            grad, self_sizes, dtype, device, index, index_len, dim_size_out
+        )
     if small:
-        return _isb_small_mid(grad, self_sizes, dim, dtype, device, index, index_len, dim_size_out)
-    return _isb_mid(grad, self_sizes, dim, dtype, device, index, index_len, dim_size_out)
+        return _isb_small_mid(
+            grad, self_sizes, dim, dtype, device, index, index_len, dim_size_out
+        )
+    return _isb_mid(
+        grad, self_sizes, dim, dtype, device, index, index_len, dim_size_out
+    )
