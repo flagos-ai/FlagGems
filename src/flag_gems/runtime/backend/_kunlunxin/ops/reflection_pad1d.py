@@ -282,49 +282,58 @@ def _launch_reflection_pad1d(input: torch.Tensor, padding, out: torch.Tensor = N
 
     total_out = B * W_out
     if total_out >= 262144:
-        with torch_device_fn.device(x.device):
-            # Interior bulk copy via on-chip DMA (tle.dsa). No ATen fallback.
-            # `mid` is a pure strided view (no data movement, no kernel launch).
-            mid = out.narrow(-1, pad_left, W_in)
-            if _tle_interior_copy(x, out, pad_left, W_in) or tle_copy(x, mid):
-                pad_sum = pad_left + pad_right
-                if pad_sum > 0:
-                    es = x.element_size()
-                    npid = min(_EDGE_GRID, B) if B > 0 else 1
-                    _edges_done = False
-                    if _HAS_RAW_EDGES:
-                        try:
-                            in_i8 = x.view(torch.int8)
-                            out_i8 = out.view(torch.int8)
-                            pad1d_raw_edges_kernel[(npid,)](
-                                out_i8,
-                                in_i8,
-                                B,
+        # Fast path: on-chip DMA interior copy (tle.dsa / tle.gpu) + reflected
+        # edges.  These rely on tle features that older/other tle builds may not
+        # expose (e.g. dsa.UNI_SRAM, the raw object= loader); such a mismatch
+        # raises at Triton compile time instead of returning False.  Guard the
+        # whole attempt so any failure cleanly falls through to the generic
+        # pure-Triton reflection kernel below (a full recompute of `out`, so a
+        # partial fast-path write is harmless).
+        try:
+            with torch_device_fn.device(x.device):
+                # `mid` is a pure strided view (no data movement, no launch).
+                mid = out.narrow(-1, pad_left, W_in)
+                if _tle_interior_copy(x, out, pad_left, W_in) or tle_copy(x, mid):
+                    pad_sum = pad_left + pad_right
+                    if pad_sum > 0:
+                        es = x.element_size()
+                        npid = min(_EDGE_GRID, B) if B > 0 else 1
+                        _edges_done = False
+                        if _HAS_RAW_EDGES:
+                            try:
+                                in_i8 = x.view(torch.int8)
+                                out_i8 = out.view(torch.int8)
+                                pad1d_raw_edges_kernel[(npid,)](
+                                    out_i8,
+                                    in_i8,
+                                    B,
+                                    W_in,
+                                    W_out,
+                                    pad_left,
+                                    pad_right,
+                                    es,
+                                    npid,
+                                )
+                                _edges_done = True
+                            except Exception:  # pragma: no cover - Triton edges
+                                _edges_done = False
+                        if not _edges_done:
+                            total_pad = B * pad_sum
+                            edge_grid = (triton.cdiv(total_pad, BLOCK),)
+                            pad1d_both_sides_kernel[edge_grid](
+                                x,
+                                out,
                                 W_in,
-                                W_out,
                                 pad_left,
                                 pad_right,
-                                es,
-                                npid,
+                                W_out,
+                                pad_sum,
+                                total_pad,
+                                BLOCK=BLOCK,
                             )
-                            _edges_done = True
-                        except Exception:  # pragma: no cover - fall back to Triton
-                            _edges_done = False
-                    if not _edges_done:
-                        total_pad = B * pad_sum
-                        edge_grid = (triton.cdiv(total_pad, BLOCK),)
-                        pad1d_both_sides_kernel[edge_grid](
-                            x,
-                            out,
-                            W_in,
-                            pad_left,
-                            pad_right,
-                            W_out,
-                            pad_sum,
-                            total_pad,
-                            BLOCK=BLOCK,
-                        )
-                return out
+                    return out
+        except Exception:  # pragma: no cover - fall through to generic kernel
+            pass
 
     # Tiny shapes are launch-bound. On XPU3 the 2-byte (fp16/bf16) load/store
     # path carries a fixed per-kernel penalty at BLOCK=256 that the 4-byte
