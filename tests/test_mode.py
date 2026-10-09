@@ -232,3 +232,58 @@ def test_mode_many_rows(dtype, dim):
     if dim == 0:
         inp = inp.t()
     _assert_mode_matches(inp.to(flag_gems.device), dim, True)
+
+
+@pytest.mark.mode
+@pytest.mark.parametrize("rows", [4095, 4096, 4097, 8195])
+@pytest.mark.parametrize("dim", [0, -1])
+def test_mode_histogram_launch_boundary(rows, dim):
+    # Cross the legacy 16-bucket grid bound and exercise the INT32 radix path.
+    inp = torch.tensor([3, 1, 3, 1, 2], dtype=torch.int32).repeat(rows, 13)
+    if dim == 0:
+        inp = inp.t()
+    _assert_mode_matches(inp.to(flag_gems.device), dim, False)
+
+
+@pytest.mark.mode
+@pytest.mark.parametrize("rows", [255, 256, 257, 513, 65536])
+@pytest.mark.parametrize("dtype", [torch.int8, torch.uint8])
+def test_mode_byte_histogram_launch_boundary(rows, dtype):
+    inp = torch.tensor([3, 1, 3, 1, 2], dtype=dtype).repeat(rows, 1)
+    _assert_mode_matches(inp.to(flag_gems.device), -1, False)
+
+
+@pytest.mark.mode
+@pytest.mark.parametrize("rows", [65534, 65535, 65536, 98307])
+def test_mode_small_rows_launch_boundary(rows):
+    inp = torch.tensor([3, 1, 3, 1, 2], dtype=torch.float32).repeat(rows, 1)
+    _assert_mode_matches(inp.to(flag_gems.device), -1, False)
+
+
+@pytest.mark.mode
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend backend override")
+@pytest.mark.parametrize("rows", [255, 256, 257])
+def test_mode_histogram16_batch_boundary(rows):
+    # Cross the 256-row histogram workspace batch and check the partial tail.
+    row_values = torch.arange(rows, dtype=torch.int16).remainder(17)
+    inp = row_values[:, None].expand(-1, 257).contiguous()
+    inp[:, -1] = -1
+    _assert_mode_matches(inp.to(flag_gems.device), -1, False)
+
+
+@pytest.mark.mode
+@pytest.mark.parametrize("shape", [(4096, 4096), (1024, 65536)])
+def test_mode_large_radix_launch_boundary(shape):
+    # Keep large logical tile counts on the INT32 radix path on Ascend.
+    row = torch.arange(shape[1], dtype=torch.int32) % 17
+    inp = row.expand(shape).contiguous().to(flag_gems.device)
+    _assert_mode_matches(inp, -1, False)
+
+
+@pytest.mark.mode
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend backend override")
+@pytest.mark.parametrize("dtype", [torch.float32, torch.int32, torch.int8, torch.uint8])
+def test_mode_ascend_dispatch(dtype):
+    assert flag_gems.mode.__module__.endswith("_ascend.ops.mode")
+    inp = torch.tensor([[3, 1, 3, 1, 2]], dtype=dtype, device=flag_gems.device)
+    _assert_mode_matches(inp, -1, True)

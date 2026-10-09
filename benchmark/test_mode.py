@@ -128,7 +128,14 @@ class ModeBenchmark(base.GenericBenchmark2DOnly):
         self.to_bench_dtypes = [dtype]
 
     def set_more_shapes(self):
-        return [(1024, 1), (1024, 512), (16, 128 * 1024), (8, 256 * 1024)]
+        return [
+            (1024, 1),
+            (1024, 512),
+            (16, 128 * 1024),
+            (8, 256 * 1024),
+            (4097, 200),
+            (7680, 200),
+        ]
 
 
 def _input_fn(shape, dtype, device):
