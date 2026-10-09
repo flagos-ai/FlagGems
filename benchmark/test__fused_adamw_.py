@@ -16,6 +16,7 @@ import json
 import logging
 import math
 import statistics
+from importlib.metadata import version
 
 import pytest
 import torch
@@ -241,10 +242,15 @@ def test_fused_adamw_(dtype):
     reason="torch-npu native aten::_fused_adamw_.tensor_lr falls back to CPU",
 )
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "iluvatar",
+    flag_gems.vendor_name == "iluvatar" and "+corex.4.4." in version("torch"),
     # Native device-LR probe on BI-V150, 2026-10-08: Torch 2.7.1+corex.4.4.0,
     # driver 4.4.0, f16/bf16/f32. Raw evidence: native-probe-v3a-qualified/
     # native-support.json in the adamw-20261008-iluvatar runtime task logs.
+    # Do not extend this launch failure to CoreX 4.5.0.20260804 / Torch 2.10:
+    # its shipped headers and libtorch_cuda.so (SHA256 c3d340c32ad5c21b)
+    # route both overloads through the device FusedAdamMathFunctor, including
+    # device LR pointers and AMSGrad. This is static evidence, not a runtime
+    # PASS. Read distribution metadata: torch.__version__ omits the CoreX tag.
     reason=(
         "CoreX 4.4 native aten::_fused_adamw_.tensor_lr raises "
         "RuntimeError: CUDA error: invalid device function"

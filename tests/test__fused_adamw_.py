@@ -21,6 +21,8 @@ import torch
 
 import flag_gems
 
+from .conftest import TO_CPU
+
 DTYPES = [
     torch.float16,
     pytest.param(
@@ -364,7 +366,6 @@ def test_fused_adamw_dispatch(tensor_lr, monkeypatch):
 @pytest.mark.parametrize("tensor_lr", [False, True])
 def test_fused_adamw_native(dtype, tensor_lr):
     inputs = _inputs(dtype, True)
-    expected = _clone(inputs)
     kw = _kwargs(
         amsgrad=True,
         maximize=True,
@@ -376,9 +377,15 @@ def test_fused_adamw_native(dtype, tensor_lr):
         kw["lr"] = torch.tensor(kw["lr"], device=flag_gems.device)
         native = torch.ops.aten._fused_adamw_.tensor_lr
         gems = flag_gems._fused_adamw__tensor_lr
-    native(*expected, **kw)
-    gems(*inputs, **kw)
-    _assert_groups(inputs, expected)
+    if TO_CPU:
+        # CPU reference mode must not call the native accelerator operator.
+        # Keep the AMP and both-overload coverage with the independent oracle.
+        _check(gems, inputs, kw)
+    else:
+        expected = _clone(inputs)
+        native(*expected, **kw)
+        gems(*inputs, **kw)
+        _assert_groups(inputs, expected)
 
 
 @pytest.mark.fused_adamw_
