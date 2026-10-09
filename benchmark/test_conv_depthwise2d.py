@@ -19,6 +19,8 @@ import flag_gems
 
 from . import base, consts
 
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+
 
 class ConvDepthwise2DBenchmark(base.GenericBenchmark):
     def set_more_shapes(self):
@@ -61,14 +63,8 @@ def _input_fn(shape, dtype, device):
 def _conv_depthwise2d_torch_op(
     input, weight, kernel_size, bias, stride, padding, dilation
 ):
-    """Device-native baseline for ``aten::_conv_depthwise2d``.
-
-    ``aten::_conv_depthwise2d`` has no executable kernel on this
-    torch_xmlir/XPU build, so ``latency_base`` could never be assigned and the
-    benchmark produced no records.  Time the native grouped functional
-    convolution on the device instead; the baseline path contains no FlagGems
-    code.
-    """
+    """Kunlunxin-only: aten::_conv_depthwise2d is CUDA-only and has no kernel
+    here, so the baseline is the equivalent grouped convolution."""
     return torch.nn.functional.conv2d(
         input, weight, bias, stride, padding, dilation, groups=input.shape[1]
     )
@@ -81,7 +77,11 @@ def test_conv_depthwise2d():
     bench = ConvDepthwise2DBenchmark(
         op_name="conv_depthwise2d",
         input_fn=_input_fn,
-        torch_op=_conv_depthwise2d_torch_op,
+        torch_op=(
+            _conv_depthwise2d_torch_op
+            if IS_KUNLUNXIN
+            else torch.ops.aten._conv_depthwise2d
+        ),
         gems_op=flag_gems._conv_depthwise2d,
         dtypes=consts.FLOAT_DTYPES,
     )
