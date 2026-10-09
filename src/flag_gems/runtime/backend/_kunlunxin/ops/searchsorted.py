@@ -18,6 +18,7 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
 from flag_gems.runtime import device as runtime_device
 from flag_gems.runtime import torch_device_fn
 
@@ -606,7 +607,7 @@ def _searchsorted_impl(
             # benchmark shape) and is only paid when the staged path is taken;
             # otherwise the bitwalk below still gets the sorter and does the
             # indirection itself.
-            materialised = torch.gather(
+            materialised = flag_gems.gather(
                 sorted_sequence_contiguous, -1, sorter_contiguous
             )
             staged = _sm_staged_supported(materialised, values_contiguous, kernel_out)
