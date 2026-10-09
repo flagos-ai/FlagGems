@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import inspect
 import logging
 import math
 from functools import lru_cache
@@ -260,6 +261,11 @@ if HAS_TLE_EXTRACT_SLICE:
         key=["N", "D", "NUM_CORES"],
         prune_configs_by={"early_config_prune": _prune_glu_ascend_configs},
         do_bench=_glu_ascend_do_bench,
+        **(
+            {"cache_results": False}
+            if "cache_results" in inspect.signature(triton.autotune).parameters
+            else {}
+        ),
     )
     @triton.jit
     def glu_kernel_ascend(
