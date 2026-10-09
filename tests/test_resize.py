@@ -35,8 +35,7 @@ def test_resize(src_shape, dst_shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.ops.aten.resize(ref_inp, dst_shape)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.resize(inp, dst_shape)
+    res_out = flag_gems.resize(inp, dst_shape)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -49,7 +48,6 @@ def test_resize_(src_shape, dst_shape, dtype):
     ref_inp = utils.to_reference(inp.clone())
 
     torch.ops.aten.resize_(ref_inp, dst_shape)
-    with flag_gems.use_gems():
-        torch.ops.aten.resize_(inp, dst_shape)
+    flag_gems.resize_(inp, dst_shape)
 
     utils.gems_assert_close(inp, ref_inp, dtype)

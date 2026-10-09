@@ -49,8 +49,7 @@ def test_resize_as(shape, dtype):
         ref_template = utils.to_reference(template)
 
         ref_out = ref_inp.resize_as(ref_template)
-        with flag_gems.use_gems():
-            res_out = inp.resize_as(template)
+        res_out = flag_gems.resize_as(inp, template)
 
         utils.gems_assert_equal(res_out, ref_out)
 
@@ -77,8 +76,7 @@ def test_resize_as_(shape, dtype):
         ref_template = utils.to_reference(template)
 
         ref_inp.resize_as_(ref_template)
-        with flag_gems.use_gems():
-            inp.resize_as_(template)
+        flag_gems.resize_as_(inp, template)
 
         utils.gems_assert_equal(inp, ref_inp)
 
@@ -87,9 +85,8 @@ def test_resize_as_(shape, dtype):
 def test_resize_as_mismatched_numel():
     inp = torch.randn(3, 4, device=flag_gems.device)
     template = torch.randn(5, 5, device=flag_gems.device)
-    with flag_gems.use_gems():
-        with pytest.raises(RuntimeError):
-            inp.resize_as(template)
+    with pytest.raises(RuntimeError):
+        flag_gems.resize_as(inp, template)
 
 
 @pytest.mark.resize_as
@@ -103,8 +100,7 @@ def test_resize_as_non_broadcastable(src_shape, tgt_shape, dtype):
     ref_template = utils.to_reference(template)
 
     ref_out = ref_inp.resize_as(ref_template)
-    with flag_gems.use_gems():
-        res_out = inp.resize_as(template)
+    res_out = flag_gems.resize_as(inp, template)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -120,8 +116,7 @@ def test_resize_as__non_broadcastable(src_shape, tgt_shape, dtype):
     ref_template = utils.to_reference(template)
 
     ref_inp.resize_as_(ref_template)
-    with flag_gems.use_gems():
-        inp.resize_as_(template)
+    flag_gems.resize_as_(inp, template)
 
     utils.gems_assert_equal(inp, ref_inp)
 
@@ -136,8 +131,7 @@ def test_resize_as_empty():
     ref_template = utils.to_reference(template)
 
     ref_out = ref_inp.resize_as(ref_template)
-    with flag_gems.use_gems():
-        res_out = inp.resize_as(template)
+    res_out = flag_gems.resize_as(inp, template)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -155,8 +149,7 @@ def test_resize_as_non_contiguous(dtype):
     ref_template = utils.to_reference(template)
 
     ref_out = ref_inp.resize_as(ref_template)
-    with flag_gems.use_gems():
-        res_out = inp.resize_as(template)
+    res_out = flag_gems.resize_as(inp, template)
 
     utils.gems_assert_equal(res_out, ref_out)
     assert not inp.is_contiguous(), "input must remain non-contiguous"
@@ -176,8 +169,7 @@ def test_resize_as_non_contiguous_template(dtype):
     ref_template = utils.to_reference(template)
 
     ref_out = ref_inp.resize_as(ref_template)
-    with flag_gems.use_gems():
-        res_out = inp.resize_as(template)
+    res_out = flag_gems.resize_as(inp, template)
 
     utils.gems_assert_equal(res_out, ref_out)
     assert not template.is_contiguous(), "template must remain non-contiguous"
