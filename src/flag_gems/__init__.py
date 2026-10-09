@@ -435,6 +435,7 @@ _FULL_CONFIG = (
     ("_padded_dense_to_jagged_forward", _padded_dense_to_jagged_forward),
     ("_pdist_backward", _pdist_backward),
     ("_pdist_forward", _pdist_forward),
+    ("_philox_uniform_", _philox_uniform_),
     # _pin_memory takes a CPU tensor and dispatches on the CPU key, not the
     # accelerator key: registering under the backend key would never fire.
     ("_pin_memory", _pin_memory, None, ["CPU"]),

@@ -35,20 +35,19 @@ def test_scaled_dot_product_fused_attention_overrideable(
     )
 
     # Get result from our implementation
-    with flag_gems.use_gems():
-        (
-            output,
-            logsumexp,
-            cum_seq_q,
-            cum_seq_k,
-            max_q,
-            max_k,
-            philox_seed,
-            philox_offset,
-            debug_attn_mask,
-        ) = flag_gems._scaled_dot_product_fused_attention_overrideable(
-            q, k, v, is_causal=is_causal
-        )
+    (
+        output,
+        logsumexp,
+        cum_seq_q,
+        cum_seq_k,
+        max_q,
+        max_k,
+        philox_seed,
+        philox_offset,
+        debug_attn_mask,
+    ) = flag_gems._scaled_dot_product_fused_attention_overrideable(
+        q, k, v, is_causal=is_causal
+    )
 
     # Compare outputs
     gems_assert_close(output, ref_output, dtype)

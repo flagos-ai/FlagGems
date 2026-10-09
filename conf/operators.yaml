@@ -105,6 +105,63 @@ ops:
   - LinearAlg
   stages:
   - alpha: '5.5'
+- id: _linalg_svd
+  description: 'Computes the singular value decomposition (SVD) of a matrix; the private
+    primitive backing torch.linalg.svd and torch.linalg.svdvals.
+
+    '
+  for:
+  - _linalg_svd
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.5'
+- id: _logcumsumexp
+  description: 'Returns the log of the cumulative sum of exponentials of elements along a
+    dimension, computed in a numerically stable way. Underscored variant of
+    `torch.logcumsumexp`.
+
+    '
+  for:
+  - _logcumsumexp
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
+- id: _logcumsumexp_out
+  description: 'A variant of `_logcumsumexp` that assigns the output to the `out` tensor.
+
+    '
+  for:
+  - _logcumsumexp.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
+- id: _philox_uniform_
+  description: |
+    Fills the tensor in place with samples from a uniform distribution over
+    [low, high) drawn from a stateless Philox RNG stream identified by the
+    (seed, offset) pair in `key`.
+  for:
+  - _philox_uniform_
+  labels:
+  - aten
+  - KernelGen
+  - pointwise
+  kind:
+  - Distribution
+  stages:
+  - alpha: '5.5.0'
 - id: _reshape_alias
   description: 'Creates a view of the input tensor with the given size and stride,
 
