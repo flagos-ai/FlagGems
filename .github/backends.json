@@ -28,7 +28,6 @@
     "containerized": true,
     "container": {
       "image": "harbor.baai.ac.cn/flagos-runtime/flagos-runtime-enflame-tops1.10.6:2.2.0",
-      "options": "--privileged -v /dev:/dev",
       "volumes": [],
       "runs_on_default": "enflame-s60-0",
       "runs_on_vllm": "enflame-s60-1"
