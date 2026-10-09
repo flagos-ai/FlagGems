@@ -17,7 +17,7 @@
 #
 # Main config: .github/configs/backends/config.yaml
 # Per-backend config: .github/configs/backends/<NAME>.yaml
-# vendors: Nvidia,MThreads,KunLunXin,Iluvatar,Ascend,Hygon,Metax,THead,Cambricon,AMD,TsingMicro
+# vendors: Nvidia,MThreads,KunLunXin,Iluvatar,Ascend,Hygon,Metax,THead,Cambricon,AMD,TsingMicro,Enflame
 name: ops-test
 
 permissions:
