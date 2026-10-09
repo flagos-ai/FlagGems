@@ -41,9 +41,7 @@ def test_reflection_pad1d(shape, dtype, padding):
     ref_x = utils.to_reference(x, True)
 
     ref_out = torch.ops.aten.reflection_pad1d(ref_x, padding)
-
-    with flag_gems.use_gems():
-        act_out = torch.ops.aten.reflection_pad1d(x, padding)
+    act_out = flag_gems.reflection_pad1d(x, padding)
 
     utils.gems_assert_close(act_out, ref_out, dtype=dtype)
 
@@ -64,8 +62,6 @@ def test_reflection_pad1d_out(shape, dtype, padding):
     act_out_buf = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
 
     ref_out = torch.ops.aten.reflection_pad1d.out(ref_x, padding, out=ref_out_buf)
-
-    with flag_gems.use_gems():
-        act_out = torch.ops.aten.reflection_pad1d.out(x, padding, out=act_out_buf)
+    act_out = flag_gems.reflection_pad1d_out(x, padding, act_out_buf)
 
     utils.gems_assert_close(act_out, ref_out, dtype=dtype)

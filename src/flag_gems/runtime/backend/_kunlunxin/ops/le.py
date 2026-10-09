@@ -201,7 +201,7 @@ def le_func_tensor_inplace(x, y):
 
 
 def le_(A, B):
-    logger.debug("GEMS_KUNLUNXIN LE_ TENSOR")
+    logger.debug("GEMS_KUNLUNXIN LE__TENSOR")
     if A.device != B.device:
         if A.device.type == device:
             B = B.to(A.device)

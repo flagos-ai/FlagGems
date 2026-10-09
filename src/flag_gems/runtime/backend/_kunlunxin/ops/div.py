@@ -541,7 +541,12 @@ def true_divide_(A, B):
         return true_div_func_tensor_scalar(A, B, out0=A)
 
 
-divide = true_divide
+def divide(A, B):
+    """Alias for element-wise true division."""
+    logger.debug("GEMS_KUNLUNXIN DIVIDE")
+    return true_divide(A, B)
+
+
 true_divide_tensor_ = true_divide_
 
 

@@ -346,12 +346,22 @@ def gems_log_prefix(fn):
     """Derive the expected log prefix from the resolved function module.
 
     The generic implementation logs with the ``"GEMS"`` prefix, while
-    vendor-specific overrides registered under
-    ``flag_gems.runtime.backend._<vendor>.ops`` log with
-    ``"GEMS_<VENDOR>"``.  This helper inspects the resolved function so
-    that test assertions work on every backend.
+    vendor-specific overrides log with ``"GEMS_<VENDOR>"``. Detect the
+    ``_<vendor>`` path component so this works for both short imported module
+    names and fully qualified backend module names.
     """
-    module = fn.__module__
-    if module.startswith("flag_gems.runtime.backend."):
+    module_parts = fn.__module__.split(".")
+    if f"_{flag_gems.vendor_name}" in module_parts:
         return f"GEMS_{flag_gems.vendor_name.upper()}"
     return "GEMS"
+
+
+def gems_log_logger(fn):
+    """Return the canonical logger name used by an operator implementation.
+
+    Vendor overrides may live in a vendor module while intentionally sharing
+    the generic ``flag_gems.ops.<operator>`` logger name.
+    """
+    module = fn.__module__.split(".")
+    operator_module = module[-1]
+    return f"flag_gems.ops.{operator_module}"

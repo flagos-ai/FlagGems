@@ -2021,6 +2021,16 @@ def _launch_forward(
                         and input.dtype != torch.bfloat16
                         and hidden_size >= 128
                     )
+                    or (
+                        vendor == "iluvatar"
+                        and input.dtype == torch.float32
+                        and hidden_size >= 128
+                    )
+                    or (
+                        vendor == "metax"
+                        and input.dtype == torch.float16
+                        and hidden_size >= 128
+                    )
                 )
             )
             use_dot = (
@@ -2031,6 +2041,12 @@ def _launch_forward(
                 # The vector kernel is faster for small NVIDIA states; larger
                 # states benefit from the tensor-core dot path.
                 and (not prefer_persistent_dot or hidden_size > 64)
+                # MetaX has a high small-matrix dot setup cost; its vector
+                # recurrence is faster for these state sizes.
+                and not (
+                    vendor == "metax"
+                    and (hidden_size <= 64 or input.dtype == torch.float32)
+                )
             )
             use_ascend_chunked = (
                 vendor == "ascend"
@@ -2047,7 +2063,7 @@ def _launch_forward(
                 vendor == "metax"
                 and matrix_shape
                 and input.dtype != torch.bfloat16
-                and hidden_size >= 128
+                and hidden_size > 128
             )
             if use_split_persistent:
                 rows = seq_len * batch_size
@@ -2060,7 +2076,7 @@ def _launch_forward(
                     triton.cdiv(hidden_size, block_n),
                 )
                 launch_warps = 1 if vendor == "ascend" else 4
-                launch_stages = 1 if vendor in ("ascend", "metax") else 2
+                launch_stages = 1 if vendor in ("ascend", "metax", "iluvatar") else 2
                 rnn_tanh_input_linear_kernel[linear_grid](
                     current_input,
                     weight_ih,
@@ -2200,7 +2216,7 @@ def _launch_forward(
                         if chunk_start > 1 and not final_chunk:
                             compiled_chunk = compiled_kernel[direct_grid]
             elif use_ascend_tiled:
-                use_ascend_composed_tanh = hidden_size <= 128
+                use_ascend_composed_tanh = vendor == "ascend" and hidden_size <= 128
                 if not use_ascend_composed_tanh and hidden_read is None:
                     hidden_read = _empty((batch_size, hidden_size), input)
                 rows = seq_len * batch_size
@@ -3447,6 +3463,7 @@ def rnn_tanh(
         "nvidia",
         "thead",
         "hygon",
+        "iluvatar",
     )
     return _rnn_tanh_impl(
         input,
