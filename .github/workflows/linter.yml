@@ -51,40 +51,52 @@ jobs:
       http_proxy: ${{ secrets.CI_HTTP_PROXY }}
       https_proxy: ${{ secrets.CI_HTTP_PROXY }}
     steps:
-    - name: Diag SSH vs HTTP connectivity (temporary)
+    - name: Diag real SSH fetch vs HTTP (temporary)
       shell: bash
       env:
-        # SSH ignores http(s)_proxy; clear them here so the SSH probes test the
-        # runner's direct egress, while the HTTP probe below keeps the proxy.
-        GIT_SSH_COMMAND: "ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no -o BatchMode=yes"
+        CI_SSH_KEY: ${{ secrets.CI_SSH_KEY }}
       run: |
-        set +e  # probes exit non-zero (auth fail / timeout); don't abort the step
-        probe_ssh() {  # $1=label $2=host $3=port
+        set +e
+        # Install the deploy key for authenticated SSH to github.
+        mkdir -p ~/.ssh && chmod 700 ~/.ssh
+        printf '%s\n' "$CI_SSH_KEY" > ~/.ssh/ci_key && chmod 600 ~/.ssh/ci_key
+        # SSH ignores http(s)_proxy, so these probes test direct egress; try the
+        # 443 host too (ssh.github.com:443) since port 22 is often throttled.
+        SSH22="ssh -i ~/.ssh/ci_key -o IdentitiesOnly=yes -o ConnectTimeout=15 -o StrictHostKeyChecking=no -o BatchMode=yes"
+        SSH443="$SSH22 -o Hostname=ssh.github.com -o Port=443"
+
+        timed() {  # $1=label  $2...=command
+          local label="$1"; shift
+          local start end ms
           start=$(date +%s%N)
-          out=$(timeout 25 ssh -T -o ConnectTimeout=15 -o StrictHostKeyChecking=no \
-                  -o BatchMode=yes -p "$3" "git@$2" 2>&1); rc=$?
+          timeout 30 "$@" >/dev/null 2>&1 && rc=ok || rc=FAIL
           end=$(date +%s%N); ms=$(( (end-start)/1000000 ))
-          # github returns "Hi ... successfully authenticated" or
-          # "Permission denied (publickey)" once the SSH handshake works.
-          if echo "$out" | grep -qiE "successfully authenticated|Permission denied|Hi "; then
-            verdict="REACHABLE(handshake ok)"
-          else
-            verdict="UNREACHABLE"
-          fi
-          printf "  %-10s %d.%03ds rc=%d %s\n" "$1" "$((ms/1000))" "$((ms%1000))" "$rc" "$verdict"
-          echo "    out: $(echo "$out" | head -1)"
+          printf "  %-14s %d.%03ds %s\n" "$label" "$((ms/1000))" "$((ms%1000))" "$rc"
         }
-        echo "=== SSH 22 (github.com:22) ==="
-        for i in 1 2 3; do probe_ssh "ssh22-$i" github.com 22; done
-        echo "=== SSH 443 (ssh.github.com:443) ==="
-        for i in 1 2 3; do probe_ssh "ssh443-$i" ssh.github.com 443; done
-        echo "=== HTTP via proxy (git ls-remote) ==="
+
+        echo "=== SSH ls-remote (port 22) ==="
         for i in 1 2 3; do
-          start=$(date +%s%N)
-          timeout 25 git ls-remote https://github.com/flagos-ai/FlagGems.git refs/heads/master >/dev/null 2>&1 && rc=ok || rc=FAIL
-          end=$(date +%s%N); ms=$(( (end-start)/1000000 ))
-          printf "  http-%d %d.%03ds %s\n" "$i" "$((ms/1000))" "$((ms%1000))" "$rc"
+          GIT_SSH_COMMAND="$SSH22" timed "ssh22-ls-$i" git ls-remote git@github.com:flagos-ai/FlagGems.git refs/heads/master
         done
+        echo "=== SSH shallow fetch (port 22, real pack transfer) ==="
+        for i in 1 2 3; do
+          d=$(mktemp -d); ( cd "$d" && git init -q && git remote add origin git@github.com:flagos-ai/FlagGems.git )
+          GIT_SSH_COMMAND="$SSH22" timed "ssh22-fetch-$i" git -C "$d" fetch -q --depth=1 origin "${{ github.sha }}"
+          rm -rf "$d"
+        done
+        echo "=== SSH shallow fetch (port 443) ==="
+        for i in 1 2 3; do
+          d=$(mktemp -d); ( cd "$d" && git init -q && git remote add origin git@github.com:flagos-ai/FlagGems.git )
+          GIT_SSH_COMMAND="$SSH443" timed "ssh443-fetch-$i" git -C "$d" fetch -q --depth=1 origin "${{ github.sha }}"
+          rm -rf "$d"
+        done
+        echo "=== HTTP shallow fetch via proxy (baseline) ==="
+        for i in 1 2 3; do
+          d=$(mktemp -d); ( cd "$d" && git init -q && git remote add origin https://github.com/flagos-ai/FlagGems.git )
+          timed "http-fetch-$i" git -C "$d" fetch -q --depth=1 origin "${{ github.sha }}"
+          rm -rf "$d"
+        done
+        rm -f ~/.ssh/ci_key
     # Checkout with up to 5 attempts, each with a hard 1-minute step timeout.
     # The proxy makes git fetch HANG (not fail) ~half the time; a hung fetch
     # ignores git's own timeouts, so only the runner's step `timeout-minutes`
