@@ -23,14 +23,13 @@ import flag_gems
 
 from .accuracy_utils import to_reference
 
-FP64_VENDORS = ("nvidia", "hygon", "metax")
 DTYPES = [
     torch.float32,
     pytest.param(
         torch.float64,
         marks=pytest.mark.skipif(
-            flag_gems.vendor_name not in FP64_VENDORS,
-            reason="triangular_solve float64 contract covers NVIDIA, Hygon and MetaX",
+            not flag_gems.runtime.device.support_fp64,
+            reason="backend does not support float64",
         ),
     ),
 ]
@@ -408,8 +407,8 @@ def test_triangular_solve_out_rejected_dtype(dtype):
 
 @pytest.mark.triangular_solve
 @pytest.mark.skipif(
-    flag_gems.vendor_name in FP64_VENDORS,
-    reason="float64 is supported by the triangular_solve contract on this backend",
+    flag_gems.runtime.device.support_fp64,
+    reason="backend supports float64",
 )
 def test_triangular_solve_rejected_float64():
     B = torch.empty(0, 2, dtype=torch.float64, device=flag_gems.device)

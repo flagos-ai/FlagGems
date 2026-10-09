@@ -28,8 +28,8 @@ DTYPES = [
         torch.float64,
         id="float64",
         marks=pytest.mark.skipif(
-            flag_gems.vendor_name not in ("nvidia", "hygon", "metax"),
-            reason="triangular_solve float64 contract covers NVIDIA, Hygon and MetaX",
+            not flag_gems.runtime.device.support_fp64,
+            reason="backend does not support float64",
         ),
     ),
 ]
