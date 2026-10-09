@@ -314,7 +314,16 @@ jobs:
           # printenv | grep -viE '^(https?_proxy|all_proxy)=' || true
           OPS="${{ needs.prepare.outputs.ops }}"
           if [ "${OPS}" = "all" ]; then
-            OP_ARGS="--stages all"
+            if [ "${{ matrix.vendor }}" = "Enflame" ]; then
+              OP_LIST_FILE="/data/flaggems/op_list.txt"
+              if [ ! -f "${OP_LIST_FILE}" ]; then
+                echo "[Run ops tests] ERROR: Enflame op list file not found: ${OP_LIST_FILE}"
+                exit 1
+              fi
+              OP_ARGS="--op-list-file ${OP_LIST_FILE}"
+            else
+              OP_ARGS="--stages all"
+            fi
           else
             OP_ARGS="--ops ${OPS}"
           fi
@@ -476,7 +485,16 @@ jobs:
           # run tests with specified GPUs and output directory
           OPS="${{ needs.prepare.outputs.ops }}"
           if [ "${OPS}" = "all" ]; then
-            OP_ARGS="--stages all"
+            if [ "${{ matrix.vendor }}" = "Enflame" ]; then
+              OP_LIST_FILE="/data/flaggems/op_list.txt"
+              if [ ! -f "${OP_LIST_FILE}" ]; then
+                echo "[Run ops tests] ERROR: Enflame op list file not found: ${OP_LIST_FILE}"
+                exit 1
+              fi
+              OP_ARGS="--op-list-file ${OP_LIST_FILE}"
+            else
+              OP_ARGS="--stages all"
+            fi
           else
             OP_ARGS="--ops ${OPS}"
           fi
