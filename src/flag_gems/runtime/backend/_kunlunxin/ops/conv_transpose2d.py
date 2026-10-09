@@ -292,10 +292,34 @@ def conv_transpose2d(
     use_cast_ride = orig_dtype == torch.bfloat16 or (
         orig_dtype == torch.float16 and groups > 1 and (stride_h > 1 or stride_w > 1)
     )
+    # fp16 + bias, when the C cast pipeline above is NOT already selected, runs
+    # the launch table's fp16 fusion entry
+    # (conv2d_transpose_fusion_v2<fp16, fp16, fp16, fp16>), whose accumulator is
+    # fp16.  The reduction cancels on some outputs and the fp16 partial sums
+    # then lose several ULPs of the *result* (measured 2026-10-08 on
+    # test_conv_transpose1d_bias[dtype1-0-2-shape1-kernel1]: the vendor fp16
+    # convolution returns -0.15625 where the correctly rounded value is
+    # -0.14990234, so after the python fp32 bias add the element is
+    # -0.11328125 against the reference -0.10693359375, i.e. 0.00634765625 >
+    # 0.00490693 allowed).  The reference is one fp64->fp16 rounding, so no
+    # later fp32 step can recover those bits.  The fp32 v2 entry is accurate to
+    # ~1.9e-6 on the same input and round16(fp32_result + bias) reproduces the
+    # reference exactly.  Only the *bias* path is affected: every no-bias fp16
+    # case in the official matrices passes, and both official benchmarks call
+    # with bias=None, so this reride costs nothing on the measured shapes.
+    # (The underlying defect is the fp16 accumulator in the shared
+    # liblaunch_shared.so launch table; that artifact is not ours to rebuild.)
+    fp32_reride = orig_dtype == torch.float16 and bias is not None and not use_cast_ride
     scratch_x = scratch_w = None
     if use_cast_ride:
         scratch_x = _scratch_buf(input.shape, input.device)
         scratch_w = _scratch_buf(weight.shape, weight.device)
+    elif fp32_reride:
+        # feeding fp32 operands makes the launcher report the fp32 type index,
+        # which the launch table routes to the accurate conv2d_transpose_v2
+        # entry; the result is rounded back to fp16 once, at the end.
+        input = _fast_cast(input, torch.float32)
+        weight = _fast_cast(weight, torch.float32)
 
     if bias is None:
         # a None argument would drop its slot from the launcher parameter
@@ -428,6 +452,9 @@ def conv_transpose2d(
             out = out + b
         else:
             out = _fast_cast(_fast_cast(out, torch.float32) + b, out.dtype)
+    if fp32_reride:
+        # single rounding back to the requested dtype, matching the reference
+        out = _fast_cast(out, orig_dtype)
     if input_was_unbatched:
         out = out.squeeze(0)
     return out
