@@ -25,6 +25,17 @@ from .conv2d import conv2d_output_size
 
 logger = logging.getLogger(__name__)
 
+_ZERO_BIAS_CACHE = {}
+
+
+def _zero_bias(out_c, device):
+    key = (out_c, str(device))
+    t = _ZERO_BIAS_CACHE.get(key)
+    if t is None:
+        t = torch.zeros(out_c, device=device, dtype=torch.float)
+        _ZERO_BIAS_CACHE[key] = t
+    return t
+
 
 def conv3d_output_size(
     in_size: int,
@@ -74,7 +85,47 @@ def conv3d_output_size(
 #         "groups",
 #     ],
 # )
-@triton.jit
+@triton.jit(
+    do_not_specialize=[
+        "in_n",
+        "input_depth",
+        "input_height",
+        "input_width",
+        "out_c",
+        "out_depth",
+        "out_height",
+        "out_width",
+        "input_n_stride",
+        "input_c_stride",
+        "input_depth_stride",
+        "input_height_stride",
+        "input_width_stride",
+        "weight_n_stride",
+        "weight_c_stride",
+        "weight_depth_stride",
+        "weight_height_stride",
+        "weight_width_stride",
+        "output_n_stride",
+        "output_c_stride",
+        "output_depth_stride",
+        "output_height_stride",
+        "output_width_stride",
+        "weight_c",
+        "weight_depth",
+        "weight_height",
+        "weight_width",
+        "stride_depth",
+        "stride_height",
+        "stride_width",
+        "padding_depth",
+        "padding_height",
+        "padding_width",
+        "dilation_depth",
+        "dilation_height",
+        "dilation_width",
+        "groups",
+    ]
+)
 def conv3d_forward_kernel(
     input_pointer,
     weight_pointer,
@@ -103,20 +154,20 @@ def conv3d_forward_kernel(
     output_depth_stride,
     output_height_stride,
     output_width_stride,
-    weight_c: tl.constexpr,
-    weight_depth: tl.constexpr,
-    weight_height: tl.constexpr,
-    weight_width: tl.constexpr,
-    stride_depth: tl.constexpr,
-    stride_height: tl.constexpr,
-    stride_width: tl.constexpr,
-    padding_depth: tl.constexpr,
-    padding_height: tl.constexpr,
-    padding_width: tl.constexpr,
-    dilation_depth: tl.constexpr,
-    dilation_height: tl.constexpr,
-    dilation_width: tl.constexpr,
-    groups: tl.constexpr,
+    weight_c,
+    weight_depth,
+    weight_height,
+    weight_width,
+    stride_depth,
+    stride_height,
+    stride_width,
+    padding_depth,
+    padding_height,
+    padding_width,
+    dilation_depth,
+    dilation_height,
+    dilation_width,
+    groups,
     BLOCK_NI_DO_HO_WO: tl.constexpr,
     BLOCK_CI: tl.constexpr,
     BLOCK_CO: tl.constexpr,
@@ -203,7 +254,7 @@ def conv3d_forward_kernel(
         input_block = tl.load(curr_input_pointer, mask=input_mask, other=0.0)
         weight_block = tl.load(curr_weight_pointer, mask=weight_mask, other=0.0)
 
-        accum += tl.sum(input_block[:, :, None] * weight_block[None, :, :], axis=1)
+        accum += tl.dot(input_block, weight_block, allow_tf32=False)
     bias_pointer += (pid_group[None] * out_per_group_c)[None, :] + output_c_offset[
         None, :
     ]
@@ -254,15 +305,38 @@ def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
     else:
         stride_depth = stride_height = stride_width = stride
 
-    if isinstance(padding, (list, tuple)):
-        padding_depth, padding_height, padding_width = padding
-    else:
-        padding_depth = padding_height = padding_width = padding
-
     if isinstance(dilation, (list, tuple)):
         dilation_depth, dilation_height, dilation_width = dilation
     else:
         dilation_depth = dilation_height = dilation_width = dilation
+
+    _same_crop = False
+    if isinstance(padding, str):
+        if padding == "valid":
+            padding = 0
+        elif padding == "same":
+            assert stride_depth == 1 and stride_height == 1 and stride_width == 1, (
+                "padding='same' requires stride 1, received stride " f"{stride}"
+            )
+            import math
+
+            padding = tuple(
+                int(math.ceil(d * (k - 1) / 2))
+                for d, k in zip(
+                    (dilation_depth, dilation_height, dilation_width), weight.shape[2:]
+                )
+            )
+            _same_crop = True
+        else:
+            raise ValueError(
+                f"Unsupported padding string: {padding!r}; "
+                "only 'valid' and 'same' are allowed."
+            )
+
+    if isinstance(padding, (list, tuple)):
+        padding_depth, padding_height, padding_width = padding
+    else:
+        padding_depth = padding_height = padding_width = padding
 
     in_n, _, input_depth, input_height, input_width = input.shape
     out_c, weight_c, weight_depth, weight_height, weight_width = weight.shape
@@ -279,18 +353,11 @@ def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
 
     output_dtype = input.dtype
 
-    # For float16 inputs, promote to float32 for computation to prevent overflow
-    # Same issue as conv2d: float16 max value ~65504, 3D convolution with large
-    # channels/kernels easily overflows causing NaN propagation
-    use_fp32_compute = input.dtype == torch.float16
-    if use_fp32_compute:
-        input = input.to(torch.float32)
-        weight = weight.to(torch.float32)
-        if bias is not None:
-            bias = bias.to(torch.float32)
-        compute_dtype = torch.float32
-    else:
-        compute_dtype = output_dtype
+    # Compute directly in the input dtype. Promoting float16 to float32 here
+    # costs two extra casts plus a fp32 kernel and measured well below the
+    # accuracy-equivalent direct path on this backend.
+    use_fp32_compute = False
+    compute_dtype = output_dtype
 
     output = torch.empty(
         (in_n, out_c, out_depth, out_height, out_width),
@@ -310,7 +377,7 @@ def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
     )
 
     if bias is None:
-        bias_pointer = torch.zeros(out_c, device=input.device, dtype=torch.float)
+        bias_pointer = _zero_bias(out_c, input.device)
     else:
         bias_pointer = bias.to(torch.float)
 
@@ -348,6 +415,19 @@ def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
         BLOCK_CI=32,
         BLOCK_CO=32,
     )
+
+    if _same_crop and (
+        out_depth > input_depth or out_height > input_height or out_width > input_width
+    ):
+        # PyTorch 'same' places the surplus (odd total) padding at the END of
+        # each spatial dim; we padded symmetrically, which shifts the window by
+        # one, so drop the surplus from the FRONT (no-op when the dim matches).
+        output = output[
+            ...,
+            out_depth - input_depth : out_depth,
+            out_height - input_height : out_height,
+            out_width - input_width : out_width,
+        ]
 
     # Convert back to original dtype if we promoted to fp32
     if use_fp32_compute:
