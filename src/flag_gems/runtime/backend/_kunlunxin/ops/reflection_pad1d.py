@@ -90,30 +90,41 @@ _PAYLOAD_OBJ = os.path.join(
     os.path.dirname(__file__), "..", "payload", "obj", "reflection_pad1d.o"
 )
 
+# The hand-written reflected-edge payload is loaded via tle.raw's object= loader,
+# which only exists on newer tle builds.  On older environments the decorator
+# raises at import time (e.g. "RawJITFunction.__init__() got an unexpected
+# keyword argument 'object'").  Guard the whole declaration so an unsupported
+# tle leaves _HAS_RAW_EDGES False and the pure-Triton edge kernels below run
+# instead -- a failure here must never crash the vendor-lib import.
+_HAS_RAW_EDGES = False
+try:
 
-@tle.raw.dialect("xpu3", object=_PAYLOAD_OBJ, arch=3)
-def pad_edges3(out, inp, B, W_in, W_out, pad_left, pad_right, es, pid, npid): ...
+    @tle.raw.dialect("xpu3", object=_PAYLOAD_OBJ, arch=3)
+    def pad_edges3(out, inp, B, W_in, W_out, pad_left, pad_right, es, pid, npid): ...
 
-
-@triton.jit(
-    do_not_specialize=[
-        "B",
-        "W_in",
-        "W_out",
-        "pad_left",
-        "pad_right",
-        "es",
-        "npid",
-    ]
-)
-def pad1d_raw_edges_kernel(
-    out_i8, in_i8, B, W_in, W_out, pad_left, pad_right, es, npid
-):
-    pid = tl.program_id(axis=0)
-    tle.raw.call(
-        pad_edges3,
-        (out_i8, in_i8, B, W_in, W_out, pad_left, pad_right, es, pid, npid),
+    @triton.jit(
+        do_not_specialize=[
+            "B",
+            "W_in",
+            "W_out",
+            "pad_left",
+            "pad_right",
+            "es",
+            "npid",
+        ]
     )
+    def pad1d_raw_edges_kernel(
+        out_i8, in_i8, B, W_in, W_out, pad_left, pad_right, es, npid
+    ):
+        pid = tl.program_id(axis=0)
+        tle.raw.call(
+            pad_edges3,
+            (out_i8, in_i8, B, W_in, W_out, pad_left, pad_right, es, pid, npid),
+        )
+
+    _HAS_RAW_EDGES = True
+except Exception:  # pragma: no cover - environment without tle.raw object= support
+    _HAS_RAW_EDGES = False
 
 
 @triton.jit
@@ -280,19 +291,39 @@ def _launch_reflection_pad1d(input: torch.Tensor, padding, out: torch.Tensor = N
                 if pad_sum > 0:
                     es = x.element_size()
                     npid = min(_EDGE_GRID, B) if B > 0 else 1
-                    in_i8 = x.view(torch.int8)
-                    out_i8 = out.view(torch.int8)
-                    pad1d_raw_edges_kernel[(npid,)](
-                        out_i8,
-                        in_i8,
-                        B,
-                        W_in,
-                        W_out,
-                        pad_left,
-                        pad_right,
-                        es,
-                        npid,
-                    )
+                    _edges_done = False
+                    if _HAS_RAW_EDGES:
+                        try:
+                            in_i8 = x.view(torch.int8)
+                            out_i8 = out.view(torch.int8)
+                            pad1d_raw_edges_kernel[(npid,)](
+                                out_i8,
+                                in_i8,
+                                B,
+                                W_in,
+                                W_out,
+                                pad_left,
+                                pad_right,
+                                es,
+                                npid,
+                            )
+                            _edges_done = True
+                        except Exception:  # pragma: no cover - fall back to Triton
+                            _edges_done = False
+                    if not _edges_done:
+                        total_pad = B * pad_sum
+                        edge_grid = (triton.cdiv(total_pad, BLOCK),)
+                        pad1d_both_sides_kernel[edge_grid](
+                            x,
+                            out,
+                            W_in,
+                            pad_left,
+                            pad_right,
+                            W_out,
+                            pad_sum,
+                            total_pad,
+                            BLOCK=BLOCK,
+                        )
                 return out
 
     # Tiny shapes are launch-bound. On XPU3 the 2-byte (fp16/bf16) load/store
