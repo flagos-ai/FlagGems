@@ -25,24 +25,16 @@ from . import conftest as cfg
 # non-zero tolerances for 1-byte floats.
 CONJ_FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
 
-
-def _supported_fp8_dtypes(device):
-    """Keep only the FP8 dtypes the current device can actually materialize."""
-    supported = []
-    for dtype in CONJ_FP8_DTYPES:
-        try:
-            torch.randn(1, device=device).to(dtype)
-        except Exception:
-            continue
-        supported.append(dtype)
-    return supported
-
+# Rely on the backend-declared capability flag rather than probing with a live
+# cast: on some backends an unsupported FP8 cast aborts the process instead of
+# raising a catchable exception.
+_SUPPORTED_CONJ_FP8_DTYPES = CONJ_FP8_DTYPES if utils.fp8_is_supported else ()
 
 # Dtype sweep: the low-precision dtypes first, then the float and int sweep.
 CONJ_DTYPES = [
     torch.int8,
     torch.uint8,
-    *_supported_fp8_dtypes(flag_gems.device),
+    *_SUPPORTED_CONJ_FP8_DTYPES,
     torch.float16,
     torch.bfloat16,
     torch.float32,
