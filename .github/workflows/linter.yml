@@ -50,14 +50,21 @@ jobs:
       http_proxy: ${{ secrets.CI_HTTP_PROXY }}
       https_proxy: ${{ secrets.CI_HTTP_PROXY }}
     steps:
-    # Checkout with up to 5 attempts, each with a hard 1-minute step timeout.
-    # The proxy makes git fetch HANG (not fail) ~half the time; a hung fetch
-    # ignores git's own timeouts, so only the runner's step `timeout-minutes`
-    # can kill it (SIGKILL on the process tree) and let the next attempt run.
-    # Success takes ~4-7s, so 1 minute is ample headroom while making a hung
-    # attempt fail fast; 5 attempts drive the ~50%/attempt failure rate down to
-    # ~3% overall, with a worst case of ~5 minutes instead of hanging forever.
+    # Checkout over SSH first: SSH ignores the injected http(s)_proxy and
+    # fetches reliably (~8s, 0 hangs in testing), unlike the proxied HTTPS fetch
+    # which hangs ~half the time. The HTTP attempts below are a fallback —
+    # notably for fork PRs, where secrets.CI_SSH_KEY is empty so this step fails
+    # and the proxied HTTP retries take over.
+    - id: sshco
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      with:
+        ssh-key: ${{ secrets.CI_SSH_KEY }}
+      timeout-minutes: 2
+      continue-on-error: true
+    # HTTP fallback: up to 5 attempts, each with a hard 1-minute step timeout.
+    # Only runs if SSH checkout failed.
     - id: co1
+      if: steps.sshco.outcome == 'failure'
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       timeout-minutes: 1
       continue-on-error: true

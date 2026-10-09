@@ -75,8 +75,7 @@ def test_scaled_softmax_forward(
             pytest.skip("'scaled_softmax_forward' not found in TransformerEngine")
         p_ref = te_scaled_softmax_forward(s, scale_factor)
     p_ref = utils.to_reference(p_ref)
-    with flag_gems.use_gems():
-        p = flag_gems.scaled_softmax_forward(s, scale_factor)
+    p = flag_gems.scaled_softmax_forward(s, scale_factor)
 
     utils.gems_assert_close(p, p_ref, dtype, equal_nan=True)
 
@@ -119,9 +118,8 @@ def test_scaled_softmax_backward(
         if te_scaled_softmax_backward is None:
             pytest.skip("'scaled_softmax_backward' not found in TransformerEngine")
         p_ref = te_scaled_softmax_forward(s, scale_factor)
-    with flag_gems.use_gems():
-        p = flag_gems.scaled_softmax_forward(s, scale_factor)
-        in_grad = flag_gems.scaled_softmax_backward(out_grad, p, scale_factor)
+    p = flag_gems.scaled_softmax_forward(s, scale_factor)
+    in_grad = flag_gems.scaled_softmax_backward(out_grad, p, scale_factor)
     if flag_gems.vendor_name == "kunlunxin":
         in_grad_ref = _torch_scaled_softmax_backward(out_grad, p_ref, scale_factor)
     else:
