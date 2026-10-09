@@ -21,39 +21,64 @@ weight: 20
 
 # Hygon optimization
 
-## Hardware architecture
+Triton kernels run on Hygon DCUs through the HIP path. Tile sizes, warp counts, pipeline depth, and program ordering determine register, on-chip shared-memory (LDS), and cache use. This guide uses Hygon BW / `gfx936` to explain optimization mechanisms tied directly to those resources.
 
-FlagGems runs Hygon DCU kernels through a HIP-compatible Triton backend. The execution model groups threads into warps and workgroups on compute units. A kernel reads device memory, may stage reused values in on-chip shared memory (LDS), and uses registers for thread-local values. Occupancy depends on the registers and LDS used by each workgroup, as well as the number of warps. These limits vary across DCU models and compiler versions. FlagGems's `gfx936` tuning notes describe 64-lane warps and 64 KiB LDS; the current Hygon attention implementation filters configurations against a 64 KiB shared-memory budget. Check the limits of other devices separately.
+## Hardware and configuration limits
 
-The backend descriptor uses `device_name="cuda"` for PyTorch dispatch and `triton_extra_name="hip"` for the Triton path. The device query command is `hy-smi`. These are implementation details to check when diagnosing dispatch or compilation.
+The Hygon BW / `gfx936` device discussed here has the following configuration:
 
-## Triton compiler and launch options
-
-The following are candidates for `kernel[grid](..., ...)` or `triton.Config(...)`. They are compilation or launch settings; `BLOCK_*` values are kernel `tl.constexpr` arguments. FlagGems's Hygon tuning table searches several combinations rather than prescribing one setting for all shapes.
-
-| Option | Effect | Tuning check |
+| Resource | Configuration | Tuning implication |
 | --- | --- | --- |
-| `BLOCK_SIZE`, `BLOCK_M/N/K` | Work and data per program | Increase reuse and memory coalescing without exhausting registers or LDS. |
-| `num_warps` | Warps assigned to a program | Compare values supported by the installed compiler; Hygon configurations commonly test 4 and 8, and some reductions use 16. |
-| `num_stages` | Software pipeline depth for eligible loops | Compare 1–3 with the baseline where loads and computation can overlap; more stages may consume more LDS. |
-| `enable_fp_fusion` | Allows floating-point fusion | Check numerical tolerances after changing it. |
-| `waves_per_eu` | HIP backend occupancy hint, where supported | Use only if the installed Triton/DTK compiler exposes it; measure rather than assuming a universal value. |
+| Compute units | 80 CUs, with 4 SIMD units per CU | Launch enough programs to use the CUs, especially for small matrices. |
+| Wavefront | 64 lanes | Choose `num_warps` with the tile size; one wavefront contains 64 threads. |
+| Resident-wave limit | Up to 10 waves per SIMD | The theoretical CU limit is 40 waves; registers, LDS, and workgroup limits can lower actual residency. |
+| Register file | 192 KB per SIMD | Larger tiles and more live values can reduce resident waves. |
+| LDS | 64 KiB per CU | Pipeline buffers and layout conversions must fit within the shared capacity. |
 
-For example, a matrix kernel can compare `triton.Config({"BLOCK_M": 64, "BLOCK_N": 64, "BLOCK_K": 32}, num_warps=4, num_stages=2)` with other legal tile/warp/stage combinations. A larger tile or deeper pipeline can lose performance when it reduces resident workgroups.
+This device also supports packed FP32 vector operations, which can process two FP32 values per packed instruction when the compiler emits one. These use different instructions from FP32 DUMMA matrix multiplication below; input dtype alone does not establish which path the compiler chooses. The resource figures above apply to this target device, not every Hygon DCU.
 
-## Optimization workflow
+## DUMMA matrix instruction shapes
 
-1. Benchmark the actual shapes, dtypes, and layouts. Separate small, launch-limited inputs from large, bandwidth- or compute-limited inputs.
-2. Make adjacent lanes access adjacent elements when the layout permits. Mask tails and avoid unnecessary global-memory round trips by reusing a tile within a program.
-3. Sweep tiles and `num_warps` together. If compilation reports shared-memory overflow or occupancy falls, reduce tile dimensions or `num_stages`.
-4. For reductions and GEMV, compare a vectorized reduction with `tl.dot` on the target compiler. FlagGems uses a vectorized reduction in its Hygon `mv` path because the current `gfx936` lowering of `tl.dot` adds shared-memory movement for that case.
-5. Keep the fastest configuration only after checking numerical correctness and repeatable latency. Use [pre-tuning](/FlagGems/usage/tuning/) to populate the persistent tuning cache for production shapes.
+Table 3.1 in Section 3 of the *DTK 26.04.1 DUMMA User Manual* lists the matrix multiply-accumulate shapes available through `du::dumma::du_mma_sync`. The installed DTK 26.04 `du_mma.h`/`du_mma.hpp` headers declare the corresponding interfaces. One wavefront cooperatively computes an `M × N` output tile for `D = A × B + C`. The `16 × 16 × K` entries below describe **one DUMMA matrix multiply-accumulate operation**; Triton `BLOCK_M/N/K` tiles can combine multiple operations and K-loop iterations.
+
+| A/B input | Accumulator | Shape `M × N × K` | Architectures in the manual |
+| --- | --- | --- | --- |
+| FP32 | FP32 | `16 × 16 × 4` | `gfx926/928/936/938` |
+| FP32, TF32 | FP32 | `16 × 16 × 8` | `gfx928/936/938` |
+| FP16, BF16 | FP32 | `16 × 16 × 16` | `gfx928/936/938` |
+| Signed/unsigned INT8 | INT32 | `16 × 16 × 32` | `gfx928/936/938` |
+| Signed/unsigned INT4 | INT32 | `16 × 16 × 64` | `gfx936/938` |
+| FP64 | FP64 | `16 × 16 × 4` | `gfx926/936/938` |
+| FP8 (E4M3 or E5M2) | FP32 | `16 × 16 × 32` | `gfx938` |
+
+TF32 inputs need the precision conversion described in the manual. INT4 inputs must pack two 4-bit values into a byte; the DTK headers expose their types through an experimental interface. Lower input precision allows one operation to cover more K elements. Choose matrix tiles with layout, tail masks, and accumulator precision in mind. Inspect target-device assembly to confirm whether `tl.dot` lowers to DUMMA. Packed FP32 vector instructions are outside this table.
+
+## Software pipelining: balance overlap and resource use
+
+For matrix multiplication with a loop over K, compare `num_stages` values so the compiler can attempt to overlap loads and computation. Pipelining can keep more data live, increasing register or LDS use and reducing resident workgroups. An additional stage does not necessarily allocate one extra LDS buffer. Inspect the generated code and compiler resource report to see whether asynchronous loads are used and how much LDS is actually allocated.
+
+For an FP16 matrix multiplication, the **input data size** of one A and B tile pair is approximately `(BLOCK_M + BLOCK_N) × BLOCK_K × 2` bytes. With `64 × 64 × 32`, that is 8 KiB. It is not the compiled LDS footprint: layout conversions, temporaries, and pipelining also affect resource use. On a CU with 64 KiB LDS, a workgroup that actually uses 32 KiB permits at most two resident workgroups based on LDS capacity alone; above 32 KiB, at most one. Register and wave limits may reduce residency further.
+
+## Grouped scheduling: improve L2 data reuse
+
+Matrix multiplication can flatten the two-dimensional output-tile grid to one dimension, then use `GROUP_M` to map neighboring programs to a group of M tiles. When several M tiles in a group process the same N tile, they can reuse the corresponding K×N tile of matrix B in L2 and reduce repeated reads from lower levels of memory. The core grouped mapping is:
+
+```python
+pid = tl.program_id(0)
+num_pid_m = tl.cdiv(M, BLOCK_M)
+num_pid_n = tl.cdiv(N, BLOCK_N)
+num_pid_in_group = GROUP_M * num_pid_n
+group_id = pid // num_pid_in_group
+first_pid_m = group_id * GROUP_M
+group_size_m = min(num_pid_m - first_pid_m, GROUP_M)
+pid_m = first_pid_m + ((pid % num_pid_in_group) % group_size_m)
+pid_n = (pid % num_pid_in_group) // group_size_m
+```
+
+`group_size_m` handles the final group when fewer than `GROUP_M` M tiles remain. Execution order and cache hit rate still depend on matrix shape, CU count, and compiler behavior. Compare `GROUP_M` along with the tile sizes rather than assuming grouping always helps.
 
 ## References
 
-- [FlagGems Hygon backend descriptor](https://github.com/flagos-ai/FlagGems/blob/master/src/flag_gems/runtime/backend/_hygon/__init__.py)
-- [FlagGems Hygon tuning configurations](https://github.com/flagos-ai/FlagGems/blob/master/src/flag_gems/runtime/backend/_hygon/tune_configs.yaml)
-- [FlagGems Hygon attention shared-memory filter](https://github.com/flagos-ai/FlagGems/blob/master/src/flag_gems/runtime/backend/_hygon/ops/attention.py)
-- [FlagGems Hygon `gfx936` tuning notes](https://github.com/flagos-ai/FlagGems/blob/master/src/flag_gems/runtime/backend/_hygon/ops/addmm_.py)
-- [FlagGems Hygon GEMV implementation](https://github.com/flagos-ai/FlagGems/blob/master/src/flag_gems/runtime/backend/_hygon/ops/mv.py)
-- [Triton `Config` API](https://triton-lang.org/main/python-api/generated/triton.Config.html)
+- 《DCU 编程实战》 (2026 edition), Section 6.8.4
+- *DTK 26.04.1 DUMMA User Manual*, Section 3, Table 3.1
+- DTK 26.04 `du_mma.h` and `du_mma.hpp` (installed under `/opt/dtk/include/`)
