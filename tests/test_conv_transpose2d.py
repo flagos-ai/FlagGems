@@ -20,12 +20,17 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import conftest as cfg
 
-# Capability gate: this backend declares support_fp64=False, so a float64
-# request is silently normalized to float32 before dispatch and the
-# unsupported-dtype guard is unconstructible. Skipping NARROWS coverage of
-# that guard to zero on this device (recorded, needs human sign-off).
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+
+# Kunlunxin-only capability gate: this backend declares support_fp64=False, so a
+# float64 request is silently normalized to float32 before dispatch and the
+# unsupported-dtype guard is unconstructible. Scoped to Kunlunxin so that no
+# other vendor's test outcome changes -- a capability expression alone would also
+# fire on every other backend that declares fp64_enabled=False, which is not what
+# this change was measured against. Skipping NARROWS coverage of that guard to
+# zero on this device (recorded, needs human sign-off).
 _skip_if_no_fp64 = pytest.mark.skipif(
-    not flag_gems.runtime.device.support_fp64,
+    IS_KUNLUNXIN and not flag_gems.runtime.device.support_fp64,
     reason="backend does not support fp64; unsupported-dtype guard is unconstructible",
 )
 
