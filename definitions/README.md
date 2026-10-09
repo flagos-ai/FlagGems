@@ -20,7 +20,7 @@ include repository planning metadata:
 | --- | --- |
 | `api_version` | Definition protocol version. |
 | `name` | Exact operator name. |
-| `requires_triton_kernel` | Required boolean planning metadata: whether the tested operator contract includes tensor computation or materialization requiring kernel work. |
+| `requires_triton_kernel` | Required boolean planning metadata: whether the operator's valid semantics include tensor computation or materialization requiring kernel work. |
 | `description` | Representative signature, supported schema variants, and test-backed semantics. |
 | `parameters` | Ordered parameters, calling kinds, required flags, type hints, and optional defaults. |
 | `outputs` | Logical return values; a tensor list is one logical return. |
@@ -46,18 +46,32 @@ selected Triton backend. It is a JSON boolean, never a string, integer or null.
   value generation, dtype conversion, copying or materializing tensor data.
   CPU-only and vendor-specific numerical operations still belong here; device
   support and opaque-library ABI compatibility need separate assessment.
-- `false`: the tested operation only handles views, metadata, scalar/schema
-  checks, uninitialized allocation, or framework/runtime management. Host
-  pinning, device-to-host transfer and autograd-engine invocation belong to the
-  runtime; they do not themselves define a Triton compute kernel.
+- `false`: all valid paths only handle views, metadata, scalar/schema checks,
+  uninitialized allocation, or framework/runtime management. Pure host pinning,
+  raw DMA transfer and autograd-engine invocation belong to the runtime. A
+  mixed operation that also packs, converts or materializes tensor data is
+  `true`; for example, `_to_cpu` includes noncontiguous and lazy-value paths.
 
-Review every tested overload and path, including `out=`, noncontiguous inputs
-and lazy conjugate/negative values. One compute/materialization path makes the
+Review valid overloads and paths, including `out=`, noncontiguous inputs,
+lazy conjugate/negative values and global execution settings. Existing tests
+are evidence, not the limit of the classification: verify missing paths using
+native implementation evidence or a focused semantic probe. Record coverage
+gaps separately instead of treating untested paths as metadata-only.
+One compute/materialization path makes the
 operator `true`, even if other paths return an alias. For example, `view` is
 `false`, while `reshape_as` is `true` because noncontiguous inputs can require a
 copy. `_efficientzerotensor` is `true` because its tested `out=` path fills an
 existing buffer, despite the default lazy-zero result. Quantizer array getters
 with tested `out=` copies also differ from scalar quantizer metadata queries.
+
+Tensor-valued metadata can itself require computation: `_make_dual` can copy
+a tangent into a matching layout, and `_empty_per_channel_affine_quantized`
+can convert scale/zero-point tensors. Likewise, `empty_like`, `empty_strided`,
+`new_empty` and `new_empty_strided` are `true` because deterministic filling
+writes defined values. Sparse dense-tail resizing, omitted-size inference and
+global invariant checking must also be considered even when a test suite
+currently covers only the simpler path. Do not infer behavior from an `empty`
+or `unsafe` suffix alone; verify the actual native entrypoint and version.
 
 Generic autograd support for a view does not make its forward a compute
 operation. An explicitly tested operator-specific numerical backward does
@@ -66,8 +80,8 @@ count, such as the extra gradient addition in
 internal/test/backend name establishes that an operator is metadata-only.
 
 This flag must not be used to skip correctness cases, replace their reference,
-or bypass an unsupported ABI. Reassess it when test coverage changes; `false`
-is not a claim about every possible future overload or workload.
+or bypass an unsupported ABI. Reassess it when native semantics change or new
+evidence becomes available. Missing test coverage cannot justify `false`.
 
 ## Updating definitions
 
