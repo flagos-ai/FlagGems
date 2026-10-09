@@ -152,13 +152,13 @@ def pytest_configure(config):
 
     # Print info when first-parameter-only is enabled
     if FIRST_PARAMETER_ONLY:
-        print(f"\n{'='*70}")
+        print("\n" + "=" * 70)
         print("🔬 FIRST-PARAMETER-ONLY MODE ENABLED")
         print(
             "   Each test function will run with only its first parameter combination"
         )
 
-        print(f"{'='*70}\n")
+        print("=" * 70 + "\n")
 
 
 def pytest_runtest_teardown(item, nextitem):
@@ -339,13 +339,13 @@ def pytest_collection_modifyitems(session, config, items):
         original_count = len(items)
         items[:] = kept_items
 
-        print(f"\n{'='*70}")
+        print("\n" + "=" * 70)
         print("🔬 FIRST-PARAMETER-ONLY MODE ENABLED (bfloat16 preferred)")
         print(f"   Original tests: {original_count}")
         print(f"   Running tests:  {len(kept_items)} (one per test function)")
         print(f"      ├─ bfloat16 preferred: {bfloat16_count}")
         print(f"      └─ fallback (no bfloat16): {fallback_count}")
-        print(f"{'='*70}\n")
+        print("=" * 70 + "\n")
 
     if collect_marks_file:
         report = []
