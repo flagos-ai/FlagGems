@@ -7985,6 +7985,26 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: fused_adamw_
+  description: In-place fused AdamW with scalar learning rate, AMSGrad and AMP.
+  for:
+  - _fused_adamw_
+  labels:
+  - aten
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: fused_adamw__tensor_lr
+  description: In-place fused AdamW with tensor learning rate, AMSGrad and AMP.
+  for:
+  - _fused_adamw_.tensor_lr
+  labels:
+  - aten
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: fused_add_rms_norm
   for:
   - add_rms_norm

@@ -258,3 +258,6 @@ upsample_nearest2d_backward_grad_input: test_upsample_nearest2d_backward
 # Underscore-prefixed aten op shares the base operator test file
 _linalg_eigh: test_linalg_eigh
 _flash_attention_forward: test_flash_attention
+
+fused_adamw_: test__fused_adamw_
+fused_adamw__tensor_lr: test__fused_adamw_
