@@ -1404,6 +1404,7 @@ from flag_gems.ops.transpose import transpose
 from flag_gems.ops.transpose_copy import transpose_copy
 from flag_gems.ops.trapz import trapz
 from flag_gems.ops.triangular_indices import tril_indices, triu_indices
+from flag_gems.ops.triangular_solve import triangular_solve, triangular_solve_out
 from flag_gems.ops.tril import tril, tril_, tril_out
 from flag_gems.ops.trilinear import _trilinear, _trilinear_out
 from flag_gems.ops.triplet_margin_loss import triplet_margin_loss
@@ -2928,6 +2929,8 @@ __all__ = [
     "transpose",
     "transpose_copy",
     "trapz",
+    "triangular_solve",
+    "triangular_solve_out",
     "tril",
     "tril_",
     "tril_indices",

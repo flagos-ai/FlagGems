@@ -246,6 +246,7 @@ std_mean_correction_names: test_std_mean
 std_mean_correction_out: test_std_mean
 std_mean_dim: test_std_mean
 std_mean_names_dim: test_std_mean
+triangular_solve_out: test_triangular_solve
 tril_indices: test_triangular_indices
 trilinear_out: test_trilinear
 triu_indices: test_triangular_indices

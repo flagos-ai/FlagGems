@@ -155,6 +155,7 @@ from .swiglu import swiglu
 from .thnn_fused_lstm_cell import thnn_fused_lstm_cell
 from .threshold import threshold, threshold_backward
 from .topk import topk
+from .triangular_solve import triangular_solve, triangular_solve_out
 from .triu import triu
 from .unique import _unique2
 from .unique_dim import unique_dim
@@ -368,6 +369,8 @@ __all__ = [
     "threshold",
     "threshold_backward",
     "topk",
+    "triangular_solve",
+    "triangular_solve_out",
     "triu",
     "unique_dim",
     "unsafe_index",

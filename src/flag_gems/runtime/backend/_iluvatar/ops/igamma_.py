@@ -41,7 +41,8 @@ exact operations via an IS_FAST constexpr.
 import torch
 import triton
 import triton.language as tl
-import triton.language.extra.corex.libdevice as _ld
+
+from flag_gems.utils import tl_extra_shim as _ld
 
 _BLOCK = 512
 _NUM_WARPS = 4

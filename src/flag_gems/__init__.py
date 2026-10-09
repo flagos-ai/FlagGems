@@ -1820,6 +1820,8 @@ _FULL_CONFIG = (
     ("transpose_copy.int", transpose_copy),
     ("trapezoid.dx", trapz),
     ("trapz.dx", trapz),
+    ("triangular_solve", triangular_solve),
+    ("triangular_solve.X", triangular_solve_out),
     ("tril", tril),
     ("tril.out", tril_out),
     ("tril_", tril_),

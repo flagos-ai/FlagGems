@@ -260,7 +260,6 @@ if HAS_TLE_EXTRACT_SLICE:
         key=["N", "D", "NUM_CORES"],
         prune_configs_by={"early_config_prune": _prune_glu_ascend_configs},
         do_bench=_glu_ascend_do_bench,
-        cache_results=False,
     )
     @triton.jit
     def glu_kernel_ascend(
