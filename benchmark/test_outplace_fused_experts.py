@@ -104,15 +104,41 @@ def _vllm_outplace_fused_experts_wrapper(hidden_states, w1, w2, topk_weights, to
     )
 
 
+def _torch_outplace_fused_experts_ref(hidden_states, w1, w2, topk_weights, topk_ids):
+    """Pure PyTorch reference for outplace_fused_experts (baseline on kunlunxin)."""
+    M, K = hidden_states.shape
+    topk = topk_ids.shape[1]
+    out = torch.zeros(M, K, device=hidden_states.device, dtype=hidden_states.dtype)
+    for m in range(M):
+        for j in range(topk):
+            e = topk_ids[m, j].item()
+            weight = topk_weights[m, j]
+            z = hidden_states[m].to(torch.float32) @ w1[e].T.to(torch.float32)
+            D = z.shape[-1] // 2
+            gate = z[:D]
+            up = z[D:]
+            s = (gate * torch.sigmoid(gate)) * up
+            r = s @ w2[e].T.to(torch.float32)
+            out[m] += (weight.to(torch.float32) * r).to(out.dtype)
+    return out
+
+
 @pytest.mark.outplace_fused_experts
-@pytest.mark.skipif(not HAS_VLLM_FUSED_MOE, reason="vLLM not installed")
+@pytest.mark.skipif(
+    not HAS_VLLM_FUSED_MOE and flag_gems.vendor_name != "kunlunxin",
+    reason="vLLM not installed",
+)
 def test_outplace_fused_experts_gems_vs_vllm():
     """
-    Benchmark FlagGems outplace_fused_experts vs vLLM outplace fused_experts_impl (bf16/fp16).
+    Benchmark FlagGems outplace_fused_experts vs vLLM (torch ref on kunlunxin).
     """
+    if flag_gems.vendor_name == "kunlunxin":
+        torch_op = _torch_outplace_fused_experts_ref
+    else:
+        torch_op = _vllm_outplace_fused_experts_wrapper
     bench = OutplaceFusedExpertsBenchmark(
         op_name="outplace_fused_experts",
-        torch_op=_vllm_outplace_fused_experts_wrapper,
+        torch_op=torch_op,
         dtypes=[torch.bfloat16, torch.float16],
     )
     bench.set_gems(flag_gems.outplace_fused_experts)
