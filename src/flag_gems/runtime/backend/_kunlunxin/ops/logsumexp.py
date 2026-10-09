@@ -79,6 +79,11 @@ def _tle_lse_available():
 
 _LSE_TLE_AVAILABLE = _tle_lse_available()
 
+# Latched True if the tle.gpu row kernel fails to compile on this toolchain
+# (e.g. flagtree XPU can't legalize its 2D local_ptr make_range); once set, the
+# path is skipped for the rest of the process and the stock kernels run.
+_LSE_TLE_BROKEN = False
+
 
 _LSE_TLE_GEOM = {}
 
@@ -172,9 +177,15 @@ def _tle_lse_row_kernel(
 def _tle_logsumexp_row(inp, out, M, N):
     """Row logsumexp `out[m] = logsumexp(inp[m, :])` on the tle.gpu path.
 
-    Returns True on success, False to let the caller keep its own kernel.
+    Returns True on success, False to let the caller keep its own kernel. The
+    kernel is a win on hardware whose toolchain compiles it, but some backends
+    (e.g. flagtree XPU) fail to legalize its 2D local_ptr `tt.make_range`; the
+    launch is guarded so such a build degrades to the stock kernels (one failed
+    compile per process, then the `_LSE_TLE_BROKEN` latch skips it) instead of
+    raising.
     """
-    if not _LSE_TLE_AVAILABLE or N < _LSE_TLE_MIN_N:
+    global _LSE_TLE_BROKEN
+    if not _LSE_TLE_AVAILABLE or _LSE_TLE_BROKEN or N < _LSE_TLE_MIN_N:
         return False
     if inp.dtype not in _LSE_TLE_TL_DTYPE or out.dtype not in _LSE_TLE_TL_DTYPE:
         return False
@@ -184,18 +195,24 @@ def _tle_logsumexp_row(inp, out, M, N):
     a = inp if inp.ndim == 2 and inp.shape[0] == M else inp.view(M, N)
     c = out if out.ndim == 1 else out.view(M)
     grid = (triton.cdiv(M, xblock),)
-    with torch_device_fn.device(inp.device):
-        _tle_lse_row_kernel[grid](
-            TensorDescriptor.from_tensor(a, block_shape=[xblock, yblock]),
-            TensorDescriptor.from_tensor(c, block_shape=[xblock]),
-            N,
-            XBLOCK=xblock,
-            YBLOCK=yblock,
-            IN_DTYPE=_LSE_TLE_TL_DTYPE[inp.dtype],
-            OUT_DTYPE=_LSE_TLE_TL_DTYPE[out.dtype],
-            NEED_ZERO=need_zero,
-            NUM_STAGES=num_stages,
-        )
+    try:
+        with torch_device_fn.device(inp.device):
+            _tle_lse_row_kernel[grid](
+                TensorDescriptor.from_tensor(a, block_shape=[xblock, yblock]),
+                TensorDescriptor.from_tensor(c, block_shape=[xblock]),
+                N,
+                XBLOCK=xblock,
+                YBLOCK=yblock,
+                IN_DTYPE=_LSE_TLE_TL_DTYPE[inp.dtype],
+                OUT_DTYPE=_LSE_TLE_TL_DTYPE[out.dtype],
+                NEED_ZERO=need_zero,
+                NUM_STAGES=num_stages,
+            )
+    except Exception:  # pragma: no cover - toolchain can't compile the payload
+        # Latch off for the rest of the process so we don't re-attempt the
+        # failing compile on every call, then fall back to the stock kernel.
+        _LSE_TLE_BROKEN = True
+        return False
     return True
 
 
