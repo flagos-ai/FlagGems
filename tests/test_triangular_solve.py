@@ -86,10 +86,27 @@ def _inputs(a_batch, b_batch, n, nrhs, dtype, unitriangular=False):
     return B, A
 
 
+def _native_reference(B, A, upper, transpose, unitriangular):
+    # Some vendor Torch builds provide device TRSM but do not link CPU BLAS.
+    # Skip only this missing reference capability, never a FlagGems failure.
+    try:
+        return torch.ops.aten.triangular_solve.default(
+            B, A, upper, transpose, unitriangular
+        )
+    except RuntimeError as error:
+        if (
+            B.device.type == A.device.type == "cpu"
+            and "Calling torch.triangular_solve on a CPU tensor requires "
+            "compiling PyTorch with BLAS" in str(error)
+        ):
+            pytest.skip(
+                "CPU triangular_solve reference requires PyTorch built with BLAS"
+            )
+        raise
+
+
 def _reference(B, A, upper, transpose, unitriangular):
-    # Honor the standard --ref cpu/device choice. Some vendor Torch builds
-    # provide device TRSM but do not link CPU BLAS.
-    outputs = torch.ops.aten.triangular_solve.default(
+    outputs = _native_reference(
         to_reference(B), to_reference(A), upper, transpose, unitriangular
     )
     return tuple(output.cpu() for output in outputs)
@@ -463,7 +480,7 @@ def test_triangular_solve_autograd_broadcast(flags, dtype, loss_output):
     B.requires_grad_()
     weights_X = torch.randn(2, 3, 7, 3, dtype=dtype, device=ref_A.device)
     weights_M = torch.randn(2, 3, 7, 7, dtype=dtype, device=ref_A.device)
-    ref_X, ref_M = torch.ops.aten.triangular_solve.default(ref_B, ref_A, *flags)
+    ref_X, ref_M = _native_reference(ref_B, ref_A, *flags)
     ref_loss = (ref_X * weights_X).sum() if loss_output != "clone" else 0
     if loss_output != "solution":
         ref_loss = ref_loss + (ref_M * weights_M).sum()
