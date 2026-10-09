@@ -128,17 +128,75 @@ def test_conv2d(
         utils.gems_assert_close(res_bias_grad, ref_bias_grad, dtype)
 
 
+def _conv2d_reference(ref_inp, ref_weight, bias_ref, groups, stride, padding, dilation):
+    """Reference conv2d built on a path that is differentiable on this backend.
+
+    `F.conv2d(..., padding="valid"|"same")` dispatches to `aten::conv2d.padding`,
+    which carries no Autograd kernel on the kunlunxin XPU build, so torch's
+    autograd fallback builds an empty graph and backprop through the reference
+    raises "One of the differentiated Tensors appears to not have been used in
+    the graph" before the operator under test is ever reached.  Integer padding
+    dispatches to `aten::convolution.default` (ConvolutionBackward0) instead, so
+    the same convolution is expressed here with integer padding.
+
+    Only kunlunxin is affected.  Every other vendor - and every integer-padding
+    call - takes the upstream call verbatim, argument list unchanged.
+    """
+    if vendor_name != "kunlunxin" or not isinstance(padding, str):
+        return torch.nn.functional.conv2d(
+            ref_inp,
+            ref_weight,
+            bias=bias_ref,
+            groups=groups,
+            stride=stride,
+            padding=padding,
+            dilation=dilation,
+        )
+    if padding == "valid":
+        # exactly integer padding 0
+        return torch.nn.functional.conv2d(
+            ref_inp,
+            ref_weight,
+            bias=bias_ref,
+            groups=groups,
+            stride=stride,
+            padding=0,
+            dilation=dilation,
+        )
+    assert padding == "same", padding
+    assert stride == 1, "padding='same' requires stride 1"
+    d_h, d_w = (dilation, dilation) if isinstance(dilation, int) else dilation
+    # 'same' pads dilation*(k-1) in total along each spatial dim, split as
+    # floor(total/2) before and the remainder after, so an odd total puts the
+    # extra row/column at the END.  Integer padding is always symmetric, so an
+    # even total maps onto it directly and an odd total needs an explicit F.pad.
+    pad_h = d_h * (ref_weight.shape[2] - 1)
+    pad_w = d_w * (ref_weight.shape[3] - 1)
+    if pad_h % 2 == 0 and pad_w % 2 == 0:
+        return torch.nn.functional.conv2d(
+            ref_inp,
+            ref_weight,
+            bias=bias_ref,
+            groups=groups,
+            stride=stride,
+            padding=(pad_h // 2, pad_w // 2),
+            dilation=dilation,
+        )
+    return torch.nn.functional.conv2d(
+        torch.nn.functional.pad(
+            ref_inp, (pad_w // 2, pad_w - pad_w // 2, pad_h // 2, pad_h - pad_h // 2)
+        ),
+        ref_weight,
+        bias=bias_ref,
+        groups=groups,
+        stride=stride,
+        padding=0,
+        dilation=dilation,
+    )
+
+
 @pytest.mark.conv2d_padding
 @pytest.mark.skipif(vendor_name == "hygon", reason="Issue #2802: operator doesn't work")
-@pytest.mark.skipif(
-    vendor_name == "kunlunxin",
-    reason="Issue #2803: the reference call F.conv2d(padding='valid'|'same') "
-    "dispatches to aten::conv2d.padding, which has no Autograd kernel on this "
-    "XPU build, so torch.autograd.grad over the reference raises 'One of the "
-    "differentiated Tensors appears to not have been used in the graph' before "
-    "the operator is reached. The official scheduler runs this marker with "
-    "--ref cpu (where it is 24/0); the CI unit-test step does not.",
-)
 @pytest.mark.parametrize("shape, kernel,groups", SHAPE_CONV2D)
 @pytest.mark.parametrize("stride", [1])
 @pytest.mark.parametrize("padding", STR_PADDINGS)
@@ -167,14 +225,8 @@ def test_conv2d_padding(
         bias_ref = None
 
     ref_weight = utils.to_reference(weight, True)
-    ref_out = torch.nn.functional.conv2d(
-        ref_inp,
-        ref_weight,
-        bias=bias_ref,
-        groups=groups,
-        stride=stride,
-        padding=padding,
-        dilation=dilation,
+    ref_out = _conv2d_reference(
+        ref_inp, ref_weight, bias_ref, groups, stride, padding, dilation
     ).to(dtype)
 
     res_out = flag_gems.conv2d(
