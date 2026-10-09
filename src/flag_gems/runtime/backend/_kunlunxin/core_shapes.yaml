@@ -463,3 +463,15 @@ conv_transpose1d:
     - [16, 24, 512, 96, 7, 1, 3, 1]
     - [8, 16, 1024, 32, 3, 2, 1, 2]
     - [4, 8, 2048, 16, 5, 1, 2, 1]
+
+# conv_depthwise2d had no core-shape entry on this backend, so at --level core
+# the benchmark fell through to GenericBenchmark.DEFAULT_SHAPES (2-tuples) and
+# died in _input_fn with "not enough values to unpack (expected 9, got 2)".
+# Entry order matches benchmark/test_conv_depthwise2d.py _input_fn unpack.
+conv_depthwise2d:
+  shapes:
+    - [32, 4, 8, 8, 2, 2, 1, 0, 1]
+    - [32, 64, 56, 56, 3, 3, 1, 1, 1]
+    - [1, 64, 224, 224, 3, 3, 1, 1, 1]
+    - [1, 128, 112, 112, 5, 5, 2, 2, 1]
+  shape_desc: "N, C, H, W, K_h, K_w, stride, padding, dilation"

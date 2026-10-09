@@ -58,6 +58,22 @@ def _input_fn(shape, dtype, device):
     )
 
 
+def _conv_depthwise2d_torch_op(
+    input, weight, kernel_size, bias, stride, padding, dilation
+):
+    """Device-native baseline for ``aten::_conv_depthwise2d``.
+
+    ``aten::_conv_depthwise2d`` has no executable kernel on this
+    torch_xmlir/XPU build, so ``latency_base`` could never be assigned and the
+    benchmark produced no records.  Time the native grouped functional
+    convolution on the device instead; the baseline path contains no FlagGems
+    code.
+    """
+    return torch.nn.functional.conv2d(
+        input, weight, bias, stride, padding, dilation, groups=input.shape[1]
+    )
+
+
 @pytest.mark.conv_depthwise2d
 def test_conv_depthwise2d():
     torch.backends.cudnn.allow_tf32 = False
@@ -65,7 +81,7 @@ def test_conv_depthwise2d():
     bench = ConvDepthwise2DBenchmark(
         op_name="conv_depthwise2d",
         input_fn=_input_fn,
-        torch_op=torch.ops.aten._conv_depthwise2d,
+        torch_op=_conv_depthwise2d_torch_op,
         gems_op=flag_gems._conv_depthwise2d,
         dtypes=consts.FLOAT_DTYPES,
     )

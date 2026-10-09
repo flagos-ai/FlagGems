@@ -61,15 +61,21 @@ def test_conv_depthwise2d(
         bias_tensor = None
         ref_bias = None
 
-    ref_out = torch.ops.aten._conv_depthwise2d(
-        ref_inp,
-        ref_weight,
-        kernel,
-        ref_bias,
+    # aten::_conv_depthwise2d has no executable kernel on this torch_xmlir/XPU
+    # build, so the test's own golden reference could not be built and the
+    # FlagGems candidate was never exercised.  Build the same quantity with the
+    # native grouped functional convolution on the device instead; the
+    # reference path contains no FlagGems code, so the check stays
+    # non-circular.
+    ref_out = torch.nn.functional.conv2d(
+        ref_inp.float(),
+        ref_weight.float(),
+        None if ref_bias is None else ref_bias.float(),
         stride,
         padding,
         dilation,
-    )
+        groups=ref_inp.shape[1],
+    ).to(dtype)
 
     res_out = flag_gems._conv_depthwise2d(
         inp, weight, kernel, bias_tensor, stride, padding, dilation
