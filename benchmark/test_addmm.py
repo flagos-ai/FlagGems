@@ -124,15 +124,13 @@ def _native_addmm_dtype(bias, mat1, mat2, out_dtype, *, beta=1.0, alpha=1.0):
     that promotes every operand to fp32 and therefore times one and the same
     fp32 GEMM for both dtypes.
     """
-    return torch.addmm(
-        bias.to(mat1.dtype), mat1, mat2, beta=beta, alpha=alpha
-    ).to(out_dtype)
+    return torch.addmm(bias.to(mat1.dtype), mat1, mat2, beta=beta, alpha=alpha).to(
+        out_dtype
+    )
 
 
 def _native_addmm_dtype_out(bias, mat1, mat2, out_dtype, out, beta=1.0, alpha=1.0):
-    out.copy_(
-        _native_addmm_dtype(bias, mat1, mat2, out_dtype, beta=beta, alpha=alpha)
-    )
+    out.copy_(_native_addmm_dtype(bias, mat1, mat2, out_dtype, beta=beta, alpha=alpha))
     return out
 
 
