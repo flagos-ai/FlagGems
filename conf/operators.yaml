@@ -18922,6 +18922,26 @@ ops:
   - Reduction
   stages:
   - alpha: '5.5'
+- id: stft
+  description: Short-time Fourier transform with explicit vendor FFT execution.
+  for:
+  - stft
+  labels:
+  - aten
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
+- id: stft_center
+  description: Short-time Fourier transform with configurable centered padding.
+  for:
+  - stft.center
+  labels:
+  - aten
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: sub
   description: Subtracts `other`, scaled by `alpha`, from the `input` tensor.
   for:

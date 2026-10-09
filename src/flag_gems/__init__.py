@@ -1780,6 +1780,13 @@ _FULL_CONFIG = (
         std_mean_names_dim,
         lambda: torch_has_aten_overload("std_mean", "names_dim"),
     ),
+    ("stft", stft, None, ("Autograd" + backend_info.dispatch_key,)),
+    (
+        "stft.center",
+        stft_center,
+        None,
+        ("Autograd" + backend_info.dispatch_key,),
+    ),
     ("sub.Tensor", sub),
     ("sub_.Tensor", sub_),
     ("subtract.Tensor", subtract),
