@@ -234,7 +234,9 @@ def run_proposer(
         if variant_info.param_space.validate(config)
     ]
     if not initial:
-        raise ValueError("no runtime candidates satisfy the loaded model parameter space")
+        raise ValueError(
+            "no runtime candidates satisfy the loaded model parameter space"
+        )
     legal_keys = {tuple(config[name] for name in fields) for config in initial}
 
     def checked_config(config_dict):

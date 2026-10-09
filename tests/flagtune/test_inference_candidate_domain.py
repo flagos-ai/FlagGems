@@ -34,7 +34,10 @@ def test_run_proposer_filters_runtime_configs_outside_model_domain():
         for block_m in (64, 128)
     ]
     selected, timings = cost_model.run_proposer(
-        SimpleNamespace(), lambda _config: [0.01], candidates, {},
+        SimpleNamespace(),
+        lambda _config: [0.01],
+        candidates,
+        {},
         (identity, propose, variant),
     )
 
@@ -44,6 +47,9 @@ def test_run_proposer_filters_runtime_configs_outside_model_domain():
 
     with pytest.raises(ValueError, match="no runtime candidates satisfy"):
         cost_model.run_proposer(
-            SimpleNamespace(), lambda _config: [0.01], candidates[1:], {},
+            SimpleNamespace(),
+            lambda _config: [0.01],
+            candidates[1:],
+            {},
             (identity, propose, variant),
         )
