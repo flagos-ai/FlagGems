@@ -75,25 +75,19 @@ jobs:
         }
 
         echo "=== SSH ls-remote (port 22) ==="
-        for i in 1 2 3; do
+        for i in 1 2 3 4 5; do
           GIT_SSH_COMMAND="$SSH22" timed "ssh22-ls-$i" git ls-remote git@github.com:flagos-ai/FlagGems.git refs/heads/master
         done
         echo "=== SSH shallow fetch (port 22, real pack transfer) ==="
-        for i in 1 2 3; do
+        for i in 1 2 3 4 5; do
           d=$(mktemp -d); ( cd "$d" && git init -q && git remote add origin git@github.com:flagos-ai/FlagGems.git )
           GIT_SSH_COMMAND="$SSH22" timed "ssh22-fetch-$i" git -C "$d" fetch -q --depth=1 origin "${{ github.sha }}"
           rm -rf "$d"
         done
         echo "=== SSH shallow fetch (port 443) ==="
-        for i in 1 2 3; do
+        for i in 1 2 3 4 5; do
           d=$(mktemp -d); ( cd "$d" && git init -q && git remote add origin git@github.com:flagos-ai/FlagGems.git )
           GIT_SSH_COMMAND="$SSH443" timed "ssh443-fetch-$i" git -C "$d" fetch -q --depth=1 origin "${{ github.sha }}"
-          rm -rf "$d"
-        done
-        echo "=== HTTP shallow fetch via proxy (baseline) ==="
-        for i in 1 2 3; do
-          d=$(mktemp -d); ( cd "$d" && git init -q && git remote add origin https://github.com/flagos-ai/FlagGems.git )
-          timed "http-fetch-$i" git -C "$d" fetch -q --depth=1 origin "${{ github.sha }}"
           rm -rf "$d"
         done
         rm -f ~/.ssh/ci_key
