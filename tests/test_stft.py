@@ -21,13 +21,7 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-pytestmark = [
-    pytest.mark.stft,
-    pytest.mark.skipif(
-        flag_gems.vendor_name == "metax",
-        reason="MetaX STFT has static coverage only; device execution is pending",
-    ),
-]
+pytestmark = pytest.mark.stft
 
 COMMON_DTYPES = (torch.float32, torch.complex64)
 NVIDIA_DTYPES = (torch.float16, torch.float64, torch.complex32, torch.complex128)
@@ -263,8 +257,9 @@ def _assert_result(actual, expected, n_fft):
     assert actual.shape == expected.shape
     assert actual.dtype == expected.dtype
     assert actual.stride() == expected.stride()
+    # The high-precision FFT oracle stays on CPU in both reference modes.
     utils.gems_assert_close(
-        actual, expected, actual.dtype, reduce_dim=n_fft.bit_length()
+        actual.cpu(), expected, actual.dtype, reduce_dim=n_fft.bit_length()
     )
 
 
@@ -461,7 +456,7 @@ def test_stft_torch_dispatch(entry, center, tmp_path):
     _assert_result(actual, expected.to(torch.complex64), 16)
     for actual_grad, expected_grad in zip(grads, expected_grads):
         utils.gems_assert_close(
-            actual_grad, expected_grad, actual_grad.dtype, reduce_dim=16
+            actual_grad.cpu(), expected_grad, actual_grad.dtype, reduce_dim=16
         )
     assert "STFT" in log_path.read_text().upper()
 
@@ -545,7 +540,7 @@ def test_stft_gradients(center, align, complex_input):
     )
     for actual, expected in zip(grads, ref_grads):
         assert actual.shape == expected.shape
-        utils.gems_assert_close(actual, expected, actual.dtype, reduce_dim=16)
+        utils.gems_assert_close(actual.cpu(), expected, actual.dtype, reduce_dim=16)
 
 
 @pytest.mark.stft_center
@@ -587,7 +582,7 @@ def test_stft_padding_and_promotion_gradients(
         actual, (inp, window), cotangent.to(actual.device)
     )
     for grad, ref_grad in zip(actual_grads, expected_grads):
-        utils.gems_assert_close(grad, ref_grad, grad.dtype, reduce_dim=16)
+        utils.gems_assert_close(grad.cpu(), ref_grad, grad.dtype, reduce_dim=16)
 
 
 @pytest.mark.stft_center
@@ -625,7 +620,7 @@ def test_stft_lazy_views(view):
     grads = torch.autograd.grad(actual, (x, w), cotangent)
     refs = torch.autograd.grad(expected, (rx, rw), -cotangent_cpu.to(expected.dtype))
     for grad, ref in zip(grads, refs):
-        utils.gems_assert_close(grad, ref, grad.dtype, reduce_dim=16)
+        utils.gems_assert_close(grad.cpu(), ref, grad.dtype, reduce_dim=16)
 
 
 @pytest.mark.stft
@@ -650,7 +645,7 @@ def test_stft_chunked_forward_and_backward(monkeypatch):
     _assert_result(actual, expected.to(torch.complex64), 32)
     grads = torch.autograd.grad(actual, (inp, window), cotangent.to(actual.device))
     for grad, ref_grad in zip(grads, ref_grads):
-        utils.gems_assert_close(grad, ref_grad, grad.dtype, reduce_dim=32)
+        utils.gems_assert_close(grad.cpu(), ref_grad, grad.dtype, reduce_dim=32)
 
 
 def _check_stft_nonfinite(center, kind, n_fft, win_length, record_property):
@@ -664,13 +659,13 @@ def _check_stft_nonfinite(center, kind, n_fft, win_length, record_property):
     # Exceptional-value masks can differ with FFT butterfly ordering. Check
     # finite frames and propagation separately; retain native mask differences
     # as test-report metadata, including when the native reference uses CPU FFT.
-    expected = ref_op(inp, n_fft, **kwargs).cpu()
+    reference = ref_op(inp_cpu, n_fft, **kwargs)
+    expected = reference if utils.TO_CPU else ref_op(inp, n_fft, **kwargs).cpu()
     actual = (flag_gems.stft_center if center else flag_gems.stft)(inp, n_fft, **kwargs)
     assert actual.shape == expected.shape
     assert actual.dtype == expected.dtype
     # Use the same canonical ATen layout oracle as the finite-value tests.
     # A vendor's native CPU-fallback copy can make its output contiguous.
-    reference = ref_op(inp_cpu, n_fft, **kwargs)
     assert actual.stride() == reference.stride()
     assert actual.device == inp.device
     actual_cpu = actual.cpu()
@@ -682,6 +677,7 @@ def _check_stft_nonfinite(center, kind, n_fft, win_length, record_property):
         actual_cpu[:, ~affected], reference[:, ~affected], actual.dtype, reduce_dim=3
     )
     comparison = {
+        "reference_device": "cpu" if utils.TO_CPU else str(inp.device),
         "n_fft": n_fft,
         "win_length": n_fft if win_length is None else win_length,
         "contaminated_input_index": 13,
@@ -862,7 +858,7 @@ def _check_stft_fused_complex_window_gradients(dtype, center):
     )
     grads = torch.autograd.grad(actual, (inp, window), cotangent)
     for grad, ref in zip(grads, refs):
-        utils.gems_assert_close(grad, ref, grad.dtype, reduce_dim=n_fft)
+        utils.gems_assert_close(grad.cpu(), ref, grad.dtype, reduce_dim=n_fft)
 
 
 @pytest.mark.stft
