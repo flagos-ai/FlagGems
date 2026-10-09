@@ -13,6 +13,8 @@
 # limitations under the License.
 
 import inspect
+import itertools
+import os
 
 import pytest
 import torch
@@ -22,12 +24,80 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import conftest as cfg
 
-if cfg.QUICK_MODE:
-    ARGSORT_BATCH_SIZES = [4]
-    ARGSORT_HIDDEN_SIZES = [256, 2048]
+# The default mark is a representative matrix that fits one CI phase. Keep the
+# original Cartesian coverage available in this same file for extended runs.
+FULL_MATRIX = os.environ.get("FLAGGEMS_ARGSORT_FULL_TESTS") == "1"
+ARGSORT_DTYPES = (
+    utils.FLOAT_DTYPES + utils.INT_DTYPES + [torch.int8, torch.uint8, torch.int64]
+)
+if FULL_MATRIX or cfg.QUICK_MODE:
+    batches = [4] if cfg.QUICK_MODE else [4, 8]
+    lengths = (
+        [256, 2048]
+        if cfg.QUICK_MODE
+        else [1, 256, 2048, 9333, 65536, 32768, 128 * 1024, 256 * 1024]
+    )
+    ACCURACY_CASES = list(
+        itertools.product(batches, lengths, [True, False], ARGSORT_DTYPES, [0, -1])
+    )
 else:
-    ARGSORT_BATCH_SIZES = [4, 8]
-    ARGSORT_HIDDEN_SIZES = [1, 256, 2048, 9333, 65536, 32768, 128 * 1024, 256 * 1024]
+    # Each dtype covers short, tile-boundary, odd and long axes, both orders,
+    # and both batch sizes. Dim 0 and noncontiguous paths are covered below.
+    ACCURACY_CASES = [
+        (batch, length, descending, dtype, -1)
+        for dtype in ARGSORT_DTYPES
+        for batch, length, descending in (
+            (4, 256, False),
+            (4, 2048, True),
+            (8, 9333, False),
+            (4, 65536, True),
+        )
+    ] + [
+        (4, 262144, False, torch.float32, -1),
+        (8, 262144, True, torch.int64, -1),
+        (4, 131072, False, torch.float16, -1),
+        (8, 131072, True, torch.uint8, -1),
+        (4, 32768, False, torch.bfloat16, -1),
+        (8, 32768, True, torch.int16, -1),
+        (4, 65536, True, torch.float32, 0),
+        (8, 262144, False, torch.uint8, 0),
+    ]
+
+SHORT_ROWS_CASES = (
+    list(
+        itertools.product(
+            [32767, 32768, 32769, 65534, 65535, 65536, 98307],
+            [torch.float16, torch.float32, torch.int8, torch.int64],
+        )
+    )
+    if FULL_MATRIX
+    else [
+        (32767, torch.float16),
+        (32768, torch.float32),
+        (32769, torch.int8),
+        (65534, torch.float16),
+        (65535, torch.int64),
+        (65536, torch.float32),
+        (98307, torch.int8),
+    ]
+)
+BYTE_CASES = (
+    list(itertools.product([17, 2049, 8193], [False, True], [0, -1], [False, True]))
+    if FULL_MATRIX
+    else [
+        (17, False, 0, False),
+        (17, True, -1, True),
+        (2049, True, 0, False),
+        (2049, False, -1, True),
+        (8193, False, -1, False),
+        (8193, True, 0, True),
+    ]
+)
+EXTREMA_CASES = (
+    list(itertools.product([17, 2048, 2049, 9333], [False, True], [0, -1]))
+    if FULL_MATRIX
+    else [(17, False, 0), (2048, True, -1), (2049, False, -1), (9333, True, 0)]
+)
 
 
 def _argsort_reference(inp, dim, descending):
@@ -48,14 +118,51 @@ def _argsort_reference(inp, dim, descending):
 
 
 @pytest.mark.argsort
-@pytest.mark.parametrize("batch_size", ARGSORT_BATCH_SIZES)
-@pytest.mark.parametrize("hiddensize", ARGSORT_HIDDEN_SIZES)
-@pytest.mark.parametrize("descending", [True, False])
-@pytest.mark.parametrize(
-    "dtype",
-    utils.FLOAT_DTYPES + utils.INT_DTYPES + [torch.int8, torch.uint8, torch.int64],
-)
+@pytest.mark.parametrize("rows,dtype", SHORT_ROWS_CASES)
+def test_argsort_many_short_rows(rows, dtype):
+    # Sorting dim 0 produces `rows` independent rows; offset and striding must
+    # survive host batching, including ties and exact large integer ordering.
+    data = [3, 1, 3, 0]
+    if dtype == torch.int64:
+        data = [2**60 + 3, 2**60 + 1, 2**60 + 3, 2**60]
+    storage = torch.tensor(data, dtype=dtype)[:, None].repeat(1, rows * 2 + 1)
+    inp = storage.to(flag_gems.device)[:, 1::2]
+    for descending in (False, True):
+        expected = torch.argsort(inp.cpu(), dim=0, stable=True, descending=descending)
+        actual = flag_gems.argsort(inp, dim=0, descending=descending)
+        utils.gems_assert_equal(actual.cpu(), expected)
+
+
+@pytest.mark.argsort
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32])
 @pytest.mark.parametrize("dim", [0, -1])
+def test_argsort_many_tiny_rows_extrema(dtype, dim):
+    tiny = torch.finfo(dtype).tiny
+    values = [
+        float("nan"),
+        -float("inf"),
+        float("inf"),
+        -0.0,
+        0.0,
+        tiny / 2,
+        -tiny / 2,
+        float("nan"),
+    ]
+    inp = torch.tensor(values, dtype=dtype).repeat(4097, 1)
+    if dim == 0:
+        inp = inp.t()
+    expected_input = inp.clone()
+    inp = inp.to(flag_gems.device)
+    for descending in (False, True):
+        expected = torch.argsort(
+            expected_input, dim=dim, stable=True, descending=descending
+        )
+        actual = flag_gems.argsort(inp, dim=dim, descending=descending)
+        utils.gems_assert_equal(actual.cpu(), expected)
+
+
+@pytest.mark.argsort
+@pytest.mark.parametrize("batch_size,hiddensize,descending,dtype,dim", ACCURACY_CASES)
 def test_accuracy_argsort(batch_size, hiddensize, descending, dtype, dim):
     if dtype in utils.BOOL_TYPES:
         y = torch.randint(
@@ -78,10 +185,7 @@ def test_accuracy_argsort(batch_size, hiddensize, descending, dtype, dim):
 
 @pytest.mark.argsort
 @pytest.mark.parametrize("dtype", [torch.int8, torch.uint8])
-@pytest.mark.parametrize("descending", [False, True])
-@pytest.mark.parametrize("dim", [0, -1])
-@pytest.mark.parametrize("length", [17, 2049, 8193])
-@pytest.mark.parametrize("noncontiguous", [False, True])
+@pytest.mark.parametrize("length,descending,dim,noncontiguous", BYTE_CASES)
 def test_argsort_byte_boundaries(dtype, descending, dim, length, noncontiguous):
     limits = torch.iinfo(dtype)
     data = [limits.max, 0, limits.min, 127, limits.max, 1]
@@ -113,9 +217,7 @@ def test_argsort_byte_boundaries(dtype, descending, dim, length, noncontiguous):
         torch.int64,
     ],
 )
-@pytest.mark.parametrize("length", [17, 2048, 2049, 9333])
-@pytest.mark.parametrize("descending", [False, True])
-@pytest.mark.parametrize("dim", [0, -1])
+@pytest.mark.parametrize("length,descending,dim", EXTREMA_CASES)
 def test_argsort_stable_extrema(dtype, length, descending, dim):
     if dtype.is_floating_point:
         data = [
@@ -260,3 +362,18 @@ def test_argsort_ascend_launcher_abi():
                 ),
                 signature,
             )
+
+
+@pytest.mark.argsort
+@pytest.mark.parametrize(
+    "shape,dtype", [((1024, 65536), torch.int16), ((4096, 4096), torch.int64)]
+)
+def test_argsort_large_tiled_launch_boundary(shape, dtype):
+    # The merge tiles and integer pack path respectively launch 65536 tasks.
+    row = torch.arange(shape[1], dtype=torch.int64) % 19
+    if dtype == torch.int64:
+        row += 2**60
+    inp = row.to(dtype).expand(shape).contiguous().to(flag_gems.device)
+    expected = torch.argsort(inp.cpu(), dim=-1, stable=True)
+    actual = flag_gems.argsort(inp, dim=-1)
+    utils.gems_assert_equal(actual.cpu(), expected)

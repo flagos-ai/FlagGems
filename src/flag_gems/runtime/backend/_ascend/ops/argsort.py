@@ -3318,6 +3318,10 @@ def _argsort_asc_runtime(inp, descending):
         return out
 
 
+# Bound logical row batches for the legacy Ascend launch ABI.
+_MAX_BATCH_PROGRAMS = 32768
+
+
 def argsort(inp, dim=-1, descending=False):
     logger.debug("GEMS_ASCEND ARGSORT")
     rank = inp.ndim
@@ -3326,6 +3330,24 @@ def argsort(inp, dim=-1, descending=False):
     n = inp.shape[dim] if rank else 1
     if inp.numel() == 0:
         return torch.empty(inp.shape, dtype=torch.int64, device=inp.device)
+    # Account for per-row launches and the 256-element pack/unpack tiles.
+    # Partition entire rows, so every merge chain remains inside its launch.
+    programs_per_row = max(1, triton.cdiv(triton.next_power_of_2(n), 256))
+    max_rows = max(1, _MAX_BATCH_PROGRAMS // programs_per_row)
+    rows_count = inp.numel() // n
+    scalar_byte_programs = 0
+    if inp.dtype in (torch.int8, torch.uint8) and rank and inp.stride(dim) != 1:
+        lanes = max(32, triton.next_power_of_2(n)) if n <= 4096 else n
+        scalar_byte_programs = rows_count * lanes
+    if rows_count > max_rows or scalar_byte_programs > _MAX_BATCH_PROGRAMS:
+        axis = dim % rank
+        moved = inp.movedim(axis, -1)
+        rows = moved.contiguous().reshape(-1, n)
+        indices = torch.empty(rows.shape, dtype=torch.int64, device=inp.device)
+        for start in range(0, rows.shape[0], max_rows):
+            stop = min(start + max_rows, rows.shape[0])
+            indices[start:stop].copy_(argsort(rows[start:stop], -1, descending))
+        return indices.reshape(moved.shape).movedim(-1, axis)
     if n == 1:
         out = torch.empty(inp.shape, dtype=torch.int64, device=inp.device)
         with torch_device_fn.device(inp.device):
