@@ -80,11 +80,9 @@ def test_slow_conv_transpose3d(shape, weight_shape, stride, padding, dtype):
     ref_out = torch.ops.aten.slow_conv_transpose3d(
         ref_inp, ref_weight, kernel_size, None, st, pa, [0, 0, 0], [1, 1, 1]
     )
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.slow_conv_transpose3d(
-            inp, weight, kernel_size, None, st, pa, [0, 0, 0], [1, 1, 1]
-        )
-
+    res_out = flag_gems.slow_conv_transpose3d(
+        inp, weight, kernel_size, None, st, pa, [0, 0, 0], [1, 1, 1]
+    )
     utils.gems_assert_close(res_out, ref_out, dtype, atol=_atol(dtype))
 
 
@@ -107,11 +105,9 @@ def test_slow_conv_transpose3d_bias(shape, weight_shape, stride, padding, dtype)
     ref_out = torch.ops.aten.slow_conv_transpose3d(
         ref_inp, ref_weight, kernel_size, ref_bias, st, pa, [0, 0, 0], [1, 1, 1]
     )
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.slow_conv_transpose3d(
-            inp, weight, kernel_size, bias, st, pa, [0, 0, 0], [1, 1, 1]
-        )
-
+    res_out = flag_gems.slow_conv_transpose3d(
+        inp, weight, kernel_size, bias, st, pa, [0, 0, 0], [1, 1, 1]
+    )
     utils.gems_assert_close(res_out, ref_out, dtype, atol=_atol(dtype))
 
 
@@ -166,9 +162,7 @@ def test_slow_conv_transpose3d_scalar_stride(dtype):
     ref_out = torch.ops.aten.slow_conv_transpose3d(
         ref_inp, ref_weight, [3, 3, 3], None, [2, 2, 2], [1, 1, 1], [0, 0, 0], [1, 1, 1]
     )
-    with flag_gems.use_gems():
-        res_out = flag_gems.slow_conv_transpose3d(
-            inp, weight, 3, None, stride=2, padding=1, output_padding=0, dilation=1
-        )
-
+    res_out = flag_gems.slow_conv_transpose3d(
+        inp, weight, 3, None, stride=2, padding=1, output_padding=0, dilation=1
+    )
     utils.gems_assert_close(res_out, ref_out, dtype, atol=_atol(dtype))
