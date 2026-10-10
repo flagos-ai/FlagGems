@@ -17256,6 +17256,22 @@ ops:
   - LinearAlg
   stages:
   - alpha: '5.5'
+- id: slow_conv_dilated3d
+  description: |
+    Applies a 3D dilated convolution over an input signal composed of several
+    input planes. The weight is repacked into per-tap `(Cin, Cout)` matrices
+    and each stencil tap is accumulated as an implicit GEMM in Triton, so
+    arbitrary stride / padding / dilation triples, optional bias, and both
+    batched 5D and unbatched 4D inputs are supported.
+  for:
+  - slow_conv_dilated3d
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: smm
   description: |
     Performs a matrix multiplication of the sparse (COO) matrix `self` with the
